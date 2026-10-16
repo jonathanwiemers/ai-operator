@@ -1,0 +1,35 @@
+# Base agent image: ai-runner + git + agent CLIs. Extend it with the toolchain
+# your projects need to build and test, e.g.
+#   FROM ghcr.io/jonathanwiemers/ai-operator-agent:latest
+#   USER root
+#   RUN apt-get update && apt-get install -y golang-go && rm -rf /var/lib/apt/lists/*
+#   USER 1000
+FROM golang:1.26 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY api/ api/
+COPY cmd/ cmd/
+COPY internal/ internal/
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ai-runner ./cmd/runner
+
+FROM node:22-bookworm-slim
+ARG INSTALL_CLAUDE=true
+ARG INSTALL_CURSOR=true
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates curl ripgrep make \
+ && rm -rf /var/lib/apt/lists/*
+# Claude Code CLI.
+RUN if [ "$INSTALL_CLAUDE" = "true" ]; then npm install -g @anthropic-ai/claude-code && npm cache clean --force; fi
+# Cursor CLI. Installed outside $HOME because HOME points at the workspace PVC at runtime.
+ENV CURSOR_HOME=/opt/cursor
+RUN if [ "$INSTALL_CURSOR" = "true" ]; then \
+      mkdir -p $CURSOR_HOME && HOME=$CURSOR_HOME bash -c 'curl -fsSL https://cursor.com/install | bash' \
+      && chmod -R a+rX $CURSOR_HOME; \
+    fi
+ENV PATH="/opt/cursor/.local/bin:${PATH}"
+COPY --from=build /out/ai-runner /usr/local/bin/ai-runner
+# uid 1000 is the "node" user; the operator runs pods with runAsUser 1000.
+USER 1000
+WORKDIR /workspace
+ENTRYPOINT ["ai-runner"]

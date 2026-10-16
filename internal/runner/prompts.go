@@ -1,0 +1,323 @@
+package runner
+
+import (
+	"fmt"
+	"strings"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+)
+
+// The system prompts are constants on purpose: they are part of the cached
+// prompt prefix, so anything volatile (issue text, timestamps, IDs) goes into
+// the user prompt instead.
+
+const specSystemPrompt = `You are the planning agent of an automated GitLab workflow. You turn the
+specification in a milestone description into issues. Each issue becomes one
+merge request that another agent implements and a human reviews.
+
+How to plan:
+- Ground the plan in the repository in the current directory. Read the code the
+  spec touches so issues name real files, packages and functions.
+- Size issues so each merge request is reviewable on its own (roughly a few
+  hundred changed lines at most) and leaves the main branch working.
+- Order issues so dependencies come first and reference them in dependsOn.
+- Write each description for an engineer who has not read the spec: context,
+  implementation plan (files and functions to change), acceptance criteria and
+  a test plan. Markdown, no top-level heading.
+- Only raise questions that change the design or the scope. For each question
+  state the default you would pick, so a human can just confirm it.
+- You may be given issues that already exist for this milestone. Keep their
+  key and existingIid when they still fit, update them instead of creating
+  duplicates, and drop nothing that is already in progress.
+
+You cannot change files or talk to GitLab; a separate program creates the
+issues from your structured answer.`
+
+const implementSystemPrompt = `You are the implementing agent of an automated GitLab workflow. You implement
+exactly one issue in the repository in the current directory. The branch is
+already checked out. A separate program commits your changes, pushes them,
+opens the merge request and talks to GitLab - never commit, push or try to
+reach GitLab yourself.
+
+How to work:
+- Follow the repository's conventions: read CLAUDE.md, CONTRIBUTING and
+  nearby code first.
+- Stay within the scope of the issue. Do not refactor unrelated code.
+- Add or update tests, then run the relevant build, tests and linters, and
+  fix what fails.
+- Comments from humans on the issue and the merge request take precedence
+  over the original description.
+- If a decision that changes the design is unresolved, do not guess: return
+  status "needs_input" with concrete questions (and the default you would
+  pick). Make small decisions yourself and mention them in the summary.
+- Review findings you are given were produced by automated reviewers. Fix the
+  real ones; if a finding is wrong, say why in the summary.
+
+Your summary is posted on the merge request: what changed and why, how you
+tested it, and anything the reviewer should look at closely.`
+
+const bugbotSystemPrompt = `You are a code reviewer looking for correctness bugs in a diff produced by
+an AI agent. You are read-only.
+
+- Only report problems you can tie to a concrete failure: which input or state
+  leads to which wrong behaviour. Read the surrounding code to confirm before
+  reporting.
+- Ignore style, naming and formatting unless they hide a bug.
+- Severity: blocker = breaks the build, tests or production, or loses data;
+  major = a realistic bug users will hit; minor = an edge case; nit = trivial.
+- Prefer a few high-confidence findings over many speculative ones. An empty
+  list is a fine answer.`
+
+const securitySystemPrompt = `You are a security reviewer looking at a diff produced by an AI agent. You
+are read-only.
+
+- Look for vulnerabilities the diff introduces: injection (SQL, command,
+  template), broken authentication or authorization, secrets in code or logs,
+  SSRF, path traversal, unsafe deserialization, weak crypto, missing input
+  validation at trust boundaries, risky new dependencies.
+- Only report issues with a concrete attack path through code that exists.
+  Read the surrounding code to confirm reachability.
+- Severity: blocker = exploitable remotely or leaks secrets; major =
+  exploitable with some preconditions; minor = defense in depth; nit = trivial.
+- An empty list is a fine answer.`
+
+// JSON schemas for the structured answers.
+
+const specSchema = `{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "issues"],
+  "properties": {
+    "summary": {"type": "string", "description": "Short overview of the plan."},
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "title", "description", "questions", "dependsOn"],
+        "properties": {
+          "key": {"type": "string", "description": "Stable kebab-case identifier, e.g. 'payment-api'."},
+          "existingIid": {"type": "integer", "description": "IID of the existing issue this updates, 0 for a new issue."},
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "questions": {"type": "array", "items": {"type": "string"}},
+          "dependsOn": {"type": "array", "items": {"type": "string"}, "description": "Keys of issues that must be merged first."}
+        }
+      }
+    }
+  }
+}`
+
+const implementSchema = `{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "summary", "commitMessage", "questions"],
+  "properties": {
+    "status": {"type": "string", "enum": ["done", "needs_input"]},
+    "summary": {"type": "string", "description": "Markdown summary for the merge request."},
+    "commitMessage": {"type": "string", "description": "Imperative subject line (max 72 chars), blank line, body."},
+    "questions": {"type": "array", "items": {"type": "string"}}
+  }
+}`
+
+const reviewSchema = `{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "findings"],
+  "properties": {
+    "summary": {"type": "string"},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "file", "title", "detail"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["blocker", "major", "minor", "nit"]},
+          "file": {"type": "string"},
+          "line": {"type": "integer"},
+          "title": {"type": "string"},
+          "detail": {"type": "string", "description": "The failure scenario and why it happens."},
+          "suggestion": {"type": "string"}
+        }
+      }
+    }
+  }
+}`
+
+// Default tool sets per role.
+var (
+	readOnlyTools  = []string{"Read", "Grep", "Glob", "Bash(git log:*)", "Bash(git show:*)", "Bash(git diff:*)", "Bash(ls:*)"}
+	implementTools = []string{"Read", "Edit", "Write", "Glob", "Grep", "Bash", "TodoWrite"}
+	// The implementer has no credentials, but make the intent explicit.
+	implementDenied = []string{"Bash(git push:*)"}
+)
+
+// SpecPlan is the spec agent's answer.
+type SpecPlan struct {
+	Summary string        `json:"summary"`
+	Issues  []PlannedItem `json:"issues"`
+}
+
+// PlannedItem is one planned issue.
+type PlannedItem struct {
+	Key         string   `json:"key"`
+	ExistingIID int64    `json:"existingIid,omitempty"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Questions   []string `json:"questions"`
+	DependsOn   []string `json:"dependsOn"`
+}
+
+// ImplementAnswer is the implementer's answer.
+type ImplementAnswer struct {
+	Status        string   `json:"status"`
+	Summary       string   `json:"summary"`
+	CommitMessage string   `json:"commitMessage"`
+	Questions     []string `json:"questions"`
+}
+
+// ReviewAnswer is a reviewer's answer.
+type ReviewAnswer struct {
+	Summary  string    `json:"summary"`
+	Findings []Finding `json:"findings"`
+}
+
+// Finding is a single review finding.
+type Finding struct {
+	Reviewer   string `json:"-"`
+	Severity   string `json:"severity"`
+	File       string `json:"file"`
+	Line       int    `json:"line,omitempty"`
+	Title      string `json:"title"`
+	Detail     string `json:"detail"`
+	Suggestion string `json:"suggestion,omitempty"`
+}
+
+// Blocking reports whether the finding must be fixed before a human looks.
+func (f Finding) Blocking() bool { return f.Severity == "blocker" || f.Severity == "major" }
+
+func reviewerSystemPrompt(kind aiv1.ReviewerKind) string {
+	if kind == aiv1.ReviewerSecurity {
+		return securitySystemPrompt
+	}
+	return bugbotSystemPrompt
+}
+
+func withInstructions(system, extra string) string {
+	if strings.TrimSpace(extra) == "" {
+		return system
+	}
+	return system + "\n\nProject specific instructions:\n" + extra
+}
+
+// ExistingIssue describes an issue the spec agent already created.
+type ExistingIssue struct {
+	IID    int64
+	Key    string
+	Title  string
+	State  string
+	Labels []string
+}
+
+func buildSpecPrompt(m *gitlab.Milestone, existing []ExistingIssue, replan bool) string {
+	var b strings.Builder
+	if replan {
+		b.WriteString("The milestone specification changed. Update the plan.\n\n")
+	} else {
+		b.WriteString("Plan the following milestone.\n\n")
+	}
+	fmt.Fprintf(&b, "## Milestone: %s\n\n%s\n\n", m.Title, strings.TrimSpace(m.Description))
+	if len(existing) > 0 {
+		b.WriteString("## Existing issues in this milestone\n\n")
+		for _, e := range existing {
+			key := e.Key
+			if key == "" {
+				key = "(created by a human)"
+			}
+			fmt.Fprintf(&b, "- #%d key=%s state=%s labels=[%s]: %s\n", e.IID, key, e.State, strings.Join(e.Labels, ", "), e.Title)
+		}
+		b.WriteString("\nIssues created by a human or already in progress are context: do not re-plan them.\n")
+	}
+	return b.String()
+}
+
+// thread renders comments for a prompt.
+func thread(title string, notes []gitlab.Note, botID int64) string {
+	var b strings.Builder
+	for _, n := range notes {
+		if n.System {
+			continue
+		}
+		who := "@" + n.Author.Username
+		if n.Author.ID == botID {
+			who = "agent (you)"
+		}
+		fmt.Fprintf(&b, "**%s** (note %d):\n%s\n\n", who, n.ID, strings.TrimSpace(n.Body))
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return "## " + title + "\n\n" + b.String()
+}
+
+func buildImplementPrompt(issue *gitlab.Issue, milestone *gitlab.Milestone, issueNotes, mrNotes []gitlab.Note, botID int64, resumed bool) string {
+	var b strings.Builder
+	if resumed {
+		if len(issueNotes) == 0 && len(mrNotes) == 0 {
+			b.WriteString("You were asked to continue on this issue. Check whether anything is unfinished or broken (build, tests) and complete it. If everything is done, say so in the summary without changing files.\n")
+			return b.String()
+		}
+		b.WriteString("There is new input on the issue you are working on. Continue the work on the same branch.\n\n")
+		b.WriteString(thread("New comments on the issue", issueNotes, botID))
+		b.WriteString(thread("New comments on the merge request", mrNotes, botID))
+		return b.String()
+	}
+	fmt.Fprintf(&b, "Implement issue #%d.\n\n## %s\n\n%s\n\n", issue.IID, issue.Title, strings.TrimSpace(issue.Description))
+	if milestone != nil && strings.TrimSpace(milestone.Description) != "" {
+		fmt.Fprintf(&b, "## Milestone context: %s\n\n%s\n\n", milestone.Title, strings.TrimSpace(milestone.Description))
+	}
+	b.WriteString(thread("Comments on the issue", issueNotes, botID))
+	b.WriteString(thread("Comments on the merge request", mrNotes, botID))
+	return b.String()
+}
+
+// maxInlineDiff bounds the diff that is pasted into a review prompt; larger
+// diffs are reviewed through git by the reviewer itself.
+const maxInlineDiff = 150_000
+
+func buildReviewPrompt(issue *gitlab.Issue, base, diffStat, diff string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Review the changes made for issue #%d: %s\n\n", issue.IID, issue.Title)
+	fmt.Fprintf(&b, "## Issue description\n\n%s\n\n", strings.TrimSpace(issue.Description))
+	fmt.Fprintf(&b, "## Changed files\n\n```\n%s\n```\n\n", diffStat)
+	if len(diff) <= maxInlineDiff {
+		fmt.Fprintf(&b, "## Diff\n\n```diff\n%s\n```\n", diff)
+	} else {
+		fmt.Fprintf(&b, "The diff is too large to include. Inspect it with `git diff origin/%s...HEAD -- <file>`.\n", base)
+	}
+	return b.String()
+}
+
+func buildFixPrompt(findings []Finding) string {
+	var b strings.Builder
+	b.WriteString("Automated reviewers found the following problems in your change. Fix the real ones and run the tests again.\n\n")
+	b.WriteString(formatFindings(findings))
+	return b.String()
+}
+
+func formatFindings(findings []Finding) string {
+	var b strings.Builder
+	for _, f := range findings {
+		loc := f.File
+		if f.Line > 0 {
+			loc = fmt.Sprintf("%s:%d", f.File, f.Line)
+		}
+		fmt.Fprintf(&b, "- **[%s/%s]** `%s` %s\n  %s\n", f.Reviewer, f.Severity, loc, f.Title, strings.ReplaceAll(strings.TrimSpace(f.Detail), "\n", "\n  "))
+		if f.Suggestion != "" {
+			fmt.Fprintf(&b, "  Suggestion: %s\n", strings.ReplaceAll(strings.TrimSpace(f.Suggestion), "\n", "\n  "))
+		}
+	}
+	return b.String()
+}

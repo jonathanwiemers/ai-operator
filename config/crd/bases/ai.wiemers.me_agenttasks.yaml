@@ -1,0 +1,287 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: agenttasks.ai.wiemers.me
+spec:
+  group: ai.wiemers.me
+  names:
+    kind: AgentTask
+    listKind: AgentTaskList
+    plural: agenttasks
+    shortNames:
+    - at
+    singular: agenttask
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .spec.issue.iid
+      name: Issue
+      type: integer
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.run.lastResult
+      name: Result
+      type: string
+    - jsonPath: .status.run.runCount
+      name: Runs
+      type: integer
+    - jsonPath: .status.run.costUSD
+      name: Cost
+      type: string
+    - jsonPath: .status.run.mergeRequestURL
+      name: MR
+      priority: 1
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          AgentTask is one unit of agent work: planning a milestone or implementing
+          an issue. It owns the agent pod and the workspace PVC.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              AgentTaskSpec is the desired state of an AgentTask. It is owned by the
+              operator: the project controller creates tasks and bumps RunRequest
+              whenever GitLab asks for (more) work.
+            properties:
+              issue:
+                description: Issue implemented by this task (Implement tasks only).
+                properties:
+                  id:
+                    format: int64
+                    type: integer
+                  iid:
+                    format: int64
+                    type: integer
+                  title:
+                    type: string
+                  webURL:
+                    type: string
+                required:
+                - id
+                - iid
+                - title
+                type: object
+              milestone:
+                description: Milestone the task belongs to.
+                properties:
+                  id:
+                    format: int64
+                    type: integer
+                  iid:
+                    format: int64
+                    type: integer
+                  title:
+                    type: string
+                required:
+                - id
+                - iid
+                - title
+                type: object
+              projectRef:
+                description: ProjectRef is the name of the AgentProject in the same
+                  namespace.
+                type: string
+              runRequest:
+                description: |-
+                  RunRequest is a monotonically increasing counter. Every increment asks
+                  the runner for exactly one more run. The runner acknowledges by setting
+                  status.run.observedRunRequest.
+                format: int64
+                type: integer
+              source:
+                description: |-
+                  Source records which GitLab state the operator has already turned into
+                  run requests, so that every change triggers exactly one run.
+                properties:
+                  descriptionHash:
+                    description: DescriptionHash of the milestone description (Spec
+                      tasks).
+                    type: string
+                  issueUpdatedAt:
+                    description: |-
+                      IssueUpdatedAt / MergeRequestUpdatedAt let the operator skip fetching
+                      comments when nothing changed.
+                    format: date-time
+                    type: string
+                  lastCommandNoteID:
+                    description: |-
+                      LastCommandNoteID is the newest "/agent" comment that was turned into a
+                      run request (Implement tasks).
+                    format: int64
+                    type: integer
+                  mergeRequestUpdatedAt:
+                    format: date-time
+                    type: string
+                type: object
+              suspend:
+                description: 'Suspend hibernates the task: its pod is deleted, the
+                  workspace is kept.'
+                type: boolean
+              type:
+                description: Type of the task.
+                enum:
+                - Spec
+                - Implement
+                type: string
+            required:
+            - projectRef
+            - type
+            type: object
+          status:
+            description: |-
+              AgentTaskStatus is the observed state of an AgentTask. The top-level fields
+              are written by the operator, Run is written by the runner inside the pod.
+              Both sides use merge patches so they never overwrite each other.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              message:
+                type: string
+              phase:
+                description: TaskPhase is a coarse summary of where a task is in its
+                  lifecycle.
+                enum:
+                - Pending
+                - Queued
+                - Running
+                - Idle
+                - Hibernated
+                - Archived
+                - Blocked
+                type: string
+              podName:
+                type: string
+              run:
+                description: RunStatus is reported by the runner.
+                properties:
+                  activeRunRequest:
+                    description: ActiveRunRequest is the run request the runner is
+                      currently working on.
+                    format: int64
+                    type: integer
+                  branch:
+                    description: Branch the agent pushes to.
+                    type: string
+                  costUSD:
+                    description: CostUSD is the accumulated model spend of this task,
+                      as a decimal string.
+                    type: string
+                  lastActivityTime:
+                    description: LastActivityTime is when the runner last started
+                      or finished a run.
+                    format: date-time
+                    type: string
+                  lastResult:
+                    description: LastResult of the most recent run.
+                    type: string
+                  mergeRequestIID:
+                    description: MergeRequestIID of the agent's merge request.
+                    format: int64
+                    type: integer
+                  mergeRequestURL:
+                    description: MergeRequestURL of the agent's merge request.
+                    type: string
+                  observedRunRequest:
+                    description: ObservedRunRequest is the last run request the runner
+                      has finished.
+                    format: int64
+                    type: integer
+                  runCount:
+                    description: RunCount is the number of runs performed so far.
+                    format: int32
+                    type: integer
+                  summary:
+                    description: Summary of the most recent run.
+                    type: string
+                type: object
+              workspaceClaimName:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,75 @@
+// Command operator runs the ai-operator controllers.
+package main
+
+import (
+	"flag"
+	"os"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/controller"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+)
+
+func main() {
+	var metricsAddr, probeAddr string
+	var leaderElect bool
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to.")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.BoolVar(&leaderElect, "leader-elect", false, "Enable leader election for the controller manager.")
+	opts := zap.Options{}
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	setupLog := ctrl.Log.WithName("setup")
+
+	scheme := runtime.NewScheme()
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(aiv1.AddToScheme(scheme))
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		Scheme:                 scheme,
+		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
+		HealthProbeBindAddress: probeAddr,
+		LeaderElection:         leaderElect,
+		LeaderElectionID:       "ai-operator.ai.wiemers.me",
+	})
+	if err != nil {
+		setupLog.Error(err, "unable to create manager")
+		os.Exit(1)
+	}
+
+	if err := (&controller.AgentProjectReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		NewGitLab: func(baseURL, token string) gitlab.API {
+			return gitlab.New(baseURL, token)
+		},
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AgentProject")
+		os.Exit(1)
+	}
+	if err := (&controller.AgentTaskReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AgentTask")
+		os.Exit(1)
+	}
+
+	utilruntime.Must(mgr.AddHealthzCheck("healthz", healthz.Ping))
+	utilruntime.Must(mgr.AddReadyzCheck("readyz", healthz.Ping))
+
+	setupLog.Info("starting manager")
+	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+		setupLog.Error(err, "problem running manager")
+		os.Exit(1)
+	}
+}

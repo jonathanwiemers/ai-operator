@@ -1,0 +1,52 @@
+apiVersion: ai.wiemers.me/v1alpha1
+kind: AgentProject
+metadata:
+  name: shop
+  namespace: agents
+spec:
+  gitlab:
+    url: https://gitlab.com
+    project: my-group/shop
+    tokenSecretRef:
+      name: gitlab
+      key: token
+  milestones:
+    # Only milestones whose description contains this marker are planned.
+    specMarker: "/agent spec"
+  workflow:
+    readyLabel: "agent::ready"
+    doneLabel: "agent::done"
+    commandPrefix: "/agent"
+  maxConcurrentRuns: 3
+  pollInterval: 1m
+  lifecycle:
+    idleTimeout: 2h        # keep the pod warm this long after a run
+    retentionPeriod: 336h  # then keep the workspace PVC this long (14 days)
+    maxRunsPerTask: 20
+  agents:
+    image: ghcr.io/jonathanwiemers/ai-operator-agent:latest
+    credentialsSecretName: agent-credentials
+    workspaceSize: 10Gi
+    # cacheClaimName: agent-cache   # optional RWX PVC for shared dependency caches
+    resources:
+      requests: {cpu: "1", memory: 2Gi}
+      limits: {memory: 6Gi}
+    spec:
+      engine: claude
+      model: claude-opus-5-5
+      effort: high
+    implement:
+      engine: claude
+      model: claude-opus-5-5
+      maxBudgetUSD: "10"
+      instructions: |
+        Run `make test` before finishing.
+    review:
+      # Reviewers can use a different engine, e.g. cursor with your Cursor plan:
+      # engine: cursor
+      # model: gpt-5
+      engine: claude
+      model: claude-opus-5-5
+      effort: medium
+      reviewers: [bugbot, security]
+      maxIterations: 2
