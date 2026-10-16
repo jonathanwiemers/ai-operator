@@ -37,6 +37,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Two Go cross-builds of the Kubernetes client libraries plus the Node
+      # based agent image do not fit into the default runner disk.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/share/powershell
+          sudo docker image prune --all --force
+          df -h /
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -80,6 +90,11 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Prune build cache
+        run: |
+          docker buildx prune --all --force
+          df -h /
 
       - name: Build and push agent image
         uses: docker/build-push-action@v6
