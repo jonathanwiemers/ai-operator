@@ -2,6 +2,7 @@ package controller
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
@@ -10,8 +11,9 @@ import (
 )
 
 const (
-	// WorkspaceMountPath holds the checkout, the agent's HOME (including its
-	// session history, so runs can be resumed) and per-task caches.
+	// WorkspaceMountPath is the agent's part of the workspace PVC: the
+	// checkout, the agent's HOME (including CLI sessions, so runs can be
+	// resumed) and per-task caches.
 	WorkspaceMountPath = "/workspace"
 	// CacheMountPath holds dependency caches shared by all tasks.
 	CacheMountPath = "/cache"
@@ -47,39 +49,95 @@ func buildWorkspaceClaim(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *core
 	}
 }
 
-// buildPod returns the long-running agent pod of a task. The pod runs the
-// ai-runner, which waits for run requests on its AgentTask and drives the
-// claude CLI for the spec, implement and review roles.
+// Container and volume layout of an agent pod.
+const (
+	// RunnerContainer holds the GitLab token and the Kubernetes token.
+	RunnerContainer = "runner"
+	// AgentContainer runs the agent CLIs with only their own credentials.
+	AgentContainer = "agent"
+
+	// RunnerMountPath is the runner's private part of the workspace PVC:
+	// the git mirror and runner state.
+	RunnerMountPath = "/runner"
+	// ExchangeMountPath is shared by both containers: the agent server's
+	// socket and git bundles in transit.
+	ExchangeMountPath = "/exchange"
+	// AgentSocket is where the agent server listens.
+	AgentSocket = ExchangeMountPath + "/agent.sock"
+	// ServiceAccountMountPath is where client-go expects the token.
+	ServiceAccountMountPath = "/var/run/secrets/kubernetes.io/serviceaccount"
+)
+
+// DefaultRunnerResources is used when agents.runnerResources is not set. The
+// runner only talks to GitLab and Kubernetes and moves git bundles.
+var DefaultRunnerResources = corev1.ResourceRequirements{
+	Requests: corev1.ResourceList{
+		corev1.ResourceCPU:    resource.MustParse("50m"),
+		corev1.ResourceMemory: resource.MustParse("128Mi"),
+	},
+	Limits: corev1.ResourceList{
+		corev1.ResourceMemory: resource.MustParse("1Gi"),
+	},
+}
+
+// buildPod returns the long-running pod of a task. It has two containers that
+// share the task's PVC through different sub-paths:
+//
+//   - runner: ai-runner with the GitLab token and the only mount of the
+//     service account token. It owns the git mirror and talks to GitLab.
+//   - agent: "ai-runner agent-server" with the agent CLI credentials. It owns
+//     the checkout the model works in and runs the agent CLIs on request.
+//
+// Containers of a pod do not share a process namespace, so the model cannot
+// read the runner's environment either.
 func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 	agents := spec.Agents
-	env := []corev1.EnvVar{
+	claim := naming.Workspace(task.Name)
+	runnerEnv := []corev1.EnvVar{
 		{Name: "AI_TASK_NAME", Value: task.Name},
 		{Name: "AI_TASK_NAMESPACE", ValueFrom: &corev1.EnvVarSource{
 			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
 		}},
-		{Name: "AI_WORKSPACE", Value: WorkspaceMountPath},
-		{Name: "HOME", Value: WorkspaceMountPath + "/home"},
+		{Name: "AI_STATE_DIR", Value: RunnerMountPath},
+		{Name: "AI_EXCHANGE", Value: ExchangeMountPath},
+		{Name: "AI_AGENT_SOCKET", Value: AgentSocket},
+		{Name: "HOME", Value: RunnerMountPath},
 		{Name: "GITLAB_TOKEN", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &spec.GitLab.TokenSecretRef}},
 	}
-	envFrom := []corev1.EnvFromSource{{
-		SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: agents.CredentialsSecretName}},
-	}}
+	runnerMounts := []corev1.VolumeMount{
+		{Name: "workspace", MountPath: RunnerMountPath, SubPath: "runner"},
+		{Name: "exchange", MountPath: ExchangeMountPath},
+		{Name: "runner-tmp", MountPath: "/tmp"},
+		{Name: "kube-api-access", MountPath: ServiceAccountMountPath, ReadOnly: true},
+	}
+
+	agentEnv := []corev1.EnvVar{
+		{Name: "AI_WORKSPACE", Value: WorkspaceMountPath},
+		{Name: "AI_EXCHANGE", Value: ExchangeMountPath},
+		{Name: "AI_AGENT_SOCKET", Value: AgentSocket},
+		{Name: "HOME", Value: WorkspaceMountPath + "/home"},
+	}
+	agentMounts := []corev1.VolumeMount{
+		{Name: "workspace", MountPath: WorkspaceMountPath, SubPath: "agent"},
+		{Name: "exchange", MountPath: ExchangeMountPath},
+		{Name: "agent-tmp", MountPath: "/tmp"},
+	}
+
 	volumes := []corev1.Volume{
 		{Name: "workspace", VolumeSource: corev1.VolumeSource{
-			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: naming.Workspace(task.Name)},
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: claim},
 		}},
-		{Name: "tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-	}
-	mounts := []corev1.VolumeMount{
-		{Name: "workspace", MountPath: WorkspaceMountPath},
-		{Name: "tmp", MountPath: "/tmp"},
+		{Name: "exchange", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+		{Name: "runner-tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+		{Name: "agent-tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+		serviceAccountTokenVolume(),
 	}
 	if agents.CacheClaimName != "" {
 		volumes = append(volumes, corev1.Volume{Name: "cache", VolumeSource: corev1.VolumeSource{
 			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: agents.CacheClaimName},
 		}})
-		mounts = append(mounts, corev1.VolumeMount{Name: "cache", MountPath: CacheMountPath})
-		env = append(env,
+		agentMounts = append(agentMounts, corev1.VolumeMount{Name: "cache", MountPath: CacheMountPath})
+		agentEnv = append(agentEnv,
 			corev1.EnvVar{Name: "GOMODCACHE", Value: CacheMountPath + "/go/mod"},
 			corev1.EnvVar{Name: "GOCACHE", Value: CacheMountPath + "/go/build"},
 			corev1.EnvVar{Name: "npm_config_cache", Value: CacheMountPath + "/npm"},
@@ -87,7 +145,19 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 			corev1.EnvVar{Name: "YARN_CACHE_FOLDER", Value: CacheMountPath + "/yarn"},
 		)
 	}
-	env = append(env, agents.Env...)
+	agentEnv = append(agentEnv, agents.Env...)
+
+	runnerResources := DefaultRunnerResources
+	if agents.RunnerResources != nil {
+		runnerResources = *agents.RunnerResources
+	}
+	containerSecurity := func(readOnlyRoot bool) *corev1.SecurityContext {
+		return &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			ReadOnlyRootFilesystem:   ptr.To(readOnlyRoot),
+			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+		}
+	}
 
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -96,7 +166,11 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 			Labels:    taskLabels(task),
 		},
 		Spec: corev1.PodSpec{
-			ServiceAccountName:            agents.ServiceAccountName,
+			ServiceAccountName: agents.ServiceAccountName,
+			// The token is mounted explicitly into the runner container only.
+			AutomountServiceAccountToken:  ptr.To(false),
+			EnableServiceLinks:            ptr.To(false),
+			ShareProcessNamespace:         ptr.To(false),
 			RestartPolicy:                 corev1.RestartPolicyAlways,
 			TerminationGracePeriodSeconds: ptr.To[int64](60),
 			NodeSelector:                  agents.NodeSelector,
@@ -108,21 +182,65 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 				FSGroup:        ptr.To[int64](AgentUID),
 				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 			},
-			Containers: []corev1.Container{{
-				Name:            "agent",
+			Volumes: volumes,
+			// Kubelet would create missing sub-path directories as root;
+			// create them as the agent user first.
+			InitContainers: []corev1.Container{{
+				Name:            "init-workspace",
 				Image:           agents.Image,
 				ImagePullPolicy: agents.ImagePullPolicy,
-				Command:         []string{"ai-runner"},
-				Env:             env,
-				EnvFrom:         envFrom,
-				Resources:       agents.Resources,
-				VolumeMounts:    mounts,
-				WorkingDir:      WorkspaceMountPath,
-				SecurityContext: &corev1.SecurityContext{
-					AllowPrivilegeEscalation: ptr.To(false),
-					Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
-				},
+				Command:         []string{"ai-runner", "init-workspace", "/data/runner", "/data/agent"},
+				VolumeMounts:    []corev1.VolumeMount{{Name: "workspace", MountPath: "/data"}},
+				Resources:       runnerResources,
+				SecurityContext: containerSecurity(true),
 			}},
+			Containers: []corev1.Container{
+				{
+					Name:            RunnerContainer,
+					Image:           agents.Image,
+					ImagePullPolicy: agents.ImagePullPolicy,
+					Command:         []string{"ai-runner"},
+					Env:             runnerEnv,
+					Resources:       runnerResources,
+					VolumeMounts:    runnerMounts,
+					WorkingDir:      RunnerMountPath,
+					SecurityContext: containerSecurity(true),
+				},
+				{
+					Name:            AgentContainer,
+					Image:           agents.Image,
+					ImagePullPolicy: agents.ImagePullPolicy,
+					Command:         []string{"ai-runner", "agent-server"},
+					Env:             agentEnv,
+					EnvFrom: []corev1.EnvFromSource{{
+						SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: agents.CredentialsSecretName}},
+					}},
+					Resources:       agents.Resources,
+					VolumeMounts:    agentMounts,
+					WorkingDir:      WorkspaceMountPath,
+					SecurityContext: containerSecurity(false),
+				},
+			},
 		},
 	}
+}
+
+// serviceAccountTokenVolume is the equivalent of the automatically mounted
+// kube-api-access volume, so it can be mounted into one container only.
+func serviceAccountTokenVolume() corev1.Volume {
+	return corev1.Volume{Name: "kube-api-access", VolumeSource: corev1.VolumeSource{
+		Projected: &corev1.ProjectedVolumeSource{
+			DefaultMode: ptr.To[int32](0o444),
+			Sources: []corev1.VolumeProjection{
+				{ServiceAccountToken: &corev1.ServiceAccountTokenProjection{Path: "token", ExpirationSeconds: ptr.To[int64](3607)}},
+				{ConfigMap: &corev1.ConfigMapProjection{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "kube-root-ca.crt"},
+					Items:                []corev1.KeyToPath{{Key: "ca.crt", Path: "ca.crt"}},
+				}},
+				{DownwardAPI: &corev1.DownwardAPIProjection{Items: []corev1.DownwardAPIVolumeFile{{
+					Path: "namespace", FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+				}}}},
+			},
+		},
+	}}
 }

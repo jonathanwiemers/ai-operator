@@ -88,7 +88,8 @@ All labels can be renamed. Defaults:
 | `image` | operator's `--default-agent-image` (with Helm: the agent image of the same release) | agent image (see below) |
 | `credentialsSecretName` | – | see Secrets |
 | `serviceAccountName` | `ai-operator-agent` | |
-| `resources` | – | container resources |
+| `resources` | – | resources of the agent container (agent CLIs, builds, tests) |
+| `runnerResources` | 50m / 128Mi requests, 1Gi limit | resources of the runner container (GitLab, git mirror) |
 | `workspaceSize` | `10Gi` | per-task PVC |
 | `storageClassName` | cluster default | |
 | `cacheClaimName` | – | existing (ideally RWX) PVC mounted at `/cache` for shared dependency caches (`GOMODCACHE`, `GOCACHE`, `npm_config_cache`, `PIP_CACHE_DIR`, `YARN_CACHE_FOLDER`) |
@@ -181,6 +182,26 @@ RUN apt-get update && apt-get install -y golang-go && rm -rf /var/lib/apt/lists/
 USER 1000
 ```
 
-Pods run as uid 1000, non-root, with all capabilities dropped. `HOME` points
-to the workspace (`/workspace/home`), so CLI sessions survive pod restarts.
-Install tools outside `$HOME`.
+The same image runs both containers of an agent pod: `ai-runner` in the
+`runner` container and `ai-runner agent-server` in the `agent` container (see
+[design.md](design.md#security)). Pods run as uid 1000, non-root, with all
+capabilities dropped. In the agent container `HOME` points to the workspace
+(`/workspace/home`), so CLI sessions survive pod restarts. Install tools
+outside `$HOME`.
+
+## Network policy
+
+The Helm chart can add a NetworkPolicy to every namespace in
+`agent.namespaces` (`agent.networkPolicy.enabled=true`): no ingress, DNS
+allowed, and egress everywhere except cloud metadata endpoints and private
+networks. The runner needs the Kubernetes API, which usually has a private
+address, so allow-list it (and any self-hosted GitLab or package mirror):
+
+```sh
+kubectl get endpoints kubernetes -o jsonpath='{.subsets[*].addresses[*].ip}'
+helm upgrade ai-operator … \
+  --set agent.networkPolicy.enabled=true \
+  --set 'agent.networkPolicy.allowedCIDRs={10.0.0.10/32,10.20.0.0/24}'
+```
+
+NetworkPolicies need a CNI that enforces them (Calico, Cilium, …).

@@ -150,7 +150,8 @@ type AgentsSpec struct {
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 
 	// ServiceAccountName used by the agent pods. It needs read access to
-	// AgentTasks/AgentProjects and patch access to agenttasks/status.
+	// AgentTasks/AgentProjects and patch access to agenttasks/status. Its
+	// token is only mounted into the runner container.
 	// +kubebuilder:default="ai-operator-agent"
 	// +optional
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
@@ -162,9 +163,14 @@ type AgentsSpec struct {
 	//   CURSOR_API_KEY           cursor-agent (Cursor subscription)
 	CredentialsSecretName string `json:"credentialsSecretName"`
 
-	// Resources of the agent container.
+	// Resources of the agent container (agent CLIs, builds and tests).
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// RunnerResources of the runner container (GitLab, git mirror). Defaults
+	// to 50m CPU / 128Mi memory requests and a 1Gi memory limit.
+	// +optional
+	RunnerResources *corev1.ResourceRequirements `json:"runnerResources,omitempty"`
 
 	// WorkspaceSize of the per-task PVC holding the checkout, build output and
 	// the agent session state.

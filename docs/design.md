@@ -74,11 +74,18 @@ reviewers are short, read-only invocations that need exactly the work tree the
 implementer just produced; separate pods would need RWX volumes and
 coordination for no gain. The engine abstraction keeps the option open.
 
-Shared state:
+Each pod has two containers, see [Security](#security):
 
-* `/workspace` – per-task RWO PVC: the checkout, build outputs, `$HOME`
-  (agent CLI sessions, so follow-up runs resume) and runner state.
-* `/cache` – optional RWX PVC shared by all agent pods (`GOMODCACHE`,
+| Container | Runs | Has | Volumes |
+|-----------|------|-----|---------|
+| `runner` | `ai-runner` | GitLab token, service account token | PVC sub-path `runner` at `/runner` (git mirror, runner state), `/exchange` |
+| `agent` | `ai-runner agent-server` | agent CLI credentials | PVC sub-path `agent` at `/workspace` (checkout, `$HOME` with CLI sessions, build outputs), `/exchange`, `/cache` |
+
+* The per-task RWO PVC holds both sub-paths, so the checkout, the build
+  caches, the agent sessions and the mirror survive hibernation.
+* `/exchange` is an `emptyDir` shared by both containers: the agent server's
+  unix socket and git bundles in transit.
+* `/cache` is an optional RWX PVC shared by all agent pods (`GOMODCACHE`,
   `npm_config_cache`, `PIP_CACHE_DIR`, …).
 
 ## Lifecycle of long-lived issues
@@ -169,21 +176,65 @@ Things to keep in mind with subscriptions:
 
 ## Security
 
-* The model gets neither the GitLab token nor Kubernetes access:
-  `GITLAB_TOKEN`, `AI_*` and `KUBERNETES_*` are stripped from the agent CLI
-  environment. Git authentication is passed per git command via
-  `GIT_CONFIG_*` env vars, not stored in `.git/config`.
-* Pods run as non-root with dropped capabilities and seccomp `RuntimeDefault`.
+The threat model: the model can do anything a shell in the agent container
+can do – including following instructions planted in issues, comments or
+code. It must not be able to get the GitLab token or Kubernetes access, or
+make something that has them run its code.
+
+**Two containers.** The `runner` container holds the GitLab token and is the
+only container the service account token is mounted into
+(`automountServiceAccountToken: false` plus an explicit projected volume).
+The `agent` container only gets the agent CLI credentials from
+`credentialsSecretName`. Containers of a pod do not share a process
+namespace, so the model cannot read the runner's environment through
+`/proc`. Service links are disabled.
+
+**No git in the agent's checkout from the runner.** The model can edit
+`.git/config`, hooks and `.gitattributes`, and git turns several of those
+(`core.fsmonitor`, filters, hooks, external diff) into command execution. So
+the runner never runs git in the checkout:
+
+```
+ GitLab ◀──fetch/push──▶ runner: bare mirror (/runner, trusted)
+                              │  git bundle (refs + objects only)
+                              ▼  over /exchange
+                         agent: checkout (/workspace, model-controlled)
+```
+
+* The runner keeps a bare mirror on its own PVC sub-path. Only the runner
+  touches it, so its config is trusted. Remote commands get the token as an
+  `http.extraHeader` through `GIT_CONFIG_*` environment variables of that
+  single git process. Git runs with a minimal environment, no system or
+  global config and hooks disabled.
+* Before a run, the runner bundles the commits the checkout lacks; the agent
+  server imports the bundle and checks out the branch. After a run, the agent
+  server bundles the new commits and the runner imports them into the mirror
+  and pushes. Fetching from a bundle transfers refs and objects and cannot
+  execute anything.
+* The runner talks to the agent server over a unix socket on `/exchange`
+  (RPC: run an agent CLI, prepare / commit / diff / reset / bundle). Bundle
+  paths outside `/exchange` are rejected. Everything the agent returns
+  (results, diffs) is treated as untrusted data.
+
+**Other measures.**
+
+* Pods run as non-root with all capabilities dropped and seccomp
+  `RuntimeDefault`; the runner's root filesystem is read-only.
 * The agent service account can only read tasks/projects and patch
   `agenttasks/status`.
+* Optional NetworkPolicy (Helm `agent.networkPolicy`): no ingress, no egress
+  to cloud metadata endpoints or private networks except allow-listed CIDRs
+  (Kubernetes API, self-hosted GitLab, mirrors). NetworkPolicies apply per
+  pod, so the agent container can still reach the internet (GitLab, model
+  APIs, package registries); it just has no credentials to use there.
 * Use a project access token (role Developer, scopes `api`,
   `write_repository`) and protect the default branch – the agent only pushes
   `agent/*` branches and opens draft MRs.
-* **Known gap (v1):** the runner and the agent CLI share a container, so a
-  determined model could read the service account token or the runner's
-  environment via `/proc`. Hardening path: split into two containers (runner
-  with credentials, agent without, sharing the workspace volume) plus a
-  NetworkPolicy that only allows the model API, GitLab and package registries.
+
+**Remaining risks.** The model can still push arbitrary content to its own
+`agent/*` branch (by design; humans review the draft MR) and write anything
+into the summaries posted on GitLab. CI pipelines of agent branches run
+untrusted code: don't expose protected CI variables to unprotected branches.
 
 ## Code map
 
@@ -193,23 +244,26 @@ Things to keep in mind with subscriptions:
 | `internal/controller/agentproject_controller.go` | GitLab poll → AgentTasks, run requests, label acknowledgement, cleanup |
 | `internal/controller/agenttask_controller.go` | pod / PVC lifecycle, queueing, limits |
 | `internal/controller/resources.go` | pod and PVC templates |
-| `internal/runner/runner.go` | run loop, status reporting, session state |
+| `internal/runner/runner.go` | run loop, status reporting, session state, mirror ⇄ workspace sync |
+| `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
+| `internal/runner/workspace.go` | agent-side checkout (local git only) |
 | `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab |
 | `internal/runner/implement.go` | implement → review → fix → push → MR pipeline |
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
-| `internal/runner/git.go` | git operations with per-command credentials |
+| `internal/runner/git.go` | runner-side bare mirror (the only git that talks to GitLab) |
 | `internal/gitlab` | minimal REST client; `gitlabfake` for tests |
 | `charts/ai-operator` | Helm chart (CRDs and operator RBAC are copied in by `make manifests`) |
 | `.github/workflows` | CI and calendar-versioned releases (`YEAR.MONTH.N`) |
 
 ## Roadmap
 
+Done: credential split into runner and agent containers, bundle-based git
+exchange, optional NetworkPolicy (see Security).
+
 Next:
 
-1. **Credential split** – runner and agent CLI in separate containers sharing
-   the workspace, plus a NetworkPolicy (see Security).
-2. **GitLab webhooks** instead of polling, for instant reactions.
+1. **GitLab webhooks** instead of polling, for instant reactions.
 
 Later:
 

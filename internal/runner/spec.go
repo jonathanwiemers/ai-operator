@@ -35,11 +35,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	if err != nil {
 		return nil, fmt.Errorf("getting project: %w", err)
 	}
-	g := r.git()
-	if err := g.Ensure(ctx, proj.HTTPURLToRepo); err != nil {
-		return nil, err
-	}
-	if err := g.CheckoutBranch(ctx, proj.DefaultBranch, proj.DefaultBranch); err != nil {
+	if err := r.syncWorkspace(ctx, proj.HTTPURLToRepo, proj.DefaultBranch, proj.DefaultBranch); err != nil {
 		return nil, err
 	}
 
@@ -54,7 +50,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 
 	st := r.loadState()
 	role := spec.Agents.Spec
-	inv := roleInvocation(r.repoDir(), role, specSystemPrompt, readOnlyTools, specSchema(spec.Agents.Profiles), true)
+	inv := roleInvocation(role, specSystemPrompt, readOnlyTools, specSchema(spec.Agents.Profiles), true)
 	inv.Resume = st.session("spec", role.Engine)
 	prompt := buildSpecPrompt(milestone, existing, spec.Agents.Profiles, task.Status.Run.RunCount > 0)
 	inv.Prompt = prompt

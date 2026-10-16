@@ -51,11 +51,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	out.Branch = branch
 
-	g := r.git()
-	if err := g.Ensure(ctx, proj.HTTPURLToRepo); err != nil {
-		return out, err
-	}
-	if err := g.CheckoutBranch(ctx, branch, base); err != nil {
+	if err := r.syncWorkspace(ctx, proj.HTTPURLToRepo, branch, base); err != nil {
 		return out, err
 	}
 
@@ -79,7 +75,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	role, profile := spec.ImplementRole(issue.Labels)
 	r.Log.Info("implementing issue", "issue", issue.IID, "profile", profile, "engine", role.Engine, "model", role.Model)
-	inv := roleInvocation(r.repoDir(), role, implementSystemPrompt, implementTools, implementSchema, false)
+	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
 	inv.DisallowedTools = implementDenied
 	inv.Resume = st.session("implement", role.Engine)
 	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false)
@@ -102,7 +98,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if err := res.Decode(&answer); err != nil {
 		return out, fmt.Errorf("decoding implementer answer: %w", err)
 	}
-	if _, err := g.CommitAll(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
+	if _, err := r.Agent.Commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
 		return out, err
 	}
 
@@ -112,22 +108,18 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	var remaining []Finding
 	var reviewNotes []string
 	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input"; iter++ {
-		diff, err := g.Diff(ctx, base)
+		diff, stat, err := r.Agent.Diff(ctx, base)
 		if err != nil {
 			return out, err
 		}
 		if strings.TrimSpace(diff) == "" {
 			break
 		}
-		stat, _ := g.DiffStat(ctx, base)
 		findings, cost, errs := r.review(ctx, review, issue, base, stat, diff)
 		out.CostUSD += cost
 		reviewNotes = errs
 		// Reviewers are read-only; discard anything they touched anyway.
-		if _, err := g.Run(ctx, "reset", "--hard", "HEAD"); err != nil {
-			return out, err
-		}
-		if _, err := g.Run(ctx, "clean", "-fd"); err != nil {
+		if err := r.Agent.Reset(ctx); err != nil {
 			return out, err
 		}
 		var blocking []Finding
@@ -161,24 +153,19 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 				answer.Status = fixed.Status
 			}
 		}
-		if _, err := g.CommitAll(ctx, commitMessage(fixed.CommitMessage, issue)); err != nil {
+		if _, err := r.Agent.Commit(ctx, commitMessage(fixed.CommitMessage, issue)); err != nil {
 			return out, err
 		}
 	}
 
 	// Push and open / update the merge request.
-	ahead, err := g.Ahead(ctx, branch, base)
+	pushed, err := r.publish(ctx, branch, base)
 	if err != nil {
 		return out, err
 	}
-	if ahead {
-		if err := g.Push(ctx, branch); err != nil {
-			return out, err
-		}
-	}
 	report := renderReport(answer, remaining, reviewNotes)
 	newMR := false
-	if mr == nil && (ahead || g.RemoteBranchExists(ctx, branch)) {
+	if mr == nil && (pushed || r.Mirror.HasRemoteBranch(ctx, branch)) {
 		mr, err = gl.CreateMergeRequest(ctx, glProject, gitlab.CreateMergeRequestOptions{
 			SourceBranch:       branch,
 			TargetBranch:       base,
@@ -251,7 +238,7 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 		wg.Add(1)
 		go func(kind aiv1.ReviewerKind) {
 			defer wg.Done()
-			inv := roleInvocation(r.repoDir(), spec.RoleSpec, reviewerSystemPrompt(kind), readOnlyTools, reviewSchema, true)
+			inv := roleInvocation(spec.RoleSpec, reviewerSystemPrompt(kind), readOnlyTools, reviewSchema, true)
 			inv.NoPersistence = true
 			res, err := r.invoke(ctx, spec.RoleSpec, inv, prompt)
 			var answer ReviewAnswer

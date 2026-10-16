@@ -121,7 +121,8 @@ Both durations are configurable (`spec.lifecycle`).
 kubectl -n agents get agentprojects
 kubectl -n agents get agenttasks          # type, issue, phase, last result, runs, cost
 kubectl -n agents get agenttasks -o wide  # + merge request URL
-kubectl -n agents logs -f shop-42-add-paypal-button
+kubectl -n agents logs -f shop-42-add-paypal-button -c runner   # what the runner does
+kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server
 ```
 
 Task phases: `Pending`, `Queued` (waiting for `maxConcurrentRuns`), `Running`,
