@@ -140,6 +140,12 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if res != nil {
 			out.CostUSD += res.CostUSD
 		}
+		if _, limited := AsUsageLimit(err); limited {
+			// Keep what is done: publish it with the open findings instead
+			// of throwing the work away until the limit resets.
+			reviewNotes = append(reviewNotes, "fix round skipped: "+err.Error())
+			break
+		}
 		if err != nil {
 			return out, err
 		}

@@ -49,6 +49,10 @@ type Runner struct {
 	PollInterval time.Duration
 	Log          logr.Logger
 	Now          func() time.Time
+
+	// projectStatus is the project's status at the start of the current
+	// run; it carries the project-wide usage limits.
+	projectStatus aiv1.AgentProjectStatus
 }
 
 // Outcome is the result of one run.
@@ -194,6 +198,10 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	if err != nil || task == nil || !task.RunPending() {
 		return false, err
 	}
+	if d := task.Status.Run.DeferredUntil; d != nil && d.After(r.now()) {
+		return false, nil // waiting for a usage limit to reset
+	}
+	r.projectStatus = project.Status
 	request := task.Spec.RunRequest
 	r.Log.Info("starting run", "request", request, "type", task.Spec.Type)
 	if err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
@@ -217,6 +225,12 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	if out == nil {
 		out = &Outcome{}
 	}
+	if lim, ok := AsUsageLimit(err); ok {
+		if task.Status.Run.Deferrals < MaxDeferrals {
+			return false, r.deferRun(ctx, gl, spec, task, out, lim)
+		}
+		err = fmt.Errorf("giving up after %d usage limit deferrals: %w", task.Status.Run.Deferrals, err)
+	}
 	if err != nil {
 		r.Log.Error(err, "run failed", "request", request)
 		out.Result = aiv1.RunResultFailed
@@ -229,6 +243,9 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	return true, r.patchRun(ctx, func(s *aiv1.RunStatus) {
 		s.ObservedRunRequest = request
 		s.RunCount++
+		s.DeferredUntil = nil
+		s.LimitedEngine = ""
+		s.Deferrals = 0
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
 		s.LastResult = out.Result
 		s.Summary = truncate(out.Summary, 2000)
@@ -241,6 +258,40 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 			s.MergeRequestIID = out.MRIID
 			s.MergeRequestURL = out.MRURL
 		}
+	})
+}
+
+// deferRun postpones the current run request after a usage limit. The run is
+// not counted, not reported as failed, and the issue stays "working"; the
+// runner retries after DeferredUntil, and the operator publishes the limit
+// to the project so other tasks wait for it too.
+func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome, lim *UsageLimitError) error {
+	now := r.now()
+	deferrals := task.Status.Run.Deferrals + 1
+	until := lim.ResetAt
+	if !until.After(now) {
+		until = now.Add(spec.Lifecycle.Backoff(deferrals))
+	}
+	r.Log.Info("usage limit reached, deferring run", "engine", lim.Engine, "until", until.UTC(), "deferrals", deferrals, "message", lim.Message)
+
+	if deferrals == 1 && task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
+		body := fmt.Sprintf("⏳ The `%s` engine reached a usage limit. The run is paused and retried automatically at %s UTC.",
+			lim.Engine, until.UTC().Format("2006-01-02 15:04"))
+		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); err != nil {
+			r.Log.Error(err, "posting usage limit note")
+		}
+	}
+	return r.patchRun(ctx, func(s *aiv1.RunStatus) {
+		// The request stays pending, but nothing is in progress any more.
+		s.ActiveRunRequest = s.ObservedRunRequest
+		s.DeferredUntil = &metav1.Time{Time: until}
+		s.LimitedEngine = lim.Engine
+		s.Deferrals = deferrals
+		s.LastActivityTime = &metav1.Time{Time: now}
+		s.LastResult = aiv1.RunResultDeferred
+		s.Summary = truncate(lim.Error(), 2000)
+		prev, _ := strconv.ParseFloat(s.CostUSD, 64)
+		s.CostUSD = strconv.FormatFloat(prev+out.CostUSD, 'f', 4, 64)
 	})
 }
 
@@ -283,19 +334,29 @@ func (r *Runner) morePending(ctx context.Context, request int64) bool {
 // invoke runs a role, resuming the given session when possible. If the
 // session cannot be resumed (e.g. the workspace was archived), it starts a
 // fresh session with the full prompt.
+//
+// Usage and rate limits come back as *UsageLimitError. If the project already
+// knows the engine is limited, the engine is not called at all.
 func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
+	if lim, ok := r.projectStatus.ActiveUsageLimit(role.Engine, r.now()); ok {
+		return nil, &UsageLimitError{Engine: role.Engine, ResetAt: lim.Until.Time, Message: "project-wide limit: " + lim.Message}
+	}
+	run := func(inv Invocation) (*Result, error) {
+		res, err := r.Agent.Run(ctx, role.Engine, inv)
+		return res, classifyLimit(role.Engine, err, res)
+	}
 	if inv.Resume == "" {
 		inv.Prompt = fullPrompt
-		return r.Agent.Run(ctx, role.Engine, inv)
+		return run(inv)
 	}
-	res, err := r.Agent.Run(ctx, role.Engine, inv)
-	if err == nil || (res != nil && res.SessionID != "") {
+	res, err := run(inv)
+	if _, limited := AsUsageLimit(err); err == nil || limited || (res != nil && res.SessionID != "") {
 		return res, err
 	}
 	r.Log.Info("could not resume session, starting fresh", "session", inv.Resume, "error", err.Error())
 	inv.Resume = ""
 	inv.Prompt = fullPrompt
-	return r.Agent.Run(ctx, role.Engine, inv)
+	return run(inv)
 }
 
 func roleInvocation(role aiv1.RoleSpec, system string, tools []string, schema string, readOnly bool) Invocation {

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -200,7 +201,30 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 	project.Status.ActiveTasks = int32(len(keep))
+	project.Status.UsageLimits = usageLimits(tasks.Items, r.now())
 	return nil
+}
+
+// usageLimits collects the engines whose limits currently defer runs. The
+// runners read them from the project status, so a limit one task ran into
+// makes the other tasks wait instead of hitting it again.
+func usageLimits(tasks []aiv1.AgentTask, now time.Time) []aiv1.UsageLimit {
+	byEngine := map[aiv1.Engine]aiv1.UsageLimit{}
+	for _, t := range tasks {
+		run := t.Status.Run
+		if run.LimitedEngine == "" || run.DeferredUntil == nil || !run.DeferredUntil.After(now) {
+			continue
+		}
+		if cur, ok := byEngine[run.LimitedEngine]; !ok || run.DeferredUntil.After(cur.Until.Time) {
+			byEngine[run.LimitedEngine] = aiv1.UsageLimit{Engine: run.LimitedEngine, Until: *run.DeferredUntil, Message: run.Summary}
+		}
+	}
+	limits := make([]aiv1.UsageLimit, 0, len(byEngine))
+	for _, l := range byEngine {
+		limits = append(limits, l)
+	}
+	sort.Slice(limits, func(i, j int) bool { return limits[i].Engine < limits[j].Engine })
+	return limits
 }
 
 func milestoneSelected(m gitlab.Milestone, titleRE *regexp.Regexp, marker string) bool {

@@ -20,6 +20,7 @@ These parts are not covered by automated tests, so look here first:
 | Agent image | both CLIs installed, `HOME` on the PVC, Cursor CLI outside `$HOME` |
 | GitLab | real API behaviour (scoped labels, pagination, MR creation, note authors) |
 | Prompts | quality of plans, sub-specs, profile choice, review findings |
+| Usage limits | the exact error texts the CLIs print when a subscription window or rate limit is hit |
 
 ## 0. Prerequisites
 
@@ -298,6 +299,32 @@ continue. Agent pods only pick up the new image when they are recreated
 
 **Expected:** the CRDs and the AgentProject still exist (`helm.sh/resource-policy: keep`).
 
+### T16 – Usage limits
+
+A real limit is hard to provoke on purpose; if you hit one during the other
+tests, check the expectations below on that issue. Otherwise simulate one:
+while an issue is in `agent::review`, mark its task as limited and request a
+run.
+
+```sh
+UNTIL=$(date -u -d '+10 min' +%Y-%m-%dT%H:%M:%SZ)   # macOS: date -u -v+10M +%Y-%m-%dT%H:%M:%SZ
+kubectl -n agents patch agenttask <task> --subresource=status --type merge \
+  -p "{\"status\":{\"run\":{\"deferredUntil\":\"$UNTIL\",\"limitedEngine\":\"claude\",\"deferrals\":1}}}"
+```
+
+Then comment `/agent add a code comment to the store`.
+
+**Expected:**
+* The task is `Waiting` with "claude usage limit; retrying at …", no run
+  starts, and `kubectl get agenttasks -o wide` shows the retry time.
+* Within a poll, the project status lists the limit
+  (`kubectl -n agents get agentproject sandbox -o jsonpath='{.status.usageLimits}'`).
+* Another issue whose profile uses claude, moved to `agent::ready` now, is
+  deferred immediately (its runner log says "usage limit reached, deferring
+  run" without calling the CLI), and gets the "⏳" comment.
+* After the retry time both runs happen normally and the deferral fields are
+  cleared.
+
 ## 3. When something fails
 
 Collect this before changing anything:
@@ -342,6 +369,7 @@ the collected output (remove tokens first).
 | T13 | Credential isolation, probes | | |
 | T14 | Network policy (optional) | | |
 | T15 | Helm upgrade and uninstall | | |
+| T16 | Usage limits | | |
 
 ## 5. Cleanup
 

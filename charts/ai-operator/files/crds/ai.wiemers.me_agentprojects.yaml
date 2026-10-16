@@ -722,11 +722,22 @@ spec:
                     description: MaxRunsPerTask is a safety net against runaway loops.
                     format: int32
                     type: integer
+                  maxUsageLimitBackoff:
+                    default: 1h
+                    description: MaxUsageLimitBackoff caps the wait between retries.
+                    type: string
                   retentionPeriod:
                     default: 336h
                     description: |-
                       RetentionPeriod after the last activity after which the workspace PVC is
                       deleted as well.
+                    type: string
+                  usageLimitBackoff:
+                    default: 5m
+                    description: |-
+                      UsageLimitBackoff is the first wait after an engine reports a usage or
+                      rate limit without saying when it resets. It doubles with every
+                      further deferral of the same run, up to MaxUsageLimitBackoff.
                     type: string
                 type: object
               maxConcurrentRuns:
@@ -903,6 +914,31 @@ spec:
                 description: LastSyncTime is when GitLab was last polled successfully.
                 format: date-time
                 type: string
+              usageLimits:
+                description: |-
+                  UsageLimits lists engines that currently hit a usage or rate limit.
+                  Runs that need such an engine wait instead of hitting the limit again;
+                  limits belong to the credentials, so they apply to the whole project.
+                items:
+                  description: UsageLimit is an engine's active usage or rate limit.
+                  properties:
+                    engine:
+                      description: Engine is the coding agent CLI that runs a role.
+                      enum:
+                      - claude
+                      - cursor
+                      type: string
+                    message:
+                      description: Message reported by the engine.
+                      type: string
+                    until:
+                      format: date-time
+                      type: string
+                  required:
+                  - engine
+                  - until
+                  type: object
+                type: array
             type: object
         type: object
     served: true

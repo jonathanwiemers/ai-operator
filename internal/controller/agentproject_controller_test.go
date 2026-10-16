@@ -249,3 +249,23 @@ func keys(m map[string]aiv1.AgentTask) []string {
 	}
 	return out
 }
+
+func TestUsageLimitsAggregation(t *testing.T) {
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	mk := func(engine aiv1.Engine, until time.Time) aiv1.AgentTask {
+		var task aiv1.AgentTask
+		task.Status.Run.LimitedEngine = engine
+		task.Status.Run.DeferredUntil = &metav1.Time{Time: until}
+		task.Status.Run.Summary = string(engine) + " limit"
+		return task
+	}
+	limits := usageLimits([]aiv1.AgentTask{
+		mk(aiv1.EngineClaude, now.Add(time.Hour)),
+		mk(aiv1.EngineClaude, now.Add(2*time.Hour)),
+		mk(aiv1.EngineCursor, now.Add(-time.Minute)), // expired
+		{},
+	}, now)
+	if len(limits) != 1 || limits[0].Engine != aiv1.EngineClaude || !limits[0].Until.Time.Equal(now.Add(2*time.Hour)) {
+		t.Fatalf("expected the latest active claude limit only, got %+v", limits)
+	}
+}

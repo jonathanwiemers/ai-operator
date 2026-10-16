@@ -169,6 +169,14 @@ Things to keep in mind with subscriptions:
 
 * Subscriptions have usage windows. Several agents in parallel exhaust them
   quickly, so keep `maxConcurrentRuns` low.
+* When a CLI reports a usage or rate limit, the run is **deferred**, not
+  failed. The runner recognises the error text (and Claude's reset time),
+  marks the task `Waiting` with `status.run.deferredUntil`, and retries
+  then; without a reset time it backs off exponentially (5m → 1h). The
+  operator collects active limits per engine into the project status, and
+  runners don't call a limited engine at all but wait for the same reset. A
+  limit during a review fix round publishes the work done so far. Deferred
+  runs don't count towards `maxRunsPerTask`.
 * The plans are meant for your own use. Check the terms of your plan before
   running agents for a team on a personal subscription; use API keys for that.
 * With a subscription the reported cost is the notional API price. It is
@@ -259,7 +267,8 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 ## Roadmap
 
 Done: credential split into runner and agent containers, bundle-based git
-exchange, optional NetworkPolicy (see Security).
+exchange, optional NetworkPolicy (see Security); usage limit backoff (see
+Engines, profiles and subscriptions).
 
 Next:
 
@@ -267,8 +276,6 @@ Next:
 
 Later:
 
-* Back off on subscription usage limits (detect the error, requeue later
-  instead of failing the run).
 * Profiles for reviews (e.g. security review on a strong model only for
   `strong` issues).
 * GitLab issue links (`blocks`) for dependencies on Premium instances.

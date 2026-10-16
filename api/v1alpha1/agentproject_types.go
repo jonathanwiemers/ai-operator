@@ -332,6 +332,18 @@ type LifecycleSpec struct {
 	// +kubebuilder:default=20
 	// +optional
 	MaxRunsPerTask int32 `json:"maxRunsPerTask,omitempty"`
+
+	// UsageLimitBackoff is the first wait after an engine reports a usage or
+	// rate limit without saying when it resets. It doubles with every
+	// further deferral of the same run, up to MaxUsageLimitBackoff.
+	// +kubebuilder:default="5m"
+	// +optional
+	UsageLimitBackoff metav1.Duration `json:"usageLimitBackoff,omitempty"`
+
+	// MaxUsageLimitBackoff caps the wait between retries.
+	// +kubebuilder:default="1h"
+	// +optional
+	MaxUsageLimitBackoff metav1.Duration `json:"maxUsageLimitBackoff,omitempty"`
 }
 
 // AgentProjectStatus is the observed state of an AgentProject.
@@ -353,8 +365,23 @@ type AgentProjectStatus struct {
 	// +optional
 	ActiveTasks int32 `json:"activeTasks,omitempty"`
 
+	// UsageLimits lists engines that currently hit a usage or rate limit.
+	// Runs that need such an engine wait instead of hitting the limit again;
+	// limits belong to the credentials, so they apply to the whole project.
+	// +optional
+	UsageLimits []UsageLimit `json:"usageLimits,omitempty"`
+
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// UsageLimit is an engine's active usage or rate limit.
+type UsageLimit struct {
+	Engine Engine      `json:"engine"`
+	Until  metav1.Time `json:"until"`
+	// Message reported by the engine.
+	// +optional
+	Message string `json:"message,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -95,6 +95,14 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// never cut off by the limit.
 	inProgress := task.Status.Run.ActiveRunRequest > task.Status.Run.ObservedRunRequest
 	blocked := pending && !inProgress && task.Status.Run.RunCount >= lc.MaxRunsPerTask
+	// A run deferred because of a usage limit waits until its retry time. In
+	// the meantime the pod follows the normal idle / hibernate rules and the
+	// task does not take one of the project's run slots.
+	var waitFor time.Duration
+	if d := task.Status.Run.DeferredUntil; pending && !inProgress && d != nil && d.After(now) {
+		waitFor = d.Sub(now)
+	}
+	waiting := waitFor > 0
 
 	// A pod that has terminated for good (evicted, node lost) is replaced.
 	if pod != nil && (pod.Status.Phase == corev1.PodFailed || pod.Status.Phase == corev1.PodSucceeded) {
@@ -107,7 +115,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	var result ctrl.Result
 	switch {
-	case pending && !blocked && !task.Spec.Suspend:
+	case pending && !blocked && !waiting && !task.Spec.Suspend:
 		if pvc == nil {
 			pvc = buildWorkspaceClaim(&task, spec)
 			if err := controllerutil.SetControllerReference(&task, pvc, r.Scheme); err != nil {
@@ -186,6 +194,14 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
+	if waiting && !blocked && !task.Spec.Suspend {
+		task.Status.Phase = aiv1.TaskPhaseWaiting
+		task.Status.Message = fmt.Sprintf("%s usage limit; retrying at %s",
+			task.Status.Run.LimitedEngine, task.Status.Run.DeferredUntil.UTC().Format(time.RFC3339))
+		if retry := waitFor + time.Second; result.RequeueAfter == 0 || retry < result.RequeueAfter {
+			result.RequeueAfter = retry
+		}
+	}
 	if blocked {
 		task.Status.Phase = aiv1.TaskPhaseBlocked
 		task.Status.Message = fmt.Sprintf("reached maxRunsPerTask (%d); raise the limit or reset the task", lc.MaxRunsPerTask)

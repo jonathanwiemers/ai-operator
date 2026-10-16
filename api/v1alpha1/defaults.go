@@ -21,8 +21,11 @@ const (
 	DefaultIdleTimeout     = 2 * time.Hour
 	DefaultRetentionPeriod = 14 * 24 * time.Hour
 	DefaultMaxRunsPerTask  = 20
-	DefaultMaxConcurrent   = 3
-	DefaultReviewIters     = 2
+
+	DefaultUsageLimitBackoff    = 5 * time.Minute
+	DefaultMaxUsageLimitBackoff = time.Hour
+	DefaultMaxConcurrent        = 3
+	DefaultReviewIters          = 2
 )
 
 // WithDefaults returns a copy of the workflow labels with defaults filled in.
@@ -95,6 +98,12 @@ func (l LifecycleSpec) WithDefaults() LifecycleSpec {
 	}
 	if l.MaxRunsPerTask == 0 {
 		l.MaxRunsPerTask = DefaultMaxRunsPerTask
+	}
+	if l.UsageLimitBackoff.Duration == 0 {
+		l.UsageLimitBackoff = metav1.Duration{Duration: DefaultUsageLimitBackoff}
+	}
+	if l.MaxUsageLimitBackoff.Duration == 0 {
+		l.MaxUsageLimitBackoff = metav1.Duration{Duration: DefaultMaxUsageLimitBackoff}
 	}
 	return l
 }
@@ -189,4 +198,24 @@ func (s AgentProjectSpec) ProfileOf(labels []string) string {
 		}
 	}
 	return ""
+}
+
+// Backoff returns the wait before retrying after the given number of
+// consecutive deferrals (1 for the first one).
+func (l LifecycleSpec) Backoff(deferrals int32) time.Duration {
+	d := l.UsageLimitBackoff.Duration
+	for i := int32(1); i < deferrals && d < l.MaxUsageLimitBackoff.Duration; i++ {
+		d *= 2
+	}
+	return min(d, l.MaxUsageLimitBackoff.Duration)
+}
+
+// ActiveUsageLimit returns the limit of an engine that is still in effect.
+func (s AgentProjectStatus) ActiveUsageLimit(engine Engine, now time.Time) (UsageLimit, bool) {
+	for _, l := range s.UsageLimits {
+		if l.Engine == engine && l.Until.After(now) {
+			return l, true
+		}
+	}
+	return UsageLimit{}, false
 }
