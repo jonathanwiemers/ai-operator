@@ -31,22 +31,33 @@ spec:
     resources:
       requests: {cpu: "1", memory: 2Gi}
       limits: {memory: 6Gi}
+    # Planning: one run per milestone, worth a strong model.
     spec:
       engine: claude
       model: claude-opus-5-5
       effort: high
+    # Issues select a profile with a label, e.g. agent-profile::fast. The spec
+    # agent picks one per sub-issue from the descriptions; change the label to
+    # override it.
+    profiles:
+      - name: fast
+        description: Small, well-defined changes that follow existing patterns, touch few files and leave no design decisions open.
+        engine: cursor
+        model: auto
+      - name: strong
+        description: Everything else - design decisions, cross-cutting or risky changes, unclear scope.
+        engine: claude
+        model: claude-opus-5-5
+        maxBudgetUSD: "10"
+        instructions: |
+          Run `make test` before finishing.
+    # Issues without a profile label (e.g. created by hand).
     implement:
       engine: claude
       model: claude-opus-5-5
-      maxBudgetUSD: "10"
-      instructions: |
-        Run `make test` before finishing.
     review:
-      # Reviewers can use a different engine, e.g. cursor with your Cursor plan:
-      # engine: cursor
-      # model: gpt-5
-      engine: claude
-      model: claude-opus-5-5
-      effort: medium
+      engine: cursor
+      model: auto
+      # or: engine: claude, model: claude-sonnet-5-5 (the default)
       reviewers: [bugbot, security]
       maxIterations: 2

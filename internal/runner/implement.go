@@ -77,7 +77,8 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			return out, fmt.Errorf("listing merge request notes: %w", err)
 		}
 	}
-	role := spec.Agents.Implement
+	role, profile := spec.ImplementRole(issue.Labels)
+	r.Log.Info("implementing issue", "issue", issue.IID, "profile", profile, "engine", role.Engine, "model", role.Model)
 	inv := roleInvocation(r.repoDir(), role, implementSystemPrompt, implementTools, implementSchema, false)
 	inv.DisallowedTools = implementDenied
 	inv.Resume = st.session("implement", role.Engine)

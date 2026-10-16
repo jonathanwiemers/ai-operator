@@ -54,9 +54,9 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 
 	st := r.loadState()
 	role := spec.Agents.Spec
-	inv := roleInvocation(r.repoDir(), role, specSystemPrompt, readOnlyTools, specSchema, true)
+	inv := roleInvocation(r.repoDir(), role, specSystemPrompt, readOnlyTools, specSchema(spec.Agents.Profiles), true)
 	inv.Resume = st.session("spec", role.Engine)
-	prompt := buildSpecPrompt(milestone, existing, task.Status.Run.RunCount > 0)
+	prompt := buildSpecPrompt(milestone, existing, spec.Agents.Profiles, task.Status.Run.RunCount > 0)
 	inv.Prompt = prompt
 	res, err := r.invoke(ctx, role, inv, prompt)
 	out := &Outcome{}
@@ -75,7 +75,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	if err := res.Decode(&plan); err != nil {
 		return out, fmt.Errorf("decoding plan: %w", err)
 	}
-	created, updated, skipped, err := applyPlan(ctx, gl, glProject, milestone, spec.Workflow, plan, issues)
+	created, updated, skipped, err := applyPlan(ctx, gl, glProject, milestone, spec, plan, issues)
 	if err != nil {
 		return out, err
 	}
@@ -87,7 +87,8 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 // applyPlan creates and updates the planned issues. Issues that have left the
 // draft state (being worked on, done, or created by a human) are never
 // touched again.
-func applyPlan(ctx context.Context, gl gitlab.API, glProject string, m *gitlab.Milestone, wf aiv1.WorkflowSpec, plan SpecPlan, issues []gitlab.Issue) (created, updated, skipped int, err error) {
+func applyPlan(ctx context.Context, gl gitlab.API, glProject string, m *gitlab.Milestone, spec aiv1.AgentProjectSpec, plan SpecPlan, issues []gitlab.Issue) (created, updated, skipped int, err error) {
+	wf := spec.Workflow
 	byIID := map[int64]*gitlab.Issue{}
 	keyToIID := map[string]int64{}
 	for i := range issues {
@@ -116,7 +117,14 @@ func applyPlan(ctx context.Context, gl gitlab.API, glProject string, m *gitlab.M
 				keyToIID[item.Key] = iid
 				continue
 			}
-			if _, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Title: item.Title, Description: desc}); err != nil {
+			// A profile label set earlier (possibly by a human) is kept.
+			var add []string
+			if spec.ProfileOf(ex.Labels) == "" {
+				add = profileLabels(spec, item)
+			}
+			if _, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{
+				Title: item.Title, Description: desc, AddLabels: add,
+			}); err != nil {
 				return created, updated, skipped, fmt.Errorf("updating issue #%d: %w", iid, err)
 			}
 			updated++
@@ -124,7 +132,7 @@ func applyPlan(ctx context.Context, gl gitlab.API, glProject string, m *gitlab.M
 			is, err := gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{
 				Title:       item.Title,
 				Description: desc,
-				Labels:      strings.Join([]string{wf.GeneratedLabel, wf.DraftLabel}, ","),
+				Labels:      strings.Join(append([]string{wf.GeneratedLabel, wf.DraftLabel}, profileLabels(spec, item)...), ","),
 				MilestoneID: m.ID,
 			})
 			if err != nil {
@@ -185,4 +193,13 @@ func renderIssue(item PlannedItem, keyToIID map[string]int64) (string, bool) {
 	}
 	fmt.Fprintf(&b, "\n<!-- ai-operator:key=%s -->\n", item.Key)
 	return b.String(), missing
+}
+
+// profileLabels returns the label of the profile the planner picked. An
+// unknown choice gets no label, so the issue falls back to agents.implement.
+func profileLabels(spec aiv1.AgentProjectSpec, item PlannedItem) []string {
+	if _, ok := spec.Profile(item.Profile); ok {
+		return []string{spec.ProfileLabel(item.Profile)}
+	}
+	return nil
 }

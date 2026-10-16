@@ -2,23 +2,31 @@
 
 The operator turns GitLab milestones and issues into work for coding agents
 running in Kubernetes pods. Humans stay in GitLab: they write specs, answer
-questions, move cards on the board and review merge requests.
+questions, move cards on the board and review merge requests. For the
+user-facing workflow see [usage.md](usage.md), for all settings
+[configuration.md](configuration.md).
+
+**Status:** v1alpha1, first version. Unit and end-to-end tests (fake GitLab,
+fake agent, real git) pass. It has not yet run against a real cluster, a real
+GitLab instance or the real agent CLIs.
 
 ## Flow
 
 ```
- Milestone description ──(contains "/agent spec")──▶ spec task ─▶ spec pod
-        │                                                        │
-        │                                     creates draft issues (agent::draft),
-        │                                     one per merge request, with plan,
-        │                                     acceptance criteria and questions
+ Milestone description = overarching spec (+ "/agent spec")
+        │
         ▼
- Human answers questions in comments, moves issue to agent::ready
+ spec task ─▶ spec pod: reads spec + code, creates one sub-issue per MR
+        │     (sub-spec, acceptance criteria, questions, dependencies,
+        │      labels agent::draft + agent-profile::<fast|strong|…>)
+        ▼
+ Human answers questions in comments, adjusts the profile label if needed,
+ moves the issue to agent::ready
         │
         ▼
  operator: issue -> agent::working, AgentTask.spec.runRequest++ ─▶ issue pod
         │
-        │   implement (resumable session)
+        │   implement with the issue's profile (resumable session)
         │   └▶ bugbot + security reviewers in parallel (read-only, diff only)
         │       └▶ blocking findings? fix (same session), ≤ maxIterations
         │   commit, push agent/<iid>-<slug>, open Draft MR "Closes #iid"
@@ -29,6 +37,11 @@ questions, move cards on the board and review merge requests.
         ├── human moves the issue back to agent::ready  ─▶ another run
         └── human closes the issue / moves it to agent::done ─▶ task, pod and PVC deleted
 ```
+
+The milestone description is the single source of the overarching spec. The
+operator never writes to it. Sub-specs live in the sub-issues, and the
+planner's summary is kept in the spec task's status (`kubectl get agenttask
+<name> -o jsonpath='{.status.run.summary}'`).
 
 ## Custom resources
 
@@ -90,6 +103,9 @@ nothing is lost.
 
 ## Token economy
 
+* **Right-sized models.** Strong models only for planning and for issues
+  labelled with a strong profile; reviews and simple issues run on a light
+  model or cursor `auto` (see Engines, profiles and subscriptions).
 * **Explicit triggers only.** Runs start when an issue is moved to ready, or a
   comment starts with `/agent`. Discussion between humans costs nothing.
   Comments by the bot user never trigger.
@@ -111,14 +127,29 @@ nothing is lost.
 * Spend is visible per task: `kubectl get agenttasks` shows the accumulated
   cost the CLIs report.
 
-## Engines and subscriptions
+## Engines, profiles and subscriptions
 
-Each role (`spec`, `implement`, `review`) picks an engine:
+Each role runs on an engine, an agent CLI:
 
 | engine | CLI | auth (from `credentialsSecretName`) | notes |
 |--------|-----|-------------------------------------|-------|
 | `claude` | `claude -p` | `CLAUDE_CODE_OAUTH_TOKEN` (Pro/Max subscription, created with `claude setup-token`) or `ANTHROPIC_API_KEY` | JSON schema, effort, budget, tool allow-lists, cost reporting |
 | `cursor` | `cursor-agent -p` | `CURSOR_API_KEY` (Cursor subscription) | instructions and schema are folded into the prompt; no tool allow-list (read-only roles get no `--force` and the work tree is reset after them); no cost reporting |
+
+**Model routing.** Strong models are expensive, so they are only used where
+they pay off:
+
+* `spec` (once per milestone): strong model, `claude-opus-5-5` by default.
+* `review`: light model, `claude-sonnet-5-5` by default, or cursor `auto`.
+* Implementation is chosen **per issue through a profile label**
+  (`agent-profile::<name>`). Profiles are named role configurations in the
+  `AgentProject`, e.g. `fast` = cursor `auto` or Sonnet, `strong` = Opus. The
+  spec agent picks a profile for each sub-issue from the profile
+  descriptions. A human can change the label at any time. Issues without a
+  (known) profile label use `agents.implement` (strong by default).
+
+A label naming a *profile* rather than an engine/model keeps the board readable
+and lets you change what "fast" means in one place.
 
 Agent CLIs are the right building block if you want to use subscriptions:
 subscriptions authenticate the vendors' CLIs, while SDK/API integrations need
@@ -154,17 +185,38 @@ Things to keep in mind with subscriptions:
   with credentials, agent without, sharing the workspace volume) plus a
   NetworkPolicy that only allows the model API, GitLab and package registries.
 
-## Roadmap / open questions
+## Code map
 
-* Webhooks instead of polling (GitLab → operator endpoint) for instant reactions.
+| Path | What |
+|------|------|
+| `api/v1alpha1` | CRD types, defaults, profile routing (`ImplementRole`) |
+| `internal/controller/agentproject_controller.go` | GitLab poll → AgentTasks, run requests, label acknowledgement, cleanup |
+| `internal/controller/agenttask_controller.go` | pod / PVC lifecycle, queueing, limits |
+| `internal/controller/resources.go` | pod and PVC templates |
+| `internal/runner/runner.go` | run loop, status reporting, session state |
+| `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab |
+| `internal/runner/implement.go` | implement → review → fix → push → MR pipeline |
+| `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
+| `internal/runner/prompts.go` | role prompts and JSON schemas |
+| `internal/runner/git.go` | git operations with per-command credentials |
+| `internal/gitlab` | minimal REST client; `gitlabfake` for tests |
+
+## Roadmap
+
+Next:
+
+1. **Credential split** – runner and agent CLI in separate containers sharing
+   the workspace, plus a NetworkPolicy (see Security).
+2. **GitLab webhooks** instead of polling, for instant reactions.
+
+Later:
+
 * Back off on subscription usage limits (detect the error, requeue later
   instead of failing the run).
-* Planning summary: post the spec agent's summary somewhere visible (a
-  "plan" issue, or the milestone description with a marker block).
+* Profiles for reviews (e.g. security review on a strong model only for
+  `strong` issues).
 * GitLab issue links (`blocks`) for dependencies on Premium instances.
-* Multi-project milestones (group milestones) and group-level `AgentProject`.
-* Container split for credentials (see Security) and a NetworkPolicy.
+* Group milestones and group-level `AgentProject`s.
 * Rebase/conflict handling when `main` moves under a long-lived MR.
-* CI feedback: read failed pipeline jobs of the MR and feed them to the
-  implementer on `/agent fix-ci`.
-* Metrics: runs, cost, durations per project and role.
+* CI feedback: feed failed MR pipeline jobs to the implementer on `/agent fix-ci`.
+* Metrics: runs, cost, durations per project, role and profile.

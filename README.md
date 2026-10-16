@@ -2,79 +2,73 @@
 
 A Kubernetes operator that lets coding agents work through your GitLab board.
 
-1. Write a spec into a **milestone** description and add `/agent spec`.
-   A spec agent reads the spec and the code and creates one **draft issue per
-   merge request**. Each issue has a plan, acceptance criteria and questions
-   for you.
-2. Answer the questions in the comments, then move the issue to
-   **`agent::ready`**. An implementing agent works on it in its own pod, the
-   **bugbot and security reviewers** check the diff, and the implementer
-   fixes blocking findings. Then the agent pushes `agent/<iid>-<slug>` and
-   opens a **draft MR**. The issue moves to `agent::review`, or to
-   `agent::needs-input` if the agent has questions.
-3. Comment `/agent <what to change>` on the issue or the MR to get another
-   round. Close the issue or move it to `agent::done`, and the pod and
-   workspace are deleted.
+1. **Plan.** The milestone description holds the overarching spec. Add
+   `/agent spec` to it, and a spec agent breaks it down into **one sub-issue
+   per merge request**. Each sub-issue gets a self-contained sub-spec,
+   acceptance criteria, questions for you and a profile label that says which
+   agent should implement it (`agent-profile::fast` or `agent-profile::strong`).
+2. **Implement.** Answer the questions, then move the issue to
+   **`agent::ready`**. In a dedicated pod, the agent of the issue's profile
+   implements it. **Bugbot and security reviewers** check the diff, and
+   blocking findings are fixed. Then the agent pushes `agent/<iid>-<slug>` and
+   opens a **draft MR**.
+3. **Iterate.** Comment `/agent <what to change>` on the issue or the MR to get
+   another round. Close the issue or move it to `agent::done`, and the pod and
+   workspace are removed.
 
-Agents run headless agent CLIs. Each role can use **Claude Code** or
-**Cursor CLI**, with your **subscriptions** or with API keys.
+The agents are headless CLIs. Each role can use **Claude Code** or
+**Cursor CLI**, with your **subscriptions** or with API keys. Strong models
+are used only where they pay off: planning and `strong` issues. Reviews and
+`fast` issues run on Sonnet or Cursor `auto`.
 
-See [docs/design.md](docs/design.md) for the architecture, lifecycle, token
-strategy and roadmap.
+> **Status:** first version (`v1alpha1`). Unit and end-to-end tests pass. It
+> has not yet been run against a real cluster, a real GitLab instance or the
+> real agent CLIs.
+
+## Documentation
+
+| | |
+|-|-|
+| [docs/usage.md](docs/usage.md) | the GitLab workflow: labels, milestone specs, commands, lifecycle |
+| [docs/configuration.md](docs/configuration.md) | installation, secrets, `AgentProject` reference, engines, profiles, agent image |
+| [docs/design.md](docs/design.md) | architecture, CRDs, pod topology, token economy, security, roadmap |
 
 ## Quick start
 
 ```sh
-# CRDs, RBAC and the operator
-make docker-build IMG=… AGENT_IMG=…   # or use published images
+# CRDs, RBAC and the operator (build and push your own images first, or use published ones)
+make docker-build IMG=… AGENT_IMG=…
 make deploy
 
-# Namespace for your agents
+# Namespace and service account for agent pods
 kubectl create namespace agents
 kubectl apply -f config/samples/agent_serviceaccount.yaml
 
 # Credentials
 kubectl -n agents create secret generic gitlab --from-literal=token=glpat-…
 kubectl -n agents create secret generic agent-credentials \
-  --from-literal=CLAUDE_CODE_OAUTH_TOKEN="…"   # from `claude setup-token`
-  # --from-literal=CURSOR_API_KEY="…"          # for engine: cursor
+  --from-literal=CLAUDE_CODE_OAUTH_TOKEN="…" \
+  --from-literal=CURSOR_API_KEY="…"
+  # CLAUDE_CODE_OAUTH_TOKEN comes from `claude setup-token`
 
-# Connect a project (edit first)
+# Connect a project (edit it first)
 kubectl apply -f config/samples/agentproject.yaml
 ```
 
-Create the scoped labels `agent::draft`, `agent::ready`, `agent::working`,
-`agent::needs-input`, `agent::review` and `agent::done` in GitLab. Put them
-as columns on an issue board. All label names can be changed in
-`spec.workflow`.
+Then create the labels in GitLab ([usage.md](docs/usage.md#one-time-setup-in-gitlab))
+and add `/agent spec` to a milestone.
 
 ```sh
-kubectl -n agents get agentprojects
-kubectl -n agents get agenttasks     # type, issue, phase, result, runs, cost
-kubectl -n agents get pods           # shop-spec-m3-checkout-v2, shop-42-add-paypal-button, …
+kubectl -n agents get agenttasks   # type, issue, phase, result, runs, cost
+kubectl -n agents get pods         # shop-spec-m3-checkout-v2, shop-42-add-paypal-button, …
 ```
-
-## Agent image
-
-`Dockerfile.agent` builds the base image: `ai-runner`, git, `claude` and
-`cursor-agent`. Extend it with the toolchains your repositories need. The
-agent must be able to build and run the tests.
 
 ## Development
 
+Requires Go 1.26.
+
 ```sh
 make generate manifests   # deepcopy, CRDs, RBAC (controller-gen)
-make test                 # unit tests incl. an end-to-end runner test against a local git repo
+make test                 # unit tests + end-to-end runner test against a local git repo
 make run                  # run the operator against your current kubeconfig
 ```
-
-Layout:
-
-| Path | What |
-|------|------|
-| `api/v1alpha1` | `AgentProject`, `AgentTask` types and defaults |
-| `internal/controller` | project controller (GitLab → tasks), task controller (pod/PVC lifecycle) |
-| `internal/runner` | in-pod runner: spec / implement / review pipelines, engines (claude, cursor), git |
-| `internal/gitlab` | minimal GitLab REST client and an in-memory fake for tests |
-| `cmd/operator`, `cmd/runner` | binaries |
-| `config/` | CRDs, RBAC, deployment, samples |

@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -12,19 +13,25 @@ import (
 // prompt prefix, so anything volatile (issue text, timestamps, IDs) goes into
 // the user prompt instead.
 
-const specSystemPrompt = `You are the planning agent of an automated GitLab workflow. You turn the
-specification in a milestone description into issues. Each issue becomes one
-merge request that another agent implements and a human reviews.
+const specSystemPrompt = `You are the planning agent of an automated GitLab workflow. The milestone
+description is the overarching spec. You break it down into sub-issues, each
+carrying the sub-spec for exactly one merge request. Another agent implements
+each sub-issue on its own and a human reviews the merge request.
 
 How to plan:
 - Ground the plan in the repository in the current directory. Read the code the
-  spec touches so issues name real files, packages and functions.
-- Size issues so each merge request is reviewable on its own (roughly a few
+  spec touches so sub-specs name real files, packages and functions.
+- Size sub-issues so each merge request is reviewable on its own (roughly a few
   hundred changed lines at most) and leaves the main branch working.
-- Order issues so dependencies come first and reference them in dependsOn.
-- Write each description for an engineer who has not read the spec: context,
+- Order sub-issues so dependencies come first and reference them in dependsOn.
+- Each description is a self-contained sub-spec for an engineer who only sees
+  this issue: the part of the milestone spec it implements, context,
   implementation plan (files and functions to change), acceptance criteria and
-  a test plan. Markdown, no top-level heading.
+  a test plan. Markdown, no top-level heading. Do not repeat the whole
+  milestone spec.
+- Pick the agent profile that should implement each sub-issue from the
+  profiles listed in the prompt. Cheaper profiles are for work you are
+  confident is simple; when in doubt pick the stronger one.
 - Only raise questions that change the design or the scope. For each question
   state the default you would pick, so a human can just confirm it.
 - You may be given issues that already exist for this milestone. Keep their
@@ -84,7 +91,7 @@ are read-only.
 
 // JSON schemas for the structured answers.
 
-const specSchema = `{
+const specSchemaTemplate = `{
   "type": "object",
   "additionalProperties": false,
   "required": ["summary", "issues"],
@@ -95,12 +102,13 @@ const specSchema = `{
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["key", "title", "description", "questions", "dependsOn"],
+        "required": ["key", "title", "description", "profile", "questions", "dependsOn"],
         "properties": {
           "key": {"type": "string", "description": "Stable kebab-case identifier, e.g. 'payment-api'."},
           "existingIid": {"type": "integer", "description": "IID of the existing issue this updates, 0 for a new issue."},
           "title": {"type": "string"},
           "description": {"type": "string"},
+          "profile": {"type": "string", "enum": __PROFILES__},
           "questions": {"type": "array", "items": {"type": "string"}},
           "dependsOn": {"type": "array", "items": {"type": "string"}, "description": "Keys of issues that must be merged first."}
         }
@@ -166,6 +174,7 @@ type PlannedItem struct {
 	ExistingIID int64    `json:"existingIid,omitempty"`
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
+	Profile     string   `json:"profile"`
 	Questions   []string `json:"questions"`
 	DependsOn   []string `json:"dependsOn"`
 }
@@ -221,14 +230,28 @@ type ExistingIssue struct {
 	Labels []string
 }
 
-func buildSpecPrompt(m *gitlab.Milestone, existing []ExistingIssue, replan bool) string {
+// specSchema returns the plan schema with the configured profile names.
+func specSchema(profiles []aiv1.AgentProfile) string {
+	names := make([]string, 0, len(profiles))
+	for _, p := range profiles {
+		names = append(names, p.Name)
+	}
+	enum, _ := json.Marshal(names)
+	return strings.Replace(specSchemaTemplate, "__PROFILES__", string(enum), 1)
+}
+
+func buildSpecPrompt(m *gitlab.Milestone, existing []ExistingIssue, profiles []aiv1.AgentProfile, replan bool) string {
 	var b strings.Builder
 	if replan {
 		b.WriteString("The milestone specification changed. Update the plan.\n\n")
 	} else {
 		b.WriteString("Plan the following milestone.\n\n")
 	}
-	fmt.Fprintf(&b, "## Milestone: %s\n\n%s\n\n", m.Title, strings.TrimSpace(m.Description))
+	b.WriteString("## Agent profiles\n\n")
+	for _, p := range profiles {
+		fmt.Fprintf(&b, "- %s: %s\n", p.Name, strings.TrimSpace(p.Description))
+	}
+	fmt.Fprintf(&b, "\n## Milestone: %s\n\n%s\n\n", m.Title, strings.TrimSpace(m.Description))
 	if len(existing) > 0 {
 		b.WriteString("## Existing issues in this milestone\n\n")
 		for _, e := range existing {

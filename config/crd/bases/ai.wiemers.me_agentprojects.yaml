@@ -246,7 +246,9 @@ spec:
                       a container image
                     type: string
                   implement:
-                    description: Implement configures the implementing agent.
+                    description: |-
+                      Implement configures the implementing agent for issues without a
+                      profile label (e.g. issues created by hand).
                     properties:
                       allowedTools:
                         description: |-
@@ -285,8 +287,10 @@ spec:
                         type: string
                       model:
                         description: |-
-                          Model passed to the engine. Defaults to claude-opus-5-5 for the claude
-                          engine and to the CLI's own default for cursor.
+                          Model passed to the engine, e.g. claude-opus-5-5 or claude-sonnet-5-5
+                          for claude, "auto" for cursor. For the claude engine it defaults to
+                          claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
+                          default.
                         type: string
                     type: object
                   nodeSelector:
@@ -294,6 +298,72 @@ spec:
                       type: string
                     description: NodeSelector for agent pods.
                     type: object
+                  profiles:
+                    description: |-
+                      Profiles are named implementing agents an issue selects with a
+                      profile label, e.g. "agent-profile::fast". The spec agent picks a profile
+                      for every issue based on the descriptions. Defaults to "fast"
+                      (claude-sonnet-5-5) and "strong" (claude-opus-5-5).
+                    items:
+                      description: AgentProfile is a named implementing agent configuration.
+                      properties:
+                        allowedTools:
+                          description: |-
+                            AllowedTools overrides the tools the role may use (claude engine only;
+                            cursor reads its permissions from .cursor/cli.json).
+                          items:
+                            type: string
+                          type: array
+                        description:
+                          description: Description tells the spec agent which issues
+                            this profile is for.
+                          type: string
+                        effort:
+                          description: Effort level (claude engine only).
+                          enum:
+                          - low
+                          - medium
+                          - high
+                          - xhigh
+                          - max
+                          type: string
+                        engine:
+                          default: claude
+                          description: |-
+                            Engine is the agent CLI used for this role. Roles can mix engines, e.g.
+                            implement with claude and review with cursor.
+                          enum:
+                          - claude
+                          - cursor
+                          type: string
+                        instructions:
+                          description: Instructions are appended to the role's system
+                            prompt, e.g. house rules.
+                          type: string
+                        maxBudgetUSD:
+                          description: |-
+                            MaxBudgetUSD caps the spend of a single invocation of this role,
+                            as a decimal string, e.g. "5" or "2.50" (claude engine only).
+                          pattern: ^[0-9]+(\.[0-9]+)?$
+                          type: string
+                        model:
+                          description: |-
+                            Model passed to the engine, e.g. claude-opus-5-5 or claude-sonnet-5-5
+                            for claude, "auto" for cursor. For the claude engine it defaults to
+                            claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
+                            default.
+                          type: string
+                        name:
+                          description: Name used in the profile label.
+                          pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
                   resources:
                     description: Resources of the agent container.
                     properties:
@@ -354,7 +424,9 @@ spec:
                         type: object
                     type: object
                   review:
-                    description: Review configures the review agents.
+                    description: |-
+                      Review configures the review agents. Defaults to the claude engine with
+                      claude-sonnet-5-5.
                     properties:
                       allowedTools:
                         description: |-
@@ -401,8 +473,10 @@ spec:
                         type: integer
                       model:
                         description: |-
-                          Model passed to the engine. Defaults to claude-opus-5-5 for the claude
-                          engine and to the CLI's own default for cursor.
+                          Model passed to the engine, e.g. claude-opus-5-5 or claude-sonnet-5-5
+                          for claude, "auto" for cursor. For the claude engine it defaults to
+                          claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
+                          default.
                         type: string
                       reviewers:
                         default:
@@ -465,8 +539,10 @@ spec:
                         type: string
                       model:
                         description: |-
-                          Model passed to the engine. Defaults to claude-opus-5-5 for the claude
-                          engine and to the CLI's own default for cursor.
+                          Model passed to the engine, e.g. claude-opus-5-5 or claude-sonnet-5-5
+                          for claude, "auto" for cursor. For the claude engine it defaults to
+                          claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
+                          default.
                         type: string
                     type: object
                   storageClassName:
@@ -655,6 +731,14 @@ spec:
                     description: |-
                       NeedsInputLabel is set by the agent when it has questions it cannot
                       resolve on its own.
+                    type: string
+                  profileLabelPrefix:
+                    default: 'agent-profile::'
+                    description: |-
+                      ProfileLabelPrefix: an issue labelled "<prefix><profile name>" is
+                      implemented with that agent profile (see agents.profiles). The spec agent
+                      sets one on every issue it creates; change the label to override its
+                      choice. Issues without a profile label use agents.implement.
                     type: string
                   readyLabel:
                     default: agent::ready

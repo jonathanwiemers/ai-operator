@@ -1,0 +1,175 @@
+# Configuration reference
+
+An `AgentProject` connects one GitLab project. A complete example is in
+[`config/samples/agentproject.yaml`](../config/samples/agentproject.yaml).
+`kubectl explain agentproject.spec --recursive` shows the full schema.
+
+## Installation
+
+```sh
+make deploy                          # CRDs, RBAC, operator in ai-operator-system
+kubectl create namespace agents
+kubectl apply -f config/samples/agent_serviceaccount.yaml   # service account for agent pods
+```
+
+Agent pods run in the namespace of their `AgentProject`. Every such namespace
+needs the `ai-operator-agent` service account. It is bound to the
+`ai-operator-agent` ClusterRole, which allows reading tasks and projects and
+patching `agenttasks/status`.
+
+## Secrets
+
+```sh
+kubectl -n agents create secret generic gitlab --from-literal=token=glpat-…
+
+kubectl -n agents create secret generic agent-credentials \
+  --from-literal=CLAUDE_CODE_OAUTH_TOKEN="…" \
+  --from-literal=CURSOR_API_KEY="…"
+```
+
+* `spec.gitlab.tokenSecretRef` is the GitLab project access token (Developer,
+  `api` + `write_repository`). The operator and the runner use it. The model
+  never sees it.
+* `spec.agents.credentialsSecretName` names a secret whose keys become
+  environment variables of the agent pods. Add whatever your engines need:
+
+| Key | Used by | How to get it |
+|-----|---------|---------------|
+| `CLAUDE_CODE_OAUTH_TOKEN` | `claude` engine, billed to your Claude Pro/Max subscription | run `claude setup-token` |
+| `ANTHROPIC_API_KEY` | `claude` engine, billed to the Claude API | Claude Console |
+| `CURSOR_API_KEY` | `cursor` engine, billed to your Cursor subscription | Cursor dashboard |
+
+## `spec.gitlab`
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `url` | `https://gitlab.com` | GitLab instance |
+| `project` | – | full path, e.g. `my-group/shop` |
+| `tokenSecretRef` | – | `{name, key}` of the access token |
+
+## `spec.milestones`
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `specMarker` | `/agent spec` | text that must appear in a milestone description for it to be planned; `""` plans every active milestone with a description |
+| `titlePattern` | – | optional regex for milestone titles; if set, issues are also only picked up from matching milestones |
+
+## `spec.workflow`
+
+All labels can be renamed. Defaults:
+
+| Field | Default |
+|-------|---------|
+| `draftLabel` | `agent::draft` |
+| `readyLabel` | `agent::ready` |
+| `workingLabel` | `agent::working` |
+| `needsInputLabel` | `agent::needs-input` |
+| `reviewLabel` | `agent::review` |
+| `doneLabel` | `agent::done` |
+| `generatedLabel` | `ai-generated` |
+| `profileLabelPrefix` | `agent-profile::` |
+| `commandPrefix` | `/agent` |
+
+## `spec.agents`
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `image` | – | agent image (see below) |
+| `credentialsSecretName` | – | see Secrets |
+| `serviceAccountName` | `ai-operator-agent` | |
+| `resources` | – | container resources |
+| `workspaceSize` | `10Gi` | per-task PVC |
+| `storageClassName` | cluster default | |
+| `cacheClaimName` | – | existing (ideally RWX) PVC mounted at `/cache` for shared dependency caches (`GOMODCACHE`, `GOCACHE`, `npm_config_cache`, `PIP_CACHE_DIR`, `YARN_CACHE_FOLDER`) |
+| `env`, `nodeSelector`, `tolerations` | – | passed to the pod |
+| `spec` | claude, `claude-opus-5-5` | spec (planning) agent |
+| `profiles` | `fast`, `strong` | implementing agents selected per issue |
+| `implement` | claude, `claude-opus-5-5` | implementing agent for issues without a profile label |
+| `review` | claude, `claude-sonnet-5-5`, reviewers `bugbot` + `security`, `maxIterations: 2` | review agents |
+
+### Roles
+
+`spec`, `implement`, `review` and every profile share these fields:
+
+| Field | Engines | Description |
+|-------|---------|-------------|
+| `engine` | – | `claude` (default) or `cursor` |
+| `model` | both | e.g. `claude-opus-5-5`, `claude-sonnet-5-5`; `auto` for cursor. Claude defaults: `claude-opus-5-5`, reviews `claude-sonnet-5-5`. Cursor uses its own default |
+| `effort` | claude | `low` … `max` |
+| `maxBudgetUSD` | claude | spend cap per invocation, e.g. `"5"` |
+| `allowedTools` | claude | override the tool allow-list |
+| `instructions` | both | appended to the role prompt (house rules, test commands) |
+
+`review` additionally has `reviewers` (`bugbot`, `security`) and
+`maxIterations`.
+
+### Profiles
+
+```yaml
+profiles:
+  - name: fast
+    description: Small, well-defined changes that follow existing patterns.
+    engine: cursor
+    model: auto
+  - name: strong
+    description: Design decisions, cross-cutting or risky changes, unclear scope.
+    engine: claude
+    model: claude-opus-5-5
+```
+
+The spec agent sees the names and descriptions and labels each sub-issue it
+creates with `agent-profile::<name>`. Write descriptions that let it decide.
+When planning, an unknown choice gets no label. When implementing, a missing
+or unknown label falls back to `implement`. A profile label set by hand is
+never overwritten by a re-plan.
+
+If no profiles are configured, `fast` (claude, `claude-sonnet-5-5`) and
+`strong` (claude, `claude-opus-5-5`) are used.
+
+### Engines
+
+| | `claude` | `cursor` |
+|-|----------|----------|
+| CLI | `claude -p` | `cursor-agent -p` |
+| structured output | `--json-schema` | schema in the prompt, JSON parsed from the answer |
+| role instructions | `--append-system-prompt` | folded into the first prompt of a session |
+| tool restrictions | `--allowedTools` / `--disallowedTools` | none via flags; read-only roles run without `--force` and the work tree is reset after them |
+| session resume | `--resume` | `--resume` |
+| cost reporting | yes (notional with a subscription) | no |
+
+Sessions are stored per role and engine. Switching an issue to a profile with
+another engine starts a new session with the full context.
+
+## `spec.lifecycle`
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `idleTimeout` | `2h` | after the last run, the pod is stopped; the workspace stays |
+| `retentionPeriod` | `336h` (14 days) | after the last run, the workspace PVC is deleted |
+| `maxRunsPerTask` | `20` | the task is `Blocked` when reached |
+
+## Other `spec` fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `pollInterval` | `1m` | GitLab polling interval |
+| `maxConcurrentRuns` | `3` | runs in flight per project; more runs queue. Keep this low on subscriptions, which have usage windows |
+| `suspend` | `false` | stop polling and starting runs |
+
+## Agent image
+
+`Dockerfile.agent` builds a base image with `ai-runner`, git, `claude` and
+`cursor-agent`. The build args `INSTALL_CLAUDE` / `INSTALL_CURSOR` toggle the
+CLIs. Extend it with the toolchains of your repositories, because the agent
+must be able to build and run the tests:
+
+```dockerfile
+FROM ghcr.io/jonathanwiemers/ai-operator-agent:latest
+USER root
+RUN apt-get update && apt-get install -y golang-go && rm -rf /var/lib/apt/lists/*
+USER 1000
+```
+
+Pods run as uid 1000, non-root, with all capabilities dropped. `HOME` points
+to the workspace (`/workspace/home`), so CLI sessions survive pod restarts.
+Install tools outside `$HOME`.

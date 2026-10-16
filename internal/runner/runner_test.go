@@ -102,20 +102,23 @@ func TestApplyPlan(t *testing.T) {
 	gl := gitlabfake.New()
 	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2"}
 	gl.Milestones = []gitlab.Milestone{m}
-	wf := aiv1.WorkflowSpec{}.WithDefaults()
+	spec := aiv1.AgentProjectSpec{}.WithDefaults()
 	ctx := context.Background()
 
 	plan := SpecPlan{Issues: []PlannedItem{
-		{Key: "ui", Title: "Checkout UI", Description: "Build the UI.", DependsOn: []string{"api"}},
-		{Key: "api", Title: "Checkout API", Description: "Build the API.", Questions: []string{"REST or gRPC? Default: REST"}},
+		{Key: "ui", Title: "Checkout UI", Description: "Build the UI.", Profile: "fast", DependsOn: []string{"api"}},
+		{Key: "api", Title: "Checkout API", Description: "Build the API.", Profile: "bogus", Questions: []string{"REST or gRPC? Default: REST"}},
 	}}
-	created, updated, skipped, err := applyPlan(ctx, gl, "g/p", &m, wf, plan, nil)
+	created, updated, skipped, err := applyPlan(ctx, gl, "g/p", &m, spec, plan, nil)
 	if err != nil || created != 2 || updated != 0 || skipped != 0 {
 		t.Fatalf("created=%d updated=%d skipped=%d err=%v", created, updated, skipped, err)
 	}
 	ui, api := gl.Issues[1], gl.Issues[2]
 	if !ui.HasLabel("agent::draft") || !ui.HasLabel("ai-generated") || ui.Milestone == nil {
 		t.Fatalf("unexpected issue %+v", ui)
+	}
+	if !ui.HasLabel("agent-profile::fast") || spec.ProfileOf(api.Labels) != "" {
+		t.Fatalf("expected fast profile on ui and none (unknown choice) on api: %v / %v", ui.Labels, api.Labels)
 	}
 	if !strings.Contains(ui.Description, "- #2") {
 		t.Fatalf("forward dependency should be resolved:\n%s", ui.Description)
@@ -124,17 +127,22 @@ func TestApplyPlan(t *testing.T) {
 		t.Fatalf("questions / key missing:\n%s", api.Description)
 	}
 
-	// Re-plan: draft issues are updated, started ones are left alone.
+	// Re-plan: draft issues are updated, started ones are left alone, and a
+	// profile a human chose is kept.
 	gl.SetLabels(2, "agent::working")
+	gl.SetLabels(1, "ai-generated", "agent::draft", "agent-profile::strong")
 	issues, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
 	plan.Issues[0].Description = "Build the UI with dark mode."
 	plan.Issues[1].Description = "Changed API plan."
-	created, updated, skipped, err = applyPlan(ctx, gl, "g/p", &m, wf, plan, issues)
+	created, updated, skipped, err = applyPlan(ctx, gl, "g/p", &m, spec, plan, issues)
 	if err != nil || created != 0 || updated != 1 || skipped != 1 {
 		t.Fatalf("created=%d updated=%d skipped=%d err=%v", created, updated, skipped, err)
 	}
 	if !strings.Contains(gl.Issues[1].Description, "dark mode") || strings.Contains(gl.Issues[2].Description, "Changed") {
 		t.Fatal("only the draft issue may change")
+	}
+	if l := gl.Labels(1); slices.Contains(l, "agent-profile::fast") || !slices.Contains(l, "agent-profile::strong") {
+		t.Fatalf("manual profile override must be kept, labels %v", l)
 	}
 }
 
@@ -253,6 +261,16 @@ func TestImplementEndToEnd(t *testing.T) {
 	if len(engine.calls) != 6 {
 		t.Fatalf("expected 6 engine calls, got %d", len(engine.calls))
 	}
+	// No profile label: agents.implement (strong model). Reviewers run on the light model.
+	for _, c := range engine.calls {
+		want := aiv1.DefaultModel
+		if c.ReadOnly {
+			want = aiv1.DefaultLightModel
+		}
+		if c.Model != want {
+			t.Fatalf("call (readOnly=%v) used model %q, want %q", c.ReadOnly, c.Model, want)
+		}
+	}
 
 	mr := gl.MRs[1]
 	if mr == nil || mr.SourceBranch != "agent/42-add-paypal-button" || !strings.HasPrefix(mr.Title, "Draft: ") {
@@ -284,5 +302,20 @@ func TestImplementEndToEnd(t *testing.T) {
 	first := engine.calls[0]
 	if first.Resume != "sess-impl" || !strings.Contains(first.Prompt, "also log the payment id") || strings.Contains(first.Prompt, "Implement issue #42") {
 		t.Fatalf("follow-up should resume with only the new comment: resume=%q prompt=%q", first.Resume, first.Prompt)
+	}
+}
+
+func TestSpecSchemaListsProfiles(t *testing.T) {
+	schema := specSchema(aiv1.DefaultProfiles())
+	var v map[string]any
+	if err := json.Unmarshal([]byte(schema), &v); err != nil {
+		t.Fatalf("schema is not valid JSON: %v", err)
+	}
+	if !strings.Contains(schema, `"enum": ["fast","strong"]`) {
+		t.Fatalf("profiles missing from schema:\n%s", schema)
+	}
+	prompt := buildSpecPrompt(&gitlab.Milestone{Title: "M", Description: "spec"}, nil, aiv1.DefaultProfiles(), false)
+	if !strings.Contains(prompt, "- fast: Small") || !strings.Contains(prompt, "- strong: Everything else") {
+		t.Fatalf("profiles missing from prompt:\n%s", prompt)
 	}
 }

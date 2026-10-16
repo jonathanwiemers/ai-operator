@@ -118,6 +118,14 @@ type WorkflowSpec struct {
 	// +optional
 	GeneratedLabel string `json:"generatedLabel,omitempty"`
 
+	// ProfileLabelPrefix: an issue labelled "<prefix><profile name>" is
+	// implemented with that agent profile (see agents.profiles). The spec agent
+	// sets one on every issue it creates; change the label to override its
+	// choice. Issues without a profile label use agents.implement.
+	// +kubebuilder:default="agent-profile::"
+	// +optional
+	ProfileLabelPrefix string `json:"profileLabelPrefix,omitempty"`
+
 	// CommandPrefix: a comment on the issue or its merge request that starts
 	// with this prefix triggers another agent run (e.g. "/agent please also
 	// cover the error case"). Plain discussion does not trigger runs, so no
@@ -187,13 +195,37 @@ type AgentsSpec struct {
 	// +optional
 	Spec RoleSpec `json:"spec,omitempty"`
 
-	// Implement configures the implementing agent.
+	// Implement configures the implementing agent for issues without a
+	// profile label (e.g. issues created by hand).
 	// +optional
 	Implement RoleSpec `json:"implement,omitempty"`
 
-	// Review configures the review agents.
+	// Profiles are named implementing agents an issue selects with a
+	// profile label, e.g. "agent-profile::fast". The spec agent picks a profile
+	// for every issue based on the descriptions. Defaults to "fast"
+	// (claude-sonnet-5-5) and "strong" (claude-opus-5-5).
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	Profiles []AgentProfile `json:"profiles,omitempty"`
+
+	// Review configures the review agents. Defaults to the claude engine with
+	// claude-sonnet-5-5.
 	// +optional
 	Review ReviewSpec `json:"review,omitempty"`
+}
+
+// AgentProfile is a named implementing agent configuration.
+type AgentProfile struct {
+	// Name used in the profile label.
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+	Name string `json:"name"`
+
+	// Description tells the spec agent which issues this profile is for.
+	// +optional
+	Description string `json:"description,omitempty"`
+
+	RoleSpec `json:",inline"`
 }
 
 // Engine is the coding agent CLI that runs a role.
@@ -215,8 +247,10 @@ type RoleSpec struct {
 	// +optional
 	Engine Engine `json:"engine,omitempty"`
 
-	// Model passed to the engine. Defaults to claude-opus-5-5 for the claude
-	// engine and to the CLI's own default for cursor.
+	// Model passed to the engine, e.g. claude-opus-5-5 or claude-sonnet-5-5
+	// for claude, "auto" for cursor. For the claude engine it defaults to
+	// claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
+	// default.
 	// +optional
 	Model string `json:"model,omitempty"`
 
