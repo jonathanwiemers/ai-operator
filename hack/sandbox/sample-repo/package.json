@@ -1,0 +1,11 @@
+{
+  "name": "sandbox-todo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tiny todo API used to test the ai-operator end to end.",
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test"
+  }
+}

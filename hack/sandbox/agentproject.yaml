@@ -1,0 +1,49 @@
+# Sandbox AgentProject: small limits so mistakes stay cheap and lifecycle
+# transitions happen within a test session. up.sh fills in the project path.
+apiVersion: ai.wiemers.me/v1alpha1
+kind: AgentProject
+metadata:
+  name: sandbox
+  namespace: agents
+spec:
+  gitlab:
+    url: ${GITLAB_URL}
+    project: ${GITLAB_PROJECT}
+    tokenSecretRef:
+      name: gitlab
+      key: token
+  pollInterval: 30s
+  maxConcurrentRuns: 1
+  lifecycle:
+    idleTimeout: 10m
+    retentionPeriod: 1h
+    maxRunsPerTask: 6
+  agents:
+    credentialsSecretName: agent-credentials
+    workspaceSize: 2Gi
+    resources:
+      requests: {cpu: 500m, memory: 1Gi}
+      limits: {memory: 3Gi}
+    spec:
+      engine: claude
+      model: claude-opus-5-5
+      maxBudgetUSD: "3"
+    profiles:
+      - name: fast
+        description: Small, well-defined changes that follow existing patterns, touch few files and leave no design decisions open.
+        engine: ${FAST_ENGINE}
+        model: ${FAST_MODEL}
+      - name: strong
+        description: Everything else - design decisions, cross-cutting changes, unclear scope.
+        engine: claude
+        model: claude-opus-5-5
+        maxBudgetUSD: "5"
+    implement:
+      engine: claude
+      model: claude-opus-5-5
+      maxBudgetUSD: "5"
+    review:
+      engine: ${FAST_ENGINE}
+      model: ${FAST_MODEL}
+      reviewers: [bugbot, security]
+      maxIterations: 1
