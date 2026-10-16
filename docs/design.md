@@ -10,37 +10,127 @@ user-facing workflow see [usage.md](usage.md), for all settings
 fake agent, real git) pass. It has not yet run against a real cluster, a real
 GitLab instance or the real agent CLIs.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    GL["GitLab<br/>milestones, issues,<br/>MRs, pipelines"]
+
+    subgraph K8S["Kubernetes"]
+        OP["ai-operator<br/>project controller<br/>task controller"]
+        AP[("AgentProject<br/>written by you")]
+        AT[("AgentTask<br/>per milestone / issue")]
+        subgraph POD["agent pod, one per task"]
+            RU["runner<br/>GitLab token<br/>git mirror"]
+            AG["agent<br/>claude / cursor-agent<br/>checkout"]
+        end
+        PVC[("workspace PVC")]
+    end
+
+    LLM["Model providers<br/>Anthropic, Cursor"]
+
+    OP <-->|"poll, labels,<br/>pipelines"| GL
+    AP -->|reads| OP
+    OP -->|"creates,<br/>requests runs"| AT
+    OP -->|"starts, hibernates,<br/>deletes"| POD
+    AT <-->|"spec / status.run"| RU
+    RU <-->|"context, push,<br/>MR, comments"| GL
+    RU <-->|"RPC + git bundles"| AG
+    AG --> LLM
+    POD --- PVC
+```
+
+The operator runs in `ai-operator-system`; projects, tasks and agent pods
+live in the namespaces listed in the chart's `agent.namespaces`.
+
+* The **project controller** polls GitLab, creates an `AgentTask` per planned
+  milestone and per handed-over issue, turns `agent::ready` and `/agent`
+  comments into run requests, follows pipelines, and deletes tasks of
+  finished issues.
+* The **task controller** owns the pod and the workspace PVC of each task:
+  it starts, queues, hibernates and archives them (see
+  [Lifecycle](#lifecycle-of-long-lived-issues)).
+* The **runner** does one run per request: it collects the context from
+  GitLab, drives the agent CLIs in the agent container, and publishes the
+  result (branch, MR, comments, labels).
+* The **agent container** runs the agent CLIs on the checkout. It has the
+  model credentials, nothing else (see [Security](#security)).
+
 ## Flow
 
+```mermaid
+flowchart TD
+    M["Milestone description<br/>overarching spec + /agent spec"] --> SP
+
+    subgraph SPEC["spec pod"]
+        SP["spec agent reads the spec and the code"]
+    end
+    SP --> SUB["one sub-issue per MR<br/>sub-spec, acceptance criteria, questions,<br/>agent::draft + agent-profile::name"]
+
+    SUB --> H["You answer the questions,<br/>adjust the profile label,<br/>move the issue to agent::ready"]
+    H --> REQ["operator: agent::working<br/>AgentTask runRequest + 1"]
+
+    subgraph IMPL["issue pod"]
+        IM["implementer of the issue's profile<br/>resumed session"]
+        IM --> RV["bugbot + security reviewers<br/>in parallel, diff only"]
+        RV -->|"blocking findings,<br/>up to maxIterations"| IM
+        RV --> PUSH["push agent/iid-slug<br/>draft MR Closes #iid"]
+    end
+
+    REQ --> IM
+    PUSH --> CI{"pipeline of the<br/>pushed commit"}
+    CI -->|"red: retry once,<br/>then CI fix run (max 2)"| IM
+    CI -->|"green, or failing on<br/>the default branch too"| REV["agent::review"]
+    CI -->|"still red after the fix rounds"| NI["agent::needs-input"]
+    IM -->|"open questions"| NI
+
+    REV -->|"/agent comment on issue or MR"| REQ
+    NI -->|"answer, /agent or move to ready"| REQ
+    REV -->|"merge, close or agent::done"| DONE["task, pod and PVC deleted"]
 ```
- Milestone description = overarching spec (+ "/agent spec")
-        │
-        ▼
- spec task ─▶ spec pod: reads spec + code, creates one sub-issue per MR
-        │     (sub-spec, acceptance criteria, questions, dependencies,
-        │      labels agent::draft + agent-profile::<fast|strong|…>)
-        ▼
- Human answers questions in comments, adjusts the profile label if needed,
- moves the issue to agent::ready
-        │
-        ▼
- operator: issue -> agent::working, AgentTask.spec.runRequest++ ─▶ issue pod
-        │
-        │   implement with the issue's profile (resumable session)
-        │   └▶ bugbot + security reviewers in parallel (read-only, diff only)
-        │       └▶ blocking findings? fix (same session), ≤ maxIterations
-        │   commit, push agent/<iid>-<slug>, open Draft MR "Closes #iid"
-        ▼
- operator follows the MR pipeline of the pushed commit
-        │   red: retry failed jobs once; still red → CI fix run with the
-        │   failing jobs' log excerpts (≤ ci.maxFixRounds), unless the same
-        │   jobs fail on the default branch too
-        ▼
- issue -> agent::review when green (or agent::needs-input on questions / CI given up)
-        │
-        ├── human comments "/agent …" on issue or MR ─▶ another run (resumed session)
-        ├── human moves the issue back to agent::ready  ─▶ another run
-        └── human closes the issue / moves it to agent::done ─▶ task, pod and PVC deleted
+
+A single run of an issue, step by step:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor You
+    participant GL as GitLab
+    participant OP as Operator
+    participant RU as Runner
+    participant AG as Agent container
+    participant LLM as Model
+
+    You->>GL: move issue to agent::ready
+    OP->>GL: poll (pollInterval)
+    OP->>GL: label agent::working
+    OP->>OP: AgentTask runRequest + 1, start pod if needed
+    RU->>GL: fetch issue, comments, milestone, MR
+    RU->>GL: git fetch into the bare mirror
+    RU->>AG: git bundle, prepare checkout
+    RU->>AG: run implementer
+    AG->>LLM: claude -p / cursor-agent -p
+    AG-->>RU: result (summary, questions)
+    loop at most review.maxIterations
+        RU->>AG: run bugbot + security on the diff
+        AG-->>RU: findings
+        opt blocking findings
+            RU->>AG: fix them (same session)
+        end
+    end
+    AG-->>RU: commits as git bundle
+    RU->>GL: push agent/42-…, open or update draft MR
+    RU->>OP: AgentTask status.run.pushedSHA
+    loop every poll until the pipeline is final
+        OP->>GL: pipeline of pushedSHA
+    end
+    alt green
+        OP->>GL: label agent::review
+    else red, fix rounds left
+        OP->>OP: runRequest + 1 (CI fix run)
+    else red, rounds used up
+        OP->>GL: label agent::needs-input + comment
+    end
 ```
 
 The milestone description is the single source of the overarching spec. The
@@ -95,10 +185,26 @@ Each pod has two containers, see [Security](#security):
 
 ## Lifecycle of long-lived issues
 
-```
-Running ──run done──▶ Idle ──idleTimeout (2h)──▶ Hibernated ──retention (14d)──▶ Archived
-   ▲                   │                            │                              │
-   └───────────────────┴─────── new run request ────┴──────────────────────────────┘
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Pending: task created
+    Pending --> Running: run requested
+    Pending --> Queued: maxConcurrentRuns reached
+    Queued --> Running: a slot is free
+    Running --> Waiting: usage limit
+    Waiting --> Running: limit resets
+    Running --> Idle: run done
+    Idle --> Running: new run request
+    Idle --> Hibernated: idleTimeout (2h), pod deleted
+    Hibernated --> Running: new run request
+    Hibernated --> Archived: retentionPeriod (14d), PVC deleted
+    Archived --> Running: new run request, fresh clone
+    Running --> Blocked: maxRunsPerTask reached
+    Blocked --> Running: limit raised
+    Idle --> [*]: issue done
+    Hibernated --> [*]: issue done
+    Archived --> [*]: issue done
 ```
 
 * **Idle**: pod kept warm, everything is hot.
@@ -160,6 +266,32 @@ push is not "done" until its pipeline is green:
 * `status.run.ciRound` counts CI fix runs since the last push a human asked
   for; after `ci.maxFixRounds` the issue goes to needs-input with the
   failing jobs. A fix run that pushes nothing new also ends the loop.
+
+`status.ci.state` of the pushed commit:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Pending: agent pushed
+    Pending --> None: no pipeline within noPipelineTimeout
+    Pending --> Running: pipeline found
+    Running --> Running: red the first time, failed jobs retried
+    Running --> Success: green, skipped or manual
+    Running --> Canceled: canceled
+    Running --> BaseFailing: red, same jobs red on the default branch
+    Running --> Fixing: red, fix rounds left
+    Running --> Failed: red, fix rounds used up
+    Fixing --> Pending: the fix run pushed a new commit
+    Fixing --> Failed: the fix run pushed nothing
+
+    classDef review fill:#d8f3dc,stroke:#2d6a4f,color:#1b4332
+    classDef needsInput fill:#ffe3e3,stroke:#c92a2a,color:#7d1414
+    class Success, None, Canceled, BaseFailing review
+    class Failed needsInput
+```
+
+Green states move the issue to `agent::review`, `Failed` to
+`agent::needs-input`.
 
 ## Engines, profiles and subscriptions
 
@@ -229,11 +361,23 @@ namespace, so the model cannot read the runner's environment through
 (`core.fsmonitor`, filters, hooks, external diff) into command execution. So
 the runner never runs git in the checkout:
 
-```
- GitLab ◀──fetch/push──▶ runner: bare mirror (/runner, trusted)
-                              │  git bundle (refs + objects only)
-                              ▼  over /exchange
-                         agent: checkout (/workspace, model-controlled)
+```mermaid
+flowchart LR
+    GL["GitLab"]
+    subgraph POD["agent pod"]
+        subgraph RUN["runner (trusted)"]
+            MIR[("bare mirror<br/>/runner")]
+        end
+        EX[["/exchange<br/>emptyDir"]]
+        subgraph AGC["agent (untrusted)"]
+            WS[("checkout<br/>/workspace")]
+        end
+    end
+    GL <-->|"fetch, push<br/>GitLab token"| MIR
+    MIR -->|"git bundle:<br/>new upstream commits"| EX
+    EX -->|"import, check out"| WS
+    WS -->|"git bundle:<br/>agent commits"| EX
+    EX -->|"import, push"| MIR
 ```
 
 * The runner keeps a bare mirror on its own PVC sub-path. Only the runner

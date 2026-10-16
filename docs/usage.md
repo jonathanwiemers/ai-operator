@@ -20,7 +20,32 @@ of each kind.
 | `ai-generated` | spec agent | issue was created by the spec agent |
 
 Put `agent::draft`, `agent::ready`, `agent::working`, `agent::needs-input`,
-`agent::review` and `agent::done` on an issue board as columns.
+`agent::review` and `agent::done` on an issue board as columns. An issue moves
+through them like this:
+
+```mermaid
+stateDiagram-v2
+    state "agent::draft" as draft
+    state "agent::ready" as ready
+    state "agent::working" as working
+    state "agent::needs-input" as needs
+    state "agent::review" as review
+    state "agent::done" as done
+
+    [*] --> draft: spec agent plans the issue
+    [*] --> ready: you hand over your own issue
+    draft --> ready: you, after answering the questions
+    ready --> working: operator starts a run
+    working --> review: MR pushed, CI green
+    working --> needs: questions or CI red
+    needs --> working: /agent or ready
+    review --> working: /agent comment
+    review --> done: you merge and close
+    done --> [*]: task, pod and workspace deleted
+```
+
+You act on `draft`, `needs-input` and `review`. Everything in between,
+including fixing a red pipeline, happens without you.
 
 Create a **project access token** with role *Developer* and the scopes `api` and
 `write_repository`. Protect your default branch. The agent only pushes

@@ -15,6 +15,8 @@ helm install ai-operator oci://ghcr.io/jonathanwiemers/charts/ai-operator \
   --set 'agent.namespaces={agents}' --set agent.createNamespaces=true
 ```
 
+With Flux, see [Install with Flux](#install-with-flux) below.
+
 Without Helm:
 
 ```sh
@@ -27,6 +29,56 @@ Agent pods run in the namespace of their `AgentProject`. Every such namespace
 needs the `ai-operator-agent` service account, bound to the agent ClusterRole
 (read tasks and projects, patch `agenttasks/status`). The chart creates both
 for every namespace in `agent.namespaces`.
+
+### Install with Flux
+
+The chart is an OCI artifact, so Flux can install it with an `OCIRepository`
+and a `HelmRelease`:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-operator-system
+---
+apiVersion: source.toolkit.fluxcd.io/v1        # v1beta2 on Flux < 2.6
+kind: OCIRepository
+metadata:
+  name: ai-operator
+  namespace: ai-operator-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/jonathanwiemers/charts/ai-operator
+  ref:
+    tag: <YEAR.MONTH.N>        # or semver: ">=2026.10.3" to follow new releases
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ai-operator
+  namespace: ai-operator-system
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: ai-operator
+  values:
+    agent:
+      namespaces: [agents]
+      createNamespaces: true
+```
+
+* The CRDs are regular chart templates, so they are installed and upgraded
+  with the release. They are kept when the release is removed.
+* Put your `AgentProject` and its secrets (e.g. SOPS-encrypted) into a second
+  Flux `Kustomization` with `dependsOn` on the one above and `wait: true` on
+  the operator's, so the CRDs exist before the project is applied.
+* Keep `AgentTask`s out of Git. The operator creates and deletes them.
+* Change `AgentProject` settings such as `spec.suspend` in Git; Flux reverts
+  edits made with `kubectl`.
 
 ## Secrets
 
