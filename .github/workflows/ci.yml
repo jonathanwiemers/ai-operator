@@ -16,6 +16,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: azure/setup-helm@v4
       - name: Generated code and manifests are up to date
         run: |
           make generate manifests
@@ -28,3 +29,7 @@ jobs:
         run: go test -race ./...
       - name: build
         run: make build
+      - name: helm lint
+        run: make helm-lint
+      - name: release version
+        run: hack/next-version.sh

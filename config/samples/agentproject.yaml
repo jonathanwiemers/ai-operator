@@ -24,7 +24,9 @@ spec:
     retentionPeriod: 336h  # then keep the workspace PVC this long (14 days)
     maxRunsPerTask: 20
   agents:
-    image: ghcr.io/jonathanwiemers/ai-operator-agent:latest
+    # Optional: defaults to the agent image of the installed release. Set it
+    # to your own image that adds the toolchains your repositories need.
+    # image: registry.example.com/my-agent:2026.10.1
     credentialsSecretName: agent-credentials
     workspaceSize: 10Gi
     # cacheClaimName: agent-cache   # optional RWX PVC for shared dependency caches

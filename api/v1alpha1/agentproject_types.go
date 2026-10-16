@@ -139,8 +139,11 @@ type WorkflowSpec struct {
 type AgentsSpec struct {
 	// Image of the agent pod. It must contain the ai-runner binary, git, the
 	// agent CLIs used (claude, cursor-agent) and whatever toolchain the
-	// project needs to build and test.
-	Image string `json:"image"`
+	// project needs to build and test. Defaults to the operator's
+	// --default-agent-image (the Helm chart sets it to the agent image of the
+	// same release).
+	// +optional
+	Image string `json:"image,omitempty"`
 
 	// +kubebuilder:default=IfNotPresent
 	// +optional

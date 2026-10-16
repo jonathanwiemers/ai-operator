@@ -238,7 +238,9 @@ spec:
                     description: |-
                       Image of the agent pod. It must contain the ai-runner binary, git, the
                       agent CLIs used (claude, cursor-agent) and whatever toolchain the
-                      project needs to build and test.
+                      project needs to build and test. Defaults to the operator's
+                      --default-agent-image (the Helm chart sets it to the agent image of the
+                      same release).
                     type: string
                   imagePullPolicy:
                     default: IfNotPresent
@@ -600,7 +602,6 @@ spec:
                     x-kubernetes-int-or-string: true
                 required:
                 - credentialsSecretName
-                - image
                 type: object
               gitlab:
                 description: GitLab connection settings.

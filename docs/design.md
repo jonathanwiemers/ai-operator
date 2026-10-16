@@ -200,6 +200,8 @@ Things to keep in mind with subscriptions:
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/runner/git.go` | git operations with per-command credentials |
 | `internal/gitlab` | minimal REST client; `gitlabfake` for tests |
+| `charts/ai-operator` | Helm chart (CRDs and operator RBAC are copied in by `make manifests`) |
+| `.github/workflows` | CI and calendar-versioned releases (`YEAR.MONTH.N`) |
 
 ## Roadmap
 

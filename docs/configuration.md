@@ -6,6 +6,17 @@ An `AgentProject` connects one GitLab project. A complete example is in
 
 ## Installation
 
+With Helm (recommended, see the [chart values](../charts/ai-operator/README.md)):
+
+```sh
+helm install ai-operator oci://ghcr.io/jonathanwiemers/charts/ai-operator \
+  --version <YEAR.MONTH.N> \
+  --namespace ai-operator-system --create-namespace \
+  --set 'agent.namespaces={agents}' --set agent.createNamespaces=true
+```
+
+Without Helm:
+
 ```sh
 make deploy                          # CRDs, RBAC, operator in ai-operator-system
 kubectl create namespace agents
@@ -13,9 +24,9 @@ kubectl apply -f config/samples/agent_serviceaccount.yaml   # service account fo
 ```
 
 Agent pods run in the namespace of their `AgentProject`. Every such namespace
-needs the `ai-operator-agent` service account. It is bound to the
-`ai-operator-agent` ClusterRole, which allows reading tasks and projects and
-patching `agenttasks/status`.
+needs the `ai-operator-agent` service account, bound to the agent ClusterRole
+(read tasks and projects, patch `agenttasks/status`). The chart creates both
+for every namespace in `agent.namespaces`.
 
 ## Secrets
 
@@ -74,7 +85,7 @@ All labels can be renamed. Defaults:
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `image` | – | agent image (see below) |
+| `image` | operator's `--default-agent-image` (with Helm: the agent image of the same release) | agent image (see below) |
 | `credentialsSecretName` | – | see Secrets |
 | `serviceAccountName` | `ai-operator-agent` | |
 | `resources` | – | container resources |
@@ -164,7 +175,7 @@ CLIs. Extend it with the toolchains of your repositories, because the agent
 must be able to build and run the tests:
 
 ```dockerfile
-FROM ghcr.io/jonathanwiemers/ai-operator-agent:latest
+FROM ghcr.io/jonathanwiemers/ai-operator-agent:2026.10.1
 USER root
 RUN apt-get update && apt-get install -y golang-go && rm -rf /var/lib/apt/lists/*
 USER 1000

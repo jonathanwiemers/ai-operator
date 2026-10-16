@@ -1,0 +1,35 @@
+{{- range $ns := .Values.agent.namespaces }}
+{{- if $.Values.agent.createNamespaces }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ns }}
+  labels:
+    {{- include "ai-operator.labels" $ | nindent 4 }}
+{{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $.Values.agent.serviceAccountName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "ai-operator.labels" $ | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ai-operator.agentClusterRole" $ }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "ai-operator.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "ai-operator.agentClusterRole" $ }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $.Values.agent.serviceAccountName }}
+    namespace: {{ $ns }}
+{{- end }}

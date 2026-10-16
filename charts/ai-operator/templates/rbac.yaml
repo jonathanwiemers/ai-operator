@@ -1,0 +1,74 @@
+{{- /* Operator permissions; the rules are generated from the kubebuilder markers (make manifests). */ -}}
+{{- $role := .Files.Get "files/rbac/role.yaml" | fromYaml }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "ai-operator.fullname" . }}
+  labels:
+    {{- include "ai-operator.labels" . | nindent 4 }}
+rules:
+  {{- toYaml $role.rules | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "ai-operator.fullname" . }}
+  labels:
+    {{- include "ai-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "ai-operator.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "ai-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- if .Values.leaderElection }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "ai-operator.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ai-operator.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "ai-operator.fullname" . }}-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "ai-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+---
+# Permissions of the agent pods: read their own task/project and report
+# progress in agenttasks/status. Bound per namespace (agent.namespaces).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "ai-operator.agentClusterRole" . }}
+  labels:
+    {{- include "ai-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agenttasks", "agentprojects"]
+    verbs: ["get"]
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agenttasks/status"]
+    verbs: ["get", "patch"]

@@ -1,0 +1,20 @@
+ai-operator {{ .Chart.AppVersion }} is installed in namespace {{ .Release.Namespace }}.
+
+{{- if .Values.agent.namespaces }}
+
+Agent service accounts were created in: {{ join ", " .Values.agent.namespaces }}
+{{- else }}
+
+No agent namespaces configured. For every namespace that will host
+AgentProjects, set agent.namespaces (or create the "{{ .Values.agent.serviceAccountName }}"
+service account bound to ClusterRole "{{ include "ai-operator.agentClusterRole" . }}" yourself).
+{{- end }}
+
+Next steps (in an agent namespace):
+
+  kubectl -n <ns> create secret generic gitlab --from-literal=token=glpat-...
+  kubectl -n <ns> create secret generic agent-credentials \
+    --from-literal=CLAUDE_CODE_OAUTH_TOKEN=... --from-literal=CURSOR_API_KEY=...
+  kubectl -n <ns> apply -f agentproject.yaml
+
+Documentation: https://github.com/jonathanwiemers/ai-operator/tree/main/docs

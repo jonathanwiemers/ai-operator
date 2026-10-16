@@ -36,6 +36,8 @@ type AgentTaskReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Now    func() time.Time
+	// DefaultAgentImage is used for projects that do not set agents.image.
+	DefaultAgentImage string
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;update;patch
@@ -64,6 +66,9 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 	spec := project.Spec.WithDefaults()
+	if spec.Agents.Image == "" {
+		spec.Agents.Image = r.DefaultAgentImage
+	}
 	lc := spec.Lifecycle
 
 	pod, err := r.getPod(ctx, &task)
@@ -108,6 +113,12 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			if err := r.Create(ctx, pvc); err != nil && !apierrors.IsAlreadyExists(err) {
 				return ctrl.Result{}, err
 			}
+		}
+		if pod == nil && spec.Agents.Image == "" {
+			task.Status.Phase = aiv1.TaskPhaseQueued
+			task.Status.Message = "no agent image: set agents.image on the AgentProject or --default-agent-image on the operator"
+			result.RequeueAfter = time.Minute
+			break
 		}
 		if pod == nil {
 			running, err := r.runningTasks(ctx, &task)
