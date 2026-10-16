@@ -25,6 +25,8 @@ const (
 	DefaultUsageLimitBackoff    = 5 * time.Minute
 	DefaultMaxUsageLimitBackoff = time.Hour
 	DefaultMaxConcurrent        = 3
+	DefaultCIFixRounds          = 2
+	DefaultNoPipelineTimeout    = 10 * time.Minute
 	DefaultReviewIters          = 2
 )
 
@@ -115,6 +117,7 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 	}
 	s.Workflow = s.Workflow.WithDefaults()
 	s.Lifecycle = s.Lifecycle.WithDefaults()
+	s.CI = s.CI.WithDefaults()
 	s.Agents.Spec = s.Agents.Spec.WithDefaults()
 	s.Agents.Implement = s.Agents.Implement.WithDefaults()
 	if len(s.Agents.Profiles) == 0 {
@@ -218,4 +221,20 @@ func (s AgentProjectStatus) ActiveUsageLimit(engine Engine, now time.Time) (Usag
 		}
 	}
 	return UsageLimit{}, false
+}
+
+// WithDefaults fills in CI defaults.
+func (c CISpec) WithDefaults() CISpec {
+	if c.MaxFixRounds == nil {
+		n := int32(DefaultCIFixRounds)
+		c.MaxFixRounds = &n
+	}
+	if c.RetryFailedJobs == nil {
+		t := true
+		c.RetryFailedJobs = &t
+	}
+	if c.NoPipelineTimeout.Duration == 0 {
+		c.NoPipelineTimeout = metav1.Duration{Duration: DefaultNoPipelineTimeout}
+	}
+	return c
 }

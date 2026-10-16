@@ -31,7 +31,12 @@ GitLab instance or the real agent CLIs.
         │       └▶ blocking findings? fix (same session), ≤ maxIterations
         │   commit, push agent/<iid>-<slug>, open Draft MR "Closes #iid"
         ▼
- issue -> agent::review (or agent::needs-input when the agent has questions)
+ operator follows the MR pipeline of the pushed commit
+        │   red: retry failed jobs once; still red → CI fix run with the
+        │   failing jobs' log excerpts (≤ ci.maxFixRounds), unless the same
+        │   jobs fail on the default branch too
+        ▼
+ issue -> agent::review when green (or agent::needs-input on questions / CI given up)
         │
         ├── human comments "/agent …" on issue or MR ─▶ another run (resumed session)
         ├── human moves the issue back to agent::ready  ─▶ another run
@@ -133,6 +138,28 @@ nothing is lost.
   second model call to parse.
 * Spend is visible per task: `kubectl get agenttasks` shows the accumulated
   cost the CLIs report.
+
+## CI feedback
+
+The agent runs the build and tests it knows about, but the project's
+pipeline usually checks more (other jobs, services, the merge result). So a
+push is not "done" until its pipeline is green:
+
+* The runner records the pushed commit (`status.run.pushedSHA`) and leaves
+  the issue in `agent::working`.
+* The project controller polls the pipeline of that commit on its normal
+  GitLab poll – no tokens – and records it in `status.ci`.
+* Red pipelines are retried once (flaky jobs cost nothing). If the same jobs
+  fail in the latest finished pipeline of the default branch, the agent is
+  not involved. Otherwise the operator requests a CI fix run
+  (`spec.source.ciFixPipelineID`).
+* A CI fix run resumes the implementer's session with the failed jobs and a
+  cleaned excerpt of their logs (ANSI codes, section markers and progress
+  output removed, the last 150 lines / 8 KB of at most 3 jobs), marked as
+  untrusted data. Reviewers are skipped for these runs.
+* `status.run.ciRound` counts CI fix runs since the last push a human asked
+  for; after `ci.maxFixRounds` the issue goes to needs-input with the
+  failing jobs. A fix run that pushes nothing new also ends the loop.
 
 ## Engines, profiles and subscriptions
 
@@ -256,7 +283,9 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
 | `internal/runner/workspace.go` | agent-side checkout (local git only) |
 | `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab |
-| `internal/runner/implement.go` | implement → review → fix → push → MR pipeline |
+| `internal/runner/implement.go` | implement → review → fix → push → MR pipeline; CI fix runs |
+| `internal/runner/ci.go` | CI fix prompt, log excerpts |
+| `internal/controller/ci.go` | CI feedback loop: pipeline tracking, retry, fix requests, final labels |
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/runner/git.go` | runner-side bare mirror (the only git that talks to GitLab) |
@@ -268,7 +297,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 
 Done: credential split into runner and agent containers, bundle-based git
 exchange, optional NetworkPolicy (see Security); usage limit backoff (see
-Engines, profiles and subscriptions).
+Engines, profiles and subscriptions); CI feedback loop (see CI feedback).
 
 Next:
 
@@ -281,5 +310,4 @@ Later:
 * GitLab issue links (`blocks`) for dependencies on Premium instances.
 * Group milestones and group-level `AgentProject`s.
 * Rebase/conflict handling when `main` moves under a long-lived MR.
-* CI feedback: feed failed MR pipeline jobs to the implementer on `/agent fix-ci`.
 * Metrics: runs, cost, durations per project, role and profile.

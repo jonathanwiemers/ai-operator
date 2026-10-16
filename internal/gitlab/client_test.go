@@ -83,3 +83,48 @@ func TestErrorsAndNotFound(t *testing.T) {
 		t.Fatalf("expected not found, got %v", err)
 	}
 }
+
+func TestPipelinesJobsAndTrace(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.Method+" "+r.URL.EscapedPath()+"?"+r.URL.RawQuery)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pipelines"):
+			_ = json.NewEncoder(w).Encode([]Pipeline{{ID: 7, SHA: "abc", Status: "failed"}})
+		case strings.HasSuffix(r.URL.Path, "/pipelines/7/jobs"):
+			_ = json.NewEncoder(w).Encode([]Job{{ID: 70, Name: "test", Status: "failed"}})
+		case strings.HasSuffix(r.URL.Path, "/jobs/70/trace"):
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte("FAIL: TestX\n"))
+		case strings.HasSuffix(r.URL.Path, "/pipelines/7/retry"):
+			_ = json.NewEncoder(w).Encode(Pipeline{ID: 7, Status: "running"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	ctx := context.Background()
+
+	ps, err := c.ListPipelines(ctx, "g/p", ListPipelinesOptions{SHA: "abc", Limit: 1})
+	if err != nil || len(ps) != 1 || ps[0].Status != "failed" {
+		t.Fatalf("pipelines: %+v %v", ps, err)
+	}
+	jobs, err := c.ListPipelineJobs(ctx, "g/p", 7, "failed")
+	if err != nil || len(jobs) != 1 || jobs[0].Name != "test" {
+		t.Fatalf("jobs: %+v %v", jobs, err)
+	}
+	trace, err := c.JobTrace(ctx, "g/p", 70)
+	if err != nil || trace != "FAIL: TestX\n" {
+		t.Fatalf("trace: %q %v", trace, err)
+	}
+	if p, err := c.RetryPipeline(ctx, "g/p", 7); err != nil || p.Status != "running" {
+		t.Fatalf("retry: %+v %v", p, err)
+	}
+	all := strings.Join(queries, "\n")
+	for _, want := range []string{"sha=abc", "per_page=1", "order_by=id", "scope%5B%5D=failed", "POST /api/v4/projects/g%2Fp/pipelines/7/retry"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("requests miss %q:\n%s", want, all)
+		}
+	}
+}

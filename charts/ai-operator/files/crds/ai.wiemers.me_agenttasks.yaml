@@ -35,6 +35,9 @@ spec:
     - jsonPath: .status.run.costUSD
       name: Cost
       type: string
+    - jsonPath: .status.ci.state
+      name: CI
+      type: string
     - jsonPath: .status.run.deferredUntil
       name: Retry
       priority: 1
@@ -126,6 +129,12 @@ spec:
                   Source records which GitLab state the operator has already turned into
                   run requests, so that every change triggers exactly one run.
                 properties:
+                  ciFixPipelineID:
+                    description: |-
+                      CIFixPipelineID is the failed pipeline the operator asked the agent to
+                      fix with the latest run request.
+                    format: int64
+                    type: integer
                   descriptionHash:
                     description: DescriptionHash of the milestone description (Spec
                       tasks).
@@ -166,6 +175,44 @@ spec:
               are written by the operator, Run is written by the runner inside the pod.
               Both sides use merge patches so they never overwrite each other.
             properties:
+              ci:
+                description: CI is the operator's view of the pipeline of the agent's
+                  last push.
+                properties:
+                  failedJobs:
+                    description: FailedJobs of the latest failed pipeline.
+                    items:
+                      type: string
+                    type: array
+                  pipelineID:
+                    format: int64
+                    type: integer
+                  pipelineURL:
+                    type: string
+                  retried:
+                    description: Retried is set once the failed jobs of the pipeline
+                      were retried.
+                    type: boolean
+                  sha:
+                    description: SHA of the pushed commit this status is about.
+                    type: string
+                  state:
+                    description: CIState is the state of the pipeline of the agent's
+                      last push.
+                    enum:
+                    - Pending
+                    - Running
+                    - Fixing
+                    - Success
+                    - Failed
+                    - BaseFailing
+                    - Canceled
+                    - None
+                    type: string
+                required:
+                - sha
+                - state
+                type: object
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current
@@ -250,6 +297,16 @@ spec:
                   branch:
                     description: Branch the agent pushes to.
                     type: string
+                  ciFixedPipelineID:
+                    description: CIFixedPipelineID is the failed pipeline the last
+                      CI fix run handled.
+                    format: int64
+                    type: integer
+                  ciRound:
+                    description: CIRound counts the CI fix runs since the last push
+                      a human asked for.
+                    format: int32
+                    type: integer
                   costUSD:
                     description: CostUSD is the accumulated model spend of this task,
                       as a decimal string.
@@ -293,6 +350,14 @@ spec:
                       has finished.
                     format: int64
                     type: integer
+                  pushedAt:
+                    description: PushedAt is when PushedSHA was pushed.
+                    format: date-time
+                    type: string
+                  pushedSHA:
+                    description: PushedSHA is the commit the runner last pushed to
+                      the agent's branch.
+                    type: string
                   runCount:
                     description: RunCount is the number of runs performed so far.
                     format: int32

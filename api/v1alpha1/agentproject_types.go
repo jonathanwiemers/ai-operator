@@ -27,6 +27,10 @@ type AgentProjectSpec struct {
 	// +optional
 	Lifecycle LifecycleSpec `json:"lifecycle,omitempty"`
 
+	// CI configures how the agent reacts to the merge request pipeline.
+	// +optional
+	CI CISpec `json:"ci,omitempty"`
+
 	// PollInterval is how often GitLab is polled for changes.
 	// +kubebuilder:default="1m"
 	// +optional
@@ -344,6 +348,37 @@ type LifecycleSpec struct {
 	// +kubebuilder:default="1h"
 	// +optional
 	MaxUsageLimitBackoff metav1.Duration `json:"maxUsageLimitBackoff,omitempty"`
+}
+
+// CISpec configures the CI feedback loop: after the agent pushes, the
+// operator waits for the merge request pipeline. A green pipeline moves the
+// issue to review; a red one is retried once and then handed back to the
+// implementer with the failing jobs, up to MaxFixRounds times.
+type CISpec struct {
+	// Disabled turns the loop off: issues go to review right after the push.
+	// +optional
+	Disabled bool `json:"disabled,omitempty"`
+
+	// MaxFixRounds is how many times the agent may try to fix a red pipeline
+	// after a push triggered by a human, before the issue goes to
+	// needs-input.
+	// +kubebuilder:default=2
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	MaxFixRounds *int32 `json:"maxFixRounds,omitempty"`
+
+	// RetryFailedJobs retries the failed jobs of a red pipeline once before
+	// the agent spends tokens on it, to weed out flaky jobs.
+	// +kubebuilder:default=true
+	// +optional
+	RetryFailedJobs *bool `json:"retryFailedJobs,omitempty"`
+
+	// NoPipelineTimeout: if no pipeline shows up for the pushed commit
+	// within this time, the project is assumed to have no CI for it and the
+	// issue goes to review.
+	// +kubebuilder:default="10m"
+	// +optional
+	NoPipelineTimeout metav1.Duration `json:"noPipelineTimeout,omitempty"`
 }
 
 // AgentProjectStatus is the observed state of an AgentProject.

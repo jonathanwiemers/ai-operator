@@ -21,6 +21,7 @@ These parts are not covered by automated tests, so look here first:
 | GitLab | real API behaviour (scoped labels, pagination, MR creation, note authors) |
 | Prompts | quality of plans, sub-specs, profile choice, review findings |
 | Usage limits | the exact error texts the CLIs print when a subscription window or rate limit is hit |
+| CI loop | pipeline lookup by commit for branch and MR pipelines, job log format of your runners |
 
 ## 0. Prerequisites
 
@@ -143,9 +144,10 @@ profile label is kept. Editing the description again *without* a change
 * The reviewers run (two more agent invocations in the agent log).
 * Branch `agent/<iid>-<slug>` is pushed, and a **draft MR** "Draft: <title>"
   with `Closes #<iid>` and the summary is opened. The issue gets a comment
-  linking the MR, and the label becomes `agent::review`.
-* `npm test` passes on the branch (check out the MR locally or look at CI if
-  you add one), and new tests exist.
+  linking the MR. It stays in `agent::working` until the MR pipeline is
+  green – with the sample app's `changelog` job that takes one CI fix round
+  (see T17) – and then becomes `agent::review`.
+* The `test` job passes on the branch, and new tests exist.
 * The task's `status.run` shows `lastResult: Succeeded`, `branch`,
   `mergeRequestURL` and the cost.
 
@@ -325,6 +327,39 @@ Then comment `/agent add a code comment to the store`.
 * After the retry time both runs happen normally and the deferral fields are
   cleared.
 
+### T17 – CI feedback loop
+
+The sample app ships a `.gitlab-ci.yml` with a `changelog` job the agent is
+not told about: every MR must add a line to `CHANGELOG.md`. The first push of
+an agent MR therefore fails it. This needs CI runners for the project (on
+gitlab.com, shared runners with a verified account).
+
+1. Watch any issue from T4/T5 after the agent's first push.
+
+**Expected:**
+* The issue stays in `agent::working` while the pipeline runs;
+  `kubectl -n agents get agenttasks` shows the CI state (`Running`).
+* The pipeline fails on `changelog`; the failed jobs are retried once (a
+  retry appears in the pipeline), then the task goes to `Fixing` and a new
+  run starts. The runner log shows the CI fix run; the MR gets a "CI fix: …"
+  comment and a commit that adds a `CHANGELOG.md` entry.
+* The next pipeline is green, the CI state `Success`, and the issue moves to
+  `agent::review`.
+
+2. Make the failure unfixable: on the default branch, change the `changelog`
+   job's script to `exit 1`, then trigger a run on an issue (`/agent add a
+   comment to the store`).
+
+**Expected:** the same job now fails on the default branch too, so the
+operator does not involve the agent: the issue goes to `agent::review` with a
+comment that the failure also happens on the default branch. Revert the
+change afterwards.
+
+3. Optional: set `spec.ci.maxFixRounds: 0` and repeat step 1 on another issue.
+
+**Expected:** after the retry the issue goes straight to `agent::needs-input`
+with the failing job named.
+
 ## 3. When something fails
 
 Collect this before changing anything:
@@ -370,6 +405,7 @@ the collected output (remove tokens first).
 | T14 | Network policy (optional) | | |
 | T15 | Helm upgrade and uninstall | | |
 | T16 | Usage limits | | |
+| T17 | CI feedback loop | | |
 
 ## 5. Cleanup
 

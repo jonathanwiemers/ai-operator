@@ -162,6 +162,26 @@ another engine starts a new session with the full context.
 | `usageLimitBackoff` | `5m` | first wait after a usage or rate limit without a reported reset time; doubles per further hit |
 | `maxUsageLimitBackoff` | `1h` | cap for that wait |
 
+## `spec.ci`
+
+The CI feedback loop, see [usage.md](usage.md#ci-feedback).
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `disabled` | `false` | move issues to review right after the push, without waiting for CI |
+| `maxFixRounds` | `2` | CI fix runs per push you triggered, before the issue goes to needs-input |
+| `retryFailedJobs` | `true` | retry the failed jobs once before the agent is involved |
+| `noPipelineTimeout` | `10m` | no pipeline for the pushed commit within this time means "no CI" |
+
+The GitLab token needs the `api` scope to read pipelines and job logs and to
+retry jobs (Developer role).
+
+The operator finds the pipeline by the pushed commit, which covers branch
+pipelines and merge request pipelines. *Merged results* pipelines (GitLab
+Premium) run on a merge commit instead and are not found; with them the loop
+ends after `noPipelineTimeout` as "no CI". Set `ci.disabled: true` in that
+case until this is supported.
+
 ## Other `spec` fields
 
 | Field | Default | Description |

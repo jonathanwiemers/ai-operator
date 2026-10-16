@@ -666,6 +666,37 @@ spec:
                 required:
                 - credentialsSecretName
                 type: object
+              ci:
+                description: CI configures how the agent reacts to the merge request
+                  pipeline.
+                properties:
+                  disabled:
+                    description: 'Disabled turns the loop off: issues go to review
+                      right after the push.'
+                    type: boolean
+                  maxFixRounds:
+                    default: 2
+                    description: |-
+                      MaxFixRounds is how many times the agent may try to fix a red pipeline
+                      after a push triggered by a human, before the issue goes to
+                      needs-input.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  noPipelineTimeout:
+                    default: 10m
+                    description: |-
+                      NoPipelineTimeout: if no pipeline shows up for the pushed commit
+                      within this time, the project is assumed to have no CI for it and the
+                      issue goes to review.
+                    type: string
+                  retryFailedJobs:
+                    default: true
+                    description: |-
+                      RetryFailedJobs retries the failed jobs of a red pipeline once before
+                      the agent spends tokens on it, to weed out flaky jobs.
+                    type: boolean
+                type: object
               gitlab:
                 description: GitLab connection settings.
                 properties:

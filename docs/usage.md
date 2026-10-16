@@ -81,8 +81,31 @@ The operator moves the issue to `agent::working` and starts a pod named like
 4. The branch is pushed and a **draft MR** `Closes #42` is opened, or a
    comment is added to the existing MR.
 
-The issue then moves to **`agent::review`**. If the agent has questions, it
-moves to **`agent::needs-input`** instead.
+If the agent has questions, the issue moves to **`agent::needs-input`**.
+Otherwise it stays in `agent::working` until the MR pipeline has run (see
+[CI feedback](#ci-feedback)) and moves to **`agent::review`** once it is
+green. "Review" therefore always means: tests and CI pass, a human can look.
+
+## CI feedback
+
+After every push, the operator follows the pipeline of the pushed commit:
+
+| Pipeline | What happens |
+|----------|--------------|
+| running | the issue stays in `agent::working` |
+| green (also: skipped, or waiting for manual jobs) | `agent::review` |
+| red, first time | the failed jobs are retried once, to rule out flaky jobs |
+| still red, the same jobs also fail on the default branch | `agent::review` with a comment: not caused by this change |
+| still red | the agent gets the failing jobs and the end of their logs and fixes the cause (a "CI fix" comment on the MR) |
+| still red after 2 fix rounds | `agent::needs-input` with the failing jobs |
+| canceled | `agent::review` with a comment |
+| no pipeline within 10 minutes | `agent::review` (the project has no CI for this commit) |
+
+The fix rounds count from the last push you triggered (`/agent …` or moving
+the issue to ready), so every new instruction gets two fresh rounds. CI fix
+runs skip the reviewer agents. Job logs reach the agent as untrusted data.
+Configure the loop in `spec.ci` (see [configuration.md](configuration.md));
+`ci.disabled: true` restores "review right after the push".
 
 ## 4. Iterate
 

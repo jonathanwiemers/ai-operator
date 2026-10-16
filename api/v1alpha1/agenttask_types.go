@@ -82,6 +82,61 @@ type SourceState struct {
 	IssueUpdatedAt *metav1.Time `json:"issueUpdatedAt,omitempty"`
 	// +optional
 	MergeRequestUpdatedAt *metav1.Time `json:"mergeRequestUpdatedAt,omitempty"`
+
+	// CIFixPipelineID is the failed pipeline the operator asked the agent to
+	// fix with the latest run request.
+	// +optional
+	CIFixPipelineID int64 `json:"ciFixPipelineID,omitempty"`
+}
+
+// CIState is the state of the pipeline of the agent's last push.
+// +kubebuilder:validation:Enum=Pending;Running;Fixing;Success;Failed;BaseFailing;Canceled;None
+type CIState string
+
+const (
+	// CIStatePending: no pipeline yet for the pushed commit.
+	CIStatePending CIState = "Pending"
+	// CIStateRunning: the pipeline (or a retry of its failed jobs) runs.
+	CIStateRunning CIState = "Running"
+	// CIStateFixing: the agent was asked to fix the red pipeline.
+	CIStateFixing CIState = "Fixing"
+	// CIStateSuccess: green (or skipped / waiting for manual jobs).
+	CIStateSuccess CIState = "Success"
+	// CIStateFailed: still red after MaxFixRounds, handed to a human.
+	CIStateFailed CIState = "Failed"
+	// CIStateBaseFailing: the same jobs fail on the default branch too.
+	CIStateBaseFailing CIState = "BaseFailing"
+	// CIStateCanceled: the pipeline was canceled.
+	CIStateCanceled CIState = "Canceled"
+	// CIStateNone: no pipeline ran for the commit.
+	CIStateNone CIState = "None"
+)
+
+// Final reports whether the loop is done with this commit.
+func (s CIState) Final() bool {
+	switch s {
+	case CIStateSuccess, CIStateFailed, CIStateBaseFailing, CIStateCanceled, CIStateNone:
+		return true
+	}
+	return false
+}
+
+// CIStatus tracks the pipeline of the agent's last push. It is written by
+// the operator.
+type CIStatus struct {
+	// SHA of the pushed commit this status is about.
+	SHA   string  `json:"sha"`
+	State CIState `json:"state"`
+	// +optional
+	PipelineID int64 `json:"pipelineID,omitempty"`
+	// +optional
+	PipelineURL string `json:"pipelineURL,omitempty"`
+	// Retried is set once the failed jobs of the pipeline were retried.
+	// +optional
+	Retried bool `json:"retried,omitempty"`
+	// FailedJobs of the latest failed pipeline.
+	// +optional
+	FailedJobs []string `json:"failedJobs,omitempty"`
 }
 
 // TaskPhase is a coarse summary of where a task is in its lifecycle.
@@ -138,6 +193,10 @@ type AgentTaskStatus struct {
 
 	// +optional
 	Run RunStatus `json:"run,omitempty"`
+
+	// CI is the operator's view of the pipeline of the agent's last push.
+	// +optional
+	CI *CIStatus `json:"ci,omitempty"`
 
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -198,6 +257,22 @@ type RunStatus struct {
 	// drives the exponential backoff when the reset time is unknown.
 	// +optional
 	Deferrals int32 `json:"deferrals,omitempty"`
+
+	// PushedSHA is the commit the runner last pushed to the agent's branch.
+	// +optional
+	PushedSHA string `json:"pushedSHA,omitempty"`
+
+	// PushedAt is when PushedSHA was pushed.
+	// +optional
+	PushedAt *metav1.Time `json:"pushedAt,omitempty"`
+
+	// CIRound counts the CI fix runs since the last push a human asked for.
+	// +optional
+	CIRound int32 `json:"ciRound,omitempty"`
+
+	// CIFixedPipelineID is the failed pipeline the last CI fix run handled.
+	// +optional
+	CIFixedPipelineID int64 `json:"ciFixedPipelineID,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -209,6 +284,7 @@ type RunStatus struct {
 // +kubebuilder:printcolumn:name="Result",type=string,JSONPath=`.status.run.lastResult`
 // +kubebuilder:printcolumn:name="Runs",type=integer,JSONPath=`.status.run.runCount`
 // +kubebuilder:printcolumn:name="Cost",type=string,JSONPath=`.status.run.costUSD`
+// +kubebuilder:printcolumn:name="CI",type=string,JSONPath=`.status.ci.state`
 // +kubebuilder:printcolumn:name="Retry",type=date,JSONPath=`.status.run.deferredUntil`,priority=1
 // +kubebuilder:printcolumn:name="MR",type=string,JSONPath=`.status.run.mergeRequestURL`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
