@@ -1,15 +1,5 @@
 # CLAUDE.md
 
-## Commits and pull requests
-
-- Don't add Claude attribution to commits or pull requests: no
-  `Co-Authored-By: Claude …` trailer, no `Claude-Session:` link, no
-  "Generated with Claude Code" footer. `.claude/settings.json` turns these
-  off for Claude Code sessions in this repo.
-- Commit as the repository owner, not as Claude:
-  `git config user.name "Jonathan Wiemers"` and
-  `git config user.email "jonathan@wiemers.me"`.
-
 ## Development
 
 - Go 1.26. After changing types or kubebuilder markers in `api/` or
