@@ -45,6 +45,30 @@ agent:
   namespaces: []
   # Create the namespaces listed above.
   createNamespaces: false
+  # NetworkPolicy for the agent pods in agent.namespaces: no ingress, and no
+  # egress to cloud metadata or private networks (except allowedCIDRs). The
+  # agent pods need the Kubernetes API, GitLab, the model APIs and package
+  # registries; add private ones to allowedCIDRs before enabling it.
+  networkPolicy:
+    enabled: false
+    # Private destinations the pods still need, e.g. the Kubernetes API
+    # server endpoints (kubectl get endpoints kubernetes), a self-hosted
+    # GitLab or an internal package mirror.
+    allowedCIDRs: []
+    blockedCIDRs:
+      - 169.254.0.0/16 # link-local, cloud metadata endpoints
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 100.64.0.0/10
+      - fc00::/7
+      - fe80::/10
+    # Pods that serve DNS.
+    dnsSelector:
+      namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
 
 metrics:
   port: 8080

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -232,14 +233,7 @@ func TestImplementEndToEnd(t *testing.T) {
 		WithStatusSubresource(&aiv1.AgentTask{}).Build()
 
 	engine := &scriptedEngine{}
-	r := &Runner{
-		K8s: k8s, Namespace: "agents", TaskName: task.Name,
-		Workspace:  filepath.Join(tmp, "workspace"),
-		NewGitLab:  func(string, string) gitlab.API { return gl },
-		Engines:    map[aiv1.Engine]Engine{aiv1.EngineClaude: engine},
-		AuthorName: "AI Operator", AuthorEmail: "ai@example.com",
-		Log: logr.Discard(),
-	}
+	r := newTestRunner(t, tmp, k8s, gl, engine, task.Name)
 
 	ran, err := r.Step(context.Background())
 	if err != nil || !ran {
@@ -288,6 +282,14 @@ func TestImplementEndToEnd(t *testing.T) {
 		t.Fatalf("unexpected run status %+v", run)
 	}
 
+	// Meanwhile a human pushes a commit to the agent's branch.
+	gitCmd(t, seed, "fetch", "origin")
+	gitCmd(t, seed, "checkout", "-b", "agent/42-add-paypal-button", "origin/agent/42-add-paypal-button")
+	_ = os.WriteFile(filepath.Join(seed, "HUMAN.md"), []byte("by hand\n"), 0o644)
+	gitCmd(t, seed, "add", ".")
+	gitCmd(t, seed, "commit", "-m", "Human tweak")
+	gitCmd(t, seed, "push", "origin", "HEAD:agent/42-add-paypal-button")
+
 	// A follow-up comment resumes the implementer session with just the delta.
 	gl.AddNote(42, gitlab.User{ID: 1, Username: "jonathan"}, "/agent also log the payment id")
 	orig := got.DeepCopy()
@@ -303,6 +305,90 @@ func TestImplementEndToEnd(t *testing.T) {
 	if first.Resume != "sess-impl" || !strings.Contains(first.Prompt, "also log the payment id") || strings.Contains(first.Prompt, "Implement issue #42") {
 		t.Fatalf("follow-up should resume with only the new comment: resume=%q prompt=%q", first.Resume, first.Prompt)
 	}
+	// The second run built on the human's commit and pushed on top of it.
+	log = gitCmd(t, tmp, "--git-dir", origin, "log", "--format=%s", "agent/42-add-paypal-button")
+	if lines := strings.Split(log, "\n"); len(lines) < 5 || lines[1] != "Human tweak" {
+		t.Fatalf("expected a new agent commit on top of the human commit:\n%s", log)
+	}
+}
+
+// newTestRunner wires a runner to a real agent server over a unix socket, the
+// same way the two containers of an agent pod are connected.
+func newTestRunner(t *testing.T, tmp string, k8s client.Client, gl gitlab.API, engine Engine, task string) *Runner {
+	t.Helper()
+	// Unix socket paths are limited to ~100 bytes; t.TempDir() can be longer.
+	sockDir, err := os.MkdirTemp("", "ai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	exchange := filepath.Join(tmp, "exchange")
+	if err := os.MkdirAll(exchange, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	socket := filepath.Join(sockDir, "agent.sock")
+	server := &AgentServer{Agent: &LocalAgent{
+		Workspace: &Workspace{Dir: filepath.Join(tmp, "agent", "repo"), AuthorName: "AI Operator", AuthorEmail: "ai@example.com"},
+		Engines:   map[aiv1.Engine]Engine{aiv1.EngineClaude: engine},
+		Exchange:  exchange,
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := server.Serve(ctx, socket); err != nil {
+			t.Errorf("agent server: %v", err)
+		}
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+
+	agent := NewAgentClient(socket)
+	for i := 0; agent.Ready(context.Background()) != nil; i++ {
+		if i > 100 {
+			t.Fatal("agent server did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return &Runner{
+		K8s: k8s, Namespace: "agents", TaskName: task,
+		NewGitLab: func(string, string) gitlab.API { return gl },
+		Agent:     agent,
+		Mirror:    &Mirror{Dir: filepath.Join(tmp, "runner", "mirror.git"), Token: "secret-token"},
+		StateDir:  filepath.Join(tmp, "runner"),
+		Exchange:  exchange,
+		Log:       logr.Discard(),
+	}
+}
+
+func TestMirrorEnvIsMinimal(t *testing.T) {
+	t.Setenv("GITLAB_TOKEN", "glpat-secret")
+	t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+	m := &Mirror{Dir: "/runner/mirror.git", Token: "glpat-secret"}
+	local := strings.Join(m.env(false), "\n")
+	if strings.Contains(local, "glpat-secret") || strings.Contains(local, "KUBERNETES") {
+		t.Fatalf("local git commands must not see credentials:\n%s", local)
+	}
+	remote := strings.Join(m.env(true), "\n")
+	if strings.Contains(remote, "GITLAB_TOKEN") || !strings.Contains(remote, "GIT_CONFIG_VALUE_0=Authorization: Basic ") {
+		t.Fatalf("remote commands get the token only as an auth header:\n%s", remote)
+	}
+	for _, want := range []string{"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"} {
+		if !strings.Contains(local, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+}
+
+func TestAgentRejectsPathsOutsideExchange(t *testing.T) {
+	a := &LocalAgent{Workspace: &Workspace{Dir: t.TempDir()}, Exchange: "/exchange"}
+	for _, p := range []string{"/runner/mirror.git/config", "/exchange/../runner/x", "/exchange"} {
+		if _, err := a.Bundle(context.Background(), "b", "main", p); err == nil {
+			t.Errorf("bundle path %q must be rejected", p)
+		}
+		if err := a.Prepare(context.Background(), PrepareRequest{Bundle: p}); err == nil {
+			t.Errorf("prepare path %q must be rejected", p)
+		}
+	}
 }
 
 func TestSpecSchemaListsProfiles(t *testing.T) {
@@ -317,5 +403,71 @@ func TestSpecSchemaListsProfiles(t *testing.T) {
 	prompt := buildSpecPrompt(&gitlab.Milestone{Title: "M", Description: "spec"}, nil, aiv1.DefaultProfiles(), false)
 	if !strings.Contains(prompt, "- fast: Small") || !strings.Contains(prompt, "- strong: Everything else") {
 		t.Fatalf("profiles missing from prompt:\n%s", prompt)
+	}
+}
+
+type planEngine struct{ calls []Invocation }
+
+func (p *planEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
+	p.calls = append(p.calls, inv)
+	// The planner works on a checkout of the default branch.
+	if _, err := os.Stat(filepath.Join(inv.Dir, "README.md")); err != nil {
+		return nil, err
+	}
+	b, _ := json.Marshal(SpecPlan{Summary: "two steps", Issues: []PlannedItem{
+		{Key: "api", Title: "API", Description: "Build the API.", Profile: "strong"},
+		{Key: "ui", Title: "UI", Description: "Build the UI.", Profile: "fast", DependsOn: []string{"api"}},
+	}})
+	return &Result{SessionID: "sess-spec", Structured: b}, nil
+}
+
+func TestSpecEndToEnd(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	tmp := t.TempDir()
+	origin := filepath.Join(tmp, "origin.git")
+	seed := filepath.Join(tmp, "seed")
+	gitCmd(t, tmp, "init", "--bare", "--initial-branch=main", origin)
+	gitCmd(t, tmp, "clone", origin, seed)
+	_ = os.WriteFile(filepath.Join(seed, "README.md"), []byte("app\n"), 0o644)
+	gitCmd(t, seed, "add", ".")
+	gitCmd(t, seed, "commit", "-m", "init")
+	gitCmd(t, seed, "push", "origin", "HEAD:main")
+
+	gl := gitlabfake.New()
+	gl.Project.HTTPURLToRepo = origin
+	gl.Milestones = []gitlab.Milestone{{ID: 11, IID: 3, Title: "Checkout v2", Description: "/agent spec\nBuild it."}}
+
+	scheme := runtime.NewScheme()
+	_ = aiv1.AddToScheme(scheme)
+	project := &aiv1.AgentProject{
+		ObjectMeta: metav1.ObjectMeta{Name: "shop", Namespace: "agents"},
+		Spec:       aiv1.AgentProjectSpec{GitLab: aiv1.GitLabSpec{Project: "group/app"}},
+	}
+	task := &aiv1.AgentTask{
+		ObjectMeta: metav1.ObjectMeta{Name: "shop-spec-m3-checkout-v2", Namespace: "agents"},
+		Spec: aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeSpec, RunRequest: 1,
+			Milestone: &aiv1.MilestoneRef{ID: 11, IID: 3, Title: "Checkout v2"}},
+	}
+	k8s := fake.NewClientBuilder().WithScheme(scheme).WithObjects(project, task).
+		WithStatusSubresource(&aiv1.AgentTask{}).Build()
+
+	engine := &planEngine{}
+	r := newTestRunner(t, tmp, k8s, gl, engine, task.Name)
+	if ran, err := r.Step(context.Background()); err != nil || !ran {
+		t.Fatalf("ran=%v err=%v", ran, err)
+	}
+	if len(engine.calls) != 1 || !engine.calls[0].ReadOnly {
+		t.Fatalf("expected one read-only planner call, got %+v", engine.calls)
+	}
+	api, ui := gl.Issues[1], gl.Issues[2]
+	if api == nil || ui == nil || !api.HasLabel("agent-profile::strong") || !ui.HasLabel("agent-profile::fast") {
+		t.Fatalf("planned issues missing or mislabelled: %+v %+v", api, ui)
+	}
+	var got aiv1.AgentTask
+	_ = k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: task.Name}, &got)
+	if got.Status.Run.LastResult != aiv1.RunResultSucceeded || !strings.Contains(got.Status.Run.Summary, "2 created") {
+		t.Fatalf("unexpected run status %+v", got.Status.Run)
 	}
 }

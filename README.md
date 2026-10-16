@@ -34,6 +34,7 @@ are used only where they pay off: planning and `strong` issues. Reviews and
 | [docs/design.md](docs/design.md) | architecture, CRDs, pod topology, token economy, security, roadmap |
 | [charts/ai-operator](charts/ai-operator/README.md) | Helm chart and its values |
 | [docs/releasing.md](docs/releasing.md) | calendar versions, release workflow, published images and chart |
+| [docs/sandbox-test-plan.md](docs/sandbox-test-plan.md) | end-to-end test on kind with a real GitLab project and the real agent CLIs |
 
 ## Quick start
 

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -110,8 +111,8 @@ func TestTaskLifecycle(t *testing.T) {
 	if got := e.task(name).Status.Phase; got != aiv1.TaskPhaseRunning {
 		t.Fatalf("phase %s", got)
 	}
-	if pod.Spec.Containers[0].EnvFrom[0].SecretRef.Name != "agent-creds" {
-		t.Fatal("engine credentials must be injected from the credentials secret")
+	if c := container(&pod, AgentContainer); c == nil || c.EnvFrom[0].SecretRef.Name != "agent-creds" {
+		t.Fatal("engine credentials must be injected into the agent container")
 	}
 	if !metav1.IsControlledBy(&pod, e.task(name)) || !metav1.IsControlledBy(&pvc, e.task(name)) {
 		t.Fatal("pod and pvc must be owned by the task")
@@ -241,5 +242,138 @@ func TestDefaultAgentImage(t *testing.T) {
 	e.reconcile("x")
 	if !e.exists(&pod, "x") || pod.Spec.Containers[0].Image != e.r.DefaultAgentImage {
 		t.Fatalf("pod should use the operator's default image, got %+v", pod.Spec.Containers)
+	}
+}
+
+func container(pod *corev1.Pod, name string) *corev1.Container {
+	for i := range pod.Spec.Containers {
+		if pod.Spec.Containers[i].Name == name {
+			return &pod.Spec.Containers[i]
+		}
+	}
+	return nil
+}
+
+// TestPodIsolatesCredentials pins down the security properties of the pod:
+// the agent container (where the model runs) gets no GitLab token, no
+// service account token and no view of the runner's state.
+func TestPodIsolatesCredentials(t *testing.T) {
+	spec := testProject().Spec.WithDefaults()
+	spec.Agents.Env = []corev1.EnvVar{{Name: "EXTRA", Value: "1"}}
+	spec.Agents.CacheClaimName = "cache"
+	pod := buildPod(newImplTask("x", 1), spec)
+
+	if pod.Spec.AutomountServiceAccountToken == nil || *pod.Spec.AutomountServiceAccountToken {
+		t.Fatal("the service account token must not be auto-mounted into every container")
+	}
+	if pod.Spec.ShareProcessNamespace != nil && *pod.Spec.ShareProcessNamespace {
+		t.Fatal("containers must not share a process namespace")
+	}
+	runner, agent := container(pod, RunnerContainer), container(pod, AgentContainer)
+	if runner == nil || agent == nil || len(pod.Spec.Containers) != 2 {
+		t.Fatalf("expected runner and agent containers, got %d", len(pod.Spec.Containers))
+	}
+
+	hasEnv := func(c *corev1.Container, name string) bool {
+		for _, e := range c.Env {
+			if e.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	mountedAt := func(c *corev1.Container, volume string) (string, bool) {
+		for _, m := range c.VolumeMounts {
+			if m.Name == volume {
+				return m.SubPath, true
+			}
+		}
+		return "", false
+	}
+
+	if !hasEnv(runner, "GITLAB_TOKEN") || hasEnv(agent, "GITLAB_TOKEN") {
+		t.Fatal("GITLAB_TOKEN must be in the runner container only")
+	}
+	if len(runner.EnvFrom) != 0 || len(agent.EnvFrom) != 1 {
+		t.Fatal("agent CLI credentials belong to the agent container only")
+	}
+	if _, ok := mountedAt(runner, "kube-api-access"); !ok {
+		t.Fatal("runner needs the service account token")
+	}
+	if _, ok := mountedAt(agent, "kube-api-access"); ok {
+		t.Fatal("agent must not get the service account token")
+	}
+	if sub, _ := mountedAt(runner, "workspace"); sub != "runner" {
+		t.Fatalf("runner must mount its own sub-path, got %q", sub)
+	}
+	if sub, _ := mountedAt(agent, "workspace"); sub != "agent" {
+		t.Fatalf("agent must mount its own sub-path, got %q", sub)
+	}
+	if _, ok := mountedAt(runner, "cache"); ok {
+		t.Fatal("dependency caches belong to the agent container")
+	}
+	if !hasEnv(agent, "EXTRA") || hasEnv(runner, "EXTRA") {
+		t.Fatal("agents.env is for the agent container")
+	}
+	for _, c := range []*corev1.Container{runner, agent} {
+		if _, ok := mountedAt(c, "exchange"); !ok {
+			t.Fatalf("%s must mount the exchange volume", c.Name)
+		}
+	}
+	if !*runner.SecurityContext.ReadOnlyRootFilesystem {
+		t.Fatal("runner root filesystem should be read-only")
+	}
+	if len(pod.Spec.InitContainers) != 1 || pod.Spec.InitContainers[0].Command[1] != "init-workspace" {
+		t.Fatal("sub-paths must be created by an init container running as the agent user")
+	}
+	if got := agent.Command; len(got) != 2 || got[1] != "agent-server" {
+		t.Fatalf("agent container must run the agent server, got %v", got)
+	}
+}
+
+func TestProjectChangesRequeueItsTasks(t *testing.T) {
+	other := newImplTask("other-project-task", 1)
+	other.Labels[LabelProject] = "other"
+	e := newTaskEnv(t, newImplTask("a", 1), newImplTask("b", 1), other)
+	reqs := e.r.tasksOfProject(e.ctx, testProject())
+	var names []string
+	for _, r := range reqs {
+		names = append(names, r.Name)
+	}
+	slices.Sort(names)
+	if !slices.Equal(names, []string{"a", "b"}) {
+		t.Fatalf("expected the project's tasks a and b, got %v", names)
+	}
+}
+
+// Raising maxRunsPerTask on the project unblocks a blocked task.
+func TestRaisingRunLimitUnblocks(t *testing.T) {
+	task := newImplTask("x", 2)
+	task.Status.Run.RunCount = 1
+	task.Status.Run.ObservedRunRequest = 1
+	task.Status.Run.ActiveRunRequest = 1
+	e := newTaskEnv(t, task)
+	project := &aiv1.AgentProject{}
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, project); err != nil {
+		t.Fatal(err)
+	}
+	project.Spec.Lifecycle.MaxRunsPerTask = 1
+	if err := e.c.Update(e.ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseBlocked {
+		t.Fatalf("phase %s", got)
+	}
+	project.Spec.Lifecycle.MaxRunsPerTask = 5
+	if err := e.c.Update(e.ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range e.r.tasksOfProject(e.ctx, project) {
+		e.reconcile(req.Name)
+	}
+	var pod corev1.Pod
+	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseRunning || !e.exists(&pod, "x") {
+		t.Fatalf("task should run after raising the limit, phase %s", got)
 	}
 }

@@ -1,7 +1,13 @@
-// Package runner is the process running inside an agent pod. It waits for run
-// requests on its AgentTask, prepares context from GitLab, drives the claude
-// CLI for the spec / implement / review roles and writes results back to
-// GitLab. The model itself never sees GitLab or Kubernetes credentials.
+// Package runner implements the two processes of an agent pod.
+//
+// The runner container holds the credentials: it waits for run requests on
+// its AgentTask, prepares context from GitLab, keeps a bare mirror of the
+// repository and pushes, opens merge requests and reports back. The agent
+// container holds only the agent CLI credentials: its AgentServer runs the
+// agent CLIs and all git commands in the checkout the model works in. The
+// two talk over a unix socket and exchange commits as git bundles, so the
+// model can neither read the GitLab or Kubernetes credentials nor make the
+// runner execute anything.
 package runner
 
 import (
@@ -28,17 +34,19 @@ type Runner struct {
 	K8s       client.Client
 	Namespace string
 	TaskName  string
-	// Workspace is the mount path of the workspace PVC.
-	Workspace string
 	// GitLabToken is used for the GitLab API and git over HTTPS.
 	GitLabToken string
 	NewGitLab   func(baseURL, token string) gitlab.API
-	// Engines available in this pod, keyed by engine name.
-	Engines map[aiv1.Engine]Engine
+	// Agent runs the agent CLIs and owns the checkout.
+	Agent Agent
+	// Mirror is the runner's own copy of the repository.
+	Mirror *Mirror
+	// StateDir holds runner state; the agent cannot read or modify it.
+	StateDir string
+	// Exchange is the directory shared with the agent for bundles.
+	Exchange string
 	// PollInterval between checks for new run requests.
 	PollInterval time.Duration
-	AuthorName   string
-	AuthorEmail  string
 	Log          logr.Logger
 	Now          func() time.Time
 }
@@ -53,8 +61,9 @@ type Outcome struct {
 	MRURL   string
 }
 
-// state is persisted on the workspace PVC so it survives pod restarts and
-// hibernation (but not archiving, after which everything starts fresh).
+// state is persisted on the runner's part of the workspace PVC, so it survives
+// pod restarts and hibernation (but not archiving, after which everything
+// starts fresh).
 type state struct {
 	// Sessions maps "<role>/<engine>" to the engine's session ID. Switching
 	// a role to another engine simply starts a new session.
@@ -83,8 +92,7 @@ func (r *Runner) now() time.Time {
 	return time.Now()
 }
 
-func (r *Runner) repoDir() string   { return filepath.Join(r.Workspace, "repo") }
-func (r *Runner) stateFile() string { return filepath.Join(r.Workspace, ".ai-operator", "state.json") }
+func (r *Runner) stateFile() string { return filepath.Join(r.StateDir, "state.json") }
 
 func (r *Runner) loadState() state {
 	var s state
@@ -102,8 +110,46 @@ func (r *Runner) saveState(s state) error {
 	return os.WriteFile(r.stateFile(), b, 0o600)
 }
 
-func (r *Runner) git() *Git {
-	return &Git{Dir: r.repoDir(), Token: r.GitLabToken, AuthorName: r.AuthorName, AuthorEmail: r.AuthorEmail}
+// syncWorkspace brings the mirror up to date and hands the agent's checkout
+// exactly the commits it needs, then checks out branch.
+func (r *Runner) syncWorkspace(ctx context.Context, url, branch, base string) error {
+	branches := []string{base}
+	if branch != base {
+		branches = append(branches, branch)
+	}
+	if err := r.Mirror.Sync(ctx, url, branches...); err != nil {
+		return err
+	}
+	known, err := r.Agent.RemoteRefs(ctx)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(r.Exchange, "to-agent.bundle")
+	refs, written, err := r.Mirror.Bundle(ctx, path, known, branches...)
+	if err != nil {
+		return err
+	}
+	req := PrepareRequest{Refs: refs, Branch: branch, Base: base}
+	if written {
+		req.Bundle = path
+		defer os.Remove(path)
+	}
+	return r.Agent.Prepare(ctx, req)
+}
+
+// publish moves the agent's new commits on branch to the remote. It reports
+// whether anything was pushed.
+func (r *Runner) publish(ctx context.Context, branch, base string) (bool, error) {
+	path := filepath.Join(r.Exchange, "from-agent.bundle")
+	written, err := r.Agent.Bundle(ctx, branch, base, path)
+	if err != nil || !written {
+		return false, err
+	}
+	defer os.Remove(path)
+	if err := r.Mirror.Import(ctx, path, branch); err != nil {
+		return false, err
+	}
+	return true, r.Mirror.Push(ctx, branch)
 }
 
 // Loop processes run requests until ctx is cancelled.
@@ -111,6 +157,20 @@ func (r *Runner) Loop(ctx context.Context) error {
 	interval := r.PollInterval
 	if interval == 0 {
 		interval = 10 * time.Second
+	}
+	// Do not pick up work before the agent container is up, otherwise the
+	// first run of a fresh pod would fail.
+	for {
+		err := r.Agent.Ready(ctx)
+		if err == nil {
+			break
+		}
+		r.Log.Info("waiting for the agent container", "error", err.Error())
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(2 * time.Second):
+		}
 	}
 	for {
 		ran, err := r.Step(ctx)
@@ -220,43 +280,29 @@ func (r *Runner) morePending(ctx context.Context, request int64) bool {
 	return task.Spec.RunRequest > request
 }
 
-// engine returns the engine configured for a role.
-func (r *Runner) engine(role aiv1.RoleSpec) (Engine, error) {
-	e, ok := r.Engines[role.Engine]
-	if !ok {
-		return nil, fmt.Errorf("engine %q is not available in this agent image", role.Engine)
-	}
-	return e, nil
-}
-
 // invoke runs a role, resuming the given session when possible. If the
 // session cannot be resumed (e.g. the workspace was archived), it starts a
 // fresh session with the full prompt.
 func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
-	eng, err := r.engine(role)
-	if err != nil {
-		return nil, err
-	}
 	if inv.Resume == "" {
 		inv.Prompt = fullPrompt
-		return eng.Run(ctx, inv)
+		return r.Agent.Run(ctx, role.Engine, inv)
 	}
-	res, err := eng.Run(ctx, inv)
+	res, err := r.Agent.Run(ctx, role.Engine, inv)
 	if err == nil || (res != nil && res.SessionID != "") {
 		return res, err
 	}
 	r.Log.Info("could not resume session, starting fresh", "session", inv.Resume, "error", err.Error())
 	inv.Resume = ""
 	inv.Prompt = fullPrompt
-	return eng.Run(ctx, inv)
+	return r.Agent.Run(ctx, role.Engine, inv)
 }
 
-func roleInvocation(dir string, role aiv1.RoleSpec, system string, tools []string, schema string, readOnly bool) Invocation {
+func roleInvocation(role aiv1.RoleSpec, system string, tools []string, schema string, readOnly bool) Invocation {
 	if len(role.AllowedTools) > 0 {
 		tools = role.AllowedTools
 	}
 	return Invocation{
-		Dir:          dir,
 		SystemPrompt: withInstructions(system, role.Instructions),
 		Model:        role.Model,
 		Effort:       role.Effort,

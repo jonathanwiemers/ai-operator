@@ -1,0 +1,49 @@
+{{- if .Values.agent.networkPolicy.enabled }}
+{{- $np := .Values.agent.networkPolicy }}
+{{- $v4 := list }}
+{{- $v6 := list }}
+{{- range $np.blockedCIDRs }}
+{{- if contains ":" . }}{{ $v6 = append $v6 . }}{{ else }}{{ $v4 = append $v4 . }}{{ end }}
+{{- end }}
+{{- range $ns := .Values.agent.namespaces }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ai-operator.agentClusterRole" $ }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "ai-operator.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ai-agent
+  policyTypes: [Ingress, Egress]
+  # Agent pods serve nothing.
+  ingress: []
+  egress:
+    - to:
+        - {{- toYaml $np.dnsSelector | nindent 10 }}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with $v4 }}
+            except: {{ toYaml . | nindent 14 }}
+            {{- end }}
+        - ipBlock:
+            cidr: ::/0
+            {{- with $v6 }}
+            except: {{ toYaml . | nindent 14 }}
+            {{- end }}
+    {{- with $np.allowedCIDRs }}
+    - to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}

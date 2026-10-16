@@ -15,7 +15,8 @@ import (
 // Invocation is one headless call of an agent CLI. It is engine neutral; each
 // engine maps the fields it supports onto its own flags.
 type Invocation struct {
-	// Dir is the working directory (the repository checkout).
+	// Dir is the working directory (the repository checkout). It is set by
+	// the agent side, never by the runner.
 	Dir string
 	// Prompt is the task for this turn. It may be large (diffs, threads).
 	Prompt string

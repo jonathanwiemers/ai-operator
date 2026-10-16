@@ -39,6 +39,10 @@ The CRDs are part of the templates, so they are upgraded too.
 | `agent.serviceAccountName` | `ai-operator-agent` | must match `spec.agents.serviceAccountName` of your AgentProjects |
 | `agent.namespaces` | `[]` | namespaces that host AgentProjects; the chart creates the agent service account and RoleBinding there |
 | `agent.createNamespaces` | `false` | also create those namespaces |
+| `agent.networkPolicy.enabled` | `false` | NetworkPolicy for agent pods in `agent.namespaces`: no ingress, no egress to blocked CIDRs |
+| `agent.networkPolicy.allowedCIDRs` | `[]` | private destinations still allowed (Kubernetes API endpoints, self-hosted GitLab, mirrors) |
+| `agent.networkPolicy.blockedCIDRs` | link-local, RFC 1918, CGNAT, IPv6 ULA / link-local | |
+| `agent.networkPolicy.dnsSelector` | pods labelled `k8s-app: kube-dns` | where DNS is allowed |
 | `metrics.port` | `8080` | |
 | `metrics.service.enabled` | `false` | expose metrics through a Service |
 | `healthProbePort` | `8081` | |
