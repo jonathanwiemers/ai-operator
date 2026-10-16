@@ -63,6 +63,11 @@ type Outcome struct {
 	Branch  string
 	MRIID   int64
 	MRURL   string
+	// PushedSHA is set when the run pushed; CIRound goes with it.
+	PushedSHA string
+	CIRound   int32
+	// CIFixedPipelineID is set by CI fix runs.
+	CIFixedPipelineID int64
 }
 
 // state is persisted on the runner's part of the workspace PVC, so it survives
@@ -257,6 +262,14 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		if out.MRIID != 0 {
 			s.MergeRequestIID = out.MRIID
 			s.MergeRequestURL = out.MRURL
+		}
+		if out.PushedSHA != "" {
+			s.PushedSHA = out.PushedSHA
+			s.PushedAt = &metav1.Time{Time: r.now()}
+			s.CIRound = out.CIRound
+		}
+		if out.CIFixedPipelineID != 0 {
+			s.CIFixedPipelineID = out.CIFixedPipelineID
 		}
 	})
 }

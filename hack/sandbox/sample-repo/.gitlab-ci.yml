@@ -1,0 +1,22 @@
+# CI for the sandbox app. The changelog job is a rule the agent is not told
+# about (it is not in CLAUDE.md), so the first push of every agent MR fails
+# it and exercises the operator's CI feedback loop.
+variables:
+  GIT_DEPTH: "0"
+
+test:
+  image: node:22-alpine
+  script:
+    - npm test
+
+changelog:
+  image: alpine/git:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+  script:
+    - git fetch --quiet origin "$CI_DEFAULT_BRANCH"
+    - |
+      if ! git diff --name-only "origin/$CI_DEFAULT_BRANCH...HEAD" | grep -qx CHANGELOG.md; then
+        echo "error: every change needs an entry in CHANGELOG.md (one line under '## Unreleased')"
+        exit 1
+      fi

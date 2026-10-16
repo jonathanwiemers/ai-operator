@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,6 +32,40 @@ type API interface {
 	CreateMergeRequest(ctx context.Context, project string, opts CreateMergeRequestOptions) (*MergeRequest, error)
 	ListMergeRequestNotes(ctx context.Context, project string, iid int64) ([]Note, error)
 	CreateMergeRequestNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
+	ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error)
+	ListPipelineJobs(ctx context.Context, project string, pipelineID int64, scope string) ([]Job, error)
+	JobTrace(ctx context.Context, project string, jobID int64) (string, error)
+	RetryPipeline(ctx context.Context, project string, pipelineID int64) (*Pipeline, error)
+}
+
+// Pipeline is a CI pipeline.
+type Pipeline struct {
+	ID     int64  `json:"id"`
+	SHA    string `json:"sha"`
+	Ref    string `json:"ref"`
+	Status string `json:"status"`
+	WebURL string `json:"web_url"`
+}
+
+// Job is a CI job.
+type Job struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Stage  string `json:"stage"`
+	Status string `json:"status"`
+	WebURL string `json:"web_url"`
+	// AllowFailure jobs do not fail the pipeline.
+	AllowFailure bool `json:"allow_failure"`
+}
+
+// ListPipelinesOptions filters pipelines; results are newest first.
+type ListPipelinesOptions struct {
+	SHA string
+	Ref string
+	// Scope: running, pending, finished, branches, tags.
+	Scope string
+	// Limit caps the number of results (default: one page of 20).
+	Limit int
 }
 
 // User is a GitLab user.
@@ -367,4 +402,69 @@ func (c *Client) CreateMergeRequestNote(ctx context.Context, project string, iid
 	var n Note
 	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/merge_requests/%d/notes", projectPath(project), iid), nil, map[string]string{"body": body}, &n)
 	return &n, err
+}
+
+func (c *Client) ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error) {
+	q := url.Values{"order_by": {"id"}, "sort": {"desc"}}
+	if opts.SHA != "" {
+		q.Set("sha", opts.SHA)
+	}
+	if opts.Ref != "" {
+		q.Set("ref", opts.Ref)
+	}
+	if opts.Scope != "" {
+		q.Set("scope", opts.Scope)
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	q.Set("per_page", strconv.Itoa(limit))
+	var ps []Pipeline
+	_, err := c.do(ctx, http.MethodGet, projectPath(project)+"/pipelines", q, nil, &ps)
+	return ps, err
+}
+
+func (c *Client) ListPipelineJobs(ctx context.Context, project string, pipelineID int64, scope string) ([]Job, error) {
+	q := url.Values{}
+	if scope != "" {
+		q.Add("scope[]", scope)
+	}
+	return list[Job](ctx, c, fmt.Sprintf("%s/pipelines/%d/jobs", projectPath(project), pipelineID), q)
+}
+
+// maxTrace bounds how much of a job log is downloaded; the end of the log is
+// what matters.
+const maxTrace = 4 << 20
+
+func (c *Client) JobTrace(ctx context.Context, project string, jobID int64) (string, error) {
+	path := fmt.Sprintf("%s/jobs/%d/trace", projectPath(project), jobID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return "", &Error{StatusCode: resp.StatusCode, Method: http.MethodGet, Path: path}
+	}
+	// Keep the tail of very long logs.
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if len(data) > maxTrace {
+		data = data[len(data)-maxTrace:]
+	}
+	return string(data), nil
+}
+
+func (c *Client) RetryPipeline(ctx context.Context, project string, pipelineID int64) (*Pipeline, error) {
+	var p Pipeline
+	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/pipelines/%d/retry", projectPath(project), pipelineID), nil, nil, &p)
+	return &p, err
 }

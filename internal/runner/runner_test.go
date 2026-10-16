@@ -270,8 +270,9 @@ func TestImplementEndToEnd(t *testing.T) {
 	if mr == nil || mr.SourceBranch != "agent/42-add-paypal-button" || !strings.HasPrefix(mr.Title, "Draft: ") {
 		t.Fatalf("unexpected MR %+v", mr)
 	}
-	if labels := gl.Labels(42); !slices.Equal(labels, []string{"agent::review"}) {
-		t.Fatalf("issue should be in review, has %v", labels)
+	// The issue waits in "working" for the pipeline of the push.
+	if labels := gl.Labels(42); !slices.Equal(labels, []string{"agent::working"}) {
+		t.Fatalf("issue should wait for CI in working, has %v", labels)
 	}
 
 	var got aiv1.AgentTask
@@ -280,6 +281,9 @@ func TestImplementEndToEnd(t *testing.T) {
 	if run.ObservedRunRequest != 1 || run.RunCount != 1 || run.LastResult != aiv1.RunResultSucceeded ||
 		run.MergeRequestIID != 1 || run.Branch != "agent/42-add-paypal-button" || run.CostUSD != "3.0000" {
 		t.Fatalf("unexpected run status %+v", run)
+	}
+	if head := gitCmd(t, tmp, "--git-dir", origin, "rev-parse", "agent/42-add-paypal-button"); run.PushedSHA != head || run.PushedAt == nil || run.CIRound != 0 {
+		t.Fatalf("pushed commit not recorded: %+v (branch head %s)", run, head)
 	}
 
 	// Meanwhile a human pushes a commit to the agent's branch.

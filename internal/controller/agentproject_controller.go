@@ -186,6 +186,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			return err
 		}
 		keep[task.Name] = true
+		if err := r.syncCI(ctx, gl, spec, is, task); err != nil {
+			return err
+		}
 	}
 
 	// Everything else is done, closed, unlabeled or out of scope: delete the

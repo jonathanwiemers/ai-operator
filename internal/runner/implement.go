@@ -79,7 +79,25 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	inv.DisallowedTools = implementDenied
 	inv.Resume = st.session("implement", role.Engine)
 	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false)
-	inv.Prompt = buildImplementPrompt(issue, milestone, newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID), botID, true)
+	newIssueNotes, newMRNotes := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
+	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true)
+
+	// A CI fix run: the operator saw the pipeline of the last push fail.
+	ciPipeline := task.Spec.Source.CIFixPipelineID
+	ciFix := ciPipeline != 0 && ciPipeline != task.Status.Run.CIFixedPipelineID
+	if ciFix {
+		out.CIFixedPipelineID = ciPipeline
+		ciPrompt, err := buildCIPrompt(ctx, gl, glProject, ciPipeline)
+		if err != nil {
+			return out, err
+		}
+		fullPrompt += "\n\n" + ciPrompt
+		if len(newIssueNotes)+len(newMRNotes) == 0 {
+			inv.Prompt = ciPrompt
+		} else {
+			inv.Prompt += "\n\n" + ciPrompt
+		}
+	}
 
 	res, err := r.invoke(ctx, role, inv, fullPrompt)
 	if res != nil {
@@ -107,7 +125,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	review := spec.Agents.Review
 	var remaining []Finding
 	var reviewNotes []string
-	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input"; iter++ {
+	// CI fix runs skip the reviewers: the change is reviewed with the next
+	// regular run, and CI itself is the check here.
+	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input" && !ciFix; iter++ {
 		diff, stat, err := r.Agent.Diff(ctx, base)
 		if err != nil {
 			return out, err
@@ -169,7 +189,16 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if err != nil {
 		return out, err
 	}
+	if pushed {
+		out.PushedSHA, _ = r.Mirror.resolve(ctx, "refs/heads/"+branch)
+		if ciFix {
+			out.CIRound = task.Status.Run.CIRound + 1
+		}
+	}
 	report := renderReport(answer, remaining, reviewNotes)
+	if ciFix {
+		report = "CI fix: " + report
+	}
 	newMR := false
 	if mr == nil && (pushed || r.Mirror.HasRemoteBranch(ctx, branch)) {
 		mr, err = gl.CreateMergeRequest(ctx, glProject, gitlab.CreateMergeRequestOptions{
@@ -206,7 +235,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			return out, fmt.Errorf("commenting on issue: %w", err)
 		}
 	}
-	if !r.morePending(ctx, task.Spec.RunRequest) {
+	// With the CI loop, a fresh push stays in "working" until the operator
+	// has seen its pipeline go green (or hands it back).
+	waitForCI := !spec.CI.Disabled && pushed && mr != nil && !needsInput
+	if !waitForCI && !r.morePending(ctx, task.Spec.RunRequest) {
 		next := wf.ReviewLabel
 		if needsInput {
 			next = wf.NeedsInputLabel

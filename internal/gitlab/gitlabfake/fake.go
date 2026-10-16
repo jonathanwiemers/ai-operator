@@ -22,8 +22,13 @@ type Fake struct {
 	IssueNotes map[int64][]gitlab.Note
 	MRs        map[int64]*gitlab.MergeRequest
 	MRNotes    map[int64][]gitlab.Note
-	nextID     int64
-	Clock      time.Time
+	// Pipelines, newest last; Jobs and Traces by pipeline / job ID.
+	Pipelines []gitlab.Pipeline
+	Jobs      map[int64][]gitlab.Job
+	Traces    map[int64]string
+	Retried   []int64
+	nextID    int64
+	Clock     time.Time
 }
 
 var _ gitlab.API = (*Fake)(nil)
@@ -37,6 +42,8 @@ func New() *Fake {
 		IssueNotes: map[int64][]gitlab.Note{},
 		MRs:        map[int64]*gitlab.MergeRequest{},
 		MRNotes:    map[int64][]gitlab.Note{},
+		Jobs:       map[int64][]gitlab.Job{},
+		Traces:     map[int64]string{},
 		nextID:     1000,
 		Clock:      time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
@@ -274,4 +281,86 @@ func (f *Fake) CreateMergeRequestNote(_ context.Context, _ string, iid int64, bo
 		mr.UpdatedAt = f.tick()
 	}
 	return &n, nil
+}
+
+// AddPipeline adds a pipeline and returns its ID.
+func (f *Fake) AddPipeline(sha, ref, status string, jobs ...gitlab.Job) int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id := f.id()
+	f.Pipelines = append(f.Pipelines, gitlab.Pipeline{ID: id, SHA: sha, Ref: ref, Status: status,
+		WebURL: fmt.Sprintf("https://gitlab.example/group/app/-/pipelines/%d", id)})
+	for i := range jobs {
+		if jobs[i].ID == 0 {
+			jobs[i].ID = f.id()
+		}
+	}
+	f.Jobs[id] = jobs
+	return id
+}
+
+// SetPipelineStatus changes the status of a pipeline.
+func (f *Fake) SetPipelineStatus(id int64, status string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.Pipelines {
+		if f.Pipelines[i].ID == id {
+			f.Pipelines[i].Status = status
+		}
+	}
+}
+
+func (f *Fake) ListPipelines(_ context.Context, _ string, opts gitlab.ListPipelinesOptions) ([]gitlab.Pipeline, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []gitlab.Pipeline
+	for i := len(f.Pipelines) - 1; i >= 0; i-- {
+		p := f.Pipelines[i]
+		if opts.SHA != "" && p.SHA != opts.SHA {
+			continue
+		}
+		if opts.Ref != "" && p.Ref != opts.Ref {
+			continue
+		}
+		if opts.Scope == "finished" && (p.Status == "running" || p.Status == "pending" || p.Status == "created") {
+			continue
+		}
+		out = append(out, p)
+		if opts.Limit > 0 && len(out) == opts.Limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (f *Fake) ListPipelineJobs(_ context.Context, _ string, pipelineID int64, scope string) ([]gitlab.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []gitlab.Job
+	for _, j := range f.Jobs[pipelineID] {
+		if scope == "" || j.Status == scope {
+			out = append(out, j)
+		}
+	}
+	return out, nil
+}
+
+func (f *Fake) JobTrace(_ context.Context, _ string, jobID int64) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.Traces[jobID], nil
+}
+
+func (f *Fake) RetryPipeline(_ context.Context, _ string, pipelineID int64) (*gitlab.Pipeline, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Retried = append(f.Retried, pipelineID)
+	for i := range f.Pipelines {
+		if f.Pipelines[i].ID == pipelineID {
+			f.Pipelines[i].Status = "running"
+			p := f.Pipelines[i]
+			return &p, nil
+		}
+	}
+	return nil, &gitlab.Error{StatusCode: 404, Method: "POST", Path: "retry"}
 }
