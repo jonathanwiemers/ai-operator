@@ -13,6 +13,7 @@
   <a href="https://github.com/jonathanwiemers/ai-operator/actions/workflows/ci.yml"><img src="https://github.com/jonathanwiemers/ai-operator/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/jonathanwiemers/ai-operator/releases"><img src="https://img.shields.io/github/v/release/jonathanwiemers/ai-operator?label=release" alt="Release"></a>
   <img src="https://img.shields.io/badge/API-v1alpha1-blue" alt="API v1alpha1">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="License Apache-2.0"></a>
 </p>
 
 ---
@@ -198,3 +199,11 @@ make run                  # run the operator against your current kubeconfig
 
 Releases use calendar versions (`2026.10.1`, `2026.10.2`, …) and are cut
 automatically from `main`, see [releasing](docs/releasing.md).
+
+## Security
+
+Please report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
+
+## License
+
+[Apache License 2.0](LICENSE)
