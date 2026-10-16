@@ -1,0 +1,128 @@
+name: Release
+
+# Every change to main that touches the operator, the agent image or the chart
+# is released with a calendar version YEAR.MONTH.N (2026.10.1, 2026.10.2, ...):
+#   - images  ghcr.io/<owner>/ai-operator:<version>, ghcr.io/<owner>/ai-operator-agent:<version>
+#   - chart   oci://ghcr.io/<owner>/charts/ai-operator --version <version>
+#   - git tag <version> and a GitHub release with the packaged chart
+on:
+  push:
+    branches: [main]
+    paths:
+      - api/**
+      - cmd/**
+      - internal/**
+      - charts/**
+      - config/crd/**
+      - Dockerfile
+      - Dockerfile.agent
+      - go.mod
+      - go.sum
+  workflow_dispatch:
+
+# Releases run one at a time so two merges never get the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: azure/setup-helm@v4
+
+      - name: Test
+        run: |
+          go test ./...
+          make helm-lint
+
+      - name: Determine version
+        id: version
+        run: |
+          version="$(hack/next-version.sh)"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "registry=ghcr.io/${owner}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${version}"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push operator image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.version.outputs.registry }}/ai-operator:${{ steps.version.outputs.version }}
+            ${{ steps.version.outputs.registry }}/ai-operator:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and push agent image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.agent
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.version.outputs.registry }}/ai-operator-agent:${{ steps.version.outputs.version }}
+            ${{ steps.version.outputs.registry }}/ai-operator-agent:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Package and push chart
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          REGISTRY: ${{ steps.version.outputs.registry }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+          make helm-package VERSION="${VERSION}"
+          helm push "dist/ai-operator-${VERSION}.tgz" "oci://${REGISTRY}/charts"
+
+      - name: Tag and create GitHub release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          REGISTRY: ${{ steps.version.outputs.registry }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag "${VERSION}" "${GITHUB_SHA}"
+          git push origin "refs/tags/${VERSION}"
+          cat > notes.md <<NOTES
+          ## Install
+
+          \`\`\`sh
+          helm install ai-operator oci://${REGISTRY}/charts/ai-operator --version ${VERSION} \\
+            --namespace ai-operator-system --create-namespace \\
+            --set 'agent.namespaces={agents}' --set agent.createNamespaces=true
+          \`\`\`
+
+          Images: \`${REGISTRY}/ai-operator:${VERSION}\`, \`${REGISTRY}/ai-operator-agent:${VERSION}\`
+          NOTES
+          gh release create "${VERSION}" "dist/ai-operator-${VERSION}.tgz" \
+            --title "${VERSION}" --notes-file notes.md --generate-notes

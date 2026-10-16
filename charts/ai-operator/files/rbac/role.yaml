@@ -1,0 +1,61 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ai-operator
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  - pods
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ai.wiemers.me
+  resources:
+  - agentprojects
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ai.wiemers.me
+  resources:
+  - agentprojects/status
+  - agenttasks/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ai.wiemers.me
+  resources:
+  - agenttasks
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

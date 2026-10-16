@@ -32,17 +32,17 @@ are used only where they pay off: planning and `strong` issues. Reviews and
 | [docs/usage.md](docs/usage.md) | the GitLab workflow: labels, milestone specs, commands, lifecycle |
 | [docs/configuration.md](docs/configuration.md) | installation, secrets, `AgentProject` reference, engines, profiles, agent image |
 | [docs/design.md](docs/design.md) | architecture, CRDs, pod topology, token economy, security, roadmap |
+| [charts/ai-operator](charts/ai-operator/README.md) | Helm chart and its values |
+| [docs/releasing.md](docs/releasing.md) | calendar versions, release workflow, published images and chart |
 
 ## Quick start
 
 ```sh
-# CRDs, RBAC and the operator (build and push your own images first, or use published ones)
-make docker-build IMG=… AGENT_IMG=…
-make deploy
-
-# Namespace and service account for agent pods
-kubectl create namespace agents
-kubectl apply -f config/samples/agent_serviceaccount.yaml
+# Operator, CRDs, RBAC and the agent service account in namespace "agents"
+helm install ai-operator oci://ghcr.io/jonathanwiemers/charts/ai-operator \
+  --version 2026.10.1 \
+  --namespace ai-operator-system --create-namespace \
+  --set 'agent.namespaces={agents}' --set agent.createNamespaces=true
 
 # Credentials
 kubectl -n agents create secret generic gitlab --from-literal=token=glpat-…
@@ -54,6 +54,10 @@ kubectl -n agents create secret generic agent-credentials \
 # Connect a project (edit it first)
 kubectl apply -f config/samples/agentproject.yaml
 ```
+
+Releases use calendar versions (`2026.10.1`, `2026.10.2`, …); see the
+[releases](https://github.com/jonathanwiemers/ai-operator/releases),
+[chart values](charts/ai-operator/README.md) and [releasing](docs/releasing.md).
 
 Then create the labels in GitLab ([usage.md](docs/usage.md#one-time-setup-in-gitlab))
 and add `/agent spec` to a milestone.
@@ -70,5 +74,6 @@ Requires Go 1.26.
 ```sh
 make generate manifests   # deepcopy, CRDs, RBAC (controller-gen)
 make test                 # unit tests + end-to-end runner test against a local git repo
+make helm-lint            # lint and render the chart
 make run                  # run the operator against your current kubeconfig
 ```

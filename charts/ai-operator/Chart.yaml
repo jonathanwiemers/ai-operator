@@ -1,0 +1,16 @@
+apiVersion: v2
+name: ai-operator
+description: Kubernetes operator that runs coding agents (Claude Code, Cursor CLI) for GitLab milestones and issues.
+type: application
+# Released with calendar versions YEAR.MONTH.N (e.g. 2026.10.1). The release
+# workflow sets version and appVersion; the values below are for local use.
+version: 0.0.0-dev
+appVersion: "dev"
+home: https://github.com/jonathanwiemers/ai-operator
+sources:
+  - https://github.com/jonathanwiemers/ai-operator
+keywords:
+  - ai
+  - agents
+  - gitlab
+  - operator

@@ -1,0 +1,17 @@
+{{- /*
+CRDs are rendered as regular templates (not from crds/) so that
+`helm upgrade` updates them. The files are generated: run `make manifests`.
+*/ -}}
+{{- if .Values.crds.install }}
+{{- range $path, $_ := .Files.Glob "files/crds/*.yaml" }}
+{{- $crd := $.Files.Get $path | fromYaml }}
+{{- $annotations := default dict $crd.metadata.annotations }}
+{{- if $.Values.crds.keep }}
+{{- $_ := set $annotations "helm.sh/resource-policy" "keep" }}
+{{- end }}
+{{- $_ := set $crd.metadata "annotations" $annotations }}
+{{- $_ := set $crd.metadata "labels" (merge (default dict $crd.metadata.labels) (fromYaml (include "ai-operator.labels" $))) }}
+---
+{{ toYaml $crd }}
+{{- end }}
+{{- end }}

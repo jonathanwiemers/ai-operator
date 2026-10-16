@@ -218,3 +218,28 @@ func TestTaskBlockedAfterMaxRuns(t *testing.T) {
 		t.Fatal("blocked task must not start a pod")
 	}
 }
+
+func TestDefaultAgentImage(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	project := &aiv1.AgentProject{}
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, project); err != nil {
+		t.Fatal(err)
+	}
+	project.Spec.Agents.Image = ""
+	if err := e.c.Update(e.ctx, project); err != nil {
+		t.Fatal(err)
+	}
+
+	// Neither the project nor the operator has an image: wait, no pod.
+	e.reconcile("x")
+	var pod corev1.Pod
+	if e.exists(&pod, "x") || e.task("x").Status.Phase != aiv1.TaskPhaseQueued {
+		t.Fatal("without an image the task must wait")
+	}
+
+	e.r.DefaultAgentImage = "ghcr.io/jonathanwiemers/ai-operator-agent:2026.10.1"
+	e.reconcile("x")
+	if !e.exists(&pod, "x") || pod.Spec.Containers[0].Image != e.r.DefaultAgentImage {
+		t.Fatalf("pod should use the operator's default image, got %+v", pod.Spec.Containers)
+	}
+}

@@ -1,0 +1,84 @@
+# Operator image. The tag defaults to the chart's appVersion.
+image:
+  repository: ghcr.io/jonathanwiemers/ai-operator
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+
+# Leader election lets you run more than one replica safely.
+leaderElection: true
+
+# Log level of the operator: debug, info or error.
+logLevel: info
+
+# Install and upgrade the CRDs with the chart.
+crds:
+  install: true
+  # Keep the CRDs (and with them all AgentProjects and AgentTasks) when the
+  # release is uninstalled.
+  keep: true
+
+serviceAccount:
+  create: true
+  # Defaults to the release's full name.
+  name: ""
+  annotations: {}
+
+# Agent pods (one per planned milestone / handed-over issue).
+agent:
+  # Default agent image for AgentProjects that do not set spec.agents.image.
+  # The tag defaults to the chart's appVersion, so operator and agent
+  # images always come from the same release.
+  image:
+    repository: ghcr.io/jonathanwiemers/ai-operator-agent
+    tag: ""
+  # Service account the agent pods use. Must match spec.agents.serviceAccountName
+  # of your AgentProjects (default "ai-operator-agent").
+  serviceAccountName: ai-operator-agent
+  # Namespaces that host AgentProjects. The chart creates the agent service
+  # account and its RoleBinding in each of them.
+  namespaces: []
+  # Create the namespaces listed above.
+  createNamespaces: false
+
+metrics:
+  port: 8080
+  service:
+    enabled: false
+    type: ClusterIP
+    annotations: {}
+
+healthProbePort: 8081
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Extra arguments for the operator.
+extraArgs: []
