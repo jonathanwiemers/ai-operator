@@ -1,0 +1,15 @@
+# Permissions of the agent pods (ai-runner). Bind this ClusterRole in every
+# namespace that hosts AgentProjects; see config/samples/agent_serviceaccount.yaml.
+# The runner only reads its own task/project and reports progress in
+# agenttasks/status. It cannot touch pods, secrets or task specs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ai-operator-agent
+rules:
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agenttasks", "agentprojects"]
+    verbs: ["get"]
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agenttasks/status"]
+    verbs: ["get", "patch"]
