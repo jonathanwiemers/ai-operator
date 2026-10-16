@@ -12,9 +12,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
@@ -282,12 +286,29 @@ func (r *AgentTaskReconciler) runningTasks(ctx context.Context, task *aiv1.Agent
 	return n, nil
 }
 
+// tasksOfProject maps an AgentProject to its tasks, so changes to the project
+// (limits, suspend, images) take effect without waiting for a task event.
+func (r *AgentTaskReconciler) tasksOfProject(ctx context.Context, obj client.Object) []reconcile.Request {
+	var tasks aiv1.AgentTaskList
+	if err := r.List(ctx, &tasks, client.InNamespace(obj.GetNamespace()), client.MatchingLabels{LabelProject: obj.GetName()}); err != nil {
+		log.FromContext(ctx).Error(err, "listing tasks of project", "project", obj.GetName())
+		return nil
+	}
+	reqs := make([]reconcile.Request, 0, len(tasks.Items))
+	for _, t := range tasks.Items {
+		reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Namespace: t.Namespace, Name: t.Name}})
+	}
+	return reqs
+}
+
 // SetupWithManager registers the controller.
 func (r *AgentTaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&aiv1.AgentTask{}).
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
+		Watches(&aiv1.AgentProject{}, handler.EnqueueRequestsFromMapFunc(r.tasksOfProject),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("agenttask").
 		Complete(r)
 }

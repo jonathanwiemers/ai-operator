@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -327,5 +328,52 @@ func TestPodIsolatesCredentials(t *testing.T) {
 	}
 	if got := agent.Command; len(got) != 2 || got[1] != "agent-server" {
 		t.Fatalf("agent container must run the agent server, got %v", got)
+	}
+}
+
+func TestProjectChangesRequeueItsTasks(t *testing.T) {
+	other := newImplTask("other-project-task", 1)
+	other.Labels[LabelProject] = "other"
+	e := newTaskEnv(t, newImplTask("a", 1), newImplTask("b", 1), other)
+	reqs := e.r.tasksOfProject(e.ctx, testProject())
+	var names []string
+	for _, r := range reqs {
+		names = append(names, r.Name)
+	}
+	slices.Sort(names)
+	if !slices.Equal(names, []string{"a", "b"}) {
+		t.Fatalf("expected the project's tasks a and b, got %v", names)
+	}
+}
+
+// Raising maxRunsPerTask on the project unblocks a blocked task.
+func TestRaisingRunLimitUnblocks(t *testing.T) {
+	task := newImplTask("x", 2)
+	task.Status.Run.RunCount = 1
+	task.Status.Run.ObservedRunRequest = 1
+	task.Status.Run.ActiveRunRequest = 1
+	e := newTaskEnv(t, task)
+	project := &aiv1.AgentProject{}
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, project); err != nil {
+		t.Fatal(err)
+	}
+	project.Spec.Lifecycle.MaxRunsPerTask = 1
+	if err := e.c.Update(e.ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseBlocked {
+		t.Fatalf("phase %s", got)
+	}
+	project.Spec.Lifecycle.MaxRunsPerTask = 5
+	if err := e.c.Update(e.ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range e.r.tasksOfProject(e.ctx, project) {
+		e.reconcile(req.Name)
+	}
+	var pod corev1.Pod
+	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseRunning || !e.exists(&pod, "x") {
+		t.Fatalf("task should run after raising the limit, phase %s", got)
 	}
 }
