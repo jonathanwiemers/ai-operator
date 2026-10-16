@@ -85,7 +85,7 @@ type SourceState struct {
 }
 
 // TaskPhase is a coarse summary of where a task is in its lifecycle.
-// +kubebuilder:validation:Enum=Pending;Queued;Running;Idle;Hibernated;Archived;Blocked
+// +kubebuilder:validation:Enum=Pending;Queued;Running;Waiting;Idle;Hibernated;Archived;Blocked
 type TaskPhase string
 
 const (
@@ -95,6 +95,9 @@ const (
 	TaskPhaseQueued TaskPhase = "Queued"
 	// TaskPhaseRunning: a pod exists and a run is requested or in progress.
 	TaskPhaseRunning TaskPhase = "Running"
+	// TaskPhaseWaiting: a run is requested but deferred because an agent
+	// engine hit its usage or rate limit; it resumes at run.deferredUntil.
+	TaskPhaseWaiting TaskPhase = "Waiting"
 	// TaskPhaseIdle: the pod is kept warm, waiting for further input.
 	TaskPhaseIdle TaskPhase = "Idle"
 	// TaskPhaseHibernated: pod deleted after IdleTimeout, workspace kept.
@@ -112,6 +115,9 @@ const (
 	RunResultSucceeded  RunResult = "Succeeded"
 	RunResultNeedsInput RunResult = "NeedsInput"
 	RunResultFailed     RunResult = "Failed"
+	// RunResultDeferred: the run hit a usage or rate limit and will be
+	// retried; it does not count towards maxRunsPerTask.
+	RunResultDeferred RunResult = "Deferred"
 )
 
 // AgentTaskStatus is the observed state of an AgentTask. The top-level fields
@@ -178,6 +184,20 @@ type RunStatus struct {
 	// MergeRequestURL of the agent's merge request.
 	// +optional
 	MergeRequestURL string `json:"mergeRequestURL,omitempty"`
+
+	// DeferredUntil is set when the requested run hit a usage or rate limit:
+	// the run is retried after this time.
+	// +optional
+	DeferredUntil *metav1.Time `json:"deferredUntil,omitempty"`
+
+	// LimitedEngine is the engine whose limit deferred the run.
+	// +optional
+	LimitedEngine Engine `json:"limitedEngine,omitempty"`
+
+	// Deferrals counts consecutive deferrals of the current run request; it
+	// drives the exponential backoff when the reset time is unknown.
+	// +optional
+	Deferrals int32 `json:"deferrals,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -189,6 +209,7 @@ type RunStatus struct {
 // +kubebuilder:printcolumn:name="Result",type=string,JSONPath=`.status.run.lastResult`
 // +kubebuilder:printcolumn:name="Runs",type=integer,JSONPath=`.status.run.runCount`
 // +kubebuilder:printcolumn:name="Cost",type=string,JSONPath=`.status.run.costUSD`
+// +kubebuilder:printcolumn:name="Retry",type=date,JSONPath=`.status.run.deferredUntil`,priority=1
 // +kubebuilder:printcolumn:name="MR",type=string,JSONPath=`.status.run.mergeRequestURL`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 

@@ -158,7 +158,9 @@ another engine starts a new session with the full context.
 |-------|---------|-------------|
 | `idleTimeout` | `2h` | after the last run, the pod is stopped; the workspace stays |
 | `retentionPeriod` | `336h` (14 days) | after the last run, the workspace PVC is deleted |
-| `maxRunsPerTask` | `20` | the task is `Blocked` when reached |
+| `maxRunsPerTask` | `20` | the task is `Blocked` when reached (runs paused by usage limits don't count) |
+| `usageLimitBackoff` | `5m` | first wait after a usage or rate limit without a reported reset time; doubles per further hit |
+| `maxUsageLimitBackoff` | `1h` | cap for that wait |
 
 ## Other `spec` fields
 

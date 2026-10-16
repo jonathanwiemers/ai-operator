@@ -1,6 +1,11 @@
 package v1alpha1
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 func TestRoleDefaults(t *testing.T) {
 	spec := AgentProjectSpec{}.WithDefaults()
@@ -44,5 +49,26 @@ func TestImplementRoleRouting(t *testing.T) {
 	custom := AgentProjectSpec{Agents: AgentsSpec{Review: ReviewSpec{RoleSpec: RoleSpec{Engine: EngineCursor}}}}.WithDefaults()
 	if r := custom.Agents.Review; r.Model != "" {
 		t.Fatalf("cursor review must not get a claude model: %+v", r.RoleSpec)
+	}
+}
+
+func TestUsageLimitBackoff(t *testing.T) {
+	l := LifecycleSpec{}.WithDefaults()
+	want := []time.Duration{5 * time.Minute, 10 * time.Minute, 20 * time.Minute, 40 * time.Minute, time.Hour, time.Hour}
+	for i, w := range want {
+		if got := l.Backoff(int32(i + 1)); got != w {
+			t.Errorf("Backoff(%d) = %v, want %v", i+1, got, w)
+		}
+	}
+	now := time.Now()
+	s := AgentProjectStatus{UsageLimits: []UsageLimit{{Engine: EngineClaude, Until: metav1.NewTime(now.Add(time.Minute))}}}
+	if _, ok := s.ActiveUsageLimit(EngineClaude, now); !ok {
+		t.Error("claude limit should be active")
+	}
+	if _, ok := s.ActiveUsageLimit(EngineClaude, now.Add(2*time.Minute)); ok {
+		t.Error("expired limits are inactive")
+	}
+	if _, ok := s.ActiveUsageLimit(EngineCursor, now); ok {
+		t.Error("limits are per engine")
 	}
 }

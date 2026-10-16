@@ -35,6 +35,10 @@ spec:
     - jsonPath: .status.run.costUSD
       name: Cost
       type: string
+    - jsonPath: .status.run.deferredUntil
+      name: Retry
+      priority: 1
+      type: date
     - jsonPath: .status.run.mergeRequestURL
       name: MR
       priority: 1
@@ -227,6 +231,7 @@ spec:
                 - Pending
                 - Queued
                 - Running
+                - Waiting
                 - Idle
                 - Hibernated
                 - Archived
@@ -249,6 +254,18 @@ spec:
                     description: CostUSD is the accumulated model spend of this task,
                       as a decimal string.
                     type: string
+                  deferrals:
+                    description: |-
+                      Deferrals counts consecutive deferrals of the current run request; it
+                      drives the exponential backoff when the reset time is unknown.
+                    format: int32
+                    type: integer
+                  deferredUntil:
+                    description: |-
+                      DeferredUntil is set when the requested run hit a usage or rate limit:
+                      the run is retried after this time.
+                    format: date-time
+                    type: string
                   lastActivityTime:
                     description: LastActivityTime is when the runner last started
                       or finished a run.
@@ -256,6 +273,13 @@ spec:
                     type: string
                   lastResult:
                     description: LastResult of the most recent run.
+                    type: string
+                  limitedEngine:
+                    description: LimitedEngine is the engine whose limit deferred
+                      the run.
+                    enum:
+                    - claude
+                    - cursor
                     type: string
                   mergeRequestIID:
                     description: MergeRequestIID of the agent's merge request.

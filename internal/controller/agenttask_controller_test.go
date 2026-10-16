@@ -13,6 +13,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
@@ -375,5 +376,74 @@ func TestRaisingRunLimitUnblocks(t *testing.T) {
 	var pod corev1.Pod
 	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseRunning || !e.exists(&pod, "x") {
 		t.Fatalf("task should run after raising the limit, phase %s", got)
+	}
+}
+
+func deferredTask(name string, until time.Time) *aiv1.AgentTask {
+	task := newImplTask(name, 1)
+	task.Status.Run.DeferredUntil = &metav1.Time{Time: until}
+	task.Status.Run.LimitedEngine = aiv1.EngineClaude
+	task.Status.Run.Deferrals = 1
+	task.Status.Run.LastActivityTime = &metav1.Time{Time: t0}
+	return task
+}
+
+func TestDeferredTaskWaits(t *testing.T) {
+	until := t0.Add(30 * time.Minute)
+	e := newTaskEnv(t, deferredTask("x", until))
+
+	res := e.reconcile("x")
+	var pod corev1.Pod
+	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseWaiting {
+		t.Fatalf("phase %s", got)
+	}
+	if e.exists(&pod, "x") {
+		t.Fatal("a waiting task must not start a pod")
+	}
+	if res.RequeueAfter <= 0 || res.RequeueAfter > 31*time.Minute {
+		t.Fatalf("should requeue at the retry time, got %v", res.RequeueAfter)
+	}
+
+	// A waiting task does not take the project's only run slot.
+	other := newImplTask("y", 1)
+	if err := e.c.Create(e.ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("y")
+	if got := e.task("y").Status.Phase; got != aiv1.TaskPhaseRunning {
+		t.Fatalf("other task should run while x waits, phase %s", got)
+	}
+
+	// After the retry time the task runs again (once capacity is free).
+	e.finishRun("y")
+	e.reconcile("y")
+	e.now = until.Add(time.Second)
+	e.reconcile("x")
+	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseRunning || !e.exists(&pod, "x") {
+		t.Fatalf("task should run after the retry time, phase %s", got)
+	}
+}
+
+func TestLongWaitHibernatesPod(t *testing.T) {
+	until := t0.Add(5 * time.Hour)
+	task := deferredTask("x", until)
+	e := newTaskEnv(t, task)
+	// Simulate the pod that was running when the limit hit.
+	if err := e.c.Create(e.ctx, func() *corev1.Pod {
+		p := buildPod(task, testProject().Spec.WithDefaults())
+		_ = controllerutil.SetControllerReference(e.task("x"), p, e.c.Scheme())
+		return p
+	}()); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") || e.task("x").Status.Phase != aiv1.TaskPhaseWaiting {
+		t.Fatal("the pod stays while idle time is short")
+	}
+	e.now = t0.Add(3 * time.Hour) // past idleTimeout, before the retry time
+	e.reconcile("x")
+	if e.exists(&pod, "x") || e.task("x").Status.Phase != aiv1.TaskPhaseWaiting {
+		t.Fatal("a long wait should hibernate the pod and keep the task waiting")
 	}
 }

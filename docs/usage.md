@@ -102,6 +102,35 @@ trigger a run.
 Merge the MR, then close the issue (the MR's `Closes #42` does that) or move
 it to `agent::done`. The task, its pod and its workspace are deleted.
 
+## Usage and rate limits
+
+Subscriptions have usage windows, and APIs have rate limits. When an agent
+CLI reports such a limit, the run is **paused, not failed**:
+
+- The issue stays in `agent::working` and gets one comment: "⏳ The `claude`
+  engine reached a usage limit. The run is paused and retried automatically
+  at …".
+- The run is retried at the reset time the CLI reports. If it doesn't
+  report one, the wait is 5 minutes, doubling with every further limit hit
+  up to 1 hour (`spec.lifecycle.usageLimitBackoff` /
+  `maxUsageLimitBackoff`).
+- Paused runs don't count towards `maxRunsPerTask` and don't take a run slot.
+- Limits belong to your credentials, so they apply to the whole project:
+  other issues that need the same engine wait too instead of hitting the
+  limit again. Issues on another engine (e.g. `fast` on cursor while claude
+  is limited) keep working.
+- If the limit hits during a review fix round, the work done so far is pushed
+  with the open findings instead of being held back.
+- After 20 deferrals of the same run it is reported as failed, in case an
+  error was mistaken for a limit.
+
+Nothing to do on your side; `kubectl get agenttasks -o wide` shows the retry
+time, and the project status lists the active limits:
+
+```sh
+kubectl -n agents get agentproject <name> -o jsonpath='{.status.usageLimits}'
+```
+
 ## Issues that stay open
 
 Nothing is lost while an issue waits:
@@ -126,7 +155,8 @@ kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server
 ```
 
 Task phases: `Pending`, `Queued` (waiting for `maxConcurrentRuns`), `Running`,
-`Idle`, `Hibernated`, `Archived`, `Blocked` (hit `maxRunsPerTask`).
+`Waiting` (paused by a usage limit), `Idle`, `Hibernated`, `Archived`,
+`Blocked` (hit `maxRunsPerTask`).
 
 To force a task to stop its pod, set `spec.suspend: true` on the AgentTask. To
 stop all activity for a project, set `spec.suspend: true` on the AgentProject.
