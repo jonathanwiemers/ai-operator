@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,6 +22,7 @@ const specTaskName = "shop-spec-m3-checkout-v2"
 func newAutopilotEnv(t *testing.T) *projectEnv {
 	t.Helper()
 	e := newProjectEnv(t)
+	e.r.Now = func() time.Time { return e.gl.Clock }
 	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2", State: "active", Description: "/agent autopilot\nBuild a new checkout."}
 	e.gl.Milestones = []gitlab.Milestone{m}
 	e.reconcile()
@@ -368,8 +370,14 @@ func TestAutopilotFailedRebasePauses(t *testing.T) {
 	e.finishRun(1, "sha-api", nil)
 	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "need_rebase"
 	e.reconcile()
-	// GitLab did not rebase: same head, still behind.
+	// GitLab did not rebase: same head, still behind. It may still refresh
+	// the MR for a while, then it pauses.
 	e.gl.MRs[1].SHA, e.gl.MRs[1].DetailedMergeStatus = "sha-api", "need_rebase"
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.Items[0].RebasedFrom != "sha-api" {
+		t.Fatalf("a fresh rebase gets time to show up: %+v", ap)
+	}
+	e.gl.Clock = e.gl.Clock.Add(10 * time.Minute)
 	e.reconcile()
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "did not go through") {
 		t.Fatalf("a rebase that changed nothing must pause: %+v", ap)
@@ -393,7 +401,7 @@ func TestAutopilotCountsIssuesFinishedByHand(t *testing.T) {
 	e.gl.Issues[1].State = "closed"
 	mr, _ := e.gl.CreateMergeRequest(e.ctx, "g/p", gitlab.CreateMergeRequestOptions{SourceBranch: "agent/1", TargetBranch: "main"})
 	e.gl.MRs[mr.IID].State, e.gl.MRs[mr.IID].MergeCommitSHA = "merged", "by-hand"
-	e.gl.ClosedBy = map[int64][]int64{1: {mr.IID}}
+	e.gl.Related = map[int64][]int64{1: {mr.IID}}
 	e.reconcile()
 	e.reconcile()
 	ap := e.autopilot()
@@ -427,14 +435,35 @@ func TestAutopilotSkippedThenMergedByHand(t *testing.T) {
 }
 
 func TestAutopilotHandsAnUncheckedHeadBackToCI(t *testing.T) {
+	for _, ci := range []*aiv1.CIStatus{nil, {SHA: "older", State: aiv1.CIStateSuccess}, {SHA: "sha-api", State: aiv1.CIStateFixing}} {
+		e := newAutopilotEnv(t)
+		e.reconcile()
+		e.reconcile()
+		name := e.finishRun(1, "sha-api", nil)
+		e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.CI = ci })
+		e.reconcile()
+		if !e.gl.Issues[1].HasLabel("agent::working") || len(e.gl.Merged) != 0 {
+			t.Fatalf("CI %+v: a head CI did not finish must go back to working: %v", ci, e.gl.Labels(1))
+		}
+		// The CI loop finishes it (a fix run that pushed nothing fails) and
+		// it does not come back to review on its own.
+		e.reconcile()
+		if ci != nil && ci.State == aiv1.CIStateFixing && !e.gl.Issues[1].HasLabel("agent::needs-input") {
+			t.Fatalf("the CI loop should end the fix round: %v", e.gl.Labels(1))
+		}
+	}
+}
+
+func TestAutopilotDoesNotRebaseAnUncheckableChange(t *testing.T) {
 	e := newAutopilotEnv(t)
 	e.reconcile()
 	e.reconcile()
-	name := e.finishRun(1, "sha-api", nil)
-	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.CI = nil })
+	e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "need_rebase"
+	e.gl.MRDiffs = map[int64][]gitlab.Diff{1: {{NewPath: "big.json", TooLarge: true}}}
 	e.reconcile()
-	if !e.gl.Issues[1].HasLabel("agent::working") || len(e.gl.Merged) != 0 {
-		t.Fatalf("a head CI never saw must go back to working: %v", e.gl.Labels(1))
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "too large") || len(e.gl.Rebased) != 0 {
+		t.Fatalf("an uncheckable change must not be rebased: %+v, rebased %v", ap, e.gl.Rebased)
 	}
 }
 

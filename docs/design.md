@@ -365,7 +365,11 @@ stateDiagram-v2
   human reviews before the merge. Only issues in the queue carry it; others
   in the milestone follow the normal flow.
 * **Re-plans.** The runner records the plan after applying it, matching
-  items like `applyPlan` does (existing IID first, then key). While the spec
+  items like `applyPlan` does (existing IID first, then key).
+* **Taking over a push.** If someone pushed to the agent's branch, a run that
+  changes nothing records that head as `pushedSHA`, so CI and the gate follow
+  it: "comment `/agent …` so the agent takes it over" is a way out of the
+  "someone pushed" pause. While the spec
   task has a pending run, no new issue is started.
 * **Merge gate.** Issue in review (the CI loop finished), last run
   succeeded, `blockingFindings == 0`, `reviewErrors == 0`,
@@ -377,14 +381,18 @@ stateDiagram-v2
   rebased head is handed to the CI loop like a push (`pushedSHA`, reset CI,
   back to working) only if its change hashes the same; then the review still
   holds. A commit pushed meanwhile, or a rebase that had to change lines,
-  pauses. Conflicts and failed rebases pause: resolving them is not
-  automated yet.
+  pauses; so does a change too large for GitLab to return in full, before
+  any rebase. GitLab may refresh the MR a little after the rebase, so an
+  unchanged head only counts as a failed rebase after five minutes.
+  Conflicts and failed rebases pause: resolving them is not automated yet.
 * **No silent waits.** An issue in review whose pushed commit the CI loop
-  never saw (it only follows issues in working) is handed back to working.
+  never finished (it only follows issues in working) is handed back to
+  working; the CI loop always ends in review or needs-input.
   An active issue that lost its workflow label, an MR marked draft again or
   retargeted, and a configuration without reviewers pause.
-* **Finished by hand.** A closed issue counts as merged if GitLab lists a
-  merged MR that closes it (`closed_by`) or it carries the done label, so
+* **Finished by hand.** A closed issue counts as merged if its MR, or a
+  merged MR related to it (`related_merge_requests`; GitLab's `closed_by`
+  only answers for open issues), was merged, or it carries the done label, so
   issues merged before autopilot started, after a `skip`, or by hand do not
   block their dependants.
 * **Failure safety.** The autopilot status is saved after every poll, also

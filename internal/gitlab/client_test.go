@@ -262,7 +262,7 @@ func TestMergeRequestActions(t *testing.T) {
 	}
 }
 
-func TestMergeRequestDiffsAndClosedBy(t *testing.T) {
+func TestMergeRequestDiffsAndRelated(t *testing.T) {
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.EscapedPath())
@@ -278,11 +278,11 @@ func TestMergeRequestDiffsAndClosedBy(t *testing.T) {
 	if err != nil || len(ds) != 1 || !ds[0].TooLarge {
 		t.Fatalf("diffs %+v %v", ds, err)
 	}
-	mrs, err := c.ListMergeRequestsClosingIssue(context.Background(), "group/app", 4)
+	mrs, err := c.ListRelatedMergeRequests(context.Background(), "group/app", 4)
 	if err != nil || len(mrs) != 1 || mrs[0].State != "merged" {
-		t.Fatalf("closed_by %+v %v", mrs, err)
+		t.Fatalf("related %+v %v", mrs, err)
 	}
-	want := []string{"/api/v4/projects/group%2Fapp/merge_requests/3/diffs", "/api/v4/projects/group%2Fapp/issues/4/closed_by"}
+	want := []string{"/api/v4/projects/group%2Fapp/merge_requests/3/diffs", "/api/v4/projects/group%2Fapp/issues/4/related_merge_requests"}
 	if !slices.Equal(paths, want) {
 		t.Fatalf("paths %v", paths)
 	}

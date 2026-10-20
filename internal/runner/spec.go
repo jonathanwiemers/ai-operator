@@ -127,7 +127,9 @@ func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
 	for i, item := range plan.Issues {
 		key := slugKey(item.Key, item.Title)
 		iid := item.ExistingIID
-		if iid == 0 {
+		if !inMilestone[iid] {
+			// Like applyPlan: an unknown IID falls back to the key, under
+			// which the issue was created.
 			iid = keyToIID[key]
 		}
 		if inMilestone[iid] {

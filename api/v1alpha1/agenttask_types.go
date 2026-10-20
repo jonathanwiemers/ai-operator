@@ -448,6 +448,10 @@ type AutopilotItem struct {
 	// +optional
 	RebasedDiff string `json:"rebasedDiff,omitempty"`
 
+	// RebasedAt is when the rebase was requested.
+	// +optional
+	RebasedAt *metav1.Time `json:"rebasedAt,omitempty"`
+
 	// MarkedReady is set once the operator marked the draft MR ready. A
 	// draft again after that is a human holding it.
 	// +optional

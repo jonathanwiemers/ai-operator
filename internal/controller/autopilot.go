@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -101,8 +102,13 @@ func (a *autopilot) off(ctx context.Context) error {
 			return err
 		}
 	}
-	a.ap.Phase = aiv1.AutopilotOff
-	return a.closeTracking(ctx)
+	prev := a.ap.Phase
+	a.ap.Phase = aiv1.AutopilotOff // for the description
+	if err := a.closeTracking(ctx); err != nil {
+		a.ap.Phase = prev // tried again on the next poll
+		return err
+	}
+	return nil
 }
 
 // autopilot is one poll of one autopilot milestone.
@@ -304,22 +310,38 @@ func (a *autopilot) pick(ctx context.Context) error {
 		if err := a.comment(ctx, fmt.Sprintf("✅ Autopilot is done: %d of %d issues merged. The decisions are listed in the description.", merged, len(a.ap.Items))); err != nil {
 			return err
 		}
-		a.ap.Phase = aiv1.AutopilotDone
-		return a.closeTracking(ctx)
+		prev := a.ap.Phase
+		a.ap.Phase = aiv1.AutopilotDone // for the description
+		if err := a.closeTracking(ctx); err != nil {
+			a.ap.Phase = prev // tried again on the next poll
+			return err
+		}
+		return nil
 	}
 	return nil
 }
 
 // doneByHand reports whether a closed issue was finished outside autopilot:
-// closed by a merged MR, or closed as done. It returns the merged MR, if any.
+// its MR, or a merged MR related to it, was merged, or it was closed as done.
+// It returns the merged MR, if any. (GitLab's closed_by only answers for open
+// issues, so related merge requests are used.)
 func (a *autopilot) doneByHand(ctx context.Context, iid int64) (*gitlab.MergeRequest, bool, error) {
 	is, ok := a.issues[iid]
 	if !ok || is.State == "opened" {
 		return nil, false, nil
 	}
-	mrs, err := a.gl.ListMergeRequestsClosingIssue(ctx, a.spec.GitLab.Project, iid)
+	if it := a.item(iid); it != nil && it.MergeRequestIID != 0 {
+		mr, err := a.gl.GetMergeRequest(ctx, a.spec.GitLab.Project, it.MergeRequestIID)
+		if err != nil && !gitlab.IsNotFound(err) {
+			return nil, false, fmt.Errorf("getting merge request !%d: %w", it.MergeRequestIID, err)
+		}
+		if err == nil && mr.State == "merged" {
+			return mr, true, nil
+		}
+	}
+	mrs, err := a.gl.ListRelatedMergeRequests(ctx, a.spec.GitLab.Project, iid)
 	if err != nil {
-		return nil, false, fmt.Errorf("listing the merge requests that close #%d: %w", iid, err)
+		return nil, false, fmt.Errorf("listing the merge requests related to #%d: %w", iid, err)
 	}
 	for i := range mrs {
 		if mrs[i].State == "merged" {
@@ -340,15 +362,6 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	}
 	if !ok || is.State != "opened" {
 		// Closed: merged by hand, or given up.
-		if it.MergeRequestIID != 0 {
-			mr, err := a.gl.GetMergeRequest(ctx, glProject, it.MergeRequestIID)
-			if err != nil && !gitlab.IsNotFound(err) {
-				return fmt.Errorf("getting merge request !%d: %w", it.MergeRequestIID, err)
-			}
-			if err == nil && mr.State == "merged" {
-				return a.merged(ctx, it, mr)
-			}
-		}
 		mr, done, err := a.doneByHand(ctx, it.IID)
 		if err != nil {
 			return err
@@ -390,9 +403,10 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	if !a.spec.CI.Disabled {
 		ci := task.Status.CI
 		switch {
-		case ci == nil || ci.SHA != run.PushedSHA:
+		case ci == nil || ci.SHA != run.PushedSHA || !ci.State.Final():
 			// In review, but the CI loop, which only follows issues in
-			// working, never saw this commit: hand it back.
+			// working, never finished this commit: hand it back. It always
+			// ends in review or needs-input, so this does not repeat.
 			a.log.Info("autopilot hands the issue back to the CI loop", "issue", it.IID, "sha", run.PushedSHA)
 			if _, err := a.gl.UpdateIssue(ctx, glProject, it.IID, gitlab.UpdateIssueOptions{
 				AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel},
@@ -404,8 +418,8 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 			return a.pauseActive(ctx, it, fmt.Sprintf("the pipeline of !%d was canceled", it.MergeRequestIID))
 		case ci.State == aiv1.CIStateBaseFailing:
 			return a.pauseActive(ctx, it, fmt.Sprintf("CI of !%d is red with jobs that also fail on the default branch (%s)", it.MergeRequestIID, jobList(ci.FailedJobs)))
-		case ci.State != aiv1.CIStateSuccess && ci.State != aiv1.CIStateNone:
-			return nil
+		case ci.State == aiv1.CIStateFailed:
+			return a.pauseActive(ctx, it, fmt.Sprintf("CI of !%d is red (%s)", it.MergeRequestIID, jobList(ci.FailedJobs)))
 		}
 	}
 
@@ -519,14 +533,23 @@ func (a *autopilot) rebase(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 	if err != nil {
 		return err
 	}
+	if diff == "" {
+		return a.pause(ctx, fmt.Sprintf("!%d needs a rebase, but its change is too large to check that a rebase keeps it; rebase it by hand and "+
+			"comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, a.spec.Workflow.CommandPrefix, it.IID))
+	}
 	if err := a.gl.RebaseMergeRequest(ctx, a.spec.GitLab.Project, mr.IID); err != nil {
 		return a.pause(ctx, fmt.Sprintf("GitLab could not rebase !%d: %v", mr.IID, err))
 	}
 	a.log.Info("autopilot rebases the merge request", "mr", mr.IID, "from", mr.SHA)
 	it.Rebases++
 	it.RebasedFrom, it.RebasedDiff = mr.SHA, diff
+	it.RebasedAt = &metav1.Time{Time: a.r.now()}
 	return nil
 }
+
+// rebaseGrace is how long GitLab may take to show a rebased head after the
+// rebase itself finished.
+const rebaseGrace = 5 * time.Minute
 
 // rebased hands the rebased head to the CI loop like a new push, once GitLab
 // is done and the change is still the one that was reviewed.
@@ -535,7 +558,7 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 		if err := a.pause(ctx, reason); err != nil {
 			return err
 		}
-		it.RebasedFrom, it.RebasedDiff = "", ""
+		it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
 		return nil
 	}
 	switch {
@@ -545,10 +568,12 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 		return unrebased(fmt.Sprintf("the rebase of !%d failed: %s", mr.IID, mr.MergeError))
 	case mr.SHA == it.RebasedFrom && mr.DetailedMergeStatus == "mergeable":
 		// Nothing to rebase after all; the gate runs again.
-		it.RebasedFrom, it.RebasedDiff = "", ""
+		it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
 		return nil
 	case mr.SHA == it.RebasedFrom && mr.DetailedMergeStatus == "conflict":
 		return unrebased(fmt.Sprintf("the rebase of !%d ran into conflicts; resolve them on the branch, then `resume`", mr.IID))
+	case mr.SHA == it.RebasedFrom && it.RebasedAt != nil && a.r.now().Sub(it.RebasedAt.Time) < rebaseGrace:
+		return nil // GitLab refreshes the MR after the rebase
 	case mr.SHA == it.RebasedFrom:
 		return unrebased(fmt.Sprintf("the rebase of !%d did not go through (GitLab reports %q); rebase by hand, then `resume`", mr.IID, mr.DetailedMergeStatus))
 	}
@@ -572,7 +597,7 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 	if err := a.r.Status().Patch(ctx, task, client.MergeFrom(orig)); err != nil {
 		return err
 	}
-	it.RebasedFrom, it.RebasedDiff = "", ""
+	it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
 	if a.spec.CI.Disabled {
 		return nil // merged on the next poll
 	}
@@ -639,7 +664,7 @@ func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 		}
 	}
 	it.State = aiv1.AutopilotItemMerged
-	it.RebasedFrom, it.RebasedDiff = "", ""
+	it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
 	it.Decisions = collectDecisions(is, notes, a.project.Status.BotUserID)
 	if mr != nil {
 		it.MergedSHA = firstNonEmpty(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA)

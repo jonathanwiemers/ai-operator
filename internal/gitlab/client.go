@@ -35,7 +35,7 @@ type API interface {
 	MergeMergeRequest(ctx context.Context, project string, iid int64, opts MergeOptions) (*MergeRequest, error)
 	RebaseMergeRequest(ctx context.Context, project string, iid int64) error
 	ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error)
-	ListMergeRequestsClosingIssue(ctx context.Context, project string, iid int64) ([]MergeRequest, error)
+	ListRelatedMergeRequests(ctx context.Context, project string, iid int64) ([]MergeRequest, error)
 	ListMergeRequestNotes(ctx context.Context, project string, iid int64) ([]Note, error)
 	CreateMergeRequestNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
 	ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error)
@@ -462,9 +462,9 @@ func (c *Client) ListMergeRequestDiffs(ctx context.Context, project string, iid 
 	return list[Diff](ctx, c, fmt.Sprintf("%s/merge_requests/%d/diffs", projectPath(project), iid), nil)
 }
 
-// ListMergeRequestsClosingIssue lists the MRs that close an issue when merged.
-func (c *Client) ListMergeRequestsClosingIssue(ctx context.Context, project string, iid int64) ([]MergeRequest, error) {
-	return list[MergeRequest](ctx, c, fmt.Sprintf("%s/issues/%d/closed_by", projectPath(project), iid), nil)
+// ListRelatedMergeRequests lists the MRs that mention or close an issue.
+func (c *Client) ListRelatedMergeRequests(ctx context.Context, project string, iid int64) ([]MergeRequest, error) {
+	return list[MergeRequest](ctx, c, fmt.Sprintf("%s/issues/%d/related_merge_requests", projectPath(project), iid), nil)
 }
 
 func (c *Client) FindOpenMergeRequest(ctx context.Context, project, sourceBranch string) (*MergeRequest, error) {
