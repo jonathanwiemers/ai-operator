@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
+
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
@@ -151,68 +153,109 @@ func errString(err error) string {
 // container.
 type AgentServer struct {
 	Agent *LocalAgent
+	// Log receives one line per call (the readiness probe only at debug
+	// level). Prompts, diffs and commit messages are never logged.
+	Log logr.Logger
 }
+
+// reply is the outcome of one call: the response body, the error (already
+// part of the body) and extra fields for the log line.
+type reply struct {
+	body any
+	err  error
+	kv   []any
+}
+
+// runHeader carries the runner's run ID, so agent log lines can be matched
+// with the runner's.
+const runHeader = "X-AI-Run"
 
 // Handler returns the HTTP handler of the RPC protocol.
 func (s *AgentServer) Handler() http.Handler {
 	mux := http.NewServeMux()
-	handle := func(name string, fn func(ctx context.Context, body []byte) any) {
+	handle := func(name string, fn func(ctx context.Context, body []byte) reply) {
 		mux.HandleFunc("POST /"+name, func(w http.ResponseWriter, r *http.Request) {
+			log := s.Log.WithValues("rpc", name)
+			if id := r.Header.Get(runHeader); id != "" {
+				log = log.WithValues("run", id)
+			}
+			start := time.Now()
 			body, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
 			if err != nil {
+				log.Error(err, "reading request")
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			rep := fn(logr.NewContext(r.Context(), log), body)
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(fn(r.Context(), body))
+			_ = json.NewEncoder(w).Encode(rep.body)
+			kv := append([]any{"durationMs", time.Since(start).Milliseconds()}, rep.kv...)
+			switch {
+			case rep.err != nil:
+				log.Error(rep.err, "call failed", kv...)
+			case name == "ready":
+				log.V(1).Info("call done", kv...)
+			default:
+				log.Info("call done", kv...)
+			}
 		})
 	}
-	handle("ready", func(context.Context, []byte) any { return errorResponse{} })
-	handle("run", func(ctx context.Context, body []byte) any {
+	handle("ready", func(context.Context, []byte) reply { return reply{body: errorResponse{}} })
+	handle("run", func(ctx context.Context, body []byte) reply {
 		var req runRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			return runResponse{Error: err.Error()}
+			return reply{runResponse{Error: err.Error()}, err, nil}
 		}
-		res, err := s.Agent.Run(ctx, req.Engine, req.Invocation)
-		return runResponse{Result: res, Error: errString(err)}
+		inv := req.Invocation
+		logr.FromContextOrDiscard(ctx).Info("agent CLI started", "engine", req.Engine, "model", inv.Model,
+			"readOnly", inv.ReadOnly, "resume", inv.Resume != "", "promptBytes", len(inv.Prompt))
+		res, err := s.Agent.Run(ctx, req.Engine, inv)
+		kv := []any{"engine", req.Engine, "model", inv.Model}
+		if res != nil {
+			kv = append(kv, "session", res.SessionID, "costUSD", res.CostUSD, "isError", res.IsError)
+		}
+		return reply{runResponse{Result: res, Error: errString(err)}, err, kv}
 	})
-	handle("refs", func(ctx context.Context, _ []byte) any {
+	handle("refs", func(ctx context.Context, _ []byte) reply {
 		refs, err := s.Agent.RemoteRefs(ctx)
-		return refsResponse{Refs: refs, Error: errString(err)}
+		return reply{refsResponse{Refs: refs, Error: errString(err)}, err, []any{"refs", len(refs)}}
 	})
-	handle("prepare", func(ctx context.Context, body []byte) any {
+	handle("prepare", func(ctx context.Context, body []byte) reply {
 		var req PrepareRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			return errorResponse{Error: err.Error()}
+			return reply{errorResponse{Error: err.Error()}, err, nil}
 		}
-		return errorResponse{Error: errString(s.Agent.Prepare(ctx, req))}
+		err := s.Agent.Prepare(ctx, req)
+		return reply{errorResponse{Error: errString(err)}, err, []any{"branch", req.Branch, "base", req.Base, "bundle", req.Bundle != ""}}
 	})
-	handle("commit", func(ctx context.Context, body []byte) any {
+	handle("commit", func(ctx context.Context, body []byte) reply {
 		var msg string
 		if err := json.Unmarshal(body, &msg); err != nil {
-			return commitResponse{Error: err.Error()}
+			return reply{commitResponse{Error: err.Error()}, err, nil}
 		}
 		ok, err := s.Agent.Commit(ctx, msg)
-		return commitResponse{Committed: ok, Error: errString(err)}
+		return reply{commitResponse{Committed: ok, Error: errString(err)}, err, []any{"committed", ok}}
 	})
-	handle("diff", func(ctx context.Context, body []byte) any {
+	handle("diff", func(ctx context.Context, body []byte) reply {
 		var base string
 		if err := json.Unmarshal(body, &base); err != nil {
-			return diffResponse{Error: err.Error()}
+			return reply{diffResponse{Error: err.Error()}, err, nil}
 		}
 		diff, stat, err := s.Agent.Diff(ctx, base)
-		return diffResponse{Diff: diff, Stat: stat, Error: errString(err)}
+		return reply{diffResponse{Diff: diff, Stat: stat, Error: errString(err)}, err,
+			[]any{"base", base, "diffBytes", len(diff), "summary", diffSummary(stat)}}
 	})
-	handle("reset", func(ctx context.Context, _ []byte) any {
-		return errorResponse{Error: errString(s.Agent.Reset(ctx))}
+	handle("reset", func(ctx context.Context, _ []byte) reply {
+		err := s.Agent.Reset(ctx)
+		return reply{errorResponse{Error: errString(err)}, err, nil}
 	})
-	handle("bundle", func(ctx context.Context, body []byte) any {
+	handle("bundle", func(ctx context.Context, body []byte) reply {
 		var req bundleRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			return bundleResponse{Error: err.Error()}
+			return reply{bundleResponse{Error: err.Error()}, err, nil}
 		}
 		ok, err := s.Agent.Bundle(ctx, req.Branch, req.Base, req.Path)
-		return bundleResponse{Written: ok, Error: errString(err)}
+		return reply{bundleResponse{Written: ok, Error: errString(err)}, err, []any{"branch", req.Branch, "written", ok}}
 	})
 	return mux
 }
@@ -266,6 +309,9 @@ func (c *AgentClient) call(ctx context.Context, method string, req, resp any) er
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://agent/"+method, bytes.NewReader(body))
 	if err != nil {
 		return err
+	}
+	if id := runIDFrom(ctx); id != "" {
+		httpReq.Header.Set(runHeader, id)
 	}
 	httpResp, err := c.http.Do(httpReq)
 	if err != nil {

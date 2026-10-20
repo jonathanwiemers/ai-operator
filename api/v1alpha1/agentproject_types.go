@@ -203,6 +203,13 @@ type AgentsSpec struct {
 	// +optional
 	Env []corev1.EnvVar `json:"env,omitempty"`
 
+	// LogLevel of the runner and agent containers. Defaults to the operator's
+	// --agent-log-level (the Helm chart sets it to agent.logLevel, falling
+	// back to logLevel). A running pod picks up a change when it is next
+	// started, e.g. after hibernation.
+	// +optional
+	LogLevel LogLevel `json:"logLevel,omitempty"`
+
 	// NodeSelector for agent pods.
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
@@ -247,6 +254,17 @@ type AgentProfile struct {
 
 	RoleSpec `json:",inline"`
 }
+
+// LogLevel of the agent pods. "info" logs every step of a run and every call
+// between runner and agent; "debug" adds the git commands of the runner.
+// +kubebuilder:validation:Enum=debug;info;error
+type LogLevel string
+
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelError LogLevel = "error"
+)
 
 // Engine is the coding agent CLI that runs a role.
 // +kubebuilder:validation:Enum=claude;cursor
@@ -329,13 +347,13 @@ const (
 // GitLab history remain, so the next run rehydrates from a fresh clone).
 type LifecycleSpec struct {
 	// IdleTimeout after which an idle pod is deleted while its workspace is kept.
-	// +kubebuilder:default="2h"
+	// +kubebuilder:default="1h"
 	// +optional
 	IdleTimeout metav1.Duration `json:"idleTimeout,omitempty"`
 
 	// RetentionPeriod after the last activity after which the workspace PVC is
 	// deleted as well.
-	// +kubebuilder:default="336h"
+	// +kubebuilder:default="168h"
 	// +optional
 	RetentionPeriod metav1.Duration `json:"retentionPeriod,omitempty"`
 

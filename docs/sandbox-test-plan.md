@@ -106,7 +106,11 @@ which has the task's name, e.g. `sandbox-spec-m1-tags-and-due-dates` or
 * A task `sandbox-spec-m<iid>-tags-and-due-dates` (type `Spec`) and a pod with
   the same name. It has an init container `init-workspace`, then containers
   `runner` and `agent`, both `Running`.
-* `kubectl -n agents logs <pod> -c runner` shows "starting run" and "run finished".
+* `kubectl -n agents logs <pod> -c runner` shows "starting run", a `step
+  started` / `step done` pair for each of the 7 spec steps (read milestone …
+  apply plan, one "issue created" line per issue) and "run finished" with
+  the step list. While it runs, `kubectl -n agents get agenttasks` shows the
+  step in the `Step` column.
 * A few (likely 3) new issues in the milestone with the labels
   `ai-generated`, `agent::draft`, `agent-profile::fast|strong`. Each holds a
   self-contained sub-spec (context, plan with real file names such as
@@ -140,8 +144,14 @@ profile label is kept. Editing the description again *without* a change
 **Expected:**
 * Within one poll, the label becomes `agent::working` and a task and pod
   `sandbox-<iid>-<slug>` appear.
-* The runner log shows the profile `fast` with its engine and model.
-* The reviewers run (two more agent invocations in the agent log).
+* The runner log shows the profile `fast` with its engine and model on the
+  `run implementer` step.
+* The reviewers run (two more `agent CLI started` lines in the agent log,
+  with the same `run` value as the runner's lines).
+* The issue gets a **🧠 Agent notes** comment with the implementer's handoff
+  notes; later runs edit it instead of adding a new one.
+* The issue comment ends with a collapsed **Run log** table (read issue …
+  open merge request) with durations and the cost.
 * Branch `agent/<iid>-<slug>` is pushed, and a **draft MR** "Draft: <title>"
   with `Closes #<iid>` and the summary is opened. The issue gets a comment
   linking the MR. It stays in `agent::working` until the MR pipeline is
@@ -218,7 +228,8 @@ Use an issue from T4 that is in `agent::review`.
 
 **Expected:** a new PVC and pod. The runner state and the agent session were
 on the deleted PVC, so the run starts a **fresh session** with the full issue
-thread, clones the repository again, and continues on the existing branch
+thread and the **🧠 Agent notes** comment (the runner log's `read comments`
+step says "agent notes from an earlier run"), clones the repository again, and continues on the existing branch
 and MR (the branch name is kept in the task's status).
 
 ### T10 – Finishing an issue

@@ -245,6 +245,22 @@ func (f *Fake) CreateIssueNote(_ context.Context, _ string, iid int64, body stri
 	return &n, nil
 }
 
+func (f *Fake) UpdateIssueNote(_ context.Context, _ string, iid, noteID int64, body string) (*gitlab.Note, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.IssueNotes[iid] {
+		if n := &f.IssueNotes[iid][i]; n.ID == noteID {
+			n.Body = body
+			if is := f.Issues[iid]; is != nil {
+				is.UpdatedAt = f.tick()
+			}
+			out := *n
+			return &out, nil
+		}
+	}
+	return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "note"}
+}
+
 func (f *Fake) GetMergeRequest(_ context.Context, _ string, iid int64) (*gitlab.MergeRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
