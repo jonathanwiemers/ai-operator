@@ -47,6 +47,35 @@ stateDiagram-v2
 You act on `draft`, `needs-input` and `review`. Everything in between,
 including fixing a red pipeline, happens without you.
 
+`hack/gitlab-board.sh` creates that board, named **Agents**, with one list per
+label in this order. Moving a card between columns changes its label, so
+dragging a card from draft to ready hands the issue to the agent. A group
+board shows the issues of every project in the group on one page:
+
+```sh
+# group labels (one set for every project in the group), then the group board
+GITLAB_GROUP=my-group GITLAB_TOKEN=glpat-… hack/sandbox/gitlab-setup.sh
+GITLAB_GROUP=my-group GITLAB_TOKEN=glpat-… hack/gitlab-board.sh
+
+# or a board for a single project
+GITLAB_PROJECT=my-group/shop GITLAB_TOKEN=glpat-… hack/gitlab-board.sh
+```
+
+Run both with your own token (`api` scope, *Maintainer* on the group or
+project): creating group labels and boards needs more than the bot's
+*Developer* role. `GITLAB_GROUP` must be a group, not your personal
+namespace. The board script stops if a label is missing. It never removes,
+renames or reorders boards and lists: missing lists are added at the end, and
+where a second board is not allowed (group boards on GitLab Free) it adds
+them to the existing board. Running it again changes nothing.
+
+If projects in the group already have the `agent::*` labels as project
+labels, promote them to group labels first (project > Manage > Labels >
+Promote, which merges the same-named labels of all projects in the group).
+Otherwise each name exists twice and the group board does not show those
+projects' issues. `gitlab-setup.sh` with `GITLAB_GROUP` stops when it finds
+such labels, and `gitlab-board.sh` warns about them.
+
 Create a **project access token** with role *Developer* and the scopes `api` and
 `write_repository`. Protect your default branch. The agent only pushes
 `agent/*` branches and opens draft merge requests.
