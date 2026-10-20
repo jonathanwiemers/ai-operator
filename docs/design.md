@@ -196,9 +196,9 @@ stateDiagram-v2
     Waiting --> Running: limit resets
     Running --> Idle: run done
     Idle --> Running: new run request
-    Idle --> Hibernated: idleTimeout (2h), pod deleted
+    Idle --> Hibernated: idleTimeout (1h), pod deleted
     Hibernated --> Running: new run request
-    Hibernated --> Archived: retentionPeriod (14d), PVC deleted
+    Hibernated --> Archived: retentionPeriod (7d), PVC deleted
     Archived --> Running: new run request, fresh clone
     Running --> Blocked: maxRunsPerTask reached
     Blocked --> Running: limit raised

@@ -322,13 +322,13 @@ const (
 // GitLab history remain, so the next run rehydrates from a fresh clone).
 type LifecycleSpec struct {
 	// IdleTimeout after which an idle pod is deleted while its workspace is kept.
-	// +kubebuilder:default="2h"
+	// +kubebuilder:default="1h"
 	// +optional
 	IdleTimeout metav1.Duration `json:"idleTimeout,omitempty"`
 
 	// RetentionPeriod after the last activity after which the workspace PVC is
 	// deleted as well.
-	// +kubebuilder:default="336h"
+	// +kubebuilder:default="168h"
 	// +optional
 	RetentionPeriod metav1.Duration `json:"retentionPeriod,omitempty"`
 

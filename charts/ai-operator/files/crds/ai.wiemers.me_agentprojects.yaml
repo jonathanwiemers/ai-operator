@@ -744,7 +744,7 @@ spec:
                   are kept around.
                 properties:
                   idleTimeout:
-                    default: 2h
+                    default: 1h
                     description: IdleTimeout after which an idle pod is deleted while
                       its workspace is kept.
                     type: string
@@ -758,7 +758,7 @@ spec:
                     description: MaxUsageLimitBackoff caps the wait between retries.
                     type: string
                   retentionPeriod:
-                    default: 336h
+                    default: 168h
                     description: |-
                       RetentionPeriod after the last activity after which the workspace PVC is
                       deleted as well.

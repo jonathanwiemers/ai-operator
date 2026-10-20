@@ -183,9 +183,9 @@ kubectl -n agents get agentproject <name> -o jsonpath='{.status.usageLimits}'
 
 Nothing is lost while an issue waits:
 
-- **2 hours** after the last run the pod is stopped. The workspace (checkout,
+- **1 hour** after the last run the pod is stopped. The workspace (checkout,
   build caches, agent session) is kept.
-- **14 days** after the last run the workspace is deleted as well.
+- **7 days** after the last run the workspace is deleted as well.
 - Any new `/agent` comment or move to ready brings the task back. After the
   workspace was deleted, the next run clones fresh and reads the full issue
   thread.
