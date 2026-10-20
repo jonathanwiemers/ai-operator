@@ -71,6 +71,11 @@ type Outcome struct {
 	CIRound   int32
 	// CIFixedPipelineID is set by CI fix runs.
 	CIFixedPipelineID int64
+	// Reviewed is set when the reviewers ran; BlockingFindings and
+	// ReviewErrors go with it.
+	Reviewed         bool
+	BlockingFindings int32
+	ReviewErrors     int32
 }
 
 // state is persisted on the runner's part of the workspace PVC, so it survives
@@ -307,6 +312,12 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		}
 		if out.CIFixedPipelineID != 0 {
 			s.CIFixedPipelineID = out.CIFixedPipelineID
+		}
+		// Runs without a review (CI fix runs, questions) keep the result of
+		// the last review.
+		if out.Reviewed {
+			s.BlockingFindings = out.BlockingFindings
+			s.ReviewErrors = out.ReviewErrors
 		}
 	})
 }

@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -97,6 +98,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	s.done(result, "issueNotes", len(issueNotes), "mrNotes", len(mrNotes), "newNotes", len(newIssueNotes)+len(newMRNotes),
 		"handoffBytes", len(prior.Text))
 	seenNote := max(maxNoteID(issueNotes, 0), maxNoteID(mrNotes, 0))
+	// "/agent revisit <id> …" comments since the last run name decisions to
+	// change; the implementer gets them with the decision they refer to.
+	revisits := findRevisits(issue, issueNotes, append(slices.Clone(newIssueNotes), newMRNotes...), botID, wf.CommandPrefix)
 
 	role, profile := spec.ImplementRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
@@ -104,6 +108,18 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	inv.Resume = st.session("implement", role.Engine)
 	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false, prior)
 	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true, handoff{})
+	var notices []string
+	if len(revisits) > 0 {
+		revisitPrompt := buildRevisitPrompt(revisits)
+		fullPrompt += "\n\n" + revisitPrompt
+		inv.Prompt = revisitPrompt + "\n\n" + inv.Prompt
+		for _, rv := range revisits {
+			if rv.Decision == "" {
+				notices = append(notices, fmt.Sprintf("Decision %s was not found on this issue; the instruction was passed on as a comment.", rv.ID))
+			}
+		}
+		r.log().Info("revisiting decisions", "decisions", len(revisits), "notFound", len(notices))
+	}
 
 	// A CI fix run: the operator saw the pipeline of the last push fail.
 	ciPipeline := task.Spec.Source.CIFixPipelineID
@@ -144,7 +160,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		return out, s.fail(fmt.Errorf("decoding implementer answer: %w", err))
 	}
 	s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD,
-		"status", answer.Status, "questions", len(answer.Questions))
+		"status", answer.Status, "questions", len(answer.Questions), "decisions", len(answer.Decisions))
 	if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
 		return out, err
 	}
@@ -163,12 +179,14 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			return out, s.fail(err)
 		}
 		if strings.TrimSpace(diff) == "" {
+			out.Reviewed, out.BlockingFindings, out.ReviewErrors = true, 0, 0
 			s.done("no changes to review")
 			break
 		}
 		findings, cost, errs := r.review(ctx, review, issue, base, stat, diff)
 		out.CostUSD += cost
 		reviewNotes = errs
+		out.Reviewed, out.ReviewErrors = true, int32(len(errs))
 		// Reviewers are read-only; discard anything they touched anyway.
 		if err := r.Agent.Reset(ctx); err != nil {
 			return out, s.fail(err)
@@ -182,6 +200,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		s.done(fmt.Sprintf("%s; %d findings, %d blocking, $%.2f", diffSummary(stat), len(findings), len(blocking), cost),
 			"diff", diffSummary(stat), "findings", len(findings), "blocking", len(blocking), "reviewerErrors", len(errs), "costUSD", cost)
 		remaining = findings
+		out.BlockingFindings = int32(len(blocking))
 		if len(blocking) == 0 || iter >= int(*review.MaxIterations) {
 			break
 		}
@@ -210,6 +229,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if err := res.Decode(&fixed); err == nil {
 			answer.Summary = fixed.Summary
 			answer.Questions = fixed.Questions
+			answer.Decisions = append(answer.Decisions, fixed.Decisions...)
 			if strings.TrimSpace(fixed.Handoff) != "" {
 				answer.Handoff = fixed.Handoff
 			}
@@ -243,8 +263,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// not be found again.
 	if botID != 0 {
 		r.updateHandoff(ctx, gl, glProject, issue.IID, handoffNote, answer.Handoff, seenNote)
+		r.postDecisions(ctx, gl, glProject, issue, issueNotes, botID, wf.CommandPrefix, answer.Decisions, revisits)
 	}
-	report := renderReport(answer, remaining, reviewNotes)
+	report := renderReport(answer, remaining, append(reviewNotes, notices...))
 	if ciFix {
 		report = "CI fix: " + report
 	}
@@ -354,6 +375,59 @@ func (r *Runner) updateHandoff(ctx context.Context, gl gitlab.API, glProject str
 	} else {
 		s.done(fmt.Sprintf("created (%d bytes)", len(text)))
 	}
+}
+
+// postDecisions posts the run's decisions in one comment on the issue,
+// numbered after the highest decision ID on the issue, and marks the
+// decisions this run revisited as superseded. Like the notes, it is best
+// effort and never fails the run.
+func (r *Runner) postDecisions(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, notes []gitlab.Note, botID int64, prefix string, ds []Decision, revisits []revisit) {
+	numbered := numberDecisions(ds, issue.IID, false, nextDecisionNumber(issue, notes, botID, false))
+	if len(numbered) == 0 && len(revisits) == 0 {
+		return
+	}
+	s := r.step(ctx, "post decisions", "decisions", len(numbered), "revisits", len(revisits))
+	if len(numbered) > 0 {
+		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, renderDecisionsComment(r.run.id, prefix, numbered)); err != nil {
+			_ = s.fail(fmt.Errorf("posting decisions: %w", err))
+			return
+		}
+	}
+	superseded := 0
+	for _, rv := range revisits {
+		if rv.Decision == "" {
+			continue
+		}
+		by := ""
+		for _, d := range numbered {
+			if strings.TrimSpace(d.Supersedes) == rv.ID {
+				by = d.ID
+				break
+			}
+		}
+		var err error
+		if rv.Note != nil {
+			_, err = gl.UpdateIssueNote(ctx, glProject, issue.IID, rv.Note.ID, markSuperseded(rv.Note.Body, rv.ID, by, r.run.id))
+		} else {
+			// A planning decision lives in the issue description.
+			_, err = gl.UpdateIssue(ctx, glProject, issue.IID, gitlab.UpdateIssueOptions{
+				Description: markSuperseded(issue.Description, rv.ID, by, r.run.id),
+			})
+		}
+		if err != nil {
+			_ = s.fail(fmt.Errorf("marking %s superseded: %w", rv.ID, err))
+			return
+		}
+		superseded++
+	}
+	result := fmt.Sprintf("%d posted", len(numbered))
+	if len(numbered) > 0 {
+		result = fmt.Sprintf("%s to %s posted", numbered[0].ID, numbered[len(numbered)-1].ID)
+	}
+	if superseded > 0 {
+		result += fmt.Sprintf(", %d superseded", superseded)
+	}
+	s.done(result)
 }
 
 // commit commits the agent's changes as a step of the run.

@@ -65,7 +65,7 @@ flowchart TD
     subgraph SPEC["spec pod"]
         SP["spec agent reads the spec and the code"]
     end
-    SP --> SUB["one sub-issue per MR<br/>sub-spec, acceptance criteria, questions,<br/>agent::draft + agent-profile::name"]
+    SP --> SUB["one sub-issue per MR<br/>sub-spec, acceptance criteria, questions, decisions,<br/>agent::draft + agent-profile::name"]
 
     SUB --> H["You answer the questions,<br/>adjust the profile label,<br/>move the issue to agent::ready"]
     H --> REQ["operator: agent::working<br/>+ assign the bot if unassigned<br/>AgentTask runRequest + 1"]
@@ -110,7 +110,7 @@ sequenceDiagram
     RU->>AG: git bundle, prepare checkout
     RU->>AG: run implementer
     AG->>LLM: claude -p / cursor-agent -p
-    AG-->>RU: result (summary, questions)
+    AG-->>RU: result (summary, questions, decisions)
     loop at most review.maxIterations
         RU->>AG: run bugbot + security on the diff
         AG-->>RU: findings
@@ -252,6 +252,17 @@ nothing is lost.
   agent's text are neutralised. The notes are as trustworthy as the bot
   account (and whoever may edit its comments) and are model output built
   from the thread, so they are data in the prompt like any comment.
+* **Decisions.** Both agents return the decisions they made (question,
+  choice, why, rejected alternatives) as structured output, so there is no
+  extra model call to extract them (`internal/runner/decisions.go`). The
+  runner posts the implementer's decisions in one comment per run with IDs
+  `D<issue>-<n>`, and the planner's go into the issue description as
+  `D<issue>-P<n>`. IDs are numbered after the highest one found in the
+  bot's comments and the description, so GitLab is the source of truth
+  and they survive an archived workspace. `/agent revisit <id> …` puts the
+  decision and the instruction at the top of the next prompt; the new
+  decision names the old one in `supersedes`, and the old one is marked.
+  Markers and mentions in the agent's text are neutralised.
 * **Context prepared by the runner.** The runner fetches the issue, milestone
   and comments and puts them into the prompt; the model never spends turns on
   GitLab API exploration and never gets GitLab credentials.
@@ -447,6 +458,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/runner.go` | run loop, status reporting, session state, mirror ⇄ workspace sync |
 | `internal/runner/steps.go` | run steps: step logging, current step, GitLab run log |
 | `internal/runner/handoff.go` | agent notes: the bot's handoff comment on the issue |
+| `internal/runner/decisions.go` | decisions: IDs, decision comments, revisits, superseding |
 | `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
 | `internal/runner/workspace.go` | agent-side checkout (local git only) |
 | `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab |

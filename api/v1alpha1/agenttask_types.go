@@ -279,6 +279,15 @@ type RunStatus struct {
 	// CIFixedPipelineID is the failed pipeline the last CI fix run handled.
 	// +optional
 	CIFixedPipelineID int64 `json:"ciFixedPipelineID,omitempty"`
+
+	// BlockingFindings is the number of blocker and major review findings
+	// left after the last review.
+	// +optional
+	BlockingFindings int32 `json:"blockingFindings,omitempty"`
+
+	// ReviewErrors is the number of reviewers that failed in the last review.
+	// +optional
+	ReviewErrors int32 `json:"reviewErrors,omitempty"`
 }
 
 // +kubebuilder:object:root=true
