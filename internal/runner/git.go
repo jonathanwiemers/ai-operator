@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
+
+	"github.com/go-logr/logr"
 )
 
 // Mirror is the runner's bare copy of the repository. It is the only git
@@ -20,6 +23,9 @@ import (
 type Mirror struct {
 	Dir   string
 	Token string
+	// Log receives every git command at debug level (V(1)). The token is
+	// never part of the arguments.
+	Log logr.Logger
 }
 
 // env is deliberately minimal: no GITLAB_TOKEN, no Kubernetes variables, no
@@ -53,7 +59,10 @@ func (m *Mirror) run(ctx context.Context, withAuth bool, args ...string) (string
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	start := time.Now()
+	err := cmd.Run()
+	m.Log.V(1).Info("git", "args", args, "durationMs", time.Since(start).Milliseconds(), "ok", err == nil)
+	if err != nil {
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, tail(strings.TrimSpace(stderr.String()), 1000))
 	}
 	return strings.TrimRight(stdout.String(), "\n"), nil
@@ -64,7 +73,7 @@ func (m *Mirror) run(ctx context.Context, withAuth bool, args ...string) (string
 // are fetched; the mirror stays on the persistent volume, so follow-up runs
 // only transfer the delta.
 func (m *Mirror) Sync(ctx context.Context, url string, branches ...string) error {
-	if _, err := os.Stat(filepath.Join(m.Dir, "HEAD")); err != nil {
+	if !m.exists() {
 		if err := os.MkdirAll(m.Dir, 0o755); err != nil {
 			return err
 		}
@@ -108,6 +117,13 @@ func (m *Mirror) Sync(ctx context.Context, url string, branches ...string) error
 		}
 	}
 	return nil
+}
+
+// exists reports whether the mirror has been initialised; the first Sync
+// clones, later ones fetch the delta.
+func (m *Mirror) exists() bool {
+	_, err := os.Stat(filepath.Join(m.Dir, "HEAD"))
+	return err == nil
 }
 
 func (m *Mirror) resolve(ctx context.Context, ref string) (string, bool) {

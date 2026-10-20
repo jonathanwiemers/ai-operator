@@ -146,6 +146,7 @@ All labels can be renamed. Defaults:
 | `storageClassName` | cluster default | |
 | `cacheClaimName` | – | existing (ideally RWX) PVC mounted at `/cache` for shared dependency caches (`GOMODCACHE`, `GOCACHE`, `npm_config_cache`, `PIP_CACHE_DIR`, `YARN_CACHE_FOLDER`) |
 | `env`, `nodeSelector`, `tolerations` | – | passed to the pod |
+| `logLevel` | operator's `--agent-log-level` (with Helm: `agent.logLevel`, falling back to `logLevel`) | `debug`, `info` or `error` for the runner and agent containers; `info` logs every step, `debug` adds git commands. A running pod picks up a change when it is next started |
 | `spec` | claude, `claude-opus-5-5` | spec (planning) agent |
 | `profiles` | `fast`, `strong` | implementing agents selected per issue |
 | `implement` | claude, `claude-opus-5-5` | implementing agent for issues without a profile label |

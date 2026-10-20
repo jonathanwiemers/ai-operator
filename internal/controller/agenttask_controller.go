@@ -42,6 +42,9 @@ type AgentTaskReconciler struct {
 	Now    func() time.Time
 	// DefaultAgentImage is used for projects that do not set agents.image.
 	DefaultAgentImage string
+	// DefaultAgentLogLevel is used for projects that do not set
+	// agents.logLevel.
+	DefaultAgentLogLevel aiv1.LogLevel
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;update;patch
@@ -72,6 +75,9 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	spec := project.Spec.WithDefaults()
 	if spec.Agents.Image == "" {
 		spec.Agents.Image = r.DefaultAgentImage
+	}
+	if spec.Agents.LogLevel == "" {
+		spec.Agents.LogLevel = r.DefaultAgentLogLevel
 	}
 	lc := spec.Lifecycle
 
@@ -192,6 +198,11 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		} else {
 			task.Status.Phase = aiv1.TaskPhasePending
 		}
+	}
+	// Only the runner sets the current step; a run cut off together with its
+	// pod (suspend, eviction) would leave it behind.
+	if pod == nil {
+		task.Status.Run.CurrentStep = ""
 	}
 
 	if waiting && !blocked && !task.Spec.Suspend {

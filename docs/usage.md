@@ -196,11 +196,52 @@ Both durations are configurable (`spec.lifecycle`).
 
 ```sh
 kubectl -n agents get agentprojects
-kubectl -n agents get agenttasks          # type, issue, phase, last result, runs, cost
+kubectl -n agents get agenttasks -w       # type, issue, phase, current step, last result, runs, cost
 kubectl -n agents get agenttasks -o wide  # + merge request URL
-kubectl -n agents logs -f shop-42-add-paypal-button -c runner   # what the runner does
-kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server
+kubectl -n agents logs -f shop-42-add-paypal-button -c runner   # every step of a run
+kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server: CLI runs, git calls
 ```
+
+### Run logs
+
+Every run is a numbered list of steps, e.g. for an issue:
+
+1. read issue
+2. read milestone
+3. read project
+4. clone repository (`fetch repository` once the workspace exists)
+5. prepare checkout
+6. find merge request
+7. read comments
+8. read failed CI jobs (CI fix runs only)
+9. run implementer
+10. commit
+11. review round 1, fix round 1, commit, review round 2, … (up to
+    `review.maxIterations`)
+12. push
+13. open merge request (first push only)
+14. comment
+15. update issue labels
+
+A spec run reads the milestone and the project, clones or fetches, lists the
+milestone's issues, runs the spec agent and applies the plan.
+
+The steps show up in three places:
+
+- **The runner log** has a `step started` and a `step done` (or `step
+  failed`) line per step, with the duration and the result. Each line carries
+  `run=<task>#<run request>`, and so do the agent container's lines, so you
+  can filter both logs by run. The `run finished` line lists all steps with
+  their durations.
+- **`kubectl get agenttasks`** shows the step in progress in the `Step`
+  column (`status.run.currentStep`).
+- **GitLab:** the agent's comment on the issue or MR ends with a collapsed
+  **Run log** table that lists the steps up to that comment, with their
+  durations, results and the cost so far. A failure comment includes it too,
+  with the failed step marked.
+
+Prompts, comment bodies and diffs are never logged. `spec.agents.logLevel:
+debug` (or the operator's `--agent-log-level`) adds the runner's git commands.
 
 Task phases: `Pending`, `Queued` (waiting for `maxConcurrentRuns`), `Running`,
 `Waiting` (paused by a usage limit), `Idle`, `Hibernated`, `Archived`,

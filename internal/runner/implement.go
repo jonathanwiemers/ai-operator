@@ -22,10 +22,12 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	botID := project.Status.BotUserID
 	out := &Outcome{}
 
+	s := r.step(ctx, "read issue")
 	issue, err := gl.GetIssue(ctx, glProject, task.Spec.Issue.IID)
 	if err != nil {
-		return out, fmt.Errorf("getting issue: %w", err)
+		return out, s.fail(fmt.Errorf("getting issue: %w", err))
 	}
+	s.done(fmt.Sprintf("#%d %s", issue.IID, issue.State), "state", issue.State, "labels", issue.Labels)
 	if issue.State != "opened" {
 		out.Result = aiv1.RunResultSucceeded
 		out.Summary = "issue is closed, nothing to do"
@@ -33,15 +35,19 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	var milestone *gitlab.Milestone
 	if issue.Milestone != nil {
+		s = r.step(ctx, "read milestone", "milestoneID", issue.Milestone.ID)
 		if milestone, err = gl.GetMilestone(ctx, glProject, issue.Milestone.ID); err != nil {
-			return out, fmt.Errorf("getting milestone: %w", err)
+			return out, s.fail(fmt.Errorf("getting milestone: %w", err))
 		}
+		s.done(milestone.Title)
 	}
+	s = r.step(ctx, "read project")
 	proj, err := gl.GetProject(ctx, glProject)
 	if err != nil {
-		return out, fmt.Errorf("getting project: %w", err)
+		return out, s.fail(fmt.Errorf("getting project: %w", err))
 	}
 	base := proj.DefaultBranch
+	s.done("default branch "+base, "defaultBranch", base)
 
 	// The branch name is fixed on the first run, renaming the issue later
 	// does not move the work to another branch.
@@ -55,31 +61,40 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		return out, err
 	}
 
+	s = r.step(ctx, "find merge request", "branch", branch)
 	mr, err := gl.FindOpenMergeRequest(ctx, glProject, branch)
 	if err != nil {
-		return out, fmt.Errorf("looking up merge request: %w", err)
+		return out, s.fail(fmt.Errorf("looking up merge request: %w", err))
+	}
+	if mr != nil {
+		s.done(fmt.Sprintf("!%d", mr.IID), "mr", mr.IID)
+	} else {
+		s.done("none yet")
 	}
 
 	// Context: on a resumed session only comments the agent has not seen yet
 	// are sent, everything else is already in the session.
 	st := r.loadState()
+	s = r.step(ctx, "read comments")
 	issueNotes, err := gl.ListIssueNotes(ctx, glProject, issue.IID)
 	if err != nil {
-		return out, fmt.Errorf("listing issue notes: %w", err)
+		return out, s.fail(fmt.Errorf("listing issue notes: %w", err))
 	}
 	var mrNotes []gitlab.Note
 	if mr != nil {
 		if mrNotes, err = gl.ListMergeRequestNotes(ctx, glProject, mr.IID); err != nil {
-			return out, fmt.Errorf("listing merge request notes: %w", err)
+			return out, s.fail(fmt.Errorf("listing merge request notes: %w", err))
 		}
 	}
+	newIssueNotes, newMRNotes := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
+	s.done(fmt.Sprintf("%d on the issue, %d on the MR, %d new", len(issueNotes), len(mrNotes), len(newIssueNotes)+len(newMRNotes)),
+		"issueNotes", len(issueNotes), "mrNotes", len(mrNotes), "newNotes", len(newIssueNotes)+len(newMRNotes))
+
 	role, profile := spec.ImplementRole(issue.Labels)
-	r.Log.Info("implementing issue", "issue", issue.IID, "profile", profile, "engine", role.Engine, "model", role.Model)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
 	inv.DisallowedTools = implementDenied
 	inv.Resume = st.session("implement", role.Engine)
 	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false)
-	newIssueNotes, newMRNotes := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
 	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true)
 
 	// A CI fix run: the operator saw the pipeline of the last push fail.
@@ -87,10 +102,12 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	ciFix := ciPipeline != 0 && ciPipeline != task.Status.Run.CIFixedPipelineID
 	if ciFix {
 		out.CIFixedPipelineID = ciPipeline
+		s = r.step(ctx, "read failed CI jobs", "pipeline", ciPipeline)
 		ciPrompt, err := buildCIPrompt(ctx, gl, glProject, ciPipeline)
 		if err != nil {
-			return out, err
+			return out, s.fail(err)
 		}
+		s.done(fmt.Sprintf("pipeline %d", ciPipeline))
 		fullPrompt += "\n\n" + ciPrompt
 		if len(newIssueNotes)+len(newMRNotes) == 0 {
 			inv.Prompt = ciPrompt
@@ -99,24 +116,28 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 	}
 
+	s = r.step(ctx, "run implementer", "profile", profile, "engine", role.Engine, "model", role.Model,
+		"resume", inv.Resume != "", "ciFix", ciFix)
 	res, err := r.invoke(ctx, role, inv, fullPrompt)
 	if res != nil {
 		out.CostUSD += res.CostUSD
 	}
 	if err != nil {
-		return out, err
+		return out, s.fail(err)
 	}
 	st.setSession("implement", role.Engine, res.SessionID)
 	st.LastIssueNoteID = maxNoteID(issueNotes, st.LastIssueNoteID)
 	st.LastMRNoteID = maxNoteID(mrNotes, st.LastMRNoteID)
 	if err := r.saveState(st); err != nil {
-		return out, err
+		return out, s.fail(err)
 	}
 	var answer ImplementAnswer
 	if err := res.Decode(&answer); err != nil {
-		return out, fmt.Errorf("decoding implementer answer: %w", err)
+		return out, s.fail(fmt.Errorf("decoding implementer answer: %w", err))
 	}
-	if _, err := r.Agent.Commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
+	s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD,
+		"status", answer.Status, "questions", len(answer.Questions))
+	if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
 		return out, err
 	}
 
@@ -128,11 +149,13 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// CI fix runs skip the reviewers: the change is reviewed with the next
 	// regular run, and CI itself is the check here.
 	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input" && !ciFix; iter++ {
+		s = r.step(ctx, fmt.Sprintf("review round %d", iter+1), "reviewers", review.Reviewers)
 		diff, stat, err := r.Agent.Diff(ctx, base)
 		if err != nil {
-			return out, err
+			return out, s.fail(err)
 		}
 		if strings.TrimSpace(diff) == "" {
+			s.done("no changes to review")
 			break
 		}
 		findings, cost, errs := r.review(ctx, review, issue, base, stat, diff)
@@ -140,7 +163,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		reviewNotes = errs
 		// Reviewers are read-only; discard anything they touched anyway.
 		if err := r.Agent.Reset(ctx); err != nil {
-			return out, err
+			return out, s.fail(err)
 		}
 		var blocking []Finding
 		for _, f := range findings {
@@ -148,10 +171,13 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 				blocking = append(blocking, f)
 			}
 		}
+		s.done(fmt.Sprintf("%s; %d findings, %d blocking, $%.2f", diffSummary(stat), len(findings), len(blocking), cost),
+			"diff", diffSummary(stat), "findings", len(findings), "blocking", len(blocking), "reviewerErrors", len(errs), "costUSD", cost)
 		remaining = findings
 		if len(blocking) == 0 || iter >= int(*review.MaxIterations) {
 			break
 		}
+		s = r.step(ctx, fmt.Sprintf("fix round %d", iter+1), "blocking", len(blocking))
 		fix := inv
 		fix.Resume = res.SessionID
 		fixPrompt := buildFixPrompt(blocking)
@@ -164,10 +190,11 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			// Keep what is done: publish it with the open findings instead
 			// of throwing the work away until the limit resets.
 			reviewNotes = append(reviewNotes, "fix round skipped: "+err.Error())
+			s.done("skipped: usage limit", "error", err.Error())
 			break
 		}
 		if err != nil {
-			return out, err
+			return out, s.fail(err)
 		}
 		st.setSession("implement", role.Engine, res.SessionID)
 		_ = r.saveState(st)
@@ -179,21 +206,26 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 				answer.Status = fixed.Status
 			}
 		}
-		if _, err := r.Agent.Commit(ctx, commitMessage(fixed.CommitMessage, issue)); err != nil {
+		s.done(agentResult(role, res, fixed.Status), "session", res.SessionID, "costUSD", res.CostUSD, "status", fixed.Status)
+		if err := r.commit(ctx, commitMessage(fixed.CommitMessage, issue)); err != nil {
 			return out, err
 		}
 	}
 
 	// Push and open / update the merge request.
+	s = r.step(ctx, "push", "branch", branch)
 	pushed, err := r.publish(ctx, branch, base)
 	if err != nil {
-		return out, err
+		return out, s.fail(err)
 	}
 	if pushed {
 		out.PushedSHA, _ = r.Mirror.resolve(ctx, "refs/heads/"+branch)
 		if ciFix {
 			out.CIRound = task.Status.Run.CIRound + 1
 		}
+		s.done(fmt.Sprintf("%s at %s", branch, shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
+	} else {
+		s.done("nothing new to push")
 	}
 	report := renderReport(answer, remaining, reviewNotes)
 	if ciFix {
@@ -201,6 +233,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	newMR := false
 	if mr == nil && (pushed || r.Mirror.HasRemoteBranch(ctx, branch)) {
+		s = r.step(ctx, "open merge request", "branch", branch, "target", base)
 		mr, err = gl.CreateMergeRequest(ctx, glProject, gitlab.CreateMergeRequestOptions{
 			SourceBranch:       branch,
 			TargetBranch:       base,
@@ -209,36 +242,49 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			RemoveSourceBranch: true,
 		})
 		if err != nil {
-			return out, fmt.Errorf("creating merge request: %w", err)
+			return out, s.fail(fmt.Errorf("creating merge request: %w", err))
 		}
+		s.done(fmt.Sprintf("!%d", mr.IID), "mr", mr.IID, "url", mr.WebURL)
 		newMR = true
 	}
 
 	// Report back and move the issue to the next column - unless another
 	// run was requested meanwhile, in which case the issue stays "working".
+	// The run log covers the steps up to here.
 	needsInput := answer.Status == "needs_input" || len(answer.Questions) > 0
+	runLogMD := r.run.markdown(out.CostUSD)
+	s = r.step(ctx, "comment")
 	switch {
 	case mr != nil && !newMR:
-		if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report); err != nil {
-			return out, fmt.Errorf("commenting on merge request: %w", err)
+		if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+runLogMD); err != nil {
+			return out, s.fail(fmt.Errorf("commenting on merge request: %w", err))
 		}
+		s.done(fmt.Sprintf("on !%d", mr.IID))
 	case mr != nil && newMR:
 		note := fmt.Sprintf("🤖 Opened %s", mr.WebURL)
 		if len(answer.Questions) > 0 {
 			note += "\n\nBefore this can be finished I need answers to:\n\n" + numbered(answer.Questions)
 		}
-		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, note); err != nil {
-			return out, fmt.Errorf("commenting on issue: %w", err)
+		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, note+runLogMD); err != nil {
+			return out, s.fail(fmt.Errorf("commenting on issue: %w", err))
 		}
+		s.done(fmt.Sprintf("on #%d", issue.IID))
 	default:
-		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, "🤖 "+report); err != nil {
-			return out, fmt.Errorf("commenting on issue: %w", err)
+		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, "🤖 "+report+runLogMD); err != nil {
+			return out, s.fail(fmt.Errorf("commenting on issue: %w", err))
 		}
+		s.done(fmt.Sprintf("on #%d", issue.IID))
 	}
 	// With the CI loop, a fresh push stays in "working" until the operator
 	// has seen its pipeline go green (or hands it back).
 	waitForCI := !spec.CI.Disabled && pushed && mr != nil && !needsInput
-	if !waitForCI && !r.morePending(ctx, task.Spec.RunRequest) {
+	s = r.step(ctx, "update issue labels")
+	switch {
+	case waitForCI:
+		s.done(fmt.Sprintf("stays in %s until the pipeline is green", wf.WorkingLabel))
+	case r.morePending(ctx, task.Spec.RunRequest):
+		s.done(fmt.Sprintf("stays in %s, another run is pending", wf.WorkingLabel))
+	default:
 		next := wf.ReviewLabel
 		if needsInput {
 			next = wf.NeedsInputLabel
@@ -246,8 +292,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if _, err := gl.UpdateIssue(ctx, glProject, issue.IID, gitlab.UpdateIssueOptions{
 			AddLabels: []string{next}, RemoveLabels: []string{wf.WorkingLabel, wf.ReadyLabel},
 		}); err != nil {
-			return out, fmt.Errorf("updating issue labels: %w", err)
+			return out, s.fail(fmt.Errorf("updating issue labels: %w", err))
 		}
+		s.done("moved to "+next, "label", next)
 	}
 
 	out.Result = aiv1.RunResultSucceeded
@@ -259,6 +306,21 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		out.MRIID, out.MRURL = mr.IID, mr.WebURL
 	}
 	return out, nil
+}
+
+// commit commits the agent's changes as a step of the run.
+func (r *Runner) commit(ctx context.Context, message string) error {
+	s := r.step(ctx, "commit")
+	committed, err := r.Agent.Commit(ctx, message)
+	if err != nil {
+		return s.fail(err)
+	}
+	if committed {
+		s.done("committed", "committed", true)
+	} else {
+		s.done("no changes", "committed", false)
+	}
+	return nil
 }
 
 // review runs all configured reviewers in parallel. Reviewer failures do not
@@ -289,14 +351,19 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 				cost += res.CostUSD
 			}
 			if err != nil {
-				r.Log.Error(err, "reviewer failed", "reviewer", kind)
+				r.log().Error(err, "reviewer failed", "reviewer", kind)
 				errs = append(errs, fmt.Sprintf("%s reviewer failed: %s", kind, truncate(err.Error(), 300)))
 				return
 			}
+			blocking := 0
 			for _, f := range answer.Findings {
 				f.Reviewer = string(kind)
 				findings = append(findings, f)
+				if f.Blocking() {
+					blocking++
+				}
 			}
+			r.log().Info("reviewer finished", "reviewer", kind, "findings", len(answer.Findings), "blocking", blocking, "costUSD", res.CostUSD)
 		}(kind)
 	}
 	wg.Wait()

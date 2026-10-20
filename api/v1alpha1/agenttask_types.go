@@ -212,6 +212,11 @@ type RunStatus struct {
 	// +optional
 	ObservedRunRequest int64 `json:"observedRunRequest,omitempty"`
 
+	// CurrentStep is the step the runner is working on, e.g. "9 run
+	// implementer". It is empty between runs.
+	// +optional
+	CurrentStep string `json:"currentStep,omitempty"`
+
 	// RunCount is the number of runs performed so far.
 	// +optional
 	RunCount int32 `json:"runCount,omitempty"`
@@ -281,6 +286,7 @@ type RunStatus struct {
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="Issue",type=integer,JSONPath=`.spec.issue.iid`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Step",type=string,JSONPath=`.status.run.currentStep`
 // +kubebuilder:printcolumn:name="Result",type=string,JSONPath=`.status.run.lastResult`
 // +kubebuilder:printcolumn:name="Runs",type=integer,JSONPath=`.status.run.runCount`
 // +kubebuilder:printcolumn:name="Cost",type=string,JSONPath=`.status.run.costUSD`
