@@ -229,6 +229,45 @@ Implementer decisions are only read from the bot's decision comments, and
 planner decisions from the issue description, so a comment by someone else
 cannot add or fake decisions.
 
+#### Revisiting after the merge
+
+Once an issue of a planned milestone is merged and closed, its decisions can
+still be changed. Comment `/agent revisit <id> <instruction>` on the closed
+issue, or on the milestone's [tracking issue](#tracking-issue) on autopilot.
+The operator then creates a **follow-up issue** in the milestone:
+
+- titled `Revisit D42-3: <decision title>`, with the `ai-generated` label and
+  the profile label of the original issue;
+- its description holds the old decision, your instruction, and who asked;
+- its implementer works on top of the merged change and records a decision
+  that supersedes the old one. When that decision is posted, the old decision
+  on the original issue is marked *Superseded by D57-1*, already before the
+  follow-up is merged. If you drop the follow-up, comment on it or open an
+  issue by hand to restore the old behavior.
+
+Without autopilot the follow-up goes straight to `agent::ready`, since you
+asked for it. On autopilot it is created as `agent::draft` and joins the
+queue after the planned issues; it is merged like any other.
+
+The operator answers every revisit comment it handles:
+
+| Reply | Why |
+|-------|-----|
+| `Created #57 to revisit D42-3 …` | the follow-up was created |
+| `#42 is still open …` | comment on the open issue; its next run changes the decision |
+| `D42-9 was not found on #42` | the ID is wrong |
+| `… already superseded …` | revisit the decision that replaced it |
+| `#57 already revisits D42-3 …` | one follow-up per decision: comment on it |
+| `… not in this milestone` / `… does not exist` | the ID names another issue |
+
+Only comments written after the operator started watching the milestone,
+and after the issue was closed, are handled, each once: a revisit you wrote
+while the issue was open belongs to its runner (if the issue was merged
+before a run picked it up, comment again on the closed issue). On the tracking issue,
+revisits are handled while autopilot is on, also after it is done. A re-plan
+of the milestone leaves follow-ups alone. Milestones without `/agent spec` or
+`/agent autopilot` are not watched: there, open a new issue by hand.
+
 ## 5. Finish
 
 Merge the MR, then close the issue (the MR's `Closes #42` does that) or move
@@ -318,7 +357,8 @@ comments still reach the agent), but nothing new is started or merged.
 |---------|--------|
 | `/agent pause` | stop starting and merging |
 | `/agent resume` | continue; the active issue is checked again |
-| `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until skipped too |
+| `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |
+| `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](#revisiting-after-the-merge) joins the queue |
 
 Everything else works as on any issue: comment `/agent …` on the active issue
 or its MR, revisit decisions with `/agent revisit <id> …`, or fix things by
@@ -458,7 +498,10 @@ fix run can push commits after it).
 The spec task of a milestone holds the plan in `status.plan` (issues in plan
 order with their dependencies) and, on autopilot, the queue in
 `status.autopilot`: `phase`, `pausedReason`, `trackingIssueIID` and one item
-per issue with its state, MR, merged commit and decisions.
+per issue with its state, MR, merged commit and decisions (`revisitOf` for a
+follow-up). `status.revisits` tracks the [revisits after the
+merge](#revisiting-after-the-merge): when watching started, the last check
+and the last handled comment per issue.
 
 ```sh
 kubectl -n agents get agenttask shop-spec-m3-checkout-v2 -o jsonpath='{.status.autopilot}'

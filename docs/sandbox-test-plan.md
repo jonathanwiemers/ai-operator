@@ -449,7 +449,16 @@ to review and comment `/agent resume` on the tracking issue: the MR is merged
 and the queue continues. `/agent pause` and `/agent skip #<iid>` work as
 described in usage.md.
 
-4. Remove `/agent autopilot` from the milestone.
+4. On the tracking issue, comment `/agent revisit D<iid>-1 <a different
+   choice>` with an ID from the decision index of a merged issue.
+
+**Expected:** the bot answers *Created #N to revisit … It is queued on
+autopilot.* The follow-up **Revisit D…: …** is a draft in the milestone and is
+worked on and merged after the planned issues. When its decisions are posted,
+the old decision on the merged issue says *Superseded by …*. A second revisit
+of the same ID is answered with a pointer to the follow-up.
+
+5. Remove `/agent autopilot` from the milestone.
 
 **Expected:** the tracking issue gets *Autopilot is off* and is closed;
 nothing is merged any more.

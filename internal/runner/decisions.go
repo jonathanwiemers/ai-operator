@@ -30,14 +30,14 @@ type Decision struct {
 }
 
 const (
-	decisionsHeader = "📌 **Decisions**"
+	decisionsHeader = marker.DecisionsHeader
 	// maxDecisions bounds one decision comment.
 	maxDecisions = 8000
 )
 
 var (
 	decisionMarker = marker.Decision
-	revisitCommand = regexp.MustCompile(`(?is)^\s*(\S+?):?\s+revisit\s+(D\d+-P?\d+)(?:[\s:]+(.*))?$`)
+	revisitCommand = marker.Revisit
 	// revisitWord spots comments that try to revisit but do not parse.
 	revisitWord = regexp.MustCompile(`(?is)^\s*(\S+?):?\s+(?:please\s+)?revisit\b`)
 )
@@ -78,32 +78,8 @@ func decisionID(iid int64, planner bool, n int) string {
 	return fmt.Sprintf("D%d-%d", iid, n)
 }
 
-// cleanDecisionText makes agent text safe for a decision: HTML outside code
-// spans is escaped (an unclosed <details> or <!-- would hide everything
-// after it), and mentions are broken up.
-func cleanDecisionText(s string) string {
-	s = strings.TrimSpace(s)
-	// With unbalanced backticks there are no reliable code spans: escape
-	// everything.
-	spans := strings.Count(s, "`")%2 == 0
-	var b strings.Builder
-	inCode := false
-	for _, r := range s {
-		switch {
-		case r == '`' && spans:
-			inCode = !inCode
-		case r == '<' && !inCode:
-			b.WriteString("&lt;")
-			continue
-		case r == '@' && !inCode:
-			b.WriteString("@\u200b")
-			continue
-		}
-		b.WriteRune(r)
-	}
-	// Markers inside code spans must not count either.
-	return strings.ReplaceAll(b.String(), "<!-- ai-operator:", "<!-- ai-operator :")
-}
+// cleanDecisionText makes agent text safe for a decision (marker.Clean).
+func cleanDecisionText(s string) string { return marker.Clean(s) }
 
 // renderDecision renders one decision as a markdown section ending with its
 // marker.
@@ -254,25 +230,8 @@ func findRevisits(issue *gitlab.Issue, all, fresh []gitlab.Note, botID int64, pr
 	return out
 }
 
-// decisionSection extracts the section of decision id from body: from its
-// heading to its marker.
-func decisionSection(body, id string) string {
-	end := -1
-	for _, loc := range decisionMarker.FindAllStringSubmatchIndex(body, -1) {
-		if body[loc[2]:loc[3]] == id {
-			end = loc[1]
-			break
-		}
-	}
-	if end < 0 {
-		return ""
-	}
-	start := strings.LastIndex(body[:end], "#### "+id+":")
-	if start < 0 {
-		return ""
-	}
-	return strings.TrimSpace(body[start:end])
-}
+// decisionSection extracts the section of decision id from body.
+func decisionSection(body, id string) string { return marker.DecisionSection(body, id) }
 
 // markSuperseded adds a superseded line to decision id in body.
 func markSuperseded(body, id, by, runID string) string {

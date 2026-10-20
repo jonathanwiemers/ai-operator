@@ -112,6 +112,8 @@ type Issue struct {
 	Assignees   []User     `json:"assignees"`
 	WebURL      string     `json:"web_url"`
 	UpdatedAt   *time.Time `json:"updated_at"`
+	ClosedAt    *time.Time `json:"closed_at"`
+	Author      User       `json:"author"`
 }
 
 // HasLabel reports whether the issue carries the label.
@@ -191,6 +193,8 @@ type ListIssuesOptions struct {
 	State string
 	// Milestone title.
 	Milestone string
+	// UpdatedAfter only returns issues updated after this time.
+	UpdatedAfter *time.Time
 }
 
 // CreateIssueOptions creates an issue.
@@ -390,6 +394,9 @@ func (c *Client) ListIssues(ctx context.Context, project string, opts ListIssues
 	}
 	if opts.Milestone != "" {
 		q.Set("milestone", opts.Milestone)
+	}
+	if opts.UpdatedAfter != nil {
+		q.Set("updated_after", opts.UpdatedAfter.UTC().Format(time.RFC3339))
 	}
 	return list[Issue](ctx, c, projectPath(project)+"/issues", q)
 }

@@ -282,6 +282,8 @@ type ExistingIssue struct {
 	Title  string
 	State  string
 	Labels []string
+	// Revisits is the decision a follow-up issue revisits.
+	Revisits string
 }
 
 // specSchema returns the plan schema with the configured profile names.
@@ -311,12 +313,15 @@ func buildSpecPrompt(m *gitlab.Milestone, existing []ExistingIssue, profiles []a
 		b.WriteString("## Existing issues in this milestone\n\n")
 		for _, e := range existing {
 			key := e.Key
-			if key == "" {
+			switch {
+			case e.Revisits != "":
+				key = "(follow-up revisiting " + e.Revisits + ")"
+			case key == "":
 				key = "(created by a human)"
 			}
 			fmt.Fprintf(&b, "- #%d key=%s state=%s labels=[%s]: %s\n", e.IID, key, e.State, strings.Join(e.Labels, ", "), e.Title)
 		}
-		b.WriteString("\nIssues created by a human or already in progress are context: do not re-plan them.\n")
+		b.WriteString("\nIssues created by a human, follow-ups and issues already in progress are context: do not re-plan them.\n")
 	}
 	return b.String()
 }

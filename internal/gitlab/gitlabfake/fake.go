@@ -41,6 +41,8 @@ type Fake struct {
 	// MRDiffs are the diffs of an MR; without an entry an MR has one file
 	// whose change is the same before and after a rebase.
 	MRDiffs map[int64][]gitlab.Diff
+	// CreateIssueError makes CreateIssue fail.
+	CreateIssueError error
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
 }
@@ -147,6 +149,9 @@ func (f *Fake) ListIssues(_ context.Context, _ string, opts gitlab.ListIssuesOpt
 		if opts.Milestone != "" && (is.Milestone == nil || is.Milestone.Title != opts.Milestone) {
 			continue
 		}
+		if opts.UpdatedAfter != nil && (is.UpdatedAt == nil || !is.UpdatedAt.After(*opts.UpdatedAfter)) {
+			continue
+		}
 		match := true
 		for _, l := range opts.Labels {
 			if !is.HasLabel(l) {
@@ -175,6 +180,9 @@ func (f *Fake) GetIssue(_ context.Context, _ string, iid int64) (*gitlab.Issue, 
 func (f *Fake) CreateIssue(_ context.Context, _ string, opts gitlab.CreateIssueOptions) (*gitlab.Issue, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.CreateIssueError != nil {
+		return nil, f.CreateIssueError
+	}
 	// Like GitLab, IIDs of deleted issues are not used again.
 	iid := f.lastIID + 1
 	for k := range f.Issues {
@@ -183,7 +191,7 @@ func (f *Fake) CreateIssue(_ context.Context, _ string, opts gitlab.CreateIssueO
 		}
 	}
 	f.lastIID = iid
-	is := &gitlab.Issue{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "opened", UpdatedAt: f.tick()}
+	is := &gitlab.Issue{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "opened", UpdatedAt: f.tick(), Author: f.Bot}
 	if opts.Labels != "" {
 		is.Labels = strings.Split(opts.Labels, ",")
 	}
@@ -236,6 +244,7 @@ func (f *Fake) UpdateIssue(_ context.Context, _ string, iid int64, opts gitlab.U
 	}
 	if opts.StateEvent == "close" {
 		is.State = "closed"
+		is.ClosedAt = f.tick()
 	}
 	is.UpdatedAt = f.tick()
 	c := *is

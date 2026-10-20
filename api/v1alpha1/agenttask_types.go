@@ -213,6 +213,11 @@ type AgentTaskStatus struct {
 	// +optional
 	Autopilot *AutopilotStatus `json:"autopilot,omitempty"`
 
+	// Revisits tracks the "/agent revisit" comments the operator handled on
+	// closed issues of the milestone and on its tracking issue (spec tasks).
+	// +optional
+	Revisits *RevisitStatus `json:"revisits,omitempty"`
+
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
@@ -460,6 +465,23 @@ type AutopilotItem struct {
 	// Decisions recorded on the issue, collected when it was merged.
 	// +optional
 	Decisions []DecisionRef `json:"decisions,omitempty"`
+
+	// RevisitOf is set for follow-up issues the operator created to revisit
+	// a decision of a merged issue: the decision's ID.
+	// +optional
+	RevisitOf string `json:"revisitOf,omitempty"`
+}
+
+// RevisitStatus is the watermark of handled revisit comments.
+type RevisitStatus struct {
+	// Since is when the operator started watching; older comments are
+	// ignored.
+	Since metav1.Time `json:"since"`
+	// CheckedAt is the time of the last check.
+	CheckedAt metav1.Time `json:"checkedAt"`
+	// LastNoteIDs is the newest handled comment per issue IID.
+	// +optional
+	LastNoteIDs map[string]int64 `json:"lastNoteIDs,omitempty"`
 }
 
 // DecisionRef points to a decision recorded on an issue.

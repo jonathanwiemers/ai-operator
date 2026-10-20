@@ -56,7 +56,11 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 		if marker.IsTrackingIssue(is.Description) {
 			continue // the operator's autopilot tracking issue is not work
 		}
-		existing = append(existing, ExistingIssue{IID: is.IID, Key: issueKey(is.Description), Title: is.Title, State: is.State, Labels: is.Labels})
+		e := ExistingIssue{IID: is.IID, Key: issueKey(is.Description), Title: is.Title, State: is.State, Labels: is.Labels}
+		if m := marker.RevisitOf.FindStringSubmatch(is.Description); m != nil {
+			e.Revisits = m[1]
+		}
+		existing = append(existing, e)
 	}
 	s.done(fmt.Sprintf("%d issues", len(issues)), "issues", len(issues))
 
@@ -183,7 +187,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 		}
 		desc, missing := renderIssue(item, keyToIID, iid, wf.CommandPrefix)
 		if ex := byIID[iid]; ex != nil {
-			if ex.State != "opened" || !ex.HasLabel(wf.DraftLabel) {
+			if ex.State != "opened" || !ex.HasLabel(wf.DraftLabel) || marker.RevisitOf.MatchString(ex.Description) {
 				skipped++
 				keyToIID[item.Key] = iid
 				log.Info("issue left untouched", "iid", iid, "key", item.Key, "reason", "no longer a draft")
@@ -248,7 +252,8 @@ func slugKey(key, title string) string {
 // IID for their IDs.
 func renderIssue(item PlannedItem, keyToIID map[string]int64, iid int64, prefix string) (string, bool) {
 	var b strings.Builder
-	b.WriteString(strings.TrimSpace(item.Description))
+	// The planner's text must not carry the operator's markers.
+	b.WriteString(strings.ReplaceAll(strings.TrimSpace(item.Description), "<!-- ai-operator:", "<!-- ai-operator :"))
 	missing := false
 	if len(item.DependsOn) > 0 {
 		b.WriteString("\n\n### Depends on\n\n")

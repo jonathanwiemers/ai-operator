@@ -415,6 +415,40 @@ stateDiagram-v2
   issue; if the milestone is no longer planned at all, this happens before
   the spec task is deleted.
 
+### Revisiting after the merge
+
+A decision of a closed issue has no runner left to change it, so the operator
+turns the revisit into a follow-up issue (`internal/controller/revisit.go`).
+It watches every planned milestone, autopilot or not:
+
+* **Polling.** Each poll lists the milestone's closed issues updated since the
+  last check (`updated_after`, minus five minutes of clock skew) and, on
+  autopilot, the notes of the tracking issue. A new comment updates its
+  issue, so the list stays short. Only comments after the issue's
+  `closed_at` count: earlier revisits were its runner's. `status.revisits`
+  keeps when watching started (older comments are history), the last check,
+  and the newest handled note ID per issue, saved after each comment, so
+  each comment is handled once even if a later one fails. A follow-up GitLab
+  refuses to create (4xx) gets a reply instead of blocking the milestone.
+* **Lookup.** The decision is read like the runner reads it: planner
+  decisions from the issue description, implementer decisions from the bot's
+  decision comments only. Every handled comment gets a reply.
+* **Follow-up.** The issue carries the old decision without its marker and
+  the instruction, both cleaned like agent text (no HTML, markers or
+  mentions), and `<!-- ai-operator:revisit=<id> -->` last. It has no plan
+  key: the planner sees it as context, and `applyPlan` never rewrites it. One
+  follow-up per decision: an open follow-up of the bot with that marker gets
+  a pointer instead (and is queued if queuing failed before).
+* **Superseding across issues.** When the follow-up's run posts a decision
+  that supersedes the marked ID, the runner marks the old decision on the
+  original issue, in its description or the bot's decision comment. Only
+  issues the bot created count as follow-ups. The mark is set when the
+  decision is posted, not when the follow-up merges.
+* **Autopilot.** The follow-up is a draft and is appended to the queue with
+  `revisitOf`; rebuilding the queue from the plan keeps it. When it merges,
+  the decision index of the original issue is collected again, so the
+  tracking issue shows the old decision as superseded.
+
 ## Engines, profiles and subscriptions
 
 Each role runs on an engine, an agent CLI:
@@ -550,6 +584,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/handoff.go` | agent notes: the bot's handoff comment on the issue |
 | `internal/runner/decisions.go` | decisions: IDs, decision comments, revisits, superseding |
 | `internal/controller/autopilot.go` | autopilot: queue, merge gate, rebase, pause / resume / skip, tracking issue |
+| `internal/controller/revisit.go` | revisits of merged issues: follow-up issues, replies |
 | `internal/marker` | hidden markers in GitLab text shared by operator and runner (tracking issue, decisions) |
 | `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
 | `internal/runner/workspace.go` | agent-side checkout (local git only) |

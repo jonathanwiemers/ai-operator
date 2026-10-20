@@ -6,6 +6,7 @@ package marker
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -52,4 +53,75 @@ func Decisions(body string) []DecisionRef {
 		out = append(out, DecisionRef{ID: id, Title: strings.TrimSpace(body[h[4]:h[5]]), Superseded: m[5] != ""})
 	}
 	return out
+}
+
+// DecisionsHeader starts every decision comment of the bot.
+const DecisionsHeader = "📌 **Decisions**"
+
+// Revisit parses "<prefix> revisit <id> <instruction>": groups 1 the prefix,
+// 2 the ID, 3 the instruction.
+var Revisit = regexp.MustCompile(`(?is)^\s*(\S+?):?\s+revisit\s+(D\d+-P?\d+)(?:[\s:]+(.*))?$`)
+
+// RevisitOf marks a follow-up issue created to revisit a decision of another
+// issue; group 1 is the decision ID.
+var RevisitOf = regexp.MustCompile(`<!-- ai-operator:revisit=(D\d+-P?\d+) -->`)
+
+// DecisionSection extracts the section of decision id from body: from its
+// heading to its marker. It is empty if body has no such decision.
+func DecisionSection(body, id string) string {
+	end := -1
+	for _, loc := range Decision.FindAllStringSubmatchIndex(body, -1) {
+		if body[loc[2]:loc[3]] == id {
+			end = loc[1]
+			break
+		}
+	}
+	if end < 0 {
+		return ""
+	}
+	start := strings.LastIndex(body[:end], "#### "+id+":")
+	if start < 0 {
+		return ""
+	}
+	return strings.TrimSpace(body[start:end])
+}
+
+// DecisionIssue returns the issue IID a decision ID belongs to.
+func DecisionIssue(id string) int64 {
+	m := decisionID.FindStringSubmatch(id)
+	if m == nil {
+		return 0
+	}
+	iid, _ := strconv.ParseInt(m[1], 10, 64)
+	return iid
+}
+
+var decisionID = regexp.MustCompile(`^D(\d+)-P?\d+$`)
+
+// Clean makes untrusted text (agent output, human instructions) safe to put
+// into text the bot writes: HTML outside code spans is escaped (an unclosed
+// <details> or <!-- would hide everything after it, and a copied marker
+// would count as the bot's), and mentions are broken up.
+func Clean(s string) string {
+	s = strings.TrimSpace(s)
+	// With unbalanced backticks there are no reliable code spans: escape
+	// everything.
+	spans := strings.Count(s, "`")%2 == 0
+	var b strings.Builder
+	inCode := false
+	for _, r := range s {
+		switch {
+		case r == '`' && spans:
+			inCode = !inCode
+		case r == '<' && !inCode:
+			b.WriteString("&lt;")
+			continue
+		case r == '@' && !inCode:
+			b.WriteString("@\u200b")
+			continue
+		}
+		b.WriteRune(r)
+	}
+	// Markers inside code spans must not count either.
+	return strings.ReplaceAll(b.String(), "<!-- ai-operator:", "<!-- ai-operator :")
 }
