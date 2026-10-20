@@ -749,3 +749,17 @@ func TestRenderHandoffKeepsMarkersIntact(t *testing.T) {
 		t.Fatalf("an unclosed code block must be closed: %q", h.Text)
 	}
 }
+
+func TestPlanOrderUsesExistingIIDs(t *testing.T) {
+	plan := SpecPlan{Issues: []PlannedItem{
+		{Key: "ui", Title: "UI", DependsOn: []string{"api"}},
+		// A human's issue without a key marker, referred to by its IID.
+		{Key: "api", ExistingIID: 7, Title: "API"},
+		{Key: "gone", ExistingIID: 99, Title: "Not in the milestone"},
+	}}
+	issues := []gitlab.Issue{{IID: 7, Description: "by hand"}, {IID: 8, Description: "<!-- ai-operator:key=ui -->"}}
+	got := planOrder(plan, issues)
+	if len(got) != 2 || got[0].IID != 8 || len(got[0].DependsOn) != 1 || got[0].DependsOn[0] != 7 || got[1].IID != 7 {
+		t.Fatalf("unexpected plan %+v", got)
+	}
+}

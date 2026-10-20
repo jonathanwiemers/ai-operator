@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -193,7 +194,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		autopilot := false
 		if is.Milestone != nil {
 			if st := autopilots[is.Milestone.IID]; st != nil {
-				autopilot = st.Spec.Autopilot
+				// Only issues of the queue are merged by autopilot; others
+				// in the milestone follow the normal flow.
+				autopilot = st.Spec.Autopilot && onAutopilot(st, is.IID)
 			}
 		}
 		task, err := r.syncImplementTask(ctx, gl, project, spec, is, byIssue[is.IID], autopilot)
@@ -208,15 +211,17 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	}
 
 	// Revisits of decisions whose issues are merged, then the autopilot
-	// milestones: queue, merge gate, tracking issue.
+	// milestones: queue, merge gate, tracking issue. One failing milestone
+	// does not hold up the others or the cleanup below.
+	var errs []error
 	for _, st := range specTasks {
 		if err := r.syncRevisits(ctx, gl, project, spec, st); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("revisits of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
 	for _, st := range autopilots {
 		if err := r.syncAutopilot(ctx, gl, project, spec, st, implTasks); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
 
@@ -232,7 +237,8 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			// removed): switch its autopilot off before the state is gone.
 			t.Spec.Autopilot = false
 			if err := r.syncAutopilot(ctx, gl, project, spec, t, nil); err != nil {
-				return err
+				errs = append(errs, fmt.Errorf("switching off the autopilot of task %s: %w", t.Name, err))
+				continue // tried again on the next poll
 			}
 		}
 		log.FromContext(ctx).Info("deleting finished task", "task", t.Name)
@@ -242,7 +248,25 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	}
 	project.Status.ActiveTasks = int32(len(keep))
 	project.Status.UsageLimits = usageLimits(tasks.Items, r.now())
-	return nil
+	return errors.Join(errs...)
+}
+
+// onAutopilot reports whether an issue is in the autopilot queue of a
+// milestone: planned, or queued later.
+func onAutopilot(st *aiv1.AgentTask, iid int64) bool {
+	for _, p := range st.Status.Plan {
+		if p.IID == iid {
+			return true
+		}
+	}
+	if ap := st.Status.Autopilot; ap != nil {
+		for _, it := range ap.Items {
+			if it.IID == iid {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // usageLimits collects the engines whose limits currently defer runs. The

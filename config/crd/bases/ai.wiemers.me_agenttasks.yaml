@@ -217,6 +217,11 @@ spec:
                         iid:
                           format: int64
                           type: integer
+                        markedReady:
+                          description: |-
+                            MarkedReady is set once the operator marked the draft MR ready. A
+                            draft again after that is a human holding it.
+                          type: boolean
                         mergeRequestIID:
                           description: MergeRequestIID and MergeRequestURL of the
                             issue's merge request.
@@ -227,6 +232,12 @@ spec:
                         mergedSHA:
                           description: MergedSHA is the commit the merge request was
                             merged as.
+                          type: string
+                        rebasedDiff:
+                          description: |-
+                            RebasedDiff is a hash of the reviewed change, taken before the rebase.
+                            The rebased head is only treated as reviewed if its change hashes the
+                            same, i.e. the rebase moved the change without changing it.
                           type: string
                         rebasedFrom:
                           description: |-

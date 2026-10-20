@@ -285,8 +285,14 @@ to, `/agent spec`), the milestone runs without you:
 **Before you use it,** allow the bot to merge into the default branch:
 *Settings > Repository > Protected branches*, "Allowed to merge":
 *Developers + Maintainers*, or give the bot user the *Maintainer* role. The
-merge method and squash settings of the project apply. Autopilot never merges
-an MR of an issue it did not plan.
+merge method and squash settings of the project apply. Keep at least one
+reviewer in `agents.review.reviewers` (the default has two): autopilot only
+merges reviewed changes. Autopilot never merges an MR of an issue it did not
+plan; other issues in the milestone follow the normal flow.
+
+If the project uses merged-results pipelines, also turn on *Pipelines must
+succeed*: autopilot follows the pipeline of the pushed commit, and a commit
+without any pipeline counts as green after `ci.noPipelineTimeout`.
 
 ### The merge gate
 
@@ -297,10 +303,15 @@ An MR is merged only when all of these hold:
   there directly);
 - the last run succeeded, no blocker or major review finding is left, no
   reviewer failed, and the review saw the commit that was pushed;
-- the MR is open and its head is exactly that commit (nobody pushed since);
-- GitLab reports the MR as mergeable. If it needs a rebase (fast-forward or
-  semi-linear projects), the operator asks GitLab to rebase once and waits
-  for CI on the new head.
+- CI checked that commit. An issue in review whose commit the CI loop never
+  saw goes back to `agent::working` first;
+- the MR is open, targets the default branch, and its head is exactly that
+  commit (nobody pushed since);
+- GitLab reports the MR as mergeable. A draft MR is marked ready once. If it
+  needs a rebase (fast-forward or semi-linear projects), the operator asks
+  GitLab to rebase once and waits for CI on the new head. The review carries
+  over to the rebased head only if the change is the same: same files, same
+  added and removed lines. Otherwise it pauses.
 
 The merge call passes the checked commit (`sha`), so GitLab refuses to merge
 anything else.
@@ -315,9 +326,13 @@ the reason and what to do:
 - blocking review findings or failed reviewers;
 - a canceled pipeline, or CI red with jobs that also fail on the default
   branch;
-- someone pushed to the agent's branch, the MR was closed, it has conflicts,
-  needs an approval or has unresolved discussions;
-- the merge or rebase was refused (for example: the bot may not merge);
+- someone pushed to the agent's branch, the MR was closed or retargeted, it
+  has conflicts, needs an approval, has unresolved discussions, or was marked
+  draft again after autopilot marked it ready;
+- the merge or rebase was refused or failed (for example: the bot may not
+  merge), or the rebased change differs from the reviewed one;
+- the active issue lost its workflow label while open;
+- no reviewers are configured;
 - the plan has a dependency cycle, or the remaining issues depend on skipped
   ones.
 
@@ -330,13 +345,17 @@ comments still reach the agent), but nothing new is started or merged.
 |---------|--------|
 | `/agent pause` | stop starting and merging |
 | `/agent resume` | continue; the active issue is checked again |
-| `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until skipped too |
+| `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |
 | `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](#revisiting-after-the-merge) joins the queue |
 
 Everything else works as on any issue: comment `/agent …` on the active issue
 or its MR, revisit decisions with `/agent revisit <id> …`, or fix things by
-hand and `resume`. If you merge the active MR yourself, autopilot notices and
-continues.
+hand and `resume`.
+
+You can also finish issues by hand. An issue closed by a merged MR, or closed
+with `agent::done`, counts as merged: the active one (while paused, on
+`resume`), a skipped one (its dependants continue on `resume`), and one that
+was already done before autopilot got to it.
 
 ### Tracking issue
 
@@ -344,7 +363,8 @@ The operator keeps its description up to date: the state (running, paused
 with the reason, done), one line per planned issue (merged with the MR and
 commit, in progress with its label, pending with what it waits for, skipped),
 and an index of the decisions of every merged issue with links. It carries
-the `ai-generated` label only, so it is never worked on itself.
+the `ai-generated` label only, so it is never worked on itself. If it is
+deleted, a new one is created.
 
 ### Switching it off
 
@@ -354,7 +374,8 @@ still there, the milestone continues in the normal flow; the issue that was
 active stays where it is. Adding the marker again continues the queue.
 
 If the plan changes (you edit the milestone spec), issues that were not
-started yet follow the new plan; started and merged ones are kept.
+started yet follow the new plan; started and merged ones are kept. While the
+milestone is being planned again, no new issue is started.
 
 ## Usage and rate limits
 

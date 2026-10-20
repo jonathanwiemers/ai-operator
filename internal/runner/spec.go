@@ -111,22 +111,37 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 }
 
 // planOrder maps the plan onto the milestone's issues: plan order, with the
-// dependencies as IIDs. Planned issues that could not be found are left out.
+// dependencies as IIDs. Like applyPlan, an item is matched by its existing
+// IID first, then by its key. Planned issues that could not be found are left
+// out.
 func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
+	inMilestone := map[int64]bool{}
 	keyToIID := map[string]int64{}
 	for _, is := range issues {
+		inMilestone[is.IID] = true
 		if k := issueKey(is.Description); k != "" {
 			keyToIID[k] = is.IID
 		}
 	}
-	out := []aiv1.PlannedIssue{}
-	for _, item := range plan.Issues {
+	iids := make([]int64, len(plan.Issues))
+	for i, item := range plan.Issues {
 		key := slugKey(item.Key, item.Title)
-		iid, ok := keyToIID[key]
-		if !ok {
+		iid := item.ExistingIID
+		if iid == 0 {
+			iid = keyToIID[key]
+		}
+		if inMilestone[iid] {
+			iids[i] = iid
+			keyToIID[key] = iid
+		}
+	}
+	out := []aiv1.PlannedIssue{}
+	for i, item := range plan.Issues {
+		iid := iids[i]
+		if iid == 0 {
 			continue
 		}
-		p := aiv1.PlannedIssue{Key: key, IID: iid, Title: item.Title}
+		p := aiv1.PlannedIssue{Key: slugKey(item.Key, item.Title), IID: iid, Title: item.Title}
 		for _, dep := range item.DependsOn {
 			if d, ok := keyToIID[slugKey(dep, "")]; ok && d != iid {
 				p.DependsOn = append(p.DependsOn, d)

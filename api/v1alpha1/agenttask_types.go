@@ -447,6 +447,17 @@ type AutopilotItem struct {
 	// +optional
 	Rebases int32 `json:"rebases,omitempty"`
 
+	// RebasedDiff is a hash of the reviewed change, taken before the rebase.
+	// The rebased head is only treated as reviewed if its change hashes the
+	// same, i.e. the rebase moved the change without changing it.
+	// +optional
+	RebasedDiff string `json:"rebasedDiff,omitempty"`
+
+	// MarkedReady is set once the operator marked the draft MR ready. A
+	// draft again after that is a human holding it.
+	// +optional
+	MarkedReady bool `json:"markedReady,omitempty"`
+
 	// Decisions recorded on the issue, collected when it was merged.
 	// +optional
 	Decisions []DecisionRef `json:"decisions,omitempty"`
