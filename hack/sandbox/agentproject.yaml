@@ -15,7 +15,6 @@ spec:
   pollInterval: 30s
   maxConcurrentRuns: 1
   lifecycle:
-    idleTimeout: 10m
     retentionPeriod: 1h
     maxRunsPerTask: 6
   agents:

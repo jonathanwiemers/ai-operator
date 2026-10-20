@@ -153,7 +153,8 @@ const (
 	// TaskPhaseWaiting: a run is requested but deferred because an agent
 	// engine hit its usage or rate limit; it resumes at run.deferredUntil.
 	TaskPhaseWaiting TaskPhase = "Waiting"
-	// TaskPhaseIdle: the pod is kept warm, waiting for further input.
+	// TaskPhaseIdle: the run is done; the pod waits IdleTimeout for a
+	// follow-up request before it is stopped.
 	TaskPhaseIdle TaskPhase = "Idle"
 	// TaskPhaseHibernated: pod deleted after IdleTimeout, workspace kept.
 	TaskPhaseHibernated TaskPhase = "Hibernated"

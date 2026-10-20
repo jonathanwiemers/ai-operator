@@ -119,7 +119,7 @@ func TestTaskLifecycle(t *testing.T) {
 		t.Fatal("pod and pvc must be owned by the task")
 	}
 
-	// Run finished: the pod is kept warm.
+	// Run finished: the pod waits briefly for a follow-up request.
 	e.now = e.now.Add(10 * time.Minute)
 	e.finishRun(name)
 	res := e.reconcile(name)
@@ -127,14 +127,14 @@ func TestTaskLifecycle(t *testing.T) {
 		t.Fatalf("phase %s", got)
 	}
 	if !e.exists(&pod, name) {
-		t.Fatal("idle pod must be kept")
+		t.Fatal("idle pod must be kept until the idle timeout")
 	}
-	if res.RequeueAfter < time.Hour || res.RequeueAfter > 2*time.Hour+time.Second {
+	if res.RequeueAfter <= 0 || res.RequeueAfter > aiv1.DefaultIdleTimeout+time.Second {
 		t.Fatalf("should requeue at the idle timeout, got %v", res.RequeueAfter)
 	}
 
-	// Idle timeout: pod removed, workspace kept.
-	e.now = e.now.Add(2*time.Hour + time.Minute)
+	// Idle timeout (a minute by default): pod removed, workspace kept.
+	e.now = e.now.Add(aiv1.DefaultIdleTimeout + time.Second)
 	e.reconcile(name)
 	if e.exists(&pod, name) {
 		t.Fatal("pod should be hibernated")
@@ -243,6 +243,53 @@ func TestDefaultAgentImage(t *testing.T) {
 	e.reconcile("x")
 	if !e.exists(&pod, "x") || pod.Spec.Containers[0].Image != e.r.DefaultAgentImage {
 		t.Fatalf("pod should use the operator's default image, got %+v", pod.Spec.Containers)
+	}
+}
+
+func TestFailedRunKeepsPodForLogs(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	e.reconcile("x")
+	e.finishRun("x")
+	task := e.task("x")
+	orig := task.DeepCopy()
+	task.Status.Run.LastResult = aiv1.RunResultFailed
+	if err := e.c.Status().Patch(e.ctx, task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	var pod corev1.Pod
+	e.now = e.now.Add(10 * time.Minute)
+	e.reconcile("x")
+	if !e.exists(&pod, "x") {
+		t.Fatal("the pod of a failed run must stay so its logs can be read")
+	}
+	e.now = e.now.Add(failedRunIdleTimeout)
+	e.reconcile("x")
+	if e.exists(&pod, "x") {
+		t.Fatal("the pod of a failed run hibernates after failedRunIdleTimeout")
+	}
+}
+
+func TestIdlePodKeptForRequestTheCacheMissed(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	e.reconcile("x")
+	e.finishRun("x")
+	// The API server already has a new run request the cached client has
+	// not seen yet.
+	newer := e.task("x")
+	newer.Spec.RunRequest = 2
+	e.r.APIReader = fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(newer).Build()
+
+	e.now = e.now.Add(aiv1.DefaultIdleTimeout + time.Second)
+	res := e.reconcile("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") || res.RequeueAfter == 0 {
+		t.Fatalf("pod must be kept and the task re-checked, requeue %v", res.RequeueAfter)
+	}
+
+	e.r.APIReader = e.c
+	e.reconcile("x")
+	if e.exists(&pod, "x") {
+		t.Fatal("without a pending run the idle pod hibernates")
 	}
 }
 

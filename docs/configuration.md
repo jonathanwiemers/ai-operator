@@ -207,9 +207,14 @@ another engine starts a new session with the full context.
 
 ## `spec.lifecycle`
 
+> **Upgrading from a release with a longer `idleTimeout` default (`2h`,
+> `1h`):** the API server stored the old default in every AgentProject that
+> was created with a `lifecycle` block, and the sample sets it explicitly.
+> Remove `idleTimeout` (or set it to `1m`) to stop pods right after each run.
+
 | Field | Default | Description |
 |-------|---------|-------------|
-| `idleTimeout` | `1h` | after the last run, the pod is stopped; the workspace stays |
+| `idleTimeout` | `1m` | after the last run, the pod is stopped; the workspace stays. A longer timeout keeps the pod (and its resource requests) for quick follow-ups, which saves only the pod start. After a failed run the pod stays at least 1h, so its logs can be read |
 | `retentionPeriod` | `168h` (7 days) | after the last run, the workspace PVC is deleted |
 | `maxRunsPerTask` | `20` | the task is `Blocked` when reached (runs paused by usage limits don't count) |
 | `usageLimitBackoff` | `5m` | first wait after a usage or rate limit without a reported reset time; doubles per further hit |

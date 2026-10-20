@@ -203,7 +203,7 @@ stateDiagram-v2
     Waiting --> Running: limit resets
     Running --> Idle: run done
     Idle --> Running: new run request
-    Idle --> Hibernated: idleTimeout (1h), pod deleted
+    Idle --> Hibernated: idleTimeout (1m), pod deleted
     Hibernated --> Running: new run request
     Hibernated --> Archived: retentionPeriod (7d), PVC deleted
     Archived --> Running: new run request, fresh clone
@@ -214,9 +214,12 @@ stateDiagram-v2
     Archived --> [*]: issue done
 ```
 
-* **Idle**: pod kept warm, everything is hot.
-* **Hibernated**: pod deleted, PVC kept. Waking up costs a pod start; the
-  checkout, build cache and agent session are still there.
+* **Idle**: the run is done; the pod waits a minute for a follow-up request
+  (e.g. a comment written while the agent worked) and then stops.
+* **Hibernated**: pod deleted, PVC kept. This is the normal state between
+  runs: no CPU or memory is held. Waking up costs a pod start; the checkout,
+  build cache and agent session are still there. A warm pod would not keep
+  the model's prompt cache either: it expires within minutes to an hour.
 * **Archived**: PVC deleted. The branch, the MR and the GitLab thread hold
   everything that matters; the next run clones fresh and starts a new
   session with the full issue thread and the agent notes as context.
