@@ -250,7 +250,9 @@ func (r *Result) Decode(v any) error {
 	text := strings.TrimSpace(r.Text)
 	if i := strings.Index(text, "```json"); i >= 0 {
 		text = text[i+len("```json"):]
-		if j := strings.Index(text, "```"); j >= 0 {
+		// The last fence closes the block: string values (summaries, notes)
+		// may contain code blocks of their own.
+		if j := strings.LastIndex(text, "```"); j >= 0 {
 			text = text[:j]
 		}
 	}

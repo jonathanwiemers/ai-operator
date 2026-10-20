@@ -188,7 +188,23 @@ Nothing is lost while an issue waits:
 - **7 days** after the last run the workspace is deleted as well.
 - Any new `/agent` comment or move to ready brings the task back. After the
   workspace was deleted, the next run clones fresh and reads the full issue
-  thread.
+  thread plus the agent notes (below).
+
+### Agent notes
+
+After every run the implementer writes short handoff notes: the state of
+the work, decisions and why, what is left, and pitfalls. They are kept in
+one comment of the bot on the issue, **🧠 Agent notes**, which is created on
+the first run and edited by later ones (right after the push) instead of
+adding new comments. A run that cannot resume the agent's session (the
+workspace was deleted, or the session is gone) starts from the issue, the
+thread and these notes instead of from zero.
+
+If the notes are wrong, say so in a comment: comments written after the
+notes take precedence. Editing the note itself does not help, the next run
+overwrites it. Only the bot's own comment counts as notes. Keep in mind
+that the notes are written by the model from the thread, so whatever it
+was told in a comment can end up in them.
 
 Both durations are configurable (`spec.lifecycle`).
 

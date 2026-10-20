@@ -80,6 +80,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if err != nil {
 		return out, s.fail(fmt.Errorf("listing issue notes: %w", err))
 	}
+	// The handoff note is the agent's own memory, not part of the thread.
+	handoffNote, issueNotes := splitHandoff(issueNotes, botID)
+	prior := parseHandoff(handoffNote)
 	var mrNotes []gitlab.Note
 	if mr != nil {
 		if mrNotes, err = gl.ListMergeRequestNotes(ctx, glProject, mr.IID); err != nil {
@@ -87,15 +90,20 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 	}
 	newIssueNotes, newMRNotes := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
-	s.done(fmt.Sprintf("%d on the issue, %d on the MR, %d new", len(issueNotes), len(mrNotes), len(newIssueNotes)+len(newMRNotes)),
-		"issueNotes", len(issueNotes), "mrNotes", len(mrNotes), "newNotes", len(newIssueNotes)+len(newMRNotes))
+	result := fmt.Sprintf("%d on the issue, %d on the MR, %d new", len(issueNotes), len(mrNotes), len(newIssueNotes)+len(newMRNotes))
+	if prior.Text != "" {
+		result += ", agent notes from an earlier run"
+	}
+	s.done(result, "issueNotes", len(issueNotes), "mrNotes", len(mrNotes), "newNotes", len(newIssueNotes)+len(newMRNotes),
+		"handoffBytes", len(prior.Text))
+	seenNote := max(maxNoteID(issueNotes, 0), maxNoteID(mrNotes, 0))
 
 	role, profile := spec.ImplementRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
 	inv.DisallowedTools = implementDenied
 	inv.Resume = st.session("implement", role.Engine)
-	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false)
-	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true)
+	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false, prior)
+	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true, handoff{})
 
 	// A CI fix run: the operator saw the pipeline of the last push fail.
 	ciPipeline := task.Spec.Source.CIFixPipelineID
@@ -202,6 +210,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if err := res.Decode(&fixed); err == nil {
 			answer.Summary = fixed.Summary
 			answer.Questions = fixed.Questions
+			if strings.TrimSpace(fixed.Handoff) != "" {
+				answer.Handoff = fixed.Handoff
+			}
 			if fixed.Status != "" {
 				answer.Status = fixed.Status
 			}
@@ -226,6 +237,12 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		s.done(fmt.Sprintf("%s at %s", branch, shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
 	} else {
 		s.done("nothing new to push")
+	}
+	// The notes go right after the push, so a later failure (merge request,
+	// comment) does not lose them. Without the bot's user ID the note could
+	// not be found again.
+	if botID != 0 {
+		r.updateHandoff(ctx, gl, glProject, issue.IID, handoffNote, answer.Handoff, seenNote)
 	}
 	report := renderReport(answer, remaining, reviewNotes)
 	if ciFix {
@@ -306,6 +323,32 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		out.MRIID, out.MRURL = mr.IID, mr.WebURL
 	}
 	return out, nil
+}
+
+// updateHandoff stores the implementer's handoff notes in the bot's handoff
+// note on the issue, creating it on the first run. A failure is logged but
+// does not fail the run: the work itself is pushed already.
+func (r *Runner) updateHandoff(ctx context.Context, gl gitlab.API, glProject string, iid int64, note *gitlab.Note, text string, seenNote int64) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	s := r.step(ctx, "update agent notes")
+	body := renderHandoff(text, r.run.id, seenNote)
+	var err error
+	if note != nil {
+		_, err = gl.UpdateIssueNote(ctx, glProject, iid, note.ID, body)
+	} else {
+		_, err = gl.CreateIssueNote(ctx, glProject, iid, body)
+	}
+	if err != nil {
+		_ = s.fail(fmt.Errorf("updating agent notes: %w", err))
+		return
+	}
+	if note != nil {
+		s.done(fmt.Sprintf("updated (%d bytes)", len(text)), "note", note.ID)
+	} else {
+		s.done(fmt.Sprintf("created (%d bytes)", len(text)))
+	}
 }
 
 // commit commits the agent's changes as a step of the run.

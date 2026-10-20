@@ -148,6 +148,8 @@ profile label is kept. Editing the description again *without* a change
   `run implementer` step.
 * The reviewers run (two more `agent CLI started` lines in the agent log,
   with the same `run` value as the runner's lines).
+* The issue gets a **🧠 Agent notes** comment with the implementer's handoff
+  notes; later runs edit it instead of adding a new one.
 * The issue comment ends with a collapsed **Run log** table (read issue …
   open merge request) with durations and the cost.
 * Branch `agent/<iid>-<slug>` is pushed, and a **draft MR** "Draft: <title>"
@@ -226,7 +228,8 @@ Use an issue from T4 that is in `agent::review`.
 
 **Expected:** a new PVC and pod. The runner state and the agent session were
 on the deleted PVC, so the run starts a **fresh session** with the full issue
-thread, clones the repository again, and continues on the existing branch
+thread and the **🧠 Agent notes** comment (the runner log's `read comments`
+step says "agent notes from an earlier run"), clones the repository again, and continues on the existing branch
 and MR (the branch name is kept in the task's status).
 
 ### T10 – Finishing an issue

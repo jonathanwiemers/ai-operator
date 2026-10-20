@@ -219,7 +219,7 @@ stateDiagram-v2
   checkout, build cache and agent session are still there.
 * **Archived**: PVC deleted. The branch, the MR and the GitLab thread hold
   everything that matters; the next run clones fresh and starts a new
-  session with the full issue thread as context.
+  session with the full issue thread and the agent notes as context.
 * **Blocked**: `maxRunsPerTask` reached – a guard against loops.
 * `maxConcurrentRuns` caps token-consuming runs per project; extra runs queue.
 
@@ -238,6 +238,17 @@ nothing is lost.
   `updated_at` changed.
 * **Resumed sessions.** Follow-up runs resume the implementer's session and
   only send the new comments, instead of the whole issue, spec and thread.
+* **Agent notes.** The implementer also returns handoff notes, which the
+  runner keeps in one bot comment on the issue (created on the first run,
+  edited right after each later push, `internal/runner/handoff.go`). A
+  fresh session (archived workspace, lost session) gets them with the
+  thread and the newest comment they cover, so it does not re-derive
+  earlier decisions. Only the oldest bot comment that starts with the
+  notes header counts; anyone else's comment with the same markers, and
+  the bot's own reports quoting them, stay plain comments. Markers in the
+  agent's text are neutralised. The notes are as trustworthy as the bot
+  account (and whoever may edit its comments) and are model output built
+  from the thread, so they are data in the prompt like any comment.
 * **Context prepared by the runner.** The runner fetches the issue, milestone
   and comments and puts them into the prompt; the model never spends turns on
   GitLab API exploration and never gets GitLab credentials.
@@ -432,6 +443,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/controller/resources.go` | pod and PVC templates |
 | `internal/runner/runner.go` | run loop, status reporting, session state, mirror ⇄ workspace sync |
 | `internal/runner/steps.go` | run steps: step logging, current step, GitLab run log |
+| `internal/runner/handoff.go` | agent notes: the bot's handoff comment on the issue |
 | `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
 | `internal/runner/workspace.go` | agent-side checkout (local git only) |
 | `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab |
