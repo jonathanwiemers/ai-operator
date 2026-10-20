@@ -262,7 +262,7 @@ func TestMergeRequestActions(t *testing.T) {
 	}
 }
 
-func TestMergeRequestDiffsAndRelated(t *testing.T) {
+func TestMergeRequestDiffsAndStateEvents(t *testing.T) {
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.EscapedPath())
@@ -270,7 +270,7 @@ func TestMergeRequestDiffsAndRelated(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]Diff{{NewPath: "a.go", Diff: "+x\n", TooLarge: true}})
 			return
 		}
-		_ = json.NewEncoder(w).Encode([]MergeRequest{{IID: 3, State: "merged"}})
+		_, _ = w.Write([]byte(`[{"id":1,"state":"closed","source_merge_request":{"iid":3,"project_id":1}}]`))
 	}))
 	defer srv.Close()
 	c := New(srv.URL, "tok")
@@ -278,11 +278,11 @@ func TestMergeRequestDiffsAndRelated(t *testing.T) {
 	if err != nil || len(ds) != 1 || !ds[0].TooLarge {
 		t.Fatalf("diffs %+v %v", ds, err)
 	}
-	mrs, err := c.ListRelatedMergeRequests(context.Background(), "group/app", 4)
-	if err != nil || len(mrs) != 1 || mrs[0].State != "merged" {
-		t.Fatalf("related %+v %v", mrs, err)
+	evs, err := c.ListIssueStateEvents(context.Background(), "group/app", 4)
+	if err != nil || len(evs) != 1 || evs[0].State != "closed" || evs[0].SourceMergeRequest == nil || evs[0].SourceMergeRequest.IID != 3 {
+		t.Fatalf("state events %+v %v", evs, err)
 	}
-	want := []string{"/api/v4/projects/group%2Fapp/merge_requests/3/diffs", "/api/v4/projects/group%2Fapp/issues/4/related_merge_requests"}
+	want := []string{"/api/v4/projects/group%2Fapp/merge_requests/3/diffs", "/api/v4/projects/group%2Fapp/issues/4/resource_state_events"}
 	if !slices.Equal(paths, want) {
 		t.Fatalf("paths %v", paths)
 	}

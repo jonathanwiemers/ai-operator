@@ -307,24 +307,23 @@ func (a *autopilot) pick(ctx context.Context) error {
 			}
 		}
 		a.log.Info("autopilot milestone done", "merged", merged)
-		if err := a.comment(ctx, fmt.Sprintf("✅ Autopilot is done: %d of %d issues merged. The decisions are listed in the description.", merged, len(a.ap.Items))); err != nil {
-			return err
-		}
+		// Close first and comment after, so a failing close does not repeat
+		// the comment.
 		prev := a.ap.Phase
 		a.ap.Phase = aiv1.AutopilotDone // for the description
 		if err := a.closeTracking(ctx); err != nil {
 			a.ap.Phase = prev // tried again on the next poll
 			return err
 		}
-		return nil
+		return a.comment(ctx, fmt.Sprintf("✅ Autopilot is done: %d of %d issues merged. The decisions are listed in the description.", merged, len(a.ap.Items)))
 	}
 	return nil
 }
 
 // doneByHand reports whether a closed issue was finished outside autopilot:
-// its MR, or a merged MR related to it, was merged, or it was closed as done.
-// It returns the merged MR, if any. (GitLab's closed_by only answers for open
-// issues, so related merge requests are used.)
+// its MR was merged, a merged MR of the project closed it, or it was closed as
+// done. It returns the merged MR, if any. (GitLab's closed_by only answers for
+// open issues, so the issue's state events are used.)
 func (a *autopilot) doneByHand(ctx context.Context, iid int64) (*gitlab.MergeRequest, bool, error) {
 	is, ok := a.issues[iid]
 	if !ok || is.State == "opened" {
@@ -339,13 +338,26 @@ func (a *autopilot) doneByHand(ctx context.Context, iid int64) (*gitlab.MergeReq
 			return mr, true, nil
 		}
 	}
-	mrs, err := a.gl.ListRelatedMergeRequests(ctx, a.spec.GitLab.Project, iid)
+	// The issue's last state change says whether a merge request closed it;
+	// merely mentioning the issue does not count.
+	events, err := a.gl.ListIssueStateEvents(ctx, a.spec.GitLab.Project, iid)
 	if err != nil {
-		return nil, false, fmt.Errorf("listing the merge requests related to #%d: %w", iid, err)
+		return nil, false, fmt.Errorf("listing the state events of #%d: %w", iid, err)
 	}
-	for i := range mrs {
-		if mrs[i].State == "merged" {
-			return &mrs[i], true, nil
+	if n := len(events); n > 0 && events[n-1].State == "closed" && events[n-1].SourceMergeRequest != nil {
+		src := events[n-1].SourceMergeRequest
+		proj, err := a.gl.GetProject(ctx, a.spec.GitLab.Project)
+		if err != nil {
+			return nil, false, fmt.Errorf("getting project: %w", err)
+		}
+		if src.ProjectID == proj.ID {
+			mr, err := a.gl.GetMergeRequest(ctx, a.spec.GitLab.Project, src.IID)
+			if err != nil && !gitlab.IsNotFound(err) {
+				return nil, false, fmt.Errorf("getting merge request !%d: %w", src.IID, err)
+			}
+			if err == nil && mr.State == "merged" {
+				return mr, true, nil
+			}
 		}
 	}
 	return nil, is.HasLabel(a.spec.Workflow.DoneLabel), nil

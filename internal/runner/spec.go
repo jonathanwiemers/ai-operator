@@ -128,8 +128,8 @@ func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
 		key := slugKey(item.Key, item.Title)
 		iid := item.ExistingIID
 		if !inMilestone[iid] {
-			// Like applyPlan: an unknown IID falls back to the key, under
-			// which the issue was created.
+			// Like applyPlan: an IID not in the milestone falls back to the
+			// key, under which the issue was created.
 			iid = keyToIID[key]
 		}
 		if inMilestone[iid] {
@@ -177,7 +177,8 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 	for _, item := range plan.Issues {
 		item.Key = slugKey(item.Key, item.Title)
 		iid := item.ExistingIID
-		if iid == 0 {
+		if byIID[iid] == nil {
+			// No IID, or one not in the milestone: the key decides.
 			iid = keyToIID[item.Key]
 		}
 		desc, missing := renderIssue(item, keyToIID, iid, wf.CommandPrefix)

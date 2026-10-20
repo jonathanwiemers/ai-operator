@@ -41,8 +41,8 @@ type Fake struct {
 	// MRDiffs are the diffs of an MR; without an entry an MR has one file
 	// whose change is the same before and after a rebase.
 	MRDiffs map[int64][]gitlab.Diff
-	// Related lists the MRs related to an issue.
-	Related map[int64][]int64
+	// StateEvents of issues, oldest first.
+	StateEvents map[int64][]gitlab.StateEvent
 }
 
 var _ gitlab.API = (*Fake)(nil)
@@ -399,16 +399,21 @@ func (f *Fake) ListMergeRequestDiffs(_ context.Context, _ string, iid int64) ([]
 	return []gitlab.Diff{{OldPath: "app.go", NewPath: "app.go", Diff: fmt.Sprintf("@@ -1 +1 @@\n-old\n+change of !%d\n", iid)}}, nil
 }
 
-func (f *Fake) ListRelatedMergeRequests(_ context.Context, _ string, iid int64) ([]gitlab.MergeRequest, error) {
+func (f *Fake) ListIssueStateEvents(_ context.Context, _ string, iid int64) ([]gitlab.StateEvent, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []gitlab.MergeRequest
-	for _, mr := range f.Related[iid] {
-		if m, ok := f.MRs[mr]; ok {
-			out = append(out, *m)
-		}
+	return slices.Clone(f.StateEvents[iid]), nil
+}
+
+// ClosedBy records that merging mr closed issue iid.
+func (f *Fake) ClosedBy(iid, mr int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ev := gitlab.StateEvent{ID: f.id(), State: "closed", SourceMergeRequest: &gitlab.MergeRequestRef{IID: mr, ProjectID: f.Project.ID}}
+	if f.StateEvents == nil {
+		f.StateEvents = map[int64][]gitlab.StateEvent{}
 	}
-	return out, nil
+	f.StateEvents[iid] = append(f.StateEvents[iid], ev)
 }
 
 func (f *Fake) ListMergeRequestNotes(_ context.Context, _ string, iid int64) ([]gitlab.Note, error) {

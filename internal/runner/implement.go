@@ -283,9 +283,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			out.CIRound = task.Status.Run.CIRound + 1
 		}
 		s.done(fmt.Sprintf("%s at %s", branch, shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
-	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && task.Status.Run.PushedSHA != "" && head != task.Status.Run.PushedSHA {
-		// Someone else pushed to the branch since the last push, and this
-		// run took it over unchanged: that head is the one CI has to check.
+	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && head != task.Status.Run.PushedSHA {
+		// Someone else pushed to the branch (or made it) since the last
+		// recorded push, and this run took it over unchanged: that head is
+		// the one CI has to check.
 		out.PushedSHA = head
 		s.done(fmt.Sprintf("nothing new to push; the branch moved to %s", shortSHA(head)), "sha", head)
 	} else {
