@@ -76,6 +76,7 @@ type Outcome struct {
 	Reviewed         bool
 	BlockingFindings int32
 	ReviewErrors     int32
+	ReviewedSHA      string
 	// Plan is set by spec runs: the plan in plan order.
 	Plan []aiv1.PlannedIssue
 }
@@ -325,6 +326,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		if out.Reviewed {
 			s.BlockingFindings = out.BlockingFindings
 			s.ReviewErrors = out.ReviewErrors
+			s.ReviewedSHA = out.ReviewedSHA
 		}
 	})
 }
