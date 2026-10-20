@@ -160,7 +160,12 @@ After every push, the operator follows the pipeline of the pushed commit:
 
 The fix rounds count from the last push you triggered (`/agent …` or moving
 the issue to ready), so every new instruction gets two fresh rounds. CI fix
-runs skip the reviewer agents. Job logs reach the agent as untrusted data.
+runs skip the reviewer agents (except on [autopilot](#autopilot-a-milestone-end-to-end)).
+Job logs reach the agent as untrusted data.
+
+If you push to the agent's branch yourself and then comment `/agent …`, a run
+that has nothing to add takes your commits over: your head counts as the
+pushed commit, and CI is followed for it like for the agent's push.
 Configure the loop in `spec.ci` (see [configuration.md](configuration.md));
 `ci.disabled: true` restores "review right after the push".
 

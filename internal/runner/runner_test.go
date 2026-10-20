@@ -149,6 +149,18 @@ func TestApplyPlan(t *testing.T) {
 	if l := gl.Labels(1); slices.Contains(l, "agent-profile::fast") || !slices.Contains(l, "agent-profile::strong") {
 		t.Fatalf("manual profile override must be kept, labels %v", l)
 	}
+
+	// An IID that is not in the milestone falls back to the key, like the
+	// recorded plan: no duplicate.
+	plan.Issues[0].ExistingIID = 99
+	issues, _ = gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
+	created, updated, _, err = applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues)
+	if err != nil || created != 0 || updated != 1 {
+		t.Fatalf("a wrong IID must not create a duplicate: created=%d updated=%d err=%v", created, updated, err)
+	}
+	if got := planOrder(plan, issues); len(got) != 2 || got[0].IID != 1 {
+		t.Fatalf("the recorded plan must match applyPlan: %+v", got)
+	}
 }
 
 // scriptedEngine plays the implementer and the reviewers.

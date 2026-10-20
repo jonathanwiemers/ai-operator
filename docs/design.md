@@ -390,9 +390,11 @@ stateDiagram-v2
   working; the CI loop always ends in review or needs-input.
   An active issue that lost its workflow label, an MR marked draft again or
   retargeted, and a configuration without reviewers pause.
-* **Finished by hand.** A closed issue counts as merged if its MR, or a
-  merged MR related to it (`related_merge_requests`; GitLab's `closed_by`
-  only answers for open issues), was merged, or it carries the done label, so
+* **Finished by hand.** A closed issue counts as merged if its MR was merged,
+  if its last state event is a close by a merged MR of the project
+  (`resource_state_events`; GitLab's `closed_by` only answers for open
+  issues, and an MR that merely mentions the issue does not count), or if it
+  carries the done label, so
   issues merged before autopilot started, after a `skip`, or by hand do not
   block their dependants.
 * **Failure safety.** The autopilot status is saved after every poll, also

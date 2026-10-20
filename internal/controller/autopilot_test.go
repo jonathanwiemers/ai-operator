@@ -401,7 +401,7 @@ func TestAutopilotCountsIssuesFinishedByHand(t *testing.T) {
 	e.gl.Issues[1].State = "closed"
 	mr, _ := e.gl.CreateMergeRequest(e.ctx, "g/p", gitlab.CreateMergeRequestOptions{SourceBranch: "agent/1", TargetBranch: "main"})
 	e.gl.MRs[mr.IID].State, e.gl.MRs[mr.IID].MergeCommitSHA = "merged", "by-hand"
-	e.gl.Related = map[int64][]int64{1: {mr.IID}}
+	e.gl.ClosedBy(1, mr.IID)
 	e.reconcile()
 	e.reconcile()
 	ap := e.autopilot()
@@ -515,5 +515,21 @@ func TestAutopilotOnlyForPlannedIssues(t *testing.T) {
 	}
 	if task := e.tasks()["shop-1-api"]; !task.Spec.Autopilot {
 		t.Fatalf("a planned issue runs on autopilot: %+v", task.Spec)
+	}
+}
+
+func TestAutopilotDoesNotCountAMentionAsAMerge(t *testing.T) {
+	e := newAutopilotEnv(t)
+	// #1 was closed by hand without a merge; a merged MR of another issue
+	// only mentions it, and the close was not done by a merge request.
+	e.gl.Issues[1].State = "closed"
+	mr, _ := e.gl.CreateMergeRequest(e.ctx, "g/p", gitlab.CreateMergeRequestOptions{SourceBranch: "other", TargetBranch: "main"})
+	e.gl.MRs[mr.IID].State = "merged"
+	e.gl.StateEvents = map[int64][]gitlab.StateEvent{1: {{ID: 1, State: "closed"}}}
+	e.reconcile()
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Items[0].State != aiv1.AutopilotItemSkipped || ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "depend on skipped issues") {
+		t.Fatalf("#1 closed without a merge must be skipped and block #2: %+v", ap)
 	}
 }

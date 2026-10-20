@@ -35,7 +35,7 @@ type API interface {
 	MergeMergeRequest(ctx context.Context, project string, iid int64, opts MergeOptions) (*MergeRequest, error)
 	RebaseMergeRequest(ctx context.Context, project string, iid int64) error
 	ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error)
-	ListRelatedMergeRequests(ctx context.Context, project string, iid int64) ([]MergeRequest, error)
+	ListIssueStateEvents(ctx context.Context, project string, iid int64) ([]StateEvent, error)
 	ListMergeRequestNotes(ctx context.Context, project string, iid int64) ([]Note, error)
 	CreateMergeRequestNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
 	ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error)
@@ -154,6 +154,20 @@ type MergeRequest struct {
 	SquashCommitSHA     string `json:"squash_commit_sha"`
 	RebaseInProgress    bool   `json:"rebase_in_progress"`
 	MergeError          string `json:"merge_error"`
+}
+
+// StateEvent is a state change of an issue: closed, reopened.
+type StateEvent struct {
+	ID    int64  `json:"id"`
+	State string `json:"state"`
+	// SourceMergeRequest is the MR whose merge closed the issue.
+	SourceMergeRequest *MergeRequestRef `json:"source_merge_request"`
+}
+
+// MergeRequestRef identifies a merge request, possibly of another project.
+type MergeRequestRef struct {
+	IID       int64 `json:"iid"`
+	ProjectID int64 `json:"project_id"`
 }
 
 // Diff is the change of one file in a merge request.
@@ -467,9 +481,9 @@ func (c *Client) ListMergeRequestDiffs(ctx context.Context, project string, iid 
 	return list[Diff](ctx, c, fmt.Sprintf("%s/merge_requests/%d/diffs", projectPath(project), iid), nil)
 }
 
-// ListRelatedMergeRequests lists the MRs that mention or close an issue.
-func (c *Client) ListRelatedMergeRequests(ctx context.Context, project string, iid int64) ([]MergeRequest, error) {
-	return list[MergeRequest](ctx, c, fmt.Sprintf("%s/issues/%d/related_merge_requests", projectPath(project), iid), nil)
+// ListIssueStateEvents lists the state changes of an issue, oldest first.
+func (c *Client) ListIssueStateEvents(ctx context.Context, project string, iid int64) ([]StateEvent, error) {
+	return list[StateEvent](ctx, c, fmt.Sprintf("%s/issues/%d/resource_state_events", projectPath(project), iid), nil)
 }
 
 func (c *Client) FindOpenMergeRequest(ctx context.Context, project, sourceBranch string) (*MergeRequest, error) {
