@@ -4,6 +4,9 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
+# Pull secrets for private registries. Used by the operator pod and set on the
+# agent service account in every agent.namespaces entry, so agent pods pull
+# with them too. The Secret must exist in each of those namespaces.
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
