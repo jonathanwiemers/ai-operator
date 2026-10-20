@@ -20,8 +20,8 @@ spec:
   maxConcurrentRuns: 3
   pollInterval: 1m
   lifecycle:
-    idleTimeout: 2h        # keep the pod warm this long after a run
-    retentionPeriod: 336h  # then keep the workspace PVC this long (14 days)
+    idleTimeout: 1h        # keep the pod warm this long after a run
+    retentionPeriod: 168h  # then keep the workspace PVC this long (7 days)
     maxRunsPerTask: 20
   agents:
     # Optional: defaults to the agent image of the installed release. Set it
