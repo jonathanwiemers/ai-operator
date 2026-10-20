@@ -317,12 +317,17 @@ const (
 
 // LifecycleSpec controls how long pods and workspaces live.
 //
-// A task goes through: Running -> Idle (pod kept warm) -> Hibernated (pod
-// deleted, workspace PVC kept) -> Archived (PVC deleted; the branch and the
+// A task goes through: Running -> Idle (briefly, for follow-up requests) ->
+// Hibernated (pod deleted, workspace PVC kept) -> Archived (PVC deleted; the branch and the
 // GitLab history remain, so the next run rehydrates from a fresh clone).
 type LifecycleSpec struct {
-	// IdleTimeout after which an idle pod is deleted while its workspace is kept.
-	// +kubebuilder:default="2h"
+	// IdleTimeout after which a pod without pending runs is deleted while its
+	// workspace is kept. The short default stops the pod right after a run;
+	// a request that arrives during the run or within the grace starts in the
+	// same pod. Everything the next run needs stays on the workspace, so a
+	// longer timeout only saves the pod start (seconds) at the cost of
+	// holding the pod's resources.
+	// +kubebuilder:default="1m"
 	// +optional
 	IdleTimeout metav1.Duration `json:"idleTimeout,omitempty"`
 

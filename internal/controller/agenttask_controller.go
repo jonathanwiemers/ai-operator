@@ -30,7 +30,7 @@ const queueRetry = 30 * time.Second
 // AgentTaskReconciler manages the pod and workspace of an AgentTask:
 //
 //	run requested           -> workspace + pod exist             (Running / Queued)
-//	no run pending          -> pod kept warm                      (Idle)
+//	no run pending          -> pod kept for follow-up requests    (Idle)
 //	idle > IdleTimeout      -> pod deleted, workspace kept        (Hibernated)
 //	idle > RetentionPeriod  -> workspace deleted                  (Archived)
 //

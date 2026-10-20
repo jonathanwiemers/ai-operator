@@ -119,7 +119,7 @@ func TestTaskLifecycle(t *testing.T) {
 		t.Fatal("pod and pvc must be owned by the task")
 	}
 
-	// Run finished: the pod is kept warm.
+	// Run finished: the pod waits briefly for a follow-up request.
 	e.now = e.now.Add(10 * time.Minute)
 	e.finishRun(name)
 	res := e.reconcile(name)
@@ -127,14 +127,14 @@ func TestTaskLifecycle(t *testing.T) {
 		t.Fatalf("phase %s", got)
 	}
 	if !e.exists(&pod, name) {
-		t.Fatal("idle pod must be kept")
+		t.Fatal("idle pod must be kept until the idle timeout")
 	}
-	if res.RequeueAfter < time.Hour || res.RequeueAfter > 2*time.Hour+time.Second {
+	if res.RequeueAfter <= 0 || res.RequeueAfter > aiv1.DefaultIdleTimeout+time.Second {
 		t.Fatalf("should requeue at the idle timeout, got %v", res.RequeueAfter)
 	}
 
-	// Idle timeout: pod removed, workspace kept.
-	e.now = e.now.Add(2*time.Hour + time.Minute)
+	// Idle timeout (a minute by default): pod removed, workspace kept.
+	e.now = e.now.Add(aiv1.DefaultIdleTimeout + time.Second)
 	e.reconcile(name)
 	if e.exists(&pod, name) {
 		t.Fatal("pod should be hibernated")
