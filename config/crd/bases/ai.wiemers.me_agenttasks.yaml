@@ -233,6 +233,10 @@ spec:
                           description: MergedSHA is the commit the merge request was
                             merged as.
                           type: string
+                        rebasedAt:
+                          description: RebasedAt is when the rebase was requested.
+                          format: date-time
+                          type: string
                         rebasedDiff:
                           description: |-
                             RebasedDiff is a hash of the reviewed change, taken before the rebase.

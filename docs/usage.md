@@ -330,7 +330,8 @@ the reason and what to do:
   has conflicts, needs an approval, has unresolved discussions, or was marked
   draft again after autopilot marked it ready;
 - the merge or rebase was refused or failed (for example: the bot may not
-  merge), or the rebased change differs from the reviewed one;
+  merge), the rebased change differs from the reviewed one, or the change is
+  too large to check that a rebase keeps it;
 - the active issue lost its workflow label while open;
 - no reviewers are configured;
 - the plan has a dependency cycle, or the remaining issues depend on skipped
@@ -350,7 +351,9 @@ comments still reach the agent), but nothing new is started or merged.
 
 Everything else works as on any issue: comment `/agent …` on the active issue
 or its MR, revisit decisions with `/agent revisit <id> …`, or fix things by
-hand and `resume`.
+hand and `resume`. If you pushed to the agent's branch (to resolve a
+conflict, say), comment `/agent …` on the issue: the run takes your commits
+over, is reviewed, and CI checks the new head before the merge.
 
 You can also finish issues by hand. An issue closed by a merged MR, or closed
 with `agent::done`, counts as merged: the active one (while paused, on

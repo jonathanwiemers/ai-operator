@@ -41,8 +41,8 @@ type Fake struct {
 	// MRDiffs are the diffs of an MR; without an entry an MR has one file
 	// whose change is the same before and after a rebase.
 	MRDiffs map[int64][]gitlab.Diff
-	// ClosedBy lists the MRs that close an issue.
-	ClosedBy map[int64][]int64
+	// Related lists the MRs related to an issue.
+	Related map[int64][]int64
 }
 
 var _ gitlab.API = (*Fake)(nil)
@@ -402,11 +402,11 @@ func (f *Fake) ListMergeRequestDiffs(_ context.Context, _ string, iid int64) ([]
 	return []gitlab.Diff{{OldPath: "app.go", NewPath: "app.go", Diff: fmt.Sprintf("@@ -1 +1 @@\n-old\n+change of !%d\n", iid)}}, nil
 }
 
-func (f *Fake) ListMergeRequestsClosingIssue(_ context.Context, _ string, iid int64) ([]gitlab.MergeRequest, error) {
+func (f *Fake) ListRelatedMergeRequests(_ context.Context, _ string, iid int64) ([]gitlab.MergeRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []gitlab.MergeRequest
-	for _, mr := range f.ClosedBy[iid] {
+	for _, mr := range f.Related[iid] {
 		if m, ok := f.MRs[mr]; ok {
 			out = append(out, *m)
 		}

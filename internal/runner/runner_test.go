@@ -755,11 +755,64 @@ func TestPlanOrderUsesExistingIIDs(t *testing.T) {
 		{Key: "ui", Title: "UI", DependsOn: []string{"api"}},
 		// A human's issue without a key marker, referred to by its IID.
 		{Key: "api", ExistingIID: 7, Title: "API"},
-		{Key: "gone", ExistingIID: 99, Title: "Not in the milestone"},
+		// A wrong IID: applyPlan created the issue under its key.
+		{Key: "docs", ExistingIID: 99, Title: "Docs"},
+		{Key: "gone", Title: "Not created"},
 	}}
-	issues := []gitlab.Issue{{IID: 7, Description: "by hand"}, {IID: 8, Description: "<!-- ai-operator:key=ui -->"}}
+	issues := []gitlab.Issue{{IID: 7, Description: "by hand"}, {IID: 8, Description: "<!-- ai-operator:key=ui -->"},
+		{IID: 9, Description: "<!-- ai-operator:key=docs -->"}}
 	got := planOrder(plan, issues)
-	if len(got) != 2 || got[0].IID != 8 || len(got[0].DependsOn) != 1 || got[0].DependsOn[0] != 7 || got[1].IID != 7 {
+	if len(got) != 3 || got[0].IID != 8 || len(got[0].DependsOn) != 1 || got[0].DependsOn[0] != 7 || got[1].IID != 7 || got[2].IID != 9 {
 		t.Fatalf("unexpected plan %+v", got)
+	}
+}
+
+// steadyEngine writes the same file on every run, so only its first run
+// changes anything.
+type steadyEngine struct{}
+
+func (steadyEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
+	var v any = ReviewAnswer{Summary: "fine"}
+	if !inv.ReadOnly {
+		_ = os.WriteFile(filepath.Join(inv.Dir, "steady.go"), []byte("package app\n"), 0o644)
+		v = ImplementAnswer{Status: "done", Summary: "Done.", CommitMessage: "Add steady", Handoff: "done"}
+	}
+	b, _ := json.Marshal(v)
+	return &Result{SessionID: "sess-steady", Structured: b}, nil
+}
+
+func TestRunTakesOverAHumanPush(t *testing.T) {
+	e := newImplementEnv(t)
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, steadyEngine{}, e.task.Name)
+	ctx := context.Background()
+	if _, err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// A human pushes to the agent's branch, then asks the agent to look.
+	branch := "agent/42-add-paypal-button"
+	gitCmd(t, e.seed, "fetch", "origin", branch)
+	gitCmd(t, e.seed, "checkout", "-b", branch, "origin/"+branch)
+	_ = os.WriteFile(filepath.Join(e.seed, "human.md"), []byte("by hand\n"), 0o644)
+	gitCmd(t, e.seed, "add", ".")
+	gitCmd(t, e.seed, "commit", "-m", "by hand")
+	gitCmd(t, e.seed, "push", "origin", branch)
+	human := strings.TrimSpace(gitCmd(t, e.seed, "rev-parse", "HEAD"))
+
+	var got aiv1.AgentTask
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &got)
+	orig := got.DeepCopy()
+	got.Spec.RunRequest = 2
+	if err := e.k8s.Patch(ctx, &got, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &got)
+	if got.Status.Run.PushedSHA != human {
+		t.Fatalf("the human's head should be the one CI checks: pushed %s, human %s", got.Status.Run.PushedSHA, human)
+	}
+	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::working"}) {
+		t.Fatalf("the issue should wait for CI on that head, has %v", labels)
 	}
 }
