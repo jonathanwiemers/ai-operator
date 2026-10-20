@@ -110,6 +110,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	inv.Resume = st.session("implement", role.Engine)
 	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false, prior)
 	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true, handoff{})
+	if task.Spec.Autopilot {
+		fullPrompt = autopilotImplementNote + "\n\n" + fullPrompt
+		inv.Prompt = autopilotImplementNote + "\n\n" + inv.Prompt
+	}
 	var notices []string
 	var active, ignored []revisit
 	for _, rv := range revisits {
@@ -192,8 +196,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// reviewedLast is false when a fix round came after the last review.
 	reviewedLast := false
 	// CI fix runs skip the reviewers: the change is reviewed with the next
-	// regular run, and CI itself is the check here.
-	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input" && !ciFix; iter++ {
+	// regular run, and CI itself is the check here. On autopilot nobody
+	// reviews before the merge, so CI fixes are reviewed as well.
+	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input" && (!ciFix || task.Spec.Autopilot); iter++ {
 		s = r.step(ctx, fmt.Sprintf("review round %d", iter+1), "reviewers", review.Reviewers)
 		diff, stat, err := r.Agent.Diff(ctx, base)
 		if err != nil {
@@ -278,6 +283,12 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			out.CIRound = task.Status.Run.CIRound + 1
 		}
 		s.done(fmt.Sprintf("%s at %s", branch, shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
+	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && head != task.Status.Run.PushedSHA {
+		// Someone else pushed to the branch (or made it) since the last
+		// recorded push, and this run took it over unchanged: that head is
+		// the one CI has to check.
+		out.PushedSHA = head
+		s.done(fmt.Sprintf("nothing new to push; the branch moved to %s", shortSHA(head)), "sha", head)
 	} else {
 		s.done("nothing new to push")
 	}
@@ -354,7 +365,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	// With the CI loop, a fresh push stays in "working" until the operator
 	// has seen its pipeline go green (or hands it back).
-	waitForCI := !spec.CI.Disabled && pushed && mr != nil && !needsInput
+	waitForCI := !spec.CI.Disabled && out.PushedSHA != "" && mr != nil && !needsInput
 	s = r.step(ctx, "update issue labels")
 	switch {
 	case waitForCI:

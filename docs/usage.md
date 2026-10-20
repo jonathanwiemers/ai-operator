@@ -160,7 +160,12 @@ After every push, the operator follows the pipeline of the pushed commit:
 
 The fix rounds count from the last push you triggered (`/agent …` or moving
 the issue to ready), so every new instruction gets two fresh rounds. CI fix
-runs skip the reviewer agents. Job logs reach the agent as untrusted data.
+runs skip the reviewer agents (except on [autopilot](#autopilot-a-milestone-end-to-end)).
+Job logs reach the agent as untrusted data.
+
+If you push to the agent's branch yourself and then comment `/agent …`, a run
+that has nothing to add takes your commits over: your head counts as the
+pushed commit, and CI is followed for it like for the agent's push.
 Configure the loop in `spec.ci` (see [configuration.md](configuration.md));
 `ci.disabled: true` restores "review right after the push".
 
@@ -228,6 +233,123 @@ cannot add or fake decisions.
 
 Merge the MR, then close the issue (the MR's `Closes #42` does that) or move
 it to `agent::done`. The task, its pod and its workspace are deleted.
+
+## Autopilot: a milestone end to end
+
+With **`/agent autopilot`** in the milestone description (instead of, or next
+to, `/agent spec`), the milestone runs without you:
+
+1. The spec agent plans it as usual, but asks no questions. It takes the
+   default it would propose and records it as a [decision](#decisions) in
+   each issue's description.
+2. The operator creates a tracking issue, **🤖 Autopilot: <milestone>**, and
+   moves the first issue to `agent::ready`. Issues go **one at a time**, in
+   dependency order (an issue's "Depends on" first, otherwise plan order).
+3. The issue is implemented, reviewed and checked by CI as usual. The
+   implementer never stops with questions: it decides and records the
+   decision. On autopilot, CI fix runs are reviewed as well.
+4. Once the pipeline is green and the review is clean, the operator marks
+   the draft MR ready and **merges it**, then starts the next issue on the
+   new default branch. The merge closes the issue.
+5. When every issue is merged (or skipped), the tracking issue gets a summary
+   and is closed.
+
+**Before you use it,** allow the bot to merge into the default branch:
+*Settings > Repository > Protected branches*, "Allowed to merge":
+*Developers + Maintainers*, or give the bot user the *Maintainer* role. The
+merge method and squash settings of the project apply. Keep at least one
+reviewer in `agents.review.reviewers` (the default has two): autopilot only
+merges reviewed changes. Autopilot never merges an MR of an issue it did not
+plan; other issues in the milestone follow the normal flow.
+
+If the project uses merged-results pipelines, also turn on *Pipelines must
+succeed*: autopilot follows the pipeline of the pushed commit, and a commit
+without any pipeline counts as green after `ci.noPipelineTimeout`.
+
+### The merge gate
+
+An MR is merged only when all of these hold:
+
+- the issue is in `agent::review`, i.e. the CI loop finished (green, or no
+  pipeline within `ci.noPipelineTimeout`; with `ci.disabled` the run moves it
+  there directly);
+- the last run succeeded, no blocker or major review finding is left, no
+  reviewer failed, and the review saw the commit that was pushed;
+- CI checked that commit. An issue in review whose commit the CI loop never
+  saw goes back to `agent::working` first;
+- the MR is open, targets the default branch, and its head is exactly that
+  commit (nobody pushed since);
+- GitLab reports the MR as mergeable. A draft MR is marked ready once. If it
+  needs a rebase (fast-forward or semi-linear projects), the operator asks
+  GitLab to rebase once and waits for CI on the new head. The review carries
+  over to the rebased head only if the change is the same: same files, same
+  added and removed lines. Otherwise it pauses.
+
+The merge call passes the checked commit (`sha`), so GitLab refuses to merge
+anything else.
+
+### When it pauses
+
+Autopilot pauses instead of guessing. It comments on the tracking issue with
+the reason and what to do:
+
+- the issue landed in `agent::needs-input` (CI still red after the fix
+  rounds, a failed run, used-up usage-limit deferrals);
+- blocking review findings or failed reviewers;
+- a canceled pipeline, or CI red with jobs that also fail on the default
+  branch;
+- someone pushed to the agent's branch, the MR was closed or retargeted, it
+  has conflicts, needs an approval, has unresolved discussions, or was marked
+  draft again after autopilot marked it ready;
+- the merge or rebase was refused or failed (for example: the bot may not
+  merge), the rebased change differs from the reviewed one, or the change is
+  too large to check that a rebase keeps it;
+- the active issue lost its workflow label while open;
+- no reviewers are configured;
+- the plan has a dependency cycle, or the remaining issues depend on skipped
+  ones.
+
+While paused, runs that were already requested continue (your `/agent`
+comments still reach the agent), but nothing new is started or merged.
+
+### Commands on the tracking issue
+
+| Comment | Effect |
+|---------|--------|
+| `/agent pause` | stop starting and merging |
+| `/agent resume` | continue; the active issue is checked again |
+| `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until skipped too |
+
+Everything else works as on any issue: comment `/agent …` on the active issue
+or its MR, revisit decisions with `/agent revisit <id> …`, or fix things by
+hand and `resume`. If you pushed to the agent's branch (to resolve a
+conflict, say), comment `/agent …` on the issue: the run takes your commits
+over, is reviewed, and CI checks the new head before the merge.
+
+You can also finish issues by hand. An issue closed by a merged MR, or closed
+with `agent::done`, counts as merged: the active one (while paused, on
+`resume`), a skipped one (its dependants continue on `resume`), and one that
+was already done before autopilot got to it.
+
+### Tracking issue
+
+The operator keeps its description up to date: the state (running, paused
+with the reason, done), one line per planned issue (merged with the MR and
+commit, in progress with its label, pending with what it waits for, skipped),
+and an index of the decisions of every merged issue with links. It carries
+the `ai-generated` label only, so it is never worked on itself. If it is
+deleted, a new one is created.
+
+### Switching it off
+
+Remove `/agent autopilot` from the milestone description. The tracking issue
+gets a note and is closed, and nothing is merged any more. With `/agent spec`
+still there, the milestone continues in the normal flow; the issue that was
+active stays where it is. Adding the marker again continues the queue.
+
+If the plan changes (you edit the milestone spec), issues that were not
+started yet follow the new plan; started and merged ones are kept. While the
+milestone is being planned again, no new issue is started.
 
 ## Usage and rate limits
 
@@ -333,6 +455,15 @@ kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server: 
 (reviewers that failed) and `reviewedSHA` (the commit that review saw; a CI
 fix run can push commits after it).
 
+The spec task of a milestone holds the plan in `status.plan` (issues in plan
+order with their dependencies) and, on autopilot, the queue in
+`status.autopilot`: `phase`, `pausedReason`, `trackingIssueIID` and one item
+per issue with its state, MR, merged commit and decisions.
+
+```sh
+kubectl -n agents get agenttask shop-spec-m3-checkout-v2 -o jsonpath='{.status.autopilot}'
+```
+
 ### Run logs
 
 Every run is a numbered list of steps, e.g. for an issue:
@@ -350,12 +481,14 @@ Every run is a numbered list of steps, e.g. for an issue:
 11. review round 1, fix round 1, commit, review round 2, … (up to
     `review.maxIterations`)
 12. push
-13. open merge request (first push only)
-14. comment
-15. update issue labels
+13. update agent notes, post decisions (when there are any)
+14. open merge request (first push only)
+15. comment
+16. update issue labels
 
 A spec run reads the milestone and the project, clones or fetches, lists the
-milestone's issues, runs the spec agent and applies the plan.
+milestone's issues, runs the spec agent, applies the plan and records it
+(`status.plan`, used by autopilot).
 
 The steps show up in three places:
 

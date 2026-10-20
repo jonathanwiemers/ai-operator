@@ -115,6 +115,7 @@ kubectl -n agents create secret generic agent-credentials \
 | Field | Default | Description |
 |-------|---------|-------------|
 | `specMarker` | `/agent spec` | text that must appear in a milestone description for it to be planned; `""` plans every active milestone with a description |
+| `autopilotMarker` | `/agent autopilot` | text that plans a milestone and runs it end to end: agents take their defaults, issues are worked one at a time and each MR is merged when CI is green and the review is clean (see [Autopilot](usage.md#autopilot-a-milestone-end-to-end)); `""` disables autopilot. The bot must be allowed to merge into the default branch |
 | `titlePattern` | – | optional regex for milestone titles; if set, issues are also only picked up from matching milestones |
 
 ## `spec.workflow`

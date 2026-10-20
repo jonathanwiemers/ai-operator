@@ -15,6 +15,7 @@ const (
 	DefaultModel           = "claude-opus-5-5"
 	DefaultLightModel      = "claude-sonnet-5-5"
 	DefaultSpecMarker      = "/agent spec"
+	DefaultAutopilotMarker = "/agent autopilot"
 	DefaultCommandPrefix   = "/agent"
 	DefaultServiceAccount  = "ai-operator-agent"
 	DefaultPollInterval    = time.Minute
@@ -56,6 +57,14 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 // ActiveLabels are the labels that mean "an agent task exists for this issue".
 func (w WorkflowSpec) ActiveLabels() []string {
 	return []string{w.ReadyLabel, w.WorkingLabel, w.NeedsInputLabel, w.ReviewLabel}
+}
+
+// Autopilot returns the effective autopilot marker; empty disables autopilot.
+func (m MilestoneSelector) Autopilot() string {
+	if m.AutopilotMarker == nil {
+		return DefaultAutopilotMarker
+	}
+	return *m.AutopilotMarker
 }
 
 // Marker returns the effective spec marker.

@@ -1,0 +1,985 @@
+package controller
+
+import (
+	"context"
+	"fmt"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/api/equality"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
+)
+
+// syncAutopilot drives an autopilot milestone, one step per poll:
+//
+//	no active issue         -> move the next issue whose dependencies are merged to ready
+//	active issue in review  -> merge gate: pipeline green, review clean, MR mergeable -> merge
+//	MR needs a rebase       -> ask GitLab to rebase once, then treat the new head as a push
+//	merged                  -> record it, close the issue if needed, next issue
+//	needs a human           -> pause with a comment on the tracking issue
+//
+// The operator only calls the GitLab API here; no model decides whether to
+// merge. State lives in the spec task's status.autopilot, the tracking issue
+// shows it.
+func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask) error {
+	switch {
+	case st.Spec.Milestone == nil:
+		return nil
+	case !st.Spec.Autopilot && (st.Status.Autopilot == nil || st.Status.Autopilot.Phase == aiv1.AutopilotOff):
+		return nil // never on, or already off
+	case st.Spec.Autopilot && len(st.Status.Plan) == 0:
+		return nil // not planned yet
+	}
+	ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}
+	if st.Status.Autopilot != nil {
+		ap = st.Status.Autopilot.DeepCopy()
+	}
+	a := &autopilot{r: r, gl: gl, project: project, spec: spec, st: st, ap: ap, tasks: tasks,
+		log: log.FromContext(ctx).WithValues("milestone", st.Spec.Milestone.Title)}
+	err := a.sync(ctx)
+	// Save what was done even if a later step failed: its GitLab side
+	// effects (a created tracking issue, a requested rebase) have happened.
+	if serr := a.save(ctx); err == nil {
+		err = serr
+	}
+	return err
+}
+
+func (a *autopilot) sync(ctx context.Context) error {
+	if !a.st.Spec.Autopilot {
+		return a.off(ctx)
+	}
+	if a.ap.Phase == aiv1.AutopilotOff {
+		a.ap.Phase = aiv1.AutopilotRunning
+	}
+	issues, err := a.gl.ListIssues(ctx, a.spec.GitLab.Project, gitlab.ListIssuesOptions{Milestone: a.st.Spec.Milestone.Title, State: "all"})
+	if err != nil {
+		return fmt.Errorf("listing issues of milestone %q: %w", a.st.Spec.Milestone.Title, err)
+	}
+	a.issues = map[int64]gitlab.Issue{}
+	for _, is := range issues {
+		a.issues[is.IID] = is
+	}
+	order, cycle := queueOrder(a.st.Status.Plan)
+	a.ap.Items = mergeQueue(a.ap.Items, order)
+	if err := a.ensureTracking(ctx); err != nil {
+		return err
+	}
+	if err := a.commands(ctx); err != nil {
+		return err
+	}
+	switch {
+	case a.ap.Phase != aiv1.AutopilotRunning && a.ap.Phase != aiv1.AutopilotDone:
+	case len(cycle) > 0:
+		if err := a.pause(ctx, "the plan has a dependency cycle between "+issueList(cycle)); err != nil {
+			return err
+		}
+	default:
+		if err := a.step(ctx); err != nil {
+			return err
+		}
+	}
+	return a.updateTracking(ctx)
+}
+
+// off stops autopilot after its marker was removed or the milestone is no
+// longer planned, and says so on the tracking issue.
+func (a *autopilot) off(ctx context.Context) error {
+	a.log.Info("autopilot switched off")
+	if a.ap.Phase != aiv1.AutopilotDone {
+		if err := a.comment(ctx, "⏹️ Autopilot is off: the marker was removed from the milestone, or the milestone is no longer planned. "+
+			"Nothing is merged any more; open issues continue in the normal flow."); err != nil {
+			return err
+		}
+	}
+	prev := a.ap.Phase
+	a.ap.Phase = aiv1.AutopilotOff // for the description
+	if err := a.closeTracking(ctx); err != nil {
+		a.ap.Phase = prev // tried again on the next poll
+		return err
+	}
+	return nil
+}
+
+// autopilot is one poll of one autopilot milestone.
+type autopilot struct {
+	r       *AgentProjectReconciler
+	gl      gitlab.API
+	project *aiv1.AgentProject
+	spec    aiv1.AgentProjectSpec
+	st      *aiv1.AgentTask
+	ap      *aiv1.AutopilotStatus
+	tasks   map[int64]*aiv1.AgentTask
+	issues  map[int64]gitlab.Issue
+	log     logr.Logger
+	// defaultBranch is read once per poll, when needed.
+	defaultBranch string
+}
+
+// queueOrder orders the plan topologically: dependencies first, ties in plan
+// order. It returns the issues of a dependency cycle, if there is one.
+func queueOrder(plan []aiv1.PlannedIssue) ([]int64, []int64) {
+	index := map[int64]int{}
+	for i, p := range plan {
+		index[p.IID] = i
+	}
+	waiting := make([]int, len(plan))
+	dependants := map[int64][]int64{}
+	for _, p := range plan {
+		for _, d := range p.DependsOn {
+			if _, ok := index[d]; ok {
+				waiting[index[p.IID]]++
+				dependants[d] = append(dependants[d], p.IID)
+			}
+		}
+	}
+	var order []int64
+	done := make([]bool, len(plan))
+	for len(order) < len(plan) {
+		next := -1
+		for i := range plan {
+			if !done[i] && waiting[i] == 0 {
+				next = i
+				break
+			}
+		}
+		if next < 0 {
+			var cycle []int64
+			for i, p := range plan {
+				if !done[i] {
+					cycle = append(cycle, p.IID)
+				}
+			}
+			return order, cycle
+		}
+		done[next] = true
+		order = append(order, plan[next].IID)
+		for _, dep := range dependants[plan[next].IID] {
+			waiting[index[dep]]--
+		}
+	}
+	return order, nil
+}
+
+// mergeQueue keeps the state of known items and appends new ones in queue
+// order. Items the plan dropped stay once they were started, so the history
+// is kept; pending ones are dropped with the plan.
+func mergeQueue(items []aiv1.AutopilotItem, order []int64) []aiv1.AutopilotItem {
+	known := map[int64]aiv1.AutopilotItem{}
+	for _, it := range items {
+		known[it.IID] = it
+	}
+	out := make([]aiv1.AutopilotItem, 0, len(order))
+	seen := map[int64]bool{}
+	for _, iid := range order {
+		it, ok := known[iid]
+		if !ok {
+			it = aiv1.AutopilotItem{IID: iid, State: aiv1.AutopilotItemPending}
+		}
+		out = append(out, it)
+		seen[iid] = true
+	}
+	for _, it := range items {
+		if !seen[it.IID] && it.State != aiv1.AutopilotItemPending {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func (a *autopilot) item(iid int64) *aiv1.AutopilotItem {
+	for i := range a.ap.Items {
+		if a.ap.Items[i].IID == iid {
+			return &a.ap.Items[i]
+		}
+	}
+	return nil
+}
+
+func (a *autopilot) deps(iid int64) []int64 {
+	for _, p := range a.st.Status.Plan {
+		if p.IID == iid {
+			return p.DependsOn
+		}
+	}
+	return nil
+}
+
+// step does at most one thing for the queue.
+func (a *autopilot) step(ctx context.Context) error {
+	for i := range a.ap.Items {
+		if a.ap.Items[i].State == aiv1.AutopilotItemActive {
+			return a.drive(ctx, &a.ap.Items[i])
+		}
+	}
+	if a.st.RunPending() {
+		return nil // the milestone is being planned again; pick from the new plan
+	}
+	return a.pick(ctx)
+}
+
+// pick activates the next pending issue whose dependencies are merged.
+func (a *autopilot) pick(ctx context.Context) error {
+	pending := 0
+	for i := range a.ap.Items {
+		it := &a.ap.Items[i]
+		if it.State != aiv1.AutopilotItemPending {
+			continue
+		}
+		pending++
+		blocked := false
+		for _, d := range a.deps(it.IID) {
+			dep := a.item(d)
+			if dep == nil || dep.State == aiv1.AutopilotItemMerged {
+				continue
+			}
+			if dep.State == aiv1.AutopilotItemSkipped {
+				// Skipped, then finished by hand: the dependency is met.
+				mr, done, err := a.doneByHand(ctx, d)
+				if err != nil {
+					return err
+				}
+				if done {
+					return a.merged(ctx, dep, mr)
+				}
+			}
+			blocked = true
+			break
+		}
+		if blocked {
+			continue
+		}
+		wf := a.spec.Workflow
+		is, ok := a.issues[it.IID]
+		if !ok || is.State != "opened" {
+			// Done before autopilot got to it (merged in the normal flow, or
+			// by hand), or given up.
+			mr, done, err := a.doneByHand(ctx, it.IID)
+			if err != nil {
+				return err
+			}
+			if done {
+				return a.merged(ctx, it, mr)
+			}
+			if err := a.comment(ctx, fmt.Sprintf("⏭️ #%d was closed or deleted before autopilot got to it, so it is skipped.", it.IID)); err != nil {
+				return err
+			}
+			it.State = aiv1.AutopilotItemSkipped
+			return nil
+		}
+		a.log.Info("autopilot starts the next issue", "issue", it.IID)
+		if !hasAny(is, wf.ActiveLabels()...) { // else a human already handed it over
+			if _, err := a.gl.UpdateIssue(ctx, a.spec.GitLab.Project, it.IID, gitlab.UpdateIssueOptions{
+				AddLabels: []string{wf.ReadyLabel}, RemoveLabels: []string{wf.DraftLabel, wf.DoneLabel},
+			}); err != nil {
+				return fmt.Errorf("moving issue #%d to %q: %w", it.IID, wf.ReadyLabel, err)
+			}
+		}
+		it.State = aiv1.AutopilotItemActive
+		a.ap.Phase = aiv1.AutopilotRunning // a re-plan can add issues after "done"
+		return nil
+	}
+	if pending > 0 {
+		// Everything left waits for an issue that was skipped.
+		var waiting []int64
+		for _, it := range a.ap.Items {
+			if it.State == aiv1.AutopilotItemPending {
+				waiting = append(waiting, it.IID)
+			}
+		}
+		return a.pause(ctx, issueList(waiting)+" depend on skipped issues; merge those by hand and `resume`, or `skip` these too")
+	}
+	if a.ap.Phase != aiv1.AutopilotDone {
+		merged := 0
+		for _, it := range a.ap.Items {
+			if it.State == aiv1.AutopilotItemMerged {
+				merged++
+			}
+		}
+		a.log.Info("autopilot milestone done", "merged", merged)
+		// Close first and comment after, so a failing close does not repeat
+		// the comment.
+		prev := a.ap.Phase
+		a.ap.Phase = aiv1.AutopilotDone // for the description
+		if err := a.closeTracking(ctx); err != nil {
+			a.ap.Phase = prev // tried again on the next poll
+			return err
+		}
+		return a.comment(ctx, fmt.Sprintf("✅ Autopilot is done: %d of %d issues merged. The decisions are listed in the description.", merged, len(a.ap.Items)))
+	}
+	return nil
+}
+
+// doneByHand reports whether a closed issue was finished outside autopilot:
+// its MR was merged, a merged MR of the project closed it, or it was closed as
+// done. It returns the merged MR, if any. (GitLab's closed_by only answers for
+// open issues, so the issue's state events are used.)
+func (a *autopilot) doneByHand(ctx context.Context, iid int64) (*gitlab.MergeRequest, bool, error) {
+	is, ok := a.issues[iid]
+	if !ok || is.State == "opened" {
+		return nil, false, nil
+	}
+	if it := a.item(iid); it != nil && it.MergeRequestIID != 0 {
+		mr, err := a.gl.GetMergeRequest(ctx, a.spec.GitLab.Project, it.MergeRequestIID)
+		if err != nil && !gitlab.IsNotFound(err) {
+			return nil, false, fmt.Errorf("getting merge request !%d: %w", it.MergeRequestIID, err)
+		}
+		if err == nil && mr.State == "merged" {
+			return mr, true, nil
+		}
+	}
+	// The issue's last state change says whether a merge request closed it;
+	// merely mentioning the issue does not count.
+	events, err := a.gl.ListIssueStateEvents(ctx, a.spec.GitLab.Project, iid)
+	if err != nil {
+		return nil, false, fmt.Errorf("listing the state events of #%d: %w", iid, err)
+	}
+	if n := len(events); n > 0 && events[n-1].State == "closed" && events[n-1].SourceMergeRequest != nil {
+		src := events[n-1].SourceMergeRequest
+		proj, err := a.gl.GetProject(ctx, a.spec.GitLab.Project)
+		if err != nil {
+			return nil, false, fmt.Errorf("getting project: %w", err)
+		}
+		if src.ProjectID == proj.ID {
+			mr, err := a.gl.GetMergeRequest(ctx, a.spec.GitLab.Project, src.IID)
+			if err != nil && !gitlab.IsNotFound(err) {
+				return nil, false, fmt.Errorf("getting merge request !%d: %w", src.IID, err)
+			}
+			if err == nil && mr.State == "merged" {
+				return mr, true, nil
+			}
+		}
+	}
+	return nil, is.HasLabel(a.spec.Workflow.DoneLabel), nil
+}
+
+// drive moves the active issue towards its merge.
+func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
+	wf := a.spec.Workflow
+	glProject := a.spec.GitLab.Project
+	is, ok := a.issues[it.IID]
+	task := a.tasks[it.IID]
+	if task != nil && task.Status.Run.MergeRequestIID != 0 {
+		it.MergeRequestIID, it.MergeRequestURL = task.Status.Run.MergeRequestIID, task.Status.Run.MergeRequestURL
+	}
+	if !ok || is.State != "opened" {
+		// Closed: merged by hand, or given up.
+		mr, done, err := a.doneByHand(ctx, it.IID)
+		if err != nil {
+			return err
+		}
+		if done {
+			return a.merged(ctx, it, mr)
+		}
+		if err := a.comment(ctx, fmt.Sprintf("⏭️ #%d was closed without a merge, so it is skipped.", it.IID)); err != nil {
+			return err
+		}
+		it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+		return nil
+	}
+	switch {
+	case is.HasLabel(wf.NeedsInputLabel):
+		return a.pauseActive(ctx, it, fmt.Sprintf("#%d needs input (see its last comments): CI is still red, the run failed or the agent asked a question", it.IID))
+	case !hasAny(is, wf.ActiveLabels()...):
+		return a.pauseActive(ctx, it, fmt.Sprintf("#%d is open but has no workflow label any more; move it back to `%s` or close it", it.IID, wf.ReviewLabel))
+	case !is.HasLabel(wf.ReviewLabel) || task == nil || task.RunPending():
+		return nil // the agent or CI is still working on it
+	}
+
+	// Merge gate.
+	run := task.Status.Run
+	switch {
+	case run.LastResult != aiv1.RunResultSucceeded:
+		return a.pauseActive(ctx, it, fmt.Sprintf("the last run of #%d ended with %q", it.IID, run.LastResult))
+	case run.BlockingFindings > 0:
+		return a.pauseActive(ctx, it, fmt.Sprintf("%d blocking review findings remain on !%d", run.BlockingFindings, it.MergeRequestIID))
+	case run.ReviewErrors > 0:
+		return a.pauseActive(ctx, it, fmt.Sprintf("%d reviewers failed on #%d, so the change is not fully reviewed", run.ReviewErrors, it.IID))
+	case it.MergeRequestIID == 0 || run.PushedSHA == "":
+		return a.pauseActive(ctx, it, fmt.Sprintf("#%d is in review without a pushed merge request", it.IID))
+	case len(a.spec.Agents.Review.Reviewers) == 0:
+		return a.pauseActive(ctx, it, "no reviewers are configured (`agents.review.reviewers`), and autopilot only merges reviewed changes")
+	case run.ReviewedSHA != run.PushedSHA:
+		return a.pauseActive(ctx, it, fmt.Sprintf("the head of !%d (%s) was not reviewed (the last review saw %s)", it.MergeRequestIID, short(run.PushedSHA), short(run.ReviewedSHA)))
+	}
+	if !a.spec.CI.Disabled {
+		ci := task.Status.CI
+		switch {
+		case ci == nil || ci.SHA != run.PushedSHA || !ci.State.Final():
+			// In review, but the CI loop, which only follows issues in
+			// working, never finished this commit: hand it back. It always
+			// ends in review or needs-input, so this does not repeat.
+			a.log.Info("autopilot hands the issue back to the CI loop", "issue", it.IID, "sha", run.PushedSHA)
+			if _, err := a.gl.UpdateIssue(ctx, glProject, it.IID, gitlab.UpdateIssueOptions{
+				AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel},
+			}); err != nil {
+				return fmt.Errorf("moving issue #%d back to %q: %w", it.IID, wf.WorkingLabel, err)
+			}
+			return nil
+		case ci.State == aiv1.CIStateCanceled:
+			return a.pauseActive(ctx, it, fmt.Sprintf("the pipeline of !%d was canceled", it.MergeRequestIID))
+		case ci.State == aiv1.CIStateBaseFailing:
+			return a.pauseActive(ctx, it, fmt.Sprintf("CI of !%d is red with jobs that also fail on the default branch (%s)", it.MergeRequestIID, jobList(ci.FailedJobs)))
+		case ci.State == aiv1.CIStateFailed:
+			return a.pauseActive(ctx, it, fmt.Sprintf("CI of !%d is red (%s)", it.MergeRequestIID, jobList(ci.FailedJobs)))
+		}
+	}
+
+	mr, err := a.gl.GetMergeRequest(ctx, glProject, it.MergeRequestIID)
+	if err != nil {
+		return fmt.Errorf("getting merge request !%d: %w", it.MergeRequestIID, err)
+	}
+	base, err := a.base(ctx)
+	if err != nil {
+		return err
+	}
+	switch {
+	case mr.State == "merged":
+		return a.merged(ctx, it, mr)
+	case mr.State != "opened":
+		return a.pause(ctx, fmt.Sprintf("!%d was %s without a merge", mr.IID, mr.State))
+	case mr.TargetBranch != "" && mr.TargetBranch != base:
+		return a.pause(ctx, fmt.Sprintf("!%d targets `%s`, not the default branch `%s`", mr.IID, mr.TargetBranch, base))
+	case it.RebasedFrom != "":
+		return a.rebased(ctx, it, mr, task)
+	case mr.SHA != run.PushedSHA:
+		return a.pause(ctx, fmt.Sprintf("the head of !%d (%s) is not the commit the agent pushed and CI checked (%s); someone pushed to the branch. "+
+			"Comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, short(mr.SHA), short(run.PushedSHA), wf.CommandPrefix, it.IID))
+	}
+	switch mr.DetailedMergeStatus {
+	case "mergeable":
+	case "draft_status":
+		if it.MarkedReady {
+			return a.pause(ctx, fmt.Sprintf("!%d was marked draft again; mark it ready, or merge by hand", mr.IID))
+		}
+		res, err := a.gl.UpdateMergeRequest(ctx, glProject, mr.IID, gitlab.UpdateMergeRequestOptions{Title: draftPrefix.ReplaceAllString(mr.Title, "")})
+		switch {
+		case err != nil:
+			return a.pause(ctx, fmt.Sprintf("could not mark !%d ready: %v", mr.IID, err))
+		case res.Draft:
+			return a.pause(ctx, fmt.Sprintf("could not mark !%d ready (title %q); mark it ready by hand", mr.IID, res.Title))
+		}
+		it.MarkedReady = true
+		a.log.Info("autopilot marked the merge request ready", "mr", mr.IID)
+		return nil // merged on the next poll, once GitLab rechecked it
+	case "need_rebase":
+		return a.rebase(ctx, it, mr)
+	case "checking", "unchecked", "preparing", "approvals_syncing", "ci_still_running", "ci_must_pass":
+		return nil
+	case "conflict":
+		return a.pause(ctx, fmt.Sprintf("!%d has merge conflicts with the default branch; resolve them on the branch, then `resume`", mr.IID))
+	case "not_approved":
+		return a.pause(ctx, fmt.Sprintf("!%d needs an approval before it can be merged", mr.IID))
+	case "discussions_not_resolved":
+		return a.pause(ctx, fmt.Sprintf("!%d has unresolved discussions", mr.IID))
+	default:
+		return a.pause(ctx, fmt.Sprintf("GitLab reports !%d as %q", mr.IID, mr.DetailedMergeStatus))
+	}
+
+	a.log.Info("autopilot merges", "mr", mr.IID, "sha", mr.SHA)
+	res, err := a.gl.MergeMergeRequest(ctx, glProject, mr.IID, gitlab.MergeOptions{SHA: run.PushedSHA, ShouldRemoveSourceBranch: true})
+	switch code := gitlab.StatusCode(err); {
+	case err == nil:
+		if res.State != "merged" {
+			return nil // GitLab merges asynchronously; seen on the next poll
+		}
+		return a.merged(ctx, it, res)
+	case code == 401 || code == 403:
+		return a.pause(ctx, fmt.Sprintf("the bot may not merge !%d into the default branch (HTTP %d); allow Developers to merge, or give the bot the Maintainer role", mr.IID, code))
+	case code == 406:
+		return a.rebase(ctx, it, mr)
+	case code >= 400 && code < 500:
+		return a.pause(ctx, fmt.Sprintf("GitLab refused to merge !%d: %v", mr.IID, err))
+	default:
+		return fmt.Errorf("merging !%d: %w", mr.IID, err)
+	}
+}
+
+// draftPrefix matches the prefixes that make GitLab treat an MR as a draft.
+var draftPrefix = regexp.MustCompile(`(?i)^\s*(?:\[draft\]|\(draft\)|draft:|draft\b)\s*`)
+
+// base returns the project's default branch.
+func (a *autopilot) base(ctx context.Context) (string, error) {
+	if a.defaultBranch == "" {
+		proj, err := a.gl.GetProject(ctx, a.spec.GitLab.Project)
+		if err != nil {
+			return "", fmt.Errorf("getting project: %w", err)
+		}
+		a.defaultBranch = proj.DefaultBranch
+	}
+	return a.defaultBranch, nil
+}
+
+// pauseActive pauses because of the active issue, unless its MR was merged
+// meanwhile (by hand, while the issue is still open).
+func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, reason string) error {
+	if it.MergeRequestIID != 0 && a.ap.Phase != aiv1.AutopilotPaused {
+		mr, err := a.gl.GetMergeRequest(ctx, a.spec.GitLab.Project, it.MergeRequestIID)
+		if err != nil && !gitlab.IsNotFound(err) {
+			return fmt.Errorf("getting merge request !%d: %w", it.MergeRequestIID, err)
+		}
+		if err == nil && mr.State == "merged" {
+			return a.merged(ctx, it, mr)
+		}
+	}
+	return a.pause(ctx, reason)
+}
+
+// rebase asks GitLab to rebase the MR, once per item. The reviewed change is
+// hashed first, so the rebased head can be checked against it.
+func (a *autopilot) rebase(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest) error {
+	if it.Rebases > 0 {
+		return a.pause(ctx, fmt.Sprintf("!%d still cannot be merged after a rebase; rebase or merge the default branch by hand, then `resume`", mr.IID))
+	}
+	diff, err := a.diffHash(ctx, mr.IID)
+	if err != nil {
+		return err
+	}
+	if diff == "" {
+		return a.pause(ctx, fmt.Sprintf("!%d needs a rebase, but its change is too large to check that a rebase keeps it; rebase it by hand and "+
+			"comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, a.spec.Workflow.CommandPrefix, it.IID))
+	}
+	if err := a.gl.RebaseMergeRequest(ctx, a.spec.GitLab.Project, mr.IID); err != nil {
+		return a.pause(ctx, fmt.Sprintf("GitLab could not rebase !%d: %v", mr.IID, err))
+	}
+	a.log.Info("autopilot rebases the merge request", "mr", mr.IID, "from", mr.SHA)
+	it.Rebases++
+	it.RebasedFrom, it.RebasedDiff = mr.SHA, diff
+	it.RebasedAt = &metav1.Time{Time: a.r.now()}
+	return nil
+}
+
+// rebaseGrace is how long GitLab may take to show a rebased head after the
+// rebase itself finished.
+const rebaseGrace = 5 * time.Minute
+
+// rebased hands the rebased head to the CI loop like a new push, once GitLab
+// is done and the change is still the one that was reviewed.
+func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask) error {
+	unrebased := func(reason string) error {
+		if err := a.pause(ctx, reason); err != nil {
+			return err
+		}
+		it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
+		return nil
+	}
+	switch {
+	case mr.RebaseInProgress:
+		return nil
+	case mr.MergeError != "":
+		return unrebased(fmt.Sprintf("the rebase of !%d failed: %s", mr.IID, mr.MergeError))
+	case mr.SHA == it.RebasedFrom && mr.DetailedMergeStatus == "mergeable":
+		// Nothing to rebase after all; the gate runs again.
+		it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
+		return nil
+	case mr.SHA == it.RebasedFrom && mr.DetailedMergeStatus == "conflict":
+		return unrebased(fmt.Sprintf("the rebase of !%d ran into conflicts; resolve them on the branch, then `resume`", mr.IID))
+	case mr.SHA == it.RebasedFrom && it.RebasedAt != nil && a.r.now().Sub(it.RebasedAt.Time) < rebaseGrace:
+		return nil // GitLab refreshes the MR after the rebase
+	case mr.SHA == it.RebasedFrom:
+		return unrebased(fmt.Sprintf("the rebase of !%d did not go through (GitLab reports %q); rebase by hand, then `resume`", mr.IID, mr.DetailedMergeStatus))
+	}
+	// The review only holds if the rebase moved the change without changing
+	// it; a commit pushed meanwhile, or a rebase that had to adapt lines,
+	// changes the diff.
+	diff, err := a.diffHash(ctx, mr.IID)
+	if err != nil {
+		return err
+	}
+	if diff == "" || diff != it.RebasedDiff {
+		return unrebased(fmt.Sprintf("after the rebase, the change of !%d is not the one that was reviewed (someone pushed, or the rebase changed lines). "+
+			"Comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, a.spec.Workflow.CommandPrefix, it.IID))
+	}
+	a.log.Info("autopilot rebase done, waiting for CI", "mr", mr.IID, "sha", mr.SHA)
+	orig := task.DeepCopy()
+	task.Status.Run.ReviewedSHA = mr.SHA
+	task.Status.Run.PushedSHA = mr.SHA
+	task.Status.Run.PushedAt = &metav1.Time{Time: a.r.now()}
+	task.Status.CI = nil
+	if err := a.r.Status().Patch(ctx, task, client.MergeFrom(orig)); err != nil {
+		return err
+	}
+	it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
+	if a.spec.CI.Disabled {
+		return nil // merged on the next poll
+	}
+	// Back to working, so the CI loop follows the new pipeline. If this
+	// fails, the gate hands the unchecked head back on the next poll.
+	wf := a.spec.Workflow
+	if _, err := a.gl.UpdateIssue(ctx, a.spec.GitLab.Project, it.IID, gitlab.UpdateIssueOptions{
+		AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel},
+	}); err != nil {
+		return fmt.Errorf("moving issue #%d back to %q: %w", it.IID, wf.WorkingLabel, err)
+	}
+	return nil
+}
+
+// diffHash hashes the change of an MR: the files and their added and removed
+// lines, without positions, so a rebase that only moves the change keeps the
+// hash. It is empty if GitLab does not return the whole change.
+func (a *autopilot) diffHash(ctx context.Context, iid int64) (string, error) {
+	diffs, err := a.gl.ListMergeRequestDiffs(ctx, a.spec.GitLab.Project, iid)
+	if err != nil {
+		return "", fmt.Errorf("listing the diffs of !%d: %w", iid, err)
+	}
+	sort.Slice(diffs, func(i, j int) bool {
+		if diffs[i].NewPath != diffs[j].NewPath {
+			return diffs[i].NewPath < diffs[j].NewPath
+		}
+		return diffs[i].OldPath < diffs[j].OldPath
+	})
+	var b strings.Builder
+	for _, d := range diffs {
+		if d.TooLarge || d.Collapsed {
+			return "", nil
+		}
+		fmt.Fprintf(&b, "%s\x00%s\x00%t%t%t\n", d.OldPath, d.NewPath, d.NewFile, d.RenamedFile, d.DeletedFile)
+		for _, line := range strings.Split(d.Diff, "\n") {
+			if strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-") || strings.HasPrefix(line, "Binary") {
+				b.WriteString(line + "\n")
+			}
+		}
+	}
+	return hashString(b.String()), nil
+}
+
+// merged records a merged item and closes its issue if GitLab did not. mr is
+// nil for an issue closed as done without a known MR.
+func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest) error {
+	glProject := a.spec.GitLab.Project
+	wf := a.spec.Workflow
+	is, err := a.gl.GetIssue(ctx, glProject, it.IID)
+	if err != nil {
+		return fmt.Errorf("getting issue #%d: %w", it.IID, err)
+	}
+	notes, err := a.gl.ListIssueNotes(ctx, glProject, it.IID)
+	if err != nil {
+		return fmt.Errorf("listing notes of issue #%d: %w", it.IID, err)
+	}
+	if is.State == "opened" {
+		// "Closes #N" only closes the issue on the default branch.
+		if _, err := a.gl.UpdateIssue(ctx, glProject, it.IID, gitlab.UpdateIssueOptions{
+			StateEvent: "close", AddLabels: []string{wf.DoneLabel},
+			RemoveLabels: []string{wf.ReviewLabel, wf.WorkingLabel},
+		}); err != nil {
+			return fmt.Errorf("closing issue #%d: %w", it.IID, err)
+		}
+	}
+	it.State = aiv1.AutopilotItemMerged
+	it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
+	it.Decisions = collectDecisions(is, notes, a.project.Status.BotUserID)
+	if mr != nil {
+		it.MergedSHA = firstNonEmpty(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA)
+		it.MergeRequestIID, it.MergeRequestURL = mr.IID, firstNonEmpty(mr.WebURL, it.MergeRequestURL)
+	}
+	a.log.Info("autopilot merged", "issue", it.IID, "mr", it.MergeRequestIID, "sha", it.MergedSHA)
+	return nil
+}
+
+// collectDecisions lists the decisions on an issue: the planner's in the
+// description and the implementer's in the bot's comments.
+func collectDecisions(is *gitlab.Issue, notes []gitlab.Note, botID int64) []aiv1.DecisionRef {
+	var out []aiv1.DecisionRef
+	for _, d := range marker.Decisions(is.Description) {
+		out = append(out, aiv1.DecisionRef{ID: d.ID, Title: d.Title, URL: is.WebURL, Superseded: d.Superseded})
+	}
+	for _, n := range notes {
+		if botID == 0 || n.Author.ID != botID || n.System {
+			continue
+		}
+		for _, d := range marker.Decisions(n.Body) {
+			out = append(out, aiv1.DecisionRef{ID: d.ID, Title: d.Title, URL: fmt.Sprintf("%s#note_%d", is.WebURL, n.ID), Superseded: d.Superseded})
+		}
+	}
+	return out
+}
+
+// pause stops the queue and says why, once.
+func (a *autopilot) pause(ctx context.Context, reason string) error {
+	if a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedReason == reason {
+		return nil
+	}
+	a.log.Info("autopilot paused", "reason", reason)
+	// Comment first: if it fails, the pause is tried again on the next poll.
+	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nFix it, then comment `%s resume`.", reason, a.spec.Workflow.CommandPrefix)); err != nil {
+		return err
+	}
+	a.ap.Phase = aiv1.AutopilotPaused
+	a.ap.PausedReason = reason
+	return nil
+}
+
+// commands handles "/agent pause|resume|skip #N" on the tracking issue.
+func (a *autopilot) commands(ctx context.Context) error {
+	if a.ap.TrackingIssueIID == 0 {
+		return nil
+	}
+	notes, err := a.gl.ListIssueNotes(ctx, a.spec.GitLab.Project, a.ap.TrackingIssueIID)
+	if a.trackingGone(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("listing notes of the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
+	}
+	prefix := a.spec.Workflow.CommandPrefix
+	for _, n := range notes {
+		if n.ID <= a.ap.LastCommandNoteID || !IsCommand(n, a.project.Status.BotUserID, prefix) {
+			continue
+		}
+		a.ap.LastCommandNoteID = n.ID
+		rest := strings.TrimPrefix(strings.TrimSpace(n.Body), prefix)
+		fields := strings.Fields(strings.TrimLeft(rest, ": \t"))
+		if len(fields) == 0 {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSuffix(fields[0], ":")) {
+		case "pause":
+			if a.ap.Phase != aiv1.AutopilotDone {
+				a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotPaused, "paused by @"+n.Author.Username
+			}
+		case "resume":
+			if a.ap.Phase == aiv1.AutopilotPaused {
+				a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotRunning, ""
+			}
+		case "skip":
+			iid := int64(0)
+			if len(fields) > 1 {
+				iid, _ = strconv.ParseInt(strings.TrimPrefix(fields[1], "#"), 10, 64)
+			}
+			it := a.item(iid)
+			if it == nil || it.State == aiv1.AutopilotItemMerged {
+				if err := a.comment(ctx, fmt.Sprintf("`skip` needs a planned issue that is not merged yet, e.g. `%s skip #12`.", prefix)); err != nil {
+					return err
+				}
+				continue
+			}
+			it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+		}
+	}
+	return nil
+}
+
+// ensureTracking creates the tracking issue on the first poll.
+func (a *autopilot) ensureTracking(ctx context.Context) error {
+	if a.ap.TrackingIssueIID != 0 {
+		is, ok := a.issues[a.ap.TrackingIssueIID]
+		if !ok {
+			// Not in the milestone any more: moved, or deleted.
+			got, err := a.gl.GetIssue(ctx, a.spec.GitLab.Project, a.ap.TrackingIssueIID)
+			if a.trackingGone(err) {
+				return a.ensureTracking(ctx)
+			}
+			if err != nil {
+				return fmt.Errorf("getting the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
+			}
+			is = *got
+		}
+		if is.State != "opened" && a.ap.Phase != aiv1.AutopilotDone {
+			// Re-planned or switched back on after it was closed.
+			_, err := a.gl.UpdateIssue(ctx, a.spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{StateEvent: "reopen"})
+			if a.trackingGone(err) {
+				return a.ensureTracking(ctx)
+			}
+			if err != nil {
+				return fmt.Errorf("reopening the tracking issue #%d: %w", is.IID, err)
+			}
+		}
+		return nil
+	}
+	is, err := a.gl.CreateIssue(ctx, a.spec.GitLab.Project, gitlab.CreateIssueOptions{
+		Title:       "🤖 Autopilot: " + a.st.Spec.Milestone.Title,
+		Description: a.renderTracking(),
+		Labels:      a.spec.Workflow.GeneratedLabel,
+		MilestoneID: a.st.Spec.Milestone.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("creating the tracking issue: %w", err)
+	}
+	a.log.Info("autopilot tracking issue created", "issue", is.IID)
+	a.ap.TrackingIssueIID = is.IID
+	a.ap.TrackingHash = hashString(a.renderTracking())
+	return nil
+}
+
+func (a *autopilot) updateTracking(ctx context.Context) error {
+	if a.ap.TrackingIssueIID == 0 {
+		return nil
+	}
+	body := a.renderTracking()
+	if hash := hashString(body); hash != a.ap.TrackingHash {
+		_, err := a.gl.UpdateIssue(ctx, a.spec.GitLab.Project, a.ap.TrackingIssueIID, gitlab.UpdateIssueOptions{Description: body})
+		if a.trackingGone(err) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("updating the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
+		}
+		a.ap.TrackingHash = hash
+	}
+	return nil
+}
+
+func (a *autopilot) closeTracking(ctx context.Context) error {
+	if a.ap.TrackingIssueIID == 0 {
+		return nil
+	}
+	if err := a.updateTracking(ctx); err != nil {
+		return err
+	}
+	_, err := a.gl.UpdateIssue(ctx, a.spec.GitLab.Project, a.ap.TrackingIssueIID, gitlab.UpdateIssueOptions{StateEvent: "close"})
+	if a.trackingGone(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("closing the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
+	}
+	return nil
+}
+
+func (a *autopilot) comment(ctx context.Context, body string) error {
+	if a.ap.TrackingIssueIID == 0 {
+		return nil
+	}
+	_, err := a.gl.CreateIssueNote(ctx, a.spec.GitLab.Project, a.ap.TrackingIssueIID, "🤖 "+body)
+	if a.trackingGone(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("commenting on the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
+	}
+	return nil
+}
+
+// trackingGone reports whether err says the tracking issue no longer exists.
+// It is then forgotten, and a new one is created on the next poll.
+func (a *autopilot) trackingGone(err error) bool {
+	if a.ap.TrackingIssueIID == 0 || !gitlab.IsNotFound(err) {
+		return false
+	}
+	a.log.Info("autopilot tracking issue is gone, a new one is created", "issue", a.ap.TrackingIssueIID)
+	a.ap.TrackingIssueIID, a.ap.TrackingHash = 0, ""
+	return true
+}
+
+func (a *autopilot) save(ctx context.Context) error {
+	if equality.Semantic.DeepEqual(a.st.Status.Autopilot, a.ap) {
+		return nil
+	}
+	orig := a.st.DeepCopy()
+	a.st.Status.Autopilot = a.ap
+	return a.r.Status().Patch(ctx, a.st, client.MergeFrom(orig))
+}
+
+// renderTracking renders the tracking issue's description.
+func (a *autopilot) renderTracking() string {
+	var b strings.Builder
+	prefix := a.spec.Workflow.CommandPrefix
+	fmt.Fprintf(&b, "**Autopilot** for milestone **%s**: ", a.st.Spec.Milestone.Title)
+	switch a.ap.Phase {
+	case aiv1.AutopilotPaused:
+		fmt.Fprintf(&b, "⏸️ paused, %s. Comment `%s resume` to continue.\n", a.ap.PausedReason, prefix)
+	case aiv1.AutopilotDone:
+		b.WriteString("✅ done.\n")
+	case aiv1.AutopilotOff:
+		b.WriteString("⏹️ off (the marker was removed from the milestone).\n")
+	default:
+		b.WriteString("▶️ running.\n")
+	}
+	b.WriteString("\nThe operator works through the planned issues one at a time, in dependency order. It merges each merge request " +
+		"when its pipeline is green and its review is clean, then starts the next issue. The agents take their defaults instead of " +
+		"asking; every decision is listed below and can be changed with `" + prefix + " revisit <id> <what you want instead>` on its issue.\n\n")
+	fmt.Fprintf(&b, "Commands, as comments here: `%s pause`, `%s resume`, `%s skip #<issue>`.\n\n### Issues\n\n", prefix, prefix, prefix)
+	for _, it := range a.ap.Items {
+		title := a.issues[it.IID].Title
+		mr := ""
+		if it.MergeRequestIID != 0 {
+			mr = fmt.Sprintf(" !%d", it.MergeRequestIID)
+		}
+		switch it.State {
+		case aiv1.AutopilotItemMerged:
+			fmt.Fprintf(&b, "- [x] #%d %s: merged%s (`%s`)\n", it.IID, title, mr, short(it.MergedSHA))
+		case aiv1.AutopilotItemSkipped:
+			fmt.Fprintf(&b, "- [ ] ~~#%d %s~~: skipped\n", it.IID, title)
+		case aiv1.AutopilotItemActive:
+			fmt.Fprintf(&b, "- [ ] #%d %s: **in progress**%s (%s)\n", it.IID, title, mr, a.labelOf(it.IID))
+		default:
+			waits := ""
+			if deps := a.deps(it.IID); len(deps) > 0 {
+				waits = ", after " + issueList(deps)
+			}
+			fmt.Fprintf(&b, "- [ ] #%d %s: pending%s\n", it.IID, title, waits)
+		}
+	}
+	var decisions []string
+	for _, it := range a.ap.Items {
+		for _, d := range it.Decisions {
+			line := fmt.Sprintf("[%s](%s) %s (#%d)", d.ID, d.URL, d.Title, it.IID)
+			if d.Superseded {
+				line = "~~" + line + "~~ superseded"
+			}
+			decisions = append(decisions, "- "+line)
+		}
+	}
+	b.WriteString("\n### Decisions\n\n")
+	if len(decisions) == 0 {
+		b.WriteString("_Listed here once an issue is merged; until then they are on the issue._\n")
+	} else {
+		b.WriteString(strings.Join(decisions, "\n") + "\n")
+	}
+	b.WriteString("\n" + marker.TrackingIssue + "\n")
+	return b.String()
+}
+
+func (a *autopilot) labelOf(iid int64) string {
+	wf := a.spec.Workflow
+	is := a.issues[iid]
+	for _, l := range []string{wf.ReadyLabel, wf.WorkingLabel, wf.NeedsInputLabel, wf.ReviewLabel} {
+		if is.HasLabel(l) {
+			return l
+		}
+	}
+	return "queued"
+}
+
+func hasAny(is gitlab.Issue, labels ...string) bool {
+	for _, l := range labels {
+		if is.HasLabel(l) {
+			return true
+		}
+	}
+	return false
+}
+
+func issueList(iids []int64) string {
+	parts := make([]string, len(iids))
+	for i, iid := range iids {
+		parts[i] = fmt.Sprintf("#%d", iid)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func short(sha string) string {
+	if len(sha) > 8 {
+		return sha[:8]
+	}
+	return sha
+}
+
+func firstNonEmpty(s ...string) string {
+	for _, v := range s {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}

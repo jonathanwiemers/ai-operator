@@ -28,9 +28,21 @@ type Fake struct {
 	Traces    map[int64]string
 	Retried   []int64
 	nextID    int64
+	lastIID   int64
 	Clock     time.Time
 	// IssueUpdates records the options of every UpdateIssue call, oldest first.
 	IssueUpdates []gitlab.UpdateIssueOptions
+	// MergeErrors makes MergeMergeRequest of an MR fail.
+	MergeErrors map[int64]error
+	// Merged and Rebased record the MRs merged and rebased, in order.
+	Merged, Rebased []int64
+	// RebaseConflict makes rebases end in a conflict.
+	RebaseConflict bool
+	// MRDiffs are the diffs of an MR; without an entry an MR has one file
+	// whose change is the same before and after a rebase.
+	MRDiffs map[int64][]gitlab.Diff
+	// StateEvents of issues, oldest first.
+	StateEvents map[int64][]gitlab.StateEvent
 }
 
 var _ gitlab.API = (*Fake)(nil)
@@ -163,12 +175,14 @@ func (f *Fake) GetIssue(_ context.Context, _ string, iid int64) (*gitlab.Issue, 
 func (f *Fake) CreateIssue(_ context.Context, _ string, opts gitlab.CreateIssueOptions) (*gitlab.Issue, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var iid int64 = 1
+	// Like GitLab, IIDs of deleted issues are not used again.
+	iid := f.lastIID + 1
 	for k := range f.Issues {
 		if k >= iid {
 			iid = k + 1
 		}
 	}
+	f.lastIID = iid
 	is := &gitlab.Issue{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "opened", UpdatedAt: f.tick()}
 	if opts.Labels != "" {
 		is.Labels = strings.Split(opts.Labels, ",")
@@ -289,7 +303,11 @@ func (f *Fake) CreateMergeRequest(_ context.Context, _ string, opts gitlab.Creat
 	defer f.mu.Unlock()
 	iid := int64(len(f.MRs) + 1)
 	mr := &gitlab.MergeRequest{ID: f.id(), IID: iid, Title: opts.Title, State: "opened", SourceBranch: opts.SourceBranch,
-		TargetBranch: opts.TargetBranch, WebURL: fmt.Sprintf("https://gitlab.example/group/app/-/merge_requests/%d", iid), UpdatedAt: f.tick()}
+		TargetBranch: opts.TargetBranch, WebURL: fmt.Sprintf("https://gitlab.example/group/app/-/merge_requests/%d", iid), UpdatedAt: f.tick(),
+		Draft: strings.HasPrefix(opts.Title, "Draft:"), DetailedMergeStatus: "mergeable"}
+	if mr.Draft {
+		mr.DetailedMergeStatus = "draft_status"
+	}
 	for _, m := range f.Milestones {
 		if m.ID == opts.MilestoneID {
 			mc := m
@@ -299,6 +317,103 @@ func (f *Fake) CreateMergeRequest(_ context.Context, _ string, opts gitlab.Creat
 	f.MRs[iid] = mr
 	c := *mr
 	return &c, nil
+}
+
+func (f *Fake) UpdateMergeRequest(_ context.Context, _ string, iid int64, opts gitlab.UpdateMergeRequestOptions) (*gitlab.MergeRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	mr, ok := f.MRs[iid]
+	if !ok {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "mr"}
+	}
+	if opts.Title != "" {
+		mr.Title = opts.Title
+		mr.Draft = strings.HasPrefix(opts.Title, "Draft:")
+		if !mr.Draft && mr.DetailedMergeStatus == "draft_status" {
+			mr.DetailedMergeStatus = "mergeable"
+		}
+	}
+	mr.UpdatedAt = f.tick()
+	c := *mr
+	return &c, nil
+}
+
+// MergeMergeRequest merges a mergeable MR whose head matches opts.SHA, like
+// GitLab: 405 for drafts and other blocks, 406 for conflicts and needed
+// rebases, 409 for a SHA mismatch.
+func (f *Fake) MergeMergeRequest(_ context.Context, _ string, iid int64, opts gitlab.MergeOptions) (*gitlab.MergeRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	mr, ok := f.MRs[iid]
+	if !ok {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "merge"}
+	}
+	if err := f.MergeErrors[iid]; err != nil {
+		return nil, err
+	}
+	switch {
+	case opts.SHA != "" && opts.SHA != mr.SHA:
+		return nil, &gitlab.Error{StatusCode: 409, Method: "PUT", Path: "merge", Body: "SHA does not match HEAD of source branch"}
+	case mr.DetailedMergeStatus == "need_rebase" || mr.DetailedMergeStatus == "conflict":
+		return nil, &gitlab.Error{StatusCode: 406, Method: "PUT", Path: "merge", Body: "Branch cannot be merged"}
+	case mr.DetailedMergeStatus != "mergeable" || mr.State != "opened":
+		return nil, &gitlab.Error{StatusCode: 405, Method: "PUT", Path: "merge", Body: "Method Not Allowed"}
+	}
+	mr.State = "merged"
+	mr.MergeCommitSHA = "merge-" + mr.SHA
+	mr.UpdatedAt = f.tick()
+	f.Merged = append(f.Merged, iid)
+	c := *mr
+	return &c, nil
+}
+
+// RebaseMergeRequest rebases the MR at once: its head gets a new SHA, or it
+// ends in a conflict when RebaseConflict is set.
+func (f *Fake) RebaseMergeRequest(_ context.Context, _ string, iid int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	mr, ok := f.MRs[iid]
+	if !ok {
+		return &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "rebase"}
+	}
+	f.Rebased = append(f.Rebased, iid)
+	if f.RebaseConflict {
+		mr.DetailedMergeStatus = "conflict"
+	} else {
+		mr.SHA += "-rebased"
+		mr.DetailedMergeStatus = "mergeable"
+	}
+	mr.UpdatedAt = f.tick()
+	return nil
+}
+
+func (f *Fake) ListMergeRequestDiffs(_ context.Context, _ string, iid int64) ([]gitlab.Diff, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.MRs[iid]; !ok {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "diffs"}
+	}
+	if ds, ok := f.MRDiffs[iid]; ok {
+		return slices.Clone(ds), nil
+	}
+	return []gitlab.Diff{{OldPath: "app.go", NewPath: "app.go", Diff: fmt.Sprintf("@@ -1 +1 @@\n-old\n+change of !%d\n", iid)}}, nil
+}
+
+func (f *Fake) ListIssueStateEvents(_ context.Context, _ string, iid int64) ([]gitlab.StateEvent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.StateEvents[iid]), nil
+}
+
+// ClosedBy records that merging mr closed issue iid.
+func (f *Fake) ClosedBy(iid, mr int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ev := gitlab.StateEvent{ID: f.id(), State: "closed", SourceMergeRequest: &gitlab.MergeRequestRef{IID: mr, ProjectID: f.Project.ID}}
+	if f.StateEvents == nil {
+		f.StateEvents = map[int64][]gitlab.StateEvent{}
+	}
+	f.StateEvents[iid] = append(f.StateEvents[iid], ev)
 }
 
 func (f *Fake) ListMergeRequestNotes(_ context.Context, _ string, iid int64) ([]gitlab.Note, error) {

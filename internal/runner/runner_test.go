@@ -17,6 +17,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/go-logr/logr/funcr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -147,6 +148,18 @@ func TestApplyPlan(t *testing.T) {
 	}
 	if l := gl.Labels(1); slices.Contains(l, "agent-profile::fast") || !slices.Contains(l, "agent-profile::strong") {
 		t.Fatalf("manual profile override must be kept, labels %v", l)
+	}
+
+	// An IID that is not in the milestone falls back to the key, like the
+	// recorded plan: no duplicate.
+	plan.Issues[0].ExistingIID = 99
+	issues, _ = gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
+	created, updated, _, err = applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues)
+	if err != nil || created != 0 || updated != 1 {
+		t.Fatalf("a wrong IID must not create a duplicate: created=%d updated=%d err=%v", created, updated, err)
+	}
+	if got := planOrder(plan, issues); len(got) != 2 || got[0].IID != 1 {
+		t.Fatalf("the recorded plan must match applyPlan: %+v", got)
 	}
 }
 
@@ -621,9 +634,35 @@ func TestSpecEndToEnd(t *testing.T) {
 		t.Fatalf("unexpected run status %+v", got.Status.Run)
 	}
 	wantSteps := []string{"read milestone", "read project", "clone repository", "prepare checkout",
-		"list milestone issues", "run spec agent", "apply plan"}
+		"list milestone issues", "run spec agent", "apply plan", "record plan"}
 	if got := stepNames(r.run); !slices.Equal(got, wantSteps) {
 		t.Fatalf("steps:\n got %v\nwant %v", got, wantSteps)
+	}
+	// The plan is recorded in plan order, with dependencies as IIDs.
+	wantPlan := []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API"}, {Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}}}
+	if !equality.Semantic.DeepEqual(got.Status.Plan, wantPlan) {
+		t.Fatalf("plan:\n got %+v\nwant %+v", got.Status.Plan, wantPlan)
+	}
+	if strings.Contains(engine.calls[0].Prompt, "autopilot") {
+		t.Fatal("a normal milestone must not get the autopilot note")
+	}
+}
+
+func TestAutopilotImplementPrompt(t *testing.T) {
+	e := newImplementEnv(t)
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	task.Spec.Autopilot = true
+	if err := e.k8s.Update(context.Background(), &task); err != nil {
+		t.Fatal(err)
+	}
+	engine := &decisionEngine{}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if p := engine.calls[0].Prompt; !strings.HasPrefix(p, autopilotImplementNote) {
+		t.Fatalf("autopilot runs must be told to take their defaults:\n%.300s", p)
 	}
 }
 
@@ -720,5 +759,72 @@ func TestRenderHandoffKeepsMarkersIntact(t *testing.T) {
 	}
 	if strings.Count(h.Text, "```")%2 != 0 {
 		t.Fatalf("an unclosed code block must be closed: %q", h.Text)
+	}
+}
+
+func TestPlanOrderUsesExistingIIDs(t *testing.T) {
+	plan := SpecPlan{Issues: []PlannedItem{
+		{Key: "ui", Title: "UI", DependsOn: []string{"api"}},
+		// A human's issue without a key marker, referred to by its IID.
+		{Key: "api", ExistingIID: 7, Title: "API"},
+		// A wrong IID: applyPlan created the issue under its key.
+		{Key: "docs", ExistingIID: 99, Title: "Docs"},
+		{Key: "gone", Title: "Not created"},
+	}}
+	issues := []gitlab.Issue{{IID: 7, Description: "by hand"}, {IID: 8, Description: "<!-- ai-operator:key=ui -->"},
+		{IID: 9, Description: "<!-- ai-operator:key=docs -->"}}
+	got := planOrder(plan, issues)
+	if len(got) != 3 || got[0].IID != 8 || len(got[0].DependsOn) != 1 || got[0].DependsOn[0] != 7 || got[1].IID != 7 || got[2].IID != 9 {
+		t.Fatalf("unexpected plan %+v", got)
+	}
+}
+
+// steadyEngine writes the same file on every run, so only its first run
+// changes anything.
+type steadyEngine struct{}
+
+func (steadyEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
+	var v any = ReviewAnswer{Summary: "fine"}
+	if !inv.ReadOnly {
+		_ = os.WriteFile(filepath.Join(inv.Dir, "steady.go"), []byte("package app\n"), 0o644)
+		v = ImplementAnswer{Status: "done", Summary: "Done.", CommitMessage: "Add steady", Handoff: "done"}
+	}
+	b, _ := json.Marshal(v)
+	return &Result{SessionID: "sess-steady", Structured: b}, nil
+}
+
+func TestRunTakesOverAHumanPush(t *testing.T) {
+	e := newImplementEnv(t)
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, steadyEngine{}, e.task.Name)
+	ctx := context.Background()
+	if _, err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// A human pushes to the agent's branch, then asks the agent to look.
+	branch := "agent/42-add-paypal-button"
+	gitCmd(t, e.seed, "fetch", "origin", branch)
+	gitCmd(t, e.seed, "checkout", "-b", branch, "origin/"+branch)
+	_ = os.WriteFile(filepath.Join(e.seed, "human.md"), []byte("by hand\n"), 0o644)
+	gitCmd(t, e.seed, "add", ".")
+	gitCmd(t, e.seed, "commit", "-m", "by hand")
+	gitCmd(t, e.seed, "push", "origin", branch)
+	human := strings.TrimSpace(gitCmd(t, e.seed, "rev-parse", "HEAD"))
+
+	var got aiv1.AgentTask
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &got)
+	orig := got.DeepCopy()
+	got.Spec.RunRequest = 2
+	if err := e.k8s.Patch(ctx, &got, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &got)
+	if got.Status.Run.PushedSHA != human {
+		t.Fatalf("the human's head should be the one CI checks: pushed %s, human %s", got.Status.Run.PushedSHA, human)
+	}
+	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::working"}) {
+		t.Fatalf("the issue should wait for CI on that head, has %v", labels)
 	}
 }

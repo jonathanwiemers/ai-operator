@@ -77,6 +77,8 @@ type Outcome struct {
 	BlockingFindings int32
 	ReviewErrors     int32
 	ReviewedSHA      string
+	// Plan is set by spec runs: the plan in plan order.
+	Plan []aiv1.PlannedIssue
 }
 
 // state is persisted on the runner's part of the workspace PVC, so it survives
@@ -290,6 +292,11 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	}
 	log.Info("run finished", "result", out.Result, "costUSD", out.CostUSD,
 		"durationMs", time.Since(r.run.start).Milliseconds(), "steps", r.run.lines())
+	if out.Plan != nil {
+		if err := r.patchStatus(ctx, func(s *aiv1.AgentTaskStatus) { s.Plan = out.Plan }); err != nil {
+			log.Error(err, "recording the plan")
+		}
+	}
 	return true, r.patchRun(ctx, func(s *aiv1.RunStatus) {
 		s.ObservedRunRequest = request
 		s.CurrentStep = ""
@@ -381,12 +388,17 @@ func (r *Runner) load(ctx context.Context) (*aiv1.AgentTask, *aiv1.AgentProject,
 // patchRun merge-patches status.run. Only the fields changed by mutate are
 // sent, so the operator's status fields are never overwritten.
 func (r *Runner) patchRun(ctx context.Context, mutate func(*aiv1.RunStatus)) error {
+	return r.patchStatus(ctx, func(s *aiv1.AgentTaskStatus) { mutate(&s.Run) })
+}
+
+// patchStatus merge-patches the fields of the task status changed by mutate.
+func (r *Runner) patchStatus(ctx context.Context, mutate func(*aiv1.AgentTaskStatus)) error {
 	var task aiv1.AgentTask
 	if err := r.K8s.Get(ctx, types.NamespacedName{Namespace: r.Namespace, Name: r.TaskName}, &task); err != nil {
 		return err
 	}
 	orig := task.DeepCopy()
-	mutate(&task.Status.Run)
+	mutate(&task.Status)
 	return r.K8s.Status().Patch(ctx, &task, client.MergeFrom(orig))
 }
 

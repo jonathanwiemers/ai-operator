@@ -10,6 +10,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 )
 
 var keyMarker = regexp.MustCompile(`<!-- ai-operator:key=([a-z0-9][a-z0-9-]*) -->`)
@@ -52,6 +53,9 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	}
 	existing := make([]ExistingIssue, 0, len(issues))
 	for _, is := range issues {
+		if marker.IsTrackingIssue(is.Description) {
+			continue // the operator's autopilot tracking issue is not work
+		}
 		existing = append(existing, ExistingIssue{IID: is.IID, Key: issueKey(is.Description), Title: is.Title, State: is.State, Labels: is.Labels})
 	}
 	s.done(fmt.Sprintf("%d issues", len(issues)), "issues", len(issues))
@@ -61,6 +65,9 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	inv := roleInvocation(role, specSystemPrompt, readOnlyTools, specSchema(spec.Agents.Profiles), true)
 	inv.Resume = st.session("spec", role.Engine)
 	prompt := buildSpecPrompt(milestone, existing, spec.Agents.Profiles, task.Status.Run.RunCount > 0)
+	if task.Spec.Autopilot {
+		prompt = autopilotSpecNote + "\n\n" + prompt
+	}
 	inv.Prompt = prompt
 	s = r.step(ctx, "run spec agent", "engine", role.Engine, "model", role.Model, "resume", inv.Resume != "")
 	res, err := r.invoke(ctx, role, inv, prompt)
@@ -89,9 +96,62 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	}
 	s.done(fmt.Sprintf("%d created, %d updated, %d left untouched", created, updated, skipped),
 		"created", created, "updated", updated, "skipped", skipped)
+
+	// The plan in dependency terms, for the autopilot queue.
+	s = r.step(ctx, "record plan")
+	after, err := gl.ListIssues(ctx, glProject, gitlab.ListIssuesOptions{Milestone: milestone.Title, State: "all"})
+	if err != nil {
+		return out, s.fail(fmt.Errorf("listing milestone issues: %w", err))
+	}
+	out.Plan = planOrder(plan, after)
+	s.done(fmt.Sprintf("%d issues in plan order", len(out.Plan)), "issues", len(out.Plan))
 	out.Result = aiv1.RunResultSucceeded
 	out.Summary = fmt.Sprintf("%s\n\nIssues: %d created, %d updated, %d left untouched.", strings.TrimSpace(plan.Summary), created, updated, skipped)
 	return out, nil
+}
+
+// planOrder maps the plan onto the milestone's issues: plan order, with the
+// dependencies as IIDs. Like applyPlan, an item is matched by its existing
+// IID first, then by its key. Planned issues that could not be found are left
+// out.
+func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
+	inMilestone := map[int64]bool{}
+	keyToIID := map[string]int64{}
+	for _, is := range issues {
+		inMilestone[is.IID] = true
+		if k := issueKey(is.Description); k != "" {
+			keyToIID[k] = is.IID
+		}
+	}
+	iids := make([]int64, len(plan.Issues))
+	for i, item := range plan.Issues {
+		key := slugKey(item.Key, item.Title)
+		iid := item.ExistingIID
+		if !inMilestone[iid] {
+			// Like applyPlan: an IID not in the milestone falls back to the
+			// key, under which the issue was created.
+			iid = keyToIID[key]
+		}
+		if inMilestone[iid] {
+			iids[i] = iid
+			keyToIID[key] = iid
+		}
+	}
+	out := []aiv1.PlannedIssue{}
+	for i, item := range plan.Issues {
+		iid := iids[i]
+		if iid == 0 {
+			continue
+		}
+		p := aiv1.PlannedIssue{Key: slugKey(item.Key, item.Title), IID: iid, Title: item.Title}
+		for _, dep := range item.DependsOn {
+			if d, ok := keyToIID[slugKey(dep, "")]; ok && d != iid {
+				p.DependsOn = append(p.DependsOn, d)
+			}
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // applyPlan creates and updates the planned issues. Issues that have left the
@@ -117,7 +177,8 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 	for _, item := range plan.Issues {
 		item.Key = slugKey(item.Key, item.Title)
 		iid := item.ExistingIID
-		if iid == 0 {
+		if byIID[iid] == nil {
+			// No IID, or one not in the milestone: the key decides.
 			iid = keyToIID[item.Key]
 		}
 		desc, missing := renderIssue(item, keyToIID, iid, wf.CommandPrefix)

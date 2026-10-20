@@ -3,8 +3,10 @@ package gitlab
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -208,5 +210,80 @@ func TestPipelinesJobsAndTrace(t *testing.T) {
 		if !strings.Contains(all, want) {
 			t.Errorf("requests miss %q:\n%s", want, all)
 		}
+	}
+}
+
+func TestMergeRequestActions(t *testing.T) {
+	type call struct {
+		method, path, query string
+		body                map[string]any
+	}
+	var calls []call
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c := call{method: r.Method, path: r.URL.EscapedPath(), query: r.URL.RawQuery}
+		_ = json.NewDecoder(r.Body).Decode(&c.body)
+		calls = append(calls, c)
+		_ = json.NewEncoder(w).Encode(MergeRequest{IID: 3, State: "merged", SHA: "abc", DetailedMergeStatus: "mergeable", MergeCommitSHA: "m1"})
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	ctx := context.Background()
+
+	mr, err := c.GetMergeRequest(ctx, "g/p", 3)
+	if err != nil || mr.SHA != "abc" || mr.DetailedMergeStatus != "mergeable" {
+		t.Fatalf("get: %+v %v", mr, err)
+	}
+	if _, err := c.UpdateMergeRequest(ctx, "g/p", 3, UpdateMergeRequestOptions{Title: "Ready"}); err != nil {
+		t.Fatal(err)
+	}
+	if mr, err = c.MergeMergeRequest(ctx, "g/p", 3, MergeOptions{SHA: "abc", ShouldRemoveSourceBranch: true}); err != nil || mr.MergeCommitSHA != "m1" {
+		t.Fatalf("merge: %+v %v", mr, err)
+	}
+	if err := c.RebaseMergeRequest(ctx, "g/p", 3); err != nil {
+		t.Fatal(err)
+	}
+	want := []call{
+		{method: "GET", path: "/api/v4/projects/g%2Fp/merge_requests/3", query: "include_rebase_in_progress=true"},
+		{method: "PUT", path: "/api/v4/projects/g%2Fp/merge_requests/3", body: map[string]any{"title": "Ready"}},
+		{method: "PUT", path: "/api/v4/projects/g%2Fp/merge_requests/3/merge", body: map[string]any{"sha": "abc", "should_remove_source_branch": true}},
+		{method: "PUT", path: "/api/v4/projects/g%2Fp/merge_requests/3/rebase"},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("calls %+v", calls)
+	}
+	for i := range want {
+		if calls[i].method != want[i].method || calls[i].path != want[i].path || calls[i].query != want[i].query ||
+			fmt.Sprint(calls[i].body) != fmt.Sprint(want[i].body) {
+			t.Fatalf("call %d: got %+v, want %+v", i, calls[i], want[i])
+		}
+	}
+	if StatusCode(&Error{StatusCode: 406}) != 406 || StatusCode(nil) != 0 {
+		t.Fatal("StatusCode")
+	}
+}
+
+func TestMergeRequestDiffsAndStateEvents(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.EscapedPath())
+		if strings.HasSuffix(r.URL.Path, "/diffs") {
+			_ = json.NewEncoder(w).Encode([]Diff{{NewPath: "a.go", Diff: "+x\n", TooLarge: true}})
+			return
+		}
+		_, _ = w.Write([]byte(`[{"id":1,"state":"closed","source_merge_request":{"iid":3,"project_id":1}}]`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	ds, err := c.ListMergeRequestDiffs(context.Background(), "group/app", 3)
+	if err != nil || len(ds) != 1 || !ds[0].TooLarge {
+		t.Fatalf("diffs %+v %v", ds, err)
+	}
+	evs, err := c.ListIssueStateEvents(context.Background(), "group/app", 4)
+	if err != nil || len(evs) != 1 || evs[0].State != "closed" || evs[0].SourceMergeRequest == nil || evs[0].SourceMergeRequest.IID != 3 {
+		t.Fatalf("state events %+v %v", evs, err)
+	}
+	want := []string{"/api/v4/projects/group%2Fapp/merge_requests/3/diffs", "/api/v4/projects/group%2Fapp/issues/4/resource_state_events"}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("paths %v", paths)
 	}
 }

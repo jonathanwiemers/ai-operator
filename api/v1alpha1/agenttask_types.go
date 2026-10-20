@@ -43,6 +43,11 @@ type AgentTaskSpec struct {
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 
+	// Autopilot is set for tasks of autopilot milestones: the agents must
+	// not ask questions but take their defaults and record them.
+	// +optional
+	Autopilot bool `json:"autopilot,omitempty"`
+
 	// Source records which GitLab state the operator has already turned into
 	// run requests, so that every change triggers exactly one run.
 	// +optional
@@ -199,6 +204,15 @@ type AgentTaskStatus struct {
 	// +optional
 	CI *CIStatus `json:"ci,omitempty"`
 
+	// Plan is the spec agent's last plan, in plan order (spec tasks).
+	// +optional
+	Plan []PlannedIssue `json:"plan,omitempty"`
+
+	// Autopilot is the operator's queue of an autopilot milestone (spec
+	// tasks).
+	// +optional
+	Autopilot *AutopilotStatus `json:"autopilot,omitempty"`
+
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
@@ -338,4 +352,121 @@ func init() {
 // finished yet.
 func (t *AgentTask) RunPending() bool {
 	return t.Spec.RunRequest > t.Status.Run.ObservedRunRequest
+}
+
+// PlannedIssue is one issue of a milestone plan.
+type PlannedIssue struct {
+	// Key is the planner's stable identifier of the issue.
+	Key   string `json:"key"`
+	IID   int64  `json:"iid"`
+	Title string `json:"title,omitempty"`
+	// DependsOn are the IIDs of planned issues that must be merged first.
+	// +optional
+	DependsOn []int64 `json:"dependsOn,omitempty"`
+}
+
+// AutopilotPhase is the state of an autopilot milestone.
+// +kubebuilder:validation:Enum=Running;Paused;Done;Off
+type AutopilotPhase string
+
+const (
+	// AutopilotRunning: the operator works through the queue.
+	AutopilotRunning AutopilotPhase = "Running"
+	// AutopilotPaused: something needs a human; "/agent resume" continues.
+	AutopilotPaused AutopilotPhase = "Paused"
+	// AutopilotDone: every planned issue is merged or skipped.
+	AutopilotDone AutopilotPhase = "Done"
+	// AutopilotOff: the marker was removed from the milestone.
+	AutopilotOff AutopilotPhase = "Off"
+)
+
+// AutopilotItemState is the state of one issue in the queue.
+// +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped
+type AutopilotItemState string
+
+const (
+	AutopilotItemPending AutopilotItemState = "Pending"
+	AutopilotItemActive  AutopilotItemState = "Active"
+	AutopilotItemMerged  AutopilotItemState = "Merged"
+	AutopilotItemSkipped AutopilotItemState = "Skipped"
+)
+
+// AutopilotStatus is the queue of an autopilot milestone.
+type AutopilotStatus struct {
+	Phase AutopilotPhase `json:"phase"`
+
+	// TrackingIssueIID is the bot's tracking issue of the milestone.
+	// +optional
+	TrackingIssueIID int64 `json:"trackingIssueIID,omitempty"`
+
+	// Reason why the milestone is paused.
+	// +optional
+	PausedReason string `json:"pausedReason,omitempty"`
+
+	// Items in queue order: dependencies first, ties in plan order.
+	// +optional
+	Items []AutopilotItem `json:"items,omitempty"`
+
+	// LastCommandNoteID is the newest command on the tracking issue the
+	// operator has handled.
+	// +optional
+	LastCommandNoteID int64 `json:"lastCommandNoteID,omitempty"`
+
+	// TrackingHash is the hash of the tracking issue's last rendered
+	// description, so it is only edited when it changes.
+	// +optional
+	TrackingHash string `json:"trackingHash,omitempty"`
+}
+
+// AutopilotItem is one issue in the queue of an autopilot milestone.
+type AutopilotItem struct {
+	IID   int64              `json:"iid"`
+	State AutopilotItemState `json:"state"`
+
+	// MergeRequestIID and MergeRequestURL of the issue's merge request.
+	// +optional
+	MergeRequestIID int64 `json:"mergeRequestIID,omitempty"`
+	// +optional
+	MergeRequestURL string `json:"mergeRequestURL,omitempty"`
+
+	// MergedSHA is the commit the merge request was merged as.
+	// +optional
+	MergedSHA string `json:"mergedSHA,omitempty"`
+
+	// RebasedFrom is the head the operator asked GitLab to rebase; set
+	// while the rebase is in progress.
+	// +optional
+	RebasedFrom string `json:"rebasedFrom,omitempty"`
+
+	// Rebases counts the rebases of this item; only one is attempted.
+	// +optional
+	Rebases int32 `json:"rebases,omitempty"`
+
+	// RebasedDiff is a hash of the reviewed change, taken before the rebase.
+	// The rebased head is only treated as reviewed if its change hashes the
+	// same, i.e. the rebase moved the change without changing it.
+	// +optional
+	RebasedDiff string `json:"rebasedDiff,omitempty"`
+
+	// RebasedAt is when the rebase was requested.
+	// +optional
+	RebasedAt *metav1.Time `json:"rebasedAt,omitempty"`
+
+	// MarkedReady is set once the operator marked the draft MR ready. A
+	// draft again after that is a human holding it.
+	// +optional
+	MarkedReady bool `json:"markedReady,omitempty"`
+
+	// Decisions recorded on the issue, collected when it was merged.
+	// +optional
+	Decisions []DecisionRef `json:"decisions,omitempty"`
+}
+
+// DecisionRef points to a decision recorded on an issue.
+type DecisionRef struct {
+	ID    string `json:"id"`
+	Title string `json:"title,omitempty"`
+	URL   string `json:"url,omitempty"`
+	// +optional
+	Superseded bool `json:"superseded,omitempty"`
 }
