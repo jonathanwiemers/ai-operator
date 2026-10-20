@@ -36,28 +36,32 @@ const (
 
 var (
 	decisionMarker = regexp.MustCompile(`<!-- ai-operator:decision=(D(\d+)-(P?)(\d+))( superseded)? -->`)
-	revisitCommand = regexp.MustCompile(`(?s)^\s*(\S+)\s+revisit\s+(D\d+-P?\d+)\b[\s:]*(.*)$`)
+	revisitCommand = regexp.MustCompile(`(?is)^\s*(\S+?):?\s+revisit\s+(D\d+-P?\d+)\b[\s:]*(.*)$`)
 )
 
-// nextDecisionNumber returns the number for the next decision of issue iid:
-// planner decisions (P) and implementer decisions are numbered separately.
-// Only the bot's notes and the issue description are trusted.
-func nextDecisionNumber(issue *gitlab.Issue, notes []gitlab.Note, botID int64, planner bool) int {
+// isDecisionComment reports whether a note is one of the bot's decision
+// comments. Only those carry implementer decisions; the bot's other comments
+// quote agent text and are not trusted to.
+func isDecisionComment(n gitlab.Note, botID int64) bool {
+	return botID != 0 && n.Author.ID == botID && !n.System && strings.HasPrefix(n.Body, decisionsHeader)
+}
+
+// nextDecisionNumber returns the number for the next implementer decision of
+// an issue: one after the highest in the bot's decision comments. Planner
+// decisions (P) live in the description and are numbered on their own.
+func nextDecisionNumber(issue *gitlab.Issue, notes []gitlab.Note, botID int64) int {
 	highest := 0
-	scan := func(body string) {
-		for _, m := range decisionMarker.FindAllStringSubmatch(body, -1) {
-			if m[2] != strconv.FormatInt(issue.IID, 10) || (m[3] == "P") != planner {
+	for _, n := range notes {
+		if !isDecisionComment(n, botID) {
+			continue
+		}
+		for _, m := range decisionMarker.FindAllStringSubmatch(n.Body, -1) {
+			if m[2] != strconv.FormatInt(issue.IID, 10) || m[3] == "P" {
 				continue
 			}
-			if n, _ := strconv.Atoi(m[4]); n > highest {
-				highest = n
+			if num, _ := strconv.Atoi(m[4]); num > highest {
+				highest = num
 			}
-		}
-	}
-	scan(issue.Description)
-	for _, n := range notes {
-		if botID != 0 && n.Author.ID == botID && !n.System {
-			scan(n.Body)
 		}
 	}
 	return highest + 1
@@ -71,11 +75,27 @@ func decisionID(iid int64, planner bool, n int) string {
 	return fmt.Sprintf("D%d-%d", iid, n)
 }
 
-// cleanDecisionText neutralises markers and mentions in agent text that goes
-// into a decision.
+// cleanDecisionText makes agent text safe for a decision: HTML outside code
+// spans is escaped (an unclosed <details> or <!-- would hide everything
+// after it), and mentions are broken up.
 func cleanDecisionText(s string) string {
-	s = strings.ReplaceAll(strings.TrimSpace(s), "<!-- ai-operator:", "<!-- ai-operator :")
-	return strings.ReplaceAll(s, "@", "@​")
+	var b strings.Builder
+	inCode := false
+	for _, r := range strings.TrimSpace(s) {
+		switch {
+		case r == '`':
+			inCode = !inCode
+		case r == '<' && !inCode:
+			b.WriteString("&lt;")
+			continue
+		case r == '@':
+			b.WriteString("@\u200b")
+			continue
+		}
+		b.WriteRune(r)
+	}
+	// Markers inside code spans must not count either.
+	return strings.ReplaceAll(b.String(), "<!-- ai-operator:", "<!-- ai-operator :")
 }
 
 // renderDecision renders one decision as a markdown section ending with its
@@ -114,35 +134,51 @@ type numberedDecision struct {
 
 func numberDecisions(ds []Decision, iid int64, planner bool, first int) []numberedDecision {
 	out := make([]numberedDecision, 0, len(ds))
-	for i, d := range ds {
+	for _, d := range ds {
 		if strings.TrimSpace(d.Title) == "" && strings.TrimSpace(d.Choice) == "" {
 			continue
 		}
-		out = append(out, numberedDecision{ID: decisionID(iid, planner, first+i), Decision: d})
+		out = append(out, numberedDecision{ID: decisionID(iid, planner, first+len(out)), Decision: d})
 	}
 	return out
 }
 
-// renderDecisionsComment renders the decision comment of a run.
-func renderDecisionsComment(runID, prefix string, ds []numberedDecision) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s in run `%s`. Change one with `%s revisit <id> <what you want instead>`.\n", decisionsHeader, runID, prefix)
-	for _, d := range ds {
-		b.WriteString("\n")
-		b.WriteString(renderDecision(d.ID, d.Decision))
+// renderDecisionsComments renders the decision comments of a run: whole
+// decisions only, split into several comments if they do not fit into one,
+// so no decision is cut and every ID stays findable.
+func renderDecisionsComments(runID, prefix string, ds []numberedDecision) []string {
+	header := func(part int) string {
+		if part > 1 {
+			return fmt.Sprintf("%s in run `%s` (continued).\n", decisionsHeader, runID)
+		}
+		return fmt.Sprintf("%s in run `%s`. Change one with `%s revisit <id> <what you want instead>`.\n", decisionsHeader, runID, prefix)
 	}
-	return truncate(b.String(), maxDecisions)
+	var out []string
+	var b strings.Builder
+	b.WriteString(header(1))
+	empty := b.Len()
+	for _, d := range ds {
+		sec := "\n" + renderDecision(d.ID, d.Decision)
+		if b.Len()+len(sec) > maxDecisions && b.Len() > empty {
+			out = append(out, b.String())
+			b.Reset()
+			b.WriteString(header(len(out) + 1))
+			empty = b.Len()
+		}
+		b.WriteString(sec)
+	}
+	return append(out, b.String())
 }
 
 // renderPlannedDecisions renders the decisions section of a planned issue's
 // description.
-func renderPlannedDecisions(ds []numberedDecision) string {
+func renderPlannedDecisions(ds []numberedDecision, prefix string) string {
 	if len(ds) == 0 {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("\n### Decisions\n\n")
-	b.WriteString("_Made by the planning agent. Change one with a comment `/agent revisit <id> <what you want instead>`._\n")
+	fmt.Fprintf(&b, "_Made by the planning agent. Change one with a comment `%s revisit <id> <what you want instead>`._\n", prefix)
 	for _, d := range ds {
 		b.WriteString("\n")
 		b.WriteString(renderDecision(d.ID, d.Decision))
@@ -159,6 +195,8 @@ type revisit struct {
 	// Note is the comment that holds the decision, nil if it is in the issue
 	// description or was not found.
 	Note *gitlab.Note
+	// Superseded is set when the decision was already replaced.
+	Superseded bool
 }
 
 // findRevisits returns the revisit commands in the given human notes, with
@@ -171,25 +209,27 @@ func findRevisits(issue *gitlab.Issue, all, fresh []gitlab.Note, botID int64, pr
 			continue
 		}
 		m := revisitCommand.FindStringSubmatch(n.Body)
-		if m == nil || m[1] != prefix || seen[m[2]] {
+		if m == nil || m[1] != prefix || seen[strings.ToUpper(m[2])] {
 			continue
 		}
-		seen[m[2]] = true
-		rv := revisit{ID: m[2], Instruction: strings.TrimSpace(m[3])}
-		if sec := decisionSection(issue.Description, rv.ID); sec != "" {
-			rv.Decision = sec
+		seen[strings.ToUpper(m[2])] = true
+		rv := revisit{ID: strings.ToUpper(m[2]), Instruction: strings.TrimSpace(m[3])}
+		if strings.Contains(rv.ID, "-P") {
+			// Planner decisions live in the description, implementer
+			// decisions in the bot's decision comments.
+			rv.Decision = decisionSection(issue.Description, rv.ID)
 		} else {
 			for i := range all {
-				bn := &all[i]
-				if botID == 0 || bn.Author.ID != botID || bn.System {
+				if !isDecisionComment(all[i], botID) {
 					continue
 				}
-				if sec := decisionSection(bn.Body, rv.ID); sec != "" {
-					rv.Decision, rv.Note = sec, bn
+				if sec := decisionSection(all[i].Body, rv.ID); sec != "" {
+					rv.Decision, rv.Note = sec, &all[i]
 					break
 				}
 			}
 		}
+		rv.Superseded = strings.Contains(rv.Decision, rv.ID+" superseded -->")
 		out = append(out, rv)
 	}
 	return out
@@ -237,11 +277,16 @@ func buildRevisitPrompt(rvs []revisit) string {
 	for _, rv := range rvs {
 		fmt.Fprintf(&b, "\n### %s\n\n", rv.ID)
 		if rv.Decision != "" {
-			fmt.Fprintf(&b, "%s\n\n", rv.Decision)
+			// The markers are for the runner; the agent must not copy them.
+			fmt.Fprintf(&b, "%s\n\n", strings.TrimSpace(decisionMarker.ReplaceAllString(rv.Decision, "")))
 		} else {
 			b.WriteString("(This decision was not found on the issue; use the instruction and the thread.)\n\n")
 		}
-		fmt.Fprintf(&b, "**Requested change:** %s\n", rv.Instruction)
+		instruction := rv.Instruction
+		if instruction == "" {
+			instruction = "(no instruction given; see the latest comments)"
+		}
+		fmt.Fprintf(&b, "**Requested change:** %s\n", instruction)
 	}
 	return b.String()
 }

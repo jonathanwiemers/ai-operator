@@ -120,7 +120,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 		if iid == 0 {
 			iid = keyToIID[item.Key]
 		}
-		desc, missing := renderIssue(item, keyToIID, iid)
+		desc, missing := renderIssue(item, keyToIID, iid, wf.CommandPrefix)
 		if ex := byIID[iid]; ex != nil {
 			if ex.State != "opened" || !ex.HasLabel(wf.DraftLabel) {
 				skipped++
@@ -164,7 +164,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 	// Dependencies on issues planned later in the list are resolved now that
 	// every issue has an IID.
 	for _, p := range unresolved {
-		desc, _ := renderIssue(p.item, keyToIID, p.iid)
+		desc, _ := renderIssue(p.item, keyToIID, p.iid, wf.CommandPrefix)
 		if _, err := gl.UpdateIssue(ctx, glProject, p.iid, gitlab.UpdateIssueOptions{Description: desc}); err != nil {
 			return created, updated, skipped, fmt.Errorf("linking dependencies of #%d: %w", p.iid, err)
 		}
@@ -185,7 +185,7 @@ func slugKey(key, title string) string {
 // yet). It reports whether it must be rendered again once every issue has an
 // IID: a dependency could not be resolved, or the decisions need the issue's
 // IID for their IDs.
-func renderIssue(item PlannedItem, keyToIID map[string]int64, iid int64) (string, bool) {
+func renderIssue(item PlannedItem, keyToIID map[string]int64, iid int64, prefix string) (string, bool) {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(item.Description))
 	missing := false
@@ -214,7 +214,7 @@ func renderIssue(item PlannedItem, keyToIID map[string]int64, iid int64) (string
 		} else {
 			// Planning IDs are renumbered whenever the plan for a draft
 			// changes; nothing has been built on them yet.
-			b.WriteString(renderPlannedDecisions(numberDecisions(item.Decisions, iid, true, 1)))
+			b.WriteString(renderPlannedDecisions(numberDecisions(item.Decisions, iid, true, 1), prefix))
 		}
 	}
 	fmt.Fprintf(&b, "\n<!-- ai-operator:key=%s -->\n", item.Key)

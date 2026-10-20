@@ -382,7 +382,8 @@ func buildReviewPrompt(issue *gitlab.Issue, base, diffStat, diff string) string 
 
 func buildFixPrompt(findings []Finding) string {
 	var b strings.Builder
-	b.WriteString("Automated reviewers found the following problems in your change. Fix the real ones and run the tests again.\n\n")
+	b.WriteString("Automated reviewers found the following problems in your change. Fix the real ones and run the tests again. " +
+		"Record in decisions only the decisions you make in this round; the earlier ones are recorded already.\n\n")
 	b.WriteString(formatFindings(findings))
 	return b.String()
 }

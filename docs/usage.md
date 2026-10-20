@@ -206,11 +206,19 @@ To change a decision, comment on the issue or its MR:
 This is a normal run request. The agent gets the decision it is asked to
 change together with your instruction, changes the code, and records a new
 decision that supersedes the old one. The old decision is then marked
-*Superseded by D42-5*. An ID that does not exist on the issue is passed on as
-a plain comment, and the run's report says so.
+*Superseded by D42-5*.
 
-Decision IDs are only read from comments by the bot user and from the issue
-description, so a comment by someone else cannot add or fake decisions.
+- The comment must start with `/agent revisit <id>`; one revisit per comment.
+  Several revisit comments since the last run are handled in the same run.
+- An ID that does not exist on the issue is passed on as a plain comment, and
+  the run's report says so. Revisiting a decision that is already superseded
+  does nothing: revisit the decision that replaced it.
+- If the agent does not record a decision that replaces the old one, the old
+  one is not marked, and the report says so.
+
+Implementer decisions are only read from the bot's decision comments, and
+planner decisions from the issue description, so a comment by someone else
+cannot add or fake decisions.
 
 ## 5. Finish
 
@@ -309,9 +317,17 @@ that already exist keep no milestone.
 kubectl -n agents get agentprojects
 kubectl -n agents get agenttasks -w       # type, issue, phase, current step, last result, runs, cost
 kubectl -n agents get agenttasks -o wide  # + merge request URL
+kubectl -n agents get agenttask shop-42-add-paypal-button -o jsonpath='{.status.run}'
 kubectl -n agents logs -f shop-42-add-paypal-button -c runner   # every step of a run
 kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server: CLI runs, git calls
 ```
+
+`status.run` of an AgentTask holds the result of the last run: `lastResult`,
+`summary`, `costUSD` (accumulated), `branch`, `mergeRequestURL`, `pushedSHA`,
+`currentStep` while a run is in progress, and the result of the last review:
+`blockingFindings` (blocker and major findings left), `reviewErrors`
+(reviewers that failed) and `reviewedSHA` (the commit that review saw; a CI
+fix run can push commits after it).
 
 ### Run logs
 

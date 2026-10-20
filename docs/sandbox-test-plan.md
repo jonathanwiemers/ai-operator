@@ -201,11 +201,14 @@ comment with the summary is posted on the MR, and the label goes back to
 history below the agent's new commit), and the push is not forced.
 
 3. Comment `/agent revisit D<iid>-1 <a different choice>` with one of the
-   IDs from the decision comment, and `/agent revisit D<iid>-99 anything`.
+   IDs from the decision comment, and right after it, in a second comment,
+   `/agent revisit D<iid>-99 anything`.
 
-**Expected:** one run. The code follows the new choice, a new decision
-comment has a decision with *Supersedes D<iid>-1*, the old decision shows
-*Superseded by …*, and the MR comment says that D<iid>-99 was not found.
+**Expected:** a run (two, if a poll falls between the comments). The code
+follows the new choice, a new decision comment has a decision with
+*Supersedes D<iid>-1*, the old decision shows *Superseded by …*, and an MR
+comment says that D<iid>-99 was not found. Revisiting D<iid>-1 again does
+nothing but say it is already superseded.
 
 ### T7 – No triggers from the bot or from chatter
 

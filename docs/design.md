@@ -257,12 +257,15 @@ nothing is lost.
   extra model call to extract them (`internal/runner/decisions.go`). The
   runner posts the implementer's decisions in one comment per run with IDs
   `D<issue>-<n>`, and the planner's go into the issue description as
-  `D<issue>-P<n>`. IDs are numbered after the highest one found in the
-  bot's comments and the description, so GitLab is the source of truth
-  and they survive an archived workspace. `/agent revisit <id> …` puts the
-  decision and the instruction at the top of the next prompt; the new
-  decision names the old one in `supersedes`, and the old one is marked.
-  Markers and mentions in the agent's text are neutralised.
+  `D<issue>-P<n>`. IDs are numbered after the highest one in the bot's
+  decision comments, so GitLab is the source of truth and they survive an
+  archived workspace; long lists are split over several comments, never
+  cut. `/agent revisit <id> …` puts the decision and the instruction at the
+  top of the next prompt; the new decision names the old one in
+  `supersedes`, and only then is the old one marked. Revisits already
+  covered by the agent notes are not applied again after a lost workspace.
+  HTML outside code spans, markers and mentions in the agent's text are
+  neutralised.
 * **Context prepared by the runner.** The runner fetches the issue, milestone
   and comments and puts them into the prompt; the model never spends turns on
   GitLab API exploration and never gets GitLab credentials.

@@ -76,6 +76,7 @@ type Outcome struct {
 	Reviewed         bool
 	BlockingFindings int32
 	ReviewErrors     int32
+	ReviewedSHA      string
 }
 
 // state is persisted on the runner's part of the workspace PVC, so it survives
@@ -318,6 +319,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		if out.Reviewed {
 			s.BlockingFindings = out.BlockingFindings
 			s.ReviewErrors = out.ReviewErrors
+			s.ReviewedSHA = out.ReviewedSHA
 		}
 	})
 }

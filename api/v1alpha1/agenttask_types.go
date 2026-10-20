@@ -288,6 +288,12 @@ type RunStatus struct {
 	// ReviewErrors is the number of reviewers that failed in the last review.
 	// +optional
 	ReviewErrors int32 `json:"reviewErrors,omitempty"`
+
+	// ReviewedSHA is the commit the last review saw. Runs without a review
+	// (CI fix runs) can push commits after it, so a clean review only covers
+	// PushedSHA when the two are equal.
+	// +optional
+	ReviewedSHA string `json:"reviewedSHA,omitempty"`
 }
 
 // +kubebuilder:object:root=true
