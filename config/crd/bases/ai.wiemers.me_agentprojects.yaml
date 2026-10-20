@@ -824,6 +824,13 @@ spec:
                 description: Workflow defines the labels that drive the issue state
                   machine.
                 properties:
+                  assignBot:
+                    default: true
+                    description: |-
+                      AssignBot assigns the bot user to an issue when the operator picks it up
+                      and the issue has no assignee, so GitLab's milestone page lists it as
+                      ongoing. A human assignee is never replaced.
+                    type: boolean
                   commandPrefix:
                     default: /agent
                     description: |-

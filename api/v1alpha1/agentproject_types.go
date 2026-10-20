@@ -137,6 +137,13 @@ type WorkflowSpec struct {
 	// +kubebuilder:default="/agent"
 	// +optional
 	CommandPrefix string `json:"commandPrefix,omitempty"`
+
+	// AssignBot assigns the bot user to an issue when the operator picks it up
+	// and the issue has no assignee, so GitLab's milestone page lists it as
+	// ongoing. A human assignee is never replaced.
+	// +kubebuilder:default=true
+	// +optional
+	AssignBot *bool `json:"assignBot,omitempty"`
 }
 
 // AgentsSpec configures the agent pods and the roles running inside them.

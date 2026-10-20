@@ -123,8 +123,9 @@ You can also hand over issues you wrote yourself. Just add `agent::ready`
 
 ## 3. The agent works
 
-The operator moves the issue to `agent::working` and starts a pod named like
-`shop-42-add-paypal-button`. In that pod:
+The operator moves the issue to `agent::working`, assigns the bot user if
+nobody is assigned (see [Watching progress](#watching-progress)) and starts a
+pod named like `shop-42-add-paypal-button`. In that pod:
 
 1. The implementing agent (engine and model from the issue's profile) works on
    the branch `agent/42-add-paypal-button`. It follows your comments, runs the
@@ -132,8 +133,8 @@ The operator moves the issue to `agent::working` and starts a pod named like
 2. The **bugbot** and **security** reviewers check the diff in parallel.
 3. Blocker and major findings go back to the implementer (at most
    `review.maxIterations` times). Remaining findings are listed for you.
-4. The branch is pushed and a **draft MR** `Closes #42` is opened, or a
-   comment is added to the existing MR.
+4. The branch is pushed and a **draft MR** `Closes #42` is opened in the
+   issue's milestone, or a comment is added to the existing MR.
 
 If the agent has questions, the issue moves to **`agent::needs-input`**.
 Otherwise it stays in `agent::working` until the MR pipeline has run (see
@@ -240,6 +241,30 @@ that the notes are written by the model from the thread, so whatever it
 was told in a comment can end up in them.
 
 Both durations are configurable (`spec.lifecycle`).
+
+## Watching progress
+
+The workflow labels are the state the operator works with. GitLab's milestone
+page does not show labels as columns, it groups issues by its own rules:
+
+| Column | GitLab's rule | Agent issues in it |
+|--------|---------------|--------------------|
+| Unstarted | open, nobody assigned | `agent::draft`, and `agent::ready` until the next poll |
+| Ongoing | open, someone assigned | `agent::working`, `agent::needs-input`, `agent::review` |
+| Completed | closed | merged and closed |
+
+So that an issue the agent works on shows as **Ongoing**, the operator assigns
+the bot user (the user of the GitLab token) when it picks the issue up and
+nobody is assigned yet. The assignee is only a mirror for GitLab's views, the
+operator never reads it. It never replaces an assignee: if you assign yourself
+to take an issue over, the bot is not added back. Turn this off with
+`spec.workflow.assignBot: false`.
+
+The draft merge requests the agent opens carry the issue's milestone, so they
+show up in the milestone's **Merge requests** tab. Issues without a milestone
+get merge requests without one. Issues the operator picked up before this
+behaviour existed get the assignee on their next run request; merge requests
+that already exist keep no milestone.
 
 ## Watching from Kubernetes
 
