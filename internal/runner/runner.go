@@ -88,6 +88,9 @@ type state struct {
 	Sessions        map[string]string `json:"sessions,omitempty"`
 	LastIssueNoteID int64             `json:"lastIssueNoteID,omitempty"`
 	LastMRNoteID    int64             `json:"lastMRNoteID,omitempty"`
+	// RevisitNoteID is the newest comment whose revisits are handled; it
+	// only moves once the run's decisions are posted.
+	RevisitNoteID int64 `json:"revisitNoteID,omitempty"`
 }
 
 func sessionKey(role string, engine aiv1.Engine) string { return role + "/" + string(engine) }

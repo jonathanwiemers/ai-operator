@@ -207,8 +207,9 @@ history below the agent's new commit), and the push is not forced.
 **Expected:** a run (two, if a poll falls between the comments). The code
 follows the new choice, a new decision comment has a decision with
 *Supersedes D<iid>-1*, the old decision shows *Superseded by …*, and an MR
-comment says that D<iid>-99 was not found. Revisiting D<iid>-1 again does
-nothing but say it is already superseded.
+comment says that D<iid>-99 was not found. Revisiting D<iid>-1 again is not
+applied: the agent is told to ignore it, and the report says it is
+superseded.
 
 ### T7 – No triggers from the bot or from chatter
 

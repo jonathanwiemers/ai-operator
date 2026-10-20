@@ -36,7 +36,9 @@ const (
 
 var (
 	decisionMarker = regexp.MustCompile(`<!-- ai-operator:decision=(D(\d+)-(P?)(\d+))( superseded)? -->`)
-	revisitCommand = regexp.MustCompile(`(?is)^\s*(\S+?):?\s+revisit\s+(D\d+-P?\d+)\b[\s:]*(.*)$`)
+	revisitCommand = regexp.MustCompile(`(?is)^\s*(\S+?):?\s+revisit\s+(D\d+-P?\d+)(?:[\s:]+(.*))?$`)
+	// revisitWord spots comments that try to revisit but do not parse.
+	revisitWord = regexp.MustCompile(`(?is)^\s*(\S+?):?\s+(?:please\s+)?revisit\b`)
 )
 
 // isDecisionComment reports whether a note is one of the bot's decision
@@ -79,16 +81,20 @@ func decisionID(iid int64, planner bool, n int) string {
 // spans is escaped (an unclosed <details> or <!-- would hide everything
 // after it), and mentions are broken up.
 func cleanDecisionText(s string) string {
+	s = strings.TrimSpace(s)
+	// With unbalanced backticks there are no reliable code spans: escape
+	// everything.
+	spans := strings.Count(s, "`")%2 == 0
 	var b strings.Builder
 	inCode := false
-	for _, r := range strings.TrimSpace(s) {
+	for _, r := range s {
 		switch {
-		case r == '`':
+		case r == '`' && spans:
 			inCode = !inCode
 		case r == '<' && !inCode:
 			b.WriteString("&lt;")
 			continue
-		case r == '@':
+		case r == '@' && !inCode:
 			b.WriteString("@\u200b")
 			continue
 		}
@@ -197,22 +203,28 @@ type revisit struct {
 	Note *gitlab.Note
 	// Superseded is set when the decision was already replaced.
 	Superseded bool
+	// Malformed is set for a comment that looks like a revisit but does not
+	// parse; Instruction holds its first line.
+	Malformed bool
 }
 
 // findRevisits returns the revisit commands in the given human notes, with
 // the decisions they refer to looked up in the issue and the bot's notes.
 func findRevisits(issue *gitlab.Issue, all, fresh []gitlab.Note, botID int64, prefix string) []revisit {
 	var out []revisit
-	seen := map[string]bool{}
+	index := map[string]int{}
 	for _, n := range fresh {
 		if n.System || (botID != 0 && n.Author.ID == botID) {
 			continue
 		}
 		m := revisitCommand.FindStringSubmatch(n.Body)
-		if m == nil || m[1] != prefix || seen[strings.ToUpper(m[2])] {
+		if m == nil || m[1] != prefix {
+			if w := revisitWord.FindStringSubmatch(n.Body); w != nil && w[1] == prefix {
+				first, _, _ := strings.Cut(strings.TrimSpace(n.Body), "\n")
+				out = append(out, revisit{Malformed: true, Instruction: first})
+			}
 			continue
 		}
-		seen[strings.ToUpper(m[2])] = true
 		rv := revisit{ID: strings.ToUpper(m[2]), Instruction: strings.TrimSpace(m[3])}
 		if strings.Contains(rv.ID, "-P") {
 			// Planner decisions live in the description, implementer
@@ -230,6 +242,12 @@ func findRevisits(issue *gitlab.Issue, all, fresh []gitlab.Note, botID int64, pr
 			}
 		}
 		rv.Superseded = strings.Contains(rv.Decision, rv.ID+" superseded -->")
+		// A later revisit of the same decision replaces an earlier one.
+		if i, ok := index[rv.ID]; ok {
+			out[i] = rv
+			continue
+		}
+		index[rv.ID] = len(out)
 		out = append(out, rv)
 	}
 	return out
@@ -266,6 +284,21 @@ func markSuperseded(body, id, by, runID string) string {
 		line = fmt.Sprintf("> ⚠️ Superseded by %s in run `%s`", by, runID)
 	}
 	return strings.Replace(body, marker, line+"\n"+fmt.Sprintf("<!-- ai-operator:decision=%s superseded -->", id), 1)
+}
+
+// buildIgnoredRevisitsPrompt tells the implementer about revisit comments it
+// must not act on.
+func buildIgnoredRevisitsPrompt(rvs []revisit) string {
+	var b strings.Builder
+	b.WriteString("## Revisit comments not to act on\n\n")
+	for _, rv := range rvs {
+		if rv.Malformed {
+			fmt.Fprintf(&b, "- %q does not name a decision ID; treat it as a normal comment.\n", rv.Instruction)
+		} else {
+			fmt.Fprintf(&b, "- %s was already superseded by a later decision; ignore the comment asking to revisit it.\n", rv.ID)
+		}
+	}
+	return b.String()
 }
 
 // buildRevisitPrompt tells the implementer which decisions to change.
