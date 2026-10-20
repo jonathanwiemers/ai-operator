@@ -297,7 +297,7 @@ func thread(title string, notes []gitlab.Note, botID int64) string {
 // buildImplementPrompt builds the implementer's prompt. A resumed session
 // only gets the new comments; a fresh one gets the issue, the milestone, the
 // whole thread and the handoff notes of earlier runs.
-func buildImplementPrompt(issue *gitlab.Issue, milestone *gitlab.Milestone, issueNotes, mrNotes []gitlab.Note, botID int64, resumed bool, handoff string) string {
+func buildImplementPrompt(issue *gitlab.Issue, milestone *gitlab.Milestone, issueNotes, mrNotes []gitlab.Note, botID int64, resumed bool, notes handoff) string {
 	var b strings.Builder
 	if resumed {
 		if len(issueNotes) == 0 && len(mrNotes) == 0 {
@@ -315,12 +315,16 @@ func buildImplementPrompt(issue *gitlab.Issue, milestone *gitlab.Milestone, issu
 	}
 	b.WriteString(thread("Comments on the issue", issueNotes, botID))
 	b.WriteString(thread("Comments on the merge request", mrNotes, botID))
-	if handoff != "" {
+	if notes.Text != "" {
 		b.WriteString("## Your notes from earlier runs\n\n")
-		b.WriteString("You worked on this issue before, in a session that is no longer available. The branch already contains that work " +
+		b.WriteString("You worked on this issue before, in a session that is no longer available. Work you pushed is on the branch " +
 			"(see `git log` and the diff against the default branch). These are the notes you left; check them against the code " +
-			"before relying on them. Comments above that are newer than the notes take precedence.\n\n")
-		b.WriteString(handoff)
+			"before relying on them.")
+		if notes.AfterNote != 0 {
+			fmt.Fprintf(&b, " You wrote them after reading the comments up to note %d: comments with a higher note number are newer and take precedence.", notes.AfterNote)
+		}
+		b.WriteString("\n\n")
+		b.WriteString(notes.Text)
 		b.WriteString("\n")
 	}
 	return b.String()

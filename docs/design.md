@@ -239,11 +239,16 @@ nothing is lost.
 * **Resumed sessions.** Follow-up runs resume the implementer's session and
   only send the new comments, instead of the whole issue, spec and thread.
 * **Agent notes.** The implementer also returns handoff notes, which the
-  runner keeps in one bot comment on the issue (edited after every run,
-  `internal/runner/handoff.go`). A fresh session (archived workspace, lost
-  session) gets them with the thread, so it does not re-derive earlier
-  decisions. Only a note written by the bot user is trusted as notes;
-  anyone else's comment with the same markers stays a plain comment.
+  runner keeps in one bot comment on the issue (created on the first run,
+  edited right after each later push, `internal/runner/handoff.go`). A
+  fresh session (archived workspace, lost session) gets them with the
+  thread and the newest comment they cover, so it does not re-derive
+  earlier decisions. Only the oldest bot comment that starts with the
+  notes header counts; anyone else's comment with the same markers, and
+  the bot's own reports quoting them, stay plain comments. Markers in the
+  agent's text are neutralised. The notes are as trustworthy as the bot
+  account (and whoever may edit its comments) and are model output built
+  from the thread, so they are data in the prompt like any comment.
 * **Context prepared by the runner.** The runner fetches the issue, milestone
   and comments and puts them into the prompt; the model never spends turns on
   GitLab API exploration and never gets GitLab credentials.
