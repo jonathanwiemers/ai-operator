@@ -48,6 +48,10 @@ flowchart LR
   once CI is green.
 - **Iterate.** Comment `/agent <what to change>` on the issue or the MR.
   Plain discussion costs nothing.
+- **Autopilot.** With `/agent autopilot` in the milestone, the agents take
+  their defaults instead of asking, and the operator works through the issues
+  one at a time and merges each MR once CI is green and the review is clean.
+  Every decision is posted with an ID you can `/agent revisit` later.
 - **Clean up.** Close the issue, and the pod and workspace are removed. Pods
   only run while an agent works: right after each run the pod stops, and the
   workspace keeps the checkout, caches and agent session for the next run.

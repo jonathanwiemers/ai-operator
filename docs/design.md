@@ -328,6 +328,61 @@ stateDiagram-v2
 Green states move the issue to `agent::review`, `Failed` to
 `agent::needs-input`.
 
+## Autopilot
+
+A milestone with `/agent autopilot` runs end to end. The lifecycle is driven
+by the operator, not by an agent: queue, merge gate, rebase and pause are
+rules ("CI green, no blocking findings, head unchanged → merge"), so they are
+predictable, testable and cost no tokens, and no model ever decides to merge
+into the default branch. Agents are used where judgement is needed:
+planning, implementing, reviewing.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Pending: planned
+    Pending --> Active: dependencies merged,<br/>moved to agent::ready
+    Active --> Active: implement, review, CI,<br/>rebase once if needed
+    Active --> Merged: gate passed, merged
+    Active --> Skipped: closed without merge,<br/>/agent skip
+    Pending --> Skipped: /agent skip
+    Merged --> [*]
+    Skipped --> [*]
+```
+
+* **State.** The spec runner records the plan in the spec task's
+  `status.plan` (IIDs and dependencies in plan order). The operator keeps the
+  queue in `status.autopilot` (phase, items, tracking issue, last handled
+  command) and does one step per poll (`internal/controller/autopilot.go`).
+* **One at a time.** The queue is the plan in topological order, ties in plan
+  order. The next issue starts only after the previous MR is merged, so every
+  branch starts from the current default branch and every merge was tested
+  against what is really there.
+* **No questions.** Spec and implement tasks of the milestone carry
+  `spec.autopilot`; the runner then adds a short paragraph to the *user*
+  prompt (the system prompts stay the same and cached): never ask, take the
+  default, record it as a decision. CI fix runs are reviewed too, since no
+  human reviews before the merge.
+* **Merge gate.** Issue in review (the CI loop finished), last run
+  succeeded, `blockingFindings == 0`, `reviewErrors == 0`,
+  `reviewedSHA == pushedSHA`, MR open with head `pushedSHA`, GitLab's
+  `detailed_merge_status` mergeable. The draft is marked ready by its title,
+  and `PUT …/merge` passes the checked `sha`.
+* **Rebase.** On `need_rebase` the operator asks GitLab to rebase once. The
+  rebased head is handed to the CI loop like a push (`pushedSHA`, reset CI,
+  back to working); the review still holds because the agent's change did not
+  change. Conflicts pause: resolving them is not automated yet.
+* **Pause.** Anything that needs a human pauses the queue with a comment on
+  the tracking issue, once per reason. `/agent resume`, `pause` and
+  `skip #N` on the tracking issue are handled by the operator.
+* **Tracking issue.** Created with the first plan, edited in place (only when
+  its rendered text changes), closed when done or switched off. It carries a
+  hidden marker (`internal/marker`) so the spec agent does not see it as an
+  existing issue.
+* **Off.** Removing the marker sets `phase: Off` and closes the tracking
+  issue; if the milestone is no longer planned at all, this happens before
+  the spec task is deleted.
+
 ## Engines, profiles and subscriptions
 
 Each role runs on an engine, an agent CLI:
@@ -462,6 +517,8 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/steps.go` | run steps: step logging, current step, GitLab run log |
 | `internal/runner/handoff.go` | agent notes: the bot's handoff comment on the issue |
 | `internal/runner/decisions.go` | decisions: IDs, decision comments, revisits, superseding |
+| `internal/controller/autopilot.go` | autopilot: queue, merge gate, rebase, pause / resume / skip, tracking issue |
+| `internal/marker` | hidden markers in GitLab text shared by operator and runner (tracking issue, decisions) |
 | `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
 | `internal/runner/workspace.go` | agent-side checkout (local git only) |
 | `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab |

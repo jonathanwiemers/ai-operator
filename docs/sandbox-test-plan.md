@@ -107,8 +107,8 @@ which has the task's name, e.g. `sandbox-spec-m1-tags-and-due-dates` or
   the same name. It has an init container `init-workspace`, then containers
   `runner` and `agent`, both `Running`.
 * `kubectl -n agents logs <pod> -c runner` shows "starting run", a `step
-  started` / `step done` pair for each of the 7 spec steps (read milestone …
-  apply plan, one "issue created" line per issue) and "run finished" with
+  started` / `step done` pair for each of the 8 spec steps (read milestone …
+  record plan, one "issue created" line per issue) and "run finished" with
   the step list. While it runs, `kubectl -n agents get agenttasks` shows the
   step in the `Step` column.
 * A few (likely 3) new issues in the milestone with the labels
@@ -412,6 +412,48 @@ kubectl -n agents exec -it <pod> -c agent -- sh -c 'cd /workspace/repo && cursor
 File an issue in this repository with the test case ID, what happened, and
 the collected output (remove tokens first).
 
+### T18 – Autopilot milestone
+
+Preparation: allow the bot to merge into `main` (Protected branches,
+"Allowed to merge: Developers + Maintainers").
+
+1. Create a milestone **Autopilot demo** with `/agent autopilot` and a small
+   two-part spec, e.g. "Add `GET /api/health` returning `{ok: true}`, then
+   document it in README.md" (the second part depends on the first).
+
+**Expected:**
+* The planned issues have no open questions; their descriptions have a
+  **Decisions** section. A tracking issue **🤖 Autopilot: Autopilot demo**
+  appears with one line per issue.
+* Only the first issue moves to `agent::ready`, then `agent::working`. Its
+  run posts a decision comment, the draft MR is opened, the pipeline runs.
+* Once the pipeline is green, the MR is marked ready and merged by the bot;
+  the issue is closed, the tracking issue shows it as merged with its
+  commit and decisions.
+* Then the second issue starts on the new `main` and is merged the same way.
+  The tracking issue ends with "Autopilot is done" and is closed.
+
+2. Repeat with a new milestone and, while the first MR's pipeline runs, push a
+   commit to `main` that touches another file.
+
+**Expected:** if the project merges fast-forward or semi-linear, the MR is
+rebased once by GitLab, CI runs again, and the MR is merged. With merge
+commits nothing special happens.
+
+3. Make the pipeline fail for good (the `changelog` job, see T17) and let the
+   fix rounds run out.
+
+**Expected:** the issue lands in `agent::needs-input` and the tracking issue
+says *Autopilot paused* with the reason. Fix the job by hand, move the issue
+to review and comment `/agent resume` on the tracking issue: the MR is merged
+and the queue continues. `/agent pause` and `/agent skip #<iid>` work as
+described in usage.md.
+
+4. Remove `/agent autopilot` from the milestone.
+
+**Expected:** the tracking issue gets *Autopilot is off* and is closed;
+nothing is merged any more.
+
 ## 4. Results
 
 | ID | Test | Result | Notes |
@@ -433,6 +475,7 @@ the collected output (remove tokens first).
 | T15 | Helm upgrade and uninstall | | |
 | T16 | Usage limits | | |
 | T17 | CI feedback loop | | |
+| T18 | Autopilot milestone | | |
 
 ## 5. Cleanup
 
