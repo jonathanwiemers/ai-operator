@@ -135,6 +135,8 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    `review.maxIterations` times). Remaining findings are listed for you.
 4. The branch is pushed and a **draft MR** `Closes #42` is opened in the
    issue's milestone, or a comment is added to the existing MR.
+5. The agent's decisions are posted on the issue (see
+   [Decisions](#decisions)).
 
 If the agent has questions, the issue moves to **`agent::needs-input`**.
 Otherwise it stays in `agent::working` until the MR pipeline has run (see
@@ -174,6 +176,53 @@ Configure the loop in `spec.ci` (see [configuration.md](configuration.md));
 
 `/agent` must be the first word of the comment. `/agents are great` does not
 trigger a run.
+
+### Decisions
+
+Every run records the decisions the agent made that you might want
+differently: data shapes, names users see, libraries, error handling, scope
+cuts. Small mechanical choices are not decisions. They are posted in one
+comment per run on the issue:
+
+> 📌 **Decisions** in run `shop-42#3`. Change one with `/agent revisit <id> <what you want instead>`.
+>
+> #### D42-3: How tags are stored
+> **Question:** How are tags normalised?
+> **Chosen:** lowercase
+> **Why:** `store.js` already lowercases slugs, so search stays case-insensitive.
+> **Alternatives:** keep the case as typed; store display and normalised forms
+
+The planning agent records its decisions for each issue in the issue
+description, under **Decisions**, with IDs like `D42-P1`. These are
+renumbered if the plan of a draft issue changes; implementer IDs (`D42-3`)
+never change.
+
+To change a decision, comment on the issue or its MR:
+
+```
+/agent revisit D42-3 keep the case as typed and add a normalised column
+```
+
+This is a normal run request. The agent gets the decision it is asked to
+change together with your instruction, changes the code, and records a new
+decision that supersedes the old one. The old decision is then marked
+*Superseded by D42-5*.
+
+- The comment must start with `/agent revisit <id>`; one revisit per comment.
+  Several revisit comments since the last run are handled in the same run;
+  for the same ID the latest comment wins. A comment like `/agent revisit the
+  currency` (no ID) is a normal comment, and the report shows the right form.
+- An ID that does not exist on the issue is passed on as a plain comment, and
+  the run's report says so. Revisiting a decision that is already superseded
+  is not applied: revisit the decision that replaced it.
+- A revisit counts as handled once the run's decisions are posted. If the run
+  fails before that, the next run applies it again.
+- If the agent does not record a decision that replaces the old one, the old
+  one is not marked, and the report says so.
+
+Implementer decisions are only read from the bot's decision comments, and
+planner decisions from the issue description, so a comment by someone else
+cannot add or fake decisions.
 
 ## 5. Finish
 
@@ -272,9 +321,17 @@ that already exist keep no milestone.
 kubectl -n agents get agentprojects
 kubectl -n agents get agenttasks -w       # type, issue, phase, current step, last result, runs, cost
 kubectl -n agents get agenttasks -o wide  # + merge request URL
+kubectl -n agents get agenttask shop-42-add-paypal-button -o jsonpath='{.status.run}'
 kubectl -n agents logs -f shop-42-add-paypal-button -c runner   # every step of a run
 kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server: CLI runs, git calls
 ```
+
+`status.run` of an AgentTask holds the result of the last run: `lastResult`,
+`summary`, `costUSD` (accumulated), `branch`, `mergeRequestURL`, `pushedSHA`,
+`currentStep` while a run is in progress, and the result of the last review:
+`blockingFindings` (blocker and major findings left), `reviewErrors`
+(reviewers that failed) and `reviewedSHA` (the commit that review saw; a CI
+fix run can push commits after it).
 
 ### Run logs
 

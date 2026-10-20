@@ -34,6 +34,11 @@ How to plan:
   confident is simple; when in doubt pick the stronger one.
 - Only raise questions that change the design or the scope. For each question
   state the default you would pick, so a human can just confirm it.
+- Record the decisions you made for each sub-issue in its decisions list:
+  choices a reviewer could reasonably want differently (data shapes, names
+  users see, libraries, error handling, scope cuts), each with the question,
+  your choice, why, and the alternatives you rejected. Small mechanical
+  choices are not decisions.
 - You may be given issues that already exist for this milestone. Keep their
   key and existingIid when they still fit, update them instead of creating
   duplicates, and drop nothing that is already in progress.
@@ -57,7 +62,12 @@ How to work:
   over the original description.
 - If a decision that changes the design is unresolved, do not guess: return
   status "needs_input" with concrete questions (and the default you would
-  pick). Make small decisions yourself and mention them in the summary.
+  pick), unless the prompt says you must decide yourself.
+- Record every decision you make that a reviewer could reasonably want
+  differently (data shapes, names users see, libraries, error handling, scope
+  cuts) in decisions: the question, your choice, why, and the alternatives you
+  rejected. Small mechanical choices are not decisions. Each run records only
+  its own new decisions.
 - Review findings you are given were produced by automated reviewers. Fix the
   real ones; if a finding is wrong, say why in the summary.
 
@@ -109,7 +119,7 @@ const specSchemaTemplate = `{
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["key", "title", "description", "profile", "questions", "dependsOn"],
+        "required": ["key", "title", "description", "profile", "questions", "decisions", "dependsOn"],
         "properties": {
           "key": {"type": "string", "description": "Stable kebab-case identifier, e.g. 'payment-api'."},
           "existingIid": {"type": "integer", "description": "IID of the existing issue this updates, 0 for a new issue."},
@@ -117,6 +127,7 @@ const specSchemaTemplate = `{
           "description": {"type": "string"},
           "profile": {"type": "string", "enum": __PROFILES__},
           "questions": {"type": "array", "items": {"type": "string"}},
+          "decisions": __DECISIONS__,
           "dependsOn": {"type": "array", "items": {"type": "string"}, "description": "Keys of issues that must be merged first."}
         }
       }
@@ -124,15 +135,34 @@ const specSchemaTemplate = `{
   }
 }`
 
-const implementSchema = `{
+// decisionsSchema is the decisions list shared by the planner and the
+// implementer.
+const decisionsSchema = `{"type": "array", "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "question", "choice", "why", "alternatives"],
+      "properties": {
+        "title": {"type": "string", "description": "A few words naming the decision."},
+        "question": {"type": "string"},
+        "choice": {"type": "string"},
+        "why": {"type": "string"},
+        "alternatives": {"type": "array", "items": {"type": "string"}, "description": "Options you rejected."},
+        "supersedes": {"type": "string", "description": "ID of the decision this replaces, when you were asked to revisit one."}
+      }
+    }}`
+
+var implementSchema = strings.Replace(implementSchemaTemplate, "__DECISIONS__", decisionsSchema, 1)
+
+const implementSchemaTemplate = `{
   "type": "object",
   "additionalProperties": false,
-  "required": ["status", "summary", "commitMessage", "questions", "handoff"],
+  "required": ["status", "summary", "commitMessage", "questions", "decisions", "handoff"],
   "properties": {
     "status": {"type": "string", "enum": ["done", "needs_input"]},
     "summary": {"type": "string", "description": "Markdown summary for the merge request."},
     "commitMessage": {"type": "string", "description": "Imperative subject line (max 72 chars), blank line, body."},
     "questions": {"type": "array", "items": {"type": "string"}},
+    "decisions": __DECISIONS__,
     "handoff": {"type": "string", "description": "Markdown handoff notes for a later run that does not have this conversation."}
   }
 }`
@@ -178,22 +208,24 @@ type SpecPlan struct {
 
 // PlannedItem is one planned issue.
 type PlannedItem struct {
-	Key         string   `json:"key"`
-	ExistingIID int64    `json:"existingIid,omitempty"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Profile     string   `json:"profile"`
-	Questions   []string `json:"questions"`
-	DependsOn   []string `json:"dependsOn"`
+	Key         string     `json:"key"`
+	ExistingIID int64      `json:"existingIid,omitempty"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Profile     string     `json:"profile"`
+	Questions   []string   `json:"questions"`
+	Decisions   []Decision `json:"decisions"`
+	DependsOn   []string   `json:"dependsOn"`
 }
 
 // ImplementAnswer is the implementer's answer.
 type ImplementAnswer struct {
-	Status        string   `json:"status"`
-	Summary       string   `json:"summary"`
-	CommitMessage string   `json:"commitMessage"`
-	Questions     []string `json:"questions"`
-	Handoff       string   `json:"handoff"`
+	Status        string     `json:"status"`
+	Summary       string     `json:"summary"`
+	CommitMessage string     `json:"commitMessage"`
+	Questions     []string   `json:"questions"`
+	Decisions     []Decision `json:"decisions"`
+	Handoff       string     `json:"handoff"`
 }
 
 // ReviewAnswer is a reviewer's answer.
@@ -246,7 +278,8 @@ func specSchema(profiles []aiv1.AgentProfile) string {
 		names = append(names, p.Name)
 	}
 	enum, _ := json.Marshal(names)
-	return strings.Replace(specSchemaTemplate, "__PROFILES__", string(enum), 1)
+	schema := strings.Replace(specSchemaTemplate, "__PROFILES__", string(enum), 1)
+	return strings.Replace(schema, "__DECISIONS__", decisionsSchema, 1)
 }
 
 func buildSpecPrompt(m *gitlab.Milestone, existing []ExistingIssue, profiles []aiv1.AgentProfile, replan bool) string {
@@ -349,7 +382,8 @@ func buildReviewPrompt(issue *gitlab.Issue, base, diffStat, diff string) string 
 
 func buildFixPrompt(findings []Finding) string {
 	var b strings.Builder
-	b.WriteString("Automated reviewers found the following problems in your change. Fix the real ones and run the tests again.\n\n")
+	b.WriteString("Automated reviewers found the following problems in your change. Fix the real ones and run the tests again. " +
+		"Record in decisions only the decisions you make in this round; the earlier ones are recorded already.\n\n")
 	b.WriteString(formatFindings(findings))
 	return b.String()
 }

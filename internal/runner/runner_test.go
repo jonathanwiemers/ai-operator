@@ -335,6 +335,10 @@ func TestImplementEndToEnd(t *testing.T) {
 		run.MergeRequestIID != 1 || run.Branch != "agent/42-add-paypal-button" || run.CostUSD != "3.0000" {
 		t.Fatalf("unexpected run status %+v", run)
 	}
+	// The blocker was fixed; only a nit is left after the second review.
+	if run.BlockingFindings != 0 || run.ReviewErrors != 0 || run.ReviewedSHA == "" || run.ReviewedSHA != run.PushedSHA {
+		t.Fatalf("review result not reported: blocking=%d errors=%d reviewed=%q pushed=%q", run.BlockingFindings, run.ReviewErrors, run.ReviewedSHA, run.PushedSHA)
+	}
 	if head := gitCmd(t, tmp, "--git-dir", origin, "rev-parse", "agent/42-add-paypal-button"); run.PushedSHA != head || run.PushedAt == nil || run.CIRound != 0 {
 		t.Fatalf("pushed commit not recorded: %+v (branch head %s)", run, head)
 	}

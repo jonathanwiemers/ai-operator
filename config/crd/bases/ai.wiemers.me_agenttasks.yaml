@@ -297,6 +297,12 @@ spec:
                       currently working on.
                     format: int64
                     type: integer
+                  blockingFindings:
+                    description: |-
+                      BlockingFindings is the number of blocker and major review findings
+                      left after the last review.
+                    format: int32
+                    type: integer
                   branch:
                     description: Branch the agent pushes to.
                     type: string
@@ -365,6 +371,17 @@ spec:
                   pushedSHA:
                     description: PushedSHA is the commit the runner last pushed to
                       the agent's branch.
+                    type: string
+                  reviewErrors:
+                    description: ReviewErrors is the number of reviewers that failed
+                      in the last review.
+                    format: int32
+                    type: integer
+                  reviewedSHA:
+                    description: |-
+                      ReviewedSHA is the commit the last review saw. Runs without a review
+                      (CI fix runs) can push commits after it, so a clean review only covers
+                      PushedSHA when the two are equal.
                     type: string
                   runCount:
                     description: RunCount is the number of runs performed so far.

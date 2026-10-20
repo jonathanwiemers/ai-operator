@@ -97,6 +97,12 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	s.done(result, "issueNotes", len(issueNotes), "mrNotes", len(mrNotes), "newNotes", len(newIssueNotes)+len(newMRNotes),
 		"handoffBytes", len(prior.Text))
 	seenNote := max(maxNoteID(issueNotes, 0), maxNoteID(mrNotes, 0))
+	// "/agent revisit <id> …" comments since the last run name decisions to
+	// change; the implementer gets them with the decision they refer to.
+	// Without runner state (archived workspace) the agent notes say which
+	// comments were already handled, so old revisits are not applied again.
+	since := max(st.RevisitNoteID, prior.AfterNote)
+	revisits := findRevisits(issue, issueNotes, append(newerThan(issueNotes, since), newerThan(mrNotes, since)...), botID, wf.CommandPrefix)
 
 	role, profile := spec.ImplementRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
@@ -104,6 +110,35 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	inv.Resume = st.session("implement", role.Engine)
 	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false, prior)
 	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true, handoff{})
+	var notices []string
+	var active, ignored []revisit
+	for _, rv := range revisits {
+		switch {
+		case rv.Malformed:
+			notices = append(notices, fmt.Sprintf("%q is not a revisit: use `%s revisit D%d-<n> <what you want instead>`.", rv.Instruction, wf.CommandPrefix, issue.IID))
+			ignored = append(ignored, rv)
+		case rv.Superseded:
+			ignored = append(ignored, rv)
+			notices = append(notices, fmt.Sprintf("Decision %s was already superseded; revisit the decision that replaced it.", rv.ID))
+		case rv.Decision == "":
+			notices = append(notices, fmt.Sprintf("Decision %s was not found on this issue; the instruction was passed on as a comment.", rv.ID))
+			active = append(active, rv)
+		default:
+			active = append(active, rv)
+		}
+	}
+	revisits = active
+	if len(ignored) > 0 {
+		ignoredPrompt := buildIgnoredRevisitsPrompt(ignored)
+		fullPrompt += "\n\n" + ignoredPrompt
+		inv.Prompt = ignoredPrompt + "\n\n" + inv.Prompt
+	}
+	if len(revisits) > 0 {
+		revisitPrompt := buildRevisitPrompt(revisits)
+		fullPrompt += "\n\n" + revisitPrompt
+		inv.Prompt = revisitPrompt + "\n\n" + inv.Prompt
+		r.log().Info("revisiting decisions", "decisions", len(revisits), "notices", len(notices))
+	}
 
 	// A CI fix run: the operator saw the pipeline of the last push fail.
 	ciPipeline := task.Spec.Source.CIFixPipelineID
@@ -144,7 +179,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		return out, s.fail(fmt.Errorf("decoding implementer answer: %w", err))
 	}
 	s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD,
-		"status", answer.Status, "questions", len(answer.Questions))
+		"status", answer.Status, "questions", len(answer.Questions), "decisions", len(answer.Decisions))
 	if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
 		return out, err
 	}
@@ -154,6 +189,8 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	review := spec.Agents.Review
 	var remaining []Finding
 	var reviewNotes []string
+	// reviewedLast is false when a fix round came after the last review.
+	reviewedLast := false
 	// CI fix runs skip the reviewers: the change is reviewed with the next
 	// regular run, and CI itself is the check here.
 	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input" && !ciFix; iter++ {
@@ -163,12 +200,15 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			return out, s.fail(err)
 		}
 		if strings.TrimSpace(diff) == "" {
+			out.Reviewed, out.BlockingFindings, out.ReviewErrors = true, 0, 0
 			s.done("no changes to review")
 			break
 		}
 		findings, cost, errs := r.review(ctx, review, issue, base, stat, diff)
 		out.CostUSD += cost
 		reviewNotes = errs
+		out.Reviewed, out.ReviewErrors = true, int32(len(errs))
+		reviewedLast = true
 		// Reviewers are read-only; discard anything they touched anyway.
 		if err := r.Agent.Reset(ctx); err != nil {
 			return out, s.fail(err)
@@ -182,6 +222,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		s.done(fmt.Sprintf("%s; %d findings, %d blocking, $%.2f", diffSummary(stat), len(findings), len(blocking), cost),
 			"diff", diffSummary(stat), "findings", len(findings), "blocking", len(blocking), "reviewerErrors", len(errs), "costUSD", cost)
 		remaining = findings
+		out.BlockingFindings = int32(len(blocking))
 		if len(blocking) == 0 || iter >= int(*review.MaxIterations) {
 			break
 		}
@@ -210,6 +251,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if err := res.Decode(&fixed); err == nil {
 			answer.Summary = fixed.Summary
 			answer.Questions = fixed.Questions
+			answer.Decisions = append(answer.Decisions, fixed.Decisions...)
 			if strings.TrimSpace(fixed.Handoff) != "" {
 				answer.Handoff = fixed.Handoff
 			}
@@ -221,6 +263,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if err := r.commit(ctx, commitMessage(fixed.CommitMessage, issue)); err != nil {
 			return out, err
 		}
+		reviewedLast = false
 	}
 
 	// Push and open / update the merge request.
@@ -238,13 +281,25 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	} else {
 		s.done("nothing new to push")
 	}
+	if out.Reviewed && reviewedLast {
+		// The last review saw the branch as it is now.
+		out.ReviewedSHA = out.PushedSHA
+		if out.ReviewedSHA == "" {
+			out.ReviewedSHA, _ = r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
+		}
+	}
 	// The notes go right after the push, so a later failure (merge request,
 	// comment) does not lose them. Without the bot's user ID the note could
 	// not be found again.
 	if botID != 0 {
 		r.updateHandoff(ctx, gl, glProject, issue.IID, handoffNote, answer.Handoff, seenNote)
+		notices = append(notices, r.postDecisions(ctx, gl, glProject, issue, issueNotes, botID, wf.CommandPrefix, answer.Decisions, revisits)...)
+		// Revisits count as handled once their decisions are posted; a run
+		// that fails before applies them again.
+		st.RevisitNoteID = seenNote
+		_ = r.saveState(st)
 	}
-	report := renderReport(answer, remaining, reviewNotes)
+	report := renderReport(answer, remaining, append(reviewNotes, notices...))
 	if ciFix {
 		report = "CI fix: " + report
 	}
@@ -354,6 +409,92 @@ func (r *Runner) updateHandoff(ctx context.Context, gl gitlab.API, glProject str
 	} else {
 		s.done(fmt.Sprintf("created (%d bytes)", len(text)))
 	}
+}
+
+// postDecisions posts the run's decisions on the issue, numbered after the
+// highest decision ID there, and marks the revisited decisions that a new
+// decision supersedes. Like the notes it is best effort and never fails the
+// run; it returns notices for the run's report.
+func (r *Runner) postDecisions(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, notes []gitlab.Note, botID int64, prefix string, ds []Decision, revisits []revisit) []string {
+	numbered := numberDecisions(ds, issue.IID, false, nextDecisionNumber(issue, notes, botID))
+	if len(numbered) == 0 && len(revisits) == 0 {
+		return nil
+	}
+	s := r.step(ctx, "post decisions", "decisions", len(numbered), "revisits", len(revisits))
+	if len(numbered) > 0 {
+		for _, body := range renderDecisionsComments(r.run.id, prefix, numbered) {
+			if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, body); err != nil {
+				_ = s.fail(fmt.Errorf("posting decisions: %w", err))
+				return nil
+			}
+		}
+	}
+
+	// A revisited decision is only marked when a new decision replaces it.
+	// All marks on one comment (or the description) go into one update.
+	var notices []string
+	bodies := map[int64]string{}
+	var planned []revisit
+	marked := 0
+	for _, rv := range revisits {
+		by := ""
+		for _, d := range numbered {
+			if strings.EqualFold(strings.TrimSpace(d.Supersedes), rv.ID) {
+				by = d.ID
+				break
+			}
+		}
+		switch {
+		case rv.Decision == "":
+		case by == "":
+			notices = append(notices, fmt.Sprintf("Decision %s was revisited, but no new decision says it replaces it, so it is not marked superseded.", rv.ID))
+		case rv.Note != nil:
+			body, ok := bodies[rv.Note.ID]
+			if !ok {
+				body = rv.Note.Body
+			}
+			bodies[rv.Note.ID] = markSuperseded(body, rv.ID, by, r.run.id)
+			marked++
+		default:
+			rv.Instruction = by // the successor, for the description below
+			planned = append(planned, rv)
+			marked++
+		}
+	}
+	for id, body := range bodies {
+		if _, err := gl.UpdateIssueNote(ctx, glProject, issue.IID, id, body); err != nil {
+			_ = s.fail(fmt.Errorf("marking decisions superseded: %w", err))
+			return notices
+		}
+	}
+	if len(planned) > 0 {
+		// Planning decisions live in the description, which a human may
+		// have edited during the run: mark them on the current version.
+		fresh, err := gl.GetIssue(ctx, glProject, issue.IID)
+		if err != nil {
+			_ = s.fail(fmt.Errorf("reading the issue description: %w", err))
+			return notices
+		}
+		desc := fresh.Description
+		for _, rv := range planned {
+			desc = markSuperseded(desc, rv.ID, rv.Instruction, r.run.id)
+		}
+		if desc != fresh.Description {
+			if _, err := gl.UpdateIssue(ctx, glProject, issue.IID, gitlab.UpdateIssueOptions{Description: desc}); err != nil {
+				_ = s.fail(fmt.Errorf("marking planning decisions superseded: %w", err))
+				return notices
+			}
+		}
+	}
+	result := "none posted"
+	if len(numbered) > 0 {
+		result = fmt.Sprintf("%s to %s posted", numbered[0].ID, numbered[len(numbered)-1].ID)
+	}
+	if marked > 0 {
+		result += fmt.Sprintf(", %d superseded", marked)
+	}
+	s.done(result)
+	return notices
 }
 
 // commit commits the agent's changes as a step of the run.

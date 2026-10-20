@@ -116,7 +116,8 @@ which has the task's name, e.g. `sandbox-spec-m1-tags-and-due-dates` or
   self-contained sub-spec (context, plan with real file names such as
   `src/server.js`, acceptance criteria, test plan), `Depends on #…` where it
   makes sense, and a question about tag normalisation with a suggested
-  default.
+  default. Where the planner made choices, the description has a
+  **Decisions** section with IDs `D<iid>-P1`, `D<iid>-P2`, ….
 * The milestone description is unchanged.
 * `kubectl -n agents get agenttask <spec task> -o jsonpath='{.status.run}'`
   shows `lastResult: Succeeded`, a summary and a cost.
@@ -148,6 +149,8 @@ profile label is kept. Editing the description again *without* a change
   `run implementer` step.
 * The reviewers run (two more `agent CLI started` lines in the agent log,
   with the same `run` value as the runner's lines).
+* The issue gets a **📌 Decisions** comment with IDs `D<iid>-1`, … (question,
+  choice, why, alternatives), and the runner log has a `post decisions` step.
 * The issue gets a **🧠 Agent notes** comment with the implementer's handoff
   notes; later runs edit it instead of adding a new one.
 * The issue comment ends with a collapsed **Run log** table (read issue …
@@ -196,6 +199,17 @@ comment with the summary is posted on the MR, and the label goes back to
 
 **Expected:** the run builds on your commit (your commit is in the branch
 history below the agent's new commit), and the push is not forced.
+
+3. Comment `/agent revisit D<iid>-1 <a different choice>` with one of the
+   IDs from the decision comment, and right after it, in a second comment,
+   `/agent revisit D<iid>-99 anything`.
+
+**Expected:** a run (two, if a poll falls between the comments). The code
+follows the new choice, a new decision comment has a decision with
+*Supersedes D<iid>-1*, the old decision shows *Superseded by …*, and an MR
+comment says that D<iid>-99 was not found. Revisiting D<iid>-1 again is not
+applied: the agent is told to ignore it, and the report says it is
+superseded.
 
 ### T7 – No triggers from the bot or from chatter
 
