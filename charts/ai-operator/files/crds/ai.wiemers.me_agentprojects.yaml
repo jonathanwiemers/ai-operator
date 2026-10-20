@@ -295,6 +295,17 @@ spec:
                           default.
                         type: string
                     type: object
+                  logLevel:
+                    description: |-
+                      LogLevel of the runner and agent containers. Defaults to the operator's
+                      --agent-log-level (the Helm chart sets it to agent.logLevel, falling
+                      back to logLevel). A running pod picks up a change when it is next
+                      started, e.g. after hibernation.
+                    enum:
+                    - debug
+                    - info
+                    - error
+                    type: string
                   nodeSelector:
                     additionalProperties:
                       type: string

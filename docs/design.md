@@ -183,6 +183,13 @@ Each pod has two containers, see [Security](#security):
 * `/cache` is an optional RWX PVC shared by all agent pods (`GOMODCACHE`,
   `npm_config_cache`, `PIP_CACHE_DIR`, …).
 
+**Logging.** The runner records every run as numbered steps
+(`internal/runner/steps.go`): a start and an end line per step in its log,
+the step in progress in `status.run.currentStep`, and a run log table in the
+GitLab comment of the run. The runner sends its run ID (`<task>#<request>`)
+with every call to the agent server, which logs each call with it. Neither
+side logs prompts, comments, diffs or commit messages.
+
 ## Lifecycle of long-lived issues
 
 ```mermaid
@@ -424,6 +431,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/controller/agenttask_controller.go` | pod / PVC lifecycle, queueing, limits |
 | `internal/controller/resources.go` | pod and PVC templates |
 | `internal/runner/runner.go` | run loop, status reporting, session state, mirror ⇄ workspace sync |
+| `internal/runner/steps.go` | run steps: step logging, current step, GitLab run log |
 | `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
 | `internal/runner/workspace.go` | agent-side checkout (local git only) |
 | `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab |

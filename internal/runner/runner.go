@@ -53,6 +53,8 @@ type Runner struct {
 	// projectStatus is the project's status at the start of the current
 	// run; it carries the project-wide usage limits.
 	projectStatus aiv1.AgentProjectStatus
+	// run records the steps of the current (or last) run.
+	run *runLog
 }
 
 // Outcome is the result of one run.
@@ -126,24 +128,51 @@ func (r *Runner) syncWorkspace(ctx context.Context, url, branch, base string) er
 	if branch != base {
 		branches = append(branches, branch)
 	}
-	if err := r.Mirror.Sync(ctx, url, branches...); err != nil {
-		return err
+	name := "fetch repository"
+	if !r.Mirror.exists() {
+		name = "clone repository"
 	}
+	s := r.step(ctx, name, "branches", branches)
+	if err := r.Mirror.Sync(ctx, url, branches...); err != nil {
+		return s.fail(err)
+	}
+	baseSHA, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+base)
+	result := fmt.Sprintf("%s at %s", base, shortSHA(baseSHA))
+	kv := []any{"baseSHA", baseSHA}
+	if branch != base {
+		if sha, ok := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); ok {
+			result += fmt.Sprintf(", %s at %s", branch, shortSHA(sha))
+			kv = append(kv, "branchSHA", sha)
+		} else {
+			result += fmt.Sprintf(", %s is new", branch)
+		}
+	}
+	s.done(result, kv...)
+
+	s = r.step(ctx, "prepare checkout", "branch", branch)
 	known, err := r.Agent.RemoteRefs(ctx)
 	if err != nil {
-		return err
+		return s.fail(err)
 	}
 	path := filepath.Join(r.Exchange, "to-agent.bundle")
 	refs, written, err := r.Mirror.Bundle(ctx, path, known, branches...)
 	if err != nil {
-		return err
+		return s.fail(err)
 	}
 	req := PrepareRequest{Refs: refs, Branch: branch, Base: base}
 	if written {
 		req.Bundle = path
 		defer os.Remove(path)
 	}
-	return r.Agent.Prepare(ctx, req)
+	if err := r.Agent.Prepare(ctx, req); err != nil {
+		return s.fail(err)
+	}
+	result = "checked out " + branch + ", already up to date"
+	if written {
+		result = "checked out " + branch + ", new commits sent"
+	}
+	s.done(result, "bundle", written)
+	return nil
 }
 
 // publish moves the agent's new commits on branch to the remote. It reports
@@ -208,9 +237,13 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	}
 	r.projectStatus = project.Status
 	request := task.Spec.RunRequest
-	r.Log.Info("starting run", "request", request, "type", task.Spec.Type)
+	r.run = newRunLog(r.Log, task)
+	ctx = withRunID(ctx, r.run.id)
+	log := r.run.log
+	log.Info("starting run", "request", request, "previousRuns", task.Status.Run.RunCount, "deferrals", task.Status.Run.Deferrals)
 	if err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
 		s.ActiveRunRequest = request
+		s.CurrentStep = ""
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
 	}); err != nil {
 		return false, err
@@ -230,6 +263,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	if out == nil {
 		out = &Outcome{}
 	}
+	r.run.finish(err)
 	if lim, ok := AsUsageLimit(err); ok {
 		if task.Status.Run.Deferrals < MaxDeferrals {
 			return false, r.deferRun(ctx, gl, spec, task, out, lim)
@@ -237,16 +271,18 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		err = fmt.Errorf("giving up after %d usage limit deferrals: %w", task.Status.Run.Deferrals, err)
 	}
 	if err != nil {
-		r.Log.Error(err, "run failed", "request", request)
+		log.Error(err, "run failed")
 		out.Result = aiv1.RunResultFailed
 		out.Summary = err.Error()
 		if task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
-			r.reportFailure(ctx, gl, spec, task, err)
+			r.reportFailure(ctx, gl, spec, task, out, err)
 		}
 	}
-	r.Log.Info("run finished", "request", request, "result", out.Result, "costUSD", out.CostUSD)
+	log.Info("run finished", "result", out.Result, "costUSD", out.CostUSD,
+		"durationMs", time.Since(r.run.start).Milliseconds(), "steps", r.run.lines())
 	return true, r.patchRun(ctx, func(s *aiv1.RunStatus) {
 		s.ObservedRunRequest = request
+		s.CurrentStep = ""
 		s.RunCount++
 		s.DeferredUntil = nil
 		s.LimitedEngine = ""
@@ -285,18 +321,20 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 	if !until.After(now) {
 		until = now.Add(spec.Lifecycle.Backoff(deferrals))
 	}
-	r.Log.Info("usage limit reached, deferring run", "engine", lim.Engine, "until", until.UTC(), "deferrals", deferrals, "message", lim.Message)
+	r.log().Info("usage limit reached, deferring run", "engine", lim.Engine, "until", until.UTC(), "deferrals", deferrals,
+		"message", lim.Message, "steps", r.run.lines())
 
 	if deferrals == 1 && task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
 		body := fmt.Sprintf("⏳ The `%s` engine reached a usage limit. The run is paused and retried automatically at %s UTC.",
 			lim.Engine, until.UTC().Format("2006-01-02 15:04"))
 		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); err != nil {
-			r.Log.Error(err, "posting usage limit note")
+			r.log().Error(err, "posting usage limit note")
 		}
 	}
 	return r.patchRun(ctx, func(s *aiv1.RunStatus) {
 		// The request stays pending, but nothing is in progress any more.
 		s.ActiveRunRequest = s.ObservedRunRequest
+		s.CurrentStep = ""
 		s.DeferredUntil = &metav1.Time{Time: until}
 		s.LimitedEngine = lim.Engine
 		s.Deferrals = deferrals
@@ -366,7 +404,7 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 	if _, limited := AsUsageLimit(err); err == nil || limited || (res != nil && res.SessionID != "") {
 		return res, err
 	}
-	r.Log.Info("could not resume session, starting fresh", "session", inv.Resume, "error", err.Error())
+	r.log().Info("could not resume session, starting fresh", "session", inv.Resume, "error", err.Error())
 	inv.Resume = ""
 	inv.Prompt = fullPrompt
 	return run(inv)
@@ -387,17 +425,18 @@ func roleInvocation(role aiv1.RoleSpec, system string, tools []string, schema st
 	}
 }
 
-func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, runErr error) {
+func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome, runErr error) {
 	wf := spec.Workflow
 	body := fmt.Sprintf("🤖 The agent run failed:\n\n```\n%s\n```\n\nComment `%s retry` (or move the issue back to `%s`) to try again.",
 		truncate(runErr.Error(), 3000), wf.CommandPrefix, wf.ReadyLabel)
+	body += r.run.markdown(out.CostUSD)
 	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); err != nil {
-		r.Log.Error(err, "posting failure note")
+		r.log().Error(err, "posting failure note")
 	}
 	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, task.Spec.Issue.IID, gitlab.UpdateIssueOptions{
 		AddLabels: []string{wf.NeedsInputLabel}, RemoveLabels: []string{wf.WorkingLabel},
 	}); err != nil {
-		r.Log.Error(err, "updating labels after failure")
+		r.log().Error(err, "updating labels after failure")
 	}
 }
 

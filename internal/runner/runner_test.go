@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/go-logr/logr/funcr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -110,7 +112,7 @@ func TestApplyPlan(t *testing.T) {
 		{Key: "ui", Title: "Checkout UI", Description: "Build the UI.", Profile: "fast", DependsOn: []string{"api"}},
 		{Key: "api", Title: "Checkout API", Description: "Build the API.", Profile: "bogus", Questions: []string{"REST or gRPC? Default: REST"}},
 	}}
-	created, updated, skipped, err := applyPlan(ctx, gl, "g/p", &m, spec, plan, nil)
+	created, updated, skipped, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, nil)
 	if err != nil || created != 2 || updated != 0 || skipped != 0 {
 		t.Fatalf("created=%d updated=%d skipped=%d err=%v", created, updated, skipped, err)
 	}
@@ -135,7 +137,7 @@ func TestApplyPlan(t *testing.T) {
 	issues, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
 	plan.Issues[0].Description = "Build the UI with dark mode."
 	plan.Issues[1].Description = "Changed API plan."
-	created, updated, skipped, err = applyPlan(ctx, gl, "g/p", &m, spec, plan, issues)
+	created, updated, skipped, err = applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues)
 	if err != nil || created != 0 || updated != 1 || skipped != 1 {
 		t.Fatalf("created=%d updated=%d skipped=%d err=%v", created, updated, skipped, err)
 	}
@@ -255,6 +257,32 @@ func TestImplementEndToEnd(t *testing.T) {
 	if len(engine.calls) != 6 {
 		t.Fatalf("expected 6 engine calls, got %d", len(engine.calls))
 	}
+
+	// Every step of the run is recorded, in order, and none failed.
+	wantSteps := []string{
+		"read issue", "read project", "clone repository", "prepare checkout", "find merge request", "read comments",
+		"run implementer", "commit", "review round 1", "fix round 1", "commit", "review round 2",
+		"push", "open merge request", "comment", "update issue labels",
+	}
+	if got := stepNames(r.run); !slices.Equal(got, wantSteps) {
+		t.Fatalf("steps:\n got %v\nwant %v", got, wantSteps)
+	}
+	for _, s := range r.run.steps {
+		if !s.ended || s.failed {
+			t.Fatalf("step %q: ended=%v failed=%v", s.name, s.ended, s.failed)
+		}
+	}
+	// The issue comment carries the run log up to the comment.
+	notes := gl.IssueNotes[42]
+	if len(notes) != 1 {
+		t.Fatalf("expected one issue note, got %d", len(notes))
+	}
+	for _, want := range []string{"<details><summary>Run log <code>shop-42-add-paypal-button#1</code>: 14 steps",
+		"| 7 | run implementer |", "claude/" + aiv1.DefaultModel, "| 14 | open merge request |"} {
+		if !strings.Contains(notes[0].Body, want) {
+			t.Fatalf("run log misses %q:\n%s", want, notes[0].Body)
+		}
+	}
 	// No profile label: agents.implement (strong model). Reviewers run on the light model.
 	for _, c := range engine.calls {
 		want := aiv1.DefaultModel
@@ -285,6 +313,9 @@ func TestImplementEndToEnd(t *testing.T) {
 	if head := gitCmd(t, tmp, "--git-dir", origin, "rev-parse", "agent/42-add-paypal-button"); run.PushedSHA != head || run.PushedAt == nil || run.CIRound != 0 {
 		t.Fatalf("pushed commit not recorded: %+v (branch head %s)", run, head)
 	}
+	if run.CurrentStep != "" {
+		t.Fatalf("current step must be cleared after the run, got %q", run.CurrentStep)
+	}
 
 	// Meanwhile a human pushes a commit to the agent's branch.
 	gitCmd(t, seed, "fetch", "origin")
@@ -309,6 +340,15 @@ func TestImplementEndToEnd(t *testing.T) {
 	if first.Resume != "sess-impl" || !strings.Contains(first.Prompt, "also log the payment id") || strings.Contains(first.Prompt, "Implement issue #42") {
 		t.Fatalf("follow-up should resume with only the new comment: resume=%q prompt=%q", first.Resume, first.Prompt)
 	}
+	// The mirror exists now: the follow-up fetches instead of cloning, and
+	// comments on the existing merge request.
+	if got := stepNames(r.run); !slices.Contains(got, "fetch repository") || slices.Contains(got, "clone repository") ||
+		slices.Contains(got, "open merge request") {
+		t.Fatalf("unexpected steps of the follow-up run: %v", got)
+	}
+	if mrNotes := gl.MRNotes[1]; len(mrNotes) == 0 || !strings.Contains(mrNotes[len(mrNotes)-1].Body, "Run log <code>shop-42-add-paypal-button#2</code>") {
+		t.Fatalf("the merge request comment should carry the run log: %+v", mrNotes)
+	}
 	// The second run built on the human's commit and pushed on top of it.
 	log = gitCmd(t, tmp, "--git-dir", origin, "log", "--format=%s", "agent/42-add-paypal-button")
 	if lines := strings.Split(log, "\n"); len(lines) < 5 || lines[1] != "Human tweak" {
@@ -320,22 +360,36 @@ func TestImplementEndToEnd(t *testing.T) {
 // same way the two containers of an agent pod are connected.
 func newTestRunner(t *testing.T, tmp string, k8s client.Client, gl gitlab.API, engine Engine, task string) *Runner {
 	t.Helper()
+	exchange := filepath.Join(tmp, "exchange")
+	agent := serveAgent(t, &AgentServer{Agent: &LocalAgent{
+		Workspace: &Workspace{Dir: filepath.Join(tmp, "agent", "repo"), AuthorName: "AI Operator", AuthorEmail: "ai@example.com"},
+		Engines:   map[aiv1.Engine]Engine{aiv1.EngineClaude: engine},
+		Exchange:  exchange,
+	}})
+	return &Runner{
+		K8s: k8s, Namespace: "agents", TaskName: task,
+		NewGitLab: func(string, string) gitlab.API { return gl },
+		Agent:     agent,
+		Mirror:    &Mirror{Dir: filepath.Join(tmp, "runner", "mirror.git"), Token: "secret-token"},
+		StateDir:  filepath.Join(tmp, "runner"),
+		Exchange:  exchange,
+		Log:       logr.Discard(),
+	}
+}
+
+// serveAgent starts server on a unix socket and returns a client for it.
+func serveAgent(t *testing.T, server *AgentServer) *AgentClient {
+	t.Helper()
 	// Unix socket paths are limited to ~100 bytes; t.TempDir() can be longer.
 	sockDir, err := os.MkdirTemp("", "ai")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(sockDir) })
-	exchange := filepath.Join(tmp, "exchange")
-	if err := os.MkdirAll(exchange, 0o755); err != nil {
+	if err := os.MkdirAll(server.Agent.Exchange, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	socket := filepath.Join(sockDir, "agent.sock")
-	server := &AgentServer{Agent: &LocalAgent{
-		Workspace: &Workspace{Dir: filepath.Join(tmp, "agent", "repo"), AuthorName: "AI Operator", AuthorEmail: "ai@example.com"},
-		Engines:   map[aiv1.Engine]Engine{aiv1.EngineClaude: engine},
-		Exchange:  exchange,
-	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -353,15 +407,7 @@ func newTestRunner(t *testing.T, tmp string, k8s client.Client, gl gitlab.API, e
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	return &Runner{
-		K8s: k8s, Namespace: "agents", TaskName: task,
-		NewGitLab: func(string, string) gitlab.API { return gl },
-		Agent:     agent,
-		Mirror:    &Mirror{Dir: filepath.Join(tmp, "runner", "mirror.git"), Token: "secret-token"},
-		StateDir:  filepath.Join(tmp, "runner"),
-		Exchange:  exchange,
-		Log:       logr.Discard(),
-	}
+	return agent
 }
 
 func TestMirrorEnvIsMinimal(t *testing.T) {
@@ -473,5 +519,92 @@ func TestSpecEndToEnd(t *testing.T) {
 	_ = k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: task.Name}, &got)
 	if got.Status.Run.LastResult != aiv1.RunResultSucceeded || !strings.Contains(got.Status.Run.Summary, "2 created") {
 		t.Fatalf("unexpected run status %+v", got.Status.Run)
+	}
+	wantSteps := []string{"read milestone", "read project", "clone repository", "prepare checkout",
+		"list milestone issues", "run spec agent", "apply plan"}
+	if got := stepNames(r.run); !slices.Equal(got, wantSteps) {
+		t.Fatalf("steps:\n got %v\nwant %v", got, wantSteps)
+	}
+}
+
+func stepNames(rl *runLog) []string {
+	var names []string
+	for _, s := range rl.steps {
+		names = append(names, s.name)
+	}
+	return names
+}
+
+func TestRunLogMarkdown(t *testing.T) {
+	rl := &runLog{id: "shop-42#3", log: logr.Discard(), start: time.Now()}
+	r := &Runner{run: rl, Log: logr.Discard(), K8s: fake.NewClientBuilder().Build()}
+	ctx := context.Background()
+	r.step(ctx, "read issue").done("#42 opened")
+	r.step(ctx, "run implementer").done("claude, $0.50, a|b\nc")
+	_ = r.step(ctx, "push").fail(errors.New("rejected"))
+	r.step(ctx, "comment")
+
+	md := rl.markdown(0.5)
+	for _, want := range []string{
+		"<summary>Run log <code>shop-42#3</code>: 4 steps",
+		"$0.50</summary>",
+		"| 1 | read issue |",
+		`claude, $0.50, a\|b c |`,
+		"| 3 | push |",
+		"❌ failed",
+		"| 4 | comment | … | running |",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("markdown misses %q:\n%s", want, md)
+		}
+	}
+	rl.finish(errors.New("boom"))
+	if s := rl.steps[3]; !s.ended || !s.failed {
+		t.Fatalf("finish must close open steps with the run's error: %+v", s)
+	}
+	if lines := rl.lines(); len(lines) != 4 || !strings.HasSuffix(lines[2], " failed") {
+		t.Fatalf("unexpected summary %v", lines)
+	}
+}
+
+func TestAgentServerLogsCallsWithRunID(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	log := funcr.New(func(prefix, args string) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, args)
+	}, funcr.Options{})
+	engine := &planEngine{}
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, "repo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(tmp, "repo", "README.md"), []byte("x\n"), 0o644)
+	agent := serveAgent(t, &AgentServer{Log: log, Agent: &LocalAgent{
+		Workspace: &Workspace{Dir: filepath.Join(tmp, "repo")},
+		Engines:   map[aiv1.Engine]Engine{aiv1.EngineClaude: engine},
+		Exchange:  filepath.Join(tmp, "exchange"),
+	}})
+
+	ctx := withRunID(context.Background(), "shop-42#7")
+	if _, err := agent.Run(ctx, aiv1.EngineClaude, Invocation{Model: "m", Prompt: "SECRET PROMPT TEXT"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agent.Run(ctx, "bogus", Invocation{}); err == nil {
+		t.Fatal("unknown engine must fail")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	all := strings.Join(lines, "\n")
+	for _, want := range []string{`"msg"="agent CLI started"`, `"rpc"="run"`, `"run"="shop-42#7"`, `"promptBytes"=18`,
+		`"session"="sess-spec"`, `"msg"="call failed"`} {
+		if !strings.Contains(all, want) {
+			t.Errorf("agent log misses %s:\n%s", want, all)
+		}
+	}
+	if strings.Contains(all, "SECRET PROMPT") {
+		t.Fatalf("prompts must not be logged:\n%s", all)
 	}
 }

@@ -11,11 +11,15 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -28,7 +32,7 @@ import (
 )
 
 func main() {
-	ctrl.SetLogger(zap.New())
+	ctrl.SetLogger(newLogger())
 	ctx := ctrl.SetupSignalHandler()
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -47,6 +51,22 @@ func main() {
 		}
 	}
 	runRunner(ctx)
+}
+
+// newLogger returns the logger at the level in AI_LOG_LEVEL (debug, info or
+// error; the operator sets it from agents.logLevel). It accepts the same
+// values as the operator's --zap-log-level.
+func newLogger() logr.Logger {
+	opts := zap.Options{}
+	if level := os.Getenv("AI_LOG_LEVEL"); level != "" {
+		fs := flag.NewFlagSet("log", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		opts.BindFlags(fs)
+		if err := fs.Parse([]string{"--zap-log-level=" + level}); err != nil {
+			fmt.Fprintf(os.Stderr, "ignoring invalid AI_LOG_LEVEL %q: %v\n", level, err)
+		}
+	}
+	return zap.New(zap.UseFlagOptions(&opts))
 }
 
 // localAgent builds the agent from the environment of the current container.
@@ -76,7 +96,7 @@ func agentServer(ctx context.Context) {
 	agent := localAgent()
 	socket := mustEnv("AI_AGENT_SOCKET")
 	log.Info("agent server started", "socket", socket, "engines", len(agent.Engines))
-	if err := (&runner.AgentServer{Agent: agent}).Serve(ctx, socket); err != nil {
+	if err := (&runner.AgentServer{Agent: agent, Log: log}).Serve(ctx, socket); err != nil {
 		log.Error(err, "agent server stopped")
 		os.Exit(1)
 	}
@@ -114,7 +134,7 @@ func runRunner(ctx context.Context) {
 		GitLabToken:  token,
 		NewGitLab:    func(url, token string) gitlab.API { return gitlab.New(url, token) },
 		Agent:        agent,
-		Mirror:       &runner.Mirror{Dir: filepath.Join(stateDir, "mirror.git"), Token: token},
+		Mirror:       &runner.Mirror{Dir: filepath.Join(stateDir, "mirror.git"), Token: token, Log: log.WithName("mirror")},
 		StateDir:     stateDir,
 		Exchange:     exchange,
 		PollInterval: 10 * time.Second,

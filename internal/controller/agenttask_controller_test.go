@@ -246,6 +246,51 @@ func TestDefaultAgentImage(t *testing.T) {
 	}
 }
 
+func TestAgentLogLevel(t *testing.T) {
+	logLevel := func(c *corev1.Container) string {
+		for _, e := range c.Env {
+			if e.Name == "AI_LOG_LEVEL" {
+				return e.Value
+			}
+		}
+		return ""
+	}
+	e := newTaskEnv(t, newImplTask("x", 1), newImplTask("y", 1))
+	e.r.DefaultAgentLogLevel = aiv1.LogLevelInfo
+
+	// The operator-wide level reaches both containers.
+	e.reconcile("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") {
+		t.Fatal("expected pod")
+	}
+	for _, name := range []string{RunnerContainer, AgentContainer} {
+		if got := logLevel(container(&pod, name)); got != "info" {
+			t.Fatalf("%s container: AI_LOG_LEVEL=%q, want info", name, got)
+		}
+	}
+
+	// The project overrides it.
+	project := &aiv1.AgentProject{}
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, project); err != nil {
+		t.Fatal(err)
+	}
+	project.Spec.Agents.LogLevel = aiv1.LogLevelDebug
+	project.Spec.MaxConcurrentRuns = 2
+	if err := e.c.Update(e.ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("y")
+	if !e.exists(&pod, "y") {
+		t.Fatal("expected pod")
+	}
+	for _, name := range []string{RunnerContainer, AgentContainer} {
+		if got := logLevel(container(&pod, name)); got != "debug" {
+			t.Fatalf("%s container: AI_LOG_LEVEL=%q, want debug", name, got)
+		}
+	}
+}
+
 func container(pod *corev1.Pod, name string) *corev1.Container {
 	for i := range pod.Spec.Containers {
 		if pod.Spec.Containers[i].Name == name {

@@ -196,6 +196,13 @@ type AgentsSpec struct {
 	// +optional
 	Env []corev1.EnvVar `json:"env,omitempty"`
 
+	// LogLevel of the runner and agent containers. Defaults to the operator's
+	// --agent-log-level (the Helm chart sets it to agent.logLevel, falling
+	// back to logLevel). A running pod picks up a change when it is next
+	// started, e.g. after hibernation.
+	// +optional
+	LogLevel LogLevel `json:"logLevel,omitempty"`
+
 	// NodeSelector for agent pods.
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
@@ -240,6 +247,17 @@ type AgentProfile struct {
 
 	RoleSpec `json:",inline"`
 }
+
+// LogLevel of the agent pods. "info" logs every step of a run and every call
+// between runner and agent; "debug" adds the git commands of the runner.
+// +kubebuilder:validation:Enum=debug;info;error
+type LogLevel string
+
+const (
+	LogLevelDebug LogLevel = "debug"
+	LogLevelInfo  LogLevel = "info"
+	LogLevelError LogLevel = "error"
+)
 
 // Engine is the coding agent CLI that runs a role.
 // +kubebuilder:validation:Enum=claude;cursor

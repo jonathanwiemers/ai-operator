@@ -42,6 +42,9 @@ type AgentTaskReconciler struct {
 	Now    func() time.Time
 	// DefaultAgentImage is used for projects that do not set agents.image.
 	DefaultAgentImage string
+	// DefaultAgentLogLevel is used for projects that do not set
+	// agents.logLevel.
+	DefaultAgentLogLevel aiv1.LogLevel
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;update;patch
@@ -72,6 +75,9 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	spec := project.Spec.WithDefaults()
 	if spec.Agents.Image == "" {
 		spec.Agents.Image = r.DefaultAgentImage
+	}
+	if spec.Agents.LogLevel == "" {
+		spec.Agents.LogLevel = r.DefaultAgentLogLevel
 	}
 	lc := spec.Lifecycle
 

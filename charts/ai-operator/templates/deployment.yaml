@@ -37,6 +37,7 @@ spec:
             - --metrics-bind-address=:{{ .Values.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.healthProbePort }}
             - --zap-log-level={{ .Values.logLevel }}
+            - --agent-log-level={{ .Values.agent.logLevel | default .Values.logLevel }}
             {{- if .Values.leaderElection }}
             - --leader-elect
             {{- end }}
