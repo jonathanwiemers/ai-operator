@@ -184,8 +184,12 @@ kubectl -n agents get agentproject <name> -o jsonpath='{.status.usageLimits}'
 
 Nothing is lost while an issue waits:
 
-- **1 hour** after the last run the pod is stopped. The workspace (checkout,
-  build caches, agent session) is kept.
+- **Right after each run** (1 minute later) the pod is stopped. The workspace
+  (checkout, build caches, agent session) is kept, so the next run starts a
+  new pod on it and picks up where the last one stopped. While the MR
+  pipeline runs, no pod is needed: the operator follows the pipeline itself.
+  After a **failed** run the pod stays for an hour, so you can read its logs
+  (`kubectl logs`, see below).
 - **7 days** after the last run the workspace is deleted as well.
 - Any new `/agent` comment or move to ready brings the task back. After the
   workspace was deleted, the next run clones fresh and reads the full issue

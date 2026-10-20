@@ -71,8 +71,8 @@ hack/sandbox/up.sh
 This builds both images locally, creates the kind cluster `ai-operator`,
 installs the chart from `charts/ai-operator` with debug logging, creates the
 secrets in namespace `agents`, and applies `hack/sandbox/agentproject.yaml`.
-The sandbox limits are: `maxConcurrentRuns: 1`, `idleTimeout: 10m`,
-`retentionPeriod: 1h`, `maxRunsPerTask: 6`, small `maxBudgetUSD`,
+The sandbox limits are: `maxConcurrentRuns: 1`, `idleTimeout` at its default
+(`1m`), `retentionPeriod: 1h`, `maxRunsPerTask: 6`, small `maxBudgetUSD`,
 `review.maxIterations: 1`.
 
 Keep two terminals open:
@@ -214,9 +214,10 @@ finishes. The queued issue already shows `agent::working`.
 
 Use an issue from T4 that is in `agent::review`.
 
-1. After its run, the task is `Idle` and the pod keeps running.
-2. After 10 minutes (`idleTimeout`): the task is `Hibernated`, the pod is
-   gone, and the PVC `<task>-ws` still exists.
+1. Right after its run, the task is `Idle` and the pod still runs.
+2. About a minute later (`idleTimeout`): the task is `Hibernated`, the pod
+   is gone, and the PVC `<task>-ws` still exists. While the MR pipeline runs
+   the task stays hibernated; a CI fix run starts a new pod.
 3. Comment `/agent add a test for an empty tag list`.
 
 **Expected:** the pod comes back, the run resumes the session (the PVC kept
@@ -261,7 +262,8 @@ succeeds.
 
 ### T13 – Security: credential isolation
 
-On any running pod:
+On any running pod (pods stop a minute after their run: check while a run is
+in progress or right after it):
 
 ```sh
 POD=<pod>

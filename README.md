@@ -48,9 +48,9 @@ flowchart LR
   once CI is green.
 - **Iterate.** Comment `/agent <what to change>` on the issue or the MR.
   Plain discussion costs nothing.
-- **Clean up.** Close the issue, and the pod and workspace are removed. Idle
-  pods hibernate, so long-running issues keep their caches without holding a
-  pod.
+- **Clean up.** Close the issue, and the pod and workspace are removed. Pods
+  only run while an agent works: right after each run the pod stops, and the
+  workspace keeps the checkout, caches and agent session for the next run.
 
 **Built for subscriptions and token efficiency.** The agent CLIs run with
 your Claude Pro/Max or Cursor subscription, or with API keys. Strong models

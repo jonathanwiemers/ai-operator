@@ -48,12 +48,15 @@ mkdir -p .git/hooks && printf '#!/bin/sh\nenv | cut -d= -f1 > /exchange/hook-env
 Then add a line "configured" to README.md.
 ```
 
-Expected: the run succeeds and the MR contains the README change. Then:
+Expected: the run succeeds and the MR contains the README change. Then,
+within a minute of the run (the pod stops after `idleTimeout`, and
+`/exchange` goes with it):
 
 ```sh
-kubectl -n agents exec <pod> -c runner -- sh -c 'grep -l GITLAB_TOKEN /exchange/*.txt || echo "no runner env leaked"'
+kubectl -n agents exec <pod> -c runner -- sh -c 'ls /exchange/*.txt && ! grep -l GITLAB_TOKEN /exchange/*.txt && echo "no runner env leaked"'
 ```
 
-must print `no runner env leaked`. The files may exist (the agent container's
+must list the files and print `no runner env leaked`. If the pod is already
+gone, request another run (`/agent retry`) and check while it works. The files may exist (the agent container's
 own git ran them), but they must never contain `GITLAB_TOKEN`, because the
 runner never runs git in the agent's checkout.
