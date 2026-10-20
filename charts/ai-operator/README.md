@@ -25,7 +25,7 @@ The CRDs are part of the templates, so they are upgraded too.
 | `image.repository` | `ghcr.io/jonathanwiemers/ai-operator` | operator image |
 | `image.tag` | chart `appVersion` | |
 | `image.pullPolicy` | `IfNotPresent` | |
-| `imagePullSecrets` | `[]` | for private registries |
+| `imagePullSecrets` | `[]` | for private registries; set on the operator pod and on the agent service account in each of `agent.namespaces` (the Secret must exist there) |
 | `replicaCount` | `1` | |
 | `leaderElection` | `true` | |
 | `logLevel` | `info` | `debug`, `info`, `error` |

@@ -16,6 +16,10 @@ metadata:
   namespace: {{ $ns }}
   labels:
     {{- include "ai-operator.labels" $ | nindent 4 }}
+{{- with $.Values.imagePullSecrets }}
+imagePullSecrets:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

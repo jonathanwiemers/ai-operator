@@ -35,7 +35,9 @@ deploys the operator and agent images built from the same commit.
 * GitHub Packages created by Actions are **private** by default. Either make
   the `ai-operator`, `ai-operator-agent` and `charts/ai-operator` packages
   public (*Package settings → Change visibility*), or give the cluster an
-  image pull secret (`imagePullSecrets`) and `helm registry login ghcr.io`.
+  image pull secret (`imagePullSecrets`, a classic PAT with `read:packages`;
+  the Secret must exist in the operator's namespace and in every agent
+  namespace) and `helm registry login ghcr.io`.
 * The workflow uses the built-in `GITHUB_TOKEN` (permissions `contents: write`,
   `packages: write`); no extra secrets are needed.
 
