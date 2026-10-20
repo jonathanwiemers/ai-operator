@@ -82,6 +82,11 @@ spec:
               operator: the project controller creates tasks and bumps RunRequest
               whenever GitLab asks for (more) work.
             properties:
+              autopilot:
+                description: |-
+                  Autopilot is set for tasks of autopilot milestones: the agents must
+                  not ask questions but take their defaults and record them.
+                type: boolean
               issue:
                 description: Issue implemented by this task (Implement tasks only).
                 properties:
@@ -178,6 +183,105 @@ spec:
               are written by the operator, Run is written by the runner inside the pod.
               Both sides use merge patches so they never overwrite each other.
             properties:
+              autopilot:
+                description: |-
+                  Autopilot is the operator's queue of an autopilot milestone (spec
+                  tasks).
+                properties:
+                  items:
+                    description: 'Items in queue order: dependencies first, ties in
+                      plan order.'
+                    items:
+                      description: AutopilotItem is one issue in the queue of an autopilot
+                        milestone.
+                      properties:
+                        decisions:
+                          description: Decisions recorded on the issue, collected
+                            when it was merged.
+                          items:
+                            description: DecisionRef points to a decision recorded
+                              on an issue.
+                            properties:
+                              id:
+                                type: string
+                              superseded:
+                                type: boolean
+                              title:
+                                type: string
+                              url:
+                                type: string
+                            required:
+                            - id
+                            type: object
+                          type: array
+                        iid:
+                          format: int64
+                          type: integer
+                        mergeRequestIID:
+                          description: MergeRequestIID and MergeRequestURL of the
+                            issue's merge request.
+                          format: int64
+                          type: integer
+                        mergeRequestURL:
+                          type: string
+                        mergedSHA:
+                          description: MergedSHA is the commit the merge request was
+                            merged as.
+                          type: string
+                        rebasedFrom:
+                          description: |-
+                            RebasedFrom is the head the operator asked GitLab to rebase; set
+                            while the rebase is in progress.
+                          type: string
+                        rebases:
+                          description: Rebases counts the rebases of this item; only
+                            one is attempted.
+                          format: int32
+                          type: integer
+                        state:
+                          description: AutopilotItemState is the state of one issue
+                            in the queue.
+                          enum:
+                          - Pending
+                          - Active
+                          - Merged
+                          - Skipped
+                          type: string
+                      required:
+                      - iid
+                      - state
+                      type: object
+                    type: array
+                  lastCommandNoteID:
+                    description: |-
+                      LastCommandNoteID is the newest command on the tracking issue the
+                      operator has handled.
+                    format: int64
+                    type: integer
+                  pausedReason:
+                    description: Reason why the milestone is paused.
+                    type: string
+                  phase:
+                    description: AutopilotPhase is the state of an autopilot milestone.
+                    enum:
+                    - Running
+                    - Paused
+                    - Done
+                    - "Off"
+                    type: string
+                  trackingHash:
+                    description: |-
+                      TrackingHash is the hash of the tracking issue's last rendered
+                      description, so it is only edited when it changes.
+                    type: string
+                  trackingIssueIID:
+                    description: TrackingIssueIID is the bot's tracking issue of the
+                      milestone.
+                    format: int64
+                    type: integer
+                required:
+                - phase
+                type: object
               ci:
                 description: CI is the operator's view of the pipeline of the agent's
                   last push.
@@ -287,6 +391,32 @@ spec:
                 - Archived
                 - Blocked
                 type: string
+              plan:
+                description: Plan is the spec agent's last plan, in plan order (spec
+                  tasks).
+                items:
+                  description: PlannedIssue is one issue of a milestone plan.
+                  properties:
+                    dependsOn:
+                      description: DependsOn are the IIDs of planned issues that must
+                        be merged first.
+                      items:
+                        format: int64
+                        type: integer
+                      type: array
+                    iid:
+                      format: int64
+                      type: integer
+                    key:
+                      description: Key is the planner's stable identifier of the issue.
+                      type: string
+                    title:
+                      type: string
+                  required:
+                  - iid
+                  - key
+                  type: object
+                type: array
               podName:
                 type: string
               run:

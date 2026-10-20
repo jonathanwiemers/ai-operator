@@ -799,6 +799,16 @@ spec:
               milestones:
                 description: Milestones selects which milestones get a spec agent.
                 properties:
+                  autopilotMarker:
+                    default: /agent autopilot
+                    description: |-
+                      AutopilotMarker in a milestone description plans the milestone (like
+                      SpecMarker) and runs it end to end: the agents take their defaults
+                      instead of asking, the issues are worked through one at a time in
+                      dependency order, and each merge request is merged once its pipeline
+                      is green and its review is clean. The bot needs permission to merge
+                      into the default branch. Removing the marker stops it.
+                    type: string
                   specMarker:
                     default: /agent spec
                     description: |-

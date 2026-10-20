@@ -108,6 +108,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	inv.Resume = st.session("implement", role.Engine)
 	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false, prior)
 	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true, handoff{})
+	if task.Spec.Autopilot {
+		fullPrompt = autopilotImplementNote + "\n\n" + fullPrompt
+		inv.Prompt = autopilotImplementNote + "\n\n" + inv.Prompt
+	}
 	var notices []string
 	if len(revisits) > 0 {
 		revisitPrompt := buildRevisitPrompt(revisits)

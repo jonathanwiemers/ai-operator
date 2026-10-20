@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 )
 
 // Decisions are the choices an agent made that a reviewer could reasonably
@@ -35,7 +36,7 @@ const (
 )
 
 var (
-	decisionMarker = regexp.MustCompile(`<!-- ai-operator:decision=(D(\d+)-(P?)(\d+))( superseded)? -->`)
+	decisionMarker = marker.Decision
 	revisitCommand = regexp.MustCompile(`(?s)^\s*(\S+)\s+revisit\s+(D\d+-P?\d+)\b[\s:]*(.*)$`)
 )
 

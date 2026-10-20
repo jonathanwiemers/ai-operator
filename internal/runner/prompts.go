@@ -106,6 +106,19 @@ are read-only.
   exploitable with some preconditions; minor = defense in depth; nit = trivial.
 - An empty list is a fine answer.`
 
+// The autopilot notes go into the user prompt, so the system prompts stay
+// the same (and cached) for normal and autopilot milestones.
+const (
+	autopilotSpecNote = `This milestone runs on autopilot: nobody answers questions before the issues are
+implemented and merged. Leave questions empty. Take the default you would propose for
+every open point and record it in the issue's decisions.`
+
+	autopilotImplementNote = `This issue is part of an autopilot milestone: nobody answers questions, and the merge
+request is merged automatically once CI is green and the review is clean. Never return
+status "needs_input" and do not ask questions. Take the default you would propose for
+every open point and record it in decisions.`
+)
+
 // JSON schemas for the structured answers.
 
 const specSchemaTemplate = `{

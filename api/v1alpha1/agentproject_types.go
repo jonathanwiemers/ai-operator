@@ -78,6 +78,16 @@ type MilestoneSelector struct {
 	// +kubebuilder:default="/agent spec"
 	// +optional
 	SpecMarker *string `json:"specMarker,omitempty"`
+
+	// AutopilotMarker in a milestone description plans the milestone (like
+	// SpecMarker) and runs it end to end: the agents take their defaults
+	// instead of asking, the issues are worked through one at a time in
+	// dependency order, and each merge request is merged once its pipeline
+	// is green and its review is clean. The bot needs permission to merge
+	// into the default branch. Removing the marker stops it.
+	// +kubebuilder:default="/agent autopilot"
+	// +optional
+	AutopilotMarker *string `json:"autopilotMarker,omitempty"`
 }
 
 // WorkflowSpec defines the GitLab labels used as the agent state machine. Use

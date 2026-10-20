@@ -31,6 +31,9 @@ type API interface {
 	GetMergeRequest(ctx context.Context, project string, iid int64) (*MergeRequest, error)
 	FindOpenMergeRequest(ctx context.Context, project, sourceBranch string) (*MergeRequest, error)
 	CreateMergeRequest(ctx context.Context, project string, opts CreateMergeRequestOptions) (*MergeRequest, error)
+	UpdateMergeRequest(ctx context.Context, project string, iid int64, opts UpdateMergeRequestOptions) (*MergeRequest, error)
+	MergeMergeRequest(ctx context.Context, project string, iid int64, opts MergeOptions) (*MergeRequest, error)
+	RebaseMergeRequest(ctx context.Context, project string, iid int64) error
 	ListMergeRequestNotes(ctx context.Context, project string, iid int64) ([]Note, error)
 	CreateMergeRequestNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
 	ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error)
@@ -139,6 +142,16 @@ type MergeRequest struct {
 	Milestone    *Milestone `json:"milestone"`
 	WebURL       string     `json:"web_url"`
 	UpdatedAt    *time.Time `json:"updated_at"`
+	// SHA is the head commit of the source branch.
+	SHA   string `json:"sha"`
+	Draft bool   `json:"draft"`
+	// DetailedMergeStatus is GitLab's view of whether the MR can be merged:
+	// mergeable, need_rebase, conflict, draft_status, ci_still_running, …
+	DetailedMergeStatus string `json:"detailed_merge_status"`
+	MergeCommitSHA      string `json:"merge_commit_sha"`
+	SquashCommitSHA     string `json:"squash_commit_sha"`
+	RebaseInProgress    bool   `json:"rebase_in_progress"`
+	MergeError          string `json:"merge_error"`
 }
 
 // ListIssuesOptions filters issues.
@@ -181,6 +194,20 @@ type CreateMergeRequestOptions struct {
 	MilestoneID        int64  `json:"milestone_id,omitempty"`
 }
 
+// UpdateMergeRequestOptions updates a merge request. Empty fields are left
+// untouched.
+type UpdateMergeRequestOptions struct {
+	Title string `json:"title,omitempty"`
+}
+
+// MergeOptions merges a merge request.
+type MergeOptions struct {
+	// SHA must match the head of the source branch, so only the checked
+	// commit is merged.
+	SHA                      string `json:"sha,omitempty"`
+	ShouldRemoveSourceBranch bool   `json:"should_remove_source_branch,omitempty"`
+}
+
 // Client implements API against the GitLab REST API v4.
 type Client struct {
 	baseURL string
@@ -217,6 +244,14 @@ func IsNotFound(err error) bool {
 		return e.StatusCode == http.StatusNotFound
 	}
 	return false
+}
+
+// StatusCode returns the HTTP status of a GitLab error, 0 for other errors.
+func StatusCode(err error) int {
+	if e, ok := err.(*Error); ok {
+		return e.StatusCode
+	}
+	return 0
 }
 
 func projectPath(project string) string {
@@ -386,8 +421,26 @@ func (c *Client) UpdateIssueNote(ctx context.Context, project string, iid, noteI
 
 func (c *Client) GetMergeRequest(ctx context.Context, project string, iid int64) (*MergeRequest, error) {
 	var mr MergeRequest
-	_, err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/merge_requests/%d", projectPath(project), iid), nil, nil, &mr)
+	q := url.Values{"include_rebase_in_progress": {"true"}}
+	_, err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/merge_requests/%d", projectPath(project), iid), q, nil, &mr)
 	return &mr, err
+}
+
+func (c *Client) UpdateMergeRequest(ctx context.Context, project string, iid int64, opts UpdateMergeRequestOptions) (*MergeRequest, error) {
+	var mr MergeRequest
+	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/merge_requests/%d", projectPath(project), iid), nil, opts, &mr)
+	return &mr, err
+}
+
+func (c *Client) MergeMergeRequest(ctx context.Context, project string, iid int64, opts MergeOptions) (*MergeRequest, error) {
+	var mr MergeRequest
+	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/merge_requests/%d/merge", projectPath(project), iid), nil, opts, &mr)
+	return &mr, err
+}
+
+func (c *Client) RebaseMergeRequest(ctx context.Context, project string, iid int64) error {
+	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/merge_requests/%d/rebase", projectPath(project), iid), nil, nil, nil)
+	return err
 }
 
 func (c *Client) FindOpenMergeRequest(ctx context.Context, project, sourceBranch string) (*MergeRequest, error) {
