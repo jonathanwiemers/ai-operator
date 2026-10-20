@@ -39,6 +39,7 @@ func newAutopilotEnv(t *testing.T) *projectEnv {
 		issue.WebURL = fmt.Sprintf("https://gitlab.example/group/app/-/issues/%d", is.iid)
 	}
 	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ObservedRunRequest = st.Spec.RunRequest // planned
 		s.Plan = []aiv1.PlannedIssue{{Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}}, {Key: "api", IID: 1, Title: "API"}}
 	})
 	return e
@@ -338,5 +339,152 @@ func TestAutopilotOffWhenTheMilestoneIsNoLongerPlanned(t *testing.T) {
 	}
 	if e.gl.Issues[tracking].State != "closed" || !strings.Contains(e.gl.IssueNotes[tracking][len(e.gl.IssueNotes[tracking])-1].Body, "Autopilot is off") {
 		t.Fatalf("the tracking issue must be closed with a note: %+v", e.gl.Issues[tracking])
+	}
+}
+
+func TestAutopilotRebaseKeepsTheReviewOnlyForTheSameChange(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "need_rebase"
+	e.reconcile() // rebase requested
+	// Someone pushes before the operator sees the rebased head.
+	e.gl.MRDiffs = map[int64][]gitlab.Diff{1: {{OldPath: "app.go", NewPath: "app.go", Diff: "@@ -1 +1 @@\n-old\n+change of !1\n+and more\n"}}}
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "not the one that was reviewed") || ap.Items[0].RebasedFrom != "" {
+		t.Fatalf("a changed diff after the rebase must pause: %+v", ap)
+	}
+	if run := e.tasks()[name].Status.Run; run.ReviewedSHA != "sha-api" || run.PushedSHA != "sha-api" || len(e.gl.Merged) != 0 {
+		t.Fatalf("the new head must not count as reviewed: %+v, merged %v", run, e.gl.Merged)
+	}
+}
+
+func TestAutopilotFailedRebasePauses(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "need_rebase"
+	e.reconcile()
+	// GitLab did not rebase: same head, still behind.
+	e.gl.MRs[1].SHA, e.gl.MRs[1].DetailedMergeStatus = "sha-api", "need_rebase"
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "did not go through") {
+		t.Fatalf("a rebase that changed nothing must pause: %+v", ap)
+	}
+}
+
+func TestAutopilotRecreatesADeletedTrackingIssue(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	old := e.autopilot().TrackingIssueIID
+	delete(e.gl.Issues, old)
+	e.reconcile()
+	if now := e.autopilot().TrackingIssueIID; now == old || e.gl.Issues[now] == nil {
+		t.Fatalf("a new tracking issue should be created: old #%d, now #%d", old, now)
+	}
+}
+
+func TestAutopilotCountsIssuesFinishedByHand(t *testing.T) {
+	e := newAutopilotEnv(t)
+	// #1 was merged in the normal flow before the milestone went on autopilot.
+	e.gl.Issues[1].State = "closed"
+	mr, _ := e.gl.CreateMergeRequest(e.ctx, "g/p", gitlab.CreateMergeRequestOptions{SourceBranch: "agent/1", TargetBranch: "main"})
+	e.gl.MRs[mr.IID].State, e.gl.MRs[mr.IID].MergeCommitSHA = "merged", "by-hand"
+	e.gl.ClosedBy = map[int64][]int64{1: {mr.IID}}
+	e.reconcile()
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Items[0].State != aiv1.AutopilotItemMerged || ap.Items[0].MergedSHA != "by-hand" {
+		t.Fatalf("#1 should count as merged: %+v", ap.Items)
+	}
+	if ap.Items[1].State != aiv1.AutopilotItemActive || !e.gl.Issues[2].HasLabel("agent::ready") {
+		t.Fatalf("#2 should start once #1 counts as merged: %+v %v", ap.Items, e.gl.Labels(2))
+	}
+}
+
+func TestAutopilotSkippedThenMergedByHand(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	tracking := e.autopilot().TrackingIssueIID
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddNote(tracking, human, "/agent: skip #1")
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "depend on skipped issues") {
+		t.Fatalf("#2 must wait for the skipped #1: %+v", ap)
+	}
+	// The human finishes #1 and resumes.
+	e.gl.Issues[1].State = "closed"
+	e.gl.SetLabels(1, "ai-generated", "agent::done")
+	e.gl.AddNote(tracking, human, "/agent resume")
+	e.reconcile()
+	e.reconcile()
+	if ap := e.autopilot(); ap.Items[0].State != aiv1.AutopilotItemMerged || ap.Items[1].State != aiv1.AutopilotItemActive {
+		t.Fatalf("#1 done by hand should unblock #2: %+v", ap)
+	}
+}
+
+func TestAutopilotHandsAnUncheckedHeadBackToCI(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.CI = nil })
+	e.reconcile()
+	if !e.gl.Issues[1].HasLabel("agent::working") || len(e.gl.Merged) != 0 {
+		t.Fatalf("a head CI never saw must go back to working: %v", e.gl.Labels(1))
+	}
+}
+
+func TestAutopilotDraftAgainPauses(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].DetailedMergeStatus = "draft_status"
+	e.reconcile() // marked ready
+	e.gl.MRs[1].Title, e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = "Draft: issue", true, "draft_status"
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "marked draft again") || len(e.gl.Merged) != 0 {
+		t.Fatalf("a draft set again by a human must pause: %+v", ap)
+	}
+}
+
+func TestAutopilotOffAfterDoneSaysNothing(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.AddNote(tracking, gitlab.User{ID: 1, Username: "jonathan"}, "/agent skip #1")
+	e.gl.AddNote(tracking, gitlab.User{ID: 1, Username: "jonathan"}, "/agent skip #2")
+	e.reconcile()
+	if e.autopilot().Phase != aiv1.AutopilotDone {
+		t.Fatalf("expected done: %+v", e.autopilot())
+	}
+	e.gl.Milestones[0].State = "closed"
+	e.gl.Milestones[0].Description = "Build a new checkout."
+	e.reconcile()
+	for _, n := range e.gl.IssueNotes[tracking] {
+		if strings.Contains(n.Body, "Autopilot is off") {
+			t.Fatalf("a finished autopilot needs no off note: %q", n.Body)
+		}
+	}
+	if _, ok := e.tasks()[specTaskName]; ok {
+		t.Fatal("the spec task should be deleted")
+	}
+}
+
+func TestAutopilotOnlyForPlannedIssues(t *testing.T) {
+	e := newAutopilotEnv(t)
+	extra := e.gl.AddIssue(5, "By hand", "agent::ready")
+	extra.Milestone = &e.gl.Milestones[0]
+	e.reconcile()
+	e.reconcile()
+	if task, ok := e.tasks()["shop-5-by-hand"]; !ok || task.Spec.Autopilot {
+		t.Fatalf("an issue outside the plan follows the normal flow: %+v", task.Spec)
+	}
+	if task := e.tasks()["shop-1-api"]; !task.Spec.Autopilot {
+		t.Fatalf("a planned issue runs on autopilot: %+v", task.Spec)
 	}
 }

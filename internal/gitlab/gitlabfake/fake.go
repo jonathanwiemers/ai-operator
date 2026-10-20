@@ -28,6 +28,7 @@ type Fake struct {
 	Traces    map[int64]string
 	Retried   []int64
 	nextID    int64
+	lastIID   int64
 	Clock     time.Time
 	// IssueUpdates records the options of every UpdateIssue call, oldest first.
 	IssueUpdates []gitlab.UpdateIssueOptions
@@ -37,6 +38,11 @@ type Fake struct {
 	Merged, Rebased []int64
 	// RebaseConflict makes rebases end in a conflict.
 	RebaseConflict bool
+	// MRDiffs are the diffs of an MR; without an entry an MR has one file
+	// whose change is the same before and after a rebase.
+	MRDiffs map[int64][]gitlab.Diff
+	// ClosedBy lists the MRs that close an issue.
+	ClosedBy map[int64][]int64
 }
 
 var _ gitlab.API = (*Fake)(nil)
@@ -169,12 +175,14 @@ func (f *Fake) GetIssue(_ context.Context, _ string, iid int64) (*gitlab.Issue, 
 func (f *Fake) CreateIssue(_ context.Context, _ string, opts gitlab.CreateIssueOptions) (*gitlab.Issue, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var iid int64 = 1
+	// Like GitLab, IIDs of deleted issues are not used again.
+	iid := f.lastIID + 1
 	for k := range f.Issues {
 		if k >= iid {
 			iid = k + 1
 		}
 	}
+	f.lastIID = iid
 	is := &gitlab.Issue{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "opened", UpdatedAt: f.tick()}
 	if opts.Labels != "" {
 		is.Labels = strings.Split(opts.Labels, ",")
@@ -377,6 +385,30 @@ func (f *Fake) RebaseMergeRequest(_ context.Context, _ string, iid int64) error 
 	}
 	mr.UpdatedAt = f.tick()
 	return nil
+}
+
+func (f *Fake) ListMergeRequestDiffs(_ context.Context, _ string, iid int64) ([]gitlab.Diff, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.MRs[iid]; !ok {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "diffs"}
+	}
+	if ds, ok := f.MRDiffs[iid]; ok {
+		return slices.Clone(ds), nil
+	}
+	return []gitlab.Diff{{OldPath: "app.go", NewPath: "app.go", Diff: fmt.Sprintf("@@ -1 +1 @@\n-old\n+change of !%d\n", iid)}}, nil
+}
+
+func (f *Fake) ListMergeRequestsClosingIssue(_ context.Context, _ string, iid int64) ([]gitlab.MergeRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []gitlab.MergeRequest
+	for _, mr := range f.ClosedBy[iid] {
+		if m, ok := f.MRs[mr]; ok {
+			out = append(out, *m)
+		}
+	}
+	return out, nil
 }
 
 func (f *Fake) ListMergeRequestNotes(_ context.Context, _ string, iid int64) ([]gitlab.Note, error) {

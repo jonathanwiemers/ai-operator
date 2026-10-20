@@ -34,6 +34,8 @@ type API interface {
 	UpdateMergeRequest(ctx context.Context, project string, iid int64, opts UpdateMergeRequestOptions) (*MergeRequest, error)
 	MergeMergeRequest(ctx context.Context, project string, iid int64, opts MergeOptions) (*MergeRequest, error)
 	RebaseMergeRequest(ctx context.Context, project string, iid int64) error
+	ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error)
+	ListMergeRequestsClosingIssue(ctx context.Context, project string, iid int64) ([]MergeRequest, error)
 	ListMergeRequestNotes(ctx context.Context, project string, iid int64) ([]Note, error)
 	CreateMergeRequestNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
 	ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error)
@@ -152,6 +154,19 @@ type MergeRequest struct {
 	SquashCommitSHA     string `json:"squash_commit_sha"`
 	RebaseInProgress    bool   `json:"rebase_in_progress"`
 	MergeError          string `json:"merge_error"`
+}
+
+// Diff is the change of one file in a merge request.
+type Diff struct {
+	OldPath     string `json:"old_path"`
+	NewPath     string `json:"new_path"`
+	Diff        string `json:"diff"`
+	NewFile     bool   `json:"new_file"`
+	RenamedFile bool   `json:"renamed_file"`
+	DeletedFile bool   `json:"deleted_file"`
+	// Collapsed and TooLarge diffs come without their content.
+	Collapsed bool `json:"collapsed"`
+	TooLarge  bool `json:"too_large"`
 }
 
 // ListIssuesOptions filters issues.
@@ -441,6 +456,15 @@ func (c *Client) MergeMergeRequest(ctx context.Context, project string, iid int6
 func (c *Client) RebaseMergeRequest(ctx context.Context, project string, iid int64) error {
 	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/merge_requests/%d/rebase", projectPath(project), iid), nil, nil, nil)
 	return err
+}
+
+func (c *Client) ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error) {
+	return list[Diff](ctx, c, fmt.Sprintf("%s/merge_requests/%d/diffs", projectPath(project), iid), nil)
+}
+
+// ListMergeRequestsClosingIssue lists the MRs that close an issue when merged.
+func (c *Client) ListMergeRequestsClosingIssue(ctx context.Context, project string, iid int64) ([]MergeRequest, error) {
+	return list[MergeRequest](ctx, c, fmt.Sprintf("%s/issues/%d/closed_by", projectPath(project), iid), nil)
 }
 
 func (c *Client) FindOpenMergeRequest(ctx context.Context, project, sourceBranch string) (*MergeRequest, error) {

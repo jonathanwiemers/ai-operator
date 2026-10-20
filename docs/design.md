@@ -362,21 +362,43 @@ stateDiagram-v2
   `spec.autopilot`; the runner then adds a short paragraph to the *user*
   prompt (the system prompts stay the same and cached): never ask, take the
   default, record it as a decision. CI fix runs are reviewed too, since no
-  human reviews before the merge.
+  human reviews before the merge. Only issues in the queue carry it; others
+  in the milestone follow the normal flow.
+* **Re-plans.** The runner records the plan after applying it, matching
+  items like `applyPlan` does (existing IID first, then key). While the spec
+  task has a pending run, no new issue is started.
 * **Merge gate.** Issue in review (the CI loop finished), last run
   succeeded, `blockingFindings == 0`, `reviewErrors == 0`,
   `reviewedSHA == pushedSHA`, MR open with head `pushedSHA`, GitLab's
   `detailed_merge_status` mergeable. The draft is marked ready by its title,
   and `PUT …/merge` passes the checked `sha`.
-* **Rebase.** On `need_rebase` the operator asks GitLab to rebase once. The
+* **Rebase.** On `need_rebase` the operator hashes the MR's change (files,
+  added and removed lines, no positions) and asks GitLab to rebase once. The
   rebased head is handed to the CI loop like a push (`pushedSHA`, reset CI,
-  back to working); the review still holds because the agent's change did not
-  change. Conflicts pause: resolving them is not automated yet.
+  back to working) only if its change hashes the same; then the review still
+  holds. A commit pushed meanwhile, or a rebase that had to change lines,
+  pauses. Conflicts and failed rebases pause: resolving them is not
+  automated yet.
+* **No silent waits.** An issue in review whose pushed commit the CI loop
+  never saw (it only follows issues in working) is handed back to working.
+  An active issue that lost its workflow label, an MR marked draft again or
+  retargeted, and a configuration without reviewers pause.
+* **Finished by hand.** A closed issue counts as merged if GitLab lists a
+  merged MR that closes it (`closed_by`) or it carries the done label, so
+  issues merged before autopilot started, after a `skip`, or by hand do not
+  block their dependants.
+* **Failure safety.** The autopilot status is saved after every poll, also
+  when a step failed, since GitLab side effects (a created tracking issue, a
+  requested rebase) already happened. Comments are posted before the state
+  that suppresses them is set, so a failed comment is retried. One failing
+  milestone does not stop the others or the cleanup.
 * **Pause.** Anything that needs a human pauses the queue with a comment on
-  the tracking issue, once per reason. `/agent resume`, `pause` and
+  the tracking issue, once per reason. Before pausing because of the active
+  issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause` and
   `skip #N` on the tracking issue are handled by the operator.
 * **Tracking issue.** Created with the first plan, edited in place (only when
-  its rendered text changes), closed when done or switched off. It carries a
+  its rendered text changes), closed when done or switched off, created again
+  if deleted. It carries a
   hidden marker (`internal/marker`) so the spec agent does not see it as an
   existing issue.
 * **Off.** Removing the marker sets `phase: Off` and closes the tracking
