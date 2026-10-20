@@ -62,7 +62,14 @@ How to work:
   real ones; if a finding is wrong, say why in the summary.
 
 Your summary is posted on the merge request: what changed and why, how you
-tested it, and anything the reviewer should look at closely.`
+tested it, and anything the reviewer should look at closely.
+
+Your handoff notes are kept on the issue for whoever continues this work
+later, possibly without this conversation. Write them for that reader: the
+state of the work, decisions and why, what is left or open, and pitfalls
+(commands, flaky tests, surprises in the code). Replace earlier notes rather
+than appending to them. Do not repeat the issue or the summary; at most a
+few hundred words.`
 
 const bugbotSystemPrompt = `You are a code reviewer looking for correctness bugs in a diff produced by
 an AI agent. You are read-only.
@@ -120,12 +127,13 @@ const specSchemaTemplate = `{
 const implementSchema = `{
   "type": "object",
   "additionalProperties": false,
-  "required": ["status", "summary", "commitMessage", "questions"],
+  "required": ["status", "summary", "commitMessage", "questions", "handoff"],
   "properties": {
     "status": {"type": "string", "enum": ["done", "needs_input"]},
     "summary": {"type": "string", "description": "Markdown summary for the merge request."},
     "commitMessage": {"type": "string", "description": "Imperative subject line (max 72 chars), blank line, body."},
-    "questions": {"type": "array", "items": {"type": "string"}}
+    "questions": {"type": "array", "items": {"type": "string"}},
+    "handoff": {"type": "string", "description": "Markdown handoff notes for a later run that does not have this conversation."}
   }
 }`
 
@@ -185,6 +193,7 @@ type ImplementAnswer struct {
 	Summary       string   `json:"summary"`
 	CommitMessage string   `json:"commitMessage"`
 	Questions     []string `json:"questions"`
+	Handoff       string   `json:"handoff"`
 }
 
 // ReviewAnswer is a reviewer's answer.
@@ -285,7 +294,10 @@ func thread(title string, notes []gitlab.Note, botID int64) string {
 	return "## " + title + "\n\n" + b.String()
 }
 
-func buildImplementPrompt(issue *gitlab.Issue, milestone *gitlab.Milestone, issueNotes, mrNotes []gitlab.Note, botID int64, resumed bool) string {
+// buildImplementPrompt builds the implementer's prompt. A resumed session
+// only gets the new comments; a fresh one gets the issue, the milestone, the
+// whole thread and the handoff notes of earlier runs.
+func buildImplementPrompt(issue *gitlab.Issue, milestone *gitlab.Milestone, issueNotes, mrNotes []gitlab.Note, botID int64, resumed bool, notes handoff) string {
 	var b strings.Builder
 	if resumed {
 		if len(issueNotes) == 0 && len(mrNotes) == 0 {
@@ -303,6 +315,18 @@ func buildImplementPrompt(issue *gitlab.Issue, milestone *gitlab.Milestone, issu
 	}
 	b.WriteString(thread("Comments on the issue", issueNotes, botID))
 	b.WriteString(thread("Comments on the merge request", mrNotes, botID))
+	if notes.Text != "" {
+		b.WriteString("## Your notes from earlier runs\n\n")
+		b.WriteString("You worked on this issue before, in a session that is no longer available. Work you pushed is on the branch " +
+			"(see `git log` and the diff against the default branch). These are the notes you left; check them against the code " +
+			"before relying on them.")
+		if notes.AfterNote != 0 {
+			fmt.Fprintf(&b, " You wrote them after reading the comments up to note %d: comments with a higher note number are newer and take precedence.", notes.AfterNote)
+		}
+		b.WriteString("\n\n")
+		b.WriteString(notes.Text)
+		b.WriteString("\n")
+	}
 	return b.String()
 }
 

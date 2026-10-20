@@ -153,7 +153,8 @@ const (
 	// TaskPhaseWaiting: a run is requested but deferred because an agent
 	// engine hit its usage or rate limit; it resumes at run.deferredUntil.
 	TaskPhaseWaiting TaskPhase = "Waiting"
-	// TaskPhaseIdle: the pod is kept warm, waiting for further input.
+	// TaskPhaseIdle: the run is done; the pod waits IdleTimeout for a
+	// follow-up request before it is stopped.
 	TaskPhaseIdle TaskPhase = "Idle"
 	// TaskPhaseHibernated: pod deleted after IdleTimeout, workspace kept.
 	TaskPhaseHibernated TaskPhase = "Hibernated"
@@ -211,6 +212,11 @@ type RunStatus struct {
 	// ObservedRunRequest is the last run request the runner has finished.
 	// +optional
 	ObservedRunRequest int64 `json:"observedRunRequest,omitempty"`
+
+	// CurrentStep is the step the runner is working on, e.g. "9 run
+	// implementer". It is empty between runs.
+	// +optional
+	CurrentStep string `json:"currentStep,omitempty"`
 
 	// RunCount is the number of runs performed so far.
 	// +optional
@@ -281,6 +287,7 @@ type RunStatus struct {
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="Issue",type=integer,JSONPath=`.spec.issue.iid`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Step",type=string,JSONPath=`.status.run.currentStep`
 // +kubebuilder:printcolumn:name="Result",type=string,JSONPath=`.status.run.lastResult`
 // +kubebuilder:printcolumn:name="Runs",type=integer,JSONPath=`.status.run.runCount`
 // +kubebuilder:printcolumn:name="Cost",type=string,JSONPath=`.status.run.costUSD`

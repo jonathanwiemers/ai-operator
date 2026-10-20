@@ -26,11 +26,19 @@ func main() {
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&leaderElect, "leader-elect", false, "Enable leader election for the controller manager.")
 	flag.StringVar(&defaultAgentImage, "default-agent-image", "", "Agent image for AgentProjects that do not set spec.agents.image.")
+	var agentLogLevel string
+	flag.StringVar(&agentLogLevel, "agent-log-level", "info", "Log level (debug, info or error) of the agent pods of AgentProjects that do not set spec.agents.logLevel.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	setupLog := ctrl.Log.WithName("setup")
+	switch aiv1.LogLevel(agentLogLevel) {
+	case aiv1.LogLevelDebug, aiv1.LogLevelInfo, aiv1.LogLevelError:
+	default:
+		setupLog.Error(nil, "invalid --agent-log-level, want debug, info or error", "value", agentLogLevel)
+		os.Exit(1)
+	}
 
 	scheme := runtime.NewScheme()
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
@@ -59,9 +67,11 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.AgentTaskReconciler{
-		Client:            mgr.GetClient(),
-		Scheme:            mgr.GetScheme(),
-		DefaultAgentImage: defaultAgentImage,
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		DefaultAgentImage:    defaultAgentImage,
+		DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
+		APIReader:            mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentTask")
 		os.Exit(1)

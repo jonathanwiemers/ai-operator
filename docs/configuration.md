@@ -146,6 +146,7 @@ All labels can be renamed. Defaults:
 | `storageClassName` | cluster default | |
 | `cacheClaimName` | – | existing (ideally RWX) PVC mounted at `/cache` for shared dependency caches (`GOMODCACHE`, `GOCACHE`, `npm_config_cache`, `PIP_CACHE_DIR`, `YARN_CACHE_FOLDER`) |
 | `env`, `nodeSelector`, `tolerations` | – | passed to the pod |
+| `logLevel` | operator's `--agent-log-level` (with Helm: `agent.logLevel`, falling back to `logLevel`) | `debug`, `info` or `error` for the runner and agent containers; `info` logs every step, `debug` adds git commands. A running pod picks up a change when it is next started |
 | `spec` | claude, `claude-opus-5-5` | spec (planning) agent |
 | `profiles` | `fast`, `strong` | implementing agents selected per issue |
 | `implement` | claude, `claude-opus-5-5` | implementing agent for issues without a profile label |
@@ -206,10 +207,15 @@ another engine starts a new session with the full context.
 
 ## `spec.lifecycle`
 
+> **Upgrading from a release with a longer `idleTimeout` default (`2h`,
+> `1h`):** the API server stored the old default in every AgentProject that
+> was created with a `lifecycle` block, and the sample sets it explicitly.
+> Remove `idleTimeout` (or set it to `1m`) to stop pods right after each run.
+
 | Field | Default | Description |
 |-------|---------|-------------|
-| `idleTimeout` | `2h` | after the last run, the pod is stopped; the workspace stays |
-| `retentionPeriod` | `336h` (14 days) | after the last run, the workspace PVC is deleted |
+| `idleTimeout` | `1m` | after the last run, the pod is stopped; the workspace stays. A longer timeout keeps the pod (and its resource requests) for quick follow-ups, which saves only the pod start. After a failed run the pod stays at least 1h, so its logs can be read |
+| `retentionPeriod` | `168h` (7 days) | after the last run, the workspace PVC is deleted |
 | `maxRunsPerTask` | `20` | the task is `Blocked` when reached (runs paused by usage limits don't count) |
 | `usageLimitBackoff` | `5m` | first wait after a usage or rate limit without a reported reset time; doubles per further hit |
 | `maxUsageLimitBackoff` | `1h` | cap for that wait |

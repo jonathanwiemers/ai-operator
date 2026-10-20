@@ -71,8 +71,8 @@ hack/sandbox/up.sh
 This builds both images locally, creates the kind cluster `ai-operator`,
 installs the chart from `charts/ai-operator` with debug logging, creates the
 secrets in namespace `agents`, and applies `hack/sandbox/agentproject.yaml`.
-The sandbox limits are: `maxConcurrentRuns: 1`, `idleTimeout: 10m`,
-`retentionPeriod: 1h`, `maxRunsPerTask: 6`, small `maxBudgetUSD`,
+The sandbox limits are: `maxConcurrentRuns: 1`, `idleTimeout` at its default
+(`1m`), `retentionPeriod: 1h`, `maxRunsPerTask: 6`, small `maxBudgetUSD`,
 `review.maxIterations: 1`.
 
 Keep two terminals open:
@@ -106,7 +106,11 @@ which has the task's name, e.g. `sandbox-spec-m1-tags-and-due-dates` or
 * A task `sandbox-spec-m<iid>-tags-and-due-dates` (type `Spec`) and a pod with
   the same name. It has an init container `init-workspace`, then containers
   `runner` and `agent`, both `Running`.
-* `kubectl -n agents logs <pod> -c runner` shows "starting run" and "run finished".
+* `kubectl -n agents logs <pod> -c runner` shows "starting run", a `step
+  started` / `step done` pair for each of the 7 spec steps (read milestone …
+  apply plan, one "issue created" line per issue) and "run finished" with
+  the step list. While it runs, `kubectl -n agents get agenttasks` shows the
+  step in the `Step` column.
 * A few (likely 3) new issues in the milestone with the labels
   `ai-generated`, `agent::draft`, `agent-profile::fast|strong`. Each holds a
   self-contained sub-spec (context, plan with real file names such as
@@ -140,8 +144,14 @@ profile label is kept. Editing the description again *without* a change
 **Expected:**
 * Within one poll, the label becomes `agent::working` and a task and pod
   `sandbox-<iid>-<slug>` appear.
-* The runner log shows the profile `fast` with its engine and model.
-* The reviewers run (two more agent invocations in the agent log).
+* The runner log shows the profile `fast` with its engine and model on the
+  `run implementer` step.
+* The reviewers run (two more `agent CLI started` lines in the agent log,
+  with the same `run` value as the runner's lines).
+* The issue gets a **🧠 Agent notes** comment with the implementer's handoff
+  notes; later runs edit it instead of adding a new one.
+* The issue comment ends with a collapsed **Run log** table (read issue …
+  open merge request) with durations and the cost.
 * Branch `agent/<iid>-<slug>` is pushed, and a **draft MR** "Draft: <title>"
   with `Closes #<iid>` and the summary is opened. The issue gets a comment
   linking the MR. It stays in `agent::working` until the MR pipeline is
@@ -204,9 +214,10 @@ finishes. The queued issue already shows `agent::working`.
 
 Use an issue from T4 that is in `agent::review`.
 
-1. After its run, the task is `Idle` and the pod keeps running.
-2. After 10 minutes (`idleTimeout`): the task is `Hibernated`, the pod is
-   gone, and the PVC `<task>-ws` still exists.
+1. Right after its run, the task is `Idle` and the pod still runs.
+2. About a minute later (`idleTimeout`): the task is `Hibernated`, the pod
+   is gone, and the PVC `<task>-ws` still exists. While the MR pipeline runs
+   the task stays hibernated; a CI fix run starts a new pod.
 3. Comment `/agent add a test for an empty tag list`.
 
 **Expected:** the pod comes back, the run resumes the session (the PVC kept
@@ -218,7 +229,8 @@ Use an issue from T4 that is in `agent::review`.
 
 **Expected:** a new PVC and pod. The runner state and the agent session were
 on the deleted PVC, so the run starts a **fresh session** with the full issue
-thread, clones the repository again, and continues on the existing branch
+thread and the **🧠 Agent notes** comment (the runner log's `read comments`
+step says "agent notes from an earlier run"), clones the repository again, and continues on the existing branch
 and MR (the branch name is kept in the task's status).
 
 ### T10 – Finishing an issue
@@ -250,7 +262,8 @@ succeeds.
 
 ### T13 – Security: credential isolation
 
-On any running pod:
+On any running pod (pods stop a minute after their run: check while a run is
+in progress or right after it):
 
 ```sh
 POD=<pod>
