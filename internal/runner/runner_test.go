@@ -17,6 +17,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/go-logr/logr/funcr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -621,9 +622,35 @@ func TestSpecEndToEnd(t *testing.T) {
 		t.Fatalf("unexpected run status %+v", got.Status.Run)
 	}
 	wantSteps := []string{"read milestone", "read project", "clone repository", "prepare checkout",
-		"list milestone issues", "run spec agent", "apply plan"}
+		"list milestone issues", "run spec agent", "apply plan", "record plan"}
 	if got := stepNames(r.run); !slices.Equal(got, wantSteps) {
 		t.Fatalf("steps:\n got %v\nwant %v", got, wantSteps)
+	}
+	// The plan is recorded in plan order, with dependencies as IIDs.
+	wantPlan := []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API"}, {Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}}}
+	if !equality.Semantic.DeepEqual(got.Status.Plan, wantPlan) {
+		t.Fatalf("plan:\n got %+v\nwant %+v", got.Status.Plan, wantPlan)
+	}
+	if strings.Contains(engine.calls[0].Prompt, "autopilot") {
+		t.Fatal("a normal milestone must not get the autopilot note")
+	}
+}
+
+func TestAutopilotImplementPrompt(t *testing.T) {
+	e := newImplementEnv(t)
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	task.Spec.Autopilot = true
+	if err := e.k8s.Update(context.Background(), &task); err != nil {
+		t.Fatal(err)
+	}
+	engine := &decisionEngine{}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if p := engine.calls[0].Prompt; !strings.HasPrefix(p, autopilotImplementNote) {
+		t.Fatalf("autopilot runs must be told to take their defaults:\n%.300s", p)
 	}
 }
 

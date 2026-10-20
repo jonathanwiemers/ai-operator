@@ -185,8 +185,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	var remaining []Finding
 	var reviewNotes []string
 	// CI fix runs skip the reviewers: the change is reviewed with the next
-	// regular run, and CI itself is the check here.
-	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input" && !ciFix; iter++ {
+	// regular run, and CI itself is the check here. On autopilot nobody
+	// reviews before the merge, so CI fixes are reviewed as well.
+	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input" && (!ciFix || task.Spec.Autopilot); iter++ {
 		s = r.step(ctx, fmt.Sprintf("review round %d", iter+1), "reviewers", review.Reviewers)
 		diff, stat, err := r.Agent.Diff(ctx, base)
 		if err != nil {

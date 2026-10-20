@@ -153,16 +153,22 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		return fmt.Errorf("listing milestones: %w", err)
 	}
 	var active int32
+	// Autopilot milestones by IID, with their spec task.
+	autopilots := map[int64]*aiv1.AgentTask{}
 	for _, m := range milestones {
-		if !milestoneSelected(m, titleRE, spec.Milestones.Marker()) {
+		autopilot := spec.Milestones.Autopilot() != "" && milestoneSelected(m, titleRE, spec.Milestones.Autopilot())
+		if !autopilot && !milestoneSelected(m, titleRE, spec.Milestones.Marker()) {
 			continue
 		}
 		active++
-		task, err := r.syncSpecTask(ctx, project, m, byMilestone[m.IID])
+		task, err := r.syncSpecTask(ctx, project, m, byMilestone[m.IID], autopilot)
 		if err != nil {
 			return err
 		}
 		keep[task.Name] = true
+		if autopilot || task.Status.Autopilot != nil {
+			autopilots[m.IID] = task
+		}
 	}
 	project.Status.ActiveMilestones = active
 
@@ -180,13 +186,28 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			issues[is.IID] = is
 		}
 	}
+	implTasks := map[int64]*aiv1.AgentTask{}
 	for _, is := range issues {
-		task, err := r.syncImplementTask(ctx, gl, project, spec, is, byIssue[is.IID])
+		autopilot := false
+		if is.Milestone != nil {
+			if st := autopilots[is.Milestone.IID]; st != nil {
+				autopilot = st.Spec.Autopilot
+			}
+		}
+		task, err := r.syncImplementTask(ctx, gl, project, spec, is, byIssue[is.IID], autopilot)
 		if err != nil {
 			return err
 		}
 		keep[task.Name] = true
+		implTasks[is.IID] = task
 		if err := r.syncCI(ctx, gl, spec, is, task); err != nil {
+			return err
+		}
+	}
+
+	// Autopilot milestones: queue, merge gate, tracking issue.
+	for _, st := range autopilots {
+		if err := r.syncAutopilot(ctx, gl, project, spec, st, implTasks); err != nil {
 			return err
 		}
 	}
@@ -197,6 +218,14 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		t := &tasks.Items[i]
 		if keep[t.Name] || !t.DeletionTimestamp.IsZero() {
 			continue
+		}
+		if t.Spec.Type == aiv1.TaskTypeSpec && t.Status.Autopilot != nil {
+			// The milestone is no longer planned (closed, or every marker
+			// removed): switch its autopilot off before the state is gone.
+			t.Spec.Autopilot = false
+			if err := r.syncAutopilot(ctx, gl, project, spec, t, nil); err != nil {
+				return err
+			}
 		}
 		log.FromContext(ctx).Info("deleting finished task", "task", t.Name)
 		if err := r.Delete(ctx, t); client.IgnoreNotFound(err) != nil {
@@ -265,7 +294,7 @@ func (r *AgentProjectReconciler) newTask(project *aiv1.AgentProject, name string
 
 // syncSpecTask makes sure a planned milestone has a spec task and requests a
 // new run whenever the milestone description changes.
-func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, m gitlab.Milestone, task *aiv1.AgentTask) (*aiv1.AgentTask, error) {
+func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool) (*aiv1.AgentTask, error) {
 	hash := hashString(m.Description)
 	ref := &aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title}
 	if task == nil {
@@ -278,12 +307,14 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		task.Spec.Milestone = ref
 		task.Spec.RunRequest = 1
 		task.Spec.Source.DescriptionHash = hash
-		log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name)
+		task.Spec.Autopilot = autopilot
+		log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name, "autopilot", autopilot)
 		return task, r.Create(ctx, task)
 	}
-	if task.Spec.Source.DescriptionHash == hash && *task.Spec.Milestone == *ref {
+	if task.Spec.Source.DescriptionHash == hash && *task.Spec.Milestone == *ref && task.Spec.Autopilot == autopilot {
 		return task, nil
 	}
+	task.Spec.Autopilot = autopilot
 	if task.Spec.Source.DescriptionHash != hash {
 		log.FromContext(ctx).Info("milestone spec changed, re-planning", "milestone", m.Title, "task", task.Name)
 		task.Spec.RunRequest++
@@ -295,7 +326,7 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 
 // syncImplementTask makes sure an issue handed to the agent has a task and
 // turns "moved to ready" and "/agent" comments into run requests.
-func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask) (*aiv1.AgentTask, error) {
+func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, autopilot bool) (*aiv1.AgentTask, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -313,6 +344,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	if is.Milestone != nil {
 		task.Spec.Milestone = &aiv1.MilestoneRef{ID: is.Milestone.ID, IID: is.Milestone.IID, Title: is.Milestone.Title}
 	}
+	task.Spec.Autopilot = autopilot
 
 	ready := is.HasLabel(wf.ReadyLabel)
 	src := &task.Spec.Source

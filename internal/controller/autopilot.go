@@ -3,10 +3,10 @@ package controller
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -104,9 +104,7 @@ type autopilot struct {
 	ap      *aiv1.AutopilotStatus
 	tasks   map[int64]*aiv1.AgentTask
 	issues  map[int64]gitlab.Issue
-	log     interface {
-		Info(msg string, kv ...any)
-	}
+	log     logr.Logger
 }
 
 // queueOrder orders the plan topologically: dependencies first, ties in plan
@@ -155,7 +153,8 @@ func queueOrder(plan []aiv1.PlannedIssue) ([]int64, []int64) {
 }
 
 // mergeQueue keeps the state of known items and appends new ones in queue
-// order. Items no longer in the plan stay, so the history is kept.
+// order. Items the plan dropped stay once they were started, so the history
+// is kept; pending ones are dropped with the plan.
 func mergeQueue(items []aiv1.AutopilotItem, order []int64) []aiv1.AutopilotItem {
 	known := map[int64]aiv1.AutopilotItem{}
 	for _, it := range items {
@@ -172,7 +171,7 @@ func mergeQueue(items []aiv1.AutopilotItem, order []int64) []aiv1.AutopilotItem 
 		seen[iid] = true
 	}
 	for _, it := range items {
-		if !seen[it.IID] {
+		if !seen[it.IID] && it.State != aiv1.AutopilotItemPending {
 			out = append(out, it)
 		}
 	}
@@ -233,6 +232,7 @@ func (a *autopilot) pick(ctx context.Context) error {
 			return a.comment(ctx, fmt.Sprintf("⏭️ #%d was closed or deleted before autopilot got to it, so it is skipped.", it.IID))
 		}
 		it.State = aiv1.AutopilotItemActive
+		a.ap.Phase = aiv1.AutopilotRunning // a re-plan can add issues after "done"
 		a.log.Info("autopilot starts the next issue", "issue", it.IID)
 		if hasAny(is, wf.ActiveLabels()...) {
 			return nil // a human already handed it over
@@ -312,6 +312,8 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 		return a.pause(ctx, fmt.Sprintf("%d reviewers failed on #%d, so the change is not fully reviewed", run.ReviewErrors, it.IID))
 	case it.MergeRequestIID == 0 || run.PushedSHA == "":
 		return a.pause(ctx, fmt.Sprintf("#%d is in review without a pushed merge request", it.IID))
+	case len(a.spec.Agents.Review.Reviewers) > 0 && run.ReviewedSHA != run.PushedSHA:
+		return a.pause(ctx, fmt.Sprintf("the head of !%d (%s) was not reviewed (the last review saw %s)", it.MergeRequestIID, short(run.PushedSHA), short(run.ReviewedSHA)))
 	}
 	if !a.spec.CI.Disabled {
 		ci := task.Status.CI
@@ -414,11 +416,19 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 	a.log.Info("autopilot rebase done, waiting for CI", "mr", mr.IID, "sha", mr.SHA)
 	it.RebasedFrom = ""
 	orig := task.DeepCopy()
+	// A rebase by GitLab moves the change onto the new default branch
+	// without changing it: the review still holds, CI has to run again.
+	if task.Status.Run.ReviewedSHA == task.Status.Run.PushedSHA {
+		task.Status.Run.ReviewedSHA = mr.SHA
+	}
 	task.Status.Run.PushedSHA = mr.SHA
 	task.Status.Run.PushedAt = &metav1.Time{Time: a.r.now()}
 	task.Status.CI = nil
 	if err := a.r.Status().Patch(ctx, task, client.MergeFrom(orig)); err != nil {
 		return err
+	}
+	if a.spec.CI.Disabled {
+		return nil // merged on the next poll
 	}
 	wf := a.spec.Workflow
 	// Back to working, so the CI loop follows the new pipeline.
@@ -624,7 +634,6 @@ func (a *autopilot) renderTracking() string {
 		"when its pipeline is green and its review is clean, then starts the next issue. The agents take their defaults instead of " +
 		"asking; every decision is listed below and can be changed with `" + prefix + " revisit <id> <what you want instead>` on its issue.\n\n")
 	fmt.Fprintf(&b, "Commands, as comments here: `%s pause`, `%s resume`, `%s skip #<issue>`.\n\n### Issues\n\n", prefix, prefix, prefix)
-	sort.SliceStable(a.ap.Items, func(i, j int) bool { return false }) // keep queue order
 	for _, it := range a.ap.Items {
 		title := a.issues[it.IID].Title
 		mr := ""
