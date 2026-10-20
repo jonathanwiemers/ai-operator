@@ -262,11 +262,11 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// run was requested meanwhile, in which case the issue stays "working".
 	// The run log covers the steps up to here.
 	needsInput := answer.Status == "needs_input" || len(answer.Questions) > 0
-	runLog := r.run.markdown(out.CostUSD)
+	runLogMD := r.run.markdown(out.CostUSD)
 	s = r.step(ctx, "comment")
 	switch {
 	case mr != nil && !newMR:
-		if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+runLog); err != nil {
+		if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+runLogMD); err != nil {
 			return out, s.fail(fmt.Errorf("commenting on merge request: %w", err))
 		}
 		s.done(fmt.Sprintf("on !%d", mr.IID))
@@ -275,12 +275,12 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if len(answer.Questions) > 0 {
 			note += "\n\nBefore this can be finished I need answers to:\n\n" + numbered(answer.Questions)
 		}
-		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, note+runLog); err != nil {
+		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, note+runLogMD); err != nil {
 			return out, s.fail(fmt.Errorf("commenting on issue: %w", err))
 		}
 		s.done(fmt.Sprintf("on #%d", issue.IID))
 	default:
-		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, "🤖 "+report+runLog); err != nil {
+		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, "🤖 "+report+runLogMD); err != nil {
 			return out, s.fail(fmt.Errorf("commenting on issue: %w", err))
 		}
 		s.done(fmt.Sprintf("on #%d", issue.IID))

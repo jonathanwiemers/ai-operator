@@ -37,7 +37,15 @@ spec:
             - --metrics-bind-address=:{{ .Values.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.healthProbePort }}
             - --zap-log-level={{ .Values.logLevel }}
-            - --agent-log-level={{ .Values.agent.logLevel | default .Values.logLevel }}
+            {{- $agentLevels := list "debug" "info" "error" }}
+            {{- if .Values.agent.logLevel }}
+            {{- if not (has .Values.agent.logLevel $agentLevels) }}
+            {{- fail "agent.logLevel must be debug, info or error" }}
+            {{- end }}
+            - --agent-log-level={{ .Values.agent.logLevel }}
+            {{- else if has .Values.logLevel $agentLevels }}
+            - --agent-log-level={{ .Values.logLevel }}
+            {{- end }}
             {{- if .Values.leaderElection }}
             - --leader-elect
             {{- end }}
