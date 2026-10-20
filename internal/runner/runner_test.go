@@ -195,7 +195,17 @@ func gitCmd(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(b))
 }
 
-func TestImplementEndToEnd(t *testing.T) {
+// implementEnv is a remote repository with one commit on main, a fake GitLab
+// with issue #42 in agent::working and the implement task of that issue.
+type implementEnv struct {
+	tmp, origin, seed string
+	gl                *gitlabfake.Fake
+	k8s               client.Client
+	task              *aiv1.AgentTask
+}
+
+func newImplementEnv(t *testing.T) *implementEnv {
+	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
@@ -231,7 +241,12 @@ func TestImplementEndToEnd(t *testing.T) {
 	}
 	k8s := fake.NewClientBuilder().WithScheme(scheme).WithObjects(project, task).
 		WithStatusSubresource(&aiv1.AgentTask{}).Build()
+	return &implementEnv{tmp: tmp, origin: origin, seed: seed, gl: gl, k8s: k8s, task: task}
+}
 
+func TestImplementEndToEnd(t *testing.T) {
+	e := newImplementEnv(t)
+	tmp, origin, seed, gl, k8s, task := e.tmp, e.origin, e.seed, e.gl, e.k8s, e.task
 	engine := &scriptedEngine{}
 	r := newTestRunner(t, tmp, k8s, gl, engine, task.Name)
 
@@ -266,8 +281,9 @@ func TestImplementEndToEnd(t *testing.T) {
 		}
 	}
 
+	// The issue has no milestone, so neither has the MR.
 	mr := gl.MRs[1]
-	if mr == nil || mr.SourceBranch != "agent/42-add-paypal-button" || !strings.HasPrefix(mr.Title, "Draft: ") {
+	if mr == nil || mr.SourceBranch != "agent/42-add-paypal-button" || !strings.HasPrefix(mr.Title, "Draft: ") || mr.Milestone != nil {
 		t.Fatalf("unexpected MR %+v", mr)
 	}
 	// The issue waits in "working" for the pipeline of the push.
@@ -313,6 +329,21 @@ func TestImplementEndToEnd(t *testing.T) {
 	log = gitCmd(t, tmp, "--git-dir", origin, "log", "--format=%s", "agent/42-add-paypal-button")
 	if lines := strings.Split(log, "\n"); len(lines) < 5 || lines[1] != "Human tweak" {
 		t.Fatalf("expected a new agent commit on top of the human commit:\n%s", log)
+	}
+}
+
+func TestImplementMergeRequestTakesMilestone(t *testing.T) {
+	e := newImplementEnv(t)
+	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2", State: "active"}
+	e.gl.Milestones = []gitlab.Milestone{m}
+	e.gl.Issues[42].Milestone = &m
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, &scriptedEngine{}, e.task.Name)
+
+	if ran, err := r.Step(context.Background()); err != nil || !ran {
+		t.Fatalf("ran=%v err=%v", ran, err)
+	}
+	if mr := e.gl.MRs[1]; mr == nil || mr.Milestone == nil || mr.Milestone.ID != m.ID {
+		t.Fatalf("the MR should carry the issue's milestone: %+v", mr)
 	}
 }
 

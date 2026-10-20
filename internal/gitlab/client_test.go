@@ -71,6 +71,66 @@ func TestUpdateIssueSendsLabelDeltas(t *testing.T) {
 	if _, ok := body["title"]; ok {
 		t.Fatalf("empty title must not be sent: %v", body)
 	}
+	if _, ok := body["assignee_ids"]; ok {
+		t.Fatalf("no assignee_ids must be sent unless set, they replace all assignees: %v", body)
+	}
+}
+
+func TestUpdateIssueSendsAssignees(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewEncoder(w).Encode(Issue{IID: 7, Assignees: []User{{ID: 999, Username: "ai-bot"}}})
+	}))
+	defer srv.Close()
+
+	is, err := New(srv.URL, "tok").UpdateIssue(context.Background(), "g/p", 7, UpdateIssueOptions{
+		AddLabels: []string{"agent::working"}, AssigneeIDs: []int64{999},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, ok := body["assignee_ids"].([]any)
+	if !ok || len(ids) != 1 || ids[0] != float64(999) || body["add_labels"] != "agent::working" {
+		t.Fatalf("unexpected body %v", body)
+	}
+	if len(is.Assignees) != 1 || is.Assignees[0].Username != "ai-bot" {
+		t.Fatalf("assignees not decoded: %+v", is.Assignees)
+	}
+}
+
+func TestCreateMergeRequestMilestone(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.EscapedPath() != "/api/v4/projects/g%2Fp/merge_requests" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.EscapedPath())
+		}
+		body = nil
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewEncoder(w).Encode(MergeRequest{IID: 1, Milestone: &Milestone{ID: 11}})
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	opts := CreateMergeRequestOptions{SourceBranch: "agent/7-x", TargetBranch: "main", Title: "Draft: x"}
+
+	if _, err := c.CreateMergeRequest(context.Background(), "g/p", opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["milestone_id"]; ok {
+		t.Fatalf("milestone_id must not be sent without a milestone: %v", body)
+	}
+
+	opts.MilestoneID = 11
+	mr, err := c.CreateMergeRequest(context.Background(), "g/p", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body["milestone_id"] != float64(11) {
+		t.Fatalf("unexpected body %v", body)
+	}
+	if mr.Milestone == nil || mr.Milestone.ID != 11 {
+		t.Fatalf("milestone not decoded: %+v", mr.Milestone)
+	}
 }
 
 func TestErrorsAndNotFound(t *testing.T) {

@@ -29,6 +29,8 @@ type Fake struct {
 	Retried   []int64
 	nextID    int64
 	Clock     time.Time
+	// IssueUpdates records the options of every UpdateIssue call, oldest first.
+	IssueUpdates []gitlab.UpdateIssueOptions
 }
 
 var _ gitlab.API = (*Fake)(nil)
@@ -189,6 +191,7 @@ func (f *Fake) UpdateIssue(_ context.Context, _ string, iid int64, opts gitlab.U
 	if !ok {
 		return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "issue"}
 	}
+	f.IssueUpdates = append(f.IssueUpdates, opts)
 	if opts.Title != "" {
 		is.Title = opts.Title
 	}
@@ -207,6 +210,16 @@ func (f *Fake) UpdateIssue(_ context.Context, _ string, iid int64, opts gitlab.U
 		}
 	}
 	is.Labels = labels
+	if len(opts.AssigneeIDs) > 0 {
+		is.Assignees = nil
+		for _, id := range opts.AssigneeIDs {
+			u := gitlab.User{ID: id}
+			if id == f.Bot.ID {
+				u = f.Bot
+			}
+			is.Assignees = append(is.Assignees, u)
+		}
+	}
 	if opts.StateEvent == "close" {
 		is.State = "closed"
 	}
@@ -261,6 +274,12 @@ func (f *Fake) CreateMergeRequest(_ context.Context, _ string, opts gitlab.Creat
 	iid := int64(len(f.MRs) + 1)
 	mr := &gitlab.MergeRequest{ID: f.id(), IID: iid, Title: opts.Title, State: "opened", SourceBranch: opts.SourceBranch,
 		TargetBranch: opts.TargetBranch, WebURL: fmt.Sprintf("https://gitlab.example/group/app/-/merge_requests/%d", iid), UpdatedAt: f.tick()}
+	for _, m := range f.Milestones {
+		if m.ID == opts.MilestoneID {
+			mc := m
+			mr.Milestone = &mc
+		}
+	}
 	f.MRs[iid] = mr
 	c := *mr
 	return &c, nil

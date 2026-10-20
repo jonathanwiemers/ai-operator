@@ -103,6 +103,7 @@ type Issue struct {
 	State       string     `json:"state"`
 	Labels      []string   `json:"labels"`
 	Milestone   *Milestone `json:"milestone"`
+	Assignees   []User     `json:"assignees"`
 	WebURL      string     `json:"web_url"`
 	UpdatedAt   *time.Time `json:"updated_at"`
 }
@@ -134,6 +135,7 @@ type MergeRequest struct {
 	State        string     `json:"state"`
 	SourceBranch string     `json:"source_branch"`
 	TargetBranch string     `json:"target_branch"`
+	Milestone    *Milestone `json:"milestone"`
 	WebURL       string     `json:"web_url"`
 	UpdatedAt    *time.Time `json:"updated_at"`
 }
@@ -164,6 +166,8 @@ type UpdateIssueOptions struct {
 	AddLabels    []string `json:"-"`
 	RemoveLabels []string `json:"-"`
 	StateEvent   string   `json:"state_event,omitempty"`
+	// AssigneeIDs replaces all assignees of the issue.
+	AssigneeIDs []int64 `json:"-"`
 }
 
 // CreateMergeRequestOptions creates a merge request.
@@ -173,6 +177,7 @@ type CreateMergeRequestOptions struct {
 	Title              string `json:"title"`
 	Description        string `json:"description,omitempty"`
 	RemoveSourceBranch bool   `json:"remove_source_branch,omitempty"`
+	MilestoneID        int64  `json:"milestone_id,omitempty"`
 }
 
 // Client implements API against the GitLab REST API v4.
@@ -352,6 +357,9 @@ func (c *Client) UpdateIssue(ctx context.Context, project string, iid int64, opt
 	}
 	if len(opts.RemoveLabels) > 0 {
 		body["remove_labels"] = strings.Join(opts.RemoveLabels, ",")
+	}
+	if len(opts.AssigneeIDs) > 0 {
+		body["assignee_ids"] = opts.AssigneeIDs
 	}
 	var i Issue
 	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/issues/%d", projectPath(project), iid), nil, body, &i)

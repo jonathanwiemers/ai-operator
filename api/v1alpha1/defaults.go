@@ -46,6 +46,10 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 	def(&w.GeneratedLabel, "ai-generated")
 	def(&w.ProfileLabelPrefix, "agent-profile::")
 	def(&w.CommandPrefix, DefaultCommandPrefix)
+	if w.AssignBot == nil {
+		t := true
+		w.AssignBot = &t
+	}
 	return w
 }
 

@@ -201,13 +201,18 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	newMR := false
 	if mr == nil && (pushed || r.Mirror.HasRemoteBranch(ctx, branch)) {
-		mr, err = gl.CreateMergeRequest(ctx, glProject, gitlab.CreateMergeRequestOptions{
+		opts := gitlab.CreateMergeRequestOptions{
 			SourceBranch:       branch,
 			TargetBranch:       base,
 			Title:              "Draft: " + issue.Title,
 			Description:        fmt.Sprintf("Closes #%d\n\n%s", issue.IID, report),
 			RemoveSourceBranch: true,
-		})
+		}
+		// The issue's milestone lists the MR in its "Merge requests" tab.
+		if issue.Milestone != nil {
+			opts.MilestoneID = issue.Milestone.ID
+		}
+		mr, err = gl.CreateMergeRequest(ctx, glProject, opts)
 		if err != nil {
 			return out, fmt.Errorf("creating merge request: %w", err)
 		}

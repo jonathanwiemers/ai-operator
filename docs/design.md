@@ -68,7 +68,7 @@ flowchart TD
     SP --> SUB["one sub-issue per MR<br/>sub-spec, acceptance criteria, questions,<br/>agent::draft + agent-profile::name"]
 
     SUB --> H["You answer the questions,<br/>adjust the profile label,<br/>move the issue to agent::ready"]
-    H --> REQ["operator: agent::working<br/>AgentTask runRequest + 1"]
+    H --> REQ["operator: agent::working<br/>+ assign the bot if unassigned<br/>AgentTask runRequest + 1"]
 
     subgraph IMPL["issue pod"]
         IM["implementer of the issue's profile<br/>resumed session"]
@@ -103,7 +103,7 @@ sequenceDiagram
 
     You->>GL: move issue to agent::ready
     OP->>GL: poll (pollInterval)
-    OP->>GL: label agent::working
+    OP->>GL: label agent::working, assign the bot if unassigned
     OP->>OP: AgentTask runRequest + 1, start pod if needed
     RU->>GL: fetch issue, comments, milestone, MR
     RU->>GL: git fetch into the bare mirror
@@ -119,7 +119,7 @@ sequenceDiagram
         end
     end
     AG-->>RU: commits as git bundle
-    RU->>GL: push agent/42-…, open or update draft MR
+    RU->>GL: push agent/42-…, open (with the issue's milestone) or update draft MR
     RU->>OP: AgentTask status.run.pushedSHA
     loop every poll until the pipeline is final
         OP->>GL: pipeline of pushedSHA
