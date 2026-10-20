@@ -246,6 +246,53 @@ func TestDefaultAgentImage(t *testing.T) {
 	}
 }
 
+func TestFailedRunKeepsPodForLogs(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	e.reconcile("x")
+	e.finishRun("x")
+	task := e.task("x")
+	orig := task.DeepCopy()
+	task.Status.Run.LastResult = aiv1.RunResultFailed
+	if err := e.c.Status().Patch(e.ctx, task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	var pod corev1.Pod
+	e.now = e.now.Add(10 * time.Minute)
+	e.reconcile("x")
+	if !e.exists(&pod, "x") {
+		t.Fatal("the pod of a failed run must stay so its logs can be read")
+	}
+	e.now = e.now.Add(failedRunIdleTimeout)
+	e.reconcile("x")
+	if e.exists(&pod, "x") {
+		t.Fatal("the pod of a failed run hibernates after failedRunIdleTimeout")
+	}
+}
+
+func TestIdlePodKeptForRequestTheCacheMissed(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	e.reconcile("x")
+	e.finishRun("x")
+	// The API server already has a new run request the cached client has
+	// not seen yet.
+	newer := e.task("x")
+	newer.Spec.RunRequest = 2
+	e.r.APIReader = fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(newer).Build()
+
+	e.now = e.now.Add(aiv1.DefaultIdleTimeout + time.Second)
+	res := e.reconcile("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") || res.RequeueAfter == 0 {
+		t.Fatalf("pod must be kept and the task re-checked, requeue %v", res.RequeueAfter)
+	}
+
+	e.r.APIReader = e.c
+	e.reconcile("x")
+	if e.exists(&pod, "x") {
+		t.Fatal("without a pending run the idle pod hibernates")
+	}
+}
+
 func container(pod *corev1.Pod, name string) *corev1.Container {
 	for i := range pod.Spec.Containers {
 		if pod.Spec.Containers[i].Name == name {

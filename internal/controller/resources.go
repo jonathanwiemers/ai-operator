@@ -176,11 +176,14 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 			NodeSelector:                  agents.NodeSelector,
 			Tolerations:                   agents.Tolerations,
 			SecurityContext: &corev1.PodSecurityContext{
-				RunAsNonRoot:   ptr.To(true),
-				RunAsUser:      ptr.To[int64](AgentUID),
-				RunAsGroup:     ptr.To[int64](AgentUID),
-				FSGroup:        ptr.To[int64](AgentUID),
-				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+				RunAsNonRoot: ptr.To(true),
+				RunAsUser:    ptr.To[int64](AgentUID),
+				RunAsGroup:   ptr.To[int64](AgentUID),
+				FSGroup:      ptr.To[int64](AgentUID),
+				// Pods start for every run; only fix up ownership when the
+				// volume root is off, not for every file on every mount.
+				FSGroupChangePolicy: ptr.To(corev1.FSGroupChangeOnRootMismatch),
+				SeccompProfile:      &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 			},
 			Volumes: volumes,
 			// Kubelet would create missing sub-path directories as root;

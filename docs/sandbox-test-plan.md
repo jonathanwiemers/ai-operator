@@ -251,7 +251,8 @@ succeeds.
 
 ### T13 – Security: credential isolation
 
-On any running pod:
+On any running pod (pods stop a minute after their run: check while a run is
+in progress or right after it):
 
 ```sh
 POD=<pod>

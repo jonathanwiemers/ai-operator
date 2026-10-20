@@ -27,6 +27,10 @@ import (
 // queueRetry is how often a queued task re-checks for free capacity.
 const queueRetry = 30 * time.Second
 
+// failedRunIdleTimeout is the minimum time a pod stays after a failed run, so
+// its runner and agent logs can still be read.
+const failedRunIdleTimeout = time.Hour
+
 // AgentTaskReconciler manages the pod and workspace of an AgentTask:
 //
 //	run requested           -> workspace + pod exist             (Running / Queued)
@@ -42,6 +46,9 @@ type AgentTaskReconciler struct {
 	Now    func() time.Time
 	// DefaultAgentImage is used for projects that do not set agents.image.
 	DefaultAgentImage string
+	// APIReader reads without the cache; used to re-check a task before its
+	// pod is stopped. Optional.
+	APIReader client.Reader
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;update;patch
@@ -156,7 +163,22 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		task.Status.Message = fmt.Sprintf("run %d requested", task.Spec.RunRequest)
 
 	case pod != nil:
-		if blocked || task.Spec.Suspend || idleFor >= lc.IdleTimeout.Duration {
+		// After a failed run the pod stays longer, so its logs can be read.
+		idleTimeout := lc.IdleTimeout.Duration
+		if task.Status.Run.LastResult == aiv1.RunResultFailed && idleTimeout < failedRunIdleTimeout {
+			idleTimeout = failedRunIdleTimeout
+		}
+		if !blocked && !task.Spec.Suspend && idleFor >= idleTimeout {
+			// The cache can lag behind a run request that came in just now,
+			// and the runner may already be working on it: check the API
+			// server before stopping the pod.
+			if fresh, err := r.freshRunPending(ctx, &task); err != nil {
+				return ctrl.Result{}, err
+			} else if fresh {
+				return ctrl.Result{RequeueAfter: time.Second}, nil
+			}
+		}
+		if blocked || task.Spec.Suspend || idleFor >= idleTimeout {
 			logger.Info("hibernating agent pod", "pod", pod.Name, "idleFor", idleFor.Round(time.Second))
 			if err := r.Delete(ctx, pod); client.IgnoreNotFound(err) != nil {
 				return ctrl.Result{}, err
@@ -168,7 +190,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		} else {
 			task.Status.Phase = aiv1.TaskPhaseIdle
 			task.Status.Message = "waiting for input"
-			result.RequeueAfter = remaining(lc.IdleTimeout.Duration, idleFor)
+			result.RequeueAfter = remaining(idleTimeout, idleFor)
 		}
 
 	case pvc != nil:
@@ -287,6 +309,19 @@ func (r *AgentTaskReconciler) getClaim(ctx context.Context, task *aiv1.AgentTask
 
 // runningTasks counts the other tasks of the same project that currently have
 // a run in flight.
+// freshRunPending reports whether the task, read from the API server, has a
+// run pending or in progress.
+func (r *AgentTaskReconciler) freshRunPending(ctx context.Context, task *aiv1.AgentTask) (bool, error) {
+	if r.APIReader == nil {
+		return false, nil
+	}
+	var fresh aiv1.AgentTask
+	if err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(task), &fresh); err != nil {
+		return false, client.IgnoreNotFound(err)
+	}
+	return fresh.RunPending() || fresh.Status.Run.ActiveRunRequest > fresh.Status.Run.ObservedRunRequest, nil
+}
+
 func (r *AgentTaskReconciler) runningTasks(ctx context.Context, task *aiv1.AgentTask) (int, error) {
 	var tasks aiv1.AgentTaskList
 	if err := r.List(ctx, &tasks, client.InNamespace(task.Namespace), client.MatchingLabels{LabelProject: task.Spec.ProjectRef}); err != nil {

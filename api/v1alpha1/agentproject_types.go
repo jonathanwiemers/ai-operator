@@ -325,8 +325,9 @@ type LifecycleSpec struct {
 	// workspace is kept. The short default stops the pod right after a run;
 	// a request that arrives during the run or within the grace starts in the
 	// same pod. Everything the next run needs stays on the workspace, so a
-	// longer timeout only saves the pod start (seconds) at the cost of
-	// holding the pod's resources.
+	// longer timeout only saves the pod start (scheduling, volume attach,
+	// image pull if needed) at the cost of holding the pod's resources. After
+	// a failed run the pod stays at least an hour, so its logs can be read.
 	// +kubebuilder:default="1m"
 	// +optional
 	IdleTimeout metav1.Duration `json:"idleTimeout,omitempty"`
