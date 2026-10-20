@@ -236,3 +236,39 @@ func TestPlannedDecisionsGetIssueIDs(t *testing.T) {
 		t.Fatalf("unexpected revisit %+v", rvs)
 	}
 }
+
+func TestRevisitParsing(t *testing.T) {
+	bot, human := int64(9), gitlab.User{ID: 1}
+	issue := &gitlab.Issue{IID: 4}
+	decisions := gitlab.Note{ID: 1, Author: gitlab.User{ID: bot}, Body: renderDecisionsComments("x#1", "/agent",
+		numberDecisions([]Decision{{Title: "A", Choice: "a"}}, 4, false, 1))[0]}
+	note := func(id int64, body string) gitlab.Note { return gitlab.Note{ID: id, Author: human, Body: body} }
+	rvs := findRevisits(issue, []gitlab.Note{decisions}, []gitlab.Note{
+		note(2, "/agent revisit D4-1 use X"),
+		note(3, "/agent: revisit d4-1 actually use Y"),
+		note(4, "/agent revisit D4-1.5 nope"),
+		note(5, "/agent please revisit the currency"),
+		note(6, "/agentrevisit D4-1"),
+		note(7, "/agent revisit D4-1x"),
+	}, bot, "/agent")
+	if len(rvs) != 4 {
+		t.Fatalf("expected one revisit and three malformed ones, got %+v", rvs)
+	}
+	if rvs[0].ID != "D4-1" || rvs[0].Instruction != "actually use Y" || rvs[0].Decision == "" {
+		t.Fatalf("the later revisit of a decision must win: %+v", rvs[0])
+	}
+	for _, rv := range rvs[1:] {
+		if !rv.Malformed {
+			t.Fatalf("expected a malformed revisit, got %+v", rv)
+		}
+	}
+}
+
+func TestCleanDecisionTextUnbalancedBackticks(t *testing.T) {
+	if got := cleanDecisionText("use `foo <!-- x"); strings.Contains(got, "<!--") {
+		t.Fatalf("an unbalanced backtick must not switch escaping off: %q", got)
+	}
+	if got := cleanDecisionText("keep `@Override <T>` and ping @all"); !strings.Contains(got, "`@Override <T>`") || strings.Contains(got, " @all") {
+		t.Fatalf("code spans stay as they are, mentions outside are broken: %q", got)
+	}
+}

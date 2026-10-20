@@ -209,10 +209,14 @@ decision that supersedes the old one. The old decision is then marked
 *Superseded by D42-5*.
 
 - The comment must start with `/agent revisit <id>`; one revisit per comment.
-  Several revisit comments since the last run are handled in the same run.
+  Several revisit comments since the last run are handled in the same run;
+  for the same ID the latest comment wins. A comment like `/agent revisit the
+  currency` (no ID) is a normal comment, and the report shows the right form.
 - An ID that does not exist on the issue is passed on as a plain comment, and
   the run's report says so. Revisiting a decision that is already superseded
-  does nothing: revisit the decision that replaced it.
+  is not applied: revisit the decision that replaced it.
+- A revisit counts as handled once the run's decisions are posted. If the run
+  fails before that, the next run applies it again.
 - If the agent does not record a decision that replaces the old one, the old
   one is not marked, and the report says so.
 
