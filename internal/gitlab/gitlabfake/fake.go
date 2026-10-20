@@ -41,6 +41,8 @@ type Fake struct {
 	// MRDiffs are the diffs of an MR; without an entry an MR has one file
 	// whose change is the same before and after a rebase.
 	MRDiffs map[int64][]gitlab.Diff
+	// CreateIssueError makes CreateIssue fail.
+	CreateIssueError error
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
 }
@@ -178,6 +180,9 @@ func (f *Fake) GetIssue(_ context.Context, _ string, iid int64) (*gitlab.Issue, 
 func (f *Fake) CreateIssue(_ context.Context, _ string, opts gitlab.CreateIssueOptions) (*gitlab.Issue, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.CreateIssueError != nil {
+		return nil, f.CreateIssueError
+	}
 	// Like GitLab, IIDs of deleted issues are not used again.
 	iid := f.lastIID + 1
 	for k := range f.Issues {

@@ -252,7 +252,8 @@ func slugKey(key, title string) string {
 // IID for their IDs.
 func renderIssue(item PlannedItem, keyToIID map[string]int64, iid int64, prefix string) (string, bool) {
 	var b strings.Builder
-	b.WriteString(strings.TrimSpace(item.Description))
+	// The planner's text must not carry the operator's markers.
+	b.WriteString(strings.ReplaceAll(strings.TrimSpace(item.Description), "<!-- ai-operator:", "<!-- ai-operator :"))
 	missing := false
 	if len(item.DependsOn) > 0 {
 		b.WriteString("\n\n### Depends on\n\n")

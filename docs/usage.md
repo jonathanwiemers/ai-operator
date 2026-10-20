@@ -242,7 +242,8 @@ The operator then creates a **follow-up issue** in the milestone:
 - its implementer works on top of the merged change and records a decision
   that supersedes the old one. When that decision is posted, the old decision
   on the original issue is marked *Superseded by D57-1*, already before the
-  follow-up is merged. If you drop the follow-up, revisit D57-1 instead.
+  follow-up is merged. If you drop the follow-up, comment on it or open an
+  issue by hand to restore the old behavior.
 
 Without autopilot the follow-up goes straight to `agent::ready`, since you
 asked for it. On autopilot it is created as `agent::draft` and joins the
@@ -261,7 +262,8 @@ The operator answers every revisit comment it handles:
 
 Only comments written after the operator started watching the milestone,
 and after the issue was closed, are handled, each once: a revisit you wrote
-while the issue was open belongs to its runner. On the tracking issue,
+while the issue was open belongs to its runner (if the issue was merged
+before a run picked it up, comment again on the closed issue). On the tracking issue,
 revisits are handled while autopilot is on, also after it is done. A re-plan
 of the milestone leaves follow-ups alone. Milestones without `/agent spec` or
 `/agent autopilot` are not watched: there, open a new issue by hand.

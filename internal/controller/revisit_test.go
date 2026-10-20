@@ -209,3 +209,22 @@ func TestRevisitOnADoneTrackingIssueIsHandledOnce(t *testing.T) {
 		t.Fatalf("the follow-up must carry only its own marker, no mentions, no plan key: %+v", followUp)
 	}
 }
+
+func TestRevisitAfterMergeRefusedByGitLab(t *testing.T) {
+	e := newRevisitEnv(t, "/agent spec\nBuild it.")
+	e.gl.CreateIssueError = &gitlab.Error{StatusCode: 422, Method: "POST", Path: "issues", Body: "title is too long"}
+	e.gl.AddNote(1, gitlab.User{ID: 1, Username: "jonathan"}, "/agent revisit D1-1 use gRPC")
+	e.reconcile()
+	if !strings.Contains(lastNote(e, 1), "GitLab refused it (HTTP 422)") {
+		t.Fatalf("a refused follow-up must be answered: %q", lastNote(e, 1))
+	}
+	// Handled: it is not tried again once GitLab would accept it.
+	e.gl.CreateIssueError = nil
+	e.gl.Issues[1].UpdatedAt = &e.gl.Clock
+	e.reconcile()
+	for _, is := range e.gl.Issues {
+		if strings.HasPrefix(is.Title, "Revisit") {
+			t.Fatalf("a handled comment must not be retried: %+v", is)
+		}
+	}
+}

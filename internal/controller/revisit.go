@@ -76,7 +76,7 @@ func (r *AgentProjectReconciler) syncRevisits(ctx context.Context, gl gitlab.API
 		key := strconv.FormatInt(t.iid, 10)
 		for _, n := range notes {
 			if n.ID <= rs.LastNoteIDs[key] || !IsCommand(n, project.Status.BotUserID, spec.Workflow.CommandPrefix) ||
-				(n.CreatedAt != nil && (n.CreatedAt.Before(rs.Since.Time) || (t.from != nil && n.CreatedAt.Before(*t.from)))) {
+				n.CreatedAt == nil || n.CreatedAt.Before(rs.Since.Time) || (t.from != nil && n.CreatedAt.Before(*t.from)) {
 				continue
 			}
 			m := marker.Revisit.FindStringSubmatch(n.Body)
@@ -163,9 +163,9 @@ func (r *AgentProjectReconciler) revisitAfterMerge(ctx context.Context, gl gitla
 	autopilot := st.Status.Autopilot != nil && st.Status.Autopilot.Phase != aiv1.AutopilotOff && st.Spec.Autopilot
 	for _, is := range all {
 		if m := marker.RevisitOf.FindStringSubmatch(is.Description); m != nil && m[1] == id && is.Author.ID == botID {
-			if autopilot && !onAutopilot(st, is.IID) {
-				// Created, but queuing it failed last time.
-				return r.queueFollowUp(ctx, st, is.IID, id, reply)
+			if autopilot && !onAutopilot(st, is.IID) && is.HasLabel(wf.DraftLabel) {
+				// Created on autopilot, but queuing it failed last time.
+				return r.queueFollowUp(ctx, st, is.IID, id, reply, "Queued")
 			}
 			return reply(fmt.Sprintf("#%d already revisits %s; comment there.", is.IID, id))
 		}
@@ -188,29 +188,30 @@ func (r *AgentProjectReconciler) revisitAfterMerge(ctx context.Context, gl gitla
 		Labels:      strings.Join(labels, ","),
 		MilestoneID: st.Spec.Milestone.ID,
 	})
-	if code := gitlab.StatusCode(err); code >= 400 && code < 500 {
+	if code := gitlab.StatusCode(err); code >= 400 && code < 500 && code != 408 && code != 429 {
 		// It would fail again on every poll: say so and move on.
-		return reply(fmt.Sprintf("Could not create the follow-up for %s: %v", id, err))
+		log.FromContext(ctx).Info("revisit after merge: GitLab refused the follow-up", "decision", id, "error", err.Error())
+		return reply(fmt.Sprintf("Could not create the follow-up for %s: GitLab refused it (HTTP %d). Open the issue by hand.", id, code))
 	}
 	if err != nil {
 		return fmt.Errorf("creating the follow-up for %s: %w", id, err)
 	}
 	log.FromContext(ctx).Info("revisit after merge: follow-up created", "decision", id, "issue", is.IID, "autopilot", autopilot)
 	if autopilot {
-		return r.queueFollowUp(ctx, st, is.IID, id, reply)
+		return r.queueFollowUp(ctx, st, is.IID, id, reply, "Created")
 	}
 	return reply(fmt.Sprintf("Created #%d to revisit %s; the agent starts on it now.", is.IID, id))
 }
 
 // queueFollowUp appends a follow-up to the autopilot queue.
-func (r *AgentProjectReconciler) queueFollowUp(ctx context.Context, st *aiv1.AgentTask, iid int64, id string, reply func(string) error) error {
+func (r *AgentProjectReconciler) queueFollowUp(ctx context.Context, st *aiv1.AgentTask, iid int64, id string, reply func(string) error, verb string) error {
 	orig := st.DeepCopy()
 	st.Status.Autopilot.Items = append(st.Status.Autopilot.Items,
 		aiv1.AutopilotItem{IID: iid, State: aiv1.AutopilotItemPending, RevisitOf: id})
 	if err := r.Status().Patch(ctx, st, client.MergeFrom(orig)); err != nil {
 		return err
 	}
-	return reply(fmt.Sprintf("Created #%d to revisit %s. It is queued on autopilot.", iid, id))
+	return reply(fmt.Sprintf("%s #%d to revisit %s. It is queued on autopilot.", verb, iid, id))
 }
 
 // renderFollowUp renders the description of a follow-up issue. The old
