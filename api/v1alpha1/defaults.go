@@ -19,7 +19,7 @@ const (
 	DefaultServiceAccount  = "ai-operator-agent"
 	DefaultPollInterval    = time.Minute
 	DefaultIdleTimeout     = time.Minute
-	DefaultRetentionPeriod = 14 * 24 * time.Hour
+	DefaultRetentionPeriod = 7 * 24 * time.Hour
 	DefaultMaxRunsPerTask  = 20
 
 	DefaultUsageLimitBackoff    = 5 * time.Minute

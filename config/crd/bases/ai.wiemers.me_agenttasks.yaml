@@ -26,6 +26,9 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.run.currentStep
+      name: Step
+      type: string
     - jsonPath: .status.run.lastResult
       name: Result
       type: string
@@ -310,6 +313,11 @@ spec:
                   costUSD:
                     description: CostUSD is the accumulated model spend of this task,
                       as a decimal string.
+                    type: string
+                  currentStep:
+                    description: |-
+                      CurrentStep is the step the runner is working on, e.g. "9 run
+                      implementer". It is empty between runs.
                     type: string
                   deferrals:
                     description: |-

@@ -21,7 +21,7 @@ spec:
   pollInterval: 1m
   lifecycle:
     idleTimeout: 1m        # stop the pod this long after a run (the workspace stays)
-    retentionPeriod: 336h  # then keep the workspace PVC this long (14 days)
+    retentionPeriod: 168h  # then keep the workspace PVC this long (7 days)
     maxRunsPerTask: 20
   agents:
     # Optional: defaults to the agent image of the installed release. Set it

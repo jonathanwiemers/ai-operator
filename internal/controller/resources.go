@@ -145,6 +145,11 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 			corev1.EnvVar{Name: "YARN_CACHE_FOLDER", Value: CacheMountPath + "/yarn"},
 		)
 	}
+	if agents.LogLevel != "" {
+		level := corev1.EnvVar{Name: "AI_LOG_LEVEL", Value: string(agents.LogLevel)}
+		runnerEnv = append(runnerEnv, level)
+		agentEnv = append(agentEnv, level)
+	}
 	agentEnv = append(agentEnv, agents.Env...)
 
 	runnerResources := DefaultRunnerResources

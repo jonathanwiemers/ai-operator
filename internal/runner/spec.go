@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/go-logr/logr"
+
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
@@ -27,26 +29,32 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 		return nil, fmt.Errorf("spec task has no milestone")
 	}
 	glProject := spec.GitLab.Project
+	s := r.step(ctx, "read milestone", "milestoneID", task.Spec.Milestone.ID)
 	milestone, err := gl.GetMilestone(ctx, glProject, task.Spec.Milestone.ID)
 	if err != nil {
-		return nil, fmt.Errorf("getting milestone: %w", err)
+		return nil, s.fail(fmt.Errorf("getting milestone: %w", err))
 	}
+	s.done(milestone.Title, "specBytes", len(milestone.Description))
+	s = r.step(ctx, "read project")
 	proj, err := gl.GetProject(ctx, glProject)
 	if err != nil {
-		return nil, fmt.Errorf("getting project: %w", err)
+		return nil, s.fail(fmt.Errorf("getting project: %w", err))
 	}
+	s.done("default branch "+proj.DefaultBranch, "defaultBranch", proj.DefaultBranch)
 	if err := r.syncWorkspace(ctx, proj.HTTPURLToRepo, proj.DefaultBranch, proj.DefaultBranch); err != nil {
 		return nil, err
 	}
 
+	s = r.step(ctx, "list milestone issues")
 	issues, err := gl.ListIssues(ctx, glProject, gitlab.ListIssuesOptions{Milestone: milestone.Title, State: "all"})
 	if err != nil {
-		return nil, fmt.Errorf("listing milestone issues: %w", err)
+		return nil, s.fail(fmt.Errorf("listing milestone issues: %w", err))
 	}
 	existing := make([]ExistingIssue, 0, len(issues))
 	for _, is := range issues {
 		existing = append(existing, ExistingIssue{IID: is.IID, Key: issueKey(is.Description), Title: is.Title, State: is.State, Labels: is.Labels})
 	}
+	s.done(fmt.Sprintf("%d issues", len(issues)), "issues", len(issues))
 
 	st := r.loadState()
 	role := spec.Agents.Spec
@@ -54,27 +62,33 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	inv.Resume = st.session("spec", role.Engine)
 	prompt := buildSpecPrompt(milestone, existing, spec.Agents.Profiles, task.Status.Run.RunCount > 0)
 	inv.Prompt = prompt
+	s = r.step(ctx, "run spec agent", "engine", role.Engine, "model", role.Model, "resume", inv.Resume != "")
 	res, err := r.invoke(ctx, role, inv, prompt)
 	out := &Outcome{}
 	if res != nil {
 		out.CostUSD = res.CostUSD
 	}
 	if err != nil {
-		return out, err
+		return out, s.fail(err)
 	}
 	st.setSession("spec", role.Engine, res.SessionID)
 	if err := r.saveState(st); err != nil {
-		return out, err
+		return out, s.fail(err)
 	}
 
 	var plan SpecPlan
 	if err := res.Decode(&plan); err != nil {
-		return out, fmt.Errorf("decoding plan: %w", err)
+		return out, s.fail(fmt.Errorf("decoding plan: %w", err))
 	}
-	created, updated, skipped, err := applyPlan(ctx, gl, glProject, milestone, spec, plan, issues)
+	s.done(agentResult(role, res, fmt.Sprintf("%d issues planned", len(plan.Issues))),
+		"session", res.SessionID, "costUSD", res.CostUSD, "planned", len(plan.Issues))
+	s = r.step(ctx, "apply plan", "planned", len(plan.Issues))
+	created, updated, skipped, err := applyPlan(ctx, s.log, gl, glProject, milestone, spec, plan, issues)
 	if err != nil {
-		return out, err
+		return out, s.fail(err)
 	}
+	s.done(fmt.Sprintf("%d created, %d updated, %d left untouched", created, updated, skipped),
+		"created", created, "updated", updated, "skipped", skipped)
 	out.Result = aiv1.RunResultSucceeded
 	out.Summary = fmt.Sprintf("%s\n\nIssues: %d created, %d updated, %d left untouched.", strings.TrimSpace(plan.Summary), created, updated, skipped)
 	return out, nil
@@ -83,7 +97,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 // applyPlan creates and updates the planned issues. Issues that have left the
 // draft state (being worked on, done, or created by a human) are never
 // touched again.
-func applyPlan(ctx context.Context, gl gitlab.API, glProject string, m *gitlab.Milestone, spec aiv1.AgentProjectSpec, plan SpecPlan, issues []gitlab.Issue) (created, updated, skipped int, err error) {
+func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject string, m *gitlab.Milestone, spec aiv1.AgentProjectSpec, plan SpecPlan, issues []gitlab.Issue) (created, updated, skipped int, err error) {
 	wf := spec.Workflow
 	byIID := map[int64]*gitlab.Issue{}
 	keyToIID := map[string]int64{}
@@ -111,6 +125,7 @@ func applyPlan(ctx context.Context, gl gitlab.API, glProject string, m *gitlab.M
 			if ex.State != "opened" || !ex.HasLabel(wf.DraftLabel) {
 				skipped++
 				keyToIID[item.Key] = iid
+				log.Info("issue left untouched", "iid", iid, "key", item.Key, "reason", "no longer a draft")
 				continue
 			}
 			// A profile label set earlier (possibly by a human) is kept.
@@ -124,6 +139,7 @@ func applyPlan(ctx context.Context, gl gitlab.API, glProject string, m *gitlab.M
 				return created, updated, skipped, fmt.Errorf("updating issue #%d: %w", iid, err)
 			}
 			updated++
+			log.Info("issue updated", "iid", iid, "key", item.Key)
 		} else {
 			is, err := gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{
 				Title:       item.Title,
@@ -136,6 +152,7 @@ func applyPlan(ctx context.Context, gl gitlab.API, glProject string, m *gitlab.M
 			}
 			iid = is.IID
 			created++
+			log.Info("issue created", "iid", iid, "key", item.Key, "profile", item.Profile)
 		}
 		keyToIID[item.Key] = iid
 		if missing {

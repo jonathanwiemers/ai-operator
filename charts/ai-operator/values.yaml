@@ -40,6 +40,10 @@ agent:
   image:
     repository: ghcr.io/jonathanwiemers/ai-operator-agent
     tag: ""
+  # Log level of the runner and agent containers: debug, info or error.
+  # Defaults to logLevel if that is one of these, else info. An AgentProject
+  # overrides it with spec.agents.logLevel.
+  logLevel: ""
   # Service account the agent pods use. Must match spec.agents.serviceAccountName
   # of your AgentProjects (default "ai-operator-agent").
   serviceAccountName: ai-operator-agent

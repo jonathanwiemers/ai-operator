@@ -73,6 +73,28 @@ func TestUpdateIssueSendsLabelDeltas(t *testing.T) {
 	}
 }
 
+func TestUpdateIssueNote(t *testing.T) {
+	var path string
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method %s", r.Method)
+		}
+		path = r.URL.EscapedPath()
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewEncoder(w).Encode(Note{ID: 55, Body: "new"})
+	}))
+	defer srv.Close()
+
+	n, err := New(srv.URL, "tok").UpdateIssueNote(context.Background(), "g/p", 7, 55, "new")
+	if err != nil || n.ID != 55 {
+		t.Fatalf("note %+v err %v", n, err)
+	}
+	if !strings.HasSuffix(path, "/projects/g%2Fp/issues/7/notes/55") || body["body"] != "new" {
+		t.Fatalf("unexpected request %s %v", path, body)
+	}
+}
+
 func TestErrorsAndNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"404 Not found"}`, http.StatusNotFound)
