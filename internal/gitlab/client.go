@@ -27,6 +27,7 @@ type API interface {
 	UpdateIssue(ctx context.Context, project string, iid int64, opts UpdateIssueOptions) (*Issue, error)
 	ListIssueNotes(ctx context.Context, project string, iid int64) ([]Note, error)
 	CreateIssueNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
+	UpdateIssueNote(ctx context.Context, project string, iid, noteID int64, body string) (*Note, error)
 	GetMergeRequest(ctx context.Context, project string, iid int64) (*MergeRequest, error)
 	FindOpenMergeRequest(ctx context.Context, project, sourceBranch string) (*MergeRequest, error)
 	CreateMergeRequest(ctx context.Context, project string, opts CreateMergeRequestOptions) (*MergeRequest, error)
@@ -366,6 +367,12 @@ func (c *Client) ListIssueNotes(ctx context.Context, project string, iid int64) 
 func (c *Client) CreateIssueNote(ctx context.Context, project string, iid int64, body string) (*Note, error) {
 	var n Note
 	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/issues/%d/notes", projectPath(project), iid), nil, map[string]string{"body": body}, &n)
+	return &n, err
+}
+
+func (c *Client) UpdateIssueNote(ctx context.Context, project string, iid, noteID int64, body string) (*Note, error) {
+	var n Note
+	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/issues/%d/notes/%d", projectPath(project), iid, noteID), nil, map[string]string{"body": body}, &n)
 	return &n, err
 }
 

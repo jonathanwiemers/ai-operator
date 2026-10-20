@@ -80,6 +80,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if err != nil {
 		return out, s.fail(fmt.Errorf("listing issue notes: %w", err))
 	}
+	// The handoff note is the agent's own memory, not part of the thread.
+	handoffNote, issueNotes := splitHandoff(issueNotes, botID)
+	handoff := handoffText(handoffNote)
 	var mrNotes []gitlab.Note
 	if mr != nil {
 		if mrNotes, err = gl.ListMergeRequestNotes(ctx, glProject, mr.IID); err != nil {
@@ -87,15 +90,19 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 	}
 	newIssueNotes, newMRNotes := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
-	s.done(fmt.Sprintf("%d on the issue, %d on the MR, %d new", len(issueNotes), len(mrNotes), len(newIssueNotes)+len(newMRNotes)),
-		"issueNotes", len(issueNotes), "mrNotes", len(mrNotes), "newNotes", len(newIssueNotes)+len(newMRNotes))
+	result := fmt.Sprintf("%d on the issue, %d on the MR, %d new", len(issueNotes), len(mrNotes), len(newIssueNotes)+len(newMRNotes))
+	if handoff != "" {
+		result += ", agent notes from an earlier run"
+	}
+	s.done(result, "issueNotes", len(issueNotes), "mrNotes", len(mrNotes), "newNotes", len(newIssueNotes)+len(newMRNotes),
+		"handoffBytes", len(handoff))
 
 	role, profile := spec.ImplementRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
 	inv.DisallowedTools = implementDenied
 	inv.Resume = st.session("implement", role.Engine)
-	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false)
-	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true)
+	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false, handoff)
+	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true, "")
 
 	// A CI fix run: the operator saw the pipeline of the last push fail.
 	ciPipeline := task.Spec.Source.CIFixPipelineID
@@ -202,6 +209,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if err := res.Decode(&fixed); err == nil {
 			answer.Summary = fixed.Summary
 			answer.Questions = fixed.Questions
+			if strings.TrimSpace(fixed.Handoff) != "" {
+				answer.Handoff = fixed.Handoff
+			}
 			if fixed.Status != "" {
 				answer.Status = fixed.Status
 			}
@@ -275,6 +285,11 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		s.done(fmt.Sprintf("on #%d", issue.IID))
 	}
+	if botID != 0 {
+		// Without the bot's user ID the note could not be found again.
+		r.updateHandoff(ctx, gl, glProject, issue.IID, handoffNote, answer.Handoff)
+	}
+
 	// With the CI loop, a fresh push stays in "working" until the operator
 	// has seen its pipeline go green (or hands it back).
 	waitForCI := !spec.CI.Disabled && pushed && mr != nil && !needsInput
@@ -306,6 +321,32 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		out.MRIID, out.MRURL = mr.IID, mr.WebURL
 	}
 	return out, nil
+}
+
+// updateHandoff stores the implementer's handoff notes in the bot's handoff
+// note on the issue, creating it on the first run. A failure is logged but
+// does not fail the run: the work itself is pushed and reported already.
+func (r *Runner) updateHandoff(ctx context.Context, gl gitlab.API, glProject string, iid int64, note *gitlab.Note, text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	s := r.step(ctx, "update agent notes")
+	body := renderHandoff(text, r.run.id)
+	var err error
+	if note != nil {
+		_, err = gl.UpdateIssueNote(ctx, glProject, iid, note.ID, body)
+	} else {
+		_, err = gl.CreateIssueNote(ctx, glProject, iid, body)
+	}
+	if err != nil {
+		_ = s.fail(fmt.Errorf("updating agent notes: %w", err))
+		return
+	}
+	if note != nil {
+		s.done(fmt.Sprintf("updated (%d bytes)", len(text)), "note", note.ID)
+	} else {
+		s.done(fmt.Sprintf("created (%d bytes)", len(text)))
+	}
 }
 
 // commit commits the agent's changes as a step of the run.
