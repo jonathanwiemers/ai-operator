@@ -424,19 +424,26 @@ It watches every planned milestone, autopilot or not:
 * **Polling.** Each poll lists the milestone's closed issues updated since the
   last check (`updated_after`, minus five minutes of clock skew) and, on
   autopilot, the notes of the tracking issue. A new comment updates its
-  issue, so the list stays short. `status.revisits` keeps when watching
-  started (older comments are history), the last check, and the highest
-  handled note ID, so each comment is handled once.
+  issue, so the list stays short. Only comments after the issue's
+  `closed_at` count: earlier revisits were its runner's. `status.revisits`
+  keeps when watching started (older comments are history), the last check,
+  and the newest handled note ID per issue, saved after each comment, so
+  each comment is handled once even if a later one fails. A follow-up GitLab
+  refuses to create (4xx) gets a reply instead of blocking the milestone.
 * **Lookup.** The decision is read like the runner reads it: planner
   decisions from the issue description, implementer decisions from the bot's
   decision comments only. Every handled comment gets a reply.
-* **Follow-up.** The issue carries the old decision without its marker, the
-  instruction, a key marker `revisit-<id>` (so the planner treats it as an
-  existing issue) and `<!-- ai-operator:revisit=<id> -->`. One follow-up per
-  decision: an open issue with that marker gets a pointer instead.
+* **Follow-up.** The issue carries the old decision without its marker and
+  the instruction, both cleaned like agent text (no HTML, markers or
+  mentions), and `<!-- ai-operator:revisit=<id> -->` last. It has no plan
+  key: the planner sees it as context, and `applyPlan` never rewrites it. One
+  follow-up per decision: an open follow-up of the bot with that marker gets
+  a pointer instead (and is queued if queuing failed before).
 * **Superseding across issues.** When the follow-up's run posts a decision
   that supersedes the marked ID, the runner marks the old decision on the
-  original issue, in its description or the bot's decision comment.
+  original issue, in its description or the bot's decision comment. Only
+  issues the bot created count as follow-ups. The mark is set when the
+  decision is posted, not when the follow-up merges.
 * **Autopilot.** The follow-up is a draft and is appended to the queue with
   `revisitOf`; rebuilding the queue from the plan keeps it. When it merges,
   the decision index of the original issue is collected again, so the

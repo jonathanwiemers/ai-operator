@@ -301,6 +301,7 @@ func TestFollowUpSupersedesTheMergedDecision(t *testing.T) {
 				e.gl.IssueNotes[7] = []gitlab.Note{{ID: 70, Author: e.gl.Bot, Body: decisionsHeader + " in run `shop-7-api#1`.\n\n" + section}}
 			}
 			e.gl.Issues[42].Description = fmt.Sprintf("Follow-up of #7.\n<!-- ai-operator:revisit=%s -->\n", id)
+			e.gl.Issues[42].Author = e.gl.Bot // only the bot's follow-ups count
 			r := newTestRunner(t, e.tmp, e.k8s, e.gl, followUpEngine{supersedes: id}, e.task.Name)
 			if _, err := r.Step(context.Background()); err != nil {
 				t.Fatal(err)
@@ -316,5 +317,22 @@ func TestFollowUpSupersedesTheMergedDecision(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRevisitMarkerOfAHumanIssueIsIgnored(t *testing.T) {
+	e := newImplementEnv(t)
+	section := "#### D7-1: Protocol\n**Chosen:** REST\n<!-- ai-operator:decision=D7-1 -->\n"
+	old := e.gl.AddIssue(7, "API")
+	old.State = "closed"
+	e.gl.IssueNotes[7] = []gitlab.Note{{ID: 70, Author: e.gl.Bot, Body: decisionsHeader + " in run `shop-7-api#1`.\n\n" + section}}
+	e.gl.Issues[42].Description = "<!-- ai-operator:revisit=D7-1 -->"
+	e.gl.Issues[42].Author = gitlab.User{ID: 1, Username: "jonathan"}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, followUpEngine{supersedes: "D7-1"}, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(e.gl.IssueNotes[7][0].Body, "superseded") {
+		t.Fatalf("a marker in a human's issue must not supersede decisions elsewhere:\n%s", e.gl.IssueNotes[7][0].Body)
 	}
 }

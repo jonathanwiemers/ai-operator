@@ -479,9 +479,9 @@ type RevisitStatus struct {
 	Since metav1.Time `json:"since"`
 	// CheckedAt is the time of the last check.
 	CheckedAt metav1.Time `json:"checkedAt"`
-	// LastNoteID is the newest handled comment.
+	// LastNoteIDs is the newest handled comment per issue IID.
 	// +optional
-	LastNoteID int64 `json:"lastNoteID,omitempty"`
+	LastNoteIDs map[string]int64 `json:"lastNoteIDs,omitempty"`
 }
 
 // DecisionRef points to a decision recorded on an issue.

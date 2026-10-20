@@ -498,9 +498,9 @@ func (r *Runner) postDecisions(ctx context.Context, gl gitlab.API, glProject str
 			}
 		}
 	}
-	// A follow-up issue revisits a decision of a merged issue: the new
-	// decision supersedes that one, on the other issue.
-	if m := marker.RevisitOf.FindStringSubmatch(issue.Description); m != nil {
+	// A follow-up issue (created by the bot) revisits a decision of a merged
+	// issue: the new decision supersedes that one, on the other issue.
+	if m := marker.RevisitOf.FindStringSubmatch(issue.Description); m != nil && botID != 0 && issue.Author.ID == botID {
 		for _, d := range numbered {
 			if !strings.EqualFold(strings.TrimSpace(d.Supersedes), m[1]) {
 				continue

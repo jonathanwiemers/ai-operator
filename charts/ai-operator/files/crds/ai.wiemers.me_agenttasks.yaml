@@ -448,10 +448,13 @@ spec:
                     description: CheckedAt is the time of the last check.
                     format: date-time
                     type: string
-                  lastNoteID:
-                    description: LastNoteID is the newest handled comment.
-                    format: int64
-                    type: integer
+                  lastNoteIDs:
+                    additionalProperties:
+                      format: int64
+                      type: integer
+                    description: LastNoteIDs is the newest handled comment per issue
+                      IID.
+                    type: object
                   since:
                     description: |-
                       Since is when the operator started watching; older comments are

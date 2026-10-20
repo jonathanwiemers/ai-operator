@@ -186,7 +186,7 @@ func (f *Fake) CreateIssue(_ context.Context, _ string, opts gitlab.CreateIssueO
 		}
 	}
 	f.lastIID = iid
-	is := &gitlab.Issue{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "opened", UpdatedAt: f.tick()}
+	is := &gitlab.Issue{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "opened", UpdatedAt: f.tick(), Author: f.Bot}
 	if opts.Labels != "" {
 		is.Labels = strings.Split(opts.Labels, ",")
 	}
@@ -239,6 +239,7 @@ func (f *Fake) UpdateIssue(_ context.Context, _ string, iid int64, opts gitlab.U
 	}
 	if opts.StateEvent == "close" {
 		is.State = "closed"
+		is.ClosedAt = f.tick()
 	}
 	is.UpdatedAt = f.tick()
 	c := *is

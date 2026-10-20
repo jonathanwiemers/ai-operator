@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,51 +34,74 @@ func (r *AgentProjectReconciler) syncRevisits(ctx context.Context, gl gitlab.API
 		return nil
 	}
 	now := r.now()
-	orig := st.DeepCopy()
-	rs := st.Status.Revisits.DeepCopy()
-	if rs == nil {
+	if st.Status.Revisits == nil {
 		// Start watching now; comments written before are history.
+		orig := st.DeepCopy()
 		st.Status.Revisits = &aiv1.RevisitStatus{Since: metav1.Time{Time: now}, CheckedAt: metav1.Time{Time: now}}
 		return r.Status().Patch(ctx, st, client.MergeFrom(orig))
 	}
+	rs := st.Status.Revisits
 	glProject := spec.GitLab.Project
 	after := rs.CheckedAt.Add(-revisitClockSkew)
 	closed, err := gl.ListIssues(ctx, glProject, gitlab.ListIssuesOptions{Milestone: st.Spec.Milestone.Title, State: "closed", UpdatedAfter: &after})
 	if err != nil {
 		return fmt.Errorf("listing closed issues of milestone %q: %w", st.Spec.Milestone.Title, err)
 	}
-	targets := make([]int64, 0, len(closed)+1)
+	// Closed issues count from when they were closed: a revisit written
+	// while the issue was open was its runner's. The tracking issue counts
+	// while autopilot is on.
+	tracking := int64(0)
+	if ap := st.Status.Autopilot; ap != nil && ap.Phase != aiv1.AutopilotOff {
+		tracking = ap.TrackingIssueIID
+	}
+	type target struct {
+		iid  int64
+		from *time.Time
+	}
+	var targets []target
 	for _, is := range closed {
-		targets = append(targets, is.IID)
-	}
-	if ap := st.Status.Autopilot; ap != nil && ap.TrackingIssueIID != 0 && ap.Phase != aiv1.AutopilotOff {
-		targets = append(targets, ap.TrackingIssueIID)
-	}
-	handled := rs.LastNoteID
-	for _, iid := range targets {
-		notes, err := gl.ListIssueNotes(ctx, glProject, iid)
-		if err != nil {
-			return fmt.Errorf("listing notes of issue #%d: %w", iid, err)
+		if ap := st.Status.Autopilot; ap != nil && is.IID == ap.TrackingIssueIID {
+			continue // handled below, or not at all when off
 		}
+		targets = append(targets, target{is.IID, is.ClosedAt})
+	}
+	if tracking != 0 {
+		targets = append(targets, target{iid: tracking})
+	}
+	for _, t := range targets {
+		notes, err := gl.ListIssueNotes(ctx, glProject, t.iid)
+		if err != nil {
+			return fmt.Errorf("listing notes of issue #%d: %w", t.iid, err)
+		}
+		key := strconv.FormatInt(t.iid, 10)
 		for _, n := range notes {
-			if n.ID <= rs.LastNoteID || (n.CreatedAt != nil && n.CreatedAt.Before(rs.Since.Time)) ||
-				!IsCommand(n, project.Status.BotUserID, spec.Workflow.CommandPrefix) {
+			if n.ID <= rs.LastNoteIDs[key] || !IsCommand(n, project.Status.BotUserID, spec.Workflow.CommandPrefix) ||
+				(n.CreatedAt != nil && (n.CreatedAt.Before(rs.Since.Time) || (t.from != nil && n.CreatedAt.Before(*t.from)))) {
 				continue
 			}
 			m := marker.Revisit.FindStringSubmatch(n.Body)
 			if m == nil || m[1] != spec.Workflow.CommandPrefix {
 				continue
 			}
-			if err := r.revisitAfterMerge(ctx, gl, spec, st, project.Status.BotUserID, iid, n, strings.ToUpper(m[2]), strings.TrimSpace(m[3])); err != nil {
+			if err := r.revisitAfterMerge(ctx, gl, spec, st, project.Status.BotUserID, t.iid, n, strings.ToUpper(m[2]), strings.TrimSpace(m[3])); err != nil {
 				return err
 			}
-			handled = max(handled, n.ID)
+			// Saved per comment, so a later failure does not handle it again.
+			orig := st.DeepCopy()
+			if st.Status.Revisits.LastNoteIDs == nil {
+				st.Status.Revisits.LastNoteIDs = map[string]int64{}
+			}
+			st.Status.Revisits.LastNoteIDs[key] = n.ID
+			if err := r.Status().Patch(ctx, st, client.MergeFrom(orig)); err != nil {
+				return err
+			}
+			rs = st.Status.Revisits
 		}
 	}
-	if len(closed) == 0 && handled == rs.LastNoteID {
+	if len(closed) == 0 {
 		return nil // nothing new: keep the window, save a status write
 	}
-	st.Status.Revisits.LastNoteID = handled
+	orig := st.DeepCopy()
 	st.Status.Revisits.CheckedAt = metav1.Time{Time: now}
 	return r.Status().Patch(ctx, st, client.MergeFrom(orig))
 }
@@ -136,13 +160,17 @@ func (r *AgentProjectReconciler) revisitAfterMerge(ctx context.Context, gl gitla
 	if err != nil {
 		return fmt.Errorf("listing issues of milestone %q: %w", st.Spec.Milestone.Title, err)
 	}
+	autopilot := st.Status.Autopilot != nil && st.Status.Autopilot.Phase != aiv1.AutopilotOff && st.Spec.Autopilot
 	for _, is := range all {
-		if m := marker.RevisitOf.FindStringSubmatch(is.Description); m != nil && m[1] == id {
+		if m := marker.RevisitOf.FindStringSubmatch(is.Description); m != nil && m[1] == id && is.Author.ID == botID {
+			if autopilot && !onAutopilot(st, is.IID) {
+				// Created, but queuing it failed last time.
+				return r.queueFollowUp(ctx, st, is.IID, id, reply)
+			}
 			return reply(fmt.Sprintf("#%d already revisits %s; comment there.", is.IID, id))
 		}
 	}
 
-	autopilot := st.Status.Autopilot != nil && st.Status.Autopilot.Phase != aiv1.AutopilotOff && st.Spec.Autopilot
 	labels := []string{wf.GeneratedLabel, wf.ReadyLabel}
 	if autopilot {
 		labels[1] = wf.DraftLabel // the queue hands it over
@@ -155,40 +183,60 @@ func (r *AgentProjectReconciler) revisitAfterMerge(ctx context.Context, gl gitla
 		title = fmt.Sprintf("%s: %s", id, h[0].Title)
 	}
 	is, err := gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{
-		Title:       "Revisit " + title,
+		Title:       shorten("Revisit "+title, 255),
 		Description: renderFollowUp(id, section, instruction, n, target, wf.CommandPrefix),
 		Labels:      strings.Join(labels, ","),
 		MilestoneID: st.Spec.Milestone.ID,
 	})
+	if code := gitlab.StatusCode(err); code >= 400 && code < 500 {
+		// It would fail again on every poll: say so and move on.
+		return reply(fmt.Sprintf("Could not create the follow-up for %s: %v", id, err))
+	}
 	if err != nil {
 		return fmt.Errorf("creating the follow-up for %s: %w", id, err)
 	}
 	log.FromContext(ctx).Info("revisit after merge: follow-up created", "decision", id, "issue", is.IID, "autopilot", autopilot)
 	if autopilot {
-		orig := st.DeepCopy()
-		st.Status.Autopilot.Items = append(st.Status.Autopilot.Items,
-			aiv1.AutopilotItem{IID: is.IID, State: aiv1.AutopilotItemPending, RevisitOf: id})
-		if err := r.Status().Patch(ctx, st, client.MergeFrom(orig)); err != nil {
-			return err
-		}
-		return reply(fmt.Sprintf("Created #%d to revisit %s. It is queued on autopilot.", is.IID, id))
+		return r.queueFollowUp(ctx, st, is.IID, id, reply)
 	}
 	return reply(fmt.Sprintf("Created #%d to revisit %s; the agent starts on it now.", is.IID, id))
 }
 
-// renderFollowUp renders the description of a follow-up issue.
+// queueFollowUp appends a follow-up to the autopilot queue.
+func (r *AgentProjectReconciler) queueFollowUp(ctx context.Context, st *aiv1.AgentTask, iid int64, id string, reply func(string) error) error {
+	orig := st.DeepCopy()
+	st.Status.Autopilot.Items = append(st.Status.Autopilot.Items,
+		aiv1.AutopilotItem{IID: iid, State: aiv1.AutopilotItemPending, RevisitOf: id})
+	if err := r.Status().Patch(ctx, st, client.MergeFrom(orig)); err != nil {
+		return err
+	}
+	return reply(fmt.Sprintf("Created #%d to revisit %s. It is queued on autopilot.", iid, id))
+}
+
+// renderFollowUp renders the description of a follow-up issue. The old
+// decision and the instruction are cleaned, so they cannot carry markers or
+// mentions into the bot's issue; the markers come last.
 func renderFollowUp(id, section, instruction string, n gitlab.Note, target *gitlab.Issue, prefix string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Follow-up of #%d to revisit decision **%s**, requested by @%s.\n\n", target.IID, id, n.Author.Username)
 	b.WriteString("### Decision to revisit\n\n")
 	// The old decision without its marker: this issue must not carry it.
-	b.WriteString(strings.TrimSpace(marker.Decision.ReplaceAllString(section, "")) + "\n\n")
+	b.WriteString(marker.Clean(marker.Decision.ReplaceAllString(section, "")) + "\n\n")
+	instruction = marker.Clean(instruction)
 	if instruction == "" {
 		instruction = "(no instruction given; see the comments on #" + fmt.Sprint(target.IID) + ")"
 	}
 	fmt.Fprintf(&b, "### Requested change\n\n%s\n\n", instruction)
-	fmt.Fprintf(&b, "The change of #%d is merged. Change the code accordingly on top of it, and record the new decision with "+
-		"`supersedes` set to `%s`. Comment `%s …` here to steer the work.\n\n", target.IID, id, prefix)
-	fmt.Fprintf(&b, "<!-- ai-operator:key=revisit-%s -->\n<!-- ai-operator:revisit=%s -->\n", strings.ToLower(id), id)
+	fmt.Fprintf(&b, "#%d is closed and its change is on the default branch. Change the code accordingly on top of it, and record the new "+
+		"decision with `supersedes` set to `%s`. Comment `%s …` here to steer the work.\n\n", target.IID, id, prefix)
+	fmt.Fprintf(&b, "<!-- ai-operator:revisit=%s -->\n", id)
 	return b.String()
+}
+
+// shorten cuts s to at most n runes (GitLab limits titles to 255).
+func shorten(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n-1]) + "…"
+	}
+	return s
 }

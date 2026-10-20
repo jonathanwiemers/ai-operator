@@ -78,32 +78,8 @@ func decisionID(iid int64, planner bool, n int) string {
 	return fmt.Sprintf("D%d-%d", iid, n)
 }
 
-// cleanDecisionText makes agent text safe for a decision: HTML outside code
-// spans is escaped (an unclosed <details> or <!-- would hide everything
-// after it), and mentions are broken up.
-func cleanDecisionText(s string) string {
-	s = strings.TrimSpace(s)
-	// With unbalanced backticks there are no reliable code spans: escape
-	// everything.
-	spans := strings.Count(s, "`")%2 == 0
-	var b strings.Builder
-	inCode := false
-	for _, r := range s {
-		switch {
-		case r == '`' && spans:
-			inCode = !inCode
-		case r == '<' && !inCode:
-			b.WriteString("&lt;")
-			continue
-		case r == '@' && !inCode:
-			b.WriteString("@\u200b")
-			continue
-		}
-		b.WriteRune(r)
-	}
-	// Markers inside code spans must not count either.
-	return strings.ReplaceAll(b.String(), "<!-- ai-operator:", "<!-- ai-operator :")
-}
+// cleanDecisionText makes agent text safe for a decision (marker.Clean).
+func cleanDecisionText(s string) string { return marker.Clean(s) }
 
 // renderDecision renders one decision as a markdown section ending with its
 // marker.

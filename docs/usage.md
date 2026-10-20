@@ -241,7 +241,8 @@ The operator then creates a **follow-up issue** in the milestone:
 - its description holds the old decision, your instruction, and who asked;
 - its implementer works on top of the merged change and records a decision
   that supersedes the old one. When that decision is posted, the old decision
-  on the original issue is marked *Superseded by D57-1*.
+  on the original issue is marked *Superseded by D57-1*, already before the
+  follow-up is merged. If you drop the follow-up, revisit D57-1 instead.
 
 Without autopilot the follow-up goes straight to `agent::ready`, since you
 asked for it. On autopilot it is created as `agent::draft` and joins the
@@ -258,9 +259,12 @@ The operator answers every revisit comment it handles:
 | `#57 already revisits D42-3 …` | one follow-up per decision: comment on it |
 | `… not in this milestone` / `… does not exist` | the ID names another issue |
 
-Only comments written after the operator started watching the milestone are
-handled, each once. Milestones without `/agent spec` or `/agent autopilot`
-are not watched: there, open a new issue by hand.
+Only comments written after the operator started watching the milestone,
+and after the issue was closed, are handled, each once: a revisit you wrote
+while the issue was open belongs to its runner. On the tracking issue,
+revisits are handled while autopilot is on, also after it is done. A re-plan
+of the milestone leaves follow-ups alone. Milestones without `/agent spec` or
+`/agent autopilot` are not watched: there, open a new issue by hand.
 
 ## 5. Finish
 
@@ -495,7 +499,7 @@ order with their dependencies) and, on autopilot, the queue in
 per issue with its state, MR, merged commit and decisions (`revisitOf` for a
 follow-up). `status.revisits` tracks the [revisits after the
 merge](#revisiting-after-the-merge): when watching started, the last check
-and the last handled comment.
+and the last handled comment per issue.
 
 ```sh
 kubectl -n agents get agenttask shop-spec-m3-checkout-v2 -o jsonpath='{.status.autopilot}'

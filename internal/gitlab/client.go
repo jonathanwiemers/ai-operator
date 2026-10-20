@@ -112,6 +112,8 @@ type Issue struct {
 	Assignees   []User     `json:"assignees"`
 	WebURL      string     `json:"web_url"`
 	UpdatedAt   *time.Time `json:"updated_at"`
+	ClosedAt    *time.Time `json:"closed_at"`
+	Author      User       `json:"author"`
 }
 
 // HasLabel reports whether the issue carries the label.

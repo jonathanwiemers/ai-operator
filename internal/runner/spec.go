@@ -56,7 +56,11 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 		if marker.IsTrackingIssue(is.Description) {
 			continue // the operator's autopilot tracking issue is not work
 		}
-		existing = append(existing, ExistingIssue{IID: is.IID, Key: issueKey(is.Description), Title: is.Title, State: is.State, Labels: is.Labels})
+		e := ExistingIssue{IID: is.IID, Key: issueKey(is.Description), Title: is.Title, State: is.State, Labels: is.Labels}
+		if m := marker.RevisitOf.FindStringSubmatch(is.Description); m != nil {
+			e.Revisits = m[1]
+		}
+		existing = append(existing, e)
 	}
 	s.done(fmt.Sprintf("%d issues", len(issues)), "issues", len(issues))
 
@@ -183,7 +187,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 		}
 		desc, missing := renderIssue(item, keyToIID, iid, wf.CommandPrefix)
 		if ex := byIID[iid]; ex != nil {
-			if ex.State != "opened" || !ex.HasLabel(wf.DraftLabel) {
+			if ex.State != "opened" || !ex.HasLabel(wf.DraftLabel) || marker.RevisitOf.MatchString(ex.Description) {
 				skipped++
 				keyToIID[item.Key] = iid
 				log.Info("issue left untouched", "iid", iid, "key", item.Key, "reason", "no longer a draft")

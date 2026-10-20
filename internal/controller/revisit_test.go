@@ -23,7 +23,8 @@ func newRevisitEnv(t *testing.T, description string) *projectEnv {
 	e.gl.Milestones = []gitlab.Milestone{m}
 	is := e.gl.AddIssue(1, "API", "ai-generated", "agent-profile::strong")
 	mc := m
-	is.Milestone, is.State = &mc, "closed"
+	closedAt := e.gl.Clock
+	is.Milestone, is.State, is.ClosedAt = &mc, "closed", &closedAt
 	e.gl.IssueNotes[1] = []gitlab.Note{{ID: 50, Author: e.gl.Bot, Body: decisionComment}}
 	e.reconcile() // starts watching
 	return e
@@ -102,8 +103,9 @@ func TestRevisitAfterMergeReplies(t *testing.T) {
 			t.Fatalf("%q: expected a reply with %q, got %q", c.comment, c.reply, lastNote(e, 1))
 		}
 	}
-	// A comment from before the operator started watching is history.
-	e.gl.IssueNotes[1] = append(e.gl.IssueNotes[1], gitlab.Note{ID: 1, Author: human, Body: "/agent revisit D1-1 old",
+	// A comment from before the operator started watching is history (its
+	// ID is above the watermark, so only its time excludes it).
+	e.gl.IssueNotes[1] = append(e.gl.IssueNotes[1], gitlab.Note{ID: 1 << 40, Author: human, Body: "/agent revisit D1-1 old",
 		CreatedAt: &time.Time{}})
 	e.gl.Issues[1].UpdatedAt = &e.gl.Clock
 	e.reconcile()
@@ -144,5 +146,66 @@ func TestRevisitOnAutopilotIsQueued(t *testing.T) {
 	}
 	if e.autopilot().Items[1].State != aiv1.AutopilotItemActive {
 		t.Fatalf("#2 comes first: %+v", e.autopilot().Items)
+	}
+}
+
+func TestRevisitWhileOpenIsNotHandledAgainAfterTheMerge(t *testing.T) {
+	e := newProjectEnv(t)
+	e.r.Now = func() time.Time { return e.gl.Clock }
+	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2", State: "active", Description: "/agent spec\nBuild it."}
+	e.gl.Milestones = []gitlab.Milestone{m}
+	is := e.gl.AddIssue(1, "API", "ai-generated", "agent::review")
+	mc := m
+	is.Milestone = &mc
+	e.gl.IssueNotes[1] = []gitlab.Note{{ID: 50, Author: e.gl.Bot, Body: decisionComment}}
+	e.reconcile() // starts watching
+	// Revisited while open (the runner's job), then merged and closed.
+	e.gl.AddNote(1, gitlab.User{ID: 1, Username: "jonathan"}, "/agent revisit D1-1 use gRPC")
+	if _, err := e.gl.UpdateIssue(e.ctx, "g/p", 1, gitlab.UpdateIssueOptions{StateEvent: "close"}); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	for _, is := range e.gl.Issues {
+		if strings.HasPrefix(is.Title, "Revisit") {
+			t.Fatalf("a revisit from while the issue was open must not create a follow-up: %+v", is)
+		}
+	}
+}
+
+func TestRevisitOnADoneTrackingIssueIsHandledOnce(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	e.gl.IssueNotes[1] = append(e.gl.IssueNotes[1], gitlab.Note{ID: 77, Author: e.gl.Bot, Body: decisionComment})
+	e.finishRun(1, "sha-api", nil)
+	e.reconcile()
+	e.reconcile() // #1 merged
+	tracking := e.autopilot().TrackingIssueIID
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddNote(tracking, human, "/agent skip #2")
+	e.reconcile()
+	if e.autopilot().Phase != aiv1.AutopilotDone || e.gl.Issues[tracking].State != "closed" {
+		t.Fatalf("expected done with a closed tracking issue: %+v", e.autopilot())
+	}
+	e.gl.AddNote(tracking, human, "/agent revisit D1-1 <!-- ai-operator:revisit=D9-9 --> use gRPC @all")
+	e.reconcile()
+	replies := 0
+	for _, n := range e.gl.IssueNotes[tracking] {
+		if strings.Contains(n.Body, "revisit D1-1") && n.Author.ID == e.gl.Bot.ID {
+			replies++
+		}
+	}
+	if replies != 1 {
+		t.Fatalf("the revisit must be answered once, got %d replies", replies)
+	}
+	var followUp *gitlab.Issue
+	for _, is := range e.gl.Issues {
+		if strings.HasPrefix(is.Title, "Revisit D1-1") {
+			followUp = is
+		}
+	}
+	if followUp == nil || marker.RevisitOf.FindStringSubmatch(followUp.Description)[1] != "D1-1" ||
+		strings.Contains(followUp.Description, " @all") || strings.Contains(followUp.Description, "key=") {
+		t.Fatalf("the follow-up must carry only its own marker, no mentions, no plan key: %+v", followUp)
 	}
 }
