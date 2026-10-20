@@ -246,6 +246,35 @@ func TestDefaultAgentImage(t *testing.T) {
 	}
 }
 
+func TestCurrentStepClearedWithThePod(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	e.reconcile("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") {
+		t.Fatal("expected pod")
+	}
+	// The runner is in the middle of a step when the task is suspended.
+	task := e.task("x")
+	orig := task.DeepCopy()
+	task.Status.Run.ActiveRunRequest = 1
+	task.Status.Run.CurrentStep = "9 run implementer"
+	if err := e.c.Status().Patch(e.ctx, task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	task = e.task("x")
+	task.Spec.Suspend = true
+	if err := e.c.Update(e.ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if e.exists(&pod, "x") {
+		t.Fatal("suspended task must not keep its pod")
+	}
+	if got := e.task("x").Status.Run.CurrentStep; got != "" {
+		t.Fatalf("current step must be cleared with the pod, got %q", got)
+	}
+}
+
 func TestAgentLogLevel(t *testing.T) {
 	logLevel := func(c *corev1.Container) string {
 		for _, e := range c.Env {

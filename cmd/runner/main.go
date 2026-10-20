@@ -53,9 +53,9 @@ func main() {
 	runRunner(ctx)
 }
 
-// newLogger returns the logger at the level in AI_LOG_LEVEL (debug, info or
-// error; the operator sets it from agents.logLevel). It accepts the same
-// values as the operator's --zap-log-level.
+// newLogger returns the logger at the level in AI_LOG_LEVEL: debug, info or
+// error, set by the operator from agents.logLevel. An invalid value is
+// ignored and the default (info) is used.
 func newLogger() logr.Logger {
 	opts := zap.Options{}
 	if level := os.Getenv("AI_LOG_LEVEL"); level != "" {

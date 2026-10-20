@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -47,8 +48,8 @@ func newRunLog(base logr.Logger, task *aiv1.AgentTask) *runLog {
 	return &runLog{id: id, log: base.WithValues(kv...), start: time.Now()}
 }
 
-// log returns the logger of the current run, or the runner's logger between
-// runs.
+// log returns the logger of the current (or last) run, or the runner's
+// logger before the first run.
 func (r *Runner) log() logr.Logger {
 	if r.run != nil {
 		return r.run.log
@@ -156,10 +157,14 @@ func (rl *runLog) markdown(costUSD float64) string {
 	return b.String()
 }
 
-// cell makes s safe for a single markdown table cell.
+// cell makes s safe for a single markdown table cell. Some results carry
+// text from GitLab or the agent (titles, file names), so HTML is escaped and
+// @mentions are broken up.
 func cell(s string) string {
-	s = strings.Join(strings.Fields(s), " ")
-	return strings.ReplaceAll(truncate(s, 120), "|", `\|`)
+	s = truncate(strings.Join(strings.Fields(s), " "), 120)
+	s = html.EscapeString(s)
+	s = strings.ReplaceAll(s, "@", "@\u200b")
+	return strings.ReplaceAll(s, "|", `\|`)
 }
 
 func fmtDuration(d time.Duration) string {

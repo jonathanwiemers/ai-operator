@@ -199,6 +199,11 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			task.Status.Phase = aiv1.TaskPhasePending
 		}
 	}
+	// Only the runner sets the current step; a run cut off together with its
+	// pod (suspend, eviction) would leave it behind.
+	if pod == nil {
+		task.Status.Run.CurrentStep = ""
+	}
 
 	if waiting && !blocked && !task.Spec.Suspend {
 		task.Status.Phase = aiv1.TaskPhaseWaiting
