@@ -370,10 +370,17 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	// fails the next poll sees the ready label again and requests one more
 	// run, which the runner simply coalesces.
 	if requested {
-		remove := []string{wf.ReadyLabel, wf.NeedsInputLabel, wf.ReviewLabel}
-		if _, err := gl.UpdateIssue(ctx, glProject, is.IID, gitlab.UpdateIssueOptions{
-			AddLabels: []string{wf.WorkingLabel}, RemoveLabels: remove,
-		}); err != nil {
+		opts := gitlab.UpdateIssueOptions{
+			AddLabels:    []string{wf.WorkingLabel},
+			RemoveLabels: []string{wf.ReadyLabel, wf.NeedsInputLabel, wf.ReviewLabel},
+		}
+		// Assigning the bot makes GitLab's milestone page list the issue as
+		// ongoing. assignee_ids replaces all assignees, so an issue that is
+		// already assigned (to a human or to the bot) is left alone.
+		if *wf.AssignBot && len(is.Assignees) == 0 && project.Status.BotUserID != 0 {
+			opts.AssigneeIDs = []int64{project.Status.BotUserID}
+		}
+		if _, err := gl.UpdateIssue(ctx, glProject, is.IID, opts); err != nil {
 			return nil, fmt.Errorf("moving issue #%d to %q: %w", is.IID, wf.WorkingLabel, err)
 		}
 	}

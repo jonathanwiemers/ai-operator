@@ -132,6 +132,13 @@ All labels can be renamed. Defaults:
 | `generatedLabel` | `ai-generated` |
 | `profileLabelPrefix` | `agent-profile::` |
 | `commandPrefix` | `/agent` |
+| `assignBot` | `true` |
+
+`assignBot` assigns the bot user to an issue when the operator picks it up and
+the issue has no assignee, so GitLab's milestone page lists it under
+**Ongoing**. It is sent in the same update that adds the working label. An
+issue that already has an assignee is left alone, so a human assignee is never
+replaced. Set it to `false` to leave assignees untouched.
 
 ## `spec.agents`
 

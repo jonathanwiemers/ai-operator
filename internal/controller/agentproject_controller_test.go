@@ -207,6 +207,74 @@ func TestIssueLifecycle(t *testing.T) {
 	}
 }
 
+func TestPickUpAssignsBot(t *testing.T) {
+	e := newProjectEnv(t)
+	e.gl.AddIssue(42, "Add PayPal button", "agent::ready")
+	e.reconcile()
+
+	// Label and assignee change in one update.
+	if len(e.gl.IssueUpdates) != 1 {
+		t.Fatalf("expected one issue update, got %+v", e.gl.IssueUpdates)
+	}
+	if u := e.gl.IssueUpdates[0]; !slices.Equal(u.AddLabels, []string{"agent::working"}) || !slices.Equal(u.AssigneeIDs, []int64{e.gl.Bot.ID}) {
+		t.Fatalf("unexpected update %+v", u)
+	}
+	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::working"}) {
+		t.Fatalf("issue should be moved to working, has %v", labels)
+	}
+	if got := e.gl.Issues[42].Assignees; !slices.Equal(got, []gitlab.User{e.gl.Bot}) {
+		t.Fatalf("issue should be assigned to the bot, has %v", got)
+	}
+
+	// Another run request on the issue the bot is assigned to: only the label
+	// changes.
+	e.gl.SetLabels(42, "agent::ready")
+	e.reconcile()
+	if len(e.gl.IssueUpdates) != 2 || e.gl.IssueUpdates[1].AssigneeIDs != nil {
+		t.Fatalf("an assigned issue must not be reassigned: %+v", e.gl.IssueUpdates)
+	}
+	if got := e.gl.Issues[42].Assignees; !slices.Equal(got, []gitlab.User{e.gl.Bot}) {
+		t.Fatalf("issue should stay assigned to the bot, has %v", got)
+	}
+}
+
+func TestPickUpKeepsHumanAssignee(t *testing.T) {
+	e := newProjectEnv(t)
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddIssue(42, "Add PayPal button", "agent::ready").Assignees = []gitlab.User{human}
+	e.reconcile()
+
+	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::working"}) {
+		t.Fatalf("issue should be moved to working, has %v", labels)
+	}
+	if len(e.gl.IssueUpdates) != 1 || e.gl.IssueUpdates[0].AssigneeIDs != nil {
+		t.Fatalf("a human assignee must not be replaced: %+v", e.gl.IssueUpdates)
+	}
+	if got := e.gl.Issues[42].Assignees; !slices.Equal(got, []gitlab.User{human}) {
+		t.Fatalf("human assignee should stay, has %v", got)
+	}
+}
+
+func TestPickUpAssignBotDisabled(t *testing.T) {
+	e := newProjectEnv(t)
+	var project aiv1.AgentProject
+	_ = e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &project)
+	off := false
+	project.Spec.Workflow.AssignBot = &off
+	if err := e.c.Update(e.ctx, &project); err != nil {
+		t.Fatal(err)
+	}
+	e.gl.AddIssue(42, "Add PayPal button", "agent::ready")
+	e.reconcile()
+
+	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::working"}) {
+		t.Fatalf("issue should be moved to working, has %v", labels)
+	}
+	if len(e.gl.IssueUpdates) != 1 || e.gl.IssueUpdates[0].AssigneeIDs != nil || e.gl.Issues[42].Assignees != nil {
+		t.Fatalf("assignBot: false must not assign: %+v", e.gl.IssueUpdates)
+	}
+}
+
 func TestClosedIssueDeletesTask(t *testing.T) {
 	e := newProjectEnv(t)
 	e.gl.AddIssue(7, "Fix login", "agent::ready")
