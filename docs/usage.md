@@ -47,6 +47,27 @@ stateDiagram-v2
 You act on `draft`, `needs-input` and `review`. Everything in between,
 including fixing a red pipeline, happens without you.
 
+`hack/gitlab-board.sh` creates that board, named **Agents**, with one list per
+label in this order. Moving a card between columns changes its label, so
+dragging a card from draft to ready hands the issue to the agent. A group
+board shows the issues of every project in the group on one page:
+
+```sh
+# group labels (one set for every project in the group), then the group board
+GITLAB_GROUP=my-group GITLAB_TOKEN=glpat-… hack/sandbox/gitlab-setup.sh
+GITLAB_GROUP=my-group GITLAB_TOKEN=glpat-… hack/gitlab-board.sh
+
+# or a board for a single project
+GITLAB_PROJECT=my-group/shop GITLAB_TOKEN=glpat-… hack/gitlab-board.sh
+```
+
+Run both with your own token (`api` scope, *Maintainer* on the group or
+project): creating group labels and boards needs more than the bot's
+*Developer* role. The board script stops if a label is missing. It never
+removes or renames boards and lists: on GitLab Free, which allows one board
+per group or project, it adds the missing lists to the existing board. Running
+it again changes nothing.
+
 Create a **project access token** with role *Developer* and the scopes `api` and
 `write_repository`. Protect your default branch. The agent only pushes
 `agent/*` branches and opens draft merge requests.

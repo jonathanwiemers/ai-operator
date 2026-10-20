@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
-# Creates the ai-operator labels in a GitLab project.
+# Creates the ai-operator labels in a GitLab project, or with GITLAB_GROUP as
+# group labels shared by every project in the group (needed for group boards,
+# see hack/gitlab-board.sh).
 #   GITLAB_URL (default https://gitlab.com), GITLAB_PROJECT (group/project), GITLAB_TOKEN
+#   GITLAB_GROUP (group path) instead of GITLAB_PROJECT; the token needs Maintainer on the group
 set -euo pipefail
-: "${GITLAB_PROJECT:?set GITLAB_PROJECT, e.g. my-group/sandbox-todo}"
-: "${GITLAB_TOKEN:?set GITLAB_TOKEN (project access token, Developer, api + write_repository)}"
+if [[ -n "${GITLAB_GROUP:-}" ]]; then
+  if [[ -n "${GITLAB_PROJECT:-}" ]]; then
+    echo "set either GITLAB_GROUP or GITLAB_PROJECT, not both" >&2
+    exit 1
+  fi
+  : "${GITLAB_TOKEN:?set GITLAB_TOKEN (your own token, api scope, Maintainer on the group)}"
+  target="groups/$(printf '%s' "$GITLAB_GROUP" | sed 's#/#%2F#g')"
+else
+  : "${GITLAB_PROJECT:?set GITLAB_PROJECT, e.g. my-group/sandbox-todo (or GITLAB_GROUP for group labels)}"
+  : "${GITLAB_TOKEN:?set GITLAB_TOKEN (project access token, Developer, api + write_repository)}"
+  target="projects/$(printf '%s' "$GITLAB_PROJECT" | sed 's#/#%2F#g')"
+fi
 GITLAB_URL="${GITLAB_URL:-https://gitlab.com}"
-project="$(printf '%s' "$GITLAB_PROJECT" | sed 's#/#%2F#g')"
 
 create() {
   local name="$1" color="$2" description="$3"
@@ -14,7 +26,7 @@ create() {
     -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
     --data-urlencode "name=${name}" --data-urlencode "color=${color}" \
     --data-urlencode "description=${description}" \
-    "${GITLAB_URL}/api/v4/projects/${project}/labels")"
+    "${GITLAB_URL}/api/v4/${target}/labels")"
   case "$code" in
     201) echo "created  ${name}" ;;
     409) echo "exists   ${name}" ;;
