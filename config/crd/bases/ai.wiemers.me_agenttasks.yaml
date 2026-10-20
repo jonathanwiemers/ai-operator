@@ -238,6 +238,11 @@ spec:
                             one is attempted.
                           format: int32
                           type: integer
+                        revisitOf:
+                          description: |-
+                            RevisitOf is set for follow-up issues the operator created to revisit
+                            a decision of a merged issue: the decision's ID.
+                          type: string
                         state:
                           description: AutopilotItemState is the state of one issue
                             in the queue.
@@ -419,6 +424,29 @@ spec:
                 type: array
               podName:
                 type: string
+              revisits:
+                description: |-
+                  Revisits tracks the "/agent revisit" comments the operator handled on
+                  closed issues of the milestone and on its tracking issue (spec tasks).
+                properties:
+                  checkedAt:
+                    description: CheckedAt is the time of the last check.
+                    format: date-time
+                    type: string
+                  lastNoteID:
+                    description: LastNoteID is the newest handled comment.
+                    format: int64
+                    type: integer
+                  since:
+                    description: |-
+                      Since is when the operator started watching; older comments are
+                      ignored.
+                    format: date-time
+                    type: string
+                required:
+                - checkedAt
+                - since
+                type: object
               run:
                 description: RunStatus is reported by the runner.
                 properties:

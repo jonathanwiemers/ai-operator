@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestListIssuesPaginatesAndFilters(t *testing.T) {
@@ -46,6 +47,22 @@ func TestListIssuesPaginatesAndFilters(t *testing.T) {
 		if !strings.Contains(q, want) {
 			t.Errorf("query %q misses %q", q, want)
 		}
+	}
+}
+
+func TestListIssuesUpdatedAfter(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query().Get("updated_after")
+		_ = json.NewEncoder(w).Encode([]Issue{})
+	}))
+	defer srv.Close()
+	after := time.Date(2026, 10, 20, 12, 0, 0, 0, time.FixedZone("CEST", 2*3600))
+	if _, err := New(srv.URL, "tok").ListIssues(context.Background(), "group/app", ListIssuesOptions{State: "closed", UpdatedAfter: &after}); err != nil {
+		t.Fatal(err)
+	}
+	if got != "2026-10-20T10:00:00Z" {
+		t.Fatalf("updated_after = %q", got)
 	}
 }
 

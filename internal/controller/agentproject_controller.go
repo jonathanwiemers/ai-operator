@@ -155,6 +155,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	var active int32
 	// Autopilot milestones by IID, with their spec task.
 	autopilots := map[int64]*aiv1.AgentTask{}
+	var specTasks []*aiv1.AgentTask
 	for _, m := range milestones {
 		autopilot := spec.Milestones.Autopilot() != "" && milestoneSelected(m, titleRE, spec.Milestones.Autopilot())
 		if !autopilot && !milestoneSelected(m, titleRE, spec.Milestones.Marker()) {
@@ -166,6 +167,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			return err
 		}
 		keep[task.Name] = true
+		specTasks = append(specTasks, task)
 		if autopilot || task.Status.Autopilot != nil {
 			autopilots[m.IID] = task
 		}
@@ -205,7 +207,13 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 
-	// Autopilot milestones: queue, merge gate, tracking issue.
+	// Revisits of decisions whose issues are merged, then the autopilot
+	// milestones: queue, merge gate, tracking issue.
+	for _, st := range specTasks {
+		if err := r.syncRevisits(ctx, gl, project, spec, st); err != nil {
+			return err
+		}
+	}
 	for _, st := range autopilots {
 		if err := r.syncAutopilot(ctx, gl, project, spec, st, implTasks); err != nil {
 			return err

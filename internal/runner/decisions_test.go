@@ -272,3 +272,49 @@ func TestCleanDecisionTextUnbalancedBackticks(t *testing.T) {
 		t.Fatalf("code spans stay as they are, mentions outside are broken: %q", got)
 	}
 }
+
+// followUpEngine records one decision that supersedes the decision named in
+// supersedes.
+type followUpEngine struct{ supersedes string }
+
+func (f followUpEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
+	var v any = ReviewAnswer{Summary: "fine"}
+	if !inv.ReadOnly {
+		_ = os.WriteFile(filepath.Join(inv.Dir, "proto.go"), []byte("package app // grpc\n"), 0o644)
+		v = ImplementAnswer{Status: "done", Summary: "Switched to gRPC.", CommitMessage: "Use gRPC", Handoff: "grpc done",
+			Decisions: []Decision{{Title: "Protocol", Choice: "gRPC", Why: "asked for in the revisit", Supersedes: f.supersedes}}}
+	}
+	b, _ := json.Marshal(v)
+	return &Result{SessionID: "sess-fu", Structured: b}, nil
+}
+
+func TestFollowUpSupersedesTheMergedDecision(t *testing.T) {
+	for _, id := range []string{"D7-1", "D7-P1"} {
+		t.Run(id, func(t *testing.T) {
+			e := newImplementEnv(t)
+			section := fmt.Sprintf("#### %s: Protocol\n**Chosen:** REST\n<!-- ai-operator:decision=%s -->\n", id, id)
+			old := e.gl.AddIssue(7, "API")
+			old.State = "closed"
+			if strings.Contains(id, "-P") {
+				old.Description = "Build it.\n\n### Decisions\n\n" + section
+			} else {
+				e.gl.IssueNotes[7] = []gitlab.Note{{ID: 70, Author: e.gl.Bot, Body: decisionsHeader + " in run `shop-7-api#1`.\n\n" + section}}
+			}
+			e.gl.Issues[42].Description = fmt.Sprintf("Follow-up of #7.\n<!-- ai-operator:revisit=%s -->\n", id)
+			r := newTestRunner(t, e.tmp, e.k8s, e.gl, followUpEngine{supersedes: id}, e.task.Name)
+			if _, err := r.Step(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			body := e.gl.Issues[7].Description
+			if !strings.Contains(id, "-P") {
+				body = e.gl.IssueNotes[7][0].Body
+			}
+			for _, want := range []string{"Superseded by D42-1 in run `shop-42-add-paypal-button#1`",
+				fmt.Sprintf("<!-- ai-operator:decision=%s superseded -->", id)} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("%s on #7 should be marked superseded (%q):\n%s", id, want, body)
+				}
+			}
+		})
+	}
+}

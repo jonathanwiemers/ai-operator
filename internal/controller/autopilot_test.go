@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,6 +22,7 @@ const specTaskName = "shop-spec-m3-checkout-v2"
 func newAutopilotEnv(t *testing.T) *projectEnv {
 	t.Helper()
 	e := newProjectEnv(t)
+	e.r.Now = func() time.Time { return e.gl.Clock }
 	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2", State: "active", Description: "/agent autopilot\nBuild a new checkout."}
 	e.gl.Milestones = []gitlab.Milestone{m}
 	e.reconcile()

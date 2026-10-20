@@ -162,6 +162,8 @@ type ListIssuesOptions struct {
 	State string
 	// Milestone title.
 	Milestone string
+	// UpdatedAfter only returns issues updated after this time.
+	UpdatedAfter *time.Time
 }
 
 // CreateIssueOptions creates an issue.
@@ -361,6 +363,9 @@ func (c *Client) ListIssues(ctx context.Context, project string, opts ListIssues
 	}
 	if opts.Milestone != "" {
 		q.Set("milestone", opts.Milestone)
+	}
+	if opts.UpdatedAfter != nil {
+		q.Set("updated_after", opts.UpdatedAfter.UTC().Format(time.RFC3339))
 	}
 	return list[Issue](ctx, c, projectPath(project)+"/issues", q)
 }

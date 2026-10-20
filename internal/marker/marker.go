@@ -6,6 +6,7 @@ package marker
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -53,3 +54,46 @@ func Decisions(body string) []DecisionRef {
 	}
 	return out
 }
+
+// DecisionsHeader starts every decision comment of the bot.
+const DecisionsHeader = "📌 **Decisions**"
+
+// Revisit parses "<prefix> revisit <id> <instruction>": groups 1 the prefix,
+// 2 the ID, 3 the instruction.
+var Revisit = regexp.MustCompile(`(?is)^\s*(\S+?):?\s+revisit\s+(D\d+-P?\d+)(?:[\s:]+(.*))?$`)
+
+// RevisitOf marks a follow-up issue created to revisit a decision of another
+// issue; group 1 is the decision ID.
+var RevisitOf = regexp.MustCompile(`<!-- ai-operator:revisit=(D\d+-P?\d+) -->`)
+
+// DecisionSection extracts the section of decision id from body: from its
+// heading to its marker. It is empty if body has no such decision.
+func DecisionSection(body, id string) string {
+	end := -1
+	for _, loc := range Decision.FindAllStringSubmatchIndex(body, -1) {
+		if body[loc[2]:loc[3]] == id {
+			end = loc[1]
+			break
+		}
+	}
+	if end < 0 {
+		return ""
+	}
+	start := strings.LastIndex(body[:end], "#### "+id+":")
+	if start < 0 {
+		return ""
+	}
+	return strings.TrimSpace(body[start:end])
+}
+
+// DecisionIssue returns the issue IID a decision ID belongs to.
+func DecisionIssue(id string) int64 {
+	m := decisionID.FindStringSubmatch(id)
+	if m == nil {
+		return 0
+	}
+	iid, _ := strconv.ParseInt(m[1], 10, 64)
+	return iid
+}
+
+var decisionID = regexp.MustCompile(`^D(\d+)-P?\d+$`)

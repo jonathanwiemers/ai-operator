@@ -383,6 +383,33 @@ stateDiagram-v2
   issue; if the milestone is no longer planned at all, this happens before
   the spec task is deleted.
 
+### Revisiting after the merge
+
+A decision of a closed issue has no runner left to change it, so the operator
+turns the revisit into a follow-up issue (`internal/controller/revisit.go`).
+It watches every planned milestone, autopilot or not:
+
+* **Polling.** Each poll lists the milestone's closed issues updated since the
+  last check (`updated_after`, minus five minutes of clock skew) and, on
+  autopilot, the notes of the tracking issue. A new comment updates its
+  issue, so the list stays short. `status.revisits` keeps when watching
+  started (older comments are history), the last check, and the highest
+  handled note ID, so each comment is handled once.
+* **Lookup.** The decision is read like the runner reads it: planner
+  decisions from the issue description, implementer decisions from the bot's
+  decision comments only. Every handled comment gets a reply.
+* **Follow-up.** The issue carries the old decision without its marker, the
+  instruction, a key marker `revisit-<id>` (so the planner treats it as an
+  existing issue) and `<!-- ai-operator:revisit=<id> -->`. One follow-up per
+  decision: an open issue with that marker gets a pointer instead.
+* **Superseding across issues.** When the follow-up's run posts a decision
+  that supersedes the marked ID, the runner marks the old decision on the
+  original issue, in its description or the bot's decision comment.
+* **Autopilot.** The follow-up is a draft and is appended to the queue with
+  `revisitOf`; rebuilding the queue from the plan keeps it. When it merges,
+  the decision index of the original issue is collected again, so the
+  tracking issue shows the old decision as superseded.
+
 ## Engines, profiles and subscriptions
 
 Each role runs on an engine, an agent CLI:
@@ -518,6 +545,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/handoff.go` | agent notes: the bot's handoff comment on the issue |
 | `internal/runner/decisions.go` | decisions: IDs, decision comments, revisits, superseding |
 | `internal/controller/autopilot.go` | autopilot: queue, merge gate, rebase, pause / resume / skip, tracking issue |
+| `internal/controller/revisit.go` | revisits of merged issues: follow-up issues, replies |
 | `internal/marker` | hidden markers in GitLab text shared by operator and runner (tracking issue, decisions) |
 | `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
 | `internal/runner/workspace.go` | agent-side checkout (local git only) |

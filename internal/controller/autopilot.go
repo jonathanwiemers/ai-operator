@@ -154,7 +154,8 @@ func queueOrder(plan []aiv1.PlannedIssue) ([]int64, []int64) {
 
 // mergeQueue keeps the state of known items and appends new ones in queue
 // order. Items the plan dropped stay once they were started, so the history
-// is kept; pending ones are dropped with the plan.
+// is kept; pending ones are dropped with the plan. Revisit follow-ups are not
+// in the plan and always stay.
 func mergeQueue(items []aiv1.AutopilotItem, order []int64) []aiv1.AutopilotItem {
 	known := map[int64]aiv1.AutopilotItem{}
 	for _, it := range items {
@@ -171,7 +172,7 @@ func mergeQueue(items []aiv1.AutopilotItem, order []int64) []aiv1.AutopilotItem 
 		seen[iid] = true
 	}
 	for _, it := range items {
-		if !seen[it.IID] && it.State != aiv1.AutopilotItemPending {
+		if !seen[it.IID] && (it.State != aiv1.AutopilotItemPending || it.RevisitOf != "") {
 			out = append(out, it)
 		}
 	}
@@ -458,6 +459,18 @@ func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 		return fmt.Errorf("listing notes of issue #%d: %w", it.IID, err)
 	}
 	it.Decisions = collectDecisions(is, notes, a.project.Status.BotUserID)
+	if orig := a.item(marker.DecisionIssue(it.RevisitOf)); orig != nil && it.RevisitOf != "" {
+		// The follow-up superseded a decision of an earlier issue.
+		ois, err := a.gl.GetIssue(ctx, glProject, orig.IID)
+		if err != nil {
+			return fmt.Errorf("getting issue #%d: %w", orig.IID, err)
+		}
+		onotes, err := a.gl.ListIssueNotes(ctx, glProject, orig.IID)
+		if err != nil {
+			return fmt.Errorf("listing notes of issue #%d: %w", orig.IID, err)
+		}
+		orig.Decisions = collectDecisions(ois, onotes, a.project.Status.BotUserID)
+	}
 	if is.State == "opened" {
 		// "Closes #N" only closes the issue on the default branch.
 		if _, err := a.gl.UpdateIssue(ctx, glProject, it.IID, gitlab.UpdateIssueOptions{

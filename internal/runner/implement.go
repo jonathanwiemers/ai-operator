@@ -8,6 +8,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 )
 
@@ -491,6 +492,21 @@ func (r *Runner) postDecisions(ctx context.Context, gl gitlab.API, glProject str
 			}
 		}
 	}
+	// A follow-up issue revisits a decision of a merged issue: the new
+	// decision supersedes that one, on the other issue.
+	if m := marker.RevisitOf.FindStringSubmatch(issue.Description); m != nil {
+		for _, d := range numbered {
+			if !strings.EqualFold(strings.TrimSpace(d.Supersedes), m[1]) {
+				continue
+			}
+			if err := r.supersedeElsewhere(ctx, gl, glProject, botID, m[1], d.ID); err != nil {
+				_ = s.fail(err)
+				return notices
+			}
+			marked++
+			break
+		}
+	}
 	result := "none posted"
 	if len(numbered) > 0 {
 		result = fmt.Sprintf("%s to %s posted", numbered[0].ID, numbered[len(numbered)-1].ID)
@@ -500,6 +516,40 @@ func (r *Runner) postDecisions(ctx context.Context, gl gitlab.API, glProject str
 	}
 	s.done(result)
 	return notices
+}
+
+// supersedeElsewhere marks decision id on its own issue as superseded by the
+// decision by of this run.
+func (r *Runner) supersedeElsewhere(ctx context.Context, gl gitlab.API, glProject string, botID int64, id, by string) error {
+	iid := marker.DecisionIssue(id)
+	if strings.Contains(id, "-P") {
+		target, err := gl.GetIssue(ctx, glProject, iid)
+		if err != nil {
+			return fmt.Errorf("reading #%d to mark %s superseded: %w", iid, id, err)
+		}
+		if desc := markSuperseded(target.Description, id, by, r.run.id); desc != target.Description {
+			if _, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Description: desc}); err != nil {
+				return fmt.Errorf("marking %s superseded on #%d: %w", id, iid, err)
+			}
+		}
+		return nil
+	}
+	notes, err := gl.ListIssueNotes(ctx, glProject, iid)
+	if err != nil {
+		return fmt.Errorf("reading #%d to mark %s superseded: %w", iid, id, err)
+	}
+	for _, n := range notes {
+		if !isDecisionComment(n, botID) || decisionSection(n.Body, id) == "" {
+			continue
+		}
+		if body := markSuperseded(n.Body, id, by, r.run.id); body != n.Body {
+			if _, err := gl.UpdateIssueNote(ctx, glProject, iid, n.ID, body); err != nil {
+				return fmt.Errorf("marking %s superseded on #%d: %w", id, iid, err)
+			}
+		}
+		return nil
+	}
+	return nil
 }
 
 // commit commits the agent's changes as a step of the run.

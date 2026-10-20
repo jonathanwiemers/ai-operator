@@ -30,14 +30,14 @@ type Decision struct {
 }
 
 const (
-	decisionsHeader = "📌 **Decisions**"
+	decisionsHeader = marker.DecisionsHeader
 	// maxDecisions bounds one decision comment.
 	maxDecisions = 8000
 )
 
 var (
 	decisionMarker = marker.Decision
-	revisitCommand = regexp.MustCompile(`(?is)^\s*(\S+?):?\s+revisit\s+(D\d+-P?\d+)(?:[\s:]+(.*))?$`)
+	revisitCommand = marker.Revisit
 	// revisitWord spots comments that try to revisit but do not parse.
 	revisitWord = regexp.MustCompile(`(?is)^\s*(\S+?):?\s+(?:please\s+)?revisit\b`)
 )
@@ -254,25 +254,8 @@ func findRevisits(issue *gitlab.Issue, all, fresh []gitlab.Note, botID int64, pr
 	return out
 }
 
-// decisionSection extracts the section of decision id from body: from its
-// heading to its marker.
-func decisionSection(body, id string) string {
-	end := -1
-	for _, loc := range decisionMarker.FindAllStringSubmatchIndex(body, -1) {
-		if body[loc[2]:loc[3]] == id {
-			end = loc[1]
-			break
-		}
-	}
-	if end < 0 {
-		return ""
-	}
-	start := strings.LastIndex(body[:end], "#### "+id+":")
-	if start < 0 {
-		return ""
-	}
-	return strings.TrimSpace(body[start:end])
-}
+// decisionSection extracts the section of decision id from body.
+func decisionSection(body, id string) string { return marker.DecisionSection(body, id) }
 
 // markSuperseded adds a superseded line to decision id in body.
 func markSuperseded(body, id, by, runID string) string {

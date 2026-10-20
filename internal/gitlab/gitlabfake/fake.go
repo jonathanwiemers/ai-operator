@@ -141,6 +141,9 @@ func (f *Fake) ListIssues(_ context.Context, _ string, opts gitlab.ListIssuesOpt
 		if opts.Milestone != "" && (is.Milestone == nil || is.Milestone.Title != opts.Milestone) {
 			continue
 		}
+		if opts.UpdatedAfter != nil && (is.UpdatedAt == nil || !is.UpdatedAt.After(*opts.UpdatedAfter)) {
+			continue
+		}
 		match := true
 		for _, l := range opts.Labels {
 			if !is.HasLabel(l) {
