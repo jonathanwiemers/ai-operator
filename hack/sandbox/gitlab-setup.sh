@@ -19,6 +19,33 @@ else
 fi
 GITLAB_URL="${GITLAB_URL:-https://gitlab.com}"
 
+# Group labels next to project labels of the same name would split the issues
+# between two labels: the operator and project boards keep using the project
+# label, a group board shows only the group label. Stop before creating any.
+if [[ -n "${GITLAB_GROUP:-}" ]]; then
+  command -v jq >/dev/null || { echo "jq is required for GITLAB_GROUP" >&2; exit 1; }
+  api() { curl -fsS -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${GITLAB_URL}/api/v4/$1"; }
+  page=1 dupes=""
+  while :; do
+    projects="$(api "${target}/projects?include_subgroups=true&simple=true&per_page=100&page=${page}")"
+    while IFS=$'\t' read -r pid path; do
+      [[ -z "$pid" ]] && continue
+      names="$(api "projects/${pid}/labels?include_ancestor_groups=false&per_page=100" |
+        jq -r '[.[].name | select(startswith("agent::") or startswith("agent-profile::") or . == "ai-generated")] | join(", ")')"
+      [[ -n "$names" ]] && dupes+="  ${path}: ${names}"$'\n'
+    done < <(jq -r '.[] | [.id, .path_with_namespace] | @tsv' <<<"$projects")
+    (( $(jq length <<<"$projects") < 100 )) && break
+    page=$((page + 1))
+  done
+  if [[ -n "$dupes" ]]; then
+    echo "these projects already have ai-operator labels as project labels:" >&2
+    printf '%s' "$dupes" >&2
+    echo "promote them to group labels instead (project > Manage > Labels > Promote; it merges" >&2
+    echo "same-named labels of all projects in the group), then run this again for the rest" >&2
+    exit 1
+  fi
+fi
+
 create() {
   local name="$1" color="$2" description="$3"
   local code
