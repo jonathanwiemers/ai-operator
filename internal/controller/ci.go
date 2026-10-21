@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -74,6 +75,9 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 			return fmt.Errorf("listing pipelines of %s: %w", ci.SHA, err)
 		}
 	}
+	// A skipped pipeline is a push with ci.skip (the runner pushes steps of
+	// a draft that way): it checked nothing, so it is no pipeline.
+	pipelines = slices.DeleteFunc(pipelines, func(p gitlab.Pipeline) bool { return p.Status == "skipped" })
 	if len(pipelines) == 0 {
 		pushedAt := run.PushedAt
 		if pushedAt == nil {
@@ -88,7 +92,7 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 	ci.PipelineID, ci.PipelineURL = p.ID, p.WebURL
 
 	switch p.Status {
-	case "success", "skipped", "manual":
+	case "success", "manual":
 		return r.finishCI(ctx, gl, spec, is, task, ci, aiv1.CIStateSuccess, "")
 	case "canceled":
 		return r.finishCI(ctx, gl, spec, is, task, ci, aiv1.CIStateCanceled,
@@ -159,13 +163,13 @@ func (r *AgentProjectReconciler) syncReviewCI(ctx context.Context, gl gitlab.API
 	if !cur.State.Final() {
 		return r.backToWorking(ctx, gl, spec, is)
 	}
-	if head == nil || !pipelineChanged(cur, head) {
+	if head == nil || head.Status == "skipped" || !pipelineChanged(cur, head) {
 		return nil
 	}
 	ci := cur.DeepCopy()
 	ci.PipelineID, ci.PipelineURL = head.ID, head.WebURL
 	switch head.Status {
-	case "success", "skipped", "manual":
+	case "success", "manual":
 		ci.State, ci.FailedJobs = aiv1.CIStateSuccess, nil
 		return r.patchCI(ctx, task, ci)
 	case "canceled":

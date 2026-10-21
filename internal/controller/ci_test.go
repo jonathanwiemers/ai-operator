@@ -385,3 +385,19 @@ func TestCIUnfinishedLoopInReviewGoesBackToWorking(t *testing.T) {
 		t.Fatalf("state %s labels %v notes %q", e.ciState(), e.gl.Labels(42), e.notes())
 	}
 }
+
+// A push with ci.skip leaves a skipped pipeline: it checked nothing.
+func TestCISkippedPipelineIsNoPipeline(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	e.gl.AddPipeline("sha1", "agent/42", "skipped")
+	start := e.r.Now()
+	e.reconcile()
+	if got := e.ciState(); got != aiv1.CIStatePending {
+		t.Fatalf("state %s", got)
+	}
+	e.r.Now = func() time.Time { return start.Add(11 * time.Minute) }
+	e.reconcile()
+	if got := e.ciState(); got != aiv1.CIStateNone {
+		t.Fatalf("a skipped pipeline must end as no CI, not green: %s", got)
+	}
+}

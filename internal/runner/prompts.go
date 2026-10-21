@@ -100,6 +100,11 @@ reported in an earlier step.`
 // stepContinue resumes an implementer after a step.
 const stepContinue = "Your step was committed and pushed. Continue with the next step."
 
+// noStepsNote opens a resumed implementer's prompt when it does not work in
+// steps: engines that only send the system prompt to a fresh session may
+// still remember the step instructions.
+const noStepsNote = "Finish the whole task in this call; do not stop after a step."
+
 // resourcesNote tells the implementer what its container may use. Build
 // tools and test runners size themselves by the node's CPUs and memory, not
 // the container's, and a container over its memory limit is killed together
@@ -210,12 +215,15 @@ const decisionsSchema = `{"type": "array", "items": {
 
 var implementSchema = strings.Replace(implementSchemaTemplate, "__DECISIONS__", decisionsSchema, 1)
 
+// implementStepSchema also allows "in_progress": a step of a draft is done.
+var implementStepSchema = strings.Replace(implementSchema, `"enum": ["done", "needs_input"]`, `"enum": ["done", "in_progress", "needs_input"]`, 1)
+
 const implementSchemaTemplate = `{
   "type": "object",
   "additionalProperties": false,
   "required": ["status", "summary", "commitMessage", "questions", "decisions", "handoff"],
   "properties": {
-    "status": {"type": "string", "enum": ["done", "in_progress", "needs_input"]},
+    "status": {"type": "string", "enum": ["done", "needs_input"]},
     "summary": {"type": "string", "description": "Markdown summary for the merge request."},
     "commitMessage": {"type": "string", "description": "Imperative subject line (max 72 chars), blank line, body."},
     "questions": {"type": "array", "items": {"type": "string"}},
