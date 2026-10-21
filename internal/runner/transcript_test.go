@@ -23,6 +23,7 @@ echo '{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"T
 echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"go test ./...","description":"run tests"}}]}}'
 echo '{"type":"user","message":{"content":[{"type":"tool_result","content":"SECRET-OUTPUT"}]}}'
 echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/w/api.go","old_string":"a","new_string":"b"}}]}}'
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"StructuredOutput","input":{"status":"done","summary":"SECRET-SUMMARY"}}]}}'
 echo '{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s1","total_cost_usd":0.5,"structured_output":{"status":"done"}}'
 `
 	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
@@ -58,16 +59,24 @@ func TestClaudeSessionIsLogged(t *testing.T) {
 			t.Errorf("missing %s in:\n%s", want, all)
 		}
 	}
-	if strings.Contains(all, "SECRET-OUTPUT") || strings.Contains(all, "new_string") {
+	if strings.Contains(all, "SECRET-OUTPUT") || strings.Contains(all, "new_string") || strings.Contains(all, "SECRET-SUMMARY") {
 		t.Errorf("tool output and edit contents must not be logged:\n%s", all)
+	}
+}
+
+func TestClipKeepsRunes(t *testing.T) {
+	if got := clip("ääää", 3); got != "ä…" {
+		t.Fatalf("got %q", got)
 	}
 }
 
 func TestToolInput(t *testing.T) {
 	for _, tc := range []struct{ name, in, want string }{
 		{"Grep", `{"pattern":"TODO","path":"internal"}`, "TODO in internal"},
-		{"TodoWrite", `{"todos":[{"content":"write test","status":"done"},{"content":"endpoint","status":"in_progress"}]}`, "[done] write test; [in_progress] endpoint"},
-		{"Other", `{"x":1}`, `{"x":1}`},
+		{"TodoWrite", `{"todos":[{"content":"write test","status":"completed"},{"content":"endpoint","status":"in_progress"}]}`, "[completed] write test; [in_progress] endpoint"},
+		{"Bash", `{"command":"cat > a.go <<'EOF'\npackage secret\nEOF"}`, "cat > a.go …"},
+		{"Bash", `{"command":"go test ./...\ngo vet ./..."}`, "go test ./... …"},
+		{"mcp__x__post", `{"body":"secret comment","channel":"c"}`, "body, channel"},
 	} {
 		if got := toolInput(tc.name, []byte(tc.in)); got != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)

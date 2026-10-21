@@ -709,10 +709,11 @@ agent uses a tool  tool=Edit input="/workspace/repo/api.go"
 ```
 
 Thinking shows up when the model thinks (depending on model and
-`effort`; the CLI may summarize it). Tool output and the contents of edits
-are not logged, so file contents and what commands print stay out of the
-log; what the agent writes in its own thinking and messages can still quote
-code. `logLevel: error` turns these lines off. cursor-agent runs are not
+`effort`; the CLI may summarize it). Tool output, the contents of edits and
+the agent's final answer (posted on GitLab anyway) are not logged; commands
+are logged by their first line, without heredoc contents, and unknown tools
+only by the names of their arguments. What the agent writes in its own
+thinking and messages can still quote code. `logLevel: error` turns these lines off. cursor-agent runs are not
 streamed.
 
 ### When the agent container dies

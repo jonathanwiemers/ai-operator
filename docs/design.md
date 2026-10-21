@@ -234,8 +234,9 @@ with every call to the agent server, which logs each call with it. Neither
 side logs prompts, comments, diffs or commit messages. The claude CLI runs
 with `--output-format stream-json`: the agent server logs what the agent
 thinks and says and each tool call with its main argument (command, file,
-pattern) as it happens (`internal/runner/transcript.go`); tool output and
-edit contents are not logged, and only the final result line is parsed.
+pattern; a command's first line) as it happens
+(`internal/runner/transcript.go`); tool output, edit contents and the final
+structured answer are not logged, and only the final result line is parsed.
 
 ## Lifecycle of long-lived issues
 
