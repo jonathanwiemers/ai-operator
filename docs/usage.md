@@ -546,6 +546,25 @@ time, and the project status lists the active limits:
 kubectl -n agents get agentproject <name> -o jsonpath='{.status.usageLimits}'
 ```
 
+GitLab has limits too, and gitlab.com is sometimes slow or answers 502. The
+operator and the runners retry on their own:
+
+- A request GitLab rate-limits (429) is sent again after the wait GitLab
+  asks for (`Retry-After` / `RateLimit-Reset`), up to a minute. Longer waits
+  are left to the next poll.
+- Reads that hit a server error (5xx), a timeout or a broken connection are
+  retried twice, after about 1 and 2 seconds. Writes are not: GitLab may have
+  applied them.
+- A poll may take at most `spec.pollInterval`, but no less than 2 minutes;
+  retries stop there, so a slow GitLab cannot hold up the other projects.
+- A poll that still fails is logged as one line, "GitLab sync failed, trying
+  again on the next poll", and the project's `Synced` condition says why;
+  the next poll (`spec.pollInterval`) picks up where it left off. Other
+  errors are logged with a stack trace as before.
+- With the operator at log level `debug` (Helm `logLevel: debug`) every poll
+  logs how many requests it sent ("GitLab poll done"); a poll that needed
+  retries logs it at the default level too.
+
 ## Issues that stay open
 
 Nothing is lost while an issue waits:

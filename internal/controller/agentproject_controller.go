@@ -65,9 +65,20 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, r.Status().Patch(ctx, &project, client.MergeFrom(orig))
 	}
 
-	syncErr := r.sync(ctx, &project, spec)
-	if syncErr != nil {
+	// A slow or rate-limiting GitLab must not hold the worker for long: the
+	// client's retries stop at this deadline, and the next poll goes on.
+	sctx, cancel := context.WithTimeout(ctx, max(spec.PollInterval.Duration, syncTimeout))
+	syncErr := r.sync(sctx, &project, spec)
+	cancel()
+	switch {
+	case syncErr != nil && gitlab.IsTransient(syncErr):
+		// Rate limits, server errors and timeouts pass; the client already
+		// retried, and the next poll tries again. No stack trace for those.
+		logger.Info("GitLab sync failed, trying again on the next poll", "error", syncErr.Error())
+	case syncErr != nil:
 		logger.Error(syncErr, "GitLab sync failed")
+	}
+	if syncErr != nil {
 		meta.SetStatusCondition(&project.Status.Conditions, metav1.Condition{
 			Type: "Synced", Status: metav1.ConditionFalse, Reason: "SyncFailed", Message: truncateMsg(syncErr.Error()),
 		})
@@ -85,6 +96,9 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// instead of hammering GitLab with exponential backoff.
 	return ctrl.Result{RequeueAfter: spec.PollInterval.Duration}, nil
 }
+
+// syncTimeout is the least time a poll of GitLab may take.
+const syncTimeout = 2 * time.Minute
 
 func (r *AgentProjectReconciler) now() time.Time {
 	if r.Now != nil {
@@ -111,6 +125,17 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	gl, err := r.gitlabClient(ctx, project, spec)
 	if err != nil {
 		return err
+	}
+	if c, ok := gl.(interface{ Stats() gitlab.Stats }); ok {
+		// What a poll costs GitLab; retries mean it pushed back.
+		defer func() {
+			st := c.Stats()
+			lvl := 1
+			if st.Retries > 0 {
+				lvl = 0
+			}
+			log.FromContext(ctx).V(lvl).Info("GitLab poll done", "requests", st.Requests, "retries", st.Retries)
+		}()
 	}
 	if project.Status.BotUserID == 0 {
 		u, err := gl.CurrentUser(ctx)

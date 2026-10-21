@@ -16,6 +16,9 @@ import (
 // that end faster are shown with the next edit.
 var progressInterval = 3 * time.Second
 
+// progressEditTimeout bounds one edit of the progress comment.
+const progressEditTimeout = 10 * time.Second
+
 // progressMarker marks the bot's progress comments, so they are kept out of
 // the agent's prompt.
 const progressMarker = "<!-- ai-operator:progress -->"
@@ -116,6 +119,10 @@ func (p *progress) flush(ctx context.Context) {
 	body := p.pending
 	p.dirty, p.last = false, time.Now()
 	p.mu.Unlock()
+	// The live view is best effort: an edit does not wait out a long rate
+	// limit, which would hold up close.
+	ctx, cancel := context.WithTimeout(ctx, progressEditTimeout)
+	defer cancel()
 	if _, err := p.gl.UpdateMergeRequestNote(ctx, p.project, p.mr, p.note, body); err != nil {
 		p.log.V(1).Info("could not update the progress comment", "error", err.Error())
 	}
