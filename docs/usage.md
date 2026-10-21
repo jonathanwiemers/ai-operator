@@ -161,7 +161,13 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    leaves it with its run log and the reason.
 3. The implementing agent (engine and model from the issue's profile) works on
    the branch. It follows your comments, runs the tests, and stops with
-   questions if a design decision is unresolved.
+   questions if a design decision is unresolved. While the MR is a draft it
+   works in **steps** (`workflow.stepCommits`): after each piece that is worth
+   a commit of its own, the step is committed and pushed (with `ci.skip`, so
+   no pipeline runs), and the agent continues. Comments you write on the
+   issue or the MR in the meantime are handed to it before its next step, so
+   you can steer while it works; they need no `/agent` prefix. At most 25
+   steps per run.
 4. The **bugbot** and **security** reviewers check the diff in parallel.
 5. Blocker and major findings go back to the implementer (at most
    `review.maxIterations` times). Remaining findings are listed for you.

@@ -55,6 +55,10 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 		t := true
 		w.ResolveConflicts = &t
 	}
+	if w.StepCommits == nil {
+		t := true
+		w.StepCommits = &t
+	}
 	return w
 }
 

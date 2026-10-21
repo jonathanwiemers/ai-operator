@@ -293,6 +293,13 @@ nothing is lost.
   request count at debug.
 * **Resumed sessions.** Follow-up runs resume the implementer's session and
   only send the new comments, instead of the whole issue, spec and thread.
+* **Steps on drafts.** While the MR is a draft, the implementer returns
+  `in_progress` after each step; the runner commits and pushes it with
+  `ci.skip` and resumes the session with the comments written in the
+  meantime (`runSteps` in `internal/runner/implement.go`). The run's last
+  push gets CI as usual; if the last step already pushed the final head, the
+  runner starts a pipeline for it (merge request pipeline, else a branch
+  pipeline).
 * **Agent notes.** The implementer also returns handoff notes, which the
   runner keeps in one bot comment on the issue (created on the first run,
   edited right after each later push, `internal/runner/handoff.go`). A

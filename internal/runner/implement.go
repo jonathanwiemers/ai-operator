@@ -125,6 +125,13 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	role, profile := spec.ImplementRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
 	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs)
+	// While the MR is a draft, the work is pushed step by step so a human can
+	// follow it and steer with comments (not while concluding a merge, whose
+	// conflicts must be resolved before anything is committed).
+	stepwise := *wf.StepCommits && mr.Draft && task.Spec.Source.MergeBaseFor == task.Status.Run.MergedBaseFor
+	if stepwise {
+		inv.SystemPrompt += stepsNote
+	}
 	inv.DisallowedTools = implementDenied
 	inv.Resume = st.session("implement", role.Engine)
 	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false, prior)
@@ -246,6 +253,15 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if merge.UpToDate {
 			answer.Summary = fmt.Sprintf("The branch already contains `%s`; nothing to merge.", base)
 		}
+	}
+	if stepwise && runAgent {
+		var err error
+		if res, err = r.runSteps(ctx, gl, glProject, issue, mr.IID, botID, branch, base, role, inv, fullPrompt, res, &answer, &st, out); err != nil {
+			return out, err
+		}
+	}
+	if answer.Status == "in_progress" {
+		answer.Status = "done" // not working in steps, or out of steps
 	}
 	if len(merge.Conflicts) > 0 {
 		// Conclude the merge before anything else is committed: a merge
@@ -371,7 +387,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 
 	// Push and open / update the merge request.
 	s = r.step(ctx, "push", "branch", branch)
-	pushed, err := r.publish(ctx, branch, base)
+	pushed, err := r.publish(ctx, branch, base, false)
 	if err != nil {
 		if readied {
 			// Ready would vouch for a head that is not this run's work.
@@ -385,6 +401,14 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			out.CIRound = task.Status.Run.CIRound + 1
 		}
 		s.done(fmt.Sprintf("%s at %s", branch, shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
+	} else if r.pushedHead != "" {
+		// The last step pushed it all already, without CI: that head is the
+		// one CI has to check, and it needs a pipeline started.
+		out.PushedSHA = r.pushedHead
+		if ciFix {
+			out.CIRound = task.Status.Run.CIRound + 1
+		}
+		s.done(fmt.Sprintf("the last step pushed %s already", shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
 	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && head != task.Status.Run.PushedSHA && r.Mirror.HasChanges(ctx, base, head) {
 		// Someone else pushed to the branch (or made it) since the last
 		// recorded push, and this run took it over unchanged: that head is
@@ -394,10 +418,15 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	} else {
 		s.done("nothing new to push")
 	}
-	if readied && !pushed {
-		// Marking ready starts no pipeline, and projects that skip pipelines
-		// for drafts may have run none for the head yet.
-		r.startPipeline(ctx, gl, glProject, mr, task, branch)
+	if !pushed && (readied || r.pushedHead != "") && !spec.CI.Disabled {
+		// Marking ready starts no pipeline, projects that skip pipelines for
+		// drafts may have run none for the head yet, and steps are pushed
+		// without CI.
+		head := r.pushedHead
+		if head == "" {
+			head, _ = r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
+		}
+		r.startPipeline(ctx, gl, glProject, mr, task, head)
 	}
 	if out.Reviewed && reviewedLast {
 		// The last review saw the branch as it is now.
@@ -506,13 +535,20 @@ func (r *Runner) setDraft(ctx context.Context, gl gitlab.API, glProject string, 
 // startPipeline starts a merge request pipeline for the head of a MR this run
 // marked ready without pushing, unless CI already checked that head. A failure
 // only means the head goes without CI, so it is not returned.
-func (r *Runner) startPipeline(ctx context.Context, gl gitlab.API, glProject string, mr *gitlab.MergeRequest, task *aiv1.AgentTask, branch string) {
-	head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
+func (r *Runner) startPipeline(ctx context.Context, gl gitlab.API, glProject string, mr *gitlab.MergeRequest, task *aiv1.AgentTask, head string) {
 	if ci := task.Status.CI; ci != nil && ci.SHA == head && ci.State != aiv1.CIStateNone {
 		return
 	}
 	s := r.step(ctx, "start pipeline", "mr", mr.IID)
-	if err := gl.CreateMergeRequestPipeline(ctx, glProject, mr.IID); err != nil {
+	err := gl.CreateMergeRequestPipeline(ctx, glProject, mr.IID)
+	if code := gitlab.StatusCode(err); code >= 400 && code < 500 {
+		// No merge request pipelines in this project: a branch pipeline.
+		if berr := gl.CreatePipeline(ctx, glProject, mr.SourceBranch); berr == nil {
+			s.done("branch pipeline for " + mr.SourceBranch)
+			return
+		}
+	}
+	if err != nil {
 		s.done("none: "+err.Error(), "error", err.Error())
 		return
 	}
@@ -863,4 +899,78 @@ func humanNotes(notes []gitlab.Note, botID int64) int {
 		}
 	}
 	return n
+}
+
+// maxSteps bounds the steps of one run.
+const maxSteps = 25
+
+// runSteps continues an implementer that returned "in_progress": the step is
+// committed and pushed without CI, and the session resumed with the comments
+// written in the meantime, until the agent is done (or out of steps). answer
+// collects the steps: decisions add up, the rest is the last step's.
+func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, mrIID, botID int64, branch, base string,
+	role aiv1.RoleSpec, inv Invocation, fullPrompt string, res *Result, answer *ImplementAnswer, st *state, out *Outcome) (*Result, error) {
+	for step := 1; answer.Status == "in_progress" && step < maxSteps; step++ {
+		if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
+			return res, err
+		}
+		s := r.step(ctx, fmt.Sprintf("push step %d", step), "branch", branch)
+		pushed, err := r.publish(ctx, branch, base, true)
+		if err != nil {
+			return res, s.fail(err)
+		}
+		if pushed {
+			s.done(fmt.Sprintf("%s at %s, without CI", branch, shortSHA(r.pushedHead)), "sha", r.pushedHead)
+		} else {
+			s.done("nothing new to push")
+		}
+
+		// Comments written during the step steer the next one.
+		s = r.step(ctx, "read comments")
+		issueNotes, err := gl.ListIssueNotes(ctx, glProject, issue.IID)
+		if err != nil {
+			return res, s.fail(fmt.Errorf("listing issue notes: %w", err))
+		}
+		_, issueNotes = splitHandoff(issueNotes, botID)
+		mrNotes, err := gl.ListMergeRequestNotes(ctx, glProject, mrIID)
+		if err != nil {
+			return res, s.fail(fmt.Errorf("listing merge request notes: %w", err))
+		}
+		mrNotes = slices.DeleteFunc(mrNotes, func(n gitlab.Note) bool { return isProgress(n, botID) })
+		newIssue, newMR := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
+		fresh := humanNotes(newIssue, botID) + humanNotes(newMR, botID)
+		s.done(fmt.Sprintf("%d new", fresh), "newNotes", fresh)
+		next := inv
+		next.Resume = res.SessionID
+		next.Prompt = stepContinue
+		if fresh > 0 {
+			next.Prompt = stepContinue + "\n\n" + thread("New comments on the issue", newIssue, botID) + thread("New comments on the merge request", newMR, botID)
+		}
+
+		s = r.step(ctx, fmt.Sprintf("run implementer, step %d", step+1), "engine", role.Engine, "model", role.Model, "newNotes", fresh)
+		res, err = r.invoke(ctx, role, next, fullPrompt)
+		if res != nil {
+			out.CostUSD += res.CostUSD
+		}
+		if err != nil {
+			return res, s.fail(err)
+		}
+		st.setSession("implement", role.Engine, res.SessionID)
+		st.LastIssueNoteID = maxNoteID(issueNotes, st.LastIssueNoteID)
+		st.LastMRNoteID = maxNoteID(mrNotes, st.LastMRNoteID)
+		if err := r.saveState(*st); err != nil {
+			return res, s.fail(err)
+		}
+		var more ImplementAnswer
+		if err := res.Decode(&more); err != nil {
+			return res, s.fail(fmt.Errorf("decoding implementer answer: %w", err))
+		}
+		more.Decisions = append(answer.Decisions, more.Decisions...)
+		if strings.TrimSpace(more.Handoff) == "" {
+			more.Handoff = answer.Handoff
+		}
+		*answer = more
+		s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD, "status", answer.Status)
+	}
+	return res, nil
 }

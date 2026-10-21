@@ -911,6 +911,14 @@ spec:
                     description: ReviewLabel is set by the agent once a merge request
                       is ready for a human.
                     type: string
+                  stepCommits:
+                    default: true
+                    description: |-
+                      StepCommits: while the merge request is a draft, the implementer works
+                      in small steps; each one is committed and pushed (without CI) as it is
+                      done, and comments written in the meantime reach the agent before the
+                      next step, so a human can follow and steer. Off: one commit per run.
+                    type: boolean
                   workingLabel:
                     default: agent::working
                     description: WorkingLabel is set by the operator once it has picked

@@ -53,6 +53,10 @@ type Fake struct {
 	// NoMRPipelines refuses them like a project without such pipelines.
 	MRPipelines   []int64
 	NoMRPipelines bool
+	// BranchPipelines records the branches a pipeline was started for;
+	// NoPipelines refuses them.
+	BranchPipelines []string
+	NoPipelines     bool
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
 }
@@ -101,6 +105,18 @@ func (f *Fake) AddNote(iid int64, author gitlab.User, body string) gitlab.Note {
 	f.IssueNotes[iid] = append(f.IssueNotes[iid], n)
 	if is := f.Issues[iid]; is != nil {
 		is.UpdatedAt = f.tick()
+	}
+	return n
+}
+
+// AddMRNote adds a comment by author to a merge request.
+func (f *Fake) AddMRNote(iid int64, author gitlab.User, body string) gitlab.Note {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := gitlab.Note{ID: f.id(), Body: body, Author: author, CreatedAt: f.tick()}
+	f.MRNotes[iid] = append(f.MRNotes[iid], n)
+	if mr := f.MRs[iid]; mr != nil {
+		mr.UpdatedAt = f.tick()
 	}
 	return n
 }
@@ -534,6 +550,18 @@ func (f *Fake) UpdateMergeRequestNote(_ context.Context, _ string, iid, noteID i
 		}
 	}
 	return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "note"}
+}
+
+// CreatePipeline records the branch a pipeline was started for; with
+// NoPipelines it is refused like a project without CI for it.
+func (f *Fake) CreatePipeline(_ context.Context, _ string, ref string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.NoPipelines {
+		return &gitlab.Error{StatusCode: 400, Method: "POST", Path: "pipeline", Body: `{"message":{"base":["Pipeline filtered out by workflow rules."]}}`}
+	}
+	f.BranchPipelines = append(f.BranchPipelines, ref)
+	return nil
 }
 
 func (f *Fake) CreateMergeRequestPipeline(_ context.Context, _ string, iid int64) error {

@@ -65,6 +65,8 @@ type Runner struct {
 	run *runLog
 	// progress is the live progress comment of the current run, if any.
 	progress *progress
+	// pushedHead is the commit this run last pushed, e.g. a step.
+	pushedHead string
 	// blamedRestarts is the agent container's restart count of the last
 	// termination a lost call was put down to.
 	blamedRestarts int32
@@ -215,7 +217,7 @@ func (r *Runner) prepareCheckout(ctx context.Context, branch, base string) error
 
 // publish moves the agent's new commits on branch to the remote. It reports
 // whether anything was pushed.
-func (r *Runner) publish(ctx context.Context, branch, base string) (bool, error) {
+func (r *Runner) publish(ctx context.Context, branch, base string, skipCI bool) (bool, error) {
 	path := filepath.Join(r.Exchange, "from-agent.bundle")
 	written, err := r.Agent.Bundle(ctx, branch, base, path)
 	if err != nil || !written {
@@ -225,7 +227,17 @@ func (r *Runner) publish(ctx context.Context, branch, base string) (bool, error)
 	if err := r.Mirror.Import(ctx, path, branch); err != nil {
 		return false, err
 	}
-	return true, r.Mirror.Push(ctx, branch)
+	// The agent's checkout does not learn about the runner's pushes, so its
+	// bundle still holds commits a step of this run pushed.
+	head, _ := r.Mirror.resolve(ctx, "refs/heads/"+branch)
+	if head != "" && head == r.pushedHead {
+		return false, nil
+	}
+	if err := r.Mirror.Push(ctx, branch, skipCI); err != nil {
+		return false, err
+	}
+	r.pushedHead = head
+	return true, nil
 }
 
 // Loop processes run requests until ctx is cancelled.
@@ -285,7 +297,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	r.projectStatus = project.Status
 	request := task.Spec.RunRequest
 	r.run = newRunLog(r.Log, task)
-	r.blamedRestarts = 0
+	r.blamedRestarts, r.pushedHead = 0, ""
 	ctx = withRunID(ctx, r.run.id)
 	log := r.run.log
 	log.Info("starting run", "request", request, "previousRuns", task.Status.Run.RunCount, "deferrals", task.Status.Run.Deferrals)

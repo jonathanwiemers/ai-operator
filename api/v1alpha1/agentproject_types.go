@@ -163,6 +163,14 @@ type WorkflowSpec struct {
 	// +kubebuilder:default=true
 	// +optional
 	ResolveConflicts *bool `json:"resolveConflicts,omitempty"`
+
+	// StepCommits: while the merge request is a draft, the implementer works
+	// in small steps; each one is committed and pushed (without CI) as it is
+	// done, and comments written in the meantime reach the agent before the
+	// next step, so a human can follow and steer. Off: one commit per run.
+	// +kubebuilder:default=true
+	// +optional
+	StepCommits *bool `json:"stepCommits,omitempty"`
 }
 
 // AgentsSpec configures the agent pods and the roles running inside them.
