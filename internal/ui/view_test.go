@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
@@ -53,45 +55,67 @@ func TestStageOf(t *testing.T) {
 		{"planned", task(spec, 1, 1, aiv1.TaskPhaseIdle, aiv1.RunResultSucceeded, nil), StagePlanned},
 	}
 	for _, tc := range cases {
-		if got := StageOf(tc.t, true); got != tc.want {
+		if got := StageOf(tc.t, 10*time.Minute, time.Now()); got != tc.want {
 			t.Errorf("%s: stage %q, want %q", tc.name, got, tc.want)
 		}
 	}
 }
 
 func TestStageOfPush(t *testing.T) {
-	pushed := func(ci *aiv1.CIStatus) *aiv1.AgentTask {
+	now := time.Now()
+	pushed := func(ago time.Duration, ci *aiv1.CIStatus) *aiv1.AgentTask {
+		at := metav1.NewTime(now.Add(-ago))
 		return &aiv1.AgentTask{
 			Spec: aiv1.AgentTaskSpec{Type: aiv1.TaskTypeImplement, RunRequest: 2},
 			Status: aiv1.AgentTaskStatus{
 				Phase: aiv1.TaskPhaseIdle,
-				Run:   aiv1.RunStatus{ObservedRunRequest: 2, LastResult: aiv1.RunResultSucceeded, PushedSHA: "new"},
+				Run:   aiv1.RunStatus{ObservedRunRequest: 2, LastResult: aiv1.RunResultSucceeded, PushedSHA: "new", PushedAt: &at},
 				CI:    ci,
 			},
 		}
 	}
+	const window = 10 * time.Minute
 	cases := []struct {
-		name      string
-		t         *aiv1.AgentTask
-		ciEnabled bool
-		want      Stage
+		name     string
+		t        *aiv1.AgentTask
+		ciWindow time.Duration
+		want     Stage
 	}{
-		{"no pipeline followed yet", pushed(nil), true, StageCI},
-		{"previous commit's pipeline failed", pushed(&aiv1.CIStatus{SHA: "old", State: aiv1.CIStateFailed}), true, StageCI},
-		{"pipeline of the push is green", pushed(&aiv1.CIStatus{SHA: "new", State: aiv1.CIStateSuccess}), true, StageReview},
-		{"CI disabled", pushed(nil), false, StageReview},
+		{"no pipeline followed yet", pushed(time.Minute, nil), window, StageCI},
+		{"previous commit's pipeline failed", pushed(time.Minute, &aiv1.CIStatus{SHA: "old", State: aiv1.CIStateFailed}), window, StageCI},
+		{"pipeline of the push is green", pushed(time.Minute, &aiv1.CIStatus{SHA: "new", State: aiv1.CIStateSuccess}), window, StageReview},
+		{"CI disabled", pushed(time.Minute, nil), 0, StageReview},
+		// The issue went to review before the operator followed the push:
+		// nothing will record its pipeline any more.
+		{"push never followed", pushed(time.Hour, nil), window, StageReview},
+		{"push never followed, old pipeline green", pushed(time.Hour, &aiv1.CIStatus{SHA: "old", State: aiv1.CIStateSuccess}), window, StageReview},
 	}
 	for _, tc := range cases {
-		if got := StageOf(tc.t, tc.ciEnabled); got != tc.want {
+		if got := StageOf(tc.t, tc.ciWindow, now); got != tc.want {
 			t.Errorf("%s: stage %q, want %q", tc.name, got, tc.want)
 		}
 	}
 
-	suspended := pushed(nil)
+	suspended := pushed(time.Minute, nil)
 	suspended.Spec.Suspend = true
 	suspended.Spec.RunRequest = 3
 	suspended.Status.Phase = aiv1.TaskPhaseHibernated
-	if got := StageOf(suspended, true); got != StageWaiting {
+	if got := StageOf(suspended, window, now); got != StageWaiting {
 		t.Errorf("suspended task with a requested run: stage %q, want %q", got, StageWaiting)
+	}
+}
+
+func TestCIWindow(t *testing.T) {
+	p := &aiv1.AgentProject{}
+	if got := ciWindow(p); got != 10*time.Minute {
+		t.Errorf("default: %v", got)
+	}
+	p.Spec.CI.NoPipelineTimeout = metav1.Duration{Duration: 3 * time.Minute}
+	if got := ciWindow(p); got != 3*time.Minute {
+		t.Errorf("configured: %v", got)
+	}
+	p.Spec.CI.Disabled = true
+	if got := ciWindow(p); got != 0 {
+		t.Errorf("disabled: %v", got)
 	}
 }

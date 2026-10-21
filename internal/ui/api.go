@@ -50,12 +50,13 @@ func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
 		byProject[key] = append(byProject[key], t)
 	}
 	out := []ProjectSummary{}
+	now := time.Now()
 	for i := range projects.Items {
 		ap := &projects.Items[i]
 		if !s.authz.CanView(p, ap.Namespace, ap.Name) {
 			continue
 		}
-		out = append(out, summarize(ap, byProject[ap.Namespace+"/"+ap.Name]))
+		out = append(out, summarize(ap, byProject[ap.Namespace+"/"+ap.Name], now))
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Namespace != out[j].Namespace {
@@ -72,7 +73,7 @@ func (s *Server) project(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, detail(ap, tasks))
+	writeJSON(w, http.StatusOK, detail(ap, tasks, time.Now()))
 }
 
 // task returns one task of a project.
@@ -82,11 +83,12 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("task")
+	now := time.Now()
 	for i := range tasks {
 		if tasks[i].Name == name {
 			writeJSON(w, http.StatusOK, map[string]any{
-				"project": summarize(ap, tasks),
-				"task":    taskView(&tasks[i], ciEnabled(ap)),
+				"project": summarize(ap, tasks, now),
+				"task":    taskView(&tasks[i], ciWindow(ap), now),
 			})
 			return
 		}

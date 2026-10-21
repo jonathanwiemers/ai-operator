@@ -42,9 +42,10 @@ const (
 	StageBlocked Stage = "blocked"
 )
 
-// StageOf derives a task's stage from its status. ciEnabled is false for
-// projects with spec.ci.disabled.
-func StageOf(t *aiv1.AgentTask, ciEnabled bool) Stage {
+// StageOf derives a task's stage from its status at now. ciWindow is how
+// long a push waits for its pipeline to be followed (see ciWindow), zero
+// for projects without the CI loop.
+func StageOf(t *aiv1.AgentTask, ciWindow time.Duration, now time.Time) Stage {
 	if t.Status.Phase == aiv1.TaskPhaseBlocked {
 		return StageBlocked
 	}
@@ -69,8 +70,12 @@ func StageOf(t *aiv1.AgentTask, ciEnabled bool) Stage {
 		return StagePlanned
 	}
 	// The operator writes the pipeline of a new push on its next poll;
-	// until then the issue is still waiting for CI.
-	if pushed := t.Status.Run.PushedSHA; ciEnabled && pushed != "" && (t.Status.CI == nil || t.Status.CI.SHA != pushed) {
+	// until then the issue is still waiting for CI. A push that is still not
+	// followed after the window never will be (the issue went to review
+	// before the operator saw it), so it falls through to its CI status.
+	run := t.Status.Run
+	if ciWindow > 0 && run.PushedSHA != "" && (t.Status.CI == nil || t.Status.CI.SHA != run.PushedSHA) &&
+		run.PushedAt != nil && now.Sub(run.PushedAt.Time) < ciWindow {
 		return StageCI
 	}
 	if ci := t.Status.CI; ci != nil {
@@ -166,9 +171,19 @@ func gitLabRef(p *aiv1.AgentProject) GitLabRef {
 	return GitLabRef{URL: base, Project: p.Spec.GitLab.Project, WebURL: base + "/" + p.Spec.GitLab.Project}
 }
 
-func ciEnabled(p *aiv1.AgentProject) bool { return !p.Spec.CI.Disabled }
+// ciWindow is how long the operator may take to follow the pipeline of a
+// push: its no-pipeline timeout. Zero without the CI loop.
+func ciWindow(p *aiv1.AgentProject) time.Duration {
+	if p.Spec.CI.Disabled {
+		return 0
+	}
+	if d := p.Spec.CI.NoPipelineTimeout.Duration; d > 0 {
+		return d
+	}
+	return 10 * time.Minute
+}
 
-func taskView(t *aiv1.AgentTask, ciEnabled bool) Task {
+func taskView(t *aiv1.AgentTask, ciWindow time.Duration, now time.Time) Task {
 	return Task{
 		Namespace:  t.Namespace,
 		Name:       t.Name,
@@ -180,14 +195,14 @@ func taskView(t *aiv1.AgentTask, ciEnabled bool) Task {
 		Autopilot:  t.Spec.Autopilot,
 		RunRequest: t.Spec.RunRequest,
 		RunPending: t.RunPending(),
-		Stage:      StageOf(t, ciEnabled),
+		Stage:      StageOf(t, ciWindow, now),
 		CreatedAt:  t.CreationTimestamp,
 		Status:     t.Status,
 	}
 }
 
 // summarize builds the summary of p from its tasks.
-func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask) ProjectSummary {
+func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) ProjectSummary {
 	s := ProjectSummary{
 		Namespace:         p.Namespace,
 		Name:              p.Name,
@@ -205,7 +220,7 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask) ProjectSummary {
 	var cost float64
 	for i := range tasks {
 		t := &tasks[i]
-		s.Stages[StageOf(t, ciEnabled(p))]++
+		s.Stages[StageOf(t, ciWindow(p), now)]++
 		cost += parseCost(t.Status.Run.CostUSD)
 		if ap := t.Status.Autopilot; ap != nil && t.Spec.Milestone != nil {
 			o := AutopilotOverview{
@@ -229,14 +244,14 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask) ProjectSummary {
 }
 
 // detail groups the tasks of p by milestone.
-func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask) ProjectDetail {
-	d := ProjectDetail{ProjectSummary: summarize(p, tasks), Milestones: []Milestone{}, Unplanned: []Task{}}
+func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) ProjectDetail {
+	d := ProjectDetail{ProjectSummary: summarize(p, tasks, now), Milestones: []Milestone{}, Unplanned: []Task{}}
 	gl := d.GitLab
 	byIID := map[int64]*Milestone{}
 	costs := map[int64]float64{}
 	for i := range tasks {
 		t := &tasks[i]
-		v := taskView(t, ciEnabled(p))
+		v := taskView(t, ciWindow(p), now)
 		ms := t.Spec.Milestone
 		if ms == nil {
 			d.Unplanned = append(d.Unplanned, v)
