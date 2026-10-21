@@ -124,6 +124,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 
 	role, profile := spec.ImplementRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
+	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs)
 	inv.DisallowedTools = implementDenied
 	inv.Resume = st.session("implement", role.Engine)
 	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false, prior)

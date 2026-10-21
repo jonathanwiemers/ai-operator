@@ -137,9 +137,11 @@ func runRunner(ctx context.Context) {
 		Agent:       agent,
 		Mirror: &runner.Mirror{Dir: filepath.Join(stateDir, "mirror.git"), Token: token, Log: log.WithName("mirror"),
 			AuthorName: envOr("AI_GIT_AUTHOR_NAME", "AI Operator"), AuthorEmail: envOr("AI_GIT_AUTHOR_EMAIL", "ai-operator@noreply.local")},
-		StateDir:     stateDir,
-		Exchange:     exchange,
-		PollInterval: 10 * time.Second,
+		StateDir:         stateDir,
+		Exchange:         exchange,
+		PollInterval:     10 * time.Second,
+		AgentMemoryLimit: os.Getenv("AI_AGENT_MEMORY_LIMIT"),
+		AgentCPUs:        os.Getenv("AI_AGENT_CPUS"),
 		AgentMemoryBytes: func() int64 {
 			n, _ := strconv.ParseInt(os.Getenv("AI_AGENT_MEMORY_BYTES"), 10, 64)
 			return n

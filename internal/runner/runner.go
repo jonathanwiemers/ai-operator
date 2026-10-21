@@ -49,6 +49,9 @@ type Runner struct {
 	Exchange string
 	// PollInterval between checks for new run requests.
 	PollInterval time.Duration
+	// AgentMemoryLimit and AgentCPUs are what the agent container may use
+	// (e.g. "6Gi", "2"), if it has limits; the implementer is told.
+	AgentMemoryLimit, AgentCPUs string
 	// AgentMemoryBytes is the agent container's memory limit in this pod
 	// (0 if unknown).
 	AgentMemoryBytes int64

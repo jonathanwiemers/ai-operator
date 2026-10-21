@@ -82,6 +82,31 @@ state of the work, decisions and why, what is left or open, and pitfalls
 than appending to them. Do not repeat the issue or the summary; at most a
 few hundred words.`
 
+// resourcesNote tells the implementer what its container may use. Build
+// tools and test runners size themselves by the node's CPUs and memory, not
+// the container's, and a container over its memory limit is killed together
+// with the run.
+func resourcesNote(memory, cpus string) string {
+	var parts []string
+	if memory != "" {
+		parts = append(parts, "a memory limit of "+memory)
+	}
+	if cpus != "" {
+		parts = append(parts, cpus+" CPUs")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	note := "\n\nYour container has " + strings.Join(parts, " and ") + "."
+	if memory != "" {
+		note += ` If the processes you start, together with the agent CLI itself, use more memory than that, the container ` +
+			`is killed and this run is lost.`
+	}
+	return note + ` Many tools size themselves by the machine, not the container, so keep them within it: run test runners ` +
+		`with few workers (e.g. --maxWorkers=2 for jest or vitest, go test -p 2), run one heavy build or test command at a ` +
+		`time, don't start watch modes or dev servers, and stop background processes you start.`
+}
+
 const bugbotSystemPrompt = `You are a code reviewer looking for correctness bugs in a diff produced by
 an AI agent. You are read-only.
 

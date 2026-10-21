@@ -571,6 +571,27 @@ func TestLongWaitHibernatesPod(t *testing.T) {
 	}
 }
 
+func TestRunnerKnowsTheAgentLimits(t *testing.T) {
+	env := func(pod *corev1.Pod) map[string]string {
+		m := map[string]string{}
+		for _, e := range container(pod, RunnerContainer).Env {
+			m[e.Name] = e.Value
+		}
+		return m
+	}
+	spec := testProject().Spec.WithDefaults()
+	if e := env(buildPod(newImplTask("x", 1), spec)); e["AI_AGENT_MEMORY_LIMIT"] != "" || e["AI_AGENT_CPUS"] != "" {
+		t.Fatalf("no limits, nothing to tell: %v", e)
+	}
+	spec.Agents.Resources = corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1125m")},
+		Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("6Gi")},
+	}
+	if e := env(buildPod(newImplTask("x", 1), spec)); e["AI_AGENT_MEMORY_LIMIT"] != "6Gi" || e["AI_AGENT_CPUS"] != "1.125" {
+		t.Fatalf("the runner must know the agent's memory limit and CPUs: %v", e)
+	}
+}
+
 func TestAgentTerminationIsRecorded(t *testing.T) {
 	e := newTaskEnv(t, newImplTask("x", 1))
 	e.reconcile("x")
@@ -711,6 +732,11 @@ func TestMemoryRaisedAfterAnOOMKill(t *testing.T) {
 	res := container(&pod, AgentContainer).Resources
 	if res.Limits.Memory().String() != "6Gi" || res.Requests.Memory().String() != "3Gi" || len(pod.Status.ContainerStatuses) != 0 {
 		t.Fatalf("expected the new pod with 6Gi / 3Gi: %+v", res)
+	}
+	for _, env := range container(&pod, RunnerContainer).Env {
+		if env.Name == "AI_AGENT_MEMORY_LIMIT" && env.Value != "6Gi" {
+			t.Fatalf("the implementer must be told the raised limit, got %q", env.Value)
+		}
 	}
 }
 
