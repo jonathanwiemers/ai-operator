@@ -55,6 +55,9 @@ live in the namespaces listed in the chart's `agent.namespaces`.
   result (branch, MR, comments, labels).
 * The **agent container** runs the agent CLIs on the checkout. It has the
   model credentials, nothing else (see [Security](#security)).
+* The optional **web UI** (`ai-operator-ui`, [ui.md](ui.md)) shows the tasks
+  of the projects a user's OIDC roles grant. It only reads AgentProjects and
+  AgentTasks from the Kubernetes API and never talks to GitLab.
 
 ## Flow
 
@@ -701,6 +704,14 @@ flowchart LR
   `write_repository`) and protect the default branch – the agent only pushes
   `agent/*` branches and opens draft MRs.
 
+**Web UI.** The optional UI runs as its own Deployment with a service
+account that can only read AgentProjects and AgentTasks, so a flaw in it
+exposes task status, not credentials. Users log in with OIDC (code flow with
+PKCE); their roles grant access per project, nothing is visible without a
+rule. Sessions are encrypted cookies holding only user name and roles. Without
+OIDC it only listens on localhost (`kubectl port-forward`). Details in
+[ui.md](ui.md#security).
+
 **Remaining risks.** The model can still push arbitrary content to its own
 `agent/*` branch (by design; humans review the MR) and write anything
 into the summaries posted on GitLab. CI pipelines of agent branches run
@@ -731,6 +742,8 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/runner/git.go` | runner-side bare mirror (the only git that talks to GitLab) |
 | `internal/gitlab` | minimal REST client with retries; `gitlabfake` for tests |
+| `internal/ui` | web UI server: OIDC login, CEL claim mapping, access rules, session cookies, JSON API, change events |
+| `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app` |
 | `charts/ai-operator` | Helm chart (CRDs and operator RBAC are copied in by `make manifests`) |
 | `.github/workflows` | CI and calendar-versioned releases (`YEAR.MONTH.N`) |
 
@@ -743,6 +756,8 @@ Engines, profiles and subscriptions); CI feedback loop (see CI feedback).
 Next:
 
 1. **GitLab webhooks** instead of polling, for instant reactions.
+2. **Web UI:** run transcripts, a few actions, and an MCP endpoint on the
+   same host and access rules (see [ui.md](ui.md#roadmap)).
 
 Later:
 

@@ -1,0 +1,118 @@
+{{- if .Values.ui.enabled }}
+{{- include "ai-operator.ui.validate" . }}
+{{- $ui := .Values.ui }}
+{{- $config := include "ai-operator.ui.config" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-operator.ui.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-operator.ui.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- $config | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-operator.ui.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-operator.ui.labels" . | nindent 4 }}
+spec:
+  replicas: {{ $ui.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ai-operator.ui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ai-operator.ui.selectorLabels" . | nindent 8 }}
+        {{- with $ui.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ $config | sha256sum }}
+        {{- with $ui.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "ai-operator.ui.fullname" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: ui
+          image: {{ include "ai-operator.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/ui"]
+          args:
+            - --config=/etc/ai-operator-ui/config.yaml
+            {{- if eq $ui.auth.mode "none" }}
+            # No login: only reachable through kubectl port-forward.
+            - --bind-address=127.0.0.1:{{ $ui.port }}
+            {{- else }}
+            - --bind-address=:{{ $ui.port }}
+            {{- end }}
+            - --health-probe-bind-address=:{{ $ui.healthProbePort }}
+            - --zap-log-level={{ .Values.logLevel }}
+            {{- range $ui.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- if eq $ui.auth.mode "oidc" }}
+          env:
+            - name: AI_OPERATOR_UI_SESSION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ui.oidc.existingSecret }}
+                  key: session-key
+            - name: AI_OPERATOR_UI_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ui.oidc.existingSecret }}
+                  key: client-secret
+                  optional: true
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $ui.port }}
+            - name: probes
+              containerPort: {{ $ui.healthProbePort }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+          volumeMounts:
+            - name: config
+              mountPath: /etc/ai-operator-ui
+              readOnly: true
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $ui.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "ai-operator.ui.fullname" . }}
+      {{- with $ui.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $ui.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $ui.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

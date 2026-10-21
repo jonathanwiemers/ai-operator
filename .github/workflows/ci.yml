@@ -17,6 +17,11 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: azure/setup-helm@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Generated code and manifests are up to date
         run: |
           make generate manifests
@@ -27,6 +32,8 @@ jobs:
         run: go vet ./...
       - name: test
         run: go test -race ./...
+      - name: web UI (type-check and build)
+        run: make ui
       - name: build
         run: make build
       - name: helm lint

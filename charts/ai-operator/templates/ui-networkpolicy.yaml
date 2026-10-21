@@ -1,0 +1,25 @@
+{{- if and .Values.ui.enabled .Values.ui.networkPolicy.enabled }}
+{{- $ui := .Values.ui }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ai-operator.ui.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-operator.ui.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ai-operator.ui.selectorLabels" . | nindent 6 }}
+  policyTypes: ["Ingress"]
+  ingress:
+    {{- if $ui.networkPolicy.from }}
+    - from:
+        {{- toYaml $ui.networkPolicy.from | nindent 8 }}
+      ports:
+        - port: http
+    {{- end }}
+    # Kubelet probes.
+    - ports:
+        - port: probes
+{{- end }}

@@ -41,6 +41,11 @@ test:
 build:
 	go build -o bin/manager ./cmd/operator
 	go build -o bin/ai-runner ./cmd/runner
+	go build -o bin/ai-operator-ui ./cmd/ui
+
+.PHONY: ui
+ui: ## Type-check and build the web UI into web/dist/app (embedded by go build).
+	cd web && npm ci && npm run build
 
 .PHONY: docker-build
 docker-build:
@@ -59,10 +64,16 @@ deploy: manifests ## Deploy CRDs, RBAC and the operator.
 run: ## Run the operator against the current kubeconfig.
 	go run ./cmd/operator
 
+.PHONY: run-ui
+run-ui: ## Run the web UI without login on http://127.0.0.1:9080 against the current kubeconfig (make ui first; cd web && npm run dev for live reload).
+	go run ./cmd/ui --config hack/ui-dev.yaml --bind-address 127.0.0.1:9080 --health-probe-bind-address 127.0.0.1:9081
+
 .PHONY: helm-lint
 helm-lint: ## Lint and render the chart.
 	$(HELM) lint $(CHART) --strict
 	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system --set agent.namespaces={agents} > /dev/null
+	$(HELM) lint $(CHART) --strict -f hack/helm-ui-values.yaml
+	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system -f hack/helm-ui-values.yaml > /dev/null
 
 .PHONY: helm-package
 helm-package: ## Package the chart as dist/ai-operator-$(VERSION).tgz.

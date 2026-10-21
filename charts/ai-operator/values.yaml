@@ -77,6 +77,75 @@ agent:
         matchLabels:
           k8s-app: kube-dns
 
+# Read-only web UI (see docs/ui.md). Off by default. It runs as its own
+# Deployment with a service account that can only read AgentProjects and
+# AgentTasks; it never sees the GitLab tokens.
+ui:
+  enabled: false
+  replicaCount: 1
+  # URL users open, without a path, e.g. https://ai.example.com. The OIDC
+  # redirect URI is <externalURL>/oauth2/callback. Required with auth.mode oidc.
+  externalURL: ""
+  port: 9080
+  healthProbePort: 8081
+  auth:
+    # oidc, or none: no login, listens on 127.0.0.1 only, reached with
+    # kubectl port-forward. none cannot be combined with httpRoute.
+    mode: oidc
+    # How long a login lasts. Roles are read at login.
+    sessionTTL: 12h
+  oidc:
+    issuerURL: ""
+    clientID: ""
+    # Secret with the key session-key (at least 32 characters, e.g.
+    # openssl rand -hex 32) and, for confidential clients, client-secret.
+    existingSecret: ""
+    scopes: [openid, profile, email]
+    # CEL expressions over the token's claims (variable "claims"). roles may
+    # return a list, a string or a map whose keys are the roles (Zitadel).
+    claims:
+      username: 'has(claims.email) ? claims.email : claims.sub'
+      roles: 'has(claims.groups) ? claims.groups : []'
+  # Who sees which projects. Nobody sees anything unless a rule grants it.
+  #   - roles: [ai-operator-admin]          # every project
+  #   - roles: [shop-devs]
+  #     projects: ["team-a/shop"]           # namespace/name, globs allowed
+  authorization:
+    rules: []
+  service:
+    type: ClusterIP
+    annotations: {}
+  # Gateway API HTTPRoute that forwards externalURL's host to the UI. TLS
+  # ends at the Gateway.
+  httpRoute:
+    enabled: false
+    annotations: {}
+    # e.g. [{name: public, namespace: gateway-system, sectionName: https}]
+    parentRefs: []
+    # Defaults to the host of externalURL.
+    hostnames: []
+    # HTTPRoute timeouts of the rule, e.g. {request: 0s} if the Gateway
+    # cuts off the UI's event stream (live updates reconnect, but late).
+    timeouts: {}
+  # NetworkPolicy for the UI pod: ingress only from the peers below (e.g. the
+  # Gateway's namespace) and to the probe port.
+  networkPolicy:
+    enabled: false
+    # e.g. [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway-system}}}]
+    from: []
+  resources:
+    requests:
+      cpu: 20m
+      memory: 48Mi
+    limits:
+      memory: 192Mi
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraArgs: []
+
 metrics:
   port: 8080
   service:

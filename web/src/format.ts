@@ -1,0 +1,124 @@
+import type { CIState, Stage, TaskPhase } from './types'
+
+// safeURL only lets http(s) links through: URLs come from GitLab via the
+// cluster, and a javascript: URL must never become a link.
+export function safeURL(u: string | undefined | null): string | undefined {
+  if (!u) return undefined
+  try {
+    const parsed = new URL(u)
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function relTime(iso: string | undefined | null, now: number): string {
+  if (!iso) return '—'
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return '—'
+  const diff = Math.round((t - now) / 1000)
+  const abs = Math.abs(diff)
+  const units: [number, Intl.RelativeTimeFormatUnit][] = [
+    [60, 'second'],
+    [3600, 'minute'],
+    [86400, 'hour'],
+    [86400 * 30, 'day'],
+    [86400 * 365, 'month'],
+  ]
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+  if (abs < 45) return diff < 0 ? 'just now' : 'in a moment'
+  let div = 1
+  for (const [limit, unit] of units) {
+    if (abs < limit) return rtf.format(Math.round(diff / div), unit)
+    div = limit
+  }
+  return rtf.format(Math.round(diff / (86400 * 365)), 'year')
+}
+
+export function absTime(iso: string | undefined | null): string {
+  if (!iso) return ''
+  const t = new Date(iso)
+  return Number.isNaN(t.getTime()) ? '' : t.toLocaleString()
+}
+
+export function cost(usd: string | undefined | null): string {
+  const v = Number.parseFloat(usd ?? '')
+  if (!Number.isFinite(v) || v === 0) return '$0'
+  return v < 0.01 ? '<$0.01' : `$${v.toFixed(2)}`
+}
+
+export function shortSHA(sha: string | undefined | null): string {
+  return sha ? sha.slice(0, 8) : '—'
+}
+
+export type Tone = 'neutral' | 'info' | 'progress' | 'success' | 'warning' | 'danger' | 'muted'
+
+export const stageInfo: Record<Stage, { label: string; tone: Tone; hint: string }> = {
+  pending: { label: 'Pending', tone: 'muted', hint: 'Nothing ran yet.' },
+  working: { label: 'Working', tone: 'progress', hint: 'A run is requested or in progress.' },
+  waiting: { label: 'Waiting', tone: 'neutral', hint: 'Waits for a free slot or for a usage limit to reset.' },
+  'needs-input': { label: 'Needs input', tone: 'warning', hint: 'The agent has questions, or CI is still red after the fix rounds.' },
+  ci: { label: 'CI', tone: 'info', hint: 'The pipeline of the last push runs or is being fixed.' },
+  review: { label: 'Review', tone: 'success', hint: 'The merge request waits for a human.' },
+  planned: { label: 'Planned', tone: 'success', hint: 'The spec agent planned the milestone.' },
+  failed: { label: 'Failed', tone: 'danger', hint: 'The last run failed.' },
+  blocked: { label: 'Blocked', tone: 'danger', hint: 'The task hit a safety limit and needs a human.' },
+}
+
+export const stageOrder: Stage[] = [
+  'working',
+  'waiting',
+  'needs-input',
+  'ci',
+  'review',
+  'failed',
+  'blocked',
+  'planned',
+  'pending',
+]
+
+export function phaseTone(p: TaskPhase | undefined): Tone {
+  switch (p) {
+    case 'Running':
+      return 'progress'
+    case 'Queued':
+    case 'Waiting':
+      return 'warning'
+    case 'Blocked':
+      return 'danger'
+    case 'Idle':
+      return 'info'
+    default:
+      return 'muted'
+  }
+}
+
+export function ciTone(s: CIState | undefined): Tone {
+  switch (s) {
+    case 'Success':
+      return 'success'
+    case 'Running':
+    case 'Pending':
+      return 'info'
+    case 'Fixing':
+      return 'progress'
+    case 'Failed':
+      return 'danger'
+    case 'BaseFailing':
+    case 'Canceled':
+      return 'warning'
+    default:
+      return 'muted'
+  }
+}
+
+export const ciLabel: Record<CIState, string> = {
+  Pending: 'Pending',
+  Running: 'Running',
+  Fixing: 'Fixing',
+  Success: 'Passed',
+  Failed: 'Failed',
+  BaseFailing: 'Failing on default branch',
+  Canceled: 'Canceled',
+  None: 'No pipeline',
+}
