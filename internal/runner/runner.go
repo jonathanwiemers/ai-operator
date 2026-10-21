@@ -49,8 +49,11 @@ type Runner struct {
 	Exchange string
 	// PollInterval between checks for new run requests.
 	PollInterval time.Duration
-	Log          logr.Logger
-	Now          func() time.Time
+	// AgentMemoryBytes is the agent container's memory limit in this pod
+	// (0 if unknown).
+	AgentMemoryBytes int64
+	Log              logr.Logger
+	Now              func() time.Time
 
 	// projectStatus is the project's status at the start of the current
 	// run; it carries the project-wide usage limits.
@@ -267,6 +270,14 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	}
 	if d := task.Status.Run.DeferredUntil; d != nil && d.After(r.now()) {
 		return false, nil // waiting for a usage limit to reset
+	}
+	if task.Status.Run.OOMRetries > 0 && r.AgentMemoryBytes > 0 {
+		// Started again after an OOM kill: only in a pod with the raised
+		// limit, which the operator starts in place of this one.
+		if want, ok := project.Spec.WithDefaults().Agents.EffectiveMemory(task.Status.AgentMemoryLimit); ok && r.AgentMemoryBytes < want.Value() {
+			r.Log.V(1).Info("waiting for a pod with more memory", "has", r.AgentMemoryBytes, "wants", want.String())
+			return false, nil
+		}
 	}
 	r.projectStatus = project.Status
 	request := task.Spec.RunRequest

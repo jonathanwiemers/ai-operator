@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -681,6 +682,17 @@ func TestMemoryRaisedAfterAnOOMKill(t *testing.T) {
 		t.Fatal("the pod stays while the run is in progress")
 	}
 	e.reconcile("x") // the same kill is not counted twice
+	// A cap lowered below the raise applies.
+	_ = e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &project)
+	low := resource.MustParse("5Gi")
+	project.Spec.Agents.MaxMemory = &low
+	_ = e.c.Update(e.ctx, &project)
+	limits := agentResources(e.task("x"), project.Spec.WithDefaults()).Limits
+	if got := limits.Memory().String(); got != "5Gi" {
+		t.Fatalf("expected the lowered cap: %s", got)
+	}
+	project.Spec.Agents.MaxMemory = nil
+	_ = e.c.Update(e.ctx, &project)
 	if got := e.task("x").Status.AgentMemoryLimit; got != "6Gi" {
 		t.Fatalf("raised again for the same kill: %q", got)
 	}
@@ -699,5 +711,24 @@ func TestMemoryRaisedAfterAnOOMKill(t *testing.T) {
 	res := container(&pod, AgentContainer).Resources
 	if res.Limits.Memory().String() != "6Gi" || res.Requests.Memory().String() != "3Gi" || len(pod.Status.ContainerStatuses) != 0 {
 		t.Fatalf("expected the new pod with 6Gi / 3Gi: %+v", res)
+	}
+}
+
+func TestUnschedulablePodIsReported(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	e.reconcile("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") {
+		t.Fatal("expected pod")
+	}
+	pod.Status.Phase = corev1.PodPending
+	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodScheduled, Status: corev1.ConditionFalse,
+		Reason: corev1.PodReasonUnschedulable, Message: "0/3 nodes are available: 3 Insufficient memory."}}
+	if err := e.c.Status().Update(e.ctx, &pod); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if msg := e.task("x").Status.Message; !strings.Contains(msg, "cannot be scheduled: 0/3 nodes are available") {
+		t.Fatalf("unexpected message %q", msg)
 	}
 }

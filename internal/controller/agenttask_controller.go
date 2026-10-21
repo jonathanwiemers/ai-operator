@@ -278,6 +278,15 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		Message: fmt.Sprintf("%d of %d runs used", task.Status.Run.RunCount, lc.MaxRunsPerTask),
 	})
 
+	if pod != nil && pod.Status.Phase == corev1.PodPending {
+		// A raised memory request may fit no node: say so instead of waiting
+		// silently.
+		for _, c := range pod.Status.Conditions {
+			if c.Type == corev1.PodScheduled && c.Status == corev1.ConditionFalse && c.Reason == corev1.PodReasonUnschedulable {
+				task.Status.Message = "agent pod cannot be scheduled: " + c.Message
+			}
+		}
+	}
 	task.Status.PodName = ""
 	if pod != nil {
 		task.Status.PodName = pod.Name

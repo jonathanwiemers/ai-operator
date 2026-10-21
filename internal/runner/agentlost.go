@@ -143,6 +143,9 @@ func (r *Runner) retryWithMoreMemory(ctx context.Context, gl gitlab.API, spec ai
 		s.ActiveRunRequest = s.ObservedRunRequest
 		s.CurrentStep = ""
 		s.DeferredUntil = &metav1.Time{Time: now.Add(oomRetryDelay)}
+		// Not a usage limit: an engine left over from an earlier deferral
+		// would hold up the project's other tasks.
+		s.LimitedEngine = ""
 		s.OOMRetries++
 		s.LastActivityTime = &metav1.Time{Time: now}
 		s.LastResult = aiv1.RunResultDeferred

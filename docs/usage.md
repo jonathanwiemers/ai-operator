@@ -714,9 +714,11 @@ its call to the agent, waits for the container to be back and reports it:
   `agent::working` and gets a comment: "The agent container ran out of
   memory after 1h28m and was killed (OOMKilled, memory limit 4Gi). The run
   starts again with 6Gi (restart 1 of at most 3)". The raised limit stays
-  with the task for its later runs (`status.agentMemoryLimit`). The killed
-  call's uncommitted edits are lost; the run starts again from the last
-  pushed commit.
+  with the task for its later runs (`status.agentMemoryLimit`); lowering
+  `maxMemory` or the limit lowers it too. The killed call's uncommitted edits
+  are lost; the run starts again from the last pushed commit. If no node has
+  room for the raised memory, the task's status says the pod cannot be
+  scheduled (`kubectl get agenttasks -o wide`).
 - **Out of memory at the cap** (or after 3 restarts, or without a memory
   limit to raise): the run fails with that reason. Raise
   `spec.agents.resources` or `spec.agents.maxMemory`, then comment `/agent

@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -139,7 +140,11 @@ func runRunner(ctx context.Context) {
 		StateDir:     stateDir,
 		Exchange:     exchange,
 		PollInterval: 10 * time.Second,
-		Log:          log,
+		AgentMemoryBytes: func() int64 {
+			n, _ := strconv.ParseInt(os.Getenv("AI_AGENT_MEMORY_BYTES"), 10, 64)
+			return n
+		}(),
+		Log: log,
 	}
 	log.Info("runner started", "task", r.TaskName)
 	if err := r.Loop(ctx); err != nil {

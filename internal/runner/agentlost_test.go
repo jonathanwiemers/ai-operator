@@ -147,15 +147,21 @@ func TestOOMKilledRunStartsAgainWithMoreMemory(t *testing.T) {
 	if err := e.k8s.Update(ctx, &project); err != nil {
 		t.Fatal(err)
 	}
+	// The run had waited for a usage limit before.
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	orig := task.DeepCopy()
+	task.Status.Run.LimitedEngine, task.Status.Run.Deferrals = aiv1.EngineClaude, 1
+	_ = e.k8s.Status().Patch(ctx, &task, client.MergeFrom(orig))
+
 	engine := &lostEngine{k8s: e.k8s, task: e.task.Name, reason: "OOMKilled", fails: 5}
 	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
 	if _, err := r.Step(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var task aiv1.AgentTask
 	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
 	run := task.Status.Run
-	if !task.RunPending() || run.OOMRetries != 1 || run.DeferredUntil == nil || run.LastResult != aiv1.RunResultDeferred {
+	if !task.RunPending() || run.OOMRetries != 1 || run.DeferredUntil == nil || run.LastResult != aiv1.RunResultDeferred || run.LimitedEngine != "" {
 		t.Fatalf("the run must stay pending and wait for a pod with more memory: %+v", run)
 	}
 	var note string
@@ -169,8 +175,22 @@ func TestOOMKilledRunStartsAgainWithMoreMemory(t *testing.T) {
 		t.Fatalf("the issue stays in working: %v", labels)
 	}
 
+	// Due again, but this pod still has the old limit: the runner waits for
+	// the operator's pod with more memory.
+	orig = task.DeepCopy()
+	task.Status.Run.DeferredUntil = nil
+	task.Status.AgentMemoryLimit = "6Gi"
+	_ = e.k8s.Status().Patch(ctx, &task, client.MergeFrom(orig))
+	r.AgentMemoryBytes = 4 << 30
+	calls := engine.calls
+	if ran, err := r.Step(ctx); ran || err != nil || engine.calls != calls {
+		t.Fatalf("must not start again in the old pod: ran=%v err=%v calls=%d", ran, err, engine.calls)
+	}
+	r.AgentMemoryBytes = 6 << 30
+
 	// Restarts used up: the run fails as before.
-	orig := task.DeepCopy()
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	orig = task.DeepCopy()
 	task.Status.Run.OOMRetries = aiv1.MaxOOMRetries
 	task.Status.Run.DeferredUntil = nil
 	_ = e.k8s.Status().Patch(ctx, &task, client.MergeFrom(orig))

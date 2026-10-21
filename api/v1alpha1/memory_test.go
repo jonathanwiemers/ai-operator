@@ -29,3 +29,22 @@ func TestRaisedMemory(t *testing.T) {
 		t.Error("without a configured limit nothing is raised")
 	}
 }
+
+func TestEffectiveMemory(t *testing.T) {
+	a := AgentsSpec{Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("4Gi")}}}
+	if got, ok := a.EffectiveMemory("6Gi"); !ok || got.String() != "6Gi" {
+		t.Errorf("raised: %s %v", got.String(), ok)
+	}
+	if _, ok := a.EffectiveMemory(""); ok {
+		t.Error("nothing raised")
+	}
+	low := resource.MustParse("5Gi")
+	a.MaxMemory = &low
+	if got, ok := a.EffectiveMemory("6Gi"); !ok || got.String() != "5Gi" {
+		t.Errorf("a lowered cap applies: %s %v", got.String(), ok)
+	}
+	a.Resources.Limits[corev1.ResourceMemory] = resource.MustParse("8Gi")
+	if _, ok := a.EffectiveMemory("6Gi"); ok {
+		t.Error("a configured limit above the raise wins")
+	}
+}
