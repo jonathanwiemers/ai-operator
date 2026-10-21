@@ -278,7 +278,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			s.done("no changes to review")
 			break
 		}
-		findings, cost, errs := r.review(ctx, review, issue, base, stat, diff)
+		findings, cost, errs := r.review(ctx, review, issue, planDecisionsText(issueNotes, botID), base, stat, diff)
 		out.CostUSD += cost
 		reviewNotes = errs
 		out.Reviewed, out.ReviewErrors = true, int32(len(errs))
@@ -548,8 +548,9 @@ func (r *Runner) postDecisions(ctx context.Context, gl gitlab.API, glProject str
 		}
 	}
 	if len(planned) > 0 {
-		// Planning decisions live in the description, which a human may
-		// have edited during the run: mark them on the current version.
+		// Planning decisions of older issues live in the description, which
+		// a human may have edited during the run: mark them on the current
+		// version.
 		fresh, err := gl.GetIssue(ctx, glProject, issue.IID)
 		if err != nil {
 			_ = s.fail(fmt.Errorf("reading the issue description: %w", err))
@@ -593,21 +594,10 @@ func (r *Runner) postDecisions(ctx context.Context, gl gitlab.API, glProject str
 }
 
 // supersedeElsewhere marks decision id on its own issue as superseded by the
-// decision by of this run.
+// decision by of this run: in the bot's decision comment that holds it, or in
+// the description for planning decisions of older issues.
 func (r *Runner) supersedeElsewhere(ctx context.Context, gl gitlab.API, glProject string, botID int64, id, by string) error {
 	iid := marker.DecisionIssue(id)
-	if strings.Contains(id, "-P") {
-		target, err := gl.GetIssue(ctx, glProject, iid)
-		if err != nil {
-			return fmt.Errorf("reading #%d to mark %s superseded: %w", iid, id, err)
-		}
-		if desc := markSuperseded(target.Description, id, by, r.run.id); desc != target.Description {
-			if _, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Description: desc}); err != nil {
-				return fmt.Errorf("marking %s superseded on #%d: %w", id, iid, err)
-			}
-		}
-		return nil
-	}
 	notes, err := gl.ListIssueNotes(ctx, glProject, iid)
 	if err != nil {
 		return fmt.Errorf("reading #%d to mark %s superseded: %w", iid, id, err)
@@ -622,6 +612,18 @@ func (r *Runner) supersedeElsewhere(ctx context.Context, gl gitlab.API, glProjec
 			}
 		}
 		return nil
+	}
+	if !strings.Contains(id, "-P") {
+		return nil
+	}
+	target, err := gl.GetIssue(ctx, glProject, iid)
+	if err != nil {
+		return fmt.Errorf("reading #%d to mark %s superseded: %w", iid, id, err)
+	}
+	if desc := markSuperseded(target.Description, id, by, r.run.id); desc != target.Description {
+		if _, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Description: desc}); err != nil {
+			return fmt.Errorf("marking %s superseded on #%d: %w", id, iid, err)
+		}
 	}
 	return nil
 }
@@ -643,8 +645,8 @@ func (r *Runner) commit(ctx context.Context, message string) error {
 
 // review runs all configured reviewers in parallel. Reviewer failures do not
 // fail the run; they are reported alongside the result.
-func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, base, stat, diff string) ([]Finding, float64, []string) {
-	prompt := buildReviewPrompt(issue, base, stat, diff)
+func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions, base, stat, diff string) ([]Finding, float64, []string) {
+	prompt := buildReviewPrompt(issue, planDecisions, base, stat, diff)
 	var (
 		mu       sync.Mutex
 		wg       sync.WaitGroup

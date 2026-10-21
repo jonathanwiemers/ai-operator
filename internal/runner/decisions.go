@@ -12,9 +12,10 @@ import (
 
 // Decisions are the choices an agent made that a reviewer could reasonably
 // want differently. Every run posts its decisions in one comment on the issue,
-// and the spec agent's decisions for an issue go into its description. Each
-// decision has a stable ID, D<issue>-<n> for the implementer and
-// D<issue>-P<n> for the planner, so a human can change it later with
+// and the spec agent's decisions for an issue go into one comment the bot
+// keeps up to date while the issue is a draft. Each decision has a stable
+// ID, D<issue>-<n> for the implementer and D<issue>-P<n> for the planner, so
+// a human can change it later with
 // "/agent revisit <id> <instruction>". GitLab is the source of truth for the
 // IDs: they are numbered after the highest one found on the issue.
 
@@ -51,7 +52,7 @@ func isDecisionComment(n gitlab.Note, botID int64) bool {
 
 // nextDecisionNumber returns the number for the next implementer decision of
 // an issue: one after the highest in the bot's decision comments. Planner
-// decisions (P) live in the description and are numbered on their own.
+// decisions (P) are numbered on their own.
 func nextDecisionNumber(issue *gitlab.Issue, notes []gitlab.Note, botID int64) int {
 	highest := 0
 	for _, n := range notes {
@@ -153,20 +154,46 @@ func renderDecisionsComments(runID, prefix string, ds []numberedDecision) []stri
 	return append(out, b.String())
 }
 
-// renderPlannedDecisions renders the decisions section of a planned issue's
-// description.
-func renderPlannedDecisions(ds []numberedDecision, prefix string) string {
-	if len(ds) == 0 {
-		return ""
-	}
+// planDecisionsMarker marks the bot's comment with the planner's decisions
+// for an issue, so a re-plan updates it instead of adding another.
+const planDecisionsMarker = "<!-- ai-operator:plan-decisions -->"
+
+// renderPlanDecisions renders the comment with the planner's decisions for
+// an issue.
+func renderPlanDecisions(runID, prefix string, ds []numberedDecision) string {
 	var b strings.Builder
-	b.WriteString("\n### Decisions\n\n")
-	fmt.Fprintf(&b, "_Made by the planning agent. Change one with a comment `%s revisit <id> <what you want instead>`._\n", prefix)
+	if len(ds) == 0 {
+		fmt.Fprintf(&b, "%s of the plan: none since run `%s`.\n", decisionsHeader, runID)
+	} else {
+		fmt.Fprintf(&b, "%s of the plan in run `%s`. Change one with `%s revisit <id> <what you want instead>`.\n", decisionsHeader, runID, prefix)
+	}
 	for _, d := range ds {
 		b.WriteString("\n")
 		b.WriteString(renderDecision(d.ID, d.Decision))
 	}
+	b.WriteString("\n" + planDecisionsMarker + "\n")
 	return b.String()
+}
+
+// isPlanDecisions reports whether a note is the bot's plan decisions comment.
+func isPlanDecisions(n gitlab.Note, botID int64) bool {
+	return isDecisionComment(n, botID) && strings.Contains(n.Body, planDecisionsMarker)
+}
+
+// planDecisionsText returns the planner's decisions on an issue without the
+// markers, for prompts; empty if there are none.
+func planDecisionsText(notes []gitlab.Note, botID int64) string {
+	for _, n := range notes {
+		if isPlanDecisions(n, botID) {
+			if ds := marker.Decisions(n.Body); len(ds) == 0 {
+				return ""
+			}
+			body := strings.ReplaceAll(decisionMarker.ReplaceAllString(n.Body, ""), planDecisionsMarker, "")
+			_, rest, _ := strings.Cut(body, "\n") // the header names the run
+			return strings.TrimSpace(rest)
+		}
+	}
+	return ""
 }
 
 // revisit is a request to change a decision.
@@ -203,20 +230,19 @@ func findRevisits(issue *gitlab.Issue, all, fresh []gitlab.Note, botID int64, pr
 			continue
 		}
 		rv := revisit{ID: strings.ToUpper(m[2]), Instruction: strings.TrimSpace(m[3])}
-		if strings.Contains(rv.ID, "-P") {
-			// Planner decisions live in the description, implementer
-			// decisions in the bot's decision comments.
-			rv.Decision = decisionSection(issue.Description, rv.ID)
-		} else {
-			for i := range all {
-				if !isDecisionComment(all[i], botID) {
-					continue
-				}
-				if sec := decisionSection(all[i].Body, rv.ID); sec != "" {
-					rv.Decision, rv.Note = sec, &all[i]
-					break
-				}
+		// Decisions live in the bot's decision comments; planning decisions
+		// of older issues in the description.
+		for i := range all {
+			if !isDecisionComment(all[i], botID) {
+				continue
 			}
+			if sec := decisionSection(all[i].Body, rv.ID); sec != "" {
+				rv.Decision, rv.Note = sec, &all[i]
+				break
+			}
+		}
+		if rv.Decision == "" && strings.Contains(rv.ID, "-P") {
+			rv.Decision = decisionSection(issue.Description, rv.ID)
 		}
 		rv.Superseded = strings.Contains(rv.Decision, rv.ID+" superseded -->")
 		// A later revisit of the same decision replaces an earlier one.
