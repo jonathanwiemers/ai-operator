@@ -542,6 +542,10 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	case mr.SHA != run.PushedSHA:
 		return a.pause(ctx, fmt.Sprintf("the head of !%d (%s) is not the commit the agent pushed and CI checked (%s); someone pushed to the branch. "+
 			"Comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, short(mr.SHA), short(run.PushedSHA), wf.CommandPrefix, it.IID))
+	case !a.spec.CI.Disabled && task.Status.CI != nil && task.Status.CI.State == aiv1.CIStateNone && (mr.Draft || mr.DetailedMergeStatus == "draft_status") && !it.MarkedReady:
+		// No pipeline ran, and projects may skip pipelines for drafts: mark
+		// it ready and run CI before anything is merged.
+		return a.readyForCI(ctx, it, mr, task)
 	}
 	switch mr.DetailedMergeStatus {
 	case "mergeable":
@@ -590,6 +594,44 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	default:
 		return fmt.Errorf("merging !%d: %w", mr.IID, err)
 	}
+}
+
+// readyForCI marks a draft MR ready, starts a merge request pipeline and hands
+// the issue back to the CI loop, which follows that pipeline. If there is
+// still none, the gate goes on as before (the MR is not a draft any more).
+func (a *autopilot) readyForCI(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask) error {
+	glProject := a.spec.GitLab.Project
+	wf := a.spec.Workflow
+	res, err := a.gl.UpdateMergeRequest(ctx, glProject, mr.IID, gitlab.UpdateMergeRequestOptions{Title: draftPrefix.ReplaceAllString(mr.Title, "")})
+	switch {
+	case err != nil:
+		return a.pause(ctx, fmt.Sprintf("could not mark !%d ready: %v", mr.IID, err))
+	case res.Draft:
+		return a.pause(ctx, fmt.Sprintf("could not mark !%d ready (title %q); mark it ready by hand", mr.IID, res.Title))
+	}
+	it.MarkedReady = true
+	a.log.Info("autopilot marked the merge request ready to run CI", "mr", mr.IID)
+	if err := a.gl.CreateMergeRequestPipeline(ctx, glProject, mr.IID); err != nil {
+		if code := gitlab.StatusCode(err); code >= 400 && code < 500 {
+			// No merge request pipelines in this project (or no CI at all):
+			// nothing to wait for; the gate goes on with the ready MR.
+			a.log.Info("no merge request pipeline possible, merging without CI", "mr", mr.IID, "error", err.Error())
+			return nil
+		}
+		return fmt.Errorf("starting a pipeline for !%d: %w", mr.IID, err)
+	}
+	orig := task.DeepCopy()
+	task.Status.CI = nil
+	task.Status.Run.PushedAt = &metav1.Time{Time: a.r.now()}
+	if err := a.r.Status().Patch(ctx, task, client.MergeFrom(orig)); err != nil {
+		return err
+	}
+	if _, err := a.gl.UpdateIssue(ctx, glProject, it.IID, gitlab.UpdateIssueOptions{
+		AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel},
+	}); err != nil {
+		return fmt.Errorf("moving issue #%d back to %q: %w", it.IID, wf.WorkingLabel, err)
+	}
+	return nil
 }
 
 // draftPrefix matches the prefixes that make GitLab treat an MR as a draft.

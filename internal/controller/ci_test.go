@@ -244,3 +244,25 @@ func TestCIRetryDisabled(t *testing.T) {
 		t.Fatalf("without retries the agent is asked right away: retried=%v", e.gl.Retried)
 	}
 }
+
+func TestCIFollowsTheMergeRequestHeadPipeline(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	// A merged-results pipeline: its SHA is the merge commit, not sha1.
+	mr, _ := e.gl.CreateMergeRequest(e.ctx, "g/p", gitlab.CreateMergeRequestOptions{SourceBranch: "agent/42", TargetBranch: "main"})
+	e.gl.MRs[mr.IID].SHA = "sha1"
+	e.gl.MRs[mr.IID].HeadPipeline = &gitlab.Pipeline{ID: 77, SHA: "merge-of-sha1", Status: "success", WebURL: "https://gitlab.example/p/77"}
+	var task aiv1.AgentTask
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: ciTask}, &task); err != nil {
+		t.Fatal(err)
+	}
+	orig := task.DeepCopy()
+	task.Status.Run.MergeRequestIID = mr.IID
+	if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	ci := e.ciTask().Status.CI
+	if ci == nil || ci.State != aiv1.CIStateSuccess || ci.PipelineID != 77 || !e.gl.Issues[42].HasLabel("agent::review") {
+		t.Fatalf("the MR's head pipeline should count for its head: %+v %v", ci, e.gl.Labels(42))
+	}
+}

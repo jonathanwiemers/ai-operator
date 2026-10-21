@@ -157,11 +157,15 @@ profile label is kept. Editing the description again *without* a change
   choice, why, alternatives), and the runner log has a `post decisions` step.
 * The issue gets a **🧠 Agent notes** comment with the implementer's handoff
   notes; later runs edit it instead of adding a new one.
-* The issue comment ends with a collapsed **Run log** table (read issue …
-  open merge request) with durations and the cost.
-* Branch `agent/<iid>-<slug>` is pushed, and a **draft MR** "Draft: <title>"
-  with `Closes #<iid>` and the summary is opened. The issue gets a comment
-  linking the MR. It stays in `agent::working` until the MR pipeline is
+* Right at the start, a **draft MR** "Draft: <title>" with `Closes #<iid>` is
+  opened on branch `agent/<iid>-<slug>`, whose first commit "Start work on
+  #<iid>" starts no pipeline (pushed with `ci.skip`). The issue gets a comment
+  linking it.
+* While the run goes on, the MR has a **progress comment** whose run log grows
+  step by step (refresh the page); when the run ends it is replaced by the
+  report, which ends with a collapsed **Run log** table (read issue …
+  update agent notes) with durations and the cost.
+* The branch is pushed. The issue stays in `agent::working` until the MR pipeline is
   green – with the sample app's `changelog` job that takes one CI fix round
   (see T17) – and then becomes `agent::review`.
 * The `test` job passes on the branch, and new tests exist.

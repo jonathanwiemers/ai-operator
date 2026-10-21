@@ -74,7 +74,7 @@ flowchart TD
         IM["implementer of the issue's profile<br/>resumed session"]
         IM --> RV["bugbot + security reviewers<br/>in parallel, diff only"]
         RV -->|"blocking findings,<br/>up to maxIterations"| IM
-        RV --> PUSH["push agent/iid-slug<br/>draft MR Closes #iid"]
+        RV --> PUSH["push agent/iid-slug,<br/>report on the draft MR<br/>(opened at the start of the first run)"]
     end
 
     REQ --> IM
@@ -119,7 +119,7 @@ sequenceDiagram
         end
     end
     AG-->>RU: commits as git bundle
-    RU->>GL: push agent/42-…, open (with the issue's milestone) or update draft MR
+    RU->>GL: push agent/42-…, report on the draft MR (opened before the agent ran)
     RU->>OP: AgentTask status.run.pushedSHA
     loop every poll until the pipeline is final
         OP->>GL: pipeline of pushedSHA
@@ -132,6 +132,28 @@ sequenceDiagram
         OP->>GL: label agent::needs-input + comment
     end
 ```
+
+**The MR first.** The first run opens the draft MR before the agent starts,
+so every run of the issue can be followed in one place. A new branch gets an
+empty start commit, made with `git commit-tree` in the runner's trusted
+mirror and pushed with `ci.skip`; its message is one line without `[skip
+ci]`, which merge commit templates could copy to the default branch. The
+agent's checkout is then prepared again on top of it, and the MR is recorded
+in the task status at once, so a run deferred or failing later reuses it. A
+branch whose head changes nothing against the default branch is never taken
+over as a push for CI.
+
+**Live progress.** The run log has a change hook: every step start and end
+re-renders a progress comment on the MR (hidden marker, open details block,
+the running step marked). Edits are sent by a timer goroutine, at most every
+3 seconds, so a slow GitLab never holds up the run and a long step still
+shows; the body is rendered on the run's goroutine, the timer only sends it.
+When the run ends the comment is deleted (the report follows as a new
+comment, so watchers are notified), or keeps the final run log under a failed
+or paused headline; this also happens while the pod stops, with a context
+that outlives the shutdown. A live comment a killed run left behind is
+removed by the next run. Progress comments are kept out of the agent's
+prompt.
 
 The milestone description is the single source of the overarching spec. The
 operator never writes to it. Sub-specs live in the sub-issues, and the

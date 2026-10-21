@@ -22,10 +22,19 @@ type runLog struct {
 	log   logr.Logger
 	start time.Time
 	steps []*step
+	// onChange is called when a step starts or ends (the progress comment).
+	onChange func()
+}
+
+func (rl *runLog) changed() {
+	if rl != nil && rl.onChange != nil {
+		rl.onChange()
+	}
 }
 
 // step is one step of a run.
 type step struct {
+	rl      *runLog
 	n       int
 	name    string
 	log     logr.Logger
@@ -64,9 +73,10 @@ func (r *Runner) step(ctx context.Context, name string, kv ...any) *step {
 		r.run = &runLog{log: r.Log, start: time.Now()}
 	}
 	n := len(r.run.steps) + 1
-	s := &step{n: n, name: name, log: r.run.log.WithValues("step", n, "name", name), start: time.Now()}
+	s := &step{rl: r.run, n: n, name: name, log: r.run.log.WithValues("step", n, "name", name), start: time.Now()}
 	r.run.steps = append(r.run.steps, s)
 	s.log.Info("step started", kv...)
+	r.run.changed()
 	if err := r.patchRun(ctx, func(st *aiv1.RunStatus) { st.CurrentStep = s.label() }); err != nil {
 		s.log.V(1).Info("could not publish the current step", "error", err.Error())
 	}
@@ -104,6 +114,7 @@ func (s *step) end(result string) {
 	s.ended = true
 	s.elapsed = time.Since(s.start)
 	s.result = result
+	s.rl.changed()
 }
 
 func (s *step) label() string { return fmt.Sprintf("%d %s", s.n, s.name) }
@@ -136,12 +147,25 @@ func (rl *runLog) lines() []string {
 
 // markdown renders the steps so far as a collapsed table for GitLab comments.
 func (rl *runLog) markdown(costUSD float64) string {
+	return rl.table(false, &costUSD)
+}
+
+// table renders the steps as a table in a details block, open for the
+// progress comment; the summary carries the cost when it is known.
+func (rl *runLog) table(open bool, costUSD *float64) string {
 	if len(rl.steps) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\n\n<details><summary>Run log <code>%s</code>: %d steps, %s, $%.2f</summary>\n\n",
-		rl.id, len(rl.steps), fmtDuration(time.Since(rl.start)), costUSD)
+	attr := ""
+	if open {
+		attr = " open"
+	}
+	fmt.Fprintf(&b, "\n\n<details%s><summary>Run log <code>%s</code>: %d steps, %s", attr, rl.id, len(rl.steps), fmtDuration(time.Since(rl.start)))
+	if costUSD != nil {
+		fmt.Fprintf(&b, ", $%.2f", *costUSD)
+	}
+	b.WriteString("</summary>\n\n")
 	b.WriteString("| # | Step | Time | Result |\n|--:|---|--:|---|\n")
 	for _, s := range rl.steps {
 		elapsed, result := fmtDuration(s.elapsed), cell(s.result)

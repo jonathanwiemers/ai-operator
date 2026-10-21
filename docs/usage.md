@@ -146,15 +146,28 @@ The operator moves the issue to `agent::working`, assigns the bot user if
 nobody is assigned (see [Watching progress](#watching-progress)) and starts a
 pod named like `shop-42-add-paypal-button`. In that pod:
 
-1. The implementing agent (engine and model from the issue's profile) works on
-   the branch `agent/42-add-paypal-button`. It follows your comments, runs the
-   tests, and stops with questions if a design decision is unresolved.
-2. The **bugbot** and **security** reviewers check the diff in parallel.
-3. Blocker and major findings go back to the implementer (at most
+1. On the first run, the **draft MR** `Closes #42` is opened right away, in
+   the issue's milestone, before the agent changes anything. The branch
+   `agent/42-add-paypal-button` starts with an empty "Start work on #42"
+   commit pushed with `ci.skip`, so no pipeline runs for it (the message has
+   no `[skip ci]`, which a merge commit template could copy to the default
+   branch).
+   The issue gets a comment linking the MR; from then on every run reports
+   there.
+2. While a run goes on, the MR has a **progress comment** with the run log so
+   far: each step, its time and result, and the step in progress. It is
+   edited as steps start and end (at most every 3 seconds) and replaced by the
+   run's report when the run ends. A run that fails or waits for a usage limit
+   leaves it with its run log and the reason.
+3. The implementing agent (engine and model from the issue's profile) works on
+   the branch. It follows your comments, runs the tests, and stops with
+   questions if a design decision is unresolved.
+4. The **bugbot** and **security** reviewers check the diff in parallel.
+5. Blocker and major findings go back to the implementer (at most
    `review.maxIterations` times). Remaining findings are listed for you.
-4. The branch is pushed and a **draft MR** `Closes #42` is opened in the
-   issue's milestone, or a comment is added to the existing MR.
-5. The agent's decisions are posted on the issue (see
+6. The branch is pushed and the report is posted on the MR. If the agent has
+   questions, they are also posted on the issue.
+7. The agent's decisions are posted on the issue (see
    [Decisions](#decisions)).
 
 If the agent has questions, the issue moves to **`agent::needs-input`**.
@@ -187,6 +200,14 @@ that has nothing to add takes your commits over: your head counts as the
 pushed commit, and CI is followed for it like for the agent's push.
 Configure the loop in `spec.ci` (see [configuration.md](configuration.md));
 `ci.disabled: true` restores "review right after the push".
+
+The loop looks for the pipeline of the pushed commit, and otherwise for the
+MR's head pipeline if the MR's head is that commit, which covers
+merged-results and merge request pipelines. If your pipelines do not run for
+draft MRs, it finds none for the agent's pushes and moves the issue to review
+after `ci.noPipelineTimeout`. Autopilot then marks the MR ready and runs CI
+before it merges (see [the merge gate](#the-merge-gate)); without autopilot,
+mark the MR ready and run its pipeline yourself.
 
 ## Merge conflicts
 
@@ -381,6 +402,10 @@ An MR is merged only when all of these hold:
   saw goes back to `agent::working` first;
 - the MR is open, targets the default branch, and its head is exactly that
   commit (nobody pushed since);
+- if no pipeline ran for the commit and the MR is still a draft (projects
+  that skip pipelines for draft MRs), the operator marks it ready, starts a
+  merge request pipeline and waits for it like for any pipeline. Only if there
+  is still none, the gate goes on without CI;
 - GitLab reports the MR as mergeable. A draft MR is marked ready once. If it
   needs a rebase (fast-forward or semi-linear projects), the operator asks
   GitLab to rebase once and waits for CI on the new head. The review carries
@@ -614,10 +639,11 @@ The steps show up in three places:
   their durations.
 - **`kubectl get agenttasks`** shows the step in progress in the `Step`
   column (`status.run.currentStep`).
-- **GitLab:** the agent's comment on the issue or MR ends with a collapsed
-  **Run log** table that lists the steps up to that comment, with their
-  durations, results and the cost so far. A failure comment includes it too,
-  with the failed step marked.
+- **GitLab:** while a run goes on, the MR's progress comment shows the run log
+  so far, open, with the step in progress. The agent's report on the MR then
+  ends with a collapsed **Run log** table that lists the steps up to that
+  comment, with their durations, results and the cost so far. A failure
+  comment on the issue includes it too, with the failed step marked.
 
 Prompts, comment bodies and diffs are never logged. `spec.agents.logLevel:
 debug` (or the operator's `--agent-log-level`) adds the runner's git commands.

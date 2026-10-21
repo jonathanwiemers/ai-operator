@@ -3,17 +3,20 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab/gitlabfake"
 )
 
 // mergeWorkspace is a checkout of branch "work", which changed app.go,
@@ -225,4 +228,99 @@ func TestRunMergesCleanlyWithoutTheAgent(t *testing.T) {
 	if !strings.Contains(lastMRNote(e), "there were no conflicts") {
 		t.Fatalf("the report should mention the merge: %s", lastMRNote(e))
 	}
+}
+
+// progressEngine records the merge request's comments while the implementer
+// runs.
+type progressEngine struct {
+	gl     *gitlabfake.Fake
+	seen   []string
+	failIt bool
+}
+
+func (p *progressEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
+	var v any = ReviewAnswer{Summary: "fine"}
+	if !inv.ReadOnly {
+		// Edits are sent asynchronously: wait for the one showing this step.
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			notes, _ := p.gl.ListMergeRequestNotes(context.Background(), "g/p", 1)
+			p.seen = p.seen[:0]
+			for _, n := range notes {
+				p.seen = append(p.seen, n.Body)
+			}
+			if len(p.seen) == 1 && strings.Contains(p.seen[0], "| run implementer | … | running |") || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if p.failIt {
+			return nil, errors.New("engine crashed")
+		}
+		_ = os.WriteFile(filepath.Join(inv.Dir, "x.go"), []byte("package app\n"), 0o644)
+		v = ImplementAnswer{Status: "done", Summary: "Done.", CommitMessage: "X", Handoff: "x"}
+	}
+	b, _ := json.Marshal(v)
+	return &Result{SessionID: "sess-p", Structured: b}, nil
+}
+
+func TestLiveProgressOnTheMergeRequest(t *testing.T) {
+	old := progressInterval
+	progressInterval = 0
+	t.Cleanup(func() { progressInterval = old })
+
+	t.Run("success", func(t *testing.T) {
+		e := newImplementEnv(t)
+		engine := &progressEngine{gl: e.gl}
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+		if _, err := r.Step(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if len(engine.seen) != 1 || !strings.Contains(engine.seen[0], progressMarker) || !strings.Contains(engine.seen[0], "⏳ Working on it.") ||
+			!strings.Contains(engine.seen[0], "| run implementer | … | running |") || !strings.Contains(engine.seen[0], "<details open>") {
+			t.Fatalf("while the agent runs, the MR shows the steps so far: %q", engine.seen)
+		}
+		notes := e.gl.MRNotes[1]
+		if len(notes) != 1 || strings.Contains(notes[0].Body, progressMarker) || !strings.Contains(notes[0].Body, "Done.") {
+			t.Fatalf("the progress comment is replaced by the report: %+v", notes)
+		}
+	})
+
+	t.Run("stale comment", func(t *testing.T) {
+		e := newImplementEnv(t)
+		engine := &progressEngine{gl: e.gl}
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+		if _, err := r.Step(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		// A run killed with the pod left its live comment behind.
+		stale, _ := e.gl.CreateMergeRequestNote(context.Background(), "g/p", 1, progressMarker+"\n🤖 "+liveHeadline+" Run `x#1`")
+		var task aiv1.AgentTask
+		_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+		orig := task.DeepCopy()
+		task.Spec.RunRequest = 2
+		if err := e.k8s.Patch(context.Background(), &task, client.MergeFrom(orig)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.Step(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		for _, n := range e.gl.MRNotes[1] {
+			if n.ID == stale.ID || strings.Contains(n.Body, progressMarker) {
+				t.Fatalf("stale and finished progress comments must be gone: %+v", e.gl.MRNotes[1])
+			}
+		}
+	})
+
+	t.Run("failure", func(t *testing.T) {
+		e := newImplementEnv(t)
+		engine := &progressEngine{gl: e.gl, failIt: true}
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+		_, _ = r.Step(context.Background())
+		notes := e.gl.MRNotes[1]
+		if len(notes) != 1 || !strings.Contains(notes[0].Body, "❌ The run failed") || !strings.Contains(notes[0].Body, "❌ failed") ||
+			strings.Contains(notes[0].Body, "<details open>") {
+			t.Fatalf("a failed run leaves its run log on the MR: %+v", notes)
+		}
+	})
 }

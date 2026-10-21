@@ -128,13 +128,14 @@ func runRunner(ctx context.Context) {
 	}
 
 	r := &runner.Runner{
-		K8s:          k8s,
-		Namespace:    mustEnv("AI_TASK_NAMESPACE"),
-		TaskName:     mustEnv("AI_TASK_NAME"),
-		GitLabToken:  token,
-		NewGitLab:    func(url, token string) gitlab.API { return gitlab.New(url, token) },
-		Agent:        agent,
-		Mirror:       &runner.Mirror{Dir: filepath.Join(stateDir, "mirror.git"), Token: token, Log: log.WithName("mirror")},
+		K8s:         k8s,
+		Namespace:   mustEnv("AI_TASK_NAMESPACE"),
+		TaskName:    mustEnv("AI_TASK_NAME"),
+		GitLabToken: token,
+		NewGitLab:   func(url, token string) gitlab.API { return gitlab.New(url, token) },
+		Agent:       agent,
+		Mirror: &runner.Mirror{Dir: filepath.Join(stateDir, "mirror.git"), Token: token, Log: log.WithName("mirror"),
+			AuthorName: envOr("AI_GIT_AUTHOR_NAME", "AI Operator"), AuthorEmail: envOr("AI_GIT_AUTHOR_EMAIL", "ai-operator@noreply.local")},
 		StateDir:     stateDir,
 		Exchange:     exchange,
 		PollInterval: 10 * time.Second,

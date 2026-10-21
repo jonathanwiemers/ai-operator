@@ -49,6 +49,10 @@ type Fake struct {
 	FreeTier bool
 	// ForeignLinks are links of an issue to issues of other projects.
 	ForeignLinks map[int64][]gitlab.LinkedIssue
+	// MRPipelines records the MRs a merge request pipeline was started for;
+	// NoMRPipelines refuses them like a project without such pipelines.
+	MRPipelines   []int64
+	NoMRPipelines bool
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
 }
@@ -507,6 +511,45 @@ func (f *Fake) ListMergeRequestNotes(_ context.Context, _ string, iid int64) ([]
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return slices.Clone(f.MRNotes[iid]), nil
+}
+
+func (f *Fake) UpdateMergeRequestNote(_ context.Context, _ string, iid, noteID int64, body string) (*gitlab.Note, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.MRNotes[iid] {
+		if n := &f.MRNotes[iid][i]; n.ID == noteID {
+			n.Body = body
+			c := *n
+			return &c, nil
+		}
+	}
+	return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "note"}
+}
+
+func (f *Fake) CreateMergeRequestPipeline(_ context.Context, _ string, iid int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.MRs[iid]; !ok {
+		return &gitlab.Error{StatusCode: 404, Method: "POST", Path: "pipelines"}
+	}
+	if f.NoMRPipelines {
+		return &gitlab.Error{StatusCode: 400, Method: "POST", Path: "pipelines", Body: `{"message":{"base":["No stages / jobs for this pipeline."]}}`}
+	}
+	f.MRPipelines = append(f.MRPipelines, iid)
+	return nil
+}
+
+func (f *Fake) DeleteMergeRequestNote(_ context.Context, _ string, iid, noteID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	notes := f.MRNotes[iid]
+	for i := range notes {
+		if notes[i].ID == noteID {
+			f.MRNotes[iid] = append(notes[:i], notes[i+1:]...)
+			return nil
+		}
+	}
+	return &gitlab.Error{StatusCode: 404, Method: "DELETE", Path: "note"}
 }
 
 func (f *Fake) CreateMergeRequestNote(_ context.Context, _ string, iid int64, body string) (*gitlab.Note, error) {
