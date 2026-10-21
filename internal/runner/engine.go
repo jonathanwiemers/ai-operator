@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,6 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/go-logr/logr"
 )
 
 // Invocation is one headless call of an agent CLI. It is engine neutral; each
@@ -72,7 +75,9 @@ type ClaudeCLI struct {
 
 // Args returns the command line for an invocation (without the binary).
 func (c *ClaudeCLI) Args(inv Invocation) []string {
-	args := []string{"-p", "--output-format", "json", "--permission-mode", "acceptEdits"}
+	// stream-json prints the session as it happens (thinking, messages,
+	// tool calls), so it can be logged; the last line is the result.
+	args := []string{"-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"}
 	if inv.Model != "" {
 		args = append(args, "--model", inv.Model)
 	}
@@ -106,7 +111,7 @@ func (c *ClaudeCLI) Args(inv Invocation) []string {
 // Run executes the invocation. The prompt goes through stdin, so it is not
 // subject to command line length limits.
 func (c *ClaudeCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
-	return runCLI(ctx, orDefault(c.Binary, "claude"), c.Args(inv), inv.Dir, c.Env, inv.Prompt)
+	return runCLI(ctx, orDefault(c.Binary, "claude"), c.Args(inv), inv.Dir, c.Env, inv.Prompt, true)
 }
 
 // CursorCLI runs the Cursor CLI (cursor-agent). Authentication comes from
@@ -182,18 +187,44 @@ func (c *CursorCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
 		f.Close()
 		prompt = fmt.Sprintf("Your full task is in the file %s. Read it completely and follow it exactly.", f.Name())
 	}
-	return runCLI(ctx, orDefault(c.Binary, "cursor-agent"), c.Args(inv, prompt), inv.Dir, c.Env, "")
+	return runCLI(ctx, orDefault(c.Binary, "cursor-agent"), c.Args(inv, prompt), inv.Dir, c.Env, "", false)
 }
 
-func runCLI(ctx context.Context, bin string, args []string, dir string, env []string, stdin string) (*Result, error) {
+// runCLI runs an agent CLI. With stream, its output is a line per event: each
+// is logged (see logEvent) and only the last one, the result, is kept.
+func runCLI(ctx context.Context, bin string, args []string, dir string, env []string, stdin string, stream bool) (*Result, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	runErr := cmd.Run()
+	var runErr error
+	if stream {
+		pipe, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, err
+		}
+		if err := cmd.Start(); err != nil {
+			return nil, fmt.Errorf("%s failed: %w", filepath.Base(bin), err)
+		}
+		log := logr.FromContextOrDiscard(ctx)
+		rd := bufio.NewReader(pipe)
+		for {
+			line, err := rd.ReadBytes('\n')
+			if line = bytes.TrimSpace(line); len(line) > 0 && logEvent(log, line) == "result" {
+				stdout.Reset()
+				stdout.Write(line)
+			}
+			if err != nil {
+				break
+			}
+		}
+		runErr = cmd.Wait()
+	} else {
+		cmd.Stdout = &stdout
+		runErr = cmd.Run()
+	}
 	res, parseErr := ParseResult(stdout.Bytes())
 	if parseErr != nil {
 		if runErr != nil {

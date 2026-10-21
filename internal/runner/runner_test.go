@@ -33,7 +33,7 @@ func TestClaudeArgs(t *testing.T) {
 	inv := Invocation{Model: "claude-opus-5-5", Effort: "high", MaxBudgetUSD: "5", SystemPrompt: "sys",
 		AllowedTools: []string{"Read", "Bash(git log:*)"}, JSONSchema: "{}", Resume: "s1"}
 	args := strings.Join((&ClaudeCLI{}).Args(inv), " ")
-	for _, want := range []string{"-p --output-format json", "--model claude-opus-5-5", "--effort high",
+	for _, want := range []string{"-p --output-format stream-json --verbose", "--model claude-opus-5-5", "--effort high",
 		"--max-budget-usd 5", "--append-system-prompt sys", "--allowedTools Read,Bash(git log:*)", "--json-schema {}", "--resume s1"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("args %q miss %q", args, want)
