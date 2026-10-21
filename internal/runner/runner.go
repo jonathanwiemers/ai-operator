@@ -97,6 +97,9 @@ type state struct {
 	// RevisitNoteID is the newest comment whose revisits are handled; it
 	// only moves once the run's decisions are posted.
 	RevisitNoteID int64 `json:"revisitNoteID,omitempty"`
+	// Ready is set when the runner last left the MR ready, so a draft after
+	// that is a human holding it.
+	Ready bool `json:"ready,omitempty"`
 }
 
 func sessionKey(role string, engine aiv1.Engine) string { return role + "/" + string(engine) }

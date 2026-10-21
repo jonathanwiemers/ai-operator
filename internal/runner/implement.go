@@ -357,10 +357,25 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		reviewedLast = false
 	}
 
+	// Ready means reviewed and clean. The MR leaves draft before the push, so
+	// the push gets its pipeline also where drafts run none; a run that
+	// leaves problems puts it back to draft.
+	readied := false
+	switch {
+	case answer.Status == "needs_input" || len(answer.Questions) > 0 || out.Reviewed && (out.BlockingFindings > 0 || out.ReviewErrors > 0):
+		r.setDraft(ctx, gl, glProject, mr, &st, true)
+	case (out.Reviewed && reviewedLast || len(review.Reviewers) == 0) && r.hasChanges(ctx, base):
+		readied = r.setDraft(ctx, gl, glProject, mr, &st, false)
+	}
+
 	// Push and open / update the merge request.
 	s = r.step(ctx, "push", "branch", branch)
 	pushed, err := r.publish(ctx, branch, base)
 	if err != nil {
+		if readied {
+			// Ready would vouch for a head that is not this run's work.
+			r.setDraft(ctx, gl, glProject, mr, &st, true)
+		}
 		return out, s.fail(err)
 	}
 	if pushed {
@@ -377,6 +392,11 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		s.done(fmt.Sprintf("nothing new to push; the branch moved to %s", shortSHA(head)), "sha", head)
 	} else {
 		s.done("nothing new to push")
+	}
+	if readied && !pushed {
+		// Marking ready starts no pipeline, and projects that skip pipelines
+		// for drafts may have run none for the head yet.
+		r.startPipeline(ctx, gl, glProject, mr, task, branch)
 	}
 	if out.Reviewed && reviewedLast {
 		// The last review saw the branch as it is now.
@@ -445,6 +465,64 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	out.Summary = answer.Summary
 	return out, nil
+}
+
+// setDraft marks the MR draft or ready, if it is not already, and reports
+// whether it marked it ready. A draft the runner did not make after it last
+// marked the MR ready is a human holding it, and stays. A failure is reported
+// in the run log but does not fail the run: the work is done.
+func (r *Runner) setDraft(ctx context.Context, gl gitlab.API, glProject string, mr *gitlab.MergeRequest, st *state, draft bool) bool {
+	// The run can take long: draft state and title as they are now, so a
+	// rename in the meantime is not undone.
+	if cur, err := gl.GetMergeRequest(ctx, glProject, mr.IID); err == nil {
+		mr.Draft, mr.Title = cur.Draft, cur.Title
+	}
+	defer func() { _ = r.saveState(*st) }()
+	if mr.Draft == draft {
+		st.Ready = !draft
+		return false
+	}
+	name, title := "mark ready", gitlab.ReadyTitle(mr.Title)
+	if draft {
+		name, title = "mark draft", gitlab.DraftTitle(mr.Title)
+	}
+	s := r.step(ctx, name, "mr", mr.IID)
+	if !draft && st.Ready {
+		s.done(fmt.Sprintf("!%d stays a draft: marked draft by hand", mr.IID))
+		return false
+	}
+	res, err := gl.UpdateMergeRequest(ctx, glProject, mr.IID, gitlab.UpdateMergeRequestOptions{Title: title})
+	if err != nil {
+		_ = s.fail(fmt.Errorf("updating merge request !%d: %w", mr.IID, err))
+		return false
+	}
+	mr.Draft, mr.Title = res.Draft, res.Title
+	st.Ready = !res.Draft
+	s.done(fmt.Sprintf("!%d %q", mr.IID, res.Title))
+	return !res.Draft
+}
+
+// startPipeline starts a merge request pipeline for the head of a MR this run
+// marked ready without pushing, unless CI already checked that head. A failure
+// only means the head goes without CI, so it is not returned.
+func (r *Runner) startPipeline(ctx context.Context, gl gitlab.API, glProject string, mr *gitlab.MergeRequest, task *aiv1.AgentTask, branch string) {
+	head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
+	if ci := task.Status.CI; ci != nil && ci.SHA == head && ci.State != aiv1.CIStateNone {
+		return
+	}
+	s := r.step(ctx, "start pipeline", "mr", mr.IID)
+	if err := gl.CreateMergeRequestPipeline(ctx, glProject, mr.IID); err != nil {
+		s.done("none: "+err.Error(), "error", err.Error())
+		return
+	}
+	s.done(fmt.Sprintf("for !%d", mr.IID))
+}
+
+// hasChanges reports whether the work branch changes anything against the
+// default branch; an MR with only the start commit is not ready.
+func (r *Runner) hasChanges(ctx context.Context, base string) bool {
+	diff, _, err := r.Agent.Diff(ctx, base)
+	return err != nil || strings.TrimSpace(diff) != ""
 }
 
 // openMergeRequest opens the draft merge request of an issue before the

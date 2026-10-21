@@ -143,6 +143,13 @@ in the task status at once, so a run deferred or failing later reuses it. A
 branch whose head changes nothing against the default branch is never taken
 over as a push for CI.
 
+**Draft until reviewed.** The MR is a draft while the agent works. A run whose
+review is clean (no blocker or major findings, no failed reviewer, no
+questions, and changes against the default branch) marks it ready *before*
+pushing, so the push gets its pipeline also in projects that skip drafts; a
+run that leaves problems marks it draft again. CI then runs, CI fix rounds
+follow, and a ready, green MR is what a human (or autopilot) merges.
+
 **Live progress.** The run log has a change hook: every step start and end
 re-renders a progress comment on the MR (hidden marker, open details block,
 the running step marked). Edits are sent by a timer goroutine, at most every
@@ -458,7 +465,9 @@ stateDiagram-v2
 * **Merge gate.** Issue in review (the CI loop finished), last run
   succeeded, `blockingFindings == 0`, `reviewErrors == 0`,
   `reviewedSHA == pushedSHA`, MR open with head `pushedSHA`, GitLab's
-  `detailed_merge_status` mergeable. The draft is marked ready by its title,
+  `detailed_merge_status` mergeable. Clean runs mark the MR ready
+  themselves; a draft the gate still meets is marked ready by its title
+  (and, if its head had no pipeline, gets a merge request pipeline first),
   and `PUT …/merge` passes the checked `sha`.
 * **Rebase.** On `need_rebase` the operator hashes the MR's change (files,
   added and removed lines, no positions) and asks GitLab to rebase once. The
@@ -652,7 +661,7 @@ flowchart LR
   `agent/*` branches and opens draft MRs.
 
 **Remaining risks.** The model can still push arbitrary content to its own
-`agent/*` branch (by design; humans review the draft MR) and write anything
+`agent/*` branch (by design; humans review the MR) and write anything
 into the summaries posted on GitLab. CI pipelines of agent branches run
 untrusted code: don't expose protected CI variables to unprotected branches.
 
