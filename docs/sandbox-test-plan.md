@@ -165,6 +165,9 @@ profile label is kept. Editing the description again *without* a change
   step by step (refresh the page); when the run ends it is replaced by the
   report, which ends with a collapsed **Run log** table (read issue …
   update agent notes) with durations and the cost.
+* After a clean review the MR is marked ready (no `Draft:` prefix; the run log
+  has a `mark ready` step before `push`), so its pipeline runs even if drafts
+  skip pipelines.
 * The branch is pushed. The issue stays in `agent::working` until the MR pipeline is
   green – with the sample app's `changelog` job that takes one CI fix round
   (see T17) – and then becomes `agent::review`.

@@ -165,15 +165,26 @@ pod named like `shop-42-add-paypal-button`. In that pod:
 4. The **bugbot** and **security** reviewers check the diff in parallel.
 5. Blocker and major findings go back to the implementer (at most
    `review.maxIterations` times). Remaining findings are listed for you.
-6. The branch is pushed and the report is posted on the MR. If the agent has
+6. **If the review is clean**, the MR is marked **ready** (its `Draft:` prefix
+   is removed) before the push, so the push gets its pipeline even where
+   pipelines skip draft MRs. If the run leaves blocker or major findings, a
+   reviewer failed, or the agent asks questions, the MR goes back to draft.
+   An MR with only the start commit stays a draft.
+7. The branch is pushed and the report is posted on the MR. If the agent has
    questions, they are also posted on the issue.
-7. The agent's decisions are posted on the issue (see
+8. The agent's decisions are posted on the issue (see
    [Decisions](#decisions)).
 
 If the agent has questions, the issue moves to **`agent::needs-input`**.
-Otherwise it stays in `agent::working` until the MR pipeline has run (see
-[CI feedback](#ci-feedback)) and moves to **`agent::review`** once it is
-green. "Review" therefore always means: tests and CI pass, a human can look.
+Otherwise it stays in `agent::working` until the MR pipeline has run; failing
+jobs (lint, tests, …) go back to the agent (see [CI feedback](#ci-feedback)),
+and the issue moves to **`agent::review`** once the pipeline is green.
+"Review" therefore always means: reviewed, tests and CI pass, the MR is ready,
+a human can look and merge. On [autopilot](#autopilot-a-milestone-end-to-end)
+the operator merges it.
+
+So an issue's MR goes: draft MR → code → review → ready → pipeline → CI fixes
+if needed → merge (by you, or by autopilot).
 
 ## CI feedback
 
@@ -203,11 +214,13 @@ Configure the loop in `spec.ci` (see [configuration.md](configuration.md));
 
 The loop looks for the pipeline of the pushed commit, and otherwise for the
 MR's head pipeline if the MR's head is that commit, which covers
-merged-results and merge request pipelines. If your pipelines do not run for
-draft MRs, it finds none for the agent's pushes and moves the issue to review
-after `ci.noPipelineTimeout`. Autopilot then marks the MR ready and runs CI
-before it merges (see [the merge gate](#the-merge-gate)); without autopilot,
-mark the MR ready and run its pipeline yourself.
+merged-results and merge request pipelines. The MR is marked ready before a
+clean run pushes, so pipelines that skip draft MRs run too. A push of a run
+that left problems is a draft; if your pipelines skip drafts, it gets no
+pipeline and moves to review after `ci.noPipelineTimeout`. Autopilot never
+merges such an MR without CI: its gate pauses on the findings, and a draft it
+still meets is marked ready and gets a pipeline first (see [the merge
+gate](#the-merge-gate)).
 
 ## Merge conflicts
 
@@ -403,9 +416,10 @@ An MR is merged only when all of these hold:
 - the MR is open, targets the default branch, and its head is exactly that
   commit (nobody pushed since);
 - if no pipeline ran for the commit and the MR is still a draft (projects
-  that skip pipelines for draft MRs), the operator marks it ready, starts a
-  merge request pipeline and waits for it like for any pipeline. Only if there
-  is still none, the gate goes on without CI;
+  that skip pipelines for draft MRs; normally the run marked it ready before
+  pushing), the operator marks it ready, starts a merge request pipeline and
+  waits for it like for any pipeline. Only if there is still none, the gate
+  goes on without CI;
 - GitLab reports the MR as mergeable. A draft MR is marked ready once. If it
   needs a rebase (fast-forward or semi-linear projects), the operator asks
   GitLab to rebase once and waits for CI on the new head. The review carries

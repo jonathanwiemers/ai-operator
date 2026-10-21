@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -647,3 +648,13 @@ func (c *Client) RetryPipeline(ctx context.Context, project string, pipelineID i
 	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/pipelines/%d/retry", projectPath(project), pipelineID), nil, nil, &p)
 	return &p, err
 }
+
+// draftPrefix matches the title prefixes that make GitLab treat an MR as a
+// draft.
+var draftPrefix = regexp.MustCompile(`(?i)^\s*(?:\[draft\]|\(draft\)|draft:|draft\b)\s*`)
+
+// ReadyTitle is title without its draft prefix: setting it marks the MR ready.
+func ReadyTitle(title string) string { return draftPrefix.ReplaceAllString(title, "") }
+
+// DraftTitle is title with a draft prefix: setting it marks the MR draft.
+func DraftTitle(title string) string { return "Draft: " + ReadyTitle(title) }

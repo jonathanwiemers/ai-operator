@@ -143,6 +143,13 @@ in the task status at once, so a run deferred or failing later reuses it. A
 branch whose head changes nothing against the default branch is never taken
 over as a push for CI.
 
+**Draft until reviewed.** The MR is a draft while the agent works. A run whose
+review is clean (no blocker or major findings, no failed reviewer, no
+questions, and changes against the default branch) marks it ready *before*
+pushing, so the push gets its pipeline also in projects that skip drafts; a
+run that leaves problems marks it draft again. CI then runs, CI fix rounds
+follow, and a ready, green MR is what a human (or autopilot) merges.
+
 **Live progress.** The run log has a change hook: every step start and end
 re-renders a progress comment on the MR (hidden marker, open details block,
 the running step marked). Edits are sent by a timer goroutine, at most every

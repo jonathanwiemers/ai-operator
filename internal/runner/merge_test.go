@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -321,6 +322,78 @@ func TestLiveProgressOnTheMergeRequest(t *testing.T) {
 		if len(notes) != 1 || !strings.Contains(notes[0].Body, "❌ The run failed") || !strings.Contains(notes[0].Body, "❌ failed") ||
 			strings.Contains(notes[0].Body, "<details open>") {
 			t.Fatalf("a failed run leaves its run log on the MR: %+v", notes)
+		}
+	})
+}
+
+// draftEngine writes a file unless idle, and asks a question if ask is set.
+type draftEngine struct {
+	ask, idle bool
+	n         int
+}
+
+func (d *draftEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
+	var v any = ReviewAnswer{Summary: "fine"}
+	if !inv.ReadOnly {
+		d.n++
+		ans := ImplementAnswer{Status: "done", Summary: "Done.", CommitMessage: "Work", Handoff: "x"}
+		if !d.idle {
+			_ = os.WriteFile(filepath.Join(inv.Dir, "work.go"), []byte(fmt.Sprintf("package app // %d\n", d.n)), 0o644)
+		}
+		if d.ask {
+			ans.Status, ans.Questions = "needs_input", []string{"REST or gRPC?"}
+		}
+		v = ans
+	}
+	b, _ := json.Marshal(v)
+	return &Result{SessionID: "sess-d", Structured: b}, nil
+}
+
+func TestMergeRequestDraftFollowsTheRun(t *testing.T) {
+	ctx := context.Background()
+	rerun := func(t *testing.T, e *implementEnv, r *Runner, request int64) {
+		var task aiv1.AgentTask
+		_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+		orig := task.DeepCopy()
+		task.Spec.RunRequest = request
+		if err := e.k8s.Patch(ctx, &task, client.MergeFrom(orig)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("nothing done stays draft", func(t *testing.T) {
+		e := newImplementEnv(t)
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, &draftEngine{idle: true}, e.task.Name)
+		if _, err := r.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if !e.gl.MRs[1].Draft {
+			t.Fatalf("an MR with only the start commit is not ready: %+v", e.gl.MRs[1])
+		}
+	})
+
+	t.Run("ready, questions, ready again", func(t *testing.T) {
+		e := newImplementEnv(t)
+		engine := &draftEngine{}
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+		if _, err := r.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if e.gl.MRs[1].Draft {
+			t.Fatalf("a clean review marks the MR ready: %+v", e.gl.MRs[1])
+		}
+		engine.ask = true
+		rerun(t, e, r, 2)
+		if !e.gl.MRs[1].Draft || e.gl.MRs[1].Title != "Draft: Add PayPal button" {
+			t.Fatalf("a run with questions puts the MR back to draft: %+v", e.gl.MRs[1])
+		}
+		engine.ask = false
+		rerun(t, e, r, 3)
+		if e.gl.MRs[1].Draft {
+			t.Fatalf("a clean run marks it ready again: %+v", e.gl.MRs[1])
 		}
 	})
 }

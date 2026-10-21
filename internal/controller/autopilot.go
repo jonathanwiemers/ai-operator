@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -553,7 +552,7 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 		if it.MarkedReady {
 			return a.pause(ctx, fmt.Sprintf("!%d was marked draft again; mark it ready, or merge by hand", mr.IID))
 		}
-		res, err := a.gl.UpdateMergeRequest(ctx, glProject, mr.IID, gitlab.UpdateMergeRequestOptions{Title: draftPrefix.ReplaceAllString(mr.Title, "")})
+		res, err := a.gl.UpdateMergeRequest(ctx, glProject, mr.IID, gitlab.UpdateMergeRequestOptions{Title: gitlab.ReadyTitle(mr.Title)})
 		switch {
 		case err != nil:
 			return a.pause(ctx, fmt.Sprintf("could not mark !%d ready: %v", mr.IID, err))
@@ -602,7 +601,7 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 func (a *autopilot) readyForCI(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask) error {
 	glProject := a.spec.GitLab.Project
 	wf := a.spec.Workflow
-	res, err := a.gl.UpdateMergeRequest(ctx, glProject, mr.IID, gitlab.UpdateMergeRequestOptions{Title: draftPrefix.ReplaceAllString(mr.Title, "")})
+	res, err := a.gl.UpdateMergeRequest(ctx, glProject, mr.IID, gitlab.UpdateMergeRequestOptions{Title: gitlab.ReadyTitle(mr.Title)})
 	switch {
 	case err != nil:
 		return a.pause(ctx, fmt.Sprintf("could not mark !%d ready: %v", mr.IID, err))
@@ -633,9 +632,6 @@ func (a *autopilot) readyForCI(ctx context.Context, it *aiv1.AutopilotItem, mr *
 	}
 	return nil
 }
-
-// draftPrefix matches the prefixes that make GitLab treat an MR as a draft.
-var draftPrefix = regexp.MustCompile(`(?i)^\s*(?:\[draft\]|\(draft\)|draft:|draft\b)\s*`)
 
 // glProject returns the GitLab project, read once per poll.
 func (a *autopilot) glProject(ctx context.Context) (*gitlab.Project, error) {
