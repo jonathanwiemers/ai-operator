@@ -398,6 +398,18 @@ change afterwards.
 **Expected:** after the retry the issue goes straight to `agent::needs-input`
 with the failing job named.
 
+4. Before starting an issue, add a job to the default branch that only runs
+   in pipelines started by hand and fails:
+   `rules: [{if: '$CI_PIPELINE_SOURCE == "web"'}]`, `script: exit 1`. Once
+   the issue is in `agent::review` with a green pipeline, run a new pipeline
+   for the agent's branch (Build → Pipelines → Run pipeline). Remove the job
+   afterwards.
+
+**Expected:** within a poll the issue goes back to `agent::working`; the new
+pipeline is retried once, then the agent gets a CI fix run for it, as in
+step 1. A new pipeline that passes (before adding the job) sends the issue to
+`agent::working` while it runs and back to `agent::review` when green.
+
 ## 3. When something fails
 
 Collect this before changing anything:

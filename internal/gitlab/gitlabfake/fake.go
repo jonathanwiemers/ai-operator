@@ -302,6 +302,16 @@ func (f *Fake) GetMergeRequest(_ context.Context, _ string, iid int64) (*gitlab.
 		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "mr"}
 	}
 	c := *mr
+	if c.HeadPipeline != nil {
+		// A head pipeline added with AddPipeline shows its current status.
+		hp := *c.HeadPipeline
+		for _, p := range f.Pipelines {
+			if p.ID == hp.ID {
+				hp = p
+			}
+		}
+		c.HeadPipeline = &hp
+	}
 	return &c, nil
 }
 

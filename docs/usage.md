@@ -218,15 +218,26 @@ pushed commit, and CI is followed for it like for the agent's push.
 Configure the loop in `spec.ci` (see [configuration.md](configuration.md));
 `ci.disabled: true` restores "review right after the push".
 
-The loop looks for the pipeline of the pushed commit, and otherwise for the
-MR's head pipeline if the MR's head is that commit, which covers
-merged-results and merge request pipelines. The MR is marked ready before a
+The loop follows the MR's head pipeline if the MR's head is the pushed
+commit, which covers merged-results and merge request pipelines, and
+otherwise the newest pipeline of the commit. The MR is marked ready before a
 clean run pushes, so pipelines that skip draft MRs run too. A push of a run
 that left problems is a draft; if your pipelines skip drafts, it gets no
 pipeline and moves to review after `ci.noPipelineTimeout`. Autopilot never
 merges such an MR without CI: its gate pauses on the findings, and an MR whose
 head had no pipeline is marked ready if needed and gets a pipeline first (see
 [the merge gate](#the-merge-gate)).
+
+While the issue is in `agent::review`, the operator keeps watching the MR's
+head pipeline. GitLab starts no pipeline when a draft is marked ready, but one
+started afterwards (by you, by autopilot, or by a run that marked the MR
+ready without a push) or a canceled pipeline you retry is followed: while it runs or once it is red the issue goes back to
+`agent::working`, and the loop above takes over: retry, CI fix run, review.
+One that is already green when the operator first sees it counts as green
+right away and the issue stays in review. So a job such as "add a changelog
+entry" that only runs for ready MRs gets fixed by the agent too, as far as
+code can fix it: the agent can add the file the job asks for, but it cannot
+set labels on the MR.
 
 ## Merge conflicts
 

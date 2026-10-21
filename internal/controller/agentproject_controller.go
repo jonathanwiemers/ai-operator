@@ -199,13 +199,13 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 				autopilot = st.Spec.Autopilot && onAutopilot(st, is.IID)
 			}
 		}
-		task, err := r.syncImplementTask(ctx, gl, project, spec, is, byIssue[is.IID], autopilot)
+		task, mr, err := r.syncImplementTask(ctx, gl, project, spec, is, byIssue[is.IID], autopilot)
 		if err != nil {
 			return err
 		}
 		keep[task.Name] = true
 		implTasks[is.IID] = task
-		if err := r.syncCI(ctx, gl, spec, is, task); err != nil {
+		if err := r.syncCI(ctx, gl, spec, is, task, mr); err != nil {
 			return err
 		}
 	}
@@ -357,8 +357,9 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 }
 
 // syncImplementTask makes sure an issue handed to the agent has a task and
-// turns "moved to ready" and "/agent" comments into run requests.
-func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, autopilot bool) (*aiv1.AgentTask, error) {
+// turns "moved to ready" and "/agent" comments into run requests. It returns
+// the task's merge request too, if it has one.
+func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, autopilot bool) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -366,7 +367,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		var err error
 		task, err = r.newTask(project, naming.ImplementTask(project.Name, is.IID, is.Title), aiv1.TaskTypeImplement)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		task.Labels[LabelIssueIID] = strconv.FormatInt(is.IID, 10)
 		created = true
@@ -387,7 +388,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	if iid := task.Status.Run.MergeRequestIID; iid != 0 {
 		var err error
 		if mr, err = gl.GetMergeRequest(ctx, glProject, iid); err != nil && !gitlab.IsNotFound(err) {
-			return nil, fmt.Errorf("getting merge request !%d: %w", iid, err)
+			return nil, nil, fmt.Errorf("getting merge request !%d: %w", iid, err)
 		}
 	}
 	mrChanged := mr != nil && (mr.UpdatedAt == nil || src.MergeRequestUpdatedAt == nil || mr.UpdatedAt.After(src.MergeRequestUpdatedAt.Time))
@@ -396,7 +397,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	if ready || issueChanged || mrChanged {
 		latest, err := latestCommandNote(ctx, gl, glProject, is.IID, mr, project.Status.BotUserID, wf.CommandPrefix)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if created {
 			// Comments written before the task existed are context, not commands.
@@ -432,11 +433,11 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	case created:
 		log.FromContext(ctx).Info("issue handed to agent", "issue", is.IID, "task", task.Name)
 		if err := r.Create(ctx, task); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	case !equalSpec(before, &task.Spec):
 		if err := r.Update(ctx, task); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
@@ -455,10 +456,10 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 			opts.AssigneeIDs = []int64{project.Status.BotUserID}
 		}
 		if _, err := gl.UpdateIssue(ctx, glProject, is.IID, opts); err != nil {
-			return nil, fmt.Errorf("moving issue #%d to %q: %w", is.IID, wf.WorkingLabel, err)
+			return nil, nil, fmt.Errorf("moving issue #%d to %q: %w", is.IID, wf.WorkingLabel, err)
 		}
 	}
-	return task, nil
+	return task, mr, nil
 }
 
 func equalSpec(a, b *aiv1.AgentTaskSpec) bool {

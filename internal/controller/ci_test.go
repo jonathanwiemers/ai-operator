@@ -245,24 +245,143 @@ func TestCIRetryDisabled(t *testing.T) {
 	}
 }
 
-func TestCIFollowsTheMergeRequestHeadPipeline(t *testing.T) {
-	e := newCIEnv(t, "sha1")
-	// A merged-results pipeline: its SHA is the merge commit, not sha1.
+// ciMR opens the task's merge request with head sha.
+func (e *projectEnv) ciMR(sha string) *gitlab.MergeRequest {
+	e.t.Helper()
 	mr, _ := e.gl.CreateMergeRequest(e.ctx, "g/p", gitlab.CreateMergeRequestOptions{SourceBranch: "agent/42", TargetBranch: "main"})
-	e.gl.MRs[mr.IID].SHA = "sha1"
-	e.gl.MRs[mr.IID].HeadPipeline = &gitlab.Pipeline{ID: 77, SHA: "merge-of-sha1", Status: "success", WebURL: "https://gitlab.example/p/77"}
+	e.gl.MRs[mr.IID].SHA = sha
 	var task aiv1.AgentTask
 	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: ciTask}, &task); err != nil {
-		t.Fatal(err)
+		e.t.Fatal(err)
 	}
 	orig := task.DeepCopy()
 	task.Status.Run.MergeRequestIID = mr.IID
 	if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
-		t.Fatal(err)
+		e.t.Fatal(err)
 	}
+	return e.gl.MRs[mr.IID]
+}
+
+func TestCIFollowsTheMergeRequestHeadPipeline(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	// A merged-results pipeline: its SHA is the merge commit, not sha1.
+	mr := e.ciMR("sha1")
+	mr.HeadPipeline = &gitlab.Pipeline{ID: 77, SHA: "merge-of-sha1", Status: "success", WebURL: "https://gitlab.example/p/77"}
 	e.reconcile()
 	ci := e.ciTask().Status.CI
 	if ci == nil || ci.State != aiv1.CIStateSuccess || ci.PipelineID != 77 || !e.gl.Issues[42].HasLabel("agent::review") {
 		t.Fatalf("the MR's head pipeline should count for its head: %+v %v", ci, e.gl.Labels(42))
+	}
+}
+
+// A pipeline that only starts once the loop is done (skipped for the draft,
+// run when the MR was marked ready) and fails gets the agent to fix it.
+func TestCIFollowsALaterPipelineInReview(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	mr := e.ciMR("sha1")
+	start := e.r.Now()
+	e.reconcile()
+	e.r.Now = func() time.Time { return start.Add(11 * time.Minute) }
+	e.reconcile()
+	if e.ciState() != aiv1.CIStateNone || !slices.Equal(e.gl.Labels(42), []string{"agent::review"}) {
+		t.Fatalf("no pipeline: review, state %s labels %v", e.ciState(), e.gl.Labels(42))
+	}
+
+	pid := e.gl.AddPipeline("merge-of-sha1", "refs/merge-requests/1/merge", "running", gitlab.Job{Name: "updates:reminder", Status: "failed"})
+	mr.HeadPipeline = &gitlab.Pipeline{ID: pid}
+	e.reconcile()
+	if !slices.Equal(e.gl.Labels(42), []string{"agent::working"}) || e.ciState() != aiv1.CIStatePending {
+		t.Fatalf("a new pipeline sends the issue back to working: state %s labels %v", e.ciState(), e.gl.Labels(42))
+	}
+	e.reconcile()
+	if e.ciState() != aiv1.CIStateRunning {
+		t.Fatalf("state %s", e.ciState())
+	}
+	e.gl.SetPipelineStatus(pid, "failed")
+	e.reconcile() // retry
+	e.gl.SetPipelineStatus(pid, "failed")
+	e.reconcile()
+	task := e.ciTask()
+	if !slices.Equal(e.gl.Retried, []int64{pid}) || task.Spec.RunRequest != 1 || task.Spec.Source.CIFixPipelineID != pid || e.ciState() != aiv1.CIStateFixing {
+		t.Fatalf("expected a retry, then a CI fix run: retried=%v spec=%+v state=%s", e.gl.Retried, task.Spec, e.ciState())
+	}
+	if e.notes() != "" {
+		t.Fatalf("following a new pipeline needs no comment, got %q", e.notes())
+	}
+}
+
+func TestCIRecordsALaterGreenPipeline(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	mr := e.ciMR("sha1")
+	pid := e.gl.AddPipeline("sha1", "agent/42", "success")
+	mr.HeadPipeline = &gitlab.Pipeline{ID: pid}
+	e.reconcile()
+	if e.ciState() != aiv1.CIStateSuccess || !slices.Equal(e.gl.Labels(42), []string{"agent::review"}) {
+		t.Fatalf("state %s labels %v", e.ciState(), e.gl.Labels(42))
+	}
+
+	// A re-run that passed, or one someone canceled, is only recorded.
+	for _, status := range []string{"success", "canceled"} {
+		pid := e.gl.AddPipeline("sha1", "agent/42", status)
+		mr.HeadPipeline = &gitlab.Pipeline{ID: pid}
+		e.reconcile()
+		ci := e.ciTask().Status.CI
+		if ci.State != aiv1.CIStateSuccess || ci.PipelineID != pid || !slices.Equal(e.gl.Labels(42), []string{"agent::review"}) {
+			t.Fatalf("%s: %+v labels %v", status, ci, e.gl.Labels(42))
+		}
+	}
+
+	// A pipeline of another commit (someone pushed) is not the agent's.
+	mr.SHA = "sha-human"
+	mr.HeadPipeline = &gitlab.Pipeline{ID: e.gl.AddPipeline("sha-human", "agent/42", "failed")}
+	e.reconcile()
+	if !slices.Equal(e.gl.Labels(42), []string{"agent::review"}) {
+		t.Fatalf("labels %v", e.gl.Labels(42))
+	}
+}
+
+// A canceled pipeline retried later, or a new one, that passes counts as
+// green: the loop no longer reports it canceled.
+func TestCIRecordsAGreenRetryAfterCancel(t *testing.T) {
+	for _, retried := range []bool{true, false} {
+		e := newCIEnv(t, "sha1")
+		mr := e.ciMR("sha1")
+		pid := e.gl.AddPipeline("sha1", "agent/42", "canceled")
+		mr.HeadPipeline = &gitlab.Pipeline{ID: pid}
+		e.reconcile()
+		if e.ciState() != aiv1.CIStateCanceled {
+			t.Fatalf("state %s", e.ciState())
+		}
+		if retried {
+			e.gl.SetPipelineStatus(pid, "success")
+		} else {
+			pid = e.gl.AddPipeline("sha1", "agent/42", "success")
+			mr.HeadPipeline = &gitlab.Pipeline{ID: pid}
+		}
+		e.reconcile()
+		ci := e.ciTask().Status.CI
+		if ci.State != aiv1.CIStateSuccess || ci.PipelineID != pid || !slices.Equal(e.gl.Labels(42), []string{"agent::review"}) {
+			t.Fatalf("retried=%v: %+v labels %v", retried, ci, e.gl.Labels(42))
+		}
+	}
+}
+
+// A loop that is not done is finished in working, also if the issue reached
+// review: a CI fix run that pushed nothing moves it there.
+func TestCIUnfinishedLoopInReviewGoesBackToWorking(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	pid := e.gl.AddPipeline("sha1", "agent/42", "failed", failedTest())
+	e.reconcile() // retry
+	e.gl.SetPipelineStatus(pid, "failed")
+	e.reconcile() // fix requested
+	e.agentPushed("sha1", 0, pid)
+	e.gl.SetLabels(42, "agent::review") // the runner had nothing to push
+	e.reconcile()
+	if !slices.Equal(e.gl.Labels(42), []string{"agent::working"}) {
+		t.Fatalf("labels %v", e.gl.Labels(42))
+	}
+	e.reconcile()
+	if e.ciState() != aiv1.CIStateFailed || !slices.Equal(e.gl.Labels(42), []string{"agent::needs-input"}) || !strings.Contains(e.notes(), "could not fix") {
+		t.Fatalf("state %s labels %v notes %q", e.ciState(), e.gl.Labels(42), e.notes())
 	}
 }
