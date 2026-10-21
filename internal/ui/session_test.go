@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -61,8 +62,13 @@ func TestSessionRejectsForeignAndExpiredCookies(t *testing.T) {
 
 	r := roundTrip(w)
 	c, _ := r.Cookie(s.SessionCookie())
+	sealed, err := base64.RawURLEncoding.DecodeString(c.Value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed[len(sealed)-1] ^= 1 // always a change, unlike overwriting characters
 	tampered := httptest.NewRequest(http.MethodGet, "/", nil)
-	tampered.AddCookie(&http.Cookie{Name: c.Name, Value: c.Value[:len(c.Value)-2] + "AA"})
+	tampered.AddCookie(&http.Cookie{Name: c.Name, Value: base64.RawURLEncoding.EncodeToString(sealed)})
 	if _, ok := s.Get(tampered); ok {
 		t.Error("a tampered cookie was accepted")
 	}

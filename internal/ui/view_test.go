@@ -89,6 +89,8 @@ func TestStageOfPush(t *testing.T) {
 		// nothing will record its pipeline any more.
 		{"push never followed", pushed(time.Hour, nil), window, StageReview},
 		{"push never followed, old pipeline green", pushed(time.Hour, &aiv1.CIStatus{SHA: "old", State: aiv1.CIStateSuccess}), window, StageReview},
+		{"push never followed, old pipeline being fixed", pushed(time.Hour, &aiv1.CIStatus{SHA: "old", State: aiv1.CIStateFixing}), window, StageReview},
+		{"push never followed, old pipeline red", pushed(time.Hour, &aiv1.CIStatus{SHA: "old", State: aiv1.CIStateFailed}), window, StageReview},
 	}
 	for _, tc := range cases {
 		if got := StageOf(tc.t, tc.ciWindow, now); got != tc.want {
@@ -107,11 +109,14 @@ func TestStageOfPush(t *testing.T) {
 
 func TestCIWindow(t *testing.T) {
 	p := &aiv1.AgentProject{}
-	if got := ciWindow(p); got != 10*time.Minute {
+	if got := ciWindow(p); got != 11*time.Minute {
 		t.Errorf("default: %v", got)
 	}
+	// A poll longer than the timeout: the operator follows the push on its
+	// first poll after it.
 	p.Spec.CI.NoPipelineTimeout = metav1.Duration{Duration: 3 * time.Minute}
-	if got := ciWindow(p); got != 3*time.Minute {
+	p.Spec.PollInterval = metav1.Duration{Duration: 15 * time.Minute}
+	if got := ciWindow(p); got != 18*time.Minute {
 		t.Errorf("configured: %v", got)
 	}
 	p.Spec.CI.Disabled = true

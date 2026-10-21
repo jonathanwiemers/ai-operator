@@ -23,7 +23,8 @@ resources' status, and links lead to GitLab.
 A task's **stage** is derived from its status the same way the operator moves
 the GitLab labels; the hint on each badge explains it. After a push the task
 stays in *CI* until the operator has followed that commit's pipeline, for at
-most `spec.ci.noPipelineTimeout` (unless the project has `spec.ci.disabled`).
+most `spec.ci.noPipelineTimeout` plus one poll interval (unless the project
+has `spec.ci.disabled`).
 
 ## Enable it
 

@@ -72,11 +72,14 @@ func StageOf(t *aiv1.AgentTask, ciWindow time.Duration, now time.Time) Stage {
 	// The operator writes the pipeline of a new push on its next poll;
 	// until then the issue is still waiting for CI. A push that is still not
 	// followed after the window never will be (the issue went to review
-	// before the operator saw it), so it falls through to its CI status.
+	// before the operator saw it); the CI status of an older commit then
+	// says nothing about it.
 	run := t.Status.Run
-	if ciWindow > 0 && run.PushedSHA != "" && (t.Status.CI == nil || t.Status.CI.SHA != run.PushedSHA) &&
-		run.PushedAt != nil && now.Sub(run.PushedAt.Time) < ciWindow {
-		return StageCI
+	if ciWindow > 0 && run.PushedSHA != "" && run.PushedAt != nil && (t.Status.CI == nil || t.Status.CI.SHA != run.PushedSHA) {
+		if now.Sub(run.PushedAt.Time) < ciWindow {
+			return StageCI
+		}
+		return StageReview
 	}
 	if ci := t.Status.CI; ci != nil {
 		switch {
@@ -172,15 +175,20 @@ func gitLabRef(p *aiv1.AgentProject) GitLabRef {
 }
 
 // ciWindow is how long the operator may take to follow the pipeline of a
-// push: its no-pipeline timeout. Zero without the CI loop.
+// push: its no-pipeline timeout, checked on a poll, so plus one poll
+// interval. Zero without the CI loop.
 func ciWindow(p *aiv1.AgentProject) time.Duration {
 	if p.Spec.CI.Disabled {
 		return 0
 	}
-	if d := p.Spec.CI.NoPipelineTimeout.Duration; d > 0 {
-		return d
+	timeout, poll := p.Spec.CI.NoPipelineTimeout.Duration, p.Spec.PollInterval.Duration
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
 	}
-	return 10 * time.Minute
+	if poll <= 0 {
+		poll = time.Minute
+	}
+	return timeout + poll
 }
 
 func taskView(t *aiv1.AgentTask, ciWindow time.Duration, now time.Time) Task {
