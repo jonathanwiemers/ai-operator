@@ -724,3 +724,27 @@ func TestAutopilotLinkEdgeCases(t *testing.T) {
 		}
 	})
 }
+
+func TestAutopilotRunsCIBeforeMergingADraftWithoutPipeline(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	// The project skips pipelines for drafts: CI found none for the push.
+	name := e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = true, "draft_status"
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.CI = &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateNone} })
+	e.reconcile()
+	task := e.tasks()[name]
+	if e.gl.MRs[1].Draft || !slices.Equal(e.gl.MRPipelines, []int64{1}) || task.Status.CI != nil ||
+		!e.gl.Issues[1].HasLabel("agent::working") || len(e.gl.Merged) != 0 {
+		t.Fatalf("a draft without pipeline must be marked ready and checked by CI first: draft %v, pipelines %v, ci %+v, labels %v, merged %v",
+			e.gl.MRs[1].Draft, e.gl.MRPipelines, task.Status.CI, e.gl.Labels(1), e.gl.Merged)
+	}
+	// The pipeline is green: merged.
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.CI = &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateSuccess} })
+	e.gl.SetLabels(1, "ai-generated", "agent::review")
+	e.reconcile()
+	if !slices.Equal(e.gl.Merged, []int64{1}) {
+		t.Fatalf("expected the merge after CI: %v %+v", e.gl.Merged, e.autopilot())
+	}
+}

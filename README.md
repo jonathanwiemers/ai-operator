@@ -40,9 +40,9 @@ flowchart LR
 - **Plan.** A spec agent breaks the milestone spec into **one sub-issue per
   merge request**. Each sub-issue has a sub-spec, acceptance criteria, open
   questions and a profile label (`agent-profile::fast` or `::strong`).
-- **Implement.** Move an issue to `agent::ready`. An agent implements it,
-  **bugbot and security reviewers** check the diff, and a **draft MR** is
-  opened.
+- **Implement.** Move an issue to `agent::ready`. A **draft MR** is opened
+  right away and shows the run's steps live. An agent implements it, and
+  **bugbot and security reviewers** check the diff before it is pushed.
 - **Wait for CI.** The operator follows the pipeline, retries flaky jobs and
   lets the agent fix real failures. The issue moves to `agent::review` only
   once CI is green.
