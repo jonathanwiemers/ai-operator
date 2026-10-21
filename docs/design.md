@@ -267,7 +267,13 @@ nothing is lost.
   comment starts with `/agent`. Discussion between humans costs nothing.
   Comments by the bot user never trigger.
 * **Polling is cheap.** Comments are only fetched when an issue's or MR's
-  `updated_at` changed.
+  `updated_at` changed. The GitLab client retries what GitLab pushes back
+  on: a 429 after `Retry-After` / `RateLimit-Reset` (up to a minute, for
+  any method, since a rate-limited request did not run), and reads that hit
+  a 5xx, a timeout or a broken connection twice with a short backoff. Writes
+  are never retried on those, as GitLab may have applied them. A poll that
+  still fails with such an error is logged without a stack trace and simply
+  repeated on the next poll; every poll logs its request count at debug.
 * **Resumed sessions.** Follow-up runs resume the implementer's session and
   only send the new comments, instead of the whole issue, spec and thread.
 * **Agent notes.** The implementer also returns handoff notes, which the
@@ -689,7 +695,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/runner/git.go` | runner-side bare mirror (the only git that talks to GitLab) |
-| `internal/gitlab` | minimal REST client; `gitlabfake` for tests |
+| `internal/gitlab` | minimal REST client with retries; `gitlabfake` for tests |
 | `charts/ai-operator` | Helm chart (CRDs and operator RBAC are copied in by `make manifests`) |
 | `.github/workflows` | CI and calendar-versioned releases (`YEAR.MONTH.N`) |
 

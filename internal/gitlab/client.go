@@ -6,13 +6,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -279,6 +283,19 @@ type Client struct {
 	baseURL string
 	token   string
 	http    *http.Client
+
+	requests, retries atomic.Int64
+}
+
+// Stats counts the requests a client sent, retries included, and how many of
+// them were retries.
+type Stats struct {
+	Requests, Retries int64
+}
+
+// Stats returns the client's request counts so far.
+func (c *Client) Stats() Stats {
+	return Stats{Requests: c.requests.Load(), Retries: c.retries.Load()}
 }
 
 var _ API = (*Client)(nil)
@@ -304,6 +321,37 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("gitlab: %s %s: %d %s", e.Method, e.Path, e.StatusCode, e.Body)
 }
 
+// IsTransient reports whether err is one a later attempt may not get: a rate
+// limit, a GitLab server error, a timeout or a broken connection. Joined
+// errors are transient if all of them are.
+func IsTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	if j, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, e := range j.Unwrap() {
+			if !IsTransient(e) {
+				return false
+			}
+		}
+		return true
+	}
+	var ge *Error
+	if errors.As(err, &ge) {
+		return ge.StatusCode == http.StatusTooManyRequests || ge.StatusCode >= 500
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return true
+	}
+	var de *net.DNSError
+	if errors.As(err, &de) {
+		return de.IsTimeout || de.IsTemporary
+	}
+	var oe *net.OpError
+	return errors.As(err, &oe) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, context.DeadlineExceeded)
+}
+
 // IsNotFound reports whether err is a GitLab 404.
 func IsNotFound(err error) bool {
 	if e, ok := err.(*Error); ok {
@@ -324,49 +372,129 @@ func projectPath(project string) string {
 	return "/projects/" + url.PathEscape(project)
 }
 
+// Retries. A rate-limited request (429) did not run, so it is retried
+// whatever its method, after the wait GitLab asks for. Server errors and
+// broken connections are retried for reads only: a write may have been
+// applied. Waits beyond maxRetryWait, or past the context's deadline, are not
+// waited out; the caller's next poll tries again.
+var (
+	maxAttempts  = 3
+	retryBackoff = time.Second
+	maxRetryWait = time.Minute
+)
+
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body, out any) (*http.Response, error) {
 	u := c.baseURL + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
 	}
-	var rdr io.Reader
+	var payload []byte
 	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
+		var err error
+		if payload, err = json.Marshal(body); err != nil {
 			return nil, err
 		}
-		rdr = bytes.NewReader(b)
+	}
+	for attempt := 1; ; attempt++ {
+		resp, data, err := c.send(ctx, method, u, payload)
+		if err == nil && (resp.StatusCode < 200 || resp.StatusCode > 299) {
+			msg := string(data)
+			if len(msg) > 512 {
+				msg = msg[:512]
+			}
+			err = &Error{StatusCode: resp.StatusCode, Method: method, Path: path, Body: msg}
+		}
+		if err != nil {
+			wait, ok := retryWait(method, resp, err, attempt)
+			if !ok || attempt >= maxAttempts || ctx.Err() != nil {
+				return resp, err
+			}
+			if d, has := ctx.Deadline(); has && time.Until(d) < wait {
+				return resp, err
+			}
+			c.retries.Add(1)
+			t := time.NewTimer(wait)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return resp, err
+			case <-t.C:
+			}
+			continue
+		}
+		if out != nil && len(data) > 0 {
+			if err := json.Unmarshal(data, out); err != nil {
+				return resp, fmt.Errorf("gitlab: decoding %s %s: %w", method, path, err)
+			}
+		}
+		return resp, nil
+	}
+}
+
+// send makes one attempt and reads the response body.
+func (c *Client) send(ctx context.Context, method, u string, payload []byte) (*http.Response, []byte, error) {
+	var rdr io.Reader
+	if payload != nil {
+		rdr = bytes.NewReader(payload)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u, rdr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("PRIVATE-TOKEN", c.token)
-	if body != nil {
+	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	c.requests.Add(1)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
-		return nil, err
+		return resp, nil, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		msg := string(data)
-		if len(msg) > 512 {
-			msg = msg[:512]
+	return resp, data, nil
+}
+
+// retryWait says whether a failed attempt is retried, and after how long.
+func retryWait(method string, resp *http.Response, err error, attempt int) (time.Duration, bool) {
+	backoff := retryBackoff << (attempt - 1)
+	backoff += time.Duration(rand.Int64N(int64(backoff)/2 + 1)) // jitter
+	var ge *Error
+	switch {
+	case errors.As(err, &ge) && ge.StatusCode == http.StatusTooManyRequests:
+		if wait, ok := rateLimitWait(resp.Header, time.Now()); ok {
+			return wait, wait <= maxRetryWait
 		}
-		return resp, &Error{StatusCode: resp.StatusCode, Method: method, Path: path, Body: msg}
+		return backoff, true
+	case method != http.MethodGet:
+		return 0, false
+	case ge != nil:
+		return backoff, ge.StatusCode >= 500
+	default:
+		return backoff, IsTransient(err)
 	}
-	if out != nil && len(data) > 0 {
-		if err := json.Unmarshal(data, out); err != nil {
-			return resp, fmt.Errorf("gitlab: decoding %s %s: %w", method, path, err)
+}
+
+// rateLimitWait reads how long GitLab asks a rate-limited client to wait:
+// Retry-After (seconds or a date), else RateLimit-Reset (a Unix time).
+func rateLimitWait(h http.Header, now time.Time) (time.Duration, bool) {
+	if v := strings.TrimSpace(h.Get("Retry-After")); v != "" {
+		if secs, err := strconv.Atoi(v); err == nil {
+			return time.Duration(max(secs, 0)) * time.Second, true
+		}
+		if t, err := http.ParseTime(v); err == nil {
+			return max(t.Sub(now), 0), true
 		}
 	}
-	return resp, nil
+	if v := strings.TrimSpace(h.Get("RateLimit-Reset")); v != "" {
+		if unix, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return max(time.Unix(unix, 0).Sub(now), 0), true
+		}
+	}
+	return 0, false
 }
 
 // maxPages bounds pagination so a misconfigured filter cannot stall a sync.

@@ -66,8 +66,15 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	syncErr := r.sync(ctx, &project, spec)
-	if syncErr != nil {
+	switch {
+	case syncErr != nil && gitlab.IsTransient(syncErr):
+		// Rate limits, server errors and timeouts pass; the client already
+		// retried, and the next poll tries again. No stack trace for those.
+		logger.Info("GitLab sync failed, trying again on the next poll", "error", syncErr.Error())
+	case syncErr != nil:
 		logger.Error(syncErr, "GitLab sync failed")
+	}
+	if syncErr != nil {
 		meta.SetStatusCondition(&project.Status.Conditions, metav1.Condition{
 			Type: "Synced", Status: metav1.ConditionFalse, Reason: "SyncFailed", Message: truncateMsg(syncErr.Error()),
 		})
@@ -111,6 +118,17 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	gl, err := r.gitlabClient(ctx, project, spec)
 	if err != nil {
 		return err
+	}
+	if c, ok := gl.(interface{ Stats() gitlab.Stats }); ok {
+		// What a poll costs GitLab; retries mean it pushed back.
+		defer func() {
+			st := c.Stats()
+			lvl := 1
+			if st.Retries > 0 {
+				lvl = 0
+			}
+			log.FromContext(ctx).V(lvl).Info("GitLab poll done", "requests", st.Requests, "retries", st.Retries)
+		}()
 	}
 	if project.Status.BotUserID == 0 {
 		u, err := gl.CurrentUser(ctx)
