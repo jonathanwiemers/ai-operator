@@ -78,6 +78,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.commands(ctx); err != nil {
 		return err
 	}
+	if err := a.autoResume(ctx); err != nil {
+		return err
+	}
 	switch {
 	case a.ap.Phase != aiv1.AutopilotRunning && a.ap.Phase != aiv1.AutopilotDone:
 	case len(cycle) > 0:
@@ -475,7 +478,7 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	}
 	switch {
 	case is.HasLabel(wf.NeedsInputLabel):
-		return a.pauseActive(ctx, it, fmt.Sprintf("#%d needs input (see its last comments): CI is still red, the run failed or the agent asked a question", it.IID))
+		return a.pauseRun(ctx, it, fmt.Sprintf("#%d needs input (see its last comments): CI is still red, the run failed or the agent asked a question", it.IID))
 	case !hasAny(is, wf.ActiveLabels()...):
 		return a.pauseActive(ctx, it, fmt.Sprintf("#%d is open but has no workflow label any more; move it back to `%s` or close it", it.IID, wf.ReviewLabel))
 	case !is.HasLabel(wf.ReviewLabel) || task == nil || task.RunPending():
@@ -486,17 +489,17 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	run := task.Status.Run
 	switch {
 	case run.LastResult != aiv1.RunResultSucceeded:
-		return a.pauseActive(ctx, it, fmt.Sprintf("the last run of #%d ended with %q", it.IID, run.LastResult))
+		return a.pauseRun(ctx, it, fmt.Sprintf("the last run of #%d ended with %q", it.IID, run.LastResult))
 	case run.BlockingFindings > 0:
-		return a.pauseActive(ctx, it, fmt.Sprintf("%d blocking review findings remain on !%d", run.BlockingFindings, it.MergeRequestIID))
+		return a.pauseRun(ctx, it, fmt.Sprintf("%d blocking review findings remain on !%d", run.BlockingFindings, it.MergeRequestIID))
 	case run.ReviewErrors > 0:
-		return a.pauseActive(ctx, it, fmt.Sprintf("%d reviewers failed on #%d, so the change is not fully reviewed", run.ReviewErrors, it.IID))
+		return a.pauseRun(ctx, it, fmt.Sprintf("%d reviewers failed on #%d, so the change is not fully reviewed", run.ReviewErrors, it.IID))
 	case it.MergeRequestIID == 0 || run.PushedSHA == "":
 		return a.pauseActive(ctx, it, fmt.Sprintf("#%d is in review without a pushed merge request", it.IID))
 	case len(a.spec.Agents.Review.Reviewers) == 0:
 		return a.pauseActive(ctx, it, "no reviewers are configured (`agents.review.reviewers`), and autopilot only merges reviewed changes")
 	case run.ReviewedSHA != run.PushedSHA:
-		return a.pauseActive(ctx, it, fmt.Sprintf("the head of !%d (%s) was not reviewed (the last review saw %s)", it.MergeRequestIID, short(run.PushedSHA), short(run.ReviewedSHA)))
+		return a.pauseRun(ctx, it, fmt.Sprintf("the head of !%d (%s) was not reviewed (the last review saw %s)", it.MergeRequestIID, short(run.PushedSHA), short(run.ReviewedSHA)))
 	}
 	if !a.spec.CI.Disabled {
 		ci := task.Status.CI
@@ -513,11 +516,11 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 			}
 			return nil
 		case ci.State == aiv1.CIStateCanceled:
-			return a.pauseActive(ctx, it, fmt.Sprintf("the pipeline of !%d was canceled", it.MergeRequestIID))
+			return a.pauseRun(ctx, it, fmt.Sprintf("the pipeline of !%d was canceled", it.MergeRequestIID))
 		case ci.State == aiv1.CIStateBaseFailing:
-			return a.pauseActive(ctx, it, fmt.Sprintf("CI of !%d is red with jobs that also fail on the default branch (%s)", it.MergeRequestIID, jobList(ci.FailedJobs)))
+			return a.pauseRun(ctx, it, fmt.Sprintf("CI of !%d is red with jobs that also fail on the default branch (%s)", it.MergeRequestIID, jobList(ci.FailedJobs)))
 		case ci.State == aiv1.CIStateFailed:
-			return a.pauseActive(ctx, it, fmt.Sprintf("CI of !%d is red (%s)", it.MergeRequestIID, jobList(ci.FailedJobs)))
+			return a.pauseRun(ctx, it, fmt.Sprintf("CI of !%d is red (%s)", it.MergeRequestIID, jobList(ci.FailedJobs)))
 		}
 	}
 
@@ -671,7 +674,83 @@ func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, rea
 			return a.merged(ctx, it, mr)
 		}
 	}
-	return a.pause(ctx, reason)
+	if err := a.pause(ctx, reason); err != nil {
+		return err
+	}
+	a.ap.PausedFor = it.IID
+	return nil
+}
+
+// pauseRun pauses because of the active issue's run, review or CI, which a
+// later run can fix: then autopilot continues by itself (autoResume).
+func (a *autopilot) pauseRun(ctx context.Context, it *aiv1.AutopilotItem, reason string) error {
+	if err := a.pauseActive(ctx, it, reason); err != nil {
+		return err
+	}
+	if a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedFor == it.IID {
+		a.ap.ResumeWhenReady = true
+	}
+	return nil
+}
+
+// autoResume ends a pause about the active issue that no longer holds: it was
+// merged or closed by hand, or (for a pause over its run, review or CI) a
+// later run made it pass the gate. A pause of any other kind waits for
+// "resume".
+func (a *autopilot) autoResume(ctx context.Context) error {
+	if a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedFor == 0 {
+		return nil
+	}
+	it := a.item(a.ap.PausedFor)
+	if it == nil || it.State != aiv1.AutopilotItemActive {
+		a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
+		return nil
+	}
+	why := ""
+	is, ok := a.issues[it.IID]
+	switch {
+	case !ok || is.State != "opened":
+		why = fmt.Sprintf("#%d was closed", it.IID)
+	case it.MergeRequestIID != 0:
+		mr, err := a.gl.GetMergeRequest(ctx, a.spec.GitLab.Project, it.MergeRequestIID)
+		if err != nil && !gitlab.IsNotFound(err) {
+			return fmt.Errorf("getting merge request !%d: %w", it.MergeRequestIID, err)
+		}
+		if err == nil && mr.State == "merged" {
+			why = fmt.Sprintf("!%d was merged", mr.IID)
+		}
+	}
+	if why == "" && a.ap.ResumeWhenReady && a.passesGate(is, a.tasks[it.IID]) {
+		why = fmt.Sprintf("#%d is reviewed and green again", it.IID)
+	}
+	if why == "" {
+		return nil
+	}
+	a.log.Info("autopilot continues by itself", "issue", it.IID, "why", why)
+	if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
+		return err
+	}
+	a.ap.Phase, a.ap.PausedReason, a.ap.PausedFor, a.ap.ResumeWhenReady = aiv1.AutopilotRunning, "", 0, false
+	return nil
+}
+
+// passesGate reports whether the active issue's run, review and CI pass the
+// merge gate: what pauseRun pauses over. The MR itself is checked when the
+// gate runs.
+func (a *autopilot) passesGate(is gitlab.Issue, task *aiv1.AgentTask) bool {
+	if task == nil || task.RunPending() || !is.HasLabel(a.spec.Workflow.ReviewLabel) || is.HasLabel(a.spec.Workflow.NeedsInputLabel) {
+		return false
+	}
+	run := task.Status.Run
+	if run.LastResult != aiv1.RunResultSucceeded || run.BlockingFindings > 0 || run.ReviewErrors > 0 ||
+		run.PushedSHA == "" || run.ReviewedSHA != run.PushedSHA {
+		return false
+	}
+	if a.spec.CI.Disabled {
+		return true
+	}
+	ci := task.Status.CI
+	return ci != nil && ci.SHA == run.PushedSHA && (ci.State == aiv1.CIStateSuccess || ci.State == aiv1.CIStateNone)
 }
 
 // mergeBase asks the agent to merge the default branch into the MR and
@@ -890,6 +969,7 @@ func (a *autopilot) pause(ctx context.Context, reason string) error {
 	}
 	a.ap.Phase = aiv1.AutopilotPaused
 	a.ap.PausedReason = reason
+	a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 	return nil
 }
 
@@ -920,10 +1000,12 @@ func (a *autopilot) commands(ctx context.Context) error {
 		case "pause":
 			if a.ap.Phase != aiv1.AutopilotDone {
 				a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotPaused, "paused by @"+n.Author.Username
+				a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 			}
 		case "resume":
 			if a.ap.Phase == aiv1.AutopilotPaused {
 				a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotRunning, ""
+				a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 			}
 		case "skip":
 			iid := int64(0)

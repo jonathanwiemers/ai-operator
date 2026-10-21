@@ -525,6 +525,12 @@ stateDiagram-v2
   carries the done label, so
   issues merged before autopilot started, after a `skip`, or by hand do not
   block their dependants.
+* **Pauses that end by themselves.** A pause over the active issue records
+  it (`pausedFor`); one over its run, review or CI also `resumeWhenReady`.
+  While paused, each poll checks that issue: merged or closed by hand, or
+  (with `resumeWhenReady`) passing the merge gate's run, review and CI
+  checks again, ends the pause. `/agent pause` and every other pause wait
+  for `resume`.
 * **Failure safety.** The autopilot status is saved after every poll, also
   when a step failed, since GitLab side effects (a created tracking issue, a
   requested rebase) already happened. Comments are posted before the state

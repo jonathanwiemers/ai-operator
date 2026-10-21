@@ -316,6 +316,14 @@ spec:
                       operator has handled.
                     format: int64
                     type: integer
+                  pausedFor:
+                    description: |-
+                      PausedFor is the active issue the pause is about. Autopilot continues
+                      by itself once that issue is merged or closed by hand, and, with
+                      ResumeWhenReady, once it passes the merge gate again (a later run
+                      fixed it).
+                    format: int64
+                    type: integer
                   pausedReason:
                     description: Reason why the milestone is paused.
                     type: string
@@ -327,6 +335,8 @@ spec:
                     - Done
                     - "Off"
                     type: string
+                  resumeWhenReady:
+                    type: boolean
                   trackingHash:
                     description: |-
                       TrackingHash is the hash of the tracking issue's last rendered
