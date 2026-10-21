@@ -314,7 +314,9 @@ push is not "done" until its pipeline is green:
 * The runner records the pushed commit (`status.run.pushedSHA`) and leaves
   the issue in `agent::working`.
 * The project controller polls the pipeline of that commit on its normal
-  GitLab poll – no tokens – and records it in `status.ci`.
+  GitLab poll – no tokens – and records it in `status.ci`: the MR's head
+  pipeline if the MR's head is that commit (it also covers merged-results
+  pipelines), else the newest pipeline of the commit.
 * Red pipelines are retried once (flaky jobs cost nothing). If the same jobs
   fail in the latest finished pipeline of the default branch, the agent is
   not involved. Otherwise the operator requests a CI fix run
@@ -352,6 +354,15 @@ stateDiagram-v2
 
 Green states move the issue to `agent::review`, `Failed` to
 `agent::needs-input`.
+
+The loop ending does not mean no pipeline follows: projects that skip
+pipelines for drafts run one once the MR is ready, and people re-run them.
+For an issue in `agent::review` the controller compares the MR's head
+pipeline (from the MR it fetches on every poll anyway) with
+`status.ci.pipelineID`. A new pipeline of the pushed commit that runs or
+failed resets `status.ci` to `Pending` and moves the issue back to
+`agent::working`; a green, manual or canceled one only replaces the recorded
+pipeline.
 
 ## Merge conflicts
 

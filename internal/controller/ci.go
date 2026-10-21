@@ -24,9 +24,26 @@ import (
 //	red, no rounds left             -> needs-input, with the failing jobs
 //	canceled                        -> review, with a note
 //	no pipeline after a timeout     -> review (no CI for this commit)
-func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask) error {
+//
+// Pipelines can start after the loop is done: a project that skips pipelines
+// for drafts runs one once the MR is marked ready, and people re-run them. So
+// for an issue in review the MR's head pipeline is watched too: a new one for
+// the pushed commit that runs or fails moves the issue back to working, and
+// the loop above takes over.
+func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, mr *gitlab.MergeRequest) error {
 	run := task.Status.Run
-	if spec.CI.Disabled || run.PushedSHA == "" || task.RunPending() || !is.HasLabel(spec.Workflow.WorkingLabel) {
+	if spec.CI.Disabled || run.PushedSHA == "" || task.RunPending() {
+		return nil
+	}
+	// The MR's head pipeline, if the MR's head is the pushed commit.
+	var head *gitlab.Pipeline
+	if mr != nil && mr.State == "opened" && mr.SHA == run.PushedSHA {
+		head = mr.HeadPipeline
+	}
+	if is.HasLabel(spec.Workflow.ReviewLabel) {
+		return r.newPipeline(ctx, gl, spec, is, task, head)
+	}
+	if !is.HasLabel(spec.Workflow.WorkingLabel) {
 		return nil
 	}
 	ci := &aiv1.CIStatus{SHA: run.PushedSHA, State: aiv1.CIStatePending}
@@ -46,20 +63,16 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 				ci.PipelineURL, jobList(ci.FailedJobs), spec.Workflow.CommandPrefix))
 	}
 
-	pipelines, err := gl.ListPipelines(ctx, glProject, gitlab.ListPipelinesOptions{SHA: ci.SHA, Limit: 1})
-	if err != nil {
-		return fmt.Errorf("listing pipelines of %s: %w", ci.SHA, err)
-	}
-	if len(pipelines) == 0 && run.MergeRequestIID != 0 {
-		// Merged-results and merge request pipelines carry another SHA (or
-		// only run once the MR is ready): the MR's head pipeline counts if
-		// the MR's head is the pushed commit.
-		mr, err := gl.GetMergeRequest(ctx, glProject, run.MergeRequestIID)
-		if err != nil && !gitlab.IsNotFound(err) {
-			return fmt.Errorf("getting merge request !%d: %w", run.MergeRequestIID, err)
-		}
-		if err == nil && mr.SHA == ci.SHA && mr.HeadPipeline != nil {
-			pipelines = []gitlab.Pipeline{*mr.HeadPipeline}
+	// The MR's head pipeline is the one GitLab shows and gates merging on; it
+	// may also be a merged-results pipeline, whose SHA is another one. Only
+	// without it the newest pipeline of the commit counts.
+	var pipelines []gitlab.Pipeline
+	if head != nil {
+		pipelines = []gitlab.Pipeline{*head}
+	} else {
+		var err error
+		if pipelines, err = gl.ListPipelines(ctx, glProject, gitlab.ListPipelinesOptions{SHA: ci.SHA, Limit: 1}); err != nil {
+			return fmt.Errorf("listing pipelines of %s: %w", ci.SHA, err)
 		}
 	}
 	if len(pipelines) == 0 {
@@ -130,6 +143,31 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 	}
 	ci.State = aiv1.CIStateFixing
 	return r.patchCI(ctx, task, ci)
+}
+
+// newPipeline follows a pipeline of the pushed commit that started after the
+// CI loop was done, while the issue is in review. A green, skipped, manual or
+// canceled one is only recorded; one that runs or failed sends the issue back
+// to working, so the loop retries it and asks the agent to fix it.
+func (r *AgentProjectReconciler) newPipeline(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, head *gitlab.Pipeline) error {
+	cur := task.Status.CI
+	if head == nil || cur == nil || cur.SHA != task.Status.Run.PushedSHA || cur.PipelineID == head.ID {
+		return nil
+	}
+	switch head.Status {
+	case "success", "skipped", "manual", "canceled":
+		ci := cur.DeepCopy()
+		ci.PipelineID, ci.PipelineURL = head.ID, head.WebURL
+		return r.patchCI(ctx, task, ci)
+	}
+	wf := spec.Workflow
+	log.FromContext(ctx).Info("new pipeline for the pushed commit, following it", "task", task.Name, "pipeline", head.ID, "status", head.Status)
+	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{
+		AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel},
+	}); err != nil {
+		return fmt.Errorf("moving issue #%d to %q: %w", is.IID, wf.WorkingLabel, err)
+	}
+	return r.patchCI(ctx, task, &aiv1.CIStatus{SHA: cur.SHA, State: aiv1.CIStatePending, PipelineID: head.ID, PipelineURL: head.WebURL})
 }
 
 // baseFailing reports whether every failing job also fails in the latest
