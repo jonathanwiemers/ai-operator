@@ -82,6 +82,24 @@ state of the work, decisions and why, what is left or open, and pitfalls
 than appending to them. Do not repeat the issue or the summary; at most a
 few hundred words.`
 
+// stepsNote is added to the implementer's system prompt while the merge
+// request is a draft.
+const stepsNote = `
+
+The merge request is a draft and a human may follow along. Work in steps:
+after each coherent piece of work that could be a commit of its own (a data
+model change, an endpoint, a component, its tests), and builds, stop and
+return status "in_progress" with the commitMessage for that step and a
+summary of the step and what comes next. The program commits and pushes it
+and resumes you, with any new human comments: follow them, they may change
+the plan. Don't stop for trivial changes; a step is worth a commit. Return
+"done" (or "needs_input") once the whole issue is implemented and tested;
+that summary covers the whole work, and decisions list only the ones not
+reported in an earlier step.`
+
+// stepContinue resumes an implementer after a step.
+const stepContinue = "Your step was committed and pushed. Continue with the next step."
+
 // resourcesNote tells the implementer what its container may use. Build
 // tools and test runners size themselves by the node's CPUs and memory, not
 // the container's, and a container over its memory limit is killed together
@@ -197,7 +215,7 @@ const implementSchemaTemplate = `{
   "additionalProperties": false,
   "required": ["status", "summary", "commitMessage", "questions", "decisions", "handoff"],
   "properties": {
-    "status": {"type": "string", "enum": ["done", "needs_input"]},
+    "status": {"type": "string", "enum": ["done", "in_progress", "needs_input"]},
     "summary": {"type": "string", "description": "Markdown summary for the merge request."},
     "commitMessage": {"type": "string", "description": "Imperative subject line (max 72 chars), blank line, body."},
     "questions": {"type": "array", "items": {"type": "string"}},

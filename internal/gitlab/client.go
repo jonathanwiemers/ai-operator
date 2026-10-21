@@ -50,6 +50,7 @@ type API interface {
 	UpdateMergeRequestNote(ctx context.Context, project string, iid, noteID int64, body string) (*Note, error)
 	DeleteMergeRequestNote(ctx context.Context, project string, iid, noteID int64) error
 	CreateMergeRequestPipeline(ctx context.Context, project string, iid int64) error
+	CreatePipeline(ctx context.Context, project, ref string) error
 	ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error)
 	ListPipelineJobs(ctx context.Context, project string, pipelineID int64, scope string) ([]Job, error)
 	JobTrace(ctx context.Context, project string, jobID int64) (string, error)
@@ -705,6 +706,12 @@ func (c *Client) UpdateMergeRequestNote(ctx context.Context, project string, iid
 // CreateMergeRequestPipeline runs a merge request pipeline for the MR's head.
 func (c *Client) CreateMergeRequestPipeline(ctx context.Context, project string, iid int64) error {
 	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/merge_requests/%d/pipelines", projectPath(project), iid), nil, nil, nil)
+	return err
+}
+
+// CreatePipeline runs a pipeline for the head of a branch.
+func (c *Client) CreatePipeline(ctx context.Context, project, ref string) error {
+	_, err := c.do(ctx, http.MethodPost, projectPath(project)+"/pipeline", url.Values{"ref": {ref}}, nil, nil)
 	return err
 }
 

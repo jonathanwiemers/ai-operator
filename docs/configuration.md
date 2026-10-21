@@ -135,6 +135,7 @@ All labels can be renamed. Defaults:
 | `commandPrefix` | `/agent` |
 | `assignBot` | `true` |
 | `resolveConflicts` | `true` |
+| `stepCommits` | `true` |
 
 `assignBot` assigns the bot user to an issue when the operator picks it up and
 the issue has no assignee, so GitLab's milestone page lists it under
@@ -148,6 +149,12 @@ default branch into the work branch and the agent resolves the conflicts (see
 [usage.md](usage.md#merge-conflicts)). On autopilot it is also used when GitLab
 cannot rebase an MR. Set it to `false` to leave conflicts to humans; autopilot
 then pauses on them.
+
+`stepCommits`: while the MR is a draft, the implementer works in steps. Each
+step is committed and pushed as it is done (without CI), and comments written
+in the meantime reach the agent before its next step, so you can follow the
+work on the MR and steer it (see [usage.md](usage.md#3-the-agent-works)). Set
+it to `false` for one commit per run.
 
 ## `spec.agents`
 

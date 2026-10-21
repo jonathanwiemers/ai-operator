@@ -193,9 +193,21 @@ func (m *Mirror) Import(ctx context.Context, path, branch string) error {
 
 // Push pushes the imported branch. It is not forced: if someone pushed to
 // the branch during the run, the push fails instead of losing their work.
-func (m *Mirror) Push(ctx context.Context, branch string) error {
+func (m *Mirror) Push(ctx context.Context, branch string, skipCI bool) error {
 	ref := "refs/heads/" + branch
-	_, err := m.run(ctx, true, "push", "--quiet", "origin", ref+":"+ref)
+	return m.push(ctx, ref, ref, skipCI)
+}
+
+// push pushes src to dst, with ci.skip if skipCI. A remote that takes no
+// push options gets a plain push.
+func (m *Mirror) push(ctx context.Context, src, dst string, skipCI bool) error {
+	if skipCI {
+		_, err := m.run(ctx, true, "push", "--quiet", "-o", "ci.skip", "origin", src+":"+dst)
+		if err == nil || !strings.Contains(err.Error(), "push options") {
+			return err
+		}
+	}
+	_, err := m.run(ctx, true, "push", "--quiet", "origin", src+":"+dst)
 	return err
 }
 
@@ -216,13 +228,9 @@ func (m *Mirror) StartBranch(ctx context.Context, branch, base, message string) 
 	if err != nil {
 		return "", err
 	}
-	_, err = m.run(ctx, true, "push", "--quiet", "-o", "ci.skip", "origin", sha+":refs/heads/"+branch)
-	if err != nil && strings.Contains(err.Error(), "push options") {
-		// The remote takes no push options (GitLab over HTTPS always does):
-		// push anyway; a pipeline for an empty commit does no harm.
-		_, err = m.run(ctx, true, "push", "--quiet", "origin", sha+":refs/heads/"+branch)
-	}
-	if err != nil {
+	// Without push options (GitLab over HTTPS always takes them) a pipeline
+	// for an empty commit does no harm.
+	if err := m.push(ctx, sha, "refs/heads/"+branch, true); err != nil {
 		return "", err
 	}
 	if _, err := m.run(ctx, false, "update-ref", "refs/remotes/origin/"+branch, sha); err != nil {
