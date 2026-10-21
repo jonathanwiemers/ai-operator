@@ -129,8 +129,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// follow it and steer with comments (not while concluding a merge, whose
 	// conflicts must be resolved before anything is committed).
 	stepwise := *wf.StepCommits && mr.Draft && task.Spec.Source.MergeBaseFor == task.Status.Run.MergedBaseFor
+	plainSystem := inv.SystemPrompt
 	if stepwise {
 		inv.SystemPrompt += stepsNote
+		inv.JSONSchema = implementStepSchema
 	}
 	inv.DisallowedTools = implementDenied
 	inv.Resume = st.session("implement", role.Engine)
@@ -223,6 +225,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		runAgent = len(merge.Conflicts) > 0 || humanInput > 0 || ciFix || len(revisits) > 0 || len(ignored) > 0
 	}
 
+	if !stepwise && inv.Resume != "" {
+		inv.Prompt = noStepsNote + "\n\n" + inv.Prompt
+	}
 	var res *Result
 	var answer ImplementAnswer
 	if runAgent {
@@ -254,15 +259,30 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			answer.Summary = fmt.Sprintf("The branch already contains `%s`; nothing to merge.", base)
 		}
 	}
+	outOfSteps := false
 	if stepwise && runAgent {
+		var seen int64
 		var err error
-		if res, err = r.runSteps(ctx, gl, glProject, issue, mr.IID, botID, branch, base, role, inv, fullPrompt, res, &answer, &st, out); err != nil {
+		res, seen, err = r.runSteps(ctx, gl, glProject, issue, mr.IID, botID, wf.CommandPrefix, branch, base, role, inv, fullPrompt, res, &answer, &st, out)
+		if err != nil {
+			// The steps pushed so far are on the branch: their decisions
+			// must not be lost with the run.
+			if botID != 0 {
+				r.postDecisions(ctx, gl, glProject, issue, issueNotes, botID, wf.CommandPrefix, answer.Decisions, revisits)
+			}
 			return out, err
+		}
+		seenNote = max(seenNote, seen)
+		if answer.Status == "in_progress" {
+			outOfSteps = true
+			notices = append(notices, fmt.Sprintf("Stopped after %d steps although the agent was not done, so the MR stays a draft. Comment `%s continue` to go on.", maxSteps, wf.CommandPrefix))
 		}
 	}
 	if answer.Status == "in_progress" {
-		answer.Status = "done" // not working in steps, or out of steps
+		answer.Status = "done" // an engine that ignored the schema
 	}
+	// Fix rounds and later calls finish their work in one go.
+	inv.SystemPrompt, inv.JSONSchema = plainSystem, implementSchema
 	if len(merge.Conflicts) > 0 {
 		// Conclude the merge before anything else is committed: a merge
 		// with conflict markers left must never be committed.
@@ -379,7 +399,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// leaves problems puts it back to draft.
 	readied := false
 	switch {
-	case answer.Status == "needs_input" || len(answer.Questions) > 0 || out.Reviewed && (out.BlockingFindings > 0 || out.ReviewErrors > 0):
+	case answer.Status == "needs_input" || len(answer.Questions) > 0 || outOfSteps || out.Reviewed && (out.BlockingFindings > 0 || out.ReviewErrors > 0):
 		r.setDraft(ctx, gl, glProject, mr, &st, true)
 	case (out.Reviewed && reviewedLast || len(review.Reviewers) == 0) && r.hasChanges(ctx, base):
 		readied = r.setDraft(ctx, gl, glProject, mr, &st, false)
@@ -418,7 +438,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	} else {
 		s.done("nothing new to push")
 	}
-	if !pushed && (readied || r.pushedHead != "") && !spec.CI.Disabled {
+	if !pushed && (readied || r.pushedHead != "") {
 		// Marking ready starts no pipeline, projects that skip pipelines for
 		// drafts may have run none for the head yet, and steps are pushed
 		// without CI.
@@ -538,6 +558,15 @@ func (r *Runner) setDraft(ctx context.Context, gl gitlab.API, glProject string, 
 func (r *Runner) startPipeline(ctx context.Context, gl gitlab.API, glProject string, mr *gitlab.MergeRequest, task *aiv1.AgentTask, head string) {
 	if ci := task.Status.CI; ci != nil && ci.SHA == head && ci.State != aiv1.CIStateNone {
 		return
+	}
+	// Merge request pipelines also run for pushes with ci.skip: one may be
+	// running for the head already. A skipped one does not count.
+	if ps, err := gl.ListPipelines(ctx, glProject, gitlab.ListPipelinesOptions{SHA: head, Limit: 5}); err == nil {
+		for _, p := range ps {
+			if p.Status != "skipped" {
+				return
+			}
+		}
 	}
 	s := r.step(ctx, "start pipeline", "mr", mr.IID)
 	err := gl.CreateMergeRequestPipeline(ctx, glProject, mr.IID)
@@ -902,42 +931,57 @@ func humanNotes(notes []gitlab.Note, botID int64) int {
 }
 
 // maxSteps bounds the steps of one run.
-const maxSteps = 25
+var maxSteps = 25
 
 // runSteps continues an implementer that returned "in_progress": the step is
 // committed and pushed without CI, and the session resumed with the comments
 // written in the meantime, until the agent is done (or out of steps). answer
-// collects the steps: decisions add up, the rest is the last step's.
-func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, mrIID, botID int64, branch, base string,
-	role aiv1.RoleSpec, inv Invocation, fullPrompt string, res *Result, answer *ImplementAnswer, st *state, out *Outcome) (*Result, error) {
+// collects the steps: decisions add up, the rest is the last step's. It
+// returns the newest comment handed over.
+//
+// A command ("/agent …") is not handed over: the operator starts a run for
+// it, which handles it (a revisit with its decision) once this one is done.
+// So comments are read up to the first command only.
+func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, mrIID, botID int64, prefix, branch, base string,
+	role aiv1.RoleSpec, inv Invocation, fullPrompt string, res *Result, answer *ImplementAnswer, st *state, out *Outcome) (*Result, int64, error) {
+	var seen int64
+	pushSteps := true
 	for step := 1; answer.Status == "in_progress" && step < maxSteps; step++ {
 		if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
-			return res, err
+			return res, seen, err
 		}
-		s := r.step(ctx, fmt.Sprintf("push step %d", step), "branch", branch)
-		pushed, err := r.publish(ctx, branch, base, true)
-		if err != nil {
-			return res, s.fail(err)
-		}
-		if pushed {
-			s.done(fmt.Sprintf("%s at %s, without CI", branch, shortSHA(r.pushedHead)), "sha", r.pushedHead)
-		} else {
-			s.done("nothing new to push")
+		if pushSteps {
+			s := r.step(ctx, fmt.Sprintf("push step %d", step), "branch", branch)
+			switch pushed, err := r.publish(ctx, branch, base, true); {
+			case err != nil:
+				// Someone pushed to the branch meanwhile: the steps are pushed
+				// with the run, which reports a conflict then.
+				pushSteps = false
+				s.done("not pushed, the next steps neither: "+err.Error(), "error", err.Error())
+			case pushed:
+				s.done(fmt.Sprintf("%s at %s, without CI", branch, shortSHA(r.pushedHead)), "sha", r.pushedHead)
+			default:
+				s.done("nothing new to push")
+			}
 		}
 
 		// Comments written during the step steer the next one.
-		s = r.step(ctx, "read comments")
+		s := r.step(ctx, "read comments")
 		issueNotes, err := gl.ListIssueNotes(ctx, glProject, issue.IID)
 		if err != nil {
-			return res, s.fail(fmt.Errorf("listing issue notes: %w", err))
+			return res, seen, s.fail(fmt.Errorf("listing issue notes: %w", err))
 		}
 		_, issueNotes = splitHandoff(issueNotes, botID)
 		mrNotes, err := gl.ListMergeRequestNotes(ctx, glProject, mrIID)
 		if err != nil {
-			return res, s.fail(fmt.Errorf("listing merge request notes: %w", err))
+			return res, seen, s.fail(fmt.Errorf("listing merge request notes: %w", err))
 		}
 		mrNotes = slices.DeleteFunc(mrNotes, func(n gitlab.Note) bool { return isProgress(n, botID) })
 		newIssue, newMR := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
+		if cut := firstCommand(append(slices.Clone(newIssue), newMR...), botID, prefix); cut != 0 {
+			fromCut := func(n gitlab.Note) bool { return n.ID >= cut }
+			newIssue, newMR = slices.DeleteFunc(newIssue, fromCut), slices.DeleteFunc(newMR, fromCut)
+		}
 		fresh := humanNotes(newIssue, botID) + humanNotes(newMR, botID)
 		s.done(fmt.Sprintf("%d new", fresh), "newNotes", fresh)
 		next := inv
@@ -948,22 +992,24 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		}
 
 		s = r.step(ctx, fmt.Sprintf("run implementer, step %d", step+1), "engine", role.Engine, "model", role.Model, "newNotes", fresh)
-		res, err = r.invoke(ctx, role, next, fullPrompt)
+		// Should the session be gone, a fresh one also gets the new comments.
+		res, err = r.invoke(ctx, role, next, fullPrompt+"\n\n"+next.Prompt)
 		if res != nil {
 			out.CostUSD += res.CostUSD
 		}
 		if err != nil {
-			return res, s.fail(err)
+			return res, seen, s.fail(err)
 		}
 		st.setSession("implement", role.Engine, res.SessionID)
-		st.LastIssueNoteID = maxNoteID(issueNotes, st.LastIssueNoteID)
-		st.LastMRNoteID = maxNoteID(mrNotes, st.LastMRNoteID)
+		st.LastIssueNoteID = maxNoteID(newIssue, st.LastIssueNoteID)
+		st.LastMRNoteID = maxNoteID(newMR, st.LastMRNoteID)
+		seen = max(seen, maxNoteID(newIssue, 0), maxNoteID(newMR, 0))
 		if err := r.saveState(*st); err != nil {
-			return res, s.fail(err)
+			return res, seen, s.fail(err)
 		}
 		var more ImplementAnswer
 		if err := res.Decode(&more); err != nil {
-			return res, s.fail(fmt.Errorf("decoding implementer answer: %w", err))
+			return res, seen, s.fail(fmt.Errorf("decoding implementer answer: %w", err))
 		}
 		more.Decisions = append(answer.Decisions, more.Decisions...)
 		if strings.TrimSpace(more.Handoff) == "" {
@@ -972,5 +1018,20 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		*answer = more
 		s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD, "status", answer.Status)
 	}
-	return res, nil
+	return res, seen, nil
+}
+
+// firstCommand returns the ID of the oldest human comment that is a command,
+// 0 if there is none.
+func firstCommand(notes []gitlab.Note, botID int64, prefix string) int64 {
+	var first int64
+	for _, n := range notes {
+		if n.System || (botID != 0 && n.Author.ID == botID) || !strings.HasPrefix(strings.TrimSpace(n.Body), prefix) {
+			continue
+		}
+		if first == 0 || n.ID < first {
+			first = n.ID
+		}
+	}
+	return first
 }

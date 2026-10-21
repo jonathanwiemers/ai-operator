@@ -3,6 +3,8 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,6 +24,9 @@ import (
 type stepEngine struct {
 	gl          *gitlabfake.Fake
 	lastChanges bool
+	// command also posts an "/agent" comment during step 1; failLast fails
+	// the second call; endless never finishes.
+	command, failLast, endless bool
 
 	mu      sync.Mutex
 	prompts []string
@@ -39,9 +44,21 @@ func (s *stepEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
 		case 1:
 			_ = os.WriteFile(filepath.Join(inv.Dir, "model.go"), []byte("package app\n"), 0o644)
 			s.gl.AddMRNote(1, gitlab.User{ID: 7, Username: "jonathan"}, "Call it Payment, not PayPalPayment.")
+			if s.command {
+				s.gl.AddMRNote(1, gitlab.User{ID: 7, Username: "jonathan"}, "/agent revisit D42-1 use a file")
+				s.gl.AddMRNote(1, gitlab.User{ID: 7, Username: "jonathan"}, "and after the command")
+			}
 			v = ImplementAnswer{Status: "in_progress", Summary: "Model done, endpoint next.", CommitMessage: "Add the payment model", Handoff: "model",
 				Decisions: []Decision{{Title: "Storage", Choice: "a table", Why: "simple"}}}
 		default:
+			if s.failLast {
+				return nil, errors.New("engine broke")
+			}
+			if s.endless {
+				_ = os.WriteFile(filepath.Join(inv.Dir, fmt.Sprintf("part%d.go", s.n)), []byte("package app\n"), 0o644)
+				v = ImplementAnswer{Status: "in_progress", Summary: "More.", CommitMessage: fmt.Sprintf("Part %d", s.n), Handoff: "more"}
+				break
+			}
 			if s.lastChanges {
 				_ = os.WriteFile(filepath.Join(inv.Dir, "endpoint.go"), []byte("package app\n"), 0o644)
 			}
@@ -140,5 +157,63 @@ func TestStepsOff(t *testing.T) {
 	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
 	if engine.n != 1 || task.Status.Run.LastResult != aiv1.RunResultSucceeded {
 		t.Fatalf("without steps \"in_progress\" counts as done: %d calls, %s", engine.n, task.Status.Run.Summary)
+	}
+}
+
+func TestStepsStopAtACommand(t *testing.T) {
+	ctx := context.Background()
+	e := newImplementEnv(t)
+	engine := &stepEngine{gl: e.gl, lastChanges: true, command: true}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p := engine.prompts[1]
+	if !strings.Contains(p, "Call it Payment") || strings.Contains(p, "/agent revisit") || strings.Contains(p, "after the command") {
+		t.Fatalf("comments are handed over up to the first command only: %q", p)
+	}
+	var cmd int64
+	for _, n := range e.gl.MRNotes[1] {
+		if strings.HasPrefix(n.Body, "/agent revisit") {
+			cmd = n.ID
+		}
+	}
+	if st := r.loadState(); st.LastMRNoteID == 0 || st.LastMRNoteID >= cmd {
+		t.Fatalf("the command is left for the run it starts: last seen %d, command %d", st.LastMRNoteID, cmd)
+	}
+}
+
+func TestStepDecisionsSurviveAFailedStep(t *testing.T) {
+	ctx := context.Background()
+	e := newImplementEnv(t)
+	engine := &stepEngine{gl: e.gl, failLast: true}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	_, _ = r.Step(ctx)
+	var notes string
+	for _, n := range e.gl.IssueNotes[42] {
+		notes += n.Body
+	}
+	if !strings.Contains(notes, "Storage") || !strings.Contains(notes, "run failed") {
+		t.Fatalf("the pushed step's decisions must be posted despite the failure: %q", notes)
+	}
+}
+
+func TestOutOfStepsStaysDraft(t *testing.T) {
+	ctx := context.Background()
+	old := maxSteps
+	maxSteps = 3
+	t.Cleanup(func() { maxSteps = old })
+	e := newImplementEnv(t)
+	engine := &stepEngine{gl: e.gl, endless: true}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var report string
+	for _, n := range e.gl.MRNotes[1] {
+		report += n.Body
+	}
+	if engine.n != 3 || !e.gl.MRs[1].Draft || !strings.Contains(report, "Stopped after 3 steps") {
+		t.Fatalf("out of steps: %d calls, draft %v, report %q", engine.n, e.gl.MRs[1].Draft, report)
 	}
 }

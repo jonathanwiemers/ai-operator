@@ -163,11 +163,14 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    the branch. It follows your comments, runs the tests, and stops with
    questions if a design decision is unresolved. While the MR is a draft it
    works in **steps** (`workflow.stepCommits`): after each piece that is worth
-   a commit of its own, the step is committed and pushed (with `ci.skip`, so
-   no pipeline runs), and the agent continues. Comments you write on the
-   issue or the MR in the meantime are handed to it before its next step, so
-   you can steer while it works; they need no `/agent` prefix. At most 25
-   steps per run.
+   a commit of its own, the step is committed and pushed with `ci.skip` (no
+   branch pipeline; merge request pipelines still run where your rules allow
+   them for drafts), and the agent continues. Comments you write on the issue
+   or the MR in the meantime are handed to it before its next step, so you
+   can steer while it works; they need no `/agent` prefix. A `/agent …`
+   command is not handed over: it starts its own run after this one, and the
+   comments after it wait for that run too. At most 25 steps per run; a run
+   that runs out of steps leaves the MR a draft and says so.
 4. The **bugbot** and **security** reviewers check the diff in parallel.
 5. Blocker and major findings go back to the implementer (at most
    `review.maxIterations` times). Remaining findings are listed for you.
@@ -205,13 +208,13 @@ After every push, the operator follows the pipeline of the pushed commit:
 | Pipeline | What happens |
 |----------|--------------|
 | running | the issue stays in `agent::working` |
-| green (also: skipped, or waiting for manual jobs) | `agent::review` |
+| green (also: waiting for manual jobs) | `agent::review` |
 | red, first time | the failed jobs are retried once, to rule out flaky jobs |
 | still red, the same jobs also fail on the default branch | `agent::review` with a comment: not caused by this change |
 | still red | the agent gets the failing jobs and the end of their logs and fixes the cause (a "CI fix" comment on the MR) |
 | still red after 2 fix rounds | `agent::needs-input` with the failing jobs |
 | canceled | `agent::review` with a comment |
-| no pipeline within 10 minutes | `agent::review` (the project has no CI for this commit) |
+| no pipeline within 10 minutes | `agent::review` (the project has no CI for this commit); a skipped pipeline (a push with `ci.skip`) counts as none |
 
 The fix rounds count from the last push you triggered (`/agent …` or moving
 the issue to ready), so every new instruction gets two fresh rounds. CI fix
@@ -277,7 +280,7 @@ Set `workflow.resolveConflicts: false` to leave conflicts to humans.
 |--------|--------|
 | comment `/agent <instructions>` on the issue or the MR | another run; the agent resumes its session and gets your new comments |
 | move the issue back to `agent::ready` | another run (e.g. after answering questions) |
-| discuss normally (no `/agent` prefix) | nothing; no tokens are spent |
+| discuss normally (no `/agent` prefix) | nothing; no tokens are spent (during a step run on a draft, the agent reads it before its next step) |
 | push to the agent's branch yourself | the next run continues from your commits |
 | change the profile label | the next run uses that profile |
 
