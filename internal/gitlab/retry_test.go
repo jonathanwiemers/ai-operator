@@ -4,9 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -56,16 +61,33 @@ func TestDoesNotRetryWritesOnServerErrors(t *testing.T) {
 }
 
 func TestRetriesRateLimitedWrites(t *testing.T) {
-	srv, n := flakyServer(t, 1, http.StatusTooManyRequests, http.Header{"Retry-After": {"0"}}, `{"id":1}`)
+	var n atomic.Int64
+	var mu sync.Mutex
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(b))
+		mu.Unlock()
+		if n.Add(1) == 1 {
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, `{"message":"slow down"}`, http.StatusTooManyRequests)
+			return
+		}
+		fmt.Fprint(w, `{"id":1}`)
+	}))
+	defer srv.Close()
 	note, err := New(srv.URL, "tok").CreateIssueNote(context.Background(), "g/p", 7, "hi")
-	if err != nil || note.ID != 1 || n.Load() != 2 {
-		t.Fatalf("a rate-limited request did not run, so it is retried: %v, %d requests", err, n.Load())
+	mu.Lock()
+	defer mu.Unlock()
+	if err != nil || note.ID != 1 || n.Load() != 2 || len(bodies) != 2 || bodies[1] != bodies[0] || bodies[0] == "" {
+		t.Fatalf("a rate-limited request did not run, so it is retried with the same body: %v, %d requests, bodies %q", err, n.Load(), bodies)
 	}
 
-	srv, n = flakyServer(t, 1, http.StatusTooManyRequests, http.Header{"Retry-After": {"3600"}}, `{"id":1}`)
-	_, err = New(srv.URL, "tok").CreateIssueNote(context.Background(), "g/p", 7, "hi")
-	if StatusCode(err) != http.StatusTooManyRequests || !IsTransient(err) || n.Load() != 1 {
-		t.Fatalf("an hour is not waited out: %v, %d requests", err, n.Load())
+	srv2, n2 := flakyServer(t, 1, http.StatusTooManyRequests, http.Header{"Retry-After": {"3600"}}, `{"id":1}`)
+	_, err = New(srv2.URL, "tok").CreateIssueNote(context.Background(), "g/p", 7, "hi")
+	if StatusCode(err) != http.StatusTooManyRequests || !IsTransient(err) || n2.Load() != 1 {
+		t.Fatalf("an hour is not waited out: %v, %d requests", err, n2.Load())
 	}
 }
 
@@ -80,17 +102,28 @@ func TestRetryStopsWithTheContext(t *testing.T) {
 	}
 }
 
+func TestRetryStopsWhenCanceledDuringTheWait(t *testing.T) {
+	srv, n := flakyServer(t, 5, http.StatusTooManyRequests, http.Header{"Retry-After": {"30"}}, `{}`)
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(100*time.Millisecond, cancel)
+	c := New(srv.URL, "tok")
+	_, err := c.GetIssue(ctx, "g/p", 7)
+	if StatusCode(err) != http.StatusTooManyRequests || n.Load() != 1 || c.Stats() != (Stats{Requests: 1}) {
+		t.Fatalf("canceled while waiting: %v, %d requests, %+v", err, n.Load(), c.Stats())
+	}
+}
+
 func TestRetriesReadsAfterATimeout(t *testing.T) {
 	var n atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if n.Add(1) == 1 {
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(time.Second)
 		}
 		fmt.Fprint(w, `{"iid":7}`)
 	}))
 	defer srv.Close()
 	c := New(srv.URL, "tok")
-	c.http.Timeout = 50 * time.Millisecond
+	c.http.Timeout = 300 * time.Millisecond
 	if is, err := c.GetIssue(context.Background(), "g/p", 7); err != nil || is.IID != 7 || n.Load() != 2 {
 		t.Fatalf("a timed out GET is retried: %v, %d requests", err, n.Load())
 	}
@@ -130,6 +163,9 @@ func TestIsTransient(t *testing.T) {
 		{errors.Join(fmt.Errorf("a: %w", limited), bad), true},
 		{errors.Join(bad, missing), false},
 		{fmt.Errorf("x: %w", context.DeadlineExceeded), true},
+		{&net.OpError{Op: "read", Err: os.NewSyscallError("read", syscall.ECONNRESET)}, true},
+		{&net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}, false},
+		{context.Canceled, false},
 		{errors.New("invalid milestones.titlePattern"), false},
 	} {
 		if got := IsTransient(tc.err); got != tc.want {

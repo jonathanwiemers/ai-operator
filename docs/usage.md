@@ -555,6 +555,8 @@ operator and the runners retry on their own:
 - Reads that hit a server error (5xx), a timeout or a broken connection are
   retried twice, after about 1 and 2 seconds. Writes are not: GitLab may have
   applied them.
+- A poll may take at most `spec.pollInterval`, but no less than 2 minutes;
+  retries stop there, so a slow GitLab cannot hold up the other projects.
 - A poll that still fails is logged as one line, "GitLab sync failed, trying
   again on the next poll", and the project's `Synced` condition says why;
   the next poll (`spec.pollInterval`) picks up where it left off. Other

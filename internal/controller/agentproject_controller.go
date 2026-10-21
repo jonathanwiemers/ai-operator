@@ -65,7 +65,11 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, r.Status().Patch(ctx, &project, client.MergeFrom(orig))
 	}
 
-	syncErr := r.sync(ctx, &project, spec)
+	// A slow or rate-limiting GitLab must not hold the worker for long: the
+	// client's retries stop at this deadline, and the next poll goes on.
+	sctx, cancel := context.WithTimeout(ctx, max(spec.PollInterval.Duration, syncTimeout))
+	syncErr := r.sync(sctx, &project, spec)
+	cancel()
 	switch {
 	case syncErr != nil && gitlab.IsTransient(syncErr):
 		// Rate limits, server errors and timeouts pass; the client already
@@ -92,6 +96,9 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// instead of hammering GitLab with exponential backoff.
 	return ctrl.Result{RequeueAfter: spec.PollInterval.Duration}, nil
 }
+
+// syncTimeout is the least time a poll of GitLab may take.
+const syncTimeout = 2 * time.Minute
 
 func (r *AgentProjectReconciler) now() time.Time {
 	if r.Now != nil {

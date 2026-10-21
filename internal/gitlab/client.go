@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -348,8 +349,14 @@ func IsTransient(err error) bool {
 	if errors.As(err, &de) {
 		return de.IsTimeout || de.IsTemporary
 	}
-	var oe *net.OpError
-	return errors.As(err, &oe) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, context.DeadlineExceeded)
+	// A connection GitLab dropped; refused connections, TLS and proxy errors
+	// are more likely a setting that stays wrong.
+	for _, e := range []error{syscall.ECONNRESET, syscall.ECONNABORTED, syscall.EPIPE, syscall.ETIMEDOUT, io.EOF, io.ErrUnexpectedEOF, context.DeadlineExceeded} {
+		if errors.Is(err, e) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsNotFound reports whether err is a GitLab 404.
@@ -412,7 +419,6 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 			if d, has := ctx.Deadline(); has && time.Until(d) < wait {
 				return resp, err
 			}
-			c.retries.Add(1)
 			t := time.NewTimer(wait)
 			select {
 			case <-ctx.Done():
@@ -420,6 +426,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 				return resp, err
 			case <-t.C:
 			}
+			c.retries.Add(1)
 			continue
 		}
 		if out != nil && len(data) > 0 {
