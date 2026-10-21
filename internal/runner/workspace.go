@@ -83,6 +83,7 @@ type PrepareRequest struct {
 // origin/<branch> if it exists (so human pushes are picked up) or on
 // origin/<base>. Leftovers of an interrupted run are discarded.
 func (w *Workspace) Prepare(ctx context.Context, req PrepareRequest) error {
+	w.removeStaleLock()
 	if !w.exists() {
 		if err := os.MkdirAll(w.Dir, 0o755); err != nil {
 			return err
@@ -131,11 +132,19 @@ func (w *Workspace) Prepare(ctx context.Context, req PrepareRequest) error {
 // Reset discards uncommitted changes and untracked files (ignored files such
 // as build caches are kept).
 func (w *Workspace) Reset(ctx context.Context) error {
+	w.removeStaleLock()
 	if _, err := w.git(ctx, "reset", "--quiet", "--hard", "HEAD"); err != nil {
 		return err
 	}
 	_, err := w.git(ctx, "clean", "-fdq")
 	return err
+}
+
+// removeStaleLock removes the index lock a git command leaves behind when its
+// container is killed. Git runs in the checkout only on the agent server's
+// request, one call at a time, so a lock between calls is always stale.
+func (w *Workspace) removeStaleLock() {
+	_ = os.Remove(filepath.Join(w.Dir, ".git", "index.lock"))
 }
 
 // Commit commits every change in the work tree. It reports false if there

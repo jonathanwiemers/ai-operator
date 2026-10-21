@@ -1,6 +1,9 @@
 package controller
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
@@ -181,9 +184,10 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      task.Name,
-			Namespace: task.Namespace,
-			Labels:    taskLabels(task),
+			Name:        task.Name,
+			Namespace:   task.Namespace,
+			Labels:      taskLabels(task),
+			Annotations: map[string]string{AnnotationAgentResources: resourcesHash(agents.Resources)},
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: agents.ServiceAccountName,
@@ -266,4 +270,22 @@ func serviceAccountTokenVolume() corev1.Volume {
 			},
 		},
 	}}
+}
+
+// AnnotationAgentResources holds a hash of the agent container's resources,
+// so a pod started with other ones is replaced between runs: the resources of
+// a running container cannot change.
+const AnnotationAgentResources = "ai.wiemers.me/agent-resources"
+
+func resourcesHash(r corev1.ResourceRequirements) string {
+	b, _ := json.Marshal(r)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:8])
+}
+
+// podOutdated reports whether pod was started with other agent resources than
+// spec asks for now. Pods from before the annotation count as current.
+func podOutdated(pod *corev1.Pod, spec aiv1.AgentProjectSpec) bool {
+	h, ok := pod.Annotations[AnnotationAgentResources]
+	return ok && h != resourcesHash(spec.Agents.Resources)
 }

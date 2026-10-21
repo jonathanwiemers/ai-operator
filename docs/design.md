@@ -211,6 +211,16 @@ Each pod has two containers, see [Security](#security):
   unix socket and git bundles in transit.
 * `/cache` is an optional RWX PVC shared by all agent pods (`GOMODCACHE`,
   `npm_config_cache`, `PIP_CACHE_DIR`, …).
+* The kubelet restarts a container that dies (e.g. `OOMKilled`) in place.
+  The operator, which watches the pods, records how the agent container last
+  stopped in `status.agentTermination`. A runner call that the agent server
+  never answered waits for the container to be ready again and for that
+  record (`internal/runner/agentlost.go`), then fails the run with the
+  reason, or resets the checkout and tries the call once more if the
+  container crashed for another reason than memory. Pods carry a hash of the
+  agent container's resources (`ai.wiemers.me/agent-resources`); a pod with
+  other ones is replaced between runs, so raised limits apply to the next
+  run.
 
 **Logging.** The runner records every run as numbered steps
 (`internal/runner/steps.go`): a start and an end line per step in its log,

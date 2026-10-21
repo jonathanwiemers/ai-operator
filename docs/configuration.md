@@ -156,7 +156,7 @@ then pauses on them.
 | `image` | operator's `--default-agent-image` (with Helm: the agent image of the same release) | agent image (see below) |
 | `credentialsSecretName` | – | see Secrets |
 | `serviceAccountName` | `ai-operator-agent` | |
-| `resources` | – | resources of the agent container (agent CLIs, builds, tests) |
+| `resources` | – | resources of the agent container (agent CLIs, builds, tests). Size the memory for the project's build and tests plus the CLI (about 1Gi); a container over its limit is killed (`OOMKilled`) and the run fails with that reason. Requests as high as the limits avoid kills when the node runs short |
 | `runnerResources` | 50m / 128Mi requests, 1Gi limit | resources of the runner container (GitLab, git mirror) |
 | `workspaceSize` | `10Gi` | per-task PVC |
 | `storageClassName` | cluster default | |
