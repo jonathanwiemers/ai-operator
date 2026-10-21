@@ -541,8 +541,9 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	case mr.SHA != run.PushedSHA:
 		return a.pause(ctx, fmt.Sprintf("the head of !%d (%s) is not the commit the agent pushed and CI checked (%s); someone pushed to the branch. "+
 			"Comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, short(mr.SHA), short(run.PushedSHA), wf.CommandPrefix, it.IID))
-	case !a.spec.CI.Disabled && task.Status.CI != nil && task.Status.CI.State == aiv1.CIStateNone && (mr.Draft || mr.DetailedMergeStatus == "draft_status") && !it.MarkedReady:
-		// No pipeline ran, and projects may skip pipelines for drafts: mark
+	case !a.spec.CI.Disabled && task.Status.CI != nil && task.Status.CI.State == aiv1.CIStateNone && !it.MarkedReady:
+		// No pipeline ran, and projects may skip pipelines for drafts (a run
+		// can also mark the MR ready without a push, which starts none): mark
 		// it ready and run CI before anything is merged.
 		return a.readyForCI(ctx, it, mr, task)
 	}
@@ -601,15 +602,19 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 func (a *autopilot) readyForCI(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask) error {
 	glProject := a.spec.GitLab.Project
 	wf := a.spec.Workflow
-	res, err := a.gl.UpdateMergeRequest(ctx, glProject, mr.IID, gitlab.UpdateMergeRequestOptions{Title: gitlab.ReadyTitle(mr.Title)})
-	switch {
-	case err != nil:
-		return a.pause(ctx, fmt.Sprintf("could not mark !%d ready: %v", mr.IID, err))
-	case res.Draft:
-		return a.pause(ctx, fmt.Sprintf("could not mark !%d ready (title %q); mark it ready by hand", mr.IID, res.Title))
+	if mr.Draft || mr.DetailedMergeStatus == "draft_status" {
+		res, err := a.gl.UpdateMergeRequest(ctx, glProject, mr.IID, gitlab.UpdateMergeRequestOptions{Title: gitlab.ReadyTitle(mr.Title)})
+		switch {
+		case err != nil:
+			return a.pause(ctx, fmt.Sprintf("could not mark !%d ready: %v", mr.IID, err))
+		case res.Draft:
+			return a.pause(ctx, fmt.Sprintf("could not mark !%d ready (title %q); mark it ready by hand", mr.IID, res.Title))
+		}
+		a.log.Info("autopilot marked the merge request ready to run CI", "mr", mr.IID)
 	}
+	// Also for an MR that was ready already: a draft after this is a human
+	// holding it.
 	it.MarkedReady = true
-	a.log.Info("autopilot marked the merge request ready to run CI", "mr", mr.IID)
 	if err := a.gl.CreateMergeRequestPipeline(ctx, glProject, mr.IID); err != nil {
 		if code := gitlab.StatusCode(err); code >= 400 && code < 500 {
 			// No merge request pipelines in this project (or no CI at all):

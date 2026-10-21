@@ -169,7 +169,12 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    is removed) before the push, so the push gets its pipeline even where
    pipelines skip draft MRs. If the run leaves blocker or major findings, a
    reviewer failed, or the agent asks questions, the MR goes back to draft.
-   An MR with only the start commit stays a draft.
+   An MR with only the start commit stays a draft, and so does an MR you
+   marked draft yourself after a run left it ready: that is your hold, mark
+   it ready to release it. Without reviewers configured, every
+   run with changes marks it ready; CI fix runs off autopilot are not
+   reviewed and leave the draft state as it is. A clean run that has nothing
+   new to push starts a merge request pipeline for the head it marked ready.
 7. The branch is pushed and the report is posted on the MR. If the agent has
    questions, they are also posted on the issue.
 8. The agent's decisions are posted on the issue (see
@@ -179,9 +184,10 @@ If the agent has questions, the issue moves to **`agent::needs-input`**.
 Otherwise it stays in `agent::working` until the MR pipeline has run; failing
 jobs (lint, tests, …) go back to the agent (see [CI feedback](#ci-feedback)),
 and the issue moves to **`agent::review`** once the pipeline is green.
-"Review" therefore always means: reviewed, tests and CI pass, the MR is ready,
-a human can look and merge. On [autopilot](#autopilot-a-milestone-end-to-end)
-the operator merges it.
+After a clean run "review" means: reviewed, tests and CI pass, the MR is
+ready, a human can look and merge. A draft in review still has findings the
+run report lists (and, where pipelines skip drafts, no CI). On
+[autopilot](#autopilot-a-milestone-end-to-end) the operator merges it.
 
 So an issue's MR goes: draft MR → code → review → ready → pipeline → CI fixes
 if needed → merge (by you, or by autopilot).
@@ -218,9 +224,9 @@ merged-results and merge request pipelines. The MR is marked ready before a
 clean run pushes, so pipelines that skip draft MRs run too. A push of a run
 that left problems is a draft; if your pipelines skip drafts, it gets no
 pipeline and moves to review after `ci.noPipelineTimeout`. Autopilot never
-merges such an MR without CI: its gate pauses on the findings, and a draft it
-still meets is marked ready and gets a pipeline first (see [the merge
-gate](#the-merge-gate)).
+merges such an MR without CI: its gate pauses on the findings, and an MR whose
+head had no pipeline is marked ready if needed and gets a pipeline first (see
+[the merge gate](#the-merge-gate)).
 
 ## Merge conflicts
 

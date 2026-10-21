@@ -451,7 +451,9 @@ stateDiagram-v2
 * **Merge gate.** Issue in review (the CI loop finished), last run
   succeeded, `blockingFindings == 0`, `reviewErrors == 0`,
   `reviewedSHA == pushedSHA`, MR open with head `pushedSHA`, GitLab's
-  `detailed_merge_status` mergeable. The draft is marked ready by its title,
+  `detailed_merge_status` mergeable. Clean runs mark the MR ready
+  themselves; a draft the gate still meets is marked ready by its title
+  (and, if its head had no pipeline, gets a merge request pipeline first),
   and `PUT …/merge` passes the checked `sha`.
 * **Rebase.** On `need_rebase` the operator hashes the MR's change (files,
   added and removed lines, no positions) and asks GitLab to rebase once. The
@@ -645,7 +647,7 @@ flowchart LR
   `agent/*` branches and opens draft MRs.
 
 **Remaining risks.** The model can still push arbitrary content to its own
-`agent/*` branch (by design; humans review the draft MR) and write anything
+`agent/*` branch (by design; humans review the MR) and write anything
 into the summaries posted on GitLab. CI pipelines of agent branches run
 untrusted code: don't expose protected CI variables to unprotected branches.
 

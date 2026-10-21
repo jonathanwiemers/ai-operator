@@ -473,8 +473,9 @@ type AutopilotItem struct {
 	// +optional
 	RebasedAt *metav1.Time `json:"rebasedAt,omitempty"`
 
-	// MarkedReady is set once the operator marked the draft MR ready. A
-	// draft again after that is a human holding it.
+	// MarkedReady is set once the operator marked the draft MR ready, or
+	// found it ready, to run CI. A draft again after that is a human holding
+	// it, or a run that left problems.
 	// +optional
 	MarkedReady bool `json:"markedReady,omitempty"`
 

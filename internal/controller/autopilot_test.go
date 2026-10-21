@@ -749,6 +749,24 @@ func TestAutopilotRunsCIBeforeMergingADraftWithoutPipeline(t *testing.T) {
 	}
 }
 
+// A run can mark the MR ready without pushing (its last push was a draft's):
+// the head still had no pipeline, so CI runs before the merge all the same.
+func TestAutopilotRunsCIBeforeMergingAReadyMRWithoutPipeline(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.CI = &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateNone} })
+	e.gl.MRs[1].Title, e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = "issue", false, "mergeable"
+	title := e.gl.MRs[1].Title
+	e.reconcile()
+	if !slices.Equal(e.gl.MRPipelines, []int64{1}) || e.tasks()[name].Status.CI != nil || !e.gl.Issues[1].HasLabel("agent::working") ||
+		len(e.gl.Merged) != 0 || e.gl.MRs[1].Title != title || !e.autopilot().Items[0].MarkedReady {
+		t.Fatalf("a ready MR without pipeline must be checked by CI first: pipelines %v, labels %v, merged %v, title %q",
+			e.gl.MRPipelines, e.gl.Labels(1), e.gl.Merged, e.gl.MRs[1].Title)
+	}
+}
+
 func TestAutopilotMergesWhenNoMergeRequestPipelineIsPossible(t *testing.T) {
 	e := newAutopilotEnv(t)
 	e.reconcile()
