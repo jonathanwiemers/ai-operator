@@ -25,11 +25,10 @@ import (
 //	canceled                        -> review, with a note
 //	no pipeline after a timeout     -> review (no CI for this commit)
 //
-// Pipelines can start after the loop is done: a project that skips pipelines
-// for drafts runs one once the MR is marked ready, and people re-run them. So
-// for an issue in review the MR's head pipeline is watched too: a new one for
-// the pushed commit that runs or fails moves the issue back to working, and
-// the loop above takes over.
+// Pipelines can start after the loop is done: in projects that skip
+// pipelines for drafts, one started after the MR was marked ready; and people
+// run and retry them. So for an issue in review the MR's head pipeline is
+// watched too, see syncReviewCI.
 func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, mr *gitlab.MergeRequest) error {
 	run := task.Status.Run
 	if spec.CI.Disabled || run.PushedSHA == "" || task.RunPending() {
@@ -41,7 +40,7 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 		head = mr.HeadPipeline
 	}
 	if is.HasLabel(spec.Workflow.ReviewLabel) {
-		return r.newPipeline(ctx, gl, spec, is, task, head)
+		return r.syncReviewCI(ctx, gl, spec, is, task, head)
 	}
 	if !is.HasLabel(spec.Workflow.WorkingLabel) {
 		return nil
@@ -145,29 +144,67 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 	return r.patchCI(ctx, task, ci)
 }
 
-// newPipeline follows a pipeline of the pushed commit that started after the
-// CI loop was done, while the issue is in review. A green, skipped, manual or
-// canceled one is only recorded; one that runs or failed sends the issue back
-// to working, so the loop retries it and asks the agent to fix it.
-func (r *AgentProjectReconciler) newPipeline(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, head *gitlab.Pipeline) error {
+// syncReviewCI watches the CI of an issue in review. A loop that is not done
+// (a label move that failed, a CI fix run that pushed nothing and so ended in
+// review) goes back to working, where it finishes. A new head pipeline of the
+// pushed commit, or a canceled or base-failing one that was retried, is
+// followed: green is recorded as success, canceled only recorded; running or
+// red resets the loop and sends the issue back to working, so the pipeline is
+// retried and the agent asked to fix it.
+func (r *AgentProjectReconciler) syncReviewCI(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, head *gitlab.Pipeline) error {
 	cur := task.Status.CI
-	if head == nil || cur == nil || cur.SHA != task.Status.Run.PushedSHA || cur.PipelineID == head.ID {
+	if cur == nil || cur.SHA != task.Status.Run.PushedSHA {
 		return nil
 	}
+	if !cur.State.Final() {
+		return r.backToWorking(ctx, gl, spec, is)
+	}
+	if head == nil || !pipelineChanged(cur, head) {
+		return nil
+	}
+	ci := cur.DeepCopy()
+	ci.PipelineID, ci.PipelineURL = head.ID, head.WebURL
 	switch head.Status {
-	case "success", "skipped", "manual", "canceled":
-		ci := cur.DeepCopy()
-		ci.PipelineID, ci.PipelineURL = head.ID, head.WebURL
+	case "success", "skipped", "manual":
+		ci.State, ci.FailedJobs = aiv1.CIStateSuccess, nil
+		return r.patchCI(ctx, task, ci)
+	case "canceled":
+		if ci.State != aiv1.CIStateSuccess {
+			ci.State = aiv1.CIStateCanceled
+		}
 		return r.patchCI(ctx, task, ci)
 	}
-	wf := spec.Workflow
 	log.FromContext(ctx).Info("new pipeline for the pushed commit, following it", "task", task.Name, "pipeline", head.ID, "status", head.Status)
+	// The status first: if the label move fails, the next poll retries it.
+	if err := r.patchCI(ctx, task, &aiv1.CIStatus{SHA: cur.SHA, State: aiv1.CIStatePending, PipelineID: head.ID, PipelineURL: head.WebURL}); err != nil {
+		return err
+	}
+	return r.backToWorking(ctx, gl, spec, is)
+}
+
+// pipelineChanged reports whether the head pipeline is not the one the CI
+// loop ended with: another pipeline, or the same one retried since it was
+// canceled or failed with the default branch.
+func pipelineChanged(cur *aiv1.CIStatus, head *gitlab.Pipeline) bool {
+	switch {
+	case head.ID != cur.PipelineID:
+		return true
+	case cur.State == aiv1.CIStateCanceled:
+		return head.Status != "canceled"
+	case cur.State == aiv1.CIStateBaseFailing:
+		return head.Status != "failed"
+	}
+	return false
+}
+
+func (r *AgentProjectReconciler) backToWorking(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue) error {
+	wf := spec.Workflow
 	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{
 		AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel},
 	}); err != nil {
 		return fmt.Errorf("moving issue #%d to %q: %w", is.IID, wf.WorkingLabel, err)
 	}
-	return r.patchCI(ctx, task, &aiv1.CIStatus{SHA: cur.SHA, State: aiv1.CIStatePending, PipelineID: head.ID, PipelineURL: head.WebURL})
+	return nil
 }
 
 // baseFailing reports whether every failing job also fails in the latest

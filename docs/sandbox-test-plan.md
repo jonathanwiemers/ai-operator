@@ -404,8 +404,8 @@ with the failing job named.
 
 **Expected:** within a poll the issue goes back to `agent::working`; the new
 pipeline is retried once, then the agent gets a CI fix run for it, as in
-step 1. Running a new pipeline that stays green (before adding the job)
-leaves the issue in review.
+step 1. A new pipeline that passes (before adding the job) sends the issue to
+`agent::working` while it runs and back to `agent::review` when green.
 
 ## 3. When something fails
 

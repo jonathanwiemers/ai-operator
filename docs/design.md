@@ -355,14 +355,17 @@ stateDiagram-v2
 Green states move the issue to `agent::review`, `Failed` to
 `agent::needs-input`.
 
-The loop ending does not mean no pipeline follows: projects that skip
-pipelines for drafts run one once the MR is ready, and people re-run them.
-For an issue in `agent::review` the controller compares the MR's head
-pipeline (from the MR it fetches on every poll anyway) with
-`status.ci.pipelineID`. A new pipeline of the pushed commit that runs or
-failed resets `status.ci` to `Pending` and moves the issue back to
-`agent::working`; a green, manual or canceled one only replaces the recorded
-pipeline.
+The loop ending does not mean no pipeline follows: in projects that skip
+pipelines for drafts, one is started after the MR is marked ready, and people
+run and retry them. For an issue in `agent::review` the controller compares
+the MR's head pipeline (from the MR it fetches on every poll anyway) with
+`status.ci`. A new pipeline of the pushed commit, or a `Canceled` or
+`BaseFailing` one that was retried, that runs or failed resets `status.ci` to
+`Pending` (first, so a failed label move is retried) and moves the issue back
+to `agent::working`; a green one sets `Success`, a canceled one is only
+recorded. A loop that is not final while the issue is in review (a CI fix run
+that pushed nothing ends in review) also goes back to working, where it
+finishes.
 
 ## Merge conflicts
 

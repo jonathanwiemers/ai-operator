@@ -339,3 +339,49 @@ func TestCIRecordsALaterGreenPipeline(t *testing.T) {
 		t.Fatalf("labels %v", e.gl.Labels(42))
 	}
 }
+
+// A canceled pipeline retried later, or a new one, that passes counts as
+// green: the loop no longer reports it canceled.
+func TestCIRecordsAGreenRetryAfterCancel(t *testing.T) {
+	for _, retried := range []bool{true, false} {
+		e := newCIEnv(t, "sha1")
+		mr := e.ciMR("sha1")
+		pid := e.gl.AddPipeline("sha1", "agent/42", "canceled")
+		mr.HeadPipeline = &gitlab.Pipeline{ID: pid}
+		e.reconcile()
+		if e.ciState() != aiv1.CIStateCanceled {
+			t.Fatalf("state %s", e.ciState())
+		}
+		if retried {
+			e.gl.SetPipelineStatus(pid, "success")
+		} else {
+			pid = e.gl.AddPipeline("sha1", "agent/42", "success")
+			mr.HeadPipeline = &gitlab.Pipeline{ID: pid}
+		}
+		e.reconcile()
+		ci := e.ciTask().Status.CI
+		if ci.State != aiv1.CIStateSuccess || ci.PipelineID != pid || !slices.Equal(e.gl.Labels(42), []string{"agent::review"}) {
+			t.Fatalf("retried=%v: %+v labels %v", retried, ci, e.gl.Labels(42))
+		}
+	}
+}
+
+// A loop that is not done is finished in working, also if the issue reached
+// review: a CI fix run that pushed nothing moves it there.
+func TestCIUnfinishedLoopInReviewGoesBackToWorking(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	pid := e.gl.AddPipeline("sha1", "agent/42", "failed", failedTest())
+	e.reconcile() // retry
+	e.gl.SetPipelineStatus(pid, "failed")
+	e.reconcile() // fix requested
+	e.agentPushed("sha1", 0, pid)
+	e.gl.SetLabels(42, "agent::review") // the runner had nothing to push
+	e.reconcile()
+	if !slices.Equal(e.gl.Labels(42), []string{"agent::working"}) {
+		t.Fatalf("labels %v", e.gl.Labels(42))
+	}
+	e.reconcile()
+	if e.ciState() != aiv1.CIStateFailed || !slices.Equal(e.gl.Labels(42), []string{"agent::needs-input"}) || !strings.Contains(e.notes(), "could not fix") {
+		t.Fatalf("state %s labels %v notes %q", e.ciState(), e.gl.Labels(42), e.notes())
+	}
+}

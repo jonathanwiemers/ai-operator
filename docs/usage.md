@@ -210,13 +210,15 @@ before it merges (see [the merge gate](#the-merge-gate)); without autopilot,
 mark the MR ready and run its pipeline yourself.
 
 While the issue is in `agent::review`, the operator keeps watching the MR's
-head pipeline. A new pipeline for the agent's commit – one that only ran once
-the MR was marked ready, or one you started – that is running or red sends
-the issue back to `agent::working`, and the loop above takes over: retry, CI
-fix run, review. A new green, manual or canceled one is only recorded. So a
-job such as "add a changelog entry" that only runs for ready MRs gets fixed
-by the agent too, as far as code can fix it: the agent can add the file the
-job asks for, but it cannot set labels on the MR.
+head pipeline. GitLab starts no pipeline when a draft is marked ready, but one
+started afterwards (by you, or by autopilot) or a canceled pipeline you retry
+is followed: while it runs or once it is red the issue goes back to
+`agent::working`, and the loop above takes over: retry, CI fix run, review.
+One that is already green when the operator first sees it counts as green
+right away and the issue stays in review. So a job such as "add a changelog
+entry" that only runs for ready MRs gets fixed by the agent too, as far as
+code can fix it: the agent can add the file the job asks for, but it cannot
+set labels on the MR.
 
 ## Merge conflicts
 
