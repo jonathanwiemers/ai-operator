@@ -687,3 +687,40 @@ func TestAutopilotIgnoresRelatesToLinks(t *testing.T) {
 		t.Fatalf("relates_to has no direction and does not block: %+v", ap)
 	}
 }
+
+func TestAutopilotLinkEdgeCases(t *testing.T) {
+	t.Run("deleted pending issue", func(t *testing.T) {
+		e := newAutopilotEnv(t)
+		delete(e.gl.Issues, 1)
+		e.reconcile() // must not fail on the links of a missing issue
+		if ap := e.autopilot(); ap.Items[0].State != aiv1.AutopilotItemSkipped {
+			t.Fatalf("a deleted issue is skipped: %+v", ap.Items)
+		}
+	})
+	t.Run("other project", func(t *testing.T) {
+		e := newAutopilotEnv(t)
+		// Local #2 exists in the queue; the link is to #2 of another project.
+		foreign := gitlab.LinkedIssue{IID: 2, ProjectID: 77, State: "opened", LinkType: gitlab.LinkIsBlockedBy}
+		foreign.References.Full = "infra/ops#2"
+		e.gl.ForeignLinks = map[int64][]gitlab.LinkedIssue{1: {foreign}}
+		e.reconcile()
+		ap := e.autopilot()
+		if ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "#1 is blocked by infra/ops#2 (issue link)") {
+			t.Fatalf("a link to another project's issue must name it: %+v", ap)
+		}
+	})
+	t.Run("dropped plan dependency", func(t *testing.T) {
+		e := newAutopilotEnv(t)
+		// The operator linked #1 to #2 for a dependency the plan dropped.
+		if err := e.gl.CreateIssueLink(e.ctx, "g/p", 1, 2, gitlab.LinkIsBlockedBy); err != nil {
+			t.Fatal(err)
+		}
+		e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+			s.Plan = []aiv1.PlannedIssue{{Key: "api", IID: 1, Linked: []int64{2}}, {Key: "ui", IID: 2}}
+		})
+		e.reconcile()
+		if ap := e.autopilot(); ap.Items[0].IID != 1 || ap.Items[0].State != aiv1.AutopilotItemActive {
+			t.Fatalf("a stale link the operator made must not block: %+v", ap)
+		}
+	})
+}

@@ -47,6 +47,8 @@ type Fake struct {
 	// Free does.
 	Links    []Link
 	FreeTier bool
+	// ForeignLinks are links of an issue to issues of other projects.
+	ForeignLinks map[int64][]gitlab.LinkedIssue
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
 }
@@ -451,7 +453,7 @@ func (f *Fake) ListIssueLinks(_ context.Context, _ string, iid int64) ([]gitlab.
 			add(l.From, inverseLink(l.Type), l.ID)
 		}
 	}
-	return out, nil
+	return append(out, f.ForeignLinks[iid]...), nil
 }
 
 func (f *Fake) CreateIssueLink(_ context.Context, _ string, iid, target int64, linkType string) error {

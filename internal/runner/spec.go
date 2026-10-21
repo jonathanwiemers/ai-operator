@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -110,7 +111,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	}
 	out.Plan = planOrder(plan, after)
 	s.done(fmt.Sprintf("%d issues in plan order", len(out.Plan)), "issues", len(out.Plan))
-	r.linkDependencies(ctx, gl, glProject, spec.Workflow, out.Plan, task.Status.Plan, after)
+	r.linkDependencies(ctx, gl, glProject, proj.ID, spec.Workflow, out.Plan, task.Status.Plan, after)
 	out.Result = aiv1.RunResultSucceeded
 	out.Summary = fmt.Sprintf("%s\n\nIssues: %d created, %d updated, %d left untouched.", strings.TrimSpace(plan.Summary), created, updated, skipped)
 	return out, nil
@@ -301,19 +302,22 @@ func profileLabels(spec aiv1.AgentProjectSpec, item PlannedItem) []string {
 // linkDependencies mirrors the plan's dependencies as GitLab issue links, so
 // GitLab shows them on the issues and boards: "is blocked by" where the
 // instance has blocking links (Premium), "relates to" otherwise (Free). Only
-// draft issues are touched, and of their links only those of dependencies
-// the plan added or dropped since the last plan: links humans made stay. It
-// is best effort: the plan is applied already, and the description lists the
-// dependencies anyway.
-func (r *Runner) linkDependencies(ctx context.Context, gl gitlab.API, glProject string, wf aiv1.WorkflowSpec, plan, prev []aiv1.PlannedIssue, issues []gitlab.Issue) {
+// draft issues are touched. The links the operator made are recorded in the
+// plan (Linked), and only those are removed when the plan drops a
+// dependency: links humans made, or removed, are theirs. It is best effort:
+// the plan is applied already, and the description lists the dependencies.
+func (r *Runner) linkDependencies(ctx context.Context, gl gitlab.API, glProject string, projectID int64, wf aiv1.WorkflowSpec, plan, prev []aiv1.PlannedIssue, issues []gitlab.Issue) {
 	s := r.step(ctx, "link dependencies")
-	res := syncLinks(ctx, s.log, gl, glProject, wf, plan, prev, issues)
+	res := syncLinks(ctx, s.log, gl, glProject, projectID, wf, plan, prev, issues)
+	result := fmt.Sprintf("%d created, %d removed", res.created, res.removed)
+	if res.created > 0 {
+		result += " (" + res.linkType + ")"
+	}
 	if len(res.errs) > 0 {
-		_ = s.fail(fmt.Errorf("%d created, %d removed, failed: %s", res.created, res.removed, strings.Join(res.errs, "; ")))
+		_ = s.fail(fmt.Errorf("%s, failed: %s", result, strings.Join(res.errs, "; ")))
 		return
 	}
-	s.done(fmt.Sprintf("%d created, %d removed (%s)", res.created, res.removed, res.linkType),
-		"created", res.created, "removed", res.removed, "type", res.linkType)
+	s.done(result, "created", res.created, "removed", res.removed, "type", res.linkType)
 }
 
 type linkResult struct {
@@ -322,73 +326,104 @@ type linkResult struct {
 	errs             []string
 }
 
-func syncLinks(ctx context.Context, log logr.Logger, gl gitlab.API, glProject string, wf aiv1.WorkflowSpec, plan, prev []aiv1.PlannedIssue, issues []gitlab.Issue) linkResult {
+// syncLinks creates and removes the links and records them in plan[i].Linked.
+func syncLinks(ctx context.Context, log logr.Logger, gl gitlab.API, glProject string, projectID int64, wf aiv1.WorkflowSpec, plan, prev []aiv1.PlannedIssue, issues []gitlab.Issue) linkResult {
 	byIID := map[int64]gitlab.Issue{}
 	for _, is := range issues {
 		byIID[is.IID] = is
 	}
-	before := map[int64][]int64{}
+	before := map[int64]aiv1.PlannedIssue{}
 	for _, p := range prev {
-		before[p.IID] = p.DependsOn
+		before[p.IID] = p
 	}
-	linkType := gitlab.LinkIsBlockedBy
-	created, removed := 0, 0
-	var errs []string
-	for _, p := range plan {
-		is, ok := byIID[p.IID]
-		if !ok || !plannedDraft(is, wf) {
+	res := linkResult{linkType: gitlab.LinkIsBlockedBy}
+	for i := range plan {
+		p := &plan[i]
+		old := before[p.IID]
+		if is, ok := byIID[p.IID]; !ok || !plannedDraft(is, wf) {
+			p.Linked = old.Linked // not touched; what was linked stays recorded
 			continue
 		}
-		var stale []int64
-		for _, d := range before[p.IID] {
+		// Dependencies linked before stay linked (or unlinked, if a human
+		// removed the link); those the plan dropped are unlinked.
+		var stale, wanted []int64
+		for _, d := range old.Linked {
 			if !slices.Contains(p.DependsOn, d) {
 				stale = append(stale, d)
 			}
 		}
-		if len(p.DependsOn) == 0 && len(stale) == 0 {
+		for _, d := range p.DependsOn {
+			if slices.Contains(old.Linked, d) {
+				p.Linked = append(p.Linked, d)
+			} else {
+				wanted = append(wanted, d)
+			}
+		}
+		if len(wanted) == 0 && len(stale) == 0 {
 			continue
 		}
 		links, err := gl.ListIssueLinks(ctx, glProject, p.IID)
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("#%d: %v", p.IID, err))
+			res.errs = append(res.errs, fmt.Sprintf("#%d: %v", p.IID, err))
+			p.Linked = append(p.Linked, stale...) // try again next time
 			continue
 		}
 		linked := map[int64]gitlab.LinkedIssue{}
 		for _, l := range links {
-			linked[l.IID] = l
-		}
-		for _, d := range p.DependsOn {
-			if _, ok := linked[d]; ok {
-				continue // linked already, by the plan or by a human
+			if l.ProjectID == projectID {
+				linked[l.IID] = l
 			}
-			err := gl.CreateIssueLink(ctx, glProject, p.IID, d, linkType)
-			if code := gitlab.StatusCode(err); linkType == gitlab.LinkIsBlockedBy && (code == 400 || code == 403 || code == 422) {
-				// No blocking links on this instance (GitLab Free).
-				log.Info("blocking issue links not available, using relates_to", "status", code)
-				linkType = gitlab.LinkRelatesTo
-				err = gl.CreateIssueLink(ctx, glProject, p.IID, d, linkType)
+		}
+		for _, d := range wanted {
+			if _, ok := linked[d]; ok {
+				continue // a human linked it already: their link
+			}
+			err := gl.CreateIssueLink(ctx, glProject, p.IID, d, res.linkType)
+			if res.linkType == gitlab.LinkIsBlockedBy && noBlockingLinks(err) {
+				log.Info("blocking issue links not available, using relates_to", "error", err.Error())
+				res.linkType = gitlab.LinkRelatesTo
+				err = gl.CreateIssueLink(ctx, glProject, p.IID, d, res.linkType)
 			}
 			switch {
-			case gitlab.StatusCode(err) == 409: // linked meanwhile
+			case gitlab.StatusCode(err) == 409: // linked meanwhile, not by the operator
 			case err != nil:
-				errs = append(errs, fmt.Sprintf("#%d → #%d: %v", p.IID, d, err))
+				res.errs = append(res.errs, fmt.Sprintf("#%d → #%d: %v", p.IID, d, err))
 			default:
-				created++
+				res.created++
+				p.Linked = append(p.Linked, d)
 			}
 		}
 		for _, d := range stale {
 			l, ok := linked[d]
-			if !ok || (l.LinkType != gitlab.LinkIsBlockedBy && l.LinkType != gitlab.LinkRelatesTo) {
-				continue
+			if !ok {
+				continue // removed by a human already
 			}
 			if err := gl.DeleteIssueLink(ctx, glProject, p.IID, l.IssueLinkID); err != nil && !gitlab.IsNotFound(err) {
-				errs = append(errs, fmt.Sprintf("unlinking #%d from #%d: %v", p.IID, d, err))
+				res.errs = append(res.errs, fmt.Sprintf("unlinking #%d from #%d: %v", p.IID, d, err))
+				p.Linked = append(p.Linked, d) // try again next time
 				continue
 			}
-			removed++
+			res.removed++
 		}
 	}
-	return linkResult{created: created, removed: removed, linkType: linkType, errs: errs}
+	return res
+}
+
+// noBlockingLinks reports whether GitLab refused a blocking link because the
+// instance has none (GitLab Free), as opposed to, say, a missing permission.
+func noBlockingLinks(err error) bool {
+	var gerr *gitlab.Error
+	if !errors.As(err, &gerr) {
+		return false
+	}
+	switch gerr.StatusCode {
+	case 400, 422:
+		return true
+	case 403:
+		body := strings.ToLower(gerr.Body)
+		return strings.Contains(body, "blocked issues") || strings.Contains(body, "subscription") || strings.Contains(body, "licen")
+	}
+	return false
 }
 
 // plannedDraft reports whether a planned issue is still a draft the plan may

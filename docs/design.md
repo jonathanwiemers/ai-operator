@@ -392,13 +392,17 @@ stateDiagram-v2
   against what is really there.
 * **Issue links.** The spec run mirrors the plan's dependencies as GitLab
   issue links (`link dependencies` step): `is_blocked_by`, or `relates_to`
-  when GitLab refuses blocking links (Free). On a re-plan only drafts are
-  touched, and only links of dependencies the previous `status.plan` had and
-  the new one dropped are removed, so links humans made stay. The step is
-  best effort: the plan is applied already and the description lists the
-  dependencies. When picking the next issue, autopilot also waits for open
-  issues the candidate is linked `is_blocked_by` to, which lets humans order
-  work with links (Premium). `relates_to` has no direction and is ignored.
+  when GitLab refuses blocking links (Free: 400/422, or 403 naming the
+  subscription). The links it made are recorded per issue in
+  `status.plan[].linked`; on a re-plan only drafts are touched, and only
+  those recorded links are removed when the plan drops a dependency. Links
+  humans made stay, and a recorded link a human removed is not made again.
+  Links are matched by project and IID. The step is best effort: the plan is
+  applied already and the description lists the dependencies. When picking
+  the next issue, autopilot also waits for open issues the candidate is
+  linked `is_blocked_by` to (also in other projects), except stale links of
+  dependencies the plan dropped, which lets humans order work with links
+  (Premium). `relates_to` has no direction and is ignored.
 * **No questions.** Spec and implement tasks of the milestone carry
   `spec.autopilot`; the runner then adds a short paragraph to the *user*
   prompt (the system prompts stay the same and cached): never ask, take the

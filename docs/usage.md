@@ -122,11 +122,13 @@ the boards show them:
   **relates to** links, which have no direction. The `Depends on` list in the
   description stays the record of the order.
 
-A re-plan adds links for new dependencies and removes the links of
-dependencies it dropped, on drafts only. Links you add or keep by hand are left
-alone. On autopilot, an **is blocked by** link you add (Premium) holds an
-issue back until the linked issue is closed, even if the plan does not list
-it, so you can order or block work right on the issue.
+A re-plan adds links for new dependencies and removes the links it made for
+dependencies it dropped, on drafts only. Links you made are never removed,
+and a link of the plan you remove stays removed. On autopilot, an **is
+blocked by** link you add (Premium) holds an issue back until the linked
+issue is closed, even if the plan does not list it or it is in another
+project, so you can order or block work right on the issue. The run log's
+`link dependencies` step says which link type was used.
 
 ## 2. Answer questions and hand the issue over
 
@@ -547,7 +549,7 @@ kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server: 
 fix run can push commits after it).
 
 The spec task of a milestone holds the plan in `status.plan` (issues in plan
-order with their dependencies) and, on autopilot, the queue in
+order with their dependencies, and the dependencies the operator linked) and, on autopilot, the queue in
 `status.autopilot`: `phase`, `pausedReason`, `trackingIssueIID` and one item
 per issue with its state, MR, merged commit and decisions (`revisitOf` for a
 follow-up). `status.revisits` tracks the [revisits after the

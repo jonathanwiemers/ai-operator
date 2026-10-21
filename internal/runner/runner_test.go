@@ -639,7 +639,7 @@ func TestSpecEndToEnd(t *testing.T) {
 		t.Fatalf("steps:\n got %v\nwant %v", got, wantSteps)
 	}
 	// The plan is recorded in plan order, with dependencies as IIDs.
-	wantPlan := []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API"}, {Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}}}
+	wantPlan := []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API"}, {Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}, Linked: []int64{1}}}
 	if !equality.Semantic.DeepEqual(got.Status.Plan, wantPlan) {
 		t.Fatalf("plan:\n got %+v\nwant %+v", got.Status.Plan, wantPlan)
 	}
@@ -667,13 +667,30 @@ func TestSyncLinks(t *testing.T) {
 		all, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{State: "all"})
 		return all
 	}
-	plan := []aiv1.PlannedIssue{{IID: 1}, {IID: 2, DependsOn: []int64{1}}, {IID: 3, DependsOn: []int64{1, 2}}}
+	plan := func() []aiv1.PlannedIssue {
+		return []aiv1.PlannedIssue{{IID: 1}, {IID: 2, DependsOn: []int64{1}}, {IID: 3, DependsOn: []int64{1, 2}}}
+	}
+	sync := func(gl *gitlabfake.Fake, next, prev []aiv1.PlannedIssue) linkResult {
+		return syncLinks(ctx, logr.Discard(), gl, "g/p", gl.Project.ID, wf, next, prev, issues(gl))
+	}
+	has := func(gl *gitlabfake.Fake, from, to int64) bool {
+		for _, l := range gl.Links {
+			if (l.From == from && l.To == to) || (l.From == to && l.To == from) {
+				return true
+			}
+		}
+		return false
+	}
 
 	t.Run("premium", func(t *testing.T) {
 		gl := setup(false)
-		res := syncLinks(ctx, logr.Discard(), gl, "g/p", wf, plan, nil, issues(gl))
+		first := plan()
+		res := sync(gl, first, nil)
 		if res.created != 3 || res.linkType != gitlab.LinkIsBlockedBy || len(res.errs) != 0 {
 			t.Fatalf("unexpected result %+v", res)
+		}
+		if !slices.Equal(first[2].Linked, []int64{1, 2}) {
+			t.Fatalf("the links made must be recorded: %+v", first)
 		}
 		// Seen from #1, it blocks the others.
 		links, _ := gl.ListIssueLinks(ctx, "g/p", 1)
@@ -681,14 +698,15 @@ func TestSyncLinks(t *testing.T) {
 			t.Fatalf("unexpected links of #1 %+v", links)
 		}
 		// Idempotent.
-		if res := syncLinks(ctx, logr.Discard(), gl, "g/p", wf, plan, plan, issues(gl)); res.created != 0 || res.removed != 0 {
-			t.Fatalf("a second sync must change nothing: %+v", res)
+		again := plan()
+		if res := sync(gl, again, first); res.created != 0 || res.removed != 0 || !slices.Equal(again[2].Linked, []int64{1, 2}) {
+			t.Fatalf("a second sync must change nothing: %+v %+v", res, again)
 		}
 	})
 
 	t.Run("free", func(t *testing.T) {
 		gl := setup(true)
-		res := syncLinks(ctx, logr.Discard(), gl, "g/p", wf, plan, nil, issues(gl))
+		res := sync(gl, plan(), nil)
 		if res.created != 3 || res.linkType != gitlab.LinkRelatesTo || len(res.errs) != 0 {
 			t.Fatalf("Free falls back to relates_to: %+v", res)
 		}
@@ -699,28 +717,36 @@ func TestSyncLinks(t *testing.T) {
 		}
 	})
 
-	t.Run("replan", func(t *testing.T) {
+	t.Run("replan keeps human links", func(t *testing.T) {
 		gl := setup(false)
-		syncLinks(ctx, logr.Discard(), gl, "g/p", wf, plan, nil, issues(gl))
-		// A human links #3 to #4; the plan drops #3's dependency on #2.
+		// A human linked #3 to #2 before the plan wanted it, and #3 to #4.
+		_ = gl.CreateIssueLink(ctx, "g/p", 3, 2, gitlab.LinkRelatesTo)
 		_ = gl.CreateIssueLink(ctx, "g/p", 3, 4, gitlab.LinkIsBlockedBy)
-		// #2 was handed over: its links stay.
+		first := plan()
+		sync(gl, first, nil)
+		if !slices.Equal(first[2].Linked, []int64{1}) {
+			t.Fatalf("the human's link to #2 is not the operator's: %+v", first[2])
+		}
+		// The plan drops #3's dependencies on #1 and #2; #2 was handed over.
 		gl.SetLabels(2, "ai-generated", "agent::working")
-		next := []aiv1.PlannedIssue{{IID: 1}, {IID: 2}, {IID: 3, DependsOn: []int64{1}}}
-		res := syncLinks(ctx, logr.Discard(), gl, "g/p", wf, next, plan, issues(gl))
-		if res.removed != 1 || res.created != 0 {
-			t.Fatalf("only the dropped dependency is unlinked: %+v", res)
+		next := []aiv1.PlannedIssue{{IID: 1}, {IID: 2}, {IID: 3}}
+		res := sync(gl, next, first)
+		if res.removed != 1 || has(gl, 3, 1) || !has(gl, 3, 2) || !has(gl, 3, 4) || !has(gl, 2, 1) {
+			t.Fatalf("only the operator's link to #1 is removed: %+v, links %+v", res, gl.Links)
 		}
-		has := func(from, to int64) bool {
-			for _, l := range gl.Links {
-				if (l.From == from && l.To == to) || (l.From == to && l.To == from) {
-					return true
-				}
-			}
-			return false
+		if !slices.Equal(next[1].Linked, []int64{1}) {
+			t.Fatalf("a handed-over issue keeps its record: %+v", next[1])
 		}
-		if has(3, 2) || !has(3, 4) || !has(2, 1) || !has(3, 1) {
-			t.Fatalf("unexpected links after the re-plan %+v", gl.Links)
+	})
+
+	t.Run("a link a human removed stays removed", func(t *testing.T) {
+		gl := setup(false)
+		first := plan()
+		sync(gl, first, nil)
+		links, _ := gl.ListIssueLinks(ctx, "g/p", 2)
+		_ = gl.DeleteIssueLink(ctx, "g/p", 2, links[0].IssueLinkID)
+		if res := sync(gl, plan(), first); res.created != 0 || has(gl, 2, 1) {
+			t.Fatalf("the plan must not re-create a link a human removed: %+v", res)
 		}
 	})
 }

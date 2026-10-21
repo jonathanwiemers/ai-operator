@@ -179,6 +179,9 @@ type LinkedIssue struct {
 	Title       string `json:"title"`
 	IssueLinkID int64  `json:"issue_link_id"`
 	LinkType    string `json:"link_type"`
+	References  struct {
+		Full string `json:"full"`
+	} `json:"references"`
 }
 
 // StateEvent is a state change of an issue: closed, reopened.
