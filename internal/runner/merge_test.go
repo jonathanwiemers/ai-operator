@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab/gitlabfake"
 )
 
@@ -321,6 +323,151 @@ func TestLiveProgressOnTheMergeRequest(t *testing.T) {
 		if len(notes) != 1 || !strings.Contains(notes[0].Body, "❌ The run failed") || !strings.Contains(notes[0].Body, "❌ failed") ||
 			strings.Contains(notes[0].Body, "<details open>") {
 			t.Fatalf("a failed run leaves its run log on the MR: %+v", notes)
+		}
+	})
+}
+
+// draftEngine writes a file unless idle, asks a question if ask is set and
+// has the reviewers block if block is set. during runs while the implementer
+// works.
+type draftEngine struct {
+	ask, idle, block bool
+	during           func()
+	n                int
+}
+
+func (d *draftEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
+	var v any = ReviewAnswer{Summary: "fine"}
+	if d.block {
+		v = ReviewAnswer{Findings: []Finding{{Severity: "blocker", File: "work.go", Title: "wrong", Detail: "still wrong"}}}
+	}
+	if !inv.ReadOnly {
+		d.n++
+		if d.during != nil {
+			d.during()
+			d.during = nil
+		}
+		ans := ImplementAnswer{Status: "done", Summary: "Done.", CommitMessage: "Work", Handoff: "x"}
+		if !d.idle {
+			_ = os.WriteFile(filepath.Join(inv.Dir, "work.go"), []byte(fmt.Sprintf("package app // %d\n", d.n)), 0o644)
+		}
+		if d.ask {
+			ans.Status, ans.Questions = "needs_input", []string{"REST or gRPC?"}
+		}
+		v = ans
+	}
+	b, _ := json.Marshal(v)
+	return &Result{SessionID: "sess-d", Structured: b}, nil
+}
+
+func TestMergeRequestDraftFollowsTheRun(t *testing.T) {
+	ctx := context.Background()
+	rerun := func(t *testing.T, e *implementEnv, r *Runner, request int64) {
+		var task aiv1.AgentTask
+		_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+		orig := task.DeepCopy()
+		task.Spec.RunRequest = request
+		if err := e.k8s.Patch(ctx, &task, client.MergeFrom(orig)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("nothing done stays draft", func(t *testing.T) {
+		e := newImplementEnv(t)
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, &draftEngine{idle: true}, e.task.Name)
+		if _, err := r.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if !e.gl.MRs[1].Draft {
+			t.Fatalf("an MR with only the start commit is not ready: %+v", e.gl.MRs[1])
+		}
+	})
+
+	t.Run("ready, questions, ready again", func(t *testing.T) {
+		e := newImplementEnv(t)
+		engine := &draftEngine{}
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+		if _, err := r.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if e.gl.MRs[1].Draft {
+			t.Fatalf("a clean review marks the MR ready: %+v", e.gl.MRs[1])
+		}
+		engine.ask = true
+		rerun(t, e, r, 2)
+		if !e.gl.MRs[1].Draft || e.gl.MRs[1].Title != "Draft: Add PayPal button" {
+			t.Fatalf("a run with questions puts the MR back to draft: %+v", e.gl.MRs[1])
+		}
+		engine.ask = false
+		rerun(t, e, r, 3)
+		if e.gl.MRs[1].Draft {
+			t.Fatalf("a clean run marks it ready again: %+v", e.gl.MRs[1])
+		}
+	})
+
+	t.Run("blocking findings left put it back to draft", func(t *testing.T) {
+		e := newImplementEnv(t)
+		engine := &draftEngine{}
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+		if _, err := r.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+		engine.block = true
+		rerun(t, e, r, 2)
+		if !e.gl.MRs[1].Draft {
+			t.Fatalf("open blocking findings: draft: %+v", e.gl.MRs[1])
+		}
+	})
+
+	t.Run("a rename during the run is kept", func(t *testing.T) {
+		e := newImplementEnv(t)
+		engine := &draftEngine{}
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+		if _, err := r.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+		engine.ask = true
+		engine.during = func() {
+			_, _ = e.gl.UpdateMergeRequest(ctx, "group/app", 1, gitlab.UpdateMergeRequestOptions{Title: "PayPal checkout button"})
+		}
+		rerun(t, e, r, 2)
+		if mr := e.gl.MRs[1]; mr.Title != "Draft: PayPal checkout button" {
+			t.Fatalf("the draft prefix goes on the current title: %+v", mr)
+		}
+	})
+
+	t.Run("a draft by hand stays", func(t *testing.T) {
+		e := newImplementEnv(t)
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, &draftEngine{}, e.task.Name)
+		if _, err := r.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+		// Someone holds the ready MR, then asks for a tweak.
+		_, _ = e.gl.UpdateMergeRequest(ctx, "group/app", 1, gitlab.UpdateMergeRequestOptions{Title: "Draft: Add PayPal button"})
+		rerun(t, e, r, 2)
+		if !e.gl.MRs[1].Draft {
+			t.Fatalf("a clean run must not undo a human's draft: %+v", e.gl.MRs[1])
+		}
+	})
+
+	t.Run("ready without a push starts a pipeline", func(t *testing.T) {
+		e := newImplementEnv(t)
+		engine := &draftEngine{ask: true}
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+		if _, err := r.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if !e.gl.MRs[1].Draft || len(e.gl.MRPipelines) != 0 {
+			t.Fatalf("questions: draft, no pipeline: %+v %v", e.gl.MRs[1], e.gl.MRPipelines)
+		}
+		// The answer needs no change: the pushed work is now reviewed clean.
+		engine.ask, engine.idle = false, true
+		rerun(t, e, r, 2)
+		if e.gl.MRs[1].Draft || !slices.Equal(e.gl.MRPipelines, []int64{1}) {
+			t.Fatalf("marked ready without a push, so a pipeline is started: %+v %v", e.gl.MRs[1], e.gl.MRPipelines)
 		}
 	})
 }

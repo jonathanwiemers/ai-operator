@@ -294,7 +294,7 @@ func TestImplementEndToEnd(t *testing.T) {
 		"read issue", "read project", "clone repository", "prepare checkout", "find merge request",
 		"open merge request", "prepare checkout", "read comments",
 		"run implementer", "commit", "review round 1", "fix round 1", "commit", "review round 2",
-		"push", "update agent notes", "comment", "update issue labels",
+		"mark ready", "push", "update agent notes", "comment", "update issue labels",
 	}
 	if got := stepNames(r.run); !slices.Equal(got, wantSteps) {
 		t.Fatalf("steps:\n got %v\nwant %v", got, wantSteps)
@@ -320,8 +320,8 @@ func TestImplementEndToEnd(t *testing.T) {
 	if len(mrNotes) != 1 || strings.Contains(mrNotes[0].Body, progressMarker) {
 		t.Fatalf("expected only the report on the MR, got %+v", mrNotes)
 	}
-	for _, want := range []string{"<details><summary>Run log <code>shop-42-add-paypal-button#1</code>: 16 steps",
-		"| 6 | open merge request |", "| 9 | run implementer |", "claude/" + aiv1.DefaultModel, "| 16 | update agent notes |"} {
+	for _, want := range []string{"<details><summary>Run log <code>shop-42-add-paypal-button#1</code>: 17 steps",
+		"| 6 | open merge request |", "| 9 | run implementer |", "claude/" + aiv1.DefaultModel, "| 15 | mark ready |", "| 17 | update agent notes |"} {
 		if !strings.Contains(mrNotes[0].Body, want) {
 			t.Fatalf("run log misses %q:\n%s", want, mrNotes[0].Body)
 		}
@@ -342,9 +342,10 @@ func TestImplementEndToEnd(t *testing.T) {
 		}
 	}
 
-	// The issue has no milestone, so neither has the MR.
+	// The issue has no milestone, so neither has the MR. The review left only
+	// a nit, so the MR left draft before the push (its pipeline runs).
 	mr := gl.MRs[1]
-	if mr == nil || mr.SourceBranch != "agent/42-add-paypal-button" || !strings.HasPrefix(mr.Title, "Draft: ") || mr.Milestone != nil {
+	if mr == nil || mr.SourceBranch != "agent/42-add-paypal-button" || mr.Draft || mr.Title != "Add PayPal button" || mr.Milestone != nil {
 		t.Fatalf("unexpected MR %+v", mr)
 	}
 	// The issue waits in "working" for the pipeline of the push.

@@ -42,7 +42,8 @@ flowchart LR
   questions and a profile label (`agent-profile::fast` or `::strong`).
 - **Implement.** Move an issue to `agent::ready`. A **draft MR** is opened
   right away and shows the run's steps live. An agent implements it, and
-  **bugbot and security reviewers** check the diff before it is pushed.
+  **bugbot and security reviewers** check the diff; a clean review marks the
+  MR ready before it is pushed.
 - **Wait for CI.** The operator follows the pipeline, retries flaky jobs and
   lets the agent fix real failures. The issue moves to `agent::review` only
   once CI is green.

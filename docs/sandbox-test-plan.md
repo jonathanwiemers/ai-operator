@@ -165,6 +165,9 @@ profile label is kept. Editing the description again *without* a change
   step by step (refresh the page); when the run ends it is replaced by the
   report, which ends with a collapsed **Run log** table (read issue …
   update agent notes) with durations and the cost.
+* After a clean review the MR is marked ready (no `Draft:` prefix; the run log
+  has a `mark ready` step before `push`), so its pipeline runs even if drafts
+  skip pipelines.
 * The branch is pushed. The issue stays in `agent::working` until the MR pipeline is
   green – with the sample app's `changelog` job that takes one CI fix round
   (see T17) – and then becomes `agent::review`.
@@ -435,7 +438,8 @@ Preparation: allow the bot to merge into `main` (Protected branches,
   appears with one line per issue.
 * Only the first issue moves to `agent::ready`, then `agent::working`. Its
   run posts a decision comment, the draft MR is opened, the pipeline runs.
-* Once the pipeline is green, the MR is marked ready and merged by the bot;
+* The clean run marks the MR ready before it pushes; once the pipeline is
+  green, the bot merges it;
   the issue is closed, the tracking issue shows it as merged with its
   commit and decisions.
 * Then the second issue starts on the new `main` and is merged the same way.
