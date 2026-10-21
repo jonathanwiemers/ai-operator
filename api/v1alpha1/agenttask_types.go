@@ -92,6 +92,13 @@ type SourceState struct {
 	// fix with the latest run request.
 	// +optional
 	CIFixPipelineID int64 `json:"ciFixPipelineID,omitempty"`
+
+	// MergeBaseFor is the merge request head the operator saw conflicting
+	// with the default branch. The next run merges the default branch into
+	// the work branch and has the agent resolve the conflicts; it is asked
+	// once per head.
+	// +optional
+	MergeBaseFor string `json:"mergeBaseFor,omitempty"`
 }
 
 // CIState is the state of the pipeline of the agent's last push.
@@ -298,6 +305,11 @@ type RunStatus struct {
 	// CIFixedPipelineID is the failed pipeline the last CI fix run handled.
 	// +optional
 	CIFixedPipelineID int64 `json:"ciFixedPipelineID,omitempty"`
+
+	// MergedBaseFor is the head the last merge of the default branch was
+	// asked for (spec.source.mergeBaseFor).
+	// +optional
+	MergedBaseFor string `json:"mergedBaseFor,omitempty"`
 
 	// BlockingFindings is the number of blocker and major review findings
 	// left after the last review.

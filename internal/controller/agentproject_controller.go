@@ -413,7 +413,17 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		src.MergeRequestUpdatedAt = &metav1.Time{Time: *mr.UpdatedAt}
 	}
 
-	requested := ready || command
+	// The merge request of an issue in review conflicts with the default
+	// branch: the next run merges it in and the agent resolves the
+	// conflicts, once per head.
+	conflict := !created && *wf.ResolveConflicts && mr != nil && mr.State == "opened" && hasConflicts(mr) && mr.SHA != "" &&
+		is.HasLabel(wf.ReviewLabel) && !task.RunPending() && src.MergeBaseFor != mr.SHA
+	if conflict {
+		log.FromContext(ctx).Info("merge request conflicts with the default branch, asking the agent to merge it", "issue", is.IID, "mr", mr.IID, "sha", mr.SHA)
+		src.MergeBaseFor = mr.SHA
+	}
+
+	requested := ready || command || conflict
 	if requested {
 		task.Spec.RunRequest++
 	}
@@ -505,4 +515,28 @@ func (r *AgentProjectReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&aiv1.AgentProject{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("agentproject").
 		Complete(r)
+}
+
+// hasConflicts reports whether GitLab sees conflicts between the MR and its
+// target branch.
+func hasConflicts(mr *gitlab.MergeRequest) bool {
+	return mr.HasConflicts || mr.DetailedMergeStatus == "conflict"
+}
+
+// requestMergeBase asks the next run of task to merge the default branch into
+// the work branch and resolve the conflicts (for MR head sha), and moves the
+// issue to working.
+func (r *AgentProjectReconciler) requestMergeBase(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, iid int64, sha string) error {
+	task.Spec.Source.MergeBaseFor = sha
+	task.Spec.RunRequest++
+	if err := r.Update(ctx, task); err != nil {
+		return err
+	}
+	wf := spec.Workflow
+	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, iid, gitlab.UpdateIssueOptions{
+		AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel, wf.ReadyLabel, wf.NeedsInputLabel},
+	}); err != nil {
+		return fmt.Errorf("moving issue #%d to %q: %w", iid, wf.WorkingLabel, err)
+	}
+	return nil
 }

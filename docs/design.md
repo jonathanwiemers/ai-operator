@@ -331,6 +331,38 @@ stateDiagram-v2
 Green states move the issue to `agent::review`, `Failed` to
 `agent::needs-input`.
 
+## Merge conflicts
+
+A long-lived MR falls behind the default branch; with autopilot every merge
+moves it. Conflicts are resolved by the agent, with git doing the mechanics:
+
+* **Trigger.** The project controller already fetches each active issue's MR
+  on its poll. If the issue is in review, no run is pending and GitLab reports
+  conflicts (`has_conflicts`, or `detailed_merge_status: conflict`), it sets
+  `spec.source.mergeBaseFor` to the MR head and requests a run. Once per head:
+  a head the agent already tried is left to humans, so a conflict the agent
+  cannot resolve does not loop. Autopilot uses the same request when GitLab
+  cannot rebase an MR.
+* **Merge, not rebase.** The runner asks the agent container to merge
+  `origin/<base>` into the work branch (`MergeBase`, one more agent RPC). A
+  merge commit keeps the agent's commits and needs no force push, and it
+  satisfies fast-forward and semi-linear merge methods as well, since the
+  branch then contains the default branch. Git runs in the agent container
+  like every git command on the checkout; the runner only imports the bundle.
+* **Resolution.** Conflicted files keep their markers; the implementer gets
+  the list and instructions not to run `git merge`, `rebase`, `commit` or
+  `reset`. `FinishMerge` concludes the merge only if none of the files has a
+  conflict marker left and the index has no unmerged paths. Otherwise, or if
+  the agent asked a question, the branch is reset to its pre-merge commit, so
+  a half-resolved merge is never committed or pushed. If the agent concluded
+  the merge itself, its markers are checked the same way.
+* **No agent for a clean merge.** Without conflicts (and without other
+  input), the implementer is not run; the merge commit goes straight to
+  review and push.
+* **Same checks as any push.** Reviewers see the whole branch diff against
+  the new default branch, CI runs on the merge commit, and autopilot's gate
+  applies unchanged.
+
 ## Autopilot
 
 A milestone with `/agent autopilot` runs end to end. The lifecycle is driven
@@ -591,7 +623,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/controller/revisit.go` | revisits of merged issues: follow-up issues, replies |
 | `internal/marker` | hidden markers in GitLab text shared by operator and runner (tracking issue, decisions) |
 | `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
-| `internal/runner/workspace.go` | agent-side checkout (local git only) |
+| `internal/runner/workspace.go` | agent-side checkout (local git only), including the merge of the default branch for conflicts |
 | `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab |
 | `internal/runner/implement.go` | implement → review → fix → push → MR pipeline; CI fix runs |
 | `internal/runner/ci.go` | CI fix prompt, log excerpts |
@@ -619,5 +651,4 @@ Later:
   `strong` issues).
 * GitLab issue links (`blocks`) for dependencies on Premium instances.
 * Group milestones and group-level `AgentProject`s.
-* Rebase/conflict handling when `main` moves under a long-lived MR.
 * Metrics: runs, cost, durations per project, role and profile.

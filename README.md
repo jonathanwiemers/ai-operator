@@ -48,6 +48,9 @@ flowchart LR
   once CI is green.
 - **Iterate.** Comment `/agent <what to change>` on the issue or the MR.
   Plain discussion costs nothing.
+- **Merge conflicts.** When `main` moves on and the MR conflicts, the agent
+  merges `main` into its branch and resolves the conflicts; the result is
+  reviewed and checked by CI like any push.
 - **Autopilot.** With `/agent autopilot` in the milestone, the agents take
   their defaults instead of asking, and the operator works through the issues
   one at a time and merges each MR once CI is green and the review is clean.

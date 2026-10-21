@@ -464,6 +464,27 @@ of the same ID is answered with a pointer to the follow-up.
 **Expected:** the tracking issue gets *Autopilot is off* and is closed;
 nothing is merged any more.
 
+### T19 – Merge conflicts
+
+1. Let the agent implement an issue that changes a line of `README.md` and
+   wait until it is in `agent::review`.
+2. Change the same line on `main` by hand.
+
+**Expected:** within a poll the issue goes back to `agent::working`. The run
+log shows `merge main` with the conflicting file, `run implementer` and
+`conclude merge`. The branch gets a merge commit with both changes and no
+conflict markers, the MR comment says *Merged `main` into the branch and
+resolved the conflicts in `README.md`*, CI runs and the issue returns to
+`agent::review`.
+
+3. Repeat, but make the conflict impossible to resolve sensibly (e.g. delete
+   the file on `main`) and tell the agent in an `/agent` comment to ask
+   instead of guessing.
+
+**Expected:** nothing is pushed, the issue goes to `agent::needs-input`, and
+the MR comment names the files. On autopilot the tracking issue says it
+paused.
+
 ## 4. Results
 
 | ID | Test | Result | Notes |
@@ -486,6 +507,7 @@ nothing is merged any more.
 | T16 | Usage limits | | |
 | T17 | CI feedback loop | | |
 | T18 | Autopilot milestone | | |
+| T19 | Merge conflicts | | |
 
 ## 5. Cleanup
 

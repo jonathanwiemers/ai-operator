@@ -421,3 +421,20 @@ func formatFindings(findings []Finding) string {
 	}
 	return b.String()
 }
+
+// buildConflictPrompt asks the implementer to resolve the conflicts of the
+// merge of the default branch into the work branch.
+func buildConflictPrompt(base string, files []string) string {
+	var b strings.Builder
+	b.WriteString("## Merge conflicts\n\n")
+	fmt.Fprintf(&b, "The merge request conflicts with `%s`, so `%s` was merged into this branch. These files have conflicts:\n\n", base, base)
+	for _, f := range files {
+		fmt.Fprintf(&b, "- `%s`\n", strings.ReplaceAll(f, "`", "'"))
+	}
+	fmt.Fprintf(&b, "\nResolve every conflict and remove all conflict markers. Keep the intent of both sides: `%s` has work that "+
+		"was merged meanwhile, this branch has the change of this issue. Then check that the change still fits the code on `%s` "+
+		"(build and tests if the project has them) and fix what the merge broke. Do not run `git merge`, `git rebase`, "+
+		"`git commit` or `git reset`: the runner concludes the merge. Record a decision for every resolution that is not "+
+		"obvious. If a conflict cannot be resolved without a human, answer with status `needs_input` and say why.\n", base, base)
+	return b.String()
+}

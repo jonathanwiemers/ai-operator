@@ -31,6 +31,8 @@ type Agent interface {
 	Diff(ctx context.Context, base string) (diff, stat string, err error)
 	Reset(ctx context.Context) error
 	Bundle(ctx context.Context, branch, base, path string) (bool, error)
+	MergeBase(ctx context.Context, base, message string) (MergeResult, error)
+	FinishMerge(ctx context.Context, req FinishMerge) (MergeResult, error)
 }
 
 // LocalAgent implements Agent in-process. The agent server wraps it; the
@@ -89,6 +91,14 @@ func (a *LocalAgent) Bundle(ctx context.Context, branch, base, path string) (boo
 	return a.Workspace.Bundle(ctx, branch, base, path)
 }
 
+func (a *LocalAgent) MergeBase(ctx context.Context, base, message string) (MergeResult, error) {
+	return a.Workspace.MergeBase(ctx, base, message)
+}
+
+func (a *LocalAgent) FinishMerge(ctx context.Context, req FinishMerge) (MergeResult, error) {
+	return a.Workspace.FinishMerge(ctx, req)
+}
+
 func (a *LocalAgent) checkPath(path string) error {
 	rel, err := filepath.Rel(a.Exchange, filepath.Clean(path))
 	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
@@ -131,6 +141,16 @@ type bundleRequest struct {
 type bundleResponse struct {
 	Written bool   `json:"written"`
 	Error   string `json:"error,omitempty"`
+}
+
+type mergeRequest struct {
+	Base    string `json:"base"`
+	Message string `json:"message"`
+}
+
+type mergeResponse struct {
+	Result MergeResult `json:"result"`
+	Error  string      `json:"error,omitempty"`
 }
 
 type refsResponse struct {
@@ -256,6 +276,24 @@ func (s *AgentServer) Handler() http.Handler {
 		}
 		ok, err := s.Agent.Bundle(ctx, req.Branch, req.Base, req.Path)
 		return reply{bundleResponse{Written: ok, Error: errString(err)}, err, []any{"branch", req.Branch, "written", ok}}
+	})
+	handle("merge-base", func(ctx context.Context, body []byte) reply {
+		var req mergeRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{mergeResponse{Error: err.Error()}, err, nil}
+		}
+		res, err := s.Agent.MergeBase(ctx, req.Base, req.Message)
+		return reply{mergeResponse{Result: res, Error: errString(err)}, err,
+			[]any{"base", req.Base, "upToDate", res.UpToDate, "merged", res.Merged, "conflicts", len(res.Conflicts)}}
+	})
+	handle("finish-merge", func(ctx context.Context, body []byte) reply {
+		var req FinishMerge
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{mergeResponse{Error: err.Error()}, err, nil}
+		}
+		res, err := s.Agent.FinishMerge(ctx, req)
+		return reply{mergeResponse{Result: res, Error: errString(err)}, err,
+			[]any{"base", req.Base, "abort", req.Abort, "merged", res.Merged, "conflicts", len(res.Conflicts)}}
 	})
 	return mux
 }
@@ -394,4 +432,20 @@ func (c *AgentClient) Bundle(ctx context.Context, branch, base, path string) (bo
 		return false, err
 	}
 	return resp.Written, remoteErr(resp.Error)
+}
+
+func (c *AgentClient) MergeBase(ctx context.Context, base, message string) (MergeResult, error) {
+	var resp mergeResponse
+	if err := c.call(ctx, "merge-base", mergeRequest{Base: base, Message: message}, &resp); err != nil {
+		return MergeResult{}, err
+	}
+	return resp.Result, remoteErr(resp.Error)
+}
+
+func (c *AgentClient) FinishMerge(ctx context.Context, req FinishMerge) (MergeResult, error) {
+	var resp mergeResponse
+	if err := c.call(ctx, "finish-merge", req, &resp); err != nil {
+		return MergeResult{}, err
+	}
+	return resp.Result, remoteErr(resp.Error)
 }

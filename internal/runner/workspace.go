@@ -188,3 +188,124 @@ func (w *Workspace) Bundle(ctx context.Context, branch, base, path string) (bool
 	_, err = w.git(ctx, append([]string{"bundle", "create", "--quiet", path}, args...)...)
 	return err == nil, err
 }
+
+// MergeResult is the outcome of merging the base branch into the work branch.
+type MergeResult struct {
+	// UpToDate: the work branch already contains the base branch.
+	UpToDate bool `json:"upToDate,omitempty"`
+	// Merged: the merge commit was made.
+	Merged bool `json:"merged,omitempty"`
+	// Conflicts are the files with conflicts; the merge stays in progress.
+	Conflicts []string `json:"conflicts,omitempty"`
+	// From is HEAD before the merge, to go back to if it is not resolved.
+	From string `json:"from,omitempty"`
+}
+
+// MergeBase merges origin/<base> into the work branch. Without conflicts it
+// commits the merge. With conflicts it leaves the merge in progress, with
+// conflict markers in the files, for the agent to resolve.
+func (w *Workspace) MergeBase(ctx context.Context, base, message string) (MergeResult, error) {
+	upstream := "refs/remotes/origin/" + base
+	if _, err := w.git(ctx, "merge-base", "--is-ancestor", upstream, "HEAD"); err == nil {
+		return MergeResult{UpToDate: true}, nil
+	}
+	from, err := w.git(ctx, "rev-parse", "HEAD")
+	if err != nil {
+		return MergeResult{}, err
+	}
+	_, err = w.git(ctx, "merge", "--no-ff", "--no-verify", "--no-edit", "-m", message, upstream)
+	if err == nil {
+		return MergeResult{Merged: true, From: from}, nil
+	}
+	files, uerr := w.unmerged(ctx)
+	if uerr != nil || len(files) == 0 {
+		_, _ = w.git(ctx, "reset", "--quiet", "--hard", from)
+		return MergeResult{}, err
+	}
+	return MergeResult{Conflicts: files, From: from}, nil
+}
+
+// FinishMerge describes how to end a merge with conflicts.
+type FinishMerge struct {
+	Base    string `json:"base"`
+	Message string `json:"message"`
+	// From is HEAD before the merge (MergeResult.From).
+	From string `json:"from"`
+	// Files are the files that had conflicts.
+	Files []string `json:"files"`
+	// Abort goes back to From without checking anything.
+	Abort bool `json:"abort,omitempty"`
+}
+
+// FinishMerge concludes a merge the agent resolved. If a file still carries
+// conflict markers, or the merge was aborted, the branch goes back to the
+// commit before the merge and the files are returned as conflicts: a merge
+// that is not fully resolved is never committed. If the agent concluded the
+// merge itself, HEAD must contain origin/<base>.
+func (w *Workspace) FinishMerge(ctx context.Context, req FinishMerge) (MergeResult, error) {
+	back := func(files []string, cause error) (MergeResult, error) {
+		if _, err := w.git(ctx, "reset", "--quiet", "--hard", req.From); err != nil {
+			return MergeResult{}, err
+		}
+		if _, err := w.git(ctx, "clean", "-fdq"); err != nil {
+			return MergeResult{}, err
+		}
+		return MergeResult{Conflicts: files, From: req.From}, cause
+	}
+	if req.Abort {
+		return back(req.Files, nil)
+	}
+	if left := w.withMarkers(req.Files); len(left) > 0 {
+		return back(left, nil)
+	}
+	if !w.hasRef(ctx, "MERGE_HEAD") {
+		// The agent concluded the merge itself, or aborted it.
+		if _, err := w.git(ctx, "merge-base", "--is-ancestor", "refs/remotes/origin/"+req.Base, "HEAD"); err != nil {
+			return back(req.Files, nil)
+		}
+		return MergeResult{Merged: true, From: req.From}, nil
+	}
+	if _, err := w.git(ctx, "add", "-A"); err != nil {
+		return back(req.Files, err)
+	}
+	if left, err := w.unmerged(ctx); err != nil || len(left) > 0 {
+		return back(left, err)
+	}
+	if _, err := w.git(ctx, "commit", "--quiet", "--no-verify", "--no-edit", "-m", req.Message); err != nil {
+		return back(req.Files, err)
+	}
+	return MergeResult{Merged: true, From: req.From}, nil
+}
+
+// unmerged lists the files with unresolved conflicts in the index.
+func (w *Workspace) unmerged(ctx context.Context) ([]string, error) {
+	out, err := w.git(ctx, "diff", "--name-only", "--diff-filter=U")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, f := range strings.Split(out, "\n") {
+		if f = strings.TrimSpace(f); f != "" {
+			files = append(files, f)
+		}
+	}
+	return files, nil
+}
+
+// withMarkers returns the files that still contain conflict markers.
+func (w *Workspace) withMarkers(files []string) []string {
+	var out []string
+	for _, f := range files {
+		data, err := os.ReadFile(filepath.Join(w.Dir, filepath.Clean("/"+f)))
+		if err != nil {
+			continue // deleted as the resolution
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "<<<<<<< ") || strings.HasPrefix(line, ">>>>>>> ") {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
+}

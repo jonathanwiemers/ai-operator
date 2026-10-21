@@ -71,6 +71,8 @@ type Outcome struct {
 	CIRound   int32
 	// CIFixedPipelineID is set by CI fix runs.
 	CIFixedPipelineID int64
+	// MergedBaseFor is set by runs that merged the default branch.
+	MergedBaseFor string
 	// Reviewed is set when the reviewers ran; BlockingFindings and
 	// ReviewErrors go with it.
 	Reviewed         bool
@@ -323,6 +325,9 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		}
 		if out.CIFixedPipelineID != 0 {
 			s.CIFixedPipelineID = out.CIFixedPipelineID
+		}
+		if out.MergedBaseFor != "" {
+			s.MergedBaseFor = out.MergedBaseFor
 		}
 		// Runs without a review (CI fix runs, questions) keep the result of
 		// the last review.

@@ -373,6 +373,11 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	if task != nil && task.Status.Run.MergeRequestIID != 0 {
 		it.MergeRequestIID, it.MergeRequestURL = task.Status.Run.MergeRequestIID, task.Status.Run.MergeRequestURL
 	}
+	if task != nil && it.RebasedFrom != "" && task.Spec.Source.MergeBaseFor == it.RebasedFrom {
+		// The agent was asked to merge the default branch instead of the
+		// rebase (it conflicted); its push is reviewed and checked anew.
+		it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
+	}
 	if !ok || is.State != "opened" {
 		// Closed: merged by hand, or given up.
 		mr, done, err := a.doneByHand(ctx, it.IID)
@@ -474,11 +479,11 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 		a.log.Info("autopilot marked the merge request ready", "mr", mr.IID)
 		return nil // merged on the next poll, once GitLab rechecked it
 	case "need_rebase":
-		return a.rebase(ctx, it, mr)
+		return a.rebase(ctx, it, mr, task)
 	case "checking", "unchecked", "preparing", "approvals_syncing", "ci_still_running", "ci_must_pass":
 		return nil
 	case "conflict":
-		return a.pause(ctx, fmt.Sprintf("!%d has merge conflicts with the default branch; resolve them on the branch, then `resume`", mr.IID))
+		return a.mergeBase(ctx, it, mr, task, fmt.Sprintf("!%d has merge conflicts with the default branch", mr.IID))
 	case "not_approved":
 		return a.pause(ctx, fmt.Sprintf("!%d needs an approval before it can be merged", mr.IID))
 	case "discussions_not_resolved":
@@ -498,7 +503,7 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	case code == 401 || code == 403:
 		return a.pause(ctx, fmt.Sprintf("the bot may not merge !%d into the default branch (HTTP %d); allow Developers to merge, or give the bot the Maintainer role", mr.IID, code))
 	case code == 406:
-		return a.rebase(ctx, it, mr)
+		return a.rebase(ctx, it, mr, task)
 	case code >= 400 && code < 500:
 		return a.pause(ctx, fmt.Sprintf("GitLab refused to merge !%d: %v", mr.IID, err))
 	default:
@@ -536,22 +541,42 @@ func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, rea
 	return a.pause(ctx, reason)
 }
 
+// mergeBase asks the agent to merge the default branch into the MR and
+// resolve the conflicts (spec.source.mergeBaseFor), once per head. The run
+// is reviewed and checked by CI like any push, then the gate runs again. If
+// that is switched off or was tried for this head already, it pauses.
+func (a *autopilot) mergeBase(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask, why string) error {
+	wf := a.spec.Workflow
+	switch {
+	case !*wf.ResolveConflicts:
+		return a.pause(ctx, why+"; resolve them on the branch (or merge the default branch into it), then `resume`")
+	case task.Spec.Source.MergeBaseFor == mr.SHA:
+		return a.pause(ctx, why+", and merging the default branch did not resolve it; resolve the conflicts on the branch, then `resume`")
+	}
+	a.log.Info("autopilot asks the agent to merge the default branch", "mr", mr.IID, "sha", mr.SHA, "reason", why)
+	if err := a.r.requestMergeBase(ctx, a.gl, a.spec, task, it.IID, mr.SHA); err != nil {
+		return err
+	}
+	it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
+	return nil
+}
+
 // rebase asks GitLab to rebase the MR, once per item. The reviewed change is
-// hashed first, so the rebased head can be checked against it.
-func (a *autopilot) rebase(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest) error {
+// hashed first, so the rebased head can be checked against it. If a rebase
+// cannot help, the agent merges the default branch instead.
+func (a *autopilot) rebase(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask) error {
 	if it.Rebases > 0 {
-		return a.pause(ctx, fmt.Sprintf("!%d still cannot be merged after a rebase; rebase or merge the default branch by hand, then `resume`", mr.IID))
+		return a.mergeBase(ctx, it, mr, task, fmt.Sprintf("!%d still cannot be merged after a rebase", mr.IID))
 	}
 	diff, err := a.diffHash(ctx, mr.IID)
 	if err != nil {
 		return err
 	}
 	if diff == "" {
-		return a.pause(ctx, fmt.Sprintf("!%d needs a rebase, but its change is too large to check that a rebase keeps it; rebase it by hand and "+
-			"comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, a.spec.Workflow.CommandPrefix, it.IID))
+		return a.mergeBase(ctx, it, mr, task, fmt.Sprintf("!%d needs a rebase, but its change is too large to check that a rebase keeps it", mr.IID))
 	}
 	if err := a.gl.RebaseMergeRequest(ctx, a.spec.GitLab.Project, mr.IID); err != nil {
-		return a.pause(ctx, fmt.Sprintf("GitLab could not rebase !%d: %v", mr.IID, err))
+		return a.mergeBase(ctx, it, mr, task, fmt.Sprintf("GitLab could not rebase !%d (%v)", mr.IID, err))
 	}
 	a.log.Info("autopilot rebases the merge request", "mr", mr.IID, "from", mr.SHA)
 	it.Rebases++
@@ -577,6 +602,9 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 	switch {
 	case mr.RebaseInProgress:
 		return nil
+	case mr.MergeError != "" && mr.SHA == it.RebasedFrom:
+		// The branch did not move: the agent merges the default branch.
+		return a.mergeBase(ctx, it, mr, task, fmt.Sprintf("the rebase of !%d failed (%s)", mr.IID, mr.MergeError))
 	case mr.MergeError != "":
 		return unrebased(fmt.Sprintf("the rebase of !%d failed: %s", mr.IID, mr.MergeError))
 	case mr.SHA == it.RebasedFrom && mr.DetailedMergeStatus == "mergeable":
@@ -584,11 +612,11 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 		it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
 		return nil
 	case mr.SHA == it.RebasedFrom && mr.DetailedMergeStatus == "conflict":
-		return unrebased(fmt.Sprintf("the rebase of !%d ran into conflicts; resolve them on the branch, then `resume`", mr.IID))
+		return a.mergeBase(ctx, it, mr, task, fmt.Sprintf("the rebase of !%d ran into conflicts", mr.IID))
 	case mr.SHA == it.RebasedFrom && it.RebasedAt != nil && a.r.now().Sub(it.RebasedAt.Time) < rebaseGrace:
 		return nil // GitLab refreshes the MR after the rebase
 	case mr.SHA == it.RebasedFrom:
-		return unrebased(fmt.Sprintf("the rebase of !%d did not go through (GitLab reports %q); rebase by hand, then `resume`", mr.IID, mr.DetailedMergeStatus))
+		return a.mergeBase(ctx, it, mr, task, fmt.Sprintf("the rebase of !%d did not go through (GitLab reports %q)", mr.IID, mr.DetailedMergeStatus))
 	}
 	// The review only holds if the rebase moved the change without changing
 	// it; a commit pushed meanwhile, or a rebase that had to adapt lines,
