@@ -217,7 +217,11 @@ Each pod has two containers, see [Security](#security):
   never answered waits for the container to be ready again and for that
   record (`internal/runner/agentlost.go`), then fails the run with the
   reason, or resets the checkout and tries the call once more if the
-  container crashed for another reason than memory. Pods carry a hash of the
+  container crashed for another reason than memory. After an OOM kill the
+  operator raises the task's memory limit by half (`status.agentMemoryLimit`,
+  capped by `agents.maxMemory`), and the runner, which computes the same
+  from the same record, gives the run back as pending (`oomRetries`, at most
+  3) with a short delay, so the operator replaces the pod first. Pods carry a hash of the
   agent container's resources (`ai.wiemers.me/agent-resources`); a pod with
   other ones is replaced between runs, so raised limits apply to the next
   run.

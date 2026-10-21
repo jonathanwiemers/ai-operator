@@ -302,12 +302,15 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		err = lost
 	}
 	r.run.finish(err)
+	moreMemory := r.oomRetry(err, task, spec)
 	if r.progress != nil {
 		// The report replaced the live view; otherwise say how it ended.
 		// Also when the pod is stopping: the comment must not stay "working".
 		headline := ""
 		if _, ok := AsUsageLimit(err); ok && task.Status.Run.Deferrals < MaxDeferrals {
 			headline = "⏸️ Paused by a usage limit; the run continues once it resets."
+		} else if moreMemory != "" {
+			headline = "⏸️ The agent container ran out of memory; the run starts again with " + moreMemory + "."
 		} else if err != nil {
 			headline = "❌ The run failed; the issue has the details."
 		}
@@ -317,6 +320,9 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		}
 		cancel()
 		r.progress = nil
+	}
+	if moreMemory != "" {
+		return false, r.retryWithMoreMemory(ctx, gl, spec, task, out, err, moreMemory)
 	}
 	if lim, ok := AsUsageLimit(err); ok {
 		if task.Status.Run.Deferrals < MaxDeferrals {
@@ -346,6 +352,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.DeferredUntil = nil
 		s.LimitedEngine = ""
 		s.Deferrals = 0
+		s.OOMRetries = 0
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
 		s.LastResult = out.Result
 		s.Summary = truncate(out.Summary, 2000)

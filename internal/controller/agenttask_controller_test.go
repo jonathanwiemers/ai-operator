@@ -645,3 +645,59 @@ func TestPodReplacedWhenAgentResourcesChange(t *testing.T) {
 		t.Fatal("a pod in a run must not be replaced")
 	}
 }
+
+func TestMemoryRaisedAfterAnOOMKill(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	var project aiv1.AgentProject
+	_ = e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &project)
+	project.Spec.Agents.Resources = corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("2Gi")},
+		Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("4Gi")},
+	}
+	if err := e.c.Update(e.ctx, &project); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") {
+		t.Fatal("expected pod")
+	}
+	// The run is in progress when the container is OOM-killed.
+	task := e.task("x")
+	orig := task.DeepCopy()
+	task.Status.Run.ActiveRunRequest = 1
+	_ = e.c.Status().Patch(e.ctx, task, client.MergeFrom(orig))
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: AgentContainer, RestartCount: 1,
+		LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+			Reason: "OOMKilled", ExitCode: 137, FinishedAt: metav1.NewTime(t0.Add(time.Hour))}}}}
+	if err := e.c.Status().Update(e.ctx, &pod); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if got := e.task("x").Status.AgentMemoryLimit; got != "6Gi" {
+		t.Fatalf("4Gi raised by half: got %q", got)
+	}
+	if !e.exists(&pod, "x") {
+		t.Fatal("the pod stays while the run is in progress")
+	}
+	e.reconcile("x") // the same kill is not counted twice
+	if got := e.task("x").Status.AgentMemoryLimit; got != "6Gi" {
+		t.Fatalf("raised again for the same kill: %q", got)
+	}
+
+	// The runner gives the run back; the pod is replaced, the new one has
+	// 6Gi and a request grown in proportion.
+	task = e.task("x")
+	orig = task.DeepCopy()
+	task.Status.Run.ActiveRunRequest = 0
+	_ = e.c.Status().Patch(e.ctx, task, client.MergeFrom(orig))
+	e.reconcile("x")
+	e.reconcile("x")
+	if !e.exists(&pod, "x") {
+		t.Fatal("expected a new pod")
+	}
+	res := container(&pod, AgentContainer).Resources
+	if res.Limits.Memory().String() != "6Gi" || res.Requests.Memory().String() != "3Gi" || len(pod.Status.ContainerStatuses) != 0 {
+		t.Fatalf("expected the new pod with 6Gi / 3Gi: %+v", res)
+	}
+}

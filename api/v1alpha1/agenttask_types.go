@@ -237,6 +237,12 @@ type AgentTaskStatus struct {
 	// +optional
 	AgentTermination *ContainerTermination `json:"agentTermination,omitempty"`
 
+	// AgentMemoryLimit is the agent container's memory limit for this task,
+	// raised by the operator after OOM kills (see agents.maxMemory). It
+	// applies while it is above the project's limit.
+	// +optional
+	AgentMemoryLimit string `json:"agentMemoryLimit,omitempty"`
+
 	// +optional
 	Run RunStatus `json:"run,omitempty"`
 
@@ -322,6 +328,11 @@ type RunStatus struct {
 	// drives the exponential backoff when the reset time is unknown.
 	// +optional
 	Deferrals int32 `json:"deferrals,omitempty"`
+
+	// OOMRetries counts runs of the current request started again after the
+	// agent container ran out of memory.
+	// +optional
+	OOMRetries int32 `json:"oomRetries,omitempty"`
 
 	// PushedSHA is the commit the runner last pushed to the agent's branch.
 	// +optional

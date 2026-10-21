@@ -173,7 +173,7 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 			Name:        task.Name,
 			Namespace:   task.Namespace,
 			Labels:      taskLabels(task),
-			Annotations: map[string]string{AnnotationAgentResources: resourcesHash(agents.Resources)},
+			Annotations: map[string]string{AnnotationAgentResources: resourcesHash(agentResources(task, spec))},
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: agents.ServiceAccountName,
@@ -228,7 +228,7 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 					EnvFrom: []corev1.EnvFromSource{{
 						SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: agents.CredentialsSecretName}},
 					}},
-					Resources:       agents.Resources,
+					Resources:       agentResources(task, spec),
 					VolumeMounts:    agentMounts,
 					WorkingDir:      WorkspaceMountPath,
 					SecurityContext: containerSecurity(false),
@@ -271,7 +271,25 @@ func resourcesHash(r corev1.ResourceRequirements) string {
 
 // podOutdated reports whether pod was started with other agent resources than
 // spec asks for now. Pods from before the annotation count as current.
-func podOutdated(pod *corev1.Pod, spec aiv1.AgentProjectSpec) bool {
+func podOutdated(pod *corev1.Pod, task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) bool {
 	h, ok := pod.Annotations[AnnotationAgentResources]
-	return ok && h != resourcesHash(spec.Agents.Resources)
+	return ok && h != resourcesHash(agentResources(task, spec))
+}
+
+// agentResources are the agent container's resources for task: the
+// project's, with the memory limit the operator raised for the task after OOM
+// kills while that is higher. A memory request grows in proportion.
+func agentResources(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) corev1.ResourceRequirements {
+	res := *spec.Agents.Resources.DeepCopy()
+	raised, err := resource.ParseQuantity(task.Status.AgentMemoryLimit)
+	limit, ok := res.Limits[corev1.ResourceMemory]
+	if err != nil || !ok || raised.Cmp(limit) <= 0 {
+		return res
+	}
+	res.Limits[corev1.ResourceMemory] = raised
+	if req, ok := res.Requests[corev1.ResourceMemory]; ok && limit.Value() > 0 {
+		scaled := int64(float64(req.Value()) * float64(raised.Value()) / float64(limit.Value()))
+		res.Requests[corev1.ResourceMemory] = *resource.NewQuantity(scaled/(1<<20)*(1<<20), resource.BinarySI)
+	}
+	return res
 }

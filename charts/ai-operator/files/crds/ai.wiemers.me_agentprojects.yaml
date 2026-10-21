@@ -306,6 +306,18 @@ spec:
                     - info
                     - error
                     type: string
+                  maxMemory:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      MaxMemory caps the agent container's memory limit when it is raised
+                      after an OOM kill: each kill raises the limit of that task's pod by
+                      half, and the run starts again, until the limit would pass MaxMemory.
+                      Defaults to twice resources.limits.memory; without a memory limit
+                      nothing is raised.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
                   nodeSelector:
                     additionalProperties:
                       type: string

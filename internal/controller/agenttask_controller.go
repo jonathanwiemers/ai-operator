@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -100,6 +101,13 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if t := agentTermination(pod); t != nil {
 		if task.Status.AgentTermination == nil || !equality.Semantic.DeepEqual(*task.Status.AgentTermination, *t) {
 			logger.Info("agent container stopped", "pod", pod.Name, "reason", t.Reason, "exitCode", t.ExitCode, "restarts", t.Restarts, "memoryLimit", t.MemoryLimit)
+			// Out of memory: the task's next pod gets more (agents.maxMemory).
+			if q, err := resource.ParseQuantity(t.MemoryLimit); t.OOMKilled() && err == nil {
+				if next, ok := spec.Agents.RaisedMemory(q); ok {
+					logger.Info("raising the agent container's memory limit", "from", t.MemoryLimit, "to", next.String())
+					task.Status.AgentMemoryLimit = next.String()
+				}
+			}
 		}
 		task.Status.AgentTermination = t
 	}
@@ -135,7 +143,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// A pod started with other agent resources (raised after an OOM kill) is
 	// replaced between runs, so the next run gets them.
-	if pod != nil && !inProgress && podOutdated(pod, spec) {
+	if pod != nil && !inProgress && podOutdated(pod, &task, spec) {
 		if busy, err := r.runInProgress(ctx, &task); err != nil {
 			return ctrl.Result{}, err
 		} else if !busy {
@@ -250,8 +258,11 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if waiting && !blocked && !task.Spec.Suspend {
 		task.Status.Phase = aiv1.TaskPhaseWaiting
-		task.Status.Message = fmt.Sprintf("%s usage limit; retrying at %s",
-			task.Status.Run.LimitedEngine, task.Status.Run.DeferredUntil.UTC().Format(time.RFC3339))
+		reason := fmt.Sprintf("%s usage limit", task.Status.Run.LimitedEngine)
+		if task.Status.Run.LimitedEngine == "" {
+			reason = "agent ran out of memory, more memory"
+		}
+		task.Status.Message = fmt.Sprintf("%s; retrying at %s", reason, task.Status.Run.DeferredUntil.UTC().Format(time.RFC3339))
 		if retry := waitFor + time.Second; result.RequeueAfter == 0 || retry < result.RequeueAfter {
 			result.RequeueAfter = retry
 		}
