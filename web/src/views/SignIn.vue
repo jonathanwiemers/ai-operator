@@ -14,7 +14,8 @@ const messages: Record<string, string> = {
 }
 const url = new URL(window.location.href)
 const code = url.searchParams.get('login_error')
-const error = code === null ? null : (messages[code] ?? 'The login failed. Please sign in again.')
+const error =
+  code === null ? null : Object.hasOwn(messages, code) ? messages[code] : 'The login failed. Please sign in again.'
 if (code !== null) {
   url.searchParams.delete('login_error')
   window.history.replaceState(null, '', url.pathname + url.search)
