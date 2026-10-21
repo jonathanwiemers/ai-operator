@@ -353,14 +353,40 @@ func (c *AgentClient) call(ctx context.Context, method string, req, resp any) er
 	}
 	httpResp, err := c.http.Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("agent %s: %w", method, err)
+		return &agentConnError{method: method, err: err}
 	}
 	defer httpResp.Body.Close()
 	if httpResp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(httpResp.Body, 4096))
 		return fmt.Errorf("agent %s: %s: %s", method, httpResp.Status, b)
 	}
-	return json.NewDecoder(io.LimitReader(httpResp.Body, 64<<20)).Decode(resp)
+	if err := json.NewDecoder(io.LimitReader(httpResp.Body, 64<<20)).Decode(resp); err != nil {
+		var syntax *json.SyntaxError
+		var typ *json.UnmarshalTypeError
+		if errors.As(err, &syntax) || errors.As(err, &typ) {
+			return err
+		}
+		// The body broke off: the server went away while answering.
+		return &agentConnError{method: method, err: err}
+	}
+	return nil
+}
+
+// agentConnError is a call that got no answer from the agent server, e.g.
+// because its container was killed and restarted.
+type agentConnError struct {
+	method string
+	err    error
+}
+
+func (e *agentConnError) Error() string { return fmt.Sprintf("agent %s: %v", e.method, e.err) }
+func (e *agentConnError) Unwrap() error { return e.err }
+
+// notSent reports whether the request never reached the server (it was down
+// when the call was made), so making it again cannot repeat any work.
+func (e *agentConnError) notSent() bool {
+	var oe *net.OpError
+	return errors.As(e.err, &oe) && oe.Op == "dial"
 }
 
 func remoteErr(s string) error {

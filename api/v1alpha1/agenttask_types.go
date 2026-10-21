@@ -188,6 +188,33 @@ const (
 	RunResultDeferred RunResult = "Deferred"
 )
 
+// ContainerTermination is how a container last stopped.
+type ContainerTermination struct {
+	// Reason as the kubelet reports it, e.g. OOMKilled or Error.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+
+	// +optional
+	ExitCode int32 `json:"exitCode,omitempty"`
+
+	// +optional
+	FinishedAt *metav1.Time `json:"finishedAt,omitempty"`
+
+	// Restarts of the container in its pod so far.
+	// +optional
+	Restarts int32 `json:"restarts,omitempty"`
+
+	// MemoryLimit of the container, if it has one.
+	// +optional
+	MemoryLimit string `json:"memoryLimit,omitempty"`
+}
+
+// OOMKilled reports whether the container was killed for exceeding its
+// memory limit.
+func (t *ContainerTermination) OOMKilled() bool {
+	return t != nil && t.Reason == "OOMKilled"
+}
+
 // AgentTaskStatus is the observed state of an AgentTask. The top-level fields
 // are written by the operator, Run is written by the runner inside the pod.
 // Both sides use merge patches so they never overwrite each other.
@@ -203,6 +230,12 @@ type AgentTaskStatus struct {
 
 	// +optional
 	Message string `json:"message,omitempty"`
+
+	// AgentTermination is the last time the agent container stopped while
+	// its pod ran (it is restarted in place), e.g. killed for using more than
+	// its memory limit. The runner names it when a run loses the agent.
+	// +optional
+	AgentTermination *ContainerTermination `json:"agentTermination,omitempty"`
 
 	// +optional
 	Run RunStatus `json:"run,omitempty"`

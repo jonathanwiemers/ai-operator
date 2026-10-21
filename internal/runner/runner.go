@@ -13,6 +13,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,6 +59,9 @@ type Runner struct {
 	run *runLog
 	// progress is the live progress comment of the current run, if any.
 	progress *progress
+	// blamedRestarts is the agent container's restart count of the last
+	// termination a lost call was put down to.
+	blamedRestarts int32
 }
 
 // Outcome is the result of one run.
@@ -267,6 +271,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	r.projectStatus = project.Status
 	request := task.Spec.RunRequest
 	r.run = newRunLog(r.Log, task)
+	r.blamedRestarts = 0
 	ctx = withRunID(ctx, r.run.id)
 	log := r.run.log
 	log.Info("starting run", "request", request, "previousRuns", task.Status.Run.RunCount, "deferrals", task.Status.Run.Deferrals)
@@ -291,6 +296,10 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	}
 	if out == nil {
 		out = &Outcome{}
+	}
+	if lost := r.agentLost(ctx, err, r.run.start); lost != nil {
+		// Lost outside an agent run (git calls, between calls): say why too.
+		err = lost
 	}
 	r.run.finish(err)
 	if r.progress != nil {
@@ -457,16 +466,40 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 	if lim, ok := r.projectStatus.ActiveUsageLimit(role.Engine, r.now()); ok {
 		return nil, &UsageLimitError{Engine: role.Engine, ResetAt: lim.Until.Time, Message: "project-wide limit: " + lim.Message}
 	}
+	redialed, retried := false, false
 	run := func(inv Invocation) (*Result, error) {
-		res, err := r.Agent.Run(ctx, role.Engine, inv)
-		return res, classifyLimit(role.Engine, err, res)
+		for {
+			start := r.now()
+			res, err := r.Agent.Run(ctx, role.Engine, inv)
+			lost := r.agentLost(ctx, err, start)
+			switch {
+			case lost == nil:
+				return res, classifyLimit(role.Engine, err, res)
+			case !lost.back:
+				return nil, lost
+			case lost.notSent && !redialed:
+				// The agent was down before the call, nothing ran: call again.
+				redialed = true
+			case !retried && lost.Term != nil && !lost.Term.OOMKilled():
+				// A crash may not happen again; running out of memory would.
+				// The killed call's edits (and a stale git lock) go first.
+				retried = true
+				r.log().Info("agent container restarted during the call, trying once more", "reason", lost.Term.Reason, "exitCode", lost.Term.ExitCode)
+				if err := r.Agent.Reset(ctx); err != nil {
+					return nil, lost
+				}
+			default:
+				return nil, lost
+			}
+		}
 	}
 	if inv.Resume == "" {
 		inv.Prompt = fullPrompt
 		return run(inv)
 	}
 	res, err := run(inv)
-	if _, limited := AsUsageLimit(err); err == nil || limited || (res != nil && res.SessionID != "") {
+	var lost *AgentLostError
+	if _, limited := AsUsageLimit(err); err == nil || limited || errors.As(err, &lost) || (res != nil && res.SessionID != "") {
 		return res, err
 	}
 	r.log().Info("could not resume session, starting fresh", "session", inv.Resume, "error", err.Error())

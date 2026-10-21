@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -566,5 +567,81 @@ func TestLongWaitHibernatesPod(t *testing.T) {
 	e.reconcile("x")
 	if e.exists(&pod, "x") || e.task("x").Status.Phase != aiv1.TaskPhaseWaiting {
 		t.Fatal("a long wait should hibernate the pod and keep the task waiting")
+	}
+}
+
+func TestAgentTerminationIsRecorded(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	e.reconcile("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") {
+		t.Fatal("expected pod")
+	}
+	container(&pod, AgentContainer).Resources.Limits = corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("4Gi")}
+	if err := e.c.Update(e.ctx, &pod); err != nil {
+		t.Fatal(err)
+	}
+	// The kubelet restarted the agent container after an OOM kill.
+	finished := metav1.NewTime(t0.Add(88 * time.Minute))
+	pod.Status.Phase = corev1.PodRunning
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+		{Name: RunnerContainer, Ready: true},
+		{Name: AgentContainer, RestartCount: 1, Ready: true,
+			State:                corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{Reason: "OOMKilled", ExitCode: 137, FinishedAt: finished}}},
+	}
+	if err := e.c.Status().Update(e.ctx, &pod); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	got := e.task("x").Status.AgentTermination
+	if got == nil || !got.OOMKilled() || got.ExitCode != 137 || got.Restarts != 1 || got.MemoryLimit != "4Gi" || !got.FinishedAt.Equal(&finished) {
+		t.Fatalf("the agent container's OOM kill must be recorded: %+v", got)
+	}
+}
+
+func TestPodReplacedWhenAgentResourcesChange(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	e.reconcile("x")
+	e.finishRun("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") {
+		t.Fatal("expected pod")
+	}
+	before := pod.Annotations[AnnotationAgentResources]
+
+	// More memory after an OOM kill; the idle pod still has the old limit.
+	var project aiv1.AgentProject
+	_ = e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &project)
+	project.Spec.Agents.Resources.Limits = corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("8Gi")}
+	if err := e.c.Update(e.ctx, &project); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if e.exists(&pod, "x") {
+		t.Fatal("an idle pod with old resources must be replaced")
+	}
+	// The retry starts a pod with the new resources.
+	task := e.task("x")
+	task.Spec.RunRequest++
+	if err := e.c.Update(e.ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if !e.exists(&pod, "x") || pod.Annotations[AnnotationAgentResources] == before ||
+		container(&pod, AgentContainer).Resources.Limits.Memory().String() != "8Gi" {
+		t.Fatalf("expected a new pod with 8Gi: %+v", pod.Annotations)
+	}
+	// Not while a run is in progress.
+	task = e.task("x")
+	orig := task.DeepCopy()
+	task.Status.Run.ActiveRunRequest = task.Spec.RunRequest
+	_ = e.c.Status().Patch(e.ctx, task, client.MergeFrom(orig))
+	_ = e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &project)
+	project.Spec.Agents.Resources.Limits = corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("12Gi")}
+	_ = e.c.Update(e.ctx, &project)
+	e.reconcile("x")
+	if !e.exists(&pod, "x") {
+		t.Fatal("a pod in a run must not be replaced")
 	}
 }
