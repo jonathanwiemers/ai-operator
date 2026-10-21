@@ -154,6 +154,15 @@ type WorkflowSpec struct {
 	// +kubebuilder:default=true
 	// +optional
 	AssignBot *bool `json:"assignBot,omitempty"`
+
+	// ResolveConflicts lets the agent resolve merge conflicts: when the
+	// merge request of an issue in review conflicts with the default branch,
+	// the next run merges the default branch into the work branch and the
+	// agent resolves the conflicts. The result is reviewed and checked by CI
+	// like any push. Off: conflicts are left to humans (autopilot pauses).
+	// +kubebuilder:default=true
+	// +optional
+	ResolveConflicts *bool `json:"resolveConflicts,omitempty"`
 }
 
 // AgentsSpec configures the agent pods and the roles running inside them.

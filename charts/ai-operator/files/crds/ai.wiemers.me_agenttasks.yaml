@@ -159,6 +159,13 @@ spec:
                       run request (Implement tasks).
                     format: int64
                     type: integer
+                  mergeBaseFor:
+                    description: |-
+                      MergeBaseFor is the merge request head the operator saw conflicting
+                      with the default branch. The next run merges the default branch into
+                      the work branch and has the agent resolve the conflicts; it is asked
+                      once per head.
+                    type: string
                   mergeRequestUpdatedAt:
                     format: date-time
                     type: string
@@ -534,6 +541,11 @@ spec:
                     type: integer
                   mergeRequestURL:
                     description: MergeRequestURL of the agent's merge request.
+                    type: string
+                  mergedBaseFor:
+                    description: |-
+                      MergedBaseFor is the head the last merge of the default branch was
+                      asked for (spec.source.mergeBaseFor).
                     type: string
                   observedRunRequest:
                     description: ObservedRunRequest is the last run request the runner

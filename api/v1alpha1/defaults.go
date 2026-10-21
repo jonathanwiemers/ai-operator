@@ -51,6 +51,10 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 		t := true
 		w.AssignBot = &t
 	}
+	if w.ResolveConflicts == nil {
+		t := true
+		w.ResolveConflicts = &t
+	}
 	return w
 }
 

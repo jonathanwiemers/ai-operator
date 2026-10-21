@@ -236,7 +236,6 @@ func TestAutopilotMergeGate(t *testing.T) {
 		{name: "reviewer failed", run: func(r *aiv1.RunStatus) { r.ReviewErrors = 1 }, reason: "reviewers failed"},
 		{name: "unreviewed head", run: func(r *aiv1.RunStatus) { r.ReviewedSHA = "older" }, reason: "was not reviewed"},
 		{name: "head moved", mr: func(m *gitlab.MergeRequest) { m.SHA = "someone-else" }, reason: "someone pushed"},
-		{name: "conflict", mr: func(m *gitlab.MergeRequest) { m.DetailedMergeStatus, m.Draft = "conflict", false }, reason: "merge conflicts"},
 		{name: "approval", mr: func(m *gitlab.MergeRequest) { m.DetailedMergeStatus, m.Draft = "not_approved", false }, reason: "needs an approval"},
 		{name: "canceled", ci: &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateCanceled}, reason: "was canceled"},
 	}
@@ -363,7 +362,75 @@ func TestAutopilotRebaseKeepsTheReviewOnlyForTheSameChange(t *testing.T) {
 	}
 }
 
-func TestAutopilotFailedRebasePauses(t *testing.T) {
+// mergeBaseRequested reports whether the next run of #1 merges the default
+// branch for head sha, and the issue went back to working.
+func mergeBaseRequested(e *projectEnv, name, sha string) bool {
+	task := e.tasks()[name]
+	return task.Spec.Source.MergeBaseFor == sha && task.RunPending() && e.gl.Issues[1].HasLabel("agent::working")
+}
+
+func TestAutopilotLetsTheAgentResolveConflicts(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "conflict"
+	e.reconcile()
+	if !mergeBaseRequested(e, name, "sha-api") || e.autopilot().Phase != aiv1.AutopilotRunning || len(e.gl.Merged) != 0 {
+		t.Fatalf("conflicts must go to the agent: %+v, %+v, %v", e.tasks()[name].Spec, e.autopilot(), e.gl.Labels(1))
+	}
+	// The run merged the default branch and pushed; review and CI are clean.
+	task := e.tasks()[name]
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ObservedRunRequest = task.Spec.RunRequest
+		s.Run.MergedBaseFor = "sha-api"
+		s.Run.PushedSHA, s.Run.ReviewedSHA = "sha-merged", "sha-merged"
+		s.CI = &aiv1.CIStatus{SHA: "sha-merged", State: aiv1.CIStateSuccess}
+	})
+	e.gl.MRs[1].SHA, e.gl.MRs[1].DetailedMergeStatus = "sha-merged", "mergeable"
+	e.gl.SetLabels(1, "ai-generated", "agent::review")
+	e.reconcile()
+	if !slices.Equal(e.gl.Merged, []int64{1}) {
+		t.Fatalf("the resolved MR should be merged: %v, %+v", e.gl.Merged, e.autopilot())
+	}
+}
+
+func TestAutopilotPausesWhenTheAgentCouldNotResolveConflicts(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	// Already tried for this head, and it still conflicts.
+	var task aiv1.AgentTask
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: name}, &task); err != nil {
+		t.Fatal(err)
+	}
+	task.Spec.Source.MergeBaseFor = "sha-api"
+	if err := e.c.Update(e.ctx, &task); err != nil {
+		t.Fatal(err)
+	}
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "conflict"
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "did not resolve") || e.tasks()[name].Spec.RunRequest != task.Spec.RunRequest {
+		t.Fatalf("a conflict the agent could not resolve must pause, not loop: %+v", ap)
+	}
+}
+
+func TestAutopilotRebaseConflictGoesToTheAgent(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "need_rebase"
+	e.gl.RebaseConflict = true
+	e.reconcile() // rebase requested, ends in a conflict
+	e.reconcile()
+	if !mergeBaseRequested(e, name, "sha-api") || e.autopilot().Items[0].RebasedFrom != "" {
+		t.Fatalf("a rebase with conflicts must go to the agent: %+v %+v", e.tasks()[name].Spec.Source, e.autopilot().Items[0])
+	}
+}
+
+func TestAutopilotFailedRebaseGoesToTheAgent(t *testing.T) {
 	e := newAutopilotEnv(t)
 	e.reconcile()
 	e.reconcile()
@@ -379,8 +446,8 @@ func TestAutopilotFailedRebasePauses(t *testing.T) {
 	}
 	e.gl.Clock = e.gl.Clock.Add(10 * time.Minute)
 	e.reconcile()
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "did not go through") {
-		t.Fatalf("a rebase that changed nothing must pause: %+v", ap)
+	if !mergeBaseRequested(e, "shop-1-api", "sha-api") {
+		t.Fatalf("a rebase that changed nothing goes to the agent: %+v", e.autopilot())
 	}
 }
 
@@ -462,8 +529,40 @@ func TestAutopilotDoesNotRebaseAnUncheckableChange(t *testing.T) {
 	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "need_rebase"
 	e.gl.MRDiffs = map[int64][]gitlab.Diff{1: {{NewPath: "big.json", TooLarge: true}}}
 	e.reconcile()
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "too large") || len(e.gl.Rebased) != 0 {
-		t.Fatalf("an uncheckable change must not be rebased: %+v, rebased %v", ap, e.gl.Rebased)
+	if !mergeBaseRequested(e, "shop-1-api", "sha-api") || len(e.gl.Rebased) != 0 {
+		t.Fatalf("an uncheckable change is merged by the agent, not rebased: %+v, rebased %v", e.autopilot(), e.gl.Rebased)
+	}
+}
+
+func TestConflictsWithoutAutopilot(t *testing.T) {
+	for _, on := range []bool{true, false} {
+		e := newAutopilotEnv(t)
+		if !on {
+			var p aiv1.AgentProject
+			if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &p); err != nil {
+				t.Fatal(err)
+			}
+			off := false
+			p.Spec.Workflow.ResolveConflicts = &off
+			if err := e.c.Update(e.ctx, &p); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// The milestone leaves autopilot; the MR in review conflicts.
+		e.reconcile()
+		e.reconcile()
+		name := e.finishRun(1, "sha-api", nil)
+		e.gl.Milestones[0].Description = "/agent spec\nBuild a new checkout."
+		e.gl.MRs[1].Draft, e.gl.MRs[1].HasConflicts = false, true
+		e.reconcile()
+		e.reconcile() // asked once per head
+		task := e.tasks()[name]
+		if got := task.Spec.Source.MergeBaseFor == "sha-api" && e.gl.Issues[1].HasLabel("agent::working"); got != on {
+			t.Fatalf("resolveConflicts=%v: merge requested %v (%+v, %v)", on, got, task.Spec.Source, e.gl.Labels(1))
+		}
+		if on && task.Spec.RunRequest != 2 {
+			t.Fatalf("one run per conflicting head, got run request %d", task.Spec.RunRequest)
+		}
 	}
 }
 
