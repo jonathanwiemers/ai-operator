@@ -373,7 +373,7 @@ func TestLoginFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if !strings.Contains(resp.Request.URL.RawQuery, "login_error=") {
+	if got := resp.Request.URL.Query().Get("login_error"); got != errExpired {
 		t.Errorf("callback without login ended at %s", resp.Request.URL)
 	}
 
@@ -392,7 +392,7 @@ func TestLoginFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if !strings.Contains(resp.Request.URL.RawQuery, "login_error=") {
+	if got := resp.Request.URL.Query().Get("login_error"); got != errState {
 		t.Errorf("forged state ended at %s", resp.Request.URL)
 	}
 	if code := env.get(t, "/api/v1/me", nil); code != http.StatusUnauthorized {
@@ -514,5 +514,64 @@ func TestApp(t *testing.T) {
 		if code := env.get(t, path, nil); code != http.StatusNotFound {
 			t.Errorf("%s: status %d", path, code)
 		}
+	}
+}
+
+func TestReturnAfterLoginStaysOnHost(t *testing.T) {
+	env := newTestEnv(t, oidcConfig(Rule{Roles: []string{"*"}}))
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	if got := env.login(t, "/\t/evil.example.com"); got != "/" {
+		t.Errorf("after login the browser is at %q", got)
+	}
+}
+
+func TestAuthNoneOnlyForLocalhost(t *testing.T) {
+	env := newTestEnv(t, &Config{Auth: AuthConfig{Mode: AuthNone}})
+	for host, want := range map[string]int{
+		"":                         http.StatusOK, // the test server's 127.0.0.1
+		"localhost:9080":           http.StatusOK,
+		"[::1]:9080":               http.StatusOK,
+		"rebind.attacker.tld:9080": http.StatusMisdirectedRequest,
+	} {
+		req, _ := http.NewRequest(http.MethodGet, env.srv.URL+"/api/v1/projects", nil)
+		if host != "" {
+			req.Host = host
+		}
+		resp, err := env.client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("Host %q: status %d, want %d", host, resp.StatusCode, want)
+		}
+	}
+}
+
+func TestEventStreamsPerUser(t *testing.T) {
+	env := newTestEnv(t, oidcConfig(Rule{Roles: []string{"*"}}))
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.login(t, "/")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	open := func() *http.Response {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, env.srv.URL+"/api/v1/events", nil)
+		resp, err := env.client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	for i := 0; i < maxStreamsPerUser; i++ {
+		resp := open()
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("stream %d: status %d", i, resp.StatusCode)
+		}
+	}
+	resp := open()
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("stream over the limit: status %d", resp.StatusCode)
 	}
 }

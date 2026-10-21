@@ -118,6 +118,11 @@ func TestSafeReturn(t *testing.T) {
 		"https://evil.example.com": "/",
 		"/api/v1/projects":         "/",
 		"/oauth2/login":            "/",
+		"/\t/evil.example.com":     "/",
+		"/\x0b/evil.example.com":   "/",
+		"/%2F/evil.example.com":    "/",
+		"/projects/a/shop.v2":      "/projects/a/shop.v2",
+		"/projects/a%20b":          "/projects/a%20b",
 	} {
 		if got := safeReturn(in); got != want {
 			t.Errorf("safeReturn(%q) = %q, want %q", in, got, want)

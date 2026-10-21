@@ -16,7 +16,7 @@ const { data: p, error, notFound, loading } = useResource<ProjectDetail>(
   () => `/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}`,
 )
 
-const unhealthy = computed(() => (p.value?.conditions ?? []).filter((c) => c.status === 'False'))
+const unhealthy = computed(() => (p.value?.conditions ?? []).filter((c) => c.status === 'False' && c.reason !== 'Suspended'))
 
 function apTone(phase: string | undefined) {
   return phase === 'Paused' ? 'warning' : phase === 'Running' ? 'progress' : phase === 'Done' ? 'success' : 'muted'

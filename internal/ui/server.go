@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"net"
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -26,12 +28,16 @@ type Server struct {
 	// built into the binary.
 	static fs.FS
 	log    logr.Logger
+
+	// streams counts the open event streams per user.
+	streamsMu sync.Mutex
+	streams   map[string]int
 }
 
 // NewServer wires the server. reader is a cache-backed client; static holds
 // the built single page app.
 func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log logr.Logger) (*Server, error) {
-	s := &Server{cfg: cfg, reader: reader, hub: hub, authz: NewAuthorizer(cfg), log: log}
+	s := &Server{cfg: cfg, reader: reader, hub: hub, authz: NewAuthorizer(cfg), log: log, streams: map[string]int{}}
 	if _, err := fs.Stat(static, "index.html"); err == nil {
 		s.static = static
 	}
@@ -66,7 +72,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /", s.app)
 	// Rejects cross-origin requests that change state (the logout), on top
 	// of the SameSite cookies.
-	return securityHeaders(s.cfg.Secure(), http.NewCrossOriginProtection().Handler(mux))
+	var h http.Handler = http.NewCrossOriginProtection().Handler(mux)
+	if s.cfg.Auth.Mode == AuthNone {
+		h = localHostOnly(h)
+	}
+	return securityHeaders(s.cfg.Secure(), h)
 }
 
 type ctxKey int
@@ -123,7 +133,9 @@ func (s *Server) app(w http.ResponseWriter, r *http.Request) {
 			http.ServeFileFS(w, r, s.static, name)
 			return
 		}
-		if path.Ext(name) != "" {
+		// Missing assets are errors; any other path is a page of the app,
+		// even with a dot in it (project names may have one).
+		if strings.HasPrefix(name, "assets/") {
 			http.NotFound(w, r)
 			return
 		}
@@ -139,6 +151,24 @@ func (s *Server) app(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(b)
+}
+
+// localHostOnly refuses requests for other host names. Without login the UI
+// relies on listening on localhost only; a page on another site could still
+// reach it through a DNS name that resolves to 127.0.0.1 (DNS rebinding),
+// but its requests carry that name.
+func localHostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if !isLoopback(strings.Trim(host, "[]")) {
+			http.Error(w, "Without login the UI only answers requests for localhost.", http.StatusMisdirectedRequest)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // contentSecurityPolicy allows only the app's own scripts, styles and API.

@@ -42,14 +42,15 @@ const (
 	StageBlocked Stage = "blocked"
 )
 
-// StageOf derives a task's stage from its status.
-func StageOf(t *aiv1.AgentTask) Stage {
+// StageOf derives a task's stage from its status. ciEnabled is false for
+// projects with spec.ci.disabled.
+func StageOf(t *aiv1.AgentTask, ciEnabled bool) Stage {
 	if t.Status.Phase == aiv1.TaskPhaseBlocked {
 		return StageBlocked
 	}
 	if t.RunPending() {
-		switch t.Status.Phase {
-		case aiv1.TaskPhaseQueued, aiv1.TaskPhaseWaiting:
+		switch {
+		case t.Spec.Suspend, t.Status.Phase == aiv1.TaskPhaseQueued, t.Status.Phase == aiv1.TaskPhaseWaiting:
 			return StageWaiting
 		}
 		return StageWorking
@@ -66,6 +67,11 @@ func StageOf(t *aiv1.AgentTask) Stage {
 	}
 	if t.Spec.Type == aiv1.TaskTypeSpec {
 		return StagePlanned
+	}
+	// The operator writes the pipeline of a new push on its next poll;
+	// until then the issue is still waiting for CI.
+	if pushed := t.Status.Run.PushedSHA; ciEnabled && pushed != "" && (t.Status.CI == nil || t.Status.CI.SHA != pushed) {
+		return StageCI
 	}
 	if ci := t.Status.CI; ci != nil {
 		switch {
@@ -160,7 +166,9 @@ func gitLabRef(p *aiv1.AgentProject) GitLabRef {
 	return GitLabRef{URL: base, Project: p.Spec.GitLab.Project, WebURL: base + "/" + p.Spec.GitLab.Project}
 }
 
-func taskView(t *aiv1.AgentTask) Task {
+func ciEnabled(p *aiv1.AgentProject) bool { return !p.Spec.CI.Disabled }
+
+func taskView(t *aiv1.AgentTask, ciEnabled bool) Task {
 	return Task{
 		Namespace:  t.Namespace,
 		Name:       t.Name,
@@ -172,7 +180,7 @@ func taskView(t *aiv1.AgentTask) Task {
 		Autopilot:  t.Spec.Autopilot,
 		RunRequest: t.Spec.RunRequest,
 		RunPending: t.RunPending(),
-		Stage:      StageOf(t),
+		Stage:      StageOf(t, ciEnabled),
 		CreatedAt:  t.CreationTimestamp,
 		Status:     t.Status,
 	}
@@ -197,7 +205,7 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask) ProjectSummary {
 	var cost float64
 	for i := range tasks {
 		t := &tasks[i]
-		s.Stages[StageOf(t)]++
+		s.Stages[StageOf(t, ciEnabled(p))]++
 		cost += parseCost(t.Status.Run.CostUSD)
 		if ap := t.Status.Autopilot; ap != nil && t.Spec.Milestone != nil {
 			o := AutopilotOverview{
@@ -228,7 +236,7 @@ func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask) ProjectDetail {
 	costs := map[int64]float64{}
 	for i := range tasks {
 		t := &tasks[i]
-		v := taskView(t)
+		v := taskView(t, ciEnabled(p))
 		ms := t.Spec.Milestone
 		if ms == nil {
 			d.Unplanned = append(d.Unplanned, v)

@@ -24,7 +24,7 @@ const totals = computed(() => {
 })
 
 function unhealthy(p: ProjectSummary) {
-  return (p.conditions ?? []).filter((c) => c.status === 'False')
+  return (p.conditions ?? []).filter((c) => c.status === 'False' && c.reason !== 'Suspended')
 }
 </script>
 

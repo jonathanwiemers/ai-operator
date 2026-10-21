@@ -17,6 +17,10 @@ import (
 // connections.
 const heartbeat = 25 * time.Second
 
+// maxStreamsPerUser limits the open event streams of one user (a browser
+// tab holds one), so a user cannot exhaust the UI's memory with them.
+const maxStreamsPerUser = 20
+
 // me returns the logged-in user.
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	p := principalOf(r)
@@ -82,7 +86,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 		if tasks[i].Name == name {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"project": summarize(ap, tasks),
-				"task":    taskView(&tasks[i]),
+				"task":    taskView(&tasks[i], ciEnabled(ap)),
 			})
 			return
 		}
@@ -131,6 +135,14 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, fmt.Errorf("streaming not supported"))
 		return
 	}
+	if s.sessions != nil {
+		release, ok := s.acquireStream(p.Username)
+		if !ok {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many open event streams"})
+			return
+		}
+		defer release()
+	}
 	events, cancel := s.hub.Subscribe(func(ns, project string) bool { return s.authz.CanView(p, ns, project) })
 	defer cancel()
 
@@ -166,6 +178,23 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		}
 		flusher.Flush()
 	}
+}
+
+// acquireStream counts an event stream of user; release ends it.
+func (s *Server) acquireStream(user string) (release func(), ok bool) {
+	s.streamsMu.Lock()
+	defer s.streamsMu.Unlock()
+	if s.streams[user] >= maxStreamsPerUser {
+		return nil, false
+	}
+	s.streams[user]++
+	return func() {
+		s.streamsMu.Lock()
+		defer s.streamsMu.Unlock()
+		if s.streams[user]--; s.streams[user] <= 0 {
+			delete(s.streams, user)
+		}
+	}, true
 }
 
 func (s *Server) internalError(w http.ResponseWriter, err error) {

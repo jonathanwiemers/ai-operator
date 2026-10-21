@@ -1,17 +1,23 @@
 <script setup lang="ts">
 import { onMounted, watch } from 'vue'
-import { get, logout, session } from './api'
+import { get, logout, session, LoginRequiredError } from './api'
 import { connectEvents, disconnectEvents, live } from './live'
 import SignIn from './views/SignIn.vue'
 import type { Me } from './types'
 
-onMounted(async () => {
+// Who is logged in. get() sets loginRequired on 401; any other failure
+// (the UI restarting) is retried, since the live updates wait for it.
+async function loadMe(delay = 2000): Promise<void> {
   try {
     session.me = await get<Me>('/me')
-  } catch {
-    // get() sets loginRequired on 401; other errors show up in the views.
+  } catch (e) {
+    if (!(e instanceof LoginRequiredError)) {
+      window.setTimeout(() => void loadMe(Math.min(delay * 2, 60000)), delay)
+    }
   }
-})
+}
+
+onMounted(() => loadMe())
 
 watch(
   () => session.me !== null && !session.loginRequired,

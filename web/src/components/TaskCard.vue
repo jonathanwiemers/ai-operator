@@ -28,6 +28,7 @@ const to = computed(() => ({
       <span>{{ run.currentStep }}</span>
     </div>
     <div class="foot">
+      <Badge v-if="task.suspend" tone="warning">Suspended</Badge>
       <Badge v-if="task.status.ci" :tone="ciTone(task.status.ci.state)">CI: {{ ciLabel[task.status.ci.state] }}</Badge>
       <Badge v-if="run.mergeRequestIID" tone="neutral">!{{ run.mergeRequestIID }}</Badge>
       <Badge v-if="(run.blockingFindings ?? 0) > 0" tone="danger">{{ run.blockingFindings }} findings</Badge>

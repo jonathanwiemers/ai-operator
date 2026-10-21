@@ -1,10 +1,21 @@
 <script setup lang="ts">
 import { loginURL } from '../api'
 
-// Show the login error once, and do not come back to it after the login.
+// The server sends error codes, not text, so a link cannot put words on
+// this page. Show the error once, and do not come back to it after the login.
+const messages: Record<string, string> = {
+  unreachable: 'The identity provider cannot be reached. Please try again later.',
+  expired: 'The login expired or was started in another browser. Please sign in again.',
+  state: 'The login could not be verified. Please sign in again.',
+  refused: 'The identity provider refused the login.',
+  token: 'The identity provider\'s answer could not be verified.',
+  claims: 'Your account\'s user name could not be read from the login. Please contact your administrator.',
+  session: 'The session could not be started. Please contact your administrator.',
+}
 const url = new URL(window.location.href)
-const error = url.searchParams.get('login_error')
-if (error !== null) {
+const code = url.searchParams.get('login_error')
+const error = code === null ? null : (messages[code] ?? 'The login failed. Please sign in again.')
+if (code !== null) {
   url.searchParams.delete('login_error')
   window.history.replaceState(null, '', url.pathname + url.search)
 }

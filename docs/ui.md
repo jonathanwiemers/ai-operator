@@ -21,7 +21,9 @@ resources' status, and links lead to GitLab.
 | **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot queue with merge requests and decisions |
 
 A task's **stage** is derived from its status the same way the operator moves
-the GitLab labels; the hint on each badge explains it.
+the GitLab labels; the hint on each badge explains it. After a push the task
+stays in *CI* until the operator has followed that commit's pipeline (unless
+the project has `spec.ci.disabled`).
 
 ## Enable it
 
@@ -148,7 +150,8 @@ token's claims, plus the claims only the userinfo endpoint returns (the ID
 token wins where both have one). `username` must give a string. `roles` may
 give a list of strings, a single string or a map whose keys are the roles. If
 the roles expression fails because the claim is missing, the user has no
-roles; a username that cannot be evaluated fails the login with a message.
+roles; a username that cannot be evaluated fails the login (the UI's log
+says why).
 
 ## Without login
 
@@ -170,7 +173,9 @@ The UI then listens on `127.0.0.1` inside its pod only, so only
 `kubectl port-forward` reaches it, and everyone who can port-forward to it sees
 every project. The chart creates no Service in this mode and refuses to
 combine it with `ui.httpRoute`; the binary itself refuses `none` on any
-address but a loopback one.
+address but a loopback one, and answers only requests for `localhost`,
+`127.0.0.1` or `[::1]`, so a web page cannot reach it through a DNS name that
+points to 127.0.0.1 (DNS rebinding).
 
 ## Security
 
@@ -185,7 +190,12 @@ address but a loopback one.
 - **Sessions** are AES-GCM encrypted cookies (`__Host-` prefix, `HttpOnly`,
   `Secure`, `SameSite=Lax`), so the UI keeps no state and replicas share
   logins through the session key. Logout clears the cookie and ends the
-  session at the provider (RP-initiated logout) if it supports it.
+  session at the provider (RP-initiated logout) if it supports it. Since
+  nothing is stored on the server, a copied cookie stays valid until it
+  expires (`ui.auth.sessionTTL`); changing the session key ends all sessions.
+- **Redirects.** After the login the browser only goes back to a path on the
+  UI's own host; login errors reach the sign-in page as codes, never as
+  text from the URL.
 - **Browser protections.** A strict Content Security Policy (only the UI's
   own scripts, styles and API, no framing), HSTS, `nosniff`, and Go's
   cross-origin protection for requests that change state (logout). Links to
@@ -209,6 +219,8 @@ with the same session cookie:
 
 Change events carry no content; the app fetches what it shows again. The
 stream sends a heartbeat every 25 seconds and ends when the session expires.
+A user may have 20 streams open at a time (one per browser tab); more answer
+429.
 If your Gateway cuts long requests, the app reconnects and catches up; set
 `ui.httpRoute.timeouts: {request: 0s}` to keep the stream open.
 

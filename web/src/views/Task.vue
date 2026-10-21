@@ -34,6 +34,13 @@ const planTitles = computed(() => {
   return m
 })
 
+// Conditions whose True state is the bad one.
+const negativeConditions = new Set(['Blocked'])
+const conditionTone = (type: string, status: string) => {
+  if (status !== 'True' && status !== 'False') return 'muted'
+  return (status === 'True') !== negativeConditions.has(type) ? 'success' : 'danger'
+}
+
 const resultTone = (r: string | undefined) =>
   r === 'Succeeded' ? 'success' : r === 'NeedsInput' || r === 'Deferred' ? 'warning' : r === 'Failed' ? 'danger' : 'muted'
 const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? 'progress' : s === 'Skipped' ? 'warning' : 'muted')
@@ -292,7 +299,7 @@ const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? '
                 <tr v-for="c in t.status.conditions" :key="c.type">
                   <td>{{ c.type }}</td>
                   <td>
-                    <Badge :tone="c.status === 'True' ? 'success' : c.status === 'False' ? 'danger' : 'muted'">
+                    <Badge :tone="conditionTone(c.type, c.status)">
                       {{ c.reason || c.status }}
                     </Badge>
                     <div v-if="c.message" class="faint">{{ c.message }}</div>

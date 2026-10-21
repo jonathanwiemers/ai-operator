@@ -71,7 +71,7 @@ func (o *oidcClient) login(w http.ResponseWriter, r *http.Request) {
 	p, err := o.discover(r.Context())
 	if err != nil {
 		o.log.Error(err, "OIDC discovery failed", "issuer", o.cfg.OIDC.IssuerURL)
-		o.fail(w, r, "The identity provider cannot be reached.")
+		o.fail(w, r, errUnreachable)
 		return
 	}
 	st := LoginState{
@@ -82,7 +82,7 @@ func (o *oidcClient) login(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := o.sessions.StartLogin(w, st); err != nil {
 		o.log.Error(err, "cannot start login")
-		o.fail(w, r, "The login could not be started.")
+		o.fail(w, r, errSession)
 		return
 	}
 	u := o.oauth2Config(p).AuthCodeURL(st.State, oidc.Nonce(st.Nonce), oauth2.S256ChallengeOption(st.Verifier))
@@ -96,19 +96,19 @@ func (o *oidcClient) callback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch {
 	case !ok:
-		o.fail(w, r, "The login expired or was started in another browser. Please sign in again.")
+		o.fail(w, r, errExpired)
 		return
 	case q.Get("state") != st.State:
-		o.fail(w, r, "The login state does not match. Please sign in again.")
+		o.fail(w, r, errState)
 		return
 	case q.Get("error") != "":
 		o.log.Info("provider refused the login", "error", q.Get("error"), "description", q.Get("error_description"))
-		o.fail(w, r, "The identity provider refused the login: "+q.Get("error"))
+		o.fail(w, r, errRefused)
 		return
 	}
 	p, err := o.discover(r.Context())
 	if err != nil {
-		o.fail(w, r, "The identity provider cannot be reached.")
+		o.fail(w, r, errUnreachable)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
@@ -117,27 +117,27 @@ func (o *oidcClient) callback(w http.ResponseWriter, r *http.Request) {
 	tok, err := conf.Exchange(ctx, q.Get("code"), oauth2.VerifierOption(st.Verifier))
 	if err != nil {
 		o.log.Error(err, "code exchange failed")
-		o.fail(w, r, "The login code could not be redeemed.")
+		o.fail(w, r, errToken)
 		return
 	}
 	raw, _ := tok.Extra("id_token").(string)
 	if raw == "" {
-		o.fail(w, r, "The identity provider returned no ID token.")
+		o.fail(w, r, errToken)
 		return
 	}
 	idToken, err := p.Verifier(&oidc.Config{ClientID: o.cfg.OIDC.ClientID}).Verify(ctx, raw)
 	if err != nil {
 		o.log.Error(err, "ID token verification failed")
-		o.fail(w, r, "The ID token is invalid.")
+		o.fail(w, r, errToken)
 		return
 	}
 	if idToken.Nonce != st.Nonce {
-		o.fail(w, r, "The ID token does not belong to this login.")
+		o.fail(w, r, errToken)
 		return
 	}
 	claims := map[string]any{}
 	if err := idToken.Claims(&claims); err != nil {
-		o.fail(w, r, "The ID token's claims cannot be read.")
+		o.fail(w, r, errToken)
 		return
 	}
 	// Providers put some claims (Zitadel: the roles, unless configured
@@ -158,12 +158,12 @@ func (o *oidcClient) callback(w http.ResponseWriter, r *http.Request) {
 	username, roles, err := o.claims.Map(claims)
 	if err != nil {
 		o.log.Error(err, "claim mapping failed", "subject", idToken.Subject)
-		o.fail(w, r, "Your account's claims could not be mapped: "+err.Error())
+		o.fail(w, r, errClaims)
 		return
 	}
 	if err := o.sessions.Start(w, Principal{Username: username, Roles: roles}); err != nil {
 		o.log.Error(err, "cannot start session", "user", username)
-		o.fail(w, r, err.Error())
+		o.fail(w, r, errSession)
 		return
 	}
 	o.log.Info("login", "user", username, "roles", roles)
@@ -185,18 +185,40 @@ func (o *oidcClient) logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"redirect": next})
 }
 
-// fail sends the browser back to the app's sign-in page with a message.
-func (o *oidcClient) fail(w http.ResponseWriter, r *http.Request, msg string) {
-	http.Redirect(w, r, "/?login_error="+url.QueryEscape(msg), http.StatusFound)
+// Login errors are sent to the app as codes, which it turns into messages,
+// so a link cannot make the sign-in page show text of its choosing. The
+// details are in the log.
+const (
+	errUnreachable = "unreachable"
+	errExpired     = "expired"
+	errState       = "state"
+	errRefused     = "refused"
+	errToken       = "token"
+	errClaims      = "claims"
+	errSession     = "session"
+)
+
+// fail sends the browser back to the app's sign-in page with an error code.
+func (o *oidcClient) fail(w http.ResponseWriter, r *http.Request, code string) {
+	http.Redirect(w, r, "/?login_error="+code, http.StatusFound)
 }
 
 // safeReturn only allows paths on this host as the target after login.
+// Browsers drop tabs and newlines from URLs, so "/\t/evil.com" would turn
+// into "//evil.com": control characters are refused before parsing.
 func safeReturn(s string) string {
-	if !strings.HasPrefix(s, "/") || strings.HasPrefix(s, "//") || strings.ContainsAny(s, "\\\r\n") {
+	if strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f || r == '\\' }) {
 		return "/"
 	}
-	if strings.HasPrefix(s, "/oauth2/") || strings.HasPrefix(s, "/api/") {
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil ||
+		!strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") ||
+		strings.HasPrefix(u.Path, "/oauth2/") || strings.HasPrefix(u.Path, "/api/") {
 		return "/"
 	}
-	return s
+	out := u.EscapedPath()
+	if u.RawQuery != "" {
+		out += "?" + u.RawQuery
+	}
+	return out
 }

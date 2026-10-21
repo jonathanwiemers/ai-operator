@@ -10,30 +10,41 @@ export const live = reactive({
 
 let source: EventSource | null = null
 let bumpTimer: number | undefined
+let retryTimer: number | undefined
+let retryDelay = 2000
 
 export function connectEvents(): void {
   if (source) return
+  window.clearTimeout(retryTimer)
   source = new EventSource('/api/v1/events')
   source.addEventListener('open', () => {
     // Changes may have been missed while the stream was down.
     if (!live.connected) bump()
     live.connected = true
+    retryDelay = 2000
   })
   source.addEventListener('change', bump)
   source.addEventListener('error', () => {
     live.connected = false
-    // EventSource retries by itself; a 401 ends the stream for good.
-    if (source?.readyState === EventSource.CLOSED) {
-      source = null
-      get('/me').then(
-        () => window.setTimeout(connectEvents, 5000),
-        () => undefined,
-      )
-    }
+    // EventSource retries network errors by itself, but gives up on any
+    // non-200 answer (an expired login, a restarting pod behind the
+    // Gateway). Only a 401 ends it for good; anything else is retried.
+    if (source?.readyState !== EventSource.CLOSED) return
+    source = null
+    get('/me').then(scheduleRetry, (e) => {
+      if (!(e instanceof LoginRequiredError)) scheduleRetry()
+    })
   })
 }
 
+function scheduleRetry(): void {
+  window.clearTimeout(retryTimer)
+  retryTimer = window.setTimeout(connectEvents, retryDelay)
+  retryDelay = Math.min(retryDelay * 2, 60000)
+}
+
 export function disconnectEvents(): void {
+  window.clearTimeout(retryTimer)
   source?.close()
   source = null
   live.connected = false
