@@ -197,10 +197,25 @@ comment per run on the issue:
 > **Why:** `store.js` already lowercases slugs, so search stays case-insensitive.
 > **Alternatives:** keep the case as typed; store display and normalised forms
 
-The planning agent records its decisions for each issue in the issue
-description, under **Decisions**, with IDs like `D42-P1`. These are
-renumbered if the plan of a draft issue changes; implementer IDs (`D42-3`)
-never change.
+The planning agent posts its decisions for each issue as a comment on that
+issue too, with the question, the choice, why, and the alternatives, and IDs
+like `D42-P1`:
+
+> 📌 **Decisions** of the plan in run `shop-spec-m3#1`. Change one with `/agent revisit <id> <what you want instead>`.
+>
+> #### D42-P1: Payment provider API
+> **Question:** Which PayPal API?
+> **Chosen:** Orders v2
+> **Why:** the project already uses the REST client; v1 is deprecated.
+> **Alternatives:** Checkout v1
+
+The issue description keeps only the spec (with a pointer to the comment), so
+all decisions are discussed, answered and revisited in the comments. While an
+issue is a draft, a re-plan updates this comment in place and its IDs are
+renumbered; implementer IDs (`D42-3`) never change. On autopilot the planner
+asks no questions, so this comment is where its defaults show up. Issues
+planned before this change keep their decisions in the description; those
+still work.
 
 To change a decision, comment on the issue or its MR:
 
@@ -225,8 +240,8 @@ decision that supersedes the old one. The old decision is then marked
 - If the agent does not record a decision that replaces the old one, the old
   one is not marked, and the report says so.
 
-Implementer decisions are only read from the bot's decision comments, and
-planner decisions from the issue description, so a comment by someone else
+Decisions are only read from the bot's decision comments (planner decisions
+of older issues also from the description), so a comment by someone else
 cannot add or fake decisions.
 
 #### Revisiting after the merge
@@ -279,8 +294,8 @@ With **`/agent autopilot`** in the milestone description (instead of, or next
 to, `/agent spec`), the milestone runs without you:
 
 1. The spec agent plans it as usual, but asks no questions. It takes the
-   default it would propose and records it as a [decision](#decisions) in
-   each issue's description.
+   default it would propose and records it as a [decision](#decisions), with
+   why and the alternatives, in a comment on each issue.
 2. The operator creates a tracking issue, **🤖 Autopilot: <milestone>**, and
    moves the first issue to `agent::ready`. Issues go **one at a time**, in
    dependency order (an issue's "Depends on" first, otherwise plan order).

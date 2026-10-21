@@ -256,8 +256,11 @@ nothing is lost.
   choice, why, rejected alternatives) as structured output, so there is no
   extra model call to extract them (`internal/runner/decisions.go`). The
   runner posts the implementer's decisions in one comment per run with IDs
-  `D<issue>-<n>`, and the planner's go into the issue description as
-  `D<issue>-P<n>`. IDs are numbered after the highest one in the bot's
+  `D<issue>-<n>`, and the planner's in one comment per issue as
+  `D<issue>-P<n>`, so every decision is discussed where the conversation is;
+  the description holds only the spec. The plan comment carries a hidden
+  marker and is updated in place while the issue is a draft (planning IDs
+  are renumbered then), and only when its decisions change. IDs are numbered after the highest one in the bot's
   decision comments, so GitLab is the source of truth and they survive an
   archived workspace; long lists are split over several comments, never
   cut. `/agent revisit <id> …` puts the decision and the instruction at the
@@ -430,9 +433,9 @@ It watches every planned milestone, autopilot or not:
   and the newest handled note ID per issue, saved after each comment, so
   each comment is handled once even if a later one fails. A follow-up GitLab
   refuses to create (4xx) gets a reply instead of blocking the milestone.
-* **Lookup.** The decision is read like the runner reads it: planner
-  decisions from the issue description, implementer decisions from the bot's
-  decision comments only. Every handled comment gets a reply.
+* **Lookup.** The decision is read like the runner reads it: from the bot's
+  decision comments only (planner decisions of older issues also from the
+  description). Every handled comment gets a reply.
 * **Follow-up.** The issue carries the old decision without its marker and
   the instruction, both cleaned like agent text (no HTML, markers or
   mentions), and `<!-- ai-operator:revisit=<id> -->` last. It has no plan
@@ -441,7 +444,8 @@ It watches every planned milestone, autopilot or not:
   a pointer instead (and is queued if queuing failed before).
 * **Superseding across issues.** When the follow-up's run posts a decision
   that supersedes the marked ID, the runner marks the old decision on the
-  original issue, in its description or the bot's decision comment. Only
+  original issue, in the bot's decision comment (or, for older issues, the
+  description). Only
   issues the bot created count as follow-ups. The mark is set when the
   decision is posted, not when the follow-up merges.
 * **Autopilot.** The follow-up is a draft and is appended to the queue with

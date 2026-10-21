@@ -51,8 +51,9 @@ flowchart LR
 - **Autopilot.** With `/agent autopilot` in the milestone, the agents take
   their defaults instead of asking, and the operator works through the issues
   one at a time and merges each MR once CI is green and the review is clean.
-  Every decision is posted with an ID you can `/agent revisit` later, even
-  after the merge: a follow-up issue changes it.
+  Every decision is posted as a comment on its issue, with why and the
+  alternatives, and an ID you can `/agent revisit` later, even after the
+  merge: a follow-up issue changes it.
 - **Clean up.** Close the issue, and the pod and workspace are removed. Pods
   only run while an agent works: right after each run the pod stops, and the
   workspace keeps the checkout, caches and agent session for the next run.

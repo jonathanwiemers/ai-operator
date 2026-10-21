@@ -213,27 +213,69 @@ func TestRenderDecisionIsSafe(t *testing.T) {
 	}
 }
 
-func TestPlannedDecisionsGetIssueIDs(t *testing.T) {
+func TestPlannedDecisionsAreAComment(t *testing.T) {
 	gl := gitlabfake.New()
 	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2"}
 	gl.Milestones = []gitlab.Milestone{m}
 	spec := aiv1.AgentProjectSpec{}.WithDefaults()
+	ctx := context.Background()
 	plan := SpecPlan{Issues: []PlannedItem{{Key: "api", Title: "API", Description: "Build it.", Profile: "fast",
-		Decisions: []Decision{{Title: "Protocol", Choice: "REST", Why: "existing clients"}}}}}
-	if _, _, _, err := applyPlan(context.Background(), logr.Discard(), gl, "g/p", &m, spec, plan, nil); err != nil {
+		Decisions: []Decision{{Title: "Protocol", Question: "Which protocol?", Choice: "REST", Why: "existing clients", Alternatives: []string{"gRPC"}}}}}}
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, nil, planComment{botID: gl.Bot.ID, runID: "shop-spec#1"}); err != nil {
 		t.Fatal(err)
 	}
-	desc := gl.Issues[1].Description
-	for _, want := range []string{"### Decisions", "#### D1-P1: Protocol", "**Chosen:** REST", "<!-- ai-operator:decision=D1-P1 -->"} {
-		if !strings.Contains(desc, want) {
-			t.Fatalf("description misses %q:\n%s", want, desc)
+	is := gl.Issues[1]
+	if strings.Contains(is.Description, "#### D1-P1") || !strings.Contains(is.Description, "decisions are in a comment below") {
+		t.Fatalf("the description keeps the spec only, with a pointer:\n%s", is.Description)
+	}
+	notes := gl.IssueNotes[1]
+	if len(notes) != 1 || notes[0].Author.ID != gl.Bot.ID {
+		t.Fatalf("expected one plan decisions comment of the bot, got %+v", notes)
+	}
+	for _, want := range []string{decisionsHeader + " of the plan in run `shop-spec#1`", "#### D1-P1: Protocol", "**Question:** Which protocol?",
+		"**Chosen:** REST", "**Why:** existing clients", "**Alternatives:** gRPC", "<!-- ai-operator:decision=D1-P1 -->", planDecisionsMarker} {
+		if !strings.Contains(notes[0].Body, want) {
+			t.Fatalf("plan comment misses %q:\n%s", want, notes[0].Body)
 		}
 	}
-	// A revisit of a planning decision finds it in the description.
-	is := gl.Issues[1]
-	rvs := findRevisits(is, nil, []gitlab.Note{{Author: gitlab.User{ID: 1}, Body: "/agent revisit D1-P1 use gRPC"}}, gl.Bot.ID, "/agent")
-	if len(rvs) != 1 || !strings.Contains(rvs[0].Decision, "**Chosen:** REST") || rvs[0].Note != nil || rvs[0].Instruction != "use gRPC" {
+	// A revisit of a planning decision finds it in the comment.
+	rvs := findRevisits(is, notes, []gitlab.Note{{Author: gitlab.User{ID: 1}, Body: "/agent revisit D1-P1 use gRPC"}}, gl.Bot.ID, "/agent")
+	if len(rvs) != 1 || !strings.Contains(rvs[0].Decision, "**Chosen:** REST") || rvs[0].Note == nil || rvs[0].Instruction != "use gRPC" {
 		t.Fatalf("unexpected revisit %+v", rvs)
+	}
+
+	// A re-plan of the draft updates the comment instead of adding one; an
+	// unchanged plan leaves it alone.
+	issues, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
+	plan.Issues[0].Decisions[0].Choice = "gRPC"
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#2"}); err != nil {
+		t.Fatal(err)
+	}
+	if notes := gl.IssueNotes[1]; len(notes) != 1 || !strings.Contains(notes[0].Body, "**Chosen:** gRPC") || !strings.Contains(notes[0].Body, "run `shop-spec#2`") {
+		t.Fatalf("the plan comment should be updated in place: %+v", notes)
+	}
+	before := gl.IssueNotes[1][0].Body
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#3"}); err != nil {
+		t.Fatal(err)
+	}
+	if gl.IssueNotes[1][0].Body != before {
+		t.Fatalf("an unchanged plan must not touch the comment:\n%s", gl.IssueNotes[1][0].Body)
+	}
+	// Decisions dropped by the plan: the comment says so.
+	plan.Issues[0].Decisions = nil
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#4"}); err != nil {
+		t.Fatal(err)
+	}
+	if body := gl.IssueNotes[1][0].Body; !strings.Contains(body, "none since run `shop-spec#4`") || strings.Contains(body, "D1-P1") {
+		t.Fatalf("dropped decisions must be removed from the comment:\n%s", body)
+	}
+}
+
+func TestPlannedDecisionsInOldDescriptionsStillCount(t *testing.T) {
+	is := &gitlab.Issue{IID: 1, Description: "Build it.\n\n### Decisions\n\n#### D1-P1: Protocol\n**Chosen:** REST\n<!-- ai-operator:decision=D1-P1 -->\n"}
+	rvs := findRevisits(is, nil, []gitlab.Note{{Author: gitlab.User{ID: 1}, Body: "/agent revisit D1-P1 use gRPC"}}, 999, "/agent")
+	if len(rvs) != 1 || !strings.Contains(rvs[0].Decision, "**Chosen:** REST") || rvs[0].Note != nil {
+		t.Fatalf("planning decisions of older issues are found in the description: %+v", rvs)
 	}
 }
 

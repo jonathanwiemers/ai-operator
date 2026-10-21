@@ -525,21 +525,10 @@ func (r *Runner) postDecisions(ctx context.Context, gl gitlab.API, glProject str
 }
 
 // supersedeElsewhere marks decision id on its own issue as superseded by the
-// decision by of this run.
+// decision by of this run: in the bot's decision comment that holds it, or in
+// the description for planning decisions of older issues.
 func (r *Runner) supersedeElsewhere(ctx context.Context, gl gitlab.API, glProject string, botID int64, id, by string) error {
 	iid := marker.DecisionIssue(id)
-	if strings.Contains(id, "-P") {
-		target, err := gl.GetIssue(ctx, glProject, iid)
-		if err != nil {
-			return fmt.Errorf("reading #%d to mark %s superseded: %w", iid, id, err)
-		}
-		if desc := markSuperseded(target.Description, id, by, r.run.id); desc != target.Description {
-			if _, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Description: desc}); err != nil {
-				return fmt.Errorf("marking %s superseded on #%d: %w", id, iid, err)
-			}
-		}
-		return nil
-	}
 	notes, err := gl.ListIssueNotes(ctx, glProject, iid)
 	if err != nil {
 		return fmt.Errorf("reading #%d to mark %s superseded: %w", iid, id, err)
@@ -554,6 +543,18 @@ func (r *Runner) supersedeElsewhere(ctx context.Context, gl gitlab.API, glProjec
 			}
 		}
 		return nil
+	}
+	if !strings.Contains(id, "-P") {
+		return nil
+	}
+	target, err := gl.GetIssue(ctx, glProject, iid)
+	if err != nil {
+		return fmt.Errorf("reading #%d to mark %s superseded: %w", iid, id, err)
+	}
+	if desc := markSuperseded(target.Description, id, by, r.run.id); desc != target.Description {
+		if _, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Description: desc}); err != nil {
+			return fmt.Errorf("marking %s superseded on #%d: %w", id, iid, err)
+		}
 	}
 	return nil
 }

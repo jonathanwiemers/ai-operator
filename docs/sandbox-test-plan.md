@@ -116,8 +116,9 @@ which has the task's name, e.g. `sandbox-spec-m1-tags-and-due-dates` or
   self-contained sub-spec (context, plan with real file names such as
   `src/server.js`, acceptance criteria, test plan), `Depends on #…` where it
   makes sense, and a question about tag normalisation with a suggested
-  default. Where the planner made choices, the description has a
-  **Decisions** section with IDs `D<iid>-P1`, `D<iid>-P2`, ….
+  default. Where the planner made choices, the bot commented on the issue
+  with **Decisions of the plan** (question, choice, why, alternatives) with
+  IDs `D<iid>-P1`, `D<iid>-P2`, …; the description only points to it.
 * The milestone description is unchanged.
 * `kubectl -n agents get agenttask <spec task> -o jsonpath='{.status.run}'`
   shows `lastResult: Succeeded`, a summary and a cost.
@@ -422,8 +423,8 @@ Preparation: allow the bot to merge into `main` (Protected branches,
    document it in README.md" (the second part depends on the first).
 
 **Expected:**
-* The planned issues have no open questions; their descriptions have a
-  **Decisions** section. A tracking issue **🤖 Autopilot: Autopilot demo**
+* The planned issues have no open questions; each has a bot comment
+  **Decisions of the plan** with the defaults it took and why. A tracking issue **🤖 Autopilot: Autopilot demo**
   appears with one line per issue.
 * Only the first issue moves to `agent::ready`, then `agent::working`. Its
   run posts a decision comment, the draft MR is opened, the pipeline runs.

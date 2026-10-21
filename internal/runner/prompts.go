@@ -38,7 +38,8 @@ How to plan:
   choices a reviewer could reasonably want differently (data shapes, names
   users see, libraries, error handling, scope cuts), each with the question,
   your choice, why, and the alternatives you rejected. Small mechanical
-  choices are not decisions.
+  choices are not decisions. They are posted as a comment on the issue; do
+  not repeat them in the description.
 - You may be given issues that already exist for this milestone. Keep their
   key and existingIid when they still fit, update them instead of creating
   duplicates, and drop nothing that is already in progress.

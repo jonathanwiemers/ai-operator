@@ -25,7 +25,7 @@ func issueKey(description string) string {
 
 // runSpec plans a milestone: it asks the spec agent for a set of issues and
 // creates (or updates) them in GitLab as drafts.
-func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) (*Outcome, error) {
+func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (*Outcome, error) {
 	if task.Spec.Milestone == nil {
 		return nil, fmt.Errorf("spec task has no milestone")
 	}
@@ -94,7 +94,8 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	s.done(agentResult(role, res, fmt.Sprintf("%d issues planned", len(plan.Issues))),
 		"session", res.SessionID, "costUSD", res.CostUSD, "planned", len(plan.Issues))
 	s = r.step(ctx, "apply plan", "planned", len(plan.Issues))
-	created, updated, skipped, err := applyPlan(ctx, s.log, gl, glProject, milestone, spec, plan, issues)
+	created, updated, skipped, err := applyPlan(ctx, s.log, gl, glProject, milestone, spec, plan, issues,
+		planComment{botID: project.Status.BotUserID, runID: r.run.id})
 	if err != nil {
 		return out, s.fail(err)
 	}
@@ -161,7 +162,11 @@ func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
 // applyPlan creates and updates the planned issues. Issues that have left the
 // draft state (being worked on, done, or created by a human) are never
 // touched again.
-func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject string, m *gitlab.Milestone, spec aiv1.AgentProjectSpec, plan SpecPlan, issues []gitlab.Issue) (created, updated, skipped int, err error) {
+//
+// The planner's decisions for an issue go into a comment of the bot on it
+// (planComment), with the reasons and alternatives, so they are discussed and
+// revisited where the rest of the conversation is.
+func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject string, m *gitlab.Milestone, spec aiv1.AgentProjectSpec, plan SpecPlan, issues []gitlab.Issue, pc planComment) (created, updated, skipped int, err error) {
 	wf := spec.Workflow
 	byIID := map[int64]*gitlab.Issue{}
 	keyToIID := map[string]int64{}
@@ -185,7 +190,8 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			// No IID, or one not in the milestone: the key decides.
 			iid = keyToIID[item.Key]
 		}
-		desc, missing := renderIssue(item, keyToIID, iid, wf.CommandPrefix)
+		desc, missing := renderIssue(item, keyToIID)
+		isNew := false
 		if ex := byIID[iid]; ex != nil {
 			if ex.State != "opened" || !ex.HasLabel(wf.DraftLabel) || marker.RevisitOf.MatchString(ex.Description) {
 				skipped++
@@ -217,9 +223,12 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			}
 			iid = is.IID
 			created++
-			// Decision IDs carry the IID, which is only known now.
-			missing = missing || len(item.Decisions) > 0
+			isNew = true
 			log.Info("issue created", "iid", iid, "key", item.Key, "profile", item.Profile)
+		}
+		// Decision IDs carry the IID, which is known now.
+		if err := pc.post(ctx, gl, glProject, iid, isNew, item.Decisions, wf.CommandPrefix); err != nil {
+			return created, updated, skipped, err
 		}
 		keyToIID[item.Key] = iid
 		if missing {
@@ -229,7 +238,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 	// Dependencies on issues planned later in the list are resolved now that
 	// every issue has an IID.
 	for _, p := range unresolved {
-		desc, _ := renderIssue(p.item, keyToIID, p.iid, wf.CommandPrefix)
+		desc, _ := renderIssue(p.item, keyToIID)
 		if _, err := gl.UpdateIssue(ctx, glProject, p.iid, gitlab.UpdateIssueOptions{Description: desc}); err != nil {
 			return created, updated, skipped, fmt.Errorf("linking dependencies of #%d: %w", p.iid, err)
 		}
@@ -246,11 +255,58 @@ func slugKey(key, title string) string {
 	return strings.Trim(nonKey.ReplaceAllString(strings.ToLower(key), "-"), "-")
 }
 
-// renderIssue renders the description of issue iid (0 if it does not exist
-// yet). It reports whether it must be rendered again once every issue has an
-// IID: a dependency could not be resolved, or the decisions need the issue's
-// IID for their IDs.
-func renderIssue(item PlannedItem, keyToIID map[string]int64, iid int64, prefix string) (string, bool) {
+// planComment posts the planner's decisions for an issue as a comment of the
+// bot.
+type planComment struct {
+	botID int64
+	runID string
+}
+
+// post creates or updates the plan decisions comment of issue iid. Planning
+// IDs are numbered from 1 again whenever the plan for a draft changes;
+// nothing has been built on them yet. Without decisions no comment is
+// created, and an existing one says there are none any more.
+func (pc planComment) post(ctx context.Context, gl gitlab.API, glProject string, iid int64, isNew bool, ds []Decision, prefix string) error {
+	numbered := numberDecisions(ds, iid, true, 1)
+	var existing *gitlab.Note
+	if !isNew && pc.botID != 0 {
+		notes, err := gl.ListIssueNotes(ctx, glProject, iid)
+		if err != nil {
+			return fmt.Errorf("listing notes of issue #%d: %w", iid, err)
+		}
+		for i := range notes {
+			if isPlanDecisions(notes[i], pc.botID) {
+				existing = &notes[i]
+				break
+			}
+		}
+	}
+	switch {
+	case existing == nil && len(numbered) == 0:
+		return nil
+	case existing == nil:
+		if _, err := gl.CreateIssueNote(ctx, glProject, iid, renderPlanDecisions(pc.runID, prefix, numbered)); err != nil {
+			return fmt.Errorf("posting the decisions of #%d: %w", iid, err)
+		}
+	case decisionsOf(existing.Body) != decisionsOf(renderPlanDecisions("", prefix, numbered)):
+		if _, err := gl.UpdateIssueNote(ctx, glProject, iid, existing.ID, renderPlanDecisions(pc.runID, prefix, numbered)); err != nil {
+			return fmt.Errorf("updating the decisions of #%d: %w", iid, err)
+		}
+	}
+	return nil
+}
+
+// decisionsOf is a plan decisions comment without its first line (which names
+// the run), to tell whether the decisions changed.
+func decisionsOf(body string) string {
+	_, rest, _ := strings.Cut(body, "\n")
+	return rest
+}
+
+// renderIssue renders the description of a planned issue. It reports whether
+// it must be rendered again once every issue has an IID: a dependency could
+// not be resolved.
+func renderIssue(item PlannedItem, keyToIID map[string]int64) (string, bool) {
 	var b strings.Builder
 	// The planner's text must not carry the operator's markers.
 	b.WriteString(strings.ReplaceAll(strings.TrimSpace(item.Description), "<!-- ai-operator:", "<!-- ai-operator :"))
@@ -275,13 +331,7 @@ func renderIssue(item PlannedItem, keyToIID map[string]int64, iid int64, prefix 
 		b.WriteString("\n_Answer in a comment; the implementing agent reads the whole thread._\n")
 	}
 	if len(item.Decisions) > 0 {
-		if iid == 0 {
-			missing = true
-		} else {
-			// Planning IDs are renumbered whenever the plan for a draft
-			// changes; nothing has been built on them yet.
-			b.WriteString(renderPlannedDecisions(numberDecisions(item.Decisions, iid, true, 1), prefix))
-		}
+		b.WriteString("\n_The planning agent's decisions are in a comment below._\n")
 	}
 	fmt.Fprintf(&b, "\n<!-- ai-operator:key=%s -->\n", item.Key)
 	return b.String(), missing
