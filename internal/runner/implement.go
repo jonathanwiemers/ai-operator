@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -71,7 +72,14 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		s.done(fmt.Sprintf("!%d", mr.IID), "mr", mr.IID)
 	} else {
 		s.done("none yet")
+		// Open the draft merge request now, so the whole run (and every
+		// later one) can be followed there.
+		if mr, err = r.openMergeRequest(ctx, gl, glProject, issue, branch, base); err != nil {
+			return out, err
+		}
 	}
+	out.MRIID, out.MRURL = mr.IID, mr.WebURL
+	r.startProgress(ctx, gl, glProject, mr.IID)
 
 	// Context: on a resumed session only comments the agent has not seen yet
 	// are sent, everything else is already in the session.
@@ -89,6 +97,8 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if mrNotes, err = gl.ListMergeRequestNotes(ctx, glProject, mr.IID); err != nil {
 			return out, s.fail(fmt.Errorf("listing merge request notes: %w", err))
 		}
+		// Progress comments are the runner's, not part of the thread.
+		mrNotes = slices.DeleteFunc(mrNotes, func(n gitlab.Note) bool { return isProgress(n, botID) })
 	}
 	newIssueNotes, newMRNotes := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
 	result := fmt.Sprintf("%d on the issue, %d on the MR, %d new", len(issueNotes), len(mrNotes), len(newIssueNotes)+len(newMRNotes))
@@ -352,7 +362,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			out.CIRound = task.Status.Run.CIRound + 1
 		}
 		s.done(fmt.Sprintf("%s at %s", branch, shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
-	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && head != task.Status.Run.PushedSHA {
+	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && head != task.Status.Run.PushedSHA && r.Mirror.HasChanges(ctx, base, head) {
 		// Someone else pushed to the branch (or made it) since the last
 		// recorded push, and this run took it over unchanged: that head is
 		// the one CI has to check.
@@ -383,58 +393,26 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if ciFix {
 		report = "CI fix: " + report
 	}
-	newMR := false
-	if mr == nil && (pushed || r.Mirror.HasRemoteBranch(ctx, branch)) {
-		s = r.step(ctx, "open merge request", "branch", branch, "target", base)
-		opts := gitlab.CreateMergeRequestOptions{
-			SourceBranch:       branch,
-			TargetBranch:       base,
-			Title:              "Draft: " + issue.Title,
-			Description:        fmt.Sprintf("Closes #%d\n\n%s", issue.IID, report),
-			RemoveSourceBranch: true,
-		}
-		// The issue's milestone lists the MR in its "Merge requests" tab.
-		if issue.Milestone != nil {
-			opts.MilestoneID = issue.Milestone.ID
-		}
-		mr, err = gl.CreateMergeRequest(ctx, glProject, opts)
-		if err != nil {
-			return out, s.fail(fmt.Errorf("creating merge request: %w", err))
-		}
-		s.done(fmt.Sprintf("!%d", mr.IID), "mr", mr.IID, "url", mr.WebURL)
-		newMR = true
-	}
-
 	// Report back and move the issue to the next column - unless another
 	// run was requested meanwhile, in which case the issue stays "working".
 	// The run log covers the steps up to here.
 	needsInput := answer.Status == "needs_input" || len(answer.Questions) > 0
 	runLogMD := r.run.markdown(out.CostUSD)
 	s = r.step(ctx, "comment")
-	switch {
-	case mr != nil && !newMR:
-		if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+runLogMD); err != nil {
-			return out, s.fail(fmt.Errorf("commenting on merge request: %w", err))
-		}
-		s.done(fmt.Sprintf("on !%d", mr.IID))
-	case mr != nil && newMR:
-		note := fmt.Sprintf("🤖 Opened %s", mr.WebURL)
-		if len(answer.Questions) > 0 {
-			note += "\n\nBefore this can be finished I need answers to:\n\n" + numbered(answer.Questions)
-		}
-		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, note+runLogMD); err != nil {
-			return out, s.fail(fmt.Errorf("commenting on issue: %w", err))
-		}
-		s.done(fmt.Sprintf("on #%d", issue.IID))
-	default:
-		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, "🤖 "+report+runLogMD); err != nil {
-			return out, s.fail(fmt.Errorf("commenting on issue: %w", err))
-		}
-		s.done(fmt.Sprintf("on #%d", issue.IID))
+	if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+runLogMD); err != nil {
+		return out, s.fail(fmt.Errorf("commenting on merge request: %w", err))
 	}
+	if len(answer.Questions) > 0 {
+		// Questions are answered where people look first.
+		note := fmt.Sprintf("🤖 Before this can be finished I need answers (comment here or on %s):\n\n%s", mr.WebURL, numbered(answer.Questions))
+		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, note); err != nil {
+			return out, s.fail(fmt.Errorf("commenting on issue: %w", err))
+		}
+	}
+	s.done(fmt.Sprintf("on !%d", mr.IID))
 	// With the CI loop, a fresh push stays in "working" until the operator
 	// has seen its pipeline go green (or hands it back).
-	waitForCI := !spec.CI.Disabled && out.PushedSHA != "" && mr != nil && !needsInput
+	waitForCI := !spec.CI.Disabled && out.PushedSHA != "" && !needsInput
 	s = r.step(ctx, "update issue labels")
 	switch {
 	case waitForCI:
@@ -459,10 +437,47 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		out.Result = aiv1.RunResultNeedsInput
 	}
 	out.Summary = answer.Summary
-	if mr != nil {
-		out.MRIID, out.MRURL = mr.IID, mr.WebURL
-	}
 	return out, nil
+}
+
+// openMergeRequest opens the draft merge request of an issue before the
+// agent starts. A new branch gets an empty start commit, pushed without CI;
+// the agent's checkout then continues from it.
+func (r *Runner) openMergeRequest(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, branch, base string) (*gitlab.MergeRequest, error) {
+	s := r.step(ctx, "open merge request", "branch", branch, "target", base)
+	started := false
+	if !r.Mirror.HasRemoteBranch(ctx, branch) {
+		if _, err := r.Mirror.StartBranch(ctx, branch, base, fmt.Sprintf("Start work on #%d\n\n[skip ci]", issue.IID)); err != nil {
+			return nil, s.fail(fmt.Errorf("creating branch %s: %w", branch, err))
+		}
+		started = true
+	}
+	opts := gitlab.CreateMergeRequestOptions{
+		SourceBranch:       branch,
+		TargetBranch:       base,
+		Title:              "Draft: " + issue.Title,
+		Description:        fmt.Sprintf("Closes #%d\n\nThe agent works on this; its progress, reports and decisions are in the comments.", issue.IID),
+		RemoveSourceBranch: true,
+	}
+	// The issue's milestone lists the MR in its "Merge requests" tab.
+	if issue.Milestone != nil {
+		opts.MilestoneID = issue.Milestone.ID
+	}
+	mr, err := gl.CreateMergeRequest(ctx, glProject, opts)
+	if err != nil {
+		return nil, s.fail(fmt.Errorf("creating merge request: %w", err))
+	}
+	s.done(fmt.Sprintf("!%d", mr.IID), "mr", mr.IID, "url", mr.WebURL, "newBranch", started)
+	if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, fmt.Sprintf("🤖 Working on this in %s; progress and reports are there.", mr.WebURL)); err != nil {
+		r.log().Info("could not point the issue to the merge request", "error", err.Error())
+	}
+	if started {
+		// The checkout was made before the branch existed.
+		if err := r.prepareCheckout(ctx, branch, base); err != nil {
+			return nil, err
+		}
+	}
+	return mr, nil
 }
 
 // updateHandoff stores the implementer's handoff notes in the bot's handoff

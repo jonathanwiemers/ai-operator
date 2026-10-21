@@ -56,6 +56,8 @@ type Runner struct {
 	projectStatus aiv1.AgentProjectStatus
 	// run records the steps of the current (or last) run.
 	run *runLog
+	// progress is the live progress comment of the current run, if any.
+	progress *progress
 }
 
 // Outcome is the result of one run.
@@ -162,8 +164,17 @@ func (r *Runner) syncWorkspace(ctx context.Context, url, branch, base string) er
 		}
 	}
 	s.done(result, kv...)
+	return r.prepareCheckout(ctx, branch, base)
+}
 
-	s = r.step(ctx, "prepare checkout", "branch", branch)
+// prepareCheckout hands the agent's checkout the commits of the mirror it
+// lacks and checks out branch.
+func (r *Runner) prepareCheckout(ctx context.Context, branch, base string) error {
+	branches := []string{base}
+	if branch != base {
+		branches = append(branches, branch)
+	}
+	s := r.step(ctx, "prepare checkout", "branch", branch)
 	known, err := r.Agent.RemoteRefs(ctx)
 	if err != nil {
 		return s.fail(err)
@@ -181,7 +192,7 @@ func (r *Runner) syncWorkspace(ctx context.Context, url, branch, base string) er
 	if err := r.Agent.Prepare(ctx, req); err != nil {
 		return s.fail(err)
 	}
-	result = "checked out " + branch + ", already up to date"
+	result := "checked out " + branch + ", already up to date"
 	if written {
 		result = "checked out " + branch + ", new commits sent"
 	}
@@ -278,6 +289,19 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		out = &Outcome{}
 	}
 	r.run.finish(err)
+	if r.progress != nil {
+		// The report replaced the live view; otherwise say how it ended.
+		headline := ""
+		if _, ok := AsUsageLimit(err); ok {
+			headline = "⏸️ Paused by a usage limit; the run continues once it resets."
+		} else if err != nil {
+			headline = "❌ The run failed; the issue has the details."
+		}
+		if cerr := r.progress.close(ctx, headline); cerr != nil {
+			log.Info("could not close the progress comment", "error", cerr.Error())
+		}
+		r.progress = nil
+	}
 	if lim, ok := AsUsageLimit(err); ok {
 		if task.Status.Run.Deferrals < MaxDeferrals {
 			return false, r.deferRun(ctx, gl, spec, task, out, lim)

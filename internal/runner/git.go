@@ -23,6 +23,8 @@ import (
 type Mirror struct {
 	Dir   string
 	Token string
+	// AuthorName and AuthorEmail sign the start commit of a new branch.
+	AuthorName, AuthorEmail string
 	// Log receives every git command at debug level (V(1)). The token is
 	// never part of the arguments.
 	Log logr.Logger
@@ -195,4 +197,44 @@ func (m *Mirror) Push(ctx context.Context, branch string) error {
 	ref := "refs/heads/" + branch
 	_, err := m.run(ctx, true, "push", "--quiet", "origin", ref+":"+ref)
 	return err
+}
+
+// StartBranch creates branch on the remote with one empty commit on top of
+// origin/<base>, so a merge request can be opened before the agent changed
+// anything. The push skips CI (ci.skip): there is nothing to check yet.
+func (m *Mirror) StartBranch(ctx context.Context, branch, base, message string) (string, error) {
+	baseRef := "refs/remotes/origin/" + base
+	name, email := m.AuthorName, m.AuthorEmail
+	if name == "" {
+		name = "AI Operator"
+	}
+	if email == "" {
+		email = "ai-operator@noreply.local"
+	}
+	sha, err := m.run(ctx, false, "-c", "user.name="+name, "-c", "user.email="+email,
+		"commit-tree", baseRef+"^{tree}", "-p", baseRef, "-m", message)
+	if err != nil {
+		return "", err
+	}
+	_, err = m.run(ctx, true, "push", "--quiet", "-o", "ci.skip", "origin", sha+":refs/heads/"+branch)
+	if err != nil && strings.Contains(err.Error(), "push options") {
+		// The remote takes no push options; "[skip ci]" in the message
+		// does the same on GitLab.
+		_, err = m.run(ctx, true, "push", "--quiet", "origin", sha+":refs/heads/"+branch)
+	}
+	if err != nil {
+		return "", err
+	}
+	if _, err := m.run(ctx, false, "update-ref", "refs/remotes/origin/"+branch, sha); err != nil {
+		return "", err
+	}
+	return sha, nil
+}
+
+// HasChanges reports whether head changes anything compared with where it
+// branched off origin/<base>. git diff --quiet exits non-zero on changes; any
+// other error counts as a change too.
+func (m *Mirror) HasChanges(ctx context.Context, base, head string) bool {
+	_, err := m.run(ctx, false, "diff", "--quiet", "refs/remotes/origin/"+base+"..."+head)
+	return err != nil
 }

@@ -156,10 +156,14 @@ func (e *limitEnv) step() bool {
 	return ran
 }
 
+// issueNotes are the notes on the issue, without the pointer to the merge
+// request every first run posts.
 func (e *limitEnv) issueNotes() []string {
 	var out []string
 	for _, n := range e.gl.IssueNotes[42] {
-		out = append(out, n.Body)
+		if !strings.Contains(n.Body, "Working on this in") {
+			out = append(out, n.Body)
+		}
 	}
 	return out
 }
@@ -279,7 +283,7 @@ func TestUsageLimitDuringFixPublishesWork(t *testing.T) {
 		t.Fatalf("unexpected run status %+v", run)
 	}
 	b, _ := json.Marshal(e.gl.IssueNotes[42])
-	if !strings.Contains(string(b), "Opened") {
+	if !strings.Contains(string(b), "Working on this in https://gitlab.example/group/app/-/merge_requests/1") {
 		t.Fatalf("issue should link the MR: %s", b)
 	}
 }

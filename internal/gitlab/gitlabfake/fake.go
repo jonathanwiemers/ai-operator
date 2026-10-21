@@ -509,6 +509,32 @@ func (f *Fake) ListMergeRequestNotes(_ context.Context, _ string, iid int64) ([]
 	return slices.Clone(f.MRNotes[iid]), nil
 }
 
+func (f *Fake) UpdateMergeRequestNote(_ context.Context, _ string, iid, noteID int64, body string) (*gitlab.Note, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.MRNotes[iid] {
+		if n := &f.MRNotes[iid][i]; n.ID == noteID {
+			n.Body = body
+			c := *n
+			return &c, nil
+		}
+	}
+	return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "note"}
+}
+
+func (f *Fake) DeleteMergeRequestNote(_ context.Context, _ string, iid, noteID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	notes := f.MRNotes[iid]
+	for i := range notes {
+		if notes[i].ID == noteID {
+			f.MRNotes[iid] = append(notes[:i], notes[i+1:]...)
+			return nil
+		}
+	}
+	return &gitlab.Error{StatusCode: 404, Method: "DELETE", Path: "note"}
+}
+
 func (f *Fake) CreateMergeRequestNote(_ context.Context, _ string, iid int64, body string) (*gitlab.Note, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

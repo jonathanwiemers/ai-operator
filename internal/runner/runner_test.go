@@ -291,9 +291,10 @@ func TestImplementEndToEnd(t *testing.T) {
 
 	// Every step of the run is recorded, in order, and none failed.
 	wantSteps := []string{
-		"read issue", "read project", "clone repository", "prepare checkout", "find merge request", "read comments",
+		"read issue", "read project", "clone repository", "prepare checkout", "find merge request",
+		"open merge request", "prepare checkout", "read comments",
 		"run implementer", "commit", "review round 1", "fix round 1", "commit", "review round 2",
-		"push", "update agent notes", "open merge request", "comment", "update issue labels",
+		"push", "update agent notes", "comment", "update issue labels",
 	}
 	if got := stepNames(r.run); !slices.Equal(got, wantSteps) {
 		t.Fatalf("steps:\n got %v\nwant %v", got, wantSteps)
@@ -303,22 +304,31 @@ func TestImplementEndToEnd(t *testing.T) {
 			t.Fatalf("step %q: ended=%v failed=%v", s.name, s.ended, s.failed)
 		}
 	}
-	// The agent notes of the last fix round are stored right after the push,
-	// then the issue comment follows with the run log up to it.
+	// The draft MR was opened first and the issue points to it; the agent
+	// notes of the last fix round are stored right after the push.
 	notes := gl.IssueNotes[42]
-	if len(notes) != 2 {
-		t.Fatalf("expected the agent notes and the MR comment, got %d notes", len(notes))
+	if len(notes) != 2 || !strings.Contains(notes[0].Body, "Working on this in https://gitlab.example/group/app/-/merge_requests/1") {
+		t.Fatalf("expected the pointer to the MR and the agent notes, got %+v", notes)
 	}
-	handoffID := notes[0].ID
-	if h := parseHandoff(&notes[0]); h.Text != "PayPal button done, nil deref fixed." {
-		t.Fatalf("unexpected agent notes %q in:\n%s", h.Text, notes[0].Body)
+	handoffID := notes[1].ID
+	if h := parseHandoff(&notes[1]); h.Text != "PayPal button done, nil deref fixed." {
+		t.Fatalf("unexpected agent notes %q in:\n%s", h.Text, notes[1].Body)
 	}
-	notes = notes[1:]
-	for _, want := range []string{"<details><summary>Run log <code>shop-42-add-paypal-button#1</code>: 15 steps",
-		"| 7 | run implementer |", "claude/" + aiv1.DefaultModel, "| 14 | update agent notes |", "| 15 | open merge request |"} {
-		if !strings.Contains(notes[0].Body, want) {
-			t.Fatalf("run log misses %q:\n%s", want, notes[0].Body)
+	// The report is on the MR, with the run log up to it; the progress
+	// comment is gone.
+	mrNotes := gl.MRNotes[1]
+	if len(mrNotes) != 1 || strings.Contains(mrNotes[0].Body, progressMarker) {
+		t.Fatalf("expected only the report on the MR, got %+v", mrNotes)
+	}
+	for _, want := range []string{"<details><summary>Run log <code>shop-42-add-paypal-button#1</code>: 16 steps",
+		"| 6 | open merge request |", "| 9 | run implementer |", "claude/" + aiv1.DefaultModel, "| 16 | update agent notes |"} {
+		if !strings.Contains(mrNotes[0].Body, want) {
+			t.Fatalf("run log misses %q:\n%s", want, mrNotes[0].Body)
 		}
+	}
+	// The branch starts with an empty commit that skips CI.
+	if first := gitCmd(t, tmp, "--git-dir", origin, "log", "--reverse", "--format=%s%n%b", "main..agent/42-add-paypal-button"); !strings.HasPrefix(first, "Start work on #42") || !strings.Contains(first, "[skip ci]") {
+		t.Fatalf("expected the start commit first:\n%s", first)
 	}
 	// No profile label: agents.implement (strong model). Reviewers run on the light model.
 	for _, c := range engine.calls {
@@ -387,8 +397,8 @@ func TestImplementEndToEnd(t *testing.T) {
 		t.Fatalf("agent notes must not reach the resumed session as a comment:\n%s", first.Prompt)
 	}
 	notes = gl.IssueNotes[42]
-	if len(notes) != 3 || notes[0].ID != handoffID || parseHandoff(&notes[0]).Text != "PayPal button in paypal.go." ||
-		!strings.Contains(notes[0].Body, "shop-42-add-paypal-button#2") || parseHandoff(&notes[0]).AfterNote != notes[2].ID {
+	if len(notes) != 3 || notes[1].ID != handoffID || parseHandoff(&notes[1]).Text != "PayPal button in paypal.go." ||
+		!strings.Contains(notes[1].Body, "shop-42-add-paypal-button#2") || parseHandoff(&notes[1]).AfterNote != notes[2].ID {
 		t.Fatalf("agent notes should be updated in place: %+v", notes)
 	}
 	// The mirror exists now: the follow-up fetches instead of cloning, and
