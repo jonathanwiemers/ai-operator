@@ -634,7 +634,7 @@ func TestSpecEndToEnd(t *testing.T) {
 		t.Fatalf("unexpected run status %+v", got.Status.Run)
 	}
 	wantSteps := []string{"read milestone", "read project", "clone repository", "prepare checkout",
-		"list milestone issues", "run spec agent", "apply plan", "record plan"}
+		"list milestone issues", "run spec agent", "apply plan", "record plan", "link dependencies"}
 	if got := stepNames(r.run); !slices.Equal(got, wantSteps) {
 		t.Fatalf("steps:\n got %v\nwant %v", got, wantSteps)
 	}
@@ -646,6 +646,83 @@ func TestSpecEndToEnd(t *testing.T) {
 	if strings.Contains(engine.calls[0].Prompt, "autopilot") {
 		t.Fatal("a normal milestone must not get the autopilot note")
 	}
+	// The dependency is an issue link too: the UI is blocked by the API.
+	if len(gl.Links) != 1 || gl.Links[0].From != 2 || gl.Links[0].To != 1 || gl.Links[0].Type != gitlab.LinkIsBlockedBy {
+		t.Fatalf("expected #2 blocked by #1, links %+v", gl.Links)
+	}
+}
+
+func TestSyncLinks(t *testing.T) {
+	ctx := context.Background()
+	wf := aiv1.WorkflowSpec{}.WithDefaults()
+	setup := func(free bool) *gitlabfake.Fake {
+		gl := gitlabfake.New()
+		gl.FreeTier = free
+		for _, iid := range []int64{1, 2, 3, 4} {
+			gl.AddIssue(iid, fmt.Sprint("issue ", iid), "ai-generated", "agent::draft")
+		}
+		return gl
+	}
+	issues := func(gl *gitlabfake.Fake) []gitlab.Issue {
+		all, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{State: "all"})
+		return all
+	}
+	plan := []aiv1.PlannedIssue{{IID: 1}, {IID: 2, DependsOn: []int64{1}}, {IID: 3, DependsOn: []int64{1, 2}}}
+
+	t.Run("premium", func(t *testing.T) {
+		gl := setup(false)
+		res := syncLinks(ctx, logr.Discard(), gl, "g/p", wf, plan, nil, issues(gl))
+		if res.created != 3 || res.linkType != gitlab.LinkIsBlockedBy || len(res.errs) != 0 {
+			t.Fatalf("unexpected result %+v", res)
+		}
+		// Seen from #1, it blocks the others.
+		links, _ := gl.ListIssueLinks(ctx, "g/p", 1)
+		if len(links) != 2 || links[0].LinkType != gitlab.LinkBlocks {
+			t.Fatalf("unexpected links of #1 %+v", links)
+		}
+		// Idempotent.
+		if res := syncLinks(ctx, logr.Discard(), gl, "g/p", wf, plan, plan, issues(gl)); res.created != 0 || res.removed != 0 {
+			t.Fatalf("a second sync must change nothing: %+v", res)
+		}
+	})
+
+	t.Run("free", func(t *testing.T) {
+		gl := setup(true)
+		res := syncLinks(ctx, logr.Discard(), gl, "g/p", wf, plan, nil, issues(gl))
+		if res.created != 3 || res.linkType != gitlab.LinkRelatesTo || len(res.errs) != 0 {
+			t.Fatalf("Free falls back to relates_to: %+v", res)
+		}
+		for _, l := range gl.Links {
+			if l.Type != gitlab.LinkRelatesTo {
+				t.Fatalf("unexpected link %+v", l)
+			}
+		}
+	})
+
+	t.Run("replan", func(t *testing.T) {
+		gl := setup(false)
+		syncLinks(ctx, logr.Discard(), gl, "g/p", wf, plan, nil, issues(gl))
+		// A human links #3 to #4; the plan drops #3's dependency on #2.
+		_ = gl.CreateIssueLink(ctx, "g/p", 3, 4, gitlab.LinkIsBlockedBy)
+		// #2 was handed over: its links stay.
+		gl.SetLabels(2, "ai-generated", "agent::working")
+		next := []aiv1.PlannedIssue{{IID: 1}, {IID: 2}, {IID: 3, DependsOn: []int64{1}}}
+		res := syncLinks(ctx, logr.Discard(), gl, "g/p", wf, next, plan, issues(gl))
+		if res.removed != 1 || res.created != 0 {
+			t.Fatalf("only the dropped dependency is unlinked: %+v", res)
+		}
+		has := func(from, to int64) bool {
+			for _, l := range gl.Links {
+				if (l.From == from && l.To == to) || (l.From == to && l.To == from) {
+					return true
+				}
+			}
+			return false
+		}
+		if has(3, 2) || !has(3, 4) || !has(2, 1) || !has(3, 1) {
+			t.Fatalf("unexpected links after the re-plan %+v", gl.Links)
+		}
+	})
 }
 
 func TestAutopilotImplementPrompt(t *testing.T) {

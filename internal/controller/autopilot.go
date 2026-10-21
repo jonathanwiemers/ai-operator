@@ -229,9 +229,12 @@ func (a *autopilot) step(ctx context.Context) error {
 	return a.pick(ctx)
 }
 
-// pick activates the next pending issue whose dependencies are merged.
+// pick activates the next pending issue whose dependencies are merged: the
+// plan's, and open issues it is linked as "blocked by" to in GitLab
+// (Premium), so a link a human adds holds an issue back too.
 func (a *autopilot) pick(ctx context.Context) error {
 	pending := 0
+	waits := map[int64]string{} // why a pending issue cannot start
 	for i := range a.ap.Items {
 		it := &a.ap.Items[i]
 		if it.State != aiv1.AutopilotItemPending {
@@ -253,11 +256,21 @@ func (a *autopilot) pick(ctx context.Context) error {
 				if done {
 					return a.merged(ctx, dep, mr)
 				}
+				waits[it.IID] = fmt.Sprintf("#%d waits for the skipped #%d", it.IID, d)
 			}
 			blocked = true
 			break
 		}
 		if blocked {
+			continue
+		}
+		if by, err := a.blockedByLink(ctx, it.IID); err != nil {
+			return err
+		} else if by != 0 {
+			if dep := a.item(by); dep == nil || dep.State == aiv1.AutopilotItemSkipped {
+				// Not coming from the queue: a human has to act.
+				waits[it.IID] = fmt.Sprintf("#%d is blocked by #%d (issue link)", it.IID, by)
+			}
 			continue
 		}
 		wf := a.spec.Workflow
@@ -291,14 +304,21 @@ func (a *autopilot) pick(ctx context.Context) error {
 		return nil
 	}
 	if pending > 0 {
-		// Everything left waits for an issue that was skipped.
-		var waiting []int64
+		// Everything left waits for something autopilot does not do: a
+		// skipped issue, an issue outside the queue, or a cycle of links.
+		var reasons []string
 		for _, it := range a.ap.Items {
-			if it.State == aiv1.AutopilotItemPending {
-				waiting = append(waiting, it.IID)
+			if it.State != aiv1.AutopilotItemPending {
+				continue
 			}
+			why, ok := waits[it.IID]
+			if !ok {
+				why = fmt.Sprintf("#%d waits for another pending issue (a cycle of issue links?)", it.IID)
+			}
+			reasons = append(reasons, why)
 		}
-		return a.pause(ctx, issueList(waiting)+" depend on skipped issues; merge those by hand and `resume`, or `skip` these too")
+		return a.pause(ctx, "nothing can start: "+strings.Join(reasons, ", ")+
+			"; merge or close those issues by hand, remove the links, or `skip` the waiting ones, then `resume`")
 	}
 	if a.ap.Phase != aiv1.AutopilotDone {
 		merged := 0
@@ -319,6 +339,22 @@ func (a *autopilot) pick(ctx context.Context) error {
 		return a.comment(ctx, fmt.Sprintf("✅ Autopilot is done: %d of %d issues merged. The decisions are listed in the description.", merged, len(a.ap.Items)))
 	}
 	return nil
+}
+
+// blockedByLink returns an open issue that iid is linked as "blocked by" to,
+// or 0. Such links only exist on GitLab Premium; the plan's own dependencies
+// are linked too, but those are met once their item is merged and closed.
+func (a *autopilot) blockedByLink(ctx context.Context, iid int64) (int64, error) {
+	links, err := a.gl.ListIssueLinks(ctx, a.spec.GitLab.Project, iid)
+	if err != nil {
+		return 0, fmt.Errorf("listing the links of #%d: %w", iid, err)
+	}
+	for _, l := range links {
+		if l.LinkType == gitlab.LinkIsBlockedBy && l.State == "opened" {
+			return l.IID, nil
+		}
+	}
+	return 0, nil
 }
 
 // doneByHand reports whether a closed issue was finished outside autopilot:

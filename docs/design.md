@@ -390,6 +390,15 @@ stateDiagram-v2
   order. The next issue starts only after the previous MR is merged, so every
   branch starts from the current default branch and every merge was tested
   against what is really there.
+* **Issue links.** The spec run mirrors the plan's dependencies as GitLab
+  issue links (`link dependencies` step): `is_blocked_by`, or `relates_to`
+  when GitLab refuses blocking links (Free). On a re-plan only drafts are
+  touched, and only links of dependencies the previous `status.plan` had and
+  the new one dropped are removed, so links humans made stay. The step is
+  best effort: the plan is applied already and the description lists the
+  dependencies. When picking the next issue, autopilot also waits for open
+  issues the candidate is linked `is_blocked_by` to, which lets humans order
+  work with links (Premium). `relates_to` has no direction and is ignored.
 * **No questions.** Spec and implement tasks of the milestone carry
   `spec.autopilot`; the runner then adds a short paragraph to the *user*
   prompt (the system prompts stay the same and cached): never ask, take the
@@ -620,7 +629,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/marker` | hidden markers in GitLab text shared by operator and runner (tracking issue, decisions) |
 | `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
 | `internal/runner/workspace.go` | agent-side checkout (local git only), including the merge of the default branch for conflicts |
-| `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab |
+| `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab, linking dependencies |
 | `internal/runner/implement.go` | implement → review → fix → push → MR pipeline; CI fix runs |
 | `internal/runner/ci.go` | CI fix prompt, log excerpts |
 | `internal/controller/ci.go` | CI feedback loop: pipeline tracking, retry, fix requests, final labels |
@@ -645,6 +654,5 @@ Later:
 
 * Profiles for reviews (e.g. security review on a strong model only for
   `strong` issues).
-* GitLab issue links (`blocks`) for dependencies on Premium instances.
 * Group milestones and group-level `AgentProject`s.
 * Metrics: runs, cost, durations per project, role and profile.

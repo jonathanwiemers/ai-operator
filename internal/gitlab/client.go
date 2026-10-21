@@ -36,6 +36,9 @@ type API interface {
 	RebaseMergeRequest(ctx context.Context, project string, iid int64) error
 	ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error)
 	ListIssueStateEvents(ctx context.Context, project string, iid int64) ([]StateEvent, error)
+	ListIssueLinks(ctx context.Context, project string, iid int64) ([]LinkedIssue, error)
+	CreateIssueLink(ctx context.Context, project string, iid, targetIID int64, linkType string) error
+	DeleteIssueLink(ctx context.Context, project string, iid, linkID int64) error
 	ListMergeRequestNotes(ctx context.Context, project string, iid int64) ([]Note, error)
 	CreateMergeRequestNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
 	ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error)
@@ -157,6 +160,25 @@ type MergeRequest struct {
 	SquashCommitSHA     string `json:"squash_commit_sha"`
 	RebaseInProgress    bool   `json:"rebase_in_progress"`
 	MergeError          string `json:"merge_error"`
+}
+
+// Issue link types. blocks and is_blocked_by need GitLab Premium; on Free
+// only relates_to exists.
+const (
+	LinkRelatesTo   = "relates_to"
+	LinkBlocks      = "blocks"
+	LinkIsBlockedBy = "is_blocked_by"
+)
+
+// LinkedIssue is an issue linked to another one, as the links API lists it:
+// LinkType is seen from the issue whose links were listed.
+type LinkedIssue struct {
+	IID         int64  `json:"iid"`
+	ProjectID   int64  `json:"project_id"`
+	State       string `json:"state"`
+	Title       string `json:"title"`
+	IssueLinkID int64  `json:"issue_link_id"`
+	LinkType    string `json:"link_type"`
 }
 
 // StateEvent is a state change of an issue: closed, reopened.
@@ -482,6 +504,23 @@ func (c *Client) RebaseMergeRequest(ctx context.Context, project string, iid int
 
 func (c *Client) ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error) {
 	return list[Diff](ctx, c, fmt.Sprintf("%s/merge_requests/%d/diffs", projectPath(project), iid), nil)
+}
+
+func (c *Client) ListIssueLinks(ctx context.Context, project string, iid int64) ([]LinkedIssue, error) {
+	return list[LinkedIssue](ctx, c, fmt.Sprintf("%s/issues/%d/links", projectPath(project), iid), nil)
+}
+
+// CreateIssueLink links issue iid to targetIID of the same project; linkType
+// is seen from iid (is_blocked_by: iid waits for targetIID).
+func (c *Client) CreateIssueLink(ctx context.Context, project string, iid, targetIID int64, linkType string) error {
+	body := map[string]any{"target_project_id": project, "target_issue_iid": targetIID, "link_type": linkType}
+	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/issues/%d/links", projectPath(project), iid), nil, body, nil)
+	return err
+}
+
+func (c *Client) DeleteIssueLink(ctx context.Context, project string, iid, linkID int64) error {
+	_, err := c.do(ctx, http.MethodDelete, fmt.Sprintf("%s/issues/%d/links/%d", projectPath(project), iid, linkID), nil, nil, nil)
+	return err
 }
 
 // ListIssueStateEvents lists the state changes of an issue, oldest first.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -109,6 +110,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	}
 	out.Plan = planOrder(plan, after)
 	s.done(fmt.Sprintf("%d issues in plan order", len(out.Plan)), "issues", len(out.Plan))
+	r.linkDependencies(ctx, gl, glProject, spec.Workflow, out.Plan, task.Status.Plan, after)
 	out.Result = aiv1.RunResultSucceeded
 	out.Summary = fmt.Sprintf("%s\n\nIssues: %d created, %d updated, %d left untouched.", strings.TrimSpace(plan.Summary), created, updated, skipped)
 	return out, nil
@@ -294,4 +296,111 @@ func profileLabels(spec aiv1.AgentProjectSpec, item PlannedItem) []string {
 		return []string{spec.ProfileLabel(item.Profile)}
 	}
 	return nil
+}
+
+// linkDependencies mirrors the plan's dependencies as GitLab issue links, so
+// GitLab shows them on the issues and boards: "is blocked by" where the
+// instance has blocking links (Premium), "relates to" otherwise (Free). Only
+// draft issues are touched, and of their links only those of dependencies
+// the plan added or dropped since the last plan: links humans made stay. It
+// is best effort: the plan is applied already, and the description lists the
+// dependencies anyway.
+func (r *Runner) linkDependencies(ctx context.Context, gl gitlab.API, glProject string, wf aiv1.WorkflowSpec, plan, prev []aiv1.PlannedIssue, issues []gitlab.Issue) {
+	s := r.step(ctx, "link dependencies")
+	res := syncLinks(ctx, s.log, gl, glProject, wf, plan, prev, issues)
+	if len(res.errs) > 0 {
+		_ = s.fail(fmt.Errorf("%d created, %d removed, failed: %s", res.created, res.removed, strings.Join(res.errs, "; ")))
+		return
+	}
+	s.done(fmt.Sprintf("%d created, %d removed (%s)", res.created, res.removed, res.linkType),
+		"created", res.created, "removed", res.removed, "type", res.linkType)
+}
+
+type linkResult struct {
+	created, removed int
+	linkType         string
+	errs             []string
+}
+
+func syncLinks(ctx context.Context, log logr.Logger, gl gitlab.API, glProject string, wf aiv1.WorkflowSpec, plan, prev []aiv1.PlannedIssue, issues []gitlab.Issue) linkResult {
+	byIID := map[int64]gitlab.Issue{}
+	for _, is := range issues {
+		byIID[is.IID] = is
+	}
+	before := map[int64][]int64{}
+	for _, p := range prev {
+		before[p.IID] = p.DependsOn
+	}
+	linkType := gitlab.LinkIsBlockedBy
+	created, removed := 0, 0
+	var errs []string
+	for _, p := range plan {
+		is, ok := byIID[p.IID]
+		if !ok || !plannedDraft(is, wf) {
+			continue
+		}
+		var stale []int64
+		for _, d := range before[p.IID] {
+			if !slices.Contains(p.DependsOn, d) {
+				stale = append(stale, d)
+			}
+		}
+		if len(p.DependsOn) == 0 && len(stale) == 0 {
+			continue
+		}
+		links, err := gl.ListIssueLinks(ctx, glProject, p.IID)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("#%d: %v", p.IID, err))
+			continue
+		}
+		linked := map[int64]gitlab.LinkedIssue{}
+		for _, l := range links {
+			linked[l.IID] = l
+		}
+		for _, d := range p.DependsOn {
+			if _, ok := linked[d]; ok {
+				continue // linked already, by the plan or by a human
+			}
+			err := gl.CreateIssueLink(ctx, glProject, p.IID, d, linkType)
+			if code := gitlab.StatusCode(err); linkType == gitlab.LinkIsBlockedBy && (code == 400 || code == 403 || code == 422) {
+				// No blocking links on this instance (GitLab Free).
+				log.Info("blocking issue links not available, using relates_to", "status", code)
+				linkType = gitlab.LinkRelatesTo
+				err = gl.CreateIssueLink(ctx, glProject, p.IID, d, linkType)
+			}
+			switch {
+			case gitlab.StatusCode(err) == 409: // linked meanwhile
+			case err != nil:
+				errs = append(errs, fmt.Sprintf("#%d → #%d: %v", p.IID, d, err))
+			default:
+				created++
+			}
+		}
+		for _, d := range stale {
+			l, ok := linked[d]
+			if !ok || (l.LinkType != gitlab.LinkIsBlockedBy && l.LinkType != gitlab.LinkRelatesTo) {
+				continue
+			}
+			if err := gl.DeleteIssueLink(ctx, glProject, p.IID, l.IssueLinkID); err != nil && !gitlab.IsNotFound(err) {
+				errs = append(errs, fmt.Sprintf("unlinking #%d from #%d: %v", p.IID, d, err))
+				continue
+			}
+			removed++
+		}
+	}
+	return linkResult{created: created, removed: removed, linkType: linkType, errs: errs}
+}
+
+// plannedDraft reports whether a planned issue is still a draft the plan may
+// change: open, with the draft label and no active label, not a follow-up.
+func plannedDraft(is gitlab.Issue, wf aiv1.WorkflowSpec) bool {
+	if is.State != "opened" || !is.HasLabel(wf.DraftLabel) || marker.RevisitOf.MatchString(is.Description) {
+		return false
+	}
+	for _, l := range wf.ActiveLabels() {
+		if is.HasLabel(l) {
+			return false
+		}
+	}
+	return true
 }

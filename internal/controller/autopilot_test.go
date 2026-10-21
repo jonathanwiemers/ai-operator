@@ -487,7 +487,7 @@ func TestAutopilotSkippedThenMergedByHand(t *testing.T) {
 	human := gitlab.User{ID: 1, Username: "jonathan"}
 	e.gl.AddNote(tracking, human, "/agent: skip #1")
 	e.reconcile()
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "depend on skipped issues") {
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "waits for the skipped #1") {
 		t.Fatalf("#2 must wait for the skipped #1: %+v", ap)
 	}
 	// The human finishes #1 and resumes.
@@ -628,7 +628,62 @@ func TestAutopilotDoesNotCountAMentionAsAMerge(t *testing.T) {
 	e.reconcile()
 	e.reconcile()
 	ap := e.autopilot()
-	if ap.Items[0].State != aiv1.AutopilotItemSkipped || ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "depend on skipped issues") {
+	if ap.Items[0].State != aiv1.AutopilotItemSkipped || ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "waits for the skipped #1") {
 		t.Fatalf("#1 closed without a merge must be skipped and block #2: %+v", ap)
+	}
+}
+
+func TestAutopilotHonoursBlockedByLinks(t *testing.T) {
+	e := newAutopilotEnv(t)
+	// A human links the API (planned first) as blocked by an issue outside
+	// the queue; the UI depends on the API by plan.
+	e.gl.AddIssue(9, "Infra", "agent::review")
+	if err := e.gl.CreateIssueLink(e.ctx, "g/p", 1, 9, gitlab.LinkIsBlockedBy); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "#1 is blocked by #9 (issue link)") ||
+		e.gl.Issues[1].HasLabel("agent::ready") {
+		t.Fatalf("a blocked-by link must hold the issue back: %+v", ap)
+	}
+	// #9 is done: resume and the API starts.
+	e.gl.Issues[9].State = "closed"
+	e.gl.AddNote(ap.TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent resume")
+	e.reconcile()
+	if ap := e.autopilot(); ap.Items[0].State != aiv1.AutopilotItemActive || !e.gl.Issues[1].HasLabel("agent::ready") {
+		t.Fatalf("with the blocker closed the issue starts: %+v", ap)
+	}
+}
+
+func TestAutopilotLinkBetweenQueuedIssuesReorders(t *testing.T) {
+	e := newAutopilotEnv(t)
+	// The plan lists #1 before #4 without a dependency; a human links #1
+	// as blocked by #4.
+	four := e.gl.AddIssue(4, "Schema", "ai-generated", "agent::draft")
+	four.Milestone = &e.gl.Milestones[0]
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Plan = []aiv1.PlannedIssue{{Key: "api", IID: 1}, {Key: "schema", IID: 4}, {Key: "ui", IID: 2, DependsOn: []int64{1}}}
+	})
+	if err := e.gl.CreateIssueLink(e.ctx, "g/p", 1, 4, gitlab.LinkIsBlockedBy); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotRunning || ap.Items[1].IID != 4 || ap.Items[1].State != aiv1.AutopilotItemActive || ap.Items[0].State != aiv1.AutopilotItemPending {
+		t.Fatalf("#4 must start first, #1 waits for it: %+v", ap.Items)
+	}
+}
+
+func TestAutopilotIgnoresRelatesToLinks(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.gl.FreeTier = true
+	e.gl.AddIssue(9, "Infra", "agent::review")
+	if err := e.gl.CreateIssueLink(e.ctx, "g/p", 1, 9, gitlab.LinkRelatesTo); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	if ap := e.autopilot(); ap.Items[0].State != aiv1.AutopilotItemActive {
+		t.Fatalf("relates_to has no direction and does not block: %+v", ap)
 	}
 }

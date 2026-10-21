@@ -103,13 +103,30 @@ holds a self-contained sub-spec:
 - the part of the milestone spec it implements, context and implementation
   plan (files, functions)
 - acceptance criteria and a test plan
-- `Depends on #…` for ordering
+- `Depends on #…` for ordering, also as [issue links](#dependencies-as-issue-links)
 - **Open questions**, each with the default the agent would pick
 - labels `ai-generated`, `agent::draft` and the chosen `agent-profile::…`
 
 The milestone description is never modified. If you edit the spec later, the
 spec agent runs again. It updates sub-issues that are still drafts and leaves
 issues that are in progress, done, or created by hand alone.
+
+### Dependencies as issue links
+
+The planner's dependencies are also GitLab issue links, so the issue page and
+the boards show them:
+
+- On **GitLab Premium/Ultimate** an issue is linked as **is blocked by** the
+  issues it depends on, and GitLab shows the blocked badge.
+- On **GitLab Free** blocking links do not exist; the operator falls back to
+  **relates to** links, which have no direction. The `Depends on` list in the
+  description stays the record of the order.
+
+A re-plan adds links for new dependencies and removes the links of
+dependencies it dropped, on drafts only. Links you add or keep by hand are left
+alone. On autopilot, an **is blocked by** link you add (Premium) holds an
+issue back until the linked issue is closed, even if the plan does not list
+it, so you can order or block work right on the issue.
 
 ## 2. Answer questions and hand the issue over
 
@@ -309,7 +326,8 @@ to, `/agent spec`), the milestone runs without you:
    each issue's description.
 2. The operator creates a tracking issue, **🤖 Autopilot: <milestone>**, and
    moves the first issue to `agent::ready`. Issues go **one at a time**, in
-   dependency order (an issue's "Depends on" first, otherwise plan order).
+   dependency order (an issue's "Depends on" first, otherwise plan order). An
+   issue linked as "blocked by" an open issue waits for it too.
 3. The issue is implemented, reviewed and checked by CI as usual. The
    implementer never stops with questions: it decides and records the
    decision. On autopilot, CI fix runs are reviewed as well.
@@ -376,8 +394,9 @@ the reason and what to do:
   change differs from the reviewed one;
 - the active issue lost its workflow label while open;
 - no reviewers are configured;
-- the plan has a dependency cycle, or the remaining issues depend on skipped
-  ones.
+- the plan has a dependency cycle, or nothing can start because the
+  remaining issues wait for skipped issues, for issues outside the queue
+  ("blocked by" links), or for each other (a cycle of links).
 
 While paused, runs that were already requested continue (your `/agent`
 comments still reach the agent), but nothing new is started or merged.
@@ -564,8 +583,8 @@ Every run is a numbered list of steps, e.g. for an issue:
 18. update issue labels
 
 A spec run reads the milestone and the project, clones or fetches, lists the
-milestone's issues, runs the spec agent, applies the plan and records it
-(`status.plan`, used by autopilot).
+milestone's issues, runs the spec agent, applies the plan, records it
+(`status.plan`, used by autopilot) and links the dependencies.
 
 The steps show up in three places:
 

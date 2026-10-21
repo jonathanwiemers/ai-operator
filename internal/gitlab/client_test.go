@@ -304,3 +304,42 @@ func TestMergeRequestDiffsAndStateEvents(t *testing.T) {
 		t.Fatalf("paths %v", paths)
 	}
 }
+
+func TestIssueLinks(t *testing.T) {
+	var calls []string
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.Method+" "+r.URL.EscapedPath())
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`[{"iid":1,"project_id":7,"state":"opened","issue_link_id":33,"link_type":"is_blocked_by"}]`))
+		case http.MethodPost:
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	ctx := context.Background()
+	links, err := c.ListIssueLinks(ctx, "group/app", 2)
+	if err != nil || len(links) != 1 || links[0].IssueLinkID != 33 || links[0].LinkType != LinkIsBlockedBy {
+		t.Fatalf("links %+v %v", links, err)
+	}
+	if err := c.CreateIssueLink(ctx, "group/app", 2, 1, LinkIsBlockedBy); err != nil {
+		t.Fatal(err)
+	}
+	if body["target_project_id"] != "group/app" || body["target_issue_iid"] != float64(1) || body["link_type"] != "is_blocked_by" {
+		t.Fatalf("create body %v", body)
+	}
+	if err := c.DeleteIssueLink(ctx, "group/app", 2, 33); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"GET /api/v4/projects/group%2Fapp/issues/2/links", "POST /api/v4/projects/group%2Fapp/issues/2/links",
+		"DELETE /api/v4/projects/group%2Fapp/issues/2/links/33"}
+	if !slices.Equal(calls, want) {
+		t.Fatalf("calls %v", calls)
+	}
+}
