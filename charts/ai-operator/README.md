@@ -52,6 +52,38 @@ The CRDs are part of the templates, so they are upgraded too.
 | `nodeSelector`, `tolerations`, `affinity`, `podAnnotations`, `podLabels` | | |
 | `extraArgs` | `[]` | extra operator flags |
 
+### Web UI
+
+The optional read-only web UI, see [docs/ui.md](../../docs/ui.md). It runs as
+its own Deployment (`<release>-ui`) with a service account that can only read
+AgentProjects and AgentTasks.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ui.enabled` | `false` | |
+| `ui.externalURL` | | URL users open, without a path, e.g. `https://ai.example.com`; required with `oidc`. The redirect URI is `<externalURL>/oauth2/callback` |
+| `ui.auth.mode` | `oidc` | `oidc`, or `none`: no login, listens on `127.0.0.1` only (reach it with `kubectl port-forward`), no Service, no HTTPRoute |
+| `ui.auth.sessionTTL` | `12h` | how long a login lasts; roles are read at login |
+| `ui.oidc.issuerURL` | | required with `oidc` |
+| `ui.oidc.clientID` | | required with `oidc` |
+| `ui.oidc.existingSecret` | | required with `oidc`: Secret with `session-key` (at least 32 characters) and, for confidential clients, `client-secret` |
+| `ui.oidc.scopes` | `[openid, profile, email]` | |
+| `ui.oidc.claims.username` | `has(claims.email) ? claims.email : claims.sub` | CEL expression giving the user name |
+| `ui.oidc.claims.roles` | `has(claims.groups) ? claims.groups : []` | CEL expression giving the roles: a list, a string or a map whose keys are the roles (Zitadel: `claims["urn:zitadel:iam:org:project:roles"]`) |
+| `ui.authorization.rules` | `[]` | `{roles: [...], projects: ["namespace/name", ...]}`; a user with any of the roles sees the matching projects (all if `projects` is empty). `"*"` matches every user. Nobody sees anything without a rule |
+| `ui.httpRoute.enabled` | `false` | Gateway API HTTPRoute for the UI's host |
+| `ui.httpRoute.parentRefs` | `[]` | the Gateway (listener); required when enabled |
+| `ui.httpRoute.hostnames` | host of `externalURL` | |
+| `ui.httpRoute.timeouts` | `{}` | timeouts of the route's rule, e.g. `{request: 0s}` if the Gateway cuts the event stream |
+| `ui.httpRoute.annotations` | `{}` | |
+| `ui.networkPolicy.enabled` | `false` | allow ingress to the UI only from `ui.networkPolicy.from` (and to the probe port) |
+| `ui.networkPolicy.from` | `[]` | NetworkPolicy peers, e.g. the Gateway's namespace |
+| `ui.service.type`, `ui.service.annotations` | `ClusterIP`, `{}` | |
+| `ui.port`, `ui.healthProbePort` | `9080`, `8081` | |
+| `ui.replicaCount` | `1` | replicas share logins through the session key |
+| `ui.resources` | 20m / 48Mi requests, 192Mi limit | |
+| `ui.nodeSelector`, `ui.tolerations`, `ui.affinity`, `ui.podAnnotations`, `ui.podLabels`, `ui.extraArgs` | | |
+
 ## Without Helm
 
 `make deploy` applies the same resources with kustomize from `config/`.

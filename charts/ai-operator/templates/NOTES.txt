@@ -17,4 +17,22 @@ Next steps (in an agent namespace):
     --from-literal=CLAUDE_CODE_OAUTH_TOKEN=... --from-literal=CURSOR_API_KEY=...
   kubectl -n <ns> apply -f agentproject.yaml
 
+{{- if .Values.ui.enabled }}
+
+Web UI:
+{{- if eq .Values.ui.auth.mode "none" }}
+  Without login, only through port-forward:
+  kubectl -n {{ .Release.Namespace }} port-forward deploy/{{ include "ai-operator.ui.fullname" . }} {{ .Values.ui.port }}
+  and open http://127.0.0.1:{{ .Values.ui.port }}
+{{- else }}
+  {{ .Values.ui.externalURL }} (OIDC redirect URI: {{ .Values.ui.externalURL | trimSuffix "/" }}/oauth2/callback)
+  {{- if not .Values.ui.httpRoute.enabled }}
+  No HTTPRoute is rendered (ui.httpRoute.enabled); route the host to Service {{ include "ai-operator.ui.fullname" . }}:{{ .Values.ui.port }} yourself.
+  {{- end }}
+  {{- if not .Values.ui.authorization.rules }}
+  ui.authorization.rules is empty: users can log in but see no projects.
+  {{- end }}
+{{- end }}
+{{- end }}
+
 Documentation: https://github.com/jonathanwiemers/ai-operator/tree/main/docs

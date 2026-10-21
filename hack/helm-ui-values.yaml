@@ -1,0 +1,24 @@
+# Values for make helm-lint: renders the chart with the web UI, OIDC, HTTPRoute
+# and NetworkPolicy enabled.
+ui:
+  enabled: true
+  externalURL: https://ai.example.com
+  oidc:
+    issuerURL: https://acme.zitadel.cloud
+    clientID: "2938@ai-operator"
+    existingSecret: ai-operator-ui
+    scopes: [openid, profile, email, "urn:zitadel:iam:org:projects:roles"]
+    claims:
+      username: claims.preferred_username
+      roles: 'claims["urn:zitadel:iam:org:project:roles"]'
+  authorization:
+    rules:
+      - roles: [ai-operator-admin]
+      - roles: [shop-devs]
+        projects: ["team-a/shop"]
+  httpRoute:
+    enabled: true
+    parentRefs: [{name: public, namespace: gateway-system, sectionName: https}]
+  networkPolicy:
+    enabled: true
+    from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway-system}}}]

@@ -80,6 +80,12 @@ spec:
 * Change `AgentProject` settings such as `spec.suspend` in Git; Flux reverts
   edits made with `kubectl`.
 
+### Web UI
+
+The chart can also install a read-only web UI with OIDC login and role-based
+access per project (`ui.enabled`, off by default), exposed through a Gateway
+API HTTPRoute. See [ui.md](ui.md).
+
 ## Secrets
 
 ```sh

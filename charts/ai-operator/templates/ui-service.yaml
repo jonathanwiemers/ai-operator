@@ -1,0 +1,60 @@
+{{- if and .Values.ui.enabled (eq .Values.ui.auth.mode "oidc") }}
+{{- $ui := .Values.ui }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-operator.ui.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-operator.ui.labels" . | nindent 4 }}
+  {{- with $ui.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $ui.service.type }}
+  selector:
+    {{- include "ai-operator.ui.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $ui.port }}
+      targetPort: http
+{{- if $ui.httpRoute.enabled }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "ai-operator.ui.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-operator.ui.labels" . | nindent 4 }}
+  {{- with $ui.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not $ui.httpRoute.parentRefs }}
+  {{- fail "ui.httpRoute.parentRefs is required: the Gateway (listener) that serves the UI" }}
+  {{- end }}
+  parentRefs:
+    {{- toYaml $ui.httpRoute.parentRefs | nindent 4 }}
+  hostnames:
+    {{- if $ui.httpRoute.hostnames }}
+    {{- toYaml $ui.httpRoute.hostnames | nindent 4 }}
+    {{- else }}
+    - {{ (urlParse $ui.externalURL).host | splitList ":" | first | quote }}
+    {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      {{- with $ui.httpRoute.timeouts }}
+      timeouts:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      backendRefs:
+        - name: {{ include "ai-operator.ui.fullname" . }}
+          port: {{ $ui.port }}
+{{- end }}
+{{- end }}

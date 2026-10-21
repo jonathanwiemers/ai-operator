@@ -1,0 +1,5 @@
+# Built in the image.
+web/node_modules
+web/dist/app
+bin
+dist

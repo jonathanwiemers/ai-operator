@@ -58,6 +58,9 @@ flowchart LR
   Every decision is posted as a comment on its issue, with why and the
   alternatives, and an ID you can `/agent revisit` later, even after the
   merge: a follow-up issue changes it.
+- **Watch.** An optional web UI shows every project's board, runs, CI and
+  autopilot queue live. Log in with OIDC (Zitadel, Keycloak, …); roles decide
+  who sees which project ([web UI](docs/ui.md)).
 - **Clean up.** Close the issue, and the pod and workspace are removed. Pods
   only run while an agent works: right after each run the pod stops, and the
   workspace keeps the checkout, caches and agent session for the next run.
@@ -192,6 +195,7 @@ The draft MR shows up in GitLab. Once CI is green the issue moves to
 | [Usage](docs/usage.md) | the GitLab workflow: labels, milestone specs, commands, CI feedback, lifecycle |
 | [Configuration](docs/configuration.md) | installation (Helm, Flux), secrets, `AgentProject` reference, engines, profiles, agent image |
 | [Design](docs/design.md) | architecture, CRDs, pod topology, token economy, security, roadmap |
+| [Web UI](docs/ui.md) | the optional read-only UI: OIDC login, roles, HTTPRoute, API |
 | [Helm chart](charts/ai-operator/README.md) | chart values |
 | [Releasing](docs/releasing.md) | calendar versions, release workflow, published images and chart |
 | [Sandbox test plan](docs/sandbox-test-plan.md) | end-to-end test on kind with a real GitLab project and the real agent CLIs |
@@ -205,6 +209,8 @@ make generate manifests   # deepcopy, CRDs, RBAC (controller-gen)
 make test                 # unit tests + end-to-end runner test against a local git repo
 make helm-lint            # lint and render the chart
 make run                  # run the operator against your current kubeconfig
+make ui                   # build the web UI (Node 22), embedded into the ui binary
+make run-ui               # run the web UI without login on http://127.0.0.1:9080
 ```
 
 Releases use calendar versions (`2026.10.1`, `2026.10.2`, …) and are cut

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="ai-operator">
+<title>ai-operator</title>
+<!-- an issue board whose cards an agent (the flying card) moves -->
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fc6d26"/><stop offset="1" stop-color="#e24329"/></linearGradient></defs>
+<rect width="128" height="128" rx="28" fill="url(#bg)"/>
+<rect x="22" y="26" width="24" height="76" rx="6" fill="#ffffff" fill-opacity="0.18"/>
+<rect x="52" y="26" width="24" height="76" rx="6" fill="#ffffff" fill-opacity="0.18"/>
+<rect x="82" y="26" width="24" height="76" rx="6" fill="#ffffff" fill-opacity="0.18"/>
+<rect x="26" y="32" width="16" height="12" rx="3" fill="#ffffff"/><rect x="26" y="48" width="16" height="12" rx="3" fill="#ffffff"/>
+<rect x="56" y="32" width="16" height="12" rx="3" fill="#ffffff"/>
+<rect x="86" y="32" width="16" height="12" rx="3" fill="#ffffff"/><rect x="86" y="48" width="16" height="12" rx="3" fill="#ffffff"/><rect x="86" y="64" width="16" height="12" rx="3" fill="#ffffff"/>
+<g transform="rotate(-12 70 80)"><rect x="58" y="70" width="24" height="18" rx="4" fill="#2d1f5e"/>
+<rect x="62" y="75" width="12" height="3" rx="1.5" fill="#ffffff" fill-opacity="0.8"/><rect x="62" y="81" width="8" height="3" rx="1.5" fill="#ffffff" fill-opacity="0.8"/></g>
+<path d="M40 74 H52 M44 82 H54 M42 90 H50" stroke="#2d1f5e" stroke-width="3.5" stroke-linecap="round"/>
+</svg>
