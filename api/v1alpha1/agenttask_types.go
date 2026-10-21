@@ -468,6 +468,17 @@ type AutopilotStatus struct {
 	// +optional
 	PausedReason string `json:"pausedReason,omitempty"`
 
+	// PausedFor is the active issue the pause is about. Autopilot continues
+	// by itself once that issue is merged or closed by hand, and, with
+	// ResumeWhenReady, once it passes the merge gate again (a later run
+	// fixed it).
+	// +optional
+	PausedFor int64 `json:"pausedFor,omitempty"`
+
+	// ResumeWhenReady: the pause is over PausedFor's run, review or CI.
+	// +optional
+	ResumeWhenReady bool `json:"resumeWhenReady,omitempty"`
+
 	// Items in queue order: dependencies first, ties in plan order.
 	// +optional
 	Items []AutopilotItem `json:"items,omitempty"`

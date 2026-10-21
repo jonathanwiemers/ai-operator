@@ -209,6 +209,9 @@ func TestAutopilotPausesAndResumes(t *testing.T) {
 	if !slices.Equal(e.gl.Merged, []int64{1}) || e.autopilot().Phase != aiv1.AutopilotRunning {
 		t.Fatalf("resume should continue with the merge: merged %v, %+v", e.gl.Merged, e.autopilot())
 	}
+	if strings.Contains(trackingComments(e), "Autopilot continues") {
+		t.Fatal("the resume command, not the automatic one, must have continued here")
+	}
 
 	// "/agent pause" stops it, "/agent skip #2" skips the UI, and the
 	// milestone is done.
@@ -782,5 +785,88 @@ func TestAutopilotMergesWhenNoMergeRequestPipelineIsPossible(t *testing.T) {
 	e.reconcile()
 	if !slices.Equal(e.gl.Merged, []int64{1}) {
 		t.Fatalf("expected the merge without another wait: %v %+v", e.gl.Merged, e.autopilot())
+	}
+}
+
+func TestAutopilotContinuesByItselfOnceTheIssueIsFixed(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", func(r *aiv1.RunStatus) { r.BlockingFindings = 2 })
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || ap.PausedFor != 1 || !ap.ResumeWhenReady {
+		t.Fatalf("expected a pause over #1's review: %+v", ap)
+	}
+	e.reconcile()
+	if e.autopilot().Phase != aiv1.AutopilotPaused {
+		t.Fatal("still not fixed: stays paused")
+	}
+	// "/agent fix the findings": a later run leaves none.
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.Run.BlockingFindings, s.Run.RunCount = 0, 2 })
+	e.reconcile()
+	e.reconcile()
+	if !slices.Equal(e.gl.Merged, []int64{1}) || !strings.Contains(trackingComments(e), "Autopilot continues: #1 is reviewed and green again") {
+		t.Fatalf("expected autopilot to continue and merge: merged %v, %+v\n%s", e.gl.Merged, e.autopilot(), trackingComments(e))
+	}
+}
+
+func TestAutopilotContinuesWhenTheIssueIsMergedByHand(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	e.gl.SetLabels(1, "ai-generated", "agent::needs-input")
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || ap.PausedFor != 1 {
+		t.Fatalf("expected a pause over #1: %+v", ap)
+	}
+	// Merged by hand; GitLab closes the issue.
+	mr := e.tasks()[name].Status.Run.MergeRequestIID
+	e.gl.MRs[mr].State = "merged"
+	e.gl.Issues[1].State = "closed"
+	e.reconcile()
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].State != aiv1.AutopilotItemMerged || !e.gl.Issues[2].HasLabel("agent::ready") {
+		t.Fatalf("a hand merge must count and the next issue start: %+v %v", ap, e.gl.Labels(2))
+	}
+	if !strings.Contains(trackingComments(e), fmt.Sprintf("Autopilot continues: !%d was merged", mr)) {
+		t.Fatalf("expected the continue note:\n%s", trackingComments(e))
+	}
+}
+
+func TestAutopilotPausedByHandWaitsForResume(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", func(r *aiv1.RunStatus) { r.BlockingFindings = 2 })
+	e.reconcile()
+	e.gl.AddNote(e.autopilot().TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent pause")
+	e.reconcile()
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.Run.BlockingFindings = 0 })
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || len(e.gl.Merged) != 0 {
+		t.Fatalf("a pause by hand waits for resume: %+v merged %v", ap, e.gl.Merged)
+	}
+}
+
+// A pause over the MR (here: an approval) ends when it is merged by hand,
+// also while the issue is still open.
+func TestAutopilotMRPauseEndsWithAHandMerge(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	mr := e.tasks()[name].Status.Run.MergeRequestIID
+	e.gl.MRs[mr].Draft, e.gl.MRs[mr].DetailedMergeStatus = false, "not_approved"
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || ap.PausedFor != 1 || ap.ResumeWhenReady {
+		t.Fatalf("expected an MR pause: %+v", ap)
+	}
+	e.gl.MRs[mr].State = "merged"
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].State != aiv1.AutopilotItemMerged {
+		t.Fatalf("the hand merge must count: %+v", ap)
 	}
 }

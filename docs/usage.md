@@ -485,6 +485,21 @@ the reason and what to do:
 While paused, runs that were already requested continue (your `/agent`
 comments still reach the agent), but nothing new is started or merged.
 
+A pause over the active issue ends **by itself** when it no longer holds:
+
+- the issue's MR was merged by hand, or the issue was closed: autopilot
+  counts it (merged, or skipped if closed without a merge) and goes on with
+  the next issue;
+- the pause was over its run, review or CI (needs input, a failed run,
+  blocking findings, failed reviewers, an unreviewed head, red or canceled
+  CI) and a later run fixed it: for example you commented `/agent fix the
+  findings`, the run succeeded, was reviewed and CI is green. Autopilot then
+  continues with the merge.
+
+The tracking issue gets "▶️ Autopilot continues: …". Every other pause (an
+approval, unresolved discussions, someone else's push, a dependency cycle,
+`/agent pause`) waits for `/agent resume`.
+
 ### Commands on the tracking issue
 
 | Comment | Effect |
@@ -502,9 +517,9 @@ takes your commits over, is reviewed, and CI checks the new head before the
 merge.
 
 You can also finish issues by hand. An issue closed by a merged MR, or closed
-with `agent::done`, counts as merged: the active one (while paused, on
-`resume`), a skipped one (its dependants continue on `resume`), and one that
-was already done before autopilot got to it.
+with `agent::done`, counts as merged: the active one (also while paused: the
+pause ends by itself), a skipped one (its dependants continue on `resume`),
+and one that was already done before autopilot got to it.
 
 ### Tracking issue
 
