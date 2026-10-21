@@ -710,10 +710,20 @@ its call to the agent, waits for the container to be back and reports it:
 - **Out of memory:** the run fails with "the agent container ran out of
   memory after 1h28m and was killed (OOMKilled, memory limit 4Gi)". It is not
   retried, since it would most likely run out again. Raise the memory in
-  `spec.agents.resources` (limits and requests), then comment `/agent retry`;
-  the work so far is still in the workspace.
-- **Another reason** (a crash): the call is tried once more; if it loses the
-  container again, the run fails with the reason and exit code.
+  `spec.agents.resources` (limits and requests), then comment `/agent retry`.
+  A pod started with other agent resources is replaced between runs, so the
+  retry gets the new limit. The killed call's uncommitted edits are lost; the
+  retry starts from the last pushed commit.
+- **Another reason** (a crash): the checkout is reset to the last commit and
+  the call is tried once more; if it loses the container again, the run
+  fails with the reason and exit code.
+- A call made while the container was down (it died between calls, e.g.
+  from a background process) is made again once it is back.
+
+On nodes with cgroup v1, or with the kubelet's `singleProcessOOMKill`, the
+kernel kills only the biggest process (a test runner, the CLI) instead of the
+whole container. The container keeps running and the agent CLI simply
+reports an error, so nothing is recorded.
 
 ```sh
 kubectl -n agents get agenttask shop-42-add-paypal-button -o jsonpath='{.status.agentTermination}'

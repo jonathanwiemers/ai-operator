@@ -27,6 +27,8 @@ type lostEngine struct {
 	reason string
 	fails  int
 	calls  int
+	// stale records the termination before the run started.
+	stale bool
 }
 
 func (l *lostEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
@@ -37,8 +39,14 @@ func (l *lostEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
 			var task aiv1.AgentTask
 			_ = l.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: l.task}, &task)
 			orig := task.DeepCopy()
+			finished := time.Now()
+			if l.stale {
+				finished = finished.Add(-time.Hour)
+			}
 			task.Status.AgentTermination = &aiv1.ContainerTermination{Reason: l.reason, ExitCode: 137,
-				FinishedAt: &metav1.Time{Time: time.Now()}, Restarts: int32(l.calls), MemoryLimit: "4Gi"}
+				FinishedAt: &metav1.Time{Time: finished}, Restarts: int32(l.calls), MemoryLimit: "4Gi"}
+			// A git command killed with the container leaves its lock.
+			_ = os.WriteFile(filepath.Join(inv.Dir, ".git", "index.lock"), nil, 0o644)
 			_ = l.k8s.Status().Patch(ctx, &task, client.MergeFrom(orig))
 			panic(http.ErrAbortHandler) // the server drops the connection
 		}
@@ -66,12 +74,7 @@ func TestOOMKilledAgentFailsTheRunWithTheReason(t *testing.T) {
 	if engine.calls != 1 {
 		t.Fatalf("running out of memory would happen again: no retry, got %d calls", engine.calls)
 	}
-	var note string
-	for _, n := range e.gl.IssueNotes[42] {
-		if strings.Contains(n.Body, "run failed") {
-			note = n.Body
-		}
-	}
+	note := failureNote(e)
 	if !strings.Contains(note, "ran out of memory") || !strings.Contains(note, "memory limit 4Gi") || !strings.Contains(note, "spec.agents.resources") {
 		t.Fatalf("the failure must name the OOM kill and the limit: %q", note)
 	}
@@ -96,5 +99,37 @@ func TestAgentLostWithoutARecordedReason(t *testing.T) {
 	err := &AgentLostError{After: 88 * time.Minute, Err: &agentConnError{method: "run", err: io.EOF}}
 	if msg := err.Error(); !strings.Contains(msg, "lost the agent container after 1h28m0s") || !strings.Contains(msg, "kubectl describe pod") {
 		t.Fatalf("unexpected message %q", msg)
+	}
+}
+
+func failureNote(e *implementEnv) string {
+	var note string
+	for _, n := range e.gl.IssueNotes[42] {
+		if strings.Contains(n.Body, "run failed") {
+			note = n.Body
+		}
+	}
+	return note
+}
+
+func TestAgentCrashTwiceFailsWithTheReason(t *testing.T) {
+	fastAgentLost(t)
+	e := newImplementEnv(t)
+	engine := &lostEngine{k8s: e.k8s, task: e.task.Name, reason: "Error", fails: 5}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	_, _ = r.Step(context.Background())
+	if note := failureNote(e); engine.calls != 2 || !strings.Contains(note, "stopped after") || !strings.Contains(note, "Error, exit code 137") {
+		t.Fatalf("one retry, then the reason: %d calls, %q", engine.calls, note)
+	}
+}
+
+func TestAgentLossIgnoresATerminationBeforeTheRun(t *testing.T) {
+	fastAgentLost(t)
+	e := newImplementEnv(t)
+	engine := &lostEngine{k8s: e.k8s, task: e.task.Name, reason: "OOMKilled", fails: 5, stale: true}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	_, _ = r.Step(context.Background())
+	if note := failureNote(e); engine.calls != 1 || strings.Contains(note, "OOMKilled") || !strings.Contains(note, "lost the agent container") {
+		t.Fatalf("an older termination is not this run's: %d calls, %q", engine.calls, note)
 	}
 }

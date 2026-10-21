@@ -599,3 +599,49 @@ func TestAgentTerminationIsRecorded(t *testing.T) {
 		t.Fatalf("the agent container's OOM kill must be recorded: %+v", got)
 	}
 }
+
+func TestPodReplacedWhenAgentResourcesChange(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	e.reconcile("x")
+	e.finishRun("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") {
+		t.Fatal("expected pod")
+	}
+	before := pod.Annotations[AnnotationAgentResources]
+
+	// More memory after an OOM kill; the idle pod still has the old limit.
+	var project aiv1.AgentProject
+	_ = e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &project)
+	project.Spec.Agents.Resources.Limits = corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("8Gi")}
+	if err := e.c.Update(e.ctx, &project); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if e.exists(&pod, "x") {
+		t.Fatal("an idle pod with old resources must be replaced")
+	}
+	// The retry starts a pod with the new resources.
+	task := e.task("x")
+	task.Spec.RunRequest++
+	if err := e.c.Update(e.ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if !e.exists(&pod, "x") || pod.Annotations[AnnotationAgentResources] == before ||
+		container(&pod, AgentContainer).Resources.Limits.Memory().String() != "8Gi" {
+		t.Fatalf("expected a new pod with 8Gi: %+v", pod.Annotations)
+	}
+	// Not while a run is in progress.
+	task = e.task("x")
+	orig := task.DeepCopy()
+	task.Status.Run.ActiveRunRequest = task.Spec.RunRequest
+	_ = e.c.Status().Patch(e.ctx, task, client.MergeFrom(orig))
+	_ = e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &project)
+	project.Spec.Agents.Resources.Limits = corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("12Gi")}
+	_ = e.c.Update(e.ctx, &project)
+	e.reconcile("x")
+	if !e.exists(&pod, "x") {
+		t.Fatal("a pod in a run must not be replaced")
+	}
+}

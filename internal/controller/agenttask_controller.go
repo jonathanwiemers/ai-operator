@@ -133,6 +133,20 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		pod = nil
 	}
 
+	// A pod started with other agent resources (raised after an OOM kill) is
+	// replaced between runs, so the next run gets them.
+	if pod != nil && !inProgress && podOutdated(pod, spec) {
+		if busy, err := r.runInProgress(ctx, &task); err != nil {
+			return ctrl.Result{}, err
+		} else if !busy {
+			logger.Info("replacing agent pod, its resources changed", "pod", pod.Name)
+			if err := r.Delete(ctx, pod); client.IgnoreNotFound(err) != nil {
+				return ctrl.Result{}, err
+			}
+			pod = nil
+		}
+	}
+
 	var result ctrl.Result
 	switch {
 	case pending && !blocked && !waiting && !task.Spec.Suspend:
@@ -338,6 +352,19 @@ func (r *AgentTaskReconciler) freshRunPending(ctx context.Context, task *aiv1.Ag
 		return false, client.IgnoreNotFound(err)
 	}
 	return fresh.RunPending() || fresh.Status.Run.ActiveRunRequest > fresh.Status.Run.ObservedRunRequest, nil
+}
+
+// runInProgress checks with the API server whether the runner is in a run;
+// the cache can lag behind the runner starting one.
+func (r *AgentTaskReconciler) runInProgress(ctx context.Context, task *aiv1.AgentTask) (bool, error) {
+	if r.APIReader == nil {
+		return task.Status.Run.ActiveRunRequest > task.Status.Run.ObservedRunRequest, nil
+	}
+	var fresh aiv1.AgentTask
+	if err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(task), &fresh); err != nil {
+		return false, client.IgnoreNotFound(err)
+	}
+	return fresh.Status.Run.ActiveRunRequest > fresh.Status.Run.ObservedRunRequest, nil
 }
 
 func (r *AgentTaskReconciler) runningTasks(ctx context.Context, task *aiv1.AgentTask) (int, error) {

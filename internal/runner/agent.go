@@ -361,10 +361,13 @@ func (c *AgentClient) call(ctx context.Context, method string, req, resp any) er
 		return fmt.Errorf("agent %s: %s: %s", method, httpResp.Status, b)
 	}
 	if err := json.NewDecoder(io.LimitReader(httpResp.Body, 64<<20)).Decode(resp); err != nil {
-		if errors.Is(err, io.ErrUnexpectedEOF) {
-			return &agentConnError{method: method, err: err}
+		var syntax *json.SyntaxError
+		var typ *json.UnmarshalTypeError
+		if errors.As(err, &syntax) || errors.As(err, &typ) {
+			return err
 		}
-		return err
+		// The body broke off: the server went away while answering.
+		return &agentConnError{method: method, err: err}
 	}
 	return nil
 }
@@ -378,6 +381,13 @@ type agentConnError struct {
 
 func (e *agentConnError) Error() string { return fmt.Sprintf("agent %s: %v", e.method, e.err) }
 func (e *agentConnError) Unwrap() error { return e.err }
+
+// notSent reports whether the request never reached the server (it was down
+// when the call was made), so making it again cannot repeat any work.
+func (e *agentConnError) notSent() bool {
+	var oe *net.OpError
+	return errors.As(e.err, &oe) && oe.Op == "dial"
+}
 
 func remoteErr(s string) error {
 	if s == "" {
