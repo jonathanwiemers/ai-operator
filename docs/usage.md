@@ -630,7 +630,7 @@ kubectl -n agents get agenttasks -w       # type, issue, phase, current step, la
 kubectl -n agents get agenttasks -o wide  # + merge request URL
 kubectl -n agents get agenttask shop-42-add-paypal-button -o jsonpath='{.status.run}'
 kubectl -n agents logs -f shop-42-add-paypal-button -c runner   # every step of a run
-kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server: CLI runs, git calls
+kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server: CLI runs, git calls, the agent's thinking and tool calls
 ```
 
 `status.run` of an AgentTask holds the result of the last run: `lastResult`,
@@ -697,6 +697,23 @@ The steps show up in three places:
 
 Prompts, comment bodies and diffs are never logged. `spec.agents.logLevel:
 debug` (or the operator's `--agent-log-level`) adds the runner's git commands.
+
+**The agent's session** (claude engine) is in the agent container's log as it
+happens, tagged with the run like the other lines:
+
+```
+agent thinks       text="The endpoint needs a test first."
+agent says         text="Adding the test."
+agent uses a tool  tool=Bash input="go test ./..."
+agent uses a tool  tool=Edit input="/workspace/repo/api.go"
+```
+
+Thinking shows up when the model thinks (depending on model and
+`effort`; the CLI may summarize it). Tool output and the contents of edits
+are not logged, so file contents and what commands print stay out of the
+log; what the agent writes in its own thinking and messages can still quote
+code. `logLevel: error` turns these lines off. cursor-agent runs are not
+streamed.
 
 ### When the agent container dies
 

@@ -231,7 +231,11 @@ Each pod has two containers, see [Security](#security):
 the step in progress in `status.run.currentStep`, and a run log table in the
 GitLab comment of the run. The runner sends its run ID (`<task>#<request>`)
 with every call to the agent server, which logs each call with it. Neither
-side logs prompts, comments, diffs or commit messages.
+side logs prompts, comments, diffs or commit messages. The claude CLI runs
+with `--output-format stream-json`: the agent server logs what the agent
+thinks and says and each tool call with its main argument (command, file,
+pattern) as it happens (`internal/runner/transcript.go`); tool output and
+edit contents are not logged, and only the final result line is parsed.
 
 ## Lifecycle of long-lived issues
 
