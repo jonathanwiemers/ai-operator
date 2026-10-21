@@ -6,6 +6,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -95,6 +96,12 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	pvc, err := r.getClaim(ctx, &task)
 	if err != nil {
 		return ctrl.Result{}, err
+	}
+	if t := agentTermination(pod); t != nil {
+		if task.Status.AgentTermination == nil || !equality.Semantic.DeepEqual(*task.Status.AgentTermination, *t) {
+			logger.Info("agent container stopped", "pod", pod.Name, "reason", t.Reason, "exitCode", t.ExitCode, "restarts", t.Restarts, "memoryLimit", t.MemoryLimit)
+		}
+		task.Status.AgentTermination = t
 	}
 
 	now := r.now()
@@ -373,4 +380,35 @@ func (r *AgentTaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("agenttask").
 		Complete(r)
+}
+
+// agentTermination returns how the agent container of pod last stopped, if
+// it did.
+func agentTermination(pod *corev1.Pod) *aiv1.ContainerTermination {
+	if pod == nil {
+		return nil
+	}
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.Name != AgentContainer {
+			continue
+		}
+		term := cs.State.Terminated
+		if term == nil {
+			term = cs.LastTerminationState.Terminated
+		}
+		if term == nil {
+			return nil
+		}
+		t := &aiv1.ContainerTermination{Reason: term.Reason, ExitCode: term.ExitCode, Restarts: cs.RestartCount}
+		if !term.FinishedAt.IsZero() {
+			t.FinishedAt = &metav1.Time{Time: term.FinishedAt.Time}
+		}
+		for _, c := range pod.Spec.Containers {
+			if q, ok := c.Resources.Limits[corev1.ResourceMemory]; ok && c.Name == AgentContainer {
+				t.MemoryLimit = q.String()
+			}
+		}
+		return t
+	}
+	return nil
 }

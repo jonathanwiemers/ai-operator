@@ -353,15 +353,31 @@ func (c *AgentClient) call(ctx context.Context, method string, req, resp any) er
 	}
 	httpResp, err := c.http.Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("agent %s: %w", method, err)
+		return &agentConnError{method: method, err: err}
 	}
 	defer httpResp.Body.Close()
 	if httpResp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(httpResp.Body, 4096))
 		return fmt.Errorf("agent %s: %s: %s", method, httpResp.Status, b)
 	}
-	return json.NewDecoder(io.LimitReader(httpResp.Body, 64<<20)).Decode(resp)
+	if err := json.NewDecoder(io.LimitReader(httpResp.Body, 64<<20)).Decode(resp); err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			return &agentConnError{method: method, err: err}
+		}
+		return err
+	}
+	return nil
 }
+
+// agentConnError is a call that got no answer from the agent server, e.g.
+// because its container was killed and restarted.
+type agentConnError struct {
+	method string
+	err    error
+}
+
+func (e *agentConnError) Error() string { return fmt.Sprintf("agent %s: %v", e.method, e.err) }
+func (e *agentConnError) Unwrap() error { return e.err }
 
 func remoteErr(s string) error {
 	if s == "" {

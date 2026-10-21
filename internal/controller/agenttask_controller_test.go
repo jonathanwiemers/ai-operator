@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -566,5 +567,35 @@ func TestLongWaitHibernatesPod(t *testing.T) {
 	e.reconcile("x")
 	if e.exists(&pod, "x") || e.task("x").Status.Phase != aiv1.TaskPhaseWaiting {
 		t.Fatal("a long wait should hibernate the pod and keep the task waiting")
+	}
+}
+
+func TestAgentTerminationIsRecorded(t *testing.T) {
+	e := newTaskEnv(t, newImplTask("x", 1))
+	e.reconcile("x")
+	var pod corev1.Pod
+	if !e.exists(&pod, "x") {
+		t.Fatal("expected pod")
+	}
+	container(&pod, AgentContainer).Resources.Limits = corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("4Gi")}
+	if err := e.c.Update(e.ctx, &pod); err != nil {
+		t.Fatal(err)
+	}
+	// The kubelet restarted the agent container after an OOM kill.
+	finished := metav1.NewTime(t0.Add(88 * time.Minute))
+	pod.Status.Phase = corev1.PodRunning
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+		{Name: RunnerContainer, Ready: true},
+		{Name: AgentContainer, RestartCount: 1, Ready: true,
+			State:                corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{Reason: "OOMKilled", ExitCode: 137, FinishedAt: finished}}},
+	}
+	if err := e.c.Status().Update(e.ctx, &pod); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	got := e.task("x").Status.AgentTermination
+	if got == nil || !got.OOMKilled() || got.ExitCode != 137 || got.Restarts != 1 || got.MemoryLimit != "4Gi" || !got.FinishedAt.Equal(&finished) {
+		t.Fatalf("the agent container's OOM kill must be recorded: %+v", got)
 	}
 }

@@ -698,6 +698,27 @@ The steps show up in three places:
 Prompts, comment bodies and diffs are never logged. `spec.agents.logLevel:
 debug` (or the operator's `--agent-log-level`) adds the runner's git commands.
 
+### When the agent container dies
+
+The agent container runs the agent CLI and everything it starts: builds,
+test runners, dev servers. If it uses more memory than its limit, the kubelet
+kills it (`OOMKilled`) and starts it again in the same pod. The operator
+records how the agent container last stopped in `status.agentTermination`
+(reason, exit code, time, restarts, memory limit), and the runner, which lost
+its call to the agent, waits for the container to be back and reports it:
+
+- **Out of memory:** the run fails with "the agent container ran out of
+  memory after 1h28m and was killed (OOMKilled, memory limit 4Gi)". It is not
+  retried, since it would most likely run out again. Raise the memory in
+  `spec.agents.resources` (limits and requests), then comment `/agent retry`;
+  the work so far is still in the workspace.
+- **Another reason** (a crash): the call is tried once more; if it loses the
+  container again, the run fails with the reason and exit code.
+
+```sh
+kubectl -n agents get agenttask shop-42-add-paypal-button -o jsonpath='{.status.agentTermination}'
+```
+
 Task phases: `Pending`, `Queued` (waiting for `maxConcurrentRuns`), `Running`,
 `Waiting` (paused by a usage limit), `Idle`, `Hibernated`, `Archived`,
 `Blocked` (hit `maxRunsPerTask`).

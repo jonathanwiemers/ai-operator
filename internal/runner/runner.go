@@ -13,6 +13,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -457,8 +458,23 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 	if lim, ok := r.projectStatus.ActiveUsageLimit(role.Engine, r.now()); ok {
 		return nil, &UsageLimitError{Engine: role.Engine, ResetAt: lim.Until.Time, Message: "project-wide limit: " + lim.Message}
 	}
+	retried := false
 	run := func(inv Invocation) (*Result, error) {
+		start := r.now()
 		res, err := r.Agent.Run(ctx, role.Engine, inv)
+		if lost := r.agentLost(ctx, err, start); lost != nil {
+			// A crash may not happen again; running out of memory would.
+			if retried || lost.Term == nil || lost.Term.OOMKilled() {
+				return nil, lost
+			}
+			retried = true
+			r.log().Info("agent container restarted during the call, trying once more", "reason", lost.Term.Reason, "exitCode", lost.Term.ExitCode)
+			start = r.now()
+			res, err = r.Agent.Run(ctx, role.Engine, inv)
+			if lost := r.agentLost(ctx, err, start); lost != nil {
+				return nil, lost
+			}
+		}
 		return res, classifyLimit(role.Engine, err, res)
 	}
 	if inv.Resume == "" {
@@ -466,7 +482,8 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 		return run(inv)
 	}
 	res, err := run(inv)
-	if _, limited := AsUsageLimit(err); err == nil || limited || (res != nil && res.SessionID != "") {
+	var lost *AgentLostError
+	if _, limited := AsUsageLimit(err); err == nil || limited || errors.As(err, &lost) || (res != nil && res.SessionID != "") {
 		return res, err
 	}
 	r.log().Info("could not resume session, starting fresh", "session", inv.Resume, "error", err.Error())

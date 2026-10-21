@@ -190,6 +190,30 @@ spec:
               are written by the operator, Run is written by the runner inside the pod.
               Both sides use merge patches so they never overwrite each other.
             properties:
+              agentTermination:
+                description: |-
+                  AgentTermination is the last time the agent container stopped while
+                  its pod ran (it is restarted in place), e.g. killed for using more than
+                  its memory limit. The runner names it when a run loses the agent.
+                properties:
+                  exitCode:
+                    format: int32
+                    type: integer
+                  finishedAt:
+                    format: date-time
+                    type: string
+                  memoryLimit:
+                    description: MemoryLimit of the container, if it has one.
+                    type: string
+                  reason:
+                    description: Reason as the kubelet reports it, e.g. OOMKilled
+                      or Error.
+                    type: string
+                  restarts:
+                    description: Restarts of the container in its pod so far.
+                    format: int32
+                    type: integer
+                type: object
               autopilot:
                 description: |-
                   Autopilot is the operator's queue of an autopilot milestone (spec
