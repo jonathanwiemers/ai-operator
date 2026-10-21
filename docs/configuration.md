@@ -168,6 +168,13 @@ then pauses on them.
 | `implement` | claude, `claude-opus-5-5` | implementing agent for issues without a profile label |
 | `review` | claude, `claude-sonnet-5-5`, reviewers `bugbot` + `security`, `maxIterations: 2` | review agents |
 
+If `resources` sets a memory limit or CPUs (limits, else requests), the
+implementing agent is told them in its system prompt, with the advice to keep
+builds and tests within them (few test workers, one heavy command at a time,
+no watch modes or dev servers). Build tools and test runners size themselves
+by the node, not the container, and a container over its memory limit is
+killed together with the run.
+
 ### Roles
 
 `spec`, `implement`, `review` and every profile share these fields:

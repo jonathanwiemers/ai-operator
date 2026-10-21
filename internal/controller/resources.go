@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"strconv"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -152,6 +154,19 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 	}
 	agentEnv = append(agentEnv, agents.Env...)
 
+	// The runner tells the implementer what the agent container may use.
+	agentResources := agents.Resources
+	if q, ok := agentResources.Limits[corev1.ResourceMemory]; ok {
+		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_AGENT_MEMORY_LIMIT", Value: q.String()})
+	}
+	cpu, ok := agentResources.Limits[corev1.ResourceCPU]
+	if !ok {
+		cpu, ok = agentResources.Requests[corev1.ResourceCPU]
+	}
+	if ok {
+		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_AGENT_CPUS", Value: strconv.FormatFloat(cpu.AsApproximateFloat64(), 'g', 3, 64)})
+	}
+
 	runnerResources := DefaultRunnerResources
 	if agents.RunnerResources != nil {
 		runnerResources = *agents.RunnerResources
@@ -223,7 +238,7 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 					EnvFrom: []corev1.EnvFromSource{{
 						SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: agents.CredentialsSecretName}},
 					}},
-					Resources:       agents.Resources,
+					Resources:       agentResources,
 					VolumeMounts:    agentMounts,
 					WorkingDir:      WorkspaceMountPath,
 					SecurityContext: containerSecurity(false),
