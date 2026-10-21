@@ -378,3 +378,46 @@ func TestRevisitMarkerOfAHumanIssueIsIgnored(t *testing.T) {
 		t.Fatalf("a marker in a human's issue must not supersede decisions elsewhere:\n%s", e.gl.IssueNotes[7][0].Body)
 	}
 }
+
+func TestPlanDecisionsReachReviewersAndAreLabelled(t *testing.T) {
+	botID := int64(999)
+	ds := numberDecisions([]Decision{{Title: "Protocol", Choice: "REST", Why: "existing clients"}}, 5, true, 1)
+	notes := []gitlab.Note{{ID: 1, Author: gitlab.User{ID: botID}, Body: renderPlanDecisions("shop-spec#1", "/agent", ds)}}
+	text := planDecisionsText(notes, botID)
+	if !strings.Contains(text, "#### D5-P1: Protocol") || strings.Contains(text, "<!--") || strings.Contains(text, "shop-spec#1") {
+		t.Fatalf("unexpected decisions text:\n%s", text)
+	}
+	prompt := buildReviewPrompt(&gitlab.Issue{IID: 5, Title: "API", Description: "Build it."}, text, "main", "a.go | 1 +", "+x")
+	if !strings.Contains(prompt, "## Decisions of the planning agent") || !strings.Contains(prompt, "**Chosen:** REST") {
+		t.Fatalf("reviewers should see the planner's decisions:\n%s", prompt)
+	}
+	if th := thread("Comments", notes, botID); !strings.Contains(th, "**planning agent**") {
+		t.Fatalf("the plan comment should be labelled as the planner's:\n%s", th)
+	}
+	if planDecisionsText(nil, botID) != "" {
+		t.Fatal("no plan comment, no text")
+	}
+}
+
+func TestReplanLeavesHandedOverIssuesAlone(t *testing.T) {
+	gl := gitlabfake.New()
+	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2"}
+	gl.Milestones = []gitlab.Milestone{m}
+	spec := aiv1.AgentProjectSpec{}.WithDefaults()
+	ctx := context.Background()
+	plan := SpecPlan{Issues: []PlannedItem{{Key: "api", Title: "API", Description: "Build it.",
+		Decisions: []Decision{{Title: "Protocol", Choice: "REST"}}}}}
+	pc := planComment{botID: gl.Bot.ID, runID: "shop-spec#1"}
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, nil, pc); err != nil {
+		t.Fatal(err)
+	}
+	// Labels that are not scoped: the draft label stays next to working.
+	gl.SetLabels(1, "ai-generated", "agent::draft", "agent::working")
+	before := gl.IssueNotes[1][0].Body
+	issues, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
+	plan.Issues[0].Decisions[0].Choice = "gRPC"
+	_, _, skipped, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#2"})
+	if err != nil || skipped != 1 || gl.IssueNotes[1][0].Body != before {
+		t.Fatalf("an issue in progress keeps its plan and decisions: skipped %d, err %v", skipped, err)
+	}
+}

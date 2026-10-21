@@ -193,7 +193,10 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 		desc, missing := renderIssue(item, keyToIID)
 		isNew := false
 		if ex := byIID[iid]; ex != nil {
-			if ex.State != "opened" || !ex.HasLabel(wf.DraftLabel) || marker.RevisitOf.MatchString(ex.Description) {
+			// Drafts only: an issue that was handed over keeps its plan (and
+			// its decisions, which a run may have superseded), also with
+			// labels that are not scoped, where the draft label can stay.
+			if ex.State != "opened" || !ex.HasLabel(wf.DraftLabel) || hasAnyLabel(ex, wf.ActiveLabels()) || marker.RevisitOf.MatchString(ex.Description) {
 				skipped++
 				keyToIID[item.Key] = iid
 				log.Info("issue left untouched", "iid", iid, "key", item.Key, "reason", "no longer a draft")
@@ -267,9 +270,14 @@ type planComment struct {
 // nothing has been built on them yet. Without decisions no comment is
 // created, and an existing one says there are none any more.
 func (pc planComment) post(ctx context.Context, gl gitlab.API, glProject string, iid int64, isNew bool, ds []Decision, prefix string) error {
+	if pc.botID == 0 {
+		// Without the bot's ID the comment could not be found again (and
+		// would not be trusted): post nothing rather than duplicates.
+		return nil
+	}
 	numbered := numberDecisions(ds, iid, true, 1)
 	var existing *gitlab.Note
-	if !isNew && pc.botID != 0 {
+	if !isNew {
 		notes, err := gl.ListIssueNotes(ctx, glProject, iid)
 		if err != nil {
 			return fmt.Errorf("listing notes of issue #%d: %w", iid, err)
@@ -300,7 +308,16 @@ func (pc planComment) post(ctx context.Context, gl gitlab.API, glProject string,
 // the run), to tell whether the decisions changed.
 func decisionsOf(body string) string {
 	_, rest, _ := strings.Cut(body, "\n")
-	return rest
+	return strings.TrimSpace(rest)
+}
+
+func hasAnyLabel(is *gitlab.Issue, labels []string) bool {
+	for _, l := range labels {
+		if is.HasLabel(l) {
+			return true
+		}
+	}
+	return false
 }
 
 // renderIssue renders the description of a planned issue. It reports whether

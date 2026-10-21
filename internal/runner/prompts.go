@@ -335,7 +335,10 @@ func thread(title string, notes []gitlab.Note, botID int64) string {
 			continue
 		}
 		who := "@" + n.Author.Username
-		if n.Author.ID == botID {
+		switch {
+		case isPlanDecisions(n, botID):
+			who = "planning agent"
+		case n.Author.ID == botID:
 			who = "agent (you)"
 		}
 		fmt.Fprintf(&b, "**%s** (note %d):\n%s\n\n", who, n.ID, strings.TrimSpace(n.Body))
@@ -386,10 +389,13 @@ func buildImplementPrompt(issue *gitlab.Issue, milestone *gitlab.Milestone, issu
 // diffs are reviewed through git by the reviewer itself.
 const maxInlineDiff = 150_000
 
-func buildReviewPrompt(issue *gitlab.Issue, base, diffStat, diff string) string {
+func buildReviewPrompt(issue *gitlab.Issue, planDecisions, base, diffStat, diff string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Review the changes made for issue #%d: %s\n\n", issue.IID, issue.Title)
 	fmt.Fprintf(&b, "## Issue description\n\n%s\n\n", strings.TrimSpace(issue.Description))
+	if planDecisions != "" {
+		fmt.Fprintf(&b, "## Decisions of the planning agent\n\n%s\n\n", planDecisions)
+	}
 	fmt.Fprintf(&b, "## Changed files\n\n```\n%s\n```\n\n", diffStat)
 	if len(diff) <= maxInlineDiff {
 		fmt.Fprintf(&b, "## Diff\n\n```diff\n%s\n```\n", diff)

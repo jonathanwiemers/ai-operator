@@ -52,7 +52,7 @@ func isDecisionComment(n gitlab.Note, botID int64) bool {
 
 // nextDecisionNumber returns the number for the next implementer decision of
 // an issue: one after the highest in the bot's decision comments. Planner
-// decisions (P) live in the description and are numbered on their own.
+// decisions (P) are numbered on their own.
 func nextDecisionNumber(issue *gitlab.Issue, notes []gitlab.Note, botID int64) int {
 	highest := 0
 	for _, n := range notes {
@@ -178,6 +178,22 @@ func renderPlanDecisions(runID, prefix string, ds []numberedDecision) string {
 // isPlanDecisions reports whether a note is the bot's plan decisions comment.
 func isPlanDecisions(n gitlab.Note, botID int64) bool {
 	return isDecisionComment(n, botID) && strings.Contains(n.Body, planDecisionsMarker)
+}
+
+// planDecisionsText returns the planner's decisions on an issue without the
+// markers, for prompts; empty if there are none.
+func planDecisionsText(notes []gitlab.Note, botID int64) string {
+	for _, n := range notes {
+		if isPlanDecisions(n, botID) {
+			if ds := marker.Decisions(n.Body); len(ds) == 0 {
+				return ""
+			}
+			body := strings.ReplaceAll(decisionMarker.ReplaceAllString(n.Body, ""), planDecisionsMarker, "")
+			_, rest, _ := strings.Cut(body, "\n") // the header names the run
+			return strings.TrimSpace(rest)
+		}
+	}
+	return ""
 }
 
 // revisit is a request to change a decision.

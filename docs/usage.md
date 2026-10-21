@@ -240,8 +240,10 @@ all decisions are discussed, answered and revisited in the comments. While an
 issue is a draft, a re-plan updates this comment in place and its IDs are
 renumbered; implementer IDs (`D42-3`) never change. On autopilot the planner
 asks no questions, so this comment is where its defaults show up. Issues
-planned before this change keep their decisions in the description; those
-still work.
+planned before this change keep their decisions in the description, and
+those still work; a re-plan of such an issue while it is still a draft moves
+them into the comment (and renumbers them). Reviewers get the planner's
+decisions with the issue.
 
 To change a decision, comment on the issue or its MR:
 
