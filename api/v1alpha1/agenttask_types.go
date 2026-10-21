@@ -475,6 +475,7 @@ type AutopilotStatus struct {
 	// +optional
 	PausedFor int64 `json:"pausedFor,omitempty"`
 
+	// ResumeWhenReady: the pause is over PausedFor's run, review or CI.
 	// +optional
 	ResumeWhenReady bool `json:"resumeWhenReady,omitempty"`
 

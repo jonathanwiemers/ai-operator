@@ -336,6 +336,8 @@ spec:
                     - "Off"
                     type: string
                   resumeWhenReady:
+                    description: 'ResumeWhenReady: the pause is over PausedFor''s
+                      run, review or CI.'
                     type: boolean
                   trackingHash:
                     description: |-

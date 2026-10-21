@@ -209,6 +209,9 @@ func TestAutopilotPausesAndResumes(t *testing.T) {
 	if !slices.Equal(e.gl.Merged, []int64{1}) || e.autopilot().Phase != aiv1.AutopilotRunning {
 		t.Fatalf("resume should continue with the merge: merged %v, %+v", e.gl.Merged, e.autopilot())
 	}
+	if strings.Contains(trackingComments(e), "Autopilot continues") {
+		t.Fatal("the resume command, not the automatic one, must have continued here")
+	}
 
 	// "/agent pause" stops it, "/agent skip #2" skips the UI, and the
 	// milestone is done.
@@ -827,7 +830,7 @@ func TestAutopilotContinuesWhenTheIssueIsMergedByHand(t *testing.T) {
 	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].State != aiv1.AutopilotItemMerged || !e.gl.Issues[2].HasLabel("agent::ready") {
 		t.Fatalf("a hand merge must count and the next issue start: %+v %v", ap, e.gl.Labels(2))
 	}
-	if !strings.Contains(trackingComments(e), "Autopilot continues: #1 was closed") {
+	if !strings.Contains(trackingComments(e), fmt.Sprintf("Autopilot continues: !%d was merged", mr)) {
 		t.Fatalf("expected the continue note:\n%s", trackingComments(e))
 	}
 }
@@ -844,5 +847,26 @@ func TestAutopilotPausedByHandWaitsForResume(t *testing.T) {
 	e.reconcile()
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || len(e.gl.Merged) != 0 {
 		t.Fatalf("a pause by hand waits for resume: %+v merged %v", ap, e.gl.Merged)
+	}
+}
+
+// A pause over the MR (here: an approval) ends when it is merged by hand,
+// also while the issue is still open.
+func TestAutopilotMRPauseEndsWithAHandMerge(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	mr := e.tasks()[name].Status.Run.MergeRequestIID
+	e.gl.MRs[mr].Draft, e.gl.MRs[mr].DetailedMergeStatus = false, "not_approved"
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || ap.PausedFor != 1 || ap.ResumeWhenReady {
+		t.Fatalf("expected an MR pause: %+v", ap)
+	}
+	e.gl.MRs[mr].State = "merged"
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].State != aiv1.AutopilotItemMerged {
+		t.Fatalf("the hand merge must count: %+v", ap)
 	}
 }
