@@ -380,6 +380,10 @@ type PlannedIssue struct {
 	// DependsOn are the IIDs of planned issues that must be merged first.
 	// +optional
 	DependsOn []int64 `json:"dependsOn,omitempty"`
+	// Linked are the dependencies the operator linked as GitLab issue
+	// links; only these are unlinked when the plan drops them.
+	// +optional
+	Linked []int64 `json:"linked,omitempty"`
 }
 
 // AutopilotPhase is the state of an autopilot milestone.

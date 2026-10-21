@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -122,8 +123,8 @@ type autopilot struct {
 	tasks   map[int64]*aiv1.AgentTask
 	issues  map[int64]gitlab.Issue
 	log     logr.Logger
-	// defaultBranch is read once per poll, when needed.
-	defaultBranch string
+	// proj is read once per poll, when needed.
+	proj *gitlab.Project
 }
 
 // queueOrder orders the plan topologically: dependencies first, ties in plan
@@ -229,9 +230,12 @@ func (a *autopilot) step(ctx context.Context) error {
 	return a.pick(ctx)
 }
 
-// pick activates the next pending issue whose dependencies are merged.
+// pick activates the next pending issue whose dependencies are merged: the
+// plan's, and open issues it is linked as "blocked by" to in GitLab
+// (Premium), so a link a human adds holds an issue back too.
 func (a *autopilot) pick(ctx context.Context) error {
 	pending := 0
+	waits := map[int64]string{} // why a pending issue cannot start
 	for i := range a.ap.Items {
 		it := &a.ap.Items[i]
 		if it.State != aiv1.AutopilotItemPending {
@@ -253,6 +257,7 @@ func (a *autopilot) pick(ctx context.Context) error {
 				if done {
 					return a.merged(ctx, dep, mr)
 				}
+				waits[it.IID] = fmt.Sprintf("#%d waits for the skipped #%d", it.IID, d)
 			}
 			blocked = true
 			break
@@ -278,6 +283,23 @@ func (a *autopilot) pick(ctx context.Context) error {
 			it.State = aiv1.AutopilotItemSkipped
 			return nil
 		}
+		blockers, err := a.blockedByLinks(ctx, it.IID)
+		if err != nil {
+			return err
+		}
+		if len(blockers) > 0 {
+			var outside []string
+			for _, b := range blockers {
+				if b.queued {
+					continue // the queue gets there
+				}
+				outside = append(outside, b.ref)
+			}
+			if len(outside) > 0 {
+				waits[it.IID] = fmt.Sprintf("#%d is blocked by %s (issue link)", it.IID, strings.Join(outside, ", "))
+			}
+			continue
+		}
 		a.log.Info("autopilot starts the next issue", "issue", it.IID)
 		if !hasAny(is, wf.ActiveLabels()...) { // else a human already handed it over
 			if _, err := a.gl.UpdateIssue(ctx, a.spec.GitLab.Project, it.IID, gitlab.UpdateIssueOptions{
@@ -291,14 +313,21 @@ func (a *autopilot) pick(ctx context.Context) error {
 		return nil
 	}
 	if pending > 0 {
-		// Everything left waits for an issue that was skipped.
-		var waiting []int64
+		// Everything left waits for something autopilot does not do: a
+		// skipped issue, an issue outside the queue, or a cycle of links.
+		var reasons []string
 		for _, it := range a.ap.Items {
-			if it.State == aiv1.AutopilotItemPending {
-				waiting = append(waiting, it.IID)
+			if it.State != aiv1.AutopilotItemPending {
+				continue
 			}
+			why, ok := waits[it.IID]
+			if !ok {
+				why = fmt.Sprintf("#%d waits for another pending issue (a cycle of issue links?)", it.IID)
+			}
+			reasons = append(reasons, why)
 		}
-		return a.pause(ctx, issueList(waiting)+" depend on skipped issues; merge those by hand and `resume`, or `skip` these too")
+		return a.pause(ctx, fmt.Sprintf("nothing can start: %s; merge the issues they wait for by hand (or close them with `%s`), "+
+			"remove the links, or `skip` the waiting ones, then `resume`", strings.Join(reasons, ", "), a.spec.Workflow.DoneLabel))
 	}
 	if a.ap.Phase != aiv1.AutopilotDone {
 		merged := 0
@@ -319,6 +348,58 @@ func (a *autopilot) pick(ctx context.Context) error {
 		return a.comment(ctx, fmt.Sprintf("✅ Autopilot is done: %d of %d issues merged. The decisions are listed in the description.", merged, len(a.ap.Items)))
 	}
 	return nil
+}
+
+// blocker is an open issue a queued issue is linked as "blocked by" to.
+type blocker struct {
+	ref string
+	// queued: pending or active in this queue, so autopilot gets there.
+	queued bool
+}
+
+// blockedByLinks returns the open issues iid is linked as "blocked by" to.
+// Such links only exist on GitLab Premium. The plan's own dependencies are
+// linked too and met once their issue is merged and closed; links the
+// operator made for dependencies the plan dropped since do not count.
+func (a *autopilot) blockedByLinks(ctx context.Context, iid int64) ([]blocker, error) {
+	links, err := a.gl.ListIssueLinks(ctx, a.spec.GitLab.Project, iid)
+	if gitlab.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("listing the links of #%d: %w", iid, err)
+	}
+	proj, err := a.glProject(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var planned aiv1.PlannedIssue
+	for _, p := range a.st.Status.Plan {
+		if p.IID == iid {
+			planned = p
+		}
+	}
+	var out []blocker
+	for _, l := range links {
+		if l.LinkType != gitlab.LinkIsBlockedBy || l.State != "opened" {
+			continue
+		}
+		if l.ProjectID != proj.ID {
+			ref := l.References.Full
+			if ref == "" {
+				ref = fmt.Sprintf("#%d of project %d", l.IID, l.ProjectID)
+			}
+			out = append(out, blocker{ref: ref})
+			continue
+		}
+		if slices.Contains(planned.Linked, l.IID) && !slices.Contains(planned.DependsOn, l.IID) {
+			continue // the plan dropped this dependency; its link is stale
+		}
+		dep := a.item(l.IID)
+		queued := dep != nil && (dep.State == aiv1.AutopilotItemPending || dep.State == aiv1.AutopilotItemActive)
+		out = append(out, blocker{ref: fmt.Sprintf("#%d", l.IID), queued: queued})
+	}
+	return out, nil
 }
 
 // doneByHand reports whether a closed issue was finished outside autopilot:
@@ -514,16 +595,25 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 // draftPrefix matches the prefixes that make GitLab treat an MR as a draft.
 var draftPrefix = regexp.MustCompile(`(?i)^\s*(?:\[draft\]|\(draft\)|draft:|draft\b)\s*`)
 
-// base returns the project's default branch.
-func (a *autopilot) base(ctx context.Context) (string, error) {
-	if a.defaultBranch == "" {
+// glProject returns the GitLab project, read once per poll.
+func (a *autopilot) glProject(ctx context.Context) (*gitlab.Project, error) {
+	if a.proj == nil {
 		proj, err := a.gl.GetProject(ctx, a.spec.GitLab.Project)
 		if err != nil {
-			return "", fmt.Errorf("getting project: %w", err)
+			return nil, fmt.Errorf("getting project: %w", err)
 		}
-		a.defaultBranch = proj.DefaultBranch
+		a.proj = proj
 	}
-	return a.defaultBranch, nil
+	return a.proj, nil
+}
+
+// base returns the project's default branch.
+func (a *autopilot) base(ctx context.Context) (string, error) {
+	proj, err := a.glProject(ctx)
+	if err != nil {
+		return "", err
+	}
+	return proj.DefaultBranch, nil
 }
 
 // pauseActive pauses because of the active issue, unless its MR was merged

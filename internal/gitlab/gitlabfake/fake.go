@@ -43,6 +43,12 @@ type Fake struct {
 	MRDiffs map[int64][]gitlab.Diff
 	// CreateIssueError makes CreateIssue fail.
 	CreateIssueError error
+	// Links between issues; FreeTier refuses blocking links like GitLab
+	// Free does.
+	Links    []Link
+	FreeTier bool
+	// ForeignLinks are links of an issue to issues of other projects.
+	ForeignLinks map[int64][]gitlab.LinkedIssue
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
 }
@@ -406,6 +412,78 @@ func (f *Fake) ListMergeRequestDiffs(_ context.Context, _ string, iid int64) ([]
 		return slices.Clone(ds), nil
 	}
 	return []gitlab.Diff{{OldPath: "app.go", NewPath: "app.go", Diff: fmt.Sprintf("@@ -1 +1 @@\n-old\n+change of !%d\n", iid)}}, nil
+}
+
+// Link is a link between two issues; Type is seen from From.
+type Link struct {
+	ID       int64
+	From, To int64
+	Type     string
+}
+
+func inverseLink(t string) string {
+	switch t {
+	case gitlab.LinkBlocks:
+		return gitlab.LinkIsBlockedBy
+	case gitlab.LinkIsBlockedBy:
+		return gitlab.LinkBlocks
+	}
+	return t
+}
+
+func (f *Fake) ListIssueLinks(_ context.Context, _ string, iid int64) ([]gitlab.LinkedIssue, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.Issues[iid]; !ok {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "links"}
+	}
+	var out []gitlab.LinkedIssue
+	add := func(other int64, typ string, id int64) {
+		li := gitlab.LinkedIssue{IID: other, ProjectID: f.Project.ID, IssueLinkID: id, LinkType: typ}
+		if is := f.Issues[other]; is != nil {
+			li.State, li.Title = is.State, is.Title
+		}
+		out = append(out, li)
+	}
+	for _, l := range f.Links {
+		switch iid {
+		case l.From:
+			add(l.To, l.Type, l.ID)
+		case l.To:
+			add(l.From, inverseLink(l.Type), l.ID)
+		}
+	}
+	return append(out, f.ForeignLinks[iid]...), nil
+}
+
+func (f *Fake) CreateIssueLink(_ context.Context, _ string, iid, target int64, linkType string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Issues[iid] == nil || f.Issues[target] == nil {
+		return &gitlab.Error{StatusCode: 404, Method: "POST", Path: "links"}
+	}
+	if f.FreeTier && linkType != gitlab.LinkRelatesTo {
+		return &gitlab.Error{StatusCode: 403, Method: "POST", Path: "links", Body: `{"message":"Blocked issues not available for current license"}`}
+	}
+	for _, l := range f.Links {
+		if (l.From == iid && l.To == target) || (l.From == target && l.To == iid) {
+			return &gitlab.Error{StatusCode: 409, Method: "POST", Path: "links", Body: `{"message":"Issue(s) already assigned"}`}
+		}
+	}
+	f.Links = append(f.Links, Link{ID: f.id(), From: iid, To: target, Type: linkType})
+	return nil
+}
+
+func (f *Fake) DeleteIssueLink(_ context.Context, _ string, iid, linkID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, l := range f.Links {
+		if l.ID == linkID && (l.From == iid || l.To == iid) {
+			f.Links = append(f.Links[:i], f.Links[i+1:]...)
+			return nil
+		}
+	}
+	return &gitlab.Error{StatusCode: 404, Method: "DELETE", Path: "links"}
 }
 
 func (f *Fake) ListIssueStateEvents(_ context.Context, _ string, iid int64) ([]gitlab.StateEvent, error) {

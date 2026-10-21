@@ -107,8 +107,8 @@ which has the task's name, e.g. `sandbox-spec-m1-tags-and-due-dates` or
   the same name. It has an init container `init-workspace`, then containers
   `runner` and `agent`, both `Running`.
 * `kubectl -n agents logs <pod> -c runner` shows "starting run", a `step
-  started` / `step done` pair for each of the 8 spec steps (read milestone …
-  record plan, one "issue created" line per issue) and "run finished" with
+  started` / `step done` pair for each of the 9 spec steps (read milestone …
+  link dependencies, one "issue created" line per issue) and "run finished" with
   the step list. While it runs, `kubectl -n agents get agenttasks` shows the
   step in the `Step` column.
 * A few (likely 3) new issues in the milestone with the labels
@@ -119,6 +119,9 @@ which has the task's name, e.g. `sandbox-spec-m1-tags-and-due-dates` or
   default. Where the planner made choices, the bot commented on the issue
   with **Decisions of the plan** (question, choice, why, alternatives) with
   IDs `D<iid>-P1`, `D<iid>-P2`, …; the description only points to it.
+* Issues with `Depends on #…` are linked to those issues: **relates to** on
+  GitLab Free, **is blocked by** on Premium (the run log's `link
+  dependencies` step says which).
 * The milestone description is unchanged.
 * `kubectl -n agents get agenttask <spec task> -o jsonpath='{.status.run}'`
   shows `lastResult: Succeeded`, a summary and a cost.

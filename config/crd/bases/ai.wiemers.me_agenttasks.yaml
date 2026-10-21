@@ -437,6 +437,14 @@ spec:
                     key:
                       description: Key is the planner's stable identifier of the issue.
                       type: string
+                    linked:
+                      description: |-
+                        Linked are the dependencies the operator linked as GitLab issue
+                        links; only these are unlinked when the plan drops them.
+                      items:
+                        format: int64
+                        type: integer
+                      type: array
                     title:
                       type: string
                   required:
