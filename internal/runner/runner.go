@@ -237,7 +237,8 @@ func (r *Runner) Loop(ctx context.Context) error {
 	}
 	for {
 		ran, err := r.Step(ctx)
-		if err != nil {
+		if err != nil && ctx.Err() == nil {
+			// A step cut off by the pod stopping is not an error.
 			r.Log.Error(err, "run step failed")
 		}
 		if ran {
