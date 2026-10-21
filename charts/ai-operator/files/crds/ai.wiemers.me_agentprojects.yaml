@@ -885,6 +885,15 @@ spec:
                     description: ReadyLabel is set by a human to hand an issue to
                       the implementing agent.
                     type: string
+                  resolveConflicts:
+                    default: true
+                    description: |-
+                      ResolveConflicts lets the agent resolve merge conflicts: when the
+                      merge request of an issue in review conflicts with the default branch,
+                      the next run merges the default branch into the work branch and the
+                      agent resolves the conflicts. The result is reviewed and checked by CI
+                      like any push. Off: conflicts are left to humans (autopilot pauses).
+                    type: boolean
                   reviewLabel:
                     default: agent::review
                     description: ReviewLabel is set by the agent once a merge request

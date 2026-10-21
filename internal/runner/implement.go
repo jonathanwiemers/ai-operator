@@ -164,27 +164,95 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 	}
 
-	s = r.step(ctx, "run implementer", "profile", profile, "engine", role.Engine, "model", role.Model,
-		"resume", inv.Resume != "", "ciFix", ciFix)
-	res, err := r.invoke(ctx, role, inv, fullPrompt)
-	if res != nil {
-		out.CostUSD += res.CostUSD
+	// A conflict run: the operator saw the merge request conflict with the
+	// default branch. The default branch is merged in; the implementer
+	// resolves the conflicts. A clean merge needs no agent.
+	mergeFor := task.Spec.Source.MergeBaseFor
+	mergeBase := mergeFor != "" && mergeFor != task.Status.Run.MergedBaseFor
+	humanInput := humanNotes(newIssueNotes, botID) + humanNotes(newMRNotes, botID)
+	var merge MergeResult
+	mergeMessage := fmt.Sprintf("Merge branch '%s' into %s", base, branch)
+	runAgent := true
+	if mergeBase {
+		out.MergedBaseFor = mergeFor
+		s = r.step(ctx, "merge "+base, "base", base)
+		if merge, err = r.Agent.MergeBase(ctx, base, mergeMessage); err != nil {
+			return out, s.fail(fmt.Errorf("merging %s: %w", base, err))
+		}
+		switch {
+		case merge.UpToDate:
+			s.done("the branch already contains " + base)
+		case len(merge.Conflicts) == 0:
+			s.done("merged without conflicts")
+			notices = append(notices, fmt.Sprintf("Merged `%s` into the branch; there were no conflicts.", base))
+		default:
+			s.done(fmt.Sprintf("conflicts in %d files", len(merge.Conflicts)), "files", merge.Conflicts)
+			conflictPrompt := buildConflictPrompt(base, merge.Conflicts)
+			fullPrompt += "\n\n" + conflictPrompt
+			if humanInput == 0 && !ciFix {
+				inv.Prompt = conflictPrompt
+			} else {
+				inv.Prompt = conflictPrompt + "\n\n" + inv.Prompt
+			}
+		}
+		runAgent = len(merge.Conflicts) > 0 || humanInput > 0 || ciFix || len(revisits) > 0 || len(ignored) > 0
 	}
-	if err != nil {
-		return out, s.fail(err)
-	}
-	st.setSession("implement", role.Engine, res.SessionID)
-	st.LastIssueNoteID = maxNoteID(issueNotes, st.LastIssueNoteID)
-	st.LastMRNoteID = maxNoteID(mrNotes, st.LastMRNoteID)
-	if err := r.saveState(st); err != nil {
-		return out, s.fail(err)
-	}
+
+	var res *Result
 	var answer ImplementAnswer
-	if err := res.Decode(&answer); err != nil {
-		return out, s.fail(fmt.Errorf("decoding implementer answer: %w", err))
+	if runAgent {
+		s = r.step(ctx, "run implementer", "profile", profile, "engine", role.Engine, "model", role.Model,
+			"resume", inv.Resume != "", "ciFix", ciFix, "conflicts", len(merge.Conflicts))
+		res, err = r.invoke(ctx, role, inv, fullPrompt)
+		if res != nil {
+			out.CostUSD += res.CostUSD
+		}
+		if err != nil {
+			return out, s.fail(err)
+		}
+		st.setSession("implement", role.Engine, res.SessionID)
+		st.LastIssueNoteID = maxNoteID(issueNotes, st.LastIssueNoteID)
+		st.LastMRNoteID = maxNoteID(mrNotes, st.LastMRNoteID)
+		if err := r.saveState(st); err != nil {
+			return out, s.fail(err)
+		}
+		if err := res.Decode(&answer); err != nil {
+			return out, s.fail(fmt.Errorf("decoding implementer answer: %w", err))
+		}
+		s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD,
+			"status", answer.Status, "questions", len(answer.Questions), "decisions", len(answer.Decisions))
+	} else {
+		// Only the merge: nothing for the agent to do; review and CI follow.
+		res = &Result{SessionID: inv.Resume}
+		answer = ImplementAnswer{Status: "done", Summary: fmt.Sprintf("Merged `%s` into the branch.", base)}
+		if merge.UpToDate {
+			answer.Summary = fmt.Sprintf("The branch already contains `%s`; nothing to merge.", base)
+		}
 	}
-	s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD,
-		"status", answer.Status, "questions", len(answer.Questions), "decisions", len(answer.Decisions))
+	if len(merge.Conflicts) > 0 {
+		// Conclude the merge before anything else is committed: a merge
+		// with conflict markers left must never be committed.
+		s = r.step(ctx, "conclude merge", "files", len(merge.Conflicts))
+		giveUp := answer.Status == "needs_input" || len(answer.Questions) > 0
+		fin, err := r.Agent.FinishMerge(ctx, FinishMerge{Base: base, Message: mergeMessage, From: merge.From, Files: merge.Conflicts, Abort: giveUp})
+		if err != nil {
+			return out, s.fail(fmt.Errorf("concluding the merge: %w", err))
+		}
+		if fin.Merged {
+			s.done("conflicts resolved")
+			notices = append(notices, fmt.Sprintf("Merged `%s` into the branch and resolved the conflicts in %s.", base, codeList(merge.Conflicts)))
+		} else {
+			// Back to the branch as it was: a human has to look.
+			left := fin.Conflicts
+			if len(left) == 0 {
+				left = merge.Conflicts
+			}
+			s.done("not resolved, merge undone", "files", left)
+			answer.Status = "needs_input"
+			notices = append(notices, fmt.Sprintf("Could not resolve the merge conflicts with `%s` in %s, so the merge was undone. "+
+				"Merge `%s` into the branch by hand, or comment `%s …` with guidance.", base, codeList(left), base, wf.CommandPrefix))
+		}
+	}
 	if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
 		return out, err
 	}
@@ -670,4 +738,24 @@ func numbered(items []string) string {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, strings.TrimSpace(q))
 	}
 	return b.String()
+}
+
+// codeList renders file names as inline code.
+func codeList(files []string) string {
+	parts := make([]string, len(files))
+	for i, f := range files {
+		parts[i] = "`" + strings.ReplaceAll(f, "`", "'") + "`"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// humanNotes counts the notes written by humans.
+func humanNotes(notes []gitlab.Note, botID int64) int {
+	n := 0
+	for _, note := range notes {
+		if !note.System && (botID == 0 || note.Author.ID != botID) {
+			n++
+		}
+	}
+	return n
 }

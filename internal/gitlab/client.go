@@ -152,6 +152,7 @@ type MergeRequest struct {
 	// DetailedMergeStatus is GitLab's view of whether the MR can be merged:
 	// mergeable, need_rebase, conflict, draft_status, ci_still_running, …
 	DetailedMergeStatus string `json:"detailed_merge_status"`
+	HasConflicts        bool   `json:"has_conflicts"`
 	MergeCommitSHA      string `json:"merge_commit_sha"`
 	SquashCommitSHA     string `json:"squash_commit_sha"`
 	RebaseInProgress    bool   `json:"rebase_in_progress"`

@@ -134,12 +134,20 @@ All labels can be renamed. Defaults:
 | `profileLabelPrefix` | `agent-profile::` |
 | `commandPrefix` | `/agent` |
 | `assignBot` | `true` |
+| `resolveConflicts` | `true` |
 
 `assignBot` assigns the bot user to an issue when the operator picks it up and
 the issue has no assignee, so GitLab's milestone page lists it under
 **Ongoing**. It is sent in the same update that adds the working label. An
 issue that already has an assignee is left alone, so a human assignee is never
 replaced. Set it to `false` to leave assignees untouched.
+
+`resolveConflicts` lets the agent resolve merge conflicts: when the MR of an
+issue in review conflicts with the default branch, the next run merges the
+default branch into the work branch and the agent resolves the conflicts (see
+[usage.md](usage.md#merge-conflicts)). On autopilot it is also used when GitLab
+cannot rebase an MR. Set it to `false` to leave conflicts to humans; autopilot
+then pauses on them.
 
 ## `spec.agents`
 

@@ -169,6 +169,32 @@ pushed commit, and CI is followed for it like for the agent's push.
 Configure the loop in `spec.ci` (see [configuration.md](configuration.md));
 `ci.disabled: true` restores "review right after the push".
 
+## Merge conflicts
+
+When the default branch moves on and the MR of an issue in `agent::review`
+gets conflicts, the agent resolves them:
+
+1. The operator sees the conflict on its normal poll (GitLab's
+   `has_conflicts` / `detailed_merge_status`) and moves the issue back to
+   `agent::working`.
+2. The run merges the default branch into the agent's branch (a merge commit,
+   no force push, so your checkout of the branch stays valid).
+3. The conflicted files go to the implementer with their conflict markers. It
+   resolves them, keeping the intent of both sides, checks that the change
+   still fits the new code, and records decisions for resolutions that are not
+   obvious. The runner concludes the merge only if no conflict marker is left.
+4. The result is reviewed and pushed, CI runs, and the issue returns to
+   `agent::review`. The MR comment says which files had conflicts.
+
+If the merge has no conflicts after all, the implementer is not run; the
+merge commit is reviewed and pushed. If the agent cannot resolve a conflict
+(markers left, or it asks a question), the merge is undone, nothing is
+pushed, and the issue goes to `agent::needs-input` with the files. The
+operator asks once per MR head: if the new head conflicts again, because the
+default branch moved again, it asks again.
+
+Set `workflow.resolveConflicts: false` to leave conflicts to humans.
+
 ## 4. Iterate
 
 | You do | Effect |
@@ -323,6 +349,10 @@ An MR is merged only when all of these hold:
   GitLab to rebase once and waits for CI on the new head. The review carries
   over to the rebased head only if the change is the same: same files, same
   added and removed lines. Otherwise it pauses.
+- If the MR has [merge conflicts](#merge-conflicts), or GitLab cannot rebase
+  it (conflicts during the rebase, a failed rebase, or a change too large to
+  check), the agent merges the default branch and resolves the conflicts. That
+  run is reviewed and checked by CI like any other, then the gate runs again.
 
 The merge call passes the checked commit (`sha`), so GitLab refuses to merge
 anything else.
@@ -338,11 +368,12 @@ the reason and what to do:
 - a canceled pipeline, or CI red with jobs that also fail on the default
   branch;
 - someone pushed to the agent's branch, the MR was closed or retargeted, it
-  has conflicts, needs an approval, has unresolved discussions, or was marked
-  draft again after autopilot marked it ready;
-- the merge or rebase was refused or failed (for example: the bot may not
-  merge), the rebased change differs from the reviewed one, or the change is
-  too large to check that a rebase keeps it;
+  needs an approval, has unresolved discussions, or was marked draft again
+  after autopilot marked it ready;
+- the MR still has conflicts after the agent merged the default branch for
+  this head (or `workflow.resolveConflicts` is off);
+- the merge was refused (for example: the bot may not merge), or the rebased
+  change differs from the reviewed one;
 - the active issue lost its workflow label while open;
 - no reviewers are configured;
 - the plan has a dependency cycle, or the remaining issues depend on skipped
@@ -363,8 +394,9 @@ comments still reach the agent), but nothing new is started or merged.
 Everything else works as on any issue: comment `/agent …` on the active issue
 or its MR, revisit decisions with `/agent revisit <id> …`, or fix things by
 hand and `resume`. If you pushed to the agent's branch (to resolve a
-conflict, say), comment `/agent …` on the issue: the run takes your commits
-over, is reviewed, and CI checks the new head before the merge.
+conflict the agent could not, say), comment `/agent …` on the issue: the run
+takes your commits over, is reviewed, and CI checks the new head before the
+merge.
 
 You can also finish issues by hand. An issue closed by a merged MR, or closed
 with `agent::done`, counts as merged: the active one (while paused, on
@@ -519,15 +551,17 @@ Every run is a numbered list of steps, e.g. for an issue:
 6. find merge request
 7. read comments
 8. read failed CI jobs (CI fix runs only)
-9. run implementer
-10. commit
-11. review round 1, fix round 1, commit, review round 2, … (up to
+9. merge `<default branch>` (conflict runs only)
+10. run implementer (skipped when a conflict run merged without conflicts)
+11. conclude merge (conflict runs with conflicts only)
+12. commit
+13. review round 1, fix round 1, commit, review round 2, … (up to
     `review.maxIterations`)
-12. push
-13. update agent notes, post decisions (when there are any)
-14. open merge request (first push only)
-15. comment
-16. update issue labels
+14. push
+15. update agent notes, post decisions (when there are any)
+16. open merge request (first push only)
+17. comment
+18. update issue labels
 
 A spec run reads the milestone and the project, clones or fetches, lists the
 milestone's issues, runs the spec agent, applies the plan and records it
