@@ -190,6 +190,12 @@ spec:
               are written by the operator, Run is written by the runner inside the pod.
               Both sides use merge patches so they never overwrite each other.
             properties:
+              agentMemoryLimit:
+                description: |-
+                  AgentMemoryLimit is the agent container's memory limit for this task,
+                  raised by the operator after OOM kills (see agents.maxMemory). It
+                  applies while it is above the project's limit.
+                type: string
               agentTermination:
                 description: |-
                   AgentTermination is the last time the agent container stopped while
@@ -584,6 +590,12 @@ spec:
                     description: ObservedRunRequest is the last run request the runner
                       has finished.
                     format: int64
+                    type: integer
+                  oomRetries:
+                    description: |-
+                      OOMRetries counts runs of the current request started again after the
+                      agent container ran out of memory.
+                    format: int32
                     type: integer
                   pushedAt:
                     description: PushedAt is when PushedSHA was pushed.

@@ -197,6 +197,14 @@ type AgentsSpec struct {
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
+	// MaxMemory caps the agent container's memory limit when it is raised
+	// after an OOM kill: each kill raises the limit of that task's pod by
+	// half, and the run starts again, until the limit would pass MaxMemory.
+	// Defaults to twice resources.limits.memory; without a memory limit
+	// nothing is raised.
+	// +optional
+	MaxMemory *resource.Quantity `json:"maxMemory,omitempty"`
+
 	// RunnerResources of the runner container (GitLab, git mirror). Defaults
 	// to 50m CPU / 128Mi memory requests and a 1Gi memory limit.
 	// +optional

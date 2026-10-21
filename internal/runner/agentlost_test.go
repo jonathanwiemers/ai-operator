@@ -7,10 +7,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -131,5 +134,70 @@ func TestAgentLossIgnoresATerminationBeforeTheRun(t *testing.T) {
 	_, _ = r.Step(context.Background())
 	if note := failureNote(e); engine.calls != 1 || strings.Contains(note, "OOMKilled") || !strings.Contains(note, "lost the agent container") {
 		t.Fatalf("an older termination is not this run's: %d calls, %q", engine.calls, note)
+	}
+}
+
+func TestOOMKilledRunStartsAgainWithMoreMemory(t *testing.T) {
+	fastAgentLost(t)
+	e := newImplementEnv(t)
+	var project aiv1.AgentProject
+	ctx := context.Background()
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop"}, &project)
+	project.Spec.Agents.Resources.Limits = corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("4Gi")}
+	if err := e.k8s.Update(ctx, &project); err != nil {
+		t.Fatal(err)
+	}
+	// The run had waited for a usage limit before.
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	orig := task.DeepCopy()
+	task.Status.Run.LimitedEngine, task.Status.Run.Deferrals = aiv1.EngineClaude, 1
+	_ = e.k8s.Status().Patch(ctx, &task, client.MergeFrom(orig))
+
+	engine := &lostEngine{k8s: e.k8s, task: e.task.Name, reason: "OOMKilled", fails: 5}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	run := task.Status.Run
+	if !task.RunPending() || run.OOMRetries != 1 || run.DeferredUntil == nil || run.LastResult != aiv1.RunResultDeferred || run.LimitedEngine != "" {
+		t.Fatalf("the run must stay pending and wait for a pod with more memory: %+v", run)
+	}
+	var note string
+	for _, n := range e.gl.IssueNotes[42] {
+		note += n.Body
+	}
+	if !strings.Contains(note, "starts again with 6Gi") || strings.Contains(note, "run failed") {
+		t.Fatalf("expected the restart note, not a failure: %q", note)
+	}
+	if labels := e.gl.Labels(42); !slices.Contains(labels, "agent::working") {
+		t.Fatalf("the issue stays in working: %v", labels)
+	}
+
+	// Due again, but this pod still has the old limit: the runner waits for
+	// the operator's pod with more memory.
+	orig = task.DeepCopy()
+	task.Status.Run.DeferredUntil = nil
+	task.Status.AgentMemoryLimit = "6Gi"
+	_ = e.k8s.Status().Patch(ctx, &task, client.MergeFrom(orig))
+	r.AgentMemoryBytes = 4 << 30
+	calls := engine.calls
+	if ran, err := r.Step(ctx); ran || err != nil || engine.calls != calls {
+		t.Fatalf("must not start again in the old pod: ran=%v err=%v calls=%d", ran, err, engine.calls)
+	}
+	r.AgentMemoryBytes = 6 << 30
+
+	// Restarts used up: the run fails as before.
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	orig = task.DeepCopy()
+	task.Status.Run.OOMRetries = aiv1.MaxOOMRetries
+	task.Status.Run.DeferredUntil = nil
+	_ = e.k8s.Status().Patch(ctx, &task, client.MergeFrom(orig))
+	if _, err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(failureNote(e), "ran out of memory") {
+		t.Fatalf("expected the failure after the last restart: %q", failureNote(e))
 	}
 }

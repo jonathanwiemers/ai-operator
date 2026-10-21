@@ -707,13 +707,23 @@ records how the agent container last stopped in `status.agentTermination`
 (reason, exit code, time, restarts, memory limit), and the runner, which lost
 its call to the agent, waits for the container to be back and reports it:
 
-- **Out of memory:** the run fails with "the agent container ran out of
-  memory after 1h28m and was killed (OOMKilled, memory limit 4Gi)". It is not
-  retried, since it would most likely run out again. Raise the memory in
-  `spec.agents.resources` (limits and requests), then comment `/agent retry`.
-  A pod started with other agent resources is replaced between runs, so the
-  retry gets the new limit. The killed call's uncommitted edits are lost; the
-  retry starts from the last pushed commit.
+- **Out of memory:** the operator raises the memory limit of that task's
+  agent container by half (a memory request grows in proportion), at most to
+  `spec.agents.maxMemory` (default: twice `resources.limits.memory`), and the
+  run starts again in a new pod with it. The issue stays in
+  `agent::working` and gets a comment: "The agent container ran out of
+  memory after 1h28m and was killed (OOMKilled, memory limit 4Gi). The run
+  starts again with 6Gi (restart 1 of at most 3)". The raised limit stays
+  with the task for its later runs (`status.agentMemoryLimit`); lowering
+  `maxMemory` or the limit lowers it too. The killed call's uncommitted edits
+  are lost; the run starts again from the last pushed commit. If no node has
+  room for the raised memory, the task's status says the pod cannot be
+  scheduled (`kubectl get agenttasks -o wide`).
+- **Out of memory at the cap** (or after 3 restarts, or without a memory
+  limit to raise): the run fails with that reason. Raise
+  `spec.agents.resources` or `spec.agents.maxMemory`, then comment `/agent
+  retry`. A pod started with other agent resources is replaced between runs,
+  so the retry gets the new limit.
 - **Another reason** (a crash): the checkout is reset to the last commit and
   the call is tried once more; if it loses the container again, the run
   fails with the reason and exit code.

@@ -108,6 +108,10 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 		{Name: "AI_AGENT_SOCKET", Value: AgentSocket},
 		{Name: "HOME", Value: RunnerMountPath},
 		{Name: "GITLAB_TOKEN", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &spec.GitLab.TokenSecretRef}},
+		// The agent container's memory limit as this pod has it, in bytes.
+		{Name: "AI_AGENT_MEMORY_BYTES", ValueFrom: &corev1.EnvVarSource{
+			ResourceFieldRef: &corev1.ResourceFieldSelector{ContainerName: AgentContainer, Resource: "limits.memory"},
+		}},
 	}
 	runnerMounts := []corev1.VolumeMount{
 		{Name: "workspace", MountPath: RunnerMountPath, SubPath: "runner"},
@@ -158,13 +162,13 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 	agentEnv = append(agentEnv, agents.Env...)
 
 	// The runner tells the implementer what the agent container may use.
-	agentResources := agents.Resources
-	if q, ok := agentResources.Limits[corev1.ResourceMemory]; ok {
+	agentRes := agentResources(task, spec)
+	if q, ok := agentRes.Limits[corev1.ResourceMemory]; ok {
 		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_AGENT_MEMORY_LIMIT", Value: q.String()})
 	}
-	cpu, ok := agentResources.Limits[corev1.ResourceCPU]
+	cpu, ok := agentRes.Limits[corev1.ResourceCPU]
 	if !ok {
-		cpu, ok = agentResources.Requests[corev1.ResourceCPU]
+		cpu, ok = agentRes.Requests[corev1.ResourceCPU]
 	}
 	if ok {
 		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_AGENT_CPUS", Value: strconv.FormatFloat(float64(cpu.MilliValue())/1000, 'f', -1, 64)})
@@ -187,7 +191,7 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 			Name:        task.Name,
 			Namespace:   task.Namespace,
 			Labels:      taskLabels(task),
-			Annotations: map[string]string{AnnotationAgentResources: resourcesHash(agents.Resources)},
+			Annotations: map[string]string{AnnotationAgentResources: resourcesHash(agentRes)},
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: agents.ServiceAccountName,
@@ -242,7 +246,7 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 					EnvFrom: []corev1.EnvFromSource{{
 						SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: agents.CredentialsSecretName}},
 					}},
-					Resources:       agentResources,
+					Resources:       agentRes,
 					VolumeMounts:    agentMounts,
 					WorkingDir:      WorkspaceMountPath,
 					SecurityContext: containerSecurity(false),
@@ -285,7 +289,27 @@ func resourcesHash(r corev1.ResourceRequirements) string {
 
 // podOutdated reports whether pod was started with other agent resources than
 // spec asks for now. Pods from before the annotation count as current.
-func podOutdated(pod *corev1.Pod, spec aiv1.AgentProjectSpec) bool {
+func podOutdated(pod *corev1.Pod, task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) bool {
 	h, ok := pod.Annotations[AnnotationAgentResources]
-	return ok && h != resourcesHash(spec.Agents.Resources)
+	return ok && h != resourcesHash(agentResources(task, spec))
+}
+
+// agentResources are the agent container's resources for task: the
+// project's, with the memory limit the operator raised for the task after OOM
+// kills while that is higher. A memory request grows in proportion.
+func agentResources(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) corev1.ResourceRequirements {
+	res := *spec.Agents.Resources.DeepCopy()
+	// The cap applies as it is now: lowering it (or the limit) lowers a
+	// raise made before.
+	raised, ok := spec.Agents.EffectiveMemory(task.Status.AgentMemoryLimit)
+	if !ok {
+		return res
+	}
+	limit := res.Limits[corev1.ResourceMemory]
+	res.Limits[corev1.ResourceMemory] = raised
+	if req, ok := res.Requests[corev1.ResourceMemory]; ok && limit.Value() > 0 {
+		scaled := int64(float64(req.Value()) * float64(raised.Value()) / float64(limit.Value()))
+		res.Requests[corev1.ResourceMemory] = *resource.NewQuantity(scaled/(1<<20)*(1<<20), resource.BinarySI)
+	}
+	return res
 }

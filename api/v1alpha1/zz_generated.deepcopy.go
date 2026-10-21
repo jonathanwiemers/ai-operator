@@ -285,6 +285,11 @@ func (in *AgentTaskStatus) DeepCopy() *AgentTaskStatus {
 func (in *AgentsSpec) DeepCopyInto(out *AgentsSpec) {
 	*out = *in
 	in.Resources.DeepCopyInto(&out.Resources)
+	if in.MaxMemory != nil {
+		in, out := &in.MaxMemory, &out.MaxMemory
+		x := (*in).DeepCopy()
+		*out = &x
+	}
 	if in.RunnerResources != nil {
 		in, out := &in.RunnerResources, &out.RunnerResources
 		*out = new(v1.ResourceRequirements)
