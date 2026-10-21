@@ -430,9 +430,16 @@ func TestImplementerIsToldItsLimits(t *testing.T) {
 	if _, err := r.Step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	writes := 0
 	for _, inv := range engine.calls {
+		if !inv.ReadOnly {
+			writes++
+		}
 		if told := strings.Contains(inv.SystemPrompt, "a memory limit of 6Gi and 2 CPUs"); told == inv.ReadOnly {
 			t.Fatalf("only the implementer runs builds and tests and is told (readOnly=%v): %q", inv.ReadOnly, inv.SystemPrompt)
 		}
+	}
+	if writes == 0 {
+		t.Fatal("expected implementer invocations")
 	}
 }

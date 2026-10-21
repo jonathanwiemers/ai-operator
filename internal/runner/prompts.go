@@ -97,10 +97,14 @@ func resourcesNote(memory, cpus string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return "\n\nYour container has " + strings.Join(parts, " and ") + `. If the processes you start use more memory than ` +
-		`that, the container is killed and this run is lost. Tools size themselves by the machine, not the container, so keep ` +
-		`them within it: run test runners with few workers (e.g. --maxWorkers=2 for jest or vitest, go test -p 2), run one ` +
-		`heavy build or test command at a time, don't start watch modes or dev servers, and stop background processes you start.`
+	note := "\n\nYour container has " + strings.Join(parts, " and ") + "."
+	if memory != "" {
+		note += ` If the processes you start, together with the agent CLI itself, use more memory than that, the container ` +
+			`is killed and this run is lost.`
+	}
+	return note + ` Many tools size themselves by the machine, not the container, so keep them within it: run test runners ` +
+		`with few workers (e.g. --maxWorkers=2 for jest or vitest, go test -p 2), run one heavy build or test command at a ` +
+		`time, don't start watch modes or dev servers, and stop background processes you start.`
 }
 
 const bugbotSystemPrompt = `You are a code reviewer looking for correctness bugs in a diff produced by

@@ -164,7 +164,7 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 		cpu, ok = agentResources.Requests[corev1.ResourceCPU]
 	}
 	if ok {
-		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_AGENT_CPUS", Value: strconv.FormatFloat(cpu.AsApproximateFloat64(), 'g', 3, 64)})
+		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_AGENT_CPUS", Value: strconv.FormatFloat(float64(cpu.MilliValue())/1000, 'f', -1, 64)})
 	}
 
 	runnerResources := DefaultRunnerResources
