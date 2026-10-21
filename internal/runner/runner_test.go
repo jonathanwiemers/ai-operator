@@ -114,7 +114,7 @@ func TestApplyPlan(t *testing.T) {
 		{Key: "ui", Title: "Checkout UI", Description: "Build the UI.", Profile: "fast", DependsOn: []string{"api"}},
 		{Key: "api", Title: "Checkout API", Description: "Build the API.", Profile: "bogus", Questions: []string{"REST or gRPC? Default: REST"}},
 	}}
-	created, updated, skipped, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, nil)
+	created, updated, skipped, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, nil, planComment{botID: gl.Bot.ID, runID: "shop-spec#1"})
 	if err != nil || created != 2 || updated != 0 || skipped != 0 {
 		t.Fatalf("created=%d updated=%d skipped=%d err=%v", created, updated, skipped, err)
 	}
@@ -139,7 +139,7 @@ func TestApplyPlan(t *testing.T) {
 	issues, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
 	plan.Issues[0].Description = "Build the UI with dark mode."
 	plan.Issues[1].Description = "Changed API plan."
-	created, updated, skipped, err = applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues)
+	created, updated, skipped, err = applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#2"})
 	if err != nil || created != 0 || updated != 1 || skipped != 1 {
 		t.Fatalf("created=%d updated=%d skipped=%d err=%v", created, updated, skipped, err)
 	}
@@ -154,7 +154,7 @@ func TestApplyPlan(t *testing.T) {
 	// recorded plan: no duplicate.
 	plan.Issues[0].ExistingIID = 99
 	issues, _ = gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
-	created, updated, _, err = applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues)
+	created, updated, _, err = applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#2"})
 	if err != nil || created != 0 || updated != 1 {
 		t.Fatalf("a wrong IID must not create a duplicate: created=%d updated=%d err=%v", created, updated, err)
 	}

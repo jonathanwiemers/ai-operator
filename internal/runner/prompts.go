@@ -38,7 +38,8 @@ How to plan:
   choices a reviewer could reasonably want differently (data shapes, names
   users see, libraries, error handling, scope cuts), each with the question,
   your choice, why, and the alternatives you rejected. Small mechanical
-  choices are not decisions.
+  choices are not decisions. They are posted as a comment on the issue; do
+  not repeat them in the description.
 - You may be given issues that already exist for this milestone. Keep their
   key and existingIid when they still fit, update them instead of creating
   duplicates, and drop nothing that is already in progress.
@@ -334,7 +335,10 @@ func thread(title string, notes []gitlab.Note, botID int64) string {
 			continue
 		}
 		who := "@" + n.Author.Username
-		if n.Author.ID == botID {
+		switch {
+		case isPlanDecisions(n, botID):
+			who = "planning agent"
+		case n.Author.ID == botID:
 			who = "agent (you)"
 		}
 		fmt.Fprintf(&b, "**%s** (note %d):\n%s\n\n", who, n.ID, strings.TrimSpace(n.Body))
@@ -385,10 +389,13 @@ func buildImplementPrompt(issue *gitlab.Issue, milestone *gitlab.Milestone, issu
 // diffs are reviewed through git by the reviewer itself.
 const maxInlineDiff = 150_000
 
-func buildReviewPrompt(issue *gitlab.Issue, base, diffStat, diff string) string {
+func buildReviewPrompt(issue *gitlab.Issue, planDecisions, base, diffStat, diff string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Review the changes made for issue #%d: %s\n\n", issue.IID, issue.Title)
 	fmt.Fprintf(&b, "## Issue description\n\n%s\n\n", strings.TrimSpace(issue.Description))
+	if planDecisions != "" {
+		fmt.Fprintf(&b, "## Decisions of the planning agent\n\n%s\n\n", planDecisions)
+	}
 	fmt.Fprintf(&b, "## Changed files\n\n```\n%s\n```\n\n", diffStat)
 	if len(diff) <= maxInlineDiff {
 		fmt.Fprintf(&b, "## Diff\n\n```diff\n%s\n```\n", diff)

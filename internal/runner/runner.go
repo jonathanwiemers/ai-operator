@@ -268,7 +268,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	var out *Outcome
 	switch task.Spec.Type {
 	case aiv1.TaskTypeSpec:
-		out, err = r.runSpec(ctx, gl, task, spec)
+		out, err = r.runSpec(ctx, gl, task, project, spec)
 	case aiv1.TaskTypeImplement:
 		out, err = r.runImplement(ctx, gl, task, project, spec)
 	default:

@@ -130,23 +130,22 @@ func (r *AgentProjectReconciler) revisitAfterMerge(ctx context.Context, gl gitla
 		return reply(fmt.Sprintf("#%d is still open: comment `%s revisit %s …` there, and its next run changes the decision.", targetIID, wf.CommandPrefix, id))
 	}
 
-	// Find the decision: planner decisions in the description, implementer
-	// decisions in the bot's decision comments.
+	// Find the decision in the bot's decision comments; planning decisions
+	// of older issues are in the description.
+	notes, err := gl.ListIssueNotes(ctx, glProject, targetIID)
+	if err != nil {
+		return fmt.Errorf("listing notes of issue #%d: %w", targetIID, err)
+	}
 	section := ""
-	if strings.Contains(id, "-P") {
-		section = marker.DecisionSection(target.Description, id)
-	} else {
-		notes, err := gl.ListIssueNotes(ctx, glProject, targetIID)
-		if err != nil {
-			return fmt.Errorf("listing notes of issue #%d: %w", targetIID, err)
-		}
-		for _, tn := range notes {
-			if botID != 0 && tn.Author.ID == botID && !tn.System && strings.HasPrefix(tn.Body, marker.DecisionsHeader) {
-				if section = marker.DecisionSection(tn.Body, id); section != "" {
-					break
-				}
+	for _, tn := range notes {
+		if botID != 0 && tn.Author.ID == botID && !tn.System && strings.HasPrefix(tn.Body, marker.DecisionsHeader) {
+			if section = marker.DecisionSection(tn.Body, id); section != "" {
+				break
 			}
 		}
+	}
+	if section == "" && strings.Contains(id, "-P") {
+		section = marker.DecisionSection(target.Description, id)
 	}
 	switch {
 	case section == "":
