@@ -49,8 +49,10 @@ type Fake struct {
 	FreeTier bool
 	// ForeignLinks are links of an issue to issues of other projects.
 	ForeignLinks map[int64][]gitlab.LinkedIssue
-	// MRPipelines records the MRs a merge request pipeline was started for.
-	MRPipelines []int64
+	// MRPipelines records the MRs a merge request pipeline was started for;
+	// NoMRPipelines refuses them like a project without such pipelines.
+	MRPipelines   []int64
+	NoMRPipelines bool
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
 }
@@ -529,6 +531,9 @@ func (f *Fake) CreateMergeRequestPipeline(_ context.Context, _ string, iid int64
 	defer f.mu.Unlock()
 	if _, ok := f.MRs[iid]; !ok {
 		return &gitlab.Error{StatusCode: 404, Method: "POST", Path: "pipelines"}
+	}
+	if f.NoMRPipelines {
+		return &gitlab.Error{StatusCode: 400, Method: "POST", Path: "pipelines", Body: `{"message":{"base":["No stages / jobs for this pipeline."]}}`}
 	}
 	f.MRPipelines = append(f.MRPipelines, iid)
 	return nil

@@ -291,15 +291,18 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	r.run.finish(err)
 	if r.progress != nil {
 		// The report replaced the live view; otherwise say how it ended.
+		// Also when the pod is stopping: the comment must not stay "working".
 		headline := ""
-		if _, ok := AsUsageLimit(err); ok {
+		if _, ok := AsUsageLimit(err); ok && task.Status.Run.Deferrals < MaxDeferrals {
 			headline = "⏸️ Paused by a usage limit; the run continues once it resets."
 		} else if err != nil {
 			headline = "❌ The run failed; the issue has the details."
 		}
-		if cerr := r.progress.close(ctx, headline); cerr != nil {
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		if cerr := r.progress.close(cctx, headline); cerr != nil {
 			log.Info("could not close the progress comment", "error", cerr.Error())
 		}
+		cancel()
 		r.progress = nil
 	}
 	if lim, ok := AsUsageLimit(err); ok {

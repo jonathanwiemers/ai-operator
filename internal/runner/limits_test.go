@@ -188,6 +188,13 @@ func TestUsageLimitDefersRun(t *testing.T) {
 	if run.ObservedRunRequest != 0 || run.RunCount != 0 || run.ActiveRunRequest != 0 {
 		t.Fatalf("the request must stay pending and nothing in progress: %+v", run)
 	}
+	// The MR opened before the limit is recorded, so the retry reuses it.
+	if run.MergeRequestIID != 1 || run.Branch != "agent/42-add-paypal-button" {
+		t.Fatalf("the early MR must be recorded: %+v", run)
+	}
+	if notes := e.gl.MRNotes[1]; len(notes) != 1 || !strings.Contains(notes[0].Body, "⏸️ Paused by a usage limit") {
+		t.Fatalf("the progress comment should say the run is paused: %+v", notes)
+	}
 	notes := e.issueNotes()
 	if len(notes) != 1 || !strings.Contains(notes[0], "usage limit") || !strings.Contains(notes[0], "2026-10-16 15:00") {
 		t.Fatalf("expected one waiting note, got %q", notes)

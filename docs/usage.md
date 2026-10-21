@@ -149,7 +149,9 @@ pod named like `shop-42-add-paypal-button`. In that pod:
 1. On the first run, the **draft MR** `Closes #42` is opened right away, in
    the issue's milestone, before the agent changes anything. The branch
    `agent/42-add-paypal-button` starts with an empty "Start work on #42"
-   commit pushed with `ci.skip` and `[skip ci]`, so no pipeline runs for it.
+   commit pushed with `ci.skip`, so no pipeline runs for it (the message has
+   no `[skip ci]`, which a merge commit template could copy to the default
+   branch).
    The issue gets a comment linking the MR; from then on every run reports
    there.
 2. While a run goes on, the MR has a **progress comment** with the run log so
@@ -199,11 +201,13 @@ pushed commit, and CI is followed for it like for the agent's push.
 Configure the loop in `spec.ci` (see [configuration.md](configuration.md));
 `ci.disabled: true` restores "review right after the push".
 
-If your pipelines do not run for draft MRs, the loop finds no pipeline for the
-agent's pushes and moves the issue to review after `ci.noPipelineTimeout`.
-Autopilot then marks the MR ready and runs CI before it merges (see [the merge
-gate](#the-merge-gate)); without autopilot, mark the MR ready and run its
-pipeline yourself.
+The loop looks for the pipeline of the pushed commit, and otherwise for the
+MR's head pipeline if the MR's head is that commit, which covers
+merged-results and merge request pipelines. If your pipelines do not run for
+draft MRs, it finds none for the agent's pushes and moves the issue to review
+after `ci.noPipelineTimeout`. Autopilot then marks the MR ready and runs CI
+before it merges (see [the merge gate](#the-merge-gate)); without autopilot,
+mark the MR ready and run its pipeline yourself.
 
 ## Merge conflicts
 

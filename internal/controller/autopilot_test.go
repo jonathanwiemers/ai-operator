@@ -748,3 +748,21 @@ func TestAutopilotRunsCIBeforeMergingADraftWithoutPipeline(t *testing.T) {
 		t.Fatalf("expected the merge after CI: %v %+v", e.gl.Merged, e.autopilot())
 	}
 }
+
+func TestAutopilotMergesWhenNoMergeRequestPipelineIsPossible(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = true, "draft_status"
+	e.gl.NoMRPipelines = true
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.CI = &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateNone} })
+	e.reconcile() // marked ready, no pipeline possible
+	if e.gl.MRs[1].Draft || !e.gl.Issues[1].HasLabel("agent::review") {
+		t.Fatalf("without MR pipelines it stays in review, ready: draft %v, labels %v", e.gl.MRs[1].Draft, e.gl.Labels(1))
+	}
+	e.reconcile()
+	if !slices.Equal(e.gl.Merged, []int64{1}) {
+		t.Fatalf("expected the merge without another wait: %v %+v", e.gl.Merged, e.autopilot())
+	}
+}

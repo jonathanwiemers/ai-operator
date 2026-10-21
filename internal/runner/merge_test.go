@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -240,8 +241,18 @@ type progressEngine struct {
 func (p *progressEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
 	var v any = ReviewAnswer{Summary: "fine"}
 	if !inv.ReadOnly {
-		for _, n := range p.gl.MRNotes[1] {
-			p.seen = append(p.seen, n.Body)
+		// Edits are sent asynchronously: wait for the one showing this step.
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			notes, _ := p.gl.ListMergeRequestNotes(context.Background(), "g/p", 1)
+			p.seen = p.seen[:0]
+			for _, n := range notes {
+				p.seen = append(p.seen, n.Body)
+			}
+			if len(p.seen) == 1 && strings.Contains(p.seen[0], "| run implementer | … | running |") || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
 		if p.failIt {
 			return nil, errors.New("engine crashed")
@@ -272,6 +283,32 @@ func TestLiveProgressOnTheMergeRequest(t *testing.T) {
 		notes := e.gl.MRNotes[1]
 		if len(notes) != 1 || strings.Contains(notes[0].Body, progressMarker) || !strings.Contains(notes[0].Body, "Done.") {
 			t.Fatalf("the progress comment is replaced by the report: %+v", notes)
+		}
+	})
+
+	t.Run("stale comment", func(t *testing.T) {
+		e := newImplementEnv(t)
+		engine := &progressEngine{gl: e.gl}
+		r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+		if _, err := r.Step(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		// A run killed with the pod left its live comment behind.
+		stale, _ := e.gl.CreateMergeRequestNote(context.Background(), "g/p", 1, progressMarker+"\n🤖 "+liveHeadline+" Run `x#1`")
+		var task aiv1.AgentTask
+		_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+		orig := task.DeepCopy()
+		task.Spec.RunRequest = 2
+		if err := e.k8s.Patch(context.Background(), &task, client.MergeFrom(orig)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.Step(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		for _, n := range e.gl.MRNotes[1] {
+			if n.ID == stale.ID || strings.Contains(n.Body, progressMarker) {
+				t.Fatalf("stale and finished progress comments must be gone: %+v", e.gl.MRNotes[1])
+			}
 		}
 	})
 

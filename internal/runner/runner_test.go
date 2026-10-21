@@ -326,8 +326,9 @@ func TestImplementEndToEnd(t *testing.T) {
 			t.Fatalf("run log misses %q:\n%s", want, mrNotes[0].Body)
 		}
 	}
-	// The branch starts with an empty commit that skips CI.
-	if first := gitCmd(t, tmp, "--git-dir", origin, "log", "--reverse", "--format=%s%n%b", "main..agent/42-add-paypal-button"); !strings.HasPrefix(first, "Start work on #42") || !strings.Contains(first, "[skip ci]") {
+	// The branch starts with an empty one-line commit (its push skips CI;
+	// "[skip ci]" in the message could reach the default branch).
+	if first := gitCmd(t, tmp, "--git-dir", origin, "log", "--reverse", "--format=%B", "main..agent/42-add-paypal-button"); !strings.HasPrefix(first, "Start work on #42\n") || strings.Contains(first, "skip ci") {
 		t.Fatalf("expected the start commit first:\n%s", first)
 	}
 	// No profile label: agents.implement (strong model). Reviewers run on the light model.

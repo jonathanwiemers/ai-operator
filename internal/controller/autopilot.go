@@ -612,9 +612,13 @@ func (a *autopilot) readyForCI(ctx context.Context, it *aiv1.AutopilotItem, mr *
 	it.MarkedReady = true
 	a.log.Info("autopilot marked the merge request ready to run CI", "mr", mr.IID)
 	if err := a.gl.CreateMergeRequestPipeline(ctx, glProject, mr.IID); err != nil {
-		// No pipeline for merge requests (or none at all): the CI loop
-		// waits for one again and then finds none.
-		a.log.Info("could not start a merge request pipeline", "mr", mr.IID, "error", err.Error())
+		if code := gitlab.StatusCode(err); code >= 400 && code < 500 {
+			// No merge request pipelines in this project (or no CI at all):
+			// nothing to wait for; the gate goes on with the ready MR.
+			a.log.Info("no merge request pipeline possible, merging without CI", "mr", mr.IID, "error", err.Error())
+			return nil
+		}
+		return fmt.Errorf("starting a pipeline for !%d: %w", mr.IID, err)
 	}
 	orig := task.DeepCopy()
 	task.Status.CI = nil

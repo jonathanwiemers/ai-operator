@@ -218,8 +218,8 @@ func (m *Mirror) StartBranch(ctx context.Context, branch, base, message string) 
 	}
 	_, err = m.run(ctx, true, "push", "--quiet", "-o", "ci.skip", "origin", sha+":refs/heads/"+branch)
 	if err != nil && strings.Contains(err.Error(), "push options") {
-		// The remote takes no push options; "[skip ci]" in the message
-		// does the same on GitLab.
+		// The remote takes no push options (GitLab over HTTPS always does):
+		// push anyway; a pipeline for an empty commit does no harm.
 		_, err = m.run(ctx, true, "push", "--quiet", "origin", sha+":refs/heads/"+branch)
 	}
 	if err != nil {

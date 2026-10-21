@@ -159,10 +159,13 @@ type MergeRequest struct {
 	// mergeable, need_rebase, conflict, draft_status, ci_still_running, …
 	DetailedMergeStatus string `json:"detailed_merge_status"`
 	HasConflicts        bool   `json:"has_conflicts"`
-	MergeCommitSHA      string `json:"merge_commit_sha"`
-	SquashCommitSHA     string `json:"squash_commit_sha"`
-	RebaseInProgress    bool   `json:"rebase_in_progress"`
-	MergeError          string `json:"merge_error"`
+	// HeadPipeline is the latest pipeline of the MR, also a merged-results
+	// or merge request pipeline whose SHA is not the head's.
+	HeadPipeline     *Pipeline `json:"head_pipeline"`
+	MergeCommitSHA   string    `json:"merge_commit_sha"`
+	SquashCommitSHA  string    `json:"squash_commit_sha"`
+	RebaseInProgress bool      `json:"rebase_in_progress"`
+	MergeError       string    `json:"merge_error"`
 }
 
 // Issue link types. blocks and is_blocked_by need GitLab Premium; on Free

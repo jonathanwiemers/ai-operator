@@ -159,7 +159,8 @@ profile label is kept. Editing the description again *without* a change
   notes; later runs edit it instead of adding a new one.
 * Right at the start, a **draft MR** "Draft: <title>" with `Closes #<iid>` is
   opened on branch `agent/<iid>-<slug>`, whose first commit "Start work on
-  #<iid> [skip ci]" starts no pipeline. The issue gets a comment linking it.
+  #<iid>" starts no pipeline (pushed with `ci.skip`). The issue gets a comment
+  linking it.
 * While the run goes on, the MR has a **progress comment** whose run log grows
   step by step (refresh the page); when the run ends it is replaced by the
   report, which ends with a collapsed **Run log** table (read issue …

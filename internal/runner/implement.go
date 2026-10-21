@@ -77,9 +77,16 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if mr, err = r.openMergeRequest(ctx, gl, glProject, issue, branch, base); err != nil {
 			return out, err
 		}
+		// Recorded at once: a run deferred or failing from here on must not
+		// open a second MR, and the operator reads commands on this one.
+		if err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
+			s.Branch, s.MergeRequestIID, s.MergeRequestURL = branch, mr.IID, mr.WebURL
+		}); err != nil {
+			return out, err
+		}
 	}
 	out.MRIID, out.MRURL = mr.IID, mr.WebURL
-	r.startProgress(ctx, gl, glProject, mr.IID)
+	r.startProgress(ctx, gl, glProject, mr.IID, botID)
 
 	// Context: on a resumed session only comments the agent has not seen yet
 	// are sent, everything else is already in the session.
@@ -447,7 +454,9 @@ func (r *Runner) openMergeRequest(ctx context.Context, gl gitlab.API, glProject 
 	s := r.step(ctx, "open merge request", "branch", branch, "target", base)
 	started := false
 	if !r.Mirror.HasRemoteBranch(ctx, branch) {
-		if _, err := r.Mirror.StartBranch(ctx, branch, base, fmt.Sprintf("Start work on #%d\n\n[skip ci]", issue.IID)); err != nil {
+		// One line, no "[skip ci]": merge commit templates may copy it to
+		// the default branch. The push itself skips CI.
+		if _, err := r.Mirror.StartBranch(ctx, branch, base, fmt.Sprintf("Start work on #%d", issue.IID)); err != nil {
 			return nil, s.fail(fmt.Errorf("creating branch %s: %w", branch, err))
 		}
 		started = true

@@ -50,6 +50,18 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 	if err != nil {
 		return fmt.Errorf("listing pipelines of %s: %w", ci.SHA, err)
 	}
+	if len(pipelines) == 0 && run.MergeRequestIID != 0 {
+		// Merged-results and merge request pipelines carry another SHA (or
+		// only run once the MR is ready): the MR's head pipeline counts if
+		// the MR's head is the pushed commit.
+		mr, err := gl.GetMergeRequest(ctx, glProject, run.MergeRequestIID)
+		if err != nil && !gitlab.IsNotFound(err) {
+			return fmt.Errorf("getting merge request !%d: %w", run.MergeRequestIID, err)
+		}
+		if err == nil && mr.SHA == ci.SHA && mr.HeadPipeline != nil {
+			pipelines = []gitlab.Pipeline{*mr.HeadPipeline}
+		}
+	}
 	if len(pipelines) == 0 {
 		pushedAt := run.PushedAt
 		if pushedAt == nil {
