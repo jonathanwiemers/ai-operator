@@ -421,3 +421,25 @@ func TestReplanLeavesHandedOverIssuesAlone(t *testing.T) {
 		t.Fatalf("an issue in progress keeps its plan and decisions: skipped %d, err %v", skipped, err)
 	}
 }
+
+func TestImplementerIsToldItsLimits(t *testing.T) {
+	e := newImplementEnv(t)
+	engine := &decisionEngine{}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	r.AgentMemoryLimit, r.AgentCPUs = "6Gi", "2"
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	writes := 0
+	for _, inv := range engine.calls {
+		if !inv.ReadOnly {
+			writes++
+		}
+		if told := strings.Contains(inv.SystemPrompt, "a memory limit of 6Gi and 2 CPUs"); told == inv.ReadOnly {
+			t.Fatalf("only the implementer runs builds and tests and is told (readOnly=%v): %q", inv.ReadOnly, inv.SystemPrompt)
+		}
+	}
+	if writes == 0 {
+		t.Fatal("expected implementer invocations")
+	}
+}

@@ -49,8 +49,11 @@ type Runner struct {
 	Exchange string
 	// PollInterval between checks for new run requests.
 	PollInterval time.Duration
-	Log          logr.Logger
-	Now          func() time.Time
+	// AgentMemoryLimit and AgentCPUs are what the agent container may use
+	// (e.g. "6Gi", "2"), if it has limits; the implementer is told.
+	AgentMemoryLimit, AgentCPUs string
+	Log                         logr.Logger
+	Now                         func() time.Time
 
 	// projectStatus is the project's status at the start of the current
 	// run; it carries the project-wide usage limits.
