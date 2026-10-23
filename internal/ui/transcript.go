@@ -178,8 +178,15 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 			if t.Status.PodName != "" {
 				pod = t.Name
 			}
-			if t.Status.Run.ActiveRunRequest > 0 {
-				run = fmt.Sprintf("%s#%d", t.Name, t.Status.Run.ActiveRunRequest)
+			// The run in progress, else the last one. A deferred run (usage
+			// limit, out-of-memory retry) sets activeRunRequest back to the
+			// last finished one; the requested run is the one to show.
+			req := t.Status.Run.ActiveRunRequest
+			if t.Spec.RunRequest > t.Status.Run.ObservedRunRequest {
+				req = t.Spec.RunRequest
+			}
+			if req > 0 {
+				run = fmt.Sprintf("%s#%d", t.Name, req)
 			}
 		}
 	}
@@ -343,11 +350,10 @@ func (s *Server) followContainer(ctx context.Context, ns, pod, container, run st
 		if !s.logs.Running(ctx, ns, pod) {
 			return true
 		}
+		// Without a time seen, the restarted container's log is read from
+		// its start (since nil reads the current container only).
 		if t, err := time.Parse(time.RFC3339Nano, last); err == nil {
 			since = &t
-		} else {
-			now := time.Now()
-			since = &now
 		}
 	}
 	return true
