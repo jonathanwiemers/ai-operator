@@ -193,6 +193,7 @@ type testEnv struct {
 	hub    *Hub
 	client *http.Client
 	server *Server
+	reader client.Client
 }
 
 func newTestEnv(t *testing.T, cfg *Config) *testEnv {
@@ -202,7 +203,7 @@ func newTestEnv(t *testing.T, cfg *Config) *testEnv {
 		t.Fatal(err)
 	}
 	reader := fake.NewClientBuilder().WithScheme(scheme).WithObjects(testObjects()...).Build()
-	env := &testEnv{hub: NewHub()}
+	env := &testEnv{hub: NewHub(), reader: reader}
 	if cfg.Auth.Mode != AuthNone {
 		env.idp = newFakeIdP(t)
 		cfg.OIDC.IssuerURL = env.idp.srv.URL

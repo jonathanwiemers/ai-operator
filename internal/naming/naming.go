@@ -77,6 +77,13 @@ func Workspace(task string) string {
 	return truncate(task + "-ws")
 }
 
+// IsIssueBranch reports whether branch is a work branch of the issue, as
+// Branch names them.
+func IsIssueBranch(branch string, issueIID int64) bool {
+	p := fmt.Sprintf("agent/%d", issueIID)
+	return branch == p || strings.HasPrefix(branch, p+"-")
+}
+
 // Branch names the git branch of an issue, e.g. "agent/42-add-paypal-button".
 func Branch(issueIID int64, issueTitle string) string {
 	slug := Slug(issueTitle)

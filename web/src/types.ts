@@ -216,6 +216,33 @@ export interface Task {
 export interface Permissions {
   // transcript: the live transcript (and prompts) of the task's runs.
   transcript: boolean
+  // gitlab: the project's GitLab is connected to the UI (thread after
+  // connecting your account); steer: you may post comments.
+  gitlab?: boolean
+  steer?: boolean
+}
+
+export interface GitLabStatus {
+  enabled: boolean
+  url?: string
+  connected?: boolean
+  username?: string
+  login?: string
+}
+
+export interface NoteView {
+  id: number
+  author: string
+  body: string
+  system?: boolean
+  createdAt?: string
+}
+
+export interface ThreadPart {
+  target: 'issue' | 'mr' | 'tracking'
+  iid: number
+  webURL: string
+  notes: NoteView[] | null
 }
 
 export interface TaskResponse {

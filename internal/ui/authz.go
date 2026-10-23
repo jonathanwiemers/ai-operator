@@ -36,6 +36,12 @@ func (a *Authorizer) CanSeeTranscript(p Principal, namespace, name string) bool 
 	return a.allows(p, namespace, name, func(r Rule) bool { return r.Transcript })
 }
 
+// CanSteer reports whether p may write comments on the project's issues and
+// merge requests from the UI.
+func (a *Authorizer) CanSteer(p Principal, namespace, name string) bool {
+	return a.allows(p, namespace, name, func(r Rule) bool { return r.Steer })
+}
+
 // allows reports whether a rule that grants grant matches p and the project.
 func (a *Authorizer) allows(p Principal, namespace, name string, grant func(Rule) bool) bool {
 	if a.mode == AuthNone {

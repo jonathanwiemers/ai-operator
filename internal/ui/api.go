@@ -92,6 +92,9 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 				// What the app may offer; the endpoints check again.
 				"permissions": map[string]bool{
 					"transcript": s.logs != nil && s.authz.CanSeeTranscript(principalOf(r), ap.Namespace, ap.Name),
+					// gitlab: the thread can be shown (after connecting).
+					"gitlab": s.gitlab != nil && s.gitlab.serves(ap),
+					"steer":  s.gitlab != nil && s.gitlab.serves(ap) && s.authz.CanSteer(principalOf(r), ap.Namespace, ap.Name),
 				},
 			})
 			return

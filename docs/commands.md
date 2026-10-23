@@ -4,6 +4,9 @@ Everything you tell the agents, you tell them in GitLab: in comments on
 issues and merge requests, and in the milestone description. This page lists
 all of it. For the workflow around it see [usage.md](usage.md).
 
+You can also write these from the [web UI](ui.md#steering): its comments are
+GitLab comments in your name and work exactly the same.
+
 ## How commands work
 
 - A command is a comment whose **first word** is `/agent` (the prefix is
