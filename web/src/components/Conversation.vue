@@ -38,7 +38,7 @@ if (params.has('gitlab_error')) {
   window.history.replaceState(window.history.state, '', window.location.pathname + (q ? `?${q}` : ''))
 }
 const returnTo = () => window.location.pathname + window.location.search
-const connectURL = computed(() => `${status.value?.login ?? '/oauth2/gitlab/login'}?return=${encodeURIComponent(returnTo())}`)
+const connectURL = computed(() => `${status.value?.login}?return=${encodeURIComponent(returnTo())}`)
 
 async function loadStatus() {
   try {
@@ -118,10 +118,11 @@ watch(() => props.stamp, loadThread)
   <div class="card conv">
     <div v-if="gitlabError" class="banner warning">Connecting GitLab did not work: {{ gitlabError }}. Try again.</div>
     <div v-if="error" class="banner danger">{{ error }}</div>
-    <div v-if="status && !status.connected" class="body">
+    <div v-if="status && !status.connected && status.login" class="body">
       <p>Connect your GitLab account to see the comments here and write comments, in your own name.</p>
       <a class="btn primary" :href="connectURL">Connect GitLab</a>
     </div>
+    <div v-else-if="status && !status.connected" class="empty">GitLab is not set up for your user here.</div>
     <template v-else-if="status?.connected">
       <div class="row bar">
         <button
@@ -137,7 +138,7 @@ watch(() => props.stamp, loadThread)
         <span class="spacer" />
         <ExtLink v-if="current" :href="current.webURL">Open in GitLab</ExtLink>
         <span class="faint">@{{ status.username }}</span>
-        <button type="button" class="link" @click="disconnect">Disconnect</button>
+        <button v-if="!status.fixed" type="button" class="link" @click="disconnect">Disconnect</button>
       </div>
       <div class="notes">
         <div v-if="current && current.notes === null" class="empty">These comments could not be read with your account.</div>

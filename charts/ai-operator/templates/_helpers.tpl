@@ -77,7 +77,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- $_ := set $cfg "externalURL" $ui.externalURL -}}
 {{- $_ := set $cfg "oidc" (dict "issuerURL" $ui.oidc.issuerURL "clientID" $ui.oidc.clientID "scopes" $ui.oidc.scopes "claims" $ui.oidc.claims) -}}
 {{- if $ui.gitlab.url -}}
-{{- $_ := set $cfg "gitlab" (dict "url" $ui.gitlab.url "clientID" $ui.gitlab.clientID) -}}
+{{- $_ := set $cfg "gitlab" (dict "url" $ui.gitlab.url "clientID" $ui.gitlab.clientID "tokenUser" $ui.gitlab.tokenUser) -}}
 {{- end -}}
 {{- end -}}
 {{- toYaml $cfg }}
@@ -96,8 +96,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- range $key := list "issuerURL" "clientID" "existingSecret" }}
 {{- if not (index $ui.oidc $key) }}{{ fail (printf "ui.oidc.%s is required with ui.auth.mode oidc" $key) }}{{ end }}
 {{- end }}
-{{- if and $ui.gitlab.url (not $ui.gitlab.clientID) }}
-{{- fail "ui.gitlab.clientID is required with ui.gitlab.url" }}
+{{- if and $ui.gitlab.url (not $ui.gitlab.clientID) (not $ui.gitlab.tokenUser) }}
+{{- fail "ui.gitlab.clientID (an OAuth application) or ui.gitlab.tokenUser (a fixed token) is required with ui.gitlab.url" }}
 {{- end }}
 {{- else if $ui.httpRoute.enabled }}
 {{- fail "ui.auth.mode none serves without login and cannot be exposed with ui.httpRoute" }}

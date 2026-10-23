@@ -250,6 +250,32 @@ commands: [commands.md](commands.md).
 Each user then connects their account once with **Connect GitLab** on a
 task page.
 
+### One user, a fixed token
+
+For a single user, the UI can use a fixed token of that user instead of an
+OAuth application: a **fine-grained personal access token** (GitLab 19.2 and
+later) limited to the group with your projects:
+
+| Boundary | Permissions |
+|----------|-------------|
+| group (selected membership) | `read_project`, `read_work_item`, `create_work_item` (comments on issues and MRs are work item actions; it also allows creating issues), `read_merge_request` |
+| user | `read_user` |
+
+Put it into the Secret under `gitlab-token` and name its owner's UI user name
+(what `oidc.claims.username` gives):
+
+```yaml
+ui:
+  gitlab:
+    url: https://gitlab.com
+    tokenUser: ada@example.com
+```
+
+That user is connected without OAuth; nobody else may use the token (other
+users can still connect their own accounts if `clientID` is set too). The
+token expires (365 days at most) and must be renewed; a rejected token shows
+as an error, not as a reconnect.
+
 ### How it works
 
 - **Thread:** the task's issue, merge request and (on autopilot) tracking
@@ -326,7 +352,8 @@ points to 127.0.0.1 (DNS rebinding).
   TLS ends at the Gateway.
 - **Deny by default** (see [Access rules](#access-rules)).
 - **Writing only as the user.** Comments are posted with the user's own
-  GitLab OAuth token (scope `api`), never with a shared or the bot's token,
+  GitLab OAuth token (scope `api`) or their fixed fine-grained token, never
+  with a shared or the bot's token,
   and only with the `steer` grant; they go through Go's cross-origin
   protection, a size and a rate limit, and leave an audit line. The tokens
   stay server-side in an encrypted cookie bound to the UI user. A stolen pair

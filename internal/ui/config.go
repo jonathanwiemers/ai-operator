@@ -34,6 +34,7 @@ const (
 	EnvSessionKey         = "AI_OPERATOR_UI_SESSION_KEY"
 	EnvClientSecret       = "AI_OPERATOR_UI_OIDC_CLIENT_SECRET"
 	EnvGitLabClientSecret = "AI_OPERATOR_UI_GITLAB_CLIENT_SECRET"
+	EnvGitLabToken        = "AI_OPERATOR_UI_GITLAB_TOKEN"
 )
 
 // Default claim mappings: the email (or the subject) as user name, the
@@ -58,6 +59,7 @@ type Config struct {
 	SessionKey         string `json:"-"`
 	ClientSecret       string `json:"-"`
 	GitLabClientSecret string `json:"-"`
+	GitLabToken        string `json:"-"`
 }
 
 // GitLabConfig lets users connect their GitLab account (an OAuth
@@ -68,8 +70,14 @@ type GitLabConfig struct {
 	// URL of the GitLab, e.g. https://gitlab.com. Empty turns it off.
 	URL string `json:"url"`
 	// ClientID of the OAuth application (scope api, redirect URI
-	// <externalURL>/oauth2/gitlab/callback).
+	// <externalURL>/oauth2/gitlab/callback). Without it, only TokenUser has
+	// a connection.
 	ClientID string `json:"clientID"`
+	// TokenUser is the UI user (the login's user name) a fixed GitLab token
+	// (AI_OPERATOR_UI_GITLAB_TOKEN, e.g. a fine-grained personal access
+	// token) belongs to: that user is connected without OAuth, and posts
+	// with that token. Nobody else may use it.
+	TokenUser string `json:"tokenUser"`
 }
 
 // AuthConfig selects the authentication mode.
@@ -152,6 +160,7 @@ func LoadConfig(file, bindAddress string) (*Config, error) {
 	cfg.SessionKey = os.Getenv(EnvSessionKey)
 	cfg.ClientSecret = os.Getenv(EnvClientSecret)
 	cfg.GitLabClientSecret = os.Getenv(EnvGitLabClientSecret)
+	cfg.GitLabToken = os.Getenv(EnvGitLabToken)
 	cfg.Default()
 	if err := cfg.Validate(bindAddress); err != nil {
 		return nil, err
@@ -221,8 +230,10 @@ func (c *Config) Validate(bindAddress string) error {
 			errs = append(errs, errors.New("gitlab needs auth.mode oidc: comments are posted in the name of a logged-in user"))
 		case err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && isLoopback(u.Hostname()))):
 			errs = append(errs, errors.New("gitlab.url must be an https URL, e.g. https://gitlab.com"))
-		case c.GitLab.ClientID == "":
-			errs = append(errs, errors.New("gitlab.clientID is required with gitlab.url"))
+		case c.GitLab.ClientID == "" && c.GitLab.TokenUser == "":
+			errs = append(errs, errors.New("gitlab.clientID (an OAuth application) or gitlab.tokenUser (a fixed token) is required with gitlab.url"))
+		case c.GitLab.TokenUser != "" && c.GitLabToken == "":
+			errs = append(errs, fmt.Errorf("gitlab.tokenUser needs the token in %s", EnvGitLabToken))
 		}
 	}
 	for i, r := range c.Authorization.Rules {

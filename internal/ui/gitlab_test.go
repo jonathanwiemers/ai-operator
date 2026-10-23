@@ -71,6 +71,9 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 	auth := func(r *http.Request) (string, bool) {
 		g.mu.Lock()
 		defer g.mu.Unlock()
+		if pat := r.Header.Get("PRIVATE-TOKEN"); pat != "" {
+			return "ada-pat", pat == "fine-grained-pat"
+		}
 		u, ok := g.issued[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")]
 		return u, ok
 	}
@@ -91,7 +94,11 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 			var b struct{ Body string }
 			_ = json.NewDecoder(r.Body).Decode(&b)
 			g.mu.Lock()
-			g.posted = append(g.posted, fmt.Sprintf("%s %s %s: %s", r.PathValue("kind"), r.PathValue("iid"), r.Header.Get("Authorization"), b.Body))
+			who := r.Header.Get("Authorization")
+			if who == "" {
+				who = "PAT " + r.Header.Get("PRIVATE-TOKEN")
+			}
+			g.posted = append(g.posted, fmt.Sprintf("%s %s %s: %s", r.PathValue("kind"), r.PathValue("iid"), who, b.Body))
 			g.mu.Unlock()
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": 900, "body": b.Body, "author": map[string]any{"username": "ada-gl"}})
 			return
@@ -342,5 +349,60 @@ func TestRefreshFailures(t *testing.T) {
 	env.get(t, "/api/v1/gitlab", &st)
 	if st.Connected {
 		t.Fatal("the connection must end after 30 days")
+	}
+}
+
+func TestFixedTokenForOneUser(t *testing.T) {
+	gl := newFakeGitLab(t)
+	cfg := oidcConfig(Rule{Roles: []string{"*"}, Steer: true})
+	cfg.GitLab = GitLabConfig{URL: gl.srv.URL, TokenUser: "ada@example.com"}
+	cfg.GitLabToken = "fine-grained-pat"
+	env := newTestEnv(t, cfg)
+	var ap aiv1.AgentProject
+	_ = env.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: "shop"}, &ap)
+	ap.Spec.GitLab.URL = gl.srv.URL
+	_ = env.reader.Update(context.Background(), &ap)
+
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.login(t, "/")
+	var st GitLabStatusView
+	env.get(t, "/api/v1/gitlab", &st)
+	if !st.Connected || !st.Fixed || st.Username != "ada-pat" || st.Login != "" {
+		t.Fatalf("the token user is connected without OAuth: %+v", st)
+	}
+	if code, _ := env.postJSON(t, shopTask+"/notes", map[string]string{"target": "issue", "body": "/agent retry"}); code != http.StatusOK {
+		t.Fatalf("post: %d", code)
+	}
+	if len(gl.posted) != 1 || gl.posted[0] != "issues 42 PAT fine-grained-pat: /agent retry" {
+		t.Fatalf("posted with the fixed token as a PAT: %q", gl.posted)
+	}
+	// No OAuth application: no connect flow at all.
+	if code := env.get(t, pathGitLabLogin, nil); code == http.StatusFound {
+		t.Fatal("no connect flow without an OAuth application")
+	}
+
+	// Another UI user does not get the token.
+	env.idp.user = map[string]any{"sub": "u2", "email": "bob@example.com"}
+	env.login(t, "/")
+	env.get(t, "/api/v1/gitlab", &st)
+	if st.Connected || st.Login != "" {
+		t.Fatalf("bob must not use ada's token: %+v", st)
+	}
+	if code, _ := env.postJSON(t, shopTask+"/notes", map[string]string{"target": "issue", "body": "x"}); code != http.StatusConflict || len(gl.posted) != 1 {
+		t.Fatalf("bob cannot post: %d %q", code, gl.posted)
+	}
+}
+
+func TestFixedTokenConfig(t *testing.T) {
+	cfg := oidcConfig()
+	cfg.ExternalURL, cfg.OIDC.IssuerURL = "https://ui.example", "https://idp.example"
+	cfg.GitLab = GitLabConfig{URL: "https://gitlab.com", TokenUser: "ada@example.com"}
+	cfg.Default()
+	if err := cfg.Validate("127.0.0.1:0"); err == nil || !strings.Contains(err.Error(), EnvGitLabToken) {
+		t.Fatalf("tokenUser without a token: %v", err)
+	}
+	cfg.GitLab = GitLabConfig{URL: "https://gitlab.com"}
+	if err := cfg.Validate("127.0.0.1:0"); err == nil {
+		t.Fatal("gitlab.url needs clientID or tokenUser")
 	}
 }

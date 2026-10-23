@@ -229,7 +229,10 @@ export interface GitLabStatus {
   url?: string
   connected?: boolean
   username?: string
+  // login: where to connect an account; absent without an OAuth app.
   login?: string
+  // fixed: connected with a configured token (no disconnect).
+  fixed?: boolean
 }
 
 export interface NoteView {

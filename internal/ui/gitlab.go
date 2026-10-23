@@ -43,6 +43,8 @@ type GitLabToken struct {
 	UserID   int64  `json:"uid"`
 	// Until ends the connection, however often the token is refreshed.
 	Until int64 `json:"until"`
+	// Fixed: the configured token of gitlab.tokenUser, not an OAuth token.
+	Fixed bool `json:"-"`
 }
 
 // gitlabConn runs the OAuth flow against the configured GitLab and keeps the
@@ -50,8 +52,49 @@ type GitLabToken struct {
 type gitlabConn struct {
 	cfg      *Config
 	sessions *Sessions
-	// newClient makes the API client of a user's token; replaced in tests.
+	// newClient makes the API client of a user's OAuth token, newFixed the
+	// one of the fixed token; replaced in tests.
 	newClient func(baseURL, token string) gitlab.API
+	newFixed  func(baseURL, token string) gitlab.API
+
+	// fixedUser is the GitLab user of the fixed token, read once.
+	fixedMu   sync.Mutex
+	fixedUser string
+}
+
+// oauth reports whether users can connect their own account.
+func (g *gitlabConn) oauth() bool { return g.cfg.GitLab.ClientID != "" }
+
+// client returns the API client of a token.
+func (g *gitlabConn) client(t *GitLabToken) gitlab.API {
+	if t.Fixed {
+		return g.newFixed(g.cfg.GitLab.URL, t.Access)
+	}
+	return g.newClient(g.cfg.GitLab.URL, t.Access)
+}
+
+// fixed returns the configured token for its UI user.
+func (g *gitlabConn) fixed(ctx context.Context, user string) (*GitLabToken, error) {
+	if g.cfg.GitLab.TokenUser == "" || user != g.cfg.GitLab.TokenUser || g.cfg.GitLabToken == "" {
+		return nil, errNotConnected
+	}
+	t := &GitLabToken{Owner: user, Access: g.cfg.GitLabToken, Fixed: true}
+	g.fixedMu.Lock()
+	defer g.fixedMu.Unlock()
+	if g.fixedUser == "" {
+		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		u, err := g.client(t).CurrentUser(ctx)
+		switch {
+		case gitlab.StatusCode(err) == http.StatusUnauthorized:
+			return nil, errNotConnected
+		case err != nil:
+			return nil, errGitLabUnavailable
+		}
+		g.fixedUser = u.Username
+	}
+	t.Username = g.fixedUser
+	return t, nil
 }
 
 func (g *gitlabConn) cookie() string      { return g.sessions.cookieName("ai-operator-gitlab") }
@@ -164,6 +207,12 @@ var errGitLabUnavailable = errors.New("GitLab is not reachable")
 // token returns the request user's GitLab token, refreshed if it is about to
 // expire. A token of another UI user (a shared browser) does not count.
 func (g *gitlabConn) token(w http.ResponseWriter, r *http.Request) (*GitLabToken, error) {
+	if t, err := g.fixed(r.Context(), principalOf(r).Username); err == nil || errors.Is(err, errGitLabUnavailable) {
+		return t, err
+	}
+	if !g.oauth() {
+		return nil, errNotConnected
+	}
 	var t GitLabToken
 	if !g.sessions.read(r, g.cookie(), &t) || t.Owner != principalOf(r).Username || t.Access == "" || g.sessions.now().Unix() >= t.Until {
 		return nil, errNotConnected
@@ -209,16 +258,23 @@ type GitLabStatusView struct {
 	URL       string `json:"url,omitempty"`
 	Connected bool   `json:"connected"`
 	Username  string `json:"username,omitempty"`
-	Login     string `json:"login,omitempty"`
+	// Login is where to connect an account; empty without an OAuth
+	// application.
+	Login string `json:"login,omitempty"`
+	// Fixed: connected with the configured token (no disconnect).
+	Fixed bool `json:"fixed,omitempty"`
 }
 
 // gitlabStatus says whether GitLab is configured and connected.
 func (s *Server) gitlabStatus(w http.ResponseWriter, r *http.Request) {
 	out := GitLabStatusView{}
 	if s.gitlab != nil {
-		out = GitLabStatusView{Enabled: true, URL: s.cfg.GitLab.URL, Login: pathGitLabLogin}
+		out = GitLabStatusView{Enabled: true, URL: s.cfg.GitLab.URL}
+		if s.gitlab.oauth() {
+			out.Login = pathGitLabLogin
+		}
 		if t, err := s.gitlab.token(w, r); err == nil {
-			out.Connected, out.Username = true, t.Username
+			out.Connected, out.Username, out.Fixed = true, t.Username, t.Fixed
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -292,13 +348,13 @@ func (s *Server) steeringTask(w http.ResponseWriter, r *http.Request) (*aiv1.Age
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account first", "login": pathGitLabLogin})
 		return nil, nil, nil, nil, false
 	}
-	return ap, task, s.gitlab.newClient(s.cfg.GitLab.URL, tok.Access), tok, true
+	return ap, task, s.gitlab.client(tok), tok, true
 }
 
 // thread returns the comments of the task's issue, merge request and
 // tracking issue, read with the user's own GitLab token.
 func (s *Server) thread(w http.ResponseWriter, r *http.Request) {
-	ap, task, gl, _, ok := s.steeringTask(w, r)
+	ap, task, gl, tok, ok := s.steeringTask(w, r)
 	if !ok {
 		return
 	}
@@ -314,8 +370,7 @@ func (s *Server) thread(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			if gitlab.StatusCode(err) == http.StatusUnauthorized {
-				s.gitlab.sessions.Clear(w, s.gitlab.cookie())
-				writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account again", "login": pathGitLabLogin})
+				s.gitlabRejected(w, tok)
 				return
 			}
 			// What the user may not read stays empty.
@@ -415,8 +470,7 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, errNotTasks), code == http.StatusNotFound, code == http.StatusForbidden:
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "the " + target.Target + " could not be confirmed as this task's"})
 		case code == http.StatusUnauthorized:
-			s.gitlab.sessions.Clear(w, s.gitlab.cookie())
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account again", "login": pathGitLabLogin})
+			s.gitlabRejected(w, tok)
 		default:
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "GitLab is not reachable right now"})
 		}
@@ -437,8 +491,7 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 		code := gitlab.StatusCode(err)
 		s.log.Info("posting a comment failed", "user", p.Username, "gitlabUser", tok.Username, "target", target.Target, "iid", target.IID, "status", code)
 		if code == http.StatusUnauthorized {
-			s.gitlab.sessions.Clear(w, s.gitlab.cookie())
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account again", "login": pathGitLabLogin})
+			s.gitlabRejected(w, tok)
 			return
 		}
 		if code == http.StatusForbidden || code == http.StatusNotFound {
@@ -481,4 +534,16 @@ func (s *Server) checkTarget(ctx context.Context, gl gitlab.API, ap *aiv1.AgentP
 		}
 	}
 	return nil
+}
+
+// gitlabRejected answers a request GitLab refused the token of: an OAuth
+// connection is dropped (connect again), a fixed token must be renewed.
+func (s *Server) gitlabRejected(w http.ResponseWriter, tok *GitLabToken) {
+	if tok != nil && tok.Fixed {
+		s.log.Info("GitLab rejected the fixed token of gitlab.tokenUser; renew it")
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "GitLab rejected the configured token; it must be renewed"})
+		return
+	}
+	s.gitlab.sessions.Clear(w, s.gitlab.cookie())
+	writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account again", "login": pathGitLabLogin})
 }
