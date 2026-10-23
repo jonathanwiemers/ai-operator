@@ -24,6 +24,7 @@ import (
 // API is the subset of GitLab used by the operator and the runner.
 type API interface {
 	CurrentUser(ctx context.Context) (*User, error)
+	FindUser(ctx context.Context, username string) (*User, error)
 	GetProject(ctx context.Context, project string) (*Project, error)
 	ListMilestones(ctx context.Context, project string) ([]Milestone, error)
 	GetMilestone(ctx context.Context, project string, id int64) (*Milestone, error)
@@ -153,12 +154,14 @@ type MergeRequest struct {
 	ID           int64      `json:"id"`
 	IID          int64      `json:"iid"`
 	Title        string     `json:"title"`
+	Description  string     `json:"description"`
 	State        string     `json:"state"`
 	SourceBranch string     `json:"source_branch"`
 	TargetBranch string     `json:"target_branch"`
 	Milestone    *Milestone `json:"milestone"`
 	WebURL       string     `json:"web_url"`
 	UpdatedAt    *time.Time `json:"updated_at"`
+	Reviewers    []User     `json:"reviewers"`
 	// SHA is the head commit of the source branch.
 	SHA   string `json:"sha"`
 	Draft bool   `json:"draft"`
@@ -269,7 +272,10 @@ type CreateMergeRequestOptions struct {
 // UpdateMergeRequestOptions updates a merge request. Empty fields are left
 // untouched.
 type UpdateMergeRequestOptions struct {
-	Title string `json:"title,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	// ReviewerIDs replaces all reviewers of the merge request.
+	ReviewerIDs []int64 `json:"reviewer_ids,omitempty"`
 }
 
 // MergeOptions merges a merge request.
@@ -533,6 +539,18 @@ func (c *Client) CurrentUser(ctx context.Context) (*User, error) {
 	var u User
 	_, err := c.do(ctx, http.MethodGet, "/user", nil, nil, &u)
 	return &u, err
+}
+
+// FindUser returns the user with the username, or nil if there is none.
+func (c *Client) FindUser(ctx context.Context, username string) (*User, error) {
+	var users []User
+	if _, err := c.do(ctx, http.MethodGet, "/users", url.Values{"username": {username}}, nil, &users); err != nil {
+		return nil, err
+	}
+	if len(users) == 0 {
+		return nil, nil
+	}
+	return &users[0], nil
 }
 
 func (c *Client) GetProject(ctx context.Context, project string) (*Project, error) {

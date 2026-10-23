@@ -29,6 +29,7 @@ The CRDs are part of the templates, so they are upgraded too.
 | `replicaCount` | `1` | |
 | `leaderElection` | `true` | |
 | `logLevel` | `info` | `debug`, `info`, `error` |
+| `defaultOwners` | `[]` | GitLab usernames mentioned when a task needs a human, for AgentProjects without `spec.notify.users`; a milestone line `/agent owners @a @b` overrides them |
 | `crds.install` | `true` | install and upgrade the CRDs |
 | `crds.keep` | `true` | keep the CRDs, and with them all AgentProjects and AgentTasks, on `helm uninstall` |
 | `serviceAccount.create` | `true` | |

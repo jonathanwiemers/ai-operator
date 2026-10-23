@@ -52,6 +52,9 @@ spec:
             {{- with include "ai-operator.agentImage" . }}
             - --default-agent-image={{ . }}
             {{- end }}
+            {{- with .Values.defaultOwners }}
+            - --default-owners={{ join "," . }}
+            {{- end }}
             {{- range .Values.extraArgs }}
             - {{ . | quote }}
             {{- end }}

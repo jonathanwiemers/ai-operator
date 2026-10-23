@@ -74,6 +74,60 @@ spec:
                         ANTHROPIC_API_KEY        Claude API billing instead of a subscription
                         CURSOR_API_KEY           cursor-agent (Cursor subscription)
                     type: string
+                  describe:
+                    description: |-
+                      Describe configures the agent that writes the merge request
+                      description after each push that changed the diff. Defaults to the
+                      claude engine with claude-sonnet-5-5.
+                    properties:
+                      allowedTools:
+                        description: |-
+                          AllowedTools overrides the tools the role may use (claude engine only;
+                          cursor reads its permissions from .cursor/cli.json).
+                        items:
+                          type: string
+                        type: array
+                      disabled:
+                        description: |-
+                          Disabled keeps the placeholder description; the reports carry the
+                          summaries.
+                        type: boolean
+                      effort:
+                        description: Effort level (claude engine only).
+                        enum:
+                        - low
+                        - medium
+                        - high
+                        - xhigh
+                        - max
+                        type: string
+                      engine:
+                        default: claude
+                        description: |-
+                          Engine is the agent CLI used for this role. Roles can mix engines, e.g.
+                          implement with claude and review with cursor.
+                        enum:
+                        - claude
+                        - cursor
+                        type: string
+                      instructions:
+                        description: Instructions are appended to the role's system
+                          prompt, e.g. house rules.
+                        type: string
+                      maxBudgetUSD:
+                        description: |-
+                          MaxBudgetUSD caps the spend of a single invocation of this role,
+                          as a decimal string, e.g. "5" or "2.50" (claude engine only).
+                        pattern: ^[0-9]+(\.[0-9]+)?$
+                        type: string
+                      model:
+                        description: |-
+                          Model passed to the engine, e.g. claude-opus-5-5 or claude-sonnet-5-5
+                          for claude, "auto" for cursor. For the claude engine it defaults to
+                          claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
+                          default.
+                        type: string
+                    type: object
                   env:
                     description: Env is added to the agent container.
                     items:
@@ -832,6 +886,40 @@ spec:
                     description: TitlePattern is an optional regular expression milestone
                       titles must match.
                     type: string
+                type: object
+              notify:
+                description: Notify says whom the operator mentions when it needs
+                  a human.
+                properties:
+                  events:
+                    description: Events that mention the users. Defaults to all of
+                      them.
+                    items:
+                      description: NotifyEvent is a situation in which the operator
+                        needs a human.
+                      enum:
+                      - failed
+                      - needsInput
+                      - ciFailed
+                      - review
+                      - autopilotPaused
+                      - autopilotDone
+                      type: string
+                    type: array
+                  requestReview:
+                    default: true
+                    description: |-
+                      RequestReview makes the users the reviewers of a merge request whose
+                      issue reaches review (not on autopilot), unless it has reviewers.
+                    type: boolean
+                  users:
+                    description: |-
+                      Users are the GitLab usernames (without "@") to mention. Empty: the
+                      operator's --default-owners. They must be members of the project to
+                      be notified.
+                    items:
+                      type: string
+                    type: array
                 type: object
               pollInterval:
                 default: 1m

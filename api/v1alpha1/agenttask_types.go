@@ -48,6 +48,11 @@ type AgentTaskSpec struct {
 	// +optional
 	Autopilot bool `json:"autopilot,omitempty"`
 
+	// Owners are the GitLab usernames mentioned when the task needs a human:
+	// the milestone's, else the project's, else the operator's default.
+	// +optional
+	Owners []string `json:"owners,omitempty"`
+
 	// Source records which GitLab state the operator has already turned into
 	// run requests, so that every change triggers exactly one run.
 	// +optional

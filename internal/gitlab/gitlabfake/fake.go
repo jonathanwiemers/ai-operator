@@ -59,6 +59,8 @@ type Fake struct {
 	NoPipelines     bool
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
+	// Users FindUser knows, besides the bot.
+	Users []gitlab.User
 }
 
 var _ gitlab.API = (*Fake)(nil)
@@ -137,6 +139,17 @@ func (f *Fake) Labels(iid int64) []string {
 }
 
 func (f *Fake) CurrentUser(context.Context) (*gitlab.User, error) { u := f.Bot; return &u, nil }
+
+func (f *Fake) FindUser(_ context.Context, username string) (*gitlab.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range append([]gitlab.User{f.Bot}, f.Users...) {
+		if u.Username == username {
+			return &u, nil
+		}
+	}
+	return nil, nil
+}
 
 func (f *Fake) GetProject(context.Context, string) (*gitlab.Project, error) {
 	p := f.Project
@@ -347,7 +360,7 @@ func (f *Fake) CreateMergeRequest(_ context.Context, _ string, opts gitlab.Creat
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	iid := int64(len(f.MRs) + 1)
-	mr := &gitlab.MergeRequest{ID: f.id(), IID: iid, Title: opts.Title, State: "opened", SourceBranch: opts.SourceBranch,
+	mr := &gitlab.MergeRequest{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "opened", SourceBranch: opts.SourceBranch,
 		TargetBranch: opts.TargetBranch, WebURL: fmt.Sprintf("https://gitlab.example/group/app/-/merge_requests/%d", iid), UpdatedAt: f.tick(),
 		Draft: strings.HasPrefix(opts.Title, "Draft:"), DetailedMergeStatus: "mergeable"}
 	if mr.Draft {
@@ -376,6 +389,19 @@ func (f *Fake) UpdateMergeRequest(_ context.Context, _ string, iid int64, opts g
 		mr.Draft = strings.HasPrefix(opts.Title, "Draft:")
 		if !mr.Draft && mr.DetailedMergeStatus == "draft_status" {
 			mr.DetailedMergeStatus = "mergeable"
+		}
+	}
+	if opts.Description != "" {
+		mr.Description = opts.Description
+	}
+	if opts.ReviewerIDs != nil {
+		mr.Reviewers = nil
+		for _, id := range opts.ReviewerIDs {
+			for _, u := range append([]gitlab.User{f.Bot}, f.Users...) {
+				if u.ID == id {
+					mr.Reviewers = append(mr.Reviewers, u)
+				}
+			}
 		}
 	}
 	mr.UpdatedAt = f.tick()

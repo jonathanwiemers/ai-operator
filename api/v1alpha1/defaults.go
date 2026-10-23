@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -151,6 +152,8 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 	}
 	s.Agents.Profiles = profiles
 	s.Agents.Review = s.Agents.Review.WithDefaults()
+	s.Agents.Describe.RoleSpec = s.Agents.Describe.RoleSpec.withDefaultModel(DefaultLightModel)
+	s.Notify = s.Notify.WithDefaults()
 	if s.Agents.ServiceAccountName == "" {
 		s.Agents.ServiceAccountName = DefaultServiceAccount
 	}
@@ -242,6 +245,26 @@ func (s AgentProjectStatus) ActiveUsageLimit(engine Engine, now time.Time) (Usag
 		}
 	}
 	return UsageLimit{}, false
+}
+
+// AllNotifyEvents are the events that mention the owners by default.
+var AllNotifyEvents = []NotifyEvent{NotifyFailed, NotifyNeedsInput, NotifyCIFailed, NotifyReview, NotifyAutopilotPaused, NotifyAutopilotDone}
+
+// WithDefaults fills in notification defaults.
+func (n NotifySpec) WithDefaults() NotifySpec {
+	if n.Events == nil {
+		n.Events = AllNotifyEvents
+	}
+	if n.RequestReview == nil {
+		t := true
+		n.RequestReview = &t
+	}
+	return n
+}
+
+// Wants reports whether the event mentions the owners.
+func (n NotifySpec) Wants(e NotifyEvent) bool {
+	return slices.Contains(n.Events, e)
 }
 
 // WithDefaults fills in CI defaults.

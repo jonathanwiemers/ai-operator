@@ -165,6 +165,24 @@ that outlives the shutdown. A live comment a killed run left behind is
 removed by the next run. Progress comments are kept out of the agent's
 prompt.
 
+**The description describes the branch.** After the push, a read-only
+describe agent (light model, no session) gets the issue, the run's summary,
+the previous description and the diff, and answers why, what, how,
+verification and an optional mermaid diagram. It only runs when the diff's
+hash differs from the one last described (runner state), and its failure is a
+notice in the report, never a failed run. The runner owns the text between
+`<!-- ai-operator:description -->` markers; the rest of the description is
+left alone. Mentions in the agent's prose are defused (a zero-width space
+after `@`), and a diagram is kept only with a known mermaid type, no code
+fence and at most 5000 bytes.
+
+**Owners.** The project controller resolves the owners of every task on each
+poll (a milestone's `/agent owners` line, else `spec.notify.users`, else
+`--default-owners`) into `AgentTask.spec.owners`; the runner and the CI and
+autopilot code only read the task. The owners line is left out of the
+milestone's description hash, so it does not re-plan. Mentions go into new
+comments only, because GitLab notifies again for mentions added by an edit.
+
 The milestone description is the single source of the overarching spec. The
 operator never writes to it. Sub-specs live in the sub-issues, and the
 planner's summary is kept in the spec task's status (`kubectl get agenttask

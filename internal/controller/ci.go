@@ -12,6 +12,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // syncCI drives the CI feedback loop of an implement task. After the agent
@@ -250,9 +251,18 @@ func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, sp
 	if state == aiv1.CIStateFailed {
 		next = wf.NeedsInputLabel
 	}
-	log.FromContext(ctx).Info("CI loop finished", "task", task.Name, "state", state, "label", next)
+	logger := log.FromContext(ctx)
+	logger.Info("CI loop finished", "task", task.Name, "state", state, "label", next)
+	// Autopilot merges what reaches review; nobody needs to look.
+	review := next == wf.ReviewLabel && !task.Spec.Autopilot
+	mention := ""
+	switch {
+	case state == aiv1.CIStateFailed && spec.Notify.Wants(aiv1.NotifyCIFailed),
+		review && spec.Notify.Wants(aiv1.NotifyReview):
+		mention = notify.Mention(task.Spec.Owners)
+	}
 	if note != "" {
-		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, is.IID, note); err != nil {
+		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, is.IID, note+mention); err != nil {
 			return fmt.Errorf("commenting on issue #%d: %w", is.IID, err)
 		}
 	}
@@ -260,6 +270,25 @@ func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, sp
 		AddLabels: []string{next}, RemoveLabels: []string{wf.WorkingLabel},
 	}); err != nil {
 		return fmt.Errorf("moving issue #%d to %q: %w", is.IID, next, err)
+	}
+	if review {
+		// The issue is in review already: a failure here is logged, not
+		// tried again, so nobody is pinged twice.
+		mrIID := task.Status.Run.MergeRequestIID
+		if *spec.Notify.RequestReview {
+			if _, err := notify.RequestReview(ctx, gl, spec.GitLab.Project, mrIID, task.Spec.Owners); err != nil {
+				logger.Info("could not request reviews", "mr", mrIID, "error", err.Error())
+			}
+		}
+		if note == "" && mention != "" && mrIID != 0 {
+			body := "🤖 Ready for review: CI passed."
+			if state == aiv1.CIStateNone {
+				body = "🤖 Ready for review: no pipeline ran for this commit."
+			}
+			if _, err := gl.CreateMergeRequestNote(ctx, spec.GitLab.Project, mrIID, body+mention); err != nil {
+				logger.Info("could not ask for a review", "mr", mrIID, "error", err.Error())
+			}
+		}
 	}
 	return r.patchCI(ctx, task, ci)
 }

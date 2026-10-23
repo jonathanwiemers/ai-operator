@@ -18,6 +18,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // syncAutopilot drives an autopilot milestone, one step per poll:
@@ -347,7 +348,8 @@ func (a *autopilot) pick(ctx context.Context) error {
 			a.ap.Phase = prev // tried again on the next poll
 			return err
 		}
-		return a.comment(ctx, fmt.Sprintf("✅ Autopilot is done: %d of %d issues merged. The decisions are listed in the description.", merged, len(a.ap.Items)))
+		return a.comment(ctx, fmt.Sprintf("✅ Autopilot is done: %d of %d issues merged. The decisions are listed in the description.", merged, len(a.ap.Items))+
+			a.mention(aiv1.NotifyAutopilotDone))
 	}
 	return nil
 }
@@ -993,7 +995,8 @@ func (a *autopilot) pause(ctx context.Context, reason string) error {
 	}
 	a.log.Info("autopilot paused", "reason", reason)
 	// Comment first: if it fails, the pause is tried again on the next poll.
-	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nFix it, then comment `%s resume`. A pause over the active issue also ends by itself once a later run fixed it or the MR is merged by hand.", reason, a.spec.Workflow.CommandPrefix)); err != nil {
+	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nFix it, then comment `%s resume`. A pause over the active issue also ends by itself once a later run fixed it or the MR is merged by hand.", reason, a.spec.Workflow.CommandPrefix)+
+		a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
 		return err
 	}
 	a.ap.Phase = aiv1.AutopilotPaused
@@ -1129,6 +1132,15 @@ func (a *autopilot) closeTracking(ctx context.Context) error {
 		return fmt.Errorf("closing the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
 	}
 	return nil
+}
+
+// mention returns the line that mentions the milestone's owners, if the
+// event mentions them.
+func (a *autopilot) mention(e aiv1.NotifyEvent) string {
+	if !a.spec.Notify.Wants(e) {
+		return ""
+	}
+	return notify.Mention(a.st.Spec.Owners)
 }
 
 func (a *autopilot) comment(ctx context.Context, body string) error {

@@ -69,8 +69,9 @@ func TestCIFixRun(t *testing.T) {
 		t.Fatal("CI fix run should happen")
 	}
 
-	if len(engine.calls) != 1 || engine.calls[0].ReadOnly {
-		t.Fatalf("a CI fix run is one implementer call without reviewers, got %d calls", len(engine.calls))
+	// The describer follows the fix, which changed the diff.
+	if len(engine.calls) != 2 || engine.calls[0].ReadOnly || engine.calls[1].JSONSchema != describeSchema {
+		t.Fatalf("a CI fix run is one implementer call without reviewers, then the describer, got %d calls", len(engine.calls))
 	}
 	prompt := engine.calls[0].Prompt
 	for _, want := range []string{"CI pipeline for your last push failed", "untrusted", "Job `test`", "expected 400, got 500"} {

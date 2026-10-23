@@ -181,6 +181,7 @@ it to `false` for one commit per run.
 | `profiles` | `fast`, `strong` | implementing agents selected per issue |
 | `implement` | claude, `claude-opus-5-5` | implementing agent for issues without a profile label |
 | `review` | claude, `claude-sonnet-5-5`, reviewers `bugbot` + `security`, `maxIterations: 2` | review agents |
+| `describe` | claude, `claude-sonnet-5-5` | writes the MR description after each push that changed the diff; `disabled: true` keeps the placeholder |
 
 If `resources` sets a memory limit or CPUs (limits, else requests), the
 implementing agent is told them in its system prompt, with the advice to keep
@@ -191,7 +192,7 @@ killed together with the run.
 
 ### Roles
 
-`spec`, `implement`, `review` and every profile share these fields:
+`spec`, `implement`, `review`, `describe` and every profile share these fields:
 
 | Field | Engines | Description |
 |-------|---------|-------------|
@@ -203,7 +204,7 @@ killed together with the run.
 | `instructions` | both | appended to the role prompt (house rules, test commands) |
 
 `review` additionally has `reviewers` (`bugbot`, `security`) and
-`maxIterations`.
+`maxIterations`; `describe` has `disabled`.
 
 ### Profiles
 
@@ -276,6 +277,21 @@ pipelines and merge request pipelines. *Merged results* pipelines (GitLab
 Premium) run on a merge commit instead and are not found; with them the loop
 ends after `noPipelineTimeout` as "no CI". Set `ci.disabled: true` in that
 case until this is supported.
+
+## `spec.notify`
+
+Whom the operator mentions (`cc @alice @bob`, appended to the comment that
+needs a human) and asks for reviews, see
+[usage.md](usage.md#owners-and-pings).
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `users` | operator's `--default-owners` (with Helm: `defaultOwners`) | GitLab usernames, without `@`. A milestone overrides them with a line `/agent owners @alice @bob` in its description, for itself and its issues |
+| `events` | all | which situations mention them: `failed` (a run failed), `needsInput` (questions, or the agent could not finish alone), `ciFailed` (CI still red after the fix rounds), `review` (an issue reached review, not on autopilot), `autopilotPaused`, `autopilotDone` |
+| `requestReview` | `true` | when an issue reaches review (not on autopilot), make the users the reviewers of its MR, unless it has reviewers |
+
+The users must be members of the project to be notified; mentioning the bot
+user itself notifies nobody.
 
 ## Other `spec` fields
 
