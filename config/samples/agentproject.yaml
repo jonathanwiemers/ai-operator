@@ -63,3 +63,14 @@ spec:
       # or: engine: claude, model: claude-sonnet-5-5 (the default)
       reviewers: [bugbot, security]
       maxIterations: 2
+    # Models an issue may switch to with "/agent use <engine> <model> [effort]"
+    # (plus those of the profiles and implement), and the highest effort an
+    # issue may ask for.
+    models:
+      - {engine: claude, model: claude-opus-5-5, alias: opus}
+      - {engine: claude, model: claude-sonnet-5-5, alias: sonnet}
+    maxEffort: high
+  # Who is mentioned ("cc @…") when an issue needs a human, and requested as
+  # MR reviewer on review. A milestone overrides it with "/agent owners @…".
+  notify:
+    users: [your-gitlab-username]

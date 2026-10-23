@@ -116,6 +116,9 @@ type state struct {
 	// DescribedDiff is the hash of the diff the merge request description
 	// was last written for.
 	DescribedDiff string `json:"describedDiff,omitempty"`
+	// ImplementEngine is the engine of the last implementer session; a run
+	// on another engine starts that engine's session fresh.
+	ImplementEngine aiv1.Engine `json:"implementEngine,omitempty"`
 }
 
 func sessionKey(role string, engine aiv1.Engine) string { return role + "/" + string(engine) }

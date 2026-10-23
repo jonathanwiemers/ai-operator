@@ -55,6 +55,10 @@ func Decisions(body string) []DecisionRef {
 	return out
 }
 
+// RoutingReply marks the operator's answers to "/agent use" and "/agent
+// effort", so a recreated task does not apply the commands again.
+const RoutingReply = "<!-- ai-operator:routing -->"
+
 // DecisionsHeader starts every decision comment of the bot.
 const DecisionsHeader = "📌 **Decisions**"
 

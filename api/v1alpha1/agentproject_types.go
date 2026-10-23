@@ -144,6 +144,22 @@ type WorkflowSpec struct {
 	// +optional
 	ProfileLabelPrefix string `json:"profileLabelPrefix,omitempty"`
 
+	// ModelLabelPrefix: an issue labelled "<prefix><engine>/<model or
+	// alias>" (e.g. "agent-model::claude/opus") is implemented with that
+	// engine and model instead of its profile's, if agents.models allows it.
+	// "/agent use <engine> <model>" sets it.
+	// +kubebuilder:default="agent-model::"
+	// +optional
+	ModelLabelPrefix string `json:"modelLabelPrefix,omitempty"`
+
+	// EffortLabelPrefix: an issue labelled "<prefix><level>" (e.g.
+	// "agent-effort::high") is implemented with that effort, at most
+	// agents.maxEffort (claude engine only). The spec agent sets one on the
+	// issues it creates; "/agent effort <level>" changes it.
+	// +kubebuilder:default="agent-effort::"
+	// +optional
+	EffortLabelPrefix string `json:"effortLabelPrefix,omitempty"`
+
 	// CommandPrefix: a comment on the issue or its merge request that starts
 	// with this prefix triggers another agent run (e.g. "/agent please also
 	// cover the error case"). Plain discussion does not trigger runs, so no
@@ -285,6 +301,36 @@ type AgentsSpec struct {
 	// claude engine with claude-sonnet-5-5.
 	// +optional
 	Describe DescribeSpec `json:"describe,omitempty"`
+
+	// Models an issue may switch its implementer to, with "/agent use
+	// <engine> <model>" or a model label. Defaults to claude-opus-5-5,
+	// claude-sonnet-5-5 and claude-haiku-5-5 (aliases opus, sonnet, haiku).
+	// The engines and models of the profiles and of implement are always
+	// allowed.
+	// +optional
+	Models []ModelOption `json:"models,omitempty"`
+
+	// MaxEffort caps the effort an issue may ask for (effort label, "/agent
+	// effort", the spec agent's choice). The efforts of the roles and
+	// profiles themselves are not capped.
+	// +kubebuilder:validation:Enum=low;medium;high;xhigh;max
+	// +kubebuilder:default=high
+	// +optional
+	MaxEffort string `json:"maxEffort,omitempty"`
+}
+
+// ModelOption is an engine and model an issue may switch to.
+type ModelOption struct {
+	Engine Engine `json:"engine"`
+
+	// Model passed to the engine, e.g. claude-opus-5-5 or "auto".
+	// +kubebuilder:validation:MinLength=1
+	Model string `json:"model"`
+
+	// Alias is a short name for commands and labels, e.g. "opus".
+	// +kubebuilder:validation:Pattern=`^[a-z0-9][a-z0-9.-]*$`
+	// +optional
+	Alias string `json:"alias,omitempty"`
 }
 
 // DescribeSpec configures the agent that keeps the merge request description

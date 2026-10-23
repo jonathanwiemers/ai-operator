@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
@@ -125,7 +126,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	since := max(st.RevisitNoteID, prior.AfterNote)
 	revisits := findRevisits(issue, issueNotes, append(newerThan(issueNotes, since), newerThan(mrNotes, since)...), botID, wf.CommandPrefix)
 
-	role, profile := spec.ImplementRole(issue.Labels)
+	// The model and effort labels ("/agent use", "/agent effort", which the
+	// operator turns into labels) override the profile.
+	role, profile, roleNotes := spec.IssueRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
 	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs)
 	// While the MR is a draft, the work is pushed step by step so a human can
@@ -138,14 +141,21 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		inv.JSONSchema = implementStepSchema
 	}
 	inv.DisallowedTools = implementDenied
+	// A session another engine continued meanwhile has missed that work:
+	// the implementer starts fresh, with the whole thread and the notes.
+	if st.ImplementEngine != "" && st.ImplementEngine != role.Engine {
+		st.setSession("implement", role.Engine, "")
+	}
 	inv.Resume = st.session("implement", role.Engine)
-	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false, prior)
-	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true, handoff{})
+	// Comments that are only a model or effort command are the operator's.
+	prefix := wf.CommandPrefix
+	fullPrompt := buildImplementPrompt(issue, milestone, command.WithoutRouting(issueNotes, prefix), command.WithoutRouting(mrNotes, prefix), botID, false, prior)
+	inv.Prompt = buildImplementPrompt(issue, milestone, command.WithoutRouting(newIssueNotes, prefix), command.WithoutRouting(newMRNotes, prefix), botID, true, handoff{})
 	if task.Spec.Autopilot {
 		fullPrompt = autopilotImplementNote + "\n\n" + fullPrompt
 		inv.Prompt = autopilotImplementNote + "\n\n" + inv.Prompt
 	}
-	var notices []string
+	notices := roleNotes
 	var active, ignored []revisit
 	for _, rv := range revisits {
 		switch {
@@ -234,7 +244,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	var res *Result
 	var answer ImplementAnswer
 	if runAgent {
-		s = r.step(ctx, "run implementer", "profile", profile, "engine", role.Engine, "model", role.Model,
+		s = r.step(ctx, "run implementer", "profile", profile, "engine", role.Engine, "model", role.Model, "effort", role.Effort,
 			"resume", inv.Resume != "", "ciFix", ciFix, "conflicts", len(merge.Conflicts))
 		res, err = r.invoke(ctx, role, inv, fullPrompt)
 		if res != nil {
@@ -244,6 +254,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			return out, s.fail(err)
 		}
 		st.setSession("implement", role.Engine, res.SessionID)
+		st.ImplementEngine = role.Engine
 		st.LastIssueNoteID = maxNoteID(issueNotes, st.LastIssueNoteID)
 		st.LastMRNoteID = maxNoteID(mrNotes, st.LastMRNoteID)
 		if err := r.saveState(st); err != nil {
@@ -1073,7 +1084,8 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 func firstCommand(notes []gitlab.Note, botID int64, prefix string) int64 {
 	var first int64
 	for _, n := range notes {
-		if n.System || (botID != 0 && n.Author.ID == botID) || !strings.HasPrefix(strings.TrimSpace(n.Body), prefix) {
+		// A pure model or effort command starts no run: it is no cut.
+		if n.System || (botID != 0 && n.Author.ID == botID) || !strings.HasPrefix(strings.TrimSpace(n.Body), prefix) || command.IsRoutingOnly(n.Body, prefix) {
 			continue
 		}
 		if first == 0 || n.ID < first {

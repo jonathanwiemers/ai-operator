@@ -30,6 +30,7 @@ const (
 	DefaultCIFixRounds          = 2
 	DefaultNoPipelineTimeout    = 10 * time.Minute
 	DefaultReviewIters          = 2
+	DefaultMaxEffort            = "high"
 )
 
 // WithDefaults returns a copy of the workflow labels with defaults filled in.
@@ -47,6 +48,8 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 	def(&w.DoneLabel, "agent::done")
 	def(&w.GeneratedLabel, "ai-generated")
 	def(&w.ProfileLabelPrefix, "agent-profile::")
+	def(&w.ModelLabelPrefix, "agent-model::")
+	def(&w.EffortLabelPrefix, "agent-effort::")
 	def(&w.CommandPrefix, DefaultCommandPrefix)
 	if w.AssignBot == nil {
 		t := true
@@ -154,6 +157,12 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 	s.Agents.Review = s.Agents.Review.WithDefaults()
 	s.Agents.Describe.RoleSpec = s.Agents.Describe.RoleSpec.withDefaultModel(DefaultLightModel)
 	s.Notify = s.Notify.WithDefaults()
+	if s.Agents.Models == nil {
+		s.Agents.Models = DefaultModels()
+	}
+	if s.Agents.MaxEffort == "" {
+		s.Agents.MaxEffort = DefaultMaxEffort
+	}
 	if s.Agents.ServiceAccountName == "" {
 		s.Agents.ServiceAccountName = DefaultServiceAccount
 	}
