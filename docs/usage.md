@@ -1,5 +1,7 @@
 # Using the ai-operator from GitLab
 
+Every `/agent` command is listed in [commands.md](commands.md).
+
 Everything happens in GitLab. You write specs, answer questions, move cards
 and review merge requests. The operator turns those actions into agent work.
 
@@ -325,9 +327,11 @@ Set `workflow.resolveConflicts: false` to leave conflicts to humans.
 | discuss normally (no `/agent` prefix) | nothing; no tokens are spent (during a step run on a draft, the agent reads it before its next step) |
 | push to the agent's branch yourself | the next run continues from your commits |
 | change the profile label | the next run uses that profile |
+| comment `/agent use claude opus` (or set `agent-model::claude/opus`) | the next runs use that engine and model; the comment alone starts no run |
+| comment `/agent effort high` (or set `agent-effort::high`) | the next runs think that hard (claude, at most `agents.maxEffort`) |
 
 `/agent` must be the first word of the comment. `/agents are great` does not
-trigger a run.
+trigger a run. All commands are listed in [commands.md](commands.md).
 
 ### Decisions
 
@@ -544,6 +548,8 @@ approval, unresolved discussions, someone else's push, a dependency cycle,
 `/agent pause`) waits for `/agent resume`.
 
 ### Commands on the tracking issue
+
+(All commands: [commands.md](commands.md).)
 
 | Comment | Effect |
 |---------|--------|

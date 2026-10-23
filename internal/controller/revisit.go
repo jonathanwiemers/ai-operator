@@ -177,6 +177,12 @@ func (r *AgentProjectReconciler) revisitAfterMerge(ctx context.Context, gl gitla
 	if profile := spec.ProfileOf(target.Labels); profile != "" {
 		labels = append(labels, spec.ProfileLabel(profile))
 	}
+	// The follow-up runs like the issue it revisits.
+	for _, l := range target.Labels {
+		if strings.HasPrefix(l, wf.ModelLabelPrefix) || strings.HasPrefix(l, wf.EffortLabelPrefix) {
+			labels = append(labels, l)
+		}
+	}
 	title := id
 	if h := marker.Decisions(section); len(h) > 0 {
 		title = fmt.Sprintf("%s: %s", id, h[0].Title)

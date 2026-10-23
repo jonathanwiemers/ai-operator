@@ -138,6 +138,8 @@ All labels can be renamed. Defaults:
 | `doneLabel` | `agent::done` |
 | `generatedLabel` | `ai-generated` |
 | `profileLabelPrefix` | `agent-profile::` |
+| `modelLabelPrefix` | `agent-model::` |
+| `effortLabelPrefix` | `agent-effort::` |
 | `commandPrefix` | `/agent` |
 | `assignBot` | `true` |
 | `resolveConflicts` | `true` |
@@ -182,6 +184,8 @@ it to `false` for one commit per run.
 | `implement` | claude, `claude-opus-5-5` | implementing agent for issues without a profile label |
 | `review` | claude, `claude-sonnet-5-5`, reviewers `bugbot` + `security`, `maxIterations: 2` | review agents |
 | `describe` | claude, `claude-sonnet-5-5` | writes the MR description after each push that changed the diff; `disabled: true` keeps the placeholder |
+| `models` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` (aliases `opus`, `sonnet`, `haiku`) | engines and models an issue may switch its implementer to with `/agent use` or an `agent-model::` label; the models of the profiles and of `implement` are always allowed. Entries: `engine`, `model`, optional `alias` |
+| `maxEffort` | `high` | the highest effort an issue may ask for (`agent-effort::` label, `/agent effort`, the planner's choice); higher values are lowered. The roles' own `effort` is not capped |
 
 If `resources` sets a memory limit or CPUs (limits, else requests), the
 implementing agent is told them in its system prompt, with the advice to keep
@@ -205,6 +209,27 @@ killed together with the run.
 
 `review` additionally has `reviewers` (`bugbot`, `security`) and
 `maxIterations`; `describe` has `disabled`.
+
+### Per-issue model and effort
+
+On top of its profile, an issue can pick the implementer's engine, model and
+effort with labels, set by `/agent use` / `/agent effort` comments or by hand
+(see [commands.md](commands.md#model-and-effort)). Only the models in
+`agents.models` (plus those the profiles and `implement` use) are allowed:
+
+```yaml
+agents:
+  models:
+    - {engine: claude, model: claude-opus-5-5, alias: opus}
+    - {engine: claude, model: claude-sonnet-5-5, alias: sonnet}
+    - {engine: cursor, model: auto}
+    - {engine: cursor, model: gpt-5.6-sol-high, alias: gpt}
+  maxEffort: high
+```
+
+The planner sets an `agent-effort::` label on the sub-issues it creates when
+it thinks an issue needs more or less thinking than its profile; a label you
+set is kept on re-plans.
 
 ### Profiles
 

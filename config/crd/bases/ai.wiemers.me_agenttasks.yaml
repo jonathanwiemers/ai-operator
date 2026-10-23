@@ -166,6 +166,12 @@ spec:
                       run request (Implement tasks).
                     format: int64
                     type: integer
+                  lastRoutingNoteID:
+                    description: |-
+                      LastRoutingNoteID is the newest "/agent use" or "/agent effort"
+                      comment that was applied to the issue's labels (Implement tasks).
+                    format: int64
+                    type: integer
                   mergeBaseFor:
                     description: |-
                       MergeBaseFor is the merge request head the operator saw conflicting

@@ -209,10 +209,14 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 				log.Info("issue left untouched", "iid", iid, "key", item.Key, "reason", "no longer a draft")
 				continue
 			}
-			// A profile label set earlier (possibly by a human) is kept.
+			// Profile and effort labels set earlier (possibly by a human)
+			// are kept.
 			var add []string
 			if spec.ProfileOf(ex.Labels) == "" {
 				add = profileLabels(spec, item)
+			}
+			if !hasLabelPrefix(ex.Labels, wf.EffortLabelPrefix) {
+				add = append(add, effortLabels(spec, item)...)
 			}
 			if _, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{
 				Title: item.Title, Description: desc, AddLabels: add,
@@ -225,7 +229,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			is, err := gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{
 				Title:       item.Title,
 				Description: desc,
-				Labels:      strings.Join(append([]string{wf.GeneratedLabel, wf.DraftLabel}, profileLabels(spec, item)...), ","),
+				Labels:      strings.Join(slices.Concat([]string{wf.GeneratedLabel, wf.DraftLabel}, profileLabels(spec, item), effortLabels(spec, item)), ","),
 				MilestoneID: m.ID,
 			})
 			if err != nil {
@@ -234,7 +238,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			iid = is.IID
 			created++
 			isNew = true
-			log.Info("issue created", "iid", iid, "key", item.Key, "profile", item.Profile)
+			log.Info("issue created", "iid", iid, "key", item.Key, "profile", item.Profile, "effort", item.Effort)
 		}
 		// Decision IDs carry the IID, which is known now.
 		if err := pc.post(ctx, gl, glProject, iid, isNew, item.Decisions, wf.CommandPrefix); err != nil {
@@ -368,6 +372,21 @@ func profileLabels(spec aiv1.AgentProjectSpec, item PlannedItem) []string {
 		return []string{spec.ProfileLabel(item.Profile)}
 	}
 	return nil
+}
+
+// effortLabels returns the label of the effort the planner picked, at most
+// agents.maxEffort. No or an unknown choice gets no label: the profile's
+// effort applies.
+func effortLabels(spec aiv1.AgentProjectSpec, item PlannedItem) []string {
+	if !aiv1.ValidEffort(item.Effort) {
+		return nil
+	}
+	effort, _ := spec.CapEffort(item.Effort)
+	return []string{spec.EffortLabel(effort)}
+}
+
+func hasLabelPrefix(labels []string, prefix string) bool {
+	return slices.ContainsFunc(labels, func(l string) bool { return strings.HasPrefix(l, prefix) })
 }
 
 // linkDependencies mirrors the plan's dependencies as GitLab issue links, so

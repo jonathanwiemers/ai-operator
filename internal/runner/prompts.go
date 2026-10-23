@@ -32,6 +32,11 @@ How to plan:
 - Pick the agent profile that should implement each sub-issue from the
   profiles listed in the prompt. Cheaper profiles are for work you are
   confident is simple; when in doubt pick the stronger one.
+- Pick how hard the implementer should think (effort): "low" or "medium"
+  for mechanical work that follows an existing pattern, "high" for design
+  decisions and subtle logic, "xhigh" or "max" only where a subtle mistake
+  would be expensive and hard to find (e.g. determinism, concurrency,
+  security). Leave it empty to keep the profile's setting.
 - Only raise questions that change the design or the scope. For each question
   state the default you would pick, so a human can just confirm it.
 - Record the decisions you made for each sub-issue in its decisions list:
@@ -188,6 +193,7 @@ const specSchemaTemplate = `{
           "title": {"type": "string"},
           "description": {"type": "string"},
           "profile": {"type": "string", "enum": __PROFILES__},
+          "effort": {"type": "string", "enum": ["", "low", "medium", "high", "xhigh", "max"], "description": "How hard the implementer should think; empty keeps the profile's setting."},
           "questions": {"type": "array", "items": {"type": "string"}},
           "decisions": __DECISIONS__,
           "dependsOn": {"type": "array", "items": {"type": "string"}, "description": "Keys of issues that must be merged first."}
@@ -278,6 +284,7 @@ type PlannedItem struct {
 	Title       string     `json:"title"`
 	Description string     `json:"description"`
 	Profile     string     `json:"profile"`
+	Effort      string     `json:"effort,omitempty"`
 	Questions   []string   `json:"questions"`
 	Decisions   []Decision `json:"decisions"`
 	DependsOn   []string   `json:"dependsOn"`

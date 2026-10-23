@@ -86,6 +86,11 @@ type SourceState struct {
 	// +optional
 	LastCommandNoteID int64 `json:"lastCommandNoteID,omitempty"`
 
+	// LastRoutingNoteID is the newest "/agent use" or "/agent effort"
+	// comment that was applied to the issue's labels (Implement tasks).
+	// +optional
+	LastRoutingNoteID int64 `json:"lastRoutingNoteID,omitempty"`
+
 	// IssueUpdatedAt / MergeRequestUpdatedAt let the operator skip fetching
 	// comments when nothing changed.
 	// +optional

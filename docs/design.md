@@ -186,6 +186,18 @@ autopilot code only read the task. The owners line is left out of the
 milestone's description hash, so it does not re-plan. Mentions go into new
 comments only, because GitLab notifies again for mentions added by an edit.
 
+**Model and effort per issue.** `/agent use` and `/agent effort` are the
+only commands the operator handles itself: on the poll that sees them it
+validates them against `agents.models` and `agents.maxEffort`, swaps the
+issue's `agent-model::` / `agent-effort::` labels and answers with a short
+comment (`internal/command`, `status.source.lastRoutingNoteID`). A comment
+that is only such a command starts no run and is left out of the agent's
+prompt. The runner reads the labels when it picks the implementer
+(`AgentProjectSpec.IssueRole`), so a label set by hand works the same, and
+an invalid one is ignored with a notice in the report. Sessions are kept per
+engine: another engine starts a fresh session, another model or effort of
+the same engine resumes it.
+
 The milestone description is the single source of the overarching spec. The
 operator never writes to it. Sub-specs live in the sub-issues, and the
 planner's summary is kept in the spec task's status (`kubectl get agenttask
