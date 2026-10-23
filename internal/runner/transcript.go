@@ -32,6 +32,11 @@ func logEvent(log logr.Logger, line []byte) string {
 	}
 	if ev.Type == "tool_call" && ev.Subtype == "started" {
 		for kind, raw := range ev.ToolCall {
+			// Next to the tool, cursor-agent sends fields about the call
+			// (toolCallId, startedAtMs, hookAdditionalContexts): no tools.
+			if kind != "function" && !strings.HasSuffix(kind, "ToolCall") {
+				continue
+			}
 			name, input := cursorTool(kind, raw)
 			log.Info("agent uses a tool", "tool", name, "input", input)
 		}
@@ -132,7 +137,7 @@ func toolInput(name string, raw json.RawMessage) string {
 	if json.Unmarshal(raw, &in) != nil {
 		return ""
 	}
-	for _, key := range []string{"command", "file_path", "notebook_path", "pattern", "url", "query", "description", "path"} {
+	for _, key := range []string{"command", "file_path", "notebook_path", "pattern", "globPattern", "url", "query", "description", "path"} {
 		if v, ok := in[key].(string); ok && v != "" {
 			if key == "command" {
 				// A heredoc or a multi-line script carries file contents:
