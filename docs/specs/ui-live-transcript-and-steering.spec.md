@@ -47,7 +47,7 @@ run you have to switch to GitLab and write a comment there.
 - **Source:** the agent and runner containers' logs, read by the UI through
   the Kubernetes API (`pods/log`, follow). The pod is named like the task.
 - **Filter on the server:** only JSON log lines of known kinds are forwarded,
-  with an allow-list of fields: `agent CLI started/done`, `agent thinks`,
+  with an allow-list of fields: `agent CLI started`, `agent thinks`,
   `agent says`, `agent uses a tool`, `agent answers`, `agent prompt`, and the
   runner's `step started/done/failed`. Never raw lines.
 - **API:** `GET /api/v1/projects/{ns}/{name}/tasks/{task}/transcript`
@@ -94,6 +94,16 @@ run you have to switch to GitLab and write a comment there.
 - **Safety:** Go's cross-origin protection and `SameSite` on the POST, a
   size limit, a rate limit per user, and one log line per posted note (user,
   project, issue or MR, note id), without its text.
+
+## Steers (review of part 1)
+
+- Log lines are read with a bound: longer than 1 MiB are skipped without
+  holding them; up to that they are read whole (prompts).
+- Only the current run's lines (`<task>#<activeRunRequest>`) are sent.
+- A container that restarts while the pod runs is followed again from the
+  last entry's time.
+- The pod read is the one named after the task; `status.podName` only says
+  one exists (the agent pods may write the status).
 
 ## Affected files
 

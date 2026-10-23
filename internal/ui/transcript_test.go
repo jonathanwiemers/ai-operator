@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"testing/iotest"
+	"time"
 )
 
 func TestParseLogLine(t *testing.T) {
@@ -43,16 +45,19 @@ func TestParseLogLine(t *testing.T) {
 	}
 }
 
-// fakeLogs serves fixed container logs.
+// fakeLogs serves fixed container logs, in small chunks like a network
+// stream, of a pod that has stopped.
 type fakeLogs map[string]string
 
-func (f fakeLogs) Stream(_ context.Context, ns, pod, container string) (io.ReadCloser, error) {
+func (f fakeLogs) Stream(_ context.Context, ns, pod, container string, _ *time.Time) (io.ReadCloser, error) {
 	l, ok := f[ns+"/"+pod+"/"+container]
 	if !ok {
 		return nil, fmt.Errorf("container %s not found", container)
 	}
-	return io.NopCloser(strings.NewReader(l)), nil
+	return io.NopCloser(iotest.HalfReader(strings.NewReader(l))), nil
 }
+
+func (f fakeLogs) Running(context.Context, string, string) bool { return false }
 
 func readTranscript(t *testing.T, env *testEnv, path string) (entries []Entry, end string, status int) {
 	t.Helper()
@@ -97,9 +102,9 @@ func TestTranscript(t *testing.T) {
 		Rule{Roles: []string{"shop-leads"}, Projects: []string{"team-a/*"}, Transcript: true},
 	))
 	env.server.SetLogSource(fakeLogs{
-		"team-a/shop-42-add-paypal/runner": `{"msg":"step started","step":10,"name":"run implementer","run":"t#2"}` + "\n" +
+		"team-a/shop-42-add-paypal/runner": `{"msg":"step started","step":10,"name":"run implementer","run":"shop-42-add-paypal#2"}` + "\n" +
 			`{"msg":"starting run","token":"glpat-secret"}` + "\n",
-		"team-a/shop-42-add-paypal/agent": `{"msg":"agent says","text":"Adding the test.","run":"t#2"}` + "\n" +
+		"team-a/shop-42-add-paypal/agent": `{"msg":"agent says","text":"Adding the test.","run":"shop-42-add-paypal#2"}` + "\n" +
 			`not json` + "\n" + `{"msg":"call done","rpc":"run","path":"/exchange/secret"}`,
 	})
 	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
@@ -158,4 +163,56 @@ func TestTranscriptWithoutLogSource(t *testing.T) {
 	if _, _, code := readTranscript(t, env, shopTask+"/transcript"); code != http.StatusNotImplemented {
 		t.Fatalf("status %d", code)
 	}
+}
+
+func TestReadLine(t *testing.T) {
+	long := `{"msg":"agent prompt","prompt":"` + strings.Repeat("p", 160<<10) + `"}`
+	rd := bufio.NewReaderSize(iotest.OneByteReader(strings.NewReader(long+"\nnext\n"+strings.Repeat("x", 3000)+"\nlast")), 16)
+	line, tooLong, err := readLine(rd, 1<<20)
+	if err != nil || tooLong || string(line) != long+"\n" {
+		t.Fatalf("a long line must come whole and intact: %d bytes, tooLong=%v, err=%v", len(line), tooLong, err)
+	}
+	if e, ok := parseLogLine(line); !ok || e.Kind != "prompt" {
+		t.Fatalf("the long prompt line must parse: %+v", e)
+	}
+	if line, _, _ := readLine(rd, 1<<20); string(line) != "next\n" {
+		t.Fatalf("next line: %q", line)
+	}
+	if line, tooLong, _ := readLine(rd, 1000); !tooLong || line != nil {
+		t.Fatalf("a line over the limit is skipped, not kept: %d bytes", len(line))
+	}
+	if line, _, err := readLine(rd, 1000); string(line) != "last" || err != io.EOF {
+		t.Fatalf("after a skipped line reading goes on: %q %v", line, err)
+	}
+}
+
+func TestTranscriptOfTheCurrentRunOnly(t *testing.T) {
+	env := newTestEnv(t, oidcConfig(Rule{Roles: []string{"*"}, Transcript: true}))
+	big := `{"msg":"agent prompt","run":"shop-42-add-paypal#2","role":"implement","prompt":"` + strings.Repeat("q", 100<<10) + `"}`
+	env.server.SetLogSource(fakeLogs{
+		"team-a/shop-42-add-paypal/agent": `{"msg":"agent says","text":"old run","run":"shop-42-add-paypal#1"}` + "\n" +
+			big + "\n" + `{"msg":"agent says","text":"this run","run":"shop-42-add-paypal#2"}` + "\n",
+		// The runner container is not there: the agent's log still counts.
+	})
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.login(t, "/")
+	entries, end, _ := readTranscript(t, env, shopTask+"/transcript")
+	if end != "pod stopped" || len(entries) != 2 || entries[0].Kind != "prompt" || len(entries[0].Prompt) != 100<<10 || entries[1].Text != "this run" {
+		t.Fatalf("end %q, entries %d: %+v", end, len(entries), entries)
+	}
+}
+
+func TestTranscriptPodNotAvailable(t *testing.T) {
+	env := newTestEnv(t, oidcConfig(Rule{Roles: []string{"*"}, Transcript: true}))
+	env.server.SetLogSource(fakeLogs{})
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.login(t, "/")
+	if _, end, _ := readTranscript(t, env, shopTask+"/transcript"); end != "pod not available" {
+		t.Fatalf("no container readable: %q", end)
+	}
+}
+
+func init() {
+	// The fake pods have stopped: no need to wait before checking.
+	reopenDelay = time.Millisecond
 }

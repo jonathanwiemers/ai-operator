@@ -186,13 +186,20 @@ The **Live** panel on a task page follows the task's pod while it runs:
   revisits and merge conflicts add to it.
 
 The UI reads the pod's logs through the Kubernetes API, and passes on only
-known kinds of lines with a fixed set of fields, never a raw log line. A pod
-stops a minute after its run (`lifecycle.idleTimeout`); after that the panel
-is empty, and the run log of the last run is on the merge request. Each new
-run opens a new stream.
+known kinds of lines of the current run, with a fixed set of fields, never a
+raw log line. If a container restarts (out of memory), its log is followed
+again. A pod stops a minute after its run (`lifecycle.idleTimeout`); after
+that the panel is empty, and the run log of the last run is on the merge
+request. Each new run opens a new stream.
+
+The lines are what the containers logged, not signed: anything running in
+the agent container could print lines that look like entries. They are shown
+as text only, never as HTML.
 
 The chart lets the UI's service account read `pods` and `pods/log` in each
-namespace of `agent.namespaces` (Roles, nothing cluster-wide).
+namespace of `agent.namespaces` (Roles, nothing cluster-wide). An
+AgentProject in a namespace that is not listed there has no transcripts:
+its streams end with "pod not available".
 
 ## Without login
 

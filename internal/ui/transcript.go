@@ -12,21 +12,34 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
 // LogSource streams a container's log, following it until the container
-// stops or ctx ends.
+// stops or ctx ends, and tells whether the pod still runs.
 type LogSource interface {
-	Stream(ctx context.Context, namespace, pod, container string) (io.ReadCloser, error)
+	// Stream follows the log from since (nil: from the container's start).
+	Stream(ctx context.Context, namespace, pod, container string, since *time.Time) (io.ReadCloser, error)
+	Running(ctx context.Context, namespace, pod string) bool
 }
 
 // PodLogs reads container logs through the Kubernetes API.
 type PodLogs struct{ Client kubernetes.Interface }
 
 // Stream implements LogSource.
-func (p PodLogs) Stream(ctx context.Context, namespace, pod, container string) (io.ReadCloser, error) {
-	return p.Client.CoreV1().Pods(namespace).GetLogs(pod, &corev1.PodLogOptions{Container: container, Follow: true}).Stream(ctx)
+func (p PodLogs) Stream(ctx context.Context, namespace, pod, container string, since *time.Time) (io.ReadCloser, error) {
+	opts := &corev1.PodLogOptions{Container: container, Follow: true}
+	if since != nil {
+		opts.SinceTime = &metav1.Time{Time: *since}
+	}
+	return p.Client.CoreV1().Pods(namespace).GetLogs(pod, opts).Stream(ctx)
+}
+
+// Running implements LogSource.
+func (p PodLogs) Running(ctx context.Context, namespace, pod string) bool {
+	po, err := p.Client.CoreV1().Pods(namespace).Get(ctx, pod, metav1.GetOptions{})
+	return err == nil && po.DeletionTimestamp == nil && po.Status.Phase == corev1.PodRunning
 }
 
 // Entry is one line of a run's live transcript as the browser gets it: the
@@ -58,8 +71,27 @@ type Entry struct {
 }
 
 // maxLogLine skips log lines longer than this (a logged prompt is at most
-// 2×64 KiB plus escaping).
+// 2×64 KiB plus escaping); they are never held in memory whole.
 const maxLogLine = 1 << 20
+
+// readLine returns the next line of rd. A line longer than max is read to
+// its end but not kept: tooLong is set and line is nil.
+func readLine(rd *bufio.Reader, max int) (line []byte, tooLong bool, err error) {
+	for {
+		chunk, err := rd.ReadSlice('\n')
+		// chunk points into rd's buffer: copy it before the next read.
+		if !tooLong {
+			if len(line)+len(chunk) > max {
+				tooLong, line = true, nil
+			} else {
+				line = append(line, chunk...)
+			}
+		}
+		if err != bufio.ErrBufferFull {
+			return line, tooLong, err
+		}
+	}
+}
 
 // parseLogLine turns a runner or agent container log line into an entry.
 // Lines of other kinds, and lines that are no JSON, give none.
@@ -120,19 +152,35 @@ func firstOf(s ...string) string {
 // the agent's session.
 var transcriptContainers = []string{"runner", "agent"}
 
+// reopenDelay and maxReopens: a container that restarts (out of memory) ends
+// its log stream; while the pod runs, it is followed again.
+var (
+	reopenDelay = 2 * time.Second
+	maxReopens  = 20
+)
+
 // transcript streams the live transcript of a task's pod (server-sent
-// events): what the containers logged so far, then live, until the pod's
-// containers stop, the client leaves or the session expires.
+// events): what the current run logged so far, then live, until the pod
+// stops, the client leaves or the session expires.
 func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 	ap, tasks, ok := s.loadProject(w, r)
 	if !ok {
 		return
 	}
-	var pod, ns string
+	var pod, ns, run string
 	found := false
 	for i := range tasks {
-		if tasks[i].Name == r.PathValue("task") {
-			found, pod, ns = true, tasks[i].Status.PodName, tasks[i].Namespace
+		if t := &tasks[i]; t.Name == r.PathValue("task") {
+			found, ns = true, t.Namespace
+			// Pods are named after their task. The status only says whether
+			// one exists: the agent pods may write it, so it must not decide
+			// whose logs are read.
+			if t.Status.PodName != "" {
+				pod = t.Name
+			}
+			if t.Status.Run.ActiveRunRequest > 0 {
+				run = fmt.Sprintf("%s#%d", t.Name, t.Status.Run.ActiveRunRequest)
+			}
 		}
 	}
 	p := principalOf(r)
@@ -166,8 +214,8 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	// No automatic reconnect: the app opens a new stream when the task's pod
-	// changes.
+	// No automatic reconnect: the app opens a new stream when the task's
+	// run changes.
 	fmt.Fprint(w, ": connected\n\n")
 	flusher.Flush()
 	end := func(reason string) {
@@ -184,48 +232,26 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	entries := make(chan Entry, 64)
 	var wg sync.WaitGroup
-	var errMu sync.Mutex
-	var streamErr error
+	var failedMu sync.Mutex
+	failed := 0
 	for _, c := range transcriptContainers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			rc, err := s.logs.Stream(ctx, ns, pod, c)
-			if err != nil {
-				errMu.Lock()
-				streamErr = err
-				errMu.Unlock()
-				return
-			}
-			defer rc.Close()
-			rd := bufio.NewReaderSize(rc, 64<<10)
-			for {
-				line, err := rd.ReadSlice('\n')
-				if err == bufio.ErrBufferFull {
-					// A long line (a prompt): read it whole, unless it is
-					// absurdly long.
-					rest, rerr := rd.ReadBytes('\n')
-					line = append(append([]byte{}, line...), rest...)
-					err = rerr
-				}
-				if len(line) <= maxLogLine {
-					if e, ok := parseLogLine(line); ok {
-						select {
-						case entries <- e:
-						case <-ctx.Done():
-							return
-						}
-					}
-				}
-				if err != nil {
-					return
-				}
+			if !s.followContainer(ctx, ns, pod, c, run, entries) {
+				failedMu.Lock()
+				failed++
+				failedMu.Unlock()
 			}
 		}()
 	}
 	done := make(chan struct{})
 	go func() { wg.Wait(); close(done) }()
 
+	send := func(e Entry) {
+		b, _ := json.Marshal(e)
+		fmt.Fprintf(w, "event: entry\ndata: %s\n\n", b)
+	}
 	var expired <-chan time.Time
 	if exp := sessionExpiry(r); !exp.IsZero() {
 		t := time.NewTimer(time.Until(exp))
@@ -244,25 +270,21 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		case <-tick.C:
 			fmt.Fprint(w, ": ping\n\n")
 		case e := <-entries:
-			b, _ := json.Marshal(e)
-			fmt.Fprintf(w, "event: entry\ndata: %s\n\n", b)
+			send(e)
 		case <-done:
 			// Entries still buffered go out first.
-			for {
+			for drained := false; !drained; {
 				select {
 				case e := <-entries:
-					b, _ := json.Marshal(e)
-					fmt.Fprintf(w, "event: entry\ndata: %s\n\n", b)
-					continue
+					send(e)
 				default:
+					drained = true
 				}
-				break
 			}
-			errMu.Lock()
-			err := streamErr
-			errMu.Unlock()
-			if err != nil {
-				s.log.V(1).Info("transcript stream ended", "pod", pod, "error", err.Error())
+			failedMu.Lock()
+			all := failed == len(transcriptContainers)
+			failedMu.Unlock()
+			if all {
 				end("pod not available")
 			} else {
 				end("pod stopped")
@@ -271,4 +293,62 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		}
 		flusher.Flush()
 	}
+}
+
+// followContainer sends a container's transcript entries of run (all runs
+// if empty) until its log ends for good: the pod stopped or ctx ended. A
+// log that ends while the pod runs (a restarted container) is followed again
+// from the last entry's time. It reports whether the log could be read at
+// all.
+func (s *Server) followContainer(ctx context.Context, ns, pod, container, run string, out chan<- Entry) bool {
+	opened := false
+	var since *time.Time
+	last := ""
+	for reopen := 0; reopen <= maxReopens; reopen++ {
+		rc, err := s.logs.Stream(ctx, ns, pod, container, since)
+		if err != nil {
+			s.log.V(1).Info("cannot read a container log", "pod", pod, "container", container, "error", err.Error())
+			return opened
+		}
+		opened = true
+		rd := bufio.NewReaderSize(rc, 64<<10)
+		for {
+			line, tooLong, err := readLine(rd, maxLogLine)
+			if !tooLong {
+				// Entries of other runs, and entries seen before a reopen, are
+				// skipped (log times have whole seconds at worst, so a reopen
+				// from the last time repeats some).
+				if e, ok := parseLogLine(line); ok && (run == "" || e.Run == "" || e.Run == run) && (e.Time == "" || e.Time > last || since == nil) {
+					if e.Time != "" {
+						last = e.Time
+					}
+					select {
+					case out <- e:
+					case <-ctx.Done():
+						rc.Close()
+						return true
+					}
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+		rc.Close()
+		select {
+		case <-ctx.Done():
+			return true
+		case <-time.After(reopenDelay):
+		}
+		if !s.logs.Running(ctx, ns, pod) {
+			return true
+		}
+		if t, err := time.Parse(time.RFC3339Nano, last); err == nil {
+			since = &t
+		} else {
+			now := time.Now()
+			since = &now
+		}
+	}
+	return true
 }

@@ -174,9 +174,10 @@ func testObjects() []client.Object {
 				Issue:     &aiv1.IssueRef{IID: 42, Title: "Add PayPal"},
 			},
 			Status: aiv1.AgentTaskStatus{
-				Phase:   aiv1.TaskPhaseRunning,
-				PodName: "shop-42-add-paypal",
-				Run:     aiv1.RunStatus{ObservedRunRequest: 1, CurrentStep: "10 run implementer", CostUSD: "0.50"},
+				Phase: aiv1.TaskPhaseRunning,
+				// Only says a pod exists: the pod read is the task's own.
+				PodName: "billing-7-invoice",
+				Run:     aiv1.RunStatus{ObservedRunRequest: 1, ActiveRunRequest: 2, CurrentStep: "10 run implementer", CostUSD: "0.50"},
 			},
 		},
 		&aiv1.AgentTask{
