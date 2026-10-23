@@ -56,7 +56,11 @@ func (m *Mirror) env(withAuth bool) []string {
 }
 
 func (m *Mirror) run(ctx context.Context, withAuth bool, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=/dev/null", "--git-dir", m.Dir}, args...)...)
+	// Automatic gc and maintenance run in the foreground: a detached one
+	// would still write to the mirror after the command returned (and
+	// break the cleanup of test directories).
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=/dev/null", "-c", "gc.autoDetach=false",
+		"-c", "maintenance.autoDetach=false", "--git-dir", m.Dir}, args...)...)
 	cmd.Env = m.env(withAuth)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
