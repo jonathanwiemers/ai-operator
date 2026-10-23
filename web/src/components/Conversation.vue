@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ApiError, get, post, LoginRequiredError } from '../api'
-import { live } from '../live'
 import ExtLink from './ExtLink.vue'
 import RelTime from './RelTime.vue'
 import type { GitLabStatus, NoteView, ThreadPart } from '../types'
@@ -9,7 +8,8 @@ import type { GitLabStatus, NoteView, ThreadPart } from '../types'
 // Conversation shows the task's issue, merge request and tracking issue
 // comments, read with the user's own GitLab account, and posts comments in
 // their name. The operator handles them like any comment written in GitLab.
-const props = defineProps<{ namespace: string; name: string; task: string; steer: boolean }>()
+// stamp changes when the task does (a run, CI): then comments are likely new.
+const props = defineProps<{ namespace: string; name: string; task: string; steer: boolean; stamp: string }>()
 
 const status = ref<GitLabStatus | null>(null)
 const parts = ref<ThreadPart[]>([])
@@ -22,9 +22,23 @@ const sendError = ref('')
 const base = computed(
   () => `/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/tasks/${encodeURIComponent(props.task)}`,
 )
+// The connection's outcome comes back as a code in the URL: shown as a fixed
+// text, then removed from the URL.
+const errorTexts: Record<string, string> = {
+  expired: 'the connection took too long',
+  state: 'the answer did not match the request',
+  refused: 'GitLab refused it',
+  token: 'GitLab did not hand out a token',
+}
+const params = new URLSearchParams(window.location.search)
+const gitlabError = params.has('gitlab_error') ? (errorTexts[params.get('gitlab_error') ?? ''] ?? 'it failed') : ''
+if (params.has('gitlab_error')) {
+  params.delete('gitlab_error')
+  const q = params.toString()
+  window.history.replaceState(window.history.state, '', window.location.pathname + (q ? `?${q}` : ''))
+}
 const returnTo = () => window.location.pathname + window.location.search
 const connectURL = computed(() => `${status.value?.login ?? '/oauth2/gitlab/login'}?return=${encodeURIComponent(returnTo())}`)
-const gitlabError = new URLSearchParams(window.location.search).get('gitlab_error')
 
 async function loadStatus() {
   try {
@@ -34,10 +48,13 @@ async function loadStatus() {
   }
 }
 
+let seq = 0
 async function loadThread() {
   if (!status.value?.connected) return
+  const mine = ++seq
   try {
     const r = await get<{ parts: ThreadPart[] }>(`${base.value}/thread`)
+    if (mine !== seq) return // a newer load is on its way
     parts.value = r.parts
     const first = parts.value[0]
     if (first && !parts.value.some((p) => p.target === active.value)) active.value = first.target
@@ -93,13 +110,13 @@ onMounted(async () => {
   timer = window.setInterval(loadThread, 30000)
 })
 onUnmounted(() => window.clearInterval(timer))
-// The task changed (a run, a label): new comments are likely.
-watch(() => live.version, loadThread)
+// The task changed (a run, CI): new comments are likely.
+watch(() => props.stamp, loadThread)
 </script>
 
 <template>
   <div class="card conv">
-    <div v-if="gitlabError" class="banner warning">Connecting GitLab did not work ({{ gitlabError }}); try again.</div>
+    <div v-if="gitlabError" class="banner warning">Connecting GitLab did not work: {{ gitlabError }}. Try again.</div>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="status && !status.connected" class="body">
       <p>Connect your GitLab account to see the comments here and write comments, in your own name.</p>

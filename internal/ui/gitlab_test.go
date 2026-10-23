@@ -28,6 +28,8 @@ type fakeGitLab struct {
 	refresh  map[string]string // refresh token -> username
 	posted   []string          // "issue 42 <token>: body"
 	expiries int               // expires_in of issued tokens
+	mrBranch string            // source branch of every MR
+	down     bool              // the token endpoint answers 503
 }
 
 func newFakeGitLab(t *testing.T) *fakeGitLab {
@@ -44,6 +46,10 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		if g.down {
+			http.Error(w, `{"error":"temporarily_unavailable"}`, http.StatusServiceUnavailable)
+			return
+		}
 		switch r.Form.Get("grant_type") {
 		case "authorization_code":
 			if r.Form.Get("code") != "good-code" || r.Form.Get("code_verifier") == "" {
@@ -54,7 +60,8 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 		case "refresh_token":
 			user, ok := g.refresh[r.Form.Get("refresh_token")]
 			if !ok {
-				http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
 				return
 			}
 			delete(g.refresh, r.Form.Get("refresh_token"))
@@ -91,6 +98,11 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 		}
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 1, "body": "please add tests", "author": map[string]any{"username": "bob"}}})
 	}
+	mux.HandleFunc("GET /api/v4/projects/{project}/merge_requests/{iid}", func(w http.ResponseWriter, r *http.Request) {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{"iid": 5, "source_branch": g.mrBranch, "state": "opened"})
+	})
 	mux.HandleFunc("GET /api/v4/projects/{project}/{kind}/{iid}/notes", notes)
 	mux.HandleFunc("POST /api/v4/projects/{project}/{kind}/{iid}/notes", notes)
 	g.srv = httptest.NewServer(mux)
@@ -270,5 +282,65 @@ func TestGitLabTokenBelongsToItsUser(t *testing.T) {
 	env.get(t, "/api/v1/gitlab", &st)
 	if st.Connected {
 		t.Fatal("bob must not use ada's GitLab token")
+	}
+}
+
+func TestCommentsOnlyOnTheTasksMR(t *testing.T) {
+	env, gl := newSteeringEnv(t, Rule{Roles: []string{"*"}, Steer: true})
+	// The agent pods may write the task's status: a wrong MR number there
+	// must not send a user's comment elsewhere.
+	var task aiv1.AgentTask
+	if err := env.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: "shop-42-add-paypal"}, &task); err != nil {
+		t.Fatal(err)
+	}
+	task.Status.Run.MergeRequestIID = 5
+	if err := env.reader.Update(context.Background(), &task); err != nil {
+		t.Fatal(err)
+	}
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.login(t, "/")
+	env.connectGitLab(t, "good-code")
+
+	gl.mrBranch = "agent/7-someone-elses"
+	if code, _ := env.postJSON(t, shopTask+"/notes", map[string]string{"target": "mr", "body": "x"}); code != http.StatusConflict || len(gl.posted) != 0 {
+		t.Fatalf("an MR on another branch: %d, posted %q", code, gl.posted)
+	}
+	gl.mrBranch = "agent/42-add-paypal"
+	if code, _ := env.postJSON(t, shopTask+"/notes", map[string]string{"target": "mr", "body": "x"}); code != http.StatusOK || len(gl.posted) != 1 {
+		t.Fatalf("the task's MR: %d, posted %q", code, gl.posted)
+	}
+}
+
+func TestRefreshFailures(t *testing.T) {
+	env, gl := newSteeringEnv(t, Rule{Roles: []string{"*"}, Steer: true})
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.login(t, "/")
+	env.connectGitLab(t, "good-code")
+	env.server.sessions.now = func() time.Time { return time.Now().Add(3 * time.Hour) }
+	defer func() { env.server.sessions.now = time.Now }()
+
+	// GitLab is down: the connection stays.
+	gl.down = true
+	if code := env.get(t, shopTask+"/thread", nil); code != http.StatusServiceUnavailable {
+		t.Fatalf("GitLab down: %d", code)
+	}
+	gl.down = false
+	if code := env.get(t, shopTask+"/thread", nil); code != http.StatusOK {
+		t.Fatalf("the connection must survive GitLab being down: %d", code)
+	}
+	// The refresh token was used up elsewhere (another tab): connect again.
+	gl.mu.Lock()
+	gl.refresh = map[string]string{}
+	gl.mu.Unlock()
+	env.server.sessions.now = func() time.Time { return time.Now().Add(6 * time.Hour) }
+	if code := env.get(t, shopTask+"/thread", nil); code != http.StatusConflict {
+		t.Fatalf("invalid_grant: %d", code)
+	}
+	// After 30 days the connection ends, however often it was refreshed.
+	env.server.sessions.now = func() time.Time { return time.Now().Add(31 * 24 * time.Hour) }
+	var st GitLabStatusView
+	env.get(t, "/api/v1/gitlab", &st)
+	if st.Connected {
+		t.Fatal("the connection must end after 30 days")
 	}
 }

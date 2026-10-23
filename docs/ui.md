@@ -254,10 +254,17 @@ task page.
   the box start a comment with the common commands. The UI logs who posted
   where (user, GitLab user, project, target, note id), never the text.
 - **Tokens:** the access and refresh token live in an encrypted, `HttpOnly`
-  cookie (like the login) for 30 days, bound to your UI user, refreshed when
-  the access token runs out, never readable by the page's JavaScript.
+  cookie (like the login), bound to your UI user, refreshed when the access
+  token runs out, never readable by the page's JavaScript. The connection
+  ends 30 days after you made it, however often it was refreshed.
   **Disconnect** forgets them; revoke the application in GitLab to end it
   there too.
+- **Targets are checked:** a comment goes to an MR only if its source branch
+  is the task issue's work branch, and to a tracking issue only if it is the
+  operator's tracking issue of the task's milestone (the task status, which
+  holds their numbers, is written by the agent pods too).
+- The rate limit counts per UI replica. The `gitlab-client-secret` key must
+  exist in the Secret, or the UI pod does not start.
 - Projects on another GitLab host than `ui.gitlab.url` get no thread and no
   box.
 

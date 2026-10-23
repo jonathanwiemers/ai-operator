@@ -11,11 +11,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/oauth2"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/naming"
 )
 
 // Paths of the GitLab connection.
@@ -38,6 +41,8 @@ type GitLabToken struct {
 	Expires  int64  `json:"exp"`
 	Username string `json:"user"`
 	UserID   int64  `json:"uid"`
+	// Until ends the connection, however often the token is refreshed.
+	Until int64 `json:"until"`
 }
 
 // gitlabConn runs the OAuth flow against the configured GitLab and keeps the
@@ -126,7 +131,7 @@ func (g *gitlabConn) callback(s *Server) http.HandlerFunc {
 			return
 		}
 		gt := GitLabToken{Owner: principalOf(r).Username, Access: tok.AccessToken, Refresh: tok.RefreshToken,
-			Expires: tok.Expiry.Unix(), Username: u.Username, UserID: u.ID}
+			Expires: tok.Expiry.Unix(), Username: u.Username, UserID: u.ID, Until: g.sessions.now().Add(gitlabTokenTTL).Unix()}
 		if err := g.store(w, gt); err != nil {
 			s.log.Error(err, "cannot keep the GitLab token")
 			back("token")
@@ -138,7 +143,7 @@ func (g *gitlabConn) callback(s *Server) http.HandlerFunc {
 }
 
 func (g *gitlabConn) store(w http.ResponseWriter, t GitLabToken) error {
-	return g.sessions.write(w, g.cookie(), t, g.sessions.now().Add(gitlabTokenTTL))
+	return g.sessions.write(w, g.cookie(), t, time.Unix(t.Until, 0))
 }
 
 // logout forgets the user's GitLab token.
@@ -150,11 +155,14 @@ func (g *gitlabConn) logout(w http.ResponseWriter, _ *http.Request) {
 // errNotConnected: the user has no (usable) GitLab connection.
 var errNotConnected = errors.New("GitLab is not connected")
 
+// errGitLabUnavailable: refreshing the token failed for a passing reason.
+var errGitLabUnavailable = errors.New("GitLab is not reachable")
+
 // token returns the request user's GitLab token, refreshed if it is about to
 // expire. A token of another UI user (a shared browser) does not count.
 func (g *gitlabConn) token(w http.ResponseWriter, r *http.Request) (*GitLabToken, error) {
 	var t GitLabToken
-	if !g.sessions.read(r, g.cookie(), &t) || t.Owner != principalOf(r).Username || t.Access == "" {
+	if !g.sessions.read(r, g.cookie(), &t) || t.Owner != principalOf(r).Username || t.Access == "" || g.sessions.now().Unix() >= t.Until {
 		return nil, errNotConnected
 	}
 	if g.sessions.now().Add(time.Minute).Unix() < t.Expires {
@@ -164,9 +172,14 @@ func (g *gitlabConn) token(w http.ResponseWriter, r *http.Request) (*GitLabToken
 	defer cancel()
 	tok, err := g.oauth2Config().TokenSource(ctx, &oauth2.Token{RefreshToken: t.Refresh, Expiry: time.Unix(1, 0)}).Token()
 	if err != nil {
-		// Revoked or expired: connect again.
-		g.sessions.Clear(w, g.cookie())
-		return nil, errNotConnected
+		var re *oauth2.RetrieveError
+		if errors.As(err, &re) && re.ErrorCode == "invalid_grant" {
+			// Revoked, or another tab refreshed it just now: that tab's
+			// cookie wins; without it, connect again.
+			return nil, errNotConnected
+		}
+		// GitLab is not reachable: keep the connection.
+		return nil, errGitLabUnavailable
 	}
 	t.Access, t.Expires = tok.AccessToken, tok.Expiry.Unix()
 	if tok.RefreshToken != "" {
@@ -268,7 +281,11 @@ func (s *Server) steeringTask(w http.ResponseWriter, r *http.Request) (*aiv1.Age
 		return nil, nil, nil, nil, false
 	}
 	tok, err := s.gitlab.token(w, r)
-	if err != nil {
+	switch {
+	case errors.Is(err, errGitLabUnavailable):
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "GitLab is not reachable right now"})
+		return nil, nil, nil, nil, false
+	case err != nil:
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account first", "login": pathGitLabLogin})
 		return nil, nil, nil, nil, false
 	}
@@ -368,7 +385,7 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Body = strings.TrimSpace(req.Body)
-	if req.Body == "" || len(req.Body) > maxNoteBody {
+	if req.Body == "" || utf8.RuneCountInString(req.Body) > maxNoteBody {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("the comment must have 1 to %d characters", maxNoteBody)})
 		return
 	}
@@ -386,6 +403,14 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "the task has no " + req.Target})
 		return
 	}
+	// The MR and tracking issue numbers come from the task's status, which
+	// the agent pods may write: check that they are the task's before a
+	// user's comment goes there.
+	if err := s.checkTarget(r.Context(), gl, ap, task, target); err != nil {
+		s.log.Info("refusing a comment target", "user", p.Username, "target", target.Target, "iid", target.IID, "reason", err.Error())
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "the " + target.Target + " could not be confirmed as this task's"})
+		return
+	}
 	if !s.notes.allow(p.Username, time.Now()) {
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many comments, try again in a minute"})
 		return
@@ -400,7 +425,12 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		code := gitlab.StatusCode(err)
 		s.log.Info("posting a comment failed", "user", p.Username, "gitlabUser", tok.Username, "target", target.Target, "iid", target.IID, "status", code)
-		if code == http.StatusUnauthorized || code == http.StatusForbidden || code == http.StatusNotFound {
+		if code == http.StatusUnauthorized {
+			s.gitlab.sessions.Clear(w, s.gitlab.cookie())
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account again", "login": pathGitLabLogin})
+			return
+		}
+		if code == http.StatusForbidden || code == http.StatusNotFound {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "GitLab did not let you comment there"})
 			return
 		}
@@ -411,4 +441,31 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("comment posted", "user", p.Username, "gitlabUser", tok.Username, "project", ap.Namespace+"/"+ap.Name,
 		"target", target.Target, "iid", target.IID, "note", n.ID)
 	writeJSON(w, http.StatusOK, NoteView{ID: n.ID, Author: tok.Username, Body: n.Body, CreatedAt: n.CreatedAt})
+}
+
+// checkTarget confirms that the MR or tracking issue a comment goes to
+// belongs to the task: the MR's source branch is the task issue's work
+// branch, the tracking issue carries the operator's marker. The issue
+// itself comes from the task's spec, which only the operator writes.
+func (s *Server) checkTarget(ctx context.Context, gl gitlab.API, ap *aiv1.AgentProject, task *aiv1.AgentTask, t *ThreadPart) error {
+	project := ap.Spec.GitLab.Project
+	switch t.Target {
+	case "mr":
+		mr, err := gl.GetMergeRequest(ctx, project, t.IID)
+		if err != nil {
+			return err
+		}
+		if task.Spec.Issue == nil || !naming.IsIssueBranch(mr.SourceBranch, task.Spec.Issue.IID) {
+			return fmt.Errorf("!%d is not on the work branch of the task's issue", t.IID)
+		}
+	case "tracking":
+		is, err := gl.GetIssue(ctx, project, t.IID)
+		if err != nil {
+			return err
+		}
+		if !marker.IsTrackingIssue(is.Description) || is.Milestone == nil || task.Spec.Milestone == nil || is.Milestone.ID != task.Spec.Milestone.ID {
+			return fmt.Errorf("#%d is not the tracking issue of the task's milestone", t.IID)
+		}
+	}
+	return nil
 }

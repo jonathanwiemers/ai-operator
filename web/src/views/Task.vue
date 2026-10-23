@@ -145,7 +145,13 @@ const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? '
 
       <section v-if="data?.permissions?.gitlab" class="section">
         <h3>Conversation</h3>
-        <Conversation :namespace="namespace" :name="name" :task="task" :steer="!!data?.permissions?.steer" />
+        <Conversation
+          :namespace="namespace"
+          :name="name"
+          :task="task"
+          :steer="!!data?.permissions?.steer"
+          :stamp="`${run.lastActivityTime ?? ''}|${run.mergeRequestIID ?? ''}|${t.status.ci?.state ?? ''}|${t.status.autopilot?.phase ?? ''}`"
+        />
       </section>
 
       <section v-if="data?.permissions?.transcript" class="section">
