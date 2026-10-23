@@ -114,7 +114,25 @@ deployment / README, `docs/usage.md`, `docs/configuration.md`,
 - Controller: owners resolved from milestone/project/default onto tasks; CI
   red mentions; green requests reviewers; autopilot pause mentions.
 
+## Steers from review
+
+- Agent text going to GitLab (description prose, run reports, questions) is
+  made inert: mentions after any non-word character and lines starting with
+  `/` (quick actions, which GitLab runs in API-written notes and
+  descriptions) get a zero-width space.
+- The describer re-reads the MR right before writing, so edits made during
+  its call survive; a failing checkout reset no longer drops the description.
+- The owners line is stripped (with one surrounding blank line) before
+  hashing, before milestone selection and from the agents' prompts.
+- On autopilot, failures and questions do not ping: the pause on the
+  tracking issue does.
+- The CI loop records `status.ci.pinged` per commit, so a pipeline re-run in
+  review does not ping again; the first report keeps its summary when the
+  run stops for input.
+- Not done: owners lines inside code fences still count.
+
 ## Delivery
 
-Single PR on GitHub `jonathanwiemers/ai-operator`, reviewed by a subagent,
-merged when the review is clean and CI is green.
+Single PR on GitHub `jonathanwiemers/ai-operator`
+([#35](https://github.com/jonathanwiemers/ai-operator/pull/35)), reviewed by
+a subagent, merged when the review is clean and CI is green.

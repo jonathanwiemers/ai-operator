@@ -564,7 +564,8 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 	wf := spec.Workflow
 	body := fmt.Sprintf("🤖 The agent run failed:\n\n```\n%s\n```\n\nComment `%s retry` (or move the issue back to `%s`) to try again.",
 		truncate(runErr.Error(), 3000), wf.CommandPrefix, wf.ReadyLabel)
-	if spec.Notify.Wants(aiv1.NotifyFailed) {
+	// On autopilot the pause on the tracking issue mentions the owners.
+	if spec.Notify.Wants(aiv1.NotifyFailed) && !task.Spec.Autopilot {
 		body += notify.Mention(task.Spec.Owners)
 	}
 	body += r.run.markdown(out.CostUSD)

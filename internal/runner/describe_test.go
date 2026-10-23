@@ -76,6 +76,8 @@ type describingEngine struct {
 	failWith  error
 	answer    ImplementAnswer
 	runErr    error
+	// onDescribe runs while the describer works, e.g. a human's edit.
+	onDescribe func()
 }
 
 func (d *describingEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
@@ -85,6 +87,9 @@ func (d *describingEngine) Run(_ context.Context, inv Invocation) (*Result, erro
 	switch {
 	case inv.JSONSchema == describeSchema:
 		d.describes++
+		if d.onDescribe != nil {
+			d.onDescribe()
+		}
 		if d.failWith != nil {
 			return nil, d.failWith
 		}
@@ -161,6 +166,20 @@ func TestDescribeSkipsAnUnchangedDiff(t *testing.T) {
 	}
 }
 
+func TestDescribeKeepsAnEditMadeMeanwhile(t *testing.T) {
+	e := newImplementEnv(t)
+	engine := &describingEngine{}
+	engine.onDescribe = func() { e.gl.MRs[1].Description = "Edited while the agent wrote.\n\n" + e.gl.MRs[1].Description }
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	desc := e.gl.MRs[1].Description
+	if !strings.HasPrefix(desc, "Edited while the agent wrote.") || !strings.Contains(desc, "- steady") {
+		t.Fatalf("the edit made during the describer's call must stay:\n%s", desc)
+	}
+}
+
 func TestDescriberFailureIsANotice(t *testing.T) {
 	e := newImplementEnv(t)
 	engine := &describingEngine{failWith: errors.New("boom")}
@@ -208,8 +227,12 @@ func TestQuestionsMentionTheOwners(t *testing.T) {
 	if !strings.Contains(q, "Which provider?") || !strings.HasSuffix(q, "cc @alice") {
 		t.Fatalf("the questions mention the owners:\n%s", q)
 	}
-	if report := e.gl.MRNotes[1][len(e.gl.MRNotes[1])-1].Body; strings.Contains(report, "cc @") {
+	report := e.gl.MRNotes[1][len(e.gl.MRNotes[1])-1].Body
+	if strings.Contains(report, "cc @") {
 		t.Fatalf("the owners are mentioned once, on the questions:\n%s", report)
+	}
+	if !strings.Contains(report, "Stuck.") {
+		t.Fatalf("a run that stops for input keeps its summary, also with the first description:\n%s", report)
 	}
 }
 
@@ -246,6 +269,26 @@ func TestReviewOnAutopilotPingsNobody(t *testing.T) {
 	}
 	if report := e.gl.MRNotes[1][len(e.gl.MRNotes[1])-1].Body; strings.Contains(report, "cc @") || len(e.gl.MRs[1].Reviewers) != 0 {
 		t.Fatalf("autopilot merges itself; nobody is asked:\n%s", report)
+	}
+}
+
+func TestFailureOnAutopilotLeavesThePingToThePause(t *testing.T) {
+	e := newImplementEnv(t)
+	e.configure(t, func(*aiv1.AgentProjectSpec) {}, func(s *aiv1.AgentTaskSpec) { s.Owners, s.Autopilot = []string{"alice"}, true })
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, &describingEngine{runErr: errors.New("engine exploded")}, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	notes := e.gl.IssueNotes[42]
+	if body := notes[len(notes)-1].Body; !strings.Contains(body, "The agent run failed") || strings.Contains(body, "cc @") {
+		t.Fatalf("on autopilot the failure pings nobody:\n%s", body)
+	}
+}
+
+func TestReportRunsNoQuickActions(t *testing.T) {
+	got := renderReport(ImplementAnswer{Summary: "Done.\n/merge\nping @alice"}, nil, nil)
+	if strings.Contains(got, "\n/merge") || strings.Contains(got, "@alice") {
+		t.Fatalf("agent text must be inert:\n%q", got)
 	}
 }
 

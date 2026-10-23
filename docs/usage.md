@@ -224,7 +224,9 @@ need a human, so GitLab sends them a mail and a To-Do:
 | autopilot paused or is done | tracking issue |
 
 Only new comments carry the mention, never the progress comment that is
-edited while a run goes on. The owners are, most specific first:
+edited while a run goes on, and each commit pings for review once. On
+autopilot, failed runs and questions ping through the pause on the tracking
+issue instead. The owners are, most specific first:
 
 1. a line in the milestone description, for the milestone and its issues:
 

@@ -28,7 +28,7 @@ func (e *projectEnv) setNotify(n aiv1.NotifySpec) {
 func TestOwnersOfTasks(t *testing.T) {
 	e := newProjectEnv(t)
 	e.r.DefaultOwners = []string{"ops"}
-	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2", State: "active", Description: "/agent spec\nBuild a new checkout."}
+	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2", State: "active", Description: "/agent spec\n\nBuild a new checkout."}
 	e.gl.Milestones = []gitlab.Milestone{m}
 	in := e.gl.AddIssue(42, "Add PayPal button", "agent::working")
 	mc := m
@@ -49,8 +49,9 @@ func TestOwnersOfTasks(t *testing.T) {
 		t.Fatalf("the project's owners replace the default, got %v", got)
 	}
 
-	// The milestone names its own owners; that is no change of the spec.
-	e.gl.Milestones[0].Description = "/agent spec\n/agent owners @alice, bob\nBuild a new checkout."
+	// The milestone names its own owners, as a paragraph of its own; that
+	// is no change of the spec.
+	e.gl.Milestones[0].Description = "/agent spec\n\n/agent owners @alice, bob\n\nBuild a new checkout."
 	e.reconcile()
 	if got := owners("shop-spec-m3-checkout-v2"); !slices.Equal(got, []string{"alice", "bob"}) {
 		t.Fatalf("milestone owners: %v", got)
@@ -103,8 +104,38 @@ func TestCIGreenRequestsReview(t *testing.T) {
 	if len(notes) != 1 || !strings.Contains(notes[0].Body, "Ready for review") || !strings.Contains(notes[0].Body, "cc @alice @ghost") {
 		t.Fatalf("expected one review ping on the MR: %+v", notes)
 	}
+	// The same commit ending the loop again (a pipeline run again in
+	// review) pings nobody again.
+	task = e.ciTask()
+	ci := task.Status.CI.DeepCopy()
+	if !ci.Pinged {
+		t.Fatalf("the ping must be recorded: %+v", ci)
+	}
+	is := *e.gl.Issues[42]
+	if err := e.r.finishCI(e.ctx, e.gl, testProject().Spec.WithDefaults(), is, &task, ci, aiv1.CIStateSuccess, ""); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(e.gl.MRNotes[mr.IID]); n != 1 {
+		t.Fatalf("pinged twice for one commit: %d notes", n)
+	}
 	if e.notes() != "" {
 		t.Fatalf("a green pipeline needs no issue comment, got %q", e.notes())
+	}
+}
+
+func TestOwnersLineDoesNotSelectAMilestone(t *testing.T) {
+	e := newProjectEnv(t)
+	var p aiv1.AgentProject
+	_ = e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &p)
+	empty := ""
+	p.Spec.Milestones.SpecMarker = &empty // every milestone with a description
+	if err := e.c.Update(e.ctx, &p); err != nil {
+		t.Fatal(err)
+	}
+	e.gl.Milestones = []gitlab.Milestone{{ID: 11, IID: 3, Title: "Later", State: "active", Description: "/agent owners @alice"}}
+	e.reconcile()
+	if len(e.tasks()) != 0 {
+		t.Fatalf("an owners line alone is no spec: %v", keys(e.tasks()))
 	}
 }
 

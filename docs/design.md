@@ -172,8 +172,11 @@ verification and an optional mermaid diagram. It only runs when the diff's
 hash differs from the one last described (runner state), and its failure is a
 notice in the report, never a failed run. The runner owns the text between
 `<!-- ai-operator:description -->` markers; the rest of the description is
-left alone. Mentions in the agent's prose are defused (a zero-width space
-after `@`), and a diagram is kept only with a known mermaid type, no code
+left alone; it is read again right before the write, so an edit made while
+the describer ran is kept. Agent text sent to GitLab (the description's
+prose, run reports, questions) is made inert: a zero-width space after `@`
+and before a `/` that starts a line, because GitLab runs quick actions in
+notes and descriptions written through the API. A diagram is kept only with a known mermaid type, no code
 fence and at most 5000 bytes.
 
 **Owners.** The project controller resolves the owners of every task on each

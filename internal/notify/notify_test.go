@@ -21,6 +21,7 @@ func TestMilestoneOwners(t *testing.T) {
 		{"/agent owners", nil, true}, // nobody: mentions off
 		{"/agent ownership @dave", nil, false},
 		{"see /agent owners @erin", nil, false}, // not at the start of a line
+		{"/agent owners @alice, @bob.", []string{"alice", "bob"}, true},
 	} {
 		got, found := MilestoneOwners(tc.desc, "/agent")
 		if found != tc.found || !slices.Equal(got, tc.want) {
@@ -37,6 +38,19 @@ func TestWithoutOwnersKeepsTheSpec(t *testing.T) {
 		"/agent spec\nBuild it.\n/agent owners\nThen ship it.",
 	} {
 		if got := WithoutOwners(desc, "/agent"); got != plain && got != plain+"\n" {
+			t.Errorf("%q: got %q", desc, got)
+		}
+	}
+}
+
+func TestWithoutOwnersKeepsParagraphs(t *testing.T) {
+	plain := "/agent spec\n\nBuild it.\n\nShip it."
+	for _, desc := range []string{
+		"/agent spec\n\n/agent owners @x\n\nBuild it.\n\nShip it.",
+		"/agent spec\n\nBuild it.\n\nShip it.\n\n/agent owners @x",
+		"/agent owners @x\n\n/agent spec\n\nBuild it.\n\nShip it.",
+	} {
+		if got := WithoutOwners(desc, "/agent"); got != plain {
 			t.Errorf("%q: got %q", desc, got)
 		}
 	}
@@ -68,13 +82,16 @@ func TestMention(t *testing.T) {
 
 func TestDefuse(t *testing.T) {
 	for in, want := range map[string]string{
-		"ping @alice now":          "ping @​alice now",
-		"@bob first":               "@​bob first",
-		"(@carol)":                 "(@​carol)",
-		"mail dev@example.com":     "mail dev@example.com",
-		"no mention @ all":         "no mention @ all",
-		"twice @a and @b":          "twice @​a and @​b",
-		"path ./@scope/pkg stays?": "path ./@scope/pkg stays?",
+		"ping @alice now":       "ping @​alice now",
+		"@bob first":            "@​bob first",
+		"(@carol)":              "(@​carol)",
+		"mail dev@example.com":  "mail dev@example.com",
+		"no mention @ all":      "no mention @ all",
+		"twice @a and @b":       "twice @​a and @​b",
+		"path ./@scope/pkg":     "path ./@\u200bscope/pkg",
+		"all of you .@all":      "all of you .@\u200ball",
+		"-@alice /@bob @@carol": "-@\u200balice /@\u200bbob @@\u200bcarol",
+		"/merge\n  /close\n> /approve\nnot /label mid-line": "\u200b/merge\n  \u200b/close\n> \u200b/approve\nnot /label mid-line",
 	} {
 		if got := Defuse(in); got != want {
 			t.Errorf("%q: got %q, want %q", in, got, want)

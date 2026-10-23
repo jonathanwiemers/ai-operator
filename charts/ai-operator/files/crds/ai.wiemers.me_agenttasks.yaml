@@ -368,6 +368,11 @@ spec:
                     items:
                       type: string
                     type: array
+                  pinged:
+                    description: |-
+                      Pinged is set once the owners were mentioned for this commit, so a
+                      pipeline run again in review does not ping them again.
+                    type: boolean
                   pipelineID:
                     format: int64
                     type: integer

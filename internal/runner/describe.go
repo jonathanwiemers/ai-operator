@@ -231,11 +231,15 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 	}
 	// Describers are read-only; discard anything they touched anyway.
 	if err := r.Agent.Reset(ctx); err != nil {
-		return skip("resetting the checkout failed", err)
+		r.log().Info("could not reset the checkout after the describer", "error", err.Error())
 	}
 	body, err := renderDescription(answer)
 	if err != nil {
 		return skip(err.Error(), err)
+	}
+	// Read again: a human may have edited the description meanwhile.
+	if mr, err = gl.GetMergeRequest(ctx, glProject, mrIID); err != nil {
+		return skip("reading the merge request failed", err)
 	}
 	if _, err := gl.UpdateMergeRequest(ctx, glProject, mrIID, gitlab.UpdateMergeRequestOptions{
 		Description: withDescription(mr.Description, body, issue.IID),

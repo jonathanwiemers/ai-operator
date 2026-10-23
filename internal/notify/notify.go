@@ -20,7 +20,7 @@ var username = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`)
 func Usernames(names []string) []string {
 	var out []string
 	for _, n := range names {
-		n = strings.TrimPrefix(strings.TrimSpace(n), "@")
+		n = strings.TrimRight(strings.TrimPrefix(strings.TrimSpace(n), "@"), ".-")
 		if username.MatchString(n) && !slices.Contains(out, n) {
 			out = append(out, n)
 		}
@@ -33,9 +33,24 @@ func ownersLine(prefix string) *regexp.Regexp {
 }
 
 // WithoutOwners removes the owners lines from a milestone description, so
-// adding, changing or removing the owners does not change the spec.
+// adding, changing or removing the owners does not change the spec. A line
+// set off by blank lines takes one of them along, so the paragraphs around
+// it are spaced as before.
 func WithoutOwners(description, prefix string) string {
-	return ownersLine(prefix).ReplaceAllString(description, "")
+	re := ownersLine(prefix)
+	for {
+		loc := re.FindStringIndex(description)
+		if loc == nil {
+			return description
+		}
+		before, after := description[:loc[0]], description[loc[1]:]
+		if (before == "" || strings.HasSuffix(before, "\n\n")) && strings.HasPrefix(after, "\n") {
+			after = after[1:]
+		} else if after == "" {
+			before = strings.TrimRight(before, "\n")
+		}
+		description = before + after
+	}
 }
 
 // MilestoneOwners returns the users a milestone description names on a line
@@ -72,13 +87,21 @@ func Mention(owners []string) string {
 	return "\n\ncc @" + strings.Join(owners, " @")
 }
 
-// mention matches an "@" that GitLab would read as a mention.
-var mention = regexp.MustCompile(`(^|[^\w@./-])@([\w])`)
+// mention matches an "@" that GitLab would read as a mention: one that
+// does not follow a word character.
+var mention = regexp.MustCompile(`(^|[^\w])@(\w)`)
 
-// Defuse makes the mentions in agent-written text inert with a zero-width
-// space, so the text pings nobody.
+// quickAction matches a line GitLab could run as a quick action ("/merge",
+// "/close", …), which it does in comments and descriptions sent through the
+// API, with the bot's permissions.
+var quickAction = regexp.MustCompile(`(?m)^([ \t>]*)/`)
+
+// Defuse makes agent-written text inert before it goes to GitLab: mentions
+// and quick actions get a zero-width space, so the text pings nobody and
+// runs nothing.
 func Defuse(s string) string {
-	return mention.ReplaceAllString(s, "$1@​$2")
+	s = mention.ReplaceAllString(s, "$1@​$2")
+	return quickAction.ReplaceAllString(s, "$1​/")
 }
 
 // RequestReview makes the owners the reviewers of a merge request that has

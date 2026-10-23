@@ -246,6 +246,7 @@ func (r *AgentProjectReconciler) baseFailing(ctx context.Context, gl gitlab.API,
 // base failures go to review; Failed goes to needs-input.
 func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, ci *aiv1.CIStatus, state aiv1.CIState, note string) error {
 	wf := spec.Workflow
+	prev := ci.State
 	ci.State = state
 	next := wf.ReviewLabel
 	if state == aiv1.CIStateFailed {
@@ -257,9 +258,20 @@ func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, sp
 	review := next == wf.ReviewLabel && !task.Spec.Autopilot
 	mention := ""
 	switch {
+	case ci.Pinged:
 	case state == aiv1.CIStateFailed && spec.Notify.Wants(aiv1.NotifyCIFailed),
 		review && spec.Notify.Wants(aiv1.NotifyReview):
 		mention = notify.Mention(task.Spec.Owners)
+	}
+	// Recorded before the comments, with the state still open: a failure
+	// after them repeats the loop's end on the next poll, but not the ping.
+	if mention != "" {
+		ci.Pinged = true
+		pinged := ci.DeepCopy()
+		pinged.State = prev
+		if err := r.patchCI(ctx, task, pinged); err != nil {
+			return err
+		}
 	}
 	if note != "" {
 		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, is.IID, note+mention); err != nil {

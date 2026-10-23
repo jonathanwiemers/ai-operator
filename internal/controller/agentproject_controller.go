@@ -196,8 +196,11 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		descriptions[m.ID] = m.Description
 	}
 	for _, m := range milestones {
-		autopilot := spec.Milestones.Autopilot() != "" && milestoneSelected(m, titleRE, spec.Milestones.Autopilot())
-		if !autopilot && !milestoneSelected(m, titleRE, spec.Milestones.Marker()) {
+		// An owners line neither selects a milestone nor is a spec.
+		sel := m
+		sel.Description = notify.WithoutOwners(m.Description, prefix)
+		autopilot := spec.Milestones.Autopilot() != "" && milestoneSelected(sel, titleRE, spec.Milestones.Autopilot())
+		if !autopilot && !milestoneSelected(sel, titleRE, spec.Milestones.Marker()) {
 			continue
 		}
 		active++
