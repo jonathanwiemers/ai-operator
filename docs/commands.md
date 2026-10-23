@@ -48,14 +48,22 @@ implementer of every following run reads them:
   description agent are not affected: they are set per project.
 - **Allowed models:** only those the AgentProject allows (`agents.models`,
   by default `claude opus`, `claude sonnet`, `claude haiku`), plus every
-  engine and model a profile or `agents.implement` uses. A model may be named
-  by its alias (`opus`) or in full (`claude-opus-5-5`).
+  engine and model a profile or `agents.implement` names explicitly (a
+  profile on `cursor` with `model: auto` allows `cursor auto`). A model may
+  be named by its alias (`opus`) or in full (`claude-opus-5-5`), in any case.
+- **Exact forms only:** `use default`, `use <claude|cursor> <model>
+  [effort]` and `effort <level|default>` are commands; anything else, like
+  `/agent use the existing logger`, is a normal instruction that starts a run.
+- **The rest of the profile stays:** budget (`maxBudgetUSD`), tools and
+  instructions still come from the issue's profile, also on another model.
+  A budget sized for a cheap model may cut a strong model's run short.
 - **Effort cap:** an effort above `agents.maxEffort` (default `high`) is
-  lowered to it. The cursor engine has no effort setting; there the effort is
-  ignored, and the run report says so.
-- **The operator answers** each command with a short comment: what it set,
-  what it lowered, or why it did nothing (a model that is not allowed: the
-  answer lists the allowed ones).
+  lowered to it. The cursor engine has no effort setting: an effort label is
+  kept but only counts once the issue runs on claude, and the answer and the
+  run report say so.
+- **The operator answers** with one short comment per poll, where the last
+  command was written: what it set, what it lowered, or why it did nothing
+  (a model that is not allowed: the answer lists the allowed ones).
 - **No run of its own:** a comment that is only a `use` or `effort` command
   sets the labels and starts nothing. Put instructions on the next lines to
   start a run with the new setting right away:
@@ -65,12 +73,14 @@ implementer of every following run reads them:
   The parser change is subtle, please add property tests.
   ```
 
-- **Sessions:** switching to another engine starts a fresh agent session
-  with the whole thread; switching the model or effort within an engine
-  resumes the session.
+- **Sessions:** a run on another engine than the last one (also switching
+  back) starts a fresh agent session with the whole thread and the agent
+  notes; switching the model or effort within an engine resumes the
+  session.
 - **Draft issues:** commands on an issue that is not handed over yet are
   applied when it is (moved to `agent::ready`). You can also set the labels
-  directly.
+  directly. Commands the operator answered once are not applied again, also
+  when the issue is handed over a second time.
 
 ## On a closed issue
 
@@ -113,5 +123,6 @@ the place to see them:
 | `agent-model::<engine>/<model>` | implement with that engine and model (must be allowed) |
 | `agent-effort::<level>` | implement with that effort (at most `agents.maxEffort`) |
 
-A label the planner set is never overwritten by a re-plan once you changed
-it.
+The planner never changes a profile or effort label that is already on an
+issue: change them as you like. It adds its own only where none is (also
+again on a re-plan, if you removed one from a draft).

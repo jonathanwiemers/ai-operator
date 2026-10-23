@@ -208,6 +208,13 @@ func TestRoutingCommandsBecomeLabels(t *testing.T) {
 		t.Fatalf("a command with instructions also asks for a run: run request %d, labels %v", got, e.gl.Labels(42))
 	}
 
+	// An instruction that only starts with "use" is a normal command.
+	e.gl.AddNote(42, human, "/agent use the existing logger")
+	e.reconcile()
+	if got := e.tasks()["shop-42-add-paypal-button"].Spec.RunRequest; got != rr+2 {
+		t.Fatalf("an instruction must start a run: run request %d", got)
+	}
+
 	// A bot comment is no command; a wrong one changes nothing.
 	e.gl.AddNote(42, e.gl.Bot, "/agent use claude haiku")
 	e.gl.AddNote(42, human, "/agent use claude gpt-9")
@@ -217,5 +224,29 @@ func TestRoutingCommandsBecomeLabels(t *testing.T) {
 	if slices.Contains(labels, "agent-model::claude/haiku") || !slices.Contains(labels, "agent-model::claude/sonnet") ||
 		!strings.Contains(notes[len(notes)-1].Body, "names no allowed model") {
 		t.Fatalf("labels %v, last note %q", labels, notes[len(notes)-1].Body)
+	}
+}
+
+func TestRoutingCommandsAreNotReplayedForANewTask(t *testing.T) {
+	e := newProjectEnv(t)
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddIssue(42, "Add PayPal button", "agent::working")
+	e.gl.AddNote(42, human, "/agent use claude opus")
+	e.reconcile()
+	answers := len(e.gl.IssueNotes[42])
+	// The issue leaves the agent (task deleted); a human sets another model
+	// by hand and hands it over again.
+	e.gl.SetLabels(42, "agent-model::claude/sonnet")
+	e.reconcile()
+	if len(e.tasks()) != 0 {
+		t.Fatalf("the task should be gone: %v", keys(e.tasks()))
+	}
+	e.gl.SetLabels(42, "agent::ready", "agent-model::claude/sonnet")
+	e.reconcile()
+	if l := e.gl.Labels(42); !slices.Contains(l, "agent-model::claude/sonnet") || slices.Contains(l, "agent-model::claude/opus") {
+		t.Fatalf("the old command must not be applied again: %v", l)
+	}
+	if n := len(e.gl.IssueNotes[42]); n != answers {
+		t.Fatalf("no second answer: %d notes, was %d", n, answers)
 	}
 }

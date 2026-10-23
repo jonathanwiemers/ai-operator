@@ -10,6 +10,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 )
 
 // Routing is "/agent use …" or "/agent effort …".
@@ -37,10 +38,30 @@ func ParseRouting(body, prefix string) (Routing, bool) {
 		return Routing{}, false
 	}
 	verb := strings.ToLower(strings.TrimSuffix(fields[0], ":"))
-	if verb != "use" && verb != "effort" {
+	args := fields[1:]
+	// Only the exact shapes are routing commands: "/agent use the existing
+	// logger" is an instruction for the agent.
+	switch {
+	case verb == "use" && len(args) == 1 && strings.EqualFold(args[0], "default"):
+	case verb == "use" && (len(args) == 2 || len(args) == 3) && knownEngine(args[0]):
+	case verb == "effort" && len(args) == 1 && (strings.EqualFold(args[0], "default") || aiv1.ValidEffort(strings.ToLower(args[0]))):
+	default:
 		return Routing{}, false
 	}
-	return Routing{Verb: verb, Args: fields[1:], Only: strings.TrimSpace(more) == ""}, true
+	for i, a := range args {
+		if len(a) > maxArg {
+			args[i] = a[:maxArg] + "…"
+		}
+	}
+	return Routing{Verb: verb, Args: args, Only: strings.TrimSpace(more) == ""}, true
+}
+
+// maxArg bounds an argument echoed in the answer.
+const maxArg = 64
+
+func knownEngine(s string) bool {
+	e := aiv1.Engine(strings.ToLower(s))
+	return e == aiv1.EngineClaude || e == aiv1.EngineCursor
 }
 
 // IsRoutingOnly reports whether a comment is nothing but a routing command.
@@ -133,13 +154,27 @@ func Apply(spec aiv1.AgentProjectSpec, labels []string, cmds []Routing) Change {
 			}
 		}
 		swap(wf.EffortLabelPrefix, *effort)
-		if *effort == "" {
+		switch role, _, _ := spec.IssueRole(after(labels, ch)); {
+		case *effort == "":
 			ch.Lines = append(ch.Lines, "The effort is back to the profile's.")
-		} else {
+		case role.Engine != aiv1.EngineClaude:
+			ch.Lines = append(ch.Lines, fmt.Sprintf("The effort `%s` is set, but the implementer runs on %s, which has no effort setting, so it only counts once it runs on claude.", *effort, role.Engine))
+		default:
 			ch.Lines = append(ch.Lines, fmt.Sprintf("The implementer works with effort `%s` from the next run on.", *effort))
 		}
 	}
 	return ch
+}
+
+// after returns the labels once the change is made.
+func after(labels []string, ch Change) []string {
+	out := slices.DeleteFunc(slices.Clone(labels), func(l string) bool { return slices.Contains(ch.Remove, l) })
+	return append(out, ch.Add...)
+}
+
+// Reply is the operator's answer to the commands.
+func (ch Change) Reply() string {
+	return "🤖 " + strings.Join(ch.Lines, "\n") + "\n" + marker.RoutingReply
 }
 
 func allowed(spec aiv1.AgentProjectSpec) string {

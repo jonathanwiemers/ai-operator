@@ -141,6 +141,11 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		inv.JSONSchema = implementStepSchema
 	}
 	inv.DisallowedTools = implementDenied
+	// A session another engine continued meanwhile has missed that work:
+	// the implementer starts fresh, with the whole thread and the notes.
+	if st.ImplementEngine != "" && st.ImplementEngine != role.Engine {
+		st.setSession("implement", role.Engine, "")
+	}
 	inv.Resume = st.session("implement", role.Engine)
 	// Comments that are only a model or effort command are the operator's.
 	prefix := wf.CommandPrefix
@@ -249,6 +254,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			return out, s.fail(err)
 		}
 		st.setSession("implement", role.Engine, res.SessionID)
+		st.ImplementEngine = role.Engine
 		st.LastIssueNoteID = maxNoteID(issueNotes, st.LastIssueNoteID)
 		st.LastMRNoteID = maxNoteID(mrNotes, st.LastMRNoteID)
 		if err := r.saveState(st); err != nil {
@@ -1078,7 +1084,8 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 func firstCommand(notes []gitlab.Note, botID int64, prefix string) int64 {
 	var first int64
 	for _, n := range notes {
-		if n.System || (botID != 0 && n.Author.ID == botID) || !strings.HasPrefix(strings.TrimSpace(n.Body), prefix) {
+		// A pure model or effort command starts no run: it is no cut.
+		if n.System || (botID != 0 && n.Author.ID == botID) || !strings.HasPrefix(strings.TrimSpace(n.Body), prefix) || command.IsRoutingOnly(n.Body, prefix) {
 			continue
 		}
 		if first == 0 || n.ID < first {

@@ -518,7 +518,7 @@ func newTestRunner(t *testing.T, tmp string, k8s client.Client, gl gitlab.API, e
 	exchange := filepath.Join(tmp, "exchange")
 	agent := serveAgent(t, &AgentServer{Agent: &LocalAgent{
 		Workspace: &Workspace{Dir: filepath.Join(tmp, "agent", "repo"), AuthorName: "AI Operator", AuthorEmail: "ai@example.com"},
-		Engines:   map[aiv1.Engine]Engine{aiv1.EngineClaude: engine},
+		Engines:   map[aiv1.Engine]Engine{aiv1.EngineClaude: engine, aiv1.EngineCursor: engine},
 		Exchange:  exchange,
 	}})
 	return &Runner{

@@ -7,6 +7,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 )
 
 func TestParseRouting(t *testing.T) {
@@ -20,6 +21,10 @@ func TestParseRouting(t *testing.T) {
 		{"/agent effort high\nand please also fix the tests", true, Routing{Verb: "effort", Args: []string{"high"}}},
 		{"/agent use `claude` opus", true, Routing{Verb: "use", Args: []string{"claude", "opus"}, Only: true}},
 		{"/agent fix the tests", false, Routing{}},
+		{"/agent use the existing logger instead of fmt.Println", false, Routing{}},
+		{"/agent effort should go into the parser", false, Routing{}},
+		{"/agent use claude gpt-9", true, Routing{Verb: "use", Args: []string{"claude", "gpt-9"}, Only: true}},
+		{"/agent use Claude Opus HIGH", true, Routing{Verb: "use", Args: []string{"Claude", "Opus", "HIGH"}, Only: true}},
 		{"/agents use claude opus", false, Routing{}},
 		{"please /agent use claude opus", false, Routing{}},
 		{"/agent", false, Routing{}},
@@ -32,6 +37,26 @@ func TestParseRouting(t *testing.T) {
 	notes := []gitlab.Note{{ID: 1, Body: "/agent use claude opus"}, {ID: 2, Body: "/agent effort high\nalso the docs"}, {ID: 3, Body: "hi"}}
 	if got := WithoutRouting(notes, "/agent"); len(got) != 2 || got[0].ID != 2 {
 		t.Errorf("only pure commands are dropped: %+v", got)
+	}
+}
+
+func TestParseRoutingTruncatesLongArguments(t *testing.T) {
+	r, ok := ParseRouting("/agent use claude "+strings.Repeat("x", 5000), "/agent")
+	if !ok || len(r.Args[1]) > maxArg+len("…") {
+		t.Fatalf("a long argument must be cut: %d bytes", len(r.Args[1]))
+	}
+}
+
+func TestApplyEffortOnCursor(t *testing.T) {
+	ch := Apply(testSpec(), []string{"agent-profile::fast"}, []Routing{{Verb: "effort", Args: []string{"high"}}})
+	if !slices.Equal(ch.Add, []string{"agent-effort::high"}) || !strings.Contains(ch.Lines[0], "no effort setting") {
+		t.Fatalf("the label is set, but the answer says it does not count on cursor: %+v", ch)
+	}
+	if ch := Apply(testSpec(), nil, []Routing{use("Claude", "OPUS")}); !slices.Equal(ch.Add, []string{"agent-model::claude/opus"}) {
+		t.Fatalf("names match in any case: %+v", ch)
+	}
+	if r := (Change{Lines: []string{"x"}}).Reply(); !strings.HasSuffix(r, marker.RoutingReply) {
+		t.Fatalf("the answer carries the marker: %q", r)
 	}
 }
 

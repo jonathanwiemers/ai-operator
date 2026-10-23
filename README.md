@@ -73,7 +73,7 @@ flowchart LR
 /agent also cover the error case          another run with your instructions
 /agent revisit D42-3 keep the case as typed   change a recorded decision
 /agent use claude opus high               pick model and effort for this issue
-/agent use cursor auto                    … or a cheaper one
+/agent use cursor auto                    … or a cheaper one, if your project allows it
 /agent effort low                         just the effort
 /agent pause | resume | skip #12          autopilot, on the tracking issue
 ```

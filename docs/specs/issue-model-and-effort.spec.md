@@ -46,7 +46,7 @@ pick between whole profiles, not how hard the agent should think.
   - `AgentProjectSpec.IssueRole(labels)` = `ImplementRole` plus the label overrides, with
     notices for unknown labels, a capped effort and effort on cursor.
 - Operator (`internal/command`, project controller): on the poll that sees a `/agent use`
-  or `/agent effort` comment of a human (newer than `status.source.lastRoutingNoteID`), it
+  or `/agent effort` comment of a human (newer than `spec.source.lastRoutingNoteID`), it
   validates it, swaps the labels on the issue and answers with a short comment. A comment
   that is only such a command starts no run (it is left out of "latest command") and is
   dropped from the agent's prompt; with instructions on further lines it also starts a
@@ -89,6 +89,13 @@ pick between whole profiles, not how hard the agent should think.
 - Applied by the operator on the poll instead of by the runner at run start: a command
   shows its effect (label, answer) at once and costs no run.
 - Docs: one page for all `/agent` commands (`docs/commands.md`) and a reworked README.
+- Review: only the exact command shapes are routing commands (an instruction like
+  `/agent use the existing logger` still starts a run); pure commands do not cut a step
+  run's comments; a run on another engine than the last starts that session fresh; the
+  answer is posted after the task is saved, and a recreated task skips commands answered
+  before; effort on a cursor issue is said to be inactive and the planner sets none there;
+  model names match in any case. Accepted: the profile's budget, tools and instructions
+  stay on another model (documented).
 
 ## Delivery
 

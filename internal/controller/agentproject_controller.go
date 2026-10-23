@@ -30,6 +30,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
@@ -449,14 +450,19 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	mrChanged := mr != nil && (mr.UpdatedAt == nil || src.MergeRequestUpdatedAt == nil || mr.UpdatedAt.After(src.MergeRequestUpdatedAt.Time))
 
 	command := false
+	var reply *routingReply
 	if ready || issueChanged || mrChanged {
-		latest, issueNotes, mrNotes, err := commandNotes(ctx, gl, glProject, is.IID, mr, project.Status.BotUserID, wf.CommandPrefix)
+		var latest int64
+		var issueNotes, mrNotes []gitlab.Note
+		var err error
+		latest, issueNotes, mrNotes, err = commandNotes(ctx, gl, glProject, is.IID, mr, project.Status.BotUserID, wf.CommandPrefix)
 		if err != nil {
 			return nil, nil, err
 		}
 		// "/agent use" and "/agent effort" become labels at once, also the
-		// ones written before the task existed.
-		if err := r.applyRouting(ctx, gl, spec, &is, mr, issueNotes, mrNotes, src, project.Status.BotUserID); err != nil {
+		// ones written before the task existed; the answer follows once the
+		// task is saved.
+		if reply, err = r.applyRouting(ctx, gl, spec, &is, issueNotes, mrNotes, src, project.Status.BotUserID); err != nil {
 			return nil, nil, err
 		}
 		if created {
@@ -498,6 +504,19 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	case !equalSpec(before, &task.Spec):
 		if err := r.Update(ctx, task); err != nil {
 			return nil, nil, err
+		}
+	}
+
+	if reply != nil {
+		// A failed answer is not tried again: the labels are set.
+		var err error
+		if reply.onMR && mr != nil {
+			_, err = gl.CreateMergeRequestNote(ctx, glProject, mr.IID, reply.body)
+		} else {
+			_, err = gl.CreateIssueNote(ctx, glProject, is.IID, reply.body)
+		}
+		if err != nil {
+			log.FromContext(ctx).Info("could not answer the model and effort commands", "issue", is.IID, "error", err.Error())
 		}
 	}
 
@@ -549,12 +568,30 @@ func commandNotes(ctx context.Context, gl gitlab.API, glProject string, issueIID
 	return latest, notes, mrNotes, nil
 }
 
+// routingReply is the operator's answer to model and effort commands, and
+// where it goes.
+type routingReply struct {
+	body string
+	onMR bool
+}
+
 // applyRouting turns the "/agent use" and "/agent effort" comments of
 // humans that are newer than the last applied one into the issue's model
-// and effort labels, and answers where the last one was written.
-func (r *AgentProjectReconciler) applyRouting(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is *gitlab.Issue, mr *gitlab.MergeRequest,
-	issueNotes, mrNotes []gitlab.Note, src *aiv1.SourceState, botID int64) error {
+// and effort labels. It returns the answer, to be posted once the task is
+// saved, where the last command was written.
+func (r *AgentProjectReconciler) applyRouting(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is *gitlab.Issue,
+	issueNotes, mrNotes []gitlab.Note, src *aiv1.SourceState, botID int64) (*routingReply, error) {
 	prefix := spec.Workflow.CommandPrefix
+	since := src.LastRoutingNoteID
+	if since == 0 {
+		// A new task (also one made again for the same issue): commands the
+		// operator answered before are not applied again.
+		for _, n := range append(slices.Clone(issueNotes), mrNotes...) {
+			if botID != 0 && n.Author.ID == botID && strings.Contains(n.Body, marker.RoutingReply) {
+				since = max(since, n.ID)
+			}
+		}
+	}
 	type note struct {
 		gitlab.Note
 		onMR bool
@@ -562,7 +599,7 @@ func (r *AgentProjectReconciler) applyRouting(ctx context.Context, gl gitlab.API
 	var found []note
 	for i, list := range [][]gitlab.Note{issueNotes, mrNotes} {
 		for _, n := range list {
-			if n.ID <= src.LastRoutingNoteID || !IsCommand(n, botID, prefix) {
+			if n.ID <= since || !IsCommand(n, botID, prefix) {
 				continue
 			}
 			if _, ok := command.ParseRouting(n.Body, prefix); ok {
@@ -571,35 +608,25 @@ func (r *AgentProjectReconciler) applyRouting(ctx context.Context, gl gitlab.API
 		}
 	}
 	if len(found) == 0 {
-		return nil
+		src.LastRoutingNoteID = since
+		return nil, nil
 	}
 	slices.SortFunc(found, func(a, b note) int { return cmp.Compare(a.ID, b.ID) })
 	cmds := make([]command.Routing, len(found))
 	for i, n := range found {
 		cmds[i], _ = command.ParseRouting(n.Body, prefix)
 	}
-	glProject := spec.GitLab.Project
 	ch := command.Apply(spec, is.Labels, cmds)
 	if len(ch.Add)+len(ch.Remove) > 0 {
-		if _, err := gl.UpdateIssue(ctx, glProject, is.IID, gitlab.UpdateIssueOptions{AddLabels: ch.Add, RemoveLabels: ch.Remove}); err != nil {
-			return fmt.Errorf("setting the model and effort labels of issue #%d: %w", is.IID, err)
+		if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{AddLabels: ch.Add, RemoveLabels: ch.Remove}); err != nil {
+			return nil, fmt.Errorf("setting the model and effort labels of issue #%d: %w", is.IID, err)
 		}
 		is.Labels = append(slices.DeleteFunc(is.Labels, func(l string) bool { return slices.Contains(ch.Remove, l) }), ch.Add...)
 	}
-	last := found[len(found)-1]
-	reply := "🤖 " + strings.Join(ch.Lines, "\n")
-	var err error
-	if last.onMR && mr != nil {
-		_, err = gl.CreateMergeRequestNote(ctx, glProject, mr.IID, reply)
-	} else {
-		_, err = gl.CreateIssueNote(ctx, glProject, is.IID, reply)
-	}
-	if err != nil {
-		return fmt.Errorf("answering the model and effort commands of issue #%d: %w", is.IID, err)
-	}
 	log.FromContext(ctx).Info("model and effort commands applied", "issue", is.IID, "add", ch.Add, "remove", ch.Remove)
+	last := found[len(found)-1]
 	src.LastRoutingNoteID = last.ID
-	return nil
+	return &routingReply{body: ch.Reply(), onMR: last.onMR}, nil
 }
 
 // IsCommand reports whether a note is a human "/agent ..." command.

@@ -72,6 +72,7 @@ func TestRenderDescription(t *testing.T) {
 // answers the describer, or fails it.
 type describingEngine struct {
 	mu        sync.Mutex
+	calls     []Invocation
 	describes int
 	failWith  error
 	answer    ImplementAnswer
@@ -83,6 +84,7 @@ type describingEngine struct {
 func (d *describingEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.calls = append(d.calls, inv)
 	var v any = ReviewAnswer{Summary: "fine"}
 	switch {
 	case inv.JSONSchema == describeSchema:
@@ -118,8 +120,8 @@ func (e *implementEnv) rerun(t *testing.T, r *Runner) {
 	if err := e.k8s.Patch(ctx, &got, client.MergeFrom(orig)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.Step(ctx); err != nil {
-		t.Fatal(err)
+	if ran, err := r.Step(ctx); err != nil || !ran {
+		t.Fatalf("rerun: ran=%v err=%v", ran, err)
 	}
 }
 

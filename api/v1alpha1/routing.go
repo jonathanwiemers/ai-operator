@@ -60,7 +60,7 @@ func (s AgentProjectSpec) AllowedModels() []ModelOption {
 // alias.
 func (s AgentProjectSpec) FindModel(engine Engine, name string) (ModelOption, bool) {
 	for _, o := range s.AllowedModels() {
-		if o.Engine == engine && (o.Model == name || o.Alias == name) {
+		if o.Engine == engine && (strings.EqualFold(o.Model, name) || o.Alias != "" && strings.EqualFold(o.Alias, name)) {
 			return o, true
 		}
 	}

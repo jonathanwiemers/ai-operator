@@ -375,10 +375,15 @@ func profileLabels(spec aiv1.AgentProjectSpec, item PlannedItem) []string {
 }
 
 // effortLabels returns the label of the effort the planner picked, at most
-// agents.maxEffort. No or an unknown choice gets no label: the profile's
-// effort applies.
+// agents.maxEffort. No or an unknown choice, or a profile on an engine
+// without efforts, gets no label: the profile's effort applies.
 func effortLabels(spec aiv1.AgentProjectSpec, item PlannedItem) []string {
 	if !aiv1.ValidEffort(item.Effort) {
+		return nil
+	}
+	// Only claude has an effort setting.
+	role, _ := spec.ImplementRole(profileLabels(spec, item))
+	if role.Engine != aiv1.EngineClaude {
 		return nil
 	}
 	effort, _ := spec.CapEffort(item.Effort)
