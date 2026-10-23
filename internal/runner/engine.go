@@ -216,43 +216,50 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		}
 		log := logr.FromContextOrDiscard(ctx)
 		rd := bufio.NewReader(pipe)
-		// The agent's last message before the result is its answer (cursor
-		// writes the JSON answer as text): it is posted, not logged. So a
-		// message is logged once another event follows it.
-		var pending []byte
+		// The agent's last messages before a successful result are its
+		// answer (cursor writes the JSON answer as text): they are posted, not
+		// logged. So messages are held until an event shows they were not the
+		// last: a tool call or its result. A failed result logs them, they
+		// say what went wrong.
+		var held [][]byte
+		flush := func() {
+			for _, h := range held {
+				logEvent(log, h)
+			}
+			held = nil
+		}
 		for {
 			line, err := rd.ReadBytes('\n')
 			if line = bytes.TrimSpace(line); len(line) > 0 {
-				switch eventType(line) {
+				switch ev := parseEvent(line); ev.Type {
 				case "assistant":
-					if pending != nil {
-						logEvent(log, pending)
+					held = append(held, line)
+					if callsTool(line) {
+						// A claude message that calls a tool is no answer.
+						flush()
 					}
-					pending = line
+				case "tool_call", "user":
+					flush()
+					if ev.Type == "tool_call" && ev.Subtype == "started" {
+						logEvent(log, line)
+					}
 				case "result":
-					if pending != nil {
+					if ev.IsError || ev.Subtype != "" && ev.Subtype != "success" {
+						flush()
+					} else if len(held) > 0 {
 						log.Info("agent answers")
-						pending = nil
+						held = nil
 					}
-					logEvent(log, line)
 					stdout.Reset()
 					stdout.Write(line)
-				default:
-					if pending != nil {
-						logEvent(log, pending)
-						pending = nil
-					}
-					logEvent(log, line)
 				}
 			}
 			if err != nil {
 				break
 			}
 		}
-		if pending != nil {
-			// No result: the stream ended early, the message is no answer.
-			logEvent(log, pending)
-		}
+		// No result: the stream ended early, the messages are no answer.
+		flush()
 		runErr = cmd.Wait()
 	} else {
 		cmd.Stdout = &stdout

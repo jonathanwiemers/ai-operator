@@ -727,6 +727,15 @@ flowchart LR
   paths outside `/exchange` are rejected. Everything the agent returns
   (results, diffs) is treated as untrusted data.
 
+**Read-only roles are no sandbox.** Reviewers, the planner and the describer
+run read-only: claude with a tool allow-list, cursor-agent without `--force`
+(and with `--trust`, so it runs in the fresh checkout at all). For cursor the
+repository's own `.cursor/cli.json` can still allow commands. That adds
+nothing an attacker who controls the repository lacks: the implementer runs
+in the same container with full shell access and runs the repository's
+build and tests anyway. "Read-only" keeps the checkout as it is (it is reset
+after every read-only run); the boundary is the agent container itself.
+
 **Other measures.**
 
 * Pods run as non-root with all capabilities dropped and seccomp

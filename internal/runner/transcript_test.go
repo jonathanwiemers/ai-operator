@@ -173,3 +173,57 @@ func TestCursorDyingMidSessionFails(t *testing.T) {
 		t.Fatalf("a session without a result is a failure with stderr: %v", err)
 	}
 }
+
+// streamCursor runs a fake cursor-agent that prints the given lines and
+// returns the log.
+func streamCursor(t *testing.T, events ...string) (string, error) {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "cursor-agent")
+	var b strings.Builder
+	b.WriteString("#!/bin/sh\ncat <<'EOF'\n")
+	for _, e := range events {
+		b.WriteString(e + "\n")
+	}
+	b.WriteString("EOF\n")
+	if err := os.WriteFile(bin, []byte(b.String()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var lines []string
+	log := funcr.New(func(_, args string) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, args)
+	}, funcr.Options{})
+	_, err := (&CursorCLI{Binary: bin, Env: os.Environ()}).Run(logr.NewContext(context.Background(), log), Invocation{Dir: t.TempDir()})
+	return strings.Join(lines, "\n"), err
+}
+
+func TestCursorAnswerSplitOverMessagesIsHeld(t *testing.T) {
+	all, err := streamCursor(t,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"working on it"}]}}`,
+		`{"type":"tool_call","subtype":"started","tool_call":{"readToolCall":{"args":{"path":"a.go"}}}}`,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"{\"summary\":\"SECRET-1"}]}}`,
+		`not json: update available`,
+		`{"type":"thinking","text":"x"}`,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"SECRET-2\"}"}]}}`,
+		`{"type":"result","subtype":"success","is_error":false,"result":"{}","session_id":"c1"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(all, "working on it") || strings.Contains(all, "SECRET") || strings.Count(all, "agent answers") != 1 {
+		t.Fatalf("every message after the last tool call is the answer, also across stray lines:\n%s", all)
+	}
+}
+
+func TestCursorFailedResultKeepsTheLastMessage(t *testing.T) {
+	all, err := streamCursor(t,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"cannot reach the registry"}]}}`,
+		`{"type":"result","subtype":"error","is_error":true,"result":"failed","session_id":"c1"}`)
+	if err == nil {
+		t.Fatal("an error result is a failure")
+	}
+	if !strings.Contains(all, "cannot reach the registry") || strings.Contains(all, "agent answers") {
+		t.Fatalf("a failed run logs its last message:\n%s", all)
+	}
+}

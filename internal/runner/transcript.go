@@ -72,13 +72,38 @@ func logEvent(log logr.Logger, line []byte) string {
 	return ev.Type
 }
 
-// eventType returns the type of a stream-json event.
-func eventType(line []byte) string {
+// event is what runCLI needs to know about a stream-json line.
+type event struct {
+	Type    string `json:"type"`
+	Subtype string `json:"subtype"`
+	IsError bool   `json:"is_error"`
+}
+
+// callsTool reports whether a claude assistant message calls a tool other
+// than StructuredOutput, which carries the answer.
+func callsTool(line []byte) bool {
 	var ev struct {
-		Type string `json:"type"`
+		Message struct {
+			Content []struct {
+				Type string `json:"type"`
+				Name string `json:"name"`
+			} `json:"content"`
+		} `json:"message"`
 	}
 	_ = json.Unmarshal(line, &ev)
-	return ev.Type
+	for _, b := range ev.Message.Content {
+		if b.Type == "tool_use" && b.Name != "StructuredOutput" {
+			return true
+		}
+	}
+	return false
+}
+
+// parseEvent reads the type of a stream-json line; other output has none.
+func parseEvent(line []byte) event {
+	var ev event
+	_ = json.Unmarshal(line, &ev)
+	return ev
 }
 
 // cursorTool names a cursor-agent tool call and picks its main argument:
