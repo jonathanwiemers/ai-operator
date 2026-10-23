@@ -154,10 +154,12 @@ type CIStatus struct {
 	// FailedJobs of the latest failed pipeline.
 	// +optional
 	FailedJobs []string `json:"failedJobs,omitempty"`
-	// Pinged is set once the owners were mentioned for this commit, so a
-	// pipeline run again in review does not ping them again.
+	// PingedFor is the event the owners were last mentioned for on this
+	// commit, so a pipeline run again in review does not ping them again
+	// for the same thing. A ping is sent at most once: if its comment
+	// fails, the comment is posted again without it.
 	// +optional
-	Pinged bool `json:"pinged,omitempty"`
+	PingedFor NotifyEvent `json:"pingedFor,omitempty"`
 }
 
 // TaskPhase is a coarse summary of where a task is in its lifecycle.

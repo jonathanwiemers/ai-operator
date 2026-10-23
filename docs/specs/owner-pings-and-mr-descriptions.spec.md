@@ -126,10 +126,16 @@ deployment / README, `docs/usage.md`, `docs/configuration.md`,
   hashing, before milestone selection and from the agents' prompts.
 - On autopilot, failures and questions do not ping: the pause on the
   tracking issue does.
-- The CI loop records `status.ci.pinged` per commit, so a pipeline re-run in
-  review does not ping again; the first report keeps its summary when the
-  run stops for input.
-- Not done: owners lines inside code fences still count.
+- The CI loop records `status.ci.pingedFor` (the event) per commit, also
+  across a pipeline re-run in review, so the same event does not ping twice
+  while red-after-review still does; a ping is at most once (a failed
+  comment is posted again without it). The first report keeps its summary
+  when the run stops for input.
+- Accepted: owners lines inside code fences still count; `Defuse` also
+  touches code in reports (zero-width space before a leading `/` or after
+  `@`); descriptions stored with CRLF keep the blank line around a removed
+  owners line (normalising would re-plan existing CRLF milestones once); a
+  partial failure after the MR report can ping again from the failure note.
 
 ## Delivery
 

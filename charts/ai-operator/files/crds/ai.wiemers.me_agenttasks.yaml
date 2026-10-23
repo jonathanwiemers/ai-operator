@@ -368,11 +368,20 @@ spec:
                     items:
                       type: string
                     type: array
-                  pinged:
+                  pingedFor:
                     description: |-
-                      Pinged is set once the owners were mentioned for this commit, so a
-                      pipeline run again in review does not ping them again.
-                    type: boolean
+                      PingedFor is the event the owners were last mentioned for on this
+                      commit, so a pipeline run again in review does not ping them again
+                      for the same thing. A ping is sent at most once: if its comment
+                      fails, the comment is posted again without it.
+                    enum:
+                    - failed
+                    - needsInput
+                    - ciFailed
+                    - review
+                    - autopilotPaused
+                    - autopilotDone
+                    type: string
                   pipelineID:
                     format: int64
                     type: integer

@@ -181,7 +181,7 @@ func (r *AgentProjectReconciler) syncReviewCI(ctx context.Context, gl gitlab.API
 	}
 	log.FromContext(ctx).Info("new pipeline for the pushed commit, following it", "task", task.Name, "pipeline", head.ID, "status", head.Status)
 	// The status first: if the label move fails, the next poll retries it.
-	if err := r.patchCI(ctx, task, &aiv1.CIStatus{SHA: cur.SHA, State: aiv1.CIStatePending, PipelineID: head.ID, PipelineURL: head.WebURL}); err != nil {
+	if err := r.patchCI(ctx, task, &aiv1.CIStatus{SHA: cur.SHA, State: aiv1.CIStatePending, PipelineID: head.ID, PipelineURL: head.WebURL, PingedFor: cur.PingedFor}); err != nil {
 		return err
 	}
 	return r.backToWorking(ctx, gl, spec, is)
@@ -256,17 +256,21 @@ func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, sp
 	logger.Info("CI loop finished", "task", task.Name, "state", state, "label", next)
 	// Autopilot merges what reaches review; nobody needs to look.
 	review := next == wf.ReviewLabel && !task.Spec.Autopilot
-	mention := ""
+	var event aiv1.NotifyEvent
 	switch {
-	case ci.Pinged:
-	case state == aiv1.CIStateFailed && spec.Notify.Wants(aiv1.NotifyCIFailed),
-		review && spec.Notify.Wants(aiv1.NotifyReview):
+	case state == aiv1.CIStateFailed:
+		event = aiv1.NotifyCIFailed
+	case review:
+		event = aiv1.NotifyReview
+	}
+	mention := ""
+	if event != "" && ci.PingedFor != event && spec.Notify.Wants(event) {
 		mention = notify.Mention(task.Spec.Owners)
 	}
 	// Recorded before the comments, with the state still open: a failure
 	// after them repeats the loop's end on the next poll, but not the ping.
 	if mention != "" {
-		ci.Pinged = true
+		ci.PingedFor = event
 		pinged := ci.DeepCopy()
 		pinged.State = prev
 		if err := r.patchCI(ctx, task, pinged); err != nil {

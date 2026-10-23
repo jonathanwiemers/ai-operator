@@ -108,7 +108,7 @@ func TestCIGreenRequestsReview(t *testing.T) {
 	// review) pings nobody again.
 	task = e.ciTask()
 	ci := task.Status.CI.DeepCopy()
-	if !ci.Pinged {
+	if ci.PingedFor != aiv1.NotifyReview {
 		t.Fatalf("the ping must be recorded: %+v", ci)
 	}
 	is := *e.gl.Issues[42]
