@@ -155,6 +155,9 @@ func (g *gitlabConn) logout(w http.ResponseWriter, _ *http.Request) {
 // errNotConnected: the user has no (usable) GitLab connection.
 var errNotConnected = errors.New("GitLab is not connected")
 
+// errNotTasks: a comment target is not the task's.
+var errNotTasks = errors.New("not the task's")
+
 // errGitLabUnavailable: refreshing the token failed for a passing reason.
 var errGitLabUnavailable = errors.New("GitLab is not reachable")
 
@@ -408,7 +411,15 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 	// user's comment goes there.
 	if err := s.checkTarget(r.Context(), gl, ap, task, target); err != nil {
 		s.log.Info("refusing a comment target", "user", p.Username, "target", target.Target, "iid", target.IID, "reason", err.Error())
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "the " + target.Target + " could not be confirmed as this task's"})
+		switch code := gitlab.StatusCode(err); {
+		case errors.Is(err, errNotTasks), code == http.StatusNotFound, code == http.StatusForbidden:
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "the " + target.Target + " could not be confirmed as this task's"})
+		case code == http.StatusUnauthorized:
+			s.gitlab.sessions.Clear(w, s.gitlab.cookie())
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account again", "login": pathGitLabLogin})
+		default:
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "GitLab is not reachable right now"})
+		}
 		return
 	}
 	if !s.notes.allow(p.Username, time.Now()) {
@@ -455,16 +466,18 @@ func (s *Server) checkTarget(ctx context.Context, gl gitlab.API, ap *aiv1.AgentP
 		if err != nil {
 			return err
 		}
-		if task.Spec.Issue == nil || !naming.IsIssueBranch(mr.SourceBranch, task.Spec.Issue.IID) {
-			return fmt.Errorf("!%d is not on the work branch of the task's issue", t.IID)
+		if task.Spec.Issue == nil || !naming.IsIssueBranch(mr.SourceBranch, task.Spec.Issue.IID) || mr.SourceProjectID != mr.ProjectID {
+			return fmt.Errorf("%w: !%d is not on the work branch of the task's issue", errNotTasks, t.IID)
 		}
 	case "tracking":
 		is, err := gl.GetIssue(ctx, project, t.IID)
 		if err != nil {
 			return err
 		}
-		if !marker.IsTrackingIssue(is.Description) || is.Milestone == nil || task.Spec.Milestone == nil || is.Milestone.ID != task.Spec.Milestone.ID {
-			return fmt.Errorf("#%d is not the tracking issue of the task's milestone", t.IID)
+		bot := ap.Status.BotUserID
+		if !marker.IsTrackingIssue(is.Description) || bot == 0 || is.Author.ID != bot ||
+			is.Milestone == nil || task.Spec.Milestone == nil || is.Milestone.ID != task.Spec.Milestone.ID {
+			return fmt.Errorf("%w: #%d is not the tracking issue of the task's milestone", errNotTasks, t.IID)
 		}
 	}
 	return nil

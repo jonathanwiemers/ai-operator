@@ -150,7 +150,7 @@ const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? '
           :name="name"
           :task="task"
           :steer="!!data?.permissions?.steer"
-          :stamp="`${run.lastActivityTime ?? ''}|${run.mergeRequestIID ?? ''}|${t.status.ci?.state ?? ''}|${t.status.autopilot?.phase ?? ''}`"
+          :stamp="`${run.observedRunRequest ?? ''}|${run.activeRunRequest ?? ''}|${run.mergeRequestIID ?? ''}|${t.status.ci?.state ?? ''}|${t.status.autopilot?.phase ?? ''}`"
         />
       </section>
 

@@ -151,17 +151,20 @@ type Note struct {
 
 // MergeRequest is a GitLab merge request.
 type MergeRequest struct {
-	ID           int64      `json:"id"`
-	IID          int64      `json:"iid"`
-	Title        string     `json:"title"`
-	Description  string     `json:"description"`
-	State        string     `json:"state"`
-	SourceBranch string     `json:"source_branch"`
-	TargetBranch string     `json:"target_branch"`
-	Milestone    *Milestone `json:"milestone"`
-	WebURL       string     `json:"web_url"`
-	UpdatedAt    *time.Time `json:"updated_at"`
-	Reviewers    []User     `json:"reviewers"`
+	ID           int64  `json:"id"`
+	IID          int64  `json:"iid"`
+	Title        string `json:"title"`
+	Description  string `json:"description"`
+	State        string `json:"state"`
+	SourceBranch string `json:"source_branch"`
+	TargetBranch string `json:"target_branch"`
+	// SourceProjectID differs from ProjectID for an MR from a fork.
+	ProjectID       int64      `json:"project_id"`
+	SourceProjectID int64      `json:"source_project_id"`
+	Milestone       *Milestone `json:"milestone"`
+	WebURL          string     `json:"web_url"`
+	UpdatedAt       *time.Time `json:"updated_at"`
+	Reviewers       []User     `json:"reviewers"`
 	// SHA is the head commit of the source branch.
 	SHA   string `json:"sha"`
 	Draft bool   `json:"draft"`
