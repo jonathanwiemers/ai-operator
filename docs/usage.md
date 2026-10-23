@@ -774,7 +774,8 @@ The steps show up in three places:
   comment, with their durations, results and the cost so far. A failure
   comment on the issue includes it too, with the failed step marked.
 
-Prompts, comment bodies and diffs are never logged. `spec.agents.logLevel:
+Comment bodies and diffs are never logged, and prompts only with
+`spec.agents.logPrompts: true` (for the web UI's live transcript). `spec.agents.logLevel:
 debug` (or the operator's `--agent-log-level`) adds the runner's git commands.
 
 **The agent's session** is in the agent container's log as it happens,

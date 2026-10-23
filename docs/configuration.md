@@ -185,6 +185,7 @@ it to `false` for one commit per run.
 | `review` | claude, `claude-sonnet-5-5`, reviewers `bugbot` + `security`, `maxIterations: 2` | review agents |
 | `describe` | claude, `claude-sonnet-5-5` | writes the MR description after each push that changed the diff; `disabled: true` keeps the placeholder |
 | `models` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` (aliases `opus`, `sonnet`, `haiku`) | engines and models an issue may switch its implementer to with `/agent use` or an `agent-model::` label; the models of the profiles and of `implement` are always allowed. Entries: `engine`, `model`, optional `alias` |
+| `logPrompts` | `false` | log every prompt (role, system prompt, prompt, each cut at 64 KiB) in the agent container, for the web UI's [live transcript](ui.md#live-transcript). Prompts hold issue text, comments, diffs and CI logs |
 | `maxEffort` | `high` | the highest effort an issue may ask for (`agent-effort::` label, `/agent effort`, the planner's choice); higher values are lowered. The roles' own `effort` is not capped |
 
 If `resources` sets a memory limit or CPUs (limits, else requests), the

@@ -32,7 +32,12 @@ type Server struct {
 	// streams counts the open event streams per user.
 	streamsMu sync.Mutex
 	streams   map[string]int
+	// logs reads the agent pods' logs for transcripts; nil disables them.
+	logs LogSource
 }
+
+// SetLogSource enables live transcripts.
+func (s *Server) SetLogSource(l LogSource) { s.logs = l }
 
 // NewServer wires the server. reader is a cache-backed client; static holds
 // the built single page app.
@@ -66,6 +71,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/projects", s.authed(s.projects))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}", s.authed(s.project))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}", s.authed(s.task))
+	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript", s.authed(s.transcript))
 	mux.Handle("GET /api/v1/events", s.authed(s.events))
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })
 	mux.HandleFunc("GET /oauth2/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })

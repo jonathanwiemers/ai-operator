@@ -894,6 +894,21 @@ func TestAgentServerLogsCallsWithRunID(t *testing.T) {
 	if strings.Contains(all, "SECRET PROMPT") {
 		t.Fatalf("prompts must not be logged:\n%s", all)
 	}
+
+	// agents.logPrompts: one "agent prompt" line with role, system prompt and
+	// prompt, cut at 64 KiB.
+	lines = nil
+	mu.Unlock()
+	long := strings.Repeat("x", maxLogPrompt+100)
+	if _, err := agent.Run(ctx, aiv1.EngineClaude, Invocation{Model: "m", Role: "implement", SystemPrompt: "SYS", Prompt: long, LogPrompt: true}); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	all = strings.Join(lines, "\n")
+	if !strings.Contains(all, `"msg"="agent prompt" "rpc"="run" "run"="shop-42#7" "role"="implement"`) || !strings.Contains(all, `"system"="SYS"`) ||
+		strings.Contains(all, long) || !strings.Contains(all, "…") {
+		t.Fatalf("the prompt must be logged, cut: %d bytes\n%.400s", len(all), all)
+	}
 }
 
 func TestRenderHandoffKeepsMarkersIntact(t *testing.T) {

@@ -7,7 +7,9 @@ metadata:
   labels:
     {{- include "ai-operator.ui.labels" . | nindent 4 }}
 ---
-# The UI only reads; it gets no access to Secrets, Pods or the GitLab tokens.
+# The UI only reads; it gets no access to Secrets or the GitLab tokens. In
+# the agent namespaces it may read the pods' logs, for live transcripts
+# (shown only to roles with transcript: true in ui.authorization.rules).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -33,4 +35,34 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "ai-operator.ui.fullname" . }}
     namespace: {{ .Release.Namespace }}
+{{- range .Values.agent.namespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "ai-operator.ui.fullname" $ }}-logs
+  namespace: {{ . }}
+  labels:
+    {{- include "ai-operator.ui.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ai-operator.ui.fullname" $ }}-logs
+  namespace: {{ . }}
+  labels:
+    {{- include "ai-operator.ui.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "ai-operator.ui.fullname" $ }}-logs
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "ai-operator.ui.fullname" $ }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
 {{- end }}

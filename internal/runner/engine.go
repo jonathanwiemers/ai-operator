@@ -46,6 +46,12 @@ type Invocation struct {
 	Resume string
 	// NoPersistence skips writing a session to disk (one-shot reviewers).
 	NoPersistence bool
+	// Role names the agent for the logs: implement, spec, bugbot,
+	// security, describe.
+	Role string
+	// LogPrompt makes the agent server log the system prompt and the prompt
+	// (agents.logPrompts).
+	LogPrompt bool
 }
 
 // Result is the parsed outcome of an invocation.

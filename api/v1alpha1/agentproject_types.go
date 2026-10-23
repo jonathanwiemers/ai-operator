@@ -310,6 +310,13 @@ type AgentsSpec struct {
 	// +optional
 	Models []ModelOption `json:"models,omitempty"`
 
+	// LogPrompts logs every prompt the agents get (role, system prompt and
+	// prompt, each cut at 64 KiB) in the agent container, where the web UI's
+	// live view shows them. Prompts hold issue text, comments, diffs and CI
+	// logs, so they are off by default.
+	// +optional
+	LogPrompts bool `json:"logPrompts,omitempty"`
+
 	// MaxEffort caps the effort an issue may ask for (effort label, "/agent
 	// effort", the spec agent's choice). The efforts of the roles and
 	// profiles themselves are not capped.

@@ -27,10 +27,24 @@ func NewAuthorizer(c *Config) *Authorizer {
 // CanView reports whether p may see the AgentProject namespace/name and its
 // tasks.
 func (a *Authorizer) CanView(p Principal, namespace, name string) bool {
+	return a.allows(p, namespace, name, func(Rule) bool { return true })
+}
+
+// CanSeeTranscript reports whether p may see the live transcripts (and
+// prompts) of the project's runs.
+func (a *Authorizer) CanSeeTranscript(p Principal, namespace, name string) bool {
+	return a.allows(p, namespace, name, func(r Rule) bool { return r.Transcript })
+}
+
+// allows reports whether a rule that grants grant matches p and the project.
+func (a *Authorizer) allows(p Principal, namespace, name string, grant func(Rule) bool) bool {
 	if a.mode == AuthNone {
 		return true
 	}
 	for _, r := range a.rules {
+		if !grant(r) {
+			continue
+		}
 		if !slices.Contains(r.Roles, "*") && !slices.ContainsFunc(r.Roles, func(role string) bool {
 			return slices.Contains(p.Roles, role)
 		}) {

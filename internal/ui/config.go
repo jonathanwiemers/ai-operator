@@ -96,6 +96,10 @@ type Rule struct {
 	// Projects are namespace/name patterns (path.Match syntax, e.g.
 	// "team-a/*"). Empty matches every project.
 	Projects []string `json:"projects,omitempty"`
+	// Transcript also shows the live transcript of the projects' runs: the
+	// agent's messages, tool calls and prompts, which can quote code, issue
+	// text and CI logs.
+	Transcript bool `json:"transcript,omitempty"`
 }
 
 // Duration is a time.Duration that reads "12h" from YAML.

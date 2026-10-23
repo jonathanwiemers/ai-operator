@@ -89,6 +89,10 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"project": summarize(ap, tasks, now),
 				"task":    taskView(&tasks[i], ciWindow(ap), now),
+				// What the app may offer; the endpoints check again.
+				"permissions": map[string]bool{
+					"transcript": s.logs != nil && s.authz.CanSeeTranscript(principalOf(r), ap.Namespace, ap.Name),
+				},
 			})
 			return
 		}

@@ -73,6 +73,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	st := r.loadState()
 	role := spec.Agents.Spec
 	inv := roleInvocation(role, specSystemPrompt, readOnlyTools, specSchema(spec.Agents.Profiles), true)
+	inv.Role = "spec"
 	inv.Resume = st.session("spec", role.Engine)
 	prompt := buildSpecPrompt(milestone, existing, spec.Agents.Profiles, task.Status.Run.RunCount > 0)
 	if task.Spec.Autopilot {

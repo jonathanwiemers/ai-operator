@@ -12,6 +12,9 @@ import (
 // maxLogText bounds the agent's text in one log line.
 const maxLogText = 4000
 
+// maxLogPrompt bounds a logged system prompt or prompt (agents.logPrompts).
+const maxLogPrompt = 64 << 10
+
 // logEvent logs one event of a stream-json session of claude or
 // cursor-agent: what the agent thinks (claude only) and says, and the tools
 // it calls with their main argument (the command, the file). Tool output is

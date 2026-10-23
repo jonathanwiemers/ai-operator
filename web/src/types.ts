@@ -213,7 +213,33 @@ export interface Task {
   status: TaskStatus
 }
 
+export interface Permissions {
+  // transcript: the live transcript (and prompts) of the task's runs.
+  transcript: boolean
+}
+
 export interface TaskResponse {
   project: ProjectSummary
   task: Task
+  permissions?: Permissions
+}
+
+// TranscriptEntry is one line of a run's live transcript.
+export interface TranscriptEntry {
+  time?: string
+  run?: string
+  kind: 'step' | 'cli' | 'thinks' | 'says' | 'tool' | 'answers' | 'prompt'
+  stepNo?: number
+  step?: string
+  status?: 'started' | 'done' | 'failed' | 'deferred'
+  result?: string
+  role?: string
+  engine?: string
+  model?: string
+  readOnly?: boolean
+  text?: string
+  tool?: string
+  input?: string
+  system?: string
+  prompt?: string
 }

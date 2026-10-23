@@ -277,7 +277,9 @@ first line) as it happens, and for claude also what it thinks
 in print mode. Tool output, written file contents and the final answer are
 not logged: the agent's last message before the result is held back and
 logged as "agent answers" (cursor writes its JSON answer as that message).
-Only the final result line is parsed.
+Only the final result line is parsed. With `spec.agents.logPrompts` the
+agent server also logs each call's role, system prompt and prompt (64 KiB
+each at most), which the web UI's live transcript shows; off by default.
 
 ## Lifecycle of long-lived issues
 

@@ -175,7 +175,9 @@ func testObjects() []client.Object {
 			},
 			Status: aiv1.AgentTaskStatus{
 				Phase: aiv1.TaskPhaseRunning,
-				Run:   aiv1.RunStatus{ObservedRunRequest: 1, CurrentStep: "10 run implementer", CostUSD: "0.50"},
+				// Only says a pod exists: the pod read is the task's own.
+				PodName: "billing-7-invoice",
+				Run:     aiv1.RunStatus{ObservedRunRequest: 1, ActiveRunRequest: 2, CurrentStep: "10 run implementer", CostUSD: "0.50"},
 			},
 		},
 		&aiv1.AgentTask{
@@ -190,6 +192,7 @@ type testEnv struct {
 	srv    *httptest.Server
 	hub    *Hub
 	client *http.Client
+	server *Server
 }
 
 func newTestEnv(t *testing.T, cfg *Config) *testEnv {
@@ -223,6 +226,7 @@ func newTestEnv(t *testing.T, cfg *Config) *testEnv {
 		t.Fatal(err)
 	}
 	handler = s.Handler()
+	env.server = s
 	jar, _ := cookiejar.New(nil)
 	env.client = &http.Client{
 		Jar: jar,

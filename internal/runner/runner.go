@@ -68,6 +68,8 @@ type Runner struct {
 	progress *progress
 	// pushedHead is the commit this run last pushed, e.g. a step.
 	pushedHead string
+	// logPrompts is the project's agents.logPrompts during a run.
+	logPrompts bool
 	// blamedRestarts is the agent container's restart count of the last
 	// termination a lost call was put down to.
 	blamedRestarts int32
@@ -317,6 +319,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	}
 
 	spec := project.Spec.WithDefaults()
+	r.logPrompts = spec.Agents.LogPrompts
 	gl := r.NewGitLab(spec.GitLab.URL, r.GitLabToken)
 	var out *Outcome
 	switch task.Spec.Type {
@@ -503,6 +506,7 @@ func (r *Runner) morePending(ctx context.Context, request int64) bool {
 // Usage and rate limits come back as *UsageLimitError. If the project already
 // knows the engine is limited, the engine is not called at all.
 func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
+	inv.LogPrompt = r.logPrompts
 	if lim, ok := r.projectStatus.ActiveUsageLimit(role.Engine, r.now()); ok {
 		return nil, &UsageLimitError{Engine: role.Engine, ResetAt: lim.Until.Time, Message: "project-wide limit: " + lim.Message}
 	}
