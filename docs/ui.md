@@ -29,6 +29,12 @@ With the `transcript` permission, a task page also has a **Live** panel: the
 running pod's steps and the agent's session as they happen (see
 [Live transcript](#live-transcript)).
 
+An autopilot that paused over an issue's run, review or CI and is **waiting**
+for a run that is working on that issue now shows as *Autopilot waiting for
+#N*: it continues by itself once the issue is reviewed and green. A pause
+that needs a human shows as *Autopilot paused* with its reason. While a run
+works on a task, its card marks the CI result as the last push's.
+
 A task's **stage** is derived from its status the same way the operator moves
 the GitLab labels; the hint on each badge explains it. After a push the task
 stays in *CI* until the operator has followed that commit's pipeline, for at

@@ -37,6 +37,8 @@ export interface AutopilotOverview {
   title: string
   phase: AutopilotPhase
   pausedReason?: string
+  // waitingFor: a run is working on this paused issue; autopilot continues by itself.
+  waitingFor?: number
   done: number
   total: number
 }

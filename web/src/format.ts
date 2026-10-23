@@ -122,3 +122,13 @@ export const ciLabel: Record<CIState, string> = {
   Canceled: 'Canceled',
   None: 'No pipeline',
 }
+
+// autopilotWaitingFor returns the issue a paused autopilot waits for: its
+// pause ends by itself, and a run is working on that issue now.
+export function autopilotWaitingFor(
+  ap: { phase?: string; resumeWhenReady?: boolean; pausedFor?: number } | undefined,
+  tasks: { issue?: { iid: number }; runPending: boolean }[],
+): number {
+  if (!ap || ap.phase !== 'Paused' || !ap.resumeWhenReady || !ap.pausedFor) return 0
+  return tasks.some((t) => t.issue?.iid === ap.pausedFor && t.runPending) ? ap.pausedFor : 0
+}

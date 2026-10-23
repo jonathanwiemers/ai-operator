@@ -124,3 +124,21 @@ func TestCIWindow(t *testing.T) {
 		t.Errorf("disabled: %v", got)
 	}
 }
+
+func TestAutopilotWaitingFor(t *testing.T) {
+	ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedFor: 288, ResumeWhenReady: true}
+	working := aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Issue: &aiv1.IssueRef{IID: 288}, RunRequest: 3}, Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{ObservedRunRequest: 2}}}
+	idle := working
+	idle.Spec.RunRequest = 2
+	if got := waitingFor(ap, []aiv1.AgentTask{working}); got != 288 {
+		t.Fatalf("a run works on the paused issue: %d", got)
+	}
+	if got := waitingFor(ap, []aiv1.AgentTask{idle}); got != 0 {
+		t.Fatalf("no run: the pause needs a human: %d", got)
+	}
+	needsHuman := *ap
+	needsHuman.ResumeWhenReady = false
+	if got := waitingFor(&needsHuman, []aiv1.AgentTask{working}); got != 0 {
+		t.Fatalf("a pause that does not end by itself: %d", got)
+	}
+}

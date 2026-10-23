@@ -29,7 +29,11 @@ const to = computed(() => ({
     </div>
     <div class="foot">
       <Badge v-if="task.suspend" tone="warning">Suspended</Badge>
-      <Badge v-if="task.status.ci" :tone="ciTone(task.status.ci.state)">CI: {{ ciLabel[task.status.ci.state] }}</Badge>
+      <!-- While a run works on the task, the CI result is the last push's. -->
+      <Badge v-if="task.status.ci && task.runPending" tone="muted" :title="`CI of the last push: ${ciLabel[task.status.ci.state]}`">
+        last push: {{ ciLabel[task.status.ci.state] }}
+      </Badge>
+      <Badge v-else-if="task.status.ci" :tone="ciTone(task.status.ci.state)">CI: {{ ciLabel[task.status.ci.state] }}</Badge>
       <Badge v-if="run.mergeRequestIID" tone="neutral">!{{ run.mergeRequestIID }}</Badge>
       <Badge v-if="(run.blockingFindings ?? 0) > 0" tone="danger">{{ run.blockingFindings }} findings</Badge>
       <Badge v-if="task.status.phase === 'Waiting' && run.limitedEngine" tone="warning">{{ run.limitedEngine }} limit</Badge>
