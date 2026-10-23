@@ -12,18 +12,32 @@ import (
 // maxLogText bounds the agent's text in one log line.
 const maxLogText = 4000
 
-// logEvent logs one event of a claude stream-json session: what the agent
-// thinks and says, and the tools it calls with their main argument (the
-// command, the file). Tool output is not logged: it holds file contents and
-// whatever commands print. It returns the event's type.
+// logEvent logs one event of a stream-json session of claude or
+// cursor-agent: what the agent thinks (claude only) and says, and the tools
+// it calls with their main argument (the command, the file). Tool output is
+// not logged: it holds file contents and whatever commands print. It returns
+// the event's type.
 func logEvent(log logr.Logger, line []byte) string {
 	var ev struct {
 		Type    string `json:"type"`
+		Subtype string `json:"subtype"`
 		Message struct {
 			Content json.RawMessage `json:"content"`
 		} `json:"message"`
+		// cursor-agent: one key per tool kind, e.g. readToolCall.
+		ToolCall map[string]json.RawMessage `json:"tool_call"`
 	}
-	if json.Unmarshal(line, &ev) != nil || ev.Type != "assistant" {
+	if json.Unmarshal(line, &ev) != nil {
+		return ""
+	}
+	if ev.Type == "tool_call" && ev.Subtype == "started" {
+		for kind, raw := range ev.ToolCall {
+			name, input := cursorTool(kind, raw)
+			log.Info("agent uses a tool", "tool", name, "input", input)
+		}
+		return ev.Type
+	}
+	if ev.Type != "assistant" {
 		return ev.Type
 	}
 	var blocks []struct {
@@ -56,6 +70,35 @@ func logEvent(log logr.Logger, line []byte) string {
 		}
 	}
 	return ev.Type
+}
+
+// eventType returns the type of a stream-json event.
+func eventType(line []byte) string {
+	var ev struct {
+		Type string `json:"type"`
+	}
+	_ = json.Unmarshal(line, &ev)
+	return ev.Type
+}
+
+// cursorTool names a cursor-agent tool call and picks its main argument:
+// {"readToolCall": {"args": {"path": …}}} is the tool "read", other tools
+// come as {"function": {"name": …, "arguments": "<json>"}}.
+func cursorTool(kind string, raw json.RawMessage) (string, string) {
+	if kind == "function" {
+		var f struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}
+		_ = json.Unmarshal(raw, &f)
+		return f.Name, toolInput(f.Name, json.RawMessage(f.Arguments))
+	}
+	var c struct {
+		Args json.RawMessage `json:"args"`
+	}
+	_ = json.Unmarshal(raw, &c)
+	name := strings.TrimSuffix(kind, "ToolCall")
+	return name, toolInput(name, c.Args)
 }
 
 // toolInput is the part of a tool call worth a log line.

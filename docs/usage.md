@@ -771,8 +771,8 @@ The steps show up in three places:
 Prompts, comment bodies and diffs are never logged. `spec.agents.logLevel:
 debug` (or the operator's `--agent-log-level`) adds the runner's git commands.
 
-**The agent's session** (claude engine) is in the agent container's log as it
-happens, tagged with the run like the other lines:
+**The agent's session** is in the agent container's log as it happens,
+tagged with the run like the other lines:
 
 ```
 agent thinks       text="The endpoint needs a test first."
@@ -786,8 +786,12 @@ Thinking shows up when the model thinks (depending on model and
 the agent's final answer (posted on GitLab anyway) are not logged; commands
 are logged by their first line, without heredoc contents, and unknown tools
 only by the names of their arguments. What the agent writes in its own
-thinking and messages can still quote code. `logLevel: error` turns these lines off. cursor-agent runs are not
-streamed.
+thinking and messages can still quote code. `logLevel: error` turns these
+lines off.
+
+cursor-agent runs show the same messages and tool calls, with Cursor's tool
+names (`read`, `write`, `run_terminal_cmd`, …), but no thinking: the CLI keeps
+it to itself in print mode.
 
 ### When the agent container dies
 

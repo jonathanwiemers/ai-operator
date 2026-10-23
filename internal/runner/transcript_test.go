@@ -95,3 +95,81 @@ func TestClaudeDyingMidSessionFails(t *testing.T) {
 		t.Fatalf("a session without a result is a failure with stderr: %v", err)
 	}
 }
+
+// fakeCursor writes a script that prints a cursor-agent stream-json session
+// (events as Cursor documents them).
+func fakeCursor(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "cursor-agent")
+	script := `#!/bin/sh
+echo "$@" > "$(dirname "$0")/args"
+echo '{"type":"system","subtype":"init","apiKeySource":"env","cwd":"/w","session_id":"c1","model":"Auto","permissionMode":"default"}'
+echo '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"SECRET-PROMPT"}]},"session_id":"c1"}'
+echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Reading the handler first."}]},"session_id":"c1"}'
+echo '{"type":"tool_call","subtype":"started","call_id":"1","tool_call":{"readToolCall":{"args":{"path":"api/handler.go"}}},"session_id":"c1"}'
+echo '{"type":"tool_call","subtype":"completed","call_id":"1","tool_call":{"readToolCall":{"args":{"path":"api/handler.go"},"result":{"success":{"content":"SECRET-FILE"}}}},"session_id":"c1"}'
+echo '{"type":"tool_call","subtype":"started","call_id":"2","tool_call":{"writeToolCall":{"args":{"path":"api/handler_test.go","fileText":"SECRET-WRITTEN","toolCallId":"2"}}},"session_id":"c1"}'
+echo '{"type":"tool_call","subtype":"started","call_id":"3","tool_call":{"function":{"name":"run_terminal_cmd","arguments":"{\"command\":\"go test ./api/...\"}"}},"session_id":"c1"}'
+echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"{\"status\":\"done\",\"summary\":\"SECRET-SUMMARY\"}"}]},"session_id":"c1"}'
+echo '{"type":"result","subtype":"success","duration_ms":1200,"is_error":false,"result":"{\"status\":\"done\",\"summary\":\"SECRET-SUMMARY\"}","session_id":"c1"}'
+`
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+func TestCursorSessionIsLogged(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	log := funcr.New(func(prefix, args string) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, args)
+	}, funcr.Options{})
+	ctx := logr.NewContext(context.Background(), log)
+	bin := fakeCursor(t)
+	res, err := (&CursorCLI{Binary: bin, Env: os.Environ()}).Run(ctx, Invocation{Dir: t.TempDir(), Prompt: "go", JSONSchema: `{"type":"object"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var answer struct{ Status string }
+	if res.SessionID != "c1" || res.Decode(&answer) != nil || answer.Status != "done" {
+		t.Fatalf("the result line must still be parsed: %+v", res)
+	}
+	if args, _ := os.ReadFile(filepath.Join(filepath.Dir(bin), "args")); !strings.Contains(string(args), "--output-format stream-json") {
+		t.Fatalf("cursor-agent must stream: %s", args)
+	}
+	all := strings.Join(lines, "\n")
+	for _, want := range []string{
+		`"msg"="agent says" "text"="Reading the handler first."`,
+		`"tool"="read" "input"="api/handler.go"`,
+		`"tool"="write" "input"="api/handler_test.go"`,
+		`"tool"="run_terminal_cmd" "input"="go test ./api/..."`,
+		`"msg"="agent answers"`,
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %s in:\n%s", want, all)
+		}
+	}
+	for _, secret := range []string{"SECRET-PROMPT", "SECRET-FILE", "SECRET-WRITTEN", "SECRET-SUMMARY"} {
+		if strings.Contains(all, secret) {
+			t.Errorf("%s must not be logged:\n%s", secret, all)
+		}
+	}
+	if n := strings.Count(all, `"tool"="read"`); n != 1 {
+		t.Errorf("a tool call is logged when it starts, not again when it completes: %d", n)
+	}
+}
+
+func TestCursorDyingMidSessionFails(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "cursor-agent")
+	script := "#!/bin/sh\necho '{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"working\"}]}}'\necho \"You've hit your usage limit\" >&2\nexit 1\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := (&CursorCLI{Binary: bin, Env: os.Environ()}).Run(context.Background(), Invocation{Dir: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "usage limit") {
+		t.Fatalf("a session without a result is a failure with stderr: %v", err)
+	}
+}
