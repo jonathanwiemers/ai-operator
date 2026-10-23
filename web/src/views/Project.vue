@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useResource } from '../live'
-import { cost } from '../format'
+import { cost, autopilotWaitingFor } from '../format'
 import Badge from '../components/Badge.vue'
 import Board from '../components/Board.vue'
 import ExtLink from '../components/ExtLink.vue'
@@ -93,7 +93,10 @@ function apTone(phase: string | undefined) {
             <ExtLink :href="m.webURL">{{ m.title }}</ExtLink>
           </h2>
           <span class="faint">%{{ m.iid }}</span>
-          <Badge v-if="m.spec?.status.autopilot" :tone="apTone(m.spec.status.autopilot.phase)">
+          <Badge v-if="m.spec?.status.autopilot && autopilotWaitingFor(m.spec.status.autopilot, m.tasks)" tone="progress">
+            Autopilot waiting for #{{ autopilotWaitingFor(m.spec.status.autopilot, m.tasks) }}
+          </Badge>
+          <Badge v-else-if="m.spec?.status.autopilot" :tone="apTone(m.spec.status.autopilot.phase)">
             Autopilot {{ m.spec.status.autopilot.phase.toLowerCase() }}
           </Badge>
           <span class="spacer" />
@@ -120,9 +123,21 @@ function apTone(phase: string | undefined) {
           </span>
         </RouterLink>
 
-        <div v-if="m.spec?.status.autopilot?.phase === 'Paused'" class="banner warning">
+        <div v-if="m.spec?.status.autopilot && autopilotWaitingFor(m.spec.status.autopilot, m.tasks)" class="banner info">
+          <strong>Autopilot waiting</strong>
+          <span>
+            A run is working on #{{ m.spec.status.autopilot.pausedFor }}; autopilot continues by itself once it is reviewed and
+            CI is green. It paused because {{ m.spec.status.autopilot.pausedReason }}.
+          </span>
+        </div>
+        <div v-else-if="m.spec?.status.autopilot?.phase === 'Paused'" class="banner warning">
           <strong>Autopilot paused</strong>
-          <span>{{ m.spec.status.autopilot.pausedReason || 'Waiting for a human.' }}</span>
+          <span>
+            {{ m.spec.status.autopilot.pausedReason || 'Waiting for a human.' }}
+            <template v-if="m.spec.status.autopilot.resumeWhenReady">
+              It continues by itself once a later run of #{{ m.spec.status.autopilot.pausedFor }} fixes this.
+            </template>
+          </span>
         </div>
 
         <Board :tasks="m.tasks" />

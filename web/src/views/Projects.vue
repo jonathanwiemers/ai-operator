@@ -94,7 +94,8 @@ function unhealthy(p: ProjectSummary) {
         </div>
         <StageBar :stages="p.stages" />
         <div v-for="a in p.autopilots" :key="a.milestoneIID" class="autopilot">
-          <Badge :tone="a.phase === 'Paused' ? 'warning' : a.phase === 'Running' ? 'progress' : 'muted'">
+          <Badge v-if="a.waitingFor" tone="progress" :title="a.pausedReason">Autopilot waiting for #{{ a.waitingFor }}</Badge>
+          <Badge v-else :tone="a.phase === 'Paused' ? 'warning' : a.phase === 'Running' ? 'progress' : 'muted'" :title="a.pausedReason">
             Autopilot {{ a.phase.toLowerCase() }}
           </Badge>
           <span class="ap-title">{{ a.title }}</span>

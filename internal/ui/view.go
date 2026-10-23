@@ -123,8 +123,11 @@ type AutopilotOverview struct {
 	Title        string              `json:"title"`
 	Phase        aiv1.AutopilotPhase `json:"phase"`
 	PausedReason string              `json:"pausedReason,omitempty"`
-	Done         int                 `json:"done"`
-	Total        int                 `json:"total"`
+	// WaitingFor is the issue a paused autopilot waits for: a run is working
+	// on it, and autopilot continues by itself once it passes the gate.
+	WaitingFor int64 `json:"waitingFor,omitempty"`
+	Done       int   `json:"done"`
+	Total      int   `json:"total"`
 }
 
 // ProjectDetail is a project with its tasks grouped by milestone.
@@ -236,6 +239,7 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Proj
 				Title:        t.Spec.Milestone.Title,
 				Phase:        ap.Phase,
 				PausedReason: ap.PausedReason,
+				WaitingFor:   waitingFor(ap, tasks),
 				Total:        len(ap.Items),
 			}
 			for _, it := range ap.Items {
@@ -334,4 +338,19 @@ func parseCost(s string) float64 {
 
 func formatCost(v float64) string {
 	return strconv.FormatFloat(v, 'f', 2, 64)
+}
+
+// waitingFor returns the issue a paused autopilot waits for: the pause is
+// over that issue's run, review or CI (it ends by itself), and a run is
+// working on the issue now. 0 otherwise: the pause needs a human.
+func waitingFor(ap *aiv1.AutopilotStatus, tasks []aiv1.AgentTask) int64 {
+	if ap.Phase != aiv1.AutopilotPaused || !ap.ResumeWhenReady || ap.PausedFor == 0 {
+		return 0
+	}
+	for i := range tasks {
+		if t := &tasks[i]; t.Spec.Issue != nil && t.Spec.Issue.IID == ap.PausedFor && t.RunPending() {
+			return ap.PausedFor
+		}
+	}
+	return 0
 }

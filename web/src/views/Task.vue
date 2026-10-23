@@ -254,6 +254,9 @@ const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? '
           <span>
             {{ t.status.autopilot.pausedReason }}
             <template v-if="t.status.autopilot.pausedFor">(issue #{{ t.status.autopilot.pausedFor }})</template>
+            <template v-if="t.status.autopilot.resumeWhenReady">
+              It continues by itself once a later run of #{{ t.status.autopilot.pausedFor }} is reviewed and green.
+            </template>
           </span>
         </div>
         <div class="card">
