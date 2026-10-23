@@ -307,3 +307,26 @@ func TestFailureMentionsTheOwners(t *testing.T) {
 		t.Fatalf("the failure mentions the owners:\n%s", body)
 	}
 }
+
+func TestEmptySummaryGetsAFallback(t *testing.T) {
+	e := newImplementEnv(t)
+	e.configure(t, func(p *aiv1.AgentProjectSpec) { p.Agents.Describe.Disabled = true }, func(*aiv1.AgentTaskSpec) {})
+	engine := &describingEngine{answer: ImplementAnswer{Status: "done", CommitMessage: "Add steady"}}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	last := func() string { return e.gl.MRNotes[1][len(e.gl.MRNotes[1])-1].Body }
+	if !strings.Contains(last(), "The agent left no summary. This run pushed its changes") {
+		t.Fatalf("a run that pushed says so:\n%s", last())
+	}
+	e.rerun(t, r) // writes the same file again: nothing changes
+	if !strings.Contains(last(), "The agent left no summary and changed nothing in this run.") {
+		t.Fatalf("a run without changes says so:\n%s", last())
+	}
+	var got aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &got)
+	if got.Status.Run.Summary != "The agent left no summary and changed nothing in this run." {
+		t.Fatalf("the task status carries it too: %q", got.Status.Run.Summary)
+	}
+}
