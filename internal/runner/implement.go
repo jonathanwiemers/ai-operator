@@ -482,6 +482,11 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	// The description covers the whole change; the first one replaces the
 	// first report's summary (the task status keeps it).
+	// An agent may leave the summary empty (cursor does when it changed
+	// nothing): the report and the task status still say what the run did.
+	if strings.TrimSpace(answer.Summary) == "" {
+		answer.Summary = emptySummary(pushed || r.pushedHead != "", out.PushedSHA)
+	}
 	reported := answer
 	if !spec.Agents.Describe.Disabled {
 		first, notice := r.describe(ctx, gl, glProject, spec.Agents.Describe, issue, mr.IID, base, answer.Summary, &st, out)
@@ -931,6 +936,14 @@ func renderReportText(answer ImplementAnswer, findings []Finding, reviewErrs []s
 		fmt.Fprintf(&b, "\n> ⚠️ %s\n", e)
 	}
 	return b.String()
+}
+
+// emptySummary stands in for a summary the agent did not write.
+func emptySummary(pushed bool, sha string) string {
+	if pushed {
+		return fmt.Sprintf("The agent left no summary. This run pushed its changes (up to `%s`); the diff shows them.", shortSHA(sha))
+	}
+	return "The agent left no summary and changed nothing in this run."
 }
 
 func commitMessage(msg string, issue *gitlab.Issue) string {
