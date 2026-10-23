@@ -29,6 +29,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // Runner waits for and executes run requests of one AgentTask.
@@ -112,6 +113,9 @@ type state struct {
 	// Ready is set when the runner last left the MR ready, so a draft after
 	// that is a human holding it.
 	Ready bool `json:"ready,omitempty"`
+	// DescribedDiff is the hash of the diff the merge request description
+	// was last written for.
+	DescribedDiff string `json:"describedDiff,omitempty"`
 }
 
 func sessionKey(role string, engine aiv1.Engine) string { return role + "/" + string(engine) }
@@ -560,6 +564,10 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 	wf := spec.Workflow
 	body := fmt.Sprintf("🤖 The agent run failed:\n\n```\n%s\n```\n\nComment `%s retry` (or move the issue back to `%s`) to try again.",
 		truncate(runErr.Error(), 3000), wf.CommandPrefix, wf.ReadyLabel)
+	// On autopilot the pause on the tracking issue mentions the owners.
+	if spec.Notify.Wants(aiv1.NotifyFailed) && !task.Spec.Autopilot {
+		body += notify.Mention(task.Spec.Owners)
+	}
 	body += r.run.markdown(out.CostUSD)
 	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); err != nil {
 		r.log().Error(err, "posting failure note")

@@ -48,6 +48,11 @@ type AgentTaskSpec struct {
 	// +optional
 	Autopilot bool `json:"autopilot,omitempty"`
 
+	// Owners are the GitLab usernames mentioned when the task needs a human:
+	// the milestone's, else the project's, else the operator's default.
+	// +optional
+	Owners []string `json:"owners,omitempty"`
+
 	// Source records which GitLab state the operator has already turned into
 	// run requests, so that every change triggers exactly one run.
 	// +optional
@@ -149,6 +154,12 @@ type CIStatus struct {
 	// FailedJobs of the latest failed pipeline.
 	// +optional
 	FailedJobs []string `json:"failedJobs,omitempty"`
+	// PingedFor is the event the owners were last mentioned for on this
+	// commit, so a pipeline run again in review does not ping them again
+	// for the same thing. A ping is sent at most once: if its comment
+	// fails, the comment is posted again without it.
+	// +optional
+	PingedFor NotifyEvent `json:"pingedFor,omitempty"`
 }
 
 // TaskPhase is a coarse summary of where a task is in its lifecycle.

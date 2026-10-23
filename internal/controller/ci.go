@@ -12,6 +12,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // syncCI drives the CI feedback loop of an implement task. After the agent
@@ -180,7 +181,7 @@ func (r *AgentProjectReconciler) syncReviewCI(ctx context.Context, gl gitlab.API
 	}
 	log.FromContext(ctx).Info("new pipeline for the pushed commit, following it", "task", task.Name, "pipeline", head.ID, "status", head.Status)
 	// The status first: if the label move fails, the next poll retries it.
-	if err := r.patchCI(ctx, task, &aiv1.CIStatus{SHA: cur.SHA, State: aiv1.CIStatePending, PipelineID: head.ID, PipelineURL: head.WebURL}); err != nil {
+	if err := r.patchCI(ctx, task, &aiv1.CIStatus{SHA: cur.SHA, State: aiv1.CIStatePending, PipelineID: head.ID, PipelineURL: head.WebURL, PingedFor: cur.PingedFor}); err != nil {
 		return err
 	}
 	return r.backToWorking(ctx, gl, spec, is)
@@ -245,14 +246,39 @@ func (r *AgentProjectReconciler) baseFailing(ctx context.Context, gl gitlab.API,
 // base failures go to review; Failed goes to needs-input.
 func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, ci *aiv1.CIStatus, state aiv1.CIState, note string) error {
 	wf := spec.Workflow
+	prev := ci.State
 	ci.State = state
 	next := wf.ReviewLabel
 	if state == aiv1.CIStateFailed {
 		next = wf.NeedsInputLabel
 	}
-	log.FromContext(ctx).Info("CI loop finished", "task", task.Name, "state", state, "label", next)
+	logger := log.FromContext(ctx)
+	logger.Info("CI loop finished", "task", task.Name, "state", state, "label", next)
+	// Autopilot merges what reaches review; nobody needs to look.
+	review := next == wf.ReviewLabel && !task.Spec.Autopilot
+	var event aiv1.NotifyEvent
+	switch {
+	case state == aiv1.CIStateFailed:
+		event = aiv1.NotifyCIFailed
+	case review:
+		event = aiv1.NotifyReview
+	}
+	mention := ""
+	if event != "" && ci.PingedFor != event && spec.Notify.Wants(event) {
+		mention = notify.Mention(task.Spec.Owners)
+	}
+	// Recorded before the comments, with the state still open: a failure
+	// after them repeats the loop's end on the next poll, but not the ping.
+	if mention != "" {
+		ci.PingedFor = event
+		pinged := ci.DeepCopy()
+		pinged.State = prev
+		if err := r.patchCI(ctx, task, pinged); err != nil {
+			return err
+		}
+	}
 	if note != "" {
-		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, is.IID, note); err != nil {
+		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, is.IID, note+mention); err != nil {
 			return fmt.Errorf("commenting on issue #%d: %w", is.IID, err)
 		}
 	}
@@ -260,6 +286,25 @@ func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, sp
 		AddLabels: []string{next}, RemoveLabels: []string{wf.WorkingLabel},
 	}); err != nil {
 		return fmt.Errorf("moving issue #%d to %q: %w", is.IID, next, err)
+	}
+	if review {
+		// The issue is in review already: a failure here is logged, not
+		// tried again, so nobody is pinged twice.
+		mrIID := task.Status.Run.MergeRequestIID
+		if *spec.Notify.RequestReview {
+			if _, err := notify.RequestReview(ctx, gl, spec.GitLab.Project, mrIID, task.Spec.Owners); err != nil {
+				logger.Info("could not request reviews", "mr", mrIID, "error", err.Error())
+			}
+		}
+		if note == "" && mention != "" && mrIID != 0 {
+			body := "🤖 Ready for review: CI passed."
+			if state == aiv1.CIStateNone {
+				body = "🤖 Ready for review: no pipeline ran for this commit."
+			}
+			if _, err := gl.CreateMergeRequestNote(ctx, spec.GitLab.Project, mrIID, body+mention); err != nil {
+				logger.Info("could not ask for a review", "mr", mrIID, "error", err.Error())
+			}
+		}
 	}
 	return r.patchCI(ctx, task, ci)
 }

@@ -19,6 +19,12 @@ leaderElection: true
 # Log level of the operator: debug, info or error.
 logLevel: info
 
+# GitLab usernames (without "@") the operator mentions when a task needs a
+# human (a failed run, questions, red CI, review, autopilot pauses), for
+# AgentProjects that do not set spec.notify.users. A milestone overrides them
+# with a line "/agent owners @alice @bob" in its description.
+defaultOwners: []
+
 # Install and upgrade the CRDs with the chart.
 crds:
   install: true

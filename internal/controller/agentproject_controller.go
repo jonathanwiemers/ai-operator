@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // GitLabFactory creates a GitLab client; replaced in tests.
@@ -40,6 +42,8 @@ type AgentProjectReconciler struct {
 	Scheme    *runtime.Scheme
 	NewGitLab GitLabFactory
 	Now       func() time.Time
+	// DefaultOwners are mentioned for projects that set no notify.users.
+	DefaultOwners []string
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojects,verbs=get;list;watch
@@ -182,13 +186,25 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	// Autopilot milestones by IID, with their spec task.
 	autopilots := map[int64]*aiv1.AgentTask{}
 	var specTasks []*aiv1.AgentTask
+	// The owners of a milestone and its issues.
+	prefix := spec.Workflow.CommandPrefix
+	owners := func(description string) []string {
+		return notify.Resolve(description, prefix, spec.Notify.Users, r.DefaultOwners)
+	}
+	descriptions := map[int64]string{}
 	for _, m := range milestones {
-		autopilot := spec.Milestones.Autopilot() != "" && milestoneSelected(m, titleRE, spec.Milestones.Autopilot())
-		if !autopilot && !milestoneSelected(m, titleRE, spec.Milestones.Marker()) {
+		descriptions[m.ID] = m.Description
+	}
+	for _, m := range milestones {
+		// An owners line neither selects a milestone nor is a spec.
+		sel := m
+		sel.Description = notify.WithoutOwners(m.Description, prefix)
+		autopilot := spec.Milestones.Autopilot() != "" && milestoneSelected(sel, titleRE, spec.Milestones.Autopilot())
+		if !autopilot && !milestoneSelected(sel, titleRE, spec.Milestones.Marker()) {
 			continue
 		}
 		active++
-		task, err := r.syncSpecTask(ctx, project, m, byMilestone[m.IID], autopilot)
+		task, err := r.syncSpecTask(ctx, project, m, byMilestone[m.IID], autopilot, owners(m.Description), prefix)
 		if err != nil {
 			return err
 		}
@@ -224,7 +240,15 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 				autopilot = st.Spec.Autopilot && onAutopilot(st, is.IID)
 			}
 		}
-		task, mr, err := r.syncImplementTask(ctx, gl, project, spec, is, byIssue[is.IID], autopilot)
+		description := ""
+		if is.Milestone != nil {
+			// Closed milestones are not listed; the issue carries its own.
+			var ok bool
+			if description, ok = descriptions[is.Milestone.ID]; !ok {
+				description = is.Milestone.Description
+			}
+		}
+		task, mr, err := r.syncImplementTask(ctx, gl, project, spec, is, byIssue[is.IID], autopilot, owners(description))
 		if err != nil {
 			return err
 		}
@@ -351,8 +375,9 @@ func (r *AgentProjectReconciler) newTask(project *aiv1.AgentProject, name string
 
 // syncSpecTask makes sure a planned milestone has a spec task and requests a
 // new run whenever the milestone description changes.
-func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool) (*aiv1.AgentTask, error) {
-	hash := hashString(m.Description)
+func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners []string, prefix string) (*aiv1.AgentTask, error) {
+	// The owners are no part of the spec: changing them re-plans nothing.
+	hash := hashString(notify.WithoutOwners(m.Description, prefix))
 	ref := &aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title}
 	if task == nil {
 		var err error
@@ -365,13 +390,15 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		task.Spec.RunRequest = 1
 		task.Spec.Source.DescriptionHash = hash
 		task.Spec.Autopilot = autopilot
+		task.Spec.Owners = owners
 		log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name, "autopilot", autopilot)
 		return task, r.Create(ctx, task)
 	}
-	if task.Spec.Source.DescriptionHash == hash && *task.Spec.Milestone == *ref && task.Spec.Autopilot == autopilot {
+	if task.Spec.Source.DescriptionHash == hash && *task.Spec.Milestone == *ref && task.Spec.Autopilot == autopilot && slices.Equal(task.Spec.Owners, owners) {
 		return task, nil
 	}
 	task.Spec.Autopilot = autopilot
+	task.Spec.Owners = owners
 	if task.Spec.Source.DescriptionHash != hash {
 		log.FromContext(ctx).Info("milestone spec changed, re-planning", "milestone", m.Title, "task", task.Name)
 		task.Spec.RunRequest++
@@ -384,7 +411,7 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 // syncImplementTask makes sure an issue handed to the agent has a task and
 // turns "moved to ready" and "/agent" comments into run requests. It returns
 // the task's merge request too, if it has one.
-func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, autopilot bool) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
+func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, owners []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -403,6 +430,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		task.Spec.Milestone = &aiv1.MilestoneRef{ID: is.Milestone.ID, IID: is.Milestone.IID, Title: is.Milestone.Title}
 	}
 	task.Spec.Autopilot = autopilot
+	task.Spec.Owners = owners
 
 	ready := is.HasLabel(wf.ReadyLabel)
 	src := &task.Spec.Source

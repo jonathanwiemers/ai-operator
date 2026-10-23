@@ -147,7 +147,8 @@ nobody is assigned (see [Watching progress](#watching-progress)) and starts a
 pod named like `shop-42-add-paypal-button`. In that pod:
 
 1. On the first run, the **draft MR** `Closes #42` is opened right away, in
-   the issue's milestone, before the agent changes anything. The branch
+   the issue's milestone, before the agent changes anything. Its description
+   holds a placeholder until the first push is described (step 7). The branch
    `agent/42-add-paypal-button` starts with an empty "Start work on #42"
    commit pushed with `ci.skip`, so no pipeline runs for it (the message has
    no `[skip ci]`, which a merge commit template could copy to the default
@@ -184,8 +185,15 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    run with changes marks it ready; CI fix runs off autopilot are not
    reviewed and leave the draft state as it is. A clean run that has nothing
    new to push starts a merge request pipeline for the head it marked ready.
-7. The branch is pushed and the report is posted on the MR. If the agent has
-   questions, they are also posted on the issue.
+7. The branch is pushed. If the diff changed since it was last described,
+   the **describe** agent (`agents.describe`) rewrites the **MR
+   description**: Why, What, How, Verification and, when it helps, a mermaid
+   diagram of the change at the bottom. It describes the whole branch, not
+   the run, and only rewrites its own part (between hidden markers): text
+   you add above or below it, and `Closes #42`, stay. Then the report is
+   posted on the MR; the first run's report points to the description
+   instead of repeating it, later reports say what that run changed. If the
+   agent has questions, they are also posted on the issue.
 8. The agent's decisions are posted on the issue (see
    [Decisions](#decisions)).
 
@@ -200,6 +208,40 @@ run report lists (and, where pipelines skip drafts, no CI). On
 
 So an issue's MR goes: draft MR → code → review → ready → pipeline → CI fixes
 if needed → merge (by you, or by autopilot).
+
+### Owners and pings
+
+The operator mentions the **owners** (`cc @alice @bob`) in the comments that
+need a human, so GitLab sends them a mail and a To-Do:
+
+| When | Where |
+|------|-------|
+| a run failed | issue |
+| the agent asks questions | issue (with the questions) |
+| the agent could not finish alone (e.g. unresolved conflicts) | MR report |
+| CI is still red after the fix rounds | issue |
+| the issue reached review (not on autopilot) | MR report, or "Ready for review" on the MR after CI; the owners also become the MR's reviewers if it has none |
+| autopilot paused or is done | tracking issue |
+
+Only new comments carry the mention, never the progress comment that is
+edited while a run goes on, and each commit pings for review once. On
+autopilot, failed runs and questions ping through the pause on the tracking
+issue instead. The owners are, most specific first:
+
+1. a line in the milestone description, for the milestone and its issues:
+
+   ```
+   /agent owners @alice @bob
+   ```
+
+   An `/agent owners` line without names turns the pings off for the
+   milestone. Adding or changing the line does not re-plan the milestone.
+2. `spec.notify.users` of the AgentProject;
+3. the operator's default (Helm value `defaultOwners`).
+
+`spec.notify.events` picks the situations, `spec.notify.requestReview: false`
+keeps the reviewers to you (see
+[configuration.md](configuration.md#specnotify)).
 
 ## CI feedback
 
@@ -462,7 +504,8 @@ anything else.
 ### When it pauses
 
 Autopilot pauses instead of guessing. It comments on the tracking issue with
-the reason and what to do:
+the reason and what to do, mentioning the milestone's
+[owners](#owners-and-pings):
 
 - the issue landed in `agent::needs-input` (CI still red after the fix
   rounds, a failed run, used-up usage-limit deferrals);

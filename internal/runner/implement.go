@@ -11,6 +11,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // runImplement implements an issue: implement -> review -> fix (bounded) ->
@@ -41,6 +42,8 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if milestone, err = gl.GetMilestone(ctx, glProject, issue.Milestone.ID); err != nil {
 			return out, s.fail(fmt.Errorf("getting milestone: %w", err))
 		}
+		// The owners line is for the operator, not the agent.
+		milestone.Description = notify.WithoutOwners(milestone.Description, wf.CommandPrefix)
 		s.done(milestone.Title)
 	}
 	s = r.step(ctx, "read project")
@@ -466,7 +469,20 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		st.RevisitNoteID = seenNote
 		_ = r.saveState(st)
 	}
-	report := renderReport(answer, remaining, append(reviewNotes, notices...))
+	// The description covers the whole change; the first one replaces the
+	// first report's summary (the task status keeps it).
+	reported := answer
+	if !spec.Agents.Describe.Disabled {
+		first, notice := r.describe(ctx, gl, glProject, spec.Agents.Describe, issue, mr.IID, base, answer.Summary, &st, out)
+		if notice != "" {
+			notices = append(notices, notice)
+		}
+		// A run that stops for input keeps saying why.
+		if first && answer.Status != "needs_input" && len(answer.Questions) == 0 {
+			reported.Summary = "📝 Described the change in the merge request description."
+		}
+	}
+	report := renderReport(reported, remaining, append(reviewNotes, notices...))
 	if ciFix {
 		report = "CI fix: " + report
 	}
@@ -474,27 +490,42 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// run was requested meanwhile, in which case the issue stays "working".
 	// The run log covers the steps up to here.
 	needsInput := answer.Status == "needs_input" || len(answer.Questions) > 0
+	// With the CI loop, a fresh push stays in "working" until the operator
+	// has seen its pipeline go green (or hands it back).
+	waitForCI := !spec.CI.Disabled && out.PushedSHA != "" && !needsInput
+	pending := !waitForCI && r.morePending(ctx, task.Spec.RunRequest)
+	// The owners are mentioned where the answer is wanted: questions on the
+	// issue, everything else on the MR. On autopilot nobody is: it merges
+	// what reaches review, and its pause on the tracking issue mentions
+	// them for the rest.
+	toReview := !needsInput && !waitForCI && !pending
+	var mrMention, issueMention string
+	switch {
+	case task.Spec.Autopilot:
+	case needsInput && spec.Notify.Wants(aiv1.NotifyNeedsInput) && len(answer.Questions) > 0:
+		issueMention = notify.Mention(task.Spec.Owners)
+	case needsInput && spec.Notify.Wants(aiv1.NotifyNeedsInput),
+		toReview && spec.Notify.Wants(aiv1.NotifyReview):
+		mrMention = notify.Mention(task.Spec.Owners)
+	}
 	runLogMD := r.run.markdown(out.CostUSD)
 	s = r.step(ctx, "comment")
-	if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+runLogMD); err != nil {
+	if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+mrMention+runLogMD); err != nil {
 		return out, s.fail(fmt.Errorf("commenting on merge request: %w", err))
 	}
 	if len(answer.Questions) > 0 {
 		// Questions are answered where people look first.
-		note := fmt.Sprintf("🤖 Before this can be finished I need answers (comment here or on %s):\n\n%s", mr.WebURL, numbered(answer.Questions))
-		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, note); err != nil {
+		note := fmt.Sprintf("🤖 Before this can be finished I need answers (comment here or on %s):\n\n%s", mr.WebURL, notify.Defuse(numbered(answer.Questions)))
+		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, note+issueMention); err != nil {
 			return out, s.fail(fmt.Errorf("commenting on issue: %w", err))
 		}
 	}
 	s.done(fmt.Sprintf("on !%d", mr.IID))
-	// With the CI loop, a fresh push stays in "working" until the operator
-	// has seen its pipeline go green (or hands it back).
-	waitForCI := !spec.CI.Disabled && out.PushedSHA != "" && !needsInput
 	s = r.step(ctx, "update issue labels")
 	switch {
 	case waitForCI:
 		s.done(fmt.Sprintf("stays in %s until the pipeline is green", wf.WorkingLabel))
-	case r.morePending(ctx, task.Spec.RunRequest):
+	case pending:
 		s.done(fmt.Sprintf("stays in %s, another run is pending", wf.WorkingLabel))
 	default:
 		next := wf.ReviewLabel
@@ -507,6 +538,16 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			return out, s.fail(fmt.Errorf("updating issue labels: %w", err))
 		}
 		s.done("moved to "+next, "label", next)
+		if next == wf.ReviewLabel && !task.Spec.Autopilot && *spec.Notify.RequestReview && len(task.Spec.Owners) > 0 {
+			s = r.step(ctx, "request review")
+			if names, err := notify.RequestReview(ctx, gl, glProject, mr.IID, task.Spec.Owners); err != nil {
+				s.done("failed: "+truncate(err.Error(), 300), "error", err.Error())
+			} else if len(names) == 0 {
+				s.done("none requested: the merge request has reviewers, or the owners are unknown")
+			} else {
+				s.done("@"+strings.Join(names, ", @"), "reviewers", names)
+			}
+		}
 	}
 
 	out.Result = aiv1.RunResultSucceeded
@@ -609,7 +650,7 @@ func (r *Runner) openMergeRequest(ctx context.Context, gl gitlab.API, glProject 
 		SourceBranch:       branch,
 		TargetBranch:       base,
 		Title:              "Draft: " + issue.Title,
-		Description:        fmt.Sprintf("Closes #%d\n\nThe agent works on this; its progress, reports and decisions are in the comments.", issue.IID),
+		Description:        newDescription(issue.IID),
 		RemoveSourceBranch: true,
 	}
 	// The issue's milestone lists the MR in its "Merge requests" tab.
@@ -858,7 +899,13 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 	return findings, cost, errs
 }
 
+// renderReport renders the run's report; agent-written text in it pings
+// nobody and runs no quick actions.
 func renderReport(answer ImplementAnswer, findings []Finding, reviewErrs []string) string {
+	return notify.Defuse(renderReportText(answer, findings, reviewErrs))
+}
+
+func renderReportText(answer ImplementAnswer, findings []Finding, reviewErrs []string) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(answer.Summary))
 	if len(answer.Questions) > 0 {

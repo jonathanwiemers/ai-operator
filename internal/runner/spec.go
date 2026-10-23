@@ -13,6 +13,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 var keyMarker = regexp.MustCompile(`<!-- ai-operator:key=([a-z0-9][a-z0-9-]*) -->`)
@@ -37,6 +38,9 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	if err != nil {
 		return nil, s.fail(fmt.Errorf("getting milestone: %w", err))
 	}
+	// The owners line is for the operator; the planner could copy the
+	// mentions into the issues it writes.
+	milestone.Description = notify.WithoutOwners(milestone.Description, spec.Workflow.CommandPrefix)
 	s.done(milestone.Title, "specBytes", len(milestone.Description))
 	s = r.step(ctx, "read project")
 	proj, err := gl.GetProject(ctx, glProject)

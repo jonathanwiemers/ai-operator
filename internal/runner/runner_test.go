@@ -178,6 +178,10 @@ func (s *scriptedEngine) Run(_ context.Context, inv Invocation) (*Result, error)
 		b, _ := json.Marshal(v)
 		return &Result{SessionID: "sess-impl", CostUSD: 0.5, Structured: b}, nil
 	}
+	if inv.JSONSchema == describeSchema {
+		return out(DescribeAnswer{Why: "Customers ask for PayPal; ping @someone.", What: "- PayPal button", How: "- `paypal.go`",
+			Verification: "- unit test", Diagram: "```mermaid\nflowchart LR\n  A[Cart] --> B[PayPal]\n```"})
+	}
 	if inv.ReadOnly {
 		// Reviewer: one blocker in the first round, nothing afterwards. Also
 		// misbehave by touching a file, which the runner must discard.
@@ -284,9 +288,9 @@ func TestImplementEndToEnd(t *testing.T) {
 		t.Fatalf("unexpected history:\n%s", log)
 	}
 
-	// 1 implement + 2 reviewers, 1 fix + 2 reviewers.
-	if len(engine.calls) != 6 {
-		t.Fatalf("expected 6 engine calls, got %d", len(engine.calls))
+	// 1 implement + 2 reviewers, 1 fix + 2 reviewers, 1 describer.
+	if len(engine.calls) != 7 || engine.calls[6].JSONSchema != describeSchema || !engine.calls[6].ReadOnly {
+		t.Fatalf("expected 7 engine calls, the describer last, got %d", len(engine.calls))
 	}
 
 	// Every step of the run is recorded, in order, and none failed.
@@ -294,7 +298,7 @@ func TestImplementEndToEnd(t *testing.T) {
 		"read issue", "read project", "clone repository", "prepare checkout", "find merge request",
 		"open merge request", "prepare checkout", "read comments",
 		"run implementer", "commit", "review round 1", "fix round 1", "commit", "review round 2",
-		"mark ready", "push", "update agent notes", "comment", "update issue labels",
+		"mark ready", "push", "update agent notes", "describe merge request", "comment", "update issue labels",
 	}
 	if got := stepNames(r.run); !slices.Equal(got, wantSteps) {
 		t.Fatalf("steps:\n got %v\nwant %v", got, wantSteps)
@@ -320,11 +324,28 @@ func TestImplementEndToEnd(t *testing.T) {
 	if len(mrNotes) != 1 || strings.Contains(mrNotes[0].Body, progressMarker) {
 		t.Fatalf("expected only the report on the MR, got %+v", mrNotes)
 	}
-	for _, want := range []string{"<details><summary>Run log <code>shop-42-add-paypal-button#1</code>: 17 steps",
-		"| 6 | open merge request |", "| 9 | run implementer |", "claude/" + aiv1.DefaultModel, "| 15 | mark ready |", "| 17 | update agent notes |"} {
+	for _, want := range []string{"<details><summary>Run log <code>shop-42-add-paypal-button#1</code>: 18 steps",
+		"| 6 | open merge request |", "| 9 | run implementer |", "claude/" + aiv1.DefaultModel, "| 15 | mark ready |", "| 17 | update agent notes |",
+		"| 18 | describe merge request |"} {
 		if !strings.Contains(mrNotes[0].Body, want) {
 			t.Fatalf("run log misses %q:\n%s", want, mrNotes[0].Body)
 		}
+	}
+	// The first description replaces the first report's summary.
+	if !strings.Contains(mrNotes[0].Body, "Described the change in the merge request description") || strings.Contains(mrNotes[0].Body, "Added PayPal, fixed nil deref.") {
+		t.Fatalf("the first report should point to the description:\n%s", mrNotes[0].Body)
+	}
+	// The description keeps the closing pattern, defuses mentions and ends
+	// with the diagram; the describer got the implementer's summary.
+	desc := gl.MRs[1].Description
+	body, ok := managedDescription(desc)
+	if !ok || !strings.HasSuffix(desc, "\n\nCloses #42") || !strings.Contains(body, "### Why\n\nCustomers ask for PayPal; ping @\u200bsomeone.") ||
+		!strings.Contains(body, "### Diagram\n\n```mermaid\nflowchart LR\n  A[Cart] --> B[PayPal]\n```") ||
+		strings.Index(body, "### Verification") > strings.Index(body, "### Diagram") || strings.Contains(body, descriptionPlaceholder) {
+		t.Fatalf("unexpected description:\n%s", desc)
+	}
+	if !strings.Contains(engine.calls[6].Prompt, "Added PayPal, fixed nil deref.") || strings.Contains(engine.calls[6].Prompt, "## Previous description") {
+		t.Fatalf("describer prompt:\n%s", engine.calls[6].Prompt)
 	}
 	// The branch starts with an empty one-line commit (its push skips CI;
 	// "[skip ci]" in the message could reach the default branch).
@@ -357,7 +378,7 @@ func TestImplementEndToEnd(t *testing.T) {
 	_ = k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: task.Name}, &got)
 	run := got.Status.Run
 	if run.ObservedRunRequest != 1 || run.RunCount != 1 || run.LastResult != aiv1.RunResultSucceeded ||
-		run.MergeRequestIID != 1 || run.Branch != "agent/42-add-paypal-button" || run.CostUSD != "3.0000" {
+		run.MergeRequestIID != 1 || run.Branch != "agent/42-add-paypal-button" || run.CostUSD != "3.5000" || run.Summary != "Added PayPal, fixed nil deref." {
 		t.Fatalf("unexpected run status %+v", run)
 	}
 	// The blocker was fixed; only a nit is left after the second review.
@@ -411,6 +432,15 @@ func TestImplementEndToEnd(t *testing.T) {
 	}
 	if mrNotes := gl.MRNotes[1]; len(mrNotes) == 0 || !strings.Contains(mrNotes[len(mrNotes)-1].Body, "Run log <code>shop-42-add-paypal-button#2</code>") {
 		t.Fatalf("the merge request comment should carry the run log: %+v", mrNotes)
+	}
+	// The human's commit changed the diff: described again, from the
+	// previous description; later reports keep their summary.
+	last := engine.calls[len(engine.calls)-1]
+	if last.JSONSchema != describeSchema || !strings.Contains(last.Prompt, "## Previous description\n\n### Why") {
+		t.Fatalf("the follow-up should be described from the previous description:\n%s", last.Prompt)
+	}
+	if mrNotes := gl.MRNotes[1]; strings.Contains(mrNotes[len(mrNotes)-1].Body, "Described the change") {
+		t.Fatalf("only the first report points to the description:\n%s", mrNotes[len(mrNotes)-1].Body)
 	}
 	// The second run built on the human's commit and pushed on top of it.
 	log = gitCmd(t, tmp, "--git-dir", origin, "log", "--format=%s", "agent/42-add-paypal-button")

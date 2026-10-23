@@ -31,6 +31,10 @@ type AgentProjectSpec struct {
 	// +optional
 	CI CISpec `json:"ci,omitempty"`
 
+	// Notify says whom the operator mentions when it needs a human.
+	// +optional
+	Notify NotifySpec `json:"notify,omitempty"`
+
 	// PollInterval is how often GitLab is polled for changes.
 	// +kubebuilder:default="1m"
 	// +optional
@@ -275,6 +279,24 @@ type AgentsSpec struct {
 	// claude-sonnet-5-5.
 	// +optional
 	Review ReviewSpec `json:"review,omitempty"`
+
+	// Describe configures the agent that writes the merge request
+	// description after each push that changed the diff. Defaults to the
+	// claude engine with claude-sonnet-5-5.
+	// +optional
+	Describe DescribeSpec `json:"describe,omitempty"`
+}
+
+// DescribeSpec configures the agent that keeps the merge request description
+// up to date: why, what, how, verification and, where it helps, a mermaid
+// diagram of the change.
+type DescribeSpec struct {
+	RoleSpec `json:",inline"`
+
+	// Disabled keeps the placeholder description; the reports carry the
+	// summaries.
+	// +optional
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 // AgentProfile is a named implementing agent configuration.
@@ -445,6 +467,47 @@ type CISpec struct {
 	// +kubebuilder:default="10m"
 	// +optional
 	NoPipelineTimeout metav1.Duration `json:"noPipelineTimeout,omitempty"`
+}
+
+// NotifyEvent is a situation in which the operator needs a human.
+// +kubebuilder:validation:Enum=failed;needsInput;ciFailed;review;autopilotPaused;autopilotDone
+type NotifyEvent string
+
+const (
+	// NotifyFailed: a run failed.
+	NotifyFailed NotifyEvent = "failed"
+	// NotifyNeedsInput: the agent asked questions or could not finish alone.
+	NotifyNeedsInput NotifyEvent = "needsInput"
+	// NotifyCIFailed: the pipeline stayed red after the fix rounds.
+	NotifyCIFailed NotifyEvent = "ciFailed"
+	// NotifyReview: an issue reached review (not on autopilot).
+	NotifyReview NotifyEvent = "review"
+	// NotifyAutopilotPaused: autopilot paused a milestone.
+	NotifyAutopilotPaused NotifyEvent = "autopilotPaused"
+	// NotifyAutopilotDone: autopilot finished a milestone.
+	NotifyAutopilotDone NotifyEvent = "autopilotDone"
+)
+
+// NotifySpec says whom the operator mentions ("cc @…") in the comments that
+// need a human. A milestone overrides the users with a line
+// "<commandPrefix> owners @alice @bob" in its description, for itself and
+// its issues.
+type NotifySpec struct {
+	// Users are the GitLab usernames (without "@") to mention. Empty: the
+	// operator's --default-owners. They must be members of the project to
+	// be notified.
+	// +optional
+	Users []string `json:"users,omitempty"`
+
+	// Events that mention the users. Defaults to all of them.
+	// +optional
+	Events []NotifyEvent `json:"events,omitempty"`
+
+	// RequestReview makes the users the reviewers of a merge request whose
+	// issue reaches review (not on autopilot), unless it has reviewers.
+	// +kubebuilder:default=true
+	// +optional
+	RequestReview *bool `json:"requestReview,omitempty"`
 }
 
 // AgentProjectStatus is the observed state of an AgentProject.
