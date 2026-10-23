@@ -106,7 +106,8 @@ echo "$@" > "$(dirname "$0")/args"
 echo '{"type":"system","subtype":"init","apiKeySource":"env","cwd":"/w","session_id":"c1","model":"Auto","permissionMode":"default"}'
 echo '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"SECRET-PROMPT"}]},"session_id":"c1"}'
 echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Reading the handler first."}]},"session_id":"c1"}'
-echo '{"type":"tool_call","subtype":"started","call_id":"1","tool_call":{"readToolCall":{"args":{"path":"api/handler.go"}}},"session_id":"c1"}'
+echo '{"type":"tool_call","subtype":"started","call_id":"1","tool_call":{"readToolCall":{"args":{"path":"api/handler.go"}},"toolCallId":"t1","startedAtMs":1761231000000,"hookAdditionalContexts":[]},"session_id":"c1"}'
+echo '{"type":"tool_call","subtype":"started","call_id":"4","tool_call":{"globToolCall":{"args":{"globPattern":"**/*.go","targetDirectory":"/w"}},"toolCallId":"t4"},"session_id":"c1"}'
 echo '{"type":"tool_call","subtype":"completed","call_id":"1","tool_call":{"readToolCall":{"args":{"path":"api/handler.go"},"result":{"success":{"content":"SECRET-FILE"}}}},"session_id":"c1"}'
 echo '{"type":"tool_call","subtype":"started","call_id":"2","tool_call":{"writeToolCall":{"args":{"path":"api/handler_test.go","fileText":"SECRET-WRITTEN","toolCallId":"2"}}},"session_id":"c1"}'
 echo '{"type":"tool_call","subtype":"started","call_id":"3","tool_call":{"function":{"name":"run_terminal_cmd","arguments":"{\"command\":\"go test ./api/...\"}"}},"session_id":"c1"}'
@@ -146,6 +147,7 @@ func TestCursorSessionIsLogged(t *testing.T) {
 		`"tool"="read" "input"="api/handler.go"`,
 		`"tool"="write" "input"="api/handler_test.go"`,
 		`"tool"="run_terminal_cmd" "input"="go test ./api/..."`,
+		`"tool"="glob" "input"="**/*.go"`,
 		`"msg"="agent answers"`,
 	} {
 		if !strings.Contains(all, want) {
@@ -155,6 +157,11 @@ func TestCursorSessionIsLogged(t *testing.T) {
 	for _, secret := range []string{"SECRET-PROMPT", "SECRET-FILE", "SECRET-WRITTEN", "SECRET-SUMMARY"} {
 		if strings.Contains(all, secret) {
 			t.Errorf("%s must not be logged:\n%s", secret, all)
+		}
+	}
+	for _, field := range []string{"toolCallId", "startedAtMs", "hookAdditionalContexts"} {
+		if strings.Contains(all, `"tool"="`+field+`"`) {
+			t.Errorf("%s is a field of the call, not a tool:\n%s", field, all)
 		}
 	}
 	if n := strings.Count(all, `"tool"="read"`); n != 1 {
