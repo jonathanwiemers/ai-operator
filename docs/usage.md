@@ -221,14 +221,15 @@ need a human, so GitLab sends them a mail and a To-Do:
 | a run failed | issue |
 | the agent asks questions | issue (with the questions) |
 | the agent could not finish alone (e.g. unresolved conflicts) | MR report |
-| CI is still red after the fix rounds | issue |
+| CI is still red after the fix rounds (not on autopilot) | issue |
 | the issue reached review (not on autopilot) | MR report, or "Ready for review" on the MR after CI; the owners also become the MR's reviewers if it has none |
 | autopilot paused or is done | tracking issue |
 
 Only new comments carry the mention, never the progress comment that is
 edited while a run goes on, and each commit pings for review once. On
-autopilot, failed runs and questions ping through the pause on the tracking
-issue instead. The owners are, most specific first:
+autopilot, failed runs, questions and red CI ping through the pause on the
+tracking issue instead; while paused, a new reason for the active issue (say
+the review is fixed, but CI is red now) is announced, and pinged, again. The owners are, most specific first:
 
 1. a line in the milestone description, for the milestone and its issues:
 
@@ -531,6 +532,11 @@ the reason and what to do, mentioning the milestone's
 
 While paused, runs that were already requested continue (your `/agent`
 comments still reach the agent), but nothing new is started or merged.
+
+While a pause over the active issue's run, review or CI holds, autopilot
+checks the issue on every poll. If the reason it paused for is gone but the
+issue fails the merge gate for another one, it says so with a new pause
+comment (mentioning the owners) instead of keeping the old reason.
 
 A pause over the active issue ends **by itself** when it no longer holds:
 

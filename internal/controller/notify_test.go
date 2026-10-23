@@ -250,3 +250,44 @@ func TestRoutingCommandsAreNotReplayedForANewTask(t *testing.T) {
 		t.Fatalf("no second answer: %d notes, was %d", n, answers)
 	}
 }
+
+func TestAutopilotAnnouncesANewReasonWhilePaused(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.r.DefaultOwners = []string{"alice"}
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", func(r *aiv1.RunStatus) { r.ReviewErrors = 2 })
+	e.reconcile()
+	if !strings.Contains(trackingComments(e), "2 reviewers failed") {
+		t.Fatalf("first pause:\n%s", trackingComments(e))
+	}
+
+	// A later run fixes the review, but CI is red on the default branch too.
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ReviewErrors = 0
+		s.CI = &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateBaseFailing, FailedJobs: []string{"rust:test"}}
+	})
+	e.reconcile()
+	ap := e.autopilot()
+	c := trackingComments(e)
+	if ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "also fail on the default branch") ||
+		strings.Count(c, "Autopilot paused") != 2 || strings.Count(c, "cc @alice") != 2 {
+		t.Fatalf("the new reason must be announced, with the owners: %+v\n%s", ap, c)
+	}
+	if !ap.ResumeWhenReady || ap.PausedFor != 1 {
+		t.Fatalf("it still ends by itself once fixed: %+v", ap)
+	}
+	// Unchanged: no new comment.
+	e.reconcile()
+	if n := strings.Count(trackingComments(e), "Autopilot paused"); n != 2 {
+		t.Fatalf("the same reason is announced once, got %d", n)
+	}
+	// Fixed: continues.
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.CI = &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateSuccess}
+	})
+	e.reconcile()
+	if !strings.Contains(trackingComments(e), "Autopilot continues") {
+		t.Fatalf("green again must continue:\n%s", trackingComments(e))
+	}
+}

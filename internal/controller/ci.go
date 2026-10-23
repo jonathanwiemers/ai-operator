@@ -258,6 +258,8 @@ func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, sp
 	review := next == wf.ReviewLabel && !task.Spec.Autopilot
 	var event aiv1.NotifyEvent
 	switch {
+	case task.Spec.Autopilot:
+		// Autopilot pauses over it and mentions the owners there.
 	case state == aiv1.CIStateFailed:
 		event = aiv1.NotifyCIFailed
 	case review:

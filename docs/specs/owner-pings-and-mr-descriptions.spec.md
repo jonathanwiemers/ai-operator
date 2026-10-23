@@ -137,6 +137,16 @@ deployment / README, `docs/usage.md`, `docs/configuration.md`,
   owners line (normalising would re-plan existing CRLF milestones once); a
   partial failure after the MR report can ping again from the failure note.
 
+## Steers after the rollout
+
+- Autopilot: while a pause over the active issue's run, review or CI holds,
+  a new reason (the old one fixed by a later run, but the gate fails for
+  another) is announced with a new pause comment and mention, instead of
+  keeping the stale reason silently (Bloop #288: reviewers fixed, then CI red
+  on the default branch, nobody was told).
+- `ciFailed` no longer mentions on autopilot tasks, like `failed` and
+  `needsInput`: the pause on the tracking issue does.
+
 ## Delivery
 
 Single PR on GitHub `jonathanwiemers/ai-operator`
