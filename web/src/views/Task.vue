@@ -6,6 +6,7 @@ import Badge from '../components/Badge.vue'
 import ExtLink from '../components/ExtLink.vue'
 import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
+import LiveTranscript from '../components/LiveTranscript.vue'
 import NotFound from './NotFound.vue'
 import type { TaskResponse } from '../types'
 
@@ -140,6 +141,17 @@ const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? '
           </div>
         </div>
       </div>
+
+      <section v-if="data?.permissions?.transcript" class="section">
+        <h3>Live</h3>
+        <LiveTranscript
+          :namespace="namespace"
+          :name="name"
+          :task="task"
+          :pod="t.status.podName"
+          :run="String(run.activeRunRequest ?? '')"
+        />
+      </section>
 
       <section v-if="run.summary" class="section">
         <h3>Summary of the last run</h3>

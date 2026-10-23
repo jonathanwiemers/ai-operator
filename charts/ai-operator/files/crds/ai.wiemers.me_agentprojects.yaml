@@ -360,6 +360,13 @@ spec:
                     - info
                     - error
                     type: string
+                  logPrompts:
+                    description: |-
+                      LogPrompts logs every prompt the agents get (role, system prompt and
+                      prompt, each cut at 64 KiB) in the agent container, where the web UI's
+                      live view shows them. Prompts hold issue text, comments, diffs and CI
+                      logs, so they are off by default.
+                    type: boolean
                   maxEffort:
                     default: high
                     description: |-

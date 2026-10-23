@@ -217,6 +217,7 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 	previous, ok := managedDescription(mr.Description)
 	first = !ok || previous == descriptionPlaceholder
 	inv := roleInvocation(role.RoleSpec, describeSystemPrompt, readOnlyTools, describeSchema, true)
+	inv.Role = "describe"
 	inv.NoPersistence = true
 	res, err := r.invoke(ctx, role.RoleSpec, inv, buildDescribePrompt(issue, summary, previous, base, stat, diff))
 	if res != nil {

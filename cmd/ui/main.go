@@ -13,6 +13,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -69,6 +70,14 @@ func main() {
 		log.Error(err, "unable to create server")
 		os.Exit(1)
 	}
+	// Live transcripts read the agent pods' logs (the chart grants pods/log
+	// in the agent namespaces).
+	clientset, err := kubernetes.NewForConfig(ctrl.GetConfigOrDie())
+	if err != nil {
+		log.Error(err, "unable to create a Kubernetes client")
+		os.Exit(1)
+	}
+	srv.SetLogSource(ui.PodLogs{Client: clientset})
 
 	probes := http.NewServeMux()
 	probes.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })

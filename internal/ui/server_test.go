@@ -174,8 +174,9 @@ func testObjects() []client.Object {
 				Issue:     &aiv1.IssueRef{IID: 42, Title: "Add PayPal"},
 			},
 			Status: aiv1.AgentTaskStatus{
-				Phase: aiv1.TaskPhaseRunning,
-				Run:   aiv1.RunStatus{ObservedRunRequest: 1, CurrentStep: "10 run implementer", CostUSD: "0.50"},
+				Phase:   aiv1.TaskPhaseRunning,
+				PodName: "shop-42-add-paypal",
+				Run:     aiv1.RunStatus{ObservedRunRequest: 1, CurrentStep: "10 run implementer", CostUSD: "0.50"},
 			},
 		},
 		&aiv1.AgentTask{
@@ -190,6 +191,7 @@ type testEnv struct {
 	srv    *httptest.Server
 	hub    *Hub
 	client *http.Client
+	server *Server
 }
 
 func newTestEnv(t *testing.T, cfg *Config) *testEnv {
@@ -223,6 +225,7 @@ func newTestEnv(t *testing.T, cfg *Config) *testEnv {
 		t.Fatal(err)
 	}
 	handler = s.Handler()
+	env.server = s
 	jar, _ := cookiejar.New(nil)
 	env.client = &http.Client{
 		Jar: jar,

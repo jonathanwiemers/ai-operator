@@ -227,8 +227,14 @@ func (s *AgentServer) Handler() http.Handler {
 			return reply{runResponse{Error: err.Error()}, err, nil}
 		}
 		inv := req.Invocation
-		logr.FromContextOrDiscard(ctx).Info("agent CLI started", "engine", req.Engine, "model", inv.Model,
+		log := logr.FromContextOrDiscard(ctx)
+		log.Info("agent CLI started", "role", inv.Role, "engine", req.Engine, "model", inv.Model,
 			"readOnly", inv.ReadOnly, "resume", inv.Resume != "", "promptBytes", len(inv.Prompt))
+		if inv.LogPrompt {
+			// agents.logPrompts: what the agent is told, for the web UI.
+			log.Info("agent prompt", "role", inv.Role, "engine", req.Engine, "model", inv.Model,
+				"system", clip(inv.SystemPrompt, maxLogPrompt), "prompt", clip(inv.Prompt, maxLogPrompt))
+		}
 		res, err := s.Agent.Run(ctx, req.Engine, inv)
 		kv := []any{"engine", req.Engine, "model", inv.Model}
 		if res != nil {

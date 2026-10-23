@@ -130,6 +130,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// operator turns into labels) override the profile.
 	role, profile, roleNotes := spec.IssueRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
+	inv.Role = "implement"
 	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs)
 	// While the MR is a draft, the work is pushed step by step so a human can
 	// follow it and steer with comments (not while concluding a merge, whose
@@ -884,6 +885,7 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 		go func(kind aiv1.ReviewerKind) {
 			defer wg.Done()
 			inv := roleInvocation(spec.RoleSpec, reviewerSystemPrompt(kind), readOnlyTools, reviewSchema, true)
+			inv.Role = string(kind)
 			inv.NoPersistence = true
 			res, err := r.invoke(ctx, spec.RoleSpec, inv, prompt)
 			var answer ReviewAnswer

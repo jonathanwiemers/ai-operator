@@ -20,6 +20,10 @@ resources' status, and links lead to GitLab.
 | **Project** | one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; then the milestone's plan, the autopilot pause reason, and issues without a milestone |
 | **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot queue with merge requests and decisions |
 
+With the `transcript` permission, a task page also has a **Live** panel: the
+running pod's steps and the agent's session as they happen (see
+[Live transcript](#live-transcript)).
+
 A task's **stage** is derived from its status the same way the operator moves
 the GitLab labels; the hint on each badge explains it. After a push the task
 stays in *CI* until the operator has followed that commit's pipeline, for at
@@ -138,6 +142,20 @@ of all matching rules. Seeing a project means seeing all its tasks.
 Projects a user may not see do not exist for them: the API answers 404, and
 no change events are sent for them.
 
+`transcript: true` on a rule also shows its roles the live transcripts of the
+projects' runs. Transcripts can quote code, issue text and CI logs, so they
+are a grant of their own:
+
+```yaml
+ui:
+  authorization:
+    rules:
+      - roles: [ai-operator-admin]
+        transcript: true
+      - roles: [shop-devs]
+        projects: ["agents/shop"]       # boards and tasks, no transcripts
+```
+
 Roles are read at login and kept in the session, so a role change takes
 effect at the next login, at the latest after `ui.auth.sessionTTL` (default
 `12h`). A user without any matching role gets an empty project list that
@@ -153,6 +171,28 @@ give a list of strings, a single string or a map whose keys are the roles. If
 the roles expression fails because the claim is missing, the user has no
 roles; a username that cannot be evaluated fails the login (the UI's log
 says why).
+
+## Live transcript
+
+The **Live** panel on a task page follows the task's pod while it runs:
+
+- the runner's steps (started, done, failed, with their results);
+- which agent runs (role, engine, model, read-only);
+- what the agent says and thinks (thinking: claude only), and the tools it
+  calls with their main argument (command, file, pattern);
+- with `spec.agents.logPrompts: true` on the AgentProject, every prompt:
+  the role, the system prompt (with the project's instructions) and the
+  prompt, each cut at 64 KiB. That includes what autopilot, CI fix runs,
+  revisits and merge conflicts add to it.
+
+The UI reads the pod's logs through the Kubernetes API, and passes on only
+known kinds of lines with a fixed set of fields, never a raw log line. A pod
+stops a minute after its run (`lifecycle.idleTimeout`); after that the panel
+is empty, and the run log of the last run is on the merge request. Each new
+run opens a new stream.
+
+The chart lets the UI's service account read `pods` and `pods/log` in each
+namespace of `agent.namespaces` (Roles, nothing cluster-wide).
 
 ## Without login
 
@@ -181,8 +221,9 @@ points to 127.0.0.1 (DNS rebinding).
 ## Security
 
 - **Separate, read-only identity.** The UI's service account may only `get`,
-  `list` and `watch` AgentProjects and AgentTasks. No Secrets, no Pods, no
-  GitLab token. The API returns views of the resources without the
+  `list` and `watch` AgentProjects and AgentTasks, and read pods and their
+  logs in the agent namespaces (for transcripts). No Secrets, no GitLab
+  token. The API returns views of the resources without the
   operator's bookkeeping and secret references.
 - **Login.** Authorization code flow with PKCE, `state` and `nonce`; the ID
   token's signature, issuer, audience and expiry are verified. The provider's
@@ -216,6 +257,7 @@ with the same session cookie:
 | `GET /api/v1/projects` | the projects you may see, with task counts per stage |
 | `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}` | one task and its project |
+| `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript` | server-sent events: `entry` per transcript line of the task's pod (what it logged so far, then live), `end` with the reason (`no pod`, `pod stopped`, `pod not available`, `session expired`); needs the `transcript` grant (403 without), counts as an event stream |
 | `GET /api/v1/events` | server-sent events: `change` with the kind, namespace and name of a project or task that changed |
 
 Change events carry no content; the app fetches what it shows again. The
@@ -238,9 +280,9 @@ Without `make ui` the binary serves only the API.
 
 ## Roadmap
 
-1. **Run transcripts.** The agent's thinking, messages and tool calls (today
-   in the agent container's log) in the task page, behind a separate grant,
-   since they can quote code.
+1. **Steering.** Connect your GitLab account, see the issue's and MR's
+   comments on the task page, and write comments (and `/agent` commands) from
+   it, posted in your name.
 2. **Actions** for an `operator` access level, limited to what GitLab cannot
    do (e.g. restart a stuck pod, clear a usage limit, hibernate a task).
    GitLab stays the place where the work is steered.
