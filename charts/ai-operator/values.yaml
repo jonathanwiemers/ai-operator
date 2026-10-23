@@ -112,8 +112,20 @@ ui:
     claims:
       username: 'has(claims.email) ? claims.email : claims.sub'
       roles: 'has(claims.groups) ? claims.groups : []'
+  # GitLab connection for steering: users connect their GitLab account (an
+  # OAuth application on that GitLab: confidential, scope api, redirect URI
+  # <externalURL>/oauth2/gitlab/callback), see the issues' and MRs' comments
+  # on the task page and post comments in their own name. Projects on other
+  # GitLab hosts get neither.
+  gitlab:
+    url: ""
+    clientID: ""
+    # Secret with the key gitlab-client-secret; defaults to oidc.existingSecret.
+    existingSecret: ""
   # Who sees which projects. Nobody sees anything unless a rule grants it.
   #   - roles: [ai-operator-admin]          # every project
+  #     transcript: true                    # live transcripts and prompts
+  #     steer: true                         # write comments from the UI
   #   - roles: [shop-devs]
   #     projects: ["team-a/shop"]           # namespace/name, globs allowed
   authorization:

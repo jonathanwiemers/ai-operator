@@ -30,6 +30,32 @@ export async function get<T>(path: string): Promise<T> {
   return (await resp.json()) as T
 }
 
+// ApiError carries the server's error message.
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message)
+  }
+}
+
+export async function post<T>(path: string, body: unknown): Promise<T> {
+  const resp = await fetch(path.startsWith('/oauth2/') ? path : `/api/v1${path}`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(body),
+  })
+  if (resp.status === 401) {
+    session.loginRequired = true
+    throw new LoginRequiredError('login required')
+  }
+  const data = (await resp.json().catch(() => ({}))) as { error?: string }
+  if (!resp.ok) throw new ApiError(data.error ?? `The server answered ${resp.status}.`, resp.status)
+  return data as T
+}
+
 export function loginURL(): string {
   const back = window.location.pathname + window.location.search
   return `/oauth2/login?return=${encodeURIComponent(back)}`

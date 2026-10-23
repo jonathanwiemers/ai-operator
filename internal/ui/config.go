@@ -31,8 +31,9 @@ const (
 // Environment variables that carry the secrets, so they never end up in the
 // config file (a ConfigMap).
 const (
-	EnvSessionKey   = "AI_OPERATOR_UI_SESSION_KEY"
-	EnvClientSecret = "AI_OPERATOR_UI_OIDC_CLIENT_SECRET"
+	EnvSessionKey         = "AI_OPERATOR_UI_SESSION_KEY"
+	EnvClientSecret       = "AI_OPERATOR_UI_OIDC_CLIENT_SECRET"
+	EnvGitLabClientSecret = "AI_OPERATOR_UI_GITLAB_CLIENT_SECRET"
 )
 
 // Default claim mappings: the email (or the subject) as user name, the
@@ -51,10 +52,24 @@ type Config struct {
 	Auth          AuthConfig          `json:"auth"`
 	OIDC          OIDCConfig          `json:"oidc"`
 	Authorization AuthorizationConfig `json:"authorization"`
+	GitLab        GitLabConfig        `json:"gitlab"`
 
 	// Set from the environment.
-	SessionKey   string `json:"-"`
-	ClientSecret string `json:"-"`
+	SessionKey         string `json:"-"`
+	ClientSecret       string `json:"-"`
+	GitLabClientSecret string `json:"-"`
+}
+
+// GitLabConfig lets users connect their GitLab account (an OAuth
+// application on that GitLab), so the UI shows the issues' and merge
+// requests' comments and posts comments in their name. Projects on other
+// GitLab hosts get neither.
+type GitLabConfig struct {
+	// URL of the GitLab, e.g. https://gitlab.com. Empty turns it off.
+	URL string `json:"url"`
+	// ClientID of the OAuth application (scope api, redirect URI
+	// <externalURL>/oauth2/gitlab/callback).
+	ClientID string `json:"clientID"`
 }
 
 // AuthConfig selects the authentication mode.
@@ -100,6 +115,9 @@ type Rule struct {
 	// agent's messages, tool calls and prompts, which can quote code, issue
 	// text and CI logs.
 	Transcript bool `json:"transcript,omitempty"`
+	// Steer lets its roles write comments on the projects' issues and merge
+	// requests from the UI, in their own GitLab name.
+	Steer bool `json:"steer,omitempty"`
 }
 
 // Duration is a time.Duration that reads "12h" from YAML.
@@ -133,6 +151,7 @@ func LoadConfig(file, bindAddress string) (*Config, error) {
 	}
 	cfg.SessionKey = os.Getenv(EnvSessionKey)
 	cfg.ClientSecret = os.Getenv(EnvClientSecret)
+	cfg.GitLabClientSecret = os.Getenv(EnvGitLabClientSecret)
 	cfg.Default()
 	if err := cfg.Validate(bindAddress); err != nil {
 		return nil, err
@@ -158,6 +177,7 @@ func (c *Config) Default() {
 		c.OIDC.Claims.Roles = DefaultRolesExpr
 	}
 	c.ExternalURL = strings.TrimSuffix(c.ExternalURL, "/")
+	c.GitLab.URL = strings.TrimSuffix(c.GitLab.URL, "/")
 }
 
 // Validate refuses configurations that would expose the UI insecurely.
@@ -193,6 +213,17 @@ func (c *Config) Validate(bindAddress string) error {
 		}
 	default:
 		errs = append(errs, fmt.Errorf("auth.mode must be oidc or none, not %q", c.Auth.Mode))
+	}
+	if c.GitLab.URL != "" {
+		u, err := url.Parse(c.GitLab.URL)
+		switch {
+		case c.Auth.Mode != AuthOIDC:
+			errs = append(errs, errors.New("gitlab needs auth.mode oidc: comments are posted in the name of a logged-in user"))
+		case err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && isLoopback(u.Hostname()))):
+			errs = append(errs, errors.New("gitlab.url must be an https URL, e.g. https://gitlab.com"))
+		case c.GitLab.ClientID == "":
+			errs = append(errs, errors.New("gitlab.clientID is required with gitlab.url"))
+		}
 	}
 	for i, r := range c.Authorization.Rules {
 		if len(r.Roles) == 0 {

@@ -13,6 +13,8 @@ import (
 
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
 // Server serves the UI, its API and the login flow.
@@ -34,6 +36,10 @@ type Server struct {
 	streams   map[string]int
 	// logs reads the agent pods' logs for transcripts; nil disables them.
 	logs LogSource
+	// gitlab connects users' GitLab accounts; nil without gitlab.url.
+	gitlab *gitlabConn
+	// notes rate-limits the comments users post.
+	notes noteLimiter
 }
 
 // SetLogSource enables live transcripts.
@@ -55,6 +61,11 @@ func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log lo
 			return nil, err
 		}
 		s.oidc = &oidcClient{cfg: cfg, sessions: s.sessions, claims: claims, log: log.WithName("oidc")}
+		if cfg.GitLab.URL != "" {
+			s.gitlab = &gitlabConn{cfg: cfg, sessions: s.sessions, newClient: func(baseURL, token string) gitlab.API {
+				return gitlab.NewOAuth(baseURL, token)
+			}}
+		}
 	}
 	return s, nil
 }
@@ -67,6 +78,14 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET "+pathCallback, s.oidc.callback)
 		mux.HandleFunc("POST "+pathLogout, s.oidc.logout)
 	}
+	if s.gitlab != nil {
+		mux.Handle("GET "+pathGitLabLogin, s.authed(s.gitlab.login))
+		mux.Handle("GET "+pathGitLabCallback, s.authed(s.gitlab.callback(s)))
+		mux.Handle("POST "+pathGitLabLogout, s.authed(s.gitlab.logout))
+	}
+	mux.Handle("GET /api/v1/gitlab", s.authed(s.gitlabStatus))
+	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread", s.authed(s.thread))
+	mux.Handle("POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes", s.authed(s.postNote))
 	mux.Handle("GET /api/v1/me", s.authed(s.me))
 	mux.Handle("GET /api/v1/projects", s.authed(s.projects))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}", s.authed(s.project))

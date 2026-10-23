@@ -7,6 +7,7 @@ import ExtLink from '../components/ExtLink.vue'
 import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
 import LiveTranscript from '../components/LiveTranscript.vue'
+import Conversation from '../components/Conversation.vue'
 import NotFound from './NotFound.vue'
 import type { TaskResponse } from '../types'
 
@@ -141,6 +142,11 @@ const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? '
           </div>
         </div>
       </div>
+
+      <section v-if="data?.permissions?.gitlab" class="section">
+        <h3>Conversation</h3>
+        <Conversation :namespace="namespace" :name="name" :task="task" :steer="!!data?.permissions?.steer" />
+      </section>
 
       <section v-if="data?.permissions?.transcript" class="section">
         <h3>Live</h3>
