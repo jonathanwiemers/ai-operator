@@ -290,7 +290,10 @@ type MergeOptions struct {
 type Client struct {
 	baseURL string
 	token   string
-	http    *http.Client
+	// oauth sends the token as an OAuth bearer token (a user's token from
+	// the web UI) instead of a personal/project access token.
+	oauth bool
+	http  *http.Client
 
 	requests, retries atomic.Int64
 }
@@ -315,6 +318,21 @@ func New(baseURL, token string) *Client {
 		token:   token,
 		http:    &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// NewOAuth creates a client that acts with a user's OAuth access token.
+func NewOAuth(baseURL, accessToken string) *Client {
+	c := New(baseURL, accessToken)
+	c.oauth = true
+	return c
+}
+
+func (c *Client) auth(req *http.Request) {
+	if c.oauth {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.token)
 }
 
 // Error is returned for non-2xx responses.
@@ -455,7 +473,7 @@ func (c *Client) send(ctx context.Context, method, u string, payload []byte) (*h
 	if err != nil {
 		return nil, nil, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	c.auth(req)
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -783,7 +801,7 @@ func (c *Client) JobTrace(ctx context.Context, project string, jobID int64) (str
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	c.auth(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return "", err
