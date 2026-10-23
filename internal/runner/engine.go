@@ -134,7 +134,13 @@ const maxArgPrompt = 96 << 10
 
 // Args returns the command line for an invocation (without the binary).
 func (c *CursorCLI) Args(inv Invocation, prompt string) []string {
-	args := []string{"-p", "--output-format", "json"}
+	// stream-json prints the session as it happens (messages, tool calls;
+	// cursor-agent keeps its thinking to itself in print mode), so it can be
+	// logged; the last line is the result.
+	// --trust: the checkout is a fresh workspace the CLI would ask about;
+	// without it read-only runs (no --force) stop at "Workspace Trust
+	// Required".
+	args := []string{"-p", "--output-format", "stream-json", "--trust"}
 	if !inv.ReadOnly {
 		// Allow shell commands (build, tests) without interactive approval.
 		args = append(args, "--force")
@@ -187,7 +193,7 @@ func (c *CursorCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
 		f.Close()
 		prompt = fmt.Sprintf("Your full task is in the file %s. Read it completely and follow it exactly.", f.Name())
 	}
-	return runCLI(ctx, orDefault(c.Binary, "cursor-agent"), c.Args(inv, prompt), inv.Dir, c.Env, "", false)
+	return runCLI(ctx, orDefault(c.Binary, "cursor-agent"), c.Args(inv, prompt), inv.Dir, c.Env, "", true)
 }
 
 // runCLI runs an agent CLI. With stream, its output is a line per event: each
@@ -210,16 +216,50 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		}
 		log := logr.FromContextOrDiscard(ctx)
 		rd := bufio.NewReader(pipe)
+		// The agent's last messages before a successful result are its
+		// answer (cursor writes the JSON answer as text): they are posted, not
+		// logged. So messages are held until an event shows they were not the
+		// last: a tool call or its result. A failed result logs them, they
+		// say what went wrong.
+		var held [][]byte
+		flush := func() {
+			for _, h := range held {
+				logEvent(log, h)
+			}
+			held = nil
+		}
 		for {
 			line, err := rd.ReadBytes('\n')
-			if line = bytes.TrimSpace(line); len(line) > 0 && logEvent(log, line) == "result" {
-				stdout.Reset()
-				stdout.Write(line)
+			if line = bytes.TrimSpace(line); len(line) > 0 {
+				switch ev := parseEvent(line); ev.Type {
+				case "assistant":
+					held = append(held, line)
+					if callsTool(line) {
+						// A claude message that calls a tool is no answer.
+						flush()
+					}
+				case "tool_call", "user":
+					flush()
+					if ev.Type == "tool_call" && ev.Subtype == "started" {
+						logEvent(log, line)
+					}
+				case "result":
+					if ev.IsError || ev.Subtype != "" && ev.Subtype != "success" {
+						flush()
+					} else if len(held) > 0 {
+						log.Info("agent answers")
+						held = nil
+					}
+					stdout.Reset()
+					stdout.Write(line)
+				}
 			}
 			if err != nil {
 				break
 			}
 		}
+		// No result: the stream ended early, the messages are no answer.
+		flush()
 		runErr = cmd.Wait()
 	} else {
 		cmd.Stdout = &stdout
@@ -238,9 +278,9 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 	return res, nil
 }
 
-// ParseResult parses the final JSON object printed by `claude -p
-// --output-format json` and `cursor-agent -p --output-format json`; both
-// share the session_id / is_error / result fields.
+// ParseResult parses the result event of `claude -p` and `cursor-agent -p`
+// (the last line of stream-json, or the object of --output-format json);
+// both share the session_id / is_error / result fields.
 func ParseResult(out []byte) (*Result, error) {
 	var raw struct {
 		SessionID        string          `json:"session_id"`

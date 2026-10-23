@@ -269,12 +269,15 @@ Each pod has two containers, see [Security](#security):
 the step in progress in `status.run.currentStep`, and a run log table in the
 GitLab comment of the run. The runner sends its run ID (`<task>#<request>`)
 with every call to the agent server, which logs each call with it. Neither
-side logs prompts, comments, diffs or commit messages. The claude CLI runs
-with `--output-format stream-json`: the agent server logs what the agent
-thinks and says and each tool call with its main argument (command, file,
-pattern; a command's first line) as it happens
-(`internal/runner/transcript.go`); tool output, edit contents and the final
-structured answer are not logged, and only the final result line is parsed.
+side logs prompts, comments, diffs or commit messages. Both CLIs run with
+`--output-format stream-json`: the agent server logs what the agent says and
+each tool call with its main argument (command, file, pattern; a command's
+first line) as it happens, and for claude also what it thinks
+(`internal/runner/transcript.go`); cursor-agent keeps its thinking to itself
+in print mode. Tool output, written file contents and the final answer are
+not logged: the agent's last message before the result is held back and
+logged as "agent answers" (cursor writes its JSON answer as that message).
+Only the final result line is parsed.
 
 ## Lifecycle of long-lived issues
 
@@ -723,6 +726,15 @@ flowchart LR
   (RPC: run an agent CLI, prepare / commit / diff / reset / bundle). Bundle
   paths outside `/exchange` are rejected. Everything the agent returns
   (results, diffs) is treated as untrusted data.
+
+**Read-only roles are no sandbox.** Reviewers, the planner and the describer
+run read-only: claude with a tool allow-list, cursor-agent without `--force`
+(and with `--trust`, so it runs in the fresh checkout at all). For cursor the
+repository's own `.cursor/cli.json` can still allow commands. That adds
+nothing an attacker who controls the repository lacks: the implementer runs
+in the same container with full shell access and runs the repository's
+build and tests anyway. "Read-only" keeps the checkout as it is (it is reset
+after every read-only run); the boundary is the agent container itself.
 
 **Other measures.**
 

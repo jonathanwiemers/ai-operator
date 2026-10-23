@@ -264,6 +264,7 @@ If no profiles are configured, `fast` (claude, `claude-sonnet-5-5`) and
 | tool restrictions | `--allowedTools` / `--disallowedTools` | none via flags; read-only roles run without `--force` and the work tree is reset after them |
 | session resume | `--resume` | `--resume` |
 | cost reporting | yes (notional with a subscription) | no |
+| live log of the session | thinking, messages, tool calls | messages, tool calls (no thinking in print mode) |
 
 Sessions are stored per role and engine. Switching an issue to a profile with
 another engine starts a new session with the full context.

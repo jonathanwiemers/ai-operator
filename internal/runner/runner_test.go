@@ -54,6 +54,9 @@ func TestCursorFoldsInstructionsIntoPrompt(t *testing.T) {
 	if slices.Contains(args, "--force") {
 		t.Error("read-only roles must not get --force")
 	}
+	if !slices.Contains(args, "--trust") {
+		t.Error("read-only roles must trust the workspace, or the CLI stops at \"Workspace Trust Required\"")
+	}
 	if !slices.Contains(args, "gpt-5") {
 		t.Error("model not passed")
 	}
