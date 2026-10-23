@@ -120,7 +120,12 @@ ui:
   gitlab:
     url: ""
     clientID: ""
-    # Secret with the key gitlab-client-secret; defaults to oidc.existingSecret.
+    # Or, for one user: the UI user name (as the login gives it) whose fixed
+    # GitLab token (key gitlab-token, e.g. a fine-grained personal access
+    # token) the UI uses for them; nobody else may use it.
+    tokenUser: ""
+    # Secret with the keys gitlab-client-secret (OAuth) and/or gitlab-token
+    # (tokenUser); defaults to oidc.existingSecret.
     existingSecret: ""
   # Who sees which projects. Nobody sees anything unless a rule grants it.
   #   - roles: [ai-operator-admin]          # every project

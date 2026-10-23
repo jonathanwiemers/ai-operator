@@ -76,12 +76,19 @@ spec:
                   name: {{ $ui.oidc.existingSecret }}
                   key: client-secret
                   optional: true
-            {{- if $ui.gitlab.url }}
+            {{- if and $ui.gitlab.url $ui.gitlab.clientID }}
             - name: AI_OPERATOR_UI_GITLAB_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ $ui.gitlab.existingSecret | default $ui.oidc.existingSecret }}
                   key: gitlab-client-secret
+            {{- end }}
+            {{- if and $ui.gitlab.url $ui.gitlab.tokenUser }}
+            - name: AI_OPERATOR_UI_GITLAB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ui.gitlab.existingSecret | default $ui.oidc.existingSecret }}
+                  key: gitlab-token
             {{- end }}
           {{- end }}
           ports:

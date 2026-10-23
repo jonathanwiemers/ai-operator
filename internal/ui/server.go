@@ -62,9 +62,10 @@ func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log lo
 		}
 		s.oidc = &oidcClient{cfg: cfg, sessions: s.sessions, claims: claims, log: log.WithName("oidc")}
 		if cfg.GitLab.URL != "" {
-			s.gitlab = &gitlabConn{cfg: cfg, sessions: s.sessions, newClient: func(baseURL, token string) gitlab.API {
-				return gitlab.NewOAuth(baseURL, token)
-			}}
+			s.gitlab = &gitlabConn{cfg: cfg, sessions: s.sessions,
+				newClient: func(baseURL, token string) gitlab.API { return gitlab.NewOAuth(baseURL, token) },
+				newFixed:  func(baseURL, token string) gitlab.API { return gitlab.New(baseURL, token) },
+			}
 		}
 	}
 	return s, nil
@@ -78,7 +79,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET "+pathCallback, s.oidc.callback)
 		mux.HandleFunc("POST "+pathLogout, s.oidc.logout)
 	}
-	if s.gitlab != nil {
+	if s.gitlab != nil && s.gitlab.oauth() {
 		mux.Handle("GET "+pathGitLabLogin, s.authed(s.gitlab.login))
 		mux.Handle("GET "+pathGitLabCallback, s.authed(s.gitlab.callback(s)))
 		mux.Handle("POST "+pathGitLabLogout, s.authed(s.gitlab.logout))
