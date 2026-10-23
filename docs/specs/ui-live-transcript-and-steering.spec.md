@@ -105,6 +105,14 @@ run you have to switch to GitLab and write a comment there.
 - The pod read is the one named after the task; `status.podName` only says
   one exists (the agent pods may write the status).
 
+## Steers (part 2)
+
+- One GitLab host (`ui.gitlab.url`), not a list: every AgentProject on this
+  cluster is on gitlab.com; a list can follow.
+- The GitLab token cookie is bound to the UI user who connected it.
+- The thread needs no grant beyond seeing the project (GitLab decides with
+  the user's token); posting needs `steer`.
+
 ## Affected files
 
 - `internal/ui` (transcript stream, log filter, GitLab OAuth, thread, notes),

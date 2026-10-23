@@ -187,15 +187,23 @@ func (g *gitlabConn) serves(ap *aiv1.AgentProject) bool {
 	return strings.TrimSuffix(u, "/") == g.cfg.GitLab.URL
 }
 
+// GitLabStatusView says whether GitLab is configured and connected.
+type GitLabStatusView struct {
+	Enabled   bool   `json:"enabled"`
+	URL       string `json:"url,omitempty"`
+	Connected bool   `json:"connected"`
+	Username  string `json:"username,omitempty"`
+	Login     string `json:"login,omitempty"`
+}
+
 // gitlabStatus says whether GitLab is configured and connected.
 func (s *Server) gitlabStatus(w http.ResponseWriter, r *http.Request) {
-	if s.gitlab == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
-		return
-	}
-	out := map[string]any{"enabled": true, "url": s.cfg.GitLab.URL, "connected": false, "login": pathGitLabLogin}
-	if t, err := s.gitlab.token(w, r); err == nil {
-		out["connected"], out["username"] = true, t.Username
+	out := GitLabStatusView{}
+	if s.gitlab != nil {
+		out = GitLabStatusView{Enabled: true, URL: s.cfg.GitLab.URL, Login: pathGitLabLogin}
+		if t, err := s.gitlab.token(w, r); err == nil {
+			out.Connected, out.Username = true, t.Username
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

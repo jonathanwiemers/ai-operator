@@ -20,6 +20,11 @@ resources' status, and links lead to GitLab.
 | **Project** | one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; then the milestone's plan, the autopilot pause reason, and issues without a milestone |
 | **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot queue with merge requests and decisions |
 
+With GitLab connected (see [Steering](#steering)), a task page has a
+**Conversation** panel: the comments of its issue, merge request and
+tracking issue, and, with the `steer` permission, a box to write comments in
+your own GitLab name.
+
 With the `transcript` permission, a task page also has a **Live** panel: the
 running pod's steps and the agent's session as they happen (see
 [Live transcript](#live-transcript)).
@@ -142,6 +147,9 @@ of all matching rules. Seeing a project means seeing all its tasks.
 Projects a user may not see do not exist for them: the API answers 404, and
 no change events are sent for them.
 
+`steer: true` lets its roles write comments from the UI (see
+[Steering](#steering)); GitLab's own permissions apply on top.
+
 `transcript: true` on a rule also shows its roles the live transcripts of the
 projects' runs. Transcripts can quote code, issue text and CI logs, so they
 are a grant of their own:
@@ -152,6 +160,7 @@ ui:
     rules:
       - roles: [ai-operator-admin]
         transcript: true
+        steer: true
       - roles: [shop-devs]
         projects: ["agents/shop"]       # boards and tasks, no transcripts
 ```
@@ -200,6 +209,57 @@ The chart lets the UI's service account read `pods` and `pods/log` in each
 namespace of `agent.namespaces` (Roles, nothing cluster-wide). An
 AgentProject in a namespace that is not listed there has no transcripts:
 its streams end with "pod not available".
+
+## Steering
+
+GitLab stays the place of record: comments written in the UI are GitLab
+comments in **your** name, and the operator handles them like any other. A
+plain comment reaches a running agent at its next step; `/agent …` starts a
+run; `/agent use …` and `/agent effort …` change model and effort; on an
+autopilot milestone's tracking issue, `/agent pause|resume|skip`. All
+commands: [commands.md](commands.md).
+
+### Set it up
+
+1. Create an OAuth application on the GitLab your projects live on (for
+   gitlab.com: *Group → Settings → Applications*, or *User settings →
+   Applications*): **confidential**, scope **`api`** (GitLab has no narrower
+   scope that may post comments), redirect URI
+   `https://<host>/oauth2/gitlab/callback`.
+2. Put its secret into the UI's Secret under `gitlab-client-secret` (or into
+   another Secret named by `ui.gitlab.existingSecret`).
+3. Set the chart values:
+
+   ```yaml
+   ui:
+     gitlab:
+       url: https://gitlab.com
+       clientID: "<application id>"
+     authorization:
+       rules:
+         - roles: [ai-operator-admin]
+           steer: true
+   ```
+
+Each user then connects their account once with **Connect GitLab** on a
+task page.
+
+### How it works
+
+- **Thread:** the task's issue, merge request and (on autopilot) tracking
+  issue comments, read with your token, so GitLab decides what you see. The
+  page looks again every 30 seconds and after every change of the task.
+- **Comments:** posted with your token to the issue, MR or tracking issue
+  you pick, at most 10 000 characters and 10 per minute. The buttons above
+  the box start a comment with the common commands. The UI logs who posted
+  where (user, GitLab user, project, target, note id), never the text.
+- **Tokens:** the access and refresh token live in an encrypted, `HttpOnly`
+  cookie (like the login) for 30 days, bound to your UI user, refreshed when
+  the access token runs out, never readable by the page's JavaScript.
+  **Disconnect** forgets them; revoke the application in GitLab to end it
+  there too.
+- Projects on another GitLab host than `ui.gitlab.url` get no thread and no
+  box.
 
 ## Without login
 
@@ -252,6 +312,13 @@ points to 127.0.0.1 (DNS rebinding).
 - **https only.** `externalURL` must use https (http only for `localhost`);
   TLS ends at the Gateway.
 - **Deny by default** (see [Access rules](#access-rules)).
+- **Writing only as the user.** Comments are posted with the user's own
+  GitLab OAuth token (scope `api`), never with a shared or the bot's token,
+  and only with the `steer` grant; they go through Go's cross-origin
+  protection, a size and a rate limit, and leave an audit line. The tokens
+  stay server-side in an encrypted cookie bound to the UI user. A stolen pair
+  of cookies could post as that user until the GitLab connection expires or
+  is revoked.
 
 ## API
 
@@ -265,6 +332,9 @@ with the same session cookie:
 | `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}` | one task and its project |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript` | server-sent events: `entry` per transcript line of the task's pod (what it logged so far, then live), `end` with the reason (`no pod`, `pod stopped`, `pod not available`, `session expired`); needs the `transcript` grant (403 without), counts as an event stream |
+| `GET /api/v1/gitlab` | whether GitLab is configured and your account connected (`enabled`, `connected`, `username`) |
+| `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread` | the comments of the task's issue, MR and tracking issue (`parts`), read with your GitLab token; 409 when not connected |
+| `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes` | posts `{"target": "issue"\|"mr"\|"tracking", "body": "…"}` in your GitLab name; needs the `steer` grant |
 | `GET /api/v1/events` | server-sent events: `change` with the kind, namespace and name of a project or task that changed |
 
 Change events carry no content; the app fetches what it shows again. The
@@ -287,9 +357,8 @@ Without `make ui` the binary serves only the API.
 
 ## Roadmap
 
-1. **Steering.** Connect your GitLab account, see the issue's and MR's
-   comments on the task page, and write comments (and `/agent` commands) from
-   it, posted in your name.
+1. **Into a running step.** Messages that reach a running claude step at once
+   (`--input-format stream-json`), not only at its next step.
 2. **Actions** for an `operator` access level, limited to what GitLab cannot
    do (e.g. restart a stuck pod, clear a usage limit, hibernate a task).
    GitLab stays the place where the work is steered.
