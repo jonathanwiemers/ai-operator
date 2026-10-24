@@ -62,13 +62,7 @@ type progress struct {
 // Progress comments a run left behind (the pod was killed) are removed
 // first. A failure only costs the live view, so it is logged, not returned.
 func (r *Runner) startProgress(ctx context.Context, gl gitlab.API, project string, mr, botID int64) {
-	if notes, err := gl.ListMergeRequestNotes(ctx, project, mr); err == nil {
-		for _, n := range notes {
-			if isProgress(n, botID) && strings.Contains(n.Body, liveHeadline) {
-				_ = gl.DeleteMergeRequestNote(ctx, project, mr, n.ID)
-			}
-		}
-	}
+	removeLiveProgress(ctx, gl, project, mr, botID)
 	p := &progress{gl: gl, project: project, mr: mr, run: r.run, log: r.log()}
 	note, err := gl.CreateMergeRequestNote(ctx, project, mr, p.body(liveHeadline, true))
 	if err != nil {
@@ -78,6 +72,20 @@ func (r *Runner) startProgress(ctx context.Context, gl gitlab.API, project strin
 	p.note, p.last = note.ID, time.Now()
 	r.progress = p
 	r.run.onChange = func() { p.update(ctx) }
+}
+
+// removeLiveProgress deletes the "working" progress comments that runs
+// killed with their pod left on the merge request.
+func removeLiveProgress(ctx context.Context, gl gitlab.API, project string, mr, botID int64) {
+	notes, err := gl.ListMergeRequestNotes(ctx, project, mr)
+	if err != nil {
+		return
+	}
+	for _, n := range notes {
+		if isProgress(n, botID) && strings.Contains(n.Body, liveHeadline) {
+			_ = gl.DeleteMergeRequestNote(ctx, project, mr, n.ID)
+		}
+	}
 }
 
 func (p *progress) body(headline string, live bool) string {

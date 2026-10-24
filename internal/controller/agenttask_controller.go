@@ -219,6 +219,11 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				return ctrl.Result{}, err
 			}
 			pod = nil
+			if inProgress {
+				// Suspended mid-run on purpose: the run starts again when
+				// resumed, but not as an interruption.
+				task.Status.Run.ActiveRunRequest = task.Status.Run.ObservedRunRequest
+			}
 			task.Status.Phase = aiv1.TaskPhaseHibernated
 			task.Status.Message = "pod stopped, workspace kept"
 			result.RequeueAfter = remaining(lc.RetentionPeriod.Duration, idleFor)

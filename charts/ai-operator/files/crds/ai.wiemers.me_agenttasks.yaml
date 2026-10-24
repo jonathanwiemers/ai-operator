@@ -598,6 +598,13 @@ spec:
                       the run is retried after this time.
                     format: date-time
                     type: string
+                  interruptions:
+                    description: |-
+                      Interruptions counts runs of the current request started again because
+                      the previous attempt never finished: its pod or node was lost, or the
+                      runner stopped. After MaxInterruptions the run fails.
+                    format: int32
+                    type: integer
                   lastActivityTime:
                     description: LastActivityTime is when the runner last started
                       or finished a run.

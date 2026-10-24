@@ -322,6 +322,10 @@ func TestCurrentStepClearedWithThePod(t *testing.T) {
 	if got := e.task("x").Status.Run.CurrentStep; got != "" {
 		t.Fatalf("current step must be cleared with the pod, got %q", got)
 	}
+	// Not an interruption: the run is given back as pending.
+	if run := e.task("x").Status.Run; run.ActiveRunRequest != run.ObservedRunRequest || !e.task("x").RunPending() {
+		t.Fatalf("a suspended run must be pending, not in progress: %+v", run)
+	}
 }
 
 func TestAgentLogLevel(t *testing.T) {
