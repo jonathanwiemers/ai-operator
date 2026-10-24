@@ -856,10 +856,13 @@ pod waits until the node is back.
 
 After 3 restarts of the same run request (`status.run.interruptions`) the
 runner gives up instead of trying again: something in the run may keep
-taking the pod down. The run fails, the issue moves to `agent::needs-input`
-with a comment that mentions the owners (on autopilot, the pause on the
-tracking issue mentions them), and `/agent retry` starts it again with a new
-count. A run that finishes resets the count.
+taking the pod down. The run fails; for an issue, it moves to
+`agent::needs-input` with a comment that mentions the owners (on autopilot,
+the pause on the tracking issue mentions them), and `/agent retry` starts it
+again with a new count. A spec run fails like any other failed spec run. A
+run that finishes resets the count. Suspending a task (`spec.suspend`)
+mid-run stops its pod too, but does not count: the run starts again when the
+task is resumed.
 
 Task phases: `Pending`, `Queued` (waiting for `maxConcurrentRuns`), `Running`,
 `Waiting` (paused by a usage limit), `Idle`, `Hibernated`, `Archived`,

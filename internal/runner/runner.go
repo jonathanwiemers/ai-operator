@@ -337,6 +337,9 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	case interruptions > aiv1.MaxInterruptions:
 		// Something in the run keeps taking its pod down: not again.
 		r.run.restart = ""
+		if mr := task.Status.Run.MergeRequestIID; mr != 0 {
+			removeLiveProgress(ctx, gl, spec.GitLab.Project, mr, project.Status.BotUserID)
+		}
 		err = fmt.Errorf("giving up: the run was interrupted %d times without finishing (its pod stopped each time, e.g. evicted or the node went down); something in it may keep taking the pod down", interruptions)
 	case task.Spec.Type == aiv1.TaskTypeSpec:
 		out, err = r.runSpec(ctx, gl, task, project, spec)
