@@ -22,6 +22,9 @@ type runLog struct {
 	log   logr.Logger
 	start time.Time
 	steps []*step
+	// restart says the run started again after an interruption; it heads
+	// the run log in GitLab comments.
+	restart string
 	// onChange is called when a step starts or ends (the progress comment).
 	onChange func()
 }
@@ -157,6 +160,9 @@ func (rl *runLog) table(open bool, costUSD *float64) string {
 		return ""
 	}
 	var b strings.Builder
+	if rl.restart != "" {
+		b.WriteString("\n\n" + rl.restart)
+	}
 	attr := ""
 	if open {
 		attr = " open"

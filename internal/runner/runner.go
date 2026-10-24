@@ -309,8 +309,19 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	r.blamedRestarts, r.pushedHead = 0, ""
 	ctx = withRunID(ctx, r.run.id)
 	log := r.run.log
-	log.Info("starting run", "request", request, "previousRuns", task.Status.Run.RunCount, "deferrals", task.Status.Run.Deferrals)
+	// Every way a run ends sets the active request back to the observed
+	// one, so one still ahead of it was cut off: the pod stopped mid-run.
+	interrupted := task.Status.Run.ActiveRunRequest > task.Status.Run.ObservedRunRequest
+	interruptions := task.Status.Run.Interruptions
+	if interrupted {
+		interruptions++
+		r.run.restart = fmt.Sprintf("↻ Started again: the previous attempt was interrupted (its pod stopped before the run finished, e.g. evicted or the node went down). Restart %d of at most %d.",
+			interruptions, aiv1.MaxInterruptions)
+	}
+	log.Info("starting run", "request", request, "previousRuns", task.Status.Run.RunCount, "deferrals", task.Status.Run.Deferrals,
+		"interruptions", interruptions)
 	if err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
+		s.Interruptions = interruptions
 		s.ActiveRunRequest = request
 		s.CurrentStep = ""
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
@@ -322,10 +333,14 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	r.logPrompts = spec.Agents.LogPrompts
 	gl := r.NewGitLab(spec.GitLab.URL, r.GitLabToken)
 	var out *Outcome
-	switch task.Spec.Type {
-	case aiv1.TaskTypeSpec:
+	switch {
+	case interruptions > aiv1.MaxInterruptions:
+		// Something in the run keeps taking its pod down: not again.
+		r.run.restart = ""
+		err = fmt.Errorf("giving up: the run was interrupted %d times without finishing (its pod stopped each time, e.g. evicted or the node went down); something in it may keep taking the pod down", interruptions)
+	case task.Spec.Type == aiv1.TaskTypeSpec:
 		out, err = r.runSpec(ctx, gl, task, project, spec)
-	case aiv1.TaskTypeImplement:
+	case task.Spec.Type == aiv1.TaskTypeImplement:
 		out, err = r.runImplement(ctx, gl, task, project, spec)
 	default:
 		err = fmt.Errorf("unknown task type %q", task.Spec.Type)
@@ -389,6 +404,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.LimitedEngine = ""
 		s.Deferrals = 0
 		s.OOMRetries = 0
+		s.Interruptions = 0
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
 		s.LastResult = out.Result
 		s.Summary = truncate(out.Summary, 2000)

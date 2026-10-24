@@ -841,6 +841,26 @@ reports an error, so nothing is recorded.
 kubectl -n agents get agenttask shop-42-add-paypal-button -o jsonpath='{.status.agentTermination}'
 ```
 
+### When the whole pod is lost
+
+If the pod stops mid-run (evicted, the node shut down or went away, or the
+runner itself crashed), the run request stays open. The operator replaces a
+pod that has terminated for good, and the new pod's runner starts the run
+again from the last pushed commit; uncommitted edits of the lost attempt are
+gone. A progress comment the lost attempt left on the merge request is
+removed. The new attempt's progress comment and report say so above the run
+log: "↻ Started again: the previous attempt was interrupted (its pod stopped
+before the run finished, e.g. evicted or the node went down). Restart 1 of
+at most 3." Agent pods use a local volume, so on a node that is down the new
+pod waits until the node is back.
+
+After 3 restarts of the same run request (`status.run.interruptions`) the
+runner gives up instead of trying again: something in the run may keep
+taking the pod down. The run fails, the issue moves to `agent::needs-input`
+with a comment that mentions the owners (on autopilot, the pause on the
+tracking issue mentions them), and `/agent retry` starts it again with a new
+count. A run that finishes resets the count.
+
 Task phases: `Pending`, `Queued` (waiting for `maxConcurrentRuns`), `Running`,
 `Waiting` (paused by a usage limit), `Idle`, `Hibernated`, `Archived`,
 `Blocked` (hit `maxRunsPerTask`).

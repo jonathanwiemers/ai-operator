@@ -284,6 +284,10 @@ type AgentTaskStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+// MaxInterruptions bounds how often one run request is started again after
+// its previous attempt was interrupted.
+const MaxInterruptions = 3
+
 // RunStatus is reported by the runner.
 type RunStatus struct {
 	// ActiveRunRequest is the run request the runner is currently working on.
@@ -349,6 +353,12 @@ type RunStatus struct {
 	// agent container ran out of memory.
 	// +optional
 	OOMRetries int32 `json:"oomRetries,omitempty"`
+
+	// Interruptions counts runs of the current request started again because
+	// the previous attempt never finished: its pod or node was lost, or the
+	// runner stopped. After MaxInterruptions the run fails.
+	// +optional
+	Interruptions int32 `json:"interruptions,omitempty"`
 
 	// PushedSHA is the commit the runner last pushed to the agent's branch.
 	// +optional

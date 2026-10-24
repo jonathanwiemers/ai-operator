@@ -263,6 +263,12 @@ Each pod has two containers, see [Security](#security):
   agent container's resources (`ai.wiemers.me/agent-resources`); a pod with
   other ones is replaced between runs, so raised limits apply to the next
   run.
+* A pod that stops mid-run (evicted, node lost) leaves
+  `status.run.activeRunRequest` ahead of `observedRunRequest`: every way a
+  run ends sets them equal. The runner of the replacement pod sees that at
+  the start of the run, counts it in `status.run.interruptions`, says so above
+  the run log, and fails the run instead after 3 restarts (reset when a run
+  finishes).
 
 **Logging.** The runner records every run as numbered steps
 (`internal/runner/steps.go`): a start and an end line per step in its log,
