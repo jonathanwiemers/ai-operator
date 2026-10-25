@@ -713,6 +713,11 @@ func hasConflicts(mr *gitlab.MergeRequest) bool {
 // issue to working.
 func (r *AgentProjectReconciler) requestMergeBase(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, iid int64, sha string) error {
 	task.Spec.Source.MergeBaseFor = sha
+	return r.requestRun(ctx, gl, spec, task, iid)
+}
+
+// requestRun requests the next run of task and moves the issue to working.
+func (r *AgentProjectReconciler) requestRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, iid int64) error {
 	task.Spec.RunRequest++
 	if err := r.Update(ctx, task); err != nil {
 		return err

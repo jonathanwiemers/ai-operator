@@ -464,6 +464,12 @@ type ReviewSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	Retries *int32 `json:"retries,omitempty"`
+
+	// RetryAfter is how long autopilot waits before it asks for one
+	// re-review of a head whose reviewers all failed transiently.
+	// +kubebuilder:default="15m"
+	// +optional
+	RetryAfter metav1.Duration `json:"retryAfter,omitempty"`
 }
 
 // ReviewerKind names a built-in reviewer.
