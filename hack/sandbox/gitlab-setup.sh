@@ -31,7 +31,7 @@ if [[ -n "${GITLAB_GROUP:-}" ]]; then
     while IFS=$'\t' read -r pid path; do
       [[ -z "$pid" ]] && continue
       names="$(api "projects/${pid}/labels?include_ancestor_groups=false&per_page=100" |
-        jq -r '[.[].name | select(startswith("agent::") or startswith("agent-blocked::") or startswith("agent-profile::") or . == "ai-generated" or . == "ci::main-red")] | join(", ")')"
+        jq -r '[.[].name | select(startswith("agent::") or startswith("agent-blocked::") or startswith("agent-profile::") or . == "ai-generated" or . == "ci::main-red" or . == "ci::flaky")] | join(", ")')"
       [[ -n "$names" ]] && dupes+="  ${path}: ${names}"$'\n'
     done < <(jq -r '.[] | [.id, .path_with_namespace] | @tsv' <<<"$projects")
     (( $(jq length <<<"$projects") < 100 )) && break
@@ -75,3 +75,4 @@ create "agent-profile::fast"   "#6699cc" "Implemented by the fast profile"
 create "agent-profile::strong" "#5843ad" "Implemented by the strong profile"
 create "ai-generated"        "#cccccc" "Created by the spec agent"
 create "ci::main-red"        "#c92a2a" "The default branch is red"
+create "ci::flaky"           "#f08c00" "A flaky CI job"

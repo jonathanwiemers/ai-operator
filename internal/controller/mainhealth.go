@@ -18,6 +18,7 @@ import (
 // Labels and markers of the issues the main health watcher opens.
 const (
 	mainRedLabel  = "ci::main-red"
+	flakyLabel    = "ci::flaky"
 	mainRedMarker = "<!-- ai-operator:main-red -->"
 	// How much of the failed jobs and their logs the issue shows; GitLab
 	// refuses titles over 255 characters.
@@ -29,7 +30,7 @@ const (
 //
 //	green                         -> green (closes the main-red issue)
 //	red, new pipeline             -> retrying: its failed jobs are retried
-//	green after the retry         -> flaky
+//	green after the retry         -> flaky: one issue per job
 //	red after the retry           -> red: the main-red issue, the owners pinged
 //
 // The status changes only when every step succeeded, so a failed one is
@@ -86,6 +87,11 @@ func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.
 	retried := same && st.State == aiv1.MainHealthRetrying
 	st.PipelineID, st.SHA = p.ID, p.SHA
 	if !red {
+		if retried && *mh.Issue {
+			if err := reportFlaky(ctx, gl, glProject, bot, p, st.FailedJobs); err != nil {
+				return err
+			}
+		}
 		if st.IssueIID != 0 && *mh.Issue {
 			if _, err := gl.CreateIssueNote(ctx, glProject, st.IssueIID, fmt.Sprintf("✅ green again at `%s` (%s).", p.SHA, p.WebURL)); err != nil {
 				return fmt.Errorf("commenting on issue #%d: %w", st.IssueIID, err)
@@ -173,6 +179,29 @@ func (r *AgentProjectReconciler) reportMainRed(ctx context.Context, gl gitlab.AP
 	return nil
 }
 
+// reportFlaky records the jobs that passed on retry: a comment on each job's
+// flaky issue, opened on its first occurrence. A large matrix reports its
+// first jobs only.
+func reportFlaky(ctx context.Context, gl gitlab.API, glProject string, bot int64, p gitlab.Pipeline, jobs []string) error {
+	list, err := gl.ListIssues(ctx, glProject, gitlab.ListIssuesOptions{Labels: []string{flakyLabel}})
+	if err != nil {
+		return fmt.Errorf("listing issues with label %q: %w", flakyLabel, err)
+	}
+	for _, j := range jobs[:min(len(jobs), mainRedJobs)] {
+		note := fmt.Sprintf("🔁 `%s` failed in pipeline %s at `%s` and passed on retry.", j, p.WebURL, p.SHA)
+		m := "<!-- ai-operator:flaky-job=" + j + " -->"
+		if is := ownIssue(list, bot, m); is != nil {
+			_, err = gl.CreateIssueNote(ctx, glProject, is.IID, note)
+		} else {
+			_, err = gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{Title: "🔁 Flaky CI job: `" + j + "`", Description: m + "\n" + note, Labels: "ai-generated," + flakyLabel})
+		}
+		if err != nil {
+			return fmt.Errorf("reporting flaky job %q: %w", j, err)
+		}
+	}
+	return nil
+}
+
 // findIssue finds the bot's open issue with label whose description starts
 // with the marker.
 func findIssue(ctx context.Context, gl gitlab.API, glProject string, bot int64, label, m string) (*gitlab.Issue, error) {
@@ -180,12 +209,18 @@ func findIssue(ctx context.Context, gl gitlab.API, glProject string, bot int64, 
 	if err != nil {
 		return nil, fmt.Errorf("listing issues with label %q: %w", label, err)
 	}
+	return ownIssue(list, bot, m), nil
+}
+
+// ownIssue is the issue of list the bot wrote whose description starts with
+// the marker.
+func ownIssue(list []gitlab.Issue, bot int64, m string) *gitlab.Issue {
 	for _, is := range list {
 		if is.Author.ID == bot && strings.HasPrefix(is.Description, m) {
-			return &is, nil
+			return &is
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 var jobNameChars = regexp.MustCompile(`[^A-Za-z0-9 :._/-]`)
