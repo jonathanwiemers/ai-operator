@@ -357,4 +357,4 @@ would have prevented case 1, 1 + 3 + 4 case 2.
 
 | # | Title | Link | Status |
 |--:|---|---|---|
-| 0 | Spec: pipeline health, infra retries and the blocked state | – | approved 2026-10-25, PR open |
+| 0 | Spec: pipeline health, infra retries and the blocked state | [#47](https://github.com/jonathanwiemers/ai-operator/pull/47) | approved 2026-10-25, open |
