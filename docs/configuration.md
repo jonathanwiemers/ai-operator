@@ -136,6 +136,8 @@ All labels can be renamed. Defaults:
 | `needsInputLabel` | `agent::needs-input` |
 | `reviewLabel` | `agent::review` |
 | `doneLabel` | `agent::done` |
+| `blockedLabel` | `agent::blocked` |
+| `blockedReasonPrefix` | `agent-blocked::` (reasons: `infra`, `main-red`, `quota`, `dependency`) |
 | `generatedLabel` | `ai-generated` |
 | `profileLabelPrefix` | `agent-profile::` |
 | `modelLabelPrefix` | `agent-model::` |

@@ -47,6 +47,8 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 	def(&w.NeedsInputLabel, "agent::needs-input")
 	def(&w.ReviewLabel, "agent::review")
 	def(&w.DoneLabel, "agent::done")
+	def(&w.BlockedLabel, "agent::blocked")
+	def(&w.BlockedReasonPrefix, "agent-blocked::")
 	def(&w.GeneratedLabel, "ai-generated")
 	def(&w.ProfileLabelPrefix, "agent-profile::")
 	def(&w.ModelLabelPrefix, "agent-model::")
@@ -69,7 +71,7 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 
 // ActiveLabels are the labels that mean "an agent task exists for this issue".
 func (w WorkflowSpec) ActiveLabels() []string {
-	return []string{w.ReadyLabel, w.WorkingLabel, w.NeedsInputLabel, w.ReviewLabel}
+	return []string{w.ReadyLabel, w.WorkingLabel, w.NeedsInputLabel, w.ReviewLabel, w.BlockedLabel}
 }
 
 // Autopilot returns the effective autopilot marker; empty disables autopilot.

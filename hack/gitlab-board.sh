@@ -24,7 +24,7 @@ fi
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
 
 board_name="Agents"
-labels=("agent::draft" "agent::ready" "agent::working" "agent::needs-input" "agent::review" "agent::done")
+labels=("agent::draft" "agent::ready" "agent::working" "agent::needs-input" "agent::review" "agent::blocked" "agent::done")
 
 # request METHOD PATH [curl args...] sets $code and $body. PATH is below /api/v4.
 request() {

@@ -257,6 +257,12 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 		keep[task.Name] = true
 		implTasks[is.IID] = task
+		if err := r.syncBlocked(ctx, gl, spec, is, task); err != nil {
+			return err
+		}
+		if task.Status.Blocked != nil {
+			continue // its CI is followed again once the block is lifted
+		}
 		if err := r.syncCI(ctx, gl, spec, is, task, mr); err != nil {
 			return err
 		}
@@ -526,7 +532,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	if requested {
 		opts := gitlab.UpdateIssueOptions{
 			AddLabels:    []string{wf.WorkingLabel},
-			RemoveLabels: []string{wf.ReadyLabel, wf.NeedsInputLabel, wf.ReviewLabel},
+			RemoveLabels: []string{wf.ReadyLabel, wf.NeedsInputLabel, wf.ReviewLabel, wf.BlockedLabel},
 		}
 		// Assigning the bot makes GitLab's milestone page list the issue as
 		// ongoing. assignee_ids replaces all assignees, so an issue that is
@@ -675,7 +681,7 @@ func (r *AgentProjectReconciler) requestMergeBase(ctx context.Context, gl gitlab
 	}
 	wf := spec.Workflow
 	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, iid, gitlab.UpdateIssueOptions{
-		AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel, wf.ReadyLabel, wf.NeedsInputLabel},
+		AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel, wf.ReadyLabel, wf.NeedsInputLabel, wf.BlockedLabel},
 	}); err != nil {
 		return fmt.Errorf("moving issue #%d to %q: %w", iid, wf.WorkingLabel, err)
 	}

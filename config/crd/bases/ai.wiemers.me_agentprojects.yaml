@@ -1003,6 +1003,19 @@ spec:
                       and the issue has no assignee, so GitLab's milestone page lists it as
                       ongoing. A human assignee is never replaced.
                     type: boolean
+                  blockedLabel:
+                    default: agent::blocked
+                    description: |-
+                      BlockedLabel is set by the operator when an issue cannot go on for a
+                      reason outside it (an outage, a red default branch); the label it
+                      replaced comes back once the block is lifted.
+                    type: string
+                  blockedReasonPrefix:
+                    default: 'agent-blocked::'
+                    description: |-
+                      BlockedReasonPrefix: a blocked issue also carries
+                      "<prefix><reason>", e.g. "agent-blocked::infra".
+                    type: string
                   commandPrefix:
                     default: /agent
                     description: |-
