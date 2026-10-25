@@ -727,6 +727,8 @@ CLI reports such a limit, the run is **paused, not failed**:
   and retried automatically at …; until then the issue is blocked". When
   the run starts again, the issue gets its label back (normally
   `agent::working`); a later limit blocks it again.
+  `/agent …` or a move to `agent::ready` lifts the block as usual, but the
+  run still waits for the reset.
 - The run is retried at the reset time the CLI reports. If it doesn't
   report one, the wait is 5 minutes, doubling with every further limit hit
   up to 1 hour (`spec.lifecycle.usageLimitBackoff` /
