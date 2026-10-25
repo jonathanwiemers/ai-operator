@@ -784,7 +784,7 @@ default branch and the last comments of the tracking issue.
 - **Where.** On the tracking issue (the main place), and on the issues of the
   milestone that have a task and their merge requests; it answers where you
   asked. Draft issues are not read (the operator does not poll them). On an
-  issue outside a planned milestone you get "there is no pilot here".
+  issue outside a planned milestone an owner gets "there is no pilot here".
 - **Which milestones.** An autopilot milestone gets its pilot with its
   tracking issue. For another planned milestone, comment `/pilot coordinate`
   on one of its issues: the operator opens a tracking issue "🧭 Pilot:
@@ -795,7 +795,8 @@ default branch and the last comments of the tracking issue.
   `/agent owners` line, else `notify.users`, compared by user ID) talk to the
   pilot. Anyone else gets "only the owners of this milestone can instruct
   me", at most once a day; further comments are ignored and cost nothing. A
-  milestone without owners (`/agent owners` alone) is answered for anyone.
+  milestone without owners (`/agent owners` alone, and no `notify.users`) is
+  answered for anyone, but `/pilot coordinate` needs owners.
 - **Answers only.** For now the pilot only answers: it starts no run, changes
   no label, issue or spec. Asked to act, it says which command or label does
   it. Its answers are made inert like all agent text: no mentions, no quick
@@ -805,8 +806,10 @@ default branch and the last comments of the tracking issue.
   per milestone; once that is spent it answers that the budget is used up,
   without a model call. Comments of non-owners never reach the model.
 
-Comments on the tracking issue, job logs and run summaries reach the pilot as
-data, not as instructions: text in them that tries to steer it is ignored.
+Comments on the tracking issue, titles, run summaries and CI states reach the
+pilot as data, not as instructions: text in them that tries to steer it is
+ignored. The conversation with the pilot on an issue is no input for the
+issue's implementer.
 
 ## Usage and rate limits
 

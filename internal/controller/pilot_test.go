@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -139,13 +140,46 @@ func TestPilotListensOnTheMilestonesIssues(t *testing.T) {
 		t.Fatalf("a question on an issue of the milestone goes to its pilot: %+v", msgs)
 	}
 
-	// An issue without a planned milestone has no pilot.
+	// An issue without a planned milestone has no pilot: its owners are told,
+	// nobody else gets an answer.
+	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Notify.Users = []string{"alice"} })
 	e.gl.AddIssue(9, "Elsewhere", "agent::needs-input")
 	e.reconcile()
+	e.gl.AddNote(9, mallory, "/pilot hello?")
 	e.gl.AddNote(9, alice, "/pilot hello?")
 	e.reconcile()
 	if c := botComments(e, 9); len(c) != 1 || !strings.Contains(c[0], "not in a planned milestone") {
-		t.Fatalf("expected the no-pilot answer, got %q", c)
+		t.Fatalf("expected one no-pilot answer, got %q", c)
+	}
+}
+
+func TestPilotFailedReplyDoesNotHoldUpTheOthers(t *testing.T) {
+	e := newPilotEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.NoteErrors = map[int64]error{tracking: errors.New("gitlab is down")}
+	e.gl.AddNote(tracking, mallory, "/pilot skip #1")
+	n := e.gl.AddNote(tracking, alice, "/pilot why?")
+	e.reconcile()
+	e.gl.NoteErrors = nil
+	e.reconcile()
+	if msgs := e.pilot().Spec.Source.PilotMessages; len(msgs) != 1 || msgs[0].NoteID != n.ID {
+		t.Fatalf("the owner's message is handed over although the rejection failed: %+v", msgs)
+	}
+	if c := botComments(e, tracking); strings.Contains(strings.Join(c, "\n"), "Only the owners") {
+		t.Fatalf("a failed rejection is not posted again: %q", c)
+	}
+}
+
+func TestPilotCoordinateNeedsOwners(t *testing.T) {
+	e := newProjectEnv(t)
+	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2", State: "active", Description: "/agent spec\nBuild it."}
+	e.gl.Milestones = []gitlab.Milestone{m}
+	e.gl.AddIssue(1, "API", "agent::needs-input").Milestone = &m
+	e.reconcile()
+	e.gl.AddNote(1, mallory, "/pilot coordinate")
+	e.reconcile()
+	if _, ok := e.tasks()[pilotTaskName]; ok || !strings.Contains(strings.Join(botComments(e, 1), "\n"), "A pilot needs owners") {
+		t.Fatalf("without owners nobody starts a pilot: %v %q", keys(e.tasks()), botComments(e, 1))
 	}
 }
 

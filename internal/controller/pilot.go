@@ -164,7 +164,7 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 	var ownerIDs map[int64]bool
 	var msgs []aiv1.PilotMessage
 	for _, n := range notes {
-		if st != nil && ownerIDs == nil {
+		if ownerIDs == nil {
 			// Owners count by user ID: a username can change hands.
 			ownerIDs = map[int64]bool{}
 			for _, o := range owners {
@@ -177,22 +177,27 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 				}
 			}
 		}
+		owner := ownerIDs[n.Author.ID]
 		coordinate := strings.EqualFold(n.msg, "coordinate")
 		var reply string
 		switch tracking := trackingIssue(st, coord); {
-		case st == nil:
-			reply = "There is no pilot here: this issue is not in a planned milestone."
+		case st == nil && !owner:
+			continue // nowhere to note a reply, so none
 		// A milestone without owners gets answers only, which is all the
 		// pilot does yet.
-		case len(owners) > 0 && !ownerIDs[n.Author.ID]:
+		case !owner && len(owners) > 0:
 			if err := r.rejectPilot(ctx, gl, spec, st, n); err != nil {
 				return err
 			}
 			continue
+		case st == nil:
+			reply = "There is no pilot here: this issue is not in a planned milestone."
 		case coordinate && tracking != 0:
 			reply = fmt.Sprintf("The pilot of this milestone listens on #%d.", tracking)
 		case coordinate && st.Spec.Autopilot:
 			reply = "The pilot of this milestone starts with the autopilot's tracking issue."
+		case coordinate && len(owners) == 0:
+			reply = fmt.Sprintf("A pilot needs owners: add a line `%s owners @you` to the milestone description.", spec.Workflow.CommandPrefix)
 		case coordinate:
 			var err error
 			if coord, err = r.startPilot(ctx, gl, project, spec, st); err != nil {
@@ -208,9 +213,7 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 				Body: truncateUTF8(n.msg, maxPilotMessage)})
 			continue
 		}
-		if err := pilotReply(ctx, gl, spec, n, reply); err != nil {
-			return err
-		}
+		pilotReply(ctx, gl, spec, n, reply)
 	}
 	if len(msgs) == 0 {
 		return nil
@@ -251,7 +254,8 @@ func (r *AgentProjectReconciler) rejectPilot(ctx context.Context, gl gitlab.API,
 	}); err != nil {
 		return err
 	}
-	return pilotReply(ctx, gl, spec, n, "Only the owners of this milestone can instruct me.")
+	pilotReply(ctx, gl, spec, n, "Only the owners of this milestone can instruct me.")
+	return nil
 }
 
 // trackingIssue is the issue the pilot of a milestone listens on: the
@@ -373,8 +377,9 @@ func truncateUTF8(s string, n int) string {
 	return s[:n] + "…"
 }
 
-// pilotReply answers a comment where it was written.
-func pilotReply(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, n pilotNote, text string) error {
+// pilotReply answers a comment where it was written. A failed answer is not
+// tried again: the comment is handled.
+func pilotReply(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, n pilotNote, text string) {
 	body := "🧭 " + text
 	var err error
 	if n.mr != 0 {
@@ -383,7 +388,6 @@ func pilotReply(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, 
 		_, err = gl.CreateIssueNote(ctx, spec.GitLab.Project, n.issue, body)
 	}
 	if err != nil {
-		return fmt.Errorf("answering comment %d: %w", n.ID, err)
+		log.FromContext(ctx).Info("could not answer a comment to the pilot", "note", n.ID, "error", err.Error())
 	}
-	return nil
 }
