@@ -90,8 +90,25 @@ func TestMainHealthFlakyJob(t *testing.T) {
 	if st := e.mainHealth(); st.State != aiv1.MainHealthFlaky {
 		t.Fatalf("green after the retry is flaky, state %s", st.State)
 	}
+	flaky := e.issuesWith("ci::flaky")
+	if len(flaky) != 1 || flaky[0].Title != "🔁 Flaky CI job: `test:coverage`" || !flaky[0].HasLabel("ai-generated") {
+		t.Fatalf("expected one flaky issue for the job, got %+v", flaky)
+	}
 	if len(e.issuesWith("ci::main-red")) != 0 {
 		t.Fatal("a flaky job is no red default branch")
+	}
+
+	// The next occurrence is a comment on the same issue.
+	pid2 := e.gl.AddPipeline("sha2", "main", "failed", coverageJob())
+	e.check(advance)
+	e.gl.SetPipelineStatus(pid2, "success")
+	e.check(advance)
+	if got := e.issuesWith("ci::flaky"); len(got) != 1 {
+		t.Fatalf("the flaky issue is found by its marker, got %d issues", len(got))
+	}
+	notes := e.gl.IssueNotes[flaky[0].IID]
+	if len(notes) != 1 || !strings.Contains(notes[0].Body, "/pipelines/"+itoa(pid2)) {
+		t.Fatalf("expected a comment with the second pipeline, got %+v", notes)
 	}
 }
 
@@ -295,5 +312,20 @@ func TestMainHealthSkipsCanceledPipelines(t *testing.T) {
 	e.reconcile()
 	if st := e.mainHealth(); st.State != aiv1.MainHealthRetrying || !slices.Equal(e.gl.Retried, []int64{pid}) {
 		t.Fatalf("the newest pipeline that ran counts, status %+v, retried %v", st, e.gl.Retried)
+	}
+}
+
+func TestMainHealthFlakyMatrixIsCapped(t *testing.T) {
+	e, advance := newMainEnv(t)
+	var jobs []gitlab.Job
+	for i := range 5 {
+		jobs = append(jobs, gitlab.Job{Name: "test " + strconv.Itoa(i), Status: "failed"})
+	}
+	pid := e.gl.AddPipeline("sha1", "main", "failed", jobs...)
+	e.reconcile()
+	e.gl.SetPipelineStatus(pid, "success")
+	e.check(advance)
+	if n := len(e.issuesWith("ci::flaky")); n != 3 {
+		t.Fatalf("a flaky matrix opens issues for its first 3 jobs, got %d", n)
 	}
 }

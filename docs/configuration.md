@@ -318,7 +318,7 @@ The watcher of the default branch, see [usage.md](usage.md#main-health).
 | `disabled` | `false` | do not watch the default branch |
 | `interval` | `5m` | how often the newest finished pipeline of the default branch is read (one `GET pipelines` per check; jobs and logs only for a new red pipeline) |
 | `retryFailedJobs` | `true` | retry the failed jobs of a red pipeline once; green after the retry counts as flaky |
-| `issue` | `true` | open the `ci::main-red` issue |
+| `issue` | `true` | open the `ci::main-red` issue and one `ci::flaky` issue per flaky job |
 
 The token needs the same rights as for `spec.ci` (read pipelines and job logs,
 retry jobs) and must be able to create issues.
