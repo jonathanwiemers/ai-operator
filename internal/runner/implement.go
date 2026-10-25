@@ -243,6 +243,16 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		runAgent = len(merge.Conflicts) > 0 || humanInput > 0 || ciFix || len(revisits) > 0 || len(ignored) > 0
 	}
+	// A re-review run: only the reviewers run again on the head they failed
+	// on (or "/agent review" asked for), unless the branch moved on since.
+	reviewFor := task.Spec.Source.ReviewFor
+	reReview := false
+	if reviewFor != "" && reviewFor != task.Status.Run.ReviewedFor {
+		out.ReviewedFor = reviewFor
+		head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
+		reReview = head == reviewFor && !ciFix && !mergeBase && len(revisits) == 0
+		runAgent = runAgent && !reReview
+	}
 
 	if !stepwise && inv.Resume != "" {
 		inv.Prompt = noStepsNote + "\n\n" + inv.Prompt
@@ -272,10 +282,14 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD,
 			"status", answer.Status, "questions", len(answer.Questions), "decisions", len(answer.Decisions))
 	} else {
-		// Only the merge: nothing for the agent to do; review and CI follow.
+		// Only the merge or the review: nothing for the agent to do; review
+		// and CI follow.
 		res = &Result{SessionID: inv.Resume}
 		answer = ImplementAnswer{Status: "done", Summary: fmt.Sprintf("Merged `%s` into the branch.", base)}
-		if merge.UpToDate {
+		switch {
+		case reReview:
+			answer.Summary = fmt.Sprintf("🔁 Reviewed `%s` again; the implementer did not run.", shortSHA(reviewFor))
+		case merge.UpToDate:
 			answer.Summary = fmt.Sprintf("The branch already contains `%s`; nothing to merge.", base)
 		}
 	}
@@ -348,14 +362,14 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			return out, s.fail(err)
 		}
 		if strings.TrimSpace(diff) == "" {
-			out.Reviewed, out.BlockingFindings, out.ReviewErrors = true, 0, 0
+			out.Reviewed, out.BlockingFindings, out.ReviewErrors, out.ReviewErrorsTransient = true, 0, 0, false
 			s.done("no changes to review")
 			break
 		}
-		findings, cost, errs := r.review(ctx, review, issue, planDecisionsText(issueNotes, botID), base, stat, diff)
+		findings, cost, errs, transient := r.review(ctx, review, issue, planDecisionsText(issueNotes, botID), base, stat, diff)
 		out.CostUSD += cost
 		reviewNotes = errs
-		out.Reviewed, out.ReviewErrors = true, int32(len(errs))
+		out.Reviewed, out.ReviewErrors, out.ReviewErrorsTransient = true, int32(len(errs)), len(errs) > 0 && transient == len(errs)
 		reviewedLast = true
 		// Reviewers are read-only; discard anything they touched anyway.
 		if err := r.Agent.Reset(ctx); err != nil {
@@ -876,15 +890,17 @@ func (r *Runner) commit(ctx context.Context, message string) error {
 
 // review runs all configured reviewers in parallel. A reviewer that fails
 // transiently is called again (review.retries). Reviewer failures do not
-// fail the run; they are reported alongside the result.
-func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions, base, stat, diff string) ([]Finding, float64, []string) {
+// fail the run; they are reported alongside the result, with the number of
+// them that failed transiently.
+func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions, base, stat, diff string) ([]Finding, float64, []string, int) {
 	prompt := buildReviewPrompt(issue, planDecisions, base, stat, diff)
 	var (
-		mu       sync.Mutex
-		wg       sync.WaitGroup
-		findings []Finding
-		cost     float64
-		errs     []string
+		mu        sync.Mutex
+		wg        sync.WaitGroup
+		findings  []Finding
+		cost      float64
+		errs      []string
+		transient int
 	)
 	for _, kind := range spec.Reviewers {
 		wg.Add(1)
@@ -931,6 +947,9 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 			cost += spent
 			if err != nil {
 				r.log().Error(err, "reviewer failed", "reviewer", kind, "attempts", attempts)
+				if isTransient(err) {
+					transient++
+				}
 				msg := truncate(err.Error(), 300)
 				if attempts > 1 {
 					msg = fmt.Sprintf("%s (after %d attempts)", msg, attempts)
@@ -950,7 +969,7 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 		}(kind)
 	}
 	wg.Wait()
-	return findings, cost, errs
+	return findings, cost, errs, transient
 }
 
 // renderReport renders the run's report; agent-written text in it pings

@@ -337,3 +337,49 @@ func TestUsageLimitsAggregation(t *testing.T) {
 		t.Fatalf("expected the latest active claude limit only, got %+v", limits)
 	}
 }
+
+func TestReviewCommandRequestsAReReview(t *testing.T) {
+	e := newProjectEnv(t)
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddIssue(42, "Add PayPal button", "agent::ready")
+	e.reconcile()
+	task := e.tasks()["shop-42-add-paypal-button"]
+	e.gl.MRs[1] = &gitlab.MergeRequest{IID: 1, State: "opened", SHA: "sha-head", SourceBranch: "agent/42-add-paypal-button"}
+	orig := task.DeepCopy()
+	task.Status.Run.ObservedRunRequest, task.Status.Run.MergeRequestIID = 1, 1
+	if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	e.gl.SetLabels(42, "agent::review")
+
+	e.gl.AddMRNote(1, human, "/agent review")
+	e.reconcile()
+	task = e.tasks()["shop-42-add-paypal-button"]
+	if task.Spec.RunRequest != 2 || task.Spec.Source.ReviewFor != "sha-head" {
+		t.Fatalf("/agent review should request a re-review of the head: %+v", task.Spec)
+	}
+	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::working"}) {
+		t.Fatalf("issue should be back in working, has %v", labels)
+	}
+
+	// Asked again for the head it reviewed already: reviewed again.
+	orig = task.DeepCopy()
+	task.Status.Run.ObservedRunRequest, task.Status.Run.ReviewedFor = 2, "sha-head"
+	if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	e.gl.AddMRNote(1, human, "/agent review")
+	e.reconcile()
+	if task = e.tasks()["shop-42-add-paypal-button"]; task.Spec.RunRequest != 3 || task.Status.Run.ReviewedFor != "" {
+		t.Fatalf("a repeated /agent review should review the head again: %+v %+v", task.Spec, task.Status.Run)
+	}
+
+	// An instruction next to it needs the implementer: a normal run.
+	e.gl.MRs[1].SHA = "sha-next"
+	e.gl.AddNote(42, human, "/agent also handle refunds")
+	e.gl.AddMRNote(1, human, "/agent review")
+	e.reconcile()
+	if task = e.tasks()["shop-42-add-paypal-button"]; task.Spec.RunRequest != 4 || task.Spec.Source.ReviewFor != "sha-head" {
+		t.Fatalf("an instruction with /agent review is a normal run: %+v", task.Spec)
+	}
+}

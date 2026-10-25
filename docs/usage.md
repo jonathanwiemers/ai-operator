@@ -198,6 +198,11 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    connection, a 502/503/504) is called again after 30 seconds, then after 2
    minutes (`review.retries`, default 2). Other failures, and usage limits,
    are not retried; the report says how many attempts a failed reviewer had.
+   If reviewers still fail, `/agent review` asks for a **re-review run**:
+   the reviewers check the pushed head again, the implementer does not run,
+   and nothing is pushed unless blocker or major findings go to the
+   implementer (step 5). The run records whether all failed reviewers failed
+   transiently (`status.run.reviewErrorsTransient`).
 5. Blocker and major findings go back to the implementer (at most
    `review.maxIterations` times). Remaining findings are listed for you.
 6. **If the review is clean**, the MR is marked **ready** (its `Draft:` prefix
@@ -785,8 +790,10 @@ kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server: 
 `summary`, `costUSD` (accumulated), `branch`, `mergeRequestURL`, `pushedSHA`,
 `currentStep` while a run is in progress, and the result of the last review:
 `blockingFindings` (blocker and major findings left), `reviewErrors`
-(reviewers that failed) and `reviewedSHA` (the commit that review saw; a CI
-fix run can push commits after it).
+(reviewers that failed), `reviewErrorsTransient` (all of them failed
+transiently, in an outage) and `reviewedSHA` (the commit that review saw; a
+CI fix run can push commits after it). `reviewedFor` is the head the last
+re-review run was asked for (`spec.source.reviewFor`).
 
 The spec task of a milestone holds the plan in `status.plan` (issues in plan
 order with their dependencies, and the dependencies the operator linked) and, on autopilot, the queue in

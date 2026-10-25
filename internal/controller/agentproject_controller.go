@@ -465,7 +465,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	}
 	mrChanged := mr != nil && (mr.UpdatedAt == nil || src.MergeRequestUpdatedAt == nil || mr.UpdatedAt.After(src.MergeRequestUpdatedAt.Time))
 
-	command := false
+	command, review := false, false
 	var reply *routingReply
 	if ready || issueChanged || mrChanged {
 		var latest int64
@@ -485,6 +485,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 			// Comments written before the task existed are context, not commands.
 			src.LastCommandNoteID = latest
 		} else if latest > src.LastCommandNoteID {
+			review = reviewOnly(slices.Concat(issueNotes, mrNotes), src.LastCommandNoteID, project.Status.BotUserID, wf.CommandPrefix)
 			src.LastCommandNoteID = latest
 			command = true
 		}
@@ -506,6 +507,11 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		src.MergeBaseFor = mr.SHA
 	}
 
+	// "/agent review": the next run reviews the merge request head again.
+	if review && mr != nil && mr.SHA != "" {
+		src.ReviewFor = mr.SHA
+	}
+
 	requested := ready || command || conflict
 	if requested {
 		task.Spec.RunRequest++
@@ -519,6 +525,15 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		}
 	case !equalSpec(before, &task.Spec):
 		if err := r.Update(ctx, task); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if review && src.ReviewFor == task.Status.Run.ReviewedFor {
+		// Asked again for a head that was re-reviewed: review it again.
+		orig := task.DeepCopy()
+		task.Status.Run.ReviewedFor = ""
+		if err := r.Status().Patch(ctx, task, client.MergeFrom(orig)); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -582,6 +597,17 @@ func commandNotes(ctx context.Context, gl gitlab.API, glProject string, issueIID
 		}
 	}
 	return latest, notes, mrNotes, nil
+}
+
+// reviewOnly reports whether all commands newer than since are "/agent
+// review".
+func reviewOnly(notes []gitlab.Note, since, botID int64, prefix string) bool {
+	for _, n := range notes {
+		if n.ID > since && IsCommand(n, botID, prefix) && !command.IsRoutingOnly(n.Body, prefix) && !command.IsReview(n.Body, prefix) {
+			return false
+		}
+	}
+	return true
 }
 
 // routingReply is the operator's answer to model and effort commands, and
