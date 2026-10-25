@@ -573,7 +573,12 @@ stateDiagram-v2
   "someone pushed" pause. While the spec
   task has a pending run, no new issue is started.
 * **Merge gate.** Issue in review (the CI loop finished), last run
-  succeeded, `blockingFindings == 0`, `reviewErrors == 0`,
+  succeeded, `blockingFindings == 0`, `reviewErrors == 0` (if all failed
+  reviewers failed transiently and `spec.source.reviewFor` is not the pushed
+  head yet, the gate waits `review.retryAfter` after that run, sets
+  `reviewFor` and requests a run; a second transient failure on that head
+  pauses and blocks the issue with reason `infra`, which the end of the
+  pause lifts),
   `reviewedSHA == pushedSHA`, MR open with head `pushedSHA`, GitLab's
   `detailed_merge_status` mergeable. Clean runs mark the MR ready
   themselves; a draft the gate still meets is marked ready by its title

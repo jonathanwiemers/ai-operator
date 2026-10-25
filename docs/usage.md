@@ -62,6 +62,9 @@ including fixing a red pipeline, happens without you.
 **`needs-input` or `blocked`?** `agent::needs-input` means a human has to
 answer or decide something. `agent::blocked` means the issue waits for
 something outside it, such as an engine outage or a red default branch.
+For example, autopilot blocks an issue with `agent-blocked::infra` when its
+reviewers failed in an outage twice on the same head (see
+[When it pauses](#when-it-pauses)).
 The `agent-blocked::<reason>` label says what it waits for. The operator sets
 both labels and remembers the label they replaced. When the reason is gone,
 that label comes back. You can also lift a block yourself: move the card to
@@ -579,7 +582,12 @@ the reason and what to do, mentioning the milestone's
 
 - the issue landed in `agent::needs-input` (CI still red after the fix
   rounds, a failed run, used-up usage-limit deferrals);
-- blocking review findings or failed reviewers;
+- blocking review findings or failed reviewers. Reviewers that all failed
+  transiently (an outage, `status.run.reviewErrorsTransient`) do not pause
+  at first: after `agents.review.retryAfter` (default 15m) autopilot asks
+  for one re-review run of the same head (as `/agent review` would). If that
+  one fails transiently too, it pauses and the issue becomes
+  `agent::blocked` + `agent-blocked::infra`;
 - a canceled pipeline, or CI red with jobs that also fail on the default
   branch;
 - someone pushed to the agent's branch, the MR was closed or retargeted, it
@@ -617,6 +625,14 @@ A pause over the active issue ends **by itself** when it no longer holds:
   CI) and a later run fixed it: for example you commented `/agent fix the
   findings`, the run succeeded, was reviewed and CI is green. Autopilot then
   continues with the merge.
+
+When such a pause ends, by itself or with `/agent resume` (also after an
+`/agent pause` in between), the active issue's `agent-blocked::infra` block
+is lifted and the issue gets its label back. Autopilot asks for one
+re-review per head: a later transient failure on a head it re-reviewed
+already pauses at once. `/agent resume` with the reviewers still failing on the same head
+pauses again; comment `/agent review` on the issue to have it reviewed once
+more.
 
 The tracking issue gets "▶️ Autopilot continues: …". Every other pause (an
 approval, unresolved discussions, someone else's push, a dependency cycle,
