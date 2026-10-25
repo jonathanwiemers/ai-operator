@@ -227,7 +227,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 	mainRed := int64(0)
-	if mh := project.Status.MainHealth; lane != nil && spec.MainHealth.AutoFix && *spec.MainHealth.FreezeAutopilot && mh != nil {
+	if mh := r.freshMainHealth(spec, project.Status.MainHealth, mainHealthStale); lane != nil && spec.MainHealth.AutoFix && *spec.MainHealth.FreezeAutopilot && mh != nil {
 		mainRed = mh.IssueIID
 	}
 

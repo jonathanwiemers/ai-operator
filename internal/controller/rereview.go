@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -52,10 +53,15 @@ func (a *autopilot) failGate(ctx context.Context, it *aiv1.AutopilotItem, is git
 	return a.r.block(ctx, a.spec.Workflow, is, task, g.block, g.reason)
 }
 
-// unblockActive lifts the infra block of the active issue when a pause ends
-// (also one a later "/agent pause" took over).
+// unblockActive lifts the infra block of the active issue, and of the
+// main-red lane's, when a pause ends (also one a later "/agent pause" took
+// over).
 func (a *autopilot) unblockActive(ctx context.Context) error {
-	for _, it := range a.ap.Items {
+	items := a.ap.Items
+	if a.ap.MainRedFix != nil {
+		items = append(slices.Clip(items), *a.ap.MainRedFix)
+	}
+	for _, it := range items {
 		task := a.tasks[it.IID]
 		if it.State != aiv1.AutopilotItemActive || task == nil || task.Status.Blocked == nil || task.Status.Blocked.Reason != aiv1.BlockInfra {
 			continue

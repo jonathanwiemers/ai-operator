@@ -112,14 +112,15 @@ func (a *autopilot) loadMainRedFix(ctx context.Context) error {
 
 // mainRedLane drives the main-red issue through the same merge gate as the
 // queue and merges it: the only merge while the default branch is red. Not
-// while a pause holds autopilot as a whole ("/agent pause", a plan cycle),
-// nor once a human took the issue from the agent (no workflow label).
+// while a pause holds autopilot as a whole ("/agent pause", a plan cycle) or
+// is about the issue itself (autoResume ends that one), nor once a human
+// took the issue from the agent (no workflow label).
 func (a *autopilot) mainRedLane(ctx context.Context) error {
 	fix := a.ap.MainRedFix
 	is, ok := a.issues[a.mainRed]
 	switch {
 	case fix == nil || fix.IID != a.mainRed || fix.State != aiv1.AutopilotItemActive,
-		a.ap.Phase != aiv1.AutopilotRunning && (a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedFor == 0),
+		a.ap.Phase != aiv1.AutopilotRunning && (a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedFor == 0 || a.ap.PausedFor == fix.IID),
 		ok && is.State == "opened" && !hasAny(is, a.spec.Workflow.ActiveLabels()...):
 		return nil
 	}

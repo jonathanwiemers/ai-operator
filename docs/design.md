@@ -496,8 +496,10 @@ issue as `status.autopilot.mainRedFix` while main health is red and fresh
 before `autoResume`, since it is in no milestone; `item()` finds it, so
 pauses, `autoResume` and `doneByHand` treat it like the active issue.
 `mainRedLane` runs `drive` on it after `freezeOnMainRed`, while autopilot runs
-or is paused for an issue; a merged item stays until the episode ends, so it
-is merged once. The poll runs that issue's task on autopilot. Pause reasons
+or is paused for another issue (a pause over the fix is ended by `autoResume`
+or `resume`, and `unblockActive` covers the fix); a merged item stays until
+the episode ends, so it is merged once. The poll runs that issue's task on
+autopilot while main health is fresh. Pause reasons
 about it carry a prefix (`about`).
 
 ## Merge conflicts

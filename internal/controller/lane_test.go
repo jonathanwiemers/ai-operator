@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
@@ -122,5 +124,53 @@ func TestAutopilotPausesWhenTheMainRedFixIsRed(t *testing.T) {
 	e.reconcile()
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || e.tasks()["shop-1-api"].Status.Blocked != nil {
 		t.Fatalf("green must end the pause over the fix and lift the freeze: %+v\n%s", ap, trackingComments(e))
+	}
+}
+
+func TestAutopilotLaneWaitsWhilePausedForTheFix(t *testing.T) {
+	e := laneEnv(t, true)
+	e.finishRun(99, "sha-fix", nil)
+	fix := e.mergeRequestOf(99)
+	e.gl.MRs[fix].Draft, e.gl.MRs[fix].DetailedMergeStatus = false, "not_approved"
+	e.reconcile()
+	if ap := e.autopilot(); ap.PausedFor != 99 || !strings.Contains(ap.PausedReason, "needs an approval") {
+		t.Fatalf("the fix's MR needs an approval: %+v", ap)
+	}
+	// Approved: still paused until "resume" (as for any MR pause), then merged.
+	e.gl.MRs[fix].DetailedMergeStatus = "mergeable"
+	e.reconcile()
+	if len(e.gl.Merged) != 0 {
+		t.Fatalf("a pause over the fix holds its merge, merged %v", e.gl.Merged)
+	}
+	e.gl.AddNote(e.autopilot().TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent resume")
+	e.reconcile()
+	e.reconcile()
+	if !slices.Equal(e.gl.Merged, []int64{fix}) || e.autopilot().Phase != aiv1.AutopilotPaused || e.autopilot().PausedFor != 1 {
+		t.Fatalf("after resume the fix is merged and the freeze holds again: merged %v, %+v", e.gl.Merged, e.autopilot())
+	}
+}
+
+func TestAutopilotResumeUnblocksTheFix(t *testing.T) {
+	e := laneEnv(t, true)
+	e.finishRun(99, "sha-fix", nil)
+	task := e.laneTask(99)
+	if err := e.r.block(e.ctx, aiv1.WorkflowSpec{}.WithDefaults(), *e.gl.Issues[99], task, aiv1.BlockInfra, "reviewers down"); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	e.gl.AddNote(e.autopilot().TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent resume")
+	e.reconcile()
+	if b := e.laneTask(99).Status.Blocked; b != nil {
+		t.Fatalf("resume lifts the infra block of the fix too: %+v", b)
+	}
+}
+
+func TestStaleMainHealthTakesTheFixOffAutopilot(t *testing.T) {
+	e := laneEnv(t, true)
+	stale := metav1.NewTime(e.r.Now().Add(-4 * aiv1.DefaultMainHealthInterval))
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthRed, IssueIID: 99, CheckedAt: &stale})
+	e.reconcile()
+	if e.laneTask(99).Spec.Autopilot {
+		t.Fatal("a stale main health drives no lane, so its issue runs in the normal flow")
 	}
 }

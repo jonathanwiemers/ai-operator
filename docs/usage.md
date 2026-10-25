@@ -393,9 +393,11 @@ while you paused autopilot (`/agent pause`), nor once you took the issue
 from the agent (no workflow label). If the fix cannot be merged (its CI is
 still red after the fix rounds and the issue is in `agent::needs-input`, for
 example), autopilot pauses with "the fix of the red default branch (#N)
-cannot be merged: …" and mentions the owners; the pause ends by itself once
-a later run passes the gate, or when the branch turns green and the issue is
-closed. Without autopilot, the issue follows the normal flow and you merge
+cannot be merged: …" and mentions the owners; the lane waits during that
+pause. It ends by itself once a later run passes the gate, or when the
+branch turns green and the issue is closed; a pause over its MR (an
+approval, a push by hand) ends with `resume`, which also lifts an infra
+block of the fix. Without autopilot, the issue follows the normal flow and you merge
 it.
 
 ## Merge conflicts
