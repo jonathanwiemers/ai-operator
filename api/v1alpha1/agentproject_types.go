@@ -189,6 +189,12 @@ type WorkflowSpec struct {
 	// +optional
 	CommandPrefix string `json:"commandPrefix,omitempty"`
 
+	// PilotPrefix: a comment that starts with this prefix talks to the
+	// milestone's pilot (e.g. "/pilot why are we paused?").
+	// +kubebuilder:default="/pilot"
+	// +optional
+	PilotPrefix string `json:"pilotPrefix,omitempty"`
+
 	// AssignBot assigns the bot user to an issue when the operator picks it up
 	// and the issue has no assignee, so GitLab's milestone page lists it as
 	// ongoing. A human assignee is never replaced.
@@ -701,6 +707,12 @@ type NotifySpec struct {
 
 // PilotSpec configures the milestone coordinator ("/pilot").
 type PilotSpec struct {
+	// Mention: a comment that starts with a mention of the bot user talks
+	// to the pilot too, like workflow.pilotPrefix.
+	// +kubebuilder:default=true
+	// +optional
+	Mention *bool `json:"mention,omitempty"`
+
 	// MaxBudgetUSD caps the pilot's spend per milestone, as a decimal
 	// string. Once it is used up, the pilot answers that it is, without a
 	// model call.
@@ -720,6 +732,11 @@ type AgentProjectStatus struct {
 	// trigger runs.
 	// +optional
 	BotUserID int64 `json:"botUserID,omitempty"`
+
+	// BotUsername is the username of BotUserID, read on every poll, so a
+	// renamed bot is still recognized in mentions.
+	// +optional
+	BotUsername string `json:"botUsername,omitempty"`
 
 	// ActiveMilestones is the number of milestones currently tracked.
 	// +optional

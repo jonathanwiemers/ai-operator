@@ -223,6 +223,19 @@ func TestTaskBlockedAfterMaxRuns(t *testing.T) {
 	}
 }
 
+func TestPilotIsNotBoundByMaxRuns(t *testing.T) {
+	task := newImplTask("x", 21)
+	task.Spec.Type = aiv1.TaskTypeCoordinate
+	task.Status.Run.RunCount = 20
+	task.Status.Run.ObservedRunRequest = 20
+	task.Status.Run.ActiveRunRequest = 20
+	e := newTaskEnv(t, task)
+	e.reconcile("x")
+	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseRunning {
+		t.Fatalf("the pilot is bounded by its budget, not by maxRunsPerTask: phase %s", got)
+	}
+}
+
 func TestDefaultAgentImage(t *testing.T) {
 	e := newTaskEnv(t, newImplTask("x", 1))
 	project := &aiv1.AgentProject{}

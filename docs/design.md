@@ -724,6 +724,25 @@ resumed session (`agents.pilot`, light model). It only answers; changing
 anything is a later step of
 [the spec](specs/milestone-coordinator.spec.md).
 
+* **Lifecycle.** The project controller keeps one `Coordinate` task per
+  planned milestone with a tracking issue (`spec.issue`): the autopilot's
+  (`spec.autopilot` set, followed when it is recreated), or one `/pilot
+  coordinate` opened. It is deleted with the autopilot (`phase: Off`), the
+  milestone's plan, or its own deleted tracking issue. It is not bound by
+  `maxRunsPerTask`, only by its budget.
+* **Routing** (`internal/controller/pilot.go`). Comments are read where the
+  operator reads them anyway: the tracking issue's notes (autopilot lists
+  them for its commands; a `/pilot coordinate` issue is listed by the
+  pilot), and an issue's and its MR's notes when they changed. A comment
+  counts when it starts with `workflow.pilotPrefix` or `@<bot>`
+  (`status.botUsername`, read on every poll; `internal/command/pilot.go`);
+  quotes, code and the bot's own notes never do. Watermarks:
+  `status.pilot.lastNoteID` of the spec task for the tracking issue,
+  `spec.source.lastPilotNoteID` of an implement task for its issue and MR;
+  both start at the newest comment, so comments from before are history.
+  Owners are compared by user ID (`FindUser` per poll with messages).
+  Others get one reply per user and day (`status.pilot.rejected`) and never
+  reach the model; replies of the operator itself start with 🧭.
 * **Messages.** The operator puts the owners' messages into
   `spec.source.pilotMessages`, each with the run request that answers it, and
   bumps `spec.runRequest` in the same update. A run answers the messages of

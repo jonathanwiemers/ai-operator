@@ -726,9 +726,10 @@ approval, unresolved discussions, someone else's push, a dependency cycle,
 | `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](#revisiting-after-the-merge) joins the queue |
 
 Any other `/agent …` comment on the tracking issue (also a bare `/agent` or a
-`revisit` without a decision ID) gets one answer: the commands above, and
-that instructions for the agent go on the active issue (`#N`). The tracking
-issue does not pass them on to the agent.
+`revisit` without a decision ID) gets one answer: the commands above, that
+questions go to the [pilot](#talking-to-the-pilot) (`/pilot …`), and that
+instructions for the agent go on the active issue (`#N`). The tracking issue
+does not pass them on to the agent.
 
 Everything else works as on any issue: comment `/agent …` on the active issue
 or its MR, revisit decisions with `/agent revisit <id> …`, or fix things by
@@ -761,6 +762,51 @@ active stays where it is. Adding the marker again continues the queue.
 If the plan changes (you edit the milestone spec), issues that were not
 started yet follow the new plan; started and merged ones are kept. While the
 milestone is being planned again, no new issue is started.
+
+## Talking to the pilot
+
+Every milestone with a tracking issue has a pilot: an agent you ask about the
+milestone. It knows the spec, the queue and autopilot's state with the pause
+reason, every issue's labels, block, CI and last run, the health of the
+default branch and the last comments of the tracking issue.
+
+```text
+/pilot why are we paused?
+@ai-bot what does #317 wait for?
+```
+
+- **Addressing.** A comment that **starts** with `/pilot` (`workflow.pilotPrefix`)
+  or with a mention of the bot user (`pilot.mention`, on by default) is for the
+  pilot. Anywhere else (mid-sentence, in a `>` quote, in code) it does
+  nothing, so quoting an answer or mentioning the bot in passing starts
+  nothing. `/agent …` keeps its meaning: commands and instructions for the
+  issue's implementer.
+- **Where.** On the tracking issue (the main place), and on the issues of the
+  milestone that have a task and their merge requests; it answers where you
+  asked. Draft issues are not read (the operator does not poll them). On an
+  issue outside a planned milestone you get "there is no pilot here".
+- **Which milestones.** An autopilot milestone gets its pilot with its
+  tracking issue. For another planned milestone, comment `/pilot coordinate`
+  on one of its issues: the operator opens a tracking issue "🧭 Pilot:
+  <milestone>" for it. The pilot ends with the tracking issue: when autopilot
+  is switched off, the milestone is no longer planned, or its pilot's
+  tracking issue is deleted.
+- **Owners only.** Only the milestone's [owners](#owners-and-pings) (the
+  `/agent owners` line, else `notify.users`, compared by user ID) talk to the
+  pilot. Anyone else gets "only the owners of this milestone can instruct
+  me", at most once a day; further comments are ignored and cost nothing. A
+  milestone without owners (`/agent owners` alone) is answered for anyone.
+- **Answers only.** For now the pilot only answers: it starts no run, changes
+  no label, issue or spec. Asked to act, it says which command or label does
+  it. Its answers are made inert like all agent text: no mentions, no quick
+  actions.
+- **Cost.** It runs on the light model (`agents.pilot`) in its own pod with a
+  resumed session, and is bounded by `pilot.maxBudgetUSD` (default `$20`)
+  per milestone; once that is spent it answers that the budget is used up,
+  without a model call. Comments of non-owners never reach the model.
+
+Comments on the tracking issue, job logs and run summaries reach the pilot as
+data, not as instructions: text in them that tries to steer it is ignored.
 
 ## Usage and rate limits
 

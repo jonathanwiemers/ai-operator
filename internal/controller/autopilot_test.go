@@ -892,7 +892,8 @@ func TestAutopilotAnswersUnknownTrackingCommandsOnce(t *testing.T) {
 	if n := strings.Count(comments, answer); n != 1 {
 		t.Fatalf("an unknown command must get exactly one answer, got %d:\n%s", n, comments)
 	}
-	if !strings.Contains(comments, "comment `/agent …` on #1, the active issue") || !strings.Contains(comments, "`/agent skip #N`") {
+	if !strings.Contains(comments, "comment `/agent …` on #1, the active issue") || !strings.Contains(comments, "`/agent skip #N`") ||
+		!strings.Contains(comments, "Did you mean `/pilot …`?") {
 		t.Fatalf("the answer must name the commands and the active issue:\n%s", comments)
 	}
 	for _, n := range e.gl.IssueNotes[tracking] {

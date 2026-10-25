@@ -67,6 +67,11 @@ func SpecTask(project string, milestoneIID int64, milestoneTitle string) string 
 	return join(fmt.Sprintf("%s-spec-m%d", Slug(project), milestoneIID), milestoneTitle)
 }
 
+// CoordinateTask names the pilot task (and pod) of a milestone.
+func CoordinateTask(project string, milestoneIID int64, milestoneTitle string) string {
+	return join(fmt.Sprintf("%s-pilot-m%d", Slug(project), milestoneIID), milestoneTitle)
+}
+
 // ImplementTask names the implementation task (and pod) of an issue.
 func ImplementTask(project string, issueIID int64, issueTitle string) string {
 	return join(fmt.Sprintf("%s-%d", Slug(project), issueIID), issueTitle)

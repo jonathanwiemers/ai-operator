@@ -18,6 +18,7 @@ const (
 	DefaultSpecMarker      = "/agent spec"
 	DefaultAutopilotMarker = "/agent autopilot"
 	DefaultCommandPrefix   = "/agent"
+	DefaultPilotPrefix     = "/pilot"
 	DefaultServiceAccount  = "ai-operator-agent"
 	DefaultPollInterval    = time.Minute
 	DefaultIdleTimeout     = time.Minute
@@ -58,6 +59,7 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 	def(&w.ModelLabelPrefix, "agent-model::")
 	def(&w.EffortLabelPrefix, "agent-effort::")
 	def(&w.CommandPrefix, DefaultCommandPrefix)
+	def(&w.PilotPrefix, DefaultPilotPrefix)
 	if w.AssignBot == nil {
 		t := true
 		w.AssignBot = &t
@@ -177,6 +179,10 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 	s.Agents.Pilot = s.Agents.Pilot.withDefaultModel(DefaultLightModel)
 	if s.Pilot.MaxBudgetUSD == "" {
 		s.Pilot.MaxBudgetUSD = DefaultPilotBudgetUSD
+	}
+	if s.Pilot.Mention == nil {
+		t := true
+		s.Pilot.Mention = &t
 	}
 	s.Notify = s.Notify.WithDefaults()
 	if s.Agents.Models == nil {
