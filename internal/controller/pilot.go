@@ -335,8 +335,14 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 		}
 		var err error
 		if coord == nil || coord.Spec.Autopilot || coord.Spec.Issue == nil || coord.Spec.Issue.IID != tracking {
+			if coord != nil && !coord.Spec.Autopilot && coord.Spec.Issue != nil {
+				// Autopilot took over: the issue /pilot coordinate opened goes.
+				err = closePilotIssue(ctx, gl, spec, coord.Spec.Issue.IID, tracking)
+			}
 			// Follows the autopilot's tracking issue, also a recreated one.
-			coord, err = r.ensurePilot(ctx, project, st, coord, &aiv1.IssueRef{IID: tracking}, true)
+			if err == nil {
+				coord, err = r.ensurePilot(ctx, project, st, coord, &aiv1.IssueRef{IID: tracking}, true)
+			}
 		} else if _, err = r.ensurePilot(ctx, project, st, coord, nil, false); err == nil {
 			var notes []gitlab.Note
 			notes, err = gl.ListIssueNotes(ctx, spec.GitLab.Project, tracking)
@@ -353,6 +359,18 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// closePilotIssue closes the tracking issue "/pilot coordinate" opened,
+// once the pilot listens on the autopilot's.
+func closePilotIssue(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, iid, tracking int64) error {
+	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, iid, fmt.Sprintf("🧭 The pilot moved to #%d, the autopilot's tracking issue.", tracking)); err != nil && !gitlab.IsNotFound(err) {
+		return fmt.Errorf("commenting on the pilot's tracking issue #%d: %w", iid, err)
+	}
+	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, iid, gitlab.UpdateIssueOptions{StateEvent: "close"}); err != nil && !gitlab.IsNotFound(err) {
+		return fmt.Errorf("closing the pilot's tracking issue #%d: %w", iid, err)
+	}
+	return nil
 }
 
 // patchPilot changes the spec task's pilot status.

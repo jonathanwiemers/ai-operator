@@ -230,3 +230,31 @@ func (e *projectEnv) patchProject(mutate func(*aiv1.AgentProject)) {
 		e.t.Fatal(err)
 	}
 }
+
+func TestPilotMovesToTheAutopilotsTrackingIssue(t *testing.T) {
+	e := newProjectEnv(t)
+	e.gl.Users = []gitlab.User{alice}
+	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2", State: "active", Description: "/agent spec\n/agent owners @alice\nBuild it."}
+	e.gl.Milestones = []gitlab.Milestone{m}
+	e.gl.AddIssue(1, "API", "agent::needs-input").Milestone = &m
+	e.reconcile()
+	e.gl.AddNote(1, alice, "/pilot coordinate")
+	e.reconcile()
+	own := e.tasks()[pilotTaskName].Spec.Issue.IID
+
+	e.gl.Milestones[0].Description = "/agent autopilot\n/agent owners @alice\nBuild it."
+	e.reconcile()
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ObservedRunRequest = e.tasks()[specTaskName].Spec.RunRequest
+		s.Plan = []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API"}}
+	})
+	e.reconcile()
+	tracking := e.autopilot().TrackingIssueIID
+	pilot := e.tasks()[pilotTaskName]
+	if tracking == 0 || tracking == own || pilot.Spec.Issue.IID != tracking || !pilot.Spec.Autopilot {
+		t.Fatalf("the pilot follows the autopilot's tracking issue #%d: %+v", tracking, pilot.Spec)
+	}
+	if is := e.gl.Issues[own]; is.State != "closed" || !strings.Contains(strings.Join(botComments(e, own), "\n"), "moved to #") {
+		t.Fatalf("the issue /pilot coordinate opened is closed with a pointer: %s %q", is.State, botComments(e, own))
+	}
+}

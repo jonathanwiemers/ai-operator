@@ -788,9 +788,11 @@ default branch and the last comments of the tracking issue.
 - **Which milestones.** An autopilot milestone gets its pilot with its
   tracking issue. For another planned milestone, comment `/pilot coordinate`
   on one of its issues: the operator opens a tracking issue "🧭 Pilot:
-  <milestone>" for it. The pilot ends with the tracking issue: when autopilot
-  is switched off, the milestone is no longer planned, or its pilot's
-  tracking issue is deleted.
+  <milestone>" for it; once autopilot is switched on for the milestone, the
+  pilot moves to the autopilot's tracking issue and that issue is closed.
+  The pilot ends with the tracking issue: when autopilot is switched off,
+  the milestone is no longer planned, or its pilot's tracking issue is
+  deleted.
 - **Owners only.** Only the milestone's [owners](#owners-and-pings) (the
   `/agent owners` line, else `notify.users`, compared by user ID) talk to the
   pilot. Anyone else gets "only the owners of this milestone can instruct
