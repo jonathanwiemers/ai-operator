@@ -260,6 +260,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		if err := r.syncBlocked(ctx, gl, spec, is, task); err != nil {
 			return err
 		}
+		if task.Status.Blocked != nil {
+			continue // its CI is followed again once the block is lifted
+		}
 		if err := r.syncCI(ctx, gl, spec, is, task, mr); err != nil {
 			return err
 		}

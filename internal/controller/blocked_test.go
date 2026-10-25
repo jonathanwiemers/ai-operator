@@ -94,3 +94,32 @@ func TestANewBlockReasonReplacesTheOld(t *testing.T) {
 		t.Fatalf("the label to restore must survive a new reason: %+v", b)
 	}
 }
+
+func TestAHumanMoveBeforeTheBlockIsAppliedWins(t *testing.T) {
+	e, _ := newBlockedEnv(t)
+	e.block(aiv1.BlockInfra)
+	before := e.ciTask().Spec.RunRequest
+	e.gl.SetLabels(42, "agent::ready") // before the poll applies the block
+	e.reconcile()
+
+	if got := e.labels(); !slices.Equal(got, []string{"agent::working"}) {
+		t.Fatalf("the block must not overwrite the human's move: labels = %v", got)
+	}
+	if task := e.ciTask(); task.Status.Blocked != nil || task.Spec.RunRequest != before+1 {
+		t.Fatalf("block should be dropped and one run requested: %+v", task.Status.Blocked)
+	}
+}
+
+func TestCIIsNotFollowedWhileBlocked(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	e.gl.AddPipeline("sha1", "agent/42", "success")
+	e.block(aiv1.BlockMainRed)
+	e.reconcile()
+
+	if got := e.labels(); !slices.Equal(got, []string{"agent-blocked::main-red", "agent::blocked"}) {
+		t.Fatalf("the CI loop must not move a blocked issue: labels = %v", got)
+	}
+	if e.ciState() == aiv1.CIStateSuccess {
+		t.Fatal("CI must not be finished while blocked")
+	}
+}

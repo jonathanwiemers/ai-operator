@@ -24,10 +24,13 @@ func (r *AgentProjectReconciler) block(ctx context.Context, wf aiv1.WorkflowSpec
 			restore = l
 		}
 	}
+	applied := false
 	if b := task.Status.Blocked; b != nil {
-		restore = b.RestoreLabel // a new reason keeps the label to come back to
+		// A new reason keeps the label to come back to; syncBlocked swaps
+		// the reason label.
+		restore, applied = b.RestoreLabel, b.Applied
 	}
-	return r.patchBlocked(ctx, task, &aiv1.BlockedStatus{Reason: reason, Message: message, Since: metav1.NewTime(r.now()), RestoreLabel: restore})
+	return r.patchBlocked(ctx, task, &aiv1.BlockedStatus{Reason: reason, Message: message, Since: metav1.NewTime(r.now()), RestoreLabel: restore, Applied: applied})
 }
 
 // unblock lifts the block and puts the label it replaced back.
@@ -48,23 +51,29 @@ func (r *AgentProjectReconciler) unblock(ctx context.Context, gl gitlab.API, spe
 	return r.patchBlocked(ctx, task, nil)
 }
 
-// syncBlocked puts the blocked labels on the issue of a blocked task. An
-// applied block whose issue lost the blocked label was lifted by a human
-// (moved on the board, or `/agent …`): the task follows.
+// syncBlocked puts the blocked labels on the issue of a blocked task. A block
+// a human lifted is dropped: an applied one whose issue lost the blocked
+// label, or one not applied yet whose issue moved on from the label it
+// would replace or got a run (moved on the board, or `/agent …`).
 func (r *AgentProjectReconciler) syncBlocked(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask) error {
 	b := task.Status.Blocked
-	wf := spec.Workflow
-	switch {
-	case b == nil:
+	if b == nil {
 		return nil
-	case b.Applied && !is.HasLabel(wf.BlockedLabel):
-		if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{RemoveLabels: []string{wf.BlockedReasonPrefix + string(b.Reason)}}); err != nil {
+	}
+	wf := spec.Workflow
+	reasonLabel := wf.BlockedReasonPrefix + string(b.Reason)
+	switch {
+	case b.Applied && !is.HasLabel(wf.BlockedLabel),
+		!b.Applied && (task.RunPending() || b.RestoreLabel != "" && !is.HasLabel(b.RestoreLabel)):
+		if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{RemoveLabels: []string{reasonLabel}}); err != nil {
 			return fmt.Errorf("removing the block reason of issue #%d: %w", is.IID, err)
 		}
 		return r.patchBlocked(ctx, task, nil)
-	case b.Applied:
+	case b.Applied && is.HasLabel(reasonLabel):
 		return nil
 	}
+	// Not applied yet, or applied with a new reason (or a reason label
+	// removed by hand): the blocked label stays or comes back.
 	remove := []string{wf.ReadyLabel, wf.WorkingLabel, wf.NeedsInputLabel, wf.ReviewLabel}
 	for _, reason := range []aiv1.BlockReason{aiv1.BlockInfra, aiv1.BlockMainRed, aiv1.BlockQuota, aiv1.BlockDependency} {
 		if reason != b.Reason { // the reason of an earlier block
@@ -72,7 +81,7 @@ func (r *AgentProjectReconciler) syncBlocked(ctx context.Context, gl gitlab.API,
 		}
 	}
 	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{
-		AddLabels: []string{wf.BlockedLabel, wf.BlockedReasonPrefix + string(b.Reason)}, RemoveLabels: remove,
+		AddLabels: []string{wf.BlockedLabel, reasonLabel}, RemoveLabels: remove,
 	}); err != nil {
 		return fmt.Errorf("blocking issue #%d: %w", is.IID, err)
 	}
