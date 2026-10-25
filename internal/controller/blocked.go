@@ -13,9 +13,14 @@ import (
 
 // block records that the task's issue cannot go on for an outside reason.
 // The labels follow on the poll (syncBlocked), so a failed label call heals.
-// Callers block only when no run is pending and the CI loop is final.
+// Callers block only when no run is pending (a deferred one waits) and the
+// CI loop is final.
 func (r *AgentProjectReconciler) block(ctx context.Context, wf aiv1.WorkflowSpec, is gitlab.Issue, task *aiv1.AgentTask, reason aiv1.BlockReason, message string) error {
-	if b := task.Status.Blocked; b != nil && b.Reason == reason {
+	b := task.Status.Blocked
+	if b != nil && b.Applied && !is.HasLabel(wf.BlockedLabel) {
+		b = nil // lifted by a human; syncBlocked drops it
+	}
+	if b != nil && b.Reason == reason {
 		return nil
 	}
 	restore := ""
@@ -25,7 +30,7 @@ func (r *AgentProjectReconciler) block(ctx context.Context, wf aiv1.WorkflowSpec
 		}
 	}
 	applied := false
-	if b := task.Status.Blocked; b != nil {
+	if b != nil {
 		// A new reason keeps the label to come back to; syncBlocked swaps
 		// the reason label.
 		restore, applied = b.RestoreLabel, b.Applied

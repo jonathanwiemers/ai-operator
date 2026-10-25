@@ -153,4 +153,14 @@ func TestARunBlockLiftedByHandStaysLifted(t *testing.T) {
 	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent::working"}) {
 		t.Fatalf("the same report must not block again: labels = %v", got)
 	}
+	// A human lifted the block, and the next deferral comes before the
+	// poll dropped it: it blocks again.
+	e.deferred(42, e.r.Now().Add(time.Hour))
+	e.reconcile()
+	e.gl.SetLabels(42, "agent::working")
+	e.deferred(42, e.r.Now().Add(2*time.Hour))
+	e.reconcile()
+	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent-blocked::quota", "agent::blocked"}) {
+		t.Fatalf("a new report blocks again: labels = %v", got)
+	}
 }
