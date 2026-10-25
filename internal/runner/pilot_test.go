@@ -255,3 +255,20 @@ func TestPilotSaysSoWhenTheStateCannotBeRead(t *testing.T) {
 		t.Fatalf("the message gets an answer without a model call: %d calls, %q", len(e.engine.calls), replies)
 	}
 }
+
+func TestImplementerDoesNotSeeThePilotConversation(t *testing.T) {
+	e := newImplementEnv(t)
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddNote(42, human, "/pilot why is this slow?")
+	e.gl.AddNote(42, e.gl.Bot, "🧭 Because of the review.")
+	e.gl.AddNote(42, human, "also log the payment id")
+	engine := &scriptedEngine{}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	p := engine.calls[0].Prompt
+	if strings.Contains(p, "why is this slow") || strings.Contains(p, "Because of the review") || !strings.Contains(p, "payment id") {
+		t.Fatalf("the conversation with the pilot is no input for the implementer:\n%s", p)
+	}
+}

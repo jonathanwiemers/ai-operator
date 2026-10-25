@@ -1079,6 +1079,7 @@ func (a *autopilot) commands(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listing notes of the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
 	}
+	a.pilot(ctx, notes)
 	prefix := a.spec.Workflow.CommandPrefix
 	for _, n := range notes {
 		if n.ID <= a.ap.LastCommandNoteID || !IsCommand(n, a.project.Status.BotUserID, prefix) {
@@ -1143,7 +1144,7 @@ func (a *autopilot) unknownCommand() string {
 		}
 	}
 	return fmt.Sprintf("This tracking issue only understands `%[1]s pause`, `%[1]s resume`, `%[1]s skip #N` and `%[1]s revisit <id> …`. "+
-		"To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where)
+		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix)
 }
 
 // ensureTracking creates the tracking issue on the first poll.

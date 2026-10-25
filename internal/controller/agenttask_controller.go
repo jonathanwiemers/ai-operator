@@ -122,7 +122,8 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// The runner bumps RunCount when a run finishes, so a run in progress is
 	// never cut off by the limit.
 	inProgress := task.Status.Run.ActiveRunRequest > task.Status.Run.ObservedRunRequest
-	blocked := pending && !inProgress && task.Status.Run.RunCount >= lc.MaxRunsPerTask
+	// The pilot answers many messages; pilot.maxBudgetUSD bounds it.
+	blocked := pending && !inProgress && task.Status.Run.RunCount >= lc.MaxRunsPerTask && task.Spec.Type != aiv1.TaskTypeCoordinate
 	// A run deferred because of a usage limit waits until its retry time. In
 	// the meantime the pod follows the normal idle / hibernate rules and the
 	// task does not take one of the project's run slots.

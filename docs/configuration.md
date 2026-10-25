@@ -143,6 +143,7 @@ All labels can be renamed. Defaults:
 | `modelLabelPrefix` | `agent-model::` |
 | `effortLabelPrefix` | `agent-effort::` |
 | `commandPrefix` | `/agent` |
+| `pilotPrefix` | `/pilot` |
 | `assignBot` | `true` |
 | `resolveConflicts` | `true` |
 | `stepCommits` | `true` |
@@ -186,7 +187,7 @@ it to `false` for one commit per run.
 | `implement` | claude, `claude-opus-5-5` | implementing agent for issues without a profile label |
 | `review` | claude, `claude-sonnet-5-5`, reviewers `bugbot` + `security`, `maxIterations: 2`, `retries: 2`, `retryAfter: 15m` | review agents |
 | `describe` | claude, `claude-sonnet-5-5` | writes the MR description after each push that changed the diff; `disabled: true` keeps the placeholder |
-| `pilot` | claude, `claude-sonnet-5-5` | the milestone's [pilot](design.md#pilot), who answers its owners; read-only, one resumed session per milestone |
+| `pilot` | claude, `claude-sonnet-5-5` | the milestone's [pilot](usage.md#talking-to-the-pilot), who answers its owners; read-only, one resumed session per milestone |
 | `models` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` (aliases `opus`, `sonnet`, `haiku`) | engines and models an issue may switch its implementer to with `/agent use` or an `agent-model::` label; the models of the profiles and of `implement` are always allowed. Entries: `engine`, `model`, optional `alias` |
 | `logPrompts` | `false` | log every prompt (role, system prompt, prompt, each cut at 64 KiB) in the agent container, for the web UI's [live transcript](ui.md#live-transcript). Prompts hold issue text, comments, diffs and CI logs |
 | `maxEffort` | `high` | the highest effort an issue may ask for (`agent-effort::` label, `/agent effort`, the planner's choice); higher values are lowered. The roles' own `effort` is not capped |
@@ -346,11 +347,12 @@ user itself notifies nobody.
 
 ## `spec.pilot`
 
-The milestone coordinator, see [usage.md](design.md#pilot); its
+The milestone coordinator, see [usage.md](usage.md#talking-to-the-pilot); its
 model is `agents.pilot`.
 
 | Field | Default | Description |
 |-------|---------|-------------|
+| `mention` | `true` | a comment that starts with a mention of the bot user (`@<bot> …`) talks to the pilot, like `workflow.pilotPrefix`. The bot's username is read on every poll |
 | `maxBudgetUSD` | `"20"` | the pilot's spend per milestone (its task's `status.run.costUSD`). Once it is used up, the pilot answers that it is, without a model call. On claude a single answer may spend what is left at most (or `agents.pilot.maxBudgetUSD`, if lower). The spend is what the engines report: cursor reports none, so on cursor the budget never runs out |
 
 ## Other `spec` fields

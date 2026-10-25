@@ -181,6 +181,12 @@ spec:
                       run request (Implement tasks).
                     format: int64
                     type: integer
+                  lastPilotNoteID:
+                    description: |-
+                      LastPilotNoteID is the newest comment on the issue or its merge
+                      request handed to the pilot (Implement tasks).
+                    format: int64
+                    type: integer
                   lastRoutingNoteID:
                     description: |-
                       LastRoutingNoteID is the newest "/agent use" or "/agent effort"
@@ -660,6 +666,26 @@ spec:
                 - Archived
                 - Blocked
                 type: string
+              pilot:
+                description: |-
+                  Pilot is the operator's bookkeeping of the milestone's pilot (spec
+                  tasks).
+                properties:
+                  lastNoteID:
+                    description: |-
+                      LastNoteID is the newest comment on the tracking issue handed to the
+                      pilot.
+                    format: int64
+                    type: integer
+                  rejected:
+                    additionalProperties:
+                      format: date-time
+                      type: string
+                    description: |-
+                      Rejected is when a user who is no owner was last told so, by GitLab
+                      user ID; later messages within a day get no answer.
+                    type: object
+                type: object
               plan:
                 description: Plan is the spec agent's last plan, in plan order (spec
                   tasks).

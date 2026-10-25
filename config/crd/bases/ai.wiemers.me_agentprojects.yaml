@@ -1093,6 +1093,12 @@ spec:
                       model call.
                     pattern: ^[0-9]+(\.[0-9]+)?$
                     type: string
+                  mention:
+                    default: true
+                    description: |-
+                      Mention: a comment that starts with a mention of the bot user talks
+                      to the pilot too, like workflow.pilotPrefix.
+                    type: boolean
                 type: object
               pollInterval:
                 default: 1m
@@ -1174,6 +1180,12 @@ spec:
                       NeedsInputLabel is set by the agent when it has questions it cannot
                       resolve on its own.
                     type: string
+                  pilotPrefix:
+                    default: /pilot
+                    description: |-
+                      PilotPrefix: a comment that starts with this prefix talks to the
+                      milestone's pilot (e.g. "/pilot why are we paused?").
+                    type: string
                   profileLabelPrefix:
                     default: 'agent-profile::'
                     description: |-
@@ -1238,6 +1250,11 @@ spec:
                   trigger runs.
                 format: int64
                 type: integer
+              botUsername:
+                description: |-
+                  BotUsername is the username of BotUserID, read on every poll, so a
+                  renamed bot is still recognized in mentions.
+                type: string
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current

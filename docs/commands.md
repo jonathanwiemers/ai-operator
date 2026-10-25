@@ -100,9 +100,22 @@ implementer of every following run reads them:
 | `/agent resume` | Continue; the active issue is checked again. |
 | `/agent skip #12` | Skip a planned issue. Issues that depend on it stay blocked until it is merged by hand or they are skipped too. |
 | `/agent revisit D42-3 …` | Change a decision of a merged issue: a follow-up issue joins the queue. |
-| anything else | Answered once with this list and the active issue. Instructions for the agent go on the active issue or its MR, not here. |
+| anything else | Answered once with this list, a pointer to `/pilot …` and the active issue. Instructions for the agent go on the active issue or its MR, not here. |
 
 See [Autopilot](usage.md#autopilot-a-milestone-end-to-end).
+
+## To the pilot
+
+A comment that **starts** with `/pilot` (`workflow.pilotPrefix`) or a mention
+of the bot (`@ai-bot …`; `pilot.mention`) talks to the milestone's
+[pilot](usage.md#talking-to-the-pilot), on the tracking issue or on an issue
+(or MR) of the milestone that has a task. Only the milestone's owners; the
+pilot only answers.
+
+| Comment | Effect |
+|---------|--------|
+| `/pilot <question>` | The pilot answers where you asked, e.g. `/pilot why are we paused?`. |
+| `/pilot coordinate` | On an issue of a planned milestone without autopilot: opens the tracking issue "🧭 Pilot: <milestone>" and starts its pilot. |
 
 ## In the milestone description
 

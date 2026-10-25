@@ -131,6 +131,11 @@ type SourceState struct {
 	// +optional
 	AutopilotPause string `json:"autopilotPause,omitempty"`
 
+	// LastPilotNoteID is the newest comment on the issue or its merge
+	// request handed to the pilot (Implement tasks).
+	// +optional
+	LastPilotNoteID int64 `json:"lastPilotNoteID,omitempty"`
+
 	// PilotMessages are the owners' messages to the pilot (Coordinate
 	// tasks), each answered by the run of its request.
 	// +optional
@@ -150,6 +155,19 @@ type PilotMessage struct {
 	Body string `json:"body"`
 	// Request is the run request that answers it.
 	Request int64 `json:"request"`
+}
+
+// PilotStatus is the operator's bookkeeping of a milestone's pilot.
+type PilotStatus struct {
+	// LastNoteID is the newest comment on the tracking issue handed to the
+	// pilot.
+	// +optional
+	LastNoteID int64 `json:"lastNoteID,omitempty"`
+
+	// Rejected is when a user who is no owner was last told so, by GitLab
+	// user ID; later messages within a day get no answer.
+	// +optional
+	Rejected map[string]metav1.Time `json:"rejected,omitempty"`
 }
 
 // CIState is the state of the pipeline of the agent's last push.
@@ -331,6 +349,11 @@ type AgentTaskStatus struct {
 	// closed issues of the milestone and on its tracking issue (spec tasks).
 	// +optional
 	Revisits *RevisitStatus `json:"revisits,omitempty"`
+
+	// Pilot is the operator's bookkeeping of the milestone's pilot (spec
+	// tasks).
+	// +optional
+	Pilot *PilotStatus `json:"pilot,omitempty"`
 
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`

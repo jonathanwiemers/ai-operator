@@ -144,12 +144,16 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			log.FromContext(ctx).V(lvl).Info("GitLab poll done", "requests", st.Requests, "retries", st.Retries)
 		}()
 	}
-	if project.Status.BotUserID == 0 {
+	// The username on every poll, for mentions of a renamed bot.
+	if project.Status.BotUserID == 0 || *spec.Pilot.Mention {
 		u, err := gl.CurrentUser(ctx)
 		if err != nil {
 			return fmt.Errorf("resolving bot user: %w", err)
 		}
-		project.Status.BotUserID = u.ID
+		if project.Status.BotUserID == 0 {
+			project.Status.BotUserID = u.ID
+		}
+		project.Status.BotUsername = u.Username
 	}
 
 	var titleRE *regexp.Regexp
@@ -165,6 +169,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	}
 	byMilestone := map[int64]*aiv1.AgentTask{}
 	byIssue := map[int64]*aiv1.AgentTask{}
+	pilots := map[int64]*aiv1.AgentTask{}
 	for i := range tasks.Items {
 		t := &tasks.Items[i]
 		switch t.Spec.Type {
@@ -175,6 +180,10 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		case aiv1.TaskTypeImplement:
 			if t.Spec.Issue != nil {
 				byIssue[t.Spec.Issue.IID] = t
+			}
+		case aiv1.TaskTypeCoordinate:
+			if t.Spec.Milestone != nil {
+				pilots[t.Spec.Milestone.IID] = t
 			}
 		}
 	}
@@ -310,6 +319,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		if err := r.syncAutopilot(ctx, gl, project, spec, st, implTasks, st == lane); err != nil {
 			errs = append(errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
+	}
+	if err := r.syncPilots(ctx, gl, project, spec, specTasks, pilots, keep); err != nil {
+		errs = append(errs, err)
 	}
 
 	// Everything else is done, closed, unlabeled or out of scope: delete the
@@ -501,6 +513,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		if reply, err = r.applyRouting(ctx, gl, spec, &is, issueNotes, mrNotes, src, project.Status.BotUserID); err != nil {
 			return nil, nil, err
 		}
+		r.pilotIssueNotes(ctx, gl, project, spec, is, mr, task, issueNotes, mrNotes)
 		if created {
 			// Comments written before the task existed are context, not commands.
 			src.LastCommandNoteID = latest

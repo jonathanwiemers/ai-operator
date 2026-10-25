@@ -71,6 +71,9 @@ type Runner struct {
 	pushedHead string
 	// logPrompts is the project's agents.logPrompts during a run.
 	logPrompts bool
+	// pilot reports whether a comment is addressed to the milestone's pilot
+	// during a run.
+	pilot func(gitlab.Note) bool
 	// blamedRestarts is the agent container's restart count of the last
 	// termination a lost call was put down to.
 	blamedRestarts int32
@@ -338,6 +341,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 
 	spec := project.Spec.WithDefaults()
 	r.logPrompts = spec.Agents.LogPrompts
+	r.pilot = pilotAddressed(project, spec)
 	gl := r.NewGitLab(spec.GitLab.URL, r.GitLabToken)
 	var out *Outcome
 	var block aiv1.BlockReason
