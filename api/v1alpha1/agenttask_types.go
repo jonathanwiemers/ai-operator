@@ -5,7 +5,7 @@ import (
 )
 
 // TaskType is the kind of work an AgentTask performs.
-// +kubebuilder:validation:Enum=Spec;Implement
+// +kubebuilder:validation:Enum=Spec;Implement;Coordinate
 type TaskType string
 
 const (
@@ -13,6 +13,8 @@ const (
 	TaskTypeSpec TaskType = "Spec"
 	// TaskTypeImplement implements one issue as one merge request.
 	TaskTypeImplement TaskType = "Implement"
+	// TaskTypeCoordinate is a milestone's pilot: it answers its owners.
+	TaskTypeCoordinate TaskType = "Coordinate"
 )
 
 // AgentTaskSpec is the desired state of an AgentTask. It is owned by the
@@ -29,7 +31,8 @@ type AgentTaskSpec struct {
 	// +optional
 	Milestone *MilestoneRef `json:"milestone,omitempty"`
 
-	// Issue implemented by this task (Implement tasks only).
+	// Issue implemented by this task (Implement tasks), or the tracking
+	// issue the pilot listens on (Coordinate tasks).
 	// +optional
 	Issue *IssueRef `json:"issue,omitempty"`
 
@@ -127,6 +130,26 @@ type SourceState struct {
 	// during the pause knows it. Empty when it is not paused over it.
 	// +optional
 	AutopilotPause string `json:"autopilotPause,omitempty"`
+
+	// PilotMessages are the owners' messages to the pilot (Coordinate
+	// tasks), each answered by the run of its request.
+	// +optional
+	PilotMessages []PilotMessage `json:"pilotMessages,omitempty"`
+}
+
+// PilotMessage is a comment addressed to the pilot.
+type PilotMessage struct {
+	NoteID int64 `json:"noteID"`
+	// Where it was written: an issue, or a merge request.
+	// +optional
+	IssueIID int64 `json:"issueIID,omitempty"`
+	// +optional
+	MergeRequestIID int64  `json:"mergeRequestIID,omitempty"`
+	Author          string `json:"author"`
+	// Body without the address ("/pilot", the mention).
+	Body string `json:"body"`
+	// Request is the run request that answers it.
+	Request int64 `json:"request"`
 }
 
 // CIState is the state of the pipeline of the agent's last push.

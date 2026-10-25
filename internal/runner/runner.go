@@ -125,6 +125,8 @@ type state struct {
 	// ImplementEngine is the engine of the last implementer session; a run
 	// on another engine starts that engine's session fresh.
 	ImplementEngine aiv1.Engine `json:"implementEngine,omitempty"`
+	// PilotAnswered are the pilot's last answered messages (note IDs).
+	PilotAnswered []int64 `json:"pilotAnswered,omitempty"`
 }
 
 func sessionKey(role string, engine aiv1.Engine) string { return role + "/" + string(engine) }
@@ -352,6 +354,8 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		out, err = r.runSpec(ctx, gl, task, project, spec)
 	case task.Spec.Type == aiv1.TaskTypeImplement:
 		out, err = r.runImplement(ctx, gl, task, project, spec)
+	case task.Spec.Type == aiv1.TaskTypeCoordinate:
+		out, err = r.runPilot(ctx, gl, task, project, spec)
 	default:
 		err = fmt.Errorf("unknown task type %q", task.Spec.Type)
 	}

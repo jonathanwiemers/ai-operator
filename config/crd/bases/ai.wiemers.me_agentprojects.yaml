@@ -430,6 +430,55 @@ spec:
                       type: string
                     description: NodeSelector for agent pods.
                     type: object
+                  pilot:
+                    description: |-
+                      Pilot configures the milestone coordinator, who answers the
+                      milestone's owners. Defaults to the claude engine with
+                      claude-sonnet-5-5.
+                    properties:
+                      allowedTools:
+                        description: |-
+                          AllowedTools overrides the tools the role may use (claude engine only;
+                          cursor reads its permissions from .cursor/cli.json).
+                        items:
+                          type: string
+                        type: array
+                      effort:
+                        description: Effort level (claude engine only).
+                        enum:
+                        - low
+                        - medium
+                        - high
+                        - xhigh
+                        - max
+                        type: string
+                      engine:
+                        default: claude
+                        description: |-
+                          Engine is the agent CLI used for this role. Roles can mix engines, e.g.
+                          implement with claude and review with cursor.
+                        enum:
+                        - claude
+                        - cursor
+                        type: string
+                      instructions:
+                        description: Instructions are appended to the role's system
+                          prompt, e.g. house rules.
+                        type: string
+                      maxBudgetUSD:
+                        description: |-
+                          MaxBudgetUSD caps the spend of a single invocation of this role,
+                          as a decimal string, e.g. "5" or "2.50" (claude engine only).
+                        pattern: ^[0-9]+(\.[0-9]+)?$
+                        type: string
+                      model:
+                        description: |-
+                          Model passed to the engine, e.g. claude-opus-5-5 or claude-sonnet-5-5
+                          for claude, "auto" for cursor. For the claude engine it defaults to
+                          claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
+                          default.
+                        type: string
+                    type: object
                   profiles:
                     description: |-
                       Profiles are named implementing agents an issue selects with a
@@ -1032,6 +1081,18 @@ spec:
                     items:
                       type: string
                     type: array
+                type: object
+              pilot:
+                description: Pilot configures the milestone coordinator (see agents.pilot).
+                properties:
+                  maxBudgetUSD:
+                    default: "20"
+                    description: |-
+                      MaxBudgetUSD caps the pilot's spend per milestone, as a decimal
+                      string. Once it is used up, the pilot answers that it is, without a
+                      model call.
+                    pattern: ^[0-9]+(\.[0-9]+)?$
+                    type: string
                 type: object
               pollInterval:
                 default: 1m
