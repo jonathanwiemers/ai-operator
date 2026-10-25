@@ -88,7 +88,7 @@ func TestAutopilotSecondTransientFailurePausesAndBlocks(t *testing.T) {
 }
 
 func TestAutopilotEndOfAnInfraPauseUnblocks(t *testing.T) {
-	for _, how := range []string{"merged by hand", "resume"} {
+	for _, how := range []string{"merged by hand", "resume", "pause, then resume"} {
 		t.Run(how, func(t *testing.T) {
 			e, name := reviewersDown(t, true)
 			reReviewed(t, e, name)
@@ -96,9 +96,15 @@ func TestAutopilotEndOfAnInfraPauseUnblocks(t *testing.T) {
 			if e.tasks()[name].Status.Blocked == nil {
 				t.Fatal("expected #1 blocked")
 			}
-			if how == "resume" {
-				e.gl.AddNote(e.autopilot().TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent resume")
-			} else {
+			human := gitlab.User{ID: 1, Username: "jonathan"}
+			switch how {
+			case "pause, then resume":
+				e.gl.AddNote(e.autopilot().TrackingIssueIID, human, "/agent pause")
+				e.reconcile()
+				fallthrough
+			case "resume":
+				e.gl.AddNote(e.autopilot().TrackingIssueIID, human, "/agent resume")
+			default:
 				e.gl.MRs[e.tasks()[name].Status.Run.MergeRequestIID].State = "merged"
 			}
 			e.reconcile()

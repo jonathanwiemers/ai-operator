@@ -52,12 +52,17 @@ func (a *autopilot) failGate(ctx context.Context, it *aiv1.AutopilotItem, is git
 	return a.r.block(ctx, a.spec.Workflow, is, task, g.block, g.reason)
 }
 
-// unblockPaused lifts the infra block of the issue a pause was about, when
-// the pause ends.
-func (a *autopilot) unblockPaused(ctx context.Context, iid int64) error {
-	task := a.tasks[iid]
-	if task == nil || task.Status.Blocked == nil || task.Status.Blocked.Reason != aiv1.BlockInfra {
-		return nil
+// unblockActive lifts the infra block of the active issue when a pause ends
+// (also one a later "/agent pause" took over).
+func (a *autopilot) unblockActive(ctx context.Context) error {
+	for _, it := range a.ap.Items {
+		task := a.tasks[it.IID]
+		if it.State != aiv1.AutopilotItemActive || task == nil || task.Status.Blocked == nil || task.Status.Blocked.Reason != aiv1.BlockInfra {
+			continue
+		}
+		if err := a.r.unblock(ctx, a.gl, a.spec, a.issues[it.IID], task); err != nil {
+			return err
+		}
 	}
-	return a.r.unblock(ctx, a.gl, a.spec, a.issues[iid], task)
+	return nil
 }

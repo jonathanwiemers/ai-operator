@@ -698,7 +698,7 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		it.MergeRequestIID, it.MergeRequestURL = task.Status.Run.MergeRequestIID, task.Status.Run.MergeRequestURL
 	}
 	resume := func(why string) error {
-		if err := a.unblockPaused(ctx, it.IID); err != nil {
+		if err := a.unblockActive(ctx); err != nil {
 			return err
 		}
 		a.log.Info("autopilot continues by itself", "issue", it.IID, "why", why)
@@ -1090,7 +1090,7 @@ func (a *autopilot) commands(ctx context.Context) error {
 			}
 		case "resume":
 			if a.ap.Phase == aiv1.AutopilotPaused {
-				if err := a.unblockPaused(ctx, a.ap.PausedFor); err != nil {
+				if err := a.unblockActive(ctx); err != nil {
 					a.ap.LastCommandNoteID = prev // tried again on the next poll
 					return err
 				}

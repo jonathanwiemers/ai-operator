@@ -626,9 +626,11 @@ A pause over the active issue ends **by itself** when it no longer holds:
   findings`, the run succeeded, was reviewed and CI is green. Autopilot then
   continues with the merge.
 
-When such a pause ends, by itself or with `/agent resume`, an
-`agent-blocked::infra` block it set is lifted and the issue gets its label
-back. `/agent resume` with the reviewers still failing on the same head
+When such a pause ends, by itself or with `/agent resume` (also after an
+`/agent pause` in between), the active issue's `agent-blocked::infra` block
+is lifted and the issue gets its label back. Autopilot asks for one
+re-review per head: a later transient failure on a head it re-reviewed
+already pauses at once. `/agent resume` with the reviewers still failing on the same head
 pauses again; comment `/agent review` on the issue to have it reviewed once
 more.
 
