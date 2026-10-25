@@ -273,10 +273,14 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 
-	// Revisits of decisions whose issues are merged, then the autopilot
-	// milestones: queue, merge gate, tracking issue. One failing milestone
-	// does not hold up the others or the cleanup below.
+	// The default branch's health, revisits of decisions whose issues are
+	// merged, then the autopilot milestones: queue, merge gate, tracking
+	// issue. One failing step does not hold up the others or the cleanup
+	// below.
 	var errs []error
+	if err := r.syncMainHealth(ctx, gl, project, spec); err != nil {
+		errs = append(errs, fmt.Errorf("main health: %w", err))
+	}
 	for _, st := range specTasks {
 		if err := r.syncRevisits(ctx, gl, project, spec, st); err != nil {
 			errs = append(errs, fmt.Errorf("revisits of milestone %q: %w", st.Spec.Milestone.Title, err))

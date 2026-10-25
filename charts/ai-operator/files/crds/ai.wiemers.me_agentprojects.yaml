@@ -916,6 +916,29 @@ spec:
                       further deferral of the same run, up to MaxUsageLimitBackoff.
                     type: string
                 type: object
+              mainHealth:
+                description: MainHealth watches the pipelines of the default branch.
+                properties:
+                  disabled:
+                    description: Disabled turns the watcher off.
+                    type: boolean
+                  interval:
+                    default: 5m
+                    description: Interval is how often the default branch's pipelines
+                      are checked.
+                    type: string
+                  issue:
+                    default: true
+                    description: Issue opens an issue for a red default branch and
+                      one per flaky job.
+                    type: boolean
+                  retryFailedJobs:
+                    default: true
+                    description: |-
+                      RetryFailedJobs retries the failed jobs of a red pipeline once before
+                      it counts as red.
+                    type: boolean
+                type: object
               maxConcurrentRuns:
                 default: 3
                 description: |-
@@ -966,6 +989,7 @@ spec:
                       - review
                       - autopilotPaused
                       - autopilotDone
+                      - mainRed
                       type: string
                     type: array
                   requestReview:
@@ -1187,6 +1211,55 @@ spec:
                 description: LastSyncTime is when GitLab was last polled successfully.
                 format: date-time
                 type: string
+              mainHealth:
+                description: MainHealth is the health of the default branch.
+                properties:
+                  checkedAt:
+                    description: CheckedAt is when the pipelines were last checked.
+                    format: date-time
+                    type: string
+                  failedJobs:
+                    description: FailedJobs are the failing jobs of the pipeline,
+                      before a retry.
+                    items:
+                      type: string
+                    type: array
+                  issueIID:
+                    description: IssueIID is the open issue that reports the red default
+                      branch.
+                    format: int64
+                    type: integer
+                  pipelineID:
+                    format: int64
+                    type: integer
+                  reportedJobs:
+                    description: ReportedJobs are the failing jobs the issue reports
+                      last.
+                    items:
+                      type: string
+                    type: array
+                  retriedPipelineID:
+                    description: RetriedPipelineID is the pipeline whose failed jobs
+                      were retried.
+                    format: int64
+                    type: integer
+                  sha:
+                    type: string
+                  since:
+                    description: Since is when the state last changed.
+                    format: date-time
+                    type: string
+                  state:
+                    description: MainHealthState is the health of the default branch.
+                    enum:
+                    - green
+                    - retrying
+                    - red
+                    - flaky
+                    type: string
+                required:
+                - state
+                type: object
               usageLimits:
                 description: |-
                   UsageLimits lists engines that currently hit a usage or rate limit.

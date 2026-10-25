@@ -309,6 +309,20 @@ Premium) run on a merge commit instead and are not found; with them the loop
 ends after `noPipelineTimeout` as "no CI". Set `ci.disabled: true` in that
 case until this is supported.
 
+## `spec.mainHealth`
+
+The watcher of the default branch, see [usage.md](usage.md#main-health).
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `disabled` | `false` | do not watch the default branch |
+| `interval` | `5m` | how often the newest finished pipeline of the default branch is read (one `GET pipelines` per check; jobs and logs only for a new red pipeline) |
+| `retryFailedJobs` | `true` | retry the failed jobs of a red pipeline once; green after the retry counts as flaky |
+| `issue` | `true` | open the `ci::main-red` issue |
+
+The token needs the same rights as for `spec.ci` (read pipelines and job logs,
+retry jobs) and must be able to create issues.
+
 ## `spec.notify`
 
 Whom the operator mentions (`cc @alice @bob`, appended to the comment that
@@ -318,7 +332,7 @@ needs a human) and asks for reviews, see
 | Field | Default | Description |
 |-------|---------|-------------|
 | `users` | operator's `--default-owners` (with Helm: `defaultOwners`) | GitLab usernames, without `@`. A milestone overrides them with a line `/agent owners @alice @bob` in its description, for itself and its issues |
-| `events` | all | which situations mention them: `failed` (a run failed), `needsInput` (questions, or the agent could not finish alone), `ciFailed` (CI still red after the fix rounds), `review` (an issue reached review, not on autopilot), `autopilotPaused`, `autopilotDone` |
+| `events` | all | which situations mention them: `failed` (a run failed), `needsInput` (questions, or the agent could not finish alone), `ciFailed` (CI still red after the fix rounds), `review` (an issue reached review, not on autopilot), `autopilotPaused`, `autopilotDone`, `mainRed` (the default branch stayed red after a retry) |
 | `requestReview` | `true` | when an issue reaches review (not on autopilot), make the users the reviewers of its MR, unless it has reviewers |
 
 The users must be members of the project to be notified; mentioning the bot

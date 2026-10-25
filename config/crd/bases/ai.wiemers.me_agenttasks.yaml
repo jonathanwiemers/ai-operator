@@ -425,6 +425,7 @@ spec:
                     - review
                     - autopilotPaused
                     - autopilotDone
+                    - mainRed
                     type: string
                   pipelineID:
                     format: int64

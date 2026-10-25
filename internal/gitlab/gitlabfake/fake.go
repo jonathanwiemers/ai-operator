@@ -27,9 +27,11 @@ type Fake struct {
 	Jobs      map[int64][]gitlab.Job
 	Traces    map[int64]string
 	Retried   []int64
-	nextID    int64
-	lastIID   int64
-	Clock     time.Time
+	// RetryError makes RetryPipeline fail.
+	RetryError error
+	nextID     int64
+	lastIID    int64
+	Clock      time.Time
 	// IssueUpdates records the options of every UpdateIssue call, oldest first.
 	IssueUpdates []gitlab.UpdateIssueOptions
 	// MergeErrors makes MergeMergeRequest of an MR fail.
@@ -703,6 +705,9 @@ func (f *Fake) JobTrace(_ context.Context, _ string, jobID int64) (string, error
 func (f *Fake) RetryPipeline(_ context.Context, _ string, pipelineID int64) (*gitlab.Pipeline, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.RetryError != nil {
+		return nil, f.RetryError
+	}
 	f.Retried = append(f.Retried, pipelineID)
 	for i := range f.Pipelines {
 		if f.Pipelines[i].ID == pipelineID {
