@@ -62,7 +62,9 @@ including fixing a red pipeline, happens without you.
 **`needs-input` or `blocked`?** `agent::needs-input` means a human has to
 answer or decide something. `agent::blocked` means the issue waits for
 something outside it, such as an engine outage or a red default branch.
-For example, autopilot blocks an issue with `agent-blocked::infra` when its
+For example, a run that waits for a usage limit blocks its issue with
+`agent-blocked::quota` (see [Usage and rate limits](#usage-and-rate-limits)),
+and autopilot blocks an issue with `agent-blocked::infra` when its
 reviewers failed in an outage twice on the same head (see
 [When it pauses](#when-it-pauses)).
 The `agent-blocked::<reason>` label says what it waits for. The operator sets
@@ -250,6 +252,7 @@ need a human, so GitLab sends them a mail and a To-Do:
 | When | Where |
 |------|-------|
 | a run failed | issue |
+| a run gave up for an outside reason and the issue stays blocked (e.g. after 20 usage limit deferrals) | issue, also on autopilot |
 | the agent asks questions | issue (with the questions) |
 | the agent could not finish alone (e.g. unresolved conflicts) | MR report |
 | CI is still red after the fix rounds (not on autopilot) | issue |
@@ -719,9 +722,13 @@ milestone is being planned again, no new issue is started.
 Subscriptions have usage windows, and APIs have rate limits. When an agent
 CLI reports such a limit, the run is **paused, not failed**:
 
-- The issue stays in `agent::working` and gets one comment: "⏳ The `claude`
-  engine reached a usage limit. The run is paused and retried automatically
-  at …".
+- The issue moves to `agent::blocked` + `agent-blocked::quota` and gets one
+  comment: "⏳ The `claude` engine reached a usage limit. The run is paused
+  and retried automatically at …; until then the issue is blocked". When
+  the run starts again, the issue gets its label back (normally
+  `agent::working`); a later limit blocks it again.
+  `/agent …` or a move to `agent::ready` lifts the block as usual, but the
+  run still waits for the reset.
 - The run is retried at the reset time the CLI reports. If it doesn't
   report one, the wait is 5 minutes, doubling with every further limit hit
   up to 1 hour (`spec.lifecycle.usageLimitBackoff` /
@@ -729,12 +736,14 @@ CLI reports such a limit, the run is **paused, not failed**:
 - Paused runs don't count towards `maxRunsPerTask` and don't take a run slot.
 - Limits belong to your credentials, so they apply to the whole project:
   other issues that need the same engine wait too instead of hitting the
-  limit again. Issues on another engine (e.g. `fast` on cursor while claude
+  limit again, and are blocked (`quota`) the same way. Issues on another engine (e.g. `fast` on cursor while claude
   is limited) keep working.
 - If the limit hits during a review fix round, the work done so far is pushed
   with the open findings instead of being held back.
 - After 20 deferrals of the same run it is reported as failed, in case an
-  error was mistaken for a limit.
+  error was mistaken for a limit. The issue stays blocked (`quota`), and the
+  comment says so and mentions the owners (event `blocked`); `/agent retry`
+  or a move to `agent::ready` starts it again.
 
 Nothing to do on your side; `kubectl get agenttasks -o wide` shows the retry
 time, and the project status lists the active limits:

@@ -432,6 +432,7 @@ spec:
                     - autopilotPaused
                     - autopilotDone
                     - mainRed
+                    - blocked
                     type: string
                   pipelineID:
                     format: int64
@@ -603,6 +604,17 @@ spec:
                       currently working on.
                     format: int64
                     type: integer
+                  blockReason:
+                    description: |-
+                      BlockReason is why the issue waits for something outside it: quota
+                      while the run is deferred by a usage limit or after it gave up on
+                      one. The operator blocks the issue with it.
+                    enum:
+                    - infra
+                    - main-red
+                    - quota
+                    - dependency
+                    type: string
                   blockingFindings:
                     description: |-
                       BlockingFindings is the number of blocker and major review findings
@@ -725,6 +737,13 @@ spec:
                     description: Summary of the most recent run.
                     type: string
                 type: object
+              runBlockedAt:
+                description: |-
+                  RunBlockedAt is the run.lastActivityTime of the deferral or failure
+                  that last blocked the issue (run.blockReason). Each report blocks
+                  once, so a block lifted by hand stays lifted.
+                format: date-time
+                type: string
               workspaceClaimName:
                 type: string
             type: object

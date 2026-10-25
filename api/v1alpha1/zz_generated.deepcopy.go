@@ -262,6 +262,10 @@ func (in *AgentTaskStatus) DeepCopyInto(out *AgentTaskStatus) {
 		*out = new(BlockedStatus)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.RunBlockedAt != nil {
+		in, out := &in.RunBlockedAt, &out.RunBlockedAt
+		*out = (*in).DeepCopy()
+	}
 	if in.Plan != nil {
 		in, out := &in.Plan, &out.Plan
 		*out = make([]PlannedIssue, len(*in))

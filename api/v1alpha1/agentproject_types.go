@@ -628,7 +628,7 @@ type MainHealthStatus struct {
 }
 
 // NotifyEvent is a situation in which the operator needs a human.
-// +kubebuilder:validation:Enum=failed;needsInput;ciFailed;review;autopilotPaused;autopilotDone;mainRed
+// +kubebuilder:validation:Enum=failed;needsInput;ciFailed;review;autopilotPaused;autopilotDone;mainRed;blocked
 type NotifyEvent string
 
 const (
@@ -646,6 +646,8 @@ const (
 	NotifyAutopilotDone NotifyEvent = "autopilotDone"
 	// NotifyMainRed: the default branch stayed red after a retry.
 	NotifyMainRed NotifyEvent = "mainRed"
+	// NotifyBlocked: a run gave up for an outside reason; the issue is blocked.
+	NotifyBlocked NotifyEvent = "blocked"
 )
 
 // NotifySpec says whom the operator mentions ("cc @…") in the comments that

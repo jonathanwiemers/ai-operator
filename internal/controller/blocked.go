@@ -13,9 +13,14 @@ import (
 
 // block records that the task's issue cannot go on for an outside reason.
 // The labels follow on the poll (syncBlocked), so a failed label call heals.
-// Callers block only when no run is pending and the CI loop is final.
+// Callers block only when no run is pending (a deferred one waits) and the
+// CI loop is final.
 func (r *AgentProjectReconciler) block(ctx context.Context, wf aiv1.WorkflowSpec, is gitlab.Issue, task *aiv1.AgentTask, reason aiv1.BlockReason, message string) error {
-	if b := task.Status.Blocked; b != nil && b.Reason == reason {
+	b := task.Status.Blocked
+	if b != nil && b.Applied && !is.HasLabel(wf.BlockedLabel) {
+		b = nil // lifted by a human; syncBlocked drops it
+	}
+	if b != nil && b.Reason == reason {
 		return nil
 	}
 	restore := ""
@@ -25,7 +30,7 @@ func (r *AgentProjectReconciler) block(ctx context.Context, wf aiv1.WorkflowSpec
 		}
 	}
 	applied := false
-	if b := task.Status.Blocked; b != nil {
+	if b != nil {
 		// A new reason keeps the label to come back to; syncBlocked swaps
 		// the reason label.
 		restore, applied = b.RestoreLabel, b.Applied
@@ -51,10 +56,42 @@ func (r *AgentProjectReconciler) unblock(ctx context.Context, gl gitlab.API, spe
 	return r.patchBlocked(ctx, task, nil)
 }
 
+// syncRunBlock blocks the issue for the runner's report (run.blockReason):
+// a run deferred by a usage limit, or one that gave up for an outside reason.
+// Each report blocks once. A new run (running, or pending and not deferred)
+// lifts any block, also when the label move of its request failed; a quota
+// block is also lifted when the run ended otherwise.
+func (r *AgentProjectReconciler) syncRunBlock(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask) error {
+	run := task.Status.Run
+	reason := run.BlockReason
+	newRun := run.ActiveRunRequest > run.ObservedRunRequest || task.RunPending() && run.DeferredUntil == nil
+	if newRun {
+		reason = ""
+	}
+	switch b := task.Status.Blocked; {
+	case b != nil && newRun && b.Applied && !is.HasLabel(spec.Workflow.BlockedLabel):
+		return nil // lifted by a human: syncBlocked drops it
+	case b != nil && newRun:
+		b.RestoreLabel = spec.Workflow.WorkingLabel // what a run request shows
+		return r.unblock(ctx, gl, spec, is, task)
+	case b != nil && b.Reason == aiv1.BlockQuota && reason != aiv1.BlockQuota:
+		return r.unblock(ctx, gl, spec, is, task)
+	case reason == "" || run.LastActivityTime == nil || run.LastActivityTime.Equal(task.Status.RunBlockedAt):
+		return nil
+	}
+	if err := r.block(ctx, spec.Workflow, is, task, reason, run.Summary); err != nil {
+		return err
+	}
+	orig := task.DeepCopy()
+	task.Status.RunBlockedAt = run.LastActivityTime
+	return client.IgnoreNotFound(r.Status().Patch(ctx, task, client.MergeFrom(orig)))
+}
+
 // syncBlocked puts the blocked labels on the issue of a blocked task. A block
 // a human lifted is dropped: an applied one whose issue lost the blocked
 // label, or one not applied yet whose issue moved on from the label it
-// would replace or got a run (moved on the board, or `/agent …`).
+// would replace or got a run (moved on the board, or `/agent …`); a deferred
+// run is pending too, but waits.
 func (r *AgentProjectReconciler) syncBlocked(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask) error {
 	b := task.Status.Blocked
 	if b == nil {
@@ -64,7 +101,7 @@ func (r *AgentProjectReconciler) syncBlocked(ctx context.Context, gl gitlab.API,
 	reasonLabel := wf.BlockedReasonPrefix + string(b.Reason)
 	switch {
 	case b.Applied && !is.HasLabel(wf.BlockedLabel),
-		!b.Applied && (task.RunPending() || b.RestoreLabel != "" && !is.HasLabel(b.RestoreLabel)):
+		!b.Applied && (task.RunPending() && b.Reason != aiv1.BlockQuota || b.RestoreLabel != "" && !is.HasLabel(b.RestoreLabel)):
 		if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{RemoveLabels: []string{reasonLabel}}); err != nil {
 			return fmt.Errorf("removing the block reason of issue #%d: %w", is.IID, err)
 		}

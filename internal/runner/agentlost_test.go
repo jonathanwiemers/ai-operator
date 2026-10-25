@@ -151,7 +151,7 @@ func TestOOMKilledRunStartsAgainWithMoreMemory(t *testing.T) {
 	var task aiv1.AgentTask
 	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
 	orig := task.DeepCopy()
-	task.Status.Run.LimitedEngine, task.Status.Run.Deferrals = aiv1.EngineClaude, 1
+	task.Status.Run.LimitedEngine, task.Status.Run.Deferrals, task.Status.Run.BlockReason = aiv1.EngineClaude, 1, aiv1.BlockQuota
 	_ = e.k8s.Status().Patch(ctx, &task, client.MergeFrom(orig))
 
 	engine := &lostEngine{k8s: e.k8s, task: e.task.Name, reason: "OOMKilled", fails: 5}
@@ -161,7 +161,8 @@ func TestOOMKilledRunStartsAgainWithMoreMemory(t *testing.T) {
 	}
 	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
 	run := task.Status.Run
-	if !task.RunPending() || run.OOMRetries != 1 || run.DeferredUntil == nil || run.LastResult != aiv1.RunResultDeferred || run.LimitedEngine != "" {
+	if !task.RunPending() || run.OOMRetries != 1 || run.DeferredUntil == nil || run.LastResult != aiv1.RunResultDeferred || run.LimitedEngine != "" ||
+		run.BlockReason != "" {
 		t.Fatalf("the run must stay pending and wait for a pod with more memory: %+v", run)
 	}
 	var note string
