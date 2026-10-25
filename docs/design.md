@@ -330,8 +330,8 @@ and after giving up on one), and the operator's poll turns each report into
 lifted by hand stays lifted) and applies the labels. A new run lifts any
 block and shows `working`: in progress (`activeRunRequest` ahead of
 `observedRunRequest`), or pending and not deferred, also when the label move
-of its request failed. A deferred run waits, so it keeps the quota block. A deferred run is pending, so it does not count as the new run that
-lifts a block before it is applied.
+of its request failed. A deferred run waits, so it keeps the quota block,
+also before the block is applied.
 
 The issue can stay open for months; resources are reclaimed in stages and
 nothing is lost.
