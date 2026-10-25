@@ -387,6 +387,20 @@ would have prevented case 1, 1 + 3 + 4 case 2.
   names) in tracking-issue comments is not defused yet, and anyone who can
   comment can command the tracking issue (as on issues).
 
+- PR 4 was split into 4a (#55) and 4b (#56), about 105 lines of Go each;
+  PR 6b into 6b-1 (#57, 106) and 6b-2 (#58, 25). Kept on review: one
+  automatic re-review per head (a later transient failure on the same head
+  pauses at once); `unblockActive` lifts any infra block of the active
+  issue on resume (revisit in PR 5); a failing GitLab keeps a red main
+  health fresh, so merges stay frozen during an outage (safe side).
+- The gate waits for any blocked task (#57), so an infra-blocked issue ends
+  its pause by a new run, `/agent resume`, or a merge or close by hand. If a
+  frozen issue was already infra-blocked, it gets the infra block again on
+  the next gate check after main is green.
+- Follow-up for all commands: anyone who can comment can repeat `/agent
+  review` (cost), like every `/agent …`; a per-head cap or owners-only
+  commands would cover it.
+
 ## PRs
 
 | # | Title | Link | Status |
@@ -397,3 +411,7 @@ would have prevented case 1, 1 + 3 + 4 case 2.
 | 2 | Autopilot: answer unknown tracking-issue commands, pause reason in the run prompt | [#52](https://github.com/jonathanwiemers/ai-operator/pull/52) | merged 2026-10-25 |
 | 6a-1 | Main health: watch the default branch, retry once, main-red issue | [#50](https://github.com/jonathanwiemers/ai-operator/pull/50) | merged 2026-10-25 |
 | 6a-2 | Main health: one issue per flaky job | [#53](https://github.com/jonathanwiemers/ai-operator/pull/53) (replaces #51, closed with its base branch) | merged 2026-10-25 |
+| 4a | Review: re-review run (reviewFor, /agent review), reviewErrorsTransient | [#55](https://github.com/jonathanwiemers/ai-operator/pull/55) | merged 2026-10-25 |
+| 4b | Autopilot: re-review transient reviewer failures, then a blocked pause | [#56](https://github.com/jonathanwiemers/ai-operator/pull/56) | merged 2026-10-25 |
+| 6b-1 | Autopilot: merge freeze while the default branch is red | [#57](https://github.com/jonathanwiemers/ai-operator/pull/57) | merged 2026-10-25 |
+| 6b-2 | CI: base-failing check reads main health, links the main-red issue | [#58](https://github.com/jonathanwiemers/ai-operator/pull/58) | merged 2026-10-25 |
