@@ -17,7 +17,7 @@ func (a *autopilot) reviewErrors(it *aiv1.AutopilotItem, task *aiv1.AgentTask) g
 	g := gateResult{state: gateFailed, byRun: true,
 		reason: fmt.Sprintf("%d reviewers failed on #%d, so the change is not fully reviewed", run.ReviewErrors, it.IID)}
 	switch {
-	case !run.ReviewErrorsTransient:
+	case !run.ReviewErrorsTransient || run.PushedSHA == "":
 	case task.Spec.Source.ReviewFor != run.PushedSHA:
 		return gateResult{state: gateReReview}
 	default:

@@ -122,3 +122,21 @@ func TestAutopilotNonTransientReviewerFailurePausesAtOnce(t *testing.T) {
 		t.Fatalf("no re-review and no block: %+v %+v", task.Spec, task.Status.Blocked)
 	}
 }
+
+func TestAutopilotWithoutAPushedHeadDoesNotBlock(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", func(r *aiv1.RunStatus) {
+		r.ReviewErrors, r.ReviewErrorsTransient, r.PushedSHA = 2, true, ""
+	})
+	e.reconcile()
+	e.reconcile()
+	task := e.tasks()[name]
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || strings.Contains(ap.PausedReason, "again") {
+		t.Fatalf("without a pushed head there is nothing to re-review: a plain pause: %+v", ap)
+	}
+	if task.Spec.Source.ReviewFor != "" || task.Status.Blocked != nil {
+		t.Fatalf("no re-review and no block: %+v %+v", task.Spec, task.Status.Blocked)
+	}
+}
