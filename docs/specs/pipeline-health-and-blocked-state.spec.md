@@ -404,6 +404,16 @@ would have prevented case 1, 1 + 3 + 4 case 2.
   review` (cost), like every `/agent …`; a per-head cap or owners-only
   commands would cover it.
 
+- PR 5 came to about 92 + 61 and PR 7 to about 77 + 103 lines of Go.
+  Rules settled in PR 5: a new run (running, or pending without a
+  deferral) lifts any block; a human `/agent` or ready move during a
+  deferral shows `working` while the run still waits for the reset; a block
+  a failed run asked for is not lifted by `unblockActive`, only by a new
+  run. PR 7: autoFix hands over only issues whose logs carry the untrusted
+  marker; CI fix prompts carry job logs as untrusted data.
+- With PRs 1-7 merged, this spec is delivered; the coordinator continues in
+  `milestone-coordinator.spec.md`.
+
 ## PRs
 
 | # | Title | Link | Status |
@@ -418,3 +428,7 @@ would have prevented case 1, 1 + 3 + 4 case 2.
 | 4b | Autopilot: re-review transient reviewer failures, then a blocked pause | [#56](https://github.com/jonathanwiemers/ai-operator/pull/56) | merged 2026-10-25 |
 | 6b-1 | Autopilot: merge freeze while the default branch is red | [#57](https://github.com/jonathanwiemers/ai-operator/pull/57) | merged 2026-10-25 |
 | 6b-2 | CI: base-failing check reads main health, links the main-red issue | [#58](https://github.com/jonathanwiemers/ai-operator/pull/58) | merged 2026-10-25 |
+| 5a | Runs: usage-limit deferrals block the issue (quota) | [#62](https://github.com/jonathanwiemers/ai-operator/pull/62) | merged 2026-10-25 |
+| 5b | Runs: infra failures block the issue, with one automatic retry | [#63](https://github.com/jonathanwiemers/ai-operator/pull/63) | merged 2026-10-25 |
+| 7a | Main health: autoFix hands the main-red issue to the agent | [#64](https://github.com/jonathanwiemers/ai-operator/pull/64) | merged 2026-10-25 |
+| 7b | Autopilot: main-red lane merges the fix of a red default branch | [#65](https://github.com/jonathanwiemers/ai-operator/pull/65) | merged 2026-10-25 |

@@ -344,8 +344,23 @@ C3, C4 and C5 are independent of each other once C2 (C5: C1) is merged.
 
 ## Steers
 
+- C1 came to about 309 (C1a, #66) + 562 (C1b, #67) lines of Go, far over
+  the ~50 per PR in Delivery: the task type, the runtime, the routing and
+  the owners check could not be cut smaller without PRs that do nothing on
+  their own. For C2 onward, plan the split before coding and keep each PR
+  to one tool or one trigger.
+- C1 decisions from review: a failed turn or unreadable milestone state
+  still answers every message; the last 100 answered notes are kept so a
+  restarted pod does not answer twice; the turn cap is the lower of the
+  role's and the pilot budget's; cursor reports no cost, so a cursor pilot
+  is bounded by its subscription only; outside a milestone only owners get
+  "there is no pilot here"; `/pilot coordinate` needs owners; `/pilot`
+  comments never reach the implementer.
+
 ## PRs
 
 | # | Title | Link | Status |
 |--:|---|---|---|
-| 0 | Spec: milestone coordinator (/pilot) | [#61](https://github.com/jonathanwiemers/ai-operator/pull/61) | open, awaiting approval |
+| 0 | Spec: milestone coordinator (/pilot) | [#61](https://github.com/jonathanwiemers/ai-operator/pull/61) | approved and merged 2026-10-25 |
+| C1a | Pilot C1a: Coordinate task and read-only answers | [#66](https://github.com/jonathanwiemers/ai-operator/pull/66) | merged 2026-10-25 |
+| C1b | Pilot C1b: /pilot and mention routing, owners check, Coordinate tasks | [#67](https://github.com/jonathanwiemers/ai-operator/pull/67) | merged 2026-10-25 |
