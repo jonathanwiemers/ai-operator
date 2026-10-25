@@ -481,8 +481,11 @@ active issue is blocked already), freezes: once the active issue passes the
 gate's run, review and CI checks it is blocked (`main-red`) and autopilot
 pauses with `resumeWhenReady`. Not red (green, flaky, disabled, or not
 checked for 3 intervals) lifts the block and ends that pause. The blocked
-issue's CI is not followed; the gate runs again on the next poll, after
-`syncReviewCI` saw its head pipeline.
+issue's CI is not followed and its gate waits (also with a review label
+put back by hand); the gate runs again on the next poll, after
+`syncReviewCI` saw its head pipeline. `checkedAt` also advances on a failed
+check, so a GitLab outage keeps a red status fresh: stale means the watcher
+stopped, not that GitLab failed.
 
 ## Merge conflicts
 

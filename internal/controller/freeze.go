@@ -66,8 +66,11 @@ func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
 		return nil
 	}
 	why := fmt.Sprintf("`%s` is green again", base)
-	if mh == nil {
+	switch {
+	case mh == nil:
 		why = fmt.Sprintf("the health of `%s` is not watched any more", base)
+	case !*a.spec.MainHealth.FreezeAutopilot:
+		why = "the merge freeze is switched off (`mainHealth.freezeAutopilot`)"
 	}
 	a.log.Info("autopilot continues by itself", "issue", it.IID, "why", why)
 	if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {

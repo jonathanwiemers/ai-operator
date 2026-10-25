@@ -37,6 +37,16 @@ func TestAutopilotFreezesWhileMainIsRed(t *testing.T) {
 		t.Fatalf("the issue must show the block: %v", l)
 	}
 
+	// The review label put back by hand while blocked: the gate still
+	// waits, no continue / pause comments every poll.
+	e.gl.SetLabels(1, append(e.gl.Labels(1), "agent::review")...)
+	e.reconcile()
+	e.reconcile()
+	if c := trackingComments(e); strings.Count(c, "Autopilot paused") != 1 || strings.Contains(c, "Autopilot continues") || len(e.gl.Merged) != 0 {
+		t.Fatalf("a blocked issue must not pass the gate: merged %v\n%s", e.gl.Merged, c)
+	}
+	e.gl.SetLabels(1, slices.DeleteFunc(e.gl.Labels(1), func(l string) bool { return l == "agent::review" })...)
+
 	// The next red pipeline is retried: still frozen, nothing said again.
 	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthRetrying, IssueIID: 99})
 	e.reconcile()
@@ -67,6 +77,22 @@ func TestAutopilotFreezeLiftsWithoutMainHealth(t *testing.T) {
 	e.reconcile()
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || !strings.Contains(trackingComments(e), "the health of `main` is not watched any more") {
 		t.Fatalf("disabling main health must lift the freeze: %+v\n%s", ap, trackingComments(e))
+	}
+	e.reconcile()
+	e.reconcile()
+	if !slices.Equal(e.gl.Merged, []int64{1}) {
+		t.Fatalf("expected !1 merged, merged %v", e.gl.Merged)
+	}
+}
+
+func TestAutopilotFreezeSwitchedOff(t *testing.T) {
+	e := frozenEnv(t)
+	e.reconcile()
+	off := false
+	e.setMainHealth(aiv1.MainHealthSpec{FreezeAutopilot: &off})
+	e.reconcile()
+	if c := trackingComments(e); !strings.Contains(c, "the merge freeze is switched off") || strings.Contains(c, "green again") {
+		t.Fatalf("switching the freeze off must say so, not claim green:\n%s", c)
 	}
 	e.reconcile()
 	e.reconcile()
