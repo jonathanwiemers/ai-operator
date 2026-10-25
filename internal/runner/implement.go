@@ -918,6 +918,7 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 				case <-time.After(wait):
 				}
 				if ctx.Err() != nil {
+					err = fmt.Errorf("stopped while waiting to retry: %w", ctx.Err())
 					break
 				}
 			}
