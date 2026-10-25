@@ -26,8 +26,8 @@ func redMain(e *projectEnv, advance func(time.Duration)) *gitlab.Issue {
 	return red[0]
 }
 
-// taskOf returns the implement task of an issue, if there is one.
-func (e *projectEnv) taskOf(iid int64) *aiv1.AgentTask {
+// implTaskOf returns the implement task of an issue, if there is one.
+func (e *projectEnv) implTaskOf(iid int64) *aiv1.AgentTask {
 	e.t.Helper()
 	for _, task := range e.tasks() {
 		if task.Spec.Issue != nil && task.Spec.Issue.IID == iid {
@@ -53,7 +53,7 @@ func TestMainHealthAutoFixOff(t *testing.T) {
 	e, advance := newMainEnv(t)
 	is := redMain(e, advance)
 	e.check(advance)
-	if is.HasLabel("agent::ready") || e.taskOf(is.IID) != nil || e.mainHealth().AutoFixIssueIID != 0 {
+	if is.HasLabel("agent::ready") || e.implTaskOf(is.IID) != nil || e.mainHealth().AutoFixIssueIID != 0 {
 		t.Fatalf("without autoFix the main-red issue stays with humans: labels %v", is.Labels)
 	}
 }
@@ -77,7 +77,7 @@ func TestMainHealthAutoFix(t *testing.T) {
 				t.Fatalf("the task must come before the job logs:\n%s", is.Description)
 			}
 			e.reconcile()
-			task := e.taskOf(is.IID)
+			task := e.implTaskOf(is.IID)
 			if task == nil || task.Spec.RunRequest != 1 || !is.HasLabel("agent::working") {
 				t.Fatalf("the main-red issue must get a task and a run, also without a milestone: %+v, labels %v", task, is.Labels)
 			}
@@ -120,7 +120,7 @@ func TestMainHealthGreenClosesTheAutoFixIssue(t *testing.T) {
 	e.setMainHealth(aiv1.MainHealthSpec{AutoFix: true})
 	is := redMain(e, advance)
 	e.reconcile()
-	if e.taskOf(is.IID) == nil {
+	if e.implTaskOf(is.IID) == nil {
 		t.Fatal("no task for the main-red issue")
 	}
 	e.gl.AddPipeline("sha2", "main", "success")
@@ -133,7 +133,7 @@ func TestMainHealthGreenClosesTheAutoFixIssue(t *testing.T) {
 		t.Fatalf("the red episode is over: %+v", st)
 	}
 	e.reconcile()
-	if e.taskOf(is.IID) != nil {
+	if e.implTaskOf(is.IID) != nil {
 		t.Fatal("the closed issue's task must go")
 	}
 }
