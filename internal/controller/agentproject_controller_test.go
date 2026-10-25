@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -343,18 +345,25 @@ func TestReviewCommandRequestsAReReview(t *testing.T) {
 	human := gitlab.User{ID: 1, Username: "jonathan"}
 	e.gl.AddIssue(42, "Add PayPal button", "agent::ready")
 	e.reconcile()
-	task := e.tasks()["shop-42-add-paypal-button"]
+	name := "shop-42-add-paypal-button"
 	e.gl.MRs[1] = &gitlab.MergeRequest{IID: 1, State: "opened", SHA: "sha-head", SourceBranch: "agent/42-add-paypal-button"}
-	orig := task.DeepCopy()
-	task.Status.Run.ObservedRunRequest, task.Status.Run.MergeRequestIID = 1, 1
-	if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
-		t.Fatal(err)
+	finished := func(mutate func(*aiv1.RunStatus)) {
+		task := e.tasks()[name]
+		orig := task.DeepCopy()
+		task.Status.Run.ObservedRunRequest, task.Status.Run.MergeRequestIID, task.Status.Run.PushedSHA = task.Spec.RunRequest, 1, "sha-head"
+		if mutate != nil {
+			mutate(&task.Status.Run)
+		}
+		if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
+			t.Fatal(err)
+		}
+		e.gl.SetLabels(42, "agent::review")
 	}
-	e.gl.SetLabels(42, "agent::review")
+	finished(nil)
 
 	e.gl.AddMRNote(1, human, "/agent review")
 	e.reconcile()
-	task = e.tasks()["shop-42-add-paypal-button"]
+	task := e.tasks()[name]
 	if task.Spec.RunRequest != 2 || task.Spec.Source.ReviewFor != "sha-head" {
 		t.Fatalf("/agent review should request a re-review of the head: %+v", task.Spec)
 	}
@@ -363,23 +372,67 @@ func TestReviewCommandRequestsAReReview(t *testing.T) {
 	}
 
 	// Asked again for the head it reviewed already: reviewed again.
-	orig = task.DeepCopy()
-	task.Status.Run.ObservedRunRequest, task.Status.Run.ReviewedFor = 2, "sha-head"
-	if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
-		t.Fatal(err)
-	}
+	finished(func(r *aiv1.RunStatus) { r.ReviewedFor = "sha-head" })
 	e.gl.AddMRNote(1, human, "/agent review")
 	e.reconcile()
-	if task = e.tasks()["shop-42-add-paypal-button"]; task.Spec.RunRequest != 3 || task.Status.Run.ReviewedFor != "" {
+	if task = e.tasks()[name]; task.Spec.RunRequest != 3 || task.Status.Run.ReviewedFor != "" {
 		t.Fatalf("a repeated /agent review should review the head again: %+v %+v", task.Spec, task.Status.Run)
 	}
 
 	// An instruction next to it needs the implementer: a normal run.
-	e.gl.MRs[1].SHA = "sha-next"
+	finished(func(r *aiv1.RunStatus) { r.ReviewedFor = "sha-head" })
 	e.gl.AddNote(42, human, "/agent also handle refunds")
 	e.gl.AddMRNote(1, human, "/agent review")
 	e.reconcile()
-	if task = e.tasks()["shop-42-add-paypal-button"]; task.Spec.RunRequest != 4 || task.Spec.Source.ReviewFor != "sha-head" {
-		t.Fatalf("an instruction with /agent review is a normal run: %+v", task.Spec)
+	if task = e.tasks()[name]; task.Spec.RunRequest != 4 || task.Status.Run.ReviewedFor != "sha-head" {
+		t.Fatalf("an instruction with /agent review is a normal run: %+v %+v", task.Spec, task.Status.Run)
+	}
+
+	// A head someone else pushed is no re-review: the agent takes it over.
+	finished(nil)
+	e.gl.MRs[1].SHA = "sha-foreign"
+	e.gl.AddMRNote(1, human, "/agent review")
+	e.reconcile()
+	if task = e.tasks()[name]; task.Spec.RunRequest != 5 || task.Spec.Source.ReviewFor != "sha-head" {
+		t.Fatalf("a foreign head must not be re-reviewed without the implementer: %+v", task.Spec)
+	}
+}
+
+// A repeated "/agent review" clears reviewedFor before the run request, so a
+// runner never sees the request with the old reviewedFor.
+func TestReviewCommandClearsReviewedForBeforeTheRunRequest(t *testing.T) {
+	e := newProjectEnv(t)
+	failUpdate := false
+	e.r.Client = interceptor.NewClient(e.c.(client.WithWatch), interceptor.Funcs{
+		Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			if _, ok := obj.(*aiv1.AgentTask); ok && failUpdate {
+				return errors.New("conflict")
+			}
+			return c.Update(ctx, obj, opts...)
+		},
+	})
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddIssue(42, "Add PayPal button", "agent::ready")
+	e.reconcile()
+	name := "shop-42-add-paypal-button"
+	e.gl.MRs[1] = &gitlab.MergeRequest{IID: 1, State: "opened", SHA: "sha-head"}
+	task := e.tasks()[name]
+	orig := task.DeepCopy()
+	task.Status.Run.ObservedRunRequest, task.Status.Run.MergeRequestIID = 1, 1
+	task.Status.Run.PushedSHA, task.Status.Run.ReviewedFor = "sha-head", "sha-head"
+	if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	e.gl.SetLabels(42, "agent::review")
+	e.gl.AddMRNote(1, human, "/agent review")
+	failUpdate = true
+	_, _ = e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "shop"}})
+	if task = e.tasks()[name]; task.Spec.RunRequest != 1 || task.Status.Run.ReviewedFor != "" {
+		t.Fatalf("reviewedFor must be cleared before the run request: %+v %+v", task.Spec, task.Status.Run)
+	}
+	failUpdate = false
+	e.reconcile()
+	if task = e.tasks()[name]; task.Spec.RunRequest != 2 || task.Spec.Source.ReviewFor != "sha-head" {
+		t.Fatalf("the next poll requests the re-review: %+v", task.Spec)
 	}
 }

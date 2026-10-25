@@ -10,6 +10,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
 // reviewerFailures fails the reviewers named in messages with their message
@@ -54,8 +55,9 @@ func TestReviewErrorsTransientOnlyWhenAllFailuresAre(t *testing.T) {
 }
 
 // reReview runs once with bugbot down, then asks for a re-review of sha with
-// bugbot back; blocker makes its first finding a blocker.
-func reReview(t *testing.T, sha func(aiv1.RunStatus) string, blocker bool) (*limitEnv, *scriptedEngine, aiv1.RunStatus) {
+// bugbot back; blocker makes its first finding a blocker. before runs before
+// the second run.
+func reReview(t *testing.T, sha func(aiv1.RunStatus) string, blocker bool, before ...func(*limitEnv, *reviewerFailures)) (*limitEnv, *scriptedEngine, aiv1.RunStatus) {
 	t.Helper()
 	fastReviewRetries(t)
 	scripted := &scriptedEngine{}
@@ -79,6 +81,9 @@ func reReview(t *testing.T, sha func(aiv1.RunStatus) string, blocker bool) (*lim
 	task.Spec.Source.ReviewFor = sha(first)
 	if err := e.k8s.Patch(context.Background(), &task, client.MergeFrom(orig)); err != nil {
 		t.Fatal(err)
+	}
+	for _, f := range before {
+		f(e, engine)
 	}
 	if !e.step() {
 		t.Fatal("the second run should complete")
@@ -132,5 +137,23 @@ func TestReReviewOfAnOldHeadIsANormalRun(t *testing.T) {
 	}
 	if run := e.task().Status.Run; run.ReviewedFor != "0123456789abcdef" {
 		t.Fatalf("the request should count as handled: %+v", run)
+	}
+}
+
+func TestReReviewWithAnInstructionRunsTheImplementer(t *testing.T) {
+	_, scripted, _ := reReview(t, func(r aiv1.RunStatus) string { return r.PushedSHA }, false, func(e *limitEnv, _ *reviewerFailures) {
+		e.gl.AddMRNote(1, gitlab.User{ID: 7, Username: "jonathan"}, "/agent also handle refunds")
+	})
+	if n := implementerCalls(scripted); n == 0 {
+		t.Fatal("a human instruction since the last run needs the implementer")
+	}
+}
+
+func TestFailedRunDoesNotUseUpTheReReview(t *testing.T) {
+	e, _, _ := reReview(t, func(aiv1.RunStatus) string { return "0123456789abcdef" }, false, func(_ *limitEnv, f *reviewerFailures) {
+		f.messages["implement"] = "invalid model: nope"
+	})
+	if run := e.task().Status.Run; run.LastResult != aiv1.RunResultFailed || run.ReviewedFor != "" {
+		t.Fatalf("a failed run must not count as the re-review: %+v", run)
 	}
 }

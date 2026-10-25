@@ -486,14 +486,16 @@ moves it. Conflicts are resolved by the agent, with git doing the mechanics:
   a head the agent already tried is left to humans, so a conflict the agent
   cannot resolve does not loop. Autopilot uses the same request when GitLab
   cannot rebase an MR.
-* **Re-review.** `spec.source.reviewFor` (set by `/agent review` to the MR
-  head) asks the next run to only review: the implementer is skipped if the
-  remote branch is still at that head and the run has no CI fix, merge or
-  revisit to do. The review loop then runs as usual (blocking findings go to
+* **Re-review.** `spec.source.reviewFor` (set by `/agent review` when the
+  MR head is the agent's `pushedSHA`) asks the next run to only review: the
+  implementer is skipped if the remote branch is still at that head, no
+  human commented since the last run (other than `/agent review` and
+  routing commands) and the run has no CI fix, merge or revisit to do. The review loop then runs as usual (blocking findings go to
   the implementer, whose fix is pushed). The run records the head as
-  `status.run.reviewedFor`, also when it fell back to a normal run, so a
-  later run is never a re-review again for the same request; a repeated
-  `/agent review` on that head clears `reviewedFor` to ask again.
+  `status.run.reviewedFor` when it ends (also as a fallback normal run; a
+  failed run leaves it), so a later run is never a re-review again for the
+  same request; a repeated `/agent review` on that head clears
+  `reviewedFor` (before the run request) to ask again.
 * **Merge, not rebase.** The runner asks the agent container to merge
   `origin/<base>` into the work branch (`MergeBase`, one more agent RPC). A
   merge commit keeps the agent's commits and needs no force push, and it

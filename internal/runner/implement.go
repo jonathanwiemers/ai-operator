@@ -244,13 +244,15 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		runAgent = len(merge.Conflicts) > 0 || humanInput > 0 || ciFix || len(revisits) > 0 || len(ignored) > 0
 	}
 	// A re-review run: only the reviewers run again on the head they failed
-	// on (or "/agent review" asked for), unless the branch moved on since.
+	// on (or "/agent review" asked for), unless the branch moved on since or
+	// humans wrote something for the implementer.
 	reviewFor := task.Spec.Source.ReviewFor
+	reviewAsked := reviewFor != "" && reviewFor != task.Status.Run.ReviewedFor
 	reReview := false
-	if reviewFor != "" && reviewFor != task.Status.Run.ReviewedFor {
-		out.ReviewedFor = reviewFor
+	if reviewAsked {
 		head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
-		reReview = head == reviewFor && !ciFix && !mergeBase && len(revisits) == 0
+		forImplementer := humanNotes(command.WithoutRouting(newIssueNotes, prefix), botID) + humanNotes(command.WithoutRouting(newMRNotes, prefix), botID)
+		reReview = head == reviewFor && forImplementer == 0 && !ciFix && !mergeBase && len(revisits) == 0
 		runAgent = runAgent && !reReview
 	}
 
@@ -589,6 +591,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	out.Result = aiv1.RunResultSucceeded
 	if needsInput {
 		out.Result = aiv1.RunResultNeedsInput
+	}
+	if reviewAsked {
+		// Handled: a re-review, or a normal run since the head moved on.
+		out.ReviewedFor = reviewFor
 	}
 	out.Summary = answer.Summary
 	return out, nil

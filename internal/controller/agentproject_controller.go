@@ -507,9 +507,20 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		src.MergeBaseFor = mr.SHA
 	}
 
-	// "/agent review": the next run reviews the merge request head again.
-	if review && mr != nil && mr.SHA != "" {
+	// "/agent review": the next run reviews the agent's pushed head again.
+	// A head someone else pushed is taken over by a normal run instead.
+	if review && mr != nil && mr.SHA != "" && mr.SHA == task.Status.Run.PushedSHA {
 		src.ReviewFor = mr.SHA
+		if src.ReviewFor == task.Status.Run.ReviewedFor {
+			// Asked again for a head that was re-reviewed: review it again.
+			// Cleared before the run request, so no run sees one without it.
+			st := task.DeepCopy()
+			st.Status.Run.ReviewedFor = ""
+			if err := r.Status().Patch(ctx, st, client.MergeFrom(task)); err != nil {
+				return nil, nil, err
+			}
+			task.Status.Run.ReviewedFor, task.ResourceVersion = "", st.ResourceVersion
+		}
 	}
 
 	requested := ready || command || conflict
@@ -525,15 +536,6 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		}
 	case !equalSpec(before, &task.Spec):
 		if err := r.Update(ctx, task); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	if review && src.ReviewFor == task.Status.Run.ReviewedFor {
-		// Asked again for a head that was re-reviewed: review it again.
-		orig := task.DeepCopy()
-		task.Status.Run.ReviewedFor = ""
-		if err := r.Status().Patch(ctx, task, client.MergeFrom(orig)); err != nil {
 			return nil, nil, err
 		}
 	}
