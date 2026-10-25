@@ -15,7 +15,7 @@ of each kind.
 | `agent::draft` | spec agent | sub-issue planned, waiting for you |
 | `agent::ready` | you | hand the issue to the implementing agent |
 | `agent::working` | operator | an agent run is requested or running |
-| `agent::needs-input` | agent | the agent has questions, or the run failed |
+| `agent::needs-input` | agent | the agent has questions, or the run failed (not for an outside reason) |
 | `agent::review` | agent | merge request is ready for your review |
 | `agent::blocked` | operator | the issue cannot go on for an outside reason; nothing to answer |
 | `agent-blocked::<reason>` | operator | why it is blocked: `infra`, `main-red`, `quota` or `dependency` |
@@ -62,9 +62,15 @@ including fixing a red pipeline, happens without you.
 **`needs-input` or `blocked`?** `agent::needs-input` means a human has to
 answer or decide something. `agent::blocked` means the issue waits for
 something outside it, such as an engine outage or a red default branch.
-For example, autopilot blocks an issue with `agent-blocked::infra` when its
-reviewers failed in an outage twice on the same head (see
-[When it pauses](#when-it-pauses)).
+For example, a run that waits for a usage limit blocks its issue with
+`agent-blocked::quota` (see [Usage and rate limits](#usage-and-rate-limits)),
+a run that failed because its pod or agent container was lost blocks it
+with `agent-blocked::infra` (see
+[When the whole pod is lost](#when-the-whole-pod-is-lost)), and autopilot
+blocks an issue with `agent-blocked::infra` when its reviewers failed in an
+outage twice on the same head (see [When it pauses](#when-it-pauses)). A run
+that failed for any other reason (the agent's error, a failed git command,
+a bad configuration) still goes to `agent::needs-input`.
 The `agent-blocked::<reason>` label says what it waits for. The operator sets
 both labels and remembers the label they replaced. When the reason is gone,
 that label comes back. You can also lift a block yourself: move the card to
@@ -250,6 +256,7 @@ need a human, so GitLab sends them a mail and a To-Do:
 | When | Where |
 |------|-------|
 | a run failed | issue |
+| a run gave up for an outside reason and the issue stays blocked: after 20 usage limit deferrals, or when the automatic retry of an `infra` failure failed too | issue, also on autopilot |
 | the agent asks questions | issue (with the questions) |
 | the agent could not finish alone (e.g. unresolved conflicts) | MR report |
 | CI is still red after the fix rounds (not on autopilot) | issue |
@@ -365,6 +372,23 @@ kubectl get agentproject shop -o jsonpath='{.status.mainHealth}'
 failing jobs and the open `ci::main-red` issue. Configure it in
 `spec.mainHealth` (see [configuration.md](configuration.md#specmainhealth));
 `mainHealth.retryFailedJobs: false` reports a red pipeline right away.
+
+**Fixing it with the agent.** With `mainHealth.autoFix: true` (off by
+default) the main-red issue gets `agent::ready` when it is opened, or when
+`autoFix` is switched on while the branch is red, and runs like any issue,
+also when `milestones.titlePattern` would skip an issue without a milestone.
+Its description tells the agent to make the default branch green: fix the
+cause; a test that fails only sometimes is stabilised or quarantined, never
+deleted. The job logs follow a hidden marker; the agent and the reviewers
+get them as untrusted data between `<untrusted-data>` tags, never as part of
+the task, also in the issue's later comments. The CI loop of its MR does not
+call the main-red jobs "not caused by this change": the change has to fix
+them. One issue is handed over per red episode; a main-red issue opened
+before the operator marked its logs is not. Switch `autoFix` on only where
+that is wanted: whoever can make the default branch's CI fail starts an
+agent run. When the branch turns green
+without it (a flaky job, a fix by hand), the issue is closed as usual and
+the agent's MR is left open for you to merge or close.
 
 **Merge freeze.** While the default branch is `red`, autopilot merges
 nothing (`mainHealth.freezeAutopilot`, on by default). When its active issue
@@ -623,7 +647,9 @@ the reason and what to do, mentioning the milestone's
 [owners](#owners-and-pings):
 
 - the issue landed in `agent::needs-input` (CI still red after the fix
-  rounds, a failed run, used-up usage-limit deferrals);
+  rounds, a failed run). A run that failed for an outside reason blocks
+  its issue instead (`quota`, `infra`): autopilot waits without a pause, and
+  the issue's own comment mentions the owners once it needs a human;
 - blocking review findings or failed reviewers. Reviewers that all failed
   transiently (an outage, `status.run.reviewErrorsTransient`) do not pause
   at first: after `agents.review.retryAfter` (default 15m) autopilot asks
@@ -676,7 +702,9 @@ A pause over the active issue ends **by itself** when it no longer holds:
 
 When such a pause ends, by itself or with `/agent resume` (also after an
 `/agent pause` in between), the active issue's `agent-blocked::infra` block
-is lifted and the issue gets its label back. Autopilot asks for one
+is lifted and the issue gets its label back, unless its last run failed
+for an outside reason: that block waits for a new run (the automatic retry,
+`/agent …` or `agent::ready`). Autopilot asks for one
 re-review per head: a later transient failure on a head it re-reviewed
 already pauses at once. `/agent resume` with the reviewers still failing on the same head
 pauses again; comment `/agent review` on the issue to have it reviewed once
@@ -739,9 +767,13 @@ milestone is being planned again, no new issue is started.
 Subscriptions have usage windows, and APIs have rate limits. When an agent
 CLI reports such a limit, the run is **paused, not failed**:
 
-- The issue stays in `agent::working` and gets one comment: "⏳ The `claude`
-  engine reached a usage limit. The run is paused and retried automatically
-  at …".
+- The issue moves to `agent::blocked` + `agent-blocked::quota` and gets one
+  comment: "⏳ The `claude` engine reached a usage limit. The run is paused
+  and retried automatically at …; until then the issue is blocked". When
+  the run starts again, the issue gets its label back (normally
+  `agent::working`); a later limit blocks it again.
+  `/agent …` or a move to `agent::ready` lifts the block as usual, but the
+  run still waits for the reset.
 - The run is retried at the reset time the CLI reports. If it doesn't
   report one, the wait is 5 minutes, doubling with every further limit hit
   up to 1 hour (`spec.lifecycle.usageLimitBackoff` /
@@ -749,12 +781,14 @@ CLI reports such a limit, the run is **paused, not failed**:
 - Paused runs don't count towards `maxRunsPerTask` and don't take a run slot.
 - Limits belong to your credentials, so they apply to the whole project:
   other issues that need the same engine wait too instead of hitting the
-  limit again. Issues on another engine (e.g. `fast` on cursor while claude
+  limit again, and are blocked (`quota`) the same way. Issues on another engine (e.g. `fast` on cursor while claude
   is limited) keep working.
 - If the limit hits during a review fix round, the work done so far is pushed
   with the open findings instead of being held back.
 - After 20 deferrals of the same run it is reported as failed, in case an
-  error was mistaken for a limit.
+  error was mistaken for a limit. The issue stays blocked (`quota`), and the
+  comment says so and mentions the owners (event `blocked`); `/agent retry`
+  or a move to `agent::ready` starts it again.
 
 Nothing to do on your side; `kubectl get agenttasks -o wide` shows the retry
 time, and the project status lists the active limits:
@@ -962,13 +996,17 @@ its call to the agent, waits for the container to be back and reports it:
   room for the raised memory, the task's status says the pod cannot be
   scheduled (`kubectl get agenttasks -o wide`).
 - **Out of memory at the cap** (or after 3 restarts, or without a memory
-  limit to raise): the run fails with that reason. Raise
-  `spec.agents.resources` or `spec.agents.maxMemory`, then comment `/agent
-  retry`. A pod started with other agent resources is replaced between runs,
-  so the retry gets the new limit.
+  limit to raise): the run fails with that reason, and the issue is
+  blocked (`agent-blocked::infra`, see
+  [When the whole pod is lost](#when-the-whole-pod-is-lost) for the
+  automatic retry). Raise `spec.agents.resources` or
+  `spec.agents.maxMemory`, then comment `/agent retry`. A pod started with
+  other agent resources is replaced between runs, so the retry gets the new
+  limit.
 - **Another reason** (a crash): the checkout is reset to the last commit and
   the call is tried once more; if it loses the container again, the run
-  fails with the reason and exit code.
+  fails with the reason and exit code, and the issue is blocked
+  (`agent-blocked::infra`).
 - A call made while the container was down (it died between calls, e.g.
   from a background process) is made again once it is back.
 
@@ -996,10 +1034,23 @@ pod waits until the node is back.
 
 After 3 restarts of the same run request (`status.run.interruptions`) the
 runner gives up instead of trying again: something in the run may keep
-taking the pod down. The run fails; for an issue, it moves to
-`agent::needs-input` with a comment that mentions the owners (on autopilot,
-the pause on the tracking issue mentions them), and `/agent retry` starts it
-again with a new count. A spec run fails like any other failed spec run. A
+taking the pod down. The run fails, and an issue moves to `agent::blocked` +
+`agent-blocked::infra` (as for a lost agent container), not
+`agent::needs-input`: the cause is outside it.
+
+- After `spec.lifecycle.infraRetryAfter` (default 30m) the operator starts
+  one new run by itself; the issue shows `agent::working` again. The
+  failure comment says when.
+- If that run fails the same way, the issue stays blocked and waits for
+  you; that comment says so and mentions the owners (event `blocked`, also
+  on autopilot). There is one automatic retry per run request, so
+  `/agent retry` (or a move to `agent::ready`) starts a run that gets its
+  own retry.
+- `/agent …` or a move to `agent::ready` lifts the block at once and runs.
+  On autopilot, the gate waits while the issue is blocked, and
+  `/agent resume` does not lift such a block: only a new run does.
+
+`/agent retry` starts the run again with a new count. A spec run fails like any other failed spec run. A
 run that finishes resets the count. Suspending a task (`spec.suspend`)
 mid-run stops its pod too, but does not count: the run starts again when the
 task is resumed.

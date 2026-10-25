@@ -116,6 +116,12 @@ type SourceState struct {
 	// +optional
 	ReviewFor string `json:"reviewFor,omitempty"`
 
+	// InfraRetry is the run request the operator made to retry a run that
+	// failed for an outside reason (run.blockReason infra), once per run
+	// request: a retry that fails the same way waits for a human.
+	// +optional
+	InfraRetry int64 `json:"infraRetry,omitempty"`
+
 	// AutopilotPause is the reason autopilot is paused over this issue
 	// (Implement tasks), copied from the milestone's spec task, so a run
 	// during the pause knows it. Empty when it is not paused over it.
@@ -283,6 +289,12 @@ type AgentTaskStatus struct {
 	// +optional
 	Blocked *BlockedStatus `json:"blocked,omitempty"`
 
+	// RunBlockedAt is the run.lastActivityTime of the deferral or failure
+	// that last blocked the issue (run.blockReason). Each report blocks
+	// once, so a block lifted by hand stays lifted.
+	// +optional
+	RunBlockedAt *metav1.Time `json:"runBlockedAt,omitempty"`
+
 	// Plan is the spec agent's last plan, in plan order (spec tasks).
 	// +optional
 	Plan []PlannedIssue `json:"plan,omitempty"`
@@ -360,6 +372,14 @@ type RunStatus struct {
 	// LimitedEngine is the engine whose limit deferred the run.
 	// +optional
 	LimitedEngine Engine `json:"limitedEngine,omitempty"`
+
+	// BlockReason is why the issue waits for something outside it: quota
+	// while the run is deferred by a usage limit or after it gave up on
+	// one; infra after it failed because the agent pod or container was
+	// lost (also out of memory) or it was interrupted too often. The
+	// operator blocks the issue with it.
+	// +optional
+	BlockReason BlockReason `json:"blockReason,omitempty"`
 
 	// Deferrals counts consecutive deferrals of the current run request; it
 	// drives the exponential backoff when the reset time is unknown.

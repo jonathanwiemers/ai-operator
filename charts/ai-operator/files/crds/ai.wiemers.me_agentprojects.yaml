@@ -899,6 +899,12 @@ spec:
                       image pull if needed) at the cost of holding the pod's resources. After
                       a failed run the pod stays at least an hour, so its logs can be read.
                     type: string
+                  infraRetryAfter:
+                    default: 30m
+                    description: |-
+                      InfraRetryAfter is the wait before the operator starts a run that
+                      failed for an outside reason (the issue is blocked, infra) once more.
+                    type: string
                   maxRunsPerTask:
                     default: 20
                     description: MaxRunsPerTask is a safety net against runaway loops.
@@ -1009,6 +1015,7 @@ spec:
                       - autopilotPaused
                       - autopilotDone
                       - mainRed
+                      - blocked
                       type: string
                     type: array
                   requestReview:
@@ -1233,6 +1240,12 @@ spec:
               mainHealth:
                 description: MainHealth is the health of the default branch.
                 properties:
+                  autoFixIssueIID:
+                    description: |-
+                      AutoFixIssueIID is the issue handed to the agent in this red episode
+                      (mainHealth.autoFix).
+                    format: int64
+                    type: integer
                   checkedAt:
                     description: CheckedAt is when the pipelines were last checked.
                     format: date-time

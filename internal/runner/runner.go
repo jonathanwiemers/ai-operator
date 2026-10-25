@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -325,6 +326,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		"interruptions", interruptions)
 	if err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
 		s.Interruptions = interruptions
+		s.BlockReason = "" // this attempt reports its own
 		s.ActiveRunRequest = request
 		s.CurrentStep = ""
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
@@ -336,6 +338,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	r.logPrompts = spec.Agents.LogPrompts
 	gl := r.NewGitLab(spec.GitLab.URL, r.GitLabToken)
 	var out *Outcome
+	var block aiv1.BlockReason
 	switch {
 	case interruptions > aiv1.MaxInterruptions:
 		// Something in the run keeps taking its pod down: not again.
@@ -344,6 +347,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 			removeLiveProgress(ctx, gl, spec.GitLab.Project, mr, project.Status.BotUserID)
 		}
 		err = fmt.Errorf("giving up: the run was interrupted %d times without finishing (its pod stopped each time, e.g. evicted or the node went down); something in it may keep taking the pod down", interruptions)
+		block = aiv1.BlockInfra
 	case task.Spec.Type == aiv1.TaskTypeSpec:
 		out, err = r.runSpec(ctx, gl, task, project, spec)
 	case task.Spec.Type == aiv1.TaskTypeImplement:
@@ -386,13 +390,18 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 			return false, r.deferRun(ctx, gl, spec, task, out, lim)
 		}
 		err = fmt.Errorf("giving up after %d usage limit deferrals: %w", task.Status.Run.Deferrals, err)
+		block = aiv1.BlockQuota
+	}
+	var lost *AgentLostError
+	if errors.As(err, &lost) {
+		block = aiv1.BlockInfra // its pod or container was lost, not the work
 	}
 	if err != nil {
 		log.Error(err, "run failed")
 		out.Result = aiv1.RunResultFailed
 		out.Summary = err.Error()
 		if task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
-			r.reportFailure(ctx, gl, spec, task, out, err)
+			r.reportFailure(ctx, gl, spec, task, out, err, block)
 		}
 	}
 	log.Info("run finished", "result", out.Result, "costUSD", out.CostUSD,
@@ -409,6 +418,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.DeferredUntil = nil
 		s.LimitedEngine = ""
 		s.Deferrals = 0
+		s.BlockReason = block
 		s.OOMRetries = 0
 		s.Interruptions = 0
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
@@ -448,9 +458,9 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 }
 
 // deferRun postpones the current run request after a usage limit. The run is
-// not counted, not reported as failed, and the issue stays "working"; the
-// runner retries after DeferredUntil, and the operator publishes the limit
-// to the project so other tasks wait for it too.
+// not counted and not reported as failed; the operator blocks the issue
+// (quota) until the runner retries after DeferredUntil, and publishes the
+// limit to the project so other tasks wait for it too.
 func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome, lim *UsageLimitError) error {
 	now := r.now()
 	deferrals := task.Status.Run.Deferrals + 1
@@ -462,8 +472,8 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 		"message", lim.Message, "steps", r.run.lines())
 
 	if deferrals == 1 && task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
-		body := fmt.Sprintf("⏳ The `%s` engine reached a usage limit. The run is paused and retried automatically at %s UTC.",
-			lim.Engine, until.UTC().Format("2006-01-02 15:04"))
+		body := fmt.Sprintf("⏳ The `%s` engine reached a usage limit. The run is paused and retried automatically at %s UTC; "+
+			"until then the issue is blocked (`%squota`).", lim.Engine, until.UTC().Format("2006-01-02 15:04"), spec.Workflow.BlockedReasonPrefix)
 		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); err != nil {
 			r.log().Error(err, "posting usage limit note")
 		}
@@ -475,6 +485,7 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 		s.DeferredUntil = &metav1.Time{Time: until}
 		s.LimitedEngine = lim.Engine
 		s.Deferrals = deferrals
+		s.BlockReason = aiv1.BlockQuota
 		s.LastActivityTime = &metav1.Time{Time: now}
 		s.LastResult = aiv1.RunResultDeferred
 		s.Summary = truncate(lim.Error(), 2000)
@@ -592,17 +603,40 @@ func roleInvocation(role aiv1.RoleSpec, system string, tools []string, schema st
 	}
 }
 
-func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome, runErr error) {
+// reportFailure tells the issue why its run failed. A run that failed for an
+// outside reason (block) leaves the labels to the operator, which blocks the
+// issue; any other moves it to needs-input.
+func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome, runErr error, block aiv1.BlockReason) {
 	wf := spec.Workflow
-	body := fmt.Sprintf("🤖 The agent run failed:\n\n```\n%s\n```\n\nComment `%s retry` (or move the issue back to `%s`) to try again.",
-		truncate(runErr.Error(), 3000), wf.CommandPrefix, wf.ReadyLabel)
-	// On autopilot the pause on the tracking issue mentions the owners.
-	if spec.Notify.Wants(aiv1.NotifyFailed) && !task.Spec.Autopilot {
+	// The error quotes CLIs and git: no fence breakout, quick actions or
+	// mentions.
+	msg := notify.Defuse(strings.ReplaceAll(truncate(runErr.Error(), 3000), "`", "'"))
+	body := fmt.Sprintf("🤖 The agent run failed:\n\n```\n%s\n```\n\n", msg)
+	// The operator retries an infra failure once per run request.
+	retry := block == aiv1.BlockInfra && task.Spec.Source.InfraRetry != task.Spec.RunRequest
+	switch {
+	case retry:
+		body += fmt.Sprintf("The cause is outside the issue, so it is blocked (`%sinfra`) and the operator starts one new run at %s UTC (`lifecycle.infraRetryAfter`). To try earlier, ",
+			wf.BlockedReasonPrefix, r.now().Add(spec.Lifecycle.InfraRetryAfter.Duration).UTC().Format("2006-01-02 15:04"))
+	case block == aiv1.BlockInfra:
+		body += fmt.Sprintf("This was the automatic retry, so the issue stays blocked (`%sinfra`) and waits for you. Once the cause is fixed, ", wf.BlockedReasonPrefix)
+	case block != "":
+		body += fmt.Sprintf("The issue is blocked (`%s%s`) and waits for you. To try again, ", wf.BlockedReasonPrefix, block)
+	default:
+		body += "To try again, "
+	}
+	body += fmt.Sprintf("comment `%s retry` (or move the issue back to `%s`).", wf.CommandPrefix, wf.ReadyLabel)
+	// On autopilot the pause on the tracking issue mentions the owners; a
+	// blocked issue does not pause it, and pings once it waits for a human.
+	if block != "" && !retry && spec.Notify.Wants(aiv1.NotifyBlocked) || block == "" && spec.Notify.Wants(aiv1.NotifyFailed) && !task.Spec.Autopilot {
 		body += notify.Mention(task.Spec.Owners)
 	}
 	body += r.run.markdown(out.CostUSD)
 	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); err != nil {
 		r.log().Error(err, "posting failure note")
+	}
+	if block != "" {
+		return
 	}
 	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, task.Spec.Issue.IID, gitlab.UpdateIssueOptions{
 		AddLabels: []string{wf.NeedsInputLabel}, RemoveLabels: []string{wf.WorkingLabel},

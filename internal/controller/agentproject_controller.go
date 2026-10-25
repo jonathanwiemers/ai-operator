@@ -239,7 +239,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			return fmt.Errorf("listing issues with label %q: %w", label, err)
 		}
 		for _, is := range list {
-			if titleRE != nil && (is.Milestone == nil || !titleRE.MatchString(is.Milestone.Title)) {
+			// The main-red issue handed to the agent has no milestone.
+			autoFix := project.Status.MainHealth != nil && project.Status.MainHealth.AutoFixIssueIID == is.IID
+			if titleRE != nil && !autoFix && (is.Milestone == nil || !titleRE.MatchString(is.Milestone.Title)) {
 				continue
 			}
 			issues[is.IID] = is
@@ -277,6 +279,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 		keep[task.Name] = true
 		implTasks[is.IID] = task
+		if err := r.syncRunBlock(ctx, gl, spec, is, task); err != nil {
+			return err
+		}
 		if err := r.syncBlocked(ctx, gl, spec, is, task); err != nil {
 			return err
 		}

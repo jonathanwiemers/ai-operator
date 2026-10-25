@@ -169,7 +169,7 @@ func renderDescription(a DescribeAnswer) (string, error) {
 func buildDescribePrompt(issue *gitlab.Issue, summary, previous, base, stat, diff string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Describe the merge request of issue #%d: %s\n\n", issue.IID, issue.Title)
-	fmt.Fprintf(&b, "## Issue description\n\n%s\n\n", strings.TrimSpace(issue.Description))
+	fmt.Fprintf(&b, "## Issue description\n\n%s\n\n", untrustedData(issue.Description))
 	if s := strings.TrimSpace(summary); s != "" {
 		fmt.Fprintf(&b, "## Summary of the implementer's last run\n\n%s\n\n", s)
 	}

@@ -520,6 +520,12 @@ type LifecycleSpec struct {
 	// +kubebuilder:default="1h"
 	// +optional
 	MaxUsageLimitBackoff metav1.Duration `json:"maxUsageLimitBackoff,omitempty"`
+
+	// InfraRetryAfter is the wait before the operator starts a run that
+	// failed for an outside reason (the issue is blocked, infra) once more.
+	// +kubebuilder:default="30m"
+	// +optional
+	InfraRetryAfter metav1.Duration `json:"infraRetryAfter,omitempty"`
 }
 
 // CISpec configures the CI feedback loop: after the agent pushes, the
@@ -625,6 +631,10 @@ type MainHealthStatus struct {
 	// ReportedJobs are the failing jobs the issue reports last.
 	// +optional
 	ReportedJobs []string `json:"reportedJobs,omitempty"`
+	// AutoFixIssueIID is the issue handed to the agent in this red episode
+	// (mainHealth.autoFix).
+	// +optional
+	AutoFixIssueIID int64 `json:"autoFixIssueIID,omitempty"`
 	// RetriedPipelineID is the pipeline whose failed jobs were retried.
 	// +optional
 	RetriedPipelineID int64 `json:"retriedPipelineID,omitempty"`
@@ -634,7 +644,7 @@ type MainHealthStatus struct {
 }
 
 // NotifyEvent is a situation in which the operator needs a human.
-// +kubebuilder:validation:Enum=failed;needsInput;ciFailed;review;autopilotPaused;autopilotDone;mainRed
+// +kubebuilder:validation:Enum=failed;needsInput;ciFailed;review;autopilotPaused;autopilotDone;mainRed;blocked
 type NotifyEvent string
 
 const (
@@ -652,6 +662,9 @@ const (
 	NotifyAutopilotDone NotifyEvent = "autopilotDone"
 	// NotifyMainRed: the default branch stayed red after a retry.
 	NotifyMainRed NotifyEvent = "mainRed"
+	// NotifyBlocked: a run gave up for an outside reason; the issue is
+	// blocked and waits for a human.
+	NotifyBlocked NotifyEvent = "blocked"
 )
 
 // NotifySpec says whom the operator mentions ("cc @…") in the comments that

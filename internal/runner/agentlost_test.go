@@ -81,6 +81,11 @@ func TestOOMKilledAgentFailsTheRunWithTheReason(t *testing.T) {
 	if !strings.Contains(note, "ran out of memory") || !strings.Contains(note, "memory limit 4Gi") || !strings.Contains(note, "spec.agents.resources") {
 		t.Fatalf("the failure must name the OOM kill and the limit: %q", note)
 	}
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	if task.Status.Run.BlockReason != aiv1.BlockInfra {
+		t.Fatalf("out of memory with no retry left blocks the issue (infra): %+v", task.Status.Run)
+	}
 }
 
 func TestAgentCrashIsTriedOnceMore(t *testing.T) {
@@ -124,6 +129,11 @@ func TestAgentCrashTwiceFailsWithTheReason(t *testing.T) {
 	if note := failureNote(e); engine.calls != 2 || !strings.Contains(note, "stopped after") || !strings.Contains(note, "Error, exit code 137") {
 		t.Fatalf("one retry, then the reason: %d calls, %q", engine.calls, note)
 	}
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	if task.Status.Run.BlockReason != aiv1.BlockInfra || slices.Contains(e.gl.Labels(42), "agent::needs-input") {
+		t.Fatalf("a lost agent blocks the issue (infra), not needs-input: %+v, %v", task.Status.Run, e.gl.Labels(42))
+	}
 }
 
 func TestAgentLossIgnoresATerminationBeforeTheRun(t *testing.T) {
@@ -151,7 +161,7 @@ func TestOOMKilledRunStartsAgainWithMoreMemory(t *testing.T) {
 	var task aiv1.AgentTask
 	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
 	orig := task.DeepCopy()
-	task.Status.Run.LimitedEngine, task.Status.Run.Deferrals = aiv1.EngineClaude, 1
+	task.Status.Run.LimitedEngine, task.Status.Run.Deferrals, task.Status.Run.BlockReason = aiv1.EngineClaude, 1, aiv1.BlockQuota
 	_ = e.k8s.Status().Patch(ctx, &task, client.MergeFrom(orig))
 
 	engine := &lostEngine{k8s: e.k8s, task: e.task.Name, reason: "OOMKilled", fails: 5}
@@ -161,7 +171,8 @@ func TestOOMKilledRunStartsAgainWithMoreMemory(t *testing.T) {
 	}
 	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
 	run := task.Status.Run
-	if !task.RunPending() || run.OOMRetries != 1 || run.DeferredUntil == nil || run.LastResult != aiv1.RunResultDeferred || run.LimitedEngine != "" {
+	if !task.RunPending() || run.OOMRetries != 1 || run.DeferredUntil == nil || run.LastResult != aiv1.RunResultDeferred || run.LimitedEngine != "" ||
+		run.BlockReason != "" {
 		t.Fatalf("the run must stay pending and wait for a pod with more memory: %+v", run)
 	}
 	var note string

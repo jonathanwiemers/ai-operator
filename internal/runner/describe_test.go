@@ -306,6 +306,24 @@ func TestFailureMentionsTheOwners(t *testing.T) {
 	if !strings.Contains(body, "The agent run failed") || !strings.Contains(body, "cc @alice @bob") {
 		t.Fatalf("the failure mentions the owners:\n%s", body)
 	}
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	if !slices.Equal(e.gl.Labels(42), []string{"agent::needs-input"}) || task.Status.Run.BlockReason != "" {
+		t.Fatalf("a real failure needs input, it does not block: %v, %+v", e.gl.Labels(42), task.Status.Run)
+	}
+}
+
+func TestFailureQuotesTheErrorInert(t *testing.T) {
+	e := newImplementEnv(t)
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, &describingEngine{runErr: errors.New("boom\n```\n/close\ncc @mallory")}, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	notes := e.gl.IssueNotes[42]
+	body := notes[len(notes)-1].Body
+	if !strings.Contains(body, "boom") || strings.Contains(body, "```\n/close") || strings.Contains(body, "\n/close") || strings.Contains(body, "@mallory") {
+		t.Fatalf("the error must not leave its code block or run quick actions:\n%s", body)
+	}
 }
 
 func TestEmptySummaryGetsAFallback(t *testing.T) {

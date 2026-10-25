@@ -55,7 +55,7 @@ func (a *autopilot) failGate(ctx context.Context, it *aiv1.AutopilotItem, is git
 
 // unblockActive lifts the infra block of the active issue, and of the
 // main-red lane's, when a pause ends (also one a later "/agent pause" took
-// over).
+// over). A block its failed run asked for stays: only a new run lifts it.
 func (a *autopilot) unblockActive(ctx context.Context) error {
 	items := a.ap.Items
 	if a.ap.MainRedFix != nil {
@@ -63,7 +63,8 @@ func (a *autopilot) unblockActive(ctx context.Context) error {
 	}
 	for _, it := range items {
 		task := a.tasks[it.IID]
-		if it.State != aiv1.AutopilotItemActive || task == nil || task.Status.Blocked == nil || task.Status.Blocked.Reason != aiv1.BlockInfra {
+		if it.State != aiv1.AutopilotItemActive || task == nil || task.Status.Blocked == nil || task.Status.Blocked.Reason != aiv1.BlockInfra ||
+			task.Status.Run.BlockReason == aiv1.BlockInfra {
 			continue
 		}
 		if err := a.r.unblock(ctx, a.gl, a.spec, a.issues[it.IID], task); err != nil {
