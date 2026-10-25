@@ -235,12 +235,17 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	}
 	implTasks := map[int64]*aiv1.AgentTask{}
 	for _, is := range issues {
-		autopilot := false
+		autopilot, pause := false, ""
 		if is.Milestone != nil {
 			if st := autopilots[is.Milestone.IID]; st != nil {
 				// Only issues of the queue are merged by autopilot; others
 				// in the milestone follow the normal flow.
 				autopilot = st.Spec.Autopilot && onAutopilot(st, is.IID)
+				// The pause reason goes in the same update as a run request,
+				// so the run sees it; a pause from this poll is copied next poll.
+				if ap := st.Status.Autopilot; autopilot && ap != nil && ap.Phase == aiv1.AutopilotPaused && ap.PausedFor == is.IID {
+					pause = ap.PausedReason
+				}
 			}
 		}
 		description := ""
@@ -251,7 +256,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 				description = is.Milestone.Description
 			}
 		}
-		task, mr, err := r.syncImplementTask(ctx, gl, project, spec, is, byIssue[is.IID], autopilot, owners(description))
+		task, mr, err := r.syncImplementTask(ctx, gl, project, spec, is, byIssue[is.IID], autopilot, pause, owners(description))
 		if err != nil {
 			return err
 		}
@@ -420,7 +425,7 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 // syncImplementTask makes sure an issue handed to the agent has a task and
 // turns "moved to ready" and "/agent" comments into run requests. It returns
 // the task's merge request too, if it has one.
-func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, owners []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
+func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, pause string, owners []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -440,6 +445,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	}
 	task.Spec.Autopilot = autopilot
 	task.Spec.Owners = owners
+	task.Spec.Source.AutopilotPause = pause
 
 	ready := is.HasLabel(wf.ReadyLabel)
 	src := &task.Spec.Source

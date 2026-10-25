@@ -144,6 +144,12 @@ spec:
                   Source records which GitLab state the operator has already turned into
                   run requests, so that every change triggers exactly one run.
                 properties:
+                  autopilotPause:
+                    description: |-
+                      AutopilotPause is the reason autopilot is paused over this issue
+                      (Implement tasks), copied from the milestone's spec task, so a run
+                      during the pause knows it. Empty when it is not paused over it.
+                    type: string
                   ciFixPipelineID:
                     description: |-
                       CIFixPipelineID is the failed pipeline the operator asked the agent to
