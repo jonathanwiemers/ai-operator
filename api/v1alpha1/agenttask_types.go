@@ -110,6 +110,12 @@ type SourceState struct {
 	// +optional
 	MergeBaseFor string `json:"mergeBaseFor,omitempty"`
 
+	// ReviewFor is a merge request head to review again without the
+	// implementer (after its reviewers failed, or "/agent review"). It is
+	// asked once per head; if the branch moved on, the run is a normal one.
+	// +optional
+	ReviewFor string `json:"reviewFor,omitempty"`
+
 	// AutopilotPause is the reason autopilot is paused over this issue
 	// (Implement tasks), copied from the milestone's spec task, so a run
 	// during the pause knows it. Empty when it is not paused over it.
@@ -400,6 +406,16 @@ type RunStatus struct {
 	// ReviewErrors is the number of reviewers that failed in the last review.
 	// +optional
 	ReviewErrors int32 `json:"reviewErrors,omitempty"`
+
+	// ReviewErrorsTransient is set when all reviewers that failed in the
+	// last review failed transiently (an outage of their service).
+	// +optional
+	ReviewErrorsTransient bool `json:"reviewErrorsTransient,omitempty"`
+
+	// ReviewedFor is the head the last re-review was asked for
+	// (spec.source.reviewFor).
+	// +optional
+	ReviewedFor string `json:"reviewedFor,omitempty"`
 
 	// ReviewedSHA is the commit the last review saw. Runs without a review
 	// (CI fix runs) can push commits after it, so a clean review only covers
