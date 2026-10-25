@@ -34,7 +34,7 @@ func TestParseRouting(t *testing.T) {
 			t.Errorf("%q: got %+v %v, want %+v %v", tc.body, got, ok, tc.want, tc.ok)
 		}
 	}
-	notes := []gitlab.Note{{ID: 1, Body: "/agent use claude opus"}, {ID: 2, Body: "/agent effort high\nalso the docs"}, {ID: 3, Body: "hi"}}
+	notes := []gitlab.Note{{ID: 1, Body: "/agent use claude opus"}, {ID: 2, Body: "/agent effort high\nalso the docs"}, {ID: 3, Body: "hi"}, {ID: 4, Body: "/agent review"}}
 	if got := WithoutRouting(notes, "/agent"); len(got) != 2 || got[0].ID != 2 {
 		t.Errorf("only pure commands are dropped: %+v", got)
 	}
@@ -120,5 +120,19 @@ func TestApplyRejects(t *testing.T) {
 	ch := Apply(spec, nil, []Routing{use("claude", "gpt-9")})
 	if !strings.Contains(ch.Lines[0], "`claude opus`") || !strings.Contains(ch.Lines[0], "`cursor auto`") {
 		t.Fatalf("the answer lists the allowed models: %s", ch.Lines[0])
+	}
+}
+
+func TestIsReview(t *testing.T) {
+	for body, want := range map[string]bool{
+		"/agent review":            true,
+		"  /agent: Review \n":      true,
+		"/agent review the logger": false,
+		"/agent please review":     false,
+		"review":                   false,
+	} {
+		if got := IsReview(body, "/agent"); got != want {
+			t.Errorf("IsReview(%q) = %v, want %v", body, got, want)
+		}
 	}
 }

@@ -184,7 +184,7 @@ it to `false` for one commit per run.
 | `spec` | claude, `claude-opus-5-5` | spec (planning) agent |
 | `profiles` | `fast`, `strong` | implementing agents selected per issue |
 | `implement` | claude, `claude-opus-5-5` | implementing agent for issues without a profile label |
-| `review` | claude, `claude-sonnet-5-5`, reviewers `bugbot` + `security`, `maxIterations: 2`, `retries: 2` | review agents |
+| `review` | claude, `claude-sonnet-5-5`, reviewers `bugbot` + `security`, `maxIterations: 2`, `retries: 2`, `retryAfter: 15m` | review agents |
 | `describe` | claude, `claude-sonnet-5-5` | writes the MR description after each push that changed the diff; `disabled: true` keeps the placeholder |
 | `models` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` (aliases `opus`, `sonnet`, `haiku`) | engines and models an issue may switch its implementer to with `/agent use` or an `agent-model::` label; the models of the profiles and of `implement` are always allowed. Entries: `engine`, `model`, optional `alias` |
 | `logPrompts` | `false` | log every prompt (role, system prompt, prompt, each cut at 64 KiB) in the agent container, for the web UI's [live transcript](ui.md#live-transcript). Prompts hold issue text, comments, diffs and CI logs |
@@ -211,9 +211,11 @@ killed together with the run.
 | `instructions` | both | appended to the role prompt (house rules, test commands) |
 
 `review` additionally has `reviewers` (`bugbot`, `security`),
-`maxIterations` and `retries` (calls again a reviewer that failed
-transiently, e.g. an engine outage; `0` turns it off); `describe` has
-`disabled`.
+`maxIterations`, `retries` (calls again a reviewer that failed
+transiently, e.g. an engine outage; `0` turns it off) and `retryAfter`
+(how long [autopilot](usage.md#when-it-pauses) waits before it asks for
+one re-review of a head whose reviewers all failed transiently); `describe`
+has `disabled`.
 
 ### Per-issue model and effort
 
@@ -319,6 +321,7 @@ The watcher of the default branch, see [usage.md](usage.md#main-health).
 | `interval` | `5m` | how often the newest finished pipeline of the default branch is read (one `GET pipelines` per check; jobs and logs only for a new red pipeline) |
 | `retryFailedJobs` | `true` | retry the failed jobs of a red pipeline once; green after the retry counts as flaky |
 | `issue` | `true` | open the `ci::main-red` issue and one `ci::flaky` issue per flaky job |
+| `freezeAutopilot` | `true` | autopilot merges nothing while the default branch is `red`: the issue that passed the gate is blocked (`main-red`) and autopilot continues by itself once the branch is green. A status not checked for 3 intervals does not freeze (see [merge freeze](usage.md#main-health)) |
 
 The token needs the same rights as for `spec.ci` (read pipelines and job logs,
 retry jobs) and must be able to create issues.

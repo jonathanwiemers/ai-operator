@@ -70,10 +70,18 @@ func IsRoutingOnly(body, prefix string) bool {
 	return ok && r.Only
 }
 
-// WithoutRouting drops the comments that are nothing but a routing command:
-// the operator handles them, the agent has nothing to do with them.
+// IsReview reports whether a comment is nothing but "/agent review": review
+// the pushed head again, without the implementer.
+func IsReview(body, prefix string) bool {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(body), prefix)
+	return ok && prefix != "" && strings.EqualFold(strings.TrimSpace(strings.TrimPrefix(rest, ":")), "review")
+}
+
+// WithoutRouting drops the comments that are nothing but a routing command
+// or "/agent review": the operator handles them, the agent has nothing to do
+// with them.
 func WithoutRouting(notes []gitlab.Note, prefix string) []gitlab.Note {
-	return slices.DeleteFunc(slices.Clone(notes), func(n gitlab.Note) bool { return IsRoutingOnly(n.Body, prefix) })
+	return slices.DeleteFunc(slices.Clone(notes), func(n gitlab.Note) bool { return IsRoutingOnly(n.Body, prefix) || IsReview(n.Body, prefix) })
 }
 
 // Change is what routing commands do to an issue's labels.

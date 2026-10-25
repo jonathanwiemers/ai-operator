@@ -464,6 +464,12 @@ type ReviewSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	Retries *int32 `json:"retries,omitempty"`
+
+	// RetryAfter is how long autopilot waits before it asks for one
+	// re-review of a head whose reviewers all failed transiently.
+	// +kubebuilder:default="15m"
+	// +optional
+	RetryAfter metav1.Duration `json:"retryAfter,omitempty"`
 }
 
 // ReviewerKind names a built-in reviewer.
@@ -570,6 +576,13 @@ type MainHealthSpec struct {
 	// +kubebuilder:default=true
 	// +optional
 	Issue *bool `json:"issue,omitempty"`
+
+	// FreezeAutopilot holds autopilot's merges while the default branch is
+	// red: the issue that would be merged next is blocked (main-red), and
+	// autopilot continues by itself once the branch is green.
+	// +kubebuilder:default=true
+	// +optional
+	FreezeAutopilot *bool `json:"freezeAutopilot,omitempty"`
 }
 
 // MainHealthState is the health of the default branch.

@@ -32,6 +32,7 @@ const (
 	DefaultMainHealthInterval   = 5 * time.Minute
 	DefaultReviewIters          = 2
 	DefaultReviewRetries        = 2
+	DefaultReviewRetryAfter     = 15 * time.Minute
 	DefaultMaxEffort            = "high"
 )
 
@@ -119,6 +120,9 @@ func (r ReviewSpec) WithDefaults() ReviewSpec {
 	if r.Retries == nil {
 		n := int32(DefaultReviewRetries)
 		r.Retries = &n
+	}
+	if r.RetryAfter.Duration == 0 {
+		r.RetryAfter = metav1.Duration{Duration: DefaultReviewRetryAfter}
 	}
 	return r
 }
@@ -312,6 +316,9 @@ func (m MainHealthSpec) WithDefaults() MainHealthSpec {
 	}
 	if m.Issue == nil {
 		m.Issue = &t
+	}
+	if m.FreezeAutopilot == nil {
+		m.FreezeAutopilot = &t
 	}
 	return m
 }

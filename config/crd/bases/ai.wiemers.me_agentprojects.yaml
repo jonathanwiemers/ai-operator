@@ -620,6 +620,12 @@ spec:
                         format: int32
                         minimum: 0
                         type: integer
+                      retryAfter:
+                        default: 15m
+                        description: |-
+                          RetryAfter is how long autopilot waits before it asks for one
+                          re-review of a head whose reviewers all failed transiently.
+                        type: string
                       reviewers:
                         default:
                         - bugbot
@@ -921,6 +927,13 @@ spec:
                 properties:
                   disabled:
                     description: Disabled turns the watcher off.
+                    type: boolean
+                  freezeAutopilot:
+                    default: true
+                    description: |-
+                      FreezeAutopilot holds autopilot's merges while the default branch is
+                      red: the issue that would be merged next is blocked (main-red), and
+                      autopilot continues by itself once the branch is green.
                     type: boolean
                   interval:
                     default: 5m

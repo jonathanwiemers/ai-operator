@@ -82,6 +82,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.autoResume(ctx); err != nil {
 		return err
 	}
+	if err := a.freezeOnMainRed(ctx); err != nil {
+		return err
+	}
 	switch {
 	case a.ap.Phase != aiv1.AutopilotRunning && a.ap.Phase != aiv1.AutopilotDone:
 	case len(cycle) > 0:
@@ -492,11 +495,10 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 			return fmt.Errorf("moving issue #%d back to %q: %w", it.IID, wf.WorkingLabel, err)
 		}
 		return nil
+	case gateReReview:
+		return a.reReview(ctx, it, task)
 	case gateFailed:
-		if g.byRun {
-			return a.pauseRun(ctx, it, g.reason)
-		}
-		return a.pauseActive(ctx, it, g.reason)
+		return a.failGate(ctx, it, is, task, g)
 	}
 	run := task.Status.Run
 
@@ -699,6 +701,9 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		it.MergeRequestIID, it.MergeRequestURL = task.Status.Run.MergeRequestIID, task.Status.Run.MergeRequestURL
 	}
 	resume := func(why string) error {
+		if err := a.unblockActive(ctx); err != nil {
+			return err
+		}
 		a.log.Info("autopilot continues by itself", "issue", it.IID, "why", why)
 		if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
 			return err
@@ -740,15 +745,14 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 	switch g := a.gateCheck(it, is, task); {
 	case g.state == gatePassed:
 		return resume(fmt.Sprintf("#%d is reviewed and green again", it.IID))
+	case g.state == gateReReview:
+		return a.reReview(ctx, it, task)
 	case g.state == gateFailed && g.reason != a.ap.PausedReason:
 		// A later run fixed the old reason, but something else holds the
 		// issue now: say so (and mention the owners), instead of keeping
 		// the stale reason.
 		a.log.Info("autopilot stays paused for another reason", "issue", it.IID, "was", a.ap.PausedReason, "now", g.reason)
-		if g.byRun {
-			return a.pauseRun(ctx, it, g.reason)
-		}
-		return a.pauseActive(ctx, it, g.reason)
+		return a.failGate(ctx, it, is, task, g)
 	}
 	return nil
 }
@@ -765,6 +769,9 @@ const (
 	gateCIUnfinished
 	// gateFailed: it cannot be merged; reason says why.
 	gateFailed
+	// gateReReview: its reviewers failed transiently; reviewed again
+	// after review.retryAfter.
+	gateReReview
 	// gatePassed: reviewed and green.
 	gatePassed
 )
@@ -775,6 +782,8 @@ type gateResult struct {
 	// byRun: a later run can fix it (pauseRun), else a human must
 	// (pauseActive).
 	byRun bool
+	// block: the pause also blocks the issue, for no human's fault.
+	block aiv1.BlockReason
 }
 
 // gateCheck checks the active issue's run, review and CI against the merge
@@ -790,8 +799,8 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 		return failed(true, "#%d needs input (see its last comments): CI is still red, the run failed or the agent asked a question", it.IID)
 	case !hasAny(is, wf.ActiveLabels()...):
 		return failed(false, "#%d is open but has no workflow label any more; move it back to `%s` or close it", it.IID, wf.ReviewLabel)
-	case !is.HasLabel(wf.ReviewLabel) || task == nil || task.RunPending():
-		return gateResult{state: gateWaiting}
+	case !is.HasLabel(wf.ReviewLabel) || task == nil || task.RunPending() || task.Status.Blocked != nil:
+		return gateResult{state: gateWaiting} // blocked: waits for an outside reason
 	}
 	run := task.Status.Run
 	switch {
@@ -800,7 +809,7 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 	case run.BlockingFindings > 0:
 		return failed(true, "%d blocking review findings remain on !%d", run.BlockingFindings, it.MergeRequestIID)
 	case run.ReviewErrors > 0:
-		return failed(true, "%d reviewers failed on #%d, so the change is not fully reviewed", run.ReviewErrors, it.IID)
+		return a.reviewErrors(it, task)
 	case it.MergeRequestIID == 0 || run.PushedSHA == "":
 		return failed(false, "#%d is in review without a pushed merge request", it.IID)
 	case len(a.spec.Agents.Review.Reviewers) == 0:
@@ -1084,6 +1093,10 @@ func (a *autopilot) commands(ctx context.Context) error {
 			}
 		case "resume":
 			if a.ap.Phase == aiv1.AutopilotPaused {
+				if err := a.unblockActive(ctx); err != nil {
+					a.ap.LastCommandNoteID = prev // tried again on the next poll
+					return err
+				}
 				a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotRunning, ""
 				a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 			}

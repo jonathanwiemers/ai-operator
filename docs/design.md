@@ -476,6 +476,19 @@ when every GitLab call of a check succeeded, so a failed one is repeated on
 the next check. The issues are found again by a marker at the start of the
 description, in issues the bot wrote.
 
+With `freezeAutopilot`, autopilot reads `status.mainHealth` on every poll
+(`internal/controller/freeze.go`, after `autoResume`, before the queue
+step). `red`, or `retrying` after red (the main-red issue is open, or the
+active issue is blocked already), freezes: once the active issue passes the
+gate's run, review and CI checks it is blocked (`main-red`) and autopilot
+pauses with `resumeWhenReady`. Not red (green, flaky, disabled, or not
+checked for 3 intervals) lifts the block and ends that pause. The blocked
+issue's CI is not followed and its gate waits (also with a review label
+put back by hand); the gate runs again on the next poll, after
+`syncReviewCI` saw its head pipeline. `checkedAt` also advances on a failed
+check, so a GitLab outage keeps a red status fresh: stale means the watcher
+stopped, not that GitLab failed.
+
 ## Merge conflicts
 
 A long-lived MR falls behind the default branch; with autopilot every merge
@@ -488,6 +501,16 @@ moves it. Conflicts are resolved by the agent, with git doing the mechanics:
   a head the agent already tried is left to humans, so a conflict the agent
   cannot resolve does not loop. Autopilot uses the same request when GitLab
   cannot rebase an MR.
+* **Re-review.** `spec.source.reviewFor` (set by `/agent review` when the
+  MR head is the agent's `pushedSHA`) asks the next run to only review: the
+  implementer is skipped if the remote branch is still at that head, no
+  human commented since the last run (other than `/agent review` and
+  routing commands) and the run has no CI fix, merge or revisit to do. The review loop then runs as usual (blocking findings go to
+  the implementer, whose fix is pushed). The run records the head as
+  `status.run.reviewedFor` when it ends (also as a fallback normal run; a
+  failed run, or one with another run requested meanwhile, leaves it), so a later run is never a re-review again for the
+  same request; a repeated `/agent review` on that head clears
+  `reviewedFor` (before the run request) to ask again.
 * **Merge, not rebase.** The runner asks the agent container to merge
   `origin/<base>` into the work branch (`MergeBase`, one more agent RPC). A
   merge commit keeps the agent's commits and needs no force push, and it
@@ -565,7 +588,12 @@ stateDiagram-v2
   "someone pushed" pause. While the spec
   task has a pending run, no new issue is started.
 * **Merge gate.** Issue in review (the CI loop finished), last run
-  succeeded, `blockingFindings == 0`, `reviewErrors == 0`,
+  succeeded, `blockingFindings == 0`, `reviewErrors == 0` (if all failed
+  reviewers failed transiently and `spec.source.reviewFor` is not the pushed
+  head yet, the gate waits `review.retryAfter` after that run, sets
+  `reviewFor` and requests a run; a second transient failure on that head
+  pauses and blocks the issue with reason `infra`, which the end of the
+  pause lifts),
   `reviewedSHA == pushedSHA`, MR open with head `pushedSHA`, GitLab's
   `detailed_merge_status` mergeable. Clean runs mark the MR ready
   themselves; a draft the gate still meets is marked ready by its title
