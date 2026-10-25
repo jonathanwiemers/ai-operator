@@ -409,8 +409,10 @@ push is not "done" until its pipeline is green:
   pipeline if the MR's head is that commit (it also covers merged-results
   pipelines), else the newest pipeline of the commit.
 * Red pipelines are retried once (flaky jobs cost nothing). If the same jobs
-  fail in the latest finished pipeline of the default branch, the agent is
-  not involved. Otherwise the operator requests a CI fix run
+  fail on the default branch, the agent is not involved: `status.mainHealth`
+  answers when it was checked within one interval (`red` or `retrying`, its
+  `failedJobs`; the note links its `issueIID`), else the latest finished
+  pipeline of the default branch is listed. Otherwise the operator requests a CI fix run
   (`spec.source.ciFixPipelineID`).
 * A CI fix run resumes the implementer's session with the failed jobs and a
   cleaned excerpt of their logs (ANSI codes, section markers and progress

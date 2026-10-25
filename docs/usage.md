@@ -279,7 +279,7 @@ After every push, the operator follows the pipeline of the pushed commit:
 | running | the issue stays in `agent::working` |
 | green (also: waiting for manual jobs) | `agent::review` |
 | red, first time | the failed jobs are retried once, to rule out flaky jobs |
-| still red, the same jobs also fail on the default branch | `agent::review` with a comment: not caused by this change |
+| still red, the same jobs also fail on the default branch | `agent::review` with a comment: not caused by this change; it links the `ci::main-red` issue if there is one |
 | still red | the agent gets the failing jobs and the end of their logs and fixes the cause (a "CI fix" comment on the MR) |
 | still red after 2 fix rounds | `agent::needs-input` with the failing jobs |
 | canceled | `agent::review` with a comment |
@@ -289,6 +289,12 @@ The fix rounds count from the last push you triggered (`/agent …` or moving
 the issue to ready), so every new instruction gets two fresh rounds. CI fix
 runs skip the reviewer agents (except on [autopilot](#autopilot-a-milestone-end-to-end)).
 Job logs reach the agent as untrusted data.
+
+Whether a job also fails on the default branch comes from
+[main health](#main-health) when it checked the branch within one
+`mainHealth.interval` (`red`, or `retrying` its failed jobs); otherwise, or
+with `mainHealth.disabled`, the operator reads the newest finished pipeline
+of the default branch itself.
 
 If you push to the agent's branch yourself and then comment `/agent …`, a run
 that has nothing to add takes your commits over: your head counts as the

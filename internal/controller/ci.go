@@ -31,7 +31,7 @@ import (
 // pipelines for drafts, one started after the MR was marked ready; and people
 // run and retry them. So for an issue in review the MR's head pipeline is
 // watched too, see syncReviewCI.
-func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, mr *gitlab.MergeRequest) error {
+func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, is gitlab.Issue, task *aiv1.AgentTask, mr *gitlab.MergeRequest) error {
 	run := task.Status.Run
 	if spec.CI.Disabled || run.PushedSHA == "" || task.RunPending() {
 		return nil
@@ -125,12 +125,16 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 		return r.patchCI(ctx, task, ci)
 	}
 
-	if failing, err := r.baseFailing(ctx, gl, glProject, ci.FailedJobs); err != nil {
+	if failing, mainRed, err := r.baseFailing(ctx, gl, spec, mh, ci.FailedJobs); err != nil {
 		return err
 	} else if failing {
+		see := ""
+		if mainRed != 0 {
+			see = fmt.Sprintf(" (#%d)", mainRed)
+		}
 		return r.finishCI(ctx, gl, spec, is, task, ci, aiv1.CIStateBaseFailing,
-			fmt.Sprintf("🤖 CI is red (%s), but the failing jobs %s also fail on the default branch, so this change is not the cause. Moving the issue to review.",
-				p.WebURL, jobList(ci.FailedJobs)))
+			fmt.Sprintf("🤖 CI is red (%s), but the failing jobs %s also fail on the default branch%s, so this change is not the cause. Moving the issue to review.",
+				p.WebURL, jobList(ci.FailedJobs), see))
 	}
 
 	if run.CIRound >= *spec.CI.MaxFixRounds {
@@ -212,23 +216,30 @@ func (r *AgentProjectReconciler) backToWorking(ctx context.Context, gl gitlab.AP
 	return nil
 }
 
-// baseFailing reports whether every failing job also fails in the latest
-// finished pipeline of the default branch.
-func (r *AgentProjectReconciler) baseFailing(ctx context.Context, gl gitlab.API, glProject string, jobs []string) (bool, error) {
+// baseFailing reports whether every failing job also fails on the default
+// branch, and the issue that reports it red. Main health checked within one
+// interval answers; without it, the latest finished pipeline is listed.
+func (r *AgentProjectReconciler) baseFailing(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, jobs []string) (bool, int64, error) {
 	if len(jobs) == 0 {
-		return false, nil
+		return false, 0, nil
 	}
+	if mh = r.freshMainHealth(spec, mh, 1); mh != nil {
+		red := mh.State == aiv1.MainHealthRed || mh.State == aiv1.MainHealthRetrying
+		// Main health keeps the job names as jobName cleans them.
+		return red && !slices.ContainsFunc(jobs, func(j string) bool { return !slices.Contains(mh.FailedJobs, jobName(j)) }), mh.IssueIID, nil
+	}
+	glProject := spec.GitLab.Project
 	proj, err := gl.GetProject(ctx, glProject)
 	if err != nil {
-		return false, fmt.Errorf("getting project: %w", err)
+		return false, 0, fmt.Errorf("getting project: %w", err)
 	}
 	ps, err := gl.ListPipelines(ctx, glProject, gitlab.ListPipelinesOptions{Ref: proj.DefaultBranch, Scope: "finished", Limit: 1})
 	if err != nil || len(ps) == 0 || ps[0].Status != "failed" {
-		return false, err
+		return false, 0, err
 	}
 	baseJobs, err := gl.ListPipelineJobs(ctx, glProject, ps[0].ID, "failed")
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 	onBase := map[string]bool{}
 	for _, j := range baseJobs {
@@ -236,10 +247,10 @@ func (r *AgentProjectReconciler) baseFailing(ctx context.Context, gl gitlab.API,
 	}
 	for _, j := range jobs {
 		if !onBase[j] {
-			return false, nil
+			return false, 0, nil
 		}
 	}
-	return true, nil
+	return true, 0, nil
 }
 
 // finishCI ends the loop for the pushed commit: success, no CI, canceled and
