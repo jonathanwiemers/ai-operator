@@ -6,6 +6,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -60,7 +61,8 @@ func (r *AgentProjectReconciler) unblock(ctx context.Context, gl gitlab.API, spe
 // a run deferred by a usage limit, or one that gave up for an outside reason.
 // Each report blocks once. A new run (running, or pending and not deferred)
 // lifts any block, also when the label move of its request failed; a quota
-// block is also lifted when the run ended otherwise.
+// block is also lifted when the run ended otherwise. An infra block gets one
+// itself after lifecycle.infraRetryAfter, once per run request.
 func (r *AgentProjectReconciler) syncRunBlock(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask) error {
 	run := task.Status.Run
 	reason := run.BlockReason
@@ -76,8 +78,19 @@ func (r *AgentProjectReconciler) syncRunBlock(ctx context.Context, gl gitlab.API
 		return r.unblock(ctx, gl, spec, is, task)
 	case b != nil && b.Reason == aiv1.BlockQuota && reason != aiv1.BlockQuota:
 		return r.unblock(ctx, gl, spec, is, task)
-	case reason == "" || run.LastActivityTime == nil || run.LastActivityTime.Equal(task.Status.RunBlockedAt):
+	case reason == "" || run.LastActivityTime == nil:
 		return nil
+	case run.LastActivityTime.Equal(task.Status.RunBlockedAt):
+		if b == nil || b.Reason != aiv1.BlockInfra || reason != aiv1.BlockInfra || task.RunPending() ||
+			task.Spec.Source.InfraRetry == run.ObservedRunRequest || r.now().Before(run.LastActivityTime.Add(spec.Lifecycle.InfraRetryAfter.Duration)) {
+			return nil
+		}
+		log.FromContext(ctx).Info("retrying a run that failed for an outside reason", "issue", is.IID)
+		task.Spec.Source.InfraRetry = task.Spec.RunRequest + 1
+		if err := r.requestRun(ctx, gl, spec, task, is.IID); err != nil {
+			return err
+		}
+		return r.unblock(ctx, gl, spec, is, task)
 	}
 	if err := r.block(ctx, spec.Workflow, is, task, reason, run.Summary); err != nil {
 		return err

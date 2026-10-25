@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
 // newRunBlockEnv returns a project env whose issues got a run each: they are
@@ -188,5 +189,145 @@ func TestANewRunLiftsABlockWhoseLabelMoveFailed(t *testing.T) {
 	e.reconcile()
 	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent::working"}) || e.tasks()[e.taskOf(42)].Status.Blocked != nil {
 		t.Fatalf("a pending run lifts the block and shows working: labels = %v", got)
+	}
+}
+
+// failedInfra plays a run of #42 that failed because its pod was lost.
+func failedInfra(e *projectEnv) {
+	e.t.Helper()
+	e.started(42)
+	e.ended(42, e.r.Now(), aiv1.RunResultFailed, aiv1.BlockInfra)
+	e.reconcile()
+	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent-blocked::infra", "agent::blocked"}) {
+		e.t.Fatalf("an infra failure blocks the issue: labels = %v", got)
+	}
+}
+
+func (e *projectEnv) advance(d time.Duration) {
+	now := e.r.Now().Add(d)
+	e.r.Now = func() time.Time { return now }
+}
+
+func TestInfraFailureIsRetriedOnce(t *testing.T) {
+	e := newRunBlockEnv(t, 42)
+	failedInfra(e)
+	request := e.tasks()[e.taskOf(42)].Spec.RunRequest
+
+	e.advance(29 * time.Minute)
+	e.reconcile()
+	if task := e.tasks()[e.taskOf(42)]; task.Spec.RunRequest != request || task.Status.Blocked == nil {
+		t.Fatalf("the retry waits for lifecycle.infraRetryAfter (30m): %+v", task.Spec)
+	}
+
+	e.advance(2 * time.Minute)
+	e.reconcile()
+	task := e.tasks()[e.taskOf(42)]
+	if task.Spec.RunRequest != request+1 || task.Spec.Source.InfraRetry != request+1 || task.Status.Blocked != nil {
+		t.Fatalf("one new run after infraRetryAfter, block lifted: %+v %+v", task.Spec, task.Status.Blocked)
+	}
+	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent::working"}) {
+		t.Fatalf("the retry shows working: labels = %v", got)
+	}
+	e.reconcile()
+	if task := e.tasks()[e.taskOf(42)]; task.Spec.RunRequest != request+1 || task.Status.Blocked != nil {
+		t.Fatalf("one retry, and the pending run stays unblocked: %+v %+v", task.Spec, task.Status.Blocked)
+	}
+
+	// The retry fails the same way: blocked, and it waits for a human.
+	failedInfra(e)
+	e.advance(time.Hour)
+	e.reconcile()
+	e.reconcile()
+	if task := e.tasks()[e.taskOf(42)]; task.Spec.RunRequest != request+1 || task.Status.Blocked == nil {
+		t.Fatalf("no second retry: %+v %+v", task.Spec, task.Status.Blocked)
+	}
+
+	// A human's run request gets its own retry.
+	e.gl.AddNote(42, gitlab.User{ID: 1, Username: "jonathan"}, "/agent retry")
+	e.reconcile()
+	failedInfra(e)
+	request = e.tasks()[e.taskOf(42)].Spec.RunRequest
+	e.advance(31 * time.Minute)
+	e.reconcile()
+	if task := e.tasks()[e.taskOf(42)]; task.Spec.RunRequest != request+1 {
+		t.Fatalf("a new run request is retried once again: %+v", task.Spec)
+	}
+}
+
+func TestRealFailureDoesNotBlock(t *testing.T) {
+	e := newRunBlockEnv(t, 42)
+	e.started(42)
+	e.ended(42, e.r.Now(), aiv1.RunResultFailed, "")
+	e.gl.SetLabels(42, "agent::needs-input") // the runner's move
+	e.reconcile()
+	e.advance(time.Hour)
+	e.reconcile()
+
+	task := e.tasks()[e.taskOf(42)]
+	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent::needs-input"}) || task.Status.Blocked != nil || task.RunPending() {
+		t.Fatalf("a real failure needs input, no block and no retry: labels = %v, %+v", got, task.Status.Blocked)
+	}
+}
+
+func TestHumanCommandLiftsAnInfraBlock(t *testing.T) {
+	e := newRunBlockEnv(t, 42)
+	failedInfra(e)
+	request := e.tasks()[e.taskOf(42)].Spec.RunRequest
+
+	e.gl.AddNote(42, gitlab.User{ID: 1, Username: "jonathan"}, "/agent the runner is fixed, try again")
+	e.reconcile()
+	e.reconcile()
+	task := e.tasks()[e.taskOf(42)]
+	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent::working"}) || task.Status.Blocked != nil || task.Spec.RunRequest != request+1 {
+		t.Fatalf("/agent lifts the block and runs: labels = %v, %+v, request %d", got, task.Status.Blocked, task.Spec.RunRequest)
+	}
+}
+
+func TestAutopilotResumeKeepsARunsInfraBlock(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.taskOf(1)
+	task := e.tasks()[name]
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ActiveRunRequest, s.Run.ObservedRunRequest = task.Spec.RunRequest, task.Spec.RunRequest
+		s.Run.LastResult, s.Run.BlockReason, s.Run.LastActivityTime = aiv1.RunResultFailed, aiv1.BlockInfra, &metav1.Time{Time: e.gl.Clock}
+	})
+	e.reconcile()
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddNote(e.autopilot().TrackingIssueIID, human, "/agent pause")
+	e.reconcile()
+	e.gl.AddNote(e.autopilot().TrackingIssueIID, human, "/agent resume")
+	e.reconcile()
+
+	if got := e.gl.Labels(1); !slices.Contains(got, "agent-blocked::infra") || e.tasks()[name].Status.Blocked == nil {
+		t.Fatalf("only a new run lifts a block its failed run asked for: labels = %v", got)
+	}
+	e.gl.Clock = e.gl.Clock.Add(31 * time.Minute)
+	e.reconcile()
+	if task := e.tasks()[name]; !task.RunPending() || task.Status.Blocked != nil {
+		t.Fatalf("the automatic retry still comes: %+v %+v", task.Spec, task.Status.Blocked)
+	}
+}
+
+func TestAnInfraRetryWhoseLabelMoveFailedStillLifts(t *testing.T) {
+	e := newRunBlockEnv(t, 42)
+	failedInfra(e)
+
+	// The retry was requested, but moving the labels failed.
+	var task aiv1.AgentTask
+	if err := e.c.Get(e.ctx, client.ObjectKey{Namespace: ns, Name: e.taskOf(42)}, &task); err != nil {
+		t.Fatal(err)
+	}
+	task.Spec.RunRequest++
+	task.Spec.Source.InfraRetry = task.Spec.RunRequest
+	if err := e.c.Update(e.ctx, &task); err != nil {
+		t.Fatal(err)
+	}
+	e.advance(time.Hour)
+	e.reconcile()
+	got := e.tasks()[e.taskOf(42)]
+	if labels := e.labelsOf(42); !slices.Equal(labels, []string{"agent::working"}) || got.Status.Blocked != nil || got.Spec.RunRequest != task.Spec.RunRequest {
+		t.Fatalf("the pending retry lifts the block, and no second one: labels = %v, %+v", labels, got.Spec)
 	}
 }

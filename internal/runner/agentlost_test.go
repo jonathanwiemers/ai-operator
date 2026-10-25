@@ -81,6 +81,11 @@ func TestOOMKilledAgentFailsTheRunWithTheReason(t *testing.T) {
 	if !strings.Contains(note, "ran out of memory") || !strings.Contains(note, "memory limit 4Gi") || !strings.Contains(note, "spec.agents.resources") {
 		t.Fatalf("the failure must name the OOM kill and the limit: %q", note)
 	}
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	if task.Status.Run.BlockReason != aiv1.BlockInfra {
+		t.Fatalf("out of memory with no retry left blocks the issue (infra): %+v", task.Status.Run)
+	}
 }
 
 func TestAgentCrashIsTriedOnceMore(t *testing.T) {
@@ -123,6 +128,11 @@ func TestAgentCrashTwiceFailsWithTheReason(t *testing.T) {
 	_, _ = r.Step(context.Background())
 	if note := failureNote(e); engine.calls != 2 || !strings.Contains(note, "stopped after") || !strings.Contains(note, "Error, exit code 137") {
 		t.Fatalf("one retry, then the reason: %d calls, %q", engine.calls, note)
+	}
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	if task.Status.Run.BlockReason != aiv1.BlockInfra || slices.Contains(e.gl.Labels(42), "agent::needs-input") {
+		t.Fatalf("a lost agent blocks the issue (infra), not needs-input: %+v, %v", task.Status.Run, e.gl.Labels(42))
 	}
 }
 
