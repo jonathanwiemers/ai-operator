@@ -270,7 +270,7 @@ func (s AgentProjectStatus) ActiveUsageLimit(engine Engine, now time.Time) (Usag
 }
 
 // AllNotifyEvents are the events that mention the owners by default.
-var AllNotifyEvents = []NotifyEvent{NotifyFailed, NotifyNeedsInput, NotifyCIFailed, NotifyReview, NotifyAutopilotPaused, NotifyAutopilotDone, NotifyMainRed}
+var AllNotifyEvents = []NotifyEvent{NotifyFailed, NotifyNeedsInput, NotifyCIFailed, NotifyReview, NotifyAutopilotPaused, NotifyAutopilotDone, NotifyMainRed, NotifyBlocked}
 
 // WithDefaults fills in notification defaults.
 func (n NotifySpec) WithDefaults() NotifySpec {

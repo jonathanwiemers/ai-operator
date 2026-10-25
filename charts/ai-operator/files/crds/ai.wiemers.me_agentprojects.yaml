@@ -1003,6 +1003,7 @@ spec:
                       - autopilotPaused
                       - autopilotDone
                       - mainRed
+                      - blocked
                       type: string
                     type: array
                   requestReview:

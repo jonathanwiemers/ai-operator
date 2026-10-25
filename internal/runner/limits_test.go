@@ -182,7 +182,7 @@ func TestUsageLimitDefersRun(t *testing.T) {
 	}
 	run := e.task().Status.Run
 	if run.LastResult != aiv1.RunResultDeferred || run.DeferredUntil == nil || !run.DeferredUntil.Time.Equal(reset) ||
-		run.LimitedEngine != aiv1.EngineClaude || run.Deferrals != 1 {
+		run.LimitedEngine != aiv1.EngineClaude || run.Deferrals != 1 || run.BlockReason != aiv1.BlockQuota {
 		t.Fatalf("unexpected run status %+v", run)
 	}
 	if run.ObservedRunRequest != 0 || run.RunCount != 0 || run.ActiveRunRequest != 0 {
@@ -196,11 +196,12 @@ func TestUsageLimitDefersRun(t *testing.T) {
 		t.Fatalf("the progress comment should say the run is paused: %+v", notes)
 	}
 	notes := e.issueNotes()
-	if len(notes) != 1 || !strings.Contains(notes[0], "usage limit") || !strings.Contains(notes[0], "2026-10-16 15:00") {
+	if len(notes) != 1 || !strings.Contains(notes[0], "usage limit") || !strings.Contains(notes[0], "2026-10-16 15:00") ||
+		!strings.Contains(notes[0], "blocked (`agent-blocked::quota`)") {
 		t.Fatalf("expected one waiting note, got %q", notes)
 	}
 	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::working"}) {
-		t.Fatalf("the issue must stay in working, has %v", labels)
+		t.Fatalf("the operator blocks the issue, the runner leaves the labels: has %v", labels)
 	}
 
 	// Before the reset nothing is attempted.
@@ -216,7 +217,8 @@ func TestUsageLimitDefersRun(t *testing.T) {
 		t.Fatal("the run should happen after the reset")
 	}
 	run = e.task().Status.Run
-	if run.LastResult != aiv1.RunResultSucceeded || run.DeferredUntil != nil || run.Deferrals != 0 || run.LimitedEngine != "" || run.RunCount != 1 {
+	if run.LastResult != aiv1.RunResultSucceeded || run.DeferredUntil != nil || run.Deferrals != 0 || run.LimitedEngine != "" || run.RunCount != 1 ||
+		run.BlockReason != "" {
 		t.Fatalf("deferral not cleared after a successful run: %+v", run)
 	}
 	if len(e.gl.MRs) != 1 {
@@ -261,7 +263,7 @@ func TestProjectWideLimitSkipsEngine(t *testing.T) {
 	if engine.calls != 0 {
 		t.Fatalf("a limited engine must not be called, got %d calls", engine.calls)
 	}
-	if run.LastResult != aiv1.RunResultDeferred || !run.DeferredUntil.Time.Equal(until.Time) {
+	if run.LastResult != aiv1.RunResultDeferred || !run.DeferredUntil.Time.Equal(until.Time) || run.BlockReason != aiv1.BlockQuota {
 		t.Fatalf("run should wait for the project-wide limit: %+v", run)
 	}
 }
@@ -305,14 +307,24 @@ func TestTooManyDeferralsFail(t *testing.T) {
 	if err := e.k8s.Status().Patch(context.Background(), &task, client.MergeFrom(orig)); err != nil {
 		t.Fatal(err)
 	}
+	orig = task.DeepCopy()
+	task.Spec.Owners = []string{"alice"}
+	if err := e.k8s.Patch(context.Background(), &task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
 	if !e.step() {
 		t.Fatal("after too many deferrals the run is reported as failed")
 	}
 	run := e.task().Status.Run
-	if run.LastResult != aiv1.RunResultFailed || run.DeferredUntil != nil || run.Deferrals != 0 || !strings.Contains(run.Summary, "giving up") {
+	if run.LastResult != aiv1.RunResultFailed || run.DeferredUntil != nil || run.Deferrals != 0 || !strings.Contains(run.Summary, "giving up") ||
+		run.BlockReason != aiv1.BlockQuota {
 		t.Fatalf("unexpected run status %+v", run)
 	}
-	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::needs-input"}) {
-		t.Fatalf("a failed run moves the issue to needs-input, has %v", labels)
+	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::working"}) {
+		t.Fatalf("the operator keeps the issue blocked (quota), not needs-input; has %v", labels)
+	}
+	notes := e.issueNotes()
+	if len(notes) != 1 || strings.Count(notes[0], "cc @alice") != 1 || !strings.Contains(notes[0], "blocked (`agent-blocked::quota`) and waits for you") {
+		t.Fatalf("one comment that says it stays blocked and pings once: %q", notes)
 	}
 }

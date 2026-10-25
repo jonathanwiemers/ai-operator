@@ -283,6 +283,12 @@ type AgentTaskStatus struct {
 	// +optional
 	Blocked *BlockedStatus `json:"blocked,omitempty"`
 
+	// RunBlockedAt is the run.lastActivityTime of the deferral or failure
+	// that last blocked the issue (run.blockReason). Each report blocks
+	// once, so a block lifted by hand stays lifted.
+	// +optional
+	RunBlockedAt *metav1.Time `json:"runBlockedAt,omitempty"`
+
 	// Plan is the spec agent's last plan, in plan order (spec tasks).
 	// +optional
 	Plan []PlannedIssue `json:"plan,omitempty"`
@@ -360,6 +366,12 @@ type RunStatus struct {
 	// LimitedEngine is the engine whose limit deferred the run.
 	// +optional
 	LimitedEngine Engine `json:"limitedEngine,omitempty"`
+
+	// BlockReason is why the issue waits for something outside it: quota
+	// while the run is deferred by a usage limit or after it gave up on
+	// one. The operator blocks the issue with it.
+	// +optional
+	BlockReason BlockReason `json:"blockReason,omitempty"`
 
 	// Deferrals counts consecutive deferrals of the current run request; it
 	// drives the exponential backoff when the reset time is unknown.

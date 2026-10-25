@@ -262,6 +262,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 		keep[task.Name] = true
 		implTasks[is.IID] = task
+		if err := r.syncRunBlock(ctx, gl, spec, is, task); err != nil {
+			return err
+		}
 		if err := r.syncBlocked(ctx, gl, spec, is, task); err != nil {
 			return err
 		}

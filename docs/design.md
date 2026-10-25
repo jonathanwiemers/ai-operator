@@ -323,6 +323,16 @@ stateDiagram-v2
 * **Blocked**: `maxRunsPerTask` reached – a guard against loops.
 * `maxConcurrentRuns` caps token-consuming runs per project; extra runs queue.
 
+The runner never sets the blocked labels. It reports why a run waits or
+gave up in `status.run.blockReason` (`quota` while deferred by a usage limit
+and after giving up on one), and the operator's poll turns each report into
+`status.blocked` once (`status.runBlockedAt` remembers which, so a block
+lifted by hand stays lifted) and applies the labels. A quota block is lifted
+when the run starts again (`activeRunRequest` ahead of
+`observedRunRequest`); a block for a finished run, when the issue gets a new
+run. A deferred run is pending, so it does not count as the new run that
+lifts a block before it is applied.
+
 The issue can stay open for months; resources are reclaimed in stages and
 nothing is lost.
 
