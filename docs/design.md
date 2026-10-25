@@ -730,7 +730,7 @@ anything is a later step of
   its requests (after `status.run.observedRunRequest`), one turn each, and
   posts each answer where the message was written; the operator drops
   answered messages. A failed turn gets a short failure reply and the others
-  are still answered; a usage limit defers the run. The runner remembers the
+  are still answered (all of them, when the state cannot be read); a usage limit defers the run. The runner remembers the
   last 100 answered note IDs in its state, so a run started again (pod lost,
   deferred) or a message handed over twice is not answered twice.
 * **Context.** Each turn gets the owner's message, then the milestone's state

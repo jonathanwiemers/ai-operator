@@ -37,6 +37,11 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 	s := r.step(ctx, "read milestone state", "messages", len(msgs))
 	state, err := r.pilotState(ctx, gl, task, project, spec)
 	if err != nil {
+		// The run's request is done either way: say so instead of dropping
+		// the messages.
+		for _, m := range msgs {
+			r.pilotReply(ctx, gl, spec, m, "The pilot could not read the milestone's state, so it cannot answer; ask again in a moment.")
+		}
 		return out, s.fail(err)
 	}
 	s.done(fmt.Sprintf("%d bytes", len(state)))

@@ -246,3 +246,12 @@ func (e *pilotEnv) patchProject(t *testing.T, mutate func(*aiv1.AgentProject)) {
 		t.Fatal(err)
 	}
 }
+
+func TestPilotSaysSoWhenTheStateCannotBeRead(t *testing.T) {
+	e := newPilotEnv(t, "")
+	e.gl.Milestones = nil // GetMilestone fails
+	e.step(t)
+	if replies := botNotes(e.gl, 5); len(e.engine.calls) != 0 || len(replies) != 1 || !strings.Contains(replies[0], "could not read") {
+		t.Fatalf("the message gets an answer without a model call: %d calls, %q", len(e.engine.calls), replies)
+	}
+}
