@@ -353,8 +353,14 @@ would have prevented case 1, 1 + 3 + 4 case 2.
 4. Default `infraRetryAfter` (30m) and `review.retryAfter` (15m) are guesses;
    tune after the Bloop rollout.
 
+## Steers
+
+- PR 1: `status.run.reviewErrorsTransient` moves to PR 4, where the autopilot
+  gate first reads it; PR 1 only retries and reports the attempts.
+
 ## PRs
 
 | # | Title | Link | Status |
 |--:|---|---|---|
 | 0 | Spec: pipeline health, infra retries and the blocked state | [#47](https://github.com/jonathanwiemers/ai-operator/pull/47) | approved 2026-10-25, open |
+| 1 | Review: retry reviewers that fail transiently | [#48](https://github.com/jonathanwiemers/ai-operator/pull/48) | open |
