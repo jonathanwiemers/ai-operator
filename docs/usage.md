@@ -23,6 +23,7 @@ of each kind.
 | `agent-profile::<name>` | spec agent / you | which agent profile implements the issue (e.g. `agent-profile::fast`, `agent-profile::strong`) |
 | `ai-generated` | spec agent / operator | issue was created by the spec agent or the operator |
 | `ci::main-red` | operator | the issue that reports a red default branch, see [main health](#main-health) |
+| `ci::flaky` | operator | the issue that collects the failures of one flaky CI job |
 
 Put `agent::draft`, `agent::ready`, `agent::working`, `agent::needs-input`,
 `agent::review`, `agent::blocked` and `agent::done` on an issue board as
@@ -328,16 +329,17 @@ list shows the first 3 jobs and their logs.
 |-------------------------|--------------|
 | green | nothing; an open `ci::main-red` issue gets "✅ green again at `<sha>`" and is closed |
 | red, first time | its failed jobs are retried once |
-| green after the retry | flaky: recorded in the status, nothing else |
+| green after the retry | flaky: one issue per job, "🔁 Flaky CI job: `<job>`" (labels `ai-generated`, `ci::flaky`), opened on the first failure and commented with the pipeline on every later one (the first 3 jobs of a pipeline) |
 | still red after the retry | an issue "🚑 `main` is red: `<jobs>`" (labels `ai-generated`, `ci::main-red`) with the pipeline, the commit, the failing jobs and the last 40 lines of each job's log; it mentions the project's owners |
 | red again, the same jobs | nothing new |
 | red again, other jobs | a comment on the `ci::main-red` issue, and its title follows |
 
-The operator finds its issue again by a hidden marker, also after the
+The operator finds its issues again by a hidden marker, also after the
 AgentProject was recreated; issues a human opens with these labels are left
 alone. Job logs are untrusted: mentions and quick actions in them are made
 inert, and job names in titles keep only letters, digits and ` :._/-`, at
-most 60 characters.
+most 60 characters. Close a flaky issue once the job is fixed; the next
+failure opens a new one.
 
 The state is in the AgentProject status:
 

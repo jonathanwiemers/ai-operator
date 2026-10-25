@@ -466,12 +466,12 @@ The project controller also watches the default branch
 of which the newest green or red one counts (skipped and canceled ones say
 nothing), and the failed jobs only when that pipeline is new. `status.mainHealth` goes
 `green` → `retrying` (failed jobs retried once) → `flaky` (green after the
-retry) or `red` (a `ci::main-red` issue with the
+retry: a `ci::flaky` issue per job) or `red` (a `ci::main-red` issue with the
 defused log tails, the owners pinged); green again closes the issue. While a
 retry runs, GitLab lists an older pipeline as the newest finished one, so
 pipelines older than the recorded one are ignored. The status is written only
 when every GitLab call of a check succeeded, so a failed one is repeated on
-the next check. The issue is found again by a marker at the start of the
+the next check. The issues are found again by a marker at the start of the
 description, in issues the bot wrote.
 
 ## Merge conflicts
@@ -809,7 +809,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/implement.go` | implement → review → fix → push → MR pipeline; CI fix runs |
 | `internal/runner/ci.go` | CI fix prompt, log excerpts |
 | `internal/controller/ci.go` | CI feedback loop: pipeline tracking, retry, fix requests, final labels |
-| `internal/controller/mainhealth.go` | main health: default branch pipelines, retry, main-red issue |
+| `internal/controller/mainhealth.go` | main health: default branch pipelines, retry, flaky and main-red issues |
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/runner/git.go` | runner-side bare mirror (the only git that talks to GitLab) |
