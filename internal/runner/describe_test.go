@@ -306,6 +306,11 @@ func TestFailureMentionsTheOwners(t *testing.T) {
 	if !strings.Contains(body, "The agent run failed") || !strings.Contains(body, "cc @alice @bob") {
 		t.Fatalf("the failure mentions the owners:\n%s", body)
 	}
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	if !slices.Equal(e.gl.Labels(42), []string{"agent::needs-input"}) || task.Status.Run.BlockReason != "" {
+		t.Fatalf("a real failure needs input, it does not block: %v, %+v", e.gl.Labels(42), task.Status.Run)
+	}
 }
 
 func TestFailureQuotesTheErrorInert(t *testing.T) {

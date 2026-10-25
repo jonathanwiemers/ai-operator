@@ -118,17 +118,43 @@ func TestRunGivesUpAfterTooManyInterruptions(t *testing.T) {
 		t.Fatalf("the agent must not run again: %d calls", len(engine.calls))
 	}
 	note := failureNote(e)
-	if !strings.Contains(note, "interrupted 4 times") || !strings.Contains(note, "@alice") {
-		t.Fatalf("expected the failure with the owner mention: %q", note)
+	if !strings.Contains(note, "interrupted 4 times") || !strings.Contains(note, "operator starts one new run at") || strings.Contains(note, "@alice") {
+		t.Fatalf("expected the failure with the automatic retry, no ping yet: %q", note)
 	}
-	if labels := e.gl.Labels(42); !slices.Contains(labels, "agent::needs-input") || slices.Contains(labels, "agent::working") {
-		t.Fatalf("the issue waits for input: %v", labels)
+	if labels := e.gl.Labels(42); slices.Contains(labels, "agent::needs-input") {
+		t.Fatalf("the operator blocks the issue (infra), not needs-input: %v", labels)
 	}
 	if len(e.gl.MRNotes[7]) != 0 {
 		t.Fatalf("the stale progress comment must go: %+v", e.gl.MRNotes[7])
 	}
 	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
-	if run := task.Status.Run; task.RunPending() || run.LastResult != aiv1.RunResultFailed || run.Interruptions != 0 {
-		t.Fatalf("the run ends failed: %+v", run)
+	if run := task.Status.Run; task.RunPending() || run.LastResult != aiv1.RunResultFailed || run.Interruptions != 0 || run.BlockReason != aiv1.BlockInfra {
+		t.Fatalf("the run ends failed, blocked for infra: %+v", run)
+	}
+}
+
+func TestFailedInfraRetryWaitsForAHuman(t *testing.T) {
+	e := newImplementEnv(t)
+	ctx := context.Background()
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	task.Spec.Owners = []string{"alice"}
+	task.Spec.Source.InfraRetry = task.Spec.RunRequest // this run is the operator's retry
+	if err := e.k8s.Update(ctx, &task); err != nil {
+		t.Fatal(err)
+	}
+	interruptTask(t, e, aiv1.MaxInterruptions)
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, &scriptedEngine{}, e.task.Name)
+	if _, err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	note := failureNote(e)
+	if !strings.Contains(note, "This was the automatic retry, so the issue stays blocked (`agent-blocked::infra`) and waits for you") ||
+		strings.Count(note, "cc @alice") != 1 {
+		t.Fatalf("the failed retry says it waits for a human and pings once: %q", note)
+	}
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	if task.Status.Run.BlockReason != aiv1.BlockInfra {
+		t.Fatalf("still blocked for infra: %+v", task.Status.Run)
 	}
 }
