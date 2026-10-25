@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -203,11 +204,8 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		case slices.ContainsFunc(coord.Spec.Source.PilotMessages, func(m aiv1.PilotMessage) bool { return m.NoteID == n.ID }):
 			continue
 		default:
-			msg := n.msg
-			if len(msg) > maxPilotMessage {
-				msg = msg[:maxPilotMessage] + "…"
-			}
-			msgs = append(msgs, aiv1.PilotMessage{NoteID: n.ID, IssueIID: n.issue, MergeRequestIID: n.mr, Author: n.Author.Username, Body: msg})
+			msgs = append(msgs, aiv1.PilotMessage{NoteID: n.ID, IssueIID: n.issue, MergeRequestIID: n.mr, Author: n.Author.Username,
+				Body: truncateUTF8(n.msg, maxPilotMessage)})
 			continue
 		}
 		if err := pilotReply(ctx, gl, spec, n, reply); err != nil {
@@ -332,7 +330,7 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 			keep[coord.Name] = true
 		}
 		var err error
-		if coord == nil || coord.Spec.Autopilot || coord.Spec.Issue.IID != tracking {
+		if coord == nil || coord.Spec.Autopilot || coord.Spec.Issue == nil || coord.Spec.Issue.IID != tracking {
 			// Follows the autopilot's tracking issue, also a recreated one.
 			coord, err = r.ensurePilot(ctx, project, st, coord, &aiv1.IssueRef{IID: tracking}, true)
 		} else if _, err = r.ensurePilot(ctx, project, st, coord, nil, false); err == nil {
@@ -361,6 +359,18 @@ func (r *AgentProjectReconciler) patchPilot(ctx context.Context, st *aiv1.AgentT
 	}
 	mutate(st.Status.Pilot)
 	return r.Status().Patch(ctx, st, client.MergeFrom(orig))
+}
+
+// truncateUTF8 cuts s to at most n bytes (plus an ellipsis) without
+// splitting a character.
+func truncateUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "…"
 }
 
 // pilotReply answers a comment where it was written.

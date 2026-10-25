@@ -104,13 +104,14 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// The handoff note is the agent's own memory, not part of the thread.
 	handoffNote, issueNotes := splitHandoff(issueNotes, botID)
 	prior := parseHandoff(handoffNote)
+	issueNotes = r.withoutPilot(issueNotes)
 	var mrNotes []gitlab.Note
 	if mr != nil {
 		if mrNotes, err = gl.ListMergeRequestNotes(ctx, glProject, mr.IID); err != nil {
 			return out, s.fail(fmt.Errorf("listing merge request notes: %w", err))
 		}
 		// Progress comments are the runner's, not part of the thread.
-		mrNotes = slices.DeleteFunc(mrNotes, func(n gitlab.Note) bool { return isProgress(n, botID) })
+		mrNotes = r.withoutPilot(slices.DeleteFunc(mrNotes, func(n gitlab.Note) bool { return isProgress(n, botID) }))
 	}
 	newIssueNotes, newMRNotes := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
 	result := fmt.Sprintf("%d on the issue, %d on the MR, %d new", len(issueNotes), len(mrNotes), len(newIssueNotes)+len(newMRNotes))
@@ -1107,11 +1108,12 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 			return res, seen, s.fail(fmt.Errorf("listing issue notes: %w", err))
 		}
 		_, issueNotes = splitHandoff(issueNotes, botID)
+		issueNotes = r.withoutPilot(issueNotes)
 		mrNotes, err := gl.ListMergeRequestNotes(ctx, glProject, mrIID)
 		if err != nil {
 			return res, seen, s.fail(fmt.Errorf("listing merge request notes: %w", err))
 		}
-		mrNotes = slices.DeleteFunc(mrNotes, func(n gitlab.Note) bool { return isProgress(n, botID) })
+		mrNotes = r.withoutPilot(slices.DeleteFunc(mrNotes, func(n gitlab.Note) bool { return isProgress(n, botID) }))
 		newIssue, newMR := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
 		if cut := firstCommand(append(slices.Clone(newIssue), newMR...), botID, prefix); cut != 0 {
 			fromCut := func(n gitlab.Note) bool { return n.ID >= cut }

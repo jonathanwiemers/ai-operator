@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
@@ -197,3 +199,29 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 // pilotComments is how many of the tracking issue's last comments the pilot
 // sees.
 const pilotComments = 20
+
+// pilotAddressed reports whether a human's comment is addressed to the
+// pilot, or a comment of the bot is the pilot's or the operator's answer
+// (they start with 🧭).
+func pilotAddressed(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) func(gitlab.Note) bool {
+	bot := ""
+	if *spec.Pilot.Mention {
+		bot = project.Status.BotUsername
+	}
+	return func(n gitlab.Note) bool {
+		if n.Author.ID == project.Status.BotUserID {
+			return strings.HasPrefix(n.Body, "🧭 ")
+		}
+		_, ok := command.Pilot(n.Body, spec.Workflow.PilotPrefix, bot)
+		return ok
+	}
+}
+
+// withoutPilot drops the conversation with the pilot from an issue's
+// comments: it is no input for the implementer.
+func (r *Runner) withoutPilot(notes []gitlab.Note) []gitlab.Note {
+	if r.pilot == nil {
+		return notes
+	}
+	return slices.DeleteFunc(notes, r.pilot)
+}
