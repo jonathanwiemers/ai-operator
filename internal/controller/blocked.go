@@ -58,15 +58,22 @@ func (r *AgentProjectReconciler) unblock(ctx context.Context, gl gitlab.API, spe
 
 // syncRunBlock blocks the issue for the runner's report (run.blockReason):
 // a run deferred by a usage limit, or one that gave up for an outside reason.
-// Each report blocks once. The quota block is lifted when the run starts
-// again; the others when the issue gets a new run.
+// Each report blocks once. A new run (running, or pending and not deferred)
+// lifts any block, also when the label move of its request failed; a quota
+// block is also lifted when the run ended otherwise.
 func (r *AgentProjectReconciler) syncRunBlock(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask) error {
 	run := task.Status.Run
 	reason := run.BlockReason
-	if run.ActiveRunRequest > run.ObservedRunRequest {
-		reason = "" // running
+	newRun := run.ActiveRunRequest > run.ObservedRunRequest || task.RunPending() && run.DeferredUntil == nil
+	if newRun {
+		reason = ""
 	}
 	switch b := task.Status.Blocked; {
+	case b != nil && newRun && b.Applied && !is.HasLabel(spec.Workflow.BlockedLabel):
+		return nil // lifted by a human: syncBlocked drops it
+	case b != nil && newRun:
+		b.RestoreLabel = spec.Workflow.WorkingLabel // what a run request shows
+		return r.unblock(ctx, gl, spec, is, task)
 	case b != nil && b.Reason == aiv1.BlockQuota && reason != aiv1.BlockQuota:
 		return r.unblock(ctx, gl, spec, is, task)
 	case reason == "" || run.LastActivityTime == nil || run.LastActivityTime.Equal(task.Status.RunBlockedAt):

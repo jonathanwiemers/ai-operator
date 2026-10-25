@@ -6,6 +6,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
@@ -162,5 +163,30 @@ func TestARunBlockLiftedByHandStaysLifted(t *testing.T) {
 	e.reconcile()
 	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent-blocked::quota", "agent::blocked"}) {
 		t.Fatalf("a new report blocks again: labels = %v", got)
+	}
+}
+
+func TestANewRunLiftsABlockWhoseLabelMoveFailed(t *testing.T) {
+	e := newRunBlockEnv(t, 42)
+	e.started(42)
+	e.ended(42, e.r.Now(), aiv1.RunResultSucceeded, "")
+	e.gl.SetLabels(42, "agent::review")
+	task := e.tasks()[e.taskOf(42)]
+	if err := e.r.block(e.ctx, aiv1.WorkflowSpec{}.WithDefaults(), *e.gl.Issues[42], &task, aiv1.BlockInfra, "test"); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+
+	// A run request whose label move failed: the issue still shows the block.
+	if err := e.c.Get(e.ctx, client.ObjectKey{Namespace: ns, Name: e.taskOf(42)}, &task); err != nil {
+		t.Fatal(err)
+	}
+	task.Spec.RunRequest++
+	if err := e.c.Update(e.ctx, &task); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent::working"}) || e.tasks()[e.taskOf(42)].Status.Blocked != nil {
+		t.Fatalf("a pending run lifts the block and shows working: labels = %v", got)
 	}
 }

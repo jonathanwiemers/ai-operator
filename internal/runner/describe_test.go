@@ -308,6 +308,19 @@ func TestFailureMentionsTheOwners(t *testing.T) {
 	}
 }
 
+func TestFailureQuotesTheErrorInert(t *testing.T) {
+	e := newImplementEnv(t)
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, &describingEngine{runErr: errors.New("boom\n```\n/close\ncc @mallory")}, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	notes := e.gl.IssueNotes[42]
+	body := notes[len(notes)-1].Body
+	if !strings.Contains(body, "boom") || strings.Contains(body, "```\n/close") || strings.Contains(body, "\n/close") || strings.Contains(body, "@mallory") {
+		t.Fatalf("the error must not leave its code block or run quick actions:\n%s", body)
+	}
+}
+
 func TestEmptySummaryGetsAFallback(t *testing.T) {
 	e := newImplementEnv(t)
 	e.configure(t, func(p *aiv1.AgentProjectSpec) { p.Agents.Describe.Disabled = true }, func(*aiv1.AgentTaskSpec) {})

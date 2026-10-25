@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -325,6 +326,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		"interruptions", interruptions)
 	if err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
 		s.Interruptions = interruptions
+		s.BlockReason = "" // this attempt reports its own
 		s.ActiveRunRequest = request
 		s.CurrentStep = ""
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
@@ -601,7 +603,10 @@ func roleInvocation(role aiv1.RoleSpec, system string, tools []string, schema st
 // issue; any other moves it to needs-input.
 func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome, runErr error, block aiv1.BlockReason) {
 	wf := spec.Workflow
-	body := fmt.Sprintf("🤖 The agent run failed:\n\n```\n%s\n```\n\n", truncate(runErr.Error(), 3000))
+	// The error quotes CLIs and git: no fence breakout, quick actions or
+	// mentions.
+	msg := notify.Defuse(strings.ReplaceAll(truncate(runErr.Error(), 3000), "`", "'"))
+	body := fmt.Sprintf("🤖 The agent run failed:\n\n```\n%s\n```\n\n", msg)
 	if block != "" {
 		body += fmt.Sprintf("The issue is blocked (`%s%s`) and waits for you. ", wf.BlockedReasonPrefix, block)
 	}
