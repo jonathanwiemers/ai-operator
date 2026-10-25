@@ -218,6 +218,18 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 	project.Status.ActiveMilestones = active
+	// One autopilot drives the main-red issue (the main-red lane): the
+	// oldest milestone that is not done.
+	var lane *aiv1.AgentTask
+	for _, st := range autopilots {
+		if st.Spec.Autopilot && (st.Status.Autopilot == nil || st.Status.Autopilot.Phase != aiv1.AutopilotDone) && (lane == nil || st.Spec.Milestone.IID < lane.Spec.Milestone.IID) {
+			lane = st
+		}
+	}
+	mainRed := int64(0)
+	if mh := r.freshMainHealth(spec, project.Status.MainHealth, mainHealthStale); lane != nil && spec.MainHealth.AutoFix && *spec.MainHealth.FreezeAutopilot && mh != nil {
+		mainRed = mh.IssueIID
+	}
 
 	// Issues with an agent label -> implement tasks.
 	issues := map[int64]gitlab.Issue{}
@@ -249,6 +261,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 					pause = ap.PausedReason
 				}
 			}
+		}
+		if is.IID == mainRed {
+			autopilot = true // merged by the lane
 		}
 		description := ""
 		if is.Milestone != nil {
@@ -292,7 +307,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 	for _, st := range autopilots {
-		if err := r.syncAutopilot(ctx, gl, project, spec, st, implTasks); err != nil {
+		if err := r.syncAutopilot(ctx, gl, project, spec, st, implTasks, st == lane); err != nil {
 			errs = append(errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
@@ -308,7 +323,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			// The milestone is no longer planned (closed, or every marker
 			// removed): switch its autopilot off before the state is gone.
 			t.Spec.Autopilot = false
-			if err := r.syncAutopilot(ctx, gl, project, spec, t, nil); err != nil {
+			if err := r.syncAutopilot(ctx, gl, project, spec, t, nil, false); err != nil {
 				errs = append(errs, fmt.Errorf("switching off the autopilot of task %s: %w", t.Name, err))
 				continue // tried again on the next poll
 			}
