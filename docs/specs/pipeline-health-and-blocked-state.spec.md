@@ -377,10 +377,23 @@ would have prevented case 1, 1 + 3 + 4 case 2.
 - PR 1: `status.run.reviewErrorsTransient` moves to PR 4, where the autopilot
   gate first reads it; PR 1 only retries and reports the attempts.
 
+- PR 6a came to about 270 code lines, not ~50: the watcher is a state
+  machine (green, retrying, red, flaky) with its issue handling. It was split
+  into 6a-1 (#50) and 6a-2 (#53), the smallest useful slices. Kept on review:
+  the check waits for the next interval after a GitLab error, and a main-red
+  issue a human closed is not reopened while the same jobs stay red.
+- PR 2: the pause reason reaches the issue task one poll late (copied with
+  the run request). Follow-ups from its security review: `PausedReason` (job
+  names) in tracking-issue comments is not defused yet, and anyone who can
+  comment can command the tracking issue (as on issues).
+
 ## PRs
 
 | # | Title | Link | Status |
 |--:|---|---|---|
 | 0 | Spec: pipeline health, infra retries and the blocked state | [#47](https://github.com/jonathanwiemers/ai-operator/pull/47) | merged 2026-10-25 |
 | 1 | Review: retry reviewers that fail transiently | [#48](https://github.com/jonathanwiemers/ai-operator/pull/48) | merged 2026-10-25 |
-| 3 | Workflow: agent::blocked and agent-blocked::<reason> labels | [#49](https://github.com/jonathanwiemers/ai-operator/pull/49) | open |
+| 3 | Workflow: agent::blocked and agent-blocked::<reason> labels | [#49](https://github.com/jonathanwiemers/ai-operator/pull/49) | merged 2026-10-25 |
+| 2 | Autopilot: answer unknown tracking-issue commands, pause reason in the run prompt | [#52](https://github.com/jonathanwiemers/ai-operator/pull/52) | merged 2026-10-25 |
+| 6a-1 | Main health: watch the default branch, retry once, main-red issue | [#50](https://github.com/jonathanwiemers/ai-operator/pull/50) | merged 2026-10-25 |
+| 6a-2 | Main health: one issue per flaky job | [#53](https://github.com/jonathanwiemers/ai-operator/pull/53) (replaces #51, closed with its base branch) | merged 2026-10-25 |
