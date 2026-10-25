@@ -13,6 +13,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
@@ -56,6 +57,28 @@ func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.A
 		return err
 	}
 	project.Status.MainHealth = st
+	if !spec.MainHealth.AutoFix || st.IssueIID == 0 || st.AutoFixIssueIID != 0 {
+		return nil
+	}
+	return r.autoFix(ctx, gl, spec, st)
+}
+
+// autoFix hands the main-red issue to the agent (mainHealth.autoFix), once
+// per red episode: also when switched on while red, not when a human
+// already labelled or closed it, nor an older issue whose logs are not
+// marked as untrusted data.
+func (r *AgentProjectReconciler) autoFix(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.MainHealthStatus) error {
+	wf := spec.Workflow
+	is, err := gl.GetIssue(ctx, spec.GitLab.Project, st.IssueIID)
+	if err != nil {
+		return fmt.Errorf("getting issue #%d: %w", st.IssueIID, err)
+	}
+	if is.State == "opened" && !hasAny(*is, wf.ActiveLabels()...) && strings.Contains(is.Description, marker.UntrustedData) {
+		if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{AddLabels: []string{wf.ReadyLabel}}); err != nil {
+			return fmt.Errorf("moving issue #%d to %q: %w", is.IID, wf.ReadyLabel, err)
+		}
+	}
+	st.AutoFixIssueIID = is.IID
 	return nil
 }
 
@@ -103,14 +126,18 @@ func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.
 			}
 		}
 		if st.IssueIID != 0 && *mh.Issue {
-			if _, err := gl.CreateIssueNote(ctx, glProject, st.IssueIID, fmt.Sprintf("✅ green again at `%s` (%s).", p.SHA, p.WebURL)); err != nil {
+			note := fmt.Sprintf("✅ green again at `%s` (%s).", p.SHA, p.WebURL)
+			if st.AutoFixIssueIID == st.IssueIID {
+				note += " A merge request of the agent that is still open is left for a human to merge or close."
+			}
+			if _, err := gl.CreateIssueNote(ctx, glProject, st.IssueIID, note); err != nil {
 				return fmt.Errorf("commenting on issue #%d: %w", st.IssueIID, err)
 			}
 			if _, err := gl.UpdateIssue(ctx, glProject, st.IssueIID, gitlab.UpdateIssueOptions{StateEvent: "close"}); err != nil {
 				return fmt.Errorf("closing issue #%d: %w", st.IssueIID, err)
 			}
 		}
-		st.IssueIID, st.ReportedJobs = 0, nil
+		st.IssueIID, st.ReportedJobs, st.AutoFixIssueIID = 0, nil, 0
 		if retried {
 			setState(aiv1.MainHealthFlaky)
 		} else {
@@ -153,6 +180,7 @@ func (r *AgentProjectReconciler) reportMainRed(ctx context.Context, gl gitlab.AP
 	glProject := spec.GitLab.Project
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n🚑 `%s` is red: pipeline %s at `%s`, failing jobs %s.\n", mainRedMarker, branch, p.WebURL, p.SHA, someJobs(st.FailedJobs))
+	fmt.Fprintf(&b, "\nMake `%s` green again: find and fix the cause of the failing jobs. If a test fails only sometimes, stabilise it or quarantine it; do not delete it.\n\n%s\n", branch, marker.UntrustedData)
 	for _, j := range jobs[:min(len(jobs), mainRedJobs)] {
 		trace, err := gl.JobTrace(ctx, glProject, j.ID)
 		if err != nil {

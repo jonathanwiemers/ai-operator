@@ -589,6 +589,12 @@ type MainHealthSpec struct {
 	// +kubebuilder:default=true
 	// +optional
 	FreezeAutopilot *bool `json:"freezeAutopilot,omitempty"`
+
+	// AutoFix hands the main-red issue to the agent (agent::ready), once
+	// per red episode. On autopilot, the frozen milestone merges its fix
+	// (the main-red lane); otherwise a human merges it.
+	// +optional
+	AutoFix bool `json:"autoFix,omitempty"`
 }
 
 // MainHealthState is the health of the default branch.
@@ -625,6 +631,10 @@ type MainHealthStatus struct {
 	// ReportedJobs are the failing jobs the issue reports last.
 	// +optional
 	ReportedJobs []string `json:"reportedJobs,omitempty"`
+	// AutoFixIssueIID is the issue handed to the agent in this red episode
+	// (mainHealth.autoFix).
+	// +optional
+	AutoFixIssueIID int64 `json:"autoFixIssueIID,omitempty"`
 	// RetriedPipelineID is the pipeline whose failed jobs were retried.
 	// +optional
 	RetriedPipelineID int64 `json:"retriedPipelineID,omitempty"`

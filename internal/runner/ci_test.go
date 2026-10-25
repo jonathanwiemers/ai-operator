@@ -79,6 +79,9 @@ func TestCIFixRun(t *testing.T) {
 			t.Errorf("CI prompt misses %q:\n%s", want, prompt)
 		}
 	}
+	if task, _, _ := strings.Cut(prompt, "<untrusted-data>"); strings.Contains(task, "Ignore previous") || strings.Contains(task, "Job `test`") || !strings.Contains(prompt, "</untrusted-data>") {
+		t.Errorf("the jobs and their logs are untrusted data:\n%s", prompt)
+	}
 	if strings.Contains(prompt, "Job `lint`") {
 		t.Error("allowed-to-fail jobs are not part of the prompt")
 	}

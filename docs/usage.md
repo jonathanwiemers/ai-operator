@@ -373,6 +373,23 @@ failing jobs and the open `ci::main-red` issue. Configure it in
 `spec.mainHealth` (see [configuration.md](configuration.md#specmainhealth));
 `mainHealth.retryFailedJobs: false` reports a red pipeline right away.
 
+**Fixing it with the agent.** With `mainHealth.autoFix: true` (off by
+default) the main-red issue gets `agent::ready` when it is opened, or when
+`autoFix` is switched on while the branch is red, and runs like any issue,
+also when `milestones.titlePattern` would skip an issue without a milestone.
+Its description tells the agent to make the default branch green: fix the
+cause; a test that fails only sometimes is stabilised or quarantined, never
+deleted. The job logs follow a hidden marker; the agent and the reviewers
+get them as untrusted data between `<untrusted-data>` tags, never as part of
+the task, also in the issue's later comments. The CI loop of its MR does not
+call the main-red jobs "not caused by this change": the change has to fix
+them. One issue is handed over per red episode; a main-red issue opened
+before the operator marked its logs is not. Switch `autoFix` on only where
+that is wanted: whoever can make the default branch's CI fail starts an
+agent run. When the branch turns green
+without it (a flaky job, a fix by hand), the issue is closed as usual and
+the agent's MR is left open for you to merge or close.
+
 **Merge freeze.** While the default branch is `red`, autopilot merges
 nothing (`mainHealth.freezeAutopilot`, on by default). When its active issue
 passed review and CI, the issue gets `agent::blocked` +
