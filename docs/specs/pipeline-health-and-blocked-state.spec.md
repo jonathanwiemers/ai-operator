@@ -66,12 +66,16 @@ Root causes:
   health adds at most one `ListPipelines` per project per
   `mainHealth.interval` (default 5m), plus job calls only when the pipeline
   changed.
-- Label handling stays idempotent and recoverable: the operator derives the
-  label from the task status every poll, so a failed label call is repeated.
+- The blocked labels stay idempotent and recoverable: the operator derives
+  them from `status.blocked` every poll, so a failed label call is repeated.
+  (The other workflow labels keep today's behaviour: they are set on
+  transitions.)
 - Scoped labels: `agent::blocked` replaces the other `agent::*` label (GitLab
   keeps one per scope). The label it replaced is stored and restored.
 - Job logs and job names are untrusted text: defused (`notify.Defuse`) in
-  comments, marked untrusted in prompts.
+  comments, marked untrusted in prompts. Job names in issue titles are
+  reduced to `[A-Za-z0-9 :._/-]`, capped at 60 characters, and set in code
+  spans.
 - PR budget `< 50` production lines each (tests, docs, generated files
   excluded); PRs land in the order below.
 
@@ -98,7 +102,8 @@ Root causes:
   pushes nothing; it posts a short report. Blocking findings go to the
   implementer as usual (`review.maxIterations`), i.e. the run then continues
   like a normal one.
-- Autopilot gate: `ReviewErrors > 0 && ReviewErrorsTransient` and no
+- Autopilot gate (a new branch in `gateCheck`; today any `ReviewErrors > 0`
+  is a `pauseRun`): `ReviewErrors > 0 && ReviewErrorsTransient` and no
   re-review was requested for this head yet → request one after
   `agents.review.retryAfter` (default 15m), state "waiting", no pause. Only a
   second transient failure on the same head pauses, now as a **blocked**
@@ -176,17 +181,23 @@ Root causes:
   instead of listing pipelines; its comment links the main-red issue.
 - Freeze: with `freezeAutopilot`, the merge gate fails with reason
   `main-red` ("`main` is red (#N): merging waits until it is green") while
-  `state` is `red`; the active issue is blocked (`agent-blocked::main-red`)
-  and auto-resumes when main is green. Runs, reviews and CI of the active
-  issue go on; nothing is merged and no new issue is started. `flaky` does not
-  freeze.
+  `state` is `red`. The freeze is checked last, after run, review and CI
+  passed the gate, so the CI loop of the active issue is already final when
+  it gets blocked (`agent-blocked::main-red`); a blocked issue's CI is not
+  followed (PR 3). When main is green, the block is lifted, the gate runs
+  again (CI the loop never saw sends the issue back to working first) and
+  autopilot continues by itself. Nothing is merged and no new issue is
+  started while frozen. `flaky` does not freeze.
 
 ### 7. Main-red issue on the agent's queue (opt-in)
 
 - `mainHealth.autoFix: true`: the main-red issue is created `agent::ready`
-  (off autopilot) or joins the autopilot queue **first** through the
-  revisit follow-up path (`queueFollowUp`), so autopilot plans it like its own
-  issue, reviews, CI-checks and merges it, and then the freeze lifts.
+  and runs like any issue (implemented, reviewed, CI-checked).
+- Not through `queueFollowUp`: that appends to the queue, and a frozen
+  autopilot does not pick. Instead autopilot gets a **main-red lane**: while
+  frozen, it drives the issue named by `status.mainHealth.issueIID` (and only
+  that one) through the same merge gate and merges it. That is the only merge
+  allowed during a freeze. Off autopilot, a human merges it.
 - A flaky-job issue stays for humans (quarantining a test is a judgment call)
   until the coordinator exists.
 
@@ -235,8 +246,10 @@ comments and all job logs are untrusted data.
 **Triggers.** A free-text message on the tracking issue; automatically
 (read-only triage) on an autopilot pause, a block with reason `infra`, and a
 new main-red or flaky issue: it classifies (`infra|flaky|regression|env|
-decision|unknown`) with evidence, does the one safe action, or asks the
-owners.
+decision|unknown`) with evidence and **proposes** an action in a comment. An
+automatic trigger never acts: its context holds job logs and other people's
+comments, so the actions in the table above run only on an owner's message
+(or the owner's yes to a proposal).
 
 **The end.** When autopilot is done, the coordinator runs a read-only
 retrospective subagent and posts the last update on the tracking issue before
@@ -354,6 +367,12 @@ would have prevented case 1, 1 + 3 + 4 case 2.
    tune after the Bloop rollout.
 
 ## Steers
+
+- Spec review (bugbot, security, 2026-10-25): the freeze runs after the CI
+  loop is final; `autoFix` uses a main-red lane bound to
+  `status.mainHealth.issueIID` instead of `queueFollowUp`; automatic triage
+  only proposes; job names in titles are sanitised; the PR 4 gate branch is
+  new code; only the blocked labels are re-derived every poll.
 
 - PR 1: `status.run.reviewErrorsTransient` moves to PR 4, where the autopilot
   gate first reads it; PR 1 only retries and reports the attempts.
