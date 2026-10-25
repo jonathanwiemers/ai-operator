@@ -196,8 +196,11 @@ func TestCIFixWithoutNewCommitGivesUp(t *testing.T) {
 	}
 }
 
+// Without main health, the default branch's newest finished pipeline is
+// looked up.
 func TestCIBaseFailing(t *testing.T) {
 	e := newCIEnv(t, "sha1")
+	e.setMainHealth(aiv1.MainHealthSpec{Disabled: true})
 	e.gl.AddPipeline("base", "main", "failed", failedTest())
 	pid := e.gl.AddPipeline("sha1", "agent/42", "failed", failedTest())
 	e.reconcile() // retry
@@ -214,6 +217,34 @@ func TestCIBaseFailing(t *testing.T) {
 	}
 	if !strings.Contains(e.notes(), "also fail on the default branch") {
 		t.Fatalf("unexpected note %q", e.notes())
+	}
+}
+
+func TestCIBaseFailingFromMainHealth(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthRed, IssueIID: 7, FailedJobs: []string{"test"}})
+	pid := e.gl.AddPipeline("sha1", "agent/42", "failed", failedTest())
+	e.reconcile() // retry
+	e.gl.SetPipelineStatus(pid, "failed")
+	e.reconcile()
+	if got := e.ciState(); got != aiv1.CIStateBaseFailing || e.ciTask().Spec.RunRequest != 0 {
+		t.Fatalf("a job main health reports red on the default branch is not this change's fault: state %s", got)
+	}
+	if !strings.Contains(e.notes(), "also fail on the default branch (#7)") {
+		t.Fatalf("the note must link the main-red issue: %q", e.notes())
+	}
+}
+
+func TestCIBaseFailingIgnoresStaleMainHealth(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	pid := e.gl.AddPipeline("sha1", "agent/42", "failed", failedTest())
+	e.reconcile() // retry
+	checked := metav1.NewTime(e.r.Now().Add(-2 * aiv1.DefaultMainHealthInterval))
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthRed, FailedJobs: []string{"test"}, CheckedAt: &checked})
+	e.gl.SetPipelineStatus(pid, "failed")
+	e.reconcile()
+	if got := e.ciState(); got != aiv1.CIStateFixing {
+		t.Fatalf("stale main health must fall back to the default branch's pipelines (green here): state %s", got)
 	}
 }
 
