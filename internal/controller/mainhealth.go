@@ -65,14 +65,15 @@ func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.A
 
 // autoFix hands the main-red issue to the agent (mainHealth.autoFix), once
 // per red episode: also when switched on while red, not when a human
-// already labelled or closed it.
+// already labelled or closed it, nor an older issue whose logs are not
+// marked as untrusted data.
 func (r *AgentProjectReconciler) autoFix(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.MainHealthStatus) error {
 	wf := spec.Workflow
 	is, err := gl.GetIssue(ctx, spec.GitLab.Project, st.IssueIID)
 	if err != nil {
 		return fmt.Errorf("getting issue #%d: %w", st.IssueIID, err)
 	}
-	if is.State == "opened" && !hasAny(*is, wf.ActiveLabels()...) {
+	if is.State == "opened" && !hasAny(*is, wf.ActiveLabels()...) && strings.Contains(is.Description, marker.UntrustedData) {
 		if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{AddLabels: []string{wf.ReadyLabel}}); err != nil {
 			return fmt.Errorf("moving issue #%d to %q: %w", is.IID, wf.ReadyLabel, err)
 		}

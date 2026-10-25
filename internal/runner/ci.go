@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 )
 
 // Limits for what a CI fix prompt contains: enough to see the failure,
@@ -69,8 +70,8 @@ func failedJobs(ctx context.Context, gl gitlab.API, glProject string, pipelineID
 	return out, nil
 }
 
-// buildCIPrompt asks the implementer to fix a red pipeline. The logs come
-// from CI and are therefore treated as untrusted data.
+// buildCIPrompt asks the implementer to fix a red pipeline. The jobs and
+// their logs come from CI and are therefore given as untrusted data.
 func buildCIPrompt(ctx context.Context, gl gitlab.API, glProject string, pipelineID int64) (string, error) {
 	jobs, err := failedJobs(ctx, gl, glProject, pipelineID)
 	if err != nil {
@@ -78,10 +79,10 @@ func buildCIPrompt(ctx context.Context, gl gitlab.API, glProject string, pipelin
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "The CI pipeline for your last push failed (pipeline %d). Find and fix the cause, then run the relevant checks locally.\n", pipelineID)
-	b.WriteString(untrustedLogs + "\n")
 	if len(jobs) == 0 {
 		b.WriteString("\nNo failed job details are available; check the build and tests yourself.\n")
 	}
+	b.WriteString(marker.UntrustedData)
 	for i, j := range jobs {
 		if i == maxCIJobs {
 			fmt.Fprintf(&b, "\n%d more failed jobs are not shown.\n", len(jobs)-maxCIJobs)
@@ -91,7 +92,7 @@ func buildCIPrompt(ctx context.Context, gl gitlab.API, glProject string, pipelin
 		if err != nil {
 			trace = fmt.Sprintf("(log not available: %v)", err)
 		}
-		fmt.Fprintf(&b, "\n### Job `%s` (stage %s)\n\n```text\n%s\n```\n", j.Name, j.Stage, ciExcerpt(trace))
+		fmt.Fprintf(&b, "\n### Job `%s` (stage %s)\n\n```text\n%s\n```\n", j.Name, j.Stage, strings.ReplaceAll(ciExcerpt(trace), "`", "'"))
 	}
-	return b.String(), nil
+	return untrustedData(b.String()), nil
 }

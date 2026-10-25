@@ -482,7 +482,9 @@ keeps that issue in scope despite `milestones.titlePattern`, and `syncCI`
 skips `baseFailing` for it. The job logs in its description and comments
 follow `marker.UntrustedData`; the runner's prompts put everything after
 that marker between `<untrusted-data>` tags with the CI warning, and a
-closing tag inside the logs is defused.
+closing tag inside the logs is defused. The CI fix prompt gives its failed
+jobs and logs the same way (backticks in logs defused). Only an issue whose
+description carries the marker is handed over.
 
 With `freezeAutopilot`, autopilot reads `status.mainHealth` on every poll
 (`internal/controller/freeze.go`, after `autoResume`, before the queue

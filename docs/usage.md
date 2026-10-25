@@ -376,7 +376,10 @@ deleted. The job logs follow a hidden marker; the agent and the reviewers
 get them as untrusted data between `<untrusted-data>` tags, never as part of
 the task, also in the issue's later comments. The CI loop of its MR does not
 call the main-red jobs "not caused by this change": the change has to fix
-them. One issue is handed over per red episode. When the branch turns green
+them. One issue is handed over per red episode; a main-red issue opened
+before the operator marked its logs is not. Switch `autoFix` on only where
+that is wanted: whoever can make the default branch's CI fail starts an
+agent run. When the branch turns green
 without it (a flaky job, a fix by hand), the issue is closed as usual and
 the agent's MR is left open for you to merge or close.
 

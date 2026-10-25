@@ -104,6 +104,17 @@ func TestMainHealthAutoFixSwitchedOnWhileRed(t *testing.T) {
 	}
 }
 
+func TestMainHealthAutoFixSkipsAnIssueWithUnmarkedLogs(t *testing.T) {
+	e, advance := newMainEnv(t)
+	is := redMain(e, advance)
+	is.Description = strings.Replace(is.Description, marker.UntrustedData, "", 1) // opened by an older operator
+	e.setMainHealth(aiv1.MainHealthSpec{AutoFix: true})
+	e.check(advance)
+	if is.HasLabel("agent::ready") {
+		t.Fatalf("logs not marked as untrusted data must not become the agent's task: %v", is.Labels)
+	}
+}
+
 func TestMainHealthGreenClosesTheAutoFixIssue(t *testing.T) {
 	e, advance := newMainEnv(t)
 	e.setMainHealth(aiv1.MainHealthSpec{AutoFix: true})
