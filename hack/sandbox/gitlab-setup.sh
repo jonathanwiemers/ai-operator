@@ -4,6 +4,7 @@
 # see hack/gitlab-board.sh).
 #   GITLAB_URL (default https://gitlab.com), GITLAB_PROJECT (group/project), GITLAB_TOKEN
 #   GITLAB_GROUP (group path) instead of GITLAB_PROJECT; the token needs Maintainer on the group
+#   GITLAB_PACE: seconds between the per-project calls of a group (default 1)
 set -euo pipefail
 if [[ -n "${GITLAB_GROUP:-}" ]]; then
   if [[ -n "${GITLAB_PROJECT:-}" ]]; then
@@ -22,6 +23,8 @@ GITLAB_URL="${GITLAB_URL:-https://gitlab.com}"
 # Group labels next to project labels of the same name would split the issues
 # between two labels: the operator and project boards keep using the project
 # label, a group board shows only the group label. Stop before creating any.
+# GitLab.com lists the group's labels too despite include_ancestor_groups=false,
+# so only labels with is_project_label count.
 if [[ -n "${GITLAB_GROUP:-}" ]]; then
   command -v jq >/dev/null || { echo "jq is required for GITLAB_GROUP" >&2; exit 1; }
   api() { curl -fsS -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${GITLAB_URL}/api/v4/$1"; }
@@ -30,9 +33,16 @@ if [[ -n "${GITLAB_GROUP:-}" ]]; then
     projects="$(api "${target}/projects?include_subgroups=true&simple=true&per_page=100&page=${page}")"
     while IFS=$'\t' read -r pid path; do
       [[ -z "$pid" ]] && continue
-      names="$(api "projects/${pid}/labels?include_ancestor_groups=false&per_page=100" |
-        jq -r '[.[].name | select(startswith("agent::") or startswith("agent-blocked::") or startswith("agent-profile::") or . == "ai-generated" or . == "ci::main-red" or . == "ci::flaky")] | join(", ")')"
+      all='[]' lpage=1
+      while :; do
+        labels="$(api "projects/${pid}/labels?include_ancestor_groups=false&per_page=100&page=${lpage}")"
+        all="$(jq -c --argjson all "$all" '$all + .' <<<"$labels")"
+        (( $(jq length <<<"$labels") < 100 )) && break
+        lpage=$((lpage + 1))
+      done
+      names="$(jq -r '[.[] | select(.is_project_label) | .name | select(startswith("agent::") or startswith("agent-blocked::") or startswith("agent-profile::") or . == "ai-generated" or . == "ci::main-red" or . == "ci::flaky")] | join(", ")' <<<"$all")"
       [[ -n "$names" ]] && dupes+="  ${path}: ${names}"$'\n'
+      sleep "${GITLAB_PACE:-1}" # one call per project: stay under GitLab.com's per-user rate limit
     done < <(jq -r '.[] | [.id, .path_with_namespace] | @tsv' <<<"$projects")
     (( $(jq length <<<"$projects") < 100 )) && break
     page=$((page + 1))
