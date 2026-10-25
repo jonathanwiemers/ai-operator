@@ -348,3 +348,4 @@ C3, C4 and C5 are independent of each other once C2 (C5: C1) is merged.
 
 | # | Title | Link | Status |
 |--:|---|---|---|
+| 0 | Spec: milestone coordinator (/pilot) | [#61](https://github.com/jonathanwiemers/ai-operator/pull/61) | open, awaiting approval |
