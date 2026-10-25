@@ -241,6 +241,8 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 				// Only issues of the queue are merged by autopilot; others
 				// in the milestone follow the normal flow.
 				autopilot = st.Spec.Autopilot && onAutopilot(st, is.IID)
+				// The pause reason goes in the same update as a run request,
+				// so the run sees it; a pause from this poll is copied next poll.
 				if ap := st.Status.Autopilot; autopilot && ap != nil && ap.Phase == aiv1.AutopilotPaused && ap.PausedFor == is.IID {
 					pause = ap.PausedReason
 				}
