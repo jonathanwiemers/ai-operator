@@ -203,6 +203,9 @@ Root causes:
 
 ### Later: the milestone coordinator
 
+Superseded by [milestone-coordinator.spec.md](milestone-coordinator.spec.md);
+the sketch below is kept for history.
+
 Separate spec once 1–7 run for a while. The coordinator is the main way a
 user talks to ai-operator about a milestone: "change the spec so the Rink
 gets a second flipper", "why is it paused?", "skip #320 and tell me what that
