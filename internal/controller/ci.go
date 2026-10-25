@@ -127,7 +127,7 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 
 	if failing, mainRed, err := r.baseFailing(ctx, gl, spec, mh, ci.FailedJobs); err != nil {
 		return err
-	} else if failing {
+	} else if failing && (mh == nil || mh.IssueIID != is.IID) { // the main-red issue's change must fix them
 		see := ""
 		if mainRed != 0 {
 			see = fmt.Sprintf(" (#%d)", mainRed)

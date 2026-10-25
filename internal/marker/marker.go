@@ -20,6 +20,11 @@ func IsTrackingIssue(description string) bool {
 	return strings.Contains(description, TrackingIssue)
 }
 
+// UntrustedData starts the part of a text that quotes output nobody vetted
+// (CI job logs): the runner gives everything after it to the agent as data,
+// never as instructions. It only lowers trust, so any author may write it.
+const UntrustedData = "<!-- ai-operator:untrusted-data -->"
+
 // Decision matches the marker after a recorded decision. Groups: 1 the ID
 // (D42-3 or D42-P1), 2 the issue IID, 3 "P" for planning decisions, 4 the
 // number, 5 " superseded" once it was replaced.

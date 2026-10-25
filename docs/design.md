@@ -476,6 +476,14 @@ when every GitLab call of a check succeeded, so a failed one is repeated on
 the next check. The issues are found again by a marker at the start of the
 description, in issues the bot wrote.
 
+With `autoFix`, a check that leaves a main-red issue adds `agent::ready`
+to it once (`status.mainHealth.autoFixIssueIID`, reset when green); the poll
+keeps that issue in scope despite `milestones.titlePattern`, and `syncCI`
+skips `baseFailing` for it. The job logs in its description and comments
+follow `marker.UntrustedData`; the runner's prompts put everything after
+that marker between `<untrusted-data>` tags with the CI warning, and a
+closing tag inside the logs is defused.
+
 With `freezeAutopilot`, autopilot reads `status.mainHealth` on every poll
 (`internal/controller/freeze.go`, after `autoResume`, before the queue
 step). `red`, or `retrying` after red (the main-red issue is open, or the
