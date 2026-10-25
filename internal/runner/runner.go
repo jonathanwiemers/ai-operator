@@ -90,12 +90,15 @@ type Outcome struct {
 	CIFixedPipelineID int64
 	// MergedBaseFor is set by runs that merged the default branch.
 	MergedBaseFor string
+	// ReviewedFor is set by runs asked to review a head again.
+	ReviewedFor string
 	// Reviewed is set when the reviewers ran; BlockingFindings and
 	// ReviewErrors go with it.
-	Reviewed         bool
-	BlockingFindings int32
-	ReviewErrors     int32
-	ReviewedSHA      string
+	Reviewed              bool
+	BlockingFindings      int32
+	ReviewErrors          int32
+	ReviewErrorsTransient bool
+	ReviewedSHA           string
 	// Plan is set by spec runs: the plan in plan order.
 	Plan []aiv1.PlannedIssue
 }
@@ -431,11 +434,14 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		if out.MergedBaseFor != "" {
 			s.MergedBaseFor = out.MergedBaseFor
 		}
+		if out.ReviewedFor != "" {
+			s.ReviewedFor = out.ReviewedFor
+		}
 		// Runs without a review (CI fix runs, questions) keep the result of
 		// the last review.
 		if out.Reviewed {
 			s.BlockingFindings = out.BlockingFindings
-			s.ReviewErrors = out.ReviewErrors
+			s.ReviewErrors, s.ReviewErrorsTransient = out.ReviewErrors, out.ReviewErrorsTransient
 			s.ReviewedSHA = out.ReviewedSHA
 		}
 	})

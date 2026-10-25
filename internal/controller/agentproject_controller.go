@@ -465,7 +465,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	}
 	mrChanged := mr != nil && (mr.UpdatedAt == nil || src.MergeRequestUpdatedAt == nil || mr.UpdatedAt.After(src.MergeRequestUpdatedAt.Time))
 
-	command := false
+	command, review := false, false
 	var reply *routingReply
 	if ready || issueChanged || mrChanged {
 		var latest int64
@@ -485,6 +485,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 			// Comments written before the task existed are context, not commands.
 			src.LastCommandNoteID = latest
 		} else if latest > src.LastCommandNoteID {
+			review = reviewOnly(slices.Concat(issueNotes, mrNotes), src.LastCommandNoteID, project.Status.BotUserID, wf.CommandPrefix)
 			src.LastCommandNoteID = latest
 			command = true
 		}
@@ -504,6 +505,22 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	if conflict {
 		log.FromContext(ctx).Info("merge request conflicts with the default branch, asking the agent to merge it", "issue", is.IID, "mr", mr.IID, "sha", mr.SHA)
 		src.MergeBaseFor = mr.SHA
+	}
+
+	// "/agent review": the next run reviews the agent's pushed head again.
+	// A head someone else pushed is taken over by a normal run instead.
+	if review && mr != nil && mr.SHA != "" && mr.SHA == task.Status.Run.PushedSHA {
+		src.ReviewFor = mr.SHA
+		if src.ReviewFor == task.Status.Run.ReviewedFor {
+			// Asked again for a head that was re-reviewed: review it again.
+			// Cleared before the run request, so no run sees one without it.
+			st := task.DeepCopy()
+			st.Status.Run.ReviewedFor = ""
+			if err := r.Status().Patch(ctx, st, client.MergeFrom(task)); err != nil {
+				return nil, nil, err
+			}
+			task.Status.Run.ReviewedFor, task.ResourceVersion = "", st.ResourceVersion
+		}
 	}
 
 	requested := ready || command || conflict
@@ -582,6 +599,17 @@ func commandNotes(ctx context.Context, gl gitlab.API, glProject string, issueIID
 		}
 	}
 	return latest, notes, mrNotes, nil
+}
+
+// reviewOnly reports whether all commands newer than since are "/agent
+// review".
+func reviewOnly(notes []gitlab.Note, since, botID int64, prefix string) bool {
+	for _, n := range notes {
+		if n.ID > since && IsCommand(n, botID, prefix) && !command.IsRoutingOnly(n.Body, prefix) && !command.IsReview(n.Body, prefix) {
+			return false
+		}
+	}
+	return true
 }
 
 // routingReply is the operator's answer to model and effort commands, and
@@ -685,6 +713,11 @@ func hasConflicts(mr *gitlab.MergeRequest) bool {
 // issue to working.
 func (r *AgentProjectReconciler) requestMergeBase(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, iid int64, sha string) error {
 	task.Spec.Source.MergeBaseFor = sha
+	return r.requestRun(ctx, gl, spec, task, iid)
+}
+
+// requestRun requests the next run of task and moves the issue to working.
+func (r *AgentProjectReconciler) requestRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, iid int64) error {
 	task.Spec.RunRequest++
 	if err := r.Update(ctx, task); err != nil {
 		return err

@@ -188,6 +188,12 @@ spec:
                   mergeRequestUpdatedAt:
                     format: date-time
                     type: string
+                  reviewFor:
+                    description: |-
+                      ReviewFor is a merge request head to review again without the
+                      implementer (after its reviewers failed, or "/agent review"). It is
+                      asked once per head; if the branch moved on, the run is a normal one.
+                    type: string
                 type: object
               suspend:
                 description: 'Suspend hibernates the task: its pod is deleted, the
@@ -695,6 +701,16 @@ spec:
                       in the last review.
                     format: int32
                     type: integer
+                  reviewErrorsTransient:
+                    description: |-
+                      ReviewErrorsTransient is set when all reviewers that failed in the
+                      last review failed transiently (an outage of their service).
+                    type: boolean
+                  reviewedFor:
+                    description: |-
+                      ReviewedFor is the head the last re-review was asked for
+                      (spec.source.reviewFor).
+                    type: string
                   reviewedSHA:
                     description: |-
                       ReviewedSHA is the commit the last review saw. Runs without a review
