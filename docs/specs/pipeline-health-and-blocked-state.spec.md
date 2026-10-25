@@ -381,5 +381,6 @@ would have prevented case 1, 1 + 3 + 4 case 2.
 
 | # | Title | Link | Status |
 |--:|---|---|---|
-| 0 | Spec: pipeline health, infra retries and the blocked state | [#47](https://github.com/jonathanwiemers/ai-operator/pull/47) | approved 2026-10-25, open |
-| 1 | Review: retry reviewers that fail transiently | [#48](https://github.com/jonathanwiemers/ai-operator/pull/48) | open |
+| 0 | Spec: pipeline health, infra retries and the blocked state | [#47](https://github.com/jonathanwiemers/ai-operator/pull/47) | merged 2026-10-25 |
+| 1 | Review: retry reviewers that fail transiently | [#48](https://github.com/jonathanwiemers/ai-operator/pull/48) | merged 2026-10-25 |
+| 3 | Workflow: agent::blocked and agent-blocked::<reason> labels | [#49](https://github.com/jonathanwiemers/ai-operator/pull/49) | open |
