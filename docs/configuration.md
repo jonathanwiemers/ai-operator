@@ -351,7 +351,7 @@ model is `agents.pilot`.
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `maxBudgetUSD` | `"20"` | the pilot's spend per milestone (its task's `status.run.costUSD`). Once it is used up, the pilot answers that it is, without a model call. On claude a single answer may spend what is left at most, unless `agents.pilot.maxBudgetUSD` sets a cap of its own |
+| `maxBudgetUSD` | `"20"` | the pilot's spend per milestone (its task's `status.run.costUSD`). Once it is used up, the pilot answers that it is, without a model call. On claude a single answer may spend what is left at most (or `agents.pilot.maxBudgetUSD`, if lower). The spend is what the engines report: cursor reports none, so on cursor the budget never runs out |
 
 ## Other `spec` fields
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,17 +43,25 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 	budget, _ := strconv.ParseFloat(spec.Pilot.MaxBudgetUSD, 64)
 	spent, _ := strconv.ParseFloat(task.Status.Run.CostUSD, 64)
 	role := spec.Agents.Pilot
+	turnCap, _ := strconv.ParseFloat(role.MaxBudgetUSD, 64)
 	st := r.loadState()
+	// A turn that failed does not hold up the others; the run reports it.
+	var failed error
 	for _, m := range msgs {
+		// Answered before the run was cut off or deferred.
+		if slices.Contains(st.PilotAnswered, m.NoteID) {
+			continue
+		}
 		left := budget - spent - out.CostUSD
+		if turnCap > 0 {
+			left = min(left, turnCap)
+		}
 		reply := fmt.Sprintf("The pilot's budget for this milestone ($%s, `pilot.maxBudgetUSD`) is used up, so it does not answer any more.", spec.Pilot.MaxBudgetUSD)
-		if left > 0 {
+		if left >= 0.01 {
 			inv := roleInvocation(role, pilotSystemPrompt, readOnlyTools, pilotSchema, true)
 			inv.Role = "pilot"
 			inv.Resume = st.session("pilot", role.Engine)
-			if inv.MaxBudgetUSD == "" {
-				inv.MaxBudgetUSD = strconv.FormatFloat(left, 'f', 2, 64)
-			}
+			inv.MaxBudgetUSD = strconv.FormatFloat(left, 'f', 2, 64)
 			prompt := buildPilotPrompt(task, m, state)
 			inv.Prompt = prompt
 			s := r.step(ctx, "run pilot", "engine", role.Engine, "model", role.Model, "note", m.NoteID, "resume", inv.Resume != "")
@@ -64,24 +73,34 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			if err == nil {
 				err = res.Decode(&a)
 			}
-			if err != nil {
-				if _, limited := AsUsageLimit(err); !limited {
-					r.pilotReply(ctx, gl, spec, m, "The pilot could not answer: the run failed (the task's status has the details).")
-				}
-				return out, s.fail(err)
+			switch _, limited := AsUsageLimit(err); {
+			case limited:
+				return out, s.fail(err) // the run is deferred and answers the rest
+			case err != nil:
+				failed = s.fail(err)
+				reply = "The pilot could not answer: the run failed (the task's status has the details)."
+			default:
+				st.setSession("pilot", role.Engine, res.SessionID)
+				s.done(agentResult(role, res, "answered"), "session", res.SessionID, "costUSD", res.CostUSD)
+				reply = a.Reply
 			}
-			st.setSession("pilot", role.Engine, res.SessionID)
-			if err := r.saveState(st); err != nil {
-				return out, s.fail(err)
-			}
-			s.done(agentResult(role, res, "answered"), "session", res.SessionID, "costUSD", res.CostUSD)
-			reply = a.Reply
 		}
 		r.pilotReply(ctx, gl, spec, m, reply)
+		st.PilotAnswered = append(st.PilotAnswered, m.NoteID)
+		if n := len(st.PilotAnswered); n > maxPilotAnswered {
+			st.PilotAnswered = st.PilotAnswered[n-maxPilotAnswered:]
+		}
+		if err := r.saveState(st); err != nil {
+			r.log().Error(err, "saving the pilot's session")
+		}
 	}
 	out.Summary = fmt.Sprintf("answered %d messages", len(msgs))
-	return out, nil
+	return out, failed
 }
+
+// maxPilotAnswered is how many answered messages the runner remembers, so
+// a message the operator hands over again is not answered twice.
+const maxPilotAnswered = 100
 
 // pilotReply posts a reply where the message was written. Agent text is made
 // inert: no mentions, quick actions or markers.

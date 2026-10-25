@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -17,14 +18,19 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab/gitlabfake"
 )
 
-// pilotEngine answers every turn with reply.
+// pilotEngine answers every turn with reply, and fails the turns whose
+// prompt contains fail.
 type pilotEngine struct {
 	calls []Invocation
 	reply string
+	fail  string
 }
 
 func (p *pilotEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
 	p.calls = append(p.calls, inv)
+	if p.fail != "" && strings.Contains(inv.Prompt, p.fail) {
+		return nil, errors.New("engine crashed")
+	}
 	b, _ := json.Marshal(PilotAnswer{Reply: p.reply})
 	return &Result{SessionID: "sess-pilot", CostUSD: 0.25, Structured: b}, nil
 }
@@ -180,5 +186,63 @@ func TestPilotBudgetStopsAnswers(t *testing.T) {
 	e.step(t)
 	if len(e.engine.calls) != 1 || e.engine.calls[0].MaxBudgetUSD != "0.50" {
 		t.Fatalf("the turn must be capped at the rest of the budget: %+v", e.engine.calls)
+	}
+}
+
+// addMessage queues another message on the pilot's current request.
+func (e *pilotEnv) addMessage(t *testing.T, m aiv1.PilotMessage) {
+	t.Helper()
+	task := e.task(t)
+	m.Request = task.Spec.RunRequest
+	task.Spec.Source.PilotMessages = append(task.Spec.Source.PilotMessages, m)
+	if err := e.k8s.Update(context.Background(), &task); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPilotFailedTurnDoesNotDropTheOthers(t *testing.T) {
+	e := newPilotEnv(t, "")
+	e.engine.fail = "why are we paused?"
+	e.addMessage(t, aiv1.PilotMessage{NoteID: 2001, IssueIID: 5, Author: "alice", Body: "what is blocked?"})
+	e.step(t)
+	if r := e.task(t).Status.Run; r.LastResult != aiv1.RunResultFailed || r.ObservedRunRequest != 1 {
+		t.Fatalf("a failed turn fails the run: %+v", r)
+	}
+	replies := botNotes(e.gl, 5)
+	if len(replies) != 2 || !strings.Contains(replies[0], "could not answer") || !strings.HasPrefix(replies[1], "🧭 Paused") {
+		t.Fatalf("both messages get an answer: %q", replies)
+	}
+}
+
+func TestPilotDoesNotAnswerTwice(t *testing.T) {
+	e := newPilotEnv(t, "")
+	if err := e.r.saveState(state{PilotAnswered: []int64{2000}}); err != nil { // answered before the pod stopped
+		t.Fatal(err)
+	}
+	e.addMessage(t, aiv1.PilotMessage{NoteID: 2001, IssueIID: 5, Author: "alice", Body: "what is blocked?"})
+	e.step(t)
+	if len(e.engine.calls) != 1 || !strings.Contains(e.engine.calls[0].Prompt, "what is blocked?") || len(botNotes(e.gl, 5)) != 1 {
+		t.Fatalf("only the unanswered message is answered: %d calls, %q", len(e.engine.calls), botNotes(e.gl, 5))
+	}
+}
+
+func TestPilotTurnKeepsTheRolesCap(t *testing.T) {
+	e := newPilotEnv(t, "")
+	e.patchProject(t, func(p *aiv1.AgentProject) { p.Spec.Agents.Pilot.MaxBudgetUSD = "0.10" })
+	e.step(t)
+	if len(e.engine.calls) != 1 || e.engine.calls[0].MaxBudgetUSD != "0.10" {
+		t.Fatalf("the role's cap is kept below the budget: %+v", e.engine.calls)
+	}
+}
+
+func (e *pilotEnv) patchProject(t *testing.T, mutate func(*aiv1.AgentProject)) {
+	t.Helper()
+	var p aiv1.AgentProject
+	if err := e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: "shop"}, &p); err != nil {
+		t.Fatal(err)
+	}
+	mutate(&p)
+	if err := e.k8s.Update(context.Background(), &p); err != nil {
+		t.Fatal(err)
 	}
 }
