@@ -590,6 +590,10 @@ the reason and what to do, mentioning the milestone's
 
 While paused, runs that were already requested continue (your `/agent`
 comments still reach the agent), but nothing new is started or merged.
+A run of the issue the pause is about gets the pause reason in its prompt
+("Autopilot paused because: …"), marked as the operator's context, before
+your comments. So `/agent investigate the root and fix it` on that issue
+knows what "it" is.
 
 While a pause over the active issue's run, review or CI holds, autopilot
 checks the issue on every poll. If the reason it paused for is gone but the
@@ -621,6 +625,11 @@ approval, unresolved discussions, someone else's push, a dependency cycle,
 | `/agent resume` | continue; the active issue is checked again |
 | `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |
 | `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](#revisiting-after-the-merge) joins the queue |
+
+Any other `/agent …` comment on the tracking issue (also a bare `/agent` or a
+`revisit` without a decision ID) gets one answer: the commands above, and
+that instructions for the agent go on the active issue (`#N`). The tracking
+issue does not pass them on to the agent.
 
 Everything else works as on any issue: comment `/agent …` on the active issue
 or its MR, revisit decisions with `/agent revisit <id> …`, or fix things by
