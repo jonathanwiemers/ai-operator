@@ -67,8 +67,12 @@ metadata:
     {{- include "ai-operator.labels" . | nindent 4 }}
 rules:
   - apiGroups: ["ai.wiemers.me"]
-    resources: ["agenttasks", "agentprojects"]
+    resources: ["agentprojects"]
     verbs: ["get"]
+  # list: the pilot reads the tasks of its milestone.
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agenttasks"]
+    verbs: ["get", "list"]
   - apiGroups: ["ai.wiemers.me"]
     resources: ["agenttasks/status"]
     verbs: ["get", "patch"]

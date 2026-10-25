@@ -39,6 +39,10 @@ type AgentProjectSpec struct {
 	// +optional
 	Notify NotifySpec `json:"notify,omitempty"`
 
+	// Pilot configures the milestone coordinator (see agents.pilot).
+	// +optional
+	Pilot PilotSpec `json:"pilot,omitempty"`
+
 	// PollInterval is how often GitLab is polled for changes.
 	// +kubebuilder:default="1m"
 	// +optional
@@ -293,6 +297,12 @@ type AgentsSpec struct {
 	// Spec configures the spec (planning) agent.
 	// +optional
 	Spec RoleSpec `json:"spec,omitempty"`
+
+	// Pilot configures the milestone coordinator, who answers the
+	// milestone's owners. Defaults to the claude engine with
+	// claude-sonnet-5-5.
+	// +optional
+	Pilot RoleSpec `json:"pilot,omitempty"`
 
 	// Implement configures the implementing agent for issues without a
 	// profile label (e.g. issues created by hand).
@@ -687,6 +697,17 @@ type NotifySpec struct {
 	// +kubebuilder:default=true
 	// +optional
 	RequestReview *bool `json:"requestReview,omitempty"`
+}
+
+// PilotSpec configures the milestone coordinator ("/pilot").
+type PilotSpec struct {
+	// MaxBudgetUSD caps the pilot's spend per milestone, as a decimal
+	// string. Once it is used up, the pilot answers that it is, without a
+	// model call.
+	// +kubebuilder:default="20"
+	// +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
+	// +optional
+	MaxBudgetUSD string `json:"maxBudgetUSD,omitempty"`
 }
 
 // AgentProjectStatus is the observed state of an AgentProject.

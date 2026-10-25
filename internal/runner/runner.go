@@ -352,6 +352,8 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		out, err = r.runSpec(ctx, gl, task, project, spec)
 	case task.Spec.Type == aiv1.TaskTypeImplement:
 		out, err = r.runImplement(ctx, gl, task, project, spec)
+	case task.Spec.Type == aiv1.TaskTypeCoordinate:
+		out, err = r.runPilot(ctx, gl, task, project, spec)
 	default:
 		err = fmt.Errorf("unknown task type %q", task.Spec.Type)
 	}

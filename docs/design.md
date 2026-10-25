@@ -210,7 +210,7 @@ planner's summary is kept in the spec task's status (`kubectl get agenttask
 | Kind | Who writes it | Purpose |
 |------|---------------|---------|
 | `AgentProject` | you | GitLab connection, label workflow, agent image, engines/models per role, lifecycle and limits |
-| `AgentTask` | operator | one per planned milestone (`Spec`) and per handed-over issue (`Implement`); owns the pod and the workspace PVC |
+| `AgentTask` | operator | one per planned milestone (`Spec`), per handed-over issue (`Implement`) and per milestone with a pilot (`Coordinate`); owns the pod and the workspace PVC |
 
 `AgentTask.spec.runRequest` is a counter: each increment asks for exactly one
 more run. The runner acknowledges in `status.run.observedRunRequest`. Requests
@@ -717,6 +717,31 @@ It watches every planned milestone, autopilot or not:
   the decision index of the original issue is collected again, so the
   tracking issue shows the old decision as superseded.
 
+## Pilot
+
+A milestone's pilot is a `Coordinate` task with its own pod, workspace and
+resumed session (`agents.pilot`, light model). It only answers; changing
+anything is a later step of
+[the spec](specs/milestone-coordinator.spec.md).
+
+* **Messages.** The operator puts the owners' messages into
+  `spec.source.pilotMessages`, each with the run request that answers it, and
+  bumps `spec.runRequest` in the same update. A run answers the messages of
+  its requests (after `status.run.observedRunRequest`), one turn each, and
+  posts each answer where the message was written; the operator drops
+  answered messages.
+* **Context.** Each turn gets the owner's message, then the milestone's state
+  as one JSON block marked as untrusted data: the description without owners
+  lines, plan and autopilot status from the spec task, every issue of the
+  milestone with labels, last run result and summary, CI and block of its
+  task, `status.mainHealth`, and the last 20 comments of the tracking issue.
+  JSON keeps text from GitLab or CI from closing the block. The pilot has the
+  reviewers' read-only tools; its answer is made inert like all agent text
+  (no mentions, quick actions or markers).
+* **Budget.** The task's `status.run.costUSD` is the pilot's spend; at
+  `pilot.maxBudgetUSD` it answers without a model call that the budget is
+  used up. On claude each turn is capped at the rest of the budget.
+
 ## Engines, profiles and subscriptions
 
 Each role runs on an engine, an agent CLI:
@@ -832,8 +857,8 @@ after every read-only run); the boundary is the agent container itself.
 
 * Pods run as non-root with all capabilities dropped and seccomp
   `RuntimeDefault`; the runner's root filesystem is read-only.
-* The agent service account can only read tasks/projects and patch
-  `agenttasks/status`.
+* The agent service account can only read (get, list) tasks, get projects
+  and patch `agenttasks/status`; the pilot lists the tasks of its milestone.
 * Optional NetworkPolicy (Helm `agent.networkPolicy`): no ingress, no egress
   to cloud metadata endpoints or private networks except allow-listed CIDRs
   (Kubernetes API, self-hosted GitLab, mirrors). NetworkPolicies apply per
@@ -880,6 +905,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/controller/mainhealth.go` | main health: default branch pipelines, retry, flaky and main-red issues |
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
+| `internal/runner/pilot.go` | the pilot: milestone state, answers, budget |
 | `internal/runner/git.go` | runner-side bare mirror (the only git that talks to GitLab) |
 | `internal/gitlab` | minimal REST client with retries; `gitlabfake` for tests |
 | `internal/ui` | web UI server: OIDC login, CEL claim mapping, access rules, session cookies, JSON API, change events |
