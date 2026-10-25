@@ -78,3 +78,25 @@ func classifyLimit(engine aiv1.Engine, err error, res *Result) error {
 	}
 	return lim
 }
+
+// transientPatterns match failures of an engine's service that may be gone
+// a minute later, e.g. cursor-agent's "RetriableError: [unavailable] Error",
+// a reset connection or a gateway error. Like limitPatterns, no bare status
+// codes.
+var transientPatterns = regexp.MustCompile(`(?i)(RetriableError|\[unavailable\]|ECONNRESET|connection reset|502 Bad Gateway|503 Service Unavailable|504 Gateway)`)
+
+// reviewRetryBackoff is the pause before each retry of a reviewer that
+// failed transiently; the last one repeats.
+var reviewRetryBackoff = []time.Duration{30 * time.Second, 2 * time.Minute}
+
+// isTransient reports whether a failed call is worth trying again soon.
+// Usage limits are not: they are deferred until they reset.
+func isTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	if _, ok := AsUsageLimit(err); ok {
+		return false
+	}
+	return transientPatterns.MatchString(err.Error())
+}

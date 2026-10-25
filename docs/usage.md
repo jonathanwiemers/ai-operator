@@ -174,7 +174,12 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    command is not handed over: it starts its own run after this one, and the
    comments after it wait for that run too. At most 25 steps per run; a run
    that runs out of steps leaves the MR a draft and says so.
-4. The **bugbot** and **security** reviewers check the diff in parallel.
+4. The **bugbot** and **security** reviewers check the diff in parallel. A
+   reviewer that fails because its engine's service is briefly unavailable
+   (for example cursor-agent's `RetriableError: [unavailable]`, a reset
+   connection, a 502/503/504) is called again after 30 seconds, then after 2
+   minutes (`review.retries`, default 2). Other failures, and usage limits,
+   are not retried; the report says how many attempts a failed reviewer had.
 5. Blocker and major findings go back to the implementer (at most
    `review.maxIterations` times). Remaining findings are listed for you.
 6. **If the review is clean**, the MR is marked **ready** (its `Draft:` prefix

@@ -30,6 +30,7 @@ const (
 	DefaultCIFixRounds          = 2
 	DefaultNoPipelineTimeout    = 10 * time.Minute
 	DefaultReviewIters          = 2
+	DefaultReviewRetries        = 2
 	DefaultMaxEffort            = "high"
 )
 
@@ -111,6 +112,10 @@ func (r ReviewSpec) WithDefaults() ReviewSpec {
 	if r.MaxIterations == nil {
 		n := int32(DefaultReviewIters)
 		r.MaxIterations = &n
+	}
+	if r.Retries == nil {
+		n := int32(DefaultReviewRetries)
+		r.Retries = &n
 	}
 	return r
 }
