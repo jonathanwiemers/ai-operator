@@ -5,6 +5,7 @@
 #   GITLAB_URL (default https://gitlab.com), GITLAB_TOKEN (your own token, api
 #   scope, Maintainer on the target) and exactly one of GITLAB_GROUP (my-group,
 #   a group, not a personal namespace) or GITLAB_PROJECT (my-group/project)
+#   GITLAB_PACE: seconds between the per-project calls of a group (default 1)
 # The labels must exist: hack/sandbox/gitlab-setup.sh (GITLAB_GROUP for group labels).
 set -euo pipefail
 : "${GITLAB_TOKEN:?set GITLAB_TOKEN (your own token with the api scope and Maintainer on the group or project)}"
@@ -79,16 +80,19 @@ fi
 
 # A group board lists issues by the group labels. Projects with project labels
 # of the same names keep using those, and their issues do not show up.
+# GitLab.com lists the group's labels too despite include_ancestor_groups=false
+# (with search), so only labels with is_project_label count.
 if [[ -n "${GITLAB_GROUP:-}" ]]; then
   get_all "${base}/projects?include_subgroups=true&simple=true"
   while IFS=$'\t' read -r pid path; do
     get_all "/projects/${pid}/labels?include_ancestor_groups=false&search=agent%3A%3A"
     shadow="$(jq -r --argjson want "$(printf '%s\n' "${labels[@]}" | jq -R . | jq -sc .)" \
-      '[.[] | select(.name as $n | $want | index($n)) | .name] | join(", ")' <<<"$body")"
+      '[.[] | select(.is_project_label and (.name as $n | $want | index($n))) | .name] | join(", ")' <<<"$body")"
     if [[ -n "$shadow" ]]; then
       echo "warning  ${path} has project labels ${shadow}: its issues will not show on the group board." >&2
       echo "         Promote them to group labels (project > Manage > Labels > Promote), which merges them." >&2
     fi
+    sleep "${GITLAB_PACE:-1}" # one call per project: stay under GitLab.com's per-user rate limit
   done < <(jq -r '.[] | [.id, .path_with_namespace] | @tsv' <<<"$body")
 fi
 
