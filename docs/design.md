@@ -493,7 +493,7 @@ moves it. Conflicts are resolved by the agent, with git doing the mechanics:
   routing commands) and the run has no CI fix, merge or revisit to do. The review loop then runs as usual (blocking findings go to
   the implementer, whose fix is pushed). The run records the head as
   `status.run.reviewedFor` when it ends (also as a fallback normal run; a
-  failed run leaves it), so a later run is never a re-review again for the
+  failed run, or one with another run requested meanwhile, leaves it), so a later run is never a re-review again for the
   same request; a repeated `/agent review` on that head clears
   `reviewedFor` (before the run request) to ask again.
 * **Merge, not rebase.** The runner asks the agent container to merge

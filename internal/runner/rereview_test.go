@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -155,5 +156,35 @@ func TestFailedRunDoesNotUseUpTheReReview(t *testing.T) {
 	})
 	if run := e.task().Status.Run; run.LastResult != aiv1.RunResultFailed || run.ReviewedFor != "" {
 		t.Fatalf("a failed run must not count as the re-review: %+v", run)
+	}
+}
+
+// requestDuringReview asks for another run while the reviewers run.
+type requestDuringReview struct {
+	next Engine
+	e    *limitEnv
+	once sync.Once
+}
+
+func (q *requestDuringReview) Run(ctx context.Context, inv Invocation) (*Result, error) {
+	if inv.ReadOnly {
+		q.once.Do(func() {
+			task := q.e.task()
+			orig := task.DeepCopy()
+			task.Spec.RunRequest++
+			if err := q.e.k8s.Patch(ctx, &task, client.MergeFrom(orig)); err != nil {
+				q.e.t.Error(err)
+			}
+		})
+	}
+	return q.next.Run(ctx, inv)
+}
+
+func TestReReviewLeavesTheRequestToALaterOne(t *testing.T) {
+	e, _, first := reReview(t, func(r aiv1.RunStatus) string { return r.PushedSHA }, false, func(e *limitEnv, f *reviewerFailures) {
+		f.next = &requestDuringReview{next: f.next, e: e}
+	})
+	if run := e.task().Status.Run; run.ReviewedFor != "" || run.ReviewedSHA != first.PushedSHA {
+		t.Fatalf("a re-review asked for again during the run must not be used up: %+v", run)
 	}
 }

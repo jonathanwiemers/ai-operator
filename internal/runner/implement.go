@@ -592,8 +592,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if needsInput {
 		out.Result = aiv1.RunResultNeedsInput
 	}
-	if reviewAsked {
-		// Handled: a re-review, or a normal run since the head moved on.
+	if reviewAsked && !r.morePending(ctx, task.Spec.RunRequest) {
+		// Handled: a re-review, or a normal run since the head moved on. A
+		// request that came meanwhile (another "/agent review") still sees it.
 		out.ReviewedFor = reviewFor
 	}
 	out.Summary = answer.Summary
