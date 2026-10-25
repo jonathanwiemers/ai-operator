@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -868,5 +870,79 @@ func TestAutopilotMRPauseEndsWithAHandMerge(t *testing.T) {
 	ap := e.autopilot()
 	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].State != aiv1.AutopilotItemMerged {
 		t.Fatalf("the hand merge must count: %+v", ap)
+	}
+}
+
+// The Bloop case: an instruction for the agent written on the tracking issue
+// is answered once, without quoting it, and points at the active issue.
+func TestAutopilotAnswersUnknownTrackingCommandsOnce(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	tracking := e.autopilot().TrackingIssueIID
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	const answer = "This tracking issue only understands"
+	e.gl.AddNote(tracking, human, "/agent investigate the root and fix it @someone\n/close")
+	// A failed answer is tried again on the next poll.
+	e.gl.NoteErrors = map[int64]error{tracking: errors.New("gitlab is down")}
+	_, _ = e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "shop"}})
+	e.gl.NoteErrors = nil
+	e.reconcile()
+	comments := trackingComments(e)
+	if n := strings.Count(comments, answer); n != 1 {
+		t.Fatalf("an unknown command must get exactly one answer, got %d:\n%s", n, comments)
+	}
+	if !strings.Contains(comments, "comment `/agent …` on #1, the active issue") || !strings.Contains(comments, "`/agent skip #N`") {
+		t.Fatalf("the answer must name the commands and the active issue:\n%s", comments)
+	}
+	for _, n := range e.gl.IssueNotes[tracking] {
+		if strings.Contains(n.Body, answer) && (strings.Contains(n.Body, "investigate") || strings.Contains(n.Body, "@someone") || strings.Contains(n.Body, "/close")) {
+			t.Fatalf("the answer must not quote the comment:\n%s", n.Body)
+		}
+	}
+	// Later polls do not answer the same note again.
+	e.reconcile()
+	e.reconcile()
+	if n := strings.Count(trackingComments(e), answer); n != 1 {
+		t.Fatalf("a note must be answered once, got %d answers", n)
+	}
+
+	// Known commands, and a well-formed revisit (syncRevisits' job), get no
+	// such answer; a bare command and a malformed revisit do.
+	for _, body := range []string{"/agent pause", "/agent resume", "/agent: skip #2", "/agent revisit D1-1 use gRPC"} {
+		e.gl.AddNote(tracking, human, body)
+	}
+	e.reconcile()
+	if n := strings.Count(trackingComments(e), answer); n != 1 {
+		t.Fatalf("known commands must not be answered as unknown, got %d answers:\n%s", n, trackingComments(e))
+	}
+	if ap := e.autopilot(); ap.Items[1].State != aiv1.AutopilotItemSkipped || ap.Phase != aiv1.AutopilotRunning {
+		t.Fatalf("known commands must work as before: %+v", ap)
+	}
+	e.gl.AddNote(tracking, human, "/agent")
+	e.gl.AddNote(tracking, human, "/agent revisit the API please")
+	e.reconcile()
+	if n := strings.Count(trackingComments(e), answer); n != 3 {
+		t.Fatalf("a bare command and a malformed revisit must be answered, got %d answers:\n%s", n, trackingComments(e))
+	}
+}
+
+// A run during a pause over its issue is told why autopilot paused; once the
+// pause is over, the reason is gone from its task.
+func TestAutopilotPauseReasonReachesTheIssueTask(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", func(r *aiv1.RunStatus) { r.BlockingFindings = 2 })
+	e.reconcile()
+	e.reconcile()
+	if got := e.tasks()[name].Spec.Source.AutopilotPause; !strings.Contains(got, "2 blocking review findings") {
+		t.Fatalf("the pause reason must be copied onto the paused issue's task, got %q", got)
+	}
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.Run.BlockingFindings, s.Run.RunCount = 0, 2 })
+	e.reconcile()
+	e.reconcile()
+	if task, ok := e.tasks()[name]; ok && task.Spec.Source.AutopilotPause != "" {
+		t.Fatalf("the pause reason must be cleared after the pause: %q", task.Spec.Source.AutopilotPause)
 	}
 }

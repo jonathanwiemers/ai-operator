@@ -1045,7 +1045,8 @@ func (a *autopilot) pause(ctx context.Context, reason string) error {
 	return nil
 }
 
-// commands handles "/agent pause|resume|skip #N" on the tracking issue.
+// commands handles "/agent pause|resume|skip #N" on the tracking issue and
+// answers any other command once.
 func (a *autopilot) commands(ctx context.Context) error {
 	if a.ap.TrackingIssueIID == 0 {
 		return nil
@@ -1062,13 +1063,20 @@ func (a *autopilot) commands(ctx context.Context) error {
 		if n.ID <= a.ap.LastCommandNoteID || !IsCommand(n, a.project.Status.BotUserID, prefix) {
 			continue
 		}
+		prev := a.ap.LastCommandNoteID
 		a.ap.LastCommandNoteID = n.ID
 		rest := strings.TrimPrefix(strings.TrimSpace(n.Body), prefix)
-		fields := strings.Fields(strings.TrimLeft(rest, ": \t"))
-		if len(fields) == 0 {
-			continue
+		// Padded, so a bare command and a bare "skip" have their fields.
+		fields := append(strings.Fields(strings.TrimLeft(rest, ": \t")), "")
+		word := strings.ToLower(strings.TrimSuffix(fields[0], ":"))
+		if word == "revisit" {
+			// syncRevisits handles (and answers) the well-formed ones.
+			if m := marker.Revisit.FindStringSubmatch(n.Body); m != nil && m[1] == prefix {
+				continue
+			}
+			word = ""
 		}
-		switch strings.ToLower(strings.TrimSuffix(fields[0], ":")) {
+		switch word {
 		case "pause":
 			if a.ap.Phase != aiv1.AutopilotDone {
 				a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotPaused, "paused by @"+n.Author.Username
@@ -1080,10 +1088,7 @@ func (a *autopilot) commands(ctx context.Context) error {
 				a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 			}
 		case "skip":
-			iid := int64(0)
-			if len(fields) > 1 {
-				iid, _ = strconv.ParseInt(strings.TrimPrefix(fields[1], "#"), 10, 64)
-			}
+			iid, _ := strconv.ParseInt(strings.TrimPrefix(fields[1], "#"), 10, 64)
 			it := a.item(iid)
 			if it == nil || it.State == aiv1.AutopilotItemMerged {
 				if err := a.comment(ctx, fmt.Sprintf("`skip` needs a planned issue that is not merged yet, e.g. `%s skip #12`.", prefix)); err != nil {
@@ -1092,9 +1097,28 @@ func (a *autopilot) commands(ctx context.Context) error {
 				continue
 			}
 			it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+		default:
+			if err := a.comment(ctx, a.unknownCommand()); err != nil {
+				a.ap.LastCommandNoteID = prev // answered on the next poll
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// unknownCommand answers a command the tracking issue does not understand,
+// without quoting it: instructions for the agent go on the active issue.
+func (a *autopilot) unknownCommand() string {
+	prefix := a.spec.Workflow.CommandPrefix
+	where := "the issue it should work on"
+	for _, it := range a.ap.Items {
+		if it.State == aiv1.AutopilotItemActive {
+			where = fmt.Sprintf("#%d, the active issue", it.IID)
+		}
+	}
+	return fmt.Sprintf("This tracking issue only understands `%[1]s pause`, `%[1]s resume`, `%[1]s skip #N` and `%[1]s revisit <id> …`. "+
+		"To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where)
 }
 
 // ensureTracking creates the tracking issue on the first poll.

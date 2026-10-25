@@ -109,6 +109,12 @@ type SourceState struct {
 	// once per head.
 	// +optional
 	MergeBaseFor string `json:"mergeBaseFor,omitempty"`
+
+	// AutopilotPause is the reason autopilot is paused over this issue
+	// (Implement tasks), copied from the milestone's spec task, so a run
+	// during the pause knows it. Empty when it is not paused over it.
+	// +optional
+	AutopilotPause string `json:"autopilotPause,omitempty"`
 }
 
 // CIState is the state of the pipeline of the agent's last push.

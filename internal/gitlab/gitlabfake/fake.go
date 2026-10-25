@@ -34,6 +34,8 @@ type Fake struct {
 	IssueUpdates []gitlab.UpdateIssueOptions
 	// MergeErrors makes MergeMergeRequest of an MR fail.
 	MergeErrors map[int64]error
+	// NoteErrors makes CreateIssueNote on an issue fail.
+	NoteErrors map[int64]error
 	// Merged and Rebased record the MRs merged and rebased, in order.
 	Merged, Rebased []int64
 	// RebaseConflict makes rebases end in a conflict.
@@ -299,6 +301,9 @@ func (f *Fake) ListIssueNotes(_ context.Context, _ string, iid int64) ([]gitlab.
 func (f *Fake) CreateIssueNote(_ context.Context, _ string, iid int64, body string) (*gitlab.Note, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.NoteErrors[iid]; err != nil {
+		return nil, err
+	}
 	n := gitlab.Note{ID: f.id(), Body: body, Author: f.Bot, CreatedAt: f.tick()}
 	f.IssueNotes[iid] = append(f.IssueNotes[iid], n)
 	if is := f.Issues[iid]; is != nil {

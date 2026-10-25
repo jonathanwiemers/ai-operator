@@ -157,6 +157,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		fullPrompt = autopilotImplementNote + "\n\n" + fullPrompt
 		inv.Prompt = autopilotImplementNote + "\n\n" + inv.Prompt
 	}
+	if reason := task.Spec.Source.AutopilotPause; reason != "" {
+		fullPrompt = autopilotPauseNote(reason) + "\n\n" + fullPrompt
+		inv.Prompt = autopilotPauseNote(reason) + "\n\n" + inv.Prompt
+	}
 	notices := roleNotes
 	var active, ignored []revisit
 	for _, rv := range revisits {

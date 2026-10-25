@@ -99,6 +99,7 @@ implementer of every following run reads them:
 | `/agent resume` | Continue; the active issue is checked again. |
 | `/agent skip #12` | Skip a planned issue. Issues that depend on it stay blocked until it is merged by hand or they are skipped too. |
 | `/agent revisit D42-3 …` | Change a decision of a merged issue: a follow-up issue joins the queue. |
+| anything else | Answered once with this list and the active issue. Instructions for the agent go on the active issue or its MR, not here. |
 
 See [Autopilot](usage.md#autopilot-a-milestone-end-to-end).
 

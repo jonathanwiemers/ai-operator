@@ -991,3 +991,25 @@ func TestRunTakesOverAHumanPush(t *testing.T) {
 		t.Fatalf("the issue should wait for CI on that head, has %v", labels)
 	}
 }
+
+func TestAutopilotPauseReasonInPrompt(t *testing.T) {
+	e := newImplementEnv(t)
+	e.gl.AddNote(42, gitlab.User{ID: 1, Username: "jonathan"}, "/agent investigate the root and fix it")
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	task.Spec.Autopilot = true
+	task.Spec.Source.AutopilotPause = "2 reviewers failed on #42"
+	if err := e.k8s.Update(context.Background(), &task); err != nil {
+		t.Fatal(err)
+	}
+	engine := &decisionEngine{}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	p := engine.calls[0].Prompt
+	reason, comment := strings.Index(p, "Autopilot paused because: 2 reviewers failed on #42."), strings.Index(p, "investigate the root")
+	if reason < 0 || comment < 0 || reason > comment || !strings.Contains(p, "## Operator context") {
+		t.Fatalf("the pause reason must come as operator context before the human comments:\n%s", p)
+	}
+}
