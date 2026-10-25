@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
@@ -869,7 +870,8 @@ func (r *Runner) commit(ctx context.Context, message string) error {
 	return nil
 }
 
-// review runs all configured reviewers in parallel. Reviewer failures do not
+// review runs all configured reviewers in parallel. A reviewer that fails
+// transiently is called again (review.retries). Reviewer failures do not
 // fail the run; they are reported alongside the result.
 func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions, base, stat, diff string) ([]Finding, float64, []string) {
 	prompt := buildReviewPrompt(issue, planDecisions, base, stat, diff)
@@ -887,19 +889,48 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 			inv := roleInvocation(spec.RoleSpec, reviewerSystemPrompt(kind), readOnlyTools, reviewSchema, true)
 			inv.Role = string(kind)
 			inv.NoPersistence = true
-			res, err := r.invoke(ctx, spec.RoleSpec, inv, prompt)
-			var answer ReviewAnswer
-			if err == nil {
-				err = res.Decode(&answer)
+			var (
+				res    *Result
+				err    error
+				answer ReviewAnswer
+				spent  float64
+			)
+			retries, attempts := 0, 0
+			if spec.Retries != nil {
+				retries = int(*spec.Retries)
+			}
+			for {
+				attempts++
+				res, err = r.invoke(ctx, spec.RoleSpec, inv, prompt)
+				if res != nil {
+					spent += res.CostUSD
+				}
+				if err == nil {
+					err = res.Decode(&answer)
+				}
+				if attempts > retries || !isTransient(err) {
+					break
+				}
+				wait := reviewRetryBackoff[min(attempts, len(reviewRetryBackoff))-1]
+				r.log().Info("reviewer failed transiently, trying again", "reviewer", kind, "attempt", attempts, "wait", wait, "error", truncate(err.Error(), 300))
+				select {
+				case <-ctx.Done():
+				case <-time.After(wait):
+				}
+				if ctx.Err() != nil {
+					break
+				}
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			if res != nil {
-				cost += res.CostUSD
-			}
+			cost += spent
 			if err != nil {
-				r.log().Error(err, "reviewer failed", "reviewer", kind)
-				errs = append(errs, fmt.Sprintf("%s reviewer failed: %s", kind, truncate(err.Error(), 300)))
+				r.log().Error(err, "reviewer failed", "reviewer", kind, "attempts", attempts)
+				msg := truncate(err.Error(), 300)
+				if attempts > 1 {
+					msg = fmt.Sprintf("%s (after %d attempts)", msg, attempts)
+				}
+				errs = append(errs, fmt.Sprintf("%s reviewer failed: %s", kind, msg))
 				return
 			}
 			blocking := 0

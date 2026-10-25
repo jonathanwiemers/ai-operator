@@ -182,7 +182,7 @@ it to `false` for one commit per run.
 | `spec` | claude, `claude-opus-5-5` | spec (planning) agent |
 | `profiles` | `fast`, `strong` | implementing agents selected per issue |
 | `implement` | claude, `claude-opus-5-5` | implementing agent for issues without a profile label |
-| `review` | claude, `claude-sonnet-5-5`, reviewers `bugbot` + `security`, `maxIterations: 2` | review agents |
+| `review` | claude, `claude-sonnet-5-5`, reviewers `bugbot` + `security`, `maxIterations: 2`, `retries: 2` | review agents |
 | `describe` | claude, `claude-sonnet-5-5` | writes the MR description after each push that changed the diff; `disabled: true` keeps the placeholder |
 | `models` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` (aliases `opus`, `sonnet`, `haiku`) | engines and models an issue may switch its implementer to with `/agent use` or an `agent-model::` label; the models of the profiles and of `implement` are always allowed. Entries: `engine`, `model`, optional `alias` |
 | `logPrompts` | `false` | log every prompt (role, system prompt, prompt, each cut at 64 KiB) in the agent container, for the web UI's [live transcript](ui.md#live-transcript). Prompts hold issue text, comments, diffs and CI logs |
@@ -208,8 +208,10 @@ killed together with the run.
 | `allowedTools` | claude | override the tool allow-list |
 | `instructions` | both | appended to the role prompt (house rules, test commands) |
 
-`review` additionally has `reviewers` (`bugbot`, `security`) and
-`maxIterations`; `describe` has `disabled`.
+`review` additionally has `reviewers` (`bugbot`, `security`),
+`maxIterations` and `retries` (calls again a reviewer that failed
+transiently, e.g. an engine outage; `0` turns it off); `describe` has
+`disabled`.
 
 ### Per-issue model and effort
 
