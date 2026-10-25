@@ -29,6 +29,7 @@ const (
 	DefaultMaxConcurrent        = 3
 	DefaultCIFixRounds          = 2
 	DefaultNoPipelineTimeout    = 10 * time.Minute
+	DefaultMainHealthInterval   = 5 * time.Minute
 	DefaultReviewIters          = 2
 	DefaultReviewRetries        = 2
 	DefaultMaxEffort            = "high"
@@ -150,6 +151,7 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 	s.Workflow = s.Workflow.WithDefaults()
 	s.Lifecycle = s.Lifecycle.WithDefaults()
 	s.CI = s.CI.WithDefaults()
+	s.MainHealth = s.MainHealth.WithDefaults()
 	s.Agents.Spec = s.Agents.Spec.WithDefaults()
 	s.Agents.Implement = s.Agents.Implement.WithDefaults()
 	if len(s.Agents.Profiles) == 0 {
@@ -264,7 +266,7 @@ func (s AgentProjectStatus) ActiveUsageLimit(engine Engine, now time.Time) (Usag
 }
 
 // AllNotifyEvents are the events that mention the owners by default.
-var AllNotifyEvents = []NotifyEvent{NotifyFailed, NotifyNeedsInput, NotifyCIFailed, NotifyReview, NotifyAutopilotPaused, NotifyAutopilotDone}
+var AllNotifyEvents = []NotifyEvent{NotifyFailed, NotifyNeedsInput, NotifyCIFailed, NotifyReview, NotifyAutopilotPaused, NotifyAutopilotDone, NotifyMainRed}
 
 // WithDefaults fills in notification defaults.
 func (n NotifySpec) WithDefaults() NotifySpec {
@@ -297,4 +299,19 @@ func (c CISpec) WithDefaults() CISpec {
 		c.NoPipelineTimeout = metav1.Duration{Duration: DefaultNoPipelineTimeout}
 	}
 	return c
+}
+
+// WithDefaults fills in main health defaults.
+func (m MainHealthSpec) WithDefaults() MainHealthSpec {
+	if m.Interval.Duration == 0 {
+		m.Interval = metav1.Duration{Duration: DefaultMainHealthInterval}
+	}
+	t := true
+	if m.RetryFailedJobs == nil {
+		m.RetryFailedJobs = &t
+	}
+	if m.Issue == nil {
+		m.Issue = &t
+	}
+	return m
 }

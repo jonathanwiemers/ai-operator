@@ -21,7 +21,8 @@ of each kind.
 | `agent-blocked::<reason>` | operator | why it is blocked: `infra`, `main-red`, `quota` or `dependency` |
 | `agent::done` | you | finished; pod and workspace are deleted |
 | `agent-profile::<name>` | spec agent / you | which agent profile implements the issue (e.g. `agent-profile::fast`, `agent-profile::strong`) |
-| `ai-generated` | spec agent | issue was created by the spec agent |
+| `ai-generated` | spec agent / operator | issue was created by the spec agent or the operator |
+| `ci::main-red` | operator | the issue that reports a red default branch, see [main health](#main-health) |
 
 Put `agent::draft`, `agent::ready`, `agent::working`, `agent::needs-input`,
 `agent::review`, `agent::blocked` and `agent::done` on an issue board as
@@ -245,6 +246,7 @@ need a human, so GitLab sends them a mail and a To-Do:
 | CI is still red after the fix rounds (not on autopilot) | issue |
 | the issue reached review (not on autopilot) | MR report, or "Ready for review" on the MR after CI; the owners also become the MR's reviewers if it has none |
 | autopilot paused or is done | tracking issue |
+| the default branch stayed red after a retry | the new `ci::main-red` issue (project owners: `spec.notify.users` or the default) |
 
 Only new comments carry the mention, never the progress comment that is
 edited while a run goes on, and each commit pings for review once. On
@@ -313,6 +315,40 @@ right away and the issue stays in review. So a job such as "add a changelog
 entry" that only runs for ready MRs gets fixed by the agent too, as far as
 code can fix it: the agent can add the file the job asks for, but it cannot
 set labels on the MR.
+
+## Main health
+
+The operator also watches the default branch: every `mainHealth.interval`
+(5 minutes) it reads the newest finished pipeline of the default branch, and
+the jobs only when that pipeline is new. Jobs that are allowed to fail don't
+count.
+
+| Default branch pipeline | What happens |
+|-------------------------|--------------|
+| green | nothing; an open `ci::main-red` issue gets "✅ green again at `<sha>`" and is closed |
+| red, first time | its failed jobs are retried once |
+| green after the retry | flaky: recorded in the status, nothing else |
+| still red after the retry | an issue "🚑 `main` is red: `<jobs>`" (labels `ai-generated`, `ci::main-red`) with the pipeline, the commit, the failing jobs and the last 40 lines of each job's log; it mentions the project's owners |
+| red again, the same jobs | nothing new |
+| red again, other jobs | a comment on the `ci::main-red` issue, and its title follows |
+
+The operator finds its issue again by a hidden marker, also after the
+AgentProject was recreated; issues a human opens with these labels are left
+alone. Job logs are untrusted: mentions and quick actions in them are made
+inert, and job names in titles keep only letters, digits and ` :._/-`, at
+most 60 characters.
+
+The state is in the AgentProject status:
+
+```bash
+kubectl get agentproject shop -o jsonpath='{.status.mainHealth}'
+```
+
+`state` is `green`, `retrying`, `red` or `flaky`, with the pipeline, commit,
+failing jobs and the open `ci::main-red` issue. Configure it in
+`spec.mainHealth` (see [configuration.md](configuration.md#specmainhealth));
+`mainHealth.retryFailedJobs: false` reports a red pipeline right away. The
+watcher does not hold merges yet.
 
 ## Merge conflicts
 

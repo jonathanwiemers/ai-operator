@@ -31,6 +31,10 @@ type AgentProjectSpec struct {
 	// +optional
 	CI CISpec `json:"ci,omitempty"`
 
+	// MainHealth watches the pipelines of the default branch.
+	// +optional
+	MainHealth MainHealthSpec `json:"mainHealth,omitempty"`
+
 	// Notify says whom the operator mentions when it needs a human.
 	// +optional
 	Notify NotifySpec `json:"notify,omitempty"`
@@ -543,8 +547,75 @@ type CISpec struct {
 	NoPipelineTimeout metav1.Duration `json:"noPipelineTimeout,omitempty"`
 }
 
+// MainHealthSpec configures the watcher of the default branch: its newest
+// finished pipeline is checked every Interval. A red one is retried once;
+// green after the retry is recorded as flaky, still red opens an issue.
+type MainHealthSpec struct {
+	// Disabled turns the watcher off.
+	// +optional
+	Disabled bool `json:"disabled,omitempty"`
+
+	// Interval is how often the default branch's pipelines are checked.
+	// +kubebuilder:default="5m"
+	// +optional
+	Interval metav1.Duration `json:"interval,omitempty"`
+
+	// RetryFailedJobs retries the failed jobs of a red pipeline once before
+	// it counts as red.
+	// +kubebuilder:default=true
+	// +optional
+	RetryFailedJobs *bool `json:"retryFailedJobs,omitempty"`
+
+	// Issue opens an issue for a red default branch and one per flaky job.
+	// +kubebuilder:default=true
+	// +optional
+	Issue *bool `json:"issue,omitempty"`
+}
+
+// MainHealthState is the health of the default branch.
+// +kubebuilder:validation:Enum=green;retrying;red;flaky
+type MainHealthState string
+
+const (
+	MainHealthGreen MainHealthState = "green"
+	// MainHealthRetrying: the failed jobs of the pipeline are retried.
+	MainHealthRetrying MainHealthState = "retrying"
+	MainHealthRed      MainHealthState = "red"
+	// MainHealthFlaky: the pipeline was green after its failed jobs were
+	// retried.
+	MainHealthFlaky MainHealthState = "flaky"
+)
+
+// MainHealthStatus is the health of the default branch, as of its newest
+// finished pipeline.
+type MainHealthStatus struct {
+	State MainHealthState `json:"state"`
+	// +optional
+	PipelineID int64 `json:"pipelineID,omitempty"`
+	// +optional
+	SHA string `json:"sha,omitempty"`
+	// FailedJobs are the failing jobs of the pipeline, before a retry.
+	// +optional
+	FailedJobs []string `json:"failedJobs,omitempty"`
+	// Since is when the state last changed.
+	// +optional
+	Since *metav1.Time `json:"since,omitempty"`
+	// IssueIID is the open issue that reports the red default branch.
+	// +optional
+	IssueIID int64 `json:"issueIID,omitempty"`
+	// ReportedJobs are the failing jobs the issue reports last.
+	// +optional
+	ReportedJobs []string `json:"reportedJobs,omitempty"`
+	// RetriedPipelineID is the pipeline whose failed jobs were retried.
+	// +optional
+	RetriedPipelineID int64 `json:"retriedPipelineID,omitempty"`
+	// CheckedAt is when the pipelines were last checked.
+	// +optional
+	CheckedAt *metav1.Time `json:"checkedAt,omitempty"`
+}
+
 // NotifyEvent is a situation in which the operator needs a human.
-// +kubebuilder:validation:Enum=failed;needsInput;ciFailed;review;autopilotPaused;autopilotDone
+// +kubebuilder:validation:Enum=failed;needsInput;ciFailed;review;autopilotPaused;autopilotDone;mainRed
 type NotifyEvent string
 
 const (
@@ -560,6 +631,8 @@ const (
 	NotifyAutopilotPaused NotifyEvent = "autopilotPaused"
 	// NotifyAutopilotDone: autopilot finished a milestone.
 	NotifyAutopilotDone NotifyEvent = "autopilotDone"
+	// NotifyMainRed: the default branch stayed red after a retry.
+	NotifyMainRed NotifyEvent = "mainRed"
 )
 
 // NotifySpec says whom the operator mentions ("cc @…") in the comments that
@@ -608,6 +681,10 @@ type AgentProjectStatus struct {
 	// limits belong to the credentials, so they apply to the whole project.
 	// +optional
 	UsageLimits []UsageLimit `json:"usageLimits,omitempty"`
+
+	// MainHealth is the health of the default branch.
+	// +optional
+	MainHealth *MainHealthStatus `json:"mainHealth,omitempty"`
 
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
