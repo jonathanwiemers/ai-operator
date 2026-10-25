@@ -365,6 +365,38 @@ spec:
                 required:
                 - phase
                 type: object
+              blocked:
+                description: |-
+                  Blocked is set while the issue cannot go on for an outside reason;
+                  the operator shows it with the blocked labels.
+                properties:
+                  applied:
+                    description: |-
+                      Applied is set once the issue carries the blocked labels. An applied
+                      block whose issue lost the blocked label was lifted by a human.
+                    type: boolean
+                  message:
+                    type: string
+                  reason:
+                    description: BlockReason is why an issue is blocked; it is the
+                      suffix of its reason label.
+                    enum:
+                    - infra
+                    - main-red
+                    - quota
+                    - dependency
+                    type: string
+                  restoreLabel:
+                    description: RestoreLabel is the workflow label the blocked label
+                      replaced.
+                    type: string
+                  since:
+                    format: date-time
+                    type: string
+                required:
+                - reason
+                - since
+                type: object
               ci:
                 description: CI is the operator's view of the pipeline of the agent's
                   last push.

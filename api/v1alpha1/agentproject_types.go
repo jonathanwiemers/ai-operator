@@ -125,6 +125,19 @@ type WorkflowSpec struct {
 	// +optional
 	ReviewLabel string `json:"reviewLabel,omitempty"`
 
+	// BlockedLabel is set by the operator when an issue cannot go on for a
+	// reason outside it (an outage, a red default branch); the label it
+	// replaced comes back once the block is lifted.
+	// +kubebuilder:default="agent::blocked"
+	// +optional
+	BlockedLabel string `json:"blockedLabel,omitempty"`
+
+	// BlockedReasonPrefix: a blocked issue also carries
+	// "<prefix><reason>", e.g. "agent-blocked::infra".
+	// +kubebuilder:default="agent-blocked::"
+	// +optional
+	BlockedReasonPrefix string `json:"blockedReasonPrefix,omitempty"`
+
 	// DoneLabel (or closing the issue) ends the task and deletes its pod and
 	// workspace.
 	// +kubebuilder:default="agent::done"

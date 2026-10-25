@@ -266,6 +266,11 @@ type AgentTaskStatus struct {
 	// +optional
 	CI *CIStatus `json:"ci,omitempty"`
 
+	// Blocked is set while the issue cannot go on for an outside reason;
+	// the operator shows it with the blocked labels.
+	// +optional
+	Blocked *BlockedStatus `json:"blocked,omitempty"`
+
 	// Plan is the spec agent's last plan, in plan order (spec tasks).
 	// +optional
 	Plan []PlannedIssue `json:"plan,omitempty"`
@@ -589,4 +594,34 @@ type DecisionRef struct {
 	URL   string `json:"url,omitempty"`
 	// +optional
 	Superseded bool `json:"superseded,omitempty"`
+}
+
+// BlockReason is why an issue is blocked; it is the suffix of its reason label.
+// +kubebuilder:validation:Enum=infra;main-red;quota;dependency
+type BlockReason string
+
+const (
+	// BlockInfra: an engine or reviewer outage, a lost agent pod.
+	BlockInfra BlockReason = "infra"
+	// BlockMainRed: autopilot does not merge while the default branch is red.
+	BlockMainRed BlockReason = "main-red"
+	// BlockQuota: a usage limit defers the run.
+	BlockQuota BlockReason = "quota"
+	// BlockDependency: autopilot waits for an issue that will not be merged.
+	BlockDependency BlockReason = "dependency"
+)
+
+// BlockedStatus is an issue's block.
+type BlockedStatus struct {
+	Reason BlockReason `json:"reason"`
+	// +optional
+	Message string      `json:"message,omitempty"`
+	Since   metav1.Time `json:"since"`
+	// RestoreLabel is the workflow label the blocked label replaced.
+	// +optional
+	RestoreLabel string `json:"restoreLabel,omitempty"`
+	// Applied is set once the issue carries the blocked labels. An applied
+	// block whose issue lost the blocked label was lifted by a human.
+	// +optional
+	Applied bool `json:"applied,omitempty"`
 }

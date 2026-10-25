@@ -17,12 +17,15 @@ of each kind.
 | `agent::working` | operator | an agent run is requested or running |
 | `agent::needs-input` | agent | the agent has questions, or the run failed |
 | `agent::review` | agent | merge request is ready for your review |
+| `agent::blocked` | operator | the issue cannot go on for an outside reason; nothing to answer |
+| `agent-blocked::<reason>` | operator | why it is blocked: `infra`, `main-red`, `quota` or `dependency` |
 | `agent::done` | you | finished; pod and workspace are deleted |
 | `agent-profile::<name>` | spec agent / you | which agent profile implements the issue (e.g. `agent-profile::fast`, `agent-profile::strong`) |
 | `ai-generated` | spec agent | issue was created by the spec agent |
 
 Put `agent::draft`, `agent::ready`, `agent::working`, `agent::needs-input`,
-`agent::review` and `agent::done` on an issue board as columns. An issue moves
+`agent::review`, `agent::blocked` and `agent::done` on an issue board as
+columns. An issue moves
 through them like this:
 
 ```mermaid
@@ -32,6 +35,7 @@ stateDiagram-v2
     state "agent::working" as working
     state "agent::needs-input" as needs
     state "agent::review" as review
+    state "agent::blocked" as blocked
     state "agent::done" as done
 
     [*] --> draft: spec agent plans the issue
@@ -43,11 +47,23 @@ stateDiagram-v2
     needs --> working: /agent or ready
     review --> working: /agent comment
     review --> done: you merge and close
+    working --> blocked: outside reason
+    review --> blocked: outside reason
+    blocked --> review: reason gone
+    blocked --> working: /agent or ready
     done --> [*]: task, pod and workspace deleted
 ```
 
 You act on `draft`, `needs-input` and `review`. Everything in between,
 including fixing a red pipeline, happens without you.
+
+**`needs-input` or `blocked`?** `agent::needs-input` means a human has to
+answer or decide something. `agent::blocked` means the issue waits for
+something outside it, such as an engine outage or a red default branch.
+The `agent-blocked::<reason>` label says what it waits for. The operator sets
+both labels and remembers the label they replaced. When the reason is gone,
+that label comes back. You can also lift a block yourself: move the card to
+`agent::ready` or comment `/agent …`, and the issue gets a run as usual.
 
 `hack/gitlab-board.sh` creates that board, named **Agents**, with one list per
 label in this order. Moving a card between columns changes its label, so

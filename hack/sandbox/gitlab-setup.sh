@@ -31,7 +31,7 @@ if [[ -n "${GITLAB_GROUP:-}" ]]; then
     while IFS=$'\t' read -r pid path; do
       [[ -z "$pid" ]] && continue
       names="$(api "projects/${pid}/labels?include_ancestor_groups=false&per_page=100" |
-        jq -r '[.[].name | select(startswith("agent::") or startswith("agent-profile::") or . == "ai-generated")] | join(", ")')"
+        jq -r '[.[].name | select(startswith("agent::") or startswith("agent-blocked::") or startswith("agent-profile::") or . == "ai-generated")] | join(", ")')"
       [[ -n "$names" ]] && dupes+="  ${path}: ${names}"$'\n'
     done < <(jq -r '.[] | [.id, .path_with_namespace] | @tsv' <<<"$projects")
     (( $(jq length <<<"$projects") < 100 )) && break
@@ -67,6 +67,10 @@ create "agent::working"      "#e9be74" "An agent run is requested or running"
 create "agent::needs-input"  "#dc143c" "The agent has questions or the run failed"
 create "agent::review"       "#8fbc8f" "Draft MR ready for review"
 create "agent::done"         "#428bca" "Finished; pod and workspace are removed"
+create "agent::blocked"      "#6c757d" "Waits for something outside the issue; nothing to answer"
+for reason in infra main-red quota dependency; do
+  create "agent-blocked::$reason" "#adb5bd" "Why the issue is blocked"
+done
 create "agent-profile::fast"   "#6699cc" "Implemented by the fast profile"
 create "agent-profile::strong" "#5843ad" "Implemented by the strong profile"
 create "ai-generated"        "#cccccc" "Created by the spec agent"
