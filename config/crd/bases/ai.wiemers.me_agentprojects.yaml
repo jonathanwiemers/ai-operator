@@ -611,6 +611,15 @@ spec:
                           claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
                           default.
                         type: string
+                      retries:
+                        default: 2
+                        description: |-
+                          Retries is how often a reviewer is called again after a transient
+                          failure (an outage of the engine's service, a reset connection), with
+                          a growing pause in between. Other failures are not retried.
+                        format: int32
+                        minimum: 0
+                        type: integer
                       reviewers:
                         default:
                         - bugbot

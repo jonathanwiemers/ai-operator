@@ -452,6 +452,14 @@ type ReviewSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	MaxIterations *int32 `json:"maxIterations,omitempty"`
+
+	// Retries is how often a reviewer is called again after a transient
+	// failure (an outage of the engine's service, a reset connection), with
+	// a growing pause in between. Other failures are not retried.
+	// +kubebuilder:default=2
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Retries *int32 `json:"retries,omitempty"`
 }
 
 // ReviewerKind names a built-in reviewer.
