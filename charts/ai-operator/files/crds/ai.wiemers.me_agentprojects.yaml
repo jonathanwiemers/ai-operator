@@ -925,6 +925,12 @@ spec:
               mainHealth:
                 description: MainHealth watches the pipelines of the default branch.
                 properties:
+                  autoFix:
+                    description: |-
+                      AutoFix hands the main-red issue to the agent (agent::ready), once
+                      per red episode. On autopilot, the frozen milestone merges its fix
+                      (the main-red lane); otherwise a human merges it.
+                    type: boolean
                   disabled:
                     description: Disabled turns the watcher off.
                     type: boolean

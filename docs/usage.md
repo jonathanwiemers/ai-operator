@@ -382,6 +382,22 @@ lifted. `/agent resume` does not end a freeze (it pauses again); to ship
 during a freeze, merge by hand. The freeze holds at the merge gate only: an
 issue already started keeps working until it reaches it.
 
+**The main-red lane.** With `mainHealth.autoFix` and the freeze on, the
+oldest autopilot milestone that is not done also drives the `ci::main-red`
+issue while the branch is red: its run is on autopilot (no questions, CI
+fixes are reviewed), and it goes through the same merge gate (run, review,
+CI, a mergeable MR) and is merged. That is the only merge during a freeze:
+the queue stays frozen until the next check sees the branch green, then it
+continues as above. One fix is merged per red episode. The lane does not run
+while you paused autopilot (`/agent pause`), nor once you took the issue
+from the agent (no workflow label). If the fix cannot be merged (its CI is
+still red after the fix rounds and the issue is in `agent::needs-input`, for
+example), autopilot pauses with "the fix of the red default branch (#N)
+cannot be merged: …" and mentions the owners; the pause ends by itself once
+a later run passes the gate, or when the branch turns green and the issue is
+closed. Without autopilot, the issue follows the normal flow and you merge
+it.
+
 ## Merge conflicts
 
 When the default branch moves on and the MR of an issue in `agent::review`
@@ -624,6 +640,8 @@ the reason and what to do, mentioning the milestone's
 - the active issue lost its workflow label while open;
 - the default branch is red ([merge freeze](#main-health)): the active issue
   is blocked (`agent-blocked::main-red`) until it is green;
+- the fix of the red default branch cannot be merged ([main-red
+  lane](#main-health));
 - no reviewers are configured;
 - the plan has a dependency cycle, or nothing can start because the
   remaining issues wait for skipped issues, for issues outside the queue

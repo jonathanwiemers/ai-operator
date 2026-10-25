@@ -536,6 +536,11 @@ type AutopilotStatus struct {
 	// +optional
 	Items []AutopilotItem `json:"items,omitempty"`
 
+	// MainRedFix is the main-red issue (mainHealth.autoFix) this milestone
+	// drives through the merge gate while the default branch is red.
+	// +optional
+	MainRedFix *AutopilotItem `json:"mainRedFix,omitempty"`
+
 	// LastCommandNoteID is the newest command on the tracking issue the
 	// operator has handled.
 	// +optional

@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
 // mainHealthStale is after how many intervals without a check the main
@@ -78,4 +79,57 @@ func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
 	}
 	a.ap.Phase, a.ap.PausedReason, a.ap.PausedFor, a.ap.ResumeWhenReady = aiv1.AutopilotRunning, "", 0, false
 	return nil
+}
+
+// loadMainRedFix keeps the main-red issue (mainHealth.autoFix) as the
+// lane's item while the default branch is red, and while autopilot is
+// paused for it; one item per red episode. Its issue is in no milestone, so
+// it is read on its own.
+func (a *autopilot) loadMainRedFix(ctx context.Context) error {
+	if mh := a.r.freshMainHealth(a.spec, a.project.Status.MainHealth, mainHealthStale); a.lane && a.spec.MainHealth.AutoFix && *a.spec.MainHealth.FreezeAutopilot && mh != nil {
+		a.mainRed = mh.IssueIID
+	}
+	switch fix := a.ap.MainRedFix; {
+	case fix != nil && (fix.IID == a.mainRed || fix.IID == a.ap.PausedFor):
+	case a.mainRed != 0:
+		a.ap.MainRedFix = &aiv1.AutopilotItem{IID: a.mainRed, State: aiv1.AutopilotItemActive}
+	default:
+		a.ap.MainRedFix = nil
+	}
+	fix := a.ap.MainRedFix
+	if fix == nil || fix.State != aiv1.AutopilotItemActive {
+		return nil
+	}
+	is, err := a.gl.GetIssue(ctx, a.spec.GitLab.Project, fix.IID)
+	if err != nil && !gitlab.IsNotFound(err) {
+		return fmt.Errorf("getting issue #%d: %w", fix.IID, err)
+	}
+	if err == nil {
+		a.issues[fix.IID] = *is
+	}
+	return nil
+}
+
+// mainRedLane drives the main-red issue through the same merge gate as the
+// queue and merges it: the only merge while the default branch is red. Not
+// while a pause holds autopilot as a whole ("/agent pause", a plan cycle),
+// nor once a human took the issue from the agent (no workflow label).
+func (a *autopilot) mainRedLane(ctx context.Context) error {
+	fix := a.ap.MainRedFix
+	is, ok := a.issues[a.mainRed]
+	switch {
+	case fix == nil || fix.IID != a.mainRed || fix.State != aiv1.AutopilotItemActive,
+		a.ap.Phase != aiv1.AutopilotRunning && (a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedFor == 0),
+		ok && is.State == "opened" && !hasAny(is, a.spec.Workflow.ActiveLabels()...):
+		return nil
+	}
+	return a.drive(ctx, fix)
+}
+
+// about says that a pause is over the fix of the red default branch.
+func (a *autopilot) about(it *aiv1.AutopilotItem, reason string) string {
+	if it == a.ap.MainRedFix {
+		return fmt.Sprintf("the fix of the red default branch (#%d) cannot be merged: %s", it.IID, reason)
+	}
+	return reason
 }

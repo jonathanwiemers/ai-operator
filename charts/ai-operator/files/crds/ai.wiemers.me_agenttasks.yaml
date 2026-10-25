@@ -341,6 +341,88 @@ spec:
                       operator has handled.
                     format: int64
                     type: integer
+                  mainRedFix:
+                    description: |-
+                      MainRedFix is the main-red issue (mainHealth.autoFix) this milestone
+                      drives through the merge gate while the default branch is red.
+                    properties:
+                      decisions:
+                        description: Decisions recorded on the issue, collected when
+                          it was merged.
+                        items:
+                          description: DecisionRef points to a decision recorded on
+                            an issue.
+                          properties:
+                            id:
+                              type: string
+                            superseded:
+                              type: boolean
+                            title:
+                              type: string
+                            url:
+                              type: string
+                          required:
+                          - id
+                          type: object
+                        type: array
+                      iid:
+                        format: int64
+                        type: integer
+                      markedReady:
+                        description: |-
+                          MarkedReady is set once the operator marked the draft MR ready, or
+                          found it ready, to run CI. A draft again after that is a human holding
+                          it, or a run that left problems.
+                        type: boolean
+                      mergeRequestIID:
+                        description: MergeRequestIID and MergeRequestURL of the issue's
+                          merge request.
+                        format: int64
+                        type: integer
+                      mergeRequestURL:
+                        type: string
+                      mergedSHA:
+                        description: MergedSHA is the commit the merge request was
+                          merged as.
+                        type: string
+                      rebasedAt:
+                        description: RebasedAt is when the rebase was requested.
+                        format: date-time
+                        type: string
+                      rebasedDiff:
+                        description: |-
+                          RebasedDiff is a hash of the reviewed change, taken before the rebase.
+                          The rebased head is only treated as reviewed if its change hashes the
+                          same, i.e. the rebase moved the change without changing it.
+                        type: string
+                      rebasedFrom:
+                        description: |-
+                          RebasedFrom is the head the operator asked GitLab to rebase; set
+                          while the rebase is in progress.
+                        type: string
+                      rebases:
+                        description: Rebases counts the rebases of this item; only
+                          one is attempted.
+                        format: int32
+                        type: integer
+                      revisitOf:
+                        description: |-
+                          RevisitOf is set for follow-up issues the operator created to revisit
+                          a decision of a merged issue: the decision's ID.
+                        type: string
+                      state:
+                        description: AutopilotItemState is the state of one issue
+                          in the queue.
+                        enum:
+                        - Pending
+                        - Active
+                        - Merged
+                        - Skipped
+                        type: string
+                    required:
+                    - iid
+                    - state
+                    type: object
                   pausedFor:
                     description: |-
                       PausedFor is the active issue the pause is about. Autopilot continues

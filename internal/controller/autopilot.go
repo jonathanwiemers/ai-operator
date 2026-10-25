@@ -32,7 +32,7 @@ import (
 // The operator only calls the GitLab API here; no model decides whether to
 // merge. State lives in the spec task's status.autopilot, the tracking issue
 // shows it.
-func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask) error {
+func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, lane bool) error {
 	switch {
 	case st.Spec.Milestone == nil:
 		return nil
@@ -45,7 +45,7 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 	if st.Status.Autopilot != nil {
 		ap = st.Status.Autopilot.DeepCopy()
 	}
-	a := &autopilot{r: r, gl: gl, project: project, spec: spec, st: st, ap: ap, tasks: tasks,
+	a := &autopilot{r: r, gl: gl, project: project, spec: spec, st: st, ap: ap, tasks: tasks, lane: lane,
 		log: log.FromContext(ctx).WithValues("milestone", st.Spec.Milestone.Title)}
 	err := a.sync(ctx)
 	// Save what was done even if a later step failed: its GitLab side
@@ -71,6 +71,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	for _, is := range issues {
 		a.issues[is.IID] = is
 	}
+	if err := a.loadMainRedFix(ctx); err != nil {
+		return err
+	}
 	order, cycle := queueOrder(a.st.Status.Plan)
 	a.ap.Items = mergeQueue(a.ap.Items, order)
 	if err := a.ensureTracking(ctx); err != nil {
@@ -83,6 +86,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 		return err
 	}
 	if err := a.freezeOnMainRed(ctx); err != nil {
+		return err
+	}
+	if err := a.mainRedLane(ctx); err != nil {
 		return err
 	}
 	switch {
@@ -131,6 +137,9 @@ type autopilot struct {
 	log     logr.Logger
 	// proj is read once per poll, when needed.
 	proj *gitlab.Project
+	// lane: this milestone drives the main-red issue, mainRed while red.
+	lane    bool
+	mainRed int64
 }
 
 // queueOrder orders the plan topologically: dependencies first, ties in plan
@@ -206,6 +215,9 @@ func mergeQueue(items []aiv1.AutopilotItem, order []int64) []aiv1.AutopilotItem 
 }
 
 func (a *autopilot) item(iid int64) *aiv1.AutopilotItem {
+	if fix := a.ap.MainRedFix; fix != nil && fix.IID == iid {
+		return fix
+	}
 	for i := range a.ap.Items {
 		if a.ap.Items[i].IID == iid {
 			return &a.ap.Items[i]
@@ -652,7 +664,7 @@ func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, rea
 			return a.merged(ctx, it, mr)
 		}
 	}
-	if err := a.pause(ctx, reason); err != nil {
+	if err := a.pause(ctx, a.about(it, reason)); err != nil {
 		return err
 	}
 	a.ap.PausedFor = it.IID
@@ -662,7 +674,7 @@ func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, rea
 // pauseMR pauses because of the active issue's MR (approvals, a push, its
 // state): autopilot continues by itself only if it is merged by hand.
 func (a *autopilot) pauseMR(ctx context.Context, it *aiv1.AutopilotItem, reason string) error {
-	if err := a.pause(ctx, reason); err != nil {
+	if err := a.pause(ctx, a.about(it, reason)); err != nil {
 		return err
 	}
 	a.ap.PausedFor = it.IID
@@ -747,7 +759,7 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		return resume(fmt.Sprintf("#%d is reviewed and green again", it.IID))
 	case g.state == gateReReview:
 		return a.reReview(ctx, it, task)
-	case g.state == gateFailed && g.reason != a.ap.PausedReason:
+	case g.state == gateFailed && a.about(it, g.reason) != a.ap.PausedReason:
 		// A later run fixed the old reason, but something else holds the
 		// issue now: say so (and mention the owners), instead of keeping
 		// the stale reason.

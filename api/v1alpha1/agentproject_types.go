@@ -583,6 +583,12 @@ type MainHealthSpec struct {
 	// +kubebuilder:default=true
 	// +optional
 	FreezeAutopilot *bool `json:"freezeAutopilot,omitempty"`
+
+	// AutoFix hands the main-red issue to the agent (agent::ready), once
+	// per red episode. On autopilot, the frozen milestone merges its fix
+	// (the main-red lane); otherwise a human merges it.
+	// +optional
+	AutoFix bool `json:"autoFix,omitempty"`
 }
 
 // MainHealthState is the health of the default branch.

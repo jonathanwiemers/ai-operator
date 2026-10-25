@@ -322,6 +322,7 @@ The watcher of the default branch, see [usage.md](usage.md#main-health).
 | `retryFailedJobs` | `true` | retry the failed jobs of a red pipeline once; green after the retry counts as flaky |
 | `issue` | `true` | open the `ci::main-red` issue and one `ci::flaky` issue per flaky job |
 | `freezeAutopilot` | `true` | autopilot merges nothing while the default branch is `red`: the issue that passed the gate is blocked (`main-red`) and autopilot continues by itself once the branch is green. A status not checked for 3 intervals does not freeze (see [merge freeze](usage.md#main-health)) |
+| `autoFix` | `false` | hand the `ci::main-red` issue to the agent (`agent::ready`), once per red episode, also under `milestones.titlePattern`. On autopilot, the frozen milestone merges the fix (the main-red lane); otherwise a human merges it (see [fixing a red branch](usage.md#main-health)) |
 
 The token needs the same rights as for `spec.ci` (read pipelines and job logs,
 retry jobs) and must be able to create issues.
