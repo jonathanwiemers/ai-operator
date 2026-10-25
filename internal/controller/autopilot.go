@@ -82,6 +82,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.autoResume(ctx); err != nil {
 		return err
 	}
+	if err := a.freezeOnMainRed(ctx); err != nil {
+		return err
+	}
 	switch {
 	case a.ap.Phase != aiv1.AutopilotRunning && a.ap.Phase != aiv1.AutopilotDone:
 	case len(cycle) > 0:
@@ -796,8 +799,8 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 		return failed(true, "#%d needs input (see its last comments): CI is still red, the run failed or the agent asked a question", it.IID)
 	case !hasAny(is, wf.ActiveLabels()...):
 		return failed(false, "#%d is open but has no workflow label any more; move it back to `%s` or close it", it.IID, wf.ReviewLabel)
-	case !is.HasLabel(wf.ReviewLabel) || task == nil || task.RunPending():
-		return gateResult{state: gateWaiting}
+	case !is.HasLabel(wf.ReviewLabel) || task == nil || task.RunPending() || task.Status.Blocked != nil:
+		return gateResult{state: gateWaiting} // blocked: waits for an outside reason
 	}
 	run := task.Status.Run
 	switch {

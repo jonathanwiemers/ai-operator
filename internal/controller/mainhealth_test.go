@@ -8,8 +8,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -327,5 +329,55 @@ func TestMainHealthFlakyMatrixIsCapped(t *testing.T) {
 	e.check(advance)
 	if n := len(e.issuesWith("ci::flaky")); n != 3 {
 		t.Fatalf("a flaky matrix opens issues for its first 3 jobs, got %d", n)
+	}
+}
+
+// setMainHealthStatus records st as the watcher's last check, by default
+// checked now.
+func (e *projectEnv) setMainHealthStatus(st aiv1.MainHealthStatus) {
+	e.t.Helper()
+	var p aiv1.AgentProject
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &p); err != nil {
+		e.t.Fatal(err)
+	}
+	if st.CheckedAt == nil {
+		now := metav1.NewTime(e.r.Now())
+		st.CheckedAt = &now
+	}
+	orig := p.DeepCopy()
+	p.Status.MainHealth = &st
+	if err := e.c.Status().Patch(e.ctx, &p, client.MergeFrom(orig)); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestFreshMainHealth(t *testing.T) {
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	r := &AgentProjectReconciler{Now: func() time.Time { return now }}
+	spec := aiv1.AgentProjectSpec{MainHealth: aiv1.MainHealthSpec{}.WithDefaults()}
+	checked := func(ago time.Duration) *aiv1.MainHealthStatus {
+		at := metav1.NewTime(now.Add(-ago))
+		return &aiv1.MainHealthStatus{State: aiv1.MainHealthRed, CheckedAt: &at}
+	}
+	for _, tc := range []struct {
+		name      string
+		st        *aiv1.MainHealthStatus
+		intervals time.Duration
+		fresh     bool
+	}{
+		{"within three intervals", checked(15 * time.Minute), 3, true},
+		{"stale after three intervals", checked(16 * time.Minute), 3, false},
+		{"within one interval", checked(5 * time.Minute), 1, true},
+		{"older than one interval", checked(6 * time.Minute), 1, false},
+		{"never checked", &aiv1.MainHealthStatus{State: aiv1.MainHealthRed}, 3, false},
+		{"no status", nil, 3, false},
+	} {
+		if got := r.freshMainHealth(spec, tc.st, tc.intervals) != nil; got != tc.fresh {
+			t.Errorf("%s: fresh %v, want %v", tc.name, got, tc.fresh)
+		}
+	}
+	spec.MainHealth.Disabled = true
+	if r.freshMainHealth(spec, checked(0), 3) != nil {
+		t.Error("disabled main health must not count")
 	}
 }

@@ -576,6 +576,13 @@ type MainHealthSpec struct {
 	// +kubebuilder:default=true
 	// +optional
 	Issue *bool `json:"issue,omitempty"`
+
+	// FreezeAutopilot holds autopilot's merges while the default branch is
+	// red: the issue that would be merged next is blocked (main-red), and
+	// autopilot continues by itself once the branch is green.
+	// +kubebuilder:default=true
+	// +optional
+	FreezeAutopilot *bool `json:"freezeAutopilot,omitempty"`
 }
 
 // MainHealthState is the health of the default branch.

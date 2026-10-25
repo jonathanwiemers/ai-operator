@@ -358,8 +358,23 @@ kubectl get agentproject shop -o jsonpath='{.status.mainHealth}'
 `state` is `green`, `retrying`, `red` or `flaky`, with the pipeline, commit,
 failing jobs and the open `ci::main-red` issue. Configure it in
 `spec.mainHealth` (see [configuration.md](configuration.md#specmainhealth));
-`mainHealth.retryFailedJobs: false` reports a red pipeline right away. The
-watcher does not hold merges yet.
+`mainHealth.retryFailedJobs: false` reports a red pipeline right away.
+
+**Merge freeze.** While the default branch is `red`, autopilot merges
+nothing (`mainHealth.freezeAutopilot`, on by default). When its active issue
+passed review and CI, the issue gets `agent::blocked` +
+`agent-blocked::main-red` and autopilot pauses: "`main` is red (#N): merging
+waits until it is green". The freeze also holds while a red branch's next
+pipeline is retried; a `flaky` branch does not freeze. Once the branch is
+green, the block is lifted (the issue is back in `agent::review`), autopilot
+continues by itself with "▶️ Autopilot continues: `main` is green again" and
+the gate runs again on the next poll; a pipeline the CI loop did not see
+during the freeze sends the issue back to `agent::working` first. A freeze
+never outlives the watcher: with `mainHealth.disabled`, or a status not
+checked for 3 intervals, the branch counts as not red and the block is
+lifted. `/agent resume` does not end a freeze (it pauses again); to ship
+during a freeze, merge by hand. The freeze holds at the merge gate only: an
+issue already started keeps working until it reaches it.
 
 ## Merge conflicts
 
@@ -556,6 +571,9 @@ An MR is merged only when all of these hold:
   saw goes back to `agent::working` first;
 - the MR is open, targets the default branch, and its head is exactly that
   commit (nobody pushed since);
+- the default branch is not red ([merge freeze](#main-health)). Checked
+  after the run, review and CI, so the CI loop is final when the issue is
+  blocked;
 - if no pipeline ran for the commit and the MR is still a draft (projects
   that skip pipelines for draft MRs; normally the run marked it ready before
   pushing), the operator marks it ready, starts a merge request pipeline and
@@ -598,6 +616,8 @@ the reason and what to do, mentioning the milestone's
 - the merge was refused (for example: the bot may not merge), or the rebased
   change differs from the reviewed one;
 - the active issue lost its workflow label while open;
+- the default branch is red ([merge freeze](#main-health)): the active issue
+  is blocked (`agent-blocked::main-red`) until it is green;
 - no reviewers are configured;
 - the plan has a dependency cycle, or nothing can start because the
   remaining issues wait for skipped issues, for issues outside the queue
@@ -624,7 +644,9 @@ A pause over the active issue ends **by itself** when it no longer holds:
   blocking findings, failed reviewers, an unreviewed head, red or canceled
   CI) and a later run fixed it: for example you commented `/agent fix the
   findings`, the run succeeded, was reviewed and CI is green. Autopilot then
-  continues with the merge.
+  continues with the merge;
+- the pause was a merge freeze and the default branch is green again (or its
+  health is no longer watched): the block is lifted and the gate runs again.
 
 When such a pause ends, by itself or with `/agent resume` (also after an
 `/agent pause` in between), the active issue's `agent-blocked::infra` block
