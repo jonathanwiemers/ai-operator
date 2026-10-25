@@ -185,8 +185,8 @@ reach it only as untrusted data.
   spec hash and the planner's and implementer's view of the spec.
 - **Trust:** GitLab does not say who edited a milestone description, so a
   hand-written rule has the authority of the description itself, which is
-  already the spec every agent of the milestone implements (editing a
-  milestone needs the Planner role or above). A rule therefore adds no new
+  already the spec every agent of the milestone implements (editing it needs
+  the project role that may manage milestones). A rule therefore adds no new
   channel, and it cannot widen the pilot's authority: every action still
   needs an owner's `yes`.
 - Three kinds, chosen and stated by the coordinator:
