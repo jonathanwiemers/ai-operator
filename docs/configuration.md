@@ -290,6 +290,7 @@ another engine starts a new session with the full context.
 | `maxRunsPerTask` | `20` | the task is `Blocked` when reached (runs paused by usage limits don't count) |
 | `usageLimitBackoff` | `5m` | first wait after a usage or rate limit without a reported reset time; doubles per further hit |
 | `maxUsageLimitBackoff` | `1h` | cap for that wait |
+| `infraRetryAfter` | `30m` | after a run failed for an outside reason (agent pod or container lost, out of memory with no restart left, interrupted 3 times) the issue is blocked (`infra`); this long after the failure the operator starts one new run, once per run request |
 
 ## `spec.ci`
 
@@ -336,7 +337,7 @@ needs a human) and asks for reviews, see
 | Field | Default | Description |
 |-------|---------|-------------|
 | `users` | operator's `--default-owners` (with Helm: `defaultOwners`) | GitLab usernames, without `@`. A milestone overrides them with a line `/agent owners @alice @bob` in its description, for itself and its issues |
-| `events` | all | which situations mention them: `failed` (a run failed), `needsInput` (questions, or the agent could not finish alone), `ciFailed` (CI still red after the fix rounds), `review` (an issue reached review, not on autopilot), `autopilotPaused`, `autopilotDone`, `mainRed` (the default branch stayed red after a retry) |
+| `events` | all | which situations mention them: `failed` (a run failed), `needsInput` (questions, or the agent could not finish alone), `ciFailed` (CI still red after the fix rounds), `review` (an issue reached review, not on autopilot), `autopilotPaused`, `autopilotDone`, `mainRed` (the default branch stayed red after a retry), `blocked` (a run gave up for an outside reason and its issue stays blocked, also on autopilot) |
 | `requestReview` | `true` | when an issue reaches review (not on autopilot), make the users the reviewers of its MR, unless it has reviewers |
 
 The users must be members of the project to be notified; mentioning the bot
