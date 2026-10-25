@@ -462,8 +462,9 @@ finishes.
 
 The project controller also watches the default branch
 (`internal/controller/mainhealth.go`), on its poll but only every
-`mainHealth.interval`: one `ListPipelines{ref, scope: finished, limit: 1}`,
-and the failed jobs only when that pipeline is new. `status.mainHealth` goes
+`mainHealth.interval`: one `ListPipelines{ref, scope: finished, limit: 10}`,
+of which the newest green or red one counts (skipped and canceled ones say
+nothing), and the failed jobs only when that pipeline is new. `status.mainHealth` goes
 `green` → `retrying` (failed jobs retried once) → `flaky` (green after the
 retry) or `red` (a `ci::main-red` issue with the
 defused log tails, the owners pinged); green again closes the issue. While a

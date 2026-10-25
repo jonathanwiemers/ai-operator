@@ -63,14 +63,19 @@ func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.
 	if err != nil || proj.DefaultBranch == "" {
 		return err
 	}
-	ps, err := gl.ListPipelines(ctx, glProject, gitlab.ListPipelinesOptions{Ref: proj.DefaultBranch, Scope: "finished", Limit: 1})
-	if err != nil || len(ps) == 0 {
+	// Skipped and canceled pipelines say nothing about the branch: the
+	// newest one that does counts.
+	ps, err := gl.ListPipelines(ctx, glProject, gitlab.ListPipelinesOptions{Ref: proj.DefaultBranch, Scope: "finished", Limit: 10})
+	i := slices.IndexFunc(ps, func(p gitlab.Pipeline) bool {
+		return p.Status == "success" || p.Status == "manual" || p.Status == "failed"
+	})
+	if err != nil || i < 0 {
 		return err
 	}
 	// While a retry runs, the newest finished pipeline is an older one.
-	p, same := ps[0], ps[0].ID == st.PipelineID
-	green, red := p.Status == "success" || p.Status == "manual", p.Status == "failed"
-	if p.ID < st.PipelineID || !green && !red || same && st.State != aiv1.MainHealthRetrying && red == (st.State == aiv1.MainHealthRed) {
+	p, same := ps[i], ps[i].ID == st.PipelineID
+	red := p.Status == "failed"
+	if p.ID < st.PipelineID || same && st.State != aiv1.MainHealthRetrying && red == (st.State == aiv1.MainHealthRed) {
 		return nil
 	}
 	setState := func(s aiv1.MainHealthState) {
@@ -80,7 +85,7 @@ func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.
 	}
 	retried := same && st.State == aiv1.MainHealthRetrying
 	st.PipelineID, st.SHA = p.ID, p.SHA
-	if green {
+	if !red {
 		if st.IssueIID != 0 && *mh.Issue {
 			if _, err := gl.CreateIssueNote(ctx, glProject, st.IssueIID, fmt.Sprintf("✅ green again at `%s` (%s).", p.SHA, p.WebURL)); err != nil {
 				return fmt.Errorf("commenting on issue #%d: %w", st.IssueIID, err)
@@ -131,7 +136,7 @@ func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.
 func (r *AgentProjectReconciler) reportMainRed(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, branch string, p gitlab.Pipeline, jobs []gitlab.Job, st *aiv1.MainHealthStatus) error {
 	glProject := spec.GitLab.Project
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n🚑 `%s` is red: pipeline %s at `%s`, failing jobs %s.\n", mainRedMarker, branch, p.WebURL, p.SHA, jobList(st.FailedJobs))
+	fmt.Fprintf(&b, "%s\n🚑 `%s` is red: pipeline %s at `%s`, failing jobs %s.\n", mainRedMarker, branch, p.WebURL, p.SHA, someJobs(st.FailedJobs))
 	for _, j := range jobs[:min(len(jobs), mainRedJobs)] {
 		trace, err := gl.JobTrace(ctx, glProject, j.ID)
 		if err != nil {
@@ -139,10 +144,7 @@ func (r *AgentProjectReconciler) reportMainRed(ctx context.Context, gl gitlab.AP
 		}
 		fmt.Fprintf(&b, "\n#### `%s`\n\n```text\n%s\n```\n", jobName(j.Name), logTail(trace))
 	}
-	title := fmt.Sprintf("🚑 `%s` is red: %s", branch, jobList(st.FailedJobs[:min(len(st.FailedJobs), mainRedJobs)]))
-	if n := len(st.FailedJobs) - mainRedJobs; n > 0 {
-		title += fmt.Sprintf(" and %d more", n)
-	}
+	title := fmt.Sprintf("🚑 `%s` is red: %s", branch, someJobs(st.FailedJobs))
 	if st.IssueIID == 0 {
 		if is, err := findIssue(ctx, gl, glProject, bot, mainRedLabel, mainRedMarker); err != nil {
 			return err
@@ -197,12 +199,26 @@ func jobName(name string) string {
 	return name
 }
 
+// someJobs lists the first jobs only, so a large matrix stays short.
+func someJobs(jobs []string) string {
+	s := jobList(jobs[:min(len(jobs), mainRedJobs)])
+	if n := len(jobs) - mainRedJobs; n > 0 {
+		s += fmt.Sprintf(" and %d more", n)
+	}
+	return s
+}
+
 // logTail is the defused end of a job log, without colours and with no
 // backticks to end its code block. The bytes are capped too: one line may be
 // megabytes long.
 func logTail(trace string) string {
 	trace = sectionMarker.ReplaceAllString(ansiEscape.ReplaceAllString(trace, ""), "")
 	lines := strings.Split(strings.TrimSpace(strings.ReplaceAll(trace, "\r\n", "\n")), "\n")
+	for i, l := range lines {
+		// Progress output overwrites a line with \r; a lone \r also ends a
+		// line in Markdown, so nothing may follow it.
+		lines[i] = l[strings.LastIndex(l, "\r")+1:]
+	}
 	if len(lines) > mainRedLogLines {
 		lines = lines[len(lines)-mainRedLogLines:]
 	}

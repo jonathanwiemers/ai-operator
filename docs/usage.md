@@ -319,9 +319,10 @@ set labels on the MR.
 ## Main health
 
 The operator also watches the default branch: every `mainHealth.interval`
-(5 minutes) it reads the newest finished pipeline of the default branch, and
-the jobs only when that pipeline is new. Jobs that are allowed to fail don't
-count.
+(5 minutes) it reads the newest finished pipeline of the default branch
+(skipped and canceled ones are passed over), and the jobs only when that
+pipeline is new. Jobs that are allowed to fail don't count. A long failure
+list shows the first 3 jobs and their logs.
 
 | Default branch pipeline | What happens |
 |-------------------------|--------------|

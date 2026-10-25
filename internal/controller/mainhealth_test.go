@@ -103,7 +103,7 @@ func TestMainHealthRedIssue(t *testing.T) {
 	for range 40 {
 		log.WriteString("\x1b[31mFAIL\x1b[0m replays logged shots\n")
 	}
-	log.WriteString("```\n@bob see\n/close\n")
+	log.WriteString("```\n@bob see\n/close\nprogress 10%\r/label ~x\n")
 	job := coverageJob()
 	job.ID = 7
 	e.gl.Traces[7] = log.String()
@@ -126,7 +126,7 @@ func TestMainHealthRedIssue(t *testing.T) {
 			t.Errorf("description lacks %q:\n%s", want, is.Description)
 		}
 	}
-	for _, bad := range []string{"early line", "\x1b", "```\n@bob", "@bob", "\n/close"} {
+	for _, bad := range []string{"early line", "\x1b", "```\n@bob", "@bob", "\n/close", "\r", "\n/label", "progress"} {
 		if strings.Contains(is.Description, bad) {
 			t.Errorf("description contains %q:\n%s", bad, is.Description)
 		}
@@ -276,10 +276,24 @@ func TestMainHealthIssueSize(t *testing.T) {
 	if len(red) != 1 {
 		t.Fatal("no main-red issue")
 	}
+	if d := red[0].Description; strings.Contains(d, "x3`") || !strings.Contains(d, "x2` and 2 more") {
+		t.Fatalf("the description lists 3 of the 5 jobs: %q", red[0].Description[:300])
+	}
 	if n := len([]rune(red[0].Title)); n > 255 || !strings.HasSuffix(red[0].Title, " and 2 more") {
 		t.Fatalf("title of %d characters: %q", n, red[0].Title)
 	}
 	if d := red[0].Description; len(d) > 20000 || strings.Count(d, "```text") != 3 || !utf8.ValidString(d) {
 		t.Fatalf("description of %d bytes with %d logs", len(d), strings.Count(d, "```text"))
+	}
+}
+
+func TestMainHealthSkipsCanceledPipelines(t *testing.T) {
+	e, _ := newMainEnv(t)
+	pid := e.gl.AddPipeline("sha1", "main", "failed", coverageJob())
+	e.gl.AddPipeline("sha2", "main", "canceled")
+	e.gl.AddPipeline("sha3", "main", "skipped")
+	e.reconcile()
+	if st := e.mainHealth(); st.State != aiv1.MainHealthRetrying || !slices.Equal(e.gl.Retried, []int64{pid}) {
+		t.Fatalf("the newest pipeline that ran counts, status %+v, retried %v", st, e.gl.Retried)
 	}
 }
