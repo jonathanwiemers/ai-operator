@@ -82,6 +82,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.autoResume(ctx); err != nil {
 		return err
 	}
+	if err := a.freezeOnMainRed(ctx); err != nil {
+		return err
+	}
 	switch {
 	case a.ap.Phase != aiv1.AutopilotRunning && a.ap.Phase != aiv1.AutopilotDone:
 	case len(cycle) > 0:

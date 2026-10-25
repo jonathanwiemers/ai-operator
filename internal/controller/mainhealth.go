@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -56,6 +57,15 @@ func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.A
 	}
 	project.Status.MainHealth = st
 	return nil
+}
+
+// freshMainHealth returns the main health if the watcher checked it within
+// the given number of intervals; nil if it is disabled or older.
+func (r *AgentProjectReconciler) freshMainHealth(spec aiv1.AgentProjectSpec, st *aiv1.MainHealthStatus, intervals time.Duration) *aiv1.MainHealthStatus {
+	if spec.MainHealth.Disabled || st == nil || st.CheckedAt == nil || r.now().Sub(st.CheckedAt.Time) > intervals*spec.MainHealth.Interval.Duration {
+		return nil
+	}
+	return st
 }
 
 func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, st *aiv1.MainHealthStatus) error {

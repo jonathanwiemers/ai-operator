@@ -313,5 +313,8 @@ func (m MainHealthSpec) WithDefaults() MainHealthSpec {
 	if m.Issue == nil {
 		m.Issue = &t
 	}
+	if m.FreezeAutopilot == nil {
+		m.FreezeAutopilot = &t
+	}
 	return m
 }

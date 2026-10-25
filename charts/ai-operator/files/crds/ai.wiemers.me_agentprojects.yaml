@@ -922,6 +922,13 @@ spec:
                   disabled:
                     description: Disabled turns the watcher off.
                     type: boolean
+                  freezeAutopilot:
+                    default: true
+                    description: |-
+                      FreezeAutopilot holds autopilot's merges while the default branch is
+                      red: the issue that would be merged next is blocked (main-red), and
+                      autopilot continues by itself once the branch is green.
+                    type: boolean
                   interval:
                     default: 5m
                     description: Interval is how often the default branch's pipelines
