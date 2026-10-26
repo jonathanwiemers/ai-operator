@@ -23,15 +23,24 @@ const specTaskName = "shop-spec-m3-checkout-v2"
 // and #2 (UI, after the API), both drafts.
 func newAutopilotEnv(t *testing.T) *projectEnv {
 	t.Helper()
+	e := newUnplannedAutopilotEnv(t)
+	st := e.tasks()[specTaskName]
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ObservedRunRequest = st.Spec.RunRequest // planned
+		s.Plan = []aiv1.PlannedIssue{{Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}}, {Key: "api", IID: 1, Title: "API"}}
+	})
+	return e
+}
+
+// newUnplannedAutopilotEnv is an autopilot milestone after its first poll,
+// while its first planning run is pending: #1 (API) and #2 (UI) are written
+// but not in the plan yet.
+func newUnplannedAutopilotEnv(t *testing.T) *projectEnv {
+	t.Helper()
 	e := newProjectEnv(t)
 	e.r.Now = func() time.Time { return e.gl.Clock }
 	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2", State: "active", Description: "/agent autopilot\nBuild a new checkout."}
 	e.gl.Milestones = []gitlab.Milestone{m}
-	e.reconcile()
-	st := e.tasks()[specTaskName]
-	if !st.Spec.Autopilot {
-		t.Fatalf("the autopilot marker must plan the milestone on autopilot: %+v", st.Spec)
-	}
 	for _, is := range []struct {
 		iid        int64
 		title, key string
@@ -42,10 +51,10 @@ func newAutopilotEnv(t *testing.T) *projectEnv {
 		issue.Description = "Build it.\n<!-- ai-operator:key=" + is.key + " -->"
 		issue.WebURL = fmt.Sprintf("https://gitlab.example/group/app/-/issues/%d", is.iid)
 	}
-	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
-		s.Run.ObservedRunRequest = st.Spec.RunRequest // planned
-		s.Plan = []aiv1.PlannedIssue{{Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}}, {Key: "api", IID: 1, Title: "API"}}
-	})
+	e.reconcile()
+	if st := e.tasks()[specTaskName]; !st.Spec.Autopilot || !st.RunPending() {
+		t.Fatalf("the autopilot marker must plan the milestone on autopilot: %+v", st.Spec)
+	}
 	return e
 }
 
@@ -181,6 +190,80 @@ func TestAutopilotWorksThroughTheQueue(t *testing.T) {
 	}
 	if e.gl.Issues[ap.TrackingIssueIID].State != "closed" || !strings.Contains(trackingComments(e), "Autopilot is done: 2 of 2 issues merged") {
 		t.Fatalf("tracking issue should be closed with a summary:\n%s", trackingComments(e))
+	}
+}
+
+func TestAutopilotTrackingIssueBeforeThePlan(t *testing.T) {
+	e := newUnplannedAutopilotEnv(t)
+	ap := e.autopilot()
+	tracking := e.gl.Issues[ap.TrackingIssueIID]
+	if tracking == nil || tracking.Title != "🤖 Autopilot: Checkout v2" || !marker.IsTrackingIssue(tracking.Description) ||
+		!slices.Equal(tracking.Labels, []string{"ai-generated"}) || tracking.Milestone == nil || tracking.Milestone.ID != 11 {
+		t.Fatalf("the tracking issue must exist before the first plan: %+v", tracking)
+	}
+	for _, want := range []string{"📝 planning, the planning agent is writing the issues.", "_Listed once the milestone is planned._"} {
+		if !strings.Contains(tracking.Description, want) {
+			t.Fatalf("tracking issue misses %q:\n%s", want, tracking.Description)
+		}
+	}
+	if ap.Phase != aiv1.AutopilotRunning || len(ap.Items) != 0 || !e.gl.Issues[1].HasLabel("agent::draft") {
+		t.Fatalf("nothing is queued before the plan: %+v, #1 %v", ap, e.gl.Labels(1))
+	}
+}
+
+func TestAutopilotWaitsForAFailedFirstPlan(t *testing.T) {
+	e := newUnplannedAutopilotEnv(t)
+	st := e.tasks()[specTaskName]
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ObservedRunRequest, s.Run.LastResult = st.Spec.RunRequest, aiv1.RunResultFailed
+	})
+	e.reconcile()
+	e.reconcile()
+	ap := e.autopilot()
+	tracking := e.gl.Issues[ap.TrackingIssueIID]
+	if ap.Phase != aiv1.AutopilotRunning || tracking.State != "opened" || e.gl.Issues[1].HasLabel("agent::ready") || e.gl.Issues[2].HasLabel("agent::ready") {
+		t.Fatalf("without a plan autopilot is neither done nor picking: %+v, #1 %v, #2 %v", ap, e.gl.Labels(1), e.gl.Labels(2))
+	}
+	if !strings.Contains(tracking.Description, "planning has not succeeded yet") || strings.Contains(trackingComments(e), "Autopilot is done") {
+		t.Fatalf("the tracking issue must say that planning failed:\n%s\n%s", tracking.Description, trackingComments(e))
+	}
+
+	// The plan arrives: the queue starts.
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Run.LastResult = aiv1.RunResultSucceeded
+		s.Plan = []aiv1.PlannedIssue{{Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}}, {Key: "api", IID: 1, Title: "API"}}
+	})
+	e.reconcile()
+	if !e.gl.Issues[1].HasLabel("agent::ready") || e.autopilot().TrackingIssueIID != ap.TrackingIssueIID {
+		t.Fatalf("the plan starts the queue on the same tracking issue: %+v, #1 %v", e.autopilot(), e.gl.Labels(1))
+	}
+	if body := e.gl.Issues[ap.TrackingIssueIID].Description; !strings.Contains(body, "▶️ running.") || !strings.Contains(body, "- [ ] #1 API: **in progress**") {
+		t.Fatalf("the tracking issue must list the plan:\n%s", body)
+	}
+}
+
+func TestAutopilotPauseBeforeThePlan(t *testing.T) {
+	e := newUnplannedAutopilotEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.AddNote(tracking, gitlab.User{ID: 1, Username: "jonathan"}, "/agent pause")
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(e.gl.Issues[tracking].Description, "paused, paused by @jonathan") {
+		t.Fatalf("pause works before the plan: %+v\n%s", ap, e.gl.Issues[tracking].Description)
+	}
+
+	// Planned while paused: still nothing starts until resumed.
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ObservedRunRequest = e.tasks()[specTaskName].Spec.RunRequest
+		s.Plan = []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API"}}
+	})
+	e.reconcile()
+	if e.gl.Issues[1].HasLabel("agent::ready") {
+		t.Fatalf("a pause from before the plan holds the queue: %v", e.gl.Labels(1))
+	}
+	e.gl.AddNote(tracking, gitlab.User{ID: 1, Username: "jonathan"}, "/agent resume")
+	e.reconcile()
+	if !e.gl.Issues[1].HasLabel("agent::ready") {
+		t.Fatalf("resume starts the queue: %+v, #1 %v", e.autopilot(), e.gl.Labels(1))
 	}
 }
 

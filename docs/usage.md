@@ -634,11 +634,14 @@ it to `agent::done`. The task, its pod and its workspace are deleted.
 With **`/agent autopilot`** in the milestone description (instead of, or next
 to, `/agent spec`), the milestone runs without you:
 
-1. The spec agent plans it as usual, but asks no questions. It takes the
-   default it would propose and records it as a [decision](#decisions), with
-   why and the alternatives, in a comment on each issue.
-2. The operator creates a tracking issue, **🤖 Autopilot: <milestone>**, and
-   moves the first issue to `agent::ready`. Issues go **one at a time**, in
+1. The operator creates a tracking issue, **🤖 Autopilot: <milestone>**,
+   right away. The spec agent plans the milestone as usual, but asks no
+   questions. It takes the default it would propose and records it as a
+   [decision](#decisions), with why and the alternatives, in a comment on
+   each issue. Until a plan exists the tracking issue says that the milestone
+   is being planned (or that planning has not succeeded yet) and nothing
+   starts; `/agent pause` and `/agent resume` already work.
+2. Once planned, the operator moves the first issue to `agent::ready`. Issues go **one at a time**, in
    dependency order (an issue's "Depends on" first, otherwise plan order). An
    issue linked as "blocked by" an open issue waits for it too.
 3. The issue is implemented, reviewed and checked by CI as usual. The

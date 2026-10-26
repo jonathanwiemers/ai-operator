@@ -83,6 +83,23 @@ func TestPilotGetsTheOwnersQuestionOnce(t *testing.T) {
 	}
 }
 
+func TestPilotStartsBeforeThePlan(t *testing.T) {
+	e := newUnplannedAutopilotEnv(t)
+	e.gl.Users = []gitlab.User{alice}
+	e.gl.Milestones[0].Description += "\n/agent owners @alice"
+	e.reconcile()
+	tracking := e.autopilot().TrackingIssueIID
+	if pilot, ok := e.tasks()[pilotTaskName]; !ok || pilot.Spec.Issue == nil || pilot.Spec.Issue.IID != tracking {
+		t.Fatalf("the pilot starts on the tracking issue before the plan: %+v", pilot.Spec)
+	}
+	n := e.gl.AddNote(tracking, alice, "/pilot what will be planned?")
+	e.reconcile()
+	msgs := e.pilot().Spec.Source.PilotMessages
+	if len(msgs) != 1 || msgs[0].NoteID != n.ID || len(e.tasks()[specTaskName].Status.Plan) != 0 {
+		t.Fatalf("the pilot gets the question before the plan: %+v", msgs)
+	}
+}
+
 func TestPilotIgnoresCommentsFromBeforeIt(t *testing.T) {
 	e := newAutopilotEnv(t)
 	e.reconcile() // the tracking issue

@@ -682,7 +682,10 @@ stateDiagram-v2
   the tracking issue, once per reason. Before pausing because of the active
   issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause` and
   `skip #N` on the tracking issue are handled by the operator.
-* **Tracking issue.** Created with the first plan, edited in place (only when
+* **Tracking issue.** Created on the first poll, before the first plan (so a
+  planning failure has a place to be reported); until a plan exists only the
+  tracking issue and its commands are handled, nothing is picked and the
+  milestone is never done. Edited in place (only when
   its rendered text changes), closed when done or switched off, created again
   if deleted. It carries a
   hidden marker (`internal/marker`) so the spec agent does not see it as an

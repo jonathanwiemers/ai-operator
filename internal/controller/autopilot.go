@@ -38,8 +38,6 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 		return nil
 	case !st.Spec.Autopilot && (st.Status.Autopilot == nil || st.Status.Autopilot.Phase == aiv1.AutopilotOff):
 		return nil // never on, or already off
-	case st.Spec.Autopilot && len(st.Status.Plan) == 0:
-		return nil // not planned yet
 	}
 	ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}
 	if st.Status.Autopilot != nil {
@@ -81,6 +79,11 @@ func (a *autopilot) sync(ctx context.Context) error {
 	}
 	if err := a.commands(ctx); err != nil {
 		return err
+	}
+	if len(a.st.Status.Plan) == 0 {
+		// Not planned yet, or the planning run failed: the tracking issue
+		// says so, nothing is picked and the milestone is not done.
+		return a.updateTracking(ctx)
 	}
 	if err := a.autoResume(ctx); err != nil {
 		return err
@@ -1298,12 +1301,22 @@ func (a *autopilot) renderTracking() string {
 	case aiv1.AutopilotOff:
 		b.WriteString("⏹️ off (the marker was removed from the milestone).\n")
 	default:
-		b.WriteString("▶️ running.\n")
+		switch {
+		case len(a.st.Status.Plan) > 0:
+			b.WriteString("▶️ running.\n")
+		case a.st.RunPending():
+			b.WriteString("📝 planning, the planning agent is writing the issues.\n")
+		default:
+			b.WriteString("⚠️ not planned, planning has not succeeded yet. Nothing starts until the milestone is planned.\n")
+		}
 	}
 	b.WriteString("\nThe operator works through the planned issues one at a time, in dependency order. It merges each merge request " +
 		"when its pipeline is green and its review is clean, then starts the next issue. The agents take their defaults instead of " +
 		"asking; every decision is listed below and can be changed with `" + prefix + " revisit <id> <what you want instead>` on its issue.\n\n")
 	fmt.Fprintf(&b, "Commands, as comments here: `%s pause`, `%s resume`, `%s skip #<issue>`.\n\n### Issues\n\n", prefix, prefix, prefix)
+	if len(a.st.Status.Plan) == 0 && len(a.ap.Items) == 0 {
+		b.WriteString("_Listed once the milestone is planned._\n")
+	}
 	for _, it := range a.ap.Items {
 		title := a.issues[it.IID].Title
 		mr := ""
