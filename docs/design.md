@@ -912,11 +912,14 @@ counted interventions; more tools are later steps of
   says why in the reply; the operator checks it again when posting and
   running. A `forgetRule` carries the rule's text from `spec.rules` (not
   the model's), shown in the proposal; when it runs, the operator reads
-  the milestone again and removes the line only if that text is
+  the milestone again and removes the line only if its kind and text are
   unchanged and its ID is used once. A `setRule` gets the next free ID, its
   text one inert line (at most 500 bytes); one with the same setting or
-  text as an existing rule is refused ("forget it first"). Both write the
-  description with `PUT /milestones/:id`. `/pilot rules` (no model call)
+  text as an existing rule is refused ("forget it first"). A proposal
+  runs its `forgetRule`s first, so one that replaces a rule works in any
+  order the pilot gave. Both write the description with `PUT
+  /milestones/:id`, read right before: GitLab has no conditional update
+  for milestones, so a hand edit within that round trip would be lost. `/pilot rules` (no model call)
   and the tracking issues (autopilot's and `/pilot coordinate`'s) list
   the rules with the reason for any that is not applied. A hand-written
   rule has the description's authority, which is already the spec; it

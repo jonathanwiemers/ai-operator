@@ -126,6 +126,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 	for i, p := range append(slices.Clone(proposed), extra...) {
 		var notes []string
 		valid := 0
+		p.Actions = forgetFirst(p.Actions)
 		for j := range p.Actions {
 			if i < len(proposed) {
 				// Only the operator passes an owner's words on.

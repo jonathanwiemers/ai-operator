@@ -228,6 +228,39 @@ func TestRulesCannotOverrideAutonomyOrStop(t *testing.T) {
 	}
 }
 
+// A proposal that replaces a rule forgets the old one first, whatever
+// order the pilot gave.
+func TestReplacingARuleForgetsTheOldOneFirst(t *testing.T) {
+	e := newProposalEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.Milestones[0].Description += "\n/agent rule R1: switch ci.maxFixRounds=3"
+	e.reconcile()
+	e.propose("one round is enough", aiv1.PilotAction{Tool: "setRule", Kind: "switch", Note: "ci.maxFixRounds=1"},
+		aiv1.PilotAction{Tool: "forgetRule", Rule: "r1"})
+	e.reconcile()
+	p := e.proposalNote(1)
+	if strings.Index(p.Body, "**forgetRule** R1") > strings.Index(p.Body, "**setRule**") {
+		t.Fatalf("the proposal lists the forget first:\n%s", p.Body)
+	}
+	e.gl.AddReply(tracking, p.ID, alice, "yes")
+	e.reconcile()
+	if d := e.milestoneDescription(); strings.Contains(d, "maxFixRounds=3") || !strings.HasSuffix(d, "\n\n/agent rule R1: switch ci.maxFixRounds=1") {
+		t.Fatalf("R1 is replaced:\n%q\n%s", d, e.lastReply())
+	}
+}
+
+func TestForgetRuleRefusesAKindChangedByHand(t *testing.T) {
+	e := newProposalEnv(t)
+	e.gl.Milestones[0].Description += "\n/agent rule R1: pilot keep it short"
+	st := e.tasks()[specTaskName]
+	st.Spec.Rules = []string{"R1: prompt keep it short"}
+	a := withRuleText(aiv1.PilotAction{Tool: "forgetRule", Rule: "R1"}, &st)
+	err := e.r.runRule(e.ctx, e.gl, testProject().Spec.WithDefaults(), &st, a)
+	if err == nil || !strings.Contains(e.milestoneDescription(), "R1: pilot keep it short") {
+		t.Fatalf("a rule whose kind changed stays: %v", err)
+	}
+}
+
 func TestPilotRuleCommands(t *testing.T) {
 	for _, tc := range []struct {
 		msg    string

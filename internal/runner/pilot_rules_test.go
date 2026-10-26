@@ -70,3 +70,16 @@ func TestPilotGetsItsRulesAndRefusesForbiddenSwitches(t *testing.T) {
 		t.Fatalf("only the valid rule is proposed: %+v", ps)
 	}
 }
+
+func TestAssessmentRefusesForbiddenSwitches(t *testing.T) {
+	e := newAssessEnv(t, "")
+	e.engine.assessment.Proposal = proposalOf(t, `{"summary": "more rounds", "actions": [{"tool": "setRule", "kind": "switch", "note": "lifecycle.maxRunsPerTask=99"},
+		{"tool": "retry", "issue": 1}]}`)
+	e.step(t)
+	if notes := botNotes(e.gl, 5); len(notes) != 1 || !strings.Contains(notes[0], "Rule not proposed: `lifecycle.maxRunsPerTask` cannot be switched by a rule") {
+		t.Fatalf("the assessment says the switch is refused: %q", notes)
+	}
+	if ps := e.task(t).Status.Pilot; ps == nil || len(ps.Proposed) != 1 || len(ps.Proposed[0].Actions) != 1 || ps.Proposed[0].Actions[0].Tool != "retry" {
+		t.Fatalf("only the retry is proposed: %+v", ps)
+	}
+}

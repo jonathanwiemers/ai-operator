@@ -43,14 +43,29 @@ func withRuleText(a aiv1.PilotAction, st *aiv1.AgentTask) aiv1.PilotAction {
 	if a.Tool != "forgetRule" {
 		return a
 	}
-	a.Rule, a.Note = strings.ToUpper(strings.TrimSpace(a.Rule)), ""
+	a.Rule, a.Kind, a.Note = strings.ToUpper(strings.TrimSpace(a.Rule)), "", ""
 	for _, r := range rules.Parse(st.Spec.Rules) {
 		if r.ID != "" && r.ID == a.Rule {
-			a.Note = r.Text
+			a.Kind, a.Note = r.Kind, r.Text
 			break
 		}
 	}
 	return a
+}
+
+// forgetFirst puts the forgetRule actions of a proposal first: one that
+// replaces a rule forgets the old one before it sets the new one, in
+// whatever order the pilot gave them.
+func forgetFirst(actions []aiv1.PilotAction) []aiv1.PilotAction {
+	var forget, rest []aiv1.PilotAction
+	for _, a := range actions {
+		if a.Tool == "forgetRule" {
+			forget = append(forget, a)
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	return append(forget, rest...)
 }
 
 // runRule adds or removes a standing rule in the milestone description.
@@ -87,7 +102,7 @@ func (r *AgentProjectReconciler) runRule(ctx context.Context, gl gitlab.API, spe
 			return fmt.Errorf("there is no rule %s any more", a.Rule)
 		case len(found) > 1:
 			return fmt.Errorf("%s is used by more than one line: edit the milestone description by hand", a.Rule)
-		case found[0].Text != a.Note:
+		case found[0].Kind != a.Kind || found[0].Text != a.Note:
 			return fmt.Errorf("%s changed since the proposal", a.Rule)
 		}
 		desc = rules.Remove(desc, prefix, a.Rule)
