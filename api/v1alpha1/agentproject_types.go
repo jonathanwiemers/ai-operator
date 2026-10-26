@@ -654,9 +654,32 @@ type MainHealthStatus struct {
 	// RetriedPipelineID is the pipeline whose failed jobs were retried.
 	// +optional
 	RetriedPipelineID int64 `json:"retriedPipelineID,omitempty"`
+	// RetriedJobIDs are the failed jobs of the retried pipeline, in the
+	// order of FailedJobs: the retry replaces them, so their logs are read
+	// by ID once the retry is green.
+	// +optional
+	RetriedJobIDs []int64 `json:"retriedJobIDs,omitempty"`
+	// Flaky are the jobs that passed on retry, as reported on their flaky
+	// issues (state flaky only).
+	// +optional
+	Flaky []FlakyJobReport `json:"flaky,omitempty"`
 	// CheckedAt is when the pipelines were last checked.
 	// +optional
 	CheckedAt *metav1.Time `json:"checkedAt,omitempty"`
+}
+
+// FlakyJobReport is a job that passed on retry: its flaky issue, and what
+// the log of its failed attempt shows. Tests and LogTail come from the job
+// log and are untrusted data.
+type FlakyJobReport struct {
+	Job      string `json:"job"`
+	IssueIID int64  `json:"issueIID"`
+	// Tests are the failing tests the log names.
+	// +optional
+	Tests []string `json:"tests,omitempty"`
+	// LogTail is the defused end of the log.
+	// +optional
+	LogTail string `json:"logTail,omitempty"`
 }
 
 // NotifyEvent is a situation in which the operator needs a human.

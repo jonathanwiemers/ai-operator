@@ -373,7 +373,7 @@ list shows the first 3 jobs and their logs.
 |-------------------------|--------------|
 | green | nothing; an open `ci::main-red` issue gets "✅ green again at `<sha>`" and is closed |
 | red, first time | its failed jobs are retried once |
-| green after the retry | flaky: one issue per job, "🔁 Flaky CI job: `<job>`" (labels `ai-generated`, `ci::flaky`), opened on the first failure and commented with the pipeline on every later one (the first 3 jobs of a pipeline) |
+| green after the retry | flaky: one issue per job, "🔁 Flaky CI job: `<job>`" (labels `ai-generated`, `ci::flaky`), opened on the first failure, and one occurrence comment per pipeline (the first 3 jobs of a pipeline): the pipeline, the failing tests and the last 40 lines of the **failed attempt's** log, as untrusted data |
 | still red after the retry | an issue "🚑 `main` is red: `<jobs>`" (labels `ai-generated`, `ci::main-red`) with the pipeline, the commit, the failing jobs and the last 40 lines of each job's log; it mentions the project's owners |
 | red again, the same jobs | nothing new |
 | red again, other jobs | a comment on the `ci::main-red` issue, and its title follows |
@@ -384,6 +384,14 @@ alone. Job logs are untrusted: mentions and quick actions in them are made
 inert, and job names in titles keep only letters, digits and ` :._/-`, at
 most 60 characters. Close a flaky issue once the job is fixed; the next
 failure opens a new one.
+
+The retry replaces the failed jobs, so the operator records their IDs when
+it retries (`status.mainHealth.retriedJobIDs`) and reads their logs once the
+retry is green. The failing tests come from the log: nextest's
+`FAIL [2.715s] <binary> <test>`, cargo test's `test <name> ... FAILED` and
+vitest's `FAIL <file> > <test>`, at most 10, made safe for code spans. A
+flaky issue's description stays the marker and its first one-liner; the
+logs live only in the comments, after the untrusted-data marker.
 
 The state is in the AgentProject status:
 
@@ -834,8 +842,9 @@ default branch and the last comments of the tracking issue.
   posts one assessment on the tracking issue: what happened, a
   classification (`infra`, `flaky`, `regression`, `env`, `decision`,
   `unknown`), the evidence (the issue's last comments and run reports, the
-  failed jobs' logs, the same problem in other issues) and what it **would**
-  do, and mentions the owners once (when it manages and acts on it: no
+  failed jobs' logs, the same problem in other issues; for a flaky job its
+  `ci::flaky` issue, the failing tests and the end of the failed attempt's
+  log) and what it **would** do, and mentions the owners once (when it manages and acts on it: no
   mention, see below). Each event is assessed once: a poll
   while it holds, or a label or pause flapped back and forth, does not
   repeat it; a new head or a new reason does. A pause over an issue and

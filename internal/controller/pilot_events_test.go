@@ -55,6 +55,10 @@ func TestPilotWakesOncePerEvent(t *testing.T) {
 		{"flaky main", func(e *projectEnv) {
 			e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthFlaky, PipelineID: 901, FailedJobs: []string{"test"}})
 		}, "flaky/901"},
+		{"flaky main with its log", func(e *projectEnv) {
+			e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthFlaky, PipelineID: 901, FailedJobs: []string{"rust:test"},
+				Flaky: []aiv1.FlakyJobReport{{Job: "rust:test", IssueIID: 340, Tests: []string{"a b"}, LogTail: "panicked"}}})
+		}, "flaky/901/340"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newPilotEnv(t)

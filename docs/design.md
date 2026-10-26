@@ -483,8 +483,13 @@ The project controller also watches the default branch
 `mainHealth.interval`: one `ListPipelines{ref, scope: finished, limit: 10}`,
 of which the newest green or red one counts (skipped and canceled ones say
 nothing), and the failed jobs only when that pipeline is new. `status.mainHealth` goes
-`green` → `retrying` (failed jobs retried once) → `flaky` (green after the
-retry: a `ci::flaky` issue per job) or `red` (a `ci::main-red` issue with the
+`green` → `retrying` (failed jobs retried once, their IDs kept in
+`retriedJobIDs`) → `flaky` (green after the retry: a `ci::flaky` issue per
+job, with an occurrence comment that starts with
+`<!-- ai-operator:flaky-occurrence=<pipeline> -->` and quotes the failing
+tests and the log tail of the failed attempt, read by the recorded IDs,
+after the untrusted-data marker, once per pipeline (a repeated check finds
+its own comment); `status.mainHealth.flaky` keeps them for the pilot) or `red` (a `ci::main-red` issue with the
 defused log tails, the owners pinged); green again closes the issue. While a
 retry runs, GitLab lists an older pipeline as the newest finished one, so
 pipelines older than the recorded one are ignored. The status is written only
@@ -765,7 +770,10 @@ counted interventions; more tools are later steps of
   flaky one (`status.mainHealth`). Each has a key: `stuck/<issue>/<head>`
   (a pause over the issue and its needs-input label are one event),
   `infra|quota/<issue>/<head>`, `pause-<reason hash>/0/` for a pause over no
-  issue, `main-red/<issue>`, `flaky/<pipeline>`. A key the pilot did not
+  issue, `main-red/<issue>`, `flaky/<pipeline>/<flaky issue>` (its text
+  names the failing tests and ends with the failed attempt's log tail, cut
+  from the front to fit, both after its first paragraph, which is the
+  assessment's headline; `flaky/<pipeline>` without a report). A key the pilot did not
   have goes into `spec.source.pilotEvents` with a run request, like a
   message (its text cut to 4000 bytes). `status.pilot.events` of the
   `Coordinate` task remembers the keys handed over, those that hold first,

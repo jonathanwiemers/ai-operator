@@ -68,7 +68,9 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 				}
 			}
 		}
-		what := prose(strings.Join(strings.Fields(truncate(e.Text, 300)), " "))
+		// Its first paragraph: a flaky event quotes a log after it.
+		head, _, _ := strings.Cut(e.Text, "\n\n")
+		what := prose(strings.Join(strings.Fields(truncate(head, 300)), " "))
 		note := "🧭 **Assessment:** " + what + "\n\n" + body
 		if !managed || !proposed {
 			// A pilot that manages acts, or pings with its proposal.
