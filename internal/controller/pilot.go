@@ -189,7 +189,7 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		// A milestone without owners gets answers only, which is all the
 		// pilot does yet.
 		case !owner && len(owners) > 0:
-			if err := r.rejectPilot(ctx, gl, spec, st, n); err != nil {
+			if err := r.rejectOnce(ctx, gl, spec, st, n, "🧭 Only the owners of this milestone can instruct me."); err != nil {
 				return err
 			}
 			continue
@@ -250,9 +250,9 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 	return r.Update(ctx, coord)
 }
 
-// rejectPilot tells a user who is no owner that the pilot does not take
-// their instructions, once a day.
-func (r *AgentProjectReconciler) rejectPilot(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, n pilotNote) error {
+// rejectOnce tells a user who is no owner that their comment is not taken
+// (body: to the pilot, or an "/agent" command), once a day; st records it.
+func (r *AgentProjectReconciler) rejectOnce(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, n pilotNote, body string) error {
 	key := strconv.FormatInt(n.Author.ID, 10)
 	now := r.now()
 	if ps := st.Status.Pilot; ps != nil {
@@ -275,7 +275,7 @@ func (r *AgentProjectReconciler) rejectPilot(ctx context.Context, gl gitlab.API,
 	}); err != nil {
 		return err
 	}
-	pilotReply(ctx, gl, spec, n, "Only the owners of this milestone can instruct me.")
+	noteReply(ctx, gl, spec, n, body)
 	return nil
 }
 
@@ -452,7 +452,11 @@ func truncateUTF8(s string, n int) string {
 // pilotReply answers a comment where it was written. A failed answer is not
 // tried again: the comment is handled.
 func pilotReply(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, n pilotNote, text string) {
-	body := "🧭 " + text
+	noteReply(ctx, gl, spec, n, "🧭 "+text)
+}
+
+// noteReply is pilotReply without the pilot's sign.
+func noteReply(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, n pilotNote, body string) {
 	var err error
 	if n.mr != 0 {
 		_, err = gl.CreateMergeRequestNote(ctx, spec.GitLab.Project, n.mr, body)
@@ -460,6 +464,6 @@ func pilotReply(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, 
 		_, err = gl.CreateIssueNote(ctx, spec.GitLab.Project, n.issue, body)
 	}
 	if err != nil {
-		log.FromContext(ctx).Info("could not answer a comment to the pilot", "note", n.ID, "error", err.Error())
+		log.FromContext(ctx).Info("could not answer a comment", "note", n.ID, "error", err.Error())
 	}
 }

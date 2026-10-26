@@ -195,6 +195,15 @@ type WorkflowSpec struct {
 	// +optional
 	PilotPrefix string `json:"pilotPrefix,omitempty"`
 
+	// CommandsFrom is who may give CommandPrefix commands on issues, merge
+	// requests and tracking issues: "members" (anyone who can comment) or
+	// "owners" (the milestone's owners; for an issue without a milestone,
+	// notify.users, else the operator's default owners). Others get one
+	// reply a day.
+	// +kubebuilder:default=members
+	// +optional
+	CommandsFrom CommandsFrom `json:"commandsFrom,omitempty"`
+
 	// AssignBot assigns the bot user to an issue when the operator picks it up
 	// and the issue has no assignee, so GitLab's milestone page lists it as
 	// ongoing. A human assignee is never replaced.
@@ -407,6 +416,15 @@ const (
 	LogLevelDebug LogLevel = "debug"
 	LogLevelInfo  LogLevel = "info"
 	LogLevelError LogLevel = "error"
+)
+
+// CommandsFrom is who may give "/agent" commands.
+// +kubebuilder:validation:Enum=members;owners
+type CommandsFrom string
+
+const (
+	CommandsFromMembers CommandsFrom = "members"
+	CommandsFromOwners  CommandsFrom = "owners"
 )
 
 // Engine is the coding agent CLI that runs a role.

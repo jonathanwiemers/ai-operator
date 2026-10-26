@@ -16,7 +16,9 @@ GitLab comments in your name and work exactly the same.
   cost nothing. The agent reads them with the next run (during a step run on a
   draft MR, before its next step).
 - Commands are read from **humans** only. The bot's own comments never count,
-  so an agent cannot command itself.
+  so an agent cannot command itself. With `workflow.commandsFrom: owners`
+  only the owners' commands count; others get one reply a day (see
+  [configuration](configuration.md#specworkflow)).
 - On an issue's merge request a command works the same as on the issue.
 - The operator polls GitLab (`pollInterval`, default `1m`), so a command takes
   effect within a poll.

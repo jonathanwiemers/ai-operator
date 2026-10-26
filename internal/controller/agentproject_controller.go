@@ -157,6 +157,8 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		project.Status.BotUsername = u.Username
 	}
 
+	gate := r.commandGate(gl, project, spec)
+
 	var titleRE *regexp.Regexp
 	if spec.Milestones.TitlePattern != "" {
 		if titleRE, err = regexp.Compile(spec.Milestones.TitlePattern); err != nil {
@@ -222,6 +224,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			return err
 		}
 		keep[task.Name] = true
+		byMilestone[m.IID] = task
 		specTasks = append(specTasks, task)
 		if autopilot || task.Status.Autopilot != nil {
 			autopilots[m.IID] = task
@@ -284,7 +287,11 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 				description = is.Milestone.Description
 			}
 		}
-		task, mr, err := r.syncImplementTask(ctx, gl, project, spec, is, byIssue[is.IID], autopilot, pause, owners(description))
+		var st *aiv1.AgentTask
+		if is.Milestone != nil {
+			st = byMilestone[is.Milestone.IID]
+		}
+		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], st, autopilot, pause, owners(description))
 		if err != nil {
 			return err
 		}
@@ -314,12 +321,12 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		errs = append(errs, fmt.Errorf("main health: %w", err))
 	}
 	for _, st := range specTasks {
-		if err := r.syncRevisits(ctx, gl, project, spec, st); err != nil {
+		if err := r.syncRevisits(ctx, gl, gate, project, spec, st); err != nil {
 			errs = append(errs, fmt.Errorf("revisits of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
 	for _, st := range autopilots {
-		if err := r.syncAutopilot(ctx, gl, project, spec, st, implTasks, st == lane); err != nil {
+		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, st == lane); err != nil {
 			errs = append(errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
@@ -338,7 +345,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			// The milestone is no longer planned (closed, or every marker
 			// removed): switch its autopilot off before the state is gone.
 			t.Spec.Autopilot = false
-			if err := r.syncAutopilot(ctx, gl, project, spec, t, nil, false); err != nil {
+			if err := r.syncAutopilot(ctx, gl, gate, project, spec, t, nil, false); err != nil {
 				errs = append(errs, fmt.Errorf("switching off the autopilot of task %s: %w", t.Name, err))
 				continue // tried again on the next poll
 			}
@@ -483,8 +490,10 @@ func (r *AgentProjectReconciler) specRetryDue(task *aiv1.AgentTask, after time.D
 
 // syncImplementTask makes sure an issue handed to the agent has a task and
 // turns "moved to ready" and "/agent" comments into run requests. It returns
-// the task's merge request too, if it has one.
-func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, pause string, owners []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
+// the task's merge request too, if it has one. st is the spec task of the
+// issue's milestone, if there is one.
+func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+	is gitlab.Issue, task, st *aiv1.AgentTask, autopilot bool, pause string, owners []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -522,18 +531,24 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 
 	command, review := false, false
 	var reply *routingReply
+	var denied []pilotNote
 	if ready || issueChanged || mrChanged {
 		var latest int64
 		var issueNotes, mrNotes []gitlab.Note
 		var err error
-		latest, issueNotes, mrNotes, err = commandNotes(ctx, gl, glProject, is.IID, mr, project.Status.BotUserID, wf.CommandPrefix)
+		latest, issueNotes, mrNotes, denied, err = commandNotes(ctx, gl, gate, glProject, is.IID, mr, owners)
 		if err != nil {
 			return nil, nil, err
 		}
+		// Commands that do not count request, route and review nothing.
+		// Those written since the notes were last read are answered once
+		// the task is saved.
+		cmdIssue, cmdMR := withoutNotes(issueNotes, denied), withoutNotes(mrNotes, denied)
+		denied = slices.DeleteFunc(denied, func(n pilotNote) bool { return src.LastPilotNoteID == 0 || n.ID <= src.LastPilotNoteID })
 		// "/agent use" and "/agent effort" become labels at once, also the
 		// ones written before the task existed; the answer follows once the
 		// task is saved.
-		if reply, err = r.applyRouting(ctx, gl, spec, &is, issueNotes, mrNotes, src, project.Status.BotUserID); err != nil {
+		if reply, err = r.applyRouting(ctx, gl, spec, &is, cmdIssue, cmdMR, src, project.Status.BotUserID); err != nil {
 			return nil, nil, err
 		}
 		r.pilotIssueNotes(ctx, gl, project, spec, is, mr, task, issueNotes, mrNotes)
@@ -541,7 +556,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 			// Comments written before the task existed are context, not commands.
 			src.LastCommandNoteID = latest
 		} else if latest > src.LastCommandNoteID {
-			review = reviewOnly(slices.Concat(issueNotes, mrNotes), src.LastCommandNoteID, project.Status.BotUserID, wf.CommandPrefix)
+			review = reviewOnly(slices.Concat(cmdIssue, cmdMR), src.LastCommandNoteID, project.Status.BotUserID, wf.CommandPrefix)
 			src.LastCommandNoteID = latest
 			command = true
 		}
@@ -600,6 +615,16 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 			log.FromContext(ctx).Info("could not answer the model and effort commands", "issue", is.IID, "error", err.Error())
 		}
 	}
+	// Recorded on the milestone's spec task, shared with the pilot's
+	// answers; outside a planned milestone on the task itself.
+	if st == nil {
+		st = task
+	}
+	for _, n := range denied {
+		if err := gate.deny(ctx, st, n, owners); err != nil {
+			return nil, nil, err
+		}
+	}
 
 	// Acknowledge in GitLab only after the run request is persisted. If this
 	// fails the next poll sees the ready label again and requests one more
@@ -626,27 +651,51 @@ func equalSpec(a, b *aiv1.AgentTaskSpec) bool {
 	return equality.Semantic.DeepEqual(a, b)
 }
 
-// commandNotes returns the ID of the newest human comment on the issue or
-// its merge request that starts with the command prefix and asks for a run
-// (a comment that only changes the model or effort does not), and the notes.
-func commandNotes(ctx context.Context, gl gitlab.API, glProject string, issueIID int64, mr *gitlab.MergeRequest, botID int64, prefix string) (int64, []gitlab.Note, []gitlab.Note, error) {
+// commandNotes returns the ID of the newest command on the issue or its
+// merge request that asks for a run (a comment that only changes the model
+// or effort does not), the notes, and the commands that do not count
+// (workflow.commandsFrom).
+func commandNotes(ctx context.Context, gl gitlab.API, gate *commandGate, glProject string, issueIID int64, mr *gitlab.MergeRequest,
+	owners []string) (int64, []gitlab.Note, []gitlab.Note, []pilotNote, error) {
 	notes, err := gl.ListIssueNotes(ctx, glProject, issueIID)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("listing notes of issue #%d: %w", issueIID, err)
+		return 0, nil, nil, nil, fmt.Errorf("listing notes of issue #%d: %w", issueIID, err)
 	}
 	var mrNotes []gitlab.Note
 	if mr != nil {
 		if mrNotes, err = gl.ListMergeRequestNotes(ctx, glProject, mr.IID); err != nil {
-			return 0, nil, nil, fmt.Errorf("listing notes of merge request !%d: %w", mr.IID, err)
+			return 0, nil, nil, nil, fmt.Errorf("listing notes of merge request !%d: %w", mr.IID, err)
 		}
 	}
+	prefix := gate.spec.Workflow.CommandPrefix
 	var latest int64
-	for _, n := range append(slices.Clone(notes), mrNotes...) {
-		if IsCommand(n, botID, prefix) && !command.IsRoutingOnly(n.Body, prefix) && n.ID > latest {
-			latest = n.ID
+	var denied []pilotNote
+	for i, list := range [][]gitlab.Note{notes, mrNotes} {
+		kept, others, err := gate.split(ctx, list, owners)
+		if err != nil {
+			return 0, nil, nil, nil, err
+		}
+		for _, n := range kept {
+			if IsCommand(n, gate.botID, prefix) && !command.IsRoutingOnly(n.Body, prefix) && n.ID > latest {
+				latest = n.ID
+			}
+		}
+		for _, n := range others {
+			if i == 0 {
+				denied = append(denied, pilotNote{Note: n, issue: issueIID})
+			} else {
+				denied = append(denied, pilotNote{Note: n, mr: mr.IID})
+			}
 		}
 	}
-	return latest, notes, mrNotes, nil
+	return latest, notes, mrNotes, denied, nil
+}
+
+// withoutNotes returns notes without those in drop.
+func withoutNotes(notes []gitlab.Note, drop []pilotNote) []gitlab.Note {
+	return slices.DeleteFunc(slices.Clone(notes), func(n gitlab.Note) bool {
+		return slices.ContainsFunc(drop, func(d pilotNote) bool { return d.ID == n.ID })
+	})
 }
 
 // reviewOnly reports whether all commands newer than since are "/agent

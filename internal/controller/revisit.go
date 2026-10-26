@@ -29,7 +29,7 @@ const revisitClockSkew = 5 * time.Minute
 // naming the decision, so its implementer records a decision that supersedes
 // it. On autopilot it joins the queue; otherwise it goes straight to ready,
 // since a human asked for it.
-func (r *AgentProjectReconciler) syncRevisits(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask) error {
+func (r *AgentProjectReconciler) syncRevisits(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask) error {
 	if st.Spec.Milestone == nil {
 		return nil
 	}
@@ -83,7 +83,16 @@ func (r *AgentProjectReconciler) syncRevisits(ctx context.Context, gl gitlab.API
 			if m == nil || m[1] != spec.Workflow.CommandPrefix {
 				continue
 			}
-			if err := r.revisitAfterMerge(ctx, gl, spec, st, project.Status.BotUserID, t.iid, n, strings.ToUpper(m[2]), strings.TrimSpace(m[3])); err != nil {
+			ok, err := gate.counts(ctx, n, st.Spec.Owners)
+			switch {
+			case err != nil:
+				return err
+			case !ok:
+				err = gate.deny(ctx, st, pilotNote{Note: n, issue: t.iid}, st.Spec.Owners)
+			default:
+				err = r.revisitAfterMerge(ctx, gl, spec, st, project.Status.BotUserID, t.iid, n, strings.ToUpper(m[2]), strings.TrimSpace(m[3]))
+			}
+			if err != nil {
 				return err
 			}
 			// Saved per comment, so a later failure does not handle it again.

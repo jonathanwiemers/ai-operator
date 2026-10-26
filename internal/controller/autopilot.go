@@ -32,7 +32,7 @@ import (
 // The operator only calls the GitLab API here; no model decides whether to
 // merge. State lives in the spec task's status.autopilot, the tracking issue
 // shows it.
-func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, lane bool) error {
+func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, lane bool) error {
 	switch {
 	case st.Spec.Milestone == nil:
 		return nil
@@ -43,7 +43,7 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 	if st.Status.Autopilot != nil {
 		ap = st.Status.Autopilot.DeepCopy()
 	}
-	a := &autopilot{r: r, gl: gl, project: project, spec: spec, st: st, ap: ap, tasks: tasks, lane: lane,
+	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, lane: lane,
 		log: log.FromContext(ctx).WithValues("milestone", st.Spec.Milestone.Title)}
 	err := a.sync(ctx)
 	// Save what was done even if a later step failed: its GitLab side
@@ -131,6 +131,7 @@ func (a *autopilot) off(ctx context.Context) error {
 type autopilot struct {
 	r       *AgentProjectReconciler
 	gl      gitlab.API
+	gate    *commandGate
 	project *aiv1.AgentProject
 	spec    aiv1.AgentProjectSpec
 	st      *aiv1.AgentTask
@@ -1086,6 +1087,17 @@ func (a *autopilot) commands(ctx context.Context) error {
 	prefix := a.spec.Workflow.CommandPrefix
 	for _, n := range notes {
 		if n.ID <= a.ap.LastCommandNoteID || !IsCommand(n, a.project.Status.BotUserID, prefix) {
+			continue
+		}
+		// Someone else's command is answered (once a day per user) and
+		// handled, so it is not answered again.
+		if ok, err := a.gate.counts(ctx, n, a.st.Spec.Owners); err != nil {
+			return err
+		} else if !ok {
+			if err := a.gate.deny(ctx, a.st, pilotNote{Note: n, issue: a.ap.TrackingIssueIID}, a.st.Spec.Owners); err != nil {
+				return err
+			}
+			a.ap.LastCommandNoteID = n.ID
 			continue
 		}
 		rest := strings.TrimPrefix(strings.TrimSpace(n.Body), prefix)

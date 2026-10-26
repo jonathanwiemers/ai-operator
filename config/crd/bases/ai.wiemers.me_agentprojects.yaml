@@ -1169,6 +1169,18 @@ spec:
                       cover the error case"). Plain discussion does not trigger runs, so no
                       tokens are spent on chatter.
                     type: string
+                  commandsFrom:
+                    default: members
+                    description: |-
+                      CommandsFrom is who may give CommandPrefix commands on issues, merge
+                      requests and tracking issues: "members" (anyone who can comment) or
+                      "owners" (the milestone's owners; for an issue without a milestone,
+                      notify.users, else the operator's default owners). Others get one
+                      reply a day.
+                    enum:
+                    - members
+                    - owners
+                    type: string
                   doneLabel:
                     default: agent::done
                     description: |-

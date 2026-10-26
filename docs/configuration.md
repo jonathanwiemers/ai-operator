@@ -144,9 +144,18 @@ All labels can be renamed. Defaults:
 | `effortLabelPrefix` | `agent-effort::` |
 | `commandPrefix` | `/agent` |
 | `pilotPrefix` | `/pilot` |
+| `commandsFrom` | `members` (or `owners`) |
 | `assignBot` | `true` |
 | `resolveConflicts` | `true` |
 | `stepCommits` | `true` |
+
+`commandsFrom` is who may give `/agent` commands: `members` (anyone who can
+comment) or `owners`. With `owners`, an `/agent …` comment on an issue, its
+MR, the tracking issue or a closed issue (revisits) counts only from the
+milestone's owners (`/agent owners @…`, else `notify.users`, else the
+operator's default owners; for an issue without a milestone `notify.users`,
+else the default owners), checked by GitLab user ID. Anyone else's command
+starts and changes nothing; they get one reply a day where they wrote it.
 
 `assignBot` assigns the bot user to an issue when the operator picks it up and
 the issue has no assignee, so GitLab's milestone page lists it under

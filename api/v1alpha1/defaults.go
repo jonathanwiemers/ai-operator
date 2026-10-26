@@ -61,6 +61,9 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 	def(&w.EffortLabelPrefix, "agent-effort::")
 	def(&w.CommandPrefix, DefaultCommandPrefix)
 	def(&w.PilotPrefix, DefaultPilotPrefix)
+	if w.CommandsFrom == "" {
+		w.CommandsFrom = CommandsFromMembers
+	}
 	if w.AssignBot == nil {
 		t := true
 		w.AssignBot = &t
