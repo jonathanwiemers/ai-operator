@@ -813,9 +813,14 @@ default branch and the last comments of the tracking issue.
   on one of its issues: the operator opens a tracking issue "🧭 Pilot:
   <milestone>" for it; once autopilot is switched on for the milestone, the
   pilot moves to the autopilot's tracking issue and that issue is closed.
-  The pilot ends with the tracking issue: when autopilot is switched off,
-  the milestone is no longer planned, or its pilot's tracking issue is
-  deleted.
+  The pilot ends with the tracking issue: when autopilot is done or switched
+  off, the milestone is no longer planned, or the "🧭 Pilot" issue is closed
+  or deleted. Its task is deleted, and its pod and workspace with it. When a
+  re-plan continues a done queue, or autopilot is switched on again, the
+  pilot comes back on the autopilot's tracking issue. After a closed "🧭
+  Pilot" issue, `/pilot coordinate` opens a new one. On a milestone whose
+  autopilot is done an owner gets "there is no pilot here" (also for `/pilot
+  coordinate`); anyone else gets no answer.
 - **Owners only.** Only the milestone's [owners](#owners-and-pings) (the
   `/agent owners` line, else `notify.users`, compared by user ID) talk to the
   pilot. Anyone else gets "only the owners of this milestone can instruct

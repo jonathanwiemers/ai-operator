@@ -258,3 +258,62 @@ func TestPilotMovesToTheAutopilotsTrackingIssue(t *testing.T) {
 		t.Fatalf("the issue /pilot coordinate opened is closed with a pointer: %s %q", is.State, botComments(e, own))
 	}
 }
+
+func TestPilotEndsWhenTheAutopilotIsDone(t *testing.T) {
+	e := newPilotEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.AddNote(tracking, alice, "/agent skip #1")
+	e.gl.AddNote(tracking, alice, "/agent skip #2")
+	e.reconcile()
+	if _, ok := e.tasks()[pilotTaskName]; ok || e.autopilot().Phase != aiv1.AutopilotDone {
+		t.Fatalf("a done autopilot ends its pilot: %v %+v", keys(e.tasks()), e.autopilot())
+	}
+
+	// Owners are told there is no pilot, also for "coordinate"; nobody else
+	// gets an answer, and no pilot comes back.
+	e.gl.AddNote(tracking, mallory, "/pilot hello?")
+	e.gl.AddNote(tracking, alice, "/pilot how did it go?")
+	e.gl.AddNote(tracking, alice, "/pilot coordinate")
+	e.reconcile()
+	e.reconcile()
+	if c := strings.Join(botComments(e, tracking), "\n"); strings.Count(c, "autopilot of this milestone is done") != 2 || strings.Contains(c, "Only the owners") {
+		t.Fatalf("expected two no-pilot answers for alice: %q", c)
+	}
+	if _, ok := e.tasks()[pilotTaskName]; ok {
+		t.Fatalf("a done autopilot gets no pilot: %v", keys(e.tasks()))
+	}
+
+	// A re-plan continues the queue, and the pilot comes back.
+	mc := e.gl.Milestones[0]
+	docs := e.gl.AddIssue(10, "Docs", "ai-generated", "agent::draft")
+	docs.Milestone, docs.Description = &mc, "Write it.\n<!-- ai-operator:key=docs -->"
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Plan = append(s.Plan, aiv1.PlannedIssue{Key: "docs", IID: 10, Title: "Docs"})
+	})
+	e.reconcile()
+	e.reconcile()
+	if p, ok := e.tasks()[pilotTaskName]; !ok || e.autopilot().Phase != aiv1.AutopilotRunning || p.Spec.Issue == nil || p.Spec.Issue.IID != tracking {
+		t.Fatalf("autopilot running again brings the pilot back: %v %+v", keys(e.tasks()), e.autopilot())
+	}
+}
+
+func TestPilotCoordinateEndsWithItsIssue(t *testing.T) {
+	e := newProjectEnv(t)
+	e.gl.Users = []gitlab.User{alice}
+	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2", State: "active", Description: "/agent spec\n/agent owners @alice\nBuild it."}
+	e.gl.Milestones = []gitlab.Milestone{m}
+	e.gl.AddIssue(1, "API", "agent::needs-input").Milestone = &m
+	e.reconcile()
+	e.gl.AddNote(1, alice, "/pilot coordinate")
+	e.reconcile()
+	e.reconcile()
+	pilot, ok := e.tasks()[pilotTaskName]
+	if !ok {
+		t.Fatalf("/pilot coordinate creates the pilot: %v", keys(e.tasks()))
+	}
+	e.gl.Issues[pilot.Spec.Issue.IID].State = "closed"
+	e.reconcile()
+	if _, ok := e.tasks()[pilotTaskName]; ok {
+		t.Fatalf("closing the pilot's issue ends the pilot: %v", keys(e.tasks()))
+	}
+}

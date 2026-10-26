@@ -119,7 +119,7 @@ func (r *AgentProjectReconciler) pilotTracking(ctx context.Context, gl gitlab.AP
 		since = st.Status.Pilot.LastNoteID
 	}
 	if since != 0 {
-		if coord == nil {
+		if coord == nil && trackingIssue(st, nil) != 0 {
 			return nil // created at the end of this poll
 		}
 		if err := r.routePilot(ctx, gl, project, spec, st, coord, st.Spec.Owners, pilotNotes(project, spec, notes, since, tracking, 0)); err != nil {
@@ -180,9 +180,10 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		owner := ownerIDs[n.Author.ID]
 		coordinate := strings.EqualFold(n.msg, "coordinate")
 		var reply string
+		done := autopilotDone(st)
 		switch tracking := trackingIssue(st, coord); {
-		case st == nil && !owner:
-			continue // nowhere to note a reply, so none
+		case (st == nil || done) && !owner:
+			continue // no pilot here, and only owners are told so
 		// A milestone without owners gets answers only, which is all the
 		// pilot does yet.
 		case !owner && len(owners) > 0:
@@ -192,6 +193,8 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 			continue
 		case st == nil:
 			reply = "There is no pilot here: this issue is not in a planned milestone."
+		case done:
+			reply = "There is no pilot here: the autopilot of this milestone is done."
 		case coordinate && tracking != 0:
 			reply = fmt.Sprintf("The pilot of this milestone listens on #%d.", tracking)
 		case coordinate && st.Spec.Autopilot:
@@ -260,8 +263,9 @@ func (r *AgentProjectReconciler) rejectPilot(ctx context.Context, gl gitlab.API,
 
 // trackingIssue is the issue the pilot of a milestone listens on: the
 // autopilot's tracking issue, else the one "/pilot coordinate" opened.
+// A milestone whose autopilot is done has no pilot.
 func trackingIssue(st, coord *aiv1.AgentTask) int64 {
-	if st == nil {
+	if st == nil || autopilotDone(st) {
 		return 0
 	}
 	if ap := st.Status.Autopilot; ap != nil && ap.Phase != aiv1.AutopilotOff && ap.TrackingIssueIID != 0 {
@@ -271,6 +275,10 @@ func trackingIssue(st, coord *aiv1.AgentTask) int64 {
 		return coord.Spec.Issue.IID
 	}
 	return 0
+}
+
+func autopilotDone(st *aiv1.AgentTask) bool {
+	return st != nil && st.Status.Autopilot != nil && st.Status.Autopilot.Phase == aiv1.AutopilotDone
 }
 
 // startPilot opens a tracking issue for a milestone without autopilot and
@@ -328,6 +336,8 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 		coord := pilots[st.Spec.Milestone.IID]
 		tracking := trackingIssue(st, coord)
 		if tracking == 0 {
+			// No pilot, or its autopilot is done: a pilot left is deleted
+			// below. C4 (the retrospective) runs here before that.
 			continue
 		}
 		if coord != nil {
@@ -345,10 +355,14 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 			}
 		} else if _, err = r.ensurePilot(ctx, project, st, coord, nil, false); err == nil {
 			var notes []gitlab.Note
-			notes, err = gl.ListIssueNotes(ctx, spec.GitLab.Project, tracking)
+			var is *gitlab.Issue
+			is, err = gl.GetIssue(ctx, spec.GitLab.Project, tracking)
+			if err == nil && is.State == "opened" {
+				notes, err = gl.ListIssueNotes(ctx, spec.GitLab.Project, tracking)
+			}
 			switch {
-			case gitlab.IsNotFound(err):
-				delete(keep, coord.Name) // the tracking issue is gone, and the pilot with it
+			case gitlab.IsNotFound(err) || err == nil && is.State != "opened":
+				delete(keep, coord.Name) // the tracking issue is closed or gone, and the pilot with it
 				err = nil
 			case err == nil:
 				err = r.pilotTracking(ctx, gl, project, spec, st, coord, tracking, notes)

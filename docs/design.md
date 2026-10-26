@@ -727,8 +727,11 @@ anything is a later step of
 * **Lifecycle.** The project controller keeps one `Coordinate` task per
   planned milestone with a tracking issue (`spec.issue`): the autopilot's
   (`spec.autopilot` set, followed when it is recreated), or one `/pilot
-  coordinate` opened (closed with a pointer once autopilot takes over). It is deleted with the autopilot (`phase: Off`), the
-  milestone's plan, or its own deleted tracking issue. It is not bound by
+  coordinate` opened (closed with a pointer once autopilot takes over). It is deleted with the autopilot (`phase: Off` or
+  `Done`; it comes back when the queue runs again), the milestone's plan, or
+  its own tracking issue when that is closed or deleted (one `GetIssue` per
+  poll and such pilot). The retrospective (C4) will run before a done
+  pilot is deleted. It is not bound by
   `maxRunsPerTask`, only by its budget.
 * **Routing** (`internal/controller/pilot.go`). Comments are read where the
   operator reads them anyway: the tracking issue's notes (autopilot lists
