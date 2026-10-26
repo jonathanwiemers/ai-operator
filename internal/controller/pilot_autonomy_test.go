@@ -146,6 +146,25 @@ func TestPilotManagedNeedsAYesForAllButTheCountedTools(t *testing.T) {
 	}
 }
 
+func TestPilotManagedQueueToolStillNeedsAYes(t *testing.T) {
+	e := newManagedEnv(t)
+	before, runs := e.queueEffect(), e.toolEffect()
+	e.proposeFor(1, "event/a", aiv1.PilotAction{Tool: "skip", IssueIID: 2}, aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	e.reconcile()
+	p := e.proposalNote(1)
+	if after := e.queueEffect(); after != before || e.toolEffect().runs != runs.runs+1 ||
+		!strings.Contains(p.Body, "**skip**") || strings.Contains(p.Body, "**retry**") || !strings.Contains(p.Body, "@alice") {
+		t.Fatalf("the retry runs, the skip waits for a yes and pings: %+v → %+v\n%s", before, after, p.Body)
+	}
+	e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "yes")
+	e.reconcile()
+	e.reconcile()
+	if after := e.queueEffect(); after.two != aiv1.AutopilotItemSkipped {
+		t.Fatalf("the owner's yes skips #2: %+v", after)
+	}
+}
+
 func TestPilotManagedRunsNothingMadeOnAStateThatIsGone(t *testing.T) {
 	e := newManagedEnv(t)
 	before := e.toolEffect()
