@@ -863,19 +863,23 @@ counted interventions; more tools are later steps of
   records `managed`, which never raises a `propose` project. Nothing from
   the milestone or the model reaches it. When it manages, `postProposals`
   first takes the valid actions of the counted tools (`retry`, `reReview`,
-  `instruct` without owner text, `openIssue`) out of the runs' proposals,
-  while their issue has interventions left: `status.pilot.interventions`
+  `instruct` without owner text, `openIssue`) out of the runs' proposals
+  whose state still holds (a stale one is posted whole and expires like any
+  proposal), while their issue has interventions left: `status.pilot.interventions`
   counts by issue IID (an `openIssue` by the proposal's `trigger`, the
   issue of its event or message, `0` for the milestone) and head, reset
   when the head moves, at most `pilot.maxInterventionsPerIssue`. They go to
   `status.pilot.accepted` with no `acceptedBy`, in the same locked patch as
-  the counts, and `runAccepted` runs them at the end of the poll (refused
-  when the pilot was stopped meanwhile) and posts an audit comment instead
-  of an outcome: summary, `why` (classification and evidence, or the
-  message, recorded by the runner), the actions and the interventions
-  left, inert and without mentions. The rest is posted as a proposal, with
-  its state recomputed for the actions left when the old one still holds,
-  and mentions the owners. Every action the pilot starts, except an
+  the counts, and `runAccepted` runs them at the end of the poll (refused,
+  and their interventions given back, when the pilot was stopped meanwhile
+  or they are no longer valid) and posts an audit comment instead of an
+  outcome: summary, `why` (classification and evidence, or the message,
+  recorded by the runner), the actions and the interventions left, inert
+  and without mentions. The rest is posted as a proposal, with its state
+  recomputed for the actions left, and mentions the owners; a run's
+  proposal with nothing the operator would run gets a short comment that
+  mentions them, since the assessment did not. A failed status patch
+  restores the object, so nothing of it is used later in the poll. Every action the pilot starts, except an
   owner's own words, sets `spec.source.pilotRun` to its run request; the
   runner keeps `status.run.ciRound` on a push of that request instead of
   starting over (`ciRound` in `internal/runner/implement.go`).

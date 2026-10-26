@@ -138,20 +138,25 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 			}
 			notes = append(notes, describeAction(p.Actions[j], err))
 		}
+		// The pilot manages, yet this needs an owner: its assessment did not
+		// ping them.
+		ping := ""
+		if counts != nil && i < len(proposed) {
+			ping = notify.Mention(st.Spec.Owners)
+		}
 		if valid == 0 {
 			log.FromContext(ctx).Info("the pilot proposed nothing the operator can run", "task", coord.Name, "actions", notes)
+			if ping != "" && !slices.ContainsFunc(own, func(q aiv1.PilotProposal) bool { return q.Source == p.Source }) {
+				bodies = append(bodies, fmt.Sprintf("🧭 The pilot proposed nothing the operator runs: %s\n\n%s%s", inertLine(p.Summary, 300), strings.Join(notes, "\n"), ping))
+			}
 			continue
 		}
 		next++
 		p.ID, p.PostedAt = next, &now
 		posted = append(posted, p)
-		ping := ""
-		if counts != nil && i < len(proposed) {
-			ping = notify.Mention(st.Spec.Owners) // the pilot manages, yet this needs an owner
-		}
-		bodies = append(bodies, ping+fmt.Sprintf("🧭 **Proposal P%[1]d:** %[2]s\n\n%[3]s\n\nAn owner accepts it with `yes` as a reply in this thread, or `%[4]s yes P%[1]d` "+
+		bodies = append(bodies, fmt.Sprintf("🧭 **Proposal P%[1]d:** %[2]s\n\n%[3]s\n\nAn owner accepts it with `yes` as a reply in this thread, or `%[4]s yes P%[1]d` "+
 			"anywhere in the milestone; `no` or `%[4]s no P%[1]d` drops it. It no longer applies after 24 h or once the milestone's state changes.\n\n"+
-			"<!-- ai-operator:proposal id=%[1]d state=%[5]s -->", p.ID, inertLine(p.Summary, 300), strings.Join(notes, "\n"), spec.Workflow.PilotPrefix, p.State))
+			"<!-- ai-operator:proposal id=%[1]d state=%[5]s -->%[6]s", p.ID, inertLine(p.Summary, 300), strings.Join(notes, "\n"), spec.Workflow.PilotPrefix, p.State, ping))
 	}
 	// Recorded before they are posted: each is posted at most once.
 	if err := r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) {
@@ -184,7 +189,11 @@ func (r *AgentProjectReconciler) patchProposals(ctx context.Context, coord *aiv1
 	coord.Status.Pilot.Proposals = slices.DeleteFunc(coord.Status.Pilot.Proposals, func(p aiv1.PilotProposal) bool {
 		return p.PostedAt == nil || now.Sub(p.PostedAt.Time) >= proposalTTL
 	})
-	return r.Status().Patch(ctx, coord, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
+	err := r.Status().Patch(ctx, coord, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
+	if err != nil {
+		coord.Status = orig.Status // nothing of it holds
+	}
+	return err
 }
 
 // answerProposal handles an owner's "yes" or "no", written on issue where
@@ -267,7 +276,10 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 			}
 		}
 	}
-	if err := r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) { ps.Accepted, ps.OpenedIssues = nil, opened }); err != nil {
+	if err := r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) {
+		ps.Accepted, ps.OpenedIssues = nil, opened
+		refund(ps, tasks, accepted, errs)
+	}); err != nil {
 		return err
 	}
 	var failed []string

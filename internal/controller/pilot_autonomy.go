@@ -36,6 +36,12 @@ func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int
 		maps.Copy(counts, ps.Interventions)
 	}
 	for _, p := range proposed {
+		if aiv1.PilotState(st, tasks, p.Actions) != p.State {
+			// Made on a state that is gone: an owner's yes could not run
+			// it either.
+			rest = append(rest, p)
+			continue
+		}
 		var mine, left []aiv1.PilotAction
 		for _, a := range p.Actions {
 			a.Owner, a.Text = "", "" // only an owner's words are free text
@@ -61,11 +67,7 @@ func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int
 			own = append(own, q)
 		}
 		if len(left) > 0 {
-			// Still made on the state it was made on, if that is gone.
-			if aiv1.PilotState(st, tasks, p.Actions) == p.State {
-				p.State = aiv1.PilotState(st, tasks, left)
-			}
-			p.Actions = left
+			p.Actions, p.State = left, aiv1.PilotState(st, tasks, left)
 			rest = append(rest, p)
 		}
 	}
@@ -92,8 +94,12 @@ func interventionKey(a aiv1.PilotAction, trigger int64, tasks map[int64]*aiv1.Ag
 // it pings nobody.
 func auditNote(spec aiv1.AgentProjectSpec, coord *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, p aiv1.PilotProposal, lines []string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "🧭 **The pilot acted on its own** (`pilot.autonomy: managed`): %s\n\n**Why:** %s\n\n%s\n\n",
-		inertLine(p.Summary, 300), inertLine(p.Why, 1000), strings.Join(lines, "\n"))
+	what := "acted on its own"
+	if !slices.ContainsFunc(lines, func(l string) bool { return !strings.Contains(l, " (not run: ") }) {
+		what = "ran none of its own actions"
+	}
+	fmt.Fprintf(&b, "🧭 **The pilot %s** (`pilot.autonomy: managed`): %s\n\n**Why:** %s\n\n%s\n\n",
+		what, inertLine(p.Summary, 300), inertLine(p.Why, 1000), strings.Join(lines, "\n"))
 	var seen []string
 	for _, a := range p.Actions {
 		key, head := interventionKey(a, p.Trigger, tasks)
@@ -142,4 +148,18 @@ func pilotHow(id int64, by string) string {
 		return "on its own, audited on the tracking issue"
 	}
 	return fmt.Sprintf("proposal P%d, accepted by `@%s`", id, by)
+}
+
+// refund gives back the interventions of the pilot's own actions that were
+// refused before they ran (stopped meanwhile, or no longer valid).
+func refund(ps *aiv1.PilotStatus, tasks map[int64]*aiv1.AgentTask, accepted []aiv1.PilotProposal, errs [][]error) {
+	for i, p := range accepted {
+		for j, a := range p.Actions {
+			key, head := interventionKey(a, p.Trigger, tasks)
+			if c, ok := ps.Interventions[key]; ok && p.AcceptedBy == "" && errs[i][j] != nil && c.Head == head && c.Count > 0 {
+				c.Count--
+				ps.Interventions[key] = c
+			}
+		}
+	}
 }

@@ -58,4 +58,9 @@ func TestPilotRunKeepsTheCIRoundsAHumanRunStartsOver(t *testing.T) {
 	if got := ciRound(task, false); got != 0 {
 		t.Fatalf("a human's run starts over: %d", got)
 	}
+	// A run without any request (an agent label) is nobody's pilot run.
+	task.Spec.RunRequest, task.Spec.Source.PilotRun = 0, 0
+	if got := ciRound(task, false); got != 0 {
+		t.Fatalf("a run of no request starts over: %d", got)
+	}
 }

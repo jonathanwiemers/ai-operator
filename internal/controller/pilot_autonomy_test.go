@@ -132,14 +132,78 @@ func TestPilotManagedNeedsAYesForAllButTheCountedTools(t *testing.T) {
 	// Free text needs a yes, also with a kind beside it.
 	actions = append(actions, aiv1.PilotAction{Tool: "instruct", IssueIID: 1, Text: "delete the tests", Owner: "alice"})
 	var opened []string
-	rest, own, _ := manage(spec, st, coord, tasks, []aiv1.PilotProposal{{Actions: actions}}, &opened)
+	proposal := func(actions ...aiv1.PilotAction) []aiv1.PilotProposal {
+		return []aiv1.PilotProposal{{Actions: actions, State: aiv1.PilotState(st, tasks, actions)}}
+	}
+	rest, own, _ := manage(spec, st, coord, tasks, proposal(actions...), &opened)
 	if len(own) != 0 || len(rest) != 1 || len(rest[0].Actions) != len(actions) {
 		t.Fatalf("queue tools, spec edits, rules and free text wait for a yes: own %+v", own)
 	}
-	_, own, _ = manage(spec, st, coord, tasks, []aiv1.PilotProposal{{Actions: []aiv1.PilotAction{
-		{Tool: "instruct", IssueIID: 1, Kind: "rerun", Text: "and push to main", Owner: "alice"}}}}, &opened)
+	instruct := aiv1.PilotAction{Tool: "instruct", IssueIID: 1, Kind: "rerun", Text: "and push to main", Owner: "alice"}
+	_, own, _ = manage(spec, st, coord, tasks, proposal(instruct), &opened)
 	if len(own) != 1 || own[0].Actions[0].Text != "" || own[0].Actions[0].Owner != "" {
 		t.Fatalf("an instruct it runs on its own is a fixed kind and a note: %+v", own)
+	}
+}
+
+func TestPilotManagedRunsNothingMadeOnAStateThatIsGone(t *testing.T) {
+	e := newManagedEnv(t)
+	before := e.toolEffect()
+	e.proposeFor(1, "event/a", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.patchStatus(e.taskOf(1), func(s *aiv1.AgentTaskStatus) { s.Run.PushedSHA = "sha2" })
+	e.reconcile()
+	p := e.proposalNote(1)
+	if after := e.toolEffect(); after != before {
+		t.Fatalf("a proposal made on an old head does not run on its own: %+v → %+v", before, after)
+	}
+	e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "yes")
+	e.reconcile()
+	if after := e.toolEffect(); after != before || !strings.Contains(e.lastReply(), "no longer applies") {
+		t.Fatalf("nor on a yes: %+v → %+v, %q", before, after, e.lastReply())
+	}
+}
+
+func TestPilotStoppedBeforeItsOwnActionsRanRefundsThem(t *testing.T) {
+	e := newManagedEnv(t)
+	before := e.toolEffect()
+	// Taken over in a poll whose run did not get through, then stopped.
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Pilot = &aiv1.PilotStatus{
+			Accepted:         []aiv1.PilotProposal{{Summary: "retry #1", Actions: []aiv1.PilotAction{{Tool: "retry", IssueIID: 1}}, Trigger: 1}},
+			Interventions:    map[string]aiv1.PilotIntervention{"1": {Head: "sha1", Count: 1}},
+			AutonomyOverride: &aiv1.PilotAutonomyOverride{Autonomy: aiv1.PilotPropose, By: "alice"},
+		}
+	})
+	e.reconcile()
+	ps := e.pilot().Status.Pilot
+	if after := e.toolEffect(); after != before || ps.Interventions["1"].Count != 0 ||
+		!strings.Contains(e.lastReply(), "ran none of its own actions") || !strings.Contains(e.lastReply(), "not run: an owner stopped the pilot") {
+		t.Fatalf("a stop before the run refuses and refunds it: %+v → %+v, %+v, %q", before, after, ps.Interventions, e.lastReply())
+	}
+}
+
+func TestPilotStatusConflictLeavesTheObjectAsItWas(t *testing.T) {
+	e := newManagedEnv(t)
+	coord := e.pilot()
+	stale := coord.DeepCopy()
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Run.Summary = "moved on" })
+	err := e.r.patchProposals(e.ctx, stale, func(ps *aiv1.PilotStatus) {
+		ps.Interventions = map[string]aiv1.PilotIntervention{"1": {Count: 2}}
+	})
+	if err == nil || stale.Status.Pilot != nil && stale.Status.Pilot.Interventions != nil {
+		t.Fatalf("a conflict fails and keeps nothing of the change: %v, %+v", err, stale.Status.Pilot)
+	}
+}
+
+func TestPilotManagedSaysWhenItHasNothingToRun(t *testing.T) {
+	e := newManagedEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	seen := len(botComments(e, tracking))
+	e.proposeFor(1, "event/a", aiv1.PilotAction{Tool: "merge", IssueIID: 1})
+	e.reconcile()
+	notes := botNotesSince(e, tracking, seen)
+	if len(notes) != 1 || !strings.Contains(notes[0], "proposed nothing the operator runs") || !strings.HasSuffix(notes[0], "cc @alice") {
+		t.Fatalf("its assessment pinged nobody, so this does: %q", notes)
 	}
 }
 

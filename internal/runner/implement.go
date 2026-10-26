@@ -1184,7 +1184,7 @@ func ciRound(task *aiv1.AgentTask, ciFix bool) int32 {
 	switch {
 	case ciFix:
 		return task.Status.Run.CIRound + 1
-	case task.Spec.Source.PilotRun == task.Spec.RunRequest:
+	case task.Spec.Source.PilotRun != 0 && task.Spec.Source.PilotRun == task.Spec.RunRequest:
 		return task.Status.Run.CIRound
 	}
 	return 0
