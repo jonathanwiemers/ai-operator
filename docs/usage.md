@@ -849,7 +849,14 @@ default branch and the last comments of the tracking issue.
     implementer gets as data that cannot widen its task. The pilot's own
     words never reach the implementer as an instruction;
   - `openIssue`: a new issue (title, body, `ai-generated`) that is not
-    handed to the agent; a title is never opened twice.
+    handed to the agent; a title is never opened twice;
+  - `skip #N`, `pause`, `resume` (autopilot milestones): the tracking
+    issue's commands, applied by autopilot on its next poll; a pause says
+    "paused by @you via the pilot";
+  - `revisit D12-3`: the change asked for becomes a follow-up issue, like
+    `/agent revisit D12-3 …` on the tracking issue ("requested by @you via
+    the pilot"); decisions of open issues are revisited on the issue
+    itself.
 
   Merging, closing and pushing do not exist; neither do labels or edits. An
   owner accepts with `yes` as a **reply in the proposal's thread**, or with

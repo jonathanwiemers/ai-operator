@@ -567,12 +567,15 @@ once an owner answers yes. The actions:
   unfinished, fix what is broken); your note reaches the implementer as a
   hint, never as an instruction;
 - openIssue, with a title and a body: a new issue, not handed to the agent,
-  for a problem outside the milestone's issues (e.g. the agent image).
+  for a problem outside the milestone's issues (e.g. the agent image);
+- skip (issue N), pause, resume: the autopilot queue's commands;
+- revisit, a decision of a merged issue (e.g. D12-3) and the change asked
+  for: a follow-up issue that changes it.
 Nothing else exists: no merges, closes, pushes, labels or edits. Propose
 only what an owner asked for or what an event calls for, and say it in the
-answer. For anything else say what the owner can do, e.g. "/agent resume"
-on the tracking issue, "/pilot tell #N: <words>" to pass their own words
-on to an implementer, a label or an edit of the milestone description.
+answer. For anything else say what the owner can do, e.g. "/pilot tell #N:
+<words>" to pass their own words on to an implementer, a label or an edit
+of the milestone description.
 
 The operator also wakes you on events of the milestone: an autopilot pause,
 an issue that needs input or is blocked, a red or flaky default branch. Then
@@ -601,10 +604,11 @@ const proposalSchema = `{
             "additionalProperties": false,
             "required": ["tool"],
             "properties": {
-              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue"]},
-              "issue": {"type": "integer", "description": "retry, reReview, instruct: the issue of the milestone."},
+              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "skip", "pause", "resume", "revisit"]},
+              "issue": {"type": "integer", "description": "retry, reReview, instruct, skip: the issue of the milestone."},
+              "decision": {"type": "string", "description": "revisit: the decision's ID, e.g. D12-3."},
               "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun"], "description": "instruct: the instruction."},
-              "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body."},
+              "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for."},
               "title": {"type": "string", "description": "openIssue: the issue's title."}
             }
           }
@@ -632,11 +636,12 @@ type PilotAnswer struct {
 type ProposalAnswer struct {
 	Summary string `json:"summary"`
 	Actions []struct {
-		Tool  string `json:"tool"`
-		Issue int64  `json:"issue"`
-		Kind  string `json:"kind"`
-		Note  string `json:"note"`
-		Title string `json:"title"`
+		Tool     string `json:"tool"`
+		Issue    int64  `json:"issue"`
+		Kind     string `json:"kind"`
+		Note     string `json:"note"`
+		Title    string `json:"title"`
+		Decision string `json:"decision"`
 	} `json:"actions"`
 }
 

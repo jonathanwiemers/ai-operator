@@ -799,7 +799,7 @@ later steps of [the spec](specs/milestone-coordinator.spec.md).
   twice; a comment that could not be posted fails the run.
 * **Proposals** (`internal/controller/pilot_actions.go`). An answer or an
   assessment may carry a proposal (`proposalSchema`: a summary and up to 5
-  actions of `retry`, `reReview`, `instruct` with a kind, `openIssue`). The
+  actions of `retry`, `reReview`, `instruct` with a kind, `openIssue`, `skip`, `pause`, `resume`, `revisit`). The
   runner executes nothing: it appends the proposal to
   `status.pilot.proposed` of the `Coordinate` task, with `state`, the hash
   of what it was made on (`aiv1.PilotState`: the spec task's description
@@ -840,7 +840,16 @@ later steps of [the spec](specs/milestone-coordinator.spec.md).
   with the run request it is for) and comments on the issue (a 🧭 comment
   the implementer's thread leaves out), `openIssue` creates an
   `ai-generated` issue without agent labels or milestone, marked
-  `<!-- ai-operator:pilot-issue=<title key> -->`. The implementer's prompt
+  `<!-- ai-operator:pilot-issue=<title key> -->`. `skip`, `pause`,
+  `resume` (only on a running or paused autopilot queue) and `revisit`
+  (a decision ID) are appended to `status.pilot.commands` of the spec task
+  with a sequence number, in a locked patch on a fresh copy: autopilot
+  applies the queue commands in `commands()` through the same code as the
+  tracking issue's comments, `syncRevisits` the revisits through
+  `revisitAfterMerge` (the change asked for made inert), and each
+  remembers the last sequence it handled (`status.autopilot.lastPilotCommand`,
+  `status.revisits.lastPilotCommand`), saved with its own status, so a
+  command applies once. Commands every path applied are dropped (the last keeps the sequence); with 20 waiting, a new one is refused. The implementer's prompt
   gets a kind as a fixed sentence with the note inside `<untrusted-data>`,
   or the owner's words as "Instruction from @owner via the pilot"; an
   instruction counts as human input, so a conflict or re-review run still
