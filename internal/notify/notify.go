@@ -37,7 +37,11 @@ func ownersLine(prefix string) *regexp.Regexp {
 // set off by blank lines takes one of them along, so the paragraphs around
 // it are spaced as before.
 func WithoutOwners(description, prefix string) string {
-	re := ownersLine(prefix)
+	return WithoutLines(description, ownersLine(prefix))
+}
+
+// WithoutLines removes the lines re matches, spaced like WithoutOwners.
+func WithoutLines(description string, re *regexp.Regexp) string {
 	for {
 		loc := re.FindStringIndex(description)
 		if loc == nil {

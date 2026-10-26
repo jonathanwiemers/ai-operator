@@ -859,7 +859,8 @@ default branch and the last comments of the tracking issue.
     the pilot"); decisions of open issues are revisited on the issue
     itself.
 
-  Merging, closing and pushing do not exist; neither do labels or edits. An
+  Merging, closing and pushing do not exist; neither do labels or edits
+  (besides the standing rules, below). An
   owner accepts with `yes` as a **reply in the proposal's thread**, or with
   `/pilot yes P3` anywhere in the milestone; `no` or `/pilot no P3` drops
   it. A bare `/pilot yes` is refused with the list of open proposals. One
@@ -898,6 +899,39 @@ default branch and the last comments of the tracking issue.
   your words on to #12's implementer verbatim; after a `yes` it gets them
   as "instruction from @you via pilot" with its next run, and the issue
   shows them.
+- **Standing rules.** "From now on …" is a standing rule of the milestone:
+  a line `/agent rule R<n>: <kind> <text>` in its description. Ask the
+  pilot (`/pilot from now on also fix lint errors in the files you touch`):
+  it picks the kind, says which and why, and proposes `setRule`; after an
+  owner's `yes` the operator adds the line. `/pilot rules` lists the rules
+  (also on the tracking issue), `/pilot forget R2` proposes removing one.
+  You may also add, change or delete the lines by hand. Three kinds:
+  - `switch`: a per-milestone value of a setting, e.g. `/agent rule R1:
+    switch ci.maxFixRounds=3`. Only `ci.maxFixRounds` (0 to 5),
+    `ci.retryFailedJobs` (true or false), `review.retries` and
+    `review.maxIterations` (`agents.review.*`, 0 to 5) can be switched;
+    the pilot prefers a switch where one fits;
+  - `pilot`: how the pilot behaves, e.g. `R2: pilot never propose skips`;
+  - `prompt`: a rule the implementers and reviewers of the milestone's
+    issues get, marked as "Rules from the milestone owners", e.g. `R3:
+    prompt lint errors in touched files are fixed too`.
+
+  Rule lines are not part of the spec: adding or changing them re-plans
+  nothing, and the planner and the agents do not see them in the
+  milestone's text. No rule can change the merge gate, the freeze, budgets
+  and limits (`maxRunsPerTask`, `pilot.maxBudgetUSD`), the owners, the
+  pilot's autonomy or project-wide settings (`mainHealth.*`), or allow
+  merging, closing or pushing: such a switch is refused with the reason, and
+  a hand-written one is listed as "not applied". Two switches of the same
+  setting are not applied until you decide; the pilot asks instead of
+  proposing a rule that conflicts with the spec or another rule.
+
+  **Who may set rules.** GitLab does not say who edited a milestone
+  description, so a hand-written rule has the authority of the description
+  itself, which is already the spec every agent of the milestone works
+  from; editing it needs the project role that may manage milestones. A
+  rule therefore opens no new way in, and it cannot widen what the pilot
+  may do: every tool that needs an owner's `yes` still needs one.
 - Its answers, assessments and proposals are made inert like all agent
   text: no mentions (besides the owners' `cc`), no quick actions.
 - **Cost.** It runs on the light model (`agents.pilot`) in its own pod with a

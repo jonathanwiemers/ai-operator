@@ -29,7 +29,7 @@ import (
 
 // pilotTools are the tools the pilot may propose; merging, closing and
 // pushing are none of them.
-var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "skip", "pause", "resume", "revisit"}
+var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "skip", "pause", "resume", "revisit", "setRule", "forgetRule"}
 
 // queueTools go through the tracking issue's commands.
 var queueTools = []string{"skip", "pause", "resume", "revisit"}
@@ -47,6 +47,8 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 	switch {
 	case !slices.Contains(pilotTools, a.Tool):
 		return fmt.Errorf("`%s` is not a tool of the pilot; merging, closing and pushing are not available", inertLine(a.Tool, 40))
+	case isRuleTool(a.Tool):
+		return validRule(a)
 	case a.Tool == "revisit" && marker.DecisionIssue(a.Decision) == 0:
 		return fmt.Errorf("`%s` is not a decision", inertLine(a.Decision, 40))
 	case a.Tool == "revisit":
@@ -129,6 +131,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 				// Only the operator passes an owner's words on.
 				p.Actions[j].Owner, p.Actions[j].Text = "", ""
 			}
+			p.Actions[j] = withRuleText(p.Actions[j], st)
 			err := validAction(p.Actions[j], st, tasks, opened)
 			if err == nil {
 				valid++
@@ -317,6 +320,8 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, s
 	switch a.Tool {
 	case "skip", "pause", "resume", "revisit":
 		return r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
+	case "setRule", "forgetRule":
+		return r.runRule(ctx, gl, spec, st, a)
 	case "openIssue":
 		_, err := gl.CreateIssue(ctx, spec.GitLab.Project, gitlab.CreateIssueOptions{
 			Title: inertLine(a.Title, 200),
@@ -439,6 +444,8 @@ func describeAction(a aiv1.PilotAction, err error) string {
 		s = fmt.Sprintf("**revisit** %s, asking for: %s", inertLine(a.Decision, 40), inertLine(a.Note, 2000))
 	case "openIssue":
 		s = fmt.Sprintf("**openIssue** %q, not handed to the agent, with the body: %s", inertLine(a.Title, 200), inertLine(a.Note, 2000))
+	case "setRule", "forgetRule":
+		s = describeRule(a)
 	default:
 		s = fmt.Sprintf("**%s**", inertLine(a.Tool, 40))
 	}

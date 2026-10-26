@@ -231,6 +231,11 @@ func (in *AgentTaskSpec) DeepCopyInto(out *AgentTaskSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.Rules != nil {
+		in, out := &in.Rules, &out.Rules
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	in.Source.DeepCopyInto(&out.Source)
 }
 

@@ -56,6 +56,12 @@ type AgentTaskSpec struct {
 	// +optional
 	Owners []string `json:"owners,omitempty"`
 
+	// Rules are the standing rules of the milestone: its description's
+	// lines "/agent rule R<n>: <kind> <text>" without "/agent rule " (spec
+	// and Coordinate tasks).
+	// +optional
+	Rules []string `json:"rules,omitempty"`
+
 	// Source records which GitLab state the operator has already turned into
 	// run requests, so that every change triggers exactly one run.
 	// +optional
@@ -205,6 +211,11 @@ type PilotAction struct {
 	Owner string `json:"owner,omitempty"`
 	// +optional
 	Text string `json:"text,omitempty"`
+	// Rule is the ID ("R2") of the standing rule forgetRule removes. A
+	// setRule has its kind (switch, pilot, prompt) in Kind and its text in
+	// Note; a forgetRule the operator's copy of the rule's text in Note.
+	// +optional
+	Rule string `json:"rule,omitempty"`
 }
 
 // PilotProposal is a set of actions that waits for an owner's "yes".

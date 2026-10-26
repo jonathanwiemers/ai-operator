@@ -182,8 +182,9 @@ fence and at most 5000 bytes.
 **Owners.** The project controller resolves the owners of every task on each
 poll (a milestone's `/agent owners` line, else `spec.notify.users`, else
 `--default-owners`) into `AgentTask.spec.owners`; the runner and the CI and
-autopilot code only read the task. The owners line is left out of the
-milestone's description hash, so it does not re-plan. Mentions go into new
+autopilot code only read the task. The owners line, like the
+[standing rules](#pilot), is left out of the milestone's description hash,
+so it does not re-plan. Mentions go into new
 comments only, because GitLab notifies again for mentions added by an edit.
 
 **Model and effort per issue.** `/agent use` and `/agent effort` start no
@@ -887,6 +888,39 @@ counted interventions; more tools are later steps of
   owner's own words, sets `spec.source.pilotRun` to its run request; the
   runner keeps `status.run.ciRound` on a push of that request instead of
   starting over (`ciRound` in `internal/runner/implement.go`).
+* **Standing rules** (`internal/rules`, `internal/controller/pilot_rules.go`,
+  `internal/runner/pilot_rules.go`). Lines `/agent rule R<n>: <kind> <text>`
+  of the milestone description. `rules.Spec` leaves them out, with the
+  owners lines, of the description hash (no re-plan), of milestone
+  selection, of the planner's and the implementer's milestone text and of
+  the pilot's `spec`. The project controller copies the raw lines into
+  `spec.rules` of the spec task (and from there of the `Coordinate` task);
+  `PilotState` hashes them, so a rule change expires open proposals. A
+  `switch` is applied to a copy of the project spec per milestone:
+  `ci.*` for the CI loop of its issues (`rules.For` before `syncCI`),
+  `review.*` by the runner of an issue in the milestone. The allow-list is
+  in code, counts are capped at 5, and `maxRunsPerTask` and the budgets
+  still apply; everything else (the merge gate, the freeze, budgets and
+  limits, owners, `pilot.*`, `mainHealth.*`) is refused with a reason.
+  Two switches of one setting, or a reused ID, are not applied. `pilot`
+  rules are appended to the pilot's system prompt, under a note that
+  they cannot add tools, spare a `yes` or change its autonomy; `prompt`
+  rules go at the end of the implementer's prompt and every reviewer's
+  prompt as "Rules from the milestone owners" (cut to 1000 bytes each).
+  `setRule` (kind, text) and `forgetRule` (ID) are proposal tools, always
+  behind a `yes`. The runner drops a `setRule` with a refused switch and
+  says why in the reply; the operator checks it again when posting and
+  running. A `forgetRule` carries the rule's text from `spec.rules` (not
+  the model's), shown in the proposal; when it runs, the operator reads
+  the milestone again and removes the line only if that text is
+  unchanged and its ID is used once. A `setRule` gets the next free ID, its
+  text one inert line (at most 500 bytes); one with the same setting or
+  text as an existing rule is refused ("forget it first"). Both write the
+  description with `PUT /milestones/:id`. `/pilot rules` (no model call)
+  and the tracking issues (autopilot's and `/pilot coordinate`'s) list
+  the rules with the reason for any that is not applied. A hand-written
+  rule has the description's authority, which is already the spec; it
+  cannot widen anything the operator checks.
 * **Budget.** The task's `status.run.costUSD` is the pilot's spend; at
   `pilot.maxBudgetUSD` it answers without a model call that the budget is
   used up. On claude each turn is capped at the rest of the budget (or the

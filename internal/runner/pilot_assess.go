@@ -38,7 +38,7 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			body = fmt.Sprintf("The pilot's budget for this milestone ($%s, `pilot.maxBudgetUSD`) is used up, so there is no assessment.", spec.Pilot.MaxBudgetUSD)
 		default:
 			prompt := buildAssessPrompt(e, eventData(ctx, gl, spec.GitLab.Project, e), milestone)
-			inv := roleInvocation(role, pilotSystemPrompt, readOnlyTools, assessSchema, true)
+			inv := roleInvocation(role, pilotSystem(task), readOnlyTools, assessSchema, true)
 			inv.Role, inv.MaxBudgetUSD, inv.Prompt = "pilot", strconv.FormatFloat(left, 'f', 2, 64), prompt
 			s := r.step(ctx, "run pilot", "engine", role.Engine, "model", role.Model, "event", e.Key)
 			res, err := r.invoke(ctx, role, inv, prompt)

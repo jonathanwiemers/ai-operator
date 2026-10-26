@@ -134,6 +134,14 @@ spec:
                 description: ProjectRef is the name of the AgentProject in the same
                   namespace.
                 type: string
+              rules:
+                description: |-
+                  Rules are the standing rules of the milestone: its description's
+                  lines "/agent rule R<n>: <kind> <text>" without "/agent rule " (spec
+                  and Coordinate tasks).
+                items:
+                  type: string
+                type: array
               runRequest:
                 description: |-
                   RunRequest is a monotonically increasing counter. Every increment asks
@@ -779,6 +787,12 @@ spec:
                                   Owner and Text: an owner's own words for the implementer ("/pilot
                                   tell #N: …"). Only the operator sets them.
                                 type: string
+                              rule:
+                                description: |-
+                                  Rule is the ID ("R2") of the standing rule forgetRule removes. A
+                                  setRule has its kind (switch, pilot, prompt) in Kind and its text in
+                                  Note; a forgetRule the operator's copy of the rule's text in Note.
+                                type: string
                               text:
                                 type: string
                               title:
@@ -997,6 +1011,12 @@ spec:
                                   Owner and Text: an owner's own words for the implementer ("/pilot
                                   tell #N: …"). Only the operator sets them.
                                 type: string
+                              rule:
+                                description: |-
+                                  Rule is the ID ("R2") of the standing rule forgetRule removes. A
+                                  setRule has its kind (switch, pilot, prompt) in Kind and its text in
+                                  Note; a forgetRule the operator's copy of the rule's text in Note.
+                                type: string
                               text:
                                 type: string
                               title:
@@ -1089,6 +1109,12 @@ spec:
                                 description: |-
                                   Owner and Text: an owner's own words for the implementer ("/pilot
                                   tell #N: …"). Only the operator sets them.
+                                type: string
+                              rule:
+                                description: |-
+                                  Rule is the ID ("R2") of the standing rule forgetRule removes. A
+                                  setRule has its kind (switch, pilot, prompt) in Kind and its text in
+                                  Note; a forgetRule the operator's copy of the rule's text in Note.
                                 type: string
                               text:
                                 type: string

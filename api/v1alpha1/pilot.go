@@ -7,12 +7,15 @@ import (
 )
 
 // PilotState hashes what a proposal of the pilot is made on: the milestone
-// description and the autopilot's queue and pause (spec task st) and the
+// description (with its rules) and the autopilot's queue and pause (spec task st) and the
 // heads of the issues its actions are about (tasks by issue IID). The
 // proposal no longer applies once it changes.
 func PilotState(st *AgentTask, tasks map[int64]*AgentTask, actions []PilotAction) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "%s\n", st.Spec.Source.DescriptionHash)
+	for _, r := range st.Spec.Rules {
+		fmt.Fprintf(h, "rule %s\n", r)
+	}
 	if ap := st.Status.Autopilot; ap != nil {
 		fmt.Fprintf(h, "%s %d %q\n", ap.Phase, ap.PausedFor, ap.PausedReason)
 		for _, it := range ap.Items {

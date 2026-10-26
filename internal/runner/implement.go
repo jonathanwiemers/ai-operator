@@ -14,6 +14,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/rules"
 )
 
 // runImplement implements an issue: implement -> review -> fix (bounded) ->
@@ -39,13 +40,17 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		return out, nil
 	}
 	var milestone *gitlab.Milestone
+	var ownersRules string
 	if issue.Milestone != nil {
 		s = r.step(ctx, "read milestone", "milestoneID", issue.Milestone.ID)
 		if milestone, err = gl.GetMilestone(ctx, glProject, issue.Milestone.ID); err != nil {
 			return out, s.fail(fmt.Errorf("getting milestone: %w", err))
 		}
-		// The owners line is for the operator, not the agent.
-		milestone.Description = notify.WithoutOwners(milestone.Description, wf.CommandPrefix)
+		// The owners and rule lines are for the operator, not the agent:
+		// it gets the switches applied and the prompt rules marked.
+		rs := rules.Parse(rules.Lines(milestone.Description, wf.CommandPrefix))
+		spec, ownersRules = rules.Apply(spec, rs), promptRules(rs)
+		milestone.Description = rules.Spec(milestone.Description, wf.CommandPrefix)
 		s.done(milestone.Title)
 	}
 	s = r.step(ctx, "read project")
@@ -154,6 +159,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	prefix := wf.CommandPrefix
 	fullPrompt := buildImplementPrompt(issue, milestone, command.WithoutRouting(issueNotes, prefix), command.WithoutRouting(mrNotes, prefix), botID, false, prior)
 	inv.Prompt = buildImplementPrompt(issue, milestone, command.WithoutRouting(newIssueNotes, prefix), command.WithoutRouting(newMRNotes, prefix), botID, true, handoff{})
+	fullPrompt, inv.Prompt = fullPrompt+ownersRules, inv.Prompt+ownersRules
 	if task.Spec.Autopilot {
 		fullPrompt = autopilotImplementNote + "\n\n" + fullPrompt
 		inv.Prompt = autopilotImplementNote + "\n\n" + inv.Prompt
@@ -376,7 +382,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			s.done("no changes to review")
 			break
 		}
-		findings, cost, errs, transient := r.review(ctx, review, issue, planDecisionsText(issueNotes, botID), base, stat, diff)
+		findings, cost, errs, transient := r.review(ctx, review, issue, planDecisionsText(issueNotes, botID), base, stat, diff, ownersRules)
 		out.CostUSD += cost
 		reviewNotes = errs
 		out.Reviewed, out.ReviewErrors, out.ReviewErrorsTransient = true, int32(len(errs)), len(errs) > 0 && transient == len(errs)
@@ -902,9 +908,10 @@ func (r *Runner) commit(ctx context.Context, message string) error {
 // review runs all configured reviewers in parallel. A reviewer that fails
 // transiently is called again (review.retries). Reviewer failures do not
 // fail the run; they are reported alongside the result, with the number of
-// them that failed transiently.
-func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions, base, stat, diff string) ([]Finding, float64, []string, int) {
-	prompt := buildReviewPrompt(issue, planDecisions, base, stat, diff)
+// them that failed transiently. ownersRules (the milestone's prompt rules)
+// end every reviewer's prompt.
+func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions, base, stat, diff, ownersRules string) ([]Finding, float64, []string, int) {
+	prompt := buildReviewPrompt(issue, planDecisions, base, stat, diff) + ownersRules
 	var (
 		mu        sync.Mutex
 		wg        sync.WaitGroup

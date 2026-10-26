@@ -357,6 +357,15 @@ model is `agents.pilot`.
 | `autonomy` | unset | `managed`: the pilot runs `retry`, `reReview`, `instruct` (a fixed kind and a note) and `openIssue` on its own, counted and audited on the tracking issue; `propose`: every action waits for an owner's `yes`. Unset: `managed` on autopilot milestones, `propose` on the others; a set value applies to every milestone. Neither the milestone description nor a rule changes it; an owner's `/pilot stop` lowers a milestone to `propose`, `/pilot go` returns it to this value (never above it). See [usage.md](usage.md#talking-to-the-pilot) |
 | `maxInterventionsPerIssue` | `2` | the pilot's own actions per issue and head when it manages (an `openIssue` counts against the issue whose event or message triggered it, on the tracking issue against the milestone, for the milestone's life); past it, it proposes and pings the owners. An action counts when it is started, also if it then fails |
 
+**Per milestone.** A milestone's standing rules (lines `/agent rule R<n>:
+switch <setting>=<value>` in its description, see
+[usage.md](usage.md#talking-to-the-pilot)) override four settings for its
+issues: `ci.maxFixRounds` (0 to 5), `ci.retryFailedJobs`,
+`agents.review.retries` and `agents.review.maxIterations` (written
+`review.retries`, `review.maxIterations`; 0 to 5). Nothing else can be
+switched per milestone: budgets and limits, the merge gate, the freeze,
+`pilot.*` and `mainHealth.*` stay as configured here.
+
 ## Other `spec` fields
 
 | Field | Default | Description |

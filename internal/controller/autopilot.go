@@ -1335,6 +1335,7 @@ func (a *autopilot) renderTracking() string {
 			decisions = append(decisions, "- "+line)
 		}
 	}
+	b.WriteString(rulesSection(a.st))
 	b.WriteString("\n### Decisions\n\n")
 	if len(decisions) == 0 {
 		b.WriteString("_Listed here once an issue is merged; until then they are on the issue._\n")
