@@ -371,7 +371,7 @@ CLIs. It also has `mise` and `rustup` (pinned, checksum-verified; build args
 `MISE_VERSION` / `RUSTUP_VERSION` with the checksums next to them), with which
 the agent installs the toolchains your default branch pins
 (`.mise.toml`, `.tool-versions`, `rust-toolchain.toml`) into
-`/workspace/home/.toolchains` (`MISE_DATA_DIR`, `RUSTUP_HOME`, `CARGO_HOME`),
+`/workspace/home/.toolchains` (`MISE_DATA_DIR`, `RUSTUP_HOME`, `CARGO_HOME`; no auto-install),
 see [usage.md](usage.md#toolchains-the-agent-installs). For tools without a
 pin, or to save the download per issue, extend the image:
 

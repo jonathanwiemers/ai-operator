@@ -896,7 +896,11 @@ after every read-only run); the boundary is the agent container itself.
   against the channel manifest's hashes, mise against what its backend
   publishes. Only default-branch pins, which humans merged, persist in
   `$HOME/.toolchains`; a pin the agent's branch changes goes to a per-run
-  directory under `/tmp`. That is an instruction, not a sandbox: the model
+  directory under `/tmp`. Nothing installs implicitly (rustup and mise
+  auto-install are off), and no writable directory is on `PATH` ahead of the
+  image's tools (mise tools run through `mise exec`), so an install cannot
+  shadow `git` or an agent CLI. The default-branch rule is an instruction,
+  not a sandbox: the model
   can download and run anything the container can reach, as it can run the
   repository's code. What bounds it is that `$HOME` is on the per-task PVC
   (no other task or issue sees its toolchains) and the container holds no

@@ -33,7 +33,8 @@ ENV PATH="/opt/cursor/.local/bin:${PATH}"
 # Toolchain installers, pinned and checksum-verified: mise (.mise.toml,
 # .tool-versions) and rustup (rust-toolchain.toml; mise's rust backend would
 # fetch the rustup script). What they install lives on the workspace PVC
-# (HOME is /workspace/home in the agent container), see docs/usage.md.
+# (HOME is /workspace/home in the agent container), see docs/usage.md. No
+# auto-install: a pin the branch changes must not land there unasked.
 ARG MISE_VERSION=2026.10.8 RUSTUP_VERSION=1.29.2
 RUN set -eu; case "$(dpkg --print-architecture)" in \
       amd64) m=x64 r=x86_64 ms=c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428 rs=5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4;; \
@@ -46,10 +47,11 @@ RUN set -eu; case "$(dpkg --print-architecture)" in \
     chmod 755 /usr/local/bin/mise /tmp/rustup-init; \
     CARGO_HOME=/opt/rustup RUSTUP_HOME=/tmp/rustup /tmp/rustup-init -y -q --no-modify-path --profile minimal --default-toolchain none; \
     rm -rf /tmp/rustup-init /tmp/rustup; chmod -R a+rX /opt/rustup
-ENV PATH="/opt/rustup/bin:/workspace/home/.toolchains/mise/shims:${PATH}" \
+ENV PATH="/opt/rustup/bin:${PATH}" \
     MISE_DATA_DIR=/workspace/home/.toolchains/mise \
     RUSTUP_HOME=/workspace/home/.toolchains/rustup \
-    CARGO_HOME=/workspace/home/.toolchains/cargo
+    CARGO_HOME=/workspace/home/.toolchains/cargo \
+    RUSTUP_AUTO_INSTALL=0 MISE_AUTO_INSTALL=false
 COPY --from=build /out/ai-runner /usr/local/bin/ai-runner
 # uid 1000 is the "node" user; the operator runs pods with runAsUser 1000.
 USER 1000

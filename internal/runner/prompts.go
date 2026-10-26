@@ -144,11 +144,13 @@ func toolchainsNote(base string, pins []string) string {
 		return ""
 	}
 	return "\n\nThe default branch " + base + " pins toolchains in " + strings.Join(pins, ", ") + `. Before running tests, ` +
-		`linters or formatters, install them if missing, from official sources only: mise install (mise.toml, .tool-versions) ` +
-		`or rustup toolchain install (rust-toolchain), into $HOME/.toolchains, where they are kept for later runs. If your ` +
-		`branch changes a pin (git diff origin/` + base + ` -- <file>), install that version into a fresh directory under ` +
-		`/tmp for this run only (MISE_DATA_DIR or RUSTUP_HOME=$(mktemp -d)). No root or system packages, never pipe a ` +
-		`downloaded script into a shell. If an install fails, say so in the summary.`
+		`linters or formatters, install what is missing, from official sources only. MISE_DATA_DIR and RUSTUP_HOME already ` +
+		`point into $HOME/.toolchains, where installs are kept for later runs: for mise and .tool-versions files run mise ` +
+		`trust and mise install, then the tools with mise exec -- <command>; for rust-toolchain files run rustup toolchain ` +
+		`install (it adds the listed components and targets). If your branch changes a pin (git diff origin/` + base +
+		` -- <file>), install and run that version with MISE_DATA_DIR and RUSTUP_HOME each set to its own $(mktemp -d), ` +
+		`for this run only. No root or system packages, never pipe a downloaded script into a shell. If an install fails, ` +
+		`say so in the summary.`
 }
 
 const bugbotSystemPrompt = `You are a code reviewer looking for correctness bugs in a diff produced by
