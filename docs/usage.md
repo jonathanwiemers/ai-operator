@@ -434,10 +434,14 @@ description gets the operator's fixed task: make the flaky test
 deterministic, find the cause in the code or the test, do not delete or
 skip it, a quarantine needs an owner's `yes`. The failing tests and logs
 stay in the occurrence comments, as untrusted data. Only an open
-`ci::flaky` issue the operator opened, with the description it wrote, is
-handed over; an edited one is refused. The first hand-over wins
-(`status.mainHealth.flakyFixes`, which also exempts the issue from
-`milestones.titlePattern`); a later occurrence only adds a comment.
+`ci::flaky` issue the operator opened, with the title and description it
+wrote, is handed over, and only the operator's occurrence comments of that
+job count; an edited one is refused. The first hand-over wins
+(`status.mainHealth.flakyFixes`, kept while the watcher is off, which also
+exempts the issue from `milestones.titlePattern`; the task in the
+description refuses a second one too); a later occurrence only adds a
+comment. `autoFixFlaky` acts when a retry turns green; switched on while
+the branch is flaky, it waits for the next occurrence.
 Occurrence comments from before this version are not counted. Switch
 `autoFixFlaky` on only where that is wanted: whoever can make a job of the
 default branch fail twice starts an agent run.

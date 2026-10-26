@@ -30,8 +30,9 @@ const fixFlakyTask = "Make the flaky test of this job deterministic. The failing
 // issue is handed over.
 const minFlakyOccurrences = 2
 
-// maxFlakyFixes bounds the hand-overs kept; the oldest go first.
-const maxFlakyFixes = 50
+// maxFlakyFixes bounds the hand-overs kept; the oldest go first (their
+// issues keep the operator's task, which refuses a second hand-over).
+const maxFlakyFixes = 100
 
 // flakyDescription is the description the watcher wrote: its marker and
 // the one-liner of the first occurrence; groups 1 and 2 are the job.
@@ -55,12 +56,13 @@ func flakyLatch(mh *aiv1.MainHealthStatus, iid int64) *aiv1.FlakyFix {
 }
 
 // checkFlaky returns flaky issue iid if it may be handed over into
-// milestone (IID, 0: none): the bot's open ci::flaky issue with the
-// description the watcher wrote (or, after an interrupted hand-over, with
-// the operator's task), flaky at least twice, not handed over yet and not
-// in work. A refusal is a flakyRefusal.
+// milestone (IID, 0: none): the bot's open ci::flaky issue with the title
+// and description the watcher wrote, flaky at least twice by the bot's
+// occurrence comments of its job, not handed over yet (the latch, and the
+// operator's task in its description, which outlives the latch) and not in
+// work. A refusal is a flakyRefusal.
 func checkFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, mh *aiv1.MainHealthStatus, iid, milestone int64) (*gitlab.Issue, error) {
-	if mh == nil {
+	if mh == nil || spec.MainHealth.Disabled {
 		return nil, flakyRefusal("the main health watcher is off")
 	}
 	if f := flakyLatch(mh, iid); f != nil {
@@ -75,10 +77,12 @@ func checkFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, 
 		return nil, fmt.Errorf("getting issue #%d: %w", iid, err)
 	}
 	wf := spec.Workflow
-	m := flakyDescription.FindStringSubmatch(strings.TrimSuffix(is.Description, "\n\n"+fixFlakyTask))
+	m := flakyDescription.FindStringSubmatch(is.Description)
 	switch {
-	case is.Author.ID != bot || is.State != "opened" || !is.HasLabel(flakyLabel) || m == nil || m[1] != m[2]:
-		return nil, flakyRefusal(fmt.Sprintf("#%d is no open flaky issue of the operator with the description it wrote", iid))
+	case strings.HasSuffix(is.Description, "\n\n"+fixFlakyTask):
+		return nil, flakyRefusal(fmt.Sprintf("#%d was handed to the agent already (its description has the operator's task)", iid))
+	case is.Author.ID != bot || is.State != "opened" || !is.HasLabel(flakyLabel) || m == nil || m[1] != m[2] || is.Title != "🔁 Flaky CI job: `"+m[1]+"`":
+		return nil, flakyRefusal(fmt.Sprintf("#%d is no open flaky issue of the operator with the title and description it wrote", iid))
 	case hasAny(*is, wf.WorkingLabel, wf.NeedsInputLabel, wf.ReviewLabel, wf.BlockedLabel):
 		return nil, flakyRefusal(fmt.Sprintf("#%d is in work already", iid))
 	case is.Milestone != nil && is.Milestone.IID != milestone:
@@ -88,6 +92,12 @@ func checkFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, 
 	if err != nil {
 		return nil, fmt.Errorf("listing the comments of issue #%d: %w", iid, err)
 	}
+	// Only the bot's comments on this job count: a description edited to
+	// another job is not backed by any.
+	notes = slices.DeleteFunc(notes, func(n gitlab.Note) bool {
+		_, line, _ := strings.Cut(n.Body, "\n")
+		return !strings.HasPrefix(line, "🔁 `"+m[1]+"` failed in pipeline ")
+	})
 	if n := len(flakyOccurrences(notes, bot)); n < minFlakyOccurrences {
 		return nil, flakyRefusal(fmt.Sprintf("#%d was flaky %d time(s); it takes %d", iid, n, minFlakyOccurrences))
 	}
@@ -102,13 +112,14 @@ func queueRunning(st *aiv1.AgentTask) bool {
 }
 
 // handOverFlaky hands flaky issue is to the agent in the milestone of spec
-// task st (nil: none) and records it in mh: with the operator's task, on a
-// running autopilot into its queue, else with agent::ready. how says who
-// did it. Repeating an interrupted hand-over changes nothing twice.
+// task st (nil: none) and records it in mh: on a running autopilot into
+// its queue, else with agent::ready, and with the operator's task, set
+// last: that update is the hand-over, so one that failed before it can be
+// repeated. how says who did it.
 func (r *AgentProjectReconciler) handOverFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus,
 	st *aiv1.AgentTask, is *gitlab.Issue, how string) error {
 	glProject := spec.GitLab.Project
-	opts := gitlab.UpdateIssueOptions{Description: strings.TrimSuffix(is.Description, "\n\n"+fixFlakyTask) + "\n\n" + fixFlakyTask}
+	opts := gitlab.UpdateIssueOptions{Description: is.Description + "\n\n" + fixFlakyTask}
 	fix := aiv1.FlakyFix{IssueIID: is.IID, At: metav1.NewTime(r.now())}
 	where, queue := "without a milestone, with `"+spec.Workflow.ReadyLabel+"`", st != nil && queueRunning(st)
 	if st != nil {
@@ -121,13 +132,13 @@ func (r *AgentProjectReconciler) handOverFlaky(ctx context.Context, gl gitlab.AP
 	} else {
 		opts.AddLabels = []string{spec.Workflow.ReadyLabel}
 	}
-	if _, err := gl.UpdateIssue(ctx, glProject, is.IID, opts); err != nil {
-		return fmt.Errorf("handing flaky issue #%d to the agent: %w", is.IID, err)
-	}
 	if queue {
 		if err := r.queueFlakyFix(ctx, st, is.IID); err != nil {
 			return fmt.Errorf("queueing flaky issue #%d: %w", is.IID, err)
 		}
+	}
+	if _, err := gl.UpdateIssue(ctx, glProject, is.IID, opts); err != nil {
+		return fmt.Errorf("handing flaky issue #%d to the agent: %w", is.IID, err)
 	}
 	mh.FlakyFixes = append(mh.FlakyFixes, fix)
 	mh.FlakyFixes = mh.FlakyFixes[max(0, len(mh.FlakyFixes)-maxFlakyFixes):]
@@ -139,11 +150,16 @@ func (r *AgentProjectReconciler) handOverFlaky(ctx context.Context, gl gitlab.AP
 }
 
 // queueFlakyFix appends a flaky issue to the autopilot queue of spec task
-// st, flagged so a re-plan keeps it; one already there gets the flag.
+// st, flagged so a re-plan keeps it; one already there gets the flag, and
+// one skipped because an earlier hand-over failed after queueing it is
+// pending again.
 func (r *AgentProjectReconciler) queueFlakyFix(ctx context.Context, st *aiv1.AgentTask, iid int64) error {
 	orig := st.DeepCopy()
 	ap := st.Status.Autopilot
 	if i := slices.IndexFunc(ap.Items, func(it aiv1.AutopilotItem) bool { return it.IID == iid }); i >= 0 {
+		if it := &ap.Items[i]; it.FlakyFix && it.State == aiv1.AutopilotItemSkipped {
+			it.State = aiv1.AutopilotItemPending
+		}
 		ap.Items[i].FlakyFix = true
 	} else {
 		ap.Items = append(ap.Items, aiv1.AutopilotItem{IID: iid, State: aiv1.AutopilotItemPending, FlakyFix: true})

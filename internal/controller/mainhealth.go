@@ -41,7 +41,12 @@ const (
 // agent at its second occurrence, into the milestone of lane (nil: none).
 func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, lane *aiv1.AgentTask) error {
 	if spec.MainHealth.Disabled {
-		project.Status.MainHealth = nil
+		var kept *aiv1.MainHealthStatus
+		if cur := project.Status.MainHealth; cur != nil && len(cur.FlakyFixes) > 0 {
+			// The hand-overs stay exempt from the title filter.
+			kept = &aiv1.MainHealthStatus{State: aiv1.MainHealthGreen, FlakyFixes: cur.FlakyFixes}
+		}
+		project.Status.MainHealth = kept
 		return nil
 	}
 	cur := project.Status.MainHealth

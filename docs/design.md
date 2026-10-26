@@ -853,17 +853,21 @@ counted interventions; more tools are later steps of
   `<!-- ai-operator:pilot-issue=<title key> -->`. `fixFlaky`
   (`internal/controller/flakyfix.go`) is checked in GitLab too, when it is
   posted and again when it runs (`checkFlaky`): the bot's open `ci::flaky`
-  issue whose description is the watcher's marker and one-liner (or that
-  plus the operator's task, after an interrupted hand-over), not in work,
-  in no other milestone, with two bot occurrence comments of distinct
-  pipelines, and not in `status.mainHealth.flakyFixes`. `handOverFlaky`
-  sets the description to the one-liner plus `fixFlakyTask` and the
-  milestone (`UpdateIssueOptions.MilestoneID`) in one update, adds
-  `agent::ready` unless the milestone's autopilot queue runs, then appends
-  the queue item with `flakyFix` (kept by `mergeQueue` on a re-plan, no
-  revisit side effects) in a locked patch, records the latch (issue,
-  milestone, time; the newest 50) in the project status, where the title
-  filter exempts it like `autoFixIssueIID`, and comments where it went.
+  issue whose title and description are the watcher's (marker and
+  one-liner, the same job in all three), not yet ending in the operator's
+  task, not in work, in no other milestone, with two bot occurrence
+  comments of that job from distinct pipelines, and not in
+  `status.mainHealth.flakyFixes`. `handOverFlaky` first appends the queue
+  item with `flakyFix` (kept by `mergeQueue` on a re-plan, no revisit side
+  effects; a skipped flaky fix is pending again) in a locked patch when the
+  milestone's autopilot queue runs, then sets the description to the
+  one-liner plus `fixFlakyTask`, the milestone
+  (`UpdateIssueOptions.MilestoneID`) and, without a queue, `agent::ready`
+  in one update: that update is the hand-over, and the task it leaves in
+  the description refuses another one even when the latch is lost. Then it
+  records the latch (issue, milestone, time; the newest 100, kept while the
+  watcher is off) in the project status, where the title filter exempts it
+  like `autoFixIssueIID`, and comments where it went.
   The latch is written with the project status at the end of the poll; the
   pilots of one poll run in turn, so the second sees the first's. With
   `mainHealth.autoFixFlaky`, `syncMainHealth` does the same for the

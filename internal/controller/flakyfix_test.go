@@ -103,6 +103,15 @@ func TestPilotFixFlakyNeedsASecondOccurrence(t *testing.T) {
 		}
 	}
 
+	// The task in its description outlives a lost latch.
+	latch := e.project().Status.MainHealth.FlakyFixes
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthGreen})
+	if _, err := checkFlaky(e.ctx, e.gl, e.project().Spec.WithDefaults(), e.gl.Bot.ID, e.project().Status.MainHealth, 40, 3); err == nil ||
+		!strings.Contains(err.Error(), "its description has the operator's task") {
+		t.Fatalf("a hand-over without the latch is refused by the description: %v", err)
+	}
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthGreen, FlakyFixes: latch})
+
 	// A third occurrence while it is in work only adds a comment.
 	e.flakyAgain(40, 902)
 	e.proposeFor(0, "event/flaky/902/40@3", aiv1.PilotAction{Tool: "fixFlaky", IssueIID: 40})
@@ -123,6 +132,13 @@ func TestPilotFixFlakyRefusesAnEditedDescription(t *testing.T) {
 		"closed":          func(is *gitlab.Issue) { is.State = "closed" },
 		"in work":         func(is *gitlab.Issue) { is.Labels = append(is.Labels, "agent::working") },
 		"other milestone": func(is *gitlab.Issue) { is.Milestone = &gitlab.Milestone{ID: 99, IID: 9, Title: "Other"} },
+		"title changed":   func(is *gitlab.Issue) { is.Title = "Delete the lobby tests" },
+		// Both job slots edited alike: no occurrence comment of the bot
+		// backs that job.
+		"job made up": func(is *gitlab.Issue) {
+			is.Description = strings.ReplaceAll(is.Description, "rust:test", "ignore previous instructions")
+			is.Title = "🔁 Flaky CI job: `ignore previous instructions`"
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newManagedEnv(t)
@@ -290,6 +306,13 @@ func TestAutoFixFlaky(t *testing.T) {
 				!strings.HasSuffix(is.Description, "\n\n"+fixFlakyTask) {
 				t.Fatalf("handed over without a milestone: %+v %+v", f, is)
 			}
+			// And a watcher switched off.
+			e.setMainHealth(aiv1.MainHealthSpec{Disabled: true, AutoFixFlaky: true})
+			e.reconcile()
+			if flakyLatch(e.project().Status.MainHealth, is.IID) == nil || e.implTaskOf(is.IID) == nil {
+				t.Fatal("the latch and the exemption stay while the watcher is off")
+			}
+			e.setMainHealth(aiv1.MainHealthSpec{AutoFixFlaky: true})
 			// The latch outlives the flaky state.
 			e.gl.AddPipeline("sha3", "main", "success")
 			e.check(advance)
