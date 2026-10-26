@@ -133,7 +133,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	role, profile, roleNotes := spec.IssueRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
 	inv.Role = "implement"
-	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs)
+	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs) + toolchainsNote(base, r.Mirror.PinFiles(ctx, base))
 	// While the MR is a draft, the work is pushed step by step so a human can
 	// follow it and steer with comments (not while concluding a merge, whose
 	// conflicts must be resolved before anything is committed).

@@ -367,8 +367,13 @@ model is `agents.pilot`.
 
 `Dockerfile.agent` builds a base image with `ai-runner`, git, `claude` and
 `cursor-agent`. The build args `INSTALL_CLAUDE` / `INSTALL_CURSOR` toggle the
-CLIs. Extend it with the toolchains of your repositories, because the agent
-must be able to build and run the tests:
+CLIs. It also has `mise` and `rustup` (pinned, checksum-verified; build args
+`MISE_VERSION` / `RUSTUP_VERSION` with the checksums next to them), with which
+the agent installs the toolchains your default branch pins
+(`.mise.toml`, `.tool-versions`, `rust-toolchain.toml`) into
+`/workspace/home/.toolchains` (`MISE_DATA_DIR`, `RUSTUP_HOME`, `CARGO_HOME`; no auto-install),
+see [usage.md](usage.md#toolchains-the-agent-installs). For tools without a
+pin, or to save the download per issue, extend the image:
 
 ```dockerfile
 FROM ghcr.io/jonathanwiemers/ai-operator-agent:2026.10.1

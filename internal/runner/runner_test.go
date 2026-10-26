@@ -587,6 +587,35 @@ func TestMirrorEnvIsMinimal(t *testing.T) {
 	}
 }
 
+func TestMirrorPinFilesListsDefaultBranchPins(t *testing.T) {
+	e := newImplementEnv(t)
+	for name, body := range map[string]string{"rust-toolchain.toml": "[toolchain]\n", ".tool-versions": "nodejs 22\n", "web/.mise.toml": "[tools]\n"} {
+		_ = os.MkdirAll(filepath.Dir(filepath.Join(e.seed, name)), 0o755)
+		_ = os.WriteFile(filepath.Join(e.seed, name), []byte(body), 0o644)
+	}
+	gitCmd(t, e.seed, "add", ".")
+	gitCmd(t, e.seed, "commit", "-m", "pins")
+	gitCmd(t, e.seed, "push", "origin", "HEAD:main")
+	// A pin only the work branch adds is not the default branch's.
+	gitCmd(t, e.seed, "checkout", "-b", "work")
+	_ = os.WriteFile(filepath.Join(e.seed, ".mise.toml"), []byte("[tools]\n"), 0o644)
+	gitCmd(t, e.seed, "add", ".")
+	gitCmd(t, e.seed, "commit", "-m", "branch pin")
+	gitCmd(t, e.seed, "push", "origin", "work")
+
+	m := &Mirror{Dir: filepath.Join(e.tmp, "mirror.git")}
+	ctx := context.Background()
+	if err := m.Sync(ctx, e.origin, "main", "work"); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.PinFiles(ctx, "main"); !slices.Equal(got, []string{".tool-versions", "rust-toolchain.toml"}) {
+		t.Fatalf("want the root pins of main, got %q", got)
+	}
+	if got := m.PinFiles(ctx, "missing"); got != nil || toolchainsNote("missing", got) != "" {
+		t.Fatalf("no branch, no pins and no note: %q", got)
+	}
+}
+
 func TestAgentRejectsPathsOutsideExchange(t *testing.T) {
 	a := &LocalAgent{Workspace: &Workspace{Dir: t.TempDir()}, Exchange: "/exchange"}
 	for _, p := range []string{"/runner/mirror.git/config", "/exchange/../runner/x", "/exchange"} {

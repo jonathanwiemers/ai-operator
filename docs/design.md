@@ -890,6 +890,26 @@ after every read-only run); the boundary is the agent container itself.
   (Kubernetes API, self-hosted GitLab, mirrors). NetworkPolicies apply per
   pod, so the agent container can still reach the internet (GitLab, model
   APIs, package registries); it just has no credentials to use there.
+* **Toolchain installs** reach the network from the agent container: the
+  implementer installs the toolchains pinned at the root of the default
+  branch (`.mise.toml`, `.tool-versions`, `rust-toolchain.toml`, which the
+  runner lists from its mirror) with `mise` and `rustup` from official
+  sources. Both installers are in the image, pinned and checksum-verified, so
+  nothing is piped from the network into a shell; rustup checks components
+  against the channel manifest's hashes, mise against what its backend
+  publishes. Only default-branch pins, which humans merged, persist in
+  `$HOME/.toolchains`; a pin the agent's branch changes goes to a per-run
+  directory under `/tmp`. Nothing installs implicitly (rustup and mise
+  auto-install are off), and no writable directory is on `PATH` ahead of the
+  image's tools (mise tools run through `mise exec`), so an install cannot
+  shadow `git` or an agent CLI. The default-branch rule is an instruction,
+  not a sandbox: the model
+  can download and run anything the container can reach, as it can run the
+  repository's code. What bounds it is that `$HOME` is on the per-task PVC
+  (no other task or issue sees its toolchains) and the container holds no
+  GitLab or Kubernetes credentials. Restricting egress (package registries
+  only, or a mirror) is a cluster concern: NetworkPolicy or an egress proxy,
+  see the item above.
 * Use a project access token (role Developer, scopes `api`,
   `write_repository`) and protect the default branch – the agent only pushes
   `agent/*` branches and opens draft MRs.

@@ -35,7 +35,7 @@ The CRDs are part of the templates, so they are upgraded too.
 | `serviceAccount.create` | `true` | |
 | `serviceAccount.name` | release full name | |
 | `serviceAccount.annotations` | `{}` | |
-| `agent.image.repository` | `ghcr.io/jonathanwiemers/ai-operator-agent` | default agent image for AgentProjects without `spec.agents.image`; empty disables the default |
+| `agent.image.repository` | `ghcr.io/jonathanwiemers/ai-operator-agent` | default agent image for AgentProjects without `spec.agents.image` (CLIs, `mise` and `rustup` for the toolchains a repository pins); empty disables the default |
 | `agent.image.tag` | chart `appVersion` | |
 | `agent.logLevel` | `logLevel` if it is `debug`, `info` or `error`, else `info` | `debug`, `info`, `error` for the agent pods; `spec.agents.logLevel` overrides it per project |
 | `agent.serviceAccountName` | `ai-operator-agent` | must match `spec.agents.serviceAccountName` of your AgentProjects |

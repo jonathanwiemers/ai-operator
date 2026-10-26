@@ -250,3 +250,15 @@ func (m *Mirror) HasChanges(ctx context.Context, base, head string) bool {
 	_, err := m.run(ctx, false, "diff", "--quiet", "refs/remotes/origin/"+base+"..."+head)
 	return err != nil
 }
+
+// pinFiles are the toolchain pins the implementer installs (toolchainsNote).
+var pinFiles = []string{".mise.toml", "mise.toml", ".tool-versions", "rust-toolchain.toml", "rust-toolchain"}
+
+// PinFiles returns the toolchain pin files at the root of origin/<base>.
+func (m *Mirror) PinFiles(ctx context.Context, base string) []string {
+	out, err := m.run(ctx, false, append([]string{"ls-tree", "--name-only", "refs/remotes/origin/" + base, "--"}, pinFiles...)...)
+	if err != nil || out == "" {
+		return nil
+	}
+	return strings.Split(out, "\n")
+}
