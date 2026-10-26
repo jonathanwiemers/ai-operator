@@ -856,8 +856,8 @@ func (c *Client) ListPipelineJobs(ctx context.Context, project string, pipelineI
 	return list[Job](ctx, c, fmt.Sprintf("%s/pipelines/%d/jobs", projectPath(project), pipelineID), q)
 }
 
-// maxTrace bounds how much of a job log is downloaded; the end of the log is
-// what matters.
+// maxTrace bounds how much of a job log is kept; the end of the log is what
+// matters. Memory stays O(maxTrace) while reading (see readTail).
 const maxTrace = 4 << 20
 
 func (c *Client) JobTrace(ctx context.Context, project string, jobID int64) (string, error) {
@@ -875,15 +875,51 @@ func (c *Client) JobTrace(ctx context.Context, project string, jobID int64) (str
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return "", &Error{StatusCode: resp.StatusCode, Method: http.MethodGet, Path: path}
 	}
-	// Keep the tail of very long logs.
-	data, err := io.ReadAll(resp.Body)
+	data, err := readTail(resp.Body, maxTrace)
 	if err != nil {
 		return "", err
 	}
-	if len(data) > maxTrace {
-		data = data[len(data)-maxTrace:]
-	}
 	return string(data), nil
+}
+
+// readTail returns the last max bytes of r, or all of r if shorter. Peak
+// memory is bounded by a small multiple of max (ring + read chunk), not by
+// the size of r.
+func readTail(r io.Reader, max int) ([]byte, error) {
+	if max <= 0 {
+		_, err := io.Copy(io.Discard, r)
+		return nil, err
+	}
+	ring := make([]byte, max)
+	chunk := make([]byte, 32<<10)
+	var off int
+	var filled bool
+	for {
+		n, err := r.Read(chunk)
+		for i := 0; i < n; i++ {
+			ring[off] = chunk[i]
+			off++
+			if off == max {
+				off = 0
+				filled = true
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	if !filled {
+		out := make([]byte, off)
+		copy(out, ring[:off])
+		return out, nil
+	}
+	out := make([]byte, max)
+	copy(out, ring[off:])
+	copy(out[max-off:], ring[:off])
+	return out, nil
 }
 
 func (c *Client) RetryPipeline(ctx context.Context, project string, pipelineID int64) (*Pipeline, error) {

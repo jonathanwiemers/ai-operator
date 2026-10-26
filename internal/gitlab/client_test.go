@@ -1,11 +1,15 @@
 package gitlab
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -302,6 +306,121 @@ func TestMergeRequestDiffsAndStateEvents(t *testing.T) {
 	want := []string{"/api/v4/projects/group%2Fapp/merge_requests/3/diffs", "/api/v4/projects/group%2Fapp/issues/4/resource_state_events"}
 	if !slices.Equal(paths, want) {
 		t.Fatalf("paths %v", paths)
+	}
+}
+
+// traceBody builds n bytes of recognizable content: one "%08d\n" line per
+// counter value, truncated to exactly n bytes.
+func traceBody(n int) []byte {
+	var b bytes.Buffer
+	for i := 0; b.Len() < n; i++ {
+		fmt.Fprintf(&b, "%08d\n", i)
+	}
+	return b.Bytes()[:n]
+}
+
+func TestJobTraceTail(t *testing.T) {
+	cases := []struct {
+		name string
+		size int
+	}{
+		{"1KiB", 1 << 10},
+		{"exact4MiB", maxTrace},
+		{"10MiB", 10 << 20},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := traceBody(tc.size)
+			want := body
+			if len(want) > maxTrace {
+				want = want[len(want)-maxTrace:]
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/jobs/70/trace") {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "text/plain")
+				_, _ = w.Write(body)
+			}))
+			defer srv.Close()
+			got, err := New(srv.URL, "tok").JobTrace(context.Background(), "g/p", 70)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != string(want) {
+				t.Fatalf("len=%d want len=%d (prefix %q vs %q)", len(got), len(want), got[:min(32, len(got))], string(want[:min(32, len(want))]))
+			}
+		})
+	}
+}
+
+func TestJobTraceNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusForbidden)
+	}))
+	defer srv.Close()
+	_, err := New(srv.URL, "tok").JobTrace(context.Background(), "g/p", 70)
+	var ge *Error
+	if !errors.As(err, &ge) || ge.StatusCode != http.StatusForbidden {
+		t.Fatalf("want *Error 403, got %v", err)
+	}
+}
+
+// genTrace streams size bytes without holding them; each byte is pos%251.
+type genTrace struct {
+	left, pos int
+}
+
+func (g *genTrace) Read(p []byte) (int, error) {
+	if g.left == 0 {
+		return 0, io.EOF
+	}
+	n := len(p)
+	if n > g.left {
+		n = g.left
+	}
+	for i := 0; i < n; i++ {
+		p[i] = byte((g.pos + i) % 251)
+	}
+	g.pos += n
+	g.left -= n
+	return n, nil
+}
+
+func TestJobTraceBoundedMemory(t *testing.T) {
+	const bodySize = 64 << 20
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		// Stream so the server side also stays bounded.
+		_, _ = io.Copy(w, &genTrace{left: bodySize})
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	trace, err := c.JobTrace(context.Background(), "g/p", 70)
+	runtime.ReadMemStats(&after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trace) != maxTrace {
+		t.Fatalf("got %d bytes, want %d", len(trace), maxTrace)
+	}
+	// Last byte of a 64 MiB stream of pos%251 is (bodySize-1)%251.
+	if trace[len(trace)-1] != byte((bodySize-1)%251) {
+		t.Fatalf("tail byte %d, want %d", trace[len(trace)-1], (bodySize-1)%251)
+	}
+	if trace[0] != byte((bodySize-maxTrace)%251) {
+		t.Fatalf("head of tail %d, want %d", trace[0], (bodySize-maxTrace)%251)
+	}
+	alloc := after.TotalAlloc - before.TotalAlloc
+	// Far below the body: a ReadAll implementation allocates ~bodySize.
+	const budget = 20 << 20
+	if alloc > budget {
+		t.Fatalf("TotalAlloc grew by %d bytes for a %d-byte body (budget %d); JobTrace must not ReadAll", alloc, bodySize, budget)
 	}
 }
 
