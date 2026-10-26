@@ -139,6 +139,26 @@ func TestPilotEventThatComesBackWakesNobody(t *testing.T) {
 	}
 }
 
+func TestPilotEventKeyOutlivesALostStatusPatch(t *testing.T) {
+	e := newPilotEnv(t)
+	e.gl.SetLabels(2, "agent::needs-input")
+	e.reconcile()
+	e.assessed()
+	// The status patch after the wake-up was lost; meanwhile the event
+	// ended and another one wakes the pilot.
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot = nil })
+	e.gl.SetLabels(2, "agent::ready")
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthFlaky, PipelineID: 901})
+	e.reconcile()
+	e.assessed()
+	e.gl.SetLabels(2, "agent::needs-input")
+	e.reconcile()
+	e.reconcile()
+	if _, req := e.pilotEventKeys(); req != 2 {
+		t.Fatalf("a key handed over is remembered from the spec, got request %d", req)
+	}
+}
+
 // Bloop #331: CI stays red after two fix rounds, the issue goes to
 // needs-input and autopilot pauses over it. That is one event: the pilot
 // is woken once, with the red pipeline.

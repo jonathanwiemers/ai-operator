@@ -771,7 +771,8 @@ anything is a later step of
   ends and comes back (a label or a pause flapped), so nobody can run up
   pods that way; a new head or a new reason is a new key. A key still in
   the spec is not handed over again, in case the status patch failed after
-  the update. A pilot created in a poll hears of the events from the next
+  the update, and an assessed event leaves the spec only once the status
+  has its key. A pilot created in a poll hears of the events from the next
   one.
 * **Context.** Each turn gets the owner's message, then the milestone's state
   as one JSON block marked as untrusted data: the description without owners

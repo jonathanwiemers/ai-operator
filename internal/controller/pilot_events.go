@@ -66,7 +66,7 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 }
 
 // maxPilotEvents bounds the event keys a pilot remembers after their
-// events ended.
+// events ended; the keys of those that hold are all kept.
 const maxPilotEvents = 100
 
 // wakePilot hands the events the pilot has not had yet to it, with a run
@@ -96,15 +96,24 @@ func (r *AgentProjectReconciler) wakePilot(ctx context.Context, coord *aiv1.Agen
 			fresh = append(fresh, ev)
 		}
 	}
+	for _, p := range src.PilotEvents {
+		if !slices.Contains(keys, p.Key) {
+			keys = append(keys, p.Key)
+		}
+	}
+	ended := 0
 	for _, k := range had {
-		if len(keys) < maxPilotEvents && !slices.Contains(keys, k) {
-			keys = append(keys, k)
+		if ended < maxPilotEvents && !slices.Contains(keys, k) {
+			keys, ended = append(keys, k), ended+1
 		}
 	}
 	if len(fresh) > 0 {
 		coord.Spec.RunRequest++
-		// Assessed events go, the others stay.
-		src.PilotEvents = append(slices.DeleteFunc(src.PilotEvents, func(e aiv1.PilotEvent) bool { return e.Request <= observed }), fresh...)
+		// Assessed events go once the status has their keys; the others
+		// stay.
+		src.PilotEvents = append(slices.DeleteFunc(src.PilotEvents, func(e aiv1.PilotEvent) bool {
+			return e.Request <= observed && slices.Contains(had, e.Key)
+		}), fresh...)
 		log.FromContext(ctx).Info("waking the pilot", "task", coord.Name, "events", len(fresh))
 		if err := r.Update(ctx, coord); err != nil {
 			return err
