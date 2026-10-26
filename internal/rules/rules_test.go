@@ -49,7 +49,7 @@ func TestAddAndRemoveKeepTheSpec(t *testing.T) {
 	if got := Remove(spec+"\n/agent rule R10: prompt x", "/agent", "R1"); !strings.Contains(got, "R10") {
 		t.Fatalf("R1 is not R10: %q", got)
 	}
-	if desc, id := Add(spec+"\n/agent rule R7: prompt x\n/agent rule nonsense", "/agent", Pilot, "y"); id != "R8" || !strings.HasSuffix(desc, "nonsense\n/agent rule R8: pilot y") {
+	if desc, id := Add(spec+"\n/agent rule R6: prompt x\n/agent rule r7 nonsense\n/agent rule R7: nonsense", "/agent", Pilot, "y"); id != "R8" || !strings.HasSuffix(desc, "nonsense\n/agent rule R8: pilot y") {
 		t.Fatalf("the next ID follows the highest: %s %q", id, desc)
 	}
 }
@@ -65,6 +65,8 @@ func TestParseSaysWhyARuleIsNotApplied(t *testing.T) {
 		"R5: switch review.retries=4",
 		"R6: switch ci.retryFailedJobs=off",
 		"R7: switch ci.maxFixRounds=",
+		"R8: whatever",
+		"R8: prompt again",
 	})
 	want := []struct{ id, kind, text, problem string }{
 		{"R1", Switch, "ci.maxFixRounds=3", ""},
@@ -76,6 +78,8 @@ func TestParseSaysWhyARuleIsNotApplied(t *testing.T) {
 		{"R5", Switch, "review.retries=4", "conflicts with R4"},
 		{"R6", Switch, "ci.retryFailedJobs=off", ""},
 		{"R7", Switch, "ci.maxFixRounds=", "a switch is"},
+		{"R8", "", "R8: whatever", "not a rule"},
+		{"R8", Prompt, "again", "used by an earlier rule"},
 	}
 	if len(rs) != len(want) {
 		t.Fatalf("parsed %+v", rs)

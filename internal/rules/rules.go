@@ -44,7 +44,16 @@ var (
 	ruleRE   = regexp.MustCompile(`(?i)^(R[0-9]+)[ \t]*:[ \t]*(switch|pilot|prompt)\b[ \t]*:?[ \t]*(.*)$`)
 	switchRE = regexp.MustCompile(`^([A-Za-z.]{1,60})[ \t]*=[ \t]*(\S{1,20})$`)
 	idRE     = regexp.MustCompile(`^R[0-9]+$`)
+	idLineRE = regexp.MustCompile(`(?i)^(R[0-9]+)[ \t]*:`)
 )
+
+// idOf is the ID a rule line starts with ("R2"), "" for none.
+func idOf(l string) string {
+	if m := idLineRE.FindStringSubmatch(l); m != nil {
+		return strings.ToUpper(m[1])
+	}
+	return ""
+}
 
 // Spec is a milestone description without the operator's lines (owners,
 // rules): the spec the planner and the agents get, and what is hashed for
@@ -68,15 +77,15 @@ func Lines(description, prefix string) []string {
 func Parse(lines []string) []Rule {
 	var out []Rule
 	for _, l := range lines {
-		m := ruleRE.FindStringSubmatch(l)
-		if m == nil {
-			out = append(out, Rule{Text: l, Problem: "not a rule: write `R<n>: switch <setting>=<value>`, `R<n>: pilot <text>` or `R<n>: prompt <text>`"})
-			continue
+		// A line with an ID but no kind keeps its ID: it is not used again.
+		r := Rule{ID: idOf(l), Text: l, Problem: "not a rule: write `R<n>: switch <setting>=<value>`, `R<n>: pilot <text>` or `R<n>: prompt <text>`"}
+		if m := ruleRE.FindStringSubmatch(l); m != nil {
+			r = Rule{ID: r.ID, Kind: strings.ToLower(m[2]), Text: m[3]}
+			if err := Check(r.Kind, r.Text); err != nil {
+				r.Problem = err.Error()
+			}
 		}
-		r := Rule{ID: strings.ToUpper(m[1]), Kind: strings.ToLower(m[2]), Text: m[3]}
-		if err := Check(r.Kind, r.Text); err != nil {
-			r.Problem = err.Error()
-		} else if slices.ContainsFunc(out, func(o Rule) bool { return o.ID == r.ID }) {
+		if r.ID != "" && slices.ContainsFunc(out, func(o Rule) bool { return o.ID == r.ID }) {
 			r.Problem = r.ID + " is used by an earlier rule"
 		}
 		out = append(out, r)
@@ -135,8 +144,8 @@ func ValidID(id string) bool { return idRE.MatchString(id) }
 func Add(description, prefix, kind, text string) (string, string) {
 	n := 0
 	for _, l := range Lines(description, prefix) {
-		if m := ruleRE.FindStringSubmatch(l); m != nil {
-			k, _ := strconv.Atoi(m[1][1:])
+		if id := idOf(l); id != "" {
+			k, _ := strconv.Atoi(id[1:])
 			n = max(n, k)
 		}
 	}
