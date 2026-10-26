@@ -133,11 +133,17 @@ func (r *AgentProjectReconciler) handOverFlaky(ctx context.Context, gl gitlab.AP
 		opts.AddLabels = []string{spec.Workflow.ReadyLabel}
 	}
 	if queue {
-		if err := r.queueFlakyFix(ctx, st, is.IID); err != nil {
+		if err := r.queueFlakyFix(ctx, st, is.IID, true); err != nil {
 			return fmt.Errorf("queueing flaky issue #%d: %w", is.IID, err)
 		}
 	}
 	if _, err := gl.UpdateIssue(ctx, glProject, is.IID, opts); err != nil {
+		if queue {
+			// Not in the milestone, the queue would skip it.
+			if qerr := r.queueFlakyFix(ctx, st, is.IID, false); qerr != nil {
+				log.FromContext(ctx).Info("could not take the flaky issue off the queue", "issue", is.IID, "error", qerr.Error())
+			}
+		}
 		return fmt.Errorf("handing flaky issue #%d to the agent: %w", is.IID, err)
 	}
 	mh.FlakyFixes = append(mh.FlakyFixes, fix)
@@ -151,12 +157,16 @@ func (r *AgentProjectReconciler) handOverFlaky(ctx context.Context, gl gitlab.AP
 
 // queueFlakyFix appends a flaky issue to the autopilot queue of spec task
 // st, flagged so a re-plan keeps it; one already there gets the flag, and
-// one skipped because an earlier hand-over failed after queueing it is
-// pending again.
-func (r *AgentProjectReconciler) queueFlakyFix(ctx context.Context, st *aiv1.AgentTask, iid int64) error {
+// a skipped flaky fix is pending again. Without add it takes a pending
+// flaky fix off the queue again.
+func (r *AgentProjectReconciler) queueFlakyFix(ctx context.Context, st *aiv1.AgentTask, iid int64, add bool) error {
 	orig := st.DeepCopy()
 	ap := st.Status.Autopilot
-	if i := slices.IndexFunc(ap.Items, func(it aiv1.AutopilotItem) bool { return it.IID == iid }); i >= 0 {
+	if !add {
+		ap.Items = slices.DeleteFunc(ap.Items, func(it aiv1.AutopilotItem) bool {
+			return it.IID == iid && it.FlakyFix && it.State == aiv1.AutopilotItemPending
+		})
+	} else if i := slices.IndexFunc(ap.Items, func(it aiv1.AutopilotItem) bool { return it.IID == iid }); i >= 0 {
 		if it := &ap.Items[i]; it.FlakyFix && it.State == aiv1.AutopilotItemSkipped {
 			it.State = aiv1.AutopilotItemPending
 		}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -333,5 +334,46 @@ func TestAutoFixFlakyQueuesOnTheOldestAutopilot(t *testing.T) {
 	e.handedOver(is.IID, 3)
 	if !slices.ContainsFunc(e.autopilot().Items, func(it aiv1.AutopilotItem) bool { return it.IID == is.IID && it.FlakyFix }) {
 		t.Fatalf("the issue joins the autopilot's queue: %+v", e.autopilot().Items)
+	}
+}
+
+// A hand-over that fails leaves the queue as it was and keeps those that
+// went through; the next check hands the rest over.
+func TestAutoFixFlakyKeepsTheHandOversOfAFailedCheck(t *testing.T) {
+	e := newPilotEnv(t)
+	e.setMainHealth(aiv1.MainHealthSpec{AutoFixFlaky: true})
+	poll := func() {
+		e.gl.Clock = e.gl.Clock.Add(aiv1.DefaultMainHealthInterval)
+		if _, err := e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "shop"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	flaky := func(sha string) {
+		pid := e.gl.AddPipeline(sha, "main", "failed", gitlab.Job{Name: "rust:test", Status: "failed"}, gitlab.Job{Name: "web:test", Status: "failed"})
+		poll()
+		e.gl.SetPipelineStatus(pid, "success")
+		poll()
+	}
+	flaky("sha1")
+	issues := e.issuesWith("ci::flaky")
+	if len(issues) != 2 {
+		t.Fatalf("expected two flaky issues, got %d", len(issues))
+	}
+	rust, web := issues[0], issues[1]
+	e.gl.UpdateErrors = map[int64]error{web.IID: &gitlab.Error{StatusCode: 500, Method: "PUT", Path: "issue"}}
+	flaky("sha2")
+	if f := flakyLatch(e.project().Status.MainHealth, rust.IID); f == nil || rust.Milestone == nil {
+		t.Fatalf("the first hand-over stays latched: %+v", e.project().Status.MainHealth)
+	}
+	queued := func(iid int64) bool {
+		return slices.ContainsFunc(e.autopilot().Items, func(it aiv1.AutopilotItem) bool { return it.IID == iid })
+	}
+	if !queued(rust.IID) || queued(web.IID) || web.Milestone != nil || flakyLatch(e.project().Status.MainHealth, web.IID) != nil {
+		t.Fatalf("the failed one is neither queued nor latched: %+v", e.autopilot().Items)
+	}
+	e.gl.UpdateErrors = nil
+	poll()
+	if f := flakyLatch(e.project().Status.MainHealth, web.IID); f == nil || !queued(web.IID) || !strings.HasSuffix(web.Description, fixFlakyTask) {
+		t.Fatalf("the next check hands the other one over: %+v", e.project().Status.MainHealth)
 	}
 }

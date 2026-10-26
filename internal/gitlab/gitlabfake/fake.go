@@ -38,6 +38,8 @@ type Fake struct {
 	MergeErrors map[int64]error
 	// NoteErrors makes CreateIssueNote on an issue fail.
 	NoteErrors map[int64]error
+	// UpdateErrors makes UpdateIssue of an issue fail.
+	UpdateErrors map[int64]error
 	// Merged and Rebased record the MRs merged and rebased, in order.
 	Merged, Rebased []int64
 	// RebaseConflict makes rebases end in a conflict.
@@ -272,6 +274,9 @@ func (f *Fake) UpdateIssue(_ context.Context, _ string, iid int64, opts gitlab.U
 	is, ok := f.Issues[iid]
 	if !ok {
 		return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "issue"}
+	}
+	if err := f.UpdateErrors[iid]; err != nil {
+		return nil, err
 	}
 	f.IssueUpdates = append(f.IssueUpdates, opts)
 	if opts.Title != "" {

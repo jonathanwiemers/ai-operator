@@ -863,8 +863,9 @@ counted interventions; more tools are later steps of
   milestone's autopilot queue runs, then sets the description to the
   one-liner plus `fixFlakyTask`, the milestone
   (`UpdateIssueOptions.MilestoneID`) and, without a queue, `agent::ready`
-  in one update: that update is the hand-over, and the task it leaves in
-  the description refuses another one even when the latch is lost. Then it
+  in one update: that update is the hand-over (when it fails, the queue
+  item goes again), and the task it leaves in the description refuses
+  another one even when the latch is lost. Then it
   records the latch (issue, milestone, time; the newest 100, kept while the
   watcher is off) in the project status, where the title filter exempts it
   like `autoFixIssueIID`, and comments where it went.
@@ -873,8 +874,8 @@ counted interventions; more tools are later steps of
   `mainHealth.autoFixFlaky`, `syncMainHealth` does the same for the
   reports of a retry that turned green, into the lane (the oldest
   autopilot milestone that is not done) or none; a failed hand-over leaves
-  the status as it was, so the check repeats (the occurrence comments are
-  not posted twice). `skip`, `pause`,
+  the status as it was but for the latches of those that went through, so
+  the check repeats (the occurrence comments are not posted twice). `skip`, `pause`,
   `resume` (only on a running or paused autopilot queue) and `revisit`
   (a decision ID) are appended to `status.pilot.commands` of the spec task
   with a sequence number, in a locked patch on a fresh copy: autopilot

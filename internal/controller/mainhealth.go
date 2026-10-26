@@ -65,6 +65,8 @@ func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.A
 	}
 	if spec.MainHealth.AutoFixFlaky && cur.State == aiv1.MainHealthRetrying && st.State == aiv1.MainHealthFlaky {
 		if err := r.autoFixFlaky(ctx, gl, spec, project.Status.BotUserID, st, lane); err != nil {
+			// The check repeats; the hand-overs that went through stay.
+			cur.FlakyFixes = st.FlakyFixes
 			return err
 		}
 	}
