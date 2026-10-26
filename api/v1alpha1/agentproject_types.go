@@ -720,7 +720,32 @@ type PilotSpec struct {
 	// +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
 	// +optional
 	MaxBudgetUSD string `json:"maxBudgetUSD,omitempty"`
+
+	// Autonomy: managed, the pilot retries, re-reviews, instructs (a fixed
+	// kind) and opens issues on its own, counted and audited on the
+	// tracking issue; propose, every action waits for an owner's "yes".
+	// Unset: managed on autopilot milestones, propose on the others; a set
+	// value applies to every milestone. Neither a milestone's description
+	// nor its rules change it; an owner's "/pilot stop" lowers it.
+	// +kubebuilder:validation:Enum=managed;propose
+	// +optional
+	Autonomy PilotAutonomy `json:"autonomy,omitempty"`
+
+	// MaxInterventionsPerIssue bounds the pilot's own actions per issue
+	// and head when it manages; past it, it proposes.
+	// +kubebuilder:default=2
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MaxInterventionsPerIssue int32 `json:"maxInterventionsPerIssue,omitempty"`
 }
+
+// PilotAutonomy is how far the pilot acts without an owner's "yes".
+type PilotAutonomy string
+
+const (
+	PilotManaged PilotAutonomy = "managed"
+	PilotPropose PilotAutonomy = "propose"
+)
 
 // AgentProjectStatus is the observed state of an AgentProject.
 type AgentProjectStatus struct {

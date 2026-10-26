@@ -354,6 +354,8 @@ model is `agents.pilot`.
 |-------|---------|-------------|
 | `mention` | `true` | a comment that starts with a mention of the bot user (`@<bot> …`) talks to the pilot, like `workflow.pilotPrefix`. The bot's username is read on every poll |
 | `maxBudgetUSD` | `"20"` | the pilot's spend per milestone (its task's `status.run.costUSD`). It covers answers and assessments of events. Once it is used up, the pilot answers that it is, and an assessment only says what happened, without a model call. On claude a single answer or assessment may spend what is left at most (or `agents.pilot.maxBudgetUSD`, if lower). The spend is what the engines report: cursor reports none, so on cursor the budget never runs out |
+| `autonomy` | unset | `managed`: the pilot runs `retry`, `reReview`, `instruct` (a fixed kind and a note) and `openIssue` on its own, counted and audited on the tracking issue; `propose`: every action waits for an owner's `yes`. Unset: `managed` on autopilot milestones, `propose` on the others; a set value applies to every milestone. Neither the milestone description nor a rule changes it; an owner's `/pilot stop` lowers a milestone to `propose`, `/pilot go` returns it to this value (never above it). See [usage.md](usage.md#talking-to-the-pilot) |
+| `maxInterventionsPerIssue` | `2` | the pilot's own actions per issue and head when it manages (an `openIssue` counts against the issue whose event or message triggered it, on the tracking issue against the milestone, for the milestone's life); past it, it proposes and pings the owners. An action counts when it is started, also if it then fails |
 
 ## Other `spec` fields
 

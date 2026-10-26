@@ -37,6 +37,7 @@ const (
 	DefaultReviewRetryAfter     = 15 * time.Minute
 	DefaultMaxEffort            = "high"
 	DefaultPilotBudgetUSD       = "20"
+	DefaultPilotInterventions   = 2
 )
 
 // WithDefaults returns a copy of the workflow labels with defaults filled in.
@@ -179,6 +180,9 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 	s.Agents.Pilot = s.Agents.Pilot.withDefaultModel(DefaultLightModel)
 	if s.Pilot.MaxBudgetUSD == "" {
 		s.Pilot.MaxBudgetUSD = DefaultPilotBudgetUSD
+	}
+	if s.Pilot.MaxInterventionsPerIssue <= 0 {
+		s.Pilot.MaxInterventionsPerIssue = DefaultPilotInterventions
 	}
 	if s.Pilot.Mention == nil {
 		t := true

@@ -26,3 +26,17 @@ func PilotState(st *AgentTask, tasks map[int64]*AgentTask, actions []PilotAction
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
+
+// AutonomyOf is the autonomy of a milestone's pilot (its Coordinate task):
+// the project's pilot.autonomy, else managed on autopilot milestones. An
+// owner's "/pilot stop" lowers it to propose; nothing raises it.
+func (s PilotSpec) AutonomyOf(coord *AgentTask) PilotAutonomy {
+	a := s.Autonomy
+	if a == "" && coord.Spec.Autopilot {
+		a = PilotManaged
+	}
+	if ps := coord.Status.Pilot; a != PilotManaged || ps != nil && ps.AutonomyOverride != nil && ps.AutonomyOverride.Autonomy != PilotManaged {
+		return PilotPropose
+	}
+	return PilotManaged
+}

@@ -720,9 +720,10 @@ It watches every planned milestone, autopilot or not:
 ## Pilot
 
 A milestone's pilot is a `Coordinate` task with its own pod, workspace and
-resumed session (`agents.pilot`, light model). It answers, and acts only
-through proposals an owner accepts; managed autonomy and more tools are
-later steps of [the spec](specs/milestone-coordinator.spec.md).
+resumed session (`agents.pilot`, light model). It answers, and acts
+through proposals an owner accepts or, when it manages, on its own within
+counted interventions; more tools are later steps of
+[the spec](specs/milestone-coordinator.spec.md).
 
 * **Lifecycle.** The project controller keeps one `Coordinate` task per
   planned milestone with a tracking issue (`spec.issue`): the autopilot's
@@ -854,6 +855,38 @@ later steps of [the spec](specs/milestone-coordinator.spec.md).
   or the owner's words as "Instruction from @owner via the pilot"; an
   instruction counts as human input, so a conflict or re-review run still
   runs the implementer.
+* **Autonomy** (`internal/controller/pilot_autonomy.go`).
+  `aiv1.PilotSpec.AutonomyOf` is `pilot.autonomy`, unset `managed` when the
+  `Coordinate` task has `spec.autopilot`, and `propose` when
+  `status.pilot.autonomyOverride` (an owner's `/pilot stop`, handled in the
+  routing without a model call, with who and when) says so; `/pilot go`
+  records `managed`, which never raises a `propose` project. Nothing from
+  the milestone or the model reaches it. When it manages, `postProposals`
+  first takes the valid actions of the counted tools (`retry`, `reReview`,
+  `instruct` without owner text, `openIssue`) out of the runs' proposals
+  whose state still holds (a stale one is posted whole and expires like any
+  proposal), while their issue has interventions left: `status.pilot.interventions`
+  counts by issue IID (an `openIssue` by the proposal's `trigger`, the
+  issue of its event or message, `0` for the milestone) and head, reset
+  when the head moves, at most `pilot.maxInterventionsPerIssue`. They go to
+  `status.pilot.accepted` with no `acceptedBy`, in the same locked patch as
+  the counts, and `runAccepted` runs them at the end of the poll (refused,
+  and their interventions given back, when the pilot was stopped meanwhile
+  or they are no longer valid) and posts an audit comment instead of an
+  outcome: summary, `why` (classification and evidence, or the message,
+  recorded by the runner), the actions and the interventions left, inert
+  and without mentions. The rest is posted as a proposal, with its state
+  recomputed for the actions left. A managed assessment that carries a
+  proposal mentions nobody and marks it `quiet`; the operator then
+  mentions the owners in the proposal it posts (also when an owner said
+  `/pilot stop` in between), or, when nothing of it would run, in a short
+  comment. Interventions count attempts: an action that fails while it
+  runs keeps its count, and the milestone's (`0`) has no head, so it is a
+  cap for the milestone's life. A failed status patch
+  restores the object, so nothing of it is used later in the poll. Every action the pilot starts, except an
+  owner's own words, sets `spec.source.pilotRun` to its run request; the
+  runner keeps `status.run.ciRound` on a push of that request instead of
+  starting over (`ciRound` in `internal/runner/implement.go`).
 * **Budget.** The task's `status.run.costUSD` is the pilot's spend; at
   `pilot.maxBudgetUSD` it answers without a model call that the budget is
   used up. On claude each turn is capped at the rest of the budget (or the

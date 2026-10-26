@@ -177,6 +177,7 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		coordinate := strings.EqualFold(n.msg, "coordinate")
 		yes, id, answer := command.PilotAnswer(n.msg)
 		iid, text, tell := command.PilotTell(n.msg)
+		stop, goOn := strings.EqualFold(n.msg, "stop"), strings.EqualFold(n.msg, "go")
 		var reply string
 		var err error
 		done := autopilotDone(st)
@@ -207,8 +208,10 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 			reply = fmt.Sprintf("The pilot of this milestone listens on #%d now: comment `%s …` there or here.", coord.Spec.Issue.IID, prefix)
 		case coord == nil:
 			reply = fmt.Sprintf("This milestone has no pilot yet: comment `%s coordinate` to start one.", prefix)
-		case (answer || tell) && !owner:
+		case (answer || tell || stop || goOn) && !owner:
 			reply = "This milestone has no owners, so the pilot takes no actions."
+		case stop || goOn:
+			reply, err = r.switchAutonomy(ctx, spec, coord, n.Author.Username, stop)
 		case answer:
 			reply, err = r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.issue, id, yes)
 		case tell:

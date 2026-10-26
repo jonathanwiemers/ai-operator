@@ -294,6 +294,13 @@ spec:
                       - request
                       type: object
                     type: array
+                  pilotRun:
+                    description: |-
+                      PilotRun is a run request the pilot started (Implement tasks): that
+                      run keeps the issue's CI fix rounds (status.run.ciRound), unlike a
+                      human's.
+                    format: int64
+                    type: integer
                   reviewFor:
                     description: |-
                       ReviewFor is a merge request head to review again without the
@@ -794,6 +801,11 @@ spec:
                         postedAt:
                           format: date-time
                           type: string
+                        quiet:
+                          description: |-
+                            Quiet: the run did not mention the owners (an assessment of a pilot
+                            that manages), so the operator does when it posts the proposal.
+                          type: boolean
                         source:
                           description: |-
                             Source is the message or event it answers, so a run started again
@@ -804,12 +816,43 @@ spec:
                           type: string
                         summary:
                           type: string
+                        trigger:
+                          description: |-
+                            Trigger is the issue whose event or message it answers, 0 for the
+                            milestone (the tracking issue, a merge request): an openIssue counts
+                            against it.
+                          format: int64
+                          type: integer
+                        why:
+                          description: |-
+                            Why is the classification and evidence, or the owner's message, it
+                            answers, for the audit comment. Untrusted.
+                          type: string
                       required:
                       - actions
                       - state
                       - summary
                       type: object
                     type: array
+                  autonomyOverride:
+                    description: |-
+                      AutonomyOverride is the owners' last "/pilot stop" or "/pilot go"
+                      (Coordinate tasks). It can only lower the project's pilot.autonomy.
+                    properties:
+                      at:
+                        format: date-time
+                        type: string
+                      autonomy:
+                        description: PilotAutonomy is how far the pilot acts without
+                          an owner's "yes".
+                        type: string
+                      by:
+                        type: string
+                    required:
+                    - at
+                    - autonomy
+                    - by
+                    type: object
                   commands:
                     description: |-
                       Commands are the queue commands of accepted proposals (spec tasks),
@@ -884,6 +927,23 @@ spec:
                     items:
                       type: string
                     type: array
+                  interventions:
+                    additionalProperties:
+                      description: PilotIntervention counts the pilot's own actions
+                        on an issue's head.
+                      properties:
+                        count:
+                          format: int32
+                          type: integer
+                        head:
+                          type: string
+                      required:
+                      - count
+                      type: object
+                    description: |-
+                      Interventions count the pilot's own actions per issue on the issue's
+                      current head (Coordinate tasks), by issue IID; "0" is the milestone.
+                    type: object
                   lastNoteID:
                     description: |-
                       LastNoteID is the newest comment on the tracking issue handed to the
@@ -959,6 +1019,11 @@ spec:
                         postedAt:
                           format: date-time
                           type: string
+                        quiet:
+                          description: |-
+                            Quiet: the run did not mention the owners (an assessment of a pilot
+                            that manages), so the operator does when it posts the proposal.
+                          type: boolean
                         source:
                           description: |-
                             Source is the message or event it answers, so a run started again
@@ -968,6 +1033,18 @@ spec:
                           description: State is PilotState when it was made.
                           type: string
                         summary:
+                          type: string
+                        trigger:
+                          description: |-
+                            Trigger is the issue whose event or message it answers, 0 for the
+                            milestone (the tracking issue, a merge request): an openIssue counts
+                            against it.
+                          format: int64
+                          type: integer
+                        why:
+                          description: |-
+                            Why is the classification and evidence, or the owner's message, it
+                            answers, for the audit comment. Untrusted.
                           type: string
                       required:
                       - actions
@@ -1035,6 +1112,11 @@ spec:
                         postedAt:
                           format: date-time
                           type: string
+                        quiet:
+                          description: |-
+                            Quiet: the run did not mention the owners (an assessment of a pilot
+                            that manages), so the operator does when it posts the proposal.
+                          type: boolean
                         source:
                           description: |-
                             Source is the message or event it answers, so a run started again
@@ -1044,6 +1126,18 @@ spec:
                           description: State is PilotState when it was made.
                           type: string
                         summary:
+                          type: string
+                        trigger:
+                          description: |-
+                            Trigger is the issue whose event or message it answers, 0 for the
+                            milestone (the tracking issue, a merge request): an openIssue counts
+                            against it.
+                          format: int64
+                          type: integer
+                        why:
+                          description: |-
+                            Why is the classification and evidence, or the owner's message, it
+                            answers, for the audit comment. Untrusted.
                           type: string
                       required:
                       - actions
