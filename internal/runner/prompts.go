@@ -65,7 +65,7 @@ How to work:
   nearby code first.
 - Stay within the scope of the issue. Do not refactor unrelated code.
 - Add or update tests, then run the relevant build, tests and linters, and
-  fix what fails.
+  fix what fails. Run the real tools, never guess their output.
 - Comments from humans on the issue and the merge request take precedence
   over the original description.
 - If a decision that changes the design is unresolved, do not guess: return
@@ -135,6 +135,20 @@ func resourcesNote(memory, cpus string) string {
 	return note + ` Many tools size themselves by the machine, not the container, so keep them within it: run test runners ` +
 		`with few workers (e.g. --maxWorkers=2 for jest or vitest, go test -p 2), run one heavy build or test command at a ` +
 		`time, don't start watch modes or dev servers, and stop background processes you start.`
+}
+
+// toolchainsNote tells the implementer to install the toolchains pinned on
+// the default branch before verifying; pins are the files PinFiles found.
+func toolchainsNote(base string, pins []string) string {
+	if len(pins) == 0 {
+		return ""
+	}
+	return "\n\nThe default branch " + base + " pins toolchains in " + strings.Join(pins, ", ") + `. Before running tests, ` +
+		`linters or formatters, install them if missing, from official sources only: mise install (mise.toml, .tool-versions) ` +
+		`or rustup toolchain install (rust-toolchain), into $HOME/.toolchains, where they are kept for later runs. If your ` +
+		`branch changes a pin (git diff origin/` + base + ` -- <file>), install that version into a fresh directory under ` +
+		`/tmp for this run only (MISE_DATA_DIR or RUSTUP_HOME=$(mktemp -d)). No root or system packages, never pipe a ` +
+		`downloaded script into a shell. If an install fails, say so in the summary.`
 }
 
 const bugbotSystemPrompt = `You are a code reviewer looking for correctness bugs in a diff produced by
