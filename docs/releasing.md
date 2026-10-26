@@ -2,6 +2,31 @@
 
 Releases are fully automated by [`.github/workflows/release.yml`](../.github/workflows/release.yml).
 
+## Where the code lives
+
+**GitLab is the primary repository:** merge requests, review and the day-to-day
+pipeline live at
+[gitlab.com/jo.wiemers/ai-operator](https://gitlab.com/jo.wiemers/ai-operator)
+(`.gitlab-ci.yml`). Open issues and MRs there.
+
+**GitHub is a push mirror** of that GitLab project
+([jonathanwiemers/ai-operator](https://github.com/jonathanwiemers/ai-operator)).
+It does not take MRs. On every push to `main` that changes the operator, the
+agent image, the CRDs or the chart, GitHub Actions
+([`release.yml`](../.github/workflows/release.yml)) still builds and publishes
+the images and the OCI chart to `ghcr.io`, creates the git tag and the GitHub
+release. Flux keeps pulling from ghcr; that path is unchanged.
+
+Release tags and GitHub releases exist **only on GitHub**. The mirror must not
+overwrite them.
+
+The owner sets the mirror up by hand: in GitLab, *Settings → Repository →
+Mirroring repositories*, push direction, with a GitHub token that has
+`contents: write`. Prefer **Mirror only protected branches**, so only `main`
+is pushed and the release tags created on GitHub are left alone.
+
+Docs-only merges to `main` are still not released.
+
 ## Versioning
 
 Calendar versions `YEAR.MONTH.N`:

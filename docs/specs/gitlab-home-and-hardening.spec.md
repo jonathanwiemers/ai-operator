@@ -315,6 +315,7 @@ landed, production line count, deviations from the plan.
 
 - 2026-10-26 `spec-doc`: added this spec (Problem through MRs) and linked C3–C5 delivery from `milestone-coordinator.spec.md`; 0 production lines; no deviations.
 - 2026-10-26 `gitlab-ci`: `.gitlab-ci.yml` (drift, gofmt, vet, test, build, version on `golang:1.26`; ui on `node:22-bookworm`; helm-lint on `alpine/helm:3.17.3`; all through the Dependency Proxy, tag `shared`, MRs and the default branch) and `.mise.toml` (go 1.26.0, node 22); 0 production lines (CI config); no deviations.
+- 2026-10-26 `docs-gitlab-home`: docs say GitLab is primary (MRs, pipeline) and GitHub a push mirror that still builds releases (`docs/releasing.md` "Where the code lives", README CI badge → GitLab, CLAUDE.md MRs on GitLab); `docs/usage.md` had no GitHub source/issues/contributing links to retarget; 0 production lines; no deviations.
 
 ## MRs
 

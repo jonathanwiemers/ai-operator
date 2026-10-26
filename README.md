@@ -11,10 +11,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jonathanwiemers/ai-operator/actions/workflows/ci.yml"><img src="https://github.com/jonathanwiemers/ai-operator/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://gitlab.com/jo.wiemers/ai-operator/-/pipelines?ref=main"><img src="https://gitlab.com/jo.wiemers/ai-operator/badges/main/pipeline.svg" alt="CI"></a>
   <a href="https://github.com/jonathanwiemers/ai-operator/releases"><img src="https://img.shields.io/github/v/release/jonathanwiemers/ai-operator?label=release" alt="Release"></a>
   <img src="https://img.shields.io/badge/API-v1alpha1-blue" alt="API v1alpha1">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="License Apache-2.0"></a>
+</p>
+
+<p align="center">
+  Open issues and merge requests on
+  <a href="https://gitlab.com/jo.wiemers/ai-operator">GitLab</a>.
+  GitHub mirrors <code>main</code> and builds the releases.
 </p>
 
 <p align="center">
