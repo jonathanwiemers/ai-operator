@@ -134,3 +134,7 @@ func Clean(s string) string {
 	// Markers inside code spans must not count either.
 	return strings.ReplaceAll(b.String(), "<!-- ai-operator:", "<!-- ai-operator :")
 }
+
+// Proposal ends a proposal of the pilot: its ID and the state it was made
+// on. Group 1 is the ID.
+var Proposal = regexp.MustCompile(`<!-- ai-operator:proposal id=(\d+) state=(\w*) -->`)

@@ -47,7 +47,7 @@ func TestPilotAssessesAnEventOnTheTrackingIssue(t *testing.T) {
 	}
 	a := notes[0]
 	for _, want := range []string{"🧭 **Assessment:** Autopilot paused: #1 needs input", "**Classification:** `env`",
-		"no such command: fmt", "**What I would do:** Run #1 again", "does not act on its own yet"} {
+		"no such command: fmt", "**What I would do:** Run #1 again", "there is none for this"} {
 		if !strings.Contains(a, want) {
 			t.Errorf("assessment misses %q:\n%s", want, a)
 		}
@@ -139,7 +139,7 @@ func TestPilotAssessmentWithoutTheStateIsDeferredByAUsageLimit(t *testing.T) {
 }
 
 func TestPilotAssessmentWithAnUnknownClassification(t *testing.T) {
-	if got := renderAssessment(PilotAssessment{Classification: "merge it", Evidence: "e", WouldDo: "w"}); !strings.Contains(got, "`unknown`") {
+	if got := renderAssessment(PilotAssessment{Classification: "merge it", Evidence: "e", WouldDo: "w"}, false); !strings.Contains(got, "`unknown`") {
 		t.Fatalf("a classification off the list is unknown: %s", got)
 	}
 }

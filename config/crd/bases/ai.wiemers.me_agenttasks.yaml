@@ -240,6 +240,26 @@ spec:
                       - text
                       type: object
                     type: array
+                  pilotInstruction:
+                    description: |-
+                      PilotInstruction is an instruction an owner accepted from the pilot
+                      (Implement tasks), for the run of its request.
+                    properties:
+                      kind:
+                        type: string
+                      note:
+                        type: string
+                      owner:
+                        type: string
+                      request:
+                        description: Request is the run request it is for.
+                        format: int64
+                        type: integer
+                      text:
+                        type: string
+                    required:
+                    - request
+                    type: object
                   pilotMessages:
                     description: |-
                       PilotMessages are the owners' messages to the pilot (Coordinate
@@ -721,6 +741,137 @@ spec:
                       pilot.
                     format: int64
                     type: integer
+                  lastProposal:
+                    description: LastProposal is the ID of the newest proposal.
+                    format: int64
+                    type: integer
+                  openedIssues:
+                    description: OpenedIssues are the title keys of the issues the
+                      pilot opened.
+                    items:
+                      type: string
+                    type: array
+                  proposals:
+                    description: Proposals are the open proposals, posted on the tracking
+                      issue.
+                    items:
+                      description: PilotProposal is a set of actions that waits for
+                        an owner's "yes".
+                      properties:
+                        actions:
+                          items:
+                            description: |-
+                              PilotAction is one action of a proposal of the pilot; the operator
+                              validates and executes it once an owner accepts the proposal.
+                            properties:
+                              issueIID:
+                                format: int64
+                                type: integer
+                              kind:
+                                description: Kind of an instruct, one of PilotInstructKinds.
+                                type: string
+                              note:
+                                description: |-
+                                  Note: the pilot's hint to the implementer (instruct), the body of
+                                  the issue it opens (openIssue). Untrusted.
+                                type: string
+                              owner:
+                                description: |-
+                                  Owner and Text: an owner's own words for the implementer ("/pilot
+                                  tell #N: …"). Only the operator sets them.
+                                type: string
+                              text:
+                                type: string
+                              title:
+                                description: Title of the issue it opens (openIssue).
+                                type: string
+                              tool:
+                                description: 'Tool: retry, reReview, instruct or openIssue.'
+                                type: string
+                            required:
+                            - tool
+                            type: object
+                          type: array
+                        id:
+                          description: ID is n of "P<n>", given when the operator
+                            posts it.
+                          format: int64
+                          type: integer
+                        postedAt:
+                          format: date-time
+                          type: string
+                        state:
+                          description: State is PilotState when it was made.
+                          type: string
+                        summary:
+                          type: string
+                      required:
+                      - actions
+                      - state
+                      - summary
+                      type: object
+                    type: array
+                  proposed:
+                    description: |-
+                      Proposed are the proposals of the pilot's runs the operator has not
+                      posted yet (Coordinate tasks).
+                    items:
+                      description: PilotProposal is a set of actions that waits for
+                        an owner's "yes".
+                      properties:
+                        actions:
+                          items:
+                            description: |-
+                              PilotAction is one action of a proposal of the pilot; the operator
+                              validates and executes it once an owner accepts the proposal.
+                            properties:
+                              issueIID:
+                                format: int64
+                                type: integer
+                              kind:
+                                description: Kind of an instruct, one of PilotInstructKinds.
+                                type: string
+                              note:
+                                description: |-
+                                  Note: the pilot's hint to the implementer (instruct), the body of
+                                  the issue it opens (openIssue). Untrusted.
+                                type: string
+                              owner:
+                                description: |-
+                                  Owner and Text: an owner's own words for the implementer ("/pilot
+                                  tell #N: …"). Only the operator sets them.
+                                type: string
+                              text:
+                                type: string
+                              title:
+                                description: Title of the issue it opens (openIssue).
+                                type: string
+                              tool:
+                                description: 'Tool: retry, reReview, instruct or openIssue.'
+                                type: string
+                            required:
+                            - tool
+                            type: object
+                          type: array
+                        id:
+                          description: ID is n of "P<n>", given when the operator
+                            posts it.
+                          format: int64
+                          type: integer
+                        postedAt:
+                          format: date-time
+                          type: string
+                        state:
+                          description: State is PilotState when it was made.
+                          type: string
+                        summary:
+                          type: string
+                      required:
+                      - actions
+                      - state
+                      - summary
+                      type: object
+                    type: array
                   rejected:
                     additionalProperties:
                       format: date-time

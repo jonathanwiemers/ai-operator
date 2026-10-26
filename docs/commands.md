@@ -110,11 +110,14 @@ A comment that **starts** with `/pilot` (`workflow.pilotPrefix`) or a mention
 of the bot (`@ai-bot …`; `pilot.mention`) talks to the milestone's
 [pilot](usage.md#talking-to-the-pilot), on the tracking issue or on an issue
 (or MR) of the milestone that has a task. Only the milestone's owners; the
-pilot only answers.
+pilot acts only on proposals they accept.
 
 | Comment | Effect |
 |---------|--------|
-| `/pilot <question>` | The pilot answers where you asked, e.g. `/pilot why are we paused?`. |
+| `/pilot <question>` | The pilot answers where you asked, e.g. `/pilot why are we paused?`. It may add a proposal, posted on the tracking issue. |
+| `yes` / `no` as a reply in a proposal's thread | Accepts (runs all its actions, once) or drops the proposal. Only owners; the whole comment must be the answer. |
+| `/pilot yes P3` / `/pilot no P3` | The same, anywhere in the milestone. A bare `/pilot yes` is refused with the list of open proposals; an expired one "no longer applies". |
+| `/pilot tell #12: <words>` | Proposes to pass your words on to #12's implementer verbatim, as your instruction via the pilot. |
 | `/pilot coordinate` | On an issue of a planned milestone without autopilot: opens the tracking issue "🧭 Pilot: <milestone>" and starts its pilot. |
 
 ## In the milestone description

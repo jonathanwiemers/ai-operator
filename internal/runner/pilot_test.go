@@ -25,6 +25,7 @@ type pilotEngine struct {
 	reply      string
 	fail       string
 	assessment *PilotAssessment
+	proposal   *ProposalAnswer
 	err        error
 }
 
@@ -36,7 +37,7 @@ func (p *pilotEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
-	b, _ := json.Marshal(PilotAnswer{Reply: p.reply})
+	b, _ := json.Marshal(PilotAnswer{Reply: p.reply, Proposal: p.proposal})
 	if inv.JSONSchema == assessSchema {
 		b, _ = json.Marshal(p.assessment)
 	}
