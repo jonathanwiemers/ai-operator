@@ -139,6 +139,7 @@ any of the milestone's agent issues creates one (title "🧭 Pilot:
 | `retry` / `reReview` | run request / `reviewFor` on an issue of the milestone | **yes** | free, counted |
 | `instruct` | a run request on an issue of the milestone with an instruction, applied by the controller (`spec.source.pilotInstruction`, shown in the issue as "instruction from @owner via pilot", or "from the pilot" when it acted on its own); not an `/agent` note, which `IsCommand` ignores when the bot writes it | **yes** | free, counted |
 | `openIssue` | new issue (title, body; `ai-generated`), not handed to the agent | **yes** | free, counted |
+| `fixFlaky` | hand a `ci::flaky` issue to the agent in this milestone (see "Flaky tests") | **yes** | free, counted |
 | `editSpec` | replace the milestone description, shown as a diff first | **yes** | **yes** |
 | `revisit` | `/agent revisit <id> …`, applied by the controller | **yes** | **yes** |
 | `skip` / `pause` / `resume` | the tracking-issue commands, applied by the controller | **yes** | **yes** |
@@ -234,6 +235,62 @@ the default branch, run the failing job's command, apply its output), with
 the untrusted note "`cargo fmt --check` failed; the run reports say no Rust
 toolchain". If the next run still cannot install it, it opens an issue about
 the agent image. Both count against #331's interventions.
+
+### Flaky tests
+
+Bloop #338 / #340 (2026-10-26): `rust:test` failed on `main` and passed on
+retry. The pilot assessed it, but (1) the event carried no log, so it guessed
+a nextest timeout while the failure was an assertion in
+`server-lobby::blaster_api a_log_edited_after_the_fact_does_not_verify`, and
+(2) no tool could hand the flaky issue to an agent.
+
+- **Logs:** a flaky occurrence keeps the tail of the **failed attempt's** job
+  log (the job retried before the green one) and the failing test names the
+  log shows (nextest `FAIL [...] <test>`, cargo `test … FAILED`, vitest
+  `FAIL <file> > <test>`), both defused and inside the untrusted-data
+  markers. They go into the occurrence comment on the 🔁 issue and into the
+  pilot's flaky event, as the main-red path already does.
+- **`fixFlaky`** (one tool, a `ci::flaky` issue the bot opened): the
+  controller puts the issue into the pilot's milestone and hands it over
+  like any issue of it: on autopilot it joins the queue through the
+  follow-up path (`queueFollowUp`; flaky does not freeze, so the queue picks
+  it), otherwise it gets `agent::ready`. The issue's task text is the
+  controller's fixed sentence ("make the named test deterministic; find the
+  cause in the code or the test; do not delete or skip it; a quarantine
+  needs an owner's `yes`"); the logs stay in comments as untrusted data.
+  It runs, is reviewed, CI-checked and merged like every issue of the
+  milestone. One hand-over per flaky issue; a recurrence while it is in work
+  only adds a comment.
+- In `managed` the pilot may use it without a `yes` when the same job was
+  flaky at least twice (two occurrences on the issue), counted against the
+  milestone like `openIssue`; a single occurrence gets an assessment only.
+- Switch `mainHealth.autoFixFlaky` (default off) lets the controller do the
+  hand-over itself at the second occurrence, also without a pilot.
+
+Implementation constraints (spec review):
+
+- **Logs are kept at retry time.** The watcher fetches traces only while
+  red; when it retries a red pipeline it records the failed jobs' IDs
+  (`status.mainHealth.retriedJobIDs`), and the flaky report reads their
+  traces after the green retry. The event carries the 🔁 issue's IID.
+- **One hand-over per issue, globally:** `status.mainHealth.flakyFixes`
+  (issue IID → milestone, when) is the latch; every pilot sees the same
+  flaky event, the first hand-over wins, later `fixFlaky` calls are refused
+  with a pointer. It also exempts the issue from the milestone title filter,
+  like `autoFixIssueIID`.
+- **Milestone:** `gitlab.UpdateIssueOptions` gets `MilestoneID` (and the
+  fake). `fixFlaky` uses the proposing pilot's milestone; `autoFixFlaky`
+  without a pilot uses the active autopilot milestone with the lowest IID,
+  else hands the issue over without a milestone (`agent::ready`, exempt from
+  the filter through the latch).
+- **Queue:** the item is added with its own flag (`AutopilotItem.FlakyFix`),
+  not as a revisit, so a re-plan keeps it and no decision side effects run.
+- **Validation:** `fixFlaky` is validated like `openIssue`: the issue is the
+  bot's open `ci::flaky` issue with its marker, has at least the required
+  occurrences, and is not latched yet.
+- **Trust:** the task text is the controller's fixed sentence; logs live only
+  in comments inside the untrusted-data markers; an issue whose description
+  is not the bot's marker plus one-liner is refused. Default off.
 
 ### Standing rules
 
@@ -400,6 +457,8 @@ GitHub `jonathanwiemers/ai-operator`, one PR per row, each based on `main`.
 | C2c | Autonomy: `pilot.autonomy`, `/pilot stop`/`go`, counted interventions, audit comments | C2b | ~50 |
 | C2d | No pilot for milestones whose autopilot is done (and no new one after the retrospective) | C1 | ~20 |
 | C2e | Standing rules: lines, `setRule` / `forgetRule`, switch overrides, prompt rules | C2b | ~50 |
+| C2f-1 | Flaky logs: failed attempt's log tail and failing test names in the 🔁 issue's occurrence comment and the pilot's flaky event (untrusted) | C2a | ~40 |
+| C2f-2 | `fixFlaky`: issue into the milestone, queue or `agent::ready`, fixed task sentence; managed at the second occurrence; `mainHealth.autoFixFlaky` | C2f-1, C2c | ~50 |
 | C3 | `editSpec` with diff and confirmation | C2b | ~40 |
 | C4 | Retrospective and `create 1 2` | C2b | ~40 |
 | C5 | UI milestone page with the chat | C1 | ~50 (web excluded from the Go budget, own PR) |
@@ -419,6 +478,11 @@ T1, C2a and C2d can be built in parallel; plan each PR's split before coding.
    the pilot has run on real milestones?
 
 ## Steers
+
+- 2026-10-26, Bloop #338/#340: the pilot's flaky assessment guessed wrong
+  without the failed attempt's log and had no tool to fix a flaky test; the
+  owner asked for both (C2f). The fix runs through the milestone like any
+  issue instead of a separate lane, because flaky does not freeze merges.
 
 - Review of the managed-autonomy change: autonomy is AgentProject config
   plus the owners' `/pilot stop`/`go`, never a rule; pilot-started runs do
