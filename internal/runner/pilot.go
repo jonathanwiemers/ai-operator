@@ -103,7 +103,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 					trigger = 0
 				}
 				why := fmt.Sprintf("@%s asked: %s", m.Author, truncate(m.Body, 300))
-				if err := r.propose(ctx, task, a.Proposal, stateOf, fmt.Sprintf("note/%d", m.NoteID), trigger, why); err != nil {
+				if err := r.propose(ctx, task, a.Proposal, stateOf, fmt.Sprintf("note/%d", m.NoteID), trigger, why, false); err != nil {
 					failed = err
 					reply += "\n\n_The pilot's proposal could not be recorded._"
 				} else if a.Proposal != nil && len(a.Proposal.Actions) > 0 && task.Spec.Issue != nil {
@@ -288,12 +288,13 @@ const maxProposed = 10
 // source names the message or event it answers: a run started again does
 // not propose it twice.
 // trigger is the issue it answers (0: the milestone), why the
-// classification and evidence or the message, for the audit comment.
-func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalAnswer, stateOf stateFunc, source string, trigger int64, why string) error {
+// classification and evidence or the message, for the audit comment;
+// quiet says the run did not mention the owners.
+func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalAnswer, stateOf stateFunc, source string, trigger int64, why string, quiet bool) error {
 	if p == nil || len(p.Actions) == 0 || len(task.Spec.Owners) == 0 || stateOf == nil {
 		return nil
 	}
-	prop := aiv1.PilotProposal{Summary: truncate(p.Summary, 500), Source: source, Trigger: trigger, Why: truncate(why, 1000)}
+	prop := aiv1.PilotProposal{Summary: truncate(p.Summary, 500), Source: source, Trigger: trigger, Why: truncate(why, 1000), Quiet: quiet}
 	for _, a := range p.Actions[:min(len(p.Actions), 5)] {
 		prop.Actions = append(prop.Actions, aiv1.PilotAction{Tool: truncate(a.Tool, 40), IssueIID: a.Issue, Kind: truncate(a.Kind, 40),
 			Note: truncate(a.Note, 2000), Title: truncate(a.Title, 200), Decision: truncate(a.Decision, 40)})

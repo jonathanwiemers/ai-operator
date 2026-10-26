@@ -234,6 +234,10 @@ type PilotProposal struct {
 	// answers, for the audit comment. Untrusted.
 	// +optional
 	Why string `json:"why,omitempty"`
+	// Quiet: the run did not mention the owners (an assessment of a pilot
+	// that manages), so the operator does when it posts the proposal.
+	// +optional
+	Quiet bool `json:"quiet,omitempty"`
 }
 
 // PilotEvent is something the pilot assesses without being asked: an

@@ -801,6 +801,11 @@ spec:
                         postedAt:
                           format: date-time
                           type: string
+                        quiet:
+                          description: |-
+                            Quiet: the run did not mention the owners (an assessment of a pilot
+                            that manages), so the operator does when it posts the proposal.
+                          type: boolean
                         source:
                           description: |-
                             Source is the message or event it answers, so a run started again
@@ -1014,6 +1019,11 @@ spec:
                         postedAt:
                           format: date-time
                           type: string
+                        quiet:
+                          description: |-
+                            Quiet: the run did not mention the owners (an assessment of a pilot
+                            that manages), so the operator does when it posts the proposal.
+                          type: boolean
                         source:
                           description: |-
                             Source is the message or event it answers, so a run started again
@@ -1102,6 +1112,11 @@ spec:
                         postedAt:
                           format: date-time
                           type: string
+                        quiet:
+                          description: |-
+                            Quiet: the run did not mention the owners (an assessment of a pilot
+                            that manages), so the operator does when it posts the proposal.
+                          type: boolean
                         source:
                           description: |-
                             Source is the message or event it answers, so a run started again

@@ -22,7 +22,7 @@ func TestPilotManagedAssessmentRecordsWhyAndPingsNobody(t *testing.T) {
 		"kind": "install-toolchains", "note": "cargo fmt --check failed; no Rust toolchain"}]}`)
 	e.step(t)
 	ps := e.task(t).Status.Pilot
-	if ps == nil || len(ps.Proposed) != 1 || ps.Proposed[0].Trigger != 1 || !strings.HasPrefix(ps.Proposed[0].Why, "`env`: `rust:lint` fails") {
+	if ps == nil || len(ps.Proposed) != 1 || ps.Proposed[0].Trigger != 1 || !strings.HasPrefix(ps.Proposed[0].Why, "`env`: `rust:lint` fails") || !ps.Proposed[0].Quiet {
 		t.Fatalf("the proposal names its trigger and why: %+v", ps)
 	}
 	a := botNotes(e.gl, 5)

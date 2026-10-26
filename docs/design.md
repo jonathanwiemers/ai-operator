@@ -876,9 +876,13 @@ counted interventions; more tools are later steps of
   outcome: summary, `why` (classification and evidence, or the message,
   recorded by the runner), the actions and the interventions left, inert
   and without mentions. The rest is posted as a proposal, with its state
-  recomputed for the actions left, and mentions the owners; a run's
-  proposal with nothing the operator would run gets a short comment that
-  mentions them, since the assessment did not. A failed status patch
+  recomputed for the actions left. A managed assessment that carries a
+  proposal mentions nobody and marks it `quiet`; the operator then
+  mentions the owners in the proposal it posts (also when an owner said
+  `/pilot stop` in between), or, when nothing of it would run, in a short
+  comment. Interventions count attempts: an action that fails while it
+  runs keeps its count, and the milestone's (`0`) has no head, so it is a
+  cap for the milestone's life. A failed status patch
   restores the object, so nothing of it is used later in the poll. Every action the pilot starts, except an
   owner's own words, sets `spec.source.pilotRun` to its run request; the
   runner keeps `status.run.ciRound` on a push of that request instead of

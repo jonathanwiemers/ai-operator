@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/types"
+
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
@@ -15,7 +17,20 @@ func (e *projectEnv) proposeFor(trigger int64, source string, actions ...aiv1.Pi
 	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) {
 		p := &s.Pilot.Proposed[len(s.Pilot.Proposed)-1]
 		p.Trigger, p.Source, p.Why = trigger, source, "`env`: the run reports say there is no Rust toolchain; cc @bob"
+		// As the runner: a managed assessment does not mention the owners.
+		p.Quiet = strings.HasPrefix(source, "event/") && e.managed()
 	})
+}
+
+// managed is the pilot's autonomy, as the runner reads it.
+func (e *projectEnv) managed() bool {
+	e.t.Helper()
+	var p aiv1.AgentProject
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &p); err != nil {
+		e.t.Fatal(err)
+	}
+	coord := e.pilot()
+	return p.Spec.WithDefaults().Pilot.AutonomyOf(&coord) == aiv1.PilotManaged
 }
 
 // botNotesSince are the bot's comments on an issue after the first n.
@@ -196,7 +211,7 @@ func TestPilotStoppedBeforeItsOwnActionsRanRefundsThem(t *testing.T) {
 	e.reconcile()
 	ps := e.pilot().Status.Pilot
 	if after := e.toolEffect(); after != before || ps.Interventions["1"].Count != 0 ||
-		!strings.Contains(e.lastReply(), "ran none of its own actions") || !strings.Contains(e.lastReply(), "not run: an owner stopped the pilot") {
+		!strings.Contains(e.lastReply(), "ran none of its own actions") || !strings.Contains(e.lastReply(), "not run: the pilot proposes now") {
 		t.Fatalf("a stop before the run refuses and refunds it: %+v → %+v, %+v, %q", before, after, ps.Interventions, e.lastReply())
 	}
 }
@@ -223,6 +238,17 @@ func TestPilotManagedSaysWhenItHasNothingToRun(t *testing.T) {
 	notes := botNotesSince(e, tracking, seen)
 	if len(notes) != 1 || !strings.Contains(notes[0], "proposed nothing the operator runs") || !strings.HasSuffix(notes[0], "cc @alice") {
 		t.Fatalf("its assessment pinged nobody, so this does: %q", notes)
+	}
+}
+
+func TestPilotStoppedAfterAQuietAssessmentPingsWithItsProposal(t *testing.T) {
+	e := newManagedEnv(t)
+	e.proposeFor(1, "event/a", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.gl.AddNote(e.autopilot().TrackingIssueIID, alice, "/pilot stop")
+	before := e.toolEffect()
+	e.reconcile()
+	if after := e.toolEffect(); after != before || !strings.Contains(e.proposalNote(1).Body, "cc @alice") {
+		t.Fatalf("stopped, the proposal of a quiet assessment runs nothing and pings: %+v → %+v", before, after)
 	}
 }
 

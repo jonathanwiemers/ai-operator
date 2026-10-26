@@ -58,7 +58,7 @@ func TestPilotProposesOncePerSourceAndBounded(t *testing.T) {
 	stateOf := func([]aiv1.PilotAction) string { return "s" }
 	p := proposalOf(t, `{"summary": "retry", "actions": [{"tool": "retry", "issue": 1}]}`)
 	for range 2 {
-		if err := e.r.propose(context.Background(), &task, p, stateOf, "note/1", 0, ""); err != nil {
+		if err := e.r.propose(context.Background(), &task, p, stateOf, "note/1", 0, "", false); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -66,11 +66,11 @@ func TestPilotProposesOncePerSourceAndBounded(t *testing.T) {
 		t.Fatalf("a run started again proposes once: %d", got)
 	}
 	for i := 2; i <= maxProposed; i++ {
-		if err := e.r.propose(context.Background(), &task, p, stateOf, fmt.Sprintf("note/%d", i), 0, ""); err != nil {
+		if err := e.r.propose(context.Background(), &task, p, stateOf, fmt.Sprintf("note/%d", i), 0, "", false); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := e.r.propose(context.Background(), &task, p, stateOf, "note/99", 0, ""); err == nil || len(e.task(t).Status.Pilot.Proposed) != maxProposed {
+	if err := e.r.propose(context.Background(), &task, p, stateOf, "note/99", 0, "", false); err == nil || len(e.task(t).Status.Pilot.Proposed) != maxProposed {
 		t.Fatalf("a full queue refuses with an error: %v", err)
 	}
 }

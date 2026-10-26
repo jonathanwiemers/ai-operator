@@ -141,7 +141,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 		// The pilot manages, yet this needs an owner: its assessment did not
 		// ping them.
 		ping := ""
-		if counts != nil && i < len(proposed) {
+		if i < len(proposed) && p.Quiet {
 			ping = notify.Mention(st.Spec.Owners)
 		}
 		if valid == 0 {
@@ -270,7 +270,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		errs[i] = make([]error, len(p.Actions))
 		for j, a := range p.Actions {
 			if errs[i][j] = validAction(a, st, tasks, opened); errs[i][j] == nil && p.AcceptedBy == "" && spec.Pilot.AutonomyOf(coord) != aiv1.PilotManaged {
-				errs[i][j] = errors.New("an owner stopped the pilot")
+				errs[i][j] = errors.New("the pilot proposes now (`/pilot stop` or `pilot.autonomy`)")
 			} else if errs[i][j] == nil && a.Tool == "openIssue" {
 				opened = append(opened, titleKey(a.Title))
 			}
