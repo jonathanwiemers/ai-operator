@@ -728,6 +728,75 @@ spec:
                   Pilot is the operator's bookkeeping of the milestone's pilot (spec
                   and Coordinate tasks).
                 properties:
+                  accepted:
+                    description: |-
+                      Accepted are the proposals owners accepted, run at the end of the
+                      poll.
+                    items:
+                      description: PilotProposal is a set of actions that waits for
+                        an owner's "yes".
+                      properties:
+                        acceptedBy:
+                          description: AcceptedBy is the owner who accepted it.
+                          type: string
+                        actions:
+                          items:
+                            description: |-
+                              PilotAction is one action of a proposal of the pilot; the operator
+                              validates and executes it once an owner accepts the proposal.
+                            properties:
+                              issueIID:
+                                format: int64
+                                type: integer
+                              kind:
+                                description: Kind of an instruct, one of PilotInstructKinds.
+                                type: string
+                              note:
+                                description: |-
+                                  Note: the pilot's hint to the implementer (instruct), the body of
+                                  the issue it opens (openIssue). Untrusted.
+                                type: string
+                              owner:
+                                description: |-
+                                  Owner and Text: an owner's own words for the implementer ("/pilot
+                                  tell #N: …"). Only the operator sets them.
+                                type: string
+                              text:
+                                type: string
+                              title:
+                                description: Title of the issue it opens (openIssue).
+                                type: string
+                              tool:
+                                description: 'Tool: retry, reReview, instruct or openIssue.'
+                                type: string
+                            required:
+                            - tool
+                            type: object
+                          type: array
+                        id:
+                          description: ID is n of "P<n>", given when the operator
+                            posts it.
+                          format: int64
+                          type: integer
+                        postedAt:
+                          format: date-time
+                          type: string
+                        source:
+                          description: |-
+                            Source is the message or event it answers, so a run started again
+                            does not propose it twice.
+                          type: string
+                        state:
+                          description: State is PilotState when it was made.
+                          type: string
+                        summary:
+                          type: string
+                      required:
+                      - actions
+                      - state
+                      - summary
+                      type: object
+                    type: array
                   events:
                     description: |-
                       Events are the keys of the events handed to the pilot (Coordinate
@@ -758,6 +827,9 @@ spec:
                       description: PilotProposal is a set of actions that waits for
                         an owner's "yes".
                       properties:
+                        acceptedBy:
+                          description: AcceptedBy is the owner who accepted it.
+                          type: string
                         actions:
                           items:
                             description: |-
@@ -799,6 +871,11 @@ spec:
                           type: integer
                         postedAt:
                           format: date-time
+                          type: string
+                        source:
+                          description: |-
+                            Source is the message or event it answers, so a run started again
+                            does not propose it twice.
                           type: string
                         state:
                           description: State is PilotState when it was made.
@@ -819,6 +896,9 @@ spec:
                       description: PilotProposal is a set of actions that waits for
                         an owner's "yes".
                       properties:
+                        acceptedBy:
+                          description: AcceptedBy is the owner who accepted it.
+                          type: string
                         actions:
                           items:
                             description: |-
@@ -860,6 +940,11 @@ spec:
                           type: integer
                         postedAt:
                           format: date-time
+                          type: string
+                        source:
+                          description: |-
+                            Source is the message or event it answers, so a run started again
+                            does not propose it twice.
                           type: string
                         state:
                           description: State is PilotState when it was made.

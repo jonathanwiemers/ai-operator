@@ -207,6 +207,13 @@ type PilotProposal struct {
 	State string `json:"state"`
 	// +optional
 	PostedAt *metav1.Time `json:"postedAt,omitempty"`
+	// AcceptedBy is the owner who accepted it.
+	// +optional
+	AcceptedBy string `json:"acceptedBy,omitempty"`
+	// Source is the message or event it answers, so a run started again
+	// does not propose it twice.
+	// +optional
+	Source string `json:"source,omitempty"`
 }
 
 // PilotEvent is something the pilot assesses without being asked: an
@@ -267,6 +274,11 @@ type PilotStatus struct {
 	// Proposals are the open proposals, posted on the tracking issue.
 	// +optional
 	Proposals []PilotProposal `json:"proposals,omitempty"`
+
+	// Accepted are the proposals owners accepted, run at the end of the
+	// poll.
+	// +optional
+	Accepted []PilotProposal `json:"accepted,omitempty"`
 
 	// LastProposal is the ID of the newest proposal.
 	// +optional

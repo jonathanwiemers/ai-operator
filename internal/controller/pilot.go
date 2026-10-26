@@ -210,7 +210,7 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		case (answer || tell) && !owner:
 			reply = "This milestone has no owners, so the pilot takes no actions."
 		case answer:
-			reply, err = r.answerProposal(ctx, gl, project, spec, st, coord, n.Author.Username, id, yes)
+			reply, err = r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.issue, id, yes)
 		case tell:
 			reply, err = r.proposeTell(ctx, gl, project, spec, st, coord, n, iid, text)
 		case slices.ContainsFunc(coord.Spec.Source.PilotMessages, func(m aiv1.PilotMessage) bool { return m.NoteID == n.ID }):
@@ -223,7 +223,9 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		if err != nil {
 			return err
 		}
-		pilotReply(ctx, gl, spec, n, reply)
+		if reply != "" {
+			pilotReply(ctx, gl, spec, n, reply)
+		}
 	}
 	if len(msgs) == 0 {
 		return nil
@@ -381,6 +383,9 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 			err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks))
 			if err == nil {
 				_, err = r.postProposals(ctx, gl, project, spec, st, coord, tracking)
+			}
+			if err == nil {
+				err = r.runAccepted(ctx, gl, project, spec, st, coord, tracking)
 			}
 		}
 		if err != nil {

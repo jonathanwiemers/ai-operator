@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -48,6 +49,29 @@ func TestPilotRecordsItsProposalAndRunsNothing(t *testing.T) {
 	// The runner executes nothing: no run of #1, no issue, no label.
 	if impl.Spec.RunRequest != 0 || impl.Spec.Source.ReviewFor != "" || impl.Spec.Source.PilotInstruction != nil || len(e.gl.Issues) != 2 {
 		t.Fatalf("the runner must not act: %+v, %d issues", impl.Spec, len(e.gl.Issues))
+	}
+}
+
+func TestPilotProposesOncePerSourceAndBounded(t *testing.T) {
+	e := newPilotEnv(t, "")
+	task := e.task(t)
+	stateOf := func([]aiv1.PilotAction) string { return "s" }
+	p := proposalOf(t, `{"summary": "retry", "actions": [{"tool": "retry", "issue": 1}]}`)
+	for range 2 {
+		if err := e.r.propose(context.Background(), &task, p, stateOf, "note/1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := len(e.task(t).Status.Pilot.Proposed); got != 1 {
+		t.Fatalf("a run started again proposes once: %d", got)
+	}
+	for i := 2; i <= maxProposed; i++ {
+		if err := e.r.propose(context.Background(), &task, p, stateOf, fmt.Sprintf("note/%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := e.r.propose(context.Background(), &task, p, stateOf, "note/99"); err == nil || len(e.task(t).Status.Pilot.Proposed) != maxProposed {
+		t.Fatalf("a full queue refuses with an error: %v", err)
 	}
 }
 

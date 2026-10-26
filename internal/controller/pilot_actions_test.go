@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -154,22 +155,62 @@ func TestPilotOpenIssueIsInertAndNotHandedOver(t *testing.T) {
 
 func TestPilotOpenIssueIsNotOpenedTwice(t *testing.T) {
 	e := newProposalEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	// Two open proposals with the same title, from two runs.
 	e.propose("open", aiv1.PilotAction{Tool: "openIssue", Title: "Agent image lacks Rust"})
+	e.reconcile()
 	e.propose("open again", aiv1.PilotAction{Tool: "openIssue", Title: " agent  image lacks rust"})
 	e.reconcile()
-	tracking := e.autopilot().TrackingIssueIID
 	e.gl.AddNote(tracking, alice, "/pilot yes P1")
-	e.reconcile()
 	e.gl.AddNote(tracking, alice, "/pilot yes P2")
+	e.reconcile()
 	e.reconcile()
 	if got := e.toolEffect().opened; got != 1 || !strings.Contains(e.lastReply(), "not run: the pilot opened an issue with this title before") {
 		t.Fatalf("the same title is opened once: %d issues, reply %q", got, e.lastReply())
 	}
-	// A later proposal with that title is not posted.
+	// A later proposal with that title is not posted, nor two with one
+	// title from one poll.
 	e.propose("open once more", aiv1.PilotAction{Tool: "openIssue", Title: "Agent image lacks Rust"})
+	e.propose("open another", aiv1.PilotAction{Tool: "openIssue", Title: "Pin the runner"})
+	e.propose("open another again", aiv1.PilotAction{Tool: "openIssue", Title: "Pin the runner"})
 	e.reconcile()
-	if c := strings.Join(botComments(e, tracking), "\n"); strings.Contains(c, "Proposal P3") {
+	if c := strings.Join(botComments(e, tracking), "\n"); !strings.Contains(c, "Proposal P3:** open another\n") || strings.Contains(c, "Proposal P4") {
 		t.Fatalf("a proposal with nothing to run is not posted:\n%s", c)
+	}
+}
+
+func TestPilotOpenIssueThatFailedCanBeOpenedAgain(t *testing.T) {
+	e := newProposalEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.propose("open", aiv1.PilotAction{Tool: "openIssue", Title: "Agent image lacks Rust"})
+	e.reconcile()
+	e.gl.CreateIssueError = errors.New("gitlab is down")
+	e.gl.AddNote(tracking, alice, "/pilot yes P1")
+	e.reconcile()
+	e.gl.CreateIssueError = nil
+	if !strings.Contains(e.lastReply(), "not run: gitlab is down") {
+		t.Fatalf("the failure is reported: %q", e.lastReply())
+	}
+	e.propose("open again", aiv1.PilotAction{Tool: "openIssue", Title: "Agent image lacks Rust"})
+	e.reconcile()
+	e.gl.AddNote(tracking, alice, "/pilot yes P2")
+	e.reconcile()
+	if e.toolEffect().opened != 1 {
+		t.Fatalf("a title that failed is not taken: %q", e.lastReply())
+	}
+}
+
+func TestPilotYesOnAnIssueRunsAtTheEndOfThePoll(t *testing.T) {
+	e := newProposalEnv(t)
+	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	before := e.toolEffect()
+	// Accepted on #1 itself, whose task the poll updates too.
+	e.gl.AddNote(1, alice, "/pilot yes P1")
+	e.reconcile()
+	if after := e.toolEffect(); after.runs != before.runs+1 || !strings.Contains(lastNote(e, 1), "the outcome follows on #") ||
+		!strings.Contains(e.lastReply(), "Proposal P1 accepted by `@alice`") {
+		t.Fatalf("accepted on the issue, run once in the same poll: %+v → %+v, %q", before, after, lastNote(e, 1))
 	}
 }
 
@@ -311,6 +352,18 @@ func TestPilotTellPassesTheOwnersWordsOn(t *testing.T) {
 	}
 	if c := botComments(e, 1); len(c) == 0 || !strings.Contains(c[len(c)-1], "instruction from `@alice` via pilot: use the v2 API") {
 		t.Fatalf("the issue shows the instruction: %q", c)
+	}
+}
+
+func TestPilotTellIsBounded(t *testing.T) {
+	e := newProposalEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.AddNote(tracking, alice, "/pilot tell #1: "+strings.Repeat("x", 3*maxPilotMessage))
+	e.reconcile()
+	e.gl.AddNote(tracking, alice, "/pilot yes P1")
+	e.reconcile()
+	if pi := e.implTaskOf(1).Spec.Source.PilotInstruction; pi == nil || len(pi.Text) > maxPilotMessage+len("…") {
+		t.Fatalf("an owner's words are cut like any message: %v", pi != nil)
 	}
 }
 

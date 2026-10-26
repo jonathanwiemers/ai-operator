@@ -821,10 +821,17 @@ later steps of [the spec](specs/milestone-coordinator.spec.md).
   to its thread by listing the issue's discussions, only when there is such
   a comment; the thread must start with the bot's proposal marker. The
   operator recomputes `state` from the current tasks; a changed state or
-  24 h since posting expire it. The proposal leaves `status.pilot.proposals`
-  in one locked patch before any action runs (with the keys of the issue
-  titles it opens added to `status.pilot.openedIssues`), so it runs once at
-  most; a failed action is reported in the reply, not retried. Each action
+  24 h since posting expire it. An accepted proposal moves to
+  `status.pilot.accepted`; `runAccepted` runs those at the end of the poll
+  (in `syncPilots`), when no other step of the poll writes the tasks any
+  more, and each task write is done on a fresh copy, tried again on a
+  conflict. They leave the status in one locked patch before any action
+  runs (with the keys of the issue titles they open added to
+  `status.pilot.openedIssues`, and taken out again when the issue could not
+  be created), so each runs once at most; a failed action is reported in
+  the outcome on the tracking issue, not retried. A run records a proposal
+  once per message or event (`source`), so a run started again does not
+  propose twice, and at most 10 wait for the operator. Each action
   is checked again: a known tool, an issue of the milestone with an
   implement task, a pushed head for `reReview`, a kind for `instruct`, a
   title not opened before. `retry` is a run request (`requestRun`),

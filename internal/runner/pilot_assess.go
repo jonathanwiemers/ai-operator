@@ -56,11 +56,12 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			default:
 				s.done(agentResult(role, res, "assessed"), "costUSD", res.CostUSD)
 				// The proposal follows from the operator once it is recorded.
-				perr := r.propose(ctx, task, a.Proposal, stateOf)
+				perr := r.propose(ctx, task, a.Proposal, stateOf, "event/"+id)
+				body = renderAssessment(a, perr == nil && a.Proposal != nil && len(a.Proposal.Actions) > 0)
 				if perr != nil {
 					failed = perr
+					body += "\n\n_Its proposal could not be recorded._"
 				}
-				body = renderAssessment(a, perr == nil && a.Proposal != nil && len(a.Proposal.Actions) > 0)
 			}
 		}
 		what := prose(strings.Join(strings.Fields(truncate(e.Text, 300)), " "))

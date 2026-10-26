@@ -98,7 +98,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 				st.setSession("pilot", role.Engine, res.SessionID)
 				s.done(agentResult(role, res, "answered"), "session", res.SessionID, "costUSD", res.CostUSD)
 				reply = a.Reply
-				if err := r.propose(ctx, task, a.Proposal, stateOf); err != nil {
+				if err := r.propose(ctx, task, a.Proposal, stateOf, fmt.Sprintf("note/%d", m.NoteID)); err != nil {
 					failed = err
 					reply += "\n\n_The pilot's proposal could not be recorded._"
 				} else if a.Proposal != nil && len(a.Proposal.Actions) > 0 && task.Spec.Issue != nil {
@@ -280,11 +280,13 @@ const maxProposed = 10
 // issue and runs it once an owner accepts it. The runner executes nothing.
 // A milestone without owners, whom nobody could accept it from, or a state
 // it could not read get none.
-func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalAnswer, stateOf stateFunc) error {
+// source names the message or event it answers: a run started again does
+// not propose it twice.
+func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalAnswer, stateOf stateFunc, source string) error {
 	if p == nil || len(p.Actions) == 0 || len(task.Spec.Owners) == 0 || stateOf == nil {
 		return nil
 	}
-	prop := aiv1.PilotProposal{Summary: truncate(p.Summary, 500)}
+	prop := aiv1.PilotProposal{Summary: truncate(p.Summary, 500), Source: source}
 	for _, a := range p.Actions[:min(len(p.Actions), 5)] {
 		prop.Actions = append(prop.Actions, aiv1.PilotAction{Tool: truncate(a.Tool, 40), IssueIID: a.Issue, Kind: truncate(a.Kind, 40),
 			Note: truncate(a.Note, 2000), Title: truncate(a.Title, 200)})
@@ -302,9 +304,12 @@ func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalA
 		if t.Status.Pilot == nil {
 			t.Status.Pilot = &aiv1.PilotStatus{}
 		}
-		if len(t.Status.Pilot.Proposed) >= maxProposed {
-			r.log().Info("too many proposals wait for the operator, dropping one")
+		ps := t.Status.Pilot
+		if slices.ContainsFunc(slices.Concat(ps.Proposed, ps.Proposals, ps.Accepted), func(q aiv1.PilotProposal) bool { return q.Source == source }) {
 			return nil
+		}
+		if len(ps.Proposed) >= maxProposed {
+			return fmt.Errorf("%d proposals wait for the operator already", maxProposed)
 		}
 		t.Status.Pilot.Proposed = append(t.Status.Pilot.Proposed, prop)
 		return r.K8s.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))

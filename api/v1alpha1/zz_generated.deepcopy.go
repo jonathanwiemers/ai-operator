@@ -874,6 +874,13 @@ func (in *PilotStatus) DeepCopyInto(out *PilotStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Accepted != nil {
+		in, out := &in.Accepted, &out.Accepted
+		*out = make([]PilotProposal, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.OpenedIssues != nil {
 		in, out := &in.OpenedIssues, &out.OpenedIssues
 		*out = make([]string, len(*in))

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -95,6 +96,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 	}
 	now := metav1.NewTime(r.now())
 	next := ps.LastProposal
+	opened := slices.Clone(ps.OpenedIssues)
 	var posted []aiv1.PilotProposal
 	var bodies []string
 	for i, p := range append(slices.Clone(ps.Proposed), extra...) {
@@ -105,9 +107,12 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 				// Only the operator passes an owner's words on.
 				p.Actions[j].Owner, p.Actions[j].Text = "", ""
 			}
-			err := validAction(p.Actions[j], tasks, ps.OpenedIssues)
+			err := validAction(p.Actions[j], tasks, opened)
 			if err == nil {
 				valid++
+				if p.Actions[j].Tool == "openIssue" {
+					opened = append(opened, titleKey(p.Actions[j].Title))
+				}
 			}
 			notes = append(notes, describeAction(p.Actions[j], err))
 		}
@@ -153,15 +158,15 @@ func (r *AgentProjectReconciler) patchProposals(ctx context.Context, coord *aiv1
 	return r.Status().Patch(ctx, coord, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
 }
 
-// answerProposal handles an owner's "yes" or "no" to proposal id (0: none
-// named) and returns the reply. A proposal leaves the status before any of
-// its actions runs, so it runs once at most; one that expired is refused.
-func (r *AgentProjectReconciler) answerProposal(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st, coord *aiv1.AgentTask, by string, id int64, yes bool) (string, error) {
+// answerProposal handles an owner's "yes" or "no", written on issue where
+// (0: a merge request), to proposal id (0: none named) and returns the
+// reply, "" for none. One that expired is refused; an accepted one moves to
+// status.pilot.accepted, which runAccepted runs at the end of the poll.
+func (r *AgentProjectReconciler) answerProposal(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+	st, coord *aiv1.AgentTask, by string, where, id int64, yes bool) (string, error) {
 	var open []aiv1.PilotProposal
-	var opened []string
 	if ps := coord.Status.Pilot; ps != nil {
-		open, opened = ps.Proposals, slices.Clone(ps.OpenedIssues)
+		open = ps.Proposals
 	}
 	prefix := spec.Workflow.PilotPrefix
 	i := slices.IndexFunc(open, func(p aiv1.PilotProposal) bool { return p.ID == id })
@@ -184,38 +189,79 @@ func (r *AgentProjectReconciler) answerProposal(ctx context.Context, gl gitlab.A
 		return "", err
 	}
 	expired := p.PostedAt == nil || r.now().Sub(p.PostedAt.Time) >= proposalTTL || aiv1.PilotState(st, tasks, p.Actions) != p.State
-	errs := make([]error, len(p.Actions))
-	if yes && !expired {
-		for j, a := range p.Actions {
-			if errs[j] = validAction(a, tasks, opened); errs[j] == nil && a.Tool == "openIssue" {
-				opened = append(opened, titleKey(a.Title))
-			}
-		}
-	}
-	// Gone before anything runs.
+	accept := yes && !expired
+	p.AcceptedBy = by
 	if err := r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) {
 		ps.Proposals = slices.DeleteFunc(ps.Proposals, func(q aiv1.PilotProposal) bool { return q.ID == id })
-		ps.OpenedIssues = opened
+		if accept {
+			ps.Accepted = append(ps.Accepted, p)
+		}
 	}); err != nil {
 		return "", err
 	}
+	tracking := trackingIssue(st, coord)
 	switch {
 	case !yes:
 		return fmt.Sprintf("Proposal P%d dropped by `@%s`.", id, by), nil
 	case expired:
 		return fmt.Sprintf("Proposal P%d no longer applies: the milestone's state changed since it was made, or it is older than 24 h. "+
 			"Ask me again (`%s …`) for a fresh one.", id, prefix), nil
+	case where == tracking:
+		return "", nil // the outcome follows
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "Proposal P%d accepted by `@%s`:", id, by)
-	for j, a := range p.Actions {
-		if errs[j] == nil {
-			errs[j] = r.runAction(ctx, gl, spec, st, p.ID, by, a, tasks[a.IssueIID])
+	return fmt.Sprintf("Proposal P%d accepted; the outcome follows on #%d.", id, tracking), nil
+}
+
+// runAccepted runs the accepted proposals of a pilot at the end of the
+// poll, when nothing else of it changes the tasks any more. They leave the
+// status before any action runs, so each runs once at most; every action
+// is checked again first. The outcome goes on the tracking issue.
+func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+	st, coord *aiv1.AgentTask, tracking int64) error {
+	ps := coord.Status.Pilot
+	if ps == nil || len(ps.Accepted) == 0 {
+		return nil
+	}
+	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
+	if err != nil {
+		return err
+	}
+	accepted, opened := ps.Accepted, slices.Clone(ps.OpenedIssues)
+	errs := make([][]error, len(accepted))
+	for i, p := range accepted {
+		errs[i] = make([]error, len(p.Actions))
+		for j, a := range p.Actions {
+			if errs[i][j] = validAction(a, tasks, opened); errs[i][j] == nil && a.Tool == "openIssue" {
+				opened = append(opened, titleKey(a.Title))
+			}
 		}
-		b.WriteString("\n" + describeAction(a, errs[j]))
 	}
-	log.FromContext(ctx).Info("pilot proposal accepted", "task", coord.Name, "proposal", id, "by", by)
-	return b.String(), nil
+	if err := r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) { ps.Accepted, ps.OpenedIssues = nil, opened }); err != nil {
+		return err
+	}
+	var failed []string
+	for i, p := range accepted {
+		var b strings.Builder
+		fmt.Fprintf(&b, "🧭 Proposal P%d accepted by `@%s`:", p.ID, p.AcceptedBy)
+		for j, a := range p.Actions {
+			if errs[i][j] == nil {
+				if errs[i][j] = r.runAction(ctx, gl, spec, st, p.ID, p.AcceptedBy, a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
+					failed = append(failed, titleKey(a.Title)) // may be opened again
+				}
+			}
+			b.WriteString("\n" + describeAction(a, errs[i][j]))
+		}
+		log.FromContext(ctx).Info("pilot proposal run", "task", coord.Name, "proposal", p.ID, "by", p.AcceptedBy)
+		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, tracking, b.String()); err != nil {
+			log.FromContext(ctx).Info("could not post the outcome of a proposal", "issue", tracking, "error", err.Error())
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) {
+		ps.OpenedIssues = slices.DeleteFunc(ps.OpenedIssues, func(k string) bool { return slices.Contains(failed, k) })
+	})
 }
 
 // runAction executes one validated action of an accepted proposal.
@@ -229,14 +275,22 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, s
 			Labels: spec.Workflow.GeneratedLabel,
 		})
 		return err
-	case "reReview":
-		if err := r.askReview(ctx, t, t.Status.Run.PushedSHA); err != nil {
+	}
+	// On a fresh copy, tried again on a conflict: the task changes as it runs.
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := r.Get(ctx, client.ObjectKeyFromObject(t), t); err != nil {
 			return err
 		}
-	case "instruct":
-		t.Spec.Source.PilotInstruction = &aiv1.PilotInstruction{Kind: a.Kind, Note: a.Note, Owner: a.Owner, Text: a.Text, Request: t.Spec.RunRequest + 1}
-	}
-	if err := r.requestRun(ctx, gl, spec, t, a.IssueIID); err != nil {
+		switch a.Tool {
+		case "reReview":
+			if err := r.askReview(ctx, t, t.Status.Run.PushedSHA); err != nil {
+				return err
+			}
+		case "instruct":
+			t.Spec.Source.PilotInstruction = &aiv1.PilotInstruction{Kind: a.Kind, Note: a.Note, Owner: a.Owner, Text: a.Text, Request: t.Spec.RunRequest + 1}
+		}
+		return r.requestRun(ctx, gl, spec, t, a.IssueIID)
+	}); err != nil {
 		return err
 	}
 	if a.Tool == "instruct" {
@@ -362,11 +416,13 @@ func (r *AgentProjectReconciler) threadAnswers(ctx context.Context, gl gitlab.AP
 			continue
 		}
 		yes, _, _ := command.PilotAnswer(n.Body)
-		reply, err := r.answerProposal(ctx, gl, project, spec, st, coord, n.Author.Username, id, yes)
+		reply, err := r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, tracking, id, yes)
 		if err != nil {
 			return err
 		}
-		pilotReply(ctx, gl, spec, pilotNote{Note: n, issue: tracking}, reply)
+		if reply != "" {
+			pilotReply(ctx, gl, spec, pilotNote{Note: n, issue: tracking}, reply)
+		}
 	}
 	return nil
 }
@@ -379,7 +435,7 @@ func (r *AgentProjectReconciler) proposeTell(ctx context.Context, gl gitlab.API,
 	if err != nil {
 		return "", err
 	}
-	a := aiv1.PilotAction{Tool: "instruct", IssueIID: iid, Owner: n.Author.Username, Text: text}
+	a := aiv1.PilotAction{Tool: "instruct", IssueIID: iid, Owner: n.Author.Username, Text: truncateUTF8(text, maxPilotMessage)}
 	if err := validAction(a, tasks, nil); err != nil {
 		return "Not proposed: " + err.Error() + ".", nil
 	}
