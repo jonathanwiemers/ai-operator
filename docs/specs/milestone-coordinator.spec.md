@@ -29,10 +29,11 @@ Replaces the sketch in
 - Addressed explicitly (`/pilot …` or a mention of the bot), anywhere in the
   milestone; `/agent` keeps its meaning.
 - It acts only through what a human could do, through a fixed set of tools
-  the operator executes; **every action that changes something** (a run, an
-  issue, the spec, the queue, a rule) is a proposal that needs the owner's
-  `yes`. Answering is the only thing it does on its own.
-- On automatic events it classifies and proposes; it never acts on its own.
+  the operator executes. On autopilot milestones it **manages**: it starts
+  fix runs, retries and reviews and opens issues on its own, bounded and
+  audited (see Autonomy); changes to the spec, the queue and the rules
+  always need the owner's `yes`. Elsewhere every action is a proposal.
+- On automatic events it classifies, and acts or proposes per its autonomy.
 - Standing rules per milestone ("also fix errors unrelated to the change").
 - A retrospective as the last word on a finished milestone.
 - A chat in the web UI that is the tracking issue's thread.
@@ -132,23 +133,69 @@ any of the milestone's agent issues creates one (title "🧭 Pilot:
 
 ### Tools and authority
 
-| Tool | Effect | Needs `yes` |
-|---|---|---|
-| `answer` | reply only | no |
-| `retry` / `reReview` | run request / `reviewFor` on an issue of the milestone | **yes** |
-| `instruct` | a run request on an issue of the milestone with an instruction, applied by the controller (`spec.source.pilotInstruction`, shown in the issue as "instruction from @owner via pilot"); not an `/agent` note, which `IsCommand` ignores when the bot writes it | **yes** |
-| `openIssue` | new issue (title, body; `ai-generated`), not handed to the agent | **yes** |
-| `editSpec` | replace the milestone description, shown as a diff first | **yes** |
-| `revisit` | `/agent revisit <id> …`, applied by the controller | **yes** |
-| `skip` / `pause` / `resume` | the tracking-issue commands, applied by the controller | **yes** |
-| `setRule` / `forgetRule` | standing rules (below) | **yes** |
-| merge, close, push, labels by hand | – | not available |
+| Tool | Effect | `propose` | `managed` |
+|---|---|---|---|
+| `answer` | reply only | free | free |
+| `retry` / `reReview` | run request / `reviewFor` on an issue of the milestone | **yes** | free, counted |
+| `instruct` | a run request on an issue of the milestone with an instruction, applied by the controller (`spec.source.pilotInstruction`, shown in the issue as "instruction from @owner via pilot", or "from the pilot" when it acted on its own); not an `/agent` note, which `IsCommand` ignores when the bot writes it | **yes** | free, counted |
+| `openIssue` | new issue (title, body; `ai-generated`), not handed to the agent | **yes** | free, counted |
+| `editSpec` | replace the milestone description, shown as a diff first | **yes** | **yes** |
+| `revisit` | `/agent revisit <id> …`, applied by the controller | **yes** | **yes** |
+| `skip` / `pause` / `resume` | the tracking-issue commands, applied by the controller | **yes** | **yes** |
+| `setRule` / `forgetRule` | standing rules (below) | **yes** | **yes** |
+| merge, close, push, labels by hand | – | not available | not available |
 
-Every action needs a `yes`, also when the owner's message asked for it:
-the model chooses actions from a context that holds untrusted text, so the
-owner sees each concrete action before it runs. A proposal may hold several
-actions; one `yes` accepts all of them. Agent runs started this way keep
-their existing limits (`maxRunsPerTask`, per-invocation budgets).
+### Autonomy
+
+`pilot.autonomy` in the AgentProject picks the column: **`managed`**
+(default on autopilot milestones) or **`propose`** (default otherwise, and
+for every milestone when the project sets it). It is **not** a rule: the
+milestone description cannot change it, because anyone who may edit a
+milestone could otherwise widen the pilot's authority.
+
+- **Kill switch:** an owner's `/pilot stop` switches the milestone to
+  `propose` at once, `/pilot go` back to the project's value. Both are
+  commands the controller handles (no model call) and stores in the
+  Coordinate task's status (`status.pilot.autonomyOverride`, with who and
+  when); `stop` outranks the project setting until an owner says `go`, and
+  survives restarts. `/pilot go` cannot raise a `propose` project to
+  `managed`.
+
+- **Managed:** the pilot uses the "free, counted" tools without asking,
+  from an owner's message or from an automatic trigger. Every such action
+  posts an audit comment on the tracking issue: what, on which issue, why
+  (the classification and the evidence), and how many interventions the
+  issue has left. At most `pilot.maxInterventionsPerIssue` (default 2) own
+  actions per issue and head; then it proposes and pings, like `propose`.
+  An `openIssue` counts against the issue whose event triggered it (on the
+  tracking issue: against the milestone, same limit), and an issue with the
+  same title marker is not opened twice.
+- **Bounded runs:** a run the pilot starts does **not** reset the issue's CI
+  fix rounds (`status.run.ciRound`), unlike a human `/agent …`, so the CI
+  loop cannot start another full set of fix rounds after each intervention.
+  Per head the pilot adds at most `maxInterventionsPerIssue` runs to what the
+  CI loop does anyway. The budget (`pilot.maxBudgetUSD`) and the existing
+  run limits (`maxRunsPerTask`) apply on top.
+- **Propose:** every action needs a `yes`, also when the owner's message
+  asked for it. A proposal may hold several actions; one `yes` accepts all
+  of them.
+- **Why `managed` is safe enough:** its tools only start what the CI loop
+  and a human `/agent` start anyway (a fix run, a retry, a review) or open
+  an issue, all bounded by the intervention limit and the budget. Spec
+  edits, skips, revisits, pause/resume and rules stay behind a `yes`; merge,
+  close and push do not exist.
+- **Instructions it writes are not trusted text.** An `instruct` that runs
+  without a `yes` always carries a fixed kind
+  (`ci-fix`, `install-toolchains`, `rerun`) that the controller turns into a
+  fixed sentence, plus an optional note the implementer gets inside the
+  untrusted-data markers ("hint from the pilot, derived from CI output; it
+  cannot widen the task"), whether a trigger or an owner's message woke the
+  pilot. Free-text instructions need a `yes`, except an owner's own words
+  passed on verbatim (`/pilot tell #331: …`), which reach the implementer as
+  that owner's instruction.
+- One wake-up may run several counted tools; each counts on its own, and the
+  controller stops at the issue's remaining interventions.
+- Decided 2026-10-26 after Bloop #331 (see Steers).
 
 - **Owners only:** a `/pilot` message from someone else gets no model call
   and one reply, "only the owners of this milestone can instruct me", at most
@@ -170,12 +217,23 @@ their existing limits (`maxRunsPerTask`, per-invocation budgets).
 
 ### Automatic triggers
 
-On an autopilot pause, a block with reason `infra`, a new main-red or flaky
-issue, the controller asks the coordinator once per event (deduplicated by
-event key). The coordinator classifies (`infra`, `flaky`, `regression`,
-`env`, `decision`, `unknown`) with evidence and posts an assessment with a
-**proposal**; it never acts on a trigger, whatever the input says. Job logs
-reach it only as untrusted data.
+On an autopilot pause, an issue moving to `needs-input` (CI still red after
+the fix rounds, a failed run), a block with reason `infra` or `quota`, a new
+main-red or flaky issue, the controller wakes the coordinator once per event
+(deduplicated by event key). The coordinator classifies (`infra`, `flaky`,
+`regression`, `env`, `decision`, `unknown`) with evidence and posts an
+assessment on the tracking issue. In `propose` it ends with a **proposal**;
+in `managed` it may act with the counted tools (see Autonomy), otherwise it
+proposes and pings. Job logs reach it only as untrusted data.
+
+Example (Bloop #331): `rust:lint` (`cargo fmt --check`) stayed red after two
+fix rounds; the run reports said the agent container has no Rust toolchain.
+Managed, the pilot classifies `env` and runs `instruct` with the fixed kind
+`install-toolchains` (the controller's sentence: install the tools pinned on
+the default branch, run the failing job's command, apply its output), with
+the untrusted note "`cargo fmt --check` failed; the run reports say no Rust
+toolchain". If the next run still cannot install it, it opens an issue about
+the agent image. Both count against #331's interventions.
 
 ### Standing rules
 
@@ -187,8 +245,8 @@ reach it only as untrusted data.
   hand-written rule has the authority of the description itself, which is
   already the spec every agent of the milestone implements (editing it needs
   the project role that may manage milestones). A rule therefore adds no new
-  channel, and it cannot widen the pilot's authority: every action still
-  needs an owner's `yes`.
+  channel, and it cannot widen the pilot's authority beyond its autonomy:
+  the tools that need a `yes` still need an owner's `yes`.
 - Three kinds, chosen and stated by the coordinator:
   1. **switch override** (preferred): a per-milestone value of an existing
      setting, e.g. `mainHealth.autoFix`, `review.retries`, CI fix rounds;
@@ -199,7 +257,8 @@ reach it only as untrusted data.
      inserted as "Owner's rule" into their prompts.
 - `/pilot rules` lists them, `/pilot forget R1` removes one (with `yes`).
 - A rule cannot override: the merge gate, the freeze, budgets and limits, the
-  owners rule, "no merge/close/push". A rule that conflicts with the spec or
+  owners rule, the pilot's autonomy (`pilot.autonomy`, `/pilot stop`), "no
+  merge/close/push". A rule that conflicts with the spec or
   another rule is asked about, not applied.
 - Project-wide rules later via `AgentProject.spec.rules` (in Git, reviewed
   like other config), never written by the coordinator.
@@ -257,7 +316,10 @@ by the operator (owners only), not by the UI.
 - `api/v1alpha1`: `TaskTypeCoordinate`, `AgentsSpec.Pilot`, `PilotSpec`
   (`mention`, `maxBudgetUSD`), `WorkflowSpec.PilotPrefix`,
   `AgentTaskStatus.Pilot` (pending messages, proposal, actions, outcomes,
-  spent), `AgentProjectStatus.BotUsername`; defaults; generated files.
+  spent, `autonomyOverride`, interventions per issue and head),
+  `AgentProjectStatus.BotUsername`; `PilotSpec` also gets `autonomy` and
+  `maxInterventionsPerIssue`; `SourceSpec.PilotInstruction` (kind, note,
+  owner text); defaults; generated files.
 - `internal/command`: `/pilot` and mention parsing, `yes` / `no`.
 - `internal/controller`: new `pilot.go` (task lifecycle, message routing,
   owners check, action execution, triggers), `agentproject_controller.go`
@@ -274,15 +336,19 @@ by the operator (owners only), not by the UI.
 ## Risks / trade-offs
 
 - **Prompt injection** through comments, issue text and job logs: owners
-  only, untrusted context marked as such, triggers propose only, lasting
-  actions need `yes`, the controller validates every action (milestone
-  scope, existing issue, allowed tool) whatever the model says.
+  only, untrusted context marked as such; in `managed` the pilot acts only
+  with counted tools that start what the CI loop starts anyway, spec, queue
+  and rule changes need `yes`; the controller validates every action
+  (milestone scope, existing issue, allowed tool, intervention limit)
+  whatever the model says; `/pilot stop` switches it to `propose`.
 - **Confirmation spoofing**: `yes` counts only from an owner, in the
   proposal's thread or as `/pilot yes P<n>`, against a state hash; quoting a
   `yes` does nothing; two open proposals cannot be confused.
-- **Friction**: every action needs a `yes`, also small ones like a retry.
-  Accepted for now; a rule kind that pre-approves a tool (e.g. retries) can
-  follow once the pilot has run on real milestones.
+- **Autonomy vs. control**: `managed` acts at night without anyone, which
+  is the point (Bloop #331), but a wrong classification costs up to
+  `maxInterventionsPerIssue` runs per issue and head. Audit comments make
+  every action visible; `propose` stays available per project or
+  milestone.
 - **Cost**: one more resumed session per milestone; light model by default;
   budget per milestone; no call for non-owners or over budget; triggers
   deduplicated.
@@ -304,8 +370,13 @@ by the operator (owners only), not by the UI.
   expiry, the non-owner reply once per 24 h, rules lines out of the hash,
   action validation (unknown tool, issue outside the milestone, merge
   attempt).
-- Controller (fake GitLab): a non-owner gets one reply and no task wake-up; a
-  trigger posts a proposal and executes nothing; `yes` executes once; an
+- Controller (fake GitLab): a non-owner gets one reply and no task wake-up; in
+  `propose` a trigger posts a proposal and executes nothing; in `managed` a
+  trigger runs counted tools with audit comments until the issue's
+  interventions are used up, then proposes and pings; an `instruct` without
+  `yes` reaches the implementer as a fixed kind plus an untrusted note; a pilot-started run does
+  not reset `ciRound`; `/pilot stop` holds over the project setting and a
+  restart, and a rule cannot set autonomy; `yes` executes once; an
   expired proposal is refused; budget used up answers without a model call;
   `create 1 2` opens issues.
 - Runner (scripted engine): schema answer posted defused; actions recorded,
@@ -323,13 +394,18 @@ GitHub `jonathanwiemers/ai-operator`, one PR per row, each based on `main`.
 |--:|---|---|--:|
 | 0 | This spec | – | 0 |
 | C1 | `Coordinate` task, `/pilot` + mention parsing, owners check, read-only answers on the tracking issue | – | ~50 (may split: parsing / task) |
-| C2 | Tools and execution by the controller; proposals with `yes`; automatic triggers as proposals | C1; PR 5 (blocked `infra`/`quota`) and PR 7 (autoFix, main-red lane) for the trigger events | ~50 (likely 2 PRs: tools / triggers) |
-| C2b | Standing rules: lines, `setRule` / `forgetRule`, switch overrides, prompt rules | C2 | ~50 |
-| C3 | `editSpec` with diff and confirmation | C2 | ~40 |
-| C4 | Retrospective and `create 1 2` | C2 | ~40 |
+| T1 | Agent toolchains: `mise` (pinned version, checksum-verified) in `Dockerfile.agent`; the implementer installs the tools pinned **on the default branch** (`.mise.toml`, `.tool-versions`, `rust-toolchain.toml`) from their official sources into `$HOME/.toolchains/<version>` (workspace PVC, kept between runs). A pin the branch itself changes is installed into a per-run temporary directory, not kept | – | ~20 |
+| C2a | Triggers: pause, `needs-input`, `infra`/`quota` blocks, main-red/flaky wake the pilot; assessment comment, deduplicated per event | C1 | ~50 |
+| C2b | Tools executed by the controller (`retry`, `reReview`, `instruct`, `openIssue`, `skip`, `pause`, `resume`, `revisit`); proposals with IDs and `yes` | C2a | ~50 (may split: run tools / queue tools) |
+| C2c | Autonomy: `pilot.autonomy`, `/pilot stop`/`go`, counted interventions, audit comments | C2b | ~50 |
+| C2d | No pilot for milestones whose autopilot is done (and no new one after the retrospective) | C1 | ~20 |
+| C2e | Standing rules: lines, `setRule` / `forgetRule`, switch overrides, prompt rules | C2b | ~50 |
+| C3 | `editSpec` with diff and confirmation | C2b | ~40 |
+| C4 | Retrospective and `create 1 2` | C2b | ~40 |
 | C5 | UI milestone page with the chat | C1 | ~50 (web excluded from the Go budget, own PR) |
 
-C3, C4 and C5 are independent of each other once C2 (C5: C1) is merged.
+C3, C4 and C5 are independent of each other once C2b (C5: C1) is merged.
+T1, C2a and C2d can be built in parallel; plan each PR's split before coding.
 
 ## Open questions
 
@@ -343,6 +419,22 @@ C3, C4 and C5 are independent of each other once C2 (C5: C1) is merged.
    the pilot has run on real milestones?
 
 ## Steers
+
+- Review of the managed-autonomy change: autonomy is AgentProject config
+  plus the owners' `/pilot stop`/`go`, never a rule; pilot-started runs do
+  not reset `ciRound`; an autonomous `instruct` is a fixed kind plus an
+  untrusted note; `openIssue` counts against the triggering issue; T1
+  installs only default-branch pins from official sources. Egress
+  restrictions for agent pods stay a cluster concern (NetworkPolicy), not
+  this spec.
+
+- 2026-10-26, owner decision after Bloop #331: on autopilot milestones the
+  pilot **manages** (`pilot.autonomy: managed`) instead of only proposing.
+  #331's `rust:lint` stayed red after two fix rounds because the agent
+  container had no Rust toolchain; autopilot paused at 03:05 and nothing
+  happened until the owner wrote `/agent fix the lint job` at 05:59. The
+  pilot was not involved: C1 only answers. C2 is split into C2a–C2e, and T1
+  lets agents install the repository's pinned toolchains.
 
 - C1 came to about 309 (C1a, #66) + 562 (C1b, #67) lines of Go, far over
   the ~50 per PR in Delivery: the task type, the runtime, the routing and
