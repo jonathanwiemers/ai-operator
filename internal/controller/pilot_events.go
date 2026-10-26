@@ -73,9 +73,11 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 // the failing tests and the end of the failed attempt's log, cut from the
 // front so the text fits. The pipeline is green, so it has none.
 func flakyEvent(pipeline int64, f aiv1.FlakyJobReport) aiv1.PilotEvent {
+	// The first paragraph, the assessment's headline, quotes nothing of
+	// the log.
 	text := fmt.Sprintf("`%s` of the default branch passed only on retry (flaky issue #%d).", f.Job, f.IssueIID)
 	if len(f.Tests) > 0 {
-		text += " Failing tests in the failed attempt's log: " + strings.Join(f.Tests, ", ") + "."
+		text += "\n\nFailing tests in the failed attempt's log: " + strings.Join(f.Tests, ", ") + "."
 	}
 	text += "\n\nEnd of the failed attempt's log:\n\n```text\n"
 	tail := f.LogTail

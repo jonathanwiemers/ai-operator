@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -246,12 +247,20 @@ func reportFlaky(ctx context.Context, gl gitlab.API, glProject string, bot int64
 			if is, err = gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{Title: "🔁 Flaky CI job: `" + j + "`", Description: m + "\n" + line, Labels: "ai-generated," + flakyLabel}); err != nil {
 				return nil, fmt.Errorf("reporting flaky job %q: %w", j, err)
 			}
-			// A failed comment below must not open a second issue.
+			// Two job names cut to the same one share it.
 			list = append(list, *is)
 		}
 		rep.IssueIID = is.IID
-		if _, err = gl.CreateIssueNote(ctx, glProject, is.IID, flakyOccurrence(p.ID, line, rep)); err != nil {
-			return nil, fmt.Errorf("reporting flaky job %q on issue #%d: %w", j, is.IID, err)
+		// A check that failed after the comment repeats it: once per
+		// pipeline.
+		notes, err := gl.ListIssueNotes(ctx, glProject, is.IID)
+		if err != nil {
+			return nil, fmt.Errorf("listing the comments of issue #%d: %w", is.IID, err)
+		}
+		if !slices.Contains(flakyOccurrences(notes, bot), p.ID) {
+			if _, err = gl.CreateIssueNote(ctx, glProject, is.IID, flakyOccurrence(p.ID, line, rep)); err != nil {
+				return nil, fmt.Errorf("reporting flaky job %q on issue #%d: %w", j, is.IID, err)
+			}
 		}
 		out = append(out, rep)
 	}
@@ -263,6 +272,21 @@ func flakyMarker(job string) string { return "<!-- ai-operator:flaky-job=" + job
 
 // flakyOccurrenceMarker starts an occurrence comment, with its pipeline.
 const flakyOccurrenceMarker = "<!-- ai-operator:flaky-occurrence="
+
+// flakyOccurrences are the pipelines of the bot's occurrence comments
+// among notes, each once.
+func flakyOccurrences(notes []gitlab.Note, bot int64) []int64 {
+	var out []int64
+	for _, n := range notes {
+		rest, ok := strings.CutPrefix(n.Body, flakyOccurrenceMarker)
+		id, _, _ := strings.Cut(rest, " ")
+		pid, err := strconv.ParseInt(id, 10, 64)
+		if ok && err == nil && n.Author.ID == bot && !slices.Contains(out, pid) {
+			out = append(out, pid)
+		}
+	}
+	return out
+}
 
 // flakyOccurrence is the comment of one occurrence: the trusted one-liner,
 // then the failing tests and the log tail as untrusted data.

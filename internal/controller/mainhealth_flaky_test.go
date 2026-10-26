@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
@@ -81,6 +84,36 @@ func TestMainHealthFlakyKeepsTheFailedAttemptsLog(t *testing.T) {
 	e.check(advance)
 	if st := e.mainHealth(); st.State != aiv1.MainHealthGreen || st.Flaky != nil {
 		t.Fatalf("a green pipeline drops the reports: %+v", st)
+	}
+}
+
+// A check that fails after some occurrence comments repeats the report;
+// each issue still gets one comment per pipeline.
+func TestMainHealthFlakyCommentsOncePerPipeline(t *testing.T) {
+	e, advance := newMainEnv(t)
+	e.reconcile() // resolves the bot user
+	other := e.gl.AddIssue(60, "🔁 Flaky CI job: `web:test`", "ci::flaky")
+	other.Description, other.Author = flakyMarker("web:test")+"\nolder report", e.gl.Bot
+	e.gl.NoteErrors = map[int64]error{60: &gitlab.Error{StatusCode: 500, Method: "POST", Path: "notes"}}
+	pid := e.gl.AddPipeline("sha1", "main", "failed", gitlab.Job{Name: "rust:test", Status: "failed"}, gitlab.Job{Name: "web:test", Status: "failed"})
+	e.check(advance)
+	e.gl.SetPipelineStatus(pid, "success")
+	advance(aiv1.DefaultMainHealthInterval)
+	if _, err := e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "shop"}}); err != nil {
+		t.Fatal(err)
+	}
+	if st := e.mainHealth(); st.State != aiv1.MainHealthRetrying {
+		t.Fatalf("a failed report is repeated on the next check, status %+v", st)
+	}
+	e.gl.NoteErrors = nil
+	e.check(advance)
+	if st := e.mainHealth(); st.State != aiv1.MainHealthFlaky || len(st.Flaky) != 2 {
+		t.Fatalf("status %+v", st)
+	}
+	for _, is := range e.issuesWith("ci::flaky") {
+		if got := flakyOccurrences(e.gl.IssueNotes[is.IID], e.gl.Bot.ID); !slices.Equal(got, []int64{pid}) || len(e.gl.IssueNotes[is.IID]) != 1 {
+			t.Errorf("#%d: expected one occurrence comment, got %d", is.IID, len(e.gl.IssueNotes[is.IID]))
+		}
 	}
 }
 
