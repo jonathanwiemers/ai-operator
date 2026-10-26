@@ -463,7 +463,8 @@ GitHub `jonathanwiemers/ai-operator`, one PR per row, each based on `main`.
 | C4 | Retrospective and `create 1 2` | C2b | ~40 |
 | C5 | UI milestone page with the chat | C1 | ~50 (web excluded from the Go budget, own PR) |
 
-C3, C4 and C5 are independent of each other once C2b (C5: C1) is merged.
+C3, C4 and C5 are delivered by
+[gitlab-home-and-hardening.spec.md](gitlab-home-and-hardening.spec.md).
 T1, C2a and C2d can be built in parallel; plan each PR's split before coding.
 
 ## Open questions

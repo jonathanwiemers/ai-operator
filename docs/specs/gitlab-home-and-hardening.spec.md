@@ -1,0 +1,322 @@
+# GitLab home, webhooks, hardening and the pilot's next steps
+
+## Problem
+
+ai-operator's home is moving to GitLab (`jo.wiemers/ai-operator`), but CI,
+docs and the operator still assume GitHub as the primary place of work:
+
+1. **GitHub-only CI.** Checks run only in `.github/workflows/ci.yml`. An MR on
+   GitLab has no pipeline. Releases stay on GitHub / ghcr (that is fine); the
+   day-to-day home does not.
+2. **Bloop M16 / M17 gaps.** A planning run fails when one GitLab call times
+   out (`applyPlan` posting decisions); a failed planning run pings nobody
+   because the tracking issue is created only after planning; a branch that
+   changes pin files can leave toolchains in the shared `$HOME/.toolchains`;
+   owners are resolved by username at `yes` time (a renamed user or a
+   look-alike can pass); `/agent` from anyone who can comment starts a run;
+   `PausedReason` can quote job names into GitLab without `notify.Defuse`;
+   `JobTrace` reads whole job logs into memory before keeping the last 4 MiB.
+3. **Polling budget.** The project controller syncs every AgentProject every
+   `pollInterval` (2m in the netcup01 defaults), listing issues, notes and
+   pipelines. On GitLab Free the bot shares 100 requests per minute; webhooks
+   (available per project on Free; group webhooks are not) are unused.
+4. **Canceled main never released.** A default-branch pipeline canceled by a
+   newer commit (Bloop launch commit `074ff650`) is skipped when picking the
+   newest finished pipeline, so the commit never gets a green run and never
+   releases.
+5. **Coordinator C3–C5 still open.** Spec edits with a diff and an owner's
+   `yes`, the retrospective when autopilot is done, and the milestone page
+   with chat in the web UI are specified in
+   [milestone-coordinator.spec.md](milestone-coordinator.spec.md) but not
+   built.
+
+## Goals
+
+- **GitLab home:** every MR and `main` get a GitLab pipeline with the same
+  checks as today's GitHub Actions; the Go (and Node) toolchains are pinned
+  for the agent image; the docs say GitLab is the primary repository and
+  GitHub a mirror that still builds the releases.
+- **Hardening:** close the M16/M17 gaps above (resumable plan apply, tracking
+  before planning and one transient retry with an owner ping, per-run
+  toolchain dirs for branch-changed pins, pinned owner IDs on proposals,
+  opt-in owners-only `/agent`, defused pause reasons, bounded `JobTrace`).
+- **Webhooks:** project webhooks wake the operator within seconds of a
+  comment, label move, pipeline or merge; polling becomes a slow fallback and
+  saves API budget.
+- **Main health:** a canceled default-branch pipeline whose commit has no
+  successful pipeline of its own is retried once and reported if canceled
+  again.
+- **Pilot's next steps:** deliver C3 (`editSpec`), C4 (retrospective) and C5
+  (UI milestone chat) as
+  [milestone-coordinator.spec.md](milestone-coordinator.spec.md) describes
+  them.
+
+## Non-goals
+
+- Moving releases, images or the chart off GitHub / ghcr, or changing Flux.
+- Setting up the GitLab push mirror, the AgentProject in `infra/cluster`, the
+  bot's membership, runners, or the public HTTPRoute for `/hooks/gitlab`:
+  done by hand before arming / after the receiver ships.
+- Group webhooks (GitLab Premium).
+- Removing the GitHub Actions workflows.
+- New pilot tools beyond C3–C5; changing the default of
+  `workflow.commandsFrom` (stays `members`).
+
+## Constraints
+
+- `CLAUDE.md`: after API or kubebuilder marker changes run
+  `make generate manifests`; before pushing `gofmt`, `go vet ./...`,
+  `make test`, `make helm-lint`; after web changes `make ui`; never put
+  kubebuilder RBAC markers into `internal/ui`.
+- Every MR from slice `gitlab-ci` on keeps the GitLab pipeline green and the
+  drift check clean.
+- Target < 50 changed production lines per MR (tests, generated files, docs
+  excluded); split further where a slice is bigger. Each MR leaves `main`
+  releasable: every merge to `main` that touches code, the chart or the
+  Dockerfiles is released. Docs-only changes are not released.
+- Tests at the lowest layer that owns the behaviour; controller tests with
+  the fake GitLab (`internal/gitlab/gitlabfake`); mutation-check the tests of
+  each fix.
+- Each MR of this milestone appends exactly one line to this spec's
+  [Steering log](#steering-log).
+- Subtle slices (webhook receiver and token check, self-registration, plan
+  apply idempotence, spec retry and tracking order, per-run toolchain dirs,
+  owner-ID pinning, commands-from, retry of canceled pipelines, `editSpec`,
+  the UI's milestone API and authorization) use the strong profile and high
+  effort.
+- **Hard invariants (decision 13, locked):** existing CRD fields stay
+  backward compatible (no field removed, renamed or retyped; new fields
+  optional with defaults that keep today's behaviour); the autopilot merge
+  gate and the pilot's authority do not widen (the pilot gains no merge,
+  close or push; nothing that needs a `yes` today runs without one). Any MR
+  that breaks one of these is a blocking review finding.
+
+## Approach
+
+Locked decisions 1–12 below; design notes that are not locked but that later
+slices must follow unless the steering log records a deviation.
+
+### 1. GitLab CI (locked)
+
+`.gitlab-ci.yml` with the jobs of `ci.yml` (drift, gofmt, vet,
+`go test -race`, `make ui`, `make build`, `make helm-lint`,
+`hack/next-version.sh`), runner tag `shared`, images through the GitLab
+Dependency Proxy (`${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}`), on MRs and
+`main`. No release job on GitLab: releases stay on GitHub (`release.yml`,
+ghcr, Flux unchanged), fed by a GitLab push mirror to GitHub that the owner
+sets up by hand.
+
+### 2. Go pin (locked)
+
+`.mise.toml` pins `go` to the version in `go.mod` and `node` to the version
+the web UI builds with, so T1 installs them in the agent container.
+
+### 3. Plan apply is resumable (locked)
+
+Every GitLab write in `applyPlan` retries transient errors (timeouts, 5xx,
+429) with the client's backoff; posting decisions is idempotent (a decisions
+note with the plan key's marker is not posted twice). A run that still fails
+keeps the issues it created; the next run matches them by plan key.
+
+### 4. Planning failures are seen and retried (locked)
+
+On autopilot milestones the tracking issue is created before the first
+planning run. A spec run that fails for a transient cause (GitLab or network
+errors, agent lost) is retried once after `lifecycle.infraRetryAfter`; a
+failure posts on the tracking issue and pings the owners (event `failed`).
+
+### 5. Branch pins are enforced by the runner (locked)
+
+When the agent's branch changes a pin file (`Mirror.PinFiles`), the runner
+starts the agent with per-run toolchain directories (`MISE_DATA_DIR`,
+`RUSTUP_HOME`, `CARGO_HOME` under a temporary path) for that run;
+default-branch pins keep the shared `$HOME/.toolchains`.
+
+### 6. Owner IDs are pinned (locked)
+
+A proposal records the owners' user IDs when it is posted; a `yes` counts
+only from those IDs.
+
+### 7. Owners-only commands (opt-in, locked)
+
+`workflow.commandsFrom: members|owners`, default `members` (today's
+behaviour). With `owners`, `/agent …` on issues and MRs counts only from the
+milestone's owners; others get one reply per user per 24 h, like the pilot's
+rejection.
+
+### 8. Defused pause reasons (locked)
+
+`PausedReason` goes through `notify.Defuse` wherever it reaches GitLab
+(comments, tracking description).
+
+### 9. Streaming job traces (locked)
+
+`JobTrace` keeps only the last 4 MiB while reading (bounded memory);
+behaviour otherwise unchanged.
+
+### 10. Canceled main pipelines (locked)
+
+`mainHealth.retryCanceled` (default true): a canceled default-branch
+pipeline whose commit has no successful pipeline of its own is retried once;
+if it is canceled again, the watcher comments on (or creates) the main-health
+issue with the commit and pipeline. A commit covered by a later green
+pipeline of the same commit is fine.
+
+### 11. C3 / C4 / C5 (locked)
+
+Built as [milestone-coordinator.spec.md](milestone-coordinator.spec.md)
+describes them (sections "Tools and authority" `editSpec`, "Retrospective",
+"Web UI"), with the review steers of that spec; `editSpec` always needs a
+`yes` (also in `managed`), C5 adds the milestone-scoped UI API that spec
+names.
+
+### 12. Webhooks (locked)
+
+- **Receiver:** the operator manager serves `POST /hooks/gitlab` on its own
+  port (`webhook.port`, default 8082) with a chart Service
+  `<release>-webhook`; exposing it publicly is the cluster's job (non-goal).
+  Body capped at 1 MiB, 10 s budget, answers 202 at once.
+- **Trust:** a delivery counts only with a matching `X-Gitlab-Token`
+  (constant-time compare) against the project's secret
+  (`AgentProjectSpec.Webhook.SecretRef`); the payload is never trusted as
+  data: it only names the project (by `project.path_with_namespace`) to sync
+  now. Unknown projects and bad tokens get 401 and are logged without the
+  body.
+- **Self-registration:** with `spec.webhook.enabled` and `spec.webhook.url`,
+  the operator creates or updates one project hook (issues, notes, merge
+  requests, pipelines, pushes; `enable_ssl_verification`, the secret token)
+  through the API, which needs Maintainer; a missing permission is a
+  condition on the AgentProject, not a crash.
+- **Adaptive polling:** while deliveries arrive, a project is polled every
+  `webhook.fallbackInterval` (default 10m); after
+  `webhook.silenceThreshold` (default 30m) without a delivery, or with
+  webhooks off, it goes back to `pollInterval`. Milestones keep being polled
+  at `pollInterval` (milestone events are not covered).
+- A burst of deliveries for one project coalesces into one sync (the existing
+  requeue).
+
+### Design notes (plan; not locked)
+
+Later slices follow these unless a steering-log line records a deviation.
+
+- **Webhook wake path.** Webhook deliveries wake the AgentProject controller
+  in-process (controller-runtime channel source). The receiver runs on the
+  leader only and needs no new RBAC. A per-project trailing debounce of 5 s
+  coalesces bursts before the sync.
+- **Adaptive polling detail.** Keep a light, milestone-only poll at
+  `pollInterval`. A full sync runs on a delivery, on a milestone change, or
+  after `fallbackInterval`.
+- **Twice-canceled main.** A twice-canceled main pipeline is reported on the
+  open main-red issue, else on its own non-freezing issue
+  (`ci::main-canceled`). On first use the watcher records a baseline, so old
+  canceled pipelines are not retried.
+- **`editSpec` line preservation.** `editSpec` replaces only the spec part of
+  the milestone description; the marker, owners and rule lines are kept.
+- **Retrospective role.** The retrospective runs with the `agents.implement`
+  role (the coordinator spec's default for its strong model). Only milestones
+  whose pilot still exists when autopilot is done get one.
+
+## Affected files
+
+- CI / pins: `.gitlab-ci.yml`, `.mise.toml`.
+- Docs (early): `docs/releasing.md`, `README.md`, `CLAUDE.md`, `docs/usage.md`
+  where it links GitHub.
+- Operator: `internal/runner/spec.go`, autopilot and spec task controllers,
+  `internal/runner` agent start, `pilot_actions.go`,
+  `agentproject_controller.go` (`IsCommand`), `WorkflowSpec.CommandsFrom`,
+  `autopilot.go`, `internal/gitlab/client.go` (`JobTrace`), `mainhealth.go`,
+  `MainHealthSpec.RetryCanceled`, C3–C5 surfaces, webhook receiver,
+  `AgentProjectSpec.Webhook`, chart Service and values; generated files via
+  `make generate manifests`; chart `files/` in sync.
+- Web UI: `web/`, `internal/ui` (milestone view and chat).
+- Docs (last): `docs/usage.md`, `docs/configuration.md`, `docs/commands.md`,
+  `docs/design.md`, `docs/ui.md`, chart README, PR tables of
+  [pipeline-health-and-blocked-state.spec.md](pipeline-health-and-blocked-state.spec.md)
+  and [milestone-coordinator.spec.md](milestone-coordinator.spec.md), and
+  this spec reconciled.
+
+## Risks / trade-offs
+
+- **Webhook exposure** is a cluster concern; a wrong token or an open route
+  without one would wake syncs. Mitigation: constant-time token check, body
+  cap, payload used only as a project name, 401 without logging the body.
+- **Self-registration needs Maintainer**; without it the condition surfaces
+  the gap instead of crashing, and polling keeps working.
+- **Canceled-main retry** costs one runner cycle per canceled commit; the
+  baseline avoids replaying history. A second cancel opens a non-freezing
+  issue so merges are not held for a cancel storm.
+- **Owners-only `/agent`** is opt-in so existing projects keep today's
+  behaviour; the default does not change.
+- **Per-run toolchain dirs** cost install time on every branch that touches
+  pins; shared dirs stay for default-branch pins.
+- **API budget** improves while webhooks work; after `silenceThreshold` the
+  cost returns to today's poll rate by design.
+
+## Validation
+
+- Render this markdown and check relative links to other specs and docs.
+- Later slices (acceptance of the milestone): GitLab pipeline green on MRs and
+  `main`; `make generate manifests` leaves no diff; controller and runner
+  tests with the fake GitLab cover plan-apply retry without duplicate notes,
+  tracking-before-planning and one transient spec retry with owner ping,
+  per-run toolchain dirs, pinned owner IDs, `commandsFrom: owners`, defused
+  `PausedReason`, streaming `JobTrace`, canceled-main retry and second-cancel
+  report; C3–C5 and webhook receiver / registration / adaptive polling as in
+  the milestone acceptance; `gofmt`, `go vet ./...`, `make test`,
+  `make helm-lint`, `make ui` pass; existing CRD fields unchanged.
+
+## Delivery
+
+GitLab `jo.wiemers/ai-operator`, one MR per row, each based on `main`. Slice
+keys match the steering log. Target < 50 production lines per MR; split
+further if over budget.
+
+| # | Key | Slice | Depends on | Notes |
+|--:|---|---|---|---|
+| 1 | `spec-doc` | This spec and its steering log | – | docs only |
+| 2 | `gitlab-ci` | `.gitlab-ci.yml` and `.mise.toml` | `spec-doc` | |
+| 3 | `docs-gitlab-home` | Docs: GitLab primary, GitHub mirror and releases | `gitlab-ci` | |
+| 4 | `plan-apply-retries` | Plan apply: transient retries and idempotent decisions notes | `docs-gitlab-home` | strong |
+| 5 | `tracking-before-planning` | Tracking issue before planning on autopilot | `plan-apply-retries` | strong; may pair with next |
+| 6 | `spec-run-retry` | Spec runs retried once; failure ping | `tracking-before-planning` | strong |
+| 7 | `per-run-toolchains` | Per-run toolchain dirs for branch-changed pins | `docs-gitlab-home` | strong |
+| 8 | `pin-owner-ids` | Owner IDs pinned in proposals | `docs-gitlab-home` | strong |
+| 9 | `commands-from` | `workflow.commandsFrom` | `pin-owner-ids` | strong |
+| 10 | `defuse-pause-reasons` | Defused pause reasons | `docs-gitlab-home` | |
+| 11 | `stream-job-trace` | Streaming `JobTrace` | `docs-gitlab-home` | |
+| 12 | `retry-canceled-main` | Main health: retry canceled default-branch pipelines | `docs-gitlab-home` | strong |
+| 13 | `edit-spec-propose` | C3: `editSpec` tool and proposal with the diff | `pin-owner-ids` | strong |
+| 14 | `edit-spec-apply` | C3: applying the edit and the re-plan | `edit-spec-propose` | |
+| 15 | `retrospective-run` | C4: retrospective run when autopilot is done | `docs-gitlab-home` | |
+| 16 | `retrospective-create` | C4: `create 1 2` follow-up issues | `retrospective-run` | |
+| 17 | `ui-milestone-api` | C5: milestone-scoped UI API and authorization | `docs-gitlab-home` | strong |
+| 18 | `ui-milestone-chat` | C5: milestone page and chat in `web/` | `ui-milestone-api` | |
+| 19 | `webhook-receiver` | Webhooks: receiver, token check, project sync, chart Service | `docs-gitlab-home` | strong |
+| 20 | `webhook-wiring` | Webhooks: controller channel source and debounce | `webhook-receiver` | |
+| 21 | `webhook-registration` | Webhooks: self-registration of the project hook | `webhook-receiver` | strong |
+| 22 | `webhook-adaptive-polling` | Webhooks: adaptive polling and AgentProject condition | `webhook-wiring` | |
+| 23 | `docs-reconcile` | Docs reconciled (earlier specs' PR tables, usage, configuration, commands, design, ui, chart README) | all above | |
+
+Hardening slices 4–12 are independent of each other once `docs-gitlab-home`
+lands (except `commands-from` after `pin-owner-ids`, and `spec-run-retry`
+after `tracking-before-planning`). C3 needs owner-ID pinning. Webhook slices
+stack on the receiver. C4, C5 and webhooks can proceed in parallel with
+hardening after the docs slice.
+
+## Open questions
+
+None open for this milestone: the 13 decisions are locked. Design notes above
+may still change through the steering log.
+
+## Steering log
+
+Every MR of this milestone appends exactly one line: date, slice key, what
+landed, production line count, deviations from the plan.
+
+- 2026-10-26 `spec-doc`: added this spec (Problem through MRs) and linked C3–C5 delivery from `milestone-coordinator.spec.md`; 0 production lines; no deviations.
+
+## MRs
+
+| # | Title | Link | Status |
+|--:|---|---|---|
+| 1 | Spec: GitLab home, webhooks, hardening and the pilot's next steps | [!1](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/1) | draft |
