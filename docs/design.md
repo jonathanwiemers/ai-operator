@@ -895,6 +895,8 @@ counted interventions; more tools are later steps of
   selection, of the planner's and the implementer's milestone text and of
   the pilot's `spec`. The project controller copies the raw lines into
   `spec.rules` of the spec task (and from there of the `Coordinate` task);
+  `ensurePilot` writes it on a fresh copy, since a `/pilot stop` or a message
+  may have changed that task earlier in the poll;
   `PilotState` hashes them, so a rule change expires open proposals. A
   `switch` is applied to a copy of the project spec per milestone:
   `ci.*` for the CI loop of its issues (`rules.For` before `syncCI`),
