@@ -148,8 +148,8 @@ func toolchainsNote(base string, pins []string) string {
 		`point into $HOME/.toolchains, where installs are kept for later runs: for mise and .tool-versions files run mise ` +
 		`trust and mise install, then the tools with mise exec -- <command>; for rust-toolchain files run rustup toolchain ` +
 		`install (it adds the listed components and targets). If your branch changes a pin (git diff origin/` + base +
-		` -- <file>), install and run that version with MISE_DATA_DIR and RUSTUP_HOME each set to its own $(mktemp -d), ` +
-		`for this run only. No root or system packages, never pipe a downloaded script into a shell. If an install fails, ` +
+		` -- <file>), install and run that version for this run only, with only that tool's variable (MISE_DATA_DIR or ` +
+		`RUSTUP_HOME) set to its own $(mktemp -d). No root or system packages, never pipe a downloaded script into a shell. If an install fails, ` +
 		`say so in the summary.`
 }
 
