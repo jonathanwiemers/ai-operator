@@ -126,6 +126,18 @@ func TestPilotAssessesWithoutTheMilestonesState(t *testing.T) {
 	}
 }
 
+func TestPilotAssessmentWithoutTheStateIsDeferredByAUsageLimit(t *testing.T) {
+	e := newAssessEnv(t, "")
+	e.gl.Milestones = nil
+	e.engine.err = &UsageLimitError{Engine: aiv1.EngineClaude, Message: "usage limit"}
+	if _, err := e.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.task(t).Status.Run; r.LastResult != aiv1.RunResultDeferred || r.ObservedRunRequest != 0 || len(botNotes(e.gl, 5)) != 0 {
+		t.Fatalf("a usage limit defers the run, the event is assessed later: %+v, %q", r, botNotes(e.gl, 5))
+	}
+}
+
 func TestPilotAssessmentWithAnUnknownClassification(t *testing.T) {
 	if got := renderAssessment(PilotAssessment{Classification: "merge it", Evidence: "e", WouldDo: "w"}); !strings.Contains(got, "`unknown`") {
 		t.Fatalf("a classification off the list is unknown: %s", got)

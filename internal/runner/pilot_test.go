@@ -25,12 +25,16 @@ type pilotEngine struct {
 	reply      string
 	fail       string
 	assessment *PilotAssessment
+	err        error
 }
 
 func (p *pilotEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
 	p.calls = append(p.calls, inv)
 	if p.fail != "" && strings.Contains(inv.Prompt, p.fail) {
 		return nil, errors.New("engine crashed")
+	}
+	if p.err != nil {
+		return nil, p.err
 	}
 	b, _ := json.Marshal(PilotAnswer{Reply: p.reply})
 	if inv.JSONSchema == assessSchema {

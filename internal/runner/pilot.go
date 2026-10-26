@@ -53,7 +53,10 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			r.pilotReply(ctx, gl, spec, m, "The pilot could not read the milestone's state, so it cannot answer; ask again in a moment.")
 		}
 		// The events' own data is still worth an assessment.
-		_ = r.assessEvents(ctx, gl, task, spec, fmt.Sprintf("(the milestone's state could not be read: %v)", err), out, events, &st)
+		aerr := r.assessEvents(ctx, gl, task, spec, fmt.Sprintf("(the milestone's state could not be read: %v)", err), out, events, &st)
+		if _, limited := AsUsageLimit(aerr); limited {
+			return out, aerr
+		}
 		return out, s.fail(err)
 	}
 	s.done(fmt.Sprintf("%d bytes", len(state)))
