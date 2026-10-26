@@ -320,7 +320,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			errs = append(errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
-	if err := r.syncPilots(ctx, gl, project, spec, specTasks, pilots, keep); err != nil {
+	if err := r.syncPilots(ctx, gl, project, spec, specTasks, pilots, keep, issues, implTasks); err != nil {
 		errs = append(errs, err)
 	}
 

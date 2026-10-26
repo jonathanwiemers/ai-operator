@@ -827,18 +827,31 @@ default branch and the last comments of the tracking issue.
   me", at most once a day; further comments are ignored and cost nothing. A
   milestone without owners (`/agent owners` alone, and no `notify.users`) is
   answered for anyone, but `/pilot coordinate` needs owners.
-- **Answers only.** For now the pilot only answers: it starts no run, changes
-  no label, issue or spec. Asked to act, it says which command or label does
-  it. Its answers are made inert like all agent text: no mentions, no quick
-  actions.
+- **It also speaks first.** When autopilot pauses, an issue of the milestone
+  moves to `agent::needs-input` (CI still red after the fix rounds, a failed
+  run, questions), an issue is blocked by `infra` or `quota`, or (on
+  autopilot milestones) the default branch turns red or flaky, the pilot
+  posts one assessment on the tracking issue: what happened, a
+  classification (`infra`, `flaky`, `regression`, `env`, `decision`,
+  `unknown`), the evidence (the issue's last comments and run reports, the
+  failed jobs' logs, the same problem in other issues) and what it **would**
+  do, and mentions the owners once. Each event is assessed once: a poll
+  while it holds, or a label or pause flapped back and forth, does not
+  repeat it; a new head or a new reason does. A pause over an issue and
+  that issue's `agent::needs-input` are one event.
+- **Answers and assessments only.** For now the pilot acts on nothing: it
+  starts no run, changes no label, issue or spec. Asked to act, it says
+  which command or label does it. Its answers and assessments are made
+  inert like all agent text: no mentions (besides the owners' `cc`), no
+  quick actions.
 - **Cost.** It runs on the light model (`agents.pilot`) in its own pod with a
   resumed session, and is bounded by `pilot.maxBudgetUSD` (default `$20`)
   per milestone; once that is spent it answers that the budget is used up,
-  without a model call. Comments of non-owners never reach the model.
+  without a model call, and an assessment says only what happened. Comments
+  of non-owners never reach the model.
 
-Comments on the tracking issue, titles, run summaries and CI states reach the
-pilot as data, not as instructions: text in them that tries to steer it is
-ignored. The conversation with the pilot on an issue is no input for the
+Comments, titles, run summaries, CI states and job logs reach the pilot as
+data, not as instructions: text in them that tries to steer it is ignored. The conversation with the pilot on an issue is no input for the
 issue's implementer.
 
 ## Usage and rate limits

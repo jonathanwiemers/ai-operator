@@ -61,10 +61,11 @@ func TestPilotGetsTheOwnersQuestionOnce(t *testing.T) {
 	n := e.gl.AddNote(tracking, alice, "/pilot why are we paused?")
 	e.reconcile()
 	e.reconcile()
+	// The question is request 1; "/agent pause" wakes the pilot with request 2.
 	pilot := e.pilot()
 	msgs := pilot.Spec.Source.PilotMessages
 	if len(msgs) != 1 || msgs[0].NoteID != n.ID || msgs[0].Body != "why are we paused?" || msgs[0].IssueIID != tracking ||
-		msgs[0].Author != "alice" || msgs[0].Request != pilot.Spec.RunRequest || pilot.Spec.RunRequest != 1 {
+		msgs[0].Author != "alice" || msgs[0].Request != 1 || pilot.Spec.RunRequest != 2 {
 		t.Fatalf("expected the one question, once, with one run request: %+v (request %d)", msgs, pilot.Spec.RunRequest)
 	}
 	if c := botComments(e, tracking); strings.Contains(strings.Join(c, "\n"), "🧭") {
@@ -73,11 +74,11 @@ func TestPilotGetsTheOwnersQuestionOnce(t *testing.T) {
 
 	// Once answered, a mention of the bot is the next message; the answered
 	// one goes.
-	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Run.ObservedRunRequest = 1 })
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Run.ObservedRunRequest = 2 })
 	e.gl.AddNote(tracking, alice, "@ai-bot and now?")
 	e.reconcile()
 	msgs = e.pilot().Spec.Source.PilotMessages
-	if len(msgs) != 1 || msgs[0].Body != "and now?" || msgs[0].Request != 2 {
+	if len(msgs) != 1 || msgs[0].Body != "and now?" || msgs[0].Request != 3 {
 		t.Fatalf("expected only the new message: %+v", msgs)
 	}
 }
@@ -209,7 +210,8 @@ func TestPilotCoordinateStartsAPilot(t *testing.T) {
 	e.reconcile()
 	e.reconcile()
 	pilot = e.tasks()[pilotTaskName]
-	if msgs := pilot.Spec.Source.PilotMessages; len(msgs) != 1 || msgs[0].NoteID != n.ID || pilot.Spec.RunRequest != 1 {
+	// One run request for the message, one for #1, which needs input.
+	if msgs := pilot.Spec.Source.PilotMessages; len(msgs) != 1 || msgs[0].NoteID != n.ID || pilot.Spec.RunRequest != 2 {
 		t.Fatalf("the pilot listens on its tracking issue: %+v", msgs)
 	}
 	e.gl.AddNote(1, alice, "/pilot coordinate")
