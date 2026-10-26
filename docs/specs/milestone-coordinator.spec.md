@@ -267,6 +267,31 @@ a nextest timeout while the failure was an assertion in
 - Switch `mainHealth.autoFixFlaky` (default off) lets the controller do the
   hand-over itself at the second occurrence, also without a pilot.
 
+Implementation constraints (spec review):
+
+- **Logs are kept at retry time.** The watcher fetches traces only while
+  red; when it retries a red pipeline it records the failed jobs' IDs
+  (`status.mainHealth.retriedJobIDs`), and the flaky report reads their
+  traces after the green retry. The event carries the 🔁 issue's IID.
+- **One hand-over per issue, globally:** `status.mainHealth.flakyFixes`
+  (issue IID → milestone, when) is the latch; every pilot sees the same
+  flaky event, the first hand-over wins, later `fixFlaky` calls are refused
+  with a pointer. It also exempts the issue from the milestone title filter,
+  like `autoFixIssueIID`.
+- **Milestone:** `gitlab.UpdateIssueOptions` gets `MilestoneID` (and the
+  fake). `fixFlaky` uses the proposing pilot's milestone; `autoFixFlaky`
+  without a pilot uses the active autopilot milestone with the lowest IID,
+  else hands the issue over without a milestone (`agent::ready`, exempt from
+  the filter through the latch).
+- **Queue:** the item is added with its own flag (`AutopilotItem.FlakyFix`),
+  not as a revisit, so a re-plan keeps it and no decision side effects run.
+- **Validation:** `fixFlaky` is validated like `openIssue`: the issue is the
+  bot's open `ci::flaky` issue with its marker, has at least the required
+  occurrences, and is not latched yet.
+- **Trust:** the task text is the controller's fixed sentence; logs live only
+  in comments inside the untrusted-data markers; an issue whose description
+  is not the bot's marker plus one-liner is refused. Default off.
+
 ### Standing rules
 
 - Lines `/agent rule R<n>: <text>` in the milestone description; the
