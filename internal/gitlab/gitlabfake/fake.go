@@ -38,6 +38,10 @@ type Fake struct {
 	MergeErrors map[int64]error
 	// NoteErrors makes CreateIssueNote on an issue fail.
 	NoteErrors map[int64]error
+	// NoteErrorsAfterWrite makes the next CreateIssueNote on an issue store
+	// the note and then fail, like a write whose answer timed out. Each entry
+	// is used once.
+	NoteErrorsAfterWrite map[int64]error
 	// UpdateErrors makes UpdateIssue of an issue fail.
 	UpdateErrors map[int64]error
 	// Merged and Rebased record the MRs merged and rebased, in order.
@@ -49,6 +53,9 @@ type Fake struct {
 	MRDiffs map[int64][]gitlab.Diff
 	// CreateIssueError makes CreateIssue fail.
 	CreateIssueError error
+	// CreateErrorsAfterWrite makes the next CreateIssue calls create the
+	// issue and then fail with these errors, one per call, oldest first.
+	CreateErrorsAfterWrite []error
 	// Links between issues; FreeTier refuses blocking links like GitLab
 	// Free does.
 	Links    []Link
@@ -264,6 +271,11 @@ func (f *Fake) CreateIssue(_ context.Context, _ string, opts gitlab.CreateIssueO
 		}
 	}
 	f.Issues[iid] = is
+	if len(f.CreateErrorsAfterWrite) > 0 {
+		err := f.CreateErrorsAfterWrite[0]
+		f.CreateErrorsAfterWrite = f.CreateErrorsAfterWrite[1:]
+		return nil, err
+	}
 	c := *is
 	return &c, nil
 }
@@ -370,6 +382,10 @@ func (f *Fake) CreateIssueNote(_ context.Context, _ string, iid int64, body stri
 	f.IssueNotes[iid] = append(f.IssueNotes[iid], n)
 	if is := f.Issues[iid]; is != nil {
 		is.UpdatedAt = f.tick()
+	}
+	if err := f.NoteErrorsAfterWrite[iid]; err != nil {
+		delete(f.NoteErrorsAfterWrite, iid)
+		return nil, err
 	}
 	return &n, nil
 }

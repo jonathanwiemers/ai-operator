@@ -129,6 +129,56 @@ func TestRetriesReadsAfterATimeout(t *testing.T) {
 	}
 }
 
+// failing returns a fn for RetryTransient that fails with errs in turn, then
+// succeeds, and the number of its calls.
+func failing(errs ...error) (func() error, *int) {
+	n := 0
+	return func() error {
+		n++
+		if n <= len(errs) {
+			return errs[n-1]
+		}
+		return nil
+	}, &n
+}
+
+func TestRetryTransient(t *testing.T) {
+	ctx := context.Background()
+	timeout := &net.OpError{Op: "read", Err: os.ErrDeadlineExceeded}
+	unavailable := &Error{StatusCode: http.StatusServiceUnavailable, Method: "POST", Path: "notes"}
+	fn, n := failing(timeout, unavailable)
+	if err := RetryTransient(ctx, fn); err != nil || *n != 3 {
+		t.Fatalf("a timeout and a 503 are retried: %v after %d calls", err, *n)
+	}
+	fn, n = failing(unavailable, unavailable, unavailable, unavailable)
+	if err := RetryTransient(ctx, fn); err != unavailable || *n != maxAttempts {
+		t.Fatalf("gives up after %d attempts with the last error: %v after %d calls", maxAttempts, err, *n)
+	}
+	forbidden := &Error{StatusCode: http.StatusForbidden, Method: "POST", Path: "notes"}
+	fn, n = failing(forbidden)
+	if err := RetryTransient(ctx, fn); err != forbidden || *n != 1 {
+		t.Fatalf("a 403 is not retried: %v after %d calls", err, *n)
+	}
+}
+
+func TestRetryTransientStopsAtTheDeadline(t *testing.T) {
+	defer SetRetryBackoff(time.Minute)()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	start := time.Now()
+	fn, n := failing(&Error{StatusCode: http.StatusBadGateway}, nil)
+	if err := RetryTransient(ctx, fn); StatusCode(err) != http.StatusBadGateway || *n != 1 || time.Since(start) > 500*time.Millisecond {
+		t.Fatalf("a wait past the deadline is not started: %v, %d calls after %s", err, *n, time.Since(start))
+	}
+
+	ctx, cancel = context.WithCancel(context.Background())
+	calls := 0
+	err := RetryTransient(ctx, func() error { calls++; cancel(); return context.DeadlineExceeded })
+	if err != context.DeadlineExceeded || calls != 1 {
+		t.Fatalf("a done context ends the retries: %v after %d calls", err, calls)
+	}
+}
+
 func TestRateLimitWait(t *testing.T) {
 	now := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {

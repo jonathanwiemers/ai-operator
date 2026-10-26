@@ -354,8 +354,11 @@ nothing is lost.
   `updated_at` changed. The GitLab client retries what GitLab pushes back
   on: a 429 after `Retry-After` / `RateLimit-Reset` (up to a minute, for
   any method, since a rate-limited request did not run), and reads that hit
-  a 5xx, a timeout or a broken connection twice with a short backoff. Writes
-  are never retried on those, as GitLab may have applied them. A poll has a
+  a 5xx, a timeout or a broken connection twice with a short backoff. The
+  client does not retry writes on those, as GitLab may have applied them;
+  only plan apply does (`gitlab.RetryTransient`), having made its writes safe
+  to repeat: a timed-out issue create is looked up by its plan key and a
+  decisions note by its marker before trying again. A poll has a
   deadline (the poll interval, at least 2 minutes) that also ends the
   retries, and an edit of the live progress comment gives up after 10
   seconds. A poll that still fails with such an error is logged without a

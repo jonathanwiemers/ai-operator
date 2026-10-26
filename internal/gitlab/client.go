@@ -504,10 +504,48 @@ func (c *Client) send(ctx context.Context, method, u string, payload []byte) (*h
 	return resp, data, nil
 }
 
+// RetryTransient calls fn until it returns an error that is not transient (or
+// none), maxAttempts times at most, with the client's backoff in between. It
+// is for writes the caller made safe to repeat, which the client does not
+// retry on its own. A wait past the context's deadline is not started; the
+// last error is returned.
+func RetryTransient(ctx context.Context, fn func() error) error {
+	for attempt := 1; ; attempt++ {
+		err := fn()
+		if !IsTransient(err) || attempt >= maxAttempts || ctx.Err() != nil {
+			return err
+		}
+		wait := backoffAfter(attempt)
+		if d, has := ctx.Deadline(); has && time.Until(d) < wait {
+			return err
+		}
+		t := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return err
+		case <-t.C:
+		}
+	}
+}
+
+// SetRetryBackoff sets the first wait between retries, for the tests of
+// other packages, and returns a function that restores it.
+func SetRetryBackoff(d time.Duration) (restore func()) {
+	prev := retryBackoff
+	retryBackoff = d
+	return func() { retryBackoff = prev }
+}
+
+// backoffAfter is the wait after the attempt-th attempt: exponential, with jitter.
+func backoffAfter(attempt int) time.Duration {
+	b := retryBackoff << (attempt - 1)
+	return b + time.Duration(rand.Int64N(int64(b)/2+1))
+}
+
 // retryWait says whether a failed attempt is retried, and after how long.
 func retryWait(method string, resp *http.Response, err error, attempt int) (time.Duration, bool) {
-	backoff := retryBackoff << (attempt - 1)
-	backoff += time.Duration(rand.Int64N(int64(backoff)/2 + 1)) // jitter
+	backoff := backoffAfter(attempt)
 	var ge *Error
 	switch {
 	case errors.As(err, &ge) && ge.StatusCode == http.StatusTooManyRequests:

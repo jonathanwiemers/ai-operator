@@ -219,30 +219,48 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			if !hasLabelPrefix(ex.Labels, wf.EffortLabelPrefix) {
 				add = append(add, effortLabels(spec, item)...)
 			}
-			if _, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{
-				Title: item.Title, Description: desc, AddLabels: add,
+			if err := gitlab.RetryTransient(ctx, func() error {
+				_, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Title: item.Title, Description: desc, AddLabels: add})
+				return err
 			}); err != nil {
 				return created, updated, skipped, fmt.Errorf("updating issue #%d: %w", iid, err)
 			}
 			updated++
 			log.Info("issue updated", "iid", iid, "key", item.Key)
 		} else {
-			is, err := gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{
-				Title:       item.Title,
-				Description: desc,
-				Labels:      strings.Join(slices.Concat([]string{wf.GeneratedLabel, wf.DraftLabel}, profileLabels(spec, item), effortLabels(spec, item)), ","),
-				MilestoneID: m.ID,
-			})
-			if err != nil {
+			var is *gitlab.Issue
+			retry := false
+			if err := gitlab.RetryTransient(ctx, func() (err error) {
+				// A create that failed transiently may have been applied: its
+				// key marker finds it.
+				if retry {
+					if is, err = findPlanned(ctx, gl, glProject, m, item.Key); is != nil || err != nil {
+						return err
+					}
+				}
+				retry = true
+				is, err = gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{
+					Title:       item.Title,
+					Description: desc,
+					Labels:      strings.Join(slices.Concat([]string{wf.GeneratedLabel, wf.DraftLabel}, profileLabels(spec, item), effortLabels(spec, item)), ","),
+					MilestoneID: m.ID,
+				})
+				isNew = err == nil
+				return err
+			}); err != nil {
 				return created, updated, skipped, fmt.Errorf("creating issue %q: %w", item.Title, err)
 			}
 			iid = is.IID
 			created++
-			isNew = true
 			log.Info("issue created", "iid", iid, "key", item.Key, "profile", item.Profile, "effort", item.Effort)
 		}
-		// Decision IDs carry the IID, which is known now.
-		if err := pc.post(ctx, gl, glProject, iid, isNew, item.Decisions, wf.CommandPrefix); err != nil {
+		// Decision IDs carry the IID, which is known now. A post that failed
+		// transiently may have been stored: a retry looks for the note.
+		if err := gitlab.RetryTransient(ctx, func() error {
+			err := pc.post(ctx, gl, glProject, iid, isNew, item.Decisions, wf.CommandPrefix)
+			isNew = false
+			return err
+		}); err != nil {
 			return created, updated, skipped, err
 		}
 		keyToIID[item.Key] = iid
@@ -254,11 +272,28 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 	// every issue has an IID.
 	for _, p := range unresolved {
 		desc, _ := renderIssue(p.item, keyToIID)
-		if _, err := gl.UpdateIssue(ctx, glProject, p.iid, gitlab.UpdateIssueOptions{Description: desc}); err != nil {
+		if err := gitlab.RetryTransient(ctx, func() error {
+			_, err := gl.UpdateIssue(ctx, glProject, p.iid, gitlab.UpdateIssueOptions{Description: desc})
+			return err
+		}); err != nil {
 			return created, updated, skipped, fmt.Errorf("linking dependencies of #%d: %w", p.iid, err)
 		}
 	}
 	return created, updated, skipped, nil
+}
+
+// findPlanned returns the milestone's issue with the plan key, or nil.
+func findPlanned(ctx context.Context, gl gitlab.API, glProject string, m *gitlab.Milestone, key string) (*gitlab.Issue, error) {
+	issues, err := gl.ListIssues(ctx, glProject, gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
+	if err != nil {
+		return nil, fmt.Errorf("looking for issue %q: %w", key, err)
+	}
+	for i := range issues {
+		if k := issueKey(issues[i].Description); k != "" && k == key {
+			return &issues[i], nil
+		}
+	}
+	return nil, nil
 }
 
 var nonKey = regexp.MustCompile(`[^a-z0-9]+`)
