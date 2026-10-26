@@ -98,11 +98,16 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 				st.setSession("pilot", role.Engine, res.SessionID)
 				s.done(agentResult(role, res, "answered"), "session", res.SessionID, "costUSD", res.CostUSD)
 				reply = a.Reply
-				if err := r.propose(ctx, task, a.Proposal, stateOf, fmt.Sprintf("note/%d", m.NoteID)); err != nil {
+				trigger := m.IssueIID
+				if task.Spec.Issue != nil && trigger == task.Spec.Issue.IID {
+					trigger = 0
+				}
+				why := fmt.Sprintf("@%s asked: %s", m.Author, truncate(m.Body, 300))
+				if err := r.propose(ctx, task, a.Proposal, stateOf, fmt.Sprintf("note/%d", m.NoteID), trigger, why); err != nil {
 					failed = err
 					reply += "\n\n_The pilot's proposal could not be recorded._"
 				} else if a.Proposal != nil && len(a.Proposal.Actions) > 0 && task.Spec.Issue != nil {
-					reply += fmt.Sprintf("\n\n_The proposal follows on #%d, where an owner accepts it._", task.Spec.Issue.IID)
+					reply += "\n\n" + followsOn(spec, task)
 				}
 			}
 		}
@@ -282,11 +287,13 @@ const maxProposed = 10
 // it could not read get none.
 // source names the message or event it answers: a run started again does
 // not propose it twice.
-func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalAnswer, stateOf stateFunc, source string) error {
+// trigger is the issue it answers (0: the milestone), why the
+// classification and evidence or the message, for the audit comment.
+func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalAnswer, stateOf stateFunc, source string, trigger int64, why string) error {
 	if p == nil || len(p.Actions) == 0 || len(task.Spec.Owners) == 0 || stateOf == nil {
 		return nil
 	}
-	prop := aiv1.PilotProposal{Summary: truncate(p.Summary, 500), Source: source}
+	prop := aiv1.PilotProposal{Summary: truncate(p.Summary, 500), Source: source, Trigger: trigger, Why: truncate(why, 1000)}
 	for _, a := range p.Actions[:min(len(p.Actions), 5)] {
 		prop.Actions = append(prop.Actions, aiv1.PilotAction{Tool: truncate(a.Tool, 40), IssueIID: a.Issue, Kind: truncate(a.Kind, 40),
 			Note: truncate(a.Note, 2000), Title: truncate(a.Title, 200), Decision: truncate(a.Decision, 40)})
@@ -314,4 +321,13 @@ func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalA
 		t.Status.Pilot.Proposed = append(t.Status.Pilot.Proposed, prop)
 		return r.K8s.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
 	})
+}
+
+// followsOn says what becomes of the pilot's proposal: a pilot that
+// manages runs its counted tools itself, within its interventions.
+func followsOn(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask) string {
+	if spec.Pilot.AutonomyOf(task) == aiv1.PilotManaged {
+		return fmt.Sprintf("_The pilot runs it within its interventions, with an audit comment on #%d, or proposes it there._", task.Spec.Issue.IID)
+	}
+	return fmt.Sprintf("_The proposal follows on #%d, where an owner accepts it._", task.Spec.Issue.IID)
 }

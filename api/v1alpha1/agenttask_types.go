@@ -119,6 +119,12 @@ type SourceState struct {
 	// +optional
 	ReviewFor string `json:"reviewFor,omitempty"`
 
+	// PilotRun is a run request the pilot started (Implement tasks): that
+	// run keeps the issue's CI fix rounds (status.run.ciRound), unlike a
+	// human's.
+	// +optional
+	PilotRun int64 `json:"pilotRun,omitempty"`
+
 	// InfraRetry is the run request the operator made to retry a run that
 	// failed for an outside reason (run.blockReason infra), once per run
 	// request: a retry that fails the same way waits for a human.
@@ -219,6 +225,15 @@ type PilotProposal struct {
 	// does not propose it twice.
 	// +optional
 	Source string `json:"source,omitempty"`
+	// Trigger is the issue whose event or message it answers, 0 for the
+	// milestone (the tracking issue, a merge request): an openIssue counts
+	// against it.
+	// +optional
+	Trigger int64 `json:"trigger,omitempty"`
+	// Why is the classification and evidence, or the owner's message, it
+	// answers, for the audit comment. Untrusted.
+	// +optional
+	Why string `json:"why,omitempty"`
 }
 
 // PilotEvent is something the pilot assesses without being asked: an
@@ -297,6 +312,16 @@ type PilotStatus struct {
 	// oldest first, for autopilot and the revisits to apply once each.
 	// +optional
 	Commands []PilotCommand `json:"commands,omitempty"`
+
+	// AutonomyOverride is the owners' last "/pilot stop" or "/pilot go"
+	// (Coordinate tasks). It can only lower the project's pilot.autonomy.
+	// +optional
+	AutonomyOverride *PilotAutonomyOverride `json:"autonomyOverride,omitempty"`
+
+	// Interventions count the pilot's own actions per issue on the issue's
+	// current head (Coordinate tasks), by issue IID; "0" is the milestone.
+	// +optional
+	Interventions map[string]PilotIntervention `json:"interventions,omitempty"`
 }
 
 // PilotCommand is a skip, pause, resume or revisit an owner accepted from
@@ -308,6 +333,21 @@ type PilotCommand struct {
 	// Owner is who accepted it, OnIssue where it is answered.
 	Owner   string `json:"owner"`
 	OnIssue int64  `json:"onIssue"`
+}
+
+// PilotAutonomyOverride is an owner's "/pilot stop" (propose) or "/pilot
+// go" (managed).
+type PilotAutonomyOverride struct {
+	Autonomy PilotAutonomy `json:"autonomy"`
+	By       string        `json:"by"`
+	At       metav1.Time   `json:"at"`
+}
+
+// PilotIntervention counts the pilot's own actions on an issue's head.
+type PilotIntervention struct {
+	// +optional
+	Head  string `json:"head,omitempty"`
+	Count int32  `json:"count"`
 }
 
 // CIState is the state of the pipeline of the agent's last push.

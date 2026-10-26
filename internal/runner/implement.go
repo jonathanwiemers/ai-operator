@@ -461,17 +461,13 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	if pushed {
 		out.PushedSHA, _ = r.Mirror.resolve(ctx, "refs/heads/"+branch)
-		if ciFix {
-			out.CIRound = task.Status.Run.CIRound + 1
-		}
+		out.CIRound = ciRound(task, ciFix)
 		s.done(fmt.Sprintf("%s at %s", branch, shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
 	} else if r.pushedHead != "" {
 		// The last step pushed it all already, without CI: that head is the
 		// one CI has to check, and it needs a pipeline started.
 		out.PushedSHA = r.pushedHead
-		if ciFix {
-			out.CIRound = task.Status.Run.CIRound + 1
-		}
+		out.CIRound = ciRound(task, ciFix)
 		s.done(fmt.Sprintf("the last step pushed %s already", shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
 	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && head != task.Status.Run.PushedSHA && r.Mirror.HasChanges(ctx, base, head) {
 		// Someone else pushed to the branch (or made it) since the last
@@ -1179,4 +1175,17 @@ func firstCommand(notes []gitlab.Note, botID int64, prefix string) int64 {
 		}
 	}
 	return first
+}
+
+// ciRound is the CI fix round a push of this run counts as: a CI fix run
+// is one more, a run the pilot started keeps the count (so it cannot start
+// another full set of fix rounds), any other run starts over.
+func ciRound(task *aiv1.AgentTask, ciFix bool) int32 {
+	switch {
+	case ciFix:
+		return task.Status.Run.CIRound + 1
+	case task.Spec.Source.PilotRun == task.Spec.RunRequest:
+		return task.Status.Run.CIRound
+	}
+	return 0
 }

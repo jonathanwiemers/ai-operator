@@ -139,7 +139,7 @@ func TestPilotAssessmentWithoutTheStateIsDeferredByAUsageLimit(t *testing.T) {
 }
 
 func TestPilotAssessmentWithAnUnknownClassification(t *testing.T) {
-	if got := renderAssessment(PilotAssessment{Classification: "merge it", Evidence: "e", WouldDo: "w"}, false); !strings.Contains(got, "`unknown`") {
+	if got := renderAssessment(PilotAssessment{Classification: "merge it", Evidence: "e", WouldDo: "w"}, false, false); !strings.Contains(got, "`unknown`") {
 		t.Fatalf("a classification off the list is unknown: %s", got)
 	}
 }

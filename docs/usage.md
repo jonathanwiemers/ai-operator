@@ -835,12 +835,13 @@ default branch and the last comments of the tracking issue.
   classification (`infra`, `flaky`, `regression`, `env`, `decision`,
   `unknown`), the evidence (the issue's last comments and run reports, the
   failed jobs' logs, the same problem in other issues) and what it **would**
-  do, and mentions the owners once. Each event is assessed once: a poll
+  do, and mentions the owners once (when it manages and acts on it: no
+  mention, see below). Each event is assessed once: a poll
   while it holds, or a label or pause flapped back and forth, does not
   repeat it; a new head or a new reason does. A pause over an issue and
   that issue's `agent::needs-input` are one event.
-- **Proposals and `yes`.** The pilot acts only on a proposal an owner
-  accepts. An answer or an assessment can end with one; the operator posts
+- **Proposals and `yes`.** Unless it manages
+  (below), the pilot acts only on a proposal an owner accepts. An answer or an assessment can end with one; the operator posts
   it on the tracking issue as "🧭 **Proposal P3:** …" with its actions:
   - `retry #N`: a new run of the issue;
   - `reReview #N`: its reviewers run again on the pushed head;
@@ -869,6 +870,30 @@ default branch and the last comments of the tracking issue.
   an issue it names); a `yes` then gets "no longer applies". Only owners
   count: anyone else's `yes`, or a quoted one (`> yes`), does nothing, and
   on a milestone without owners there are no proposals.
+- **Managed.** On autopilot milestones the pilot **manages** by default
+  (`pilot.autonomy`): `retry`, `reReview`, `instruct` and `openIssue` run
+  without a `yes`, from an assessment or from an owner's message. Each
+  counts against its issue and that issue's head (an `openIssue` against
+  the issue whose event triggered it, on the tracking issue against the
+  milestone), at most `pilot.maxInterventionsPerIssue` (2) per head, and
+  each wake-up gets an **audit comment** on the tracking issue: "🧭 The
+  pilot acted on its own", what it did, on which issue, why (the
+  classification and evidence, or your message) and how many interventions
+  are left. The audit pings nobody; neither does an assessment whose
+  proposal the pilot acts on. Past the limit, and for everything else
+  (queue tools, spec edits, rules), it posts a proposal as above and
+  mentions the owners. An `instruct` it runs on its own is always a fixed
+  kind plus its hint as data; free text needs your `yes`. A run the pilot
+  starts keeps the issue's CI fix rounds (`status.run.ciRound`), unlike
+  your `/agent …`, so an intervention does not start another full set of
+  fix rounds. Other milestones, and every milestone when the project sets
+  `pilot.autonomy: propose`, only get proposals.
+- **Stop and go.** `/pilot stop` from an owner switches the milestone to
+  proposals at once; `/pilot go` switches it back to the project's value.
+  The operator handles both without a model call and keeps them (who and
+  when) in the pilot's status, over restarts. `go` never raises a
+  milestone above the project's value, and neither the milestone
+  description nor a rule changes the autonomy.
 - **Your own words.** `/pilot tell #12: use the v2 API` proposes to pass
   your words on to #12's implementer verbatim; after a `yes` it gets them
   as "instruction from @you via pilot" with its next run, and the issue

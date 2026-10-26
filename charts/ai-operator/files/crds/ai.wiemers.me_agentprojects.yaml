@@ -1085,6 +1085,18 @@ spec:
               pilot:
                 description: Pilot configures the milestone coordinator (see agents.pilot).
                 properties:
+                  autonomy:
+                    description: |-
+                      Autonomy: managed, the pilot retries, re-reviews, instructs (a fixed
+                      kind) and opens issues on its own, counted and audited on the
+                      tracking issue; propose, every action waits for an owner's "yes".
+                      Unset: managed on autopilot milestones, propose on the others; a set
+                      value applies to every milestone. Neither a milestone's description
+                      nor its rules change it; an owner's "/pilot stop" lowers it.
+                    enum:
+                    - managed
+                    - propose
+                    type: string
                   maxBudgetUSD:
                     default: "20"
                     description: |-
@@ -1093,6 +1105,14 @@ spec:
                       model call.
                     pattern: ^[0-9]+(\.[0-9]+)?$
                     type: string
+                  maxInterventionsPerIssue:
+                    default: 2
+                    description: |-
+                      MaxInterventionsPerIssue bounds the pilot's own actions per issue
+                      and head when it manages; past it, it proposes.
+                    format: int32
+                    minimum: 1
+                    type: integer
                   mention:
                     default: true
                     description: |-

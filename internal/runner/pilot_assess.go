@@ -23,6 +23,7 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		return nil
 	}
 	role := spec.Agents.Pilot
+	managed := spec.Pilot.AutonomyOf(task) == aiv1.PilotManaged
 	var failed error
 	for _, e := range events {
 		// Assessed before the run was cut off or deferred.
@@ -31,6 +32,7 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			continue
 		}
 		var body string
+		proposed := false
 		switch left := pilotLeft(spec, task, out); {
 		case left < 0.01:
 			body = fmt.Sprintf("The pilot's budget for this milestone ($%s, `pilot.maxBudgetUSD`) is used up, so there is no assessment.", spec.Pilot.MaxBudgetUSD)
@@ -56,8 +58,9 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			default:
 				s.done(agentResult(role, res, "assessed"), "costUSD", res.CostUSD)
 				// The proposal follows from the operator once it is recorded.
-				perr := r.propose(ctx, task, a.Proposal, stateOf, "event/"+id)
-				body = renderAssessment(a, perr == nil && a.Proposal != nil && len(a.Proposal.Actions) > 0)
+				perr := r.propose(ctx, task, a.Proposal, stateOf, "event/"+id, e.IssueIID, fmt.Sprintf("`%s`: %s", a.Classification, truncate(a.Evidence, 800)))
+				proposed = perr == nil && a.Proposal != nil && len(a.Proposal.Actions) > 0
+				body = renderAssessment(a, proposed, managed)
 				if perr != nil {
 					failed = perr
 					body += "\n\n_Its proposal could not be recorded._"
@@ -65,7 +68,11 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			}
 		}
 		what := prose(strings.Join(strings.Fields(truncate(e.Text, 300)), " "))
-		note := "🧭 **Assessment:** " + what + "\n\n" + body + notify.Mention(task.Spec.Owners)
+		note := "🧭 **Assessment:** " + what + "\n\n" + body
+		if !managed || !proposed {
+			// A pilot that manages acts, or pings with its proposal.
+			note += notify.Mention(task.Spec.Owners)
+		}
 		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, note); err != nil {
 			failed = fmt.Errorf("posting the assessment of %s: %w", e.Key, err)
 			continue
@@ -148,13 +155,16 @@ func buildAssessPrompt(e aiv1.PilotEvent, data, state string) string {
 
 // renderAssessment renders the pilot's assessment; agent text is made
 // inert.
-func renderAssessment(a PilotAssessment, proposed bool) string {
+func renderAssessment(a PilotAssessment, proposed, managed bool) string {
 	c := a.Classification
 	if !slices.Contains([]string{"infra", "flaky", "regression", "env", "decision"}, c) {
 		c = "unknown"
 	}
 	end := "_The pilot acts only on a proposal an owner accepts; there is none for this._"
-	if proposed {
+	switch {
+	case proposed && managed:
+		end = "_The pilot runs its proposal within its interventions, with an audit comment, or proposes it and pings the owners._"
+	case proposed:
 		end = "_Its proposal follows; an owner accepts it with `yes`._"
 	}
 	return fmt.Sprintf("**Classification:** `%s`\n\n**Evidence:** %s\n\n**What I would do:** %s\n\n%s", c, prose(a.Evidence), prose(a.WouldDo), end)

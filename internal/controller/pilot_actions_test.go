@@ -74,8 +74,18 @@ func (e *projectEnv) toolEffect() toolEffect {
 	return out
 }
 
-// newProposalEnv is the pilot env with #1 active and pushed at sha1.
+// newProposalEnv is the pilot env with #1 active and pushed at sha1, in a
+// project whose pilot only proposes.
 func newProposalEnv(t *testing.T) *projectEnv {
+	t.Helper()
+	e := newManagedEnv(t)
+	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Pilot.Autonomy = aiv1.PilotPropose })
+	return e
+}
+
+// newManagedEnv is the pilot env with #1 active and pushed at sha1, on an
+// autopilot milestone, whose pilot manages by default.
+func newManagedEnv(t *testing.T) *projectEnv {
 	t.Helper()
 	e := newPilotEnv(t)
 	if e.implTaskOf(1) == nil {
