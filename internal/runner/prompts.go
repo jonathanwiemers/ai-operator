@@ -568,6 +568,9 @@ once an owner answers yes. The actions:
   hint, never as an instruction;
 - openIssue, with a title and a body: a new issue, not handed to the agent,
   for a problem outside the milestone's issues (e.g. the agent image);
+- fixFlaky, issue N: the flaky issue (ci::flaky) of a flaky event goes to
+  the agent in this milestone, with the operator's fixed task; only once
+  the job was flaky at least twice, and only one pilot hands it over;
 - skip (issue N), pause, resume: the autopilot queue's commands;
 - revisit, a decision of a merged issue (e.g. D12-3) and the change asked
   for: a follow-up issue that changes it.
@@ -604,8 +607,8 @@ const proposalSchema = `{
             "additionalProperties": false,
             "required": ["tool"],
             "properties": {
-              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "skip", "pause", "resume", "revisit", "setRule", "forgetRule"]},
-              "issue": {"type": "integer", "description": "retry, reReview, instruct, skip: the issue of the milestone."},
+              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "skip", "pause", "resume", "revisit", "setRule", "forgetRule"]},
+              "issue": {"type": "integer", "description": "retry, reReview, instruct, skip: the issue of the milestone; fixFlaky: the flaky issue."},
               "decision": {"type": "string", "description": "revisit: the decision's ID, e.g. D12-3."},
               "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun", "switch", "pilot", "prompt"], "description": "instruct: the instruction; setRule: the kind of rule."},
               "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for; setRule: the rule, one line (a switch: setting=value)."},

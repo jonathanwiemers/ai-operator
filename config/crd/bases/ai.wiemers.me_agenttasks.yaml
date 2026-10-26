@@ -398,6 +398,12 @@ spec:
                             - id
                             type: object
                           type: array
+                        flakyFix:
+                          description: |-
+                            FlakyFix is set for a flaky job's issue handed to the agent
+                            (fixFlaky, mainHealth.autoFixFlaky): not in the plan, it stays on a
+                            re-plan.
+                          type: boolean
                         iid:
                           format: int64
                           type: integer
@@ -493,6 +499,12 @@ spec:
                           - id
                           type: object
                         type: array
+                      flakyFix:
+                        description: |-
+                          FlakyFix is set for a flaky job's issue handed to the agent
+                          (fixFlaky, mainHealth.autoFixFlaky): not in the plan, it stays on a
+                          re-plan.
+                        type: boolean
                       iid:
                         format: int64
                         type: integer
@@ -800,8 +812,8 @@ spec:
                                 type: string
                               tool:
                                 description: |-
-                                  Tool: retry, reReview, instruct, openIssue, skip, pause, resume or
-                                  revisit.
+                                  Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
+                                  resume, revisit, setRule or forgetRule.
                                 type: string
                             required:
                             - tool
@@ -915,8 +927,8 @@ spec:
                               type: string
                             tool:
                               description: |-
-                                Tool: retry, reReview, instruct, openIssue, skip, pause, resume or
-                                revisit.
+                                Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
+                                resume, revisit, setRule or forgetRule.
                               type: string
                           required:
                           - tool
@@ -1030,8 +1042,8 @@ spec:
                                 type: string
                               tool:
                                 description: |-
-                                  Tool: retry, reReview, instruct, openIssue, skip, pause, resume or
-                                  revisit.
+                                  Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
+                                  resume, revisit, setRule or forgetRule.
                                 type: string
                             required:
                             - tool
@@ -1129,8 +1141,8 @@ spec:
                                 type: string
                               tool:
                                 description: |-
-                                  Tool: retry, reReview, instruct, openIssue, skip, pause, resume or
-                                  revisit.
+                                  Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
+                                  resume, revisit, setRule or forgetRule.
                                 type: string
                             required:
                             - tool

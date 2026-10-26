@@ -104,13 +104,13 @@ func TestUpdateIssueSendsAssignees(t *testing.T) {
 	defer srv.Close()
 
 	is, err := New(srv.URL, "tok").UpdateIssue(context.Background(), "g/p", 7, UpdateIssueOptions{
-		AddLabels: []string{"agent::working"}, AssigneeIDs: []int64{999},
+		AddLabels: []string{"agent::working"}, AssigneeIDs: []int64{999}, MilestoneID: 41,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ids, ok := body["assignee_ids"].([]any)
-	if !ok || len(ids) != 1 || ids[0] != float64(999) || body["add_labels"] != "agent::working" {
+	if !ok || len(ids) != 1 || ids[0] != float64(999) || body["add_labels"] != "agent::working" || body["milestone_id"] != float64(41) {
 		t.Fatalf("unexpected body %v", body)
 	}
 	if len(is.Assignees) != 1 || is.Assignees[0].Username != "ai-bot" {

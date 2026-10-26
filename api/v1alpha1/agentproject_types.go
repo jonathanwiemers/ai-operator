@@ -611,6 +611,13 @@ type MainHealthSpec struct {
 	// (the main-red lane); otherwise a human merges it.
 	// +optional
 	AutoFix bool `json:"autoFix,omitempty"`
+
+	// AutoFixFlaky hands a flaky job's issue to the agent at its second
+	// occurrence, like the pilot's fixFlaky: into the active autopilot
+	// milestone with the lowest IID (its queue), else without a milestone
+	// (agent::ready).
+	// +optional
+	AutoFixFlaky bool `json:"autoFixFlaky,omitempty"`
 }
 
 // MainHealthState is the health of the default branch.
@@ -663,6 +670,10 @@ type MainHealthStatus struct {
 	// issues (state flaky only).
 	// +optional
 	Flaky []FlakyJobReport `json:"flaky,omitempty"`
+	// FlakyFixes are the flaky issues handed to the agent, once each: the
+	// first hand-over wins. They are not filtered by milestones.titlePattern.
+	// +optional
+	FlakyFixes []FlakyFix `json:"flakyFixes,omitempty"`
 	// CheckedAt is when the pipelines were last checked.
 	// +optional
 	CheckedAt *metav1.Time `json:"checkedAt,omitempty"`
@@ -680,6 +691,17 @@ type FlakyJobReport struct {
 	// LogTail is the defused end of the log.
 	// +optional
 	LogTail string `json:"logTail,omitempty"`
+}
+
+// FlakyFix is a flaky issue handed to the agent: into which milestone (0:
+// none), and when.
+type FlakyFix struct {
+	IssueIID int64 `json:"issueIID"`
+	// +optional
+	MilestoneIID int64 `json:"milestoneIID,omitempty"`
+	// +optional
+	MilestoneTitle string      `json:"milestoneTitle,omitempty"`
+	At             metav1.Time `json:"at"`
 }
 
 // NotifyEvent is a situation in which the operator needs a human.

@@ -809,7 +809,7 @@ counted interventions; more tools are later steps of
   twice; a comment that could not be posted fails the run.
 * **Proposals** (`internal/controller/pilot_actions.go`). An answer or an
   assessment may carry a proposal (`proposalSchema`: a summary and up to 5
-  actions of `retry`, `reReview`, `instruct` with a kind, `openIssue`, `skip`, `pause`, `resume`, `revisit`). The
+  actions of `retry`, `reReview`, `instruct` with a kind, `openIssue`, `fixFlaky`, `skip`, `pause`, `resume`, `revisit`). The
   runner executes nothing: it appends the proposal to
   `status.pilot.proposed` of the `Coordinate` task, with `state`, the hash
   of what it was made on (`aiv1.PilotState`: the spec task's description
@@ -850,7 +850,32 @@ counted interventions; more tools are later steps of
   with the run request it is for) and comments on the issue (a 🧭 comment
   the implementer's thread leaves out), `openIssue` creates an
   `ai-generated` issue without agent labels or milestone, marked
-  `<!-- ai-operator:pilot-issue=<title key> -->`. `skip`, `pause`,
+  `<!-- ai-operator:pilot-issue=<title key> -->`. `fixFlaky`
+  (`internal/controller/flakyfix.go`) is checked in GitLab too, when it is
+  posted and again when it runs (`checkFlaky`): the bot's open `ci::flaky`
+  issue whose title and description are the watcher's (marker and
+  one-liner, the same job in all three), not yet ending in the operator's
+  task, not in work, in no other milestone, with two bot occurrence
+  comments of that job from distinct pipelines, and not in
+  `status.mainHealth.flakyFixes`. `handOverFlaky` first appends the queue
+  item with `flakyFix` (kept by `mergeQueue` on a re-plan, no revisit side
+  effects; a skipped flaky fix is pending again) in a locked patch when the
+  milestone's autopilot queue runs, then sets the description to the
+  one-liner plus `fixFlakyTask`, the milestone
+  (`UpdateIssueOptions.MilestoneID`) and, without a queue, `agent::ready`
+  in one update: that update is the hand-over (when it fails, the queue
+  item goes again), and the task it leaves in the description refuses
+  another one even when the latch is lost. Then it
+  records the latch (issue, milestone, time; the newest 100, kept while the
+  watcher is off) in the project status, where the title filter exempts it
+  like `autoFixIssueIID`, and comments where it went.
+  The latch is written with the project status at the end of the poll; the
+  pilots of one poll run in turn, so the second sees the first's. With
+  `mainHealth.autoFixFlaky`, `syncMainHealth` does the same for the
+  reports of a retry that turned green, into the lane (the oldest
+  autopilot milestone that is not done) or none; a failed hand-over leaves
+  the status as it was but for the latches of those that went through, so
+  the check repeats (the occurrence comments are not posted twice). `skip`, `pause`,
   `resume` (only on a running or paused autopilot queue) and `revisit`
   (a decision ID) are appended to `status.pilot.commands` of the spec task
   with a sequence number, in a locked patch on a fresh copy: autopilot
@@ -872,11 +897,12 @@ counted interventions; more tools are later steps of
   records `managed`, which never raises a `propose` project. Nothing from
   the milestone or the model reaches it. When it manages, `postProposals`
   first takes the valid actions of the counted tools (`retry`, `reReview`,
-  `instruct` without owner text, `openIssue`) out of the runs' proposals
+  `instruct` without owner text, `openIssue`, `fixFlaky`) out of the runs' proposals
   whose state still holds (a stale one is posted whole and expires like any
   proposal), while their issue has interventions left: `status.pilot.interventions`
   counts by issue IID (an `openIssue` by the proposal's `trigger`, the
-  issue of its event or message, `0` for the milestone) and head, reset
+  issue of its event or message, `0` for the milestone; a `fixFlaky` by
+  `0`) and head, reset
   when the head moves, at most `pilot.maxInterventionsPerIssue`. They go to
   `status.pilot.accepted` with no `acceptedBy`, in the same locked patch as
   the counts, and `runAccepted` runs them at the end of the poll (refused,

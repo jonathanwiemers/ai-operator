@@ -20,7 +20,7 @@ import (
 
 // countedTools run without a "yes" when the pilot manages; queue tools,
 // spec edits and rules never do.
-var countedTools = []string{"retry", "reReview", "instruct", "openIssue"}
+var countedTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky"}
 
 // manage takes the actions the pilot runs on its own out of its runs'
 // proposals: valid, counted tools on issues with interventions left. It
@@ -75,12 +75,15 @@ func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int
 }
 
 // interventionKey is what an action counts against: its issue, an
-// openIssue the issue that triggered it ("0": the milestone), and that
-// issue's head.
+// openIssue the issue that triggered it ("0": the milestone), a fixFlaky
+// the milestone, and that issue's head.
 func interventionKey(a aiv1.PilotAction, trigger int64, tasks map[int64]*aiv1.AgentTask) (string, string) {
 	iid := a.IssueIID
-	if a.Tool == "openIssue" {
+	switch a.Tool {
+	case "openIssue":
 		iid = trigger
+	case "fixFlaky":
+		iid = 0
 	}
 	var head string
 	if t := tasks[iid]; t != nil && iid != 0 {

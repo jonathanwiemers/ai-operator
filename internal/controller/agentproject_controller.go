@@ -249,8 +249,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			return fmt.Errorf("listing issues with label %q: %w", label, err)
 		}
 		for _, is := range list {
-			// The main-red issue handed to the agent has no milestone.
-			autoFix := project.Status.MainHealth != nil && project.Status.MainHealth.AutoFixIssueIID == is.IID
+			// The main-red issue handed to the agent has no milestone, nor
+			// may a flaky one.
+			autoFix := project.Status.MainHealth != nil && project.Status.MainHealth.AutoFixIssueIID == is.IID || flakyLatch(project.Status.MainHealth, is.IID) != nil
 			if titleRE != nil && !autoFix && (is.Milestone == nil || !titleRE.MatchString(is.Milestone.Title)) {
 				continue
 			}
@@ -309,7 +310,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	// issue. One failing step does not hold up the others or the cleanup
 	// below.
 	var errs []error
-	if err := r.syncMainHealth(ctx, gl, project, spec); err != nil {
+	if err := r.syncMainHealth(ctx, gl, project, spec, lane); err != nil {
 		errs = append(errs, fmt.Errorf("main health: %w", err))
 	}
 	for _, st := range specTasks {

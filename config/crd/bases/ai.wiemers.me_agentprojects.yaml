@@ -986,6 +986,13 @@ spec:
                       per red episode. On autopilot, the frozen milestone merges its fix
                       (the main-red lane); otherwise a human merges it.
                     type: boolean
+                  autoFixFlaky:
+                    description: |-
+                      AutoFixFlaky hands a flaky job's issue to the agent at its second
+                      occurrence, like the pilot's fixFlaky: into the active autopilot
+                      milestone with the lowest IID (its queue), else without a milestone
+                      (agent::ready).
+                    type: boolean
                   disabled:
                     description: Disabled turns the watcher off.
                     type: boolean
@@ -1380,6 +1387,31 @@ spec:
                       required:
                       - issueIID
                       - job
+                      type: object
+                    type: array
+                  flakyFixes:
+                    description: |-
+                      FlakyFixes are the flaky issues handed to the agent, once each: the
+                      first hand-over wins. They are not filtered by milestones.titlePattern.
+                    items:
+                      description: |-
+                        FlakyFix is a flaky issue handed to the agent: into which milestone (0:
+                        none), and when.
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        issueIID:
+                          format: int64
+                          type: integer
+                        milestoneIID:
+                          format: int64
+                          type: integer
+                        milestoneTitle:
+                          type: string
+                      required:
+                      - at
+                      - issueIID
                       type: object
                     type: array
                   issueIID:
