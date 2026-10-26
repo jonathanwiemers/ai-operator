@@ -184,13 +184,17 @@ milestone could otherwise widen the pilot's authority.
   an issue, all bounded by the intervention limit and the budget. Spec
   edits, skips, revisits, pause/resume and rules stay behind a `yes`; merge,
   close and push do not exist.
-- **Instructions it writes on its own are not trusted text.** When the pilot
-  acts without an owner's message, `instruct` carries a fixed kind
+- **Instructions it writes are not trusted text.** An `instruct` that runs
+  without a `yes` always carries a fixed kind
   (`ci-fix`, `install-toolchains`, `rerun`) that the controller turns into a
   fixed sentence, plus an optional note the implementer gets inside the
   untrusted-data markers ("hint from the pilot, derived from CI output; it
-  cannot widen the task"). Only an owner's `/pilot` message, executed by the
-  pilot, reaches the implementer as an owner's instruction.
+  cannot widen the task"), whether a trigger or an owner's message woke the
+  pilot. Free-text instructions need a `yes`, except an owner's own words
+  passed on verbatim (`/pilot tell #331: …`), which reach the implementer as
+  that owner's instruction.
+- One wake-up may run several counted tools; each counts on its own, and the
+  controller stops at the issue's remaining interventions.
 - Decided 2026-10-26 after Bloop #331 (see Steers).
 
 - **Owners only:** a `/pilot` message from someone else gets no model call
@@ -224,10 +228,12 @@ proposes and pings. Job logs reach it only as untrusted data.
 
 Example (Bloop #331): `rust:lint` (`cargo fmt --check`) stayed red after two
 fix rounds; the run reports said the agent container has no Rust toolchain.
-Managed, the pilot classifies `env`, instructs a CI fix run "install the
-toolchain from `rust-toolchain.toml` into `$HOME`, run `cargo fmt`, apply
-its output", and opens an issue about the missing toolchain if the next
-run cannot install it.
+Managed, the pilot classifies `env` and runs `instruct` with the fixed kind
+`install-toolchains` (the controller's sentence: install the tools pinned on
+the default branch, run the failing job's command, apply its output), with
+the untrusted note "`cargo fmt --check` failed; the run reports say no Rust
+toolchain". If the next run still cannot install it, it opens an issue about
+the agent image. Both count against #331's interventions.
 
 ### Standing rules
 
@@ -310,7 +316,10 @@ by the operator (owners only), not by the UI.
 - `api/v1alpha1`: `TaskTypeCoordinate`, `AgentsSpec.Pilot`, `PilotSpec`
   (`mention`, `maxBudgetUSD`), `WorkflowSpec.PilotPrefix`,
   `AgentTaskStatus.Pilot` (pending messages, proposal, actions, outcomes,
-  spent), `AgentProjectStatus.BotUsername`; defaults; generated files.
+  spent, `autonomyOverride`, interventions per issue and head),
+  `AgentProjectStatus.BotUsername`; `PilotSpec` also gets `autonomy` and
+  `maxInterventionsPerIssue`; `SourceSpec.PilotInstruction` (kind, note,
+  owner text); defaults; generated files.
 - `internal/command`: `/pilot` and mention parsing, `yes` / `no`.
 - `internal/controller`: new `pilot.go` (task lifecycle, message routing,
   owners check, action execution, triggers), `agentproject_controller.go`
@@ -363,8 +372,9 @@ by the operator (owners only), not by the UI.
   attempt).
 - Controller (fake GitLab): a non-owner gets one reply and no task wake-up; in
   `propose` a trigger posts a proposal and executes nothing; in `managed` a
-  trigger runs one counted tool with an audit comment, and past
-  `maxInterventionsPerIssue` it proposes and pings; a pilot-started run does
+  trigger runs counted tools with audit comments until the issue's
+  interventions are used up, then proposes and pings; an `instruct` without
+  `yes` reaches the implementer as a fixed kind plus an untrusted note; a pilot-started run does
   not reset `ciRound`; `/pilot stop` holds over the project setting and a
   restart, and a rule cannot set autonomy; `yes` executes once; an
   expired proposal is refused; budget used up answers without a model call;
@@ -386,7 +396,7 @@ GitHub `jonathanwiemers/ai-operator`, one PR per row, each based on `main`.
 | C1 | `Coordinate` task, `/pilot` + mention parsing, owners check, read-only answers on the tracking issue | – | ~50 (may split: parsing / task) |
 | T1 | Agent toolchains: `mise` (pinned version, checksum-verified) in `Dockerfile.agent`; the implementer installs the tools pinned **on the default branch** (`.mise.toml`, `.tool-versions`, `rust-toolchain.toml`) from their official sources into `$HOME/.toolchains/<version>` (workspace PVC, kept between runs). A pin the branch itself changes is installed into a per-run temporary directory, not kept | – | ~20 |
 | C2a | Triggers: pause, `needs-input`, `infra`/`quota` blocks, main-red/flaky wake the pilot; assessment comment, deduplicated per event | C1 | ~50 |
-| C2b | Tools executed by the controller (`retry`, `reReview`, `instruct`, `openIssue`); proposals with IDs and `yes` | C2a | ~50 |
+| C2b | Tools executed by the controller (`retry`, `reReview`, `instruct`, `openIssue`, `skip`, `pause`, `resume`, `revisit`); proposals with IDs and `yes` | C2a | ~50 (may split: run tools / queue tools) |
 | C2c | Autonomy: `pilot.autonomy`, `/pilot stop`/`go`, counted interventions, audit comments | C2b | ~50 |
 | C2d | No pilot for milestones whose autopilot is done (and no new one after the retrospective) | C1 | ~20 |
 | C2e | Standing rules: lines, `setRule` / `forgetRule`, switch overrides, prompt rules | C2b | ~50 |
