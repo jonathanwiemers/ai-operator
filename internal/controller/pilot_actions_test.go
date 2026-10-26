@@ -231,7 +231,7 @@ func TestPilotActionValidation(t *testing.T) {
 		{aiv1.PilotAction{Tool: "openIssue"}, "needs a title"},
 		{aiv1.PilotAction{Tool: "openIssue", Title: "Old"}, "opened an issue with this title before"},
 	} {
-		err := validAction(tc.a, tasks, []string{titleKey("old")})
+		err := validAction(tc.a, &aiv1.AgentTask{}, tasks, []string{titleKey("old")})
 		if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
 			t.Errorf("%+v: got %v, want %q", tc.a, err, tc.want)
 		}

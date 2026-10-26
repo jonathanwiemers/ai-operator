@@ -98,6 +98,26 @@ func (r *AgentProjectReconciler) syncRevisits(ctx context.Context, gl gitlab.API
 			rs = st.Status.Revisits
 		}
 	}
+	// Revisits from proposals an owner accepted, once each.
+	if ps := st.Status.Pilot; ps != nil {
+		for _, c := range ps.Commands {
+			if c.Seq <= rs.LastPilotCommand {
+				continue
+			}
+			if c.Action.Tool == "revisit" {
+				n := gitlab.Note{Author: gitlab.User{Username: c.Owner + " via the pilot"}}
+				if err := r.revisitAfterMerge(ctx, gl, spec, st, project.Status.BotUserID, c.OnIssue, n, c.Action.Decision, inert(c.Action.Note)); err != nil {
+					return err
+				}
+			}
+			orig := st.DeepCopy()
+			st.Status.Revisits.LastPilotCommand = c.Seq
+			if err := r.Status().Patch(ctx, st, client.MergeFrom(orig)); err != nil {
+				return err
+			}
+			rs = st.Status.Revisits
+		}
+	}
 	if len(closed) == 0 {
 		return nil // nothing new: keep the window, save a status write
 	}

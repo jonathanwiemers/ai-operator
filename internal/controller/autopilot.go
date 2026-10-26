@@ -1085,50 +1085,68 @@ func (a *autopilot) commands(ctx context.Context) error {
 		if n.ID <= a.ap.LastCommandNoteID || !IsCommand(n, a.project.Status.BotUserID, prefix) {
 			continue
 		}
-		prev := a.ap.LastCommandNoteID
-		a.ap.LastCommandNoteID = n.ID
 		rest := strings.TrimPrefix(strings.TrimSpace(n.Body), prefix)
 		// Padded, so a bare command and a bare "skip" have their fields.
-		fields := append(strings.Fields(strings.TrimLeft(rest, ": \t")), "")
+		fields := append(strings.Fields(strings.TrimLeft(rest, ": \t")), "", "")
 		word := strings.ToLower(strings.TrimSuffix(fields[0], ":"))
 		if word == "revisit" {
 			// syncRevisits handles (and answers) the well-formed ones.
 			if m := marker.Revisit.FindStringSubmatch(n.Body); m != nil && m[1] == prefix {
+				a.ap.LastCommandNoteID = n.ID
 				continue
 			}
 			word = ""
 		}
-		switch word {
-		case "pause":
-			if a.ap.Phase != aiv1.AutopilotDone {
-				a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotPaused, "paused by @"+n.Author.Username
-				a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
-			}
-		case "resume":
-			if a.ap.Phase == aiv1.AutopilotPaused {
-				if err := a.unblockActive(ctx); err != nil {
-					a.ap.LastCommandNoteID = prev // tried again on the next poll
-					return err
-				}
-				a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotRunning, ""
-				a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
-			}
-		case "skip":
-			iid, _ := strconv.ParseInt(strings.TrimPrefix(fields[1], "#"), 10, 64)
-			it := a.item(iid)
-			if it == nil || it.State == aiv1.AutopilotItemMerged {
-				if err := a.comment(ctx, fmt.Sprintf("`skip` needs a planned issue that is not merged yet, e.g. `%s skip #12`.", prefix)); err != nil {
-					return err
-				}
+		// Tried again on the next poll when it fails.
+		if err := a.command(ctx, word, fields[1], "@"+n.Author.Username); err != nil {
+			return err
+		}
+		a.ap.LastCommandNoteID = n.ID
+	}
+	// The same commands from proposals an owner accepted; revisits are
+	// syncRevisits'.
+	if ps := a.st.Status.Pilot; ps != nil {
+		for _, c := range ps.Commands {
+			if c.Seq <= a.ap.LastPilotCommand {
 				continue
 			}
-			it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
-		default:
-			if err := a.comment(ctx, a.unknownCommand()); err != nil {
-				a.ap.LastCommandNoteID = prev // answered on the next poll
+			if c.Action.Tool != "revisit" {
+				if err := a.command(ctx, c.Action.Tool, fmt.Sprintf("#%d", c.Action.IssueIID), "@"+c.Owner+" via the pilot"); err != nil {
+					return err
+				}
+			}
+			a.ap.LastPilotCommand = c.Seq
+		}
+	}
+	return nil
+}
+
+// command applies one command of the tracking issue: pause, resume or
+// skip arg, by someone; it answers anything else.
+func (a *autopilot) command(ctx context.Context, word, arg, by string) error {
+	switch word {
+	case "pause":
+		if a.ap.Phase != aiv1.AutopilotDone {
+			a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotPaused, "paused by "+by
+			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
+		}
+	case "resume":
+		if a.ap.Phase == aiv1.AutopilotPaused {
+			if err := a.unblockActive(ctx); err != nil {
 				return err
 			}
+			a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotRunning, ""
+			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 		}
+	case "skip":
+		iid, _ := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64)
+		it := a.item(iid)
+		if it == nil || it.State == aiv1.AutopilotItemMerged {
+			return a.comment(ctx, fmt.Sprintf("`skip` needs a planned issue that is not merged yet, e.g. `%s skip #12`.", a.spec.Workflow.CommandPrefix))
+		}
+		it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+	default:
+		return a.comment(ctx, a.unknownCommand())
 	}
 	return nil
 }

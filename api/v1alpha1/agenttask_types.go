@@ -174,15 +174,20 @@ var PilotInstructKinds = []string{"ci-fix", "install-toolchains", "rerun"}
 // PilotAction is one action of a proposal of the pilot; the operator
 // validates and executes it once an owner accepts the proposal.
 type PilotAction struct {
-	// Tool: retry, reReview, instruct or openIssue.
+	// Tool: retry, reReview, instruct, openIssue, skip, pause, resume or
+	// revisit.
 	Tool string `json:"tool"`
+	// Decision to revisit, e.g. D12-3; Note is the change asked for.
+	// +optional
+	Decision string `json:"decision,omitempty"`
 	// +optional
 	IssueIID int64 `json:"issueIID,omitempty"`
 	// Kind of an instruct, one of PilotInstructKinds.
 	// +optional
 	Kind string `json:"kind,omitempty"`
 	// Note: the pilot's hint to the implementer (instruct), the body of
-	// the issue it opens (openIssue). Untrusted.
+	// the issue it opens (openIssue), the change asked for (revisit).
+	// Untrusted.
 	// +optional
 	Note string `json:"note,omitempty"`
 	// Title of the issue it opens (openIssue).
@@ -287,6 +292,22 @@ type PilotStatus struct {
 	// OpenedIssues are the title keys of the issues the pilot opened.
 	// +optional
 	OpenedIssues []string `json:"openedIssues,omitempty"`
+
+	// Commands are the queue commands of accepted proposals (spec tasks),
+	// oldest first, for autopilot and the revisits to apply once each.
+	// +optional
+	Commands []PilotCommand `json:"commands,omitempty"`
+}
+
+// PilotCommand is a skip, pause, resume or revisit an owner accepted from
+// the pilot.
+type PilotCommand struct {
+	// Seq orders the commands; each consumer remembers the last it handled.
+	Seq    int64       `json:"seq"`
+	Action PilotAction `json:"action"`
+	// Owner is who accepted it, OnIssue where it is answered.
+	Owner   string `json:"owner"`
+	OnIssue int64  `json:"onIssue"`
 }
 
 // CIState is the state of the pipeline of the agent's last push.
@@ -731,6 +752,11 @@ type AutopilotStatus struct {
 	// +optional
 	LastCommandNoteID int64 `json:"lastCommandNoteID,omitempty"`
 
+	// LastPilotCommand is the newest queue command from the pilot handled
+	// (status.pilot.commands).
+	// +optional
+	LastPilotCommand int64 `json:"lastPilotCommand,omitempty"`
+
 	// TrackingHash is the hash of the tracking issue's last rendered
 	// description, so it is only edited when it changes.
 	// +optional
@@ -797,6 +823,10 @@ type RevisitStatus struct {
 	// LastNoteIDs is the newest handled comment per issue IID.
 	// +optional
 	LastNoteIDs map[string]int64 `json:"lastNoteIDs,omitempty"`
+	// LastPilotCommand is the newest revisit from the pilot handled
+	// (status.pilot.commands).
+	// +optional
+	LastPilotCommand int64 `json:"lastPilotCommand,omitempty"`
 }
 
 // DecisionRef points to a decision recorded on an issue.

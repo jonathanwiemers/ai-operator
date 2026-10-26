@@ -29,17 +29,38 @@ import (
 
 // pilotTools are the tools the pilot may propose; merging, closing and
 // pushing are none of them.
-var pilotTools = []string{"retry", "reReview", "instruct", "openIssue"}
+var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "skip", "pause", "resume", "revisit"}
+
+// queueTools go through the tracking issue's commands.
+var queueTools = []string{"skip", "pause", "resume", "revisit"}
 
 // proposalTTL is how long a proposal can be accepted.
 const proposalTTL = 24 * time.Hour
 
-// validAction checks an action against the milestone: a known tool, an
-// issue of the milestone with a task, a kind of instruction, an issue
-// title the pilot has not opened yet.
-func validAction(a aiv1.PilotAction, tasks map[int64]*aiv1.AgentTask, opened []string) error {
-	if !slices.Contains(pilotTools, a.Tool) {
+// validAction checks an action against the milestone (spec task st): a
+// known tool, an issue of the milestone with a task, a kind of
+// instruction, an issue title the pilot has not opened yet, an autopilot
+// queue the command applies to.
+func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string) error {
+	ap := st.Status.Autopilot
+	running := st.Spec.Autopilot && ap != nil && ap.Phase != aiv1.AutopilotOff && ap.Phase != aiv1.AutopilotDone
+	switch {
+	case !slices.Contains(pilotTools, a.Tool):
 		return fmt.Errorf("`%s` is not a tool of the pilot; merging, closing and pushing are not available", inertLine(a.Tool, 40))
+	case a.Tool == "revisit" && marker.DecisionIssue(a.Decision) == 0:
+		return fmt.Errorf("`%s` is not a decision", inertLine(a.Decision, 40))
+	case a.Tool == "revisit":
+		return nil
+	case slices.Contains(queueTools, a.Tool) && !running:
+		return errors.New("this milestone has no autopilot queue")
+	case a.Tool == "pause" && ap.Phase == aiv1.AutopilotPaused, a.Tool == "resume" && ap.Phase != aiv1.AutopilotPaused:
+		return fmt.Errorf("autopilot is %s", strings.ToLower(string(ap.Phase)))
+	case a.Tool == "pause" || a.Tool == "resume":
+		return nil
+	case a.Tool == "skip" && !slices.ContainsFunc(ap.Items, func(it aiv1.AutopilotItem) bool { return it.IID == a.IssueIID && it.State != aiv1.AutopilotItemMerged }):
+		return fmt.Errorf("#%d is no planned issue that is not merged yet", a.IssueIID)
+	case a.Tool == "skip":
+		return nil
 	}
 	if a.Tool == "openIssue" {
 		switch {
@@ -107,7 +128,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 				// Only the operator passes an owner's words on.
 				p.Actions[j].Owner, p.Actions[j].Text = "", ""
 			}
-			err := validAction(p.Actions[j], tasks, opened)
+			err := validAction(p.Actions[j], st, tasks, opened)
 			if err == nil {
 				valid++
 				if p.Actions[j].Tool == "openIssue" {
@@ -231,7 +252,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 	for i, p := range accepted {
 		errs[i] = make([]error, len(p.Actions))
 		for j, a := range p.Actions {
-			if errs[i][j] = validAction(a, tasks, opened); errs[i][j] == nil && a.Tool == "openIssue" {
+			if errs[i][j] = validAction(a, st, tasks, opened); errs[i][j] == nil && a.Tool == "openIssue" {
 				opened = append(opened, titleKey(a.Title))
 			}
 		}
@@ -245,7 +266,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		fmt.Fprintf(&b, "🧭 Proposal P%d accepted by `@%s`:", p.ID, p.AcceptedBy)
 		for j, a := range p.Actions {
 			if errs[i][j] == nil {
-				if errs[i][j] = r.runAction(ctx, gl, spec, st, p.ID, p.AcceptedBy, a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
+				if errs[i][j] = r.runAction(ctx, gl, spec, st, tracking, p.ID, p.AcceptedBy, a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
 					failed = append(failed, titleKey(a.Title)) // may be opened again
 				}
 			}
@@ -265,8 +286,10 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 }
 
 // runAction executes one validated action of an accepted proposal.
-func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, id int64, by string, a aiv1.PilotAction, t *aiv1.AgentTask) error {
+func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tracking, id int64, by string, a aiv1.PilotAction, t *aiv1.AgentTask) error {
 	switch a.Tool {
+	case "skip", "pause", "resume", "revisit":
+		return r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
 	case "openIssue":
 		_, err := gl.CreateIssue(ctx, spec.GitLab.Project, gitlab.CreateIssueOptions{
 			Title: inertLine(a.Title, 200),
@@ -304,6 +327,45 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, s
 	return nil
 }
 
+// maxPilotCommands bounds the queue commands that wait to be applied.
+const maxPilotCommands = 20
+
+// queueCommand hands an accepted queue command to the paths of the
+// tracking issue's commands: autopilot applies skip, pause and resume on
+// its next poll, the revisits a revisit. Each remembers the last it
+// applied, so a command applies once.
+func (r *AgentProjectReconciler) queueCommand(ctx context.Context, st *aiv1.AgentTask, c aiv1.PilotCommand) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var t aiv1.AgentTask
+		if err := r.Get(ctx, client.ObjectKeyFromObject(st), &t); err != nil {
+			return err
+		}
+		orig := t.DeepCopy()
+		if t.Status.Pilot == nil {
+			t.Status.Pilot = &aiv1.PilotStatus{}
+		}
+		cmds := slices.Clone(t.Status.Pilot.Commands)
+		c.Seq = 1
+		if n := len(cmds); n > 0 {
+			c.Seq = cmds[n-1].Seq + 1
+		}
+		// Those every path applied go; the last keeps the sequence.
+		var done int64
+		if rs := t.Status.Revisits; rs != nil {
+			done = rs.LastPilotCommand
+		}
+		if ap := t.Status.Autopilot; ap != nil {
+			done = min(done, ap.LastPilotCommand)
+		}
+		cmds = slices.DeleteFunc(cmds, func(x aiv1.PilotCommand) bool { return x.Seq <= done && x.Seq != c.Seq-1 })
+		if len(cmds) >= maxPilotCommands {
+			return fmt.Errorf("%d commands of the pilot wait to be applied", len(cmds))
+		}
+		t.Status.Pilot.Commands = append(cmds, c)
+		return r.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
+	})
+}
+
 // askReview asks the next run of task to review head again without the
 // implementer, also a head it reviewed again before.
 func (r *AgentProjectReconciler) askReview(ctx context.Context, task *aiv1.AgentTask, head string) error {
@@ -339,6 +401,12 @@ func describeAction(a aiv1.PilotAction, err error) string {
 				s += ", with the pilot's hint: " + inertLine(a.Note, 2000)
 			}
 		}
+	case "skip":
+		s = fmt.Sprintf("**skip** #%d: autopilot leaves it out", a.IssueIID)
+	case "pause", "resume":
+		s = fmt.Sprintf("**%s** autopilot", a.Tool)
+	case "revisit":
+		s = fmt.Sprintf("**revisit** %s, asking for: %s", inertLine(a.Decision, 40), inertLine(a.Note, 2000))
 	case "openIssue":
 		s = fmt.Sprintf("**openIssue** %q, not handed to the agent, with the body: %s", inertLine(a.Title, 200), inertLine(a.Note, 2000))
 	default:
@@ -436,7 +504,7 @@ func (r *AgentProjectReconciler) proposeTell(ctx context.Context, gl gitlab.API,
 		return "", err
 	}
 	a := aiv1.PilotAction{Tool: "instruct", IssueIID: iid, Owner: n.Author.Username, Text: truncateUTF8(text, maxPilotMessage)}
-	if err := validAction(a, tasks, nil); err != nil {
+	if err := validAction(a, st, tasks, nil); err != nil {
 		return "Not proposed: " + err.Error() + ".", nil
 	}
 	tracking := trackingIssue(st, coord)
