@@ -118,10 +118,11 @@ func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.
 		}
 	}
 	retried := same && st.State == aiv1.MainHealthRetrying
-	st.PipelineID, st.SHA = p.ID, p.SHA
+	retriedIDs := st.RetriedJobIDs
+	st.PipelineID, st.SHA, st.RetriedJobIDs, st.Flaky = p.ID, p.SHA, nil, nil
 	if !red {
 		if retried && *mh.Issue {
-			if err := reportFlaky(ctx, gl, glProject, bot, p, st.FailedJobs); err != nil {
+			if st.Flaky, err = reportFlaky(ctx, gl, glProject, bot, p, st.FailedJobs, retriedIDs); err != nil {
 				return err
 			}
 		}
@@ -155,6 +156,7 @@ func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.
 	st.FailedJobs = nil
 	for _, j := range jobs {
 		st.FailedJobs = append(st.FailedJobs, jobName(j.Name))
+		st.RetriedJobIDs = append(st.RetriedJobIDs, j.ID)
 	}
 	if !same && *mh.RetryFailedJobs {
 		log.FromContext(ctx).Info("default branch is red, retrying its failed jobs once", "pipeline", p.ID, "jobs", st.FailedJobs)
@@ -165,6 +167,7 @@ func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.
 		}
 		log.FromContext(ctx).Info("could not retry the default branch's pipeline", "pipeline", p.ID, "error", err.Error())
 	}
+	st.RetriedJobIDs = nil
 	if *mh.Issue && (st.IssueIID == 0 || !slices.Equal(st.ReportedJobs, st.FailedJobs)) {
 		if err := r.reportMainRed(ctx, gl, spec, bot, proj.DefaultBranch, p, jobs, st); err != nil {
 			return err
@@ -217,28 +220,105 @@ func (r *AgentProjectReconciler) reportMainRed(ctx context.Context, gl gitlab.AP
 	return nil
 }
 
-// reportFlaky records the jobs that passed on retry: a comment on each job's
-// flaky issue, opened on its first occurrence. A large matrix reports its
-// first jobs only.
-func reportFlaky(ctx context.Context, gl gitlab.API, glProject string, bot int64, p gitlab.Pipeline, jobs []string) error {
+// reportFlaky records the jobs that passed on retry: an occurrence comment
+// on each job's flaky issue, opened on its first occurrence with the
+// one-liner only. The comment names the failing tests and quotes the tail
+// of the failed attempt's log (ids, in the order of jobs), both as
+// untrusted data. A large matrix reports its first jobs only.
+func reportFlaky(ctx context.Context, gl gitlab.API, glProject string, bot int64, p gitlab.Pipeline, jobs []string, ids []int64) ([]aiv1.FlakyJobReport, error) {
 	list, err := gl.ListIssues(ctx, glProject, gitlab.ListIssuesOptions{Labels: []string{flakyLabel}})
 	if err != nil {
-		return fmt.Errorf("listing issues with label %q: %w", flakyLabel, err)
+		return nil, fmt.Errorf("listing issues with label %q: %w", flakyLabel, err)
 	}
-	for _, j := range jobs[:min(len(jobs), mainRedJobs)] {
-		note := fmt.Sprintf("🔁 `%s` failed in pipeline %s at `%s` and passed on retry.", j, p.WebURL, p.SHA)
-		m := "<!-- ai-operator:flaky-job=" + j + " -->"
-		if is := ownIssue(list, bot, m); is != nil {
-			_, err = gl.CreateIssueNote(ctx, glProject, is.IID, note)
-		} else {
-			_, err = gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{Title: "🔁 Flaky CI job: `" + j + "`", Description: m + "\n" + note, Labels: "ai-generated," + flakyLabel})
+	var out []aiv1.FlakyJobReport
+	for i, j := range jobs[:min(len(jobs), mainRedJobs)] {
+		line := fmt.Sprintf("🔁 `%s` failed in pipeline %s at `%s` and passed on retry.", j, p.WebURL, p.SHA)
+		trace := "(the log of the failed attempt was not recorded)"
+		if i < len(ids) {
+			if trace, err = gl.JobTrace(ctx, glProject, ids[i]); err != nil {
+				trace = fmt.Sprintf("(log not available: %v)", err)
+			}
 		}
-		if err != nil {
-			return fmt.Errorf("reporting flaky job %q: %w", j, err)
+		rep := aiv1.FlakyJobReport{Job: j, Tests: failingTests(trace), LogTail: logTail(trace)}
+		m := flakyMarker(j)
+		is := ownIssue(list, bot, m)
+		if is == nil {
+			if is, err = gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{Title: "🔁 Flaky CI job: `" + j + "`", Description: m + "\n" + line, Labels: "ai-generated," + flakyLabel}); err != nil {
+				return nil, fmt.Errorf("reporting flaky job %q: %w", j, err)
+			}
+			// A failed comment below must not open a second issue.
+			list = append(list, *is)
 		}
+		rep.IssueIID = is.IID
+		if _, err = gl.CreateIssueNote(ctx, glProject, is.IID, flakyOccurrence(p.ID, line, rep)); err != nil {
+			return nil, fmt.Errorf("reporting flaky job %q on issue #%d: %w", j, is.IID, err)
+		}
+		out = append(out, rep)
 	}
-	return nil
+	return out, nil
 }
+
+// flakyMarker starts the description of a job's flaky issue.
+func flakyMarker(job string) string { return "<!-- ai-operator:flaky-job=" + job + " -->" }
+
+// flakyOccurrenceMarker starts an occurrence comment, with its pipeline.
+const flakyOccurrenceMarker = "<!-- ai-operator:flaky-occurrence="
+
+// flakyOccurrence is the comment of one occurrence: the trusted one-liner,
+// then the failing tests and the log tail as untrusted data.
+func flakyOccurrence(pipeline int64, line string, rep aiv1.FlakyJobReport) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s%d -->\n%s\n\n%s\n", flakyOccurrenceMarker, pipeline, line, marker.UntrustedData)
+	if len(rep.Tests) > 0 {
+		b.WriteString("\nFailing tests in the log of the failed attempt:\n\n")
+		for _, t := range rep.Tests {
+			fmt.Fprintf(&b, "- `%s`\n", t)
+		}
+	}
+	fmt.Fprintf(&b, "\nEnd of the failed attempt's log:\n\n```text\n%s\n```\n", rep.LogTail)
+	return b.String()
+}
+
+// failingTests are the failing tests a job log names: nextest's
+// "FAIL [2.715s] <binary> <test>", cargo test's "test <name> ... FAILED" and
+// vitest's "FAIL <file> > <test>", made safe for code spans.
+func failingTests(trace string) []string {
+	trace = ansiEscape.ReplaceAllString(trace, "")
+	var out []string
+	for _, l := range strings.Split(strings.ReplaceAll(trace, "\r\n", "\n"), "\n") {
+		l = strings.TrimSpace(traceTimestamp.ReplaceAllString(l[strings.LastIndex(l, "\r")+1:], ""))
+		for _, re := range failingTest {
+			m := re.FindStringSubmatch(l)
+			if m == nil {
+				continue
+			}
+			name := strings.Join(strings.Fields(testNameChars.ReplaceAllString(m[1], "")), " ")
+			name = name[:min(len(name), maxTestName)]
+			if name != "" && !slices.Contains(out, name) {
+				out = append(out, name)
+			}
+			break
+		}
+		if len(out) == maxTests {
+			break
+		}
+	}
+	return out
+}
+
+// How many failing tests are kept, and how long each name may be.
+const maxTests, maxTestName = 10, 150
+
+var (
+	failingTest = []*regexp.Regexp{
+		regexp.MustCompile(`^(?:TRY \d+ )?FAIL \[\s*[\d.]+m?s\]\s+(?:\(\s*\d+/\s*\d+\)\s+)?(\S.*)$`),
+		regexp.MustCompile(`^test (\S+) \.\.\. FAILED$`),
+		regexp.MustCompile(`^FAIL\s+(\S+ > .+)$`),
+	}
+	testNameChars = regexp.MustCompile(`[^A-Za-z0-9 :._/>()\[\]#,=+-]`)
+	// GitLab's optional timestamps in front of every log line.
+	traceTimestamp = regexp.MustCompile(`^\d{4}-\d\d-\d\dT[\d:.]+Z \d+[OE]\+?\s?`)
+)
 
 // findIssue finds the bot's open issue with label whose description starts
 // with the marker.
@@ -299,7 +379,9 @@ func logTail(trace string) string {
 	if len(out) > mainRedLogBytes {
 		out = strings.ToValidUTF8(out[len(out)-mainRedLogBytes:], "")
 	}
-	return notify.Defuse(strings.ReplaceAll(out, "`", "'"))
+	// A copied marker must not count as the bot's.
+	out = strings.ReplaceAll(strings.ReplaceAll(out, "`", "'"), "<!-- ai-operator:", "<!-- ai-operator :")
+	return notify.Defuse(out)
 }
 
 var (

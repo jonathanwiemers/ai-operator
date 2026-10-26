@@ -109,8 +109,8 @@ func TestMainHealthFlakyJob(t *testing.T) {
 		t.Fatalf("the flaky issue is found by its marker, got %d issues", len(got))
 	}
 	notes := e.gl.IssueNotes[flaky[0].IID]
-	if len(notes) != 1 || !strings.Contains(notes[0].Body, "/pipelines/"+itoa(pid2)) {
-		t.Fatalf("expected a comment with the second pipeline, got %+v", notes)
+	if len(notes) != 2 || !strings.HasPrefix(notes[0].Body, flakyOccurrenceMarker+itoa(pid)+" -->") || !strings.Contains(notes[1].Body, "/pipelines/"+itoa(pid2)) {
+		t.Fatalf("expected one occurrence comment per pipeline, got %+v", notes)
 	}
 }
 

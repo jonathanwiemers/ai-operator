@@ -57,12 +57,32 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 	case mh.State == aiv1.MainHealthRed && mh.IssueIID != 0:
 		out = append(out, aiv1.PilotEvent{Key: fmt.Sprintf("main-red/%d", mh.IssueIID), IssueIID: mh.IssueIID, PipelineID: mh.PipelineID,
 			Text: fmt.Sprintf("The default branch is red (#%d): %s", mh.IssueIID, strings.Join(mh.FailedJobs, ", "))})
+	case mh.State == aiv1.MainHealthFlaky && len(mh.Flaky) > 0:
+		for _, f := range mh.Flaky {
+			out = append(out, flakyEvent(mh.PipelineID, f))
+		}
 	case mh.State == aiv1.MainHealthFlaky:
 		out = append(out, aiv1.PilotEvent{Key: fmt.Sprintf("flaky/%d", mh.PipelineID), PipelineID: mh.PipelineID,
 			Text: "Jobs of the default branch passed only on retry: " + strings.Join(mh.FailedJobs, ", ")})
 	}
 	slices.SortStableFunc(out, func(a, b aiv1.PilotEvent) int { return strings.Compare(a.Key, b.Key) })
 	return slices.CompactFunc(out, func(a, b aiv1.PilotEvent) bool { return a.Key == b.Key })
+}
+
+// flakyEvent is the event of a job that passed on retry: its flaky issue,
+// the failing tests and the end of the failed attempt's log, cut from the
+// front so the text fits. The pipeline is green, so it has none.
+func flakyEvent(pipeline int64, f aiv1.FlakyJobReport) aiv1.PilotEvent {
+	text := fmt.Sprintf("`%s` of the default branch passed only on retry (flaky issue #%d).", f.Job, f.IssueIID)
+	if len(f.Tests) > 0 {
+		text += " Failing tests in the failed attempt's log: " + strings.Join(f.Tests, ", ") + "."
+	}
+	text += "\n\nEnd of the failed attempt's log:\n\n```text\n"
+	tail := f.LogTail
+	if n := maxPilotMessage - len(text) - 10; len(tail) > n {
+		tail = strings.ToValidUTF8(tail[len(tail)-max(n, 0):], "")
+	}
+	return aiv1.PilotEvent{Key: fmt.Sprintf("flaky/%d/%d", pipeline, f.IssueIID), IssueIID: f.IssueIID, Text: text + tail + "\n```"}
 }
 
 // maxPilotEvents bounds the event keys a pilot remembers after their
