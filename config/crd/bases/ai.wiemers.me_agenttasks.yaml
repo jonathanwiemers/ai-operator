@@ -824,6 +824,15 @@ spec:
                             posts it.
                           format: int64
                           type: integer
+                        ownerIDs:
+                          description: |-
+                            OwnerIDs are the user IDs of the milestone's owners when it was
+                            posted, sorted: only they answer it. Empty on a proposal posted before
+                            they were pinned.
+                          items:
+                            format: int64
+                            type: integer
+                          type: array
                         postedAt:
                           format: date-time
                           type: string
@@ -1054,6 +1063,15 @@ spec:
                             posts it.
                           format: int64
                           type: integer
+                        ownerIDs:
+                          description: |-
+                            OwnerIDs are the user IDs of the milestone's owners when it was
+                            posted, sorted: only they answer it. Empty on a proposal posted before
+                            they were pinned.
+                          items:
+                            format: int64
+                            type: integer
+                          type: array
                         postedAt:
                           format: date-time
                           type: string
@@ -1153,6 +1171,15 @@ spec:
                             posts it.
                           format: int64
                           type: integer
+                        ownerIDs:
+                          description: |-
+                            OwnerIDs are the user IDs of the milestone's owners when it was
+                            posted, sorted: only they answer it. Empty on a proposal posted before
+                            they were pinned.
+                          items:
+                            format: int64
+                            type: integer
+                          type: array
                         postedAt:
                           format: date-time
                           type: string

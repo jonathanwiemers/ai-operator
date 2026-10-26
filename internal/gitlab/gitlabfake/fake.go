@@ -72,8 +72,9 @@ type Fake struct {
 	NoPipelines     bool
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
-	// Users FindUser knows, besides the bot.
-	Users []gitlab.User
+	// Users FindUser knows, besides the bot; FindUserError makes it fail.
+	Users         []gitlab.User
+	FindUserError error
 	// Replies maps a reply in a thread to the note that started it;
 	// DiscussionLists counts ListIssueDiscussions calls.
 	Replies         map[int64]int64
@@ -160,6 +161,9 @@ func (f *Fake) CurrentUser(context.Context) (*gitlab.User, error) { u := f.Bot; 
 func (f *Fake) FindUser(_ context.Context, username string) (*gitlab.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.FindUserError != nil {
+		return nil, f.FindUserError
+	}
 	for _, u := range append([]gitlab.User{f.Bot}, f.Users...) {
 		if u.Username == username {
 			return &u, nil

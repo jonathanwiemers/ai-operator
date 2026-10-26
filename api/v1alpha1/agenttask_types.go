@@ -232,6 +232,11 @@ type PilotProposal struct {
 	// AcceptedBy is the owner who accepted it.
 	// +optional
 	AcceptedBy string `json:"acceptedBy,omitempty"`
+	// OwnerIDs are the user IDs of the milestone's owners when it was
+	// posted, sorted: only they answer it. Empty on a proposal posted before
+	// they were pinned.
+	// +optional
+	OwnerIDs []int64 `json:"ownerIDs,omitempty"`
 	// Source is the message or event it answers, so a run started again
 	// does not propose it twice.
 	// +optional

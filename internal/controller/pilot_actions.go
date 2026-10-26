@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -169,6 +170,20 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 			"anywhere in the milestone; `no` or `%[4]s no P%[1]d` drops it. It no longer applies after 24 h or once the milestone's state changes.\n\n"+
 			"<!-- ai-operator:proposal id=%[1]d state=%[5]s -->%[6]s", p.ID, inertLine(p.Summary, 300), strings.Join(notes, "\n"), spec.Workflow.PilotPrefix, p.State, ping))
 	}
+	// Only the owners of now answer them, whoever takes their names later.
+	if len(posted) > 0 {
+		owners, err := ownerIDs(ctx, gl, st.Spec.Owners)
+		if err != nil {
+			return 0, err
+		}
+		pinned := slices.Sorted(maps.Keys(owners))
+		if len(pinned) == 0 {
+			pinned = []int64{0} // no user has it: nobody answers, not even who takes a name later
+		}
+		for i := range posted {
+			posted[i].OwnerIDs = pinned
+		}
+	}
 	// Recorded before they are posted: each is posted at most once.
 	if err := r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) {
 		ps.Proposed, ps.LastProposal = nil, next
@@ -207,12 +222,14 @@ func (r *AgentProjectReconciler) patchProposals(ctx context.Context, coord *aiv1
 	return err
 }
 
-// answerProposal handles an owner's "yes" or "no", written on issue where
-// (0: a merge request), to proposal id (0: none named) and returns the
-// reply, "" for none. One that expired is refused; an accepted one moves to
-// status.pilot.accepted, which runAccepted runs at the end of the poll.
+// answerProposal handles an owner's "yes" or "no", written by user byID
+// named by on issue where (0: a merge request), to proposal id (0: none
+// named) and returns the reply, "" for none. An answer from someone who was
+// no owner when the proposal was posted does nothing; one that expired is
+// refused; an accepted one moves to status.pilot.accepted, which
+// runAccepted runs at the end of the poll.
 func (r *AgentProjectReconciler) answerProposal(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st, coord *aiv1.AgentTask, by string, where, id int64, yes bool) (string, error) {
+	st, coord *aiv1.AgentTask, by string, byID, where, id int64, yes bool) (string, error) {
 	var open []aiv1.PilotProposal
 	if ps := coord.Status.Pilot; ps != nil {
 		open = ps.Proposals
@@ -233,6 +250,11 @@ func (r *AgentProjectReconciler) answerProposal(ctx context.Context, project *ai
 		return fmt.Sprintf("Proposal P%d no longer applies.", id), nil
 	}
 	p := open[i]
+	// Without pinned IDs (posted before they were), the caller's check by
+	// the owners' names is all there is.
+	if len(p.OwnerIDs) > 0 && !slices.Contains(p.OwnerIDs, byID) {
+		return "", nil
+	}
 	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
 	if err != nil {
 		return "", err
@@ -543,7 +565,7 @@ func (r *AgentProjectReconciler) threadAnswers(ctx context.Context, gl gitlab.AP
 			continue
 		}
 		yes, _, _ := command.PilotAnswer(n.Body)
-		reply, err := r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, tracking, id, yes)
+		reply, err := r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.Author.ID, tracking, id, yes)
 		if err != nil {
 			return err
 		}

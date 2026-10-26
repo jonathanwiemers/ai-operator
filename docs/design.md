@@ -835,7 +835,9 @@ counted interventions; more tools are later steps of
   then comments "Proposal P<n>" on the tracking issue with each action and,
   where it would refuse one, why, ending in `<!-- ai-operator:proposal
   id=<n> state=<hash> -->`. A proposal with no action it would run is not
-  posted. Owner and verbatim text of an action are cleared on proposals
+  posted. Each posted proposal pins the user IDs the owners' usernames
+  resolve to then (`ownerIDs`; an ID nobody has when none resolves).
+  Owner and verbatim text of an action are cleared on proposals
   from a run: only `/pilot tell #N: …`, which the operator handles without
   a model call, sets them. Both writers use optimistic locking on the
   status (the runner retries on a conflict, the operator tries again next
@@ -846,7 +848,10 @@ counted interventions; more tools are later steps of
   to its thread by listing the issue's discussions, only when there is such
   a comment; the thread must start with the bot's proposal marker. The
   operator recomputes `state` from the current tasks; a changed state or
-  24 h since posting expire it. An accepted proposal moves to
+  24 h since posting expire it. A `yes` or `no` from a user whose ID was
+  not pinned when the proposal was posted (a username that changed hands)
+  does nothing, without a reply; proposals posted before IDs were pinned
+  keep the check by name. An accepted proposal moves to
   `status.pilot.accepted`; `runAccepted` runs those at the end of the poll
   (in `syncPilots`), when no other step of the poll writes the tasks any
   more, and each task write is done on a fresh copy, tried again on a

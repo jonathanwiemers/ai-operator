@@ -3,9 +3,13 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -383,5 +387,136 @@ func TestPilotModelCannotPassFreeTextAsAnOwner(t *testing.T) {
 	e.reconcile()
 	if c := strings.Join(botComments(e, e.autopilot().TrackingIssueIID), "\n"); strings.Contains(c, "Proposal P1") || strings.Contains(c, "delete the tests") {
 		t.Fatalf("an owner's words come only from the owner, never from a run:\n%s", c)
+	}
+}
+
+// openProposals are the IDs of the pilot's open proposals and the owner IDs
+// pinned on each.
+func (e *projectEnv) openProposals() map[int64][]int64 {
+	e.t.Helper()
+	out := map[int64][]int64{}
+	if ps := e.tasks()[pilotTaskName].Status.Pilot; ps != nil {
+		for _, p := range ps.Proposals {
+			out[p.ID] = p.OwnerIDs
+		}
+	}
+	return out
+}
+
+func TestPilotAnswerCountsOnlyFromTheOwnersPinnedAtTheProposal(t *testing.T) {
+	e := newProposalEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	p := e.proposalNote(1)
+	if got := e.openProposals(); !slices.Equal(got[1], []int64{alice.ID}) {
+		t.Fatalf("the proposal pins alice's ID: %v", got)
+	}
+	// alice renames her account, and another user takes her old name, which
+	// the milestone's owners line still lists.
+	squatter := gitlab.User{ID: 9, Username: "alice"}
+	e.gl.Users = []gitlab.User{squatter, {ID: alice.ID, Username: "alice-old"}, mallory}
+	before, comments := e.toolEffect(), len(botComments(e, tracking))
+	e.gl.AddReply(tracking, p.ID, squatter, "yes")
+	e.gl.AddNote(tracking, squatter, "/pilot yes P1")
+	e.reconcile()
+	e.gl.AddReply(tracking, p.ID, squatter, "no")
+	e.gl.AddNote(tracking, squatter, "/pilot no P1")
+	e.reconcile()
+	if after := e.toolEffect(); after != before {
+		t.Fatalf("an owner's name without a pinned ID runs nothing: %+v → %+v", before, after)
+	}
+	if _, open := e.openProposals()[1]; !open {
+		t.Fatal("an owner's name without a pinned ID neither accepts nor drops the proposal")
+	}
+	if c := botComments(e, tracking); len(c) != comments {
+		t.Fatalf("and gets no reply:\n%s", strings.Join(c[comments:], "\n---\n"))
+	}
+
+	// The pinned owner, under the name the owners line lists, accepts it.
+	e.gl.Users = []gitlab.User{alice, mallory}
+	e.gl.AddReply(tracking, p.ID, alice, "yes")
+	e.reconcile()
+	if after := e.toolEffect(); after.runs != before.runs+1 || !strings.Contains(e.lastReply(), "Proposal P1 accepted by `@alice`") {
+		t.Fatalf("the pinned owner's yes runs it: %+v → %+v, reply %q", before, after, e.lastReply())
+	}
+}
+
+func TestPilotAnswerByIDCountsOnlyFromAPinnedOwner(t *testing.T) {
+	e := newProposalEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	squatter := gitlab.User{ID: 9, Username: "alice"}
+	e.gl.Users = []gitlab.User{squatter, mallory}
+	before := e.toolEffect()
+	e.gl.AddNote(tracking, squatter, "/pilot yes P1")
+	e.reconcile()
+	if _, open := e.openProposals()[1]; !open || e.toolEffect() != before {
+		t.Fatal("a yes by ID from an unpinned user does nothing")
+	}
+	e.gl.Users = []gitlab.User{alice, mallory}
+	e.gl.AddNote(1, alice, "/pilot yes P1")
+	e.reconcile()
+	if after := e.toolEffect(); after.runs != before.runs+1 {
+		t.Fatalf("the pinned owner's yes on an issue runs it: %+v → %+v", before, after)
+	}
+}
+
+func TestPilotProposalWithoutPinnedOwnersKeepsTheCheckByName(t *testing.T) {
+	e := newProposalEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	// Posted before owner IDs were pinned.
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot.Proposals[0].OwnerIDs = nil })
+	before := e.toolEffect()
+	e.gl.AddReply(tracking, e.proposalNote(1).ID, mallory, "yes")
+	e.reconcile()
+	if _, open := e.openProposals()[1]; !open || e.toolEffect() != before {
+		t.Fatal("a non-owner's yes does nothing")
+	}
+	e.gl.AddReply(tracking, e.proposalNote(1).ID, alice, "yes")
+	e.reconcile()
+	if after := e.toolEffect(); after.runs != before.runs+1 || !strings.Contains(e.lastReply(), "Proposal P1 accepted by `@alice`") {
+		t.Fatalf("an owner's yes runs it: %+v → %+v, reply %q", before, after, e.lastReply())
+	}
+}
+
+func TestPilotProposalWaitsWhileTheOwnersCannotBeResolved(t *testing.T) {
+	e := newProposalEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.gl.FindUserError = errors.New("GitLab is down")
+	comments := len(botComments(e, tracking))
+	_, _ = e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "shop"}})
+	ps := e.tasks()[pilotTaskName].Status.Pilot
+	if len(ps.Proposed) != 1 || len(ps.Proposals) != 0 || ps.LastProposal != 0 || len(botComments(e, tracking)) != comments {
+		t.Fatalf("nothing is recorded or posted: %+v", ps)
+	}
+	e.gl.FindUserError = nil
+	e.reconcile()
+	if p := e.proposalNote(1); !strings.Contains(p.Body, "Proposal P1:") || !slices.Equal(e.openProposals()[1], []int64{alice.ID}) {
+		t.Fatalf("the next poll posts it with alice's ID: %v", e.openProposals())
+	}
+}
+
+func TestPilotProposalWithoutResolvableOwnersIsAnsweredByNobody(t *testing.T) {
+	e := newProposalEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.Users = []gitlab.User{mallory} // alice deleted her account
+	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	if got := e.openProposals(); !slices.Equal(got[1], []int64{0}) {
+		t.Fatalf("an ID nobody has is pinned: %v", got)
+	}
+	// Someone registers the name.
+	squatter := gitlab.User{ID: 9, Username: "alice"}
+	e.gl.Users = []gitlab.User{squatter, mallory}
+	before := e.toolEffect()
+	e.gl.AddReply(tracking, e.proposalNote(1).ID, squatter, "yes")
+	e.reconcile()
+	if _, open := e.openProposals()[1]; !open || e.toolEffect() != before {
+		t.Fatal("a yes from whoever takes an owner's name later does nothing")
 	}
 }

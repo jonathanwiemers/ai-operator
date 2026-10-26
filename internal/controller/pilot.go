@@ -215,7 +215,7 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		case stop || goOn:
 			reply, err = r.switchAutonomy(ctx, spec, coord, n.Author.Username, stop)
 		case answer:
-			reply, err = r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.issue, id, yes)
+			reply, err = r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.Author.ID, n.issue, id, yes)
 		case tell:
 			reply, err = r.proposeTell(ctx, gl, project, spec, st, coord, n, iid, text)
 		case list:
