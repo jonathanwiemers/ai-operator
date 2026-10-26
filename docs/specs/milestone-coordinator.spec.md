@@ -449,6 +449,33 @@ T1, C2a and C2d can be built in parallel; plan each PR's split before coding.
   "there is no pilot here"; `/pilot coordinate` needs owners; `/pilot`
   comments never reach the implementer.
 
+- C2 delivered 2026-10-26. Sizes, all far over the ~50 lines per PR:
+  T1 ~52, C2d ~21, C2a ~270, C2b ~1050, C2c ~250, C2e ~505 lines of Go
+  (without comments where reported). Splitting further would have produced
+  PRs without value of their own; the review rounds per PR kept them safe.
+- T1: the rule to install only default-branch pins is enforced by the
+  implementer prompt, not by the runner; a wrong install stays on the
+  issue's own workspace PVC. Follow-up: runner-side enforcement (diff the
+  pin files, force per-run directories). rustup ships next to mise, because
+  mise's rust backend ignores `rust-toolchain.toml` by default.
+- C2a: an event key wakes the pilot once for good (also after it ended and
+  came back), which bounds flapping; a pilot created in a poll hears of
+  events from the next poll.
+- C2b: a proposal that cannot be recorded (ten waiting) still marks its
+  event assessed; the assessment says so. Owners are resolved by username
+  on each `yes`, like C1; owner IDs pinned at proposal time are a follow-up.
+- C2c: an explicit project `managed` applies to every milestone; accepted
+  proposals keep `ciRound` too (only `/pilot tell` resets it); the
+  intervention count lasts the milestone's life and counts attempts.
+- C2e: `mainHealth.autoFix` is not a per-milestone switch (the main-red
+  issue belongs to no milestone); switches are `ci.maxFixRounds`,
+  `ci.retryFailedJobs`, `review.retries`, `review.maxIterations` (0-5). A
+  rule edit rewrites the whole milestone description; a hand edit in the
+  same moment can be lost (GitLab has no conditional update).
+- Process: two build agents hung waiting on background review output that
+  never came; reviews now run in the foreground with a time limit, and PRs
+  are opened before the second review pass.
+
 ## PRs
 
 | # | Title | Link | Status |
@@ -456,3 +483,11 @@ T1, C2a and C2d can be built in parallel; plan each PR's split before coding.
 | 0 | Spec: milestone coordinator (/pilot) | [#61](https://github.com/jonathanwiemers/ai-operator/pull/61) | approved and merged 2026-10-25 |
 | C1a | Pilot C1a: Coordinate task and read-only answers | [#66](https://github.com/jonathanwiemers/ai-operator/pull/66) | merged 2026-10-25 |
 | C1b | Pilot C1b: /pilot and mention routing, owners check, Coordinate tasks | [#67](https://github.com/jonathanwiemers/ai-operator/pull/67) | merged 2026-10-25 |
+| T1 | Agent image: mise and rustup for the toolchains a repository pins | [#72](https://github.com/jonathanwiemers/ai-operator/pull/72) | merged 2026-10-26 |
+| C2d | Pilot: no pilot for milestones whose autopilot is done | [#70](https://github.com/jonathanwiemers/ai-operator/pull/70) | merged 2026-10-26 |
+| C2a-2 | Pilot C2a-2: the pilot assesses the events it is woken for | [#73](https://github.com/jonathanwiemers/ai-operator/pull/73) | merged 2026-10-26 |
+| C2a-1 | Pilot C2a-1: events wake the milestone's pilot, once per event | [#71](https://github.com/jonathanwiemers/ai-operator/pull/71) | merged 2026-10-26 |
+| C2b-1 | Pilot C2b-1: proposals, an owner's yes, and the run tools | [#74](https://github.com/jonathanwiemers/ai-operator/pull/74) | merged 2026-10-26 |
+| C2b-2 | Pilot C2b-2: the queue tools skip, pause, resume and revisit | [#75](https://github.com/jonathanwiemers/ai-operator/pull/75) | merged 2026-10-26 |
+| C2c | Pilot C2c: managed autonomy, counted interventions, audit comments, /pilot stop and go | [#76](https://github.com/jonathanwiemers/ai-operator/pull/76) | merged 2026-10-26 |
+| C2e | Pilot C2e: standing rules | [#77](https://github.com/jonathanwiemers/ai-operator/pull/77) | merged 2026-10-26 |
