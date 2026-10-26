@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -58,7 +59,44 @@ func (a *LocalAgent) Run(ctx context.Context, engine aiv1.Engine, inv Invocation
 		return nil, err
 	}
 	inv.Dir = a.Workspace.Dir
+	env, err := perRunToolchains(ctx, inv.PerRunToolchains)
+	if err != nil {
+		return nil, err
+	}
+	inv.Env = env
 	return eng.Run(ctx, inv)
+}
+
+var toolchainsName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,99}$`)
+
+// perRunToolchains returns the environment that points the toolchain
+// installers at <tmp>/ai-toolchains/<name> (nothing for an empty name),
+// after removing the directories of earlier runs: they are not kept.
+func perRunToolchains(ctx context.Context, name string) ([]string, error) {
+	if name != "" && !toolchainsName.MatchString(name) {
+		return nil, fmt.Errorf("invalid name %q for per-run toolchains", name)
+	}
+	root := filepath.Join(os.TempDir(), "ai-toolchains")
+	entries, _ := os.ReadDir(root)
+	for _, e := range entries {
+		if e.Name() != name {
+			if err := os.RemoveAll(filepath.Join(root, e.Name())); err != nil {
+				logr.FromContextOrDiscard(ctx).Info("could not remove toolchains of an earlier run", "error", err.Error())
+			}
+		}
+	}
+	if name == "" {
+		return nil, nil
+	}
+	var env []string
+	for _, v := range [][2]string{{"MISE_DATA_DIR", "mise"}, {"RUSTUP_HOME", "rustup"}, {"CARGO_HOME", "cargo"}} {
+		dir := filepath.Join(root, name, v[1])
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, err
+		}
+		env = append(env, v[0]+"="+dir)
+	}
+	return env, nil
 }
 
 func (a *LocalAgent) RemoteRefs(ctx context.Context) (map[string]string, error) {
@@ -229,7 +267,7 @@ func (s *AgentServer) Handler() http.Handler {
 		inv := req.Invocation
 		log := logr.FromContextOrDiscard(ctx)
 		log.Info("agent CLI started", "role", inv.Role, "engine", req.Engine, "model", inv.Model,
-			"readOnly", inv.ReadOnly, "resume", inv.Resume != "", "promptBytes", len(inv.Prompt))
+			"readOnly", inv.ReadOnly, "resume", inv.Resume != "", "promptBytes", len(inv.Prompt), "perRunToolchains", inv.PerRunToolchains)
 		if inv.LogPrompt {
 			// agents.logPrompts: what the agent is told, for the web UI.
 			log.Info("agent prompt", "role", inv.Role, "engine", req.Engine, "model", inv.Model,

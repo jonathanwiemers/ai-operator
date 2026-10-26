@@ -262,3 +262,15 @@ func (m *Mirror) PinFiles(ctx context.Context, base string) []string {
 	}
 	return strings.Split(out, "\n")
 }
+
+// ChangedPins returns the toolchain pin files that origin/<branch> changes
+// (adds, edits or deletes) compared with where it branched off origin/<base>.
+// A branch that does not exist yet changes nothing.
+func (m *Mirror) ChangedPins(ctx context.Context, base, branch string) []string {
+	out, err := m.run(ctx, false, append([]string{"diff", "--name-only",
+		"refs/remotes/origin/" + base + "...refs/remotes/origin/" + branch, "--"}, pinFiles...)...)
+	if err != nil || out == "" {
+		return nil
+	}
+	return strings.Split(out, "\n")
+}

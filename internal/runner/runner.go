@@ -69,6 +69,9 @@ type Runner struct {
 	progress *progress
 	// pushedHead is the commit this run last pushed, e.g. a step.
 	pushedHead string
+	// changedPins are the pin files the run's branch changes; with any, every
+	// agent call of the run gets per-run toolchain directories.
+	changedPins []string
 	// logPrompts is the project's agents.logPrompts during a run.
 	logPrompts bool
 	// pilot reports whether a comment is addressed to the milestone's pilot
@@ -194,6 +197,10 @@ func (r *Runner) syncWorkspace(ctx context.Context, url, branch, base string) er
 		if sha, ok := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); ok {
 			result += fmt.Sprintf(", %s at %s", branch, shortSHA(sha))
 			kv = append(kv, "branchSHA", sha)
+			if r.changedPins = r.Mirror.ChangedPins(ctx, base, branch); len(r.changedPins) > 0 {
+				result += ", changes " + strings.Join(r.changedPins, ", ")
+				kv = append(kv, "changedPins", r.changedPins)
+			}
 		} else {
 			result += fmt.Sprintf(", %s is new", branch)
 		}
@@ -317,7 +324,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	r.projectStatus = project.Status
 	request := task.Spec.RunRequest
 	r.run = newRunLog(r.Log, task)
-	r.blamedRestarts, r.pushedHead = 0, ""
+	r.blamedRestarts, r.pushedHead, r.changedPins = 0, "", nil
 	ctx = withRunID(ctx, r.run.id)
 	log := r.run.log
 	// Every way a run ends sets the active request back to the observed
@@ -556,6 +563,9 @@ func (r *Runner) morePending(ctx context.Context, request int64) bool {
 // knows the engine is limited, the engine is not called at all.
 func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
 	inv.LogPrompt = r.logPrompts
+	if len(r.changedPins) > 0 && r.run != nil {
+		inv.PerRunToolchains = toolchainsRunName(r.run.id)
+	}
 	if lim, ok := r.projectStatus.ActiveUsageLimit(role.Engine, r.now()); ok {
 		return nil, &UsageLimitError{Engine: role.Engine, ResetAt: lim.Until.Time, Message: "project-wide limit: " + lim.Message}
 	}
@@ -599,6 +609,22 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 	inv.Resume = ""
 	inv.Prompt = fullPrompt
 	return run(inv)
+}
+
+// toolchainsRunName turns a run ID ("<task>#<request>") into the name of its
+// per-run toolchain directories: [a-z0-9-] and at most 100 characters, the run
+// number at the end kept.
+func toolchainsRunName(id string) string {
+	name := strings.Trim(strings.Map(func(c rune) rune {
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
+			return c
+		}
+		return '-'
+	}, strings.ToLower(id)), "-")
+	if len(name) > 100 {
+		name = strings.TrimLeft(name[len(name)-100:], "-")
+	}
+	return name
 }
 
 func roleInvocation(role aiv1.RoleSpec, system string, tools []string, schema string, readOnly bool) Invocation {

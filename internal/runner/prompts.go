@@ -137,20 +137,30 @@ func resourcesNote(memory, cpus string) string {
 		`time, don't start watch modes or dev servers, and stop background processes you start.`
 }
 
-// toolchainsNote tells the implementer to install the toolchains pinned on
-// the default branch before verifying; pins are the files PinFiles found.
-func toolchainsNote(base string, pins []string) string {
-	if len(pins) == 0 {
+// toolchainsNote tells the implementer to install the pinned toolchains
+// before verifying; pins are the files PinFiles found, changed the ones
+// ChangedPins found (the run then has per-run toolchain directories).
+func toolchainsNote(base string, pins, changed []string) string {
+	where := `MISE_DATA_DIR and RUSTUP_HOME already point into $HOME/.toolchains, where installs are kept for later runs`
+	var note string
+	switch {
+	case len(changed) > 0:
+		note = "\n\nYour branch changes the toolchain pins in " + strings.Join(changed, ", ") + " compared with " + base + "."
+		where = `Because of that, MISE_DATA_DIR, RUSTUP_HOME and CARGO_HOME already point to directories of this run only; ` +
+			`do not change these variables. What you install there is dropped after the run`
+	case len(pins) > 0:
+		note = "\n\nThe default branch " + base + " pins toolchains in " + strings.Join(pins, ", ") + "."
+	default:
 		return ""
 	}
-	return "\n\nThe default branch " + base + " pins toolchains in " + strings.Join(pins, ", ") + `. Before running tests, ` +
-		`linters or formatters, install what is missing, from official sources only. MISE_DATA_DIR and RUSTUP_HOME already ` +
-		`point into $HOME/.toolchains, where installs are kept for later runs: for mise and .tool-versions files run mise ` +
-		`trust and mise install, then the tools with mise exec -- <command>; for rust-toolchain files run rustup toolchain ` +
-		`install (it adds the listed components and targets). If your branch changes a pin (git diff origin/` + base +
-		` -- <file>), install and run that version for this run only, with only that tool's variable (MISE_DATA_DIR or ` +
-		`RUSTUP_HOME) set to its own $(mktemp -d). No root or system packages, never pipe a downloaded script into a shell. If an install fails, ` +
-		`say so in the summary.`
+	note += ` Before running tests, linters or formatters, install what is missing, from official sources only. ` + where +
+		`: for mise and .tool-versions files run mise trust and mise install, then the tools with mise exec -- <command>; ` +
+		`for rust-toolchain files run rustup toolchain install (it adds the listed components and targets).`
+	if len(changed) == 0 {
+		note += ` If you change a pin, do not install its new version into $HOME/.toolchains (say so in the summary): ` +
+			`the next run of your branch gets directories of its own for it.`
+	}
+	return note + ` No root or system packages, never pipe a downloaded script into a shell. If an install fails, say so in the summary.`
 }
 
 const bugbotSystemPrompt = `You are a code reviewer looking for correctness bugs in a diff produced by

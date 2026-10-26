@@ -1110,8 +1110,13 @@ after every read-only run); the boundary is the agent container itself.
   nothing is piped from the network into a shell; rustup checks components
   against the channel manifest's hashes, mise against what its backend
   publishes. Only default-branch pins, which humans merged, persist in
-  `$HOME/.toolchains`; a pin the agent's branch changes goes to a per-run
-  directory under `/tmp`. Nothing installs implicitly (rustup and mise
+  `$HOME/.toolchains`; when the agent's branch changes a pin file
+  (`Mirror.ChangedPins`, compared with the default branch at run start), the
+  runner sends a per-run name with every agent call and the agent container
+  points `MISE_DATA_DIR`, `RUSTUP_HOME` and `CARGO_HOME` at
+  `/tmp/ai-toolchains/<name>` (removed by the next run). The runner sends
+  only the name (`[a-z0-9-]`, validated by the agent), never environment
+  variables. Nothing installs implicitly (rustup and mise
   auto-install are off), and no writable directory is on `PATH` ahead of the
   image's tools (mise tools run through `mise exec`), so an install cannot
   shadow `git` or an agent CLI. The default-branch rule is an instruction,

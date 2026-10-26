@@ -51,3 +51,34 @@ func TestPromptsGiveJobLogsAsUntrustedData(t *testing.T) {
 		t.Fatalf("text without the marker stays as it is: %q", got)
 	}
 }
+
+func TestToolchainsNote(t *testing.T) {
+	if toolchainsNote("main", nil, nil) != "" {
+		t.Fatal("no pins, no note")
+	}
+	shared := toolchainsNote("main", []string{".mise.toml", "rust-toolchain.toml"}, nil)
+	for _, want := range []string{"The default branch main pins toolchains in .mise.toml, rust-toolchain.toml.",
+		"point into $HOME/.toolchains, where installs are kept", "mise install", "rustup toolchain install",
+		"do not install its new version into $HOME/.toolchains", "If an install fails"} {
+		if !strings.Contains(shared, want) {
+			t.Errorf("missing %q in %q", want, shared)
+		}
+	}
+	if strings.Contains(shared, "mktemp") || strings.Contains(shared, "this run only") {
+		t.Errorf("the agent does not set up toolchain directories itself: %q", shared)
+	}
+	// A branch that adds the first pin gets the per-run note too.
+	for _, pins := range [][]string{{".mise.toml"}, nil} {
+		perRun := toolchainsNote("main", pins, []string{".mise.toml"})
+		for _, want := range []string{"Your branch changes the toolchain pins in .mise.toml compared with main.",
+			"MISE_DATA_DIR, RUSTUP_HOME and CARGO_HOME already point to directories of this run only",
+			"do not change these variables", "dropped after the run", "mise install", "If an install fails"} {
+			if !strings.Contains(perRun, want) {
+				t.Errorf("missing %q in %q", want, perRun)
+			}
+		}
+		if strings.Contains(perRun, "$HOME/.toolchains") || strings.Contains(perRun, "mktemp") {
+			t.Errorf("per-run note must not send installs to the shared directories: %q", perRun)
+		}
+	}
+}

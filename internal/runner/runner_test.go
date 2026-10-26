@@ -611,7 +611,7 @@ func TestMirrorPinFilesListsDefaultBranchPins(t *testing.T) {
 	if got := m.PinFiles(ctx, "main"); !slices.Equal(got, []string{".tool-versions", "rust-toolchain.toml"}) {
 		t.Fatalf("want the root pins of main, got %q", got)
 	}
-	if got := m.PinFiles(ctx, "missing"); got != nil || toolchainsNote("missing", got) != "" {
+	if got := m.PinFiles(ctx, "missing"); got != nil || toolchainsNote("missing", got, nil) != "" {
 		t.Fatalf("no branch, no pins and no note: %q", got)
 	}
 }

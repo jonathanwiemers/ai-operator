@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -52,6 +53,13 @@ type Invocation struct {
 	// LogPrompt makes the agent server log the system prompt and the prompt
 	// (agents.logPrompts).
 	LogPrompt bool
+	// PerRunToolchains names the toolchain directories of this run, set when
+	// the branch changes a pin file. The runner sends only the name; the
+	// agent side validates it and turns it into Env.
+	PerRunToolchains string `json:"perRunToolchains,omitempty"`
+	// Env overrides variables of the engine's environment. It is set by the
+	// agent side and never crosses the socket.
+	Env []string `json:"-"`
 }
 
 // Result is the parsed outcome of an invocation.
@@ -117,7 +125,7 @@ func (c *ClaudeCLI) Args(inv Invocation) []string {
 // Run executes the invocation. The prompt goes through stdin, so it is not
 // subject to command line length limits.
 func (c *ClaudeCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
-	return runCLI(ctx, orDefault(c.Binary, "claude"), c.Args(inv), inv.Dir, c.Env, inv.Prompt, true)
+	return runCLI(ctx, orDefault(c.Binary, "claude"), c.Args(inv), inv.Dir, append(slices.Clip(c.Env), inv.Env...), inv.Prompt, true)
 }
 
 // CursorCLI runs the Cursor CLI (cursor-agent). Authentication comes from
@@ -199,7 +207,7 @@ func (c *CursorCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
 		f.Close()
 		prompt = fmt.Sprintf("Your full task is in the file %s. Read it completely and follow it exactly.", f.Name())
 	}
-	return runCLI(ctx, orDefault(c.Binary, "cursor-agent"), c.Args(inv, prompt), inv.Dir, c.Env, "", true)
+	return runCLI(ctx, orDefault(c.Binary, "cursor-agent"), c.Args(inv, prompt), inv.Dir, append(slices.Clip(c.Env), inv.Env...), "", true)
 }
 
 // runCLI runs an agent CLI. With stream, its output is a line per event: each
