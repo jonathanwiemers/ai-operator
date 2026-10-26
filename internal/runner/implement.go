@@ -211,12 +211,19 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 	}
 
+	// An instruction an owner accepted from the pilot counts as human input.
+	humanInput := humanNotes(newIssueNotes, botID) + humanNotes(newMRNotes, botID)
+	if instruction := pilotInstruction(task); instruction != "" {
+		fullPrompt += "\n\n" + instruction
+		inv.Prompt = instruction + "\n\n" + inv.Prompt
+		humanInput++
+	}
+
 	// A conflict run: the operator saw the merge request conflict with the
 	// default branch. The default branch is merged in; the implementer
 	// resolves the conflicts. A clean merge needs no agent.
 	mergeFor := task.Spec.Source.MergeBaseFor
 	mergeBase := mergeFor != "" && mergeFor != task.Status.Run.MergedBaseFor
-	humanInput := humanNotes(newIssueNotes, botID) + humanNotes(newMRNotes, botID)
 	var merge MergeResult
 	mergeMessage := fmt.Sprintf("Merge branch '%s' into %s", base, branch)
 	runAgent := true
@@ -253,7 +260,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if reviewAsked {
 		head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
 		forImplementer := humanNotes(command.WithoutRouting(newIssueNotes, prefix), botID) + humanNotes(command.WithoutRouting(newMRNotes, prefix), botID)
-		reReview = head == reviewFor && forImplementer == 0 && !ciFix && !mergeBase && len(revisits) == 0
+		reReview = head == reviewFor && forImplementer == 0 && !ciFix && !mergeBase && len(revisits) == 0 && pilotInstruction(task) == ""
 		runAgent = runAgent && !reReview
 	}
 

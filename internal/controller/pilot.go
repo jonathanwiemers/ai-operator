@@ -125,6 +125,9 @@ func (r *AgentProjectReconciler) pilotTracking(ctx context.Context, gl gitlab.AP
 		if err := r.routePilot(ctx, gl, project, spec, st, coord, st.Spec.Owners, pilotNotes(project, spec, notes, since, tracking, 0)); err != nil {
 			return err
 		}
+		if err := r.threadAnswers(ctx, gl, project, spec, st, coord, tracking, since, notes); err != nil {
+			return err
+		}
 	}
 	latest := max(since, newestNote(notes), 1)
 	if latest == since {
@@ -161,25 +164,21 @@ func (r *AgentProjectReconciler) milestoneTasks(ctx context.Context, project *ai
 func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st, coord *aiv1.AgentTask, owners []string, notes []pilotNote) error {
 	prefix := spec.Workflow.PilotPrefix
-	var ownerIDs map[int64]bool
+	var ids map[int64]bool
 	var msgs []aiv1.PilotMessage
 	for _, n := range notes {
-		if ownerIDs == nil {
-			// Owners count by user ID: a username can change hands.
-			ownerIDs = map[int64]bool{}
-			for _, o := range owners {
-				u, err := gl.FindUser(ctx, o)
-				if err != nil {
-					return fmt.Errorf("looking up owner %q: %w", o, err)
-				}
-				if u != nil {
-					ownerIDs[u.ID] = true
-				}
+		if ids == nil {
+			var err error
+			if ids, err = ownerIDs(ctx, gl, owners); err != nil {
+				return err
 			}
 		}
-		owner := ownerIDs[n.Author.ID]
+		owner := ids[n.Author.ID]
 		coordinate := strings.EqualFold(n.msg, "coordinate")
+		yes, id, answer := command.PilotAnswer(n.msg)
+		iid, text, tell := command.PilotTell(n.msg)
 		var reply string
+		var err error
 		done := autopilotDone(st)
 		switch tracking := trackingIssue(st, coord); {
 		case (st == nil || done) && !owner:
@@ -202,13 +201,18 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		case coordinate && len(owners) == 0:
 			reply = fmt.Sprintf("A pilot needs owners: add a line `%s owners @you` to the milestone description.", spec.Workflow.CommandPrefix)
 		case coordinate:
-			var err error
 			if coord, err = r.startPilot(ctx, gl, project, spec, st); err != nil {
 				return err
 			}
 			reply = fmt.Sprintf("The pilot of this milestone listens on #%d now: comment `%s …` there or here.", coord.Spec.Issue.IID, prefix)
 		case coord == nil:
 			reply = fmt.Sprintf("This milestone has no pilot yet: comment `%s coordinate` to start one.", prefix)
+		case (answer || tell) && !owner:
+			reply = "This milestone has no owners, so the pilot takes no actions."
+		case answer:
+			reply, err = r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.issue, id, yes)
+		case tell:
+			reply, err = r.proposeTell(ctx, gl, project, spec, st, coord, n, iid, text)
 		case slices.ContainsFunc(coord.Spec.Source.PilotMessages, func(m aiv1.PilotMessage) bool { return m.NoteID == n.ID }):
 			continue
 		default:
@@ -216,7 +220,12 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 				Body: truncateUTF8(n.msg, maxPilotMessage)})
 			continue
 		}
-		pilotReply(ctx, gl, spec, n, reply)
+		if err != nil {
+			return err
+		}
+		if reply != "" {
+			pilotReply(ctx, gl, spec, n, reply)
+		}
 	}
 	if len(msgs) == 0 {
 		return nil
@@ -372,6 +381,12 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 		// A pilot created in this poll hears of the events from the next.
 		if err == nil && coord != nil && keep[coord.Name] {
 			err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks))
+			if err == nil {
+				_, err = r.postProposals(ctx, gl, project, spec, st, coord, tracking)
+			}
+			if err == nil {
+				err = r.runAccepted(ctx, gl, project, spec, st, coord, tracking)
+			}
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("pilot of milestone %q: %w", st.Spec.Milestone.Title, err))

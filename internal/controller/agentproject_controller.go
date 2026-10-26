@@ -543,16 +543,8 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	// "/agent review": the next run reviews the agent's pushed head again.
 	// A head someone else pushed is taken over by a normal run instead.
 	if review && mr != nil && mr.SHA != "" && mr.SHA == task.Status.Run.PushedSHA {
-		src.ReviewFor = mr.SHA
-		if src.ReviewFor == task.Status.Run.ReviewedFor {
-			// Asked again for a head that was re-reviewed: review it again.
-			// Cleared before the run request, so no run sees one without it.
-			st := task.DeepCopy()
-			st.Status.Run.ReviewedFor = ""
-			if err := r.Status().Patch(ctx, st, client.MergeFrom(task)); err != nil {
-				return nil, nil, err
-			}
-			task.Status.Run.ReviewedFor, task.ResourceVersion = "", st.ResourceVersion
+		if err := r.askReview(ctx, task, mr.SHA); err != nil {
+			return nil, nil, err
 		}
 	}
 

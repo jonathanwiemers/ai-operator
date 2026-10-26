@@ -33,6 +33,7 @@ type API interface {
 	CreateIssue(ctx context.Context, project string, opts CreateIssueOptions) (*Issue, error)
 	UpdateIssue(ctx context.Context, project string, iid int64, opts UpdateIssueOptions) (*Issue, error)
 	ListIssueNotes(ctx context.Context, project string, iid int64) ([]Note, error)
+	ListIssueDiscussions(ctx context.Context, project string, iid int64) ([]Discussion, error)
 	CreateIssueNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
 	UpdateIssueNote(ctx context.Context, project string, iid, noteID int64, body string) (*Note, error)
 	GetMergeRequest(ctx context.Context, project string, iid int64) (*MergeRequest, error)
@@ -147,6 +148,12 @@ type Note struct {
 	System    bool       `json:"system"`
 	Author    User       `json:"author"`
 	CreatedAt *time.Time `json:"created_at"`
+}
+
+// Discussion is a thread of comments; its first note started it.
+type Discussion struct {
+	ID    string `json:"id"`
+	Notes []Note `json:"notes"`
 }
 
 // MergeRequest is a GitLab merge request.
@@ -649,6 +656,10 @@ func (c *Client) UpdateIssue(ctx context.Context, project string, iid int64, opt
 func (c *Client) ListIssueNotes(ctx context.Context, project string, iid int64) ([]Note, error) {
 	q := url.Values{"sort": {"asc"}, "order_by": {"created_at"}}
 	return list[Note](ctx, c, fmt.Sprintf("%s/issues/%d/notes", projectPath(project), iid), q)
+}
+
+func (c *Client) ListIssueDiscussions(ctx context.Context, project string, iid int64) ([]Discussion, error) {
+	return list[Discussion](ctx, c, fmt.Sprintf("%s/issues/%d/discussions", projectPath(project), iid), nil)
 }
 
 func (c *Client) CreateIssueNote(ctx context.Context, project string, iid int64, body string) (*Note, error) {

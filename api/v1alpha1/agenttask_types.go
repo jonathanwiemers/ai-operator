@@ -145,6 +145,75 @@ type SourceState struct {
 	// (Coordinate tasks), each assessed by the run of its request.
 	// +optional
 	PilotEvents []PilotEvent `json:"pilotEvents,omitempty"`
+
+	// PilotInstruction is an instruction an owner accepted from the pilot
+	// (Implement tasks), for the run of its request.
+	// +optional
+	PilotInstruction *PilotInstruction `json:"pilotInstruction,omitempty"`
+}
+
+// PilotInstruction is what the implementer gets of an accepted instruct:
+// a fixed kind the runner turns into a fixed sentence, with the pilot's
+// note as untrusted data, or an owner's own words.
+type PilotInstruction struct {
+	// +optional
+	Kind string `json:"kind,omitempty"`
+	// +optional
+	Note string `json:"note,omitempty"`
+	// +optional
+	Owner string `json:"owner,omitempty"`
+	// +optional
+	Text string `json:"text,omitempty"`
+	// Request is the run request it is for.
+	Request int64 `json:"request"`
+}
+
+// PilotInstructKinds are the instructions the pilot may give.
+var PilotInstructKinds = []string{"ci-fix", "install-toolchains", "rerun"}
+
+// PilotAction is one action of a proposal of the pilot; the operator
+// validates and executes it once an owner accepts the proposal.
+type PilotAction struct {
+	// Tool: retry, reReview, instruct or openIssue.
+	Tool string `json:"tool"`
+	// +optional
+	IssueIID int64 `json:"issueIID,omitempty"`
+	// Kind of an instruct, one of PilotInstructKinds.
+	// +optional
+	Kind string `json:"kind,omitempty"`
+	// Note: the pilot's hint to the implementer (instruct), the body of
+	// the issue it opens (openIssue). Untrusted.
+	// +optional
+	Note string `json:"note,omitempty"`
+	// Title of the issue it opens (openIssue).
+	// +optional
+	Title string `json:"title,omitempty"`
+	// Owner and Text: an owner's own words for the implementer ("/pilot
+	// tell #N: …"). Only the operator sets them.
+	// +optional
+	Owner string `json:"owner,omitempty"`
+	// +optional
+	Text string `json:"text,omitempty"`
+}
+
+// PilotProposal is a set of actions that waits for an owner's "yes".
+type PilotProposal struct {
+	// ID is n of "P<n>", given when the operator posts it.
+	// +optional
+	ID      int64         `json:"id,omitempty"`
+	Summary string        `json:"summary"`
+	Actions []PilotAction `json:"actions"`
+	// State is PilotState when it was made.
+	State string `json:"state"`
+	// +optional
+	PostedAt *metav1.Time `json:"postedAt,omitempty"`
+	// AcceptedBy is the owner who accepted it.
+	// +optional
+	AcceptedBy string `json:"acceptedBy,omitempty"`
+	// Source is the message or event it answers, so a run started again
+	// does not propose it twice.
+	// +optional
+	Source string `json:"source,omitempty"`
 }
 
 // PilotEvent is something the pilot assesses without being asked: an
@@ -196,6 +265,28 @@ type PilotStatus struct {
 	// tasks), those that hold first, then the last ones that ended.
 	// +optional
 	Events []string `json:"events,omitempty"`
+
+	// Proposed are the proposals of the pilot's runs the operator has not
+	// posted yet (Coordinate tasks).
+	// +optional
+	Proposed []PilotProposal `json:"proposed,omitempty"`
+
+	// Proposals are the open proposals, posted on the tracking issue.
+	// +optional
+	Proposals []PilotProposal `json:"proposals,omitempty"`
+
+	// Accepted are the proposals owners accepted, run at the end of the
+	// poll.
+	// +optional
+	Accepted []PilotProposal `json:"accepted,omitempty"`
+
+	// LastProposal is the ID of the newest proposal.
+	// +optional
+	LastProposal int64 `json:"lastProposal,omitempty"`
+
+	// OpenedIssues are the title keys of the issues the pilot opened.
+	// +optional
+	OpenedIssues []string `json:"openedIssues,omitempty"`
 }
 
 // CIState is the state of the pipeline of the agent's last push.

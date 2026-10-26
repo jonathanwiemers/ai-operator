@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -20,9 +21,10 @@ import (
 const labelProject = "ai.wiemers.me/project"
 
 // runPilot answers the owners' messages to a milestone's pilot, one turn of
-// its session each, and assesses the events the operator woke it for. It
-// only answers and assesses: the replies are posted where the messages were
-// written, the assessments on the tracking issue, nothing else changes.
+// its session each, and assesses the events the operator woke it for. The
+// replies are posted where the messages were written, the assessments on
+// the tracking issue; proposals are recorded for the operator, which runs
+// them once an owner accepts. Nothing else changes.
 func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (*Outcome, error) {
 	if task.Spec.Milestone == nil {
 		return nil, fmt.Errorf("coordinate task has no milestone")
@@ -45,7 +47,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 	}
 	st := r.loadState()
 	s := r.step(ctx, "read milestone state", "messages", len(msgs))
-	state, err := r.pilotState(ctx, gl, task, project, spec)
+	state, stateOf, err := r.pilotState(ctx, gl, task, project, spec)
 	if err != nil {
 		// The run's request is done either way: say so instead of dropping
 		// the messages.
@@ -53,7 +55,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			r.pilotReply(ctx, gl, spec, m, "The pilot could not read the milestone's state, so it cannot answer; ask again in a moment.")
 		}
 		// The events' own data is still worth an assessment.
-		aerr := r.assessEvents(ctx, gl, task, spec, fmt.Sprintf("(the milestone's state could not be read: %v)", err), out, events, &st)
+		aerr := r.assessEvents(ctx, gl, task, spec, fmt.Sprintf("(the milestone's state could not be read: %v)", err), nil, out, events, &st)
 		if _, limited := AsUsageLimit(aerr); limited {
 			return out, aerr
 		}
@@ -96,6 +98,12 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 				st.setSession("pilot", role.Engine, res.SessionID)
 				s.done(agentResult(role, res, "answered"), "session", res.SessionID, "costUSD", res.CostUSD)
 				reply = a.Reply
+				if err := r.propose(ctx, task, a.Proposal, stateOf, fmt.Sprintf("note/%d", m.NoteID)); err != nil {
+					failed = err
+					reply += "\n\n_The pilot's proposal could not be recorded._"
+				} else if a.Proposal != nil && len(a.Proposal.Actions) > 0 && task.Spec.Issue != nil {
+					reply += fmt.Sprintf("\n\n_The proposal follows on #%d, where an owner accepts it._", task.Spec.Issue.IID)
+				}
 			}
 		}
 		r.pilotReply(ctx, gl, spec, m, reply)
@@ -107,7 +115,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			r.log().Error(err, "saving the pilot's session")
 		}
 	}
-	err = r.assessEvents(ctx, gl, task, spec, state, out, events, &st)
+	err = r.assessEvents(ctx, gl, task, spec, state, stateOf, out, events, &st)
 	out.Summary = fmt.Sprintf("answered %d messages, assessed %d events", len(msgs), len(events))
 	if _, limited := AsUsageLimit(err); limited || failed == nil {
 		return out, err
@@ -161,20 +169,22 @@ type pilotIssue struct {
 // pilotState renders the milestone's state as JSON: the spec, autopilot,
 // the issues with their tasks, the default branch's health and the last
 // comments of the tracking issue.
-func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (string, error) {
+// It also returns the state proposals are made on (aiv1.PilotState).
+func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (string, stateFunc, error) {
 	glProject := spec.GitLab.Project
 	m, err := gl.GetMilestone(ctx, glProject, task.Spec.Milestone.ID)
 	if err != nil {
-		return "", fmt.Errorf("getting milestone: %w", err)
+		return "", nil, fmt.Errorf("getting milestone: %w", err)
 	}
 	issues, err := gl.ListIssues(ctx, glProject, gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
 	if err != nil {
-		return "", fmt.Errorf("listing milestone issues: %w", err)
+		return "", nil, fmt.Errorf("listing milestone issues: %w", err)
 	}
 	var tasks aiv1.AgentTaskList
 	if err := r.K8s.List(ctx, &tasks, client.InNamespace(r.Namespace), client.MatchingLabels{labelProject: project.Name}); err != nil {
-		return "", fmt.Errorf("listing tasks: %w", err)
+		return "", nil, fmt.Errorf("listing tasks: %w", err)
 	}
+	var specTask *aiv1.AgentTask
 	var v struct {
 		Milestone  string                 `json:"milestone"`
 		Spec       string                 `json:"spec"`
@@ -183,6 +193,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		Issues     []pilotIssue           `json:"issues"`
 		MainHealth *aiv1.MainHealthStatus `json:"mainHealth,omitempty"`
 		Comments   []string               `json:"trackingIssueComments,omitempty"`
+		Proposals  []aiv1.PilotProposal   `json:"openProposals,omitempty"`
 	}
 	v.Milestone, v.Spec, v.MainHealth = m.Title, notify.WithoutOwners(m.Description, spec.Workflow.CommandPrefix), project.Status.MainHealth
 	byIID := map[int64]*aiv1.AgentTask{}
@@ -191,7 +202,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		switch {
 		case t.Spec.Milestone == nil || t.Spec.Milestone.IID != m.IID:
 		case t.Spec.Type == aiv1.TaskTypeSpec:
-			v.Plan, v.Autopilot = t.Status.Plan, t.Status.Autopilot
+			v.Plan, v.Autopilot, specTask = t.Status.Plan, t.Status.Autopilot, t
 		case t.Spec.Type == aiv1.TaskTypeImplement && t.Spec.Issue != nil:
 			byIID[t.Spec.Issue.IID] = t
 		}
@@ -206,7 +217,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 	if task.Spec.Issue != nil {
 		notes, err := gl.ListIssueNotes(ctx, glProject, task.Spec.Issue.IID)
 		if err != nil {
-			return "", fmt.Errorf("listing notes of the tracking issue #%d: %w", task.Spec.Issue.IID, err)
+			return "", nil, fmt.Errorf("listing notes of the tracking issue #%d: %w", task.Spec.Issue.IID, err)
 		}
 		for _, n := range notes[max(0, len(notes)-pilotComments):] {
 			if !n.System {
@@ -214,8 +225,17 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 			}
 		}
 	}
+	if ps := task.Status.Pilot; ps != nil {
+		v.Proposals = ps.Proposals
+	}
 	b, err := json.MarshalIndent(v, "", "  ")
-	return string(b), err
+	stateOf := func(a []aiv1.PilotAction) string {
+		if specTask == nil {
+			return ""
+		}
+		return aiv1.PilotState(specTask, byIID, a)
+	}
+	return string(b), stateOf, err
 }
 
 // pilotComments is how many of the tracking issue's last comments the pilot
@@ -246,4 +266,52 @@ func (r *Runner) withoutPilot(notes []gitlab.Note) []gitlab.Note {
 		return notes
 	}
 	return slices.DeleteFunc(notes, r.pilot)
+}
+
+// stateFunc is aiv1.PilotState of the state the pilot read; nil when it
+// could not read it.
+type stateFunc func([]aiv1.PilotAction) string
+
+// maxProposed bounds the proposals that wait for the operator.
+const maxProposed = 10
+
+// propose records the pilot's proposal in status.pilot.proposed with the
+// state it was made on; the operator checks it, posts it on the tracking
+// issue and runs it once an owner accepts it. The runner executes nothing.
+// A milestone without owners, whom nobody could accept it from, or a state
+// it could not read get none.
+// source names the message or event it answers: a run started again does
+// not propose it twice.
+func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalAnswer, stateOf stateFunc, source string) error {
+	if p == nil || len(p.Actions) == 0 || len(task.Spec.Owners) == 0 || stateOf == nil {
+		return nil
+	}
+	prop := aiv1.PilotProposal{Summary: truncate(p.Summary, 500), Source: source}
+	for _, a := range p.Actions[:min(len(p.Actions), 5)] {
+		prop.Actions = append(prop.Actions, aiv1.PilotAction{Tool: truncate(a.Tool, 40), IssueIID: a.Issue, Kind: truncate(a.Kind, 40),
+			Note: truncate(a.Note, 2000), Title: truncate(a.Title, 200)})
+	}
+	if prop.State = stateOf(prop.Actions); prop.State == "" {
+		return nil
+	}
+	// Optimistic: the operator takes proposals out concurrently.
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var t aiv1.AgentTask
+		if err := r.K8s.Get(ctx, client.ObjectKeyFromObject(task), &t); err != nil {
+			return err
+		}
+		orig := t.DeepCopy()
+		if t.Status.Pilot == nil {
+			t.Status.Pilot = &aiv1.PilotStatus{}
+		}
+		ps := t.Status.Pilot
+		if slices.ContainsFunc(slices.Concat(ps.Proposed, ps.Proposals, ps.Accepted), func(q aiv1.PilotProposal) bool { return q.Source == source }) {
+			return nil
+		}
+		if len(ps.Proposed) >= maxProposed {
+			return fmt.Errorf("%d proposals wait for the operator already", maxProposed)
+		}
+		t.Status.Pilot.Proposed = append(t.Status.Pilot.Proposed, prop)
+		return r.K8s.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
+	})
 }

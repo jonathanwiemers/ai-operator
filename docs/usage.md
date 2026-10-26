@@ -839,11 +839,35 @@ default branch and the last comments of the tracking issue.
   while it holds, or a label or pause flapped back and forth, does not
   repeat it; a new head or a new reason does. A pause over an issue and
   that issue's `agent::needs-input` are one event.
-- **Answers and assessments only.** For now the pilot acts on nothing: it
-  starts no run, changes no label, issue or spec. Asked to act, it says
-  which command or label does it. Its answers and assessments are made
-  inert like all agent text: no mentions (besides the owners' `cc`), no
-  quick actions.
+- **Proposals and `yes`.** The pilot acts only on a proposal an owner
+  accepts. An answer or an assessment can end with one; the operator posts
+  it on the tracking issue as "🧭 **Proposal P3:** …" with its actions:
+  - `retry #N`: a new run of the issue;
+  - `reReview #N`: its reviewers run again on the pushed head;
+  - `instruct #N`: a run with a fixed instruction (`ci-fix`,
+    `install-toolchains`, `rerun`), plus the pilot's hint, which the
+    implementer gets as data that cannot widen its task. The pilot's own
+    words never reach the implementer as an instruction;
+  - `openIssue`: a new issue (title, body, `ai-generated`) that is not
+    handed to the agent; a title is never opened twice.
+
+  Merging, closing and pushing do not exist; neither do labels or edits. An
+  owner accepts with `yes` as a **reply in the proposal's thread**, or with
+  `/pilot yes P3` anywhere in the milestone; `no` or `/pilot no P3` drops
+  it. A bare `/pilot yes` is refused with the list of open proposals. One
+  `yes` runs all of its actions, once; the operator checks each again
+  (an issue of the milestone with a task, a known tool) and the reply says
+  what ran. A proposal **expires** after 24 h or once the state it was made
+  on changes (the milestone description, the queue, the pause, the head of
+  an issue it names); a `yes` then gets "no longer applies". Only owners
+  count: anyone else's `yes`, or a quoted one (`> yes`), does nothing, and
+  on a milestone without owners there are no proposals.
+- **Your own words.** `/pilot tell #12: use the v2 API` proposes to pass
+  your words on to #12's implementer verbatim; after a `yes` it gets them
+  as "instruction from @you via pilot" with its next run, and the issue
+  shows them.
+- Its answers, assessments and proposals are made inert like all agent
+  text: no mentions (besides the owners' `cc`), no quick actions.
 - **Cost.** It runs on the light model (`agents.pilot`) in its own pod with a
   resumed session, and is bounded by `pilot.maxBudgetUSD` (default `$20`)
   per milestone; once that is spent it answers that the budget is used up,

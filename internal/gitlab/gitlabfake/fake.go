@@ -65,6 +65,10 @@ type Fake struct {
 	StateEvents map[int64][]gitlab.StateEvent
 	// Users FindUser knows, besides the bot.
 	Users []gitlab.User
+	// Replies maps a reply in a thread to the note that started it;
+	// DiscussionLists counts ListIssueDiscussions calls.
+	Replies         map[int64]int64
+	DiscussionLists int
 }
 
 var _ gitlab.API = (*Fake)(nil)
@@ -292,6 +296,38 @@ func (f *Fake) UpdateIssue(_ context.Context, _ string, iid int64, opts gitlab.U
 	is.UpdatedAt = f.tick()
 	c := *is
 	return &c, nil
+}
+
+// AddReply adds a comment by author to an issue as a reply in the thread
+// of the note root.
+func (f *Fake) AddReply(iid, root int64, author gitlab.User, body string) gitlab.Note {
+	n := f.AddNote(iid, author, body)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Replies == nil {
+		f.Replies = map[int64]int64{}
+	}
+	f.Replies[n.ID] = root
+	return n
+}
+
+// ListIssueDiscussions groups an issue's notes into threads: a reply goes
+// with its root, every other note is a thread of its own.
+func (f *Fake) ListIssueDiscussions(_ context.Context, _ string, iid int64) ([]gitlab.Discussion, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.DiscussionLists++
+	var out []gitlab.Discussion
+	at := map[int64]int{}
+	for _, n := range f.IssueNotes[iid] {
+		if i, ok := at[f.Replies[n.ID]]; ok {
+			out[i].Notes = append(out[i].Notes, n)
+			continue
+		}
+		at[n.ID] = len(out)
+		out = append(out, gitlab.Discussion{ID: fmt.Sprint(n.ID), Notes: []gitlab.Note{n}})
+	}
+	return out, nil
 }
 
 func (f *Fake) ListIssueNotes(_ context.Context, _ string, iid int64) ([]gitlab.Note, error) {

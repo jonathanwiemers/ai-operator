@@ -720,9 +720,9 @@ It watches every planned milestone, autopilot or not:
 ## Pilot
 
 A milestone's pilot is a `Coordinate` task with its own pod, workspace and
-resumed session (`agents.pilot`, light model). It only answers; changing
-anything is a later step of
-[the spec](specs/milestone-coordinator.spec.md).
+resumed session (`agents.pilot`, light model). It answers, and acts only
+through proposals an owner accepts; managed autonomy and more tools are
+later steps of [the spec](specs/milestone-coordinator.spec.md).
 
 * **Lifecycle.** The project controller keeps one `Coordinate` task per
   planned milestone with a tracking issue (`spec.issue`): the autopilot's
@@ -794,10 +794,57 @@ anything is a later step of
   answer (`assessSchema`: classification, evidence, what it would do) is
   posted on the tracking issue, made inert, with one `cc` of the owners; a
   classification off the list is shown as `unknown`. Without budget or a
-  successful turn the comment says so. It executes nothing; C2b records the
-  proposed actions where the answer is rendered. The runner remembers the
+  successful turn the comment says so. It executes nothing. The runner remembers the
   last 100 posted `key@request`, so a run started again does not post
   twice; a comment that could not be posted fails the run.
+* **Proposals** (`internal/controller/pilot_actions.go`). An answer or an
+  assessment may carry a proposal (`proposalSchema`: a summary and up to 5
+  actions of `retry`, `reReview`, `instruct` with a kind, `openIssue`). The
+  runner executes nothing: it appends the proposal to
+  `status.pilot.proposed` of the `Coordinate` task, with `state`, the hash
+  of what it was made on (`aiv1.PilotState`: the spec task's description
+  hash, autopilot phase, pause and queue, and the pushed head of each issue
+  an action names), computed from the tasks it read for the turn. The
+  operator posts the proposals on its next poll: it gives each the next ID
+  (`status.pilot.lastProposal`), moves it to `status.pilot.proposals` and
+  then comments "Proposal P<n>" on the tracking issue with each action and,
+  where it would refuse one, why, ending in `<!-- ai-operator:proposal
+  id=<n> state=<hash> -->`. A proposal with no action it would run is not
+  posted. Owner and verbatim text of an action are cleared on proposals
+  from a run: only `/pilot tell #N: …`, which the operator handles without
+  a model call, sets them. Both writers use optimistic locking on the
+  status (the runner retries on a conflict, the operator tries again next
+  poll), so no proposal is lost or posted twice.
+* **Accepting.** `/pilot yes|no P<n>` comes through the routing above
+  (owners only; a bare `yes` gets the list of open proposals). A `yes` or
+  `no` that is a whole comment of an owner on the tracking issue is matched
+  to its thread by listing the issue's discussions, only when there is such
+  a comment; the thread must start with the bot's proposal marker. The
+  operator recomputes `state` from the current tasks; a changed state or
+  24 h since posting expire it. An accepted proposal moves to
+  `status.pilot.accepted`; `runAccepted` runs those at the end of the poll
+  (in `syncPilots`), when no other step of the poll writes the tasks any
+  more, and each task write is done on a fresh copy, tried again on a
+  conflict. They leave the status in one locked patch before any action
+  runs (with the keys of the issue titles they open added to
+  `status.pilot.openedIssues`, and taken out again when the issue could not
+  be created), so each runs once at most; a failed action is reported in
+  the outcome on the tracking issue, not retried. A run records a proposal
+  once per message or event (`source`), so a run started again does not
+  propose twice, and at most 10 wait for the operator. Each action
+  is checked again: a known tool, an issue of the milestone with an
+  implement task, a pushed head for `reReview`, a kind for `instruct`, a
+  title not opened before. `retry` is a run request (`requestRun`),
+  `reReview` sets `spec.source.reviewFor` like `/agent review`, `instruct`
+  sets `spec.source.pilotInstruction` (kind and note, or owner and text,
+  with the run request it is for) and comments on the issue (a 🧭 comment
+  the implementer's thread leaves out), `openIssue` creates an
+  `ai-generated` issue without agent labels or milestone, marked
+  `<!-- ai-operator:pilot-issue=<title key> -->`. The implementer's prompt
+  gets a kind as a fixed sentence with the note inside `<untrusted-data>`,
+  or the owner's words as "Instruction from @owner via the pilot"; an
+  instruction counts as human input, so a conflict or re-review run still
+  runs the implementer.
 * **Budget.** The task's `status.run.costUSD` is the pilot's spend; at
   `pilot.maxBudgetUSD` it answers without a model call that the budget is
   used up. On claude each turn is capped at the rest of the budget (or the
