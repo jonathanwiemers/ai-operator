@@ -403,15 +403,18 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		block = aiv1.BlockQuota
 	}
 	var lost *AgentLostError
-	if errors.As(err, &lost) {
-		block = aiv1.BlockInfra // its pod or container was lost, not the work
+	if errors.As(err, &lost) || task.Spec.Type == aiv1.TaskTypeSpec && block == "" && gitlab.IsTransient(err) {
+		block = aiv1.BlockInfra // its pod or container was lost (or GitLab), not the work
 	}
 	if err != nil {
 		log.Error(err, "run failed")
 		out.Result = aiv1.RunResultFailed
 		out.Summary = err.Error()
-		if task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
+		switch {
+		case task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil:
 			r.reportFailure(ctx, gl, spec, task, out, err, block)
+		case task.Spec.Type == aiv1.TaskTypeSpec:
+			r.reportSpecFailure(ctx, gl, spec, task, out, err, block)
 		}
 	}
 	log.Info("run finished", "result", out.Result, "costUSD", out.CostUSD,
@@ -652,6 +655,35 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 		AddLabels: []string{wf.NeedsInputLabel}, RemoveLabels: []string{wf.WorkingLabel},
 	}); err != nil {
 		r.log().Error(err, "updating labels after failure")
+	}
+}
+
+// reportSpecFailure tells the milestone's owners on its autopilot tracking
+// issue why planning failed. The operator plans again once after an outside
+// failure (block); milestones without a tracking issue only log it.
+func (r *Runner) reportSpecFailure(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome, runErr error, block aiv1.BlockReason) {
+	ap := task.Status.Autopilot
+	if ap == nil || ap.TrackingIssueIID == 0 {
+		return
+	}
+	msg := notify.Defuse(strings.ReplaceAll(truncate(runErr.Error(), 3000), "`", "'"))
+	body := fmt.Sprintf("🤖 Planning failed:\n\n```\n%s\n```\n\n", msg)
+	switch {
+	case block == aiv1.BlockInfra && task.Spec.Source.InfraRetry != task.Spec.RunRequest:
+		body += fmt.Sprintf("The cause is outside the plan, so the operator plans again at %s UTC (`lifecycle.infraRetryAfter`), once.",
+			r.now().Add(spec.Lifecycle.InfraRetryAfter.Duration).UTC().Format("2006-01-02 15:04"))
+	case block == aiv1.BlockInfra:
+		body += "This was the automatic retry. Once the cause is fixed, change the milestone's spec to plan again."
+	default:
+		body += "To plan again, change the milestone's spec."
+	}
+	// No autopilot pause covers planning: the owners hear of it here.
+	if spec.Notify.Wants(aiv1.NotifyFailed) {
+		body += notify.Mention(task.Spec.Owners)
+	}
+	body += r.run.markdown(out.CostUSD)
+	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, ap.TrackingIssueIID, body); err != nil {
+		r.log().Error(err, "posting planning failure note", "issue", ap.TrackingIssueIID)
 	}
 }
 

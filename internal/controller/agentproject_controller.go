@@ -217,7 +217,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			continue
 		}
 		active++
-		task, err := r.syncSpecTask(ctx, project, m, byMilestone[m.IID], autopilot, owners(m.Description), prefix)
+		task, err := r.syncSpecTask(ctx, project, spec, m, byMilestone[m.IID], autopilot, owners(m.Description))
 		if err != nil {
 			return err
 		}
@@ -427,8 +427,10 @@ func (r *AgentProjectReconciler) newTask(project *aiv1.AgentProject, name string
 }
 
 // syncSpecTask makes sure a planned milestone has a spec task and requests a
-// new run whenever the milestone description changes.
-func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners []string, prefix string) (*aiv1.AgentTask, error) {
+// new run whenever the milestone description changes, and once after a run
+// that failed for an outside reason (specRetryDue).
+func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners []string) (*aiv1.AgentTask, error) {
+	prefix := spec.Workflow.CommandPrefix
 	// The owners and rules are no part of the spec: changing them re-plans
 	// nothing.
 	hash := hashString(rules.Spec(m.Description, prefix))
@@ -449,8 +451,9 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name, "autopilot", autopilot)
 		return task, r.Create(ctx, task)
 	}
+	retry := r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration)
 	if task.Spec.Source.DescriptionHash == hash && *task.Spec.Milestone == *ref && task.Spec.Autopilot == autopilot && slices.Equal(task.Spec.Owners, owners) &&
-		slices.Equal(task.Spec.Rules, ruleLines) {
+		slices.Equal(task.Spec.Rules, ruleLines) && !retry {
 		return task, nil
 	}
 	task.Spec.Autopilot = autopilot
@@ -459,9 +462,23 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		log.FromContext(ctx).Info("milestone spec changed, re-planning", "milestone", m.Title, "task", task.Name)
 		task.Spec.RunRequest++
 		task.Spec.Source.DescriptionHash = hash
+	} else if retry {
+		log.FromContext(ctx).Info("planning again after a failure for an outside reason", "milestone", m.Title, "task", task.Name)
+		task.Spec.Source.InfraRetry = task.Spec.RunRequest + 1
+		task.Spec.RunRequest++
 	}
 	task.Spec.Milestone = ref
 	return task, r.Update(ctx, task)
+}
+
+// specRetryDue reports whether a planning run that failed for an outside
+// reason (run.blockReason infra) is due for its automatic retry: once per run
+// request, lifecycle.infraRetryAfter after it ended, like an implement run's
+// (syncRunBlock).
+func (r *AgentProjectReconciler) specRetryDue(task *aiv1.AgentTask, after time.Duration) bool {
+	run := task.Status.Run
+	return !task.RunPending() && run.LastResult == aiv1.RunResultFailed && run.BlockReason == aiv1.BlockInfra &&
+		task.Spec.Source.InfraRetry != run.ObservedRunRequest && run.LastActivityTime != nil && !r.now().Before(run.LastActivityTime.Add(after))
 }
 
 // syncImplementTask makes sure an issue handed to the agent has a task and

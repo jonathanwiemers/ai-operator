@@ -952,7 +952,8 @@ spec:
                     default: 30m
                     description: |-
                       InfraRetryAfter is the wait before the operator starts a run that
-                      failed for an outside reason (the issue is blocked, infra) once more.
+                      failed for an outside reason (the issue is blocked, infra; for planning
+                      also a transient GitLab error) once more.
                     type: string
                   maxRunsPerTask:
                     default: 20

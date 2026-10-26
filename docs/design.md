@@ -339,6 +339,15 @@ recorded in `spec.source.infraRetry`, so a failed retry (its observed run
 request) waits for a human, and the runner's comment says which case it
 is. Autopilot's resume leaves such a block to that new run.
 
+Spec tasks have no issue to block, but get the same one retry: the runner
+also reports `infra` for a planning run that failed on a transient GitLab or
+network error (`gitlab.IsTransient`), and the poll's `syncSpecTask` requests
+one new run `lifecycle.infraRetryAfter` after it, recorded in
+`spec.source.infraRetry` like above, in the same update as a re-plan for a
+changed spec. On autopilot the runner comments every planning failure on the
+tracking issue, with the owners' mention (event `failed`): no autopilot
+pause covers planning.
+
 The issue can stay open for months; resources are reclaimed in stages and
 nothing is lost.
 

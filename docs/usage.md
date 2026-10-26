@@ -140,6 +140,17 @@ The milestone description is never modified. If you edit the spec later, the
 spec agent runs again. It updates sub-issues that are still drafts and leaves
 issues that are in progress, done, or created by hand alone.
 
+If planning fails for an outside reason (a GitLab or network error such as a
+timeout, or the agent pod or container lost), the operator plans again once,
+`spec.lifecycle.infraRetryAfter` (default 30m) after the failure. A run
+keeps the issues it created, and the next one finds them by their plan key.
+Other failures (e.g. a plan that does not decode), and a retry that fails
+too, wait for you: change the milestone's spec to plan again. On autopilot
+every planning failure is a comment on the [tracking issue](#tracking-issue)
+with the error and whether a retry follows, and it mentions the owners
+(event `failed`). Without autopilot it is in the task status
+(`status.run.summary`) and the spec pod's log.
+
 ### Dependencies as issue links
 
 The planner's dependencies are also GitLab issue links, so the issue page and
@@ -640,7 +651,9 @@ to, `/agent spec`), the milestone runs without you:
    [decision](#decisions), with why and the alternatives, in a comment on
    each issue. Until a plan exists the tracking issue says that the milestone
    is being planned (or that planning has not succeeded yet) and nothing
-   starts; `/agent pause` and `/agent resume` already work.
+   starts; `/agent pause` and `/agent resume` already work. A planning
+   failure is a comment there that mentions the owners
+   ([details](#1-write-the-milestone-spec)).
 2. Once planned, the operator moves the first issue to `agent::ready`. Issues go **one at a time**, in
    dependency order (an issue's "Depends on" first, otherwise plan order). An
    issue linked as "blocked by" an open issue waits for it too.
@@ -1274,7 +1287,9 @@ taking the pod down. The run fails, and an issue moves to `agent::blocked` +
   On autopilot, the gate waits while the issue is blocked, and
   `/agent resume` does not lift such a block: only a new run does.
 
-`/agent retry` starts the run again with a new count. A spec run fails like any other failed spec run. A
+`/agent retry` starts the run again with a new count. A spec run that gives
+up this way is planned again once too, like any [planning failure for an
+outside reason](#1-write-the-milestone-spec). A
 run that finishes resets the count. Suspending a task (`spec.suspend`)
 mid-run stops its pod too, but does not count: the run starts again when the
 task is resumed.

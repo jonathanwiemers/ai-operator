@@ -538,7 +538,8 @@ type LifecycleSpec struct {
 	MaxUsageLimitBackoff metav1.Duration `json:"maxUsageLimitBackoff,omitempty"`
 
 	// InfraRetryAfter is the wait before the operator starts a run that
-	// failed for an outside reason (the issue is blocked, infra) once more.
+	// failed for an outside reason (the issue is blocked, infra; for planning
+	// also a transient GitLab error) once more.
 	// +kubebuilder:default="30m"
 	// +optional
 	InfraRetryAfter metav1.Duration `json:"infraRetryAfter,omitempty"`
