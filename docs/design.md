@@ -755,6 +755,24 @@ anything is a later step of
   are still answered (all of them, when the state cannot be read); a usage limit defers the run. The runner remembers the
   last 100 answered note IDs in its state, so a run started again (pod lost,
   deferred) or a message handed over twice is not answered twice.
+* **Events** (`internal/controller/pilot_events.go`). On every poll the
+  operator derives the milestone's events from state it already has: an
+  autopilot pause (`status.autopilot`), an issue with `agent::needs-input`,
+  an issue blocked by `infra` or `quota` (`status.blocked` of its task),
+  and on autopilot milestones a red default branch with its issue or a
+  flaky one (`status.mainHealth`). Each has a key: `stuck/<issue>/<head>`
+  (a pause over the issue and its needs-input label are one event),
+  `infra|quota/<issue>/<head>`, `pause-<reason hash>/0/` for a pause over no
+  issue, `main-red/<issue>`, `flaky/<pipeline>`. A key the pilot did not
+  have goes into `spec.source.pilotEvents` with a run request, like a
+  message (its text cut to 4000 bytes). `status.pilot.events` of the
+  `Coordinate` task remembers the keys handed over, those that hold first,
+  then up to 100 that ended: a key wakes the pilot once, also when its event
+  ends and comes back (a label or a pause flapped), so nobody can run up
+  pods that way; a new head or a new reason is a new key. A key still in
+  the spec is not handed over again, in case the status patch failed after
+  the update. A pilot created in a poll hears of the events from the next
+  one.
 * **Context.** Each turn gets the owner's message, then the milestone's state
   as one JSON block marked as untrusted data: the description without owners
   lines, plan and autopilot status from the spec task, every issue of the

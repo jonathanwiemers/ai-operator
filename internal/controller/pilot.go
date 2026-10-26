@@ -327,10 +327,11 @@ func (r *AgentProjectReconciler) ensurePilot(ctx context.Context, project *aiv1.
 }
 
 // syncPilots keeps the pilot of every planned milestone that has a tracking
-// issue, and reads the tracking issues "/pilot coordinate" opened (the
-// autopilot's are read by autopilot). Pilots left out of keep are deleted.
+// issue, reads the tracking issues "/pilot coordinate" opened (the
+// autopilot's are read by autopilot) and wakes the pilots for the events of
+// their milestones. Pilots left out of keep are deleted.
 func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	specTasks []*aiv1.AgentTask, pilots map[int64]*aiv1.AgentTask, keep map[string]bool) error {
+	specTasks []*aiv1.AgentTask, pilots map[int64]*aiv1.AgentTask, keep map[string]bool, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask) error {
 	var errs []error
 	for _, st := range specTasks {
 		coord := pilots[st.Spec.Milestone.IID]
@@ -368,6 +369,10 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 				err = r.pilotTracking(ctx, gl, project, spec, st, coord, tracking, notes)
 			}
 		}
+		// A pilot created in this poll hears of the events from the next.
+		if err == nil && coord != nil && keep[coord.Name] {
+			err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks))
+		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("pilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
@@ -387,7 +392,7 @@ func closePilotIssue(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectS
 	return nil
 }
 
-// patchPilot changes the spec task's pilot status.
+// patchPilot changes the pilot status of a spec or Coordinate task.
 func (r *AgentProjectReconciler) patchPilot(ctx context.Context, st *aiv1.AgentTask, mutate func(*aiv1.PilotStatus)) error {
 	orig := st.DeepCopy()
 	if st.Status.Pilot == nil {
