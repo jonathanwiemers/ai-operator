@@ -1060,7 +1060,9 @@ func (a *autopilot) pause(ctx context.Context, reason string) error {
 	}
 	a.log.Info("autopilot paused", "reason", reason)
 	// Comment first: if it fails, the pause is tried again on the next poll.
-	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nFix it, then comment `%s resume`. A pause over the active issue also ends by itself once a later run fixed it or the MR is merged by hand.", reason, a.spec.Workflow.CommandPrefix)+
+	// Defuse the reason (it can quote job names and titles); the owners'
+	// mention is appended after, so it stays a real ping.
+	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nFix it, then comment `%s resume`. A pause over the active issue also ends by itself once a later run fixed it or the MR is merged by hand.", notify.Defuse(reason), a.spec.Workflow.CommandPrefix)+
 		a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
 		return err
 	}
@@ -1307,7 +1309,7 @@ func (a *autopilot) renderTracking() string {
 	fmt.Fprintf(&b, "**Autopilot** for milestone **%s**: ", a.st.Spec.Milestone.Title)
 	switch a.ap.Phase {
 	case aiv1.AutopilotPaused:
-		fmt.Fprintf(&b, "⏸️ paused, %s. Comment `%s resume` to continue.\n", a.ap.PausedReason, prefix)
+		fmt.Fprintf(&b, "⏸️ paused, %s. Comment `%s resume` to continue.\n", notify.Defuse(a.ap.PausedReason), prefix)
 	case aiv1.AutopilotDone:
 		b.WriteString("✅ done.\n")
 	case aiv1.AutopilotOff:

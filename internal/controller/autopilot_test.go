@@ -15,6 +15,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 const specTaskName = "shop-spec-m3-checkout-v2"
@@ -247,8 +248,13 @@ func TestAutopilotPauseBeforeThePlan(t *testing.T) {
 	tracking := e.autopilot().TrackingIssueIID
 	e.gl.AddNote(tracking, gitlab.User{ID: 1, Username: "jonathan"}, "/agent pause")
 	e.reconcile()
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(e.gl.Issues[tracking].Description, "paused, paused by @jonathan") {
-		t.Fatalf("pause works before the plan: %+v\n%s", ap, e.gl.Issues[tracking].Description)
+	ap := e.autopilot()
+	desc := e.gl.Issues[tracking].Description
+	if ap.Phase != aiv1.AutopilotPaused || ap.PausedReason != "paused by @jonathan" {
+		t.Fatalf("pause works before the plan, status keeps the raw reason: %+v", ap)
+	}
+	if !strings.Contains(desc, "paused, "+notify.Defuse("paused by @jonathan")) {
+		t.Fatalf("the tracking description must defuse the pause reason:\n%s", desc)
 	}
 
 	// Planned while paused: still nothing starts until resumed.
@@ -310,6 +316,40 @@ func TestAutopilotPausesAndResumes(t *testing.T) {
 	e.reconcile()
 	if e.autopilot().Phase != aiv1.AutopilotDone || e.autopilot().Items[1].State != aiv1.AutopilotItemSkipped {
 		t.Fatalf("skipping the last issue should finish the milestone: %+v", e.autopilot())
+	}
+}
+
+// A pause reason that quotes a mention and a quick action is inert in the
+// tracking comment and description; the owners' ping still works; status
+// keeps the raw reason for prompts.
+func TestAutopilotPauseDefusesReason(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.r.DefaultOwners = []string{"alice"}
+	e.reconcile()
+	e.reconcile()
+	const job = "@someone\n/close"
+	name := e.finishRun(1, "sha-api", nil)
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.CI = &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateFailed, FailedJobs: []string{job}}
+	})
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "@someone") || !strings.Contains(ap.PausedReason, "/close") {
+		t.Fatalf("status keeps the raw reason: %+v", ap)
+	}
+	if strings.Contains(ap.PausedReason, "\u200b") {
+		t.Fatalf("status must not store a defused reason: %q", ap.PausedReason)
+	}
+	defused := notify.Defuse(ap.PausedReason)
+	comment, desc := trackingComments(e), e.gl.Issues[ap.TrackingIssueIID].Description
+	if !strings.Contains(comment, defused) || strings.Contains(comment, ap.PausedReason) {
+		t.Fatalf("the pause comment must use the defused reason, not the raw one:\n%s", comment)
+	}
+	if !strings.Contains(desc, defused) || strings.Contains(desc, ap.PausedReason) {
+		t.Fatalf("the tracking description must use the defused reason, not the raw one:\n%s", desc)
+	}
+	if !strings.Contains(comment, "cc @alice") || strings.Contains(comment, "cc @\u200balice") {
+		t.Fatalf("the owners' mention must stay a real ping:\n%s", comment)
 	}
 }
 
