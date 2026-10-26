@@ -203,6 +203,43 @@ spec:
                   mergeRequestUpdatedAt:
                     format: date-time
                     type: string
+                  pilotEvents:
+                    description: |-
+                      PilotEvents are the events the operator woke the pilot for
+                      (Coordinate tasks), each assessed by the run of its request.
+                    items:
+                      description: |-
+                        PilotEvent is something the pilot assesses without being asked: an
+                        autopilot pause, an issue that needs input or is blocked by infra or
+                        quota, a red or flaky default branch.
+                      properties:
+                        issueIID:
+                          description: IssueIID is the issue it is about, if any.
+                          format: int64
+                          type: integer
+                        key:
+                          description: 'Key identifies the event: it wakes the pilot
+                            once.'
+                          type: string
+                        pipelineID:
+                          description: PipelineID is the red pipeline it is about,
+                            if any.
+                          format: int64
+                          type: integer
+                        request:
+                          description: Request is the run request that assesses it.
+                          format: int64
+                          type: integer
+                        text:
+                          description: Text says what happened; it can quote titles
+                            and GitLab's errors.
+                          type: string
+                      required:
+                      - key
+                      - request
+                      - text
+                      type: object
+                    type: array
                   pilotMessages:
                     description: |-
                       PilotMessages are the owners' messages to the pilot (Coordinate
@@ -669,8 +706,15 @@ spec:
               pilot:
                 description: |-
                   Pilot is the operator's bookkeeping of the milestone's pilot (spec
-                  tasks).
+                  and Coordinate tasks).
                 properties:
+                  events:
+                    description: |-
+                      Events are the keys of the events handed to the pilot (Coordinate
+                      tasks), those that hold first, then the last ones that ended.
+                    items:
+                      type: string
+                    type: array
                   lastNoteID:
                     description: |-
                       LastNoteID is the newest comment on the tracking issue handed to the

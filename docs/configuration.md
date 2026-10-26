@@ -353,7 +353,7 @@ model is `agents.pilot`.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `mention` | `true` | a comment that starts with a mention of the bot user (`@<bot> …`) talks to the pilot, like `workflow.pilotPrefix`. The bot's username is read on every poll |
-| `maxBudgetUSD` | `"20"` | the pilot's spend per milestone (its task's `status.run.costUSD`). Once it is used up, the pilot answers that it is, without a model call. On claude a single answer may spend what is left at most (or `agents.pilot.maxBudgetUSD`, if lower). The spend is what the engines report: cursor reports none, so on cursor the budget never runs out |
+| `maxBudgetUSD` | `"20"` | the pilot's spend per milestone (its task's `status.run.costUSD`). It covers answers and assessments of events. Once it is used up, the pilot answers that it is, and an assessment only says what happened, without a model call. On claude a single answer or assessment may spend what is left at most (or `agents.pilot.maxBudgetUSD`, if lower). The spend is what the engines report: cursor reports none, so on cursor the budget never runs out |
 
 ## Other `spec` fields
 

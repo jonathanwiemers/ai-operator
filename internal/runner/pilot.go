@@ -20,8 +20,9 @@ import (
 const labelProject = "ai.wiemers.me/project"
 
 // runPilot answers the owners' messages to a milestone's pilot, one turn of
-// its session each. It only answers: the reply is posted where the message
-// was written, nothing else changes.
+// its session each, and assesses the events the operator woke it for. It
+// only answers and assesses: the replies are posted where the messages were
+// written, the assessments on the tracking issue, nothing else changes.
 func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (*Outcome, error) {
 	if task.Spec.Milestone == nil {
 		return nil, fmt.Errorf("coordinate task has no milestone")
@@ -33,9 +34,16 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			msgs = append(msgs, m)
 		}
 	}
-	if len(msgs) == 0 {
+	var events []aiv1.PilotEvent
+	for _, e := range task.Spec.Source.PilotEvents {
+		if e.Request > task.Status.Run.ObservedRunRequest && e.Request <= task.Spec.RunRequest {
+			events = append(events, e)
+		}
+	}
+	if len(msgs)+len(events) == 0 {
 		return out, nil
 	}
+	st := r.loadState()
 	s := r.step(ctx, "read milestone state", "messages", len(msgs))
 	state, err := r.pilotState(ctx, gl, task, project, spec)
 	if err != nil {
@@ -44,14 +52,15 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 		for _, m := range msgs {
 			r.pilotReply(ctx, gl, spec, m, "The pilot could not read the milestone's state, so it cannot answer; ask again in a moment.")
 		}
+		// The events' own data is still worth an assessment.
+		aerr := r.assessEvents(ctx, gl, task, spec, fmt.Sprintf("(the milestone's state could not be read: %v)", err), out, events, &st)
+		if _, limited := AsUsageLimit(aerr); limited {
+			return out, aerr
+		}
 		return out, s.fail(err)
 	}
 	s.done(fmt.Sprintf("%d bytes", len(state)))
-	budget, _ := strconv.ParseFloat(spec.Pilot.MaxBudgetUSD, 64)
-	spent, _ := strconv.ParseFloat(task.Status.Run.CostUSD, 64)
 	role := spec.Agents.Pilot
-	turnCap, _ := strconv.ParseFloat(role.MaxBudgetUSD, 64)
-	st := r.loadState()
 	// A turn that failed does not hold up the others; the run reports it.
 	var failed error
 	for _, m := range msgs {
@@ -59,10 +68,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 		if slices.Contains(st.PilotAnswered, m.NoteID) {
 			continue
 		}
-		left := budget - spent - out.CostUSD
-		if turnCap > 0 {
-			left = min(left, turnCap)
-		}
+		left := pilotLeft(spec, task, out)
 		reply := fmt.Sprintf("The pilot's budget for this milestone ($%s, `pilot.maxBudgetUSD`) is used up, so it does not answer any more.", spec.Pilot.MaxBudgetUSD)
 		if left >= 0.01 {
 			inv := roleInvocation(role, pilotSystemPrompt, readOnlyTools, pilotSchema, true)
@@ -101,8 +107,24 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			r.log().Error(err, "saving the pilot's session")
 		}
 	}
-	out.Summary = fmt.Sprintf("answered %d messages", len(msgs))
+	err = r.assessEvents(ctx, gl, task, spec, state, out, events, &st)
+	out.Summary = fmt.Sprintf("answered %d messages, assessed %d events", len(msgs), len(events))
+	if _, limited := AsUsageLimit(err); limited || failed == nil {
+		return out, err
+	}
 	return out, failed
+}
+
+// pilotLeft is what one turn of the pilot may spend: the rest of its
+// budget, at most the role's own cap.
+func pilotLeft(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome) float64 {
+	budget, _ := strconv.ParseFloat(spec.Pilot.MaxBudgetUSD, 64)
+	spent, _ := strconv.ParseFloat(task.Status.Run.CostUSD, 64)
+	left := budget - spent - out.CostUSD
+	if turnCap, _ := strconv.ParseFloat(spec.Agents.Pilot.MaxBudgetUSD, 64); turnCap > 0 {
+		left = min(left, turnCap)
+	}
+	return left
 }
 
 // maxPilotAnswered is how many answered messages the runner remembers, so

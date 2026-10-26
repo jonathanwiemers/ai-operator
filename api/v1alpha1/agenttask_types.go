@@ -140,6 +140,29 @@ type SourceState struct {
 	// tasks), each answered by the run of its request.
 	// +optional
 	PilotMessages []PilotMessage `json:"pilotMessages,omitempty"`
+
+	// PilotEvents are the events the operator woke the pilot for
+	// (Coordinate tasks), each assessed by the run of its request.
+	// +optional
+	PilotEvents []PilotEvent `json:"pilotEvents,omitempty"`
+}
+
+// PilotEvent is something the pilot assesses without being asked: an
+// autopilot pause, an issue that needs input or is blocked by infra or
+// quota, a red or flaky default branch.
+type PilotEvent struct {
+	// Key identifies the event: it wakes the pilot once.
+	Key string `json:"key"`
+	// IssueIID is the issue it is about, if any.
+	// +optional
+	IssueIID int64 `json:"issueIID,omitempty"`
+	// PipelineID is the red pipeline it is about, if any.
+	// +optional
+	PipelineID int64 `json:"pipelineID,omitempty"`
+	// Text says what happened; it can quote titles and GitLab's errors.
+	Text string `json:"text"`
+	// Request is the run request that assesses it.
+	Request int64 `json:"request"`
 }
 
 // PilotMessage is a comment addressed to the pilot.
@@ -168,6 +191,11 @@ type PilotStatus struct {
 	// user ID; later messages within a day get no answer.
 	// +optional
 	Rejected map[string]metav1.Time `json:"rejected,omitempty"`
+
+	// Events are the keys of the events handed to the pilot (Coordinate
+	// tasks), those that hold first, then the last ones that ended.
+	// +optional
+	Events []string `json:"events,omitempty"`
 }
 
 // CIState is the state of the pipeline of the agent's last push.
@@ -351,7 +379,7 @@ type AgentTaskStatus struct {
 	Revisits *RevisitStatus `json:"revisits,omitempty"`
 
 	// Pilot is the operator's bookkeeping of the milestone's pilot (spec
-	// tasks).
+	// and Coordinate tasks).
 	// +optional
 	Pilot *PilotStatus `json:"pilot,omitempty"`
 
