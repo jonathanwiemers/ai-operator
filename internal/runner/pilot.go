@@ -43,6 +43,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 	if len(msgs)+len(events) == 0 {
 		return out, nil
 	}
+	st := r.loadState()
 	s := r.step(ctx, "read milestone state", "messages", len(msgs))
 	state, err := r.pilotState(ctx, gl, task, project, spec)
 	if err != nil {
@@ -51,12 +52,12 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 		for _, m := range msgs {
 			r.pilotReply(ctx, gl, spec, m, "The pilot could not read the milestone's state, so it cannot answer; ask again in a moment.")
 		}
-		_ = r.assessEvents(ctx, gl, task, spec, "", out, events)
+		// The events' own data is still worth an assessment.
+		_ = r.assessEvents(ctx, gl, task, spec, fmt.Sprintf("(the milestone's state could not be read: %v)", err), out, events, &st)
 		return out, s.fail(err)
 	}
 	s.done(fmt.Sprintf("%d bytes", len(state)))
 	role := spec.Agents.Pilot
-	st := r.loadState()
 	// A turn that failed does not hold up the others; the run reports it.
 	var failed error
 	for _, m := range msgs {
@@ -103,7 +104,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			r.log().Error(err, "saving the pilot's session")
 		}
 	}
-	err = r.assessEvents(ctx, gl, task, spec, state, out, events)
+	err = r.assessEvents(ctx, gl, task, spec, state, out, events, &st)
 	out.Summary = fmt.Sprintf("answered %d messages, assessed %d events", len(msgs), len(events))
 	if _, limited := AsUsageLimit(err); limited || failed == nil {
 		return out, err

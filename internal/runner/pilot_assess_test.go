@@ -104,6 +104,28 @@ func TestPilotAssessmentWithoutBudgetCallsNoModel(t *testing.T) {
 	}
 }
 
+func TestPilotAssessmentIsAFreshSession(t *testing.T) {
+	e := newAssessEnv(t, "")
+	if err := e.r.saveState(state{Sessions: map[string]string{"pilot/claude": "sess-owner"}}); err != nil {
+		t.Fatal(err)
+	}
+	e.step(t)
+	if len(e.engine.calls) != 1 || e.engine.calls[0].Resume != "" || e.r.loadState().Sessions["pilot/claude"] != "sess-owner" {
+		t.Fatalf("an assessment neither resumes nor replaces the owners' session: %+v", e.engine.calls)
+	}
+}
+
+func TestPilotAssessesWithoutTheMilestonesState(t *testing.T) {
+	e := newAssessEnv(t, "")
+	e.gl.Milestones = nil // GetMilestone fails
+	e.step(t)
+	notes := botNotes(e.gl, 5)
+	if len(e.engine.calls) != 1 || !strings.Contains(e.engine.calls[0].Prompt, "could not be read") ||
+		!strings.Contains(e.engine.calls[0].Prompt, "no such command: fmt") || len(notes) != 1 || !strings.Contains(notes[0], "`env`") {
+		t.Fatalf("the event's own data is still assessed: %d calls, %q", len(e.engine.calls), notes)
+	}
+}
+
 func TestPilotAssessmentWithAnUnknownClassification(t *testing.T) {
 	if got := renderAssessment(PilotAssessment{Classification: "merge it", Evidence: "e", WouldDo: "w"}); !strings.Contains(got, "`unknown`") {
 		t.Fatalf("a classification off the list is unknown: %s", got)
