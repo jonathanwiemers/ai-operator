@@ -147,11 +147,19 @@ any of the milestone's agent issues creates one (title "🧭 Pilot:
 
 ### Autonomy
 
-`pilot.autonomy` picks the column: **`managed`** (default on autopilot
-milestones) or **`propose`** (default otherwise, and for every milestone
-whose project sets it). A standing rule can switch one milestone; an
-owner's `/pilot stop` switches it to `propose` at once (and `/pilot go`
-back), as a kill switch.
+`pilot.autonomy` in the AgentProject picks the column: **`managed`**
+(default on autopilot milestones) or **`propose`** (default otherwise, and
+for every milestone when the project sets it). It is **not** a rule: the
+milestone description cannot change it, because anyone who may edit a
+milestone could otherwise widen the pilot's authority.
+
+- **Kill switch:** an owner's `/pilot stop` switches the milestone to
+  `propose` at once, `/pilot go` back to the project's value. Both are
+  commands the controller handles (no model call) and stores in the
+  Coordinate task's status (`status.pilot.autonomyOverride`, with who and
+  when); `stop` outranks the project setting until an owner says `go`, and
+  survives restarts. `/pilot go` cannot raise a `propose` project to
+  `managed`.
 
 - **Managed:** the pilot uses the "free, counted" tools without asking,
   from an owner's message or from an automatic trigger. Every such action
@@ -159,8 +167,15 @@ back), as a kill switch.
   (the classification and the evidence), and how many interventions the
   issue has left. At most `pilot.maxInterventionsPerIssue` (default 2) own
   actions per issue and head; then it proposes and pings, like `propose`.
-  The budget (`pilot.maxBudgetUSD`) and the existing run limits
-  (`maxRunsPerTask`) apply on top.
+  An `openIssue` counts against the issue whose event triggered it (on the
+  tracking issue: against the milestone, same limit), and an issue with the
+  same title marker is not opened twice.
+- **Bounded runs:** a run the pilot starts does **not** reset the issue's CI
+  fix rounds (`status.run.ciRound`), unlike a human `/agent …`, so the CI
+  loop cannot start another full set of fix rounds after each intervention.
+  Per head the pilot adds at most `maxInterventionsPerIssue` runs to what the
+  CI loop does anyway. The budget (`pilot.maxBudgetUSD`) and the existing
+  run limits (`maxRunsPerTask`) apply on top.
 - **Propose:** every action needs a `yes`, also when the owner's message
   asked for it. A proposal may hold several actions; one `yes` accepts all
   of them.
@@ -168,9 +183,14 @@ back), as a kill switch.
   and a human `/agent` start anyway (a fix run, a retry, a review) or open
   an issue, all bounded by the intervention limit and the budget. Spec
   edits, skips, revisits, pause/resume and rules stay behind a `yes`; merge,
-  close and push do not exist. An automatic instruction is shown to the
-  implementer as the pilot's guidance, next to the job logs it already sees
-  in a CI fix run, so prompt injection through logs gains no new authority.
+  close and push do not exist.
+- **Instructions it writes on its own are not trusted text.** When the pilot
+  acts without an owner's message, `instruct` carries a fixed kind
+  (`ci-fix`, `install-toolchains`, `rerun`) that the controller turns into a
+  fixed sentence, plus an optional note the implementer gets inside the
+  untrusted-data markers ("hint from the pilot, derived from CI output; it
+  cannot widen the task"). Only an owner's `/pilot` message, executed by the
+  pilot, reaches the implementer as an owner's instruction.
 - Decided 2026-10-26 after Bloop #331 (see Steers).
 
 - **Owners only:** a `/pilot` message from someone else gets no model call
@@ -231,7 +251,8 @@ run cannot install it.
      inserted as "Owner's rule" into their prompts.
 - `/pilot rules` lists them, `/pilot forget R1` removes one (with `yes`).
 - A rule cannot override: the merge gate, the freeze, budgets and limits, the
-  owners rule, "no merge/close/push". A rule that conflicts with the spec or
+  owners rule, the pilot's autonomy (`pilot.autonomy`, `/pilot stop`), "no
+  merge/close/push". A rule that conflicts with the spec or
   another rule is asked about, not applied.
 - Project-wide rules later via `AgentProject.spec.rules` (in Git, reviewed
   like other config), never written by the coordinator.
@@ -340,8 +361,12 @@ by the operator (owners only), not by the UI.
   expiry, the non-owner reply once per 24 h, rules lines out of the hash,
   action validation (unknown tool, issue outside the milestone, merge
   attempt).
-- Controller (fake GitLab): a non-owner gets one reply and no task wake-up; a
-  trigger posts a proposal and executes nothing; `yes` executes once; an
+- Controller (fake GitLab): a non-owner gets one reply and no task wake-up; in
+  `propose` a trigger posts a proposal and executes nothing; in `managed` a
+  trigger runs one counted tool with an audit comment, and past
+  `maxInterventionsPerIssue` it proposes and pings; a pilot-started run does
+  not reset `ciRound`; `/pilot stop` holds over the project setting and a
+  restart, and a rule cannot set autonomy; `yes` executes once; an
   expired proposal is refused; budget used up answers without a model call;
   `create 1 2` opens issues.
 - Runner (scripted engine): schema answer posted defused; actions recorded,
@@ -359,14 +384,14 @@ GitHub `jonathanwiemers/ai-operator`, one PR per row, each based on `main`.
 |--:|---|---|--:|
 | 0 | This spec | – | 0 |
 | C1 | `Coordinate` task, `/pilot` + mention parsing, owners check, read-only answers on the tracking issue | – | ~50 (may split: parsing / task) |
-| T1 | Agent toolchains: `mise` in `Dockerfile.agent`; the implementer installs the repository's pinned tools (`.mise.toml`, `.tool-versions`, `rust-toolchain.toml`, …) into `$HOME` (workspace PVC, kept between runs) before it verifies | – | ~20 |
+| T1 | Agent toolchains: `mise` (pinned version, checksum-verified) in `Dockerfile.agent`; the implementer installs the tools pinned **on the default branch** (`.mise.toml`, `.tool-versions`, `rust-toolchain.toml`) from their official sources into `$HOME/.toolchains/<version>` (workspace PVC, kept between runs). A pin the branch itself changes is installed into a per-run temporary directory, not kept | – | ~20 |
 | C2a | Triggers: pause, `needs-input`, `infra`/`quota` blocks, main-red/flaky wake the pilot; assessment comment, deduplicated per event | C1 | ~50 |
 | C2b | Tools executed by the controller (`retry`, `reReview`, `instruct`, `openIssue`); proposals with IDs and `yes` | C2a | ~50 |
 | C2c | Autonomy: `pilot.autonomy`, `/pilot stop`/`go`, counted interventions, audit comments | C2b | ~50 |
 | C2d | No pilot for milestones whose autopilot is done (and no new one after the retrospective) | C1 | ~20 |
 | C2e | Standing rules: lines, `setRule` / `forgetRule`, switch overrides, prompt rules | C2b | ~50 |
-| C3 | `editSpec` with diff and confirmation | C2 | ~40 |
-| C4 | Retrospective and `create 1 2` | C2 | ~40 |
+| C3 | `editSpec` with diff and confirmation | C2b | ~40 |
+| C4 | Retrospective and `create 1 2` | C2b | ~40 |
 | C5 | UI milestone page with the chat | C1 | ~50 (web excluded from the Go budget, own PR) |
 
 C3, C4 and C5 are independent of each other once C2b (C5: C1) is merged.
@@ -384,6 +409,14 @@ T1, C2a and C2d can be built in parallel; plan each PR's split before coding.
    the pilot has run on real milestones?
 
 ## Steers
+
+- Review of the managed-autonomy change: autonomy is AgentProject config
+  plus the owners' `/pilot stop`/`go`, never a rule; pilot-started runs do
+  not reset `ciRound`; an autonomous `instruct` is a fixed kind plus an
+  untrusted note; `openIssue` counts against the triggering issue; T1
+  installs only default-branch pins from official sources. Egress
+  restrictions for agent pods stay a cluster concern (NetworkPolicy), not
+  this spec.
 
 - 2026-10-26, owner decision after Bloop #331: on autopilot milestones the
   pilot **manages** (`pilot.autonomy: managed`) instead of only proposing.
