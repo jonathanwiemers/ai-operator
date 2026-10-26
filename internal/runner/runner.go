@@ -130,6 +130,8 @@ type state struct {
 	ImplementEngine aiv1.Engine `json:"implementEngine,omitempty"`
 	// PilotAnswered are the pilot's last answered messages (note IDs).
 	PilotAnswered []int64 `json:"pilotAnswered,omitempty"`
+	// PilotAssessed are the pilot's last assessed events ("key@request").
+	PilotAssessed []string `json:"pilotAssessed,omitempty"`
 }
 
 func sessionKey(role string, engine aiv1.Engine) string { return role + "/" + string(engine) }

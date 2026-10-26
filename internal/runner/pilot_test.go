@@ -21,9 +21,10 @@ import (
 // pilotEngine answers every turn with reply, and fails the turns whose
 // prompt contains fail.
 type pilotEngine struct {
-	calls []Invocation
-	reply string
-	fail  string
+	calls      []Invocation
+	reply      string
+	fail       string
+	assessment *PilotAssessment
 }
 
 func (p *pilotEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
@@ -32,6 +33,9 @@ func (p *pilotEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
 		return nil, errors.New("engine crashed")
 	}
 	b, _ := json.Marshal(PilotAnswer{Reply: p.reply})
+	if inv.JSONSchema == assessSchema {
+		b, _ = json.Marshal(p.assessment)
+	}
 	return &Result{SessionID: "sess-pilot", CostUSD: 0.25, Structured: b}, nil
 }
 

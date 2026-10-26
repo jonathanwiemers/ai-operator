@@ -760,6 +760,19 @@ anything is a later step of
   JSON keeps text from GitLab or CI from closing the block. The pilot has the
   reviewers' read-only tools; its answer is made inert like all agent text
   (no mentions, quick actions or markers).
+* **Assessments** (`internal/runner/pilot_assess.go`). A run also assesses
+  the events in `spec.source.pilotEvents` of its requests, one turn each in
+  the same session, after the messages: the prompt holds the event's key
+  and, in one `<untrusted-data>` block the data cannot close, its text, the
+  last 10 comments of its issue (the run reports among them), the logs of
+  the failed jobs of its pipeline (as in a CI fix run) and the milestone's
+  state. The answer (`assessSchema`: classification, evidence, what it
+  would do) is posted on the tracking issue, made inert, with one `cc` of
+  the owners; a classification off the list is shown as `unknown`. Without
+  state, budget or a successful turn the comment says so. It executes
+  nothing; C2b records the proposed actions where the answer is rendered.
+  The runner remembers the last 100 assessed `key@request`, so a run
+  started again does not post twice.
 * **Budget.** The task's `status.run.costUSD` is the pilot's spend; at
   `pilot.maxBudgetUSD` it answers without a model call that the budget is
   used up. On claude each turn is capped at the rest of the budget (or the
