@@ -1,0 +1,6 @@
+# Toolchains the agent image installs (mise) for work on this repository.
+# go must equal the go directive in go.mod; node must equal the Node major of
+# .github/workflows/ci.yml, .gitlab-ci.yml and the Dockerfiles (node:22).
+[tools]
+go = "1.26.0"
+node = "22"

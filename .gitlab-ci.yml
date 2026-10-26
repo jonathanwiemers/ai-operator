@@ -1,0 +1,90 @@
+# The checks of .github/workflows/ci.yml, one job per check. Releases stay on
+# GitHub (release.yml): no job here pushes images, charts or tags.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+stages: [check]
+
+default:
+  tags: [shared]
+  interruptible: true
+
+.go:
+  stage: check
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/golang:1.26
+  variables:
+    GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
+    GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+  cache:
+    key:
+      files: [go.sum]
+    paths: [.cache/go-mod, .cache/go-build]
+
+# No cache: controller-gen's paths=./... also walks .cache and trips over
+# go.work files inside the module cache.
+drift:
+  extends: .go
+  variables:
+    GOMODCACHE: /go/pkg/mod
+    GOCACHE: /root/.cache/go-build
+  cache: []
+  script:
+    - make generate manifests
+    - git diff --exit-code
+
+gofmt:
+  extends: .go
+  cache: []
+  script:
+    - test -z "$(gofmt -l api cmd internal)"
+
+vet:
+  extends: .go
+  script:
+    - go vet ./...
+
+test:
+  extends: .go
+  script:
+    - go test -race ./...
+
+# web/dist/.gitkeep is committed, so go:embed compiles without the ui job's
+# output; this job checks the Go build, the ui job the web build.
+build:
+  extends: .go
+  script:
+    - make build
+
+version:
+  extends: .go
+  cache: []
+  variables:
+    GIT_DEPTH: "0"
+  script:
+    # GitLab has no release tags (they are created on GitHub): this only
+    # proves the script runs.
+    - hack/next-version.sh
+
+ui:
+  stage: check
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:22-bookworm
+  variables:
+    npm_config_cache: $CI_PROJECT_DIR/.cache/npm
+  cache:
+    key:
+      files: [web/package-lock.json]
+    paths: [.cache/npm]
+  script:
+    - make ui
+
+helm-lint:
+  stage: check
+  image:
+    name: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/alpine/helm:3.17.3
+    entrypoint: [""]
+  script:
+    - apk add --no-cache make
+    - make helm-lint
