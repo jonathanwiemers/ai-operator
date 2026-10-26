@@ -248,6 +248,29 @@ run report lists (and, where pipelines skip drafts, no CI). On
 So an issue's MR goes: draft MR → code → review → ready → pipeline → CI fixes
 if needed → merge (by you, or by autopilot).
 
+### Toolchains the agent installs
+
+The agent runs your tests, linters and formatters itself instead of guessing
+their output, so it needs your toolchains. Besides the tools of the
+[agent image](configuration.md#agent-image), it installs the ones your
+repository pins at the root of the **default branch**:
+
+| Pin file | Installed with | Example |
+|----------|----------------|---------|
+| `.mise.toml`, `mise.toml`, `.tool-versions` | `mise install` | Node, Go, Python, jq |
+| `rust-toolchain.toml`, `rust-toolchain` | `rustup toolchain install` | Rust with `rustfmt`, `clippy`, targets |
+
+* They come from official sources (mise's registry, `static.rust-lang.org`)
+  into `$HOME/.toolchains` (`mise/`, `rustup/`, `cargo/`) on the task's
+  workspace volume, so later runs of the same issue reuse them. No root, no
+  system packages, no piped install scripts. Nothing installs implicitly
+  (`RUSTUP_AUTO_INSTALL=0`, `MISE_AUTO_INSTALL=false`), and mise tools are
+  not on `PATH`: the agent runs them with `mise exec`.
+* If the agent's branch changes a pin (say it bumps Rust), that version goes
+  into a temporary directory for the run only, not into `$HOME/.toolchains`.
+* A failed install is reported in the run summary. To make a toolchain
+  available without a download per issue, add it to your own agent image.
+
 ### Owners and pings
 
 The operator mentions the **owners** (`cc @alice @bob`) in the comments that
@@ -790,9 +813,14 @@ default branch and the last comments of the tracking issue.
   on one of its issues: the operator opens a tracking issue "🧭 Pilot:
   <milestone>" for it; once autopilot is switched on for the milestone, the
   pilot moves to the autopilot's tracking issue and that issue is closed.
-  The pilot ends with the tracking issue: when autopilot is switched off,
-  the milestone is no longer planned, or its pilot's tracking issue is
-  deleted.
+  The pilot ends with the tracking issue: when autopilot is done or switched
+  off, the milestone is no longer planned, or the "🧭 Pilot" issue is closed
+  or deleted. Its task is deleted, and its pod and workspace with it. When a
+  re-plan continues a done queue, or autopilot is switched on again, the
+  pilot comes back on the autopilot's tracking issue. After a closed "🧭
+  Pilot" issue, `/pilot coordinate` opens a new one. On a milestone whose
+  autopilot is done an owner gets "there is no pilot here" (also for `/pilot
+  coordinate`); anyone else gets no answer.
 - **Owners only.** Only the milestone's [owners](#owners-and-pings) (the
   `/agent owners` line, else `notify.users`, compared by user ID) talk to the
   pilot. Anyone else gets "only the owners of this milestone can instruct
