@@ -29,7 +29,7 @@ import (
 
 // pilotTools are the tools the pilot may propose; merging, closing and
 // pushing are none of them.
-var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "skip", "pause", "resume", "revisit", "setRule", "forgetRule"}
+var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "skip", "pause", "resume", "revisit", "setRule", "forgetRule"}
 
 // queueTools go through the tracking issue's commands.
 var queueTools = []string{"skip", "pause", "resume", "revisit"}
@@ -43,7 +43,7 @@ const proposalTTL = 24 * time.Hour
 // queue the command applies to.
 func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string) error {
 	ap := st.Status.Autopilot
-	running := st.Spec.Autopilot && ap != nil && ap.Phase != aiv1.AutopilotOff && ap.Phase != aiv1.AutopilotDone
+	running := queueRunning(st)
 	switch {
 	case !slices.Contains(pilotTools, a.Tool):
 		return fmt.Errorf("`%s` is not a tool of the pilot; merging, closing and pushing are not available", inertLine(a.Tool, 40))
@@ -53,6 +53,10 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return fmt.Errorf("`%s` is not a decision", inertLine(a.Decision, 40))
 	case a.Tool == "revisit":
 		return nil
+	case a.Tool == "fixFlaky" && a.IssueIID <= 0:
+		return errors.New("fixFlaky needs the flaky issue")
+	case a.Tool == "fixFlaky":
+		return nil // the issue itself is checked in GitLab (checkFlaky)
 	case slices.Contains(queueTools, a.Tool) && !running:
 		return errors.New("this milestone has no autopilot queue")
 	case a.Tool == "pause" && ap.Phase == aiv1.AutopilotPaused, a.Tool == "resume" && ap.Phase != aiv1.AutopilotPaused:
@@ -134,6 +138,9 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 			}
 			p.Actions[j] = withRuleText(p.Actions[j], st)
 			err := validAction(p.Actions[j], st, tasks, opened)
+			if err == nil && p.Actions[j].Tool == "fixFlaky" {
+				_, err = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, p.Actions[j].IssueIID, st.Spec.Milestone.IID)
+			}
 			if err == nil {
 				valid++
 				if p.Actions[j].Tool == "openIssue" {
@@ -273,7 +280,10 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 	for i, p := range accepted {
 		errs[i] = make([]error, len(p.Actions))
 		for j, a := range p.Actions {
-			if errs[i][j] = validAction(a, st, tasks, opened); errs[i][j] == nil && p.AcceptedBy == "" && spec.Pilot.AutonomyOf(coord) != aiv1.PilotManaged {
+			if errs[i][j] = validAction(a, st, tasks, opened); errs[i][j] == nil && a.Tool == "fixFlaky" {
+				_, errs[i][j] = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID)
+			}
+			if errs[i][j] == nil && p.AcceptedBy == "" && spec.Pilot.AutonomyOf(coord) != aiv1.PilotManaged {
 				errs[i][j] = errors.New("the pilot proposes now (`/pilot stop` or `pilot.autonomy`)")
 			} else if errs[i][j] == nil && a.Tool == "openIssue" {
 				opened = append(opened, titleKey(a.Title))
@@ -293,7 +303,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		var lines []string
 		for j, a := range p.Actions {
 			if errs[i][j] == nil {
-				if errs[i][j] = r.runAction(ctx, gl, spec, st, tracking, p.ID, p.AcceptedBy, a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
+				if errs[i][j] = r.runAction(ctx, gl, project, spec, st, tracking, p.ID, p.AcceptedBy, a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
 					failed = append(failed, titleKey(a.Title)) // may be opened again
 				}
 			}
@@ -317,8 +327,17 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 }
 
 // runAction executes one validated action of an accepted proposal.
-func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tracking, id int64, by string, a aiv1.PilotAction, t *aiv1.AgentTask) error {
+func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask,
+	tracking, id int64, by string, a aiv1.PilotAction, t *aiv1.AgentTask) error {
 	switch a.Tool {
+	case "fixFlaky":
+		// Checked again: another pilot may have handed it over meanwhile.
+		mh := project.Status.MainHealth
+		is, err := checkFlaky(ctx, gl, spec, project.Status.BotUserID, mh, a.IssueIID, st.Spec.Milestone.IID)
+		if err != nil {
+			return err
+		}
+		return r.handOverFlaky(ctx, gl, spec, mh, st, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), pilotHow(id, by)))
 	case "skip", "pause", "resume", "revisit":
 		return r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
 	case "setRule", "forgetRule":
@@ -445,6 +464,8 @@ func describeAction(a aiv1.PilotAction, err error) string {
 		s = fmt.Sprintf("**revisit** %s, asking for: %s", inertLine(a.Decision, 40), inertLine(a.Note, 2000))
 	case "openIssue":
 		s = fmt.Sprintf("**openIssue** %q, not handed to the agent, with the body: %s", inertLine(a.Title, 200), inertLine(a.Note, 2000))
+	case "fixFlaky":
+		s = fmt.Sprintf("**fixFlaky** #%d: the flaky issue goes to the agent in this milestone, with the operator's task", a.IssueIID)
 	case "setRule", "forgetRule":
 		s = describeRule(a)
 	default:

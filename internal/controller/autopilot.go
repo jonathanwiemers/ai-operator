@@ -189,8 +189,8 @@ func queueOrder(plan []aiv1.PlannedIssue) ([]int64, []int64) {
 
 // mergeQueue keeps the state of known items and appends new ones in queue
 // order. Items the plan dropped stay once they were started, so the history
-// is kept; pending ones are dropped with the plan. Revisit follow-ups are not
-// in the plan and always stay.
+// is kept; pending ones are dropped with the plan. Revisit follow-ups and
+// flaky fixes are not in the plan and always stay.
 func mergeQueue(items []aiv1.AutopilotItem, order []int64) []aiv1.AutopilotItem {
 	known := map[int64]aiv1.AutopilotItem{}
 	for _, it := range items {
@@ -207,7 +207,7 @@ func mergeQueue(items []aiv1.AutopilotItem, order []int64) []aiv1.AutopilotItem 
 		seen[iid] = true
 	}
 	for _, it := range items {
-		if !seen[it.IID] && (it.State != aiv1.AutopilotItemPending || it.RevisitOf != "") {
+		if !seen[it.IID] && (it.State != aiv1.AutopilotItemPending || it.RevisitOf != "" || it.FlakyFix) {
 			out = append(out, it)
 		}
 	}

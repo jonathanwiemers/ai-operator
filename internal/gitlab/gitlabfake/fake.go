@@ -306,6 +306,12 @@ func (f *Fake) UpdateIssue(_ context.Context, _ string, iid int64, opts gitlab.U
 		is.State = "closed"
 		is.ClosedAt = f.tick()
 	}
+	for _, m := range f.Milestones {
+		if opts.MilestoneID != 0 && m.ID == opts.MilestoneID {
+			mc := m
+			is.Milestone = &mc
+		}
+	}
 	is.UpdatedAt = f.tick()
 	c := *is
 	return &c, nil

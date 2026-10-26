@@ -186,8 +186,8 @@ var PilotInstructKinds = []string{"ci-fix", "install-toolchains", "rerun"}
 // PilotAction is one action of a proposal of the pilot; the operator
 // validates and executes it once an owner accepts the proposal.
 type PilotAction struct {
-	// Tool: retry, reReview, instruct, openIssue, skip, pause, resume or
-	// revisit.
+	// Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
+	// resume, revisit, setRule or forgetRule.
 	Tool string `json:"tool"`
 	// Decision to revisit, e.g. D12-3; Note is the change asked for.
 	// +optional
@@ -866,6 +866,12 @@ type AutopilotItem struct {
 	// a decision of a merged issue: the decision's ID.
 	// +optional
 	RevisitOf string `json:"revisitOf,omitempty"`
+
+	// FlakyFix is set for a flaky job's issue handed to the agent
+	// (fixFlaky, mainHealth.autoFixFlaky): not in the plan, it stays on a
+	// re-plan.
+	// +optional
+	FlakyFix bool `json:"flakyFix,omitempty"`
 }
 
 // RevisitStatus is the watermark of handled revisit comments.

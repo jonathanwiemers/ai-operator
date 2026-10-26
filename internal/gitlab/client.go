@@ -268,6 +268,9 @@ type UpdateIssueOptions struct {
 	StateEvent   string   `json:"state_event,omitempty"`
 	// AssigneeIDs replaces all assignees of the issue.
 	AssigneeIDs []int64 `json:"-"`
+	// MilestoneID moves the issue into a milestone (by ID, not IID); 0
+	// leaves it.
+	MilestoneID int64 `json:"-"`
 }
 
 // CreateMergeRequestOptions creates a merge request.
@@ -654,6 +657,9 @@ func (c *Client) UpdateIssue(ctx context.Context, project string, iid int64, opt
 	}
 	if len(opts.AssigneeIDs) > 0 {
 		body["assignee_ids"] = opts.AssigneeIDs
+	}
+	if opts.MilestoneID != 0 {
+		body["milestone_id"] = opts.MilestoneID
 	}
 	var i Issue
 	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/issues/%d", projectPath(project), iid), nil, body, &i)

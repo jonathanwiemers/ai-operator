@@ -421,6 +421,27 @@ agent run. When the branch turns green
 without it (a flaky job, a fix by hand), the issue is closed as usual and
 the agent's MR is left open for you to merge or close.
 
+**Fixing a flaky test with the agent.** A flaky job's issue goes to the
+agent once, after its job was flaky at least twice (two occurrence
+comments): by the pilot's `fixFlaky` (see [Talking to the
+pilot](#talking-to-the-pilot)), or by the operator itself with
+`mainHealth.autoFixFlaky: true` (off by default) at the second occurrence,
+also without a pilot. The issue moves into the milestone (the pilot's; with
+`autoFixFlaky` the active autopilot milestone with the lowest IID, else
+none) and runs like any of its issues: on a running autopilot it joins the
+queue (a re-plan keeps it), otherwise it gets `agent::ready`. Its
+description gets the operator's fixed task: make the flaky test
+deterministic, find the cause in the code or the test, do not delete or
+skip it, a quarantine needs an owner's `yes`. The failing tests and logs
+stay in the occurrence comments, as untrusted data. Only an open
+`ci::flaky` issue the operator opened, with the description it wrote, is
+handed over; an edited one is refused. The first hand-over wins
+(`status.mainHealth.flakyFixes`, which also exempts the issue from
+`milestones.titlePattern`); a later occurrence only adds a comment.
+Occurrence comments from before this version are not counted. Switch
+`autoFixFlaky` on only where that is wanted: whoever can make a job of the
+default branch fail twice starts an agent run.
+
 **Merge freeze.** While the default branch is `red`, autopilot merges
 nothing (`mainHealth.freezeAutopilot`, on by default). When its active issue
 passed review and CI, the issue gets `agent::blocked` +
@@ -860,6 +881,11 @@ default branch and the last comments of the tracking issue.
     words never reach the implementer as an instruction;
   - `openIssue`: a new issue (title, body, `ai-generated`) that is not
     handed to the agent; a title is never opened twice;
+  - `fixFlaky #N`: the flaky issue #N (`ci::flaky`, from a flaky event)
+    goes to the agent in this milestone, with the operator's fixed task
+    (see [Main health](#main-health)); only after two occurrences, only an
+    issue the operator opened with the description it wrote, and once: a
+    pilot that comes second is told where it went;
   - `skip #N`, `pause`, `resume` (autopilot milestones): the tracking
     issue's commands, applied by autopilot on its next poll; a pause says
     "paused by @you via the pilot";
@@ -881,11 +907,11 @@ default branch and the last comments of the tracking issue.
   count: anyone else's `yes`, or a quoted one (`> yes`), does nothing, and
   on a milestone without owners there are no proposals.
 - **Managed.** On autopilot milestones the pilot **manages** by default
-  (`pilot.autonomy`): `retry`, `reReview`, `instruct` and `openIssue` run
-  without a `yes`, from an assessment or from an owner's message. Each
-  counts against its issue and that issue's head (an `openIssue` against
-  the issue whose event triggered it, on the tracking issue against the
-  milestone), at most `pilot.maxInterventionsPerIssue` (2) per head, and
+  (`pilot.autonomy`): `retry`, `reReview`, `instruct`, `openIssue` and
+  `fixFlaky` run without a `yes`, from an assessment or from an owner's
+  message. Each counts against its issue and that issue's head (an
+  `openIssue` against the issue whose event triggered it, on the tracking
+  issue against the milestone; a `fixFlaky` against the milestone), at most `pilot.maxInterventionsPerIssue` (2) per head, and
   each wake-up gets an **audit comment** on the tracking issue: "🧭 The
   pilot acted on its own", what it did, on which issue, why (the
   classification and evidence, or your message) and how many interventions

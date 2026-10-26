@@ -37,8 +37,9 @@ const (
 //	red after the retry           -> red: the main-red issue, the owners pinged
 //
 // The status changes only when every step succeeded, so a failed one is
-// repeated on the next check.
-func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) error {
+// repeated on the next check. With autoFixFlaky, a flaky issue goes to the
+// agent at its second occurrence, into the milestone of lane (nil: none).
+func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, lane *aiv1.AgentTask) error {
 	if spec.MainHealth.Disabled {
 		project.Status.MainHealth = nil
 		return nil
@@ -56,6 +57,11 @@ func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.A
 	st := cur.DeepCopy()
 	if err := r.checkMainHealth(ctx, gl, spec, project.Status.BotUserID, st); err != nil {
 		return err
+	}
+	if spec.MainHealth.AutoFixFlaky && cur.State == aiv1.MainHealthRetrying && st.State == aiv1.MainHealthFlaky {
+		if err := r.autoFixFlaky(ctx, gl, spec, project.Status.BotUserID, st, lane); err != nil {
+			return err
+		}
 	}
 	project.Status.MainHealth = st
 	if !spec.MainHealth.AutoFix || st.IssueIID == 0 || st.AutoFixIssueIID != 0 {
