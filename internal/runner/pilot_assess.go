@@ -38,7 +38,7 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			body = fmt.Sprintf("The pilot's budget for this milestone ($%s, `pilot.maxBudgetUSD`) is used up, so there is no assessment.", spec.Pilot.MaxBudgetUSD)
 		default:
 			prompt := buildAssessPrompt(e, eventData(ctx, gl, spec.GitLab.Project, e), milestone)
-			inv := roleInvocation(role, pilotSystemPrompt, readOnlyTools, assessSchema, true)
+			inv := roleInvocation(role, pilotSystem(task), readOnlyTools, assessSchema, true)
 			inv.Role, inv.MaxBudgetUSD, inv.Prompt = "pilot", strconv.FormatFloat(left, 'f', 2, 64), prompt
 			s := r.step(ctx, "run pilot", "engine", role.Engine, "model", role.Model, "event", e.Key)
 			res, err := r.invoke(ctx, role, inv, prompt)
@@ -58,9 +58,10 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			default:
 				s.done(agentResult(role, res, "assessed"), "costUSD", res.CostUSD)
 				// The proposal follows from the operator once it is recorded.
+				refused := rejectRules(a.Proposal)
 				perr := r.propose(ctx, task, a.Proposal, stateOf, "event/"+id, e.IssueIID, fmt.Sprintf("`%s`: %s", a.Classification, truncate(a.Evidence, 800)), managed)
 				proposed = perr == nil && a.Proposal != nil && len(a.Proposal.Actions) > 0
-				body = renderAssessment(a, proposed, managed)
+				body = renderAssessment(a, proposed, managed) + refused
 				if perr != nil {
 					failed = perr
 					body += "\n\n_Its proposal could not be recorded._"

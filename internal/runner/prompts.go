@@ -604,12 +604,13 @@ const proposalSchema = `{
             "additionalProperties": false,
             "required": ["tool"],
             "properties": {
-              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "skip", "pause", "resume", "revisit"]},
+              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "skip", "pause", "resume", "revisit", "setRule", "forgetRule"]},
               "issue": {"type": "integer", "description": "retry, reReview, instruct, skip: the issue of the milestone."},
               "decision": {"type": "string", "description": "revisit: the decision's ID, e.g. D12-3."},
-              "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun"], "description": "instruct: the instruction."},
-              "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for."},
-              "title": {"type": "string", "description": "openIssue: the issue's title."}
+              "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun", "switch", "pilot", "prompt"], "description": "instruct: the instruction; setRule: the kind of rule."},
+              "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for; setRule: the rule, one line (a switch: setting=value)."},
+              "title": {"type": "string", "description": "openIssue: the issue's title."},
+              "rule": {"type": "string", "description": "forgetRule: the rule's ID, e.g. R2."}
             }
           }
         }
@@ -642,6 +643,7 @@ type ProposalAnswer struct {
 		Note     string `json:"note"`
 		Title    string `json:"title"`
 		Decision string `json:"decision"`
+		Rule     string `json:"rule"`
 	} `json:"actions"`
 }
 

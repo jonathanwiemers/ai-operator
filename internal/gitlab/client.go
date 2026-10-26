@@ -28,6 +28,7 @@ type API interface {
 	GetProject(ctx context.Context, project string) (*Project, error)
 	ListMilestones(ctx context.Context, project string) ([]Milestone, error)
 	GetMilestone(ctx context.Context, project string, id int64) (*Milestone, error)
+	UpdateMilestoneDescription(ctx context.Context, project string, id int64, description string) (*Milestone, error)
 	ListIssues(ctx context.Context, project string, opts ListIssuesOptions) ([]Issue, error)
 	GetIssue(ctx context.Context, project string, iid int64) (*Issue, error)
 	CreateIssue(ctx context.Context, project string, opts CreateIssueOptions) (*Issue, error)
@@ -594,6 +595,12 @@ func (c *Client) ListMilestones(ctx context.Context, project string) ([]Mileston
 func (c *Client) GetMilestone(ctx context.Context, project string, id int64) (*Milestone, error) {
 	var m Milestone
 	_, err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/milestones/%d", projectPath(project), id), nil, nil, &m)
+	return &m, err
+}
+
+func (c *Client) UpdateMilestoneDescription(ctx context.Context, project string, id int64, description string) (*Milestone, error) {
+	var m Milestone
+	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/milestones/%d", projectPath(project), id), nil, map[string]string{"description": description}, &m)
 	return &m, err
 }
 

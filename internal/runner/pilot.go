@@ -14,7 +14,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
-	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/rules"
 )
 
 // labelProject is the controller's LabelProject.
@@ -73,7 +73,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 		left := pilotLeft(spec, task, out)
 		reply := fmt.Sprintf("The pilot's budget for this milestone ($%s, `pilot.maxBudgetUSD`) is used up, so it does not answer any more.", spec.Pilot.MaxBudgetUSD)
 		if left >= 0.01 {
-			inv := roleInvocation(role, pilotSystemPrompt, readOnlyTools, pilotSchema, true)
+			inv := roleInvocation(role, pilotSystem(task), readOnlyTools, pilotSchema, true)
 			inv.Role = "pilot"
 			inv.Resume = st.session("pilot", role.Engine)
 			inv.MaxBudgetUSD = strconv.FormatFloat(left, 'f', 2, 64)
@@ -97,7 +97,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			default:
 				st.setSession("pilot", role.Engine, res.SessionID)
 				s.done(agentResult(role, res, "answered"), "session", res.SessionID, "costUSD", res.CostUSD)
-				reply = a.Reply
+				reply = a.Reply + rejectRules(a.Proposal)
 				trigger := m.IssueIID
 				if task.Spec.Issue != nil && trigger == task.Spec.Issue.IID {
 					trigger = 0
@@ -199,8 +199,10 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		MainHealth *aiv1.MainHealthStatus `json:"mainHealth,omitempty"`
 		Comments   []string               `json:"trackingIssueComments,omitempty"`
 		Proposals  []aiv1.PilotProposal   `json:"openProposals,omitempty"`
+		Rules      []rules.Rule           `json:"rules,omitempty"`
 	}
-	v.Milestone, v.Spec, v.MainHealth = m.Title, notify.WithoutOwners(m.Description, spec.Workflow.CommandPrefix), project.Status.MainHealth
+	v.Milestone, v.Spec, v.MainHealth = m.Title, rules.Spec(m.Description, spec.Workflow.CommandPrefix), project.Status.MainHealth
+	v.Rules = rules.Parse(rules.Lines(m.Description, spec.Workflow.CommandPrefix))
 	byIID := map[int64]*aiv1.AgentTask{}
 	for i := range tasks.Items {
 		t := &tasks.Items[i]
@@ -297,7 +299,7 @@ func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalA
 	prop := aiv1.PilotProposal{Summary: truncate(p.Summary, 500), Source: source, Trigger: trigger, Why: truncate(why, 1000), Quiet: quiet}
 	for _, a := range p.Actions[:min(len(p.Actions), 5)] {
 		prop.Actions = append(prop.Actions, aiv1.PilotAction{Tool: truncate(a.Tool, 40), IssueIID: a.Issue, Kind: truncate(a.Kind, 40),
-			Note: truncate(a.Note, 2000), Title: truncate(a.Title, 200), Decision: truncate(a.Decision, 40)})
+			Note: truncate(a.Note, 2000), Title: truncate(a.Title, 200), Decision: truncate(a.Decision, 40), Rule: truncate(a.Rule, 10)})
 	}
 	if prop.State = stateOf(prop.Actions); prop.State == "" {
 		return nil

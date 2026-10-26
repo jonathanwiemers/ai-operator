@@ -11,13 +11,13 @@ import (
 	"unicode/utf8"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
-	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 )
 
@@ -178,6 +178,8 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		yes, id, answer := command.PilotAnswer(n.msg)
 		iid, text, tell := command.PilotTell(n.msg)
 		stop, goOn := strings.EqualFold(n.msg, "stop"), strings.EqualFold(n.msg, "go")
+		list, forgetID := command.PilotRules(n.msg)
+		forget := forgetID != ""
 		var reply string
 		var err error
 		done := autopilotDone(st)
@@ -208,7 +210,7 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 			reply = fmt.Sprintf("The pilot of this milestone listens on #%d now: comment `%s …` there or here.", coord.Spec.Issue.IID, prefix)
 		case coord == nil:
 			reply = fmt.Sprintf("This milestone has no pilot yet: comment `%s coordinate` to start one.", prefix)
-		case (answer || tell || stop || goOn) && !owner:
+		case (answer || tell || stop || goOn || forget) && !owner:
 			reply = "This milestone has no owners, so the pilot takes no actions."
 		case stop || goOn:
 			reply, err = r.switchAutonomy(ctx, spec, coord, n.Author.Username, stop)
@@ -216,6 +218,10 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 			reply, err = r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.issue, id, yes)
 		case tell:
 			reply, err = r.proposeTell(ctx, gl, project, spec, st, coord, n, iid, text)
+		case list:
+			reply = listRules(spec, st)
+		case forget:
+			reply, err = r.proposeForget(ctx, gl, project, spec, st, coord, forgetID)
 		case slices.ContainsFunc(coord.Spec.Source.PilotMessages, func(m aiv1.PilotMessage) bool { return m.NoteID == n.ID }):
 			continue
 		default:
@@ -298,9 +304,8 @@ func autopilotDone(st *aiv1.AgentTask) bool {
 func (r *AgentProjectReconciler) startPilot(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask) (*aiv1.AgentTask, error) {
 	m := st.Spec.Milestone
 	is, err := gl.CreateIssue(ctx, spec.GitLab.Project, gitlab.CreateIssueOptions{
-		Title: "🧭 Pilot: " + m.Title,
-		Description: fmt.Sprintf("The pilot of this milestone answers its owners here: comment `%s <question>`.\n\n%s",
-			spec.Workflow.PilotPrefix, marker.TrackingIssue),
+		Title:       "🧭 Pilot: " + m.Title,
+		Description: pilotIssueBody(spec, st),
 		Labels:      spec.Workflow.GeneratedLabel,
 		MilestoneID: m.ID,
 	})
@@ -323,19 +328,29 @@ func (r *AgentProjectReconciler) ensurePilot(ctx context.Context, project *aiv1.
 			return nil, err
 		}
 		coord.Labels[LabelMilestoneIID] = strconv.FormatInt(m.IID, 10)
-		coord.Spec.Milestone, coord.Spec.Issue, coord.Spec.Autopilot, coord.Spec.Owners = m, issue, autopilot, st.Spec.Owners
+		coord.Spec.Milestone, coord.Spec.Issue, coord.Spec.Autopilot, coord.Spec.Owners, coord.Spec.Rules = m, issue, autopilot, st.Spec.Owners, st.Spec.Rules
 		log.FromContext(ctx).Info("starting the pilot of a milestone", "milestone", m.Title, "task", coord.Name, "issue", issue.IID)
 		return coord, r.Create(ctx, coord)
 	}
-	before := coord.Spec.DeepCopy()
-	coord.Spec.Milestone, coord.Spec.Autopilot, coord.Spec.Owners = m, autopilot, st.Spec.Owners
-	if issue != nil {
-		coord.Spec.Issue = issue
+	set := func(c *aiv1.AgentTask) {
+		c.Spec.Milestone, c.Spec.Autopilot, c.Spec.Owners, c.Spec.Rules = m, autopilot, st.Spec.Owners, st.Spec.Rules
+		if issue != nil {
+			c.Spec.Issue = issue
+		}
 	}
-	if equalSpec(before, &coord.Spec) {
+	before := coord.Spec.DeepCopy()
+	if set(coord); equalSpec(before, &coord.Spec) {
 		return coord, nil
 	}
-	return coord, r.Update(ctx, coord)
+	// On a fresh copy: an earlier step of the poll may have changed the
+	// task (a message, a /pilot stop), e.g. when the rules change with it.
+	return coord, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := r.Get(ctx, client.ObjectKeyFromObject(coord), coord); err != nil {
+			return err
+		}
+		set(coord)
+		return r.Update(ctx, coord)
+	})
 }
 
 // syncPilots keeps the pilot of every planned milestone that has a tracking
@@ -371,7 +386,9 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 			var is *gitlab.Issue
 			is, err = gl.GetIssue(ctx, spec.GitLab.Project, tracking)
 			if err == nil && is.State == "opened" {
-				notes, err = gl.ListIssueNotes(ctx, spec.GitLab.Project, tracking)
+				if err = syncPilotIssue(ctx, gl, spec, st, is); err == nil {
+					notes, err = gl.ListIssueNotes(ctx, spec.GitLab.Project, tracking)
+				}
 			}
 			switch {
 			case gitlab.IsNotFound(err) || err == nil && is.State != "opened":

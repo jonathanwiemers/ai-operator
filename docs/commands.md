@@ -123,6 +123,8 @@ proposals they accept.
 | `/pilot stop` | The pilot of this milestone proposes every action from now on (kill switch), until `/pilot go`; kept over restarts. No model call. |
 | `/pilot go` | Back to the project's `pilot.autonomy` (never above it: on a `propose` project it still proposes). No model call. |
 | `/pilot coordinate` | On an issue of a planned milestone without autopilot: opens the tracking issue "🧭 Pilot: <milestone>" and starts its pilot. |
+| `/pilot rules` | Lists the milestone's [standing rules](usage.md#talking-to-the-pilot), with the reason for any that is not applied. No model call. |
+| `/pilot forget R2` | Proposes removing rule R2; an owner's `yes` removes its line from the milestone description. |
 
 ## In the milestone description
 
@@ -134,6 +136,7 @@ poll.
 | `/agent spec` | Plan the milestone: the planning agent creates one sub-issue per merge request. Changing the description re-plans the drafts. (`milestones.specMarker`) |
 | `/agent autopilot` | Plan and run the milestone end to end: no questions, one issue at a time, merged when CI is green and the review is clean. Removing the line stops it. (`milestones.autopilotMarker`) |
 | `/agent owners @alice @bob` | Mention these users when an issue of the milestone needs a human, instead of the project's owners. `/agent owners` alone mentions nobody. Changing this line does not re-plan. See [Owners and pings](usage.md#owners-and-pings). |
+| `/agent rule R1: switch ci.maxFixRounds=3` | A standing rule of the milestone: `switch <setting>=<value>` (`ci.maxFixRounds`, `ci.retryFailedJobs`, `review.retries`, `review.maxIterations`), `pilot <text>` for the pilot, or `prompt <text>` for the implementers and reviewers. The pilot writes them after an owner's `yes`; you may edit them by hand. Changing them does not re-plan. See [Talking to the pilot](usage.md#talking-to-the-pilot). |
 
 ## Labels you may set yourself
 

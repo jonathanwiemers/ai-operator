@@ -33,6 +33,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/rules"
 )
 
 // GitLabFactory creates a GitLab client; replaced in tests.
@@ -208,9 +209,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		descriptions[m.ID] = m.Description
 	}
 	for _, m := range milestones {
-		// An owners line neither selects a milestone nor is a spec.
+		// An owners or rule line neither selects a milestone nor is a spec.
 		sel := m
-		sel.Description = notify.WithoutOwners(m.Description, prefix)
+		sel.Description = rules.Spec(m.Description, prefix)
 		autopilot := spec.Milestones.Autopilot() != "" && milestoneSelected(sel, titleRE, spec.Milestones.Autopilot())
 		if !autopilot && !milestoneSelected(sel, titleRE, spec.Milestones.Marker()) {
 			continue
@@ -297,7 +298,8 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		if task.Status.Blocked != nil {
 			continue // its CI is followed again once the block is lifted
 		}
-		if err := r.syncCI(ctx, gl, spec, project.Status.MainHealth, is, task, mr); err != nil {
+		// With the milestone's switches (standing rules).
+		if err := r.syncCI(ctx, gl, rules.For(spec, description, prefix), project.Status.MainHealth, is, task, mr); err != nil {
 			return err
 		}
 	}
@@ -426,8 +428,10 @@ func (r *AgentProjectReconciler) newTask(project *aiv1.AgentProject, name string
 // syncSpecTask makes sure a planned milestone has a spec task and requests a
 // new run whenever the milestone description changes.
 func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners []string, prefix string) (*aiv1.AgentTask, error) {
-	// The owners are no part of the spec: changing them re-plans nothing.
-	hash := hashString(notify.WithoutOwners(m.Description, prefix))
+	// The owners and rules are no part of the spec: changing them re-plans
+	// nothing.
+	hash := hashString(rules.Spec(m.Description, prefix))
+	ruleLines := rules.Lines(m.Description, prefix)
 	ref := &aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title}
 	if task == nil {
 		var err error
@@ -440,15 +444,16 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		task.Spec.RunRequest = 1
 		task.Spec.Source.DescriptionHash = hash
 		task.Spec.Autopilot = autopilot
-		task.Spec.Owners = owners
+		task.Spec.Owners, task.Spec.Rules = owners, ruleLines
 		log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name, "autopilot", autopilot)
 		return task, r.Create(ctx, task)
 	}
-	if task.Spec.Source.DescriptionHash == hash && *task.Spec.Milestone == *ref && task.Spec.Autopilot == autopilot && slices.Equal(task.Spec.Owners, owners) {
+	if task.Spec.Source.DescriptionHash == hash && *task.Spec.Milestone == *ref && task.Spec.Autopilot == autopilot && slices.Equal(task.Spec.Owners, owners) &&
+		slices.Equal(task.Spec.Rules, ruleLines) {
 		return task, nil
 	}
 	task.Spec.Autopilot = autopilot
-	task.Spec.Owners = owners
+	task.Spec.Owners, task.Spec.Rules = owners, ruleLines
 	if task.Spec.Source.DescriptionHash != hash {
 		log.FromContext(ctx).Info("milestone spec changed, re-planning", "milestone", m.Title, "task", task.Name)
 		task.Spec.RunRequest++
