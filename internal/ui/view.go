@@ -147,6 +147,9 @@ type Milestone struct {
 	WebURL string `json:"webURL"`
 	// Spec is the milestone's spec task, if it is planned by the agent.
 	Spec *Task `json:"spec,omitempty"`
+	// TrackingIssueIID is the milestone's tracking issue (its chat), 0
+	// without one.
+	TrackingIssueIID int64 `json:"trackingIssueIID,omitempty"`
 	// Tasks are the implement tasks, by issue IID.
 	Tasks   []Task `json:"tasks"`
 	CostUSD string `json:"costUSD"`
@@ -290,6 +293,9 @@ func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Project
 		}
 	}
 	for iid, m := range byIID {
+		if st, coord := milestoneTasks(tasks, iid); st != nil {
+			m.TrackingIssueIID = trackingIssueIID(st, coord)
+		}
 		sortTasks(m.Tasks)
 		m.CostUSD = formatCost(costs[iid])
 		d.Milestones = append(d.Milestones, *m)

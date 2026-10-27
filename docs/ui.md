@@ -369,7 +369,9 @@ with the same session cookie:
 |----------|---------|
 | `GET /api/v1/me` | user name, roles, auth mode |
 | `GET /api/v1/projects` | the projects you may see, with task counts per stage |
-| `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone |
+| `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone (`trackingIssueIID` where a milestone has a tracking issue) |
+| `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | a planned milestone: its spec task, the autopilot (`phase`, `pausedReason` as raw text, queue `items` with title, state, MR and task), the `tracking` issue, the `pilot` (task, autonomy, open proposals, cost) and its implement tasks; 404 without a spec task |
+| `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread` | the comments of the milestone's tracking issue (`parts`), read with your GitLab token once the issue is confirmed as the operator's tracking issue of this milestone (409 otherwise); 409 when not connected |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}` | one task and its project |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript` | server-sent events: `entry` per transcript line of the task's pod (what it logged so far, then live), `end` with the reason (`no pod`, `pod stopped`, `pod not available`, `session expired`); needs the `transcript` grant (403 without), counts as an event stream |
 | `GET /api/v1/gitlab` | whether GitLab is configured and your account connected (`enabled`, `connected`, `username`) |

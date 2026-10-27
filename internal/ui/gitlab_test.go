@@ -30,6 +30,8 @@ type fakeGitLab struct {
 	expiries int               // expires_in of issued tokens
 	mrBranch string            // source branch of every MR
 	down     bool              // the token endpoint answers 503
+	issues   map[string]any    // issue IID -> the issue GET returns, else 404
+	read     []string          // "issues 42": whose notes were listed
 }
 
 func newFakeGitLab(t *testing.T) *fakeGitLab {
@@ -103,8 +105,25 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": 900, "body": b.Body, "author": map[string]any{"username": "ada-gl"}})
 			return
 		}
+		g.mu.Lock()
+		g.read = append(g.read, r.PathValue("kind")+" "+r.PathValue("iid"))
+		g.mu.Unlock()
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 1, "body": "please add tests", "author": map[string]any{"username": "bob"}}})
 	}
+	mux.HandleFunc("GET /api/v4/projects/{project}/issues/{iid}", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := auth(r); !ok {
+			http.Error(w, "{}", http.StatusUnauthorized)
+			return
+		}
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		is, ok := g.issues[r.PathValue("iid")]
+		if !ok {
+			http.Error(w, `{"message":"404 Not found"}`, http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(is)
+	})
 	mux.HandleFunc("GET /api/v4/projects/{project}/merge_requests/{iid}", func(w http.ResponseWriter, r *http.Request) {
 		g.mu.Lock()
 		defer g.mu.Unlock()

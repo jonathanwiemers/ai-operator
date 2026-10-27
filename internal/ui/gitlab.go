@@ -331,24 +331,31 @@ func (s *Server) steeringTask(w http.ResponseWriter, r *http.Request) (*aiv1.Age
 			task = &tasks[i]
 		}
 	}
-	switch {
-	case task == nil:
+	if task == nil {
 		notFound(w)
 		return nil, nil, nil, nil, false
-	case s.gitlab == nil || !s.gitlab.serves(ap):
+	}
+	gl, tok, ok := s.userGitLab(w, r, ap)
+	return ap, task, gl, tok, ok
+}
+
+// userGitLab returns the request user's GitLab client for the project. It
+// answers the request itself when there is none.
+func (s *Server) userGitLab(w http.ResponseWriter, r *http.Request, ap *aiv1.AgentProject) (gitlab.API, *GitLabToken, bool) {
+	if s.gitlab == nil || !s.gitlab.serves(ap) {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "this project's GitLab is not connected to the UI"})
-		return nil, nil, nil, nil, false
+		return nil, nil, false
 	}
 	tok, err := s.gitlab.token(w, r)
 	switch {
 	case errors.Is(err, errGitLabUnavailable):
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "GitLab is not reachable right now"})
-		return nil, nil, nil, nil, false
+		return nil, nil, false
 	case err != nil:
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account first", "login": pathGitLabLogin})
-		return nil, nil, nil, nil, false
+		return nil, nil, false
 	}
-	return ap, task, s.gitlab.client(tok), tok, true
+	return s.gitlab.client(tok), tok, true
 }
 
 // thread returns the comments of the task's issue, merge request and
@@ -466,14 +473,7 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 	// user's comment goes there.
 	if err := s.checkTarget(r.Context(), gl, ap, task, target); err != nil {
 		s.log.Info("refusing a comment target", "user", p.Username, "target", target.Target, "iid", target.IID, "reason", err.Error())
-		switch code := gitlab.StatusCode(err); {
-		case errors.Is(err, errNotTasks), code == http.StatusNotFound, code == http.StatusForbidden:
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "the " + target.Target + " could not be confirmed as this task's"})
-		case code == http.StatusUnauthorized:
-			s.gitlabRejected(w, tok)
-		default:
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "GitLab is not reachable right now"})
-		}
+		s.targetRefused(w, tok, "the "+target.Target+" could not be confirmed as this task's", err)
 		return
 	}
 	if !s.notes.allow(p.Username, time.Now()) {
@@ -534,6 +534,19 @@ func (s *Server) checkTarget(ctx context.Context, gl gitlab.API, ap *aiv1.AgentP
 		}
 	}
 	return nil
+}
+
+// targetRefused answers a request whose target checkTarget refused: 409
+// with msg when it is not the task's (or the user cannot read it).
+func (s *Server) targetRefused(w http.ResponseWriter, tok *GitLabToken, msg string, err error) {
+	switch code := gitlab.StatusCode(err); {
+	case errors.Is(err, errNotTasks), code == http.StatusNotFound, code == http.StatusForbidden:
+		writeJSON(w, http.StatusConflict, map[string]string{"error": msg})
+	case code == http.StatusUnauthorized:
+		s.gitlabRejected(w, tok)
+	default:
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "GitLab is not reachable right now"})
+	}
 }
 
 // gitlabRejected answers a request GitLab refused the token of: an OAuth
