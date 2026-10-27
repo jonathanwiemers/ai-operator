@@ -158,6 +158,11 @@ type SourceState struct {
 	// +optional
 	PilotEvents []PilotEvent `json:"pilotEvents,omitempty"`
 
+	// Retrospective is the run request that writes the retrospective of the
+	// milestone (Coordinate tasks), once its autopilot is done.
+	// +optional
+	Retrospective int64 `json:"retrospective,omitempty"`
+
 	// PilotInstruction is an instruction an owner accepted from the pilot
 	// (Implement tasks), for the run of its request.
 	// +optional
@@ -350,6 +355,40 @@ type PilotStatus struct {
 	// current head (Coordinate tasks), by issue IID; "0" is the milestone.
 	// +optional
 	Interventions map[string]PilotIntervention `json:"interventions,omitempty"`
+
+	// Retrospective is the retrospective of the milestone once its autopilot
+	// is done: recorded by the pilot's run (Coordinate tasks) and copied to
+	// the spec task before the pilot is deleted. A milestone gets one.
+	// +optional
+	Retrospective *PilotRetrospective `json:"retrospective,omitempty"`
+}
+
+// PilotRetrospective is the last comment of a finished autopilot milestone's
+// pilot on its tracking issue.
+type PilotRetrospective struct {
+	// NoteID is the comment.
+	// +optional
+	NoteID int64 `json:"noteID,omitempty"`
+	// +optional
+	PostedAt *metav1.Time `json:"postedAt,omitempty"`
+	// FollowUps are the numbered follow-up proposals, which an owner opens
+	// as issues. Untrusted.
+	// +optional
+	FollowUps []PilotFollowUp `json:"followUps,omitempty"`
+	// Failed says why there is no retrospective; it is not tried again.
+	// +optional
+	Failed string `json:"failed,omitempty"`
+	// OwnerIDs are the user IDs of the milestone's owners when it was
+	// posted, sorted: only they open the follow-ups.
+	// +optional
+	OwnerIDs []int64 `json:"ownerIDs,omitempty"`
+}
+
+// PilotFollowUp is a follow-up proposal of a retrospective.
+type PilotFollowUp struct {
+	Title string `json:"title"`
+	// +optional
+	Body string `json:"body,omitempty"`
 }
 
 // PilotCommand is a skip, pause, resume or revisit an owner accepted from

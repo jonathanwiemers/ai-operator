@@ -24,10 +24,14 @@ const labelProject = "ai.wiemers.me/project"
 // its session each, and assesses the events the operator woke it for. The
 // replies are posted where the messages were written, the assessments on
 // the tracking issue; proposals are recorded for the operator, which runs
-// them once an owner accepts. Nothing else changes.
+// them once an owner accepts. Nothing else changes. Once autopilot is done,
+// the run asked for writes the retrospective instead (runRetrospective).
 func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (*Outcome, error) {
 	if task.Spec.Milestone == nil {
 		return nil, fmt.Errorf("coordinate task has no milestone")
+	}
+	if rq := task.Spec.Source.Retrospective; rq > task.Status.Run.ObservedRunRequest && rq <= task.Spec.RunRequest {
+		return r.runRetrospective(ctx, gl, task, project, spec)
 	}
 	out := &Outcome{Result: aiv1.RunResultSucceeded, Summary: "no message to answer"}
 	var msgs []aiv1.PilotMessage

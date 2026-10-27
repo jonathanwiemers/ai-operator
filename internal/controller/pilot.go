@@ -365,7 +365,16 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 		tracking := trackingIssue(st, coord)
 		if tracking == 0 {
 			// No pilot, or its autopilot is done: a pilot left is deleted
-			// below. C4 (the retrospective) runs here before that.
+			// below, after its retrospective.
+			if coord != nil && coord.Spec.Autopilot && autopilotDone(st) {
+				wait, err := r.retrospective(ctx, st, coord)
+				if wait {
+					keep[coord.Name] = true
+				}
+				if err != nil {
+					errs = append(errs, fmt.Errorf("retrospective of milestone %q: %w", st.Spec.Milestone.Title, err))
+				}
+			}
 			continue
 		}
 		if coord != nil {
@@ -413,6 +422,38 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// retrospective has the pilot of a finished autopilot milestone write the
+// milestone's retrospective, once, and reports whether to keep the pilot:
+// until its run for it is over and the result is on the spec task, where it
+// outlives the pilot. A run that ended without one counts as failed and is
+// not tried again.
+func (r *AgentProjectReconciler) retrospective(ctx context.Context, st, coord *aiv1.AgentTask) (bool, error) {
+	if st.Status.Pilot != nil && st.Status.Pilot.Retrospective != nil {
+		return false, nil
+	}
+	request := coord.Spec.Source.Retrospective
+	if request == 0 {
+		coord.Spec.RunRequest++
+		coord.Spec.Source.Retrospective = coord.Spec.RunRequest
+		log.FromContext(ctx).Info("asking the pilot for the retrospective", "task", coord.Name, "request", coord.Spec.RunRequest)
+		return true, r.Update(ctx, coord)
+	}
+	var retro *aiv1.PilotRetrospective
+	if ps := coord.Status.Pilot; ps != nil && ps.Retrospective != nil {
+		retro = ps.Retrospective.DeepCopy()
+	}
+	if retro == nil {
+		if coord.Status.Run.ObservedRunRequest < request {
+			return true, nil // the run is not over
+		}
+		retro = &aiv1.PilotRetrospective{Failed: truncateUTF8("the run ended without one: "+coord.Status.Run.Summary, 500)}
+	}
+	if err := r.patchPilot(ctx, st, func(ps *aiv1.PilotStatus) { ps.Retrospective = retro }); err != nil {
+		return true, err
+	}
+	return false, nil
 }
 
 // closePilotIssue closes the tracking issue "/pilot coordinate" opened,

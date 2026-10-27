@@ -138,3 +138,7 @@ func Clean(s string) string {
 // Proposal ends a proposal of the pilot: its ID and the state it was made
 // on. Group 1 is the ID.
 var Proposal = regexp.MustCompile(`<!-- ai-operator:proposal id=(\d+) state=(\w*) -->`)
+
+// Retrospective marks the pilot's retrospective of a finished autopilot
+// milestone on its tracking issue; owners open its follow-ups in its thread.
+const Retrospective = "<!-- ai-operator:retrospective -->"

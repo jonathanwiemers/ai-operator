@@ -111,7 +111,8 @@ func (f *Fake) id() int64 { f.nextID++; return f.nextID }
 func (f *Fake) AddIssue(iid int64, title string, labels ...string) *gitlab.Issue {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	is := &gitlab.Issue{ID: f.id(), IID: iid, Title: title, State: "opened", Labels: labels, UpdatedAt: f.tick(),
+	now := f.tick()
+	is := &gitlab.Issue{ID: f.id(), IID: iid, Title: title, State: "opened", Labels: labels, CreatedAt: now, UpdatedAt: now,
 		WebURL: fmt.Sprintf("https://gitlab.example/group/app/-/issues/%d", iid)}
 	f.Issues[iid] = is
 	return is
@@ -264,7 +265,8 @@ func (f *Fake) CreateIssue(_ context.Context, _ string, opts gitlab.CreateIssueO
 		}
 	}
 	f.lastIID = iid
-	is := &gitlab.Issue{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "opened", UpdatedAt: f.tick(), Author: f.Bot}
+	now := f.tick()
+	is := &gitlab.Issue{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "opened", CreatedAt: now, UpdatedAt: now, Author: f.Bot}
 	if opts.Labels != "" {
 		is.Labels = strings.Split(opts.Labels, ",")
 	}

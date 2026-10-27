@@ -284,6 +284,11 @@ func TestPilotEndsWhenTheAutopilotIsDone(t *testing.T) {
 	e.gl.AddNote(tracking, alice, "/agent skip #1")
 	e.gl.AddNote(tracking, alice, "/agent skip #2")
 	e.reconcile()
+	// After its retrospective (TestRetrospectiveBeforeThePilotGoes).
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Pilot = &aiv1.PilotStatus{Retrospective: &aiv1.PilotRetrospective{NoteID: 99}}
+	})
+	e.reconcile()
 	if _, ok := e.tasks()[pilotTaskName]; ok || e.autopilot().Phase != aiv1.AutopilotDone {
 		t.Fatalf("a done autopilot ends its pilot: %v %+v", keys(e.tasks()), e.autopilot())
 	}

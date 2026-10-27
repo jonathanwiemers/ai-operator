@@ -752,8 +752,19 @@ counted interventions; more tools are later steps of
   coordinate` opened (closed with a pointer once autopilot takes over). It is deleted with the autopilot (`phase: Off` or
   `Done`; it comes back when the queue runs again), the milestone's plan, or
   its own tracking issue when that is closed or deleted (one `GetIssue` per
-  poll and such pilot). The retrospective (C4) will run before a done
-  pilot is deleted. It is not bound by
+  poll and such pilot). A done autopilot's pilot runs the retrospective
+  first (C4): the controller asks for it once (`spec.source.retrospective`),
+  keeps the pilot until that run is over, copies its
+  `status.pilot.retrospective` (note, follow-ups, pinned owner IDs, or why
+  it failed) to the spec task and only then deletes the pilot. The run
+  (`internal/runner/pilot_retro.go`) makes one read-only call with the
+  `agents.implement` role's engine and model, capped by the rest of
+  `pilot.maxBudgetUSD`, over the operator's facts (queue, merge requests,
+  decisions, revisits, the autopilot's comments, cost, time), and posts the
+  defused comment with the marker `<!-- ai-operator:retrospective -->`.
+  Without budget it posts the facts only; a failure is recorded, not
+  retried. A milestone gets one; those done before this existed get none.
+  It is not bound by
   `maxRunsPerTask`, only by its budget.
 * **Routing** (`internal/controller/pilot.go`). Comments are read where the
   operator reads them anyway: the tracking issue's notes (autopilot lists

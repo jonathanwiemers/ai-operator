@@ -873,7 +873,14 @@ default branch and the last comments of the tracking issue.
   pilot moves to the autopilot's tracking issue and that issue is closed.
   The pilot ends with the tracking issue: when autopilot is done or switched
   off, the milestone is no longer planned, or the "🧭 Pilot" issue is closed
-  or deleted. Its task is deleted, and its pod and workspace with it. When a
+  or deleted. Its task is deleted, and its pod and workspace with it. When
+  autopilot is done, the pilot first posts the **retrospective** as the last
+  comment on the tracking issue ("🧭 **Retrospective**"): what was merged,
+  the decisions and revisits, the pauses and how they ended, cost and time,
+  and up to 9 numbered follow-ups. It is written once per milestone by the
+  `agents.implement` model, read-only (no proposals or actions), within the
+  rest of `pilot.maxBudgetUSD`; without budget it lists the operator's facts
+  only, and a failed one is not tried again. When a
   re-plan continues a done queue, or autopilot is switched on again, the
   pilot comes back on the autopilot's tracking issue. After a closed "🧭
   Pilot" issue, `/pilot coordinate` opens a new one. On a milestone whose

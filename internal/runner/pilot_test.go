@@ -25,6 +25,7 @@ type pilotEngine struct {
 	reply      string
 	fail       string
 	assessment *PilotAssessment
+	retro      *RetroAnswer
 	proposal   *ProposalAnswer
 	err        error
 }
@@ -38,8 +39,11 @@ func (p *pilotEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
 		return nil, p.err
 	}
 	b, _ := json.Marshal(PilotAnswer{Reply: p.reply, Proposal: p.proposal})
-	if inv.JSONSchema == assessSchema {
+	switch inv.JSONSchema {
+	case assessSchema:
 		b, _ = json.Marshal(p.assessment)
+	case retroSchema:
+		b, _ = json.Marshal(p.retro)
 	}
 	return &Result{SessionID: "sess-pilot", CostUSD: 0.25, Structured: b}, nil
 }

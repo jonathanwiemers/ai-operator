@@ -309,6 +309,12 @@ spec:
                       human's.
                     format: int64
                     type: integer
+                  retrospective:
+                    description: |-
+                      Retrospective is the run request that writes the retrospective of the
+                      milestone (Coordinate tasks), once its autopilot is done.
+                    format: int64
+                    type: integer
                   reviewFor:
                     description: |-
                       ReviewFor is a merge request head to review again without the
@@ -1247,6 +1253,48 @@ spec:
                     description: |-
                       Rejected is when a user who is no owner was last told so, by GitLab
                       user ID; later messages within a day get no answer.
+                    type: object
+                  retrospective:
+                    description: |-
+                      Retrospective is the retrospective of the milestone once its autopilot
+                      is done: recorded by the pilot's run (Coordinate tasks) and copied to
+                      the spec task before the pilot is deleted. A milestone gets one.
+                    properties:
+                      failed:
+                        description: Failed says why there is no retrospective; it
+                          is not tried again.
+                        type: string
+                      followUps:
+                        description: |-
+                          FollowUps are the numbered follow-up proposals, which an owner opens
+                          as issues. Untrusted.
+                        items:
+                          description: PilotFollowUp is a follow-up proposal of a
+                            retrospective.
+                          properties:
+                            body:
+                              type: string
+                            title:
+                              type: string
+                          required:
+                          - title
+                          type: object
+                        type: array
+                      noteID:
+                        description: NoteID is the comment.
+                        format: int64
+                        type: integer
+                      ownerIDs:
+                        description: |-
+                          OwnerIDs are the user IDs of the milestone's owners when it was
+                          posted, sorted: only they open the follow-ups.
+                        items:
+                          format: int64
+                          type: integer
+                        type: array
+                      postedAt:
+                        format: date-time
+                        type: string
                     type: object
                 type: object
               plan:

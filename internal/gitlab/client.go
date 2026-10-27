@@ -127,6 +127,7 @@ type Issue struct {
 	Milestone   *Milestone `json:"milestone"`
 	Assignees   []User     `json:"assignees"`
 	WebURL      string     `json:"web_url"`
+	CreatedAt   *time.Time `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at"`
 	ClosedAt    *time.Time `json:"closed_at"`
 	Author      User       `json:"author"`
