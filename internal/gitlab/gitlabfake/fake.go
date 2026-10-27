@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -370,6 +371,29 @@ func (f *Fake) ListIssueDiscussions(_ context.Context, _ string, iid int64) ([]g
 		out = append(out, gitlab.Discussion{ID: fmt.Sprint(n.ID), Notes: []gitlab.Note{n}})
 	}
 	return out, nil
+}
+
+// ReplyIssueDiscussion adds the bot's reply to the thread ListIssueDiscussions
+// named discussion (its root note's ID).
+func (f *Fake) ReplyIssueDiscussion(ctx context.Context, project string, iid int64, discussion, body string) (*gitlab.Note, error) {
+	root, err := strconv.ParseInt(discussion, 10, 64)
+	f.mu.Lock()
+	known := err == nil && slices.ContainsFunc(f.IssueNotes[iid], func(n gitlab.Note) bool { return n.ID == root && f.Replies[root] == 0 })
+	f.mu.Unlock()
+	if !known {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "POST", Path: "discussion"}
+	}
+	n, err := f.CreateIssueNote(ctx, project, iid, body)
+	if err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Replies == nil {
+		f.Replies = map[int64]int64{}
+	}
+	f.Replies[n.ID] = root
+	return n, nil
 }
 
 func (f *Fake) ListIssueNotes(_ context.Context, _ string, iid int64) ([]gitlab.Note, error) {

@@ -1,6 +1,9 @@
 package command
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestPilotAddressOnlyAtTheStart(t *testing.T) {
 	for _, tc := range []struct {
@@ -68,6 +71,35 @@ func TestPilotTell(t *testing.T) {
 	for _, s := range []string{"tell #3", "tell 3: x", "please tell #3: x", "tell #3:   "} {
 		if _, _, ok := PilotTell(s); ok {
 			t.Errorf("%q is no tell", s)
+		}
+	}
+}
+
+func TestRetroCreateIsTheWholeComment(t *testing.T) {
+	for _, tc := range []struct {
+		s    string
+		nums []int
+		ok   bool
+	}{
+		{"create 1 2", []int{1, 2}, true},
+		{" Create 1, 3. ", []int{1, 3}, true},
+		{"CREATE 2,1,2", []int{2, 1}, true},
+		{"create 7", []int{7}, true},
+		{"create all", nil, true},
+		{"Create ALL!", nil, true},
+		{"create", nil, false},
+		{"create 1 and 2", nil, false},
+		{"please create 1", nil, false},
+		{"> create 1", nil, false},
+		{"create 1\nthanks", nil, false},
+		{"create #1", nil, false},
+		{"create 12345", nil, false},
+		{"/pilot create 1", nil, false},
+		{"created 1", nil, false},
+	} {
+		nums, ok := RetroCreate(tc.s)
+		if ok != tc.ok || !slices.Equal(nums, tc.nums) || (tc.ok && tc.nums == nil) != (ok && nums == nil) {
+			t.Errorf("%q: got %v %v", tc.s, nums, ok)
 		}
 	}
 }

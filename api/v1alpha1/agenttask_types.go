@@ -382,6 +382,13 @@ type PilotRetrospective struct {
 	// posted, sorted: only they open the follow-ups.
 	// +optional
 	OwnerIDs []int64 `json:"ownerIDs,omitempty"`
+	// Created are the issues opened from the follow-ups, by number ("1").
+	// +optional
+	Created map[string]int64 `json:"created,omitempty"`
+	// LastNoteID is the newest comment on the tracking issue read for
+	// "create 1 2" (spec tasks).
+	// +optional
+	LastNoteID int64 `json:"lastNoteID,omitempty"`
 }
 
 // PilotFollowUp is a follow-up proposal of a retrospective.

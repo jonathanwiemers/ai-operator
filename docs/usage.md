@@ -880,7 +880,15 @@ default branch and the last comments of the tracking issue.
   and up to 9 numbered follow-ups. It is written once per milestone by the
   `agents.implement` model, read-only (no proposals or actions), within the
   rest of `pilot.maxBudgetUSD`; without budget it lists the operator's facts
-  only, and a failed one is not tried again. When a
+  only, and a failed one is not tried again. An owner opens follow-ups with
+  `create 1 2`, `create 1, 3` or `create all` as a reply in the
+  retrospective's thread (the whole comment, no prefix); only the owners
+  whose user IDs were pinned when it was posted count, anyone else's
+  `create` and one outside the thread are ignored silently. Each follow-up
+  is opened once, as a plain issue with the generated label and no
+  milestone, not handed to the agent; the bot answers in the thread with
+  the links, links the ones opened before again and names unknown numbers.
+  When a
   re-plan continues a done queue, or autopilot is switched on again, the
   pilot comes back on the autopilot's tracking issue. After a closed "🧭
   Pilot" issue, `/pilot coordinate` opens a new one. On a milestone whose

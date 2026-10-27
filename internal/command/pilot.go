@@ -2,8 +2,10 @@ package command
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Pilot reads a comment addressed to the milestone's pilot: it starts with
@@ -72,4 +74,26 @@ func PilotTell(s string) (iid int64, text string, ok bool) {
 	}
 	iid, _ = strconv.ParseInt(m[1], 10, 64)
 	return iid, strings.TrimSpace(m[2]), true
+}
+
+var retroCreateRE = regexp.MustCompile(`(?i)^create\s+(all|\d{1,4}(?:(?:\s*,\s*|\s+)\d{1,4})*)\s*[.!]?$`)
+
+// RetroCreate reads an owner's "create 1 2", "create 1, 3" or "create all"
+// in the thread of a retrospective: the numbers of the follow-ups to open,
+// in order and once each, or nil for all. The whole comment must be it.
+func RetroCreate(body string) ([]int, bool) {
+	m := retroCreateRE.FindStringSubmatch(strings.TrimSpace(body))
+	if m == nil {
+		return nil, false
+	}
+	if strings.EqualFold(m[1], "all") {
+		return nil, true
+	}
+	var nums []int
+	for _, f := range strings.FieldsFunc(m[1], func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+		if n, _ := strconv.Atoi(f); !slices.Contains(nums, n) {
+			nums = append(nums, n)
+		}
+	}
+	return nums, true
 }

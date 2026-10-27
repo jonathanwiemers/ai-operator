@@ -1086,6 +1086,9 @@ func (a *autopilot) commands(ctx context.Context) error {
 		return fmt.Errorf("listing notes of the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
 	}
 	a.pilot(ctx, notes)
+	if err := a.followUps(ctx, notes); err != nil {
+		return err
+	}
 	prefix := a.spec.Workflow.CommandPrefix
 	for _, n := range notes {
 		if n.ID <= a.ap.LastCommandNoteID || !IsCommand(n, a.project.Status.BotUserID, prefix) {

@@ -763,7 +763,14 @@ counted interventions; more tools are later steps of
   decisions, revisits, the autopilot's comments, cost, time), and posts the
   defused comment with the marker `<!-- ai-operator:retrospective -->`.
   Without budget it posts the facts only; a failure is recorded, not
-  retried. A milestone gets one; those done before this existed get none.
+  retried. Autopilot (`followUps` in `pilot_followups.go`) reads the
+  tracking issue's comments after `status.pilot.retrospective.lastNoteID`
+  for an owner's `create 1 2` (`command.RetroCreate`) from a pinned owner
+  ID, lists the threads only when there is one, and takes it only as a
+  reply to the retrospective's note. It opens each named follow-up once
+  (inert title and body, `<!-- ai-operator:follow-up=<milestone IID>-<n> -->`,
+  the generated label, no milestone), records it in `created` right after,
+  and replies in the thread (`ReplyIssueDiscussion`). A milestone gets one; those done before this existed get none.
   It is not bound by
   `maxRunsPerTask`, only by its budget.
 * **Routing** (`internal/controller/pilot.go`). Comments are read where the

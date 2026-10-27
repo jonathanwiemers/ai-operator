@@ -178,6 +178,25 @@ func TestUpdateIssueNote(t *testing.T) {
 	}
 }
 
+func TestReplyIssueDiscussion(t *testing.T) {
+	var method, path string
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.EscapedPath()
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewEncoder(w).Encode(Note{ID: 56, Body: "hi"})
+	}))
+	defer srv.Close()
+
+	n, err := New(srv.URL, "tok").ReplyIssueDiscussion(context.Background(), "g/p", 7, "abc123", "hi")
+	if err != nil || n.ID != 56 {
+		t.Fatalf("note %+v err %v", n, err)
+	}
+	if method != http.MethodPost || !strings.HasSuffix(path, "/projects/g%2Fp/issues/7/discussions/abc123/notes") || body["body"] != "hi" {
+		t.Fatalf("unexpected request %s %s %v", method, path, body)
+	}
+}
+
 func TestErrorsAndNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"404 Not found"}`, http.StatusNotFound)

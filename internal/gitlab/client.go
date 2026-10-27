@@ -36,6 +36,7 @@ type API interface {
 	ListIssueNotes(ctx context.Context, project string, iid int64) ([]Note, error)
 	ListIssueDiscussions(ctx context.Context, project string, iid int64) ([]Discussion, error)
 	CreateIssueNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
+	ReplyIssueDiscussion(ctx context.Context, project string, iid int64, discussion, body string) (*Note, error)
 	UpdateIssueNote(ctx context.Context, project string, iid, noteID int64, body string) (*Note, error)
 	GetMergeRequest(ctx context.Context, project string, iid int64) (*MergeRequest, error)
 	FindOpenMergeRequest(ctx context.Context, project, sourceBranch string) (*MergeRequest, error)
@@ -717,6 +718,13 @@ func (c *Client) ListIssueDiscussions(ctx context.Context, project string, iid i
 func (c *Client) CreateIssueNote(ctx context.Context, project string, iid int64, body string) (*Note, error) {
 	var n Note
 	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/issues/%d/notes", projectPath(project), iid), nil, map[string]string{"body": body}, &n)
+	return &n, err
+}
+
+// ReplyIssueDiscussion adds a comment to an issue's thread.
+func (c *Client) ReplyIssueDiscussion(ctx context.Context, project string, iid int64, discussion, body string) (*Note, error) {
+	var n Note
+	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/issues/%d/discussions/%s/notes", projectPath(project), iid, url.PathEscape(discussion)), nil, map[string]string{"body": body}, &n)
 	return &n, err
 }
 

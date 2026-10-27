@@ -1260,6 +1260,13 @@ spec:
                       is done: recorded by the pilot's run (Coordinate tasks) and copied to
                       the spec task before the pilot is deleted. A milestone gets one.
                     properties:
+                      created:
+                        additionalProperties:
+                          format: int64
+                          type: integer
+                        description: Created are the issues opened from the follow-ups,
+                          by number ("1").
+                        type: object
                       failed:
                         description: Failed says why there is no retrospective; it
                           is not tried again.
@@ -1280,6 +1287,12 @@ spec:
                           - title
                           type: object
                         type: array
+                      lastNoteID:
+                        description: |-
+                          LastNoteID is the newest comment on the tracking issue read for
+                          "create 1 2" (spec tasks).
+                        format: int64
+                        type: integer
                       noteID:
                         description: NoteID is the comment.
                         format: int64
