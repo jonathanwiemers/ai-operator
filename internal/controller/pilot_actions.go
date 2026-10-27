@@ -30,7 +30,7 @@ import (
 
 // pilotTools are the tools the pilot may propose; merging, closing and
 // pushing are none of them.
-var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "skip", "pause", "resume", "revisit", "setRule", "forgetRule"}
+var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
 
 // queueTools go through the tracking issue's commands.
 var queueTools = []string{"skip", "pause", "resume", "revisit"}
@@ -54,6 +54,12 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return fmt.Errorf("`%s` is not a decision", inertLine(a.Decision, 40))
 	case a.Tool == "revisit":
 		return nil
+	case a.Tool == "editSpec" && strings.TrimSpace(a.Spec) == "":
+		return errors.New("a spec edit needs the new text")
+	case a.Tool == "editSpec" && len(a.Spec) > maxSpec:
+		return fmt.Errorf("the new spec is over %d KiB", maxSpec>>10)
+	case a.Tool == "editSpec":
+		return nil // the milestone itself is checked in GitLab (specEdit)
 	case a.Tool == "fixFlaky" && a.IssueIID <= 0:
 		return errors.New("fixFlaky needs the flaky issue")
 	case a.Tool == "fixFlaky":
@@ -142,13 +148,21 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 			if err == nil && p.Actions[j].Tool == "fixFlaky" {
 				_, err = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, p.Actions[j].IssueIID, st.Spec.Milestone.IID)
 			}
+			diff := ""
+			if err == nil && p.Actions[j].Tool == "editSpec" {
+				_, diff, err = specEdit(ctx, gl, spec, st, p.Actions[j])
+			}
+			note := describeAction(p.Actions[j], err)
 			if err == nil {
 				valid++
 				if p.Actions[j].Tool == "openIssue" {
 					opened = append(opened, titleKey(p.Actions[j].Title))
 				}
+				if diff != "" {
+					note += ", as this diff shows:" + showDiff(diff)
+				}
 			}
-			notes = append(notes, describeAction(p.Actions[j], err))
+			notes = append(notes, note)
 		}
 		// The pilot manages, yet this needs an owner: its assessment did not
 		// ping them.
@@ -305,7 +319,9 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 			if errs[i][j] = validAction(a, st, tasks, opened); errs[i][j] == nil && a.Tool == "fixFlaky" {
 				_, errs[i][j] = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID)
 			}
-			if errs[i][j] == nil && p.AcceptedBy == "" && spec.Pilot.AutonomyOf(coord) != aiv1.PilotManaged {
+			if errs[i][j] == nil && p.AcceptedBy == "" && a.Tool == "editSpec" {
+				errs[i][j] = errors.New("a spec edit needs an owner's yes")
+			} else if errs[i][j] == nil && p.AcceptedBy == "" && spec.Pilot.AutonomyOf(coord) != aiv1.PilotManaged {
 				errs[i][j] = errors.New("the pilot proposes now (`/pilot stop` or `pilot.autonomy`)")
 			} else if errs[i][j] == nil && a.Tool == "openIssue" {
 				opened = append(opened, titleKey(a.Title))
@@ -329,7 +345,11 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 					failed = append(failed, titleKey(a.Title)) // may be opened again
 				}
 			}
-			lines = append(lines, describeAction(a, errs[i][j]))
+			line := describeAction(a, errs[i][j])
+			if a.Tool == "editSpec" && errs[i][j] == nil {
+				line += ": spec updated; the milestone is planned again"
+			}
+			lines = append(lines, line)
 		}
 		log.FromContext(ctx).Info("pilot proposal run", "task", coord.Name, "proposal", p.ID, "by", p.AcceptedBy)
 		body := b.String() + "\n" + strings.Join(lines, "\n")
@@ -364,6 +384,15 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		return r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
 	case "setRule", "forgetRule":
 		return r.runRule(ctx, gl, spec, st, a)
+	case "editSpec":
+		// Read again: the description the owner saw, with its command
+		// lines of now; the next poll plans the milestone again.
+		desc, _, err := specEdit(ctx, gl, spec, st, a)
+		if err != nil {
+			return err
+		}
+		_, err = gl.UpdateMilestoneDescription(ctx, spec.GitLab.Project, st.Spec.Milestone.ID, desc)
+		return err
 	case "openIssue":
 		_, err := gl.CreateIssue(ctx, spec.GitLab.Project, gitlab.CreateIssueOptions{
 			Title: inertLine(a.Title, 200),
@@ -490,6 +519,8 @@ func describeAction(a aiv1.PilotAction, err error) string {
 		s = fmt.Sprintf("**fixFlaky** #%d: the flaky issue goes to the agent in this milestone, with the operator's task", a.IssueIID)
 	case "setRule", "forgetRule":
 		s = describeRule(a)
+	case "editSpec":
+		s = "**editSpec**: a new spec replaces the milestone description, its command lines kept"
 	default:
 		s = fmt.Sprintf("**%s**", inertLine(a.Tool, 40))
 	}

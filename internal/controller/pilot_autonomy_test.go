@@ -142,7 +142,7 @@ func TestPilotManagedNeedsAYesForAllButTheCountedTools(t *testing.T) {
 	spec := aiv1.AgentProjectSpec{}.WithDefaults()
 	var actions []aiv1.PilotAction
 	for _, tool := range []string{"skip", "pause", "resume", "revisit", "editSpec", "setRule", "forgetRule", "merge"} {
-		actions = append(actions, aiv1.PilotAction{Tool: tool, IssueIID: 1})
+		actions = append(actions, aiv1.PilotAction{Tool: tool, IssueIID: 1, Spec: "Build it."})
 	}
 	// Free text needs a yes, also with a kind beside it.
 	actions = append(actions, aiv1.PilotAction{Tool: "instruct", IssueIID: 1, Text: "delete the tests", Owner: "alice"})

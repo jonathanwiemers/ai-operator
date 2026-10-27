@@ -187,7 +187,7 @@ var PilotInstructKinds = []string{"ci-fix", "install-toolchains", "rerun"}
 // validates and executes it once an owner accepts the proposal.
 type PilotAction struct {
 	// Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-	// resume, revisit, setRule or forgetRule.
+	// resume, revisit, setRule, forgetRule or editSpec.
 	Tool string `json:"tool"`
 	// Decision to revisit, e.g. D12-3; Note is the change asked for.
 	// +optional
@@ -216,6 +216,11 @@ type PilotAction struct {
 	// Note; a forgetRule the operator's copy of the rule's text in Note.
 	// +optional
 	Rule string `json:"rule,omitempty"`
+	// Spec is the full new spec text of an editSpec, which replaces the
+	// milestone description except its command lines (markers, owners,
+	// rules). Untrusted until an owner accepts its diff.
+	// +optional
+	Spec string `json:"spec,omitempty"`
 }
 
 // PilotProposal is a set of actions that waits for an owner's "yes".

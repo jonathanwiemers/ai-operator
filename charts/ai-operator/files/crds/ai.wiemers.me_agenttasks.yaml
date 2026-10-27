@@ -805,6 +805,12 @@ spec:
                                   setRule has its kind (switch, pilot, prompt) in Kind and its text in
                                   Note; a forgetRule the operator's copy of the rule's text in Note.
                                 type: string
+                              spec:
+                                description: |-
+                                  Spec is the full new spec text of an editSpec, which replaces the
+                                  milestone description except its command lines (markers, owners,
+                                  rules). Untrusted until an owner accepts its diff.
+                                type: string
                               text:
                                 type: string
                               title:
@@ -813,7 +819,7 @@ spec:
                               tool:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                  resume, revisit, setRule or forgetRule.
+                                  resume, revisit, setRule, forgetRule or editSpec.
                                 type: string
                             required:
                             - tool
@@ -929,6 +935,12 @@ spec:
                                 setRule has its kind (switch, pilot, prompt) in Kind and its text in
                                 Note; a forgetRule the operator's copy of the rule's text in Note.
                               type: string
+                            spec:
+                              description: |-
+                                Spec is the full new spec text of an editSpec, which replaces the
+                                milestone description except its command lines (markers, owners,
+                                rules). Untrusted until an owner accepts its diff.
+                              type: string
                             text:
                               type: string
                             title:
@@ -937,7 +949,7 @@ spec:
                             tool:
                               description: |-
                                 Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                resume, revisit, setRule or forgetRule.
+                                resume, revisit, setRule, forgetRule or editSpec.
                               type: string
                           required:
                           - tool
@@ -1044,6 +1056,12 @@ spec:
                                   setRule has its kind (switch, pilot, prompt) in Kind and its text in
                                   Note; a forgetRule the operator's copy of the rule's text in Note.
                                 type: string
+                              spec:
+                                description: |-
+                                  Spec is the full new spec text of an editSpec, which replaces the
+                                  milestone description except its command lines (markers, owners,
+                                  rules). Untrusted until an owner accepts its diff.
+                                type: string
                               text:
                                 type: string
                               title:
@@ -1052,7 +1070,7 @@ spec:
                               tool:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                  resume, revisit, setRule or forgetRule.
+                                  resume, revisit, setRule, forgetRule or editSpec.
                                 type: string
                             required:
                             - tool
@@ -1152,6 +1170,12 @@ spec:
                                   setRule has its kind (switch, pilot, prompt) in Kind and its text in
                                   Note; a forgetRule the operator's copy of the rule's text in Note.
                                 type: string
+                              spec:
+                                description: |-
+                                  Spec is the full new spec text of an editSpec, which replaces the
+                                  milestone description except its command lines (markers, owners,
+                                  rules). Untrusted until an owner accepts its diff.
+                                type: string
                               text:
                                 type: string
                               title:
@@ -1160,7 +1184,7 @@ spec:
                               tool:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                  resume, revisit, setRule or forgetRule.
+                                  resume, revisit, setRule, forgetRule or editSpec.
                                 type: string
                             required:
                             - tool

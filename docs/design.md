@@ -980,6 +980,17 @@ counted interventions; more tools are later steps of
   the rules with the reason for any that is not applied. A hand-written
   rule has the description's authority, which is already the spec; it
   cannot widen anything the operator checks.
+  `editSpec` (the full new spec text, at most 64 KiB) is a proposal tool
+  that always needs a `yes`, also in `managed`. Lines starting with the
+  command prefix (markers, owners, rules) are dropped from the pilot's
+  text and kept from the description, appended after the new text. The
+  proposal shows a unified diff of the spec without those lines in a
+  defused `diff` block. The edit is refused if the diff is over 20 KiB
+  (edit by hand), changes nothing, would add or remove a spec or
+  autopilot marker, or if the description changed since the spec task's
+  last sync. When it runs, the operator reads the milestone again, checks
+  it the same way and writes the description; the next poll re-plans
+  through the description hash, keeping started and merged work.
 * **Budget.** The task's `status.run.costUSD` is the pilot's spend; at
   `pilot.maxBudgetUSD` it answers without a model call that the budget is
   used up. On claude each turn is capped at the rest of the budget (or the
