@@ -183,6 +183,9 @@ type PilotInstruction struct {
 // PilotInstructKinds are the instructions the pilot may give.
 var PilotInstructKinds = []string{"ci-fix", "install-toolchains", "rerun"}
 
+// MaxPilotSpec bounds the new spec text of an editSpec, in bytes.
+const MaxPilotSpec = 64 << 10
+
 // PilotAction is one action of a proposal of the pilot; the operator
 // validates and executes it once an owner accepts the proposal.
 type PilotAction struct {

@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -79,6 +81,34 @@ func TestToolchainsNote(t *testing.T) {
 		}
 		if strings.Contains(perRun, "$HOME/.toolchains") || strings.Contains(perRun, "mktemp") {
 			t.Errorf("per-run note must not send installs to the shared directories: %q", perRun)
+		}
+	}
+}
+
+func TestPilotSchemasListEditSpec(t *testing.T) {
+	for name, schema := range map[string]string{"pilot": pilotSchema, "assess": assessSchema} {
+		var s struct {
+			Properties struct {
+				Proposal struct {
+					Properties struct {
+						Actions struct {
+							Items struct {
+								Properties map[string]struct {
+									Enum        []string `json:"enum"`
+									Description string   `json:"description"`
+								} `json:"properties"`
+							} `json:"items"`
+						} `json:"actions"`
+					} `json:"properties"`
+				} `json:"proposal"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal([]byte(schema), &s); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		props := s.Properties.Proposal.Properties.Actions.Items.Properties
+		if !slices.Contains(props["tool"].Enum, "editSpec") || !strings.HasPrefix(props["spec"].Description, "editSpec: the complete new milestone spec") {
+			t.Fatalf("%s: the schema lists editSpec and spec: %+v", name, props)
 		}
 	}
 }

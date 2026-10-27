@@ -59,21 +59,35 @@ func ruleList(rs []rules.Rule, kind string) string {
 	return b.String()
 }
 
-// rejectRules drops the rules from a proposal the operator would refuse
-// (a setting that is not on the list, a forbidden one, a value out of
-// range) and says so, for the reply.
-func rejectRules(p *ProposalAnswer) string {
+// rejectActions drops the actions from a proposal the operator would
+// refuse and says so, for the reply: a rule with a setting that is not on
+// the list, a forbidden one or a value out of range; a spec edit over the
+// size limit, one nobody asked for (asked: the proposal answers an owner's
+// message, not an event) or a second one, which would replace the first.
+func rejectActions(p *ProposalAnswer, asked bool) string {
 	if p == nil {
 		return ""
 	}
 	var notes []string
-	kept := p.Actions[:0]
+	kept, edits := p.Actions[:0], 0
 	for _, a := range p.Actions {
-		if a.Tool == "setRule" {
+		switch {
+		case a.Tool == "setRule":
 			if err := rules.Check(a.Kind, a.Note); err != nil {
 				notes = append(notes, "\n\n_Rule not proposed: "+err.Error()+"._")
 				continue
 			}
+		case a.Tool == "editSpec" && !asked:
+			notes = append(notes, "\n\n_Spec edit not proposed: only an owner's message asks for one._")
+			continue
+		case a.Tool == "editSpec" && len(a.Spec) > aiv1.MaxPilotSpec:
+			notes = append(notes, fmt.Sprintf("\n\n_Spec edit not proposed: the new spec is over %d KiB; edit the milestone by hand._", aiv1.MaxPilotSpec>>10))
+			continue
+		case a.Tool == "editSpec" && edits > 0:
+			notes = append(notes, "\n\n_Spec edit not proposed: one proposal holds one spec edit._")
+			continue
+		case a.Tool == "editSpec":
+			edits++
 		}
 		kept = append(kept, a)
 	}

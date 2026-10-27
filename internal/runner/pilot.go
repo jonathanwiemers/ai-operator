@@ -97,7 +97,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			default:
 				st.setSession("pilot", role.Engine, res.SessionID)
 				s.done(agentResult(role, res, "answered"), "session", res.SessionID, "costUSD", res.CostUSD)
-				reply = a.Reply + rejectRules(a.Proposal)
+				reply = a.Reply + rejectActions(a.Proposal, true)
 				trigger := m.IssueIID
 				if task.Spec.Issue != nil && trigger == task.Spec.Issue.IID {
 					trigger = 0
@@ -299,7 +299,7 @@ func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalA
 	prop := aiv1.PilotProposal{Summary: truncate(p.Summary, 500), Source: source, Trigger: trigger, Why: truncate(why, 1000), Quiet: quiet}
 	for _, a := range p.Actions[:min(len(p.Actions), 5)] {
 		prop.Actions = append(prop.Actions, aiv1.PilotAction{Tool: truncate(a.Tool, 40), IssueIID: a.Issue, Kind: truncate(a.Kind, 40),
-			Note: truncate(a.Note, 2000), Title: truncate(a.Title, 200), Decision: truncate(a.Decision, 40), Rule: truncate(a.Rule, 10)})
+			Note: truncate(a.Note, 2000), Title: truncate(a.Title, 200), Decision: truncate(a.Decision, 40), Rule: truncate(a.Rule, 10), Spec: a.Spec})
 	}
 	if prop.State = stateOf(prop.Actions); prop.State == "" {
 		return nil

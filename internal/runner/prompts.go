@@ -583,12 +583,19 @@ once an owner answers yes. The actions:
   the job was flaky at least twice, and only one pilot hands it over;
 - skip (issue N), pause, resume: the autopilot queue's commands;
 - revisit, a decision of a merged issue (e.g. D12-3) and the change asked
-  for: a follow-up issue that changes it.
-Nothing else exists: no merges, closes, pushes, labels or edits. Propose
-only what an owner asked for or what an event calls for, and say it in the
-answer. For anything else say what the owner can do, e.g. "/pilot tell #N:
-<words>" to pass their own words on to an implementer, a label or an edit
-of the milestone description.
+  for: a follow-up issue that changes it;
+- editSpec, with spec: the milestone's spec as it should read after the
+  change, the complete text and not a patch, without the owners, rule and
+  marker lines (the operator keeps those). Propose it only when an owner
+  asks for a change of the spec, never for an event. It always waits for an
+  owner's yes, also when you manage; the owners see the diff. The milestone
+  is planned again: say in the answer which planned issues that changes.
+  Drafts are updated; issues being worked on or merged are kept and may
+  get follow-ups.
+Nothing else exists: no merges, closes, pushes, labels or other edits.
+Propose only what an owner asked for or what an event calls for, and say it
+in the answer. For anything else say what the owner can do, e.g. "/pilot
+tell #N: <words>" to pass their own words on to an implementer, or a label.
 
 The operator also wakes you on events of the milestone: an autopilot pause,
 an issue that needs input or is blocked, a red or flaky default branch. Then
@@ -617,13 +624,14 @@ const proposalSchema = `{
             "additionalProperties": false,
             "required": ["tool"],
             "properties": {
-              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "skip", "pause", "resume", "revisit", "setRule", "forgetRule"]},
+              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
               "issue": {"type": "integer", "description": "retry, reReview, instruct, skip: the issue of the milestone; fixFlaky: the flaky issue."},
               "decision": {"type": "string", "description": "revisit: the decision's ID, e.g. D12-3."},
               "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun", "switch", "pilot", "prompt"], "description": "instruct: the instruction; setRule: the kind of rule."},
               "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for; setRule: the rule, one line (a switch: setting=value)."},
               "title": {"type": "string", "description": "openIssue: the issue's title."},
-              "rule": {"type": "string", "description": "forgetRule: the rule's ID, e.g. R2."}
+              "rule": {"type": "string", "description": "forgetRule: the rule's ID, e.g. R2."},
+              "spec": {"type": "string", "description": "editSpec: the complete new milestone spec, as it should read; without owners, rule and marker lines."}
             }
           }
         }
@@ -657,6 +665,7 @@ type ProposalAnswer struct {
 		Title    string `json:"title"`
 		Decision string `json:"decision"`
 		Rule     string `json:"rule"`
+		Spec     string `json:"spec"`
 	} `json:"actions"`
 }
 

@@ -990,7 +990,11 @@ counted interventions; more tools are later steps of
   autopilot marker, or if the description changed since the spec task's
   last sync. When it runs, the operator reads the milestone again, checks
   it the same way and writes the description; the next poll re-plans
-  through the description hash, keeping started and merged work.
+  through the description hash, keeping started and merged work. The
+  pilot proposes it when an owner asks for a spec change and says which
+  planned issues are re-planned; the runner drops, and says so in the
+  reply, a spec edit of an assessment (no owner asked), one over 64 KiB
+  and a second one in the same proposal.
 * **Budget.** The task's `status.run.costUSD` is the pilot's spend; at
   `pilot.maxBudgetUSD` it answers without a model call that the budget is
   used up. On claude each turn is capped at the rest of the budget (or the

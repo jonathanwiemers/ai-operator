@@ -21,8 +21,8 @@ import (
 // pilot's text and kept from the description.
 
 const (
-	maxSpec     = 64 << 10 // the pilot's text
-	maxSpecDiff = 20 << 10 // the diff an owner reads
+	maxSpec     = aiv1.MaxPilotSpec // the pilot's text
+	maxSpecDiff = 20 << 10          // the diff an owner reads
 )
 
 // splitSpec splits a description into its text and its command lines.
