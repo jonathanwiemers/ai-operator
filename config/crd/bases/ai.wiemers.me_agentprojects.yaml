@@ -1146,6 +1146,38 @@ spec:
                   Suspend stops polling GitLab and starting new runs. Existing pods are
                   left alone and are still subject to the lifecycle timeouts.
                 type: boolean
+              webhook:
+                description: Webhook configures the deliveries of the GitLab project
+                  hook.
+                properties:
+                  secretRef:
+                    description: |-
+                      SecretRef points to the GitLab project hook's secret token. A delivery
+                      counts only when its X-Gitlab-Token matches; without it, every delivery
+                      for this project is refused.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
               workflow:
                 description: Workflow defines the labels that drive the issue state
                   machine.

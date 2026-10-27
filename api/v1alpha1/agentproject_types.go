@@ -43,6 +43,10 @@ type AgentProjectSpec struct {
 	// +optional
 	Pilot PilotSpec `json:"pilot,omitempty"`
 
+	// Webhook configures the deliveries of the GitLab project hook.
+	// +optional
+	Webhook WebhookSpec `json:"webhook,omitempty"`
+
 	// PollInterval is how often GitLab is polled for changes.
 	// +kubebuilder:default="1m"
 	// +optional
@@ -646,6 +650,16 @@ type MainHealthSpec struct {
 	// (agent::ready).
 	// +optional
 	AutoFixFlaky bool `json:"autoFixFlaky,omitempty"`
+}
+
+// WebhookSpec configures the deliveries of the GitLab project hook, which
+// wake the operator to sync the project at once.
+type WebhookSpec struct {
+	// SecretRef points to the GitLab project hook's secret token. A delivery
+	// counts only when its X-Gitlab-Token matches; without it, every delivery
+	// for this project is refused.
+	// +optional
+	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
 }
 
 // MainHealthState is the health of the default branch.
