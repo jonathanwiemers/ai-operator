@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -23,6 +25,11 @@ const (
 	mainRedLabel  = "ci::main-red"
 	flakyLabel    = "ci::flaky"
 	mainRedMarker = "<!-- ai-operator:main-red -->"
+	// A pipeline canceled again after its retry; its issue freezes nothing.
+	mainCanceledLabel  = "ci::main-canceled"
+	mainCanceledMarker = "<!-- ai-operator:main-canceled -->"
+	// How many handled canceled pipelines the status keeps.
+	maxCanceled = 10
 	// How much of the failed jobs and their logs the issue shows; GitLab
 	// refuses titles over 255 characters.
 	mainRedLogLines, mainRedLogBytes, mainRedJobs = 40, 4000, 3
@@ -36,8 +43,9 @@ const (
 //	green after the retry         -> flaky: one issue per job
 //	red after the retry           -> red: the main-red issue, the owners pinged
 //
-// The status changes only when every step succeeded, so a failed one is
-// repeated on the next check. With autoFixFlaky, a flaky issue goes to the
+// A canceled pipeline is retried once and reported if canceled again
+// (checkCanceled). The status changes only when every step succeeded, so a
+// failed one is repeated on the next check. With autoFixFlaky, a flaky issue goes to the
 // agent at its second occurrence, into the milestone of lane (nil: none).
 func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, lane *aiv1.AgentTask) error {
 	if spec.MainHealth.Disabled {
@@ -59,8 +67,16 @@ func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.A
 		return nil
 	}
 	cur.CheckedAt = &now
+	proj, err := gl.GetProject(ctx, spec.GitLab.Project)
+	if err != nil || proj.DefaultBranch == "" {
+		return err
+	}
+	ps, err := gl.ListPipelines(ctx, spec.GitLab.Project, gitlab.ListPipelinesOptions{Ref: proj.DefaultBranch, Scope: "finished", Limit: 10})
+	if err != nil {
+		return err
+	}
 	st := cur.DeepCopy()
-	if err := r.checkMainHealth(ctx, gl, spec, project.Status.BotUserID, st); err != nil {
+	if err := r.checkMainHealth(ctx, gl, spec, project.Status.BotUserID, proj.DefaultBranch, ps, st); err != nil {
 		return err
 	}
 	if spec.MainHealth.AutoFixFlaky && cur.State == aiv1.MainHealthRetrying && st.State == aiv1.MainHealthFlaky {
@@ -71,10 +87,10 @@ func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.A
 		}
 	}
 	project.Status.MainHealth = st
-	if !spec.MainHealth.AutoFix || st.IssueIID == 0 || st.AutoFixIssueIID != 0 {
-		return nil
+	if spec.MainHealth.AutoFix && st.IssueIID != 0 && st.AutoFixIssueIID == 0 {
+		err = r.autoFix(ctx, gl, spec, st)
 	}
-	return r.autoFix(ctx, gl, spec, st)
+	return errors.Join(err, r.checkCanceled(ctx, gl, spec, project.Status.BotUserID, proj.DefaultBranch, ps, st))
 }
 
 // autoFix hands the main-red issue to the agent (mainHealth.autoFix), once
@@ -105,21 +121,18 @@ func (r *AgentProjectReconciler) freshMainHealth(spec aiv1.AgentProjectSpec, st 
 	return st
 }
 
-func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, st *aiv1.MainHealthStatus) error {
+// checkMainHealth checks ps, the newest finished pipelines of branch.
+func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, branch string, ps []gitlab.Pipeline, st *aiv1.MainHealthStatus) error {
 	mh, glProject := spec.MainHealth, spec.GitLab.Project
-	proj, err := gl.GetProject(ctx, glProject)
-	if err != nil || proj.DefaultBranch == "" {
-		return err
-	}
 	// Skipped and canceled pipelines say nothing about the branch: the
 	// newest one that does counts.
-	ps, err := gl.ListPipelines(ctx, glProject, gitlab.ListPipelinesOptions{Ref: proj.DefaultBranch, Scope: "finished", Limit: 10})
 	i := slices.IndexFunc(ps, func(p gitlab.Pipeline) bool {
 		return p.Status == "success" || p.Status == "manual" || p.Status == "failed"
 	})
-	if err != nil || i < 0 {
-		return err
+	if i < 0 {
+		return nil
 	}
+	var err error
 	// While a retry runs, the newest finished pipeline is an older one.
 	p, same := ps[i], ps[i].ID == st.PipelineID
 	red := p.Status == "failed"
@@ -183,7 +196,7 @@ func (r *AgentProjectReconciler) checkMainHealth(ctx context.Context, gl gitlab.
 	}
 	st.RetriedJobIDs = nil
 	if *mh.Issue && (st.IssueIID == 0 || !slices.Equal(st.ReportedJobs, st.FailedJobs)) {
-		if err := r.reportMainRed(ctx, gl, spec, bot, proj.DefaultBranch, p, jobs, st); err != nil {
+		if err := r.reportMainRed(ctx, gl, spec, bot, branch, p, jobs, st); err != nil {
 			return err
 		}
 	}
@@ -231,6 +244,100 @@ func (r *AgentProjectReconciler) reportMainRed(ctx context.Context, gl gitlab.AP
 		st.IssueIID = is.IID
 	}
 	st.ReportedJobs = st.FailedJobs
+	return nil
+}
+
+// checkCanceled retries a canceled pipeline among ps, the newest finished
+// pipelines of branch, once if its commit has no successful pipeline of its
+// own (mainHealth.retryCanceled). Canceled again, or if the retry is refused,
+// it is reported once. The first check records the newest pipeline as the
+// baseline: canceled pipelines up to it are left alone.
+func (r *AgentProjectReconciler) checkCanceled(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, branch string, ps []gitlab.Pipeline, st *aiv1.MainHealthStatus) error {
+	if !*spec.MainHealth.RetryCanceled {
+		st.CanceledSince, st.Canceled = 0, nil
+		return nil
+	}
+	if st.CanceledSince == 0 {
+		if len(ps) > 0 {
+			st.CanceledSince = ps[0].ID
+		}
+		return nil
+	}
+	defer func() {
+		slices.SortFunc(st.Canceled, func(a, b aiv1.CanceledPipeline) int { return cmp.Compare(b.PipelineID, a.PipelineID) })
+		st.Canceled = st.Canceled[:min(len(st.Canceled), maxCanceled)]
+	}()
+	glProject := spec.GitLab.Project
+	for _, p := range slices.Backward(ps) {
+		i := slices.IndexFunc(st.Canceled, func(c aiv1.CanceledPipeline) bool { return c.PipelineID == p.ID })
+		if p.Status != "canceled" || p.ID <= st.CanceledSince || i >= 0 && st.Canceled[i].Reported {
+			continue
+		}
+		same, err := gl.ListPipelines(ctx, glProject, gitlab.ListPipelinesOptions{SHA: p.SHA, Ref: branch, Scope: "finished"})
+		if err != nil {
+			return fmt.Errorf("listing the pipelines of %s: %w", p.SHA, err)
+		}
+		if slices.ContainsFunc(same, func(q gitlab.Pipeline) bool { return q.Status == "success" }) {
+			continue
+		}
+		if i < 0 {
+			st.Canceled = append(st.Canceled, aiv1.CanceledPipeline{PipelineID: p.ID, SHA: p.SHA})
+			i = len(st.Canceled) - 1
+		}
+		c := &st.Canceled[i]
+		if !c.Retried {
+			log.FromContext(ctx).Info("default branch pipeline was canceled, retrying it once", "pipeline", p.ID, "sha", p.SHA)
+			if _, err = gl.RetryPipeline(ctx, glProject, p.ID); err == nil {
+				c.Retried = true
+				continue
+			}
+			log.FromContext(ctx).Info("could not retry the canceled pipeline", "pipeline", p.ID, "error", err.Error())
+		}
+		if err := r.reportCanceled(ctx, gl, spec, bot, branch, p, c.Retried, st.IssueIID); err != nil {
+			return err
+		}
+		c.Reported = true
+	}
+	return nil
+}
+
+// reportCanceled reports a canceled pipeline that was retried (or could not
+// be): a comment on the open main-red issue (redIID), else on the
+// main-canceled issue, which neither freezes autopilot nor goes to autoFix.
+// Only a new issue pings the owners; with mainHealth.issue off it is logged.
+func (r *AgentProjectReconciler) reportCanceled(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, branch string, p gitlab.Pipeline, retried bool, redIID int64) error {
+	if !*spec.MainHealth.Issue {
+		log.FromContext(ctx).Info("default branch pipeline canceled again", "pipeline", p.ID, "sha", p.SHA)
+		return nil
+	}
+	glProject := spec.GitLab.Project
+	what := "was canceled again after its retry"
+	if !retried {
+		what = "was canceled and could not be retried"
+	}
+	line := fmt.Sprintf("⏹️ Pipeline %s at `%s` of `%s` %s; the commit has no successful pipeline, so its jobs (a release, for example) did not run. Run the pipeline again, or push a commit that covers it.\n", p.WebURL, p.SHA, branch, what)
+	iid := redIID
+	if iid == 0 {
+		is, err := findIssue(ctx, gl, glProject, bot, mainCanceledLabel, mainCanceledMarker)
+		if err != nil {
+			return err
+		}
+		if is == nil {
+			desc := mainCanceledMarker + "\n" + line
+			if spec.Notify.Wants(aiv1.NotifyMainRed) {
+				desc += notify.Mention(notify.Resolve("", spec.Workflow.CommandPrefix, spec.Notify.Users, r.DefaultOwners))
+			}
+			title := fmt.Sprintf("⏹️ `%s`: pipeline canceled twice", branch)
+			if _, err := gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{Title: title, Description: desc, Labels: "ai-generated," + mainCanceledLabel}); err != nil {
+				return fmt.Errorf("creating the main-canceled issue: %w", err)
+			}
+			return nil
+		}
+		iid = is.IID
+	}
+	if _, err := gl.CreateIssueNote(ctx, glProject, iid, line); err != nil {
+		return fmt.Errorf("commenting on issue #%d: %w", iid, err)
+	}
 	return nil
 }
 

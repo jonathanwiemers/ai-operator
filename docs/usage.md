@@ -392,6 +392,11 @@ list shows the first 3 jobs and their logs.
 | still red after the retry | an issue "🚑 `main` is red: `<jobs>`" (labels `ai-generated`, `ci::main-red`) with the pipeline, the commit, the failing jobs and the last 40 lines of each job's log; it mentions the project's owners |
 | red again, the same jobs | nothing new |
 | red again, other jobs | a comment on the `ci::main-red` issue, and its title follows |
+| canceled, its commit has no green pipeline of its own | retried once (`mainHealth.retryCanceled`); a newer commit's green pipeline does not cover it, since jobs such as a release ran only for that commit |
+| canceled again after that retry (or the retry refused) | one comment with the pipeline and the commit: on the open `ci::main-red` issue, else on an issue "⏹️ `main`: pipeline canceled twice" (labels `ai-generated`, `ci::main-canceled`), which mentions the owners when it is opened. It does not freeze autopilot and is not handed to the agent; close it by hand |
+
+Canceled pipelines older than the newest one when `retryCanceled` first ran
+(after the upgrade, or switched on again) are left alone.
 
 The operator finds its issues again by a hidden marker, also after the
 AgentProject was recreated; issues a human opens with these labels are left

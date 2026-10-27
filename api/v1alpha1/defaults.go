@@ -336,6 +336,9 @@ func (m MainHealthSpec) WithDefaults() MainHealthSpec {
 	if m.RetryFailedJobs == nil {
 		m.RetryFailedJobs = &t
 	}
+	if m.RetryCanceled == nil {
+		m.RetryCanceled = &t
+	}
 	if m.Issue == nil {
 		m.Issue = &t
 	}

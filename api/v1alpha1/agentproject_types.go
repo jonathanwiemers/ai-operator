@@ -613,6 +613,15 @@ type MainHealthSpec struct {
 	// +optional
 	RetryFailedJobs *bool `json:"retryFailedJobs,omitempty"`
 
+	// RetryCanceled retries a canceled pipeline of the default branch once
+	// when its commit has no successful pipeline of its own. Canceled again,
+	// it is reported on the open main-red issue, else on a ci::main-canceled
+	// issue, which freezes nothing. Pipelines up to the newest one when the
+	// switch first ran are left alone.
+	// +kubebuilder:default=true
+	// +optional
+	RetryCanceled *bool `json:"retryCanceled,omitempty"`
+
 	// Issue opens an issue for a red default branch and one per flaky job.
 	// +kubebuilder:default=true
 	// +optional
@@ -693,9 +702,29 @@ type MainHealthStatus struct {
 	// first hand-over wins. They are not filtered by milestones.titlePattern.
 	// +optional
 	FlakyFixes []FlakyFix `json:"flakyFixes,omitempty"`
+	// CanceledSince is the newest finished pipeline when retryCanceled first
+	// ran: canceled pipelines up to it are not retried.
+	// +optional
+	CanceledSince int64 `json:"canceledSince,omitempty"`
+	// Canceled are the last canceled pipelines handled (retryCanceled),
+	// newest first.
+	// +optional
+	Canceled []CanceledPipeline `json:"canceled,omitempty"`
 	// CheckedAt is when the pipelines were last checked.
 	// +optional
 	CheckedAt *metav1.Time `json:"checkedAt,omitempty"`
+}
+
+// CanceledPipeline is a canceled pipeline of the default branch whose commit
+// had no successful pipeline: whether it was retried, and whether its second
+// cancel (or a refused retry) was reported.
+type CanceledPipeline struct {
+	PipelineID int64  `json:"pipelineID"`
+	SHA        string `json:"sha"`
+	// +optional
+	Retried bool `json:"retried,omitempty"`
+	// +optional
+	Reported bool `json:"reported,omitempty"`
 }
 
 // FlakyJobReport is a job that passed on retry: its flaky issue, and what

@@ -381,3 +381,177 @@ func TestFreshMainHealth(t *testing.T) {
 		t.Error("disabled main health must not count")
 	}
 }
+
+// canceledEnv records the baseline on a green pipeline, so canceled
+// pipelines added later are handled.
+func canceledEnv(t *testing.T) (*projectEnv, func(time.Duration)) {
+	e, advance := newMainEnv(t)
+	base := e.gl.AddPipeline("sha0", "main", "success")
+	e.reconcile()
+	if st := e.mainHealth(); st.CanceledSince != base {
+		t.Fatalf("the first check records the baseline, status %+v", st)
+	}
+	return e, advance
+}
+
+func TestMainHealthRetriesACanceledPipelineOnce(t *testing.T) {
+	e, advance := canceledEnv(t)
+	e.setNotify(aiv1.NotifySpec{Users: []string{"alice"}})
+	// Canceled by a newer commit whose green pipeline released nothing.
+	pid := e.gl.AddPipeline("sha1", "main", "canceled")
+	e.gl.AddPipeline("sha2", "main", "success")
+	e.check(advance)
+	if !slices.Equal(e.gl.Retried, []int64{pid}) {
+		t.Fatalf("a canceled pipeline without a green one of its commit is retried, retried %v", e.gl.Retried)
+	}
+	if st := e.mainHealth(); len(st.Canceled) != 1 || !st.Canceled[0].Retried || st.Canceled[0].Reported || st.Canceled[0].SHA != "sha1" {
+		t.Fatalf("status %+v", st.Canceled)
+	}
+	e.check(advance) // still running
+	if len(e.gl.Retried) != 1 || len(e.gl.Issues) != 0 {
+		t.Fatalf("a running retry is left alone, retried %v, issues %d", e.gl.Retried, len(e.gl.Issues))
+	}
+
+	e.gl.SetPipelineStatus(pid, "canceled")
+	e.check(advance)
+	e.check(advance)
+	if len(e.gl.Retried) != 1 {
+		t.Fatalf("canceled again is not retried a second time, retried %v", e.gl.Retried)
+	}
+	canceled := e.issuesWith(mainCanceledLabel)
+	if len(canceled) != 1 || canceled[0].Title != "⏹️ `main`: pipeline canceled twice" || !canceled[0].HasLabel("ai-generated") {
+		t.Fatalf("expected one main-canceled issue, got %+v", canceled)
+	}
+	d := canceled[0].Description
+	for _, want := range []string{mainCanceledMarker, "/pipelines/" + itoa(pid), "`sha1`", "canceled again after its retry", "cc @alice"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("description lacks %q:\n%s", want, d)
+		}
+	}
+	if n := len(e.gl.IssueNotes[canceled[0].IID]); n != 0 {
+		t.Fatalf("reported once, got %d comments", n)
+	}
+	// The issue freezes nothing and is not the main-red issue.
+	if st := e.mainHealth(); st.State != aiv1.MainHealthGreen || st.IssueIID != 0 || !st.Canceled[0].Reported {
+		t.Fatalf("status %+v", st)
+	}
+
+	// The next twice-canceled pipeline is a comment on the same issue,
+	// without a ping.
+	pid3 := e.gl.AddPipeline("sha3", "main", "canceled")
+	e.check(advance)
+	e.gl.SetPipelineStatus(pid3, "canceled")
+	e.check(advance)
+	notes := e.gl.IssueNotes[canceled[0].IID]
+	if len(notes) != 1 || !strings.Contains(notes[0].Body, "/pipelines/"+itoa(pid3)) || strings.Contains(notes[0].Body, "@alice") {
+		t.Fatalf("expected one comment on the issue, got %+v", notes)
+	}
+}
+
+func TestMainHealthCanceledCoveredByGreen(t *testing.T) {
+	e, advance := canceledEnv(t)
+	e.gl.AddPipeline("sha1", "main", "canceled")
+	e.gl.AddPipeline("sha1", "main", "success")
+	e.check(advance)
+	if len(e.gl.Retried) != 0 || len(e.mainHealth().Canceled) != 0 {
+		t.Fatalf("a commit with a green pipeline is fine, retried %v", e.gl.Retried)
+	}
+}
+
+func TestMainHealthRetryCanceledOff(t *testing.T) {
+	e, advance := canceledEnv(t)
+	e.setMainHealth(aiv1.MainHealthSpec{RetryCanceled: new(false)})
+	e.gl.AddPipeline("sha1", "main", "canceled")
+	e.check(advance)
+	if st := e.mainHealth(); len(e.gl.Retried) != 0 || st.CanceledSince != 0 {
+		t.Fatalf("switched off, nothing happens, retried %v, status %+v", e.gl.Retried, st)
+	}
+	// Switched on again: a new baseline, the old cancel stays alone.
+	e.setMainHealth(aiv1.MainHealthSpec{})
+	e.check(advance)
+	e.check(advance)
+	if len(e.gl.Retried) != 0 {
+		t.Fatalf("retried %v", e.gl.Retried)
+	}
+}
+
+func TestMainHealthCanceledBaseline(t *testing.T) {
+	e, advance := newMainEnv(t)
+	old := e.gl.AddPipeline("sha1", "main", "canceled")
+	e.gl.AddPipeline("sha2", "main", "canceled")
+	e.reconcile()
+	e.check(advance)
+	if len(e.gl.Retried) != 0 || len(e.gl.Issues) != 0 {
+		t.Fatalf("pipelines up to the baseline are not retried, retried %v", e.gl.Retried)
+	}
+	pid := e.gl.AddPipeline("sha3", "main", "canceled")
+	e.check(advance)
+	if !slices.Equal(e.gl.Retried, []int64{pid}) || slices.Contains(e.gl.Retried, old) {
+		t.Fatalf("only the new cancel is retried, retried %v", e.gl.Retried)
+	}
+}
+
+func TestMainHealthCanceledOnMainRedIssue(t *testing.T) {
+	e, advance := canceledEnv(t)
+	e.setMainHealth(aiv1.MainHealthSpec{RetryFailedJobs: new(false)})
+	e.gl.AddPipeline("sha1", "main", "failed", coverageJob())
+	pid := e.gl.AddPipeline("sha2", "main", "canceled")
+	e.check(advance)
+	red := e.issuesWith(mainRedLabel)
+	if len(red) != 1 || !slices.Equal(e.gl.Retried, []int64{pid}) {
+		t.Fatalf("main-red issues %d, retried %v", len(red), e.gl.Retried)
+	}
+	e.gl.SetPipelineStatus(pid, "canceled")
+	e.check(advance)
+	notes := e.gl.IssueNotes[red[0].IID]
+	if len(notes) != 1 || !strings.Contains(notes[0].Body, "/pipelines/"+itoa(pid)) || !strings.Contains(notes[0].Body, "`sha2`") {
+		t.Fatalf("expected the report on the main-red issue, got %+v", notes)
+	}
+	if n := len(e.issuesWith(mainCanceledLabel)); n != 0 {
+		t.Fatalf("no main-canceled issue while main is red, got %d", n)
+	}
+}
+
+func TestMainHealthCanceledRetryRefused(t *testing.T) {
+	e, advance := canceledEnv(t)
+	e.gl.RetryError = &gitlab.Error{StatusCode: 403, Method: "POST", Path: "retry"}
+	e.gl.AddPipeline("sha1", "main", "canceled")
+	e.check(advance)
+	e.check(advance)
+	canceled := e.issuesWith(mainCanceledLabel)
+	if len(canceled) != 1 || !strings.Contains(canceled[0].Description, "could not be retried") || len(e.gl.IssueNotes[canceled[0].IID]) != 0 {
+		t.Fatalf("a refused retry is reported once, issues %+v", canceled)
+	}
+}
+
+func TestMainHealthCanceledReportRepeats(t *testing.T) {
+	e, advance := canceledEnv(t)
+	pid := e.gl.AddPipeline("sha1", "main", "canceled")
+	e.check(advance)
+	e.gl.SetPipelineStatus(pid, "canceled")
+	e.gl.CreateIssueError = &gitlab.Error{StatusCode: 500, Method: "POST", Path: "issues"}
+	advance(aiv1.DefaultMainHealthInterval)
+	if _, err := e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "shop"}}); err != nil {
+		t.Fatal(err)
+	}
+	if st := e.mainHealth(); len(st.Canceled) != 1 || st.Canceled[0].Reported {
+		t.Fatalf("a failed report is not recorded, status %+v", st.Canceled)
+	}
+	e.gl.CreateIssueError = nil
+	e.check(advance)
+	if len(e.issuesWith(mainCanceledLabel)) != 1 || len(e.gl.Retried) != 1 {
+		t.Fatalf("the report is tried again without a retry, retried %v", e.gl.Retried)
+	}
+}
+
+func TestMainHealthCanceledKeepsTheNewest(t *testing.T) {
+	e, advance := canceledEnv(t)
+	for i := range maxCanceled + 2 {
+		e.gl.AddPipeline("sha"+strconv.Itoa(i+1), "main", "canceled")
+		e.check(advance)
+	}
+	st := e.mainHealth()
+	if len(st.Canceled) != maxCanceled || st.Canceled[0].SHA != "sha12" {
+		t.Fatalf("the status keeps the newest %d, got %+v", maxCanceled, st.Canceled)
+	}
+}
