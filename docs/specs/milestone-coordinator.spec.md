@@ -464,7 +464,8 @@ GitHub `jonathanwiemers/ai-operator`, one PR per row, each based on `main`.
 | C5 | UI milestone page with the chat | C1 | ~50 (web excluded from the Go budget, own PR) |
 
 C3, C4 and C5 are delivered by
-[gitlab-home-and-hardening.spec.md](gitlab-home-and-hardening.spec.md).
+[gitlab-home-and-hardening.spec.md](gitlab-home-and-hardening.spec.md)
+(merged 2026-10-27). Every row is delivered.
 T1, C2a and C2d can be built in parallel; plan each PR's split before coding.
 
 ## Open questions
@@ -541,6 +542,22 @@ T1, C2a and C2d can be built in parallel; plan each PR's split before coding.
   never came; reviews now run in the foreground with a time limit, and PRs
   are opened before the second review pass.
 
+- 2026-10-27, delivered by
+  [gitlab-home-and-hardening.spec.md](gitlab-home-and-hardening.spec.md)
+  on GitLab: the T1 follow-up (runner-side pin enforcement) is done, a
+  branch that changes a pin file runs with per-run `MISE_DATA_DIR`,
+  `RUSTUP_HOME` and `CARGO_HOME` (!7); the C2b follow-up (owner IDs pinned
+  at proposal time, a `yes` counts only from them) is done (!8). C3 (!13,
+  !14), C4 (!15, !16) and C5 (!17, !18, !19) are merged; with them every row
+  of Delivery is delivered. Deviations from this spec:
+  `agents.pilot.strongModel` is not built, so `editSpec` runs on the
+  pilot's model and the retrospective on the implement role's engine and
+  model (read-only, its own call, mentioning nobody); `editSpec` (a `yes`
+  in both autonomies, as in Tools and authority) is also refused in an
+  assessment and as a second spec edit in one proposal; `create 1 2` counts only from the owner IDs pinned on the
+  retrospective; the UI chat adds the `/pilot` prefix on the server. Sizes
+  and the remaining deviations are in that spec's steering log.
+
 ## PRs
 
 | # | Title | Link | Status |
@@ -556,3 +573,18 @@ T1, C2a and C2d can be built in parallel; plan each PR's split before coding.
 | C2b-2 | Pilot C2b-2: the queue tools skip, pause, resume and revisit | [#75](https://github.com/jonathanwiemers/ai-operator/pull/75) | merged 2026-10-26 |
 | C2c | Pilot C2c: managed autonomy, counted interventions, audit comments, /pilot stop and go | [#76](https://github.com/jonathanwiemers/ai-operator/pull/76) | merged 2026-10-26 |
 | C2e | Pilot C2e: standing rules | [#77](https://github.com/jonathanwiemers/ai-operator/pull/77) | merged 2026-10-26 |
+| – | Spec: coordinator PR table for T1 and C2; steers from their reviews | [#78](https://github.com/jonathanwiemers/ai-operator/pull/78) | merged 2026-10-26 |
+| – | Spec: the pilot fixes flaky tests (C2f) | [#79](https://github.com/jonathanwiemers/ai-operator/pull/79) | merged 2026-10-26 |
+| C2f-1 | Pilot C2f-1: flaky logs (failed attempt's log and failing tests on the flaky issue and in the pilot's event) | [#80](https://github.com/jonathanwiemers/ai-operator/pull/80) | merged 2026-10-26 |
+| C2f-2 | Pilot C2f-2: fixFlaky hands a flaky test to the agent; mainHealth.autoFixFlaky | [#81](https://github.com/jonathanwiemers/ai-operator/pull/81) | merged 2026-10-26 |
+| C3a | Pilot C3a: editSpec proposals show a diff and apply the edit after an owner's yes | [!13](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/13) | merged 2026-10-27 |
+| C3b | Pilot C3b: the pilot proposes spec edits (editSpec in its schema and prompt) | [!14](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/14) | merged 2026-10-27 |
+| C4a | Pilot C4a: the retrospective when autopilot is done | [!15](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/15) | merged 2026-10-27 |
+| C4b | Pilot C4b: create 1 2 opens the retrospective's follow-ups as issues | [!16](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/16) | merged 2026-10-27 |
+| C5a | UI C5a: milestone-scoped API (milestone view and its tracking-issue thread) with authorization | [!17](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/17) | merged 2026-10-27 |
+| C5b | UI C5b: post chat messages to the milestone's pilot (tracking issue, server-side /pilot prefix) | [!18](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/18) | merged 2026-10-27 |
+| C5c | UI C5c: milestone page with queue, pilot state and chat | [!19](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/19) | merged 2026-10-27 |
+
+From C3 on the repository's home is GitLab (`jo.wiemers/ai-operator`), so
+the links are merge requests there; see
+[gitlab-home-and-hardening.spec.md](gitlab-home-and-hardening.spec.md#mrs).

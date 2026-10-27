@@ -26,7 +26,8 @@ The CRDs are part of the templates, so they are upgraded too.
 | `image.tag` | chart `appVersion` | |
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | for private registries; set on the operator pod and on the agent service account in each of `agent.namespaces` (the Secret must exist there) |
-| `replicaCount` | `1` | |
+| `nameOverride`, `fullnameOverride` | `""` | |
+| `replicaCount` | `1` | with more than 1, only the leader serves the webhook receiver |
 | `leaderElection` | `true` | |
 | `logLevel` | `info` | `debug`, `info`, `error` |
 | `defaultOwners` | `[]` | GitLab usernames mentioned when a task needs a human, for AgentProjects without `spec.notify.users`; a milestone line `/agent owners @a @b` overrides them |
@@ -47,6 +48,7 @@ The CRDs are part of the templates, so they are upgraded too.
 | `agent.networkPolicy.dnsSelector` | pods labelled `k8s-app: kube-dns` | where DNS is allowed |
 | `metrics.port` | `8080` | |
 | `metrics.service.enabled` | `false` | expose metrics through a Service |
+| `metrics.service.type`, `metrics.service.annotations` | `ClusterIP`, `{}` | |
 | `healthProbePort` | `8081` | |
 | `webhook.enabled` | `true` | serve the GitLab webhook receiver (`POST /hooks/gitlab`) and its Service `<release>-webhook`; see below |
 | `webhook.port` | `8082` | port of the receiver and of the Service |
@@ -112,7 +114,10 @@ AgentProjects and AgentTasks.
 | `ui.oidc.scopes` | `[openid, profile, email]` | |
 | `ui.oidc.claims.username` | `has(claims.email) ? claims.email : claims.sub` | CEL expression giving the user name |
 | `ui.oidc.claims.roles` | `has(claims.groups) ? claims.groups : []` | CEL expression giving the roles: a list, a string or a map whose keys are the roles (Zitadel: `claims["urn:zitadel:iam:org:project:roles"]`) |
-| `ui.authorization.rules` | `[]` | `{roles: [...], projects: ["namespace/name", ...]}`; a user with any of the roles sees the matching projects (all if `projects` is empty). `"*"` matches every user. Nobody sees anything without a rule |
+| `ui.authorization.rules` | `[]` | `{roles: [...], projects: ["namespace/name", ...], transcript, steer}`; a user with any of the roles sees the matching projects (all if `projects` is empty, globs allowed); `transcript: true` adds live transcripts and prompts, `steer: true` writing comments, the milestone chat included. `"*"` matches every user. Nobody sees anything without a rule |
+| `ui.gitlab.url`, `ui.gitlab.clientID` | | GitLab and its OAuth application (confidential, scope `api`, redirect URI `<externalURL>/oauth2/gitlab/callback`) for [steering](../../docs/ui.md#steering): users connect their account, see the comments and post in their own name |
+| `ui.gitlab.tokenUser` | | instead of OAuth, for one user: the UI user name whose fixed GitLab token (key `gitlab-token`) the UI uses for them |
+| `ui.gitlab.existingSecret` | `ui.oidc.existingSecret` | Secret with `gitlab-client-secret` (OAuth) and/or `gitlab-token` (`tokenUser`) |
 | `ui.httpRoute.enabled` | `false` | Gateway API HTTPRoute for the UI's host |
 | `ui.httpRoute.parentRefs` | `[]` | the Gateway (listener); required when enabled |
 | `ui.httpRoute.hostnames` | host of `externalURL` | |

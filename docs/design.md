@@ -30,6 +30,7 @@ flowchart LR
     LLM["Model providers<br/>Anthropic, Cursor"]
 
     OP <-->|"poll, labels,<br/>pipelines"| GL
+    GL -.->|"project webhook<br/>(wake-up only)"| OP
     AP -->|reads| OP
     OP -->|"creates,<br/>requests runs"| AT
     OP -->|"starts, hibernates,<br/>deletes"| POD
@@ -46,7 +47,8 @@ live in the namespaces listed in the chart's `agent.namespaces`.
 * The **project controller** polls GitLab, creates an `AgentTask` per planned
   milestone and per handed-over issue, turns `agent::ready` and `/agent`
   comments into run requests, follows pipelines, and deletes tasks of
-  finished issues.
+  finished issues. A GitLab project webhook wakes it within seconds (see
+  [GitLab webhooks](#gitlab-webhooks)); polling stays the fallback.
 * The **task controller** owns the pod and the workspace PVC of each task:
   it starts, queues, hibernates and archives them (see
   [Lifecycle](#lifecycle-of-long-lived-issues)).
@@ -57,7 +59,9 @@ live in the namespaces listed in the chart's `agent.namespaces`.
   model credentials, nothing else (see [Security](#security)).
 * The optional **web UI** (`ai-operator-ui`, [ui.md](ui.md)) shows the tasks
   of the projects a user's OIDC roles grant. It only reads AgentProjects and
-  AgentTasks from the Kubernetes API and never talks to GitLab.
+  AgentTasks from the Kubernetes API and never uses the operator's GitLab
+  token; with a user's GitLab account connected it reads threads and posts
+  comments (also the milestone chat to the pilot) with that user's token.
 
 ## Flow
 
@@ -186,6 +190,15 @@ autopilot code only read the task. The owners line, like the
 [standing rules](#pilot), is left out of the milestone's description hash,
 so it does not re-plan. Mentions go into new
 comments only, because GitLab notifies again for mentions added by an edit.
+With `workflow.commandsFrom: owners`, `commandGate`
+(`internal/controller/commandgate.go`) filters every poll's `/agent`
+comments (run requests, `reviewOnly`, routing, the tracking issue's
+commands, revisits) to those whose author ID is an owner's, looking the
+owners' IDs up lazily once per poll (`members`, the default, costs no
+GitLab call). A denied command gets one reply per user and 24 h
+(`rejectOnce`, recorded in the milestone spec task's
+`status.pilot.rejected`, outside a planned milestone in the issue task's),
+and the place's watermark moves past it, so it is not answered again.
 
 **Model and effort per issue.** `/agent use` and `/agent effort` start no
 run: on the poll that sees them the operator validates them against
@@ -202,7 +215,8 @@ run on another engine (also switching back) starts that engine's session
 fresh, another model or effort of the same engine resumes it.
 
 The milestone description is the single source of the overarching spec. The
-operator never writes to it. Sub-specs live in the sub-issues, and the
+operator writes to it only for the pilot's standing rules and spec edits
+after an owner's `yes` (see [Pilot](#pilot)). Sub-specs live in the sub-issues, and the
 planner's summary is kept in the spec task's status (`kubectl get agenttask
 <name> -o jsonpath='{.status.run.summary}'`).
 
@@ -372,7 +386,16 @@ nothing is lost.
   retries, and an edit of the live progress comment gives up after 10
   seconds. A poll that still fails with such an error is logged without a
   stack trace and simply repeated on the next poll; every poll logs its
-  request count at debug.
+  request count at debug. Job logs are streamed: `JobTrace` keeps only the
+  last 4 MiB while reading (`readTail`), so a huge log costs no more memory
+  than that.
+* **Webhooks save polls.** While a project's webhook deliveries arrive,
+  only every `webhook.fallbackInterval` is a full sync; the polls in between
+  list the milestones only (see [GitLab webhooks](#gitlab-webhooks)).
+* **Resumable plan apply.** `applyPlan` (`internal/runner/spec.go`) matches
+  issues by plan key (`issueKey`), so a planning run that fails halfway
+  keeps the issues it created and the next run finds them; its retries
+  above make one timeout cost a retry, not the run.
 * **Resumed sessions.** Follow-up runs resume the implementer's session and
   only send the new comments, instead of the whole issue, spec and thread.
 * **Steps on drafts.** While the MR is a draft, the implementer returns
@@ -423,6 +446,86 @@ nothing is lost.
   second model call to parse.
 * Spend is visible per task: `kubectl get agenttasks` shows the accumulated
   cost the CLIs report.
+
+## GitLab webhooks
+
+GitLab project hooks (GitLab Free; group hooks need Premium) wake the
+project controller instead of waiting for the next poll
+(`internal/webhook`, `internal/controller/webhook.go`).
+
+```mermaid
+sequenceDiagram
+    participant GL as GitLab
+    participant RC as Receiver (leader)
+    participant WK as Waker
+    participant PC as Project controller
+    GL->>RC: POST /hooks/gitlab, X-Gitlab-Token
+    RC->>RC: body ≤ 1 MiB, project.path_with_namespace,<br/>token vs. spec.webhook.secretRef
+    alt a matching project
+        RC->>RC: Deliveries.Record
+        RC->>WK: Wake(project)
+        RC-->>GL: 202
+        WK->>PC: GenericEvent (at most one per 5 s, plus a trailing one)
+        PC->>GL: sync the project from the API, as on a poll
+    else unknown project, no secret, wrong or missing token
+        RC-->>GL: 401
+    end
+```
+
+* **Receiver.** `--webhook-bind-address` (chart `webhook.enabled`,
+  `webhook.port` 8082, Service `<release>-webhook`) adds a manager runnable
+  that serves only `POST /hooks/gitlab` (405 for other methods), with read
+  header 5 s and read/write 10 s timeouts. It needs leader election: only
+  the leader runs the controller a wake acts on, so other replicas do not
+  listen and GitLab's retry covers a delivery that reached one. The route
+  from the internet is the cluster's job; the chart renders none.
+* **Trust model.** The payload is never trusted as data: the receiver reads
+  the whole body through a 1 MiB `MaxBytesReader` (413 over it), takes only
+  `project.path_with_namespace` (400 without one) and matches it
+  case-insensitively against `spec.gitlab.project` of every AgentProject.
+  A match counts only when `sha256(X-Gitlab-Token)` equals `sha256` of the
+  trimmed secret from `spec.webhook.secretRef` (in the project's namespace),
+  compared with `subtle.ConstantTimeCompare`. Every match is woken and
+  answered with 202; otherwise 401 (unknown project, no `secretRef`, an
+  unreadable or empty secret, a wrong or missing token), so the answer does
+  not tell which projects exist. Each delivery logs one line with the event,
+  remote address and project (clipped to 256 bytes), never the body or the
+  token. A wake only syncs the project from the API, which the operator does
+  on every poll anyway: even a replayed delivery costs at most
+  one sync per 5 s.
+* **Debounce.** `webhook.Waker` sends at most one `GenericEvent` (namespace
+  and name only) per project per 5 s, and one trailing event at the window's
+  end, so the last change is never missed; the channel holds 100 events and
+  a full buffer drops (syncs are queued already). The controller watches it
+  through `source.Channel`; the existing requeue coalesces a burst.
+* **Self-registration** (`syncWebhook`, right after the bot user in `sync`,
+  never fails the sync). With `spec.webhook.enabled` and `url` it hashes the
+  URL, the five events (issues, notes, merge requests, pipelines, pushes),
+  SSL verification and `sha256(token)` into `status.webhook.configHash`.
+  Only when that hash changes, or `checkedAt` is an hour old, it lists the
+  project hooks, takes its own by `hookID` (else the one with the exact URL,
+  adopted and given the token, which GitLab never returns), edits it when
+  the hash changed, it was found by URL or its visible settings differ, and
+  creates one otherwise. The `WebhookRegistered` condition is `Registered`,
+  `Forbidden` (403/404: the bot needs Maintainer), `Invalid` (no URL or
+  `secretRef`, a missing secret or key) or `Failed` (tried again next poll,
+  status kept). Switched off, the recorded hook is deleted (404 counts as
+  done) and the status and condition are cleared.
+* **Adaptive polling.** The receiver records each valid delivery in
+  `webhook.Deliveries` (in memory) before the wake. A project with a
+  `secretRef` and a delivery younger than `webhook.silenceThreshold` is
+  *receiving* (`WebhookDeliveries` `Receiving`, else `Silent`;
+  `status.webhook.lastDeliveryTime`). Then `Reconcile` syncs fully on a
+  delivery the last full sync did not cover (kept in memory, since the
+  status has whole seconds only), every `webhook.fallbackInterval`, after a
+  failed sync or a generation change; otherwise it lists only the milestones
+  (`milestonesChanged`; milestone events have no hook) and syncs fully when
+  a planned one appeared, vanished or its spec task would change
+  (`specTaskCurrent`, also a due spec retry). The requeue stays
+  `pollInterval`. Steps that only time advances (infra retries, auto-resume,
+  the main health interval, the hourly hook check) run on full syncs, so at
+  most `fallbackInterval` late while receiving. After a restart nothing is
+  receiving until the next delivery.
 
 ## CI feedback
 
@@ -508,6 +611,19 @@ pipelines older than the recorded one are ignored. The status is written only
 when every GitLab call of a check succeeded, so a failed one is repeated on
 the next check. The issues are found again by a marker at the start of the
 description, in issues the bot wrote.
+
+Canceled pipelines (`mainHealth.retryCanceled`, `checkCanceled`, on the
+same pipeline list): the first check records the newest finished pipeline
+as the baseline (`status.mainHealth.canceledSince`), so history is not
+replayed. A newer canceled pipeline whose commit has no `success` pipeline
+on the default branch (one more `ListPipelines` by `sha`) is retried once;
+a green pipeline of a later commit does not cover it, since jobs such as a
+release run per commit. Canceled again (or a refused retry), it is reported
+once (`status.mainHealth.canceled`, the newest 10): a comment on the open
+main-red issue, else on the `ci::main-canceled` issue (marker
+`main-canceled`, owners pinged when it is opened with the `mainRed` event).
+That issue sets no `issueIID`, so it freezes nothing and is never handed to
+the agent. Switching `retryCanceled` off clears the baseline.
 
 With `autoFix`, a check that leaves a main-red issue adds `agent::ready`
 to it once (`status.mainHealth.autoFixIssueIID`, reset when green); the poll
@@ -688,7 +804,10 @@ stateDiagram-v2
   that suppresses them is set, so a failed comment is retried. One failing
   milestone does not stop the others or the cleanup.
 * **Pause.** Anything that needs a human pauses the queue with a comment on
-  the tracking issue, once per reason. Before pausing because of the active
+  the tracking issue, once per reason. The reason can quote job names, so
+  it goes through `notify.Defuse` wherever it reaches GitLab (the pause
+  comment and the tracking description; the owners' mention is appended
+  after); `status.autopilot.pausedReason` keeps the raw text. Before pausing because of the active
   issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause` and
   `skip #N` on the tracking issue are handled by the operator.
 * **Tracking issue.** Created on the first poll, before the first plan (so a
@@ -1177,6 +1296,18 @@ rule. Sessions are encrypted cookies holding only user name and roles. Without
 OIDC it only listens on localhost (`kubectl port-forward`). Details in
 [ui.md](ui.md#security).
 
+**Webhook receiver.** The only endpoint the operator serves besides metrics
+and probes. A delivery is a wake-up call, never data: it counts only with
+the project's secret token (constant-time compare), its body is capped at
+1 MiB and never logged, and all it can cause is a sync from the API (see
+[GitLab webhooks](#gitlab-webhooks)).
+
+**Who may command.** By default anyone who can comment on an issue gives
+`/agent` commands, as in GitLab itself; `workflow.commandsFrom: owners`
+limits them to the milestone's owners by user ID. The pilot's proposals pin
+the owners' user IDs when they are posted, so a `yes` from an account that
+took over an owner's username, or became an owner later, does nothing.
+
 **Remaining risks.** The model can still push arbitrary content to its own
 `agent/*` branch (by design; humans review the MR) and write anything
 into the summaries posted on GitLab. CI pipelines of agent branches run
@@ -1204,6 +1335,10 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/ci.go` | CI fix prompt, log excerpts |
 | `internal/controller/ci.go` | CI feedback loop: pipeline tracking, retry, fix requests, final labels |
 | `internal/controller/mainhealth.go` | main health: default branch pipelines, retry, flaky and main-red issues |
+| `internal/controller/commandgate.go` | `workflow.commandsFrom`: whose `/agent` comments count, the once-a-day reply |
+| `internal/controller/webhook.go` | self-registration of the project hook, the `WebhookRegistered` and `WebhookDeliveries` conditions |
+| `internal/webhook` | webhook receiver (`POST /hooks/gitlab`, token check), server, waker (debounce), deliveries |
+| `internal/controller/pilot_spec.go`, `pilot_followups.go`, `internal/runner/pilot_retro.go` | the pilot's spec edits (`editSpec`), the retrospective's `create 1 2`, the retrospective run |
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/runner/pilot.go` | the pilot: milestone state, answers, budget |
@@ -1212,19 +1347,21 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/ui` | web UI server: OIDC login, CEL claim mapping, access rules, session cookies, JSON API, change events |
 | `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app` |
 | `charts/ai-operator` | Helm chart (CRDs and operator RBAC are copied in by `make manifests`) |
-| `.github/workflows` | CI and calendar-versioned releases (`YEAR.MONTH.N`) |
+| `.gitlab-ci.yml`, `.mise.toml` | the GitLab pipeline (MRs and `main`); the Go and Node pins the agent installs |
+| `.github/workflows` | CI on the GitHub mirror and calendar-versioned releases (`YEAR.MONTH.N`), see [releasing.md](releasing.md) |
 
 ## Roadmap
 
 Done: credential split into runner and agent containers, bundle-based git
 exchange, optional NetworkPolicy (see Security); usage limit backoff (see
-Engines, profiles and subscriptions); CI feedback loop (see CI feedback).
+Engines, profiles and subscriptions); CI feedback loop (see CI feedback);
+GitLab webhooks with polling as the fallback (see GitLab webhooks); the
+web UI's live transcripts, steering and milestone chat ([ui.md](ui.md)).
 
 Next:
 
-1. **GitLab webhooks** instead of polling, for instant reactions.
-2. **Web UI:** run transcripts, a few actions, and an MCP endpoint on the
-   same host and access rules (see [ui.md](ui.md#roadmap)).
+1. **Web UI:** a few actions and an MCP endpoint on the same host and
+   access rules (see [ui.md](ui.md#roadmap)).
 
 Later:
 

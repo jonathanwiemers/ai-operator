@@ -414,6 +414,20 @@ would have prevented case 1, 1 + 3 + 4 case 2.
 - With PRs 1-7 merged, this spec is delivered; the coordinator continues in
   `milestone-coordinator.spec.md`.
 
+- 2026-10-27, continued on GitLab by
+  [gitlab-home-and-hardening.spec.md](gitlab-home-and-hardening.spec.md):
+  the PR 2 security follow-ups are done, `PausedReason` goes through
+  `notify.Defuse` in tracking-issue comments and the description (!10), and
+  `workflow.commandsFrom: owners` (opt-in, default `members`) limits
+  `/agent` commands, the tracking issue's and `/agent review` included, to
+  the milestone's owners (!9). Main health retries a canceled
+  default-branch pipeline once when its commit has no green pipeline of its
+  own (`mainHealth.retryCanceled`) and reports a second cancel on the
+  main-red issue or a `ci::main-canceled` issue that freezes nothing (!12).
+  A planning run that fails for an outside reason is retried once after
+  `lifecycle.infraRetryAfter` like an implement run (!6). Row 8 (the
+  coordinator) is delivered.
+
 ## PRs
 
 | # | Title | Link | Status |
@@ -432,3 +446,5 @@ would have prevented case 1, 1 + 3 + 4 case 2.
 | 5b | Runs: infra failures block the issue, with one automatic retry | [#63](https://github.com/jonathanwiemers/ai-operator/pull/63) | merged 2026-10-25 |
 | 7a | Main health: autoFix hands the main-red issue to the agent | [#64](https://github.com/jonathanwiemers/ai-operator/pull/64) | merged 2026-10-25 |
 | 7b | Autopilot: main-red lane merges the fix of a red default branch | [#65](https://github.com/jonathanwiemers/ai-operator/pull/65) | merged 2026-10-25 |
+| 8 | Milestone coordinator: see the PR table of [milestone-coordinator.spec.md](milestone-coordinator.spec.md#prs) (C1–C2 on GitHub, C3–C5 on GitLab) | [#61](https://github.com/jonathanwiemers/ai-operator/pull/61) … [!19](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/19) | merged 2026-10-27 |
+| – | Follow-ups on GitLab: defused pause reasons, owners-only commands, canceled main pipelines, planning retries | [!10](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/10), [!9](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/9), [!12](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/12), [!6](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/6) | merged 2026-10-26/27 |

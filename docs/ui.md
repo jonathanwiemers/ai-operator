@@ -9,8 +9,10 @@ they see.
 The UI is off by default. It is a separate Deployment (`<release>-ui`, binary
 `/ui` in the operator image) with its own service account that can only read
 `AgentProjects` and `AgentTasks`. It never sees the GitLab tokens or the agent
-credentials, and it never talks to GitLab: everything it shows comes from the
-resources' status, and links lead to GitLab.
+credentials. Everything it shows comes from the resources' status, and links
+lead to GitLab; only with your GitLab account connected (see
+[Steering](#steering)) does it read comments and post them, the milestone
+chat included, with your own GitLab token.
 
 ## What it shows
 
@@ -18,7 +20,7 @@ resources' status, and links lead to GitLab.
 |------|---------|
 | **Projects** | every project you may see: tasks per stage, autopilot milestones and their progress, usage limits, suspension, last sync, model spend |
 | **Project** | one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; then the milestone's plan, the autopilot pause reason, and issues without a milestone |
-| **Milestone** | a planned milestone (linked from its project board): autopilot phase and pause reason, the queue with states, merge requests and task pages, the pilot's autonomy and open proposals, the chat on its tracking issue, and the milestone's board |
+| **Milestone** | a planned milestone (linked from its project board, `/projects/<namespace>/<name>/milestones/<iid>`): autopilot phase and pause reason, the queue with states, merge requests and task pages, the pilot's autonomy and open proposals, the chat on its tracking issue, and the milestone's board |
 | **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot queue with merge requests and decisions |
 
 With GitLab connected (see [Steering](#steering)), a task page has a
@@ -384,7 +386,7 @@ with the same session cookie:
 | `GET /api/v1/projects` | the projects you may see, with task counts per stage |
 | `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone (`trackingIssueIID` where a milestone has a tracking issue) |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | a planned milestone: its spec task, the autopilot (`phase`, `pausedReason` as raw text, queue `items` with title, state, MR number and URL, and task), the `tracking` issue, the `pilot` (task, autonomy, open proposals, cost), its implement tasks and `permissions` (`gitlab`, `steer`: what the page may offer); 404 without a spec task |
-| `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread` | the comments of the milestone's tracking issue (`parts`), read with your GitLab token once the issue is confirmed as the operator's tracking issue of this milestone (409 otherwise); 409 when not connected |
+| `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread` | the comments of the milestone's tracking issue (`parts`), read with your GitLab token once the issue is confirmed as the operator's tracking issue of this milestone (409 otherwise); 409 when not connected, 404 without a tracking issue, 502 when GitLab fails to list the comments |
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes` | posts `{"body": "…"}` to the milestone's pilot on its confirmed tracking issue in your GitLab name, with the pilot prefix in front unless the body starts with it; needs the `steer` grant (403, 404 without the project), 409 for an issue that is not the milestone's tracking issue, 429 over the rate limit |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}` | one task and its project |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript` | server-sent events: `entry` per transcript line of the task's pod (what it logged so far, then live), `end` with the reason (`no pod`, `pod stopped`, `pod not available`, `session expired`); needs the `transcript` grant (403 without), counts as an event stream |

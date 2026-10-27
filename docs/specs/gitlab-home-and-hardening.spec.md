@@ -271,37 +271,81 @@ GitLab `jo.wiemers/ai-operator`, one MR per row, each based on `main`. Slice
 keys match the steering log. Target < 50 production lines per MR; split
 further if over budget.
 
-| # | Key | Slice | Depends on | Notes |
-|--:|---|---|---|---|
-| 1 | `spec-doc` | This spec and its steering log | – | docs only |
-| 2 | `gitlab-ci` | `.gitlab-ci.yml` and `.mise.toml` | `spec-doc` | |
-| 3 | `docs-gitlab-home` | Docs: GitLab primary, GitHub mirror and releases | `gitlab-ci` | |
-| 4 | `plan-apply-retries` | Plan apply: transient retries and idempotent decisions notes | `docs-gitlab-home` | strong |
-| 5 | `tracking-before-planning` | Tracking issue before planning on autopilot | `plan-apply-retries` | strong; may pair with next |
-| 6 | `spec-run-retry` | Spec runs retried once; failure ping | `tracking-before-planning` | strong |
-| 7 | `per-run-toolchains` | Per-run toolchain dirs for branch-changed pins | `docs-gitlab-home` | strong |
-| 8 | `pin-owner-ids` | Owner IDs pinned in proposals | `docs-gitlab-home` | strong |
-| 9 | `commands-from` | `workflow.commandsFrom` | `pin-owner-ids` | strong |
-| 10 | `defuse-pause-reasons` | Defused pause reasons | `docs-gitlab-home` | |
-| 11 | `stream-job-trace` | Streaming `JobTrace` | `docs-gitlab-home` | |
-| 12 | `retry-canceled-main` | Main health: retry canceled default-branch pipelines | `docs-gitlab-home` | strong |
-| 13 | `edit-spec-propose` | C3: `editSpec` tool and proposal with the diff | `pin-owner-ids` | strong |
-| 14 | `edit-spec-apply` | C3: applying the edit and the re-plan | `edit-spec-propose` | |
-| 15 | `retrospective-run` | C4: retrospective run when autopilot is done | `docs-gitlab-home` | |
-| 16 | `retrospective-create` | C4: `create 1 2` follow-up issues | `retrospective-run` | |
-| 17 | `ui-milestone-api` | C5: milestone-scoped UI API and authorization | `docs-gitlab-home` | strong |
-| 18 | `ui-milestone-chat` | C5: milestone page and chat in `web/` | `ui-milestone-api` | |
-| 19 | `webhook-receiver` | Webhooks: receiver, token check, project sync, chart Service | `docs-gitlab-home` | strong |
-| 20 | `webhook-wiring` | Webhooks: controller channel source and debounce | `webhook-receiver` | |
-| 21 | `webhook-registration` | Webhooks: self-registration of the project hook | `webhook-receiver` | strong |
-| 22 | `webhook-adaptive-polling` | Webhooks: adaptive polling and AgentProject condition | `webhook-wiring` | |
-| 23 | `docs-reconcile` | Docs reconciled (earlier specs' PR tables, usage, configuration, commands, design, ui, chart README) | all above | |
+| # | Key | Slice | Depends on | Notes | Status |
+|--:|---|---|---|---|---|
+| 1 | `spec-doc` | This spec and its steering log | – | docs only | done, [!1](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/1) |
+| 2 | `gitlab-ci` | `.gitlab-ci.yml` and `.mise.toml` | `spec-doc` | | done, [!2](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/2) |
+| 3 | `docs-gitlab-home` | Docs: GitLab primary, GitHub mirror and releases | `gitlab-ci` | | done, [!3](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/3) |
+| 4 | `plan-apply-retries` | Plan apply: transient retries and idempotent decisions notes | `docs-gitlab-home` | strong | done, [!4](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/4) |
+| 5 | `tracking-before-planning` | Tracking issue before planning on autopilot | `plan-apply-retries` | strong; may pair with next | done, [!5](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/5) |
+| 6 | `spec-run-retry` | Spec runs retried once; failure ping | `tracking-before-planning` | strong | done, [!6](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/6) |
+| 7 | `per-run-toolchains` | Per-run toolchain dirs for branch-changed pins | `docs-gitlab-home` | strong | done, [!7](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/7) |
+| 8 | `pin-owner-ids` | Owner IDs pinned in proposals | `docs-gitlab-home` | strong | done, [!8](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/8) |
+| 9 | `commands-from` | `workflow.commandsFrom` | `pin-owner-ids` | strong | done, [!9](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/9) |
+| 10 | `defuse-pause-reasons` | Defused pause reasons | `docs-gitlab-home` | | done, [!10](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/10) |
+| 11 | `stream-job-trace` | Streaming `JobTrace` | `docs-gitlab-home` | | done, [!11](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/11) |
+| 12 | `retry-canceled-main` | Main health: retry canceled default-branch pipelines | `docs-gitlab-home` | strong | done, [!12](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/12) |
+| 13 | `edit-spec-propose` | C3: `editSpec` tool and proposal with the diff | `pin-owner-ids` | strong | done, [!14](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/14) |
+| 14 | `edit-spec-apply` | C3: applying the edit and the re-plan | `edit-spec-propose` | | done, [!13](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/13) |
+| 15 | `retrospective-run` | C4: retrospective run when autopilot is done | `docs-gitlab-home` | | done, [!15](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/15) |
+| 16 | `retrospective-create` | C4: `create 1 2` follow-up issues | `retrospective-run` | | done, [!16](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/16) |
+| 17 | `ui-milestone-api` | C5: milestone-scoped UI API and authorization | `docs-gitlab-home` | strong | done, [!17](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/17) |
+| 18 | `ui-milestone-chat` | C5: milestone page and chat in `web/` | `ui-milestone-api` | | done, [!18](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/18), [!19](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/19) |
+| 19 | `webhook-receiver` | Webhooks: receiver, token check, project sync, chart Service | `docs-gitlab-home` | strong | done, [!20](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/20) |
+| 20 | `webhook-wiring` | Webhooks: controller channel source and debounce | `webhook-receiver` | | done, [!21](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/21) |
+| 21 | `webhook-registration` | Webhooks: self-registration of the project hook | `webhook-receiver` | strong | done, [!22](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/22) |
+| 22 | `webhook-adaptive-polling` | Webhooks: adaptive polling and AgentProject condition | `webhook-wiring` | | done, [!23](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/23) |
+| 23 | `docs-reconcile` | Docs reconciled (earlier specs' PR tables, usage, configuration, commands, design, ui, chart README) | all above | | this MR, [!24](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/24) |
 
 Hardening slices 4–12 are independent of each other once `docs-gitlab-home`
 lands (except `commands-from` after `pin-owner-ids`, and `spec-run-retry`
 after `tracking-before-planning`). C3 needs owner-ID pinning. Webhook slices
 stack on the receiver. C4, C5 and webhooks can proceed in parallel with
 hardening after the docs slice.
+
+**Delivered 2026-10-27:** every slice is merged (Status column; the MR list
+is in [MRs](#mrs)). Slices 13 and 14 were delivered in the other order
+(C3a, the controller side that applies an edit, before C3b, the model side
+that proposes one), and slice 18 took two MRs (C5b chat endpoint, C5c page).
+
+## Deviations from the plan
+
+Collected from the steering log; each line there has the details.
+
+- **Size.** Most strong slices came out well over the 50-line target
+  (plan apply ~88, per-run toolchains ~88, commands-from ~160, canceled
+  main ~117, C3a ~95, C4a ~290, C4b ~110, C5a ~210, C5c ~240 mostly Vue,
+  webhook slices 105 to 205): helpers and their call sites only worked
+  together. C4a and the webhook registration and polling slices were split
+  into two commits instead of two MRs.
+- **Planning.** No new phase for "planning has not succeeded yet": the
+  tracking description derives it from the empty plan.
+- **Owner IDs.** An empty resolution pins the sentinel ID 0, so nobody can
+  answer; legacy proposals without IDs keep the check by name.
+- **commandsFrom.** A denied command on the tracking issue or a closed issue
+  moves that place's watermark, so it is not answered again a day later.
+- **Canceled main.** A refused retry is reported at once; with
+  `mainHealth.issue: false` the report is only logged; switching
+  `retryCanceled` off clears the baseline.
+- **C3.** The diff leaves out every command line (markers included); the
+  marker check covers markers anywhere in the text; a spec edit in an
+  assessment and a second one in a proposal are refused;
+  `agents.pilot.strongModel` is not built.
+- **C4.** The retrospective runs on the implement role's engine and model
+  (read-only), mentions nobody, finds its own marker after a restart instead
+  of posting twice, and a failure is recorded, not retried. `create 1 2`
+  needed a new `gitlab.API` call (`ReplyIssueDiscussion`); a follow-up
+  GitLab refuses is reported, not retried.
+- **C5.** The milestone API gained `waitingFor`, the milestone cost,
+  `permissions` and the queue items' `mergeRequestURL`; a milestone without
+  a tracking issue answers 404 on the thread and the notes, a failed notes
+  read 502; an `@bot` mention in the chat still gets the `/pilot` prefix.
+- **Webhooks.** A body without a project path answers 400, a failed
+  AgentProject list 500; the server lives in `internal/webhook`; a hook
+  found by URL is adopted and given the token, and the hourly recheck also
+  repairs settings changed by hand; a missing secret is `Invalid`; which
+  delivery a full sync covered is kept in memory; a light poll that finds a
+  change lists the milestones twice.
 
 ## Open questions
 
@@ -336,9 +380,33 @@ landed, production line count, deviations from the plan.
 - 2026-10-27 `webhook-wiring`: `webhook.Waker` (at most one wake per project per 5 s plus one trailing wake at the window's end; a buffered channel of `GenericEvent`s with only namespace and name, 100 deep, a full buffer drops); `webhook.Server` (leader-only runnable, only `POST /hooks/gitlab`, read header 5 s, read/write 10 s, graceful shutdown); `AgentProjectReconciler.Wakes` watched through `source.Channel` when set; `--webhook-bind-address` (empty: off); chart `webhook.enabled` (default true), `webhook.port` 8082, container port and Service `<release>-webhook`, NOTES and README (leader only, no route); ~160 Go and ~45 chart production lines (over the 50 target: the waker, the server and their wiring are one slice); deviations: the Server lives in `internal/webhook` rather than inline in `main.go`, and the receiver reads through the manager's cached client.
 - 2026-10-27 `webhook-registration`: `spec.webhook.enabled` and `spec.webhook.url`, `status.webhook` (`hookID`, `configHash`, `checkedAt`) and `aiv1.ConditionWebhookRegistered` (all optional); `gitlab.API` gains `ListProjectHooks`, `AddProjectHook`, `EditProjectHook`, `DeleteProjectHook` (`ProjectHookOptions` sends every field); `syncWebhook`, right after the bot user in `sync`, never returns an error: it reads the secret (trimmed like the receiver), hashes URL, the five events, SSL verification and `sha256(token)`, and only when that hash differs from the status or `checkedAt` is an hour old lists the hooks, takes ours by `hookID`, else the one with the exact URL, edits it when the hash changed, it was found by URL, or GitLab shows other settings, else creates one; condition `Registered`, `Forbidden` (403/404, the Maintainer hint), `Invalid` (no URL, no `secretRef`, missing secret or key) or `Failed` (tried again next poll, status kept); switched off, it deletes the recorded hook (404 counts as done), clears the status and removes the condition; chart README; ~160 production lines with the API and client (over the 50 target: API, four client calls and the controller step are one slice, in two commits); deviations: a hook found by URL is adopted and its token set (its token cannot be read back), a recheck also edits a hook whose visible settings were changed by hand, a missing secret is `Invalid` rather than `Failed`.
 - 2026-10-27 `webhook-adaptive-polling` (two commits): `spec.webhook.fallbackInterval` (10m) and `silenceThreshold` (30m), `status.webhook.lastDeliveryTime` and the condition `WebhookDeliveries` (`Receiving`/`Silent`), all optional; `internal/webhook.Deliveries` (in memory, recorded by the receiver before the wake) injected into the reconciler; receiving means a `secretRef` and a delivery younger than `silenceThreshold`; then `Reconcile` syncs fully on a delivery the last full sync did not cover, every `fallbackInterval`, after a failed sync or a generation change (`Synced.observedGeneration`), else lists only the milestones and syncs fully when a planned one appeared, vanished or its spec task would change (`specTaskCurrent`, shared with `syncSpecTask`, plus the due spec retry); requeue stays `pollInterval`; time-only steps run at most every `fallbackInterval` while receiving (comment, chart README); ~200 production lines without comments (over the 50 target: API, record and the poll decision are one slice, in two commits); deviations: which delivery a full sync covered is kept in memory, not compared with `lastSyncTime` (whole seconds in the status would cause a second sync per delivery or miss one during a sync), a light poll that finds a change lists the milestones twice (light poll, then the full sync), a due spec retry also triggers the full sync, `lastDeliveryTime` survives restarts and re-registration and goes with the condition when `secretRef` is removed.
+- 2026-10-27 `docs-reconcile`: `docs/usage.md` (webhook setup steps and conditions, owners-only commands, spec changes through the pilot, the retrospective, pinned owner IDs, defused pause reasons, `ci::main-canceled` and planning failures in the label and ping tables, GitLab primary), `docs/configuration.md` (`spec.webhook` table, the chart's receiver), `docs/commands.md` (`commandsFrom`, `/pilot` spec changes, `create 1 2`, webhooks), `docs/design.md` (a GitLab webhooks section with receiver, trust model, debounce, self-registration and adaptive polling; `commandGate`, streaming `JobTrace`, resumable plan apply, canceled main, defused pauses, security notes, code map, roadmap), `docs/ui.md` (GitLab use with the user's token, the milestone route, thread errors), chart README checked against `values.yaml`; PR tables of both earlier specs, this spec's delivery status, deviations and MR table; 0 production lines (docs only, not released); deviations: MR numbers follow the issue numbers (!n for #n), and the chart README also gained rows missing before this milestone (`ui.gitlab.*`, `metrics.service.*`, `nameOverride`).
 
 ## MRs
 
 | # | Title | Link | Status |
 |--:|---|---|---|
-| 1 | Spec: GitLab home, webhooks, hardening and the pilot's next steps | [!1](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/1) | draft |
+| 1 | Spec: GitLab home, webhooks, hardening and the pilot's next steps (repo spec with steering log) | [!1](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/1) | merged 2026-10-26 |
+| 2 | CI: GitLab pipeline (.gitlab-ci.yml) and Go/Node pins (.mise.toml) | [!2](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/2) | merged 2026-10-26 |
+| 3 | Docs: GitLab is the primary repository, GitHub a mirror that builds the releases | [!3](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/3) | merged 2026-10-26 |
+| 4 | Planning: plan apply retries transient GitLab errors and never posts decisions twice | [!4](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/4) | merged 2026-10-26 |
+| 5 | Autopilot: the tracking issue exists before the first planning run | [!5](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/5) | merged 2026-10-26 |
+| 6 | Planning: a transiently failed spec run is retried once; failures ping the owners on the tracking issue | [!6](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/6) | merged 2026-10-26 |
+| 7 | Runner: branch-changed toolchain pins run with per-run toolchain directories | [!7](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/7) | merged 2026-10-26 |
+| 8 | Pilot: proposals pin the owners' user IDs; a yes counts only from them | [!8](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/8) | merged 2026-10-26 |
+| 9 | Workflow: commandsFrom: owners limits /agent commands to the milestone's owners (opt-in) | [!9](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/9) | merged 2026-10-26 |
+| 10 | Autopilot: pause reasons are defused wherever they reach GitLab | [!10](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/10) | merged 2026-10-26 |
+| 11 | GitLab client: JobTrace keeps only the last 4 MiB while reading | [!11](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/11) | merged 2026-10-26 |
+| 12 | Main health: retry a canceled default-branch pipeline once and report a second cancel | [!12](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/12) | merged 2026-10-27 |
+| 13 | Pilot C3a: editSpec proposals show a diff and apply the edit after an owner's yes | [!13](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/13) | merged 2026-10-27 |
+| 14 | Pilot C3b: the pilot proposes spec edits (editSpec in its schema and prompt) | [!14](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/14) | merged 2026-10-27 |
+| 15 | Pilot C4a: the retrospective when autopilot is done | [!15](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/15) | merged 2026-10-27 |
+| 16 | Pilot C4b: create 1 2 opens the retrospective's follow-ups as issues | [!16](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/16) | merged 2026-10-27 |
+| 17 | UI C5a: milestone-scoped API (milestone view and its tracking-issue thread) with authorization | [!17](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/17) | merged 2026-10-27 |
+| 18 | UI C5b: post chat messages to the milestone's pilot (tracking issue, server-side /pilot prefix) | [!18](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/18) | merged 2026-10-27 |
+| 19 | UI C5c: milestone page with queue, pilot state and chat | [!19](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/19) | merged 2026-10-27 |
+| 20 | Webhooks 1: receiver handler for POST /hooks/gitlab with token check (not wired yet) | [!20](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/20) | merged 2026-10-27 |
+| 21 | Webhooks 2: serve the receiver on its own port, wake the project sync, chart Service and values | [!21](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/21) | merged 2026-10-27 |
+| 22 | Webhooks 3: self-registration of the GitLab project hook | [!22](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/22) | merged 2026-10-27 |
+| 23 | Webhooks 4: adaptive polling while deliveries arrive, and the deliveries condition | [!23](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/23) | merged 2026-10-27 |
+| 24 | Docs: reconcile usage, configuration, commands, design, ui, chart README and the specs | [!24](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/24) | this MR |

@@ -16,12 +16,18 @@ GitLab comments in your name and work exactly the same.
   cost nothing. The agent reads them with the next run (during a step run on a
   draft MR, before its next step).
 - Commands are read from **humans** only. The bot's own comments never count,
-  so an agent cannot command itself. With `workflow.commandsFrom: owners`
-  only the owners' commands count; others get one reply a day (see
-  [configuration](configuration.md#specworkflow)).
+  so an agent cannot command itself.
+- **Who may command** is `workflow.commandsFrom`: `members` (default, anyone
+  who can comment) or `owners`. With `owners`, an `/agent …` comment on an
+  issue, its MR, the tracking issue or a closed issue counts only from the
+  milestone's [owners](usage.md#commands-from-owners-only), by GitLab user
+  ID; anyone else's starts and changes nothing, and they get one reply a day
+  where they wrote it. `/pilot` comments have their own owners check,
+  whatever this setting says.
 - On an issue's merge request a command works the same as on the issue.
 - The operator polls GitLab (`pollInterval`, default `1m`), so a command takes
-  effect within a poll.
+  effect within a poll; with [webhooks](usage.md#webhooks-optional) within
+  seconds.
 
 ## On an issue or its merge request
 
@@ -103,6 +109,7 @@ implementer of every following run reads them:
 | `/agent skip #12` | Skip a planned issue. Issues that depend on it stay blocked until it is merged by hand or they are skipped too. |
 | `/agent revisit D42-3 …` | Change a decision of a merged issue: a follow-up issue joins the queue. |
 | anything else | Answered once with this list, a pointer to `/pilot …` and the active issue. Instructions for the agent go on the active issue or its MR, not here. |
+| `create 1 2`, `create 1, 3`, `create all` | As a reply in the thread of the [retrospective](usage.md#the-retrospective), once autopilot is done (the whole comment, no prefix): opens those follow-ups as plain issues (generated label, no milestone, not handed to the agent), each once, and answers in the thread with the links. Only from the owners pinned when the retrospective was posted; anything else is ignored silently. |
 
 See [Autopilot](usage.md#autopilot-a-milestone-end-to-end).
 
@@ -123,6 +130,7 @@ proposals they accept.
 | `/pilot yes P3` / `/pilot no P3` | The same, anywhere in the milestone. A bare `/pilot yes` is refused with the list of open proposals; an expired one "no longer applies". |
 | `/pilot fix the flaky test #340` | Like any question: the pilot may propose `fixFlaky #340`, which hands the flaky issue to the agent in this milestone once it was flaky twice (see [Main health](usage.md#main-health)). |
 | `/pilot tell #12: <words>` | Proposes to pass your words on to #12's implementer verbatim, as your instruction via the pilot. |
+| `/pilot <spec change>` | E.g. `/pilot drop the CSV export from the spec`: the pilot may propose `editSpec`, a new milestone spec shown as a diff. After an owner's `yes` (always needed, also when it manages) the operator writes the description, keeps its `/agent` lines, and the milestone is re-planned. See [Spec changes through the pilot](usage.md#spec-changes-through-the-pilot). |
 | `/pilot stop` | The pilot of this milestone proposes every action from now on (kill switch), until `/pilot go`; kept over restarts. No model call. |
 | `/pilot go` | Back to the project's `pilot.autonomy` (never above it: on a `propose` project it still proposes). No model call. |
 | `/pilot coordinate` | On an issue of a planned milestone without autopilot: opens the tracking issue "🧭 Pilot: <milestone>" and starts its pilot. |

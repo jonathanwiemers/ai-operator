@@ -24,6 +24,7 @@ of each kind.
 | `ai-generated` | spec agent / operator | issue was created by the spec agent or the operator |
 | `ci::main-red` | operator | the issue that reports a red default branch, see [main health](#main-health) |
 | `ci::flaky` | operator | the issue that collects the failures of one flaky CI job |
+| `ci::main-canceled` | operator | the issue that reports a default-branch pipeline canceled twice, see [main health](#main-health) |
 
 Put `agent::draft`, `agent::ready`, `agent::working`, `agent::needs-input`,
 `agent::review`, `agent::blocked` and `agent::done` on an issue board as
@@ -109,6 +110,78 @@ Create a **project access token** with role *Developer* and the scopes `api` and
 `write_repository`. Protect your default branch. The agent only pushes
 `agent/*` branches and opens draft merge requests.
 
+The ai-operator's own repository lives on GitLab (`jo.wiemers/ai-operator`)
+and runs its checks in a GitLab pipeline; GitHub is a push mirror that
+builds the releases (see [releasing.md](releasing.md)).
+
+### Webhooks (optional)
+
+Without webhooks the operator notices a comment, a label move or a pipeline
+within a poll (`pollInterval`). With a GitLab **project webhook** (GitLab
+Free has them; group webhooks need Premium) it syncs the project within
+seconds, and polls less while deliveries arrive, which saves the bot's API
+budget (100 requests per minute on GitLab Free). Polling stays the
+fallback: whatever a lost delivery missed, a later poll picks up.
+
+1. **Create the secret token** in the AgentProject's namespace:
+
+   ```sh
+   kubectl -n agents create secret generic gitlab-webhook \
+     --from-literal=token="$(openssl rand -hex 32)"
+   ```
+
+2. **Expose the receiver.** The operator (the leader only) serves
+   `POST /hooks/gitlab` on port 8082 behind the Service `<release>-webhook`
+   (chart values `webhook.*`, see the
+   [chart README](../charts/ai-operator/README.md#gitlab-webhooks)). The
+   chart renders no route: add an HTTPRoute or Ingress that makes
+   `https://<host>/hooks/gitlab` reachable from GitLab. For the ai-operator's
+   own deployment that is done by hand in `infra/cluster`.
+3. **Turn it on per project** in the AgentProject:
+
+   ```yaml
+   spec:
+     webhook:
+       secretRef: {name: gitlab-webhook, key: token}
+       enabled: true                       # the operator registers the hook
+       url: https://ai-operator.example.com/hooks/gitlab
+   ```
+
+   With `enabled` and `url` the operator creates the project hook itself
+   (issues, comments, merge requests, pipelines and pushes, SSL
+   verification, the secret token), keeps it up to date and deletes it when
+   `enabled` is switched off. That needs the bot's **Maintainer** role.
+   Without it, leave `enabled` out and add the hook by hand under
+   *Settings > Webhooks*: the same URL and secret token, the triggers push,
+   issues, comments, merge requests and pipelines.
+4. **Check it** on the AgentProject's conditions:
+
+   ```sh
+   kubectl -n agents get agentproject shop \
+     -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}'
+   ```
+
+   `WebhookRegistered` is `Registered`, or says why not: `Forbidden` (the bot
+   is no Maintainer), `Invalid` (no `url` or `secretRef`, the secret or its
+   key is missing) or `Failed` (tried again on the next poll). A failed
+   registration never stops the sync. `WebhookDeliveries` is `Receiving`
+   after a delivery, and `Silent` after `webhook.silenceThreshold` (30m)
+   without one. The hook's *Recent events* in GitLab show the answers: `202`
+   taken, `401` a wrong or missing token or a project the operator does not
+   know, `413` a body over 1 MiB.
+
+A delivery is only a wake-up call: it names the project, and the operator
+syncs that project from the API as on a poll; nothing else in the payload is
+used. Deliveries within 5 seconds lead to one sync (and one more at the end
+of the 5 seconds). While deliveries arrive, the project is fully synced on
+every delivery and every `webhook.fallbackInterval` (10m); in between, each
+poll only lists the milestones, since milestone changes send no delivery.
+Steps that only time moves on (infra retries, autopilot's auto-resume, the
+main health interval) run on the full syncs, so they can be
+up to `fallbackInterval` late. After `silenceThreshold` without a delivery,
+or after an operator restart, every poll is a full sync again. Details:
+[configuration.md](configuration.md#specwebhook).
+
 ## 1. Write the milestone spec
 
 Create a milestone. Its description is the overarching spec for the whole
@@ -136,8 +209,10 @@ holds a self-contained sub-spec:
 - **Open questions**, each with the default the agent would pick
 - labels `ai-generated`, `agent::draft` and the chosen `agent-profile::…`
 
-The milestone description is never modified. If you edit the spec later, the
-spec agent runs again. It updates sub-issues that are still drafts and leaves
+The operator never edits the milestone description on its own; only the
+pilot writes it, after an owner's `yes`, for a
+[spec change](#spec-changes-through-the-pilot) or a standing rule. If you
+edit the spec later, the spec agent runs again. It updates sub-issues that are still drafts and leaves
 issues that are in progress, done, or created by hand alone.
 
 If planning fails for an outside reason (a GitLab or network error such as a
@@ -300,7 +375,9 @@ need a human, so GitLab sends them a mail and a To-Do:
 | CI is still red after the fix rounds (not on autopilot) | issue |
 | the issue reached review (not on autopilot) | MR report, or "Ready for review" on the MR after CI; the owners also become the MR's reviewers if it has none |
 | autopilot paused or is done | tracking issue |
+| planning failed (autopilot) | tracking issue, saying whether a retry follows |
 | the default branch stayed red after a retry | the new `ci::main-red` issue (project owners: `spec.notify.users` or the default) |
+| a default-branch pipeline was canceled twice | the new `ci::main-canceled` issue (project owners) |
 
 Only new comments carry the mention, never the progress comment that is
 edited while a run goes on, and each commit pings for review once. On
@@ -322,6 +399,18 @@ the review is fixed, but CI is red now) is announced, and pinged, again. The own
 `spec.notify.events` picks the situations, `spec.notify.requestReview: false`
 keeps the reviewers to you (see
 [configuration.md](configuration.md#specnotify)).
+
+#### Commands from owners only
+
+By default anyone who can comment gives `/agent …` commands. With
+`spec.workflow.commandsFrom: owners` only the owners above count, checked by
+GitLab user ID: on issues and their MRs, on the tracking issue and on closed
+issues (revisits). Anyone else's command starts and changes nothing; they get
+one reply a day where they wrote it ("🤖 Only the owners of this milestone
+can give `/agent` commands here"). On a milestone without owners nobody's
+command counts, and the reply says to add an `/agent owners` line. Plain
+comments still reach the agent with its next run. For an issue without a
+milestone the owners are `notify.users`, else the operator's default.
 
 ## CI feedback
 
@@ -725,7 +814,9 @@ anything else.
 
 Autopilot pauses instead of guessing. It comments on the tracking issue with
 the reason and what to do, mentioning the milestone's
-[owners](#owners-and-pings):
+[owners](#owners-and-pings). The reason can quote job names or other text
+from GitLab, so mentions and quick actions in it are made inert, in the
+comment and in the tracking issue's description. It pauses for:
 
 - the issue landed in `agent::needs-input` (CI still red after the fix
   rounds, a failed run). A run that failed for an outside reason blocks
@@ -938,8 +1029,12 @@ default branch and the last comments of the tracking issue.
     the pilot"); decisions of open issues are revisited on the issue
     itself.
 
-  Merging, closing and pushing do not exist; neither do labels or edits
-  (besides the standing rules, below). An
+  - `editSpec`: a new text of the milestone spec, shown as a diff (see
+    [spec changes](#spec-changes-through-the-pilot)); always behind a
+    `yes`.
+
+  Merging, closing and pushing do not exist; neither do labels or other
+  edits (besides the standing rules, below). An
   owner accepts with `yes` as a **reply in the proposal's thread**, or with
   `/pilot yes P3` anywhere in the milestone; `no` or `/pilot no P3` drops
   it. A bare `/pilot yes` is refused with the list of open proposals. One
@@ -948,8 +1043,11 @@ default branch and the last comments of the tracking issue.
   what ran. A proposal **expires** after 24 h or once the state it was made
   on changes (the milestone description, the queue, the pause, the head of
   an issue it names); a `yes` then gets "no longer applies". Only owners
-  count: anyone else's `yes`, or a quoted one (`> yes`), does nothing, and
-  on a milestone without owners there are no proposals.
+  count, and only those who were owners when the proposal was posted: it
+  pins their GitLab user IDs, so a username that changed hands, or someone
+  made an owner later, cannot answer it. Anyone else's `yes`, or a quoted
+  one (`> yes`), does nothing, and on a milestone without owners there are
+  no proposals.
 - **Managed.** On autopilot milestones the pilot **manages** by default
   (`pilot.autonomy`): `retry`, `reReview`, `instruct`, `openIssue` and
   `fixFlaky` run without a `yes`, from an assessment or from an owner's
@@ -1022,6 +1120,35 @@ default branch and the last comments of the tracking issue.
 Comments, titles, run summaries, CI states and job logs reach the pilot as
 data, not as instructions: text in them that tries to steer it is ignored. The conversation with the pilot on an issue is no input for the
 issue's implementer.
+
+### Spec changes through the pilot
+
+Ask the pilot for a change of the milestone spec, e.g. `/pilot drop the CSV
+export from the spec, JSON is enough`. It proposes `editSpec` with the whole
+new spec text; the proposal shows the change as a diff and says which
+planned issues are re-planned. Nothing changes until an owner answers `yes`
+(also when the pilot manages: a spec edit always needs one). Then the
+operator reads the milestone again and writes the new description, and the
+next poll re-plans as if you had edited it: drafts are updated, started and
+merged issues are kept, new issues may follow.
+
+- The lines that start with `/agent` (the spec and autopilot markers, the
+  owners, the rules) are kept from the description as they are, whatever
+  the pilot wrote; the diff leaves them out.
+- The edit is refused, with the reason, if the description changed since
+  the last poll, nothing would change, a marker would appear or vanish, or
+  the diff is over 20 KiB (edit by hand then). It expires like any proposal.
+- The pilot proposes a spec edit only when an owner asks for one, never in
+  an assessment, and at most one per proposal.
+
+### The retrospective
+
+When an autopilot milestone is done, its pilot posts the retrospective on
+the tracking issue before it ends (see **Which milestones** above): what was
+merged, the decisions and revisits, the pauses, cost and time, and up to 9
+numbered follow-ups. Reply `create 1 2` (or `create 1, 3`, `create all`) in
+its thread to open follow-ups as plain issues; only the owners pinned when it
+was posted count.
 
 ## Usage and rate limits
 

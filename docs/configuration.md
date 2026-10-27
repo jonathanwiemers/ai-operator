@@ -17,6 +17,10 @@ helm install ai-operator oci://ghcr.io/jonathanwiemers/charts/ai-operator \
 
 With Flux, see [Install with Flux](#install-with-flux) below.
 
+The chart also serves a receiver for GitLab project webhooks
+(`webhook.enabled`, port `8082`, Service `<release>-webhook`); it does
+nothing until an AgentProject sets [`spec.webhook`](#specwebhook).
+
 Without Helm:
 
 ```sh
@@ -377,11 +381,34 @@ issues: `ci.maxFixRounds` (0 to 5), `ci.retryFailedJobs`,
 switched per milestone: budgets and limits, the merge gate, the freeze,
 `pilot.*` and `mainHealth.*` stay as configured here.
 
+## `spec.webhook`
+
+GitLab project webhooks that wake the operator within seconds, see
+[usage.md](usage.md#webhooks-optional) for the setup. All fields are
+optional; without `secretRef` every delivery for the project is refused and
+the project is polled as before.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `secretRef` | – | `{name, key}` of a Secret in the AgentProject's namespace with the hook's secret token. A delivery counts only when its `X-Gitlab-Token` matches (constant-time compare, surrounding whitespace of the secret ignored); else `401` |
+| `enabled` | `false` | register the project hook in GitLab: one hook for `url` with issues, notes, merge requests, pipelines and pushes, SSL verification and the secret token. Updated when the URL or the secret changes, checked hourly (a hook deleted or changed by hand is restored), deleted when switched off; other hooks are left alone. Needs the bot's Maintainer role; the `WebhookRegistered` condition (`Registered`, `Forbidden`, `Invalid`, `Failed`) tells how it went |
+| `url` | – | public URL of the receiver, e.g. `https://ai-operator.example.com/hooks/gitlab`; needed with `enabled` |
+| `fallbackInterval` | `10m` | while deliveries arrive, how often the project is fully synced anyway; in between, each `pollInterval` lists only the milestones (milestone changes send no delivery) and syncs fully when a planned one changed, appeared or vanished, or the AgentProject's spec changed |
+| `silenceThreshold` | `30m` | how long after the last valid delivery the project counts as receiving. After it, after an operator restart, or without `secretRef`, every poll is a full sync again. The `WebhookDeliveries` condition (`Receiving`, `Silent`) and `status.webhook.lastDeliveryTime` show it |
+
+While deliveries arrive, steps that only time moves on (infra retries,
+autopilot's auto-resume, the `mainHealth.interval`, the hourly hook check)
+run on full syncs, so they can be up to
+`fallbackInterval` late. The receiver itself is a chart setting
+(`webhook.enabled`, `webhook.port`, `webhook.service.*`, see the
+[chart values](../charts/ai-operator/README.md#values)); it serves on the
+leader only.
+
 ## Other `spec` fields
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `pollInterval` | `1m` | GitLab polling interval |
+| `pollInterval` | `1m` | GitLab polling interval (with webhooks receiving, see [`spec.webhook`](#specwebhook)) |
 | `maxConcurrentRuns` | `3` | runs in flight per project; more runs queue. Keep this low on subscriptions, which have usage windows |
 | `suspend` | `false` | stop polling and starting runs |
 
