@@ -673,13 +673,35 @@ type WebhookSpec struct {
 	// https://ai-operator.example.com/hooks/gitlab. Needed with Enabled.
 	// +optional
 	URL string `json:"url,omitempty"`
+
+	// FallbackInterval is how often the project is fully synced while
+	// deliveries arrive (see SilenceThreshold). In between, only the
+	// milestones are polled every pollInterval, since milestone changes
+	// cause no deliveries; a delivery syncs at once.
+	// +kubebuilder:default="10m"
+	// +optional
+	FallbackInterval metav1.Duration `json:"fallbackInterval,omitempty"`
+
+	// SilenceThreshold is how long after the last valid delivery the project
+	// counts as receiving deliveries. After it, or without SecretRef, every
+	// poll is a full sync again.
+	// +kubebuilder:default="30m"
+	// +optional
+	SilenceThreshold metav1.Duration `json:"silenceThreshold,omitempty"`
 }
 
 // ConditionWebhookRegistered is the AgentProject condition that tells whether
 // the project hook is registered (spec.webhook.enabled).
 const ConditionWebhookRegistered = "WebhookRegistered"
 
-// WebhookStatus is the project hook the operator registered.
+// ConditionWebhookDeliveries is the AgentProject condition that tells whether
+// deliveries arrive (with spec.webhook.secretRef): True, reason Receiving,
+// within webhook.silenceThreshold of the last valid delivery, else False,
+// reason Silent.
+const ConditionWebhookDeliveries = "WebhookDeliveries"
+
+// WebhookStatus is the project hook the operator registered and the last
+// delivery.
 type WebhookStatus struct {
 	// HookID is the hook's ID in GitLab.
 	// +optional
@@ -694,6 +716,13 @@ type WebhookStatus struct {
 	// CheckedAt is when the hook was last checked in GitLab.
 	// +optional
 	CheckedAt *metav1.Time `json:"checkedAt,omitempty"`
+
+	// LastDeliveryTime is when the last valid delivery for this project
+	// arrived. The operator keeps it in memory: after a restart this shows
+	// the last one seen before, and the project is polled fully until the
+	// next delivery.
+	// +optional
+	LastDeliveryTime *metav1.Time `json:"lastDeliveryTime,omitempty"`
 }
 
 // MainHealthState is the health of the default branch.
@@ -922,7 +951,8 @@ type AgentProjectStatus struct {
 	// +optional
 	MainHealth *MainHealthStatus `json:"mainHealth,omitempty"`
 
-	// Webhook is the project hook the operator registered.
+	// Webhook is the project hook the operator registered and the last
+	// delivery.
 	// +optional
 	Webhook *WebhookStatus `json:"webhook,omitempty"`
 

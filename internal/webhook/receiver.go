@@ -27,11 +27,13 @@ const Path = "/hooks/gitlab"
 const MaxBody = 1 << 20
 
 // Receiver is the http.Handler for POST Path. It wakes every AgentProject on
-// the delivery's GitLab project whose webhook secret matches X-Gitlab-Token.
+// the delivery's GitLab project whose webhook secret matches X-Gitlab-Token,
+// and records the delivery in Deliveries (when set) before the wake.
 type Receiver struct {
-	Reader client.Reader
-	Wake   func(types.NamespacedName)
-	Log    logr.Logger
+	Reader     client.Reader
+	Wake       func(types.NamespacedName)
+	Deliveries *Deliveries
+	Log        logr.Logger
 }
 
 func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -83,6 +85,10 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		known = true
 		if r.tokenMatches(req, p, token, log) {
 			name := types.NamespacedName{Namespace: p.Namespace, Name: p.Name}
+			// Recorded first, so the sync the wake starts sees it.
+			if r.Deliveries != nil {
+				r.Deliveries.Record(name)
+			}
 			r.Wake(name)
 			woken = append(woken, name.String())
 		}

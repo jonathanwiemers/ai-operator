@@ -38,6 +38,8 @@ const (
 	DefaultMaxEffort            = "high"
 	DefaultPilotBudgetUSD       = "20"
 	DefaultPilotInterventions   = 2
+	DefaultWebhookFallback      = 10 * time.Minute
+	DefaultWebhookSilence       = 30 * time.Minute
 )
 
 // WithDefaults returns a copy of the workflow labels with defaults filled in.
@@ -206,6 +208,12 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 	}
 	if s.Agents.ImagePullPolicy == "" {
 		s.Agents.ImagePullPolicy = "IfNotPresent"
+	}
+	if s.Webhook.FallbackInterval.Duration == 0 {
+		s.Webhook.FallbackInterval = metav1.Duration{Duration: DefaultWebhookFallback}
+	}
+	if s.Webhook.SilenceThreshold.Duration == 0 {
+		s.Webhook.SilenceThreshold = metav1.Duration{Duration: DefaultWebhookSilence}
 	}
 	if s.PollInterval.Duration == 0 {
 		s.PollInterval = metav1.Duration{Duration: DefaultPollInterval}

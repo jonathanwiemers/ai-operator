@@ -78,6 +78,19 @@ This needs the bot's Maintainer role. The AgentProject's `WebhookRegistered`
 condition tells how it went (`Registered`, `Forbidden`, `Invalid`, `Failed`);
 a failed registration never fails the sync, polling goes on.
 
+While deliveries arrive, polling slows down to save the bot's API budget: a
+project is fully synced on every delivery and every
+`spec.webhook.fallbackInterval` (default `10m`); in between, each
+`pollInterval` lists only the milestones (milestone changes cause no
+deliveries) and syncs fully when a planned one changed, appeared or vanished,
+or the AgentProject's spec changed. After `spec.webhook.silenceThreshold`
+(default `30m`) without a delivery, after a restart (deliveries are kept in
+memory) or without `secretRef`, every poll is a full sync again. Steps that
+only time advances (infra retries, auto-resume, the main health interval) run
+on full syncs, so up to `fallbackInterval` late while deliveries arrive. The
+`WebhookDeliveries` condition (`Receiving` or `Silent`) and
+`status.webhook.lastDeliveryTime` show the state.
+
 Only the leader serves the receiver. With `replicaCount` above 1, a delivery
 that reaches a non-leader pod fails and GitLab's own retry covers it.
 

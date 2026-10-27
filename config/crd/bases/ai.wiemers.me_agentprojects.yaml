@@ -1158,6 +1158,14 @@ spec:
                       token, and deletes that hook again when switched off. It needs the
                       bot's Maintainer role; the WebhookRegistered condition tells how it went.
                     type: boolean
+                  fallbackInterval:
+                    default: 10m
+                    description: |-
+                      FallbackInterval is how often the project is fully synced while
+                      deliveries arrive (see SilenceThreshold). In between, only the
+                      milestones are polled every pollInterval, since milestone changes
+                      cause no deliveries; a delivery syncs at once.
+                    type: string
                   secretRef:
                     description: |-
                       SecretRef points to the GitLab project hook's secret token. A delivery
@@ -1185,6 +1193,13 @@ spec:
                     - key
                     type: object
                     x-kubernetes-map-type: atomic
+                  silenceThreshold:
+                    default: 30m
+                    description: |-
+                      SilenceThreshold is how long after the last valid delivery the project
+                      counts as receiving deliveries. After it, or without SecretRef, every
+                      poll is a full sync again.
+                    type: string
                   url:
                     description: |-
                       URL is the public URL of the operator's /hooks/gitlab endpoint, e.g.
@@ -1582,7 +1597,9 @@ spec:
                   type: object
                 type: array
               webhook:
-                description: Webhook is the project hook the operator registered.
+                description: |-
+                  Webhook is the project hook the operator registered and the last
+                  delivery.
                 properties:
                   checkedAt:
                     description: CheckedAt is when the hook was last checked in GitLab.
@@ -1598,6 +1615,14 @@ spec:
                     description: HookID is the hook's ID in GitLab.
                     format: int64
                     type: integer
+                  lastDeliveryTime:
+                    description: |-
+                      LastDeliveryTime is when the last valid delivery for this project
+                      arrived. The operator keeps it in memory: after a restart this shows
+                      the last one seen before, and the project is polled fully until the
+                      next delivery.
+                    format: date-time
+                    type: string
                 type: object
             type: object
         type: object

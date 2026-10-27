@@ -72,3 +72,14 @@ func TestUsageLimitBackoff(t *testing.T) {
 		t.Error("limits are per engine")
 	}
 }
+
+func TestWebhookDefaults(t *testing.T) {
+	w := AgentProjectSpec{}.WithDefaults().Webhook
+	if w.FallbackInterval.Duration != 10*time.Minute || w.SilenceThreshold.Duration != 30*time.Minute {
+		t.Fatalf("webhook defaults: %+v", w)
+	}
+	custom := AgentProjectSpec{Webhook: WebhookSpec{FallbackInterval: metav1.Duration{Duration: time.Minute}}}.WithDefaults().Webhook
+	if custom.FallbackInterval.Duration != time.Minute {
+		t.Fatalf("a set fallbackInterval is kept: %+v", custom)
+	}
+}

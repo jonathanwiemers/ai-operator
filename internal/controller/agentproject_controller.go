@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -37,6 +38,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/rules"
+	"github.com/jonathanwiemers/ai-operator/internal/webhook"
 )
 
 // GitLabFactory creates a GitLab client; replaced in tests.
@@ -54,6 +56,13 @@ type AgentProjectReconciler struct {
 	// Wakes, when set, syncs the AgentProject of every event at once (the
 	// webhook receiver's wakes).
 	Wakes <-chan event.GenericEvent
+	// Deliveries, when set, tells when the receiver last accepted a delivery
+	// for a project; while they arrive, the project is polled lightly.
+	Deliveries *webhook.Deliveries
+
+	mu sync.Mutex
+	// synced is the last delivery each project's last full sync covered.
+	synced map[types.NamespacedName]time.Time
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojects,verbs=get;list;watch
@@ -79,10 +88,31 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, r.Status().Patch(ctx, &project, client.MergeFrom(orig))
 	}
 
+	var prevDelivery *metav1.Time
+	if st := project.Status.Webhook; st != nil {
+		prevDelivery = st.LastDeliveryTime
+	}
+	started := r.now()
+	lastDelivery, receiving := r.webhookDeliveries(&project, spec, started)
+	// While deliveries arrive, they tell of every change but the milestones'.
+	// Steps that only time advances (infra retries, auto-resume, the main
+	// health interval, the hook recheck) run on full syncs, so at most
+	// webhook.fallbackInterval late then.
+	full := !receiving || r.fullSyncDue(&project, spec, lastDelivery, started)
+
 	// A slow or rate-limiting GitLab must not hold the worker for long: the
 	// client's retries stop at this deadline, and the next poll goes on.
 	sctx, cancel := context.WithTimeout(ctx, max(spec.PollInterval.Duration, syncTimeout))
-	syncErr := r.sync(sctx, &project, spec)
+	var syncErr error
+	if !full {
+		full, syncErr = r.milestonesChanged(sctx, &project, spec)
+		if syncErr == nil && !full {
+			logger.V(1).Info("Light poll: no milestone changed, full sync skipped")
+		}
+	}
+	if full {
+		syncErr = r.sync(sctx, &project, spec)
+	}
 	cancel()
 	switch {
 	case syncErr != nil && gitlab.IsTransient(syncErr):
@@ -96,19 +126,95 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		meta.SetStatusCondition(&project.Status.Conditions, metav1.Condition{
 			Type: "Synced", Status: metav1.ConditionFalse, Reason: "SyncFailed", Message: truncateMsg(syncErr.Error()),
 		})
-	} else {
+	} else if full {
+		r.covered(req.NamespacedName, lastDelivery)
 		now := metav1.NewTime(r.now())
 		project.Status.LastSyncTime = &now
 		meta.SetStatusCondition(&project.Status.Conditions, metav1.Condition{
 			Type: "Synced", Status: metav1.ConditionTrue, Reason: "Synced", Message: "GitLab state is in sync",
+			ObservedGeneration: project.Generation,
 		})
 	}
+	// After the sync, which may replace status.webhook.
+	reportDeliveries(&project, spec, prevDelivery, lastDelivery, receiving)
 	if err := r.Status().Patch(ctx, &project, client.MergeFrom(orig)); err != nil {
 		return ctrl.Result{}, err
 	}
 	// Errors are reported in the status; retry on the regular poll interval
 	// instead of hammering GitLab with exponential backoff.
 	return ctrl.Result{RequeueAfter: spec.PollInterval.Duration}, nil
+}
+
+// fullSyncDue reports whether a project that receives deliveries needs a full
+// sync now: a delivery came that the last one did not cover, it is
+// webhook.fallbackInterval old, it failed, or the spec changed since.
+func (r *AgentProjectReconciler) fullSyncDue(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, lastDelivery, now time.Time) bool {
+	last := project.Status.LastSyncTime
+	synced := meta.FindStatusCondition(project.Status.Conditions, "Synced")
+	r.mu.Lock()
+	seen, ok := r.synced[types.NamespacedName{Namespace: project.Namespace, Name: project.Name}]
+	r.mu.Unlock()
+	return last == nil || synced == nil || synced.Status != metav1.ConditionTrue || synced.ObservedGeneration != project.Generation ||
+		!ok || lastDelivery.After(seen) || now.Sub(last.Time) >= spec.Webhook.FallbackInterval.Duration
+}
+
+// covered notes that a full sync of n, started when delivery was the last
+// one, succeeded. It is kept in memory, like the deliveries (the status
+// keeps whole seconds only), so a delivery during the sync asks for the next.
+func (r *AgentProjectReconciler) covered(n types.NamespacedName, delivery time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.synced == nil {
+		r.synced = map[types.NamespacedName]time.Time{}
+	}
+	r.synced[n] = delivery
+}
+
+// milestonesChanged is the light poll between full syncs while deliveries
+// arrive (milestone changes cause none): it lists the milestones and reports
+// whether a planned one appeared or vanished or its spec task would change.
+func (r *AgentProjectReconciler) milestonesChanged(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (bool, error) {
+	titleRE, err := titlePattern(spec)
+	if err != nil {
+		return true, nil // the full sync reports it
+	}
+	var tasks aiv1.AgentTaskList
+	if err := r.List(ctx, &tasks, client.InNamespace(project.Namespace), client.MatchingLabels{LabelProject: project.Name}); err != nil {
+		return false, err
+	}
+	planned := map[int64]*aiv1.AgentTask{}
+	for i := range tasks.Items {
+		if t := &tasks.Items[i]; t.Spec.Type == aiv1.TaskTypeSpec && t.Spec.Milestone != nil {
+			planned[t.Spec.Milestone.IID] = t
+		}
+	}
+	gl, err := r.gitlabClient(ctx, project, spec)
+	if err != nil {
+		return false, err
+	}
+	milestones, err := gl.ListMilestones(ctx, spec.GitLab.Project)
+	if err != nil {
+		return false, fmt.Errorf("listing milestones: %w", err)
+	}
+	selected := map[int64]bool{}
+	for _, m := range milestones {
+		ok, autopilot := milestoneSelection(spec, titleRE, m)
+		if !ok {
+			continue
+		}
+		task := planned[m.IID]
+		owners := notify.Resolve(m.Description, spec.Workflow.CommandPrefix, spec.Notify.Users, r.DefaultOwners)
+		if task == nil || !specTaskCurrent(spec, m, task, autopilot, owners) || r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration) {
+			return true, nil
+		}
+		selected[m.IID] = true
+	}
+	for iid, t := range planned {
+		if !selected[iid] && t.DeletionTimestamp.IsZero() {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // syncTimeout is the least time a poll of GitLab may take.
@@ -166,11 +272,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 
 	gate := r.commandGate(gl, project, spec)
 
-	var titleRE *regexp.Regexp
-	if spec.Milestones.TitlePattern != "" {
-		if titleRE, err = regexp.Compile(spec.Milestones.TitlePattern); err != nil {
-			return fmt.Errorf("invalid milestones.titlePattern: %w", err)
-		}
+	titleRE, err := titlePattern(spec)
+	if err != nil {
+		return err
 	}
 
 	var tasks aiv1.AgentTaskList
@@ -218,11 +322,8 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		descriptions[m.ID] = m.Description
 	}
 	for _, m := range milestones {
-		// An owners or rule line neither selects a milestone nor is a spec.
-		sel := m
-		sel.Description = rules.Spec(m.Description, prefix)
-		autopilot := spec.Milestones.Autopilot() != "" && milestoneSelected(sel, titleRE, spec.Milestones.Autopilot())
-		if !autopilot && !milestoneSelected(sel, titleRE, spec.Milestones.Marker()) {
+		selected, autopilot := milestoneSelection(spec, titleRE, m)
+		if !selected {
 			continue
 		}
 		active++
@@ -407,6 +508,28 @@ func usageLimits(tasks []aiv1.AgentTask, now time.Time) []aiv1.UsageLimit {
 	return limits
 }
 
+// titlePattern compiles milestones.titlePattern; nil when unset.
+func titlePattern(spec aiv1.AgentProjectSpec) (*regexp.Regexp, error) {
+	if spec.Milestones.TitlePattern == "" {
+		return nil, nil
+	}
+	re, err := regexp.Compile(spec.Milestones.TitlePattern)
+	if err != nil {
+		return nil, fmt.Errorf("invalid milestones.titlePattern: %w", err)
+	}
+	return re, nil
+}
+
+// milestoneSelection reports whether a milestone is planned, and whether on
+// autopilot.
+func milestoneSelection(spec aiv1.AgentProjectSpec, titleRE *regexp.Regexp, m gitlab.Milestone) (selected, autopilot bool) {
+	// An owners or rule line neither selects a milestone nor is a spec.
+	sel := m
+	sel.Description = rules.Spec(m.Description, spec.Workflow.CommandPrefix)
+	autopilot = spec.Milestones.Autopilot() != "" && milestoneSelected(sel, titleRE, spec.Milestones.Autopilot())
+	return autopilot || milestoneSelected(sel, titleRE, spec.Milestones.Marker()), autopilot
+}
+
 func milestoneSelected(m gitlab.Milestone, titleRE *regexp.Regexp, marker string) bool {
 	if m.State != "" && m.State != "active" {
 		return false
@@ -466,8 +589,7 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		return task, r.Create(ctx, task)
 	}
 	retry := r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration)
-	if task.Spec.Source.DescriptionHash == hash && *task.Spec.Milestone == *ref && task.Spec.Autopilot == autopilot && slices.Equal(task.Spec.Owners, owners) &&
-		slices.Equal(task.Spec.Rules, ruleLines) && !retry {
+	if specTaskCurrent(spec, m, task, autopilot, owners) && !retry {
 		return task, nil
 	}
 	task.Spec.Autopilot = autopilot
@@ -483,6 +605,15 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 	}
 	task.Spec.Milestone = ref
 	return task, r.Update(ctx, task)
+}
+
+// specTaskCurrent reports whether a milestone's spec task matches it: the
+// spec's hash, the milestone, autopilot, owners and rules.
+func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners []string) bool {
+	prefix := spec.Workflow.CommandPrefix
+	return task.Spec.Source.DescriptionHash == hashString(rules.Spec(m.Description, prefix)) &&
+		*task.Spec.Milestone == aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title} && task.Spec.Autopilot == autopilot &&
+		slices.Equal(task.Spec.Owners, owners) && slices.Equal(task.Spec.Rules, rules.Lines(m.Description, prefix))
 }
 
 // specRetryDue reports whether a planning run that failed for an outside

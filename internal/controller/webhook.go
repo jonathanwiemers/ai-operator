@@ -127,6 +127,55 @@ func hookMatches(h gitlab.ProjectHook, o gitlab.ProjectHookOptions) bool {
 		EnableSSLVerification: o.EnableSSLVerification}
 }
 
+// webhookDeliveries returns when the last valid delivery for the project
+// arrived since the operator started (zero if none did), and whether
+// deliveries arrive: the last one is younger than webhook.silenceThreshold.
+// Without a secretRef no delivery counts.
+func (r *AgentProjectReconciler) webhookDeliveries(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, now time.Time) (time.Time, bool) {
+	if spec.Webhook.SecretRef == nil || r.Deliveries == nil {
+		return time.Time{}, false
+	}
+	last, ok := r.Deliveries.Last(types.NamespacedName{Namespace: project.Namespace, Name: project.Name})
+	return last, ok && now.Sub(last) < spec.Webhook.SilenceThreshold.Duration
+}
+
+// reportDeliveries mirrors the last delivery into status.webhook and sets the
+// WebhookDeliveries condition. prev is the last delivery the status showed
+// before this poll; it stays when the operator has seen none since it
+// started. Without a secretRef both are removed.
+func reportDeliveries(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, prev *metav1.Time, last time.Time, receiving bool) {
+	if spec.Webhook.SecretRef == nil {
+		if st := project.Status.Webhook; st != nil {
+			st.LastDeliveryTime = nil
+			if *st == (aiv1.WebhookStatus{}) {
+				project.Status.Webhook = nil
+			}
+		}
+		meta.RemoveStatusCondition(&project.Status.Conditions, aiv1.ConditionWebhookDeliveries)
+		return
+	}
+	at := prev
+	if !last.IsZero() {
+		at = &metav1.Time{Time: last}
+	}
+	if at != nil {
+		if project.Status.Webhook == nil {
+			project.Status.Webhook = &aiv1.WebhookStatus{}
+		}
+		project.Status.Webhook.LastDeliveryTime = at
+	}
+	cond := metav1.Condition{Type: aiv1.ConditionWebhookDeliveries, Status: metav1.ConditionTrue, Reason: "Receiving",
+		Message: fmt.Sprintf("deliveries arrive: full sync every %s, milestones every pollInterval", spec.Webhook.FallbackInterval.Duration)}
+	if !receiving {
+		cond.Status, cond.Reason = metav1.ConditionFalse, "Silent"
+		cond.Message = fmt.Sprintf("no delivery within %s: full sync every pollInterval", spec.Webhook.SilenceThreshold.Duration)
+		if last.IsZero() {
+			cond.Message = "no delivery since the operator started: full sync every pollInterval"
+		}
+	}
+	meta.SetStatusCondition(&project.Status.Conditions, cond)
+}
+
 func webhookFailed(ctx context.Context, project *aiv1.AgentProject, what string, err error) {
 	log.FromContext(ctx).Info("Project hook not registered, trying again on the next poll", "step", what, "error", err.Error())
 	if c := gitlab.StatusCode(err); c == http.StatusForbidden || c == http.StatusNotFound {

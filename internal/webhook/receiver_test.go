@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr/funcr"
 	corev1 "k8s.io/api/core/v1"
@@ -13,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	clocktesting "k8s.io/utils/clock/testing"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -43,9 +45,10 @@ func secret(ns, name, value string) *corev1.Secret {
 }
 
 type env struct {
-	receiver *Receiver
-	woken    []types.NamespacedName
-	logs     []string
+	receiver   *Receiver
+	deliveries *Deliveries
+	woken      []types.NamespacedName
+	logs       []string
 }
 
 func newEnv(t *testing.T, objs ...client.Object) *env {
@@ -57,11 +60,18 @@ func newEnv(t *testing.T, objs ...client.Object) *env {
 	if err := aiv1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	e := &env{}
+	e := &env{deliveries: NewDeliveries(clocktesting.NewFakeClock(time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)))}
 	e.receiver = &Receiver{
 		Reader: fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build(),
-		Wake:   func(n types.NamespacedName) { e.woken = append(e.woken, n) },
-		Log:    funcr.New(func(prefix, args string) { e.logs = append(e.logs, prefix+" "+args) }, funcr.Options{Verbosity: 10}),
+		Wake: func(n types.NamespacedName) {
+			// The delivery is recorded before the wake.
+			if _, ok := e.deliveries.Last(n); !ok {
+				t.Errorf("%s woken before its delivery was recorded", n)
+			}
+			e.woken = append(e.woken, n)
+		},
+		Deliveries: e.deliveries,
+		Log:        funcr.New(func(prefix, args string) { e.logs = append(e.logs, prefix+" "+args) }, funcr.Options{Verbosity: 10}),
 	}
 	return e
 }
@@ -124,7 +134,21 @@ func TestRefused(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			e := standard(t)
 			e.expect(t, e.deliver(http.MethodPost, c.body, c.token), http.StatusUnauthorized)
+			if _, ok := e.deliveries.Last(app); ok {
+				t.Error("a refused delivery was recorded")
+			}
 		})
+	}
+}
+
+func TestAcceptedDeliveryIsRecorded(t *testing.T) {
+	e := standard(t, project("team", "other", "group/other", "app-hook"))
+	e.expect(t, e.deliver(http.MethodPost, payload("group/app"), goodToken), http.StatusAccepted, app)
+	if got, ok := e.deliveries.Last(app); !ok || !got.Equal(time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)) {
+		t.Errorf("Last(app) = %v, %v, want the delivery's time", got, ok)
+	}
+	if _, ok := e.deliveries.Last(types.NamespacedName{Namespace: "team", Name: "other"}); ok {
+		t.Error("a project that was not woken got a delivery")
 	}
 }
 

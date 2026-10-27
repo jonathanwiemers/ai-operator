@@ -78,9 +78,11 @@ func main() {
 		// per 5 s, with a trailing one for the last delivery.
 		waker := webhook.NewWaker(5*time.Second, 100, clock.RealClock{})
 		projects.Wakes = waker.Events()
+		projects.Deliveries = webhook.NewDeliveries(clock.RealClock{})
 		utilruntime.Must(mgr.Add(&webhook.Server{
-			Addr:    webhookAddr,
-			Handler: &webhook.Receiver{Reader: mgr.GetClient(), Wake: waker.Wake, Log: ctrl.Log.WithName("webhook")},
+			Addr: webhookAddr,
+			Handler: &webhook.Receiver{Reader: mgr.GetClient(), Wake: waker.Wake, Deliveries: projects.Deliveries,
+				Log: ctrl.Log.WithName("webhook")},
 		}))
 	}
 	if err := projects.SetupWithManager(mgr); err != nil {
