@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
@@ -189,25 +190,11 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 // the operator's tracking issue of this milestone (its number comes from
 // task status, which the agent pods may write).
 func (s *Server) milestoneThread(w http.ResponseWriter, r *http.Request) {
-	ap, _, st, coord, ok := s.loadMilestone(w, r)
+	ap, gl, tok, part, ok := s.trackingIssue(w, r)
 	if !ok {
 		return
 	}
-	iid := trackingIssueIID(st, coord)
-	if iid == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "the milestone has no tracking issue"})
-		return
-	}
-	gl, tok, ok := s.userGitLab(w, r, ap)
-	if !ok {
-		return
-	}
-	part := ThreadPart{Target: "tracking", IID: iid, WebURL: fmt.Sprintf("%s/-/issues/%d", gitLabRef(ap).WebURL, iid)}
-	if err := s.checkTarget(r.Context(), gl, ap, st, &part); err != nil {
-		s.log.Info("refusing a tracking issue", "user", principalOf(r).Username, "iid", iid, "reason", err.Error())
-		s.targetRefused(w, tok, "the tracking issue could not be confirmed as this milestone's", err)
-		return
-	}
+	iid := part.IID
 	notes, err := gl.ListIssueNotes(r.Context(), ap.Spec.GitLab.Project, iid)
 	if err != nil {
 		if gitlab.StatusCode(err) == http.StatusUnauthorized {
@@ -222,5 +209,61 @@ func (s *Server) milestoneThread(w http.ResponseWriter, r *http.Request) {
 	for _, n := range notes {
 		part.Notes = append(part.Notes, NoteView{ID: n.ID, Author: n.Author.Username, Body: n.Body, System: n.System, CreatedAt: n.CreatedAt})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"parts": []ThreadPart{part}})
+	writeJSON(w, http.StatusOK, map[string]any{"parts": []ThreadPart{*part}})
+}
+
+// trackingIssue loads the milestone of the request and the user's GitLab
+// client and confirms the milestone's tracking issue as the operator's
+// tracking issue of this milestone (its number comes from task status,
+// which the agent pods may write). It answers the request itself when that
+// is not possible.
+func (s *Server) trackingIssue(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, gitlab.API, *GitLabToken, *ThreadPart, bool) {
+	ap, _, st, coord, ok := s.loadMilestone(w, r)
+	if !ok {
+		return nil, nil, nil, nil, false
+	}
+	iid := trackingIssueIID(st, coord)
+	if iid == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "the milestone has no tracking issue"})
+		return nil, nil, nil, nil, false
+	}
+	gl, tok, ok := s.userGitLab(w, r, ap)
+	if !ok {
+		return nil, nil, nil, nil, false
+	}
+	part := &ThreadPart{Target: "tracking", IID: iid, WebURL: fmt.Sprintf("%s/-/issues/%d", gitLabRef(ap).WebURL, iid)}
+	if err := s.checkTarget(r.Context(), gl, ap, st, part); err != nil {
+		s.log.Info("refusing a tracking issue", "user", principalOf(r).Username, "iid", iid, "reason", err.Error())
+		s.targetRefused(w, tok, "the tracking issue could not be confirmed as this milestone's", err)
+		return nil, nil, nil, nil, false
+	}
+	return ap, gl, tok, part, true
+}
+
+// postMilestoneNote writes a chat message to the milestone's pilot on its
+// tracking issue, in the user's GitLab name, with the project's pilot
+// prefix in front unless the message starts with it. Whether the pilot
+// takes it as an owner's instruction is the operator's decision.
+func (s *Server) postMilestoneNote(w http.ResponseWriter, r *http.Request) {
+	if !s.mayPost(w, r) {
+		return
+	}
+	req, ok := readNote(w, r)
+	if !ok {
+		return
+	}
+	ap, gl, tok, part, ok := s.trackingIssue(w, r)
+	if !ok {
+		return
+	}
+	s.createNote(w, r, ap, gl, tok, part, toPilot(req.Body, ap.Spec.Workflow.WithDefaults().PilotPrefix))
+}
+
+// toPilot addresses a trimmed chat message to the pilot: prefix and the
+// message, unless the operator already reads it as one to the pilot.
+func toPilot(body, prefix string) string {
+	if _, ok := command.Pilot(body, prefix, ""); ok {
+		return body
+	}
+	return prefix + " " + body
 }

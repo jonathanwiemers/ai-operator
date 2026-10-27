@@ -285,6 +285,13 @@ as an error, not as a reconnect.
   you pick, at most 10 000 characters and 10 per minute. The buttons above
   the box start a comment with the common commands. The UI logs who posted
   where (user, GitLab user, project, target, note id), never the text.
+- **Milestone chat:** a message to the milestone's pilot goes to its
+  tracking issue with your token, under the same grant and limits. The UI
+  puts the project's pilot prefix (`workflow.pilotPrefix`, `/pilot`) in
+  front unless the message starts with it, so `yes P3` arrives as
+  `/pilot yes P3` (and `/agent pause` as `/pilot /agent pause`: post
+  commands in GitLab). Whether it counts as an owner's instruction is the
+  operator's decision, as for any comment in GitLab.
 - **Tokens:** the access and refresh token live in an encrypted, `HttpOnly`
   cookie (like the login), bound to your UI user, refreshed when the access
   token runs out, never readable by the page's JavaScript. The connection
@@ -372,6 +379,7 @@ with the same session cookie:
 | `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone (`trackingIssueIID` where a milestone has a tracking issue) |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | a planned milestone: its spec task, the autopilot (`phase`, `pausedReason` as raw text, queue `items` with title, state, MR and task), the `tracking` issue, the `pilot` (task, autonomy, open proposals, cost) and its implement tasks; 404 without a spec task |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread` | the comments of the milestone's tracking issue (`parts`), read with your GitLab token once the issue is confirmed as the operator's tracking issue of this milestone (409 otherwise); 409 when not connected |
+| `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes` | posts `{"body": "…"}` to the milestone's pilot on its confirmed tracking issue in your GitLab name, with the pilot prefix in front unless the body starts with it; needs the `steer` grant (403, 404 without the project), 409 for an issue that is not the milestone's tracking issue, 429 over the rate limit |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}` | one task and its project |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript` | server-sent events: `entry` per transcript line of the task's pod (what it logged so far, then live), `end` with the reason (`no pod`, `pod stopped`, `pod not available`, `session expired`); needs the `transcript` grant (403 without), counts as an event stream |
 | `GET /api/v1/gitlab` | whether GitLab is configured and your account connected (`enabled`, `connected`, `username`) |

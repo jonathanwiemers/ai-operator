@@ -32,6 +32,7 @@ type fakeGitLab struct {
 	down     bool              // the token endpoint answers 503
 	issues   map[string]any    // issue IID -> the issue GET returns, else 404
 	read     []string          // "issues 42": whose notes were listed
+	refuse   int               // the status a posted note gets, 0 to take it
 }
 
 func newFakeGitLab(t *testing.T) *fakeGitLab {
@@ -96,6 +97,11 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 			var b struct{ Body string }
 			_ = json.NewDecoder(r.Body).Decode(&b)
 			g.mu.Lock()
+			if g.refuse != 0 {
+				g.mu.Unlock()
+				http.Error(w, "{}", g.refuse)
+				return
+			}
 			who := r.Header.Get("Authorization")
 			if who == "" {
 				who = "PAT " + r.Header.Get("PRIVATE-TOKEN")

@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 
+	"github.com/go-logr/logr/funcr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -212,4 +215,189 @@ func (e *testEnv) getJSON(t *testing.T, path string) (int, map[string]any) {
 	out := map[string]any{}
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	return resp.StatusCode, out
+}
+
+// steerer logs in a user with the steer grant on team-a and connects their
+// GitLab account.
+func steerer(t *testing.T) (*testEnv, *fakeGitLab) {
+	t.Helper()
+	env, gl := newSteeringEnv(t, Rule{Roles: []string{"leads"}, Projects: []string{"team-a/*"}, Steer: true})
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"leads": map[string]any{}}}
+	env.login(t, "/")
+	env.connectGitLab(t, "good-code")
+	return env, gl
+}
+
+func TestMilestoneChat(t *testing.T) {
+	env, gl := steerer(t)
+	var logMu sync.Mutex
+	var logs []string
+	env.server.log = funcr.New(func(prefix, args string) {
+		logMu.Lock()
+		defer logMu.Unlock()
+		logs = append(logs, prefix+" "+args)
+	}, funcr.Options{Verbosity: 9})
+
+	if code, _ := env.postJSON(t, shopMilestone+"/notes", map[string]string{"body": "hello"}); code != http.StatusNotFound {
+		t.Fatalf("a milestone without a tracking issue: %d", code)
+	}
+	withAutopilot(t, env, gl)
+
+	for _, c := range []struct{ body, posted string }{
+		{"why are we paused?", "/pilot why are we paused?"},
+		{"yes P3", "/pilot yes P3"},
+		{"/pilot go", "/pilot go"},
+		{"  \n /pilot go\nand hurry ", "/pilot go\nand hurry"},
+		{"  please hurry  ", "/pilot please hurry"},
+		{"/pilotx go", "/pilot /pilotx go"},
+		{"/pilot/x", "/pilot /pilot/x"},
+		{"/agent pause", "/pilot /agent pause"},
+	} {
+		gl.mu.Lock()
+		gl.posted = nil
+		gl.mu.Unlock()
+		code, out := env.postJSON(t, shopMilestone+"/notes", map[string]string{"body": c.body})
+		if code != http.StatusOK || out["author"] != "ada-gl" || out["body"] != c.posted {
+			t.Errorf("%q: %d %v", c.body, code, out)
+		}
+		if want := "issues 77 Bearer at-1: " + c.posted; len(gl.posted) != 1 || gl.posted[0] != want {
+			t.Errorf("%q: posted %q, want %q", c.body, gl.posted, want)
+		}
+	}
+	logMu.Lock()
+	for _, l := range logs {
+		if strings.Contains(l, "paused?") || strings.Contains(l, "hurry") {
+			t.Errorf("the text was logged: %s", l)
+		}
+	}
+	if !slices.ContainsFunc(logs, func(l string) bool {
+		return strings.Contains(l, `"comment posted"`) && strings.Contains(l, `"iid"=77`) && strings.Contains(l, `"user"="ada@example.com"`)
+	}) {
+		t.Errorf("who posted where is logged: %q", logs)
+	}
+	logMu.Unlock()
+
+	gl.mu.Lock()
+	gl.posted = nil
+	gl.mu.Unlock()
+	for name, body := range map[string]any{
+		"empty":    map[string]string{"body": "  \n "},
+		"too long": map[string]string{"body": strings.Repeat("x", maxNoteBody+1)},
+		"no JSON":  "x",
+	} {
+		if code, _ := env.postJSON(t, shopMilestone+"/notes", body); code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", name, code)
+		}
+	}
+	// Eight posts so far; the rate limit counts the task chat's too.
+	if code, _ := env.postJSON(t, shopTask+"/notes", map[string]string{"target": "issue", "body": "x"}); code != http.StatusOK {
+		t.Fatalf("task note: %d", code)
+	}
+	if code, _ := env.postJSON(t, shopMilestone+"/notes", map[string]string{"body": "x"}); code != http.StatusOK {
+		t.Fatalf("the tenth post: %d", code)
+	}
+	if code, _ := env.postJSON(t, shopMilestone+"/notes", map[string]string{"body": "x"}); code != http.StatusTooManyRequests {
+		t.Fatalf("rate limit: %d", code)
+	}
+	if len(gl.posted) != 2 {
+		t.Errorf("posted %q", gl.posted)
+	}
+}
+
+func TestMilestoneChatUsesTheProjectsPrefix(t *testing.T) {
+	env, gl := steerer(t)
+	withAutopilot(t, env, gl)
+	var ap aiv1.AgentProject
+	if err := env.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: "shop"}, &ap); err != nil {
+		t.Fatal(err)
+	}
+	ap.Spec.Workflow.PilotPrefix = "/copilot"
+	if err := env.reader.Update(context.Background(), &ap); err != nil {
+		t.Fatal(err)
+	}
+	for body, want := range map[string]string{"/copilot go": "/copilot go", "/pilot go": "/copilot /pilot go"} {
+		gl.mu.Lock()
+		gl.posted = nil
+		gl.mu.Unlock()
+		if code, _ := env.postJSON(t, shopMilestone+"/notes", map[string]string{"body": body}); code != http.StatusOK ||
+			len(gl.posted) != 1 || gl.posted[0] != "issues 77 Bearer at-1: "+want {
+			t.Errorf("%q: %d, posted %q", body, code, gl.posted)
+		}
+	}
+}
+
+func TestMilestoneChatNeedsTheSteerGrant(t *testing.T) {
+	for name, rule := range map[string]Rule{
+		"view only":   {Roles: []string{"devs"}, Projects: []string{"team-a/*"}},
+		"not visible": {Roles: []string{"devs"}, Projects: []string{"team-b/*"}, Steer: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env, gl := newSteeringEnv(t, rule)
+			withAutopilot(t, env, gl)
+			env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+			env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}}}
+			env.login(t, "/")
+			env.connectGitLab(t, "good-code")
+			want := http.StatusForbidden
+			if name == "not visible" {
+				want = http.StatusNotFound
+			}
+			if code, _ := env.postJSON(t, shopMilestone+"/notes", map[string]string{"body": "go"}); code != want {
+				t.Errorf("status %d, want %d", code, want)
+			}
+			if len(gl.posted) != 0 {
+				t.Errorf("nothing may be posted: %q", gl.posted)
+			}
+		})
+	}
+}
+
+func TestMilestoneChatOnlyOnTheTrackingIssue(t *testing.T) {
+	env, gl := steerer(t)
+	withAutopilot(t, env, gl)
+	is := trackingIssue()
+	is["milestone"] = map[string]any{"id": 31, "iid": 4}
+	gl.mu.Lock()
+	gl.issues = map[string]any{"77": is}
+	gl.mu.Unlock()
+	if code, _ := env.postJSON(t, shopMilestone+"/notes", map[string]string{"body": "go"}); code != http.StatusConflict {
+		t.Errorf("another milestone's issue: status %d, want 409", code)
+	}
+	gl.mu.Lock()
+	gl.issues = nil
+	gl.mu.Unlock()
+	if code, _ := env.postJSON(t, shopMilestone+"/notes", map[string]string{"body": "go"}); code != http.StatusConflict {
+		t.Errorf("an issue the user cannot read: status %d, want 409", code)
+	}
+	if code, _ := env.postJSON(t, "/api/v1/projects/team-a/shop/milestones/4/notes", map[string]string{"body": "go"}); code != http.StatusNotFound {
+		t.Errorf("an unplanned milestone: status %d, want 404", code)
+	}
+	if len(gl.posted) != 0 {
+		t.Errorf("nothing may be posted: %q", gl.posted)
+	}
+}
+
+func TestMilestoneChatGitLabRefuses(t *testing.T) {
+	env, gl := steerer(t)
+	withAutopilot(t, env, gl)
+	for _, c := range []struct{ gitlab, want int }{
+		{http.StatusForbidden, http.StatusForbidden},
+		{http.StatusNotFound, http.StatusForbidden},
+		{http.StatusInternalServerError, http.StatusBadGateway},
+		// GitLab rejects the token: connect again.
+		{http.StatusUnauthorized, http.StatusConflict},
+	} {
+		gl.mu.Lock()
+		gl.refuse = c.gitlab
+		gl.mu.Unlock()
+		if code, _ := env.postJSON(t, shopMilestone+"/notes", map[string]string{"body": "go"}); code != c.want {
+			t.Errorf("GitLab %d: status %d, want %d", c.gitlab, code, c.want)
+		}
+	}
+	var st GitLabStatusView
+	env.get(t, "/api/v1/gitlab", &st)
+	if st.Connected {
+		t.Error("a rejected token drops the connection")
+	}
 }

@@ -431,27 +431,11 @@ func (l *noteLimiter) allow(user string, now time.Time) bool {
 // issue, in the user's GitLab name. The UI does not interpret it: the
 // operator handles it like any comment written in GitLab.
 func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
-	p := principalOf(r)
-	if !s.authz.CanSteer(p, r.PathValue("namespace"), r.PathValue("name")) {
-		// The project itself may still be invisible: loadProject decides.
-		if !s.authz.CanView(p, r.PathValue("namespace"), r.PathValue("name")) {
-			notFound(w)
-			return
-		}
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "no access to steering"})
+	if !s.mayPost(w, r) {
 		return
 	}
-	var req struct {
-		Target string `json:"target"`
-		Body   string `json:"body"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4*maxNoteBody)).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
-		return
-	}
-	req.Body = strings.TrimSpace(req.Body)
-	if req.Body == "" || utf8.RuneCountInString(req.Body) > maxNoteBody {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("the comment must have 1 to %d characters", maxNoteBody)})
+	req, ok := readNote(w, r)
+	if !ok {
 		return
 	}
 	ap, task, gl, tok, ok := s.steeringTask(w, r)
@@ -472,10 +456,55 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 	// the agent pods may write: check that they are the task's before a
 	// user's comment goes there.
 	if err := s.checkTarget(r.Context(), gl, ap, task, target); err != nil {
-		s.log.Info("refusing a comment target", "user", p.Username, "target", target.Target, "iid", target.IID, "reason", err.Error())
+		s.log.Info("refusing a comment target", "user", principalOf(r).Username, "target", target.Target, "iid", target.IID, "reason", err.Error())
 		s.targetRefused(w, tok, "the "+target.Target+" could not be confirmed as this task's", err)
 		return
 	}
+	s.createNote(w, r, ap, gl, tok, target, req.Body)
+}
+
+// noteRequest is a comment posted from the UI.
+type noteRequest struct {
+	Target string `json:"target"`
+	Body   string `json:"body"`
+}
+
+// mayPost answers a request of a user without the steer grant: 403, or 404
+// when the project is not even visible.
+func (s *Server) mayPost(w http.ResponseWriter, r *http.Request) bool {
+	p := principalOf(r)
+	if s.authz.CanSteer(p, r.PathValue("namespace"), r.PathValue("name")) {
+		return true
+	}
+	// The project itself may still be invisible: loadProject decides.
+	if !s.authz.CanView(p, r.PathValue("namespace"), r.PathValue("name")) {
+		notFound(w)
+		return false
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": "no access to steering"})
+	return false
+}
+
+// readNote reads a posted comment, its body trimmed and within the limits.
+// It answers 400 itself.
+func readNote(w http.ResponseWriter, r *http.Request) (noteRequest, bool) {
+	var req noteRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4*maxNoteBody)).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return req, false
+	}
+	req.Body = strings.TrimSpace(req.Body)
+	if req.Body == "" || utf8.RuneCountInString(req.Body) > maxNoteBody {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("the comment must have 1 to %d characters", maxNoteBody)})
+		return req, false
+	}
+	return req, true
+}
+
+// createNote posts body on a confirmed target in the user's name, within
+// the user's rate limit, and answers with the note.
+func (s *Server) createNote(w http.ResponseWriter, r *http.Request, ap *aiv1.AgentProject, gl gitlab.API, tok *GitLabToken, target *ThreadPart, body string) {
+	p := principalOf(r)
 	if !s.notes.allow(p.Username, time.Now()) {
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many comments, try again in a minute"})
 		return
@@ -483,9 +512,9 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 	var n *gitlab.Note
 	var err error
 	if target.Target == "mr" {
-		n, err = gl.CreateMergeRequestNote(r.Context(), ap.Spec.GitLab.Project, target.IID, req.Body)
+		n, err = gl.CreateMergeRequestNote(r.Context(), ap.Spec.GitLab.Project, target.IID, body)
 	} else {
-		n, err = gl.CreateIssueNote(r.Context(), ap.Spec.GitLab.Project, target.IID, req.Body)
+		n, err = gl.CreateIssueNote(r.Context(), ap.Spec.GitLab.Project, target.IID, body)
 	}
 	if err != nil {
 		code := gitlab.StatusCode(err)
