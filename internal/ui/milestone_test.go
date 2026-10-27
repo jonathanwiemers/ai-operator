@@ -50,7 +50,7 @@ func withAutopilot(t *testing.T, env *testEnv, gl *fakeGitLab) {
 	st.Status.Autopilot = &aiv1.AutopilotStatus{
 		Phase: aiv1.AutopilotPaused, TrackingIssueIID: 77, PausedReason: "job `lint` failed\n/close",
 		Items: []aiv1.AutopilotItem{
-			{IID: 42, State: aiv1.AutopilotItemActive, MergeRequestIID: 5},
+			{IID: 42, State: aiv1.AutopilotItemActive, MergeRequestIID: 5, MergeRequestURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5"},
 			{IID: 43, State: aiv1.AutopilotItemPending},
 		},
 	}
@@ -100,7 +100,7 @@ func TestMilestoneView(t *testing.T) {
 		t.Fatalf("autopilot = %+v", a)
 	}
 	want := []QueueItem{
-		{IID: 42, Title: "Add PayPal", State: aiv1.AutopilotItemActive, MergeRequestIID: 5, Task: "shop-42-add-paypal"},
+		{IID: 42, Title: "Add PayPal", State: aiv1.AutopilotItemActive, MergeRequestIID: 5, MergeRequestURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5", Task: "shop-42-add-paypal"},
 		{IID: 43, Title: "Add Klarna", State: aiv1.AutopilotItemPending},
 	}
 	if !slices.Equal(a.Items, want) {
@@ -113,6 +113,9 @@ func TestMilestoneView(t *testing.T) {
 	if p == nil || p.Task != "shop-pilot-m3-checkout" || p.Autonomy != aiv1.PilotPropose || p.CostUSD != "0.40" ||
 		len(p.Proposals) != 1 || p.Proposals[0].ID != 2 || p.Proposals[0].Summary != "re-review #42" || p.Proposals[0].PostedAt == nil {
 		t.Errorf("pilot = %+v", p)
+	}
+	if m.Permissions == nil || !m.Permissions.GitLab || m.Permissions.Steer {
+		t.Errorf("a viewer may read the chat, not post: %+v", m.Permissions)
 	}
 	if len(m.Tasks) != 1 || m.Tasks[0].Name != "shop-42-add-paypal" {
 		t.Errorf("only the implement tasks: %+v", m.Tasks)
@@ -243,6 +246,10 @@ func TestMilestoneChat(t *testing.T) {
 		t.Fatalf("a milestone without a tracking issue: %d", code)
 	}
 	withAutopilot(t, env, gl)
+	var m MilestoneView
+	if env.get(t, shopMilestone, &m); m.Permissions == nil || !m.Permissions.Steer {
+		t.Errorf("a steerer may post: %+v", m.Permissions)
+	}
 
 	for _, c := range []struct{ body, posted string }{
 		{"why are we paused?", "/pilot why are we paused?"},

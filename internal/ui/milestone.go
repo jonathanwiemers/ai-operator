@@ -28,6 +28,15 @@ type MilestoneView struct {
 	// Tasks are the implement tasks, by issue IID.
 	Tasks   []Task `json:"tasks"`
 	CostUSD string `json:"costUSD"`
+	// Permissions is what the app may offer; the endpoints check again.
+	Permissions *MilestonePermissions `json:"permissions,omitempty"`
+}
+
+// MilestonePermissions: gitlab, the chat can be shown (after connecting);
+// steer, the user may post to the pilot.
+type MilestonePermissions struct {
+	GitLab bool `json:"gitlab"`
+	Steer  bool `json:"steer"`
 }
 
 // MilestoneAutopilot is the autopilot of a milestone and its queue.
@@ -44,6 +53,7 @@ type QueueItem struct {
 	Title           string                  `json:"title"`
 	State           aiv1.AutopilotItemState `json:"state"`
 	MergeRequestIID int64                   `json:"mergeRequestIID,omitempty"`
+	MergeRequestURL string                  `json:"mergeRequestURL,omitempty"`
 	// Task is the issue's implement task, if there is one.
 	Task string `json:"task,omitempty"`
 }
@@ -135,7 +145,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 		a := &MilestoneAutopilot{Phase: ap.Phase, PausedReason: ap.PausedReason, WaitingFor: waitingFor(ap, tasks), Items: []QueueItem{}}
 		for _, it := range ap.Items {
-			a.Items = append(a.Items, QueueItem{IID: it.IID, Title: titles[it.IID], State: it.State, MergeRequestIID: it.MergeRequestIID, Task: byIssue[it.IID]})
+			a.Items = append(a.Items, QueueItem{IID: it.IID, Title: titles[it.IID], State: it.State, MergeRequestIID: it.MergeRequestIID, MergeRequestURL: it.MergeRequestURL, Task: byIssue[it.IID]})
 		}
 		v.Autopilot = a
 	}
@@ -182,7 +192,10 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, milestoneView(ap, tasks, st, coord, time.Now()))
+	v := milestoneView(ap, tasks, st, coord, time.Now())
+	gl := s.gitlab != nil && s.gitlab.serves(ap)
+	v.Permissions = &MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(principalOf(r), ap.Namespace, ap.Name)}
+	writeJSON(w, http.StatusOK, v)
 }
 
 // milestoneThread returns the comments of the milestone's tracking issue,

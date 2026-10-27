@@ -18,12 +18,18 @@ resources' status, and links lead to GitLab.
 |------|---------|
 | **Projects** | every project you may see: tasks per stage, autopilot milestones and their progress, usage limits, suspension, last sync, model spend |
 | **Project** | one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; then the milestone's plan, the autopilot pause reason, and issues without a milestone |
+| **Milestone** | a planned milestone (linked from its project board): autopilot phase and pause reason, the queue with states, merge requests and task pages, the pilot's autonomy and open proposals, the chat on its tracking issue, and the milestone's board |
 | **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot queue with merge requests and decisions |
 
 With GitLab connected (see [Steering](#steering)), a task page has a
 **Conversation** panel: the comments of its issue, merge request and
 tracking issue, and, with the `steer` permission, a box to write comments in
 your own GitLab name.
+
+A milestone page has the same panel as its **Chat**: the comments of the
+milestone's tracking issue and, with `steer`, a box whose messages go to the
+pilot as `/pilot …` (the UI adds the prefix). Only the milestone owners'
+instructions count, as in GitLab; answer a proposal with `yes P<n>`.
 
 With the `transcript` permission, a task page also has a **Live** panel: the
 running pod's steps and the agent's session as they happen (see
@@ -377,7 +383,7 @@ with the same session cookie:
 | `GET /api/v1/me` | user name, roles, auth mode |
 | `GET /api/v1/projects` | the projects you may see, with task counts per stage |
 | `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone (`trackingIssueIID` where a milestone has a tracking issue) |
-| `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | a planned milestone: its spec task, the autopilot (`phase`, `pausedReason` as raw text, queue `items` with title, state, MR and task), the `tracking` issue, the `pilot` (task, autonomy, open proposals, cost) and its implement tasks; 404 without a spec task |
+| `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | a planned milestone: its spec task, the autopilot (`phase`, `pausedReason` as raw text, queue `items` with title, state, MR number and URL, and task), the `tracking` issue, the `pilot` (task, autonomy, open proposals, cost), its implement tasks and `permissions` (`gitlab`, `steer`: what the page may offer); 404 without a spec task |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread` | the comments of the milestone's tracking issue (`parts`), read with your GitLab token once the issue is confirmed as the operator's tracking issue of this milestone (409 otherwise); 409 when not connected |
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes` | posts `{"body": "…"}` to the milestone's pilot on its confirmed tracking issue in your GitLab name, with the pilot prefix in front unless the body starts with it; needs the `steer` grant (403, 404 without the project), 409 for an issue that is not the milestone's tracking issue, 429 over the rate limit |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}` | one task and its project |

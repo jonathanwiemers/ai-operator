@@ -100,6 +100,9 @@ function apTone(phase: string | undefined) {
             Autopilot {{ m.spec.status.autopilot.phase.toLowerCase() }}
           </Badge>
           <span class="spacer" />
+          <RouterLink v-if="m.spec" :to="{ name: 'milestone', params: { namespace, name, iid: m.iid } }">
+            {{ m.trackingIssueIID ? 'Queue and chat' : 'Milestone page' }}
+          </RouterLink>
           <span class="faint">{{ m.tasks.length }} issues · {{ cost(m.costUSD) }}</span>
         </div>
 

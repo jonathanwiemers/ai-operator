@@ -8,8 +8,18 @@ import type { GitLabStatus, NoteView, ThreadPart } from '../types'
 // Conversation shows the task's issue, merge request and tracking issue
 // comments, read with the user's own GitLab account, and posts comments in
 // their name. The operator handles them like any comment written in GitLab.
+// With milestone instead of task it is the milestone's chat: its tracking
+// issue, and messages go to the pilot (the server adds the pilot prefix).
 // stamp changes when the task does (a run, CI): then comments are likely new.
-const props = defineProps<{ namespace: string; name: string; task: string; steer: boolean; stamp: string }>()
+const props = defineProps<{
+  namespace: string
+  name: string
+  task?: string
+  milestone?: number
+  steer: boolean
+  stamp: string
+}>()
+const chat = computed(() => props.milestone !== undefined)
 
 const status = ref<GitLabStatus | null>(null)
 const parts = ref<ThreadPart[]>([])
@@ -20,7 +30,9 @@ const sending = ref(false)
 const sendError = ref('')
 
 const base = computed(
-  () => `/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/tasks/${encodeURIComponent(props.task)}`,
+  () =>
+    `/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/` +
+    (chat.value ? `milestones/${props.milestone}` : `tasks/${encodeURIComponent(props.task ?? '')}`),
 )
 // The connection's outcome comes back as a code in the URL: shown as a fixed
 // text, then removed from the URL.
@@ -73,7 +85,9 @@ const label = (p: ThreadPart) => (p.target === 'mr' ? `MR !${p.iid}` : p.target 
 
 // Commands to start a comment with; the operator reads them like in GitLab.
 const commands = computed(() =>
-  active.value === 'tracking'
+  chat.value
+    ? ['yes P', 'no P', 'rules', 'stop', 'go']
+    : active.value === 'tracking'
     ? ['/agent pause', '/agent resume', '/agent skip #']
     : ['/agent ', '/agent use claude opus', '/agent use cursor auto', '/agent effort high', '/agent retry'],
 )
@@ -86,7 +100,7 @@ async function send() {
   sending.value = true
   sendError.value = ''
   try {
-    await post(`${base.value}/notes`, { target: active.value, body: body.value })
+    await post(`${base.value}/notes`, chat.value ? { body: body.value } : { target: active.value, body: body.value })
     body.value = ''
     await loadThread()
   } catch (e) {
@@ -155,10 +169,18 @@ watch(() => props.stamp, loadThread)
         <div class="row chips">
           <button v-for="c in commands" :key="c" type="button" class="chip mono" @click="insert(c)">{{ c.trim() }}</button>
         </div>
+        <p v-if="chat" class="hint faint">
+          Messages go to the pilot on {{ label(current) }} as <code>/pilot …</code>, in your name. Only the milestone
+          owners' instructions count; post <code>/agent</code> commands in GitLab.
+        </p>
         <textarea
           v-model="body"
           rows="3"
-          :placeholder="`Comment on ${label(current)} as @${status.username}. Start with /agent to start a run.`"
+          :placeholder="
+            chat
+              ? `Message the pilot as @${status.username}, e.g. why are we paused?`
+              : `Comment on ${label(current)} as @${status.username}. Start with /agent to start a run.`
+          "
           @keydown.meta.enter="send"
           @keydown.ctrl.enter="send"
         />
@@ -166,7 +188,7 @@ watch(() => props.stamp, loadThread)
           <span v-if="sendError" class="err">{{ sendError }}</span>
           <span class="spacer" />
           <button type="submit" class="btn primary" :disabled="sending || !body.trim()">
-            {{ sending ? 'Posting…' : 'Post comment' }}
+            {{ sending ? 'Posting…' : chat ? 'Send to pilot' : 'Post comment' }}
           </button>
         </div>
       </form>
@@ -280,6 +302,11 @@ watch(() => props.stamp, loadThread)
   padding: 12px 14px;
   border-top: 1px solid var(--border);
   background: var(--surface-2);
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
 }
 
 .chips {

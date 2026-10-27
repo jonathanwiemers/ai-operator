@@ -71,6 +71,8 @@ export interface Milestone {
   title: string
   webURL: string
   spec?: Task
+  // trackingIssueIID: the milestone's tracking issue (its chat), if any.
+  trackingIssueIID?: number
   tasks: Task[]
   costUSD: string
 }
@@ -248,6 +250,50 @@ export interface ThreadPart {
   iid: number
   webURL: string
   notes: NoteView[] | null
+}
+
+export type PilotAutonomy = 'propose' | 'managed'
+
+// MilestoneView mirrors internal/ui/milestone.go. pausedReason and proposal
+// summaries are raw agent and CI text: shown as text only.
+export interface MilestoneView {
+  id: number
+  iid: number
+  title: string
+  webURL: string
+  spec: Task
+  autopilot?: {
+    phase: AutopilotPhase
+    pausedReason?: string
+    waitingFor?: number
+    items: QueueItem[]
+  }
+  tracking?: { iid: number; webURL: string }
+  pilot?: {
+    task: string
+    autonomy: PilotAutonomy
+    proposals: ProposalView[]
+    costUSD: string
+  }
+  tasks: Task[]
+  costUSD: string
+  permissions?: { gitlab: boolean; steer: boolean }
+}
+
+export interface QueueItem {
+  iid: number
+  title: string
+  state: AutopilotItem['state']
+  mergeRequestIID?: number
+  mergeRequestURL?: string
+  // task: the issue's implement task, if there is one.
+  task?: string
+}
+
+export interface ProposalView {
+  id: number
+  summary: string
+  postedAt?: string
 }
 
 export interface TaskResponse {
