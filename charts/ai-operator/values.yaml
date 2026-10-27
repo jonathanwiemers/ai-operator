@@ -178,6 +178,17 @@ metrics:
 
 healthProbePort: 8081
 
+# Receiver for GitLab project webhooks (POST /hooks/gitlab), served by the
+# leader only. It does nothing until an AgentProject sets
+# spec.webhook.secretRef. Exposing it to GitLab (an HTTPRoute or Ingress to
+# the Service <release>-webhook) is up to the cluster.
+webhook:
+  enabled: true
+  port: 8082
+  service:
+    type: ClusterIP
+    annotations: {}
+
 podAnnotations: {}
 podLabels: {}
 

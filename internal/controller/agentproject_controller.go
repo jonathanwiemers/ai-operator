@@ -24,8 +24,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
@@ -48,6 +51,9 @@ type AgentProjectReconciler struct {
 	Now       func() time.Time
 	// DefaultOwners are mentioned for projects that set no notify.users.
 	DefaultOwners []string
+	// Wakes, when set, syncs the AgentProject of every event at once (the
+	// webhook receiver's wakes).
+	Wakes <-chan event.GenericEvent
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojects,verbs=get;list;watch
@@ -793,10 +799,12 @@ func truncateMsg(s string) string {
 
 // SetupWithManager registers the controller.
 func (r *AgentProjectReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&aiv1.AgentProject{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Named("agentproject").
-		Complete(r)
+	b := ctrl.NewControllerManagedBy(mgr).
+		For(&aiv1.AgentProject{}, builder.WithPredicates(predicate.GenerationChangedPredicate{}))
+	if r.Wakes != nil {
+		b = b.WatchesRawSource(source.Channel(r.Wakes, &handler.EnqueueRequestForObject{}))
+	}
+	return b.Named("agentproject").Complete(r)
 }
 
 // hasConflicts reports whether GitLab sees conflicts between the MR and its

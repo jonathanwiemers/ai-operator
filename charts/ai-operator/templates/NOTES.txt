@@ -17,6 +17,11 @@ Next steps (in an agent namespace):
     --from-literal=CLAUDE_CODE_OAUTH_TOKEN=... --from-literal=CURSOR_API_KEY=...
   kubectl -n <ns> apply -f agentproject.yaml
 
+{{- if .Values.webhook.enabled }}
+
+GitLab webhooks: Service {{ include "ai-operator.fullname" . }}-webhook:{{ .Values.webhook.port }} serves POST /hooks/gitlab; exposing it publicly (an HTTPRoute or Ingress) is up to the cluster, the chart renders no route.
+{{- end }}
+
 {{- if .Values.ui.enabled }}
 
 Web UI:

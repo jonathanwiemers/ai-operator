@@ -36,6 +36,9 @@ spec:
           args:
             - --metrics-bind-address=:{{ .Values.metrics.port }}
             - --health-probe-bind-address=:{{ .Values.healthProbePort }}
+            {{- if .Values.webhook.enabled }}
+            - --webhook-bind-address=:{{ .Values.webhook.port }}
+            {{- end }}
             - --zap-log-level={{ .Values.logLevel }}
             {{- $agentLevels := list "debug" "info" "error" }}
             {{- if .Values.agent.logLevel }}
@@ -63,6 +66,10 @@ spec:
               containerPort: {{ .Values.metrics.port }}
             - name: probes
               containerPort: {{ .Values.healthProbePort }}
+            {{- if .Values.webhook.enabled }}
+            - name: webhook
+              containerPort: {{ .Values.webhook.port }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

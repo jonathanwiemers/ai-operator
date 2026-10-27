@@ -5,10 +5,12 @@ import (
 	"flag"
 	"os"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -18,6 +20,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/controller"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/webhook"
 )
 
 func main() {
@@ -32,6 +35,8 @@ func main() {
 	flag.StringVar(&defaultOwners, "default-owners", "", "Comma separated GitLab usernames mentioned when a task needs a human, for AgentProjects that do not set spec.notify.users.")
 	var agentLogLevel string
 	flag.StringVar(&agentLogLevel, "agent-log-level", "info", "Log level (debug, info or error) of the agent pods of AgentProjects that do not set spec.agents.logLevel.")
+	var webhookAddr string
+	flag.StringVar(&webhookAddr, "webhook-bind-address", "", "The address the GitLab webhook receiver (POST "+webhook.Path+") binds to, on the leader only. Empty: no receiver.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -60,14 +65,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.AgentProjectReconciler{
+	projects := &controller.AgentProjectReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 		NewGitLab: func(baseURL, token string) gitlab.API {
 			return gitlab.New(baseURL, token)
 		},
 		DefaultOwners: notify.Usernames(strings.Split(defaultOwners, ",")),
-	}).SetupWithManager(mgr); err != nil {
+	}
+	if webhookAddr != "" {
+		// The bot's own writes cause deliveries too: one sync per project
+		// per 5 s, with a trailing one for the last delivery.
+		waker := webhook.NewWaker(5*time.Second, 100, clock.RealClock{})
+		projects.Wakes = waker.Events()
+		utilruntime.Must(mgr.Add(&webhook.Server{
+			Addr:    webhookAddr,
+			Handler: &webhook.Receiver{Reader: mgr.GetClient(), Wake: waker.Wake, Log: ctrl.Log.WithName("webhook")},
+		}))
+	}
+	if err := projects.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentProject")
 		os.Exit(1)
 	}

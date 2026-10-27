@@ -48,10 +48,28 @@ The CRDs are part of the templates, so they are upgraded too.
 | `metrics.port` | `8080` | |
 | `metrics.service.enabled` | `false` | expose metrics through a Service |
 | `healthProbePort` | `8081` | |
+| `webhook.enabled` | `true` | serve the GitLab webhook receiver (`POST /hooks/gitlab`) and its Service `<release>-webhook`; see below |
+| `webhook.port` | `8082` | port of the receiver and of the Service |
+| `webhook.service.type`, `webhook.service.annotations` | `ClusterIP`, `{}` | |
 | `resources` | 50m / 64Mi requests, 256Mi limit | |
 | `podSecurityContext`, `securityContext` | non-root, read-only root FS, no capabilities | |
 | `nodeSelector`, `tolerations`, `affinity`, `podAnnotations`, `podLabels` | | |
 | `extraArgs` | `[]` | extra operator flags |
+
+### GitLab webhooks
+
+With `webhook.enabled`, the operator listens on `webhook.port` for GitLab
+project hook deliveries on `POST /hooks/gitlab`. A delivery only wakes the
+sync of the AgentProjects on that GitLab project whose
+`spec.webhook.secretRef` matches the hook's secret token; projects without a
+`secretRef` are never woken. A burst of deliveries for one project leads to
+at most one sync per 5 seconds (the last delivery is never lost).
+
+The chart renders no route: exposing `<release>-webhook` to GitLab (an
+HTTPRoute or Ingress for `/hooks/gitlab`) is up to the cluster.
+
+Only the leader serves the receiver. With `replicaCount` above 1, a delivery
+that reaches a non-leader pod fails and GitLab's own retry covers it.
 
 ### Web UI
 

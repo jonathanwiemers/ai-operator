@@ -1,0 +1,21 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ai-operator.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-operator.labels" . | nindent 4 }}
+  {{- with .Values.webhook.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.webhook.service.type }}
+  selector:
+    {{- include "ai-operator.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: webhook
+      port: {{ .Values.webhook.port }}
+      targetPort: webhook
+{{- end }}
