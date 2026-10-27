@@ -660,6 +660,40 @@ type WebhookSpec struct {
 	// for this project is refused.
 	// +optional
 	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
+
+	// Enabled registers the project hook in GitLab: the operator creates or
+	// updates one hook for URL with the events it reacts to (issues, notes,
+	// merge requests, pipelines, pushes), SSL verification and SecretRef's
+	// token, and deletes that hook again when switched off. It needs the
+	// bot's Maintainer role; the WebhookRegistered condition tells how it went.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// URL is the public URL of the operator's /hooks/gitlab endpoint, e.g.
+	// https://ai-operator.example.com/hooks/gitlab. Needed with Enabled.
+	// +optional
+	URL string `json:"url,omitempty"`
+}
+
+// ConditionWebhookRegistered is the AgentProject condition that tells whether
+// the project hook is registered (spec.webhook.enabled).
+const ConditionWebhookRegistered = "WebhookRegistered"
+
+// WebhookStatus is the project hook the operator registered.
+type WebhookStatus struct {
+	// HookID is the hook's ID in GitLab.
+	// +optional
+	HookID int64 `json:"hookID,omitempty"`
+
+	// ConfigHash is a hash of the settings last registered (URL, events, SSL
+	// verification, a hash of the secret), so a change is noticed without
+	// asking GitLab.
+	// +optional
+	ConfigHash string `json:"configHash,omitempty"`
+
+	// CheckedAt is when the hook was last checked in GitLab.
+	// +optional
+	CheckedAt *metav1.Time `json:"checkedAt,omitempty"`
 }
 
 // MainHealthState is the health of the default branch.
@@ -887,6 +921,10 @@ type AgentProjectStatus struct {
 	// MainHealth is the health of the default branch.
 	// +optional
 	MainHealth *MainHealthStatus `json:"mainHealth,omitempty"`
+
+	// Webhook is the project hook the operator registered.
+	// +optional
+	Webhook *WebhookStatus `json:"webhook,omitempty"`
 
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -479,5 +480,61 @@ func TestIssueLinks(t *testing.T) {
 		"DELETE /api/v4/projects/group%2Fapp/issues/2/links/33"}
 	if !slices.Equal(calls, want) {
 		t.Fatalf("calls %v", calls)
+	}
+}
+
+func TestProjectHooks(t *testing.T) {
+	var method, path string
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.EscapedPath()
+		body = nil
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`[{"id":5,"url":"https://op.example/hooks/gitlab","issues_events":true,"note_events":true,"merge_requests_events":true,"pipeline_events":true,"push_events":false,"enable_ssl_verification":true}]`))
+		case http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			_ = json.NewEncoder(w).Encode(ProjectHook{ID: 6, URL: "https://op.example/hooks/gitlab"})
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	ctx := context.Background()
+
+	hooks, err := c.ListProjectHooks(ctx, "g/p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ProjectHook{ID: 5, URL: "https://op.example/hooks/gitlab", IssuesEvents: true, NoteEvents: true, MergeRequestsEvents: true, PipelineEvents: true, EnableSSLVerification: true}
+	if method != http.MethodGet || path != "/api/v4/projects/g%2Fp/hooks" || len(hooks) != 1 || hooks[0] != want {
+		t.Fatalf("list: %s %s %+v", method, path, hooks)
+	}
+
+	// Every field is sent, false ones too, so an edit leaves nothing behind.
+	opts := ProjectHookOptions{URL: "https://op.example/hooks/gitlab", Token: "s3cret", IssuesEvents: true, NoteEvents: true, EnableSSLVerification: true}
+	wantBody := map[string]any{"url": "https://op.example/hooks/gitlab", "token": "s3cret", "issues_events": true, "note_events": true,
+		"merge_requests_events": false, "pipeline_events": false, "push_events": false, "enable_ssl_verification": true}
+	h, err := c.AddProjectHook(ctx, "g/p", opts)
+	if err != nil || h.ID != 6 {
+		t.Fatalf("add: %+v %v", h, err)
+	}
+	if method != http.MethodPost || path != "/api/v4/projects/g%2Fp/hooks" || !reflect.DeepEqual(body, wantBody) {
+		t.Fatalf("add: %s %s %v", method, path, body)
+	}
+
+	if h, err = c.EditProjectHook(ctx, "g/p", 6, opts); err != nil || h.ID != 6 {
+		t.Fatalf("edit: %+v %v", h, err)
+	}
+	if method != http.MethodPut || path != "/api/v4/projects/g%2Fp/hooks/6" || !reflect.DeepEqual(body, wantBody) {
+		t.Fatalf("edit: %s %s %v", method, path, body)
+	}
+
+	if err := c.DeleteProjectHook(ctx, "g/p", 6); err != nil {
+		t.Fatal(err)
+	}
+	if method != http.MethodDelete || path != "/api/v4/projects/g%2Fp/hooks/6" {
+		t.Fatalf("delete: %s %s", method, path)
 	}
 }

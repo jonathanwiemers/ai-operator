@@ -68,6 +68,16 @@ at most one sync per 5 seconds (the last delivery is never lost).
 The chart renders no route: exposing `<release>-webhook` to GitLab (an
 HTTPRoute or Ingress for `/hooks/gitlab`) is up to the cluster.
 
+With `spec.webhook.enabled: true` and `spec.webhook.url` (the public URL of
+`/hooks/gitlab`), the operator registers the project hook itself: one hook
+for issues, notes, merge requests, pipelines and pushes, with SSL
+verification and the `secretRef`'s token. It updates that hook when the URL
+or the secret changes, looks it up hourly to recreate one deleted by hand,
+and deletes it when `enabled` is switched off; other hooks are left alone.
+This needs the bot's Maintainer role. The AgentProject's `WebhookRegistered`
+condition tells how it went (`Registered`, `Forbidden`, `Invalid`, `Failed`);
+a failed registration never fails the sync, polling goes on.
+
 Only the leader serves the receiver. With `replicaCount` above 1, a delivery
 that reaches a non-leader pod fails and GitLab's own retry covers it.
 

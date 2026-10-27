@@ -59,6 +59,10 @@ type API interface {
 	ListPipelineJobs(ctx context.Context, project string, pipelineID int64, scope string) ([]Job, error)
 	JobTrace(ctx context.Context, project string, jobID int64) (string, error)
 	RetryPipeline(ctx context.Context, project string, pipelineID int64) (*Pipeline, error)
+	ListProjectHooks(ctx context.Context, project string) ([]ProjectHook, error)
+	AddProjectHook(ctx context.Context, project string, opts ProjectHookOptions) (*ProjectHook, error)
+	EditProjectHook(ctx context.Context, project string, id int64, opts ProjectHookOptions) (*ProjectHook, error)
+	DeleteProjectHook(ctx context.Context, project string, id int64) error
 }
 
 // Pipeline is a CI pipeline.
@@ -300,6 +304,31 @@ type MergeOptions struct {
 	// commit is merged.
 	SHA                      string `json:"sha,omitempty"`
 	ShouldRemoveSourceBranch bool   `json:"should_remove_source_branch,omitempty"`
+}
+
+// ProjectHook is a project webhook. GitLab never returns its token.
+type ProjectHook struct {
+	ID                    int64  `json:"id"`
+	URL                   string `json:"url"`
+	IssuesEvents          bool   `json:"issues_events"`
+	NoteEvents            bool   `json:"note_events"`
+	MergeRequestsEvents   bool   `json:"merge_requests_events"`
+	PipelineEvents        bool   `json:"pipeline_events"`
+	PushEvents            bool   `json:"push_events"`
+	EnableSSLVerification bool   `json:"enable_ssl_verification"`
+}
+
+// ProjectHookOptions creates or edits a project hook. Every field is sent, so
+// an edit leaves the hook with exactly these settings.
+type ProjectHookOptions struct {
+	URL                   string `json:"url"`
+	Token                 string `json:"token"`
+	IssuesEvents          bool   `json:"issues_events"`
+	NoteEvents            bool   `json:"note_events"`
+	MergeRequestsEvents   bool   `json:"merge_requests_events"`
+	PipelineEvents        bool   `json:"pipeline_events"`
+	PushEvents            bool   `json:"push_events"`
+	EnableSSLVerification bool   `json:"enable_ssl_verification"`
 }
 
 // Client implements API against the GitLab REST API v4.
@@ -834,6 +863,27 @@ func (c *Client) CreateMergeRequestNote(ctx context.Context, project string, iid
 	var n Note
 	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/merge_requests/%d/notes", projectPath(project), iid), nil, map[string]string{"body": body}, &n)
 	return &n, err
+}
+
+func (c *Client) ListProjectHooks(ctx context.Context, project string) ([]ProjectHook, error) {
+	return list[ProjectHook](ctx, c, projectPath(project)+"/hooks", nil)
+}
+
+func (c *Client) AddProjectHook(ctx context.Context, project string, opts ProjectHookOptions) (*ProjectHook, error) {
+	var h ProjectHook
+	_, err := c.do(ctx, http.MethodPost, projectPath(project)+"/hooks", nil, opts, &h)
+	return &h, err
+}
+
+func (c *Client) EditProjectHook(ctx context.Context, project string, id int64, opts ProjectHookOptions) (*ProjectHook, error) {
+	var h ProjectHook
+	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/hooks/%d", projectPath(project), id), nil, opts, &h)
+	return &h, err
+}
+
+func (c *Client) DeleteProjectHook(ctx context.Context, project string, id int64) error {
+	_, err := c.do(ctx, http.MethodDelete, fmt.Sprintf("%s/hooks/%d", projectPath(project), id), nil, nil, nil)
+	return err
 }
 
 func (c *Client) ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error) {

@@ -1150,6 +1150,14 @@ spec:
                 description: Webhook configures the deliveries of the GitLab project
                   hook.
                 properties:
+                  enabled:
+                    description: |-
+                      Enabled registers the project hook in GitLab: the operator creates or
+                      updates one hook for URL with the events it reacts to (issues, notes,
+                      merge requests, pipelines, pushes), SSL verification and SecretRef's
+                      token, and deletes that hook again when switched off. It needs the
+                      bot's Maintainer role; the WebhookRegistered condition tells how it went.
+                    type: boolean
                   secretRef:
                     description: |-
                       SecretRef points to the GitLab project hook's secret token. A delivery
@@ -1177,6 +1185,11 @@ spec:
                     - key
                     type: object
                     x-kubernetes-map-type: atomic
+                  url:
+                    description: |-
+                      URL is the public URL of the operator's /hooks/gitlab endpoint, e.g.
+                      https://ai-operator.example.com/hooks/gitlab. Needed with Enabled.
+                    type: string
                 type: object
               workflow:
                 description: Workflow defines the labels that drive the issue state
@@ -1568,6 +1581,24 @@ spec:
                   - until
                   type: object
                 type: array
+              webhook:
+                description: Webhook is the project hook the operator registered.
+                properties:
+                  checkedAt:
+                    description: CheckedAt is when the hook was last checked in GitLab.
+                    format: date-time
+                    type: string
+                  configHash:
+                    description: |-
+                      ConfigHash is a hash of the settings last registered (URL, events, SSL
+                      verification, a hash of the secret), so a change is noticed without
+                      asking GitLab.
+                    type: string
+                  hookID:
+                    description: HookID is the hook's ID in GitLab.
+                    format: int64
+                    type: integer
+                type: object
             type: object
         type: object
     served: true

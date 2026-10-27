@@ -162,6 +162,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 		project.Status.BotUsername = u.Username
 	}
+	r.syncWebhook(ctx, gl, project, spec)
 
 	gate := r.commandGate(gl, project, spec)
 
