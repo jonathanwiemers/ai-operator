@@ -131,6 +131,13 @@ func (in *AgentProjectStatus) DeepCopyInto(out *AgentProjectStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.EngineUsage != nil {
+		in, out := &in.EngineUsage, &out.EngineUsage
+		*out = make([]EngineUsage, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.MainHealth != nil {
 		in, out := &in.MainHealth, &out.MainHealth
 		*out = new(MainHealthStatus)
@@ -1248,6 +1255,13 @@ func (in *RunStatus) DeepCopyInto(out *RunStatus) {
 	if in.DeferredUntil != nil {
 		in, out := &in.DeferredUntil, &out.DeferredUntil
 		*out = (*in).DeepCopy()
+	}
+	if in.EngineUsage != nil {
+		in, out := &in.EngineUsage, &out.EngineUsage
+		*out = make([]EngineUsage, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	if in.PushedAt != nil {
 		in, out := &in.PushedAt, &out.PushedAt

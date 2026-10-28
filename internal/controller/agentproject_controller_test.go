@@ -340,6 +340,33 @@ func TestUsageLimitsAggregation(t *testing.T) {
 	}
 }
 
+func TestEngineUsageKeepsTheFreshestReading(t *testing.T) {
+	at := func(min int) metav1.Time { return metav1.NewTime(time.Date(2026, 10, 28, 12, min, 0, 0, time.UTC)) }
+	reading := func(engine aiv1.Engine, min int, percent int32) aiv1.EngineUsage {
+		return aiv1.EngineUsage{Engine: engine, ObservedAt: at(min), Windows: []aiv1.UsageWindow{{Name: "five_hour", Percent: percent}}}
+	}
+	task := func(us ...aiv1.EngineUsage) aiv1.AgentTask {
+		var t aiv1.AgentTask
+		t.Status.Run.EngineUsage = us
+		return t
+	}
+	// The previous status has an older claude reading and a cursor one no
+	// task has any more (its task is gone).
+	prev := []aiv1.EngineUsage{reading(aiv1.EngineClaude, 1, 5), reading(aiv1.EngineCursor, 2, 50)}
+	got := engineUsage(prev, []aiv1.AgentTask{
+		task(reading(aiv1.EngineClaude, 10, 20)),
+		task(reading(aiv1.EngineClaude, 5, 10)),
+		{},
+	})
+	if len(got) != 2 || got[0].Engine != aiv1.EngineClaude || got[0].Windows[0].Percent != 20 ||
+		got[1].Engine != aiv1.EngineCursor || got[1].Windows[0].Percent != 50 {
+		t.Fatalf("expected claude's freshest reading (20 %%) and the kept cursor one, got %+v", got)
+	}
+	if prev[0].Windows[0].Percent != 5 {
+		t.Fatal("the previous status must not be changed in place")
+	}
+}
+
 func TestReviewCommandRequestsAReReview(t *testing.T) {
 	e := newProjectEnv(t)
 	human := gitlab.User{ID: 1, Username: "jonathan"}

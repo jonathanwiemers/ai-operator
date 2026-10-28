@@ -947,6 +947,12 @@ type AgentProjectStatus struct {
 	// +optional
 	UsageLimits []UsageLimit `json:"usageLimits,omitempty"`
 
+	// EngineUsage is the freshest usage reading per engine of the project's
+	// tasks: how much of each usage window is used and when it resets.
+	// Readings outlive their tasks until a newer one arrives.
+	// +optional
+	EngineUsage []EngineUsage `json:"engineUsage,omitempty"`
+
 	// MainHealth is the health of the default branch.
 	// +optional
 	MainHealth *MainHealthStatus `json:"mainHealth,omitempty"`

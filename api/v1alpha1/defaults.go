@@ -289,6 +289,23 @@ func (l LifecycleSpec) Backoff(deferrals int32) time.Duration {
 	return min(d, l.MaxUsageLimitBackoff.Duration)
 }
 
+// MergeEngineUsage returns list with u in place of its engine's reading,
+// unless that one is newer, sorted by engine.
+func MergeEngineUsage(list []EngineUsage, u EngineUsage) []EngineUsage {
+	out := slices.Clone(list)
+	for i, cur := range out {
+		if cur.Engine == u.Engine {
+			if !cur.ObservedAt.After(u.ObservedAt.Time) {
+				out[i] = u
+			}
+			return out
+		}
+	}
+	out = append(out, u)
+	slices.SortFunc(out, func(a, b EngineUsage) int { return strings.Compare(string(a.Engine), string(b.Engine)) })
+	return out
+}
+
 // ActiveUsageLimit returns the limit of an engine that is still in effect.
 func (s AgentProjectStatus) ActiveUsageLimit(engine Engine, now time.Time) (UsageLimit, bool) {
 	for _, l := range s.UsageLimits {

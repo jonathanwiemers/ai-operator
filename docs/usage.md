@@ -1185,6 +1185,16 @@ time, and the project status lists the active limits:
 kubectl -n agents get agentproject <name> -o jsonpath='{.status.usageLimits}'
 ```
 
+How much is left: claude reports its usage windows (5 hours, 7 days) with
+every call. The project status keeps the freshest reading per engine
+(`status.engineUsage`: each window's percentage and reset time, and when it
+was read); each task keeps its own in `status.run.engineUsage`. cursor
+reports none.
+
+```sh
+kubectl -n agents get agentproject <name> -o jsonpath='{.status.engineUsage}'
+```
+
 GitLab has limits too, and gitlab.com is sometimes slow or answers 502. The
 operator and the runners retry on their own:
 

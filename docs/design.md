@@ -1179,7 +1179,14 @@ Things to keep in mind with subscriptions:
   task `Waiting` with `status.run.deferredUntil`, and retries then; without
   a reset time it backs off exponentially (5m → 1h). The
   operator collects active limits per engine into the project status, and
-  runners don't call a limited engine at all but wait for the same reset. A
+  runners don't call a limited engine at all but wait for the same reset.
+* Claude Code reports its usage windows with every call (a
+  `rate_limit_event` in the stream: status, and per window the
+  utilization and reset time). The runner keeps the newest reading per
+  engine on the task (`status.run.engineUsage`); the operator keeps the
+  freshest per engine in the project status (`status.engineUsage`), where
+  a reading outlives its task until a newer one arrives. cursor-agent
+  reports no usage. A
   limit during a review fix round publishes the work done so far. Deferred
   runs don't count towards `maxRunsPerTask`.
 * The plans are meant for your own use. Check the terms of your plan before

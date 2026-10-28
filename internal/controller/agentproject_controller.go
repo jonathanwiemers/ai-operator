@@ -465,6 +465,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	}
 	project.Status.ActiveTasks = int32(len(keep))
 	project.Status.UsageLimits = usageLimits(tasks.Items, r.now())
+	project.Status.EngineUsage = engineUsage(project.Status.EngineUsage, tasks.Items)
 	return errors.Join(errs...)
 }
 
@@ -506,6 +507,17 @@ func usageLimits(tasks []aiv1.AgentTask, now time.Time) []aiv1.UsageLimit {
 	}
 	sort.Slice(limits, func(i, j int) bool { return limits[i].Engine < limits[j].Engine })
 	return limits
+}
+
+// engineUsage keeps the freshest usage reading per engine of the tasks and
+// of the project's previous status, so a reading outlives its task.
+func engineUsage(prev []aiv1.EngineUsage, tasks []aiv1.AgentTask) []aiv1.EngineUsage {
+	for _, t := range tasks {
+		for _, u := range t.Status.Run.EngineUsage {
+			prev = aiv1.MergeEngineUsage(prev, u)
+		}
+	}
+	return prev
 }
 
 // titlePattern compiles milestones.titlePattern; nil when unset.

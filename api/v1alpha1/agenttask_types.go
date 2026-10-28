@@ -681,6 +681,12 @@ type RunStatus struct {
 	// +optional
 	BlockReason BlockReason `json:"blockReason,omitempty"`
 
+	// EngineUsage is the newest usage reading per engine the runner got
+	// from an agent call of this task (claude only); the project collects
+	// the freshest of all tasks.
+	// +optional
+	EngineUsage []EngineUsage `json:"engineUsage,omitempty"`
+
 	// Deferrals counts consecutive deferrals of the current run request; it
 	// drives the exponential backoff when the reset time is unknown.
 	// +optional

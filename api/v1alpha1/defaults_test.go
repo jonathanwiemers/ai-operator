@@ -73,6 +73,21 @@ func TestUsageLimitBackoff(t *testing.T) {
 	}
 }
 
+func TestMergeEngineUsage(t *testing.T) {
+	at := func(min int) metav1.Time { return metav1.NewTime(time.Date(2026, 10, 28, 12, min, 0, 0, time.UTC)) }
+	list := MergeEngineUsage(nil, EngineUsage{Engine: EngineCursor, ObservedAt: at(1)})
+	list = MergeEngineUsage(list, EngineUsage{Engine: EngineClaude, ObservedAt: at(2), Status: "allowed"})
+	if len(list) != 2 || list[0].Engine != EngineClaude || list[1].Engine != EngineCursor {
+		t.Fatalf("one reading per engine, sorted by engine: %+v", list)
+	}
+	if got := MergeEngineUsage(list, EngineUsage{Engine: EngineClaude, ObservedAt: at(1), Status: "rejected"}); got[0].Status != "allowed" {
+		t.Fatalf("an older reading must not replace a newer one: %+v", got)
+	}
+	if got := MergeEngineUsage(list, EngineUsage{Engine: EngineClaude, ObservedAt: at(3), Status: "rejected"}); got[0].Status != "rejected" || list[0].Status != "allowed" {
+		t.Fatalf("a newer reading replaces the old one in a copy: %+v / %+v", got, list)
+	}
+}
+
 func TestWebhookDefaults(t *testing.T) {
 	w := AgentProjectSpec{}.WithDefaults().Webhook
 	if w.FallbackInterval.Duration != 10*time.Minute || w.SilenceThreshold.Duration != 30*time.Minute {

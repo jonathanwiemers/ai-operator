@@ -1439,6 +1439,59 @@ spec:
                       the run is retried after this time.
                     format: date-time
                     type: string
+                  engineUsage:
+                    description: |-
+                      EngineUsage is the newest usage reading per engine the runner got
+                      from an agent call of this task (claude only); the project collects
+                      the freshest of all tasks.
+                    items:
+                      description: |-
+                        EngineUsage is what an engine last said about its usage windows (claude
+                        reports them with every call; cursor reports none).
+                      properties:
+                        engine:
+                          description: Engine is the coding agent CLI that runs a
+                            role.
+                          enum:
+                          - claude
+                          - cursor
+                          type: string
+                        observedAt:
+                          description: ObservedAt is when the engine reported it.
+                          format: date-time
+                          type: string
+                        status:
+                          description: |-
+                            Status as the engine reports it, e.g. allowed, allowed_warning or
+                            rejected.
+                          type: string
+                        windows:
+                          description: Windows are the engine's usage windows, e.g.
+                            five_hour and seven_day.
+                          items:
+                            description: UsageWindow is how much of one usage window
+                              is used.
+                            properties:
+                              name:
+                                type: string
+                              percent:
+                                description: Percent of the window that is used.
+                                format: int32
+                                type: integer
+                              resetsAt:
+                                description: ResetsAt is when the window starts over.
+                                format: date-time
+                                type: string
+                            required:
+                            - name
+                            - percent
+                            type: object
+                          type: array
+                      required:
+                      - engine
+                      - observedAt
+                      type: object
+                    type: array
                   interruptions:
                     description: |-
                       Interruptions counts runs of the current request started again because

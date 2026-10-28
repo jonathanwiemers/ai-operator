@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -80,6 +81,9 @@ type Runner struct {
 	// blamedRestarts is the agent container's restart count of the last
 	// termination a lost call was put down to.
 	blamedRestarts int32
+	// usage is the task's newest usage reading per engine (recordUsage).
+	usage   []aiv1.EngineUsage
+	usageMu sync.Mutex
 }
 
 // Outcome is the result of one run.
@@ -322,6 +326,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		}
 	}
 	r.projectStatus = project.Status
+	r.usage = task.Status.Run.EngineUsage
 	request := task.Spec.RunRequest
 	r.run = newRunLog(r.Log, task)
 	r.blamedRestarts, r.pushedHead, r.changedPins = 0, "", nil
@@ -577,6 +582,9 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 			lost := r.agentLost(ctx, err, start)
 			switch {
 			case lost == nil:
+				if res != nil {
+					r.recordUsage(ctx, role.Engine, res.Usage)
+				}
 				return res, classifyLimit(role.Engine, err, res)
 			case !lost.back:
 				return nil, lost

@@ -185,6 +185,36 @@ func (e *limitEnv) issueNotes() []string {
 	return out
 }
 
+// usageEngine reports a usage reading with every result, like claude.
+type usageEngine struct {
+	next    Engine
+	percent int32
+}
+
+func (u *usageEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
+	res, err := u.next.Run(ctx, inv)
+	if res != nil {
+		res.Usage = &aiv1.EngineUsage{Status: "allowed", Windows: []aiv1.UsageWindow{{Name: "five_hour", Percent: u.percent}}}
+	}
+	return res, err
+}
+
+func TestRunRecordsEngineUsage(t *testing.T) {
+	engine := &usageEngine{next: &scriptedEngine{}, percent: 15}
+	e := newLimitEnv(t, engine)
+	if !e.step() {
+		t.Fatal("expected a run")
+	}
+	usage := e.task().Status.Run.EngineUsage
+	if len(usage) != 1 || usage[0].Engine != aiv1.EngineClaude || usage[0].Status != "allowed" ||
+		usage[0].Windows[0].Percent != 15 || !usage[0].ObservedAt.Time.Equal(e.now) {
+		t.Fatalf("expected claude's reading on the task, got %+v", usage)
+	}
+	if got := e.r.projectStatus.EngineUsage; len(got) != 1 || got[0].Windows[0].Percent != 15 {
+		t.Fatalf("the run's project status must have the reading too, got %+v", got)
+	}
+}
+
 func TestUsageLimitDefersRun(t *testing.T) {
 	reset := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
 	engine := &limitedEngine{

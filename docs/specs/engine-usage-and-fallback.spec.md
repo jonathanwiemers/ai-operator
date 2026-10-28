@@ -338,6 +338,7 @@ production line count, deviations.
 
 - 2026-10-28 `spec-doc`: added this spec; 0 production lines.
 - 2026-10-28 `usage-parse`: `runCLI` keeps the last `rate_limit_event` of a call on `Result.Usage` (`usageReading`: status, windows sorted by name, utilization rounded to whole percent); `classifyLimit` reads cursor's `M/D/YYYY` reset date as 00:00 UTC when there is no Claude epoch; the API types `EngineUsage` and `UsageWindow` land here already (no status field yet, so no CRD change) so the reading crosses the agent socket in its final shape; ~53 production lines with the types; deviation: the types moved forward from `usage-status`.
+- 2026-10-28 `usage-status`: `status.run.engineUsage` (runner's `recordUsage` after every agent call that returned a reading, whole list under a mutex, also into the run's project status; a failed write only logs) and `status.engineUsage` (controller `engineUsage`: freshest per engine over the tasks and the previous status) via `v1alpha1.MergeEngineUsage`; docs in `design.md` and `usage.md`; ~40 production lines; no deviations.
 
 ## MRs
 
