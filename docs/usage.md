@@ -1156,14 +1156,22 @@ Subscriptions have usage windows, and APIs have rate limits. When an agent
 CLI reports such a limit, the run is **paused, not failed**:
 
 - The issue moves to `agent::blocked` + `agent-blocked::quota` and gets one
-  comment: "⏳ The `claude` engine reached a usage limit. The run is paused
-  and retried automatically at …; until then the issue is blocked". When
+  comment that says when and on which agent the run resumes: "⏳ `claude`
+  reached its usage limit (until 2026-10-28 19:20 UTC). The run is paused
+  and resumes at 2026-10-28 19:20 UTC on `claude/claude-opus-5-5`; until
+  then the issue is blocked". With a fallback that is limited too, no agent
+  has usage left; the comment names both and the run resumes on whichever
+  is free first: "⏳ No agent has usage left: `cursor` is limited until
+  2026-11-13 00:00 UTC, its fallback `claude` until 2026-10-28 19:20 UTC.
+  The run is paused and resumes at 2026-10-28 19:20 UTC on
+  `claude/claude-sonnet-5-5`; …". When
   the run starts again, the issue gets its label back (normally
   `agent::working`); a later limit blocks it again.
   `/agent …` or a move to `agent::ready` lifts the block as usual, but the
   run still waits for the reset.
-- The run is retried at the reset time the CLI reports. If it doesn't
-  report one, the wait is 5 minutes, doubling with every further limit hit
+- The run is retried at the reset time the CLI reports (claude's from its
+  limit message or, when that names none, from its usage windows; cursor's
+  monthly reset date). If it doesn't report one, the wait is 5 minutes, doubling with every further limit hit
   up to 1 hour (`spec.lifecycle.usageLimitBackoff` /
   `maxUsageLimitBackoff`).
 - Paused runs don't count towards `maxRunsPerTask` and don't take a run slot.

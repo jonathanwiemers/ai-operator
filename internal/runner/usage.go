@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -48,7 +49,8 @@ func (r *Runner) fallBack(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 		r.log().Info("fallback ignored", "role", inv.Role, "error", ferr.Error())
 		return res, err
 	}
-	if _, limited := r.activeLimit(fb.Engine); limited {
+	if l, limited := r.activeLimit(fb.Engine); limited {
+		lim.FallbackEngine, lim.FallbackModel, lim.FallbackUntil = fb.Engine, fb.Model, l.Until.Time
 		return res, err
 	}
 	r.routeAround(ctx, lim, inv.Role, fb)
@@ -59,6 +61,19 @@ func (r *Runner) fallBack(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 	r.usageMu.Unlock()
 	inv.Model, inv.Effort = fb.Model, fb.Effort
 	fres, ferr := r.invokeOn(ctx, fb, inv, fullPrompt)
+	if flim, limited := AsUsageLimit(ferr); limited {
+		if lim.Soft {
+			// The fallback has nothing left either: the role's own engine,
+			// which has, runs after all.
+			return nil, err
+		}
+		// No agent has usage left: the run waits for the first of both.
+		lim.FallbackEngine, lim.FallbackModel, lim.FallbackUntil = fb.Engine, fb.Model, r.resetOrBackoff(flim.ResetAt)
+		return fres, lim
+	}
+	if lim.Soft {
+		r.run.noteFallback(fmt.Sprintf("↪️ `%s`'s %s, so %s ran on `%s/%s` instead.", lim.Engine, lim.Message, inv.Role, fb.Engine, fb.Model))
+	}
 	if fres != nil {
 		fres.FallbackFrom = lim.Engine
 		if res != nil {
@@ -76,14 +91,9 @@ func (r *Runner) fallBack(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 func (r *Runner) routeAround(ctx context.Context, lim *UsageLimitError, role string, fb aiv1.RoleSpec) {
 	if lim.Soft {
 		r.log().Info("usage window over the threshold, running on the fallback", "role", role, "engine", lim.Engine, "usage", lim.Message, "fallback", fb.Engine, "model", fb.Model)
-		r.run.noteFallback(fmt.Sprintf("↪️ `%s`'s %s, so %s ran on `%s/%s` instead.", lim.Engine, lim.Message, role, fb.Engine, fb.Model))
 		return
 	}
-	now := r.now()
-	until := lim.ResetAt
-	if !until.After(now) {
-		until = now.Add(r.projectSpec.Lifecycle.Backoff(1))
-	}
+	until := r.resetOrBackoff(lim.ResetAt)
 	l := aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: until}, Message: truncate(lim.Message, 300)}
 	r.log().Info("usage limit reached, running on the fallback", "role", role, "engine", lim.Engine, "until", until.UTC(), "fallback", fb.Engine, "model", fb.Model)
 	r.run.noteFallback(fmt.Sprintf("↪️ `%s` reached its usage limit (until %s UTC), so %s ran on `%s/%s` instead.",
@@ -155,3 +165,23 @@ func (r *Runner) nearLimit(role aiv1.RoleSpec) *UsageLimitError {
 	}
 	return near
 }
+
+// resetOrBackoff is a limit's reset time, or lifecycle.usageLimitBackoff from
+// now when the engine named none.
+func (r *Runner) resetOrBackoff(reset time.Time) time.Time {
+	if now := r.now(); !reset.After(now) {
+		return now.Add(r.projectSpec.Lifecycle.Backoff(1))
+	}
+	return reset
+}
+
+// agentName is "<engine>/<model>", or the engine when it picks the model.
+func agentName(engine aiv1.Engine, model string) string {
+	if model == "" {
+		return string(engine)
+	}
+	return string(engine) + "/" + model
+}
+
+// utcMinute formats a time for comments, e.g. "2026-11-13 00:00".
+func utcMinute(t time.Time) string { return t.UTC().Format("2006-01-02 15:04") }

@@ -1195,8 +1195,16 @@ Things to keep in mind with subscriptions:
   `claude/claude-sonnet-5-5` instead."), and the step results name the
   engine that ran. Sessions are stored under the engine that ran, so the
   next run on the original engine starts fresh with the full thread. Without
-  a usable fallback, or while its engine is limited too, the run defers as
-  above. With `agents.fallbackAtPercent`, a role with a fallback switches
+  a usable fallback, the run defers as above. When the fallback's engine
+  is limited too (known, or found by calling it), no agent of the role has
+  usage left: the run is deferred until the **earlier** of both resets and
+  resumes on that agent, the task keeps both limits for the project, and
+  the first deferral's comment names both limits and when and on which
+  agent the run resumes.
+* Claude's newer limit messages ("You've hit your session limit · resets
+  3pm") carry no reset epoch: the reset time then comes from the call's
+  usage reading (the latest reset of the full windows, else the fullest
+  window's). With `agents.fallbackAtPercent`, a role with a fallback switches
   before the hard limit: when the project's freshest reading of its engine
   has a window, not reset since, at or above the threshold. That only
   routes (a "soft" limit, never recorded or deferred).

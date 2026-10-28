@@ -503,17 +503,36 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 	if !until.After(now) {
 		until = now.Add(spec.Lifecycle.Backoff(deferrals))
 	}
-	r.log().Info("usage limit reached, deferring run", "engine", lim.Engine, "until", until.UTC(), "deferrals", deferrals,
+	// With the fallback limited too, the run resumes on whichever agent is
+	// free first; the project keeps knowing both limits.
+	own, resumeOn := until, agentName(lim.Engine, lim.Model)
+	if lim.FallbackEngine != "" {
+		r.usageMu.Lock()
+		r.routed = mergeLimit(r.routed, aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: own}, Message: truncate(lim.Message, 300)})
+		r.routed = mergeLimit(r.routed, aiv1.UsageLimit{Engine: lim.FallbackEngine, Until: metav1.Time{Time: lim.FallbackUntil}})
+		r.usageMu.Unlock()
+		if lim.FallbackUntil.Before(until) {
+			until, resumeOn = lim.FallbackUntil, agentName(lim.FallbackEngine, lim.FallbackModel)
+		}
+	}
+	r.log().Info("usage limit reached, deferring run", "engine", lim.Engine, "until", until.UTC(), "resumeOn", resumeOn, "deferrals", deferrals,
 		"message", lim.Message, "steps", r.run.lines())
 
 	if deferrals == 1 && task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
-		body := fmt.Sprintf("⏳ The `%s` engine reached a usage limit. The run is paused and retried automatically at %s UTC; "+
-			"until then the issue is blocked (`%squota`).", lim.Engine, until.UTC().Format("2006-01-02 15:04"), spec.Workflow.BlockedReasonPrefix)
+		body := fmt.Sprintf("⏳ `%s` reached its usage limit (until %s UTC).", lim.Engine, utcMinute(own))
+		if lim.FallbackEngine != "" {
+			body = fmt.Sprintf("⏳ No agent has usage left: `%s` is limited until %s UTC, its fallback `%s` until %s UTC.",
+				lim.Engine, utcMinute(own), lim.FallbackEngine, utcMinute(lim.FallbackUntil))
+		}
+		body += fmt.Sprintf(" The run is paused and resumes at %s UTC on `%s`; until then the issue is blocked (`%squota`).",
+			utcMinute(until), resumeOn, spec.Workflow.BlockedReasonPrefix)
 		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); err != nil {
 			r.log().Error(err, "posting usage limit note")
 		}
 	}
+	routed := r.routed
 	return r.patchRun(ctx, func(s *aiv1.RunStatus) {
+		s.UsageLimits = routed
 		// The request stays pending, but nothing is in progress any more.
 		s.ActiveRunRequest = s.ObservedRunRequest
 		s.CurrentStep = ""
@@ -586,8 +605,11 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 		}
 	}
 	res, err := r.invokeOn(ctx, role, inv, fullPrompt)
-	if lim, ok := AsUsageLimit(err); ok && role.Fallback != nil {
-		return r.fallBack(ctx, role, inv, fullPrompt, res, err, lim)
+	if lim, ok := AsUsageLimit(err); ok {
+		lim.Model = inv.Model
+		if role.Fallback != nil {
+			return r.fallBack(ctx, role, inv, fullPrompt, res, err, lim)
+		}
 	}
 	return res, err
 }

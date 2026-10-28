@@ -32,6 +32,8 @@ func TestClassifyLimit(t *testing.T) {
 		`API Error: 429 {"type":"error","error":{"type":"rate_limit_error"}}`,
 		`API Error: 529 {"type":"error","error":{"type":"overloaded_error"}}`,
 		"You've hit your usage limit for this billing period",
+		"You've hit your limit · resets 3pm (Europe/Berlin)",
+		"You've hit your session limit · resets 3pm",
 		"Too Many Requests",
 	}
 	for _, msg := range limited {
@@ -71,6 +73,20 @@ func TestClassifyLimit(t *testing.T) {
 	lim, _ = AsUsageLimit(classifyLimit(aiv1.EngineClaude, errors.New("usage limit reached|1760000000, resets 11/01/2026"), nil))
 	if !lim.ResetAt.Equal(time.Unix(1760000000, 0)) {
 		t.Fatalf("the epoch must win: %v", lim.ResetAt)
+	}
+	// Newer Claude Code messages name no reset time: the call's usage
+	// reading does (the latest full window, else the fullest).
+	at := func(h int) *metav1.Time { return &metav1.Time{Time: time.Date(2026, 10, 28, h, 0, 0, 0, time.UTC)} }
+	reading := &Result{Usage: &aiv1.EngineUsage{Status: "rejected", Windows: []aiv1.UsageWindow{
+		{Name: "five_hour", Percent: 100, ResetsAt: at(19)}, {Name: "seven_day", Percent: 60, ResetsAt: at(23)}}}}
+	lim, _ = AsUsageLimit(classifyLimit(aiv1.EngineClaude, errors.New("5-hour limit reached ∙ resets 7pm"), reading))
+	if !lim.ResetAt.Equal(at(19).Time) {
+		t.Fatalf("expected the full five_hour window's reset, got %v", lim.ResetAt)
+	}
+	reading.Usage.Windows[0].Percent = 97
+	lim, _ = AsUsageLimit(classifyLimit(aiv1.EngineClaude, errors.New("You've hit your limit · resets 7pm"), reading))
+	if !lim.ResetAt.Equal(at(19).Time) {
+		t.Fatalf("without a full window the fullest one counts, got %v", lim.ResetAt)
 	}
 	// A limit without a date has no reset time.
 	lim, _ = AsUsageLimit(classifyLimit(aiv1.EngineCursor, errors.New("You've hit your usage limit"), nil))

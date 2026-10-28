@@ -238,6 +238,34 @@ limit with that window's reset time (step 2 above) without calling the
 engine. The report says "`claude` 5 h window at 93 % (threshold 90 %)". The
 threshold only routes; it never defers.
 
+### 8. Claude's reset time and "no agent has usage left" (steer 2026-10-28)
+
+Asked by the owner after slices 1–7: support claude limits as well as
+cursor's, and when no agent has usage left, say so in a comment with when
+the run resumes and on which agent.
+
+- **Claude's reset time.** Newer Claude Code limit messages carry no
+  `|<unix>` suffix ("5-hour limit reached ∙ resets 3pm", "You've hit your
+  limit · resets 3pm (Europe/Berlin)"). When the message has no reset time,
+  `classifyLimit` takes it from the call's usage reading (approach 1): the
+  latest reset of the windows at 100 %, else the reset of the fullest
+  window. Claude-first roles (spec, `strong`, implement, pilot) fall back to
+  cursor with the same `fallback:` field; nothing engine-specific is needed
+  beyond the reset time.
+- **Earliest resume.** When a role is limited and its fallback's engine is
+  limited too, the run is deferred until the **earlier** of the two resets
+  (today it would wait for its own engine's, even if the fallback is free
+  sooner), and the limit of the role's own engine is recorded on the task
+  (`status.run.usageLimits`) so the project keeps knowing it after the run
+  resumes on the fallback.
+- **The comment.** The first deferral's issue note names the limited
+  engines, when each resets, and when and on which agent the run resumes:
+  "⏳ No agent has usage left: `cursor` is limited until 2026-11-13 00:00
+  UTC, its fallback `claude` until 2026-10-28 19:20 UTC. The run is paused
+  and resumes at 2026-10-28 19:20 UTC on `claude/claude-sonnet-5-5`; until
+  then the issue is blocked (`agent-blocked::quota`)." Without a fallback it
+  names the role's own agent ("resumes at … on `cursor/auto`").
+
 ## Affected files
 
 - `internal/runner/engine.go`, `transcript.go`: `rate_limit_event`,
@@ -319,13 +347,14 @@ GitLab `jo.wiemers/ai-operator`, one MR per row, stacked in order (each on
 
 | # | Key | Slice | Depends on | Status |
 |--:|---|---|---|---|
-| 1 | `spec-doc` | This spec | – | open, [!25](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/25) |
-| 2 | `usage-parse` | Runner: `rate_limit_event` → `Result.Usage`; cursor reset date | `spec-doc` | planned |
-| 3 | `usage-status` | API `EngineUsage`; runner records `status.run.engineUsage`; controller aggregates `status.engineUsage`; CRDs, chart | `usage-parse` | planned |
-| 4 | `usage-ui` | UI: usage line and limit reset on the Projects and project pages; `docs/ui.md`; screenshot | `usage-status` | planned |
-| 5 | `fallback-config` | API `fallback`, `Fallback()`, `FallbacksValid`; CRDs, chart, `docs/configuration.md` | `spec-doc` | planned |
-| 6 | `fallback-run` | Runner: fallback in `invoke`, engine-aware sessions, routed limits on the task and in `usageLimits()`, report notices; `docs/design.md` | `fallback-config`, `usage-parse` | planned |
-| 7 | `fallback-threshold` | `agents.fallbackAtPercent` | `fallback-run`, `usage-status` | planned |
+| 1 | `spec-doc` | This spec | – | merged, [!25](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/25) |
+| 2 | `usage-parse` | Runner: `rate_limit_event` → `Result.Usage`; cursor reset date | `spec-doc` | open, [!26](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/26) |
+| 3 | `usage-status` | API `EngineUsage`; runner records `status.run.engineUsage`; controller aggregates `status.engineUsage`; CRDs, chart | `usage-parse` | open, [!27](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/27) |
+| 4 | `usage-ui` | UI: usage line and limit reset on the Projects and project pages; `docs/ui.md`; screenshot | `usage-status` | open, [!28](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/28) |
+| 5 | `fallback-config` | API `fallback`, `Fallback()`, `FallbacksValid`; CRDs, chart, `docs/configuration.md` | `spec-doc` | open, [!29](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/29) |
+| 6 | `fallback-run` | Runner: fallback in `invoke`, engine-aware sessions, routed limits on the task and in `usageLimits()`, report notices; `docs/design.md` | `fallback-config`, `usage-parse` | open, [!30](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/30) |
+| 7 | `fallback-threshold` | `agents.fallbackAtPercent` | `fallback-run`, `usage-status` | open, [!31](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/31) |
+| 8 | `limits-resume` | Claude's reset time from the usage reading; deferral until the earliest engine; the "no agent has usage left" comment with resume time and agent | `fallback-threshold` | open, [!32](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/32) |
 
 Slices 2–4 (usage) and 5 (fallback config) are independent; 6 needs the
 cursor reset date from 2 only for its tests' realism, not for its code. Each
@@ -343,9 +372,18 @@ production line count, deviations.
 - 2026-10-28 `fallback-config`: `RoleSpec.fallback` (`RoleFallback`: engine, model or alias, claude-only effort), `AgentProjectSpec.FallbackRole` (named `Fallback()` in the plan; refuses the role's own engine and models outside `AllowedModels()`, resolves aliases, keeps the role's other fields) and `FallbackErrors`; condition `FallbacksValid` set on every reconcile (True `Valid` / False `InvalidFallback`); CRDs, chart, `docs/configuration.md` (field and validation; the run-time behaviour is documented with `fallback-run`); ~45 production lines; no deviations.
 - 2026-10-28 `fallback-run`: `invoke` = `invokeOn` + `fallBack` on a `UsageLimitError` (raised or project-wide); `FallbackRole`, fallback engine not limited, `routeAround` (in-run project limits, `status.run.usageLimits`, run-log line heading every report), resume only sessions of the fallback's engine (`sessionEngines`, so a review fix round keeps the fallback's session); `Result.Engine/Model/FallbackFrom`, sessions and `ImplementEngine` under `ranOn`, `agentResult` names the engine that ran; controller `usageLimits()` adds active routed limits; docs (`design.md`, `configuration.md`, `usage.md`); ~140 production lines (over the 50-line budget: the fallback, its limit recording and the engine-aware sessions only work together; split parts would ship unwired code); deviations: routed limits are not cleared at run end but expire with their reset (like a deferral's), and the report line is in the run log heading rather than in the implement notices, so spec, pilot and failure reports carry it too.
 - 2026-10-28 `fallback-threshold`: `agents.fallbackAtPercent` (1–100, optional); `nearLimit` builds a soft `UsageLimitError` from the fullest fresh window at or over it, only for roles with a fallback; `invoke` tries `fallBack` with it first and runs on the role's own engine when it is handed back; `routeAround` only notes a soft limit (run-log line, no `status.run.usageLimits`, no project limit); docs; ~35 production lines; no deviations.
+- 2026-10-28 `limits-resume` (steer from the owner: claude limits and the no-usage-left comment): `limitPatterns` also match "hit your … limit"; `classifyLimit` takes a reset time without epoch or date from the call's usage reading (`usageReset`); `UsageLimitError` carries the role's model and its limited fallback (known from the project, or found by calling it); `deferRun` waits for the earlier reset, records both limits on the task and posts "⏳ No agent has usage left: … resumes at … on `<engine/model>`" (otherwise "⏳ `<engine>` reached its usage limit (until …). The run … resumes at … on `<engine/model>`"); a soft threshold whose fallback is limited on its call runs the role's own engine and notes nothing; docs (`usage.md`, `design.md`); ~60 production lines; no deviations.
+- 2026-10-28 delivery: !25 was squash-merged; to keep the stacked branches fast-forwardable without force-pushes, each later branch merged its parent (the first one `main`) and !26–!32 are merged without squash, so `main` gets their commits and those merge commits; the owner asked for the release right after the stack.
 
 ## MRs
 
 | # | Title | Link | Status |
 |--:|---|---|---|
-| 1 | Spec: engine usage readings and engine fallback | [!25](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/25) | open |
+| 1 | Spec: engine usage readings and engine fallback | [!25](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/25) | merged 2026-10-28 |
+| 2 | Runner: read Claude's rate_limit_event and cursor's reset date | [!26](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/26) | open |
+| 3 | Usage readings in the task and project status | [!27](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/27) | open |
+| 4 | UI: engine usage line and limit reset on the Projects and project pages | [!28](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/28) | open |
+| 5 | Config: a fallback engine per role and profile, and FallbacksValid | [!29](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/29) | open |
+| 6 | Runner: a limited role continues on its fallback engine | [!30](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/30) | open |
+| 7 | Runner: switch to the fallback before the hard limit (agents.fallbackAtPercent) | [!31](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/31) | open |
+| 8 | Runner: claude limits without a reset epoch, and a comment when no agent has usage left | [!32](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/32) | open |

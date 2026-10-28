@@ -22,6 +22,13 @@ type UsageLimitError struct {
 	// Soft marks a usage window over agents.fallbackAtPercent: it only
 	// routes to a fallback, it is never recorded or deferred.
 	Soft bool
+	// Model is the limited role's model. FallbackEngine and FallbackModel
+	// name its fallback when that is limited as well, until FallbackUntil:
+	// then no agent of the role has usage left.
+	Model          string
+	FallbackEngine aiv1.Engine
+	FallbackModel  string
+	FallbackUntil  time.Time
 }
 
 func (e *UsageLimitError) Error() string {
@@ -41,11 +48,12 @@ func AsUsageLimit(err error) (*UsageLimitError, bool) {
 // limitPatterns match the messages agent CLIs print when a usage or rate
 // limit is hit, e.g. "Claude AI usage limit reached|1760000000",
 // "5-hour limit reached", "rate_limit_error", "429 Too Many Requests",
-// "overloaded_error", "You've hit your usage limit".
+// "overloaded_error", "You've hit your usage limit", "You've hit your
+// session limit · resets 3pm".
 // Bare status codes are deliberately not matched: API limit errors carry
 // rate_limit_error / overloaded_error anyway, and a stray "429" elsewhere
 // must not turn a real failure into an endless deferral.
-var limitPatterns = regexp.MustCompile(`(?i)(usage limit|limit reached|rate[ _-]?limit|too many requests|overloaded|quota exceeded|exceeded your .*quota)`)
+var limitPatterns = regexp.MustCompile(`(?i)(usage limit|limit reached|hit your (?:\w+ )?limit|rate[ _-]?limit|too many requests|overloaded|quota exceeded|exceeded your .*quota)`)
 
 // MaxDeferrals bounds how often one run request is deferred before it is
 // reported as failed, in case an error is mistaken for a usage limit.
@@ -90,8 +98,34 @@ func classifyLimit(engine aiv1.Engine, err error, res *Result) error {
 		day, _ := strconv.Atoi(m[2])
 		year, _ := strconv.Atoi(m[3])
 		lim.ResetAt = time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	} else if res != nil && res.Usage != nil {
+		// Newer Claude Code messages carry no reset time ("5-hour limit
+		// reached ∙ resets 3pm"); the call's usage reading does.
+		lim.ResetAt = usageReset(res.Usage)
 	}
 	return lim
+}
+
+// usageReset is when a limited engine is free again by its usage reading:
+// the latest reset of its full windows, else the fullest window's.
+func usageReset(u *aiv1.EngineUsage) time.Time {
+	var full, fullest time.Time
+	top := int32(-1)
+	for _, w := range u.Windows {
+		if w.ResetsAt == nil {
+			continue
+		}
+		if w.Percent >= 100 && w.ResetsAt.After(full) {
+			full = w.ResetsAt.Time
+		}
+		if w.Percent > top {
+			top, fullest = w.Percent, w.ResetsAt.Time
+		}
+	}
+	if !full.IsZero() {
+		return full
+	}
+	return fullest
 }
 
 // transientPatterns match failures of an engine's service that may be gone

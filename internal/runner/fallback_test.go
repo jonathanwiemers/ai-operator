@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -267,5 +268,75 @@ func TestUsageOverTheThresholdSwitchesToTheFallback(t *testing.T) {
 				t.Fatalf("report line %q present: %v, want %v\n%s", line, got, tc.reported, e.allNotes())
 			}
 		})
+	}
+}
+
+func TestNoAgentLeftResumesOnTheFirstFreeOne(t *testing.T) {
+	claudeReset := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
+	cursorReset := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
+	e, _, rec := cursorLimitedEnv(t, func(a *aiv1.AgentsSpec) {
+		a.Implement = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}
+	}, func(s *aiv1.AgentProjectStatus) {
+		s.UsageLimits = []aiv1.UsageLimit{{Engine: aiv1.EngineClaude, Until: metav1.NewTime(claudeReset)}}
+	})
+	if e.step() {
+		t.Fatal("with both engines limited the run is deferred")
+	}
+	run := e.task().Status.Run
+	if run.DeferredUntil == nil || !run.DeferredUntil.Time.Equal(claudeReset) {
+		t.Fatalf("the run must resume when claude is free (%v), not cursor: %+v", claudeReset, run.DeferredUntil)
+	}
+	limits := map[aiv1.Engine]time.Time{}
+	for _, l := range run.UsageLimits {
+		limits[l.Engine] = l.Until.Time
+	}
+	if !limits[aiv1.EngineCursor].Equal(cursorReset) || !limits[aiv1.EngineClaude].Equal(claudeReset) {
+		t.Fatalf("the task must keep both limits for the project, got %+v", run.UsageLimits)
+	}
+	want := "⏳ No agent has usage left: `cursor` is limited until 2026-11-13 00:00 UTC, its fallback `claude` until 2026-10-16 15:00 UTC. " +
+		"The run is paused and resumes at 2026-10-16 15:00 UTC on `claude/claude-sonnet-5-5`"
+	if notes := e.issueNotes(); len(notes) != 1 || !strings.Contains(notes[0], want) {
+		t.Fatalf("expected the no-usage-left note, got %q", notes)
+	}
+
+	// At claude's reset the run continues there; cursor is still known to
+	// be limited and is not called.
+	e.now = claudeReset.Add(time.Minute)
+	e.r.projectStatus = aiv1.AgentProjectStatus{}
+	var project aiv1.AgentProject
+	if err := e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: "shop"}, &project); err != nil {
+		t.Fatal(err)
+	}
+	project.Status.UsageLimits = run.UsageLimits // what the operator publishes
+	if err := e.k8s.Status().Update(context.Background(), &project); err != nil {
+		t.Fatal(err)
+	}
+	if !e.step() {
+		t.Fatal("the run must resume on claude")
+	}
+	if models := rec.models("implement"); len(models) == 0 || models[0] != "claude-sonnet-5-5" {
+		t.Fatalf("expected the implementer on claude after its reset, ran %v", models)
+	}
+}
+
+func TestFallbackLimitedOnItsOwnCallDefersWithBoth(t *testing.T) {
+	e, engine, _ := cursorLimitedEnv(t, func(a *aiv1.AgentsSpec) {
+		a.Implement = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}
+	}, nil)
+	claudeReset := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
+	// claude is out as well, until earlier than cursor.
+	claude := &limitedEngine{next: engine.next, message: "Claude AI usage limit reached|" + strconv.FormatInt(claudeReset.Unix(), 10),
+		limitIf: func(inv Invocation) bool { return inv.Model == "claude-sonnet-5-5" }}
+	engine.next = claude
+	if e.step() {
+		t.Fatal("expected a deferral")
+	}
+	run := e.task().Status.Run
+	if run.LimitedEngine != aiv1.EngineCursor || run.DeferredUntil == nil || !run.DeferredUntil.Time.Equal(claudeReset) {
+		t.Fatalf("expected a deferral until claude's reset, got %+v", run)
+	}
+	if notes := e.issueNotes(); len(notes) != 1 || !strings.Contains(notes[0], "No agent has usage left") ||
+		!strings.Contains(notes[0], "resumes at 2026-10-16 15:00 UTC on `claude/claude-sonnet-5-5`") {
+		t.Fatalf("expected the no-usage-left note, got %q", notes)
 	}
 }
