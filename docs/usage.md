@@ -1178,6 +1178,12 @@ CLI reports such a limit, the run is **paused, not failed**:
   comment says so and mentions the owners (event `blocked`); `/agent retry`
   or a move to `agent::ready` starts it again.
 
+With a [fallback engine](configuration.md#fallback-engine) for the role
+(e.g. `fast` and the reviewers on cursor, falling back to claude), a limit
+does not pause the issue: the work continues on the fallback, the run
+report says so, and the other issues skip the limited engine until its
+reset.
+
 Nothing to do on your side; `kubectl get agenttasks -o wide` shows the retry
 time, and the project status lists the active limits:
 

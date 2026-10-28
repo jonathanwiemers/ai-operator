@@ -1283,6 +1283,13 @@ func (in *RunStatus) DeepCopyInto(out *RunStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.UsageLimits != nil {
+		in, out := &in.UsageLimits, &out.UsageLimits
+		*out = make([]UsageLimit, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.PushedAt != nil {
 		in, out := &in.PushedAt, &out.PushedAt
 		*out = (*in).DeepCopy()

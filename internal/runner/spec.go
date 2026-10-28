@@ -89,7 +89,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	if err != nil {
 		return out, s.fail(err)
 	}
-	st.setSession("spec", role.Engine, res.SessionID)
+	st.setSession("spec", ranOn(role, res), res.SessionID)
 	if err := r.saveState(st); err != nil {
 		return out, s.fail(err)
 	}

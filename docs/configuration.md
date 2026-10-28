@@ -295,6 +295,13 @@ review:
   fallback: {engine: claude, model: claude-sonnet-5-5, effort: medium}
 ```
 
+When the role's engine reports a usage limit (or the project already knows
+of one) and the fallback's engine is not limited, the same request runs on
+the fallback right away instead of waiting; the run report says which role
+ran where. A fallback starts a fresh session with the full context (it
+cannot resume another engine's session). While the fallback's engine is
+limited too, the run waits for the reset as without a fallback.
+
 The fallback must run on another engine (limits belong to an engine's
 credentials) and name an allowed model, by its name or alias (see
 [Per-issue model and effort](#per-issue-model-and-effort)); `effort` is

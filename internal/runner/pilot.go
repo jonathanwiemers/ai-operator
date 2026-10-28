@@ -99,7 +99,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 				failed = s.fail(err)
 				reply = "The pilot could not answer: the run failed (the task's status has the details)."
 			default:
-				st.setSession("pilot", role.Engine, res.SessionID)
+				st.setSession("pilot", ranOn(role, res), res.SessionID)
 				s.done(agentResult(role, res, "answered"), "session", res.SessionID, "costUSD", res.CostUSD)
 				reply = a.Reply + rejectActions(a.Proposal, true)
 				trigger := m.IssueIID

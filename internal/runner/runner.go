@@ -81,9 +81,18 @@ type Runner struct {
 	// blamedRestarts is the agent container's restart count of the last
 	// termination a lost call was put down to.
 	blamedRestarts int32
+	// projectSpec is the project's spec (with defaults) during a run.
+	projectSpec aiv1.AgentProjectSpec
 	// usage is the task's newest usage reading per engine (recordUsage).
-	usage   []aiv1.EngineUsage
+	usage []aiv1.EngineUsage
+	// routed are the limits this task's runs went around with a fallback.
+	routed []aiv1.UsageLimit
+	// usageMu guards usage, routed, sessionEngines and the limits and
+	// readings in projectStatus: reviewers call engines in parallel.
 	usageMu sync.Mutex
+	// sessionEngines maps the sessions of the current run to their engine,
+	// so a fallback resumes only its own engine's sessions.
+	sessionEngines map[string]aiv1.Engine
 }
 
 // Outcome is the result of one run.
@@ -326,7 +335,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		}
 	}
 	r.projectStatus = project.Status
-	r.usage = task.Status.Run.EngineUsage
+	r.usage, r.routed, r.sessionEngines = task.Status.Run.EngineUsage, task.Status.Run.UsageLimits, nil
 	request := task.Spec.RunRequest
 	r.run = newRunLog(r.Log, task)
 	r.blamedRestarts, r.pushedHead, r.changedPins = 0, "", nil
@@ -354,6 +363,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	}
 
 	spec := project.Spec.WithDefaults()
+	r.projectSpec = spec
 	r.logPrompts = spec.Agents.LogPrompts
 	r.pilot = pilotAddressed(project, spec)
 	gl := r.NewGitLab(spec.GitLab.URL, r.GitLabToken)
@@ -565,13 +575,24 @@ func (r *Runner) morePending(ctx context.Context, request int64) bool {
 // fresh session with the full prompt.
 //
 // Usage and rate limits come back as *UsageLimitError. If the project already
-// knows the engine is limited, the engine is not called at all.
+// knows the engine is limited, the engine is not called at all. A role with a
+// fallback whose engine is not limited runs on it instead (see fallBack).
 func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
+	res, err := r.invokeOn(ctx, role, inv, fullPrompt)
+	if lim, ok := AsUsageLimit(err); ok && role.Fallback != nil {
+		return r.fallBack(ctx, role, inv, fullPrompt, res, err, lim)
+	}
+	return res, err
+}
+
+// invokeOn runs a role on its own engine (see invoke). The result says
+// which engine and model ran.
+func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
 	inv.LogPrompt = r.logPrompts
 	if len(r.changedPins) > 0 && r.run != nil {
 		inv.PerRunToolchains = toolchainsRunName(r.run.id)
 	}
-	if lim, ok := r.projectStatus.ActiveUsageLimit(role.Engine, r.now()); ok {
+	if lim, ok := r.activeLimit(role.Engine); ok {
 		return nil, &UsageLimitError{Engine: role.Engine, ResetAt: lim.Until.Time, Message: "project-wide limit: " + lim.Message}
 	}
 	redialed, retried := false, false
@@ -583,7 +604,9 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 			switch {
 			case lost == nil:
 				if res != nil {
+					res.Engine, res.Model = role.Engine, inv.Model
 					r.recordUsage(ctx, role.Engine, res.Usage)
+					r.rememberSession(res)
 				}
 				return res, classifyLimit(role.Engine, err, res)
 			case !lost.back:

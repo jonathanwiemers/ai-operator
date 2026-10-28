@@ -1180,6 +1180,23 @@ Things to keep in mind with subscriptions:
   a reset time it backs off exponentially (5m → 1h). The
   operator collects active limits per engine into the project status, and
   runners don't call a limited engine at all but wait for the same reset.
+* A role or profile can name a **fallback** (`fallback: {engine, model,
+  effort}`, another engine and an allowed model). When its engine reports
+  a limit, or the project already knows of one, and the fallback's engine
+  is not limited, `invoke` runs the same request on the fallback right away
+  instead of deferring the run: same prompt and invocation with the
+  fallback's model and effort, resuming only a session of the fallback's
+  own engine (otherwise fresh, with the full prompt). The limit is recorded
+  on the task (`status.run.usageLimits`, until its reset or, without one,
+  `usageLimitBackoff`) and goes into the project's `usageLimits` like a
+  deferral's, so later calls and other tasks skip the limited engine. The
+  run log heading every run report says which role ran where ("↪️ `cursor`
+  reached its usage limit (until 2026-11-13 00:00 UTC), so bugbot ran on
+  `claude/claude-sonnet-5-5` instead."), and the step results name the
+  engine that ran. Sessions are stored under the engine that ran, so the
+  next run on the original engine starts fresh with the full thread. Without
+  a usable fallback, or while its engine is limited too, the run defers as
+  above.
 * Claude Code reports its usage windows with every call (a
   `rate_limit_event` in the stream: status, and per window the
   utilization and reset time). The runner keeps the newest reading per

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -25,8 +27,24 @@ type runLog struct {
 	// restart says the run started again after an interruption; it heads
 	// the run log in GitLab comments.
 	restart string
+	// fallbacks say which roles ran on a fallback engine (noteFallback);
+	// they head the run log too. Reviewers add them in parallel.
+	fallbacks []string
+	mu        sync.Mutex
 	// onChange is called when a step starts or ends (the progress comment).
 	onChange func()
+}
+
+// noteFallback adds a line about a fallback to the run log, once.
+func (rl *runLog) noteFallback(line string) {
+	if rl == nil {
+		return
+	}
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	if !slices.Contains(rl.fallbacks, line) {
+		rl.fallbacks = append(rl.fallbacks, line)
+	}
 }
 
 func (rl *runLog) changed() {
@@ -163,6 +181,11 @@ func (rl *runLog) table(open bool, costUSD *float64) string {
 	if rl.restart != "" {
 		b.WriteString("\n\n" + rl.restart)
 	}
+	rl.mu.Lock()
+	for _, f := range rl.fallbacks {
+		b.WriteString("\n\n" + f)
+	}
+	rl.mu.Unlock()
 	attr := ""
 	if open {
 		attr = " open"
@@ -227,9 +250,16 @@ func diffSummary(stat string) string {
 
 // agentResult is the run log entry of an agent invocation.
 func agentResult(role aiv1.RoleSpec, res *Result, status string) string {
-	who := string(role.Engine)
-	if role.Model != "" {
-		who += "/" + role.Model
+	engine, model := role.Engine, role.Model
+	if res.Engine != "" {
+		engine, model = res.Engine, res.Model
+	}
+	who := string(engine)
+	if model != "" {
+		who += "/" + model
+	}
+	if res.FallbackFrom != "" {
+		who += " (fallback for " + string(res.FallbackFrom) + ")"
 	}
 	out := fmt.Sprintf("%s, $%.2f", who, res.CostUSD)
 	if status != "" {

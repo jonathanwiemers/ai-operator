@@ -687,6 +687,12 @@ type RunStatus struct {
 	// +optional
 	EngineUsage []EngineUsage `json:"engineUsage,omitempty"`
 
+	// UsageLimits are the limits this task's runs went around with a
+	// fallback engine instead of being deferred; the operator adds the
+	// active ones to the project's usage limits.
+	// +optional
+	UsageLimits []UsageLimit `json:"usageLimits,omitempty"`
+
 	// Deferrals counts consecutive deferrals of the current run request; it
 	// drives the exponential backoff when the reset time is unknown.
 	// +optional

@@ -502,6 +502,14 @@ func usageLimits(tasks []aiv1.AgentTask, now time.Time) []aiv1.UsageLimit {
 			byEngine[run.LimitedEngine] = aiv1.UsageLimit{Engine: run.LimitedEngine, Until: *run.DeferredUntil, Message: run.Summary}
 		}
 	}
+	// Limits runs went around with a fallback hold for the others too.
+	for _, t := range tasks {
+		for _, l := range t.Status.Run.UsageLimits {
+			if cur, ok := byEngine[l.Engine]; l.Until.After(now) && (!ok || l.Until.After(cur.Until.Time)) {
+				byEngine[l.Engine] = l
+			}
+		}
+	}
 	limits := make([]aiv1.UsageLimit, 0, len(byEngine))
 	for _, l := range byEngine {
 		limits = append(limits, l)

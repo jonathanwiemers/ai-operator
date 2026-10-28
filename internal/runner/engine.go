@@ -76,6 +76,11 @@ type Result struct {
 	// Usage is the engine's last report on its usage windows during the
 	// call (claude's rate_limit_event); nil if it sent none.
 	Usage *aiv1.EngineUsage
+	// Engine and Model ran the call (set by the runner); FallbackFrom is the
+	// limited engine a fallback stood in for.
+	Engine       aiv1.Engine `json:"-"`
+	Model        string      `json:"-"`
+	FallbackFrom aiv1.Engine `json:"-"`
 }
 
 // Engine runs invocations. Implementations wrap one agent CLI.

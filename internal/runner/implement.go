@@ -285,8 +285,8 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if err != nil {
 			return out, s.fail(err)
 		}
-		st.setSession("implement", role.Engine, res.SessionID)
-		st.ImplementEngine = role.Engine
+		st.setSession("implement", ranOn(role, res), res.SessionID)
+		st.ImplementEngine = ranOn(role, res)
 		st.LastIssueNoteID = maxNoteID(issueNotes, st.LastIssueNoteID)
 		st.LastMRNoteID = maxNoteID(mrNotes, st.LastMRNoteID)
 		if err := r.saveState(st); err != nil {
@@ -423,7 +423,8 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if err != nil {
 			return out, s.fail(err)
 		}
-		st.setSession("implement", role.Engine, res.SessionID)
+		st.setSession("implement", ranOn(role, res), res.SessionID)
+		st.ImplementEngine = ranOn(role, res)
 		_ = r.saveState(st)
 		var fixed ImplementAnswer
 		if err := res.Decode(&fixed); err == nil {
@@ -1147,7 +1148,8 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		if err != nil {
 			return res, seen, s.fail(err)
 		}
-		st.setSession("implement", role.Engine, res.SessionID)
+		st.setSession("implement", ranOn(role, res), res.SessionID)
+		st.ImplementEngine = ranOn(role, res)
 		st.LastIssueNoteID = maxNoteID(newIssue, st.LastIssueNoteID)
 		st.LastMRNoteID = maxNoteID(newMR, st.LastMRNoteID)
 		seen = max(seen, maxNoteID(newIssue, 0), maxNoteID(newMR, 0))

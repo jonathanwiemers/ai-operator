@@ -1573,6 +1573,33 @@ spec:
                   summary:
                     description: Summary of the most recent run.
                     type: string
+                  usageLimits:
+                    description: |-
+                      UsageLimits are the limits this task's runs went around with a
+                      fallback engine instead of being deferred; the operator adds the
+                      active ones to the project's usage limits.
+                    items:
+                      description: UsageLimit is an engine's active usage or rate
+                        limit.
+                      properties:
+                        engine:
+                          description: Engine is the coding agent CLI that runs a
+                            role.
+                          enum:
+                          - claude
+                          - cursor
+                          type: string
+                        message:
+                          description: Message reported by the engine.
+                          type: string
+                        until:
+                          format: date-time
+                          type: string
+                      required:
+                      - engine
+                      - until
+                      type: object
+                    type: array
                 type: object
               runBlockedAt:
                 description: |-
