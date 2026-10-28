@@ -370,6 +370,15 @@ type AgentsSpec struct {
 	// +kubebuilder:default=high
 	// +optional
 	MaxEffort string `json:"maxEffort,omitempty"`
+
+	// FallbackAtPercent switches a role with a fallback to it before its
+	// engine's hard limit: when the project's freshest usage reading of the
+	// engine has a window, not reset since, used at least this much. Roles
+	// without a fallback are not affected. Unset, only a limit switches.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	FallbackAtPercent *int32 `json:"fallbackAtPercent,omitempty"`
 }
 
 // ModelOption is an engine and model an issue may switch to.

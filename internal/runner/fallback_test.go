@@ -217,3 +217,55 @@ func TestInvalidFallbackIsIgnored(t *testing.T) {
 		t.Fatalf("expected a deferral on cursor's limit, got %+v", run)
 	}
 }
+
+func TestUsageOverTheThresholdSwitchesToTheFallback(t *testing.T) {
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	reading := func(percent int32, resets time.Time) func(*aiv1.AgentProjectStatus) {
+		return func(s *aiv1.AgentProjectStatus) {
+			s.EngineUsage = []aiv1.EngineUsage{{Engine: aiv1.EngineClaude, ObservedAt: metav1.NewTime(now.Add(-time.Minute)), Windows: []aiv1.UsageWindow{
+				{Name: "five_hour", Percent: percent, ResetsAt: &metav1.Time{Time: resets}},
+				{Name: "seven_day", Percent: 40, ResetsAt: &metav1.Time{Time: now.Add(72 * time.Hour)}},
+			}}}
+		}
+	}
+	at90 := func(fallback *aiv1.RoleFallback) func(*aiv1.AgentsSpec) {
+		return func(a *aiv1.AgentsSpec) {
+			at := int32(90)
+			a.FallbackAtPercent = &at
+			a.Implement = aiv1.RoleSpec{Engine: aiv1.EngineClaude, Model: "claude-opus-5-5", Fallback: fallback}
+			a.Models = append(aiv1.DefaultModels(), aiv1.ModelOption{Engine: aiv1.EngineCursor, Model: "auto"})
+		}
+	}
+	cursor := &aiv1.RoleFallback{Engine: aiv1.EngineCursor, Model: "auto"}
+	for _, tc := range []struct {
+		name     string
+		agents   func(*aiv1.AgentsSpec)
+		status   func(*aiv1.AgentProjectStatus)
+		model    string
+		reported bool
+	}{
+		{"over the threshold", at90(cursor), reading(93, now.Add(3*time.Hour)), "auto", true},
+		{"below the threshold", at90(cursor), reading(89, now.Add(3*time.Hour)), "claude-opus-5-5", false},
+		{"window reset since the reading", at90(cursor), reading(99, now.Add(-time.Minute)), "claude-opus-5-5", false},
+		{"no fallback", at90(nil), reading(99, now.Add(3*time.Hour)), "claude-opus-5-5", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, engine, rec := cursorLimitedEnv(t, tc.agents, tc.status)
+			engine.limitIf = func(Invocation) bool { return false }
+			if !e.step() {
+				t.Fatal("a threshold never defers a run")
+			}
+			if models := rec.models("implement"); len(models) == 0 || models[0] != tc.model {
+				t.Fatalf("expected the implementer on %s, ran %v", tc.model, models)
+			}
+			run := e.task().Status.Run
+			if len(run.UsageLimits) != 0 || run.LastResult == aiv1.RunResultDeferred {
+				t.Fatalf("a threshold is no limit: nothing recorded or deferred, got %+v", run)
+			}
+			line := "↪️ `claude`'s five_hour window is at 93 % (fallbackAtPercent: 90), so implement ran on `cursor/auto` instead."
+			if got := strings.Contains(e.allNotes(), line); got != tc.reported {
+				t.Fatalf("report line %q present: %v, want %v\n%s", line, got, tc.reported, e.allNotes())
+			}
+		})
+	}
+}

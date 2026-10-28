@@ -19,6 +19,9 @@ type UsageLimitError struct {
 	// ResetAt is when the engine said the limit resets; zero if unknown.
 	ResetAt time.Time
 	Message string
+	// Soft marks a usage window over agents.fallbackAtPercent: it only
+	// routes to a fallback, it is never recorded or deferred.
+	Soft bool
 }
 
 func (e *UsageLimitError) Error() string {

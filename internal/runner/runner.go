@@ -578,6 +578,13 @@ func (r *Runner) morePending(ctx context.Context, request int64) bool {
 // knows the engine is limited, the engine is not called at all. A role with a
 // fallback whose engine is not limited runs on it instead (see fallBack).
 func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
+	if near := r.nearLimit(role); near != nil {
+		// fallBack hands the soft limit back when there is no usable
+		// fallback: then the role runs on its own engine.
+		if res, err := r.fallBack(ctx, role, inv, fullPrompt, nil, near, near); err != error(near) {
+			return res, err
+		}
+	}
 	res, err := r.invokeOn(ctx, role, inv, fullPrompt)
 	if lim, ok := AsUsageLimit(err); ok && role.Fallback != nil {
 		return r.fallBack(ctx, role, inv, fullPrompt, res, err, lim)

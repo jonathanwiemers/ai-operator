@@ -74,6 +74,11 @@ func (r *Runner) fallBack(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 // again after lifecycle.usageLimitBackoff. The run log says which role ran
 // where.
 func (r *Runner) routeAround(ctx context.Context, lim *UsageLimitError, role string, fb aiv1.RoleSpec) {
+	if lim.Soft {
+		r.log().Info("usage window over the threshold, running on the fallback", "role", role, "engine", lim.Engine, "usage", lim.Message, "fallback", fb.Engine, "model", fb.Model)
+		r.run.noteFallback(fmt.Sprintf("↪️ `%s`'s %s, so %s ran on `%s/%s` instead.", lim.Engine, lim.Message, role, fb.Engine, fb.Model))
+		return
+	}
 	now := r.now()
 	until := lim.ResetAt
 	if !until.After(now) {
@@ -123,4 +128,30 @@ func ranOn(role aiv1.RoleSpec, res *Result) aiv1.Engine {
 		return res.Engine
 	}
 	return role.Engine
+}
+
+// nearLimit returns a soft limit when the role has a fallback and its
+// engine's freshest reading has a window, not reset since, at or over
+// agents.fallbackAtPercent; the fullest such window counts.
+func (r *Runner) nearLimit(role aiv1.RoleSpec) *UsageLimitError {
+	at := r.projectSpec.Agents.FallbackAtPercent
+	if at == nil || role.Fallback == nil {
+		return nil
+	}
+	now := r.now()
+	r.usageMu.Lock()
+	defer r.usageMu.Unlock()
+	var near *UsageLimitError
+	fullest := *at - 1
+	for _, u := range r.projectStatus.EngineUsage {
+		for _, w := range u.Windows {
+			if u.Engine != role.Engine || w.Percent <= fullest || w.ResetsAt == nil || !w.ResetsAt.After(now) {
+				continue
+			}
+			fullest = w.Percent
+			near = &UsageLimitError{Engine: role.Engine, ResetAt: w.ResetsAt.Time, Soft: true,
+				Message: fmt.Sprintf("%s window is at %d %% (fallbackAtPercent: %d)", w.Name, w.Percent, *at)}
+		}
+	}
+	return near
 }

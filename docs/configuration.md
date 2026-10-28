@@ -203,6 +203,7 @@ it to `false` for one commit per run.
 | `pilot` | claude, `claude-sonnet-5-5` | the milestone's [pilot](usage.md#talking-to-the-pilot), who answers its owners; read-only, one resumed session per milestone |
 | `models` | `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` (aliases `opus`, `sonnet`, `haiku`) | engines and models an issue may switch its implementer to with `/agent use` or an `agent-model::` label; the models of the profiles and of `implement` are always allowed. Entries: `engine`, `model`, optional `alias` |
 | `logPrompts` | `false` | log every prompt (role, system prompt, prompt, each cut at 64 KiB) in the agent container, for the web UI's [live transcript](ui.md#live-transcript). Prompts hold issue text, comments, diffs and CI logs |
+| `fallbackAtPercent` | – | switch a role with a [fallback](#fallback-engine) to it before its engine's hard limit, when a usage window of the engine (claude reports them) is at least this full, e.g. `90` |
 | `maxEffort` | `high` | the highest effort an issue may ask for (`agent-effort::` label, `/agent effort`, the planner's choice); higher values are lowered. The roles' own `effort` is not capped |
 
 If `resources` sets a memory limit or CPUs (limits, else requests), the
@@ -301,6 +302,13 @@ the fallback right away instead of waiting; the run report says which role
 ran where. A fallback starts a fresh session with the full context (it
 cannot resume another engine's session). While the fallback's engine is
 limited too, the run waits for the reset as without a fallback.
+
+With `agents.fallbackAtPercent` (e.g. `90`), a role with a fallback
+switches to it already when the freshest usage reading of its engine has a
+window, not reset since, at least that full; it keeps headroom for the roles
+without a fallback. Only claude reports its usage windows. The threshold
+never makes a run wait: without a usable fallback the role runs on its own
+engine, and nothing is recorded as a limit.
 
 The fallback must run on another engine (limits belong to an engine's
 credentials) and name an allowed model, by its name or alias (see

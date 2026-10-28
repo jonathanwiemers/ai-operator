@@ -1196,7 +1196,10 @@ Things to keep in mind with subscriptions:
   engine that ran. Sessions are stored under the engine that ran, so the
   next run on the original engine starts fresh with the full thread. Without
   a usable fallback, or while its engine is limited too, the run defers as
-  above.
+  above. With `agents.fallbackAtPercent`, a role with a fallback switches
+  before the hard limit: when the project's freshest reading of its engine
+  has a window, not reset since, at or above the threshold. That only
+  routes (a "soft" limit, never recorded or deferred).
 * Claude Code reports its usage windows with every call (a
   `rate_limit_event` in the stream: status, and per window the
   utilization and reset time). The runner keeps the newest reading per

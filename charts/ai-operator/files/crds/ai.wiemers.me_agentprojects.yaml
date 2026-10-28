@@ -319,6 +319,16 @@ spec:
                       - name
                       type: object
                     type: array
+                  fallbackAtPercent:
+                    description: |-
+                      FallbackAtPercent switches a role with a fallback to it before its
+                      engine's hard limit: when the project's freshest usage reading of the
+                      engine has a window, not reset since, used at least this much. Roles
+                      without a fallback are not affected. Unset, only a limit switches.
+                    format: int32
+                    maximum: 100
+                    minimum: 1
+                    type: integer
                   image:
                     description: |-
                       Image of the agent pod. It must contain the ai-runner binary, git, the
