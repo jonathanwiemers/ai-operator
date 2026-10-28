@@ -969,6 +969,36 @@ type UsageLimit struct {
 	Message string `json:"message,omitempty"`
 }
 
+// EngineUsage is what an engine last said about its usage windows (claude
+// reports them with every call; cursor reports none).
+type EngineUsage struct {
+	Engine Engine `json:"engine"`
+
+	// Status as the engine reports it, e.g. allowed, allowed_warning or
+	// rejected.
+	// +optional
+	Status string `json:"status,omitempty"`
+
+	// Windows are the engine's usage windows, e.g. five_hour and seven_day.
+	// +optional
+	Windows []UsageWindow `json:"windows,omitempty"`
+
+	// ObservedAt is when the engine reported it.
+	ObservedAt metav1.Time `json:"observedAt"`
+}
+
+// UsageWindow is how much of one usage window is used.
+type UsageWindow struct {
+	Name string `json:"name"`
+
+	// Percent of the window that is used.
+	Percent int32 `json:"percent"`
+
+	// ResetsAt is when the window starts over.
+	// +optional
+	ResetsAt *metav1.Time `json:"resetsAt,omitempty"`
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=ap

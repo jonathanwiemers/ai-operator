@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
 // Invocation is one headless call of an agent CLI. It is engine neutral; each
@@ -71,6 +73,9 @@ type Result struct {
 	IsError    bool
 	Text       string
 	Structured json.RawMessage
+	// Usage is the engine's last report on its usage windows during the
+	// call (claude's rate_limit_event); nil if it sent none.
+	Usage *aiv1.EngineUsage
 }
 
 // Engine runs invocations. Implementations wrap one agent CLI.
@@ -220,6 +225,7 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 	var stdout, stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	var runErr error
+	var usage *aiv1.EngineUsage
 	if stream {
 		pipe, err := cmd.StdoutPipe()
 		if err != nil {
@@ -257,6 +263,10 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 					if ev.Type == "tool_call" && ev.Subtype == "started" {
 						logEvent(log, line)
 					}
+				case "rate_limit_event":
+					if u := usageReading(line); u != nil {
+						usage = u
+					}
 				case "result":
 					if ev.IsError || ev.Subtype != "" && ev.Subtype != "success" {
 						flush()
@@ -286,6 +296,7 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		}
 		return nil, parseErr
 	}
+	res.Usage = usage
 	if res.IsError {
 		return res, fmt.Errorf("%s reported an error: %s", filepath.Base(bin), tail(res.Text, 2000))
 	}

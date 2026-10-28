@@ -1173,9 +1173,11 @@ Things to keep in mind with subscriptions:
 * Subscriptions have usage windows. Several agents in parallel exhaust them
   quickly, so keep `maxConcurrentRuns` low.
 * When a CLI reports a usage or rate limit, the run is **deferred**, not
-  failed. The runner recognises the error text (and Claude's reset time),
-  marks the task `Waiting` with `status.run.deferredUntil`, and retries
-  then; without a reset time it backs off exponentially (5m → 1h). The
+  failed. The runner recognises the error text and the reset time (Claude's
+  `|<unix>` suffix, or the date cursor names, "…reset when your monthly
+  cycle ends on 10/13/2026", taken as 00:00 UTC of that day), marks the
+  task `Waiting` with `status.run.deferredUntil`, and retries then; without
+  a reset time it backs off exponentially (5m → 1h). The
   operator collects active limits per engine into the project status, and
   runners don't call a limited engine at all but wait for the same reset. A
   limit during a review fix round publishes the work done so far. Deferred

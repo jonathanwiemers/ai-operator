@@ -337,6 +337,7 @@ Every MR of this spec appends exactly one line: date, slice key, what landed,
 production line count, deviations.
 
 - 2026-10-28 `spec-doc`: added this spec; 0 production lines.
+- 2026-10-28 `usage-parse`: `runCLI` keeps the last `rate_limit_event` of a call on `Result.Usage` (`usageReading`: status, windows sorted by name, utilization rounded to whole percent); `classifyLimit` reads cursor's `M/D/YYYY` reset date as 00:00 UTC when there is no Claude epoch; the API types `EngineUsage` and `UsageWindow` land here already (no status field yet, so no CRD change) so the reading crosses the agent socket in its final shape; ~53 production lines with the types; deviation: the types moved forward from `usage-status`.
 
 ## MRs
 

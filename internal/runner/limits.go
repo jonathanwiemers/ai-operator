@@ -51,6 +51,11 @@ const MaxDeferrals = 20
 // resetEpoch matches the reset time Claude Code appends as "|<unix seconds>".
 var resetEpoch = regexp.MustCompile(`\|(\d{10})\b`)
 
+// resetDate matches the reset date cursor-agent names in its US format,
+// e.g. "Your usage limits will reset when your monthly cycle ends on
+// 10/13/2026".
+var resetDate = regexp.MustCompile(`(?i)reset[^\n]{0,80}?\b(\d{1,2})/(\d{1,2})/(\d{4})\b`)
+
 // classifyLimit turns an engine error into a UsageLimitError if its message
 // looks like a usage or rate limit. Only failed invocations are classified,
 // so a model that merely talks about rate limits in a successful answer is
@@ -75,6 +80,13 @@ func classifyLimit(engine aiv1.Engine, err error, res *Result) error {
 		if sec, perr := strconv.ParseInt(m[1], 10, 64); perr == nil {
 			lim.ResetAt = time.Unix(sec, 0)
 		}
+	} else if m := resetDate.FindStringSubmatch(text); m != nil {
+		// No time of day: the start of that day (UTC). A date that is not
+		// ahead backs off as without one (deferRun).
+		month, _ := strconv.Atoi(m[1])
+		day, _ := strconv.Atoi(m[2])
+		year, _ := strconv.Atoi(m[3])
+		lim.ResetAt = time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
 	}
 	return lim
 }

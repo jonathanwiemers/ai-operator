@@ -7,9 +7,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/logr/funcr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // fakeClaude writes a script that prints a stream-json session.
@@ -232,5 +234,47 @@ func TestCursorFailedResultKeepsTheLastMessage(t *testing.T) {
 	}
 	if !strings.Contains(all, "cannot reach the registry") || strings.Contains(all, "agent answers") {
 		t.Fatalf("a failed run logs its last message:\n%s", all)
+	}
+}
+
+func TestClaudeUsageReadingIsKept(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "claude")
+	// The newest rate_limit_event of the call wins; the shape is the one
+	// Claude Code 2.1.292 prints.
+	script := `#!/bin/sh
+cat >/dev/null
+echo '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"utilization":0.01,"resetsAt":1793211600}}}}'
+echo '{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]}}'
+echo '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1793211600,"rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"org_level_disabled","isUsingOverage":false,"unifiedWindows":{"seven_day":{"utilization":0.17,"resetsAt":1793685600},"five_hour":{"utilization":0.15,"resetsAt":1793211600}}},"uuid":"u","session_id":"s1"}'
+echo '{"type":"rate_limit_event","rate_limit_info":"garbled"}'
+echo '{"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s1"}'
+`
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err := (&ClaudeCLI{Binary: bin, Env: os.Environ()}).Run(context.Background(), Invocation{Dir: t.TempDir(), Prompt: "go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := res.Usage
+	if u == nil || u.Status != "allowed" || len(u.Windows) != 2 {
+		t.Fatalf("expected the last well-formed reading with two windows, got %+v", u)
+	}
+	five, seven := u.Windows[0], u.Windows[1]
+	if five.Name != "five_hour" || five.Percent != 15 || !five.ResetsAt.Equal(&metav1.Time{Time: time.Unix(1793211600, 0)}) {
+		t.Errorf("five_hour window: %+v", five)
+	}
+	if seven.Name != "seven_day" || seven.Percent != 17 || !seven.ResetsAt.Equal(&metav1.Time{Time: time.Unix(1793685600, 0)}) {
+		t.Errorf("seven_day window: %+v", seven)
+	}
+}
+
+func TestUsageReadingWithoutWindows(t *testing.T) {
+	u := usageReading([]byte(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected"}}`))
+	if u == nil || u.Status != "rejected" || len(u.Windows) != 0 {
+		t.Fatalf("expected the status alone, got %+v", u)
+	}
+	if u := usageReading([]byte(`{"type":"rate_limit_event"}`)); u != nil {
+		t.Fatalf("an event without info gives no reading, got %+v", u)
 	}
 }

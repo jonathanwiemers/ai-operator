@@ -60,6 +60,23 @@ func TestClassifyLimit(t *testing.T) {
 	if !lim.ResetAt.Equal(time.Unix(1760000000, 0)) {
 		t.Fatalf("reset time not parsed: %v", lim.ResetAt)
 	}
+	// Cursor's reset date (its real message) is the start of that day, UTC.
+	cursor := "cursor-agent failed: exit status 1: ActionRequiredError: You've hit your usage limit You've saved $496 on API model usage this month with Pro. " +
+		"Switch to a different model or set a Spend Limit to continue with Auto. Your usage limits will reset when your monthly cycle ends on 10/13/2026."
+	lim, _ = AsUsageLimit(classifyLimit(aiv1.EngineCursor, errors.New(cursor), nil))
+	if want := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC); !lim.ResetAt.Equal(want) {
+		t.Fatalf("cursor reset date: got %v, want %v", lim.ResetAt, want)
+	}
+	// Claude's epoch wins over a date in the text.
+	lim, _ = AsUsageLimit(classifyLimit(aiv1.EngineClaude, errors.New("usage limit reached|1760000000, resets 11/01/2026"), nil))
+	if !lim.ResetAt.Equal(time.Unix(1760000000, 0)) {
+		t.Fatalf("the epoch must win: %v", lim.ResetAt)
+	}
+	// A limit without a date has no reset time.
+	lim, _ = AsUsageLimit(classifyLimit(aiv1.EngineCursor, errors.New("You've hit your usage limit"), nil))
+	if !lim.ResetAt.IsZero() {
+		t.Fatalf("no date, no reset time: %v", lim.ResetAt)
+	}
 }
 
 // limitedEngine fails with a usage limit for selected invocations and
