@@ -224,6 +224,7 @@ killed together with the run.
 | `maxBudgetUSD` | claude | spend cap per invocation, e.g. `"5"` |
 | `allowedTools` | claude | override the tool allow-list |
 | `instructions` | both | appended to the role prompt (house rules, test commands) |
+| `fallback` | both | `{engine, model, effort}` the role runs on while its own engine is at a usage limit, see [Fallback engine](#fallback-engine) |
 
 `review` additionally has `reviewers` (`bugbot`, `security`),
 `maxIterations`, `retries` (calls again a reviewer that failed
@@ -275,6 +276,33 @@ never overwritten by a re-plan.
 
 If no profiles are configured, `fast` (claude, `claude-sonnet-5-5`) and
 `strong` (claude, `claude-opus-5-5`) are used.
+
+### Fallback engine
+
+A role or profile can name a fallback: another engine and model to run on
+while its own engine is at a usage limit (e.g. cursor's monthly budget is
+used up), instead of waiting for the reset:
+
+```yaml
+profiles:
+  - name: fast
+    engine: cursor
+    model: auto
+    fallback: {engine: claude, model: sonnet}
+review:
+  engine: cursor
+  model: auto
+  fallback: {engine: claude, model: claude-sonnet-5-5, effort: medium}
+```
+
+The fallback must run on another engine (limits belong to an engine's
+credentials) and name an allowed model, by its name or alias (see
+[Per-issue model and effort](#per-issue-model-and-effort)); `effort` is
+claude only. The role's other fields (instructions, tools, budget) stay.
+Model and effort labels on an issue change the implementer's engine and
+model, not its fallback. The condition `FallbacksValid` on the AgentProject
+is `False` (reason `InvalidFallback`) and names the roles whose fallback is
+broken, so a mistake shows before a limit needs it.
 
 ### Engines
 

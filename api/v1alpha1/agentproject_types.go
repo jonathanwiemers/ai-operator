@@ -476,6 +476,28 @@ type RoleSpec struct {
 	// Instructions are appended to the role's system prompt, e.g. house rules.
 	// +optional
 	Instructions string `json:"instructions,omitempty"`
+
+	// Fallback is the engine and model the role runs on while its own
+	// engine is at a usage limit, instead of waiting for the reset. Without
+	// one, or while the fallback's engine is limited too, runs wait.
+	// +optional
+	Fallback *RoleFallback `json:"fallback,omitempty"`
+}
+
+// RoleFallback is the engine and model a role runs on while its own engine
+// is limited. It must be another engine and an allowed model (see
+// agents.models).
+type RoleFallback struct {
+	Engine Engine `json:"engine"`
+
+	// Model passed to the fallback engine, or its alias, e.g. sonnet.
+	// +kubebuilder:validation:MinLength=1
+	Model string `json:"model"`
+
+	// Effort level (claude engine only).
+	// +kubebuilder:validation:Enum=low;medium;high;xhigh;max
+	// +optional
+	Effort string `json:"effort,omitempty"`
 }
 
 // ReviewSpec configures the review loop that runs after each implementation.
@@ -693,6 +715,11 @@ type WebhookSpec struct {
 // ConditionWebhookRegistered is the AgentProject condition that tells whether
 // the project hook is registered (spec.webhook.enabled).
 const ConditionWebhookRegistered = "WebhookRegistered"
+
+// ConditionFallbacksValid is the AgentProject condition that tells whether
+// every role's fallback names another engine and an allowed model: False,
+// reason InvalidFallback, with the broken ones in the message.
+const ConditionFallbacksValid = "FallbacksValid"
 
 // ConditionWebhookDeliveries is the AgentProject condition that tells whether
 // deliveries arrive (with spec.webhook.secretRef): True, reason Receiving,

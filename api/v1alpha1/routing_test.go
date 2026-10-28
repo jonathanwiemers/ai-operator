@@ -61,3 +61,40 @@ func TestAllowedModels(t *testing.T) {
 		t.Errorf("claude-opus-5-5 listed %d times", n)
 	}
 }
+
+func TestFallbackRole(t *testing.T) {
+	s := routingSpec()
+	fast := RoleSpec{Engine: EngineCursor, Model: "auto", Instructions: "house rules",
+		Fallback: &RoleFallback{Engine: EngineClaude, Model: "sonnet", Effort: "low"}}
+	got, err := s.FallbackRole(fast)
+	if err != nil || got.Engine != EngineClaude || got.Model != "claude-sonnet-5-5" || got.Effort != "low" ||
+		got.Instructions != "house rules" || got.Fallback != nil {
+		t.Fatalf("expected claude/claude-sonnet-5-5 at low effort with the role's instructions, got %+v %v", got, err)
+	}
+	// Effort is claude only.
+	strong := RoleSpec{Engine: EngineClaude, Model: "claude-opus-5-5", Effort: "high", Fallback: &RoleFallback{Engine: EngineCursor, Model: "auto", Effort: "max"}}
+	if got, err := s.FallbackRole(strong); err != nil || got.Engine != EngineCursor || got.Model != "auto" || got.Effort != "" {
+		t.Fatalf("expected cursor/auto without effort, got %+v %v", got, err)
+	}
+	for _, fb := range []*RoleFallback{nil, {Engine: EngineCursor, Model: "auto"}, {Engine: EngineClaude, Model: "gpt-9"}} {
+		if _, err := s.FallbackRole(RoleSpec{Engine: EngineCursor, Model: "auto", Fallback: fb}); err == nil {
+			t.Errorf("fallback %+v must be refused", fb)
+		}
+	}
+}
+
+func TestFallbackErrors(t *testing.T) {
+	s := routingSpec()
+	if errs := s.FallbackErrors(); len(errs) != 0 {
+		t.Fatalf("no fallbacks, no errors: %v", errs)
+	}
+	s.Agents.Review.Engine, s.Agents.Review.Model = EngineCursor, "auto"
+	s.Agents.Review.Fallback = &RoleFallback{Engine: EngineClaude, Model: "sonnet"}
+	s.Agents.Profiles[0].Fallback = &RoleFallback{Engine: EngineClaude, Model: "gpt-9"}
+	s.Agents.Pilot.Fallback = &RoleFallback{Engine: EngineClaude, Model: "opus"}
+	errs := s.FallbackErrors()
+	if len(errs) != 2 || !strings.HasPrefix(errs[0], "pilot: ") || !strings.Contains(errs[0], "own engine") ||
+		!strings.HasPrefix(errs[1], "profile fast: ") || !strings.Contains(errs[1], "not an allowed model") {
+		t.Fatalf("expected the pilot's and the fast profile's fallbacks, got %v", errs)
+	}
+}

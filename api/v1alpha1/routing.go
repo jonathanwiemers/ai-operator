@@ -67,6 +67,48 @@ func (s AgentProjectSpec) FindModel(engine Engine, name string) (ModelOption, bo
 	return ModelOption{}, false
 }
 
+// FallbackRole returns the role to run while role's engine is limited: the
+// role with its fallback's engine, model and effort. It refuses a fallback
+// on the role's own engine and one that names no allowed model.
+func (s AgentProjectSpec) FallbackRole(role RoleSpec) (RoleSpec, error) {
+	fb := role.Fallback
+	switch {
+	case fb == nil:
+		return RoleSpec{}, fmt.Errorf("no fallback")
+	case fb.Engine == role.Engine:
+		return RoleSpec{}, fmt.Errorf("the fallback %s/%s runs on the role's own engine", fb.Engine, fb.Model)
+	}
+	o, ok := s.FindModel(fb.Engine, fb.Model)
+	if !ok {
+		return RoleSpec{}, fmt.Errorf("the fallback %s/%s is not an allowed model", fb.Engine, fb.Model)
+	}
+	role.Engine, role.Model, role.Effort, role.Fallback = o.Engine, o.Model, "", nil
+	if o.Engine == EngineClaude {
+		role.Effort = fb.Effort
+	}
+	return role, nil
+}
+
+// FallbackErrors says which roles have a fallback FallbackRole refuses.
+func (s AgentProjectSpec) FallbackErrors() []string {
+	a := s.Agents
+	roles := map[string]RoleSpec{"spec": a.Spec, "pilot": a.Pilot, "implement": a.Implement, "review": a.Review.RoleSpec, "describe": a.Describe.RoleSpec}
+	for _, p := range a.Profiles {
+		roles["profile "+p.Name] = p.RoleSpec
+	}
+	var errs []string
+	for name, r := range roles {
+		if r.Fallback == nil {
+			continue
+		}
+		if _, err := s.FallbackRole(r); err != nil {
+			errs = append(errs, name+": "+err.Error())
+		}
+	}
+	slices.Sort(errs)
+	return errs
+}
+
 // ModelLabel returns the label that selects a model.
 func (s AgentProjectSpec) ModelLabel(o ModelOption) string {
 	return s.Workflow.ModelLabelPrefix + o.String()

@@ -110,6 +110,37 @@ spec:
                         - claude
                         - cursor
                         type: string
+                      fallback:
+                        description: |-
+                          Fallback is the engine and model the role runs on while its own
+                          engine is at a usage limit, instead of waiting for the reset. Without
+                          one, or while the fallback's engine is limited too, runs wait.
+                        properties:
+                          effort:
+                            description: Effort level (claude engine only).
+                            enum:
+                            - low
+                            - medium
+                            - high
+                            - xhigh
+                            - max
+                            type: string
+                          engine:
+                            description: Engine is the coding agent CLI that runs
+                              a role.
+                            enum:
+                            - claude
+                            - cursor
+                            type: string
+                          model:
+                            description: Model passed to the fallback engine, or its
+                              alias, e.g. sonnet.
+                            minLength: 1
+                            type: string
+                        required:
+                        - engine
+                        - model
+                        type: object
                       instructions:
                         description: Instructions are appended to the role's system
                           prompt, e.g. house rules.
@@ -331,6 +362,37 @@ spec:
                         - claude
                         - cursor
                         type: string
+                      fallback:
+                        description: |-
+                          Fallback is the engine and model the role runs on while its own
+                          engine is at a usage limit, instead of waiting for the reset. Without
+                          one, or while the fallback's engine is limited too, runs wait.
+                        properties:
+                          effort:
+                            description: Effort level (claude engine only).
+                            enum:
+                            - low
+                            - medium
+                            - high
+                            - xhigh
+                            - max
+                            type: string
+                          engine:
+                            description: Engine is the coding agent CLI that runs
+                              a role.
+                            enum:
+                            - claude
+                            - cursor
+                            type: string
+                          model:
+                            description: Model passed to the fallback engine, or its
+                              alias, e.g. sonnet.
+                            minLength: 1
+                            type: string
+                        required:
+                        - engine
+                        - model
+                        type: object
                       instructions:
                         description: Instructions are appended to the role's system
                           prompt, e.g. house rules.
@@ -461,6 +523,37 @@ spec:
                         - claude
                         - cursor
                         type: string
+                      fallback:
+                        description: |-
+                          Fallback is the engine and model the role runs on while its own
+                          engine is at a usage limit, instead of waiting for the reset. Without
+                          one, or while the fallback's engine is limited too, runs wait.
+                        properties:
+                          effort:
+                            description: Effort level (claude engine only).
+                            enum:
+                            - low
+                            - medium
+                            - high
+                            - xhigh
+                            - max
+                            type: string
+                          engine:
+                            description: Engine is the coding agent CLI that runs
+                              a role.
+                            enum:
+                            - claude
+                            - cursor
+                            type: string
+                          model:
+                            description: Model passed to the fallback engine, or its
+                              alias, e.g. sonnet.
+                            minLength: 1
+                            type: string
+                        required:
+                        - engine
+                        - model
+                        type: object
                       instructions:
                         description: Instructions are appended to the role's system
                           prompt, e.g. house rules.
@@ -517,6 +610,37 @@ spec:
                           - claude
                           - cursor
                           type: string
+                        fallback:
+                          description: |-
+                            Fallback is the engine and model the role runs on while its own
+                            engine is at a usage limit, instead of waiting for the reset. Without
+                            one, or while the fallback's engine is limited too, runs wait.
+                          properties:
+                            effort:
+                              description: Effort level (claude engine only).
+                              enum:
+                              - low
+                              - medium
+                              - high
+                              - xhigh
+                              - max
+                              type: string
+                            engine:
+                              description: Engine is the coding agent CLI that runs
+                                a role.
+                              enum:
+                              - claude
+                              - cursor
+                              type: string
+                            model:
+                              description: Model passed to the fallback engine, or
+                                its alias, e.g. sonnet.
+                              minLength: 1
+                              type: string
+                          required:
+                          - engine
+                          - model
+                          type: object
                         instructions:
                           description: Instructions are appended to the role's system
                             prompt, e.g. house rules.
@@ -635,6 +759,37 @@ spec:
                         - claude
                         - cursor
                         type: string
+                      fallback:
+                        description: |-
+                          Fallback is the engine and model the role runs on while its own
+                          engine is at a usage limit, instead of waiting for the reset. Without
+                          one, or while the fallback's engine is limited too, runs wait.
+                        properties:
+                          effort:
+                            description: Effort level (claude engine only).
+                            enum:
+                            - low
+                            - medium
+                            - high
+                            - xhigh
+                            - max
+                            type: string
+                          engine:
+                            description: Engine is the coding agent CLI that runs
+                              a role.
+                            enum:
+                            - claude
+                            - cursor
+                            type: string
+                          model:
+                            description: Model passed to the fallback engine, or its
+                              alias, e.g. sonnet.
+                            minLength: 1
+                            type: string
+                        required:
+                        - engine
+                        - model
+                        type: object
                       instructions:
                         description: Instructions are appended to the role's system
                           prompt, e.g. house rules.
@@ -786,6 +941,37 @@ spec:
                         - claude
                         - cursor
                         type: string
+                      fallback:
+                        description: |-
+                          Fallback is the engine and model the role runs on while its own
+                          engine is at a usage limit, instead of waiting for the reset. Without
+                          one, or while the fallback's engine is limited too, runs wait.
+                        properties:
+                          effort:
+                            description: Effort level (claude engine only).
+                            enum:
+                            - low
+                            - medium
+                            - high
+                            - xhigh
+                            - max
+                            type: string
+                          engine:
+                            description: Engine is the coding agent CLI that runs
+                              a role.
+                            enum:
+                            - claude
+                            - cursor
+                            type: string
+                          model:
+                            description: Model passed to the fallback engine, or its
+                              alias, e.g. sonnet.
+                            minLength: 1
+                            type: string
+                        required:
+                        - engine
+                        - model
+                        type: object
                       instructions:
                         description: Instructions are appended to the role's system
                           prompt, e.g. house rules.

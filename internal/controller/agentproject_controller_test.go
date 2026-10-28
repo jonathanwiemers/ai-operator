@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -364,6 +366,21 @@ func TestEngineUsageKeepsTheFreshestReading(t *testing.T) {
 	}
 	if prev[0].Windows[0].Percent != 5 {
 		t.Fatal("the previous status must not be changed in place")
+	}
+}
+
+func TestFallbacksValidCondition(t *testing.T) {
+	var project aiv1.AgentProject
+	spec := project.Spec.WithDefaults()
+	reportFallbacks(&project, spec)
+	if c := meta.FindStatusCondition(project.Status.Conditions, aiv1.ConditionFallbacksValid); c == nil || c.Status != metav1.ConditionTrue {
+		t.Fatalf("expected FallbacksValid true without fallbacks, got %+v", c)
+	}
+	spec.Agents.Review.Fallback = &aiv1.RoleFallback{Engine: aiv1.EngineClaude, Model: "gpt-9"}
+	reportFallbacks(&project, spec)
+	c := meta.FindStatusCondition(project.Status.Conditions, aiv1.ConditionFallbacksValid)
+	if c == nil || c.Status != metav1.ConditionFalse || c.Reason != "InvalidFallback" || !strings.Contains(c.Message, "review: ") {
+		t.Fatalf("expected FallbacksValid false naming the review, got %+v", c)
 	}
 }
 

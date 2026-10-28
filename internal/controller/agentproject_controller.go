@@ -137,6 +137,7 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	// After the sync, which may replace status.webhook.
 	reportDeliveries(&project, spec, prevDelivery, lastDelivery, receiving)
+	reportFallbacks(&project, spec)
 	if err := r.Status().Patch(ctx, &project, client.MergeFrom(orig)); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -507,6 +508,17 @@ func usageLimits(tasks []aiv1.AgentTask, now time.Time) []aiv1.UsageLimit {
 	}
 	sort.Slice(limits, func(i, j int) bool { return limits[i].Engine < limits[j].Engine })
 	return limits
+}
+
+// reportFallbacks sets FallbacksValid: a broken fallback shows before a
+// usage limit needs it.
+func reportFallbacks(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) {
+	cond := metav1.Condition{Type: aiv1.ConditionFallbacksValid, Status: metav1.ConditionTrue, Reason: "Valid",
+		Message: "no fallback is broken", ObservedGeneration: project.Generation}
+	if errs := spec.FallbackErrors(); len(errs) > 0 {
+		cond.Status, cond.Reason, cond.Message = metav1.ConditionFalse, "InvalidFallback", truncateMsg(strings.Join(errs, "; "))
+	}
+	meta.SetStatusCondition(&project.Status.Conditions, cond)
 }
 
 // engineUsage keeps the freshest usage reading per engine of the tasks and
