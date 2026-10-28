@@ -319,7 +319,7 @@ GitLab `jo.wiemers/ai-operator`, one MR per row, stacked in order (each on
 
 | # | Key | Slice | Depends on | Status |
 |--:|---|---|---|---|
-| 1 | `spec-doc` | This spec | – | open |
+| 1 | `spec-doc` | This spec | – | open, [!25](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/25) |
 | 2 | `usage-parse` | Runner: `rate_limit_event` → `Result.Usage`; cursor reset date | `spec-doc` | planned |
 | 3 | `usage-status` | API `EngineUsage`; runner records `status.run.engineUsage`; controller aggregates `status.engineUsage`; CRDs, chart | `usage-parse` | planned |
 | 4 | `usage-ui` | UI: usage line and limit reset on the Projects and project pages; `docs/ui.md`; screenshot | `usage-status` | planned |
@@ -342,3 +342,4 @@ production line count, deviations.
 
 | # | Title | Link | Status |
 |--:|---|---|---|
+| 1 | Spec: engine usage readings and engine fallback | [!25](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/25) | open |
