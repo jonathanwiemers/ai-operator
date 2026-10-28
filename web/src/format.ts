@@ -41,6 +41,31 @@ export function absTime(iso: string | undefined | null): string {
   return Number.isNaN(t.getTime()) ? '' : t.toLocaleString()
 }
 
+const windowLabels: Record<string, string> = {
+  five_hour: '5 h',
+  seven_day: '7 days',
+  seven_day_opus: '7 days opus',
+  seven_day_sonnet: '7 days sonnet',
+}
+
+// windowLabel names a usage window, e.g. five_hour → "5 h".
+export function windowLabel(name: string): string {
+  return windowLabels[name] ?? name.replaceAll('_', ' ')
+}
+
+// clockTime is a local time of day ("14:00"), with the weekday when it is
+// not today ("Mon 09:00") and the date when it is not within a week
+// ("13 Nov").
+export function clockTime(iso: string | undefined | null, now: number): string {
+  if (!iso) return ''
+  const t = new Date(iso)
+  if (Number.isNaN(t.getTime())) return ''
+  const hm = t.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  if (t.toDateString() === new Date(now).toDateString()) return hm
+  if (Math.abs(t.getTime() - now) < 6 * 86400 * 1000) return `${t.toLocaleDateString(undefined, { weekday: 'short' })} ${hm}`
+  return t.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+}
+
 export function cost(usd: string | undefined | null): string {
   const v = Number.parseFloat(usd ?? '')
   if (!Number.isFinite(v) || v === 0) return '$0'

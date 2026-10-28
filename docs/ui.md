@@ -18,10 +18,21 @@ chat included, with your own GitLab token.
 
 | Page | Content |
 |------|---------|
-| **Projects** | every project you may see: tasks per stage, autopilot milestones and their progress, usage limits, suspension, last sync, model spend |
-| **Project** | one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; then the milestone's plan, the autopilot pause reason, and issues without a milestone |
+| **Projects** | every project you may see: tasks per stage, autopilot milestones and their progress, engine usage and limits (see below), suspension, last sync, model spend |
+| **Project** | the same engine usage line and a banner per active limit; one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; then the milestone's plan, the autopilot pause reason, and issues without a milestone |
 | **Milestone** | a planned milestone (linked from its project board, `/projects/<namespace>/<name>/milestones/<iid>`): autopilot phase and pause reason, the queue with states, merge requests and task pages, the pilot's autonomy and open proposals, the chat on its tracking issue, and the milestone's board |
 | **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot queue with merge requests and decisions |
+
+**Engine usage.** claude reports how much of its usage windows is used with
+every agent call; the project keeps the freshest reading per engine
+(`status.engineUsage`). The Projects and project pages show it as one line
+per engine, e.g. `claude: 5 h 29 % (resets 19:20), 7 days 18 % (resets Tue
+07:00) as of 15:27`, with times in your time zone (the weekday when not
+today, the date beyond a week). A window at 80 % or more is highlighted. A
+window whose reset time has passed was reset since the reading: it is
+greyed out as `stale, reset 14:00` until the next agent call brings a new
+one. cursor reports no usage, so it shows only an active limit, as a badge
+with its reset (`cursor limited until 13 Nov`).
 
 With GitLab connected (see [Steering](#steering)), a task page has a
 **Conversation** panel: the comments of its issue, merge request and

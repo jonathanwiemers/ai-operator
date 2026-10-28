@@ -4,6 +4,7 @@ import { useResource } from '../live'
 import { cost, autopilotWaitingFor } from '../format'
 import Badge from '../components/Badge.vue'
 import Board from '../components/Board.vue'
+import EngineUsage from '../components/EngineUsage.vue'
 import ExtLink from '../components/ExtLink.vue'
 import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
@@ -43,6 +44,7 @@ function apTone(phase: string | undefined) {
         <ExtLink :href="p.gitlab.webURL" class="gl">{{ p.gitlab.project }}</ExtLink>
       </div>
 
+      <EngineUsage v-for="u in p.engineUsage" :key="u.engine" :usage="u" class="engine-usage" />
       <div v-for="l in p.usageLimits" :key="l.engine" class="banner warning">
         <strong>{{ l.engine }}</strong>
         <span>hit its usage limit. Runs that need it wait; the limit resets <RelTime :time="l.until" />.</span>
@@ -170,6 +172,10 @@ function apTone(phase: string | undefined) {
 
 .gl {
   font-size: 13px;
+}
+
+.engine-usage {
+  margin-top: 6px;
 }
 
 .summary {

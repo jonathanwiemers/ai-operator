@@ -32,6 +32,20 @@ export interface UsageLimit {
   message?: string
 }
 
+export interface UsageWindow {
+  name: string
+  percent: number
+  resetsAt?: string
+}
+
+// EngineUsage is what an engine last said about its usage windows (claude only).
+export interface EngineUsage {
+  engine: string
+  status?: string
+  windows?: UsageWindow[]
+  observedAt: string
+}
+
 export interface AutopilotOverview {
   milestoneIID: number
   title: string
@@ -52,6 +66,7 @@ export interface ProjectSummary {
   pollInterval: string
   lastSyncTime?: string
   usageLimits?: UsageLimit[]
+  engineUsage?: EngineUsage[]
   conditions?: Condition[]
   tasks: number
   stages: Partial<Record<Stage, number>>

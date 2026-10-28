@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { session } from '../api'
-import { useResource } from '../live'
-import { cost } from '../format'
+import { useNow, useResource } from '../live'
+import { clockTime, cost } from '../format'
 import Badge from '../components/Badge.vue'
+import EngineUsage from '../components/EngineUsage.vue'
 import ExtLink from '../components/ExtLink.vue'
 import RelTime from '../components/RelTime.vue'
 import StageBar from '../components/StageBar.vue'
 import type { ProjectSummary } from '../types'
 
 const { data: projects, error, loading } = useResource<ProjectSummary[]>(() => '/projects')
+const now = useNow()
 
 const totals = computed(() => {
   const list = projects.value ?? []
@@ -85,13 +87,14 @@ function unhealthy(p: ProjectSummary) {
           <span class="spacer" />
           <Badge v-if="p.suspend" tone="warning">Suspended</Badge>
           <Badge v-for="l in p.usageLimits" :key="l.engine" tone="warning" :title="l.message">
-            {{ l.engine }} limit
+            {{ l.engine }} limited until {{ clockTime(l.until, now) }}
           </Badge>
           <Badge v-for="c in unhealthy(p)" :key="c.type" tone="danger" :title="c.message">{{ c.reason || c.type }}</Badge>
         </div>
         <div class="gitlab muted">
           <ExtLink :href="p.gitlab.webURL">{{ p.gitlab.project }}</ExtLink>
         </div>
+        <EngineUsage v-for="u in p.engineUsage" :key="u.engine" :usage="u" />
         <StageBar :stages="p.stages" />
         <div v-for="a in p.autopilots" :key="a.milestoneIID" class="autopilot">
           <Badge v-if="a.waitingFor" tone="progress" :title="a.pausedReason">Autopilot waiting for #{{ a.waitingFor }}</Badge>

@@ -109,6 +109,7 @@ type ProjectSummary struct {
 	PollInterval      string              `json:"pollInterval"`
 	LastSyncTime      *metav1.Time        `json:"lastSyncTime,omitempty"`
 	UsageLimits       []aiv1.UsageLimit   `json:"usageLimits,omitempty"`
+	EngineUsage       []aiv1.EngineUsage  `json:"engineUsage,omitempty"`
 	Conditions        []metav1.Condition  `json:"conditions,omitempty"`
 	Tasks             int                 `json:"tasks"`
 	Stages            map[Stage]int       `json:"stages"`
@@ -226,6 +227,7 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Proj
 		PollInterval:      shortDuration(p.Spec.PollInterval.Duration),
 		LastSyncTime:      p.Status.LastSyncTime,
 		UsageLimits:       p.Status.UsageLimits,
+		EngineUsage:       p.Status.EngineUsage,
 		Conditions:        p.Status.Conditions,
 		Tasks:             len(tasks),
 		Stages:            map[Stage]int{},
