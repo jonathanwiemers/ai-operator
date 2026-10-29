@@ -40,8 +40,12 @@ type Server struct {
 	logs LogSource
 	// gitlab connects users' GitLab accounts; nil without gitlab.url.
 	gitlab *gitlabConn
-	// notes rate-limits the comments users post.
-	notes noteLimiter
+	// notes rate-limits the comments users post, creates the one-off
+	// researches they start.
+	notes, creates *rateLimiter
+	// writer creates and deletes one-off researches; nil without
+	// research.allowCreate.
+	writer client.Client
 	// research is the reader's store, nil until connected.
 	research atomic.Pointer[store.Store]
 }
@@ -52,7 +56,8 @@ func (s *Server) SetLogSource(l LogSource) { s.logs = l }
 // NewServer wires the server. reader is a cache-backed client; static holds
 // the built single page app.
 func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log logr.Logger) (*Server, error) {
-	s := &Server{cfg: cfg, reader: reader, hub: hub, authz: NewAuthorizer(cfg), log: log, streams: map[string]int{}}
+	s := &Server{cfg: cfg, reader: reader, hub: hub, authz: NewAuthorizer(cfg), log: log, streams: map[string]int{},
+		notes: newRateLimiter(notesPerWindow, notesWindow), creates: newRateLimiter(createsPerWindow, createsWindow)}
 	if _, err := fs.Stat(static, "index.html"); err == nil {
 		s.static = static
 	}
@@ -108,11 +113,15 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("GET /api/v1/researches/{namespace}/{name}/runs/{id}", s.researchHandler(s.researchRun))
 		mux.Handle("GET /api/v1/research/search", s.researchHandler(s.researchSearch))
 	}
+	// Always registered, so they answer 404 (not 405) without allowCreate.
+	mux.Handle("GET /api/v1/research/form", s.writeHandler(s.researchForm))
+	mux.Handle("POST /api/v1/researches", s.writeHandler(s.createResearch))
+	mux.Handle("DELETE /api/v1/researches/{namespace}/{name}", s.writeHandler(s.deleteResearch))
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })
 	mux.HandleFunc("GET /oauth2/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })
 	mux.HandleFunc("GET /", s.app)
-	// Rejects cross-origin requests that change state (the logout), on top
-	// of the SameSite cookies.
+	// Rejects cross-origin requests that change state (the logout, comments,
+	// one-off researches), on top of the SameSite cookies.
 	var h http.Handler = http.NewCrossOriginProtection().Handler(mux)
 	if s.cfg.Auth.Mode == AuthNone {
 		h = localHostOnly(h)

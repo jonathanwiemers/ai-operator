@@ -276,6 +276,37 @@ a project rule matches the user, `research` when a research rule matches and
 a database is configured. Without login (`auth.mode: none`) everyone sees
 both and may write with `ui.research.allowCreate`.
 
+#### One-off researches
+
+With `ui.research.allowCreate`, users with `research: write` start one-off
+researches (no schedule) from the UI and delete their own:
+
+- **Namespace.** The UI creates them in `ui.research.namespace`, never
+  elsewhere: the request has no namespace field. The write rule must match
+  the new research there (e.g. `researches: ["agents/*"]` or
+  `["agents/q-*"]`); the chart grants the UI `create`, `delete` and `get` on
+  AgentResearches in that namespace only.
+- **Names** are chosen by the UI: `q-<yyyymmdd>-<6 random characters>`.
+- **Creator.** The UI stamps `ai.wiemers.me/created-by: <user name>`. Only
+  that user may delete it, and only one-offs in `ui.research.namespace`;
+  scheduled researches are managed with `kubectl`. Deleting removes the
+  AgentResearch and its pod; the stored results stay until their retention
+  ends.
+- **Projects.** A one-off runs with an AgentProject of `ui.research.namespace`
+  that has `spec.research.writerSecret` (the runs' database login). The form
+  lists the others as unavailable, and starting one with them is refused.
+- **Agent.** Automatic (the [candidates](research.md#choosing-agents)) or one
+  of the project's allowed models, checked like a research's `spec.agent`.
+- **Limits.** The request is at most 32 KiB: a question of 1 to 16384
+  characters and at most 20 topics of up to 100 characters. A user may start
+  10 researches per hour; more answer 429 with `Retry-After`.
+- **Audit.** Each create and delete logs a line
+  `"msg"="audit" "action"="research.create"` (or `research.delete`) with the
+  user, namespace, name, depth and agent, never the question.
+
+Without `allowCreate` the UI has no client that writes, the chart renders no
+write Role, and the endpoints answer 404.
+
 Roles are read at login and kept in the session, so a role change takes
 effect at the next login, at the latest after `ui.auth.sessionTTL` (default
 `12h`). A user without any matching role gets an empty project list that
@@ -445,7 +476,9 @@ points to 127.0.0.1 (DNS rebinding).
   database only with the read-only reader login, which the chart passes
   from its Secret as environment variables. The API returns views of the
   resources without the
-  operator's bookkeeping and secret references.
+  operator's bookkeeping and secret references. Its only write access, with
+  `ui.research.allowCreate`, is `create`/`delete` on AgentResearches in
+  `ui.research.namespace` (see [One-off researches](#one-off-researches)).
 - **Login.** Authorization code flow with PKCE, `state` and `nonce`; the ID
   token's signature, issuer, audience and expiry are verified. The provider's
   tokens are not kept: the session holds only the user name, the roles and
@@ -461,7 +494,8 @@ points to 127.0.0.1 (DNS rebinding).
   text from the URL.
 - **Browser protections.** A strict Content Security Policy (only the UI's
   own scripts, styles and API, no framing), HSTS, `nosniff`, and Go's
-  cross-origin protection for requests that change state (logout). Links to
+  cross-origin protection for requests that change state (logout, comments,
+  one-off researches). Links to
   GitLab must be `http(s)` URLs.
 - **https only.** `externalURL` must use https (http only for `localhost`);
   TLS ends at the Gateway.
@@ -495,11 +529,20 @@ with the same session cookie:
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread` | the comments of the task's issue, MR and tracking issue (`parts`), read with your GitLab token; 409 when not connected |
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes` | posts `{"target": "issue"\|"mr"\|"tracking", "body": "…"}` in your GitLab name; needs the `steer` grant |
 | `GET /api/v1/events` | server-sent events: `change` with the kind (`project`, `task`, `research`), namespace and name of what changed; research events only for researches you may read |
-| `GET /api/v1/researches` | the researches you may read: `namespace`, `name`, `view`, `depth`, `schedule`, `timeZone`, `phase`, `lastRun`, `nextRun`, `lastEngine`, `lastModel`, the current or last `run` (`id`, `startedAt`, `finishedAt`, `engine`, `model`, `effort`, `reason`, `outcome`, `message`, `costUSD`), `skippedReason`, `waiting` (`engine`, `until`), `oneOff`, `createdBy` |
+| `GET /api/v1/researches` | the researches you may read: `namespace`, `name`, `view`, `depth`, `schedule`, `timeZone`, `phase`, `lastRun`, `nextRun`, `lastEngine`, `lastModel`, the current or last `run` (`id`, `startedAt`, `finishedAt`, `engine`, `model`, `effort`, `reason`, `outcome`, `message`, `costUSD`), `skippedReason`, `waiting` (`engine`, `until`), `oneOff`, `createdBy`, `canDelete` (your own one-off you may delete) |
 | `GET /api/v1/researches/{namespace}/{name}` | `{"research": …, "run": …, "result": …}`: the research as in the list plus its `prompt`, `topics` and `agent` (absent for auto), its latest result and that result's run (as in `runs`), both `null` without one |
 | `GET /api/v1/researches/{namespace}/{name}/runs` | `{"runs": […]}`, newest first: `id`, `startedAt`, `finishedAt`, `status` (`running`, `succeeded`, `degraded`, `failed`, `limited`), `engine`, `model`, `effort`, `costUSD`, `choiceReason`, `error`, `warnings`, `expiresAt`; `?limit=` 1–100 (default 20), `?before=` an RFC 3339 time (the `startedAt` of the last run of the previous page); 400 for other values |
 | `GET /api/v1/researches/{namespace}/{name}/runs/{id}` | `{"research": …, "run": …, "result": …}`: the research as above, one run of it and its result (`null` without one); 404 for a run of another research |
 | `GET /api/v1/research/search?q=` | `{"hits": […]}`: at most 50 results of the researches you may read that match `q` (1–200 characters, web search syntax: words, `"a phrase"`, `or`, `-word`), best match first, then newest: `runID`, `namespace`, `research`, `title`, `summary`, `createdAt`; results of deleted researches are not searched |
+| `GET /api/v1/research/form` | what the one-off form offers: `namespace`, `projects` (`name`, `available`, `reason` when not, `models` with `engine`, `model` and `label` like `claude/sonnet`), `depths`, `views`, `efforts` |
+| `POST /api/v1/researches` | starts a one-off research from `{"project", "prompt", "depth"?, "view"?, "topics"?, "agent"?: {"engine", "model", "effort"?}}` (depth `quick` and view `report` by default, no agent: automatic); 201 with `{"namespace", "name"}`, 400 with an `error` for an invalid request (unknown fields included), 413 over 32 KiB, 429 with `Retry-After` over the rate limit |
+| `DELETE /api/v1/researches/{namespace}/{name}` | deletes your own one-off in `ui.research.namespace`: 204, 403 for someone else's, a scheduled one or another namespace |
+
+The one-off endpoints answer 404 without `ui.research.allowCreate` or any
+research rule (and a delete for a research you may not read), and 403 with
+`research: read` only or a write rule that does not match the new research
+in `ui.research.namespace`; see
+[One-off researches](#one-off-researches).
 
 The research endpoints exist only with a research database. They answer 404
 without a matching research rule, for a research you may not read and for

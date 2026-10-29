@@ -195,11 +195,13 @@ ui:
     rules: []
   # Research section (needs research.database.host).
   research:
-    # Let users with the research write grant start and delete one-off
-    # researches (create/delete on agentresearches for the UI, in a later
-    # release).
+    # Let users with the research write grant start one-off researches and
+    # delete their own: the UI gets create/delete/get on agentresearches in
+    # namespace (a Role there, nowhere else).
     allowCreate: false
-    # Namespace the UI creates researches in, required with allowCreate.
+    # Namespace the UI creates one-off researches in, required with
+    # allowCreate. A one-off runs with an AgentProject of this namespace
+    # that has spec.research.writerSecret.
     namespace: ""
   service:
     type: ClusterIP

@@ -102,7 +102,10 @@ without the database: it connects in the background and retries with backoff
 (5 s up to 5 min), the research endpoints answer 503 until then, and the
 factory pages work as before. `sslMode: disable` is refused unless the host
 is a loopback address (local development). Who sees the Research section is
-set by [research rules](ui.md#research-rules).
+set by [research rules](ui.md#research-rules). With `ui.research.allowCreate`
+(which needs `ui.research.namespace`; the chart refuses to render without
+it) the UI also gets a Role in that namespace with `create`, `delete` and
+`get` on `agentresearches`, for [one-off researches](ui.md#one-off-researches).
 
 ### Research
 

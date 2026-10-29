@@ -49,6 +49,8 @@ type ResearchSummary struct {
 	Waiting       *aiv1.ResearchWaiting   `json:"waiting,omitempty"`
 	OneOff        bool                    `json:"oneOff"`
 	CreatedBy     string                  `json:"createdBy,omitempty"`
+	// CanDelete: the user may delete it from the UI (their own one-off).
+	CanDelete bool `json:"canDelete"`
 }
 
 // ResearchDetail is a research as its pages show it: the summary with the
@@ -109,13 +111,13 @@ type SearchHit struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-func summarizeResearch(ar *aiv1.AgentResearch) ResearchSummary {
+func summarizeResearch(ar *aiv1.AgentResearch, canDelete bool) ResearchSummary {
 	st := ar.Status
 	out := ResearchSummary{
 		Namespace: ar.Namespace, Name: ar.Name, View: ar.Spec.View, Depth: ar.Spec.Depth,
 		Schedule: ar.Spec.Schedule, TimeZone: ar.Spec.TimeZone, Phase: st.Phase, LastRun: st.LastRun, NextRun: st.NextRun,
 		LastEngine: st.LastEngine, LastModel: st.LastModel, SkippedReason: st.SkippedReason, Waiting: st.Waiting,
-		OneOff: ar.OneOff(), CreatedBy: ar.Annotations[aiv1.AnnotationCreatedBy],
+		OneOff: ar.OneOff(), CreatedBy: ar.Annotations[aiv1.AnnotationCreatedBy], CanDelete: canDelete,
 	}
 	if st.Run != nil {
 		run := *st.Run
@@ -125,8 +127,8 @@ func summarizeResearch(ar *aiv1.AgentResearch) ResearchSummary {
 	return out
 }
 
-func detailOf(ar *aiv1.AgentResearch) ResearchDetail {
-	return ResearchDetail{ResearchSummary: summarizeResearch(ar), Prompt: ar.Spec.Prompt, Topics: ar.Spec.Topics, Agent: ar.Spec.Agent}
+func (s *Server) detailOf(r *http.Request, ar *aiv1.AgentResearch) ResearchDetail {
+	return ResearchDetail{ResearchSummary: summarizeResearch(ar, s.canDelete(principalOf(r), ar)), Prompt: ar.Spec.Prompt, Topics: ar.Spec.Topics, Agent: ar.Spec.Agent}
 }
 
 func runView(r store.Run) ResearchRun {
@@ -228,9 +230,9 @@ func (s *Server) researches(w http.ResponseWriter, r *http.Request, _ *store.Sto
 	if !ok {
 		return
 	}
-	out := make([]ResearchSummary, len(list))
+	p, out := principalOf(r), make([]ResearchSummary, len(list))
 	for i := range list {
-		out[i] = summarizeResearch(&list[i])
+		out[i] = summarizeResearch(&list[i], s.canDelete(p, &list[i]))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -259,7 +261,7 @@ func (s *Server) researchDetail(w http.ResponseWriter, r *http.Request, st *stor
 		s.internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"research": detailOf(ar), "run": run, "result": result})
+	writeJSON(w, http.StatusOK, map[string]any{"research": s.detailOf(r, ar), "run": run, "result": result})
 }
 
 // researchRuns pages through a research's runs, newest first: ?before= (RFC
@@ -325,7 +327,7 @@ func (s *Server) researchRun(w http.ResponseWriter, r *http.Request, st *store.S
 		s.internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"research": detailOf(ar), "run": runView(run), "result": result})
+	writeJSON(w, http.StatusOK, map[string]any{"research": s.detailOf(r, ar), "run": runView(run), "result": result})
 }
 
 // researchSearch searches the results of the researches the user may read

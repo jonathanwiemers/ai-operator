@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -79,6 +80,16 @@ func main() {
 		os.Exit(1)
 	}
 	srv.SetLogSource(ui.PodLogs{Client: clientset})
+	// One-off researches are created and deleted directly, not through the
+	// cache. Only with allowCreate: the chart grants create/delete then.
+	if cfg.Research.Enabled() && cfg.Research.AllowCreate {
+		writer, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
+		if err != nil {
+			log.Error(err, "unable to create the research writer client")
+			os.Exit(1)
+		}
+		srv.SetResearchWriter(writer)
+	}
 	// Research reads the database as the reader (the operator migrates it).
 	// It connects in the background, so the factory does not wait for it.
 	if cfg.Research.Enabled() {

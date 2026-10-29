@@ -401,32 +401,6 @@ const (
 	notesWindow    = time.Minute
 )
 
-// noteLimiter counts the comments each user posted recently.
-type noteLimiter struct {
-	mu    sync.Mutex
-	posts map[string][]time.Time
-}
-
-func (l *noteLimiter) allow(user string, now time.Time) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.posts == nil {
-		l.posts = map[string][]time.Time{}
-	}
-	recent := l.posts[user][:0]
-	for _, t := range l.posts[user] {
-		if now.Sub(t) < notesWindow {
-			recent = append(recent, t)
-		}
-	}
-	if len(recent) >= notesPerWindow {
-		l.posts[user] = recent
-		return false
-	}
-	l.posts[user] = append(recent, now)
-	return true
-}
-
 // postNote writes a comment on the task's issue, merge request or tracking
 // issue, in the user's GitLab name. The UI does not interpret it: the
 // operator handles it like any comment written in GitLab.
@@ -505,7 +479,7 @@ func readNote(w http.ResponseWriter, r *http.Request) (noteRequest, bool) {
 // the user's rate limit, and answers with the note.
 func (s *Server) createNote(w http.ResponseWriter, r *http.Request, ap *aiv1.AgentProject, gl gitlab.API, tok *GitLabToken, target *ThreadPart, body string) {
 	p := principalOf(r)
-	if !s.notes.allow(p.Username, time.Now()) {
+	if ok, _ := s.notes.allow(p.Username, time.Now()); !ok {
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many comments, try again in a minute"})
 		return
 	}

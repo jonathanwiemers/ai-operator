@@ -41,6 +41,38 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "ai-operator.ui.fullname" . }}
     namespace: {{ .Release.Namespace }}
+{{- if and .Values.research.database.host .Values.ui.research.allowCreate }}
+---
+# One-off researches from the UI (research write grant): created and deleted
+# in ui.research.namespace only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "ai-operator.ui.fullname" . }}-research-write
+  namespace: {{ .Values.ui.research.namespace }}
+  labels:
+    {{- include "ai-operator.ui.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentresearches"]
+    verbs: ["create", "delete", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ai-operator.ui.fullname" . }}-research-write
+  namespace: {{ .Values.ui.research.namespace }}
+  labels:
+    {{- include "ai-operator.ui.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "ai-operator.ui.fullname" . }}-research-write
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "ai-operator.ui.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
 {{- range .Values.agent.namespaces }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1

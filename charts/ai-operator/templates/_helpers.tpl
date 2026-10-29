@@ -109,6 +109,9 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if and .Values.research.database.host (not .Values.research.database.readerSecret.name) }}
 {{- fail "research.database.readerSecret.name (the UI's reader login) is required with research.database.host and ui.enabled" }}
 {{- end }}
+{{- if and $ui.research.allowCreate (not $ui.research.namespace) }}
+{{- fail "ui.research.namespace (where the UI creates one-off researches) is required with ui.research.allowCreate" }}
+{{- end }}
 {{- end }}
 
 {{/* A research candidate list as the operator's flag: engine/model[@effort],… */}}
