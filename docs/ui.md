@@ -34,6 +34,37 @@ next run; the run line of the current or last run (`claude/claude-sonnet-5-5
 hover); and, when no agent was free, *waiting for `claude` until 14:00* with
 the skip reason. The page updates live on research events.
 
+A research's page (`/research/<namespace>/<name>`) has a header with the
+prompt (the first lines, *Show the whole prompt* for the rest), the schedule
+or *one-off*, the agent (`auto` or the fixed `engine/model`), the last and
+next run, the waiting line and the error of a failed last run. Below it is
+the latest result, with its title, run line (linked to the run's page) and
+summary:
+
+* **News flash** (`view: newsflash`): the items of all items blocks grouped
+  by topic, the research's `topics` in their order first, then the other
+  topics alphabetically, then *Other* for items without one. Within a topic
+  the important items come first, then the newest. An item first seen in
+  this run (its URL in no earlier run that is still kept) gets a *new*
+  badge. The other blocks follow in their order.
+* **Report** (`view: report`): all blocks in order.
+
+A run's page (`/research/<namespace>/<name>/runs/<id>`) shows its status
+(*degraded* when the answer failed validation and is kept as plain text),
+error, warnings, agent, start, duration, spend, retention and choice reason,
+and its result in the research's view. Both pages update live.
+
+**Blocks.** Each block type has its own component: headings; markdown;
+items (title linked to the source, source, publication time, *important*
+for importance 3 and *minor* for 1, *new*); tables; stats (a delta starting
+with `+` is green, with `-` red); and links. Types the UI does not know are
+skipped. Agent output is text: markdown is rendered by the UI's own subset
+renderer (`web/src/markdown.ts`) straight into page elements, with no HTML
+in between. It knows paragraphs, headings, lists, blockquotes, emphasis,
+code and links. Everything else, raw HTML included, shows as typed. Links
+only go to `http(s)` URLs, open in a new tab with `rel="noopener noreferrer
+nofollow"`, and other links show as their text. Images are never loaded.
+
 ## What it shows
 
 | Page | Content |
@@ -465,9 +496,9 @@ with the same session cookie:
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes` | posts `{"target": "issue"\|"mr"\|"tracking", "body": "…"}` in your GitLab name; needs the `steer` grant |
 | `GET /api/v1/events` | server-sent events: `change` with the kind (`project`, `task`, `research`), namespace and name of what changed; research events only for researches you may read |
 | `GET /api/v1/researches` | the researches you may read: `namespace`, `name`, `view`, `depth`, `schedule`, `timeZone`, `phase`, `lastRun`, `nextRun`, `lastEngine`, `lastModel`, the current or last `run` (`id`, `startedAt`, `finishedAt`, `engine`, `model`, `effort`, `reason`, `outcome`, `message`, `costUSD`), `skippedReason`, `waiting` (`engine`, `until`), `oneOff`, `createdBy` |
-| `GET /api/v1/researches/{namespace}/{name}` | `{"research": …, "result": …}`: the research as in the list and its latest result, `null` without one |
+| `GET /api/v1/researches/{namespace}/{name}` | `{"research": …, "run": …, "result": …}`: the research as in the list plus its `prompt`, `topics` and `agent` (absent for auto), its latest result and that result's run (as in `runs`), both `null` without one |
 | `GET /api/v1/researches/{namespace}/{name}/runs` | `{"runs": […]}`, newest first: `id`, `startedAt`, `finishedAt`, `status` (`running`, `succeeded`, `degraded`, `failed`, `limited`), `engine`, `model`, `effort`, `costUSD`, `choiceReason`, `error`, `warnings`, `expiresAt`; `?limit=` 1–100 (default 20), `?before=` an RFC 3339 time (the `startedAt` of the last run of the previous page); 400 for other values |
-| `GET /api/v1/researches/{namespace}/{name}/runs/{id}` | `{"run": …, "result": …}`: one run of this research and its result (`null` without one); 404 for a run of another research |
+| `GET /api/v1/researches/{namespace}/{name}/runs/{id}` | `{"research": …, "run": …, "result": …}`: the research as above, one run of it and its result (`null` without one); 404 for a run of another research |
 | `GET /api/v1/research/search?q=` | `{"hits": […]}`: at most 50 results of the researches you may read that match `q` (1–200 characters, web search syntax: words, `"a phrase"`, `or`, `-word`), best match first, then newest: `runID`, `namespace`, `research`, `title`, `summary`, `createdAt`; results of deleted researches are not searched |
 
 The research endpoints exist only with a research database. They answer 404
@@ -499,6 +530,38 @@ cd web && npm run dev   # live reload on http://localhost:5173, API proxied to :
 
 The Go server is in `internal/ui` (`cmd/ui` wires it), the app in `web/src`.
 Without `make ui` the binary serves only the API.
+`make ui` also runs `npm test` (`node --test` in `web/test`, e.g. the markdown
+renderer). `web/src` uses no `v-html` and no `innerHTML`: keep it that way.
+
+**Research pages with seeded data.** The research pages need a research
+database and `AgentResearch` objects. For development, a local Postgres
+with seeded results stands in for real runs:
+
+```sh
+make test-db          # Postgres 17 in docker on 127.0.0.1:55432
+make research-seed    # database ai_operator_dev: migrated as research_owner
+                      # (granting research_reader), seeded from hack/research-seed.sql
+kubectl apply -f hack/research-dev.yaml   # the matching AgentResearches (CRDs: make install)
+export AI_OPERATOR_UI_RESEARCH_DB_USER=research_reader AI_OPERATOR_UI_RESEARCH_DB_PASSWORD=reader
+# uncomment the research section of hack/ui-dev.yaml, then
+make run-ui
+```
+
+The seed (namespace `research-dev`) has:
+
+* `morning-news`: two news flash runs that share two URLs, so the latest
+  marks only its other items *new*;
+* `heat-pumps`: a deep report with every block type;
+* `hostile`: a stored result with raw HTML and `javascript:` links, as if
+  written behind the validator's back. Its page must show *Result withheld*.
+
+The data is dated to the latest 08:00 UTC, so the pages look fresh, and
+`make research-seed` replaces it when run again. Apply
+`hack/research-dev.yaml` only where the operator does not run, since it
+would start runs for these researches. The UI logs in as the reader, so the
+pages go through the same SELECT-only grants as in the cluster. The
+passwords are fixed (`owner`, `reader`) and meant for this loopback database
+only.
 
 ## Roadmap
 

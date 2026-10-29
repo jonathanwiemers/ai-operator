@@ -7,6 +7,8 @@ import Project from './views/Project.vue'
 import TaskView from './views/Task.vue'
 import MilestoneView from './views/Milestone.vue'
 import Researches from './views/Researches.vue'
+import ResearchView from './views/Research.vue'
+import ResearchRunView from './views/ResearchRun.vue'
 import NotFound from './views/NotFound.vue'
 import './style.css'
 
@@ -18,6 +20,8 @@ const router = createRouter({
     { path: '/projects/:namespace/:name/tasks/:task', name: 'task', component: TaskView, props: true },
     { path: '/projects/:namespace/:name/milestones/:iid', name: 'milestone', component: MilestoneView, props: true },
     { path: '/research', name: 'researches', component: Researches },
+    { path: '/research/:namespace/:name', name: 'research', component: ResearchView, props: true },
+    { path: '/research/:namespace/:name/runs/:id', name: 'research-run', component: ResearchRunView, props: true },
     { path: '/:rest(.*)*', name: 'not-found', component: NotFound },
   ],
   scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },

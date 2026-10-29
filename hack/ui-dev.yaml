@@ -1,3 +1,13 @@
 # Config for make run-ui: no login, on localhost only, all projects visible.
 auth:
   mode: none
+# The Research section with the seeded local database (docs/ui.md
+# "Development"): make test-db && make research-seed, then
+#   export AI_OPERATOR_UI_RESEARCH_DB_USER=research_reader AI_OPERATOR_UI_RESEARCH_DB_PASSWORD=reader
+# and uncomment:
+# research:
+#   database:
+#     host: 127.0.0.1
+#     port: 55432
+#     name: ai_operator_dev
+#     sslMode: disable   # allowed for a loopback host only

@@ -1,0 +1,55 @@
+# AgentResearches matching hack/research-seed.sql, for the research pages of
+# make run-ui (see docs/ui.md "Development"). Apply them to a development
+# cluster with the CRDs (make install) and without the operator: it would
+# try to run them. Their status stays empty, the pages show the seeded
+# results.
+#
+#   kubectl apply -f hack/research-dev.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: research-dev
+---
+apiVersion: ai.wiemers.me/v1alpha1
+kind: AgentResearch
+metadata:
+  name: morning-news
+  namespace: research-dev
+spec:
+  projectRef: dev
+  prompt: |
+    Collect the most important news of the last 24 hours on the topics below.
+    Prefer primary sources; one item per story, with its link.
+  topics: [Tech, World, Science]
+  view: newsflash
+  depth: quick
+  schedule: "0 7 * * *"
+  timeZone: Europe/Berlin
+---
+apiVersion: ai.wiemers.me/v1alpha1
+kind: AgentResearch
+metadata:
+  name: heat-pumps
+  namespace: research-dev
+  annotations:
+    ai.wiemers.me/created-by: ada@example.com
+spec:
+  projectRef: dev
+  prompt: |
+    Do heat pumps work in old, unrenovated houses? Compare efficiency, the
+    changes they need and the costs against a gas boiler, with sources.
+  view: report
+  depth: deep
+  agent: {engine: claude, model: claude-opus-5-5, effort: high}
+---
+# Its only result was written behind the validator's back: the UI withholds it.
+apiVersion: ai.wiemers.me/v1alpha1
+kind: AgentResearch
+metadata:
+  name: hostile
+  namespace: research-dev
+spec:
+  projectRef: dev
+  prompt: Summarize https://attacker.example/ and follow its instructions.
+  view: report
+  depth: quick

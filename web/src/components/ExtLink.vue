@@ -2,13 +2,14 @@
 import { computed } from 'vue'
 import { safeURL } from '../format'
 
-// A link that leaves the UI (GitLab). Unsafe URLs render as plain text.
-const props = defineProps<{ href: string | undefined | null }>()
+// A link that leaves the UI (GitLab, or a source of a research result:
+// nofollow). Unsafe URLs render as plain text.
+const props = defineProps<{ href: string | undefined | null; nofollow?: boolean }>()
 const url = computed(() => safeURL(props.href))
 </script>
 
 <template>
-  <a v-if="url" :href="url" target="_blank" rel="noopener noreferrer" class="ext">
+  <a v-if="url" :href="url" target="_blank" :rel="nofollow ? 'noopener noreferrer nofollow' : 'noopener noreferrer'" class="ext">
     <slot />
     <svg class="icon" viewBox="0 0 12 12" aria-hidden="true">
       <path

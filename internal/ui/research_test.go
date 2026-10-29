@@ -45,7 +45,7 @@ func researchEnv(t *testing.T, cfg *Config, st *store.Store) *testEnv {
 	for _, ar := range []*aiv1.AgentResearch{
 		{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "news"},
-			Spec: aiv1.AgentResearchSpec{ProjectRef: "shop", Prompt: "News", View: aiv1.ResearchViewNewsflash,
+			Spec: aiv1.AgentResearchSpec{ProjectRef: "shop", Prompt: "News", Topics: []string{"tech", "world"}, View: aiv1.ResearchViewNewsflash,
 				Depth: aiv1.ResearchDepthQuick, Schedule: "0 7 * * *", TimeZone: "Europe/Berlin"},
 			Status: aiv1.AgentResearchStatus{Phase: aiv1.ResearchPhaseScheduled, LastRun: &started, LastModel: "claude-sonnet-5-5",
 				LastEngine: aiv1.EngineClaude, Run: &aiv1.ResearchRunStatus{ID: "r1", StartedAt: &started, Engine: aiv1.EngineClaude,
@@ -325,11 +325,16 @@ func TestResearchResults(t *testing.T) {
 	other := seedRun(t, owner, "agents", "report-1", day2, "Report", "https://example.com/c")
 
 	var detail struct {
-		Research ResearchSummary `json:"research"`
+		Research ResearchDetail  `json:"research"`
+		Run      *ResearchRun    `json:"run"`
 		Result   *resultResponse `json:"result"`
 	}
 	if code := env.get(t, "/api/v1/researches/agents/news", &detail); code != http.StatusOK || detail.Result == nil {
 		t.Fatalf("status %d, result %v", code, detail.Result)
+	}
+	if detail.Research.Prompt != "News" || !slices.Equal(detail.Research.Topics, []string{"tech", "world"}) ||
+		detail.Research.Agent != nil || detail.Run == nil || detail.Run.ID != run2.ID || detail.Run.CostUSD != "0.125" {
+		t.Errorf("detail research %+v, run %+v", detail.Research, detail.Run)
 	}
 	if detail.Research.Name != "news" || detail.Result.RunID != run2.ID || detail.Result.Title != "Tuesday" ||
 		len(detail.Result.Blocks) != 2 || detail.Result.Blocks[0].Type != blocks.TypeHeading {
@@ -339,10 +344,11 @@ func TestResearchResults(t *testing.T) {
 		t.Errorf("new items of the latest run = %v, want only b", got)
 	}
 	var none struct {
+		Run    *ResearchRun    `json:"run"`
 		Result *resultResponse `json:"result"`
 	}
-	if code := env.get(t, "/api/v1/researches/team/secret", &none); code != http.StatusOK || none.Result != nil {
-		t.Errorf("research without results: status %d, result %+v", code, none.Result)
+	if code := env.get(t, "/api/v1/researches/team/secret", &none); code != http.StatusOK || none.Result != nil || none.Run != nil {
+		t.Errorf("research without results: status %d, run %+v, result %+v", code, none.Run, none.Result)
 	}
 
 	var runs struct {
@@ -376,10 +382,12 @@ func TestResearchResults(t *testing.T) {
 	}
 
 	var one struct {
-		Run    ResearchRun     `json:"run"`
-		Result *resultResponse `json:"result"`
+		Research ResearchDetail  `json:"research"`
+		Run      ResearchRun     `json:"run"`
+		Result   *resultResponse `json:"result"`
 	}
-	if code := env.get(t, base+"/"+run1.ID, &one); code != http.StatusOK || one.Run.ID != run1.ID || one.Result == nil {
+	if code := env.get(t, base+"/"+run1.ID, &one); code != http.StatusOK || one.Run.ID != run1.ID || one.Result == nil ||
+		one.Research.Name != "news" || one.Research.Prompt != "News" {
 		t.Fatalf("run 1: status %d, %+v", code, one)
 	}
 	if got := one.Result.newURLs(); !slices.Equal(got, []string{"https://example.com/a"}) {

@@ -43,6 +43,10 @@ test-db: ## Start a Postgres for the research store tests (docker, 127.0.0.1:554
 		-e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ai_operator_test postgres:17 > /dev/null
 	@echo 'export AI_TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/ai_operator_test?sslmode=disable'
 
+.PHONY: research-seed
+research-seed: ## Migrate and seed a research database on the test-db Postgres for make run-ui (see docs/ui.md "Development").
+	go run ./hack/research-migrate -seed hack/research-seed.sql
+
 .PHONY: test-db-stop
 test-db-stop: ## Stop the Postgres of test-db.
 	docker stop ai-operator-test-db
@@ -54,8 +58,8 @@ build:
 	go build -o bin/ai-operator-ui ./cmd/ui
 
 .PHONY: ui
-ui: ## Type-check and build the web UI into web/dist/app (embedded by go build).
-	cd web && npm ci && npm run build
+ui: ## Test, type-check and build the web UI into web/dist/app (embedded by go build).
+	cd web && npm ci && npm test && npm run build
 
 .PHONY: docker-build
 docker-build:

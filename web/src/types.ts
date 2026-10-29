@@ -379,3 +379,94 @@ export interface ResearchSummary {
   oneOff: boolean
   createdBy?: string
 }
+
+// ResearchDetail is a research with what its page shows besides the summary.
+// agent is absent for auto.
+export interface ResearchDetail extends ResearchSummary {
+  prompt: string
+  topics?: string[]
+  agent?: { engine: string; model: string; effort?: string }
+}
+
+// ResearchRun is a stored run (internal/ui/research.go).
+export interface ResearchRun {
+  id: string
+  startedAt: string
+  finishedAt?: string
+  status: 'running' | 'succeeded' | 'degraded' | 'failed' | 'limited'
+  engine?: string
+  model?: string
+  effort?: string
+  costUSD: string
+  choiceReason?: string
+  error?: string
+  warnings?: string[]
+  expiresAt: string
+}
+
+// Blocks of schema v1 (internal/research/blocks), validated by the server.
+// Their text is untrusted agent output: rendered as text only.
+export interface HeadingBlock {
+  type: 'heading'
+  text: string
+  level?: number
+}
+
+export interface MarkdownBlock {
+  type: 'markdown'
+  text: string
+}
+
+// ResearchItem is a piece of news or a finding; new: first seen in this run.
+export interface ResearchItem {
+  topic?: string
+  title: string
+  summary?: string
+  url: string
+  source?: string
+  publishedAt?: string
+  importance: number
+  new?: boolean
+}
+
+export interface ItemsBlock {
+  type: 'items'
+  items: ResearchItem[]
+}
+
+export interface TableBlock {
+  type: 'table'
+  columns: string[]
+  rows: string[][]
+}
+
+export interface StatsBlock {
+  type: 'stats'
+  stats: { label: string; value: string; delta?: string }[]
+}
+
+export interface LinksBlock {
+  type: 'links'
+  links: { title: string; url: string }[]
+}
+
+export type Block = HeadingBlock | MarkdownBlock | ItemsBlock | TableBlock | StatsBlock | LinksBlock
+
+export interface ResearchResult {
+  runID: string
+  title: string
+  summary: string
+  blocks: Block[]
+  createdAt: string
+  expiresAt: string
+  warnings?: string[]
+}
+
+// ResearchResponse is a research page (GET /researches/{ns}/{name}, run is
+// the latest result's) or a run page (…/runs/{id}). run and result are null
+// before there is one.
+export interface ResearchResponse {
+  research: ResearchDetail
+  run: ResearchRun | null
+  result: ResearchResult | null
+}

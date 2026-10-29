@@ -51,6 +51,15 @@ type ResearchSummary struct {
 	CreatedBy     string                  `json:"createdBy,omitempty"`
 }
 
+// ResearchDetail is a research as its pages show it: the summary with the
+// prompt, the topics and the fixed agent (nil for auto).
+type ResearchDetail struct {
+	ResearchSummary
+	Prompt string              `json:"prompt"`
+	Topics []string            `json:"topics,omitempty"`
+	Agent  *aiv1.ResearchAgent `json:"agent,omitempty"`
+}
+
 // ResearchRun is a stored run.
 type ResearchRun struct {
 	ID           string     `json:"id"`
@@ -114,6 +123,10 @@ func summarizeResearch(ar *aiv1.AgentResearch) ResearchSummary {
 		out.Run = &run
 	}
 	return out
+}
+
+func detailOf(ar *aiv1.AgentResearch) ResearchDetail {
+	return ResearchDetail{ResearchSummary: summarizeResearch(ar), Prompt: ar.Spec.Prompt, Topics: ar.Spec.Topics, Agent: ar.Spec.Agent}
 }
 
 func runView(r store.Run) ResearchRun {
@@ -222,21 +235,31 @@ func (s *Server) researches(w http.ResponseWriter, r *http.Request, _ *store.Sto
 	writeJSON(w, http.StatusOK, out)
 }
 
-// researchDetail returns a research with its latest result (null without one).
+// researchDetail returns a research with its latest result and that
+// result's run (both null without one).
 func (s *Server) researchDetail(w http.ResponseWriter, r *http.Request, st *store.Store) {
 	ar, ok := s.loadResearch(w, r)
 	if !ok {
 		return
 	}
-	var result *ResearchResult
+	var (
+		run    *ResearchRun
+		result *ResearchResult
+	)
 	switch row, err := st.LatestResult(r.Context(), ar.Namespace, ar.Name); {
 	case err == nil:
-		result = s.resultView(row)
+		stored, err := st.GetRun(r.Context(), row.RunID)
+		if err != nil {
+			s.internalError(w, err)
+			return
+		}
+		v := runView(stored)
+		run, result = &v, s.resultView(row)
 	case !errors.Is(err, store.ErrNotFound):
 		s.internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"research": summarizeResearch(ar), "result": result})
+	writeJSON(w, http.StatusOK, map[string]any{"research": detailOf(ar), "run": run, "result": result})
 }
 
 // researchRuns pages through a research's runs, newest first: ?before= (RFC
@@ -277,8 +300,9 @@ func (s *Server) researchRuns(w http.ResponseWriter, r *http.Request, st *store.
 	writeJSON(w, http.StatusOK, map[string]any{"runs": out})
 }
 
-// researchRun returns one run of a research with its result (null without
-// one); a run of another research is not found.
+// researchRun returns one run of a research with the research and the run's
+// result (null without one), like researchDetail; a run of another research
+// is not found.
 func (s *Server) researchRun(w http.ResponseWriter, r *http.Request, st *store.Store) {
 	ar, ok := s.loadResearch(w, r)
 	if !ok {
@@ -301,7 +325,7 @@ func (s *Server) researchRun(w http.ResponseWriter, r *http.Request, st *store.S
 		s.internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"run": runView(run), "result": result})
+	writeJSON(w, http.StatusOK, map[string]any{"research": detailOf(ar), "run": runView(run), "result": result})
 }
 
 // researchSearch searches the results of the researches the user may read
