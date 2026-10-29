@@ -12,6 +12,7 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
+	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/oauth2 v0.37.0
 	k8s.io/api v0.37.0
 	k8s.io/apimachinery v0.37.0
