@@ -135,8 +135,8 @@ func (s *Server) loadProject(w http.ResponseWriter, r *http.Request) (*aiv1.Agen
 	return &ap, tasks, true
 }
 
-// events streams change events (server-sent events) of the projects the
-// user may see, until the session expires.
+// events streams change events (server-sent events) of the projects and
+// researches the user may see, until the session expires.
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	p := principalOf(r)
 	flusher, ok := w.(http.Flusher)
@@ -152,7 +152,12 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		}
 		defer release()
 	}
-	events, cancel := s.hub.Subscribe(func(ns, project string) bool { return s.authz.CanView(p, ns, project) })
+	events, cancel := s.hub.Subscribe(func(e Event) bool {
+		if e.Kind == EventResearch {
+			return s.authz.CanReadResearch(p, e.Namespace, e.Name)
+		}
+		return s.authz.CanView(p, e.Namespace, e.Project)
+	})
 	defer cancel()
 
 	h := w.Header()

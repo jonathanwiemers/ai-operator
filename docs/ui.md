@@ -443,7 +443,24 @@ with the same session cookie:
 | `GET /api/v1/gitlab` | whether GitLab is configured and your account connected (`enabled`, `connected`, `username`) |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread` | the comments of the task's issue, MR and tracking issue (`parts`), read with your GitLab token; 409 when not connected |
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes` | posts `{"target": "issue"\|"mr"\|"tracking", "body": "…"}` in your GitLab name; needs the `steer` grant |
-| `GET /api/v1/events` | server-sent events: `change` with the kind, namespace and name of a project or task that changed |
+| `GET /api/v1/events` | server-sent events: `change` with the kind (`project`, `task`, `research`), namespace and name of what changed; research events only for researches you may read |
+| `GET /api/v1/researches` | the researches you may read: `namespace`, `name`, `view`, `depth`, `schedule`, `timeZone`, `phase`, `lastRun`, `nextRun`, `lastEngine`, `lastModel`, the current or last `run` (`id`, `startedAt`, `finishedAt`, `engine`, `model`, `effort`, `reason`, `outcome`, `message`, `costUSD`), `skippedReason`, `waiting` (`engine`, `until`), `oneOff`, `createdBy` |
+| `GET /api/v1/researches/{namespace}/{name}` | `{"research": …, "result": …}`: the research as in the list and its latest result, `null` without one |
+| `GET /api/v1/researches/{namespace}/{name}/runs` | `{"runs": […]}`, newest first: `id`, `startedAt`, `finishedAt`, `status` (`running`, `succeeded`, `degraded`, `failed`, `limited`), `engine`, `model`, `effort`, `costUSD`, `choiceReason`, `error`, `warnings`, `expiresAt`; `?limit=` 1–100 (default 20), `?before=` an RFC 3339 time (the `startedAt` of the last run of the previous page); 400 for other values |
+| `GET /api/v1/researches/{namespace}/{name}/runs/{id}` | `{"run": …, "result": …}`: one run of this research and its result (`null` without one); 404 for a run of another research |
+| `GET /api/v1/research/search?q=` | `{"hits": […]}`: at most 50 results of the researches you may read that match `q` (1–200 characters, web search syntax: words, `"a phrase"`, `or`, `-word`), best match first, then newest: `runID`, `namespace`, `research`, `title`, `summary`, `createdAt`; results of deleted researches are not searched |
+
+The research endpoints exist only with a research database. They answer 404
+without a matching research rule, for a research you may not read and for
+one that does not exist (no matter whether it has stored runs), and 503 until
+the UI is connected to the database. A result has `runID`, `title`,
+`summary`, `blocks` (the [block schema](research.md#the-agents-answer), items with
+`"new": true` when this run is the first of the research to report
+their URL, see [new items](research.md#runs-results-and-new-items)), `createdAt`, `expiresAt` and `warnings`. The UI runs
+every stored result through the block validator again before it sends it: one
+that fails (changed in the database, or by an older validator) is replaced by
+the title "Result withheld", no blocks and a warning, and logged; a search hit
+with an invalid title or summary is left out.
 
 Change events carry no content; the app fetches what it shows again. The
 stream sends a heartbeat every 25 seconds and ends when the session expires.

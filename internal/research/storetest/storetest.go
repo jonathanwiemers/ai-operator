@@ -160,6 +160,28 @@ func Count(t testing.TB, table, id string) int {
 	return n
 }
 
+// Exec runs sql as the URL's user in the schema of New, e.g. to change a row
+// behind the store's back.
+func Exec(t testing.TB, sql string, args ...any) {
+	t.Helper()
+	mu.Lock()
+	db, found := dbs[t]
+	mu.Unlock()
+	if !found {
+		t.Fatal("storetest.Exec needs storetest.New first")
+	}
+	ctx := t.Context()
+	if err := pgx.BeginFunc(ctx, db.admin, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SET LOCAL search_path TO "+pgx.Identifier{db.schema}.Sanitize()); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, sql, args...)
+		return err
+	}); err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+}
+
 // RunStatus returns the status and error of run id in the schema of New, ok
 // false if there is no such run.
 func RunStatus(t testing.TB, id string) (status, errMsg string, ok bool) {

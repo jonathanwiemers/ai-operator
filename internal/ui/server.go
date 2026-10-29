@@ -101,6 +101,13 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes", s.authed(s.postMilestoneNote))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript", s.authed(s.transcript))
 	mux.Handle("GET /api/v1/events", s.authed(s.events))
+	if s.cfg.Research.Enabled() {
+		mux.Handle("GET /api/v1/researches", s.researchHandler(s.researches))
+		mux.Handle("GET /api/v1/researches/{namespace}/{name}", s.researchHandler(s.researchDetail))
+		mux.Handle("GET /api/v1/researches/{namespace}/{name}/runs", s.researchHandler(s.researchRuns))
+		mux.Handle("GET /api/v1/researches/{namespace}/{name}/runs/{id}", s.researchHandler(s.researchRun))
+		mux.Handle("GET /api/v1/research/search", s.researchHandler(s.researchSearch))
+	}
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })
 	mux.HandleFunc("GET /oauth2/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })
 	mux.HandleFunc("GET /", s.app)

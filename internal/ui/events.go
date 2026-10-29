@@ -14,11 +14,15 @@ import (
 // Event tells the browser that a resource changed. It carries no content:
 // the browser fetches what it shows again, through the access checks.
 type Event struct {
-	Kind      string `json:"kind"` // project or task
+	Kind      string `json:"kind"` // project, task or research
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
-	Project   string `json:"project"`
+	// Project is the project of a project or task, empty for a research.
+	Project string `json:"project"`
 }
+
+// EventResearch is the kind of an AgentResearch's events.
+const EventResearch = "research"
 
 // Hub fans out change events to the open event streams.
 type Hub struct {
@@ -28,7 +32,7 @@ type Hub struct {
 
 type subscription struct {
 	ch    chan Event
-	allow func(namespace, project string) bool
+	allow func(Event) bool
 }
 
 // NewHub returns an empty hub.
@@ -37,7 +41,7 @@ func NewHub() *Hub {
 }
 
 // Subscribe returns the events allow lets through, until cancel is called.
-func (h *Hub) Subscribe(allow func(namespace, project string) bool) (events <-chan Event, cancel func()) {
+func (h *Hub) Subscribe(allow func(Event) bool) (events <-chan Event, cancel func()) {
 	s := &subscription{ch: make(chan Event, 32), allow: allow}
 	h.mu.Lock()
 	h.subs[s] = struct{}{}
@@ -56,7 +60,7 @@ func (h *Hub) Publish(e Event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for s := range h.subs {
-		if !s.allow(e.Namespace, e.Project) {
+		if !s.allow(e) {
 			continue
 		}
 		select {
@@ -66,9 +70,14 @@ func (h *Hub) Publish(e Event) {
 	}
 }
 
-// Watch publishes every change of AgentProjects and AgentTasks in the cache.
-func Watch(ctx context.Context, informers cache.Informers, hub *Hub) error {
-	for _, obj := range []client.Object{&aiv1.AgentProject{}, &aiv1.AgentTask{}} {
+// Watch publishes every change of AgentProjects and AgentTasks in the cache,
+// and with research of AgentResearches (without, the UI may not read them).
+func Watch(ctx context.Context, informers cache.Informers, hub *Hub, research bool) error {
+	objs := []client.Object{&aiv1.AgentProject{}, &aiv1.AgentTask{}}
+	if research {
+		objs = append(objs, &aiv1.AgentResearch{})
+	}
+	for _, obj := range objs {
 		inf, err := informers.GetInformer(ctx, obj)
 		if err != nil {
 			return err
@@ -98,6 +107,8 @@ func eventOf(o any) (Event, bool) {
 		return Event{Kind: "project", Namespace: v.Namespace, Name: v.Name, Project: v.Name}, true
 	case *aiv1.AgentTask:
 		return Event{Kind: "task", Namespace: v.Namespace, Name: v.Name, Project: v.Spec.ProjectRef}, true
+	case *aiv1.AgentResearch:
+		return Event{Kind: EventResearch, Namespace: v.Namespace, Name: v.Name}, true
 	}
 	return Event{}, false
 }

@@ -70,11 +70,11 @@ func (s *Server) ConnectResearch(ctx context.Context, open func(context.Context)
 }
 
 // researchHandler runs h for logged-in users with the research store: 404
-// while research is off, 503 until the database is connected. Access to
-// the research itself is h's to check.
+// while research is off or no research rule matches the user, 503 until the
+// database is connected. Access to the research itself is h's to check.
 func (s *Server) researchHandler(h func(http.ResponseWriter, *http.Request, *store.Store)) http.Handler {
 	return s.authed(func(w http.ResponseWriter, r *http.Request) {
-		if !s.cfg.Research.Enabled() {
+		if read, _ := s.authz.ResearchAccess(principalOf(r)); !read || !s.cfg.Research.Enabled() {
 			notFound(w)
 			return
 		}

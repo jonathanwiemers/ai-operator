@@ -288,7 +288,8 @@ change it.
 A run's result is stored with one row per news item, identified by its URL
 (scheme and host lowercased, without the fragment). An item remembers when the
 research first reported its URL. That date is what marks an item as **new**
-in a news flash. The prompt of the next run lists the item URLs of the latest
+in a news flash: the UI flags it in the run that first reported the URL
+(`"new": true`), not in later runs. The prompt of the next run lists the item URLs of the latest
 result (at most 200), so a news flash does not repeat itself.
 
 ## Retention
