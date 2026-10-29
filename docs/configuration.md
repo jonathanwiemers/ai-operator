@@ -97,6 +97,64 @@ once or on a schedule, with the results kept in Postgres. An AgentProject
 gives their runs a database login with `spec.research`. See
 [research.md](research.md). This feature is still under construction.
 
+#### Research database
+
+Research is on exactly when `research.database.host` is set; without it the
+operator opens no connection and starts as before. The database is configured
+the way the Zalando postgres-operator provides it: a host and one Secret per
+login with the keys `username` and `password`.
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `research.database.host` | `""` | Postgres host; empty turns research off |
+| `research.database.port` | `5432` | |
+| `research.database.name` | `""` | database, required with a host |
+| `research.database.sslMode` | `require` | `disable`, `require` (encrypted, not verified), `verify-ca` or `verify-full` |
+| `research.database.ownerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | owner login of the operator, a Secret in the release's namespace; `name` is required with a host |
+| `research.database.readerSecret` | `{name: "", …}` | read-only login of the UI, a Secret in the release's namespace |
+| `research.database.readerRole` | `""` | role granted read access (the reader login) |
+| `research.database.writerRoles` | `[]` | roles granted write access (the writer logins of research runs) |
+
+The logins on netcup01:
+
+| Login (role) | Secret | Namespace | Used by |
+|---|---|---|---|
+| `research_owner` (owns `ai_operator`) | `research-owner.ai-operator-postgres.credentials.postgresql.acid.zalan.do` | `ai-operator-system` | operator |
+| `research_reader` | `research-reader.ai-operator-postgres.credentials.postgresql.acid.zalan.do` | `ai-operator-system` | UI |
+| `agents.research_writer` (Zalando prefixes cross-namespace roles with the namespace) | `agents.research-writer.ai-operator-postgres.credentials.postgresql.acid.zalan.do` | `agents` | runner of research runs |
+
+```yaml
+research:
+  database:
+    host: ai-operator-postgres.ai-operator-system.svc.cluster.local
+    name: ai_operator
+    ownerSecret: {name: research-owner.ai-operator-postgres.credentials.postgresql.acid.zalan.do}
+    readerSecret: {name: research-reader.ai-operator-postgres.credentials.postgresql.acid.zalan.do}
+    readerRole: research_reader
+    writerRoles: [agents.research_writer]
+```
+
+The operator gets the host, port, name and `sslMode` as flags
+(`--research-db-host`, `--research-db-port`, `--research-db-name`,
+`--research-db-sslmode`, `--research-reader-role`, `--research-writer-roles`)
+and the owner login as the environment variables `AI_RESEARCH_DB_USER` and
+`AI_RESEARCH_DB_PASSWORD` from `ownerSecret`, never as arguments. A host
+without a name, user or password stops the operator at start; the chart
+refuses to render a host without `name` or `ownerSecret.name`.
+
+At every start the leader connects as the owner, applies the embedded
+migrations and grants the roles: `readerRole` may read every table,
+each of `writerRoles` may read, insert and update runs, results and items,
+and default privileges extend both to later tables. Grants are additive: a
+role removed from the values keeps its rights until revoked by hand. If the
+database is unreachable or a migration fails, the operator keeps running the
+factory and retries with backoff (5 s up to 5 min). Once ready, it deletes
+expired runs with their results and items at once and then every hour.
+
+The runner of a research run logs in as a writer: name its Secret per
+project in `spec.research.writerSecret` (see
+[research.md](research.md#specresearch-on-agentproject)).
+
 ## Secrets
 
 ```sh

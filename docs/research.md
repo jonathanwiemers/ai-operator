@@ -133,11 +133,14 @@ result (at most 200), so a news flash does not repeat itself.
 
 ## Retention
 
-*To come with the research controller.*
+The operator deletes expired runs, with their results and items, at start and
+then every hour. Runs are kept for `spec.retention` (default 30 days).
 
 ## Database
 
-*To come with the operator's database connection:* the chart values
-`research.database.*` (see the
-[chart README](../charts/ai-operator/README.md#research)), migrations and
-grants, and the network policy for research pods.
+The operator connects as the database's owner, applies the migrations and
+grants the reader and writer roles at every start, and deletes expired runs
+hourly. The chart values, the logins and the behavior during an outage are in
+[configuration.md](configuration.md#research-database).
+
+*To come:* the network policy for research pods.

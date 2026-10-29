@@ -58,9 +58,41 @@ spec:
             {{- with .Values.defaultOwners }}
             - --default-owners={{ join "," . }}
             {{- end }}
+            {{- $db := .Values.research.database }}
+            {{- if $db.host }}
+            {{- if not $db.name }}
+            {{- fail "research.database.name is required with research.database.host" }}
+            {{- end }}
+            {{- if not $db.ownerSecret.name }}
+            {{- fail "research.database.ownerSecret.name is required with research.database.host" }}
+            {{- end }}
+            - --research-db-host={{ $db.host }}
+            - --research-db-port={{ $db.port }}
+            - --research-db-name={{ $db.name }}
+            - --research-db-sslmode={{ $db.sslMode }}
+            {{- with $db.readerRole }}
+            - --research-reader-role={{ . }}
+            {{- end }}
+            {{- with $db.writerRoles }}
+            - --research-writer-roles={{ join "," . }}
+            {{- end }}
+            {{- end }}
             {{- range .Values.extraArgs }}
             - {{ . | quote }}
             {{- end }}
+          {{- if $db.host }}
+          env:
+            - name: AI_RESEARCH_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $db.ownerSecret.name }}
+                  key: {{ $db.ownerSecret.usernameKey }}
+            - name: AI_RESEARCH_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $db.ownerSecret.name }}
+                  key: {{ $db.ownerSecret.passwordKey }}
+          {{- end }}
           ports:
             - name: metrics
               containerPort: {{ .Values.metrics.port }}

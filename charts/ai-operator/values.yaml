@@ -85,8 +85,9 @@ agent:
 
 # Research (AgentResearch, see docs/research.md): agents answer research
 # questions once or on a schedule, the results are kept in Postgres. Off
-# while database.host is empty. The values are not used yet: the research
-# controller, runner and UI follow in later releases.
+# while database.host is empty. The operator uses database.* (except
+# readerSecret and networkPolicyPeer); the research controller, runner and UI
+# follow in later releases.
 research:
   # The database, as the Zalando postgres-operator provides it: one Secret
   # per login with the keys username and password. The netcup01 example is

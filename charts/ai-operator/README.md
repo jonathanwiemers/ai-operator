@@ -101,16 +101,20 @@ that reaches a non-leader pod fails and GitLab's own retry covers it.
 Research runs (`AgentResearch`, see [docs/research.md](../../docs/research.md))
 store their results in Postgres. The feature is off while
 `research.database.host` is empty. The chart installs the `AgentResearch` CRD
-either way. These values are not used yet: the controller, the runner mode
-and the UI pages follow in later releases.
+either way. With a host the operator connects as the owner, applies the
+migrations and grants at start (retrying while the database is unreachable)
+and deletes expired results hourly; see
+[docs/configuration.md](../../docs/configuration.md#research-database). The
+other values are not used yet: the controller, the runner mode and the UI
+pages follow in later releases.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `research.database.host` | `""` | Postgres host; empty turns research off |
 | `research.database.port` | `5432` | |
-| `research.database.name` | `""` | database |
-| `research.database.sslMode` | `require` | libpq `sslmode` |
-| `research.database.ownerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | login of the operator (owns the schema), a Secret in the release's namespace |
+| `research.database.name` | `""` | database, required with a host |
+| `research.database.sslMode` | `require` | libpq `sslmode`: `disable`, `require`, `verify-ca` or `verify-full` |
+| `research.database.ownerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | login of the operator (owns the schema), a Secret in the release's namespace; `name` is required with a host. Passed as the env `AI_RESEARCH_DB_USER`/`AI_RESEARCH_DB_PASSWORD` |
 | `research.database.readerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | login of the UI (read only), a Secret in the release's namespace |
 | `research.database.readerRole` | `""` | role the migrations grant read access to |
 | `research.database.writerRoles` | `[]` | roles the migrations grant write access to: the logins of `spec.research.writerSecret` of the AgentProjects |

@@ -20,6 +20,8 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/controller"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/research"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/webhook"
 )
 
@@ -37,6 +39,15 @@ func main() {
 	flag.StringVar(&agentLogLevel, "agent-log-level", "info", "Log level (debug, info or error) of the agent pods of AgentProjects that do not set spec.agents.logLevel.")
 	var webhookAddr string
 	flag.StringVar(&webhookAddr, "webhook-bind-address", "", "The address the GitLab webhook receiver (POST "+webhook.Path+") binds to, on the leader only. Empty: no receiver.")
+	var researchDB research.DatabaseConfig
+	flag.StringVar(&researchDB.Host, "research-db-host", "", "Host of the research database. Empty: research is off. The owner login is read from AI_RESEARCH_DB_USER and AI_RESEARCH_DB_PASSWORD.")
+	flag.IntVar(&researchDB.Port, "research-db-port", 5432, "Port of the research database.")
+	flag.StringVar(&researchDB.Name, "research-db-name", "", "Name of the research database.")
+	flag.StringVar(&researchDB.SSLMode, "research-db-sslmode", "require", "sslmode of the research database: disable, require, verify-ca or verify-full.")
+	var researchGrants store.Grants
+	var researchWriters string
+	flag.StringVar(&researchGrants.Reader, "research-reader-role", "", "Role the research migrations grant read access to (the UI's login).")
+	flag.StringVar(&researchWriters, "research-writer-roles", "", "Comma separated roles the research migrations grant write access to (the logins of research runs).")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -47,6 +58,22 @@ func main() {
 	default:
 		setupLog.Error(nil, "invalid --agent-log-level, want debug, info or error", "value", agentLogLevel)
 		os.Exit(1)
+	}
+	// Research is on exactly with a database host. The research controller
+	// will wait for researchSetup's Ready and use researchDB for its pods.
+	var researchSetup *research.Database
+	if researchDB.Host != "" {
+		owner, err := researchDB.Login(os.Getenv("AI_RESEARCH_DB_USER"), os.Getenv("AI_RESEARCH_DB_PASSWORD"))
+		if err != nil {
+			setupLog.Error(err, "invalid research database configuration (--research-db-*, AI_RESEARCH_DB_USER, AI_RESEARCH_DB_PASSWORD)")
+			os.Exit(1)
+		}
+		for _, w := range strings.Split(researchWriters, ",") {
+			if w = strings.TrimSpace(w); w != "" {
+				researchGrants.Writers = append(researchGrants.Writers, w)
+			}
+		}
+		researchSetup = research.NewDatabase(owner, researchGrants, clock.RealClock{}, ctrl.Log.WithName("research-db"))
 	}
 
 	scheme := runtime.NewScheme()
@@ -98,6 +125,10 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentTask")
 		os.Exit(1)
+	}
+
+	if researchSetup != nil {
+		utilruntime.Must(mgr.Add(researchSetup))
 	}
 
 	utilruntime.Must(mgr.AddHealthzCheck("healthz", healthz.Ping))

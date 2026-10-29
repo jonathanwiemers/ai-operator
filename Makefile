@@ -84,6 +84,8 @@ helm-lint: ## Lint and render the chart.
 	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system --set agent.namespaces={agents} > /dev/null
 	$(HELM) lint $(CHART) --strict -f hack/helm-ui-values.yaml
 	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system -f hack/helm-ui-values.yaml > /dev/null
+	$(HELM) lint $(CHART) --strict -f hack/helm-research-values.yaml
+	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system -f hack/helm-research-values.yaml > /dev/null
 
 .PHONY: helm-package
 helm-package: ## Package the chart as dist/ai-operator-$(VERSION).tgz.

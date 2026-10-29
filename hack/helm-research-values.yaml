@@ -1,0 +1,10 @@
+# Values for make helm-lint: renders the chart with the research database of
+# netcup01 (Zalando postgres-operator, see docs/configuration.md).
+research:
+  database:
+    host: ai-operator-postgres.ai-operator-system.svc.cluster.local
+    name: ai_operator
+    ownerSecret: {name: research-owner.ai-operator-postgres.credentials.postgresql.acid.zalan.do}
+    readerSecret: {name: research-reader.ai-operator-postgres.credentials.postgresql.acid.zalan.do}
+    readerRole: research_reader
+    writerRoles: [agents.research_writer]
