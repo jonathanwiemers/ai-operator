@@ -55,6 +55,12 @@ const showPrompt = ref(false)
           <span>agent <code>{{ agent }}</code></span>
           <span>last run <RelTime :time="r.lastRun" /></span>
           <span v-if="r.nextRun">next run <RelTime :time="r.nextRun" /></span>
+          <RouterLink
+            :to="`/research/${encodeURIComponent(r.namespace)}/${encodeURIComponent(r.name)}/runs`"
+            class="history"
+          >
+            Run history
+          </RouterLink>
         </div>
         <div v-if="r.waiting || r.skippedReason" class="waiting">
           <Badge v-if="r.waiting" tone="warning">
@@ -132,5 +138,9 @@ const showPrompt = ref(false)
   align-items: center;
   gap: 8px;
   font-size: 13px;
+}
+
+.history {
+  font-weight: 550;
 }
 </style>

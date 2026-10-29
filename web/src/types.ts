@@ -470,3 +470,22 @@ export interface ResearchResponse {
   run: ResearchRun | null
   result: ResearchResult | null
 }
+
+// ResearchRunsPage is GET /researches/{ns}/{name}/runs (?before=, ?limit=).
+export interface ResearchRunsPage {
+  runs: ResearchRun[]
+}
+
+// ResearchSearchHit is one hit of GET /api/v1/research/search?q=.
+export interface ResearchSearchHit {
+  runID: string
+  namespace: string
+  research: string
+  title: string
+  summary: string
+  createdAt: string
+}
+
+export interface ResearchSearchPage {
+  hits: ResearchSearchHit[]
+}
