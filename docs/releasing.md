@@ -21,9 +21,21 @@ Release tags and GitHub releases exist **only on GitHub**. The mirror must not
 overwrite them.
 
 The owner sets the mirror up by hand: in GitLab, *Settings → Repository →
-Mirroring repositories*, push direction, with a GitHub token that has
-`contents: write`. Prefer **Mirror only protected branches**, so only `main`
-is pushed and the release tags created on GitHub are left alone.
+Mirroring repositories*, push direction, with a fine-grained GitHub token for
+this repository only with **Contents** and **Workflows** read and write
+(without Workflows, GitHub refuses every push that changes
+`.github/workflows/`). Tick both:
+
+* **Mirror only protected branches**, so only `main` is pushed;
+* **Keep divergent refs**, so the mirror never deletes or rewrites refs that
+  exist only on GitHub.
+
+Without them the mirror prunes the release tags on its first sync: GitHub
+turns those releases into drafts, and the next release reuses their version
+and overwrites the images and the chart on ghcr. To repair, push each tag
+again to the commit its Release run built
+(`git push github <sha>:refs/tags/<version>`) and publish the release again
+(`gh release edit <version> --draft=false`, `--latest` for the newest).
 
 Docs-only merges to `main` are still not released.
 
