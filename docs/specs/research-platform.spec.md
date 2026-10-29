@@ -25,17 +25,35 @@ The web UI becomes a platform with features. The **factory** (projects, mileston
   - OIDC login, deny-by-default access rules with grants (`transcript`, `steer`), a strict CSP;
   - a read-only service account (get/list/watch on the CRDs, pod logs);
   - no kubebuilder RBAC markers in `internal/ui`; its RBAC is hand-written in `templates/ui-rbac.yaml`.
-- The cluster has a postgres-operator (zalando) with a default cluster available.
+- The database is already prepared in the cluster (`jo.wiemers/infra/cluster`, `clusters/netcup01/applications/ai-operator/postgresql.yaml`):
+  - Zalando postgres-operator `postgresql` `ai-operator-postgres` in `ai-operator-system`;
+  - host `ai-operator-postgres.ai-operator-system.svc.cluster.local:5432`, database `ai_operator`, TLS (`sslmode=require`);
+  - one Zalando secret per login, with keys `username`/`password`:
+
+    | Login (role) | Secret | Namespace | Used by |
+    |---|---|---|---|
+    | `research_owner` (owns `ai_operator`) | `research-owner.ai-operator-postgres.credentials.postgresql.acid.zalan.do` | `ai-operator-system` | operator |
+    | `research_reader` | `research-reader.ai-operator-postgres.credentials.postgresql.acid.zalan.do` | `ai-operator-system` | UI |
+    | `agents.research_writer` (Zalando prefixes cross-namespace roles with the namespace) | `agents.research-writer.ai-operator-postgres.credentials.postgresql.acid.zalan.do` | `agents` | runner of research runs |
+
+  - The reader and writer have no table rights yet: the migrations grant them.
 
 ## Decisions (locked; do not reopen)
 
-1. **Storage is Postgres.**
-   - Optional: the research feature is off and invisible without a database. The chart takes `research.database.existingSecret`.
-   - The operator owns the schema: embedded SQL migrations with a `schema_migrations` table, applied at operator start.
-   - Retention: the operator deletes expired rows hourly.
-   - Two roles:
-     - a **writer** DSN for the operator and the runner container of research runs (never the agent container);
-     - a **reader** DSN (SELECT only) for the UI.
+1. **Storage is Postgres, configured the way Zalando postgres-operator provides it** (no URI secrets):
+   - Optional: the research feature is off and invisible without `research.database.host`.
+   - Chart values:
+     - `research.database.host`, `port` (5432), `name`, `sslMode` (`require`);
+     - `ownerSecret` (operator) and `readerSecret` (UI): each `{name, usernameKey: username, passwordKey: password}`;
+     - `readerRole` and `writerRoles` (a list): role names the migrations grant to.
+   - The runner container of a research run gets the writer login from `AgentProject.spec.research.writerSecret` (`{name, usernameKey, passwordKey}`, a Secret in the project's namespace). The host, port, database and sslMode come from the operator's config. The agent container never gets database credentials.
+   - The operator owns the schema: embedded SQL migrations with a `schema_migrations` table, applied at operator start as the owner.
+   - The migrations grant:
+     - `readerRole`: USAGE and SELECT;
+     - each `writerRoles` entry: SELECT, INSERT and UPDATE on the run, result and item tables;
+     - `ALTER DEFAULT PRIVILEGES` for the same, so later tables follow.
+   - Roles are quoted identifiers (the writer's name contains a dot).
+   - Retention: the operator, as the owner, deletes expired rows hourly.
    - Driver: `github.com/jackc/pgx/v5`.
 2. **New CRD `AgentResearch`** (namespaced, `ai.wiemers.me/v1alpha1`):
    - `spec.projectRef`: an `AgentProject` in the same namespace. Its credentials, agent image, engines, profiles and usage readings are used, and research runs feed that project's `EngineUsage`/`UsageLimits`, so factory and research share one view of the budget.
@@ -105,7 +123,12 @@ The web UI becomes a platform with features. The **factory** (projects, mileston
 - Runner research mode, candidate choice (shares the usage logic of `internal/runner/usage.go`), recording `EngineUsage` from research runs to the referenced project.
 
 ### Chart
-- `research.enabled`, `research.database.existingSecret` (keys `writerURI`, `readerURI`), `research.candidates`, `research.maxUsagePercent`, `ui.research.allowCreate`, `ui.research.namespace`.
+- `research.database.{host, port, name, sslMode, ownerSecret, readerSecret, readerRole, writerRoles}`, `research.candidates`, `research.maxUsagePercent`, `ui.research.allowCreate`, `ui.research.namespace`.
+- `agent.networkPolicy`: research-run pods (their own label, not task pods) may reach the database, e.g. `research.database.networkPolicyPeer` (namespace and pod selector) on TCP 5432. Today's policy blocks cluster CIDRs, so without this the runner cannot connect. Task pods stay unchanged.
+- The netcup01 values to use once released:
+  - `host: ai-operator-postgres.ai-operator-system.svc.cluster.local`, `name: ai_operator`;
+  - the secrets and roles from the table in Background;
+  - peer: namespace `ai-operator-system`, pods `cluster-name: ai-operator-postgres`.
 - RBAC for the operator (agentresearches, their pods) and the UI (hand-written).
 - The CRD in `files/`.
 
@@ -146,7 +169,7 @@ The web UI becomes a platform with features. The **factory** (projects, mileston
 - MCP endpoint, research tools for factory agents, results posted to GitLab.
 - Other features on the platform beyond Factory and Research.
 - Editing or annotating results in the UI.
-- Provisioning the database in the cluster: that is the owner's follow-up in `infra/cluster`.
+- Provisioning the database: done in `infra/cluster` (see Background). Turning research on in the netcup01 values is the owner's follow-up after the release.
 
 ## Suggested order (one MR each, split further if over budget)
 
@@ -189,7 +212,7 @@ GitLab `jo.wiemers/ai-operator`, one MR per row, each based on `main` after the 
 | 4 | `research-schedule` | Cron + timeZone helpers for next-run calculation (shared by CRD validation and the controller) | `spec-doc` | open |
 | 5 | `research-crd` | `AgentResearch` types, defaults, validation, chart values, CRD in `files/`, docs skeleton `docs/research.md` (no controller yet) | `research-schedule` | open |
 | 6 | `store-writes` | Insert run/result/items, UI query helpers (list, get, search, items for "new" badges) | `store-schema`, `block-schema` | open |
-| 7 | `operator-database` | Operator takes writer DSN, applies migrations at start; chart Secret wiring; feature off without a database | `store-schema` | open |
+| 7 | `operator-database` | Operator takes `research.database` (host, port, name, sslMode, owner/reader secrets, reader/writer roles), applies migrations at start as the owner with the grants; chart wiring incl. the research-pod NetworkPolicy peer; feature off without a host | `store-schema` | open |
 | 8 | `research-controller` | Schedule, one pod per run, `nextRun`, skip/wait, conditions, finished-pod cleanup, hourly retention | `research-crd`, `operator-database`, `store-writes` | open |
 | 9 | `runner-research-answer` | Validate/repair agent JSON, write result and items, mark `degraded` after a failed repair | `block-schema`, `store-writes` | open |
 | 10 | `runner-research-mode` | `ai-runner research`: prompt (instructions, topics, schema, previous URLs), agent call, usage recording to the project | `runner-research-answer`, `research-controller` | open |
@@ -211,7 +234,7 @@ Cross-cutting choices locked while planning this milestone (do not reopen withou
 
 1. **API prefix.** Research (and features) live under `/api/v1/` (so `GET /api/v1/features`), matching the existing UI API. The milestone's `GET /api/features` is shorthand for that path.
 2. **Who chooses the agent.** The operator, not the runner, chooses the agent before it creates a pod. The runner receives the chosen `{engine, model, effort}` and does not re-pick.
-3. **Database Secret in agent namespaces.** The database Secret (`writerURI` for research pods) must also exist in every agent namespace that hosts `AgentResearch`es, not only the operator's namespace.
+3. **Writer login in agent namespaces.** Research pods get the writer's username/password from `AgentProject.spec.research.writerSecret`, a Secret in the project's (agent) namespace; host, port, database and sslMode come from the operator's config. On netcup01 Zalando creates that Secret there itself (cross-namespace user `agents.research_writer`). (Steer 2026-10-29: replaces the `writerURI` Secret.)
 4. **Research rules vs factory rules.** Research access rules in the UI are separate from factory rules: new grants `research: read` / `research: write` and optional `researches` globs, not reuse of `transcript` / `steer` / `projects`.
 5. **Markdown rendering.** Markdown is rendered by an own subset renderer to Vue nodes, without `v-html`. No raw HTML from agent content reaches the DOM.
 
@@ -221,8 +244,11 @@ Every MR of this spec appends exactly one line: date, slice key, what landed,
 production line count, deviations.
 
 - 2026-10-29 `spec-doc`: added this spec (Goal through Acceptance, Delivery, Plan decisions, Steering log, MRs); 0 production lines; no deviations.
+- 2026-10-29 steer `database-zalando` (owner): the database exists on netcup01 (`infra/cluster` !283, !284). Decision 1, Background, Chart and Non-goals now describe it: host plus Zalando username/password Secrets (owner, reader, cross-namespace writer) instead of URI Secrets, grants by the migrations, a NetworkPolicy peer for research pods; plan decision 3 and delivery row 7 follow. 0 production lines.
 
 ## MRs
 
 | # | Title | Link | Status |
 |--:|---|---|---|
+| 1 | Spec: research platform | !34 | merged |
+| 2 | Spec: research database as prepared on netcup01 (Zalando secrets) | (this MR) | open |
