@@ -157,7 +157,7 @@ func TestResearchOneOffRunsOnce(t *testing.T) {
 	if pods[0].Name != naming.ResearchPod("q", run.ID) || !metav1.IsControlledBy(&pods[0], r) {
 		t.Errorf("pod %s, owners %v", pods[0].Name, pods[0].OwnerReferences)
 	}
-	if run.Engine != aiv1.EngineClaude || run.Model != "claude-sonnet-5-5" || run.Reason != "first quick candidate" ||
+	if run.Engine != aiv1.EngineClaude || run.Model != "claude-sonnet-5-5" || run.Reason != "chosen: claude/claude-sonnet-5-5" ||
 		!run.StartedAt.Time.Equal(t0) || r.Status.Phase != aiv1.ResearchPhaseRunning || r.Status.NextRun != nil {
 		t.Errorf("status %+v, run %+v", r.Status, run)
 	}
@@ -378,6 +378,8 @@ func TestResearchConditions(t *testing.T) {
 	badAgent.Spec.Agent = &aiv1.ResearchAgent{Engine: aiv1.EngineClaude, Model: "gpt-9"}
 	otherProject := newResearch("q", "")
 	otherProject.Spec.ProjectRef = "missing"
+	cursorOnly := researchProject()
+	cursorOnly.Spec.Research.Candidates.Quick = []aiv1.ResearchAgent{{Engine: aiv1.EngineCursor, Model: "auto"}}
 
 	for name, tc := range map[string]struct {
 		objs   []client.Object
@@ -391,6 +393,7 @@ func TestResearchConditions(t *testing.T) {
 		"invalid zone":     {[]client.Object{researchProject(), writerSecret(), badZone}, "InvalidSchedule", "Mars/Olympus"},
 		"invalid agent":    {[]client.Object{researchProject(), writerSecret(), badAgent}, "InvalidAgent", "gpt-9"},
 		"missing project":  {[]client.Object{researchProject(), writerSecret(), otherProject}, "ProjectNotFound", "missing"},
+		"no usable agent":  {[]client.Object{cursorOnly, writerSecret(), newResearch("q", "")}, "NoAgent", "cursor/auto: the project does not use cursor"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newResearchEnv(t, tc.objs...)
@@ -430,10 +433,194 @@ func TestResearchProjectCandidatesOverride(t *testing.T) {
 	}
 
 	fixed := newResearch("f", "")
+	// The effort is capped at agents.maxEffort (high by default).
 	fixed.Spec.Agent = &aiv1.ResearchAgent{Engine: aiv1.EngineClaude, Model: "opus", Effort: "max"}
 	e = newResearchEnv(t, p, writerSecret(), fixed)
 	e.reconcile("f")
-	if run := e.research("f").Status.Run; run == nil || run.Model != "claude-opus-5-5" || run.Effort != "max" || run.Reason != "fixed by spec.agent" {
+	if run := e.research("f").Status.Run; run == nil || run.Model != "claude-opus-5-5" || run.Effort != "high" || run.Reason != "chosen: claude/claude-opus-5-5" {
 		t.Errorf("run %+v", run)
 	}
+}
+
+// usageProject is a project with cursor allowed, whose claude 5-hour window
+// is at percent until resets, and with the given limits.
+func usageProject(percent int32, resets time.Time, limits ...aiv1.UsageLimit) *aiv1.AgentProject {
+	p := researchProject()
+	p.Spec.Agents.Models = append(aiv1.DefaultModels(), aiv1.ModelOption{Engine: aiv1.EngineCursor, Model: "auto"})
+	p.Status.EngineUsage = []aiv1.EngineUsage{{Engine: aiv1.EngineClaude, ObservedAt: metav1.NewTime(t0.Add(-time.Minute)),
+		Windows: []aiv1.UsageWindow{{Name: "five_hour", Percent: percent, ResetsAt: &metav1.Time{Time: resets}}}}}
+	p.Status.UsageLimits = limits
+	return p
+}
+
+func cursorLimit(until time.Time) aiv1.UsageLimit {
+	return aiv1.UsageLimit{Engine: aiv1.EngineCursor, Until: metav1.NewTime(until)}
+}
+
+func newChoiceEnv(t *testing.T, p *aiv1.AgentProject, r *aiv1.AgentResearch) *researchEnv {
+	e := newResearchEnv(t, p, writerSecret(), r)
+	e.r.Candidates.Quick = []aiv1.ResearchAgent{{Engine: aiv1.EngineClaude, Model: "claude-sonnet-5-5"}, {Engine: aiv1.EngineCursor, Model: "auto"}}
+	e.r.MaxUsagePercent = 70
+	return e
+}
+
+func TestResearchChoosesNextCandidateOverThreshold(t *testing.T) {
+	e := newChoiceEnv(t, usageProject(85, t0.Add(2*time.Hour)), newResearch("q", ""))
+	e.reconcile("q")
+	run := e.research("q").Status.Run
+	want := "chosen: cursor/auto (sonnet: 5-hour window at 85 %)"
+	if run == nil || run.Engine != aiv1.EngineCursor || run.Model != "auto" || run.Effort != "" || run.Reason != want {
+		t.Fatalf("run %+v", run)
+	}
+	e.report("q", aiv1.ResearchOutcomeSucceeded, "")
+	e.reconcile("q")
+	if len(e.db.runs) != 1 || e.db.runs[0].ChoiceReason != want {
+		t.Errorf("the choice reason is stored with the run: %+v", e.db.runs)
+	}
+}
+
+func TestResearchScheduledSkipsUntilReset(t *testing.T) {
+	seven := time.Date(2026, 10, 2, 5, 0, 0, 0, time.UTC) // 07:00 Berlin
+	reset := seven.Add(3 * time.Hour)
+	e := newChoiceEnv(t, usageProject(85, reset, cursorLimit(seven.Add(5*time.Hour))), newResearch("news", "0 7 * * *"))
+	e.now = seven.Add(-time.Hour)
+	e.reconcile("news")
+
+	e.now = seven
+	res := e.reconcile("news")
+	st := e.research("news").Status
+	if len(e.pods()) != 0 || st.Run != nil {
+		t.Fatalf("every candidate is busy, nothing runs: pods %d, run %+v", len(e.pods()), st.Run)
+	}
+	want := "no candidate qualifies: sonnet: 5-hour window at 85 % until 2026-10-02 08:00 UTC; cursor limited until 2026-10-02 10:00 UTC"
+	if st.SkippedReason != want || st.Phase != aiv1.ResearchPhaseScheduled ||
+		st.Waiting == nil || st.Waiting.Engine != aiv1.EngineClaude || !st.Waiting.Until.Time.Equal(reset) {
+		t.Fatalf("skip: %+v, waiting %+v", st, st.Waiting)
+	}
+	if !st.NextRun.Time.Equal(reset) || res.RequeueAfter != 3*time.Hour+time.Second {
+		t.Errorf("retry at the reset: nextRun %v, requeue %v", st.NextRun, res.RequeueAfter)
+	}
+
+	// At the reset the stale reading no longer counts.
+	e.now = reset
+	e.reconcile("news")
+	st = e.research("news").Status
+	if len(e.pods()) != 1 || st.Run == nil || st.Run.Engine != aiv1.EngineClaude || st.SkippedReason != "" || st.Waiting != nil {
+		t.Fatalf("retry at the reset: pods %d, status %+v", len(e.pods()), st)
+	}
+	if !st.NextRun.Time.Equal(seven.Add(24 * time.Hour)) {
+		t.Errorf("nextRun %v, want the next scheduled time", st.NextRun)
+	}
+}
+
+func TestResearchScheduledSkipsToNextTimeBeforeReset(t *testing.T) {
+	r := newResearch("news", "0 * * * *")
+	r.Spec.TimeZone = ""
+	e := newChoiceEnv(t, usageProject(85, t0.Add(4*time.Hour), cursorLimit(t0.Add(5*time.Hour))), r)
+	e.now = t0.Add(time.Hour)
+	e.reconcile("news")
+	st := e.research("news").Status
+	if len(e.pods()) != 0 || !st.NextRun.Time.Equal(t0.Add(2*time.Hour)) || !st.Waiting.Until.Time.Equal(t0.Add(4*time.Hour)) {
+		t.Errorf("the next scheduled time comes first: pods %d, nextRun %v, waiting %+v", len(e.pods()), st.NextRun, st.Waiting)
+	}
+}
+
+func TestResearchOneOffWaitsForReset(t *testing.T) {
+	claudeLimit := aiv1.UsageLimit{Engine: aiv1.EngineClaude, Until: metav1.NewTime(t0.Add(2 * time.Hour))}
+	e := newChoiceEnv(t, usageProject(10, t0.Add(time.Hour), claudeLimit, cursorLimit(t0.Add(3*time.Hour))), newResearch("q", ""))
+	res := e.reconcile("q")
+	st := e.research("q").Status
+	if len(e.pods()) != 0 || st.Run != nil || st.Phase != aiv1.ResearchPhaseWaiting || st.SkippedReason != "" ||
+		st.Waiting == nil || st.Waiting.Engine != aiv1.EngineClaude || !st.Waiting.Until.Time.Equal(t0.Add(2*time.Hour)) {
+		t.Fatalf("waiting: pods %d, status %+v", len(e.pods()), st)
+	}
+	if res.RequeueAfter != 2*time.Hour+time.Second {
+		t.Errorf("requeue %v", res.RequeueAfter)
+	}
+
+	e.now = t0.Add(2 * time.Hour)
+	e.reconcile("q")
+	st = e.research("q").Status
+	if len(e.pods()) != 1 || st.Run == nil || st.Run.Engine != aiv1.EngineClaude || st.Phase != aiv1.ResearchPhaseRunning || st.Waiting != nil {
+		t.Errorf("runs after the limit: pods %d, status %+v", len(e.pods()), st)
+	}
+}
+
+func TestResearchFixedAgentOverThreshold(t *testing.T) {
+	sonnet := &aiv1.ResearchAgent{Engine: aiv1.EngineClaude, Model: "sonnet"}
+	oneOff := newResearch("q", "")
+	oneOff.Spec.Agent = sonnet
+	e := newChoiceEnv(t, usageProject(90, t0.Add(time.Hour)), oneOff)
+	e.reconcile("q")
+	if st := e.research("q").Status; len(e.pods()) != 0 || st.Phase != aiv1.ResearchPhaseWaiting || st.Waiting == nil {
+		t.Errorf("a fixed agent over the threshold waits: pods %d, status %+v", len(e.pods()), st)
+	}
+
+	scheduled := newResearch("news", "0 * * * *")
+	scheduled.Spec.Agent = sonnet
+	e = newChoiceEnv(t, usageProject(90, t0.Add(2*time.Hour)), scheduled)
+	e.now = t0.Add(time.Hour)
+	e.reconcile("news")
+	st := e.research("news").Status
+	if len(e.pods()) != 0 || !strings.Contains(st.SkippedReason, "sonnet: 5-hour window at 90 %") || st.Waiting == nil {
+		t.Errorf("a fixed agent over the threshold is skipped: pods %d, status %+v", len(e.pods()), st)
+	}
+}
+
+// reportLimited simulates the runner reporting a run that hit a limit.
+func (e *researchEnv) reportLimited(name string, engine aiv1.Engine, until time.Time) {
+	e.t.Helper()
+	r := e.research(name)
+	orig := r.DeepCopy()
+	r.Status.Run.Outcome = aiv1.ResearchOutcomeLimited
+	r.Status.Run.UsageLimits = []aiv1.UsageLimit{{Engine: engine, Until: metav1.NewTime(until)}}
+	if err := e.c.Status().Patch(e.ctx, r, client.MergeFrom(orig)); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestResearchLimitedRunIsRetried(t *testing.T) {
+	t.Run("one-off on the next candidate", func(t *testing.T) {
+		e := newChoiceEnv(t, usageProject(10, t0.Add(time.Hour)), newResearch("q", ""))
+		e.reconcile("q")
+		first := e.research("q").Status.Run
+		e.now = t0.Add(5 * time.Minute)
+		e.reportLimited("q", aiv1.EngineClaude, t0.Add(4*time.Hour))
+		e.reconcile("q")
+		st := e.research("q").Status
+		if st.Run == nil || st.Run.ID == first.ID || st.Run.Engine != aiv1.EngineCursor ||
+			st.Run.Reason != "chosen: cursor/auto (claude limited until 2026-10-01 16:00 UTC)" || len(e.pods()) != 1 {
+			t.Fatalf("retried on cursor: pods %d, run %+v", len(e.pods()), st.Run)
+		}
+		if len(e.db.runs) != 1 || e.db.runs[0].Status != store.StatusLimited {
+			t.Errorf("the limited run is recorded: %+v", e.db.runs)
+		}
+	})
+	t.Run("scheduled, skipped until the limit ends", func(t *testing.T) {
+		r := newResearch("news", "0 */6 * * *")
+		r.Spec.TimeZone = ""
+		e := newResearchEnv(t, researchProject(), writerSecret(), r) // claude only
+		e.reconcile("news")
+		e.now = t0.Add(6 * time.Hour)
+		e.reconcile("news")
+		if len(e.pods()) != 1 {
+			t.Fatal("the 18:00 run did not start")
+		}
+		e.now = t0.Add(6*time.Hour + 5*time.Minute)
+		e.reportLimited("news", aiv1.EngineClaude, t0.Add(8*time.Hour))
+		res := e.reconcile("news")
+		st := e.research("news").Status
+		if len(e.pods()) != 0 || !st.NextRun.Time.Equal(t0.Add(8*time.Hour)) || st.Waiting == nil ||
+			st.SkippedReason != "no candidate qualifies: claude limited until 2026-10-01 20:00 UTC" {
+			t.Fatalf("skipped until the limit ends: pods %d, status %+v", len(e.pods()), st)
+		}
+		if res.RequeueAfter != 2*time.Hour-5*time.Minute+time.Second {
+			t.Errorf("requeue %v", res.RequeueAfter)
+		}
+		e.now = t0.Add(8 * time.Hour)
+		e.reconcile("news")
+		if st := e.research("news").Status; len(e.pods()) != 1 || !st.NextRun.Time.Equal(t0.Add(12*time.Hour)) {
+			t.Errorf("retried when the limit ended: pods %d, nextRun %v", len(e.pods()), st.NextRun)
+		}
+	})
 }

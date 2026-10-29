@@ -17,6 +17,9 @@ const (
 	DefaultResearchRetention = 720 * time.Hour
 	QuickResearchTimeout     = 20 * time.Minute
 	DeepResearchTimeout      = 2 * time.Hour
+	// DefaultResearchMaxUsagePercent is the usage at which research passes
+	// an agent over, leaving the rest to the factory.
+	DefaultResearchMaxUsagePercent = 70
 )
 
 // ResearchView is how the UI shows a research's results.
@@ -196,8 +199,8 @@ type ResearchRunStatus struct {
 	// +optional
 	Effort string `json:"effort,omitempty"`
 
-	// Reason says why this agent was chosen, e.g. "opus: 7-day window at
-	// 82 %".
+	// Reason says why this agent was chosen, e.g. "chosen: cursor/auto
+	// (sonnet: 5-hour window at 85 %)".
 	// +optional
 	Reason string `json:"reason,omitempty"`
 	// +optional

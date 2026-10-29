@@ -103,3 +103,13 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- fail "ui.auth.mode none serves without login and cannot be exposed with ui.httpRoute" }}
 {{- end }}
 {{- end }}
+
+{{/* A research candidate list as the operator's flag: engine/model[@effort],… */}}
+{{- define "ai-operator.research.candidates" -}}
+{{- $out := list }}
+{{- range . }}
+{{- if or (not .engine) (not .model) }}{{ fail "research.candidates entries need an engine and a model" }}{{ end }}
+{{- $out = append $out (printf "%s/%s%s" .engine .model (ternary (printf "@%s" (.effort | default "")) "" (not (empty .effort)))) }}
+{{- end }}
+{{- join "," $out }}
+{{- end }}

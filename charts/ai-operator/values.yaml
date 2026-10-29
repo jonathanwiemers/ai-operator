@@ -86,7 +86,7 @@ agent:
 # Research (AgentResearch, see docs/research.md): agents answer research
 # questions once or on a schedule, the results are kept in Postgres. Off
 # while database.host is empty. The operator uses database.* (except
-# readerSecret) and candidates; the runner and the UI follow in later
+# readerSecret), candidates and maxUsagePercent; the UI follows in later
 # releases.
 research:
   # The database, as the Zalando postgres-operator provides it: one Secret
@@ -121,8 +121,10 @@ research:
       namespace: ""   # ai-operator-system
       podLabels: {}   # {cluster-name: ai-operator-postgres}
   # Agents a research run without spec.agent tries in order, per depth. The
-  # first whose engine is not limited and below maxUsagePercent runs it. An
-  # AgentProject overrides them with spec.research.candidates.
+  # first whose engine is not limited and below maxUsagePercent runs it;
+  # with none, a one-off waits and a scheduled run is skipped until the
+  # earliest reset. An AgentProject overrides them with
+  # spec.research.candidates. Passed as --research-candidates-quick/-deep.
   candidates:
     quick:
       - {engine: claude, model: claude-sonnet-5-5}
@@ -131,8 +133,9 @@ research:
       - {engine: claude, model: claude-opus-5-5, effort: high}
       - {engine: claude, model: claude-sonnet-5-5}
       - {engine: cursor, model: auto}
-  # Research uses an engine only while every usage window is below this
-  # percentage; the rest is left to the factory.
+  # Research uses an engine only while every usage window (not reset since)
+  # is below this percentage, 1 to 100; the rest is left to the factory. It
+  # applies to every research run, a fixed spec.agent included.
   maxUsagePercent: 70
 
 # Read-only web UI (see docs/ui.md). Off by default. It runs as its own

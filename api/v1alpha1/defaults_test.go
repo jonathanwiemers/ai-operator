@@ -73,6 +73,32 @@ func TestUsageLimitBackoff(t *testing.T) {
 	}
 }
 
+func TestFullestWindow(t *testing.T) {
+	now := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
+	at := func(d time.Duration) *metav1.Time { return &metav1.Time{Time: now.Add(d)} }
+	s := AgentProjectStatus{EngineUsage: []EngineUsage{
+		{Engine: EngineClaude, Windows: []UsageWindow{
+			{Name: "five_hour", Percent: 95, ResetsAt: at(-time.Minute)}, // reset since
+			{Name: "seven_day", Percent: 82, ResetsAt: at(72 * time.Hour)},
+			{Name: "seven_day_opus", Percent: 82, ResetsAt: at(24 * time.Hour)},
+			{Name: "unknown_reset", Percent: 99},
+		}},
+		{Engine: EngineCursor, Windows: []UsageWindow{{Name: "monthly", Percent: 90, ResetsAt: at(time.Hour)}}},
+	}}
+	if w, ok := s.FullestWindow(EngineClaude, now); !ok || w.Name != "seven_day" {
+		t.Errorf("claude: %+v %v, want seven_day (the first of the fullest not reset)", w, ok)
+	}
+	if w, ok := s.FullestWindow(EngineCursor, now); !ok || w.Percent != 90 {
+		t.Errorf("cursor: %+v %v", w, ok)
+	}
+	if _, ok := s.FullestWindow(EngineClaude, now.Add(100*time.Hour)); ok {
+		t.Error("every window has reset")
+	}
+	if _, ok := (AgentProjectStatus{}).FullestWindow(EngineClaude, now); ok {
+		t.Error("no readings")
+	}
+}
+
 func TestMergeEngineUsage(t *testing.T) {
 	at := func(min int) metav1.Time { return metav1.NewTime(time.Date(2026, 10, 28, 12, min, 0, 0, time.UTC)) }
 	list := MergeEngineUsage(nil, EngineUsage{Engine: EngineCursor, ObservedAt: at(1)})

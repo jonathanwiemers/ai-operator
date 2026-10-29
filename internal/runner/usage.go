@@ -151,19 +151,12 @@ func (r *Runner) nearLimit(role aiv1.RoleSpec) *UsageLimitError {
 	now := r.now()
 	r.usageMu.Lock()
 	defer r.usageMu.Unlock()
-	var near *UsageLimitError
-	fullest := *at - 1
-	for _, u := range r.projectStatus.EngineUsage {
-		for _, w := range u.Windows {
-			if u.Engine != role.Engine || w.Percent <= fullest || w.ResetsAt == nil || !w.ResetsAt.After(now) {
-				continue
-			}
-			fullest = w.Percent
-			near = &UsageLimitError{Engine: role.Engine, ResetAt: w.ResetsAt.Time, Soft: true,
-				Message: fmt.Sprintf("%s window is at %d %% (fallbackAtPercent: %d)", w.Name, w.Percent, *at)}
-		}
+	w, ok := r.projectStatus.FullestWindow(role.Engine, now)
+	if !ok || w.Percent < *at {
+		return nil
 	}
-	return near
+	return &UsageLimitError{Engine: role.Engine, ResetAt: w.ResetsAt.Time, Soft: true,
+		Message: fmt.Sprintf("%s window is at %d %% (fallbackAtPercent: %d)", w.Name, w.Percent, *at)}
 }
 
 // resetOrBackoff is a limit's reset time, or lifecycle.usageLimitBackoff from

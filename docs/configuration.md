@@ -142,7 +142,9 @@ research:
 The operator gets the host, port, name and `sslMode` as flags
 (`--research-db-host`, `--research-db-port`, `--research-db-name`,
 `--research-db-sslmode`, `--research-reader-role`, `--research-writer-roles`,
-`--research-candidates` as JSON)
+`--research-candidates-quick` and `--research-candidates-deep` as
+`engine/model[@effort]` lists, `--research-max-usage-percent`; invalid
+values stop the operator at start)
 and the owner login as the environment variables `AI_RESEARCH_DB_USER` and
 `AI_RESEARCH_DB_PASSWORD` from `ownerSecret`, never as arguments. A host
 without a name, user or password stops the operator at start; the chart

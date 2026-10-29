@@ -2,7 +2,7 @@
 package main
 
 import (
-	"encoding/json"
+	"errors"
 	"flag"
 	"os"
 	"strings"
@@ -49,8 +49,11 @@ func main() {
 	var researchWriters string
 	flag.StringVar(&researchGrants.Reader, "research-reader-role", "", "Role the research migrations grant read access to (the UI's login).")
 	flag.StringVar(&researchWriters, "research-writer-roles", "", "Comma separated roles the research migrations grant write access to (the logins of research runs).")
-	var researchCandidates string
-	flag.StringVar(&researchCandidates, "research-candidates", "", "Agents research runs without spec.agent use, per depth, as JSON: {\"quick\": [{\"engine\": \"claude\", \"model\": \"sonnet\"}], \"deep\": [...]}. AgentProject spec.research.candidates overrides them.")
+	var quickCandidates, deepCandidates string
+	var maxUsagePercent int
+	flag.StringVar(&quickCandidates, "research-candidates-quick", "claude/claude-sonnet-5-5,cursor/auto", "Agents quick research runs without spec.agent try in order, comma separated engine/model[@effort]. AgentProject spec.research.candidates overrides them.")
+	flag.StringVar(&deepCandidates, "research-candidates-deep", "claude/claude-opus-5-5@high,claude/claude-sonnet-5-5,cursor/auto", "Agents deep research runs without spec.agent try in order, like --research-candidates-quick.")
+	flag.IntVar(&maxUsagePercent, "research-max-usage-percent", aiv1.DefaultResearchMaxUsagePercent, "Research runs on an agent only while every usage window of its engine is below this percentage (1-100); the rest is left to the factory.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -77,11 +80,16 @@ func main() {
 				researchGrants.Writers = append(researchGrants.Writers, w)
 			}
 		}
-		if researchCandidates != "" {
-			if err := json.Unmarshal([]byte(researchCandidates), &candidates); err != nil {
-				setupLog.Error(err, "invalid --research-candidates")
-				os.Exit(1)
-			}
+		var errQuick, errDeep error
+		candidates.Quick, errQuick = research.ParseCandidates(quickCandidates)
+		candidates.Deep, errDeep = research.ParseCandidates(deepCandidates)
+		if err := errors.Join(errQuick, errDeep); err != nil {
+			setupLog.Error(err, "invalid --research-candidates-quick or --research-candidates-deep")
+			os.Exit(1)
+		}
+		if maxUsagePercent < 1 || maxUsagePercent > 100 {
+			setupLog.Error(nil, "invalid --research-max-usage-percent, want 1 to 100", "value", maxUsagePercent)
+			os.Exit(1)
 		}
 		researchSetup = research.NewDatabase(owner, researchGrants, clock.RealClock{}, ctrl.Log.WithName("research-db"))
 	}
@@ -149,6 +157,7 @@ func main() {
 			DefaultAgentImage:    defaultAgentImage,
 			DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
 			Candidates:           candidates,
+			MaxUsagePercent:      int32(maxUsagePercent),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "AgentResearch")
 			os.Exit(1)

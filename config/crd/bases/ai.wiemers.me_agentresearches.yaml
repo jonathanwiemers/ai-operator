@@ -331,8 +331,8 @@ spec:
                     type: string
                   reason:
                     description: |-
-                      Reason says why this agent was chosen, e.g. "opus: 7-day window at
-                      82 %".
+                      Reason says why this agent was chosen, e.g. "chosen: cursor/auto
+                      (sonnet: 5-hour window at 85 %)".
                     type: string
                   startedAt:
                     format: date-time

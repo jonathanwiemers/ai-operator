@@ -64,11 +64,16 @@ type ResearchDB interface {
 
 // AgentResearchReconciler runs AgentResearches, one pod per run:
 //
-//	due (one-off: once; scheduled: at nextRun) -> status.run, then the pod  (Running)
+//	due (one-off: once; scheduled: at nextRun) -> research.Choose
+//	  an agent qualifies                         -> status.run, then the pod  (Running)
+//	  none: one-off                              -> waiting until the reset   (Waiting)
+//	  none: scheduled                            -> skipped, nextRun at the
+//	                                                reset if that is earlier  (Scheduled)
 //	runner reported, or the pod ended or is gone -> outcome in the store and
 //	                                                 status, pod deleted      (Scheduled / Succeeded / Failed)
 //
-// A scheduled time that comes while a run is in progress is skipped.
+// A run that ended limited is due again at once, with its limit known. A
+// scheduled time that comes while a run is in progress is skipped.
 type AgentResearchReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -84,10 +89,12 @@ type AgentResearchReconciler struct {
 	DefaultAgentImage    string
 	DefaultAgentLogLevel aiv1.LogLevel
 	// Candidates are the agents of runs without spec.agent, per depth, for
-	// projects that do not set spec.research.candidates. Until the agent
-	// choice exists, the first one runs.
+	// projects that do not set spec.research.candidates.
 	Candidates aiv1.ResearchCandidates
-	Now        func() time.Time
+	// MaxUsagePercent is the usage at which a candidate is passed over;
+	// 0 means aiv1.DefaultResearchMaxUsagePercent.
+	MaxUsagePercent int32
+	Now             func() time.Time
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentresearches,verbs=get;list;watch;update;patch
@@ -141,7 +148,7 @@ func (r *AgentResearchReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		setResearchCondition(&res, ConditionRunning, false, "Idle", "no run in progress")
 	}
 
-	plan, reason, msg, err := r.validate(ctx, &res)
+	plan, reason, msg, err := r.validate(ctx, &res, now)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -183,13 +190,32 @@ func (r *AgentResearchReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return result, r.patchStatus(ctx, &res, orig)
 	}
 
+	// No agent has usage left: a one-off waits for the earliest reset, a
+	// scheduled run is skipped and tried again then, if that comes before
+	// the next scheduled time.
+	if choice := plan.choice; choice.Agent == nil {
+		st.Waiting = &aiv1.ResearchWaiting{Engine: choice.WaitEngine, Until: metav1.NewTime(choice.WaitUntil)}
+		if plan.schedule == nil {
+			st.Phase = aiv1.ResearchPhaseWaiting
+		} else {
+			st.Phase, st.SkippedReason = aiv1.ResearchPhaseScheduled, choice.Reason
+			if choice.WaitUntil.Before(next) {
+				st.NextRun = &metav1.Time{Time: choice.WaitUntil}
+			}
+		}
+		logger.Info("no research agent has usage left, waiting", "engine", choice.WaitEngine, "until", choice.WaitUntil.UTC(), "reason", choice.Reason)
+		requeueAt(choice.WaitUntil)
+		return result, r.patchStatus(ctx, &res, orig)
+	}
+
 	// Start a run: status.run first, so the runner finds its agent there,
 	// then the pod.
 	start := metav1.NewTime(now)
+	agent := *plan.choice.Agent
 	st.Run = &aiv1.ResearchRunStatus{ID: uuid.NewString(), StartedAt: &start,
-		Engine: plan.agent.Engine, Model: plan.agent.Model, Effort: plan.agent.Effort, Reason: plan.reason}
+		Engine: agent.Engine, Model: agent.Model, Effort: agent.Effort, Reason: plan.choice.Reason}
 	st.Phase = aiv1.ResearchPhaseRunning
-	st.SkippedReason = ""
+	st.SkippedReason, st.Waiting = "", nil
 	setResearchCondition(&res, ConditionRunning, true, "RunInProgress", fmt.Sprintf("run %s on %s/%s", st.Run.ID, st.Run.Engine, st.Run.Model))
 	if err := r.patchStatus(ctx, &res, orig); err != nil {
 		return ctrl.Result{}, err
@@ -216,13 +242,13 @@ type researchPlan struct {
 	spec aiv1.AgentProjectSpec
 	// schedule is nil for one-offs.
 	schedule *research.Schedule
-	agent    aiv1.ResearchAgent
-	reason   string
+	// choice is the agent a run started now would get.
+	choice research.Choice
 }
 
 // validate returns what the research runs with, or the reason and message of
 // Valid=False.
-func (r *AgentResearchReconciler) validate(ctx context.Context, res *aiv1.AgentResearch) (plan researchPlan, reason, msg string, err error) {
+func (r *AgentResearchReconciler) validate(ctx context.Context, res *aiv1.AgentResearch, now time.Time) (plan researchPlan, reason, msg string, err error) {
 	var project aiv1.AgentProject
 	if err := r.Get(ctx, types.NamespacedName{Namespace: res.Namespace, Name: res.Spec.ProjectRef}, &project); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -246,17 +272,18 @@ func (r *AgentResearchReconciler) validate(ctx context.Context, res *aiv1.AgentR
 		plan.schedule = &s
 	}
 
+	// A fixed agent is the only candidate: the usage guard applies to it too.
+	var candidates []aiv1.ResearchAgent
 	if a := res.Spec.Agent; a != nil {
-		if plan.agent, err = plan.spec.ResolveResearchAgent(*a); err != nil {
+		if _, err := plan.spec.ResolveResearchAgent(*a); err != nil {
 			return plan, "InvalidAgent", "spec.agent: " + err.Error(), nil
 		}
-		plan.reason = "fixed by spec.agent"
+		candidates = []aiv1.ResearchAgent{*a}
 	} else {
 		depth := res.Spec.Depth
 		if depth == "" {
 			depth = aiv1.ResearchDepthQuick
 		}
-		var candidates []aiv1.ResearchAgent
 		if p := plan.spec.Research; p != nil {
 			candidates = candidatesFor(p.Candidates, depth)
 		}
@@ -266,10 +293,15 @@ func (r *AgentResearchReconciler) validate(ctx context.Context, res *aiv1.AgentR
 		if len(candidates) == 0 {
 			return plan, "NoAgent", fmt.Sprintf("no spec.agent and no %s research candidates", depth), nil
 		}
-		if plan.agent, err = plan.spec.ResolveResearchAgent(candidates[0]); err != nil {
-			return plan, "InvalidAgent", fmt.Sprintf("the first %s research candidate: %v", depth, err), nil
-		}
-		plan.reason = fmt.Sprintf("first %s candidate", depth)
+	}
+	// The usage the run of this research reported counts at once, before
+	// the project collects it: a run that ended limited is retried on
+	// another candidate or after the limit.
+	usage := project.DeepCopy()
+	addResearchUsage(&usage.Status, project.Name, []aiv1.AgentResearch{*res}, now)
+	plan.choice = research.Choose(usage, candidates, r.maxUsagePercent(), now)
+	if plan.choice.Agent == nil && plan.choice.WaitUntil.IsZero() {
+		return plan, "NoAgent", plan.choice.Reason, nil
 	}
 
 	if plan.spec.Agents.Image == "" {
@@ -303,13 +335,14 @@ func candidatesFor(c aiv1.ResearchCandidates, depth aiv1.ResearchDepth) []aiv1.R
 }
 
 // researchDue reports whether a run is due at now and, for a schedule, the
-// scheduled time after it. A one-off is due once. A scheduled research is due
-// at status.nextRun; without one (new, or its spec changed) at the first
-// scheduled time after its last run or creation, missed ones run once.
+// scheduled time after it. A one-off is due once, and again after a run that
+// ended limited. A scheduled research is due at status.nextRun; without one
+// (new, or its spec changed) at the first scheduled time after its last run
+// or creation, missed ones run once.
 func researchDue(res *aiv1.AgentResearch, s *research.Schedule, now time.Time) (bool, time.Time) {
 	st := res.Status
 	if s == nil {
-		return st.Run == nil, time.Time{}
+		return st.Run == nil || st.Run.FinishedAt != nil && st.Run.Outcome == aiv1.ResearchOutcomeLimited, time.Time{}
 	}
 	if st.NextRun != nil && st.ObservedGeneration == res.Generation {
 		if now.Before(st.NextRun.Time) {
@@ -365,6 +398,9 @@ func (r *AgentResearchReconciler) finishRun(ctx context.Context, res, orig *aiv1
 		st.LastResultID = run.ID
 	}
 	switch {
+	case !res.OneOff() && run.Outcome == aiv1.ResearchOutcomeLimited:
+		// Due again at once: another candidate, or a skip until the reset.
+		st.Phase, st.NextRun = aiv1.ResearchPhaseScheduled, &metav1.Time{Time: now}
 	case !res.OneOff():
 		st.Phase = aiv1.ResearchPhaseScheduled
 	case ok:
@@ -431,6 +467,13 @@ func runEnd(pod *corev1.Pod) string {
 func setResearchCondition(res *aiv1.AgentResearch, typ string, status bool, reason, msg string) {
 	meta.SetStatusCondition(&res.Status.Conditions, metav1.Condition{Type: typ, Status: boolCondition(status),
 		Reason: reason, Message: msg, ObservedGeneration: res.Generation})
+}
+
+func (r *AgentResearchReconciler) maxUsagePercent() int32 {
+	if r.MaxUsagePercent > 0 {
+		return r.MaxUsagePercent
+	}
+	return aiv1.DefaultResearchMaxUsagePercent
 }
 
 func (r *AgentResearchReconciler) now() time.Time {

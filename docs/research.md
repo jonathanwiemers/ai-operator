@@ -120,15 +120,67 @@ spec:
 
 ## Choosing agents
 
-A research with `spec.agent` always runs on that agent. Without one, a run
-uses the candidates of its depth: the project's `spec.research.candidates`
-if it lists any for the depth, else the chart's `research.candidates`. For
-now the first candidate runs (`status.run.reason`: "first quick
-candidate").
+The operator chooses the agent of each run when the run is due, before it
+creates a pod (`internal/research/choose.go`), from the usage the
+referenced AgentProject knows of (`status.engineUsage` and
+`status.usageLimits`, fed by tasks and research runs alike) plus what the
+research's last run reported.
 
-*To come with the agent choice:* skipping candidates whose usage is above
-`maxUsagePercent` or limited, and what happens to scheduled and one-off runs
-when every candidate is limited.
+**Candidates.** A research with `spec.agent` has that agent as its only
+candidate. Without one, a run uses the candidates of its depth: the
+project's `spec.research.candidates` if it lists any for the depth, else the
+chart's `research.candidates`:
+
+| Depth | Default candidates, in order |
+|---|---|
+| `quick` | `claude/claude-sonnet-5-5`, `cursor/auto` |
+| `deep` | `claude/claude-opus-5-5` (effort `high`), `claude/claude-sonnet-5-5`, `cursor/auto` |
+
+A candidate the project cannot run is skipped: an engine without any allowed
+model of the project (`agents.models`, the profiles and `agents.implement`),
+or a model the project does not allow. If no candidate is left at all, the
+research is `Valid=False` with the reason `NoAgent`.
+
+**The guard.** The candidates are tried in order; the first one runs unless
+
+* its engine is limited (`status.usageLimits` of the project, or a limit the
+  research's last run hit), or
+* the fullest usage window of its engine's freshest reading that has not
+  reset since is at or above `research.maxUsagePercent` (default 70). A
+  window whose reset time has passed no longer counts.
+
+The guard applies to every research run, a fixed `spec.agent` and one-offs
+included: research never takes the last part of a subscription the factory
+needs. The chosen effort is capped at the project's `agents.maxEffort`;
+cursor runs get no effort.
+
+**The reason.** `status.run.reason`, stored with the run as its choice
+reason, names the agent and the candidates passed over, with their alias
+where the project has one:
+
+```text
+chosen: cursor/auto (sonnet: 5-hour window at 85 %)
+chosen: claude/claude-sonnet-5-5 (opus: 7-day window at 82 %)
+chosen: cursor/auto (claude limited until 2026-11-13 00:00 UTC)
+```
+
+**When no candidate qualifies,** the run waits for the earliest window reset
+or limit end among the blocked candidates, in `status.waiting`
+(`{engine, until}`, shown in the UI as "waiting for `claude` until 14:00"):
+
+* a **one-off** stays in phase `Waiting` and runs at `until` (choosing
+  again then);
+* a **scheduled** run is skipped: `status.skippedReason` lists every blocked
+  candidate until when, e.g. "no candidate qualifies: sonnet: 5-hour window
+  at 85 % until 2026-11-12 14:00 UTC; cursor limited until 2026-11-13 00:00
+  UTC", and `status.nextRun` becomes `until` if that comes before the next
+  scheduled time (else the next scheduled time).
+
+Both are cleared when a run starts.
+
+**A run that ends `limited`** (it hit a usage limit while running) is due
+again at once, with its limit known: another candidate runs right away, or
+the research waits or is skipped as above.
 
 ## Runs
 
@@ -141,12 +193,13 @@ and records their outcome:
   after the research was created. If the operator was down at a scheduled
   time, the run starts once when it is back, however many times were missed.
   After a change of the schedule the next time is counted again from the last
-  run.
+  run. A due run without an agent with usage left waits or is skipped, see
+  [Choosing agents](#choosing-agents).
 * **One run at a time.** A scheduled time that comes while the previous run
   is still going is skipped: `status.skippedReason` says "previous run still
   in progress" until the next run starts.
 * **Start.** The operator writes `status.run` (a new UUID, the start time,
-  the engine, model and effort, and why that agent) and then creates the pod
+  the engine, model and effort the choice gave, and its reason) and then creates the pod
   `<research>-<first 8 characters of the run ID>`. The runner reads its agent
   from `status.run`.
 * **End.** The runner records the outcome in the database and then in
@@ -157,6 +210,7 @@ and records their outcome:
   `finishedAt`, `lastRun`, `lastEngine`, `lastModel`, `lastResultID` (for
   `succeeded` and `degraded` runs) and the `phase` (`Scheduled` for a
   scheduled research, else `Succeeded` or `Failed`), and deletes the pod. A
+  run that ended `limited` is due again at once. A
   pod that never starts is ended 5 minutes after its deadline.
 * **Conditions.** `Valid` (`False` with the reason `ProjectNotFound`,
   `InvalidSchedule`, `InvalidAgent`, `NoAgent`, `NoAgentImage` or

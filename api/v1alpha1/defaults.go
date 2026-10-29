@@ -316,6 +316,23 @@ func (s AgentProjectStatus) ActiveUsageLimit(engine Engine, now time.Time) (Usag
 	return UsageLimit{}, false
 }
 
+// FullestWindow returns the fullest usage window of an engine's readings
+// that has not reset since: only windows with a reset time after now count.
+// Of equally full windows the first wins.
+func (s AgentProjectStatus) FullestWindow(engine Engine, now time.Time) (UsageWindow, bool) {
+	var fullest UsageWindow
+	found := false
+	for _, u := range s.EngineUsage {
+		for _, w := range u.Windows {
+			if u.Engine != engine || w.ResetsAt == nil || !w.ResetsAt.After(now) || found && w.Percent <= fullest.Percent {
+				continue
+			}
+			fullest, found = w, true
+		}
+	}
+	return fullest, found
+}
+
 // AllNotifyEvents are the events that mention the owners by default.
 var AllNotifyEvents = []NotifyEvent{NotifyFailed, NotifyNeedsInput, NotifyCIFailed, NotifyReview, NotifyAutopilotPaused, NotifyAutopilotDone, NotifyMainRed, NotifyBlocked}
 
