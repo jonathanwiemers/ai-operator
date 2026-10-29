@@ -90,6 +90,13 @@ The chart can also install a read-only web UI with OIDC login and role-based
 access per project (`ui.enabled`, off by default), exposed through a Gateway
 API HTTPRoute. See [ui.md](ui.md).
 
+### Research
+
+`AgentResearch` resources describe research questions that agents answer
+once or on a schedule, with the results kept in Postgres. An AgentProject
+gives their runs a database login with `spec.research`. See
+[research.md](research.md). This feature is still under construction.
+
 ## Secrets
 
 ```sh
@@ -454,6 +461,7 @@ leader only.
 | `pollInterval` | `1m` | GitLab polling interval (with webhooks receiving, see [`spec.webhook`](#specwebhook)) |
 | `maxConcurrentRuns` | `3` | runs in flight per project; more runs queue. Keep this low on subscriptions, which have usage windows |
 | `suspend` | `false` | stop polling and starting runs |
+| `research` | | database login (`writerSecret`) and agent candidates of research runs, see [research.md](research.md#specresearch-on-agentproject) |
 
 ## Agent image
 

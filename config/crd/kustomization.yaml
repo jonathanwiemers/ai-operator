@@ -1,3 +1,4 @@
 resources:
   - bases/ai.wiemers.me_agentprojects.yaml
+  - bases/ai.wiemers.me_agentresearches.yaml
   - bases/ai.wiemers.me_agenttasks.yaml

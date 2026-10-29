@@ -1337,6 +1337,101 @@ spec:
                 default: 1m
                 description: PollInterval is how often GitLab is polled for changes.
                 type: string
+              research:
+                description: |-
+                  Research configures the AgentResearch runs that reference this
+                  project (see docs/research.md).
+                properties:
+                  candidates:
+                    description: Candidates override the chart's research.candidates
+                      for this project.
+                    properties:
+                      deep:
+                        items:
+                          description: |-
+                            ResearchAgent is an engine and model a research runs on. The model must be
+                            an allowed model of the project (see agents.models) or its alias.
+                          properties:
+                            effort:
+                              description: Effort level (claude engine only).
+                              enum:
+                              - low
+                              - medium
+                              - high
+                              - xhigh
+                              - max
+                              type: string
+                            engine:
+                              description: Engine is the coding agent CLI that runs
+                                a role.
+                              enum:
+                              - claude
+                              - cursor
+                              type: string
+                            model:
+                              description: Model passed to the engine, or its alias,
+                                e.g. sonnet.
+                              minLength: 1
+                              type: string
+                          required:
+                          - engine
+                          - model
+                          type: object
+                        maxItems: 5
+                        type: array
+                      quick:
+                        items:
+                          description: |-
+                            ResearchAgent is an engine and model a research runs on. The model must be
+                            an allowed model of the project (see agents.models) or its alias.
+                          properties:
+                            effort:
+                              description: Effort level (claude engine only).
+                              enum:
+                              - low
+                              - medium
+                              - high
+                              - xhigh
+                              - max
+                              type: string
+                            engine:
+                              description: Engine is the coding agent CLI that runs
+                                a role.
+                              enum:
+                              - claude
+                              - cursor
+                              type: string
+                            model:
+                              description: Model passed to the engine, or its alias,
+                                e.g. sonnet.
+                              minLength: 1
+                              type: string
+                          required:
+                          - engine
+                          - model
+                          type: object
+                        maxItems: 5
+                        type: array
+                    type: object
+                  writerSecret:
+                    description: |-
+                      WriterSecret is the database login the runner of a research run writes
+                      its results with, a Secret in the project's namespace. The host,
+                      port, database and sslMode come from the operator's configuration.
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                      passwordKey:
+                        default: password
+                        type: string
+                      usernameKey:
+                        default: username
+                        type: string
+                    required:
+                    - name
+                    type: object
+                type: object
               suspend:
                 description: |-
                   Suspend stops polling GitLab and starting new runs. Existing pods are

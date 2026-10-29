@@ -1,0 +1,24 @@
+# A morning news flash: every day at 07:00 Berlin time an agent collects the
+# latest news on the topics below; the UI shows it grouped by topic, with the
+# items that are new since the previous flash marked. See docs/research.md.
+apiVersion: ai.wiemers.me/v1alpha1
+kind: AgentResearch
+metadata:
+  name: morning-news
+  namespace: agents
+spec:
+  # The AgentProject whose credentials, agent image and engines the runs use
+  # (its spec.research.writerSecret is the database login of the runs).
+  projectRef: shop
+  prompt: |
+    Collect the most important news of the last 24 hours on the topics below.
+    Prefer primary sources; one item per story, with its link.
+  topics: [Kubernetes, Go, AI agents]
+  view: newsflash
+  depth: quick              # 20 minutes per run; deep allows 2 hours
+  schedule: "0 7 * * *"
+  timeZone: Europe/Berlin
+  retention: 720h           # keep the results 30 days
+  # Without agent the operator chooses one from research.candidates. Or fix
+  # it to an allowed model of the project:
+  # agent: {engine: claude, model: sonnet}

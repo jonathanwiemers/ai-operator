@@ -74,3 +74,15 @@ spec:
   # MR reviewer on review. A milestone overrides it with "/agent owners @…".
   notify:
     users: [your-gitlab-username]
+  # Research runs of AgentResearches that reference this project (see
+  # docs/research.md). writerSecret is the database login their runner
+  # writes results with, a Secret in this namespace with the keys username
+  # and password, here the one the Zalando postgres-operator creates.
+  # research:
+  #   writerSecret:
+  #     name: agents.research-writer.ai-operator-postgres.credentials.postgresql.acid.zalan.do
+  #   # Optional: other candidates than the chart's research.candidates.
+  #   candidates:
+  #     quick:
+  #       - {engine: claude, model: claude-sonnet-5-5}
+  #       - {engine: cursor, model: auto}

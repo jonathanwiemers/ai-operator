@@ -47,6 +47,11 @@ type AgentProjectSpec struct {
 	// +optional
 	Webhook WebhookSpec `json:"webhook,omitempty"`
 
+	// Research configures the AgentResearch runs that reference this
+	// project (see docs/research.md).
+	// +optional
+	Research *ProjectResearch `json:"research,omitempty"`
+
 	// PollInterval is how often GitLab is polled for changes.
 	// +kubebuilder:default="1m"
 	// +optional

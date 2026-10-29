@@ -1,0 +1,392 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: agentresearches.ai.wiemers.me
+spec:
+  group: ai.wiemers.me
+  names:
+    kind: AgentResearch
+    listKind: AgentResearchList
+    plural: agentresearches
+    shortNames:
+    - ar
+    singular: agentresearch
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.view
+      name: View
+      type: string
+    - jsonPath: .spec.depth
+      name: Depth
+      type: string
+    - jsonPath: .spec.schedule
+      name: Schedule
+      type: string
+    - jsonPath: .status.lastRun
+      name: Last run
+      type: date
+    - jsonPath: .status.nextRun
+      name: Next run
+      type: date
+    - jsonPath: .status.lastModel
+      name: Agent
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          AgentResearch is a research question an agent answers with blocks, once or
+          on a schedule; the results are kept in the research database.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AgentResearchSpec is a research question, run once or on
+              a schedule.
+            properties:
+              agent:
+                description: |-
+                  Agent fixes the engine and model. Omitted, the operator chooses one
+                  from the research candidates of the run's depth.
+                properties:
+                  effort:
+                    description: Effort level (claude engine only).
+                    enum:
+                    - low
+                    - medium
+                    - high
+                    - xhigh
+                    - max
+                    type: string
+                  engine:
+                    description: Engine is the coding agent CLI that runs a role.
+                    enum:
+                    - claude
+                    - cursor
+                    type: string
+                  model:
+                    description: Model passed to the engine, or its alias, e.g. sonnet.
+                    minLength: 1
+                    type: string
+                required:
+                - engine
+                - model
+                type: object
+              depth:
+                default: quick
+                description: |-
+                  Depth sets the timeout (quick 20m, deep 2h) and the default agent
+                  candidates.
+                enum:
+                - quick
+                - deep
+                type: string
+              projectRef:
+                description: |-
+                  ProjectRef names the AgentProject in the same namespace whose
+                  credentials, agent image, engines and usage readings the runs use.
+                minLength: 1
+                type: string
+              prompt:
+                description: Prompt is the instructions for the agent.
+                maxLength: 16384
+                minLength: 1
+                type: string
+              retention:
+                default: 720h
+                description: Retention is how long the results are kept.
+                type: string
+              schedule:
+                description: |-
+                  Schedule is a standard cron expression, e.g. "0 7 * * *". Without one
+                  the research runs once.
+                type: string
+              timeZone:
+                description: |-
+                  TimeZone is the IANA time zone of the schedule, e.g. Europe/Berlin.
+                  Defaults to UTC.
+                type: string
+              topics:
+                description: Topics the results are grouped by, e.g. the sections
+                  of a news flash.
+                items:
+                  maxLength: 100
+                  minLength: 1
+                  type: string
+                maxItems: 20
+                type: array
+              view:
+                default: report
+                description: View is how the UI shows the results.
+                enum:
+                - newsflash
+                - report
+                type: string
+            required:
+            - projectRef
+            - prompt
+            type: object
+          status:
+            description: AgentResearchStatus is written by the operator and the runner.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastEngine:
+                description: LastEngine and LastModel ran the last run.
+                enum:
+                - claude
+                - cursor
+                type: string
+              lastModel:
+                type: string
+              lastResultID:
+                description: LastResultID is the stored result of the last successful
+                  run.
+                type: string
+              lastRun:
+                description: LastRun is when the last run started.
+                format: date-time
+                type: string
+              nextRun:
+                description: NextRun is when the next scheduled run starts.
+                format: date-time
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+              phase:
+                description: ResearchPhase is where a research stands.
+                enum:
+                - Scheduled
+                - Running
+                - Waiting
+                - Succeeded
+                - Failed
+                type: string
+              run:
+                description: Run is the current or last run.
+                properties:
+                  costUSD:
+                    description: CostUSD is the model spend of the run, as a decimal
+                      string.
+                    type: string
+                  effort:
+                    type: string
+                  engine:
+                    description: Engine is the coding agent CLI that runs a role.
+                    enum:
+                    - claude
+                    - cursor
+                    type: string
+                  engineUsage:
+                    description: |-
+                      EngineUsage is the newest usage reading per engine of this run; the
+                      project collects it like a task's.
+                    items:
+                      description: |-
+                        EngineUsage is what an engine last said about its usage windows (claude
+                        reports them with every call; cursor reports none).
+                      properties:
+                        engine:
+                          description: Engine is the coding agent CLI that runs a
+                            role.
+                          enum:
+                          - claude
+                          - cursor
+                          type: string
+                        observedAt:
+                          description: ObservedAt is when the engine reported it.
+                          format: date-time
+                          type: string
+                        status:
+                          description: |-
+                            Status as the engine reports it, e.g. allowed, allowed_warning or
+                            rejected.
+                          type: string
+                        windows:
+                          description: Windows are the engine's usage windows, e.g.
+                            five_hour and seven_day.
+                          items:
+                            description: UsageWindow is how much of one usage window
+                              is used.
+                            properties:
+                              name:
+                                type: string
+                              percent:
+                                description: Percent of the window that is used.
+                                format: int32
+                                type: integer
+                              resetsAt:
+                                description: ResetsAt is when the window starts over.
+                                format: date-time
+                                type: string
+                            required:
+                            - name
+                            - percent
+                            type: object
+                          type: array
+                      required:
+                      - engine
+                      - observedAt
+                      type: object
+                    type: array
+                  finishedAt:
+                    format: date-time
+                    type: string
+                  id:
+                    description: ID of the run in the research store.
+                    type: string
+                  message:
+                    type: string
+                  model:
+                    type: string
+                  outcome:
+                    description: |-
+                      ResearchOutcome is how a run ended: degraded means the answer failed
+                      validation and was stored as plain markdown; limited means it hit a usage
+                      limit.
+                    enum:
+                    - succeeded
+                    - degraded
+                    - failed
+                    - limited
+                    type: string
+                  reason:
+                    description: |-
+                      Reason says why this agent was chosen, e.g. "opus: 7-day window at
+                      82 %".
+                    type: string
+                  startedAt:
+                    format: date-time
+                    type: string
+                  usageLimits:
+                    description: UsageLimits the run hit.
+                    items:
+                      description: UsageLimit is an engine's active usage or rate
+                        limit.
+                      properties:
+                        engine:
+                          description: Engine is the coding agent CLI that runs a
+                            role.
+                          enum:
+                          - claude
+                          - cursor
+                          type: string
+                        message:
+                          description: Message reported by the engine.
+                          type: string
+                        until:
+                          format: date-time
+                          type: string
+                      required:
+                      - engine
+                      - until
+                      type: object
+                    type: array
+                type: object
+              skippedReason:
+                description: |-
+                  SkippedReason says why the last scheduled run was skipped, e.g. which
+                  agent was limited until when.
+                type: string
+              waiting:
+                description: Waiting is set while a run waits for an engine's usage
+                  to reset.
+                properties:
+                  engine:
+                    description: Engine is the coding agent CLI that runs a role.
+                    enum:
+                    - claude
+                    - cursor
+                    type: string
+                  until:
+                    format: date-time
+                    type: string
+                required:
+                - engine
+                - until
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

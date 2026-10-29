@@ -83,6 +83,56 @@ agent:
         matchLabels:
           k8s-app: kube-dns
 
+# Research (AgentResearch, see docs/research.md): agents answer research
+# questions once or on a schedule, the results are kept in Postgres. Off
+# while database.host is empty. The values are not used yet: the research
+# controller, runner and UI follow in later releases.
+research:
+  # The database, as the Zalando postgres-operator provides it: one Secret
+  # per login with the keys username and password. The netcup01 example is
+  # in the comments.
+  database:
+    # Empty: research is off.
+    host: ""          # ai-operator-postgres.ai-operator-system.svc.cluster.local
+    port: 5432
+    name: ""          # ai_operator
+    sslMode: require
+    # Login of the operator, which owns the schema (migrations, retention),
+    # a Secret in the release's namespace.
+    ownerSecret:
+      name: ""        # research-owner.ai-operator-postgres.credentials.postgresql.acid.zalan.do
+      usernameKey: username
+      passwordKey: password
+    # Login of the UI, read only, a Secret in the release's namespace.
+    readerSecret:
+      name: ""        # research-reader.ai-operator-postgres.credentials.postgresql.acid.zalan.do
+      usernameKey: username
+      passwordKey: password
+    # Roles the migrations grant to: the reader may read the results, the
+    # writers (the logins of research runs, AgentProject
+    # spec.research.writerSecret) may write them.
+    readerRole: ""    # research_reader
+    writerRoles: []   # [agents.research_writer]
+    # Pods of the database, which research-run pods may reach on TCP 5432
+    # through agent.networkPolicy.
+    networkPolicyPeer:
+      namespace: ""   # ai-operator-system
+      podLabels: {}   # {cluster-name: ai-operator-postgres}
+  # Agents a research run without spec.agent tries in order, per depth. The
+  # first whose engine is not limited and below maxUsagePercent runs it. An
+  # AgentProject overrides them with spec.research.candidates.
+  candidates:
+    quick:
+      - {engine: claude, model: claude-sonnet-5-5}
+      - {engine: cursor, model: auto}
+    deep:
+      - {engine: claude, model: claude-opus-5-5, effort: high}
+      - {engine: claude, model: claude-sonnet-5-5}
+      - {engine: cursor, model: auto}
+  # Research uses an engine only while every usage window is below this
+  # percentage; the rest is left to the factory.
+  maxUsagePercent: 70
+
 # Read-only web UI (see docs/ui.md). Off by default. It runs as its own
 # Deployment with a service account that can only read AgentProjects and
 # AgentTasks; it never sees the GitLab tokens.
@@ -135,6 +185,13 @@ ui:
   #     projects: ["team-a/shop"]           # namespace/name, globs allowed
   authorization:
     rules: []
+  # Research section (needs research.database.host). Not used yet.
+  research:
+    # Let users with the research write grant start and delete one-off
+    # researches (create/delete on agentresearches for the UI).
+    allowCreate: false
+    # Namespace the UI creates researches in.
+    namespace: ""
   service:
     type: ClusterIP
     annotations: {}
