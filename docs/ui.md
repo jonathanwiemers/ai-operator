@@ -14,6 +14,26 @@ lead to GitLab; only with your GitLab account connected (see
 [Steering](#steering)) does it read comments and post them, the milestone
 chat included, with your own GitLab token.
 
+## Platform
+
+The UI is a platform with sections, which the app takes from
+`GET /api/v1/features`: **Factory** (projects, milestones and tasks, at `/`
+and `/projects/…`) and, with a [research database](configuration.md#research-database)
+and a [research rule](#research-rules), **Research** (at `/research`). With
+more than one section the top bar shows them as tabs, the active one
+following the page; with the factory alone the bar has no tabs and the UI
+looks as it always did. `/research` and the pages below it are *Not found*
+for users without the research section. A user with research alone starts
+on `/research`.
+
+The **Research** page lists the researches you may read, one card each:
+name and namespace, view (news flash or report), depth and phase; the
+schedule with its time zone (or *one-off* and who started it); the last and
+next run; the run line of the current or last run (`claude/claude-sonnet-5-5
+· 3 min · 07:00`, the outcome when it was not a success, the choice reason on
+hover); and, when no agent was free, *waiting for `claude` until 14:00* with
+the skip reason. The page updates live on research events.
+
 ## What it shows
 
 | Page | Content |

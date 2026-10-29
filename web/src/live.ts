@@ -1,15 +1,19 @@
 import { onMounted, onUnmounted, reactive, ref, watch, type Ref } from 'vue'
 import { get, session, LoginRequiredError, NotFoundError } from './api'
 
-// live tracks the server's event stream. Every change event bumps version;
-// views reload what they show when it changes.
+// live tracks the server's event stream. Every burst of change events bumps
+// version; views reload what they show when it changes. kinds are the kinds
+// of the burst's events (project, task, research), null when changes may
+// have been missed.
 export const live = reactive({
   connected: false,
   version: 0,
+  kinds: null as string[] | null,
 })
 
 let source: EventSource | null = null
 let bumpTimer: number | undefined
+let pendingKinds: Set<string> | null = new Set()
 let retryTimer: number | undefined
 let retryDelay = 2000
 
@@ -19,11 +23,11 @@ export function connectEvents(): void {
   source = new EventSource('/api/v1/events')
   source.addEventListener('open', () => {
     // Changes may have been missed while the stream was down.
-    if (!live.connected) bump()
+    if (!live.connected) bump(null)
     live.connected = true
     retryDelay = 2000
   })
-  source.addEventListener('change', bump)
+  source.addEventListener('change', (e) => bump(eventKind(e)))
   source.addEventListener('error', () => {
     live.connected = false
     // EventSource retries network errors by itself, but gives up on any
@@ -50,14 +54,30 @@ export function disconnectEvents(): void {
   live.connected = false
 }
 
-// bump coalesces bursts of events (a run writes its status step by step).
-function bump(): void {
-  window.clearTimeout(bumpTimer)
-  bumpTimer = window.setTimeout(() => live.version++, 400)
+function eventKind(e: MessageEvent): string | null {
+  try {
+    return (JSON.parse(e.data) as { kind?: string }).kind ?? null
+  } catch {
+    return null
+  }
 }
 
-// useResource loads path now, when it changes, and on every change event.
-export function useResource<T>(path: () => string) {
+// bump coalesces bursts of events (a run writes its status step by step);
+// kind null stands for every kind.
+function bump(kind: string | null): void {
+  if (kind === null) pendingKinds = null
+  else pendingKinds?.add(kind)
+  window.clearTimeout(bumpTimer)
+  bumpTimer = window.setTimeout(() => {
+    live.kinds = pendingKinds && [...pendingKinds]
+    pendingKinds = new Set()
+    live.version++
+  }, 400)
+}
+
+// useResource loads path now, when it changes, and on every change event,
+// or with kinds only on events of those kinds.
+export function useResource<T>(path: () => string, kinds?: string[]) {
   const data = ref<T | null>(null) as Ref<T | null>
   const error = ref<string | null>(null)
   const notFound = ref(false)
@@ -93,7 +113,8 @@ export function useResource<T>(path: () => string) {
   watch(
     () => live.version,
     () => {
-      if (!session.loginRequired) void load()
+      if (session.loginRequired) return
+      if (!kinds || !live.kinds || live.kinds.some((k) => kinds.includes(k))) void load()
     },
   )
   onMounted(load)

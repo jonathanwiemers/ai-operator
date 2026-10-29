@@ -157,3 +157,22 @@ export function autopilotWaitingFor(
   if (!ap || ap.phase !== 'Paused' || !ap.resumeWhenReady || !ap.pausedFor) return 0
   return tasks.some((t) => t.issue?.iid === ap.pausedFor && t.runPending) ? ap.pausedFor : 0
 }
+
+// runLine describes a run: "claude/claude-sonnet-5-5 · 3 min · 07:00".
+// Parts that are not known (yet) are left out.
+export function runLine(
+  engine: string | undefined,
+  model: string | undefined,
+  durationMs: number | undefined,
+  start: string | undefined,
+): string {
+  const parts: string[] = []
+  if (engine) parts.push(model ? `${engine}/${model}` : engine)
+  if (durationMs !== undefined && durationMs >= 0) {
+    const min = Math.round(durationMs / 60000)
+    parts.push(min < 1 ? '<1 min' : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`)
+  }
+  const at = clockTime(start, Date.now())
+  if (at) parts.push(at)
+  return parts.join(' · ')
+}

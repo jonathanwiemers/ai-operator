@@ -336,3 +336,46 @@ export interface TranscriptEntry {
   system?: string
   prompt?: string
 }
+
+// Feature is a section of the UI the user may see (GET /api/v1/features).
+// write and namespace: the user may start one-off researches, in namespace.
+export interface Feature {
+  name: 'factory' | 'research'
+  write?: boolean
+  namespace?: string
+}
+
+export type ResearchPhase = 'Scheduled' | 'Running' | 'Waiting' | 'Succeeded' | 'Failed'
+
+export interface ResearchRunStatus {
+  id?: string
+  startedAt?: string
+  finishedAt?: string
+  engine?: string
+  model?: string
+  effort?: string
+  reason?: string
+  outcome?: 'succeeded' | 'degraded' | 'failed' | 'limited'
+  message?: string
+  costUSD?: string
+}
+
+// ResearchSummary is an AgentResearch as the research pages show it.
+export interface ResearchSummary {
+  namespace: string
+  name: string
+  view: 'newsflash' | 'report'
+  depth: 'quick' | 'deep'
+  schedule?: string
+  timeZone?: string
+  phase?: ResearchPhase
+  lastRun?: string
+  nextRun?: string
+  lastEngine?: string
+  lastModel?: string
+  run?: ResearchRunStatus
+  skippedReason?: string
+  waiting?: { engine: string; until: string }
+  oneOff: boolean
+  createdBy?: string
+}

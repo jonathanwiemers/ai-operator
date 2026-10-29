@@ -1,21 +1,39 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
-import { get, logout, session, LoginRequiredError } from './api'
+import { computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { get, isResearchPath, logout, session, setFeatures, LoginRequiredError } from './api'
 import { connectEvents, disconnectEvents, live } from './live'
 import SignIn from './views/SignIn.vue'
-import type { Me } from './types'
+import type { Feature, Me } from './types'
 
-// Who is logged in. get() sets loginRequired on 401; any other failure
-// (the UI restarting) is retried, since the live updates wait for it.
+// Who is logged in and which sections they see. get() sets loginRequired on
+// 401; any other failure (the UI restarting) is retried, since the live
+// updates and the route guard wait for it.
 async function loadMe(delay = 2000): Promise<void> {
   try {
-    session.me = await get<Me>('/me')
+    session.me ??= await get<Me>('/me')
+    setFeatures((await get<{ features: Feature[] }>('/features')).features)
   } catch (e) {
-    if (!(e instanceof LoginRequiredError)) {
+    if (e instanceof LoginRequiredError) {
+      setFeatures([])
+    } else {
       window.setTimeout(() => void loadMe(Math.min(delay * 2, 60000)), delay)
     }
   }
 }
+
+// Section tabs, only with more than one section: with the factory alone the
+// bar looks as it always did.
+const sections: Record<Feature['name'], { label: string; to: string }> = {
+  factory: { label: 'Factory', to: '/' },
+  research: { label: 'Research', to: '/research' },
+}
+const tabs = computed(() => {
+  const known = (session.features ?? []).filter((f) => f.name in sections)
+  return known.length > 1 ? known.map((f) => ({ name: f.name, ...sections[f.name] })) : []
+})
+const route = useRoute()
+const activeSection = computed(() => (isResearchPath(route.path) ? 'research' : 'factory'))
 
 onMounted(() => loadMe())
 
@@ -34,6 +52,18 @@ watch(
           <img src="/logo.svg" alt="" width="26" height="26" />
           <span>ai-operator</span>
         </RouterLink>
+        <nav v-if="tabs.length" class="sections">
+          <RouterLink
+            v-for="t in tabs"
+            :key="t.name"
+            :to="t.to"
+            class="section"
+            :class="{ active: t.name === activeSection }"
+            :aria-current="t.name === activeSection ? 'page' : undefined"
+          >
+            {{ t.label }}
+          </RouterLink>
+        </nav>
         <span class="spacer" />
         <span
           v-if="session.me"
@@ -94,6 +124,31 @@ watch(
 
 .spacer {
   flex: 1;
+}
+
+.sections {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.section {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.section:hover {
+  text-decoration: none;
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.section.active {
+  color: var(--text);
+  background: var(--surface-2);
 }
 
 .live {
