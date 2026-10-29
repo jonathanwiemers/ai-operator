@@ -1,0 +1,228 @@
+# ai-operator: research platform (news flash, scheduled and long research, agent-shaped UI)
+
+## Goal
+
+The web UI becomes a platform with features. The **factory** (projects, milestones, tasks: today's UI) is one of them. **Research** is the second:
+
+- **Scheduled research**, e.g. "latest news, ordered by topic" every morning, shown as a **news flash** in the UI.
+- **Long research** on demand: a question in, a structured report out.
+- Agents shape what the UI shows by returning **blocks** from a fixed schema, so new kinds of results need no new UI code.
+- Results are kept for a while in **Postgres** and are searchable.
+- The system **chooses the engine and model** for each run itself, from the run's depth and the usage left on each subscription. Research never eats the budget the factory needs.
+
+## Background (how it is wired today)
+
+- All state lives in the CRDs `AgentProject` and `AgentTask` (etcd). There is no database.
+- Work is always a GitLab issue or a milestone. A task runs in its own pod, with two containers: `runner` (GitLab token, writes status) and `agent` (CLI credentials, does the work), talking over a unix socket (`internal/runner`, `cmd/runner`).
+- Engines and their usage:
+  - engines: claude, cursor;
+  - roles and profiles map to `{engine, model, effort}` (`api/v1alpha1/routing.go`);
+  - every claude call records its `rate_limit_event` reading (`EngineUsage` in task and project status);
+  - limits are in `UsageLimits`;
+  - roles have an optional `fallback`, and `agents.fallbackAtPercent` switches before the hard limit (`docs/design.md`, "Engines, profiles and subscriptions").
+- The UI:
+  - a separate deployment (`cmd/ui`, `internal/ui`, `web/`: Vue 3 + Vite, embedded);
+  - OIDC login, deny-by-default access rules with grants (`transcript`, `steer`), a strict CSP;
+  - a read-only service account (get/list/watch on the CRDs, pod logs);
+  - no kubebuilder RBAC markers in `internal/ui`; its RBAC is hand-written in `templates/ui-rbac.yaml`.
+- The cluster has a postgres-operator (zalando) with a default cluster available.
+
+## Decisions (locked; do not reopen)
+
+1. **Storage is Postgres.**
+   - Optional: the research feature is off and invisible without a database. The chart takes `research.database.existingSecret`.
+   - The operator owns the schema: embedded SQL migrations with a `schema_migrations` table, applied at operator start.
+   - Retention: the operator deletes expired rows hourly.
+   - Two roles:
+     - a **writer** DSN for the operator and the runner container of research runs (never the agent container);
+     - a **reader** DSN (SELECT only) for the UI.
+   - Driver: `github.com/jackc/pgx/v5`.
+2. **New CRD `AgentResearch`** (namespaced, `ai.wiemers.me/v1alpha1`):
+   - `spec.projectRef`: an `AgentProject` in the same namespace. Its credentials, agent image, engines, profiles and usage readings are used, and research runs feed that project's `EngineUsage`/`UsageLimits`, so factory and research share one view of the budget.
+   - `spec.prompt`: the instructions.
+   - `spec.topics` (optional list).
+   - `spec.view`: `newsflash` | `report`.
+   - `spec.depth`: `quick` | `deep`. Sets the timeout (quick 20 m, deep 2 h) and the default candidates.
+   - `spec.schedule`: optional cron, with `spec.timeZone`. Without a schedule the research runs once.
+   - `spec.retention`: default `720h`.
+   - `spec.agent`:
+     - `auto` (the default), or
+     - `{engine, model, effort}`, validated like `fallback` with `FindModel`.
+   - `status`: `lastRun`, `nextRun`, `lastResultID`, `lastEngine`/`lastModel`, `skippedReason`, conditions.
+3. **Runs are pods like tasks**, without git:
+   - the runner gets a research mode, `ai-runner research`;
+   - it builds the prompt (instructions, topics, the block schema, and the item URLs of the previous run, so a news flash does not repeat itself);
+   - it calls the agent server;
+   - the claude agent may use WebSearch/WebFetch;
+   - it validates the answer and writes it to Postgres.
+   - Invalid JSON gets one repair round with the validation errors. After that, the raw answer is stored as a single `markdown` block, and the run is marked `degraded`.
+4. **The system chooses engine and model (`agent: auto`):**
+   - `research.candidates` per depth, in the chart and overridable per `AgentProject` under `spec.research.candidates`. Defaults:
+     - quick: `claude/claude-sonnet-5-5`, then `cursor/auto`;
+     - deep: `claude/claude-opus-5-5` high, then `claude/claude-sonnet-5-5`, then `cursor/auto`.
+   - The first candidate wins if its engine is not limited and the freshest reading of every window that has not reset since is below `research.maxUsagePercent` (default 70). The factory gets the rest.
+   - If none qualifies:
+     - a scheduled run is skipped, with `skippedReason` saying which agent was limited until when, and tried again at the earliest reset if that is before the next scheduled time;
+     - a one-off run waits for the earliest reset.
+   - In both cases the UI shows "waiting for `claude` until 14:00".
+   - The run records which agent ran and why (`chosen: claude/claude-sonnet-5-5 (opus: 7-day window at 82 %)`).
+5. **Agent-shaped UI = block schema v1.** Agents return `{"schemaVersion":1,"title":…,"summary":…,"blocks":[…]}` with these block types:
+   - `heading`;
+   - `markdown`, rendered sanitized: no raw HTML, links `http(s)` only;
+   - `items`: news or findings, each with `topic, title, summary, url, source, publishedAt, importance 1–3`;
+   - `table` (`columns`, `rows` of strings);
+   - `stats` (`label, value, delta?`);
+   - `links`.
+
+   The server validates them (types, sizes, URL schemes). The Vue renderer has one component per type. No agent HTML, no external images: the CSP stays as it is. Unknown block types are dropped with a warning on the run.
+6. **Data model:**
+   - `research_runs`: id, namespace, research, started/finished, status, engine, model, effort, cost, choice reason, error;
+   - `research_results`: run_id, created_at, expires_at, title, summary, blocks JSONB, a tsvector for full-text search;
+   - `research_items`: run_id, url hash, topic, first_seen. These drive the "new since the last flash" badges and dedupe.
+7. **UI as a platform:**
+   - The shell gets top-level sections: **Factory** (today's pages, URLs unchanged) and **Research**.
+   - `GET /api/features` lists what the user may see. A feature is hidden without its grant or, for research, without a database.
+   - Research pages:
+     - a list of researches (schedule, last and next run, agent used, waiting/skipped reason);
+     - the **news flash** of a research: the latest run, grouped by topic, importance first, a "new" badge, and the run line "claude/claude-sonnet-5-5 · 3 min · 07:00";
+     - a report view;
+     - run history;
+     - full-text search over the stored results.
+8. **Access:**
+   - New rule grants: `research: read` (see researches and their results) and `research: write` (start a one-off research and delete own one-offs from the UI). Rules can scope by `researches: ["namespace/name"]` globs, like `projects`.
+   - The UI's service account additionally gets `get/list/watch` on agentresearches, and, only when a rule grants write, `create/delete` on them (chart value `ui.research.allowCreate`).
+   - The UI stamps the creator (`ai.wiemers.me/created-by`) and enforces the namespace from a chart value.
+9. **One-off research from the UI:** a form with the question, depth, topics and agent (auto or a choice from the allowed models). It creates an `AgentResearch` without a schedule, and the page follows the run live (the same event stream as tasks).
+
+## Requirements
+
+### Operator and runner (`api/`, `internal/`, `cmd/`)
+- `AgentResearch` types, defaults and validation (`make generate manifests`).
+- A controller: schedule (cron + timeZone), one pod per run, `nextRun`, skip/wait handling, conditions, cleanup of the pods of finished runs.
+- `internal/research` (or similar):
+  - store: migrations, insert run/result/items, retention delete, queries for the UI;
+  - block schema: Go types, validation and a JSON schema text for the prompt.
+- Runner research mode, candidate choice (shares the usage logic of `internal/runner/usage.go`), recording `EngineUsage` from research runs to the referenced project.
+
+### Chart
+- `research.enabled`, `research.database.existingSecret` (keys `writerURI`, `readerURI`), `research.candidates`, `research.maxUsagePercent`, `ui.research.allowCreate`, `ui.research.namespace`.
+- RBAC for the operator (agentresearches, their pods) and the UI (hand-written).
+- The CRD in `files/`.
+
+### Web UI (`web/`, `internal/ui`)
+- Platform shell and `/api/features`.
+- Research API endpoints: list, get, runs, result, search, create/delete for one-offs (the UI's existing CSRF/cross-origin protection, size and rate limits, audit line).
+- Block renderer components, the news flash, report, history and search pages, the one-off form.
+- Screenshots of the news flash and a report in the MR (`make run-ui` with a local Postgres and seeded results).
+
+### Docs
+- `docs/research.md` (new: concepts, CRD, choosing agents, retention, examples incl. a morning news flash).
+- `docs/configuration.md`, `docs/ui.md` (platform, grants, research pages), `docs/design.md` (architecture, pod topology, security of web content), chart README.
+
+## Constraints
+
+- Repo rules apply:
+  - `make generate manifests` after API changes;
+  - gofmt, `go vet ./...`, `make test`, `make helm-lint`, `make ui`;
+  - no RBAC markers in `internal/ui`;
+  - the GitLab pipeline green before merge.
+- Store tests run against a real Postgres:
+  - `.gitlab-ci.yml` adds a `postgres:17` service through `${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}`;
+  - locally a make target starts one in docker;
+  - no mocks for SQL.
+- **Web content is untrusted:**
+  - the research agent has no GitLab token and no database credentials;
+  - its answer is data;
+  - the prompt tells it to ignore instructions found on pages;
+  - validation caps sizes (e.g. 200 items, 64 KiB markdown per block, 1 MiB per result).
+- Research must not starve the factory: the `maxUsagePercent` guard applies to every research run, including one-offs.
+- Without `research.database` the operator, chart and UI behave exactly as today (tests prove it).
+- One MR per suggested step, < 50 production lines where the step allows. A larger step says why in its description.
+
+## Non-goals
+
+- Agent-written HTML/JS, external images, iframes.
+- Push notifications (email, ntfy) for a new news flash: later.
+- MCP endpoint, research tools for factory agents, results posted to GitLab.
+- Other features on the platform beyond Factory and Research.
+- Editing or annotating results in the UI.
+- Provisioning the database in the cluster: that is the owner's follow-up in `infra/cluster`.
+
+## Suggested order (one MR each, split further if over budget)
+
+1. Spec: copy this milestone to `docs/specs/research-platform.spec.md` with a steering log.
+2. Store: pgx, migrations, data model, retention, CI Postgres service, make target.
+3. Block schema v1: types, validation, prompt schema text, tests with good and hostile inputs.
+4. `AgentResearch` CRD and chart values (no controller logic yet), docs skeleton `docs/research.md`.
+5. Controller: schedule, pods, status, cleanup, retention loop.
+6. Runner research mode: prompt, agent call, validation and repair round, store write, usage recording.
+7. Agent choice (`auto`, candidates, `maxUsagePercent`, skip/wait), with tests for limited, over-threshold and all-busy cases.
+8. UI backend: `/api/features`, access grants, read endpoints, search.
+9. UI frontend: platform shell, block renderer, news flash, report, history, search (screenshots).
+10. One-off research from the UI: create/delete endpoint, RBAC, form, live run (screenshots).
+11. Docs reconcile: research.md, configuration.md, ui.md, design.md, chart README, spec delivery table.
+
+## Acceptance
+
+- With a database:
+  - a scheduled `AgentResearch` (`view: newsflash`, `depth: quick`) runs on time and stores a validated result;
+  - the UI's Research section shows it as a news flash grouped by topic, with "new" badges against the previous run;
+  - the result expires after `retention`.
+- A one-off deep research started from the UI runs, the page follows it live, and the report renders from blocks.
+- `agent: auto`:
+  - with claude's 5-hour window at 85 % and `maxUsagePercent: 70`, the run goes to the next candidate;
+  - with every candidate limited, a scheduled run is skipped with the reason and retried at the earliest reset, and the UI shows it;
+  - the choice reason is stored with the run.
+- Hostile agent output fails validation without reaching the browser: raw HTML in markdown, `javascript:` links, oversized results, unknown block types.
+- Without a database nothing changes: no Research section, no new RBAC used, existing tests unchanged.
+- Docs, CRDs and the chart are updated. Every MR's pipeline is green.
+
+## Delivery
+
+GitLab `jo.wiemers/ai-operator`, one MR per row, each based on `main` after the previous merges. Slice keys match the steering log. Target < 50 production lines per MR; a larger step says why in its description.
+
+| # | Key | Slice | Depends on | Status |
+|--:|---|---|---|---|
+| 1 | `spec-doc` | This spec (milestone text, delivery, plan decisions, steering log) | – | this MR |
+| 2 | `store-schema` | pgx, embedded migrations, `research_runs`/`results`/`items`, retention delete, CI Postgres service, local make target | `spec-doc` | open |
+| 3 | `block-schema` | Block schema v1 Go types, validation, prompt JSON schema text, hostile-input tests | `spec-doc` | open |
+| 4 | `research-schedule` | Cron + timeZone helpers for next-run calculation (shared by CRD validation and the controller) | `spec-doc` | open |
+| 5 | `research-crd` | `AgentResearch` types, defaults, validation, chart values, CRD in `files/`, docs skeleton `docs/research.md` (no controller yet) | `research-schedule` | open |
+| 6 | `store-writes` | Insert run/result/items, UI query helpers (list, get, search, items for "new" badges) | `store-schema`, `block-schema` | open |
+| 7 | `operator-database` | Operator takes writer DSN, applies migrations at start; chart Secret wiring; feature off without a database | `store-schema` | open |
+| 8 | `research-controller` | Schedule, one pod per run, `nextRun`, skip/wait, conditions, finished-pod cleanup, hourly retention | `research-crd`, `operator-database`, `store-writes` | open |
+| 9 | `runner-research-answer` | Validate/repair agent JSON, write result and items, mark `degraded` after a failed repair | `block-schema`, `store-writes` | open |
+| 10 | `runner-research-mode` | `ai-runner research`: prompt (instructions, topics, schema, previous URLs), agent call, usage recording to the project | `runner-research-answer`, `research-controller` | open |
+| 11 | `agent-choice` | `agent: auto`, candidates per depth, `maxUsagePercent`, skip/wait with `skippedReason` | `runner-research-mode` | open |
+| 12 | `ui-research-access` | `GET /api/v1/features`, `research: read`/`write` grants, researches globs | `operator-database` | open |
+| 13 | `ui-research-api` | Read endpoints: list, get, runs, result, search (CSRF, size/rate limits, audit) | `ui-research-access`, `store-writes` | open |
+| 14 | `ui-shell` | Platform shell with Factory and Research top-level sections | `ui-research-access` | open |
+| 15 | `ui-blocks` | Block renderer (no `v-html`), news flash and report views | `ui-research-api`, `ui-shell`, `block-schema` | open |
+| 16 | `ui-history-search` | Run history and full-text search pages | `ui-blocks` | open |
+| 17 | `oneoff-api` | Create/delete one-off `AgentResearch`, UI RBAC (`ui.research.allowCreate`), creator stamp | `ui-research-api`, `research-crd` | open |
+| 18 | `oneoff-form` | One-off form (question, depth, topics, agent) and live run follow | `oneoff-api`, `ui-blocks` | open |
+| 19 | `docs-reconcile` | `docs/research.md`, configuration, ui, design, chart README, this delivery table | all above | open |
+
+`store-schema` and `block-schema` (and `research-schedule`) are independent after `spec-doc`. `ui-shell` can start once features and grants exist. Each MR carries its own docs for the slice it lands.
+
+## Plan decisions
+
+Cross-cutting choices locked while planning this milestone (do not reopen without `/agent revisit`):
+
+1. **API prefix.** Research (and features) live under `/api/v1/` (so `GET /api/v1/features`), matching the existing UI API. The milestone's `GET /api/features` is shorthand for that path.
+2. **Who chooses the agent.** The operator, not the runner, chooses the agent before it creates a pod. The runner receives the chosen `{engine, model, effort}` and does not re-pick.
+3. **Database Secret in agent namespaces.** The database Secret (`writerURI` for research pods) must also exist in every agent namespace that hosts `AgentResearch`es, not only the operator's namespace.
+4. **Research rules vs factory rules.** Research access rules in the UI are separate from factory rules: new grants `research: read` / `research: write` and optional `researches` globs, not reuse of `transcript` / `steer` / `projects`.
+5. **Markdown rendering.** Markdown is rendered by an own subset renderer to Vue nodes, without `v-html`. No raw HTML from agent content reaches the DOM.
+
+## Steering log
+
+Every MR of this spec appends exactly one line: date, slice key, what landed,
+production line count, deviations.
+
+- 2026-10-29 `spec-doc`: added this spec (Goal through Acceptance, Delivery, Plan decisions, Steering log, MRs); 0 production lines; no deviations.
+
+## MRs
+
+| # | Title | Link | Status |
+|--:|---|---|---|
