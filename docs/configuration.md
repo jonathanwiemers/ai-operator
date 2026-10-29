@@ -111,8 +111,10 @@ it) the UI also gets a Role in that namespace with `create`, `delete` and
 
 `AgentResearch` resources describe research questions that agents answer
 once or on a schedule, with the results kept in Postgres. An AgentProject
-gives their runs a database login with `spec.research`. See
-[research.md](research.md). This feature is still under construction.
+gives their runs a database login with `spec.research`. Concepts, the CRD,
+the agent choice, the block schema, examples and troubleshooting are in
+[research.md](research.md); the AgentProject fields in
+[`spec.research`](research.md#specresearch-on-agentproject).
 
 #### Research database
 
@@ -132,9 +134,14 @@ login with the keys `username` and `password`.
 | `research.database.readerRole` | `""` | role granted read access (the reader login) |
 | `research.database.writerRoles` | `[]` | roles granted write access (the writer logins of research runs) |
 | `research.database.networkPolicyPeer` | `{namespace: "", podLabels: {}}` | the database pods research-run pods may reach, see [below](#network-policy-for-research-runs) |
-| `research.candidates` | see `values.yaml` | default agents of research runs per depth, see [research.md](research.md#choosing-agents) |
+| `research.candidates.quick` | `claude/claude-sonnet-5-5`, `cursor/auto` | default agents of quick research runs, in order, see [research.md](research.md#choosing-agents) |
+| `research.candidates.deep` | `claude/claude-opus-5-5` (effort `high`), `claude/claude-sonnet-5-5`, `cursor/auto` | the same for deep runs |
+| `research.maxUsagePercent` | `70` | research uses an engine only while every usage window not reset since is below this (1 to 100) |
+| `ui.research.allowCreate` | `false` | one-off researches from the UI, see [Web UI](#web-ui) |
+| `ui.research.namespace` | `""` | where the UI creates one-off researches; required with `allowCreate` |
 
-The logins on netcup01:
+The logins on netcup01 (the complete values, with the AgentProject's writer
+login, are in [research.md](research.md#example-netcup01)):
 
 | Login (role) | Secret | Namespace | Used by |
 |---|---|---|---|
@@ -170,8 +177,10 @@ refuses to render a host without `name` or `ownerSecret.name`.
 At every start the leader connects as the owner, applies the embedded
 migrations and grants the roles: `readerRole` may read every table,
 each of `writerRoles` may read, insert and update runs, results and items,
-and default privileges extend both to later tables. Grants are additive: a
-role removed from the values keeps its rights until revoked by hand. If the
+and default privileges extend both to later tables. Role names are quoted,
+so `agents.research_writer` is one role. Grants are additive: a
+role removed from the values keeps its rights until revoked by hand (see
+[research.md](research.md#database)). If the
 database is unreachable or a migration fails, the operator keeps running the
 factory and retries with backoff (5 s up to 5 min). Once ready, it deletes
 expired runs with their results and items at once and then every hour.
@@ -557,7 +566,7 @@ leader only.
 | `pollInterval` | `1m` | GitLab polling interval (with webhooks receiving, see [`spec.webhook`](#specwebhook)) |
 | `maxConcurrentRuns` | `3` | runs in flight per project; more runs queue. Keep this low on subscriptions, which have usage windows |
 | `suspend` | `false` | stop polling and starting runs |
-| `research` | | database login (`writerSecret`) and agent candidates of research runs, see [research.md](research.md#specresearch-on-agentproject) |
+| `research` | | research runs of the AgentResearches that reference this project: `writerSecret` (`{name, usernameKey: username, passwordKey: password}`, the database login of their runner, a Secret in this namespace) and `candidates` (`quick`, `deep`: up to 5 `{engine, model, effort}` each, replacing the chart's `research.candidates`), see [research.md](research.md#specresearch-on-agentproject) |
 
 ## Agent image
 

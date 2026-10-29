@@ -1,10 +1,5 @@
 # Research
 
-> **Status:** the operator schedules researches, runs them in pods and
-> stores their results, but the automatic agent choice and the UI pages
-> follow in the next releases (see the
-> [spec](specs/research-platform.spec.md)).
-
 Research is the second feature of the platform, next to the factory
 (projects, milestones, tasks):
 
@@ -30,6 +25,17 @@ Research is the second feature of the platform, next to the factory
   candidates and the usage left, unless `spec.agent` fixes one.
 * Results are kept for `retention` (default 30 days) and are searchable.
 * The feature is off while the chart value `research.database.host` is empty.
+  Without it the operator, the chart's RBAC and the UI behave as they did
+  before research existed: no database connection, no research controller,
+  no Research section.
+* The UI shows researches in its **Research** section (news flash, report,
+  run history) and starts one-off researches, see
+  [ui.md](ui.md#platform).
+
+To turn research on: set up the [database](#database) and its logins, set
+the chart values `research.database.*` (see the [netcup01
+example](#example-netcup01)), give each AgentProject that runs researches a
+writer login (`spec.research.writerSecret`), and create an `AgentResearch`.
 
 ## `AgentResearch`
 
@@ -49,14 +55,19 @@ schedule, last and next run, and the model of the last run.
 | `spec.agent` | chosen automatically | `{engine, model, effort}`: always run on this agent. The model must be an allowed model of the project (`spec.agents.models`, the profiles and `implement`) or its alias; `effort` is for claude only |
 
 The operator runs a research only while the research database is ready (see
-[Runs](#runs)). The status shows the `phase` (`Scheduled`, `Running`, `Waiting`,
-`Succeeded`, `Failed`), `lastRun`, `nextRun`, `lastResultID`, the agent of
-the last run (`lastEngine`, `lastModel`) and `skippedReason`. While a run
-waits for an engine's usage to reset, `waiting` shows `{engine, until}`.
-`run` describes the current or last run: its agent, why that agent was
-chosen, the outcome (`succeeded`, `degraded` when the answer failed
-validation and was stored as plain markdown, `failed`, `limited`), its cost
-and the usage readings.
+[Runs](#runs)). The status, written by the operator (and `run` partly by the
+runner):
+
+| Field | Description |
+|-------|-------------|
+| `status.phase` | `Scheduled` (waiting for its next time), `Running`, `Waiting` (a one-off waiting for usage to reset), `Succeeded`, `Failed` (a one-off's last run) |
+| `status.lastRun`, `status.nextRun` | when the last run finished and the next is due |
+| `status.lastResultID` | the run ID of the newest stored result (`succeeded` and `degraded` runs) |
+| `status.lastEngine`, `status.lastModel` | the agent of the last run |
+| `status.skippedReason` | why the last due run did not start (no candidate qualifies, previous run still in progress) |
+| `status.waiting` | `{engine, until}` while no candidate qualifies, see [Choosing agents](#choosing-agents) |
+| `status.run` | the current or last run: `id`, `startedAt`, `finishedAt`, `engine`, `model`, `effort`, `reason` (the choice), `outcome` (`succeeded`, `degraded` when the answer failed validation and was stored as plain markdown, `failed`, `limited`), `message`, `costUSD`, `engineUsage`, `usageLimits` |
+| `status.conditions` | `Valid`, `DatabaseReady`, `Running`, see [Runs](#runs) and [Troubleshooting](#troubleshooting) |
 
 The UI marks researches it created with the annotation
 `ai.wiemers.me/created-by`. The pods of a research's runs carry the label
@@ -86,7 +97,10 @@ project changes.
 
 ## Examples
 
-A morning news flash ([`config/samples/agentresearch.yaml`](../config/samples/agentresearch.yaml)):
+**A morning news flash**
+([`config/samples/agentresearch.yaml`](../config/samples/agentresearch.yaml)):
+every day at 07:00 Berlin time, the news of the last day, grouped by the
+topics, with the stories new since the previous flash marked.
 
 ```yaml
 apiVersion: ai.wiemers.me/v1alpha1
@@ -106,17 +120,56 @@ spec:
   timeZone: Europe/Berlin
 ```
 
-The writer login on the project, with the Secret the Zalando
-postgres-operator creates for the cross-namespace role
-`agents.research_writer`
-([`config/samples/agentproject.yaml`](../config/samples/agentproject.yaml)):
+**A deep one-off report**: runs once, right after it is created, for up to
+2 hours, on the deep candidates (Opus first). Kept for 90 days. The UI's
+one-off form creates the same kind of object (with a generated name and the
+`ai.wiemers.me/created-by` annotation).
 
 ```yaml
+apiVersion: ai.wiemers.me/v1alpha1
+kind: AgentResearch
+metadata:
+  name: heat-pumps
+  namespace: agents
 spec:
+  projectRef: shop
+  prompt: |
+    Compare air-to-water heat pumps for a 150 m² house built in 1975 in
+    Germany: efficiency in cold weather, noise, prices including
+    installation, and the current subsidies. Cite your sources.
+  view: report
+  depth: deep
+  retention: 2160h
+```
+
+**The writer login and a candidates override on the project**, with the
+Secret the Zalando postgres-operator creates for the cross-namespace role
+`agents.research_writer`
+([`config/samples/agentproject.yaml`](../config/samples/agentproject.yaml)).
+Quick runs of this project's researches try cursor first and Sonnet second;
+deep runs keep the chart's candidates:
+
+```yaml
+apiVersion: ai.wiemers.me/v1alpha1
+kind: AgentProject
+metadata:
+  name: shop
+  namespace: agents
+spec:
+  # … gitlab, agents and the other fields of the project …
   research:
     writerSecret:
       name: agents.research-writer.ai-operator-postgres.credentials.postgresql.acid.zalan.do
+    candidates:
+      quick:
+        - {engine: cursor, model: auto}
+        - {engine: claude, model: claude-sonnet-5-5, effort: medium}
 ```
+
+**A fixed agent**: `spec.agent: {engine: claude, model: sonnet}` runs every
+run on Sonnet (an alias the project defines, or the full model name) and
+never on another agent; the [guard](#choosing-agents) still applies, so the
+run waits or is skipped while Sonnet's engine is busy.
 
 ## Choosing agents
 
@@ -292,19 +345,191 @@ in a news flash: the UI flags it in the run that first reported the URL
 (`"new": true`), not in later runs. The prompt of the next run lists the item URLs of the latest
 result (at most 200), so a news flash does not repeat itself.
 
+## Block schema v1
+
+The agent answers with one JSON object; the runner validates it
+(`internal/research/blocks`) before anything is stored, and the UI validates
+every stored result again before it sends it to the browser:
+
+```json
+{"schemaVersion": 1, "title": "Morning news", "summary": "Three stories today.",
+ "blocks": [
+   {"type": "heading", "text": "Kubernetes", "level": 2},
+   {"type": "items", "items": [
+     {"topic": "Kubernetes", "title": "Kubernetes 1.36 released",
+      "summary": "…", "url": "https://kubernetes.io/blog/…", "source": "kubernetes.io",
+      "publishedAt": "2026-10-29T06:00:00Z", "importance": 3}]},
+   {"type": "markdown", "text": "Background: [the release notes](https://…)."},
+   {"type": "table", "columns": ["Model", "Price"], "rows": [["A", "9 €"]]},
+   {"type": "stats", "stats": [{"label": "CVEs", "value": "4", "delta": "+2"}]},
+   {"type": "links", "links": [{"title": "Changelog", "url": "https://…"}]}
+ ]}
+```
+
+| Block | Fields |
+|-------|--------|
+| `heading` | `text`, `level` 2 or 3 |
+| `markdown` | `text`: CommonMark without raw HTML (no `<` followed by a letter, `/`, `!` or `?` outside code), without images, links `http(s)` only |
+| `items` | `items`: news or findings with `title` and `url` (required), `topic`, `summary`, `source`, `publishedAt` (RFC 3339), `importance` 1 (low), 2 (normal, the default) or 3 (high) |
+| `table` | `columns` and `rows` of strings, one cell per column |
+| `stats` | `stats`: `label`, `value`, optional `delta` |
+| `links` | `links`: `title`, `url` |
+
+Limits (lengths in characters unless bytes):
+
+| What | Limit |
+|------|-------|
+| whole result | 1 MiB |
+| blocks | 100 |
+| items, over all items blocks | 200 |
+| entries of a stats or links block | 200 |
+| markdown block | 64 KiB |
+| title, heading, item title, source, link title, stats label, value and delta | 300 |
+| summary, item summary | 2000 |
+| topic | 100 |
+| URL | 2048, absolute `http`/`https` with a host, no user info, no spaces |
+| table | 20 columns, 500 rows, 1000 per cell |
+
+Lists must not be empty, control characters other than newlines and tabs
+(in markdown and summaries) are refused, and an answer with a problem is
+refused as a whole with every problem listed (at most 50). Blocks of an
+unknown type are dropped with a warning on the run, the rest is kept.
+
 ## Retention
 
-The operator deletes expired runs, with their results and items, at start and
-then every hour. Runs are kept for `spec.retention` (default 30 days).
+Every run gets an expiry when it starts: its start time plus
+`spec.retention` (default `720h`, 30 days). The operator, as the database's
+owner, deletes expired runs with their results and items at its start and
+then every hour. A changed `retention` applies to later runs only. Deleting
+an `AgentResearch` does not delete its stored runs; they expire as usual (and
+the UI no longer shows or searches them).
 
 ## Database
 
-The operator connects as the database's owner, applies the migrations and
-grants the reader and writer roles at every start, and deletes expired runs
-hourly. The chart values, the logins and the behavior during an outage are in
+Research stores its runs in a Postgres database you provide; the operator
+owns the schema. The chart is set up for the way the Zalando
+postgres-operator provides a database: a host, and one Secret per login with
+the keys `username` and `password` (other key names with `usernameKey` and
+`passwordKey`). There are no connection URIs.
+
+**Three logins.**
+
+| Login | Secret | Where | Rights |
+|-------|--------|-------|--------|
+| owner | `research.database.ownerSecret` | the release's namespace | owns the database: migrations, grants, retention. Only the operator has it |
+| reader | `research.database.readerSecret` | the release's namespace | read only; the UI's login. Its role is `readerRole` |
+| writer | `AgentProject.spec.research.writerSecret` | the project's namespace | read, insert, update; the runner container of research runs. Its role must be one of `writerRoles` |
+
+The agent container never gets a login, and the writer cannot delete or
+change the schema.
+
+**Connection.** `research.database.host` (empty: research is off), `port`
+(default `5432`), `name` (the database, required with a host) and `sslMode`
+(default `require`: encrypted, not verified; also `disable`, `verify-ca`,
+`verify-full`). The operator, the UI and the runners of research runs all
+use these; the runners get them from the operator.
+
+**Grants.** At every start the operator applies the embedded migrations
+(table `schema_migrations`, under an advisory lock) and then grants, in the
+database's schema:
+
+* `readerRole`: `USAGE` on the schema and `SELECT` on all tables;
+* each of `writerRoles`: `USAGE` on the schema and `SELECT`, `INSERT`,
+  `UPDATE` on `research_runs`, `research_results` and `research_items`;
+* `ALTER DEFAULT PRIVILEGES` for the same, so tables of later migrations
+  follow without a new grant.
+
+Role names are quoted identifiers, so a name with a dot such as
+`agents.research_writer` (Zalando prefixes cross-namespace roles with their
+namespace) is one role. Grants are additive: a role removed from the values
+keeps its rights until you revoke them by hand. The roles must exist; the
+operator does not create them.
+
+**Network.** With `agent.networkPolicy.enabled`, the agent NetworkPolicy
+blocks cluster CIDRs, so set `research.database.networkPolicyPeer`
+(`namespace` and `podLabels` of the database pods): the chart then adds a
+NetworkPolicy `<agent role>-research-db` per agent namespace, which lets only
+pods with the label `ai.wiemers.me/research` reach those pods on TCP
+`port`. Task pods stay blocked. Details and the operator flags in
 [configuration.md](configuration.md#research-database).
 
-With `agent.networkPolicy` on, research-run pods reach the database through
-an extra NetworkPolicy for pods with the label `ai.wiemers.me/research`; task
-pods stay blocked, see
-[configuration.md](configuration.md#network-policy-for-research-runs).
+### Example: netcup01
+
+The database `ai_operator` of the Zalando `postgresql` `ai-operator-postgres`
+in `ai-operator-system`, with these logins:
+
+| Login (role) | Secret | Namespace | Used by |
+|---|---|---|---|
+| `research_owner` (owns `ai_operator`) | `research-owner.ai-operator-postgres.credentials.postgresql.acid.zalan.do` | `ai-operator-system` | operator |
+| `research_reader` | `research-reader.ai-operator-postgres.credentials.postgresql.acid.zalan.do` | `ai-operator-system` | UI |
+| `agents.research_writer` | `agents.research-writer.ai-operator-postgres.credentials.postgresql.acid.zalan.do` | `agents` | runner of research runs |
+
+The chart values (the release in `ai-operator-system`, agents in `agents`):
+
+```yaml
+research:
+  database:
+    host: ai-operator-postgres.ai-operator-system.svc.cluster.local
+    port: 5432
+    name: ai_operator
+    sslMode: require
+    ownerSecret:
+      name: research-owner.ai-operator-postgres.credentials.postgresql.acid.zalan.do
+    readerSecret:
+      name: research-reader.ai-operator-postgres.credentials.postgresql.acid.zalan.do
+    readerRole: research_reader
+    writerRoles: [agents.research_writer]
+    networkPolicyPeer:
+      namespace: ai-operator-system
+      podLabels: {cluster-name: ai-operator-postgres}
+agent:
+  networkPolicy:
+    enabled: true
+ui:
+  research:
+    allowCreate: true      # optional: one-off researches from the UI
+    namespace: agents
+```
+
+and on each AgentProject in `agents` that runs researches:
+
+```yaml
+spec:
+  research:
+    writerSecret:
+      name: agents.research-writer.ai-operator-postgres.credentials.postgresql.acid.zalan.do
+```
+
+Add [research rules](ui.md#research-rules) to `ui.authorization.rules` for
+the users who should see the Research section.
+
+## Troubleshooting
+
+* **`DatabaseReady` is `False`** (reason `NotReady`, "waiting for the
+  research database"): the operator could not connect, log in as the owner,
+  migrate or grant. Its log says why ("research database not ready,
+  retrying"); it retries with backoff from 5 seconds up to 5 minutes and
+  keeps running the factory meanwhile. Check the host, the `ownerSecret`
+  and its keys, `sslMode`, and that `readerRole` and every `writerRoles`
+  entry exist as roles. No research runs until it is `True`.
+* **`Valid` is `False` with `WriterSecretMissing`**: the project has no
+  `spec.research.writerSecret`, or the Secret or one of its keys is missing
+  in the project's namespace. The message names the Secret. With Zalando
+  the Secret of a cross-namespace role appears in the agents' namespace once
+  the role is in the `postgresql` resource. Checked again every minute.
+* **Other `Valid` reasons**: `ProjectNotFound` (`projectRef`),
+  `InvalidSchedule`, `InvalidAgent` (`spec.agent` is not an allowed model of
+  the project), `NoAgent` (no candidate the project can run), `NoAgentImage`.
+* **A run `failed`**: `status.run.message` and the run's error in the UI's
+  run history say why. "no report from the runner: …" means the pod ended
+  without recording an outcome (deadline, eviction, crash). A runner that
+  cannot connect at all usually lacks the research-db NetworkPolicy
+  (`networkPolicyPeer`); "permission denied" means the writer's role is not
+  among `writerRoles`.
+* **A run `degraded`**: the agent's answer failed validation, and again
+  after the repair round. The raw answer is stored as one fenced markdown
+  block, and the run's warnings list the validation errors (e.g. a limit of
+  the [block schema](#block-schema-v1) such as more than 200 items).
+* **Waiting or skipped**: no candidate qualifies; `status.waiting` and
+  `status.skippedReason` say which agent is busy until when, see
+  [Choosing agents](#choosing-agents).

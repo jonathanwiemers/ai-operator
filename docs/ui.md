@@ -2,13 +2,16 @@
 
 A read-only web UI shows what the agents are doing: every project with its
 tasks per stage, a board per milestone, autopilot queues, and each task's
-runs, review, CI and pod. Pages update live. Users log in with OpenID Connect
+runs, review, CI and pod. With a [research database](research.md) it also
+shows researches: news flashes, reports and their run history, and starts
+one-off researches. Pages update live. Users log in with OpenID Connect
 (Zitadel, Keycloak, Dex, Entra ID, …), and their roles decide which projects
-they see.
+and researches they see.
 
 The UI is off by default. It is a separate Deployment (`<release>-ui`, binary
 `/ui` in the operator image) with its own service account that can only read
-`AgentProjects` and `AgentTasks`. It never sees the GitLab tokens or the agent
+`AgentProjects` and `AgentTasks` (and `AgentResearches`, see
+[Security](#security)). It never sees the GitLab tokens or the agent
 credentials. Everything it shows comes from the resources' status, and links
 lead to GitLab; only with your GitLab account connected (see
 [Steering](#steering)) does it read comments and post them, the milestone
@@ -53,6 +56,15 @@ A run's page (`/research/<namespace>/<name>/runs/<id>`) shows its status
 (*degraded* when the answer failed validation and is kept as plain text),
 error, warnings, agent, start, duration, spend, retention and choice reason,
 and its result in the research's view. Both pages update live.
+
+The **run history** (`/research/<namespace>/<name>/runs`, *Run history* in a
+research's header) lists the stored runs, newest first, 20 at a time with
+*Load older*: start (linked to the run's page), duration, status, agent,
+choice reason, cost and error. Runs that expired are gone from it.
+
+Full-text search over the stored results is in the API
+(`GET /api/v1/research/search`, see [API](#api)); the app has no search page
+yet.
 
 **One-off research.** With the research write grant (`write` in
 `/api/v1/features`) the Research page has a *New research* button, which
@@ -516,6 +528,12 @@ points to 127.0.0.1 (DNS rebinding).
   cross-origin protection for requests that change state (logout, comments,
   one-off researches). Links to
   GitLab must be `http(s)` URLs.
+- **Research results are untrusted.** They come from agents that read web
+  pages. The UI validates every stored result against the block schema again
+  before it sends it (see [API](#api)), renders blocks with its own
+  components and its markdown subset renderer, never as HTML, loads no
+  images and links only to `http(s)` URLs. The Content Security Policy is the
+  same with research as without.
 - **https only.** `externalURL` must use https (http only for `localhost`);
   TLS ends at the Gateway.
 - **Deny by default** (see [Access rules](#access-rules)).

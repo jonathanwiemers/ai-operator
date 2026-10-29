@@ -25,9 +25,17 @@ flowchart LR
             AG["agent<br/>claude / cursor-agent<br/>checkout"]
         end
         PVC[("workspace PVC")]
+        AR[("AgentResearch<br/>optional")]
+        subgraph RPOD["research pod, one per run"]
+            RR["runner<br/>writer login"]
+            RA["agent<br/>web tools"]
+        end
+        PG[("Postgres<br/>research results")]
+        UI["web UI<br/>reader login"]
     end
 
     LLM["Model providers<br/>Anthropic, Cursor"]
+    WEB["the web"]
 
     OP <-->|"poll, labels,<br/>pipelines"| GL
     GL -.->|"project webhook<br/>(wake-up only)"| OP
@@ -39,10 +47,22 @@ flowchart LR
     RU <-->|"RPC + git bundles"| AG
     AG --> LLM
     POD --- PVC
+    AR -->|reads| OP
+    OP -->|"starts, deletes"| RPOD
+    OP -->|"owner login:<br/>migrations, grants,<br/>retention"| PG
+    RR <-->|"status.run"| AR
+    RR -->|"writes results"| PG
+    RR <-->|RPC| RA
+    RA --> LLM
+    RA --> WEB
+    UI -->|"reads"| PG
 ```
 
 The operator runs in `ai-operator-system`; projects, tasks and agent pods
-live in the namespaces listed in the chart's `agent.namespaces`.
+live in the namespaces listed in the chart's `agent.namespaces`. The research
+part (lower half) exists only with a research database
+(`research.database.host`); without one, the operator, the chart and the UI
+run only the factory.
 
 * The **project controller** polls GitLab, creates an `AgentTask` per planned
   milestone and per handed-over issue, turns `agent::ready` and `/agent`
@@ -62,6 +82,17 @@ live in the namespaces listed in the chart's `agent.namespaces`.
   AgentTasks from the Kubernetes API and never uses the operator's GitLab
   token; with a user's GitLab account connected it reads threads and posts
   comments (also the milestone chat to the pilot) with that user's token.
+* The optional **research controller** ([research.md](research.md)) runs
+  each `AgentResearch` once or on its cron schedule: it chooses the agent
+  from the usage left, starts one pod per run without git, and records the
+  outcome. The runner of that pod asks the agent, validates the answer
+  against the block schema and writes it to **Postgres**.
+* The database has **three logins**, each with only what its holder needs:
+  the operator's **owner** login (migrations, grants, hourly retention
+  delete), the UI's **reader** login (read only), and a **writer** login per
+  AgentProject (`spec.research.writerSecret`) that only the runner container
+  of research pods gets (read, insert, update). The agent container gets
+  none.
 
 ## Flow
 
@@ -226,6 +257,11 @@ planner's summary is kept in the spec task's status (`kubectl get agenttask
 |------|---------------|---------|
 | `AgentProject` | you | GitLab connection, label workflow, agent image, engines/models per role, lifecycle and limits |
 | `AgentTask` | operator | one per planned milestone (`Spec`), per handed-over issue (`Implement`) and per milestone with a pilot (`Coordinate`); owns the pod and the workspace PVC |
+| `AgentResearch` | you, or the UI for one-offs | a research question run once or on a schedule against a project's engines; owns the pod of its current run. Its results live in Postgres, not in etcd. See [research.md](research.md#agentresearch) |
+
+An `AgentResearch` follows the same split: the operator writes the top-level
+status, the runner only `status.run` (outcome, cost, usage readings), and the
+operator copies those readings into the referenced project's status.
 
 `AgentTask.spec.runRequest` is a counter: each increment asks for exactly one
 more run. The runner acknowledges in `status.run.observedRunRequest`. Requests
@@ -302,8 +338,14 @@ one short-lived pod per run, `<research>-<run ID prefix>`, with the label
   the status and the database.
 * The agent container is a task's (image, credentials, resources) without
   the `/cache` volume.
+* On claude the agent may use only WebSearch and WebFetch: the research
+  agent reads the web, not a checkout.
 * The agent NetworkPolicy applies to them as to task pods. An extra
-  NetworkPolicy lets only pods with the research label reach the database.
+  NetworkPolicy (`<agent role>-research-db`, from
+  `research.database.networkPolicyPeer`) lets only pods with the research
+  label reach the database pods on its port; task pods never match it.
+  NetworkPolicies apply per pod, so the agent container of a research pod
+  could reach the database too, but it has no login.
 
 **Logging.** The runner records every run as numbered steps
 (`internal/runner/steps.go`): a start and an end line per step in its log,
@@ -1241,6 +1283,16 @@ Things to keep in mind with subscriptions:
   reports no usage. A
   limit during a review fix round publishes the work done so far. Deferred
   runs don't count towards `maxRunsPerTask`.
+* **Research shares the budget but never takes the end of it.** A research
+  run's agent is chosen by the operator before the pod starts, from the
+  candidates of the run's depth (chart `research.candidates`, overridable
+  per project), with the same freshest-reading logic as
+  `agents.fallbackAtPercent` (`AgentProjectStatus.FullestWindow`): the first
+  candidate whose engine is not limited and whose windows are all below
+  `research.maxUsagePercent` (default 70) runs. With none, a one-off waits
+  and a scheduled run is skipped until the earliest reset, so the factory
+  keeps the rest of every window. See
+  [research.md](research.md#choosing-agents).
 * The plans are meant for your own use. Check the terms of your plan before
   running agents for a team on a personal subscription; use API keys for that.
 * With a subscription the reported cost is the notional API price. It is
@@ -1315,6 +1367,8 @@ after every read-only run); the boundary is the agent container itself.
   `RuntimeDefault`; the runner's root filesystem is read-only.
 * The agent service account can only read (get, list) tasks, get projects
   and patch `agenttasks/status`; the pilot lists the tasks of its milestone.
+  With a research database it also gets AgentResearches and patches
+  `agentresearches/status` (the runner of a research pod).
 * Optional NetworkPolicy (Helm `agent.networkPolicy`): no ingress, no egress
   to cloud metadata endpoints or private networks except allow-listed CIDRs
   (Kubernetes API, self-hosted GitLab, mirrors). NetworkPolicies apply per
@@ -1350,8 +1404,10 @@ after every read-only run); the boundary is the agent container itself.
   `agent/*` branches and opens draft MRs.
 
 **Web UI.** The optional UI runs as its own Deployment with a service
-account that can only read AgentProjects and AgentTasks, so a flaw in it
-exposes task status, not credentials. Users log in with OIDC (code flow with
+account that can only read AgentProjects and AgentTasks (and AgentResearches;
+with `ui.research.allowCreate` also create and delete them in one
+namespace), so a flaw in it exposes task status, not credentials. Its
+database login is the read-only reader. Users log in with OIDC (code flow with
 PKCE); their roles grant access per project, nothing is visible without a
 rule. Sessions are encrypted cookies holding only user name and roles. Without
 OIDC it only listens on localhost (`kubectl port-forward`). Details in
@@ -1378,6 +1434,16 @@ injection, so a research run's pod holds less than a task's:
 * What the runner writes to Kubernetes is its own research's `status.run`
   (outcome, message, cost, usage readings and limits), never the project.
   The operator copies the readings and limits into the project status.
+* The browser gets web content only as validated blocks: the UI validates
+  every stored result again before sending it (a result changed behind the
+  validator's back is withheld), renders markdown with its own subset
+  renderer into DOM nodes (no `v-html`, no `innerHTML`), loads no images and
+  links only to `http(s)` URLs with `rel="noopener noreferrer nofollow"`. The
+  Content Security Policy is unchanged.
+* What is left: the agent can put false or misleading content into a
+  result, or follow an injected instruction within its tools (e.g. fetch a
+  URL). The answer is shown as the agent's output, and a run only spends
+  usage within the guard and its deadline.
 
 **Webhook receiver.** The only endpoint the operator serves besides metrics
 and probes. A delivery is a wake-up call, never data: it counts only with
@@ -1427,6 +1493,13 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/pilot.go` | the pilot: milestone state, answers, budget |
 | `internal/runner/git.go` | runner-side bare mirror (the only git that talks to GitLab) |
 | `internal/runner/research.go`, `research_run.go` | research runs (`ai-runner research`): prompt, agent call, validation and repair; store writes and the report in `status.run` |
+| `internal/controller/agentresearch_controller.go`, `research_resources.go` | research controller: schedule, agent choice, one pod per run, conditions, run end; the research pod template |
+| `internal/research` | operator side of research: the database runnable (`database.go`: migrate and grant with backoff, hourly retention), the agent choice (`choose.go`), cron with time zone (`schedule.go`) |
+| `internal/research/blocks` | block schema v1: Go types, `Validate` (sizes, URL schemes, markdown without HTML or images), `PromptSchema`, `Degraded` |
+| `internal/research/store` | Postgres store (pgx): embedded migrations, grants, runs, results and items, retention delete, the UI's queries and search |
+| `internal/research/storetest` | test helper: a schema and roles per test on the Postgres of `make test-db` (no SQL mocks) |
+| `internal/ui/research.go`, `oneoff.go`, `features.go` | the UI's research API: features, read endpoints and search, one-off create and delete |
+| `hack/research-migrate`, `hack/research-seed.sql` | `make research-seed`: a local database with seeded results for the UI's research pages |
 | `internal/gitlab` | minimal REST client with retries; `gitlabfake` for tests |
 | `internal/ui` | web UI server: OIDC login, CEL claim mapping, access rules, session cookies, JSON API, change events |
 | `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app` |
@@ -1440,7 +1513,9 @@ Done: credential split into runner and agent containers, bundle-based git
 exchange, optional NetworkPolicy (see Security); usage limit backoff (see
 Engines, profiles and subscriptions); CI feedback loop (see CI feedback);
 GitLab webhooks with polling as the fallback (see GitLab webhooks); the
-web UI's live transcripts, steering and milestone chat ([ui.md](ui.md)).
+web UI's live transcripts, steering and milestone chat ([ui.md](ui.md));
+research with scheduled news flashes and one-off reports in Postgres
+([research.md](research.md)).
 
 Next:
 

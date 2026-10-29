@@ -112,8 +112,9 @@ chooses each run's agent from `research.candidates` and leaves an engine to
 the factory once it is limited or at `research.maxUsagePercent`; see
 [Choosing agents](../../docs/research.md#choosing-agents). With `ui.enabled`
 the UI logs in with `readerSecret` and its ClusterRole gets
-`get`/`list`/`watch` on `agentresearches`; its Research pages follow in
-later releases.
+`get`/`list`/`watch` on `agentresearches` for its Research section (see
+[docs/ui.md](../../docs/ui.md#platform)); `ui.research.*` is under
+[Web UI](#web-ui).
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -130,7 +131,9 @@ later releases.
 | `research.candidates.deep` | `claude/claude-opus-5-5` (high), `claude/claude-sonnet-5-5`, `cursor/auto` | the same for deep runs, passed as `--research-candidates-deep` |
 | `research.maxUsagePercent` | `70` | research uses an engine only while all its usage windows (not reset since) are below this, 1 to 100, a fixed `spec.agent` included; passed as `--research-max-usage-percent` |
 
-With the database of the Zalando postgres-operator on netcup01:
+With the database of the Zalando postgres-operator on netcup01 (the
+AgentProject's writer login and the UI part are in
+[docs/research.md](../../docs/research.md#example-netcup01)):
 
 ```yaml
 research:
@@ -151,7 +154,8 @@ research:
 The optional read-only web UI, see [docs/ui.md](../../docs/ui.md). It runs as
 its own Deployment (`<release>-ui`) with a service account that can only read
 AgentProjects and AgentTasks (and AgentResearches with
-`research.database.host`).
+`research.database.host`). The one exception is `ui.research.allowCreate`:
+`create`/`delete` on AgentResearches in `ui.research.namespace` only.
 
 | Key | Default | Description |
 |-----|---------|-------------|
