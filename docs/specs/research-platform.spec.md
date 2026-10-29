@@ -246,6 +246,7 @@ production line count, deviations.
 - 2026-10-29 `spec-doc`: added this spec (Goal through Acceptance, Delivery, Plan decisions, Steering log, MRs); 0 production lines; no deviations.
 - 2026-10-29 steer `database-zalando` (owner): the database exists on netcup01 (`infra/cluster` !283, !284). Decision 1, Background, Chart and Non-goals now describe it: host plus Zalando username/password Secrets (owner, reader, cross-namespace writer) instead of URI Secrets, grants by the migrations, a NetworkPolicy peer for research pods; plan decision 3 and delivery row 7 follow. 0 production lines.
 - 2026-10-29 `store-schema`: `internal/research/store` (pgx pool from Zalando-style parts, embedded migrations under an advisory lock, `research_runs`/`results`/`items` with expiry on runs and a `simple` tsvector, idempotent additive grants with default privileges for quoted reader/writer roles, batched retention delete), `internal/research/storetest` (schema and roles per test), `make test-db`, Postgres 17 service in GitLab and GitHub CI; about 290 production lines (SQL included) plus a 110-line test helper, over budget because schema, migrator, grants and retention only make sense together; deviations: `runs.expires_at` and `runs.warnings` added (plan D28-P1, D28-P2).
+- 2026-10-29 `block-schema`: `internal/research/blocks` (block types with a flat JSON form, `Validate` with path-listed problems capped at 50, size and character limits, http(s)-only URLs, a strict markdown scan for raw HTML, images and link destinations outside code spans and fences, `Degraded` as one fenced markdown block, `PromptSchema` as JSON Schema with the rules in its description, `ItemURLs`, `URLHash`), table-driven tests with good and hostile fixtures and `FuzzValidate`; about 520 production lines plus 120 lines of schema text, over budget because types, validator and schema text must agree and the tests prove the security properties only as a whole; deviations: importance 3 is high, items need a title and URL, lists must not be empty, stats and links blocks hold at most 200 entries, URLs at most 2048 characters (decisions in !37).
 
 ## MRs
 
@@ -253,4 +254,5 @@ production line count, deviations.
 |--:|---|---|---|
 | 1 | Spec: research platform | !34 | merged |
 | 2 | Spec: research database as prepared on netcup01 (Zalando secrets) | (merged as aa45a96) | merged |
-| 3 | Research store: pgx, migrations, data model, role grants, retention, Postgres in CI | !36 | open |
+| 3 | Research store: pgx, migrations, data model, role grants, retention, Postgres in CI | !36 | merged |
+| 4 | Block schema v1: Go types, validation, prompt schema text, hostile-input tests | !37 | open |

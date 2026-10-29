@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "title": "Escaping HTML in Go templates",
+  "summary": "Code may contain HTML: it renders as text.",
+  "blocks": [
+    {
+      "type": "markdown",
+      "text": "Use `<script>` only in templates, and ``a `<b>` c`` too.\n\n```html\n<script>alert(1)</script>\n<img src=x onerror=alert(1)>\n```\n\n~~~~\n<a href=\"javascript:alert(1)\">x</a>\n```\n~~~~\n\n- a list item\n\n  ```\n  <!-- inside the item's fence -->\n    <?xml version=\"1.0\"?>\n  ```\n\n1 \\< 2 and 3 > 2, a\\![b] is no image."
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "title": "Morning news flash, 29 October 2026",
+  "summary": "Three topics today: a Kubernetes release, a Postgres security fix and a quiet day in Go.\nNothing urgent.",
+  "blocks": [
+    {"type": "heading", "text": "Kubernetes", "level": 2},
+    {
+      "type": "items",
+      "items": [
+        {
+          "topic": "Kubernetes",
+          "title": "Kubernetes 1.37 released",
+          "summary": "The release graduates in-place pod resize and drops two beta APIs.",
+          "url": "https://kubernetes.io/blog/2026/10/28/kubernetes-v1-37-release/",
+          "source": "kubernetes.io",
+          "publishedAt": "2026-10-28T16:00:00Z",
+          "importance": 3
+        },
+        {
+          "topic": "Kubernetes",
+          "title": "Gateway API 1.5 adds TLS passthrough to the standard channel",
+          "url": "https://gateway-api.sigs.k8s.io/blog/2026/v1.5/?ref=feed#tls",
+          "source": "SIG Network",
+          "importance": 2
+        }
+      ]
+    },
+    {"type": "heading", "text": "Databases", "level": 2},
+    {
+      "type": "items",
+      "items": [
+        {
+          "topic": "Postgres",
+          "title": "PostgreSQL 17.9 fixes a privilege escalation in ALTER DEFAULT PRIVILEGES",
+          "summary": "Update soon if untrusted roles can create objects.\tCVE-2026-1234.",
+          "url": "https://www.postgresql.org/about/news/postgresql-179-released-3100/",
+          "source": "postgresql.org",
+          "publishedAt": "2026-10-29T08:30:00+02:00",
+          "importance": 3
+        },
+        {
+          "topic": "Go",
+          "title": "No notable Go news since yesterday",
+          "url": "http://go.dev/blog/",
+          "importance": 1
+        }
+      ]
+    },
+    {
+      "type": "stats",
+      "stats": [
+        {"label": "Sources checked", "value": "42"},
+        {"label": "New items", "value": "4", "delta": "-2 vs. yesterday"}
+      ]
+    }
+  ]
+}

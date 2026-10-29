@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "title": "A result with a block from the future",
+  "summary": "",
+  "blocks": [
+    {"type": "heading", "text": "Before", "level": 2},
+    {"type": "html", "html": "<script>alert(1)</script>"},
+    {"type": "markdown", "text": "After"}
+  ]
+}

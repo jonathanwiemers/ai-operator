@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "title": "Which Postgres operator fits a small cluster?",
+  "summary": "Zalando's postgres-operator and CloudNativePG both fit; CloudNativePG needs fewer moving parts, Zalando is already running.",
+  "blocks": [
+    {"type": "heading", "text": "Findings", "level": 2},
+    {
+      "type": "markdown",
+      "text": "Both operators manage **streaming replication** and backups. See the [CloudNativePG docs](https://cloudnative-pg.io/documentation/current/) and the [Zalando docs](https://postgres-operator.readthedocs.io/en/latest/ \"Zalando\").\n\n- Zalando: one Secret per login, `username`/`password` keys.\n- CloudNativePG: one `Cluster` resource, `a < b` holds for its footprint.\n\nA query to check the grants:\n\n```sql\nSELECT grantee, privilege_type FROM information_schema.role_table_grants WHERE table_name = 'research_runs';\n-- <none> means no grants yet\n```\n\n[docs]: https://www.postgresql.org/docs/17/sql-alterdefaultprivileges.html\n"
+    },
+    {"type": "heading", "text": "Comparison", "level": 3},
+    {
+      "type": "table",
+      "columns": ["Operator", "Backups", "Pods per cluster"],
+      "rows": [
+        ["Zalando postgres-operator", "WAL-G to S3", "2"],
+        ["CloudNativePG", "Barman Cloud", "1"]
+      ]
+    },
+    {
+      "type": "items",
+      "items": [
+        {
+          "topic": "Operators",
+          "title": "CloudNativePG joins the CNCF incubator",
+          "summary": "Governance moved to a vendor-neutral foundation.",
+          "url": "https://www.cncf.io/projects/cloudnativepg/",
+          "source": "CNCF",
+          "publishedAt": "2026-03-02T10:00:00Z",
+          "importance": 2
+        }
+      ]
+    },
+    {
+      "type": "links",
+      "links": [
+        {"title": "Zalando postgres-operator on GitHub", "url": "https://github.com/zalando/postgres-operator"},
+        {"title": "CloudNativePG on GitHub", "url": "https://github.com/cloudnative-pg/cloudnative-pg"}
+      ]
+    }
+  ]
+}
