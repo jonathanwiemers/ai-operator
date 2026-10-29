@@ -208,7 +208,15 @@ make helm-lint            # lint and render the chart
 make run                  # run the operator against your current kubeconfig
 make ui                   # build the web UI, embedded into the ui binary
 make run-ui               # run the web UI without login on http://127.0.0.1:9080
+make test-db              # start a Postgres in docker for the research store tests
+make test-db-stop         # stop it
 ```
+
+The research store tests (`internal/research/store`) run against a real
+Postgres: export the `AI_TEST_DATABASE_URL` that `make test-db` prints before
+`make test`. Without it they are skipped; CI sets
+`AI_TEST_REQUIRE_DATABASE=1`, so there they fail instead. Each test works in
+a schema and with login roles of its own, dropped afterwards.
 
 Every merge to `main` that touches code is released automatically with a
 calendar version (`2026.10.1`, `2026.10.2`, …), see

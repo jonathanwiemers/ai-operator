@@ -37,6 +37,16 @@ vet:
 test:
 	go test -race ./...
 
+.PHONY: test-db
+test-db: ## Start a Postgres for the research store tests (docker, 127.0.0.1:55432).
+	docker run -d --rm --name ai-operator-test-db -p 127.0.0.1:55432:5432 \
+		-e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ai_operator_test postgres:17 > /dev/null
+	@echo 'export AI_TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/ai_operator_test?sslmode=disable'
+
+.PHONY: test-db-stop
+test-db-stop: ## Stop the Postgres of test-db.
+	docker stop ai-operator-test-db
+
 .PHONY: build
 build:
 	go build -o bin/manager ./cmd/operator
