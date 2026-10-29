@@ -11,3 +11,6 @@ auth:
 #     port: 55432
 #     name: ai_operator_dev
 #     sslMode: disable   # allowed for a loopback host only
+#   # The one-off form (writes to the cluster of your kubeconfig):
+#   namespace: research-dev
+#   allowCreate: true

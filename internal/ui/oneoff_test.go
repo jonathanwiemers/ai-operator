@@ -256,26 +256,27 @@ func TestCreateOneOffValidation(t *testing.T) {
 		topics[i] = "t" + strconv.Itoa(i)
 	}
 	cases := []struct {
-		name string
-		body map[string]any
-		code int
-		msg  string
+		name  string
+		body  map[string]any
+		code  int
+		msg   string
+		field string
 	}{
-		{"no prompt", with("prompt", "   "), 400, "question"},
-		{"long prompt", with("prompt", strings.Repeat("x", maxPromptLength+1)), 400, "question"},
-		{"too many topics", with("topics", topics), 400, "topics"},
-		{"long topic", with("topics", []string{strings.Repeat("x", maxTopicLength+1)}), 400, "topic"},
-		{"empty topic", with("topics", []string{" "}), 400, "topic"},
-		{"depth", with("depth", "forever"), 400, "depth"},
-		{"view", with("view", "html"), 400, "view"},
-		{"unknown model", with("agent", map[string]string{"engine": "claude", "model": "gpt"}), 400, "not an allowed model"},
-		{"effort", with("agent", map[string]string{"engine": "claude", "model": "opus", "effort": "huge"}), 400, "effort"},
-		{"no project", with("project", ""), 400, "project"},
-		{"missing project", with("project", "shop"), 400, `no project "shop" in agents`},
-		{"no writer login", with("project", "plain"), 400, "writerSecret"},
-		{"a namespace", with("namespace", "team"), 400, "invalid request"},
-		{"a schedule", with("schedule", "* * * * *"), 400, "invalid request"},
-		{"too large", with("prompt", strings.Repeat("x", maxCreateBody)), 413, "32 KiB"},
+		{"no prompt", with("prompt", "   "), 400, "question", "prompt"},
+		{"long prompt", with("prompt", strings.Repeat("x", maxPromptLength+1)), 400, "question", "prompt"},
+		{"too many topics", with("topics", topics), 400, "topics", "topics"},
+		{"long topic", with("topics", []string{strings.Repeat("x", maxTopicLength+1)}), 400, "topic", "topics"},
+		{"empty topic", with("topics", []string{" "}), 400, "topic", "topics"},
+		{"depth", with("depth", "forever"), 400, "depth", "depth"},
+		{"view", with("view", "html"), 400, "view", "view"},
+		{"unknown model", with("agent", map[string]string{"engine": "claude", "model": "gpt"}), 400, "not an allowed model", "agent"},
+		{"effort", with("agent", map[string]string{"engine": "claude", "model": "opus", "effort": "huge"}), 400, "effort", "agent"},
+		{"no project", with("project", ""), 400, "project", "project"},
+		{"missing project", with("project", "shop"), 400, `no project "shop" in agents`, "project"},
+		{"no writer login", with("project", "plain"), 400, "writerSecret", "project"},
+		{"a namespace", with("namespace", "team"), 400, "invalid request", ""},
+		{"a schedule", with("schedule", "* * * * *"), 400, "invalid request", ""},
+		{"too large", with("prompt", strings.Repeat("x", maxCreateBody)), 413, "32 KiB", ""},
 	}
 	env := oneOffEnv(t, oidcConfig(oneOffRules...))
 	loginWithRoles(t, env, "writers")
@@ -284,6 +285,9 @@ func TestCreateOneOffValidation(t *testing.T) {
 			code, out := env.postJSON(t, "/api/v1/researches", tc.body)
 			if msg, _ := out["error"].(string); code != tc.code || !strings.Contains(msg, tc.msg) {
 				t.Errorf("%d %q, want %d with %q", code, msg, tc.code, tc.msg)
+			}
+			if field, _ := out["field"].(string); field != tc.field {
+				t.Errorf("field %q, want %q", field, tc.field)
 			}
 		})
 	}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canStartResearch } from '../api'
 import { useNow, useResource } from '../live'
 import { clockTime, runLine, type Tone } from '../format'
 import Badge from '../components/Badge.vue'
@@ -29,6 +30,8 @@ function lastRunLine(r: ResearchSummary): string {
   <div class="page">
     <div class="row head">
       <h1>Research</h1>
+      <span class="spacer" />
+      <RouterLink v-if="canStartResearch()" to="/research/new" class="btn primary">New research</RouterLink>
     </div>
 
     <div v-if="error" class="banner danger">{{ error }}</div>

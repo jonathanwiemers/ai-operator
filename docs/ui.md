@@ -54,6 +54,25 @@ A run's page (`/research/<namespace>/<name>/runs/<id>`) shows its status
 error, warnings, agent, start, duration, spend, retention and choice reason,
 and its result in the research's view. Both pages update live.
 
+**One-off research.** With the research write grant (`write` in
+`/api/v1/features`) the Research page has a *New research* button, which
+opens the form at `/research/new`; without it there is no button and
+`/research/new` is *Not found*. The form takes the question (with a
+character counter up to 16384), the depth (*quick*, up to 20 minutes, or
+*deep*, up to 2 hours), the view (*Report* by default), topics separated by
+commas, the project when there is more than one (projects without a writer
+login are disabled, with a hint) and the agent: *auto* or one of the
+project's allowed models, with an effort for claude. The server checks
+everything again; its errors show next to their field. A started research
+opens its page, which follows the run live on research events: *Starting*
+until the operator takes it, *Waiting* (*waiting for `claude` until 14:00*
+and the reason) while no agent is free, *Running* with the agent, the choice
+reason and the elapsed time, and then the report, without a reload. A
+one-off you started has a *Delete* button (with a confirmation), which
+removes the research and goes back to the list; its stored results stay
+until they expire. See [One-off researches](#one-off-researches) for the
+rules.
+
 **Blocks.** Each block type has its own component: headings; markdown;
 items (title linked to the source, source, publication time, *important*
 for importance 3 and *minor* for 1, *new*); tables; stats (a delta starting
@@ -535,7 +554,7 @@ with the same session cookie:
 | `GET /api/v1/researches/{namespace}/{name}/runs/{id}` | `{"research": …, "run": …, "result": …}`: the research as above, one run of it and its result (`null` without one); 404 for a run of another research |
 | `GET /api/v1/research/search?q=` | `{"hits": […]}`: at most 50 results of the researches you may read that match `q` (1–200 characters, web search syntax: words, `"a phrase"`, `or`, `-word`), best match first, then newest: `runID`, `namespace`, `research`, `title`, `summary`, `createdAt`; results of deleted researches are not searched |
 | `GET /api/v1/research/form` | what the one-off form offers: `namespace`, `projects` (`name`, `available`, `reason` when not, `models` with `engine`, `model` and `label` like `claude/sonnet`), `depths`, `views`, `efforts` |
-| `POST /api/v1/researches` | starts a one-off research from `{"project", "prompt", "depth"?, "view"?, "topics"?, "agent"?: {"engine", "model", "effort"?}}` (depth `quick` and view `report` by default, no agent: automatic); 201 with `{"namespace", "name"}`, 400 with an `error` for an invalid request (unknown fields included), 413 over 32 KiB, 429 with `Retry-After` over the rate limit |
+| `POST /api/v1/researches` | starts a one-off research from `{"project", "prompt", "depth"?, "view"?, "topics"?, "agent"?: {"engine", "model", "effort"?}}` (depth `quick` and view `report` by default, no agent: automatic); 201 with `{"namespace", "name"}`, 400 with an `error` for an invalid request (unknown fields included) and the `field` it is about (`prompt`, `topics`, `depth`, `view`, `project`, `agent`) where there is one, 413 over 32 KiB, 429 with `Retry-After` over the rate limit |
 | `DELETE /api/v1/researches/{namespace}/{name}` | deletes your own one-off in `ui.research.namespace`: 204, 403 for someone else's, a scheduled one or another namespace |
 
 The one-off endpoints answer 404 without `ui.research.allowCreate` or any
@@ -605,6 +624,19 @@ would start runs for these researches. The UI logs in as the reader, so the
 pages go through the same SELECT-only grants as in the cluster. The
 passwords are fixed (`owner`, `reader`) and meant for this loopback database
 only.
+
+**A one-off's live states without an operator.** Start a one-off from the
+form (uncomment `namespace` and `allowCreate` in `hack/ui-dev.yaml`; the
+form needs an AgentProject with `spec.research.writerSecret` in
+`research-dev`), then
+patch its status by hand to walk through the phases:
+
+```sh
+kubectl -n research-dev patch agentresearch q-… --subresource=status --type=merge \
+  -p '{"status":{"phase":"Waiting","waiting":{"engine":"claude","until":"2026-10-29T14:00:00Z"}}}'
+kubectl -n research-dev patch agentresearch q-… --subresource=status --type=merge \
+  -p '{"status":{"phase":"Running","waiting":null,"run":{"startedAt":"2026-10-29T14:00:00Z","engine":"claude","model":"claude-opus-5-5","reason":"chosen: claude/claude-opus-5-5"}}}'
+```
 
 ## Roadmap
 

@@ -158,6 +158,12 @@ export function autopilotWaitingFor(
   return tasks.some((t) => t.issue?.iid === ap.pausedFor && t.runPending) ? ap.pausedFor : 0
 }
 
+// duration is a run's length in minutes: "<1 min", "3 min", "1 h 5 min".
+export function duration(ms: number): string {
+  const min = Math.round(ms / 60000)
+  return min < 1 ? '<1 min' : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`
+}
+
 // runLine describes a run: "claude/claude-sonnet-5-5 · 3 min · 07:00".
 // Parts that are not known (yet) are left out.
 export function runLine(
@@ -168,10 +174,7 @@ export function runLine(
 ): string {
   const parts: string[] = []
   if (engine) parts.push(model ? `${engine}/${model}` : engine)
-  if (durationMs !== undefined && durationMs >= 0) {
-    const min = Math.round(durationMs / 60000)
-    parts.push(min < 1 ? '<1 min' : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`)
-  }
+  if (durationMs !== undefined && durationMs >= 0) parts.push(duration(durationMs))
   const at = clockTime(start, Date.now())
   if (at) parts.push(at)
   return parts.join(' · ')

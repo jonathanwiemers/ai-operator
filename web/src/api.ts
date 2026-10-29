@@ -23,6 +23,11 @@ export function hasFeature(name: Feature['name']): boolean {
   return session.features?.some((f) => f.name === name) ?? false
 }
 
+// canStartResearch: the user may start one-off researches.
+export function canStartResearch(): boolean {
+  return session.features?.some((f) => f.name === 'research' && f.write) ?? false
+}
+
 // isResearchPath: the page belongs to the Research section.
 export function isResearchPath(path: string): boolean {
   return /^\/research(\/|$)/.test(path)
@@ -55,6 +60,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    // field: the request field the error is about, if the server names one.
+    public field?: string,
   ) {
     super(message)
   }
@@ -71,9 +78,25 @@ export async function post<T>(path: string, body: unknown): Promise<T> {
     session.loginRequired = true
     throw new LoginRequiredError('login required')
   }
-  const data = (await resp.json().catch(() => ({}))) as { error?: string }
-  if (!resp.ok) throw new ApiError(data.error ?? `The server answered ${resp.status}.`, resp.status)
+  const data = (await resp.json().catch(() => ({}))) as { error?: string; field?: string }
+  if (!resp.ok) throw new ApiError(data.error ?? `The server answered ${resp.status}.`, resp.status, data.field)
   return data as T
+}
+
+export async function del(path: string): Promise<void> {
+  const resp = await fetch(`/api/v1${path}`, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json' },
+    credentials: 'same-origin',
+  })
+  if (resp.status === 401) {
+    session.loginRequired = true
+    throw new LoginRequiredError('login required')
+  }
+  if (!resp.ok) {
+    const data = (await resp.json().catch(() => ({}))) as { error?: string }
+    throw new ApiError(data.error ?? `The server answered ${resp.status}.`, resp.status)
+  }
 }
 
 export function loginURL(): string {

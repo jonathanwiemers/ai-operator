@@ -378,6 +378,8 @@ export interface ResearchSummary {
   waiting?: { engine: string; until: string }
   oneOff: boolean
   createdBy?: string
+  // canDelete: the user may delete it here (their own one-off).
+  canDelete: boolean
 }
 
 // ResearchDetail is a research with what its page shows besides the summary.
@@ -488,4 +490,19 @@ export interface ResearchSearchHit {
 
 export interface ResearchSearchPage {
   hits: ResearchSearchHit[]
+}
+
+// ResearchForm is GET /api/v1/research/form: what the one-off form offers.
+// A project without a writer login is not available, reason says why.
+export interface ResearchForm {
+  namespace: string
+  projects: {
+    name: string
+    available: boolean
+    reason?: string
+    models: { engine: string; model: string; label: string }[]
+  }[]
+  depths: ResearchSummary['depth'][]
+  views: ResearchSummary['view'][]
+  efforts: string[]
 }

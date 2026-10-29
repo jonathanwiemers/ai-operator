@@ -148,13 +148,13 @@ func (s *Server) createResearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "no access to starting researches in " + ns})
 		return
 	}
-	if msg := validateResearch(&req); msg != "" {
-		badRequest(w, msg)
+	if field, msg := validateResearch(&req); msg != "" {
+		fieldError(w, field, msg)
 		return
 	}
 	var ap aiv1.AgentProject
 	if err := s.reader.Get(r.Context(), client.ObjectKey{Namespace: ns, Name: req.Project}, &ap); apierrors.IsNotFound(err) {
-		badRequest(w, fmt.Sprintf("there is no project %q in %s", req.Project, ns))
+		fieldError(w, "project", fmt.Sprintf("there is no project %q in %s", req.Project, ns))
 		return
 	} else if err != nil {
 		s.internalError(w, err)
@@ -162,13 +162,13 @@ func (s *Server) createResearch(w http.ResponseWriter, r *http.Request) {
 	}
 	spec := ap.Spec.WithDefaults()
 	if !hasWriterSecret(spec) {
-		badRequest(w, noWriterSecret)
+		fieldError(w, "project", noWriterSecret)
 		return
 	}
 	if req.Agent != nil {
 		a, err := spec.ResolveResearchAgent(*req.Agent)
 		if err != nil {
-			badRequest(w, err.Error())
+			fieldError(w, "agent", err.Error())
 			return
 		}
 		req.Agent = &a
@@ -192,22 +192,22 @@ func (s *Server) createResearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateResearch trims and checks a request and fills in the defaults;
-// it returns the problem, if any.
-func validateResearch(req *createResearchRequest) string {
+// it returns the problem, if any, and the field it is about.
+func validateResearch(req *createResearchRequest) (field, msg string) {
 	req.Prompt = strings.TrimSpace(req.Prompt)
 	if n := utf8.RuneCountInString(req.Prompt); n < 1 || n > maxPromptLength {
-		return fmt.Sprintf("the question must have 1 to %d characters", maxPromptLength)
+		return "prompt", fmt.Sprintf("the question must have 1 to %d characters", maxPromptLength)
 	}
 	if req.Project == "" {
-		return "project is required"
+		return "project", "project is required"
 	}
 	if len(req.Topics) > maxTopics {
-		return fmt.Sprintf("at most %d topics", maxTopics)
+		return "topics", fmt.Sprintf("at most %d topics", maxTopics)
 	}
 	for i, t := range req.Topics {
 		req.Topics[i] = strings.TrimSpace(t)
 		if n := utf8.RuneCountInString(req.Topics[i]); n < 1 || n > maxTopicLength {
-			return fmt.Sprintf("a topic must have 1 to %d characters", maxTopicLength)
+			return "topics", fmt.Sprintf("a topic must have 1 to %d characters", maxTopicLength)
 		}
 	}
 	switch req.Depth {
@@ -215,16 +215,16 @@ func validateResearch(req *createResearchRequest) string {
 		req.Depth = aiv1.ResearchDepthQuick
 	case aiv1.ResearchDepthQuick, aiv1.ResearchDepthDeep:
 	default:
-		return "depth must be quick or deep"
+		return "depth", "depth must be quick or deep"
 	}
 	switch req.View {
 	case "":
 		req.View = aiv1.ResearchViewReport
 	case aiv1.ResearchViewReport, aiv1.ResearchViewNewsflash:
 	default:
-		return "view must be report or newsflash"
+		return "view", "view must be report or newsflash"
 	}
-	return ""
+	return "", ""
 }
 
 // oneOffName is q-<yyyymmdd>-<6 random characters>.
@@ -289,4 +289,10 @@ func (s *Server) canDelete(p Principal, ar *aiv1.AgentResearch) bool {
 
 func badRequest(w http.ResponseWriter, msg string) {
 	writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+}
+
+// fieldError is a 400 about one field of the request, which the form shows
+// next to it.
+func fieldError(w http.ResponseWriter, field, msg string) {
+	writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg, "field": field})
 }
