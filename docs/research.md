@@ -116,6 +116,21 @@ spec:
 and what happens to scheduled and one-off runs when every candidate is
 limited.
 
+## Runs, results and new items
+
+Each run is a row in the database with its agent, the reason for that choice,
+its outcome, cost and warnings. A run has one outcome: whichever of the
+runner and the operator records it first wins. If the pod ends before the
+runner gets to record the outcome, the operator records it instead. A later
+finish, such as the operator noticing that the pod's deadline passed, does not
+change it.
+
+A run's result is stored with one row per news item, identified by its URL
+(scheme and host lowercased, without the fragment). An item remembers when the
+research first reported its URL. That date is what marks an item as **new**
+in a news flash. The prompt of the next run lists the item URLs of the latest
+result (at most 200), so a news flash does not repeat itself.
+
 ## Retention
 
 *To come with the research controller.*
