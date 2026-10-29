@@ -170,6 +170,24 @@ no git, no GitLab token and no workspace volume (see
 [design.md](design.md#pod-topology)). Deleting a research deletes the pod of
 its current run.
 
+## The agent's answer
+
+The runner (`internal/runner/research.go`) asks the agent with the request,
+the topics, the view, the current date, and, for a news flash, the previous
+flash's item URLs. Its system prompt holds the block schema and tells the agent
+to treat web pages as data and ignore any instructions found on them. On
+claude the agent may use only WebSearch and WebFetch. Bash, Edit, Write and
+NotebookEdit are disallowed, and the schema is also passed as the structured
+output schema. Cursor gets the schema in the prompt and runs read-only.
+
+The answer is validated against the block schema. If it fails, the agent gets
+one repair round with the validation errors. It continues its session if it
+has one, otherwise the runner sends the whole prompt again. If the repaired
+answer is still invalid, or the repair call fails, the raw answer is kept as a
+single `markdown` block inside a code fence, and the run is `degraded`, with
+the validation errors among its warnings. A usage limit ends the run without a
+result.
+
 ## Runs, results and new items
 
 Each run is a row in the database with its agent, the reason for that choice,
