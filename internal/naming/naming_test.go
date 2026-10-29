@@ -52,3 +52,17 @@ func TestWorkspaceAndBranch(t *testing.T) {
 		t.Errorf("Branch = %q", got)
 	}
 }
+
+func TestResearchPod(t *testing.T) {
+	if got := ResearchPod("morning-news", "1a2b3c4d-0000-4000-8000-000000000000"); got != "morning-news-1a2b3c4d" {
+		t.Errorf("got %q", got)
+	}
+	long := strings.Repeat("research.", 10)
+	got := ResearchPod(long, "1a2b3c4d-0000-4000-8000-000000000000")
+	if len(got) > MaxNameLength || !strings.HasSuffix(got, "-1a2b3c4d") || strings.Contains(got, ".-") {
+		t.Errorf("got %q (%d)", got, len(got))
+	}
+	if v := LabelValue(long); len(v) > MaxNameLength || LabelValue("short") != "short" {
+		t.Errorf("label value %q", v)
+	}
+}

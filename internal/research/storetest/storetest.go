@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"os"
 	"sync"
 	"testing"
@@ -139,4 +140,25 @@ func random(t testing.TB, n int) string {
 		t.Fatal(err)
 	}
 	return hex.EncodeToString(b)
+}
+
+// RunStatus returns the status and error of run id in the schema of New, ok
+// false if there is no such run.
+func RunStatus(t testing.TB, id string) (status, errMsg string, ok bool) {
+	t.Helper()
+	mu.Lock()
+	db, found := dbs[t]
+	mu.Unlock()
+	if !found {
+		t.Fatal("storetest.RunStatus needs storetest.New first")
+	}
+	err := db.admin.QueryRow(t.Context(), "SELECT status, error FROM "+pgx.Identifier{db.schema, "research_runs"}.Sanitize()+
+		" WHERE id = $1", id).Scan(&status, &errMsg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", false
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return status, errMsg, true
 }

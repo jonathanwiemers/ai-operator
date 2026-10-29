@@ -100,3 +100,19 @@ func Branch(issueIID int64, issueTitle string) string {
 	}
 	return fmt.Sprintf("agent/%d-%s", issueIID, slug)
 }
+
+// ResearchPod names the pod of a research run, e.g. "morning-news-1a2b3c4d":
+// the research's name, cut to fit, and the first 8 characters of the run ID.
+func ResearchPod(research, runID string) string {
+	id := runID[:min(len(runID), 8)]
+	name := truncate(research)
+	if room := MaxNameLength - len(id) - 1; len(name) > room {
+		name = strings.TrimRight(name[:room], "-.")
+	}
+	return name + "-" + id
+}
+
+// LabelValue fits a name into a label value (at most 63 characters).
+func LabelValue(name string) string {
+	return truncate(name)
+}

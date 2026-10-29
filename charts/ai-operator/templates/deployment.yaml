@@ -76,6 +76,7 @@ spec:
             {{- with $db.writerRoles }}
             - --research-writer-roles={{ join "," . }}
             {{- end }}
+            - {{ printf "--research-candidates=%s" (toJson .Values.research.candidates) | quote }}
             {{- end }}
             {{- range .Values.extraArgs }}
             - {{ . | quote }}

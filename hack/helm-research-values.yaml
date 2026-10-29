@@ -8,3 +8,10 @@ research:
     readerSecret: {name: research-reader.ai-operator-postgres.credentials.postgresql.acid.zalan.do}
     readerRole: research_reader
     writerRoles: [agents.research_writer]
+    networkPolicyPeer:
+      namespace: ai-operator-system
+      podLabels: {cluster-name: ai-operator-postgres}
+agent:
+  namespaces: [agents]
+  networkPolicy:
+    enabled: true

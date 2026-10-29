@@ -285,6 +285,26 @@ Each pod has two containers, see [Security](#security):
   the run log, and fails the run instead after 3 restarts (reset when a run
   finishes).
 
+**Research runs** (`AgentResearch`, see [research.md](research.md#runs)) get
+one short-lived pod per run, `<research>-<run ID prefix>`, with the label
+`ai.wiemers.me/research` and the same two containers, without git:
+
+| Container | Runs | Has | Volumes |
+|-----------|------|-----|---------|
+| `runner` | `ai-runner research` | the project's database writer login (`spec.research.writerSecret`, as `secretKeyRef`), the database's host, port, name and `sslMode` as values, service account token | `emptyDir` at `/runner`, `/exchange` |
+| `agent` | `ai-runner agent-server` | agent CLI credentials | `emptyDir` at `/workspace`, `/exchange` |
+
+* No GitLab token in either container, no database variables in the agent
+  container: the agent reads untrusted web pages, and its answer is data the
+  runner validates.
+* `restartPolicy: Never` and `activeDeadlineSeconds` of the depth's timeout
+  plus 2 minutes. The operator deletes the pod once the run's outcome is in
+  the status and the database.
+* The agent container is a task's (image, credentials, resources) without
+  the `/cache` volume.
+* The agent NetworkPolicy applies to them as to task pods. An extra
+  NetworkPolicy lets only pods with the research label reach the database.
+
 **Logging.** The runner records every run as numbered steps
 (`internal/runner/steps.go`): a start and an end line per step in its log,
 the step in progress in `status.run.currentStep`, and a run log table in the

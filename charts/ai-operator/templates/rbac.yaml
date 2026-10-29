@@ -76,3 +76,12 @@ rules:
   - apiGroups: ["ai.wiemers.me"]
     resources: ["agenttasks/status"]
     verbs: ["get", "patch"]
+  {{- if .Values.research.database.host }}
+  # Research runs read their AgentResearch and record the outcome.
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentresearches"]
+    verbs: ["get"]
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentresearches/status"]
+    verbs: ["get", "patch"]
+  {{- end }}

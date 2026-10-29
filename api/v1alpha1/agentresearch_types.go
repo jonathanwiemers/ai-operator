@@ -178,13 +178,15 @@ type ResearchWaiting struct {
 }
 
 // ResearchRunStatus is one run, written by the operator at its start and by
-// the runner at its end.
+// the runner at its end: the runner reports the outcome (after recording it
+// in the store), the operator then sets finishedAt and deletes the pod.
 type ResearchRunStatus struct {
 	// ID of the run in the research store.
 	// +optional
 	ID string `json:"id,omitempty"`
 	// +optional
 	StartedAt *metav1.Time `json:"startedAt,omitempty"`
+	// FinishedAt is set by the operator once it recorded the outcome.
 	// +optional
 	FinishedAt *metav1.Time `json:"finishedAt,omitempty"`
 	// +optional

@@ -307,6 +307,8 @@ spec:
                       type: object
                     type: array
                   finishedAt:
+                    description: FinishedAt is set by the operator once it recorded
+                      the outcome.
                     format: date-time
                     type: string
                   id:

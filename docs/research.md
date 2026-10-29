@@ -1,9 +1,9 @@
 # Research
 
-> **Status:** the `AgentResearch` resource, the `spec.research` field of
-> `AgentProject` and the chart values exist, but nothing acts on them yet. The
-> controller, the runner's research mode and the UI pages follow in the next
-> releases (see the [spec](specs/research-platform.spec.md)).
+> **Status:** the operator schedules researches and starts one pod per run,
+> but the runner's research mode (`ai-runner research`), the automatic agent
+> choice and the UI pages follow in the next releases (see the
+> [spec](specs/research-platform.spec.md)).
 
 Research is the second feature of the platform, next to the factory
 (projects, milestones, tasks):
@@ -48,7 +48,8 @@ schedule, last and next run, and the model of the last run.
 | `spec.retention` | `720h` | how long the results are kept |
 | `spec.agent` | chosen automatically | `{engine, model, effort}`: always run on this agent. The model must be an allowed model of the project (`spec.agents.models`, the profiles and `implement`) or its alias; `effort` is for claude only |
 
-The status shows the `phase` (`Scheduled`, `Running`, `Waiting`,
+The operator runs a research only while the research database is ready (see
+[Runs](#runs)). The status shows the `phase` (`Scheduled`, `Running`, `Waiting`,
 `Succeeded`, `Failed`), `lastRun`, `nextRun`, `lastResultID`, the agent of
 the last run (`lastEngine`, `lastModel`) and `skippedReason`. While a run
 waits for an engine's usage to reset, `waiting` shows `{engine, until}`.
@@ -75,6 +76,13 @@ configuration (chart values `research.database.*`). The login must be one of
 the chart's `research.database.writerRoles`, the roles the migrations grant
 write access to. Only the runner container gets the login. The agent
 container gets no database credentials.
+
+The operator checks the login before every run: without
+`spec.research.writerSecret`, or when the Secret or one of its keys is
+missing in the project's namespace, the research's condition `Valid` is
+`False` with the reason `WriterSecretMissing` and a message naming the
+Secret, and no pod starts. The check runs again every minute and whenever the
+project changes.
 
 ## Examples
 
@@ -112,9 +120,55 @@ spec:
 
 ## Choosing agents
 
-*To come with the agent choice:* candidates per depth, `maxUsagePercent`,
-and what happens to scheduled and one-off runs when every candidate is
-limited.
+A research with `spec.agent` always runs on that agent. Without one, a run
+uses the candidates of its depth: the project's `spec.research.candidates`
+if it lists any for the depth, else the chart's `research.candidates`. For
+now the first candidate runs (`status.run.reason`: "first quick
+candidate").
+
+*To come with the agent choice:* skipping candidates whose usage is above
+`maxUsagePercent` or limited, and what happens to scheduled and one-off runs
+when every candidate is limited.
+
+## Runs
+
+The operator (`internal/controller/agentresearch_controller.go`) starts runs
+and records their outcome:
+
+* **When.** A research without a schedule runs once, right after it is
+  created. A scheduled one runs at `status.nextRun`, the next time of
+  `spec.schedule` in `spec.timeZone`; the first is the first scheduled time
+  after the research was created. If the operator was down at a scheduled
+  time, the run starts once when it is back, however many times were missed.
+  After a change of the schedule the next time is counted again from the last
+  run.
+* **One run at a time.** A scheduled time that comes while the previous run
+  is still going is skipped: `status.skippedReason` says "previous run still
+  in progress" until the next run starts.
+* **Start.** The operator writes `status.run` (a new UUID, the start time,
+  the engine, model and effort, and why that agent) and then creates the pod
+  `<research>-<first 8 characters of the run ID>`. The runner reads its agent
+  from `status.run`.
+* **End.** The runner records the outcome in the database and then in
+  `status.run.outcome`. When the outcome is there, or the pod has ended or is
+  gone, the operator finishes the run: without the runner's report the run
+  failed, with a message such as "no report from the runner: pod
+  DeadlineExceeded: …", in the database and the status. It then sets
+  `finishedAt`, `lastRun`, `lastEngine`, `lastModel`, `lastResultID` (for
+  `succeeded` and `degraded` runs) and the `phase` (`Scheduled` for a
+  scheduled research, else `Succeeded` or `Failed`), and deletes the pod. A
+  pod that never starts is ended 5 minutes after its deadline.
+* **Conditions.** `Valid` (`False` with the reason `ProjectNotFound`,
+  `InvalidSchedule`, `InvalidAgent`, `NoAgent`, `NoAgentImage` or
+  `WriterSecretMissing`; no run starts), `DatabaseReady` (`False` while the
+  operator cannot reach or migrate the database; checked every 30 seconds),
+  and `Running`.
+
+A run's pod has a deadline of the depth's timeout plus 2 minutes and is never
+restarted. Like a task's pod it has a `runner` and an `agent` container, but
+no git, no GitLab token and no workspace volume (see
+[design.md](design.md#pod-topology)). Deleting a research deletes the pod of
+its current run.
 
 ## Runs, results and new items
 
@@ -143,4 +197,7 @@ grants the reader and writer roles at every start, and deletes expired runs
 hourly. The chart values, the logins and the behavior during an outage are in
 [configuration.md](configuration.md#research-database).
 
-*To come:* the network policy for research pods.
+With `agent.networkPolicy` on, research-run pods reach the database through
+an extra NetworkPolicy for pods with the label `ai.wiemers.me/research`; task
+pods stay blocked, see
+[configuration.md](configuration.md#network-policy-for-research-runs).

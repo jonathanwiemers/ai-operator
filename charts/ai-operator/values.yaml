@@ -86,8 +86,8 @@ agent:
 # Research (AgentResearch, see docs/research.md): agents answer research
 # questions once or on a schedule, the results are kept in Postgres. Off
 # while database.host is empty. The operator uses database.* (except
-# readerSecret and networkPolicyPeer); the research controller, runner and UI
-# follow in later releases.
+# readerSecret) and candidates; the runner and the UI follow in later
+# releases.
 research:
   # The database, as the Zalando postgres-operator provides it: one Secret
   # per login with the keys username and password. The netcup01 example is
@@ -114,8 +114,9 @@ research:
     # spec.research.writerSecret) may write them.
     readerRole: ""    # research_reader
     writerRoles: []   # [agents.research_writer]
-    # Pods of the database, which research-run pods may reach on TCP 5432
-    # through agent.networkPolicy.
+    # Pods of the database. With agent.networkPolicy.enabled and a namespace
+    # here, an extra NetworkPolicy lets research-run pods (not task pods)
+    # reach them on TCP database.port.
     networkPolicyPeer:
       namespace: ""   # ai-operator-system
       podLabels: {}   # {cluster-name: ai-operator-postgres}

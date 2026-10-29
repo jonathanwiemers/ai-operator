@@ -18,3 +18,11 @@ rules:
   - apiGroups: ["ai.wiemers.me"]
     resources: ["agenttasks/status"]
     verbs: ["get", "patch"]
+  # Research runs (only with a research database) read their AgentResearch
+  # and record the outcome in agentresearches/status.
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentresearches"]
+    verbs: ["get"]
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentresearches/status"]
+    verbs: ["get", "patch"]

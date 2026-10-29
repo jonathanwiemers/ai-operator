@@ -104,9 +104,11 @@ store their results in Postgres. The feature is off while
 either way. With a host the operator connects as the owner, applies the
 migrations and grants at start (retrying while the database is unreachable)
 and deletes expired results hourly; see
-[docs/configuration.md](../../docs/configuration.md#research-database). The
-other values are not used yet: the controller, the runner mode and the UI
-pages follow in later releases.
+[docs/configuration.md](../../docs/configuration.md#research-database). It
+also runs the research controller: one pod per run, whose runner logs in
+with the project's `spec.research.writerSecret`. The agent Role gets
+`get` on `agentresearches` and `get`/`patch` on their status. The runner
+mode, `maxUsagePercent` and the UI pages follow in later releases.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -118,8 +120,8 @@ pages follow in later releases.
 | `research.database.readerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | login of the UI (read only), a Secret in the release's namespace |
 | `research.database.readerRole` | `""` | role the migrations grant read access to |
 | `research.database.writerRoles` | `[]` | roles the migrations grant write access to: the logins of `spec.research.writerSecret` of the AgentProjects |
-| `research.database.networkPolicyPeer` | `{namespace: "", podLabels: {}}` | the database pods, which research-run pods may reach on TCP 5432 |
-| `research.candidates.quick` | `claude/claude-sonnet-5-5`, `cursor/auto` | agents tried in order for quick runs without `spec.agent`; `spec.research.candidates` of an AgentProject overrides them |
+| `research.database.networkPolicyPeer` | `{namespace: "", podLabels: {}}` | the database pods. With `agent.networkPolicy.enabled` and a `namespace`, the chart adds a NetworkPolicy `<agent role>-research-db` per agent namespace: pods with the label `ai.wiemers.me/research` (research runs, not tasks) may reach these pods on TCP `research.database.port` |
+| `research.candidates.quick` | `claude/claude-sonnet-5-5`, `cursor/auto` | agents tried in order for quick runs without `spec.agent`; `spec.research.candidates` of an AgentProject overrides them. Passed as `--research-candidates`; until the agent choice lands, the first one runs |
 | `research.candidates.deep` | `claude/claude-opus-5-5` (high), `claude/claude-sonnet-5-5`, `cursor/auto` | the same for deep runs |
 | `research.maxUsagePercent` | `70` | research uses an engine only while all its usage windows are below this |
 

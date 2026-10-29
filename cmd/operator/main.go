@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"os"
 	"strings"
@@ -48,6 +49,8 @@ func main() {
 	var researchWriters string
 	flag.StringVar(&researchGrants.Reader, "research-reader-role", "", "Role the research migrations grant read access to (the UI's login).")
 	flag.StringVar(&researchWriters, "research-writer-roles", "", "Comma separated roles the research migrations grant write access to (the logins of research runs).")
+	var researchCandidates string
+	flag.StringVar(&researchCandidates, "research-candidates", "", "Agents research runs without spec.agent use, per depth, as JSON: {\"quick\": [{\"engine\": \"claude\", \"model\": \"sonnet\"}], \"deep\": [...]}. AgentProject spec.research.candidates overrides them.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -60,7 +63,8 @@ func main() {
 		os.Exit(1)
 	}
 	// Research is on exactly with a database host. The research controller
-	// will wait for researchSetup's Ready and use researchDB for its pods.
+	// waits for researchSetup's Ready and uses researchDB for its pods.
+	var candidates aiv1.ResearchCandidates
 	var researchSetup *research.Database
 	if researchDB.Host != "" {
 		owner, err := researchDB.Login(os.Getenv("AI_RESEARCH_DB_USER"), os.Getenv("AI_RESEARCH_DB_PASSWORD"))
@@ -71,6 +75,12 @@ func main() {
 		for _, w := range strings.Split(researchWriters, ",") {
 			if w = strings.TrimSpace(w); w != "" {
 				researchGrants.Writers = append(researchGrants.Writers, w)
+			}
+		}
+		if researchCandidates != "" {
+			if err := json.Unmarshal([]byte(researchCandidates), &candidates); err != nil {
+				setupLog.Error(err, "invalid --research-candidates")
+				os.Exit(1)
 			}
 		}
 		researchSetup = research.NewDatabase(owner, researchGrants, clock.RealClock{}, ctrl.Log.WithName("research-db"))
@@ -129,6 +139,19 @@ func main() {
 
 	if researchSetup != nil {
 		utilruntime.Must(mgr.Add(researchSetup))
+		if err := (&controller.AgentResearchReconciler{
+			Client:               mgr.GetClient(),
+			Scheme:               mgr.GetScheme(),
+			APIReader:            mgr.GetAPIReader(),
+			DB:                   researchSetup,
+			DBConn:               researchDB,
+			DefaultAgentImage:    defaultAgentImage,
+			DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
+			Candidates:           candidates,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "AgentResearch")
+			os.Exit(1)
+		}
 	}
 
 	utilruntime.Must(mgr.AddHealthzCheck("healthz", healthz.Ping))

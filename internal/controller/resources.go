@@ -120,12 +120,6 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 		{Name: "kube-api-access", MountPath: ServiceAccountMountPath, ReadOnly: true},
 	}
 
-	agentEnv := []corev1.EnvVar{
-		{Name: "AI_WORKSPACE", Value: WorkspaceMountPath},
-		{Name: "AI_EXCHANGE", Value: ExchangeMountPath},
-		{Name: "AI_AGENT_SOCKET", Value: AgentSocket},
-		{Name: "HOME", Value: WorkspaceMountPath + "/home"},
-	}
 	agentMounts := []corev1.VolumeMount{
 		{Name: "workspace", MountPath: WorkspaceMountPath, SubPath: "agent"},
 		{Name: "exchange", MountPath: ExchangeMountPath},
@@ -141,25 +135,21 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 		{Name: "agent-tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 		serviceAccountTokenVolume(),
 	}
+	var cacheEnv []corev1.EnvVar
 	if agents.CacheClaimName != "" {
 		volumes = append(volumes, corev1.Volume{Name: "cache", VolumeSource: corev1.VolumeSource{
 			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: agents.CacheClaimName},
 		}})
 		agentMounts = append(agentMounts, corev1.VolumeMount{Name: "cache", MountPath: CacheMountPath})
-		agentEnv = append(agentEnv,
-			corev1.EnvVar{Name: "GOMODCACHE", Value: CacheMountPath + "/go/mod"},
-			corev1.EnvVar{Name: "GOCACHE", Value: CacheMountPath + "/go/build"},
-			corev1.EnvVar{Name: "npm_config_cache", Value: CacheMountPath + "/npm"},
-			corev1.EnvVar{Name: "PIP_CACHE_DIR", Value: CacheMountPath + "/pip"},
-			corev1.EnvVar{Name: "YARN_CACHE_FOLDER", Value: CacheMountPath + "/yarn"},
-		)
+		cacheEnv = []corev1.EnvVar{
+			{Name: "GOMODCACHE", Value: CacheMountPath + "/go/mod"},
+			{Name: "GOCACHE", Value: CacheMountPath + "/go/build"},
+			{Name: "npm_config_cache", Value: CacheMountPath + "/npm"},
+			{Name: "PIP_CACHE_DIR", Value: CacheMountPath + "/pip"},
+			{Name: "YARN_CACHE_FOLDER", Value: CacheMountPath + "/yarn"},
+		}
 	}
-	if agents.LogLevel != "" {
-		level := corev1.EnvVar{Name: "AI_LOG_LEVEL", Value: string(agents.LogLevel)}
-		runnerEnv = append(runnerEnv, level)
-		agentEnv = append(agentEnv, level)
-	}
-	agentEnv = append(agentEnv, agents.Env...)
+	runnerEnv = append(runnerEnv, logLevelEnv(agents)...)
 
 	// The runner tells the implementer what the agent container may use.
 	agentRes := agentResources(task, spec)
@@ -174,16 +164,24 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_AGENT_CPUS", Value: strconv.FormatFloat(float64(cpu.MilliValue())/1000, 'f', -1, 64)})
 	}
 
-	runnerResources := DefaultRunnerResources
-	if agents.RunnerResources != nil {
-		runnerResources = *agents.RunnerResources
-	}
-	containerSecurity := func(readOnlyRoot bool) *corev1.SecurityContext {
-		return &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			ReadOnlyRootFilesystem:   ptr.To(readOnlyRoot),
-			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
-		}
+	initResources := runnerResources(agents)
+	podSpec := agentPodSpec(agents)
+	podSpec.RestartPolicy = corev1.RestartPolicyAlways
+	podSpec.Volumes = volumes
+	// Kubelet would create missing sub-path directories as root; create them
+	// as the agent user first.
+	podSpec.InitContainers = []corev1.Container{{
+		Name:            "init-workspace",
+		Image:           agents.Image,
+		ImagePullPolicy: agents.ImagePullPolicy,
+		Command:         []string{"ai-runner", "init-workspace", "/data/runner", "/data/agent"},
+		VolumeMounts:    []corev1.VolumeMount{{Name: "workspace", MountPath: "/data"}},
+		Resources:       initResources,
+		SecurityContext: containerSecurity(true),
+	}}
+	podSpec.Containers = []corev1.Container{
+		runnerContainer(agents, []string{"ai-runner"}, runnerEnv, runnerMounts),
+		agentContainer(agents, agentEnv(agents, cacheEnv...), agentMounts, agentRes),
 	}
 
 	return &corev1.Pod{
@@ -193,66 +191,103 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 			Labels:      taskLabels(task),
 			Annotations: map[string]string{AnnotationAgentResources: resourcesHash(agentRes)},
 		},
-		Spec: corev1.PodSpec{
-			ServiceAccountName: agents.ServiceAccountName,
-			// The token is mounted explicitly into the runner container only.
-			AutomountServiceAccountToken:  ptr.To(false),
-			EnableServiceLinks:            ptr.To(false),
-			ShareProcessNamespace:         ptr.To(false),
-			RestartPolicy:                 corev1.RestartPolicyAlways,
-			TerminationGracePeriodSeconds: ptr.To[int64](60),
-			NodeSelector:                  agents.NodeSelector,
-			Tolerations:                   agents.Tolerations,
-			SecurityContext: &corev1.PodSecurityContext{
-				RunAsNonRoot: ptr.To(true),
-				RunAsUser:    ptr.To[int64](AgentUID),
-				RunAsGroup:   ptr.To[int64](AgentUID),
-				FSGroup:      ptr.To[int64](AgentUID),
-				// Pods start for every run; only fix up ownership when the
-				// volume root is off, not for every file on every mount.
-				FSGroupChangePolicy: ptr.To(corev1.FSGroupChangeOnRootMismatch),
-				SeccompProfile:      &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
-			},
-			Volumes: volumes,
-			// Kubelet would create missing sub-path directories as root;
-			// create them as the agent user first.
-			InitContainers: []corev1.Container{{
-				Name:            "init-workspace",
-				Image:           agents.Image,
-				ImagePullPolicy: agents.ImagePullPolicy,
-				Command:         []string{"ai-runner", "init-workspace", "/data/runner", "/data/agent"},
-				VolumeMounts:    []corev1.VolumeMount{{Name: "workspace", MountPath: "/data"}},
-				Resources:       runnerResources,
-				SecurityContext: containerSecurity(true),
-			}},
-			Containers: []corev1.Container{
-				{
-					Name:            RunnerContainer,
-					Image:           agents.Image,
-					ImagePullPolicy: agents.ImagePullPolicy,
-					Command:         []string{"ai-runner"},
-					Env:             runnerEnv,
-					Resources:       runnerResources,
-					VolumeMounts:    runnerMounts,
-					WorkingDir:      RunnerMountPath,
-					SecurityContext: containerSecurity(true),
-				},
-				{
-					Name:            AgentContainer,
-					Image:           agents.Image,
-					ImagePullPolicy: agents.ImagePullPolicy,
-					Command:         []string{"ai-runner", "agent-server"},
-					Env:             agentEnv,
-					EnvFrom: []corev1.EnvFromSource{{
-						SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: agents.CredentialsSecretName}},
-					}},
-					Resources:       agentRes,
-					VolumeMounts:    agentMounts,
-					WorkingDir:      WorkspaceMountPath,
-					SecurityContext: containerSecurity(false),
-				},
-			},
+		Spec: podSpec,
+	}
+}
+
+// agentPodSpec is what the pods of tasks and research runs share: the
+// project's service account and scheduling, the agent user, and no
+// automatically mounted token, service links or shared process namespace.
+func agentPodSpec(agents aiv1.AgentsSpec) corev1.PodSpec {
+	return corev1.PodSpec{
+		ServiceAccountName: agents.ServiceAccountName,
+		// The token is mounted explicitly into the runner container only.
+		AutomountServiceAccountToken:  ptr.To(false),
+		EnableServiceLinks:            ptr.To(false),
+		ShareProcessNamespace:         ptr.To(false),
+		TerminationGracePeriodSeconds: ptr.To[int64](60),
+		NodeSelector:                  agents.NodeSelector,
+		Tolerations:                   agents.Tolerations,
+		SecurityContext: &corev1.PodSecurityContext{
+			RunAsNonRoot: ptr.To(true),
+			RunAsUser:    ptr.To[int64](AgentUID),
+			RunAsGroup:   ptr.To[int64](AgentUID),
+			FSGroup:      ptr.To[int64](AgentUID),
+			// Pods start for every run; only fix up ownership when the
+			// volume root is off, not for every file on every mount.
+			FSGroupChangePolicy: ptr.To(corev1.FSGroupChangeOnRootMismatch),
+			SeccompProfile:      &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 		},
+	}
+}
+
+// runnerContainer runs ai-runner with command; it is the only container with
+// the service account token.
+func runnerContainer(agents aiv1.AgentsSpec, command []string, env []corev1.EnvVar, mounts []corev1.VolumeMount) corev1.Container {
+	return corev1.Container{
+		Name:            RunnerContainer,
+		Image:           agents.Image,
+		ImagePullPolicy: agents.ImagePullPolicy,
+		Command:         command,
+		Env:             env,
+		Resources:       runnerResources(agents),
+		VolumeMounts:    mounts,
+		WorkingDir:      RunnerMountPath,
+		SecurityContext: containerSecurity(true),
+	}
+}
+
+// agentContainer runs the agent server with only the agent CLI credentials.
+func agentContainer(agents aiv1.AgentsSpec, env []corev1.EnvVar, mounts []corev1.VolumeMount, res corev1.ResourceRequirements) corev1.Container {
+	return corev1.Container{
+		Name:            AgentContainer,
+		Image:           agents.Image,
+		ImagePullPolicy: agents.ImagePullPolicy,
+		Command:         []string{"ai-runner", "agent-server"},
+		Env:             env,
+		EnvFrom: []corev1.EnvFromSource{{
+			SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: agents.CredentialsSecretName}},
+		}},
+		Resources:       res,
+		VolumeMounts:    mounts,
+		WorkingDir:      WorkspaceMountPath,
+		SecurityContext: containerSecurity(false),
+	}
+}
+
+// agentEnv is the agent container's environment: extra goes before the log
+// level and the project's agents.env.
+func agentEnv(agents aiv1.AgentsSpec, extra ...corev1.EnvVar) []corev1.EnvVar {
+	env := []corev1.EnvVar{
+		{Name: "AI_WORKSPACE", Value: WorkspaceMountPath},
+		{Name: "AI_EXCHANGE", Value: ExchangeMountPath},
+		{Name: "AI_AGENT_SOCKET", Value: AgentSocket},
+		{Name: "HOME", Value: WorkspaceMountPath + "/home"},
+	}
+	env = append(env, extra...)
+	env = append(env, logLevelEnv(agents)...)
+	return append(env, agents.Env...)
+}
+
+func logLevelEnv(agents aiv1.AgentsSpec) []corev1.EnvVar {
+	if agents.LogLevel == "" {
+		return nil
+	}
+	return []corev1.EnvVar{{Name: "AI_LOG_LEVEL", Value: string(agents.LogLevel)}}
+}
+
+func runnerResources(agents aiv1.AgentsSpec) corev1.ResourceRequirements {
+	if agents.RunnerResources != nil {
+		return *agents.RunnerResources
+	}
+	return DefaultRunnerResources
+}
+
+func containerSecurity(readOnlyRoot bool) *corev1.SecurityContext {
+	return &corev1.SecurityContext{
+		AllowPrivilegeEscalation: ptr.To(false),
+		ReadOnlyRootFilesystem:   ptr.To(readOnlyRoot),
+		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 	}
 }
 

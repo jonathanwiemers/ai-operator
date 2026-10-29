@@ -114,6 +114,8 @@ login with the keys `username` and `password`.
 | `research.database.readerSecret` | `{name: "", …}` | read-only login of the UI, a Secret in the release's namespace |
 | `research.database.readerRole` | `""` | role granted read access (the reader login) |
 | `research.database.writerRoles` | `[]` | roles granted write access (the writer logins of research runs) |
+| `research.database.networkPolicyPeer` | `{namespace: "", podLabels: {}}` | the database pods research-run pods may reach, see [below](#network-policy-for-research-runs) |
+| `research.candidates` | see `values.yaml` | default agents of research runs per depth, see [research.md](research.md#choosing-agents) |
 
 The logins on netcup01:
 
@@ -132,11 +134,15 @@ research:
     readerSecret: {name: research-reader.ai-operator-postgres.credentials.postgresql.acid.zalan.do}
     readerRole: research_reader
     writerRoles: [agents.research_writer]
+    networkPolicyPeer:
+      namespace: ai-operator-system
+      podLabels: {cluster-name: ai-operator-postgres}
 ```
 
 The operator gets the host, port, name and `sslMode` as flags
 (`--research-db-host`, `--research-db-port`, `--research-db-name`,
-`--research-db-sslmode`, `--research-reader-role`, `--research-writer-roles`)
+`--research-db-sslmode`, `--research-reader-role`, `--research-writer-roles`,
+`--research-candidates` as JSON)
 and the owner login as the environment variables `AI_RESEARCH_DB_USER` and
 `AI_RESEARCH_DB_PASSWORD` from `ownerSecret`, never as arguments. A host
 without a name, user or password stops the operator at start; the chart
@@ -154,6 +160,19 @@ expired runs with their results and items at once and then every hour.
 The runner of a research run logs in as a writer: name its Secret per
 project in `spec.research.writerSecret` (see
 [research.md](research.md#specresearch-on-agentproject)).
+
+#### Network policy for research runs
+
+The agent NetworkPolicy (`agent.networkPolicy`) blocks the cluster CIDRs, so
+research-run pods could not reach an in-cluster database. With
+`agent.networkPolicy.enabled`, `research.database.host` and
+`research.database.networkPolicyPeer.namespace` set, the chart adds a second
+NetworkPolicy `<agent role>-research-db` in every agent namespace. It selects
+only pods with the label `ai.wiemers.me/research` and allows egress on TCP
+`research.database.port` to the pods matching `networkPolicyPeer.podLabels`
+in `networkPolicyPeer.namespace` (all its pods without labels).
+NetworkPolicies are additive: task pods are not selected and keep the agent
+policy as it is, without access to the database.
 
 ## Secrets
 

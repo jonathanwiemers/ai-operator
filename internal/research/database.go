@@ -126,3 +126,13 @@ func (d *Database) deleteExpired(ctx context.Context) {
 	}
 	d.log.Info("deleted expired research runs", "runs", n)
 }
+
+// FinishRunOrInsert records a run's outcome in the store, see
+// store.Store.FinishRunOrInsert. It fails before Ready.
+func (d *Database) FinishRunOrInsert(ctx context.Context, r store.Run) error {
+	s := d.Store()
+	if s == nil {
+		return errors.New("research database is not ready")
+	}
+	return s.FinishRunOrInsert(ctx, r)
+}

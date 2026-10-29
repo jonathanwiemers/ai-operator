@@ -42,11 +42,22 @@ rules:
   - ai.wiemers.me
   resources:
   - agentprojects/status
+  - agentresearches/status
   - agenttasks/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - ai.wiemers.me
+  resources:
+  - agentresearches
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - ai.wiemers.me
   resources:
