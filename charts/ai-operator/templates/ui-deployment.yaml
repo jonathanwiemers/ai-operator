@@ -63,8 +63,11 @@ spec:
             {{- range $ui.extraArgs }}
             - {{ . | quote }}
             {{- end }}
-          {{- if eq $ui.auth.mode "oidc" }}
+          {{- $db := .Values.research.database }}
+          {{- if or (eq $ui.auth.mode "oidc") $db.host }}
           env:
+          {{- end }}
+          {{- if eq $ui.auth.mode "oidc" }}
             - name: AI_OPERATOR_UI_SESSION_KEY
               valueFrom:
                 secretKeyRef:
@@ -90,6 +93,19 @@ spec:
                   name: {{ $ui.gitlab.existingSecret | default $ui.oidc.existingSecret }}
                   key: gitlab-token
             {{- end }}
+          {{- end }}
+          {{- if $db.host }}
+            # The research database's reader login (Zalando secret).
+            - name: AI_OPERATOR_UI_RESEARCH_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $db.readerSecret.name }}
+                  key: {{ $db.readerSecret.usernameKey }}
+            - name: AI_OPERATOR_UI_RESEARCH_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $db.readerSecret.name }}
+                  key: {{ $db.readerSecret.passwordKey }}
           {{- end }}
           ports:
             - name: http

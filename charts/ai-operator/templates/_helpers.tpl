@@ -80,6 +80,10 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- $_ := set $cfg "gitlab" (dict "url" $ui.gitlab.url "clientID" $ui.gitlab.clientID "tokenUser" $ui.gitlab.tokenUser) -}}
 {{- end -}}
 {{- end -}}
+{{- $db := .Values.research.database -}}
+{{- if $db.host -}}
+{{- $_ := set $cfg "research" (dict "database" (dict "host" $db.host "port" (int $db.port) "name" $db.name "sslMode" $db.sslMode) "namespace" $ui.research.namespace "allowCreate" $ui.research.allowCreate) -}}
+{{- end -}}
 {{- toYaml $cfg }}
 {{- end }}
 
@@ -101,6 +105,9 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 {{- else if $ui.httpRoute.enabled }}
 {{- fail "ui.auth.mode none serves without login and cannot be exposed with ui.httpRoute" }}
+{{- end }}
+{{- if and .Values.research.database.host (not .Values.research.database.readerSecret.name) }}
+{{- fail "research.database.readerSecret.name (the UI's reader login) is required with research.database.host and ui.enabled" }}
 {{- end }}
 {{- end }}
 

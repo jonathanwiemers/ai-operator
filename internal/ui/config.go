@@ -14,7 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/yaml"
+
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 // AuthMode selects how users are authenticated.
@@ -35,6 +38,8 @@ const (
 	EnvClientSecret       = "AI_OPERATOR_UI_OIDC_CLIENT_SECRET"
 	EnvGitLabClientSecret = "AI_OPERATOR_UI_GITLAB_CLIENT_SECRET"
 	EnvGitLabToken        = "AI_OPERATOR_UI_GITLAB_TOKEN"
+	EnvResearchDBUser     = "AI_OPERATOR_UI_RESEARCH_DB_USER"
+	EnvResearchDBPassword = "AI_OPERATOR_UI_RESEARCH_DB_PASSWORD"
 )
 
 // Default claim mappings: the email (or the subject) as user name, the
@@ -54,12 +59,47 @@ type Config struct {
 	OIDC          OIDCConfig          `json:"oidc"`
 	Authorization AuthorizationConfig `json:"authorization"`
 	GitLab        GitLabConfig        `json:"gitlab"`
+	Research      ResearchConfig      `json:"research"`
 
 	// Set from the environment.
 	SessionKey         string `json:"-"`
 	ClientSecret       string `json:"-"`
 	GitLabClientSecret string `json:"-"`
 	GitLabToken        string `json:"-"`
+	ResearchDBUser     string `json:"-"`
+	ResearchDBPassword string `json:"-"`
+}
+
+// ResearchConfig is the Research section. It is on exactly when
+// Database.Host is set.
+type ResearchConfig struct {
+	Database DatabaseConfig `json:"database"`
+	// Namespace the UI creates one-off researches in.
+	Namespace string `json:"namespace,omitempty"`
+	// AllowCreate lets users with the research write grant start and delete
+	// one-off researches.
+	AllowCreate bool `json:"allowCreate,omitempty"`
+}
+
+// DatabaseConfig is where the research database is. The UI logs in as the
+// reader, with the login from the environment.
+type DatabaseConfig struct {
+	Host string `json:"host"`
+	Port int    `json:"port,omitempty"`
+	Name string `json:"name"`
+	// SSLMode is disable (loopback hosts only), require (the default),
+	// verify-ca or verify-full.
+	SSLMode string `json:"sslMode,omitempty"`
+}
+
+// Enabled reports whether the Research section is on.
+func (c ResearchConfig) Enabled() bool { return c.Database.Host != "" }
+
+// ResearchLogin returns the reader's connection to the research database.
+func (c *Config) ResearchLogin() store.Config {
+	db := c.Research.Database
+	return store.Config{Host: db.Host, Port: db.Port, Database: db.Name, SSLMode: db.SSLMode,
+		User: c.ResearchDBUser, Password: c.ResearchDBPassword}
 }
 
 // GitLabConfig lets users connect their GitLab account (an OAuth
@@ -112,7 +152,15 @@ type AuthorizationConfig struct {
 	Rules []Rule `json:"rules"`
 }
 
-// Rule lets users with any of Roles see the projects matching Projects.
+// Research grants of a rule.
+const (
+	ResearchRead  = "read"
+	ResearchWrite = "write"
+)
+
+// Rule lets users with any of Roles see the projects matching Projects. A
+// rule with Research set is a research rule instead: it grants the
+// researches matching Researches and no projects.
 type Rule struct {
 	// Roles of which the user needs one. "*" matches every logged-in user.
 	Roles []string `json:"roles"`
@@ -126,6 +174,13 @@ type Rule struct {
 	// Steer lets its roles write comments on the projects' issues and merge
 	// requests from the UI, in their own GitLab name.
 	Steer bool `json:"steer,omitempty"`
+	// Research is read (see researches and their results) or write (also
+	// start one-off researches and delete them). A rule with it grants no
+	// projects and must not set Projects, Transcript or Steer.
+	Research string `json:"research,omitempty"`
+	// Researches are namespace/name patterns like Projects. Empty matches
+	// every research.
+	Researches []string `json:"researches,omitempty"`
 }
 
 // Duration is a time.Duration that reads "12h" from YAML.
@@ -161,6 +216,8 @@ func LoadConfig(file, bindAddress string) (*Config, error) {
 	cfg.ClientSecret = os.Getenv(EnvClientSecret)
 	cfg.GitLabClientSecret = os.Getenv(EnvGitLabClientSecret)
 	cfg.GitLabToken = os.Getenv(EnvGitLabToken)
+	cfg.ResearchDBUser = os.Getenv(EnvResearchDBUser)
+	cfg.ResearchDBPassword = os.Getenv(EnvResearchDBPassword)
 	cfg.Default()
 	if err := cfg.Validate(bindAddress); err != nil {
 		return nil, err
@@ -187,6 +244,9 @@ func (c *Config) Default() {
 	}
 	c.ExternalURL = strings.TrimSuffix(c.ExternalURL, "/")
 	c.GitLab.URL = strings.TrimSuffix(c.GitLab.URL, "/")
+	if c.Research.Enabled() && c.Research.Database.SSLMode == "" {
+		c.Research.Database.SSLMode = "require"
+	}
 }
 
 // Validate refuses configurations that would expose the UI insecurely.
@@ -245,8 +305,53 @@ func (c *Config) Validate(bindAddress string) error {
 				errs = append(errs, fmt.Errorf("authorization.rules[%d]: project pattern %q must look like namespace/name (globs allowed)", i, p))
 			}
 		}
+		switch {
+		case r.Research != "" && r.Research != ResearchRead && r.Research != ResearchWrite:
+			errs = append(errs, fmt.Errorf("authorization.rules[%d]: research must be read or write, not %q", i, r.Research))
+		case r.Research != "" && (len(r.Projects) > 0 || r.Transcript || r.Steer):
+			errs = append(errs, fmt.Errorf("authorization.rules[%d]: a research rule grants no projects; put projects, transcript and steer into a rule of their own", i))
+		case r.Research == "" && len(r.Researches) > 0:
+			errs = append(errs, fmt.Errorf("authorization.rules[%d]: researches needs research: read or write", i))
+		}
+		for _, p := range r.Researches {
+			if _, err := path.Match(p, ""); err != nil || strings.Count(p, "/") != 1 {
+				errs = append(errs, fmt.Errorf("authorization.rules[%d]: research pattern %q must look like namespace/name (globs allowed)", i, p))
+			}
+		}
 	}
+	errs = append(errs, c.validateResearch()...)
 	return errors.Join(errs...)
+}
+
+// validateResearch checks the Research section, if it is on.
+func (c *Config) validateResearch() []error {
+	if !c.Research.Enabled() {
+		return nil
+	}
+	var errs []error
+	db := c.Research.Database
+	if db.Name == "" {
+		errs = append(errs, errors.New("research.database.name is required with research.database.host"))
+	}
+	if db.Port < 0 || db.Port > 65535 {
+		errs = append(errs, fmt.Errorf("research.database.port %d is out of range", db.Port))
+	}
+	if c.ResearchDBUser == "" || c.ResearchDBPassword == "" {
+		errs = append(errs, fmt.Errorf("research.database.host needs the reader login in %s and %s", EnvResearchDBUser, EnvResearchDBPassword))
+	}
+	switch db.SSLMode {
+	case "require", "verify-ca", "verify-full":
+	case "disable":
+		if !isLoopback(db.Host) {
+			errs = append(errs, errors.New("research.database.sslMode disable sends the password in clear text and is only allowed for a loopback host"))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("research.database.sslMode must be disable, require, verify-ca or verify-full, not %q", db.SSLMode))
+	}
+	if c.Research.AllowCreate && len(validation.IsDNS1123Label(c.Research.Namespace)) > 0 {
+		errs = append(errs, fmt.Errorf("research.allowCreate needs research.namespace, a valid namespace name, not %q", c.Research.Namespace))
+	}
+	return errs
 }
 
 // Secure reports whether cookies are sent over https only.

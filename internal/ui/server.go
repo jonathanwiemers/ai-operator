@@ -9,12 +9,14 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 // Server serves the UI, its API and the login flow.
@@ -40,6 +42,8 @@ type Server struct {
 	gitlab *gitlabConn
 	// notes rate-limits the comments users post.
 	notes noteLimiter
+	// research is the reader's store, nil until connected.
+	research atomic.Pointer[store.Store]
 }
 
 // SetLogSource enables live transcripts.
@@ -88,6 +92,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread", s.authed(s.thread))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes", s.authed(s.postNote))
 	mux.Handle("GET /api/v1/me", s.authed(s.me))
+	mux.Handle("GET /api/v1/features", s.authed(s.features))
 	mux.Handle("GET /api/v1/projects", s.authed(s.projects))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}", s.authed(s.project))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}", s.authed(s.task))

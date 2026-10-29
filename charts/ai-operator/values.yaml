@@ -86,8 +86,8 @@ agent:
 # Research (AgentResearch, see docs/research.md): agents answer research
 # questions once or on a schedule, the results are kept in Postgres. Off
 # while database.host is empty. The operator uses database.* (except
-# readerSecret), candidates and maxUsagePercent; the UI follows in later
-# releases.
+# readerSecret), candidates and maxUsagePercent; the UI (ui.enabled) logs in
+# with readerSecret.
 research:
   # The database, as the Zalando postgres-operator provides it: one Secret
   # per login with the keys username and password. The netcup01 example is
@@ -188,14 +188,18 @@ ui:
   #     steer: true                         # write comments from the UI
   #   - roles: [shop-devs]
   #     projects: ["team-a/shop"]           # namespace/name, globs allowed
+  #   - roles: [researchers]                # a research rule: no projects
+  #     research: read                      # or write
+  #     researches: ["agents/*"]            # namespace/name, globs allowed
   authorization:
     rules: []
-  # Research section (needs research.database.host). Not used yet.
+  # Research section (needs research.database.host).
   research:
     # Let users with the research write grant start and delete one-off
-    # researches (create/delete on agentresearches for the UI).
+    # researches (create/delete on agentresearches for the UI, in a later
+    # release).
     allowCreate: false
-    # Namespace the UI creates researches in.
+    # Namespace the UI creates researches in, required with allowCreate.
     namespace: ""
   service:
     type: ClusterIP

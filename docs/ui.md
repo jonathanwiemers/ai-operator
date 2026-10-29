@@ -190,6 +190,41 @@ ui:
         projects: ["agents/shop"]       # boards and tasks, no transcripts
 ```
 
+### Research rules
+
+With a [research database](configuration.md#research-database) the UI also
+has a Research section. A rule with `research` set is a **research rule**:
+`research: read` lets its roles see the researches and their results,
+`research: write` also start one-off researches and delete them (only with
+`ui.research.allowCreate`). `researches` are `namespace/name` patterns of
+AgentResearches like `projects`; without it the rule grants every research.
+
+Factory and research rules are kept apart: a research rule grants no
+projects (it must not set `projects`, `transcript` or `steer`), and a
+project rule grants no research, even without `projects`. So the admin rule
+above does not show the Research section; add a research rule for it:
+
+```yaml
+ui:
+  research:
+    allowCreate: true
+    namespace: agents                   # where one-off researches are created
+  authorization:
+    rules:
+      - roles: [ai-operator-admin]      # every project
+        transcript: true
+      - roles: [ai-operator-admin]      # every research, and one-offs
+        research: write
+      - roles: [news-readers]           # only the news flashes, no factory
+        research: read
+        researches: ["agents/news-*"]
+```
+
+`GET /api/v1/features` tells the app which sections to show: `factory` when
+a project rule matches the user, `research` when a research rule matches and
+a database is configured. Without login (`auth.mode: none`) everyone sees
+both and may write with `ui.research.allowCreate`.
+
 Roles are read at login and kept in the session, so a role change takes
 effect at the next login, at the latest after `ui.auth.sessionTTL` (default
 `12h`). A user without any matching role gets an empty project list that
@@ -353,9 +388,12 @@ points to 127.0.0.1 (DNS rebinding).
 ## Security
 
 - **Separate, read-only identity.** The UI's service account may only `get`,
-  `list` and `watch` AgentProjects and AgentTasks, and read pods and their
-  logs in the agent namespaces (for transcripts). No Secrets, no GitLab
-  token. The API returns views of the resources without the
+  `list` and `watch` AgentProjects and AgentTasks (with a research database
+  also AgentResearches), and read pods and their logs in the agent
+  namespaces (for transcripts). No Secrets, no GitLab token; the research
+  database only with the read-only reader login, which the chart passes
+  from its Secret as environment variables. The API returns views of the
+  resources without the
   operator's bookkeeping and secret references.
 - **Login.** Authorization code flow with PKCE, `state` and `nonce`; the ID
   token's signature, issuer, audience and expiry are verified. The provider's
@@ -394,6 +432,7 @@ with the same session cookie:
 | Endpoint | Returns |
 |----------|---------|
 | `GET /api/v1/me` | user name, roles, auth mode |
+| `GET /api/v1/features` | the sections you may see, e.g. `{"features":[{"name":"factory"},{"name":"research","write":true,"namespace":"agents"}]}`; `write` and `namespace` only with the research write grant and `ui.research.allowCreate`, see [Research rules](#research-rules) |
 | `GET /api/v1/projects` | the projects you may see, with task counts per stage |
 | `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone (`trackingIssueIID` where a milestone has a tracking issue) |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | a planned milestone: its spec task, the autopilot (`phase`, `pausedReason` as raw text, queue `items` with title, state, MR number and URL, and task), the `tracking` issue, the `pilot` (task, autonomy, open proposals, cost), its implement tasks and `permissions` (`gitlab`, `steer`: what the page may offer); 404 without a spec task |

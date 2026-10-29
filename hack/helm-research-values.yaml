@@ -1,5 +1,5 @@
 # Values for make helm-lint: renders the chart with the research database of
-# netcup01 (Zalando postgres-operator, see docs/configuration.md).
+# netcup01 (Zalando postgres-operator, see docs/configuration.md) and the UI.
 research:
   database:
     host: ai-operator-postgres.ai-operator-system.svc.cluster.local
@@ -15,3 +15,17 @@ agent:
   namespaces: [agents]
   networkPolicy:
     enabled: true
+# The web UI with the Research section (reader login, agentresearches RBAC).
+ui:
+  enabled: true
+  auth:
+    mode: none
+  authorization:
+    rules:
+      - roles: [ai-operator-admin]
+      - roles: [researchers]
+        research: write
+        researches: ["agents/*"]
+  research:
+    allowCreate: true
+    namespace: agents

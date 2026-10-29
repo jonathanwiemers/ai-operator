@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/ui"
 	"github.com/jonathanwiemers/ai-operator/web"
 )
@@ -78,6 +79,13 @@ func main() {
 		os.Exit(1)
 	}
 	srv.SetLogSource(ui.PodLogs{Client: clientset})
+	// Research reads the database as the reader (the operator migrates it).
+	// It connects in the background, so the factory does not wait for it.
+	if cfg.Research.Enabled() {
+		go srv.ConnectResearch(ctx, func(ctx context.Context) (*store.Store, error) {
+			return store.Open(ctx, cfg.ResearchLogin())
+		})
+	}
 
 	probes := http.NewServeMux()
 	probes.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })

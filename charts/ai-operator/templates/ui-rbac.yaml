@@ -20,6 +20,12 @@ rules:
   - apiGroups: ["ai.wiemers.me"]
     resources: ["agentprojects", "agenttasks"]
     verbs: ["get", "list", "watch"]
+  {{- if .Values.research.database.host }}
+  # The Research section (shown only to roles with a research rule).
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentresearches"]
+    verbs: ["get", "list", "watch"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

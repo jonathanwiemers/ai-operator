@@ -1,0 +1,88 @@
+package ui
+
+import (
+	"context"
+	"net/http"
+	"time"
+
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
+)
+
+// Feature is a top-level section of the UI the user may see.
+type Feature struct {
+	Name string `json:"name"`
+	// Write: the user may start one-off researches, in Namespace.
+	Write     bool   `json:"write,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// Features of the UI.
+const (
+	FeatureFactory  = "factory"
+	FeatureResearch = "research"
+)
+
+// features lists the sections the user may see: the factory with a factory
+// rule, research with a database and a research rule.
+func (s *Server) features(w http.ResponseWriter, r *http.Request) {
+	p := principalOf(r)
+	out := []Feature{}
+	if s.authz.SeesFactory(p) {
+		out = append(out, Feature{Name: FeatureFactory})
+	}
+	if read, write := s.authz.ResearchAccess(p); read {
+		f := Feature{Name: FeatureResearch, Write: write}
+		if write {
+			f.Namespace = s.cfg.Research.Namespace
+		}
+		out = append(out, f)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"features": out})
+}
+
+// SetResearchStore connects the research endpoints to the database.
+func (s *Server) SetResearchStore(st *store.Store) { s.research.Store(st) }
+
+// Reconnect delays of ConnectResearch.
+const (
+	minResearchRetry = 5 * time.Second
+	maxResearchRetry = 5 * time.Minute
+)
+
+// ConnectResearch opens the research store with open, retrying with backoff
+// until it succeeds or ctx ends. Until then the research endpoints answer
+// 503; the factory does not depend on it.
+func (s *Server) ConnectResearch(ctx context.Context, open func(context.Context) (*store.Store, error)) {
+	for delay := minResearchRetry; ; delay = min(2*delay, maxResearchRetry) {
+		st, err := open(ctx)
+		if err == nil {
+			s.SetResearchStore(st)
+			s.log.Info("research database connected")
+			return
+		}
+		s.log.Error(err, "research database not reachable, retrying", "in", delay)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+	}
+}
+
+// researchHandler runs h for logged-in users with the research store: 404
+// while research is off, 503 until the database is connected. Access to
+// the research itself is h's to check.
+func (s *Server) researchHandler(h func(http.ResponseWriter, *http.Request, *store.Store)) http.Handler {
+	return s.authed(func(w http.ResponseWriter, r *http.Request) {
+		if !s.cfg.Research.Enabled() {
+			notFound(w)
+			return
+		}
+		st := s.research.Load()
+		if st == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the research database is not connected yet"})
+			return
+		}
+		h(w, r, st)
+	})
+}

@@ -90,6 +90,20 @@ The chart can also install a read-only web UI with OIDC login and role-based
 access per project (`ui.enabled`, off by default), exposed through a Gateway
 API HTTPRoute. See [ui.md](ui.md).
 
+With a [research database](#research-database) the UI connects to it as the
+reader: the chart puts `research.database.host`, `port`, `name` and
+`sslMode` (plus `ui.research.namespace` and `allowCreate`) into the UI's
+config file and the login from `research.database.readerSecret` into the
+environment variables `AI_OPERATOR_UI_RESEARCH_DB_USER` and
+`AI_OPERATOR_UI_RESEARCH_DB_PASSWORD`; it refuses to render without
+`readerSecret.name`. The UI's ClusterRole then also gets `get`/`list`/`watch`
+on `agentresearches`. The UI only reads (the operator migrates) and starts
+without the database: it connects in the background and retries with backoff
+(5 s up to 5 min), the research endpoints answer 503 until then, and the
+factory pages work as before. `sslMode: disable` is refused unless the host
+is a loopback address (local development). Who sees the Research section is
+set by [research rules](ui.md#research-rules).
+
 ### Research
 
 `AgentResearch` resources describe research questions that agents answer

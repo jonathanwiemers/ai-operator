@@ -110,8 +110,10 @@ with the project's `spec.research.writerSecret`. The agent Role gets
 `get` on `agentresearches` and `get`/`patch` on their status. The operator
 chooses each run's agent from `research.candidates` and leaves an engine to
 the factory once it is limited or at `research.maxUsagePercent`; see
-[Choosing agents](../../docs/research.md#choosing-agents). The UI pages
-follow in later releases.
+[Choosing agents](../../docs/research.md#choosing-agents). With `ui.enabled`
+the UI logs in with `readerSecret` and its ClusterRole gets
+`get`/`list`/`watch` on `agentresearches`; its Research pages follow in
+later releases.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -120,7 +122,7 @@ follow in later releases.
 | `research.database.name` | `""` | database, required with a host |
 | `research.database.sslMode` | `require` | libpq `sslmode`: `disable`, `require`, `verify-ca` or `verify-full` |
 | `research.database.ownerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | login of the operator (owns the schema), a Secret in the release's namespace; `name` is required with a host. Passed as the env `AI_RESEARCH_DB_USER`/`AI_RESEARCH_DB_PASSWORD` |
-| `research.database.readerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | login of the UI (read only), a Secret in the release's namespace |
+| `research.database.readerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | login of the UI (read only), a Secret in the release's namespace; `name` is required with a host and `ui.enabled`. Passed as the env `AI_OPERATOR_UI_RESEARCH_DB_USER`/`AI_OPERATOR_UI_RESEARCH_DB_PASSWORD` |
 | `research.database.readerRole` | `""` | role the migrations grant read access to |
 | `research.database.writerRoles` | `[]` | roles the migrations grant write access to: the logins of `spec.research.writerSecret` of the AgentProjects |
 | `research.database.networkPolicyPeer` | `{namespace: "", podLabels: {}}` | the database pods. With `agent.networkPolicy.enabled` and a `namespace`, the chart adds a NetworkPolicy `<agent role>-research-db` per agent namespace: pods with the label `ai.wiemers.me/research` (research runs, not tasks) may reach these pods on TCP `research.database.port` |
@@ -148,7 +150,8 @@ research:
 
 The optional read-only web UI, see [docs/ui.md](../../docs/ui.md). It runs as
 its own Deployment (`<release>-ui`) with a service account that can only read
-AgentProjects and AgentTasks.
+AgentProjects and AgentTasks (and AgentResearches with
+`research.database.host`).
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -162,9 +165,9 @@ AgentProjects and AgentTasks.
 | `ui.oidc.scopes` | `[openid, profile, email]` | |
 | `ui.oidc.claims.username` | `has(claims.email) ? claims.email : claims.sub` | CEL expression giving the user name |
 | `ui.oidc.claims.roles` | `has(claims.groups) ? claims.groups : []` | CEL expression giving the roles: a list, a string or a map whose keys are the roles (Zitadel: `claims["urn:zitadel:iam:org:project:roles"]`) |
-| `ui.authorization.rules` | `[]` | `{roles: [...], projects: ["namespace/name", ...], transcript, steer}`; a user with any of the roles sees the matching projects (all if `projects` is empty, globs allowed); `transcript: true` adds live transcripts and prompts, `steer: true` writing comments, the milestone chat included. `"*"` matches every user. Nobody sees anything without a rule |
-| `ui.research.allowCreate` | `false` | not used yet: let users with the research write grant start and delete one-off researches |
-| `ui.research.namespace` | `""` | not used yet: namespace the UI creates researches in |
+| `ui.authorization.rules` | `[]` | `{roles: [...], projects: ["namespace/name", ...], transcript, steer}`; a user with any of the roles sees the matching projects (all if `projects` is empty, globs allowed); `transcript: true` adds live transcripts and prompts, `steer: true` writing comments, the milestone chat included. `"*"` matches every user. Nobody sees anything without a rule. A research rule `{roles, research: read\|write, researches: ["namespace/name", ...]}` grants researches instead (no projects, no `transcript` or `steer`), see [Access rules](../../docs/ui.md#access-rules) |
+| `ui.research.allowCreate` | `false` | let users with the research write grant start and delete one-off researches (needs `research.database.host`; the endpoints and their RBAC follow in a later release) |
+| `ui.research.namespace` | `""` | namespace the UI creates one-off researches in; required with `allowCreate` |
 | `ui.gitlab.url`, `ui.gitlab.clientID` | | GitLab and its OAuth application (confidential, scope `api`, redirect URI `<externalURL>/oauth2/gitlab/callback`) for [steering](../../docs/ui.md#steering): users connect their account, see the comments and post in their own name |
 | `ui.gitlab.tokenUser` | | instead of OAuth, for one user: the UI user name whose fixed GitLab token (key `gitlab-token`) the UI uses for them |
 | `ui.gitlab.existingSecret` | `ui.oidc.existingSecret` | Secret with `gitlab-client-secret` (OAuth) and/or `gitlab-token` (`tokenUser`) |
