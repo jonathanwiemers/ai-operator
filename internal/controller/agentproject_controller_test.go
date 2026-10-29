@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -377,6 +378,73 @@ func TestEngineUsageKeepsTheFreshestReading(t *testing.T) {
 	}
 	if prev[0].Windows[0].Percent != 5 {
 		t.Fatal("the previous status must not be changed in place")
+	}
+}
+
+func TestResearchUsageReachesTheProject(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	reading := func(min int, percent int32) aiv1.EngineUsage {
+		return aiv1.EngineUsage{Engine: aiv1.EngineClaude, ObservedAt: metav1.NewTime(now.Add(time.Duration(min) * time.Minute)),
+			Windows: []aiv1.UsageWindow{{Name: "seven_day", Percent: percent}}}
+	}
+	research := func(name, project string, run *aiv1.ResearchRunStatus) *aiv1.AgentResearch {
+		return &aiv1.AgentResearch{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+			Spec:   aiv1.AgentResearchSpec{ProjectRef: project, Prompt: "news"},
+			Status: aiv1.AgentResearchStatus{Run: run}}
+	}
+	for _, on := range []bool{true, false} {
+		t.Run("research="+strconv.FormatBool(on), func(t *testing.T) {
+			e := newProjectEnv(t)
+			e.r.Research = on
+			e.r.Client = interceptor.NewClient(e.c.(client.WithWatch), interceptor.Funcs{
+				List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+					if _, ok := list.(*aiv1.AgentResearchList); ok && !on {
+						t.Error("without research the project must not list researches")
+					}
+					return c.List(ctx, list, opts...)
+				},
+			})
+			// A task's older reading and limit, the research's newer ones.
+			e.gl.AddIssue(42, "Add PayPal button", "agent::ready")
+			e.reconcile()
+			task := e.tasks()["shop-42-add-paypal-button"]
+			orig := task.DeepCopy()
+			task.Status.Run.EngineUsage = []aiv1.EngineUsage{reading(-10, 30)}
+			task.Status.Run.UsageLimits = []aiv1.UsageLimit{{Engine: aiv1.EngineClaude, Until: metav1.NewTime(now.Add(time.Hour))}}
+			if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range []*aiv1.AgentResearch{
+				research("news", "shop", &aiv1.ResearchRunStatus{ID: "r1", EngineUsage: []aiv1.EngineUsage{reading(-1, 82)},
+					UsageLimits: []aiv1.UsageLimit{
+						{Engine: aiv1.EngineClaude, Until: metav1.NewTime(now.Add(3 * time.Hour)), Message: "weekly"},
+						{Engine: aiv1.EngineCursor, Until: metav1.NewTime(now.Add(-time.Minute))}, // expired
+					}}),
+				research("other", "elsewhere", &aiv1.ResearchRunStatus{ID: "r2", EngineUsage: []aiv1.EngineUsage{reading(0, 99)},
+					UsageLimits: []aiv1.UsageLimit{{Engine: aiv1.EngineCursor, Until: metav1.NewTime(now.Add(time.Hour))}}}),
+				research("new", "shop", nil),
+			} {
+				if err := e.c.Create(e.ctx, r); err != nil {
+					t.Fatal(err)
+				}
+			}
+			e.reconcile()
+
+			var p aiv1.AgentProject
+			if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &p); err != nil {
+				t.Fatal(err)
+			}
+			wantPercent, wantUntil := int32(30), now.Add(time.Hour)
+			if on {
+				wantPercent, wantUntil = 82, now.Add(3*time.Hour)
+			}
+			if u := p.Status.EngineUsage; len(u) != 1 || u[0].Windows[0].Percent != wantPercent {
+				t.Errorf("engineUsage = %+v, want claude at %d %%", u, wantPercent)
+			}
+			if l := p.Status.UsageLimits; len(l) != 1 || l[0].Engine != aiv1.EngineClaude || !l[0].Until.Time.Equal(wantUntil) {
+				t.Errorf("usageLimits = %+v, want claude until %s only", l, wantUntil)
+			}
+		})
 	}
 }
 

@@ -2,6 +2,7 @@
 //
 //	ai-runner                       the runner (runner container: GitLab + Kubernetes credentials)
 //	ai-runner agent-server          the agent server (agent container: agent CLI credentials only)
+//	ai-runner research              one research run (runner container: Kubernetes credentials and the research database writer login, no GitLab token)
 //	ai-runner init-workspace DIR…   create the PVC sub-paths (init container)
 //
 // Without AI_AGENT_SOCKET the runner runs the agent in-process (single
@@ -29,6 +30,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/runner"
 )
 
@@ -39,6 +41,9 @@ func main() {
 		switch os.Args[1] {
 		case "agent-server":
 			agentServer(ctx)
+			return
+		case "research":
+			runResearch(ctx)
 			return
 		case "init-workspace":
 			// Create the PVC sub-paths of the runner and agent containers.
@@ -151,6 +156,53 @@ func runRunner(ctx context.Context) {
 	log.Info("runner started", "task", r.TaskName)
 	if err := r.Loop(ctx); err != nil {
 		log.Error(err, "runner stopped")
+		os.Exit(1)
+	}
+}
+
+// runResearch runs one research run. It has no GitLab token, and its
+// database login is the project's writer, which cannot migrate. The run
+// itself is bounded by its depth's timeout.
+func runResearch(ctx context.Context) {
+	log := ctrl.Log.WithName("research")
+	scheme := runtime.NewScheme()
+	utilruntime.Must(aiv1.AddToScheme(scheme))
+	k8s, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
+	if err != nil {
+		log.Error(err, "creating kubernetes client")
+		os.Exit(1)
+	}
+	port, err := strconv.Atoi(envOr("AI_RESEARCH_DB_PORT", "5432"))
+	if err != nil {
+		log.Error(err, "invalid AI_RESEARCH_DB_PORT")
+		os.Exit(1)
+	}
+	cfg := store.Config{
+		Host: mustEnv("AI_RESEARCH_DB_HOST"), Port: port, Database: mustEnv("AI_RESEARCH_DB_NAME"),
+		SSLMode: os.Getenv("AI_RESEARCH_DB_SSLMODE"),
+		User:    mustEnv("AI_RESEARCH_DB_USER"), Password: os.Getenv("AI_RESEARCH_DB_PASSWORD"),
+	}
+	var db *store.Store
+	rr := &runner.ResearchRun{
+		K8s:       k8s,
+		Namespace: mustEnv("AI_RESEARCH_NAMESPACE"),
+		Name:      mustEnv("AI_RESEARCH_NAME"),
+		RunID:     mustEnv("AI_RESEARCH_RUN_ID"),
+		Agent:     runner.NewAgentClient(mustEnv("AI_AGENT_SOCKET")),
+		OpenStore: func(ctx context.Context) (*store.Store, error) {
+			var err error
+			db, err = store.Open(ctx, cfg)
+			return db, err
+		},
+		Log: log,
+	}
+	log.Info("research run started", "research", rr.Name, "run", rr.RunID)
+	err = rr.Run(ctx)
+	if db != nil {
+		db.Close()
+	}
+	if err != nil {
+		log.Error(err, "research run not recorded")
 		os.Exit(1)
 	}
 }

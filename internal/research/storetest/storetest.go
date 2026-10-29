@@ -142,6 +142,24 @@ func random(t testing.TB, n int) string {
 	return hex.EncodeToString(b)
 }
 
+// Count returns the rows of run id in table (research_results or
+// research_items) of the schema of New.
+func Count(t testing.TB, table, id string) int {
+	t.Helper()
+	mu.Lock()
+	db, found := dbs[t]
+	mu.Unlock()
+	if !found {
+		t.Fatal("storetest.Count needs storetest.New first")
+	}
+	var n int
+	if err := db.admin.QueryRow(t.Context(), "SELECT count(*) FROM "+pgx.Identifier{db.schema, table}.Sanitize()+
+		" WHERE run_id = $1", id).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
 // RunStatus returns the status and error of run id in the schema of New, ok
 // false if there is no such run.
 func RunStatus(t testing.TB, id string) (status, errMsg string, ok bool) {

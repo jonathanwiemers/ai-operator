@@ -1233,7 +1233,11 @@ Things to keep in mind with subscriptions:
   utilization and reset time). The runner keeps the newest reading per
   engine on the task (`status.run.engineUsage`); the operator keeps the
   freshest per engine in the project status (`status.engineUsage`), where
-  a reading outlives its task until a newer one arrives. cursor-agent
+  a reading outlives its task until a newer one arrives. With a research
+  database, research runs report their reading and any usage limit in
+  their `AgentResearch` (`status.run.engineUsage`, `status.run.usageLimits`),
+  and the operator merges them into the referenced project's status like a
+  task's, so factory and research share one view of the budget. cursor-agent
   reports no usage. A
   limit during a review fix round publishes the work done so far. Deferred
   runs don't count towards `maxRunsPerTask`.
@@ -1353,6 +1357,28 @@ rule. Sessions are encrypted cookies holding only user name and roles. Without
 OIDC it only listens on localhost (`kubectl port-forward`). Details in
 [ui.md](ui.md#security).
 
+**Research runs read untrusted web content.** A web page can carry a prompt
+injection, so a research run's pod holds less than a task's:
+
+* No GitLab token anywhere in the pod: `ai-runner research` does not read
+  one, and the pod gets none.
+* The project's database writer login is only in the runner container. It
+  may only read, insert and update runs, results and items (no delete, no
+  schema changes); the operator, as the owner, migrates and deletes. The
+  agent container gets no database variables, and only research pods may
+  reach the database (NetworkPolicy).
+* The agent's answer is data: the runner parses it as JSON and validates it
+  against the block schema (types, sizes, `http(s)` URLs only, no raw HTML or
+  images in markdown) before anything is stored. Unknown blocks are dropped
+  with a warning, an answer that stays invalid is stored as one fenced
+  markdown block. The UI renders blocks, never HTML from the agent.
+* The system prompt tells the agent that web pages are data and that
+  instructions found there are to be ignored. On claude it may only use
+  WebSearch and WebFetch, no shell or file tools.
+* What the runner writes to Kubernetes is its own research's `status.run`
+  (outcome, message, cost, usage readings and limits), never the project.
+  The operator copies the readings and limits into the project status.
+
 **Webhook receiver.** The only endpoint the operator serves besides metrics
 and probes. A delivery is a wake-up call, never data: it counts only with
 the project's secret token (constant-time compare), its body is capped at
@@ -1400,6 +1426,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/runner/pilot.go` | the pilot: milestone state, answers, budget |
 | `internal/runner/git.go` | runner-side bare mirror (the only git that talks to GitLab) |
+| `internal/runner/research.go`, `research_run.go` | research runs (`ai-runner research`): prompt, agent call, validation and repair; store writes and the report in `status.run` |
 | `internal/gitlab` | minimal REST client with retries; `gitlabfake` for tests |
 | `internal/ui` | web UI server: OIDC login, CEL claim mapping, access rules, session cookies, JSON API, change events |
 | `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app` |

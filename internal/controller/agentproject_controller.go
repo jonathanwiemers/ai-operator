@@ -59,6 +59,9 @@ type AgentProjectReconciler struct {
 	// Deliveries, when set, tells when the receiver last accepted a delivery
 	// for a project; while they arrive, the project is polled lightly.
 	Deliveries *webhook.Deliveries
+	// Research, set with a research database, adds the usage readings and
+	// limits of the project's AgentResearch runs to its status.
+	Research bool
 
 	mu sync.Mutex
 	// synced is the last delivery each project's last full sync covered.
@@ -68,6 +71,7 @@ type AgentProjectReconciler struct {
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojects,verbs=get;list;watch
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojects/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentresearches,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
@@ -467,6 +471,14 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	project.Status.ActiveTasks = int32(len(keep))
 	project.Status.UsageLimits = usageLimits(tasks.Items, r.now())
 	project.Status.EngineUsage = engineUsage(project.Status.EngineUsage, tasks.Items)
+	if r.Research {
+		var researches aiv1.AgentResearchList
+		if err := r.List(ctx, &researches, client.InNamespace(project.Namespace)); err != nil {
+			errs = append(errs, fmt.Errorf("listing the researches: %w", err))
+		} else {
+			addResearchUsage(&project.Status, project.Name, researches.Items, r.now())
+		}
+	}
 	return errors.Join(errs...)
 }
 
@@ -538,6 +550,32 @@ func engineUsage(prev []aiv1.EngineUsage, tasks []aiv1.AgentTask) []aiv1.EngineU
 		}
 	}
 	return prev
+}
+
+// addResearchUsage adds the usage readings and active limits the current
+// runs of the project's researches reported, like a task's, so factory and
+// research share one view of the budget.
+func addResearchUsage(st *aiv1.AgentProjectStatus, project string, researches []aiv1.AgentResearch, now time.Time) {
+	for _, res := range researches {
+		run := res.Status.Run
+		if res.Spec.ProjectRef != project || run == nil {
+			continue
+		}
+		for _, u := range run.EngineUsage {
+			st.EngineUsage = aiv1.MergeEngineUsage(st.EngineUsage, u)
+		}
+		for _, l := range run.UsageLimits {
+			i := slices.IndexFunc(st.UsageLimits, func(cur aiv1.UsageLimit) bool { return cur.Engine == l.Engine })
+			switch {
+			case !l.Until.After(now):
+			case i < 0:
+				st.UsageLimits = append(st.UsageLimits, l)
+			case l.Until.After(st.UsageLimits[i].Until.Time):
+				st.UsageLimits[i] = l
+			}
+		}
+	}
+	sort.Slice(st.UsageLimits, func(i, j int) bool { return st.UsageLimits[i].Engine < st.UsageLimits[j].Engine })
 }
 
 // titlePattern compiles milestones.titlePattern; nil when unset.

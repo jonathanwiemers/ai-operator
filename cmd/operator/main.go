@@ -109,6 +109,7 @@ func main() {
 			return gitlab.New(baseURL, token)
 		},
 		DefaultOwners: notify.Usernames(strings.Split(defaultOwners, ",")),
+		Research:      researchDB.Host != "",
 	}
 	if webhookAddr != "" {
 		// The bot's own writes cause deliveries too: one sync per project

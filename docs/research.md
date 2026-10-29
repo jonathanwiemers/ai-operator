@@ -1,8 +1,8 @@
 # Research
 
-> **Status:** the operator schedules researches and starts one pod per run,
-> but the runner's research mode (`ai-runner research`), the automatic agent
-> choice and the UI pages follow in the next releases (see the
+> **Status:** the operator schedules researches, runs them in pods and
+> stores their results, but the automatic agent choice and the UI pages
+> follow in the next releases (see the
 > [spec](specs/research-platform.spec.md)).
 
 Research is the second feature of the platform, next to the factory
@@ -187,6 +187,40 @@ answer is still invalid, or the repair call fails, the raw answer is kept as a
 single `markdown` block inside a code fence, and the run is `degraded`, with
 the validation errors among its warnings. A usage limit ends the run without a
 result.
+
+## In the pod
+
+`ai-runner research` (`internal/runner/research_run.go`) carries out one
+run. It has the project's writer login but no GitLab token, and it does not
+migrate (the writer cannot):
+
+1. It reads the `AgentResearch`. If `status.run` is no longer its run (a
+   newer run started, or the outcome is already recorded), the pod is stale
+   and exits without writing anything.
+2. It connects to the database and records the run as `running`, with the
+   agent from `status.run`, the reason for that choice, and an expiry of the
+   start time plus `retention`.
+3. It waits for the agent container, reads the previous result's item URLs
+   (news flash only) and asks the agent (see above). The run's deadline is
+   the depth's timeout; recording the outcome gets another minute.
+4. It records the outcome in the database, and then in `status.run`:
+   `outcome`, `message`, `costUSD`, the engine's newest usage reading
+   (`engineUsage`) and any usage limit (`usageLimits`). The operator then
+   sets `finishedAt` and deletes the pod.
+   The project's next sync merges the reading and an active limit into the
+   project's `status.engineUsage` and `status.usageLimits`, where task runs
+   (and later research runs) see them.
+
+| Outcome | When | Stored |
+|---------|------|--------|
+| `succeeded` | the answer passed validation (dropped unknown blocks are warnings) | the result and its items |
+| `degraded` | still invalid after the repair round | the raw answer as one markdown block; `message` and a warning hold the validation errors |
+| `limited` | the engine hit a usage limit | no result; `usageLimits` holds the engine until its reset, or for an hour when the engine names none |
+| `failed` | anything else, e.g. the database or the agent container was unreachable, or the agent failed | no result; `message` holds the error |
+
+The runner exits 0 whenever it recorded an outcome, failures included. It
+exits non-zero only when it could not write the status; the operator then
+fails the run when the pod ends.
 
 ## Runs, results and new items
 
