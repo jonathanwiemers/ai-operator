@@ -59,6 +59,12 @@ type AgentResearchSpec struct {
 	// +optional
 	Topics []string `json:"topics,omitempty"`
 
+	// Sources are feeds (RSS 2.0 or Atom 1.0) the runner reads before each
+	// run; their recent entries are given to the agent as data. At most 20.
+	// +kubebuilder:validation:MaxItems=20
+	// +optional
+	Sources []ResearchSource `json:"sources,omitempty"`
+
 	// View is how the UI shows the results.
 	// +kubebuilder:default=report
 	// +optional
@@ -89,6 +95,20 @@ type AgentResearchSpec struct {
 	// from the research candidates of the run's depth.
 	// +optional
 	Agent *ResearchAgent `json:"agent,omitempty"`
+}
+
+// ResearchSource is a feed the runner reads before each run.
+type ResearchSource struct {
+	// URL is the feed's https URL.
+	// +kubebuilder:validation:Pattern=`^https://`
+	// +kubebuilder:validation:MaxLength=2048
+	URL string `json:"url"`
+	// Name labels the feed for the agent and in warnings, e.g. "tagesschau Inland".
+	// +kubebuilder:validation:MaxLength=100
+	Name string `json:"name,omitempty"`
+	// Topic is the topic the feed's entries belong to, when it has one, e.g. "Bundestag".
+	// +kubebuilder:validation:MaxLength=100
+	Topic string `json:"topic,omitempty"`
 }
 
 // ResearchAgent is an engine and model a research runs on. The model must be

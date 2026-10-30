@@ -47,6 +47,7 @@ schedule, last and next run, and the model of the last run.
 | `spec.projectRef` | required | the `AgentProject` in the same namespace whose agent image, credentials, engines and usage the runs use |
 | `spec.prompt` | required | the instructions, 1 to 16384 characters |
 | `spec.topics` | | up to 20 topics (at most 100 characters each) the results are grouped by, e.g. the sections of a news flash |
+| `spec.sources` | | up to 20 feeds (RSS 2.0 or Atom 1.0) the runner reads before each run: `url` (https), optional `name` and `topic` (the topic the feed's entries belong to). Accepted, read by the runner in a later release |
 | `spec.view` | `report` | `newsflash`: the newest run's items grouped by topic, new items marked; `report`: the blocks as a document |
 | `spec.depth` | `quick` | `quick`: a run may take 20 minutes; `deep`: 2 hours. It also selects the candidates of the agent choice |
 | `spec.schedule` | | standard cron expression (5 fields, or `@daily` and the like); without one the research runs once |

@@ -123,6 +123,34 @@ spec:
                   Schedule is a standard cron expression, e.g. "0 7 * * *". Without one
                   the research runs once.
                 type: string
+              sources:
+                description: |-
+                  Sources are feeds (RSS 2.0 or Atom 1.0) the runner reads before each
+                  run; their recent entries are given to the agent as data. At most 20.
+                items:
+                  description: ResearchSource is a feed the runner reads before each
+                    run.
+                  properties:
+                    name:
+                      description: Name labels the feed for the agent and in warnings,
+                        e.g. "tagesschau Inland".
+                      maxLength: 100
+                      type: string
+                    topic:
+                      description: Topic is the topic the feed's entries belong to,
+                        when it has one, e.g. "Bundestag".
+                      maxLength: 100
+                      type: string
+                    url:
+                      description: URL is the feed's https URL.
+                      maxLength: 2048
+                      pattern: ^https://
+                      type: string
+                  required:
+                  - url
+                  type: object
+                maxItems: 20
+                type: array
               timeZone:
                 description: |-
                   TimeZone is the IANA time zone of the schedule, e.g. Europe/Berlin.
