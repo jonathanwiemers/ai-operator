@@ -79,7 +79,9 @@ pushes to `main` (same paths) after every check job passed, or on a manual
 pipeline on `main` (*Build → Pipelines → Run pipeline*, or
 `glab ci run --branch main`). It runs in the
 resource group `release`, so releases never run in parallel, and is not
-interruptible. When quick merges make the release jobs run out of order, a
+interruptible: a newer pipeline cancels only interruptible jobs
+(`workflow:auto_cancel`), so it never cancels a release, running or queued.
+When quick merges make the release jobs run out of order, a
 job whose commit is already in a newer release does nothing, so a higher
 version never holds older code. It:
 

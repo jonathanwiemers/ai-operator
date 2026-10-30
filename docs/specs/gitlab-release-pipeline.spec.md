@@ -47,7 +47,9 @@ One `release` job on `main`, the GitLab counterpart of the single job in
   `workflow_dispatch`). Runs after the whole `check` stage, so tests,
   `helm lint` and the drift check gate the release.
 - **Serialisation**: `resource_group: release` and `interruptible: false`, so
-  releases run one at a time and a newer pipeline never cancels one halfway.
+  releases run one at a time. `workflow:auto_cancel:on_new_commit:
+  interruptible` makes a newer pipeline cancel only interruptible jobs, so it
+  never cancels a release, running or still waiting for the resource group.
 - **Steps**: compute the version from the git tags (full clone, tags fetched),
   build and push both images with `jo-docker-build` (`linux/amd64`, tags
   `<version>` and `latest`, registry build cache), package the chart with
@@ -100,5 +102,19 @@ One `release` job on `main`, the GitLab counterpart of the single job in
 
 | MR | Status |
 |----|--------|
-| ai-operator!54: GitLab release pipeline | open |
-| infra/cluster!285: ai-operator from registry.gitlab.com | draft, merge after 2026.10.63 exists |
+| ai-operator!54: GitLab release pipeline | merged |
+| ai-operator!55: allow API-triggered pipelines | merged |
+| ai-operator!56: remove the docker context between the two builds | merged |
+| infra/cluster!285: ai-operator from registry.gitlab.com | merged |
+| ai-operator!63: skip a release whose commit is already released | merged |
+| ai-operator!65: never auto-cancel a queued release job | open |
+
+### Steers
+
+- 2026-10-30: release jobs ran out of order and released older code under a
+  higher version; the job now exits when its commit is already in a release
+  tag (!63).
+- 2026-10-30: with the default `conservative` auto-cancel, a newer pipeline
+  cancelled a release still `waiting_for_resource` despite
+  `interruptible: false`; the next merge was CI-only, so the change stayed
+  unreleased until the job was retried. Auto-cancel is now `interruptible` (!65).

@@ -9,7 +9,12 @@ include:
     file: ci-templates/build.yml
 
 # Tag pipelines stay excluded: the release job creates the tag.
+# A newer pipeline cancels only interruptible jobs. With the default
+# (conservative) it also cancelled a release still waiting for its resource
+# group, and a following docs- or CI-only merge then released nothing.
 workflow:
+  auto_cancel:
+    on_new_commit: interruptible
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -129,7 +134,7 @@ release:
   extends: .docker-build
   stage: release
   # Releases run one at a time so two merges never get the same version, and
-  # a newer pipeline never cancels one halfway.
+  # a newer pipeline never cancels one, started or queued (workflow auto_cancel).
   resource_group: release
   interruptible: false
   variables:
