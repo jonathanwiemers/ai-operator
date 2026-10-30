@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<rss version="2.0">
+  <channel>
+    <title>Latin1</title>
+    <link>https://example.com/</link>
+    <item>
+      <title>Café</title>
+      <link>https://example.com/cafe</link>
+      <description>Straße</description>
+      <pubDate>Tue, 03 Jan 2006 15:04:05 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

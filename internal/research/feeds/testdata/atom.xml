@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Atom</title>
+  <link rel="self" href="https://example.com/feed.atom"/>
+  <link rel="alternate" href="https://example.com/"/>
+  <entry>
+    <title>Multi link</title>
+    <link rel="related" href="https://example.com/related"/>
+    <link rel="alternate" href="/posts/multi"/>
+    <link href="https://example.com/other"/>
+    <updated>2006-01-02T15:04:05Z</updated>
+    <summary>Atom summary text</summary>
+  </entry>
+  <entry>
+    <title>With content</title>
+    <link href="https://example.com/posts/content"/>
+    <published>2006-01-03T10:00:00Z</published>
+    <content type="html">The &lt;em&gt;body&lt;/em&gt;</content>
+  </entry>
+</feed>
