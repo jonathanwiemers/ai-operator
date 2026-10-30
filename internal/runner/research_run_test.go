@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/research/feeds"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/research/storetest"
 )
@@ -255,5 +256,53 @@ func TestResearchRunNotRecorded(t *testing.T) {
 	e.rr.OpenStore = func(context.Context) (*store.Store, error) { return nil, errors.New("down") }
 	if err := e.rr.Run(t.Context()); err == nil || !strings.Contains(err.Error(), "forbidden") {
 		t.Fatalf("Run = %v, want an error when nothing could be recorded", err)
+	}
+}
+
+type fakeFeeds struct {
+	results []feeds.Result
+	urls    []string
+}
+
+func (f *fakeFeeds) FetchAll(_ context.Context, urls []string) []feeds.Result {
+	f.urls = append([]string{}, urls...)
+	return f.results
+}
+
+func TestResearchRunFetchesFeeds(t *testing.T) {
+	agent := &researchAgent{answers: []func(Invocation) (*Result, error){textAnswer(invalidAnswer), textAnswer(invalidAnswer)}}
+	e := newResearchRunEnv(t, true, agent)
+	var res aiv1.AgentResearch
+	if err := e.k8s.Get(t.Context(), types.NamespacedName{Namespace: "agents", Name: "news"}, &res); err != nil {
+		t.Fatal(err)
+	}
+	res.Spec.Sources = []aiv1.ResearchSource{
+		{Name: "k8s", URL: "https://kubernetes.io/feed.xml", Topic: "Kubernetes"},
+		{Name: "go", URL: "https://go.dev/blog/feed.atom"},
+	}
+	if err := e.k8s.Update(t.Context(), &res); err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeFeeds{results: []feeds.Result{
+		{Entries: []feeds.Entry{{Title: "Release", URL: "https://kubernetes.io/blog/x",
+			Published: researchNow.Add(-time.Hour), Summary: "notes"}}},
+		{Err: errors.New("HTTP 503")},
+	}}
+	e.rr.Feeds = fake
+	run := e.run(t)
+	if len(fake.urls) != 2 || fake.urls[0] != "https://kubernetes.io/feed.xml" {
+		t.Fatalf("fetched %v", fake.urls)
+	}
+	prompt := agent.calls[0].Prompt
+	if !strings.Contains(prompt, "## Feed entries") || !strings.Contains(prompt, "### k8s (topic: Kubernetes)") ||
+		!strings.Contains(prompt, "https://kubernetes.io/blog/x") || !strings.Contains(prompt, "Not available this run: go (HTTP 503)") {
+		t.Fatalf("feeds must reach the prompt:\n%s", prompt)
+	}
+	if run.Outcome != aiv1.ResearchOutcomeDegraded || !strings.HasPrefix(run.Message, "invalid answer: ") {
+		t.Errorf("degraded message must stay the validation error: %+v", run)
+	}
+	warnings := storetest.Warnings(t, e.runID)
+	if len(warnings) < 2 || warnings[0] != `feed "go": HTTP 503` || !strings.HasPrefix(warnings[len(warnings)-1], "invalid answer:") {
+		t.Errorf("warnings = %q, want feed warning first and validation last", warnings)
 	}
 }

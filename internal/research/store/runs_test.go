@@ -163,6 +163,16 @@ func TestPreviousItemURLs(t *testing.T) {
 	if !slices.Equal(urls, []string{"https://example.com/latest", "https://example.com/latest/2"}) {
 		t.Errorf("PreviousItemURLs = %q, want the first two of agents/news' latest result", urls)
 	}
+	gotURLs, started, err := s.PreviousResult(ctx, "agents", "news", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(gotURLs, urls) || !started.Equal(day1.Add(24*time.Hour)) {
+		t.Errorf("PreviousResult = %q at %v, want %q at %v", gotURLs, started, urls, day1.Add(24*time.Hour))
+	}
+	if u, at, err := s.PreviousResult(ctx, "agents", "none", 10); err != nil || u != nil || !at.IsZero() {
+		t.Errorf("PreviousResult without results: %q %v %v", u, at, err)
+	}
 }
 
 func TestFinishRunOrInsert(t *testing.T) {

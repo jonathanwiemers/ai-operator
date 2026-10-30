@@ -47,7 +47,7 @@ schedule, last and next run, and the model of the last run.
 | `spec.projectRef` | required | the `AgentProject` in the same namespace whose agent image, credentials, engines and usage the runs use |
 | `spec.prompt` | required | the instructions, 1 to 16384 characters |
 | `spec.topics` | | up to 20 topics (at most 100 characters each) the results are grouped by, e.g. the sections of a news flash |
-| `spec.sources` | | up to 20 feeds (RSS 2.0 or Atom 1.0) the runner reads before each run: `url` (https), optional `name` and `topic` (the topic the feed's entries belong to). Accepted, read by the runner in a later release |
+| `spec.sources` | | up to 20 feeds (RSS 2.0 or Atom 1.0) the runner reads before each run: `url` (https), optional `name` and `topic` (the topic the feed's entries belong to). See [Feed sources](#feed-sources) |
 | `spec.view` | `report` | `newsflash`: the newest run's items grouped by topic, new items marked; `report`: the blocks as a document |
 | `spec.depth` | `quick` | `quick`: a run may take 20 minutes; `deep`: 2 hours. It also selects the candidates of the agent choice |
 | `spec.schedule` | | standard cron expression (5 fields, or `@daily` and the like); without one the research runs once |
@@ -172,6 +172,41 @@ run on Sonnet (an alias the project defines, or the full model name) and
 never on another agent; the [guard](#choosing-agents) still applies, so the
 run waits or is skipped while Sonnet's engine is busy.
 
+## Feed sources
+
+When `spec.sources` lists feeds, the runner (`internal/research/feeds`,
+`internal/runner/research_feeds.go`) fetches them before it asks the agent
+and puts the recent entries into the prompt as data. The agent groups,
+weighs and summarises them, and may still search and fetch for details. A
+failing feed is a warning on the run (and a "not available this run" line in
+the prompt), never a failed run.
+
+**Window.** Entries published since the previous run's start are kept, at
+most 48 h back; without a previous run the window is 24 h. Entries without a
+date are kept. URLs already in the previous result are dropped
+(`blocks.URLHash`). A feed with nothing left is shown to the agent as having
+no new entries.
+
+**Caps.** At most 30 entries per feed and 200 in all (newest first). Titles
+are cut to 200 characters, summaries to 400.
+
+**Fetch.** https only; the dialer refuses loopback, private, link-local,
+CGNAT, `0.0.0.0/8`, unspecified and multicast addresses (checked on the connected IP, so
+DNS rebinding and redirects are covered). Per feed: 15 s timeout, body
+capped at 4 MiB. At most 4 feeds in parallel, and all of them within the
+first minute of the run. User agent:
+`ai-operator-research/1 (+https://gitlab.com/jo.wiemers/ai-operator)`.
+
+Example for a German politics flash:
+
+```yaml
+sources:
+  - {name: tagesschau Inland, url: https://www.tagesschau.de/inland/index~rss2.xml}
+  - {name: Deutschlandfunk Politikportal, url: https://www.deutschlandfunk.de/politikportal-100.rss}
+  - {name: Bundestag Aktuelle Themen, url: https://www.bundestag.de/static/appdata/includes/rss/aktuellethemen.rss, topic: Bundestag}
+  - {name: Bundesregierung, url: https://www.bundesregierung.de/service/rss/breg-de/1151244/feed.xml, topic: Bundesregierung}
+```
+
 ## Choosing agents
 
 The operator chooses the agent of each run when the run is due, before it
@@ -281,12 +316,14 @@ its current run.
 ## The agent's answer
 
 The runner (`internal/runner/research.go`) asks the agent with the request,
-the topics, the view, the current date, and, for a news flash, the previous
-flash's item URLs. Its system prompt holds the block schema and tells the agent
-to treat web pages as data and ignore any instructions found on them. On
-claude the agent may use only WebSearch and WebFetch. Bash, Edit, Write and
-NotebookEdit are disallowed, and the schema is also passed as the structured
-output schema. Cursor gets the schema in the prompt and runs read-only.
+any [feed entries](#feed-sources) it just fetched, the topics, the view, the
+current date, and, for a news flash, the previous flash's item URLs. Its
+system prompt holds the block schema, tells the agent to use the feed
+entries first, then web search and fetch, and to treat web pages as data and
+ignore any instructions found on them. On claude the agent may use only
+WebSearch and WebFetch. Bash, Edit, Write and NotebookEdit are disallowed,
+and the schema is also passed as the structured output schema. Cursor gets
+the schema in the prompt and runs read-only.
 
 The answer is validated against the block schema. If it fails, the agent gets
 one repair round with the validation errors. It continues its session if it
@@ -308,9 +345,11 @@ migrate (the writer cannot):
 2. It connects to the database and records the run as `running`, with the
    agent from `status.run`, the reason for that choice, and an expiry of the
    start time plus `retention`.
-3. It waits for the agent container, reads the previous result's item URLs
-   (news flash only) and asks the agent (see above). The run's deadline is
-   the depth's timeout; recording the outcome gets another minute.
+3. It waits for the agent container, reads the previous result (item URLs
+   and start time), fetches `spec.sources` when set, and asks the agent
+   (see above). Previous URLs go into the prompt for a news flash only. The
+   run's deadline is the depth's timeout; recording the outcome gets another
+   minute.
 4. It records the outcome in the database, and then in `status.run`:
    `outcome`, `message`, `costUSD`, the engine's newest usage reading
    (`engineUsage`) and any usage limit (`usageLimits`). The operator then

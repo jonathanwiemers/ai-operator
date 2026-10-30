@@ -14,6 +14,9 @@ spec:
     Collect the most important news of the last 24 hours on the topics below.
     Prefer primary sources; one item per story, with its link.
   topics: [Kubernetes, Go, AI agents]
+  sources:
+    - {name: Kubernetes Blog, url: https://kubernetes.io/feed.xml, topic: Kubernetes}
+    - {name: Go Blog, url: https://go.dev/blog/feed.atom, topic: Go}
   view: newsflash
   depth: quick              # 20 minutes per run; deep allows 2 hours
   schedule: "0 7 * * *"

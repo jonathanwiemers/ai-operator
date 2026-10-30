@@ -13,6 +13,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/research/blocks"
+	"github.com/jonathanwiemers/ai-operator/internal/research/feeds"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -24,7 +25,14 @@ const (
 	// deadline; the pod lives two minutes longer than the run.
 	researchReportTimeout = time.Minute
 	maxResearchMessage    = 1 << 10
+	researchFeedUA        = "ai-operator-research/1 (+https://gitlab.com/jo.wiemers/ai-operator)"
+	researchFeedTimeout   = time.Minute
 )
+
+// feedFetcher fetches research feeds; tests inject a fake.
+type feedFetcher interface {
+	FetchAll(context.Context, []string) []feeds.Result
+}
 
 // researchReadyInterval is how often the runner checks whether the agent
 // container is up.
@@ -41,8 +49,10 @@ type ResearchRun struct {
 	Agent           Agent
 	// OpenStore connects to the research database as the project's writer.
 	OpenStore func(context.Context) (*store.Store, error)
-	Log       logr.Logger
-	now       func() time.Time
+	// Feeds fetches the research's sources; nil uses feeds.NewClient.
+	Feeds feedFetcher
+	Log   logr.Logger
+	now   func() time.Time
 }
 
 // Run carries out the run. Outcomes, failures included, go into the store
@@ -144,17 +154,33 @@ func (rr *ResearchRun) research(ctx context.Context, db *store.Store, res *aiv1.
 	}
 	req := ResearchRequest{Prompt: res.Spec.Prompt, Topics: res.Spec.Topics, View: res.Spec.View, Depth: res.Spec.Depth,
 		Engine: run.Engine, Model: run.Model, Effort: run.Effort, Now: rr.clock()}
+	prevURLs, prevStart, err := db.PreviousResult(ctx, res.Namespace, res.Name, blocks.MaxItems)
+	if err != nil {
+		return ResearchAnswer{}, fmt.Errorf("reading the previous run's items: %w", err)
+	}
 	if req.View == aiv1.ResearchViewNewsflash {
-		urls, err := db.PreviousItemURLs(ctx, res.Namespace, res.Name, blocks.MaxItems)
-		if err != nil {
-			return ResearchAnswer{}, fmt.Errorf("reading the previous run's items: %w", err)
+		req.PreviousURLs = prevURLs
+	}
+	var feedWarnings []string
+	if srcs := res.Spec.Sources; len(srcs) > 0 {
+		urls := make([]string, len(srcs))
+		for i, s := range srcs {
+			urls[i] = s.URL
 		}
-		req.PreviousURLs = urls
+		fetcher := rr.Feeds
+		if fetcher == nil {
+			fetcher = feeds.NewClient(researchFeedUA)
+		}
+		fctx, cancel := context.WithTimeout(ctx, researchFeedTimeout)
+		results := fetcher.FetchAll(fctx, urls)
+		cancel()
+		req.Feeds, feedWarnings = selectFeedEntries(srcs, results, prevURLs, prevStart, rr.clock())
 	}
 	ans, err := RunResearch(logr.NewContext(ctx, rr.Log), rr.Agent, req)
 	if err != nil {
 		return ans, err
 	}
+	ans.Warnings = append(feedWarnings, ans.Warnings...)
 	if err := db.SaveResult(ctx, run.ID, ans.Result, rr.clock()); err != nil {
 		return ans, fmt.Errorf("saving the result: %w", err)
 	}

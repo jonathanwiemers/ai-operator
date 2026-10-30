@@ -202,3 +202,20 @@ func RunStatus(t testing.TB, id string) (status, errMsg string, ok bool) {
 	}
 	return status, errMsg, true
 }
+
+// Warnings returns the warnings of run id in the schema of New.
+func Warnings(t testing.TB, id string) []string {
+	t.Helper()
+	mu.Lock()
+	db, found := dbs[t]
+	mu.Unlock()
+	if !found {
+		t.Fatal("storetest.Warnings needs storetest.New first")
+	}
+	var w []string
+	if err := db.admin.QueryRow(t.Context(), "SELECT warnings FROM "+pgx.Identifier{db.schema, "research_runs"}.Sanitize()+
+		" WHERE id = $1", id).Scan(&w); err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
