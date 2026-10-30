@@ -52,12 +52,12 @@ watch(
           <img src="/logo.svg" alt="" width="26" height="26" />
           <span>ai-operator</span>
         </RouterLink>
-        <nav v-if="tabs.length" class="sections">
+        <nav v-if="tabs.length" class="tabs">
           <RouterLink
             v-for="t in tabs"
             :key="t.name"
             :to="t.to"
-            class="section"
+            class="tab"
             :class="{ active: t.name === activeSection }"
             :aria-current="t.name === activeSection ? 'page' : undefined"
           >
@@ -126,29 +126,74 @@ watch(
   flex: 1;
 }
 
-.sections {
+/* Full-height tabs: the active one is underlined in the accent, the line
+   sitting on the bar's bottom border. A thin divider separates them from the
+   brand. */
+.tabs {
+  align-self: stretch;
   display: flex;
+  align-items: stretch;
   gap: 4px;
-  margin-left: 8px;
+  padding-left: 16px;
+  position: relative;
 }
 
-.section {
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
+.tabs::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 20px;
+  margin-top: -10px;
+  width: 1px;
+  background: var(--border);
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
   font-size: 14px;
   font-weight: 600;
   color: var(--text-2);
+  transition: color 0.15s;
 }
 
-.section:hover {
+.tab::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.tab:hover {
   text-decoration: none;
   color: var(--text);
-  background: var(--surface-2);
 }
 
-.section.active {
+@media (hover: hover) {
+  .tab:hover::after {
+    background: var(--border-strong);
+  }
+}
+
+.tab.active {
   color: var(--text);
-  background: var(--surface-2);
+}
+
+.tab.active::after {
+  background: var(--accent);
+}
+
+.tab:focus-visible {
+  outline-offset: -6px;
+  border-radius: var(--radius-sm);
 }
 
 .live {
@@ -194,9 +239,28 @@ watch(
 @media (max-width: 640px) {
   .inner {
     padding: 0 16px;
+    gap: 12px;
   }
   .name {
     display: none;
+  }
+  /* With the tabs the bar gets tight: logo only, and the live dot without its label. */
+  .brand span {
+    display: none;
+  }
+  .tabs {
+    padding-left: 12px;
+    gap: 0;
+  }
+  .tab {
+    padding: 0 8px;
+  }
+  .tab::after {
+    left: 4px;
+    right: 4px;
+  }
+  .live {
+    font-size: 0;
   }
 }
 </style>
