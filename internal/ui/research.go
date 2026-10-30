@@ -54,12 +54,13 @@ type ResearchSummary struct {
 }
 
 // ResearchDetail is a research as its pages show it: the summary with the
-// prompt, the topics and the fixed agent (nil for auto).
+// prompt, the topics, the feed sources and the fixed agent (nil for auto).
 type ResearchDetail struct {
 	ResearchSummary
-	Prompt string              `json:"prompt"`
-	Topics []string            `json:"topics,omitempty"`
-	Agent  *aiv1.ResearchAgent `json:"agent,omitempty"`
+	Prompt  string                `json:"prompt"`
+	Topics  []string              `json:"topics,omitempty"`
+	Sources []aiv1.ResearchSource `json:"sources,omitempty"`
+	Agent   *aiv1.ResearchAgent   `json:"agent,omitempty"`
 }
 
 // ResearchRun is a stored run.
@@ -128,7 +129,7 @@ func summarizeResearch(ar *aiv1.AgentResearch, canDelete bool) ResearchSummary {
 }
 
 func (s *Server) detailOf(r *http.Request, ar *aiv1.AgentResearch) ResearchDetail {
-	return ResearchDetail{ResearchSummary: summarizeResearch(ar, s.canDelete(principalOf(r), ar)), Prompt: ar.Spec.Prompt, Topics: ar.Spec.Topics, Agent: ar.Spec.Agent}
+	return ResearchDetail{ResearchSummary: summarizeResearch(ar, s.canDelete(principalOf(r), ar)), Prompt: ar.Spec.Prompt, Topics: ar.Spec.Topics, Sources: ar.Spec.Sources, Agent: ar.Spec.Agent}
 }
 
 func runView(r store.Run) ResearchRun {

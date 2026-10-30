@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { del } from '../api'
 import { useNow, useResource } from '../live'
-import { clockTime, duration } from '../format'
+import { clockTime, duration, safeURL } from '../format'
 import Badge from '../components/Badge.vue'
 import RelTime from '../components/RelTime.vue'
 import ResearchResult from '../components/ResearchResult.vue'
@@ -24,6 +24,13 @@ const agent = computed(() => {
   return `${a.engine}/${a.model}${a.effort ? ` (${a.effort})` : ''}`
 })
 const showPrompt = ref(false)
+
+const feedHost = (u: string) => {
+  const s = safeURL(u)
+  return s ? new URL(s).host : u
+}
+
+const feedLabel = (s: { url: string; name?: string }) => s.name || feedHost(s.url)
 
 // pending is the run the page follows live: a one-off that has not started
 // yet, waits for a usage reset, or any run in progress. The research events
@@ -105,6 +112,20 @@ async function remove() {
           >
             Run history
           </RouterLink>
+        </div>
+        <div v-if="r.sources?.length" class="feeds muted">
+          Feeds:
+          <template v-for="(s, i) in r.sources" :key="s.url">
+            <template v-if="i"> · </template>
+            <a
+              v-if="safeURL(s.url)"
+              :href="safeURL(s.url)"
+              target="_blank"
+              rel="noopener noreferrer"
+              :title="s.topic || undefined"
+            >{{ feedLabel(s) }}</a>
+            <span v-else :title="s.topic || undefined">{{ feedLabel(s) }}</span>
+          </template>
         </div>
         <div v-if="deleteError" class="banner danger">{{ deleteError }}</div>
         <div v-if="!pending && (r.waiting || r.skippedReason)" class="waiting">
@@ -194,6 +215,10 @@ async function remove() {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 18px;
+  font-size: 13px;
+}
+
+.feeds {
   font-size: 13px;
 }
 

@@ -45,8 +45,9 @@ func researchEnv(t *testing.T, cfg *Config, st *store.Store) *testEnv {
 	for _, ar := range []*aiv1.AgentResearch{
 		{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "news"},
-			Spec: aiv1.AgentResearchSpec{ProjectRef: "shop", Prompt: "News", Topics: []string{"tech", "world"}, View: aiv1.ResearchViewNewsflash,
-				Depth: aiv1.ResearchDepthQuick, Schedule: "0 7 * * *", TimeZone: "Europe/Berlin"},
+			Spec: aiv1.AgentResearchSpec{ProjectRef: "shop", Prompt: "News", Topics: []string{"tech", "world"},
+				Sources: []aiv1.ResearchSource{{URL: "https://www.tagesschau.de/index~rss2.xml", Name: "tagesschau", Topic: "Germany"}},
+				View:    aiv1.ResearchViewNewsflash, Depth: aiv1.ResearchDepthQuick, Schedule: "0 7 * * *", TimeZone: "Europe/Berlin"},
 			Status: aiv1.AgentResearchStatus{Phase: aiv1.ResearchPhaseScheduled, LastRun: &started, LastModel: "claude-sonnet-5-5",
 				LastEngine: aiv1.EngineClaude, Run: &aiv1.ResearchRunStatus{ID: "r1", StartedAt: &started, Engine: aiv1.EngineClaude,
 					Model: "claude-sonnet-5-5", Reason: "chosen: claude/claude-sonnet-5-5", Outcome: aiv1.ResearchOutcomeSucceeded,
@@ -333,6 +334,8 @@ func TestResearchResults(t *testing.T) {
 		t.Fatalf("status %d, result %v", code, detail.Result)
 	}
 	if detail.Research.Prompt != "News" || !slices.Equal(detail.Research.Topics, []string{"tech", "world"}) ||
+		len(detail.Research.Sources) != 1 || detail.Research.Sources[0].URL != "https://www.tagesschau.de/index~rss2.xml" ||
+		detail.Research.Sources[0].Name != "tagesschau" || detail.Research.Sources[0].Topic != "Germany" ||
 		detail.Research.Agent != nil || detail.Run == nil || detail.Run.ID != run2.ID || detail.Run.CostUSD != "0.125" {
 		t.Errorf("detail research %+v, run %+v", detail.Research, detail.Run)
 	}

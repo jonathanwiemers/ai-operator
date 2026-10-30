@@ -40,7 +40,8 @@ the skip reason. The page updates live on research events.
 A research's page (`/research/<namespace>/<name>`) has a header with the
 prompt (the first lines, *Show the whole prompt* for the rest), the schedule
 or *one-off*, the agent (`auto` or the fixed `engine/model`), the last and
-next run, the waiting line and the error of a failed last run. Below it is
+next run, a *Feeds* line of the configured source links when `spec.sources`
+is set, the waiting line and the error of a failed last run. Below it is
 the latest result, with its title, run line (linked to the run's page) and
 summary:
 

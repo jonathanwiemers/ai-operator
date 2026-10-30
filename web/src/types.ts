@@ -387,6 +387,7 @@ export interface ResearchSummary {
 export interface ResearchDetail extends ResearchSummary {
   prompt: string
   topics?: string[]
+  sources?: { url: string; name?: string; topic?: string }[]
   agent?: { engine: string; model: string; effort?: string }
 }
 
