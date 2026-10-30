@@ -79,7 +79,9 @@ pushes to `main` (same paths) after every check job passed, or on a manual
 pipeline on `main` (*Build → Pipelines → Run pipeline*, or
 `glab ci run --branch main`). It runs in the
 resource group `release`, so releases never run in parallel, and is not
-interruptible. It:
+interruptible. When quick merges make the release jobs run out of order, a
+job whose commit is already in a newer release does nothing, so a higher
+version never holds older code. It:
 
 1. computes the version from the GitLab tags (`hack/next-version.sh`)
 2. builds and pushes the images (amd64 only; the cluster has no arm64 agents)

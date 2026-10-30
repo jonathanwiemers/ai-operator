@@ -151,6 +151,15 @@ release:
         - go.sum
   script:
     - git fetch --tags --force --quiet origin
+    # Release jobs of quick successive merges can run out of order: when a
+    # newer release already contains this commit, releasing it again would
+    # publish older code under a higher version.
+    - |
+      released="$(git tag --contains "${CI_COMMIT_SHA}" --list '20*.*.*' | head -n1)"
+      if [ -n "${released}" ]; then
+        echo "${CI_COMMIT_SHA} is already in release ${released}; nothing to release"
+        exit 0
+      fi
     - VERSION="$(hack/next-version.sh)"
     - echo "Releasing ${VERSION}"
     - |
