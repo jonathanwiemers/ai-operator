@@ -154,7 +154,10 @@ release:
     - VERSION="$(hack/next-version.sh)"
     - echo "Releasing ${VERSION}"
     - |
+      # jo-docker-build creates the docker context tls-env and fails if it
+      # already exists, so the second build needs it removed first.
       build() {
+        docker context rm --force tls-env >/dev/null 2>&1 || true
         jo-docker-build \
           --dockerfile "$1" \
           --image "${CI_REGISTRY_IMAGE}$2" \
