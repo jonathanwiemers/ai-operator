@@ -76,7 +76,8 @@ deploys the operator and agent images built from the same commit.
 
 The `release` job in [`.gitlab-ci.yml`](../.gitlab-ci.yml) runs on the same
 pushes to `main` (same paths) after every check job passed, or on a manual
-pipeline on `main` (*Build → Pipelines → Run pipeline*). It runs in the
+pipeline on `main` (*Build → Pipelines → Run pipeline*, or
+`glab ci run --branch main`). It runs in the
 resource group `release`, so releases never run in parallel, and is not
 interruptible. It:
 

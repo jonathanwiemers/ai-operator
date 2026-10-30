@@ -13,7 +13,7 @@ workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/ && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 stages: [check, release]
 
@@ -122,7 +122,8 @@ helm-lint:
 #             registry.gitlab.com/jo.wiemers/ai-operator/agent:<version>
 #   - chart   oci://registry.gitlab.com/jo.wiemers/ai-operator/charts/ai-operator --version <version>
 #   - git tag <version> and a GitLab release
-# A manual pipeline on main (Build > Pipelines > Run pipeline) releases too.
+# A manual pipeline on main (Build > Pipelines > Run pipeline, or
+# `glab ci run --branch main`) releases too.
 # The version counts the GitLab tags; GitHub's release.yml counts its own.
 release:
   extends: .docker-build
@@ -135,7 +136,7 @@ release:
     CI_TOOLS_IMAGE: registry.gitlab.com/jo.wiemers/devops/ci:v0.2.55
     GIT_DEPTH: "0"
   rules:
-    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/ && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       changes:
         - api/**/*
