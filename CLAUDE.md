@@ -4,8 +4,9 @@
 
 - Merge requests are opened on GitLab
   (`https://gitlab.com/jo.wiemers/ai-operator`). The GitLab pipeline
-  (`.gitlab-ci.yml`) must be green before merge. GitHub mirrors `main` and
-  builds the releases; see `docs/releasing.md`.
+  (`.gitlab-ci.yml`) must be green before merge. GitHub mirrors `main`.
+  Both GitLab (`release` job, registry.gitlab.com, what the cluster runs) and
+  GitHub (`release.yml`, ghcr.io) build releases; see `docs/releasing.md`.
 - Go 1.26. After changing types or kubebuilder markers in `api/` or
   `internal/controller/`, run `make generate manifests`. CI fails if the
   generated files (deepcopy, CRDs, RBAC, the chart's `files/`) are out of date.

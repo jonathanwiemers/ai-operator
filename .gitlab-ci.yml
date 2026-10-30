@@ -1,12 +1,21 @@
-# The checks of .github/workflows/ci.yml, one job per check. Releases stay on
-# GitHub (release.yml): no job here pushes images, charts or tags.
+# The checks of .github/workflows/ci.yml, one job per check, and the release
+# job, the GitLab counterpart of .github/workflows/release.yml: it publishes
+# the images and the chart to registry.gitlab.com and creates the tag and the
+# GitLab release (docs/releasing.md).
 
+include:
+  - project: jo.wiemers/devops/ci
+    ref: v0.2.55
+    file: ci-templates/build.yml
+
+# Tag pipelines stay excluded: the release job creates the tag.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-stages: [check]
+stages: [check, release]
 
 default:
   tags: [shared]
@@ -84,8 +93,6 @@ version:
   variables:
     GIT_DEPTH: "0"
   script:
-    # GitLab has no release tags (they are created on GitHub): this only
-    # proves the script runs.
     - hack/next-version.sh
 
 ui:
@@ -108,3 +115,81 @@ helm-lint:
   script:
     - apk add --no-cache make
     - make helm-lint
+
+# Every change to main that touches the operator, the agent image or the chart
+# is released with a calendar version YEAR.MONTH.N, after all checks passed:
+#   - images  registry.gitlab.com/jo.wiemers/ai-operator:<version>,
+#             registry.gitlab.com/jo.wiemers/ai-operator/agent:<version>
+#   - chart   oci://registry.gitlab.com/jo.wiemers/ai-operator/charts/ai-operator --version <version>
+#   - git tag <version> and a GitLab release
+# A manual pipeline on main (Build > Pipelines > Run pipeline) releases too.
+# The version counts the GitLab tags; GitHub's release.yml counts its own.
+release:
+  extends: .docker-build
+  stage: release
+  # Releases run one at a time so two merges never get the same version, and
+  # a newer pipeline never cancels one halfway.
+  resource_group: release
+  interruptible: false
+  variables:
+    CI_TOOLS_IMAGE: registry.gitlab.com/jo.wiemers/devops/ci:v0.2.55
+    GIT_DEPTH: "0"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - api/**/*
+        - cmd/**/*
+        - internal/**/*
+        - charts/**/*
+        - web/**/*
+        - config/crd/**/*
+        - Dockerfile
+        - Dockerfile.agent
+        - go.mod
+        - go.sum
+  script:
+    - git fetch --tags --force --quiet origin
+    - VERSION="$(hack/next-version.sh)"
+    - echo "Releasing ${VERSION}"
+    - |
+      build() {
+        jo-docker-build \
+          --dockerfile "$1" \
+          --image "${CI_REGISTRY_IMAGE}$2" \
+          --tag "${VERSION}" \
+          --extra-tag latest \
+          --platforms linux/amd64 \
+          --registry "${CI_REGISTRY}" \
+          --registry-password-env CI_JOB_TOKEN \
+          --dependency-proxy-server "${CI_DEPENDENCY_PROXY_SERVER}" \
+          --cache-ref "${CI_REGISTRY_IMAGE}/buildcache:$3"
+      }
+      build Dockerfile "" operator
+      build Dockerfile.agent /agent agent
+    - echo "${CI_JOB_TOKEN}" | helm registry login "${CI_REGISTRY}" --username gitlab-ci-token --password-stdin
+    - helm package charts/ai-operator --version "${VERSION}" --app-version "${VERSION}" -d dist
+    - helm push "dist/ai-operator-${VERSION}.tgz" "oci://${CI_REGISTRY_IMAGE}/charts"
+    # Creating the release creates the tag at this commit.
+    - |
+      cat > notes.md <<NOTES
+      ## Install
+
+      \`\`\`sh
+      helm install ai-operator oci://${CI_REGISTRY_IMAGE}/charts/ai-operator --version ${VERSION} \\
+        --namespace ai-operator-system --create-namespace \\
+        --set image.repository=${CI_REGISTRY_IMAGE} \\
+        --set agent.image.repository=${CI_REGISTRY_IMAGE}/agent \\
+        --set 'agent.namespaces={agents}' --set agent.createNamespaces=true
+      \`\`\`
+
+      Images: \`${CI_REGISTRY_IMAGE}:${VERSION}\`, \`${CI_REGISTRY_IMAGE}/agent:${VERSION}\`
+      NOTES
+    - >
+      curl --fail-with-body --silent --show-error
+      --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+      --data-urlencode "tag_name=${VERSION}"
+      --data-urlencode "ref=${CI_COMMIT_SHA}"
+      --data-urlencode "name=${VERSION}"
+      --data-urlencode "description@notes.md"
+      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases"

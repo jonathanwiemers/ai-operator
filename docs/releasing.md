@@ -1,6 +1,10 @@
 # Releasing
 
-Releases are fully automated by [`.github/workflows/release.yml`](../.github/workflows/release.yml).
+Releases are fully automated, twice: by the `release` job in
+[`.gitlab-ci.yml`](../.gitlab-ci.yml) to `registry.gitlab.com` (what the
+cluster deploys) and by
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) to
+`ghcr.io`.
 
 ## Where the code lives
 
@@ -15,9 +19,10 @@ It does not take MRs. On every push to `main` that changes the operator, the
 agent image, the CRDs or the chart, GitHub Actions
 ([`release.yml`](../.github/workflows/release.yml)) still builds and publishes
 the images and the OCI chart to `ghcr.io`, creates the git tag and the GitHub
-release. Flux keeps pulling from ghcr; that path is unchanged.
+release.
 
-Release tags and GitHub releases exist **only on GitHub**. The mirror must not
+GitHub's release tags and releases are its own (the GitLab pipeline tags
+independently, see [GitLab releases](#gitlab-releases)). The mirror must not
 overwrite them.
 
 The owner sets the mirror up by hand: in GitLab, *Settings → Repository →
@@ -66,6 +71,33 @@ run in parallel, so two merges cannot get the same version.
 
 The chart's default image tags are its `appVersion`, so a chart version always
 deploys the operator and agent images built from the same commit.
+
+## GitLab releases
+
+The `release` job in [`.gitlab-ci.yml`](../.gitlab-ci.yml) runs on the same
+pushes to `main` (same paths) after every check job passed, or on a manual
+pipeline on `main` (*Build → Pipelines → Run pipeline*). It runs in the
+resource group `release`, so releases never run in parallel, and is not
+interruptible. It:
+
+1. computes the version from the GitLab tags (`hack/next-version.sh`)
+2. builds and pushes the images (amd64 only; the cluster has no arm64 agents)
+   * `registry.gitlab.com/jo.wiemers/ai-operator:<version>` and `:latest`
+   * `registry.gitlab.com/jo.wiemers/ai-operator/agent:<version>` and `:latest`
+3. packages the chart and pushes it to
+   `oci://registry.gitlab.com/jo.wiemers/ai-operator/charts/ai-operator`
+4. creates the GitLab release `<version>`, which creates the tag
+
+Everything uses `CI_JOB_TOKEN`; no CI/CD variables are needed. The chart's
+default image repositories stay on ghcr.io, so a GitLab install sets
+`image.repository` and `agent.image.repository` (the release notes show how).
+The cluster pulls with the GitLab deploy token in `image-pull-secret`.
+
+GitLab and GitHub each count their own tags. They normally release the same
+commit with the same version; when one side fails or skips a release, the same
+version can name different commits on the two registries. If the push mirror
+carries a GitLab tag to GitHub that differs there, the mirror keeps GitHub's
+(divergent ref) and marks that update as failed.
 
 ## First release checklist
 
