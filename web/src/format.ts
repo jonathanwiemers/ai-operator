@@ -53,6 +53,16 @@ export function windowLabel(name: string): string {
   return windowLabels[name] ?? name.replaceAll('_', ' ')
 }
 
+// fullTime is the local date and time with the time zone ("2 Nov 2026,
+// 14:59 CET"), for the tooltip of a clockTime.
+export function fullTime(iso: string | undefined | null): string {
+  if (!iso) return ''
+  const t = new Date(iso)
+  return Number.isNaN(t.getTime())
+    ? ''
+    : t.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZoneName: 'short' } as Intl.DateTimeFormatOptions)
+}
+
 // clockTime is a local time of day ("14:00"), with the weekday when it is
 // not today ("Mon 09:00") and the date when it is not within a week
 // ("13 Nov").

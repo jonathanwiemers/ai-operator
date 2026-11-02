@@ -36,7 +36,30 @@ const cases = [
   ['no nested links', '[a [b](https://b.example)](https://a.example)', '<p><a href="https://a.example/" rel="noopener noreferrer nofollow">a [b](https://b.example)</a></p>'],
   ['raw HTML is text', '<script>alert(1)</script>\n<img src=x onerror=alert(1)>', '<p>&lt;script&gt;alert(1)&lt;/script&gt;\n&lt;img src=x onerror=alert(1)&gt;</p>'],
   ['images are text', '![x](https://a.example/i.png)', '<p>!<a href="https://a.example/i.png" rel="noopener noreferrer nofollow">x</a></p>'],
-  ['tables are text', '| a | b |\n|---|---|', '<p>| a | b |\n|---|---|</p>'],
+  ['table with alignment, inline content and escaped pipe', '| # | Step | Result |\n|--:|:-:|---|\n| 1 | `a\\|b` | **ok** \\| x |\n| 2 | b |\n\nafter',
+    '<div class="table"><table><thead><tr><th style="text-align:right;">#</th><th style="text-align:center;">Step</th><th>Result</th></tr></thead><tbody>' +
+    '<tr><td style="text-align:right;">1</td><td style="text-align:center;"><code>a|b</code></td><td><strong>ok</strong> | x</td></tr>' +
+    '<tr><td style="text-align:right;">2</td><td style="text-align:center;">b</td><td></td></tr></tbody></table></div><p>after</p>'],
+  ['table without pipes around', 'a | b\n--- | ---', '<div class="table"><table><thead><tr><th>a</th><th>b</th></tr></thead></table></div>'],
+  ['delimiter with another cell count is text', '| a | b |\n|---|', '<p>| a | b |\n|---|</p>'],
+  ['HTML comments are dropped', '<!-- marker --> text <!-- x -->here\n\n<!-- alone -->', '<p> text here</p>'],
+  ['unclosed comment is text', '<!-- open', '<p>&lt;!-- open</p>'],
+  ['details with summary', '<details open><summary>Run <code>r</code></summary>\n\n- a\n\n</details>\nafter',
+    '<details open><summary>Run <code>r</code></summary><ul><li><p>a</p></li></ul></details><p>after</p>'],
+  ['nested details, text after the close', '<details><summary>o</summary>\n<details>\nx\n</details>\ny</details> z',
+    '<details><summary>o</summary><details><p>x</p></details><p>y</p></details><p>z</p>'],
+  ['details without a close run to the end', '<details>\na', '<details><p>a</p></details>'],
+  ['inline tags without attributes', '<b>b</b> <i>i</i> <s>s</s> <kbd>*k*</kbd> H<sub>2</sub>O<sup>+</sup> a<br>b <BR/>c',
+    '<p><strong>b</strong> <em>i</em> <del>s</del> <kbd>*k*</kbd> H<sub>2</sub>O<sup>+</sup> a<br>b <br>c</p>'],
+  ['tags with attributes and other tags are text', '<code onclick="x">c</code> <a href="https://a.example">a</a> <span>s</span> <b>open',
+    '<p>&lt;code onclick=&quot;x&quot;&gt;c&lt;/code&gt; &lt;a href=&quot;https://a.example&quot;&gt;a&lt;/a&gt; &lt;span&gt;s&lt;/span&gt; &lt;b&gt;open</p>'],
+  ['entities', 'Hold&#39;em &amp; &lt;b&gt; &#x1F600; &#0; &mdash; &bogus; \\&amp; `&amp;`',
+    '<p>Hold&#39;em &amp; &lt;b&gt; 😀 � — &amp;bogus; &amp;amp; <code>&amp;amp;</code></p>'],
+  ['strikethrough', '~~gone~~ ~one~ ~~ spaced ~~', '<p><del>gone</del> ~one~ ~~ spaced ~~</p>'],
+  ['rules', 'a\n---\n* * *\n- a\n- - -\n___', '<p>a</p><hr><hr><ul><li><p>a</p></li></ul><hr><hr>'],
+  ['task list', '- [ ] todo\n- [x] done\n- [y] no', '<ul><li class="task"><input type="checkbox" disabled><p>todo</p></li>' +
+    '<li class="task"><input type="checkbox" disabled checked><p>done</p></li><li><p>[y] no</p></li></ul>'],
+  ['MR description footer', 'text\n\n<sub>Written by the agent.</sub>', '<p>text</p><p><sub>Written by the agent.</sub></p>'],
 ]
 
 for (const [name, src, want] of cases) {
@@ -52,5 +75,8 @@ test('64 KiB of hostile brackets and delimiters renders quickly', async () => {
   const start = Date.now()
   await md('[*_`'.repeat(16 * 1024))
   await md('- \n\n'.repeat(16 * 1024))
+  await md('<b><!--~~&#'.repeat(16 * 1024))
+  await md('<details>\n| a |\n'.repeat(8 * 1024))
+  await md('| a | b |\n|---|---|\n' + '| x |\n'.repeat(16 * 1024))
   assert.ok(Date.now() - start < 5000, `took ${Date.now() - start} ms`)
 })

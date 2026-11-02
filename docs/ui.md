@@ -146,8 +146,12 @@ for importance 3 and *minor* for 1, *new*); tables; stats (a delta starting
 with `+` is green, with `-` red); and links. Types the UI does not know are
 skipped. Agent output is text: markdown is rendered by the UI's own subset
 renderer (`web/src/markdown.ts`) straight into page elements, with no HTML
-in between. It knows paragraphs, headings, lists, blockquotes, emphasis,
-code and links. Everything else, raw HTML included, shows as typed. Links
+in between. It knows paragraphs, headings, lists and task lists,
+blockquotes, tables, rules, `<details>`/`<summary>`, emphasis,
+strikethrough, code, entities, the attribute-free inline tags `code`, `kbd`,
+`sub`, `sup`, `b`, `strong`, `i`, `em`, `s`, `del` and `br`, and links; HTML
+comments are dropped. Everything else, other raw HTML and any tag with
+attributes included, shows as typed. Links
 only go to `http(s)` URLs, open in a new tab with `rel="noopener noreferrer
 nofollow"`, and other links show as their text. Images are never loaded.
 

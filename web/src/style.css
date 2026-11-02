@@ -302,3 +302,69 @@ table.list tr:last-child td {
   text-align: center;
   color: var(--text-3);
 }
+
+/* Markdown elements beyond the basics, shared by MarkdownBody and
+   MarkdownBlock (markdown.ts). */
+.md .table {
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.md table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.md th,
+.md td {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+}
+
+.md th {
+  font-weight: 600;
+  background: var(--surface-2);
+}
+
+.md details {
+  margin: 8px 0;
+}
+
+.md summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+
+.md details[open] > summary {
+  margin-bottom: 6px;
+}
+
+.md hr {
+  margin: 10px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.md kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.md li.task {
+  list-style: none;
+}
+
+.md li.task > input {
+  margin: 0 6px 0 -18px;
+  vertical-align: middle;
+}
+
+.md li.task > input + p {
+  display: inline;
+}

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ApiError, post } from '../../api'
-import { ciLabel, ciTone, clockTime, cost, duration, shortSHA, type Tone } from '../../format'
+import { ciLabel, ciTone, clockTime, cost, fullTime, duration, shortSHA, type Tone } from '../../format'
 import { useNow } from '../../live'
 import type { CIState, ProjectDetail, StreamEvent } from '../../types'
 import Badge from '../Badge.vue'
@@ -91,7 +91,7 @@ function taskLink(ev: StreamEvent) {
         <b>{{ e.summary || e.kind }}</b>
         <span v-if="e.issueIID" class="ctx">#{{ e.issueIID }}</span>
         <span v-else-if="e.mergeRequestIID" class="ctx">!{{ e.mergeRequestIID }}</span>
-        <span>{{ clockTime(e.at, now) }}</span>
+        <time :datetime="e.at" :title="fullTime(e.at)">{{ clockTime(e.at, now) }}</time>
         <Badge v-if="e.kind === 'run.started' && taskRunning" tone="progress" dot pulse>live</Badge>
       </div>
 

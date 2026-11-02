@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { session } from '../../api'
-import { clockTime } from '../../format'
+import { clockTime, fullTime } from '../../format'
 import { useNow } from '../../live'
 import type { StreamEvent } from '../../types'
 import ExtLink from '../ExtLink.vue'
@@ -38,7 +38,7 @@ function ctx(e: StreamEvent) {
       <div class="meta">
         <b>{{ isPilot(newest) ? 'Pilot' : isMe(newest) ? 'you' : newest.actor ? `@${newest.actor}` : 'Comment' }}</b>
         <span v-if="ctx(newest)" class="ctx">{{ ctx(newest) }}</span>
-        <span>{{ clockTime(newest.at, now) }}</span>
+        <time :datetime="newest.at" :title="fullTime(newest.at)">{{ clockTime(newest.at, now) }}</time>
       </div>
       <button v-if="hidden > 0 && !expanded" type="button" class="thread-toggle" @click="expanded = true">
         {{ hidden }} earlier
@@ -46,7 +46,7 @@ function ctx(e: StreamEvent) {
       <div v-for="n in visible" :key="n.id" class="bubble" :class="{ me: isMe(n), pilot: isPilot(n) }">
         <div v-if="visible.length > 1" class="meta tight">
           <b>{{ isPilot(n) ? 'Pilot' : isMe(n) ? 'you' : n.actor ? `@${n.actor}` : 'Comment' }}</b>
-          <span>{{ clockTime(n.at, now) }}</span>
+          <time :datetime="n.at" :title="fullTime(n.at)">{{ clockTime(n.at, now) }}</time>
         </div>
         <template v-if="n.redacted">
           <p class="redacted">
