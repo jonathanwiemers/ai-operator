@@ -509,6 +509,29 @@ nothing is lost.
 * Spend is visible per task: `kubectl get agenttasks` shows the accumulated
   cost the CLIs report.
 
+## History
+
+The web UI's streams need what happened, not only the current status. The
+operator appends it to the research database as the owner (table
+`history_events`; research run pods have no rights on it). Two sources:
+
+* **Status diffs.** An informer handler compares every AgentTask's old and
+  new status, whoever wrote it (the operator, or the runner from the agent
+  pod), and turns transitions into events: run started or finished, push,
+  final CI result or fix round, review, needs a human, merge, autopilot
+  phase, proposals. Initial adds and resyncs produce nothing.
+* **Comments.** The project reconciler's GitLab client is wrapped once:
+  every issue or merge request note listing records the comments it
+  returned, a bounded set of seen IDs keeping repeats away from the
+  database.
+
+Every event has a deterministic key (`task/<uid>/run/<n>`, `note/<id>`, …),
+so writing it twice is one row. A leader-only recorder writes in batches
+from a bounded queue: a full queue or a database outage drops events and
+never slows a reconcile. Transitions during operator downtime are lost; two
+quick patches that the informer sees as one update give the later state.
+Retention deletes expired rows hourly (`--history-retention`).
+
 ## GitLab webhooks
 
 GitLab project hooks (GitLab Free; group hooks need Premium) wake the
@@ -1487,6 +1510,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/controller/commandgate.go` | `workflow.commandsFrom`: whose `/agent` comments count, the once-a-day reply |
 | `internal/controller/webhook.go` | self-registration of the project hook, the `WebhookRegistered` and `WebhookDeliveries` conditions |
 | `internal/webhook` | webhook receiver (`POST /hooks/gitlab`, token check), server, waker (debounce), deliveries |
+| `internal/history` | the factory's history: AgentTask status diffs and mirrored GitLab comments, written to the research database in batches |
 | `internal/controller/pilot_spec.go`, `pilot_followups.go`, `internal/runner/pilot_retro.go` | the pilot's spec edits (`editSpec`), the retrospective's `create 1 2`, the retrospective run |
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |

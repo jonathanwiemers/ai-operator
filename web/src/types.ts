@@ -339,10 +339,113 @@ export interface TranscriptEntry {
 
 // Feature is a section of the UI the user may see (GET /api/v1/features).
 // write and namespace: the user may start one-off researches, in namespace.
+// history: the research database is configured (stream history available).
 export interface Feature {
-  name: 'factory' | 'research'
+  name: 'factory' | 'research' | 'history'
   write?: boolean
   namespace?: string
+}
+
+export type StreamKind =
+  | 'note'
+  | 'run.started'
+  | 'run.finished'
+  | 'push'
+  | 'ci'
+  | 'review'
+  | 'needs'
+  | 'merged'
+  | 'closed'
+  | 'autopilot'
+  | 'proposal'
+
+export interface StreamEvent {
+  id: number
+  at: string
+  namespace: string
+  project: string
+  milestoneIID?: number
+  issueIID?: number
+  mergeRequestIID?: number
+  task?: string
+  kind: StreamKind
+  actor?: string
+  summary: string
+  redacted?: boolean
+  data: {
+    body?: string
+    bot?: boolean
+    url?: string
+    noteable?: 'issue' | 'mr'
+    request?: number
+    result?: string
+    runSummary?: string
+    costUSD?: string
+    durationSec?: number
+    runCount?: number
+    sha?: string
+    branch?: string
+    state?: string
+    pipelineID?: number
+    pipelineURL?: string
+    failedJobs?: string[]
+    round?: number
+    blocking?: number
+    reviewErrors?: number
+    reason?: string
+    message?: string
+    mergeRequestURL?: string
+    phase?: string
+    proposalID?: number
+    proposalState?: string
+  }
+}
+
+export interface StreamPage {
+  events: StreamEvent[]
+  older?: string
+  newest?: string
+  history: boolean
+}
+
+export interface HistoryDay {
+  day: string
+  runs: number
+  merged: number
+  costUSD: number
+  events: number
+}
+
+export interface HistoryTotals {
+  runs: number
+  merged: number
+  costUSD: number
+  events: number
+  medianCycleMin?: number
+}
+
+export interface HistoryResponse {
+  days: HistoryDay[]
+  totals: HistoryTotals
+  previous: HistoryTotals
+}
+
+export interface InboxItem {
+  namespace: string
+  project: string
+  kind: 'task' | 'proposal'
+  task?: string
+  issueIID?: number
+  milestoneIID?: number
+  proposalID?: number
+  title: string
+  reason: string
+  at?: string
+  url?: string
+}
+
+export interface InboxResponse {
+  items: InboxItem[]
 }
 
 export type ResearchPhase = 'Scheduled' | 'Running' | 'Waiting' | 'Succeeded' | 'Failed'

@@ -106,6 +106,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes", s.authed(s.postMilestoneNote))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript", s.authed(s.transcript))
 	mux.Handle("GET /api/v1/events", s.authed(s.events))
+	mux.Handle("GET /api/v1/stream", s.authed(s.stream))
+	mux.Handle("GET /api/v1/inbox", s.authed(s.inbox))
+	mux.Handle("GET /api/v1/projects/{namespace}/{name}/history", s.authed(s.history))
 	if s.cfg.Research.Enabled() {
 		mux.Handle("GET /api/v1/researches", s.researchHandler(s.researches))
 		mux.Handle("GET /api/v1/researches/{namespace}/{name}", s.researchHandler(s.researchDetail))

@@ -39,9 +39,9 @@ const stamp = computed(() => {
   <NotFound v-if="notFound" />
   <div v-else class="page">
     <nav class="crumbs muted">
-      <RouterLink to="/">Projects</RouterLink>
+      <RouterLink :to="{ name: 'stream-project', params: { namespace, name } }">{{ name }}</RouterLink>
       <span>/</span>
-      <RouterLink :to="{ name: 'project', params: { namespace, name } }">{{ name }}</RouterLink>
+      <RouterLink :to="{ name: 'project-board', params: { namespace, name } }">Board</RouterLink>
       <span>/</span>
       <span>%{{ iid }}</span>
     </nav>

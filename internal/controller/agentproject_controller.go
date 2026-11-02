@@ -34,6 +34,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
@@ -59,6 +60,9 @@ type AgentProjectReconciler struct {
 	// Deliveries, when set, tells when the receiver last accepted a delivery
 	// for a project; while they arrive, the project is polled lightly.
 	Deliveries *webhook.Deliveries
+	// History, set with a research database, records the comments the
+	// project's GitLab client lists.
+	History *history.Recorder
 	// Research, set with a research database, adds the usage readings and
 	// limits of the project's AgentResearch runs to its status.
 	Research bool
@@ -242,7 +246,15 @@ func (r *AgentProjectReconciler) gitlabClient(ctx context.Context, project *aiv1
 	if token == "" {
 		return nil, fmt.Errorf("secret %s has no key %q", ref.Name, ref.Key)
 	}
-	return r.NewGitLab(spec.GitLab.URL, token), nil
+	base := strings.TrimRight(spec.GitLab.URL, "/")
+	if base == "" {
+		base = "https://gitlab.com"
+	}
+	return r.History.WrapGitLab(r.NewGitLab(spec.GitLab.URL, token), history.Project{
+		Namespace: project.Namespace, Name: project.Name,
+		WebURL: base + "/" + spec.GitLab.Project,
+		Bot:    project.Status.BotUsername,
+	}), nil
 }
 
 // sync performs one GitLab poll.

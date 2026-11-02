@@ -20,6 +20,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/controller"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/research"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
@@ -56,6 +57,8 @@ func main() {
 	flag.IntVar(&maxUsagePercent, "research-max-usage-percent", aiv1.DefaultResearchMaxUsagePercent, "Research runs on an agent only while every usage window of its engine is below this percentage (1-100); the rest is left to the factory.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
+	var historyRetention time.Duration
+	flag.DurationVar(&historyRetention, "history-retention", history.DefaultRetention, "How long the factory's history (comments, runs, CI, reviews, merges) is kept in the research database.")
 	flag.Parse()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	setupLog := ctrl.Log.WithName("setup")
@@ -119,6 +122,19 @@ func main() {
 		DefaultOwners: notify.Usernames(strings.Split(defaultOwners, ",")),
 		Research:      researchDB.Host != "",
 	}
+	// The history needs the research database; it records task changes and
+	// the comments the project reconciler reads.
+	ctx := ctrl.SetupSignalHandler()
+	if researchSetup != nil {
+		recorder := history.NewRecorder(researchSetup, historyRetention, clock.RealClock{}, ctrl.Log.WithName("history"))
+		utilruntime.Must(mgr.Add(recorder))
+		if err := history.Watch(ctx, mgr.GetCache(), recorder, time.Now); err != nil {
+			setupLog.Error(err, "unable to watch AgentTasks for the history")
+			os.Exit(1)
+		}
+		projects.History = recorder
+		researchSetup.SetHistoryRetention(historyRetention)
+	}
 	if webhookAddr != "" {
 		// The bot's own writes cause deliveries too: one sync per project
 		// per 5 s, with a trailing one for the last delivery.
@@ -168,7 +184,7 @@ func main() {
 	utilruntime.Must(mgr.AddReadyzCheck("readyz", healthz.Ping))
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

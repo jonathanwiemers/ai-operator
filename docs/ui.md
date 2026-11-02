@@ -1,8 +1,12 @@
 # Web UI
 
-A read-only web UI shows what the agents are doing: every project with its
-tasks per stage, a board per milestone, autopilot queues, and each task's
-runs, review, CI and pod. With a [research database](research.md) it also
+A web UI shows what the agents are doing as a **Desk**: one stream per
+project, newest at the top, that mixes the conversation (comments, the
+pilot's replies and proposals) with what the agents did (runs, pushes, CI,
+reviews, merges, autopilot changes), with the message box pinned above it.
+With a research database the streams reach back through the
+[history](#desk-and-history); the boards, task pages and autopilot queues stay
+one click away. With a [research database](research.md) it also
 shows researches: news flashes, reports and their run history, and starts
 one-off researches. Pages update live. Users log in with OpenID Connect
 (Zitadel, Keycloak, Dex, Entra ID, …), and their roles decide which projects
@@ -16,6 +20,56 @@ credentials. Everything it shows comes from the resources' status, and links
 lead to GitLab; only with your GitLab account connected (see
 [Steering](#steering)) does it read comments and post them, the milestone
 chat included, with your own GitLab token.
+
+## Desk and history
+
+The app is a **Desk**: a left rail, the stream, and a context panel.
+
+* **Rail:** *Inbox* (what needs you now across your projects: tasks with
+  questions, failed or blocked, and the pilots' open proposals), *Everything*
+  (all your projects' streams in one), your projects with a status dot
+  (running, needs you, idle), a one-line state and a needs-you count, the
+  researches (with the research section) and the engine usage. On narrow
+  screens the rail is a drawer behind the menu button.
+* **Stream** (`/` for everything, `/projects/<namespace>/<name>` for a
+  project, `…/milestones/<iid>` for a milestone: its issues, its tracking
+  issue and what was recorded for it): a header with the scope tabs (the
+  project, its milestones, the *Board*), a search box, and a strip of the
+  last 30 days' activity, where a day jumps the stream to that day. Below
+  it, pinned, the **message box**: it sends to a milestone's pilot (on its
+  tracking issue, as `/pilot …`) or comments on an issue, in your GitLab
+  name, with `/` suggesting commands; it needs your GitLab account
+  connected and the `steer` grant (see [Steering](#steering)), and the
+  operator handles what you write like any GitLab comment. Filter chips
+  (*Chat*, *Needs you*, *Runs*, *CI & review*, *Merged*), day dividers,
+  and one card per event. Comments on the same issue or merge request
+  among the loaded events are one card at the newest comment, read top
+  down inside. *Load older* pages back; new events come in live.
+* **Context panel** (wide screens): what needs you in this project, the
+  active milestone's queue, and the last 30 days: runs per day with the
+  spend, merges, spend and events against the 30 days before.
+
+The board that was the project page is at `/projects/<namespace>/<name>/board`,
+the milestone page with its queue, plan and chat at
+`…/milestones/<iid>/detail`; task and research pages keep their URLs.
+
+**History.** The operator appends the factory's events to the research
+database (configured with `research.database`, see
+[configuration](configuration.md#research-database)): changes of the tasks'
+status (a run started or finished with its result, spend and duration, a
+push, a final CI result or a fix round, a review with its blocking findings,
+a question, failure or block, a merge, autopilot phase changes, the pilot's
+proposals posted, accepted or closed, a task closed) and every comment the
+operator reads on issues and merge requests, its own included. Each event
+is written once; events are kept for `research.historyRetention` (a year by
+default). Without a research database the Desk shows the live state only
+and says that the history needs the database. What happened while the
+operator was down is not recorded (comments are caught up when it reads
+them again), and an edited comment keeps its first version.
+
+The bodies of comments are mirrored from GitLab, so they are a grant of
+their own: a rule with `conversation: true` shows them (and searches them);
+without it a comment shows as who commented on which issue, with its link.
 
 ## Platform
 
@@ -102,8 +156,8 @@ nofollow"`, and other links show as their text. Images are never loaded.
 | Page | Content |
 |------|---------|
 | **Projects** | every project you may see: tasks per stage, autopilot milestones and their progress, engine usage and limits (see below), suspension, last sync, model spend |
-| **Project** | the same engine usage line and a banner per active limit; one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; then the milestone's plan, the autopilot pause reason, and issues without a milestone |
-| **Milestone** | a planned milestone (linked from its project board, `/projects/<namespace>/<name>/milestones/<iid>`): autopilot phase and pause reason, the queue with states, merge requests and task pages, the pilot's autonomy and open proposals, the chat on its tracking issue, and the milestone's board |
+| **Board** | `/projects/<namespace>/<name>/board`: the same engine usage line and a banner per active limit; one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; then the milestone's plan, the autopilot pause reason, and issues without a milestone |
+| **Milestone** | a planned milestone (linked from its project board and its stream, `/projects/<namespace>/<name>/milestones/<iid>/detail`): autopilot phase and pause reason, the queue with states, merge requests and task pages, the pilot's autonomy and open proposals, the chat on its tracking issue, and the milestone's board |
 | **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot queue with merge requests and decisions |
 
 **Engine usage.** claude reports how much of its usage windows is used with
@@ -258,6 +312,11 @@ no change events are sent for them.
 `steer: true` lets its roles write comments from the UI (see
 [Steering](#steering)); GitLab's own permissions apply on top.
 
+`conversation: true` shows its roles the bodies of the comments in the
+projects' streams, mirrored from GitLab into the history (see
+[Desk and history](#desk-and-history)): readable without access to the
+GitLab project, so a grant of its own.
+
 `transcript: true` on a rule also shows its roles the live transcripts of the
 projects' runs. Transcripts can quote code, issue text and CI logs, so they
 are a grant of their own:
@@ -269,8 +328,9 @@ ui:
       - roles: [ai-operator-admin]
         transcript: true
         steer: true
+        conversation: true
       - roles: [shop-devs]
-        projects: ["agents/shop"]       # boards and tasks, no transcripts
+        projects: ["agents/shop"]       # streams, boards and tasks; no transcripts or comment bodies
 ```
 
 ### Research rules
@@ -555,7 +615,7 @@ with the same session cookie:
 | Endpoint | Returns |
 |----------|---------|
 | `GET /api/v1/me` | user name, roles, auth mode |
-| `GET /api/v1/features` | the sections you may see, e.g. `{"features":[{"name":"factory"},{"name":"research","write":true,"namespace":"agents"}]}`; `write` and `namespace` only with the research write grant and `ui.research.allowCreate`, see [Research rules](#research-rules) |
+| `GET /api/v1/features` | the sections you may see, e.g. `{"features":[{"name":"factory"},{"name":"history"},{"name":"research","write":true,"namespace":"agents"}]}` (`history` with the factory and a research database); `write` and `namespace` only with the research write grant and `ui.research.allowCreate`, see [Research rules](#research-rules) |
 | `GET /api/v1/projects` | the projects you may see, with task counts per stage |
 | `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone (`trackingIssueIID` where a milestone has a tracking issue) |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | a planned milestone: its spec task, the autopilot (`phase`, `pausedReason` as raw text, queue `items` with title, state, MR number and URL, and task), the `tracking` issue, the `pilot` (task, autonomy, open proposals, cost), its implement tasks and `permissions` (`gitlab`, `steer`: what the page may offer); 404 without a spec task |
@@ -566,6 +626,9 @@ with the same session cookie:
 | `GET /api/v1/gitlab` | whether GitLab is configured and your account connected (`enabled`, `connected`, `username`) |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread` | the comments of the task's issue, MR and tracking issue (`parts`), read with your GitLab token; 409 when not connected |
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes` | posts `{"target": "issue"\|"mr"\|"tracking", "body": "…"}` in your GitLab name; needs the `steer` grant |
+| `GET /api/v1/stream` | `{"events": […], "older", "newest", "history"}`: events of the projects you may see, newest first: `id`, `at`, `namespace`, `project`, `milestoneIID`, `issueIID`, `mergeRequestIID`, `task`, `kind` (`note`, `run.started`, `run.finished`, `push`, `ci`, `review`, `needs`, `merged`, `closed`, `autopilot`, `proposal`), `actor`, `summary`, `data` (per kind, e.g. a comment's `body`, `url`, `bot`; a run's `result`, `costUSD`, `durationSec`), `redacted` (a comment's body withheld without `conversation`). `?project=namespace/name` (404 if you may not see it), `&milestone=<iid>`, `?kinds=` comma separated, `?q=` full text (1–200 characters; comments only where you have `conversation`), `?before=` the `older` cursor or `t:<RFC 3339 time>`, `?after=` the `newest` cursor (what is newer, for live updates), `?limit=` 1–100 (default 50); 400 for other values. `history` is false without a research database (no events), 503 until the UI is connected to it |
+| `GET /api/v1/projects/{namespace}/{name}/history` | `{"days": [{"day", "runs", "merged", "costUSD", "events"}], "totals": …, "previous": …}`: activity per day of the last `?days=` (1–90, default 30) in `?tz=` (an IANA time zone, default UTC), every day oldest first, with the totals and those of the days before; 404 without a research database |
+| `GET /api/v1/inbox` | `{"items": […]}`: what needs you now across your projects, newest first: `kind` (`task` with `reason` `needs-input`, `failed` or `blocked`; `proposal` with `proposalID`), `namespace`, `project`, `task`, `issueIID`, `milestoneIID`, `title`, `at`, `url` |
 | `GET /api/v1/events` | server-sent events: `change` with the kind (`project`, `task`, `research`), namespace and name of what changed; research events only for researches you may read |
 | `GET /api/v1/researches` | the researches you may read: `namespace`, `name`, `view`, `depth`, `schedule`, `timeZone`, `phase`, `lastRun`, `nextRun`, `lastEngine`, `lastModel`, the current or last `run` (`id`, `startedAt`, `finishedAt`, `engine`, `model`, `effort`, `reason`, `outcome`, `message`, `costUSD`), `skippedReason`, `waiting` (`engine`, `until`), `oneOff`, `createdBy`, `canDelete` (your own one-off you may delete) |
 | `GET /api/v1/researches/{namespace}/{name}` | `{"research": …, "run": …, "result": …}`: the research as in the list plus its `prompt`, `topics` and `agent` (absent for auto), its latest result and that result's run (as in `runs`), both `null` without one |

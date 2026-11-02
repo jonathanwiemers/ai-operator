@@ -79,6 +79,7 @@ spec:
             - {{ printf "--research-candidates-quick=%s" (include "ai-operator.research.candidates" .Values.research.candidates.quick) | quote }}
             - {{ printf "--research-candidates-deep=%s" (include "ai-operator.research.candidates" .Values.research.candidates.deep) | quote }}
             - --research-max-usage-percent={{ int .Values.research.maxUsagePercent }}
+            - --history-retention={{ .Values.research.historyRetention }}
             {{- end }}
             {{- range .Values.extraArgs }}
             - {{ . | quote }}

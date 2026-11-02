@@ -11,6 +11,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -67,7 +68,7 @@ func TestPoolConfig(t *testing.T) {
 func TestMigrateEmptyAndConcurrent(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
-	exec(t, s.Pool(), "DROP TABLE research_items, research_results, research_runs, schema_migrations")
+	exec(t, s.Pool(), "DROP TABLE history_events, research_items, research_results, research_runs, schema_migrations")
 
 	var wg sync.WaitGroup
 	errs := make([]error, 3)
@@ -80,21 +81,21 @@ func TestMigrateEmptyAndConcurrent(t *testing.T) {
 			t.Fatalf("concurrent Migrate: %v", err)
 		}
 	}
-	for _, table := range []string{"research_runs", "research_results", "research_items", "schema_migrations"} {
+	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "schema_migrations"} {
 		var exists bool
 		if err := s.Pool().QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", table).Scan(&exists); err != nil || !exists {
 			t.Errorf("table %s missing (%v)", table, err)
 		}
 	}
-	if n := count(t, s.Pool(), "schema_migrations"); n != 1 {
-		t.Errorf("schema_migrations has %d rows, want 1", n)
+	if n := count(t, s.Pool(), "schema_migrations"); n != 2 {
+		t.Errorf("schema_migrations has %d rows, want 2", n)
 	}
 
 	// A second run is a no-op.
 	if err := s.Migrate(ctx, store.Grants{}); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, s.Pool(), "schema_migrations"); n != 1 {
+	if n := count(t, s.Pool(), "schema_migrations"); n != 2 {
 		t.Errorf("after a second Migrate schema_migrations has %d rows, want 1", n)
 	}
 }
@@ -150,8 +151,13 @@ func TestGrants(t *testing.T) {
 	mustFail(t, writer.Pool(), "writer delete", "DELETE FROM research_runs")
 	mustFail(t, writer.Pool(), "writer create", "CREATE TABLE intruder (x int)")
 
-	// A table of a later migration follows by default privileges, without
-	// a grant in that run.
+	// The writer may not touch the factory's history.
+	mustFail(t, writer.Pool(), "writer reads history", "SELECT * FROM history_events")
+	mustFail(t, writer.Pool(), "writer writes history", `INSERT INTO history_events (key, at, namespace, project, kind, expires_at)
+		VALUES ('k', now(), 'n', 'p', 'note', now())`)
+
+	// A table of a later migration follows by default privileges for the
+	// reader, without a grant in that run; writers get tables by name only.
 	later := fstest.MapFS{"migrations/9999_later.sql": {Data: []byte("CREATE TABLE later (x int); INSERT INTO later VALUES (1);")}}
 	files, err := fs.Glob(store.Migrations, "migrations/*.sql")
 	if err != nil {
@@ -171,12 +177,41 @@ func TestGrants(t *testing.T) {
 		t.Errorf("reader sees %d rows of the later table, want 1", n)
 	}
 	mustFail(t, reader.Pool(), "reader insert into later", "INSERT INTO later VALUES (2)")
-	exec(t, writer.Pool(), "INSERT INTO later VALUES (2)")
+	mustFail(t, writer.Pool(), "writer insert into later", "INSERT INTO later VALUES (2)")
 
 	// This binary does not know migration 9999.
 	if err := s.Migrate(ctx, store.Grants{}); err == nil || !strings.Contains(err.Error(), "9999") {
 		t.Errorf("Migrate after a newer migration = %v, want an error naming 9999", err)
 	}
+}
+
+// Writers of an earlier version had default privileges on every future
+// table; the history table, created after them, must still be closed to them.
+func TestGrantsRevokeHistoryFromOldWriters(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	role := "agents.research_writer_" + randomHex(t)
+	writer := storetest.Role(t, role)
+	id := pgx.Identifier{role}.Sanitize()
+	exec(t, s.Pool(), "GRANT USAGE ON SCHEMA "+pgx.Identifier{schemaOf(t, s)}.Sanitize()+" TO "+id)
+	exec(t, s.Pool(), "ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER GRANT SELECT, INSERT, UPDATE ON TABLES TO "+id)
+	exec(t, s.Pool(), "DROP TABLE history_events")
+	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version = 2")
+	if err := s.Migrate(ctx, store.Grants{Writers: []string{role}}); err != nil {
+		t.Fatal(err)
+	}
+	mustFail(t, writer.Pool(), "old writer writes history", `INSERT INTO history_events (key, at, namespace, project, kind, expires_at)
+		VALUES ('k', now(), 'n', 'p', 'note', now())`)
+	exec(t, writer.Pool(), "SELECT * FROM research_runs")
+}
+
+func schemaOf(t *testing.T, s *store.Store) string {
+	t.Helper()
+	var schema string
+	if err := s.Pool().QueryRow(t.Context(), "SELECT current_schema()").Scan(&schema); err != nil {
+		t.Fatal(err)
+	}
+	return schema
 }
 
 func TestGrantUnknownRole(t *testing.T) {

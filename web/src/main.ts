@@ -2,7 +2,8 @@ import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
 import { canStartResearch, featuresLoaded, hasFeature, isResearchPath } from './api'
-import Projects from './views/Projects.vue'
+import Stream from './views/Stream.vue'
+import Inbox from './views/Inbox.vue'
 import Project from './views/Project.vue'
 import TaskView from './views/Task.vue'
 import MilestoneView from './views/Milestone.vue'
@@ -17,10 +18,25 @@ import './style.css'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', name: 'projects', component: Projects },
-    { path: '/projects/:namespace/:name', name: 'project', component: Project, props: true },
+    { path: '/', name: 'everything', component: Stream },
+    { path: '/inbox', name: 'inbox', component: Inbox },
+    { path: '/projects/:namespace/:name', name: 'stream-project', component: Stream, props: true },
+    {
+      path: '/projects/:namespace/:name/milestones/:iid',
+      name: 'stream-milestone',
+      component: Stream,
+      props: true,
+    },
+    { path: '/projects/:namespace/:name/board', name: 'project-board', component: Project, props: true },
     { path: '/projects/:namespace/:name/tasks/:task', name: 'task', component: TaskView, props: true },
-    { path: '/projects/:namespace/:name/milestones/:iid', name: 'milestone', component: MilestoneView, props: true },
+    // Keep the old milestone page reachable for deep links that need the full
+    // milestone UI; the stream is the default for /milestones/:iid above.
+    {
+      path: '/projects/:namespace/:name/milestones/:iid/detail',
+      name: 'milestone',
+      component: MilestoneView,
+      props: true,
+    },
     { path: '/research', name: 'researches', component: Researches },
     { path: '/research/new', name: 'research-new', component: ResearchNew },
     { path: '/research/:namespace/:name', name: 'research', component: ResearchView, props: true },

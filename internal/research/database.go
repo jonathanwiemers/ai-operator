@@ -49,7 +49,14 @@ type Database struct {
 	open   func(context.Context) (*store.Store, error)
 	ready  chan struct{}
 	store  *store.Store
+	// historyRetention, when set, makes the retention loop delete expired
+	// history events too.
+	historyRetention time.Duration
 }
+
+// SetHistoryRetention turns on deleting expired history events. Call it
+// before the manager starts.
+func (d *Database) SetHistoryRetention(r time.Duration) { d.historyRetention = r }
 
 // NewDatabase returns the runnable for the owner login c.
 func NewDatabase(c store.Config, g store.Grants, clk clock.WithTicker, log logr.Logger) *Database {
@@ -125,6 +132,14 @@ func (d *Database) deleteExpired(ctx context.Context) {
 		return
 	}
 	d.log.Info("deleted expired research runs", "runs", n)
+	if d.historyRetention == 0 {
+		return
+	}
+	if n, err = d.store.DeleteExpiredEvents(ctx, d.clock.Now()); err != nil {
+		d.log.Error(err, "deleting expired history events")
+		return
+	}
+	d.log.Info("deleted expired history events", "events", n)
 }
 
 // FinishRunOrInsert records a run's outcome in the store, see

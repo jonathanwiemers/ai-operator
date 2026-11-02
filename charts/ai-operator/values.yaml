@@ -137,6 +137,9 @@ research:
   # is below this percentage, 1 to 100; the rest is left to the factory. It
   # applies to every research run, a fixed spec.agent included.
   maxUsagePercent: 70
+  # How long the factory's history (comments, runs, CI, reviews, merges),
+  # which the web UI's streams show, is kept in the database. A Go duration.
+  historyRetention: 8760h
 
 # Read-only web UI (see docs/ui.md). Off by default. It runs as its own
 # Deployment with a service account that can only read AgentProjects and

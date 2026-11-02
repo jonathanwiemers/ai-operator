@@ -28,9 +28,9 @@ function apTone(phase: string | undefined) {
   <NotFound v-if="notFound" />
   <div v-else class="page">
     <nav class="crumbs muted">
-      <RouterLink to="/">Projects</RouterLink>
+      <RouterLink :to="{ name: 'stream-project', params: { namespace, name } }">{{ name }}</RouterLink>
       <span>/</span>
-      <span>{{ namespace }}</span>
+      <span>Board</span>
     </nav>
 
     <div v-if="error" class="banner danger">{{ error }}</div>
@@ -102,8 +102,11 @@ function apTone(phase: string | undefined) {
             Autopilot {{ m.spec.status.autopilot.phase.toLowerCase() }}
           </Badge>
           <span class="spacer" />
-          <RouterLink v-if="m.spec" :to="{ name: 'milestone', params: { namespace, name, iid: m.iid } }">
-            {{ m.trackingIssueIID ? 'Queue and chat' : 'Milestone page' }}
+          <RouterLink
+            v-if="m.spec"
+            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) } }"
+          >
+            {{ m.trackingIssueIID ? 'Stream' : 'Milestone stream' }}
           </RouterLink>
           <span class="faint">{{ m.tasks.length }} issues · {{ cost(m.costUSD) }}</span>
         </div>

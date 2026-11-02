@@ -20,6 +20,9 @@ type Feature struct {
 const (
 	FeatureFactory  = "factory"
 	FeatureResearch = "research"
+	// FeatureHistory: the projects' streams reach back through the
+	// database (the research database holds the history).
+	FeatureHistory = "history"
 )
 
 // features lists the sections the user may see: the factory with a factory
@@ -29,6 +32,9 @@ func (s *Server) features(w http.ResponseWriter, r *http.Request) {
 	out := []Feature{}
 	if s.authz.SeesFactory(p) {
 		out = append(out, Feature{Name: FeatureFactory})
+		if s.cfg.Research.Enabled() {
+			out = append(out, Feature{Name: FeatureHistory})
+		}
 	}
 	if read, write := s.authz.ResearchAccess(p); read {
 		f := Feature{Name: FeatureResearch, Write: write}

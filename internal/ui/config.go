@@ -174,9 +174,13 @@ type Rule struct {
 	// Steer lets its roles write comments on the projects' issues and merge
 	// requests from the UI, in their own GitLab name.
 	Steer bool `json:"steer,omitempty"`
+	// Conversation shows the bodies of the comments in the projects'
+	// streams (mirrored from GitLab, so readable without GitLab access).
+	// Without it a comment shows as who commented where, with its link.
+	Conversation bool `json:"conversation,omitempty"`
 	// Research is read (see researches and their results) or write (also
 	// start one-off researches and delete them). A rule with it grants no
-	// projects and must not set Projects, Transcript or Steer.
+	// projects and must not set Projects, Transcript, Steer or Conversation.
 	Research string `json:"research,omitempty"`
 	// Researches are namespace/name patterns like Projects. Empty matches
 	// every research.
@@ -308,8 +312,8 @@ func (c *Config) Validate(bindAddress string) error {
 		switch {
 		case r.Research != "" && r.Research != ResearchRead && r.Research != ResearchWrite:
 			errs = append(errs, fmt.Errorf("authorization.rules[%d]: research must be read or write, not %q", i, r.Research))
-		case r.Research != "" && (len(r.Projects) > 0 || r.Transcript || r.Steer):
-			errs = append(errs, fmt.Errorf("authorization.rules[%d]: a research rule grants no projects; put projects, transcript and steer into a rule of their own", i))
+		case r.Research != "" && (len(r.Projects) > 0 || r.Transcript || r.Steer || r.Conversation):
+			errs = append(errs, fmt.Errorf("authorization.rules[%d]: a research rule grants no projects; put projects, transcript, steer and conversation into a rule of their own", i))
 		case r.Research == "" && len(r.Researches) > 0:
 			errs = append(errs, fmt.Errorf("authorization.rules[%d]: researches needs research: read or write", i))
 		}

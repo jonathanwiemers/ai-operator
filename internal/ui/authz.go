@@ -48,6 +48,12 @@ func (a *Authorizer) CanSteer(p Principal, namespace, name string) bool {
 	return a.allows(p, namespace, name, func(r Rule) bool { return r.Steer })
 }
 
+// CanReadConversation reports whether p may read the bodies of the comments
+// in the project's stream.
+func (a *Authorizer) CanReadConversation(p Principal, namespace, name string) bool {
+	return a.allows(p, namespace, name, func(r Rule) bool { return r.Conversation })
+}
+
 // CanReadResearch reports whether p may see the AgentResearch
 // namespace/name and its results.
 func (a *Authorizer) CanReadResearch(p Principal, namespace, name string) bool {

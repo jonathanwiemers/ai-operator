@@ -137,6 +137,7 @@ login with the keys `username` and `password`.
 | `research.candidates.quick` | `claude/claude-sonnet-5-5`, `cursor/auto` | default agents of quick research runs, in order, see [research.md](research.md#choosing-agents) |
 | `research.candidates.deep` | `claude/claude-opus-5-5` (effort `high`), `claude/claude-sonnet-5-5`, `cursor/auto` | the same for deep runs |
 | `research.maxUsagePercent` | `70` | research uses an engine only while every usage window not reset since is below this (1 to 100) |
+| `research.historyRetention` | `8760h` | how long the factory's history (the Desk's streams, see [ui.md](ui.md#desk-and-history)) is kept; `--history-retention` |
 | `ui.research.allowCreate` | `false` | one-off researches from the UI, see [Web UI](#web-ui) |
 | `ui.research.namespace` | `""` | where the UI creates one-off researches; required with `allowCreate` |
 

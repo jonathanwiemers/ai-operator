@@ -26,7 +26,7 @@ type Grants struct {
 	// Reader may read every table (the UI).
 	Reader string
 	// Writers may read, insert and update runs, results and items (the
-	// runners of research runs).
+	// runners of research runs), and nothing else.
 	Writers []string
 }
 
@@ -145,9 +145,22 @@ func grant(ctx context.Context, tx pgx.Tx, g Grants) error {
 	if err := to(g.Reader, "GRANT SELECT ON ALL TABLES IN SCHEMA "+sc, defaults+"SELECT ON TABLES"); err != nil {
 		return err
 	}
+	// Writers get the research tables by name and nothing else: earlier
+	// versions granted them every future table by default privileges, which
+	// would have let research pods write the factory's history.
+	revokeDefaults := "ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA " + sc + " REVOKE SELECT, INSERT, UPDATE ON TABLES FROM "
 	for _, w := range g.Writers {
-		if err := to(w, "GRANT SELECT, INSERT, UPDATE ON "+tables, defaults+"SELECT, INSERT, UPDATE ON TABLES"); err != nil {
+		if w == "" {
+			continue
+		}
+		if err := to(w, "GRANT SELECT, INSERT, UPDATE ON "+tables); err != nil {
 			return err
+		}
+		id := pgx.Identifier{w}.Sanitize()
+		for _, stmt := range []string{revokeDefaults + id, "REVOKE ALL ON " + sc + ".history_events FROM " + id} {
+			if _, err := tx.Exec(ctx, stmt); err != nil {
+				return fmt.Errorf("revoke from role %q: %w", w, err)
+			}
 		}
 	}
 	return nil

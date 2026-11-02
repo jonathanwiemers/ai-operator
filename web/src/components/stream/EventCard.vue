@@ -1,0 +1,313 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { ApiError, post } from '../../api'
+import { ciLabel, ciTone, clockTime, cost, duration, shortSHA, type Tone } from '../../format'
+import { useNow } from '../../live'
+import type { CIState, ProjectDetail, StreamEvent } from '../../types'
+import Badge from '../Badge.vue'
+import ExtLink from '../ExtLink.vue'
+import MarkdownBody from './MarkdownBody.vue'
+import NoteThread from './NoteThread.vue'
+
+const props = defineProps<{
+  event?: StreamEvent
+  notes?: StreamEvent[]
+  project?: ProjectDetail | null
+  canSteer?: boolean
+}>()
+const emit = defineEmits<{ posted: [] }>()
+const now = useNow()
+const posting = ref(false)
+const sendError = ref('')
+
+const e = computed(() => props.event)
+const taskRunning = computed(() => {
+  const ev = e.value
+  if (!ev || ev.kind !== 'run.started' || !ev.task || !props.project) return false
+  const t = [...(props.project.milestones ?? []).flatMap((m) => m.tasks), ...(props.project.unplanned ?? [])].find(
+    (x) => x.name === ev.task,
+  )
+  return t?.runPending || t?.status.phase === 'Running'
+})
+
+function resultTone(r: string | undefined): Tone {
+  switch (r) {
+    case 'Succeeded':
+      return 'success'
+    case 'NeedsInput':
+      return 'warning'
+    case 'Failed':
+      return 'danger'
+    case 'Deferred':
+      return 'muted'
+    default:
+      return 'neutral'
+  }
+}
+
+async function decide(yes: boolean) {
+  const ev = e.value
+  if (!ev?.milestoneIID || ev.data.proposalID == null || posting.value) return
+  const body = `${yes ? 'yes' : 'no'} P${ev.data.proposalID}`
+  posting.value = true
+  sendError.value = ''
+  try {
+    await post(
+      `/projects/${encodeURIComponent(ev.namespace)}/${encodeURIComponent(ev.project)}/milestones/${ev.milestoneIID}/notes`,
+      { body },
+    )
+    emit('posted')
+  } catch (err) {
+    sendError.value = err instanceof ApiError || err instanceof Error ? err.message : String(err)
+  } finally {
+    posting.value = false
+  }
+}
+
+function taskLink(ev: StreamEvent) {
+  if (!ev.task) return undefined
+  return {
+    name: 'task' as const,
+    params: { namespace: ev.namespace, name: ev.project, task: ev.task },
+  }
+}
+</script>
+
+<template>
+  <NoteThread v-if="notes" :notes="notes" />
+  <div v-else-if="e" class="ev" :class="{ warn: e.kind === 'needs' }">
+    <div class="av sys">
+      <template v-if="e.kind === 'run.started' || e.kind === 'run.finished'">▶</template>
+      <template v-else-if="e.kind === 'ci'">✕</template>
+      <template v-else-if="e.kind === 'review'">◎</template>
+      <template v-else-if="e.kind === 'merged'">⇡</template>
+      <template v-else-if="e.kind === 'needs'">!</template>
+      <template v-else-if="e.kind === 'proposal'">P</template>
+      <template v-else-if="e.kind === 'autopilot'">◇</template>
+      <template v-else>·</template>
+    </div>
+    <div>
+      <div class="meta">
+        <b>{{ e.summary || e.kind }}</b>
+        <span v-if="e.issueIID" class="ctx">#{{ e.issueIID }}</span>
+        <span v-else-if="e.mergeRequestIID" class="ctx">!{{ e.mergeRequestIID }}</span>
+        <span>{{ clockTime(e.at, now) }}</span>
+        <Badge v-if="e.kind === 'run.started' && taskRunning" tone="progress" dot pulse>live</Badge>
+      </div>
+
+      <!-- run.finished -->
+      <div v-if="e.kind === 'run.finished'" class="compact">
+        <Badge :tone="resultTone(e.data.result)">{{ e.data.result || 'done' }}</Badge>
+        <span v-if="e.data.runSummary">{{ e.data.runSummary }}</span>
+        <span class="muted">
+          <template v-if="e.data.costUSD">{{ cost(e.data.costUSD) }}</template>
+          <template v-if="e.data.durationSec != null">
+            · {{ duration(e.data.durationSec * 1000) }}
+          </template>
+        </span>
+        <RouterLink v-if="taskLink(e)" class="t" :to="taskLink(e)!">task</RouterLink>
+      </div>
+
+      <!-- run.started -->
+      <div v-else-if="e.kind === 'run.started'" class="compact">
+        <Badge tone="progress">started</Badge>
+        <span v-if="e.data.request != null">request {{ e.data.request }}</span>
+        <RouterLink v-if="taskLink(e)" class="t" :to="taskLink(e)!">Open live</RouterLink>
+      </div>
+
+      <!-- push -->
+      <div v-else-if="e.kind === 'push'" class="compact">
+        <Badge tone="info">push</Badge>
+        <code class="mono">{{ shortSHA(e.data.sha) }}</code>
+        <span v-if="e.data.branch" class="muted">{{ e.data.branch }}</span>
+      </div>
+
+      <!-- ci -->
+      <div v-else-if="e.kind === 'ci'" class="compact">
+        <Badge :tone="ciTone(e.data.state as CIState | undefined)">
+          {{ e.data.state ? (ciLabel[e.data.state as CIState] ?? e.data.state) : 'CI' }}
+        </Badge>
+        <span v-if="e.data.failedJobs?.length" class="jobs">
+          <Badge v-for="j in e.data.failedJobs" :key="j" tone="danger">{{ j }}</Badge>
+        </span>
+        <Badge v-if="e.data.round" tone="progress">fix round {{ e.data.round }}</Badge>
+        <ExtLink v-if="e.data.pipelineURL" :href="e.data.pipelineURL" class="t">
+          pipeline{{ e.data.pipelineID ? ` #${e.data.pipelineID}` : '' }}
+        </ExtLink>
+      </div>
+
+      <!-- review -->
+      <div v-else-if="e.kind === 'review'" class="card">
+        <div class="line">
+          <Badge :tone="(e.data.blocking ?? 0) > 0 ? 'danger' : 'success'">
+            {{ e.data.blocking ?? 0 }} blocker{{ (e.data.blocking ?? 0) === 1 ? '' : 's' }}
+          </Badge>
+          <Badge v-if="e.data.reviewErrors" tone="warning">{{ e.data.reviewErrors }} errors</Badge>
+        </div>
+      </div>
+
+      <!-- needs -->
+      <div v-else-if="e.kind === 'needs'" class="card warn">
+        <p>{{ e.data.message || e.data.reason || e.summary }}</p>
+        <RouterLink v-if="taskLink(e)" class="btn" :to="taskLink(e)!">Open task</RouterLink>
+      </div>
+
+      <!-- merged / closed -->
+      <div v-else-if="e.kind === 'merged' || e.kind === 'closed'" class="compact">
+        <Badge :tone="e.kind === 'merged' ? 'success' : 'muted'">{{ e.kind }}</Badge>
+        <ExtLink v-if="e.data.mergeRequestURL" :href="e.data.mergeRequestURL" class="t">MR</ExtLink>
+      </div>
+
+      <!-- autopilot -->
+      <div v-else-if="e.kind === 'autopilot'" class="compact">
+        <Badge tone="progress">{{ e.data.phase || 'autopilot' }}</Badge>
+        <span v-if="e.data.reason" class="muted">{{ e.data.reason }}</span>
+      </div>
+
+      <!-- proposal -->
+      <div v-else-if="e.kind === 'proposal'" class="card pilot">
+        <MarkdownBody v-if="e.data.body" :text="e.data.body" />
+        <p v-else>{{ e.summary }}</p>
+        <div v-if="e.data.proposalState === 'open' || !e.data.proposalState" class="btns">
+          <button
+            type="button"
+            class="btn primary"
+            :disabled="!canSteer || posting"
+            @click="decide(true)"
+          >
+            yes P{{ e.data.proposalID }}
+          </button>
+          <button type="button" class="btn" :disabled="!canSteer || posting" @click="decide(false)">
+            no P{{ e.data.proposalID }}
+          </button>
+        </div>
+        <p v-if="sendError" class="err">{{ sendError }}</p>
+      </div>
+
+      <div v-else class="compact">
+        <span>{{ e.summary }}</span>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.ev {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.av {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+.meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+.meta b {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.ctx {
+  color: var(--text-2);
+}
+.compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13.5px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+}
+.card.pilot {
+  background: var(--pilot-bg);
+  border-color: var(--pilot-border);
+}
+.card.warn,
+.ev.warn .card {
+  background: var(--tone-warning-bg);
+  border-color: color-mix(in srgb, var(--tone-warning-fg) 25%, var(--border));
+}
+.card p {
+  margin: 0 0 8px;
+}
+.line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.jobs {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.t {
+  margin-left: auto;
+  font-size: 12px;
+}
+.btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.btn {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  padding: 4px 11px;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text);
+  text-decoration: none;
+}
+.btn:hover {
+  background: var(--surface-2);
+  text-decoration: none;
+}
+.btn.primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.err {
+  color: var(--tone-danger-fg);
+  font-size: 13px;
+  margin-top: 6px;
+}
+.muted {
+  color: var(--text-2);
+}
+</style>
