@@ -54,13 +54,20 @@ export function windowLabel(name: string): string {
 }
 
 // fullTime is the local date and time with the time zone ("2 Nov 2026,
-// 14:59 CET"), for the tooltip of a clockTime.
+// 14:59 CET"), for the tooltip of a clockTime. dateStyle and timeStyle
+// cannot be combined with timeZoneName: toLocaleString throws.
 export function fullTime(iso: string | undefined | null): string {
   if (!iso) return ''
   const t = new Date(iso)
-  return Number.isNaN(t.getTime())
-    ? ''
-    : t.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZoneName: 'short' } as Intl.DateTimeFormatOptions)
+  if (Number.isNaN(t.getTime())) return ''
+  return t.toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  })
 }
 
 // clockTime is a local time of day ("14:00"), with the weekday when it is
