@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { hasFeature } from '../api'
 import { useResource } from '../live'
 import { ciLabel, ciTone, cost, phaseTone, shortSHA } from '../format'
 import Badge from '../components/Badge.vue'
@@ -8,6 +9,7 @@ import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
 import LiveTranscript from '../components/LiveTranscript.vue'
 import Conversation from '../components/Conversation.vue'
+import TaskChat from '../components/TaskChat.vue'
 import NotFound from './NotFound.vue'
 import type { TaskResponse } from '../types'
 
@@ -46,6 +48,9 @@ const conditionTone = (type: string, status: string) => {
 const resultTone = (r: string | undefined) =>
   r === 'Succeeded' ? 'success' : r === 'NeedsInput' || r === 'Deferred' ? 'warning' : r === 'Failed' ? 'danger' : 'muted'
 const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? 'progress' : s === 'Skipped' ? 'warning' : 'muted')
+
+// Desk chat: compose with permissions.chat; read when the chat feature is on.
+const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('chat'))
 </script>
 
 <template>
@@ -143,6 +148,20 @@ const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? '
         </div>
       </div>
 
+      <section v-if="showChat" class="section">
+        <h3>Chat with the agent</h3>
+        <TaskChat
+          :namespace="namespace"
+          :name="name"
+          :task="task"
+          :can-post="!!data?.permissions?.chat"
+          :can-transcript="!!data?.permissions?.transcript"
+          :phase="t.status.phase"
+          :message="t.status.message"
+          :pod-name="t.status.podName"
+        />
+      </section>
+
       <section v-if="data?.permissions?.gitlab" class="section">
         <h3>Conversation</h3>
         <Conversation
@@ -154,7 +173,7 @@ const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? '
         />
       </section>
 
-      <section v-if="data?.permissions?.transcript" class="section">
+      <section v-if="data?.permissions?.transcript" id="live-transcript" class="section">
         <h3>Live</h3>
         <LiveTranscript
           :namespace="namespace"

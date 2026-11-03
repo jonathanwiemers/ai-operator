@@ -5,10 +5,12 @@ Licensed under the Apache License, Version 2.0.
 */
 // Command research-migrate prepares a local research database for UI
 // development (make research-seed): on the Postgres of make test-db it
-// creates the logins research_owner and research_reader and the database
+// creates the logins research_owner, research_reader and
+// research_chat_writer (Desk chat) and the database
 // ai_operator_dev owned by the owner, migrates it as the owner like the
 // operator does (granting the reader), and applies the seed SQL as the
-// owner. The passwords are fixed: for a loopback database only.
+// owner, granting the reader and the chat writer. The passwords are fixed:
+// for a loopback database only.
 package main
 
 import (
@@ -29,6 +31,8 @@ const (
 	ownerPassword  = "owner"
 	readerRole     = "research_reader"
 	readerPassword = "reader"
+	chatRole       = "research_chat_writer"
+	chatPassword   = "chat"
 	database       = "ai_operator_dev"
 )
 
@@ -60,7 +64,7 @@ func run(ctx context.Context, adminURL, seed string) error {
 		return err
 	}
 	defer st.Close()
-	if err := st.Migrate(ctx, store.Grants{Reader: readerRole}); err != nil {
+	if err := st.Migrate(ctx, store.Grants{Reader: readerRole, ChatWriter: chatRole}); err != nil {
 		return err
 	}
 	if seed != "" {
@@ -84,6 +88,7 @@ func run(ctx context.Context, adminURL, seed string) error {
 	}
 	fmt.Printf("research database %s on %s:%d migrated and seeded; for make run-ui:\n", database, cc.Host, cc.Port)
 	fmt.Printf("  export AI_OPERATOR_UI_RESEARCH_DB_USER=%s AI_OPERATOR_UI_RESEARCH_DB_PASSWORD=%s\n", readerRole, readerPassword)
+	fmt.Printf("  export AI_OPERATOR_UI_CHAT_DB_USER=%s AI_OPERATOR_UI_CHAT_DB_PASSWORD=%s   # Desk chat\n", chatRole, chatPassword)
 	return nil
 }
 
@@ -95,7 +100,7 @@ func prepare(ctx context.Context, cc *pgx.ConnConfig) error {
 		return err
 	}
 	defer conn.Close(context.WithoutCancel(ctx))
-	for role, password := range map[string]string{ownerRole: ownerPassword, readerRole: readerPassword} {
+	for role, password := range map[string]string{ownerRole: ownerPassword, readerRole: readerPassword, chatRole: chatPassword} {
 		var exists bool
 		if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT FROM pg_roles WHERE rolname = $1)", role).Scan(&exists); err != nil {
 			return err

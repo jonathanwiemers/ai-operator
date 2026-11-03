@@ -68,3 +68,12 @@ Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./inte
 | 1 | (orchestrator) dispatcher and reply reconciler replace `chatMessages` with a merge patch from cached reads: a stale read drops a delivered message (lost) or re-adds an answered one (stuck, pod never hibernates) | real | optimistic lock on both patches, dispatch reads from the API server; stale-read test |
 | 2 | (orchestrator) a 100-row queued batch could be filled by rows waiting behind full tasks | real (unlikely) | batch of 500 |
 | — | cursor-agent review | no findings | — |
+
+## Slice 8
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | (orchestrator) newer messages fetched with an `after=` cursor missed state changes of shown rows (queued → delivered → answered) | real | refresh the newest page and merge by ID |
+| 2 | `loadNewer`/`loadOlder` without the load sequence: a response for the previous task merged into the next task's thread | real | sequence check on every load |
+| 3 | task switch kept the old thread on screen while loading | real | cleared on switch |
+| 4 | a post finishing after a task switch cleared the new task's draft and kept the old one | real | draft key captured at send |

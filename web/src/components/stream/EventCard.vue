@@ -84,6 +84,7 @@ function taskLink(ev: StreamEvent) {
       <template v-else-if="e.kind === 'needs'">!</template>
       <template v-else-if="e.kind === 'proposal'">P</template>
       <template v-else-if="e.kind === 'autopilot'">◇</template>
+      <template v-else-if="e.kind === 'chat.user' || e.kind === 'chat.agent'">C</template>
       <template v-else>·</template>
     </div>
     <div>
@@ -182,6 +183,19 @@ function taskLink(ev: StreamEvent) {
           </button>
         </div>
         <p v-if="sendError" class="err">{{ sendError }}</p>
+      </div>
+
+      <!-- Desk chat -->
+      <div v-else-if="e.kind === 'chat.user' || e.kind === 'chat.agent'" class="card">
+        <div class="line">
+          <b>{{ e.data.authorName || e.actor || (e.data.role === 'agent' ? 'agent' : 'user') }}</b>
+          <Badge tone="muted">{{ e.data.role || (e.kind === 'chat.agent' ? 'agent' : 'user') }}</Badge>
+          <Badge v-if="e.data.kind && e.data.kind !== 'message'" tone="info">{{ e.data.kind }}</Badge>
+          <Badge v-if="e.data.state" tone="progress">{{ e.data.state }}</Badge>
+        </div>
+        <MarkdownBody v-if="e.data.body" :text="e.data.body" />
+        <p v-else-if="e.redacted" class="muted">message hidden</p>
+        <RouterLink v-if="taskLink(e)" class="t chat-link" :to="taskLink(e)!">Open chat</RouterLink>
       </div>
 
       <div v-else class="compact">
@@ -309,5 +323,10 @@ function taskLink(ev: StreamEvent) {
 }
 .muted {
   color: var(--text-2);
+}
+.chat-link {
+  display: inline-block;
+  margin: 8px 0 0;
+  margin-left: 0;
 }
 </style>

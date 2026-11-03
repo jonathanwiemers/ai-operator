@@ -82,3 +82,16 @@ One section per slice. Builder: cursor-agent (`--model auto`) in the slice's wor
 
 - `internal/controller/chat_test.go` (fake client + Postgres): delivered, idempotent re-dispatch, chat disabled, missing task, command, cap of 20, stale task conflicts and keeps the row queued, reply copied and dropped, error reply as system row, reply insert idempotent, hibernated pod started for chat, idle timeout with chat.
 - `gofmt` clean, `go vet ./...` ok, `make generate manifests` stable, `go test -race ./internal/controller/... ./internal/research/... ./api/...` ok, `make helm-lint` ok.
+
+## Slice 8 — Web (`feat/web-desk-chat`)
+
+- `TaskChat.vue`: the task's chat thread (newest page, older pages on demand, agent replies under their message, state chips: waiting, sent to the agent, answered, failed with reason, deferred). Refreshes on live stream events and every 5 s while a message is unanswered and the tab is visible.
+- `ChatComposer.vue`: message, and interrupt while the newest message is delivered and unanswered (the agent is on it); the draft and its `clientKey` stay in `sessionStorage` until a 2xx, so a retry or reload reuses the key (3a).
+- Task page section "Chat with the agent": shown with the `chat` permission (can post) or the `chat` feature (read).
+- Stream: chat kinds opt in per filter (`kindsForFilter`), events keyed by kind and ID (chat and history IDs collide).
+- `hack/research-migrate`: also creates `research_chat_writer` (password `chat`) for `make run-ui`; docs/ui.md "Development".
+
+### Tests
+
+- `web/test/stream.test.mjs`: kinds per filter, chat opt-in, event keys.
+- `make ui` (type-check, build, 53 node tests) ok; checked on `make run-ui` against the cluster read-only with the local seeded database: thread, reply nesting, state chips, post from the composer.

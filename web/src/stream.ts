@@ -3,6 +3,23 @@ import type { Stage, StreamEvent, StreamKind } from './types'
 // Filter chips map to kinds sent as kinds= on GET /stream.
 export type StreamFilter = 'all' | 'chat' | 'needs' | 'runs' | 'ci' | 'merged'
 
+// History kinds only: chat rows collide on id, so they need an explicit kinds=.
+export const historyStreamKinds: StreamKind[] = [
+  'note',
+  'run.started',
+  'run.finished',
+  'push',
+  'ci',
+  'review',
+  'needs',
+  'merged',
+  'closed',
+  'autopilot',
+  'proposal',
+]
+
+export const chatStreamKinds: StreamKind[] = ['chat.user', 'chat.agent']
+
 export const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKind[] }[] = [
   { id: 'all', label: 'All' },
   { id: 'chat', label: 'Chat', kinds: ['note', 'proposal'] },
@@ -12,8 +29,18 @@ export const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKin
   { id: 'merged', label: 'Merged', kinds: ['merged', 'closed'] },
 ]
 
-export function kindsForFilter(id: StreamFilter): StreamKind[] | undefined {
+// kindsForFilter: with includeChat, "all" must name every kind (including
+// chat.user/chat.agent); other chips stay as they are.
+export function kindsForFilter(id: StreamFilter, includeChat = false): StreamKind[] | undefined {
+  if (id === 'all') {
+    return includeChat ? [...historyStreamKinds, ...chatStreamKinds] : undefined
+  }
   return streamFilters.find((f) => f.id === id)?.kinds
+}
+
+// streamEventKey dedupes history and chat rows whose numeric ids collide.
+export function streamEventKey(e: Pick<StreamEvent, 'id' | 'kind'>): string {
+  return `${e.kind.startsWith('chat.') ? 'chat' : 'event'}:${e.id}`
 }
 
 export function filterForKind(kind: StreamKind): StreamFilter | null {

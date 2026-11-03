@@ -6,19 +6,28 @@ import {
   filterForKind,
   groupThreads,
   heatLevel,
+  historyStreamKinds,
   kindsForFilter,
   projectDot,
   projectNeedsYou,
   sameLocalDay,
+  streamEventKey,
 } from '../src/stream.ts'
 
 test('kindsForFilter maps chips to API kinds', () => {
   assert.equal(kindsForFilter('all'), undefined)
+  assert.deepEqual(kindsForFilter('all', true), [...historyStreamKinds, 'chat.user', 'chat.agent'])
   assert.deepEqual(kindsForFilter('chat'), ['note', 'proposal'])
   assert.deepEqual(kindsForFilter('runs'), ['run.started', 'run.finished', 'push'])
   assert.deepEqual(kindsForFilter('ci'), ['ci', 'review'])
   assert.deepEqual(kindsForFilter('merged'), ['merged', 'closed'])
   assert.deepEqual(kindsForFilter('needs'), ['needs'])
+})
+
+test('streamEventKey namespaces chat ids apart from history', () => {
+  assert.equal(streamEventKey({ id: 1, kind: 'note' }), 'event:1')
+  assert.equal(streamEventKey({ id: 1, kind: 'chat.user' }), 'chat:1')
+  assert.equal(streamEventKey({ id: 1, kind: 'chat.agent' }), 'chat:1')
 })
 
 test('filterForKind reverse maps kinds', () => {

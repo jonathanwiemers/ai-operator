@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { get, LoginRequiredError, NotFoundError } from '../api'
+import { get, hasFeature, LoginRequiredError, NotFoundError } from '../api'
 import ContextPanel from '../components/ContextPanel.vue'
 import StreamComposer from '../components/StreamComposer.vue'
 import EventCard from '../components/stream/EventCard.vue'
@@ -12,6 +12,7 @@ import {
   heatLevel,
   kindsForFilter,
   sameLocalDay,
+  streamEventKey,
   streamFilters,
   type StreamFilter,
 } from '../stream'
@@ -110,7 +111,9 @@ function streamQuery(extra: Record<string, string | undefined> = {}): string {
   const params = new URLSearchParams()
   if (!everything.value) params.set('project', `${props.namespace}/${props.name}`)
   if (milestoneIID.value) params.set('milestone', String(milestoneIID.value))
-  const kinds = kindsForFilter(filter.value)
+  // Chat kinds collide with history ids: only with the chat feature, and
+  // only when "all" names them explicitly (other chips unchanged).
+  const kinds = kindsForFilter(filter.value, hasFeature('chat'))
   if (kinds) params.set('kinds', kinds.join(','))
   if (q.value.trim()) params.set('q', q.value.trim())
   for (const [k, v] of Object.entries(extra)) {
@@ -163,8 +166,8 @@ async function loadLive() {
   try {
     const page = await get<StreamPage>(streamQuery({ after: newest.value }))
     if (page.events.length) {
-      const seen = new Set(events.value.map((e) => e.id))
-      const fresh = page.events.filter((e) => !seen.has(e.id))
+      const seen = new Set(events.value.map(streamEventKey))
+      const fresh = page.events.filter((e) => !seen.has(streamEventKey(e)))
       if (fresh.length) events.value = [...fresh, ...events.value]
       if (page.newest) newest.value = page.newest
     }
@@ -377,7 +380,10 @@ function showDay(i: number): string | null {
         <div v-if="loading && !events.length" class="empty">Loading…</div>
         <div v-else-if="!events.length" class="empty">No events yet.</div>
 
-        <template v-for="(item, i) in items" :key="item.kind === 'thread' ? item.key : item.event.id">
+        <template
+          v-for="(item, i) in items"
+          :key="item.kind === 'thread' ? item.key : streamEventKey(item.event)"
+        >
           <div v-if="showDay(i)" class="day">{{ showDay(i) }}</div>
           <EventCard
             v-if="item.kind === 'thread'"

@@ -239,6 +239,8 @@ export interface Permissions {
   // connecting your account); steer: you may post comments.
   gitlab?: boolean
   steer?: boolean
+  // chat: Desk chat with the task's agent (no GitLab token).
+  chat?: boolean
 }
 
 export interface GitLabStatus {
@@ -341,9 +343,32 @@ export interface TranscriptEntry {
 // write and namespace: the user may start one-off researches, in namespace.
 // history: the research database is configured (stream history available).
 export interface Feature {
-  name: 'factory' | 'research' | 'history'
+  name: 'factory' | 'research' | 'history' | 'chat'
   write?: boolean
   namespace?: string
+}
+
+export type ChatRole = 'user' | 'agent' | 'system'
+export type ChatKind = 'message' | 'interrupt' | 'command'
+export type ChatState = 'queued' | 'delivered' | 'answered' | 'failed' | 'deferred'
+
+// ChatMessage is one row of GET .../tasks/{task}/chat (newest first).
+export interface ChatMessage {
+  id: number
+  at: string
+  author?: string
+  authorName?: string
+  role: ChatRole
+  kind: ChatKind
+  body?: string
+  redacted?: boolean
+  replyTo?: number
+  state?: ChatState
+  reason?: string
+}
+
+export interface ChatPage {
+  messages: ChatMessage[]
 }
 
 export type StreamKind =
@@ -358,6 +383,8 @@ export type StreamKind =
   | 'closed'
   | 'autopilot'
   | 'proposal'
+  | 'chat.user'
+  | 'chat.agent'
 
 export interface StreamEvent {
   id: number
@@ -398,6 +425,11 @@ export interface StreamEvent {
     phase?: string
     proposalID?: number
     proposalState?: string
+    // Desk chat (chat.user / chat.agent).
+    role?: ChatRole
+    kind?: ChatKind
+    authorName?: string
+    replyTo?: number
   }
 }
 

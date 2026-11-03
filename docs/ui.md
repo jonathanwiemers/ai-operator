@@ -175,6 +175,17 @@ greyed out as `stale, reset 14:00` until the next agent call brings a new
 one. cursor reports no usage, so it shows only an active limit, as a badge
 with its reset (`cursor limited until 13 Nov`).
 
+**Chat with the agent.** When Desk chat is configured (`ui.chat.writerSecret`)
+and your roles have the `chat` grant (`permissions.chat` on the task, or the
+`chat` feature), a task page has a **Chat with the agent** section: the
+task's Desk thread (oldest at top), a composer that posts without a GitLab
+token, and an Interrupt while a delivered turn has no reply. Sends are
+retry-safe (`clientKey` in session storage until a 2xx). Bodies need the
+`conversation` grant; without it they show as *message hidden*. Cold starts
+and answers also show a status line, with a link to the Live transcript when
+you may see it. Chat events appear in the Desk stream when the `chat`
+feature is on (keyed apart from history events).
+
 With GitLab connected (see [Steering](#steering)), a task page has a
 **Conversation** panel: the comments of its issue, merge request and
 tracking issue, and, with the `steer` permission, a box to write comments in
@@ -719,8 +730,17 @@ The data is dated to the latest 08:00 UTC, so the pages look fresh, and
 `hack/research-dev.yaml` only where the operator does not run, since it
 would start runs for these researches. The UI logs in as the reader, so the
 pages go through the same SELECT-only grants as in the cluster. The
-passwords are fixed (`owner`, `reader`) and meant for this loopback database
-only.
+passwords are fixed (`owner`, `reader`, `chat`) and meant for this loopback
+database only.
+
+**Desk chat.** `make research-seed` also creates the chat writer
+`research_chat_writer`. With the research section uncommented,
+`export AI_OPERATOR_UI_CHAT_DB_USER=research_chat_writer
+AI_OPERATOR_UI_CHAT_DB_PASSWORD=chat` turns on the chat section of task
+pages; posts go through the same row-level security as in the cluster. No
+operator reads this database, so posted messages stay *waiting*: insert
+agent rows (`role = 'agent'`, `reply_to` the user row) as `postgres` to
+see replies.
 
 **A one-off's live states without an operator.** Start a one-off from the
 form (uncomment `namespace` and `allowCreate` in `hack/ui-dev.yaml`; the

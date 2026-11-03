@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { Feature, Me } from './types'
+import type { ChatKind, ChatPage, Feature, Me } from './types'
 
 // Session state shared by the whole app.
 export const session = reactive<{
@@ -112,4 +112,54 @@ export async function logout(): Promise<void> {
     next = body.redirect ?? '/'
   }
   window.location.assign(next)
+}
+
+function taskChatPath(namespace: string, name: string, task: string): string {
+  return `/projects/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/tasks/${encodeURIComponent(task)}/chat`
+}
+
+// getTaskChat loads the task's Desk chat (newest first).
+export async function getTaskChat(
+  namespace: string,
+  name: string,
+  task: string,
+  opts: { before?: number; after?: number; limit?: number } = {},
+): Promise<ChatPage> {
+  const params = new URLSearchParams()
+  if (opts.before) params.set('before', String(opts.before))
+  if (opts.after) params.set('after', String(opts.after))
+  if (opts.limit) params.set('limit', String(opts.limit))
+  const q = params.toString()
+  return get<ChatPage>(`${taskChatPath(namespace, name, task)}${q ? `?${q}` : ''}`)
+}
+
+// postTaskChat posts a Desk chat message (retry-safe with clientKey).
+export async function postTaskChat(
+  namespace: string,
+  name: string,
+  task: string,
+  body: { body: string; clientKey: string; kind?: ChatKind },
+): Promise<{ id: number }> {
+  return post(taskChatPath(namespace, name, task), body)
+}
+
+// chatPostError turns a chat POST status into plain words for the composer.
+export function chatPostError(e: unknown): string {
+  if (e instanceof ApiError) {
+    switch (e.status) {
+      case 403:
+        return 'You may not chat on this project.'
+      case 404:
+        return 'Desk chat is not available.'
+      case 413:
+        return 'The message is larger than 16 KiB.'
+      case 429:
+        return 'Too many messages; try again in a minute.'
+      case 503:
+        return 'The chat database is not connected yet.'
+      default:
+        return e.message
+    }
+  }
+  return e instanceof Error ? e.message : String(e)
 }
