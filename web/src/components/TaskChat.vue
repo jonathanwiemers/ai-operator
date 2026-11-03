@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { getTaskChat, LoginRequiredError, NotFoundError } from '../api'
+import { agentTurnPending, chatWaiting, commandLabel } from '../chatState'
 import { live } from '../live'
-import type { ChatMessage, ChatState, TaskPhase } from '../types'
+import type { AutopilotItem, AutopilotPhase, ChatMessage, ChatState, ProposalView, TaskPhase } from '../types'
 import Badge from './Badge.vue'
 import ChatComposer from './ChatComposer.vue'
 import RelTime from './RelTime.vue'
@@ -17,6 +18,10 @@ const props = defineProps<{
   phase?: TaskPhase
   message?: string
   podName?: string
+  taskType?: 'Spec' | 'Implement' | 'Coordinate'
+  autopilotPhase?: AutopilotPhase
+  autopilotItems?: AutopilotItem[]
+  proposals?: ProposalView[]
 }>()
 
 const messages = ref<ChatMessage[]>([])
@@ -55,31 +60,21 @@ const newestUser = computed(() => {
   return null
 })
 
-const pending = computed(() => {
+const waiting = computed(() => {
   const u = newestUser.value
-  if (!u) return false
-  if (u.state === 'queued' || u.state === 'delivered') return !repliesByParent.value.has(u.id)
-  return false
+  if (!u) return null
+  const pending = agentTurnPending(u.kind, u.state, repliesByParent.value.has(u.id))
+  return chatWaiting({
+    pending,
+    delivered: u.state === 'delivered',
+    phase: props.phase,
+    message: props.message,
+    podName: props.podName,
+  })
 })
 
-const canInterrupt = computed(() => {
-  const u = newestUser.value
-  return !!u && u.state === 'delivered' && !repliesByParent.value.has(u.id)
-})
-
-const statusLine = computed(() => {
-  if (!pending.value || !newestUser.value) return ''
-  const u = newestUser.value
-  const phase = props.phase
-  const idleNoPod = phase === 'Idle' && !props.podName
-  if (u.state === 'queued' || phase === 'Hibernated' || idleNoPod) {
-    return 'waiting for the agent'
-  }
-  if (phase === 'Running' && props.message === 'answering chat' && !props.podName) {
-    return 'starting the agent…'
-  }
-  return 'the agent is answering…'
-})
+const statusLine = computed(() => waiting.value?.label ?? '')
+const canInterrupt = computed(() => !!waiting.value?.canInterrupt)
 
 function stateLabel(state: ChatState | undefined): {
   text: string
@@ -183,7 +178,7 @@ function clearPoll() {
 
 function syncPoll() {
   clearPoll()
-  if (!pending.value) return
+  if (!waiting.value) return
   pollTimer = window.setInterval(() => {
     if (document.visibilityState === 'hidden') return
     void loadNewer()
@@ -210,7 +205,7 @@ watch(
   },
 )
 
-watch(pending, syncPoll, { immediate: true })
+watch(waiting, syncPoll, { immediate: true })
 
 function onVisibility() {
   if (document.visibilityState === 'hidden') {
@@ -218,7 +213,7 @@ function onVisibility() {
     return
   }
   syncPoll()
-  if (pending.value) void loadNewer()
+  if (waiting.value) void loadNewer()
 }
 
 onMounted(() => {
@@ -248,6 +243,7 @@ onUnmounted(() => {
             <div class="meta">
               <strong>{{ authorLabel(msg) }}</strong>
               <span v-if="msg.kind === 'interrupt'" class="faint">interrupt</span>
+              <span v-else-if="msg.kind === 'command'" class="faint">command</span>
               <span class="faint"><RelTime :time="msg.at" /></span>
               <Badge
                 v-if="msg.role === 'user' && msg.state"
@@ -258,6 +254,7 @@ onUnmounted(() => {
               </Badge>
             </div>
             <p v-if="msg.redacted && !msg.body" class="hidden">message hidden</p>
+            <p v-else-if="msg.kind === 'command'" class="cmd">{{ commandLabel(msg.body) }}</p>
             <MarkdownBody v-else-if="msg.body" :text="msg.body" />
             <p v-if="msg.role === 'user' && msg.state === 'failed' && msg.reason" class="reason">
               {{ msg.reason }}
@@ -295,6 +292,10 @@ onUnmounted(() => {
         :name="name"
         :task="task"
         :can-interrupt="canInterrupt"
+        :task-type="taskType"
+        :autopilot-phase="autopilotPhase"
+        :autopilot-items="autopilotItems"
+        :proposals="proposals"
         @posted="loadNewer"
       />
     </template>
@@ -364,6 +365,11 @@ onUnmounted(() => {
   flex-wrap: wrap;
   font-size: 13px;
   margin-bottom: 4px;
+}
+.cmd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 13px;
 }
 .hidden,
 .reason {

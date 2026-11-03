@@ -202,6 +202,11 @@ export interface AutopilotStatus {
   items?: AutopilotItem[]
 }
 
+export interface PilotStatus {
+  // proposals: open proposals on the tracking issue (Coordinate tasks).
+  proposals?: ProposalView[]
+}
+
 export interface TaskStatus {
   phase?: TaskPhase
   podName?: string
@@ -213,6 +218,7 @@ export interface TaskStatus {
   ci?: CIStatus
   plan?: PlannedIssue[]
   autopilot?: AutopilotStatus
+  pilot?: PilotStatus
   conditions?: Condition[]
 }
 
@@ -220,7 +226,7 @@ export interface Task {
   namespace: string
   name: string
   project: string
-  type: 'Spec' | 'Implement'
+  type: 'Spec' | 'Implement' | 'Coordinate'
   milestone?: MilestoneRef
   issue?: IssueRef
   suspend: boolean

@@ -179,16 +179,26 @@ with its reset (`cursor limited until 13 Nov`).
 and your roles have the `chat` grant (`permissions.chat` on the task, or the
 `chat` feature), a task page has a **Chat with the agent** section: the
 task's Desk thread (oldest at top), a composer that posts without a GitLab
-token, and an Interrupt while a delivered turn has no reply. Sends are
-retry-safe (`clientKey` in session storage until a 2xx). Bodies need the
-`conversation` grant; without it they show as *message hidden*. Cold starts
-and answers also show a status line, with a link to the Live transcript when
-you may see it. Chat events appear in the Desk stream when the `chat`
-feature is on (keyed apart from history events). Structured commands go to
-the task that owns them: `retry` / `review` / `use` / `effort` on an
-Implement task, `pause` / `resume` / `skip` on an autopilot Spec task, and
-`accept` / `reject` on the milestone's Coordinate (pilot) task (author must
-be in the milestone's `owner-subjects`).
+token, and an Interrupt while a delivered turn has no reply and the agent
+pod is answering. Sends are retry-safe (`clientKey` in session storage until
+a 2xx). Bodies need the `conversation` grant; without it they show as
+*message hidden*. While a message waits, the status line is honest about
+the task: the task's own message when it is Queued, Pending or Blocked
+(e.g. waiting for capacity), *starting the agent…* while the pod comes up,
+and *the agent is answering…* only once the task is Running or Idle with a
+pod (with a link to the Live transcript when you may see it). With the
+`chat` grant the composer also shows command buttons by task type:
+Implement has Retry, Review again and a Model… form (`use` / `effort`);
+a Spec task with autopilot has Pause or Resume and Skip…; a Coordinate
+task has Accept/Reject per open proposal. Commands post as
+`kind: "command"` with a JSON body and render as a short label in the
+thread (operator answers nest under them as system replies). Each
+command goes to the task that owns it: `retry` / `review` / `use` /
+`effort` on an Implement task, `pause` / `resume` / `skip` on an autopilot
+Spec task, and `accept` / `reject` on the milestone's Coordinate (pilot)
+task (author must be in the milestone's `owner-subjects`). Chat events
+appear in the Desk stream when the `chat` feature is on (keyed apart from
+history events).
 
 With GitLab connected (see [Steering](#steering)), a task page has a
 **Conversation** panel: the comments of its issue, merge request and

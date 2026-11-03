@@ -29,9 +29,9 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 | 8 | Web | `feat/web-desk-chat` | [!80](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/80) | merged |
 | 8+ | Enum fix found by the e2e test | `fix/chat-kind-enum` | [!81](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/81) | merged |
 | 9a | Commands: shape, path, Implement commands | `feat/chat-commands` | [!82](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/82) | merged |
-| 9b | Commands: autopilot verbs, proposals, `ownerSubjects` | `feat/chat-commands-pilot` | see MR | review done |
-| 9c | Commands: web buttons; chat shows "waiting for capacity" | — | — | pending |
-| 10 | `workflow.inputs` | — | — | pending |
+| 9b | Commands: autopilot verbs, proposals, `ownerSubjects` | `feat/chat-commands-pilot` | [!83](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/83) | merged |
+| 9c | Commands: web buttons; chat shows "waiting for capacity" | `feat/web-chat-commands` | [!84](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/84) | review done |
+| 10 | `workflow.inputs` | — | — | on hold: decided after the "ask the pilot" spec |
 
 ## Step artifacts
 
@@ -53,5 +53,6 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 - Steer 2026-11-03: maintainer requires chat to survive operator, UI, pod restarts and DB outages; spec section 3a (at-least-once per hop, dedupe by message ID).
 - CI: the `drift` job fails now and then on a TLS timeout fetching controller-gen from proxy.golang.org (!73, !75, !76); a retry fixes it. Follow-up: `GOPROXY=https://proxy.golang.org|direct` or a `retry:` on the job.
 - Decision 2026-11-03 (user): chat turns keep waiting for a run slot (`maxConcurrentRuns`), no separate chat budget; the UI must show the wait instead of "answering" (9c).
+- Decision 2026-11-03 (user): immediate answers come from a new read-only "ask the pilot" path (own spec), not from task chat; slice 10 on hold until then.
 - Steer 2026-11-03 (slice 9): spec §4a — commands go onto the task and the project reconciler applies them; answers in `spec.source.chatAnswers`; slice 9 split into 9a/9b/9c.
 - Steer 2026-11-03 (slice 6): spec §3b — chat shares the runs' session, interrupts wait during runs, late interrupts are answered as messages (§3a bullet changed).

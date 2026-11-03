@@ -159,6 +159,10 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
           :phase="t.status.phase"
           :message="t.status.message"
           :pod-name="t.status.podName"
+          :task-type="t.type"
+          :autopilot-phase="t.status.autopilot?.phase"
+          :autopilot-items="t.status.autopilot?.items"
+          :proposals="t.status.pilot?.proposals"
         />
       </section>
 

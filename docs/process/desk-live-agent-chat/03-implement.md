@@ -119,3 +119,12 @@ One section per slice. Builder: cursor-agent (`--model auto`) in the slice's wor
 
 - Dispatcher per task type; autopilot verbs once across syncs, no GitLab comments; verbs answered when the autopilot is off; accept by owner subject vs. someone else; reject; two proposal answers in one sync keep both answers; owner-subjects parsing.
 - `go vet ./...` ok, `go test -race ./...` ok except the pre-existing `internal/webhook` shutdown flake (fails about 1 in 3 runs on main too), `make helm-lint` ok.
+## Slice 9c — Web command buttons (`feat/web-chat-commands`)
+
+- `web/src/chatState.ts`: `chatWaiting` (task status message while Queued/Pending/Blocked, "starting the agent…" without a pod, "the agent is answering…" and Interrupt only with a running pod), `commandLabel` (chips like "skip #12" instead of JSON).
+- Composer: Retry, Review again, Model… (engine, model, effort, default) on Implement tasks; Pause/Resume and Skip… on autopilot Spec tasks; Accept/Reject per open proposal on Coordinate tasks. Commands use the same clientKey draft as messages.
+- Checked with `make run-ui` against netcup01 (read-only) and the local database: waiting chip with the task's capacity message, autopilot buttons.
+
+### Tests
+
+- `web/test/chatState.test.mjs` (7); `make ui` ok, 60 node tests.
