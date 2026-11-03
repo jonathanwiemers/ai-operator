@@ -34,6 +34,7 @@ func TestClassifyLimit(t *testing.T) {
 		"You've hit your usage limit for this billing period",
 		"You've hit your limit · resets 3pm (Europe/Berlin)",
 		"You've hit your session limit · resets 3pm",
+		"claude reported an error: You've hit your 5-hour limit · resets 4pm (UTC)",
 		"Too Many Requests",
 	}
 	for _, msg := range limited {

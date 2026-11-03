@@ -49,11 +49,11 @@ func AsUsageLimit(err error) (*UsageLimitError, bool) {
 // limit is hit, e.g. "Claude AI usage limit reached|1760000000",
 // "5-hour limit reached", "rate_limit_error", "429 Too Many Requests",
 // "overloaded_error", "You've hit your usage limit", "You've hit your
-// session limit · resets 3pm".
+// session limit · resets 3pm", "You've hit your 5-hour limit · resets 4pm".
 // Bare status codes are deliberately not matched: API limit errors carry
 // rate_limit_error / overloaded_error anyway, and a stray "429" elsewhere
 // must not turn a real failure into an endless deferral.
-var limitPatterns = regexp.MustCompile(`(?i)(usage limit|limit reached|hit your (?:\w+ )?limit|rate[ _-]?limit|too many requests|overloaded|quota exceeded|exceeded your .*quota)`)
+var limitPatterns = regexp.MustCompile(`(?i)(usage limit|limit reached|hit your (?:[\w-]+ )?limit|rate[ _-]?limit|too many requests|overloaded|quota exceeded|exceeded your .*quota)`)
 
 // MaxDeferrals bounds how often one run request is deferred before it is
 // reported as failed, in case an error is mistaken for a usage limit.
