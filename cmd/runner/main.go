@@ -112,7 +112,7 @@ func runRunner(ctx context.Context) {
 	log := ctrl.Log.WithName("runner")
 	scheme := runtime.NewScheme()
 	utilruntime.Must(aiv1.AddToScheme(scheme))
-	k8s, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
+	k8s, err := client.NewWithWatch(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
 	if err != nil {
 		log.Error(err, "creating kubernetes client")
 		os.Exit(1)

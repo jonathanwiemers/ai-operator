@@ -23,8 +23,8 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 | 2 | Cursor ACP session | `feat/cursor-acp-session` | [!74](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/74) | merged |
 | 3 | Agent server session RPC | `feat/agent-session-rpc` | [!75](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/75) | merged |
 | 4 | Chat table and login | `feat/chat-store` | [!76](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/76) | merged |
-| 5 | UI chat endpoint and stream kinds | `feat/ui-chat-endpoint` | see MR | review done, merging |
-| 6 | Runner chat loop | — | — | pending |
+| 5 | UI chat endpoint and stream kinds | `feat/ui-chat-endpoint` | [!77](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/77) | merged, released 2026.11.8, deployed (infra!289) |
+| 6 | Runner chat loop | `feat/runner-chat-loop` | see MR | review done, merging |
 | 7 | Operator dispatch | — | — | pending |
 | 8 | Web | — | — | pending |
 | 9 | Commands and owners | — | — | pending |
@@ -49,3 +49,4 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 - Delegation: cursor-agent for implementation and reviews (no quota marker on 2026-11-03); orchestrator verifies, commits signed.
 - Steer 2026-11-03: maintainer requires chat to survive operator, UI, pod restarts and DB outages; spec section 3a (at-least-once per hop, dedupe by message ID).
 - CI: the `drift` job fails now and then on a TLS timeout fetching controller-gen from proxy.golang.org (!73, !75, !76); a retry fixes it. Follow-up: `GOPROXY=https://proxy.golang.org|direct` or a `retry:` on the job.
+- Steer 2026-11-03 (slice 6): spec §3b — chat shares the runs' session, interrupts wait during runs, late interrupts are answered as messages (§3a bullet changed).

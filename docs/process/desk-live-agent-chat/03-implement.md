@@ -56,3 +56,16 @@ One section per slice. Builder: cursor-agent (`--model auto`) in the slice's wor
 
 - `chat_test.go`: config validation, create/retry/no key/oversize/no grant/feature off, GET redaction, stream kinds (opt-in, merge order, redaction, role filter fills a page, empty milestone), merge paging without a gap, features.
 - `gofmt` clean, `go vet ./...` ok, `go test -race ./internal/ui/... ./internal/research/...` ok on Postgres 17, `make helm-lint` ok.
+
+## Slice 6 — Runner chat loop (`feat/runner-chat-loop`)
+
+- API: `spec.source.chatMessages` (≤ 20, text ≤ 16 KiB), `status.chat` (`replies` ≤ 20, `lastTurnTime`); generated CRDs.
+- `internal/runner/chat.go`: `tick` takes the oldest unanswered non-command message before a run; `chatTurn` opens or reuses the agent-server session (key and engine as spec §3b), saves `chatInFlight` before sending, wraps the text as untrusted data with the author, patches the reply (inert, ≤ 16 KiB) into status, then marks it answered; writable turns commit and push through `publish`; replies whose message left the spec are pruned.
+- `runner.go`: `Loop` wakes on a watch of the task (field selector on its name; poll stays the fallback), `Step` closes the chat session before a run; state file written atomically (write and rename).
+- Chart: agent Role gets `watch` on agenttasks. `cmd/runner`: client with watch.
+- Orchestrator fixes after the builder: open failure answered with its error (was an empty reply); a failed turn backs off one poll interval (was an immediate retry loop on a lost agent); session ID saved once, not on every stream line; watch scoped to the task's name; chat follows the last implementer engine; atomic state writes.
+
+### Tests
+
+- `chat_test.go` (fake session agent, fake client): answer into status, command skipped, order, restart resend with prefix and stored session, agent lost keeps `chatInFlight` and does not spin, reopen after a lost agent, open failure answered with error, usage limit, interrupt cancels and is the next turn, late interrupt does not cancel a finished turn, run closes the session first, pruning, writable turn pushes, engine choice, prompt shape.
+- `gofmt` clean, `go vet ./...` ok, `make generate manifests` stable, `go test -race ./internal/runner/ ./api/... ./internal/controller/...` ok, `make helm-lint` ok.

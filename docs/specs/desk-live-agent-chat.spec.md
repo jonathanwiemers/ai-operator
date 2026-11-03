@@ -251,9 +251,11 @@ step instead of losing it:
 - **Session ID** is stored in the runner state as soon as the CLI reports
   it (claude's `init` line, ACP `session/new`), not only at the end of a
   turn, so a crash in the first turn can still resume.
-- **Interrupts** are rows like messages: one that arrives after its turn
-  ended (or after a restart) is dropped with a system row "nothing to
-  interrupt".
+- **Interrupts** are rows like messages. One that cancels a running chat
+  turn is sent as the next turn; one that arrives after its turn ended,
+  during a run or after a restart is answered as a normal message, since
+  its text may carry new instructions (steer, slice 6: nothing is
+  dropped).
 - **Work in a cut-off turn** stays in the checkout on the PVC; the next
   turn's push publishes it, as after a run interrupted today
   (`status.run.interruptions`).
@@ -262,6 +264,26 @@ step instead of losing it:
   messages per task) until the operator can write them.
 - **Order:** messages of a task are sent in ID order; a retried hand-over
   never overtakes a later one (the runner sorts the spec's entries).
+
+### 3b. Runner decisions (steer, slice 6)
+
+- **One session for chat and runs:** a chat turn resumes the session the
+  task's runs use (implementer for Implement tasks, on the engine of the
+  last implementer session; pilot for Coordinate; spec role for Spec), so
+  chat and runs share context. The runner keeps it open between chat
+  turns and closes it before a run, which resumes the same ID through the
+  CLI.
+- **Interrupts and runs:** an interrupt cancels a chat turn at once; during
+  a run it waits until the run ends (runs are not sessions yet).
+- **Writable turns:** only Implement tasks with a branch; Spec and
+  Coordinate tasks, and Implement tasks before their first run, chat
+  read-only.
+- **Run report:** a chat push sets the reply's `pushedSHA`; the one-line
+  MR run report entry waits for a run-report helper outside runs (later
+  slice).
+- **Failed turns:** a lost agent container is retried after the poll
+  interval with the resend prefix; usage limits and other errors are
+  answered with `error` set, so a message is never retried forever.
 
 ### 4. Commands and authority
 
@@ -432,4 +454,6 @@ GitLab comment path if nothing needs it.
 | 2 | feat(runner): cursor-agent ACP session | [!74](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/74) | merged |
 | 3 | feat(runner): agent server session RPC | [!75](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/75) | merged |
 | 4 | feat(research): chat_messages table and chat writer login | [!76](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/76) | merged |
-| 5 | feat(ui): Desk chat endpoint, chat grant and stream kinds | this MR | open |
+| 5 | feat(ui): Desk chat endpoint, chat grant and stream kinds | [!77](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/77) | merged |
+| — | infra: Desk chat writer login and chat grant | [infra!289](https://gitlab.com/jo.wiemers/infra/cluster/-/merge_requests/289) | merged, live on 2026.11.8 |
+| 6 | feat(runner): Desk chat loop | this MR | open |

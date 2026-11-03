@@ -153,6 +153,13 @@ type SourceState struct {
 	// +optional
 	PilotMessages []PilotMessage `json:"pilotMessages,omitempty"`
 
+	// ChatMessages are Desk chat turns for this task's agent. Written by
+	// the operator, answered by the runner, dropped by the operator once
+	// the reply is stored. At most 20 queued.
+	// +optional
+	// +kubebuilder:validation:MaxItems=20
+	ChatMessages []ChatMessage `json:"chatMessages,omitempty"`
+
 	// PilotEvents are the events the operator woke the pilot for
 	// (Coordinate tasks), each assessed by the run of its request.
 	// +optional
@@ -167,6 +174,26 @@ type SourceState struct {
 	// (Implement tasks), for the run of its request.
 	// +optional
 	PilotInstruction *PilotInstruction `json:"pilotInstruction,omitempty"`
+}
+
+// ChatMessage is one Desk chat turn handed to the runner.
+type ChatMessage struct {
+	// ID is the chat_messages row id.
+	ID int64 `json:"id"`
+	// Kind is message, interrupt or command. The runner skips command;
+	// the operator handles those.
+	// +kubebuilder:validation:Enum=message|interrupt|command
+	Kind string `json:"kind"`
+	// Text is the user's message, at most 16 KiB.
+	// +kubebuilder:validation:MaxLength=16384
+	Text string `json:"text"`
+	// Author is the OIDC subject.
+	Author string `json:"author"`
+	// AuthorName is a display name for the prompt.
+	// +optional
+	AuthorName string `json:"authorName,omitempty"`
+	// At is when the message was written.
+	At metav1.Time `json:"at"`
 }
 
 // PilotInstruction is what the implementer gets of an accepted instruct:
@@ -609,8 +636,43 @@ type AgentTaskStatus struct {
 	// +optional
 	Pilot *PilotStatus `json:"pilot,omitempty"`
 
+	// Chat holds the runner's replies to Desk chat messages. The operator
+	// copies them into chat_messages and drops the answered messages from
+	// the spec.
+	// +optional
+	Chat *ChatStatus `json:"chat,omitempty"`
+
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// ChatStatus is the runner's answers to Desk chat turns.
+type ChatStatus struct {
+	// Replies are answers keyed by message id, newest last, at most 20.
+	// +optional
+	// +kubebuilder:validation:MaxItems=20
+	Replies []ChatReply `json:"replies,omitempty"`
+
+	// LastTurnTime is when the runner last finished a chat turn.
+	// +optional
+	LastTurnTime *metav1.Time `json:"lastTurnTime,omitempty"`
+}
+
+// ChatReply is one answer to a ChatMessage.
+type ChatReply struct {
+	MessageID int64 `json:"messageID"`
+	// Text is the agent's answer, made inert and cut to 16 KiB.
+	// +kubebuilder:validation:MaxLength=16384
+	// +optional
+	Text string      `json:"text,omitempty"`
+	At   metav1.Time `json:"at"`
+	// Error is set when the turn did not finish normally (e.g. "interrupted",
+	// "usage limit until <time>").
+	// +optional
+	Error string `json:"error,omitempty"`
+	// PushedSHA is set when a writable turn committed and pushed.
+	// +optional
+	PushedSHA string `json:"pushedSHA,omitempty"`
 }
 
 // MaxInterruptions bounds how often one run request is started again after

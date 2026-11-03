@@ -70,9 +70,10 @@ rules:
     resources: ["agentprojects"]
     verbs: ["get"]
   # list: the pilot reads the tasks of its milestone.
+  # watch: the runner wakes on chat messages and run requests promptly.
   - apiGroups: ["ai.wiemers.me"]
     resources: ["agenttasks"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["ai.wiemers.me"]
     resources: ["agenttasks/status"]
     verbs: ["get", "patch"]

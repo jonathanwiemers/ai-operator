@@ -1388,7 +1388,7 @@ after every read-only run); the boundary is the agent container itself.
 
 * Pods run as non-root with all capabilities dropped and seccomp
   `RuntimeDefault`; the runner's root filesystem is read-only.
-* The agent service account can only read (get, list) tasks, get projects
+* The agent service account can only read (get, list, watch: the runner wakes on Desk chat messages) tasks, get projects
   and patch `agenttasks/status`; the pilot lists the tasks of its milestone.
   With a research database it also gets AgentResearches and patches
   `agentresearches/status` (the runner of a research pod).

@@ -47,3 +47,16 @@ Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./inte
 | 4 | Role filter after `LIMIT` under-filled `kinds=chat.agent` pages | real | roles filtered in SQL |
 | 5 | Optional `clientKey` broke retry idempotency (3a) | real | required, 400 without |
 | — | equal timestamps across the two tables at a page boundary | accepted | rare; documented in code |
+
+## Slice 6
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | (orchestrator) open failure wrote an empty reply without error | real | reply carries the error |
+| 2 | (orchestrator) lost agent → `tick` reported work done → immediate retry loop | real | failed turn reports no work; Loop waits a poll interval; test |
+| 3 | (orchestrator) state saved on every claude stream line | real | save only when the session ID changes |
+| 4 | (orchestrator) watch on every task of the namespace | real | field selector `metadata.name` |
+| 5 | (orchestrator) chat used the profile engine, runs the label engine: separate sessions | real | follow `state.ImplementEngine`; test |
+| 6 | (orchestrator) state file written in place, read concurrently by the interrupt watcher | real | write and rename |
+| 7 | `chatSessionKey` kept after a lost agent: retries prompt a session the restarted container does not have | real | cleared on any prompt error; reopen test |
+| 8 | Interrupt landing after the answer marked a finished turn interrupted | real | `chatTurnState` guards cancel vs finish; test |

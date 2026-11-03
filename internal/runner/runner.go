@@ -93,6 +93,9 @@ type Runner struct {
 	// sessionEngines maps the sessions of the current run to their engine,
 	// so a fallback resumes only its own engine's sessions.
 	sessionEngines map[string]aiv1.Engine
+	// chatSessionKey is the "<role>/<engine>" of the open chat session, or
+	// empty when none is open. Cleared when CloseSession runs before a run.
+	chatSessionKey string
 }
 
 // Outcome is the result of one run.
@@ -148,6 +151,18 @@ type state struct {
 	PilotAnswered []int64 `json:"pilotAnswered,omitempty"`
 	// PilotAssessed are the pilot's last assessed events ("key@request").
 	PilotAssessed []string `json:"pilotAssessed,omitempty"`
+	// ChatInFlight is the chat turn being sent (or last attempted), so a
+	// restart can resend it with the stored session.
+	ChatInFlight *chatInFlight `json:"chatInFlight,omitempty"`
+	// ChatAnswered are the last answered chat message IDs, so a message
+	// the operator hands over again is not answered twice.
+	ChatAnswered []int64 `json:"chatAnswered,omitempty"`
+}
+
+// chatInFlight is persisted before a chat turn is sent.
+type chatInFlight struct {
+	MessageID int64  `json:"messageID"`
+	SessionID string `json:"sessionID,omitempty"`
 }
 
 func sessionKey(role string, engine aiv1.Engine) string { return role + "/" + string(engine) }
@@ -185,7 +200,13 @@ func (r *Runner) saveState(s state) error {
 		return err
 	}
 	b, _ := json.MarshalIndent(s, "", "  ")
-	return os.WriteFile(r.stateFile(), b, 0o600)
+	// Write and rename, so a crash or a concurrent read never sees half a
+	// file (chat turns read the state while a turn saves it).
+	tmp := r.stateFile() + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, r.stateFile())
 }
 
 // syncWorkspace brings the mirror up to date and hands the agent's checkout
@@ -280,7 +301,7 @@ func (r *Runner) publish(ctx context.Context, branch, base string, skipCI bool) 
 	return true, nil
 }
 
-// Loop processes run requests until ctx is cancelled.
+// Loop processes chat turns and run requests until ctx is cancelled.
 func (r *Runner) Loop(ctx context.Context) error {
 	interval := r.PollInterval
 	if interval == 0 {
@@ -300,21 +321,41 @@ func (r *Runner) Loop(ctx context.Context) error {
 		case <-time.After(2 * time.Second):
 		}
 	}
+	wake := r.watchTask(ctx)
 	for {
-		ran, err := r.Step(ctx)
+		did, err := r.tick(ctx, wake)
 		if err != nil && ctx.Err() == nil {
 			// A step cut off by the pod stopping is not an error.
 			r.Log.Error(err, "run step failed")
 		}
-		if ran {
-			continue // check for requests that arrived during the run
+		if did {
+			continue // check for work that arrived during the turn/run
 		}
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-wake:
 		case <-time.After(interval):
 		}
 	}
+}
+
+// tick handles one chat turn if any, otherwise one run request.
+func (r *Runner) tick(ctx context.Context, wake <-chan struct{}) (bool, error) {
+	task, project, err := r.load(ctx)
+	if err != nil || task == nil {
+		return false, err
+	}
+	if err := r.pruneChatReplies(ctx, task); err != nil {
+		return false, err
+	}
+	if msg, ok := nextChatMessage(task, r.loadState()); ok {
+		// A failed turn (e.g. the agent container lost) is retried after
+		// the poll interval, not at once.
+		err := r.chatTurn(ctx, task, project, msg, wake)
+		return err == nil, err
+	}
+	return r.Step(ctx)
 }
 
 // Step executes at most one pending run. It reports whether a run happened.
@@ -323,6 +364,11 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	if err != nil || task == nil || !task.RunPending() {
 		return false, err
 	}
+	// A run resumes the session through the CLI; close the live chat one first.
+	if err := r.Agent.CloseSession(ctx); err != nil {
+		r.Log.Error(err, "closing the chat session before a run")
+	}
+	r.chatSessionKey = ""
 	if d := task.Status.Run.DeferredUntil; d != nil && d.After(r.now()) {
 		return false, nil // waiting for a usage limit to reset
 	}

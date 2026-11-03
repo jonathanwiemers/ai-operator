@@ -160,6 +160,49 @@ spec:
                       (Implement tasks), copied from the milestone's spec task, so a run
                       during the pause knows it. Empty when it is not paused over it.
                     type: string
+                  chatMessages:
+                    description: |-
+                      ChatMessages are Desk chat turns for this task's agent. Written by
+                      the operator, answered by the runner, dropped by the operator once
+                      the reply is stored. At most 20 queued.
+                    items:
+                      description: ChatMessage is one Desk chat turn handed to the
+                        runner.
+                      properties:
+                        at:
+                          description: At is when the message was written.
+                          format: date-time
+                          type: string
+                        author:
+                          description: Author is the OIDC subject.
+                          type: string
+                        authorName:
+                          description: AuthorName is a display name for the prompt.
+                          type: string
+                        id:
+                          description: ID is the chat_messages row id.
+                          format: int64
+                          type: integer
+                        kind:
+                          description: |-
+                            Kind is message, interrupt or command. The runner skips command;
+                            the operator handles those.
+                          enum:
+                          - message|interrupt|command
+                          type: string
+                        text:
+                          description: Text is the user's message, at most 16 KiB.
+                          maxLength: 16384
+                          type: string
+                      required:
+                      - at
+                      - author
+                      - id
+                      - kind
+                      - text
+                      type: object
+                    maxItems: 20
+                    type: array
                   ciFixPipelineID:
                     description: |-
                       CIFixPipelineID is the failed pipeline the operator asked the agent to
@@ -636,6 +679,50 @@ spec:
                 required:
                 - reason
                 - since
+                type: object
+              chat:
+                description: |-
+                  Chat holds the runner's replies to Desk chat messages. The operator
+                  copies them into chat_messages and drops the answered messages from
+                  the spec.
+                properties:
+                  lastTurnTime:
+                    description: LastTurnTime is when the runner last finished a chat
+                      turn.
+                    format: date-time
+                    type: string
+                  replies:
+                    description: Replies are answers keyed by message id, newest last,
+                      at most 20.
+                    items:
+                      description: ChatReply is one answer to a ChatMessage.
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        error:
+                          description: |-
+                            Error is set when the turn did not finish normally (e.g. "interrupted",
+                            "usage limit until <time>").
+                          type: string
+                        messageID:
+                          format: int64
+                          type: integer
+                        pushedSHA:
+                          description: PushedSHA is set when a writable turn committed
+                            and pushed.
+                          type: string
+                        text:
+                          description: Text is the agent's answer, made inert and
+                            cut to 16 KiB.
+                          maxLength: 16384
+                          type: string
+                      required:
+                      - at
+                      - messageID
+                      type: object
+                    maxItems: 20
+                    type: array
                 type: object
               ci:
                 description: CI is the operator's view of the pipeline of the agent's
