@@ -72,6 +72,13 @@ type acpUpdate struct {
 	Kind   string          // sessionUpdate
 }
 
+// StartSession opens a CursorSession. It implements SessionEngine.
+func (c *CursorCLI) StartSession(ctx context.Context, inv Invocation) (Session, error) {
+	return c.Start(ctx, inv)
+}
+
+var _ SessionEngine = (*CursorCLI)(nil)
+
 // Start runs cursor-agent acp and completes initialize/authenticate/session
 // setup. The process lives until Close; inv.Prompt is ignored.
 func (c *CursorCLI) Start(_ context.Context, inv Invocation) (*CursorSession, error) {

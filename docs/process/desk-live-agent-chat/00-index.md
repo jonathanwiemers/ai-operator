@@ -18,10 +18,10 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 
 | # | Scope | Branch | MR | Status |
 |---|-------|--------|----|--------|
-| 0 | Spec | `spec/desk-live-agent-chat` | [!70](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/70) | merging |
+| 0 | Spec (+ steer !72) | `spec/desk-live-agent-chat` | [!70](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/70) | merged |
 | 1 | Claude stream-json `Session` | `feat/claude-session` | [!71](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/71) | merged |
-| 2 | Cursor ACP session | `feat/cursor-acp-session` | MR pending | review done |
-| 3 | Agent server session RPC | — | — | pending |
+| 2 | Cursor ACP session | `feat/cursor-acp-session` | [!74](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/74) | merged |
+| 3 | Agent server session RPC | `feat/agent-session-rpc` | see MR | review done, merging |
 | 4 | Chat table and login | — | — | pending |
 | 5 | UI chat endpoint and stream kinds | — | — | pending |
 | 6 | Runner chat loop | — | — | pending |

@@ -23,3 +23,10 @@ One section per slice. Builder: cursor-agent (`--model auto`) in the slice's wor
 - Tests: `session_acp_test.go` with the test binary as a fake ACP agent (`TestMain`, `AIO_TEST_ACP`), shaped on `testdata/cursor-acp-session.jsonl` (the sanitised real recording).
 - Orchestrator fixes after review: the reader never blocks (per-turn queue plus signal instead of a 64-slot channel), a response that arrived just before the process exit is still used, and its pending entry is removed. Added `TestCursorSessionSlowConsumerDoesNotBlockReader`.
 - Checks: gofmt clean, `go vet ./...` ok, `TMPDIR=/tmp/aio go test -race ./internal/runner/` ok (251 s).
+
+## Slice 3 — Agent server session RPC (`feat/agent-session-rpc`, stacked on slice 2)
+
+- `engine.go`: `SessionEngine` (`StartSession`), implemented by `ClaudeCLI` and `CursorCLI`.
+- `agent.go`: `Agent` gains `OpenSession`, `PromptSession`, `CancelSession`, `CloseSession`. `LocalAgent` holds at most one session (same Dir, env and per-run toolchains as `Run`). `AgentServer` routes `session/open|cancel|close` like the other calls; `session/prompt` streams NDJSON (`{"event":…}` per event, flushed, then `{"result":…,"error":…}`), and the request context bounds the turn, so a runner that goes away cancels the turn but keeps the session. `AgentClient.PromptSession` reads the stream; a stream without a final line is an `agentConnError` (lost container), the caller's own cancel is `ctx.Err()`.
+- Orchestrator fixes after review: own cancel no longer reported as a lost container, no size limit on the whole stream, a failed open keeps the old session (start new, then close old). Added `TestAgentSessionFailedOpenKeepsPrevious`, the cancel test checks `context.Canceled`.
+- Checks: gofmt clean, `go vet ./...` ok, `TMPDIR=/tmp/aio go test -race ./internal/runner/` ok (252 s).

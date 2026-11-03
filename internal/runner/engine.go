@@ -101,6 +101,12 @@ type Session interface {
 	Close() error
 }
 
+// SessionEngine opens long-lived sessions. Engines that only support one-shot
+// Run do not implement it.
+type SessionEngine interface {
+	StartSession(ctx context.Context, inv Invocation) (Session, error)
+}
+
 // Event is one line of the engine's event stream.
 type Event struct {
 	Type    string // assistant, user, tool_call, result, system, rate_limit_event, ...

@@ -20,3 +20,11 @@ Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./inte
 |---|---------|---------|--------|
 | 1 | `exited()` could win over a buffered response; pending entry not removed | real | check the response channel first on exit, delete the pending entry |
 | 2 | `routeUpdate` could block the only reader on a full turn channel, so responses and permission requests stop | real | unbounded per-turn queue with a 1-slot signal; the reader never blocks |
+
+## Slice 3
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | Client's own cancel returned as `agentConnError` | real (would trigger the 3a lost-container path) | return `ctx.Err()` when the context is done |
+| 2 | 64 MiB limit applied to the whole NDJSON stream | real for long turns | no limit on the stream |
+| 3 | Open closed the live session before the new one started | real | start the new one, close the old one only on success |

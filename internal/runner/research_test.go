@@ -33,6 +33,15 @@ func (a *researchAgent) Run(_ context.Context, engine aiv1.Engine, inv Invocatio
 	return a.answers[len(a.calls)-1](inv)
 }
 
+func (*researchAgent) OpenSession(context.Context, aiv1.Engine, Invocation) (string, error) {
+	return "", errors.New("research agent has no sessions")
+}
+func (*researchAgent) PromptSession(context.Context, string, func(Event)) (*Result, error) {
+	return nil, errors.New("research agent has no sessions")
+}
+func (*researchAgent) CancelSession(context.Context) error { return nil }
+func (*researchAgent) CloseSession(context.Context) error  { return nil }
+
 func textAnswer(s string) func(Invocation) (*Result, error) {
 	return func(Invocation) (*Result, error) { return &Result{Text: s, CostUSD: 0.25}, nil }
 }

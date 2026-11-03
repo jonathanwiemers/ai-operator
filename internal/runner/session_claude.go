@@ -36,6 +36,13 @@ type ClaudeSession struct {
 	sessionProc
 }
 
+// StartSession opens a ClaudeSession. It implements SessionEngine.
+func (c *ClaudeCLI) StartSession(ctx context.Context, inv Invocation) (Session, error) {
+	return c.Start(ctx, inv)
+}
+
+var _ SessionEngine = (*ClaudeCLI)(nil)
+
 // Start runs claude with stream-json input. The process lives until Close;
 // inv.Prompt is ignored (turns go through Prompt).
 // The context does not bound the process: a session outlives the call that

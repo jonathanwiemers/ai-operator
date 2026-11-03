@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -26,6 +27,16 @@ import (
 type Agent interface {
 	Ready(ctx context.Context) error
 	Run(ctx context.Context, engine aiv1.Engine, inv Invocation) (*Result, error)
+	// OpenSession starts a long-lived CLI session. At most one session is
+	// open: opening while one is open closes the old one first. The returned
+	// ID is the engine's (empty until the CLI reports it).
+	OpenSession(ctx context.Context, engine aiv1.Engine, inv Invocation) (sessionID string, err error)
+	// PromptSession sends one turn on the open session.
+	PromptSession(ctx context.Context, text string, fn func(Event)) (*Result, error)
+	// CancelSession stops the turn in progress; no-op without a turn.
+	CancelSession(ctx context.Context) error
+	// CloseSession ends the open session; idempotent.
+	CloseSession(ctx context.Context) error
 	RemoteRefs(ctx context.Context) (map[string]string, error)
 	Prepare(ctx context.Context, req PrepareRequest) error
 	Commit(ctx context.Context, message string) (bool, error)
@@ -43,6 +54,10 @@ type LocalAgent struct {
 	Engines   map[aiv1.Engine]Engine
 	// Exchange is the only directory bundles may be read from or written to.
 	Exchange string
+
+	mu      sync.Mutex
+	session Session
+	sessEng aiv1.Engine
 }
 
 var _ Agent = (*LocalAgent)(nil)
@@ -55,16 +70,95 @@ func (a *LocalAgent) Run(ctx context.Context, engine aiv1.Engine, inv Invocation
 	if !ok {
 		return nil, fmt.Errorf("engine %q is not available in the agent image", engine)
 	}
-	if err := os.MkdirAll(a.Workspace.Dir, 0o755); err != nil {
+	if err := a.prepareInvocation(ctx, &inv); err != nil {
 		return nil, err
+	}
+	return eng.Run(ctx, inv)
+}
+
+// prepareInvocation sets Dir and Env like Run, for one-shot calls and sessions.
+func (a *LocalAgent) prepareInvocation(ctx context.Context, inv *Invocation) error {
+	if err := os.MkdirAll(a.Workspace.Dir, 0o755); err != nil {
+		return err
 	}
 	inv.Dir = a.Workspace.Dir
 	env, err := perRunToolchains(ctx, inv.PerRunToolchains)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	inv.Env = env
-	return eng.Run(ctx, inv)
+	return nil
+}
+
+// OpenSession starts an engine session in the workspace. Engines without
+// SessionEngine return an error.
+func (a *LocalAgent) OpenSession(ctx context.Context, engine aiv1.Engine, inv Invocation) (string, error) {
+	eng, ok := a.Engines[engine]
+	if !ok {
+		return "", fmt.Errorf("engine %q is not available in the agent image", engine)
+	}
+	se, ok := eng.(SessionEngine)
+	if !ok {
+		return "", fmt.Errorf("engine %q has no sessions", engine)
+	}
+	if err := a.prepareInvocation(ctx, &inv); err != nil {
+		return "", err
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	// The old session stays until the new one runs, so a failed open (auth,
+	// model, handshake) leaves the agent as it was.
+	sess, err := se.StartSession(ctx, inv)
+	if err != nil {
+		return "", err
+	}
+	if a.session != nil {
+		_ = a.session.Close()
+	}
+	a.session, a.sessEng = sess, engine
+	return sess.ID(), nil
+}
+
+// PromptSession runs one turn on the open session.
+func (a *LocalAgent) PromptSession(ctx context.Context, text string, fn func(Event)) (*Result, error) {
+	a.mu.Lock()
+	sess := a.session
+	a.mu.Unlock()
+	if sess == nil {
+		return nil, errors.New("no open session")
+	}
+	return sess.Prompt(ctx, text, fn)
+}
+
+// CancelSession interrupts the turn in progress; no-op without a turn.
+func (a *LocalAgent) CancelSession(ctx context.Context) error {
+	a.mu.Lock()
+	sess := a.session
+	a.mu.Unlock()
+	if sess == nil {
+		return nil
+	}
+	return sess.Cancel(ctx)
+}
+
+// CloseSession ends the open session; idempotent.
+func (a *LocalAgent) CloseSession(context.Context) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.session == nil {
+		return nil
+	}
+	err := a.session.Close()
+	a.session, a.sessEng = nil, ""
+	return err
+}
+
+// sessionEngine returns the engine of the open session (for logging).
+func (a *LocalAgent) sessionEngine() aiv1.Engine {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.sessEng
 }
 
 var toolchainsName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,99}$`)
@@ -198,6 +292,28 @@ type refsResponse struct {
 
 type errorResponse struct {
 	Error string `json:"error,omitempty"`
+}
+
+type openSessionRequest struct {
+	Engine     aiv1.Engine `json:"engine"`
+	Invocation Invocation  `json:"invocation"`
+}
+
+type openSessionResponse struct {
+	SessionID string `json:"sessionID"`
+	Error     string `json:"error,omitempty"`
+}
+
+type promptSessionRequest struct {
+	Text string `json:"text"`
+}
+
+// sessionPromptLine is one NDJSON line of session/prompt: an event as it
+// happens, then a final result/error line.
+type sessionPromptLine struct {
+	Event  *Event  `json:"event,omitempty"`
+	Result *Result `json:"result,omitempty"`
+	Error  string  `json:"error,omitempty"`
 }
 
 func errString(err error) string {
@@ -339,7 +455,76 @@ func (s *AgentServer) Handler() http.Handler {
 		return reply{mergeResponse{Result: res, Error: errString(err)}, err,
 			[]any{"base", req.Base, "abort", req.Abort, "merged", res.Merged, "conflicts", len(res.Conflicts)}}
 	})
+	handle("session/open", func(ctx context.Context, body []byte) reply {
+		var req openSessionRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{openSessionResponse{Error: err.Error()}, err, nil}
+		}
+		id, err := s.Agent.OpenSession(ctx, req.Engine, req.Invocation)
+		return reply{openSessionResponse{SessionID: id, Error: errString(err)}, err,
+			[]any{"engine", req.Engine, "session", id}}
+	})
+	handle("session/cancel", func(ctx context.Context, _ []byte) reply {
+		err := s.Agent.CancelSession(ctx)
+		return reply{errorResponse{Error: errString(err)}, err, []any{"engine", s.Agent.sessionEngine()}}
+	})
+	handle("session/close", func(ctx context.Context, _ []byte) reply {
+		eng := s.Agent.sessionEngine()
+		err := s.Agent.CloseSession(ctx)
+		return reply{errorResponse{Error: errString(err)}, err, []any{"engine", eng}}
+	})
+	mux.HandleFunc("POST /session/prompt", s.handleSessionPrompt)
 	return mux
+}
+
+// handleSessionPrompt streams events as NDJSON, then a final result/error
+// line. The request context bounds the turn: if the runner goes away the
+// turn is cancelled, but the session stays open.
+func (s *AgentServer) handleSessionPrompt(w http.ResponseWriter, r *http.Request) {
+	log := s.Log.WithValues("rpc", "session/prompt")
+	if id := r.Header.Get(runHeader); id != "" {
+		log = log.WithValues("run", id)
+	}
+	start := time.Now()
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
+	if err != nil {
+		log.Error(err, "reading request")
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var req promptSessionRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(sessionPromptLine{Error: err.Error()})
+		log.Error(err, "call failed", "durationMs", time.Since(start).Milliseconds())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	flusher, _ := w.(http.Flusher)
+	enc := json.NewEncoder(w)
+	write := func(line sessionPromptLine) {
+		_ = enc.Encode(line)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	eng := s.Agent.sessionEngine()
+	res, err := s.Agent.PromptSession(logr.NewContext(r.Context(), log), req.Text, func(ev Event) {
+		write(sessionPromptLine{Event: &ev})
+	})
+	write(sessionPromptLine{Result: res, Error: errString(err)})
+
+	kv := []any{"durationMs", time.Since(start).Milliseconds(), "engine", eng}
+	if res != nil {
+		kv = append(kv, "session", res.SessionID, "costUSD", res.CostUSD, "isError", res.IsError)
+	}
+	if err != nil {
+		log.Error(err, "call failed", kv...)
+	} else {
+		log.Info("call done", kv...)
+	}
 }
 
 // Serve listens on the unix socket until ctx is cancelled.
@@ -454,6 +639,87 @@ func (c *AgentClient) Run(ctx context.Context, engine aiv1.Engine, inv Invocatio
 		return nil, err
 	}
 	return resp.Result, remoteErr(resp.Error)
+}
+
+func (c *AgentClient) OpenSession(ctx context.Context, engine aiv1.Engine, inv Invocation) (string, error) {
+	var resp openSessionResponse
+	if err := c.call(ctx, "session/open", openSessionRequest{Engine: engine, Invocation: inv}, &resp); err != nil {
+		return "", err
+	}
+	return resp.SessionID, remoteErr(resp.Error)
+}
+
+// PromptSession drives one turn and streams events to fn. A stream that ends
+// without a final line is an agentConnError (the agent container was lost).
+func (c *AgentClient) PromptSession(ctx context.Context, text string, fn func(Event)) (*Result, error) {
+	body, err := json.Marshal(promptSessionRequest{Text: text})
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://agent/session/prompt", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	if id := runIDFrom(ctx); id != "" {
+		httpReq.Header.Set(runHeader, id)
+	}
+	httpResp, err := c.http.Do(httpReq)
+	if err != nil {
+		if ctx.Err() != nil {
+			// Our own cancel, not a lost agent container.
+			return nil, ctx.Err()
+		}
+		return nil, &agentConnError{method: "session/prompt", err: err}
+	}
+	defer httpResp.Body.Close()
+	if httpResp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(httpResp.Body, 4096))
+		return nil, fmt.Errorf("agent session/prompt: %s: %s", httpResp.Status, b)
+	}
+
+	// A turn streams for as long as it runs: no limit on the whole body,
+	// the events are bounded by what the engines print per line.
+	dec := json.NewDecoder(httpResp.Body)
+	for {
+		var line sessionPromptLine
+		if err := dec.Decode(&line); err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			if errors.Is(err, io.EOF) {
+				return nil, &agentConnError{method: "session/prompt", err: io.ErrUnexpectedEOF}
+			}
+			var syntax *json.SyntaxError
+			var typ *json.UnmarshalTypeError
+			if errors.As(err, &syntax) || errors.As(err, &typ) {
+				return nil, err
+			}
+			return nil, &agentConnError{method: "session/prompt", err: err}
+		}
+		if line.Event != nil {
+			if fn != nil {
+				fn(*line.Event)
+			}
+			continue
+		}
+		return line.Result, remoteErr(line.Error)
+	}
+}
+
+func (c *AgentClient) CancelSession(ctx context.Context) error {
+	var resp errorResponse
+	if err := c.call(ctx, "session/cancel", nil, &resp); err != nil {
+		return err
+	}
+	return remoteErr(resp.Error)
+}
+
+func (c *AgentClient) CloseSession(ctx context.Context) error {
+	var resp errorResponse
+	if err := c.call(ctx, "session/close", nil, &resp); err != nil {
+		return err
+	}
+	return remoteErr(resp.Error)
 }
 
 func (c *AgentClient) RemoteRefs(ctx context.Context) (map[string]string, error) {
