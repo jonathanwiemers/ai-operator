@@ -9,6 +9,7 @@ import ExtLink from '../components/ExtLink.vue'
 import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
 import StageBar from '../components/StageBar.vue'
+import PauseCardCompact from '../components/PauseCardCompact.vue'
 import NotFound from './NotFound.vue'
 import type { ProjectDetail } from '../types'
 
@@ -111,6 +112,16 @@ function apTone(phase: string | undefined) {
           <span class="faint">{{ m.tasks.length }} issues · {{ cost(m.costUSD) }}</span>
         </div>
 
+        <PauseCardCompact
+          v-if="m.spec?.status.autopilot?.phase === 'Paused'"
+          class="pause"
+          :kind="m.spec.status.autopilot.pauseKind"
+          :reason="m.spec.status.autopilot.pausedReason"
+          :issue="m.spec.status.autopilot.pausedFor"
+          :waiting="autopilotWaitingFor(m.spec.status.autopilot, m.tasks)"
+          :to="{ name: 'milestone', params: { namespace, name, iid: String(m.iid) } }"
+        />
+
         <RouterLink
           v-if="m.spec"
           :to="{ name: 'task', params: { namespace: m.spec.namespace, name: m.spec.project, task: m.spec.name } }"
@@ -130,23 +141,6 @@ function apTone(phase: string | undefined) {
             updated <RelTime :time="m.spec.status.run?.lastActivityTime ?? m.spec.createdAt" />
           </span>
         </RouterLink>
-
-        <div v-if="m.spec?.status.autopilot && autopilotWaitingFor(m.spec.status.autopilot, m.tasks)" class="banner info">
-          <strong>Autopilot waiting</strong>
-          <span>
-            A run is working on #{{ m.spec.status.autopilot.pausedFor }}; autopilot continues by itself once it is reviewed and
-            CI is green. It paused because {{ m.spec.status.autopilot.pausedReason }}.
-          </span>
-        </div>
-        <div v-else-if="m.spec?.status.autopilot?.phase === 'Paused'" class="banner warning">
-          <strong>Autopilot paused</strong>
-          <span>
-            {{ m.spec.status.autopilot.pausedReason || 'Waiting for a human.' }}
-            <template v-if="m.spec.status.autopilot.resumeWhenReady">
-              It continues by itself once a later run of #{{ m.spec.status.autopilot.pausedFor }} fixes this.
-            </template>
-          </span>
-        </div>
 
         <Board :tasks="m.tasks" />
       </section>
@@ -219,6 +213,10 @@ function apTone(phase: string | undefined) {
 }
 
 .banner {
+  margin-bottom: 12px;
+}
+
+.pause {
   margin-bottom: 12px;
 }
 </style>

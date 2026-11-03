@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { get, hasFeature, LoginRequiredError, NotFoundError } from '../api'
 import ContextPanel from '../components/ContextPanel.vue'
+import PauseCardCompact from '../components/PauseCardCompact.vue'
 import StreamComposer from '../components/StreamComposer.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import { live, useResource } from '../live'
@@ -86,6 +87,13 @@ const projectInbox = computed(() => {
 })
 
 const canSteer = computed(() => !!milestone.value?.permissions?.steer)
+
+// paused: the loaded milestone's paused autopilot, pinned above the composer
+// (project and milestone streams only; the Inbox covers Everything).
+const paused = computed(() => {
+  const m = milestone.value
+  return !everything.value && m?.autopilot?.phase === 'Paused' ? m : null
+})
 
 const items = computed(() => groupThreads(events.value))
 
@@ -351,15 +359,26 @@ function showDay(i: number): string | null {
       </div>
 
       <div class="scroll">
-        <StreamComposer
-          v-if="!everything && namespace && name"
-          :namespace="namespace"
-          :name="name"
-          :project="project"
-          :milestone-iid="milestoneIID"
-          :steer="milestone?.permissions?.steer"
-          @posted="loadInitial"
-        />
+        <div v-if="!everything && namespace && name" class="pinned">
+          <PauseCardCompact
+            v-if="paused"
+            class="pause"
+            :kind="paused.autopilot?.pauseKind"
+            :reason="paused.autopilot?.pausedReason"
+            :issue="paused.autopilot?.pausedFor"
+            :milestone-title="paused.title"
+            :waiting="paused.autopilot?.waitingFor"
+            :to="{ name: 'milestone', params: { namespace, name, iid: String(paused.iid) } }"
+          />
+          <StreamComposer
+            :namespace="namespace"
+            :name="name"
+            :project="project"
+            :milestone-iid="milestoneIID"
+            :steer="milestone?.permissions?.steer"
+            @posted="loadInitial"
+          />
+        </div>
         <p v-else class="pick muted">Pick a project in the rail to message a pilot or issue.</p>
 
         <div class="filters">
@@ -545,6 +564,16 @@ function showDay(i: number): string | null {
   overflow-y: auto;
   flex: 1;
   padding: 0 28px 40px;
+}
+/* The pause card and the composer stay on top while the stream scrolls. */
+.pinned {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--bg);
+}
+.pinned .pause {
+  margin-top: 14px;
 }
 .filters {
   display: flex;

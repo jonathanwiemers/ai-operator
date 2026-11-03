@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { useResource } from '../live'
 import type { InboxResponse } from '../types'
+import PauseCardCompact from '../components/PauseCardCompact.vue'
 import RelTime from '../components/RelTime.vue'
 
 const { data, error, loading } = useResource<InboxResponse>(() => '/inbox', ['project', 'task'])
 
 function to(item: InboxResponse['items'][number]) {
+  // A pause opens the milestone page, where the full card has the actions.
+  if (item.kind === 'pause' && item.milestoneIID) {
+    return {
+      name: 'milestone' as const,
+      params: { namespace: item.namespace, name: item.project, iid: String(item.milestoneIID) },
+    }
+  }
   if (item.kind === 'task' && item.task) {
     return { name: 'task' as const, params: { namespace: item.namespace, name: item.project, task: item.task } }
   }
@@ -28,7 +36,17 @@ function to(item: InboxResponse['items'][number]) {
     <div v-else-if="data && !data.items.length" class="card empty">Nothing waiting.</div>
     <ul v-else-if="data" class="list">
       <li v-for="(item, i) in data.items" :key="i">
-        <RouterLink :to="to(item)" class="row">
+        <PauseCardCompact
+          v-if="item.kind === 'pause'"
+          class="in-list"
+          :kind="item.pauseKind"
+          :reason="item.reason"
+          :issue="item.issueIID"
+          :project="item.project"
+          :milestone-title="item.title"
+          :to="to(item)"
+        />
+        <RouterLink v-else :to="to(item)" class="row">
           <span class="proj">{{ item.project }}</span>
           <span class="title">
             <b v-if="item.kind === 'proposal' && item.proposalID != null">P{{ item.proposalID }}</b>
@@ -58,6 +76,13 @@ function to(item: InboxResponse['items'][number]) {
 }
 .list li + li {
   border-top: 1px solid var(--border);
+}
+.list .in-list {
+  border: 0;
+  border-left: 3px solid var(--tone-warning-fg);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 12px 16px 12px 13px;
 }
 .row {
   display: grid;

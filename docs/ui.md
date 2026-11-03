@@ -26,7 +26,9 @@ chat included, with your own GitLab token.
 The app is a **Desk**: a left rail, the stream, and a context panel.
 
 * **Rail:** *Inbox* (what needs you now across your projects: tasks with
-  questions, failed or blocked, and the pilots' open proposals), *Everything*
+  questions, failed or blocked, the pilots' open proposals, and paused
+  autopilots as the compact pause card, see below, which opens the
+  milestone page), *Everything*
   (all your projects' streams in one), your projects with a status dot
   (running, needs you, idle), a one-line state and a needs-you count, the
   researches (with the research section) and the engine usage. On narrow
@@ -40,7 +42,11 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   tracking issue, as `/pilot …`) or comments on an issue, in your GitLab
   name, with `/` suggesting commands; it needs your GitLab account
   connected and the `steer` grant (see [Steering](#steering)), and the
-  operator handles what you write like any GitLab comment. Filter chips
+  operator handles what you write like any GitLab comment. While the
+  stream's milestone (the scoped one, or on a project stream the one the
+  context panel shows) is paused, the compact pause card is pinned above
+  the message box; it goes when the autopilot runs again. The
+  *Everything* stream pins nothing. Filter chips
   (*Chat*, *Needs you*, *Runs*, *CI & review*, *Merged*), day dividers,
   and one card per event. Comments on the same issue or merge request
   among the loaded events are one card at the newest comment, read top
@@ -160,7 +166,7 @@ nofollow"`, and other links show as their text. Images are never loaded.
 | Page | Content |
 |------|---------|
 | **Projects** | every project you may see: tasks per stage, autopilot milestones and their progress, engine usage and limits (see below), suspension, last sync, model spend |
-| **Board** | `/projects/<namespace>/<name>/board`: the same engine usage line and a banner per active limit; one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; then the milestone's plan, the autopilot pause reason, and issues without a milestone |
+| **Board** | `/projects/<namespace>/<name>/board`: the same engine usage line and a banner per active limit; one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; above them the compact pause card while the milestone's autopilot is paused (see below), the milestone's plan, and issues without a milestone |
 | **Milestone** | a planned milestone (linked from its project board and its stream, `/projects/<namespace>/<name>/milestones/<iid>/detail`): autopilot phase, the pause card while it is paused (see below), the queue with states, merge requests and task pages, the pilot's autonomy and open proposals, **Ask the pilot** (the Desk chat with the milestone's pilot, its `Coordinate` task, with the accept and reject buttons for its proposals; with the `chat` grant and the research database), the chat on its tracking issue, and the milestone's board |
 | **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot queue with merge requests and decisions |
 
@@ -218,8 +224,14 @@ On the projects list and the board, an autopilot that paused over an
 issue's run, review or CI and is **waiting** for a run that is working on
 that issue now shows as *Autopilot waiting for #N*: it continues by itself
 once the issue is reviewed and green. A pause that needs a human shows as
-*Autopilot paused* with its reason. While a run works on a task, its card
-marks the CI result as the last push's.
+*Autopilot paused*. On the board, each paused milestone's section starts
+with the **compact pause card**: the heading for the `pauseKind`, the pause
+reason on one line (the free text for a pause without a kind), the paused
+issue, *A run is working on #N now* while one is, what ends the pause by
+itself, and *Open* to the milestone page. It has no buttons; the actions are
+on the full card there. The Inbox and the stream show the same compact card.
+While a run works on a task, its card marks the CI result as the last
+push's.
 
 On the milestone page, a paused autopilot (waiting or not) shows as the
 **pause card**: a heading for the `pauseKind`, the pause reason as text, the
