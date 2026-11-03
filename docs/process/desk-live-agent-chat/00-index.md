@@ -47,3 +47,4 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 ## Notes
 
 - Delegation: cursor-agent for implementation and reviews (no quota marker on 2026-11-03); orchestrator verifies, commits signed.
+- Steer 2026-11-03: maintainer requires chat to survive operator, UI, pod restarts and DB outages; spec section 3a (at-least-once per hop, dedupe by message ID).

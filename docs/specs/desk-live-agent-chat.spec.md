@@ -44,6 +44,12 @@ streaming input mode.
    on the MR. Work done in a chat turn is committed and pushed like a run's.
 6. **GitLab comments can be switched off as input**, per project, so a
    project can run on Desk chat alone.
+7. **Nothing is lost on a restart.** A message, an answer or an interrupt
+   survives a restart or crash of the operator (also a leader change), the
+   UI, the agent pod (runner or agent container, eviction, hibernation) and
+   a short database outage: it is delivered once it can be, and shown
+   once. Only the live token stream of a turn that a crash cuts off is
+   lost; the turn is answered again.
 
 ## Non-goals
 
@@ -160,7 +166,9 @@ CREATE TABLE chat_messages (
     role        text NOT NULL,              -- user | agent | system
     kind        text NOT NULL DEFAULT 'message', -- message | interrupt | command
     body        text NOT NULL,
-    reply_to    bigint REFERENCES chat_messages(id),
+    reply_to    bigint UNIQUE REFERENCES chat_messages(id),
+    client_key  text,                       -- composer retry key
+    UNIQUE (author, client_key),
     state       text NOT NULL DEFAULT 'queued', -- queued | delivered | answered | failed | deferred
     at          timestamptz NOT NULL DEFAULT now(),
     expires_at  timestamptz NOT NULL
@@ -223,6 +231,37 @@ runner (watches its AgentTask) ─session/prompt─▶ agent server ─▶ CLI s
   to pods without a chat). The session ID is stored as today, so the next
   message after hibernation resumes it from the PVC (`--resume`,
   `session/load`). A cold start shows "starting the agent…" in the stream.
+
+### 3a. Durability (steer, 2026-11-03)
+
+Every hop is at-least-once with a durable record before the next hop, and
+every consumer dedupes by the message ID, so a restart anywhere repeats a
+step instead of losing it:
+
+| Hop | Durable record | After a restart |
+|---|---|---|
+| Browser → UI | the row, committed before `201` | no `201`: the composer keeps the draft and retries with the same client key (`client_key` unique per author), so a retry never doubles the message |
+| table → operator | row `state = 'queued'` | the operator lists `queued` rows on start and every `pollInterval`; `LISTEN` only makes it faster |
+| operator → task | `spec.source.chatMessages` (by ID) | the spec is patched **before** the row is marked `delivered`; a crash in between hands it over again, and an ID already in the spec is skipped |
+| task → runner → agent | the spec entry, plus `inFlight` (message ID and session ID) in the runner state on the PVC before the turn is sent | a new runner sends the spec's unanswered messages again, resuming the stored session; for the `inFlight` one it prefixes "your answer to this message may not have arrived" (the resumed session may already hold it) |
+| agent → runner | `status.chat.replies` by message ID | replies stay in the status until the operator acknowledges them; the runner prunes only replies whose message has left the spec |
+| runner → table | agent row, `UNIQUE (reply_to)` | the operator inserts `ON CONFLICT DO NOTHING`, then drops the message from the spec; a crash in between inserts nothing twice |
+| table → browser | the rows | the UI is stateless; the stream reconnects and refetches newer than its top (`after` cursor) |
+
+- **Session ID** is stored in the runner state as soon as the CLI reports
+  it (claude's `init` line, ACP `session/new`), not only at the end of a
+  turn, so a crash in the first turn can still resume.
+- **Interrupts** are rows like messages: one that arrives after its turn
+  ended (or after a restart) is dropped with a system row "nothing to
+  interrupt".
+- **Work in a cut-off turn** stays in the checkout on the PVC; the next
+  turn's push publishes it, as after a run interrupted today
+  (`status.run.interruptions`).
+- **Database outage:** the UI answers `503` and the composer keeps the
+  draft; replies wait in the task status (bounded by the 20 queued
+  messages per task) until the operator can write them.
+- **Order:** messages of a task are sent in ID order; a retried hand-over
+  never overtakes a later one (the runner sorts the spec's entries).
 
 ### 4. Commands and authority
 
@@ -331,6 +370,12 @@ the Desk). With only `desk`:
   streaming, close on container restart.
 - Store: migration, chat writer can insert only user rows of its own
   subject, cannot update or touch other tables; notify fires; retention.
+- Durability: one test per hop of the table above that kills the step
+  between its durable write and the next (operator before marking
+  `delivered`, runner after `inFlight`, operator between reply insert and
+  spec update, UI retry with the same client key) and checks one message
+  and one answer arrive; a database outage test for replies waiting in
+  the status.
 - Operator: dispatch (queued → delivered, cap of 20, fallback poll),
   replies copied once, commands mapped to the existing functions, `inputs`
   gate (no note commands with only `desk`).
@@ -341,8 +386,10 @@ the Desk). With only `desk`:
 - Web: `make ui`; screenshots of the streaming answer, interrupt and cold
   start (light, dark, narrow).
 - Cluster: enable on Bloop with `inputs: [gitlab, desk]`, chat with one
-  implementer and one pilot, interrupt a run, hibernate and resume; then a
-  week with `inputs: [desk]`.
+  implementer and one pilot, interrupt a run, hibernate and resume;
+  restart the operator, the UI and the agent pod each in the middle of a
+  turn and check nothing is lost or doubled; then a week with
+  `inputs: [desk]`.
 
 ## Delivery
 
@@ -357,12 +404,15 @@ it and say so in their description.
    transcript logging from session events.
 4. **Chat table and login:** migration `0003`, chat writer grants and
    policy, store queries, chart secret.
-5. **UI chat endpoint and stream kinds:** `chat` grant, POST, stream query,
-   features flag `chat`.
+5. **UI chat endpoint and stream kinds:** `chat` grant, POST with client
+   key (retry-safe), stream query, features flag `chat`.
 6. **Runner chat loop:** watch, serialize turns and runs, interrupt,
-   replies in status, commit/push of writing turns, run report entry.
+   replies in status, commit/push of writing turns, run report entry;
+   `inFlight` and early session ID in the runner state, resend after a
+   restart (3a).
 7. **Operator dispatch:** listener and poll fallback, `chatMessages`,
-   replies to the table, pod start, `chatIdleTimeout`.
+   replies to the table, pod start, `chatIdleTimeout`; spec before
+   `delivered`, idempotent reply insert before dropping from the spec (3a).
 8. **Web:** composer target "agent", streaming answer card, interrupt,
    cold-start state.
 9. **Commands and owners:** structured command rows, `ownerSubjects`.
