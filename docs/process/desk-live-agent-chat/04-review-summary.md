@@ -13,3 +13,10 @@ One section per slice. Reviewer: cursor-agent (`--mode ask --model auto`), corre
 | — | `runCLI` refactor | no regression found | — |
 
 Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./internal/runner/` green after the fixes.
+
+## Slice 2
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | `exited()` could win over a buffered response; pending entry not removed | real | check the response channel first on exit, delete the pending entry |
+| 2 | `routeUpdate` could block the only reader on a full turn channel, so responses and permission requests stop | real | unbounded per-turn queue with a 1-slot signal; the reader never blocks |

@@ -20,18 +20,11 @@ import (
 	"github.com/go-logr/logr"
 )
 
-// Timeouts for ClaudeSession; tests shorten them.
-var (
-	sessionCloseWait  = 10 * time.Second
-	sessionCancelWait = 30 * time.Second
-)
-
 var _ Session = (*ClaudeSession)(nil)
 
 // ClaudeSession is a long-lived `claude` process using stream-json input.
 type ClaudeSession struct {
 	bin                  string
-	cmd                  *exec.Cmd
 	stdin                io.WriteCloser
 	lines                <-chan []byte
 	errBuf               *boundWriter
@@ -40,9 +33,7 @@ type ClaudeSession struct {
 	id                   string
 	dead, closed, inTurn bool
 	reqSeq               atomic.Uint64
-	waitOnce             sync.Once
-	done                 chan struct{}
-	waitErr              error
+	sessionProc
 }
 
 // Start runs claude with stream-json input. The process lives until Close;
@@ -85,7 +76,7 @@ func (c *ClaudeCLI) Start(_ context.Context, inv Invocation) (*ClaudeSession, er
 			}
 		}
 	}()
-	return &ClaudeSession{bin: bin, cmd: cmd, stdin: stdin, lines: lines, errBuf: errBuf}, nil
+	return &ClaudeSession{bin: bin, stdin: stdin, lines: lines, errBuf: errBuf, sessionProc: sessionProc{cmd: cmd}}, nil
 }
 
 func (s *ClaudeSession) ID() string {
@@ -238,18 +229,6 @@ func (s *ClaudeSession) Close() error {
 	return s.waitErr
 }
 
-// exited waits for the process once and reports its end.
-func (s *ClaudeSession) exited() <-chan struct{} {
-	s.waitOnce.Do(func() {
-		s.done = make(chan struct{})
-		go func() {
-			s.waitErr = s.cmd.Wait()
-			close(s.done)
-		}()
-	})
-	return s.done
-}
-
 func (s *ClaudeSession) writeJSON(v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -274,34 +253,3 @@ func (s *ClaudeSession) rememberID(line []byte) {
 }
 
 func (s *ClaudeSession) markDead() { s.mu.Lock(); s.dead = true; s.mu.Unlock() }
-
-func (s *ClaudeSession) kill() {
-	if s.cmd.Process == nil {
-		return
-	}
-	_ = syscall.Kill(-s.cmd.Process.Pid, syscall.SIGKILL) // process group (children)
-	_ = s.cmd.Process.Kill()
-}
-
-// boundWriter keeps the last max bytes written (stderr tail).
-type boundWriter struct {
-	mu  sync.Mutex
-	buf []byte
-	max int
-}
-
-func (w *boundWriter) Write(p []byte) (int, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.buf = append(w.buf, p...)
-	if len(w.buf) > w.max {
-		w.buf = append([]byte(nil), w.buf[len(w.buf)-w.max:]...)
-	}
-	return len(p), nil
-}
-
-func (w *boundWriter) String() string {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return string(w.buf)
-}

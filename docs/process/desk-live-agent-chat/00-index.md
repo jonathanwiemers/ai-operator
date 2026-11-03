@@ -19,8 +19,8 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 | # | Scope | Branch | MR | Status |
 |---|-------|--------|----|--------|
 | 0 | Spec | `spec/desk-live-agent-chat` | [!70](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/70) | merging |
-| 1 | Claude stream-json `Session` | `feat/claude-session` | [!71](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/71) | review done, merging |
-| 2 | Cursor ACP session | — | — | pending |
+| 1 | Claude stream-json `Session` | `feat/claude-session` | [!71](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/71) | merged |
+| 2 | Cursor ACP session | `feat/cursor-acp-session` | MR pending | review done |
 | 3 | Agent server session RPC | — | — | pending |
 | 4 | Chat table and login | — | — | pending |
 | 5 | UI chat endpoint and stream kinds | — | — | pending |
