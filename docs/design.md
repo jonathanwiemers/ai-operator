@@ -727,10 +727,16 @@ description, in issues the bot wrote.
 Canceled pipelines (`mainHealth.retryCanceled`, `checkCanceled`, on the
 same pipeline list): the first check records the newest finished pipeline
 as the baseline (`status.mainHealth.canceledSince`), so history is not
-replayed. A newer canceled pipeline whose commit has no `success` pipeline
-on the default branch (one more `ListPipelines` by `sha`) is retried once;
-a green pipeline of a later commit does not cover it, since jobs such as a
-release run per commit. Canceled again (or a refused retry), it is reported
+replayed. A canceled pipeline with a newer pipeline on the branch that is
+not canceled or skipped (green, red, running, pending) is superseded, as
+GitLab's auto-cancel of redundant pipelines does on quick merges: the branch
+is fast-forward only, so the newer commit contains it, and its release
+covers it. It is recorded as `superseded` and neither retried nor reported;
+the running ones are not in the list, so one more `ListPipelines{ref,
+limit: 10}` without a scope is made when the finished ones cover nothing.
+A newer canceled pipeline that is not superseded and whose commit has no
+`success` pipeline on the default branch (one more `ListPipelines` by
+`sha`) is retried once. Canceled again (or a refused retry), it is reported
 once (`status.mainHealth.canceled`, the newest 10): a comment on the open
 main-red issue, else on the `ci::main-canceled` issue (marker
 `main-canceled`, owners pinged when it is opened with the `mainRed` event).

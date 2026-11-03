@@ -250,8 +250,11 @@ func (r *AgentProjectReconciler) reportMainRed(ctx context.Context, gl gitlab.AP
 // checkCanceled retries a canceled pipeline among ps, the newest finished
 // pipelines of branch, once if its commit has no successful pipeline of its
 // own (mainHealth.retryCanceled). Canceled again, or if the retry is refused,
-// it is reported once. The first check records the newest pipeline as the
-// baseline: canceled pipelines up to it are left alone.
+// it is reported once. A canceled pipeline with a newer one that is not
+// canceled or skipped is superseded (GitLab's auto-cancel of redundant
+// pipelines): the branch is fast-forward only, so the newer commit covers it.
+// The first check records the newest pipeline as the baseline: canceled
+// pipelines up to it are left alone.
 func (r *AgentProjectReconciler) checkCanceled(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, branch string, ps []gitlab.Pipeline, st *aiv1.MainHealthStatus) error {
 	if !*spec.MainHealth.RetryCanceled {
 		st.CanceledSince, st.Canceled = 0, nil
@@ -268,9 +271,28 @@ func (r *AgentProjectReconciler) checkCanceled(ctx context.Context, gl gitlab.AP
 		st.Canceled = st.Canceled[:min(len(st.Canceled), maxCanceled)]
 	}()
 	glProject := spec.GitLab.Project
+	// ps holds finished pipelines only: the running ones are listed when
+	// none of ps covers a canceled pipeline.
+	covering, listed := newestCovering(ps), false
 	for _, p := range slices.Backward(ps) {
 		i := slices.IndexFunc(st.Canceled, func(c aiv1.CanceledPipeline) bool { return c.PipelineID == p.ID })
-		if p.Status != "canceled" || p.ID <= st.CanceledSince || i >= 0 && st.Canceled[i].Reported {
+		if p.Status != "canceled" || p.ID <= st.CanceledSince || i >= 0 && (st.Canceled[i].Reported || st.Canceled[i].Superseded) {
+			continue
+		}
+		if p.ID > covering && !listed {
+			all, err := gl.ListPipelines(ctx, glProject, gitlab.ListPipelinesOptions{Ref: branch, Limit: 10})
+			if err != nil {
+				return fmt.Errorf("listing the pipelines of %s: %w", branch, err)
+			}
+			covering, listed = max(covering, newestCovering(all)), true
+		}
+		if p.ID < covering {
+			log.FromContext(ctx).Info("canceled default branch pipeline is superseded by a newer one", "pipeline", p.ID, "sha", p.SHA, "newer", covering)
+			if i < 0 {
+				st.Canceled = append(st.Canceled, aiv1.CanceledPipeline{PipelineID: p.ID, SHA: p.SHA})
+				i = len(st.Canceled) - 1
+			}
+			st.Canceled[i].Superseded = true
 			continue
 		}
 		same, err := gl.ListPipelines(ctx, glProject, gitlab.ListPipelinesOptions{SHA: p.SHA, Ref: branch, Scope: "finished"})
@@ -299,6 +321,18 @@ func (r *AgentProjectReconciler) checkCanceled(ctx context.Context, gl gitlab.AP
 		c.Reported = true
 	}
 	return nil
+}
+
+// newestCovering is the ID of the newest pipeline of ps that is not canceled
+// or skipped, 0 if none: it covers the older commits of its branch.
+func newestCovering(ps []gitlab.Pipeline) int64 {
+	var id int64
+	for _, p := range ps {
+		if p.Status != "canceled" && p.Status != "skipped" {
+			id = max(id, p.ID)
+		}
+	}
+	return id
 }
 
 // reportCanceled reports a canceled pipeline that was retried (or could not

@@ -397,9 +397,8 @@ func canceledEnv(t *testing.T) (*projectEnv, func(time.Duration)) {
 func TestMainHealthRetriesACanceledPipelineOnce(t *testing.T) {
 	e, advance := canceledEnv(t)
 	e.setNotify(aiv1.NotifySpec{Users: []string{"alice"}})
-	// Canceled by a newer commit whose green pipeline released nothing.
+	// The newest pipeline, canceled by hand or a timeout.
 	pid := e.gl.AddPipeline("sha1", "main", "canceled")
-	e.gl.AddPipeline("sha2", "main", "success")
 	e.check(advance)
 	if !slices.Equal(e.gl.Retried, []int64{pid}) {
 		t.Fatalf("a canceled pipeline without a green one of its commit is retried, retried %v", e.gl.Retried)
@@ -450,11 +449,68 @@ func TestMainHealthRetriesACanceledPipelineOnce(t *testing.T) {
 
 func TestMainHealthCanceledCoveredByGreen(t *testing.T) {
 	e, advance := canceledEnv(t)
-	e.gl.AddPipeline("sha1", "main", "canceled")
+	// A second, canceled run of a green commit.
 	e.gl.AddPipeline("sha1", "main", "success")
+	e.gl.AddPipeline("sha1", "main", "canceled")
 	e.check(advance)
 	if len(e.gl.Retried) != 0 || len(e.mainHealth().Canceled) != 0 {
 		t.Fatalf("a commit with a green pipeline is fine, retried %v", e.gl.Retried)
+	}
+}
+
+func TestMainHealthCanceledSuperseded(t *testing.T) {
+	for _, tc := range []struct {
+		name, newer string
+		superseded  bool
+	}{
+		{"by a running pipeline", "running", true},
+		{"by a pending pipeline", "pending", true},
+		{"by a green pipeline", "success", true},
+		{"by a red pipeline", "failed", true},
+		{"not by a skipped pipeline", "skipped", false},
+		{"not by a canceled pipeline", "canceled", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, advance := canceledEnv(t)
+			e.setMainHealth(aiv1.MainHealthSpec{RetryFailedJobs: new(false)})
+			// GitLab's auto-cancel of redundant pipelines.
+			pid := e.gl.AddPipeline("sha1", "main", "canceled")
+			e.gl.AddPipeline("sha2", "main", tc.newer)
+			e.check(advance)
+			e.check(advance)
+			retried := slices.Contains(e.gl.Retried, pid)
+			if retried == tc.superseded {
+				t.Fatalf("superseded %v, retried %v", tc.superseded, e.gl.Retried)
+			}
+			if n := len(e.issuesWith(mainCanceledLabel)); n != 0 {
+				t.Fatalf("nothing is reported, got %d main-canceled issues", n)
+			}
+			c := e.mainHealth().Canceled
+			i := slices.IndexFunc(c, func(c aiv1.CanceledPipeline) bool { return c.PipelineID == pid })
+			if i < 0 || c[i].Superseded != tc.superseded || c[i].Reported {
+				t.Fatalf("status %+v", c)
+			}
+		})
+	}
+}
+
+func TestMainHealthCanceledRetrySuperseded(t *testing.T) {
+	e, advance := canceledEnv(t)
+	pid := e.gl.AddPipeline("sha1", "main", "canceled")
+	e.check(advance)
+	if !slices.Equal(e.gl.Retried, []int64{pid}) {
+		t.Fatalf("the newest canceled pipeline is retried, retried %v", e.gl.Retried)
+	}
+	// A merge meanwhile: GitLab cancels the retry at once.
+	e.gl.AddPipeline("sha2", "main", "running")
+	e.gl.SetPipelineStatus(pid, "canceled")
+	e.check(advance)
+	e.check(advance)
+	if len(e.gl.Issues) != 0 || len(e.gl.Retried) != 1 {
+		t.Fatalf("a superseded retry is not reported, issues %+v, retried %v", e.gl.Issues, e.gl.Retried)
+	}
+	if st := e.mainHealth(); len(st.Canceled) != 1 || !st.Canceled[0].Superseded || st.Canceled[0].Reported {
+		t.Fatalf("status %+v", st.Canceled)
 	}
 }
 

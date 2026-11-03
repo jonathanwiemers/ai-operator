@@ -671,8 +671,9 @@ type MainHealthSpec struct {
 	// RetryCanceled retries a canceled pipeline of the default branch once
 	// when its commit has no successful pipeline of its own. Canceled again,
 	// it is reported on the open main-red issue, else on a ci::main-canceled
-	// issue, which freezes nothing. Pipelines up to the newest one when the
-	// switch first ran are left alone.
+	// issue, which freezes nothing. A pipeline with a newer one that is not
+	// canceled or skipped is superseded and left alone, as are pipelines up
+	// to the newest one when the switch first ran.
 	// +kubebuilder:default=true
 	// +optional
 	RetryCanceled *bool `json:"retryCanceled,omitempty"`
@@ -848,9 +849,10 @@ type MainHealthStatus struct {
 	CheckedAt *metav1.Time `json:"checkedAt,omitempty"`
 }
 
-// CanceledPipeline is a canceled pipeline of the default branch whose commit
-// had no successful pipeline: whether it was retried, and whether its second
-// cancel (or a refused retry) was reported.
+// CanceledPipeline is a canceled pipeline of the default branch that a newer
+// pipeline covers (superseded), or whose commit had no successful pipeline:
+// whether it was retried, and whether its second cancel (or a refused retry)
+// was reported.
 type CanceledPipeline struct {
 	PipelineID int64  `json:"pipelineID"`
 	SHA        string `json:"sha"`
@@ -858,6 +860,8 @@ type CanceledPipeline struct {
 	Retried bool `json:"retried,omitempty"`
 	// +optional
 	Reported bool `json:"reported,omitempty"`
+	// +optional
+	Superseded bool `json:"superseded,omitempty"`
 }
 
 // FlakyJobReport is a job that passed on retry: its flaky issue, and what

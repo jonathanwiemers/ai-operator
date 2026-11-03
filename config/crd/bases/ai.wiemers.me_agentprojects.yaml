@@ -1231,8 +1231,9 @@ spec:
                       RetryCanceled retries a canceled pipeline of the default branch once
                       when its commit has no successful pipeline of its own. Canceled again,
                       it is reported on the open main-red issue, else on a ci::main-canceled
-                      issue, which freezes nothing. Pipelines up to the newest one when the
-                      switch first ran are left alone.
+                      issue, which freezes nothing. A pipeline with a newer one that is not
+                      canceled or skipped is superseded and left alone, as are pipelines up
+                      to the newest one when the switch first ran.
                     type: boolean
                   retryFailedJobs:
                     default: true
@@ -1797,9 +1798,10 @@ spec:
                       newest first.
                     items:
                       description: |-
-                        CanceledPipeline is a canceled pipeline of the default branch whose commit
-                        had no successful pipeline: whether it was retried, and whether its second
-                        cancel (or a refused retry) was reported.
+                        CanceledPipeline is a canceled pipeline of the default branch that a newer
+                        pipeline covers (superseded), or whose commit had no successful pipeline:
+                        whether it was retried, and whether its second cancel (or a refused retry)
+                        was reported.
                       properties:
                         pipelineID:
                           format: int64
@@ -1810,6 +1812,8 @@ spec:
                           type: boolean
                         sha:
                           type: string
+                        superseded:
+                          type: boolean
                       required:
                       - pipelineID
                       - sha
