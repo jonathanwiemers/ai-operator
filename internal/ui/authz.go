@@ -54,6 +54,19 @@ func (a *Authorizer) CanReadConversation(p Principal, namespace, name string) bo
 	return a.allows(p, namespace, name, func(r Rule) bool { return r.Conversation })
 }
 
+// CanChat reports whether p may post Desk chat messages to the project's
+// agents.
+func (a *Authorizer) CanChat(p Principal, namespace, name string) bool {
+	return a.allows(p, namespace, name, func(r Rule) bool { return r.Chat })
+}
+
+// SeesChat reports whether any factory rule grants p chat on some project.
+func (a *Authorizer) SeesChat(p Principal) bool {
+	return a.mode == AuthNone || slices.ContainsFunc(a.rules, func(r Rule) bool {
+		return r.Research == "" && r.Chat && hasRole(p, r)
+	})
+}
+
 // CanReadResearch reports whether p may see the AgentResearch
 // namespace/name and its results.
 func (a *Authorizer) CanReadResearch(p Principal, namespace, name string) bool {

@@ -133,7 +133,8 @@ login with the keys `username` and `password`.
 | `research.database.readerSecret` | `{name: "", …}` | read-only login of the UI, a Secret in the release's namespace |
 | `research.database.readerRole` | `""` | role granted read access (the reader login) |
 | `research.database.writerRoles` | `[]` | roles granted write access (the writer logins of research runs) |
-| `research.database.chatWriterRole` | `""` | role granted chat insert access (the UI's chat login) |
+| `research.database.chatWriterRole` | `""` | role granted chat insert access (the UI's chat login from `ui.chat.writerSecret`) |
+| `ui.chat.writerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | Desk chat writer login of the UI, a Secret in the release's namespace; empty `name` turns chat off. Passed as `AI_OPERATOR_UI_CHAT_DB_USER`/`AI_OPERATOR_UI_CHAT_DB_PASSWORD`; needs `research.database.host` |
 | `research.database.networkPolicyPeer` | `{namespace: "", podLabels: {}}` | the database pods research-run pods may reach, see [below](#network-policy-for-research-runs) |
 | `research.candidates.quick` | `claude/claude-sonnet-5-5`, `cursor/auto` | default agents of quick research runs, in order, see [research.md](research.md#choosing-agents) |
 | `research.candidates.deep` | `claude/claude-opus-5-5` (effort `high`), `claude/claude-sonnet-5-5`, `cursor/auto` | the same for deep runs |

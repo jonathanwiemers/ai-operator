@@ -36,3 +36,14 @@ Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./inte
 | 1 | `reply_to … ON DELETE CASCADE`: retention of an expired user row deleted its younger reply | real | `ON DELETE SET NULL`; the reply stays until its own `expires_at`, test added |
 | 2 | (orchestrator) a late `delivered` could overwrite `answered` | real | `SetMessageState` skips answered rows, test added |
 | 3 | (orchestrator) `ListenChat` released a listening connection to the pool | real | the connection is hijacked and closed |
+
+## Slice 5
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | (orchestrator) chat rows in the default stream: the web dedupes by `id`, chat ids collide with history ids | real | chat kinds only with `?kinds=`; slice 8 changes the web keys |
+| 2 | (orchestrator) `after` paging kept the newest of the merged rows, skipping the rest | real | keep the oldest `limit` when paging newer; unit test |
+| 3 | Milestone with no tasks (or a failed list) streamed the whole project's chat | real | list error is a 500, no task names means no chat |
+| 4 | Role filter after `LIMIT` under-filled `kinds=chat.agent` pages | real | roles filtered in SQL |
+| 5 | Optional `clientKey` broke retry idempotency (3a) | real | required, 400 without |
+| — | equal timestamps across the two tables at a page boundary | accepted | rare; documented in code |

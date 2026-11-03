@@ -109,6 +109,9 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if and .Values.research.database.host (not .Values.research.database.readerSecret.name) }}
 {{- fail "research.database.readerSecret.name (the UI's reader login) is required with research.database.host and ui.enabled" }}
 {{- end }}
+{{- if and $ui.chat.writerSecret.name (not .Values.research.database.host) }}
+{{- fail "ui.chat.writerSecret needs research.database.host (Desk chat uses the research database)" }}
+{{- end }}
 {{- if and $ui.research.allowCreate (not $ui.research.namespace) }}
 {{- fail "ui.research.namespace (where the UI creates one-off researches) is required with ui.research.allowCreate" }}
 {{- end }}

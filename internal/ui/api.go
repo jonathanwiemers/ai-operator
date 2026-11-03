@@ -95,6 +95,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 					// gitlab: the thread can be shown (after connecting).
 					"gitlab": s.gitlab != nil && s.gitlab.serves(ap),
 					"steer":  s.gitlab != nil && s.gitlab.serves(ap) && s.authz.CanSteer(principalOf(r), ap.Namespace, ap.Name),
+					"chat":   s.cfg.ChatEnabled() && s.authz.CanChat(principalOf(r), ap.Namespace, ap.Name),
 				},
 			})
 			return

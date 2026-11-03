@@ -124,6 +124,53 @@ func (s *Store) InsertReply(ctx context.Context, m ChatMessage) (created bool, e
 	return created, err
 }
 
+// ChatStream returns chat messages of the given projects, newest first, for
+// the UI stream. before/after are (at, id) like Stream. tasks and roles,
+// when set, limit to those task names (a milestone's tasks) and roles.
+func (s *Store) ChatStream(ctx context.Context, projects []ProjectKey, tasks, roles []string, before, after *Cursor, limit int) ([]ChatMessage, error) {
+	if len(projects) == 0 {
+		return nil, nil
+	}
+	nss, names := split(projects)
+	args := []any{nss, names}
+	arg := func(v any) string {
+		args = append(args, v)
+		return "$" + strconv.Itoa(len(args))
+	}
+	where := `(namespace, project) IN (SELECT * FROM unnest($1::text[], $2::text[]))`
+	if len(tasks) > 0 {
+		where += " AND task = ANY(" + arg(tasks) + "::text[])"
+	}
+	if len(roles) > 0 {
+		where += " AND role = ANY(" + arg(roles) + "::text[])"
+	}
+	order := "DESC"
+	switch {
+	case after != nil:
+		where += " AND (at, id) > (" + arg(after.At) + ", " + arg(after.ID) + "::bigint)"
+		order = "ASC"
+	case before != nil && before.ID == 0:
+		where += " AND at < " + arg(before.At)
+	case before != nil:
+		where += " AND (at, id) < (" + arg(before.At) + ", " + arg(before.ID) + "::bigint)"
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, _ := s.pool.Query(ctx, `SELECT `+chatColumns+` FROM chat_messages WHERE `+where+
+		` ORDER BY at `+order+`, id `+order+` LIMIT `+arg(limit), args...)
+	msgs, err := pgx.CollectRows(rows, scanChat)
+	if err != nil {
+		return nil, err
+	}
+	if order == "ASC" {
+		for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+			msgs[i], msgs[j] = msgs[j], msgs[i]
+		}
+	}
+	return msgs, nil
+}
+
 // ChatMessages returns the messages of a task, newest first. before > 0
 // pages older than that id; after > 0 pages newer (the oldest of them when
 // there are more than limit), still returned newest first.

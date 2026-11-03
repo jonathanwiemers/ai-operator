@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -41,13 +42,26 @@ type Server struct {
 	// gitlab connects users' GitLab accounts; nil without gitlab.url.
 	gitlab *gitlabConn
 	// notes rate-limits the comments users post, creates the one-off
-	// researches they start.
-	notes, creates *rateLimiter
+	// researches they start; chats rate-limits Desk chat posts.
+	notes, creates, chats *rateLimiter
 	// writer creates and deletes one-off researches; nil without
 	// research.allowCreate.
 	writer client.Client
 	// research is the reader's store, nil until connected.
 	research atomic.Pointer[store.Store]
+	// chat is the chat writer's store, nil until connected or without
+	// the writer login.
+	chat atomic.Pointer[store.Store]
+	// historyRetention is how long new chat rows expire after (matches
+	// the operator's --history-retention).
+	historyRetention time.Duration
+}
+
+// SetHistoryRetention sets how long new chat messages are kept.
+func (s *Server) SetHistoryRetention(d time.Duration) {
+	if d > 0 {
+		s.historyRetention = d
+	}
 }
 
 // SetLogSource enables live transcripts.
@@ -57,7 +71,8 @@ func (s *Server) SetLogSource(l LogSource) { s.logs = l }
 // the built single page app.
 func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log logr.Logger) (*Server, error) {
 	s := &Server{cfg: cfg, reader: reader, hub: hub, authz: NewAuthorizer(cfg), log: log, streams: map[string]int{},
-		notes: newRateLimiter(notesPerWindow, notesWindow), creates: newRateLimiter(createsPerWindow, createsWindow)}
+		notes: newRateLimiter(notesPerWindow, notesWindow), creates: newRateLimiter(createsPerWindow, createsWindow),
+		chats: newRateLimiter(notesPerWindow, notesWindow), historyRetention: history.DefaultRetention}
 	if _, err := fs.Stat(static, "index.html"); err == nil {
 		s.static = static
 	}
@@ -105,6 +120,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread", s.authed(s.milestoneThread))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes", s.authed(s.postMilestoneNote))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript", s.authed(s.transcript))
+	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.getChat))
+	mux.Handle("POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.postChat))
 	mux.Handle("GET /api/v1/events", s.authed(s.events))
 	mux.Handle("GET /api/v1/stream", s.authed(s.stream))
 	mux.Handle("GET /api/v1/inbox", s.authed(s.inbox))

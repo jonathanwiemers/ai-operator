@@ -181,6 +181,7 @@ func TestValidateResearch(t *testing.T) {
 		{name: "research with projects", mutate: rule(Rule{Roles: []string{"a"}, Research: ResearchRead, Projects: []string{"a/b"}}), wantErr: "grants no projects"},
 		{name: "research with transcript", mutate: rule(Rule{Roles: []string{"a"}, Research: ResearchRead, Transcript: true}), wantErr: "grants no projects"},
 		{name: "research with steer", mutate: rule(Rule{Roles: []string{"a"}, Research: ResearchWrite, Steer: true}), wantErr: "grants no projects"},
+		{name: "research with chat", mutate: rule(Rule{Roles: []string{"a"}, Research: ResearchRead, Chat: true}), wantErr: "grants no projects"},
 		{name: "researches without research", mutate: rule(Rule{Roles: []string{"a"}, Researches: []string{"a/b"}}), wantErr: "needs research"},
 		{name: "bad research pattern", mutate: rule(Rule{Roles: []string{"a"}, Research: ResearchRead, Researches: []string{"news"}}), wantErr: "namespace/name"},
 		{name: "research rule without roles", mutate: rule(Rule{Research: ResearchRead}), wantErr: "roles is empty"},

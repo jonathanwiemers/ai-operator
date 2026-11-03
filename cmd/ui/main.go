@@ -20,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/ui"
 	"github.com/jonathanwiemers/ai-operator/web"
@@ -27,9 +28,11 @@ import (
 
 func main() {
 	var configFile, bindAddr, probeAddr string
+	var historyRetention time.Duration
 	flag.StringVar(&configFile, "config", "/etc/ai-operator-ui/config.yaml", "The UI's config file.")
 	flag.StringVar(&bindAddr, "bind-address", ":9080", "The address the UI binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.DurationVar(&historyRetention, "history-retention", history.DefaultRetention, "How long Desk chat messages are kept (expires_at on insert); match the operator's --history-retention.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -80,6 +83,7 @@ func main() {
 		os.Exit(1)
 	}
 	srv.SetLogSource(ui.PodLogs{Client: clientset})
+	srv.SetHistoryRetention(historyRetention)
 	// One-off researches are created and deleted directly, not through the
 	// cache. Only with allowCreate: the chart grants create/delete then.
 	if cfg.Research.Enabled() && cfg.Research.AllowCreate {
@@ -95,6 +99,13 @@ func main() {
 	if cfg.Research.Enabled() {
 		go srv.ConnectResearch(ctx, func(ctx context.Context) (*store.Store, error) {
 			return store.Open(ctx, cfg.ResearchLogin())
+		})
+	}
+	// Desk chat inserts use the chat writer login (row-level insert of user
+	// rows only). Same database host as the reader.
+	if cfg.ChatEnabled() {
+		go srv.ConnectChat(ctx, func(ctx context.Context) (*store.Store, error) {
+			return store.Open(ctx, cfg.ChatLogin())
 		})
 	}
 

@@ -318,8 +318,14 @@ no change events are sent for them.
 
 `conversation: true` shows its roles the bodies of the comments in the
 projects' streams, mirrored from GitLab into the history (see
-[Desk and history](#desk-and-history)): readable without access to the
-GitLab project, so a grant of its own.
+[Desk and history](#desk-and-history)), and the bodies of Desk chat
+messages: readable without access to the GitLab project, so a grant of its
+own.
+
+`chat: true` lets its roles post Desk chat messages to the projects' agents
+(no GitLab token). Default off; needs `ui.chat.writerSecret` and the
+research database. Who may chat is decided by this grant, not by GitLab
+membership.
 
 `transcript: true` on a rule also shows its roles the live transcripts of the
 projects' runs. Transcripts can quote code, issue text and CI logs, so they
@@ -333,6 +339,7 @@ ui:
         transcript: true
         steer: true
         conversation: true
+        chat: true
       - roles: [shop-devs]
         projects: ["agents/shop"]       # streams, boards and tasks; no transcripts or comment bodies
 ```
@@ -347,9 +354,10 @@ has a Research section. A rule with `research` set is a **research rule**:
 AgentResearches like `projects`; without it the rule grants every research.
 
 Factory and research rules are kept apart: a research rule grants no
-projects (it must not set `projects`, `transcript` or `steer`), and a
-project rule grants no research, even without `projects`. So the admin rule
-above does not show the Research section; add a research rule for it:
+projects (it must not set `projects`, `transcript`, `steer`, `conversation`
+or `chat`), and a project rule grants no research, even without `projects`.
+So the admin rule above does not show the Research section; add a research
+rule for it:
 
 ```yaml
 ui:
@@ -619,18 +627,20 @@ with the same session cookie:
 | Endpoint | Returns |
 |----------|---------|
 | `GET /api/v1/me` | user name, roles, auth mode |
-| `GET /api/v1/features` | the sections you may see, e.g. `{"features":[{"name":"factory"},{"name":"history"},{"name":"research","write":true,"namespace":"agents"}]}` (`history` with the factory and a research database); `write` and `namespace` only with the research write grant and `ui.research.allowCreate`, see [Research rules](#research-rules) |
+| `GET /api/v1/features` | the sections you may see, e.g. `{"features":[{"name":"factory"},{"name":"history"},{"name":"chat"},{"name":"research","write":true,"namespace":"agents"}]}` (`history` with the factory and a research database; `chat` with `ui.chat.writerSecret` and a `chat` grant); `write` and `namespace` only with the research write grant and `ui.research.allowCreate`, see [Research rules](#research-rules) |
 | `GET /api/v1/projects` | the projects you may see, with task counts per stage |
 | `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone (`trackingIssueIID` where a milestone has a tracking issue) |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | a planned milestone: its spec task, the autopilot (`phase`, `pausedReason` as raw text, queue `items` with title, state, MR number and URL, and task), the `tracking` issue, the `pilot` (task, autonomy, open proposals, cost), its implement tasks and `permissions` (`gitlab`, `steer`: what the page may offer); 404 without a spec task |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread` | the comments of the milestone's tracking issue (`parts`), read with your GitLab token once the issue is confirmed as the operator's tracking issue of this milestone (409 otherwise); 409 when not connected, 404 without a tracking issue, 502 when GitLab fails to list the comments |
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes` | posts `{"body": "…"}` to the milestone's pilot on its confirmed tracking issue in your GitLab name, with the pilot prefix in front unless the body starts with it; needs the `steer` grant (403, 404 without the project), 409 for an issue that is not the milestone's tracking issue, 429 over the rate limit |
-| `GET /api/v1/projects/{namespace}/{name}/tasks/{task}` | one task and its project |
+| `GET /api/v1/projects/{namespace}/{name}/tasks/{task}` | one task and its project (`permissions.chat` when Desk chat is configured and granted) |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript` | server-sent events: `entry` per transcript line of the task's pod (what it logged so far, then live), `end` with the reason (`no pod`, `pod stopped`, `pod not available`, `session expired`); needs the `transcript` grant (403 without), counts as an event stream |
+| `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat` | `{"messages": […]}` of the task's Desk chat, newest first: `id`, `at`, `author`, `authorName`, `role`, `kind`, `body` (omitted and `redacted` without `conversation`), `replyTo`, `state`, `reason`; `?before=` / `?after=` message ids, `?limit=` 1–100 (default 50); 404 without a research database |
+| `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat` | posts `{"body": "…", "kind"?: "message"\|"interrupt"\|"command", "clientKey": "…"}` (kind defaults to `message`; `clientKey`, 1–128 characters, is required: the composer's retry key); 201 `{"id"}` on create, 200 `{"id"}` when `clientKey` already existed for this user (retry-safe); needs the `chat` grant and `ui.chat.writerSecret` (404 without the feature, 403 without the grant, 413 over 16 KiB, 429 over the rate limit); audit line without the text |
 | `GET /api/v1/gitlab` | whether GitLab is configured and your account connected (`enabled`, `connected`, `username`) |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread` | the comments of the task's issue, MR and tracking issue (`parts`), read with your GitLab token; 409 when not connected |
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes` | posts `{"target": "issue"\|"mr"\|"tracking", "body": "…"}` in your GitLab name; needs the `steer` grant |
-| `GET /api/v1/stream` | `{"events": […], "older", "newest", "history"}`: events of the projects you may see, newest first: `id`, `at`, `namespace`, `project`, `milestoneIID`, `issueIID`, `mergeRequestIID`, `task`, `kind` (`note`, `run.started`, `run.finished`, `push`, `ci`, `review`, `needs`, `merged`, `closed`, `autopilot`, `proposal`), `actor`, `summary`, `data` (per kind, e.g. a comment's `body`, `url`, `bot`; a run's `result`, `costUSD`, `durationSec`), `redacted` (a comment's body withheld without `conversation`). `?project=namespace/name` (404 if you may not see it), `&milestone=<iid>`, `?kinds=` comma separated, `?q=` full text (1–200 characters; comments only where you have `conversation`), `?before=` the `older` cursor or `t:<RFC 3339 time>`, `?after=` the `newest` cursor (what is newer, for live updates), `?limit=` 1–100 (default 50); 400 for other values. `history` is false without a research database (no events), 503 until the UI is connected to it |
+| `GET /api/v1/stream` | `{"events": […], "older", "newest", "history"}`: events of the projects you may see, newest first: `id`, `at`, `namespace`, `project`, `milestoneIID`, `issueIID`, `mergeRequestIID`, `task`, `kind` (`note`, `run.started`, `run.finished`, `push`, `ci`, `review`, `needs`, `merged`, `closed`, `autopilot`, `proposal`, `chat.user`, `chat.agent`), `actor`, `summary`, `data` (per kind, e.g. a comment's `body`, `url`, `bot`; a run's `result`, `costUSD`, `durationSec`; chat's `body`, `role`, `kind`, `state`), `redacted` (a comment's or chat message's body withheld without `conversation`). Chat rows come only when `?kinds=` names `chat.user` or `chat.agent` (their ids are not unique against history events), merged with history by time; with `&milestone=` only the chat of that milestone's tasks. `?project=namespace/name` (404 if you may not see it), `&milestone=<iid>`, `?kinds=` comma separated, `?q=` full text (1–200 characters; comments only where you have `conversation`; chat is left out of text search), `?before=` the `older` cursor or `t:<RFC 3339 time>`, `?after=` the `newest` cursor (what is newer, for live updates), `?limit=` 1–100 (default 50); 400 for other values. `history` is false without a research database (no events), 503 until the UI is connected to it |
 | `GET /api/v1/projects/{namespace}/{name}/history` | `{"days": [{"day", "runs", "merged", "costUSD", "events"}], "totals": …, "previous": …}`: activity per day of the last `?days=` (1–90, default 30) in `?tz=` (an IANA time zone, default UTC), every day oldest first, with the totals and those of the days before; 404 without a research database |
 | `GET /api/v1/inbox` | `{"items": […]}`: what needs you now across your projects, newest first: `kind` (`task` with `reason` `needs-input`, `failed` or `blocked`; `proposal` with `proposalID`), `namespace`, `project`, `task`, `issueIID`, `milestoneIID`, `title`, `at`, `url` |
 | `GET /api/v1/events` | server-sent events: `change` with the kind (`project`, `task`, `research`), namespace and name of what changed; research events only for researches you may read |

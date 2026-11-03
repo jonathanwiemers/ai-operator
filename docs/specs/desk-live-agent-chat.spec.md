@@ -431,4 +431,5 @@ GitLab comment path if nothing needs it.
 | 1 | feat(runner): long-lived claude session with stream-json input | [!71](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/71) | merged |
 | 2 | feat(runner): cursor-agent ACP session | [!74](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/74) | merged |
 | 3 | feat(runner): agent server session RPC | [!75](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/75) | merged |
-| 4 | feat(research): chat_messages table and chat writer login | this MR | open |
+| 4 | feat(research): chat_messages table and chat writer login | [!76](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/76) | merged |
+| 5 | feat(ui): Desk chat endpoint, chat grant and stream kinds | this MR | open |

@@ -43,3 +43,16 @@ One section per slice. Builder: cursor-agent (`--model auto`) in the slice's wor
 
 - `chat_test.go` against Postgres: grants and RLS (chat writer may insert user rows only, no update/delete, no agent rows, no oversized body), idempotent insert, queue and states (answered stays answered), reply idempotency, paging both ways, `LISTEN` notifications, retention (a reply outlives its expired message).
 - `gofmt` clean, `go vet ./...` ok, `go test -race ./internal/research/...` ok on local Postgres 17, `make helm-lint` ok.
+
+## Slice 5 — UI chat endpoint and stream kinds (`feat/ui-chat-endpoint`)
+
+- `internal/ui/chat.go`: `POST …/tasks/{task}/chat` (chat grant, chat writer login, required `clientKey` ≤ 128 characters, 16 KiB, rate limit like comments, audit line without the text; 201 new, 200 known key) and `GET …/tasks/{task}/chat` (reader login, keyset paging, bodies only with `conversation`).
+- `config.go`/`authz.go`: rule grant `chat` (not in research rules), `ChatEnabled`/`ChatLogin` from `AI_OPERATOR_UI_CHAT_DB_USER`/`_PASSWORD`; `features.go`: `chat`; `api.go`: `permissions.chat` on the task.
+- `stream.go`: kinds `chat.user`/`chat.agent` from `store.ChatStream`, merged with history by `(at, id)`; only when `?kinds=` asks for them, because the current web dedupes events by `id` and chat ids collide with history ids (slice 8 keys by kind and id, then may make them default). With `&milestone=` only that milestone's tasks. Chat is not in `?q=` search.
+- `cmd/ui`: `--history-retention` (chart passes `research.historyRetention`) sets `expires_at`. Chart: `ui.chat.writerSecret`, validation that it needs `research.database.host`.
+- Deviation: `author_name` is the user name (the session keeps no display name).
+
+### Tests
+
+- `chat_test.go`: config validation, create/retry/no key/oversize/no grant/feature off, GET redaction, stream kinds (opt-in, merge order, redaction, role filter fills a page, empty milestone), merge paging without a gap, features.
+- `gofmt` clean, `go vet ./...` ok, `go test -race ./internal/ui/... ./internal/research/...` ok on Postgres 17, `make helm-lint` ok.

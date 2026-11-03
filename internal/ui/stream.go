@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
@@ -44,7 +46,12 @@ type StreamPage struct {
 
 // streamKinds are the event kinds a stream may be filtered by.
 var streamKinds = []string{"note", "run.started", "run.finished", "push", "ci", "review",
+	"needs", "merged", "closed", "autopilot", "proposal", "chat.user", "chat.agent"}
+
+var historyStreamKinds = []string{"note", "run.started", "run.finished", "push", "ci", "review",
 	"needs", "merged", "closed", "autopilot", "proposal"}
+
+var chatStreamKinds = []string{"chat.user", "chat.agent"}
 
 const (
 	maxStreamLimit = 100
@@ -98,13 +105,23 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Chat rows come only when kinds asks for them: their ids are not
+	// unique against history events, and clients key events by id.
+	wantHistory, wantChat := true, false
 	if k := q.Get("kinds"); k != "" {
+		wantHistory = false
 		for kind := range strings.SplitSeq(k, ",") {
 			if !slices.Contains(streamKinds, kind) {
 				badRequest(w, "unknown kind "+strconv.Quote(kind))
 				return
 			}
 			query.Kinds = append(query.Kinds, kind)
+			if slices.Contains(historyStreamKinds, kind) {
+				wantHistory = true
+			}
+			if slices.Contains(chatStreamKinds, kind) {
+				wantChat = true
+			}
 		}
 	}
 	query.Text = strings.TrimSpace(q.Get("q"))
@@ -135,22 +152,154 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	events, err := st.Stream(r.Context(), query)
-	if err != nil {
-		s.internalError(w, err)
-		return
+	// Chat is not in history_events: fetch both and merge by (at, id).
+	// Cursors are shared across tables, so equal timestamps can rarely
+	// skip or duplicate a row at a page boundary.
+	var events []store.Event
+	if wantHistory {
+		hq := query
+		if len(hq.Kinds) > 0 {
+			hq.Kinds = slices.DeleteFunc(slices.Clone(hq.Kinds), func(k string) bool {
+				return slices.Contains(chatStreamKinds, k)
+			})
+			if len(hq.Kinds) == 0 {
+				wantHistory = false
+			}
+		}
+		if wantHistory {
+			events, err = st.Stream(r.Context(), hq)
+			if err != nil {
+				s.internalError(w, err)
+				return
+			}
+		}
 	}
-	page := StreamPage{Events: make([]StreamEvent, 0, len(events)), History: true}
-	for _, e := range events {
-		page.Events = append(page.Events, streamEvent(e, conversation[store.ProjectKey{Namespace: e.Namespace, Name: e.Project}]))
+	var chat []store.ChatMessage
+	if wantChat && query.Text == "" {
+		var taskNames []string
+		if query.Milestone != 0 {
+			if taskNames, err = s.milestoneTaskNames(r, query.Projects[0].Namespace, query.Projects[0].Name, query.Milestone); err != nil {
+				s.internalError(w, err)
+				return
+			}
+			// A milestone without tasks has no chat (no names would mean
+			// every task of the project).
+			wantChat = len(taskNames) > 0
+		}
+		if wantChat {
+			chat, err = st.ChatStream(r.Context(), query.Projects, taskNames, chatRoles(query.Kinds), query.Before, query.After, query.Limit)
+			if err != nil {
+				s.internalError(w, err)
+				return
+			}
+		}
 	}
-	if n := len(events); n > 0 {
-		page.Newest = formatCursor(events[0])
+	merged := mergeStream(events, chat, conversation, query.Limit, query.After != nil)
+	page := StreamPage{Events: merged, History: true}
+	if n := len(merged); n > 0 {
+		page.Newest = formatStreamCursor(merged[0])
 		if n == query.Limit && query.After == nil {
-			page.Older = formatCursor(events[n-1])
+			page.Older = formatStreamCursor(merged[n-1])
 		}
 	}
 	writeJSON(w, http.StatusOK, page)
+}
+
+// milestoneTaskNames are the task names of the project's milestone iid.
+func (s *Server) milestoneTaskNames(r *http.Request, namespace, name string, iid int64) ([]string, error) {
+	var list aiv1.AgentTaskList
+	if err := s.reader.List(r.Context(), &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, t := range list.Items {
+		if t.Namespace == namespace && t.Spec.ProjectRef == name && t.Spec.Milestone != nil && t.Spec.Milestone.IID == iid {
+			names = append(names, t.Name)
+		}
+	}
+	if st, _ := milestoneTasks(list.Items, iid); st != nil && st.Namespace == namespace && st.Spec.ProjectRef == name {
+		names = append(names, st.Name)
+	}
+	return names, nil
+}
+
+// chatRoles are the chat roles the stream kinds ask for; nil for both.
+func chatRoles(kinds []string) []string {
+	user, agent := slices.Contains(kinds, "chat.user"), slices.Contains(kinds, "chat.agent")
+	switch {
+	case user && !agent:
+		return []string{"user"}
+	case agent && !user:
+		return []string{"agent", "system"}
+	}
+	return nil
+}
+
+func chatStreamKind(role string) string {
+	if role == "user" {
+		return "chat.user"
+	}
+	return "chat.agent"
+}
+
+// mergeStream merges history events and chat messages by (at, id), newest
+// first, up to limit: the newest of them, or with after (paging newer) the
+// oldest, so the next page continues without a gap.
+func mergeStream(events []store.Event, chat []store.ChatMessage, conversation map[store.ProjectKey]bool, limit int, after bool) []StreamEvent {
+	out := make([]StreamEvent, 0, len(events)+len(chat))
+	i, j := 0, 0
+	for i < len(events) || j < len(chat) {
+		takeChat := false
+		switch {
+		case i >= len(events):
+			takeChat = true
+		case j >= len(chat):
+		default:
+			a, b := events[i], chat[j]
+			takeChat = b.At.After(a.At) || b.At.Equal(a.At) && b.ID > a.ID
+		}
+		if takeChat {
+			m := chat[j]
+			j++
+			pk := store.ProjectKey{Namespace: m.Namespace, Name: m.Project}
+			out = append(out, chatStreamEvent(m, conversation[pk]))
+			continue
+		}
+		e := events[i]
+		i++
+		out = append(out, streamEvent(e, conversation[store.ProjectKey{Namespace: e.Namespace, Name: e.Project}]))
+	}
+	if len(out) > limit {
+		if after {
+			return out[len(out)-limit:]
+		}
+		return out[:limit]
+	}
+	return out
+}
+
+func chatStreamEvent(m store.ChatMessage, conversation bool) StreamEvent {
+	data := map[string]any{"role": m.Role, "kind": m.Kind, "state": m.State}
+	if m.ReplyTo != 0 {
+		data["replyTo"] = m.ReplyTo
+	}
+	if m.AuthorName != "" {
+		data["authorName"] = m.AuthorName
+	}
+	out := StreamEvent{
+		ID: m.ID, At: m.At, Namespace: m.Namespace, Project: m.Project, Task: m.Task,
+		Kind: chatStreamKind(m.Role), Actor: m.Author, Summary: m.Kind, Data: data,
+	}
+	if conversation {
+		data["body"] = m.Body
+	} else {
+		out.Redacted = true
+	}
+	return out
+}
+
+func formatStreamCursor(e StreamEvent) string {
+	return fmt.Sprintf("c:%d:%d", e.At.UnixNano(), e.ID)
 }
 
 // streamEvent is e as the user sees it: without the comment's body unless

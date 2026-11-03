@@ -112,7 +112,7 @@ research:
     # Roles the migrations grant to: the reader may read the results, the
     # writers (the logins of research runs, AgentProject
     # spec.research.writerSecret) may write them, the chat writer (the UI's
-    # chat login, wired in a later slice) may insert user chat rows.
+    # chat login from ui.chat.writerSecret) may insert user chat rows.
     readerRole: ""    # research_reader
     writerRoles: []   # [agents.research_writer]
     chatWriterRole: "" # research_chat_writer
@@ -208,6 +208,14 @@ ui:
     # allowCreate. A one-off runs with an AgentProject of this namespace
     # that has spec.research.writerSecret.
     namespace: ""
+  # Desk chat writer login (INSERT of user rows on chat_messages). Empty
+  # name turns chat off. Needs research.database.host and a matching
+  # research.database.chatWriterRole granted by migrations.
+  chat:
+    writerSecret:
+      name: ""        # research-chat-writer.ai-operator-postgres.credentials.postgresql.acid.zalan.do
+      usernameKey: username
+      passwordKey: password
   service:
     type: ClusterIP
     annotations: {}

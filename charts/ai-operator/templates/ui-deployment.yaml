@@ -1,6 +1,8 @@
 {{- if .Values.ui.enabled }}
 {{- include "ai-operator.ui.validate" . }}
 {{- $ui := .Values.ui }}
+{{- $db := .Values.research.database }}
+{{- $chat := $ui.chat.writerSecret }}
 {{- $config := include "ai-operator.ui.config" . }}
 apiVersion: v1
 kind: ConfigMap
@@ -60,10 +62,12 @@ spec:
             {{- end }}
             - --health-probe-bind-address=:{{ $ui.healthProbePort }}
             - --zap-log-level={{ .Values.logLevel }}
+            {{- if $db.host }}
+            - --history-retention={{ .Values.research.historyRetention }}
+            {{- end }}
             {{- range $ui.extraArgs }}
             - {{ . | quote }}
             {{- end }}
-          {{- $db := .Values.research.database }}
           {{- if or (eq $ui.auth.mode "oidc") $db.host }}
           env:
           {{- end }}
@@ -106,6 +110,19 @@ spec:
                 secretKeyRef:
                   name: {{ $db.readerSecret.name }}
                   key: {{ $db.readerSecret.passwordKey }}
+            {{- if $chat.name }}
+            # Desk chat writer login (INSERT user rows on chat_messages).
+            - name: AI_OPERATOR_UI_CHAT_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $chat.name }}
+                  key: {{ $chat.usernameKey }}
+            - name: AI_OPERATOR_UI_CHAT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $chat.name }}
+                  key: {{ $chat.passwordKey }}
+            {{- end }}
           {{- end }}
           ports:
             - name: http

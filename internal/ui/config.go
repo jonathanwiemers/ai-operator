@@ -40,6 +40,8 @@ const (
 	EnvGitLabToken        = "AI_OPERATOR_UI_GITLAB_TOKEN"
 	EnvResearchDBUser     = "AI_OPERATOR_UI_RESEARCH_DB_USER"
 	EnvResearchDBPassword = "AI_OPERATOR_UI_RESEARCH_DB_PASSWORD"
+	EnvChatDBUser         = "AI_OPERATOR_UI_CHAT_DB_USER"
+	EnvChatDBPassword     = "AI_OPERATOR_UI_CHAT_DB_PASSWORD"
 )
 
 // Default claim mappings: the email (or the subject) as user name, the
@@ -68,6 +70,8 @@ type Config struct {
 	GitLabToken        string `json:"-"`
 	ResearchDBUser     string `json:"-"`
 	ResearchDBPassword string `json:"-"`
+	ChatDBUser         string `json:"-"`
+	ChatDBPassword     string `json:"-"`
 }
 
 // ResearchConfig is the Research section. It is on exactly when
@@ -100,6 +104,18 @@ func (c *Config) ResearchLogin() store.Config {
 	db := c.Research.Database
 	return store.Config{Host: db.Host, Port: db.Port, Database: db.Name, SSLMode: db.SSLMode,
 		User: c.ResearchDBUser, Password: c.ResearchDBPassword}
+}
+
+// ChatEnabled reports whether the Desk chat writer login is configured.
+func (c *Config) ChatEnabled() bool {
+	return c.Research.Enabled() && c.ChatDBUser != "" && c.ChatDBPassword != ""
+}
+
+// ChatLogin returns the chat writer's connection to the research database.
+func (c *Config) ChatLogin() store.Config {
+	db := c.Research.Database
+	return store.Config{Host: db.Host, Port: db.Port, Database: db.Name, SSLMode: db.SSLMode,
+		User: c.ChatDBUser, Password: c.ChatDBPassword}
 }
 
 // GitLabConfig lets users connect their GitLab account (an OAuth
@@ -178,9 +194,13 @@ type Rule struct {
 	// streams (mirrored from GitLab, so readable without GitLab access).
 	// Without it a comment shows as who commented where, with its link.
 	Conversation bool `json:"conversation,omitempty"`
+	// Chat lets its roles post Desk chat messages to the projects' agents
+	// (no GitLab token). Default off.
+	Chat bool `json:"chat,omitempty"`
 	// Research is read (see researches and their results) or write (also
 	// start one-off researches and delete them). A rule with it grants no
-	// projects and must not set Projects, Transcript, Steer or Conversation.
+	// projects and must not set Projects, Transcript, Steer, Conversation
+	// or Chat.
 	Research string `json:"research,omitempty"`
 	// Researches are namespace/name patterns like Projects. Empty matches
 	// every research.
@@ -222,6 +242,8 @@ func LoadConfig(file, bindAddress string) (*Config, error) {
 	cfg.GitLabToken = os.Getenv(EnvGitLabToken)
 	cfg.ResearchDBUser = os.Getenv(EnvResearchDBUser)
 	cfg.ResearchDBPassword = os.Getenv(EnvResearchDBPassword)
+	cfg.ChatDBUser = os.Getenv(EnvChatDBUser)
+	cfg.ChatDBPassword = os.Getenv(EnvChatDBPassword)
 	cfg.Default()
 	if err := cfg.Validate(bindAddress); err != nil {
 		return nil, err
@@ -312,8 +334,8 @@ func (c *Config) Validate(bindAddress string) error {
 		switch {
 		case r.Research != "" && r.Research != ResearchRead && r.Research != ResearchWrite:
 			errs = append(errs, fmt.Errorf("authorization.rules[%d]: research must be read or write, not %q", i, r.Research))
-		case r.Research != "" && (len(r.Projects) > 0 || r.Transcript || r.Steer || r.Conversation):
-			errs = append(errs, fmt.Errorf("authorization.rules[%d]: a research rule grants no projects; put projects, transcript, steer and conversation into a rule of their own", i))
+		case r.Research != "" && (len(r.Projects) > 0 || r.Transcript || r.Steer || r.Conversation || r.Chat):
+			errs = append(errs, fmt.Errorf("authorization.rules[%d]: a research rule grants no projects; put projects, transcript, steer, conversation and chat into a rule of their own", i))
 		case r.Research == "" && len(r.Researches) > 0:
 			errs = append(errs, fmt.Errorf("authorization.rules[%d]: researches needs research: read or write", i))
 		}
@@ -324,6 +346,7 @@ func (c *Config) Validate(bindAddress string) error {
 		}
 	}
 	errs = append(errs, c.validateResearch()...)
+	errs = append(errs, c.validateChat()...)
 	return errors.Join(errs...)
 }
 
@@ -354,6 +377,21 @@ func (c *Config) validateResearch() []error {
 	}
 	if c.Research.AllowCreate && len(validation.IsDNS1123Label(c.Research.Namespace)) > 0 {
 		errs = append(errs, fmt.Errorf("research.allowCreate needs research.namespace, a valid namespace name, not %q", c.Research.Namespace))
+	}
+	return errs
+}
+
+// validateChat checks the Desk chat writer login, if set.
+func (c *Config) validateChat() []error {
+	if c.ChatDBUser == "" && c.ChatDBPassword == "" {
+		return nil
+	}
+	var errs []error
+	if c.ChatDBUser == "" || c.ChatDBPassword == "" {
+		errs = append(errs, fmt.Errorf("Desk chat needs both %s and %s", EnvChatDBUser, EnvChatDBPassword))
+	}
+	if !c.Research.Enabled() {
+		errs = append(errs, errors.New("Desk chat needs research.database.host (the chat writer uses the same database)"))
 	}
 	return errs
 }

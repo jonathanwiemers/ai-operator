@@ -23,10 +23,13 @@ const (
 	// FeatureHistory: the projects' streams reach back through the
 	// database (the research database holds the history).
 	FeatureHistory = "history"
+	// FeatureChat: Desk chat with the agents (chat writer login and grant).
+	FeatureChat = "chat"
 )
 
 // features lists the sections the user may see: the factory with a factory
-// rule, research with a database and a research rule.
+// rule, research with a database and a research rule, chat with the writer
+// login and a chat grant.
 func (s *Server) features(w http.ResponseWriter, r *http.Request) {
 	p := principalOf(r)
 	out := []Feature{}
@@ -35,6 +38,9 @@ func (s *Server) features(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.Research.Enabled() {
 			out = append(out, Feature{Name: FeatureHistory})
 		}
+	}
+	if s.cfg.ChatEnabled() && s.authz.SeesChat(p) {
+		out = append(out, Feature{Name: FeatureChat})
 	}
 	if read, write := s.authz.ResearchAccess(p); read {
 		f := Feature{Name: FeatureResearch, Write: write}
@@ -49,6 +55,9 @@ func (s *Server) features(w http.ResponseWriter, r *http.Request) {
 // SetResearchStore connects the research endpoints to the database.
 func (s *Server) SetResearchStore(st *store.Store) { s.research.Store(st) }
 
+// SetChatStore connects the chat writer endpoints to the database.
+func (s *Server) SetChatStore(st *store.Store) { s.chat.Store(st) }
+
 // Reconnect delays of ConnectResearch.
 const (
 	minResearchRetry = 5 * time.Second
@@ -59,14 +68,24 @@ const (
 // until it succeeds or ctx ends. Until then the research endpoints answer
 // 503; the factory does not depend on it.
 func (s *Server) ConnectResearch(ctx context.Context, open func(context.Context) (*store.Store, error)) {
+	s.connectStore(ctx, open, s.SetResearchStore, "research database")
+}
+
+// ConnectChat opens the chat writer store with open, retrying with backoff
+// until it succeeds or ctx ends. Until then chat posts answer 503.
+func (s *Server) ConnectChat(ctx context.Context, open func(context.Context) (*store.Store, error)) {
+	s.connectStore(ctx, open, s.SetChatStore, "chat database")
+}
+
+func (s *Server) connectStore(ctx context.Context, open func(context.Context) (*store.Store, error), set func(*store.Store), what string) {
 	for delay := minResearchRetry; ; delay = min(2*delay, maxResearchRetry) {
 		st, err := open(ctx)
 		if err == nil {
-			s.SetResearchStore(st)
-			s.log.Info("research database connected")
+			set(st)
+			s.log.Info(what + " connected")
 			return
 		}
-		s.log.Error(err, "research database not reachable, retrying", "in", delay)
+		s.log.Error(err, what+" not reachable, retrying", "in", delay)
 		select {
 		case <-ctx.Done():
 			return

@@ -64,7 +64,7 @@ func TestAuthorizerResearch(t *testing.T) {
 	if !a.CanReadResearch(Principal{Roles: []string{"readers"}}, "other", "anything") {
 		t.Error("a rule without researches must match every research")
 	}
-	if a.CanView(Principal{Roles: []string{"readers"}}, "team-a", "shop") || a.CanSeeTranscript(news, "team-a", "shop") || a.CanSteer(news, "team-a", "shop") {
+	if a.CanView(Principal{Roles: []string{"readers"}}, "team-a", "shop") || a.CanSeeTranscript(news, "team-a", "shop") || a.CanSteer(news, "team-a", "shop") || a.CanChat(news, "team-a", "shop") {
 		t.Error("research rules must grant no projects")
 	}
 }
