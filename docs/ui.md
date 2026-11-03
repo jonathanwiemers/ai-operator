@@ -28,7 +28,7 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
 * **Rail:** *Inbox* (what needs you now across your projects: tasks with
   questions, failed or blocked, the pilots' open proposals, and paused
   autopilots as the compact pause card, see below, which opens the
-  milestone page), *Everything*
+  milestone page; the count also shows in the tab title as `(n) Desk`), *Everything*
   (all your projects' streams in one), your projects with a status dot
   (running, needs you, idle), a one-line state and a needs-you count, the
   researches (with the research section) and the engine usage. On narrow

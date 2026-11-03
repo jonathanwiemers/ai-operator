@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { get, hasFeature, logout, session, setFeatures, LoginRequiredError } from './api'
-import { windowLabel } from './format'
+import { deskTitle, windowLabel } from './format'
 import { connectEvents, disconnectEvents, live } from './live'
 import { projectDot, projectNeedsYou, projectStateLine } from './stream'
 import SignIn from './views/SignIn.vue'
@@ -26,6 +26,8 @@ const railOpen = ref(false)
 const projects = ref<ProjectSummary[] | null>(null)
 const researches = ref<ResearchSummary[] | null>(null)
 const inboxCount = ref(0)
+const baseTitle = document.title
+watch(inboxCount, (n) => { document.title = deskTitle(n, baseTitle) }, { immediate: true })
 
 async function loadRail() {
   if (!session.me || session.loginRequired) return

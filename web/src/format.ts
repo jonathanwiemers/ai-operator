@@ -196,3 +196,9 @@ export function runLine(
   if (at) parts.push(at)
   return parts.join(' · ')
 }
+
+// deskTitle is the tab title: "(3) Desk" while the Inbox has items, else the
+// page's original title.
+export function deskTitle(n: number, base: string): string {
+  return n > 0 ? `(${n}) Desk` : base
+}
