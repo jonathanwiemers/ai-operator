@@ -33,10 +33,13 @@ type MilestoneView struct {
 }
 
 // MilestonePermissions: gitlab, the chat can be shown (after connecting);
-// steer, the user may post to the pilot.
+// steer, the user may post to the pilot; chat, the user may ask the pilot
+// on the Desk; transcript, the user may see its live transcript.
 type MilestonePermissions struct {
-	GitLab bool `json:"gitlab"`
-	Steer  bool `json:"steer"`
+	GitLab     bool `json:"gitlab"`
+	Steer      bool `json:"steer"`
+	Chat       bool `json:"chat"`
+	Transcript bool `json:"transcript"`
 }
 
 // MilestoneAutopilot is the autopilot of a milestone and its queue.
@@ -71,6 +74,10 @@ type MilestonePilot struct {
 	// Proposals are the open ones, waiting for an owner's yes.
 	Proposals []ProposalView `json:"proposals"`
 	CostUSD   string         `json:"costUSD"`
+	// Phase, Message and PodName say whether the pilot is up to answer.
+	Phase   aiv1.TaskPhase `json:"phase,omitempty"`
+	Message string         `json:"message,omitempty"`
+	PodName string         `json:"podName,omitempty"`
 }
 
 // ProposalView is an open proposal of the pilot.
@@ -154,7 +161,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 	}
 	if coord != nil {
 		pv := &MilestonePilot{Task: coord.Name, Autonomy: p.Spec.Pilot.AutonomyOf(coord), Proposals: []ProposalView{},
-			CostUSD: formatCost(parseCost(coord.Status.Run.CostUSD))}
+			CostUSD: formatCost(parseCost(coord.Status.Run.CostUSD)), Phase: coord.Status.Phase, Message: coord.Status.Message, PodName: coord.Status.PodName}
 		if ps := coord.Status.Pilot; ps != nil {
 			for _, pr := range ps.Proposals {
 				pv.Proposals = append(pv.Proposals, ProposalView{ID: pr.ID, Summary: pr.Summary, PostedAt: pr.PostedAt})
@@ -194,7 +201,10 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 	}
 	v := milestoneView(ap, tasks, st, coord, time.Now())
 	gl := s.gitlab != nil && s.gitlab.serves(ap)
-	v.Permissions = &MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(principalOf(r), ap.Namespace, ap.Name)}
+	p := principalOf(r)
+	v.Permissions = &MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(p, ap.Namespace, ap.Name),
+		Chat:       s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name),
+		Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name)}
 	writeJSON(w, http.StatusOK, v)
 }
 

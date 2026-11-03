@@ -66,6 +66,7 @@ func withAutopilot(t *testing.T, env *testEnv, gl *fakeGitLab) {
 			Issue:     &aiv1.IssueRef{IID: 77},
 		},
 		Status: aiv1.AgentTaskStatus{
+			Phase: aiv1.TaskPhaseRunning, Message: "answering chat", PodName: "shop-pilot-m3-checkout-abc",
 			Run: aiv1.RunStatus{CostUSD: "0.40"},
 			Pilot: &aiv1.PilotStatus{
 				Proposals:        []aiv1.PilotProposal{{ID: 2, Summary: "re-review #42", PostedAt: &posted, Actions: []aiv1.PilotAction{{Tool: "reReview", IssueIID: 42}}}},
@@ -111,11 +112,12 @@ func TestMilestoneView(t *testing.T) {
 	}
 	p := m.Pilot
 	if p == nil || p.Task != "shop-pilot-m3-checkout" || p.Autonomy != aiv1.PilotPropose || p.CostUSD != "0.40" ||
-		len(p.Proposals) != 1 || p.Proposals[0].ID != 2 || p.Proposals[0].Summary != "re-review #42" || p.Proposals[0].PostedAt == nil {
+		len(p.Proposals) != 1 || p.Proposals[0].ID != 2 || p.Proposals[0].Summary != "re-review #42" || p.Proposals[0].PostedAt == nil ||
+		p.Phase != aiv1.TaskPhaseRunning || p.Message != "answering chat" || p.PodName != "shop-pilot-m3-checkout-abc" {
 		t.Errorf("pilot = %+v", p)
 	}
-	if m.Permissions == nil || !m.Permissions.GitLab || m.Permissions.Steer {
-		t.Errorf("a viewer may read the chat, not post: %+v", m.Permissions)
+	if m.Permissions == nil || !m.Permissions.GitLab || m.Permissions.Steer || m.Permissions.Chat || m.Permissions.Transcript {
+		t.Errorf("a viewer may read the chat, not post, and the Desk chat is off: %+v", m.Permissions)
 	}
 	if len(m.Tasks) != 1 || m.Tasks[0].Name != "shop-42-add-paypal" {
 		t.Errorf("only the implement tasks: %+v", m.Tasks)
@@ -406,5 +408,21 @@ func TestMilestoneChatGitLabRefuses(t *testing.T) {
 	env.get(t, "/api/v1/gitlab", &st)
 	if st.Connected {
 		t.Error("a rejected token drops the connection")
+	}
+}
+
+func TestMilestoneAsksThePilotWithTheChatGrant(t *testing.T) {
+	env, gl := newSteeringEnv(t,
+		Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}},
+		Rule{Roles: []string{"chatters"}, Projects: []string{"team-a/shop"}, Chat: true})
+	withChat(env.server.cfg)
+	withAutopilot(t, env, gl)
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}, "chatters": map[string]any{}}}
+	env.login(t, "/")
+
+	var m MilestoneView
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Permissions == nil || !m.Permissions.Chat {
+		t.Fatalf("a chatter may ask the pilot: status %d, %+v", code, m.Permissions)
 	}
 }

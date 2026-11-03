@@ -297,10 +297,13 @@ export interface MilestoneView {
     autonomy: PilotAutonomy
     proposals: ProposalView[]
     costUSD: string
+    phase?: TaskPhase
+    message?: string
+    podName?: string
   }
   tasks: Task[]
   costUSD: string
-  permissions?: { gitlab: boolean; steer: boolean }
+  permissions?: { gitlab: boolean; steer: boolean; chat: boolean; transcript: boolean }
 }
 
 export interface QueueItem {

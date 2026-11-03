@@ -8,11 +8,14 @@ import ExtLink from '../components/ExtLink.vue'
 import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
 import Conversation from '../components/Conversation.vue'
+import TaskChat from '../components/TaskChat.vue'
 import NotFound from './NotFound.vue'
+import { hasFeature } from '../api'
 import type { MilestoneView } from '../types'
 
-// Milestone shows a planned milestone: the autopilot's queue, the pilot and
-// its chat on the tracking issue. Pause reasons, titles, proposal summaries
+// Milestone shows a planned milestone: the autopilot's queue, the pilot, the
+// Desk chat with the pilot ("Ask the pilot") and the chat on the tracking
+// issue. Pause reasons, titles, proposal summaries
 // and notes are untrusted text: rendered as text only.
 const props = defineProps<{ namespace: string; name: string; iid: string }>()
 const { data: m, error, notFound, loading } = useResource<MilestoneView>(
@@ -21,6 +24,7 @@ const { data: m, error, notFound, loading } = useResource<MilestoneView>(
 )
 
 const ap = computed(() => m.value?.autopilot)
+const showPilotChat = computed(() => !!m.value?.permissions?.chat || hasFeature('chat'))
 const issueURL = (iid: number) => m.value?.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
 const done = computed(() => (ap.value?.items ?? []).filter((i) => i.state === 'Merged' || i.state === 'Skipped').length)
 const apTone = (phase: string | undefined) =>
@@ -144,8 +148,29 @@ const stamp = computed(() => {
         <div v-else class="card empty">This milestone has no pilot.</div>
       </section>
 
+      <section v-if="showPilotChat" class="section">
+        <h3>Ask the pilot</h3>
+        <TaskChat
+          v-if="m.pilot"
+          :key="m.pilot.task"
+          :namespace="namespace"
+          :name="name"
+          :task="m.pilot.task"
+          :can-post="!!m.permissions?.chat"
+          :can-transcript="!!m.permissions?.transcript"
+          :phase="m.pilot.phase"
+          :message="m.pilot.message"
+          :pod-name="m.pilot.podName"
+          task-type="Coordinate"
+          :proposals="m.pilot.proposals"
+        />
+        <div v-else class="card empty">
+          No pilot for this milestone. Autopilot, or <code>/pilot coordinate</code> on an issue, starts one.
+        </div>
+      </section>
+
       <section v-if="m.tracking && m.permissions?.gitlab" class="section">
-        <h3>Chat</h3>
+        <h3>Tracking issue</h3>
         <Conversation :namespace="namespace" :name="name" :milestone="m.iid" :steer="!!m.permissions?.steer" :stamp="stamp" />
       </section>
 
