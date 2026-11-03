@@ -47,7 +47,15 @@ type MilestoneAutopilot struct {
 	Phase        aiv1.AutopilotPhase `json:"phase"`
 	PausedReason string              `json:"pausedReason,omitempty"`
 	WaitingFor   int64               `json:"waitingFor,omitempty"`
-	Items        []QueueItem         `json:"items"`
+	// PauseKind and PausedFor say why and over which issue it paused;
+	// Head is that issue's pushed head (what "merge anyway" names) and
+	// ReviewErrors why its reviewers failed.
+	PauseKind     aiv1.PauseKind      `json:"pauseKind,omitempty"`
+	PausedFor     int64               `json:"pausedFor,omitempty"`
+	Head          string              `json:"head,omitempty"`
+	ReviewErrors  []aiv1.ReviewError  `json:"reviewErrors,omitempty"`
+	MergeOverride *aiv1.MergeOverride `json:"mergeOverride,omitempty"`
+	Items         []QueueItem         `json:"items"`
 }
 
 // QueueItem is an issue in the autopilot's queue, in queue order.
@@ -150,7 +158,13 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		for _, pi := range st.Status.Plan {
 			titles[pi.IID] = pi.Title
 		}
-		a := &MilestoneAutopilot{Phase: ap.Phase, PausedReason: ap.PausedReason, WaitingFor: waitingFor(ap, tasks), Items: []QueueItem{}}
+		a := &MilestoneAutopilot{Phase: ap.Phase, PausedReason: ap.PausedReason, WaitingFor: waitingFor(ap, tasks), PauseKind: ap.PauseKind,
+			PausedFor: ap.PausedFor, MergeOverride: ap.MergeOverride, Items: []QueueItem{}}
+		for i := range tasks {
+			if t := &tasks[i]; ap.Phase == aiv1.AutopilotPaused && ap.PausedFor != 0 && t.Spec.Issue != nil && t.Spec.Issue.IID == ap.PausedFor {
+				a.Head, a.ReviewErrors = t.Status.Run.PushedSHA, t.Status.Run.ReviewErrorKinds
+			}
+		}
 		for _, it := range ap.Items {
 			a.Items = append(a.Items, QueueItem{IID: it.IID, Title: titles[it.IID], State: it.State, MergeRequestIID: it.MergeRequestIID, MergeRequestURL: it.MergeRequestURL, Task: byIssue[it.IID]})
 		}

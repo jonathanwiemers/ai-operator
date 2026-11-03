@@ -143,12 +143,22 @@ func TestInbox(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "pilot"},
 			Spec:   aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeCoordinate, Milestone: &aiv1.MilestoneRef{IID: 20}},
 			Status: aiv1.AgentTaskStatus{Pilot: &aiv1.PilotStatus{Proposals: []aiv1.PilotProposal{{ID: 4, Summary: "Split #149", PostedAt: &posted}}}}},
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "spec"},
+			Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 21, Title: "Poker"}},
+			Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedFor: 391,
+				PausedReason: "1 reviewers failed on #391", PauseKind: aiv1.PauseReviewErrors}}},
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "running"},
+			Spec:   aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 22, Title: "Lobby"}},
+			Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}}},
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "other", Name: "hidden"},
 			Spec:   aiv1.AgentTaskSpec{ProjectRef: "secret", Type: aiv1.TaskTypeImplement, Issue: &aiv1.IssueRef{IID: 1}},
 			Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{LastResult: aiv1.RunResultFailed}}},
 	}
 	items := inboxOf(map[string]*aiv1.AgentProject{"agents/bloop": ap}, tasks, time.Now())
-	if len(items) != 2 || items[0].Kind != "proposal" || items[0].ProposalID != 4 || items[1].IssueIID != 143 || items[1].Reason != "needs-input" {
-		t.Errorf("inbox = %+v", items)
+	if len(items) != 3 || items[0].Kind != "proposal" || items[0].ProposalID != 4 || items[1].IssueIID != 143 || items[1].Reason != "needs-input" {
+		t.Fatalf("inbox = %+v", items)
+	}
+	if p := items[2]; p.Kind != "pause" || p.MilestoneIID != 21 || p.Title != "Poker" || p.IssueIID != 391 || p.PauseKind != aiv1.PauseReviewErrors || p.Reason != "1 reviewers failed on #391" {
+		t.Errorf("a paused autopilot is in the inbox, a running one is not: %+v", p)
 	}
 }

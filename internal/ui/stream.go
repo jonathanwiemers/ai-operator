@@ -482,7 +482,7 @@ func (t *HistoryTotals) add(d store.Day) {
 type InboxItem struct {
 	Namespace    string     `json:"namespace"`
 	Project      string     `json:"project"`
-	Kind         string     `json:"kind"` // task or proposal
+	Kind         string     `json:"kind"` // task, proposal or pause
 	Task         string     `json:"task,omitempty"`
 	IssueIID     int64      `json:"issueIID,omitempty"`
 	MilestoneIID int64      `json:"milestoneIID,omitempty"`
@@ -491,11 +491,13 @@ type InboxItem struct {
 	Reason       string     `json:"reason"`
 	At           *time.Time `json:"at,omitempty"`
 	URL          string     `json:"url,omitempty"`
+	// PauseKind is the cause of a paused autopilot (kind pause).
+	PauseKind aiv1.PauseKind `json:"pauseKind,omitempty"`
 }
 
 // inbox lists what needs the user across the projects they may see: tasks
-// with questions, failed or blocked, and the pilots' open proposals. It
-// comes from the live state, not the history.
+// with questions, failed or blocked, the pilots' open proposals and paused
+// autopilots. It comes from the live state, not the history.
 func (s *Server) inbox(w http.ResponseWriter, r *http.Request) {
 	p := principalOf(r)
 	var projects aiv1.AgentProjectList
@@ -548,6 +550,12 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 				}
 				items = append(items, it)
 			}
+		}
+		if a := t.Status.Autopilot; a != nil && a.Phase == aiv1.AutopilotPaused && t.Spec.Milestone != nil {
+			it := base
+			it.Kind, it.IssueIID, it.Title, it.Reason, it.PauseKind = "pause", a.PausedFor, t.Spec.Milestone.Title, a.PausedReason, a.PauseKind
+			items = append(items, it)
+			continue
 		}
 		switch stage := StageOf(t, ciWindow(ap), now); stage {
 		case StageNeedsInput, StageFailed, StageBlocked:

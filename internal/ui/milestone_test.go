@@ -49,6 +49,7 @@ func withAutopilot(t *testing.T, env *testEnv, gl *fakeGitLab) {
 	st.Status.Plan = append(st.Status.Plan, aiv1.PlannedIssue{Key: "b", IID: 43, Title: "Add Klarna"})
 	st.Status.Autopilot = &aiv1.AutopilotStatus{
 		Phase: aiv1.AutopilotPaused, TrackingIssueIID: 77, PausedReason: "job `lint` failed\n/close",
+		PauseKind: aiv1.PauseCIRed, PausedFor: 42,
 		Items: []aiv1.AutopilotItem{
 			{IID: 42, State: aiv1.AutopilotItemActive, MergeRequestIID: 5, MergeRequestURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5"},
 			{IID: 43, State: aiv1.AutopilotItemPending},
@@ -85,6 +86,15 @@ func withAutopilot(t *testing.T, env *testEnv, gl *fakeGitLab) {
 func TestMilestoneView(t *testing.T) {
 	env, gl := newSteeringEnv(t, Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}})
 	withAutopilot(t, env, gl)
+	var issue aiv1.AgentTask
+	if err := env.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: "shop-42-add-paypal"}, &issue); err != nil {
+		t.Fatal(err)
+	}
+	issue.Status.Run.PushedSHA = "5a0e000"
+	issue.Status.Run.ReviewErrorKinds = []aiv1.ReviewError{{Reviewer: aiv1.ReviewerBugbot, Kind: aiv1.ReviewErrorUsageLimit, Engine: aiv1.EngineCursor}}
+	if err := env.reader.Update(context.Background(), &issue); err != nil {
+		t.Fatal(err)
+	}
 	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
 	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}}}
 	env.login(t, "/")
@@ -97,8 +107,11 @@ func TestMilestoneView(t *testing.T) {
 		t.Errorf("milestone = %+v", m)
 	}
 	a := m.Autopilot
-	if a == nil || a.Phase != aiv1.AutopilotPaused || a.PausedReason != "job `lint` failed\n/close" {
+	if a == nil || a.Phase != aiv1.AutopilotPaused || a.PausedReason != "job `lint` failed\n/close" || a.PauseKind != aiv1.PauseCIRed || a.PausedFor != 42 {
 		t.Fatalf("autopilot = %+v", a)
+	}
+	if a.Head != "5a0e000" || len(a.ReviewErrors) != 1 || a.ReviewErrors[0].Engine != aiv1.EngineCursor {
+		t.Errorf("the paused issue's head and reviewer failures: %q %+v", a.Head, a.ReviewErrors)
 	}
 	want := []QueueItem{
 		{IID: 42, Title: "Add PayPal", State: aiv1.AutopilotItemActive, MergeRequestIID: 5, MergeRequestURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5", Task: "shop-42-add-paypal"},
