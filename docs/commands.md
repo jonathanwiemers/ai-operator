@@ -107,6 +107,7 @@ implementer of every following run reads them:
 | `/agent pause` | Stop starting and merging. Runs already requested still finish. |
 | `/agent resume` | Continue; the active issue is checked again. |
 | `/agent skip #12` | Skip a planned issue. Issues that depend on it stay blocked until it is merged by hand or they are skipped too. |
+| `/agent merge #12 <sha>` | Owners only (also with `commandsFrom: all`): merge the active issue's head `sha` (at least 7 characters; without it the answer names the current head) without a full review. Skips failed or missing reviews and blocking findings; CI, the MR state and approvals still apply. Said on the tracking issue; a new push or a review that finishes later voids it. |
 | `/agent revisit D42-3 …` | Change a decision of a merged issue: a follow-up issue joins the queue. |
 | anything else | Answered once with this list, a pointer to `/pilot …` and the active issue. Instructions for the agent go on the active issue or its MR, not here. |
 | `create 1 2`, `create 1, 3`, `create all` | As a reply in the thread of the [retrospective](usage.md#the-retrospective), once autopilot is done (the whole comment, no prefix): opens those follow-ups as plain issues (generated label, no milestone, not handed to the agent), each once, and answers in the thread with the links. Only from the owners pinned when the retrospective was posted; anything else is ignored silently. |

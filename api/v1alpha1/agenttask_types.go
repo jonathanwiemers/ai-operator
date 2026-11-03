@@ -930,6 +930,18 @@ const (
 	AutopilotOff AutopilotPhase = "Off"
 )
 
+// MergeOverride lets the merge gate skip its review checks for one head:
+// failed or missing reviews and blocking findings. CI, the MR state and
+// approvals still apply.
+type MergeOverride struct {
+	IssueIID int64 `json:"issueIID"`
+	// SHA is the head it was given for.
+	SHA string `json:"sha"`
+	// By is who decided it.
+	By string      `json:"by"`
+	At metav1.Time `json:"at"`
+}
+
 // ReviewErrorKind is why one reviewer failed.
 // +kubebuilder:validation:Enum=usageLimit;transient;other
 type ReviewErrorKind string
@@ -1028,6 +1040,11 @@ type AutopilotStatus struct {
 	// ResumeWhenReady: the pause is over PausedFor's run, review or CI.
 	// +optional
 	ResumeWhenReady bool `json:"resumeWhenReady,omitempty"`
+
+	// MergeOverride is an owner's decision to merge one head of an issue
+	// without a full review (the `merge` command). A new head voids it.
+	// +optional
+	MergeOverride *MergeOverride `json:"mergeOverride,omitempty"`
 
 	// Items in queue order: dependencies first, ties in plan order.
 	// +optional

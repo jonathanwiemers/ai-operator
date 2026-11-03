@@ -895,6 +895,7 @@ approval, unresolved discussions, someone else's push, a dependency cycle,
 | `/agent pause` | stop starting and merging |
 | `/agent resume` | continue; the active issue is checked again |
 | `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |
+| `/agent merge #12 <sha>` | owners only: merge the active issue's head `sha` without a full review (when the reviewers cannot run); CI, MR state and approvals still apply, a new push or a later review voids it (`status.autopilot.mergeOverride`) |
 | `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](#revisiting-after-the-merge) joins the queue |
 
 Any other `/agent …` comment on the tracking issue (also a bare `/agent` or a

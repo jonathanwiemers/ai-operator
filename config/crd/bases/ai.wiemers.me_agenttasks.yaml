@@ -673,6 +673,29 @@ spec:
                     - iid
                     - state
                     type: object
+                  mergeOverride:
+                    description: |-
+                      MergeOverride is an owner's decision to merge one head of an issue
+                      without a full review (the `merge` command). A new head voids it.
+                    properties:
+                      at:
+                        format: date-time
+                        type: string
+                      by:
+                        description: By is who decided it.
+                        type: string
+                      issueIID:
+                        format: int64
+                        type: integer
+                      sha:
+                        description: SHA is the head it was given for.
+                        type: string
+                    required:
+                    - at
+                    - by
+                    - issueIID
+                    - sha
+                    type: object
                   pauseKind:
                     description: |-
                       PauseKind is the cause of the pause, for the Desk's pause card. Empty

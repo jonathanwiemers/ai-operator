@@ -23,7 +23,12 @@ type Command struct {
 	Default  bool   `json:"default,omitempty"`
 	Issue    int64  `json:"issue,omitempty"`
 	Proposal int64  `json:"proposal,omitempty"`
+	// SHA is the head a merge is for.
+	SHA string `json:"sha,omitempty"`
 }
+
+// shaRE is an abbreviated or full commit SHA.
+var shaRE = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 
 // Parse reads a command body. Unknown fields are rejected.
 func Parse(body string) (Command, error) {
@@ -44,6 +49,10 @@ func Parse(body string) (Command, error) {
 	c.Engine = strings.ToLower(strings.TrimSpace(c.Engine))
 	c.Model = strings.TrimSpace(c.Model)
 	c.Effort = strings.ToLower(strings.TrimSpace(c.Effort))
+	c.SHA = strings.ToLower(strings.TrimSpace(c.SHA))
+	if c.SHA != "" && c.Cmd != "merge" {
+		return Command{}, fmt.Errorf("%s takes no sha", c.Cmd)
+	}
 	switch c.Cmd {
 	case "retry", "review", "pause", "resume":
 		if err := c.noArgs(); err != nil {
@@ -63,6 +72,13 @@ func Parse(body string) (Command, error) {
 		}
 		if c.Engine != "" || c.Model != "" || c.Effort != "" || c.Default || c.Proposal != 0 {
 			return Command{}, fmt.Errorf("skip takes only issue")
+		}
+	case "merge":
+		if c.Issue <= 0 || !shaRE.MatchString(c.SHA) {
+			return Command{}, fmt.Errorf("merge needs issue > 0 and the sha of its head")
+		}
+		if c.Engine != "" || c.Model != "" || c.Effort != "" || c.Default || c.Proposal != 0 {
+			return Command{}, fmt.Errorf("merge takes only issue and sha")
 		}
 	case "accept", "reject":
 		if c.Proposal <= 0 {
@@ -136,10 +152,10 @@ func (c Command) ImplementOnly() bool {
 }
 
 // Autopilot reports whether the command is an autopilot verb (pause, resume,
-// skip) for the Spec task of an autopilot milestone.
+// skip, merge) for the Spec task of an autopilot milestone.
 func (c Command) Autopilot() bool {
 	switch c.Cmd {
-	case "pause", "resume", "skip":
+	case "pause", "resume", "skip", "merge":
 		return true
 	default:
 		return false

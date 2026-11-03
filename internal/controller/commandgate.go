@@ -33,6 +33,12 @@ func (g *commandGate) counts(ctx context.Context, n gitlab.Note, owners []string
 	if g.spec.Workflow.CommandsFrom != aiv1.CommandsFromOwners {
 		return true, nil
 	}
+	return g.byOwner(ctx, n, owners)
+}
+
+// byOwner reports whether n was written by one of the owners, whoever may
+// give commands otherwise.
+func (g *commandGate) byOwner(ctx context.Context, n gitlab.Note, owners []string) (bool, error) {
 	for _, o := range owners {
 		id, ok := g.ids[o]
 		if !ok {

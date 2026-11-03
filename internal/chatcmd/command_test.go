@@ -24,6 +24,7 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"effort","effort":"high"}`, Command{Cmd: "effort", Effort: "high"}, ""},
 		{`{"cmd":"effort","effort":"default"}`, Command{Cmd: "effort", Effort: "default"}, ""},
 		{`{"cmd":"skip","issue":12}`, Command{Cmd: "skip", Issue: 12}, ""},
+		{`{"cmd":"merge","issue":12,"sha":" 5A0E000 "}`, Command{Cmd: "merge", Issue: 12, SHA: "5a0e000"}, ""},
 		{`{"cmd":"accept","proposal":3}`, Command{Cmd: "accept", Proposal: 3}, ""},
 		{`{"cmd":"reject","proposal":3}`, Command{Cmd: "reject", Proposal: 3}, ""},
 		{`{}`, Command{}, "cmd is required"},
@@ -43,6 +44,10 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"skip"}`, Command{}, "skip needs issue"},
 		{`{"cmd":"skip","issue":0}`, Command{}, "skip needs issue"},
 		{`{"cmd":"skip","issue":1,"engine":"claude"}`, Command{}, "skip takes only issue"},
+		{`{"cmd":"merge","issue":12}`, Command{}, "merge needs issue > 0 and the sha"},
+		{`{"cmd":"merge","issue":12,"sha":"5a0e"}`, Command{}, "merge needs issue > 0 and the sha"},
+		{`{"cmd":"merge","issue":12,"sha":"5a0e000","effort":"high"}`, Command{}, "merge takes only issue and sha"},
+		{`{"cmd":"skip","issue":12,"sha":"5a0e000"}`, Command{}, "skip takes no sha"},
 		{`{"cmd":"accept"}`, Command{}, "accept needs proposal"},
 		{`{"cmd":"accept","proposal":0}`, Command{}, "accept needs proposal"},
 		{`{"cmd":"reject","proposal":1,"issue":2}`, Command{}, "reject takes only proposal"},
@@ -81,7 +86,7 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 			t.Errorf("%s should not be Autopilot or ProposalOnly", cmd)
 		}
 	}
-	for _, cmd := range []string{"pause", "resume", "skip"} {
+	for _, cmd := range []string{"pause", "resume", "skip", "merge"} {
 		c := Command{Cmd: cmd}
 		if !c.Autopilot() || c.ImplementOnly() || c.ProposalOnly() {
 			t.Errorf("%s should be Autopilot only", cmd)

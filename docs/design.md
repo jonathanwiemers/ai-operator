@@ -941,8 +941,17 @@ stateDiagram-v2
   `runFailed`, `findings`, `reviewErrors`, `notReviewed`, `ciRed`,
   `ciCanceled`, `mergeRequest`, `mainRed`, `config`) for the Desk's pause
   card. Before pausing because of the active
-  issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause` and
-  `skip #N` on the tracking issue are handled by the operator.
+  issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause`,
+  `skip #N` and `merge #N` on the tracking issue are handled by the operator.
+* **Merge without a full review.** `merge #N <sha>` (GitLab owners, or the
+  Desk's owner subjects; the sha is the head they looked at) records
+  `status.autopilot.mergeOverride {issueIID, sha, by, at}` for the active
+  issue's current head and comments on the tracking issue. For that head the
+  gate skips its review checks (findings, reviewer failures, an unreviewed
+  head); CI, the MR state and approvals still apply. A pause over the
+  issue's review ends. A new push, or a run that finishes on the head after
+  it (a re-review), voids the override; a rebase that keeps the change
+  carries it like the review. Applying it again changes nothing.
 * **Tracking issue.** Created on the first poll, before the first plan (so a
   planning failure has a place to be reported); until a plan exists only the
   tracking issue and its commands are handled, nothing is picked and the
@@ -1562,6 +1571,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/handoff.go` | agent notes: the bot's handoff comment on the issue |
 | `internal/runner/decisions.go` | decisions: IDs, decision comments, revisits, superseding |
 | `internal/controller/autopilot.go` | autopilot: queue, merge gate, rebase, pause / resume / skip, tracking issue |
+| `internal/controller/override.go` | autopilot: an owner's `merge` without a full review |
 | `internal/controller/revisit.go` | revisits of merged issues: follow-up issues, replies |
 | `internal/marker` | hidden markers in GitLab text shared by operator and runner (tracking issue, decisions) |
 | `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |

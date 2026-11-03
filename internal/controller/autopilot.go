@@ -892,6 +892,8 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		return nil
 	}
 	switch g := a.gateCheck(it, is, task); {
+	case g.state == gatePassed && a.overridden(it, task.Status.Run.PushedSHA, task.Status.Run):
+		return resume(fmt.Sprintf("#%d is green and may merge without a full review", it.IID))
 	case g.state == gatePassed:
 		return resume(fmt.Sprintf("#%d is reviewed and green again", it.IID))
 	case g.state == gateReReview:
@@ -953,18 +955,20 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 		return gateResult{state: gateWaiting} // blocked: waits for an outside reason
 	}
 	run := task.Status.Run
+	// An owner's merge override skips the review checks for its head.
+	reviewed := !a.overridden(it, run.PushedSHA, run)
 	switch {
 	case run.LastResult != aiv1.RunResultSucceeded:
 		return failed(true, aiv1.PauseRunFailed, "the last run of #%d ended with %q", it.IID, run.LastResult)
-	case run.BlockingFindings > 0:
+	case reviewed && run.BlockingFindings > 0:
 		return failed(true, aiv1.PauseFindings, "%d blocking review findings remain on !%d", run.BlockingFindings, it.MergeRequestIID)
-	case run.ReviewErrors > 0:
+	case reviewed && run.ReviewErrors > 0:
 		return a.reviewErrors(it, task)
 	case it.MergeRequestIID == 0 || run.PushedSHA == "":
 		return failed(false, aiv1.PauseConfig, "#%d is in review without a pushed merge request", it.IID)
 	case len(a.spec.Agents.Review.Reviewers) == 0:
 		return failed(false, aiv1.PauseConfig, "no reviewers are configured (`agents.review.reviewers`), and autopilot only merges reviewed changes")
-	case run.ReviewedSHA != run.PushedSHA:
+	case reviewed && run.ReviewedSHA != run.PushedSHA:
 		return failed(true, aiv1.PauseNotReviewed, "the head of !%d (%s) was not reviewed (the last review saw %s)", it.MergeRequestIID, short(run.PushedSHA), short(run.ReviewedSHA))
 	}
 	if a.spec.CI.Disabled {
@@ -1073,12 +1077,17 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 	}
 	a.log.Info("autopilot rebase done, waiting for CI", "mr", mr.IID, "sha", mr.SHA)
 	orig := task.DeepCopy()
-	task.Status.Run.ReviewedSHA = mr.SHA
+	if task.Status.Run.ReviewedSHA == it.RebasedFrom {
+		task.Status.Run.ReviewedSHA = mr.SHA // not for a head an override let through
+	}
 	task.Status.Run.PushedSHA = mr.SHA
 	task.Status.Run.PushedAt = &metav1.Time{Time: a.r.now()}
 	task.Status.CI = nil
 	if err := a.r.Status().Patch(ctx, task, client.MergeFrom(orig)); err != nil {
 		return err
+	}
+	if a.overridden(it, it.RebasedFrom, orig.Status.Run) {
+		a.ap.MergeOverride.SHA = mr.SHA // the same change, like its review
 	}
 	it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
 	if a.spec.CI.Disabled {
@@ -1251,8 +1260,22 @@ func (a *autopilot) commands(ctx context.Context) error {
 			}
 			word = ""
 		}
+		arg := fields[1]
+		if word == "merge" {
+			// Owners only, also where anyone may give commands.
+			if ok, err := a.gate.byOwner(ctx, n, a.st.Spec.Owners); err != nil {
+				return err
+			} else if !ok {
+				if err := a.r.rejectOnce(ctx, a.gl, a.spec, a.st, pilotNote{Note: n, issue: a.ap.TrackingIssueIID}, "🤖 "+notOwnerMerge); err != nil {
+					return err
+				}
+				a.ap.LastCommandNoteID = n.ID
+				continue
+			}
+			arg += " " + fields[2]
+		}
 		// Tried again on the next poll when it fails.
-		reply, applied, err := a.command(ctx, word, fields[1], "@"+n.Author.Username)
+		reply, applied, err := a.command(ctx, word, arg, "@"+n.Author.Username)
 		if err != nil {
 			return err
 		}
@@ -1325,8 +1348,16 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 		}
 		by := who + " via the Desk"
 		arg := ""
-		if cmd.Cmd == "skip" {
+		switch cmd.Cmd {
+		case "skip":
 			arg = fmt.Sprintf("#%d", cmd.Issue)
+		case "merge":
+			if !slices.Contains(a.st.Spec.OwnerSubjects, m.Author) {
+				answer(m.ID, notOwnerMerge)
+				a.log.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
+				continue
+			}
+			arg = fmt.Sprintf("#%d %s", cmd.Issue, cmd.SHA)
 		}
 		a.log.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author)
 		reply, _, err := a.command(ctx, cmd.Cmd, arg, by)
@@ -1339,8 +1370,8 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 	return nil
 }
 
-// command applies one command of the tracking issue: pause, resume or
-// skip arg, by someone. It returns the answer and whether the command was
+// command applies one command of the tracking issue: pause, resume,
+// skip arg or merge arg, by someone. It returns the answer and whether the command was
 // applied; the tracking issue gets only the answers of commands that were
 // not (usage, unknown), the Desk gets every answer.
 func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer string, applied bool, err error) {
@@ -1368,6 +1399,8 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 		}
 		it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
 		return fmt.Sprintf("#%d skipped.", iid), true, nil
+	case "merge":
+		return a.mergeAnyway(ctx, arg, by)
 	default:
 		return a.unknownCommand(), false, nil
 	}
@@ -1383,7 +1416,7 @@ func (a *autopilot) unknownCommand() string {
 			where = fmt.Sprintf("#%d, the active issue", it.IID)
 		}
 	}
-	return fmt.Sprintf("This tracking issue only understands `%[1]s pause`, `%[1]s resume`, `%[1]s skip #N` and `%[1]s revisit <id> …`. "+
+	return fmt.Sprintf("This tracking issue only understands `%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s merge #N` and `%[1]s revisit <id> …`. "+
 		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix)
 }
 
