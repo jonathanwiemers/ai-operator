@@ -190,7 +190,13 @@ func (f *Fake) GetProject(context.Context, string) (*gitlab.Project, error) {
 func (f *Fake) ListMilestones(context.Context, string) ([]gitlab.Milestone, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return slices.Clone(f.Milestones), nil
+	var active []gitlab.Milestone
+	for _, m := range f.Milestones {
+		if m.State != "closed" {
+			active = append(active, m)
+		}
+	}
+	return active, nil
 }
 
 func (f *Fake) GetMilestone(_ context.Context, _ string, id int64) (*gitlab.Milestone, error) {
@@ -215,6 +221,18 @@ func (f *Fake) UpdateMilestoneDescription(_ context.Context, _ string, id int64,
 		}
 	}
 	return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "milestone"}
+}
+
+func (f *Fake) CloseMilestone(_ context.Context, _ string, id int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.Milestones {
+		if f.Milestones[i].ID == id {
+			f.Milestones[i].State = "closed"
+			return nil
+		}
+	}
+	return &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "milestone"}
 }
 
 func (f *Fake) ListIssues(_ context.Context, _ string, opts gitlab.ListIssuesOptions) ([]gitlab.Issue, error) {

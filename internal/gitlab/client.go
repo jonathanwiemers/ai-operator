@@ -29,6 +29,7 @@ type API interface {
 	ListMilestones(ctx context.Context, project string) ([]Milestone, error)
 	GetMilestone(ctx context.Context, project string, id int64) (*Milestone, error)
 	UpdateMilestoneDescription(ctx context.Context, project string, id int64, description string) (*Milestone, error)
+	CloseMilestone(ctx context.Context, project string, id int64) error
 	ListIssues(ctx context.Context, project string, opts ListIssuesOptions) ([]Issue, error)
 	GetIssue(ctx context.Context, project string, iid int64) (*Issue, error)
 	CreateIssue(ctx context.Context, project string, opts CreateIssueOptions) (*Issue, error)
@@ -674,6 +675,11 @@ func (c *Client) UpdateMilestoneDescription(ctx context.Context, project string,
 	var m Milestone
 	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/milestones/%d", projectPath(project), id), nil, map[string]string{"description": description}, &m)
 	return &m, err
+}
+
+func (c *Client) CloseMilestone(ctx context.Context, project string, id int64) error {
+	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/milestones/%d", projectPath(project), id), nil, map[string]string{"state_event": "close"}, nil)
+	return err
 }
 
 func (c *Client) ListIssues(ctx context.Context, project string, opts ListIssuesOptions) ([]Issue, error) {

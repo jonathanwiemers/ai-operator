@@ -947,6 +947,17 @@ stateDiagram-v2
   if deleted. It carries a
   hidden marker (`internal/marker`) so the spec agent does not see it as an
   existing issue.
+* **Closing the milestone.** A `Done` autopilot without a pending re-plan
+  closes its milestone (`closeMilestone`, `gitlab.API.CloseMilestone`) once
+  the retrospective is
+  on the spec task (or the milestone has no pilot to write one), its
+  follow-ups are settled (none, all opened, failed, or posted at least
+  `followUpWindow` = 7 days ago) and no issue besides the tracking issue is
+  open. Open issues are named once on the tracking issue
+  (`status.autopilot.closeWaitsFor`, again only when the list changes). It
+  closes first and comments after: the next poll lists active milestones
+  only, so the spec task is deleted and the comment cannot repeat. See
+  [autopilot-close-milestone.spec.md](specs/autopilot-close-milestone.spec.md).
 * **Off.** Removing the marker sets `phase: Off` and closes the tracking
   issue; if the milestone is no longer planned at all, this happens before
   the spec task is deleted.

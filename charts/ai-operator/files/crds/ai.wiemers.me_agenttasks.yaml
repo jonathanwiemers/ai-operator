@@ -474,6 +474,14 @@ spec:
                   Autopilot is the operator's queue of an autopilot milestone (spec
                   tasks).
                 properties:
+                  closeWaitsFor:
+                    description: |-
+                      CloseWaitsFor are the open issues a done milestone was last reported
+                      to wait for before autopilot closes it.
+                    items:
+                      format: int64
+                      type: integer
+                    type: array
                   items:
                     description: 'Items in queue order: dependencies first, ties in
                       plan order.'

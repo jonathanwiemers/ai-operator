@@ -34,7 +34,7 @@ import (
 // The operator only calls the GitLab API here; no model decides whether to
 // merge. State lives in the spec task's status.autopilot, the tracking issue
 // shows it.
-func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, lane bool) error {
+func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, pilot *aiv1.AgentTask, lane bool) error {
 	switch {
 	case st.Spec.Milestone == nil:
 		return nil
@@ -46,7 +46,7 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 	if st.Status.Autopilot != nil {
 		ap = st.Status.Autopilot.DeepCopy()
 	}
-	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, lane: lane,
+	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, pilotTask: pilot, lane: lane,
 		log: log.FromContext(ctx).WithValues("milestone", st.Spec.Milestone.Title)}
 	err := a.sync(ctx)
 	// Save what was done even if a later step failed: its GitLab side
@@ -158,6 +158,11 @@ func (a *autopilot) sync(ctx context.Context) error {
 		if err := a.step(ctx); err != nil {
 			return err
 		}
+		if a.ap.Phase == aiv1.AutopilotDone {
+			if err := a.closeMilestone(ctx); err != nil {
+				return err
+			}
+		}
 	}
 	return a.updateTracking(ctx)
 }
@@ -192,7 +197,9 @@ type autopilot struct {
 	ap      *aiv1.AutopilotStatus
 	tasks   map[int64]*aiv1.AgentTask
 	issues  map[int64]gitlab.Issue
-	log     logr.Logger
+	// pilotTask is the milestone's Coordinate task, if there is one.
+	pilotTask *aiv1.AgentTask
+	log       logr.Logger
 	// proj is read once per poll, when needed.
 	proj *gitlab.Project
 	// lane: this milestone drives the main-red issue, mainRed while red.
@@ -429,6 +436,72 @@ func (a *autopilot) pick(ctx context.Context) error {
 			a.mention(aiv1.NotifyAutopilotDone))
 	}
 	return nil
+}
+
+// followUpWindow is how long the owners have to open a retrospective's
+// follow-ups with "create" before autopilot closes the milestone.
+const followUpWindow = 7 * 24 * time.Hour
+
+// closeMilestone closes the milestone of a done autopilot once the
+// retrospective and its follow-ups are settled and no issue in it is open.
+// A closed milestone is no longer planned: the next poll deletes its tasks,
+// so the comment after the close is not repeated.
+func (a *autopilot) closeMilestone(ctx context.Context) error {
+	var retro *aiv1.PilotRetrospective
+	if ps := a.st.Status.Pilot; ps != nil {
+		retro = ps.Retrospective
+	}
+	switch {
+	case a.st.RunPending():
+		return nil // a re-plan may add issues and continue the queue
+	case retro == nil && a.pilotTask != nil:
+		return nil // the pilot is still writing it
+	case retro != nil && !followUpsSettled(retro, a.r.now()):
+		return nil
+	}
+	var open []int64
+	for iid, is := range a.issues {
+		if is.State == "opened" && iid != a.ap.TrackingIssueIID {
+			open = append(open, iid)
+		}
+	}
+	slices.Sort(open)
+	if len(open) > 0 {
+		if slices.Equal(open, a.ap.CloseWaitsFor) {
+			return nil
+		}
+		verb := "are"
+		if len(open) == 1 {
+			verb = "is"
+		}
+		if err := a.comment(ctx, fmt.Sprintf("📌 The milestone stays open while %s %s open. Autopilot closes it once they are closed.",
+			issueList(open), verb)); err != nil {
+			return err
+		}
+		a.ap.CloseWaitsFor = open
+		return nil
+	}
+	a.log.Info("closing the done autopilot milestone")
+	if err := a.gl.CloseMilestone(ctx, a.spec.GitLab.Project, a.st.Spec.Milestone.ID); err != nil && !gitlab.IsNotFound(err) {
+		return fmt.Errorf("closing the milestone: %w", err)
+	}
+	a.ap.CloseWaitsFor = nil
+	return a.comment(ctx, "🏁 The milestone is closed.")
+}
+
+// followUpsSettled reports whether the retrospective's follow-ups no longer
+// need the milestone: there are none, all were opened, or the window to
+// open them is over.
+func followUpsSettled(retro *aiv1.PilotRetrospective, now time.Time) bool {
+	if retro.Failed != "" || len(retro.FollowUps) == 0 || retro.PostedAt == nil || !now.Before(retro.PostedAt.Add(followUpWindow)) {
+		return true
+	}
+	for k := range retro.FollowUps {
+		if _, ok := retro.Created[strconv.Itoa(k+1)]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // blocker is an open issue a queued issue is linked as "blocked by" to.

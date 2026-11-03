@@ -982,6 +982,10 @@ type AutopilotStatus struct {
 	// description, so it is only edited when it changes.
 	// +optional
 	TrackingHash string `json:"trackingHash,omitempty"`
+	// CloseWaitsFor are the open issues a done milestone was last reported
+	// to wait for before autopilot closes it.
+	// +optional
+	CloseWaitsFor []int64 `json:"closeWaitsFor,omitempty"`
 }
 
 // AutopilotItem is one issue in the queue of an autopilot milestone.

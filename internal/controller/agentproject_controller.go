@@ -456,7 +456,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 	for _, st := range autopilots {
-		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, st == lane); err != nil {
+		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, pilots[st.Spec.Milestone.IID], st == lane); err != nil {
 			errs = append(errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
@@ -475,7 +475,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			// The milestone is no longer planned (closed, or every marker
 			// removed): switch its autopilot off before the state is gone.
 			t.Spec.Autopilot = false
-			if err := r.syncAutopilot(ctx, gl, gate, project, spec, t, nil, false); err != nil {
+			if err := r.syncAutopilot(ctx, gl, gate, project, spec, t, nil, nil, false); err != nil {
 				errs = append(errs, fmt.Errorf("switching off the autopilot of task %s: %w", t.Name, err))
 				continue // tried again on the next poll
 			}

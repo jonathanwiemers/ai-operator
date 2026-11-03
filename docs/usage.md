@@ -1150,6 +1150,16 @@ numbered follow-ups. Reply `create 1 2` (or `create 1, 3`, `create all`) in
 its thread to open follow-ups as plain issues; only the owners pinned when it
 was posted count.
 
+Then autopilot **closes the milestone**, once the retrospective is in (or
+there is no pilot to write one), every follow-up was opened or 7 days have
+passed since it was posted, and no issue in the milestone is open. While
+issues are open (a skipped one, say), it comments once on the tracking issue
+which ones keep the milestone open, again only when that list changes, and
+closes it once they are closed: "🏁 The milestone is closed." A closed
+milestone is no longer planned, so its tasks are deleted and `create` no
+longer works; open a late follow-up by hand from the retrospective, or
+reopen the milestone, which brings autopilot back.
+
 ## Usage and rate limits
 
 Subscriptions have usage windows, and APIs have rate limits. When an agent
