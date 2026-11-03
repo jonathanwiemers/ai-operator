@@ -77,3 +77,8 @@ Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./inte
 | 2 | `loadNewer`/`loadOlder` without the load sequence: a response for the previous task merged into the next task's thread | real | sequence check on every load |
 | 3 | task switch kept the old thread on screen while loading | real | cleared on switch |
 | 4 | a post finishing after a task switch cleared the new task's draft and kept the old one | real | draft key captured at send |
+## Fix after slice 7 (found by the end-to-end test on netcup01)
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | `ChatMessage.kind` enum marker used `|`: the CRD allowed only the literal `message|interrupt|command`, so the API server rejected every dispatch (rows stayed `queued`, retried every 30 s, none lost) | real | marker uses `;`; CRD schema test admits each kind |

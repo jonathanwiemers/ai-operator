@@ -209,3 +209,31 @@ func TestProjectSampleResearch(t *testing.T) {
 		}
 	}
 }
+
+// The operator copies every chat kind onto the task (spec.source.chatMessages);
+// a kind the schema rejects keeps the message queued for good.
+func TestChatMessageKinds(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	chatErrs := func(kind string) string {
+		msg := map[string]any{"id": int64(1), "kind": kind, "text": "hi", "author": "u", "at": "2026-11-03T12:00:00Z"}
+		obj := map[string]any{"spec": map[string]any{"source": map[string]any{"chatMessages": []any{msg}}}}
+		_, errs := crd.admit(obj)
+		var out []string
+		for _, e := range errs {
+			for _, line := range strings.Split(e, "\n") {
+				if strings.Contains(line, "chatMessages") {
+					out = append(out, line)
+				}
+			}
+		}
+		return strings.Join(out, "\n")
+	}
+	for _, kind := range []string{"message", "interrupt", "command"} {
+		if errs := chatErrs(kind); errs != "" {
+			t.Errorf("kind %s rejected: %s", kind, errs)
+		}
+	}
+	if errs := chatErrs("shout"); !strings.Contains(errs, "chatMessages[0].kind") {
+		t.Errorf("kind shout: errors %q, want one on chatMessages[0].kind", errs)
+	}
+}

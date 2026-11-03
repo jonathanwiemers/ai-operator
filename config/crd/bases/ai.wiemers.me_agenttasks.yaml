@@ -188,7 +188,9 @@ spec:
                             Kind is message, interrupt or command. The runner skips command;
                             the operator handles those.
                           enum:
-                          - message|interrupt|command
+                          - message
+                          - interrupt
+                          - command
                           type: string
                         text:
                           description: Text is the user's message, at most 16 KiB.

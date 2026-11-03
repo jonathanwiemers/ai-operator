@@ -182,7 +182,7 @@ type ChatMessage struct {
 	ID int64 `json:"id"`
 	// Kind is message, interrupt or command. The runner skips command;
 	// the operator handles those.
-	// +kubebuilder:validation:Enum=message|interrupt|command
+	// +kubebuilder:validation:Enum=message;interrupt;command
 	Kind string `json:"kind"`
 	// Text is the user's message, at most 16 KiB.
 	// +kubebuilder:validation:MaxLength=16384
