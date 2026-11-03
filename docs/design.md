@@ -936,7 +936,11 @@ stateDiagram-v2
   the tracking issue, once per reason. The reason can quote job names, so
   it goes through `notify.Defuse` wherever it reaches GitLab (the pause
   comment and the tracking description; the owners' mention is appended
-  after); `status.autopilot.pausedReason` keeps the raw text. Before pausing because of the active
+  after); `status.autopilot.pausedReason` keeps the raw text, and
+  `pauseKind` the cause (`owner`, `cycle`, `stuck`, `needsInput`,
+  `runFailed`, `findings`, `reviewErrors`, `notReviewed`, `ciRed`,
+  `ciCanceled`, `mergeRequest`, `mainRed`, `config`) for the Desk's pause
+  card. Before pausing because of the active
   issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause` and
   `skip #N` on the tracking issue are handled by the operator.
 * **Tracking issue.** Created on the first poll, before the first plan (so a

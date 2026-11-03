@@ -15,7 +15,7 @@ import (
 // and blocks the issue: there is nothing in it for a human to fix.
 func (a *autopilot) reviewErrors(it *aiv1.AutopilotItem, task *aiv1.AgentTask) gateResult {
 	run := task.Status.Run
-	g := gateResult{state: gateFailed, byRun: true,
+	g := gateResult{state: gateFailed, kind: aiv1.PauseReviewErrors, byRun: true,
 		reason: fmt.Sprintf("%d reviewers failed on #%d, so the change is not fully reviewed", run.ReviewErrors, it.IID)}
 	switch {
 	case !run.ReviewErrorsTransient || run.PushedSHA == "":
@@ -47,7 +47,7 @@ func (a *autopilot) failGate(ctx context.Context, it *aiv1.AutopilotItem, is git
 	if g.byRun {
 		pause = a.pauseRun
 	}
-	if err := pause(ctx, it, g.reason); err != nil || g.block == "" || a.ap.Phase != aiv1.AutopilotPaused {
+	if err := pause(ctx, it, g.kind, g.reason); err != nil || g.block == "" || a.ap.Phase != aiv1.AutopilotPaused {
 		return err
 	}
 	return a.r.block(ctx, a.spec.Workflow, is, task, g.block, g.reason)

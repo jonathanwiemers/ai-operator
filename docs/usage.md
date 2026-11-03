@@ -1311,13 +1311,17 @@ kubectl -n agents logs -f shop-42-add-paypal-button -c agent    # agent server: 
 `currentStep` while a run is in progress, and the result of the last review:
 `blockingFindings` (blocker and major findings left), `reviewErrors`
 (reviewers that failed), `reviewErrorsTransient` (all of them failed
-transiently, in an outage) and `reviewedSHA` (the commit that review saw; a
+transiently, in an outage), `reviewErrorKinds` (per failed reviewer:
+`usageLimit` with the `engine` and `resetAt`, `transient` or `other`) and
+`reviewedSHA` (the commit that review saw; a
 CI fix run can push commits after it). `reviewedFor` is the head the last
 re-review run was asked for (`spec.source.reviewFor`).
 
 The spec task of a milestone holds the plan in `status.plan` (issues in plan
 order with their dependencies, and the dependencies the operator linked) and, on autopilot, the queue in
-`status.autopilot`: `phase`, `pausedReason`, `trackingIssueIID` and one item
+`status.autopilot`: `phase`, `pausedReason`, `pauseKind` (the cause of a
+pause, e.g. `findings`, `reviewErrors`, `ciRed`, `mergeRequest`, `owner`),
+`trackingIssueIID` and one item
 per issue with its state, MR, merged commit and decisions (`revisitOf` for a
 follow-up). `status.revisits` tracks the [revisits after the
 merge](#revisiting-after-the-merge): when watching started, the last check

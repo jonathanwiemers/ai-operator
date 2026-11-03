@@ -15,6 +15,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/rules"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // runImplement implements an issue: implement -> review -> fix (bounded) ->
@@ -378,14 +379,20 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			return out, s.fail(err)
 		}
 		if strings.TrimSpace(diff) == "" {
-			out.Reviewed, out.BlockingFindings, out.ReviewErrors, out.ReviewErrorsTransient = true, 0, 0, false
+			out.Reviewed, out.BlockingFindings, out.ReviewErrors, out.ReviewErrorsTransient, out.ReviewErrorKinds = true, 0, 0, false, nil
 			s.done("no changes to review")
 			break
 		}
-		findings, cost, errs, transient := r.review(ctx, review, issue, planDecisionsText(issueNotes, botID), base, stat, diff, ownersRules)
+		findings, cost, errs, kinds := r.review(ctx, review, issue, planDecisionsText(issueNotes, botID), base, stat, diff, ownersRules)
 		out.CostUSD += cost
 		reviewNotes = errs
-		out.Reviewed, out.ReviewErrors, out.ReviewErrorsTransient = true, int32(len(errs)), len(errs) > 0 && transient == len(errs)
+		transient := 0
+		for _, k := range kinds {
+			if k.Kind == aiv1.ReviewErrorTransient {
+				transient++
+			}
+		}
+		out.Reviewed, out.ReviewErrors, out.ReviewErrorsTransient, out.ReviewErrorKinds = true, int32(len(errs)), len(errs) > 0 && transient == len(errs), kinds
 		reviewedLast = true
 		// Reviewers are read-only; discard anything they touched anyway.
 		if err := r.Agent.Reset(ctx); err != nil {
@@ -908,18 +915,18 @@ func (r *Runner) commit(ctx context.Context, message string) error {
 
 // review runs all configured reviewers in parallel. A reviewer that fails
 // transiently is called again (review.retries). Reviewer failures do not
-// fail the run; they are reported alongside the result, with the number of
-// them that failed transiently. ownersRules (the milestone's prompt rules)
+// fail the run; they are reported alongside the result, with why each
+// reviewer failed. ownersRules (the milestone's prompt rules)
 // end every reviewer's prompt.
-func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions, base, stat, diff, ownersRules string) ([]Finding, float64, []string, int) {
+func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions, base, stat, diff, ownersRules string) ([]Finding, float64, []string, []aiv1.ReviewError) {
 	prompt := buildReviewPrompt(issue, planDecisions, base, stat, diff) + ownersRules
 	var (
-		mu        sync.Mutex
-		wg        sync.WaitGroup
-		findings  []Finding
-		cost      float64
-		errs      []string
-		transient int
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		findings []Finding
+		cost     float64
+		errs     []string
+		kinds    []aiv1.ReviewError
 	)
 	for _, kind := range spec.Reviewers {
 		wg.Add(1)
@@ -966,9 +973,7 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 			cost += spent
 			if err != nil {
 				r.log().Error(err, "reviewer failed", "reviewer", kind, "attempts", attempts)
-				if isTransient(err) {
-					transient++
-				}
+				kinds = append(kinds, reviewErrorOf(kind, err))
 				msg := truncate(err.Error(), 300)
 				if attempts > 1 {
 					msg = fmt.Sprintf("%s (after %d attempts)", msg, attempts)
@@ -988,7 +993,24 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 		}(kind)
 	}
 	wg.Wait()
-	return findings, cost, errs, transient
+	slices.SortFunc(kinds, func(a, b aiv1.ReviewError) int { return strings.Compare(string(a.Reviewer), string(b.Reviewer)) })
+	return findings, cost, errs, kinds
+}
+
+// reviewErrorOf says why a reviewer failed: its engine's usage limit (with
+// the reset, if known), an outage, or anything else.
+func reviewErrorOf(reviewer aiv1.ReviewerKind, err error) aiv1.ReviewError {
+	e := aiv1.ReviewError{Reviewer: reviewer, Kind: aiv1.ReviewErrorOther}
+	switch lim, ok := AsUsageLimit(err); {
+	case ok:
+		e.Kind, e.Engine = aiv1.ReviewErrorUsageLimit, lim.Engine
+		if !lim.ResetAt.IsZero() {
+			e.ResetAt = &metav1.Time{Time: lim.ResetAt}
+		}
+	case isTransient(err):
+		e.Kind = aiv1.ReviewErrorTransient
+	}
+	return e
 }
 
 // renderReport renders the run's report; agent-written text in it pings

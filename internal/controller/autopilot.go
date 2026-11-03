@@ -151,7 +151,7 @@ func (a *autopilot) sync(ctx context.Context) error {
 	switch {
 	case a.ap.Phase != aiv1.AutopilotRunning && a.ap.Phase != aiv1.AutopilotDone:
 	case len(cycle) > 0:
-		if err := a.pause(ctx, "the plan has a dependency cycle between "+issueList(cycle)); err != nil {
+		if err := a.pause(ctx, aiv1.PauseCycle, "the plan has a dependency cycle between "+issueList(cycle)); err != nil {
 			return err
 		}
 	default:
@@ -183,6 +183,8 @@ func (a *autopilot) off(ctx context.Context) error {
 		a.ap.Phase = prev // tried again on the next poll
 		return err
 	}
+	// A pause does not outlive off: turned on again, it starts running.
+	a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = "", "", 0, false
 	return nil
 }
 
@@ -413,7 +415,7 @@ func (a *autopilot) pick(ctx context.Context) error {
 			}
 			reasons = append(reasons, why)
 		}
-		return a.pause(ctx, fmt.Sprintf("nothing can start: %s; merge the issues they wait for by hand (or close them with `%s`), "+
+		return a.pause(ctx, aiv1.PauseStuck, fmt.Sprintf("nothing can start: %s; merge the issues they wait for by hand (or close them with `%s`), "+
 			"remove the links, or `skip` the waiting ones, then `resume`", strings.Join(reasons, ", "), a.spec.Workflow.DoneLabel))
 	}
 	if a.ap.Phase != aiv1.AutopilotDone {
@@ -789,7 +791,7 @@ func (a *autopilot) base(ctx context.Context) (string, error) {
 
 // pauseActive pauses because of the active issue, unless its MR was merged
 // meanwhile (by hand, while the issue is still open).
-func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, reason string) error {
+func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, kind aiv1.PauseKind, reason string) error {
 	if it.MergeRequestIID != 0 && a.ap.Phase != aiv1.AutopilotPaused {
 		mr, err := a.gl.GetMergeRequest(ctx, a.spec.GitLab.Project, it.MergeRequestIID)
 		if err != nil && !gitlab.IsNotFound(err) {
@@ -799,7 +801,7 @@ func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, rea
 			return a.merged(ctx, it, mr)
 		}
 	}
-	if err := a.pause(ctx, a.about(it, reason)); err != nil {
+	if err := a.pause(ctx, kind, a.about(it, reason)); err != nil {
 		return err
 	}
 	a.ap.PausedFor = it.IID
@@ -809,7 +811,7 @@ func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, rea
 // pauseMR pauses because of the active issue's MR (approvals, a push, its
 // state): autopilot continues by itself only if it is merged by hand.
 func (a *autopilot) pauseMR(ctx context.Context, it *aiv1.AutopilotItem, reason string) error {
-	if err := a.pause(ctx, a.about(it, reason)); err != nil {
+	if err := a.pause(ctx, aiv1.PauseMergeRequest, a.about(it, reason)); err != nil {
 		return err
 	}
 	a.ap.PausedFor = it.IID
@@ -818,8 +820,8 @@ func (a *autopilot) pauseMR(ctx context.Context, it *aiv1.AutopilotItem, reason 
 
 // pauseRun pauses because of the active issue's run, review or CI, which a
 // later run can fix: then autopilot continues by itself (autoResume).
-func (a *autopilot) pauseRun(ctx context.Context, it *aiv1.AutopilotItem, reason string) error {
-	if err := a.pauseActive(ctx, it, reason); err != nil {
+func (a *autopilot) pauseRun(ctx context.Context, it *aiv1.AutopilotItem, kind aiv1.PauseKind, reason string) error {
+	if err := a.pauseActive(ctx, it, kind, reason); err != nil {
 		return err
 	}
 	if a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedFor == it.IID {
@@ -855,7 +857,7 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
 			return err
 		}
-		a.ap.Phase, a.ap.PausedReason, a.ap.PausedFor, a.ap.ResumeWhenReady = aiv1.AutopilotRunning, "", 0, false
+		a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = aiv1.AutopilotRunning, "", "", 0, false
 		return nil
 	}
 	is, ok := a.issues[it.IID]
@@ -925,6 +927,7 @@ const (
 
 type gateResult struct {
 	state  gateState
+	kind   aiv1.PauseKind
 	reason string
 	// byRun: a later run can fix it (pauseRun), else a human must
 	// (pauseActive).
@@ -938,31 +941,31 @@ type gateResult struct {
 // pass and announces a failure for another reason.
 func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv1.AgentTask) gateResult {
 	wf := a.spec.Workflow
-	failed := func(byRun bool, format string, args ...any) gateResult {
-		return gateResult{state: gateFailed, reason: fmt.Sprintf(format, args...), byRun: byRun}
+	failed := func(byRun bool, kind aiv1.PauseKind, format string, args ...any) gateResult {
+		return gateResult{state: gateFailed, kind: kind, reason: fmt.Sprintf(format, args...), byRun: byRun}
 	}
 	switch {
 	case is.HasLabel(wf.NeedsInputLabel):
-		return failed(true, "#%d needs input (see its last comments): CI is still red, the run failed or the agent asked a question", it.IID)
+		return failed(true, aiv1.PauseNeedsInput, "#%d needs input (see its last comments): CI is still red, the run failed or the agent asked a question", it.IID)
 	case !hasAny(is, wf.ActiveLabels()...):
-		return failed(false, "#%d is open but has no workflow label any more; move it back to `%s` or close it", it.IID, wf.ReviewLabel)
+		return failed(false, aiv1.PauseConfig, "#%d is open but has no workflow label any more; move it back to `%s` or close it", it.IID, wf.ReviewLabel)
 	case !is.HasLabel(wf.ReviewLabel) || task == nil || task.RunPending() || task.Status.Blocked != nil:
 		return gateResult{state: gateWaiting} // blocked: waits for an outside reason
 	}
 	run := task.Status.Run
 	switch {
 	case run.LastResult != aiv1.RunResultSucceeded:
-		return failed(true, "the last run of #%d ended with %q", it.IID, run.LastResult)
+		return failed(true, aiv1.PauseRunFailed, "the last run of #%d ended with %q", it.IID, run.LastResult)
 	case run.BlockingFindings > 0:
-		return failed(true, "%d blocking review findings remain on !%d", run.BlockingFindings, it.MergeRequestIID)
+		return failed(true, aiv1.PauseFindings, "%d blocking review findings remain on !%d", run.BlockingFindings, it.MergeRequestIID)
 	case run.ReviewErrors > 0:
 		return a.reviewErrors(it, task)
 	case it.MergeRequestIID == 0 || run.PushedSHA == "":
-		return failed(false, "#%d is in review without a pushed merge request", it.IID)
+		return failed(false, aiv1.PauseConfig, "#%d is in review without a pushed merge request", it.IID)
 	case len(a.spec.Agents.Review.Reviewers) == 0:
-		return failed(false, "no reviewers are configured (`agents.review.reviewers`), and autopilot only merges reviewed changes")
+		return failed(false, aiv1.PauseConfig, "no reviewers are configured (`agents.review.reviewers`), and autopilot only merges reviewed changes")
 	case run.ReviewedSHA != run.PushedSHA:
-		return failed(true, "the head of !%d (%s) was not reviewed (the last review saw %s)", it.MergeRequestIID, short(run.PushedSHA), short(run.ReviewedSHA))
+		return failed(true, aiv1.PauseNotReviewed, "the head of !%d (%s) was not reviewed (the last review saw %s)", it.MergeRequestIID, short(run.PushedSHA), short(run.ReviewedSHA))
 	}
 	if a.spec.CI.Disabled {
 		return gateResult{state: gatePassed}
@@ -971,11 +974,11 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 	case ci == nil || ci.SHA != run.PushedSHA || !ci.State.Final():
 		return gateResult{state: gateCIUnfinished}
 	case ci.State == aiv1.CIStateCanceled:
-		return failed(true, "the pipeline of !%d was canceled", it.MergeRequestIID)
+		return failed(true, aiv1.PauseCICanceled, "the pipeline of !%d was canceled", it.MergeRequestIID)
 	case ci.State == aiv1.CIStateBaseFailing:
-		return failed(true, "CI of !%d is red with jobs that also fail on the default branch (%s)", it.MergeRequestIID, jobList(ci.FailedJobs))
+		return failed(true, aiv1.PauseCIRed, "CI of !%d is red with jobs that also fail on the default branch (%s)", it.MergeRequestIID, jobList(ci.FailedJobs))
 	case ci.State == aiv1.CIStateFailed:
-		return failed(true, "CI of !%d is red (%s)", it.MergeRequestIID, jobList(ci.FailedJobs))
+		return failed(true, aiv1.PauseCIRed, "CI of !%d is red (%s)", it.MergeRequestIID, jobList(ci.FailedJobs))
 	}
 	return gateResult{state: gatePassed}
 }
@@ -1185,7 +1188,7 @@ func collectDecisions(is *gitlab.Issue, notes []gitlab.Note, botID int64) []aiv1
 }
 
 // pause stops the queue and says why, once.
-func (a *autopilot) pause(ctx context.Context, reason string) error {
+func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, reason string) error {
 	if a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedReason == reason {
 		return nil
 	}
@@ -1198,7 +1201,7 @@ func (a *autopilot) pause(ctx context.Context, reason string) error {
 		return err
 	}
 	a.ap.Phase = aiv1.AutopilotPaused
-	a.ap.PausedReason = reason
+	a.ap.PausedReason, a.ap.PauseKind = reason, kind
 	a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 	return nil
 }
@@ -1344,7 +1347,7 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 	switch word {
 	case "pause":
 		if a.ap.Phase != aiv1.AutopilotDone {
-			a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotPaused, "paused by "+by
+			a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind = aiv1.AutopilotPaused, "paused by "+by, aiv1.PauseOwner
 			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 		}
 		return "Autopilot paused.", true, nil
@@ -1353,7 +1356,7 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 			if err := a.unblockActive(ctx); err != nil {
 				return "", false, err
 			}
-			a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotRunning, ""
+			a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind = aiv1.AutopilotRunning, "", ""
 			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 		}
 		return "Autopilot resumed.", true, nil

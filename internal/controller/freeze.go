@@ -58,7 +58,7 @@ func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
 		if err := a.r.block(ctx, a.spec.Workflow, is, task, aiv1.BlockMainRed, reason); err != nil {
 			return err
 		}
-		return a.pauseRun(ctx, it, reason)
+		return a.pauseRun(ctx, it, aiv1.PauseMainRed, reason)
 	}
 	if err := a.r.unblock(ctx, a.gl, a.spec, is, task); err != nil {
 		return err
@@ -77,7 +77,7 @@ func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
 	if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
 		return err
 	}
-	a.ap.Phase, a.ap.PausedReason, a.ap.PausedFor, a.ap.ResumeWhenReady = aiv1.AutopilotRunning, "", 0, false
+	a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = aiv1.AutopilotRunning, "", "", 0, false
 	return nil
 }
 

@@ -121,6 +121,7 @@ type Outcome struct {
 	BlockingFindings      int32
 	ReviewErrors          int32
 	ReviewErrorsTransient bool
+	ReviewErrorKinds      []aiv1.ReviewError
 	ReviewedSHA           string
 	// Plan is set by spec runs: the plan in plan order.
 	Plan []aiv1.PlannedIssue
@@ -532,7 +533,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		// the last review.
 		if out.Reviewed {
 			s.BlockingFindings = out.BlockingFindings
-			s.ReviewErrors, s.ReviewErrorsTransient = out.ReviewErrors, out.ReviewErrorsTransient
+			s.ReviewErrors, s.ReviewErrorsTransient, s.ReviewErrorKinds = out.ReviewErrors, out.ReviewErrorsTransient, out.ReviewErrorKinds
 			s.ReviewedSHA = out.ReviewedSHA
 		}
 	})

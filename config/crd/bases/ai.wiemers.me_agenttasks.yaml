@@ -673,6 +673,25 @@ spec:
                     - iid
                     - state
                     type: object
+                  pauseKind:
+                    description: |-
+                      PauseKind is the cause of the pause, for the Desk's pause card. Empty
+                      for a pause from before it was recorded.
+                    enum:
+                    - owner
+                    - cycle
+                    - stuck
+                    - needsInput
+                    - runFailed
+                    - findings
+                    - reviewErrors
+                    - notReviewed
+                    - ciRed
+                    - ciCanceled
+                    - mergeRequest
+                    - mainRed
+                    - config
+                    type: string
                   pausedFor:
                     description: |-
                       PausedFor is the active issue the pause is about. Autopilot continues
@@ -1693,6 +1712,43 @@ spec:
                     description: PushedSHA is the commit the runner last pushed to
                       the agent's branch.
                     type: string
+                  reviewErrorKinds:
+                    description: ReviewErrorKinds says why each reviewer failed in
+                      the last review.
+                    items:
+                      description: ReviewError is one reviewer's failure in the last
+                        review.
+                      properties:
+                        engine:
+                          description: Engine is the limited engine (kind usageLimit).
+                          enum:
+                          - claude
+                          - cursor
+                          type: string
+                        kind:
+                          description: ReviewErrorKind is why one reviewer failed.
+                          enum:
+                          - usageLimit
+                          - transient
+                          - other
+                          type: string
+                        resetAt:
+                          description: ResetAt is when the limit resets, if the engine
+                            said so.
+                          format: date-time
+                          type: string
+                        reviewer:
+                          description: ReviewerKind names a built-in reviewer.
+                          enum:
+                          - bugbot
+                          - security
+                          type: string
+                      required:
+                      - kind
+                      - reviewer
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
                   reviewErrors:
                     description: ReviewErrors is the number of reviewers that failed
                       in the last review.

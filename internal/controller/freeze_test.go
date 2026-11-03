@@ -26,7 +26,7 @@ func TestAutopilotFreezesWhileMainIsRed(t *testing.T) {
 	e := frozenEnv(t)
 	ap := e.autopilot()
 	blocked := e.tasks()["shop-1-api"].Status.Blocked
-	if ap.Phase != aiv1.AutopilotPaused || ap.PausedReason != frozenReason || ap.PausedFor != 1 || len(e.gl.Merged) != 0 {
+	if ap.Phase != aiv1.AutopilotPaused || ap.PausedReason != frozenReason || ap.PauseKind != aiv1.PauseMainRed || ap.PausedFor != 1 || len(e.gl.Merged) != 0 {
 		t.Fatalf("a red main must hold the merge and pause: merged %v, %+v", e.gl.Merged, ap)
 	}
 	if blocked == nil || blocked.Reason != aiv1.BlockMainRed || blocked.RestoreLabel != "agent::review" {

@@ -827,6 +827,11 @@ type RunStatus struct {
 	// +optional
 	ReviewErrorsTransient bool `json:"reviewErrorsTransient,omitempty"`
 
+	// ReviewErrorKinds says why each reviewer failed in the last review.
+	// +optional
+	// +listType=atomic
+	ReviewErrorKinds []ReviewError `json:"reviewErrorKinds,omitempty"`
+
 	// ReviewedFor is the head the last re-review was asked for
 	// (spec.source.reviewFor).
 	// +optional
@@ -925,6 +930,66 @@ const (
 	AutopilotOff AutopilotPhase = "Off"
 )
 
+// ReviewErrorKind is why one reviewer failed.
+// +kubebuilder:validation:Enum=usageLimit;transient;other
+type ReviewErrorKind string
+
+const (
+	// ReviewErrorUsageLimit: the reviewer's engine hit its usage limit.
+	ReviewErrorUsageLimit ReviewErrorKind = "usageLimit"
+	// ReviewErrorTransient: an outage of the reviewer's service.
+	ReviewErrorTransient ReviewErrorKind = "transient"
+	// ReviewErrorOther: any other failure.
+	ReviewErrorOther ReviewErrorKind = "other"
+)
+
+// ReviewError is one reviewer's failure in the last review.
+type ReviewError struct {
+	Reviewer ReviewerKind    `json:"reviewer"`
+	Kind     ReviewErrorKind `json:"kind"`
+	// Engine is the limited engine (kind usageLimit).
+	// +optional
+	Engine Engine `json:"engine,omitempty"`
+	// ResetAt is when the limit resets, if the engine said so.
+	// +optional
+	ResetAt *metav1.Time `json:"resetAt,omitempty"`
+}
+
+// PauseKind is why autopilot paused.
+// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config
+type PauseKind string
+
+const (
+	// PauseOwner: the pause command.
+	PauseOwner PauseKind = "owner"
+	// PauseCycle: the plan has a dependency cycle.
+	PauseCycle PauseKind = "cycle"
+	// PauseStuck: no queued issue can start.
+	PauseStuck PauseKind = "stuck"
+	// PauseNeedsInput: the active issue has the needs-input label.
+	PauseNeedsInput PauseKind = "needsInput"
+	// PauseRunFailed: the active issue's last run did not succeed.
+	PauseRunFailed PauseKind = "runFailed"
+	// PauseFindings: blocking review findings remain.
+	PauseFindings PauseKind = "findings"
+	// PauseReviewErrors: reviewers failed (status.run.reviewErrorKinds).
+	PauseReviewErrors PauseKind = "reviewErrors"
+	// PauseNotReviewed: the head was pushed after the last review.
+	PauseNotReviewed PauseKind = "notReviewed"
+	// PauseCIRed: CI of the MR is red.
+	PauseCIRed PauseKind = "ciRed"
+	// PauseCICanceled: the MR's pipeline was canceled.
+	PauseCICanceled PauseKind = "ciCanceled"
+	// PauseMergeRequest: the MR cannot be merged (state, draft, approvals,
+	// discussions, conflicts, a moved head, GitLab refused).
+	PauseMergeRequest PauseKind = "mergeRequest"
+	// PauseMainRed: the default branch is red (merge freeze).
+	PauseMainRed PauseKind = "mainRed"
+	// PauseConfig: the project or issue setup does not allow a merge (no
+	// workflow label, no reviewers, no pushed MR).
+	PauseConfig PauseKind = "config"
+)
+
 // AutopilotItemState is the state of one issue in the queue.
 // +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped
 type AutopilotItemState string
@@ -947,6 +1012,11 @@ type AutopilotStatus struct {
 	// Reason why the milestone is paused.
 	// +optional
 	PausedReason string `json:"pausedReason,omitempty"`
+
+	// PauseKind is the cause of the pause, for the Desk's pause card. Empty
+	// for a pause from before it was recorded.
+	// +optional
+	PauseKind PauseKind `json:"pauseKind,omitempty"`
 
 	// PausedFor is the active issue the pause is about. Autopilot continues
 	// by itself once that issue is merged or closed by hand, and, with

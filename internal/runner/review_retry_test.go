@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -94,8 +96,9 @@ func TestReviewerGivesUpAfterRetries(t *testing.T) {
 	if engine.calls != 3 {
 		t.Fatalf("bugbot should be called 1 + review.retries (2) times, got %d", engine.calls)
 	}
-	if run := e.task().Status.Run; run.ReviewErrors != 1 {
-		t.Fatalf("one reviewer should have failed, got %d", run.ReviewErrors)
+	run := e.task().Status.Run
+	if run.ReviewErrors != 1 || !slices.Equal(run.ReviewErrorKinds, []aiv1.ReviewError{{Reviewer: aiv1.ReviewerBugbot, Kind: aiv1.ReviewErrorTransient}}) {
+		t.Fatalf("one reviewer should have failed transiently: %+v", run)
 	}
 	b, _ := json.Marshal(e.gl.MRNotes[1])
 	if !strings.Contains(string(b), "bugbot reviewer failed") || !strings.Contains(string(b), "(after 3 attempts)") {
@@ -114,8 +117,23 @@ func TestReviewerDoesNotRetryOtherFailures(t *testing.T) {
 	if engine.calls != 1 {
 		t.Fatalf("a non-transient failure must not be retried, got %d calls", engine.calls)
 	}
+	if kinds := e.task().Status.Run.ReviewErrorKinds; len(kinds) != 1 || kinds[0].Kind != aiv1.ReviewErrorOther {
+		t.Fatalf("the failure should be recorded as other: %+v", kinds)
+	}
 	b, _ := json.Marshal(e.gl.MRNotes[1])
 	if strings.Contains(string(b), "attempts)") {
 		t.Fatalf("a single attempt should not mention attempts: %s", b)
+	}
+}
+
+func TestReviewErrorOfAUsageLimit(t *testing.T) {
+	reset := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
+	err := fmt.Errorf("invoking: %w", &UsageLimitError{Engine: aiv1.EngineCursor, ResetAt: reset, Message: "You've hit your usage limit"})
+	got := reviewErrorOf(aiv1.ReviewerBugbot, err)
+	if got.Kind != aiv1.ReviewErrorUsageLimit || got.Engine != aiv1.EngineCursor || got.ResetAt == nil || !got.ResetAt.Time.Equal(reset) {
+		t.Fatalf("a usage limit should be recorded with its engine and reset: %+v", got)
+	}
+	if got := reviewErrorOf(aiv1.ReviewerBugbot, &UsageLimitError{Engine: aiv1.EngineCursor}); got.ResetAt != nil {
+		t.Fatalf("an unknown reset stays empty: %+v", got)
 	}
 }

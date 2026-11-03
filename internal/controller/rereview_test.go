@@ -72,7 +72,7 @@ func TestAutopilotSecondTransientFailurePausesAndBlocks(t *testing.T) {
 	failedAgain(t, e, name)
 
 	ap := e.autopilot()
-	if ap.Phase != aiv1.AutopilotPaused || ap.PausedFor != 1 || !strings.Contains(ap.PausedReason, "also when reviewed again") {
+	if ap.Phase != aiv1.AutopilotPaused || ap.PausedFor != 1 || !strings.Contains(ap.PausedReason, "also when reviewed again") || ap.PauseKind != aiv1.PauseReviewErrors {
 		t.Fatalf("a second transient failure on the head pauses: %+v", ap)
 	}
 	task := e.tasks()[name]

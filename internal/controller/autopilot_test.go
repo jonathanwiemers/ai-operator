@@ -250,7 +250,7 @@ func TestAutopilotPauseBeforeThePlan(t *testing.T) {
 	e.reconcile()
 	ap := e.autopilot()
 	desc := e.gl.Issues[tracking].Description
-	if ap.Phase != aiv1.AutopilotPaused || ap.PausedReason != "paused by @jonathan" {
+	if ap.Phase != aiv1.AutopilotPaused || ap.PausedReason != "paused by @jonathan" || ap.PauseKind != aiv1.PauseOwner {
 		t.Fatalf("pause works before the plan, status keeps the raw reason: %+v", ap)
 	}
 	if !strings.Contains(desc, "paused, "+notify.Defuse("paused by @jonathan")) {
@@ -297,8 +297,8 @@ func TestAutopilotPausesAndResumes(t *testing.T) {
 	e.gl.AddNote(ap.TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent resume")
 	e.reconcile()
 	e.reconcile()
-	if !slices.Equal(e.gl.Merged, []int64{1}) || e.autopilot().Phase != aiv1.AutopilotRunning {
-		t.Fatalf("resume should continue with the merge: merged %v, %+v", e.gl.Merged, e.autopilot())
+	if !slices.Equal(e.gl.Merged, []int64{1}) || e.autopilot().Phase != aiv1.AutopilotRunning || e.autopilot().PauseKind != "" {
+		t.Fatalf("resume should continue with the merge and clear the pause: merged %v, %+v", e.gl.Merged, e.autopilot())
 	}
 	if strings.Contains(trackingComments(e), "Autopilot continues") {
 		t.Fatal("the resume command, not the automatic one, must have continued here")
@@ -360,12 +360,16 @@ func TestAutopilotMergeGate(t *testing.T) {
 		mr     func(*gitlab.MergeRequest)
 		ci     *aiv1.CIStatus
 		reason string
+		kind   aiv1.PauseKind
 	}{
-		{name: "reviewer failed", run: func(r *aiv1.RunStatus) { r.ReviewErrors = 1 }, reason: "reviewers failed"},
-		{name: "unreviewed head", run: func(r *aiv1.RunStatus) { r.ReviewedSHA = "older" }, reason: "was not reviewed"},
-		{name: "head moved", mr: func(m *gitlab.MergeRequest) { m.SHA = "someone-else" }, reason: "someone pushed"},
-		{name: "approval", mr: func(m *gitlab.MergeRequest) { m.DetailedMergeStatus, m.Draft = "not_approved", false }, reason: "needs an approval"},
-		{name: "canceled", ci: &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateCanceled}, reason: "was canceled"},
+		{name: "reviewer failed", run: func(r *aiv1.RunStatus) { r.ReviewErrors = 1 }, reason: "reviewers failed", kind: aiv1.PauseReviewErrors},
+		{name: "unreviewed head", run: func(r *aiv1.RunStatus) { r.ReviewedSHA = "older" }, reason: "was not reviewed", kind: aiv1.PauseNotReviewed},
+		{name: "findings", run: func(r *aiv1.RunStatus) { r.BlockingFindings = 1 }, reason: "blocking review findings", kind: aiv1.PauseFindings},
+		{name: "run failed", run: func(r *aiv1.RunStatus) { r.LastResult = aiv1.RunResultFailed }, reason: "ended with", kind: aiv1.PauseRunFailed},
+		{name: "head moved", mr: func(m *gitlab.MergeRequest) { m.SHA = "someone-else" }, reason: "someone pushed", kind: aiv1.PauseMergeRequest},
+		{name: "approval", mr: func(m *gitlab.MergeRequest) { m.DetailedMergeStatus, m.Draft = "not_approved", false }, reason: "needs an approval", kind: aiv1.PauseMergeRequest},
+		{name: "canceled", ci: &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateCanceled}, reason: "was canceled", kind: aiv1.PauseCICanceled},
+		{name: "ci red", ci: &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateFailed}, reason: "is red", kind: aiv1.PauseCIRed},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -381,8 +385,8 @@ func TestAutopilotMergeGate(t *testing.T) {
 			}
 			e.reconcile()
 			ap := e.autopilot()
-			if ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, c.reason) || len(e.gl.Merged) != 0 {
-				t.Fatalf("expected a pause with %q and no merge: %+v, merged %v", c.reason, ap, e.gl.Merged)
+			if ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, c.reason) || ap.PauseKind != c.kind || len(e.gl.Merged) != 0 {
+				t.Fatalf("expected a %s pause with %q and no merge: %+v, merged %v", c.kind, c.reason, ap, e.gl.Merged)
 			}
 		})
 	}
@@ -423,10 +427,13 @@ func TestAutopilotOffWhenTheMarkerIsRemoved(t *testing.T) {
 	e := newAutopilotEnv(t)
 	e.reconcile()
 	tracking := e.autopilot().TrackingIssueIID
+	e.gl.AddNote(tracking, gitlab.User{ID: 1, Username: "jonathan"}, "/agent pause")
+	e.reconcile()
 	e.gl.Milestones[0].Description = "/agent spec\nBuild a new checkout."
 	e.reconcile()
 	st := e.tasks()[specTaskName]
-	if st.Spec.Autopilot || st.Status.Autopilot.Phase != aiv1.AutopilotOff || e.gl.Issues[tracking].State != "closed" {
+	if st.Spec.Autopilot || st.Status.Autopilot.Phase != aiv1.AutopilotOff || st.Status.Autopilot.PauseKind != "" || st.Status.Autopilot.PausedReason != "" ||
+		e.gl.Issues[tracking].State != "closed" {
 		t.Fatalf("removing the marker must switch autopilot off: %+v %+v", st.Spec, st.Status.Autopilot)
 	}
 	// Without any marker the milestone is no longer planned at all.
@@ -443,7 +450,7 @@ func TestAutopilotPausesOnADependencyCycle(t *testing.T) {
 		s.Plan = []aiv1.PlannedIssue{{Key: "api", IID: 1, DependsOn: []int64{2}}, {Key: "ui", IID: 2, DependsOn: []int64{1}}}
 	})
 	e.reconcile()
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "cycle between #1, #2") {
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "cycle between #1, #2") || ap.PauseKind != aiv1.PauseCycle {
 		t.Fatalf("a cycle must pause: %+v", ap)
 	}
 }
@@ -615,7 +622,7 @@ func TestAutopilotSkippedThenMergedByHand(t *testing.T) {
 	human := gitlab.User{ID: 1, Username: "jonathan"}
 	e.gl.AddNote(tracking, human, "/agent: skip #1")
 	e.reconcile()
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "waits for the skipped #1") {
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "waits for the skipped #1") || ap.PauseKind != aiv1.PauseStuck {
 		t.Fatalf("#2 must wait for the skipped #1: %+v", ap)
 	}
 	// The human finishes #1 and resumes.
