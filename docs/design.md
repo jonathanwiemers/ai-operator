@@ -1069,8 +1069,11 @@ counted interventions; more tools are later steps of
   as one JSON block marked as untrusted data: the description without owners
   lines, plan and autopilot status from the spec task, every issue of the
   milestone with labels, last run result and summary, CI and block of its
-  task, `status.mainHealth`, and the last 20 comments of the tracking issue.
-  JSON keeps text from GitLab or CI from closing the block. The pilot has the
+  task, `status.mainHealth`, the last 20 comments of the tracking issue, and
+  `engines`: the usage limits in force (engine and reset, not the engine's
+  message) and, per role and profile, engine, model and fallback. The system
+  prompt has the pilot read `engines` before it calls a retry or re-review
+  hopeless over a limited engine. JSON keeps text from GitLab or CI from closing the block. The pilot has the
   reviewers' read-only tools; its answer is made inert like all agent text
   (no mentions, quick actions or markers).
 * **Assessments** (`internal/runner/pilot_assess.go`). A run also assesses

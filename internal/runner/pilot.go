@@ -7,7 +7,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -204,9 +206,11 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		Comments   []string               `json:"trackingIssueComments,omitempty"`
 		Proposals  []aiv1.PilotProposal   `json:"openProposals,omitempty"`
 		Rules      []rules.Rule           `json:"rules,omitempty"`
+		Engines    pilotEngines           `json:"engines"`
 	}
 	v.Milestone, v.Spec, v.MainHealth = m.Title, rules.Spec(m.Description, spec.Workflow.CommandPrefix), project.Status.MainHealth
 	v.Rules = rules.Parse(rules.Lines(m.Description, spec.Workflow.CommandPrefix))
+	v.Engines = enginesOf(project, spec, r.now())
 	byIID := map[int64]*aiv1.AgentTask{}
 	for i := range tasks.Items {
 		t := &tasks.Items[i]
@@ -247,6 +251,42 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		return aiv1.PilotState(specTask, byIID, a)
 	}
 	return string(b), stateOf, err
+}
+
+// pilotEngines is what the pilot knows about the engines: the usage limits
+// in force and, per role and profile, where it runs and its fallback, so a
+// pause over a limited engine is not called hopeless when a fallback runs.
+type pilotEngines struct {
+	UsageLimits []pilotLimit         `json:"usageLimits,omitempty"`
+	Roles       map[string]pilotRole `json:"roles"`
+}
+
+type pilotLimit struct {
+	Engine aiv1.Engine `json:"engine"`
+	Until  metav1.Time `json:"until"`
+}
+
+type pilotRole struct {
+	Engine   aiv1.Engine        `json:"engine"`
+	Model    string             `json:"model,omitempty"`
+	Fallback *aiv1.RoleFallback `json:"fallback,omitempty"`
+}
+
+func enginesOf(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, now time.Time) pilotEngines {
+	e := pilotEngines{Roles: map[string]pilotRole{}}
+	for _, l := range project.Status.UsageLimits {
+		if l.Until.After(now) {
+			e.UsageLimits = append(e.UsageLimits, pilotLimit{Engine: l.Engine, Until: l.Until})
+		}
+	}
+	role := func(r aiv1.RoleSpec) pilotRole {
+		return pilotRole{Engine: r.Engine, Model: r.Model, Fallback: r.Fallback}
+	}
+	e.Roles["spec"], e.Roles["implement"], e.Roles["review"] = role(spec.Agents.Spec), role(spec.Agents.Implement), role(spec.Agents.Review.RoleSpec)
+	for _, p := range spec.Agents.Profiles {
+		e.Roles["profile "+p.Name] = role(p.RoleSpec)
+	}
+	return e
 }
 
 // pilotComments is how many of the tracking issue's last comments the pilot

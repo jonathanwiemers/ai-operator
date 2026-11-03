@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -283,5 +284,45 @@ func TestImplementerDoesNotSeeThePilotConversation(t *testing.T) {
 	p := engine.calls[0].Prompt
 	if strings.Contains(p, "why is this slow") || strings.Contains(p, "Because of the review") || !strings.Contains(p, "payment id") {
 		t.Fatalf("the conversation with the pilot is no input for the implementer:\n%s", p)
+	}
+}
+
+// The pilot sees which engines are limited and where each role runs
+// meanwhile, so it does not call a re-review hopeless that a fallback runs.
+func TestPilotStateHasTheEngines(t *testing.T) {
+	e := newPilotEnv(t, "")
+	now := time.Date(2026, 11, 3, 14, 0, 0, 0, time.UTC)
+	e.r.Now = func() time.Time { return now }
+	var project aiv1.AgentProject
+	if err := e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: "shop"}, &project); err != nil {
+		t.Fatal(err)
+	}
+	project.Spec.Agents.Review.RoleSpec = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto",
+		Fallback: &aiv1.RoleFallback{Engine: aiv1.EngineClaude, Model: "claude-sonnet-5-5"}}
+	project.Status.UsageLimits = []aiv1.UsageLimit{
+		{Engine: aiv1.EngineCursor, Until: metav1.NewTime(now.Add(240 * time.Hour)), Message: "cursor-limit-message"},
+		{Engine: aiv1.EngineClaude, Until: metav1.NewTime(now.Add(-time.Hour))},
+	}
+	// No status subresource for projects in this fake: one update writes both.
+	if err := e.k8s.Update(context.Background(), &project); err != nil {
+		t.Fatal(err)
+	}
+	e.step(t)
+	p := e.engine.calls[0].Prompt
+	i := strings.Index(p, `"engines"`)
+	if i < 0 {
+		t.Fatalf("no engines in the state:\n%s", p)
+	}
+	engines := p[i:]
+	for _, want := range []string{`"engine": "cursor",` + "\n" + `        "until": "2026-11-13T14:00:00Z"`, `"review": {`, `"model": "claude-sonnet-5-5"`} {
+		if !strings.Contains(engines, want) {
+			t.Errorf("engines miss %q:\n%s", want, engines)
+		}
+	}
+	if strings.Contains(engines, "2026-11-03T13:00:00Z") || strings.Contains(p, "cursor-limit-message") {
+		t.Errorf("only limits in force, without the engine's message:\n%s", engines)
+	}
+	if !strings.Contains(e.engine.calls[0].SystemPrompt, `read "engines" in the state`) {
+		t.Error("the system prompt points the pilot at the engines")
 	}
 }
