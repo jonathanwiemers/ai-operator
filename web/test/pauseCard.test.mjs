@@ -7,6 +7,7 @@ import {
   pauseEndsBy,
   pauseTitle,
   reviewLimitLines,
+  commandAnswer,
 } from '../src/pauseCard.ts'
 
 const ids = (kind) => pauseActions(kind).map((a) => a.id)
@@ -205,4 +206,26 @@ test('reviewLimitLines: a custom date format', () => {
     ),
     ['Cursor is limited until 2026-11-13'],
   )
+})
+
+test('commandAnswer: pending, answered, redacted and failed', () => {
+  const cmd = { id: 9, at: 't', role: 'user', kind: 'command', body: '{"cmd":"resume"}', state: 'delivered' }
+  assert.deepEqual(commandAnswer(undefined, 9), { state: 'pending' })
+  assert.deepEqual(commandAnswer([cmd], 9), { state: 'pending' })
+  const reply = { id: 10, at: 't', role: 'system', kind: 'message', body: ' Resumed. ', replyTo: 9 }
+  assert.deepEqual(commandAnswer([reply, cmd], 9), { state: 'answered', text: 'Resumed.', redacted: false })
+  assert.deepEqual(commandAnswer([{ ...reply, body: undefined, redacted: true }, cmd], 9), {
+    state: 'answered',
+    text: '',
+    redacted: true,
+  })
+  assert.deepEqual(commandAnswer([{ ...reply, replyTo: 8 }, cmd], 9), { state: 'pending' })
+  assert.deepEqual(commandAnswer([{ ...cmd, state: 'failed', reason: 'no pod' }], 9), {
+    state: 'failed',
+    reason: 'no pod',
+  })
+  assert.deepEqual(commandAnswer([{ ...cmd, state: 'failed' }], 9), {
+    state: 'failed',
+    reason: 'The command failed.',
+  })
 })

@@ -161,7 +161,7 @@ nofollow"`, and other links show as their text. Images are never loaded.
 |------|---------|
 | **Projects** | every project you may see: tasks per stage, autopilot milestones and their progress, engine usage and limits (see below), suspension, last sync, model spend |
 | **Board** | `/projects/<namespace>/<name>/board`: the same engine usage line and a banner per active limit; one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; then the milestone's plan, the autopilot pause reason, and issues without a milestone |
-| **Milestone** | a planned milestone (linked from its project board and its stream, `/projects/<namespace>/<name>/milestones/<iid>/detail`): autopilot phase and pause reason, the queue with states, merge requests and task pages, the pilot's autonomy and open proposals, **Ask the pilot** (the Desk chat with the milestone's pilot, its `Coordinate` task, with the accept and reject buttons for its proposals; with the `chat` grant and the research database), the chat on its tracking issue, and the milestone's board |
+| **Milestone** | a planned milestone (linked from its project board and its stream, `/projects/<namespace>/<name>/milestones/<iid>/detail`): autopilot phase, the pause card while it is paused (see below), the queue with states, merge requests and task pages, the pilot's autonomy and open proposals, **Ask the pilot** (the Desk chat with the milestone's pilot, its `Coordinate` task, with the accept and reject buttons for its proposals; with the `chat` grant and the research database), the chat on its tracking issue, and the milestone's board |
 | **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot queue with merge requests and decisions |
 
 **Engine usage.** claude reports how much of its usage windows is used with
@@ -214,11 +214,41 @@ With the `transcript` permission, a task page also has a **Live** panel: the
 running pod's steps and the agent's session as they happen (see
 [Live transcript](#live-transcript)).
 
-An autopilot that paused over an issue's run, review or CI and is **waiting**
-for a run that is working on that issue now shows as *Autopilot waiting for
-#N*: it continues by itself once the issue is reviewed and green. A pause
-that needs a human shows as *Autopilot paused* with its reason. While a run
-works on a task, its card marks the CI result as the last push's.
+On the projects list and the board, an autopilot that paused over an
+issue's run, review or CI and is **waiting** for a run that is working on
+that issue now shows as *Autopilot waiting for #N*: it continues by itself
+once the issue is reviewed and green. A pause that needs a human shows as
+*Autopilot paused* with its reason. While a run works on a task, its card
+marks the CI result as the last push's.
+
+On the milestone page, a paused autopilot (waiting or not) shows as the
+**pause card**: a heading for the `pauseKind`, the pause reason as text, the
+paused issue with its title, MR and pushed head, what ends the pause by
+itself, for failed reviewers which engine is usage-limited until when
+(*Cursor is limited until 13 Nov*), *A run is working on #N now* while one
+is, and a merge anyway an owner already gave for this head. Its actions
+depend on the kind:
+
+| Kind | Actions |
+|------|---------|
+| `reviewErrors`, `notReviewed` | Review again, Merge anyway, Skip |
+| `findings`, `runFailed`, `needsInput` | Retry, Open #N chat, Skip |
+| `ciRed`, `ciCanceled` | Retry, Open pipeline (when there is one), Skip |
+| `mergeRequest` | Open MR, Resume, Skip |
+| `cycle`, `stuck` | Open plan, Skip (pick a pending or active issue) |
+| `owner`, `mainRed`, `config`, and a pause without a kind | Resume |
+
+Retry and Review again go to the paused issue's Implement task; Resume,
+Skip and Merge anyway to the milestone's Spec task, as Desk chat commands
+(see [Chat with the agent](#what-it-shows)). Merge anyway shows only with
+`permissions.merge` (an owner subject of the milestone with the chat grant)
+and asks first: *Merge \<sha\> without a full review? CI, MR state and
+approvals still apply.* It names the head the card shows, so the operator
+refuses it after a newer push. The card shows *sent…* after a click, then the
+operator's answer (a refusal in its words; *answered* when you may not read
+bodies) or why the command failed. Without the chat grant the card keeps the
+links and says that commands need Desk chat, or `/agent …` on the tracking
+issue.
 
 A task's **stage** is derived from its status the same way the operator moves
 the GitLab labels; the hint on each badge explains it. After a push the task

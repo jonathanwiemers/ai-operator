@@ -9,6 +9,7 @@ import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
 import Conversation from '../components/Conversation.vue'
 import TaskChat from '../components/TaskChat.vue'
+import PauseCard from '../components/PauseCard.vue'
 import NotFound from './NotFound.vue'
 import { hasFeature } from '../api'
 import type { MilestoneView } from '../types'
@@ -71,17 +72,7 @@ const stamp = computed(() => {
         </div>
       </div>
 
-      <div v-if="ap?.waitingFor" class="banner info">
-        <strong>Autopilot waiting</strong>
-        <span>
-          A run is working on #{{ ap.waitingFor }}; autopilot continues by itself once it is reviewed and CI is green.
-          <template v-if="ap.pausedReason">It paused because: {{ ap.pausedReason }}</template>
-        </span>
-      </div>
-      <div v-else-if="ap?.phase === 'Paused'" class="banner warning">
-        <strong>Autopilot paused</strong>
-        <span class="text">{{ ap.pausedReason || 'Waiting for a human.' }}</span>
-      </div>
+      <PauseCard v-if="ap?.phase === 'Paused'" :key="m.iid" :namespace="namespace" :name="name" :milestone="m" />
 
       <section v-if="ap" class="section">
         <h3>Queue</h3>

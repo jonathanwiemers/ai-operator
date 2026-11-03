@@ -886,6 +886,13 @@ The tracking issue gets "▶️ Autopilot continues: …". Every other pause (an
 approval, unresolved discussions, someone else's push, a dependency cycle,
 `/agent pause`) waits for `/agent resume`.
 
+On the Desk ([ui.md](ui.md#what-it-shows)), the milestone page shows a paused
+autopilot as a card: the cause, the paused issue and its MR, what ends the
+pause by itself, and the actions that fix it (Retry, Review again, Resume,
+Skip, links to the issue's chat, the pipeline, the MR or the plan, and for
+an owner Merge anyway). The buttons send the same commands as the Desk chat
+and show the operator's answer in the card.
+
 ### Commands on the tracking issue
 
 (All commands: [commands.md](commands.md).)

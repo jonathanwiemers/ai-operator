@@ -1,5 +1,5 @@
 import type { ChatCommand } from './chatState'
-import type { PauseKind, ReviewError } from './types'
+import type { ChatMessage, PauseKind, ReviewError } from './types'
 
 // PauseActionID names one button of the pause card.
 export type PauseActionID =
@@ -190,4 +190,25 @@ export function reviewLimitLines(
     const reset = limits.get(key)
     return reset === undefined ? `${name} is limited` : `${name} is limited until ${fmt(new Date(reset))}`
   })
+}
+
+// CommandAnswer is what became of a command the card sent: no answer yet,
+// the operator's reply (text, or redacted without the conversation grant),
+// or a failed command row with its reason.
+export type CommandAnswer =
+  | { state: 'pending' }
+  | { state: 'answered'; text: string; redacted: boolean }
+  | { state: 'failed'; reason: string }
+
+// commandAnswer finds the answer to command id in a page of its task's chat.
+export function commandAnswer(messages: ChatMessage[] | undefined, id: number): CommandAnswer {
+  const list = messages || []
+  const reply = list.find((m) => m.replyTo === id)
+  if (reply) {
+    const text = (reply.body || '').trim()
+    return { state: 'answered', text: reply.redacted ? '' : text, redacted: !!reply.redacted || !text }
+  }
+  const row = list.find((m) => m.id === id)
+  if (row?.state === 'failed') return { state: 'failed', reason: (row.reason || '').trim() || 'The command failed.' }
+  return { state: 'pending' }
 }
