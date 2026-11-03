@@ -297,6 +297,47 @@ step instead of losing it:
   milestone header for the Desk path.
 - The bot's GitLab comments are never input on either path, as today.
 
+### 4a. Commands on the Desk path (steer, slice 9)
+
+Found while designing slice 9: the GitLab commands are applied inside the
+project reconciler (labels, run requests, the autopilot state of the
+tracking task), each with a high-water mark in the same write as its
+effect. Desk commands reuse that place instead of a second applier in the
+dispatcher.
+
+- **Shape:** a `command` row's body is JSON, checked by the UI before the
+  insert (400 otherwise):
+  - `{"cmd":"retry"}`, `{"cmd":"review"}`: Implement tasks;
+  - `{"cmd":"use","engine":"claude","model":"…","effort":"high"}`,
+    `{"cmd":"use","default":true}`, `{"cmd":"effort","effort":"high"|"default"}`:
+    Implement tasks;
+  - `{"cmd":"pause"}`, `{"cmd":"resume"}`, `{"cmd":"skip","issue":12}`:
+    the Spec task of an autopilot milestone;
+  - `{"cmd":"accept"|"reject","proposal":3}`: a pilot proposal.
+- **Path:** the dispatcher puts command rows on `spec.source.chatMessages`
+  like messages (failing only an unknown `cmd`). The runner skips them, and
+  they do not start or keep a pod. The project reconciler applies the
+  commands newer than `spec.source.lastChatCommandID` with the functions
+  the `/agent` parsers use: `command.Apply` (labels), a run request bump,
+  `askReview`, `autopilot.command`, `answerProposal`. It writes the answer
+  to `spec.source.chatAnswers` (at most 20) in the same task write as the
+  mark. The `chatreply` reconciler copies `chatAnswers` to the table like
+  the runner's replies and drops the message and the answer from the spec,
+  under the optimistic lock.
+- **Lost tasks:** a task deleted before its messages were answered
+  (issue closed, task recreated) leaves rows `delivered`; the dispatcher's
+  poll fails delivered rows that are no longer on their task.
+- **Restarts:** an effect saved together with its mark is not applied
+  again. Label changes and the autopilot verbs are idempotent and may be
+  applied twice when the operator stops between GitLab and the task
+  write; the answer is written once.
+- **Authority:** the `chat` grant decides who may send commands (decision
+  4). Accepting or rejecting a pilot proposal also needs the author in
+  the milestone header's `ownerSubjects` (`/agent owners-subjects: a@x, b@y`,
+  the UI's username claim); the GitLab owners' IDs stay for notes.
+- **Split:** 9a: shape, path, Implement commands; 9b: autopilot verbs,
+  proposals, `ownerSubjects`; 9c: web buttons.
+
 ### 5. GitLab comments as input, per project
 
 `spec.workflow.inputs: [gitlab, desk]` (default both, today's behaviour plus
@@ -437,7 +478,9 @@ it and say so in their description.
    `delivered`, idempotent reply insert before dropping from the spec (3a).
 8. **Web:** composer target "agent", streaming answer card, interrupt,
    cold-start state.
-9. **Commands and owners:** structured command rows, `ownerSubjects`.
+9. **Commands and owners** (split by steer 4a): 9a shape, path and
+   Implement commands; 9b autopilot verbs, proposals, `ownerSubjects`;
+   9c web buttons.
 10. **`workflow.inputs`:** gate the note readers, fresh-session context
     from the chat table, run report wording; docs.
 
@@ -459,4 +502,6 @@ GitLab comment path if nothing needs it.
 | 6 | feat(runner): Desk chat loop | [!78](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/78) | merged |
 | 7 | feat(controller): Desk chat dispatch | [!79](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/79) | merged, released 2026.11.10 |
 | — | infra: Desk chat on for ai-operator (and bloop for one test) | [infra!290](https://gitlab.com/jo.wiemers/infra/cluster/-/merge_requests/290) | merged, live on 2026.11.10 |
-| 8 | feat(web): Desk chat on the task page | this MR | open |
+| 8 | feat(web): Desk chat on the task page | [!80](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/80) | merged |
+| — | fix(api): chat message kinds as three enum values | [!81](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/81) | merged |
+| 9a | feat(controller): Desk chat commands for Implement tasks | this MR | open |

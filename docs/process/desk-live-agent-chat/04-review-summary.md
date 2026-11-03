@@ -82,3 +82,10 @@ Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./inte
 | # | Finding | Verdict | Action |
 |---|---------|---------|--------|
 | 1 | `ChatMessage.kind` enum marker used `|`: the CRD allowed only the literal `message|interrupt|command`, so the API server rejected every dispatch (rows stayed `queued`, retried every 30 s, none lost) | real | marker uses `;`; CRD schema test admits each kind |
+
+## Slice 9a
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | (orchestrator) `use` model echoed in a code span and split as a routing argument: spaces or backticks broke both | real | one plain token, at most 64 characters |
+| 2 | a task deleted (issue closed) before its chat messages were answered leaves rows `delivered` forever (also messages since slice 7) | real | dispatcher poll fails delivered rows no longer on their task; test |

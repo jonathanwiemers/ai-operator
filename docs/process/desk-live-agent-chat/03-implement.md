@@ -95,3 +95,16 @@ One section per slice. Builder: cursor-agent (`--model auto`) in the slice's wor
 
 - `web/test/stream.test.mjs`: kinds per filter, chat opt-in, event keys.
 - `make ui` (type-check, build, 53 node tests) ok; checked on `make run-ui` against the cluster read-only with the local seeded database: thread, reply nesting, state chips, post from the composer.
+
+## Slice 9a — Commands for Implement tasks (`feat/chat-commands`)
+
+- `internal/chatcmd`: strict JSON command bodies (spec §4a), `Routing()` reuses `command.Apply`; model names are one plain token.
+- UI: a `command` post must parse (400 otherwise).
+- Dispatcher: delivers Implement commands onto the task and wakes the project reconciler (one waker for webhook and chat); fails others ("not supported on this task yet", until 9b). Poll sweep fails delivered rows no longer on their task.
+- Project reconciler: `applyChatCommands` (retry, review, use, effort) on every sync, mark `spec.source.lastChatCommandID` and answers in `spec.source.chatAnswers` saved with the run request.
+- `chatreply`: copies answers as `system` rows, drops message and answer. Commands do not start or keep a pod (`HasChatTurns`).
+
+### Tests
+
+- chatcmd table; UI 400; dispatch of commands, wake, Spec task refused; apply retry once across syncs, use → labels, review without head; answer copied and dropped; command-only list needs no pod; sweep of a removed task.
+- `gofmt` clean, `go vet ./...` ok, `make generate manifests` stable, `go test -race ./...` ok, `make helm-lint` ok.

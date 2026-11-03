@@ -26,8 +26,11 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 | 5 | UI chat endpoint and stream kinds | `feat/ui-chat-endpoint` | [!77](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/77) | merged, released 2026.11.8, deployed (infra!289) |
 | 6 | Runner chat loop | `feat/runner-chat-loop` | [!78](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/78) | merged |
 | 7 | Operator dispatch | `feat/operator-chat-dispatch` | [!79](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/79) | merged, released 2026.11.10, chat on for ai-operator (infra!290) |
-| 8 | Web | `feat/web-desk-chat` | see MR | review done |
-| 9 | Commands and owners | — | — | pending |
+| 8 | Web | `feat/web-desk-chat` | [!80](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/80) | merged |
+| 8+ | Enum fix found by the e2e test | `fix/chat-kind-enum` | [!81](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/81) | merged |
+| 9a | Commands: shape, path, Implement commands | `feat/chat-commands` | see MR | review done |
+| 9b | Commands: autopilot verbs, proposals, `ownerSubjects` | — | — | pending |
+| 9c | Commands: web buttons | — | — | pending |
 | 10 | `workflow.inputs` | — | — | pending |
 
 ## Step artifacts
@@ -49,4 +52,5 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 - Delegation: cursor-agent for implementation and reviews (no quota marker on 2026-11-03); orchestrator verifies, commits signed.
 - Steer 2026-11-03: maintainer requires chat to survive operator, UI, pod restarts and DB outages; spec section 3a (at-least-once per hop, dedupe by message ID).
 - CI: the `drift` job fails now and then on a TLS timeout fetching controller-gen from proxy.golang.org (!73, !75, !76); a retry fixes it. Follow-up: `GOPROXY=https://proxy.golang.org|direct` or a `retry:` on the job.
+- Steer 2026-11-03 (slice 9): spec §4a — commands go onto the task and the project reconciler applies them; answers in `spec.source.chatAnswers`; slice 9 split into 9a/9b/9c.
 - Steer 2026-11-03 (slice 6): spec §3b — chat shares the runs' session, interrupts wait during runs, late interrupts are answered as messages (§3a bullet changed).

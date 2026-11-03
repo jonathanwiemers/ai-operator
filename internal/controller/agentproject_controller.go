@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/history"
@@ -806,7 +807,14 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		}
 	}
 
-	requested := ready || command || conflict
+	// Desk chat commands (kind "command") are applied on every sync, not
+	// only when the issue or MR changed: they arrive via the dispatcher.
+	chatRun, err := r.applyChatCommands(ctx, gl, spec, &is, task, mr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	requested := ready || command || conflict || chatRun
 	if requested {
 		task.Spec.RunRequest++
 	}
@@ -934,6 +942,81 @@ func reviewOnly(notes []gitlab.Note, since, botID int64, prefix string) bool {
 type routingReply struct {
 	body string
 	onMR bool
+}
+
+const maxChatAnswers = 20
+
+// applyChatCommands applies Desk chat commands newer than
+// src.LastChatCommandID (Implement tasks). It records answers in
+// src.ChatAnswers and advances the mark in the same write as a RunRequest
+// bump. Returns whether a run was requested (retry or a successful review).
+func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec,
+	is *gitlab.Issue, task *aiv1.AgentTask, mr *gitlab.MergeRequest) (bool, error) {
+	src := &task.Spec.Source
+	var pending []aiv1.ChatMessage
+	for _, m := range src.ChatMessages {
+		if m.Kind == "command" && m.ID > src.LastChatCommandID {
+			pending = append(pending, m)
+		}
+	}
+	if len(pending) == 0 {
+		return false, nil
+	}
+	slices.SortFunc(pending, func(a, b aiv1.ChatMessage) int { return cmp.Compare(a.ID, b.ID) })
+	logger := log.FromContext(ctx)
+	now := metav1.Now()
+	run := false
+	answer := func(id int64, text string) {
+		src.ChatAnswers = append(src.ChatAnswers, aiv1.ChatReply{MessageID: id, Text: text, At: now})
+		src.LastChatCommandID = id
+	}
+	for _, m := range pending {
+		cmd, err := chatcmd.Parse(m.Text)
+		if err != nil {
+			answer(m.ID, err.Error())
+			logger.Info("chat command skipped", "id", m.ID, "author", m.Author, "error", err.Error())
+			continue
+		}
+		if !cmd.ImplementOnly() {
+			answer(m.ID, "not supported on this task yet")
+			logger.Info("chat command not supported yet", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author)
+			continue
+		}
+		logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author)
+		switch cmd.Cmd {
+		case "retry":
+			run = true
+			answer(m.ID, "🤖 A new run is requested.")
+		case "review":
+			text := "There is no pushed head of the agent to review."
+			if mr != nil && mr.SHA != "" && mr.SHA == task.Status.Run.PushedSHA {
+				if err := r.askReview(ctx, task, mr.SHA); err != nil {
+					return false, err
+				}
+				run = true
+				text = "🤖 The reviewers will run again on the pushed head."
+			}
+			answer(m.ID, text)
+		case "use", "effort":
+			rt, ok := cmd.Routing()
+			if !ok {
+				answer(m.ID, "not a routing command")
+				continue
+			}
+			ch := command.Apply(spec, is.Labels, []command.Routing{rt})
+			if len(ch.Add)+len(ch.Remove) > 0 {
+				if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{AddLabels: ch.Add, RemoveLabels: ch.Remove}); err != nil {
+					return false, fmt.Errorf("setting the model and effort labels of issue #%d: %w", is.IID, err)
+				}
+				is.Labels = append(slices.DeleteFunc(is.Labels, func(l string) bool { return slices.Contains(ch.Remove, l) }), ch.Add...)
+			}
+			answer(m.ID, ch.Reply())
+		}
+	}
+	if n := len(src.ChatAnswers); n > maxChatAnswers {
+		src.ChatAnswers = append([]aiv1.ChatReply(nil), src.ChatAnswers[n-maxChatAnswers:]...)
+	}
+	return run, nil
 }
 
 // applyRouting turns the "/agent use" and "/agent effort" comments of

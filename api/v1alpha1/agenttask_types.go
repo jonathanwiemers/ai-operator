@@ -155,10 +155,23 @@ type SourceState struct {
 
 	// ChatMessages are Desk chat turns for this task's agent. Written by
 	// the operator, answered by the runner, dropped by the operator once
-	// the reply is stored. At most 20 queued.
+	// the reply is stored. At most 20 queued. Kind "command" rows are
+	// applied by the project reconciler, not the runner.
 	// +optional
 	// +kubebuilder:validation:MaxItems=20
 	ChatMessages []ChatMessage `json:"chatMessages,omitempty"`
+
+	// LastChatCommandID is the newest Desk chat command (kind "command")
+	// the project reconciler has applied (Implement tasks).
+	// +optional
+	LastChatCommandID int64 `json:"lastChatCommandID,omitempty"`
+
+	// ChatAnswers are the operator's answers to Desk chat commands, keyed
+	// by message ID. The chatreply reconciler copies them into
+	// chat_messages and drops them with their messages. At most 20.
+	// +optional
+	// +kubebuilder:validation:MaxItems=20
+	ChatAnswers []ChatReply `json:"chatAnswers,omitempty"`
 
 	// PilotEvents are the events the operator woke the pilot for
 	// (Coordinate tasks), each assessed by the run of its request.
@@ -860,6 +873,18 @@ func init() {
 // finished yet.
 func (t *AgentTask) RunPending() bool {
 	return t.Spec.RunRequest > t.Status.Run.ObservedRunRequest
+}
+
+// HasChatTurns reports whether the task has unanswered Desk chat messages
+// that need the agent pod (message or interrupt). Commands are applied by
+// the project reconciler and do not keep a pod.
+func (t *AgentTask) HasChatTurns() bool {
+	for _, m := range t.Spec.Source.ChatMessages {
+		if m.Kind != "command" {
+			return true
+		}
+	}
+	return false
 }
 
 // PlannedIssue is one issue of a milestone plan.

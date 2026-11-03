@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -204,6 +205,12 @@ func readChat(w http.ResponseWriter, r *http.Request) (chatRequest, bool) {
 	if utf8.RuneCountInString(req.Body) > maxChatBody {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "the message is larger than 16 KiB"})
 		return req, false
+	}
+	if req.Kind == "command" {
+		if _, err := chatcmd.Parse(req.Body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return req, false
+		}
 	}
 	return req, true
 }

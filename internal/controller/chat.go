@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -23,6 +24,9 @@ const (
 	chatListenMinWait = 5 * time.Second
 	chatListenMaxWait = 5 * time.Minute
 	chatDBRetry       = 5 * time.Second
+	// chatSweepAge is how old a delivered message must be before sweep
+	// checks that it is still on its task.
+	chatSweepAge = time.Minute
 	// chatQueuedLimit is generous so rows waiting behind a full task (20
 	// in its spec) do not starve other tasks' rows.
 	chatQueuedLimit = 500
@@ -47,6 +51,9 @@ type Chat struct {
 	Retention time.Duration
 	Log       logr.Logger
 	Now       func() time.Time
+	// Wake asks the project reconciler to sync after a chat command was
+	// delivered onto a task (optional).
+	Wake func(types.NamespacedName)
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;update;patch
@@ -81,6 +88,7 @@ func (c *Chat) Start(ctx context.Context) error {
 			return nil
 		case <-tick.C:
 			c.dispatch(ctx)
+			c.sweep(ctx)
 		case <-wake:
 			c.dispatch(ctx)
 		}
@@ -136,6 +144,42 @@ func (c *Chat) dispatch(ctx context.Context) {
 	}
 }
 
+// sweep fails delivered messages that are no longer on their task: the
+// task was deleted (issue closed, task recreated) before the message was
+// answered. A delivered message is on the task's spec until its reply is
+// stored, which marks it answered first, so this finds only lost ones.
+func (c *Chat) sweep(ctx context.Context) {
+	s := c.DB.Store()
+	if s == nil {
+		return
+	}
+	msgs, err := s.DeliveredMessages(ctx, c.now().Add(-chatSweepAge), chatQueuedLimit)
+	if err != nil {
+		c.Log.Error(err, "listing delivered chat messages")
+		return
+	}
+	reader := c.APIReader
+	if reader == nil {
+		reader = c.Client
+	}
+	for _, m := range msgs {
+		var task aiv1.AgentTask
+		err := reader.Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: m.Task}, &task)
+		if err != nil && !apierrors.IsNotFound(err) {
+			c.Log.Error(err, "getting task for delivered chat message", "id", m.ID, "task", m.Task)
+			continue
+		}
+		if err == nil && slices.ContainsFunc(task.Spec.Source.ChatMessages, func(cm aiv1.ChatMessage) bool { return cm.ID == m.ID }) {
+			continue
+		}
+		if err := s.SetMessageState(ctx, []int64{m.ID}, "failed", "the task was removed before an answer"); err != nil {
+			c.Log.Error(err, "marking lost chat message failed", "id", m.ID)
+			continue
+		}
+		c.Log.Info("chat message", "id", m.ID, "task", m.Task, "state", "failed", "reason", "task removed")
+	}
+}
+
 func (c *Chat) dispatchOne(ctx context.Context, s *store.Store, m store.ChatMessage) {
 	fail := func(reason string) {
 		if err := s.SetMessageState(ctx, []int64{m.ID}, "failed", reason); err != nil {
@@ -143,10 +187,6 @@ func (c *Chat) dispatchOne(ctx context.Context, s *store.Store, m store.ChatMess
 			return
 		}
 		c.Log.Info("chat message", "id", m.ID, "task", m.Task, "state", "failed")
-	}
-	if m.Kind == "command" {
-		fail("commands are not supported yet")
-		return
 	}
 	reader := c.APIReader
 	if reader == nil {
@@ -177,6 +217,17 @@ func (c *Chat) dispatchOne(ctx context.Context, s *store.Store, m store.ChatMess
 	if !project.Spec.Agents.Chat {
 		fail("live chat is not enabled")
 		return
+	}
+	if m.Kind == "command" {
+		cmd, err := chatcmd.Parse(m.Body)
+		if err != nil {
+			fail(err.Error())
+			return
+		}
+		if task.Spec.Type != aiv1.TaskTypeImplement || !cmd.ImplementOnly() {
+			fail("not supported on this task yet")
+			return
+		}
 	}
 	for _, existing := range task.Spec.Source.ChatMessages {
 		if existing.ID == m.ID {
@@ -225,10 +276,16 @@ func (c *Chat) dispatchOne(ctx context.Context, s *store.Store, m store.ChatMess
 		return
 	}
 	c.Log.Info("chat message", "id", m.ID, "task", m.Task, "state", "delivered")
+	if m.Kind == "command" && c.Wake != nil {
+		c.Wake(types.NamespacedName{Namespace: m.Namespace, Name: m.Project})
+	}
 }
 
-// Reconcile copies status.chat.replies whose message is still in the spec
-// into chat_messages, then drops those messages from the spec.
+// Reconcile copies status.chat.replies and spec.source.chatAnswers whose
+// message is still in the spec into chat_messages, then drops those
+// messages (and their answers) from the spec. An operator answer is
+// preferred over a runner reply for the same message (they cannot both
+// exist for a command: the runner skips those).
 func (c *Chat) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	select {
 	case <-c.DB.Ready():
@@ -245,18 +302,44 @@ func (c *Chat) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, er
 	if err := c.Get(ctx, req.NamespacedName, &task); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	if task.Status.Chat == nil || len(task.Status.Chat.Replies) == 0 || len(task.Spec.Source.ChatMessages) == 0 {
+	if len(task.Spec.Source.ChatMessages) == 0 {
 		return ctrl.Result{}, nil
 	}
 
 	replies := map[int64]aiv1.ChatReply{}
-	for _, r := range task.Status.Chat.Replies {
-		replies[r.MessageID] = r
+	if task.Status.Chat != nil {
+		for _, r := range task.Status.Chat.Replies {
+			replies[r.MessageID] = r
+		}
 	}
+	answers := map[int64]aiv1.ChatReply{}
+	for _, a := range task.Spec.Source.ChatAnswers {
+		answers[a.MessageID] = a
+	}
+	if len(replies) == 0 && len(answers) == 0 {
+		return ctrl.Result{}, nil
+	}
+
 	orig := task.DeepCopy()
 	var keep []aiv1.ChatMessage
 	dropped := false
 	for _, m := range task.Spec.Source.ChatMessages {
+		if ans, ok := answers[m.ID]; ok {
+			if _, err := s.InsertReply(ctx, store.ChatMessage{
+				Namespace: task.Namespace,
+				Project:   task.Spec.ProjectRef,
+				Task:      task.Name,
+				Role:      "system",
+				Body:      ans.Text,
+				ReplyTo:   m.ID,
+				ExpiresAt: c.now().Add(c.Retention),
+			}); err != nil {
+				logger.Error(err, "inserting chat command answer", "messageID", m.ID)
+				return ctrl.Result{}, err
+			}
+			dropped = true
+			continue
+		}
 		rep, ok := replies[m.ID]
 		if !ok {
 			keep = append(keep, m)
@@ -289,6 +372,17 @@ func (c *Chat) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, er
 		return ctrl.Result{}, nil
 	}
 	task.Spec.Source.ChatMessages = keep
+	keptIDs := map[int64]bool{}
+	for _, m := range keep {
+		keptIDs[m.ID] = true
+	}
+	var keepAnswers []aiv1.ChatReply
+	for _, a := range task.Spec.Source.ChatAnswers {
+		if keptIDs[a.MessageID] {
+			keepAnswers = append(keepAnswers, a)
+		}
+	}
+	task.Spec.Source.ChatAnswers = keepAnswers
 	// Optimistic lock: a stale cached task must not drop a message the
 	// dispatcher appended meanwhile (the patch replaces the whole list).
 	if err := c.Patch(ctx, &task, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{})); err != nil {

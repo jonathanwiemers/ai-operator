@@ -80,6 +80,17 @@ func (s *Store) QueuedMessages(ctx context.Context, limit int) ([]ChatMessage, e
 	return pgx.CollectRows(rows, scanChat)
 }
 
+// DeliveredMessages returns messages in state delivered written before
+// before, oldest first, up to limit.
+func (s *Store) DeliveredMessages(ctx context.Context, before time.Time, limit int) ([]ChatMessage, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, _ := s.pool.Query(ctx, `SELECT `+chatColumns+` FROM chat_messages
+		WHERE state = 'delivered' AND at < $1 ORDER BY id LIMIT $2`, before, limit)
+	return pgx.CollectRows(rows, scanChat)
+}
+
 // SetMessageState sets state and reason on the given ids, except on
 // answered ones: a reply can land before the operator marks its message
 // delivered (a re-dispatch after a crash), and answered must stay.

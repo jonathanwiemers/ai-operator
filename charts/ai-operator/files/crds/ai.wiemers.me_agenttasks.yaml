@@ -160,11 +160,46 @@ spec:
                       (Implement tasks), copied from the milestone's spec task, so a run
                       during the pause knows it. Empty when it is not paused over it.
                     type: string
+                  chatAnswers:
+                    description: |-
+                      ChatAnswers are the operator's answers to Desk chat commands, keyed
+                      by message ID. The chatreply reconciler copies them into
+                      chat_messages and drops them with their messages. At most 20.
+                    items:
+                      description: ChatReply is one answer to a ChatMessage.
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        error:
+                          description: |-
+                            Error is set when the turn did not finish normally (e.g. "interrupted",
+                            "usage limit until <time>").
+                          type: string
+                        messageID:
+                          format: int64
+                          type: integer
+                        pushedSHA:
+                          description: PushedSHA is set when a writable turn committed
+                            and pushed.
+                          type: string
+                        text:
+                          description: Text is the agent's answer, made inert and
+                            cut to 16 KiB.
+                          maxLength: 16384
+                          type: string
+                      required:
+                      - at
+                      - messageID
+                      type: object
+                    maxItems: 20
+                    type: array
                   chatMessages:
                     description: |-
                       ChatMessages are Desk chat turns for this task's agent. Written by
                       the operator, answered by the runner, dropped by the operator once
-                      the reply is stored. At most 20 queued.
+                      the reply is stored. At most 20 queued. Kind "command" rows are
+                      applied by the project reconciler, not the runner.
                     items:
                       description: ChatMessage is one Desk chat turn handed to the
                         runner.
@@ -228,6 +263,12 @@ spec:
                       comments when nothing changed.
                     format: date-time
                     type: string
+                  lastChatCommandID:
+                    description: |-
+                      LastChatCommandID is the newest Desk chat command (kind "command")
+                      the project reconciler has applied (Implement tasks).
+                    format: int64
+                    type: integer
                   lastCommandNoteID:
                     description: |-
                       LastCommandNoteID is the newest "/agent" comment that was turned into a

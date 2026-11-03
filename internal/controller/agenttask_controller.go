@@ -120,7 +120,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	idleFor := now.Sub(lastActivity)
 	idleTimeout := lc.IdleTimeout.Duration
 	pending := task.RunPending()
-	hasChat := len(task.Spec.Source.ChatMessages) > 0
+	hasChat := task.HasChatTurns()
 	needsPod := pending || hasChat
 	// The runner bumps RunCount when a run finishes, so a run in progress is
 	// never cut off by the limit.
@@ -399,7 +399,7 @@ func (r *AgentTaskReconciler) freshNeedsPod(ctx context.Context, task *aiv1.Agen
 	}
 	return fresh.RunPending() ||
 		fresh.Status.Run.ActiveRunRequest > fresh.Status.Run.ObservedRunRequest ||
-		len(fresh.Spec.Source.ChatMessages) > 0, nil
+		fresh.HasChatTurns(), nil
 }
 
 // runInProgress checks with the API server whether the runner is in a run;

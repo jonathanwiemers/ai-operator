@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -182,12 +183,100 @@ func TestChatDispatchMissingTask(t *testing.T) {
 }
 
 func TestChatDispatchCommand(t *testing.T) {
+	var woke []types.NamespacedName
 	e := newChatEnv(t, chatProject(true), chatTask(chatTaskName))
-	id := e.insertUser(chatTaskName, `{"cmd":"pause"}`, "command", "c1")
+	e.chat.Wake = func(n types.NamespacedName) { woke = append(woke, n) }
+
+	id := e.insertUser(chatTaskName, `{"cmd":"retry"}`, "command", "c-retry")
 	e.chat.dispatchQueued(e.ctx)
 	st, reason := e.msgState(id, chatTaskName)
-	if st != "failed" || reason != "commands are not supported yet" {
+	if st != "delivered" || reason != "" {
+		t.Fatalf("retry state = %q %q", st, reason)
+	}
+	msgs := e.task(chatTaskName).Spec.Source.ChatMessages
+	if len(msgs) != 1 || msgs[0].Kind != "command" || msgs[0].Text != `{"cmd":"retry"}` {
+		t.Fatalf("chatMessages = %+v", msgs)
+	}
+	if len(woke) != 1 || woke[0] != (types.NamespacedName{Namespace: ns, Name: "shop"}) {
+		t.Fatalf("Wake = %v", woke)
+	}
+
+	bad := e.insertUser(chatTaskName, `{"cmd":"nope"}`, "command", "c-bad")
+	e.chat.dispatchQueued(e.ctx)
+	st, reason = e.msgState(bad, chatTaskName)
+	if st != "failed" || !strings.Contains(reason, "unknown cmd") {
+		t.Fatalf("invalid body = %q %q", st, reason)
+	}
+
+	pause := e.insertUser(chatTaskName, `{"cmd":"pause"}`, "command", "c-pause")
+	e.chat.dispatchQueued(e.ctx)
+	st, reason = e.msgState(pause, chatTaskName)
+	if st != "failed" || reason != "not supported on this task yet" {
+		t.Fatalf("pause on implement = %q %q", st, reason)
+	}
+}
+
+func TestChatDispatchCommandOnSpecTask(t *testing.T) {
+	task := chatTask("shop-spec-m1")
+	task.Spec.Type = aiv1.TaskTypeSpec
+	task.Spec.Issue = nil
+	e := newChatEnv(t, chatProject(true), task)
+	id := e.insertUser(task.Name, `{"cmd":"retry"}`, "command", "c-spec")
+	e.chat.dispatchQueued(e.ctx)
+	st, reason := e.msgState(id, task.Name)
+	if st != "failed" || reason != "not supported on this task yet" {
 		t.Fatalf("state = %q %q", st, reason)
+	}
+}
+
+func TestChatReplyCopiesAnswer(t *testing.T) {
+	e := newChatEnv(t, chatProject(true), chatTask(chatTaskName))
+	id := e.insertUser(chatTaskName, `{"cmd":"retry"}`, "command", "ans1")
+	e.chat.dispatchQueued(e.ctx)
+	task := e.task(chatTaskName)
+	task.Spec.Source.ChatAnswers = []aiv1.ChatReply{{
+		MessageID: id, Text: "🤖 A new run is requested.", At: metav1.NewTime(e.now),
+	}}
+	task.Spec.Source.LastChatCommandID = id
+	if err := e.c.Update(e.ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.chat.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: chatTaskName}}); err != nil {
+		t.Fatal(err)
+	}
+	got := e.task(chatTaskName)
+	if len(got.Spec.Source.ChatMessages) != 0 || len(got.Spec.Source.ChatAnswers) != 0 {
+		t.Fatalf("message and answer should be dropped: msgs=%+v answers=%+v", got.Spec.Source.ChatMessages, got.Spec.Source.ChatAnswers)
+	}
+	msgs, err := e.store.ChatMessages(e.ctx, ns, "shop", chatTaskName, 0, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reply *store.ChatMessage
+	for i := range msgs {
+		if msgs[i].ReplyTo == id {
+			reply = &msgs[i]
+			break
+		}
+	}
+	if reply == nil || reply.Role != "system" || reply.Body != "🤖 A new run is requested." {
+		t.Fatalf("reply = %+v", reply)
+	}
+}
+
+func TestCommandOnlyChatDoesNotNeedPod(t *testing.T) {
+	task := chatTask(chatTaskName)
+	task.Spec.Source.ChatMessages = []aiv1.ChatMessage{{
+		ID: 1, Kind: "command", Text: `{"cmd":"retry"}`, Author: "u", At: metav1.NewTime(t0),
+	}}
+	e := newTaskEnv(t, task)
+	e.reconcile(chatTaskName)
+	var pod corev1.Pod
+	if e.exists(&pod, chatTaskName) {
+		t.Fatal("a command-only chatMessages list must not start a pod")
+	}
+	if e.task(chatTaskName).Status.Phase != aiv1.TaskPhasePending {
+		t.Fatalf("phase = %s", e.task(chatTaskName).Status.Phase)
 	}
 }
 
@@ -421,5 +510,26 @@ func TestChatDispatchStaleTaskConflicts(t *testing.T) {
 	e.chat.dispatchQueued(e.ctx)
 	if msgs := e.task(chatTaskName).Spec.Source.ChatMessages; len(msgs) != 2 {
 		t.Fatalf("after a fresh read chatMessages = %+v, want both", msgs)
+	}
+}
+
+func TestChatSweepFailsMessagesOfRemovedTasks(t *testing.T) {
+	gone := chatTask("shop-43-gone")
+	e := newChatEnv(t, chatProject(true), chatTask(chatTaskName), gone)
+	kept := e.insertUser(chatTaskName, "hello", "message", "s1")
+	lost := e.insertUser(gone.Name, "hello", "message", "s2")
+	e.chat.dispatchQueued(e.ctx)
+	if err := e.c.Delete(e.ctx, e.task(gone.Name)); err != nil {
+		t.Fatal(err)
+	}
+	// Rows are stamped by the database clock; sweep only looks at old ones.
+	e.now = time.Now().Add(2 * chatSweepAge)
+	e.chat.sweep(e.ctx)
+
+	if st, _ := e.msgState(kept, chatTaskName); st != "delivered" {
+		t.Fatalf("message on its task: state = %q, want delivered", st)
+	}
+	if st, reason := e.msgState(lost, gone.Name); st != "failed" || reason != "the task was removed before an answer" {
+		t.Fatalf("message of a removed task: state = %q %q", st, reason)
 	}
 }

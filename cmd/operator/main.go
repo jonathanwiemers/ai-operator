@@ -136,11 +136,16 @@ func main() {
 		projects.History = recorder
 		researchSetup.SetHistoryRetention(historyRetention)
 	}
+	// Desk chat commands and GitLab webhooks both wake the project
+	// reconciler; create the waker whenever either path runs.
+	var waker *webhook.Waker
+	if webhookAddr != "" || researchSetup != nil {
+		waker = webhook.NewWaker(5*time.Second, 100, clock.RealClock{})
+		projects.Wakes = waker.Events()
+	}
 	if webhookAddr != "" {
 		// The bot's own writes cause deliveries too: one sync per project
 		// per 5 s, with a trailing one for the last delivery.
-		waker := webhook.NewWaker(5*time.Second, 100, clock.RealClock{})
-		projects.Wakes = waker.Events()
 		projects.Deliveries = webhook.NewDeliveries(clock.RealClock{})
 		utilruntime.Must(mgr.Add(&webhook.Server{
 			Addr: webhookAddr,
@@ -185,6 +190,7 @@ func main() {
 			DB:        researchSetup,
 			Retention: historyRetention,
 			Log:       ctrl.Log.WithName("chat"),
+			Wake:      waker.Wake,
 		}
 		utilruntime.Must(mgr.Add(chat))
 		if err := chat.SetupWithManager(mgr); err != nil {

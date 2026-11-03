@@ -65,6 +65,24 @@ func (e *testEnv) postChat(t *testing.T, path string, body any) (int, map[string
 	return resp.StatusCode, out
 }
 
+func (e *testEnv) postChatErr(t *testing.T, path string, body any) (int, string) {
+	t.Helper()
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+path, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := e.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]string
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out["error"]
+}
+
 func TestChatGrantValidation(t *testing.T) {
 	valid := func() *Config {
 		c := &Config{
@@ -161,6 +179,16 @@ func TestPostChat(t *testing.T) {
 		env := login(t, "chatters")
 		if code, _ := env.postChat(t, shop, map[string]any{"body": "hello"}); code != http.StatusBadRequest {
 			t.Fatalf("without clientKey: %d, want 400 (a retry would double it)", code)
+		}
+	})
+
+	t.Run("invalid command body", func(t *testing.T) {
+		env := login(t, "chatters")
+		code, errBody := env.postChatErr(t, shop, map[string]any{
+			"body": `{"cmd":"nope"}`, "kind": "command", "clientKey": "badcmd",
+		})
+		if code != http.StatusBadRequest || !strings.Contains(errBody, "unknown cmd") {
+			t.Fatalf("invalid command: %d %q", code, errBody)
 		}
 	})
 
