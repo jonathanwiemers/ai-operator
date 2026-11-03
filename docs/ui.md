@@ -184,7 +184,11 @@ retry-safe (`clientKey` in session storage until a 2xx). Bodies need the
 `conversation` grant; without it they show as *message hidden*. Cold starts
 and answers also show a status line, with a link to the Live transcript when
 you may see it. Chat events appear in the Desk stream when the `chat`
-feature is on (keyed apart from history events).
+feature is on (keyed apart from history events). Structured commands go to
+the task that owns them: `retry` / `review` / `use` / `effort` on an
+Implement task, `pause` / `resume` / `skip` on an autopilot Spec task, and
+`accept` / `reject` on the milestone's Coordinate (pilot) task (author must
+be in the milestone's `owner-subjects`).
 
 With GitLab connected (see [Steering](#steering)), a task page has a
 **Conversation** panel: the comments of its issue, merge request and

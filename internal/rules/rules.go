@@ -56,10 +56,10 @@ func idOf(l string) string {
 }
 
 // Spec is a milestone description without the operator's lines (owners,
-// rules): the spec the planner and the agents get, and what is hashed for
-// re-planning.
+// owner-subjects, rules): the spec the planner and the agents get, and what
+// is hashed for re-planning.
 func Spec(description, prefix string) string {
-	return notify.WithoutLines(notify.WithoutOwners(description, prefix), line(prefix))
+	return notify.WithoutLines(notify.WithoutOwnerSubjects(notify.WithoutOwners(description, prefix), prefix), line(prefix))
 }
 
 // Lines returns the rule lines of a description without "<prefix> rule ".

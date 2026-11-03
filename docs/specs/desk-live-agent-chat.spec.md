@@ -333,7 +333,7 @@ dispatcher.
   write; the answer is written once.
 - **Authority:** the `chat` grant decides who may send commands (decision
   4). Accepting or rejecting a pilot proposal also needs the author in
-  the milestone header's `ownerSubjects` (`/agent owners-subjects: a@x, b@y`,
+  the milestone header's `ownerSubjects` (`/agent owner-subjects a@x b@y`,
   the UI's username claim); the GitLab owners' IDs stay for notes.
 - **Split:** 9a: shape, path, Implement commands; 9b: autopilot verbs,
   proposals, `ownerSubjects`; 9c: web buttons.
@@ -504,4 +504,5 @@ GitLab comment path if nothing needs it.
 | — | infra: Desk chat on for ai-operator (and bloop for one test) | [infra!290](https://gitlab.com/jo.wiemers/infra/cluster/-/merge_requests/290) | merged, live on 2026.11.10 |
 | 8 | feat(web): Desk chat on the task page | [!80](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/80) | merged |
 | — | fix(api): chat message kinds as three enum values | [!81](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/81) | merged |
-| 9a | feat(controller): Desk chat commands for Implement tasks | this MR | open |
+| 9a | feat(controller): Desk chat commands for Implement tasks | [!82](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/82) | merged |
+| 9b | feat(controller): Desk autopilot verbs, proposal answers and owner subjects | this MR | open |

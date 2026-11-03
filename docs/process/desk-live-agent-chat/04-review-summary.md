@@ -89,3 +89,12 @@ Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./inte
 |---|---------|---------|--------|
 | 1 | (orchestrator) `use` model echoed in a code span and split as a routing argument: spaces or backticks broke both | real | one plain token, at most 64 characters |
 | 2 | a task deleted (issue closed) before its chat messages were answered leaves rows `delivered` forever (also messages since slice 7) | real | dispatcher poll fails delivered rows no longer on their task; test |
+
+## Slice 9b
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | (orchestrator) `answerProposal`'s status patch replaces the Coordinate task, spec included: earlier answers of the same batch were lost, their rows never answered | real | answers collected apart, written after the loop; batch test |
+| 2 | (orchestrator) autopilot answers were the whole old list copied onto the fresh task: answers chatreply had dropped came back | real | only the new answers are appended |
+| 3 | (orchestrator) `postCommandReply` guessed from reply text whether to comment on GitLab | simplification | `command` returns `applied` |
+| 4 | verbs delivered to a Spec task whose autopilot turned off stay unanswered | real | `refuseChatCommands` answers them; test |

@@ -56,6 +56,13 @@ type AgentTaskSpec struct {
 	// +optional
 	Owners []string `json:"owners,omitempty"`
 
+	// OwnerSubjects are the Desk identities (OIDC username claim) that own
+	// the milestone, from its "<prefix> owner-subjects …" line. Used to
+	// authorize Desk accept/reject of pilot proposals. No project-level
+	// or default fallback.
+	// +optional
+	OwnerSubjects []string `json:"ownerSubjects,omitempty"`
+
 	// Rules are the standing rules of the milestone: its description's
 	// lines "/agent rule R<n>: <kind> <text>" without "/agent rule " (spec
 	// and Coordinate tasks).
@@ -162,7 +169,8 @@ type SourceState struct {
 	ChatMessages []ChatMessage `json:"chatMessages,omitempty"`
 
 	// LastChatCommandID is the newest Desk chat command (kind "command")
-	// the project reconciler has applied (Implement tasks).
+	// the project reconciler has applied (Implement, Spec autopilot, or
+	// Coordinate tasks).
 	// +optional
 	LastChatCommandID int64 `json:"lastChatCommandID,omitempty"`
 

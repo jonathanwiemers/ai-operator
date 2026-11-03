@@ -214,7 +214,8 @@ func (r *AgentProjectReconciler) milestonesChanged(ctx context.Context, project 
 		}
 		task := planned[m.IID]
 		owners := notify.Resolve(m.Description, spec.Workflow.CommandPrefix, spec.Notify.Users, r.DefaultOwners)
-		if task == nil || !specTaskCurrent(spec, m, task, autopilot, owners) || r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration) {
+		subjects := notify.MilestoneOwnerSubjects(m.Description, spec.Workflow.CommandPrefix)
+		if task == nil || !specTaskCurrent(spec, m, task, autopilot, owners, subjects) || r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration) {
 			return true, nil
 		}
 		selected[m.IID] = true
@@ -335,6 +336,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	owners := func(description string) []string {
 		return notify.Resolve(description, prefix, spec.Notify.Users, r.DefaultOwners)
 	}
+	ownerSubjects := func(description string) []string {
+		return notify.MilestoneOwnerSubjects(description, prefix)
+	}
 	descriptions := map[int64]string{}
 	for _, m := range milestones {
 		descriptions[m.ID] = m.Description
@@ -345,7 +349,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			continue
 		}
 		active++
-		task, err := r.syncSpecTask(ctx, project, spec, m, byMilestone[m.IID], autopilot, owners(m.Description))
+		task, err := r.syncSpecTask(ctx, project, spec, m, byMilestone[m.IID], autopilot, owners(m.Description), ownerSubjects(m.Description))
 		if err != nil {
 			return err
 		}
@@ -417,7 +421,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		if is.Milestone != nil {
 			st = byMilestone[is.Milestone.IID]
 		}
-		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], st, autopilot, pause, owners(description))
+		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], st, autopilot, pause, owners(description), ownerSubjects(description))
 		if err != nil {
 			return err
 		}
@@ -649,10 +653,10 @@ func (r *AgentProjectReconciler) newTask(project *aiv1.AgentProject, name string
 // syncSpecTask makes sure a planned milestone has a spec task and requests a
 // new run whenever the milestone description changes, and once after a run
 // that failed for an outside reason (specRetryDue).
-func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners []string) (*aiv1.AgentTask, error) {
+func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners, ownerSubjects []string) (*aiv1.AgentTask, error) {
 	prefix := spec.Workflow.CommandPrefix
-	// The owners and rules are no part of the spec: changing them re-plans
-	// nothing.
+	// The owners, owner-subjects and rules are no part of the spec: changing
+	// them re-plans nothing.
 	hash := hashString(rules.Spec(m.Description, prefix))
 	ruleLines := rules.Lines(m.Description, prefix)
 	ref := &aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title}
@@ -667,16 +671,16 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		task.Spec.RunRequest = 1
 		task.Spec.Source.DescriptionHash = hash
 		task.Spec.Autopilot = autopilot
-		task.Spec.Owners, task.Spec.Rules = owners, ruleLines
+		task.Spec.Owners, task.Spec.OwnerSubjects, task.Spec.Rules = owners, ownerSubjects, ruleLines
 		log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name, "autopilot", autopilot)
 		return task, r.Create(ctx, task)
 	}
 	retry := r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration)
-	if specTaskCurrent(spec, m, task, autopilot, owners) && !retry {
+	if specTaskCurrent(spec, m, task, autopilot, owners, ownerSubjects) && !retry {
 		return task, nil
 	}
 	task.Spec.Autopilot = autopilot
-	task.Spec.Owners, task.Spec.Rules = owners, ruleLines
+	task.Spec.Owners, task.Spec.OwnerSubjects, task.Spec.Rules = owners, ownerSubjects, ruleLines
 	if task.Spec.Source.DescriptionHash != hash {
 		log.FromContext(ctx).Info("milestone spec changed, re-planning", "milestone", m.Title, "task", task.Name)
 		task.Spec.RunRequest++
@@ -691,12 +695,13 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 }
 
 // specTaskCurrent reports whether a milestone's spec task matches it: the
-// spec's hash, the milestone, autopilot, owners and rules.
-func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners []string) bool {
+// spec's hash, the milestone, autopilot, owners, owner-subjects and rules.
+func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners, ownerSubjects []string) bool {
 	prefix := spec.Workflow.CommandPrefix
 	return task.Spec.Source.DescriptionHash == hashString(rules.Spec(m.Description, prefix)) &&
 		*task.Spec.Milestone == aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title} && task.Spec.Autopilot == autopilot &&
-		slices.Equal(task.Spec.Owners, owners) && slices.Equal(task.Spec.Rules, rules.Lines(m.Description, prefix))
+		slices.Equal(task.Spec.Owners, owners) && slices.Equal(task.Spec.OwnerSubjects, ownerSubjects) &&
+		slices.Equal(task.Spec.Rules, rules.Lines(m.Description, prefix))
 }
 
 // specRetryDue reports whether a planning run that failed for an outside
@@ -714,7 +719,7 @@ func (r *AgentProjectReconciler) specRetryDue(task *aiv1.AgentTask, after time.D
 // the task's merge request too, if it has one. st is the spec task of the
 // issue's milestone, if there is one.
 func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	is gitlab.Issue, task, st *aiv1.AgentTask, autopilot bool, pause string, owners []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
+	is gitlab.Issue, task, st *aiv1.AgentTask, autopilot bool, pause string, owners, ownerSubjects []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -733,7 +738,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		task.Spec.Milestone = &aiv1.MilestoneRef{ID: is.Milestone.ID, IID: is.Milestone.IID, Title: is.Milestone.Title}
 	}
 	task.Spec.Autopilot = autopilot
-	task.Spec.Owners = owners
+	task.Spec.Owners, task.Spec.OwnerSubjects = owners, ownerSubjects
 	task.Spec.Source.AutopilotPause = pause
 
 	ready := is.HasLabel(wf.ReadyLabel)

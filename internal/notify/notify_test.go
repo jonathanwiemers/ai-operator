@@ -56,6 +56,26 @@ func TestWithoutOwnersKeepsParagraphs(t *testing.T) {
 	}
 }
 
+func TestMilestoneOwnerSubjects(t *testing.T) {
+	for _, tc := range []struct {
+		desc string
+		want []string
+	}{
+		{"/agent spec\nBuild it.", nil},
+		{"Build it.\n/agent owner-subjects alice@example.com bob, alice@example.com\n", []string{"alice@example.com", "bob"}},
+		{"  /agent owner-subjects\tcarol@x  \r\nmore", []string{"carol@x"}},
+		{"/agent owner-subjects", nil}, // nobody
+		{"/agent owners-subjects a@x", nil},
+		{"see /agent owner-subjects a@x", nil}, // not at the start of a line
+		{"/agent owners @alice\n/agent owner-subjects a@x b", []string{"a@x", "b"}},
+	} {
+		got := MilestoneOwnerSubjects(tc.desc, "/agent")
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%q: got %v, want %v", tc.desc, got, tc.want)
+		}
+	}
+}
+
 func TestResolvePrefersTheMostSpecific(t *testing.T) {
 	if got := Resolve("/agent owners @m", "/agent", []string{"p"}, []string{"d"}); !slices.Equal(got, []string{"m"}) {
 		t.Errorf("milestone: %v", got)

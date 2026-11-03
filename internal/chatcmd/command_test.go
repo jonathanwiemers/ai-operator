@@ -77,6 +77,21 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 		if !c.ImplementOnly() {
 			t.Errorf("%s should be ImplementOnly", cmd)
 		}
+		if c.Autopilot() || c.ProposalOnly() {
+			t.Errorf("%s should not be Autopilot or ProposalOnly", cmd)
+		}
+	}
+	for _, cmd := range []string{"pause", "resume", "skip"} {
+		c := Command{Cmd: cmd}
+		if !c.Autopilot() || c.ImplementOnly() || c.ProposalOnly() {
+			t.Errorf("%s should be Autopilot only", cmd)
+		}
+	}
+	for _, cmd := range []string{"accept", "reject"} {
+		c := Command{Cmd: cmd}
+		if !c.ProposalOnly() || c.ImplementOnly() || c.Autopilot() {
+			t.Errorf("%s should be ProposalOnly only", cmd)
+		}
 	}
 	for _, cmd := range []string{"pause", "resume", "skip", "accept", "reject"} {
 		if (Command{Cmd: cmd}).ImplementOnly() {

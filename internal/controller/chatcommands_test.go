@@ -102,3 +102,203 @@ func TestApplyChatCommandsReviewWithoutHead(t *testing.T) {
 		t.Fatalf("ReviewFor = %q", task.Spec.Source.ReviewFor)
 	}
 }
+
+func TestAutopilotChatCommandsPauseResumeSkip(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	st := e.tasks()[specTaskName]
+	notesBefore := len(e.gl.IssueNotes[e.autopilot().TrackingIssueIID])
+
+	st.Spec.Source.ChatMessages = []aiv1.ChatMessage{
+		{ID: 101, Kind: "command", Text: `{"cmd":"pause"}`, Author: "ada@x", AuthorName: "Ada"},
+		{ID: 102, Kind: "command", Text: `{"cmd":"resume"}`, Author: "ada@x", AuthorName: "Ada"},
+		{ID: 103, Kind: "command", Text: `{"cmd":"skip","issue":2}`, Author: "ada@x"},
+		{ID: 104, Kind: "command", Text: `{"cmd":"skip","issue":99}`, Author: "ada@x"},
+	}
+	if err := e.c.Update(e.ctx, &st); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+
+	st = e.tasks()[specTaskName]
+	if st.Spec.Source.LastChatCommandID != 104 {
+		t.Fatalf("mark = %d", st.Spec.Source.LastChatCommandID)
+	}
+	if n := len(st.Spec.Source.ChatAnswers); n != 4 {
+		t.Fatalf("answers = %+v", st.Spec.Source.ChatAnswers)
+	}
+	got := make([]string, len(st.Spec.Source.ChatAnswers))
+	for i, a := range st.Spec.Source.ChatAnswers {
+		got[i] = a.Text
+	}
+	want := []string{"Autopilot paused.", "Autopilot resumed.", "#2 skipped.", "`skip` needs a planned issue that is not merged yet, e.g. `/agent skip #12`."}
+	if !slices.Equal(got, want) {
+		t.Fatalf("answers = %q", got)
+	}
+	if e.autopilot().Phase != aiv1.AutopilotRunning {
+		t.Fatalf("phase after resume = %s", e.autopilot().Phase)
+	}
+	if it := e.autopilot().Items; !slices.ContainsFunc(it, func(x aiv1.AutopilotItem) bool {
+		return x.IID == 2 && x.State == aiv1.AutopilotItemSkipped
+	}) {
+		t.Fatalf("items = %+v", it)
+	}
+	if n := len(e.gl.IssueNotes[e.autopilot().TrackingIssueIID]); n != notesBefore {
+		t.Fatalf("Desk path must not comment on GitLab: notes %d → %d", notesBefore, n)
+	}
+
+	answers := len(st.Spec.Source.ChatAnswers)
+	mark := st.Spec.Source.LastChatCommandID
+	e.reconcile()
+	st = e.tasks()[specTaskName]
+	if st.Spec.Source.LastChatCommandID != mark || len(st.Spec.Source.ChatAnswers) != answers {
+		t.Fatalf("second sync replayed: mark=%d answers=%d", st.Spec.Source.LastChatCommandID, len(st.Spec.Source.ChatAnswers))
+	}
+}
+
+func TestPilotChatCommandsAcceptReject(t *testing.T) {
+	e := newProposalEnv(t)
+	e.gl.Milestones[0].Description += "\n/agent owner-subjects alice@example.com"
+	e.reconcile()
+	pilot := e.pilot()
+	if !slices.Equal(pilot.Spec.OwnerSubjects, []string{"alice@example.com"}) {
+		t.Fatalf("OwnerSubjects = %v", pilot.Spec.OwnerSubjects)
+	}
+	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	if len(e.pilot().Status.Pilot.Proposals) != 1 {
+		t.Fatalf("expected open proposal: %+v", e.pilot().Status.Pilot)
+	}
+	before := e.toolEffect()
+
+	pilot = e.pilot()
+	pilot.Spec.Source.ChatMessages = []aiv1.ChatMessage{
+		{ID: 201, Kind: "command", Text: `{"cmd":"accept","proposal":1}`, Author: "mallory@x", AuthorName: "Mallory"},
+	}
+	if err := e.c.Update(e.ctx, &pilot); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	pilot = e.pilot()
+	if len(pilot.Status.Pilot.Proposals) != 1 {
+		t.Fatalf("non-owner must not change proposals: %+v", pilot.Status.Pilot)
+	}
+	if n := len(pilot.Spec.Source.ChatAnswers); n != 1 ||
+		pilot.Spec.Source.ChatAnswers[0].Text != "Only the milestone's owners may answer proposals." {
+		t.Fatalf("non-owner answer = %+v", pilot.Spec.Source.ChatAnswers)
+	}
+	if after := e.toolEffect(); after != before {
+		t.Fatalf("non-owner ran tools: %+v → %+v", before, after)
+	}
+
+	pilot.Spec.Source.ChatMessages = append(pilot.Spec.Source.ChatMessages, aiv1.ChatMessage{
+		ID: 202, Kind: "command", Text: `{"cmd":"accept","proposal":1}`, Author: "alice@example.com", AuthorName: "Alice",
+	})
+	if err := e.c.Update(e.ctx, &pilot); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	pilot = e.pilot()
+	if len(pilot.Status.Pilot.Proposals) != 0 {
+		t.Fatalf("owner accept must drop the open proposal: %+v", pilot.Status.Pilot)
+	}
+	if after := e.toolEffect(); after.runs != before.runs+1 {
+		t.Fatalf("owner accept must run the tool: %+v → %+v", before, after)
+	}
+	var acceptAns string
+	for _, a := range pilot.Spec.Source.ChatAnswers {
+		if a.MessageID == 202 {
+			acceptAns = a.Text
+		}
+	}
+	if !strings.Contains(acceptAns, "Proposal P1 accepted") {
+		t.Fatalf("accept answer = %q", acceptAns)
+	}
+
+	e.propose("retry again", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	pilot = e.pilot()
+	rejectID := int64(203)
+	pilot.Spec.Source.ChatMessages = append(pilot.Spec.Source.ChatMessages, aiv1.ChatMessage{
+		ID: rejectID, Kind: "command", Text: `{"cmd":"reject","proposal":2}`, Author: "alice@example.com",
+	})
+	if err := e.c.Update(e.ctx, &pilot); err != nil {
+		t.Fatal(err)
+	}
+	runs := e.toolEffect().runs
+	e.reconcile()
+	pilot = e.pilot()
+	if len(pilot.Status.Pilot.Proposals) != 0 {
+		t.Fatalf("reject must drop the proposal: %+v", pilot.Status.Pilot)
+	}
+	if e.toolEffect().runs != runs {
+		t.Fatalf("reject must not run tools")
+	}
+	var rejectAns string
+	for _, a := range pilot.Spec.Source.ChatAnswers {
+		if a.MessageID == rejectID {
+			rejectAns = a.Text
+		}
+	}
+	if !strings.Contains(rejectAns, "dropped") {
+		t.Fatalf("reject answer = %q", rejectAns)
+	}
+}
+
+// Two proposal answers in one sync: each one's status patch replaces the
+// task, and neither answer may get lost with it.
+func TestPilotChatCommandsBatchKeepsAnswers(t *testing.T) {
+	e := newProposalEnv(t)
+	e.gl.Milestones[0].Description += "\n/agent owner-subjects alice@example.com"
+	e.reconcile()
+	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.propose("retry #1 again", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	if n := len(e.pilot().Status.Pilot.Proposals); n != 2 {
+		t.Fatalf("open proposals = %d, want 2", n)
+	}
+
+	pilot := e.pilot()
+	pilot.Spec.Source.ChatMessages = []aiv1.ChatMessage{
+		{ID: 301, Kind: "command", Text: `{"cmd":"reject","proposal":1}`, Author: "alice@example.com"},
+		{ID: 302, Kind: "command", Text: `{"cmd":"reject","proposal":2}`, Author: "alice@example.com"},
+	}
+	if err := e.c.Update(e.ctx, &pilot); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	pilot = e.pilot()
+	got := map[int64]string{}
+	for _, a := range pilot.Spec.Source.ChatAnswers {
+		got[a.MessageID] = a.Text
+	}
+	if !strings.Contains(got[301], "P1 dropped") || !strings.Contains(got[302], "P2 dropped") {
+		t.Fatalf("answers = %v, want both proposals dropped", got)
+	}
+	if pilot.Spec.Source.LastChatCommandID != 302 {
+		t.Fatalf("LastChatCommandID = %d, want 302", pilot.Spec.Source.LastChatCommandID)
+	}
+}
+
+// Verbs sent to a milestone whose autopilot was switched off are answered,
+// not left on the task.
+func TestAutopilotChatCommandsAnsweredWhenOff(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.gl.Milestones[0].Description = "/agent spec\nBuild a new checkout."
+	e.reconcile()
+	st := e.tasks()[specTaskName]
+	if st.Spec.Autopilot {
+		t.Fatal("autopilot still on")
+	}
+	st.Spec.Source.ChatMessages = []aiv1.ChatMessage{{ID: 111, Kind: "command", Text: `{"cmd":"pause"}`, Author: "ada@x"}}
+	if err := e.c.Update(e.ctx, &st); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	st = e.tasks()[specTaskName]
+	if st.Spec.Source.LastChatCommandID != 111 || len(st.Spec.Source.ChatAnswers) != 1 ||
+		st.Spec.Source.ChatAnswers[0].Text != "The autopilot is off for this milestone." {
+		t.Fatalf("mark %d, answers %+v", st.Spec.Source.LastChatCommandID, st.Spec.Source.ChatAnswers)
+	}
+}

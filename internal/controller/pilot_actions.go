@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
@@ -236,14 +238,81 @@ func (r *AgentProjectReconciler) patchProposals(ctx context.Context, coord *aiv1
 	return err
 }
 
+// applyPilotChatCommands applies Desk accept/reject on the Coordinate task
+// newer than LastChatCommandID. Authority is ownerSubjects; answers and the
+// mark are saved on the Coordinate task.
+func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+	st, coord *aiv1.AgentTask) error {
+	src := &coord.Spec.Source
+	var pending []aiv1.ChatMessage
+	for _, m := range src.ChatMessages {
+		if m.Kind == "command" && m.ID > src.LastChatCommandID {
+			pending = append(pending, m)
+		}
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+	slices.SortFunc(pending, func(a, b aiv1.ChatMessage) int { return cmp.Compare(a.ID, b.ID) })
+	logger := log.FromContext(ctx)
+	now := metav1.Now()
+	// Kept apart until the end: answerProposal's status patch replaces
+	// coord with the server's copy, spec included.
+	var answers []aiv1.ChatReply
+	mark := src.LastChatCommandID
+	answer := func(id int64, text string) {
+		answers = append(answers, aiv1.ChatReply{MessageID: id, Text: text, At: now})
+		mark = id
+	}
+	for _, m := range pending {
+		cmd, err := chatcmd.Parse(m.Text)
+		if err != nil {
+			answer(m.ID, err.Error())
+			logger.Info("chat command skipped", "id", m.ID, "author", m.Author, "error", err.Error())
+			continue
+		}
+		if !cmd.ProposalOnly() {
+			answer(m.ID, "not supported on this task yet")
+			continue
+		}
+		if !slices.Contains(coord.Spec.OwnerSubjects, m.Author) {
+			answer(m.ID, "Only the milestone's owners may answer proposals.")
+			logger.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
+			continue
+		}
+		who := m.Author
+		if m.AuthorName != "" {
+			who = m.AuthorName
+		}
+		yes := cmd.Cmd == "accept"
+		logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "proposal", cmd.Proposal)
+		reply, err := r.answerProposal(ctx, project, spec, st, coord, who, 0, trackingIssue(st, coord), cmd.Proposal, yes, true)
+		if err != nil {
+			return err
+		}
+		if reply == "" {
+			reply = fmt.Sprintf("Proposal P%d accepted; the outcome follows.", cmd.Proposal)
+		}
+		answer(m.ID, reply)
+	}
+	src = &coord.Spec.Source
+	src.ChatAnswers = append(src.ChatAnswers, answers...)
+	src.LastChatCommandID = mark
+	if n := len(src.ChatAnswers); n > maxChatAnswers {
+		src.ChatAnswers = append([]aiv1.ChatReply(nil), src.ChatAnswers[n-maxChatAnswers:]...)
+	}
+	return r.Update(ctx, coord)
+}
+
 // answerProposal handles an owner's "yes" or "no", written by user byID
 // named by on issue where (0: a merge request), to proposal id (0: none
 // named) and returns the reply, "" for none. An answer from someone who was
 // no owner when the proposal was posted does nothing; one that expired is
 // refused; an accepted one moves to status.pilot.accepted, which
-// runAccepted runs at the end of the poll.
+// runAccepted runs at the end of the poll. authorized skips the OwnerIDs
+// check: the Desk path already matched Author against ownerSubjects.
 func (r *AgentProjectReconciler) answerProposal(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st, coord *aiv1.AgentTask, by string, byID, where, id int64, yes bool) (string, error) {
+	st, coord *aiv1.AgentTask, by string, byID, where, id int64, yes, authorized bool) (string, error) {
 	var open []aiv1.PilotProposal
 	if ps := coord.Status.Pilot; ps != nil {
 		open = ps.Proposals
@@ -265,8 +334,8 @@ func (r *AgentProjectReconciler) answerProposal(ctx context.Context, project *ai
 	}
 	p := open[i]
 	// Without pinned IDs (posted before they were), the caller's check by
-	// the owners' names is all there is.
-	if len(p.OwnerIDs) > 0 && !slices.Contains(p.OwnerIDs, byID) {
+	// the owners' names is all there is. Desk callers pass authorized.
+	if !authorized && len(p.OwnerIDs) > 0 && !slices.Contains(p.OwnerIDs, byID) {
 		return "", nil
 	}
 	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
@@ -596,7 +665,7 @@ func (r *AgentProjectReconciler) threadAnswers(ctx context.Context, gl gitlab.AP
 			continue
 		}
 		yes, _, _ := command.PilotAnswer(n.Body)
-		reply, err := r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.Author.ID, tracking, id, yes)
+		reply, err := r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.Author.ID, tracking, id, yes, false)
 		if err != nil {
 			return err
 		}

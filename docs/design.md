@@ -217,10 +217,14 @@ fence and at most 5000 bytes.
 **Owners.** The project controller resolves the owners of every task on each
 poll (a milestone's `/agent owners` line, else `spec.notify.users`, else
 `--default-owners`) into `AgentTask.spec.owners`; the runner and the CI and
-autopilot code only read the task. The owners line, like the
-[standing rules](#pilot), is left out of the milestone's description hash,
-so it does not re-plan. Mentions go into new
-comments only, because GitLab notifies again for mentions added by an edit.
+autopilot code only read the task. A milestone's `/agent owner-subjects …`
+line (Desk identities, the UI's username claim) is stored as
+`AgentTask.spec.ownerSubjects` with no project-level fallback; Desk
+accept/reject of pilot proposals needs the author there. The owners and
+owner-subjects lines, like the [standing rules](#pilot), are left out of
+the milestone's description hash, so they do not re-plan. Mentions go into
+new comments only, because GitLab notifies again for mentions added by an
+edit.
 With `workflow.commandsFrom: owners`, `commandGate`
 (`internal/controller/commandgate.go`) filters every poll's `/agent`
 comments (run requests, `reviewOnly`, routing, the tracking issue's
@@ -429,9 +433,11 @@ inserts the reply (`ON CONFLICT reply_to DO NOTHING`) and drops the message
 from the spec. A task with unanswered chat turns (`message` / `interrupt`)
 gets its pod without a run request (same suspend, capacity and blocked
 gates as a run). Kind `command` rows are structured JSON (`internal/chatcmd`);
-the dispatcher puts Implement commands (`retry`, `review`, `use`, `effort`)
-on the task and wakes the project reconciler, which applies them like
-`/agent` comments (`spec.source.lastChatCommandID`, answers in
+the dispatcher puts Implement commands (`retry`, `review`, `use`, `effort`),
+autopilot verbs (`pause`, `resume`, `skip`) on an autopilot Spec task, and
+proposal answers (`accept`, `reject`) on a Coordinate task onto the task
+and wakes the project reconciler, which applies them like `/agent` /
+`/pilot` comments (`spec.source.lastChatCommandID`, answers in
 `chatAnswers`); the chatreply reconciler copies those answers as system
 rows. Commands do not start or keep a pod. See
 [desk-live-agent-chat.spec.md](specs/desk-live-agent-chat.spec.md).

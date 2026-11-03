@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
@@ -37,7 +39,8 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 	case st.Spec.Milestone == nil:
 		return nil
 	case !st.Spec.Autopilot && (st.Status.Autopilot == nil || st.Status.Autopilot.Phase == aiv1.AutopilotOff):
-		return nil // never on, or already off
+		// Never on, or already off: Desk verbs sent meanwhile get an answer.
+		return r.refuseChatCommands(ctx, st, "The autopilot is off for this milestone.")
 	}
 	ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}
 	if st.Status.Autopilot != nil {
@@ -51,7 +54,55 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 	if serr := a.save(ctx); err == nil {
 		err = serr
 	}
+	// Desk answers after the status: the verbs are idempotent, so a restart
+	// between the two writes applies a verb again and answers once. Re-get
+	// so a status patch response cannot wipe the Spec fields.
+	if err == nil && a.chatMark > 0 {
+		var fresh aiv1.AgentTask
+		if err = r.Get(ctx, client.ObjectKeyFromObject(st), &fresh); err == nil {
+			// Appended to the fresh list: chatreply may have dropped
+			// answered ones meanwhile.
+			fresh.Spec.Source.ChatAnswers = append(fresh.Spec.Source.ChatAnswers, a.chatAnswers...)
+			fresh.Spec.Source.LastChatCommandID = a.chatMark
+			if n := len(fresh.Spec.Source.ChatAnswers); n > maxChatAnswers {
+				fresh.Spec.Source.ChatAnswers = append([]aiv1.ChatReply(nil), fresh.Spec.Source.ChatAnswers[n-maxChatAnswers:]...)
+			}
+			err = r.Update(ctx, &fresh)
+			if err == nil {
+				st.Spec.Source.ChatAnswers = fresh.Spec.Source.ChatAnswers
+				st.Spec.Source.LastChatCommandID = fresh.Spec.Source.LastChatCommandID
+			}
+		}
+	}
+	if err == nil && !st.Spec.Autopilot {
+		// Turned off by this sync: verbs that came too late are answered.
+		err = r.refuseChatCommands(ctx, st, "The autopilot is off for this milestone.")
+	}
 	return err
+}
+
+// refuseChatCommands answers the Desk commands of task newer than its
+// LastChatCommandID with text, without applying them, so they do not stay
+// unanswered on a task that no longer handles them.
+func (r *AgentProjectReconciler) refuseChatCommands(ctx context.Context, task *aiv1.AgentTask, text string) error {
+	src := &task.Spec.Source
+	var answers []aiv1.ChatReply
+	mark := src.LastChatCommandID
+	for _, m := range src.ChatMessages {
+		if m.Kind == "command" && m.ID > src.LastChatCommandID {
+			answers = append(answers, aiv1.ChatReply{MessageID: m.ID, Text: text, At: metav1.Now()})
+			mark = max(mark, m.ID)
+		}
+	}
+	if len(answers) == 0 {
+		return nil
+	}
+	src.ChatAnswers = append(src.ChatAnswers, answers...)
+	src.LastChatCommandID = mark
+	if n := len(src.ChatAnswers); n > maxChatAnswers {
+		src.ChatAnswers = append([]aiv1.ChatReply(nil), src.ChatAnswers[n-maxChatAnswers:]...)
+	}
+	return r.Update(ctx, task)
 }
 
 func (a *autopilot) sync(ctx context.Context) error {
@@ -78,6 +129,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 		return err
 	}
 	if err := a.commands(ctx); err != nil {
+		return err
+	}
+	if err := a.chatCommands(ctx); err != nil {
 		return err
 	}
 	if len(a.st.Status.Plan) == 0 {
@@ -144,6 +198,10 @@ type autopilot struct {
 	// lane: this milestone drives the main-red issue, mainRed while red.
 	lane    bool
 	mainRed int64
+	// New Desk command answers to write after the autopilot status is
+	// saved (a status patch must not wipe them from the Spec).
+	chatMark    int64
+	chatAnswers []aiv1.ChatReply
 }
 
 // queueOrder orders the plan topologically: dependencies first, ties in plan
@@ -1118,8 +1176,14 @@ func (a *autopilot) commands(ctx context.Context) error {
 			word = ""
 		}
 		// Tried again on the next poll when it fails.
-		if err := a.command(ctx, word, fields[1], "@"+n.Author.Username); err != nil {
+		reply, applied, err := a.command(ctx, word, fields[1], "@"+n.Author.Username)
+		if err != nil {
 			return err
+		}
+		if !applied {
+			if err := a.comment(ctx, reply); err != nil {
+				return err
+			}
 		}
 		a.ap.LastCommandNoteID = n.ID
 	}
@@ -1131,8 +1195,14 @@ func (a *autopilot) commands(ctx context.Context) error {
 				continue
 			}
 			if c.Action.Tool != "revisit" {
-				if err := a.command(ctx, c.Action.Tool, fmt.Sprintf("#%d", c.Action.IssueIID), "@"+c.Owner+" via the pilot"); err != nil {
+				reply, applied, err := a.command(ctx, c.Action.Tool, fmt.Sprintf("#%d", c.Action.IssueIID), "@"+c.Owner+" via the pilot")
+				if err != nil {
 					return err
+				}
+				if !applied {
+					if err := a.comment(ctx, reply); err != nil {
+						return err
+					}
 				}
 			}
 			a.ap.LastPilotCommand = c.Seq
@@ -1141,34 +1211,90 @@ func (a *autopilot) commands(ctx context.Context) error {
 	return nil
 }
 
+// chatCommands applies Desk pause/resume/skip on the Spec task newer than
+// LastChatCommandID. Answers are kept on a until after the status save.
+func (a *autopilot) chatCommands(ctx context.Context) error {
+	src := &a.st.Spec.Source
+	var pending []aiv1.ChatMessage
+	for _, m := range src.ChatMessages {
+		if m.Kind == "command" && m.ID > src.LastChatCommandID {
+			pending = append(pending, m)
+		}
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+	slices.SortFunc(pending, func(x, y aiv1.ChatMessage) int { return cmp.Compare(x.ID, y.ID) })
+	now := metav1.Now()
+	var answers []aiv1.ChatReply
+	mark := src.LastChatCommandID
+	answer := func(id int64, text string) {
+		answers = append(answers, aiv1.ChatReply{MessageID: id, Text: text, At: now})
+		mark = id
+	}
+	for _, m := range pending {
+		cmd, err := chatcmd.Parse(m.Text)
+		if err != nil {
+			answer(m.ID, err.Error())
+			a.log.Info("chat command skipped", "id", m.ID, "author", m.Author, "error", err.Error())
+			continue
+		}
+		if !cmd.Autopilot() {
+			answer(m.ID, "not supported on this task yet")
+			continue
+		}
+		who := m.Author
+		if m.AuthorName != "" {
+			who = m.AuthorName
+		}
+		by := who + " via the Desk"
+		arg := ""
+		if cmd.Cmd == "skip" {
+			arg = fmt.Sprintf("#%d", cmd.Issue)
+		}
+		a.log.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author)
+		reply, _, err := a.command(ctx, cmd.Cmd, arg, by)
+		if err != nil {
+			return err
+		}
+		answer(m.ID, reply)
+	}
+	a.chatMark, a.chatAnswers = mark, answers
+	return nil
+}
+
 // command applies one command of the tracking issue: pause, resume or
-// skip arg, by someone; it answers anything else.
-func (a *autopilot) command(ctx context.Context, word, arg, by string) error {
+// skip arg, by someone. It returns the answer and whether the command was
+// applied; the tracking issue gets only the answers of commands that were
+// not (usage, unknown), the Desk gets every answer.
+func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer string, applied bool, err error) {
 	switch word {
 	case "pause":
 		if a.ap.Phase != aiv1.AutopilotDone {
 			a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotPaused, "paused by "+by
 			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 		}
+		return "Autopilot paused.", true, nil
 	case "resume":
 		if a.ap.Phase == aiv1.AutopilotPaused {
 			if err := a.unblockActive(ctx); err != nil {
-				return err
+				return "", false, err
 			}
 			a.ap.Phase, a.ap.PausedReason = aiv1.AutopilotRunning, ""
 			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 		}
+		return "Autopilot resumed.", true, nil
 	case "skip":
 		iid, _ := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64)
 		it := a.item(iid)
 		if it == nil || it.State == aiv1.AutopilotItemMerged {
-			return a.comment(ctx, fmt.Sprintf("`skip` needs a planned issue that is not merged yet, e.g. `%s skip #12`.", a.spec.Workflow.CommandPrefix))
+			return fmt.Sprintf("`skip` needs a planned issue that is not merged yet, e.g. `%s skip #12`.", a.spec.Workflow.CommandPrefix), false, nil
 		}
 		it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+		return fmt.Sprintf("#%d skipped.", iid), true, nil
 	default:
-		return a.comment(ctx, a.unknownCommand())
+		return a.unknownCommand(), false, nil
 	}
-	return nil
 }
 
 // unknownCommand answers a command the tracking issue does not understand,

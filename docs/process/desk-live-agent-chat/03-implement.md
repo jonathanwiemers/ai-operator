@@ -108,3 +108,14 @@ One section per slice. Builder: cursor-agent (`--model auto`) in the slice's wor
 
 - chatcmd table; UI 400; dispatch of commands, wake, Spec task refused; apply retry once across syncs, use → labels, review without head; answer copied and dropped; command-only list needs no pod; sweep of a removed task.
 - `gofmt` clean, `go vet ./...` ok, `make generate manifests` stable, `go test -race ./...` ok, `make helm-lint` ok.
+
+## Slice 9b — Autopilot verbs, proposals, owner subjects (`feat/chat-commands-pilot`)
+
+- Dispatcher: pause/resume/skip for the Spec task of an autopilot milestone, accept/reject for the Coordinate task.
+- Autopilot: `chatCommands` applies the verbs through `autopilot.command`, which now returns its answer and whether it applied (the tracking issue still gets only usage and unknown answers); answers and mark are written to the Spec task after the autopilot status. Verbs that reach a task whose autopilot is off are answered "The autopilot is off for this milestone."
+- Pilot: `applyPilotChatCommands` answers proposals through `answerProposal` (new `authorized` flag skips the GitLab owner-ID check); authority by `spec.ownerSubjects`, from the milestone line `<prefix> owner-subjects a b`, which is also cut from the planner's spec text.
+
+### Tests
+
+- Dispatcher per task type; autopilot verbs once across syncs, no GitLab comments; verbs answered when the autopilot is off; accept by owner subject vs. someone else; reject; two proposal answers in one sync keep both answers; owner-subjects parsing.
+- `go vet ./...` ok, `go test -race ./...` ok except the pre-existing `internal/webhook` shutdown flake (fails about 1 in 3 runs on main too), `make helm-lint` ok.

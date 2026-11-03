@@ -125,10 +125,32 @@ func (c *Command) parseEffort() error {
 }
 
 // ImplementOnly reports whether the command is handled on Implement tasks
-// in slice 9a (retry, review, use, effort).
+// (retry, review, use, effort).
 func (c Command) ImplementOnly() bool {
 	switch c.Cmd {
 	case "retry", "review", "use", "effort":
+		return true
+	default:
+		return false
+	}
+}
+
+// Autopilot reports whether the command is an autopilot verb (pause, resume,
+// skip) for the Spec task of an autopilot milestone.
+func (c Command) Autopilot() bool {
+	switch c.Cmd {
+	case "pause", "resume", "skip":
+		return true
+	default:
+		return false
+	}
+}
+
+// ProposalOnly reports whether the command answers a pilot proposal
+// (accept, reject) on a Coordinate task.
+func (c Command) ProposalOnly() bool {
+	switch c.Cmd {
+	case "accept", "reject":
 		return true
 	default:
 		return false

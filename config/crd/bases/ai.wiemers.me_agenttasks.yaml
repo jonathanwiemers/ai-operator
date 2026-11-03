@@ -123,6 +123,15 @@ spec:
                 - iid
                 - title
                 type: object
+              ownerSubjects:
+                description: |-
+                  OwnerSubjects are the Desk identities (OIDC username claim) that own
+                  the milestone, from its "<prefix> owner-subjects …" line. Used to
+                  authorize Desk accept/reject of pilot proposals. No project-level
+                  or default fallback.
+                items:
+                  type: string
+                type: array
               owners:
                 description: |-
                   Owners are the GitLab usernames mentioned when the task needs a human:
@@ -266,7 +275,8 @@ spec:
                   lastChatCommandID:
                     description: |-
                       LastChatCommandID is the newest Desk chat command (kind "command")
-                      the project reconciler has applied (Implement tasks).
+                      the project reconciler has applied (Implement, Spec autopilot, or
+                      Coordinate tasks).
                     format: int64
                     type: integer
                   lastCommandNoteID:

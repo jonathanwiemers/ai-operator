@@ -215,7 +215,7 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		case stop || goOn:
 			reply, err = r.switchAutonomy(ctx, spec, coord, n.Author.Username, stop)
 		case answer:
-			reply, err = r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.Author.ID, n.issue, id, yes)
+			reply, err = r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.Author.ID, n.issue, id, yes, false)
 		case tell:
 			reply, err = r.proposeTell(ctx, gl, project, spec, st, coord, n, iid, text)
 		case list:
@@ -328,12 +328,14 @@ func (r *AgentProjectReconciler) ensurePilot(ctx context.Context, project *aiv1.
 			return nil, err
 		}
 		coord.Labels[LabelMilestoneIID] = strconv.FormatInt(m.IID, 10)
-		coord.Spec.Milestone, coord.Spec.Issue, coord.Spec.Autopilot, coord.Spec.Owners, coord.Spec.Rules = m, issue, autopilot, st.Spec.Owners, st.Spec.Rules
+		coord.Spec.Milestone, coord.Spec.Issue, coord.Spec.Autopilot = m, issue, autopilot
+		coord.Spec.Owners, coord.Spec.OwnerSubjects, coord.Spec.Rules = st.Spec.Owners, st.Spec.OwnerSubjects, st.Spec.Rules
 		log.FromContext(ctx).Info("starting the pilot of a milestone", "milestone", m.Title, "task", coord.Name, "issue", issue.IID)
 		return coord, r.Create(ctx, coord)
 	}
 	set := func(c *aiv1.AgentTask) {
-		c.Spec.Milestone, c.Spec.Autopilot, c.Spec.Owners, c.Spec.Rules = m, autopilot, st.Spec.Owners, st.Spec.Rules
+		c.Spec.Milestone, c.Spec.Autopilot = m, autopilot
+		c.Spec.Owners, c.Spec.OwnerSubjects, c.Spec.Rules = st.Spec.Owners, st.Spec.OwnerSubjects, st.Spec.Rules
 		if issue != nil {
 			c.Spec.Issue = issue
 		}
@@ -409,7 +411,11 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 		}
 		// A pilot created in this poll hears of the events from the next.
 		if err == nil && coord != nil && keep[coord.Name] {
-			err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks))
+			// Desk accept/reject before runAccepted, like GitLab yes/no in
+			// pilotTracking above.
+			if err = r.applyPilotChatCommands(ctx, project, spec, st, coord); err == nil {
+				err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks))
+			}
 			if err == nil {
 				_, err = r.postProposals(ctx, gl, project, spec, st, coord, tracking)
 			}

@@ -227,6 +227,46 @@ func TestChatDispatchCommandOnSpecTask(t *testing.T) {
 	if st != "failed" || reason != "not supported on this task yet" {
 		t.Fatalf("state = %q %q", st, reason)
 	}
+
+	pause := e.insertUser(task.Name, `{"cmd":"pause"}`, "command", "c-pause-no-ap")
+	e.chat.dispatchQueued(e.ctx)
+	st, reason = e.msgState(pause, task.Name)
+	if st != "failed" || reason != "not supported on this task yet" {
+		t.Fatalf("pause without autopilot = %q %q", st, reason)
+	}
+
+	task = e.task(task.Name)
+	task.Spec.Autopilot = true
+	if err := e.c.Update(e.ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	ok := e.insertUser(task.Name, `{"cmd":"pause"}`, "command", "c-pause-ap")
+	e.chat.dispatchQueued(e.ctx)
+	st, reason = e.msgState(ok, task.Name)
+	if st != "delivered" || reason != "" {
+		t.Fatalf("pause on autopilot Spec = %q %q", st, reason)
+	}
+}
+
+func TestChatDispatchCommandOnCoordinateTask(t *testing.T) {
+	task := chatTask("shop-pilot-m1")
+	task.Spec.Type = aiv1.TaskTypeCoordinate
+	task.Spec.Issue = &aiv1.IssueRef{IID: 9}
+	e := newChatEnv(t, chatProject(true), task)
+
+	retry := e.insertUser(task.Name, `{"cmd":"retry"}`, "command", "c-coord-retry")
+	e.chat.dispatchQueued(e.ctx)
+	st, reason := e.msgState(retry, task.Name)
+	if st != "failed" || reason != "not supported on this task yet" {
+		t.Fatalf("retry on Coordinate = %q %q", st, reason)
+	}
+
+	accept := e.insertUser(task.Name, `{"cmd":"accept","proposal":3}`, "command", "c-coord-accept")
+	e.chat.dispatchQueued(e.ctx)
+	st, reason = e.msgState(accept, task.Name)
+	if st != "delivered" || reason != "" {
+		t.Fatalf("accept on Coordinate = %q %q", st, reason)
+	}
 }
 
 func TestChatReplyCopiesAnswer(t *testing.T) {

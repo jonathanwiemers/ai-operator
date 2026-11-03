@@ -32,12 +32,22 @@ func ownersLine(prefix string) *regexp.Regexp {
 	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(prefix) + `[ \t]+owners(?:[ \t]+(.*?))?[ \t]*\r?(?:\n|\z)`)
 }
 
+func ownerSubjectsLine(prefix string) *regexp.Regexp {
+	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(prefix) + `[ \t]+owner-subjects(?:[ \t]+(.*?))?[ \t]*\r?(?:\n|\z)`)
+}
+
 // WithoutOwners removes the owners lines from a milestone description, so
 // adding, changing or removing the owners does not change the spec. A line
 // set off by blank lines takes one of them along, so the paragraphs around
 // it are spaced as before.
 func WithoutOwners(description, prefix string) string {
 	return WithoutLines(description, ownersLine(prefix))
+}
+
+// WithoutOwnerSubjects removes the owner-subjects lines from a milestone
+// description, like WithoutOwners.
+func WithoutOwnerSubjects(description, prefix string) string {
+	return WithoutLines(description, ownerSubjectsLine(prefix))
 }
 
 // WithoutLines removes the lines re matches, spaced like WithoutOwners.
@@ -66,6 +76,25 @@ func MilestoneOwners(description, prefix string) ([]string, bool) {
 		return nil, false
 	}
 	return Usernames(strings.FieldsFunc(m[1], func(r rune) bool { return r == ' ' || r == '\t' || r == ',' })), true
+}
+
+// MilestoneOwnerSubjects returns the Desk identities a milestone description
+// names on a line "<prefix> owner-subjects alice@example.com bob". There is
+// no project-level or default fallback: no line means nobody. Tokens are
+// kept as written (unique, in order); they match chat_messages.author.
+func MilestoneOwnerSubjects(description, prefix string) []string {
+	m := ownerSubjectsLine(prefix).FindStringSubmatch(description)
+	if m == nil {
+		return nil
+	}
+	var out []string
+	for _, s := range strings.FieldsFunc(m[1], func(r rune) bool { return r == ' ' || r == '\t' || r == ',' }) {
+		s = strings.TrimSpace(s)
+		if s != "" && !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // Resolve returns the owners of a task: the milestone's, else the project's,

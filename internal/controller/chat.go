@@ -224,7 +224,7 @@ func (c *Chat) dispatchOne(ctx context.Context, s *store.Store, m store.ChatMess
 			fail(err.Error())
 			return
 		}
-		if task.Spec.Type != aiv1.TaskTypeImplement || !cmd.ImplementOnly() {
+		if !chatCommandAllowed(task, cmd) {
 			fail("not supported on this task yet")
 			return
 		}
@@ -397,6 +397,20 @@ func chatAuthorName(task *aiv1.AgentTask) string {
 		return string(task.Status.Run.EngineUsage[n-1].Engine)
 	}
 	return ""
+}
+
+// chatCommandAllowed reports whether cmd may be delivered onto task.
+func chatCommandAllowed(task aiv1.AgentTask, cmd chatcmd.Command) bool {
+	switch {
+	case cmd.ImplementOnly() && task.Spec.Type == aiv1.TaskTypeImplement:
+		return true
+	case cmd.Autopilot() && task.Spec.Type == aiv1.TaskTypeSpec && task.Spec.Autopilot:
+		return true
+	case cmd.ProposalOnly() && task.Spec.Type == aiv1.TaskTypeCoordinate:
+		return true
+	default:
+		return false
+	}
 }
 
 // SetupWithManager registers the reply reconciler.

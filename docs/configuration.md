@@ -515,7 +515,7 @@ needs a human) and asks for reviews, see
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `users` | operator's `--default-owners` (with Helm: `defaultOwners`) | GitLab usernames, without `@`. A milestone overrides them with a line `/agent owners @alice @bob` in its description, for itself and its issues |
+| `users` | operator's `--default-owners` (with Helm: `defaultOwners`) | GitLab usernames, without `@`. A milestone overrides them with a line `/agent owners @alice @bob` in its description, for itself and its issues. Desk accept/reject of pilot proposals uses a separate line `/agent owner-subjects alice@example.com bob` (the UI's username claim); there is no project-level or default fallback |
 | `events` | all | which situations mention them: `failed` (a run failed), `needsInput` (questions, or the agent could not finish alone), `ciFailed` (CI still red after the fix rounds), `review` (an issue reached review, not on autopilot), `autopilotPaused`, `autopilotDone`, `mainRed` (the default branch stayed red after a retry), `blocked` (a run gave up for an outside reason and its issue stays blocked, also on autopilot) |
 | `requestReview` | `true` | when an issue reaches review (not on autopilot), make the users the reviewers of its MR, unless it has reviewers |
 
