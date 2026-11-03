@@ -325,7 +325,8 @@ own.
 `chat: true` lets its roles post Desk chat messages to the projects' agents
 (no GitLab token). Default off; needs `ui.chat.writerSecret` and the
 research database. Who may chat is decided by this grant, not by GitLab
-membership.
+membership. Delivery also needs `agents.chat: true` on the AgentProject;
+without it the operator marks the row failed.
 
 `transcript: true` on a rule also shows its roles the live transcripts of the
 projects' runs. Transcripts can quote code, issue text and CI logs, so they

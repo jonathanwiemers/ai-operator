@@ -60,3 +60,11 @@ Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./inte
 | 6 | (orchestrator) state file written in place, read concurrently by the interrupt watcher | real | write and rename |
 | 7 | `chatSessionKey` kept after a lost agent: retries prompt a session the restarted container does not have | real | cleared on any prompt error; reopen test |
 | 8 | Interrupt landing after the answer marked a finished turn interrupted | real | `chatTurnState` guards cancel vs finish; test |
+
+## Slice 7
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | (orchestrator) dispatcher and reply reconciler replace `chatMessages` with a merge patch from cached reads: a stale read drops a delivered message (lost) or re-adds an answered one (stuck, pod never hibernates) | real | optimistic lock on both patches, dispatch reads from the API server; stale-read test |
+| 2 | (orchestrator) a 100-row queued batch could be filled by rows waiting behind full tasks | real (unlikely) | batch of 500 |
+| — | cursor-agent review | no findings | — |

@@ -322,6 +322,7 @@ it to `false` for one commit per run.
 | `logPrompts` | `false` | log every prompt (role, system prompt, prompt, each cut at 64 KiB) in the agent container, for the web UI's [live transcript](ui.md#live-transcript). Prompts hold issue text, comments, diffs and CI logs |
 | `fallbackAtPercent` | – | switch a role with a [fallback](#fallback-engine) to it before its engine's hard limit, when a usage window of the engine (claude reports them) is at least this full, e.g. `90` |
 | `maxEffort` | `high` | the highest effort an issue may ask for (`agent-effort::` label, `/agent effort`, the planner's choice); higher values are lowered. The roles' own `effort` is not capped |
+| `chat` | `false` | turn Desk [live chat](design.md#desk-live-chat) on for this project's tasks; the operator hands `chat_messages` rows to the tasks. Needs the research database; without it (or with `false`) queued messages are marked failed |
 
 If `resources` sets a memory limit or CPUs (limits, else requests), the
 implementing agent is told them in its system prompt, with the advice to keep
@@ -461,6 +462,7 @@ another engine starts a new session with the full context.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `idleTimeout` | `1m` | after the last run, the pod is stopped; the workspace stays. A longer timeout keeps the pod (and its resource requests) for quick follow-ups, which saves only the pod start. After a failed run the pod stays at least 1h, so its logs can be read |
+| `chatIdleTimeout` | `15m` | after the last Desk chat turn, how long an idle pod stays before hibernation (instead of only `idleTimeout`); unanswered chat messages keep the pod up regardless |
 | `retentionPeriod` | `168h` (7 days) | after the last run, the workspace PVC is deleted |
 | `maxRunsPerTask` | `20` | the task is `Blocked` when reached (runs paused by usage limits don't count) |
 | `usageLimitBackoff` | `5m` | first wait after a usage or rate limit without a reported reset time; doubles per further hit |

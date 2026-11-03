@@ -118,7 +118,10 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		lastActivity = t.Time
 	}
 	idleFor := now.Sub(lastActivity)
+	idleTimeout := lc.IdleTimeout.Duration
 	pending := task.RunPending()
+	hasChat := len(task.Spec.Source.ChatMessages) > 0
+	needsPod := pending || hasChat
 	// The runner bumps RunCount when a run finishes, so a run in progress is
 	// never cut off by the limit.
 	inProgress := task.Status.Run.ActiveRunRequest > task.Status.Run.ObservedRunRequest
@@ -158,7 +161,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	var result ctrl.Result
 	switch {
-	case pending && !blocked && !waiting && !task.Spec.Suspend:
+	case needsPod && !blocked && !waiting && !task.Spec.Suspend:
 		if pvc == nil {
 			pvc = buildWorkspaceClaim(&task, spec)
 			if err := controllerutil.SetControllerReference(&task, pvc, r.Scheme); err != nil {
@@ -196,25 +199,37 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 		}
 		task.Status.Phase = aiv1.TaskPhaseRunning
-		task.Status.Message = fmt.Sprintf("run %d requested", task.Spec.RunRequest)
+		if pending {
+			task.Status.Message = fmt.Sprintf("run %d requested", task.Spec.RunRequest)
+		} else {
+			task.Status.Message = "answering chat"
+		}
 
 	case pod != nil:
 		// After a failed run the pod stays longer, so its logs can be read.
-		idleTimeout := lc.IdleTimeout.Duration
 		if task.Status.Run.LastResult == aiv1.RunResultFailed && idleTimeout < failedRunIdleTimeout {
 			idleTimeout = failedRunIdleTimeout
 		}
-		if !blocked && !task.Spec.Suspend && idleFor >= idleTimeout {
-			// The cache can lag behind a run request that came in just now,
-			// and the runner may already be working on it: check the API
-			// server before stopping the pod.
-			if fresh, err := r.freshRunPending(ctx, &task); err != nil {
+		// After a chat turn the pod stays at least chatIdleTimeout from
+		// lastTurnTime (instead of only idleTimeout from the last run).
+		chatKeeps := false
+		chatIdleFor, chatTimeout := time.Duration(0), time.Duration(0)
+		if chat := task.Status.Chat; chat != nil && chat.LastTurnTime != nil {
+			chatTimeout = lc.ChatIdleTimeout.Duration
+			chatIdleFor = now.Sub(chat.LastTurnTime.Time)
+			chatKeeps = chatIdleFor < chatTimeout
+		}
+		idleExpired := idleFor >= idleTimeout && !chatKeeps
+		if !blocked && !task.Spec.Suspend && idleExpired {
+			// The cache can lag behind a run request or chat message that
+			// came in just now: check the API server before stopping the pod.
+			if fresh, err := r.freshNeedsPod(ctx, &task); err != nil {
 				return ctrl.Result{}, err
 			} else if fresh {
 				return ctrl.Result{RequeueAfter: time.Second}, nil
 			}
 		}
-		if blocked || task.Spec.Suspend || idleFor >= idleTimeout {
+		if blocked || task.Spec.Suspend || idleExpired {
 			logger.Info("hibernating agent pod", "pod", pod.Name, "idleFor", idleFor.Round(time.Second))
 			if err := r.Delete(ctx, pod); client.IgnoreNotFound(err) != nil {
 				return ctrl.Result{}, err
@@ -232,6 +247,11 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			task.Status.Phase = aiv1.TaskPhaseIdle
 			task.Status.Message = "waiting for input"
 			result.RequeueAfter = remaining(idleTimeout, idleFor)
+			if chatKeeps {
+				if d := remaining(chatTimeout, chatIdleFor); idleFor >= idleTimeout || d < result.RequeueAfter {
+					result.RequeueAfter = d
+				}
+			}
 		}
 
 	case pvc != nil:
@@ -367,9 +387,9 @@ func (r *AgentTaskReconciler) getClaim(ctx context.Context, task *aiv1.AgentTask
 
 // runningTasks counts the other tasks of the same project that currently have
 // a run in flight.
-// freshRunPending reports whether the task, read from the API server, has a
-// run pending or in progress.
-func (r *AgentTaskReconciler) freshRunPending(ctx context.Context, task *aiv1.AgentTask) (bool, error) {
+// freshNeedsPod reports whether the task, read from the API server, needs its
+// pod for a pending run, an in-progress run, or unanswered chat messages.
+func (r *AgentTaskReconciler) freshNeedsPod(ctx context.Context, task *aiv1.AgentTask) (bool, error) {
 	if r.APIReader == nil {
 		return false, nil
 	}
@@ -377,7 +397,9 @@ func (r *AgentTaskReconciler) freshRunPending(ctx context.Context, task *aiv1.Ag
 	if err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(task), &fresh); err != nil {
 		return false, client.IgnoreNotFound(err)
 	}
-	return fresh.RunPending() || fresh.Status.Run.ActiveRunRequest > fresh.Status.Run.ObservedRunRequest, nil
+	return fresh.RunPending() ||
+		fresh.Status.Run.ActiveRunRequest > fresh.Status.Run.ObservedRunRequest ||
+		len(fresh.Spec.Source.ChatMessages) > 0, nil
 }
 
 // runInProgress checks with the API server whether the runner is in a run;

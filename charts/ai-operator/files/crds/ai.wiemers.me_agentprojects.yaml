@@ -66,6 +66,13 @@ spec:
                       that is mounted into every agent pod at /cache and used for dependency
                       caches (Go modules, npm, pip, ...), shared across tasks.
                     type: string
+                  chat:
+                    default: false
+                    description: |-
+                      Chat turns Desk live chat on for this project's tasks. The operator
+                      hands queued chat_messages rows to the tasks; without it those rows
+                      are marked failed. Needs the research database.
+                    type: boolean
                   credentialsSecretName:
                     description: |-
                       CredentialsSecretName names a secret whose keys are exposed to the agent
@@ -1133,6 +1140,14 @@ spec:
                 description: Lifecycle controls how long agent pods and workspaces
                   are kept around.
                 properties:
+                  chatIdleTimeout:
+                    default: 15m
+                    description: |-
+                      ChatIdleTimeout after the last Desk chat turn before an idle pod is
+                      hibernated. Longer than idleTimeout so a conversation can continue
+                      without a cold start; pods without a recent chat turn still use
+                      idleTimeout.
+                    type: string
                   idleTimeout:
                     default: 1m
                     description: |-

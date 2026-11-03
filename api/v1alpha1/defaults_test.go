@@ -52,6 +52,16 @@ func TestImplementRoleRouting(t *testing.T) {
 	}
 }
 
+func TestLifecycleDefaults(t *testing.T) {
+	l := LifecycleSpec{}.WithDefaults()
+	if l.IdleTimeout.Duration != DefaultIdleTimeout {
+		t.Fatalf("IdleTimeout = %v", l.IdleTimeout)
+	}
+	if l.ChatIdleTimeout.Duration != DefaultChatIdleTimeout {
+		t.Fatalf("ChatIdleTimeout = %v", l.ChatIdleTimeout)
+	}
+}
+
 func TestUsageLimitBackoff(t *testing.T) {
 	l := LifecycleSpec{}.WithDefaults()
 	want := []time.Duration{5 * time.Minute, 10 * time.Minute, 20 * time.Minute, 40 * time.Minute, time.Hour, time.Hour}

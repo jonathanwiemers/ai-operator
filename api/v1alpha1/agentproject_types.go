@@ -384,6 +384,13 @@ type AgentsSpec struct {
 	// +kubebuilder:validation:Maximum=100
 	// +optional
 	FallbackAtPercent *int32 `json:"fallbackAtPercent,omitempty"`
+
+	// Chat turns Desk live chat on for this project's tasks. The operator
+	// hands queued chat_messages rows to the tasks; without it those rows
+	// are marked failed. Needs the research database.
+	// +kubebuilder:default=false
+	// +optional
+	Chat bool `json:"chat,omitempty"`
 }
 
 // ModelOption is an engine and model an issue may switch to.
@@ -571,6 +578,14 @@ type LifecycleSpec struct {
 	// +kubebuilder:default="1m"
 	// +optional
 	IdleTimeout metav1.Duration `json:"idleTimeout,omitempty"`
+
+	// ChatIdleTimeout after the last Desk chat turn before an idle pod is
+	// hibernated. Longer than idleTimeout so a conversation can continue
+	// without a cold start; pods without a recent chat turn still use
+	// idleTimeout.
+	// +kubebuilder:default="15m"
+	// +optional
+	ChatIdleTimeout metav1.Duration `json:"chatIdleTimeout,omitempty"`
 
 	// RetentionPeriod after the last activity after which the workspace PVC is
 	// deleted as well.

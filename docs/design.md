@@ -389,7 +389,10 @@ stateDiagram-v2
 ```
 
 * **Idle**: the run is done; the pod waits a minute for a follow-up request
-  (e.g. a comment written while the agent worked) and then stops.
+  (e.g. a comment written while the agent worked) and then stops. After a
+  Desk chat turn it waits `lifecycle.chatIdleTimeout` (default 15m) from
+  `status.chat.lastTurnTime` instead; unanswered `spec.source.chatMessages`
+  keep the pod up like a pending run (see [Desk live chat](#desk-live-chat)).
 * **Hibernated**: pod deleted, PVC kept. This is the normal state between
   runs: no CPU or memory is held. Waking up costs a pod start; the checkout,
   build cache and agent session are still there. A warm pod would not keep
@@ -414,6 +417,18 @@ one new run `lifecycle.infraRetryAfter` after the failure: the request is
 recorded in `spec.source.infraRetry`, so a failed retry (its observed run
 request) waits for a human, and the runner's comment says which case it
 is. Autopilot's resume leaves such a block to that new run.
+
+### Desk live chat
+
+With `agents.chat: true` and the research database, Desk messages go into
+Postgres (`chat_messages`) and the operator (`internal/controller/chat.go`)
+hands each queued row to its `AgentTask` as `spec.source.chatMessages` (at
+most 20; the rest wait in the table), marking the row `delivered` only after
+the spec patch. The runner answers into `status.chat.replies`; the operator
+inserts the reply (`ON CONFLICT reply_to DO NOTHING`) and drops the message
+from the spec. A task with unanswered chat messages gets its pod without a
+run request (same suspend, capacity and blocked gates as a run). See
+[desk-live-agent-chat.spec.md](specs/desk-live-agent-chat.spec.md).
 
 Spec tasks have no issue to block, but get the same one retry: the runner
 also reports `infra` for a planning run that failed on a transient GitLab or
@@ -1492,6 +1507,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `api/v1alpha1` | CRD types, defaults, profile routing (`ImplementRole`) |
 | `internal/controller/agentproject_controller.go` | GitLab poll → AgentTasks, run requests, label acknowledgement, cleanup |
 | `internal/controller/agenttask_controller.go` | pod / PVC lifecycle, queueing, limits |
+| `internal/controller/chat.go` | Desk live chat: LISTEN/poll dispatch of `chat_messages` into `spec.source.chatMessages`, replies back into the table |
 | `internal/controller/resources.go` | pod and PVC templates |
 | `internal/runner/runner.go` | run loop, status reporting, session state, mirror ⇄ workspace sync |
 | `internal/runner/steps.go` | run steps: step logging, current step, GitLab run log |

@@ -69,3 +69,16 @@ One section per slice. Builder: cursor-agent (`--model auto`) in the slice's wor
 
 - `chat_test.go` (fake session agent, fake client): answer into status, command skipped, order, restart resend with prefix and stored session, agent lost keeps `chatInFlight` and does not spin, reopen after a lost agent, open failure answered with error, usage limit, interrupt cancels and is the next turn, late interrupt does not cancel a finished turn, run closes the session first, pruning, writable turn pushes, engine choice, prompt shape.
 - `gofmt` clean, `go vet ./...` ok, `make generate manifests` stable, `go test -race ./internal/runner/ ./api/... ./internal/controller/...` ok, `make helm-lint` ok.
+
+## Slice 7 — Operator dispatch (`feat/operator-chat-dispatch`)
+
+- API: AgentProject `agents.chat` (default off), `lifecycle.chatIdleTimeout` (default 15m).
+- `internal/controller/chat.go`: leader-only runnable `Chat` waits for the research database, dispatches queued rows at start, on `LISTEN chat` (retried with backoff) and every 30 s: failed with a reason for commands (until slice 9), missing task, task of another project, project without `agents.chat`; rows behind a task holding 20 messages stay queued; otherwise the message is appended to `spec.source.chatMessages` (ID order, skipped if already there) and only then marked `delivered`. Reconciler `chatreply` copies `status.chat.replies` of messages still in the spec into the table (`InsertReply`; an error reply becomes a `system` row) and then drops them from the spec.
+- `agenttask_controller.go`: unanswered chat messages start the pod like a pending run (same suspend, blocked, deferred and capacity gates) without a run request, message "answering chat"; an idle pod stays while `idleTimeout` since the last run or `chatIdleTimeout` since `status.chat.lastTurnTime` has not passed (the longer wins); the fresh check before hibernating includes chat messages.
+- Orchestrator fixes after the builder: both writers of `spec.source.chatMessages` patch with an optimistic lock (a merge patch replaces the whole list, so a stale cached task could drop a delivered message or bring back an answered one); dispatch reads tasks from the API server; queued batch raised to 500 so rows behind full tasks do not starve others.
+- Deviation from the spec diagram: no "run request kind chat"; the pod starts on the messages themselves.
+
+### Tests
+
+- `internal/controller/chat_test.go` (fake client + Postgres): delivered, idempotent re-dispatch, chat disabled, missing task, command, cap of 20, stale task conflicts and keeps the row queued, reply copied and dropped, error reply as system row, reply insert idempotent, hibernated pod started for chat, idle timeout with chat.
+- `gofmt` clean, `go vet ./...` ok, `make generate manifests` stable, `go test -race ./internal/controller/... ./internal/research/... ./api/...` ok, `make helm-lint` ok.

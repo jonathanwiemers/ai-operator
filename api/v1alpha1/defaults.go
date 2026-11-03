@@ -22,6 +22,7 @@ const (
 	DefaultServiceAccount  = "ai-operator-agent"
 	DefaultPollInterval    = time.Minute
 	DefaultIdleTimeout     = time.Minute
+	DefaultChatIdleTimeout = 15 * time.Minute
 	DefaultRetentionPeriod = 7 * 24 * time.Hour
 	DefaultMaxRunsPerTask  = 20
 
@@ -141,6 +142,9 @@ func (r ReviewSpec) WithDefaults() ReviewSpec {
 func (l LifecycleSpec) WithDefaults() LifecycleSpec {
 	if l.IdleTimeout.Duration == 0 {
 		l.IdleTimeout = metav1.Duration{Duration: DefaultIdleTimeout}
+	}
+	if l.ChatIdleTimeout.Duration == 0 {
+		l.ChatIdleTimeout = metav1.Duration{Duration: DefaultChatIdleTimeout}
 	}
 	if l.RetentionPeriod.Duration == 0 {
 		l.RetentionPeriod = metav1.Duration{Duration: DefaultRetentionPeriod}

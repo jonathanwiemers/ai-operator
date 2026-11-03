@@ -456,4 +456,5 @@ GitLab comment path if nothing needs it.
 | 4 | feat(research): chat_messages table and chat writer login | [!76](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/76) | merged |
 | 5 | feat(ui): Desk chat endpoint, chat grant and stream kinds | [!77](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/77) | merged |
 | — | infra: Desk chat writer login and chat grant | [infra!289](https://gitlab.com/jo.wiemers/infra/cluster/-/merge_requests/289) | merged, live on 2026.11.8 |
-| 6 | feat(runner): Desk chat loop | this MR | open |
+| 6 | feat(runner): Desk chat loop | [!78](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/78) | merged |
+| 7 | feat(controller): Desk chat dispatch | this MR | open |

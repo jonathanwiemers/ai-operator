@@ -179,6 +179,18 @@ func main() {
 			setupLog.Error(err, "unable to create controller", "controller", "AgentResearch")
 			os.Exit(1)
 		}
+		chat := &controller.Chat{
+			Client:    mgr.GetClient(),
+			APIReader: mgr.GetAPIReader(),
+			DB:        researchSetup,
+			Retention: historyRetention,
+			Log:       ctrl.Log.WithName("chat"),
+		}
+		utilruntime.Must(mgr.Add(chat))
+		if err := chat.SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "Chat")
+			os.Exit(1)
+		}
 	}
 
 	utilruntime.Must(mgr.AddHealthzCheck("healthz", healthz.Ping))

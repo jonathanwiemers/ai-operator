@@ -875,6 +875,7 @@ func (in *IssueRef) DeepCopy() *IssueRef {
 func (in *LifecycleSpec) DeepCopyInto(out *LifecycleSpec) {
 	*out = *in
 	out.IdleTimeout = in.IdleTimeout
+	out.ChatIdleTimeout = in.ChatIdleTimeout
 	out.RetentionPeriod = in.RetentionPeriod
 	out.UsageLimitBackoff = in.UsageLimitBackoff
 	out.MaxUsageLimitBackoff = in.MaxUsageLimitBackoff

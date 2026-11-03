@@ -24,8 +24,8 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 | 3 | Agent server session RPC | `feat/agent-session-rpc` | [!75](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/75) | merged |
 | 4 | Chat table and login | `feat/chat-store` | [!76](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/76) | merged |
 | 5 | UI chat endpoint and stream kinds | `feat/ui-chat-endpoint` | [!77](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/77) | merged, released 2026.11.8, deployed (infra!289) |
-| 6 | Runner chat loop | `feat/runner-chat-loop` | see MR | review done, merging |
-| 7 | Operator dispatch | — | — | pending |
+| 6 | Runner chat loop | `feat/runner-chat-loop` | [!78](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/78) | merged |
+| 7 | Operator dispatch | `feat/operator-chat-dispatch` | see MR | review done, merging |
 | 8 | Web | — | — | pending |
 | 9 | Commands and owners | — | — | pending |
 | 10 | `workflow.inputs` | — | — | pending |
