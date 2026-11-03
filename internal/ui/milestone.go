@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -34,12 +35,15 @@ type MilestoneView struct {
 
 // MilestonePermissions: gitlab, the chat can be shown (after connecting);
 // steer, the user may post to the pilot; chat, the user may ask the pilot
-// on the Desk; transcript, the user may see its live transcript.
+// on the Desk; transcript, the user may see its live transcript; merge, the
+// user may send merge anyway: chat and one of the milestone's owner subjects
+// (the operator checks again).
 type MilestonePermissions struct {
 	GitLab     bool `json:"gitlab"`
 	Steer      bool `json:"steer"`
 	Chat       bool `json:"chat"`
 	Transcript bool `json:"transcript"`
+	Merge      bool `json:"merge"`
 }
 
 // MilestoneAutopilot is the autopilot of a milestone and its queue.
@@ -216,9 +220,11 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 	v := milestoneView(ap, tasks, st, coord, time.Now())
 	gl := s.gitlab != nil && s.gitlab.serves(ap)
 	p := principalOf(r)
+	chat := s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name)
 	v.Permissions = &MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(p, ap.Namespace, ap.Name),
-		Chat:       s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name),
-		Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name)}
+		Chat:       chat,
+		Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name),
+		Merge:      chat && slices.Contains(st.Spec.OwnerSubjects, p.Username)}
 	writeJSON(w, http.StatusOK, v)
 }
 

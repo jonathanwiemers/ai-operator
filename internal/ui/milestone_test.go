@@ -439,3 +439,69 @@ func TestMilestoneAsksThePilotWithTheChatGrant(t *testing.T) {
 		t.Fatalf("a chatter may ask the pilot: status %d, %+v", code, m.Permissions)
 	}
 }
+
+func TestMilestoneMergePermission(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		owners []string
+		chat   bool // the chat grant and the Desk chat
+		want   bool
+	}{
+		{"owner with chat", []string{"ada@example.com"}, true, true},
+		{"one of several owners", []string{"bob@example.com", "ada@example.com"}, true, true},
+		{"not an owner", []string{"bob@example.com"}, true, false},
+		{"no owners", nil, true, false},
+		{"owner without the chat grant", []string{"ada@example.com"}, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env, gl := newSteeringEnv(t,
+				Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}},
+				Rule{Roles: []string{"chatters"}, Projects: []string{"team-a/shop"}, Chat: tc.chat})
+			withChat(env.server.cfg)
+			withAutopilot(t, env, gl)
+			var st aiv1.AgentTask
+			key := client.ObjectKey{Namespace: "team-a", Name: "shop-spec-m3-checkout"}
+			if err := env.reader.Get(context.Background(), key, &st); err != nil {
+				t.Fatal(err)
+			}
+			st.Spec.OwnerSubjects = tc.owners
+			if err := env.reader.Update(context.Background(), &st); err != nil {
+				t.Fatal(err)
+			}
+			env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+			env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}, "chatters": map[string]any{}}}
+			env.login(t, "/")
+
+			var m MilestoneView
+			if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Permissions == nil {
+				t.Fatalf("status %d, %+v", code, m.Permissions)
+			}
+			if m.Permissions.Merge != tc.want {
+				t.Errorf("permissions.merge = %v, want %v", m.Permissions.Merge, tc.want)
+			}
+		})
+	}
+}
+
+func TestMilestoneMergePermissionNeedsTheDeskChat(t *testing.T) {
+	env, gl := newSteeringEnv(t,
+		Rule{Roles: []string{"chatters"}, Projects: []string{"team-a/shop"}, Chat: true})
+	withAutopilot(t, env, gl)
+	var st aiv1.AgentTask
+	key := client.ObjectKey{Namespace: "team-a", Name: "shop-spec-m3-checkout"}
+	if err := env.reader.Get(context.Background(), key, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.Spec.OwnerSubjects = []string{"ada@example.com"}
+	if err := env.reader.Update(context.Background(), &st); err != nil {
+		t.Fatal(err)
+	}
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"chatters": map[string]any{}}}
+	env.login(t, "/")
+
+	var m MilestoneView
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Permissions == nil || m.Permissions.Merge {
+		t.Errorf("with the Desk chat off an owner may not merge: status %d, %+v", code, m.Permissions)
+	}
+}
