@@ -28,7 +28,8 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
 * **Rail:** *Inbox* (what needs you now across your projects: tasks with
   questions, failed or blocked, the pilots' open proposals, and paused
   autopilots as the compact pause card, see below, which opens the
-  milestone page; the count also shows in the tab title as `(n) Desk`), *Everything*
+  milestone page; the count also shows in the tab title as `(n) Desk`; see
+  [Notifications](#notifications)), *Everything*
   (all your projects' streams in one), your projects with a status dot
   (running, needs you, idle), a one-line state and a needs-you count, the
   researches (with the research section) and the engine usage. On narrow
@@ -58,6 +59,24 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
 The board that was the project page is at `/projects/<namespace>/<name>/board`,
 the milestone page with its queue, plan and chat at
 `…/milestones/<iid>/detail`; task and research pages keep their URLs.
+
+### Notifications
+
+The Inbox header has a **Notify me** button. It asks the browser for
+permission and, once you allow it, shows *Notifications on* (click it to turn
+them off). The choice is remembered per browser; they are off until you turn
+them on. While they are on, a new Inbox item raises one browser notification:
+a paused autopilot (*Autopilot paused · milestone*, with the cause and the
+reason), a pilot's proposal (*Proposal P3 · project*), or a task with a
+question (*#12 needs input*). Failed and blocked tasks only count in the
+Inbox. Items already there when the tab opens or when you turn notifications
+on don't notify; each item notifies once, also across reloads and live
+updates, and an autopilot that pauses again for another cause or issue is a
+new item. Clicking a notification opens the milestone page (pause, proposal)
+or the task page. Notifications work only while a Desk tab is open: there is
+no service worker, no Web Push and no e-mail. When the browser blocks them,
+the header says *Notifications are blocked in this browser* (allow them in
+the site settings); a browser without the Notification API shows no button.
 
 **History.** The operator appends the factory's events to the research
 database (configured with `research.database`, see

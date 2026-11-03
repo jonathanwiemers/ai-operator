@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { get, hasFeature, logout, session, setFeatures, LoginRequiredError } from './api'
 import { deskTitle, windowLabel } from './format'
+import { inboxKey, newNotifications, notificationRoute, notificationText } from './inboxNotify'
 import { connectEvents, disconnectEvents, live } from './live'
+import { notifyActive, refreshPermission } from './notify'
 import { projectDot, projectNeedsYou, projectStateLine } from './stream'
 import SignIn from './views/SignIn.vue'
-import type { EngineUsage, Feature, InboxResponse, Me, ProjectSummary, ResearchSummary } from './types'
+import type { EngineUsage, Feature, InboxItem, InboxResponse, Me, ProjectSummary, ResearchSummary } from './types'
 
 async function loadMe(delay = 2000): Promise<void> {
   try {
@@ -22,12 +24,45 @@ async function loadMe(delay = 2000): Promise<void> {
 }
 
 const route = useRoute()
+const router = useRouter()
 const railOpen = ref(false)
 const projects = ref<ProjectSummary[] | null>(null)
 const researches = ref<ResearchSummary[] | null>(null)
 const inboxCount = ref(0)
 const baseTitle = document.title
 watch(inboxCount, (n) => { document.title = deskTitle(n, baseTitle) }, { immediate: true })
+
+// Keys of the Inbox items this tab has seen. The first load while
+// notifications are on only seeds them; later loads notify once per new item.
+const seenInbox = new Set<string>()
+let inboxSeeded = false
+
+function onInbox(items: InboxItem[]) {
+  inboxCount.value = items.length
+  refreshPermission()
+  if (!notifyActive()) {
+    inboxSeeded = false
+    return
+  }
+  const fresh = inboxSeeded ? newNotifications(seenInbox, items) : []
+  for (const item of items) seenInbox.add(inboxKey(item))
+  inboxSeeded = true
+  for (const item of fresh) showNotification(item)
+}
+
+function showNotification(item: InboxItem) {
+  const { title, body } = notificationText(item)
+  try {
+    const n = new Notification(title, { body, tag: inboxKey(item), icon: '/logo.svg' })
+    n.onclick = () => {
+      window.focus()
+      void router.push(notificationRoute(item))
+      n.close()
+    }
+  } catch {
+    // Browsers that show notifications only from a service worker.
+  }
+}
 
 async function loadRail() {
   if (!session.me || session.loginRequired) return
@@ -40,9 +75,7 @@ async function loadRail() {
         })
         .catch(() => undefined),
       get<InboxResponse>('/inbox')
-        .then((r) => {
-          inboxCount.value = r.items?.length ?? 0
-        })
+        .then((r) => onInbox(r.items ?? []))
         .catch(() => undefined),
     )
   }
@@ -113,6 +146,12 @@ watch(
     }
   },
 )
+
+// Turning notifications on seeds the seen keys right away, so only items
+// added afterwards notify.
+watch(notifyActive, (on) => {
+  if (on) void loadRail()
+})
 
 watch(
   () => route.fullPath,

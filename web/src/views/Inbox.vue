@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { useResource } from '../live'
+import { disableNotify, enableNotify, notify, notifyActive, refreshPermission } from '../notify'
 import type { InboxResponse } from '../types'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
 import RelTime from '../components/RelTime.vue'
 
 const { data, error, loading } = useResource<InboxResponse>(() => '/inbox', ['project', 'task'])
+
+onMounted(refreshPermission)
 
 function to(item: InboxResponse['items'][number]) {
   // A pause opens the milestone page, where the full card has the actions.
@@ -29,7 +33,31 @@ function to(item: InboxResponse['items'][number]) {
 
 <template>
   <div class="page inbox">
-    <h1>Inbox</h1>
+    <div class="top">
+      <h1>Inbox</h1>
+      <span class="spacer" />
+      <span v-if="notify.permission === 'denied'" class="faint notify-note">
+        Notifications are blocked in this browser
+      </span>
+      <button
+        v-else-if="notify.permission !== 'unsupported' && notifyActive()"
+        type="button"
+        class="btn notify on"
+        title="Click to turn off"
+        @click="disableNotify"
+      >
+        Notifications on
+      </button>
+      <button
+        v-else-if="notify.permission !== 'unsupported'"
+        type="button"
+        class="btn notify"
+        title="Get a browser notification for new pauses, proposals and questions while a Desk tab is open"
+        @click="enableNotify"
+      >
+        Notify me
+      </button>
+    </div>
     <p class="muted">What needs you now, across projects.</p>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !data" class="card empty">Loading…</div>
@@ -64,6 +92,25 @@ function to(item: InboxResponse['items'][number]) {
 <style scoped>
 .inbox h1 {
   margin-bottom: 4px;
+}
+.top {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+.notify {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.notify.on {
+  color: var(--tone-success-fg);
+  border-color: var(--tone-success-fg);
+  background: var(--tone-success-bg);
+}
+.notify-note {
+  font-size: 13px;
 }
 .list {
   list-style: none;
