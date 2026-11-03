@@ -175,6 +175,39 @@ export interface PlannedIssue {
 
 export type AutopilotPhase = 'Running' | 'Paused' | 'Done' | 'Off'
 
+// PauseKind mirrors api/v1alpha1.PauseKind: why autopilot paused.
+export type PauseKind =
+  | 'owner'
+  | 'cycle'
+  | 'stuck'
+  | 'needsInput'
+  | 'runFailed'
+  | 'findings'
+  | 'reviewErrors'
+  | 'notReviewed'
+  | 'ciRed'
+  | 'ciCanceled'
+  | 'mergeRequest'
+  | 'mainRed'
+  | 'config'
+
+// ReviewError mirrors api/v1alpha1.ReviewError: why one reviewer failed.
+export interface ReviewError {
+  reviewer: string
+  kind: 'usageLimit' | 'transient' | 'other'
+  // engine and resetAt: the limited engine and when it resets (usageLimit).
+  engine?: string
+  resetAt?: string
+}
+
+// MergeOverride mirrors api/v1alpha1.MergeOverride: an owner's "merge anyway".
+export interface MergeOverride {
+  issueIID: number
+  sha: string
+  by: string
+  at: string
+}
+
 export interface DecisionRef {
   id: string
   title?: string
@@ -197,6 +230,7 @@ export interface AutopilotStatus {
   phase: AutopilotPhase
   trackingIssueIID?: number
   pausedReason?: string
+  pauseKind?: PauseKind
   pausedFor?: number
   resumeWhenReady?: boolean
   items?: AutopilotItem[]
@@ -289,6 +323,13 @@ export interface MilestoneView {
     phase: AutopilotPhase
     pausedReason?: string
     waitingFor?: number
+    // pauseKind and pausedFor: why and over which issue it paused; head is
+    // that issue's pushed SHA (what "merge anyway" names).
+    pauseKind?: PauseKind
+    pausedFor?: number
+    head?: string
+    reviewErrors?: ReviewError[]
+    mergeOverride?: MergeOverride
     items: QueueItem[]
   }
   tracking?: { iid: number; webURL: string }
@@ -303,7 +344,14 @@ export interface MilestoneView {
   }
   tasks: Task[]
   costUSD: string
-  permissions?: { gitlab: boolean; steer: boolean; chat: boolean; transcript: boolean }
+  permissions?: {
+    gitlab: boolean
+    steer: boolean
+    chat: boolean
+    transcript: boolean
+    // merge: may send the owner-only merge override.
+    merge?: boolean
+  }
 }
 
 export interface QueueItem {
@@ -474,7 +522,9 @@ export interface HistoryResponse {
 export interface InboxItem {
   namespace: string
   project: string
-  kind: 'task' | 'proposal'
+  kind: 'task' | 'proposal' | 'pause'
+  // pauseKind: why the milestone's autopilot paused (kind pause).
+  pauseKind?: PauseKind
   task?: string
   issueIID?: number
   milestoneIID?: number

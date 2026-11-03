@@ -113,6 +113,22 @@ test('commandLabel formats known commands', () => {
   assert.equal(commandLabel('{"cmd":"reject","proposal":3}'), 'reject P3')
 })
 
+test('commandLabel: merge names the issue and the short head', () => {
+  assert.equal(
+    commandLabel('{"cmd":"merge","issue":12,"sha":"abcdef0123456789"}'),
+    'merge #12 abcdef0',
+  )
+  for (const body of [
+    '{"cmd":"merge","issue":12}',
+    '{"cmd":"merge","issue":12,"sha":""}',
+    '{"cmd":"merge","issue":0,"sha":"abcdef0"}',
+    '{"cmd":"merge","issue":"12","sha":"abcdef0"}',
+    '{"cmd":"merge","sha":"abcdef0"}',
+  ]) {
+    assert.equal(commandLabel(body), body)
+  }
+})
+
 test('commandLabel falls back to raw text', () => {
   assert.equal(commandLabel('not json'), 'not json')
   assert.equal(commandLabel('{"cmd":"nope"}'), '{"cmd":"nope"}')

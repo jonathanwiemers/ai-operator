@@ -74,6 +74,7 @@ export type ChatCommand =
   | { cmd: 'pause' }
   | { cmd: 'resume' }
   | { cmd: 'skip'; issue: number }
+  | { cmd: 'merge'; issue: number; sha: string }
   | { cmd: 'accept'; proposal: number }
   | { cmd: 'reject'; proposal: number }
 
@@ -112,6 +113,10 @@ export function commandLabel(body: string | undefined): string {
       return typeof o.effort === 'string' && o.effort ? `effort ${o.effort}` : body
     case 'skip':
       return typeof o.issue === 'number' && o.issue > 0 ? `skip #${o.issue}` : body
+    case 'merge':
+      return typeof o.issue === 'number' && o.issue > 0 && typeof o.sha === 'string' && o.sha.trim()
+        ? `merge #${o.issue} ${o.sha.trim().slice(0, 7)}`
+        : body
     case 'accept':
       return typeof o.proposal === 'number' && o.proposal > 0 ? `accept P${o.proposal}` : body
     case 'reject':
