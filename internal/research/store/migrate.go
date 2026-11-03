@@ -28,6 +28,9 @@ type Grants struct {
 	// Writers may read, insert and update runs, results and items (the
 	// runners of research runs), and nothing else.
 	Writers []string
+	// ChatWriter may select and insert user rows on chat_messages (the
+	// UI's chat login); RLS rejects non-user inserts.
+	ChatWriter string
 }
 
 type migration struct {
@@ -145,9 +148,14 @@ func grant(ctx context.Context, tx pgx.Tx, g Grants) error {
 	if err := to(g.Reader, "GRANT SELECT ON ALL TABLES IN SCHEMA "+sc, defaults+"SELECT ON TABLES"); err != nil {
 		return err
 	}
+	if err := to(g.ChatWriter,
+		"GRANT SELECT, INSERT ON "+sc+".chat_messages",
+		"GRANT USAGE ON SEQUENCE "+sc+".chat_messages_id_seq"); err != nil {
+		return err
+	}
 	// Writers get the research tables by name and nothing else: earlier
 	// versions granted them every future table by default privileges, which
-	// would have let research pods write the factory's history.
+	// would have let research pods write the factory's history or chat.
 	revokeDefaults := "ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA " + sc + " REVOKE SELECT, INSERT, UPDATE ON TABLES FROM "
 	for _, w := range g.Writers {
 		if w == "" {
@@ -157,7 +165,11 @@ func grant(ctx context.Context, tx pgx.Tx, g Grants) error {
 			return err
 		}
 		id := pgx.Identifier{w}.Sanitize()
-		for _, stmt := range []string{revokeDefaults + id, "REVOKE ALL ON " + sc + ".history_events FROM " + id} {
+		for _, stmt := range []string{
+			revokeDefaults + id,
+			"REVOKE ALL ON " + sc + ".history_events FROM " + id,
+			"REVOKE ALL ON " + sc + ".chat_messages FROM " + id,
+		} {
 			if _, err := tx.Exec(ctx, stmt); err != nil {
 				return fmt.Errorf("revoke from role %q: %w", w, err)
 			}

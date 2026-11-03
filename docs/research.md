@@ -459,6 +459,7 @@ the keys `username` and `password` (other key names with `usernameKey` and
 | owner | `research.database.ownerSecret` | the release's namespace | owns the database: migrations, grants, retention. Only the operator has it |
 | reader | `research.database.readerSecret` | the release's namespace | read only; the UI's login. Its role is `readerRole` |
 | writer | `AgentProject.spec.research.writerSecret` | the project's namespace | read, insert, update; the runner container of research runs. Its role must be one of `writerRoles` |
+| chat writer | (wired with the Desk chat UI) | the release's namespace | select and insert user rows on `chat_messages`; its role is `chatWriterRole` |
 
 The agent container never gets a login, and the writer cannot delete or
 change the schema.
@@ -475,8 +476,11 @@ database's schema:
 
 * `readerRole`: `USAGE` on the schema and `SELECT` on all tables;
 * each of `writerRoles`: `USAGE` on the schema and `SELECT`, `INSERT`,
-  `UPDATE` on `research_runs`, `research_results` and `research_items`;
-* `ALTER DEFAULT PRIVILEGES` for the same, so tables of later migrations
+  `UPDATE` on `research_runs`, `research_results` and `research_items`
+  (and `REVOKE` on `history_events` and `chat_messages`);
+* `chatWriterRole`: `USAGE` on the schema and `SELECT`, `INSERT` on
+  `chat_messages` (row-level policy: user rows in state `queued` only);
+* `ALTER DEFAULT PRIVILEGES` for the reader, so tables of later migrations
   follow without a new grant.
 
 Role names are quoted identifiers, so a name with a dot such as

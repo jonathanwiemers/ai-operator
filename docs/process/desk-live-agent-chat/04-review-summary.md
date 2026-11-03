@@ -28,3 +28,11 @@ Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./inte
 | 1 | Client's own cancel returned as `agentConnError` | real (would trigger the 3a lost-container path) | return `ctx.Err()` when the context is done |
 | 2 | 64 MiB limit applied to the whole NDJSON stream | real for long turns | no limit on the stream |
 | 3 | Open closed the live session before the new one started | real | start the new one, close the old one only on success |
+
+## Slice 4
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | `reply_to … ON DELETE CASCADE`: retention of an expired user row deleted its younger reply | real | `ON DELETE SET NULL`; the reply stays until its own `expires_at`, test added |
+| 2 | (orchestrator) a late `delivered` could overwrite `answered` | real | `SetMessageState` skips answered rows, test added |
+| 3 | (orchestrator) `ListenChat` released a listening connection to the pool | real | the connection is hijacked and closed |

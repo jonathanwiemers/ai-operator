@@ -50,12 +50,12 @@ type Database struct {
 	ready  chan struct{}
 	store  *store.Store
 	// historyRetention, when set, makes the retention loop delete expired
-	// history events too.
+	// history events and chat messages too.
 	historyRetention time.Duration
 }
 
-// SetHistoryRetention turns on deleting expired history events. Call it
-// before the manager starts.
+// SetHistoryRetention turns on deleting expired history events and chat
+// messages. Call it before the manager starts.
 func (d *Database) SetHistoryRetention(r time.Duration) { d.historyRetention = r }
 
 // NewDatabase returns the runnable for the owner login c.
@@ -140,6 +140,11 @@ func (d *Database) deleteExpired(ctx context.Context) {
 		return
 	}
 	d.log.Info("deleted expired history events", "events", n)
+	if n, err = d.store.DeleteExpiredChat(ctx, d.clock.Now()); err != nil {
+		d.log.Error(err, "deleting expired chat messages")
+		return
+	}
+	d.log.Info("deleted expired chat messages", "messages", n)
 }
 
 // FinishRunOrInsert records a run's outcome in the store, see

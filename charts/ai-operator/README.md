@@ -126,11 +126,12 @@ the UI logs in with `readerSecret` and its ClusterRole gets
 | `research.database.readerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | login of the UI (read only), a Secret in the release's namespace; `name` is required with a host and `ui.enabled`. Passed as the env `AI_OPERATOR_UI_RESEARCH_DB_USER`/`AI_OPERATOR_UI_RESEARCH_DB_PASSWORD` |
 | `research.database.readerRole` | `""` | role the migrations grant read access to |
 | `research.database.writerRoles` | `[]` | roles the migrations grant write access to: the logins of `spec.research.writerSecret` of the AgentProjects |
+| `research.database.chatWriterRole` | `""` | role the migrations grant chat insert access to (the UI's chat login) |
 | `research.database.networkPolicyPeer` | `{namespace: "", podLabels: {}}` | the database pods. With `agent.networkPolicy.enabled` and a `namespace`, the chart adds a NetworkPolicy `<agent role>-research-db` per agent namespace: pods with the label `ai.wiemers.me/research` (research runs, not tasks) may reach these pods on TCP `research.database.port` |
 | `research.candidates.quick` | `claude/claude-sonnet-5-5`, `cursor/auto` | agents tried in order for quick runs without `spec.agent`; `spec.research.candidates` of an AgentProject overrides them. Each entry is `{engine, model, effort?}`; passed as `--research-candidates-quick=engine/model[@effort],…` |
 | `research.candidates.deep` | `claude/claude-opus-5-5` (high), `claude/claude-sonnet-5-5`, `cursor/auto` | the same for deep runs, passed as `--research-candidates-deep` |
 | `research.maxUsagePercent` | `70` | research uses an engine only while all its usage windows (not reset since) are below this, 1 to 100, a fixed `spec.agent` included; passed as `--research-max-usage-percent` |
-| `research.historyRetention` | `8760h` | how long the factory's history (comments, runs, CI, reviews, merges: the web UI's streams) is kept in the database; passed as `--history-retention` |
+| `research.historyRetention` | `8760h` | how long the factory's history (comments, runs, CI, reviews, merges: the web UI's streams) and Desk chat messages are kept in the database; passed as `--history-retention` |
 
 With the database of the Zalando postgres-operator on netcup01 (the
 AgentProject's writer login and the UI part are in

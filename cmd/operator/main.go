@@ -50,6 +50,7 @@ func main() {
 	var researchWriters string
 	flag.StringVar(&researchGrants.Reader, "research-reader-role", "", "Role the research migrations grant read access to (the UI's login).")
 	flag.StringVar(&researchWriters, "research-writer-roles", "", "Comma separated roles the research migrations grant write access to (the logins of research runs).")
+	flag.StringVar(&researchGrants.ChatWriter, "research-chat-writer-role", "", "Role the research migrations grant chat insert access to (the UI's chat login).")
 	var quickCandidates, deepCandidates string
 	var maxUsagePercent int
 	flag.StringVar(&quickCandidates, "research-candidates-quick", "claude/claude-sonnet-5-5,cursor/auto", "Agents quick research runs without spec.agent try in order, comma separated engine/model[@effort]. AgentProject spec.research.candidates overrides them.")
@@ -58,7 +59,7 @@ func main() {
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	var historyRetention time.Duration
-	flag.DurationVar(&historyRetention, "history-retention", history.DefaultRetention, "How long the factory's history (comments, runs, CI, reviews, merges) is kept in the research database.")
+	flag.DurationVar(&historyRetention, "history-retention", history.DefaultRetention, "How long the factory's history (comments, runs, CI, reviews, merges) and Desk chat messages are kept in the research database.")
 	flag.Parse()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	setupLog := ctrl.Log.WithName("setup")

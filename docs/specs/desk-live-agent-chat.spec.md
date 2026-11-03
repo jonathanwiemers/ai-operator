@@ -426,4 +426,9 @@ GitLab comment path if nothing needs it.
 
 | # | Title | MR | Status |
 |---|---|---|---|
-| — | docs(spec): Desk live chat with the agents | [!70](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/70) | open |
+| — | docs(spec): Desk live chat with the agents | [!70](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/70) | merged |
+| — | docs(spec): Desk chat survives restarts | [!72](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/72) | merged |
+| 1 | feat(runner): long-lived claude session with stream-json input | [!71](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/71) | merged |
+| 2 | feat(runner): cursor-agent ACP session | [!74](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/74) | merged |
+| 3 | feat(runner): agent server session RPC | [!75](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/75) | merged |
+| 4 | feat(research): chat_messages table and chat writer login | this MR | open |

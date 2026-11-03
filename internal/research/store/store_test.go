@@ -68,7 +68,8 @@ func TestPoolConfig(t *testing.T) {
 func TestMigrateEmptyAndConcurrent(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
-	exec(t, s.Pool(), "DROP TABLE history_events, research_items, research_results, research_runs, schema_migrations")
+	exec(t, s.Pool(), "DROP TABLE IF EXISTS chat_messages, history_events, research_items, research_results, research_runs, schema_migrations CASCADE")
+	exec(t, s.Pool(), "DROP FUNCTION IF EXISTS chat_notify")
 
 	var wg sync.WaitGroup
 	errs := make([]error, 3)
@@ -81,22 +82,22 @@ func TestMigrateEmptyAndConcurrent(t *testing.T) {
 			t.Fatalf("concurrent Migrate: %v", err)
 		}
 	}
-	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "schema_migrations"} {
+	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "chat_messages", "schema_migrations"} {
 		var exists bool
 		if err := s.Pool().QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", table).Scan(&exists); err != nil || !exists {
 			t.Errorf("table %s missing (%v)", table, err)
 		}
 	}
-	if n := count(t, s.Pool(), "schema_migrations"); n != 2 {
-		t.Errorf("schema_migrations has %d rows, want 2", n)
+	if n := count(t, s.Pool(), "schema_migrations"); n != 3 {
+		t.Errorf("schema_migrations has %d rows, want 3", n)
 	}
 
 	// A second run is a no-op.
 	if err := s.Migrate(ctx, store.Grants{}); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, s.Pool(), "schema_migrations"); n != 2 {
-		t.Errorf("after a second Migrate schema_migrations has %d rows, want 1", n)
+	if n := count(t, s.Pool(), "schema_migrations"); n != 3 {
+		t.Errorf("after a second Migrate schema_migrations has %d rows, want 3", n)
 	}
 }
 
@@ -151,10 +152,13 @@ func TestGrants(t *testing.T) {
 	mustFail(t, writer.Pool(), "writer delete", "DELETE FROM research_runs")
 	mustFail(t, writer.Pool(), "writer create", "CREATE TABLE intruder (x int)")
 
-	// The writer may not touch the factory's history.
+	// The writer may not touch the factory's history or chat.
 	mustFail(t, writer.Pool(), "writer reads history", "SELECT * FROM history_events")
 	mustFail(t, writer.Pool(), "writer writes history", `INSERT INTO history_events (key, at, namespace, project, kind, expires_at)
 		VALUES ('k', now(), 'n', 'p', 'note', now())`)
+	mustFail(t, writer.Pool(), "writer reads chat", "SELECT * FROM chat_messages")
+	mustFail(t, writer.Pool(), "writer writes chat", `INSERT INTO chat_messages (namespace, project, task, role, body, expires_at)
+		VALUES ('n', 'p', 't', 'user', 'hi', now())`)
 
 	// A table of a later migration follows by default privileges for the
 	// reader, without a grant in that run; writers get tables by name only.

@@ -30,3 +30,16 @@ One section per slice. Builder: cursor-agent (`--model auto`) in the slice's wor
 - `agent.go`: `Agent` gains `OpenSession`, `PromptSession`, `CancelSession`, `CloseSession`. `LocalAgent` holds at most one session (same Dir, env and per-run toolchains as `Run`). `AgentServer` routes `session/open|cancel|close` like the other calls; `session/prompt` streams NDJSON (`{"event":…}` per event, flushed, then `{"result":…,"error":…}`), and the request context bounds the turn, so a runner that goes away cancels the turn but keeps the session. `AgentClient.PromptSession` reads the stream; a stream without a final line is an `agentConnError` (lost container), the caller's own cancel is `ctx.Err()`.
 - Orchestrator fixes after review: own cancel no longer reported as a lost container, no size limit on the whole stream, a failed open keeps the old session (start new, then close old). Added `TestAgentSessionFailedOpenKeepsPrevious`, the cancel test checks `context.Canceled`.
 - Checks: gofmt clean, `go vet ./...` ok, `TMPDIR=/tmp/aio go test -race ./internal/runner/` ok (252 s).
+
+## Slice 4 — Chat table and login (`feat/chat-store`)
+
+- `migrations/0003_chat.sql`: `chat_messages` as in spec §2 plus `reason` (why `failed`/`deferred`); `UNIQUE (author, client_key)`, `UNIQUE (reply_to)`; indexes for task paging, the queued poll and retention; `AFTER INSERT` trigger `pg_notify('chat', id)` on user rows; RLS: everyone may select, inserts only `role = 'user'`, `state = 'queued'`, no `reply_to`, body ≤ 16 KiB (the owner bypasses RLS).
+- `migrate.go`: `Grants.ChatWriter` gets `SELECT, INSERT` on the table and the sequence; research writers get `REVOKE ALL` on it. Flag `--research-chat-writer-role`, chart `research.database.chatWriterRole`.
+- `chat.go`: `InsertUserMessage` (idempotent by client key, returns the existing ID), `QueuedMessages`, `SetMessageState`, `InsertReply` (`ON CONFLICT (reply_to) DO NOTHING`, marks the message answered in the same transaction), `ChatMessages` (keyset `before`/`after`, newest first), `ListenChat`, `DeleteExpiredChat` (in the retention loop with `--history-retention`).
+- Orchestrator fixes after the builder: `SetMessageState` never leaves `answered` (a re-dispatch after a crash can mark a message delivered after its reply landed); `ListenChat` closes its connection instead of returning a listening one to the pool.
+- Deviation: the chart's chat writer *secret* (`ui.chat.writerSecret`) moves to slice 5, where the UI reads it; slice 4 only grants the role.
+
+### Tests
+
+- `chat_test.go` against Postgres: grants and RLS (chat writer may insert user rows only, no update/delete, no agent rows, no oversized body), idempotent insert, queue and states (answered stays answered), reply idempotency, paging both ways, `LISTEN` notifications, retention (a reply outlives its expired message).
+- `gofmt` clean, `go vet ./...` ok, `go test -race ./internal/research/...` ok on local Postgres 17, `make helm-lint` ok.

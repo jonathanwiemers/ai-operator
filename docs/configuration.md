@@ -133,11 +133,12 @@ login with the keys `username` and `password`.
 | `research.database.readerSecret` | `{name: "", …}` | read-only login of the UI, a Secret in the release's namespace |
 | `research.database.readerRole` | `""` | role granted read access (the reader login) |
 | `research.database.writerRoles` | `[]` | roles granted write access (the writer logins of research runs) |
+| `research.database.chatWriterRole` | `""` | role granted chat insert access (the UI's chat login) |
 | `research.database.networkPolicyPeer` | `{namespace: "", podLabels: {}}` | the database pods research-run pods may reach, see [below](#network-policy-for-research-runs) |
 | `research.candidates.quick` | `claude/claude-sonnet-5-5`, `cursor/auto` | default agents of quick research runs, in order, see [research.md](research.md#choosing-agents) |
 | `research.candidates.deep` | `claude/claude-opus-5-5` (effort `high`), `claude/claude-sonnet-5-5`, `cursor/auto` | the same for deep runs |
 | `research.maxUsagePercent` | `70` | research uses an engine only while every usage window not reset since is below this (1 to 100) |
-| `research.historyRetention` | `8760h` | how long the factory's history (the Desk's streams, see [ui.md](ui.md#desk-and-history)) is kept; `--history-retention` |
+| `research.historyRetention` | `8760h` | how long the factory's history (the Desk's streams, see [ui.md](ui.md#desk-and-history)) and Desk chat messages are kept; `--history-retention` |
 | `ui.research.allowCreate` | `false` | one-off researches from the UI, see [Web UI](#web-ui) |
 | `ui.research.namespace` | `""` | where the UI creates one-off researches; required with `allowCreate` |
 
@@ -167,9 +168,9 @@ research:
 The operator gets the host, port, name and `sslMode` as flags
 (`--research-db-host`, `--research-db-port`, `--research-db-name`,
 `--research-db-sslmode`, `--research-reader-role`, `--research-writer-roles`,
-`--research-candidates-quick` and `--research-candidates-deep` as
-`engine/model[@effort]` lists, `--research-max-usage-percent`; invalid
-values stop the operator at start)
+`--research-chat-writer-role`, `--research-candidates-quick` and
+`--research-candidates-deep` as `engine/model[@effort]` lists,
+`--research-max-usage-percent`; invalid values stop the operator at start)
 and the owner login as the environment variables `AI_RESEARCH_DB_USER` and
 `AI_RESEARCH_DB_PASSWORD` from `ownerSecret`, never as arguments. A host
 without a name, user or password stops the operator at start; the chart
@@ -178,13 +179,15 @@ refuses to render a host without `name` or `ownerSecret.name`.
 At every start the leader connects as the owner, applies the embedded
 migrations and grants the roles: `readerRole` may read every table,
 each of `writerRoles` may read, insert and update runs, results and items,
-and default privileges extend both to later tables. Role names are quoted,
-so `agents.research_writer` is one role. Grants are additive: a
-role removed from the values keeps its rights until revoked by hand (see
-[research.md](research.md#database)). If the
-database is unreachable or a migration fails, the operator keeps running the
-factory and retries with backoff (5 s up to 5 min). Once ready, it deletes
-expired runs with their results and items at once and then every hour.
+`chatWriterRole` may select and insert user rows on `chat_messages`, and
+default privileges extend the reader (and not the writers) to later tables.
+Role names are quoted, so `agents.research_writer` is one role. Grants are
+additive: a role removed from the values keeps its rights until revoked by
+hand (see [research.md](research.md#database)). If the database is
+unreachable or a migration fails, the operator keeps running the factory and
+retries with backoff (5 s up to 5 min). Once ready, it deletes expired runs
+with their results and items at once and then every hour, and with
+`--history-retention` also expired history events and chat messages.
 
 The runner of a research run logs in as a writer: name its Secret per
 project in `spec.research.writerSecret` (see

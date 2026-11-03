@@ -76,6 +76,10 @@ spec:
             {{- with $db.writerRoles }}
             - --research-writer-roles={{ join "," . }}
             {{- end }}
+            {{- with $db.chatWriterRole }}
+            {{/* The UI's chat login; slice 5 wires the UI. */}}
+            - --research-chat-writer-role={{ . }}
+            {{- end }}
             - {{ printf "--research-candidates-quick=%s" (include "ai-operator.research.candidates" .Values.research.candidates.quick) | quote }}
             - {{ printf "--research-candidates-deep=%s" (include "ai-operator.research.candidates" .Values.research.candidates.deep) | quote }}
             - --research-max-usage-percent={{ int .Values.research.maxUsagePercent }}

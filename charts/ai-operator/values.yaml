@@ -111,9 +111,11 @@ research:
       passwordKey: password
     # Roles the migrations grant to: the reader may read the results, the
     # writers (the logins of research runs, AgentProject
-    # spec.research.writerSecret) may write them.
+    # spec.research.writerSecret) may write them, the chat writer (the UI's
+    # chat login, wired in a later slice) may insert user chat rows.
     readerRole: ""    # research_reader
     writerRoles: []   # [agents.research_writer]
+    chatWriterRole: "" # research_chat_writer
     # Pods of the database. With agent.networkPolicy.enabled and a namespace
     # here, an extra NetworkPolicy lets research-run pods (not task pods)
     # reach them on TCP database.port.
@@ -137,8 +139,8 @@ research:
   # is below this percentage, 1 to 100; the rest is left to the factory. It
   # applies to every research run, a fixed spec.agent included.
   maxUsagePercent: 70
-  # How long the factory's history (comments, runs, CI, reviews, merges),
-  # which the web UI's streams show, is kept in the database. A Go duration.
+  # How long the factory's history (comments, runs, CI, reviews, merges)
+  # and Desk chat messages are kept in the database. A Go duration.
   historyRetention: 8760h
 
 # Read-only web UI (see docs/ui.md). Off by default. It runs as its own
