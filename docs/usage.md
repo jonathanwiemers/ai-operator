@@ -1469,9 +1469,9 @@ run that finishes resets the count. Suspending a task (`spec.suspend`)
 mid-run stops its pod too, but does not count: the run starts again when the
 task is resumed.
 
-Task phases: `Pending`, `Queued` (waiting for `maxConcurrentRuns`), `Running`,
-`Waiting` (paused by a usage limit), `Idle`, `Hibernated`, `Archived`,
-`Blocked` (hit `maxRunsPerTask`).
+Task phases: `Pending`, `Queued` (waiting for `maxConcurrentRuns`; pilots
+never queue), `Running`, `Waiting` (paused by a usage limit), `Idle`,
+`Hibernated`, `Archived`, `Blocked` (hit `maxRunsPerTask`).
 
 To force a task to stop its pod, set `spec.suspend: true` on the AgentTask. To
 stop all activity for a project, set `spec.suspend: true` on the AgentProject.

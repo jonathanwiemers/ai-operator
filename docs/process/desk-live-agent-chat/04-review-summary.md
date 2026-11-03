@@ -98,3 +98,13 @@ Added `TestClaudeSessionIgnoredInterruptEndsSession`. Full `go test -race ./inte
 | 2 | (orchestrator) autopilot answers were the whole old list copied onto the fresh task: answers chatreply had dropped came back | real | only the new answers are appended |
 | 3 | (orchestrator) `postCommandReply` guessed from reply text whether to comment on GitLab | simplification | `command` returns `applied` |
 | 4 | verbs delivered to a Spec task whose autopilot turned off stay unanswered | real | `refuseChatCommands` answers them; test |
+
+## Ask the pilot, MR 1 (pilots outside the run capacity)
+
+Reviewer: Claude subagent (cursor-agent quota used up until 2026-11-13).
+
+| # | Finding | Verdict | Action |
+|---|---------|---------|--------|
+| 1 | (orchestrator) first draft skipped pod creation for Coordinate tasks, not just the capacity check | real | only the capacity check is skipped; test |
+| 2 | the milestone state was read after the interrupt watcher started: an interrupt during the GitLab reads cancelled a prompt not yet sent, and the full answer was recorded as interrupted | real | state read before the watcher starts |
+| 3 | Implement chat test did not assert the pilot rule is absent | test gap | asserted |

@@ -406,6 +406,9 @@ stateDiagram-v2
   session with the full issue thread and the agent notes as context.
 * **Blocked**: `maxRunsPerTask` reached – a guard against loops.
 * `maxConcurrentRuns` caps token-consuming runs per project; extra runs queue.
+  Pilots (`Coordinate` tasks) neither count toward it nor wait for it: one
+  per planned milestone, light model, no builds or pushes, capped by
+  `pilot.maxBudgetUSD`.
 
 The runner never sets the blocked labels. It reports why a run waits or
 gave up in `status.run.blockReason` (`quota` while deferred by a usage limit
@@ -441,6 +444,14 @@ and wakes the project reconciler, which applies them like `/agent` /
 `chatAnswers`); the chatreply reconciler copies those answers as system
 rows. Commands do not start or keep a pod. See
 [desk-live-agent-chat.spec.md](specs/desk-live-agent-chat.spec.md).
+
+A chat turn on a pilot (`Coordinate` task) gets the milestone state the
+pilot's GitLab messages get (`pilotState`, as untrusted JSON) and one rule:
+answer from the state and the session, name the Desk command or proposal
+to act, and never claim to have acted. The turn stays read-only. Since
+pilots are outside the run capacity, the Desk's questions to a pilot do not
+wait behind an implementer. See
+[desk-ask-the-pilot.spec.md](specs/desk-ask-the-pilot.spec.md).
 
 Spec tasks have no issue to block, but get the same one retry: the runner
 also reports `infra` for a planning run that failed on a transient GitLab or

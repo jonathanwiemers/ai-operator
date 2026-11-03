@@ -775,3 +775,22 @@ func TestUnschedulablePodIsReported(t *testing.T) {
 		t.Fatalf("unexpected message %q", msg)
 	}
 }
+
+// A pilot gets its pod while an implementer holds the only slot, and does
+// not take a slot from the next implementer.
+func TestPilotOutsideRunCapacity(t *testing.T) {
+	pilot := newImplTask("pilot", 1)
+	pilot.Labels[LabelType] = "coordinate"
+	pilot.Spec.Type = aiv1.TaskTypeCoordinate
+	e := newTaskEnv(t, newImplTask("a", 1), pilot, newImplTask("b", 1))
+	e.reconcile("a")
+	e.reconcile("pilot")
+	var pod corev1.Pod
+	if !e.exists(&pod, "pilot") {
+		t.Fatalf("pilot must start while an implementer runs, phase %s: %s", e.task("pilot").Status.Phase, e.task("pilot").Status.Message)
+	}
+	e.reconcile("b")
+	if got := e.task("b").Status.Message; got != "waiting for capacity (1/1 runs in flight)" {
+		t.Fatalf("second implementer: message %q, want it to wait for the first only", got)
+	}
+}

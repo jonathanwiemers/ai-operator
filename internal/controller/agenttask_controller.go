@@ -179,15 +179,20 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			break
 		}
 		if pod == nil {
-			running, err := r.runningTasks(ctx, &task)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			if running >= int(spec.MaxConcurrentRuns) {
-				task.Status.Phase = aiv1.TaskPhaseQueued
-				task.Status.Message = fmt.Sprintf("waiting for capacity (%d/%d runs in flight)", running, spec.MaxConcurrentRuns)
-				result.RequeueAfter = queueRetry
-				break
+			// Pilots are outside the run capacity: one per planned
+			// milestone, light model, no builds or pushes, and an answer
+			// on the Desk must not wait behind an implementer.
+			if task.Spec.Type != aiv1.TaskTypeCoordinate {
+				running, err := r.runningTasks(ctx, &task)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+				if running >= int(spec.MaxConcurrentRuns) {
+					task.Status.Phase = aiv1.TaskPhaseQueued
+					task.Status.Message = fmt.Sprintf("waiting for capacity (%d/%d runs in flight)", running, spec.MaxConcurrentRuns)
+					result.RequeueAfter = queueRetry
+					break
+				}
 			}
 			pod = buildPod(&task, spec)
 			if err := controllerutil.SetControllerReference(&task, pod, r.Scheme); err != nil {
@@ -423,7 +428,7 @@ func (r *AgentTaskReconciler) runningTasks(ctx context.Context, task *aiv1.Agent
 	n := 0
 	for i := range tasks.Items {
 		t := &tasks.Items[i]
-		if t.Name != task.Name && t.Status.Phase == aiv1.TaskPhaseRunning {
+		if t.Name != task.Name && t.Status.Phase == aiv1.TaskPhaseRunning && t.Spec.Type != aiv1.TaskTypeCoordinate {
 			n++
 		}
 	}

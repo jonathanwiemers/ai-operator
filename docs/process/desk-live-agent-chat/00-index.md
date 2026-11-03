@@ -30,8 +30,10 @@ Deploy: cluster bump in `jo.wiemers/infra/cluster` only for slices that change r
 | 8+ | Enum fix found by the e2e test | `fix/chat-kind-enum` | [!81](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/81) | merged |
 | 9a | Commands: shape, path, Implement commands | `feat/chat-commands` | [!82](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/82) | merged |
 | 9b | Commands: autopilot verbs, proposals, `ownerSubjects` | `feat/chat-commands-pilot` | [!83](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/83) | merged |
-| 9c | Commands: web buttons; chat shows "waiting for capacity" | `feat/web-chat-commands` | [!84](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/84) | review done |
-| 10 | `workflow.inputs` | — | — | on hold: decided after the "ask the pilot" spec |
+| 9c | Commands: web buttons; chat shows "waiting for capacity" | `feat/web-chat-commands` | [!84](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/84) | merged |
+| 10 | `workflow.inputs` | — | — | on hold until ask the pilot has run a while |
+| P1 | Ask the pilot: pilots outside the run capacity, state in pilot chat turns ([spec](../../specs/desk-ask-the-pilot.spec.md)) | `feat/pilot-outside-capacity` | [!86](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/86) | review done |
+| P2 | Ask the pilot: Desk milestone page | — | — | pending |
 
 ## Step artifacts
 
