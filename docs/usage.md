@@ -1005,7 +1005,9 @@ default branch and the last comments of the tracking issue.
   mention, see below). Each event is assessed once: a poll
   while it holds, or a label or pause flapped back and forth, does not
   repeat it; a new head or a new reason does. A pause over an issue and
-  that issue's `agent::needs-input` are one event.
+  that issue's `agent::needs-input` are one event. When the reviewers cannot
+  run, the assessment may point owners to `/agent merge #N <sha>`; the pilot
+  never proposes it.
 - **Proposals and `yes`.** Unless it manages
   (below), the pilot acts only on a proposal an owner accepts. An answer or an assessment can end with one; the operator posts
   it on the tracking issue as "🧭 **Proposal P3:** …" with its actions:

@@ -325,4 +325,10 @@ func TestPilotStateHasTheEngines(t *testing.T) {
 	if !strings.Contains(e.engine.calls[0].SystemPrompt, `read "engines" in the state`) {
 		t.Error("the system prompt points the pilot at the engines")
 	}
+	if !strings.Contains(e.engine.calls[0].SystemPrompt, `/agent merge #N <sha>`) {
+		t.Error("the system prompt names the owner's merge command")
+	}
+	if strings.Contains(proposalSchema, `"merge"`) {
+		t.Error("merge must not be a proposal tool")
+	}
 }
