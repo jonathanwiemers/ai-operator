@@ -88,6 +88,26 @@ type Engine interface {
 	Run(ctx context.Context, inv Invocation) (*Result, error)
 }
 
+// Session is a long-lived conversation with one agent CLI process.
+type Session interface {
+	// Prompt sends one user turn and streams the agent's events to fn
+	// until the turn ends. One turn at a time.
+	Prompt(ctx context.Context, text string, fn func(Event)) (*Result, error)
+	// Cancel stops the turn in progress; Prompt then returns its result.
+	Cancel(ctx context.Context) error
+	// ID is the engine's session ID (for --resume), set as soon as the CLI
+	// reports it.
+	ID() string
+	Close() error
+}
+
+// Event is one line of the engine's event stream.
+type Event struct {
+	Type    string // assistant, user, tool_call, result, system, rate_limit_event, ...
+	Subtype string
+	Line    json.RawMessage // the raw line
+}
+
 // ClaudeCLI runs the Claude Code CLI. Authentication comes from the
 // environment: CLAUDE_CODE_OAUTH_TOKEN (subscription) or ANTHROPIC_API_KEY.
 type ClaudeCLI struct {
@@ -220,6 +240,54 @@ func (c *CursorCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
 	return runCLI(ctx, orDefault(c.Binary, "cursor-agent"), c.Args(inv, prompt), inv.Dir, append(slices.Clip(c.Env), inv.Env...), "", true)
 }
 
+// turnReader consumes stream-json lines for one agent turn: held-message
+// logging, rate_limit_event usage, and the result line.
+type turnReader struct {
+	log    logr.Logger
+	held   [][]byte
+	usage  *aiv1.EngineUsage
+	result []byte
+}
+
+func (t *turnReader) flush() {
+	for _, h := range t.held {
+		logEvent(t.log, h)
+	}
+	t.held = nil
+}
+
+// consume handles one non-empty stream-json line. It reports whether the
+// line was the turn's result.
+func (t *turnReader) consume(line []byte) bool {
+	switch ev := parseEvent(line); ev.Type {
+	case "assistant":
+		t.held = append(t.held, line)
+		if callsTool(line) {
+			// A claude message that calls a tool is no answer.
+			t.flush()
+		}
+	case "tool_call", "user":
+		t.flush()
+		if ev.Type == "tool_call" && ev.Subtype == "started" {
+			logEvent(t.log, line)
+		}
+	case "rate_limit_event":
+		if u := usageReading(line); u != nil {
+			t.usage = u
+		}
+	case "result":
+		if ev.IsError || ev.Subtype != "" && ev.Subtype != "success" {
+			t.flush()
+		} else if len(t.held) > 0 {
+			t.log.Info("agent answers")
+			t.held = nil
+		}
+		t.result = append([]byte(nil), line...)
+		return true
+	}
+	return false
+}
+
 // runCLI runs an agent CLI. With stream, its output is a line per event: each
 // is logged (see logEvent) and only the last one, the result, is kept.
 func runCLI(ctx context.Context, bin string, args []string, dir string, env []string, stdin string, stream bool) (*Result, error) {
@@ -241,55 +309,22 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		}
 		log := logr.FromContextOrDiscard(ctx)
 		rd := bufio.NewReader(pipe)
-		// The agent's last messages before a successful result are its
-		// answer (cursor writes the JSON answer as text): they are posted, not
-		// logged. So messages are held until an event shows they were not the
-		// last: a tool call or its result. A failed result logs them, they
-		// say what went wrong.
-		var held [][]byte
-		flush := func() {
-			for _, h := range held {
-				logEvent(log, h)
-			}
-			held = nil
-		}
+		tr := &turnReader{log: log}
 		for {
 			line, err := rd.ReadBytes('\n')
 			if line = bytes.TrimSpace(line); len(line) > 0 {
-				switch ev := parseEvent(line); ev.Type {
-				case "assistant":
-					held = append(held, line)
-					if callsTool(line) {
-						// A claude message that calls a tool is no answer.
-						flush()
-					}
-				case "tool_call", "user":
-					flush()
-					if ev.Type == "tool_call" && ev.Subtype == "started" {
-						logEvent(log, line)
-					}
-				case "rate_limit_event":
-					if u := usageReading(line); u != nil {
-						usage = u
-					}
-				case "result":
-					if ev.IsError || ev.Subtype != "" && ev.Subtype != "success" {
-						flush()
-					} else if len(held) > 0 {
-						log.Info("agent answers")
-						held = nil
-					}
-					stdout.Reset()
-					stdout.Write(line)
-				}
+				tr.consume(line)
 			}
 			if err != nil {
 				break
 			}
 		}
 		// No result: the stream ended early, the messages are no answer.
-		flush()
+		tr.flush()
 		runErr = cmd.Wait()
+		stdout.Reset()
+		stdout.Write(tr.result)
+		usage = tr.usage
 	} else {
 		cmd.Stdout = &stdout
 		runErr = cmd.Run()
