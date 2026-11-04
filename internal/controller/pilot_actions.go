@@ -248,7 +248,8 @@ func (r *AgentProjectReconciler) patchProposals(ctx context.Context, coord *aiv1
 	return err
 }
 
-// applyPilotChatCommands applies Desk accept/reject on the Coordinate task
+// applyPilotChatCommands applies Desk accept/reject and answers to the
+// milestone's prompts (answerPrompt) on the Coordinate task
 // newer than LastChatCommandID. Authority is ownerSubjects; answers and the
 // mark are saved on the Coordinate task.
 func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
@@ -281,18 +282,31 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, pro
 			logger.Info("chat command skipped", "id", m.ID, "author", m.Author, "error", err.Error())
 			continue
 		}
-		if !cmd.ProposalOnly() {
+		if !cmd.ProposalOnly() && !cmd.PromptCmd() {
 			answer(m.ID, "not supported on this task yet")
 			continue
 		}
 		if !slices.Contains(coord.Spec.OwnerSubjects, m.Author) {
-			answer(m.ID, "Only the milestone's owners may answer proposals.")
+			if cmd.PromptCmd() {
+				answer(m.ID, "Only the milestone's owners can answer prompts.")
+			} else {
+				answer(m.ID, "Only the milestone's owners may answer proposals.")
+			}
 			logger.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
 			continue
 		}
 		who := m.Author
 		if m.AuthorName != "" {
 			who = m.AuthorName
+		}
+		if cmd.PromptCmd() {
+			logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "prompt", cmd.Prompt)
+			reply, err := r.answerPrompt(ctx, project, spec, st, coord, who, cmd, "desk")
+			if err != nil {
+				return err
+			}
+			answer(m.ID, reply)
+			continue
 		}
 		yes := cmd.Cmd == "accept"
 		logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "proposal", cmd.Proposal)
@@ -420,7 +434,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		var lines []string
 		for j, a := range p.Actions {
 			if errs[i][j] == nil {
-				if errs[i][j] = r.runAction(ctx, gl, project, spec, st, tracking, p.ID, p.AcceptedBy, a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
+				if errs[i][j] = r.runAction(ctx, gl, project, spec, st, tracking, proposalHow(p), p.AcceptedBy, a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
 					failed = append(failed, titleKey(a.Title)) // may be opened again
 				}
 			}
@@ -430,7 +444,14 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 			}
 			lines = append(lines, line)
 		}
-		log.FromContext(ctx).Info("pilot proposal run", "task", coord.Name, "proposal", p.ID, "by", p.AcceptedBy)
+		log.FromContext(ctx).Info("pilot proposal run", "task", coord.Name, "proposal", p.ID, "prompt", p.Prompt, "by", p.AcceptedBy)
+		if p.Prompt != "" {
+			// The prompt's GitLab comment shows it with the answer.
+			if err := r.promptOutcome(ctx, st, p.Prompt, lines); err != nil {
+				log.FromContext(ctx).Info("could not record the outcome of a prompt's answer", "task", st.Name, "prompt", p.Prompt, "error", err.Error())
+			}
+			continue
+		}
 		body := b.String() + "\n" + strings.Join(lines, "\n")
 		if p.AcceptedBy == "" {
 			body = auditNote(spec, coord, tasks, p, lines)
@@ -447,9 +468,10 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 	})
 }
 
-// runAction executes one validated action of an accepted proposal.
+// runAction executes one validated action of an accepted proposal; how
+// says how it came to run (proposalHow), by who accepted it.
 func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask,
-	tracking, id int64, by string, a aiv1.PilotAction, t *aiv1.AgentTask) error {
+	tracking int64, how, by string, a aiv1.PilotAction, t *aiv1.AgentTask) error {
 	switch a.Tool {
 	case "fixFlaky":
 		// Checked again: another pilot may have handed it over meanwhile.
@@ -458,7 +480,7 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		if err != nil {
 			return err
 		}
-		return r.handOverFlaky(ctx, gl, spec, mh, st, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), pilotHow(id, by)))
+		return r.handOverFlaky(ctx, gl, spec, mh, st, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), how))
 	case "skip", "pause", "resume", "revisit":
 		return r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
 	case "setRule", "forgetRule":
@@ -476,7 +498,7 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		_, err := gl.CreateIssue(ctx, spec.GitLab.Project, gitlab.CreateIssueOptions{
 			Title: inertLine(a.Title, 200),
 			Description: fmt.Sprintf("%s\n\n_Opened by the pilot of %s (%s)._\n\n<!-- ai-operator:pilot-issue=%s -->",
-				inert(a.Note), inertLine(st.Spec.Milestone.Title, 200), pilotHow(id, by), titleKey(a.Title)),
+				inert(a.Note), inertLine(st.Spec.Milestone.Title, 200), how, titleKey(a.Title)),
 			Labels: spec.Workflow.GeneratedLabel,
 		})
 		return err
@@ -504,7 +526,7 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 	if a.Tool == "instruct" {
 		// Shown where the implementer works; its prompt has it from the
 		// task, not from this comment.
-		body := fmt.Sprintf("🧭 Instruction from the pilot (%s) for the next run: %s", pilotHow(id, by), describeAction(a, nil))
+		body := fmt.Sprintf("🧭 Instruction from the pilot (%s) for the next run: %s", how, describeAction(a, nil))
 		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, a.IssueIID, body); err != nil {
 			log.FromContext(ctx).Info("could not show the pilot's instruction", "issue", a.IssueIID, "error", err.Error())
 		}

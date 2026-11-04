@@ -318,6 +318,10 @@ type PilotProposal struct {
 	// that manages), so the operator does when it posts the proposal.
 	// +optional
 	Quiet bool `json:"quiet,omitempty"`
+	// Prompt is the id ("Q3") of the prompt whose chosen option this
+	// accepted proposal runs: its outcome goes into the prompt's answer.
+	// +optional
+	Prompt string `json:"prompt,omitempty"`
 }
 
 // PilotEvent is something the pilot assesses without being asked: an

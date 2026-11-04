@@ -267,6 +267,13 @@ func TestChatDispatchCommandOnCoordinateTask(t *testing.T) {
 	if st != "delivered" || reason != "" {
 		t.Fatalf("accept on Coordinate = %q %q", st, reason)
 	}
+
+	answer := e.insertUser(task.Name, `{"cmd":"answer","prompt":"Q3","option":"A"}`, "command", "c-coord-answer")
+	e.chat.dispatchQueued(e.ctx)
+	st, reason = e.msgState(answer, task.Name)
+	if st != "delivered" || reason != "" {
+		t.Fatalf("answer on Coordinate = %q %q", st, reason)
+	}
 }
 
 func TestChatReplyCopiesAnswer(t *testing.T) {

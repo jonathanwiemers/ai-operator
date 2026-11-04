@@ -148,7 +148,7 @@ poll.
 | `/agent spec` | Plan the milestone: the planning agent creates one sub-issue per merge request. Changing the description re-plans the drafts. (`milestones.specMarker`) |
 | `/agent autopilot` | Plan and run the milestone end to end: no questions, one issue at a time, merged when CI is green and the review is clean. Removing the line stops it. (`milestones.autopilotMarker`) |
 | `/agent owners @alice @bob` | Mention these users when an issue of the milestone needs a human, instead of the project's owners. `/agent owners` alone mentions nobody. Changing this line does not re-plan. See [Owners and pings](usage.md#owners-and-pings). |
-| `/agent owner-subjects alice@example.com bob` | Desk identities (the UI's username claim) that may accept or reject pilot proposals on the Desk. No project-level fallback. Changing this line does not re-plan. |
+| `/agent owner-subjects alice@example.com bob` | Desk identities (the UI's username claim) that may accept or reject pilot proposals and answer the milestone's prompts on the Desk. No project-level fallback. Changing this line does not re-plan. |
 | `/agent rule R1: switch ci.maxFixRounds=3` | A standing rule of the milestone: `switch <setting>=<value>` (`ci.maxFixRounds`, `ci.retryFailedJobs`, `review.retries`, `review.maxIterations`), `pilot <text>` for the pilot, or `prompt <text>` for the implementers and reviewers. The pilot writes them after an owner's `yes`; you may edit them by hand. Changing them does not re-plan. See [Talking to the pilot](usage.md#talking-to-the-pilot). |
 
 ## Labels you may set yourself

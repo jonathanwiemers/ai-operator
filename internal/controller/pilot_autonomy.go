@@ -153,6 +153,15 @@ func pilotHow(id int64, by string) string {
 	return fmt.Sprintf("proposal P%d, accepted by `@%s`", id, by)
 }
 
+// proposalHow is pilotHow of an accepted proposal, which names the prompt
+// it was chosen on, if any.
+func proposalHow(p aiv1.PilotProposal) string {
+	if p.Prompt != "" && p.AcceptedBy != "" {
+		return fmt.Sprintf("prompt %s, answered by `@%s`", p.Prompt, p.AcceptedBy)
+	}
+	return pilotHow(p.ID, p.AcceptedBy)
+}
+
 // refund gives back the interventions of the pilot's own actions that were
 // refused before they ran (stopped meanwhile, or no longer valid).
 func refund(ps *aiv1.PilotStatus, tasks map[int64]*aiv1.AgentTask, accepted []aiv1.PilotProposal, errs [][]error) {

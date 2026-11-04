@@ -1044,6 +1044,11 @@ spec:
                         postedAt:
                           format: date-time
                           type: string
+                        prompt:
+                          description: |-
+                            Prompt is the id ("Q3") of the prompt whose chosen option this
+                            accepted proposal runs: its outcome goes into the prompt's answer.
+                          type: string
                         quiet:
                           description: |-
                             Quiet: the run did not mention the owners (an assessment of a pilot
@@ -1295,6 +1300,11 @@ spec:
                         postedAt:
                           format: date-time
                           type: string
+                        prompt:
+                          description: |-
+                            Prompt is the id ("Q3") of the prompt whose chosen option this
+                            accepted proposal runs: its outcome goes into the prompt's answer.
+                          type: string
                         quiet:
                           description: |-
                             Quiet: the run did not mention the owners (an assessment of a pilot
@@ -1408,6 +1418,11 @@ spec:
                           type: array
                         postedAt:
                           format: date-time
+                          type: string
+                        prompt:
+                          description: |-
+                            Prompt is the id ("Q3") of the prompt whose chosen option this
+                            accepted proposal runs: its outcome goes into the prompt's answer.
                           type: string
                         quiet:
                           description: |-

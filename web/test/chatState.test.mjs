@@ -129,6 +129,31 @@ test('commandLabel: merge names the issue and the short head', () => {
   }
 })
 
+test('commandLabel: answer names the prompt and the option or text', () => {
+  assert.equal(commandLabel('{"cmd":"answer","prompt":"Q3","option":"A"}'), 'answer Q3: A')
+  assert.equal(
+    commandLabel('{"cmd":"answer","prompt":"Q3","text":"use the  second\\nAPI"}'),
+    'answer Q3: "use the second API"',
+  )
+  const long = 'x'.repeat(41)
+  assert.equal(
+    commandLabel(`{"cmd":"answer","prompt":"Q3","text":"${long}"}`),
+    `answer Q3: "${'x'.repeat(39)}…"`,
+  )
+  assert.equal(
+    commandLabel(`{"cmd":"answer","prompt":"Q3","text":"${'x'.repeat(40)}"}`),
+    `answer Q3: "${'x'.repeat(40)}"`,
+  )
+  for (const body of [
+    '{"cmd":"answer","option":"A"}',
+    '{"cmd":"answer","prompt":"Q3"}',
+    '{"cmd":"answer","prompt":"Q3","text":"  "}',
+    '{"cmd":"answer","prompt":3,"option":"A"}',
+  ]) {
+    assert.equal(commandLabel(body), body)
+  }
+})
+
 test('commandLabel falls back to raw text', () => {
   assert.equal(commandLabel('not json'), 'not json')
   assert.equal(commandLabel('{"cmd":"nope"}'), '{"cmd":"nope"}')

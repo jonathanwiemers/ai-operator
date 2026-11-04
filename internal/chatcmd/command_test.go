@@ -52,6 +52,25 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"accept","proposal":0}`, Command{}, "accept needs proposal"},
 		{`{"cmd":"reject","proposal":1,"issue":2}`, Command{}, "reject takes only proposal"},
 		{`{"cmd":"retry"}{"cmd":"review"}`, Command{}, "trailing data"},
+		{`{"cmd":"answer","prompt":"Q3","option":"A"}`, Command{Cmd: "answer", Prompt: "Q3", Option: "A"}, ""},
+		{`{"cmd":"answer","prompt":" q12 ","option":"e"}`, Command{Cmd: "answer", Prompt: "Q12", Option: "E"}, ""},
+		{`{"cmd":"answer","prompt":"Q3","text":"  take the second API  "}`, Command{Cmd: "answer", Prompt: "Q3", Text: "take the second API"}, ""},
+		{`{"cmd":"answer","option":"A"}`, Command{}, "answer needs a prompt"},
+		{`{"cmd":"answer","prompt":"Q0","option":"A"}`, Command{}, "answer needs a prompt"},
+		{`{"cmd":"answer","prompt":"P3","option":"A"}`, Command{}, "answer needs a prompt"},
+		{`{"cmd":"answer","prompt":"Q3"}`, Command{}, "either an option or a text"},
+		{`{"cmd":"answer","prompt":"Q3","text":"   "}`, Command{}, "either an option or a text"},
+		{`{"cmd":"answer","prompt":"Q3","option":"A","text":"and this"}`, Command{}, "either an option or a text"},
+		{`{"cmd":"answer","prompt":"Q3","option":"F"}`, Command{}, `option "F" is not A to E`},
+		{`{"cmd":"answer","prompt":"Q3","option":"AB"}`, Command{}, "is not A to E"},
+		{`{"cmd":"answer","prompt":"Q3","text":"` + strings.Repeat("x", 4001) + `"}`, Command{}, "longer than 4000 bytes"},
+		{`{"cmd":"answer","prompt":"Q3","option":"A","proposal":3}`, Command{}, "answer takes only prompt"},
+		{`{"cmd":"answer","prompt":"Q3","option":"A","issue":1}`, Command{}, "answer takes only prompt"},
+		{`{"cmd":"answer","prompt":"Q3","option":"A","sha":"5a0e000"}`, Command{}, "answer takes no sha"},
+		{`{"cmd":"accept","proposal":3,"prompt":"Q3"}`, Command{}, "accept takes no prompt, option or text"},
+		{`{"cmd":"retry","option":"A"}`, Command{}, "retry takes no prompt, option or text"},
+		{`{"cmd":"skip","issue":1,"text":"why"}`, Command{}, "skip takes no prompt, option or text"},
+		{`{"cmd":"use","default":true,"text":" "}`, Command{}, "use takes no prompt, option or text"},
 	} {
 		got, err := Parse(tc.body)
 		if tc.wantErr != "" {
@@ -98,9 +117,17 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 			t.Errorf("%s should be ProposalOnly only", cmd)
 		}
 	}
-	for _, cmd := range []string{"pause", "resume", "skip", "accept", "reject"} {
+	for _, cmd := range []string{"pause", "resume", "skip", "accept", "reject", "answer"} {
 		if (Command{Cmd: cmd}).ImplementOnly() {
 			t.Errorf("%s should not be ImplementOnly", cmd)
+		}
+	}
+	if c := (Command{Cmd: "answer"}); !c.PromptCmd() || c.ProposalOnly() || c.Autopilot() {
+		t.Error("answer should be PromptCmd only")
+	}
+	for _, cmd := range []string{"retry", "use", "pause", "merge", "accept", "reject"} {
+		if (Command{Cmd: cmd}).PromptCmd() {
+			t.Errorf("%s should not be PromptCmd", cmd)
 		}
 	}
 

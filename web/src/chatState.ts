@@ -77,6 +77,8 @@ export type ChatCommand =
   | { cmd: 'merge'; issue: number; sha: string }
   | { cmd: 'accept'; proposal: number }
   | { cmd: 'reject'; proposal: number }
+  | { cmd: 'answer'; prompt: string; option: string }
+  | { cmd: 'answer'; prompt: string; text: string }
 
 // commandLabel turns a command row's body into a short chip; unparsable
 // bodies fall back to the raw text.
@@ -121,6 +123,14 @@ export function commandLabel(body: string | undefined): string {
       return typeof o.proposal === 'number' && o.proposal > 0 ? `accept P${o.proposal}` : body
     case 'reject':
       return typeof o.proposal === 'number' && o.proposal > 0 ? `reject P${o.proposal}` : body
+    case 'answer': {
+      const prompt = typeof o.prompt === 'string' ? o.prompt.trim() : ''
+      if (!prompt) return body
+      if (typeof o.option === 'string' && o.option.trim()) return `answer ${prompt}: ${o.option.trim()}`
+      const text = typeof o.text === 'string' ? o.text.trim().replace(/\s+/g, ' ') : ''
+      if (!text) return body
+      return `answer ${prompt}: "${text.length > 40 ? text.slice(0, 39) + '…' : text}"`
+    }
     default:
       return body
   }

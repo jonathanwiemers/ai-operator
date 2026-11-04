@@ -1370,6 +1370,29 @@ after the pilots' accepted actions ran, compares each prompt's `state` with
   GitLab's 1 MB limit and then end with the Desk link. GitLab errors are
   logged and tried again on the next poll.
 
+### Answering prompts
+
+An owner answers a milestone prompt from the Desk with the chat command
+`{"cmd":"answer","prompt":"Q3","option":"A"}` (or `"text"` instead of
+`"option"`) on the milestone's Coordinate task, the pilot's chat
+(`internal/controller/prompt_answer.go`). Only the milestone's
+`ownerSubjects` answer; the command always names its prompt.
+
+* The answer (`state: answered`, `answer` with option, owner, time and
+  `via: desk`) is written on the spec task first, on the server's copy, so
+  a second answer is refused with the first one named and a crash never
+  runs an option twice.
+* An option with actions then becomes an accepted `PilotProposal` with
+  `prompt` set; `runAccepted` checks and runs it at the end of the poll
+  like any accepted proposal, and writes its action lines into
+  `answer.outcome` instead of posting "Proposal P<n> accepted": the
+  mirror's reply shows them. An option without actions ("do nothing")
+  only records the answer.
+* A prompt that is superseded or expired (a proposal past 24 h, or the
+  milestone's state changed) is refused. Free text is refused on a prompt
+  without `allowFreeText`; otherwise it waits for the pilot turn that turns
+  it into an option, and is refused with "pick an option" until then.
+
 ## Engines, profiles and subscriptions
 
 Each role runs on an engine, an agent CLI:
