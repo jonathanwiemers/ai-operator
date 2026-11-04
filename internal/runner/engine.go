@@ -93,6 +93,15 @@ type CallUsage struct {
 	// Models is the per-model split as reported (subagent models included),
 	// sorted by name.
 	Models []ModelUsage
+	// SubagentCalls is how many subagents claude started (subagent_stats,
+	// else the distinct parent_tool_use_ids of the stream).
+	SubagentCalls int32
+	// ContextSeries is the context size (input + cache tokens) of each
+	// main-thread assistant turn, thinned to maxContextPoints.
+	ContextSeries []int64
+	// SubagentTurns are indexes into ContextSeries: the main turns after
+	// which a subagent ran, ascending, without duplicates.
+	SubagentTurns []int32
 }
 
 // ModelUsage is one model's share of a call.
@@ -281,12 +290,20 @@ func (c *CursorCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
 }
 
 // turnReader consumes stream-json lines for one agent turn: held-message
-// logging, rate_limit_event usage, and the result line.
+// logging, rate_limit_event usage, claude's per-turn context sizes and
+// subagents, and the result line.
 type turnReader struct {
 	log    logr.Logger
 	held   [][]byte
 	usage  *aiv1.EngineUsage
 	result []byte
+	// messages are the main-thread message ids seen; claude repeats a
+	// message once per content block.
+	messages map[string]bool
+	series   []int64
+	// subagents are the parent_tool_use_ids seen, one per subagent run.
+	subagents map[string]bool
+	subTurns  []int32
 }
 
 func (t *turnReader) flush() {
@@ -301,12 +318,16 @@ func (t *turnReader) flush() {
 func (t *turnReader) consume(line []byte) bool {
 	switch ev := parseEvent(line); ev.Type {
 	case "assistant":
+		t.track(line)
 		t.held = append(t.held, line)
 		if callsTool(line) {
 			// A claude message that calls a tool is no answer.
 			t.flush()
 		}
 	case "tool_call", "user":
+		if ev.Type == "user" {
+			t.track(line)
+		}
 		t.flush()
 		if ev.Type == "tool_call" && ev.Subtype == "started" {
 			logEvent(t.log, line)
@@ -328,6 +349,90 @@ func (t *turnReader) consume(line []byte) bool {
 	return false
 }
 
+// track reads a claude assistant or user line: a main-thread assistant
+// message adds its context size to the series, a line with a new
+// parent_tool_use_id marks a subagent run after the last main turn. Lines
+// without these fields (cursor) add nothing.
+func (t *turnReader) track(line []byte) {
+	var ev struct {
+		ParentToolUseID string `json:"parent_tool_use_id"`
+		Message         struct {
+			ID    string `json:"id"`
+			Usage *struct {
+				InputTokens              int64 `json:"input_tokens"`
+				CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+				CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+			} `json:"usage"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(line, &ev) != nil {
+		return
+	}
+	if id := ev.ParentToolUseID; id != "" {
+		if t.subagents[id] {
+			return
+		}
+		if t.subagents == nil {
+			t.subagents = map[string]bool{}
+		}
+		t.subagents[id] = true
+		if turn := int32(len(t.series) - 1); turn >= 0 && !slices.Contains(t.subTurns, turn) {
+			t.subTurns = append(t.subTurns, turn)
+		}
+		return
+	}
+	u, id := ev.Message.Usage, ev.Message.ID
+	if u == nil || id == "" || t.messages[id] {
+		return
+	}
+	if t.messages == nil {
+		t.messages = map[string]bool{}
+	}
+	t.messages[id] = true
+	t.series = append(t.series, u.InputTokens+u.CacheReadInputTokens+u.CacheCreationInputTokens)
+}
+
+// maxContextPoints caps CallUsage.ContextSeries.
+const maxContextPoints = 500
+
+// addCallUsage merges what the stream showed into the result's CallUsage.
+func (t *turnReader) addCallUsage(res *Result) {
+	if len(t.series) == 0 && len(t.subagents) == 0 {
+		return
+	}
+	if res.CallUsage == nil {
+		res.CallUsage = &CallUsage{}
+	}
+	u := res.CallUsage
+	u.ContextSeries, u.SubagentTurns = thinSeries(t.series, t.subTurns, maxContextPoints)
+	if u.SubagentCalls == 0 {
+		u.SubagentCalls = int32(len(t.subagents))
+	}
+}
+
+// thinSeries keeps at most max evenly spaced points of series, always the
+// first and the last, and maps turns (indexes into series) to the nearest
+// kept index, without duplicates.
+func thinSeries(series []int64, turns []int32, max int) ([]int64, []int32) {
+	n := len(series)
+	if n <= max || max < 2 {
+		return series, turns
+	}
+	// Kept point k is series[round(k*(n-1)/(max-1))].
+	kept := make([]int64, max)
+	for k := range kept {
+		kept[k] = series[(2*k*(n-1)+max-1)/(2*(max-1))]
+	}
+	var mapped []int32
+	for _, i := range turns {
+		k := int32((2*int(i)*(max-1) + n - 1) / (2 * (n - 1)))
+		if !slices.Contains(mapped, k) {
+			mapped = append(mapped, k)
+		}
+	}
+	return kept, mapped
+}
+
 // runCLI runs an agent CLI. With stream, its output is a line per event: each
 // is logged (see logEvent) and only the last one, the result, is kept.
 func runCLI(ctx context.Context, bin string, args []string, dir string, env []string, stdin string, stream bool) (*Result, error) {
@@ -338,7 +443,7 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 	var stdout, stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	var runErr error
-	var usage *aiv1.EngineUsage
+	tr := &turnReader{log: logr.FromContextOrDiscard(ctx)}
 	if stream {
 		pipe, err := cmd.StdoutPipe()
 		if err != nil {
@@ -347,9 +452,7 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		if err := cmd.Start(); err != nil {
 			return nil, fmt.Errorf("%s failed: %w", filepath.Base(bin), err)
 		}
-		log := logr.FromContextOrDiscard(ctx)
 		rd := bufio.NewReader(pipe)
-		tr := &turnReader{log: log}
 		for {
 			line, err := rd.ReadBytes('\n')
 			if line = bytes.TrimSpace(line); len(line) > 0 {
@@ -364,7 +467,6 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		runErr = cmd.Wait()
 		stdout.Reset()
 		stdout.Write(tr.result)
-		usage = tr.usage
 	} else {
 		cmd.Stdout = &stdout
 		runErr = cmd.Run()
@@ -376,7 +478,8 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		}
 		return nil, parseErr
 	}
-	res.Usage = usage
+	res.Usage = tr.usage
+	tr.addCallUsage(res)
 	if res.IsError {
 		return res, fmt.Errorf("%s reported an error: %s", filepath.Base(bin), tail(res.Text, 2000))
 	}
@@ -408,6 +511,11 @@ func ParseResult(out []byte) (*Result, error) {
 		} `json:"modelUsage"`
 		NumTurns   *int32 `json:"num_turns"`
 		DurationMS *int64 `json:"duration_ms"`
+		// SubagentStats has more (by_type, completed, failed, …); spawned
+		// counts every subagent started, nested ones included.
+		SubagentStats *struct {
+			Spawned int32 `json:"spawned"`
+		} `json:"subagent_stats"`
 	}
 	out = bytes.TrimSpace(out)
 	if len(out) == 0 {
@@ -440,6 +548,9 @@ func ParseResult(out []byte) (*Result, error) {
 		}
 		if raw.DurationMS != nil {
 			u.DurationMS = *raw.DurationMS
+		}
+		if raw.SubagentStats != nil {
+			u.SubagentCalls = raw.SubagentStats.Spawned
 		}
 		for name, m := range raw.ModelUsage {
 			u.Models = append(u.Models, ModelUsage{

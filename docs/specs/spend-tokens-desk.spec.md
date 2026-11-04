@@ -288,3 +288,47 @@ split). With this cursor version `CallUsage` stays nil, so cursor calls count
 as `cost_source: unknown` (decision 4) until a later version sends usage.
 `usage_update` is not parsed. Unverified live; re-check when cursor-agent
 is updated.
+
+## Finding: claude subagent stream
+
+Checked on 2026-11-04 against claude `2.1.314`, the version the unpinned
+`npm install -g @anthropic-ai/claude-code` in `Dockerfile.agent` installed at
+the time (stream-json schema in the CLI bundle; no billed live run).
+
+- **Main thread vs subagent:** every `assistant` and `user` line has
+  `parent_tool_use_id`. It is `null` on the main thread and the id of the
+  `Agent` (formerly `Task`) tool_use on every line of the subagent it
+  started, the subagent's prompt (a `user` line) first. Nested subagents
+  carry the id of their own spawning tool_use.
+- **Per-turn context:** each `assistant` line carries `message.id`,
+  `message.model` and `message.usage` (`input_tokens`,
+  `cache_creation_input_tokens`, `cache_read_input_tokens`,
+  `output_tokens`). A message with several content blocks comes as one line
+  per block with the same id and the same input/cache figures.
+- **Result line:** `modelUsage` lists every model (subagent models
+  included). `subagent_stats` (optional) holds `spawned` (subagents started,
+  nested ones included; refused or failed launches not counted) plus
+  `requested`, `started_in_background`, `by_type`, `max_depth`,
+  `spawned_by_subagents`, `completed`, `failed`, `killed`, `refused`.
+- **Running totals:** `subagent_stats`, like `modelUsage` and
+  `total_cost_usd`, is a running total of the CLI process's session. A
+  one-shot call (also with `--resume`) is one process; a long-lived session
+  (Desk chat) reports the session total on every turn's result.
+
+Example (shortened, `internal/runner/testdata/claude-stream-subagent.jsonl`):
+
+```json
+{"type":"assistant","message":{"id":"msg_02Main","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"toolu_02Agent","name":"Agent","input":{"subagent_type":"Explore","prompt":"…"}}],"usage":{"input_tokens":5,"cache_creation_input_tokens":800,"cache_read_input_tokens":20003,"output_tokens":96}},"parent_tool_use_id":null}
+{"type":"assistant","message":{"id":"msg_s1Sub","model":"claude-haiku-5-5","content":[{"type":"tool_use","name":"Grep","input":{"pattern":"consume\\("}}],"usage":{"input_tokens":4,"cache_creation_input_tokens":5000,"cache_read_input_tokens":0,"output_tokens":61}},"parent_tool_use_id":"toolu_02Agent"}
+{"type":"result","subtype":"success","num_turns":5,"modelUsage":{"claude-opus-5-5":{"outputTokens":110,"costUSD":0.224112},"claude-haiku-5-5":{"outputTokens":79,"costUSD":0.007395}},"subagent_stats":{"spawned":1,"by_type":{"Explore":1},"max_depth":1,"completed":1,"failed":0}}
+```
+
+Consequence (R19): `CallUsage.SubagentCalls` is `subagent_stats.spawned`,
+or the number of distinct `parent_tool_use_id`s when the field is absent.
+`ContextSeries` holds input + cache tokens of each main-thread assistant
+message, once per `message.id`; `SubagentTurns` holds the series index of
+the main turn after which each subagent started (deduplicated). The runner
+thins the series to 500 evenly spaced points (first and last kept) and maps
+the markers to the nearest kept point. Chat turns of a long-lived session
+report session totals; recording them per call (R2) has to take the
+difference to the previous turn.

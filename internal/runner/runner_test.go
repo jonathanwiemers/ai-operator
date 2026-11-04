@@ -126,6 +126,124 @@ func TestParseResultCallUsage(t *testing.T) {
 	}
 }
 
+// TestClaudeStreamSubagent replays a stream in which the main thread (opus)
+// starts an Explore subagent (haiku), through a one-shot call and a session.
+func TestClaudeStreamSubagent(t *testing.T) {
+	fixture, err := filepath.Abs("testdata/claude-stream-subagent.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(t *testing.T, u *CallUsage) {
+		t.Helper()
+		if u == nil {
+			t.Fatal("CallUsage is nil")
+		}
+		// msg_01Main and msg_03Main come twice (one line per content block)
+		// and count once; the subagent's own turns are not in the series.
+		if want := []int64{20003, 20808, 22310, 22611}; !slices.Equal(u.ContextSeries, want) {
+			t.Fatalf("ContextSeries %v, want %v", u.ContextSeries, want)
+		}
+		// The subagent ran after main turn 1 (the Agent tool_use).
+		if want := []int32{1}; !slices.Equal(u.SubagentTurns, want) {
+			t.Fatalf("SubagentTurns %v, want %v", u.SubagentTurns, want)
+		}
+		if u.SubagentCalls != 1 {
+			t.Fatalf("SubagentCalls %d, want 1", u.SubagentCalls)
+		}
+		var models []string
+		for _, m := range u.Models {
+			models = append(models, m.Model)
+		}
+		if want := []string{"claude-haiku-5-5", "claude-opus-5-5"}; !slices.Equal(models, want) {
+			t.Fatalf("models %v, want %v", models, want)
+		}
+		if u.Turns != 5 || u.InputTokens != 11 || u.CacheReadTokens != 71121 {
+			t.Fatalf("result-line fields lost: %+v", u)
+		}
+	}
+
+	t.Run("run", func(t *testing.T) {
+		bin := sessionFake(t, "#!/bin/sh\ncat "+fixture+"\n")
+		res, err := (&ClaudeCLI{Binary: bin, Env: os.Environ()}).Run(context.Background(), Invocation{Dir: t.TempDir()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		check(t, res.CallUsage)
+	})
+	t.Run("session", func(t *testing.T) {
+		bin := sessionFake(t, "#!/bin/sh\nwhile read -r line; do cat "+fixture+"; done\n")
+		s, err := (&ClaudeCLI{Binary: bin, Env: os.Environ()}).Start(context.Background(), Invocation{Dir: t.TempDir()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		res, err := s.Prompt(context.Background(), "go", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check(t, res.CallUsage)
+	})
+	t.Run("without subagent_stats", func(t *testing.T) {
+		data, err := os.ReadFile(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		tr := &turnReader{log: logr.Discard()}
+		for _, line := range lines[:len(lines)-1] {
+			tr.consume([]byte(line))
+		}
+		tr.consume([]byte(`{"type":"result","subtype":"success","is_error":false,"result":"Done.","usage":{"input_tokens":11}}`))
+		res, err := ParseResult(tr.result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tr.addCallUsage(res)
+		if u := res.CallUsage; u.SubagentCalls != 1 || !slices.Equal(u.SubagentTurns, []int32{1}) {
+			t.Fatalf("counted from parent_tool_use_id: %+v", u)
+		}
+	})
+}
+
+func TestThinSeries(t *testing.T) {
+	series := func(n int) []int64 {
+		s := make([]int64, n)
+		for i := range s {
+			s[i] = int64(i * 10)
+		}
+		return s
+	}
+
+	// At or below the cap the series and the turns stay as they are.
+	for _, n := range []int{10, 500} {
+		s, turns := thinSeries(series(n), []int32{0, 3, int32(n - 1)}, 500)
+		if !slices.Equal(s, series(n)) || !slices.Equal(turns, []int32{0, 3, int32(n - 1)}) {
+			t.Fatalf("n=%d: changed to %d points, turns %v", n, len(s), turns)
+		}
+	}
+
+	s, turns := thinSeries(series(1234), []int32{0, 5, 6, 617, 1233}, 500)
+	if len(s) != 500 || s[0] != 0 || s[499] != 12330 {
+		t.Fatalf("thinned to %d points, first %d, last %d", len(s), s[0], s[len(s)-1])
+	}
+	// Even spacing: the source index steps by (1233/499 ≈ 2.47), so 2 or 3.
+	for k := 1; k < len(s); k++ {
+		if d := (s[k] - s[k-1]) / 10; d < 2 || d > 3 {
+			t.Fatalf("step %d→%d skips %d points", k-1, k, d)
+		}
+	}
+	// Turns 5 and 6 both map to kept point 2 (source index 5): one marker.
+	// 617 maps to 250, the last turn to the last point.
+	if want := []int32{0, 2, 250, 499}; !slices.Equal(turns, want) {
+		t.Fatalf("turns %v, want %v", turns, want)
+	}
+	for _, k := range turns {
+		if k < 0 || int(k) >= len(s) {
+			t.Fatalf("turn %d outside the thinned series", k)
+		}
+	}
+}
+
 func TestScrubEnv(t *testing.T) {
 	env := scrubEnv([]string{"GITLAB_TOKEN=x", "AI_TASK_NAME=t", "KUBERNETES_SERVICE_HOST=h", "CURSOR_API_KEY=k", "CLAUDE_CODE_OAUTH_TOKEN=o", "PATH=/bin"})
 	joined := strings.Join(env, " ")

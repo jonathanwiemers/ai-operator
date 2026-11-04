@@ -157,6 +157,7 @@ func (s *ClaudeSession) Prompt(ctx context.Context, text string, fn func(Event))
 					return nil, err
 				}
 				res.Usage = tr.usage
+				tr.addCallUsage(res)
 				emit()
 				if res.IsError {
 					return res, fmt.Errorf("%s reported an error: %s", filepath.Base(s.bin), tail(res.Text, 2000))
