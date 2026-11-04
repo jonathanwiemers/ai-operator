@@ -87,6 +87,21 @@ func (w WorkflowSpec) ActiveLabels() []string {
 	return []string{w.ReadyLabel, w.WorkingLabel, w.NeedsInputLabel, w.ReviewLabel, w.BlockedLabel}
 }
 
+// Takes reports whether instructions may be given through in. An unset list
+// means both inputs; WithDefaults leaves it nil so existing objects stay
+// unchanged.
+func (w WorkflowSpec) Takes(in InputSource) bool {
+	if len(w.Inputs) == 0 {
+		return true
+	}
+	for _, i := range w.Inputs {
+		if i == in {
+			return true
+		}
+	}
+	return false
+}
+
 // Autopilot returns the effective autopilot marker; empty disables autopilot.
 func (m MilestoneSelector) Autopilot() string {
 	if m.AutopilotMarker == nil {

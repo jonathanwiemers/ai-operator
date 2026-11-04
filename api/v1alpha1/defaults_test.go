@@ -134,3 +134,20 @@ func TestWebhookDefaults(t *testing.T) {
 		t.Fatalf("a set fallbackInterval is kept: %+v", custom)
 	}
 }
+
+func TestWorkflowTakes(t *testing.T) {
+	for _, c := range []struct {
+		inputs       []InputSource
+		gitlab, desk bool
+	}{
+		{nil, true, true},
+		{[]InputSource{InputDesk}, false, true},
+		{[]InputSource{InputGitLab}, true, false},
+		{[]InputSource{InputGitLab, InputDesk}, true, true},
+	} {
+		w := WorkflowSpec{Inputs: c.inputs}
+		if w.Takes(InputGitLab) != c.gitlab || w.Takes(InputDesk) != c.desk {
+			t.Errorf("inputs %v: gitlab=%v desk=%v", c.inputs, w.Takes(InputGitLab), w.Takes(InputDesk))
+		}
+	}
+}

@@ -111,6 +111,17 @@ type MilestoneSelector struct {
 	AutopilotMarker *string `json:"autopilotMarker,omitempty"`
 }
 
+// InputSource is where an owner may give the agents instructions.
+// +kubebuilder:validation:Enum=gitlab;desk
+type InputSource string
+
+const (
+	// InputGitLab: "/agent" and "/pilot" comments on GitLab.
+	InputGitLab InputSource = "gitlab"
+	// InputDesk: the Desk (prompts, chat).
+	InputDesk InputSource = "desk"
+)
+
 // WorkflowSpec defines the GitLab labels used as the agent state machine. Use
 // scoped labels (with "::") so GitLab keeps exactly one of them on an issue and
 // they map nicely onto board columns.
@@ -212,6 +223,15 @@ type WorkflowSpec struct {
 	// +kubebuilder:default=members
 	// +optional
 	CommandsFrom CommandsFrom `json:"commandsFrom,omitempty"`
+
+	// Inputs are the places that take instructions: "gitlab" (comment
+	// commands) and "desk" (prompts and chat in the Desk). Unset means both.
+	// Labels, milestone planning and human merge request review threads stay
+	// on GitLab either way. No effect yet.
+	// +kubebuilder:validation:MinItems=1
+	// +listType=set
+	// +optional
+	Inputs []InputSource `json:"inputs,omitempty"`
 
 	// AssignBot assigns the bot user to an issue when the operator picks it up
 	// and the issue has no assignee, so GitLab's milestone page lists it as
