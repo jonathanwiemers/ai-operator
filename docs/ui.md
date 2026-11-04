@@ -36,14 +36,15 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   screens the rail is a drawer behind the menu button.
 * **Stream** (`/` for everything, `/projects/<namespace>/<name>` for a
   project, `…/milestones/<iid>` for a milestone: its issues, its tracking
-  issue and what was recorded for it): a header with the view tabs *Stream*
-  and *Board* (project and milestone streams; the tab is kept in `?tab=`,
-  e.g. `…/milestones/3?tab=board`, so it can be linked to and reloaded),
-  the scope tabs (the project, its milestones; they keep the view tab), a
-  search box, and a strip of the last 30 days' activity, where a day jumps
-  the stream to that day. The *Board* tab shows the project's boards (one
-  per milestone and the issues without a milestone, )
-  or the milestone's board. Below
+  issue and what was recorded for it): a header with the view tabs *Stream*,
+  *Board* and *Spend* (project and milestone streams; the tab is kept in
+  `?tab=`, e.g. `…/milestones/3?tab=board`, so it can be linked to and
+  reloaded), the scope tabs (the project, its milestones; they keep the
+  view tab), a search box, and a strip of the last 30 days' activity, where
+  a day jumps the stream to that day. The *Board* tab shows the project's
+  boards (one per milestone and the issues without a milestone)
+  or the milestone's board; the *Spend* tab what the project or milestone
+  cost (see [Spend](#spend)). Below
   it, pinned, the **message box**: it sends to a milestone's pilot (on its
   tracking issue, as `/pilot …`) or comments on an issue, in your GitLab
   name, with `/` suggesting commands; it needs your GitLab account
@@ -78,6 +79,39 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
 The Desk has no projects list or separate board and milestone pages. The former board page (`/projects/<namespace>/<name>/board`) and milestone page
 (`…/milestones/<iid>/detail`) redirect to the project stream's Board tab and
 the milestone stream; task and research pages keep their URLs.
+
+### Spend
+
+The *Spend* tab of a project or milestone stream shows what its agent
+calls cost, from the research database (`GET /api/v1/spend`; without it
+the tab says it needs the database):
+
+* **Totals:** the cost in USD (*n/a* when no call reports or estimates
+  one, never $0; *+N calls without cost* when some calls have none, they
+  are not in the sum), input, output, cache read and cache write tokens,
+  calls (and subagent calls), duration and the cache-read share (cache
+  reads of all input tokens). Runs recorded before agent calls add their
+  cost without tokens: *includes $X from runs before token tracking*.
+* **Drill-down:** a table one level down, with calls, tokens, cost and a
+  share bar per row: a project's milestones, a milestone's issues (and
+  its own spec, pilot and retro calls), an issue's runs, a run's calls.
+  Clicking a row goes one level down; a project's milestone opens the
+  milestone stream's Spend tab. The position is kept in the query
+  (`?tab=spend&spendIssue=77&spendTask=…&spendRun=2`), so it can be
+  linked to and back goes up again; breadcrumbs lead back to the project.
+  Calls of no milestone and a milestone's own calls are not split further.
+* **Calls** (a run's): seq, time, kind, role, engine and model (with the
+  effort), whether the session was resumed, the engine it fell back from,
+  tokens, cost and its source: *reported* by the engine, *estimated*
+  from tokens and the `pricing:` table (shown as `~$0.42`), or *n/a*
+  (cursor without pricing).
+* **Breakdowns** by kind, role and model (subagent models as their own),
+  highest cost first, each row with its share bar.
+
+Shares are of the rows' known cost; a row without a known cost shows
+*n/a* there. When no row has a known cost they are shares of the tokens.
+The Spend tab loads when it opens or the drill-down moves; it does not
+follow live changes.
 
 ### Notifications
 
@@ -817,6 +851,13 @@ The seed (namespace `research-dev`) has:
 * `heat-pumps`: a deep report with every block type;
 * `hostile`: a stored result with raw HTML and `javascript:` links, as if
   written behind the validator's back. Its page must show *Result withheld*.
+* agent calls of project `dev` for the [Spend](#spend) tab: milestone 4
+  with its spec, pilot and retro calls, #77 over two runs (an opus step with
+  a haiku subagent and a context series, a resumed step, a cursor review
+  with an estimated cost, a cursor fix without a cost), #78 with a run from
+  before token tracking, and a chat turn without a milestone. The tab is on
+  the stream of an AgentProject `dev` in `research-dev`
+  (`…/projects/research-dev/dev?tab=spend`).
 
 The data is dated to the latest 08:00 UTC, so the pages look fresh, and
 `make research-seed` replaces it when run again. Apply

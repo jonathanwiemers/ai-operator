@@ -7,6 +7,7 @@ import ContextPanel from '../components/ContextPanel.vue'
 import CostChip from '../components/CostChip.vue'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
 import ProjectBoards from '../components/ProjectBoards.vue'
+import SpendPanel from '../components/SpendPanel.vue'
 import StreamComposer from '../components/StreamComposer.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import { live, useResource } from '../live'
@@ -42,8 +43,8 @@ const props = defineProps<{
 const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
-// tab: Stream or Board on project and milestone streams, kept in ?tab= so
-// it can be linked to; Everything has no tabs.
+// tab: Stream, Board or Spend on project and milestone streams, kept in
+// ?tab= so it can be linked to; Everything has no tabs.
 const route = useRoute()
 const tab = computed(() => (everything.value ? 'stream' : tabFromQuery(route.query.tab)))
 
@@ -460,6 +461,15 @@ function showDay(i: number): string | null {
             {{ loadingOlder ? 'Loading…' : 'Load older' }}
           </button>
         </div>
+      </div>
+      <div v-else-if="tab === 'spend'" class="scroll board">
+        <SpendPanel
+          v-if="namespace && name"
+          :namespace="namespace"
+          :name="name"
+          :milestone-iid="milestoneIID"
+          :milestones="project?.milestones ?? []"
+        />
       </div>
       <div v-else class="scroll board">
         <template v-if="namespace && name">

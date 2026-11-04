@@ -12,10 +12,11 @@ test('tabFromQuery: stream is the default', () => {
 
 test('tabFromQuery: known tabs are kept', () => {
   assert.equal(tabFromQuery('board'), 'board')
+  assert.equal(tabFromQuery('spend'), 'spend')
 })
 
 test('tabFromQuery: unknown tabs fall back to stream', () => {
-  assert.equal(tabFromQuery('spend'), 'stream')
+  assert.equal(tabFromQuery('cost'), 'stream')
   assert.equal(tabFromQuery('Board'), 'stream')
 })
 

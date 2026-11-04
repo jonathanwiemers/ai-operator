@@ -8,6 +8,8 @@
 --   research-dev/hostile       a result that bypassed the runner's validation
 --                              (raw HTML, a javascript: link): the UI must
 --                              withhold it ("Result withheld")
+--   research-dev/dev           agent calls and run.finished events for the
+--                              Spend tab (see below)
 --
 -- The data is written as of 2026-10-29 08:00 UTC and moved to the latest
 -- such time of day before now, so the pages look fresh. Running it again
@@ -134,5 +136,67 @@ SELECT DISTINCT ON (run_id, hash) run_id, hash, topic, first_seen FROM (
     WHERE r.namespace = 'research-dev'
 ) AS items
 ORDER BY run_id, hash;
+
+-- Agent calls for the Spend tab of project research-dev/dev (the stream
+-- needs an AgentProject dev in research-dev): milestone %4 with its spec,
+-- pilot and retro calls; #77 over two runs (an opus step with a haiku
+-- subagent and a context series, a resumed step, a cursor review with an
+-- estimated cost, a cursor fix after a claude fallback without a cost, a CI
+-- round); #78 with a run from before token tracking (only its run.finished
+-- event) and one with a call; a Desk chat turn on #90 without a milestone.
+-- #77's run 1 also has its run.finished event, which the calls replace.
+-- hack/research-migrate's TestSeedSpend checks the sums.
+DELETE FROM agent_calls WHERE namespace = 'research-dev';
+DELETE FROM history_events WHERE namespace = 'research-dev' AND key LIKE 'seed/%';
+
+CREATE TEMP TABLE seed_calls (
+    at timestamptz, milestone bigint, issue bigint, mr bigint, task text, run bigint, seq bigint,
+    kind text, role text, engine text, model text, effort text, resumed boolean, fallback_from text,
+    input bigint, output bigint, cache_read bigint, cache_write bigint, cost numeric, source text,
+    turns int, duration_ms bigint, models jsonb, subagent_calls int, context_series jsonb, subagent_turns jsonb
+) ON COMMIT DROP;
+
+INSERT INTO seed_calls VALUES
+('2026-10-27 08:10Z', 4, NULL, NULL, 'dev-spec-m4', 1, 1, 'spec', 'spec', 'claude', 'claude-opus-5-5', 'high', false, '',
+ 42000, 9800, 310000, 52000, 1.2000, 'reported', 18, 412000, '[]', 0, '[]', '[]'),
+('2026-10-27 08:30Z', 4, NULL, NULL, 'dev-spec-m4', 1, 2, 'pilot', 'pilot', 'claude', 'claude-sonnet-5-5', 'medium', false, '',
+ 12000, 2100, 88000, 9000, 0.3100, 'reported', 6, 95000, '[]', 0, '[]', '[]'),
+('2026-10-27 09:00Z', 4, 77, 120, 'dev-issue-77', 1, 1, 'implement', 'implement', 'claude', 'claude-opus-5-5', 'high', false, '',
+ 71000, 24000, 610000, 73000, 2.4500, 'reported', 24, 1260000,
+ '[{"model": "claude-opus-5-5", "inputTokens": 30000, "outputTokens": 18000, "cacheReadTokens": 520000, "cacheWriteTokens": 61000, "costUSD": 2.30},
+   {"model": "claude-haiku-5-5", "inputTokens": 41000, "outputTokens": 6000, "cacheReadTokens": 90000, "cacheWriteTokens": 12000, "costUSD": 0.15}]',
+ 2, '[18000, 26500, 31000, 44000, 52500, 61000, 66000, 79000]', '[2, 5]'),
+('2026-10-27 09:40Z', 4, 77, 120, 'dev-issue-77', 1, 2, 'implement', 'implement', 'claude', 'claude-opus-5-5', 'high', true, '',
+ 26000, 21000, 840000, 48000, 3.1000, 'reported', 21, 1080000, '[]', 0,
+ '[81000, 88000, 95500, 99000, 104000, 112000, 118500, 126000]', '[]'),
+('2026-10-27 10:05Z', 4, 77, 120, 'dev-issue-77', 1, 3, 'review', 'correctness', 'cursor', 'gpt-5', '', false, '',
+ 64000, 5200, 0, 0, 0.4200, 'estimated', 1, 240000, '[]', 0, '[]', '[]'),
+('2026-10-27 13:20Z', 4, 77, 120, 'dev-issue-77', 2, 4, 'fix', 'implement', 'cursor', 'composer-1', '', false, 'claude',
+ 0, 0, 0, 0, NULL, 'unknown', 0, 330000, '[]', 0, '[]', '[]'),
+('2026-10-27 13:45Z', 4, 77, 120, 'dev-issue-77', 2, 5, 'ci', 'implement', 'claude', 'claude-sonnet-5-5', 'medium', true, '',
+ 9000, 6400, 240000, 21000, 0.6600, 'reported', 9, 300000, '[]', 0, '[]', '[]'),
+('2026-10-28 09:15Z', 4, 78, 121, 'dev-issue-78', 2, 1, 'implement', 'implement', 'claude', 'claude-sonnet-5-5', 'medium', false, '',
+ 18000, 15000, 310000, 33000, 0.9000, 'reported', 14, 720000, '[]', 0, '[]', '[]'),
+('2026-10-28 11:00Z', 4, NULL, NULL, 'dev-spec-m4', 1, 3, 'retro', 'retro', 'claude', 'claude-sonnet-5-5', 'medium', true, '',
+ 7000, 3100, 66000, 4000, 0.2200, 'reported', 4, 80000, '[]', 0, '[]', '[]'),
+('2026-10-28 15:30Z', NULL, 90, NULL, 'dev-issue-90', 0, 1, 'chat', 'chat', 'claude', 'claude-sonnet-5-5', 'low', false, '',
+ 3000, 900, 22000, 2500, 0.0500, 'reported', 2, 25000, '[]', 0, '[]', '[]');
+
+INSERT INTO agent_calls (key, at, namespace, project, milestone_iid, issue_iid, mr_iid, task, run, seq, kind, role,
+    engine, model, effort, resumed, fallback_from, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+    cost_usd, cost_source, turns, duration_ms, models, subagent_calls, context_series, subagent_turns, expires_at)
+SELECT 'call/seed-' || task || '/' || seq, at + delta, 'research-dev', 'dev', milestone, issue, mr, task, run, seq, kind, role,
+    engine, model, effort, resumed, fallback_from, input, output, cache_read, cache_write,
+    cost, source, turns, duration_ms, models, subagent_calls, context_series, subagent_turns, at + delta + interval '365 days'
+FROM seed_calls, shift;
+
+INSERT INTO history_events (key, at, namespace, project, milestone_iid, issue_iid, task, kind, summary, data, expires_at)
+SELECT key, at + delta, 'research-dev', 'dev', 4, issue, task, 'run.finished', summary, data, at + delta + interval '365 days'
+FROM (VALUES
+    ('seed/dev-issue-78/run/1', timestamptz '2026-10-26 16:00Z', 78, 'dev-issue-78', 'Run 1 finished: succeeded',
+     '{"result": "Succeeded", "runCount": 1, "costUSD": "1.75"}'::jsonb),
+    ('seed/dev-issue-77/run/1', timestamptz '2026-10-27 10:10Z', 77, 'dev-issue-77', 'Run 1 finished: succeeded',
+     '{"result": "Succeeded", "runCount": 1, "costUSD": "5.97"}'::jsonb)
+) AS e(key, at, issue, task, summary, data), shift;
 
 COMMIT;

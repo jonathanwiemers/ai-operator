@@ -1,11 +1,12 @@
-// The tabs of a project or milestone stream (decision 7: Stream | Board,
-// Spend follows). The selected tab lives in the ?tab= query parameter so it
-// can be linked to and reloaded; stream is the default and is left out.
-export type StreamTab = 'stream' | 'board'
+// The tabs of a project or milestone stream (decision 7: Stream | Board |
+// Spend). The selected tab lives in the ?tab= query parameter so it can be
+// linked to and reloaded; stream is the default and is left out.
+export type StreamTab = 'stream' | 'board' | 'spend'
 
 export const streamTabs: { id: StreamTab; label: string }[] = [
   { id: 'stream', label: 'Stream' },
   { id: 'board', label: 'Board' },
+  { id: 'spend', label: 'Spend' },
 ]
 
 type QueryValue = string | null | (string | null)[] | undefined
