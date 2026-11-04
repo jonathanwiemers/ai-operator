@@ -239,6 +239,9 @@ var PilotInstructKinds = []string{"ci-fix", "install-toolchains", "rerun"}
 // MaxPilotSpec bounds the new spec text of an editSpec, in bytes.
 const MaxPilotSpec = 64 << 10
 
+// MaxAutopilotItemDecisions bounds AutopilotItem.Decisions (the newest are kept).
+const MaxAutopilotItemDecisions = 20
+
 // PilotAction is one action of a proposal of the pilot; the operator
 // validates and executes it once an owner accepts the proposal.
 type PilotAction struct {
@@ -1115,7 +1118,8 @@ type AutopilotItem struct {
 	// +optional
 	MarkedReady bool `json:"markedReady,omitempty"`
 
-	// Decisions recorded on the issue, collected when it was merged.
+	// Decisions recorded on the issue, collected when it was merged: the
+	// newest 20; the full history is in the history database.
 	// +optional
 	Decisions []DecisionRef `json:"decisions,omitempty"`
 

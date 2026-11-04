@@ -1077,3 +1077,17 @@ func TestAutopilotPauseReasonReachesTheIssueTask(t *testing.T) {
 		t.Fatalf("the pause reason must be cleared after the pause: %q", task.Spec.Source.AutopilotPause)
 	}
 }
+
+func TestCollectDecisionsKeepsTheNewest20(t *testing.T) {
+	var body strings.Builder
+	for i := 1; i <= 25; i++ {
+		fmt.Fprintf(&body, "#### D1-P%d: title %d\n<!-- ai-operator:decision=D1-P%d -->\n\n", i, i, i)
+	}
+	got := collectDecisions(&gitlab.Issue{Description: body.String()}, nil, 1)
+	if len(got) != 20 {
+		t.Fatalf("got %d decisions, want 20", len(got))
+	}
+	if got[0].ID != "D1-P6" || got[19].ID != "D1-P25" {
+		t.Fatalf("kept %s … %s, want D1-P6 … D1-P25", got[0].ID, got[19].ID)
+	}
+}

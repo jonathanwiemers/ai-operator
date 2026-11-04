@@ -490,8 +490,9 @@ spec:
                         milestone.
                       properties:
                         decisions:
-                          description: Decisions recorded on the issue, collected
-                            when it was merged.
+                          description: |-
+                            Decisions recorded on the issue, collected when it was merged: the
+                            newest 20; the full history is in the history database.
                           items:
                             description: DecisionRef points to a decision recorded
                               on an issue.
@@ -591,8 +592,9 @@ spec:
                       drives through the merge gate while the default branch is red.
                     properties:
                       decisions:
-                        description: Decisions recorded on the issue, collected when
-                          it was merged.
+                        description: |-
+                          Decisions recorded on the issue, collected when it was merged: the
+                          newest 20; the full history is in the history database.
                         items:
                           description: DecisionRef points to a decision recorded on
                             an issue.

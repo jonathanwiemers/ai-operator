@@ -1178,8 +1178,9 @@ func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 	return nil
 }
 
-// collectDecisions lists the decisions on an issue: the planner's in the
-// description and the implementer's in the bot's comments.
+// collectDecisions lists the newest aiv1.MaxAutopilotItemDecisions decisions
+// on an issue: the planner's in the description and the implementer's in the
+// bot's comments, oldest first. The full history is in history_events.
 func collectDecisions(is *gitlab.Issue, notes []gitlab.Note, botID int64) []aiv1.DecisionRef {
 	var out []aiv1.DecisionRef
 	for _, d := range marker.Decisions(is.Description) {
@@ -1193,7 +1194,15 @@ func collectDecisions(is *gitlab.Issue, notes []gitlab.Note, botID int64) []aiv1
 			out = append(out, aiv1.DecisionRef{ID: d.ID, Title: d.Title, URL: fmt.Sprintf("%s#note_%d", is.WebURL, n.ID), Superseded: d.Superseded})
 		}
 	}
-	return out
+	return capDecisions(out)
+}
+
+// capDecisions keeps the newest (last) aiv1.MaxAutopilotItemDecisions.
+func capDecisions(ds []aiv1.DecisionRef) []aiv1.DecisionRef {
+	if len(ds) > aiv1.MaxAutopilotItemDecisions {
+		return ds[len(ds)-aiv1.MaxAutopilotItemDecisions:]
+	}
+	return ds
 }
 
 // pause stops the queue and says why, once.
