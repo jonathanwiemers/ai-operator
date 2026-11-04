@@ -46,10 +46,11 @@ type StreamPage struct {
 
 // streamKinds are the event kinds a stream may be filtered by.
 var streamKinds = []string{"note", "run.started", "run.finished", "push", "ci", "review",
-	"needs", "merged", "closed", "autopilot", "proposal", "chat.user", "chat.agent"}
+	"needs", "merged", "closed", "autopilot", "proposal", "prompt.posted", "prompt.answered", "prompt.closed",
+	"chat.user", "chat.agent"}
 
 var historyStreamKinds = []string{"note", "run.started", "run.finished", "push", "ci", "review",
-	"needs", "merged", "closed", "autopilot", "proposal"}
+	"needs", "merged", "closed", "autopilot", "proposal", "prompt.posted", "prompt.answered", "prompt.closed"}
 
 var chatStreamKinds = []string{"chat.user", "chat.agent"}
 

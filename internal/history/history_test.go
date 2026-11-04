@@ -81,6 +81,37 @@ func TestDifferTransitions(t *testing.T) {
 			t.Status.Pilot = &aiv1.PilotStatus{Proposals: []aiv1.PilotProposal{{ID: 4}},
 				Accepted: []aiv1.PilotProposal{{ID: 3, AcceptedBy: "jw"}}}
 		}, []string{"proposal task/u1/proposal/4/posted", "proposal task/u1/proposal/3/accepted"}},
+		{"prompt posted", nil, func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptOpen, Question: "Fix?"}}
+		}, []string{"prompt.posted task/u1/prompt/Q1/open"}},
+		{"prompt answered", func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptOpen}}
+		}, func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptAnswered,
+				Options: []aiv1.PromptOption{{ID: "A", Label: "Yes"}},
+				Answer:  &aiv1.PromptAnswer{OptionID: "A", By: "jw", Via: "desk"}}}
+		}, []string{"prompt.answered task/u1/prompt/Q1/answered"}},
+		{"prompt superseded", func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptOpen}}
+		}, func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptSuperseded}}
+		}, []string{"prompt.closed task/u1/prompt/Q1/superseded"}},
+		{"prompt expired", func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptOpen}}
+		}, func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptExpired}}
+		}, []string{"prompt.closed task/u1/prompt/Q1/expired"}},
+		{"prompt dropped from the list", func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptOpen}}
+		}, func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q2", State: aiv1.PromptOpen}}
+		}, []string{"prompt.posted task/u1/prompt/Q2/open"}},
+		{"prompt unchanged", func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptAnswered}}
+		}, func(t *aiv1.AgentTask) {
+			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptAnswered}}
+			t.Status.Phase = aiv1.TaskPhaseIdle
+		}, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -31,6 +31,10 @@ const (
 	KindClosed      = "closed"
 	KindAutopilot   = "autopilot"
 	KindProposal    = "proposal"
+
+	KindPromptPosted   = "prompt.posted"
+	KindPromptAnswered = "prompt.answered"
+	KindPromptClosed   = "prompt.closed"
 )
 
 // maxText bounds the texts copied from the status into an event.
@@ -188,6 +192,7 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 	}
 	out = append(out, d.autopilot(cur, prev.Autopilot, ns.Autopilot, now)...)
 	out = append(out, d.proposals(cur, prev.Pilot, ns.Pilot, now)...)
+	out = append(out, d.prompts(cur, prev.Prompts, ns.Prompts, now)...)
 	return out
 }
 
@@ -271,6 +276,85 @@ func (d *Differ) proposals(t *aiv1.AgentTask, old, cur *aiv1.PilotStatus, now ti
 				emit(p, "closed")
 			}
 		}
+	}
+	return out
+}
+
+// prompts returns the events of the prompts that were posted, answered or
+// closed from old to cur. A prompt that left the bounded list emits nothing.
+// Free text and context stay out of the data: they are untrusted and the
+// status has them.
+func (d *Differ) prompts(t *aiv1.AgentTask, old, cur []aiv1.Prompt, now time.Time) []store.Event {
+	was := map[string]aiv1.PromptState{}
+	for _, p := range old {
+		was[p.ID] = p.State
+	}
+	var out []store.Event
+	emit := func(p aiv1.Prompt, state aiv1.PromptState) {
+		e := base(t, now)
+		e.Key = taskKey(t, fmt.Sprintf("prompt/%s/%s", p.ID, state))
+		e.Kind = KindPromptPosted
+		data := map[string]any{"promptID": p.ID, "promptKind": string(p.Source.Kind), "state": string(state)}
+		if p.Source.IssueIID != 0 {
+			e.IssueIID = p.Source.IssueIID
+		}
+		if p.Source.MRIID != 0 {
+			e.MergeRequestIID = p.Source.MRIID
+		}
+		data["issueIID"], data["mrIID"] = e.IssueIID, e.MergeRequestIID
+		switch state {
+		case aiv1.PromptOpen:
+			e.Summary = fmt.Sprintf("%s posted: %s", p.ID, textutil.Truncate(p.Question, maxText))
+			if p.PostedAt != nil {
+				e.At = p.PostedAt.Time
+			}
+		case aiv1.PromptAnswered:
+			e.Kind = KindPromptAnswered
+			label := ""
+			a := p.Answer
+			if a != nil {
+				for _, o := range p.Options {
+					if o.ID == a.OptionID {
+						label = o.Label
+					}
+				}
+				data["optionID"], data["optionLabel"], data["by"], data["via"] = a.OptionID, label, a.By, a.Via
+				e.Actor = a.By
+				if !a.At.IsZero() {
+					e.At = a.At.Time
+				}
+			}
+			by := ""
+			if a != nil && a.By != "" {
+				by = " by " + a.By
+			}
+			if label == "" {
+				label = "free text"
+			}
+			e.Summary = textutil.Truncate(fmt.Sprintf("%s answered%s: %s", p.ID, by, label), maxText)
+		default:
+			e.Kind = KindPromptClosed
+			e.Summary = fmt.Sprintf("%s %s", p.ID, state)
+			if p.ClosedAt != nil {
+				e.At = p.ClosedAt.Time
+			}
+		}
+		e.Data = data
+		out = append(out, e)
+	}
+	for _, p := range cur {
+		if p.ID == "" {
+			continue
+		}
+		prev, seen := was[p.ID]
+		if !seen {
+			emit(p, aiv1.PromptOpen)
+			prev = aiv1.PromptOpen
+		}
+		if p.State == prev || p.State == aiv1.PromptOpen || p.State == "" {
+			continue
+		}
+		emit(p, p.State)
 	}
 	return out
 }
