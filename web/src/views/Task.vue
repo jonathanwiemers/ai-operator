@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { hasFeature } from '../api'
 import { useResource } from '../live'
 import { ciLabel, ciTone, cost, phaseTone, shortSHA } from '../format'
+import { queueDone } from '../milestoneQueue'
 import Badge from '../components/Badge.vue'
 import ExtLink from '../components/ExtLink.vue'
 import RelTime from '../components/RelTime.vue'
@@ -32,11 +33,6 @@ const heading = computed(() => {
 })
 
 const autopilotItems = computed(() => t.value?.status.autopilot?.items ?? [])
-const planTitles = computed(() => {
-  const m = new Map<number, string>()
-  for (const p of t.value?.status.plan ?? []) m.set(p.iid, p.title ?? '')
-  return m
-})
 
 // Conditions whose True state is the bad one.
 const negativeConditions = new Set(['Blocked'])
@@ -47,7 +43,6 @@ const conditionTone = (type: string, status: string) => {
 
 const resultTone = (r: string | undefined) =>
   r === 'Succeeded' ? 'success' : r === 'NeedsInput' || r === 'Deferred' ? 'warning' : r === 'Failed' ? 'danger' : 'muted'
-const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? 'progress' : s === 'Skipped' ? 'warning' : 'muted')
 
 // Desk chat: compose with permissions.chat; read when the chat feature is on.
 const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('chat'))
@@ -268,7 +263,14 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
         <div class="row section-head">
           <h3>Autopilot</h3>
           <Badge :tone="t.status.autopilot.phase === 'Paused' ? 'warning' : 'progress'">{{ t.status.autopilot.phase }}</Badge>
+          <span v-if="autopilotItems.length" class="faint">{{ queueDone(autopilotItems) }} / {{ autopilotItems.length }} done</span>
           <span class="spacer" />
+          <RouterLink
+            v-if="t.milestone"
+            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(t.milestone.iid) } }"
+          >
+            Queue in the milestone stream
+          </RouterLink>
           <ExtLink v-if="t.status.autopilot.trackingIssueIID" :href="issueURL(t.status.autopilot.trackingIssueIID)">
             Tracking issue #{{ t.status.autopilot.trackingIssueIID }}
           </ExtLink>
@@ -281,40 +283,6 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
               It continues by itself once a later run of #{{ t.status.autopilot.pausedFor }} is reviewed and green.
             </template>
           </span>
-        </div>
-        <div class="card">
-          <table class="list">
-            <thead>
-              <tr>
-                <th>Issue</th>
-                <th>State</th>
-                <th>Merge request</th>
-                <th>Decisions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="it in autopilotItems" :key="it.iid">
-                <td>
-                  <ExtLink :href="issueURL(it.iid)">#{{ it.iid }}</ExtLink>
-                  <span class="muted item-title">{{ planTitles.get(it.iid) }}</span>
-                  <div v-if="it.revisitOf" class="faint">revisits {{ it.revisitOf }}</div>
-                </td>
-                <td><Badge :tone="itemTone(it.state)">{{ it.state }}</Badge></td>
-                <td>
-                  <ExtLink v-if="it.mergeRequestURL" :href="it.mergeRequestURL">!{{ it.mergeRequestIID }}</ExtLink>
-                  <span v-else class="faint">—</span>
-                  <span v-if="it.mergedSHA" class="mono faint"> {{ shortSHA(it.mergedSHA) }}</span>
-                </td>
-                <td>
-                  <span v-if="!it.decisions?.length" class="faint">—</span>
-                  <div v-for="d in it.decisions" :key="d.id" class="decision" :class="{ superseded: d.superseded }">
-                    <ExtLink :href="d.url"><code>{{ d.id }}</code></ExtLink>
-                    <span>{{ d.title }}</span>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       </section>
 
@@ -425,21 +393,6 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--surface-2);
-}
-
-.item-title {
-  margin-left: 8px;
-}
-
-.decision {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.decision.superseded {
-  opacity: 0.55;
-  text-decoration: line-through;
 }
 
 .cmd {

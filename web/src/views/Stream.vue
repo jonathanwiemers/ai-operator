@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { get, hasFeature, LoginRequiredError, NotFoundError } from '../api'
+import Board from '../components/Board.vue'
 import ContextPanel from '../components/ContextPanel.vue'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
+import ProjectBoards from '../components/ProjectBoards.vue'
 import StreamComposer from '../components/StreamComposer.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import { live, useResource } from '../live'
@@ -25,6 +28,7 @@ import type {
   StreamEvent,
   StreamPage,
 } from '../types'
+import { streamTabs, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
 
 const props = defineProps<{
@@ -35,6 +39,11 @@ const props = defineProps<{
 
 const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
+
+// tab: Stream or Board on project and milestone streams, kept in ?tab= so
+// it can be linked to; Everything has no tabs.
+const route = useRoute()
+const tab = computed(() => (everything.value ? 'stream' : tabFromQuery(route.query.tab)))
 
 const filter = ref<StreamFilter>('all')
 const q = ref('')
@@ -93,6 +102,14 @@ const canSteer = computed(() => !!milestone.value?.permissions?.steer)
 const paused = computed(() => {
   const m = milestone.value
   return !everything.value && m?.autopilot?.phase === 'Paused' ? m : null
+})
+
+// milestoneTasks: the Board of a milestone stream, as the milestone page
+// shows it (the project's copy until the milestone loaded).
+const milestoneTasks = computed(() => {
+  const m = milestone.value
+  if (m && m.iid === milestoneIID.value) return m.tasks
+  return project.value?.milestones.find((x) => x.iid === milestoneIID.value)?.tasks ?? []
 })
 
 const items = computed(() => groupThreads(events.value))
@@ -300,7 +317,7 @@ function showDay(i: number): string | null {
 
 <template>
   <NotFound v-if="notFound" />
-  <div v-else class="desk">
+  <div v-else class="desk" :class="{ wide: milestoneIID }">
     <div class="stream">
       <div class="head">
         <div class="crumbs">
@@ -312,14 +329,25 @@ function showDay(i: number): string | null {
         </div>
         <div class="title-row">
           <h1>{{ title }}</h1>
+          <nav v-if="!everything" class="tabs" aria-label="View">
+            <RouterLink
+              v-for="t in streamTabs"
+              :key="t.id"
+              :to="{ query: tabQuery(route.query, t.id) }"
+              :class="{ on: tab === t.id }"
+              :aria-current="tab === t.id ? 'page' : undefined"
+            >
+              {{ t.label }}
+            </RouterLink>
+          </nav>
           <span class="spacer" />
-          <form class="search" @submit.prevent="applySearch">
+          <form v-if="tab === 'stream'" class="search" @submit.prevent="applySearch">
             <input v-model="qDraft" type="search" placeholder="Search…" aria-label="Search stream" />
           </form>
         </div>
         <div v-if="!everything" class="scope">
           <RouterLink
-            :to="{ name: 'stream-project', params: { namespace, name } }"
+            :to="{ name: 'stream-project', params: { namespace, name }, query: tabQuery({}, tab) }"
             :class="{ on: !milestoneIID }"
           >
             Everything
@@ -327,20 +355,14 @@ function showDay(i: number): string | null {
           <RouterLink
             v-for="m in project?.milestones ?? []"
             :key="m.iid"
-            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) } }"
+            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: tabQuery({}, tab) }"
             :class="{ on: milestoneIID === m.iid }"
           >
             {{ m.title }}
             <span v-if="m.spec?.status.autopilot" class="n">{{ m.spec.status.autopilot.phase === 'Done' ? 'done' : '' }}</span>
           </RouterLink>
-          <RouterLink
-            :to="{ name: 'project-board', params: { namespace, name } }"
-            class="board-link"
-          >
-            Board
-          </RouterLink>
         </div>
-        <div v-if="heatDays.length" class="heat" title="Activity per day; click to jump">
+        <div v-if="tab === 'stream' && heatDays.length" class="heat" title="Activity per day; click to jump">
           <span>{{ heatRange.start }}</span>
           <div class="cells">
             <button
@@ -358,7 +380,7 @@ function showDay(i: number): string | null {
         </div>
       </div>
 
-      <div class="scroll">
+      <div v-if="tab === 'stream'" class="scroll">
         <div v-if="!everything && namespace && name" class="pinned">
           <PauseCardCompact
             v-if="paused"
@@ -426,11 +448,22 @@ function showDay(i: number): string | null {
           </button>
         </div>
       </div>
+      <div v-else class="scroll board">
+        <template v-if="namespace && name">
+          <Board v-if="milestoneIID" :tasks="milestoneTasks" />
+          <ProjectBoards v-else-if="project" :namespace="namespace" :name="name" :project="project" />
+        </template>
+        <div v-if="error" class="banner danger">{{ error }}</div>
+        <div v-if="!project && !error" class="empty">Loading…</div>
+      </div>
     </div>
 
     <ContextPanel
-      v-if="!everything"
+      v-if="!everything && namespace && name"
       class="ctx-wrap"
+      :namespace="namespace"
+      :name="name"
+      :full="!!milestoneIID"
       :inbox="projectInbox"
       :milestone="milestone"
       :history="history"
@@ -445,6 +478,10 @@ function showDay(i: number): string | null {
   min-height: calc(100vh - 0px);
   height: 100%;
   min-width: 0;
+}
+/* A milestone's panel holds the pause card and the pilot chat. */
+.desk.wide {
+  grid-template-columns: minmax(0, 1fr) 380px;
 }
 .stream {
   display: flex;
@@ -478,6 +515,29 @@ function showDay(i: number): string | null {
   font-size: 20px;
   margin: 0;
   letter-spacing: -0.01em;
+}
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}
+.tabs a {
+  padding: 3px 12px;
+  border-radius: 5px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+.tabs a:hover {
+  text-decoration: none;
+  color: var(--text);
+}
+.tabs a.on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
 }
 .search input {
   height: 32px;
@@ -565,6 +625,9 @@ function showDay(i: number): string | null {
   flex: 1;
   padding: 0 28px 40px;
 }
+.scroll.board {
+  padding-top: 18px;
+}
 /* The pause card and the composer stay on top while the stream scrolls. */
 .pinned {
   position: sticky;
@@ -639,7 +702,8 @@ function showDay(i: number): string | null {
   color: var(--text-3);
 }
 @media (max-width: 1180px) {
-  .desk {
+  .desk,
+  .desk.wide {
     grid-template-columns: minmax(0, 1fr);
   }
   .ctx-wrap {

@@ -36,9 +36,14 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   screens the rail is a drawer behind the menu button.
 * **Stream** (`/` for everything, `/projects/<namespace>/<name>` for a
   project, `…/milestones/<iid>` for a milestone: its issues, its tracking
-  issue and what was recorded for it): a header with the scope tabs (the
-  project, its milestones, the *Board*), a search box, and a strip of the
-  last 30 days' activity, where a day jumps the stream to that day. Below
+  issue and what was recorded for it): a header with the view tabs *Stream*
+  and *Board* (project and milestone streams; the tab is kept in `?tab=`,
+  e.g. `…/milestones/3?tab=board`, so it can be linked to and reloaded),
+  the scope tabs (the project, its milestones; they keep the view tab), a
+  search box, and a strip of the last 30 days' activity, where a day jumps
+  the stream to that day. The *Board* tab shows the project's boards (one
+  per milestone and the issues without a milestone, as on the board page)
+  or the milestone's board. Below
   it, pinned, the **message box**: it sends to a milestone's pilot (on its
   tracking issue, as `/pilot …`) or comments on an issue, in your GitLab
   name, with `/` suggesting commands; it needs your GitLab account
@@ -53,8 +58,13 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   among the loaded events are one card at the newest comment, read top
   down inside. *Load older* pages back; new events come in live.
 * **Context panel** (wide screens): what needs you in this project, the
-  active milestone's queue, and the last 30 days: runs per day with the
-  spend, merges, spend and events against the 30 days before.
+  active milestone's queue (per issue its state, merge request, task page
+  and decisions), and the last 30 days: runs per day with the spend,
+  merges, spend and events against the 30 days before. On a milestone
+  stream it also holds the full **pause card** with its actions while the
+  autopilot is paused (see below; the stream keeps the compact card), the
+  pilot's autonomy and open proposals, and **Ask the pilot** (the Desk chat
+  with the pilot, with the accept and reject buttons for its proposals).
 
 The board that was the project page is at `/projects/<namespace>/<name>/board`,
 the milestone page with its queue, plan and chat at
@@ -186,8 +196,8 @@ nofollow"`, and other links show as their text. Images are never loaded.
 |------|---------|
 | **Projects** | every project you may see: tasks per stage, autopilot milestones and their progress, engine usage and limits (see below), suspension, last sync, model spend |
 | **Board** | `/projects/<namespace>/<name>/board`: the same engine usage line and a banner per active limit; one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; above them the compact pause card while the milestone's autopilot is paused (see below), the milestone's plan, and issues without a milestone |
-| **Milestone** | a planned milestone (linked from its project board and its stream, `/projects/<namespace>/<name>/milestones/<iid>/detail`): autopilot phase, the pause card while it is paused (see below), the queue with states, merge requests and task pages, the pilot's autonomy and open proposals, **Ask the pilot** (the Desk chat with the milestone's pilot, its `Coordinate` task, with the accept and reject buttons for its proposals; with the `chat` grant and the research database), the chat on its tracking issue, and the milestone's board |
-| **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot queue with merge requests and decisions |
+| **Milestone** | a planned milestone (linked from its project board and its stream, `/projects/<namespace>/<name>/milestones/<iid>/detail`): autopilot phase, the pause card while it is paused (see below), the queue with states, merge requests, task pages and decisions, the pilot's autonomy and open proposals, **Ask the pilot** (the Desk chat with the milestone's pilot, its `Coordinate` task, with the accept and reject buttons for its proposals; with the `chat` grant and the research database), the chat on its tracking issue, and the milestone's board |
+| **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot's phase, pause reason and a link to the milestone stream, whose context panel shows the queue |
 
 **Engine usage.** claude reports how much of its usage windows is used with
 every agent call; the project keeps the freshest reading per engine
@@ -252,8 +262,9 @@ on the full card there. The Inbox and the stream show the same compact card.
 While a run works on a task, its card marks the CI result as the last
 push's.
 
-On the milestone page, a paused autopilot (waiting or not) shows as the
-**pause card**: a heading for the `pauseKind`, the pause reason as text, the
+On the milestone page and in the context panel of the milestone stream, a
+paused autopilot (waiting or not) shows as the **pause card**: a heading for
+the `pauseKind`, the pause reason as text, the
 paused issue with its title, MR and pushed head, what ends the pause by
 itself, for failed reviewers which engine is usage-limited until when
 (*Cursor is limited until 13 Nov*), *A run is working on #N now* while one

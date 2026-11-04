@@ -2,13 +2,16 @@
 import { computed } from 'vue'
 import { useResource } from '../live'
 import { cost } from '../format'
+import { queueDone } from '../milestoneQueue'
 import Badge from '../components/Badge.vue'
 import Board from '../components/Board.vue'
 import ExtLink from '../components/ExtLink.vue'
 import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
 import Conversation from '../components/Conversation.vue'
-import TaskChat from '../components/TaskChat.vue'
+import QueueList from '../components/QueueList.vue'
+import PilotProposals from '../components/PilotProposals.vue'
+import AskPilot from '../components/AskPilot.vue'
 import PauseCard from '../components/PauseCard.vue'
 import NotFound from './NotFound.vue'
 import { hasFeature } from '../api'
@@ -26,11 +29,9 @@ const { data: m, error, notFound, loading } = useResource<MilestoneView>(
 
 const ap = computed(() => m.value?.autopilot)
 const showPilotChat = computed(() => !!m.value?.permissions?.chat || hasFeature('chat'))
-const issueURL = (iid: number) => m.value?.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
-const done = computed(() => (ap.value?.items ?? []).filter((i) => i.state === 'Merged' || i.state === 'Skipped').length)
+const done = computed(() => queueDone(ap.value?.items ?? []))
 const apTone = (phase: string | undefined) =>
   phase === 'Paused' ? 'warning' : phase === 'Running' ? 'progress' : phase === 'Done' ? 'success' : 'muted'
-const itemTone = (s: string) => (s === 'Merged' ? 'success' : s === 'Active' ? 'progress' : s === 'Skipped' ? 'warning' : 'muted')
 // Comments likely changed when the queue or the pilot did.
 const stamp = computed(() => {
   const v = m.value
@@ -76,88 +77,22 @@ const stamp = computed(() => {
 
       <section v-if="ap" class="section">
         <h3>Queue</h3>
-        <div class="card">
-          <table class="list">
-            <thead>
-              <tr>
-                <th>Issue</th>
-                <th>State</th>
-                <th>Merge request</th>
-                <th>Task</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="!ap.items.length">
-                <td colspan="4" class="faint">The queue is empty.</td>
-              </tr>
-              <tr v-for="it in ap.items" :key="it.iid">
-                <td>
-                  <ExtLink :href="issueURL(it.iid)">#{{ it.iid }}</ExtLink>
-                  <span class="muted item-title">{{ it.title }}</span>
-                </td>
-                <td><Badge :tone="itemTone(it.state)">{{ it.state }}</Badge></td>
-                <td>
-                  <ExtLink v-if="it.mergeRequestURL" :href="it.mergeRequestURL">!{{ it.mergeRequestIID }}</ExtLink>
-                  <span v-else-if="it.mergeRequestIID">!{{ it.mergeRequestIID }}</span>
-                  <span v-else class="faint">—</span>
-                </td>
-                <td>
-                  <RouterLink v-if="it.task" :to="{ name: 'task', params: { namespace, name, task: it.task } }" class="mono">
-                    {{ it.task }}
-                  </RouterLink>
-                  <span v-else class="faint">—</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="card body">
+          <QueueList :namespace="namespace" :name="name" :milestone="m" />
         </div>
       </section>
 
       <section class="section">
         <h3>Pilot</h3>
         <div v-if="m.pilot" class="card body">
-          <div class="row pilot">
-            <span class="muted">Autonomy</span>
-            <Badge :tone="m.pilot.autonomy === 'managed' ? 'progress' : 'neutral'">{{ m.pilot.autonomy }}</Badge>
-            <span class="spacer" />
-            <span class="faint">{{ cost(m.pilot.costUSD) }}</span>
-            <RouterLink :to="{ name: 'task', params: { namespace, name, task: m.pilot.task } }">Pilot task</RouterLink>
-          </div>
-          <div v-if="!m.pilot.proposals.length" class="faint proposals">No open proposals.</div>
-          <div v-else class="proposals">
-            <div v-for="p in m.pilot.proposals" :key="p.id" class="proposal">
-              <div class="row">
-                <code>P{{ p.id }}</code>
-                <span class="faint"><RelTime :time="p.postedAt" /></span>
-                <span class="spacer" />
-                <span class="faint">answer <code>yes P{{ p.id }}</code> in the chat</span>
-              </div>
-              <div class="text">{{ p.summary }}</div>
-            </div>
-          </div>
+          <PilotProposals :namespace="namespace" :name="name" :pilot="m.pilot" />
         </div>
         <div v-else class="card empty">This milestone has no pilot.</div>
       </section>
 
       <section v-if="showPilotChat" class="section">
         <h3>Ask the pilot</h3>
-        <TaskChat
-          v-if="m.pilot"
-          :key="m.pilot.task"
-          :namespace="namespace"
-          :name="name"
-          :task="m.pilot.task"
-          :can-post="!!m.permissions?.chat"
-          :can-transcript="!!m.permissions?.transcript"
-          :phase="m.pilot.phase"
-          :message="m.pilot.message"
-          :pod-name="m.pilot.podName"
-          task-type="Coordinate"
-          :proposals="m.pilot.proposals"
-        />
-        <div v-else class="card empty">
-          No pilot for this milestone. Autopilot, or <code>/pilot coordinate</code> on an issue, starts one.
-        </div>
+        <AskPilot :namespace="namespace" :name="name" :milestone="m" />
       </section>
 
       <section v-if="m.tracking && m.permissions?.gitlab" class="section">
@@ -221,32 +156,5 @@ const stamp = computed(() => {
 
 .body {
   padding: 14px 16px;
-}
-
-.item-title {
-  margin-left: 8px;
-}
-
-.pilot {
-  gap: 10px;
-}
-
-.proposals {
-  margin-top: 12px;
-}
-
-.proposal {
-  padding: 10px 0;
-  border-top: 1px solid var(--border);
-}
-
-.proposal .row {
-  gap: 10px;
-  margin-bottom: 4px;
-}
-
-.text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 </style>

@@ -1,19 +1,32 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { hasFeature } from '../api'
 import { cost } from '../format'
+import { queueDone } from '../milestoneQueue'
 import type { HistoryResponse, InboxItem, MilestoneView, QueueItem } from '../types'
-import Badge from './Badge.vue'
+import AskPilot from './AskPilot.vue'
+import PauseCard from './PauseCard.vue'
+import PilotProposals from './PilotProposals.vue'
+import QueueList from './QueueList.vue'
 import RelTime from './RelTime.vue'
 
+// ContextPanel sits beside a project or milestone stream. On a milestone
+// stream (full) it also holds the full pause card, the pilot's proposals and
+// Ask the pilot; the stream keeps the compact pause card.
 const props = defineProps<{
+  namespace: string
+  name: string
   inbox: InboxItem[]
   milestone?: MilestoneView | null
   history?: HistoryResponse | null
+  full?: boolean
 }>()
 
 const queue = computed((): QueueItem[] => props.milestone?.autopilot?.items ?? [])
-const done = computed(() => queue.value.filter((q) => q.state === 'Merged' || q.state === 'Skipped').length)
+const done = computed(() => queueDone(queue.value))
 const total = computed(() => queue.value.length)
+const paused = computed(() => props.full && props.milestone?.autopilot?.phase === 'Paused')
+const showPilotChat = computed(() => !!props.milestone?.permissions?.chat || hasFeature('chat'))
 
 const chart = computed(() => {
   const days = props.history?.days ?? []
@@ -55,19 +68,6 @@ function cycleDelta(cur?: number, prev?: number) {
   return { text: `${d > 0 ? '+' : ''}${d} min`, cls: d < 0 ? 'up' : 'down' }
 }
 
-function stateTone(s: QueueItem['state']) {
-  switch (s) {
-    case 'Merged':
-      return 'success' as const
-    case 'Active':
-      return 'progress' as const
-    case 'Skipped':
-      return 'muted' as const
-    default:
-      return 'neutral' as const
-  }
-}
-
 function inboxTo(item: InboxItem) {
   if (item.kind === 'task' && item.task) {
     return {
@@ -90,6 +90,15 @@ function inboxTo(item: InboxItem) {
 
 <template>
   <aside class="ctxp">
+    <PauseCard
+      v-if="paused && milestone"
+      :key="milestone.iid"
+      class="full-pause"
+      :namespace="namespace"
+      :name="name"
+      :milestone="milestone"
+    />
+
     <div class="panel">
       <h3>
         <span>Needs you</span>
@@ -110,14 +119,12 @@ function inboxTo(item: InboxItem) {
         <span>{{ milestone.title }}</span>
         <span v-if="total">{{ done }} / {{ total }}</span>
       </h3>
-      <ul class="queue">
-        <li v-for="q in queue" :key="q.iid">
-          <span class="iid">#{{ q.iid }}</span>
-          <span class="tt">{{ q.title }}</span>
-          <Badge :tone="stateTone(q.state)">{{ q.state.toLowerCase() }}</Badge>
-        </li>
-      </ul>
-      <div v-if="!queue.length" class="empty-sm">No queue yet.</div>
+      <QueueList :namespace="namespace" :name="name" :milestone="milestone" />
+    </div>
+
+    <div v-if="full && milestone?.pilot" class="panel">
+      <h3><span>Pilot</span></h3>
+      <PilotProposals :namespace="namespace" :name="name" :pilot="milestone.pilot" />
     </div>
 
     <div v-if="history" class="panel">
@@ -161,6 +168,11 @@ function inboxTo(item: InboxItem) {
         </div>
       </div>
     </div>
+
+    <div v-if="full && milestone && showPilotChat" class="panel">
+      <h3><span>Ask the pilot</span></h3>
+      <AskPilot :namespace="namespace" :name="name" :milestone="milestone" />
+    </div>
   </aside>
 </template>
 
@@ -174,6 +186,10 @@ function inboxTo(item: InboxItem) {
   gap: 14px;
   align-content: start;
   min-height: 0;
+}
+/* The full pause card sits on top, without the page's spacing. */
+.ctxp .full-pause {
+  margin-top: 0;
 }
 .panel h3 {
   font-size: 11.5px;
@@ -213,35 +229,6 @@ function inboxTo(item: InboxItem) {
   display: block;
   color: var(--text-2);
   font-size: 12px;
-}
-.queue {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 2px;
-  font-size: 13px;
-}
-.queue li {
-  display: grid;
-  grid-template-columns: 38px 1fr auto;
-  gap: 6px;
-  align-items: center;
-  padding: 4px 6px;
-  border-radius: 6px;
-}
-.queue li:hover {
-  background: var(--surface-2);
-}
-.queue .iid {
-  color: var(--text-3);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-.queue .tt {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .stats {
   display: grid;
