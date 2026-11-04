@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { ChatKind, ChatPage, Feature, Me } from './types'
+import type { ChatKind, ChatPage, Feature, Me, Spend } from './types'
 
 // Session state shared by the whole app.
 export const session = reactive<{
@@ -141,6 +141,21 @@ export async function postTaskChat(
   body: { body: string; clientKey: string; kind?: ChatKind },
 ): Promise<{ id: number }> {
   return post(taskChatPath(namespace, name, task), body)
+}
+
+// getSpend loads what a project, milestone, issue, task or run (task + run)
+// cost, with the children of the next level.
+export async function getSpend(
+  namespace: string,
+  project: string,
+  scope: { milestone?: number; issue?: number; task?: string; run?: number } = {},
+): Promise<Spend> {
+  const params = new URLSearchParams({ namespace, project })
+  if (scope.milestone) params.set('milestone', String(scope.milestone))
+  if (scope.issue) params.set('issue', String(scope.issue))
+  if (scope.task) params.set('task', scope.task)
+  if (scope.run) params.set('run', String(scope.run))
+  return get<Spend>(`/spend?${params}`)
 }
 
 // chatPostError turns a chat POST status into plain words for the composer.

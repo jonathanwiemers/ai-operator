@@ -519,6 +519,74 @@ export interface HistoryResponse {
   previous: HistoryTotals
 }
 
+// SpendTotals sums agent calls. costUSD is '' when no cost is known
+// (costKnown false): show "n/a", never $0.
+export interface SpendTotals {
+  costUSD: string
+  costKnown: boolean
+  unknownCalls: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  calls: number
+  subagentCalls: number
+  durationMS: number
+  // legacyCostUSD: the part of costUSD from runs before agent calls were recorded.
+  legacyCostUSD?: string
+}
+
+// ModelSplit is one model's share of a spend child; main is the calls' own
+// model, the others ran as subagents.
+export interface ModelSplit {
+  model: string
+  main: boolean
+  tokens: number
+  costUSD: string
+  costKnown: boolean
+}
+
+export type SpendLevel = 'milestone' | 'issue' | 'run' | 'call'
+
+// SpendChild is one part of a spend scope at the next level. key: the
+// milestone or issue IID ('' for no milestone), task/run of a run, the seq of
+// a call. The call fields are set on calls only.
+export interface SpendChild {
+  level: SpendLevel
+  key: string
+  label: string
+  at: string
+  totals: SpendTotals
+  models: ModelSplit[]
+  kind?: string
+  role?: string
+  engine?: string
+  model?: string
+  effort?: string
+  resumed?: boolean
+  fallbackFrom?: string
+  costSource?: 'reported' | 'estimated' | 'unknown'
+  turns?: number
+  // contextSeries: the context tokens of each main-thread turn;
+  // subagentTurns: indexes into it after which a subagent ran.
+  contextSeries?: number[]
+  subagentTurns?: number[]
+}
+
+export interface SpendBreakdown {
+  key: string
+  totals: SpendTotals
+}
+
+export interface Spend {
+  totals: SpendTotals
+  children: SpendChild[]
+  byKind: SpendBreakdown[]
+  byRole: SpendBreakdown[]
+  byModel: SpendBreakdown[]
+  cacheReadShare: number
+}
+
 export interface InboxItem {
   namespace: string
   project: string
