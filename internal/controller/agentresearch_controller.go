@@ -24,6 +24,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
+	"github.com/jonathanwiemers/ai-operator/internal/pricing"
 	"github.com/jonathanwiemers/ai-operator/internal/research"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
@@ -99,7 +100,10 @@ type AgentResearchReconciler struct {
 	// HistoryRetention is how long a run's agent calls are kept; 0 means
 	// history.DefaultRetention.
 	HistoryRetention time.Duration
-	Now              func() time.Time
+	// Pricing estimates the cost of agent calls the engine reported none
+	// for; nil estimates none.
+	Pricing *pricing.Table
+	Now     func() time.Time
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentresearches,verbs=get;list;watch;update;patch
@@ -545,6 +549,7 @@ func (r *AgentResearchReconciler) insertCalls(ctx context.Context, res *aiv1.Age
 			call.At = now
 		}
 		call.ExpiresAt = call.At.Add(retention)
+		history.Estimate(&call, r.Pricing)
 		calls = append(calls, call)
 	}
 	_, err := r.DB.InsertCalls(ctx, calls)

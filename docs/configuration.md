@@ -208,6 +208,43 @@ in `networkPolicyPeer.namespace` (all its pods without labels).
 NetworkPolicies are additive: task pods are not selected and keep the agent
 policy as it is, without access to the database.
 
+### Pricing
+
+Every agent call is a row of `agent_calls` (see
+[design.md](design.md#history), needs the research database) with a cost
+and its source:
+
+- **claude** reports `total_cost_usd` (the notional API price on a
+  subscription): `cost_source = reported`. A `pricing` entry for the model
+  does not change it.
+- **cursor** reports no USD. When it reports tokens and `pricing` has a
+  price for the model, the operator estimates the cost from them when it
+  writes the row: `cost_source = estimated`.
+- Otherwise (no tokens, or no price) the cost is NULL and
+  `cost_source = unknown`: the call counts with its duration, and the Desk
+  shows "n/a", never $0.
+
+The chart value `pricing` holds the prices in USD per million tokens:
+
+```yaml
+pricing:
+  models:
+    "cursor/auto": {input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25}
+    "gpt-5": {input: 2, output: 20}
+    "cursor/*": {input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75}
+```
+
+A key is `<engine>/<model>`, a bare model, or `<engine>/*` (the fallback
+for every model of the engine, such as cursor's `auto`); the operator looks
+them up in that order. Each price has `input`, `output`, `cacheRead` and
+`cacheWrite` (missing ones are 0). Estimates are rounded to 4 decimals like
+reported costs. The default `{}` estimates nothing. A non-empty value is
+rendered into the ConfigMap `<release>-pricing`, mounted into the operator
+and passed as `--pricing-file`; the pod restarts when the prices change.
+The file is parsed strictly: unknown keys, negative prices or an unreadable
+file stop the operator at start. Prices apply to calls written from then on;
+stored rows keep their cost.
+
 ## Secrets
 
 ```sh

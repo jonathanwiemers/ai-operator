@@ -29,3 +29,8 @@ ui:
   research:
     allowCreate: true
     namespace: agents
+# Prices for estimated cursor costs (ConfigMap, mount and --pricing-file).
+pricing:
+  models:
+    "cursor/auto": {input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25}
+    "cursor/*": {input: 3, output: 15}

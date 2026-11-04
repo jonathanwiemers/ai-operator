@@ -13,6 +13,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/pricing"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/research/storetest"
 )
@@ -220,6 +221,56 @@ func TestCallsCostAndDetail(t *testing.T) {
 	}
 }
 
+// The recorder estimates the cost of unknown calls with tokens from its
+// pricing table; calls without tokens or price stay unknown (NULL), and
+// reported costs are kept even when the model has a price.
+func TestRecorderEstimatesUnknownCosts(t *testing.T) {
+	prices, err := pricing.Parse([]byte(`models: {"cursor/auto": {input: 1, output: 10}, "claude-opus-5-5": {input: 100}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur := task("2", func(t *aiv1.AgentTask) {
+		t.Status.Run.Calls = []aiv1.AgentCall{
+			{Seq: 1, Engine: aiv1.EngineCursor, Model: "auto", CostSource: aiv1.CostUnknown, InputTokens: 200000, OutputTokens: 30000},
+			{Seq: 2, Engine: aiv1.EngineCursor, Model: "auto", CostSource: aiv1.CostUnknown},
+			{Seq: 3, Engine: aiv1.EngineCursor, Model: "gpt-5", CostSource: aiv1.CostUnknown, InputTokens: 1000},
+			{Seq: 4, Engine: aiv1.EngineClaude, Model: "claude-opus-5-5", CostSource: aiv1.CostReported, CostUSD: "1.5000", InputTokens: 1000},
+		}
+	})
+	r := NewRecorder(nil, time.Hour, clock.RealClock{}, testLogger(t))
+	r.Pricing = prices
+	r.started.Store(true)
+	for _, c := range Calls(nil, cur) {
+		r.RecordCall(c)
+	}
+	close(r.calls)
+	var got []store.Call
+	for c := range r.calls {
+		got = append(got, c)
+	}
+	if len(got) != 4 {
+		t.Fatalf("calls = %v", keys(got))
+	}
+	if c := got[0]; c.CostSource != aiv1.CostEstimated || c.CostUSD == nil || *c.CostUSD != 0.5 {
+		t.Errorf("cursor call with tokens = %v %v, want estimated 0.5", c.CostSource, c.CostUSD)
+	}
+	for _, c := range got[1:3] {
+		if c.CostSource != aiv1.CostUnknown || c.CostUSD != nil {
+			t.Errorf("call %d = %v %v, want unknown without cost", c.Seq, c.CostSource, c.CostUSD)
+		}
+	}
+	if c := got[3]; c.CostSource != aiv1.CostReported || c.CostUSD == nil || *c.CostUSD != 1.5 {
+		t.Errorf("claude call = %v %v, want reported 1.5", c.CostSource, c.CostUSD)
+	}
+
+	// Without a table nothing is estimated.
+	call := StoreCall(cur.Status.Run.Calls[0])
+	Estimate(&call, nil)
+	if call.CostSource != aiv1.CostUnknown || call.CostUSD != nil {
+		t.Errorf("without pricing = %v %v, want unknown", call.CostSource, call.CostUSD)
+	}
+}
+
 // Each call is one row: the same update twice, and the calls of the
 // existing tasks the recorder writes at its start (after an operator
 // restart), add nothing.
@@ -260,7 +311,7 @@ func TestCallsAreWrittenOnce(t *testing.T) {
 	r.existing = func(context.Context) ([]store.Call, error) { return all, nil }
 	r.writeExisting(ctx)
 	for i := range all {
-		r.expire(&all[i])
+		r.prepare(&all[i])
 	}
 	if n := written(all); n != 0 {
 		t.Errorf("%d calls were missing after the start, want all 6 written", n)

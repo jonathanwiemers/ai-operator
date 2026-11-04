@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/pricing"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -334,6 +335,18 @@ func StoreCall(c aiv1.AgentCall) store.Call {
 			CostUSD: costOf(m.CostUSD)})
 	}
 	return call
+}
+
+// Estimate prices c from table when its cost is unknown and it has tokens:
+// the cost becomes the estimate, the source estimated. Reported costs and
+// calls without tokens or price stay as they are; a nil table prices none.
+func Estimate(c *store.Call, table *pricing.Table) {
+	if c.CostSource != aiv1.CostUnknown {
+		return
+	}
+	if usd, ok := table.Estimate(c.Engine, c.Model, c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheWriteTokens); ok {
+		c.CostUSD, c.CostSource = &usd, aiv1.CostEstimated
+	}
 }
 
 // costOf is the cost string s in USD, nil when it is empty.

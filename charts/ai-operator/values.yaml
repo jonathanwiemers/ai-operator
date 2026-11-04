@@ -143,6 +143,18 @@ research:
   # agent calls) and Desk chat messages are kept in the database. A Go duration.
   historyRetention: 8760h
 
+# Model prices for estimating the cost of agent calls that report tokens but
+# no cost (cursor). Claude reports its cost, which is kept. Empty: no
+# estimates, such calls show "n/a". When set, it is rendered into a
+# ConfigMap (pricing.yaml), mounted into the operator and passed as
+# --pricing-file. Prices are USD per million tokens; a key is
+# "<engine>/<model>", a bare model or "<engine>/*" (engine-wide fallback),
+# looked up in that order. Unknown keys fail the operator's start.
+pricing: {}
+#  models:
+#    "cursor/auto": {input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25}
+#    "cursor/*": {input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75}
+
 # Read-only web UI (see docs/ui.md). Off by default. It runs as its own
 # Deployment with a service account that can only read AgentProjects and
 # AgentTasks; it never sees the GitLab tokens.

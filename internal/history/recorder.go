@@ -14,6 +14,7 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/utils/clock"
 
+	"github.com/jonathanwiemers/ai-operator/internal/pricing"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -48,6 +49,9 @@ type Recorder struct {
 	// existing returns the calls of every task, written when the recorder
 	// starts: runners append calls while no leader records (Watch sets it).
 	existing func(context.Context) ([]store.Call, error)
+	// Pricing estimates the cost of calls the engine reported none for;
+	// nil estimates none.
+	Pricing *pricing.Table
 }
 
 // NewRecorder returns a recorder that keeps events and calls for retention.
@@ -80,7 +84,7 @@ func (r *Recorder) RecordCall(c store.Call) {
 	if r == nil || !r.started.Load() {
 		return
 	}
-	r.expire(&c)
+	r.prepare(&c)
 	select {
 	case r.calls <- c:
 	default:
@@ -88,11 +92,13 @@ func (r *Recorder) RecordCall(c store.Call) {
 	}
 }
 
-func (r *Recorder) expire(c *store.Call) {
+// prepare sets the call's expiry and estimates its cost when unknown.
+func (r *Recorder) prepare(c *store.Call) {
 	if c.At.IsZero() {
 		c.At = r.clock.Now()
 	}
 	c.ExpiresAt = c.At.Add(r.retention)
+	Estimate(c, r.Pricing)
 }
 
 // Start writes the queued events and calls until ctx ends, once the
@@ -165,7 +171,7 @@ func (r *Recorder) writeExisting(ctx context.Context) {
 	var written int64
 	for chunk := range slices.Chunk(calls, batchSize) {
 		for i := range chunk {
-			r.expire(&chunk[i])
+			r.prepare(&chunk[i])
 		}
 		n, err := r.db.Store().InsertCalls(ctx, chunk)
 		if err != nil {

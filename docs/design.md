@@ -577,7 +577,10 @@ conflict round, describe, spec, pilot turn, retro, chat turn) is one row of
 fallback), for what (namespace, project, milestone, issue and MR IIDs, task,
 run, seq), and what it consumed (input, output, cache read and write tokens,
 `cost_usd`, `cost_source`, turns, duration). `cost_usd` is NULL when
-`cost_source` is `unknown`, so "n/a" never reads as $0. Three jsonb columns
+`cost_source` is `unknown`, so "n/a" never reads as $0. Claude's cost is
+`reported`; for calls that report tokens but no cost (cursor), the operator
+estimates it from `--pricing-file` when it writes the row (`estimated`,
+see [configuration.md](configuration.md#pricing)). Three jsonb columns
 hold the detail: `models` (per model tokens and `costUSD`, subagent models
 included), `context_series` (context size of each main-thread turn, at most
 500 points) and `subagent_turns` (indexes into it after which a subagent

@@ -1,0 +1,12 @@
+{{- if .Values.pricing }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-operator.fullname" . }}-pricing
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ai-operator.labels" . | nindent 4 }}
+data:
+  pricing.yaml: |
+    {{- toYaml .Values.pricing | nindent 4 }}
+{{- end }}

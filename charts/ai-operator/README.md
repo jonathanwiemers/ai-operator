@@ -151,6 +151,30 @@ research:
       podLabels: {cluster-name: ai-operator-postgres}
 ```
 
+### Pricing
+
+Cost of agent calls in `agent_calls` (needs `research.database.host`):
+
+| Engine | Cost | `cost_source` |
+|---|---|---|
+| claude | the `total_cost_usd` claude reports (the notional API price), kept even when `pricing` has the model | `reported` |
+| cursor, with tokens and a price in `pricing` | tokens × price, estimated by the operator when it writes the row | `estimated` |
+| cursor without tokens or without a price | NULL, shown as "n/a", never $0 | `unknown` |
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `pricing` | `{}` | prices in USD per million tokens under `models`, keyed `<engine>/<model>`, a bare model or `<engine>/*` (engine-wide fallback), looked up in that order; each with `input`, `output`, `cacheRead`, `cacheWrite` (missing = 0). Non-empty: rendered into the ConfigMap `<release>-pricing` (`pricing.yaml`), mounted into the operator and passed as `--pricing-file`; a change restarts the operator. Unknown keys or negative prices stop the operator at start |
+
+```yaml
+pricing:
+  models:
+    "cursor/auto": {input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25}
+    "cursor/*": {input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75}
+```
+
+Prices apply to calls written after the operator starts with them; rows
+already written keep their cost.
+
 ### Web UI
 
 The optional read-only web UI, see [docs/ui.md](../../docs/ui.md). It runs as

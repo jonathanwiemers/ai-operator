@@ -17,6 +17,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
+	"github.com/jonathanwiemers/ai-operator/internal/pricing"
 	"github.com/jonathanwiemers/ai-operator/internal/research"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/research/storetest"
@@ -653,6 +654,10 @@ func TestResearchLimitedRunIsRetried(t *testing.T) {
 func TestResearchFinishRunRecordsCalls(t *testing.T) {
 	e := newResearchEnv(t, researchProject(), writerSecret(), newResearch("q", ""))
 	e.r.HistoryRetention = 30 * 24 * time.Hour
+	var err error
+	if e.r.Pricing, err = pricing.Parse([]byte(`models: {"cursor/*": {input: 2}}`)); err != nil {
+		t.Fatal(err)
+	}
 	e.reconcile("q")
 	r := e.research("q")
 	orig := r.DeepCopy()
@@ -662,6 +667,8 @@ func TestResearchFinishRunRecordsCalls(t *testing.T) {
 			InputTokens: 10, CostUSD: "0.3000", CostSource: aiv1.CostReported},
 		{Seq: 2, At: metav1.Time{Time: t0.Add(time.Minute)}, Kind: aiv1.CallKindResearch, Role: "research",
 			Engine: aiv1.EngineClaude, Resumed: true, CostSource: aiv1.CostUnknown},
+		{Seq: 3, At: metav1.Time{Time: t0.Add(2 * time.Minute)}, Kind: aiv1.CallKindResearch, Role: "research",
+			Engine: aiv1.EngineCursor, Model: "auto", InputTokens: 500000, CostSource: aiv1.CostUnknown},
 	}
 	if err := e.c.Status().Patch(e.ctx, r, client.MergeFrom(orig)); err != nil {
 		t.Fatal(err)
@@ -684,8 +691,8 @@ func TestResearchFinishRunRecordsCalls(t *testing.T) {
 	if e.research("q").Status.Run.FinishedAt == nil {
 		t.Fatal("the run must be finished")
 	}
-	if len(e.db.calls) != 2 {
-		t.Fatalf("want 2 calls, got %+v", e.db.calls)
+	if len(e.db.calls) != 3 {
+		t.Fatalf("want 3 calls, got %+v", e.db.calls)
 	}
 	c, ok := e.db.calls["research/uid-q/"+run.ID+"/1"]
 	if !ok || c.Namespace != ns || c.Project != "shop" || c.Task != "q" || c.Run != 0 || c.Seq != 1 ||
@@ -696,13 +703,17 @@ func TestResearchFinishRunRecordsCalls(t *testing.T) {
 	if c := e.db.calls["research/uid-q/"+run.ID+"/2"]; c.CostUSD != nil || c.CostSource != aiv1.CostUnknown || !c.Resumed {
 		t.Errorf("call 2: %+v", c)
 	}
+	// The cursor call with tokens is priced from the table.
+	if c := e.db.calls["research/uid-q/"+run.ID+"/3"]; c.CostUSD == nil || *c.CostUSD != 1 || c.CostSource != aiv1.CostEstimated {
+		t.Errorf("call 3: %+v", c)
+	}
 
 	// Recording the same run again writes no call twice.
 	again := e.research("q")
 	if err := e.r.finishRun(e.ctx, again, again.DeepCopy(), nil, "", e.now); err != nil {
 		t.Fatal(err)
 	}
-	if e.db.inserted != 2 {
+	if e.db.inserted != 3 {
 		t.Errorf("calls written twice: %d", e.db.inserted)
 	}
 }

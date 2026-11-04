@@ -17,9 +17,14 @@ spec:
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.podAnnotations .Values.pricing }}
       annotations:
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.pricing }}
+        checksum/pricing: {{ toYaml .Values.pricing | sha256sum }}
+        {{- end }}
       {{- end }}
     spec:
       serviceAccountName: {{ include "ai-operator.serviceAccountName" . }}
@@ -85,6 +90,9 @@ spec:
             - --research-max-usage-percent={{ int .Values.research.maxUsagePercent }}
             - --history-retention={{ .Values.research.historyRetention }}
             {{- end }}
+            {{- if .Values.pricing }}
+            - --pricing-file=/etc/ai-operator/pricing/pricing.yaml
+            {{- end }}
             {{- range .Values.extraArgs }}
             - {{ . | quote }}
             {{- end }}
@@ -123,6 +131,18 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.pricing }}
+          volumeMounts:
+            - name: pricing
+              mountPath: /etc/ai-operator/pricing
+              readOnly: true
+          {{- end }}
+      {{- if .Values.pricing }}
+      volumes:
+        - name: pricing
+          configMap:
+            name: {{ include "ai-operator.fullname" . }}-pricing
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

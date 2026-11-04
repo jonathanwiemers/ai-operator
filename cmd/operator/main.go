@@ -22,6 +22,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/pricing"
 	"github.com/jonathanwiemers/ai-operator/internal/research"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/webhook"
@@ -60,6 +61,8 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	var historyRetention time.Duration
 	flag.DurationVar(&historyRetention, "history-retention", history.DefaultRetention, "How long the factory's history (comments, runs, CI, reviews, merges) and Desk chat messages are kept in the research database.")
+	var pricingFile string
+	flag.StringVar(&pricingFile, "pricing-file", "", "YAML file with model prices (USD per million tokens) to estimate the cost of agent calls that report tokens but no cost, such as cursor's. Empty: no estimates, such calls have no cost.")
 	flag.Parse()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	setupLog := ctrl.Log.WithName("setup")
@@ -68,6 +71,14 @@ func main() {
 	default:
 		setupLog.Error(nil, "invalid --agent-log-level, want debug, info or error", "value", agentLogLevel)
 		os.Exit(1)
+	}
+	var prices *pricing.Table
+	if pricingFile != "" {
+		var err error
+		if prices, err = pricing.Load(pricingFile); err != nil {
+			setupLog.Error(err, "invalid --pricing-file", "path", pricingFile)
+			os.Exit(1)
+		}
 	}
 	// Research is on exactly with a database host. The research controller
 	// waits for researchSetup's Ready and uses researchDB for its pods.
@@ -128,6 +139,7 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 	if researchSetup != nil {
 		recorder := history.NewRecorder(researchSetup, historyRetention, clock.RealClock{}, ctrl.Log.WithName("history"))
+		recorder.Pricing = prices
 		utilruntime.Must(mgr.Add(recorder))
 		if err := history.Watch(ctx, mgr.GetCache(), recorder, time.Now); err != nil {
 			setupLog.Error(err, "unable to watch AgentTasks for the history")
@@ -181,6 +193,7 @@ func main() {
 			Candidates:           candidates,
 			MaxUsagePercent:      int32(maxUsagePercent),
 			HistoryRetention:     historyRetention,
+			Pricing:              prices,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "AgentResearch")
 			os.Exit(1)
