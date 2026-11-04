@@ -149,6 +149,7 @@ func main() {
 			os.Exit(1)
 		}
 		projects.History = recorder
+		projects.Spend = researchSetup
 		researchSetup.SetHistoryRetention(historyRetention)
 	}
 	// Desk chat commands and GitLab webhooks both wake the project

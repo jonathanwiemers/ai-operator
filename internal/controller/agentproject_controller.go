@@ -71,6 +71,9 @@ type AgentProjectReconciler struct {
 	// Research, set with a research database, adds the usage readings and
 	// limits of the project's AgentResearch runs to its status.
 	Research bool
+	// Spend, set with a research database, is the milestone spend the
+	// pilot's retrospective reports. Nil: it sums the live tasks.
+	Spend SpendSource
 
 	mu sync.Mutex
 	// synced is the last delivery each project's last full sync covered.

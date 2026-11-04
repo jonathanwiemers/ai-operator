@@ -1071,7 +1071,10 @@ counted interventions; more tools are later steps of
   `Done`; it comes back when the queue runs again), the milestone's plan, or
   its own tracking issue when that is closed or deleted (one `GetIssue` per
   poll and such pilot). A done autopilot's pilot runs the retrospective
-  first (C4): the controller asks for it once (`spec.source.retrospective`),
+  first (C4): the controller asks for it once (`spec.source.retrospective`,
+  with `spec.source.retroSpend`: the milestone's spend from `agent_calls`
+  with its top 3 issues, kinds and models, subagent models as their own;
+  unset without the history database or when the query fails),
   keeps the pilot until that run is over, copies its
   `status.pilot.retrospective` (note, follow-ups, pinned owner IDs, or why
   it failed) to the spec task and only then deletes the pilot. The run
@@ -1079,7 +1082,9 @@ counted interventions; more tools are later steps of
   `agents.implement` role's engine and model, capped by the rest of
   `pilot.maxBudgetUSD`, over the operator's facts (queue, merge requests,
   decisions, revisits, the autopilot's comments, cost, time), and posts the
-  defused comment with the marker `<!-- ai-operator:retrospective -->`.
+  defused comment with the marker `<!-- ai-operator:retrospective -->`, with
+  a "Cost drivers" part from `retroSpend` (without it, the cost is the sum
+  over the live tasks, "(from live tasks)").
   Without budget it posts the facts only; a failure is recorded, not
   retried. Autopilot (`followUps` in `pilot_followups.go`) reads the
   tracking issue's comments after `status.pilot.retrospective.lastNoteID`

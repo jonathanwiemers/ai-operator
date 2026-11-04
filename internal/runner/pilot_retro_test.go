@@ -148,3 +148,49 @@ func TestRetrospectiveAnswersWaitingMessages(t *testing.T) {
 		t.Fatalf("an open question is told the milestone is done, not answered: %d calls, %q", len(e.engine.calls), notes)
 	}
 }
+
+func TestRetrospectiveReportsTheSpendFromTheDatabase(t *testing.T) {
+	e := newRetroEnv(t, "")
+	task := e.task(t)
+	task.Spec.Source.RetroSpend = &aiv1.SpendSummary{CostUSD: "42.1234", CostKnown: true, SubagentCalls: 3,
+		Tokens:    aiv1.SpendTokens{Input: 1200, Output: 34000, CacheRead: 2_500_000, CacheWrite: 50000},
+		TopIssues: []aiv1.SpendDriver{{Key: "1", Label: "#1", CostUSD: "30.0000", Tokens: 2_000_000}, {Key: "2", Label: "#2", CostUSD: "9.0000", Tokens: 500_000}},
+		TopKinds:  []aiv1.SpendDriver{{Key: "implement", Label: "implement", CostUSD: "35.0000", Tokens: 2_100_000}},
+		TopModels: []aiv1.SpendDriver{{Key: "claude-opus", Label: "claude-opus", CostUSD: "40.0000", Tokens: 2_400_000}, {Key: "cursor-auto", Label: "cursor-auto", Tokens: 900}},
+	}
+	if err := e.k8s.Update(context.Background(), &task); err != nil {
+		t.Fatal(err)
+	}
+	e.step(t)
+	if len(e.engine.calls) != 1 {
+		t.Fatalf("expected one retrospective call, got %d", len(e.engine.calls))
+	}
+	prompt := e.engine.calls[0].Prompt
+	for _, want := range []string{`"costUSD": "42.12"`, `"costFrom": "agent calls"`, `"subagentCalls": 3`, `"topIssues": [`, `"label": "claude-opus"`} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("the facts miss %s", want)
+		}
+	}
+	notes := botNotes(e.gl, 5)
+	c := notes[len(notes)-1]
+	for _, want := range []string{
+		"**Cost drivers**\n\n- Total: $42.12, 2.59M tokens (input 1.2k, output 34.0k, cache read 2.50M, cache write 50.0k), 3 subagent calls\n",
+		"- Issue: #1 $30.00 (2.00M tokens); then #2 $9.00 (500.0k tokens)\n",
+		"- Kind: implement $35.00 (2.10M tokens)\n",
+		"- Model: claude-opus $40.00 (2.40M tokens); then cursor-auto n/a (900 tokens)\n",
+	} {
+		if !strings.Contains(c, want) {
+			t.Errorf("the retrospective misses %q:\n%s", want, c)
+		}
+	}
+}
+
+func TestRetrospectiveWithoutDatabaseSumsLiveTasks(t *testing.T) {
+	e := newRetroEnv(t, "20.0000")
+	e.step(t)
+	notes := botNotes(e.gl, 5)
+	c := notes[len(notes)-1]
+	if !strings.Contains(c, "for $21.50 over the milestone's runs (from live tasks)") || strings.Contains(c, "Cost drivers") {
+		t.Fatalf("without the database, the cost is the live tasks' sum:\n%s", c)
+	}
+}

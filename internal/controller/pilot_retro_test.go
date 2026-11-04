@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -11,6 +13,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 // finishAutopilot skips both issues of the pilot env's queue: autopilot is
@@ -229,5 +232,67 @@ func TestRetrospectiveCreateOnlyFromAPinnedOwnerInTheThread(t *testing.T) {
 	}
 	if retro := e.tasks()[specTaskName].Status.Pilot.Retrospective; retro.Created != nil || retro.LastNoteID != newestNote(e.gl.IssueNotes[tracking]) {
 		t.Fatalf("read once, nothing created: %+v", retro)
+	}
+}
+
+// fakeSpend is a spend source with one answer, recording the scopes asked.
+type fakeSpend struct {
+	spend  store.Spend
+	err    error
+	scopes []store.SpendScope
+}
+
+func (f *fakeSpend) Spend(_ context.Context, sc store.SpendScope) (store.Spend, error) {
+	f.scopes = append(f.scopes, sc)
+	return f.spend, f.err
+}
+
+func TestRetrospectiveRequestCarriesTheSpend(t *testing.T) {
+	e := newPilotEnv(t)
+	known := func(usd float64, tokens int64) store.SpendTotals {
+		return store.SpendTotals{CostUSD: usd, CostKnown: true, Calls: 1, InputTokens: tokens}
+	}
+	src := &fakeSpend{spend: store.Spend{
+		Totals: store.SpendTotals{CostUSD: 12.5, CostKnown: true, Calls: 9, InputTokens: 100, OutputTokens: 20, CacheReadTokens: 3000, CacheWriteTokens: 400, SubagentCalls: 4},
+		Children: []store.SpendChild{
+			{Level: store.SpendIssue, Key: "1", Label: "#1", Totals: known(2, 10)},
+			{Level: store.SpendMilestone, Key: "3", Label: "Milestone %3", Totals: known(9, 10)},
+			{Level: store.SpendIssue, Key: "2", Label: "#2", Totals: known(5, 20)},
+			{Level: store.SpendIssue, Key: "4", Label: "#4", Totals: store.SpendTotals{Calls: 2, UnknownCalls: 2, InputTokens: 900}},
+			{Level: store.SpendIssue, Key: "5", Label: "#5", Totals: known(1, 5)},
+		},
+		ByKind:  []store.SpendBreakdown{{Key: "implement", Totals: known(8, 50)}, {Key: "review", Totals: known(3, 40)}, {Key: "spec", Totals: known(1, 1)}, {Key: "retro", Totals: known(0.5, 1)}},
+		ByModel: []store.SpendBreakdown{{Key: "claude-opus", Totals: known(10, 70)}, {Key: "claude-haiku", Totals: known(0.5, 30)}},
+	}}
+	e.r.Spend = src
+	finishAutopilot(e)
+	e.reconcile()
+	e.reconcile()
+	pilot := e.pilot()
+	if pilot.Spec.Source.Retrospective == 0 {
+		t.Fatalf("the retrospective is asked for: %+v", pilot.Spec)
+	}
+	if len(src.scopes) != 1 || src.scopes[0] != (store.SpendScope{Namespace: pilot.Namespace, Project: pilot.Spec.ProjectRef, MilestoneIID: pilot.Spec.Milestone.IID}) {
+		t.Fatalf("the milestone's spend is read once with the request: %+v", src.scopes)
+	}
+	want := &aiv1.SpendSummary{CostUSD: "12.5000", CostKnown: true, SubagentCalls: 4,
+		Tokens:    aiv1.SpendTokens{Input: 100, Output: 20, CacheRead: 3000, CacheWrite: 400},
+		TopIssues: []aiv1.SpendDriver{{Key: "2", Label: "#2", CostUSD: "5.0000", Tokens: 20}, {Key: "1", Label: "#1", CostUSD: "2.0000", Tokens: 10}, {Key: "5", Label: "#5", CostUSD: "1.0000", Tokens: 5}},
+		TopKinds:  []aiv1.SpendDriver{{Key: "implement", Label: "implement", CostUSD: "8.0000", Tokens: 50}, {Key: "review", Label: "review", CostUSD: "3.0000", Tokens: 40}, {Key: "spec", Label: "spec", CostUSD: "1.0000", Tokens: 1}},
+		TopModels: []aiv1.SpendDriver{{Key: "claude-opus", Label: "claude-opus", CostUSD: "10.0000", Tokens: 70}, {Key: "claude-haiku", Label: "claude-haiku", CostUSD: "0.5000", Tokens: 30}},
+	}
+	if got := pilot.Spec.Source.RetroSpend; !reflect.DeepEqual(got, want) {
+		t.Fatalf("the request carries the milestone's spend with its top 3 drivers:\n got %+v\nwant %+v", got, want)
+	}
+}
+
+func TestRetrospectiveRequestWithoutSpend(t *testing.T) {
+	e := newPilotEnv(t)
+	e.r.Spend = &fakeSpend{err: errors.New("database down")}
+	finishAutopilot(e)
+	e.reconcile()
+	e.reconcile()
+	if p := e.pilot(); p.Spec.Source.Retrospective == 0 || p.Spec.Source.RetroSpend != nil {
+		t.Fatalf("a failed query still asks for the retrospective, without spend: %+v", p.Spec.Source)
 	}
 }

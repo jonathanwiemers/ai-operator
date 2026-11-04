@@ -405,6 +405,110 @@ spec:
                       human's.
                     format: int64
                     type: integer
+                  retroSpend:
+                    description: |-
+                      RetroSpend is what the milestone cost, from the history database
+                      (agent_calls), set by the operator with Retrospective (Coordinate
+                      tasks). Unset without the database or when its query failed: the
+                      retrospective sums the live tasks then.
+                    properties:
+                      costKnown:
+                        description: CostKnown is false when no call reported or estimated
+                          a cost.
+                        type: boolean
+                      costUSD:
+                        description: CostUSD sums the known costs (4 decimals).
+                        type: string
+                      subagentCalls:
+                        description: SubagentCalls is how often the calls delegated
+                          to a subagent.
+                        format: int64
+                        type: integer
+                      tokens:
+                        description: SpendTokens are tokens by type.
+                        properties:
+                          cacheRead:
+                            format: int64
+                            type: integer
+                          cacheWrite:
+                            format: int64
+                            type: integer
+                          input:
+                            format: int64
+                            type: integer
+                          output:
+                            format: int64
+                            type: integer
+                        type: object
+                      topIssues:
+                        items:
+                          description: |-
+                            SpendDriver is one issue, kind or model of a SpendSummary: Key is the
+                            issue IID, the kind or the model, Label how to name it.
+                          properties:
+                            costUSD:
+                              description: CostUSD is empty when none of its calls
+                                has a known cost.
+                              type: string
+                            key:
+                              type: string
+                            label:
+                              type: string
+                            tokens:
+                              format: int64
+                              type: integer
+                          required:
+                          - key
+                          type: object
+                        maxItems: 3
+                        type: array
+                      topKinds:
+                        items:
+                          description: |-
+                            SpendDriver is one issue, kind or model of a SpendSummary: Key is the
+                            issue IID, the kind or the model, Label how to name it.
+                          properties:
+                            costUSD:
+                              description: CostUSD is empty when none of its calls
+                                has a known cost.
+                              type: string
+                            key:
+                              type: string
+                            label:
+                              type: string
+                            tokens:
+                              format: int64
+                              type: integer
+                          required:
+                          - key
+                          type: object
+                        maxItems: 3
+                        type: array
+                      topModels:
+                        description: TopModels counts subagent models as their own
+                          entries.
+                        items:
+                          description: |-
+                            SpendDriver is one issue, kind or model of a SpendSummary: Key is the
+                            issue IID, the kind or the model, Label how to name it.
+                          properties:
+                            costUSD:
+                              description: CostUSD is empty when none of its calls
+                                has a known cost.
+                              type: string
+                            key:
+                              type: string
+                            label:
+                              type: string
+                            tokens:
+                              format: int64
+                              type: integer
+                          required:
+                          - key
+                          type: object
+                        maxItems: 3
+                        type: array
+                    type: object
                   retrospective:
                     description: |-
                       Retrospective is the run request that writes the retrospective of the

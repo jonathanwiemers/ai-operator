@@ -171,3 +171,13 @@ func (d *Database) InsertCalls(ctx context.Context, calls []store.Call) (int64, 
 	}
 	return s.InsertCalls(ctx, calls)
 }
+
+// Spend reads what a scope cost, see store.Store.Spend. It fails before
+// Ready.
+func (d *Database) Spend(ctx context.Context, sc store.SpendScope) (store.Spend, error) {
+	s := d.Store()
+	if s == nil {
+		return store.Spend{}, errors.New("research database is not ready")
+	}
+	return s.Spend(ctx, sc)
+}

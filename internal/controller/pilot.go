@@ -451,7 +451,9 @@ func (r *AgentProjectReconciler) retrospective(ctx context.Context, st, coord *a
 	if request == 0 {
 		coord.Spec.RunRequest++
 		coord.Spec.Source.Retrospective = coord.Spec.RunRequest
-		log.FromContext(ctx).Info("asking the pilot for the retrospective", "task", coord.Name, "request", coord.Spec.RunRequest)
+		coord.Spec.Source.RetroSpend = r.retroSpend(ctx, coord)
+		log.FromContext(ctx).Info("asking the pilot for the retrospective", "task", coord.Name, "request", coord.Spec.RunRequest,
+			"spendFromDB", coord.Spec.Source.RetroSpend != nil)
 		return true, r.Update(ctx, coord)
 	}
 	var retro *aiv1.PilotRetrospective

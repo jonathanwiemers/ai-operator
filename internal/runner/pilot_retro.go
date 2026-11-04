@@ -1,11 +1,13 @@
 package runner
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -98,7 +100,7 @@ func (r *Runner) runRetrospective(ctx context.Context, gl gitlab.API, task *aiv1
 			retro.FollowUps = append(retro.FollowUps, aiv1.PilotFollowUp{Title: textutil.Truncate(t, 200), Body: textutil.Truncate(strings.TrimSpace(f.Body), 4000)})
 		}
 	}
-	n, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, tracking, renderRetro(a.Summary, retro.FollowUps))
+	n, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, tracking, renderRetro(a.Summary, retro.FollowUps, task.Spec.Source.RetroSpend))
 	if err != nil {
 		return out, r.retroFailed(ctx, task, fmt.Errorf("posting the retrospective on #%d: %w", tracking, err))
 	}
@@ -213,14 +215,16 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		return "", "", nil, fmt.Errorf("listing tasks: %w", err)
 	}
 	var v struct {
-		Milestone string       `json:"milestone"`
-		Spec      string       `json:"spec"`
-		Queue     []retroIssue `json:"queue"`
-		Autopilot []string     `json:"autopilotComments,omitempty"`
-		CostUSD   string       `json:"costUSD"`
-		Started   time.Time    `json:"started"`
-		Done      time.Time    `json:"done"`
-		Duration  string       `json:"duration"`
+		Milestone string             `json:"milestone"`
+		Spec      string             `json:"spec"`
+		Queue     []retroIssue       `json:"queue"`
+		Autopilot []string           `json:"autopilotComments,omitempty"`
+		CostUSD   string             `json:"costUSD"`
+		CostFrom  string             `json:"costFrom"`
+		Spend     *aiv1.SpendSummary `json:"spend,omitempty"`
+		Started   time.Time          `json:"started"`
+		Done      time.Time          `json:"done"`
+		Duration  string             `json:"duration"`
 	}
 	v.Milestone, v.Spec = m.Title, rules.Spec(m.Description, spec.Workflow.CommandPrefix)
 	var cost float64
@@ -277,7 +281,14 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		v.Autopilot = append(v.Autopilot, at+textutil.Truncate(n.Body, 600))
 	}
 	v.Autopilot = v.Autopilot[max(0, len(v.Autopilot)-maxRetroComments):]
-	v.CostUSD = aiv1.ShowCost(cost)
+	// The operator's sum over agent_calls counts deleted tasks too.
+	v.CostUSD, v.CostFrom = aiv1.ShowCost(cost), "live tasks"
+	spent := "$" + v.CostUSD + " over the milestone's runs (from live tasks)"
+	if s := task.Spec.Source.RetroSpend; s != nil {
+		v.Spend, v.CostFrom = s, "agent calls"
+		v.CostUSD = strings.TrimPrefix(spendUSD(s.CostUSD, s.CostKnown), "$")
+		spent = fmt.Sprintf("%s and %s tokens over the milestone's agent calls", spendUSD(s.CostUSD, s.CostKnown), showTokens(s.Tokens.Total()))
+	}
 	v.Done = r.now().UTC()
 	if is.ClosedAt != nil {
 		v.Done = is.ClosedAt.UTC()
@@ -290,8 +301,8 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		v.Duration = v.Done.Sub(v.Started).Round(time.Minute).String()
 	}
 	b, err := json.MarshalIndent(v, "", "  ")
-	plain := fmt.Sprintf("Autopilot merged %d of %d issues in %s (from the tracking issue's creation to done), for $%s over the milestone's runs, with %d pauses.",
-		merged, len(v.Queue), v.Duration, v.CostUSD, pauses)
+	plain := fmt.Sprintf("Autopilot merged %d of %d issues in %s (from the tracking issue's creation to done), for %s, with %d pauses.",
+		merged, len(v.Queue), v.Duration, spent, pauses)
 	return textutil.Truncate(string(b), maxRetroFacts), plain, notes, err
 }
 
@@ -340,9 +351,13 @@ paused when something needed a human. The autopilot is done.
 You get the facts the operator recorded: the queue with each issue's state,
 merge request, decisions and revisits, the autopilot's comments on the
 tracking issue (pauses, resumes, skips, the end) with their times, the cost
-and the time. Ground every statement in them and say where they do not tell.
-Cover what was merged, the decisions and revisits, every pause with its
-cause and how it ended, cost and time, and what to learn from it.
+and the time. costFrom says where the cost comes from: "agent calls" is
+every call of the milestone, with spend naming its tokens and the three
+biggest issues, kinds and models (subagent models as their own); "live
+tasks" misses deleted tasks. Ground every statement in them and say where
+they do not tell. Cover what was merged, the decisions and revisits, every
+pause with its cause and how it ended, cost and time with the biggest cost
+drivers and their tokens when spend is there, and what to learn from it.
 
 Then list follow-ups: issues worth opening after this milestone, e.g. a
 recurring cause of pauses, a skipped issue, a decision that was revisited,
@@ -362,9 +377,12 @@ func buildRetroPrompt(facts string) string {
 }
 
 // renderRetro renders the retrospective comment; agent text is made inert.
-func renderRetro(summary string, followUps []aiv1.PilotFollowUp) string {
+func renderRetro(summary string, followUps []aiv1.PilotFollowUp, spend *aiv1.SpendSummary) string {
 	var b strings.Builder
 	b.WriteString("🧭 **Retrospective**\n\n" + prose(summary) + "\n\n")
+	if spend != nil {
+		b.WriteString(renderSpend(spend) + "\n")
+	}
 	if len(followUps) > 0 {
 		b.WriteString("**Follow-ups**\n\n")
 		for i, f := range followUps {
@@ -374,4 +392,54 @@ func renderRetro(summary string, followUps []aiv1.PilotFollowUp) string {
 	}
 	b.WriteString(marker.Retrospective)
 	return b.String()
+}
+
+// renderSpend renders the milestone's spend from the history database and
+// its biggest issue, kind and model, runners-up after them.
+func renderSpend(s *aiv1.SpendSummary) string {
+	var b strings.Builder
+	t := s.Tokens
+	fmt.Fprintf(&b, "**Cost drivers**\n\n- Total: %s, %s tokens (input %s, output %s, cache read %s, cache write %s)",
+		spendUSD(s.CostUSD, s.CostKnown), showTokens(t.Total()), showTokens(t.Input), showTokens(t.Output), showTokens(t.CacheRead), showTokens(t.CacheWrite))
+	if s.SubagentCalls > 0 {
+		fmt.Fprintf(&b, ", %d subagent calls", s.SubagentCalls)
+	}
+	b.WriteString("\n")
+	for _, dim := range []struct {
+		name string
+		ds   []aiv1.SpendDriver
+	}{{"Issue", s.TopIssues}, {"Kind", s.TopKinds}, {"Model", s.TopModels}} {
+		if len(dim.ds) == 0 {
+			continue
+		}
+		parts := make([]string, len(dim.ds))
+		for i, d := range dim.ds {
+			parts[i] = fmt.Sprintf("%s %s (%s tokens)", prose(cmp.Or(d.Label, d.Key)), spendUSD(d.CostUSD, d.CostUSD != ""), showTokens(d.Tokens))
+		}
+		fmt.Fprintf(&b, "- %s: %s", dim.name, parts[0])
+		if len(parts) > 1 {
+			b.WriteString("; then " + strings.Join(parts[1:], ", "))
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// spendUSD shows a cost, "n/a" when it is unknown: never $0 for that.
+func spendUSD(usd string, known bool) string {
+	if !known {
+		return "n/a"
+	}
+	return "$" + aiv1.ShowCost(aiv1.CostOf(usd))
+}
+
+// showTokens shows a token count short: 950, 12.3k, 4.56M.
+func showTokens(n int64) string {
+	switch {
+	case n >= 1_000_000:
+		return strconv.FormatFloat(float64(n)/1e6, 'f', 2, 64) + "M"
+	case n >= 1_000:
+		return strconv.FormatFloat(float64(n)/1e3, 'f', 1, 64) + "k"
+	}
+	return strconv.FormatInt(n, 10)
 }

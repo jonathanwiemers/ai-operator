@@ -1177,7 +1177,10 @@ merged issues are kept, new issues may follow.
 
 When an autopilot milestone is done, its pilot posts the retrospective on
 the tracking issue before it ends (see **Which milestones** above): what was
-merged, the decisions and revisits, the pauses, cost and time, and up to 9
+merged, the decisions and revisits, the pauses, cost and time, the **cost
+drivers** (total USD and tokens, the biggest issues, kinds of call and models,
+with their tokens, and the subagent calls; from the history database, so
+deleted tasks count too, otherwise the sum over the live tasks), and up to 9
 numbered follow-ups. Reply `create 1 2` (or `create 1, 3`, `create all`) in
 its thread to open follow-ups as plain issues; only the owners pinned when it
 was posted count.

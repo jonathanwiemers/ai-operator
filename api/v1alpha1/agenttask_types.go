@@ -191,10 +191,71 @@ type SourceState struct {
 	// +optional
 	Retrospective int64 `json:"retrospective,omitempty"`
 
+	// RetroSpend is what the milestone cost, from the history database
+	// (agent_calls), set by the operator with Retrospective (Coordinate
+	// tasks). Unset without the database or when its query failed: the
+	// retrospective sums the live tasks then.
+	// +optional
+	RetroSpend *SpendSummary `json:"retroSpend,omitempty"`
+
 	// PilotInstruction is an instruction an owner accepted from the pilot
 	// (Implement tasks), for the run of its request.
 	// +optional
 	PilotInstruction *PilotInstruction `json:"pilotInstruction,omitempty"`
+}
+
+// SpendSummary is a scope's spend with its biggest cost drivers, each list
+// the top 3 by USD.
+type SpendSummary struct {
+	// CostUSD sums the known costs (4 decimals).
+	// +optional
+	CostUSD string `json:"costUSD,omitempty"`
+	// CostKnown is false when no call reported or estimated a cost.
+	// +optional
+	CostKnown bool `json:"costKnown,omitempty"`
+	// +optional
+	Tokens SpendTokens `json:"tokens,omitempty"`
+	// SubagentCalls is how often the calls delegated to a subagent.
+	// +optional
+	SubagentCalls int64 `json:"subagentCalls,omitempty"`
+	// +optional
+	// +kubebuilder:validation:MaxItems=3
+	TopIssues []SpendDriver `json:"topIssues,omitempty"`
+	// +optional
+	// +kubebuilder:validation:MaxItems=3
+	TopKinds []SpendDriver `json:"topKinds,omitempty"`
+	// TopModels counts subagent models as their own entries.
+	// +optional
+	// +kubebuilder:validation:MaxItems=3
+	TopModels []SpendDriver `json:"topModels,omitempty"`
+}
+
+// SpendTokens are tokens by type.
+type SpendTokens struct {
+	// +optional
+	Input int64 `json:"input,omitempty"`
+	// +optional
+	Output int64 `json:"output,omitempty"`
+	// +optional
+	CacheRead int64 `json:"cacheRead,omitempty"`
+	// +optional
+	CacheWrite int64 `json:"cacheWrite,omitempty"`
+}
+
+// Total is the sum of all tokens.
+func (t SpendTokens) Total() int64 { return t.Input + t.Output + t.CacheRead + t.CacheWrite }
+
+// SpendDriver is one issue, kind or model of a SpendSummary: Key is the
+// issue IID, the kind or the model, Label how to name it.
+type SpendDriver struct {
+	Key string `json:"key"`
+	// +optional
+	Label string `json:"label,omitempty"`
+	// CostUSD is empty when none of its calls has a known cost.
+	// +optional
+	CostUSD string `json:"costUSD,omitempty"`
+	// +optional
+	Tokens int64 `json:"tokens,omitempty"`
 }
 
 // ChatMessage is one Desk chat turn handed to the runner.
