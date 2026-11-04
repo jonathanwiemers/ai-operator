@@ -89,7 +89,7 @@ func (e *researchRunEnv) run(t *testing.T) *aiv1.ResearchRunStatus {
 func TestResearchRunSucceeded(t *testing.T) {
 	usage := &aiv1.EngineUsage{Status: "allowed", Windows: []aiv1.UsageWindow{{Name: "five_hour", Percent: 40}}}
 	agent := &researchAgent{answers: []func(Invocation) (*Result, error){func(Invocation) (*Result, error) {
-		return &Result{Text: validAnswer, CostUSD: 0.4, Usage: usage}, nil
+		return &Result{Text: validAnswer, CostUSD: 0.4, Usage: usage, CallUsage: &CallUsage{InputTokens: 50, OutputTokens: 10}}, nil
 	}}}
 	e := newResearchRunEnv(t, true, agent)
 	run := e.run(t)
@@ -117,6 +117,10 @@ func TestResearchRunSucceeded(t *testing.T) {
 	}
 	if len(run.UsageLimits) != 0 {
 		t.Errorf("no limit expected: %+v", run.UsageLimits)
+	}
+	if len(run.Calls) != 1 || run.Calls[0].Seq != 1 || run.Calls[0].Kind != aiv1.CallKindResearch ||
+		run.Calls[0].Role != "research" || run.Calls[0].InputTokens != 50 || run.Calls[0].CostUSD != "0.4000" {
+		t.Errorf("the call must be reported: %+v", run.Calls)
 	}
 	// The prompt names the previous flash's URLs: none for the first.
 	if strings.Contains(agent.calls[0].Prompt, "previous flash") {

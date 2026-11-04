@@ -161,3 +161,13 @@ func (d *Database) FinishRunOrInsert(ctx context.Context, r store.Run) error {
 	}
 	return s.FinishRunOrInsert(ctx, r)
 }
+
+// InsertCalls writes agent calls to the store, see store.Store.InsertCalls.
+// It fails before Ready.
+func (d *Database) InsertCalls(ctx context.Context, calls []store.Call) (int64, error) {
+	s := d.Store()
+	if s == nil {
+		return 0, errors.New("research database is not ready")
+	}
+	return s.InsertCalls(ctx, calls)
+}

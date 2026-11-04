@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/research"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
@@ -59,6 +60,8 @@ type ResearchDB interface {
 	// FinishRunOrInsert records a run's outcome; the first one recorded
 	// wins.
 	FinishRunOrInsert(context.Context, store.Run) error
+	// InsertCalls writes agent calls, skipping keys already stored.
+	InsertCalls(context.Context, []store.Call) (int64, error)
 }
 
 // AgentResearchReconciler runs AgentResearches, one pod per run:
@@ -93,7 +96,10 @@ type AgentResearchReconciler struct {
 	// MaxUsagePercent is the usage at which a candidate is passed over;
 	// 0 means aiv1.DefaultResearchMaxUsagePercent.
 	MaxUsagePercent int32
-	Now             func() time.Time
+	// HistoryRetention is how long a run's agent calls are kept; 0 means
+	// history.DefaultRetention.
+	HistoryRetention time.Duration
+	Now              func() time.Time
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentresearches,verbs=get;list;watch;update;patch
@@ -388,6 +394,9 @@ func (r *AgentResearchReconciler) finishRun(ctx context.Context, res, orig *aiv1
 	if err := r.DB.FinishRunOrInsert(ctx, rec); err != nil {
 		return fmt.Errorf("recording the outcome of run %s: %w", run.ID, err)
 	}
+	if err := r.insertCalls(ctx, res, run, now); err != nil {
+		return fmt.Errorf("recording the agent calls of run %s: %w", run.ID, err)
+	}
 
 	run.FinishedAt = &metav1.Time{Time: now}
 	st.LastRun = run.StartedAt.DeepCopy()
@@ -514,4 +523,30 @@ func (r *AgentResearchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("agentresearch").
 		Complete(r)
+}
+
+// insertCalls writes the run's agent calls to the history under the
+// research's project, keyed by research UID, run ID and seq, so a finishRun
+// that is retried writes none twice.
+func (r *AgentResearchReconciler) insertCalls(ctx context.Context, res *aiv1.AgentResearch, run *aiv1.ResearchRunStatus, now time.Time) error {
+	if len(run.Calls) == 0 {
+		return nil
+	}
+	retention := r.HistoryRetention
+	if retention <= 0 {
+		retention = history.DefaultRetention
+	}
+	calls := make([]store.Call, 0, len(run.Calls))
+	for _, c := range run.Calls {
+		call := history.StoreCall(c)
+		call.Key = fmt.Sprintf("research/%s/%s/%d", res.UID, run.ID, c.Seq)
+		call.Namespace, call.Project, call.Task, call.Run = res.Namespace, res.Spec.ProjectRef, res.Name, 0
+		if call.At.IsZero() {
+			call.At = now
+		}
+		call.ExpiresAt = call.At.Add(retention)
+		calls = append(calls, call)
+	}
+	_, err := r.DB.InsertCalls(ctx, calls)
+	return err
 }

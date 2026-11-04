@@ -113,6 +113,10 @@ func TestResearchRepairRound(t *testing.T) {
 	if ans.CostUSD != 0.75 || ans.Usage != newer {
 		t.Errorf("costs must be summed and the latest usage kept: %v %+v", ans.CostUSD, ans.Usage)
 	}
+	if len(ans.Calls) != 2 || ans.Calls[0].Seq != 1 || ans.Calls[1].Seq != 2 || ans.Calls[0].Resumed || !ans.Calls[1].Resumed ||
+		ans.Calls[0].CostUSD != "0.5000" || ans.Calls[1].CostUSD != "0.2500" || ans.Calls[1].Kind != aiv1.CallKindResearch {
+		t.Errorf("both calls must be reported, seq 1..n: %+v", ans.Calls)
+	}
 }
 
 func TestResearchRepairWithoutSessionResendsThePrompt(t *testing.T) {
@@ -190,9 +194,12 @@ func TestResearchCallError(t *testing.T) {
 	a := &researchAgent{answers: []func(Invocation) (*Result, error){func(Invocation) (*Result, error) {
 		return nil, errors.New("engine \"cursor\" is not available")
 	}}}
-	_, err := RunResearch(context.Background(), a, researchRequest())
+	ans, err := RunResearch(context.Background(), a, researchRequest())
 	if _, ok := AsUsageLimit(err); ok || err == nil || !strings.Contains(err.Error(), "research call: engine") {
 		t.Fatalf("expected the call's error, got %v", err)
+	}
+	if len(ans.Calls) != 1 || ans.Calls[0].CostSource != aiv1.CostUnknown || ans.Calls[0].CostUSD != "" {
+		t.Errorf("the failed call is reported without a cost: %+v", ans.Calls)
 	}
 }
 

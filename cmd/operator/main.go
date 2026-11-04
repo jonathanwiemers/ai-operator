@@ -180,6 +180,7 @@ func main() {
 			DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
 			Candidates:           candidates,
 			MaxUsagePercent:      int32(maxUsagePercent),
+			HistoryRetention:     historyRetention,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "AgentResearch")
 			os.Exit(1)

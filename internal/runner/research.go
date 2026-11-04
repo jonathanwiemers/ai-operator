@@ -59,6 +59,8 @@ type ResearchAnswer struct {
 	Usage   *aiv1.EngineUsage
 	Engine  aiv1.Engine
 	Model   string
+	// Calls are the engine calls, seq 1..n.
+	Calls []aiv1.AgentCall
 }
 
 // maxRepairErrors caps the validation errors quoted to the agent and kept
@@ -151,6 +153,7 @@ func researchInvocation(req ResearchRequest) Invocation {
 		Effort:       req.Effort,
 		ReadOnly:     true,
 		Role:         "research",
+		Kind:         aiv1.CallKindResearch,
 	}
 	if req.Engine == aiv1.EngineClaude {
 		inv.AllowedTools = []string{"WebSearch", "WebFetch"}
@@ -168,7 +171,11 @@ func RunResearch(ctx context.Context, agent Agent, req ResearchRequest) (Researc
 	ans := ResearchAnswer{Engine: req.Engine, Model: req.Model}
 	inv := researchInvocation(req)
 	call := func(inv Invocation) (*Result, error) {
+		start := time.Now()
 		res, err := agent.Run(ctx, req.Engine, inv)
+		c := agentCall(req.Engine, inv, res, start, time.Now())
+		c.Seq = int64(len(ans.Calls) + 1)
+		ans.Calls = append(ans.Calls, c)
 		if res != nil {
 			ans.CostUSD += res.CostUSD
 			if res.Usage != nil {

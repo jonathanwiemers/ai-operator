@@ -67,7 +67,7 @@ runner):
 | `status.lastEngine`, `status.lastModel` | the agent of the last run |
 | `status.skippedReason` | why the last due run did not start (no candidate qualifies, previous run still in progress) |
 | `status.waiting` | `{engine, until}` while no candidate qualifies, see [Choosing agents](#choosing-agents) |
-| `status.run` | the current or last run: `id`, `startedAt`, `finishedAt`, `engine`, `model`, `effort`, `reason` (the choice), `outcome` (`succeeded`, `degraded` when the answer failed validation and was stored as plain markdown, `failed`, `limited`), `message`, `costUSD`, `engineUsage`, `usageLimits` |
+| `status.run` | the current or last run: `id`, `startedAt`, `finishedAt`, `engine`, `model`, `effort`, `reason` (the choice), `outcome` (`succeeded`, `degraded` when the answer failed validation and was stored as plain markdown, `failed`, `limited`), `message`, `costUSD`, `engineUsage`, `usageLimits`, `calls` (the run's engine calls, see below) |
 | `status.conditions` | `Valid`, `DatabaseReady`, `Running`, see [Runs](#runs) and [Troubleshooting](#troubleshooting) |
 
 The UI marks researches it created with the annotation
@@ -352,8 +352,12 @@ migrate (the writer cannot):
    minute.
 4. It records the outcome in the database, and then in `status.run`:
    `outcome`, `message`, `costUSD`, the engine's newest usage reading
-   (`engineUsage`) and any usage limit (`usageLimits`). The operator then
-   sets `finishedAt` and deletes the pod.
+   (`engineUsage`), any usage limit (`usageLimits`) and its engine calls
+   (`calls`, seq 1..n, kind and role `research`). The operator then writes
+   the calls to `agent_calls` (project = `spec.projectRef`, task = the
+   research name, run 0, keyed `research/<UID>/<run ID>/<seq>`; the pod
+   has no rights on that table), sets `finishedAt` and deletes the pod. A
+   failed write is retried with the next reconcile.
    The project's next sync merges the reading and an active limit into the
    project's `status.engineUsage` and `status.usageLimits`, where task runs
    (and later research runs) see them.

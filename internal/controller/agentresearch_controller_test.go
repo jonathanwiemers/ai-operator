@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,11 @@ import (
 type fakeResearchDB struct {
 	ready chan struct{}
 	runs  []store.Run
+	calls map[string]store.Call
+	// inserted counts the calls written.
+	inserted int64
+	// callsErr fails InsertCalls.
+	callsErr error
 }
 
 func newFakeResearchDB(ready bool) *fakeResearchDB {
@@ -40,6 +46,25 @@ func (f *fakeResearchDB) Ready() <-chan struct{} { return f.ready }
 func (f *fakeResearchDB) FinishRunOrInsert(_ context.Context, r store.Run) error {
 	f.runs = append(f.runs, r)
 	return nil
+}
+
+// InsertCalls skips stored keys, like the store.
+func (f *fakeResearchDB) InsertCalls(_ context.Context, calls []store.Call) (int64, error) {
+	if f.callsErr != nil {
+		return 0, f.callsErr
+	}
+	if f.calls == nil {
+		f.calls = map[string]store.Call{}
+	}
+	var n int64
+	for _, c := range calls {
+		if _, ok := f.calls[c.Key]; !ok {
+			f.calls[c.Key] = c
+			n++
+		}
+	}
+	f.inserted += n
+	return n, nil
 }
 
 type researchEnv struct {
@@ -623,4 +648,61 @@ func TestResearchLimitedRunIsRetried(t *testing.T) {
 			t.Errorf("retried when the limit ended: pods %d, nextRun %v", len(e.pods()), st.NextRun)
 		}
 	})
+}
+
+func TestResearchFinishRunRecordsCalls(t *testing.T) {
+	e := newResearchEnv(t, researchProject(), writerSecret(), newResearch("q", ""))
+	e.r.HistoryRetention = 30 * 24 * time.Hour
+	e.reconcile("q")
+	r := e.research("q")
+	orig := r.DeepCopy()
+	r.Status.Run.Outcome = aiv1.ResearchOutcomeSucceeded
+	r.Status.Run.Calls = []aiv1.AgentCall{
+		{Seq: 1, At: metav1.Time{Time: t0}, Kind: aiv1.CallKindResearch, Role: "research", Engine: aiv1.EngineClaude,
+			InputTokens: 10, CostUSD: "0.3000", CostSource: aiv1.CostReported},
+		{Seq: 2, At: metav1.Time{Time: t0.Add(time.Minute)}, Kind: aiv1.CallKindResearch, Role: "research",
+			Engine: aiv1.EngineClaude, Resumed: true, CostSource: aiv1.CostUnknown},
+	}
+	if err := e.c.Status().Patch(e.ctx, r, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	run := r.Status.Run
+
+	// The first attempt fails at the calls: finishRun is retried.
+	e.db.callsErr = errors.New("connection reset")
+	e.endPod(corev1.PodSucceeded, "")
+	if _, err := e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "q"}}); err == nil ||
+		!strings.Contains(err.Error(), "agent calls") {
+		t.Fatalf("the insert error must be returned, got %v", err)
+	}
+	if e.research("q").Status.Run.FinishedAt != nil {
+		t.Fatal("the run must stay unfinished until its calls are written")
+	}
+
+	e.db.callsErr = nil
+	e.reconcile("q")
+	if e.research("q").Status.Run.FinishedAt == nil {
+		t.Fatal("the run must be finished")
+	}
+	if len(e.db.calls) != 2 {
+		t.Fatalf("want 2 calls, got %+v", e.db.calls)
+	}
+	c, ok := e.db.calls["research/uid-q/"+run.ID+"/1"]
+	if !ok || c.Namespace != ns || c.Project != "shop" || c.Task != "q" || c.Run != 0 || c.Seq != 1 ||
+		c.Kind != aiv1.CallKindResearch || c.InputTokens != 10 || c.CostUSD == nil || *c.CostUSD != 0.3 ||
+		!c.ExpiresAt.Equal(t0.Add(30*24*time.Hour)) {
+		t.Errorf("call 1: %+v", c)
+	}
+	if c := e.db.calls["research/uid-q/"+run.ID+"/2"]; c.CostUSD != nil || c.CostSource != aiv1.CostUnknown || !c.Resumed {
+		t.Errorf("call 2: %+v", c)
+	}
+
+	// Recording the same run again writes no call twice.
+	again := e.research("q")
+	if err := e.r.finishRun(e.ctx, again, again.DeepCopy(), nil, "", e.now); err != nil {
+		t.Fatal(err)
+	}
+	if e.db.inserted != 2 {
+		t.Errorf("calls written twice: %d", e.db.inserted)
+	}
 }

@@ -528,6 +528,9 @@ func TestChatOpenFailureRepliesWithError(t *testing.T) {
 		!strings.Contains(task.Status.Chat.Replies[0].Error, "not logged in") {
 		t.Fatalf("reply: %+v", task.Status.Chat)
 	}
+	if len(task.Status.Run.Calls) != 0 {
+		t.Errorf("no engine result, no call: %+v", task.Status.Run.Calls)
+	}
 }
 
 func TestChatRoleFollowsLastImplementEngine(t *testing.T) {
@@ -583,5 +586,60 @@ func TestChatInterruptAfterAnswerLeavesItIntact(t *testing.T) {
 	var running chatTurnState
 	if !running.interrupt() || !running.finish() {
 		t.Fatal("an interrupt during the turn must cancel and mark it")
+	}
+}
+
+func TestChatTurnRecordsCall(t *testing.T) {
+	e, r, agent := newChatEnv(t)
+	agent.promptFn = func(string) (*Result, error) {
+		return &Result{Text: "ok", SessionID: "sess-chat", CostUSD: 0.25, CallUsage: &CallUsage{
+			InputTokens: 100, OutputTokens: 20, CacheReadTokens: 3000, Turns: 2,
+			Models: []ModelUsage{{Model: "claude-opus-5-5", OutputTokens: 20, CostUSD: 0.25}}}}, nil
+	}
+	setChatMessages(t, e.k8s, e.task.Name, chatMsg(10, "message", "why?", "alice"))
+	if _, err := r.tick(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	run := getTask(t, e.k8s, e.task.Name).Status.Run
+	if len(run.Calls) != 1 || run.LastCallSeq != 1 {
+		t.Fatalf("one call expected: %+v", run.Calls)
+	}
+	c := run.Calls[0]
+	if c.Seq != 1 || c.Kind != aiv1.CallKindChat || c.Role != "implement" || c.Engine != aiv1.EngineClaude ||
+		c.Resumed || c.Run != int64(run.RunCount) {
+		t.Errorf("call: %+v", c)
+	}
+	if c.CostUSD != "0.2500" || c.CostSource != aiv1.CostReported || c.InputTokens != 100 || c.OutputTokens != 20 ||
+		c.CacheReadTokens != 3000 || c.Turns != 2 || len(c.Models) != 1 || c.Model == "" {
+		t.Errorf("usage and cost: %+v", c)
+	}
+
+	// The next turn continues the stored session.
+	setChatMessages(t, e.k8s, e.task.Name, chatMsg(10, "message", "why?", "alice"), chatMsg(11, "message", "and?", "alice"))
+	r.chatSessionKey = ""
+	if _, err := r.tick(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	run = getTask(t, e.k8s, e.task.Name).Status.Run
+	if len(run.Calls) != 2 || run.Calls[1].Seq != 2 || !run.Calls[1].Resumed {
+		t.Errorf("second call: %+v", run.Calls)
+	}
+}
+
+func TestChatFailedTurnRecordsCall(t *testing.T) {
+	e, r, agent := newChatEnv(t)
+	agent.promptFn = func(string) (*Result, error) {
+		return &Result{SessionID: "s1", IsError: true}, errors.New("claude reported an error: boom")
+	}
+	setChatMessages(t, e.k8s, e.task.Name, chatMsg(9, "message", "hi", "a"))
+	if _, err := r.tick(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	task := getTask(t, e.k8s, e.task.Name)
+	if rep := task.Status.Chat.Replies[0]; rep.Error == "" {
+		t.Fatalf("reply: %+v", rep)
+	}
+	if calls := task.Status.Run.Calls; len(calls) != 1 || calls[0].Kind != aiv1.CallKindChat {
+		t.Errorf("the failed turn's call must be recorded: %+v", calls)
 	}
 }

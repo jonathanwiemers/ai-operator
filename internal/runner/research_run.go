@@ -89,7 +89,7 @@ func (rr *ResearchRun) Run(ctx context.Context) error {
 		ans, err = rr.research(runCtx, db, &res, run)
 	}
 
-	report := aiv1.ResearchRunStatus{CostUSD: aiv1.FormatCost(ans.CostUSD)}
+	report := aiv1.ResearchRunStatus{CostUSD: aiv1.FormatCost(ans.CostUSD), Calls: ans.Calls}
 	if ans.Usage != nil {
 		reading := *ans.Usage
 		reading.Engine, reading.ObservedAt = run.Engine, metav1.Time{Time: rr.clock()}
@@ -205,6 +205,9 @@ func (rr *ResearchRun) patchRun(ctx context.Context, report aiv1.ResearchRunStat
 	}
 	if report.UsageLimits != nil {
 		run.UsageLimits = report.UsageLimits
+	}
+	if report.Calls != nil {
+		run.Calls = report.Calls
 	}
 	return rr.K8s.Status().Patch(ctx, &res, client.MergeFrom(orig))
 }

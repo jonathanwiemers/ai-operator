@@ -589,6 +589,12 @@ Unlike events, calls are also written on informer adds, and the recorder
 writes the calls of every cached task when it starts (leader election
 included), so calls appended while no operator recorded are not lost; the
 key makes the repeats one row. Calls expire with the history retention.
+A Desk chat turn is a `chat` call (role `implement`, `spec` or `pilot`,
+run = the task's latest run) that the runner appends with the reply.
+Research runs have no task: their pod reports the calls in
+`status.run.calls` of the AgentResearch, and the operator writes them when
+it finishes the run, keyed `research/<research UID>/<run ID>/<seq>`, with
+the research name as task and run 0.
 
 ## GitLab webhooks
 
@@ -1398,7 +1404,7 @@ Things to keep in mind with subscriptions:
   limit during a review fix round publishes the work done so far. Deferred
   runs don't count towards `maxRunsPerTask`.
 * **Every engine call is recorded** in `status.run.calls`: kind (spec,
-  implement, review, fix, ci, conflict, describe, pilot, retro), role,
+  implement, review, fix, ci, conflict, describe, pilot, retro, chat), role,
   engine, model (the configured one, else the reported main model), effort,
   whether it resumed a session, the engine a fallback stood in for, tokens,
   cost with its source (`reported` for claude, `unknown` for cursor), turns,

@@ -174,7 +174,7 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 	}
 
 	inv := roleInvocation(role, system, tools, "", readOnly)
-	inv.Role = roleName
+	inv.Role, inv.Kind = roleName, aiv1.CallKindChat
 	inv.Resume = resume
 	inv.LogPrompt = r.logPrompts
 
@@ -186,7 +186,7 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 			if errors.As(err, &ce) {
 				return err // keep ChatInFlight
 			}
-			return r.finishChatTurn(ctx, &st, msg, "", textutil.Truncate(err.Error(), 200), nil, start, false)
+			return r.finishChatTurn(ctx, &st, msg, "", textutil.Truncate(err.Error(), 200), nil, nil, start, false)
 		}
 		r.chatSessionKey = key
 		if id != "" {
@@ -244,11 +244,16 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 	err = classifyLimit(role.Engine, err, res)
 
 	text := ""
+	var call *aiv1.AgentCall
 	if res != nil {
 		text = res.Text
+		// A turn belongs to the task's latest run, whose session it talks to.
+		c := agentCall(ranOn(role, res), inv, res, start, r.now())
+		c.Run = int64(task.Status.Run.RunCount)
+		call = &c
 	}
 	if interrupted {
-		return r.finishChatTurn(ctx, &st, msg, text, "interrupted", nil, start, false)
+		return r.finishChatTurn(ctx, &st, msg, text, "interrupted", call, nil, start, false)
 	}
 	var ce *agentConnError
 	if errors.As(err, &ce) {
@@ -256,12 +261,12 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 		return err // keep ChatInFlight
 	}
 	if lim, ok := AsUsageLimit(err); ok {
-		return r.finishChatTurn(ctx, &st, msg, text, shortUsageLimit(lim), nil, start, false)
+		return r.finishChatTurn(ctx, &st, msg, text, shortUsageLimit(lim), call, nil, start, false)
 	}
 	if err != nil {
-		return r.finishChatTurn(ctx, &st, msg, text, textutil.Truncate(err.Error(), 200), nil, start, false)
+		return r.finishChatTurn(ctx, &st, msg, text, textutil.Truncate(err.Error(), 200), call, nil, start, false)
 	}
-	return r.finishChatTurn(ctx, &st, msg, text, "", nil, start, !readOnly)
+	return r.finishChatTurn(ctx, &st, msg, text, "", call, nil, start, !readOnly)
 }
 
 // chatTurnState records whether a running chat turn was interrupted.
@@ -355,7 +360,9 @@ func shortUsageLimit(lim *UsageLimitError) string {
 
 // finishChatTurn patches the reply into status, marks the message answered
 // and clears ChatInFlight. publish is set for writable turns that may push.
-func (r *Runner) finishChatTurn(ctx context.Context, st *state, msg aiv1.ChatMessage, text, errStr string, turnErr error, start time.Time, publish bool) error {
+// call is the turn's engine call for status.run.calls, nil when the engine
+// returned no result.
+func (r *Runner) finishChatTurn(ctx context.Context, st *state, msg aiv1.ChatMessage, text, errStr string, call *aiv1.AgentCall, turnErr error, start time.Time, publish bool) error {
 	replyText := textutil.Truncate(prose(text), maxChatReplyBytes)
 	var pushedSHA string
 	if publish && turnErr == nil && errStr == "" {
@@ -376,6 +383,9 @@ func (r *Runner) finishChatTurn(ctx context.Context, st *state, msg aiv1.ChatMes
 		}
 		s.Chat.Replies = appendChatReply(s.Chat.Replies, reply, nil)
 		s.Chat.LastTurnTime = &at
+		if call != nil {
+			aiv1.AppendCalls(&s.Run, *call)
+		}
 	}); err != nil {
 		return err
 	}

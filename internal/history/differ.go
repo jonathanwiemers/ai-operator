@@ -301,31 +301,39 @@ func Calls(old, cur *aiv1.AgentTask) []store.Call {
 			continue
 		}
 		e := base(cur, c.At.Time)
-		call := store.Call{Key: fmt.Sprintf("call/%s/%d", cur.UID, c.Seq), At: c.At.Time,
-			Namespace: e.Namespace, Project: e.Project, Task: e.Task,
-			MilestoneIID: e.MilestoneIID, IssueIID: e.IssueIID, MergeRequestIID: e.MergeRequestIID,
-			Run: c.Run, Seq: c.Seq, Kind: c.Kind, Role: c.Role, Engine: string(c.Engine), Model: c.Model,
-			Effort: c.Effort, Resumed: c.Resumed, FallbackFrom: string(c.FallbackFrom),
-			InputTokens: c.InputTokens, OutputTokens: c.OutputTokens,
-			CacheReadTokens: c.CacheReadTokens, CacheWriteTokens: c.CacheWriteTokens,
-			CostSource: c.CostSource, Turns: c.Turns, DurationMS: c.DurationMS,
-			SubagentCalls: c.SubagentCalls, ContextSeries: c.ContextSeries, SubagentTurns: c.SubagentTurns}
-		switch c.CostSource {
-		case aiv1.CostReported, aiv1.CostEstimated:
-			call.CostUSD = costOf(c.CostUSD)
-		default:
-			// The table knows three sources; anything else is unknown.
-			call.CostSource = aiv1.CostUnknown
-		}
-		for _, m := range c.Models {
-			call.Models = append(call.Models, store.CallModel{Model: m.Model,
-				InputTokens: m.InputTokens, OutputTokens: m.OutputTokens,
-				CacheReadTokens: m.CacheReadTokens, CacheWriteTokens: m.CacheWriteTokens,
-				CostUSD: costOf(m.CostUSD)})
-		}
+		call := StoreCall(c)
+		call.Key = fmt.Sprintf("call/%s/%d", cur.UID, c.Seq)
+		call.Namespace, call.Project, call.Task = e.Namespace, e.Project, e.Task
+		call.MilestoneIID, call.IssueIID, call.MergeRequestIID = e.MilestoneIID, e.IssueIID, e.MergeRequestIID
 		out = append(out, call)
 	}
 	return out
+}
+
+// StoreCall is c as a store row without its key and the namespace,
+// project, task and IIDs it belongs to.
+func StoreCall(c aiv1.AgentCall) store.Call {
+	call := store.Call{At: c.At.Time,
+		Run: c.Run, Seq: c.Seq, Kind: c.Kind, Role: c.Role, Engine: string(c.Engine), Model: c.Model,
+		Effort: c.Effort, Resumed: c.Resumed, FallbackFrom: string(c.FallbackFrom),
+		InputTokens: c.InputTokens, OutputTokens: c.OutputTokens,
+		CacheReadTokens: c.CacheReadTokens, CacheWriteTokens: c.CacheWriteTokens,
+		CostSource: c.CostSource, Turns: c.Turns, DurationMS: c.DurationMS,
+		SubagentCalls: c.SubagentCalls, ContextSeries: c.ContextSeries, SubagentTurns: c.SubagentTurns}
+	switch c.CostSource {
+	case aiv1.CostReported, aiv1.CostEstimated:
+		call.CostUSD = costOf(c.CostUSD)
+	default:
+		// The table knows three sources; anything else is unknown.
+		call.CostSource = aiv1.CostUnknown
+	}
+	for _, m := range c.Models {
+		call.Models = append(call.Models, store.CallModel{Model: m.Model,
+			InputTokens: m.InputTokens, OutputTokens: m.OutputTokens,
+			CacheReadTokens: m.CacheReadTokens, CacheWriteTokens: m.CacheWriteTokens,
+			CostUSD: costOf(m.CostUSD)})
+	}
+	return call
 }
 
 // costOf is the cost string s in USD, nil when it is empty.

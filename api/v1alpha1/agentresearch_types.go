@@ -240,6 +240,13 @@ type ResearchRunStatus struct {
 	// UsageLimits the run hit.
 	// +optional
 	UsageLimits []UsageLimit `json:"usageLimits,omitempty"`
+
+	// Calls are the run's engine calls, seq 1..n, as the runner reported
+	// them; the operator writes them to the history when the run finishes.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=50
+	Calls []AgentCall `json:"calls,omitempty"`
 }
 
 // +kubebuilder:object:root=true

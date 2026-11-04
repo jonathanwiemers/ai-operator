@@ -9,13 +9,21 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
-// newCall describes one engine call that started at start for
+// newCall describes one engine call of the run that started at start for
 // status.run.calls. res may be nil (the call failed without a result).
 func (r *Runner) newCall(engine aiv1.Engine, inv Invocation, res *Result, start time.Time) aiv1.AgentCall {
+	c := agentCall(engine, inv, res, start, r.now())
+	c.Run = r.runNumber
+	return c
+}
+
+// agentCall describes one engine call that ran from start to end; res may
+// be nil. Seq and Run are left to the caller.
+func agentCall(engine aiv1.Engine, inv Invocation, res *Result, start, end time.Time) aiv1.AgentCall {
 	c := aiv1.AgentCall{
 		At: metav1.Time{Time: start}, Kind: inv.Kind, Role: inv.Role, Engine: engine, Model: inv.Model, Effort: inv.Effort,
 		Resumed: inv.Resume != "", FallbackFrom: inv.FallbackFrom, CostSource: aiv1.CostUnknown,
-		DurationMS: r.now().Sub(start).Milliseconds(), Run: r.runNumber,
+		DurationMS: end.Sub(start).Milliseconds(),
 	}
 	if res == nil {
 		return c
