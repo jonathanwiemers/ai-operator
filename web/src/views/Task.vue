@@ -54,7 +54,7 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
     <nav class="crumbs muted">
       <RouterLink :to="{ name: 'stream-project', params: { namespace, name } }">{{ name }}</RouterLink>
       <span>/</span>
-      <RouterLink :to="{ name: 'project-board', params: { namespace, name } }">Board</RouterLink>
+      <RouterLink :to="{ name: 'stream-project', params: { namespace, name }, query: { tab: 'board' } }">Board</RouterLink>
       <span>/</span>
       <span class="mono">{{ task }}</span>
     </nav>

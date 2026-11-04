@@ -4,9 +4,7 @@ import App from './App.vue'
 import { canStartResearch, featuresLoaded, hasFeature, isResearchPath } from './api'
 import Stream from './views/Stream.vue'
 import Inbox from './views/Inbox.vue'
-import Project from './views/Project.vue'
 import TaskView from './views/Task.vue'
-import MilestoneView from './views/Milestone.vue'
 import Researches from './views/Researches.vue'
 import ResearchNew from './views/ResearchNew.vue'
 import ResearchView from './views/Research.vue'
@@ -27,15 +25,17 @@ const router = createRouter({
       component: Stream,
       props: true,
     },
-    { path: '/projects/:namespace/:name/board', name: 'project-board', component: Project, props: true },
     { path: '/projects/:namespace/:name/tasks/:task', name: 'task', component: TaskView, props: true },
-    // Keep the old milestone page reachable for deep links that need the full
-    // milestone UI; the stream is the default for /milestones/:iid above.
+    // Old pages, kept as redirects (with their names) so links and bookmarks work.
+    {
+      path: '/projects/:namespace/:name/board',
+      name: 'project-board',
+      redirect: (to) => ({ name: 'stream-project', params: to.params, query: { tab: 'board' } }),
+    },
     {
       path: '/projects/:namespace/:name/milestones/:iid/detail',
       name: 'milestone',
-      component: MilestoneView,
-      props: true,
+      redirect: (to) => ({ name: 'stream-milestone', params: to.params, query: { tab: 'stream' } }),
     },
     { path: '/research', name: 'researches', component: Researches },
     { path: '/research/new', name: 'research-new', component: ResearchNew },

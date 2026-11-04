@@ -5,8 +5,8 @@ import { inboxRoute } from '../src/inboxRoute.ts'
 
 const item = (kind, over = {}) => ({ namespace: 'team', project: 'shop', kind, ...over })
 
-test('inboxRoute: pauses and proposals open the milestone page', () => {
-  const want = { name: 'milestone', params: { namespace: 'team', name: 'shop', iid: '3' } }
+test('inboxRoute: pauses and proposals open the milestone stream', () => {
+  const want = { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' } }
   assert.deepEqual(inboxRoute(item('pause', { task: 'shop-spec-m3', milestoneIID: 3 })), want)
   assert.deepEqual(inboxRoute(item('proposal', { task: 'shop-pilot', milestoneIID: 3 })), want)
 })

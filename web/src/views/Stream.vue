@@ -390,7 +390,7 @@ function showDay(i: number): string | null {
             :issue="paused.autopilot?.pausedFor"
             :milestone-title="paused.title"
             :waiting="paused.autopilot?.waitingFor"
-            :to="{ name: 'milestone', params: { namespace, name, iid: String(paused.iid) } }"
+            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(paused.iid) } }"
           />
           <StreamComposer
             :namespace="namespace"

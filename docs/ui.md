@@ -66,9 +66,9 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   pilot's autonomy and open proposals, and **Ask the pilot** (the Desk chat
   with the pilot, with the accept and reject buttons for its proposals).
 
-The board that was the project page is at `/projects/<namespace>/<name>/board`,
-the milestone page with its queue, plan and chat at
-`…/milestones/<iid>/detail`; task and research pages keep their URLs.
+The old board page (`/projects/<namespace>/<name>/board`) and milestone page
+(`…/milestones/<iid>/detail`) redirect to the project stream's Board tab and
+the milestone stream; task and research pages keep their URLs.
 
 ### Notifications
 
@@ -82,7 +82,7 @@ question (*#12 needs input*). Failed and blocked tasks only count in the
 Inbox. Items already there when the tab opens or when you turn notifications
 on don't notify; each item notifies once, also across reloads and live
 updates, and an autopilot that pauses again for another cause or issue is a
-new item. Clicking a notification opens the milestone page (pause, proposal)
+new item. Clicking a notification opens the milestone stream (pause, proposal)
 or the task page. Notifications work only while a Desk tab is open: there is
 no service worker, no Web Push and no e-mail. When the browser blocks them,
 the header says *Notifications are blocked in this browser* (allow them in
