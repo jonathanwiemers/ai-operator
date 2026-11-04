@@ -1,4 +1,4 @@
-import { cost } from './format.ts'
+import { cost, tokenCount } from './format.ts'
 import type { SpendChild, SpendTotals } from './types'
 
 // The Spend tab's drill-down (decision 5): project → milestone → issue →
@@ -210,8 +210,7 @@ export function shareLabel(v: number): string {
 // modelsLine names a child's models, the main ones first, subagent models
 // marked: "claude-opus-5-5, claude-haiku-5-5 (subagent)".
 export function modelsLine(models: SpendChild['models']): string {
-  return [...models]
-    .sort((a, b) => Number(b.main) - Number(a.main) || b.tokens - a.tokens)
+  return modelOrder(models)
     .map((m) => (m.main ? m.model : `${m.model} (subagent)`))
     .join(', ')
 }
@@ -248,4 +247,143 @@ export function runsNewestFirst<T extends Pick<SpendChild, 'key'>>(runs: T[]): T
 // endpoint answers 404 (NotFoundError, "not found") or 503.
 export function spendHidden(e: unknown): boolean {
   return e instanceof Error && /^not found$|\b503\b/.test(e.message)
+}
+
+// The per-model bars of the drill-down rows (R21): one stacked bar per
+// row, the main model first, the subagent models after it. The unit is
+// kept in ?spendUnit= (tokens unless "usd"), across the drill-down.
+export type SpendUnit = 'tokens' | 'usd'
+
+export function unitFromQuery(query: Record<string, QueryValue>): SpendUnit {
+  return first(query.spendUnit) === 'usd' ? 'usd' : 'tokens'
+}
+
+// unitQuery is the query with the unit switched, tokens the default.
+export function unitQuery(query: Record<string, QueryValue>, unit: SpendUnit): Record<string, QueryValue> {
+  const { spendUnit: _u, ...out } = query
+  return unit === 'usd' ? { ...out, spendUnit: 'usd' } : out
+}
+
+type Split = SpendChild['models'][number]
+
+// modelOrder: the main models first, then by tokens, then by name.
+export function modelOrder(models: Split[]): Split[] {
+  return [...models].sort(
+    (a, b) => Number(b.main) - Number(a.main) || b.tokens - a.tokens || a.model.localeCompare(b.model),
+  )
+}
+
+// The colors of the bars: slot 0 the main models, 1 and 2 the first two
+// subagent models of a table by name, 3 any further ones.
+export const barColors = ['var(--tone-progress-fg)', 'var(--accent-2)', 'var(--tone-info-fg)', 'var(--text-3)'] as const
+
+// modelSlots gives each subagent model of a table its color slot, by name,
+// so a model keeps its color in every row.
+export function modelSlots(rows: Pick<SpendChild, 'models'>[]): Map<string, number> {
+  const names = [...new Set(rows.flatMap((r) => r.models.filter((m) => !m.main).map((m) => m.model)))].sort()
+  return new Map(names.map((n, i) => [n, Math.min(i + 1, barColors.length - 1)]))
+}
+
+// splitPct is each value's percentage of their sum in tenths, adding up to
+// exactly 100 (largest remainder); a value above zero keeps at least 0.1.
+export function splitPct(values: number[]): number[] {
+  const v = values.map((x) => (Number.isFinite(x) && x > 0 ? x : 0))
+  const sum = v.reduce((s, x) => s + x, 0)
+  if (sum <= 0) return v.map(() => 0)
+  const parts = v.map((x, i) => {
+    const exact = (x / sum) * 1000
+    const units = x > 0 ? Math.max(1, Math.floor(exact)) : 0
+    return { i, positive: x > 0, rest: exact - units, units }
+  })
+  let left = 1000 - parts.reduce((s, p) => s + p.units, 0)
+  // Hand out the missing tenths by largest remainder (more than one round
+  // only when the minimum of 0.1 took some), take extra ones from the largest.
+  const byRest = parts.filter((p) => p.positive).sort((a, b) => b.rest - a.rest || a.i - b.i)
+  for (let k = 0; left > 0; k = (k + 1) % byRest.length, left--) byRest[k]!.units++
+  for (; left < 0; left++) parts.reduce((m, p) => (p.units > m.units ? p : m)).units--
+  return parts.map((p) => p.units / 10)
+}
+
+export interface BarSegment {
+  model: string
+  main: boolean
+  slot: number
+  // x and width in percent of the full bar width (the table's largest row).
+  x: number
+  width: number
+  // share: the segment's percentage of its own bar.
+  share: number
+  title: string
+}
+
+export interface ModelBarData {
+  segments: BarSegment[]
+  // width of the whole bar in percent of the full width.
+  width: number
+  label: string
+  // fallback: USD was asked for but the row has no known cost, so the bar
+  // is of its tokens.
+  fallback: boolean
+  title: string
+}
+
+type BarRow = Pick<SpendChild, 'models' | 'totals' | 'costSource'>
+
+function modelUSD(m: Split): number {
+  const v = Number.parseFloat(m.costUSD)
+  return m.costKnown && Number.isFinite(v) && v > 0 ? v : 0
+}
+
+// usdBar: whether a row draws in USD: a known cost above zero, never $0.
+function usdBar(r: BarRow): boolean {
+  return r.costSource !== 'unknown' && r.totals.costKnown && r.models.some((m) => modelUSD(m) > 0)
+}
+
+// modelBars are the bars of one table's rows. Bars of the same unit share
+// a scale, the largest row full width; in USD mode a row without a known
+// cost falls back to its tokens (on the tokens' scale), labelled "n/a".
+// An estimated cost (a call's costSource) is marked "~".
+export function modelBars(rows: BarRow[], unit: SpendUnit): ModelBarData[] {
+  const slots = modelSlots(rows)
+  const inUSD = rows.map((r) => unit === 'usd' && usdBar(r))
+  const tokenSum = (r: BarRow) => r.models.reduce((s, m) => s + Math.max(0, m.tokens), 0)
+  const usdSum = (r: BarRow) => r.models.reduce((s, m) => s + modelUSD(m), 0)
+  const maxTokens = Math.max(0, ...rows.map((r, i) => (inUSD[i] ? 0 : tokenSum(r))))
+  const maxUSD = Math.max(0, ...rows.map((r, i) => (inUSD[i] ? usdSum(r) : 0)))
+  return rows.map((r, i) => {
+    const usd = inUSD[i]
+    const tilde = r.costSource === 'estimated' ? '~' : ''
+    const money = (m: Split) => (m.costKnown ? `${tilde}${cost(m.costUSD)}` : 'n/a')
+    const models = modelOrder(r.models).filter((m) => (usd ? modelUSD(m) : m.tokens) > 0)
+    const values = models.map((m) => (usd ? modelUSD(m) : m.tokens))
+    const total = usd ? usdSum(r) : tokenSum(r)
+    const max = usd ? maxUSD : maxTokens
+    const width = max > 0 ? clampPct((total / max) * 100) : 0
+    const shares = splitPct(values)
+    let x = 0
+    const segments = models.map((m, k) => {
+      const w = ((shares[k] ?? 0) * width) / 100
+      const seg: BarSegment = {
+        model: m.model,
+        main: m.main,
+        slot: m.main ? 0 : (slots.get(m.model) ?? barColors.length - 1),
+        x,
+        width: w,
+        share: shares[k] ?? 0,
+        title: `${m.model}${m.main ? '' : ' (subagent)'}\n${m.tokens.toLocaleString('en-US')} tokens · ${money(m)}`,
+      }
+      x += w
+      return seg
+    })
+    const fallback = unit === 'usd' && !usd
+    const label = fallback ? 'n/a' : usd ? `${tilde}${cost(String(total))}` : total > 0 ? tokenCount(total) : '—'
+    const omitted = usd ? r.models.filter((m) => !modelUSD(m)).map((m) => m.model) : []
+    const title = [
+      fallback ? 'No known cost: the bar shows tokens' : '',
+      omitted.length ? `Without a known cost, not in the bar: ${omitted.join(', ')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+    return { segments, width, label, fallback, title }
+  })
 }

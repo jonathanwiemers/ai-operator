@@ -7,6 +7,9 @@ import {
   childScope,
   costSourceLabel,
   legacyNote,
+  modelBars,
+  modelOrder,
+  modelSlots,
   modelsLine,
   pctLabel,
   runNumber,
@@ -17,10 +20,13 @@ import {
   shareLabel,
   shares,
   sortByCost,
+  splitPct,
   spendCrumbs,
   spendLocation,
   spendQuery,
   spendUSD,
+  unitFromQuery,
+  unitQuery,
   unknownNote,
 } from '../src/spend.ts'
 
@@ -254,4 +260,106 @@ test('spendHidden hides on 404 and 503 only', () => {
 test('tokenBreakdown lists all four token types', () => {
   const t = { ...totals(), inputTokens: 1200, outputTokens: 3, cacheReadTokens: 5, cacheWriteTokens: 7 }
   assert.match(tokenBreakdown(t), /Input 1,200 · output 3\nCache read 5 · cache write 7/)
+})
+
+const split = (model, main, tokens, costUSD = '', over = {}) => ({ model, main, tokens, costUSD, costKnown: costUSD !== '', ...over })
+const row = (models, over = {}) => ({
+  models,
+  totals: totals({ costKnown: models.some((m) => m.costKnown), costUSD: '1' }),
+  ...over,
+})
+
+test('unitFromQuery and unitQuery: tokens unless spendUnit=usd, other parameters kept', () => {
+  assert.equal(unitFromQuery({}), 'tokens')
+  assert.equal(unitFromQuery({ spendUnit: 'usd' }), 'usd')
+  assert.equal(unitFromQuery({ spendUnit: 'eur' }), 'tokens')
+  assert.deepEqual(unitQuery({ tab: 'spend', spendIssue: '3' }, 'usd'), { tab: 'spend', spendIssue: '3', spendUnit: 'usd' })
+  assert.deepEqual(unitQuery({ tab: 'spend', spendUnit: 'usd' }, 'tokens'), { tab: 'spend' })
+  // The unit survives drilling down.
+  assert.equal(spendQuery({ spendUnit: 'usd' }, { issue: 4 }).spendUnit, 'usd')
+})
+
+test('modelOrder: main models first, then by tokens, then by name', () => {
+  const got = modelOrder([split('haiku', false, 50), split('sonnet', false, 50), split('opus', true, 10), split('x', false, 90)])
+  assert.deepEqual(got.map((m) => m.model), ['opus', 'x', 'haiku', 'sonnet'])
+})
+
+test('modelSlots: subagent models by name, a model keeps its slot across rows', () => {
+  const slots = modelSlots([
+    { models: [split('opus', true, 1), split('sonnet', false, 1)] },
+    { models: [split('haiku', false, 1), split('z1', false, 1), split('z2', false, 1)] },
+  ])
+  assert.deepEqual([...slots], [['haiku', 1], ['sonnet', 2], ['z1', 3], ['z2', 3]])
+})
+
+test('splitPct: tenths that sum to exactly 100, a small value stays visible', () => {
+  const sum = (a) => Math.round(a.reduce((s, x) => s + x, 0) * 10)
+  assert.deepEqual(splitPct([1, 1, 1]), [33.4, 33.3, 33.3])
+  assert.equal(sum(splitPct([1, 1, 1])), 1000)
+  assert.deepEqual(splitPct([100000, 1]), [99.9, 0.1])
+  assert.deepEqual(splitPct([0, 5]), [0, 100])
+  assert.deepEqual(splitPct([0, 0]), [0, 0])
+  for (const v of [[2, 3, 7], [1, 2, 3, 4, 5, 6, 7], [999, 1, 1, 1], [0.3, 0.3, 0.4]]) assert.equal(sum(splitPct(v)), 1000, String(v))
+  assert.deepEqual(splitPct([1e9, ...Array(5).fill(1)]).slice(1), Array(5).fill(0.1))
+  assert.equal(sum(splitPct([1e9, ...Array(5).fill(1)])), 1000)
+})
+
+test('modelBars: main first, subagents after, bars share the table scale', () => {
+  const bars = modelBars(
+    [
+      row([split('haiku', false, 250), split('opus', true, 750)]),
+      row([split('opus', true, 500)]),
+      row([]),
+    ],
+    'tokens',
+  )
+  assert.deepEqual(bars[0].segments.map((s) => [s.model, s.main, s.slot, s.x, s.width, s.share]), [
+    ['opus', true, 0, 0, 75, 75],
+    ['haiku', false, 1, 75, 25, 25],
+  ])
+  assert.equal(bars[0].width, 100)
+  assert.equal(bars[0].label, '1k')
+  assert.equal(bars[1].width, 50)
+  assert.equal(bars[1].segments[0].width, 50)
+  assert.equal(bars[2].width, 0)
+  assert.deepEqual(bars[2].segments, [])
+  assert.equal(bars[2].label, '—')
+  assert.match(bars[0].segments[1].title, /^haiku \(subagent\)\n250 tokens · n\/a$/)
+})
+
+test('modelBars: USD bars, unknown costs fall back to tokens labelled n/a, never $0', () => {
+  const bars = modelBars(
+    [
+      row([split('opus', true, 100, '3.00'), split('haiku', false, 900, '1.00')]),
+      row([split('opus', true, 100, '2.00')]),
+      row([split('gpt', true, 400)], { costSource: 'unknown' }),
+      row([split('gpt', true, 200, '0')]),
+    ],
+    'usd',
+  )
+  assert.equal(bars[0].label, '$4.00')
+  assert.equal(bars[0].width, 100)
+  assert.deepEqual(bars[0].segments.map((s) => [s.model, s.width]), [['opus', 75], ['haiku', 25]])
+  assert.equal(bars[1].width, 50)
+  // Fallback rows: tokens, on the tokens' scale among themselves.
+  assert.equal(bars[2].fallback, true)
+  assert.equal(bars[2].label, 'n/a')
+  assert.equal(bars[2].width, 100)
+  assert.equal(bars[3].fallback, true)
+  assert.equal(bars[3].label, 'n/a')
+  assert.equal(bars[3].width, 50)
+  assert.match(bars[2].title, /tokens/)
+  assert.ok(!bars.some((b) => b.label === '$0'))
+})
+
+test('modelBars: estimated costs are marked ~, models without a cost left out of a USD bar', () => {
+  const [b] = modelBars([row([split('gpt', true, 100, '0.42'), split('mini', false, 50)], { costSource: 'estimated' })], 'usd')
+  assert.equal(b.fallback, false)
+  assert.equal(b.label, '~$0.42')
+  assert.deepEqual(b.segments.map((s) => s.model), ['gpt'])
+  assert.match(b.segments[0].title, /~\$0\.42$/)
+  assert.match(b.title, /mini/)
+  const [t] = modelBars([row([split('gpt', true, 100, '0.42')], { costSource: 'estimated' })], 'tokens')
+  assert.equal(t.label, '100')
+  assert.match(t.segments[0].title, /100 tokens · ~\$0\.42$/)
 })

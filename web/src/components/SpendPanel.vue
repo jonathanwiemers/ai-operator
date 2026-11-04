@@ -4,12 +4,16 @@ import { useRoute } from 'vue-router'
 import { getSpend, LoginRequiredError, NotFoundError } from '../api'
 import { clockTime, duration, fullTime, tokenCount } from '../format'
 import { useNow } from '../live'
+import ModelBar from './ModelBar.vue'
 import {
+  barColors,
   callCost,
   childLabel,
   childScope,
   costSourceLabel,
   legacyNote,
+  modelBars,
+  modelSlots,
   modelsLine,
   pctLabel,
   scopeFromQuery,
@@ -21,8 +25,11 @@ import {
   spendTokens,
   tokenBreakdown as tokenTitle,
   spendUSD,
+  unitFromQuery,
+  unitQuery,
   unknownNote,
   type SpendScope,
+  type SpendUnit,
 } from '../spend'
 import type { Spend, SpendBreakdown } from '../types'
 
@@ -85,6 +92,16 @@ function to(s: SpendScope) {
 const totals = computed(() => data.value?.totals)
 const children = computed(() => data.value?.children ?? [])
 const childShares = computed(() => shares(children.value.map((c) => c.totals)))
+
+// The rows' per-model bars, in ?spendUnit= (tokens or USD), and the
+// legend's subagent models with their colors.
+const unit = computed(() => unitFromQuery(route.query))
+const bars = computed(() => modelBars(children.value, unit.value))
+const subagents = computed(() => [...modelSlots(children.value)])
+const units: { unit: SpendUnit; label: string }[] = [
+  { unit: 'tokens', label: 'tokens' },
+  { unit: 'usd', label: 'USD' },
+]
 
 const breakdowns = computed(() => {
   const d = data.value
@@ -170,7 +187,25 @@ function rowKey(b: SpendBreakdown): string {
       </section>
 
       <section class="section">
-        <h3>{{ level.title }}</h3>
+        <div class="head">
+          <h3>{{ level.title }}</h3>
+          <div v-if="children.length" class="legend">
+            <span><i :style="{ background: barColors[0] }" />main model</span>
+            <span v-for="[m, slot] in subagents" :key="m"><i :style="{ background: barColors[slot] }" />{{ m }} (subagent)</span>
+          </div>
+          <nav class="unit" aria-label="Bar unit">
+            <RouterLink
+              v-for="u in units"
+              :key="u.unit"
+              :to="{ query: unitQuery(route.query, u.unit) }"
+              :class="{ on: unit === u.unit }"
+              :aria-current="unit === u.unit ? 'true' : undefined"
+              replace
+            >
+              {{ u.label }}
+            </RouterLink>
+          </nav>
+        </div>
         <div v-if="!children.length" class="card empty">No agent calls recorded here.</div>
         <div v-else class="card table">
           <table v-if="atCalls" class="list">
@@ -190,7 +225,7 @@ function rowKey(b: SpendBreakdown): string {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="c in children" :key="c.key">
+              <tr v-for="(c, i) in children" :key="c.key">
                 <td class="num">{{ c.key }}</td>
                 <td :title="fullTime(c.at)">{{ clockTime(c.at, now) }}</td>
                 <td>{{ c.kind }}</td>
@@ -210,8 +245,10 @@ function rowKey(b: SpendBreakdown): string {
                   {{ callCost(c) }}
                 </td>
                 <td>{{ costSourceLabel(c.costSource) }}</td>
-                <!-- The per-model bar of the call goes here (spend-model-bars). -->
-                <td class="models">{{ modelsLine(c.models) }}</td>
+                <td class="models">
+                  <ModelBar v-if="bars[i]" :bar="bars[i]!" />
+                  <div>{{ modelsLine(c.models) }}</div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -252,8 +289,10 @@ function rowKey(b: SpendBreakdown): string {
                     <span class="pct">{{ pctLabel(childShares.pct[i] ?? null) }}</span>
                   </div>
                 </td>
-                <!-- The per-model bar of a run goes here (spend-model-bars). -->
-                <td class="models">{{ modelsLine(c.models) }}</td>
+                <td class="models">
+                  <ModelBar v-if="bars[i]" :bar="bars[i]!" />
+                  <div>{{ modelsLine(c.models) }}</div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -351,6 +390,50 @@ dd {
   margin: 0 0 8px;
   font-size: 14px;
 }
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+}
+.head .unit {
+  margin-left: auto;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+.unit {
+  display: flex;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.unit a {
+  padding: 2px 10px;
+  color: var(--text-2);
+  text-decoration: none;
+}
+.unit a + a {
+  border-left: 1px solid var(--border);
+}
+.unit a.on {
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: 600;
+}
 .table {
   padding: 0;
   overflow-x: auto;
@@ -393,6 +476,7 @@ table.list th.num {
 .models {
   font-size: 12px;
   color: var(--text-2);
+  min-width: 180px;
 }
 .breakdowns {
   display: grid;

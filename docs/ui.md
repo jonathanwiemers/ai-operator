@@ -105,6 +105,19 @@ the tab says it needs the database):
   tokens, cost and its source: *reported* by the engine, *estimated*
   from tokens and the `pricing:` table (shown as `~$0.42`), or *n/a*
   (cursor without pricing).
+* **Model bars:** every row of the drill-down (milestones, issues, runs
+  and calls) has a stacked bar split by model: the main model first (in
+  the progress color), the subagent models after it, each in its own color
+  (named in the legend above the table, a model keeps its color in every
+  row). Hovering a segment shows the model, its tokens and its cost. The
+  bars of a table share one scale, the largest row full width, so rows can
+  be compared (e.g. rising step costs). *tokens | USD* above the table
+  switches the unit, kept in the query (`?spendUnit=usd`, tokens by
+  default) while drilling down. In USD, a row without a known cost draws
+  a faint token bar labelled *n/a* (never a $0 bar, on the scale of the
+  other token bars), a model without a known cost is left out of the bar
+  (named in its tooltip), and an estimated cost is marked `~`. Rows from
+  before token tracking have no bar.
 * **Breakdowns** by kind, role and model (subagent models as their own),
   highest cost first, each row with its share bar.
 
