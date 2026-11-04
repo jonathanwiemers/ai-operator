@@ -145,6 +145,11 @@ func (d *Database) deleteExpired(ctx context.Context) {
 		return
 	}
 	d.log.Info("deleted expired chat messages", "messages", n)
+	if n, err = d.store.DeleteExpiredCalls(ctx, d.clock.Now()); err != nil {
+		d.log.Error(err, "deleting expired agent calls")
+		return
+	}
+	d.log.Info("deleted expired agent calls", "calls", n)
 }
 
 // FinishRunOrInsert records a run's outcome in the store, see

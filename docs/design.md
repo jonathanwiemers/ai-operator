@@ -550,8 +550,9 @@ nothing is lost.
 ## History
 
 The web UI's streams need what happened, not only the current status. The
-operator appends it to the research database as the owner (table
-`history_events`; research run pods have no rights on it). Two sources:
+operator appends it to the research database as the owner (tables
+`history_events` and `agent_calls`; research run pods have no rights on
+them). Two sources of events:
 
 * **Status diffs.** An informer handler compares every AgentTask's old and
   new status, whoever wrote it (the operator, or the runner from the agent
@@ -569,6 +570,25 @@ from a bounded queue: a full queue or a database outage drops events and
 never slows a reconcile. Transitions during operator downtime are lost; two
 quick patches that the informer sees as one update give the later state.
 Retention deletes expired rows hourly (`--history-retention`).
+
+**Agent calls.** Every engine call (implement step, review, fix, CI and
+conflict round, describe, spec, pilot turn, retro, chat turn) is one row of
+`agent_calls`: what ran (kind, role, engine, model, effort, resumed session,
+fallback), for what (namespace, project, milestone, issue and MR IIDs, task,
+run, seq), and what it consumed (input, output, cache read and write tokens,
+`cost_usd`, `cost_source`, turns, duration). `cost_usd` is NULL when
+`cost_source` is `unknown`, so "n/a" never reads as $0. Three jsonb columns
+hold the detail: `models` (per model tokens and `costUSD`, subagent models
+included), `context_series` (context size of each main-thread turn, at most
+500 points) and `subagent_turns` (indexes into it after which a subagent
+ran); `subagent_calls` counts the subagents. The runner only appends the
+call to the task's `status.run.calls` (the newest 50, each with a task-wide
+`seq`); the operator stays the only writer. The differ writes each call
+whose seq the previous status did not have, keyed `call/<task UID>/<seq>`.
+Unlike events, calls are also written on informer adds, and the recorder
+writes the calls of every cached task when it starts (leader election
+included), so calls appended while no operator recorded are not lost; the
+key makes the repeats one row. Calls expire with the history retention.
 
 ## GitLab webhooks
 

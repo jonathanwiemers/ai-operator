@@ -14,6 +14,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
+	"github.com/jonathanwiemers/ai-operator/internal/research/storetest"
 )
 
 var now = time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC)
@@ -126,6 +127,159 @@ func TestDifferDelete(t *testing.T) {
 	}
 }
 
+// withCalls gives the task the calls first..last of run 2.
+func withCalls(first, last int64) func(*aiv1.AgentTask) {
+	return func(t *aiv1.AgentTask) {
+		t.Status.Run.MergeRequestIID = 702
+		for seq := first; seq <= last; seq++ {
+			t.Status.Run.Calls = append(t.Status.Run.Calls, aiv1.AgentCall{Seq: seq, Run: 2,
+				At: metav1.NewTime(now.Add(time.Duration(seq) * time.Minute)), Kind: aiv1.CallKindImplement,
+				Role: "implement", Engine: aiv1.EngineClaude, Model: "claude-opus-5-5", CostUSD: "0.5000",
+				CostSource: aiv1.CostReported, InputTokens: 10, OutputTokens: 20})
+		}
+		t.Status.Run.LastCallSeq = last
+	}
+}
+
+func keys(cs []store.Call) []string {
+	var ks []string
+	for _, c := range cs {
+		ks = append(ks, c.Key)
+	}
+	return ks
+}
+
+func TestCallsOfAnUpdate(t *testing.T) {
+	old := task("1", withCalls(1, 2))
+	cur := task("2", withCalls(1, 5))
+	got := Calls(old, cur)
+	if want := []string{"call/u1/3", "call/u1/4", "call/u1/5"}; !slices.Equal(keys(got), want) {
+		t.Fatalf("keys = %v, want %v", keys(got), want)
+	}
+	c := got[0]
+	if c.Namespace != "agents" || c.Project != "bloop" || c.Task != "bloop-148" || c.MilestoneIID != 20 ||
+		c.IssueIID != 148 || c.MergeRequestIID != 702 || c.Run != 2 || c.Seq != 3 || !c.At.Equal(now.Add(3*time.Minute)) {
+		t.Errorf("call = %+v", c)
+	}
+	if c.Kind != "implement" || c.Engine != "claude" || c.Model != "claude-opus-5-5" || c.CostUSD == nil ||
+		*c.CostUSD != 0.5 || c.CostSource != "reported" || c.InputTokens != 10 || c.OutputTokens != 20 {
+		t.Errorf("call = %+v", c)
+	}
+	// Calls trimmed from the front of the list are not new.
+	trimmed := task("3", withCalls(4, 6))
+	if got := keys(Calls(cur, trimmed)); !slices.Equal(got, []string{"call/u1/6"}) {
+		t.Errorf("after trimming: %v, want call/u1/6", got)
+	}
+	if got := Calls(cur, cur); len(got) != 0 {
+		t.Errorf("no change: %v", keys(got))
+	}
+}
+
+func TestCallsOfAnAdd(t *testing.T) {
+	got := Calls(nil, task("1", withCalls(7, 9)))
+	if want := []string{"call/u1/7", "call/u1/8", "call/u1/9"}; !slices.Equal(keys(got), want) {
+		t.Errorf("keys = %v, want %v", keys(got), want)
+	}
+	if got := Calls(nil, task("1", nil)); len(got) != 0 {
+		t.Errorf("task without calls: %v", keys(got))
+	}
+}
+
+func TestCallsCostAndDetail(t *testing.T) {
+	cur := task("2", func(t *aiv1.AgentTask) {
+		t.Spec.Milestone, t.Spec.Issue = nil, nil
+		t.Status.Run.Calls = []aiv1.AgentCall{
+			{Seq: 1, Kind: aiv1.CallKindPilot, Engine: aiv1.EngineCursor, FallbackFrom: aiv1.EngineClaude, CostSource: aiv1.CostUnknown, CostUSD: "0.0000"},
+			{Seq: 2, Kind: aiv1.CallKindPilot, Engine: aiv1.EngineCursor, CostSource: aiv1.CostEstimated, CostUSD: "0.1200"},
+			{Seq: 3, Kind: aiv1.CallKindPilot, Engine: aiv1.EngineCursor},
+			{Seq: 4, Kind: aiv1.CallKindImplement, Engine: aiv1.EngineClaude, CostSource: aiv1.CostReported, CostUSD: "1.5000",
+				Resumed: true, SubagentCalls: 2, ContextSeries: []int64{100, 200}, SubagentTurns: []int32{1},
+				Models: []aiv1.CallModelUsage{{Model: "claude-opus-5-5", OutputTokens: 9, CostUSD: "1.2500"}, {Model: "claude-haiku-5-5"}}},
+		}
+	})
+	got := Calls(nil, cur)
+	if len(got) != 4 {
+		t.Fatalf("calls = %v", keys(got))
+	}
+	if c := got[0]; c.CostUSD != nil || c.CostSource != "unknown" || c.FallbackFrom != "claude" || c.MilestoneIID != 0 || c.IssueIID != 0 {
+		t.Errorf("unknown cost = %+v; want no cost and no IIDs", c)
+	}
+	if c := got[1]; c.CostUSD == nil || *c.CostUSD != 0.12 || c.CostSource != "estimated" {
+		t.Errorf("estimated = %+v", c)
+	}
+	if c := got[2]; c.CostUSD != nil || c.CostSource != "unknown" {
+		t.Errorf("no source = %+v; want unknown", c)
+	}
+	c := got[3]
+	if !c.Resumed || c.SubagentCalls != 2 || !slices.Equal(c.ContextSeries, []int64{100, 200}) || !slices.Equal(c.SubagentTurns, []int32{1}) {
+		t.Errorf("detail = %+v", c)
+	}
+	if len(c.Models) != 2 || c.Models[0].Model != "claude-opus-5-5" || c.Models[0].OutputTokens != 9 ||
+		c.Models[0].CostUSD == nil || *c.Models[0].CostUSD != 1.25 || c.Models[1].CostUSD != nil {
+		t.Errorf("models = %+v", c.Models)
+	}
+}
+
+// Each call is one row: the same update twice, and the calls of the
+// existing tasks the recorder writes at its start (after an operator
+// restart), add nothing.
+func TestCallsAreWrittenOnce(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	old, cur := task("1", withCalls(1, 2)), task("2", withCalls(1, 5))
+	r := NewRecorder(readyDB{s}, time.Hour, clock.RealClock{}, testLogger(t))
+	r.started.Store(true)
+	for range 2 {
+		for _, c := range Calls(old, cur) {
+			r.RecordCall(c)
+		}
+	}
+	close(r.calls)
+	var queued []store.Call
+	for c := range r.calls {
+		queued = append(queued, c)
+	}
+	written := func(calls []store.Call) int64 {
+		t.Helper()
+		n, err := s.InsertCalls(ctx, calls)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if len(queued) != 6 || !queued[0].ExpiresAt.Equal(now.Add(3*time.Minute+time.Hour)) {
+		t.Fatalf("queued %d calls, the first expiring at %v; want 6, an hour after the call", len(queued), queued[0].ExpiresAt)
+	}
+	if n1, n2 := written(queued[:3]), written(queued[3:]); n1 != 3 || n2 != 0 {
+		t.Errorf("the update twice wrote %d and %d rows, want 3 and 0", n1, n2)
+	}
+
+	// The restarted operator's recorder writes the calls of every task.
+	other := task("1", func(t *aiv1.AgentTask) { t.UID = "u2"; withCalls(1, 1)(t) })
+	all := append(Calls(nil, cur), Calls(nil, other)...)
+	r.existing = func(context.Context) ([]store.Call, error) { return all, nil }
+	r.writeExisting(ctx)
+	for i := range all {
+		r.expire(&all[i])
+	}
+	if n := written(all); n != 0 {
+		t.Errorf("%d calls were missing after the start, want all 6 written", n)
+	}
+	if n := written(Calls(nil, task("4", withCalls(6, 6)))); n != 1 {
+		t.Errorf("a new call wrote %d rows, want 1", n)
+	}
+}
+
+type readyDB struct{ s *store.Store }
+
+func (d readyDB) Ready() <-chan struct{} {
+	c := make(chan struct{})
+	close(c)
+	return c
+}
+
+func (d readyDB) Store() *store.Store { return d.s }
+
 type fakeGitLab struct {
 	gitlab.API
 	notes []gitlab.Note
@@ -172,15 +326,17 @@ func TestWrapGitLabRecordsNotesOnce(t *testing.T) {
 func TestRecordDropsWhenNotStartedOrFull(t *testing.T) {
 	r := NewRecorder(nil, time.Hour, clock.RealClock{}, testLogger(t))
 	r.Record(store.Event{Key: "a"})
-	if len(r.queue) != 0 {
+	r.RecordCall(store.Call{Key: "a"})
+	if len(r.queue) != 0 || len(r.calls) != 0 {
 		t.Fatal("recorded before start")
 	}
 	r.started.Store(true)
 	for range queueSize + 5 {
 		r.Record(store.Event{Key: "a"})
+		r.RecordCall(store.Call{Key: "a"})
 	}
-	if r.dropped.Load() != 5 {
-		t.Errorf("dropped = %d, want 5", r.dropped.Load())
+	if r.dropped.Load() != 5 || r.droppedCalls.Load() != 5 {
+		t.Errorf("dropped = %d events, %d calls, want 5 each", r.dropped.Load(), r.droppedCalls.Load())
 	}
 }
 

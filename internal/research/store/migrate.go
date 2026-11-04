@@ -155,7 +155,8 @@ func grant(ctx context.Context, tx pgx.Tx, g Grants) error {
 	}
 	// Writers get the research tables by name and nothing else: earlier
 	// versions granted them every future table by default privileges, which
-	// would have let research pods write the factory's history or chat.
+	// would have let research pods write the factory's history, chat or
+	// agent calls.
 	revokeDefaults := "ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA " + sc + " REVOKE SELECT, INSERT, UPDATE ON TABLES FROM "
 	for _, w := range g.Writers {
 		if w == "" {
@@ -169,6 +170,7 @@ func grant(ctx context.Context, tx pgx.Tx, g Grants) error {
 			revokeDefaults + id,
 			"REVOKE ALL ON " + sc + ".history_events FROM " + id,
 			"REVOKE ALL ON " + sc + ".chat_messages FROM " + id,
+			"REVOKE ALL ON " + sc + ".agent_calls FROM " + id,
 		} {
 			if _, err := tx.Exec(ctx, stmt); err != nil {
 				return fmt.Errorf("revoke from role %q: %w", w, err)

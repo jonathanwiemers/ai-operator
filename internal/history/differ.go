@@ -46,20 +46,44 @@ type Differ struct {
 func NewDiffer() *Differ { return &Differ{started: map[types.UID]time.Time{}} }
 
 // Watch records the events of every AgentTask update and deletion in the
-// cache. Adds (start, resync) record nothing: only real changes do.
-func Watch(ctx context.Context, informers cache.Informers, r *Recorder, clk func() time.Time) error {
-	inf, err := informers.GetInformer(ctx, &aiv1.AgentTask{})
+// cache, and the calls of every AgentTask the recorder has not seen. Adds
+// (start, resync) record no events, only real changes do; they record the
+// task's calls, idempotently, as does the recorder's start for every task
+// in the cache.
+func Watch(ctx context.Context, c cache.Cache, r *Recorder, clk func() time.Time) error {
+	inf, err := c.GetInformer(ctx, &aiv1.AgentTask{})
 	if err != nil {
 		return err
 	}
+	r.existing = func(ctx context.Context) ([]store.Call, error) {
+		var tasks aiv1.AgentTaskList
+		if err := c.List(ctx, &tasks); err != nil {
+			return nil, err
+		}
+		var out []store.Call
+		for i := range tasks.Items {
+			out = append(out, Calls(nil, &tasks.Items[i])...)
+		}
+		return out, nil
+	}
 	d := NewDiffer()
 	_, err = inf.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
+		AddFunc: func(o any) {
+			if t, ok := o.(*aiv1.AgentTask); ok {
+				for _, call := range Calls(nil, t) {
+					r.RecordCall(call)
+				}
+			}
+		},
 		UpdateFunc: func(o, n any) {
 			old, ok1 := o.(*aiv1.AgentTask)
 			cur, ok2 := n.(*aiv1.AgentTask)
 			if ok1 && ok2 {
 				for _, e := range d.Update(old, cur, clk()) {
 					r.Record(e)
+				}
+				for _, call := range Calls(old, cur) {
+					r.RecordCall(call)
 				}
 			}
 		},
@@ -259,6 +283,58 @@ func (d *Differ) Delete(t *aiv1.AgentTask, now time.Time) store.Event {
 	e := base(t, now)
 	e.Key, e.Kind, e.Summary = taskKey(t, "closed"), KindClosed, issueRef(t)+" closed"
 	return e
+}
+
+// Calls returns the agent calls of cur whose seq is not among old's calls
+// (all of them when old is nil), keyed by the task's UID and the seq. At is
+// the call's start, ExpiresAt is left to the recorder.
+func Calls(old, cur *aiv1.AgentTask) []store.Call {
+	seen := map[int64]bool{}
+	if old != nil {
+		for _, c := range old.Status.Run.Calls {
+			seen[c.Seq] = true
+		}
+	}
+	var out []store.Call
+	for _, c := range cur.Status.Run.Calls {
+		if c.Seq <= 0 || seen[c.Seq] {
+			continue
+		}
+		e := base(cur, c.At.Time)
+		call := store.Call{Key: fmt.Sprintf("call/%s/%d", cur.UID, c.Seq), At: c.At.Time,
+			Namespace: e.Namespace, Project: e.Project, Task: e.Task,
+			MilestoneIID: e.MilestoneIID, IssueIID: e.IssueIID, MergeRequestIID: e.MergeRequestIID,
+			Run: c.Run, Seq: c.Seq, Kind: c.Kind, Role: c.Role, Engine: string(c.Engine), Model: c.Model,
+			Effort: c.Effort, Resumed: c.Resumed, FallbackFrom: string(c.FallbackFrom),
+			InputTokens: c.InputTokens, OutputTokens: c.OutputTokens,
+			CacheReadTokens: c.CacheReadTokens, CacheWriteTokens: c.CacheWriteTokens,
+			CostSource: c.CostSource, Turns: c.Turns, DurationMS: c.DurationMS,
+			SubagentCalls: c.SubagentCalls, ContextSeries: c.ContextSeries, SubagentTurns: c.SubagentTurns}
+		switch c.CostSource {
+		case aiv1.CostReported, aiv1.CostEstimated:
+			call.CostUSD = costOf(c.CostUSD)
+		default:
+			// The table knows three sources; anything else is unknown.
+			call.CostSource = aiv1.CostUnknown
+		}
+		for _, m := range c.Models {
+			call.Models = append(call.Models, store.CallModel{Model: m.Model,
+				InputTokens: m.InputTokens, OutputTokens: m.OutputTokens,
+				CacheReadTokens: m.CacheReadTokens, CacheWriteTokens: m.CacheWriteTokens,
+				CostUSD: costOf(m.CostUSD)})
+		}
+		out = append(out, call)
+	}
+	return out
+}
+
+// costOf is the cost string s in USD, nil when it is empty.
+func costOf(s string) *float64 {
+	if s == "" {
+		return nil
+	}
+	v := aiv1.CostOf(s)
+	return &v
 }
 
 func base(t *aiv1.AgentTask, now time.Time) store.Event {

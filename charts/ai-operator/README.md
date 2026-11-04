@@ -131,7 +131,7 @@ the UI logs in with `readerSecret` and its ClusterRole gets
 | `research.candidates.quick` | `claude/claude-sonnet-5-5`, `cursor/auto` | agents tried in order for quick runs without `spec.agent`; `spec.research.candidates` of an AgentProject overrides them. Each entry is `{engine, model, effort?}`; passed as `--research-candidates-quick=engine/model[@effort],…` |
 | `research.candidates.deep` | `claude/claude-opus-5-5` (high), `claude/claude-sonnet-5-5`, `cursor/auto` | the same for deep runs, passed as `--research-candidates-deep` |
 | `research.maxUsagePercent` | `70` | research uses an engine only while all its usage windows (not reset since) are below this, 1 to 100, a fixed `spec.agent` included; passed as `--research-max-usage-percent` |
-| `research.historyRetention` | `8760h` | how long the factory's history (comments, runs, CI, reviews, merges: the web UI's streams) and Desk chat messages are kept in the database; passed as `--history-retention` |
+| `research.historyRetention` | `8760h` | how long the factory's history (comments, runs, CI, reviews, merges: the web UI's streams; every agent call in `agent_calls`) and Desk chat messages are kept in the database; passed as `--history-retention` |
 
 With the database of the Zalando postgres-operator on netcup01 (the
 AgentProject's writer login and the UI part are in

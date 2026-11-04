@@ -68,7 +68,7 @@ func TestPoolConfig(t *testing.T) {
 func TestMigrateEmptyAndConcurrent(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
-	exec(t, s.Pool(), "DROP TABLE IF EXISTS chat_messages, history_events, research_items, research_results, research_runs, schema_migrations CASCADE")
+	exec(t, s.Pool(), "DROP TABLE IF EXISTS agent_calls, chat_messages, history_events, research_items, research_results, research_runs, schema_migrations CASCADE")
 	exec(t, s.Pool(), "DROP FUNCTION IF EXISTS chat_notify")
 
 	var wg sync.WaitGroup
@@ -82,22 +82,22 @@ func TestMigrateEmptyAndConcurrent(t *testing.T) {
 			t.Fatalf("concurrent Migrate: %v", err)
 		}
 	}
-	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "chat_messages", "schema_migrations"} {
+	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "chat_messages", "agent_calls", "schema_migrations"} {
 		var exists bool
 		if err := s.Pool().QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", table).Scan(&exists); err != nil || !exists {
 			t.Errorf("table %s missing (%v)", table, err)
 		}
 	}
-	if n := count(t, s.Pool(), "schema_migrations"); n != 3 {
-		t.Errorf("schema_migrations has %d rows, want 3", n)
+	if n := count(t, s.Pool(), "schema_migrations"); n != 4 {
+		t.Errorf("schema_migrations has %d rows, want 4", n)
 	}
 
 	// A second run is a no-op.
 	if err := s.Migrate(ctx, store.Grants{}); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, s.Pool(), "schema_migrations"); n != 3 {
-		t.Errorf("after a second Migrate schema_migrations has %d rows, want 3", n)
+	if n := count(t, s.Pool(), "schema_migrations"); n != 4 {
+		t.Errorf("after a second Migrate schema_migrations has %d rows, want 4", n)
 	}
 }
 
@@ -132,9 +132,10 @@ func TestGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, table := range []string{"research_runs", "research_results", "research_items", "schema_migrations"} {
+	for _, table := range []string{"research_runs", "research_results", "research_items", "schema_migrations", "agent_calls"} {
 		exec(t, reader.Pool(), "SELECT * FROM "+table)
 	}
+	mustFail(t, reader.Pool(), "reader writes calls", insertCall)
 	mustFail(t, reader.Pool(), "reader insert", `INSERT INTO research_items (run_id, url_hash, first_seen) VALUES ($1, '\x01', now())`, run)
 	mustFail(t, reader.Pool(), "reader update", "UPDATE research_runs SET status = 'failed'")
 
@@ -159,6 +160,8 @@ func TestGrants(t *testing.T) {
 	mustFail(t, writer.Pool(), "writer reads chat", "SELECT * FROM chat_messages")
 	mustFail(t, writer.Pool(), "writer writes chat", `INSERT INTO chat_messages (namespace, project, task, role, body, expires_at)
 		VALUES ('n', 'p', 't', 'user', 'hi', now())`)
+	mustFail(t, writer.Pool(), "writer reads calls", "SELECT * FROM agent_calls")
+	mustFail(t, writer.Pool(), "writer writes calls", insertCall)
 
 	// A table of a later migration follows by default privileges for the
 	// reader, without a grant in that run; writers get tables by name only.
@@ -189,8 +192,13 @@ func TestGrants(t *testing.T) {
 	}
 }
 
+// insertCall writes a row of agent_calls, which only the owner may.
+const insertCall = `INSERT INTO agent_calls (key, at, namespace, project, task, seq, kind, cost_source, expires_at)
+	VALUES ('k', now(), 'n', 'p', 't', 1, 'implement', 'unknown', now())`
+
 // Writers of an earlier version had default privileges on every future
-// table; the history table, created after them, must still be closed to them.
+// table; the history and call tables, created after them, must still be
+// closed to them.
 func TestGrantsRevokeHistoryFromOldWriters(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
@@ -200,12 +208,14 @@ func TestGrantsRevokeHistoryFromOldWriters(t *testing.T) {
 	exec(t, s.Pool(), "GRANT USAGE ON SCHEMA "+pgx.Identifier{schemaOf(t, s)}.Sanitize()+" TO "+id)
 	exec(t, s.Pool(), "ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER GRANT SELECT, INSERT, UPDATE ON TABLES TO "+id)
 	exec(t, s.Pool(), "DROP TABLE history_events")
-	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version = 2")
+	exec(t, s.Pool(), "DROP TABLE agent_calls")
+	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version IN (2, 4)")
 	if err := s.Migrate(ctx, store.Grants{Writers: []string{role}}); err != nil {
 		t.Fatal(err)
 	}
 	mustFail(t, writer.Pool(), "old writer writes history", `INSERT INTO history_events (key, at, namespace, project, kind, expires_at)
 		VALUES ('k', now(), 'n', 'p', 'note', now())`)
+	mustFail(t, writer.Pool(), "old writer writes calls", insertCall)
 	exec(t, writer.Pool(), "SELECT * FROM research_runs")
 }
 

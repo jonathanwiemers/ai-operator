@@ -1,12 +1,13 @@
 // Package history appends what happens in the factory to the research
-// database: transitions of the AgentTasks' status and the GitLab comments
-// the operator reads. The UI shows them as the projects' streams. Recording
-// never blocks or fails a reconcile: a full queue or a database outage
-// loses events.
+// database: transitions of the AgentTasks' status, the GitLab comments the
+// operator reads, and every agent call of the tasks. The UI shows them as
+// the projects' streams and spend. Recording never blocks or fails a
+// reconcile: a full queue or a database outage loses events.
 package history
 
 import (
 	"context"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -30,23 +31,29 @@ type Database interface {
 	Store() *store.Store
 }
 
-// Recorder writes events in batches. It is a leader-only runnable: other
-// replicas drop what they record, the leader sees the same changes.
+// Recorder writes events and agent calls in batches. It is a leader-only
+// runnable: other replicas drop what they record, the leader sees the same
+// changes.
 type Recorder struct {
-	db        Database
-	retention time.Duration
-	clock     clock.Clock
-	log       logr.Logger
-	queue     chan store.Event
-	started   atomic.Bool
-	dropped   atomic.Int64
-	notes     *seenNotes
+	db           Database
+	retention    time.Duration
+	clock        clock.Clock
+	log          logr.Logger
+	queue        chan store.Event
+	calls        chan store.Call
+	started      atomic.Bool
+	dropped      atomic.Int64
+	droppedCalls atomic.Int64
+	notes        *seenNotes
+	// existing returns the calls of every task, written when the recorder
+	// starts: runners append calls while no leader records (Watch sets it).
+	existing func(context.Context) ([]store.Call, error)
 }
 
-// NewRecorder returns a recorder that keeps events for retention.
+// NewRecorder returns a recorder that keeps events and calls for retention.
 func NewRecorder(db Database, retention time.Duration, clk clock.Clock, log logr.Logger) *Recorder {
 	return &Recorder{db: db, retention: retention, clock: clk, log: log,
-		queue: make(chan store.Event, queueSize), notes: newSeenNotes()}
+		queue: make(chan store.Event, queueSize), calls: make(chan store.Call, queueSize), notes: newSeenNotes()}
 }
 
 // NeedLeaderElection makes it a leader-only runnable.
@@ -68,7 +75,28 @@ func (r *Recorder) Record(e store.Event) {
 	}
 }
 
-// Start writes the queued events until ctx ends, once the database is ready.
+// RecordCall queues c. It never blocks: without room the call is dropped.
+func (r *Recorder) RecordCall(c store.Call) {
+	if r == nil || !r.started.Load() {
+		return
+	}
+	r.expire(&c)
+	select {
+	case r.calls <- c:
+	default:
+		r.droppedCalls.Add(1)
+	}
+}
+
+func (r *Recorder) expire(c *store.Call) {
+	if c.At.IsZero() {
+		c.At = r.clock.Now()
+	}
+	c.ExpiresAt = c.At.Add(r.retention)
+}
+
+// Start writes the queued events and calls until ctx ends, once the
+// database is ready. It first writes the calls of the existing tasks.
 func (r *Recorder) Start(ctx context.Context) error {
 	r.started.Store(true)
 	defer r.started.Store(false)
@@ -77,19 +105,29 @@ func (r *Recorder) Start(ctx context.Context) error {
 		return nil
 	case <-r.db.Ready():
 	}
+	r.writeExisting(ctx)
 	tick := time.NewTicker(flushEvery)
 	defer tick.Stop()
 	batch := make([]store.Event, 0, batchSize)
+	calls := make([]store.Call, 0, batchSize)
 	flush := func() {
-		if len(batch) == 0 {
-			return
+		if len(batch) > 0 {
+			if _, err := r.db.Store().InsertEvents(ctx, batch); err != nil && ctx.Err() == nil {
+				r.log.Error(err, "history events lost", "events", len(batch))
+			}
+			batch = batch[:0]
 		}
-		if _, err := r.db.Store().InsertEvents(ctx, batch); err != nil && ctx.Err() == nil {
-			r.log.Error(err, "history events lost", "events", len(batch))
+		if len(calls) > 0 {
+			if _, err := r.db.Store().InsertCalls(ctx, calls); err != nil && ctx.Err() == nil {
+				r.log.Error(err, "agent calls lost", "calls", len(calls))
+			}
+			calls = calls[:0]
 		}
-		batch = batch[:0]
 		if n := r.dropped.Swap(0); n > 0 {
 			r.log.Info("history queue full, events dropped", "events", n)
+		}
+		if n := r.droppedCalls.Swap(0); n > 0 {
+			r.log.Info("history queue full, agent calls dropped", "calls", n)
 		}
 	}
 	for {
@@ -102,8 +140,43 @@ func (r *Recorder) Start(ctx context.Context) error {
 			if len(batch) == batchSize {
 				flush()
 			}
+		case c := <-r.calls:
+			calls = append(calls, c)
+			if len(calls) == batchSize {
+				flush()
+			}
 		case <-tick.C:
 			flush()
 		}
+	}
+}
+
+// writeExisting writes the calls existing returns, in batches; those
+// already stored are skipped by their key.
+func (r *Recorder) writeExisting(ctx context.Context) {
+	if r.existing == nil {
+		return
+	}
+	calls, err := r.existing(ctx)
+	if err != nil {
+		r.log.Error(err, "listing the agent calls of existing tasks")
+		return
+	}
+	var written int64
+	for chunk := range slices.Chunk(calls, batchSize) {
+		for i := range chunk {
+			r.expire(&chunk[i])
+		}
+		n, err := r.db.Store().InsertCalls(ctx, chunk)
+		if err != nil {
+			if ctx.Err() == nil {
+				r.log.Error(err, "agent calls of existing tasks lost", "calls", len(calls))
+			}
+			return
+		}
+		written += n
+	}
+	if written > 0 {
+		r.log.Info("wrote agent calls of existing tasks", "calls", written)
 	}
 }

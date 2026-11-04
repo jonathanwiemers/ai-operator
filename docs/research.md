@@ -477,7 +477,7 @@ database's schema:
 * `readerRole`: `USAGE` on the schema and `SELECT` on all tables;
 * each of `writerRoles`: `USAGE` on the schema and `SELECT`, `INSERT`,
   `UPDATE` on `research_runs`, `research_results` and `research_items`
-  (and `REVOKE` on `history_events` and `chat_messages`);
+  (and `REVOKE` on `history_events`, `chat_messages` and `agent_calls`);
 * `chatWriterRole`: `USAGE` on the schema and `SELECT`, `INSERT` on
   `chat_messages` (row-level policy: user rows in state `queued` only);
 * `ALTER DEFAULT PRIVILEGES` for the reader, so tables of later migrations
