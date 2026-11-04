@@ -260,3 +260,31 @@ Cleanup
   a `scout` configured, subagent turns show up as their own model and as
   markers on the chart.
 - `make test`, `make ui` and the CI drift check for generated TS types pass.
+
+## Finding: cursor ACP usage
+
+Checked on 2026-11-04 against cursor-agent `2026.10.22-27dcf5f`, the
+version the unpinned `curl https://cursor.com/install` in `Dockerfile.agent`
+installed at the time.
+
+- **Live:** an `acp` session with `CURSOR_API_KEY` started (`initialize`,
+  `session/new`), but the account had no quota: the prompt was answered
+  with "Upgrade your plan to continue" and `{"stopReason":"end_turn"}`. No
+  `usage` field and no `usage_update` notification arrived. So a real,
+  billed turn was not observed.
+- **Schema (bundled ACP SDK):** `PromptResponse.usage` is optional with
+  `inputTokens`, `outputTokens`, `totalTokens` and optional
+  `cachedReadTokens`, `cachedWriteTokens`, `thoughtTokens`. The
+  `usage_update` session notification carries `size` and `used` (context
+  window, not per-call tokens) and an optional `cost`.
+- **Code:** the agent's `session/prompt` handler returns only
+  `{stopReason: "end_turn"}` or `{stopReason: "cancelled"}`, and nothing in
+  the agent code emits `usage_update`. In this version cursor sends **no
+  token usage** over ACP.
+
+Consequence: the runner parses `PromptResponse.usage` optionally into
+`CallUsage` (duration measured by the runner, no turns, no per-model
+split). With this cursor version `CallUsage` stays nil, so cursor calls count
+as `cost_source: unknown` (decision 4) until a later version sends usage.
+`usage_update` is not parsed. Unverified live; re-check when cursor-agent
+is updated.

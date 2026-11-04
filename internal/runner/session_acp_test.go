@@ -85,6 +85,9 @@ func TestCursorSessionTwoTurns(t *testing.T) {
 	if err != nil || res.Text != "two" {
 		t.Fatalf("turn 2: text=%q err=%v", res.Text, err)
 	}
+	if res.CallUsage != nil {
+		t.Fatalf("no usage sent: CallUsage %+v, want nil", res.CallUsage)
+	}
 
 	out := buf.String()
 	if !strings.Contains(out, "agent thinks") {
@@ -102,6 +105,28 @@ func TestCursorSessionTwoTurns(t *testing.T) {
 	// Final answer text must not appear as "agent says".
 	if strings.Contains(out, `agent says`) && strings.Contains(out, `"one"`) {
 		t.Fatalf("answer logged as says: %s", out)
+	}
+}
+
+func TestCursorSessionPromptUsage(t *testing.T) {
+	s, err := acpCLI(t, "usage").Start(context.Background(), Invocation{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	res, err := s.Prompt(context.Background(), "count", nil)
+	if err != nil || res.Text != "counted" {
+		t.Fatalf("text=%q err=%v", res.Text, err)
+	}
+	u := res.CallUsage
+	if u == nil {
+		t.Fatal("CallUsage is nil")
+	}
+	if u.InputTokens != 1200 || u.OutputTokens != 340 || u.CacheReadTokens != 8000 || u.CacheWriteTokens != 150 {
+		t.Fatalf("tokens %+v", u)
+	}
+	if u.DurationMS < 0 || u.Turns != 0 || u.Models != nil {
+		t.Fatalf("duration/turns/models %+v", u)
 	}
 }
 
@@ -551,6 +576,14 @@ func runACPFake() {
 				case "resume", "resume_nomodels":
 					thoughtThen("r", "resumed")
 					reply(msg.ID, map[string]any{"stopReason": "end_turn"})
+				case "usage":
+					// PromptResponse.usage as in the ACP schema; cursor-agent
+					// 2026.10.22 does not send it yet.
+					thoughtThen("u", "counted")
+					reply(msg.ID, map[string]any{"stopReason": "end_turn", "usage": map[string]any{
+						"inputTokens": 1200, "outputTokens": 340, "cachedReadTokens": 8000,
+						"cachedWriteTokens": 150, "thoughtTokens": 90, "totalTokens": 9690,
+					}})
 				default: // basic, hang
 					text := "one"
 					if promptN > 1 {

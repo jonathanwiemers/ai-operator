@@ -488,6 +488,7 @@ func (s *CursorSession) Prompt(ctx context.Context, text string, fn func(Event))
 		return nil, err
 	}
 
+	start := time.Now()
 	log := logr.FromContextOrDiscard(ctx)
 	tr := &acpTurnLog{log: log}
 	handle := func() {
@@ -507,7 +508,7 @@ func (s *CursorSession) Prompt(ctx context.Context, text string, fn func(Event))
 		if resp.Error != nil {
 			return res, fmt.Errorf("%s", resp.Error.Error())
 		}
-		return s.finishPrompt(res, resp.Result)
+		return s.finishPrompt(res, resp.Result, time.Since(start))
 	}
 	ctxCh := ctx.Done()
 	var cancelTimer <-chan time.Time
@@ -547,11 +548,28 @@ func (s *CursorSession) Prompt(ctx context.Context, text string, fn func(Event))
 	}
 }
 
-func (s *CursorSession) finishPrompt(res *Result, result json.RawMessage) (*Result, error) {
+// finishPrompt reads the PromptResponse. Its optional usage (ACP schema:
+// inputTokens, outputTokens, cachedReadTokens, cachedWriteTokens) becomes
+// CallUsage with the duration the runner measured (ACP reports no
+// duration). cursor-agent 2026.10.22 sends no usage, see the spend spec.
+func (s *CursorSession) finishPrompt(res *Result, result json.RawMessage, took time.Duration) (*Result, error) {
 	var out struct {
 		StopReason string `json:"stopReason"`
+		Usage      *struct {
+			InputTokens       int64 `json:"inputTokens"`
+			OutputTokens      int64 `json:"outputTokens"`
+			CachedReadTokens  int64 `json:"cachedReadTokens"`
+			CachedWriteTokens int64 `json:"cachedWriteTokens"`
+		} `json:"usage"`
 	}
 	_ = json.Unmarshal(result, &out)
+	if u := out.Usage; u != nil {
+		res.CallUsage = &CallUsage{
+			InputTokens: u.InputTokens, OutputTokens: u.OutputTokens,
+			CacheReadTokens: u.CachedReadTokens, CacheWriteTokens: u.CachedWriteTokens,
+			DurationMS: took.Milliseconds(),
+		}
+	}
 	switch out.StopReason {
 	case "end_turn", "":
 		return res, nil

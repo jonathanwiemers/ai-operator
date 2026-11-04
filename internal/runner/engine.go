@@ -76,11 +76,45 @@ type Result struct {
 	// Usage is the engine's last report on its usage windows during the
 	// call (claude's rate_limit_event); nil if it sent none.
 	Usage *aiv1.EngineUsage
+	// CallUsage is the call's token usage; nil if the engine reported none.
+	CallUsage *CallUsage
 	// Engine and Model ran the call (set by the runner); FallbackFrom is the
 	// limited engine a fallback stood in for.
 	Engine       aiv1.Engine `json:"-"`
 	Model        string      `json:"-"`
 	FallbackFrom aiv1.Engine `json:"-"`
+}
+
+// CallUsage is what one engine call consumed, as the engine reported it.
+type CallUsage struct {
+	InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens int64
+	Turns                                                        int32
+	DurationMS                                                   int64
+	// Models is the per-model split as reported (subagent models included),
+	// sorted by name.
+	Models []ModelUsage
+}
+
+// ModelUsage is one model's share of a call.
+type ModelUsage struct {
+	Model                                                        string
+	InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens int64
+	CostUSD                                                      float64
+}
+
+// MainModel is the model with the most output tokens, for calls whose
+// invocation set no model; "" if the engine reported no split.
+func (u *CallUsage) MainModel() string {
+	if u == nil {
+		return ""
+	}
+	main, most := "", int64(-1)
+	for _, m := range u.Models {
+		if m.OutputTokens > most {
+			main, most = m.Model, m.OutputTokens
+		}
+	}
+	return main
 }
 
 // Engine runs invocations. Implementations wrap one agent CLI.
@@ -359,6 +393,21 @@ func ParseResult(out []byte) (*Result, error) {
 		IsError          bool            `json:"is_error"`
 		Result           string          `json:"result"`
 		StructuredOutput json.RawMessage `json:"structured_output"`
+		Usage            *struct {
+			InputTokens              int64 `json:"input_tokens"`
+			OutputTokens             int64 `json:"output_tokens"`
+			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+		} `json:"usage"`
+		ModelUsage map[string]struct {
+			InputTokens              int64   `json:"inputTokens"`
+			OutputTokens             int64   `json:"outputTokens"`
+			CacheReadInputTokens     int64   `json:"cacheReadInputTokens"`
+			CacheCreationInputTokens int64   `json:"cacheCreationInputTokens"`
+			CostUSD                  float64 `json:"costUSD"`
+		} `json:"modelUsage"`
+		NumTurns   *int32 `json:"num_turns"`
+		DurationMS *int64 `json:"duration_ms"`
 	}
 	out = bytes.TrimSpace(out)
 	if len(out) == 0 {
@@ -379,6 +428,29 @@ func ParseResult(out []byte) (*Result, error) {
 	}
 	if len(raw.StructuredOutput) > 0 && string(raw.StructuredOutput) != "null" {
 		res.Structured = raw.StructuredOutput
+	}
+	if raw.Usage != nil || len(raw.ModelUsage) > 0 || raw.NumTurns != nil || raw.DurationMS != nil {
+		u := &CallUsage{}
+		if raw.Usage != nil {
+			u.InputTokens, u.OutputTokens = raw.Usage.InputTokens, raw.Usage.OutputTokens
+			u.CacheReadTokens, u.CacheWriteTokens = raw.Usage.CacheReadInputTokens, raw.Usage.CacheCreationInputTokens
+		}
+		if raw.NumTurns != nil {
+			u.Turns = *raw.NumTurns
+		}
+		if raw.DurationMS != nil {
+			u.DurationMS = *raw.DurationMS
+		}
+		for name, m := range raw.ModelUsage {
+			u.Models = append(u.Models, ModelUsage{
+				Model:       name,
+				InputTokens: m.InputTokens, OutputTokens: m.OutputTokens,
+				CacheReadTokens: m.CacheReadInputTokens, CacheWriteTokens: m.CacheCreationInputTokens,
+				CostUSD: m.CostUSD,
+			})
+		}
+		slices.SortFunc(u.Models, func(a, b ModelUsage) int { return strings.Compare(a.Model, b.Model) })
+		res.CallUsage = u
 	}
 	return res, nil
 }

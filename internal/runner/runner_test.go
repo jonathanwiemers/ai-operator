@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -88,6 +89,40 @@ func TestParseResultAndDecode(t *testing.T) {
 	var r ReviewAnswer
 	if err := res.Decode(&r); err != nil || r.Summary != "ok" {
 		t.Fatalf("decode: %+v %v", r, err)
+	}
+	if res.CallUsage != nil {
+		t.Fatalf("result without usage: CallUsage %+v, want nil", res.CallUsage)
+	}
+}
+
+func TestParseResultCallUsage(t *testing.T) {
+	line, err := os.ReadFile("testdata/claude-result-usage.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := ParseResult(line)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &CallUsage{
+		InputTokens: 412, OutputTokens: 9876, CacheReadTokens: 1204377, CacheWriteTokens: 58211,
+		Turns: 23, DurationMS: 184233,
+		Models: []ModelUsage{
+			{Model: "claude-haiku-5-5", InputTokens: 3021, OutputTokens: 1544, CacheReadTokens: 88120, CacheWriteTokens: 12004, CostUSD: 0.071101},
+			{Model: "claude-opus-5-5", InputTokens: 398, OutputTokens: 9120, CacheReadTokens: 1180044, CacheWriteTokens: 52110, CostUSD: 1.802311},
+		},
+	}
+	if !reflect.DeepEqual(res.CallUsage, want) {
+		t.Fatalf("CallUsage:\n got %+v\nwant %+v", res.CallUsage, want)
+	}
+	if res.CostUSD != 1.873412 {
+		t.Fatalf("CostUSD %v", res.CostUSD)
+	}
+	if m := res.CallUsage.MainModel(); m != "claude-opus-5-5" {
+		t.Fatalf("MainModel %q", m)
+	}
+	if m := (*CallUsage)(nil).MainModel(); m != "" {
+		t.Fatalf("nil MainModel %q", m)
 	}
 }
 
