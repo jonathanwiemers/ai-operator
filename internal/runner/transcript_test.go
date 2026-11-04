@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"os"
 	"path/filepath"
@@ -277,5 +278,45 @@ func TestUsageReadingWithoutWindows(t *testing.T) {
 	}
 	if u := usageReading([]byte(`{"type":"rate_limit_event"}`)); u != nil {
 		t.Fatalf("an event without info gives no reading, got %+v", u)
+	}
+}
+
+// TestSubagentLinesAreLinked replays a stream with a subagent: the Agent
+// tool_use logs its id, the subagent's lines log it as parent, with their
+// model and, once per message, their tokens.
+func TestSubagentLinesAreLinked(t *testing.T) {
+	data, err := os.ReadFile("testdata/claude-stream-subagent.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	tr := &turnReader{log: funcr.New(func(_, args string) { lines = append(lines, args) }, funcr.Options{})}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		tr.consume([]byte(line))
+	}
+	all := strings.Join(lines, "\n")
+	for _, want := range []string{
+		`"tool"="Agent" "input"="Find stream callers" "toolUseID"="toolu_02Agent" "subagent"="Explore"`,
+		`"tool"="Grep" "input"="consume\\( in /work/repo/internal" "parent"="toolu_02Agent" "model"="claude-haiku-5-5" "tokens"=5065`,
+		`"text"="Two callers: runCLI and ClaudeSession.Prompt." "parent"="toolu_02Agent" "model"="claude-haiku-5-5" "tokens"=5144`,
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %s in:\n%s", want, all)
+		}
+	}
+	for _, l := range lines {
+		if !strings.Contains(l, `"parent"=`) && strings.Contains(l, `"tokens"=`) {
+			t.Errorf("a main-thread line logs tokens: %s", l)
+		}
+	}
+	// A message repeated once per content block counts its tokens once.
+	tr = &turnReader{log: funcr.New(func(_, args string) { lines = append(lines, args) }, funcr.Options{})}
+	lines = nil
+	msg := `{"type":"assistant","parent_tool_use_id":"toolu_1","message":{"id":"m1","model":"h","content":[{"type":"text","text":"%s"}],"usage":{"input_tokens":1,"output_tokens":2}}}`
+	tr.consume(fmt.Appendf(nil, msg, "a"))
+	tr.consume(fmt.Appendf(nil, msg, "b"))
+	tr.flush()
+	if len(lines) != 2 || !strings.Contains(lines[0], `"tokens"=3`) || strings.Contains(lines[1], "tokens") {
+		t.Fatalf("tokens must be logged once per message: %q", lines)
 	}
 }

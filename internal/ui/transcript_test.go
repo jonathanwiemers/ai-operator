@@ -31,6 +31,16 @@ func TestParseLogLine(t *testing.T) {
 		{`{"msg":"agent thinks","text":"hmm"}`, true, Entry{Kind: "thinks", Text: "hmm"}},
 		{`{"msg":"agent uses a tool","tool":"shell","input":"go test ./..."}`, true, Entry{Kind: "tool", Tool: "shell", Input: "go test ./..."}},
 		{`{"msg":"agent answers"}`, true, Entry{Kind: "answers"}},
+		// Subagents: the tool line that starts one, and its lines.
+		{`{"msg":"agent uses a tool","tool":"Agent","input":"Find callers","toolUseID":"toolu_2","subagent":"Explore"}`,
+			true, Entry{Kind: "tool", Tool: "Agent", Input: "Find callers", ToolUseID: "toolu_2", Subagent: "Explore"}},
+		{`{"msg":"agent uses a tool","tool":"Grep","input":"x","parent":"toolu_2","model":"haiku","tokens":5065}`,
+			true, Entry{Kind: "tool", Tool: "Grep", Input: "x", Parent: "toolu_2", Model: "haiku", Tokens: 5065}},
+		{`{"msg":"agent says","text":"Two callers.","parent":"toolu_2","model":"haiku"}`,
+			true, Entry{Kind: "says", Text: "Two callers.", Parent: "toolu_2", Model: "haiku"}},
+		{`{"msg":"agent thinks","text":"hmm","parent":"toolu_2","tokens":12}`, true, Entry{Kind: "thinks", Text: "hmm", Parent: "toolu_2", Tokens: 12}},
+		// Without a parent, tokens and model are not taken.
+		{`{"msg":"agent says","text":"hi","model":"m","tokens":3}`, true, Entry{Kind: "says", Text: "hi"}},
 		{`{"msg":"agent prompt","role":"implement","engine":"claude","model":"m","system":"S","prompt":"P"}`,
 			true, Entry{Kind: "prompt", Role: "implement", Engine: "claude", Model: "m", System: "S", Prompt: "P"}},
 		// Everything else stays on the server.

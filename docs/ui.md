@@ -615,6 +615,12 @@ The **Live** panel on a task page follows the task's pod while it runs:
 - which agent runs (role, engine, model, read-only);
 - what the agent says and thinks (thinking: claude only), and the tools it
   calls with their main argument (command, file, pattern);
+- a subagent's work (claude's Task/Agent tool) as one collapsed row
+  *subagent · name · model · tokens* under the tool call that started it.
+  It opens to the subagent's own thinks, says and tool lines. The tokens
+  sum input, output and cache tokens over the subagent's messages seen so
+  far and grow while it runs. Lines of a subagent started by a subagent
+  show unfolded;
 - with `spec.agents.logPrompts: true` on the AgentProject, every prompt:
   the role, the system prompt (with the project's instructions) and the
   prompt, each cut at 64 KiB. That includes what autopilot, CI fix runs,

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import Badge from './Badge.vue'
+import TranscriptLine from './TranscriptLine.vue'
+import { tokenCount } from '../format'
+import { foldName, foldTranscript } from '../transcriptFold'
 import type { TranscriptEntry } from '../types'
 
 // LiveTranscript follows the task's pod: the runner's steps and the agent's
@@ -66,8 +69,9 @@ function onScroll() {
   if (el) follow.value = el.scrollHeight - el.scrollTop - el.clientHeight < 40
 }
 
-const stepTone = (s?: string) => (s === 'done' ? 'success' : s === 'failed' ? 'danger' : s === 'deferred' ? 'warning' : 'progress')
 const time = (t?: string) => (t ? new Date(t).toLocaleTimeString() : '')
+// rows fold each subagent's lines under the tool line that started it.
+const rows = computed(() => foldTranscript(entries.value))
 const runs = computed(() => new Set(entries.value.map((e) => e.run).filter(Boolean)).size)
 const endText = computed(() => {
   switch (endReason.value) {
@@ -98,46 +102,26 @@ const endText = computed(() => {
       <div v-if="!entries.length" class="empty">
         {{ state === 'live' ? 'Waiting for the run…' : state === 'error' ? 'The transcript could not be loaded.' : endText }}
       </div>
-      <div v-for="(e, i) in entries" :key="i" class="entry" :class="e.kind">
-        <span class="t faint mono">{{ time(e.time) }}</span>
-        <template v-if="e.kind === 'step'">
-          <Badge :tone="stepTone(e.status)">{{ e.status }}</Badge>
-          <span class="step">{{ e.stepNo }} {{ e.step }}</span>
-          <span v-if="e.result" class="faint">{{ e.result }}</span>
-        </template>
-        <template v-else-if="e.kind === 'cli'">
-          <Badge tone="info">{{ e.role || 'agent' }}</Badge>
-          <span class="mono">{{ e.engine }}/{{ e.model || 'default' }}</span>
-          <span v-if="e.readOnly" class="faint">read-only</span>
-        </template>
-        <template v-else-if="e.kind === 'thinks'">
-          <span class="who faint">thinks</span>
-          <span class="text thinking">{{ e.text }}</span>
-        </template>
-        <template v-else-if="e.kind === 'says'">
-          <span class="who">says</span>
-          <span class="text">{{ e.text }}</span>
-        </template>
-        <template v-else-if="e.kind === 'tool'">
-          <span class="who faint">tool</span>
-          <code class="tool">{{ e.tool }}</code>
-          <span class="mono input">{{ e.input }}</span>
-        </template>
-        <template v-else-if="e.kind === 'answers'">
-          <span class="who">answers</span>
-          <span class="faint">the answer is posted on GitLab</span>
-        </template>
-        <details v-else-if="e.kind === 'prompt'" class="prompt">
-          <summary>
-            Prompt to <strong>{{ e.role || 'agent' }}</strong>
-            <span class="mono faint">{{ e.engine }}/{{ e.model || 'default' }}</span>
+      <template v-for="(r, i) in rows" :key="r.kind === 'fold' ? `fold-${r.tool.toolUseID}` : i">
+        <TranscriptLine v-if="r.kind === 'entry'" :e="r.entry" />
+        <details v-else class="fold">
+          <summary class="entry">
+            <span class="t faint mono">{{ time(r.tool.time) }}</span>
+            <span class="who sub faint">subagent</span>
+            <span>
+              <strong>{{ foldName(r) }}</strong>
+              <template v-if="r.model"> · <span class="mono">{{ r.model }}</span></template>
+              · {{ tokenCount(r.tokens) }} tok
+            </span>
+            <span class="faint">{{ r.count }} {{ r.count === 1 ? 'entry' : 'entries' }}</span>
+            <span v-if="r.tool.subagent && r.tool.input" class="faint input">{{ r.tool.input }}</span>
           </summary>
-          <h4 v-if="e.system">System prompt</h4>
-          <pre v-if="e.system">{{ e.system }}</pre>
-          <h4>Prompt</h4>
-          <pre>{{ e.prompt }}</pre>
+          <div class="children">
+            <TranscriptLine v-for="(c, j) in r.children" :key="j" :e="c" />
+            <div v-if="!r.children.length" class="entry faint">No events yet.</div>
+          </div>
         </details>
-      </div>
+      </template>
     </div>
     <div v-if="state === 'ended' && entries.length" class="foot faint">{{ endText }}</div>
   </div>
@@ -179,10 +163,6 @@ const endText = computed(() => {
   padding: 3px 14px;
 }
 
-.entry.step {
-  margin-top: 4px;
-}
-
 .t {
   flex: none;
   width: 72px;
@@ -192,55 +172,43 @@ const endText = computed(() => {
 .who {
   flex: none;
   width: 56px;
+}
+
+.who.sub {
+  width: auto;
+  min-width: 56px;
   color: var(--text-2);
-}
-
-.text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.thinking {
-  color: var(--text-3);
-  font-style: italic;
-}
-
-.tool {
-  padding: 0 5px;
-  border-radius: 4px;
-  background: var(--surface-2);
 }
 
 .input {
   overflow-wrap: anywhere;
-  color: var(--text-2);
 }
 
-.prompt {
-  flex: 1;
-  min-width: 0;
-}
-
-.prompt summary {
+/* A subagent's fold: one row, its lines indented inside. */
+.fold summary {
   cursor: pointer;
+  list-style: none;
 }
 
-.prompt h4 {
-  margin: 10px 0 4px;
-  font-size: 12px;
-  color: var(--text-3);
+.fold summary::-webkit-details-marker {
+  display: none;
 }
 
-.prompt pre {
-  max-height: 360px;
-  overflow: auto;
-  margin: 0;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 12px;
+.fold summary .who::before {
+  content: '▸ ';
+}
+
+.fold[open] summary .who::before {
+  content: '▾ ';
+}
+
+.fold .children {
+  margin: 2px 14px 4px 94px;
+  border-left: 2px solid var(--border);
+}
+
+.fold .children :deep(.entry) {
+  padding-left: 10px;
 }
 
 .foot {

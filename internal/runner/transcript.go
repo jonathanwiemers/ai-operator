@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -25,12 +26,28 @@ const maxLogPrompt = 64 << 10
 // it calls with their main argument (the command, the file). Tool output is
 // not logged: it holds file contents and whatever commands print. It returns
 // the event's type.
-func logEvent(log logr.Logger, line []byte) string {
+//
+// A subagent's lines (claude: parent_tool_use_id set) carry parent, the id
+// of the Task/Agent tool_use that started it, and model; the first logged
+// line of each of its messages carries tokens (input + output + cache), so
+// the UI can fold them under the tool line, which carries toolUseID. counted
+// holds the message ids whose tokens were logged (claude repeats a message
+// once per content block); nil logs no tokens.
+func logEvent(log logr.Logger, line []byte, counted map[string]bool) string {
 	var ev struct {
-		Type    string `json:"type"`
-		Subtype string `json:"subtype"`
-		Message struct {
+		Type            string `json:"type"`
+		Subtype         string `json:"subtype"`
+		ParentToolUseID string `json:"parent_tool_use_id"`
+		Message         struct {
+			ID      string          `json:"id"`
+			Model   string          `json:"model"`
 			Content json.RawMessage `json:"content"`
+			Usage   *struct {
+				InputTokens              int64 `json:"input_tokens"`
+				OutputTokens             int64 `json:"output_tokens"`
+				CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+				CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+			} `json:"usage"`
 		} `json:"message"`
 		// cursor-agent: one key per tool kind, e.g. readToolCall.
 		ToolCall map[string]json.RawMessage `json:"tool_call"`
@@ -55,6 +72,7 @@ func logEvent(log logr.Logger, line []byte) string {
 	}
 	var blocks []struct {
 		Type     string          `json:"type"`
+		ID       string          `json:"id"`
 		Text     string          `json:"text"`
 		Thinking string          `json:"thinking"`
 		Name     string          `json:"name"`
@@ -63,26 +81,68 @@ func logEvent(log logr.Logger, line []byte) string {
 	if json.Unmarshal(ev.Message.Content, &blocks) != nil {
 		return ev.Type
 	}
+	var sub []any
+	if p := ev.ParentToolUseID; p != "" {
+		sub = []any{"parent", p}
+		if ev.Message.Model != "" {
+			sub = append(sub, "model", ev.Message.Model)
+		}
+	}
+	// subKeys are the subagent keys of the next logged line; tokens go on
+	// the first line of a message only.
+	subKeys := func() []any {
+		u, id := ev.Message.Usage, ev.Message.ID
+		if sub == nil || u == nil || counted == nil || id != "" && counted[id] {
+			return sub
+		}
+		if id != "" {
+			counted[id] = true
+		}
+		n := u.InputTokens + u.OutputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+		return append(slices.Clip(sub), "tokens", n)
+	}
 	for _, b := range blocks {
 		switch b.Type {
 		case "thinking":
 			if t := strings.TrimSpace(b.Thinking); t != "" {
-				log.Info("agent thinks", "text", textutil.Truncate(t, maxLogText))
+				log.Info("agent thinks", append([]any{"text", textutil.Truncate(t, maxLogText)}, subKeys()...)...)
 			}
 		case "text":
 			if t := strings.TrimSpace(b.Text); t != "" {
-				log.Info("agent says", "text", textutil.Truncate(t, maxLogText))
+				log.Info("agent says", append([]any{"text", textutil.Truncate(t, maxLogText)}, subKeys()...)...)
 			}
 		case "tool_use":
 			if b.Name == "StructuredOutput" {
 				// The final answer (--json-schema): it is posted, not logged.
-				log.Info("agent answers")
+				log.Info("agent answers", subKeys()...)
 				continue
 			}
-			log.Info("agent uses a tool", "tool", b.Name, "input", toolInput(b.Name, b.Input))
+			kv := []any{"tool", b.Name, "input", toolInput(b.Name, b.Input)}
+			if (b.Name == "Task" || b.Name == "Agent") && b.ID != "" {
+				// It starts a subagent, whose lines name this id as parent.
+				kv = append(kv, "toolUseID", b.ID)
+				if a := subagentName(b.Input); a != "" {
+					kv = append(kv, "subagent", a)
+				}
+			}
+			log.Info("agent uses a tool", append(kv, subKeys()...)...)
 		}
 	}
 	return ev.Type
+}
+
+// subagentName is the subagent a Task/Agent tool_use starts: its type, else
+// its name.
+func subagentName(raw json.RawMessage) string {
+	var in struct {
+		Type string `json:"subagent_type"`
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(raw, &in)
+	if in.Type == "" {
+		in.Type = in.Name
+	}
+	return textutil.Truncate(in.Type, 100)
 }
 
 // event is what runCLI needs to know about a stream-json line.

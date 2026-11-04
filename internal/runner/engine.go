@@ -309,11 +309,16 @@ type turnReader struct {
 	// subagents are the parent_tool_use_ids seen, one per subagent run.
 	subagents map[string]bool
 	subTurns  []int32
+	// counted are the subagent message ids whose tokens were logged.
+	counted map[string]bool
 }
 
 func (t *turnReader) flush() {
+	if t.counted == nil {
+		t.counted = map[string]bool{}
+	}
 	for _, h := range t.held {
-		logEvent(t.log, h)
+		logEvent(t.log, h, t.counted)
 	}
 	t.held = nil
 }
@@ -335,7 +340,7 @@ func (t *turnReader) consume(line []byte) bool {
 		}
 		t.flush()
 		if ev.Type == "tool_call" && ev.Subtype == "started" {
-			logEvent(t.log, line)
+			logEvent(t.log, line, nil)
 		}
 	case "rate_limit_event":
 		if u := usageReading(line); u != nil {

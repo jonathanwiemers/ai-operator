@@ -404,6 +404,12 @@ export interface TranscriptEntry {
   input?: string
   system?: string
   prompt?: string
+  // Subagents: parent on a subagent's lines (with model and tokens),
+  // toolUseID and subagent on the tool line that started it.
+  parent?: string
+  toolUseID?: string
+  subagent?: string
+  tokens?: number
 }
 
 // Feature is a section of the UI the user may see (GET /api/v1/features).

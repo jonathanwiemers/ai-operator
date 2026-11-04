@@ -68,6 +68,14 @@ type Entry struct {
 	// System prompt and prompt (prompt, with agents.logPrompts).
 	System string `json:"system,omitempty"`
 	Prompt string `json:"prompt,omitempty"`
+	// Subagents (claude): a tool line that starts one has ToolUseID and
+	// Subagent (its type); the subagent's thinks, says, tool and answers
+	// lines have Parent (that ToolUseID), Model and, once per message,
+	// Tokens (input + output + cache).
+	Parent    string `json:"parent,omitempty"`
+	ToolUseID string `json:"toolUseID,omitempty"`
+	Subagent  string `json:"subagent,omitempty"`
+	Tokens    int64  `json:"tokens,omitempty"`
 }
 
 // maxLogLine skips log lines longer than this (a logged prompt is at most
@@ -135,6 +143,16 @@ func parseLogLine(line []byte) (Entry, bool) {
 		e.System, e.Prompt = str("system"), str("prompt")
 	default:
 		return Entry{}, false
+	}
+	switch e.Kind {
+	case "thinks", "says", "tool", "answers":
+		if e.Parent = str("parent"); e.Parent != "" {
+			e.Model = str("model")
+			e.Tokens, _ = strconv.ParseInt(str("tokens"), 10, 64)
+		}
+		if e.Kind == "tool" {
+			e.ToolUseID, e.Subagent = str("toolUseID"), str("subagent")
+		}
 	}
 	return e, true
 }
