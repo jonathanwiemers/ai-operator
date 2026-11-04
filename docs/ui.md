@@ -28,7 +28,7 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
 * **Rail:** *Inbox* (what needs you now across your projects: tasks with
   questions, failed or blocked, the pilots' open proposals, and paused
   autopilots as the compact pause card, see below, which opens the
-  milestone page; the count also shows in the tab title as `(n) Desk`; see
+  milestone stream; the count also shows in the tab title as `(n) Desk`; see
   [Notifications](#notifications)), *Everything*
   (all your projects' streams in one), your projects with a status dot
   (running, needs you, idle), a one-line state and a needs-you count, the
@@ -42,7 +42,7 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   the scope tabs (the project, its milestones; they keep the view tab), a
   search box, and a strip of the last 30 days' activity, where a day jumps
   the stream to that day. The *Board* tab shows the project's boards (one
-  per milestone and the issues without a milestone, as on the board page)
+  per milestone and the issues without a milestone, )
   or the milestone's board. Below
   it, pinned, the **message box**: it sends to a milestone's pilot (on its
   tracking issue, as `/pilot …`) or comments on an issue, in your GitLab
@@ -66,7 +66,7 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   pilot's autonomy and open proposals, and **Ask the pilot** (the Desk chat
   with the pilot, with the accept and reject buttons for its proposals).
 
-The old board page (`/projects/<namespace>/<name>/board`) and milestone page
+The Desk has no projects list or separate board and milestone pages. The former board page (`/projects/<namespace>/<name>/board`) and milestone page
 (`…/milestones/<iid>/detail`) redirect to the project stream's Board tab and
 the milestone stream; task and research pages keep their URLs.
 
@@ -194,14 +194,11 @@ nofollow"`, and other links show as their text. Images are never loaded.
 
 | Page | Content |
 |------|---------|
-| **Projects** | every project you may see: tasks per stage, autopilot milestones and their progress, engine usage and limits (see below), suspension, last sync, model spend |
-| **Board** | `/projects/<namespace>/<name>/board`: the same engine usage line and a banner per active limit; one board per milestone, newest first. The columns are *In progress* (working, waiting for capacity or a usage limit), *Needs you* (questions, red CI after the fix rounds, failed, blocked), *CI* and *Review*; above them the compact pause card while the milestone's autopilot is paused (see below), the milestone's plan, and issues without a milestone |
-| **Milestone** | a planned milestone (linked from its project board and its stream, `/projects/<namespace>/<name>/milestones/<iid>/detail`): autopilot phase, the pause card while it is paused (see below), the queue with states, merge requests, task pages and decisions, the pilot's autonomy and open proposals, **Ask the pilot** (the Desk chat with the milestone's pilot, its `Coordinate` task, with the accept and reject buttons for its proposals; with the `chat` grant and the research database), the chat on its tracking issue, and the milestone's board |
 | **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot's phase, pause reason and a link to the milestone stream, whose context panel shows the queue |
 
 **Engine usage.** claude reports how much of its usage windows is used with
 every agent call; the project keeps the freshest reading per engine
-(`status.engineUsage`). The Projects and project pages show it as one line
+(`status.engineUsage`). The Board tab shows it as one line
 per engine, e.g. `claude: 5 h 29 % (resets 19:20), 7 days 18 % (resets Tue
 07:00) as of 15:27`, with times in your time zone (the weekday when not
 today, the date beyond a week). A window at 80 % or more is highlighted. A
@@ -240,7 +237,7 @@ With GitLab connected (see [Steering](#steering)), a task page has a
 tracking issue, and, with the `steer` permission, a box to write comments in
 your own GitLab name.
 
-A milestone page has the same panel as its **Chat**: the comments of the
+A milestone stream's context panel has the same panel as its **Chat**: the comments of the
 milestone's tracking issue and, with `steer`, a box whose messages go to the
 pilot as `/pilot …` (the UI adds the prefix). Only the milestone owners'
 instructions count, as in GitLab; answer a proposal with `yes P<n>`.
@@ -249,20 +246,20 @@ With the `transcript` permission, a task page also has a **Live** panel: the
 running pod's steps and the agent's session as they happen (see
 [Live transcript](#live-transcript)).
 
-On the projects list and the board, an autopilot that paused over an
+On the Board tab, an autopilot that paused over an
 issue's run, review or CI and is **waiting** for a run that is working on
 that issue now shows as *Autopilot waiting for #N*: it continues by itself
 once the issue is reviewed and green. A pause that needs a human shows as
-*Autopilot paused*. On the board, each paused milestone's section starts
+*Autopilot paused*. On the Board tab, each paused milestone's section starts
 with the **compact pause card**: the heading for the `pauseKind`, the pause
 reason on one line (the free text for a pause without a kind), the paused
 issue, *A run is working on #N now* while one is, what ends the pause by
-itself, and *Open* to the milestone page. It has no buttons; the actions are
+itself, and *Open* to the milestone stream. It has no buttons; the actions are
 on the full card there. The Inbox and the stream show the same compact card.
 While a run works on a task, its card marks the CI result as the last
 push's.
 
-On the milestone page and in the context panel of the milestone stream, a
+In the context panel of the milestone stream, a
 paused autopilot (waiting or not) shows as the **pause card**: a heading for
 the `pauseKind`, the pause reason as text, the
 paused issue with its title, MR and pushed head, what ends the pause by
