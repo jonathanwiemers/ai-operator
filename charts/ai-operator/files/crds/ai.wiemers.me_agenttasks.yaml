@@ -1105,6 +1105,12 @@ spec:
                                   Owner and Text: an owner's own words for the implementer ("/pilot
                                   tell #N: …"). Only the operator sets them.
                                 type: string
+                              pipelineID:
+                                description: |-
+                                  PipelineID is the red default-branch pipeline whose failed jobs
+                                  retryPipeline retries.
+                                format: int64
+                                type: integer
                               rule:
                                 description: |-
                                   Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -1124,8 +1130,8 @@ spec:
                                 type: string
                               tool:
                                 description: |-
-                                  Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                  resume, revisit, setRule, forgetRule or editSpec.
+                                  Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+                                  skip, pause, resume, revisit, setRule, forgetRule or editSpec.
                                 type: string
                             required:
                             - tool
@@ -1186,6 +1192,12 @@ spec:
                                         Owner and Text: an owner's own words for the implementer ("/pilot
                                         tell #N: …"). Only the operator sets them.
                                       type: string
+                                    pipelineID:
+                                      description: |-
+                                        PipelineID is the red default-branch pipeline whose failed jobs
+                                        retryPipeline retries.
+                                      format: int64
+                                      type: integer
                                     rule:
                                       description: |-
                                         Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -1205,8 +1217,8 @@ spec:
                                       type: string
                                     tool:
                                       description: |-
-                                        Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                        resume, revisit, setRule, forgetRule or editSpec.
+                                        Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+                                        skip, pause, resume, revisit, setRule, forgetRule or editSpec.
                                       type: string
                                   required:
                                   - tool
@@ -1336,6 +1348,12 @@ spec:
                                 Owner and Text: an owner's own words for the implementer ("/pilot
                                 tell #N: …"). Only the operator sets them.
                               type: string
+                            pipelineID:
+                              description: |-
+                                PipelineID is the red default-branch pipeline whose failed jobs
+                                retryPipeline retries.
+                              format: int64
+                              type: integer
                             rule:
                               description: |-
                                 Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -1355,8 +1373,8 @@ spec:
                               type: string
                             tool:
                               description: |-
-                                Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                resume, revisit, setRule, forgetRule or editSpec.
+                                Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+                                skip, pause, resume, revisit, setRule, forgetRule or editSpec.
                               type: string
                           required:
                           - tool
@@ -1457,6 +1475,12 @@ spec:
                                   Owner and Text: an owner's own words for the implementer ("/pilot
                                   tell #N: …"). Only the operator sets them.
                                 type: string
+                              pipelineID:
+                                description: |-
+                                  PipelineID is the red default-branch pipeline whose failed jobs
+                                  retryPipeline retries.
+                                format: int64
+                                type: integer
                               rule:
                                 description: |-
                                   Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -1476,8 +1500,8 @@ spec:
                                 type: string
                               tool:
                                 description: |-
-                                  Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                  resume, revisit, setRule, forgetRule or editSpec.
+                                  Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+                                  skip, pause, resume, revisit, setRule, forgetRule or editSpec.
                                 type: string
                             required:
                             - tool
@@ -1538,6 +1562,12 @@ spec:
                                         Owner and Text: an owner's own words for the implementer ("/pilot
                                         tell #N: …"). Only the operator sets them.
                                       type: string
+                                    pipelineID:
+                                      description: |-
+                                        PipelineID is the red default-branch pipeline whose failed jobs
+                                        retryPipeline retries.
+                                      format: int64
+                                      type: integer
                                     rule:
                                       description: |-
                                         Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -1557,8 +1587,8 @@ spec:
                                       type: string
                                     tool:
                                       description: |-
-                                        Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                        resume, revisit, setRule, forgetRule or editSpec.
+                                        Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+                                        skip, pause, resume, revisit, setRule, forgetRule or editSpec.
                                       type: string
                                   required:
                                   - tool
@@ -1672,6 +1702,12 @@ spec:
                                   Owner and Text: an owner's own words for the implementer ("/pilot
                                   tell #N: …"). Only the operator sets them.
                                 type: string
+                              pipelineID:
+                                description: |-
+                                  PipelineID is the red default-branch pipeline whose failed jobs
+                                  retryPipeline retries.
+                                format: int64
+                                type: integer
                               rule:
                                 description: |-
                                   Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -1691,8 +1727,8 @@ spec:
                                 type: string
                               tool:
                                 description: |-
-                                  Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                  resume, revisit, setRule, forgetRule or editSpec.
+                                  Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+                                  skip, pause, resume, revisit, setRule, forgetRule or editSpec.
                                 type: string
                             required:
                             - tool
@@ -1753,6 +1789,12 @@ spec:
                                         Owner and Text: an owner's own words for the implementer ("/pilot
                                         tell #N: …"). Only the operator sets them.
                                       type: string
+                                    pipelineID:
+                                      description: |-
+                                        PipelineID is the red default-branch pipeline whose failed jobs
+                                        retryPipeline retries.
+                                      format: int64
+                                      type: integer
                                     rule:
                                       description: |-
                                         Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -1772,8 +1814,8 @@ spec:
                                       type: string
                                     tool:
                                       description: |-
-                                        Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                        resume, revisit, setRule, forgetRule or editSpec.
+                                        Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+                                        skip, pause, resume, revisit, setRule, forgetRule or editSpec.
                                       type: string
                                   required:
                                   - tool
@@ -2044,6 +2086,12 @@ spec:
                                     Owner and Text: an owner's own words for the implementer ("/pilot
                                     tell #N: …"). Only the operator sets them.
                                   type: string
+                                pipelineID:
+                                  description: |-
+                                    PipelineID is the red default-branch pipeline whose failed jobs
+                                    retryPipeline retries.
+                                  format: int64
+                                  type: integer
                                 rule:
                                   description: |-
                                     Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -2063,8 +2111,8 @@ spec:
                                   type: string
                                 tool:
                                   description: |-
-                                    Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-                                    resume, revisit, setRule, forgetRule or editSpec.
+                                    Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+                                    skip, pause, resume, revisit, setRule, forgetRule or editSpec.
                                   type: string
                               required:
                               - tool

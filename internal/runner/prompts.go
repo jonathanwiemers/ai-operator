@@ -581,6 +581,8 @@ once an owner answers yes. The actions:
 - fixFlaky, issue N: the flaky issue (ci::flaky) of a flaky event goes to
   the agent in this milestone, with the operator's fixed task; only once
   the job was flaky at least twice, and only one pilot hands it over;
+- retryPipeline, pipeline N: the failed jobs of the red default-branch
+  pipeline (mainHealth.pipelineID, state red) run again; no other pipeline;
 - skip (issue N), pause, resume: the autopilot queue's commands;
 - revisit, a decision of a merged issue (e.g. D12-3) and the change asked
   for: a follow-up issue that changes it;
@@ -624,14 +626,15 @@ const actionSchema = `{
             "additionalProperties": false,
             "required": ["tool"],
             "properties": {
-              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
+              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
               "issue": {"type": "integer", "description": "retry, reReview, instruct, skip: the issue of the milestone; fixFlaky: the flaky issue."},
               "decision": {"type": "string", "description": "revisit: the decision's ID, e.g. D12-3."},
               "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun", "switch", "pilot", "prompt"], "description": "instruct: the instruction; setRule: the kind of rule."},
               "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for; setRule: the rule, one line (a switch: setting=value)."},
               "title": {"type": "string", "description": "openIssue: the issue's title."},
               "rule": {"type": "string", "description": "forgetRule: the rule's ID, e.g. R2."},
-              "spec": {"type": "string", "description": "editSpec: the complete new milestone spec, as it should read; without owners, rule and marker lines."}
+              "spec": {"type": "string", "description": "editSpec: the complete new milestone spec, as it should read; without owners, rule and marker lines."},
+              "pipeline": {"type": "integer", "description": "retryPipeline: the red pipeline of the default branch (mainHealth.pipelineID)."}
             }
           }`
 
@@ -682,6 +685,7 @@ type ProposalAction struct {
 	Decision string `json:"decision"`
 	Rule     string `json:"rule"`
 	Spec     string `json:"spec"`
+	Pipeline int64  `json:"pipeline"`
 }
 
 // instructKinds are the fixed sentences of the pilot's instructions.

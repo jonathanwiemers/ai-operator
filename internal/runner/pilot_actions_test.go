@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -133,5 +134,37 @@ func TestPilotInstructionReachesTheImplementer(t *testing.T) {
 	if !strings.Contains(p, "## Instruction from the pilot\n\n"+instructKinds["ci-fix"]) ||
 		!strings.Contains(p, "<untrusted-data>\nrust:lint is red\n</untrusted-data>") {
 		t.Fatalf("the implementer gets the fixed sentence and the note as data:\n%s", p)
+	}
+}
+
+func TestPilotRecordsARetryPipelineWithItsPipeline(t *testing.T) {
+	var s struct {
+		Properties map[string]struct {
+			Enum        []string `json:"enum"`
+			Description string   `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(actionSchema), &s); err != nil {
+		t.Fatal(err)
+	}
+	if props := s.Properties; !slices.Contains(props["tool"].Enum, "retryPipeline") || !strings.HasPrefix(props["pipeline"].Description, "retryPipeline: ") {
+		t.Fatalf("the action schema lists retryPipeline and pipeline: %+v", props)
+	}
+	e := newPilotEnv(t, "")
+	e.engine.proposal = proposalOf(t, `{"summary": "retry main", "actions": [{"tool": "retryPipeline", "pipeline": 77}]}`)
+	e.step(t)
+	if !strings.Contains(e.engine.calls[0].SystemPrompt, "retryPipeline, pipeline N") {
+		t.Fatalf("the pilot is told about retryPipeline:\n%s", e.engine.calls[0].SystemPrompt)
+	}
+	ps := e.task(t).Status.Pilot
+	if ps == nil || len(ps.Proposed) != 1 || len(ps.Proposed[0].Actions) != 1 {
+		t.Fatalf("expected the retry recorded: %+v", ps)
+	}
+	if a := ps.Proposed[0].Actions[0]; a.Tool != "retryPipeline" || a.PipelineID != 77 || a.IssueIID != 0 {
+		t.Fatalf("recorded %+v", a)
+	}
+	// An assessment's options map their actions the same way.
+	if a := pilotActions([]ProposalAction{{Tool: "retryPipeline", Pipeline: 78}}); len(a) != 1 || a[0].PipelineID != 78 {
+		t.Fatalf("option action %+v", a)
 	}
 }

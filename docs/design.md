@@ -1195,7 +1195,7 @@ counted interventions; more tools are later steps of
   whole and counts nothing.
 * **Proposals** (`internal/controller/pilot_actions.go`). An answer may
   carry a proposal (`proposalSchema`: a summary and up to 5
-  actions of `retry`, `reReview`, `instruct` with a kind, `openIssue`, `fixFlaky`, `skip`, `pause`, `resume`, `revisit`). The
+  actions of `retry`, `reReview`, `instruct` with a kind, `openIssue`, `fixFlaky`, `retryPipeline`, `skip`, `pause`, `resume`, `revisit`). The
   runner executes nothing: it appends the proposal to
   `status.pilot.proposed` of the `Coordinate` task, with `state`, the hash
   of what it was made on (`aiv1.PilotState`: the spec task's description
@@ -1301,11 +1301,11 @@ counted interventions; more tools are later steps of
   records `managed`, which never raises a `propose` project. Nothing from
   the milestone or the model reaches it. When it manages, `postProposals`
   first takes the valid actions of the counted tools (`retry`, `reReview`,
-  `instruct` without owner text, `openIssue`, `fixFlaky`) out of the runs' proposals
+  `instruct` without owner text, `openIssue`, `fixFlaky`, `retryPipeline`) out of the runs' proposals
   whose state still holds (a stale one is posted whole and expires like any
   proposal), while their issue has interventions left: `status.pilot.interventions`
   counts by issue IID (an `openIssue` by the proposal's `trigger`, the
-  issue of its event or message, `0` for the milestone; a `fixFlaky` by
+  issue of its event or message, `0` for the milestone; a `fixFlaky` or `retryPipeline` by
   `0`) and head, reset
   when the head moves, at most `pilot.maxInterventionsPerIssue`. They go to
   `status.pilot.accepted` with no `acceptedBy`, in the same locked patch as

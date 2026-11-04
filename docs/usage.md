@@ -1045,6 +1045,9 @@ default branch and the last comments of the tracking issue.
     (see [Main health](#main-health)); only after two occurrences, only an
     issue the operator opened with the description it wrote, and once: a
     pilot that comes second is told where it went;
+  - `retryPipeline <id>`: the failed jobs of the default branch's red
+    pipeline run again; only the newest red pipeline main health knows
+    (`status.mainHealth.pipelineID`), any other is refused;
   - `skip #N`, `pause`, `resume` (autopilot milestones): the tracking
     issue's commands, applied by autopilot on its next poll; a pause says
     "paused by @you via the pilot";
@@ -1079,11 +1082,11 @@ default branch and the last comments of the tracking issue.
   (`> yes`), does nothing. A bare `/pilot yes` is refused with the open
   proposals and the open prompts, which are answered in the Desk.
 - **Managed.** On autopilot milestones the pilot **manages** by default
-  (`pilot.autonomy`): `retry`, `reReview`, `instruct`, `openIssue` and
-  `fixFlaky` run without a `yes`, from an assessment or from an owner's
+  (`pilot.autonomy`): `retry`, `reReview`, `instruct`, `openIssue`,
+  `fixFlaky` and `retryPipeline` run without a `yes`, from an assessment or from an owner's
   message. Each counts against its issue and that issue's head (an
   `openIssue` against the issue whose event triggered it, on the tracking
-  issue against the milestone; a `fixFlaky` against the milestone), at most `pilot.maxInterventionsPerIssue` (2) per head, and
+  issue against the milestone; a `fixFlaky` or `retryPipeline` against the milestone), at most `pilot.maxInterventionsPerIssue` (2) per head, and
   each wake-up gets an **audit comment** on the tracking issue: "🧭 The
   pilot acted on its own", what it did, on which issue, why (the
   classification and evidence, or your message) and how many interventions

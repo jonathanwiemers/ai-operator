@@ -355,7 +355,8 @@ func pilotActions(actions []ProposalAction) []aiv1.PilotAction {
 	var out []aiv1.PilotAction
 	for _, a := range actions[:min(len(actions), 5)] {
 		out = append(out, aiv1.PilotAction{Tool: textutil.Truncate(a.Tool, 40), IssueIID: a.Issue, Kind: textutil.Truncate(a.Kind, 40),
-			Note: textutil.Truncate(a.Note, 2000), Title: textutil.Truncate(a.Title, 200), Decision: textutil.Truncate(a.Decision, 40), Rule: textutil.Truncate(a.Rule, 10), Spec: a.Spec})
+			Note: textutil.Truncate(a.Note, 2000), Title: textutil.Truncate(a.Title, 200), Decision: textutil.Truncate(a.Decision, 40), Rule: textutil.Truncate(a.Rule, 10), Spec: a.Spec,
+			PipelineID: a.Pipeline})
 	}
 	return out
 }

@@ -337,6 +337,8 @@ func TestPilotActionValidation(t *testing.T) {
 		{aiv1.PilotAction{Tool: "instruct", IssueIID: 1, Kind: "rerun"}, ""},
 		{aiv1.PilotAction{Tool: "openIssue"}, "needs a title"},
 		{aiv1.PilotAction{Tool: "openIssue", Title: "Old"}, "opened an issue with this title before"},
+		{aiv1.PilotAction{Tool: "retryPipeline"}, "retryPipeline needs the pipeline"},
+		{aiv1.PilotAction{Tool: "retryPipeline", PipelineID: 77}, ""},
 	} {
 		err := validAction(tc.a, &aiv1.AgentTask{}, tasks, []string{titleKey("old")})
 		if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
@@ -651,5 +653,74 @@ func TestPilotProposalWithoutResolvableOwnersIsAnsweredByNobody(t *testing.T) {
 	e.reconcile()
 	if p := e.prompt(specTaskName, "Q1"); p.State != aiv1.PromptOpen || e.toolEffect() != before {
 		t.Fatal("an answer from whoever takes an owner's name later does nothing")
+	}
+}
+
+func TestCheckRetryPipeline(t *testing.T) {
+	for _, tc := range []struct {
+		mh *aiv1.MainHealthStatus
+		ok bool
+	}{
+		{nil, false},
+		{&aiv1.MainHealthStatus{State: aiv1.MainHealthRed, PipelineID: 77}, true},
+		{&aiv1.MainHealthStatus{State: aiv1.MainHealthRed, PipelineID: 78}, false},
+		{&aiv1.MainHealthStatus{State: aiv1.MainHealthRetrying, PipelineID: 77}, false},
+		{&aiv1.MainHealthStatus{State: aiv1.MainHealthFlaky, PipelineID: 77}, false},
+		{&aiv1.MainHealthStatus{State: aiv1.MainHealthGreen, PipelineID: 77}, false},
+	} {
+		err := checkRetryPipeline(tc.mh, 77)
+		if tc.ok != (err == nil) || err != nil && err.Error() != "pipeline 77 is not the red pipeline of the default branch" {
+			t.Errorf("%+v: got %v, want ok=%v", tc.mh, err, tc.ok)
+		}
+	}
+}
+
+func TestPilotRetryPipelineRetriesTheRedPipelineOnce(t *testing.T) {
+	e := newProposalEnv(t)
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthRed, PipelineID: 77})
+	e.propose("retry the red pipeline", aiv1.PilotAction{Tool: "retryPipeline", PipelineID: 77})
+	e.reconcile()
+	e.reconcile()
+	if body := e.promptNote("Q1").Body; !strings.Contains(body, "**retryPipeline** 77: its failed jobs run again") || len(e.gl.Retried) != 0 {
+		t.Fatalf("the prompt describes the retry, nothing runs without an answer (retried %v):\n%s", e.gl.Retried, body)
+	}
+	e.choose("Q1", "A", alice)
+	e.reconcile()
+	e.choose("Q1", "A", alice)
+	e.reconcile()
+	if !slices.Equal(e.gl.Retried, []int64{77}) {
+		t.Fatalf("the answer retries pipeline 77 once: %v", e.gl.Retried)
+	}
+
+	// Another pipeline is not put to the owners.
+	e.propose("retry an old pipeline", aiv1.PilotAction{Tool: "retryPipeline", PipelineID: 70},
+		aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	if body := e.promptNote("Q2").Body; !strings.Contains(body, "not run: pipeline 70 is not the red pipeline of the default branch") {
+		t.Fatalf("the prompt says why pipeline 70 is refused:\n%s", body)
+	}
+	if a := e.prompt(specTaskName, "Q2").Options[0].Actions; len(a) != 1 || a[0].Tool != "retry" {
+		t.Fatalf("A has only the action the operator runs: %+v", a)
+	}
+
+	// Green again before the answer: checked again when it runs.
+	e.propose("retry it again", aiv1.PilotAction{Tool: "retryPipeline", PipelineID: 77})
+	e.reconcile()
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthGreen, PipelineID: 79})
+	e.choose("Q3", "A", alice)
+	e.reconcile()
+	if p := e.prompt(specTaskName, "Q3"); !slices.Equal(e.gl.Retried, []int64{77}) || !strings.Contains(p.Answer.Outcome, "pipeline 77 is not the red pipeline") {
+		t.Fatalf("a green branch is not retried: %v, %+v", e.gl.Retried, p.Answer)
+	}
+}
+
+func TestManagedPilotRetryPipelineIsCounted(t *testing.T) {
+	e := newManagedEnv(t)
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthRed, PipelineID: 77})
+	e.propose("retry the red pipeline", aiv1.PilotAction{Tool: "retryPipeline", PipelineID: 77})
+	e.reconcile()
+	e.reconcile()
+	if ps := e.pilot().Status.Pilot; !slices.Equal(e.gl.Retried, []int64{77}) || ps.Interventions["0"].Count != 1 {
+		t.Fatalf("a managing pilot retries on its own, counted against the milestone: %v, %+v", e.gl.Retried, ps.Interventions)
 	}
 }

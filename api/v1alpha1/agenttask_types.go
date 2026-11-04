@@ -306,8 +306,8 @@ const MaxAutopilotItemDecisions = 20
 // PilotAction is one action of a proposal of the pilot; the operator
 // validates and executes it once an owner accepts the proposal.
 type PilotAction struct {
-	// Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
-	// resume, revisit, setRule, forgetRule or editSpec.
+	// Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+	// skip, pause, resume, revisit, setRule, forgetRule or editSpec.
 	Tool string `json:"tool"`
 	// Decision to revisit, e.g. D12-3; Note is the change asked for.
 	// +optional
@@ -341,6 +341,10 @@ type PilotAction struct {
 	// rules). Untrusted until an owner accepts its diff.
 	// +optional
 	Spec string `json:"spec,omitempty"`
+	// PipelineID is the red default-branch pipeline whose failed jobs
+	// retryPipeline retries.
+	// +optional
+	PipelineID int64 `json:"pipelineID,omitempty"`
 }
 
 // PilotProposal is a set of actions that waits for an owner's "yes".

@@ -35,7 +35,7 @@ import (
 
 // pilotTools are the tools the pilot may propose; merging, closing and
 // pushing are none of them.
-var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
+var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
 
 // queueTools go through the tracking issue's commands.
 var queueTools = []string{"skip", "pause", "resume", "revisit"}
@@ -69,6 +69,10 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return errors.New("fixFlaky needs the flaky issue")
 	case a.Tool == "fixFlaky":
 		return nil // the issue itself is checked in GitLab (checkFlaky)
+	case a.Tool == "retryPipeline" && a.PipelineID <= 0:
+		return errors.New("retryPipeline needs the pipeline")
+	case a.Tool == "retryPipeline":
+		return nil // checked against main health (checkRetryPipeline)
 	case slices.Contains(queueTools, a.Tool) && !running:
 		return errors.New("this milestone has no autopilot queue")
 	case a.Tool == "pause" && ap.Phase == aiv1.AutopilotPaused, a.Tool == "resume" && ap.Phase != aiv1.AutopilotPaused:
@@ -275,8 +279,19 @@ func (r *AgentProjectReconciler) optionsPrompt(ctx context.Context, gl gitlab.AP
 	return q
 }
 
+// checkRetryPipeline refuses to retry pipeline id unless it is the red
+// pipeline of the default branch that main health (mh) knows: the newest
+// one that finished, red after the watcher's own retry or without one.
+func checkRetryPipeline(mh *aiv1.MainHealthStatus, id int64) error {
+	if mh == nil || mh.State != aiv1.MainHealthRed || mh.PipelineID != id {
+		return fmt.Errorf("pipeline %d is not the red pipeline of the default branch", id)
+	}
+	return nil
+}
+
 // checkAction checks an action before it is put to the owners: validAction,
-// then the flaky issue and the spec edit in GitLab. An action the model
+// then the flaky issue and the spec edit in GitLab, the pipeline of a
+// retryPipeline against main health. An action the model
 // made (fromModel) loses an owner's words: only the operator passes them
 // on. It returns the action's line for a comment.
 func checkAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
@@ -288,6 +303,9 @@ func checkAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject,
 	err := validAction(*a, st, tasks, opened)
 	if err == nil && a.Tool == "fixFlaky" {
 		_, err = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID)
+	}
+	if err == nil && a.Tool == "retryPipeline" {
+		err = checkRetryPipeline(project.Status.MainHealth, a.PipelineID)
 	}
 	diff := ""
 	if err == nil && a.Tool == "editSpec" {
@@ -505,6 +523,8 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		for j, a := range p.Actions {
 			if errs[i][j] = validAction(a, st, tasks, opened); errs[i][j] == nil && a.Tool == "fixFlaky" {
 				_, errs[i][j] = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID)
+			} else if errs[i][j] == nil && a.Tool == "retryPipeline" {
+				errs[i][j] = checkRetryPipeline(project.Status.MainHealth, a.PipelineID)
 			}
 			if errs[i][j] == nil && p.AcceptedBy == "" && a.Tool == "editSpec" {
 				errs[i][j] = errors.New("a spec edit needs an owner's yes")
@@ -575,6 +595,13 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 			return err
 		}
 		return r.handOverFlaky(ctx, gl, spec, mh, st, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), how))
+	case "retryPipeline":
+		// Checked again: the branch may be green or have a newer pipeline.
+		if err := checkRetryPipeline(project.Status.MainHealth, a.PipelineID); err != nil {
+			return err
+		}
+		_, err := gl.RetryPipeline(ctx, spec.GitLab.Project, a.PipelineID)
+		return err
 	case "skip", "pause", "resume", "revisit":
 		return r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
 	case "setRule", "forgetRule":
@@ -712,6 +739,8 @@ func describeAction(a aiv1.PilotAction, err error) string {
 		s = fmt.Sprintf("**openIssue** %q, not handed to the agent, with the body: %s", inertLine(a.Title, 200), inertLine(a.Note, 2000))
 	case "fixFlaky":
 		s = fmt.Sprintf("**fixFlaky** #%d: the flaky issue goes to the agent in this milestone, with the operator's task", a.IssueIID)
+	case "retryPipeline":
+		s = fmt.Sprintf("**retryPipeline** %d: its failed jobs run again", a.PipelineID)
 	case "setRule", "forgetRule":
 		s = describeRule(a)
 	case "editSpec":
