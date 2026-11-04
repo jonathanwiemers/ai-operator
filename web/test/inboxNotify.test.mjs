@@ -5,7 +5,6 @@ import {
   inboxKey,
   newNotifications,
   notifiable,
-  notificationRoute,
   notificationText,
 } from '../src/inboxNotify.ts'
 
@@ -138,28 +137,5 @@ test('notificationText: pause, kind-less pause, proposal and needs-input', () =>
   assert.deepEqual(notificationText(task('needs-input', { issueIID: undefined, title: '' })), {
     title: 'Needs input',
     body: 'shop',
-  })
-})
-
-test('notificationRoute: milestone page for pauses and proposals, task page for tasks', () => {
-  assert.deepEqual(notificationRoute(pause()), {
-    name: 'milestone',
-    params: { namespace: 'team', name: 'shop', iid: '3' },
-  })
-  assert.deepEqual(notificationRoute(proposal()), {
-    name: 'milestone',
-    params: { namespace: 'team', name: 'shop', iid: '3' },
-  })
-  assert.deepEqual(notificationRoute(task('needs-input')), {
-    name: 'task',
-    params: { namespace: 'team', name: 'shop', task: 'shop-impl-12' },
-  })
-  assert.deepEqual(notificationRoute(proposal({ milestoneIID: undefined })), {
-    name: 'task',
-    params: { namespace: 'team', name: 'shop', task: 'shop-pilot' },
-  })
-  assert.deepEqual(notificationRoute(task('needs-input', { task: undefined })), {
-    name: 'stream-project',
-    params: { namespace: 'team', name: 'shop' },
   })
 })

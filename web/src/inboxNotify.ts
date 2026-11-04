@@ -68,19 +68,3 @@ export function notificationText(item: InboxItem): NotificationText {
       }
   }
 }
-
-export type NotificationRoute =
-  | { name: 'milestone'; params: { namespace: string; name: string; iid: string } }
-  | { name: 'task'; params: { namespace: string; name: string; task: string } }
-  | { name: 'stream-project'; params: { namespace: string; name: string } }
-
-// notificationRoute is where clicking a notification leads: the milestone
-// page for pauses and proposals, the task page for tasks.
-export function notificationRoute(item: InboxItem): NotificationRoute {
-  const base = { namespace: item.namespace, name: item.project }
-  if (item.kind !== 'task' && item.milestoneIID) {
-    return { name: 'milestone', params: { ...base, iid: String(item.milestoneIID) } }
-  }
-  if (item.task) return { name: 'task', params: { ...base, task: item.task } }
-  return { name: 'stream-project', params: base }
-}

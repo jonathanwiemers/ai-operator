@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { useResource } from '../live'
 import { disableNotify, enableNotify, notify, notifyActive, refreshPermission } from '../notify'
+import { inboxRoute } from '../inboxRoute'
 import type { InboxResponse } from '../types'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
 import RelTime from '../components/RelTime.vue'
@@ -9,26 +10,6 @@ import RelTime from '../components/RelTime.vue'
 const { data, error, loading } = useResource<InboxResponse>(() => '/inbox', ['project', 'task'])
 
 onMounted(refreshPermission)
-
-function to(item: InboxResponse['items'][number]) {
-  // A pause opens the milestone page, where the full card has the actions.
-  if (item.kind === 'pause' && item.milestoneIID) {
-    return {
-      name: 'milestone' as const,
-      params: { namespace: item.namespace, name: item.project, iid: String(item.milestoneIID) },
-    }
-  }
-  if (item.kind === 'task' && item.task) {
-    return { name: 'task' as const, params: { namespace: item.namespace, name: item.project, task: item.task } }
-  }
-  if (item.milestoneIID) {
-    return {
-      name: 'stream-milestone' as const,
-      params: { namespace: item.namespace, name: item.project, iid: String(item.milestoneIID) },
-    }
-  }
-  return { name: 'stream-project' as const, params: { namespace: item.namespace, name: item.project } }
-}
 </script>
 
 <template>
@@ -72,9 +53,9 @@ function to(item: InboxResponse['items'][number]) {
           :issue="item.issueIID"
           :project="item.project"
           :milestone-title="item.title"
-          :to="to(item)"
+          :to="inboxRoute(item)"
         />
-        <RouterLink v-else :to="to(item)" class="row">
+        <RouterLink v-else :to="inboxRoute(item)" class="row">
           <span class="proj">{{ item.project }}</span>
           <span class="title">
             <b v-if="item.kind === 'proposal' && item.proposalID != null">P{{ item.proposalID }}</b>

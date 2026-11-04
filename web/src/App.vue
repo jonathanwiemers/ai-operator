@@ -3,7 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { get, hasFeature, logout, session, setFeatures, LoginRequiredError } from './api'
 import { deskTitle, windowLabel } from './format'
-import { inboxKey, newNotifications, notificationRoute, notificationText } from './inboxNotify'
+import { inboxKey, newNotifications, notificationText } from './inboxNotify'
+import { inboxRoute } from './inboxRoute'
 import { connectEvents, disconnectEvents, live } from './live'
 import { notifyActive, refreshPermission } from './notify'
 import { projectDot, projectNeedsYou, projectStateLine } from './stream'
@@ -56,7 +57,7 @@ function showNotification(item: InboxItem) {
     const n = new Notification(title, { body, tag: inboxKey(item), icon: '/logo.svg' })
     n.onclick = () => {
       window.focus()
-      void router.push(notificationRoute(item))
+      void router.push(inboxRoute(item))
       n.close()
     }
   } catch {
