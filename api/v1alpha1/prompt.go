@@ -170,6 +170,11 @@ type Prompt struct {
 	// superseded.
 	// +optional
 	PilotState string `json:"pilotState,omitempty"`
+	// OwnerIDs are the user IDs of the owners when it was posted: only
+	// they answer it in GitLab, whoever takes their names later. [0]: there
+	// were none.
+	// +optional
+	OwnerIDs []int64 `json:"ownerIDs,omitempty"`
 }
 
 var promptID = regexp.MustCompile(`^Q[1-9][0-9]*$`)

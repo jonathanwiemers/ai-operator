@@ -139,6 +139,11 @@ func Clean(s string) string {
 // on. Group 1 is the ID.
 var Proposal = regexp.MustCompile(`<!-- ai-operator:proposal id=(\d+) state=(\w*) -->`)
 
+// Prompt ends the comment that mirrors a prompt. Groups: 1 the ID (Q3), 2
+// the Unix time it was posted, which tells it from a prompt with the same
+// ID before it.
+var Prompt = regexp.MustCompile(`<!-- ai-operator:prompt=(Q\d+) posted=(\d+) -->`)
+
 // Retrospective marks the pilot's retrospective of a finished autopilot
 // milestone on its tracking issue; owners open its follow-ups in its thread.
 const Retrospective = "<!-- ai-operator:retrospective -->"

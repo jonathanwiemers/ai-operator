@@ -304,7 +304,7 @@ All labels can be renamed. Defaults:
 | `commandPrefix` | `/agent` |
 | `pilotPrefix` | `/pilot` |
 | `commandsFrom` | `members` (or `owners`) |
-| `inputs` | unset = `[gitlab, desk]` (*no effect yet*) |
+| `inputs` | unset = `[gitlab, desk]` |
 | `assignBot` | `true` |
 | `resolveConflicts` | `true` |
 | `stepCommits` | `true` |
@@ -318,9 +318,12 @@ else the default owners), checked by GitLab user ID. Anyone else's command
 starts and changes nothing; they get one reply a day where they wrote it.
 
 `inputs` lists where instructions may be given: `gitlab` (comment commands)
-and `desk`. At least one entry; unset means both. *No effect yet*: the field
-is accepted and ignored. Labels, milestone planning and human MR review threads
-stay on GitLab.
+and `desk`. At least one entry; unset means both. So far only one thing
+follows it: with `gitlab`, owners may also answer a prompt with its option's
+letter as a reply in the thread of its comment
+([commands](commands.md)); without it those threads are not read. `/agent`
+and `/pilot` comments still count either way. Labels, milestone planning and
+human MR review threads stay on GitLab.
 
 `assignBot` assigns the bot user to an issue when the operator picks it up and
 the issue has no assignee, so GitLab's milestone page lists it under

@@ -39,7 +39,7 @@ func (e *projectEnv) task(name string) *aiv1.AgentTask {
 
 func (e *projectEnv) addPrompt(st, holder *aiv1.AgentTask, p aiv1.Prompt) aiv1.Prompt {
 	e.t.Helper()
-	got, err := e.r.addPrompt(e.ctx, st, holder, p)
+	got, err := e.r.addPrompt(e.ctx, e.gl, st, holder, p)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestPromptIDsCountPerMilestone(t *testing.T) {
 	// A prompt Validate refuses takes no id.
 	bad := mainPrompt("main")
 	bad.Question = ""
-	if _, err := e.r.addPrompt(e.ctx, st, st, bad); err == nil || !strings.Contains(err.Error(), "no question") {
+	if _, err := e.r.addPrompt(e.ctx, e.gl, st, st, bad); err == nil || !strings.Contains(err.Error(), "no question") {
 		t.Fatalf("a prompt without a question is refused: %v", err)
 	}
 	if got := e.addPrompt(st, st, mainPrompt("x")); got.ID != "Q4" {

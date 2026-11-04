@@ -85,11 +85,16 @@ func (r *AgentProjectReconciler) pilotIssueNotes(ctx context.Context, gl gitlab.
 	if mr != nil {
 		notes = append(notes, pilotNotes(project, spec, mrNotes, since, 0, mr.IID)...)
 	}
-	if len(notes) == 0 {
+	// Option letters in the threads of prompts on the issue.
+	letters := spec.Workflow.Takes(aiv1.InputGitLab) && len(letterReplies(issueNotes, since, project.Status.BotUserID)) > 0
+	if len(notes) == 0 && !letters {
 		return
 	}
 	st, coord, err := r.milestoneTasks(ctx, project, is.Milestone)
-	if err == nil {
+	if err == nil && letters {
+		err = r.promptThreadAnswers(ctx, gl, project, spec, st, coord, is.IID, trackingIssue(st, coord), since, issueNotes)
+	}
+	if err == nil && len(notes) > 0 {
 		err = r.routePilot(ctx, gl, project, spec, st, coord, task.Spec.Owners, notes)
 	}
 	if err != nil {
@@ -126,6 +131,9 @@ func (r *AgentProjectReconciler) pilotTracking(ctx context.Context, gl gitlab.AP
 			return err
 		}
 		if err := r.threadAnswers(ctx, gl, project, spec, st, coord, tracking, since, notes); err != nil {
+			return err
+		}
+		if err := r.promptThreadAnswers(ctx, gl, project, spec, st, coord, tracking, tracking, since, notes); err != nil {
 			return err
 		}
 	}

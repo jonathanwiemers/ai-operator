@@ -25,11 +25,16 @@ import (
 // milestone's spec task, whose counter the id comes from; nil (an issue
 // without a milestone) takes the holder's own. A holder other than st is a
 // second write: a crash between the two leaves a gap in the ids, no
-// duplicate. holder (and st) are the server's copies afterwards.
-func (r *AgentProjectReconciler) addPrompt(ctx context.Context, st, holder *aiv1.AgentTask, p aiv1.Prompt) (aiv1.Prompt, error) {
+// duplicate. holder (and st) are the server's copies afterwards. The
+// owners of counter's task are pinned on p by user ID.
+func (r *AgentProjectReconciler) addPrompt(ctx context.Context, gl gitlab.API, st, holder *aiv1.AgentTask, p aiv1.Prompt) (aiv1.Prompt, error) {
 	counter := st
 	if counter == nil {
 		counter = holder
+	}
+	var err error
+	if p.OwnerIDs, err = pinnedOwners(ctx, gl, counter.Spec.Owners); err != nil {
+		return aiv1.Prompt{}, err
 	}
 	same := client.ObjectKeyFromObject(counter) == client.ObjectKeyFromObject(holder)
 	now := metav1.NewTime(r.now())

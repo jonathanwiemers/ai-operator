@@ -128,6 +128,7 @@ proposals they accept.
 |---------|--------|
 | `/pilot <question>` | The pilot answers where you asked, e.g. `/pilot why are we paused?`. It may add a proposal, posted on the tracking issue. |
 | `yes` / `no` as a reply in a proposal's thread | Accepts (runs all its actions, once) or drops the proposal. Only owners, and only those who were owners when it was posted (by user ID: a username that changed hands does not count); the whole comment must be the answer. |
+| `A` (an option's letter) as a reply in a prompt's thread | Answers the prompt with that option, like the Desk (`via: gitlab`), while `workflow.inputs` has `gitlab`. The letter must start the comment, alone or before a line break or punctuation (`A`, `b.`, `C: cheaper`); text after it is ignored, free text is answered in the Desk. Only owners, by the user ID pinned when the prompt was posted; anyone else, or a second answer, gets one reply in the thread saying why. Prompts on issues and the tracking issue, not on merge requests. |
 | `/pilot yes P3` / `/pilot no P3` | The same, anywhere in the milestone. A bare `/pilot yes` is refused with the list of open proposals; an expired one "no longer applies". |
 | `/pilot fix the flaky test #340` | Like any question: the pilot may propose `fixFlaky #340`, which hands the flaky issue to the agent in this milestone once it was flaky twice (see [Main health](usage.md#main-health)). |
 | `/pilot tell #12: <words>` | Proposes to pass your words on to #12's implementer verbatim, as your instruction via the pilot. |

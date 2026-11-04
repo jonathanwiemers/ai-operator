@@ -19,37 +19,36 @@ import (
 
 // answerPrompt handles an owner's answer (cmd) to a prompt of the
 // milestone on its spec task st, given by who via the Desk or GitLab, and
-// returns the reply. The caller checked that who is an owner. The answer
-// is recorded on st before the chosen option's actions go to
-// coord.Status.Pilot.Accepted, which runAccepted runs at the end of the
-// poll: a crash in between loses the run of the option, never runs it
-// twice, and a second answer is refused.
+// returns the reply and whether it answered (false: refused). The caller
+// checked that who is an owner. The answer is recorded on st before the
+// chosen option's actions go to coord.Status.Pilot.Accepted, which
+// runAccepted runs at the end of the poll: a crash in between loses the
+// run of the option, never runs it twice, and a second answer is refused.
 func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st, coord *aiv1.AgentTask, who string, cmd chatcmd.Command, via string) (string, error) {
+	st, coord *aiv1.AgentTask, who string, cmd chatcmd.Command, via string) (reply string, answered bool, err error) {
 	i := slices.IndexFunc(st.Status.Prompts, func(p aiv1.Prompt) bool { return p.ID == cmd.Prompt })
 	if i < 0 {
-		return fmt.Sprintf("There is no prompt %s.", cmd.Prompt), nil
+		return fmt.Sprintf("There is no prompt %s.", cmd.Prompt), false, nil
 	}
 	p := st.Status.Prompts[i]
 	if refused := answerRefused(p, cmd); refused != "" {
-		return refused, nil
+		return refused, false, nil
 	}
 	o := p.Option(cmd.Option)
 	var tasks map[int64]*aiv1.AgentTask
 	if len(o.Actions) > 0 || p.Source.Kind == aiv1.PromptProposal {
-		var err error
 		if tasks, err = r.issueTasks(ctx, project, st.Spec.Milestone.IID); err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
 	// A proposal no longer applies once its time or the milestone's state
 	// moved on; the lifetime sync closes it next poll.
 	if p.Source.Kind == aiv1.PromptProposal {
 		if p.PostedAt == nil || r.now().Sub(p.PostedAt.Time) >= proposalTTL {
-			return fmt.Sprintf("%s no longer applies (%s).", p.ID, aiv1.PromptExpired), nil
+			return fmt.Sprintf("%s no longer applies (%s).", p.ID, aiv1.PromptExpired), false, nil
 		}
 		if p.PilotState != "" && proposalState(st, tasks, p) != p.PilotState {
-			return fmt.Sprintf("%s no longer applies (%s).", p.ID, aiv1.PromptSuperseded), nil
+			return fmt.Sprintf("%s no longer applies (%s).", p.ID, aiv1.PromptSuperseded), false, nil
 		}
 	}
 	now := metav1.NewTime(r.now())
@@ -67,15 +66,15 @@ func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1
 		}
 		return list
 	}); err != nil {
-		return "", err
+		return "", false, err
 	}
 	if refused != "" {
-		return refused, nil
+		return refused, false, nil
 	}
 	log.FromContext(ctx).Info("prompt answered", "task", st.Name, "prompt", p.ID, "option", o.ID, "by", who, "via", via)
 	label := textutil.Truncate(o.Label, aiv1.MaxPromptOptionLabel)
 	if len(o.Actions) == 0 {
-		return fmt.Sprintf("%s answered: %s.", p.ID, label), nil
+		return fmt.Sprintf("%s answered: %s.", p.ID, label), true, nil
 	}
 	accepted := aiv1.PilotProposal{Prompt: p.ID, Summary: label, Actions: slices.Clone(o.Actions), AcceptedBy: who,
 		State: aiv1.PilotState(st, tasks, o.Actions), Trigger: p.Source.IssueIID}
@@ -90,9 +89,9 @@ func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1
 		}
 		return err
 	}); err != nil {
-		return "", err
+		return "", false, err
 	}
-	return fmt.Sprintf("%s answered: %s. The outcome follows on the prompt.", p.ID, label), nil
+	return fmt.Sprintf("%s answered: %s. The outcome follows on the prompt.", p.ID, label), true, nil
 }
 
 // promptOutcome records the outcome lines of the actions of the option

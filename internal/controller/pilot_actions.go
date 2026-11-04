@@ -173,13 +173,9 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 	}
 	// Only the owners of now answer them, whoever takes their names later.
 	if len(posted) > 0 {
-		owners, err := ownerIDs(ctx, gl, st.Spec.Owners)
+		pinned, err := pinnedOwners(ctx, gl, st.Spec.Owners)
 		if err != nil {
 			return 0, err
-		}
-		pinned := slices.Sorted(maps.Keys(owners))
-		if len(pinned) == 0 {
-			pinned = []int64{0} // no user has it: nobody answers, not even who takes a name later
 		}
 		for i := range posted {
 			posted[i].OwnerIDs = pinned
@@ -301,7 +297,7 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, pro
 		}
 		if cmd.PromptCmd() {
 			logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "prompt", cmd.Prompt)
-			reply, err := r.answerPrompt(ctx, project, spec, st, coord, who, cmd, "desk")
+			reply, _, err := r.answerPrompt(ctx, project, spec, st, coord, who, cmd, "desk")
 			if err != nil {
 				return err
 			}
@@ -728,6 +724,20 @@ func (r *AgentProjectReconciler) proposeTell(ctx context.Context, gl gitlab.API,
 		return "", err
 	}
 	return fmt.Sprintf("Proposal P%d on #%d: an owner's `yes` passes it on.", id, tracking), nil
+}
+
+// pinnedOwners are the sorted user IDs of owners, pinned on what only they
+// answer; [0] when there are none: no user has it, not even who takes a
+// name later.
+func pinnedOwners(ctx context.Context, gl gitlab.API, owners []string) ([]int64, error) {
+	ids, err := ownerIDs(ctx, gl, owners)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []int64{0}, nil
+	}
+	return slices.Sorted(maps.Keys(ids)), nil
 }
 
 // ownerIDs resolves the owners' usernames to user IDs: a username can

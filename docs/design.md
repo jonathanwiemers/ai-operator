@@ -1351,7 +1351,9 @@ after the pilots' accepted actions ran, compares each prompt's `state` with
 * **Posted** (open): the question, the context and option labels made
   inert (no mentions, quick actions or `<!--`), the options as a list with
   the recommended one marked, "Answer in the Desk" with the link (with the
-  operator's `--desk-url`), a mention of the owners unless the prompt is
+  operator's `--desk-url`), "Owners can also reply here with the option's
+  letter." for a milestone prompt with options on an issue while the project
+  takes `gitlab` input, a mention of the owners unless the prompt is
   `quiet`, and `<!-- ai-operator:prompt=Q<n> posted=<unix> -->`. It has
   no command syntax. The comment is recorded (`postedNoteID`,
   `postedNoteURL`) after it is posted; before posting, the bot's comments
@@ -1392,6 +1394,19 @@ An owner answers a milestone prompt from the Desk with the chat command
   milestone's state changed) is refused. Free text is refused on a prompt
   without `allowFreeText`; otherwise it waits for the pilot turn that turns
   it into an option, and is refused with "pick an option" until then.
+* **In GitLab** (`prompt_thread.go`), while `workflow.inputs` has
+  `gitlab`: a reply that starts with an option's letter (alone, or before
+  a line break or punctuation; the rest is ignored, free text stays in the
+  Desk) in the thread of a prompt's comment answers it through the same
+  path with `via: gitlab`. The thread must start with the bot's comment
+  whose marker names the prompt and its `posted` time. Only the owners
+  whose user IDs `addPrompt` pinned in `ownerIDs` answer; anyone else and
+  every refusal get one reply in the thread, an answer only the mirror's.
+  Comments are read where the poll already reads them (the tracking
+  issue's watermark, an issue's `lastPilotNoteID`); the threads only when
+  a new letter reply exists and a prompt of the milestone was posted on
+  that issue. Prompts on merge requests and on Implement tasks are not
+  answered this way.
 
 ## Engines, profiles and subscriptions
 

@@ -1696,6 +1696,15 @@ spec:
                         type: object
                       maxItems: 5
                       type: array
+                    ownerIDs:
+                      description: |-
+                        OwnerIDs are the user IDs of the owners when it was posted: only
+                        they answer it in GitLab, whoever takes their names later. [0]: there
+                        were none.
+                      items:
+                        format: int64
+                        type: integer
+                      type: array
                     pilotState:
                       description: |-
                         PilotState is PilotState of the milestone and the options' actions

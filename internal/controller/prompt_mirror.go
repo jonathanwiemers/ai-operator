@@ -80,11 +80,14 @@ func (r *AgentProjectReconciler) mirrorPrompt(ctx context.Context, gl gitlab.API
 			// Closed before anyone saw it: nothing to show.
 			return r.recordMirror(ctx, holder, p.ID, 0, "", p.State)
 		case id == 0:
-			mention := ""
-			if p.State == aiv1.PromptOpen && !p.Quiet {
-				mention = notify.Mention(holder.Spec.Owners)
+			extra := ""
+			if p.State == aiv1.PromptOpen && letterAnswers(spec, holder, p, n) {
+				extra = "\n\nOwners can also reply here with the option's letter."
 			}
-			note, err := n.create(ctx, promptBody(p, link, "", mention, noteBodyBytes))
+			if p.State == aiv1.PromptOpen && !p.Quiet {
+				extra += notify.Mention(holder.Spec.Owners)
+			}
+			note, err := n.create(ctx, promptBody(p, link, "", extra, noteBodyBytes))
 			if err != nil {
 				logger.Info("could not post the comment of a prompt", "issue", n.iid, "mr", n.mr, "error", err.Error())
 				return nil
@@ -188,9 +191,10 @@ func supersededBy(list []aiv1.Prompt, p aiv1.Prompt) string {
 
 // promptBody is the comment of p: its state once it is closed, the
 // question, the inert context, the options and the Desk link, then
-// mention (only in a new comment) and the marker. A body over limit loses
-// the end of the context and options, never the link or the marker.
-func promptBody(p aiv1.Prompt, link, newer, mention string, limit int) string {
+// extra (the letter hint and the mention, only in a new comment) and the
+// marker. A body over limit loses the end of the context and options,
+// never the link or the marker.
+func promptBody(p aiv1.Prompt, link, newer, extra string, limit int) string {
 	var b strings.Builder
 	if s := stateLine(p, newer); s != "" {
 		b.WriteString(s + "\n\n")
@@ -202,7 +206,7 @@ func promptBody(p aiv1.Prompt, link, newer, mention string, limit int) string {
 	if len(p.Options) > 0 {
 		b.WriteString("\n\n" + optionList(p))
 	}
-	tail := "\n\n" + deskLine(link, p.State.Closed()) + mention + "\n\n" + promptMarker(p)
+	tail := "\n\n" + deskLine(link, p.State.Closed()) + extra + "\n\n" + promptMarker(p)
 	return fitNote(b.String(), tail, link, limit)
 }
 
