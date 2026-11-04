@@ -75,6 +75,9 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   autopilot is paused (see below; the stream keeps the compact card), the
   pilot's autonomy and open proposals, and **Ask the pilot** (the Desk chat
   with the pilot, with the accept and reject buttons for its proposals).
+  These are proposals "P<n>" posted before prompts; the pilot's new
+  proposals are proposal prompts, which have no card yet and show as their
+  comment on the tracking issue.
 
 The Desk has no projects list or separate board and milestone pages. The former board page (`/projects/<namespace>/<name>/board`) and milestone page
 (`…/milestones/<iid>/detail`) redirect to the project stream's Board tab and
@@ -321,7 +324,8 @@ your own GitLab name.
 A milestone stream's context panel has the same panel as its **Chat**: the comments of the
 milestone's tracking issue and, with `steer`, a box whose messages go to the
 pilot as `/pilot …` (the UI adds the prefix). Only the milestone owners'
-instructions count, as in GitLab; answer a proposal with `yes P<n>`.
+instructions count, as in GitLab; answer a proposal "P<n>" from before
+prompts with `yes P<n>`.
 
 With the `transcript` permission, a task page also has a **Live** panel: the
 running pod's steps and the agent's session as they happen (see

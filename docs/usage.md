@@ -1015,9 +1015,11 @@ default branch and the last comments of the tracking issue.
   that issue's `agent::needs-input` are one event. When the reviewers cannot
   run, the assessment may point owners to `/agent merge #N <sha>`; the pilot
   never proposes it.
-- **Proposals and `yes`.** Unless it manages
-  (below), the pilot acts only on a proposal an owner accepts. An answer or an assessment can end with one; the operator posts
-  it on the tracking issue as "🧭 **Proposal P3:** …" with its actions:
+- **Proposals.** Unless it manages
+  (below), the pilot acts only on a proposal an owner accepts. An answer or an assessment can end with one; the operator puts
+  it to the owners as a **proposal prompt** (`Q3`), mirrored on the tracking
+  issue: the summary as the question, why and the actions as context, and
+  two options, **A** "Do it" (recommended) and **B** "Do nothing". Its actions:
   - `retry #N`: a new run of the issue;
   - `reReview #N`: its reviewers run again on the pushed head;
   - `instruct #N`: a run with a fixed instruction (`ci-fix`,
@@ -1045,19 +1047,25 @@ default branch and the last comments of the tracking issue.
 
   Merging, closing and pushing do not exist; neither do labels or other
   edits (besides the standing rules, below). An
-  owner accepts with `yes` as a **reply in the proposal's thread**, or with
-  `/pilot yes P3` anywhere in the milestone; `no` or `/pilot no P3` drops
-  it. A bare `/pilot yes` is refused with the list of open proposals. One
-  `yes` runs all of its actions, once; the operator checks each again
-  (an issue of the milestone with a task, a known tool) and the reply says
-  what ran. A proposal **expires** after 24 h or once the state it was made
-  on changes (the milestone description, the queue, the pause, the head of
-  an issue it names); a `yes` then gets "no longer applies". Only owners
-  count, and only those who were owners when the proposal was posted: it
-  pins their GitLab user IDs, so a username that changed hands, or someone
-  made an owner later, cannot answer it. Anyone else's `yes`, or a quoted
-  one (`> yes`), does nothing, and on a milestone without owners there are
-  no proposals.
+  owner answers in the Desk, or with the option's letter as a **reply in
+  the prompt's thread** while the project takes GitLab input. **A** runs
+  all of its actions, once; the operator checks each again (an issue of
+  the milestone with a task, a known tool) and the prompt's comment shows
+  what ran. **B** only records the answer. A proposal **expires** after
+  24 h, and no longer applies once the state it was made on changes (the
+  milestone description, the queue, the pause, the head of an issue it
+  names); a proposal made on a state that changed before it was put is
+  dropped. Only owners count, and only those who were owners when the
+  prompt was posted: it pins their GitLab user IDs, so a username that
+  changed hands, or someone made an owner later, cannot answer it. On a
+  milestone without owners there are no proposals.
+
+  Proposals posted before prompts ("🧭 **Proposal P3:** …") stay open
+  until they expire: an owner accepts one with `yes` as a reply in its
+  thread, `/pilot yes P3` anywhere in the milestone, or Accept in the Desk;
+  `no` or `/pilot no P3` drops it. Anyone else's `yes`, or a quoted one
+  (`> yes`), does nothing. A bare `/pilot yes` is refused with the open
+  proposals and the open prompts, which are answered in the Desk.
 - **Managed.** On autopilot milestones the pilot **manages** by default
   (`pilot.autonomy`): `retry`, `reReview`, `instruct`, `openIssue` and
   `fixFlaky` run without a `yes`, from an assessment or from an owner's
@@ -1069,7 +1077,7 @@ default branch and the last comments of the tracking issue.
   classification and evidence, or your message) and how many interventions
   are left. The audit pings nobody; neither does an assessment whose
   proposal the pilot acts on. Past the limit, and for everything else
-  (queue tools, spec edits, rules), it posts a proposal as above and
+  (queue tools, spec edits, rules), it puts a proposal prompt as above and
   mentions the owners. An `instruct` it runs on its own is always a fixed
   kind plus its hint as data; free text needs your `yes`. A run the pilot
   starts keeps the issue's CI fix rounds (`status.run.ciRound`), unlike
@@ -1082,8 +1090,8 @@ default branch and the last comments of the tracking issue.
   when) in the pilot's status, over restarts. `go` never raises a
   milestone above the project's value, and neither the milestone
   description nor a rule changes the autonomy.
-- **Your own words.** `/pilot tell #12: use the v2 API` proposes to pass
-  your words on to #12's implementer verbatim; after a `yes` it gets them
+- **Your own words.** `/pilot tell #12: use the v2 API` puts a proposal prompt to pass
+  your words on to #12's implementer verbatim (the reply names it, "Q3 on #N"); after "Do it" it gets them
   as "instruction from @you via pilot" with its next run, and the issue
   shows them.
 - **Standing rules.** "From now on …" is a standing rule of the milestone:

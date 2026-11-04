@@ -51,6 +51,9 @@ func TestPilotManagedRunsACountedToolOnceWithAnAudit(t *testing.T) {
 	if after.runs != before.runs+1 || len(notes) != 1 {
 		t.Fatalf("the retry runs once without a yes: %+v → %+v, comments %q", before, after, notes)
 	}
+	if got := promptStates(e.task(specTaskName)); got != "" {
+		t.Fatalf("what the pilot runs on its own is no prompt: %s", got)
+	}
 	audit := notes[0]
 	for _, want := range []string{"The pilot acted on its own", "**Why:** `env`: the run reports say there is no Rust toolchain",
 		"**retry** #1", "Interventions left for #1: 1 of 2.", "`/pilot stop`"} {
@@ -78,7 +81,7 @@ func TestPilotManagedProposesAndPingsPastTheLimit(t *testing.T) {
 	if after := e.toolEffect(); after.runs != before.runs+2 {
 		t.Fatalf("two interventions per issue and head: %+v → %+v", before, after)
 	}
-	p := e.proposalNote(1)
+	p := e.promptNote("Q1")
 	if !strings.Contains(p.Body, "@alice") || !strings.Contains(p.Body, "**retry** #1") {
 		t.Fatalf("past the limit it proposes and pings the owners:\n%s", p.Body)
 	}
@@ -86,7 +89,7 @@ func TestPilotManagedProposesAndPingsPastTheLimit(t *testing.T) {
 		t.Fatal("the last audit says none are left")
 	}
 	// The owner's yes still runs it.
-	e.gl.AddReply(tracking, p.ID, alice, "yes")
+	e.gl.AddReply(tracking, p.ID, alice, "A")
 	e.reconcile()
 	if after := e.toolEffect(); after.runs != before.runs+3 {
 		t.Fatalf("an owner's yes runs it: %+v → %+v", before, after)
@@ -110,7 +113,7 @@ func TestPilotManagedCountsEachActionOfAWakeUp(t *testing.T) {
 	if after := e.toolEffect(); after.runs != before.runs+2 || after.instruction.Kind != "" {
 		t.Fatalf("the controller stops at the issue's interventions: %+v → %+v", before, after)
 	}
-	if p := e.proposalNote(1); !strings.Contains(p.Body, "**instruct** #1") || strings.Contains(p.Body, "**retry**") {
+	if p := e.promptNote("Q1"); !strings.Contains(p.Body, "**instruct** #1") || strings.Contains(p.Body, "**retry**") {
 		t.Fatalf("the rest is proposed:\n%s", p.Body)
 	}
 }
@@ -130,7 +133,7 @@ func TestPilotManagedOpenIssueCountsAgainstTheTrigger(t *testing.T) {
 	if got := e.toolEffect(); got.opened != 1 || ps.Interventions["1"].Count != 2 || ps.Interventions["0"].Count != 1 {
 		t.Fatalf("openIssue counts against its trigger: opened %d, %+v", got.opened, ps.Interventions)
 	}
-	if p := e.proposalNote(1); !strings.Contains(p.Body, "**retry** #1") {
+	if p := e.promptNote("Q1"); !strings.Contains(p.Body, "**retry** #1") {
 		t.Fatalf("#1's second retry is proposed:\n%s", p.Body)
 	}
 }
@@ -167,12 +170,12 @@ func TestPilotManagedQueueToolStillNeedsAYes(t *testing.T) {
 	e.proposeFor(1, "event/a", aiv1.PilotAction{Tool: "skip", IssueIID: 2}, aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
 	e.reconcile()
-	p := e.proposalNote(1)
+	p := e.promptNote("Q1")
 	if after := e.queueEffect(); after != before || e.toolEffect().runs != runs.runs+1 ||
 		!strings.Contains(p.Body, "**skip**") || strings.Contains(p.Body, "**retry**") || !strings.Contains(p.Body, "@alice") {
 		t.Fatalf("the retry runs, the skip waits for a yes and pings: %+v → %+v\n%s", before, after, p.Body)
 	}
-	e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "yes")
+	e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "A")
 	e.reconcile()
 	e.reconcile()
 	if after := e.queueEffect(); after.two != aiv1.AutopilotItemSkipped {
@@ -186,14 +189,12 @@ func TestPilotManagedRunsNothingMadeOnAStateThatIsGone(t *testing.T) {
 	e.proposeFor(1, "event/a", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.patchStatus(e.taskOf(1), func(s *aiv1.AgentTaskStatus) { s.Run.PushedSHA = "sha2" })
 	e.reconcile()
-	p := e.proposalNote(1)
 	if after := e.toolEffect(); after != before {
 		t.Fatalf("a proposal made on an old head does not run on its own: %+v → %+v", before, after)
 	}
-	e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "yes")
-	e.reconcile()
-	if after := e.toolEffect(); after != before || !strings.Contains(e.lastReply(), "no longer applies") {
-		t.Fatalf("nor on a yes: %+v → %+v, %q", before, after, e.lastReply())
+	// Nor is it put to the owners: their answer could not run it either.
+	if got := promptStates(e.task(specTaskName)); got != "" || len(e.pilot().Status.Pilot.Proposed) != 0 {
+		t.Fatalf("no prompt: %q", got)
 	}
 }
 
@@ -247,7 +248,7 @@ func TestPilotStoppedAfterAQuietAssessmentPingsWithItsProposal(t *testing.T) {
 	e.gl.AddNote(e.autopilot().TrackingIssueIID, alice, "/pilot stop")
 	before := e.toolEffect()
 	e.reconcile()
-	if after := e.toolEffect(); after != before || !strings.Contains(e.proposalNote(1).Body, "cc @alice") {
+	if after := e.toolEffect(); after != before || !strings.Contains(e.promptNote("Q1").Body, "cc @alice") {
 		t.Fatalf("stopped, the proposal of a quiet assessment runs nothing and pings: %+v → %+v", before, after)
 	}
 }
@@ -258,7 +259,7 @@ func TestPilotProposeRunsNothingWithoutAYes(t *testing.T) {
 	e.proposeFor(1, "event/a", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
 	e.reconcile()
-	if after := e.toolEffect(); after != before || strings.Contains(e.proposalNote(1).Body, "@alice") {
+	if after := e.toolEffect(); after != before || strings.Contains(e.promptNote("Q1").Body, "@alice") {
 		t.Fatalf("propose runs nothing and the proposal pings nobody: %+v → %+v", before, after)
 	}
 }
@@ -283,7 +284,7 @@ func TestPilotStopAndGo(t *testing.T) {
 	e.r = &AgentProjectReconciler{Client: e.c, Scheme: e.r.Scheme, NewGitLab: e.r.NewGitLab}
 	e.proposeFor(1, "event/a", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
-	if after := e.toolEffect(); after != before || !strings.Contains(e.proposalNote(1).Body, "**retry** #1") {
+	if after := e.toolEffect(); after != before || !strings.Contains(e.promptNote("Q1").Body, "**retry** #1") {
 		t.Fatalf("stopped, it proposes: %+v → %+v", before, after)
 	}
 	e.gl.AddNote(tracking, alice, "/pilot go")
@@ -348,7 +349,7 @@ func TestPilotRunsKeepTheCIRoundsAHumansDoNot(t *testing.T) {
 	// An owner's own words via the pilot are the owner's run.
 	e.gl.AddNote(e.autopilot().TrackingIssueIID, alice, "/pilot tell #1: use the v2 API")
 	e.reconcile()
-	e.gl.AddNote(e.autopilot().TrackingIssueIID, alice, "/pilot yes P1")
+	e.choose("Q1", "A", alice)
 	e.reconcile()
 	if src := e.implTaskOf(1).Spec; src.Source.PilotRun == src.RunRequest || src.Source.PilotInstruction.Text == "" {
 		t.Fatalf("an owner's words are not the pilot's run: %d vs request %d", src.Source.PilotRun, src.RunRequest)

@@ -164,7 +164,9 @@ func TestPilotChatCommandsAcceptReject(t *testing.T) {
 	if !slices.Equal(pilot.Spec.OwnerSubjects, []string{"alice@example.com"}) {
 		t.Fatalf("OwnerSubjects = %v", pilot.Spec.OwnerSubjects)
 	}
-	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	// Proposals posted before prompts are accepted in the Desk until they
+	// expire.
+	e.legacyProposal(1, "retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
 	if len(e.pilot().Status.Pilot.Proposals) != 1 {
 		t.Fatalf("expected open proposal: %+v", e.pilot().Status.Pilot)
@@ -215,7 +217,7 @@ func TestPilotChatCommandsAcceptReject(t *testing.T) {
 		t.Fatalf("accept answer = %q", acceptAns)
 	}
 
-	e.propose("retry again", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.legacyProposal(2, "retry again", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
 	pilot = e.pilot()
 	rejectID := int64(203)
@@ -251,8 +253,8 @@ func TestPilotChatCommandsBatchKeepsAnswers(t *testing.T) {
 	e := newProposalEnv(t)
 	e.gl.Milestones[0].Description += "\n/agent owner-subjects alice@example.com"
 	e.reconcile()
-	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
-	e.propose("retry #1 again", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.legacyProposal(1, "retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.legacyProposal(2, "retry #1 again", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
 	if n := len(e.pilot().Status.Pilot.Proposals); n != 2 {
 		t.Fatalf("open proposals = %d, want 2", n)

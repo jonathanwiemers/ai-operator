@@ -377,5 +377,5 @@ func followsOn(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask) string {
 	if spec.Pilot.AutonomyOf(task) == aiv1.PilotManaged {
 		return fmt.Sprintf("_The pilot runs it within its interventions, with an audit comment on #%d, or proposes it there._", task.Spec.Issue.IID)
 	}
-	return fmt.Sprintf("_The proposal follows on #%d, where an owner accepts it._", task.Spec.Issue.IID)
+	return fmt.Sprintf("_The proposal follows on #%d as a prompt; an owner answers it in the Desk._", task.Spec.Issue.IID)
 }

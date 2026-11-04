@@ -169,7 +169,7 @@ func renderAssessment(a PilotAssessment, proposed, managed bool) string {
 	case proposed && managed:
 		end = "_The pilot runs its proposal within its interventions, with an audit comment, or proposes it and pings the owners._"
 	case proposed:
-		end = "_Its proposal follows; an owner accepts it with `yes`._"
+		end = "_Its proposal follows as a prompt; an owner answers it in the Desk._"
 	}
 	return fmt.Sprintf("**Classification:** `%s`\n\n**Evidence:** %s\n\n**What I would do:** %s\n\n%s", c, prose(a.Evidence), prose(a.WouldDo), end)
 }

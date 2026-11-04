@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -15,9 +16,9 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
-// propose plays the pilot's run: it records a proposal made on the
-// current state, as the runner does.
-func (e *projectEnv) propose(summary string, actions ...aiv1.PilotAction) {
+// pilotState is aiv1.PilotState of the milestone now, with the tasks of
+// its issues.
+func (e *projectEnv) pilotState(actions []aiv1.PilotAction) string {
 	e.t.Helper()
 	st := e.tasks()[specTaskName]
 	tasks := map[int64]*aiv1.AgentTask{}
@@ -26,7 +27,14 @@ func (e *projectEnv) propose(summary string, actions ...aiv1.PilotAction) {
 			tasks[t.Spec.Issue.IID] = &t
 		}
 	}
-	p := aiv1.PilotProposal{Summary: summary, Actions: actions, State: aiv1.PilotState(&st, tasks, actions)}
+	return aiv1.PilotState(&st, tasks, actions)
+}
+
+// propose plays the pilot's run: it records a proposal made on the
+// current state, as the runner does.
+func (e *projectEnv) propose(summary string, actions ...aiv1.PilotAction) {
+	e.t.Helper()
+	p := aiv1.PilotProposal{Summary: summary, Actions: actions, State: e.pilotState(actions)}
 	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) {
 		if s.Pilot == nil {
 			s.Pilot = &aiv1.PilotStatus{}
@@ -35,17 +43,44 @@ func (e *projectEnv) propose(summary string, actions ...aiv1.PilotAction) {
 	})
 }
 
-// proposalNote returns the bot's comment with proposal id on the tracking
-// issue.
-func (e *projectEnv) proposalNote(id int64) gitlab.Note {
+// legacyProposal records proposal P<id> on the current state as the
+// operator posted it before prompts, pinned to alice, with its comment on
+// the tracking issue, and returns the comment.
+func (e *projectEnv) legacyProposal(id int64, summary string, actions ...aiv1.PilotAction) gitlab.Note {
 	e.t.Helper()
-	for _, n := range e.gl.IssueNotes[e.autopilot().TrackingIssueIID] {
-		if n.Author.ID == e.gl.Bot.ID && strings.Contains(n.Body, fmt.Sprintf("<!-- ai-operator:proposal id=%d ", id)) {
+	posted := metav1.NewTime(e.r.now())
+	p := aiv1.PilotProposal{ID: id, Summary: summary, Actions: actions, State: e.pilotState(actions), PostedAt: &posted, OwnerIDs: []int64{alice.ID}}
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) {
+		if s.Pilot == nil {
+			s.Pilot = &aiv1.PilotStatus{}
+		}
+		s.Pilot.Proposals, s.Pilot.LastProposal = append(s.Pilot.Proposals, p), id
+	})
+	return e.gl.AddNote(e.tracking(), e.gl.Bot, fmt.Sprintf("🧭 **Proposal P%[1]d:** %[2]s\n\n<!-- ai-operator:proposal id=%[1]d state=%[3]s -->", id, summary, p.State))
+}
+
+// tracking is the milestone's tracking issue.
+func (e *projectEnv) tracking() int64 {
+	e.t.Helper()
+	return trackingIssue(e.task(specTaskName), e.task(pilotTaskName))
+}
+
+// promptNote returns the bot's comment of prompt id on the tracking issue.
+func (e *projectEnv) promptNote(id string) gitlab.Note {
+	e.t.Helper()
+	for _, n := range promptNotes(e, e.tracking()) {
+		if strings.Contains(n.Body, "<!-- ai-operator:prompt="+id+" ") {
 			return n
 		}
 	}
-	e.t.Fatalf("no proposal P%d on the tracking issue:\n%s", id, strings.Join(botComments(e, e.autopilot().TrackingIssueIID), "\n---\n"))
+	e.t.Fatalf("no prompt %s on the tracking issue:\n%s", id, strings.Join(botComments(e, e.tracking()), "\n---\n"))
 	return gitlab.Note{}
+}
+
+// choose replies with an option's letter as by in the thread of prompt id.
+func (e *projectEnv) choose(id, option string, by gitlab.User) {
+	e.t.Helper()
+	e.gl.AddReply(e.tracking(), e.promptNote(id).ID, by, option)
 }
 
 // lastReply is the bot's newest comment on the tracking issue.
@@ -102,7 +137,7 @@ func newManagedEnv(t *testing.T) *projectEnv {
 	return e
 }
 
-func TestPilotToolsRunOnceOnAnOwnersYes(t *testing.T) {
+func TestPilotToolsRunOnceOnAnOwnersAnswer(t *testing.T) {
 	for _, tc := range []struct {
 		action aiv1.PilotAction
 		ran    func(before, after toolEffect) bool
@@ -119,32 +154,65 @@ func TestPilotToolsRunOnceOnAnOwnersYes(t *testing.T) {
 	} {
 		t.Run(tc.action.Tool, func(t *testing.T) {
 			e := newProposalEnv(t)
+			tracking := e.tracking()
 			before := e.toolEffect()
 			e.propose("fix #1", tc.action)
 			e.reconcile()
 			e.reconcile()
-			p := e.proposalNote(1)
-			if !strings.HasPrefix(p.Body, "🧭 **Proposal P1:** fix #1") || !strings.Contains(p.Body, "**"+tc.action.Tool+"**") {
-				t.Fatalf("expected proposal P1 on the tracking issue:\n%s", p.Body)
+			p := e.prompt(specTaskName, "Q1")
+			if p.Source.Kind != aiv1.PromptProposal || p.Question != "fix #1" || len(p.Options) != 2 || !slices.Equal(p.OwnerIDs, []int64{alice.ID}) {
+				t.Fatalf("the proposal is prompt Q1, pinned to alice: %+v", p)
+			}
+			if a, b := p.Options[0], p.Options[1]; a.Label != "Do it" || !a.Recommended || a.Detail != "fix #1" || len(a.Actions) != 1 ||
+				a.Actions[0].Tool != tc.action.Tool || b.Label != "Do nothing" || len(b.Actions) != 0 {
+				t.Fatalf("A does it (recommended), B does nothing: %+v", p.Options)
+			}
+			if !strings.Contains(p.Context, "**"+tc.action.Tool+"**") {
+				t.Fatalf("the context lists the action: %q", p.Context)
+			}
+			if c := strings.Join(botComments(e, tracking), "\n"); strings.Count(c, "<!-- ai-operator:prompt=Q1 ") != 1 || strings.Contains(c, "Proposal P") {
+				t.Fatalf("the prompt is mirrored once, with no proposal comment:\n%s", c)
 			}
 			if after := e.toolEffect(); after != before || e.gl.DiscussionLists != 0 {
-				t.Fatalf("nothing runs without a yes, and no thread is read: %+v → %+v, %d lists", before, after, e.gl.DiscussionLists)
+				t.Fatalf("nothing runs without an answer, and no thread is read: %+v → %+v, %d lists", before, after, e.gl.DiscussionLists)
 			}
-			e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "Yes")
+			e.choose("Q1", "A", alice)
 			e.reconcile()
 			after := e.toolEffect()
-			if !tc.ran(before, after) || !strings.Contains(e.lastReply(), "Proposal P1 accepted by `@alice`") {
-				t.Fatalf("the tool runs on the owner's yes: %+v → %+v, reply %q", before, after, e.lastReply())
+			if !tc.ran(before, after) || !strings.Contains(e.lastReply(), "✅ **Q1** answered by `@alice` in GitLab: **A** Do it") ||
+				!strings.Contains(e.lastReply(), "**"+tc.action.Tool+"**") {
+				t.Fatalf("the tool runs on the owner's answer: %+v → %+v, reply %q", before, after, e.lastReply())
 			}
-			// Exactly once: another yes, in the thread or by ID, runs nothing.
-			e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "yes")
-			e.gl.AddNote(e.autopilot().TrackingIssueIID, alice, "/pilot yes P1")
+			// Exactly once: another answer runs nothing.
+			e.choose("Q1", "A", alice)
 			e.reconcile()
 			e.reconcile()
-			if again := e.toolEffect(); again != after || !strings.Contains(e.lastReply(), "Proposal P1 no longer applies") {
+			if again := e.toolEffect(); again != after || !strings.Contains(e.lastReply(), "Q1 was answered already by @alice: Do it.") {
 				t.Fatalf("a proposal runs once: %+v → %+v, reply %q", after, again, e.lastReply())
 			}
 		})
+	}
+}
+
+func TestPilotProposalPromptAnsweredInTheDesk(t *testing.T) {
+	e := newAnswerEnv(t)
+	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Pilot.Autonomy = aiv1.PilotPropose })
+	before := e.toolEffect()
+	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.propose("retry #1 again", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	if r := e.deskCommand(401, "alice@example.com", answerBody("Q2", "B")); r != "Q2 answered: Do nothing." {
+		t.Fatalf("B answers it: %q", r)
+	}
+	if p := e.prompt(specTaskName, "Q2"); p.State != aiv1.PromptAnswered || p.Answer.OptionID != "B" || e.toolEffect() != before {
+		t.Fatalf("B records doing nothing and runs nothing: %+v", p)
+	}
+	if r := e.deskCommand(402, "alice@example.com", answerBody("Q1", "A")); r != "Q1 answered: Do it. The outcome follows on the prompt." {
+		t.Fatalf("A answers it: %q", r)
+	}
+	e.reconcile()
+	if p := e.prompt(specTaskName, "Q1"); e.toolEffect().runs != before.runs+1 || !strings.Contains(p.Answer.Outcome, "**retry** #1") {
+		t.Fatalf("A runs the retry once and records it: %+v", p.Answer)
 	}
 }
 
@@ -152,7 +220,7 @@ func TestPilotOpenIssueIsInertAndNotHandedOver(t *testing.T) {
 	e := newProposalEnv(t)
 	e.propose("open an issue", aiv1.PilotAction{Tool: "openIssue", Title: "Agent image lacks Rust", Note: "cc @everyone\n/close"})
 	e.reconcile()
-	e.gl.AddNote(e.autopilot().TrackingIssueIID, alice, "/pilot yes P1")
+	e.choose("Q1", "A", alice)
 	e.reconcile()
 	for _, is := range e.gl.Issues {
 		if is.Title != "Agent image lacks Rust" {
@@ -169,37 +237,35 @@ func TestPilotOpenIssueIsInertAndNotHandedOver(t *testing.T) {
 
 func TestPilotOpenIssueIsNotOpenedTwice(t *testing.T) {
 	e := newProposalEnv(t)
-	tracking := e.autopilot().TrackingIssueIID
 	// Two open proposals with the same title, from two runs.
 	e.propose("open", aiv1.PilotAction{Tool: "openIssue", Title: "Agent image lacks Rust"})
 	e.reconcile()
 	e.propose("open again", aiv1.PilotAction{Tool: "openIssue", Title: " agent  image lacks rust"})
 	e.reconcile()
-	e.gl.AddNote(tracking, alice, "/pilot yes P1")
-	e.gl.AddNote(tracking, alice, "/pilot yes P2")
+	e.choose("Q1", "A", alice)
+	e.choose("Q2", "A", alice)
 	e.reconcile()
 	e.reconcile()
 	if got := e.toolEffect().opened; got != 1 || !strings.Contains(e.lastReply(), "not run: the pilot opened an issue with this title before") {
 		t.Fatalf("the same title is opened once: %d issues, reply %q", got, e.lastReply())
 	}
-	// A later proposal with that title is not posted, nor two with one
-	// title from one poll.
+	// A later proposal with that title is not put, nor two with one title
+	// from one poll.
 	e.propose("open once more", aiv1.PilotAction{Tool: "openIssue", Title: "Agent image lacks Rust"})
 	e.propose("open another", aiv1.PilotAction{Tool: "openIssue", Title: "Pin the runner"})
 	e.propose("open another again", aiv1.PilotAction{Tool: "openIssue", Title: "Pin the runner"})
 	e.reconcile()
-	if c := strings.Join(botComments(e, tracking), "\n"); !strings.Contains(c, "Proposal P3:** open another\n") || strings.Contains(c, "Proposal P4") {
-		t.Fatalf("a proposal with nothing to run is not posted:\n%s", c)
+	if got := promptStates(e.task(specTaskName)); got != "Q1=answered Q2=answered Q3=open" || e.prompt(specTaskName, "Q3").Question != "open another" {
+		t.Fatalf("a proposal with nothing to run is not put: %s", got)
 	}
 }
 
 func TestPilotOpenIssueThatFailedCanBeOpenedAgain(t *testing.T) {
 	e := newProposalEnv(t)
-	tracking := e.autopilot().TrackingIssueIID
 	e.propose("open", aiv1.PilotAction{Tool: "openIssue", Title: "Agent image lacks Rust"})
 	e.reconcile()
 	e.gl.CreateIssueError = errors.New("gitlab is down")
-	e.gl.AddNote(tracking, alice, "/pilot yes P1")
+	e.choose("Q1", "A", alice)
 	e.reconcile()
 	e.gl.CreateIssueError = nil
 	if !strings.Contains(e.lastReply(), "not run: gitlab is down") {
@@ -207,16 +273,43 @@ func TestPilotOpenIssueThatFailedCanBeOpenedAgain(t *testing.T) {
 	}
 	e.propose("open again", aiv1.PilotAction{Tool: "openIssue", Title: "Agent image lacks Rust"})
 	e.reconcile()
-	e.gl.AddNote(tracking, alice, "/pilot yes P2")
+	e.choose("Q2", "A", alice)
 	e.reconcile()
 	if e.toolEffect().opened != 1 {
 		t.Fatalf("a title that failed is not taken: %q", e.lastReply())
 	}
 }
 
-func TestPilotYesOnAnIssueRunsAtTheEndOfThePoll(t *testing.T) {
+func TestPilotLegacyProposalIsAnsweredUntilItExpires(t *testing.T) {
 	e := newProposalEnv(t)
-	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	tracking := e.tracking()
+	before := e.toolEffect()
+	// Posted before the upgrade; new proposals do not count P<n> on.
+	p := e.legacyProposal(3, "retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.propose("retry #1 later", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.reconcile()
+	if ps := e.pilot().Status.Pilot; ps.LastProposal != 3 || len(ps.Proposals) != 1 || e.prompt(specTaskName, "Q1").Question != "retry #1 later" {
+		t.Fatalf("P3 stays open next to the new prompt Q1: %+v", ps)
+	}
+	e.gl.AddReply(tracking, p.ID, alice, "yes")
+	e.reconcile()
+	if after := e.toolEffect(); after.runs != before.runs+1 || !strings.Contains(e.lastReply(), "Proposal P3 accepted by `@alice`") {
+		t.Fatalf("an owner's yes in its thread runs P3: %+v → %+v, reply %q", before, after, e.lastReply())
+	}
+
+	e.legacyProposal(4, "retry #1 again", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	runs := e.toolEffect().runs
+	e.gl.Clock = e.gl.Clock.Add(proposalTTL + time.Minute)
+	e.gl.AddNote(tracking, alice, "/pilot yes P4")
+	e.reconcile()
+	if e.toolEffect().runs != runs || !strings.Contains(e.lastReply(), "Proposal P4 no longer applies") {
+		t.Fatalf("after 24 h P4 runs nothing: reply %q", e.lastReply())
+	}
+}
+
+func TestPilotLegacyYesOnAnIssueRunsAtTheEndOfThePoll(t *testing.T) {
+	e := newProposalEnv(t)
+	e.legacyProposal(1, "retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
 	before := e.toolEffect()
 	// Accepted on #1 itself, whose task the poll updates too.
@@ -262,21 +355,24 @@ func TestPilotRefusesActionsOutsideTheMilestone(t *testing.T) {
 	e.propose("merge and more", aiv1.PilotAction{Tool: "merge", IssueIID: 1}, aiv1.PilotAction{Tool: "retry", IssueIID: 9},
 		aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
-	p := e.proposalNote(1)
-	if !strings.Contains(p.Body, "not run: `merge` is not a tool") || !strings.Contains(p.Body, "not run: #9 is not an issue of this milestone") {
-		t.Fatalf("the proposal says what the operator refuses:\n%s", p.Body)
+	p := e.prompt(specTaskName, "Q1")
+	if body := e.promptNote("Q1").Body; !strings.Contains(body, "not run: `merge` is not a tool") || !strings.Contains(body, "not run: #9 is not an issue of this milestone") {
+		t.Fatalf("the prompt says what the operator refuses:\n%s", body)
 	}
-	e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "yes")
+	if a := p.Options[0].Actions; len(a) != 1 || a[0].Tool != "retry" || a[0].IssueIID != 1 {
+		t.Fatalf("A has only the action the operator runs: %+v", a)
+	}
+	e.choose("Q1", "A", alice)
 	e.reconcile()
 	if after := e.toolEffect(); after.runs != before.runs+1 || e.implTaskOf(9).Spec.RunRequest != nine || len(e.gl.Merged) != 0 {
 		t.Fatalf("only the retry of #1 runs: #1 %d→%d, #9 %d→%d, merged %v", before.runs, after.runs, nine, e.implTaskOf(9).Spec.RunRequest, e.gl.Merged)
 	}
 
-	// A proposal of nothing but refused actions is not posted.
+	// A proposal of nothing but refused actions is not put.
 	e.propose("merge", aiv1.PilotAction{Tool: "merge", IssueIID: 1})
 	e.reconcile()
-	if c := strings.Join(botComments(e, e.autopilot().TrackingIssueIID), "\n"); strings.Contains(c, "Proposal P2") {
-		t.Fatalf("nothing to run, nothing posted:\n%s", c)
+	if got := promptStates(e.task(specTaskName)); got != "Q1=answered" {
+		t.Fatalf("nothing to run, nothing put: %s", got)
 	}
 }
 
@@ -297,24 +393,57 @@ func TestPilotExpiredProposalIsRefused(t *testing.T) {
 			e := newProposalEnv(t)
 			e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 			e.reconcile()
-			p := e.proposalNote(1)
+			p := e.promptNote("Q1")
 			before := e.toolEffect()
 			tc.change(e)
-			e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "yes")
+			e.gl.AddReply(e.tracking(), p.ID, alice, "A")
 			e.reconcile()
-			if after := e.toolEffect(); after != before || !strings.Contains(e.lastReply(), "Proposal P1 no longer applies") {
+			if after := e.toolEffect(); after != before || !strings.Contains(e.lastReply(), "Q1 no longer applies") {
 				t.Fatalf("an expired proposal runs nothing: %+v → %+v, reply %q", before, after, e.lastReply())
 			}
 		})
 	}
 }
 
+func TestPilotProposalMadeOnAStateThatIsGoneIsNotPut(t *testing.T) {
+	e := newProposalEnv(t)
+	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.patchStatus(e.taskOf(1), func(s *aiv1.AgentTaskStatus) { s.Run.PushedSHA = "sha2" })
+	e.reconcile()
+	if ps := e.pilot().Status.Pilot; len(ps.Proposed) != 0 || len(e.task(specTaskName).Status.Prompts) != 0 {
+		t.Fatalf("an answer could not run it: it is dropped: %+v", ps)
+	}
+}
+
+func TestPilotProposalIsPutOnceForItsSource(t *testing.T) {
+	e := newProposalEnv(t)
+	p := aiv1.PilotProposal{Summary: "retry #1", Actions: []aiv1.PilotAction{{Tool: "retry", IssueIID: 1}}, Source: "event/1", Trigger: 1, Quiet: true,
+		Why: "`infra`: the runner died"}
+	p.State = e.pilotState(p.Actions)
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot = &aiv1.PilotStatus{Proposed: []aiv1.PilotProposal{p}} })
+	e.reconcile()
+	q := e.prompt(specTaskName, "Q1")
+	if q.Source != (aiv1.PromptSource{Kind: aiv1.PromptProposal, IssueIID: 1, Key: "event/1"}) || q.Quiet ||
+		!strings.HasPrefix(q.Context, "**Why:** `infra`: the runner died\n\n- **retry** #1") {
+		t.Fatalf("the prompt has the proposal's source, reasons and the owners' mention: %+v", q)
+	}
+	if body := e.promptNote("Q1").Body; !strings.Contains(body, "cc @alice") {
+		t.Fatalf("a quiet assessment's proposal pings the owners, on the tracking issue:\n%s", body)
+	}
+	// Its run's status was not written (a conflict): it is not put twice.
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot.Proposed = []aiv1.PilotProposal{p} })
+	e.reconcile()
+	if got := promptStates(e.task(specTaskName)); got != "Q1=open" || len(e.pilot().Status.Pilot.Proposed) != 0 {
+		t.Fatalf("one prompt per source: %s", got)
+	}
+}
+
 func TestPilotYesCountsOnlyFromAnOwnerInTheThread(t *testing.T) {
 	e := newProposalEnv(t)
-	tracking := e.autopilot().TrackingIssueIID
-	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	tracking := e.tracking()
+	p := e.legacyProposal(1, "retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	e.propose("retry #1 again", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
-	p := e.proposalNote(1)
 	before := e.toolEffect()
 	e.gl.AddReply(tracking, p.ID, mallory, "yes")                               // no owner
 	e.gl.AddReply(tracking, p.ID, gitlab.User{ID: 9, Username: "alice"}, "yes") // an owner's name, another user
@@ -330,11 +459,13 @@ func TestPilotYesCountsOnlyFromAnOwnerInTheThread(t *testing.T) {
 		t.Fatalf("nothing is accepted:\n%s", c)
 	}
 
-	// A bare "/pilot yes" names no proposal: refused, with the open ones.
+	// A bare "/pilot yes" names no proposal: refused, with the open ones
+	// and the open prompts.
 	e.gl.AddNote(tracking, alice, "/pilot yes")
 	e.reconcile()
-	if after := e.toolEffect(); after != before || !strings.Contains(e.lastReply(), "Which proposal?") || !strings.Contains(e.lastReply(), "P1: retry #1") {
-		t.Fatalf("a bare yes is refused with the open proposals: %+v, reply %q", after, e.lastReply())
+	if after, r := e.toolEffect(), e.lastReply(); after != before || !strings.Contains(r, "Which proposal?") || !strings.Contains(r, "P1: retry #1") ||
+		!strings.Contains(r, "Open prompts, answered in the Desk:\n- Q1: retry #1 again — Answer in the Desk.") {
+		t.Fatalf("a bare yes is refused with the open proposals and prompts: %+v, reply %q", after, r)
 	}
 
 	// "no" drops it.
@@ -345,20 +476,28 @@ func TestPilotYesCountsOnlyFromAnOwnerInTheThread(t *testing.T) {
 	if after := e.toolEffect(); after != before || !strings.Contains(e.lastReply(), "Proposal P1 no longer applies") {
 		t.Fatalf("a dropped proposal runs nothing: %+v, reply %q", after, e.lastReply())
 	}
+	e.gl.AddNote(tracking, alice, "/pilot yes")
+	e.reconcile()
+	if r := e.lastReply(); !strings.HasPrefix(r, "🧭 There is no open proposal to answer with yes or no.\n\nOpen prompts") {
+		t.Fatalf("only the prompts are left: %q", r)
+	}
 }
 
 func TestPilotTellPassesTheOwnersWordsOn(t *testing.T) {
 	e := newProposalEnv(t)
-	tracking := e.autopilot().TrackingIssueIID
+	tracking := e.tracking()
 	e.gl.AddNote(tracking, alice, "/pilot tell #1: use the v2 API")
 	e.reconcile()
-	if !strings.Contains(e.lastReply(), "Proposal P1 on #") {
-		t.Fatalf("the instruction is proposed: %q", e.lastReply())
+	if r := strings.Join(botComments(e, tracking), "\n"); !strings.Contains(r, fmt.Sprintf("🧭 Q1 on #%d: an owner answers it in the Desk.", tracking)) {
+		t.Fatalf("the instruction is put as a prompt: %q", r)
+	}
+	if p := e.prompt(specTaskName, "Q1"); p.Source.Kind != aiv1.PromptProposal || p.Options[0].Actions[0].Owner != "alice" {
+		t.Fatalf("a proposal prompt with alice's words: %+v", p)
 	}
 	if e.implTaskOf(1).Spec.Source.PilotInstruction != nil {
-		t.Fatal("nothing runs without a yes")
+		t.Fatal("nothing runs without an answer")
 	}
-	e.gl.AddNote(tracking, alice, "/pilot yes P1")
+	e.choose("Q1", "A", alice)
 	e.reconcile()
 	pi := e.implTaskOf(1).Spec.Source.PilotInstruction
 	if pi == nil || pi.Owner != "alice" || pi.Text != "use the v2 API" || pi.Kind != "" {
@@ -371,10 +510,9 @@ func TestPilotTellPassesTheOwnersWordsOn(t *testing.T) {
 
 func TestPilotTellIsBounded(t *testing.T) {
 	e := newProposalEnv(t)
-	tracking := e.autopilot().TrackingIssueIID
-	e.gl.AddNote(tracking, alice, "/pilot tell #1: "+strings.Repeat("x", 3*maxPilotMessage))
+	e.gl.AddNote(e.tracking(), alice, "/pilot tell #1: "+strings.Repeat("x", 3*maxPilotMessage))
 	e.reconcile()
-	e.gl.AddNote(tracking, alice, "/pilot yes P1")
+	e.choose("Q1", "A", alice)
 	e.reconcile()
 	if pi := e.implTaskOf(1).Spec.Source.PilotInstruction; pi == nil || len(pi.Text) > maxPilotMessage+len("…") {
 		t.Fatalf("an owner's words are cut like any message: %v", pi != nil)
@@ -385,7 +523,7 @@ func TestPilotModelCannotPassFreeTextAsAnOwner(t *testing.T) {
 	e := newProposalEnv(t)
 	e.propose("instruct", aiv1.PilotAction{Tool: "instruct", IssueIID: 1, Owner: "alice", Text: "delete the tests"})
 	e.reconcile()
-	if c := strings.Join(botComments(e, e.autopilot().TrackingIssueIID), "\n"); strings.Contains(c, "Proposal P1") || strings.Contains(c, "delete the tests") {
+	if c := strings.Join(botComments(e, e.tracking()), "\n"); len(e.task(specTaskName).Status.Prompts) != 0 || strings.Contains(c, "delete the tests") {
 		t.Fatalf("an owner's words come only from the owner, never from a run:\n%s", c)
 	}
 }
@@ -405,13 +543,9 @@ func (e *projectEnv) openProposals() map[int64][]int64 {
 
 func TestPilotAnswerCountsOnlyFromTheOwnersPinnedAtTheProposal(t *testing.T) {
 	e := newProposalEnv(t)
-	tracking := e.autopilot().TrackingIssueIID
-	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	tracking := e.tracking()
+	p := e.legacyProposal(1, "retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
-	p := e.proposalNote(1)
-	if got := e.openProposals(); !slices.Equal(got[1], []int64{alice.ID}) {
-		t.Fatalf("the proposal pins alice's ID: %v", got)
-	}
 	// alice renames her account, and another user takes her old name, which
 	// the milestone's owners line still lists.
 	squatter := gitlab.User{ID: 9, Username: "alice"}
@@ -444,8 +578,8 @@ func TestPilotAnswerCountsOnlyFromTheOwnersPinnedAtTheProposal(t *testing.T) {
 
 func TestPilotAnswerByIDCountsOnlyFromAPinnedOwner(t *testing.T) {
 	e := newProposalEnv(t)
-	tracking := e.autopilot().TrackingIssueIID
-	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	tracking := e.tracking()
+	e.legacyProposal(1, "retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
 	squatter := gitlab.User{ID: 9, Username: "alice"}
 	e.gl.Users = []gitlab.User{squatter, mallory}
@@ -465,18 +599,18 @@ func TestPilotAnswerByIDCountsOnlyFromAPinnedOwner(t *testing.T) {
 
 func TestPilotProposalWithoutPinnedOwnersKeepsTheCheckByName(t *testing.T) {
 	e := newProposalEnv(t)
-	tracking := e.autopilot().TrackingIssueIID
-	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
-	e.reconcile()
+	tracking := e.tracking()
+	p := e.legacyProposal(1, "retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	// Posted before owner IDs were pinned.
 	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot.Proposals[0].OwnerIDs = nil })
+	e.reconcile()
 	before := e.toolEffect()
-	e.gl.AddReply(tracking, e.proposalNote(1).ID, mallory, "yes")
+	e.gl.AddReply(tracking, p.ID, mallory, "yes")
 	e.reconcile()
 	if _, open := e.openProposals()[1]; !open || e.toolEffect() != before {
 		t.Fatal("a non-owner's yes does nothing")
 	}
-	e.gl.AddReply(tracking, e.proposalNote(1).ID, alice, "yes")
+	e.gl.AddReply(tracking, p.ID, alice, "yes")
 	e.reconcile()
 	if after := e.toolEffect(); after.runs != before.runs+1 || !strings.Contains(e.lastReply(), "Proposal P1 accepted by `@alice`") {
 		t.Fatalf("an owner's yes runs it: %+v → %+v, reply %q", before, after, e.lastReply())
@@ -485,38 +619,37 @@ func TestPilotProposalWithoutPinnedOwnersKeepsTheCheckByName(t *testing.T) {
 
 func TestPilotProposalWaitsWhileTheOwnersCannotBeResolved(t *testing.T) {
 	e := newProposalEnv(t)
-	tracking := e.autopilot().TrackingIssueIID
+	tracking := e.tracking()
 	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.gl.FindUserError = errors.New("GitLab is down")
 	comments := len(botComments(e, tracking))
 	_, _ = e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "shop"}})
 	ps := e.tasks()[pilotTaskName].Status.Pilot
-	if len(ps.Proposed) != 1 || len(ps.Proposals) != 0 || ps.LastProposal != 0 || len(botComments(e, tracking)) != comments {
+	if len(ps.Proposed) != 1 || len(e.task(specTaskName).Status.Prompts) != 0 || len(botComments(e, tracking)) != comments {
 		t.Fatalf("nothing is recorded or posted: %+v", ps)
 	}
 	e.gl.FindUserError = nil
 	e.reconcile()
-	if p := e.proposalNote(1); !strings.Contains(p.Body, "Proposal P1:") || !slices.Equal(e.openProposals()[1], []int64{alice.ID}) {
-		t.Fatalf("the next poll posts it with alice's ID: %v", e.openProposals())
+	if p := e.prompt(specTaskName, "Q1"); !slices.Equal(p.OwnerIDs, []int64{alice.ID}) || e.promptNote("Q1").ID == 0 {
+		t.Fatalf("the next poll puts it with alice's ID: %+v", p)
 	}
 }
 
 func TestPilotProposalWithoutResolvableOwnersIsAnsweredByNobody(t *testing.T) {
 	e := newProposalEnv(t)
-	tracking := e.autopilot().TrackingIssueIID
 	e.gl.Users = []gitlab.User{mallory} // alice deleted her account
 	e.propose("retry #1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
-	if got := e.openProposals(); !slices.Equal(got[1], []int64{0}) {
-		t.Fatalf("an ID nobody has is pinned: %v", got)
+	if p := e.prompt(specTaskName, "Q1"); !slices.Equal(p.OwnerIDs, []int64{0}) {
+		t.Fatalf("an ID nobody has is pinned: %v", p.OwnerIDs)
 	}
 	// Someone registers the name.
 	squatter := gitlab.User{ID: 9, Username: "alice"}
 	e.gl.Users = []gitlab.User{squatter, mallory}
 	before := e.toolEffect()
-	e.gl.AddReply(tracking, e.proposalNote(1).ID, squatter, "yes")
+	e.choose("Q1", "A", squatter)
 	e.reconcile()
-	if _, open := e.openProposals()[1]; !open || e.toolEffect() != before {
-		t.Fatal("a yes from whoever takes an owner's name later does nothing")
+	if p := e.prompt(specTaskName, "Q1"); p.State != aiv1.PromptOpen || e.toolEffect() != before {
+		t.Fatal("an answer from whoever takes an owner's name later does nothing")
 	}
 }

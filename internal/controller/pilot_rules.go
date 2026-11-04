@@ -145,7 +145,8 @@ func listRules(spec aiv1.AgentProjectSpec, st *aiv1.AgentTask) string {
 		fmt.Sprintf("\n`%s forget R<n>` proposes removing one.", spec.Workflow.PilotPrefix)
 }
 
-// proposeForget turns an owner's "/pilot forget R<n>" into a proposal.
+// proposeForget turns an owner's "/pilot forget R<n>" into a proposal
+// prompt.
 func (r *AgentProjectReconciler) proposeForget(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st, coord *aiv1.AgentTask, id string) (string, error) {
 	a := withRuleText(aiv1.PilotAction{Tool: "forgetRule", Rule: id}, st)
@@ -159,7 +160,7 @@ func (r *AgentProjectReconciler) proposeForget(ctx context.Context, gl gitlab.AP
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Proposal P%d on #%d: an owner's `yes` removes %s.", pid, tracking, a.Rule), nil
+	return proposedReply(pid, tracking), nil
 }
 
 // pilotIssueBody is the description of the tracking issue "/pilot

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -64,16 +65,16 @@ func TestSetRuleAndForgetRuleNeedAnOwnersYes(t *testing.T) {
 	e.propose("store it as a switch", aiv1.PilotAction{Tool: "setRule", Kind: "switch", Note: "ci.maxFixRounds=3"})
 	e.reconcile()
 	e.reconcile()
-	p := e.proposalNote(1)
+	p := e.promptNote("Q1")
 	if !strings.Contains(p.Body, "**setRule**, switch: ci.maxFixRounds=3") || e.milestoneDescription() != original {
 		t.Fatalf("a rule waits for a yes:\n%s\n%q", p.Body, e.milestoneDescription())
 	}
-	e.gl.AddReply(tracking, p.ID, mallory, "yes")
+	e.gl.AddReply(tracking, p.ID, mallory, "A")
 	e.reconcile()
 	if e.milestoneDescription() != original {
 		t.Fatalf("only an owner's yes counts: %q", e.milestoneDescription())
 	}
-	e.gl.AddReply(tracking, p.ID, alice, "yes")
+	e.gl.AddReply(tracking, p.ID, alice, "A")
 	e.reconcile()
 	if want := original + "\n\n/agent rule R1: switch ci.maxFixRounds=3"; e.milestoneDescription() != want {
 		t.Fatalf("the operator adds the line:\n%q\nwant\n%q", e.milestoneDescription(), want)
@@ -90,14 +91,14 @@ func TestSetRuleAndForgetRuleNeedAnOwnersYes(t *testing.T) {
 	}
 	e.gl.AddNote(tracking, alice, "/pilot forget R1")
 	e.reconcile()
-	if r := e.lastReply(); !strings.Contains(r, "Proposal P2 on #") {
+	if r := strings.Join(botComments(e, tracking), "\n"); !strings.Contains(r, fmt.Sprintf("🧭 Q2 on #%d: an owner answers it in the Desk.", tracking)) {
 		t.Fatalf("/pilot forget proposes: %q", r)
 	}
-	p = e.proposalNote(2)
+	p = e.promptNote("Q2")
 	if !strings.Contains(p.Body, "**forgetRule** R1: ci.maxFixRounds=3") || !strings.Contains(e.milestoneDescription(), "R1") {
 		t.Fatalf("forgetting waits for a yes too:\n%s", p.Body)
 	}
-	e.gl.AddReply(tracking, p.ID, alice, "yes")
+	e.gl.AddReply(tracking, p.ID, alice, "A")
 	e.reconcile()
 	if e.milestoneDescription() != original {
 		t.Fatalf("forgetting R1 restores the description:\n%q", e.milestoneDescription())
@@ -118,11 +119,11 @@ func TestRuleProposalsAreChecked(t *testing.T) {
 	e.propose("widen", aiv1.PilotAction{Tool: "setRule", Kind: "switch", Note: "pilot.autonomy=managed"})
 	e.propose("change", aiv1.PilotAction{Tool: "setRule", Kind: "switch", Note: "ci.maxFixRounds=1"})
 	e.reconcile()
-	p := e.proposalNote(1)
+	p := e.promptNote("Q1")
 	if !strings.Contains(p.Body, "ci.maxFixRounds=1") {
 		t.Fatalf("P1 is the valid proposal: %s", p.Body)
 	}
-	e.gl.AddReply(tracking, p.ID, alice, "yes")
+	e.gl.AddReply(tracking, p.ID, alice, "A")
 	e.reconcile()
 	if r := e.lastReply(); !strings.Contains(r, "not run: R1 is about the same; forget it first") || strings.Contains(e.milestoneDescription(), "R2") {
 		t.Fatalf("a rule that conflicts is not applied: %q\n%q", r, e.milestoneDescription())
@@ -146,12 +147,12 @@ func TestForgetRuleRefusesARuleChangedByHand(t *testing.T) {
 	e.reconcile()
 	e.gl.AddNote(tracking, alice, "/pilot forget R1")
 	e.reconcile()
-	p := e.proposalNote(1)
+	p := e.promptNote("Q1")
 	e.gl.Milestones[0].Description = strings.Replace(e.milestoneDescription(), "short", "long", 1)
 	e.reconcile()
-	e.gl.AddReply(tracking, p.ID, alice, "yes")
+	e.gl.AddReply(tracking, p.ID, alice, "A")
 	e.reconcile()
-	if !strings.Contains(e.milestoneDescription(), "R1: prompt keep functions long") || !strings.Contains(e.lastReply(), "Proposal P1 no longer applies") {
+	if !strings.Contains(e.milestoneDescription(), "R1: prompt keep functions long") || !strings.Contains(e.lastReply(), "Q1 no longer applies") {
 		t.Fatalf("a proposal made on other rules expires: %q (%q)", e.milestoneDescription(), e.lastReply())
 	}
 	// A change the operator has not seen yet when the yes comes: the
@@ -175,7 +176,7 @@ func TestHandWrittenRuleCannotWidenThePilot(t *testing.T) {
 	e.propose("retry #1 and merge it", aiv1.PilotAction{Tool: "retry", IssueIID: 1}, aiv1.PilotAction{Tool: "merge", IssueIID: 1})
 	e.reconcile()
 	e.reconcile()
-	if p := e.proposalNote(1); !strings.Contains(p.Body, "`merge` is not a tool of the pilot") || e.toolEffect() != before {
+	if p := e.promptNote("Q1"); !strings.Contains(p.Body, "`merge` is not a tool of the pilot") || e.toolEffect() != before {
 		t.Fatalf("the rule changes nothing: %+v → %+v\n%s", before, e.toolEffect(), p.Body)
 	}
 }
@@ -220,7 +221,7 @@ func TestRulesCannotOverrideAutonomyOrStop(t *testing.T) {
 	e.proposeFor(1, "event/stuck/1/sha1@1", aiv1.PilotAction{Tool: "retry", IssueIID: 1})
 	e.reconcile()
 	e.reconcile()
-	if e.toolEffect() != before || !strings.Contains(e.proposalNote(1).Body, "**retry** #1") {
+	if e.toolEffect() != before || !strings.Contains(e.promptNote("Q1").Body, "**retry** #1") {
 		t.Fatalf("a stopped pilot proposes; nothing runs without a yes: %+v → %+v", before, e.toolEffect())
 	}
 	if r := e.gl.Issues[tracking].Description; !strings.Contains(r, "**R1** switch: pilot.autonomy=managed _(not applied") {
@@ -238,11 +239,11 @@ func TestReplacingARuleForgetsTheOldOneFirst(t *testing.T) {
 	e.propose("one round is enough", aiv1.PilotAction{Tool: "setRule", Kind: "switch", Note: "ci.maxFixRounds=1"},
 		aiv1.PilotAction{Tool: "forgetRule", Rule: "r1"})
 	e.reconcile()
-	p := e.proposalNote(1)
+	p := e.promptNote("Q1")
 	if strings.Index(p.Body, "**forgetRule** R1") > strings.Index(p.Body, "**setRule**") {
 		t.Fatalf("the proposal lists the forget first:\n%s", p.Body)
 	}
-	e.gl.AddReply(tracking, p.ID, alice, "yes")
+	e.gl.AddReply(tracking, p.ID, alice, "A")
 	e.reconcile()
 	if d := e.milestoneDescription(); strings.Contains(d, "maxFixRounds=3") || !strings.HasSuffix(d, "\n\n/agent rule R1: switch ci.maxFixRounds=1") {
 		t.Fatalf("R1 is replaced:\n%q\n%s", d, e.lastReply())

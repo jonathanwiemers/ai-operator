@@ -173,16 +173,10 @@ func TestPilotFixFlakyOnAnOwnersYesWithoutAutopilot(t *testing.T) {
 	e.propose("fix the flaky test", aiv1.PilotAction{Tool: "fixFlaky", IssueIID: 40})
 	e.reconcile()
 	e.reconcile()
-	var proposal *gitlab.Note
-	for _, n := range e.gl.IssueNotes[tracking] {
-		if strings.Contains(n.Body, "<!-- ai-operator:proposal id=1 ") {
-			proposal = &n
-		}
+	if tracking != e.tracking() || !strings.Contains(e.promptNote("Q1").Body, "**fixFlaky** #40") || e.gl.Issues[40].Milestone != nil {
+		t.Fatalf("the pilot proposes, nothing runs without an answer: %q", botComments(e, tracking))
 	}
-	if proposal == nil || !strings.Contains(proposal.Body, "**fixFlaky** #40") || e.gl.Issues[40].Milestone != nil {
-		t.Fatalf("the pilot proposes, nothing runs without a yes: %q", botComments(e, tracking))
-	}
-	e.gl.AddReply(tracking, proposal.ID, alice, "yes")
+	e.choose("Q1", "A", alice)
 	e.reconcile()
 	e.handedOver(40, 3)
 	if !slices.Contains(e.gl.Labels(40), "agent::ready") {

@@ -275,15 +275,17 @@ func TestSupersededAndExpiredPromptsAreOnlyEdited(t *testing.T) {
 	e.reconcile()
 	e.reconcile()
 
+	// A proposal goes on the tracking issue, also one about #1.
 	notes := promptNotes(e, tracking)
-	if len(notes) != 2 || !strings.HasPrefix(notes[0].Body, "⏹️ Superseded: **Q3** asks again\n\n🧭 **Q1:**") || !strings.HasPrefix(notes[1].Body, "🧭 **Q3:**") {
-		t.Fatalf("Q1 is edited, Q3 posted, nothing else: %+v", notes)
+	if len(notes) != 3 || !strings.HasPrefix(notes[0].Body, "⏹️ Superseded: **Q3** asks again\n\n🧭 **Q1:**") ||
+		!strings.HasPrefix(notes[1].Body, "⌛ Expired") || !strings.HasPrefix(notes[2].Body, "🧭 **Q3:**") {
+		t.Fatalf("Q1 is edited, the expired proposal Q2 too, Q3 posted, nothing else: %+v", notes)
 	}
 	if strings.Contains(notes[0].Body, "~~") || strings.Contains(notes[0].Body, "cc @") {
 		t.Errorf("a superseded prompt keeps its options as they were, without a mention:\n%s", notes[0].Body)
 	}
-	if one := promptNotes(e, 1); len(one) != 1 || !strings.HasPrefix(one[0].Body, "⌛ Expired") {
-		t.Fatalf("the expired proposal is edited, with no reply: %+v", one)
+	if one := promptNotes(e, 1); len(one) != 0 {
+		t.Fatalf("nothing on #1: %+v", one)
 	}
 	if p := e.prompt(specTaskName, "Q2"); p.MirroredState != aiv1.PromptExpired {
 		t.Fatalf("recorded as mirrored: %+v", p)

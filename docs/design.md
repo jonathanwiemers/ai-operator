@@ -1169,20 +1169,33 @@ counted interventions; more tools are later steps of
   of what it was made on (`aiv1.PilotState`: the spec task's description
   hash, autopilot phase, pause and queue, and the pushed head of each issue
   an action names), computed from the tasks it read for the turn. The
-  operator posts the proposals on its next poll: it gives each the next ID
-  (`status.pilot.lastProposal`), moves it to `status.pilot.proposals` and
-  then comments "Proposal P<n>" on the tracking issue with each action and,
-  where it would refuse one, why, ending in `<!-- ai-operator:proposal
-  id=<n> state=<hash> -->`. A proposal with no action it would run is not
-  posted. Each posted proposal pins the user IDs the owners' usernames
-  resolve to then (`ownerIDs`; an ID nobody has when none resolves).
+  operator puts the proposals on its next poll (`postProposals`): each
+  becomes a `proposal` prompt on the spec task (`addPrompt`, which pins
+  the owners' user IDs): `source {kind: proposal, issueIID: trigger, key:
+  source}`, the summary as question, `why` and the line of each action
+  (with why it would refuse one, and an `editSpec` diff) as context,
+  option A "Do it" (recommended) with the actions it would run, option B
+  "Do nothing", and `pilotState` over A's actions. The prompt mirror
+  posts it on the tracking issue, also one about an issue; the mention
+  follows `quiet` (a run that pinged the owners itself, or the operator's
+  own `/pilot tell` and `/pilot forget`, mention nobody). A proposal with
+  no action it would run, or whose `state` no longer matches, is not put;
+  one whose source has a prompt already is not put again, so the prompt
+  is written first and `status.pilot.proposed` cleared after, and a
+  conflict on that patch only repeats the next poll.
+  `status.pilot.lastProposal` no longer counts.
   Owner and verbatim text of an action are cleared on proposals
   from a run: only `/pilot tell #N: …`, which the operator handles without
   a model call, sets them. Both writers use optimistic locking on the
   status (the runner retries on a conflict, the operator tries again next
-  poll), so no proposal is lost or posted twice.
-* **Accepting.** `/pilot yes|no P<n>` comes through the routing above
-  (owners only; a bare `yes` gets the list of open proposals). A `yes` or
+  poll), so no proposal is lost or put twice.
+* **Accepting.** Proposal prompts are answered like any prompt (see
+  [Answering prompts](#answering-prompts)). Proposals posted as "Proposal
+  P<n>" before prompts stay in `status.pilot.proposals` until their 24 h
+  pass, and are answered as follows (removed one release later).
+  `/pilot yes|no P<n>` comes through the routing above
+  (owners only; a bare `yes` gets the list of open proposals and the open
+  prompts with their Desk links). A `yes` or
   `no` that is a whole comment of an owner on the tracking issue is matched
   to its thread by listing the issue's discussions, only when there is such
   a comment; the thread must start with the bot's proposal marker. The

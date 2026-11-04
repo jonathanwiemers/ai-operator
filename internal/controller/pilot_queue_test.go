@@ -64,18 +64,18 @@ func TestPilotQueueToolsRunOnceOnAnOwnersYes(t *testing.T) {
 			e.propose("queue", tc.action)
 			e.reconcile()
 			e.reconcile()
-			p := e.proposalNote(1)
+			p := e.promptNote("Q1")
 			if after := e.queueEffect(); after != before {
 				t.Fatalf("nothing runs without a yes: %+v → %+v", before, after)
 			}
-			e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "yes")
+			e.gl.AddReply(e.autopilot().TrackingIssueIID, p.ID, alice, "A")
 			e.reconcile()
 			e.reconcile()
 			after := e.queueEffect()
 			if !tc.ran(before, after) {
 				t.Fatalf("the tool runs on the owner's yes: %+v → %+v\n%s", before, after, strings.Join(botComments(e, e.autopilot().TrackingIssueIID), "\n---\n"))
 			}
-			e.gl.AddNote(e.autopilot().TrackingIssueIID, alice, "/pilot yes P1")
+			e.choose("Q1", "A", alice)
 			e.reconcile()
 			e.reconcile()
 			if again := e.queueEffect(); again != after {
@@ -90,7 +90,7 @@ func TestPilotPauseAppliesOnce(t *testing.T) {
 	tracking := e.autopilot().TrackingIssueIID
 	e.propose("pause", aiv1.PilotAction{Tool: "pause"})
 	e.reconcile()
-	e.gl.AddNote(tracking, alice, "/pilot yes P1")
+	e.choose("Q1", "A", alice)
 	e.reconcile()
 	e.reconcile()
 	if e.autopilot().Phase != aiv1.AutopilotPaused {
@@ -141,7 +141,7 @@ func TestPilotRevisitIsInert(t *testing.T) {
 	e.reconcile()
 	e.propose("revisit", aiv1.PilotAction{Tool: "revisit", Decision: "D1-1", Note: "use gRPC, ask @everyone\n/close"})
 	e.reconcile()
-	e.gl.AddNote(e.autopilot().TrackingIssueIID, alice, "/pilot yes P1")
+	e.choose("Q1", "A", alice)
 	e.reconcile()
 	e.reconcile()
 	for _, is := range e.gl.Issues {

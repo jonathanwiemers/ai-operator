@@ -20,16 +20,18 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
+	"github.com/jonathanwiemers/ai-operator/internal/desklink"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // The pilot acts only through proposals: its runs record them
-// (status.pilot.proposed), the operator posts them on the tracking issue
-// as "Proposal P<n>", and runs their actions once an owner answers "yes".
+// (status.pilot.proposed), the operator puts them to the owners as
+// proposal prompts, and runs their actions once an owner chooses "Do it".
 // The model never executes anything, and the operator checks every action
-// again when it runs it.
+// again when it runs it. Proposals "P<n>" posted before prompts
+// (status.pilot.proposals) are answered with "yes" until they expire.
 
 // pilotTools are the tools the pilot may propose; merging, closing and
 // pushing are none of them.
@@ -114,89 +116,117 @@ func (r *AgentProjectReconciler) issueTasks(ctx context.Context, project *aiv1.A
 	return out, nil
 }
 
-// postProposals posts the proposals of the pilot's runs and extra (the
-// operator's own, from "/pilot tell") on the tracking issue, each with the
-// next ID. A proposal without an action the operator would run is not
-// posted. It returns the ID of the last one.
+// postProposals puts the proposals of the pilot's runs and extra (the
+// operator's own, from "/pilot tell") to the owners as proposal prompts on
+// the milestone's spec task st; their comments go on the tracking issue.
+// What a managing pilot runs on its own (manage) is audited there instead.
+// A proposal without an action the operator would run, or made on a state
+// that is gone, is not put. It returns the id of the last prompt, also of
+// one put before for the same source.
 func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st, coord *aiv1.AgentTask, tracking int64, extra ...aiv1.PilotProposal) (int64, error) {
+	st, coord *aiv1.AgentTask, tracking int64, extra ...aiv1.PilotProposal) (string, error) {
 	ps := coord.Status.Pilot
 	if ps == nil {
 		ps = &aiv1.PilotStatus{}
 	}
 	if len(ps.Proposed)+len(extra) == 0 {
-		return 0, nil
+		return "", nil
 	}
 	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
-	now := metav1.NewTime(r.now())
-	next := ps.LastProposal
 	opened := slices.Clone(ps.OpenedIssues)
 	proposed, own, counts := manage(spec, st, coord, tasks, ps.Proposed, &opened)
-	var posted []aiv1.PilotProposal
 	var bodies []string
+	last := ""
 	for i, p := range append(slices.Clone(proposed), extra...) {
+		fromRun := i < len(proposed)
+		// Put before the pilot's status was written (a conflict, a crash):
+		// a proposal is put once.
+		if j := slices.IndexFunc(st.Status.Prompts, func(q aiv1.Prompt) bool {
+			return p.Source != "" && q.Source.Kind == aiv1.PromptProposal && q.Source.Key == p.Source
+		}); j >= 0 {
+			last = st.Status.Prompts[j].ID
+			continue
+		}
+		stale := aiv1.PilotState(st, tasks, p.Actions) != p.State
 		var notes []string
-		valid := 0
+		var valid []aiv1.PilotAction
 		p.Actions = forgetFirst(p.Actions)
 		for j := range p.Actions {
-			note, err := checkAction(ctx, gl, project, spec, st, tasks, opened, &p.Actions[j], i < len(proposed))
+			note, err := checkAction(ctx, gl, project, spec, st, tasks, opened, &p.Actions[j], fromRun)
 			if err == nil {
-				valid++
+				valid = append(valid, p.Actions[j])
 				if p.Actions[j].Tool == "openIssue" {
 					opened = append(opened, titleKey(p.Actions[j].Title))
 				}
 			}
 			notes = append(notes, note)
 		}
-		// The pilot manages, yet this needs an owner: its assessment did not
-		// ping them.
-		ping := ""
-		if i < len(proposed) && p.Quiet {
-			ping = notify.Mention(st.Spec.Owners)
-		}
-		if valid == 0 {
+		if len(valid) == 0 {
 			log.FromContext(ctx).Info("the pilot proposed nothing the operator can run", "task", coord.Name, "actions", notes)
-			if ping != "" && !slices.ContainsFunc(own, func(q aiv1.PilotProposal) bool { return q.Source == p.Source }) {
-				bodies = append(bodies, fmt.Sprintf("🧭 The pilot proposed nothing the operator runs: %s\n\n%s%s", inertLine(p.Summary, 300), strings.Join(notes, "\n"), ping))
+			// The pilot manages, yet this needs an owner: its assessment did
+			// not ping them.
+			if fromRun && p.Quiet && !slices.ContainsFunc(own, func(q aiv1.PilotProposal) bool { return q.Source == p.Source }) {
+				bodies = append(bodies, fmt.Sprintf("🧭 The pilot proposed nothing the operator runs: %s\n\n%s%s",
+					inertLine(p.Summary, 300), strings.Join(notes, "\n"), notify.Mention(st.Spec.Owners)))
 			}
 			continue
 		}
-		next++
-		p.ID, p.PostedAt = next, &now
-		posted = append(posted, p)
-		bodies = append(bodies, fmt.Sprintf("🧭 **Proposal P%[1]d:** %[2]s\n\n%[3]s\n\nAn owner accepts it with `yes` as a reply in this thread, or `%[4]s yes P%[1]d` "+
-			"anywhere in the milestone; `no` or `%[4]s no P%[1]d` drops it. It no longer applies after 24 h or once the milestone's state changes.\n\n"+
-			"<!-- ai-operator:proposal id=%[1]d state=%[5]s -->%[6]s", p.ID, inertLine(p.Summary, 300), strings.Join(notes, "\n"), spec.Workflow.PilotPrefix, p.State, ping))
-	}
-	// Only the owners of now answer them, whoever takes their names later.
-	if len(posted) > 0 {
-		pinned, err := pinnedOwners(ctx, gl, st.Spec.Owners)
+		if stale {
+			// An owner's answer could not run it either.
+			log.FromContext(ctx).Info("the pilot's proposal was made on a state that is gone", "task", coord.Name, "source", p.Source)
+			continue
+		}
+		q, err := r.addPrompt(ctx, gl, st, st, proposalPrompt(st, tasks, p, valid, notes, fromRun))
 		if err != nil {
-			return 0, err
+			return "", err
 		}
-		for i := range posted {
-			posted[i].OwnerIDs = pinned
-		}
+		last = q.ID
 	}
-	// Recorded before they are posted: each is posted at most once.
 	if err := r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) {
-		ps.Proposed, ps.LastProposal = nil, next
-		ps.Proposals = append(ps.Proposals, posted...)
+		ps.Proposed = nil
 		if counts != nil {
 			ps.Accepted, ps.Interventions = append(ps.Accepted, own...), counts
 		}
 	}); err != nil {
-		return 0, err
+		return "", err
 	}
 	for _, body := range bodies {
 		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, tracking, body); err != nil {
 			log.FromContext(ctx).Info("could not post the pilot's proposal", "issue", tracking, "error", err.Error())
 		}
 	}
-	return next, nil
+	return last, nil
+}
+
+// proposalPrompt is the prompt of proposal p: A runs those of its actions
+// the operator runs (valid), B does nothing. Its context is why p was made
+// and notes, the lines of all its actions. fromRun: a run of the pilot made
+// p and mentioned the owners itself unless p is Quiet; the operator's own
+// proposals mention nobody.
+func proposalPrompt(st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, p aiv1.PilotProposal, valid []aiv1.PilotAction, notes []string, fromRun bool) aiv1.Prompt {
+	summary := strings.Join(strings.Fields(p.Summary), " ")
+	if summary == "" {
+		summary = "The pilot proposes this."
+	}
+	evidence := strings.Join(notes, "\n")
+	if why := strings.TrimSpace(p.Why); why != "" {
+		evidence = "**Why:** " + why + "\n\n" + evidence
+	}
+	q := aiv1.Prompt{
+		Source:   aiv1.PromptSource{Kind: aiv1.PromptProposal, IssueIID: p.Trigger, Key: p.Source},
+		Question: textutil.Truncate(summary, aiv1.MaxPromptQuestion-len("…")),
+		Context:  textutil.Truncate(evidence, aiv1.MaxPromptContext-len("…")),
+		Options: []aiv1.PromptOption{
+			{ID: "A", Label: "Do it", Detail: textutil.Truncate(summary, aiv1.MaxPromptOptionDetail-len("…")), Actions: valid, Recommended: true},
+			{ID: "B", Label: "Do nothing"},
+		},
+		Quiet: !fromRun || !p.Quiet,
+	}
+	q.PilotState = proposalState(st, tasks, q)
+	return q
 }
 
 // checkAction checks an action before it is put to the owners: validAction,
@@ -340,15 +370,8 @@ func (r *AgentProjectReconciler) answerProposal(ctx context.Context, project *ai
 	prefix := spec.Workflow.PilotPrefix
 	i := slices.IndexFunc(open, func(p aiv1.PilotProposal) bool { return p.ID == id })
 	switch {
-	case id == 0 && len(open) == 0:
-		return "There is no open proposal.", nil
 	case id == 0:
-		var b strings.Builder
-		fmt.Fprintf(&b, "Which proposal? Answer `%[1]s yes P<n>` or `%[1]s no P<n>`. Open:", prefix)
-		for _, p := range open {
-			fmt.Fprintf(&b, "\n- P%d: %s", p.ID, inertLine(p.Summary, 200))
-		}
-		return b.String(), nil
+		return r.whichProposal(prefix, st, open), nil
 	case i < 0:
 		return fmt.Sprintf("Proposal P%d no longer applies.", id), nil
 	}
@@ -384,6 +407,35 @@ func (r *AgentProjectReconciler) answerProposal(ctx context.Context, project *ai
 		return "", nil // the outcome follows
 	}
 	return fmt.Sprintf("Proposal P%d accepted; the outcome follows on #%d.", id, tracking), nil
+}
+
+// whichProposal answers a "yes" or "no" that names no proposal: the open
+// proposals (open) to name, and the open prompts of the milestone's spec
+// task st, which are answered in the Desk.
+func (r *AgentProjectReconciler) whichProposal(prefix string, st *aiv1.AgentTask, open []aiv1.PilotProposal) string {
+	var b strings.Builder
+	if len(open) > 0 {
+		fmt.Fprintf(&b, "Which proposal? Answer `%[1]s yes P<n>` or `%[1]s no P<n>`. Open:", prefix)
+		for _, p := range open {
+			fmt.Fprintf(&b, "\n- P%d: %s", p.ID, inertLine(p.Summary, 200))
+		}
+	}
+	var prompts []string
+	for _, p := range st.Status.Prompts {
+		if !p.State.Closed() {
+			prompts = append(prompts, fmt.Sprintf("\n- %s: %s — %s", p.ID, inertLine(p.Question, 200), deskLine(desklink.Prompt(r.DeskURL, st, p.ID), false)))
+		}
+	}
+	switch {
+	case b.Len() == 0 && len(prompts) == 0:
+		return "There is no open proposal."
+	case b.Len() == 0:
+		b.WriteString("There is no open proposal to answer with yes or no.")
+	}
+	if len(prompts) > 0 {
+		b.WriteString("\n\nOpen prompts, answered in the Desk:" + strings.Join(prompts, ""))
+	}
+	return b.String()
 }
 
 // runAccepted runs the accepted proposals of a pilot at the end of the
@@ -704,8 +756,8 @@ func (r *AgentProjectReconciler) threadAnswers(ctx context.Context, gl gitlab.AP
 	return nil
 }
 
-// proposeTell turns an owner's "/pilot tell #N: …" into a proposal that
-// passes their words on to the implementer of #N verbatim.
+// proposeTell turns an owner's "/pilot tell #N: …" into a proposal prompt
+// that passes their words on to the implementer of #N verbatim.
 func (r *AgentProjectReconciler) proposeTell(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st, coord *aiv1.AgentTask, n pilotNote, iid int64, text string) (string, error) {
 	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
@@ -718,12 +770,21 @@ func (r *AgentProjectReconciler) proposeTell(ctx context.Context, gl gitlab.API,
 	}
 	tracking := trackingIssue(st, coord)
 	p := aiv1.PilotProposal{Summary: fmt.Sprintf("pass @%s's words on to the implementer of #%d", n.Author.Username, iid),
-		Actions: []aiv1.PilotAction{a}, State: aiv1.PilotState(st, tasks, []aiv1.PilotAction{a})}
+		Actions: []aiv1.PilotAction{a}, State: aiv1.PilotState(st, tasks, []aiv1.PilotAction{a}), Source: fmt.Sprintf("tell/%d", n.ID)}
 	id, err := r.postProposals(ctx, gl, project, spec, st, coord, tracking, p)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Proposal P%d on #%d: an owner's `yes` passes it on.", id, tracking), nil
+	return proposedReply(id, tracking), nil
+}
+
+// proposedReply is the reply to an owner whose command became prompt id
+// on the tracking issue ("": none).
+func proposedReply(id string, tracking int64) string {
+	if id == "" {
+		return "Not proposed: the operator would not run it now."
+	}
+	return fmt.Sprintf("%s on #%d: an owner answers it in the Desk.", id, tracking)
 }
 
 // pinnedOwners are the sorted user IDs of owners, pinned on what only they
