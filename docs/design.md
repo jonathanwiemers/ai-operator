@@ -599,6 +599,23 @@ Research runs have no task: their pod reports the calls in
 it finishes the run, keyed `research/<research UID>/<run ID>/<seq>`, with
 the research name as task and run 0.
 
+**Spend.** Sums of cost and tokens come from Postgres, never from the
+AgentTasks, so they survive task deletion (`store.Spend`,
+`internal/research/store/spend.go`). A scope (project, milestone, issue,
+task, run) gives its totals, its children one level down (a project's
+milestones plus "no milestone", a milestone's issues plus one `milestone`
+child for its own spec, pilot and retro calls, an issue's runs, a task's or
+run's calls by seq with their rows) and breakdowns by kind, role and model.
+Calls with an unknown cost count in `UnknownCalls` and never add $0; a total
+is "n/a" (`CostKnown` false) only when all its calls are unknown. The model
+split uses `models` when it is set, else the row's model; the row's model is
+the main one (if `models` lacks it, say because the row has an alias, the
+one with the most output tokens), the others are subagents and show up as
+their own model in the breakdown. Runs from before `agent_calls`: a
+`run.finished` event with a `costUSD` whose task and run count have no call
+adds that cost as `LegacyCostUSD`, without tokens, and shows up as a run of
+its issue.
+
 ## GitLab webhooks
 
 GitLab project hooks (GitLab Free; group hooks need Premium) wake the
