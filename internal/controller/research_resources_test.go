@@ -105,7 +105,7 @@ func TestResearchPodAgentLikeTask(t *testing.T) {
 	agent := container(pod, AgentContainer)
 	spec := researchProject().Spec.WithDefaults()
 	mutate(&spec)
-	task := container(buildPod(newImplTask("x", 1), spec), AgentContainer)
+	task := container(buildPod(newImplTask("x", 1), spec, ""), AgentContainer)
 
 	if agent.Image != task.Image || !reflect.DeepEqual(agent.EnvFrom, task.EnvFrom) ||
 		!reflect.DeepEqual(agent.Resources, task.Resources) || !reflect.DeepEqual(agent.Command, task.Command) ||

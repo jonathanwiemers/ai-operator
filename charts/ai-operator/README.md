@@ -186,7 +186,7 @@ AgentProjects and AgentTasks (and AgentResearches with
 | Key | Default | Description |
 |-----|---------|-------------|
 | `ui.enabled` | `false` | |
-| `ui.externalURL` | | URL users open, without a path, e.g. `https://ai.example.com`; required with `oidc`. The redirect URI is `<externalURL>/oauth2/callback` |
+| `ui.externalURL` | | URL users open, without a path, e.g. `https://ai.example.com`; required with `oidc`. The redirect URI is `<externalURL>/oauth2/callback` . With the UI enabled, the operator gets it as `--desk-url` (agent pods as `AI_DESK_URL`) to link to the Desk from comments |
 | `ui.auth.mode` | `oidc` | `oidc`, or `none`: no login, listens on `127.0.0.1` only (reach it with `kubectl port-forward`), no Service, no HTTPRoute |
 | `ui.auth.sessionTTL` | `12h` | how long a login lasts; roles are read at login |
 | `ui.oidc.issuerURL` | | required with `oidc` |

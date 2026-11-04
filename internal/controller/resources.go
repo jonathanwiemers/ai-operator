@@ -95,7 +95,7 @@ var DefaultRunnerResources = corev1.ResourceRequirements{
 //
 // Containers of a pod do not share a process namespace, so the model cannot
 // read the runner's environment either.
-func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
+func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string) *corev1.Pod {
 	agents := spec.Agents
 	claim := naming.Workspace(task.Name)
 	runnerEnv := []corev1.EnvVar{
@@ -150,6 +150,9 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) *corev1.Pod {
 		}
 	}
 	runnerEnv = append(runnerEnv, logLevelEnv(agents)...)
+	if deskURL != "" {
+		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_DESK_URL", Value: deskURL})
+	}
 
 	// The runner tells the implementer what the agent container may use.
 	agentRes := agentResources(task, spec)

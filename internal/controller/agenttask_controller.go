@@ -54,6 +54,9 @@ type AgentTaskReconciler struct {
 	// DefaultAgentLogLevel is used for projects that do not set
 	// agents.logLevel.
 	DefaultAgentLogLevel aiv1.LogLevel
+	// DeskURL is the Desk's base URL, handed to the runner as AI_DESK_URL.
+	// Empty: no links.
+	DeskURL string
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;update;patch
@@ -194,7 +197,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					break
 				}
 			}
-			pod = buildPod(&task, spec)
+			pod = buildPod(&task, spec, r.DeskURL)
 			if err := controllerutil.SetControllerReference(&task, pod, r.Scheme); err != nil {
 				return ctrl.Result{}, err
 			}

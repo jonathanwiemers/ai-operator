@@ -147,6 +147,7 @@ func runRunner(ctx context.Context) {
 		PollInterval:     10 * time.Second,
 		AgentMemoryLimit: os.Getenv("AI_AGENT_MEMORY_LIMIT"),
 		AgentCPUs:        os.Getenv("AI_AGENT_CPUS"),
+		DeskURL:          os.Getenv("AI_DESK_URL"),
 		AgentMemoryBytes: func() int64 {
 			n, _ := strconv.ParseInt(os.Getenv("AI_AGENT_MEMORY_BYTES"), 10, 64)
 			return n

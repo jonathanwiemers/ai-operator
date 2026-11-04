@@ -56,6 +56,9 @@ type AgentProjectReconciler struct {
 	Now       func() time.Time
 	// DefaultOwners are mentioned for projects that set no notify.users.
 	DefaultOwners []string
+	// DeskURL is the Desk's base URL (the UI's externalURL) for links in
+	// comments. Empty: comments name the Desk without a link.
+	DeskURL string
 	// Wakes, when set, syncs the AgentProject of every event at once (the
 	// webhook receiver's wakes).
 	Wakes <-chan event.GenericEvent

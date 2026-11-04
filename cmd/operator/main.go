@@ -63,6 +63,8 @@ func main() {
 	flag.DurationVar(&historyRetention, "history-retention", history.DefaultRetention, "How long the factory's history (comments, runs, CI, reviews, merges) and Desk chat messages are kept in the research database.")
 	var pricingFile string
 	flag.StringVar(&pricingFile, "pricing-file", "", "YAML file with model prices (USD per million tokens) to estimate the cost of agent calls that report tokens but no cost, such as cursor's. Empty: no estimates, such calls have no cost.")
+	var deskURL string
+	flag.StringVar(&deskURL, "desk-url", "", "Base URL of the Desk (the UI's externalURL). Empty: comments name the Desk without a link.")
 	flag.Parse()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	setupLog := ctrl.Log.WithName("setup")
@@ -133,6 +135,7 @@ func main() {
 		},
 		DefaultOwners: notify.Usernames(strings.Split(defaultOwners, ",")),
 		Research:      researchDB.Host != "",
+		DeskURL:       deskURL,
 	}
 	// The history needs the research database; it records task changes and
 	// the comments the project reconciler reads.
@@ -175,6 +178,7 @@ func main() {
 		DefaultAgentImage:    defaultAgentImage,
 		DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
 		APIReader:            mgr.GetAPIReader(),
+		DeskURL:              deskURL,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentTask")
 		os.Exit(1)

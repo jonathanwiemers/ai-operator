@@ -55,6 +55,8 @@ type Runner struct {
 	// AgentMemoryLimit and AgentCPUs are what the agent container may use
 	// (e.g. "6Gi", "2"), if it has limits; the implementer is told.
 	AgentMemoryLimit, AgentCPUs string
+	// DeskURL is the Desk's base URL (AI_DESK_URL); empty: no links.
+	DeskURL string
 	// AgentMemoryBytes is the agent container's memory limit in this pod
 	// (0 if unknown).
 	AgentMemoryBytes int64

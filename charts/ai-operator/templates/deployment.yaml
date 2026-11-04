@@ -60,6 +60,9 @@ spec:
             {{- with include "ai-operator.agentImage" . }}
             - --default-agent-image={{ . }}
             {{- end }}
+            {{- if and .Values.ui.enabled .Values.ui.externalURL }}
+            - --desk-url={{ .Values.ui.externalURL | trimSuffix "/" }}
+            {{- end }}
             {{- with .Values.defaultOwners }}
             - --default-owners={{ join "," . }}
             {{- end }}
