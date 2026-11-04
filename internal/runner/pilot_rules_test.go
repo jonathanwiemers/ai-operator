@@ -73,13 +73,17 @@ func TestPilotGetsItsRulesAndRefusesForbiddenSwitches(t *testing.T) {
 
 func TestAssessmentRefusesForbiddenSwitches(t *testing.T) {
 	e := newAssessEnv(t, "")
-	e.engine.assessment.Proposal = proposalOf(t, `{"summary": "more rounds", "actions": [{"tool": "setRule", "kind": "switch", "note": "lifecycle.maxRunsPerTask=99"},
-		{"tool": "retry", "issue": 1}]}`)
-	e.step(t)
-	if notes := botNotes(e.gl, 5); len(notes) != 1 || !strings.Contains(notes[0], "Rule not proposed: `lifecycle.maxRunsPerTask` cannot be switched by a rule") {
-		t.Fatalf("the assessment says the switch is refused: %q", notes)
+	e.engine.assessment.Options = []AssessOption{
+		{Label: "More rounds", Recommended: true, Actions: []ProposalAction{{Tool: "setRule", Kind: "switch", Note: "lifecycle.maxRunsPerTask=99"}, {Tool: "retry", Issue: 1}}},
+		{Label: "Only more rounds", Actions: []ProposalAction{{Tool: "setRule", Kind: "switch", Note: "lifecycle.maxRunsPerTask=99"}}},
+		{Label: "Do nothing"},
 	}
-	if ps := e.task(t).Status.Pilot; ps == nil || len(ps.Proposed) != 1 || len(ps.Proposed[0].Actions) != 1 || ps.Proposed[0].Actions[0].Tool != "retry" {
-		t.Fatalf("only the retry is proposed: %+v", ps)
+	e.step(t)
+	p := e.proposed(t)
+	if !strings.Contains(p.Context, "Rule not proposed: `lifecycle.maxRunsPerTask` cannot be switched by a rule") {
+		t.Fatalf("the prompt says the switch is refused:\n%s", p.Context)
+	}
+	if got := labels(p.Options); got != "More rounds+* | Do nothing" || p.Options[0].Actions[0].Tool != "retry" {
+		t.Fatalf("only the retry is offered: %s", got)
 	}
 }

@@ -23,7 +23,8 @@ import (
 var countedTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky"}
 
 // manage takes the actions the pilot runs on its own out of its runs'
-// proposals: valid, counted tools on issues with interventions left. It
+// proposals: valid, counted tools on issues with interventions left; of a
+// proposal with its own options, the recommended option or nothing. It
 // returns the proposals left to post, those to run (accepted by nobody)
 // and the new counts, nil when the pilot only proposes.
 func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, proposed []aiv1.PilotProposal,
@@ -36,34 +37,47 @@ func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int
 		maps.Copy(counts, ps.Interventions)
 	}
 	for _, p := range proposed {
-		if aiv1.PilotState(st, tasks, p.Actions) != p.State {
+		actions := p.Actions
+		if len(p.Options) > 0 {
+			// The pilot's own options: it runs the recommended one when
+			// all of it runs on its own, else the owners choose.
+			actions = recommendedActions(p.Options)
+		}
+		if len(p.Options) > 0 && len(actions) == 0 || aiv1.PilotState(st, tasks, actions) != p.State {
 			// Made on a state that is gone: an owner's yes could not run
 			// it either.
 			rest = append(rest, p)
 			continue
 		}
+		try, tried := maps.Clone(counts), slices.Clone(*opened)
 		var mine, left []aiv1.PilotAction
-		for _, a := range p.Actions {
+		for _, a := range actions {
 			a.Owner, a.Text = "", "" // only an owner's words are free text
 			key, head := interventionKey(a, p.Trigger, tasks)
-			c := counts[key]
+			c := try[key]
 			if c.Head != head {
 				c = aiv1.PilotIntervention{Head: head}
 			}
-			if !slices.Contains(countedTools, a.Tool) || validAction(a, st, tasks, *opened) != nil || c.Count >= spec.Pilot.MaxInterventionsPerIssue {
+			if !slices.Contains(countedTools, a.Tool) || validAction(a, st, tasks, tried) != nil || c.Count >= spec.Pilot.MaxInterventionsPerIssue {
 				left = append(left, a)
 				continue
 			}
 			c.Count++
-			counts[key] = c
+			try[key] = c
 			if a.Tool == "openIssue" {
-				*opened = append(*opened, titleKey(a.Title))
+				tried = append(tried, titleKey(a.Title))
 			}
 			mine = append(mine, a)
 		}
+		if len(p.Options) > 0 && len(left) > 0 {
+			rest = append(rest, p)
+			continue
+		}
+		counts, *opened = try, tried
 		if len(mine) > 0 {
 			q := p
 			q.Actions, q.ID, q.AcceptedBy = mine, 0, ""
+			q.Kind, q.Question, q.Context, q.Options = "", "", "", nil
 			own = append(own, q)
 		}
 		if len(left) > 0 {
@@ -72,6 +86,14 @@ func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int
 		}
 	}
 	return rest, own, counts
+}
+
+// recommendedActions are the actions of the recommended option.
+func recommendedActions(options []aiv1.PromptOption) []aiv1.PilotAction {
+	if i := slices.IndexFunc(options, func(o aiv1.PromptOption) bool { return o.Recommended }); i >= 0 {
+		return options[i].Actions
+	}
+	return nil
 }
 
 // interventionKey is what an action counts against: its issue, an

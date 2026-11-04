@@ -1003,20 +1003,32 @@ default branch and the last comments of the tracking issue.
   moves to `agent::needs-input` (CI still red after the fix rounds, a failed
   run, questions), an issue is blocked by `infra` or `quota`, or (on
   autopilot milestones) the default branch turns red or flaky, the pilot
-  posts one assessment on the tracking issue: what happened, a
+  assesses it and puts it to the owners as one **assessment prompt**
+  (`Q3`), answered in the Desk. Its context is what happened, a
   classification (`infra`, `flaky`, `regression`, `env`, `decision`,
   `unknown`), the evidence (the issue's last comments and run reports, the
   failed jobs' logs, the same problem in other issues; for a flaky job its
   `ci::flaky` issue, the failing tests and the end of the failed attempt's
-  log) and what it **would** do, and mentions the owners once (when it manages and acts on it: no
-  mention, see below). Each event is assessed once: a poll
+  log) and what it **would** do. Its 2 to 4 options are the pilot's: each
+  runs the actions listed under Proposals, one is recommended, and one is
+  "Do nothing". The operator checks every option's actions and drops those
+  it would not run; when none is left, the options are "Look into it
+  myself" and "Do nothing", and the context says why the pilot's went. The
+  prompt is mirrored as one comment on the issue it is about (the paused
+  issue, a flaky job's `ci::flaky` issue; else the tracking issue),
+  mentioning the owners: it is the assessment's comment. Only when no
+  prompt can be made (the pilot's budget is used up, its turn failed, the
+  milestone has no owners) does the pilot post the assessment as a comment
+  on the tracking issue instead, with one mention of the owners. A
+  `fixFlaky` option is still refused before the job was flaky twice. Each
+  event is assessed once: a poll
   while it holds, or a label or pause flapped back and forth, does not
   repeat it; a new head or a new reason does. A pause over an issue and
   that issue's `agent::needs-input` are one event. When the reviewers cannot
   run, the assessment may point owners to `/agent merge #N <sha>`; the pilot
   never proposes it.
 - **Proposals.** Unless it manages
-  (below), the pilot acts only on a proposal an owner accepts. An answer or an assessment can end with one; the operator puts
+  (below), the pilot acts only on a proposal an owner accepts. An answer can end with one; the operator puts
   it to the owners as a **proposal prompt** (`Q3`), mirrored on the tracking
   issue: the summary as the question, why and the actions as context, and
   two options, **A** "Do it" (recommended) and **B** "Do nothing". Its actions:
@@ -1075,10 +1087,12 @@ default branch and the last comments of the tracking issue.
   each wake-up gets an **audit comment** on the tracking issue: "🧭 The
   pilot acted on its own", what it did, on which issue, why (the
   classification and evidence, or your message) and how many interventions
-  are left. The audit pings nobody; neither does an assessment whose
-  proposal the pilot acts on. Past the limit, and for everything else
-  (queue tools, spec edits, rules), it puts a proposal prompt as above and
-  mentions the owners. An `instruct` it runs on its own is always a fixed
+  are left. The audit pings nobody. Of an assessment it runs the recommended
+  option only, and only when all of that option's actions run on their own;
+  then there is no prompt, the audit is its comment. Otherwise the
+  assessment prompt goes to the owners whole. Past the limit, and for
+  everything else (queue tools, spec edits, rules), it puts a proposal
+  prompt as above (or the assessment prompt) and mentions the owners. An `instruct` it runs on its own is always a fixed
   kind plus its hint as data; free text needs your `yes`. A run the pilot
   starts keeps the issue's CI fix rounds (`status.run.ciRound`), unlike
   your `/agent …`, so an intervention does not start another full set of

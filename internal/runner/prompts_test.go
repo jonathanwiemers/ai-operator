@@ -86,29 +86,21 @@ func TestToolchainsNote(t *testing.T) {
 }
 
 func TestPilotSchemasListEditSpec(t *testing.T) {
+	var s struct {
+		Properties map[string]struct {
+			Enum        []string `json:"enum"`
+			Description string   `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(actionSchema), &s); err != nil {
+		t.Fatal(err)
+	}
+	if props := s.Properties; !slices.Contains(props["tool"].Enum, "editSpec") || !strings.HasPrefix(props["spec"].Description, "editSpec: the complete new milestone spec") {
+		t.Fatalf("the action schema lists editSpec and spec: %+v", props)
+	}
 	for name, schema := range map[string]string{"pilot": pilotSchema, "assess": assessSchema} {
-		var s struct {
-			Properties struct {
-				Proposal struct {
-					Properties struct {
-						Actions struct {
-							Items struct {
-								Properties map[string]struct {
-									Enum        []string `json:"enum"`
-									Description string   `json:"description"`
-								} `json:"properties"`
-							} `json:"items"`
-						} `json:"actions"`
-					} `json:"properties"`
-				} `json:"proposal"`
-			} `json:"properties"`
-		}
-		if err := json.Unmarshal([]byte(schema), &s); err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		props := s.Properties.Proposal.Properties.Actions.Items.Properties
-		if !slices.Contains(props["tool"].Enum, "editSpec") || !strings.HasPrefix(props["spec"].Description, "editSpec: the complete new milestone spec") {
-			t.Fatalf("%s: the schema lists editSpec and spec: %+v", name, props)
+		if !json.Valid([]byte(schema)) || !strings.Contains(schema, actionSchema) {
+			t.Fatalf("%s: a valid schema with the actions: %s", name, schema)
 		}
 	}
 }

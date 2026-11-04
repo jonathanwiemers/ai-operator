@@ -342,13 +342,27 @@ func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalA
 		return nil
 	}
 	prop := aiv1.PilotProposal{Summary: textutil.Truncate(p.Summary, 500), Source: source, Trigger: trigger, Why: textutil.Truncate(why, 1000), Quiet: quiet}
-	for _, a := range p.Actions[:min(len(p.Actions), 5)] {
-		prop.Actions = append(prop.Actions, aiv1.PilotAction{Tool: textutil.Truncate(a.Tool, 40), IssueIID: a.Issue, Kind: textutil.Truncate(a.Kind, 40),
-			Note: textutil.Truncate(a.Note, 2000), Title: textutil.Truncate(a.Title, 200), Decision: textutil.Truncate(a.Decision, 40), Rule: textutil.Truncate(a.Rule, 10), Spec: a.Spec})
-	}
+	prop.Actions = pilotActions(p.Actions)
 	if prop.State = stateOf(prop.Actions); prop.State == "" {
 		return nil
 	}
+	return r.recordProposal(ctx, task, prop)
+}
+
+// pilotActions are the first 5 of the model's actions, cut to the
+// operator's bounds.
+func pilotActions(actions []ProposalAction) []aiv1.PilotAction {
+	var out []aiv1.PilotAction
+	for _, a := range actions[:min(len(actions), 5)] {
+		out = append(out, aiv1.PilotAction{Tool: textutil.Truncate(a.Tool, 40), IssueIID: a.Issue, Kind: textutil.Truncate(a.Kind, 40),
+			Note: textutil.Truncate(a.Note, 2000), Title: textutil.Truncate(a.Title, 200), Decision: textutil.Truncate(a.Decision, 40), Rule: textutil.Truncate(a.Rule, 10), Spec: a.Spec})
+	}
+	return out
+}
+
+// recordProposal appends prop to status.pilot.proposed, once per source.
+func (r *Runner) recordProposal(ctx context.Context, task *aiv1.AgentTask, prop aiv1.PilotProposal) error {
+	source := prop.Source
 	// Optimistic: the operator takes proposals out concurrently.
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var t aiv1.AgentTask

@@ -9,8 +9,8 @@ import (
 )
 
 // Bloop #338/#340: the flaky event brings the failing test and the failed
-// attempt's log as untrusted data; the assessment's headline is the event's
-// first paragraph, without the log.
+// attempt's log as untrusted data; what happened, in the prompt's context,
+// is the event's first paragraph, without the log.
 func TestPilotAssessesAFlakyEventWithItsLog(t *testing.T) {
 	e := newAssessEnv(t, "")
 	task := e.task(t)
@@ -28,9 +28,9 @@ func TestPilotAssessesAFlakyEventWithItsLog(t *testing.T) {
 			t.Errorf("%q must be inside the untrusted block", data)
 		}
 	}
-	notes := botNotes(e.gl, 5)
-	if len(notes) != 1 || !strings.Contains(notes[0], "🧭 **Assessment:** `rust:test` of the default branch passed only on retry (flaky issue #1).") ||
-		strings.Contains(notes[0], "ignore previous") || strings.Contains(notes[0], "```text") || strings.Contains(notes[0], "a_log_edited") {
-		t.Fatalf("the headline is the first paragraph, without the log: %q", notes)
+	p = e.proposed(t).Context
+	if !strings.HasPrefix(p, "**What happened:** `rust:test` of the default branch passed only on retry (flaky issue #1).\n\n") ||
+		strings.Contains(p, "ignore previous") || strings.Contains(p, "```text") || strings.Contains(p, "a_log_edited") {
+		t.Fatalf("the headline is the first paragraph, without the log:\n%s", p)
 	}
 }

@@ -322,6 +322,19 @@ type PilotProposal struct {
 	// accepted proposal runs: its outcome goes into the prompt's answer.
 	// +optional
 	Prompt string `json:"prompt,omitempty"`
+	// Kind, Question, Context and Options make it a prompt with the
+	// pilot's own options (an assessment) instead of "Do it" or "Do
+	// nothing" for Actions; State is then that of the recommended option's
+	// actions. Untrusted; the operator checks every option's actions.
+	// +optional
+	Kind PromptKind `json:"kind,omitempty"`
+	// +optional
+	Question string `json:"question,omitempty"`
+	// +optional
+	Context string `json:"context,omitempty"`
+	// +optional
+	// +kubebuilder:validation:MaxItems=5
+	Options []PromptOption `json:"options,omitempty"`
 }
 
 // PilotEvent is something the pilot assesses without being asked: an

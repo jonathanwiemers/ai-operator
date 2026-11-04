@@ -1155,14 +1155,41 @@ counted interventions; more tools are later steps of
   reports among them) and the logs of the failed jobs of its pipeline (as
   in a CI fix run), together at most 30 kB, and the milestone's state (or
   why it could not be read: the event's own data is still assessed). The
-  answer (`assessSchema`: classification, evidence, what it would do) is
-  posted on the tracking issue, made inert, with one `cc` of the owners; a
-  classification off the list is shown as `unknown`. Without budget or a
-  successful turn the comment says so. It executes nothing. The runner remembers the
-  last 100 posted `key@request`, so a run started again does not post
-  twice; a comment that could not be posted fails the run.
-* **Proposals** (`internal/controller/pilot_actions.go`). An answer or an
-  assessment may carry a proposal (`proposalSchema`: a summary and up to 5
+  answer (`assessSchema`: classification, evidence, what it would do, a
+  question and 2–4 options of `{label, detail, recommended, actions}`, the
+  actions as in `actionSchema`) becomes a prompt (`proposePrompt`):
+  `assessOptions` drops options without a label or whose actions
+  `rejectActions` all refuses, keeps one recommended (the first that says
+  so, else the first), appends "Do nothing" when every option has actions,
+  and keeps at most 4 (the recommended one and the first without actions
+  among them). It is recorded in `status.pilot.proposed` as a
+  `PilotProposal` with `kind: assessment`, `question`, `options`, `context`
+  (what happened and the inert classification, evidence and what it would
+  do; a classification off the list is shown as `unknown`), `source:
+  event/<key>@<request>`, `trigger`, `why`, and `state` of the recommended
+  option's actions (empty when the state could not be read). The runner
+  posts no comment for it: the mirrored prompt is the assessment's comment.
+  Without budget, a successful turn, owners or a recorded prompt, it posts
+  the assessment on the tracking issue with one `cc` of the owners and
+  says so. It executes nothing. The runner remembers the last 100 handled
+  `key@request`, so a run started again does not assess twice; a comment
+  that could not be posted fails the run.
+* **Assessment prompts** (`optionsPrompt` in
+  `internal/controller/pilot_actions.go`). `postProposals` puts a proposed
+  entry with `options` as a prompt of its kind (`assessment`; `mainHealth`
+  is kept, anything else becomes `assessment`) with `source {kind,
+  issueIID: trigger, key: source}`, once per source. Its options go through
+  `validOptions` (actions of the model); when no option with actions the
+  operator runs is left, or the shape is invalid, the options are "Look
+  into it myself" (recommended) and "Do nothing", and the context gets the
+  reason. Unlike a proposal it is not dropped when the state moved on: each
+  action is checked again when it runs. Its comment mentions the owners. A
+  managing pilot (`manage`) runs the recommended option itself, audited
+  like its proposals, only when all of that option's actions run on their
+  own and its `state` still holds; otherwise the prompt goes to the owners
+  whole and counts nothing.
+* **Proposals** (`internal/controller/pilot_actions.go`). An answer may
+  carry a proposal (`proposalSchema`: a summary and up to 5
   actions of `retry`, `reReview`, `instruct` with a kind, `openIssue`, `fixFlaky`, `skip`, `pause`, `resume`, `revisit`). The
   runner executes nothing: it appends the proposal to
   `status.pilot.proposed` of the `Coordinate` task, with `state`, the hash
@@ -1283,11 +1310,10 @@ counted interventions; more tools are later steps of
   outcome: summary, `why` (classification and evidence, or the message,
   recorded by the runner), the actions and the interventions left, inert
   and without mentions. The rest is posted as a proposal, with its state
-  recomputed for the actions left. A managed assessment that carries a
-  proposal mentions nobody and marks it `quiet`; the operator then
-  mentions the owners in the proposal it posts (also when an owner said
-  `/pilot stop` in between), or, when nothing of it would run, in a short
-  comment. Interventions count attempts: an action that fails while it
+  recomputed for the actions left. A proposal marked `quiet` (written by
+  runs before assessment prompts) gets the owners mentioned in the
+  proposal the operator posts (also when an owner said `/pilot stop` in
+  between), or, when nothing of it would run, in a short comment. Interventions count attempts: an action that fails while it
   runs keeps its count, and the milestone's (`0`) has no head, so it is a
   cap for the milestone's life. A failed status patch
   restores the object, so nothing of it is used later in the poll. Every action the pilot starts, except an

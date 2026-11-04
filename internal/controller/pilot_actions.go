@@ -142,12 +142,24 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 	last := ""
 	for i, p := range append(slices.Clone(proposed), extra...) {
 		fromRun := i < len(proposed)
+		kind := aiv1.PromptProposal
+		if len(p.Options) > 0 {
+			kind = optionsKind(p.Kind)
+		}
 		// Put before the pilot's status was written (a conflict, a crash):
 		// a proposal is put once.
 		if j := slices.IndexFunc(st.Status.Prompts, func(q aiv1.Prompt) bool {
-			return p.Source != "" && q.Source.Kind == aiv1.PromptProposal && q.Source.Key == p.Source
+			return p.Source != "" && q.Source.Kind == kind && q.Source.Key == p.Source
 		}); j >= 0 {
 			last = st.Status.Prompts[j].ID
+			continue
+		}
+		if len(p.Options) > 0 {
+			q, err := r.addPrompt(ctx, gl, st, st, r.optionsPrompt(ctx, gl, project, spec, st, tasks, opened, p))
+			if err != nil {
+				return "", err
+			}
+			last = q.ID
 			continue
 		}
 		stale := aiv1.PilotState(st, tasks, p.Actions) != p.State
@@ -226,6 +238,40 @@ func proposalPrompt(st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, p aiv1.
 		Quiet: !fromRun || !p.Quiet,
 	}
 	q.PilotState = proposalState(st, tasks, q)
+	return q
+}
+
+// optionsKind is the kind of a prompt with the pilot's own options:
+// mainHealth as recorded, anything else an assessment.
+func optionsKind(k aiv1.PromptKind) aiv1.PromptKind {
+	if k == aiv1.PromptMainHealth {
+		return k
+	}
+	return aiv1.PromptAssessment
+}
+
+// optionsPrompt is the prompt of p's own options (an assessment): those
+// whose actions the operator runs (validOptions). When none is left, the
+// owners still get the question, with "Look into it myself" and "Do
+// nothing" and why the pilot's options went. A run never mentioned the
+// owners for it, so the comment does.
+func (r *AgentProjectReconciler) optionsPrompt(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+	st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string, p aiv1.PilotProposal) aiv1.Prompt {
+	question := strings.Join(strings.Fields(p.Question), " ")
+	if question == "" {
+		question = "What should happen next?"
+	}
+	q := aiv1.Prompt{
+		Source:   aiv1.PromptSource{Kind: optionsKind(p.Kind), IssueIID: p.Trigger, Key: p.Source},
+		Question: textutil.Truncate(question, aiv1.MaxPromptQuestion-len("…")),
+		Context:  textutil.Truncate(p.Context, aiv1.MaxPromptContext-len("…")),
+		Options:  slices.Clone(p.Options),
+	}
+	if _, err := r.validOptions(ctx, gl, project, spec, st, tasks, opened, &q, true); err != nil {
+		log.FromContext(ctx).Info("the pilot's options leave nothing the operator runs", "task", st.Name, "source", p.Source, "error", err.Error())
+		q.Options = []aiv1.PromptOption{{ID: "A", Label: "Look into it myself", Recommended: true}, {ID: "B", Label: "Do nothing"}}
+		q.Context = textutil.Truncate(q.Context+"\n\n_The pilot's options were not offered: "+err.Error()+"._", aiv1.MaxPromptContext-len("…"))
+	}
 	return q
 }
 

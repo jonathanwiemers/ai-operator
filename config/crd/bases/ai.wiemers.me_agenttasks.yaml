@@ -1027,11 +1027,105 @@ spec:
                             - tool
                             type: object
                           type: array
+                        context:
+                          type: string
                         id:
                           description: ID is n of "P<n>", given when the operator
                             posts it.
                           format: int64
                           type: integer
+                        kind:
+                          description: |-
+                            Kind, Question, Context and Options make it a prompt with the
+                            pilot's own options (an assessment) instead of "Do it" or "Do
+                            nothing" for Actions; State is then that of the recommended option's
+                            actions. Untrusted; the operator checks every option's actions.
+                          enum:
+                          - assessment
+                          - mainHealth
+                          - needsInput
+                          - revisit
+                          - budget
+                          - proposal
+                          type: string
+                        options:
+                          items:
+                            description: PromptOption is one answer an owner can choose.
+                            properties:
+                              actions:
+                                description: |-
+                                  Actions run when an owner chooses it, validated like an accepted
+                                  proposal's; none: the "do nothing" option.
+                                items:
+                                  description: |-
+                                    PilotAction is one action of a proposal of the pilot; the operator
+                                    validates and executes it once an owner accepts the proposal.
+                                  properties:
+                                    decision:
+                                      description: Decision to revisit, e.g. D12-3;
+                                        Note is the change asked for.
+                                      type: string
+                                    issueIID:
+                                      format: int64
+                                      type: integer
+                                    kind:
+                                      description: Kind of an instruct, one of PilotInstructKinds.
+                                      type: string
+                                    note:
+                                      description: |-
+                                        Note: the pilot's hint to the implementer (instruct), the body of
+                                        the issue it opens (openIssue), the change asked for (revisit).
+                                        Untrusted.
+                                      type: string
+                                    owner:
+                                      description: |-
+                                        Owner and Text: an owner's own words for the implementer ("/pilot
+                                        tell #N: …"). Only the operator sets them.
+                                      type: string
+                                    rule:
+                                      description: |-
+                                        Rule is the ID ("R2") of the standing rule forgetRule removes. A
+                                        setRule has its kind (switch, pilot, prompt) in Kind and its text in
+                                        Note; a forgetRule the operator's copy of the rule's text in Note.
+                                      type: string
+                                    spec:
+                                      description: |-
+                                        Spec is the full new spec text of an editSpec, which replaces the
+                                        milestone description except its command lines (markers, owners,
+                                        rules). Untrusted until an owner accepts its diff.
+                                      type: string
+                                    text:
+                                      type: string
+                                    title:
+                                      description: Title of the issue it opens (openIssue).
+                                      type: string
+                                    tool:
+                                      description: |-
+                                        Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
+                                        resume, revisit, setRule, forgetRule or editSpec.
+                                      type: string
+                                  required:
+                                  - tool
+                                  type: object
+                                type: array
+                              detail:
+                                description: Detail says what the option does. Untrusted.
+                                type: string
+                              fromAnswer:
+                                description: |-
+                                  FromAnswer: the pilot made it from an owner's free text; it follows
+                                  the producer's options and waits for the owner to confirm it.
+                                type: boolean
+                              id:
+                                description: ID is "A".."E", in order.
+                                type: string
+                              label:
+                                type: string
+                              recommended:
+                                type: boolean
+                            type: object
+                          maxItems: 5
+                          type: array
                         ownerIDs:
                           description: |-
                             OwnerIDs are the user IDs of the milestone's owners when it was
@@ -1048,6 +1142,8 @@ spec:
                           description: |-
                             Prompt is the id ("Q3") of the prompt whose chosen option this
                             accepted proposal runs: its outcome goes into the prompt's answer.
+                          type: string
+                        question:
                           type: string
                         quiet:
                           description: |-
@@ -1283,11 +1379,105 @@ spec:
                             - tool
                             type: object
                           type: array
+                        context:
+                          type: string
                         id:
                           description: ID is n of "P<n>", given when the operator
                             posts it.
                           format: int64
                           type: integer
+                        kind:
+                          description: |-
+                            Kind, Question, Context and Options make it a prompt with the
+                            pilot's own options (an assessment) instead of "Do it" or "Do
+                            nothing" for Actions; State is then that of the recommended option's
+                            actions. Untrusted; the operator checks every option's actions.
+                          enum:
+                          - assessment
+                          - mainHealth
+                          - needsInput
+                          - revisit
+                          - budget
+                          - proposal
+                          type: string
+                        options:
+                          items:
+                            description: PromptOption is one answer an owner can choose.
+                            properties:
+                              actions:
+                                description: |-
+                                  Actions run when an owner chooses it, validated like an accepted
+                                  proposal's; none: the "do nothing" option.
+                                items:
+                                  description: |-
+                                    PilotAction is one action of a proposal of the pilot; the operator
+                                    validates and executes it once an owner accepts the proposal.
+                                  properties:
+                                    decision:
+                                      description: Decision to revisit, e.g. D12-3;
+                                        Note is the change asked for.
+                                      type: string
+                                    issueIID:
+                                      format: int64
+                                      type: integer
+                                    kind:
+                                      description: Kind of an instruct, one of PilotInstructKinds.
+                                      type: string
+                                    note:
+                                      description: |-
+                                        Note: the pilot's hint to the implementer (instruct), the body of
+                                        the issue it opens (openIssue), the change asked for (revisit).
+                                        Untrusted.
+                                      type: string
+                                    owner:
+                                      description: |-
+                                        Owner and Text: an owner's own words for the implementer ("/pilot
+                                        tell #N: …"). Only the operator sets them.
+                                      type: string
+                                    rule:
+                                      description: |-
+                                        Rule is the ID ("R2") of the standing rule forgetRule removes. A
+                                        setRule has its kind (switch, pilot, prompt) in Kind and its text in
+                                        Note; a forgetRule the operator's copy of the rule's text in Note.
+                                      type: string
+                                    spec:
+                                      description: |-
+                                        Spec is the full new spec text of an editSpec, which replaces the
+                                        milestone description except its command lines (markers, owners,
+                                        rules). Untrusted until an owner accepts its diff.
+                                      type: string
+                                    text:
+                                      type: string
+                                    title:
+                                      description: Title of the issue it opens (openIssue).
+                                      type: string
+                                    tool:
+                                      description: |-
+                                        Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
+                                        resume, revisit, setRule, forgetRule or editSpec.
+                                      type: string
+                                  required:
+                                  - tool
+                                  type: object
+                                type: array
+                              detail:
+                                description: Detail says what the option does. Untrusted.
+                                type: string
+                              fromAnswer:
+                                description: |-
+                                  FromAnswer: the pilot made it from an owner's free text; it follows
+                                  the producer's options and waits for the owner to confirm it.
+                                type: boolean
+                              id:
+                                description: ID is "A".."E", in order.
+                                type: string
+                              label:
+                                type: string
+                              recommended:
+                                type: boolean
+                            type: object
+                          maxItems: 5
+                          type: array
                         ownerIDs:
                           description: |-
                             OwnerIDs are the user IDs of the milestone's owners when it was
@@ -1304,6 +1494,8 @@ spec:
                           description: |-
                             Prompt is the id ("Q3") of the prompt whose chosen option this
                             accepted proposal runs: its outcome goes into the prompt's answer.
+                          type: string
+                        question:
                           type: string
                         quiet:
                           description: |-
@@ -1402,11 +1594,105 @@ spec:
                             - tool
                             type: object
                           type: array
+                        context:
+                          type: string
                         id:
                           description: ID is n of "P<n>", given when the operator
                             posts it.
                           format: int64
                           type: integer
+                        kind:
+                          description: |-
+                            Kind, Question, Context and Options make it a prompt with the
+                            pilot's own options (an assessment) instead of "Do it" or "Do
+                            nothing" for Actions; State is then that of the recommended option's
+                            actions. Untrusted; the operator checks every option's actions.
+                          enum:
+                          - assessment
+                          - mainHealth
+                          - needsInput
+                          - revisit
+                          - budget
+                          - proposal
+                          type: string
+                        options:
+                          items:
+                            description: PromptOption is one answer an owner can choose.
+                            properties:
+                              actions:
+                                description: |-
+                                  Actions run when an owner chooses it, validated like an accepted
+                                  proposal's; none: the "do nothing" option.
+                                items:
+                                  description: |-
+                                    PilotAction is one action of a proposal of the pilot; the operator
+                                    validates and executes it once an owner accepts the proposal.
+                                  properties:
+                                    decision:
+                                      description: Decision to revisit, e.g. D12-3;
+                                        Note is the change asked for.
+                                      type: string
+                                    issueIID:
+                                      format: int64
+                                      type: integer
+                                    kind:
+                                      description: Kind of an instruct, one of PilotInstructKinds.
+                                      type: string
+                                    note:
+                                      description: |-
+                                        Note: the pilot's hint to the implementer (instruct), the body of
+                                        the issue it opens (openIssue), the change asked for (revisit).
+                                        Untrusted.
+                                      type: string
+                                    owner:
+                                      description: |-
+                                        Owner and Text: an owner's own words for the implementer ("/pilot
+                                        tell #N: …"). Only the operator sets them.
+                                      type: string
+                                    rule:
+                                      description: |-
+                                        Rule is the ID ("R2") of the standing rule forgetRule removes. A
+                                        setRule has its kind (switch, pilot, prompt) in Kind and its text in
+                                        Note; a forgetRule the operator's copy of the rule's text in Note.
+                                      type: string
+                                    spec:
+                                      description: |-
+                                        Spec is the full new spec text of an editSpec, which replaces the
+                                        milestone description except its command lines (markers, owners,
+                                        rules). Untrusted until an owner accepts its diff.
+                                      type: string
+                                    text:
+                                      type: string
+                                    title:
+                                      description: Title of the issue it opens (openIssue).
+                                      type: string
+                                    tool:
+                                      description: |-
+                                        Tool: retry, reReview, instruct, openIssue, fixFlaky, skip, pause,
+                                        resume, revisit, setRule, forgetRule or editSpec.
+                                      type: string
+                                  required:
+                                  - tool
+                                  type: object
+                                type: array
+                              detail:
+                                description: Detail says what the option does. Untrusted.
+                                type: string
+                              fromAnswer:
+                                description: |-
+                                  FromAnswer: the pilot made it from an owner's free text; it follows
+                                  the producer's options and waits for the owner to confirm it.
+                                type: boolean
+                              id:
+                                description: ID is "A".."E", in order.
+                                type: string
+                              label:
+                                type: string
+                              recommended:
+                                type: boolean
+                            type: object
+                          maxItems: 5
+                          type: array
                         ownerIDs:
                           description: |-
                             OwnerIDs are the user IDs of the milestone's owners when it was
@@ -1423,6 +1709,8 @@ spec:
                           description: |-
                             Prompt is the id ("Q3") of the prompt whose chosen option this
                             accepted proposal runs: its outcome goes into the prompt's answer.
+                          type: string
+                        question:
                           type: string
                         quiet:
                           description: |-

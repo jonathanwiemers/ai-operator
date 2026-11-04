@@ -2,6 +2,8 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -30,32 +32,73 @@ func newAssessEnv(t *testing.T, costUSD string) *pilotEnv {
 	}
 	e.engine.assessment = &PilotAssessment{Classification: "env",
 		Evidence: "`rust:lint` fails with `no such command: fmt`; the run report says cargo is missing. Ask @bob.",
-		WouldDo:  "Run #1 again with the pinned Rust toolchain installed.\n/merge"}
+		WouldDo:  "Run #1 again with the pinned Rust toolchain installed.\n/merge",
+		Question: "#1 is stuck on a missing Rust toolchain: what now?",
+		Options: []AssessOption{
+			{Label: "Run #1 again with the toolchain", Detail: "install-toolchains", Recommended: true,
+				Actions: []ProposalAction{{Tool: "instruct", Issue: 1, Kind: "install-toolchains", Note: "cargo is missing"}}},
+			{Label: "Do nothing"},
+		}}
 	return e
 }
 
-func TestPilotAssessesAnEventOnTheTrackingIssue(t *testing.T) {
+// proposed is the one entry the run recorded in status.pilot.proposed.
+func (e *pilotEnv) proposed(t *testing.T) aiv1.PilotProposal {
+	t.Helper()
+	ps := e.task(t).Status.Pilot
+	if ps == nil || len(ps.Proposed) != 1 {
+		t.Fatalf("expected one recorded prompt: %+v", ps)
+	}
+	return ps.Proposed[0]
+}
+
+// labels are the options as "label" or "label*" (recommended), with
+// "+" per action.
+func labels(options []aiv1.PromptOption) string {
+	var out []string
+	for _, o := range options {
+		s := o.Label + strings.Repeat("+", len(o.Actions))
+		if o.Recommended {
+			s += "*"
+		}
+		out = append(out, s)
+	}
+	return strings.Join(out, " | ")
+}
+
+func TestPilotAssessmentIsAPrompt(t *testing.T) {
 	e := newAssessEnv(t, "")
 	before := len(e.gl.IssueNotes[1])
 	e.step(t)
 	if len(e.engine.calls) != 1 || !e.engine.calls[0].ReadOnly || e.engine.calls[0].JSONSchema != assessSchema {
 		t.Fatalf("expected one read-only assessment turn: %+v", e.engine.calls)
 	}
-	notes := botNotes(e.gl, 5)
-	if len(notes) != 1 {
-		t.Fatalf("expected one assessment on the tracking issue, got %q", notes)
+	if notes := botNotes(e.gl, 5); len(notes) != 0 {
+		t.Fatalf("the mirrored prompt is the assessment's comment, the runner posts none: %q", notes)
 	}
-	a := notes[0]
-	for _, want := range []string{"🧭 **Assessment:** Autopilot paused: #1 needs input", "**Classification:** `env`",
-		"no such command: fmt", "**What I would do:** Run #1 again", "there is none for this"} {
-		if !strings.Contains(a, want) {
-			t.Errorf("assessment misses %q:\n%s", want, a)
+	p := e.proposed(t)
+	if p.Kind != aiv1.PromptAssessment || p.Source != "event/stuck/1/sha3@1" || p.Trigger != 1 || !p.Quiet || p.State == "" ||
+		p.Question != "#1 is stuck on a missing Rust toolchain: what now?" || p.Summary != "Run #1 again with the toolchain" || len(p.Actions) != 0 {
+		t.Fatalf("the prompt's shape: %+v", p)
+	}
+	if got := labels(p.Options); got != "Run #1 again with the toolchain+* | Do nothing" {
+		t.Fatalf("options: %s", got)
+	}
+	if a := p.Options[0].Actions[0]; a.Tool != "instruct" || a.IssueIID != 1 || a.Kind != "install-toolchains" || p.Options[0].Detail != "install-toolchains" {
+		t.Fatalf("the option's action: %+v", p.Options[0])
+	}
+	if !strings.HasPrefix(p.Why, "`env`: `rust:lint` fails") {
+		t.Fatalf("why is for the audit: %q", p.Why)
+	}
+	for _, want := range []string{"**What happened:** Autopilot paused: #1 needs input", "**Classification:** `env`",
+		"no such command: fmt", "**What I would do:** Run #1 again"} {
+		if !strings.Contains(p.Context, want) {
+			t.Errorf("the context misses %q:\n%s", want, p.Context)
 		}
 	}
-	// The owners are mentioned once; the pilot's own text pings nobody and
-	// runs no quick action.
-	if strings.Count(a, "@alice") != 1 || !strings.HasSuffix(a, "cc @alice") || strings.Contains(a, "@bob") || strings.Contains(a, "\n/merge") {
-		t.Fatalf("expected one mention of the owners and defused text:\n%s", a)
+	// The pilot's own text pings nobody and runs no quick action.
+	if strings.Contains(p.Context, "@bob") || strings.Contains(p.Context, "\n/merge") || strings.Contains(p.Context, "accepts") {
+		t.Fatalf("the context is defused and has no endings of the old flow:\n%s", p.Context)
 	}
 	// It executes nothing: no other comment, label or merge.
 	if len(e.gl.IssueNotes[1]) != before || len(e.gl.MRNotes) != 0 || len(e.gl.Merged) != 0 ||
@@ -70,8 +113,117 @@ func TestPilotAssessesAnEventOnTheTrackingIssue(t *testing.T) {
 	// A run started again (pod lost) does not assess it twice.
 	e.patchStatus(t, func(s *aiv1.AgentTaskStatus) { s.Run.ObservedRunRequest = 0 })
 	e.step(t)
-	if len(e.engine.calls) != 1 || len(botNotes(e.gl, 5)) != 1 {
-		t.Fatalf("an event is assessed once: %d calls, %d notes", len(e.engine.calls), len(botNotes(e.gl, 5)))
+	if len(e.engine.calls) != 1 || len(botNotes(e.gl, 5)) != 0 || len(e.task(t).Status.Pilot.Proposed) != 1 {
+		t.Fatalf("an event is assessed once: %d calls, %q", len(e.engine.calls), botNotes(e.gl, 5))
+	}
+}
+
+func TestPilotAssessmentDecodesItsOptions(t *testing.T) {
+	var schema struct {
+		Required   []string `json:"required"`
+		Properties struct {
+			Options struct {
+				MinItems int `json:"minItems"`
+				MaxItems int `json:"maxItems"`
+			} `json:"options"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(assessSchema), &schema); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(schema.Required, "options") || !slices.Contains(schema.Required, "question") ||
+		schema.Properties.Options.MinItems != 2 || schema.Properties.Options.MaxItems != 4 {
+		t.Fatalf("the schema asks for a question and 2 to 4 options: %+v", schema)
+	}
+	var a PilotAssessment
+	if err := json.Unmarshal([]byte(`{"classification": "flaky", "evidence": "e", "wouldDo": "w", "question": "q?", "options": [
+		{"label": "Hand #7 to the agent", "detail": "d", "recommended": true, "actions": [{"tool": "fixFlaky", "issue": 7}]},
+		{"label": "Do nothing", "recommended": false, "actions": []}]}`), &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.Question != "q?" || len(a.Options) != 2 || !a.Options[0].Recommended || a.Options[0].Actions[0].Tool != "fixFlaky" || a.Options[0].Actions[0].Issue != 7 {
+		t.Fatalf("decoded: %+v", a)
+	}
+}
+
+func TestAssessOptionsAreNormalised(t *testing.T) {
+	retry := func(label string, rec bool) AssessOption {
+		return AssessOption{Label: label, Recommended: rec, Actions: []ProposalAction{{Tool: "retry", Issue: 1}}}
+	}
+	for _, tc := range []struct {
+		name string
+		in   []AssessOption
+		want string
+	}{
+		{"none recommended: the first", []AssessOption{retry("A", false), {Label: "Do nothing"}}, "A+* | Do nothing"},
+		{"two recommended: the first", []AssessOption{retry("A", false), retry("B", true), {Label: "Wait", Recommended: true}}, "A+ | B+* | Wait"},
+		{"do nothing is added", []AssessOption{retry("A", true), retry("B", false)}, "A+* | B+ | Do nothing"},
+		{"none at all", nil, "Do nothing*"},
+		{"more than 4: the recommended one and do nothing stay",
+			[]AssessOption{retry("A", false), retry("B", false), retry("C", false), retry("D", false), retry("E", true)}, "A+ | B+ | E+* | Do nothing"},
+		{"more than 4 with do nothing last", []AssessOption{retry("A", true), retry("B", false), retry("C", false), retry("D", false), {Label: "Skip it"}},
+			"A+* | B+ | C+ | Skip it"},
+		{"no label goes", []AssessOption{retry("  ", true), {Label: " Do \n nothing "}}, "Do nothing*"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, refused := assessOptions(tc.in)
+			if labels(got) != tc.want || refused != "" {
+				t.Fatalf("got %s (refused %q), want %s", labels(got), refused, tc.want)
+			}
+		})
+	}
+	// An option whose actions the operator would all refuse goes, saying why.
+	got, refused := assessOptions([]AssessOption{
+		{Label: "Rewrite the spec", Recommended: true, Actions: []ProposalAction{{Tool: "editSpec", Spec: "Build something else."}}},
+		{Label: "Retry and rewrite", Actions: []ProposalAction{{Tool: "editSpec", Spec: "x"}, {Tool: "retry", Issue: 1}}},
+		{Label: "Do nothing"},
+	})
+	if labels(got) != "Retry and rewrite+* | Do nothing" || !strings.Contains(refused, "Spec edit not proposed: only an owner's message asks for one") {
+		t.Fatalf("got %s, refused %q", labels(got), refused)
+	}
+}
+
+func TestPilotAssessmentWithoutBudgetCallsNoModel(t *testing.T) {
+	e := newAssessEnv(t, "20.0000")
+	e.step(t)
+	notes := botNotes(e.gl, 5)
+	if len(e.engine.calls) != 0 || len(notes) != 1 || !strings.Contains(notes[0], "🧭 **Assessment:** Autopilot paused: #1") ||
+		!strings.Contains(notes[0], "budget for this milestone ($20") || !strings.HasSuffix(notes[0], "cc @alice") {
+		t.Fatalf("a used-up budget posts the event without a model call: %d calls, %q", len(e.engine.calls), notes)
+	}
+	if ps := e.task(t).Status.Pilot; ps != nil && len(ps.Proposed) != 0 {
+		t.Fatalf("no prompt is possible: %+v", ps.Proposed)
+	}
+}
+
+func TestPilotAssessmentThatFailedIsAComment(t *testing.T) {
+	e := newAssessEnv(t, "")
+	e.engine.err = errors.New("engine crashed")
+	if _, err := e.r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if notes := botNotes(e.gl, 5); len(notes) != 1 || !strings.Contains(notes[0], "could not assess it: the run failed") || !strings.HasSuffix(notes[0], "cc @alice") {
+		t.Fatalf("a failed turn says so: %q", notes)
+	}
+	if ps := e.task(t).Status.Pilot; ps != nil && len(ps.Proposed) != 0 {
+		t.Fatalf("no prompt is possible: %+v", ps.Proposed)
+	}
+}
+
+func TestPilotAssessmentWithoutOwnersIsAComment(t *testing.T) {
+	e := newAssessEnv(t, "")
+	task := e.task(t)
+	task.Spec.Owners = nil
+	if err := e.k8s.Update(context.Background(), &task); err != nil {
+		t.Fatal(err)
+	}
+	e.step(t)
+	notes := botNotes(e.gl, 5)
+	if len(notes) != 1 || !strings.Contains(notes[0], "**Classification:** `env`") || !strings.Contains(notes[0], "There is no prompt for it") {
+		t.Fatalf("nobody could answer a prompt: the assessment is a comment: %q", notes)
+	}
+	if ps := e.task(t).Status.Pilot; ps != nil && len(ps.Proposed) != 0 {
+		t.Fatalf("nothing is recorded: %+v", ps.Proposed)
 	}
 }
 
@@ -94,16 +246,6 @@ func TestPilotAssessmentMarksTheDataAsUntrusted(t *testing.T) {
 	}
 }
 
-func TestPilotAssessmentWithoutBudgetCallsNoModel(t *testing.T) {
-	e := newAssessEnv(t, "20.0000")
-	e.step(t)
-	notes := botNotes(e.gl, 5)
-	if len(e.engine.calls) != 0 || len(notes) != 1 || !strings.Contains(notes[0], "budget for this milestone ($20") ||
-		!strings.HasSuffix(notes[0], "cc @alice") {
-		t.Fatalf("a used-up budget posts the event without a model call: %d calls, %q", len(e.engine.calls), notes)
-	}
-}
-
 func TestPilotAssessmentIsAFreshSession(t *testing.T) {
 	e := newAssessEnv(t, "")
 	if err := e.r.saveState(state{Sessions: map[string]string{"pilot/claude": "sess-owner"}}); err != nil {
@@ -119,10 +261,14 @@ func TestPilotAssessesWithoutTheMilestonesState(t *testing.T) {
 	e := newAssessEnv(t, "")
 	e.gl.Milestones = nil // GetMilestone fails
 	e.step(t)
-	notes := botNotes(e.gl, 5)
 	if len(e.engine.calls) != 1 || !strings.Contains(e.engine.calls[0].Prompt, "could not be read") ||
-		!strings.Contains(e.engine.calls[0].Prompt, "no such command: fmt") || len(notes) != 1 || !strings.Contains(notes[0], "`env`") {
-		t.Fatalf("the event's own data is still assessed: %d calls, %q", len(e.engine.calls), notes)
+		!strings.Contains(e.engine.calls[0].Prompt, "no such command: fmt") {
+		t.Fatalf("the event's own data is still assessed: %d calls", len(e.engine.calls))
+	}
+	// Still a prompt, without a state: the owners choose, a managing pilot
+	// runs nothing of it on its own.
+	if p := e.proposed(t); p.State != "" || !strings.Contains(p.Context, "`env`") || len(botNotes(e.gl, 5)) != 0 {
+		t.Fatalf("a prompt without a state: %+v", p)
 	}
 }
 
@@ -139,7 +285,7 @@ func TestPilotAssessmentWithoutTheStateIsDeferredByAUsageLimit(t *testing.T) {
 }
 
 func TestPilotAssessmentWithAnUnknownClassification(t *testing.T) {
-	if got := renderAssessment(PilotAssessment{Classification: "merge it", Evidence: "e", WouldDo: "w"}, false, false); !strings.Contains(got, "`unknown`") {
+	if got := renderAssessment(PilotAssessment{Classification: "merge it", Evidence: "e", WouldDo: "w"}); !strings.Contains(got, "`unknown`") {
 		t.Fatalf("a classification off the list is unknown: %s", got)
 	}
 }

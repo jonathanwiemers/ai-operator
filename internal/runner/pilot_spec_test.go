@@ -75,13 +75,16 @@ func TestOversizeSpecEditAloneIsNotRecorded(t *testing.T) {
 
 func TestAssessmentProposesNoSpecEdit(t *testing.T) {
 	e := newAssessEnv(t, "")
-	e.engine.assessment.Proposal = proposalOf(t, `{"summary": "rewrite", "actions": [{"tool": "editSpec", "spec": "Build something else."},
-		{"tool": "retry", "issue": 1}]}`)
-	e.step(t)
-	if notes := botNotes(e.gl, 5); len(notes) != 1 || !strings.Contains(notes[0], "Spec edit not proposed: only an owner's message asks for one") {
-		t.Fatalf("the assessment says the spec edit is refused: %q", notes)
+	e.engine.assessment.Options = []AssessOption{
+		{Label: "Rewrite and retry", Recommended: true, Actions: []ProposalAction{{Tool: "editSpec", Spec: "Build something else."}, {Tool: "retry", Issue: 1}}},
+		{Label: "Do nothing"},
 	}
-	if ps := e.task(t).Status.Pilot; ps == nil || len(ps.Proposed) != 1 || len(ps.Proposed[0].Actions) != 1 || ps.Proposed[0].Actions[0].Tool != "retry" {
-		t.Fatalf("only the retry is proposed: %+v", ps)
+	e.step(t)
+	p := e.proposed(t)
+	if !strings.Contains(p.Context, "Spec edit not proposed: only an owner's message asks for one") {
+		t.Fatalf("the prompt says the spec edit is refused:\n%s", p.Context)
+	}
+	if got := labels(p.Options); got != "Rewrite and retry+* | Do nothing" || p.Options[0].Actions[0].Tool != "retry" {
+		t.Fatalf("only the retry is offered: %s", got)
 	}
 }
