@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,7 +68,7 @@ func TestClaudeSessionIsLogged(t *testing.T) {
 }
 
 func TestClipKeepsRunes(t *testing.T) {
-	if got := clip("ääää", 3); got != "ä…" {
+	if got := textutil.Truncate("ääää", 3); got != "ä…" {
 		t.Fatalf("got %q", got)
 	}
 }

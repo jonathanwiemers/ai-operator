@@ -2,11 +2,11 @@ package runner
 
 import (
 	"encoding/json"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"math"
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -67,11 +67,11 @@ func logEvent(log logr.Logger, line []byte) string {
 		switch b.Type {
 		case "thinking":
 			if t := strings.TrimSpace(b.Thinking); t != "" {
-				log.Info("agent thinks", "text", clip(t, maxLogText))
+				log.Info("agent thinks", "text", textutil.Truncate(t, maxLogText))
 			}
 		case "text":
 			if t := strings.TrimSpace(b.Text); t != "" {
-				log.Info("agent says", "text", clip(t, maxLogText))
+				log.Info("agent says", "text", textutil.Truncate(t, maxLogText))
 			}
 		case "tool_use":
 			if b.Name == "StructuredOutput" {
@@ -191,7 +191,7 @@ func toolInput(name string, raw json.RawMessage) string {
 					v += " in " + p
 				}
 			}
-			return clip(v, 500)
+			return textutil.Truncate(v, 500)
 		}
 	}
 	if todos, ok := in["todos"].([]any); ok {
@@ -203,7 +203,7 @@ func toolInput(name string, raw json.RawMessage) string {
 				items = append(items, "["+s+"] "+c)
 			}
 		}
-		return clip(strings.Join(items, "; "), 1000)
+		return textutil.Truncate(strings.Join(items, "; "), 1000)
 	}
 	// Unknown tools: only which arguments they got, their values may hold
 	// anything (contents, comment bodies).
@@ -213,15 +213,4 @@ func toolInput(name string, raw json.RawMessage) string {
 	}
 	sort.Strings(keys)
 	return strings.Join(keys, ", ")
-}
-
-// clip cuts s to at most n bytes, at a rune boundary.
-func clip(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n] + "…"
 }

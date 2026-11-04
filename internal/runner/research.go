@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"strings"
 	"time"
 
@@ -186,7 +187,7 @@ func RunResearch(ctx context.Context, agent Agent, req ResearchRequest) (Researc
 	answer := res
 	result, warnings, verr := blocks.Validate([]byte(answerJSON(res)))
 	if verr != nil {
-		errs := truncate(verr.Error(), maxRepairErrors)
+		errs := textutil.Truncate(verr.Error(), maxRepairErrors)
 		logr.FromContextOrDiscard(ctx).Info("research answer failed validation, asking for a repair", "problems", strings.Count(errs, "\n")+1)
 		repair := "Your answer failed validation:\n\n" + errs + "\n\nAnswer again with only the corrected JSON object."
 		if res.SessionID != "" {
@@ -212,7 +213,7 @@ func RunResearch(ctx context.Context, agent Agent, req ResearchRequest) (Researc
 			raw = string(answer.Structured)
 		}
 		ans.Result, ans.Status = blocks.Degraded(raw), store.StatusDegraded
-		ans.Warnings = append(warnings, "invalid answer: "+truncate(verr.Error(), maxRepairErrors))
+		ans.Warnings = append(warnings, "invalid answer: "+textutil.Truncate(verr.Error(), maxRepairErrors))
 		return ans, nil
 	}
 	ans.Result, ans.Status, ans.Warnings = result, store.StatusSucceeded, warnings

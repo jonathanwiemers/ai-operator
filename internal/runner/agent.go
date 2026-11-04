@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"io"
 	"net"
 	"net/http"
@@ -387,7 +388,7 @@ func (s *AgentServer) Handler() http.Handler {
 		if inv.LogPrompt {
 			// agents.logPrompts: what the agent is told, for the web UI.
 			log.Info("agent prompt", "role", inv.Role, "engine", req.Engine, "model", inv.Model,
-				"system", clip(inv.SystemPrompt, maxLogPrompt), "prompt", clip(inv.Prompt, maxLogPrompt))
+				"system", textutil.Truncate(inv.SystemPrompt, maxLogPrompt), "prompt", textutil.Truncate(inv.Prompt, maxLogPrompt))
 		}
 		res, err := s.Agent.Run(ctx, req.Engine, inv)
 		kv := []any{"engine", req.Engine, "model", inv.Model}

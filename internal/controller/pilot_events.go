@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"slices"
 	"strings"
 
@@ -113,7 +114,7 @@ func (r *AgentProjectReconciler) wakePilot(ctx context.Context, coord *aiv1.Agen
 		// Also those still in the spec: the status patch below may have
 		// failed after the update.
 		if !slices.Contains(had, ev.Key) && !slices.ContainsFunc(src.PilotEvents, func(p aiv1.PilotEvent) bool { return p.Key == ev.Key }) {
-			ev.Text = truncateUTF8(ev.Text, maxPilotMessage)
+			ev.Text = textutil.Truncate(ev.Text, maxPilotMessage)
 			ev.Request = coord.Spec.RunRequest + 1
 			fresh = append(fresh, ev)
 		}

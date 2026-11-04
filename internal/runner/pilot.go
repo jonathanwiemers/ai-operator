@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"slices"
 	"strings"
 	"time"
@@ -110,7 +111,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 				if task.Spec.Issue != nil && trigger == task.Spec.Issue.IID {
 					trigger = 0
 				}
-				why := fmt.Sprintf("@%s asked: %s", m.Author, truncate(m.Body, 300))
+				why := fmt.Sprintf("@%s asked: %s", m.Author, textutil.Truncate(m.Body, 300))
 				if err := r.propose(ctx, task, a.Proposal, stateOf, fmt.Sprintf("note/%d", m.NoteID), trigger, why, false); err != nil {
 					failed = err
 					reply += "\n\n_The pilot's proposal could not be recorded._"
@@ -225,7 +226,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 	for _, is := range issues {
 		pi := pilotIssue{IID: is.IID, Title: is.Title, State: is.State, Labels: is.Labels}
 		if t := byIID[is.IID]; t != nil {
-			pi.LastResult, pi.Summary, pi.CI, pi.Blocked = t.Status.Run.LastResult, truncate(t.Status.Run.Summary, 500), t.Status.CI, t.Status.Blocked
+			pi.LastResult, pi.Summary, pi.CI, pi.Blocked = t.Status.Run.LastResult, textutil.Truncate(t.Status.Run.Summary, 500), t.Status.CI, t.Status.Blocked
 		}
 		v.Issues = append(v.Issues, pi)
 	}
@@ -236,7 +237,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		}
 		for _, n := range notes[max(0, len(notes)-pilotComments):] {
 			if !n.System {
-				v.Comments = append(v.Comments, "@"+n.Author.Username+": "+truncate(n.Body, 1000))
+				v.Comments = append(v.Comments, "@"+n.Author.Username+": "+textutil.Truncate(n.Body, 1000))
 			}
 		}
 	}
@@ -340,10 +341,10 @@ func (r *Runner) propose(ctx context.Context, task *aiv1.AgentTask, p *ProposalA
 	if p == nil || len(p.Actions) == 0 || len(task.Spec.Owners) == 0 || stateOf == nil {
 		return nil
 	}
-	prop := aiv1.PilotProposal{Summary: truncate(p.Summary, 500), Source: source, Trigger: trigger, Why: truncate(why, 1000), Quiet: quiet}
+	prop := aiv1.PilotProposal{Summary: textutil.Truncate(p.Summary, 500), Source: source, Trigger: trigger, Why: textutil.Truncate(why, 1000), Quiet: quiet}
 	for _, a := range p.Actions[:min(len(p.Actions), 5)] {
-		prop.Actions = append(prop.Actions, aiv1.PilotAction{Tool: truncate(a.Tool, 40), IssueIID: a.Issue, Kind: truncate(a.Kind, 40),
-			Note: truncate(a.Note, 2000), Title: truncate(a.Title, 200), Decision: truncate(a.Decision, 40), Rule: truncate(a.Rule, 10), Spec: a.Spec})
+		prop.Actions = append(prop.Actions, aiv1.PilotAction{Tool: textutil.Truncate(a.Tool, 40), IssueIID: a.Issue, Kind: textutil.Truncate(a.Kind, 40),
+			Note: textutil.Truncate(a.Note, 2000), Title: textutil.Truncate(a.Title, 200), Decision: textutil.Truncate(a.Decision, 40), Rule: textutil.Truncate(a.Rule, 10), Spec: a.Spec})
 	}
 	if prop.State = stateOf(prop.Actions); prop.State == "" {
 		return nil

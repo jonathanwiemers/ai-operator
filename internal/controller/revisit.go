@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"strconv"
 	"strings"
 	"time"
@@ -217,7 +218,7 @@ func (r *AgentProjectReconciler) revisitAfterMerge(ctx context.Context, gl gitla
 		title = fmt.Sprintf("%s: %s", id, h[0].Title)
 	}
 	is, err := gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{
-		Title:       shorten("Revisit "+title, 255),
+		Title:       textutil.Truncate("Revisit "+title, 254),
 		Description: renderFollowUp(id, section, instruction, n, target, wf.CommandPrefix),
 		Labels:      strings.Join(labels, ","),
 		MilestoneID: st.Spec.Milestone.ID,
@@ -266,12 +267,4 @@ func renderFollowUp(id, section, instruction string, n gitlab.Note, target *gitl
 		"decision with `supersedes` set to `%s`. Comment `%s …` here to steer the work.\n\n", target.IID, id, prefix)
 	fmt.Fprintf(&b, "<!-- ai-operator:revisit=%s -->\n", id)
 	return b.String()
-}
-
-// shorten cuts s to at most n runes (GitLab limits titles to 255).
-func shorten(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n-1]) + "…"
-	}
-	return s
 }

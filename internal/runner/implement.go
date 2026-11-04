@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"slices"
 	"strings"
 	"sync"
@@ -609,7 +610,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if next == wf.ReviewLabel && !task.Spec.Autopilot && *spec.Notify.RequestReview && len(task.Spec.Owners) > 0 {
 			s = r.step(ctx, "request review")
 			if names, err := notify.RequestReview(ctx, gl, glProject, mr.IID, task.Spec.Owners); err != nil {
-				s.done("failed: "+truncate(err.Error(), 300), "error", err.Error())
+				s.done("failed: "+textutil.Truncate(err.Error(), 300), "error", err.Error())
 			} else if len(names) == 0 {
 				s.done("none requested: the merge request has reviewers, or the owners are unknown")
 			} else {
@@ -974,7 +975,7 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 					break
 				}
 				wait := reviewRetryBackoff[min(attempts, len(reviewRetryBackoff))-1]
-				r.log().Info("reviewer failed transiently, trying again", "reviewer", kind, "attempt", attempts, "wait", wait, "error", truncate(err.Error(), 300))
+				r.log().Info("reviewer failed transiently, trying again", "reviewer", kind, "attempt", attempts, "wait", wait, "error", textutil.Truncate(err.Error(), 300))
 				select {
 				case <-ctx.Done():
 				case <-time.After(wait):
@@ -990,7 +991,7 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 			if err != nil {
 				r.log().Error(err, "reviewer failed", "reviewer", kind, "attempts", attempts)
 				kinds = append(kinds, reviewErrorOf(kind, err))
-				msg := truncate(err.Error(), 300)
+				msg := textutil.Truncate(err.Error(), 300)
 				if attempts > 1 {
 					msg = fmt.Sprintf("%s (after %d attempts)", msg, attempts)
 				}

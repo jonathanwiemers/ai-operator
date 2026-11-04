@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"slices"
 	"strings"
 	"sync"
@@ -185,7 +186,7 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 			if errors.As(err, &ce) {
 				return err // keep ChatInFlight
 			}
-			return r.finishChatTurn(ctx, &st, msg, "", truncate(err.Error(), 200), nil, start, false)
+			return r.finishChatTurn(ctx, &st, msg, "", textutil.Truncate(err.Error(), 200), nil, start, false)
 		}
 		r.chatSessionKey = key
 		if id != "" {
@@ -258,7 +259,7 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 		return r.finishChatTurn(ctx, &st, msg, text, shortUsageLimit(lim), nil, start, false)
 	}
 	if err != nil {
-		return r.finishChatTurn(ctx, &st, msg, text, truncate(err.Error(), 200), nil, start, false)
+		return r.finishChatTurn(ctx, &st, msg, text, textutil.Truncate(err.Error(), 200), nil, start, false)
 	}
 	return r.finishChatTurn(ctx, &st, msg, text, "", nil, start, !readOnly)
 }
@@ -355,13 +356,13 @@ func shortUsageLimit(lim *UsageLimitError) string {
 // finishChatTurn patches the reply into status, marks the message answered
 // and clears ChatInFlight. publish is set for writable turns that may push.
 func (r *Runner) finishChatTurn(ctx context.Context, st *state, msg aiv1.ChatMessage, text, errStr string, turnErr error, start time.Time, publish bool) error {
-	replyText := truncate(prose(text), maxChatReplyBytes)
+	replyText := textutil.Truncate(prose(text), maxChatReplyBytes)
 	var pushedSHA string
 	if publish && turnErr == nil && errStr == "" {
 		if sha, err := r.publishChatTurn(ctx, msg); err != nil {
 			r.Log.Error(err, "publishing chat turn changes", "messageID", msg.ID)
 			if errStr == "" {
-				errStr = truncate(err.Error(), 200)
+				errStr = textutil.Truncate(err.Error(), 200)
 			}
 		} else {
 			pushedSHA = sha

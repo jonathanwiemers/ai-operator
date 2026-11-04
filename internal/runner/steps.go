@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"html"
 	"slices"
 	"strings"
@@ -214,7 +215,7 @@ func (rl *runLog) table(open bool, costUSD *float64) string {
 // text from GitLab or the agent (titles, file names), so HTML is escaped and
 // @mentions are broken up.
 func cell(s string) string {
-	s = truncate(strings.Join(strings.Fields(s), " "), 120)
+	s = textutil.Truncate(strings.Join(strings.Fields(s), " "), 120)
 	s = html.EscapeString(s)
 	s = strings.ReplaceAll(s, "@", "@\u200b")
 	return strings.ReplaceAll(s, "|", `\|`)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -148,7 +149,7 @@ func (r *Runner) retryWithMoreMemory(ctx context.Context, gl gitlab.API, spec ai
 		s.OOMRetries++
 		s.LastActivityTime = &metav1.Time{Time: now}
 		s.LastResult = aiv1.RunResultDeferred
-		s.Summary = truncate(err.Error(), 2000)
+		s.Summary = textutil.Truncate(err.Error(), 2000)
 		s.CostUSD = aiv1.AddCost(s.CostUSD, out.CostUSD)
 	})
 }

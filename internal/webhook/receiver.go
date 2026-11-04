@@ -8,6 +8,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"io"
 	"net/http"
 	"strings"
@@ -37,7 +38,7 @@ type Receiver struct {
 }
 
 func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	log := r.Log.WithValues("event", clip(req.Header.Get("X-Gitlab-Event")), "remote", req.RemoteAddr)
+	log := r.Log.WithValues("event", textutil.Truncate(req.Header.Get("X-Gitlab-Event"), 256), "remote", req.RemoteAddr)
 	if req.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -66,7 +67,7 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	path := payload.Project.PathWithNamespace
-	log = log.WithValues("project", clip(path))
+	log = log.WithValues("project", textutil.Truncate(path, 256))
 
 	var projects aiv1.AgentProjectList
 	if err := r.Reader.List(req.Context(), &projects); err != nil {
@@ -125,13 +126,4 @@ func (r *Receiver) tokenMatches(req *http.Request, p *aiv1.AgentProject, token s
 	// ConstantTimeCompare would otherwise reveal.
 	got, exp := sha256.Sum256([]byte(token)), sha256.Sum256([]byte(want))
 	return subtle.ConstantTimeCompare(got[:], exp[:]) == 1
-}
-
-// clip bounds a value taken from the request before it is logged.
-func clip(s string) string {
-	const limit = 256
-	if len(s) > limit {
-		return s[:limit] + "…"
-	}
-	return s
 }

@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -94,7 +95,7 @@ func (r *Runner) routeAround(ctx context.Context, lim *UsageLimitError, role str
 		return
 	}
 	until := r.resetOrBackoff(lim.ResetAt)
-	l := aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: until}, Message: truncate(lim.Message, 300)}
+	l := aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: until}, Message: textutil.Truncate(lim.Message, 300)}
 	r.log().Info("usage limit reached, running on the fallback", "role", role, "engine", lim.Engine, "until", until.UTC(), "fallback", fb.Engine, "model", fb.Model)
 	r.run.noteFallback(fmt.Sprintf("↪️ `%s` reached its usage limit (until %s UTC), so %s ran on `%s/%s` instead.",
 		lim.Engine, until.UTC().Format("2006-01-02 15:04"), role, fb.Engine, fb.Model))

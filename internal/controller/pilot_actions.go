@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"maps"
 	"slices"
 	"strconv"
@@ -612,7 +613,7 @@ func inert(s string) string {
 
 // inertLine is inert text on one line, cut to n bytes.
 func inertLine(s string, n int) string {
-	return inert(truncateUTF8(strings.Join(strings.Fields(s), " "), n))
+	return inert(textutil.Truncate(strings.Join(strings.Fields(s), " "), n))
 }
 
 // threadAnswers handles the owners' "yes" and "no" written as replies in
@@ -684,7 +685,7 @@ func (r *AgentProjectReconciler) proposeTell(ctx context.Context, gl gitlab.API,
 	if err != nil {
 		return "", err
 	}
-	a := aiv1.PilotAction{Tool: "instruct", IssueIID: iid, Owner: n.Author.Username, Text: truncateUTF8(text, maxPilotMessage)}
+	a := aiv1.PilotAction{Tool: "instruct", IssueIID: iid, Owner: n.Author.Username, Text: textutil.Truncate(text, maxPilotMessage)}
 	if err := validAction(a, st, tasks, nil); err != nil {
 		return "Not proposed: " + err.Error() + ".", nil
 	}

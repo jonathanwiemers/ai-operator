@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -53,7 +54,7 @@ func ruleList(rs []rules.Rule, kind string) string {
 	var b strings.Builder
 	for _, r := range rs {
 		if r.Active() && r.Kind == kind {
-			fmt.Fprintf(&b, "- %s: %s\n", r.ID, truncate(strings.Join(strings.Fields(r.Text), " "), 1000))
+			fmt.Fprintf(&b, "- %s: %s\n", r.ID, textutil.Truncate(strings.Join(strings.Fields(r.Text), " "), 1000))
 		}
 	}
 	return b.String()

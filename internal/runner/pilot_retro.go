@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"slices"
 	"strings"
 	"time"
@@ -94,7 +95,7 @@ func (r *Runner) runRetrospective(ctx context.Context, gl gitlab.API, task *aiv1
 	retro := &aiv1.PilotRetrospective{OwnerIDs: ids}
 	for _, f := range a.FollowUps[:min(len(a.FollowUps), maxFollowUps)] {
 		if t := strings.Join(strings.Fields(f.Title), " "); t != "" {
-			retro.FollowUps = append(retro.FollowUps, aiv1.PilotFollowUp{Title: truncate(t, 200), Body: truncate(strings.TrimSpace(f.Body), 4000)})
+			retro.FollowUps = append(retro.FollowUps, aiv1.PilotFollowUp{Title: textutil.Truncate(t, 200), Body: textutil.Truncate(strings.TrimSpace(f.Body), 4000)})
 		}
 	}
 	n, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, tracking, renderRetro(a.Summary, retro.FollowUps))
@@ -140,7 +141,7 @@ func pinOwners(ctx context.Context, gl gitlab.API, owners []string) ([]int64, er
 // retroFailed records why there is no retrospective and returns err, which
 // fails the run.
 func (r *Runner) retroFailed(ctx context.Context, task *aiv1.AgentTask, err error) error {
-	if rerr := r.recordRetro(ctx, task, &aiv1.PilotRetrospective{Failed: truncate(err.Error(), 500)}); rerr != nil {
+	if rerr := r.recordRetro(ctx, task, &aiv1.PilotRetrospective{Failed: textutil.Truncate(err.Error(), 500)}); rerr != nil {
 		r.log().Error(rerr, "recording the failed retrospective")
 	}
 	return err
@@ -254,7 +255,7 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 	for _, it := range items {
 		ri := retroIssue{IID: it.IID, Title: titles[it.IID], State: string(it.State), MergeRequest: it.MergeRequestIID, Decisions: it.Decisions, RevisitOf: it.RevisitOf}
 		if t := byIID[it.IID]; t != nil {
-			ri.CostUSD, ri.Summary = t.Status.Run.CostUSD, truncate(t.Status.Run.Summary, 500)
+			ri.CostUSD, ri.Summary = t.Status.Run.CostUSD, textutil.Truncate(t.Status.Run.Summary, 500)
 		}
 		if it.State == aiv1.AutopilotItemMerged {
 			merged++
@@ -273,7 +274,7 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		if n.CreatedAt != nil {
 			at = n.CreatedAt.UTC().Format(time.RFC3339) + " "
 		}
-		v.Autopilot = append(v.Autopilot, at+truncate(n.Body, 600))
+		v.Autopilot = append(v.Autopilot, at+textutil.Truncate(n.Body, 600))
 	}
 	v.Autopilot = v.Autopilot[max(0, len(v.Autopilot)-maxRetroComments):]
 	v.CostUSD = aiv1.ShowCost(cost)
@@ -291,7 +292,7 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 	b, err := json.MarshalIndent(v, "", "  ")
 	plain := fmt.Sprintf("Autopilot merged %d of %d issues in %s (from the tracking issue's creation to done), for $%s over the milestone's runs, with %d pauses.",
 		merged, len(v.Queue), v.Duration, v.CostUSD, pauses)
-	return truncate(string(b), maxRetroFacts), plain, notes, err
+	return textutil.Truncate(string(b), maxRetroFacts), plain, notes, err
 }
 
 // maxRetroComments is how many of the autopilot's comments the
@@ -367,7 +368,7 @@ func renderRetro(summary string, followUps []aiv1.PilotFollowUp) string {
 	if len(followUps) > 0 {
 		b.WriteString("**Follow-ups**\n\n")
 		for i, f := range followUps {
-			fmt.Fprintf(&b, "%d. **%s**: %s\n", i+1, prose(f.Title), prose(strings.Join(strings.Fields(truncate(f.Body, 600)), " ")))
+			fmt.Fprintf(&b, "%d. **%s**: %s\n", i+1, prose(f.Title), prose(strings.Join(strings.Fields(textutil.Truncate(f.Body, 600)), " ")))
 		}
 		b.WriteString("\nAn owner opens them with `create 1 2` as a reply in this thread.\n\n")
 	}

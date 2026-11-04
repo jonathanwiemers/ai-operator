@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"regexp"
 	"slices"
 	"sort"
@@ -133,7 +134,7 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	if syncErr != nil {
 		meta.SetStatusCondition(&project.Status.Conditions, metav1.Condition{
-			Type: "Synced", Status: metav1.ConditionFalse, Reason: "SyncFailed", Message: truncateMsg(syncErr.Error()),
+			Type: "Synced", Status: metav1.ConditionFalse, Reason: "SyncFailed", Message: textutil.Truncate(syncErr.Error(), 1024),
 		})
 	} else if full {
 		r.covered(req.NamespacedName, lastDelivery)
@@ -566,7 +567,7 @@ func reportFallbacks(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) {
 	cond := metav1.Condition{Type: aiv1.ConditionFallbacksValid, Status: metav1.ConditionTrue, Reason: "Valid",
 		Message: "no fallback is broken", ObservedGeneration: project.Generation}
 	if errs := spec.FallbackErrors(); len(errs) > 0 {
-		cond.Status, cond.Reason, cond.Message = metav1.ConditionFalse, "InvalidFallback", truncateMsg(strings.Join(errs, "; "))
+		cond.Status, cond.Reason, cond.Message = metav1.ConditionFalse, "InvalidFallback", textutil.Truncate(strings.Join(errs, "; "), 1024)
 	}
 	meta.SetStatusCondition(&project.Status.Conditions, cond)
 }
@@ -1103,13 +1104,6 @@ func IsCommand(n gitlab.Note, botID int64, prefix string) bool {
 	// "/agent" must be a word on its own: "/agents are cool" is not a command.
 	rest := body[len(prefix):]
 	return rest == "" || rest[0] == ' ' || rest[0] == '\n' || rest[0] == '\t' || rest[0] == ':'
-}
-
-func truncateMsg(s string) string {
-	if len(s) > 1024 {
-		return s[:1024]
-	}
-	return s
 }
 
 // SetupWithManager registers the controller.

@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -106,7 +107,7 @@ func (rr *ResearchRun) Run(ctx context.Context) error {
 		status, message = store.StatusLimited, lim.Error()
 		storeErr = message
 		report.UsageLimits = mergeLimit(run.UsageLimits,
-			aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: until}, Message: truncate(lim.Message, 300)})
+			aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: until}, Message: textutil.Truncate(lim.Message, 300)})
 	case err != nil:
 		status, message = store.StatusFailed, err.Error()
 		storeErr = message
@@ -116,7 +117,7 @@ func (rr *ResearchRun) Run(ctx context.Context) error {
 			message = ans.Warnings[len(ans.Warnings)-1]
 		}
 	}
-	message, storeErr = truncate(message, maxResearchMessage), truncate(storeErr, maxResearchMessage)
+	message, storeErr = textutil.Truncate(message, maxResearchMessage), textutil.Truncate(storeErr, maxResearchMessage)
 
 	// Recording gets its own time after the run's deadline.
 	rctx, rcancel := context.WithTimeout(context.WithoutCancel(ctx), researchReportTimeout)

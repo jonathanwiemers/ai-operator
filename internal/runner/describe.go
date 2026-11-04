@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -200,7 +201,7 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 	}
 	diff, stat, err := r.Agent.Diff(ctx, base)
 	if err != nil {
-		return skip(truncate(err.Error(), 300), err)
+		return skip(textutil.Truncate(err.Error(), 300), err)
 	}
 	if strings.TrimSpace(diff) == "" {
 		s.done("no changes to describe")
@@ -230,7 +231,7 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 		err = res.Decode(&answer)
 	}
 	if err != nil {
-		return skip("the describer failed: "+truncate(err.Error(), 300), err)
+		return skip("the describer failed: "+textutil.Truncate(err.Error(), 300), err)
 	}
 	// Describers are read-only; discard anything they touched anyway.
 	if err := r.Agent.Reset(ctx); err != nil {

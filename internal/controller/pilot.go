@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
@@ -226,7 +226,7 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 			continue
 		default:
 			msgs = append(msgs, aiv1.PilotMessage{NoteID: n.ID, IssueIID: n.issue, MergeRequestIID: n.mr, Author: n.Author.Username,
-				Body: truncateUTF8(n.msg, maxPilotMessage)})
+				Body: textutil.Truncate(n.msg, maxPilotMessage)})
 			continue
 		}
 		if err != nil {
@@ -454,7 +454,7 @@ func (r *AgentProjectReconciler) retrospective(ctx context.Context, st, coord *a
 		if coord.Status.Run.ObservedRunRequest < request {
 			return true, nil // the run is not over
 		}
-		retro = &aiv1.PilotRetrospective{Failed: truncateUTF8("the run ended without one: "+coord.Status.Run.Summary, 500)}
+		retro = &aiv1.PilotRetrospective{Failed: textutil.Truncate("the run ended without one: "+coord.Status.Run.Summary, 500)}
 	}
 	if err := r.patchPilot(ctx, st, func(ps *aiv1.PilotStatus) { ps.Retrospective = retro }); err != nil {
 		return true, err
@@ -482,18 +482,6 @@ func (r *AgentProjectReconciler) patchPilot(ctx context.Context, st *aiv1.AgentT
 	}
 	mutate(st.Status.Pilot)
 	return r.Status().Patch(ctx, st, client.MergeFrom(orig))
-}
-
-// truncateUTF8 cuts s to at most n bytes (plus an ellipsis) without
-// splitting a character.
-func truncateUTF8(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n] + "…"
 }
 
 // pilotReply answers a comment where it was written. A failed answer is not

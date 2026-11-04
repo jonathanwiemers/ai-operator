@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"io"
 	"os"
 	"os/exec"
@@ -633,7 +634,7 @@ func (t *acpTurnLog) consume(upd acpUpdate) {
 		}
 		input := ""
 		if len(rawIn) > 0 && string(rawIn) != "null" {
-			input = clip(string(rawIn), 500)
+			input = textutil.Truncate(string(rawIn), 500)
 			if s := toolInput("", rawIn); s != "" {
 				input = s
 			}
@@ -649,7 +650,7 @@ func (t *acpTurnLog) flushThought() {
 		return
 	}
 	if text := strings.TrimSpace(t.thought.String()); text != "" {
-		t.log.Info("agent thinks", "text", clip(text, maxLogText))
+		t.log.Info("agent thinks", "text", textutil.Truncate(text, maxLogText))
 	}
 	t.thought.Reset()
 }
@@ -659,7 +660,7 @@ func (t *acpTurnLog) logMessage(msg string) {
 		return
 	}
 	if text := strings.TrimSpace(t.message.String()); text != "" {
-		t.log.Info(msg, "text", clip(text, maxLogText))
+		t.log.Info(msg, "text", textutil.Truncate(text, maxLogText))
 	}
 	t.message.Reset()
 }

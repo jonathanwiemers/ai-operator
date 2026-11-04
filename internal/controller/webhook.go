@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"net/http"
 	"strings"
 	"time"
@@ -182,7 +183,7 @@ func webhookFailed(ctx context.Context, project *aiv1.AgentProject, what string,
 		setWebhookCondition(project, metav1.ConditionFalse, "Forbidden", "the bot needs the Maintainer role to manage project webhooks")
 		return
 	}
-	setWebhookCondition(project, metav1.ConditionFalse, "Failed", truncateMsg(what+": "+err.Error()))
+	setWebhookCondition(project, metav1.ConditionFalse, "Failed", textutil.Truncate(what+": "+err.Error(), 1024))
 }
 
 func setWebhookCondition(project *aiv1.AgentProject, status metav1.ConditionStatus, reason, msg string) {

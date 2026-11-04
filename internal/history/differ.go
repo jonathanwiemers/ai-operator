@@ -3,6 +3,7 @@ package history
 import (
 	"context"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"strconv"
 	"strings"
 	"sync"
@@ -98,7 +99,7 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 	}
 	if ns.Run.RunCount > prev.Run.RunCount {
 		data := map[string]any{"result": string(ns.Run.LastResult), "runCount": ns.Run.RunCount}
-		if s := clip(ns.Run.Summary); s != "" {
+		if s := textutil.Truncate(ns.Run.Summary, maxText); s != "" {
 			data["runSummary"] = s
 		}
 		if c, ok := costDelta(prev.Run.CostUSD, ns.Run.CostUSD); ok {
@@ -122,7 +123,7 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 				reason = "failed"
 			}
 			add(fmt.Sprintf("needs/run/%d", ns.Run.RunCount), KindNeeds, needsSummary(reason, ref),
-				map[string]any{"reason": reason, "message": clip(ns.Run.Summary)})
+				map[string]any{"reason": reason, "message": textutil.Truncate(ns.Run.Summary, maxText)})
 		}
 	}
 	if ns.Run.PushedSHA != "" && ns.Run.PushedSHA != prev.Run.PushedSHA {
@@ -154,11 +155,11 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 	}
 	if b := ns.Blocked; b != nil && (prev.Blocked == nil || !prev.Blocked.Since.Equal(&b.Since)) {
 		add(fmt.Sprintf("needs/blocked/%d", b.Since.Unix()), KindNeeds, needsSummary("blocked", ref),
-			map[string]any{"reason": "blocked: " + string(b.Reason), "message": clip(b.Message)})
+			map[string]any{"reason": "blocked: " + string(b.Reason), "message": textutil.Truncate(b.Message, maxText)})
 	}
 	if ns.Phase == aiv1.TaskPhaseBlocked && prev.Phase != aiv1.TaskPhaseBlocked {
 		add(fmt.Sprintf("needs/phase/%d", ns.Run.RunCount), KindNeeds, needsSummary("stopped", ref),
-			map[string]any{"reason": "stopped", "message": clip(ns.Message)})
+			map[string]any{"reason": "stopped", "message": textutil.Truncate(ns.Message, maxText)})
 	}
 	out = append(out, d.autopilot(cur, prev.Autopilot, ns.Autopilot, now)...)
 	out = append(out, d.proposals(cur, prev.Pilot, ns.Pilot, now)...)
@@ -177,7 +178,7 @@ func (d *Differ) autopilot(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, no
 		e.Summary = fmt.Sprintf("Autopilot %s", strings.ToLower(string(cur.Phase)))
 		e.Data = map[string]any{"phase": string(cur.Phase)}
 		if cur.PausedReason != "" {
-			e.Data["reason"] = clip(cur.PausedReason)
+			e.Data["reason"] = textutil.Truncate(cur.PausedReason, maxText)
 		}
 		out = append(out, e)
 	}
@@ -218,7 +219,7 @@ func (d *Differ) proposals(t *aiv1.AgentTask, old, cur *aiv1.PilotStatus, now ti
 		e := base(t, now)
 		e.Key = taskKey(t, fmt.Sprintf("proposal/%d/%s", p.ID, state))
 		e.Kind = KindProposal
-		e.Summary = fmt.Sprintf("P%d %s: %s", p.ID, state, clip(p.Summary))
+		e.Summary = fmt.Sprintf("P%d %s: %s", p.ID, state, textutil.Truncate(p.Summary, maxText))
 		e.Data = map[string]any{"proposalID": p.ID, "proposalState": state}
 		if p.AcceptedBy != "" {
 			e.Actor = p.AcceptedBy
@@ -330,18 +331,6 @@ func ids(ps []aiv1.PilotProposal) map[int64]bool {
 		m[p.ID] = true
 	}
 	return m
-}
-
-func clip(s string) string {
-	if len(s) <= maxText {
-		return s
-	}
-	// Cut at a rune boundary.
-	i := maxText
-	for i > 0 && s[i]&0xC0 == 0x80 {
-		i--
-	}
-	return s[:i] + "…"
 }
 
 func short(sha string) string {

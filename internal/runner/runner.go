@@ -15,13 +15,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -520,7 +520,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.Interruptions = 0
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
 		s.LastResult = out.Result
-		s.Summary = truncate(out.Summary, 2000)
+		s.Summary = textutil.Truncate(out.Summary, 2000)
 		s.CostUSD = aiv1.AddCost(s.CostUSD, out.CostUSD)
 		if out.Branch != "" {
 			s.Branch = out.Branch
@@ -569,7 +569,7 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 	own, resumeOn := until, agentName(lim.Engine, lim.Model)
 	if lim.FallbackEngine != "" {
 		r.usageMu.Lock()
-		r.routed = mergeLimit(r.routed, aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: own}, Message: truncate(lim.Message, 300)})
+		r.routed = mergeLimit(r.routed, aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: own}, Message: textutil.Truncate(lim.Message, 300)})
 		r.routed = mergeLimit(r.routed, aiv1.UsageLimit{Engine: lim.FallbackEngine, Until: metav1.Time{Time: lim.FallbackUntil}})
 		r.usageMu.Unlock()
 		if lim.FallbackUntil.Before(until) {
@@ -603,7 +603,7 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 		s.BlockReason = aiv1.BlockQuota
 		s.LastActivityTime = &metav1.Time{Time: now}
 		s.LastResult = aiv1.RunResultDeferred
-		s.Summary = truncate(lim.Error(), 2000)
+		s.Summary = textutil.Truncate(lim.Error(), 2000)
 		s.CostUSD = aiv1.AddCost(s.CostUSD, out.CostUSD)
 	})
 }
@@ -769,7 +769,7 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 	wf := spec.Workflow
 	// The error quotes CLIs and git: no fence breakout, quick actions or
 	// mentions.
-	msg := notify.Defuse(strings.ReplaceAll(truncate(runErr.Error(), 3000), "`", "'"))
+	msg := notify.Defuse(strings.ReplaceAll(textutil.Truncate(runErr.Error(), 3000), "`", "'"))
 	body := fmt.Sprintf("🤖 The agent run failed:\n\n```\n%s\n```\n\n", msg)
 	// The operator retries an infra failure once per run request.
 	retry := block == aiv1.BlockInfra && task.Spec.Source.InfraRetry != task.Spec.RunRequest
@@ -812,7 +812,7 @@ func (r *Runner) reportSpecFailure(ctx context.Context, gl gitlab.API, spec aiv1
 	if ap == nil || ap.TrackingIssueIID == 0 {
 		return
 	}
-	msg := notify.Defuse(strings.ReplaceAll(truncate(runErr.Error(), 3000), "`", "'"))
+	msg := notify.Defuse(strings.ReplaceAll(textutil.Truncate(runErr.Error(), 3000), "`", "'"))
 	body := fmt.Sprintf("🤖 Planning failed:\n\n```\n%s\n```\n\n", msg)
 	switch {
 	case block == aiv1.BlockInfra && task.Spec.Source.InfraRetry != task.Spec.RunRequest:
@@ -831,16 +831,4 @@ func (r *Runner) reportSpecFailure(ctx context.Context, gl gitlab.API, spec aiv1
 	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, ap.TrackingIssueIID, body); err != nil {
 		r.log().Error(err, "posting planning failure note", "issue", ap.TrackingIssueIID)
 	}
-}
-
-// truncate cuts s to at most n bytes (plus an ellipsis) without splitting a
-// UTF-8 character.
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n] + "…"
 }

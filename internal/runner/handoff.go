@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"regexp"
 	"strconv"
 	"strings"
@@ -73,7 +74,7 @@ func parseHandoff(n *gitlab.Note) handoff {
 // renderHandoff renders the handoff note for the notes of run runID, which had
 // seen the comments up to afterNote.
 func renderHandoff(text, runID string, afterNote int64) string {
-	text = truncate(strings.TrimSpace(text), maxHandoff)
+	text = textutil.Truncate(strings.TrimSpace(text), maxHandoff)
 	// The agent's text must not be able to end the notes early or start
 	// another set of them.
 	text = strings.ReplaceAll(text, "<!-- ai-operator:", "<!-- ai-operator :")

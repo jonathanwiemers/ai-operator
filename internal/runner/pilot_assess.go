@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"slices"
 	"strconv"
 	"strings"
@@ -59,7 +60,7 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 				s.done(agentResult(role, res, "assessed"), "costUSD", res.CostUSD)
 				// The proposal follows from the operator once it is recorded.
 				refused := rejectActions(a.Proposal, false)
-				perr := r.propose(ctx, task, a.Proposal, stateOf, "event/"+id, e.IssueIID, fmt.Sprintf("`%s`: %s", a.Classification, truncate(a.Evidence, 800)), managed)
+				perr := r.propose(ctx, task, a.Proposal, stateOf, "event/"+id, e.IssueIID, fmt.Sprintf("`%s`: %s", a.Classification, textutil.Truncate(a.Evidence, 800)), managed)
 				proposed = perr == nil && a.Proposal != nil && len(a.Proposal.Actions) > 0
 				body = renderAssessment(a, proposed, managed) + refused
 				if perr != nil {
@@ -70,7 +71,7 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		// Its first paragraph: a flaky event quotes a log after it.
 		head, _, _ := strings.Cut(e.Text, "\n\n")
-		what := prose(strings.Join(strings.Fields(truncate(head, 300)), " "))
+		what := prose(strings.Join(strings.Fields(textutil.Truncate(head, 300)), " "))
 		note := "🧭 **Assessment:** " + what + "\n\n" + body
 		if !managed || !proposed {
 			// A pilot that manages acts, or pings with its proposal.
@@ -107,7 +108,7 @@ func eventData(ctx context.Context, gl gitlab.API, glProject string, e aiv1.Pilo
 		}
 		for _, n := range notes[max(0, len(notes)-eventComments):] {
 			if !n.System {
-				fmt.Fprintf(&b, "### Comment of @%s on #%d\n\n%s\n\n", n.Author.Username, e.IssueIID, truncate(n.Body, 2000))
+				fmt.Fprintf(&b, "### Comment of @%s on #%d\n\n%s\n\n", n.Author.Username, e.IssueIID, textutil.Truncate(n.Body, 2000))
 			}
 		}
 	}
@@ -118,7 +119,7 @@ func eventData(ctx context.Context, gl gitlab.API, glProject string, e aiv1.Pilo
 		}
 		fmt.Fprintf(&b, "## Failed jobs of pipeline %d\n%s\n", e.PipelineID, logs)
 	}
-	return truncate(b.String(), maxEventData)
+	return textutil.Truncate(b.String(), maxEventData)
 }
 
 // maxEventData bounds an event's comments and logs in the prompt.
