@@ -160,7 +160,7 @@ func TestFastProfileImplementsOnClaudeWhileCursorIsLimited(t *testing.T) {
 	if resumes := rec.resumes("implement"); resumes[0] != "" || resumes[1] != "sess-impl" {
 		t.Fatalf("expected a fresh claude session, then its resume, got %q", resumes)
 	}
-	st = e.r.loadState()
+	st = savedState(t, e.r)
 	// claude continued the work: back on cursor, its old session is dropped.
 	if st.ImplementEngine != aiv1.EngineClaude || st.session("implement", aiv1.EngineClaude) != "sess-impl" {
 		t.Fatalf("the session belongs to claude: %+v", st)

@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,12 +188,22 @@ func (r *Runner) now() time.Time {
 
 func (r *Runner) stateFile() string { return filepath.Join(r.StateDir, "state.json") }
 
-func (r *Runner) loadState() state {
+// loadState reads the runner's state. A missing file is an empty state (a
+// first run); an unreadable or corrupt one is an error, since an empty state
+// would let steps post notes or decisions again.
+func (r *Runner) loadState() (state, error) {
 	var s state
-	if b, err := os.ReadFile(r.stateFile()); err == nil {
-		_ = json.Unmarshal(b, &s)
+	b, err := os.ReadFile(r.stateFile())
+	if errors.Is(err, fs.ErrNotExist) {
+		return s, nil
 	}
-	return s
+	if err != nil {
+		return s, fmt.Errorf("reading the runner state %s: %w", r.stateFile(), err)
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		return state{}, fmt.Errorf("parsing the runner state %s: %w", r.stateFile(), err)
+	}
+	return s, nil
 }
 
 func (r *Runner) saveState(s state) error {
@@ -349,7 +360,12 @@ func (r *Runner) tick(ctx context.Context, wake <-chan struct{}) (bool, error) {
 	if err := r.pruneChatReplies(ctx, task); err != nil {
 		return false, err
 	}
-	if msg, ok := nextChatMessage(task, r.loadState()); ok {
+	st, err := r.loadState()
+	if err != nil {
+		// Treated as no message: the run steps below fail on it themselves.
+		r.log().Error(err, "loading the state for chat messages")
+	}
+	if msg, ok := nextChatMessage(task, st); ok && err == nil {
 		// A failed turn (e.g. the agent container lost) is retried after
 		// the poll interval, not at once.
 		err := r.chatTurn(ctx, task, project, msg, wake)

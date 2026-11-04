@@ -114,7 +114,7 @@ func TestDraftWorkIsPushedInSteps(t *testing.T) {
 	if !strings.Contains(decisions, "Storage") || !strings.Contains(decisions, "Route") {
 		t.Fatalf("decisions of every step are posted: %q", decisions)
 	}
-	if st := r.loadState(); st.LastMRNoteID == 0 {
+	if st := savedState(t, r); st.LastMRNoteID == 0 {
 		t.Fatal("the comment read between steps must count as seen")
 	}
 }
@@ -178,7 +178,7 @@ func TestStepsStopAtACommand(t *testing.T) {
 			cmd = n.ID
 		}
 	}
-	if st := r.loadState(); st.LastMRNoteID == 0 || st.LastMRNoteID >= cmd {
+	if st := savedState(t, r); st.LastMRNoteID == 0 || st.LastMRNoteID >= cmd {
 		t.Fatalf("the command is left for the run it starts: last seen %d, command %d", st.LastMRNoteID, cmd)
 	}
 }

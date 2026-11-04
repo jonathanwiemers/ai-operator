@@ -89,7 +89,7 @@ func TestAnotherEngineStartsAFreshSession(t *testing.T) {
 	}
 	e.gl.SetLabels(42, "agent::working", "agent-model::cursor/auto")
 	e.rerun(t, r) // cursor
-	if st := r.loadState(); st.ImplementEngine != aiv1.EngineCursor {
+	if st := savedState(t, r); st.ImplementEngine != aiv1.EngineCursor {
 		t.Fatalf("the cursor run must have run: %+v", st)
 	}
 	e.gl.SetLabels(42, "agent::working")

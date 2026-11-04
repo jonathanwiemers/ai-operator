@@ -197,7 +197,7 @@ func TestChatTurnAnswersIntoStatus(t *testing.T) {
 		strings.Contains(agent.promptCalls[0], "## How to answer") {
 		t.Fatalf("prompt: %q", agent.promptCalls)
 	}
-	st := r.loadState()
+	st := savedState(t, r)
 	if st.ChatInFlight != nil || !containsInt64(st.ChatAnswered, 10) {
 		t.Fatalf("state: %+v", st)
 	}
@@ -289,7 +289,7 @@ func TestChatAgentLostKeepsInFlight(t *testing.T) {
 	if task.Status.Chat != nil && len(task.Status.Chat.Replies) > 0 {
 		t.Fatalf("must not answer: %+v", task.Status.Chat)
 	}
-	st := r.loadState()
+	st := savedState(t, r)
 	if st.ChatInFlight == nil || st.ChatInFlight.MessageID != 8 {
 		t.Fatalf("ChatInFlight: %+v", st.ChatInFlight)
 	}
@@ -312,7 +312,7 @@ func TestChatUsageLimitSetsError(t *testing.T) {
 	if rep.MessageID != 9 || !strings.Contains(rep.Error, "usage limit") {
 		t.Fatalf("reply: %+v", rep)
 	}
-	if r.loadState().ChatInFlight != nil {
+	if savedState(t, r).ChatInFlight != nil {
 		t.Fatal("should be cleared")
 	}
 }
@@ -336,7 +336,7 @@ func TestChatInterruptCancelsThenAnswersInterrupt(t *testing.T) {
 	wake := make(chan struct{}, 2)
 	go func() {
 		for i := 0; i < 100; i++ {
-			if r.loadState().ChatInFlight != nil {
+			if savedState(t, r).ChatInFlight != nil {
 				break
 			}
 			time.Sleep(10 * time.Millisecond)

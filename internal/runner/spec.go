@@ -70,7 +70,12 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	}
 	s.done(fmt.Sprintf("%d issues", len(issues)), "issues", len(issues))
 
-	st := r.loadState()
+	// The spec run posts nothing the state guards against posting twice: on
+	// a broken state it goes on with an empty one (a new session).
+	st, err := r.loadState()
+	if err != nil {
+		r.log().Error(err, "loading the runner state, going on with an empty one")
+	}
 	role := spec.Agents.Spec
 	inv := roleInvocation(role, specSystemPrompt, readOnlyTools, specSchema(spec.Agents.Profiles), true)
 	inv.Role = "spec"

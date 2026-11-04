@@ -142,7 +142,10 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 	spec := project.Spec.WithDefaults()
 	r.projectSpec = spec
 	r.logPrompts = spec.Agents.LogPrompts
-	st := r.loadState()
+	st, err := r.loadState()
+	if err != nil {
+		return err
+	}
 
 	role, roleName, system, tools, readOnly := chatRole(task, spec, st)
 	// Spec/Coordinate stay read-only; Implement is writable only with a branch.
@@ -188,7 +191,9 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 		if id != "" {
 			st.setSession(roleName, role.Engine, id)
 			st.ChatInFlight.SessionID = id
-			_ = r.saveState(st)
+			if err := r.saveState(st); err != nil {
+				r.Log.Error(err, "saving the chat session")
+			}
 		}
 	}
 
@@ -218,7 +223,9 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 			if st.ChatInFlight != nil {
 				st.ChatInFlight.SessionID = id
 			}
-			_ = r.saveState(st)
+			if err := r.saveState(st); err != nil {
+				r.Log.Error(err, "saving the chat session")
+			}
 		}
 	})
 	interrupted := turn.finish()
@@ -229,7 +236,9 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 	}
 	if res != nil && res.SessionID != "" {
 		st.setSession(roleName, ranOn(role, res), res.SessionID)
-		_ = r.saveState(st)
+		if err := r.saveState(st); err != nil {
+			r.Log.Error(err, "saving the chat session")
+		}
 	}
 	err = classifyLimit(role.Engine, err, res)
 
@@ -288,7 +297,11 @@ func (r *Runner) watchInterrupt(ctx context.Context, currentID int64, wake <-cha
 		if err != nil || task == nil {
 			return false
 		}
-		st := r.loadState()
+		st, err := r.loadState()
+		if err != nil {
+			r.Log.Error(err, "loading the state for interrupts")
+			return false
+		}
 		for _, m := range task.Spec.Source.ChatMessages {
 			if m.Kind != "interrupt" || m.ID <= currentID {
 				continue

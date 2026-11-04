@@ -36,7 +36,10 @@ func (r *Runner) runRetrospective(ctx context.Context, gl gitlab.API, task *aiv1
 	}
 	tracking := task.Spec.Issue.IID
 	// Messages from before the end get a word; events are over.
-	st := r.loadState()
+	st, err := r.loadState()
+	if err != nil {
+		return out, r.retroFailed(ctx, task, err)
+	}
 	for _, m := range task.Spec.Source.PilotMessages {
 		if m.Request > task.Status.Run.ObservedRunRequest && m.Request <= task.Spec.RunRequest && !slices.Contains(st.PilotAnswered, m.NoteID) {
 			r.pilotReply(ctx, gl, spec, m, fmt.Sprintf("The autopilot of this milestone is done; its retrospective follows on #%d.", tracking))

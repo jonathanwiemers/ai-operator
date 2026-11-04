@@ -186,15 +186,17 @@ func buildDescribePrompt(issue *gitlab.Issue, summary, previous, base, stat, dif
 }
 
 // describe rewrites the runner's part of the merge request description when
-// the branch's diff changed since it was last described. It never fails the
-// run: a problem comes back as a notice for the report. first is set when
-// the description was written for the first time.
+// the branch's diff changed since it was last described. A problem comes
+// back as a notice for the report; only a failed state save after the update
+// fails the run, since the state keeps the agent from describing the same
+// diff again. first is set when the description was written for the first
+// time.
 func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, role aiv1.DescribeSpec, issue *gitlab.Issue, mrIID int64,
-	base, summary string, st *state, out *Outcome) (first bool, notice string) {
+	base, summary string, st *state, out *Outcome) (first bool, notice string, err error) {
 	s := r.step(ctx, "describe merge request")
-	skip := func(why string, err error) (bool, string) {
+	skip := func(why string, err error) (bool, string, error) {
 		s.done("not updated: "+why, "error", err.Error())
-		return false, "The merge request description was not updated: " + why
+		return false, "The merge request description was not updated: " + why, nil
 	}
 	diff, stat, err := r.Agent.Diff(ctx, base)
 	if err != nil {
@@ -202,13 +204,13 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 	}
 	if strings.TrimSpace(diff) == "" {
 		s.done("no changes to describe")
-		return false, ""
+		return false, "", nil
 	}
 	sum := sha256.Sum256([]byte(diff))
 	hash := hex.EncodeToString(sum[:])
 	if hash == st.DescribedDiff {
 		s.done("the diff is described already")
-		return false, ""
+		return false, "", nil
 	}
 	mr, err := gl.GetMergeRequest(ctx, glProject, mrIID)
 	if err != nil {
@@ -248,7 +250,10 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 		return skip("GitLab refused it", err)
 	}
 	st.DescribedDiff = hash
-	_ = r.saveState(*st)
+	if err := r.saveState(*st); err != nil {
+		r.log().Error(err, "saving the described diff")
+		return false, "", s.fail(err)
+	}
 	s.done(agentResult(role.RoleSpec, res, ""), "costUSD", res.CostUSD, "diagram", cleanDiagram(answer.Diagram) != "", "first", first)
-	return first, ""
+	return first, "", nil
 }

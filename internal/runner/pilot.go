@@ -50,7 +50,10 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 	if len(msgs)+len(events) == 0 {
 		return out, nil
 	}
-	st := r.loadState()
+	st, err := r.loadState()
+	if err != nil {
+		return out, err
+	}
 	s := r.step(ctx, "read milestone state", "messages", len(msgs))
 	state, stateOf, err := r.pilotState(ctx, gl, task, project, spec)
 	if err != nil {

@@ -101,7 +101,11 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 
 	// Context: on a resumed session only comments the agent has not seen yet
 	// are sent, everything else is already in the session.
-	st := r.loadState()
+	st, err := r.loadState()
+	if err != nil {
+		// An empty state would post the notes and decisions again.
+		return out, err
+	}
 	s = r.step(ctx, "read comments")
 	issueNotes, err := gl.ListIssueNotes(ctx, glProject, issue.IID)
 	if err != nil {
@@ -432,7 +436,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		st.setSession("implement", ranOn(role, res), res.SessionID)
 		st.ImplementEngine = ranOn(role, res)
-		_ = r.saveState(st)
+		if err := r.saveState(st); err != nil {
+			r.log().Error(err, "saving the implementer's session")
+		}
 		var fixed ImplementAnswer
 		if err := res.Decode(&fixed); err == nil {
 			answer.Summary = fixed.Summary
@@ -518,7 +524,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		// Revisits count as handled once their decisions are posted; a run
 		// that fails before applies them again.
 		st.RevisitNoteID = seenNote
-		_ = r.saveState(st)
+		if err := r.saveState(st); err != nil {
+			r.log().Error(err, "saving the state after posting decisions")
+			return out, err
+		}
 	}
 	// The description covers the whole change; the first one replaces the
 	// first report's summary (the task status keeps it).
@@ -529,7 +538,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	reported := answer
 	if !spec.Agents.Describe.Disabled {
-		first, notice := r.describe(ctx, gl, glProject, spec.Agents.Describe, issue, mr.IID, base, answer.Summary, &st, out)
+		first, notice, err := r.describe(ctx, gl, glProject, spec.Agents.Describe, issue, mr.IID, base, answer.Summary, &st, out)
+		if err != nil {
+			return out, err
+		}
 		if notice != "" {
 			notices = append(notices, notice)
 		}
@@ -629,7 +641,11 @@ func (r *Runner) setDraft(ctx context.Context, gl gitlab.API, glProject string, 
 	if cur, err := gl.GetMergeRequest(ctx, glProject, mr.IID); err == nil {
 		mr.Draft, mr.Title = cur.Draft, cur.Title
 	}
-	defer func() { _ = r.saveState(*st) }()
+	defer func() {
+		if err := r.saveState(*st); err != nil {
+			r.log().Error(err, "saving the draft state")
+		}
+	}()
 	if mr.Draft == draft {
 		st.Ready = !draft
 		return false

@@ -110,7 +110,7 @@ func TestPilotAssessmentIsAFreshSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.step(t)
-	if len(e.engine.calls) != 1 || e.engine.calls[0].Resume != "" || e.r.loadState().Sessions["pilot/claude"] != "sess-owner" {
+	if len(e.engine.calls) != 1 || e.engine.calls[0].Resume != "" || savedState(t, e.r).Sessions["pilot/claude"] != "sess-owner" {
 		t.Fatalf("an assessment neither resumes nor replaces the owners' session: %+v", e.engine.calls)
 	}
 }
