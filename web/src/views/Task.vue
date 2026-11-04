@@ -5,6 +5,7 @@ import { useResource } from '../live'
 import { ciLabel, ciTone, cost, phaseTone, shortSHA } from '../format'
 import { queueDone } from '../milestoneQueue'
 import Badge from '../components/Badge.vue'
+import CostChip from '../components/CostChip.vue'
 import ExtLink from '../components/ExtLink.vue'
 import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
@@ -72,6 +73,7 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
           <StageBadge :stage="t.stage" />
           <Badge v-if="t.autopilot" tone="progress">Autopilot</Badge>
           <Badge v-if="t.suspend" tone="warning">Suspended</Badge>
+          <CostChip :cost="data?.cost" />
           <span class="spacer" />
           <ExtLink v-if="t.issue" :href="t.issue.webURL || issueURL(t.issue.iid)">Issue</ExtLink>
           <ExtLink v-if="run.mergeRequestURL" :href="run.mergeRequestURL">Merge request !{{ run.mergeRequestIID }}</ExtLink>

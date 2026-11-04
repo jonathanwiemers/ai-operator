@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { autopilotWaitingFor, cost } from '../format'
+import { autopilotWaitingFor, costChip, costTooltip } from '../format'
 import { queueDone } from '../milestoneQueue'
 import type { ProjectDetail } from '../types'
 import Badge from './Badge.vue'
@@ -43,7 +43,7 @@ function apTone(phase: string | undefined) {
       >
         {{ m.trackingIssueIID ? 'Stream' : 'Milestone stream' }}
       </RouterLink>
-      <span class="faint">{{ m.tasks.length }} issues · {{ cost(m.costUSD) }}</span>
+      <span class="faint" :title="costTooltip(m)">{{ m.tasks.length }} issues · {{ costChip(m) }}</span>
     </div>
 
     <PauseCardCompact

@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 // heartbeat keeps event streams open through proxies that close idle
@@ -73,7 +74,9 @@ func (s *Server) project(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, detail(ap, tasks, time.Now()))
+	d := detail(ap, tasks, time.Now())
+	s.projectCosts(r.Context(), &d)
+	writeJSON(w, http.StatusOK, d)
 }
 
 // task returns one task of a project.
@@ -89,6 +92,8 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"project": summarize(ap, tasks, now),
 				"task":    taskView(&tasks[i], ciWindow(ap), now),
+				"cost": s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, Task: name},
+					tasksCost(aiv1.CostOf(tasks[i].Status.Run.CostUSD))),
 				// What the app may offer; the endpoints check again.
 				"permissions": map[string]bool{
 					"transcript": s.logs != nil && s.authz.CanSeeTranscript(principalOf(r), ap.Namespace, ap.Name),

@@ -12,6 +12,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 // MilestoneView is one planned milestone: its spec task, autopilot queue,
@@ -27,8 +28,8 @@ type MilestoneView struct {
 	Tracking  *TrackingIssueRef   `json:"tracking,omitempty"`
 	Pilot     *MilestonePilot     `json:"pilot,omitempty"`
 	// Tasks are the implement tasks, by issue IID.
-	Tasks   []Task `json:"tasks"`
-	CostUSD string `json:"costUSD"`
+	Tasks []Task `json:"tasks"`
+	Cost
 	// Permissions is what the app may offer; the endpoints check again.
 	Permissions *MilestonePermissions `json:"permissions,omitempty"`
 }
@@ -156,7 +157,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 	}
 	sortTasks(v.Tasks)
-	v.CostUSD = aiv1.ShowCost(cost)
+	v.Cost = tasksCost(cost)
 	if ap := st.Status.Autopilot; ap != nil {
 		titles := map[int64]string{}
 		for _, pi := range st.Status.Plan {
@@ -218,6 +219,7 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := milestoneView(ap, tasks, st, coord, time.Now())
+	v.Cost = s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, MilestoneIID: v.IID}, v.Cost)
 	gl := s.gitlab != nil && s.gitlab.serves(ap)
 	p := principalOf(r)
 	chat := s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name)

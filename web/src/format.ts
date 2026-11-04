@@ -1,4 +1,4 @@
-import type { CIState, Stage, TaskPhase } from './types'
+import type { CIState, Cost, Stage, TaskPhase } from './types'
 
 // safeURL only lets http(s) links through: URLs come from GitLab via the
 // cluster, and a javascript: URL must never become a link.
@@ -87,6 +87,53 @@ export function cost(usd: string | undefined | null): string {
   const v = Number.parseFloat(usd ?? '')
   if (!Number.isFinite(v) || v === 0) return '$0'
   return v < 0.01 ? '<$0.01' : `$${v.toFixed(2)}`
+}
+
+// tokenCount abbreviates a token count: 950, 1.2k, 12k, 1.2M.
+export function tokenCount(n: number): string {
+  if (!Number.isFinite(n) || n < 1000) return String(Math.max(0, Math.round(Number.isFinite(n) ? n : 0)))
+  const units: [number, string][] = [
+    [1e3, 'k'],
+    [1e6, 'M'],
+    [1e9, 'B'],
+  ]
+  let s = ''
+  for (const [div, unit] of units) {
+    const v = n / div
+    s = (v < 10 ? v.toFixed(1).replace(/\.0$/, '') : String(Math.round(v))) + unit
+    // 999,950 rounds to 1000k: the next unit says 1M.
+    if (Number.parseFloat(s) < 1000) break
+  }
+  return s
+}
+
+// costChip is a cost chip's text: "$12.34 · 1.2M tok". An unknown cost is
+// "n/a", never $0. Tokens are left out when there are none (costs summed
+// over tasks, runs from before calls were recorded).
+export function costChip(c: Pick<Cost, 'costUSD' | 'costKnown' | 'tokens'> | undefined | null): string {
+  if (!c) return ''
+  const usd = c.costKnown ? cost(c.costUSD) : 'n/a'
+  return c.tokens > 0 ? `${usd} · ${tokenCount(c.tokens)} tok` : usd
+}
+
+// costTooltip breaks a cost chip down into what is known: tokens by type,
+// calls without a cost, the legacy runs' share, or that the cost is summed
+// over the current tasks.
+export function costTooltip(c: Cost | undefined | null): string {
+  if (!c) return ''
+  const s = c.spend
+  if (c.costFrom !== 'calls' || !s) return 'Summed over the current tasks: the history database is not connected.'
+  const n = (v: number) => v.toLocaleString('en-US')
+  const lines = [
+    `Input ${n(s.inputTokens)} · output ${n(s.outputTokens)} tokens`,
+    `Cache read ${n(s.cacheReadTokens)} · cache write ${n(s.cacheWriteTokens)} tokens`,
+    `${n(s.calls)} ${s.calls === 1 ? 'call' : 'calls'}`,
+  ]
+  if (s.unknownCalls > 0) {
+    lines.push(`${n(s.unknownCalls)} ${s.unknownCalls === 1 ? 'call' : 'calls'} without a known cost, not in the sum`)
+  }
+  if (s.legacyCostUSD) lines.push(`${cost(s.legacyCostUSD)} from runs before calls were recorded, without tokens`)
+  return lines.join('\n')
 }
 
 export function shortSHA(sha: string | undefined | null): string {

@@ -57,7 +57,19 @@ export interface AutopilotOverview {
   total: number
 }
 
-export interface ProjectSummary {
+// Cost is what a project, milestone or task cost (Go: ui.Cost in
+// internal/ui/cost.go): from agent calls (costFrom "calls", with tokens and
+// the spend breakdown) or, without the history database, summed over the
+// live tasks (costFrom "tasks", no tokens). costUSD is "" when unknown.
+export interface Cost {
+  costUSD: string
+  costKnown: boolean
+  tokens: number
+  costFrom: 'calls' | 'tasks'
+  spend?: SpendTotals
+}
+
+export interface ProjectSummary extends Cost {
   namespace: string
   name: string
   gitlab: { url: string; project: string; webURL: string }
@@ -70,7 +82,6 @@ export interface ProjectSummary {
   conditions?: Condition[]
   tasks: number
   stages: Partial<Record<Stage, number>>
-  costUSD: string
   createdAt: string
   autopilots?: AutopilotOverview[]
 }
@@ -80,7 +91,7 @@ export interface ProjectDetail extends ProjectSummary {
   unplanned: Task[]
 }
 
-export interface Milestone {
+export interface Milestone extends Cost {
   id: number
   iid: number
   title: string
@@ -89,7 +100,6 @@ export interface Milestone {
   // trackingIssueIID: the milestone's tracking issue (its chat), if any.
   trackingIssueIID?: number
   tasks: Task[]
-  costUSD: string
 }
 
 export interface MilestoneRef {
@@ -313,7 +323,7 @@ export type PilotAutonomy = 'propose' | 'managed'
 
 // MilestoneView mirrors internal/ui/milestone.go. pausedReason and proposal
 // summaries are raw agent and CI text: shown as text only.
-export interface MilestoneView {
+export interface MilestoneView extends Cost {
   id: number
   iid: number
   title: string
@@ -343,7 +353,6 @@ export interface MilestoneView {
     podName?: string
   }
   tasks: Task[]
-  costUSD: string
   permissions?: {
     gitlab: boolean
     steer: boolean
@@ -373,6 +382,7 @@ export interface ProposalView {
 export interface TaskResponse {
   project: ProjectSummary
   task: Task
+  cost: Cost
   permissions?: Permissions
 }
 

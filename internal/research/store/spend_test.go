@@ -240,9 +240,32 @@ func TestSpend(t *testing.T) {
 		t.Errorf("empty scope = %+v", sp)
 	}
 
+	// The totals of the chips: the same sums, without children.
+	for _, sc := range []store.SpendScope{{}, {MilestoneIID: 20}, {Task: "bloop-148"}, {IssueIID: 150}} {
+		want := spend(sc).Totals
+		sc.Namespace, sc.Project = "agents", "bloop"
+		if got, err := s.SpendTotals(ctx, sc); err != nil || got != want {
+			t.Errorf("SpendTotals(%+v) = %+v, %v; want %+v", sc, got, err, want)
+		}
+	}
+	byMilestone, err := s.SpendChildTotals(ctx, store.SpendScope{Namespace: "agents", Project: "bloop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byMilestone) != 3 || byMilestone["20"].CostUSD != 3.98 || byMilestone["20"].LegacyCostUSD != 2 ||
+		byMilestone["21"].CostUSD != 3 || byMilestone[""].CostUSD != 0.1 {
+		t.Errorf("SpendChildTotals by milestone = %+v", byMilestone)
+	}
+
 	for _, sc := range []store.SpendScope{{Namespace: "agents"}, {Namespace: "agents", Project: "bloop", Run: 2}} {
 		if _, err := s.Spend(ctx, sc); err == nil {
 			t.Errorf("Spend(%+v) succeeded, want an error", sc)
+		}
+		if _, err := s.SpendTotals(ctx, sc); err == nil {
+			t.Errorf("SpendTotals(%+v) succeeded, want an error", sc)
+		}
+		if _, err := s.SpendChildTotals(ctx, sc); err == nil {
+			t.Errorf("SpendChildTotals(%+v) succeeded, want an error", sc)
 		}
 	}
 }

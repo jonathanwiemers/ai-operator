@@ -112,9 +112,12 @@ type ProjectSummary struct {
 	Conditions        []metav1.Condition  `json:"conditions,omitempty"`
 	Tasks             int                 `json:"tasks"`
 	Stages            map[Stage]int       `json:"stages"`
-	CostUSD           string              `json:"costUSD"`
 	CreatedAt         metav1.Time         `json:"createdAt"`
 	Autopilots        []AutopilotOverview `json:"autopilots,omitempty"`
+
+	// Cost sums the tasks here; the project endpoint takes it from
+	// agent_calls when the history database is connected.
+	Cost
 }
 
 // AutopilotOverview is the state of one autopilot milestone.
@@ -151,8 +154,8 @@ type Milestone struct {
 	// without one.
 	TrackingIssueIID int64 `json:"trackingIssueIID,omitempty"`
 	// Tasks are the implement tasks, by issue IID.
-	Tasks   []Task `json:"tasks"`
-	CostUSD string `json:"costUSD"`
+	Tasks []Task `json:"tasks"`
+	Cost
 }
 
 // Task is an AgentTask.
@@ -255,7 +258,7 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Proj
 		}
 	}
 	sort.Slice(s.Autopilots, func(i, j int) bool { return s.Autopilots[i].MilestoneIID > s.Autopilots[j].MilestoneIID })
-	s.CostUSD = aiv1.ShowCost(cost)
+	s.Cost = tasksCost(cost)
 	return s
 }
 
@@ -298,7 +301,7 @@ func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Project
 			m.TrackingIssueIID = trackingIssueIID(st, coord)
 		}
 		sortTasks(m.Tasks)
-		m.CostUSD = aiv1.ShowCost(costs[iid])
+		m.Cost = tasksCost(costs[iid])
 		d.Milestones = append(d.Milestones, *m)
 	}
 	sort.Slice(d.Milestones, func(i, j int) bool { return d.Milestones[i].IID > d.Milestones[j].IID })

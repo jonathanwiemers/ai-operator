@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { get, hasFeature, LoginRequiredError, NotFoundError } from '../api'
 import Board from '../components/Board.vue'
 import ContextPanel from '../components/ContextPanel.vue'
+import CostChip from '../components/CostChip.vue'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
 import ProjectBoards from '../components/ProjectBoards.vue'
 import StreamComposer from '../components/StreamComposer.vue'
@@ -21,6 +22,7 @@ import {
   type StreamFilter,
 } from '../stream'
 import type {
+  Cost,
   HistoryResponse,
   InboxResponse,
   MilestoneView,
@@ -271,6 +273,15 @@ const title = computed(() => {
   return props.name ?? 'Stream'
 })
 
+// headerCost is the cost chip of the stream's project or milestone.
+const headerCost = computed((): Cost | null => {
+  if (everything.value) return null
+  const iid = milestoneIID.value
+  if (!iid) return project.value
+  if (milestone.value?.iid === iid) return milestone.value
+  return project.value?.milestones.find((m) => m.iid === iid) ?? null
+})
+
 const crumbs = computed(() => {
   if (everything.value) return 'All projects'
   return `${props.namespace} / ${props.name}`
@@ -329,6 +340,7 @@ function showDay(i: number): string | null {
         </div>
         <div class="title-row">
           <h1>{{ title }}</h1>
+          <CostChip :cost="headerCost" />
           <nav v-if="!everything" class="tabs" aria-label="View">
             <RouterLink
               v-for="t in streamTabs"
@@ -360,6 +372,7 @@ function showDay(i: number): string | null {
           >
             {{ m.title }}
             <span v-if="m.spec?.status.autopilot" class="n">{{ m.spec.status.autopilot.phase === 'Done' ? 'done' : '' }}</span>
+            <CostChip class="cost" :cost="m" small />
           </RouterLink>
         </div>
         <div v-if="tab === 'stream' && heatDays.length" class="heat" title="Activity per day; click to jump">
@@ -571,6 +584,9 @@ function showDay(i: number): string | null {
 .scope a.on {
   color: var(--text);
   border-color: var(--accent);
+}
+.scope a .cost {
+  margin-left: 6px;
 }
 .scope a .n {
   font-size: 11px;

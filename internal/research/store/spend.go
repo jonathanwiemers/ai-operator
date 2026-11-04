@@ -206,20 +206,58 @@ func (sc SpendScope) where(args *[]any) string {
 	return w
 }
 
+// spendQuery checks sc and returns the common table expressions of its
+// spend queries and their arguments.
+func spendQuery(sc SpendScope) (string, []any, error) {
+	if sc.Namespace == "" || sc.Project == "" {
+		return "", nil, errors.New("spend: namespace and project are required")
+	}
+	if sc.Run != 0 && sc.Task == "" {
+		return "", nil, errors.New("spend: a run needs its task")
+	}
+	var args []any
+	return spendWith(sc.where(&args)), args, nil
+}
+
+// SpendTotals returns the scope's totals as Spend does, without children
+// and breakdowns: what a cost chip shows.
+func (s *Store) SpendTotals(ctx context.Context, sc SpendScope) (SpendTotals, error) {
+	with, args, err := spendQuery(sc)
+	if err != nil {
+		return SpendTotals{}, err
+	}
+	return scanTotals(s.pool.QueryRow(ctx, with+`SELECT `+spendTotals+` FROM spend`, args...))
+}
+
+// SpendChildTotals returns the totals of the scope's children at the next
+// level in one query, without their model split and calls, by grouping
+// key: a project's milestones by IID ("" for the calls of no milestone), a
+// milestone's issues by IID ("" for the milestone's own calls).
+func (s *Store) SpendChildTotals(ctx context.Context, sc SpendScope) (map[string]SpendTotals, error) {
+	with, args, err := spendQuery(sc)
+	if err != nil {
+		return nil, err
+	}
+	children, err := s.childTotals(ctx, sc, with, args)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]SpendTotals, len(children))
+	for _, c := range children {
+		out[c.Key] = c.Totals
+	}
+	return out, nil
+}
+
 // Spend returns what the scope cost: its totals, its children at the next
 // level with their model split, and its breakdowns by kind, role and model.
 // Expired calls and events are left out.
 func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
-	if sc.Namespace == "" || sc.Project == "" {
-		return Spend{}, errors.New("spend: namespace and project are required")
+	with, args, err := spendQuery(sc)
+	if err != nil {
+		return Spend{}, err
 	}
-	if sc.Run != 0 && sc.Task == "" {
-		return Spend{}, errors.New("spend: a run needs its task")
-	}
-	var args []any
-	with := spendWith(sc.where(&args))
 	var sp Spend
-	var err error
 	if sp.Totals, err = scanTotals(s.pool.QueryRow(ctx, with+`SELECT `+spendTotals+` FROM spend`, args...)); err != nil {
 		return Spend{}, err
 	}
@@ -254,14 +292,7 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 // for calls, their rows.
 func (s *Store) spendChildren(ctx context.Context, sc SpendScope, with string, args []any) ([]SpendChild, error) {
 	lv := sc.level()
-	rows, _ := s.pool.Query(ctx, with+`SELECT `+lv.key+` AS ck, min(at), `+spendTotals+` FROM spend`+lv.filter+
-		` GROUP BY ck ORDER BY `+lv.order, args...)
-	children, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (SpendChild, error) {
-		c := SpendChild{Level: lv.name}
-		var err error
-		c.Totals, err = scanTotals(row, &c.Key, &c.At)
-		return c, err
-	})
+	children, err := s.childTotals(ctx, sc, with, args)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +301,7 @@ func (s *Store) spendChildren(ctx context.Context, sc SpendScope, with string, a
 		byKey[children[i].Key] = &children[i]
 	}
 
-	rows, _ = s.pool.Query(ctx, with+`SELECT `+lv.key+` AS ck, model, bool_or(main), `+spendTotals+` FROM split
+	rows, _ := s.pool.Query(ctx, with+`SELECT `+lv.key+` AS ck, model, bool_or(main), `+spendTotals+` FROM split
 		GROUP BY ck, model ORDER BY ck, bool_or(main) DESC, sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) DESC, model`, args...)
 	type modelRow struct {
 		key string
@@ -307,6 +338,20 @@ func (s *Store) spendChildren(ctx context.Context, sc SpendScope, with string, a
 		children[i].Key, children[i].Label = childLabel(&children[i], sc)
 	}
 	return children, nil
+}
+
+// childTotals returns the scope's children with their grouping key, first
+// call and totals.
+func (s *Store) childTotals(ctx context.Context, sc SpendScope, with string, args []any) ([]SpendChild, error) {
+	lv := sc.level()
+	rows, _ := s.pool.Query(ctx, with+`SELECT `+lv.key+` AS ck, min(at), `+spendTotals+` FROM spend`+lv.filter+
+		` GROUP BY ck ORDER BY `+lv.order, args...)
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (SpendChild, error) {
+		c := SpendChild{Level: lv.name}
+		var err error
+		c.Totals, err = scanTotals(row, &c.Key, &c.At)
+		return c, err
+	})
 }
 
 // childLabel returns the key and label of c, whose key is still its
