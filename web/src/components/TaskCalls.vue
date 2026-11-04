@@ -16,6 +16,7 @@ import {
   unknownNote,
 } from '../spend'
 import type { Spend, SpendChild } from '../types'
+import ContextChart from './ContextChart.vue'
 
 // TaskCalls is the "Agent calls" section of the Task page: the task's
 // totals, its runs newest first and, per expanded run, its calls (loaded
@@ -116,49 +117,52 @@ async function toggle(r: SpendChild) {
                 <div v-else-if="!st(r.key).calls.length" class="faint">
                   No calls recorded for this run (cost only, from before token tracking).
                 </div>
-                <table v-else class="list inner">
-                  <thead>
-                    <tr>
-                      <th class="num">#</th>
-                      <th>Time</th>
-                      <th>Kind</th>
-                      <th>Role</th>
-                      <th>Engine / model</th>
-                      <th>Resumed</th>
-                      <th class="num">In</th>
-                      <th class="num">Out</th>
-                      <th class="num">Cache read</th>
-                      <th class="num">Cache write</th>
-                      <th class="num">Duration</th>
-                      <th class="num">Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="c in st(r.key).calls" :key="c.key">
-                      <td class="num">{{ c.key }}</td>
-                      <td :title="fullTime(c.at)">{{ clockTime(c.at, now) }}</td>
-                      <td>{{ c.kind }}</td>
-                      <td>{{ c.role || '—' }}</td>
-                      <td>
-                        {{ c.engine }}<template v-if="c.model">/{{ c.model }}</template>
-                        <span v-if="c.fallbackFrom" class="faint"> · fallback from {{ c.fallbackFrom }}</span>
-                      </td>
-                      <td>{{ c.resumed ? 'resumed' : '—' }}</td>
-                      <td class="num">{{ tokenCount(c.totals.inputTokens) }}</td>
-                      <td class="num">{{ tokenCount(c.totals.outputTokens) }}</td>
-                      <td class="num">{{ tokenCount(c.totals.cacheReadTokens) }}</td>
-                      <td class="num">{{ tokenCount(c.totals.cacheWriteTokens) }}</td>
-                      <td class="num">{{ c.totals.durationMS ? duration(c.totals.durationMS) : '—' }}</td>
-                      <td
-                        class="num"
-                        :class="{ unknown: c.costSource !== 'reported' }"
-                        :title="c.costSource === 'estimated' ? 'Estimated from tokens and the pricing table' : costSourceLabel(c.costSource)"
-                      >
-                        {{ callCost(c) }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                <template v-else>
+                  <ContextChart :calls="st(r.key).calls" />
+                  <table class="list inner">
+                    <thead>
+                      <tr>
+                        <th class="num">#</th>
+                        <th>Time</th>
+                        <th>Kind</th>
+                        <th>Role</th>
+                        <th>Engine / model</th>
+                        <th>Resumed</th>
+                        <th class="num">In</th>
+                        <th class="num">Out</th>
+                        <th class="num">Cache read</th>
+                        <th class="num">Cache write</th>
+                        <th class="num">Duration</th>
+                        <th class="num">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="c in st(r.key).calls" :key="c.key">
+                        <td class="num">{{ c.key }}</td>
+                        <td :title="fullTime(c.at)">{{ clockTime(c.at, now) }}</td>
+                        <td>{{ c.kind }}</td>
+                        <td>{{ c.role || '—' }}</td>
+                        <td>
+                          {{ c.engine }}<template v-if="c.model">/{{ c.model }}</template>
+                          <span v-if="c.fallbackFrom" class="faint"> · fallback from {{ c.fallbackFrom }}</span>
+                        </td>
+                        <td>{{ c.resumed ? 'resumed' : '—' }}</td>
+                        <td class="num">{{ tokenCount(c.totals.inputTokens) }}</td>
+                        <td class="num">{{ tokenCount(c.totals.outputTokens) }}</td>
+                        <td class="num">{{ tokenCount(c.totals.cacheReadTokens) }}</td>
+                        <td class="num">{{ tokenCount(c.totals.cacheWriteTokens) }}</td>
+                        <td class="num">{{ c.totals.durationMS ? duration(c.totals.durationMS) : '—' }}</td>
+                        <td
+                          class="num"
+                          :class="{ unknown: c.costSource !== 'reported' }"
+                          :title="c.costSource === 'estimated' ? 'Estimated from tokens and the pricing table' : costSourceLabel(c.costSource)"
+                        >
+                          {{ callCost(c) }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </template>
               </td>
             </tr>
           </tbody>

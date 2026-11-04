@@ -137,6 +137,20 @@ estimate, *n/a* when unknown). The calls come from the database, so
 runs whose CRD state was trimmed are listed too. Without the research
 database (404 or 503) the section is left out.
 
+Above an expanded run's calls a **context-growth chart** shows how the
+session's context grew: the turn on x, the context tokens (input + cache)
+of each main-thread turn on y, one line per implementer step (calls of
+kind implement, ci, conflict and fix; reviewers, describe and pilot calls
+are left out). All steps share one scale, so a resumed session's later
+steps start and end higher. The lines share one color, fainter for the
+first step and full for the latest, and the legend names each by seq and
+kind (*#3 implement*). An orange dot marks each turn after which a
+subagent ran. Hovering a dot or a line's end shows the turn, the tokens
+and the step. A series is at most 500 points; a thinned one is spread
+over the call's real turn count, so long sessions keep their length on
+the axis. Runs recorded before context series were tracked (and cursor
+calls) show no chart.
+
 ### Notifications
 
 The Inbox header has a **Notify me** button. It asks the browser for
