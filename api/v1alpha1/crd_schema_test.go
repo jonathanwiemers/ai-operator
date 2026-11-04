@@ -237,3 +237,41 @@ func TestChatMessageKinds(t *testing.T) {
 		t.Errorf("kind shout: errors %q, want one on chatMessages[0].kind", errs)
 	}
 }
+
+// The operator writes prompts into the task's status; the schema takes every
+// field of a valid one and rejects kinds, states and sources it does not know.
+func TestPromptSchema(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	prompt := func(edit func(p map[string]any)) map[string]any {
+		p := map[string]any{
+			"id": "Q3", "question": "Main is red. What now?", "context": "`rust:test` failed",
+			"source":        map[string]any{"kind": "mainHealth", "issueIID": int64(340), "mrIID": int64(12), "task": "t", "key": "main:abc"},
+			"options":       []any{map[string]any{"id": "A", "label": "Fix it", "detail": "d", "recommended": true, "actions": []any{map[string]any{"tool": "fixFlaky", "issueIID": int64(340)}}}, map[string]any{"id": "B", "label": "Do nothing", "fromAnswer": false}},
+			"allowFreeText": true, "state": "answered", "mirroredState": "open",
+			"answer":   map[string]any{"optionID": "A", "text": "go", "by": "jo", "at": "2026-11-04T12:00:00Z", "via": "desk", "outcome": "done"},
+			"postedAt": "2026-11-04T11:00:00Z", "closedAt": "2026-11-04T12:00:00Z", "postedNoteID": int64(4160687951), "postedNoteURL": "https://gitlab.com/x",
+		}
+		edit(p)
+		return map[string]any{"status": map[string]any{"lastPrompt": int64(3), "prompts": []any{p}}}
+	}
+	if _, errs := crd.admit(prompt(func(map[string]any) {})); len(errs) > 0 {
+		t.Errorf("valid prompt rejected: %v", errs)
+	}
+	for name, tc := range map[string]struct {
+		edit func(p map[string]any)
+		want string
+	}{
+		"kind":          {func(p map[string]any) { p["source"].(map[string]any)["kind"] = "chat" }, "status.prompts[0].source.kind"},
+		"state":         {func(p map[string]any) { p["state"] = "done" }, "status.prompts[0].state"},
+		"mirroredState": {func(p map[string]any) { p["mirroredState"] = "done" }, "status.prompts[0].mirroredState"},
+		"via":           {func(p map[string]any) { p["answer"].(map[string]any)["via"] = "slack" }, "status.prompts[0].answer.via"},
+	} {
+		if _, errs := crd.admit(prompt(tc.edit)); !strings.Contains(strings.Join(errs, "\n"), tc.want) {
+			t.Errorf("%s: errors %v, want one on %s", name, errs, tc.want)
+		}
+	}
+	many := map[string]any{"status": map[string]any{"prompts": repeat(map[string]any{"id": "Q1"}, MaxPrompts+1)}}
+	if _, errs := crd.admit(many); !strings.Contains(strings.Join(errs, "\n"), "status.prompts") {
+		t.Errorf("%d prompts: errors %v", MaxPrompts+1, errs)
+	}
+}

@@ -666,6 +666,17 @@ type AgentTaskStatus struct {
 	// +optional
 	Chat *ChatStatus `json:"chat,omitempty"`
 
+	// Prompts are the open and recent questions to the owners, newest last,
+	// at most MaxPrompts: the milestone's on spec tasks, the agent's
+	// (needsInput) on Implement tasks.
+	// +optional
+	// +kubebuilder:validation:MaxItems=20
+	Prompts []Prompt `json:"prompts,omitempty"`
+
+	// LastPrompt is n of the newest "Q<n>" given out.
+	// +optional
+	LastPrompt int64 `json:"lastPrompt,omitempty"`
+
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
