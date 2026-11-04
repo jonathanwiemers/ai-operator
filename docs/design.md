@@ -931,7 +931,7 @@ stateDiagram-v2
   when a step failed, since GitLab side effects (a created tracking issue, a
   requested rebase) already happened. Comments are posted before the state
   that suppresses them is set, so a failed comment is retried. One failing
-  milestone does not stop the others or the cleanup.
+  milestone or issue does not stop the others or the cleanup.
 * **Pause.** Anything that needs a human pauses the queue with a comment on
   the tracking issue, once per reason. The reason can quote job names, so
   it goes through `notify.Defuse` wherever it reaches GitLab (the pause

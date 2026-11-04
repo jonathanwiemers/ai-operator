@@ -43,6 +43,8 @@ type Fake struct {
 	// the note and then fail, like a write whose answer timed out. Each entry
 	// is used once.
 	NoteErrorsAfterWrite map[int64]error
+	// ListNoteErrors makes ListIssueNotes of an issue fail.
+	ListNoteErrors map[int64]error
 	// UpdateErrors makes UpdateIssue of an issue fail.
 	UpdateErrors map[int64]error
 	// Merged and Rebased record the MRs merged and rebased, in order.
@@ -425,6 +427,9 @@ func (f *Fake) ReplyIssueDiscussion(ctx context.Context, project string, iid int
 func (f *Fake) ListIssueNotes(_ context.Context, _ string, iid int64) ([]gitlab.Note, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.ListNoteErrors[iid]; err != nil {
+		return nil, err
+	}
 	return slices.Clone(f.IssueNotes[iid]), nil
 }
 

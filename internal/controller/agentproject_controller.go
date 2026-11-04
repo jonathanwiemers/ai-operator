@@ -392,6 +392,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 	implTasks := map[int64]*aiv1.AgentTask{}
+	// One failing issue does not hold up the other issues or the steps
+	// below: its error is collected and returned at the end.
+	var errs []error
 	for _, is := range issues {
 		autopilot, pause := false, ""
 		if is.Milestone != nil {
@@ -423,22 +426,31 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], st, autopilot, pause, owners(description), ownerSubjects(description))
 		if err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
+			// Keep the existing task, so the cleanup below does not delete
+			// it and the autopilot still sees it.
+			if t := byIssue[is.IID]; t != nil {
+				keep[t.Name] = true
+				implTasks[is.IID] = t
+			}
+			continue
 		}
 		keep[task.Name] = true
 		implTasks[is.IID] = task
 		if err := r.syncRunBlock(ctx, gl, spec, is, task); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
+			continue
 		}
 		if err := r.syncBlocked(ctx, gl, spec, is, task); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
+			continue
 		}
 		if task.Status.Blocked != nil {
 			continue // its CI is followed again once the block is lifted
 		}
 		// With the milestone's switches (standing rules).
 		if err := r.syncCI(ctx, gl, rules.For(spec, description, prefix), project.Status.MainHealth, is, task, mr); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
 		}
 	}
 
@@ -446,7 +458,6 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	// merged, then the autopilot milestones: queue, merge gate, tracking
 	// issue. One failing step does not hold up the others or the cleanup
 	// below.
-	var errs []error
 	if err := r.syncMainHealth(ctx, gl, project, spec, lane); err != nil {
 		errs = append(errs, fmt.Errorf("main health: %w", err))
 	}
@@ -465,7 +476,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	}
 
 	// Everything else is done, closed, unlabeled or out of scope: delete the
-	// task, which garbage collects its pod and workspace.
+	// task, which garbage collects its pod and workspace. Tasks of issues
+	// that failed above are in keep too, so only tasks whose issue is gone
+	// are deleted, never one because it or a sibling failed.
 	for i := range tasks.Items {
 		t := &tasks.Items[i]
 		if keep[t.Name] || !t.DeletionTimestamp.IsZero() {

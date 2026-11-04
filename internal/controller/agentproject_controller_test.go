@@ -559,3 +559,57 @@ func TestReviewCommandClearsReviewedForBeforeTheRunRequest(t *testing.T) {
 		t.Fatalf("the next poll requests the re-review: %+v", task.Spec)
 	}
 }
+
+// One issue's GitLab error does not stop the sync: the other issue's CI, the
+// autopilot and the cleanup still run, the failing issue keeps its task and
+// the error is reported (R10).
+func TestFailingIssueDoesNotStopTheSync(t *testing.T) {
+	e := newUnplannedAutopilotEnv(t)
+	m := e.gl.Milestones[0]
+	for _, is := range []*gitlab.Issue{e.gl.AddIssue(7, "Docs", "agent::working"), e.gl.AddIssue(8, "Logs", "agent::working")} {
+		mc := m
+		is.Milestone = &mc
+	}
+	e.reconcile()
+	const docs, logs = "shop-7-docs", "shop-8-logs"
+	if _, ok := e.tasks()[logs]; !ok {
+		t.Fatalf("expected tasks for #7 and #8, got %v", keys(e.tasks()))
+	}
+	// The milestone is planned now, #7 pushed and its pipeline runs, and
+	// listing #8's notes fails.
+	st := e.tasks()[specTaskName]
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ObservedRunRequest = st.Spec.RunRequest
+		s.Plan = []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API"}, {Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}}}
+	})
+	task := e.tasks()[docs]
+	e.patchStatus(docs, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ObservedRunRequest, s.Run.ActiveRunRequest = task.Spec.RunRequest, task.Spec.RunRequest
+		s.Run.PushedSHA = "sha7"
+		s.Run.PushedAt = &metav1.Time{Time: e.r.Now()}
+	})
+	e.gl.AddPipeline("sha7", "agent/7", "running")
+	e.gl.ListNoteErrors = map[int64]error{8: &gitlab.Error{StatusCode: 404, Method: "GET", Path: "notes"}}
+	e.gl.SetLabels(8, "agent::working") // the notes are read again
+
+	if _, err := e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "shop"}}); err != nil {
+		t.Fatal(err)
+	}
+	var p aiv1.AgentProject
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &p); err != nil {
+		t.Fatal(err)
+	}
+	if c := meta.FindStatusCondition(p.Status.Conditions, "Synced"); c == nil || c.Status != metav1.ConditionFalse || !strings.Contains(c.Message, "issue #8") {
+		t.Fatalf("the sync must fail naming #8, got %+v", c)
+	}
+	tasks := e.tasks()
+	if ci := tasks[docs].Status.CI; ci == nil || ci.State != aiv1.CIStateRunning {
+		t.Fatalf("#7's CI must still be followed, got %+v", ci)
+	}
+	if _, ok := tasks[logs]; !ok {
+		t.Fatalf("#8's task must not be deleted, got %v", keys(tasks))
+	}
+	if ap := e.autopilot(); len(ap.Items) == 0 {
+		t.Fatalf("the autopilot must still fill its queue, got %+v", ap)
+	}
+}

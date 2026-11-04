@@ -1244,6 +1244,9 @@ operator and the runners retry on their own:
   again on the next poll", and the project's `Synced` condition says why;
   the next poll (`spec.pollInterval`) picks up where it left off. Other
   errors are logged with a stack trace as before.
+- An error on one issue does not stop the poll. The other issues, main
+  health, the autopilot and the cleanup still run. The failing issue keeps its
+  task, and `Synced` names the issue (`issue #12: …`).
 - With the operator at log level `debug` (Helm `logLevel: debug`) every poll
   logs how many requests it sent ("GitLab poll done"); a poll that needed
   retries logs it at the default level too.
