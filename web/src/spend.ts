@@ -227,3 +227,25 @@ export function childLabel(
   if (scope.milestone) return 'Milestone (spec, pilot, retro)'
   return milestones.find((m) => String(m.iid) === c.key)?.title || c.label
 }
+
+// tokenBreakdown is the tooltip of a token count: all four token types.
+export function tokenBreakdown(t: SpendTotals): string {
+  const n = (v: number) => v.toLocaleString('en-US')
+  return `Input ${n(t.inputTokens)} · output ${n(t.outputTokens)}\nCache read ${n(t.cacheReadTokens)} · cache write ${n(t.cacheWriteTokens)}`
+}
+
+// runNumber is the run of a run child (key "task/run"), 0 when unknown.
+export function runNumber(c: Pick<SpendChild, 'key'>): number {
+  return positive(c.key.slice(c.key.lastIndexOf('/') + 1)) ?? 0
+}
+
+// runsNewestFirst orders a task's run children by run number, highest first.
+export function runsNewestFirst<T extends Pick<SpendChild, 'key'>>(runs: T[]): T[] {
+  return [...runs].sort((a, b) => runNumber(b) - runNumber(a))
+}
+
+// spendHidden: the call table is left out when research is off, the
+// endpoint answers 404 (NotFoundError, "not found") or 503.
+export function spendHidden(e: unknown): boolean {
+  return e instanceof Error && /^not found$|\b503\b/.test(e.message)
+}

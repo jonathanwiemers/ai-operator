@@ -113,6 +113,17 @@ Shares are of the rows' known cost; a row without a known cost shows
 The Spend tab loads when it opens or the drill-down moves; it does not
 follow live changes.
 
+### Agent calls on the Task page
+
+A Task page lists every recorded call of its task in an *Agent calls*
+section, from the same endpoint (`task=`): the task's totals on top, then
+its runs newest first (calls, tokens, cost). Expanding a run loads its
+calls (`run=`): time, kind, role, engine and model, resumed, input,
+output, cache read and cache write tokens, duration and cost (`~` for an
+estimate, *n/a* when unknown). The calls come from the database, so
+runs whose CRD state was trimmed are listed too. Without the research
+database (404 or 503) the section is left out.
+
 ### Notifications
 
 The Inbox header has a **Notify me** button. It asks the browser for

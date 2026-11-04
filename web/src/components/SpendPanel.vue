@@ -19,11 +19,12 @@ import {
   spendCrumbs,
   spendLocation,
   spendTokens,
+  tokenBreakdown as tokenTitle,
   spendUSD,
   unknownNote,
   type SpendScope,
 } from '../spend'
-import type { Spend, SpendBreakdown, SpendTotals } from '../types'
+import type { Spend, SpendBreakdown } from '../types'
 
 // SpendPanel is the Spend tab of a project or milestone stream: the
 // scope's totals, its children one level down (project → milestone →
@@ -105,11 +106,6 @@ const level = computed(() => {
   if (scope.value.milestone) return { title: 'Issues', one: 'Issue' }
   return { title: 'Milestones', one: 'Milestone' }
 })
-
-function tokenTitle(t: SpendTotals): string {
-  const n = (v: number) => v.toLocaleString('en-US')
-  return `Input ${n(t.inputTokens)} · output ${n(t.outputTokens)}\nCache read ${n(t.cacheReadTokens)} · cache write ${n(t.cacheWriteTokens)}`
-}
 
 function rowKey(b: SpendBreakdown): string {
   return b.key || '—'

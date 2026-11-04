@@ -12,6 +12,7 @@ import StageBadge from '../components/StageBadge.vue'
 import LiveTranscript from '../components/LiveTranscript.vue'
 import Conversation from '../components/Conversation.vue'
 import TaskChat from '../components/TaskChat.vue'
+import TaskCalls from '../components/TaskCalls.vue'
 import NotFound from './NotFound.vue'
 import type { TaskResponse } from '../types'
 
@@ -184,6 +185,8 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
           :run="String(run.activeRunRequest ?? '')"
         />
       </section>
+
+      <TaskCalls :namespace="namespace" :name="name" :task="task" />
 
       <section v-if="run.summary" class="section">
         <h3>Summary of the last run</h3>

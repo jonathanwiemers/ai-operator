@@ -9,6 +9,10 @@ import {
   legacyNote,
   modelsLine,
   pctLabel,
+  runNumber,
+  runsNewestFirst,
+  spendHidden,
+  tokenBreakdown,
   scopeFromQuery,
   shareLabel,
   shares,
@@ -232,4 +236,22 @@ test('childLabel: milestone titles, and a milestone’s own calls', () => {
     'Milestone (spec, pilot, retro)',
   )
   assert.equal(childLabel({ level: 'issue', key: '12', label: '#12' }, { milestone: 3 }, ms), '#12')
+})
+
+test('runNumber and runsNewestFirst order runs by number, not text', () => {
+  const runs = [{ key: 't/2' }, { key: 't/10' }, { key: 't/1' }]
+  assert.deepEqual(runsNewestFirst(runs).map((r) => r.key), ['t/10', 't/2', 't/1'])
+  assert.equal(runNumber({ key: 'x' }), 0)
+})
+
+test('spendHidden hides on 404 and 503 only', () => {
+  assert.equal(spendHidden(new Error('not found')), true)
+  assert.equal(spendHidden(new Error('The server answered 503.')), true)
+  assert.equal(spendHidden(new Error('The server answered 500.')), false)
+  assert.equal(spendHidden('x'), false)
+})
+
+test('tokenBreakdown lists all four token types', () => {
+  const t = { ...totals(), inputTokens: 1200, outputTokens: 3, cacheReadTokens: 5, cacheWriteTokens: 7 }
+  assert.match(tokenBreakdown(t), /Input 1,200 · output 3\nCache read 5 · cache write 7/)
 })
