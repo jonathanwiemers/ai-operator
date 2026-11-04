@@ -1700,6 +1700,11 @@ spec:
                       type: string
                     question:
                       type: string
+                    quiet:
+                      description: |-
+                        Quiet: the producer mentioned the owners itself, so the GitLab
+                        comment that mirrors the prompt does not.
+                      type: boolean
                     source:
                       description: PromptSource is what a prompt is about and who
                         made it.

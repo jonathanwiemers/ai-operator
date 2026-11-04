@@ -145,6 +145,10 @@ type Prompt struct {
 	Options []PromptOption `json:"options,omitempty"`
 	// +optional
 	AllowFreeText bool `json:"allowFreeText,omitempty"`
+	// Quiet: the producer mentioned the owners itself, so the GitLab
+	// comment that mirrors the prompt does not.
+	// +optional
+	Quiet bool `json:"quiet,omitempty"`
 	// +optional
 	State PromptState `json:"state,omitempty"`
 	// +optional

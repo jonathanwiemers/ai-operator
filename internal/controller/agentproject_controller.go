@@ -483,6 +483,21 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	if err := r.syncPilots(ctx, gl, project, spec, specTasks, pilots, keep, issues, implTasks); err != nil {
 		errs = append(errs, err)
 	}
+	// The prompts' GitLab comments, once answers have their outcome.
+	for _, st := range specTasks {
+		tracking := trackingIssue(st, pilots[st.Spec.Milestone.IID])
+		if ap := st.Status.Autopilot; tracking == 0 && ap != nil {
+			tracking = ap.TrackingIssueIID
+		}
+		if err := r.mirrorPrompts(ctx, gl, project, spec, st, tracking); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	for _, t := range implTasks {
+		if err := r.mirrorPrompts(ctx, gl, project, spec, t, 0); err != nil {
+			errs = append(errs, err)
+		}
+	}
 
 	// Everything else is done, closed, unlabeled or out of scope: delete the
 	// task, which garbage collects its pod and workspace. Tasks of issues

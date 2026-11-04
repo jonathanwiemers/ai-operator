@@ -1339,6 +1339,37 @@ counted interventions; more tools are later steps of
   used up. On claude each turn is capped at the rest of the budget (or the
   role's own `maxBudgetUSD`, if lower); cursor reports no cost.
 
+### Prompts in GitLab
+
+Every prompt (`Q<n>`, in `status.prompts` of the spec task or of an
+Implement task) is mirrored as one bot comment on its source: its merge
+request, else its issue, else the milestone's tracking issue
+(`internal/controller/prompt_mirror.go`). One step at the end of the poll,
+after the pilots' accepted actions ran, compares each prompt's `state` with
+`mirroredState`, so every producer and answer path is mirrored the same way.
+
+* **Posted** (open): the question, the context and option labels made
+  inert (no mentions, quick actions or `<!--`), the options as a list with
+  the recommended one marked, "Answer in the Desk" with the link (with the
+  operator's `--desk-url`), a mention of the owners unless the prompt is
+  `quiet`, and `<!-- ai-operator:prompt=Q<n> posted=<unix> -->`. It has
+  no command syntax. The comment is recorded (`postedNoteID`,
+  `postedNoteURL`) after it is posted; before posting, the bot's comments
+  are searched for the marker, so a crash in between does not post twice.
+* **Answered:** the comment's first line becomes "✅ Answered by `@owner`
+  in the Desk (or in GitLab): <option>", the other options struck through,
+  and one reply in its thread (on a merge request a comment) has the
+  chosen option, the owner's words quoted as untrusted (inert, 2000
+  bytes) and `answer.outcome`, marked `prompt-answer=Q<n>` so it is not
+  posted twice. When the option has actions, it waits for the outcome, two
+  poll intervals at most.
+* **Superseded / expired:** the first line becomes "⏹️ Superseded: …" or
+  "⌛ Expired", without a reply. A prompt that closed before it was posted
+  is not posted.
+* Edits carry no mention (GitLab would notify again). Bodies are cut below
+  GitLab's 1 MB limit and then end with the Desk link. GitLab errors are
+  logged and tried again on the next poll.
+
 ## Engines, profiles and subscriptions
 
 Each role runs on an engine, an agent CLI:
