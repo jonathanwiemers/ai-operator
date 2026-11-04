@@ -103,7 +103,7 @@ func TestResearchRunSucceeded(t *testing.T) {
 	if n := storetest.Count(t, "research_items", e.runID); n != 1 {
 		t.Errorf("%d items, want 1", n)
 	}
-	if run.Outcome != aiv1.ResearchOutcomeSucceeded || run.Message != "" || run.CostUSD != "0.4" {
+	if run.Outcome != aiv1.ResearchOutcomeSucceeded || run.Message != "" || run.CostUSD != "0.4000" {
 		t.Errorf("status.run = %+v, want succeeded at 0.4 USD", run)
 	}
 	if run.FinishedAt != nil || run.StartedAt == nil || run.Engine != aiv1.EngineClaude || run.Reason != "chosen first" {
@@ -155,7 +155,7 @@ func TestResearchRunDegraded(t *testing.T) {
 	if n := storetest.Count(t, "research_results", e.runID); n != 1 {
 		t.Errorf("a degraded run keeps its answer: %d results", n)
 	}
-	if run.Outcome != aiv1.ResearchOutcomeDegraded || !strings.HasPrefix(run.Message, "invalid answer: ") || run.CostUSD != "0.5" {
+	if run.Outcome != aiv1.ResearchOutcomeDegraded || !strings.HasPrefix(run.Message, "invalid answer: ") || run.CostUSD != "0.5000" {
 		t.Errorf("status.run = %+v, want degraded with the validation errors", run)
 	}
 }
@@ -198,7 +198,7 @@ func TestResearchRunFailed(t *testing.T) {
 	if status, msg, _ := storetest.RunStatus(t, e.runID); status != store.StatusFailed || !strings.Contains(msg, "exited with code 1") {
 		t.Errorf("store run = %q %q, want failed with the error", status, msg)
 	}
-	if run.Outcome != aiv1.ResearchOutcomeFailed || !strings.Contains(run.Message, "exited with code 1") || run.CostUSD != "0.1" {
+	if run.Outcome != aiv1.ResearchOutcomeFailed || !strings.Contains(run.Message, "exited with code 1") || run.CostUSD != "0.1000" {
 		t.Errorf("status.run = %+v, want failed", run)
 	}
 }

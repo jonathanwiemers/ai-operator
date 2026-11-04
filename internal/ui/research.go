@@ -134,7 +134,7 @@ func (s *Server) detailOf(r *http.Request, ar *aiv1.AgentResearch) ResearchDetai
 
 func runView(r store.Run) ResearchRun {
 	return ResearchRun{ID: r.ID, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Status: r.Status, Engine: r.Engine,
-		Model: r.Model, Effort: r.Effort, CostUSD: strconv.FormatFloat(r.CostUSD, 'f', -1, 64),
+		Model: r.Model, Effort: r.Effort, CostUSD: aiv1.FormatCost(r.CostUSD),
 		ChoiceReason: r.ChoiceReason, Error: r.Error, Warnings: r.Warnings, ExpiresAt: r.ExpiresAt}
 }
 

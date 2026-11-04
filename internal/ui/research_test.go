@@ -336,7 +336,7 @@ func TestResearchResults(t *testing.T) {
 	if detail.Research.Prompt != "News" || !slices.Equal(detail.Research.Topics, []string{"tech", "world"}) ||
 		len(detail.Research.Sources) != 1 || detail.Research.Sources[0].URL != "https://www.tagesschau.de/index~rss2.xml" ||
 		detail.Research.Sources[0].Name != "tagesschau" || detail.Research.Sources[0].Topic != "Germany" ||
-		detail.Research.Agent != nil || detail.Run == nil || detail.Run.ID != run2.ID || detail.Run.CostUSD != "0.125" {
+		detail.Research.Agent != nil || detail.Run == nil || detail.Run.ID != run2.ID || detail.Run.CostUSD != "0.1250" {
 		t.Errorf("detail research %+v, run %+v", detail.Research, detail.Run)
 	}
 	if detail.Research.Name != "news" || detail.Result.RunID != run2.ID || detail.Result.Title != "Tuesday" ||
@@ -368,7 +368,7 @@ func TestResearchResults(t *testing.T) {
 	if code := env.get(t, base, &runs); code != http.StatusOK || !slices.Equal(ids(), []string{run2.ID, run1.ID}) {
 		t.Errorf("runs: status %d, %v", code, ids())
 	}
-	if runs.Runs[0].CostUSD != "0.125" || runs.Runs[0].Status != store.StatusSucceeded || runs.Runs[0].FinishedAt == nil {
+	if runs.Runs[0].CostUSD != "0.1250" || runs.Runs[0].Status != store.StatusSucceeded || runs.Runs[0].FinishedAt == nil {
 		t.Errorf("run = %+v", runs.Runs[0])
 	}
 	if code := env.get(t, base+"?limit=1", &runs); code != http.StatusOK || !slices.Equal(ids(), []string{run2.ID}) {

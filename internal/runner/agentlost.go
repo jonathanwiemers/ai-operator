@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -150,7 +149,6 @@ func (r *Runner) retryWithMoreMemory(ctx context.Context, gl gitlab.API, spec ai
 		s.LastActivityTime = &metav1.Time{Time: now}
 		s.LastResult = aiv1.RunResultDeferred
 		s.Summary = truncate(err.Error(), 2000)
-		prev, _ := strconv.ParseFloat(s.CostUSD, 64)
-		s.CostUSD = strconv.FormatFloat(prev+out.CostUSD, 'f', 4, 64)
+		s.CostUSD = aiv1.AddCost(s.CostUSD, out.CostUSD)
 	})
 }

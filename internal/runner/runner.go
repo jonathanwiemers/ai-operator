@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -506,8 +505,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
 		s.LastResult = out.Result
 		s.Summary = truncate(out.Summary, 2000)
-		prev, _ := strconv.ParseFloat(s.CostUSD, 64)
-		s.CostUSD = strconv.FormatFloat(prev+out.CostUSD, 'f', 4, 64)
+		s.CostUSD = aiv1.AddCost(s.CostUSD, out.CostUSD)
 		if out.Branch != "" {
 			s.Branch = out.Branch
 		}
@@ -590,8 +588,7 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 		s.LastActivityTime = &metav1.Time{Time: now}
 		s.LastResult = aiv1.RunResultDeferred
 		s.Summary = truncate(lim.Error(), 2000)
-		prev, _ := strconv.ParseFloat(s.CostUSD, 64)
-		s.CostUSD = strconv.FormatFloat(prev+out.CostUSD, 'f', 4, 64)
+		s.CostUSD = aiv1.AddCost(s.CostUSD, out.CostUSD)
 	})
 }
 

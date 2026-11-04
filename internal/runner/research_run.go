@@ -3,7 +3,6 @@ package runner
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -89,7 +88,7 @@ func (rr *ResearchRun) Run(ctx context.Context) error {
 		ans, err = rr.research(runCtx, db, &res, run)
 	}
 
-	report := aiv1.ResearchRunStatus{CostUSD: strconv.FormatFloat(ans.CostUSD, 'f', -1, 64)}
+	report := aiv1.ResearchRunStatus{CostUSD: aiv1.FormatCost(ans.CostUSD)}
 	if ans.Usage != nil {
 		reading := *ans.Usage
 		reading.Engine, reading.ObservedAt = run.Engine, metav1.Time{Time: rr.clock()}

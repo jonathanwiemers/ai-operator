@@ -39,7 +39,7 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		default:
 			prompt := buildAssessPrompt(e, eventData(ctx, gl, spec.GitLab.Project, e), milestone)
 			inv := roleInvocation(role, pilotSystem(task), readOnlyTools, assessSchema, true)
-			inv.Role, inv.MaxBudgetUSD, inv.Prompt = "pilot", strconv.FormatFloat(left, 'f', 2, 64), prompt
+			inv.Role, inv.MaxBudgetUSD, inv.Prompt = "pilot", aiv1.ShowCost(left), prompt
 			s := r.step(ctx, "run pilot", "engine", role.Engine, "model", role.Model, "event", e.Key)
 			res, err := r.invoke(ctx, role, inv, prompt)
 			if res != nil {

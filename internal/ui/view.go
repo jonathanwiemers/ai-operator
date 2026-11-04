@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -237,7 +236,7 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Proj
 	for i := range tasks {
 		t := &tasks[i]
 		s.Stages[StageOf(t, ciWindow(p), now)]++
-		cost += parseCost(t.Status.Run.CostUSD)
+		cost += aiv1.CostOf(t.Status.Run.CostUSD)
 		if ap := t.Status.Autopilot; ap != nil && t.Spec.Milestone != nil {
 			o := AutopilotOverview{
 				MilestoneIID: t.Spec.Milestone.IID,
@@ -256,7 +255,7 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Proj
 		}
 	}
 	sort.Slice(s.Autopilots, func(i, j int) bool { return s.Autopilots[i].MilestoneIID > s.Autopilots[j].MilestoneIID })
-	s.CostUSD = formatCost(cost)
+	s.CostUSD = aiv1.ShowCost(cost)
 	return s
 }
 
@@ -285,7 +284,7 @@ func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Project
 			}
 			byIID[ms.IID] = m
 		}
-		costs[ms.IID] += parseCost(t.Status.Run.CostUSD)
+		costs[ms.IID] += aiv1.CostOf(t.Status.Run.CostUSD)
 		if t.Spec.Type == aiv1.TaskTypeSpec {
 			m.Spec = &v
 			// The spec task carries the milestone's current title.
@@ -299,7 +298,7 @@ func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Project
 			m.TrackingIssueIID = trackingIssueIID(st, coord)
 		}
 		sortTasks(m.Tasks)
-		m.CostUSD = formatCost(costs[iid])
+		m.CostUSD = aiv1.ShowCost(costs[iid])
 		d.Milestones = append(d.Milestones, *m)
 	}
 	sort.Slice(d.Milestones, func(i, j int) bool { return d.Milestones[i].IID > d.Milestones[j].IID })
@@ -334,18 +333,6 @@ func shortDuration(d time.Duration) string {
 		s = strings.TrimSuffix(s, "0m")
 	}
 	return s
-}
-
-func parseCost(s string) float64 {
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
-	return v
-}
-
-func formatCost(v float64) string {
-	return strconv.FormatFloat(v, 'f', 2, 64)
 }
 
 // waitingFor returns the issue a paused autopilot waits for: the pause is

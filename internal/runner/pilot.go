@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -82,7 +81,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			inv := roleInvocation(role, pilotSystem(task), readOnlyTools, pilotSchema, true)
 			inv.Role = "pilot"
 			inv.Resume = st.session("pilot", role.Engine)
-			inv.MaxBudgetUSD = strconv.FormatFloat(left, 'f', 2, 64)
+			inv.MaxBudgetUSD = aiv1.ShowCost(left)
 			prompt := buildPilotPrompt(task, m, state)
 			inv.Prompt = prompt
 			s := r.step(ctx, "run pilot", "engine", role.Engine, "model", role.Model, "note", m.NoteID, "resume", inv.Resume != "")
@@ -137,10 +136,8 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 // pilotLeft is what one turn of the pilot may spend: the rest of its
 // budget, at most the role's own cap.
 func pilotLeft(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome) float64 {
-	budget, _ := strconv.ParseFloat(spec.Pilot.MaxBudgetUSD, 64)
-	spent, _ := strconv.ParseFloat(task.Status.Run.CostUSD, 64)
-	left := budget - spent - out.CostUSD
-	if turnCap, _ := strconv.ParseFloat(spec.Agents.Pilot.MaxBudgetUSD, 64); turnCap > 0 {
+	left := aiv1.BudgetLeft(spec.Pilot.MaxBudgetUSD, task.Status.Run.CostUSD, out.CostUSD)
+	if turnCap := aiv1.CostOf(spec.Agents.Pilot.MaxBudgetUSD); turnCap > 0 {
 		left = min(left, turnCap)
 	}
 	return left

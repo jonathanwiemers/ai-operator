@@ -147,7 +147,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		if t.Spec.Milestone == nil || t.Spec.Milestone.IID != ms.IID {
 			continue
 		}
-		cost += parseCost(t.Status.Run.CostUSD)
+		cost += aiv1.CostOf(t.Status.Run.CostUSD)
 		if t.Spec.Type == aiv1.TaskTypeImplement {
 			v.Tasks = append(v.Tasks, taskView(t, ciWindow(p), now))
 			if t.Spec.Issue != nil {
@@ -156,7 +156,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 	}
 	sortTasks(v.Tasks)
-	v.CostUSD = formatCost(cost)
+	v.CostUSD = aiv1.ShowCost(cost)
 	if ap := st.Status.Autopilot; ap != nil {
 		titles := map[int64]string{}
 		for _, pi := range st.Status.Plan {
@@ -179,7 +179,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 	}
 	if coord != nil {
 		pv := &MilestonePilot{Task: coord.Name, Autonomy: p.Spec.Pilot.AutonomyOf(coord), Proposals: []ProposalView{},
-			CostUSD: formatCost(parseCost(coord.Status.Run.CostUSD)), Phase: coord.Status.Phase, Message: coord.Status.Message, PodName: coord.Status.PodName}
+			CostUSD: aiv1.ShowCost(aiv1.CostOf(coord.Status.Run.CostUSD)), Phase: coord.Status.Phase, Message: coord.Status.Message, PodName: coord.Status.PodName}
 		if ps := coord.Status.Pilot; ps != nil {
 			for _, pr := range ps.Proposals {
 				pv.Proposals = append(pv.Proposals, ProposalView{ID: pr.ID, Summary: pr.Summary, PostedAt: pr.PostedAt})

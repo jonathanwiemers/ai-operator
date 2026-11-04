@@ -317,15 +317,11 @@ func ciWord(s aiv1.CIState) string {
 // costDelta is the spend of the run that took the accumulated cost from
 // before to after, as a decimal string.
 func costDelta(before, after string) (string, bool) {
-	a, err := strconv.ParseFloat(after, 64)
-	if err != nil {
+	d := aiv1.CostOf(after) - aiv1.CostOf(before)
+	if d <= 0 {
 		return "", false
 	}
-	b, _ := strconv.ParseFloat(before, 64)
-	if a-b <= 0 {
-		return "", false
-	}
-	return strconv.FormatFloat(a-b, 'f', 4, 64), true
+	return aiv1.FormatCost(d), true
 }
 
 func ids(ps []aiv1.PilotProposal) map[int64]bool {

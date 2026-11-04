@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -68,7 +67,7 @@ func (r *Runner) runRetrospective(ctx context.Context, gl gitlab.API, task *aiv1
 		// Neither the implementer's tools nor its instructions.
 		inv := roleInvocation(aiv1.RoleSpec{Engine: role.Engine, Model: role.Model, Effort: role.Effort}, retroSystemPrompt, readOnlyTools, retroSchema, true)
 		prompt := buildRetroPrompt(facts)
-		inv.Role, inv.MaxBudgetUSD, inv.Prompt = "retrospective", strconv.FormatFloat(left, 'f', 2, 64), prompt
+		inv.Role, inv.MaxBudgetUSD, inv.Prompt = "retrospective", aiv1.ShowCost(left), prompt
 		s := r.step(ctx, "run retrospective", "engine", role.Engine, "model", role.Model)
 		res, err := r.invoke(ctx, role, inv, prompt)
 		if res != nil {
@@ -228,7 +227,7 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		if t.Spec.Milestone == nil || t.Spec.Milestone.IID != m.IID {
 			continue
 		}
-		c, _ := strconv.ParseFloat(t.Status.Run.CostUSD, 64)
+		c := aiv1.CostOf(t.Status.Run.CostUSD)
 		cost += c
 		switch {
 		case t.Spec.Type == aiv1.TaskTypeSpec:
@@ -274,7 +273,7 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		v.Autopilot = append(v.Autopilot, at+truncate(n.Body, 600))
 	}
 	v.Autopilot = v.Autopilot[max(0, len(v.Autopilot)-maxRetroComments):]
-	v.CostUSD = strconv.FormatFloat(cost, 'f', 2, 64)
+	v.CostUSD = aiv1.ShowCost(cost)
 	v.Done = r.now().UTC()
 	if is.ClosedAt != nil {
 		v.Done = is.ClosedAt.UTC()

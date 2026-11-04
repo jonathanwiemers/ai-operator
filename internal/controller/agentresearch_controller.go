@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -384,7 +383,7 @@ func (r *AgentResearchReconciler) finishRun(ctx context.Context, res, orig *aiv1
 		rec.Error = run.Message
 	}
 	if run.CostUSD != "" {
-		rec.CostUSD, _ = strconv.ParseFloat(run.CostUSD, 64)
+		rec.CostUSD = aiv1.CostOf(run.CostUSD)
 	}
 	if err := r.DB.FinishRunOrInsert(ctx, rec); err != nil {
 		return fmt.Errorf("recording the outcome of run %s: %w", run.ID, err)
