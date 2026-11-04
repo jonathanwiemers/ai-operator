@@ -142,27 +142,11 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 		valid := 0
 		p.Actions = forgetFirst(p.Actions)
 		for j := range p.Actions {
-			if i < len(proposed) {
-				// Only the operator passes an owner's words on.
-				p.Actions[j].Owner, p.Actions[j].Text = "", ""
-			}
-			p.Actions[j] = withRuleText(p.Actions[j], st)
-			err := validAction(p.Actions[j], st, tasks, opened)
-			if err == nil && p.Actions[j].Tool == "fixFlaky" {
-				_, err = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, p.Actions[j].IssueIID, st.Spec.Milestone.IID)
-			}
-			diff := ""
-			if err == nil && p.Actions[j].Tool == "editSpec" {
-				_, diff, err = specEdit(ctx, gl, spec, st, p.Actions[j])
-			}
-			note := describeAction(p.Actions[j], err)
+			note, err := checkAction(ctx, gl, project, spec, st, tasks, opened, &p.Actions[j], i < len(proposed))
 			if err == nil {
 				valid++
 				if p.Actions[j].Tool == "openIssue" {
 					opened = append(opened, titleKey(p.Actions[j].Title))
-				}
-				if diff != "" {
-					note += ", as this diff shows:" + showDiff(diff)
 				}
 			}
 			notes = append(notes, note)
@@ -217,6 +201,31 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 		}
 	}
 	return next, nil
+}
+
+// checkAction checks an action before it is put to the owners: validAction,
+// then the flaky issue and the spec edit in GitLab. An action the model
+// made (fromModel) loses an owner's words: only the operator passes them
+// on. It returns the action's line for a comment.
+func checkAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+	st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string, a *aiv1.PilotAction, fromModel bool) (string, error) {
+	if fromModel {
+		a.Owner, a.Text = "", ""
+	}
+	*a = withRuleText(*a, st)
+	err := validAction(*a, st, tasks, opened)
+	if err == nil && a.Tool == "fixFlaky" {
+		_, err = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID)
+	}
+	diff := ""
+	if err == nil && a.Tool == "editSpec" {
+		_, diff, err = specEdit(ctx, gl, spec, st, *a)
+	}
+	note := describeAction(*a, err)
+	if err == nil && diff != "" {
+		note += ", as this diff shows:" + showDiff(diff)
+	}
+	return note, err
 }
 
 // patchProposals changes the pilot status of a Coordinate task, failing
