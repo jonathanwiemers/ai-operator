@@ -33,6 +33,9 @@ func (r *AgentProjectReconciler) addPrompt(ctx context.Context, st, holder *aiv1
 	}
 	same := client.ObjectKeyFromObject(counter) == client.ObjectKeyFromObject(holder)
 	now := metav1.NewTime(r.now())
+	if p.Source.Kind == aiv1.PromptNeedsInput && p.Source.RunRequest == 0 {
+		p.Source.RunRequest = holder.Spec.RunRequest // a newer run supersedes it
+	}
 	var dropped []aiv1.Prompt
 	add := func(list []aiv1.Prompt) []aiv1.Prompt {
 		for i := range list {

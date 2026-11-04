@@ -1681,6 +1681,12 @@ spec:
                         type: object
                       maxItems: 5
                       type: array
+                    pilotState:
+                      description: |-
+                        PilotState is PilotState of the milestone and the options' actions
+                        when a proposal prompt was made: once it changes, the proposal is
+                        superseded.
+                      type: string
                     postedAt:
                       format: date-time
                       type: string
@@ -1718,6 +1724,12 @@ spec:
                           - proposal
                           type: string
                         mrIID:
+                          format: int64
+                          type: integer
+                        runRequest:
+                          description: |-
+                            RunRequest is the run request of Task the question came from
+                            (needsInput): a newer one supersedes it.
                           format: int64
                           type: integer
                         task:

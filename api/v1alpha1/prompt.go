@@ -78,6 +78,10 @@ type PromptSource struct {
 	// older one.
 	// +optional
 	Key string `json:"key,omitempty"`
+	// RunRequest is the run request of Task the question came from
+	// (needsInput): a newer one supersedes it.
+	// +optional
+	RunRequest int64 `json:"runRequest,omitempty"`
 }
 
 // PromptOption is one answer an owner can choose.
@@ -157,6 +161,11 @@ type Prompt struct {
 	PostedNoteURL string `json:"postedNoteURL,omitempty"`
 	// +optional
 	MirroredState PromptState `json:"mirroredState,omitempty"`
+	// PilotState is PilotState of the milestone and the options' actions
+	// when a proposal prompt was made: once it changes, the proposal is
+	// superseded.
+	// +optional
+	PilotState string `json:"pilotState,omitempty"`
 }
 
 var promptID = regexp.MustCompile(`^Q[1-9][0-9]*$`)

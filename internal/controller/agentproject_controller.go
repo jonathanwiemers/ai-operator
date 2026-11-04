@@ -475,6 +475,11 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			errs = append(errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
+	// Prompts whose source resolved close, on the state the steps above
+	// left, before the pilots see them.
+	if err := r.syncOpenPrompts(ctx, gl, project, spec, specTasks, byMilestone, issues, implTasks); err != nil {
+		errs = append(errs, err)
+	}
 	if err := r.syncPilots(ctx, gl, project, spec, specTasks, pilots, keep, issues, implTasks); err != nil {
 		errs = append(errs, err)
 	}
