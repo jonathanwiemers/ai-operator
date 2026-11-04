@@ -845,6 +845,144 @@ type RunStatus struct {
 	// PushedSHA when the two are equal.
 	// +optional
 	ReviewedSHA string `json:"reviewedSHA,omitempty"`
+
+	// Calls are the task's newest engine calls, oldest first (AppendCalls
+	// keeps the last MaxCalls). The operator writes each call it has not
+	// seen yet to its history.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=50
+	Calls []AgentCall `json:"calls,omitempty"`
+
+	// LastCallSeq is the seq of the task's newest call; it keeps growing
+	// across runs while Calls is trimmed.
+	// +optional
+	LastCallSeq int64 `json:"lastCallSeq,omitempty"`
+}
+
+// Kinds of agent calls (AgentCall.Kind).
+const (
+	CallKindSpec      = "spec"
+	CallKindImplement = "implement"
+	CallKindReview    = "review"
+	CallKindFix       = "fix"
+	CallKindCI        = "ci"
+	CallKindConflict  = "conflict"
+	CallKindDescribe  = "describe"
+	CallKindPilot     = "pilot"
+	CallKindRetro     = "retro"
+	CallKindChat      = "chat"
+	CallKindResearch  = "research"
+)
+
+// Sources of an agent call's cost (AgentCall.CostSource).
+const (
+	CostReported  = "reported"
+	CostEstimated = "estimated"
+	CostUnknown   = "unknown"
+)
+
+// AgentCall is one engine call: what ran, for what, and what it consumed.
+type AgentCall struct {
+	// Seq numbers the task's calls, starting at 1.
+	Seq int64 `json:"seq"`
+
+	// At is when the call started.
+	At metav1.Time `json:"at"`
+
+	// Kind is what the call was for: spec, implement, review, fix, ci,
+	// conflict, describe, pilot, retro, chat or research.
+	Kind string `json:"kind"`
+
+	// Role is the agent's role, e.g. implement, bugbot or pilot.
+	// +optional
+	Role string `json:"role,omitempty"`
+
+	Engine Engine `json:"engine"`
+
+	// Model is the configured model, or the reported main model when the
+	// engine picked it.
+	// +optional
+	Model string `json:"model,omitempty"`
+
+	// +optional
+	Effort string `json:"effort,omitempty"`
+
+	// Resumed is set when the call continued an earlier session.
+	// +optional
+	Resumed bool `json:"resumed,omitempty"`
+
+	// FallbackFrom is the limited engine this call stood in for.
+	// +optional
+	FallbackFrom Engine `json:"fallbackFrom,omitempty"`
+
+	// +optional
+	InputTokens int64 `json:"inputTokens,omitempty"`
+	// +optional
+	OutputTokens int64 `json:"outputTokens,omitempty"`
+	// +optional
+	CacheReadTokens int64 `json:"cacheReadTokens,omitempty"`
+	// +optional
+	CacheWriteTokens int64 `json:"cacheWriteTokens,omitempty"`
+
+	// CostUSD is the call's cost as a decimal string (4 decimals); empty
+	// when it is unknown.
+	// +optional
+	CostUSD string `json:"costUSD,omitempty"`
+
+	// CostSource says where CostUSD comes from: reported by the engine,
+	// estimated from tokens, or unknown.
+	CostSource string `json:"costSource"`
+
+	// +optional
+	Turns int32 `json:"turns,omitempty"`
+
+	// +optional
+	DurationMS int64 `json:"durationMS,omitempty"`
+
+	// Run is the task's run (RunCount after it) the call belongs to.
+	// +optional
+	Run int64 `json:"run,omitempty"`
+
+	// Models is the per-model split as the engine reported it, subagent
+	// models included.
+	// +optional
+	// +listType=atomic
+	Models []CallModelUsage `json:"models,omitempty"`
+
+	// SubagentCalls is how many subagents the call started.
+	// +optional
+	SubagentCalls int32 `json:"subagentCalls,omitempty"`
+
+	// ContextSeries is the context size (input and cache tokens) of each
+	// main-thread assistant turn. Only the newest calls in status keep it.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=500
+	ContextSeries []int64 `json:"contextSeries,omitempty"`
+
+	// SubagentTurns are the indexes into ContextSeries after which a
+	// subagent ran. Only the newest calls in status keep them.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=500
+	SubagentTurns []int32 `json:"subagentTurns,omitempty"`
+}
+
+// CallModelUsage is one model's share of an agent call.
+type CallModelUsage struct {
+	Model string `json:"model"`
+	// +optional
+	InputTokens int64 `json:"inputTokens,omitempty"`
+	// +optional
+	OutputTokens int64 `json:"outputTokens,omitempty"`
+	// +optional
+	CacheReadTokens int64 `json:"cacheReadTokens,omitempty"`
+	// +optional
+	CacheWriteTokens int64 `json:"cacheWriteTokens,omitempty"`
+	// CostUSD as a decimal string (4 decimals).
+	// +optional
+	CostUSD string `json:"costUSD,omitempty"`
 }
 
 // +kubebuilder:object:root=true

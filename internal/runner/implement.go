@@ -143,7 +143,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// operator turns into labels) override the profile.
 	role, profile, roleNotes := spec.IssueRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
-	inv.Role = "implement"
+	inv.Role, inv.Kind = "implement", aiv1.CallKindImplement
 	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs) + toolchainsNote(base, r.Mirror.PinFiles(ctx, base), r.changedPins)
 	// While the MR is a draft, the work is pushed step by step so a human can
 	// follow it and steer with comments (not while concluding a merge, whose
@@ -284,6 +284,12 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if runAgent {
 		s = r.step(ctx, "run implementer", "profile", profile, "engine", role.Engine, "model", role.Model, "effort", role.Effort,
 			"resume", inv.Resume != "", "ciFix", ciFix, "conflicts", len(merge.Conflicts))
+		switch {
+		case len(merge.Conflicts) > 0:
+			inv.Kind = aiv1.CallKindConflict
+		case ciFix:
+			inv.Kind = aiv1.CallKindCI
+		}
 		res, err = r.invoke(ctx, role, inv, fullPrompt)
 		if res != nil {
 			out.CostUSD += res.CostUSD
@@ -418,6 +424,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		s = r.step(ctx, fmt.Sprintf("fix round %d", iter+1), "blocking", len(blocking))
 		fix := inv
+		fix.Kind = aiv1.CallKindFix
 		fix.Resume = res.SessionID
 		fixPrompt := buildFixPrompt(blocking)
 		fix.Prompt = fixPrompt
@@ -950,7 +957,7 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 		go func(kind aiv1.ReviewerKind) {
 			defer wg.Done()
 			inv := roleInvocation(spec.RoleSpec, reviewerSystemPrompt(kind), readOnlyTools, reviewSchema, true)
-			inv.Role = string(kind)
+			inv.Role, inv.Kind = string(kind), aiv1.CallKindReview
 			inv.NoPersistence = true
 			var (
 				res    *Result
@@ -1172,6 +1179,7 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		fresh := humanNotes(newIssue, botID) + humanNotes(newMR, botID)
 		s.done(fmt.Sprintf("%d new", fresh), "newNotes", fresh)
 		next := inv
+		next.Kind = aiv1.CallKindImplement
 		next.Resume = res.SessionID
 		next.Prompt = stepContinue
 		if fresh > 0 {

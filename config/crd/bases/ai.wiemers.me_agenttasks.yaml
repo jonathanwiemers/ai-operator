@@ -1600,6 +1600,155 @@ spec:
                   branch:
                     description: Branch the agent pushes to.
                     type: string
+                  calls:
+                    description: |-
+                      Calls are the task's newest engine calls, oldest first (AppendCalls
+                      keeps the last MaxCalls). The operator writes each call it has not
+                      seen yet to its history.
+                    items:
+                      description: 'AgentCall is one engine call: what ran, for what,
+                        and what it consumed.'
+                      properties:
+                        at:
+                          description: At is when the call started.
+                          format: date-time
+                          type: string
+                        cacheReadTokens:
+                          format: int64
+                          type: integer
+                        cacheWriteTokens:
+                          format: int64
+                          type: integer
+                        contextSeries:
+                          description: |-
+                            ContextSeries is the context size (input and cache tokens) of each
+                            main-thread assistant turn. Only the newest calls in status keep it.
+                          items:
+                            format: int64
+                            type: integer
+                          maxItems: 500
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        costSource:
+                          description: |-
+                            CostSource says where CostUSD comes from: reported by the engine,
+                            estimated from tokens, or unknown.
+                          type: string
+                        costUSD:
+                          description: |-
+                            CostUSD is the call's cost as a decimal string (4 decimals); empty
+                            when it is unknown.
+                          type: string
+                        durationMS:
+                          format: int64
+                          type: integer
+                        effort:
+                          type: string
+                        engine:
+                          description: Engine is the coding agent CLI that runs a
+                            role.
+                          enum:
+                          - claude
+                          - cursor
+                          type: string
+                        fallbackFrom:
+                          description: FallbackFrom is the limited engine this call
+                            stood in for.
+                          enum:
+                          - claude
+                          - cursor
+                          type: string
+                        inputTokens:
+                          format: int64
+                          type: integer
+                        kind:
+                          description: |-
+                            Kind is what the call was for: spec, implement, review, fix, ci,
+                            conflict, describe, pilot, retro, chat or research.
+                          type: string
+                        model:
+                          description: |-
+                            Model is the configured model, or the reported main model when the
+                            engine picked it.
+                          type: string
+                        models:
+                          description: |-
+                            Models is the per-model split as the engine reported it, subagent
+                            models included.
+                          items:
+                            description: CallModelUsage is one model's share of an
+                              agent call.
+                            properties:
+                              cacheReadTokens:
+                                format: int64
+                                type: integer
+                              cacheWriteTokens:
+                                format: int64
+                                type: integer
+                              costUSD:
+                                description: CostUSD as a decimal string (4 decimals).
+                                type: string
+                              inputTokens:
+                                format: int64
+                                type: integer
+                              model:
+                                type: string
+                              outputTokens:
+                                format: int64
+                                type: integer
+                            required:
+                            - model
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        outputTokens:
+                          format: int64
+                          type: integer
+                        resumed:
+                          description: Resumed is set when the call continued an earlier
+                            session.
+                          type: boolean
+                        role:
+                          description: Role is the agent's role, e.g. implement, bugbot
+                            or pilot.
+                          type: string
+                        run:
+                          description: Run is the task's run (RunCount after it) the
+                            call belongs to.
+                          format: int64
+                          type: integer
+                        seq:
+                          description: Seq numbers the task's calls, starting at 1.
+                          format: int64
+                          type: integer
+                        subagentCalls:
+                          description: SubagentCalls is how many subagents the call
+                            started.
+                          format: int32
+                          type: integer
+                        subagentTurns:
+                          description: |-
+                            SubagentTurns are the indexes into ContextSeries after which a
+                            subagent ran. Only the newest calls in status keep them.
+                          items:
+                            format: int32
+                            type: integer
+                          maxItems: 500
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        turns:
+                          format: int32
+                          type: integer
+                      required:
+                      - at
+                      - costSource
+                      - engine
+                      - kind
+                      - seq
+                      type: object
+                    maxItems: 50
+                    type: array
+                    x-kubernetes-list-type: atomic
                   ciFixedPipelineID:
                     description: CIFixedPipelineID is the failed pipeline the last
                       CI fix run handled.
@@ -1696,6 +1845,12 @@ spec:
                       or finished a run.
                     format: date-time
                     type: string
+                  lastCallSeq:
+                    description: |-
+                      LastCallSeq is the seq of the task's newest call; it keeps growing
+                      across runs while Calls is trimmed.
+                    format: int64
+                    type: integer
                   lastResult:
                     description: LastResult of the most recent run.
                     type: string

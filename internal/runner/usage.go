@@ -60,7 +60,7 @@ func (r *Runner) fallBack(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 		inv.Resume = ""
 	}
 	r.usageMu.Unlock()
-	inv.Model, inv.Effort = fb.Model, fb.Effort
+	inv.Model, inv.Effort, inv.FallbackFrom = fb.Model, fb.Effort, lim.Engine
 	fres, ferr := r.invokeOn(ctx, fb, inv, fullPrompt)
 	if flim, limited := AsUsageLimit(ferr); limited {
 		if lim.Soft {

@@ -1377,6 +1377,18 @@ Things to keep in mind with subscriptions:
   reports no usage. A
   limit during a review fix round publishes the work done so far. Deferred
   runs don't count towards `maxRunsPerTask`.
+* **Every engine call is recorded** in `status.run.calls`: kind (spec,
+  implement, review, fix, ci, conflict, describe, pilot, retro), role,
+  engine, model (the configured one, else the reported main model), effort,
+  whether it resumed a session, the engine a fallback stood in for, tokens,
+  cost with its source (`reported` for claude, `unknown` for cursor), turns,
+  duration, run, the per-model split, the subagent count and the context
+  series. A fallback records both the limited call and its own. The runner
+  writes each call right after it ends (a failed write is retried with the
+  next status update); `seq` numbers them across runs
+  (`status.run.lastCallSeq`). The list keeps the newest 50 calls, and only
+  the newest 10 keep their context series. `status.run.costUSD` stays the
+  task's total.
 * **Research shares the budget but never takes the end of it.** A research
   run's agent is chosen by the operator before the pod starts, from the
   candidates of the run's depth (chart `research.candidates`, overridable

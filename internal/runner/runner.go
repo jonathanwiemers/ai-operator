@@ -96,6 +96,12 @@ type Runner struct {
 	// chatSessionKey is the "<role>/<engine>" of the open chat session, or
 	// empty when none is open. Cleared when CloseSession runs before a run.
 	chatSessionKey string
+	// pendingCalls are engine calls not yet in status.run.calls; callsMu
+	// guards them and serialises their status patches.
+	pendingCalls []aiv1.AgentCall
+	callsMu      sync.Mutex
+	// runNumber is the run in progress (status.run.runCount after it).
+	runNumber int64
 }
 
 // Outcome is the result of one run.
@@ -401,6 +407,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	request := task.Spec.RunRequest
 	r.run = newRunLog(r.Log, task)
 	r.blamedRestarts, r.pushedHead, r.changedPins = 0, "", nil
+	r.runNumber = int64(task.Status.Run.RunCount) + 1
 	ctx = withRunID(ctx, r.run.id)
 	log := r.run.log
 	// Every way a run ends sets the active request back to the observed
@@ -508,7 +515,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 			log.Error(err, "recording the plan")
 		}
 	}
-	return true, r.patchRun(ctx, func(s *aiv1.RunStatus) {
+	return true, r.patchRunWithCalls(ctx, func(s *aiv1.RunStatus) {
 		s.ObservedRunRequest = request
 		s.CurrentStep = ""
 		s.RunCount++
@@ -592,7 +599,7 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 		}
 	}
 	routed := r.routed
-	return r.patchRun(ctx, func(s *aiv1.RunStatus) {
+	return r.patchRunWithCalls(ctx, func(s *aiv1.RunStatus) {
 		s.UsageLimits = routed
 		// The request stays pending, but nothing is in progress any more.
 		s.ActiveRunRequest = s.ObservedRunRequest
@@ -690,6 +697,9 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 			start := r.now()
 			res, err := r.Agent.Run(ctx, role.Engine, inv)
 			lost := r.agentLost(ctx, err, start)
+			if lost == nil || !lost.notSent {
+				r.recordCall(ctx, r.newCall(role.Engine, inv, res, start))
+			}
 			switch {
 			case lost == nil:
 				if res != nil {

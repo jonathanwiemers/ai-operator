@@ -138,7 +138,7 @@ func (r *Runner) retryWithMoreMemory(ctx context.Context, gl gitlab.API, spec ai
 			r.log().Info("could not post the out of memory note", "error", cerr.Error())
 		}
 	}
-	return r.patchRun(ctx, func(s *aiv1.RunStatus) {
+	return r.patchRunWithCalls(ctx, func(s *aiv1.RunStatus) {
 		// The request stays pending, but nothing is in progress any more.
 		s.ActiveRunRequest = s.ObservedRunRequest
 		s.CurrentStep = ""

@@ -71,7 +71,7 @@ func (r *Runner) runRetrospective(ctx context.Context, gl gitlab.API, task *aiv1
 		// Neither the implementer's tools nor its instructions.
 		inv := roleInvocation(aiv1.RoleSpec{Engine: role.Engine, Model: role.Model, Effort: role.Effort}, retroSystemPrompt, readOnlyTools, retroSchema, true)
 		prompt := buildRetroPrompt(facts)
-		inv.Role, inv.MaxBudgetUSD, inv.Prompt = "retrospective", aiv1.ShowCost(left), prompt
+		inv.Role, inv.Kind, inv.MaxBudgetUSD, inv.Prompt = "retrospective", aiv1.CallKindRetro, aiv1.ShowCost(left), prompt
 		s := r.step(ctx, "run retrospective", "engine", role.Engine, "model", role.Model)
 		res, err := r.invoke(ctx, role, inv, prompt)
 		if res != nil {

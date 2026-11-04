@@ -83,7 +83,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 		reply := fmt.Sprintf("The pilot's budget for this milestone ($%s, `pilot.maxBudgetUSD`) is used up, so it does not answer any more.", spec.Pilot.MaxBudgetUSD)
 		if left >= 0.01 {
 			inv := roleInvocation(role, pilotSystem(task), readOnlyTools, pilotSchema, true)
-			inv.Role = "pilot"
+			inv.Role, inv.Kind = "pilot", aiv1.CallKindPilot
 			inv.Resume = st.session("pilot", role.Engine)
 			inv.MaxBudgetUSD = aiv1.ShowCost(left)
 			prompt := buildPilotPrompt(task, m, state)

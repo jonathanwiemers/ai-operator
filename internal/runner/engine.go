@@ -62,6 +62,11 @@ type Invocation struct {
 	// Env overrides variables of the engine's environment. It is set by the
 	// agent side and never crosses the socket.
 	Env []string `json:"-"`
+	// Kind is what the call is for (aiv1.CallKind*), for status.run.calls;
+	// FallbackFrom is the limited engine a fallback call stands in for.
+	// Neither crosses the socket.
+	Kind         string      `json:"-"`
+	FallbackFrom aiv1.Engine `json:"-"`
 }
 
 // Result is the parsed outcome of an invocation.
