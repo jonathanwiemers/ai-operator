@@ -15,6 +15,15 @@ const (
 	FlakyEventPrefix   = "flaky/"
 )
 
+// StalledEventPrefix starts the key of the event of an autopilot pause
+// that nothing changed in for pilot.stuckAfter, followed by the pause's
+// start (Unix seconds): one per pause. Its assessment is always put to the
+// owners.
+const StalledEventPrefix = "stalled/"
+
+// StalledEvent reports whether e is a stalled pause.
+func StalledEvent(e PilotEvent) bool { return strings.HasPrefix(e.Key, StalledEventPrefix) }
+
 // MinFlakyOccurrences is how often a job must have been flaky before the
 // operator hands its issue to the agent on its own or the pilot recommends
 // it; an owner may choose it after one.

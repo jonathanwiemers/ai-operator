@@ -1344,7 +1344,7 @@ func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, iid int64, r
 	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nWays out:\n%s", notify.Defuse(reason), a.exitLines(kind, iid))+a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
 		return err
 	}
-	a.ap.Phase = aiv1.AutopilotPaused
+	a.startPause()
 	a.ap.PausedReason, a.ap.PauseKind = reason, kind
 	a.ap.PausedFor, a.ap.ResumeWhenReady = iid, false
 	return nil
@@ -1400,6 +1400,57 @@ func (a *autopilot) exitLines(kind aiv1.PauseKind, iid int64) string {
 func (a *autopilot) lift() {
 	a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind = aiv1.AutopilotRunning, "", ""
 	a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
+	a.ap.PausedAt = nil
+}
+
+// startPause pauses the queue; a new pause starts its clock (PausedAt).
+func (a *autopilot) startPause() {
+	if a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedAt == nil {
+		a.ap.PausedAt = &metav1.Time{Time: a.r.now()}
+	}
+	a.ap.Phase = aiv1.AutopilotPaused
+}
+
+// stamp records the queue's state hash (stateHash) and when it changed; a
+// pause from before PausedAt existed starts its clock now.
+func (a *autopilot) stamp() {
+	now := &metav1.Time{Time: a.r.now()}
+	switch {
+	case a.ap.Phase != aiv1.AutopilotPaused:
+		a.ap.PausedAt = nil
+	case a.ap.PausedAt == nil:
+		a.ap.PausedAt = now
+	}
+	if h := a.stateHash(); h != a.ap.StateHash {
+		a.ap.StateHash, a.ap.StateChangedAt = h, now
+	}
+}
+
+// stateHash hashes what a stuck pause waits on to change: the items (also
+// the main-red fix) with their MR, rebase, startAnyway, head and CI, main
+// health, the phase and the pause reason. Spend, the tracking issue and
+// command marks are left out: they change without moving the queue.
+func (a *autopilot) stateHash() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s|%s\n", a.ap.Phase, a.ap.PausedReason)
+	if mh := a.project.Status.MainHealth; mh != nil {
+		fmt.Fprintf(&b, "main %s %s\n", mh.State, mh.SHA)
+	}
+	items := a.ap.Items
+	if a.ap.MainRedFix != nil {
+		items = append(slices.Clone(items), *a.ap.MainRedFix)
+	}
+	for _, it := range items {
+		fmt.Fprintf(&b, "%d %s !%d %s %t", it.IID, it.State, it.MergeRequestIID, it.RebasedFrom, it.StartAnyway)
+		if t := a.tasks[it.IID]; t != nil {
+			fmt.Fprintf(&b, " %s", t.Status.Run.PushedSHA)
+			if ci := t.Status.CI; ci != nil {
+				fmt.Fprintf(&b, " %s %d", ci.State, ci.PipelineID)
+			}
+		}
+		b.WriteString("\n")
+	}
+	return hashString(b.String())
 }
 
 // commands handles "/agent pause|resume|skip #N" on the tracking issue and
@@ -1574,7 +1625,8 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 	switch word {
 	case "pause":
 		if a.ap.Phase != aiv1.AutopilotDone {
-			a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind = aiv1.AutopilotPaused, "paused by "+by, aiv1.PauseOwner
+			a.startPause()
+			a.ap.PausedReason, a.ap.PauseKind = "paused by "+by, aiv1.PauseOwner
 			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 		}
 		return "Autopilot paused.", true, nil
@@ -1782,6 +1834,7 @@ func (a *autopilot) trackingGone(err error) bool {
 }
 
 func (a *autopilot) save(ctx context.Context) error {
+	a.stamp()
 	if equality.Semantic.DeepEqual(a.st.Status.Autopilot, a.ap) {
 		return nil
 	}

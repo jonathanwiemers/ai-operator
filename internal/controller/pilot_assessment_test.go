@@ -10,7 +10,14 @@ import (
 // assess records an assessment of #1 with options, as the runner does.
 func (e *projectEnv) assess(source string, options ...aiv1.PromptOption) {
 	e.t.Helper()
-	p := aiv1.PilotProposal{Summary: "an assessment", Source: source, Trigger: 1, Quiet: true, Kind: aiv1.PromptAssessment,
+	e.assessFor(1, source, options...)
+}
+
+// assessFor records an assessment of an event about issue trigger (0: the
+// milestone) with options, as the runner does.
+func (e *projectEnv) assessFor(trigger int64, source string, options ...aiv1.PromptOption) {
+	e.t.Helper()
+	p := aiv1.PilotProposal{Summary: "an assessment", Source: source, Trigger: trigger, Quiet: true, Kind: aiv1.PromptAssessment,
 		Why: "`env`: no Rust toolchain", Question: "#1 is stuck: what now?", Context: "**Classification:** `env`\n\n**Evidence:** cargo is missing",
 		Options: options}
 	p.State = e.pilotState(recommendedActions(options))
@@ -128,5 +135,26 @@ func TestPilotManagedRunsTheRecommendedOption(t *testing.T) {
 	}
 	if after := e.toolEffect(); after.runs != before.runs+1 || e.pilot().Status.Pilot.Interventions["1"].Count != 1 {
 		t.Fatalf("nothing more ran or counted: %+v", after)
+	}
+}
+
+// A managing pilot never runs the assessment of a stalled pause on its own,
+// not even a recommended option of counted tools: the owners choose.
+func TestPilotManagedNeverRunsAStalledAssessment(t *testing.T) {
+	e := newManagedEnv(t)
+	before := e.toolEffect()
+	e.assess("event/stalled/1762300000@3", aiv1.PromptOption{Label: "Retry #1", Recommended: true, Actions: []aiv1.PilotAction{{Tool: "retry", IssueIID: 1}}},
+		aiv1.PromptOption{Label: "Do nothing"})
+	e.reconcile()
+	e.reconcile()
+	q := e.prompt(specTaskName, "Q1")
+	if got := optionLabels(q); got != "A:Retry #1* B:Do nothing" || q.Quiet || q.Source.Key != "event/stalled/1762300000@3" {
+		t.Fatalf("it is put to the owners, pinging them: %s %+v", got, q)
+	}
+	if after := e.toolEffect(); after.runs != before.runs || strings.Contains(trackingComments(e), "acted on its own") {
+		t.Fatalf("nothing runs on its own: %+v → %+v", before, after)
+	}
+	if ps := e.pilot().Status.Pilot; len(ps.Accepted) != 0 || ps.Interventions["1"].Count != 0 {
+		t.Fatalf("nothing is counted: %+v", ps)
 	}
 }

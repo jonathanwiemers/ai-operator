@@ -39,6 +39,7 @@ const (
 	DefaultMaxEffort            = "high"
 	DefaultPilotBudgetUSD       = "20"
 	DefaultPilotInterventions   = 2
+	DefaultPilotStuckAfter      = 30 * time.Minute
 	DefaultWebhookFallback      = 10 * time.Minute
 	DefaultWebhookSilence       = 30 * time.Minute
 )

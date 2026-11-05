@@ -1426,6 +1426,19 @@ type AutopilotStatus struct {
 	// while the milestone has a budget line.
 	// +optional
 	Budget *BudgetStatus `json:"budget,omitempty"`
+
+	// StateHash is a hash of the queue's state (items, CI states, MR
+	// heads, main health, phase and pause reason); StateChangedAt is when
+	// it last changed. A pause it has not changed in for pilot.stuckAfter
+	// is assessed by the pilot.
+	// +optional
+	StateHash string `json:"stateHash,omitempty"`
+	// +optional
+	StateChangedAt *metav1.Time `json:"stateChangedAt,omitempty"`
+
+	// PausedAt is when the current pause started; unset while running.
+	// +optional
+	PausedAt *metav1.Time `json:"pausedAt,omitempty"`
 }
 
 // BudgetStatus is the budget of an autopilot milestone and what it spent,

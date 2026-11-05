@@ -6,6 +6,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"slices"
 	"strings"
+	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -21,7 +22,7 @@ import (
 // pause, an issue that needs input or is blocked by infra or quota, and on
 // the main-red lane (lane: the autopilot milestone that drives the main-red
 // issue) a red or flaky default branch, so the owners get one prompt for it.
-func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1.AgentTask, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask, lane bool) []aiv1.PilotEvent {
+func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1.AgentTask, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask, lane bool, now time.Time) []aiv1.PilotEvent {
 	var out []aiv1.PilotEvent
 	add := func(kind string, iid int64, text string) {
 		ev := aiv1.PilotEvent{Key: fmt.Sprintf("%s/%d/", kind, iid), IssueIID: iid, Text: text}
@@ -41,6 +42,9 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 			kind = "pause-" + hashString(ap.PausedReason)
 		}
 		add(kind, ap.PausedFor, "Autopilot paused: "+ap.PausedReason)
+		if ev, ok := stalledEvent(spec, ap, tasks, now); ok {
+			out = append(out, ev)
+		}
 	}
 	for iid, t := range tasks {
 		is, ok := issues[iid]
@@ -69,6 +73,27 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 	}
 	slices.SortStableFunc(out, func(a, b aiv1.PilotEvent) int { return strings.Compare(a.Key, b.Key) })
 	return slices.CompactFunc(out, func(a, b aiv1.PilotEvent) bool { return a.Key == b.Key })
+}
+
+// stalledEvent is the event of a pause (ap) whose state hash has not
+// changed for pilot.stuckAfter at now: keyed by the pause's start, so it
+// wakes the pilot once per pause; its text has the pause's ways out. An
+// owner's pause never stalls: its way out is theirs, a resume.
+func stalledEvent(spec aiv1.AgentProjectSpec, ap *aiv1.AutopilotStatus, tasks map[int64]*aiv1.AgentTask, now time.Time) (aiv1.PilotEvent, bool) {
+	if ap.PausedAt == nil || ap.PauseKind == aiv1.PauseOwner {
+		return aiv1.PilotEvent{}, false
+	}
+	since := ap.PausedAt.Time
+	if c := ap.StateChangedAt; c != nil && c.After(since) {
+		since = c.Time
+	}
+	if now.Sub(since) < spec.Pilot.StuckAfterOf() {
+		return aiv1.PilotEvent{}, false
+	}
+	d := strings.TrimSuffix(now.Sub(ap.PausedAt.Time).Round(time.Minute).String(), "0s")
+	exits := (&autopilot{spec: spec, tasks: tasks}).exitLines(ap.PauseKind, ap.PausedFor)
+	return aiv1.PilotEvent{Key: fmt.Sprintf("%s%d", aiv1.StalledEventPrefix, ap.PausedAt.Unix()), IssueIID: ap.PausedFor,
+		Text: fmt.Sprintf("Autopilot has been paused for %s and nothing changed: %s\n\nWays out:\n%s", d, ap.PausedReason, exits)}, true
 }
 
 // flakyEvent is the event of a job that passed on retry: its flaky issue,

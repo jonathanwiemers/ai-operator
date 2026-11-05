@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -260,10 +261,10 @@ func TestMainHealthEventsOnlyOnTheLane(t *testing.T) {
 		{State: aiv1.MainHealthRed, IssueIID: 50, PipelineID: 900},
 		{State: aiv1.MainHealthFlaky, PipelineID: 901, Flaky: []aiv1.FlakyJobReport{{Job: "rust:test", IssueIID: 40}}},
 	} {
-		if evs := pilotEvents(aiv1.AgentProjectSpec{}, mh, st, nil, nil, false); len(evs) != 0 {
+		if evs := pilotEvents(aiv1.AgentProjectSpec{}, mh, st, nil, nil, false, time.Time{}); len(evs) != 0 {
 			t.Fatalf("another milestone's pilot skips it: %+v", evs)
 		}
-		if evs := pilotEvents(aiv1.AgentProjectSpec{}, mh, st, nil, nil, true); len(evs) != 1 || !aiv1.MainHealthEvent(evs[0]) {
+		if evs := pilotEvents(aiv1.AgentProjectSpec{}, mh, st, nil, nil, true, time.Time{}); len(evs) != 1 || !aiv1.MainHealthEvent(evs[0]) {
 			t.Fatalf("the lane's pilot assesses it: %+v", evs)
 		}
 	}

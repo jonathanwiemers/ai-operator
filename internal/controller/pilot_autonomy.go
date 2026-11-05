@@ -25,7 +25,8 @@ var countedTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFl
 
 // manage takes the actions the pilot runs on its own out of its runs'
 // proposals: valid, counted tools on issues with interventions left; of a
-// proposal with its own options, the recommended option or nothing. It
+// proposal with its own options, the recommended option or nothing; of the
+// assessment of a stuck pause (a stalled event), nothing. It
 // returns the proposals left to post, those to run (accepted by nobody)
 // and the new counts, nil when the pilot only proposes.
 func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, proposed []aiv1.PilotProposal,
@@ -38,6 +39,11 @@ func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int
 		maps.Copy(counts, ps.Interventions)
 	}
 	for _, p := range proposed {
+		if stalledSource(p.Source) {
+			// The way out of a stuck pause is the owners' choice.
+			rest = append(rest, p)
+			continue
+		}
 		actions := p.Actions
 		if len(p.Options) > 0 {
 			// The pilot's own options: it runs the recommended one when
@@ -87,6 +93,12 @@ func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int
 		}
 	}
 	return rest, own, counts
+}
+
+// stalledSource reports whether a proposal's source is the assessment of a
+// stuck pause (aiv1.StalledEventPrefix): it never runs on its own.
+func stalledSource(source string) bool {
+	return strings.HasPrefix(source, "event/"+aiv1.StalledEventPrefix)
 }
 
 // recommendedActions are the actions of the recommended option.

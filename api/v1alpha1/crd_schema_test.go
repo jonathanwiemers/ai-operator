@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -391,5 +392,43 @@ func TestWriteFailuresAdmitted(t *testing.T) {
 	long["error"] = strings.Repeat("e", MaxWriteFailureError+1)
 	if _, errs := crd.admit(map[string]any{"status": map[string]any{"writeFailures": []any{long}}}); len(errs) == 0 {
 		t.Fatal("an error over MaxWriteFailureError admitted")
+	}
+}
+
+// pilot.stuckAfter is optional and defaults to 30m; the Go fallback covers
+// objects stored before the field existed.
+func TestPilotStuckAfterAdmitted(t *testing.T) {
+	crd := loadCRD(t, "agentprojects")
+	pilot := func(obj map[string]any) map[string]any { return spec(obj)["pilot"].(map[string]any) }
+	base := readSample(t, "agentproject.yaml", func(s string) string { return s })
+	spec(base)["pilot"] = map[string]any{}
+	obj, errs := crd.admit(base)
+	if len(errs) > 0 || pilot(obj)["stuckAfter"] != "30m" {
+		t.Fatalf("the default applies: %v %v", errs, pilot(obj))
+	}
+	base = readSample(t, "agentproject.yaml", func(s string) string { return s })
+	spec(base)["pilot"] = map[string]any{"stuckAfter": "1h30m"}
+	if obj, errs = crd.admit(base); len(errs) > 0 || pilot(obj)["stuckAfter"] != "1h30m" {
+		t.Fatalf("a custom stuckAfter is kept: %v %v", errs, pilot(obj))
+	}
+	if got := (PilotSpec{}).StuckAfterOf(); got != 30*time.Minute {
+		t.Errorf("Go fallback %v", got)
+	}
+}
+
+// The stuck detector's stamps (stateHash, stateChangedAt, pausedAt) are
+// stored with the autopilot status.
+func TestAutopilotStateStampsAdmitted(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	ap := map[string]any{"phase": "Paused", "stateHash": "c4c47baf0bed24e8", "stateChangedAt": "2026-11-05T10:12:00Z", "pausedAt": "2026-11-05T10:00:00Z"}
+	obj, errs := crd.admit(map[string]any{"status": map[string]any{"autopilot": ap}})
+	if len(errs) > 0 {
+		t.Fatalf("stamps rejected: %v", errs)
+	}
+	got := obj["status"].(map[string]any)["autopilot"].(map[string]any)
+	for _, k := range []string{"stateHash", "stateChangedAt", "pausedAt"} {
+		if got[k] != ap[k] {
+			t.Errorf("%s not stored: %v", k, got)
+		}
 	}
 }

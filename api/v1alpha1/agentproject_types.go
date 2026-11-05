@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1102,6 +1104,23 @@ type PilotSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	MaxInterventionsPerIssue int32 `json:"maxInterventionsPerIssue,omitempty"`
+
+	// StuckAfter: an autopilot pause whose state (items, CI states, main
+	// health, MR heads) has not changed for this long is assessed by the
+	// pilot, once per pause. The owners get its options as a prompt; it
+	// never resumes on its own.
+	// +kubebuilder:default="30m"
+	// +optional
+	StuckAfter *metav1.Duration `json:"stuckAfter,omitempty"`
+}
+
+// StuckAfterOf is StuckAfter, DefaultPilotStuckAfter when unset or not
+// positive (an object written before the field existed).
+func (p PilotSpec) StuckAfterOf() time.Duration {
+	if p.StuckAfter == nil || p.StuckAfter.Duration <= 0 {
+		return DefaultPilotStuckAfter
+	}
+	return p.StuckAfter.Duration
 }
 
 // PilotAutonomy is how far the pilot acts without an owner's "yes".

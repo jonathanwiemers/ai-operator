@@ -1737,6 +1737,14 @@ spec:
                       Mention: a comment that starts with a mention of the bot user talks
                       to the pilot too, like workflow.pilotPrefix.
                     type: boolean
+                  stuckAfter:
+                    default: 30m
+                    description: |-
+                      StuckAfter: an autopilot pause whose state (items, CI states, main
+                      health, MR heads) has not changed for this long is assessed by the
+                      pilot, once per pause. The owners get its options as a prompt; it
+                      never resumes on its own.
+                    type: string
                 type: object
               pollInterval:
                 default: 1m

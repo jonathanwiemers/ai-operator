@@ -1263,7 +1263,14 @@ list out.
   repeat it; a new head or a new reason does. A pause over an issue and
   that issue's `agent::needs-input` are one event. When the reviewers cannot
   run, the assessment may point owners to `/agent merge #N <sha>`; the pilot
-  never proposes it.
+  never proposes it. A pause that nothing changes in (the queue, its heads
+  and CI states, main health) for `pilot.stuckAfter` (30m) is **stuck**: the
+  pilot assesses it once more, once per pause, with the pause's ways out,
+  and offers the way out as options built from them and its tools (e.g.
+  `markDone` a skipped issue another milestone replaces, or `startAnyway`
+  the issues that wait for it). That prompt always waits for an owner, also
+  when the pilot manages; nothing resumes on its own. An owner's
+  `/agent pause` is not assessed.
 - **Main health prompts.** A red or flaky default branch is assessed only
   by the pilot of the main-red lane (the active autopilot milestone with
   the lowest IID, which drives the main-red issue), so the owners get one
@@ -1374,7 +1381,8 @@ list out.
   are left. The audit pings nobody. Of an assessment it runs the recommended
   option only, and only when all of that option's actions run on their own;
   then there is no prompt, the audit is its comment. Otherwise the
-  assessment prompt goes to the owners whole. Past the limit, and for
+  assessment prompt goes to the owners whole, as does the assessment of a
+  stuck pause (`pilot.stuckAfter`), always. Past the limit, and for
   everything else (queue tools, spec edits, rules), it puts a proposal
   prompt as above (or the assessment prompt) and mentions the owners. An `instruct` it runs on its own is always a fixed
   kind plus its hint as data; free text needs your `yes`. A run the pilot

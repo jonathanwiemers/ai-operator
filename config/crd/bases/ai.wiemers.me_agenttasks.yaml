@@ -1171,6 +1171,11 @@ spec:
                     - config
                     - budget
                     type: string
+                  pausedAt:
+                    description: PausedAt is when the current pause started; unset
+                      while running.
+                    format: date-time
+                    type: string
                   pausedFor:
                     description: |-
                       PausedFor is the active issue the pause is about. Autopilot continues
@@ -1194,6 +1199,16 @@ spec:
                     description: 'ResumeWhenReady: the pause is over PausedFor''s
                       run, review or CI.'
                     type: boolean
+                  stateChangedAt:
+                    format: date-time
+                    type: string
+                  stateHash:
+                    description: |-
+                      StateHash is a hash of the queue's state (items, CI states, MR
+                      heads, main health, phase and pause reason); StateChangedAt is when
+                      it last changed. A pause it has not changed in for pilot.stuckAfter
+                      is assessed by the pilot.
+                    type: string
                   trackingHash:
                     description: |-
                       TrackingHash is the hash of the tracking issue's last rendered

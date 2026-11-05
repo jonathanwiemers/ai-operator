@@ -298,3 +298,28 @@ func (e *pilotEnv) patchStatus(t *testing.T, mutate func(*aiv1.AgentTaskStatus))
 		t.Fatal(err)
 	}
 }
+
+// The assessment of a stalled pause asks for the way out: options from the
+// exits in the event and the pilot's tools, with otherMilestones read first.
+func TestStalledPauseAssessmentAsksForTheWayOut(t *testing.T) {
+	exits := "Ways out:\n- `/agent startAnyway #N` here: the waiting issue may start.\n- `/agent unskip #N` here: the skipped issue goes back to pending."
+	e := aiv1.PilotEvent{Key: aiv1.StalledEventPrefix + "1762300000", Request: 3,
+		Text: "Autopilot has been paused for 30m and nothing changed: nothing can start: #88 waits for the skipped #83\n\n" + exits}
+	p := buildAssessPrompt(e, "", `{"otherMilestones": ["%5 #125 replaces %4 #83"]}`)
+	open := strings.Index(p, "<untrusted-data>")
+	for _, want := range []string{"This pause is stuck", "the ways out listed in the event", "markDone", "startAnyway", "unskip", "mergeBase",
+		"\"otherMilestones\"", "\"Do nothing\"", "Never resume"} {
+		if i := strings.Index(p, want); i < 0 || i > open {
+			t.Errorf("the task lacks %q:\n%s", want, p)
+		}
+	}
+	for _, want := range []string{exits, "#88 waits for the skipped #83", "%5 #125 replaces %4 #83"} {
+		if i := strings.Index(p, want); i < open {
+			t.Errorf("%q must be in the untrusted data:\n%s", want, p)
+		}
+	}
+	other := buildAssessPrompt(aiv1.PilotEvent{Key: "stuck/1/sha3", Text: "Autopilot paused: #1 needs input"}, "", "{}")
+	if strings.Contains(other, "This pause is stuck") {
+		t.Errorf("only a stalled pause asks for the way out:\n%s", other)
+	}
+}

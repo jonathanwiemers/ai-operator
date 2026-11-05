@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
@@ -247,5 +250,53 @@ func TestAutopilotStuckPauseLiftsOnceSomethingCanStart(t *testing.T) {
 	}
 	if c := strings.Join(botNotesSince(e, tracking, seen), "\n"); !strings.Contains(c, "▶️ Autopilot continues: the skipped #1 was done by hand.") {
 		t.Fatalf("the tracking issue says why it continues:\n%s", c)
+	}
+}
+
+// Replay of ai-operator milestone 4: the stuck pause "#88 (#2) waits for
+// the skipped #83 (#1)" that nothing changes in is assessed after 30m; the
+// pilot's options (markDone #1, startAnyway #2) become a Desk prompt that
+// the operator keeps whole, and answering either starts #2.
+func TestStalledPauseWayOutStartsTheWaitingIssue(t *testing.T) {
+	for _, tc := range []struct {
+		option string
+		polls  int
+	}{{"A", 2}, {"B", 3}} {
+		t.Run(tc.option, func(t *testing.T) {
+			e := newStuckEnv(t)
+			e.assessed()
+			e.wait(31 * time.Minute)
+			keys, req := e.stalled()
+			if len(keys) != 1 {
+				t.Fatalf("expected the stalled pause's wake-up: %v", keys)
+			}
+			// The runner records the assessment of the stalled event.
+			source := fmt.Sprintf("event/%s@%d", keys[0], req)
+			e.assessFor(0, source,
+				aiv1.PromptOption{Label: "Start #2 without #1", Recommended: true, Actions: []aiv1.PilotAction{{Tool: "startAnyway", IssueIID: 2}}},
+				aiv1.PromptOption{Label: "Mark #1 done", Detail: "%5 #9 replaces it", Actions: []aiv1.PilotAction{{Tool: "markDone", IssueIID: 1, Note: "replaced by %5 #9"}}},
+				aiv1.PromptOption{Label: "Do nothing"})
+			e.reconcile()
+			e.reconcile()
+			st := e.task(specTaskName)
+			i := slices.IndexFunc(st.Status.Prompts, func(q aiv1.Prompt) bool { return q.Source.Key == source })
+			if i < 0 {
+				t.Fatalf("no prompt for %s: %+v", source, st.Status.Prompts)
+			}
+			q := st.Status.Prompts[i]
+			if got := optionLabels(q); got != "A:Start #2 without #1* B:Mark #1 done C:Do nothing" || q.Source.Kind != aiv1.PromptAssessment || q.Quiet {
+				t.Fatalf("every option passes the operator's checks and the owners are pinged: %s %+v", got, q)
+			}
+			if !strings.Contains(e.promptNote(q.ID).Body, "@alice") || e.itemState(2) != aiv1.AutopilotItemPending || e.autopilot().PauseKind != aiv1.PauseStuck {
+				t.Fatalf("nothing runs before the answer: %+v", e.autopilot())
+			}
+			e.choose(q.ID, tc.option, alice)
+			for range tc.polls {
+				e.reconcile()
+			}
+			if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || e.itemState(2) != aiv1.AutopilotItemActive || ap.PausedAt != nil {
+				t.Fatalf("#2 starts and the pause ends: %+v", ap)
+			}
+		})
 	}
 }

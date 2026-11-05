@@ -1344,6 +1344,15 @@ export interface PilotSpec {
    * +optional
    */
   maxInterventionsPerIssue?: number /* int32 */;
+  /**
+   * StuckAfter: an autopilot pause whose state (items, CI states, main
+   * health, MR heads) has not changed for this long is assessed by the
+   * pilot, once per pause. The owners get its options as a prompt; it
+   * never resumes on its own.
+   * +kubebuilder:default="30m"
+   * +optional
+   */
+  stuckAfter?: string;
 }
 /**
  * PilotAutonomy is how far the pilot acts without an owner's "yes".
@@ -3712,6 +3721,23 @@ export interface AutopilotStatus {
    * +optional
    */
   budget?: BudgetStatus;
+  /**
+   * StateHash is a hash of the queue's state (items, CI states, MR
+   * heads, main health, phase and pause reason); StateChangedAt is when
+   * it last changed. A pause it has not changed in for pilot.stuckAfter
+   * is assessed by the pilot.
+   * +optional
+   */
+  stateHash?: string;
+  /**
+   * +optional
+   */
+  stateChangedAt?: string;
+  /**
+   * PausedAt is when the current pause started; unset while running.
+   * +optional
+   */
+  pausedAt?: string;
 }
 /**
  * BudgetStatus is the budget of an autopilot milestone and what it spent,
