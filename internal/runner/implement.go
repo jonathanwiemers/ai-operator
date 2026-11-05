@@ -117,6 +117,13 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	handoffNote, issueNotes := splitHandoff(issueNotes, botID)
 	prior := parseHandoff(handoffNote)
 	issueNotes = r.withoutPilot(issueNotes)
+	// Without GitLab input the issue thread is no context: the session (or
+	// for a fresh one, the Desk chat) is. The agent's own comments stay, and
+	// human review threads on the MR are code review, not chat.
+	deskOnly := !spec.Workflow.Takes(aiv1.InputGitLab)
+	if deskOnly {
+		issueNotes = ownNotes(issueNotes, botID)
+	}
 	var mrNotes []gitlab.Note
 	if mr != nil {
 		if mrNotes, err = gl.ListMergeRequestNotes(ctx, glProject, mr.IID); err != nil {
@@ -126,6 +133,12 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		mrNotes = r.withoutPilot(slices.DeleteFunc(mrNotes, func(n gitlab.Note) bool { return isProgress(n, botID) }))
 	}
 	newIssueNotes, newMRNotes := newerThan(issueNotes, st.LastIssueNoteID), newerThan(mrNotes, st.LastMRNoteID)
+	if deskOnly {
+		// A resumed session wrote the agent's comments itself: it gets the
+		// human review threads on the MR only.
+		newIssueNotes = nil
+		newMRNotes = slices.DeleteFunc(newMRNotes, func(n gitlab.Note) bool { return botID != 0 && n.Author.ID == botID })
+	}
 	result := fmt.Sprintf("%d on the issue, %d on the MR, %d new", len(issueNotes), len(mrNotes), len(newIssueNotes)+len(newMRNotes))
 	if prior.Text != "" {
 		result += ", agent notes from an earlier run"
@@ -167,6 +180,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	fullPrompt := buildImplementPrompt(issue, milestone, command.WithoutRouting(issueNotes, prefix), command.WithoutRouting(mrNotes, prefix), botID, false, prior)
 	inv.Prompt = buildImplementPrompt(issue, milestone, command.WithoutRouting(newIssueNotes, prefix), command.WithoutRouting(newMRNotes, prefix), botID, true, handoff{})
 	fullPrompt, inv.Prompt = fullPrompt+ownersRules, inv.Prompt+ownersRules
+	if chat := buildChatContext(task.Spec.Source.ChatContext); deskOnly && chat != "" {
+		fullPrompt += "\n\n" + chat
+	}
 	if task.Spec.Autopilot {
 		fullPrompt = autopilotImplementNote + "\n\n" + fullPrompt
 		inv.Prompt = autopilotImplementNote + "\n\n" + inv.Prompt
@@ -1145,6 +1161,11 @@ func humanNotes(notes []gitlab.Note, botID int64) int {
 	return n
 }
 
+// ownNotes keeps the bot's own notes (reports, decisions, plan decisions).
+func ownNotes(notes []gitlab.Note, botID int64) []gitlab.Note {
+	return slices.DeleteFunc(notes, func(n gitlab.Note) bool { return n.System || botID == 0 || n.Author.ID != botID })
+}
+
 // maxSteps bounds the steps of one run.
 var maxSteps = 25
 
@@ -1200,13 +1221,17 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		}
 
 		// Comments written during the step steer the next one.
+		// Without GitLab input only the MR's review threads do.
 		s := r.step(ctx, "read comments")
-		issueNotes, err := gl.ListIssueNotes(ctx, glProject, issue.IID)
-		if err != nil {
-			return res, seen, s.fail(fmt.Errorf("listing issue notes: %w", err))
+		var issueNotes []gitlab.Note
+		if r.projectSpec.Workflow.Takes(aiv1.InputGitLab) {
+			var err error
+			if issueNotes, err = gl.ListIssueNotes(ctx, glProject, issue.IID); err != nil {
+				return res, seen, s.fail(fmt.Errorf("listing issue notes: %w", err))
+			}
+			_, issueNotes = splitHandoff(issueNotes, botID)
+			issueNotes = r.withoutPilot(issueNotes)
 		}
-		_, issueNotes = splitHandoff(issueNotes, botID)
-		issueNotes = r.withoutPilot(issueNotes)
 		mrNotes, err := gl.ListMergeRequestNotes(ctx, glProject, mrIID)
 		if err != nil {
 			return res, seen, s.fail(fmt.Errorf("listing merge request notes: %w", err))

@@ -220,6 +220,53 @@ func TestChatMessagesPaging(t *testing.T) {
 	}
 }
 
+func TestChatContext(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	exp := time.Now().Add(time.Hour)
+	user := func(key, kind, body string) int64 {
+		t.Helper()
+		id, _, err := s.InsertUserMessage(ctx, store.ChatMessage{
+			Namespace: "agents", Project: "bloop", Task: "ctx", Author: "a", Kind: kind,
+			Body: body, ClientKey: key, ExpiresAt: exp,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	reply := func(to int64, role, body string) {
+		t.Helper()
+		if _, err := s.InsertReply(ctx, store.ChatMessage{
+			Namespace: "agents", Project: "bloop", Task: "ctx", Role: role, Body: body, ReplyTo: to, ExpiresAt: exp,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reply(user("c1", "", "first"), "agent", "first answer")
+	reply(user("c2", "command", `{"cmd":"retry"}`), "system", "retrying")
+	reply(user("c3", "", "second"), "agent", "second answer")
+	user("c4", "", "still queued")
+	user("c5", "interrupt", "stop")
+	if _, _, err := s.InsertUserMessage(ctx, store.ChatMessage{
+		Namespace: "agents", Project: "bloop", Task: "other", Author: "a", Body: "elsewhere", ClientKey: "c6", ExpiresAt: exp,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	msgs, err := s.ChatContext(ctx, "agents", "bloop", "ctx", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, m := range msgs {
+		got = append(got, m.Role+":"+m.Body)
+	}
+	if want := []string{"agent:first answer", "user:second", "agent:second answer"}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("ChatContext = %q, want %q", got, want)
+	}
+}
+
 func TestListenChat(t *testing.T) {
 	s := storetest.New(t)
 	ctx, cancel := context.WithCancel(t.Context())

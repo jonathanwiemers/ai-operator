@@ -146,6 +146,7 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 	logger.Info("pipeline failed, asking the agent to fix it", "pipeline", p.ID, "round", run.CIRound+1, "jobs", ci.FailedJobs)
 	task.Spec.RunRequest++
 	task.Spec.Source.CIFixPipelineID = p.ID
+	r.setChatContext(ctx, spec, task)
 	if err := r.Update(ctx, task); err != nil {
 		return err
 	}

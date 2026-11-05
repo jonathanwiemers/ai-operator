@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 	"time"
 
@@ -214,6 +215,23 @@ func (s *Store) ChatMessages(ctx context.Context, namespace, project, task strin
 			msgs[i], msgs[j] = msgs[j], msgs[i]
 		}
 	}
+	return msgs, nil
+}
+
+// ChatContext returns the newest limit answered messages of a task, the
+// user's and the agent's (kind message: no interrupts, commands or system
+// replies), oldest first: what a fresh session of the task's agent gets of
+// the chat.
+func (s *Store) ChatContext(ctx context.Context, namespace, project, task string, limit int) ([]ChatMessage, error) {
+	rows, _ := s.pool.Query(ctx, `SELECT `+chatColumns+` FROM chat_messages
+		WHERE namespace = $1 AND project = $2 AND task = $3 AND kind = 'message'
+		AND role IN ('user', 'agent') AND state = 'answered'
+		ORDER BY id DESC LIMIT $4`, namespace, project, task, limit)
+	msgs, err := pgx.CollectRows(rows, scanChat)
+	if err != nil {
+		return nil, err
+	}
+	slices.Reverse(msgs)
 	return msgs, nil
 }
 

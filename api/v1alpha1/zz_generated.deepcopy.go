@@ -2148,6 +2148,13 @@ func (in *SourceState) DeepCopyInto(out *SourceState) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.ChatContext != nil {
+		in, out := &in.ChatContext, &out.ChatContext
+		*out = make([]ChatMessage, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.ChatAnswers != nil {
 		in, out := &in.ChatAnswers, &out.ChatAnswers
 		*out = make([]ChatReply, len(*in))

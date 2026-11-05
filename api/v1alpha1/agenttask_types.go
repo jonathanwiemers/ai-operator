@@ -183,6 +183,15 @@ type SourceState struct {
 	// +kubebuilder:validation:MaxItems=20
 	ChatMessages []ChatMessage `json:"chatMessages,omitempty"`
 
+	// ChatContext is the Desk chat a fresh implementer session gets instead
+	// of the comment threads on a project without GitLab input
+	// (workflow.inputs [desk]): the task's last answered messages of both
+	// sides, oldest first, at most 30 KiB of text. Set by the operator with
+	// each run request.
+	// +optional
+	// +kubebuilder:validation:MaxItems=20
+	ChatContext []ChatMessage `json:"chatContext,omitempty"`
+
 	// LastChatCommandID is the newest Desk chat command (kind "command")
 	// the project reconciler has applied (Implement, Spec autopilot, or
 	// Coordinate tasks).
@@ -303,6 +312,11 @@ type ChatMessage struct {
 	// AuthorName is a display name for the prompt.
 	// +optional
 	AuthorName string `json:"authorName,omitempty"`
+	// Role is who wrote a chatContext message: user or agent. Unset on
+	// chatMessages, which are the user's.
+	// +optional
+	// +kubebuilder:validation:Enum=user;agent
+	Role string `json:"role,omitempty"`
 	// At is when the message was written.
 	At metav1.Time `json:"at"`
 }

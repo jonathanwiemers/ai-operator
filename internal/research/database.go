@@ -172,6 +172,16 @@ func (d *Database) InsertCalls(ctx context.Context, calls []store.Call) (int64, 
 	return s.InsertCalls(ctx, calls)
 }
 
+// ChatContext reads a task's last chat messages, see store.Store.ChatContext.
+// It fails before Ready.
+func (d *Database) ChatContext(ctx context.Context, namespace, project, task string, limit int) ([]store.ChatMessage, error) {
+	s := d.Store()
+	if s == nil {
+		return nil, errors.New("research database is not ready")
+	}
+	return s.ChatContext(ctx, namespace, project, task, limit)
+}
+
 // Spend reads what a scope cost, see store.Store.Spend. It fails before
 // Ready.
 func (d *Database) Spend(ctx context.Context, sc store.SpendScope) (store.Spend, error) {

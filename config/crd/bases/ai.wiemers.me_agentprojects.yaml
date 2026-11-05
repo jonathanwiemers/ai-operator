@@ -1977,7 +1977,9 @@ spec:
                       commands) and "desk" (prompts and chat in the Desk). Unset means both.
                       Labels, milestone planning and human merge request review threads stay
                       on GitLab either way. Without "gitlab", "/agent" and "/pilot" comments
-                      are not acted on: each gets one reply pointing to the Desk.
+                      are not acted on: each gets one reply pointing to the Desk, and the
+                      implementer reads no issue thread: a fresh session gets the Desk chat
+                      (spec.source.chatContext of its task) instead.
                     items:
                       description: InputSource is where an owner may give the agents
                         instructions.

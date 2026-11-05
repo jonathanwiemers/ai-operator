@@ -73,6 +73,9 @@ type AgentProjectReconciler struct {
 	// Spend, set with a research database, is the milestone spend the
 	// pilot's retrospective reports. Nil: it sums the live tasks.
 	Spend SpendSource
+	// ChatContext, set with a research database, is the Desk chat a run
+	// request hands a fresh session on a project without GitLab input.
+	ChatContext ChatContextSource
 
 	mu sync.Mutex
 	// synced is the last delivery each project's last full sync covered.
@@ -839,6 +842,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	requested := ready || command || conflict || chatRun
 	if requested {
 		task.Spec.RunRequest++
+		r.setChatContext(ctx, spec, task)
 	}
 
 	switch {
@@ -1163,6 +1167,7 @@ func (r *AgentProjectReconciler) requestMergeBase(ctx context.Context, gl gitlab
 // requestRun requests the next run of task and moves the issue to working.
 func (r *AgentProjectReconciler) requestRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, iid int64) error {
 	task.Spec.RunRequest++
+	r.setChatContext(ctx, spec, task)
 	if err := r.Update(ctx, task); err != nil {
 		return err
 	}

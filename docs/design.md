@@ -444,7 +444,12 @@ proposal answers (`accept`, `reject`) on a Coordinate task onto the task
 and wakes the project reconciler, which applies them like `/agent` /
 `/pilot` comments (`spec.source.lastChatCommandID`, answers in
 `chatAnswers`); the chatreply reconciler copies those answers as system
-rows. Commands do not start or keep a pod. See
+rows. Commands do not start or keep a pod. On a project with
+`workflow.inputs: [desk]` each run request of an Implement task also gets
+`spec.source.chatContext` (`chat_context.go`): the last 20 answered user and
+agent `message` rows, cut to 30 KiB starting from the oldest. A fresh
+implementer session gets it in place of the issue thread, which the runner
+does not read there. See
 [desk-live-agent-chat.spec.md](specs/desk-live-agent-chat.spec.md).
 
 A chat turn on a pilot (`Coordinate` task) gets the milestone state the

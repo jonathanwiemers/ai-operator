@@ -332,6 +332,14 @@ comment ([commands](commands.md)). With only `desk`:
 - The implementer does not take `/agent` and `/pilot` comments as
   instructions, and run reports say what to do in the Desk instead of which
   comment to write.
+- The implementer does not read the issue's comment thread: a resumed session
+  already has the conversation and gets only new human comments on the merge
+  request (code review). A fresh session (archived workspace, engine switch)
+  gets the issue description, the agent's own comments and notes, the merge
+  request's comments, and the task's last 20 answered Desk chat messages
+  (yours and the agent's, at most 30 KiB, oldest dropped first). The operator
+  copies them into the run request (`spec.source.chatContext`). Without the
+  research database there is no chat to pass, so the list stays empty.
 
 Labels, milestone planning and human MR review threads stay on GitLab either
 way.

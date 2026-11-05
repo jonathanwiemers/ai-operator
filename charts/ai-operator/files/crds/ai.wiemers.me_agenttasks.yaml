@@ -218,6 +218,61 @@ spec:
                       type: object
                     maxItems: 20
                     type: array
+                  chatContext:
+                    description: |-
+                      ChatContext is the Desk chat a fresh implementer session gets instead
+                      of the comment threads on a project without GitLab input
+                      (workflow.inputs [desk]): the task's last answered messages of both
+                      sides, oldest first, at most 30 KiB of text. Set by the operator with
+                      each run request.
+                    items:
+                      description: ChatMessage is one Desk chat turn handed to the
+                        runner.
+                      properties:
+                        at:
+                          description: At is when the message was written.
+                          format: date-time
+                          type: string
+                        author:
+                          description: Author is the OIDC subject.
+                          type: string
+                        authorName:
+                          description: AuthorName is a display name for the prompt.
+                          type: string
+                        id:
+                          description: ID is the chat_messages row id.
+                          format: int64
+                          type: integer
+                        kind:
+                          description: |-
+                            Kind is message, interrupt or command. The runner skips command;
+                            the operator handles those.
+                          enum:
+                          - message
+                          - interrupt
+                          - command
+                          type: string
+                        role:
+                          description: |-
+                            Role is who wrote a chatContext message: user or agent. Unset on
+                            chatMessages, which are the user's.
+                          enum:
+                          - user
+                          - agent
+                          type: string
+                        text:
+                          description: Text is the user's message, at most 16 KiB.
+                          maxLength: 16384
+                          type: string
+                      required:
+                      - at
+                      - author
+                      - id
+                      - kind
+                      - text
+                      type: object
+                    maxItems: 20
+                    type: array
                   chatMessages:
                     description: |-
                       ChatMessages are Desk chat turns for this task's agent. Written by
@@ -250,6 +305,14 @@ spec:
                           - message
                           - interrupt
                           - command
+                          type: string
+                        role:
+                          description: |-
+                            Role is who wrote a chatContext message: user or agent. Unset on
+                            chatMessages, which are the user's.
+                          enum:
+                          - user
+                          - agent
                           type: string
                         text:
                           description: Text is the user's message, at most 16 KiB.

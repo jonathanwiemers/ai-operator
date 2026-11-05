@@ -27,6 +27,8 @@ type stepEngine struct {
 	// command also posts an "/agent" comment during step 1; failLast fails
 	// the second call; endless never finishes.
 	command, failLast, endless bool
+	// issueComment also posts a comment on the issue during step 1.
+	issueComment bool
 
 	mu      sync.Mutex
 	prompts []string
@@ -44,6 +46,9 @@ func (s *stepEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
 		case 1:
 			_ = os.WriteFile(filepath.Join(inv.Dir, "model.go"), []byte("package app\n"), 0o644)
 			s.gl.AddMRNote(1, gitlab.User{ID: 7, Username: "jonathan"}, "Call it Payment, not PayPalPayment.")
+			if s.issueComment {
+				s.gl.AddNote(42, gitlab.User{ID: 7, Username: "jonathan"}, "Make it green.")
+			}
 			if s.command {
 				s.gl.AddMRNote(1, gitlab.User{ID: 7, Username: "jonathan"}, "/agent revisit D42-1 use a file")
 				s.gl.AddMRNote(1, gitlab.User{ID: 7, Username: "jonathan"}, "and after the command")
