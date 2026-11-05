@@ -26,7 +26,7 @@ chat included, with your own GitLab token.
 The app is a **Desk**: a left rail, the stream, and a context panel.
 
 * **Rail:** *Inbox* (what needs you now across your projects: tasks with
-  questions, failed or blocked, the open prompts (and proposals from before prompts), and paused
+  questions, failed or blocked, the open prompts (and proposals from before prompts), rejected pilot status writes (*Pilot write rejected*, with the API error, for 24 hours), and paused
   autopilots as the compact pause card, see below, which opens the
   milestone stream; the count also shows in the tab title as `(n) Desk`; see
   [Notifications](#notifications)), *Everything*

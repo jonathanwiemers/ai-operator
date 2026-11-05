@@ -59,6 +59,7 @@ onMounted(refreshPermission)
           <span class="proj">{{ item.project }}</span>
           <span class="title">
             <b v-if="item.kind === 'proposal' && item.proposalID != null">P{{ item.proposalID }}</b>
+            <b v-else-if="item.kind === 'pilotError'">Pilot write rejected</b>
             <b v-else-if="item.issueIID">#{{ item.issueIID }}</b>
             {{ item.title }}
           </span>

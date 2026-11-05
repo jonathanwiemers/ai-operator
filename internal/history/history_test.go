@@ -112,6 +112,20 @@ func TestDifferTransitions(t *testing.T) {
 			t.Status.Prompts = []aiv1.Prompt{{ID: "Q1", State: aiv1.PromptAnswered}}
 			t.Status.Phase = aiv1.TaskPhaseIdle
 		}, nil},
+		{"write failure new", nil, func(t *aiv1.AgentTask) {
+			t.Status.WriteFailures = []aiv1.WriteFailure{{Source: "runner/x", Error: "bad", Key: "k1", Count: 1}}
+		}, []string{"pilot.writeFailed task/u1/writefail/k1/1"}},
+		{"write failure unchanged", func(t *aiv1.AgentTask) {
+			t.Status.WriteFailures = []aiv1.WriteFailure{{Source: "runner/x", Error: "bad", Key: "k1", Count: 1}}
+		}, func(t *aiv1.AgentTask) {
+			t.Status.WriteFailures = []aiv1.WriteFailure{{Source: "runner/x", Error: "bad", Key: "k1", Count: 1}}
+			t.Status.Phase = aiv1.TaskPhaseIdle
+		}, nil},
+		{"write failure count bumped", func(t *aiv1.AgentTask) {
+			t.Status.WriteFailures = []aiv1.WriteFailure{{Source: "runner/x", Error: "bad", Key: "k1", Count: 1}}
+		}, func(t *aiv1.AgentTask) {
+			t.Status.WriteFailures = []aiv1.WriteFailure{{Source: "runner/x", Error: "bad", Key: "k1", Count: 2}}
+		}, []string{"pilot.writeFailed task/u1/writefail/k1/2"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

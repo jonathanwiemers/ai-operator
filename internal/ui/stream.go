@@ -483,7 +483,7 @@ func (t *HistoryTotals) add(d store.Day) {
 type InboxItem struct {
 	Namespace    string `json:"namespace"`
 	Project      string `json:"project"`
-	Kind         string `json:"kind" tstype:"'task' | 'proposal' | 'pause' | 'prompt'"`
+	Kind         string `json:"kind" tstype:"'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError'"`
 	Task         string `json:"task,omitempty"`
 	IssueIID     int64  `json:"issueIID,omitempty"`
 	MilestoneIID int64  `json:"milestoneIID,omitempty"`
@@ -526,6 +526,10 @@ func (s *Server) inbox(w http.ResponseWriter, r *http.Request) {
 
 // inboxTitleMax cuts a prompt's question in the Inbox.
 const inboxTitleMax = 140
+
+// pilotErrorTTL is how long a rejected status write stays in the Inbox after
+// it was last seen.
+const pilotErrorTTL = 24 * time.Hour
 
 func truncateRunes(s string, n int) string {
 	if r := []rune(s); len(r) > n {
@@ -579,6 +583,16 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 				at := pr.PostedAt.Time
 				it.At = &at
 			}
+			items = append(items, it)
+		}
+		for _, f := range t.Status.WriteFailures {
+			if f.At == nil || now.Sub(f.At.Time) > pilotErrorTTL {
+				continue
+			}
+			it := base
+			it.Kind, it.Title, it.Reason = "pilotError", f.Source, f.Error
+			at := f.At.Time
+			it.At = &at
 			items = append(items, it)
 		}
 		if a := t.Status.Autopilot; a != nil && a.Phase == aiv1.AutopilotPaused && t.Spec.Milestone != nil {

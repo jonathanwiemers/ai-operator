@@ -164,6 +164,23 @@ func TestInbox(t *testing.T) {
 	}
 }
 
+func TestInboxPilotError(t *testing.T) {
+	now := time.Now()
+	fresh, old := metav1.NewTime(now.Add(-time.Hour)), metav1.NewTime(now.Add(-25*time.Hour))
+	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "bloop"}}
+	tasks := []aiv1.AgentTask{{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "spec"},
+		Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 5, Title: "Poker"}},
+		Status: aiv1.AgentTaskStatus{WriteFailures: []aiv1.WriteFailure{
+			{Source: "runner/recordProposal", Error: "invalid: actions", Key: "a", At: &old, Count: 1},
+			{Source: "operator/patchPilot", Error: "conflict boom", Key: "b", At: &fresh, Count: 2},
+		}}}}
+	items := inboxOf(map[string]*aiv1.AgentProject{"agents/bloop": ap}, tasks, now)
+	if len(items) != 1 || items[0].Kind != "pilotError" || items[0].Title != "operator/patchPilot" ||
+		items[0].Reason != "conflict boom" || items[0].MilestoneIID != 5 || items[0].At == nil {
+		t.Fatalf("items = %+v", items)
+	}
+}
+
 func TestInboxPrompts(t *testing.T) {
 	posted := metav1.NewTime(time.Now())
 	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "bloop"}}

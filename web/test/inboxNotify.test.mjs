@@ -148,3 +148,9 @@ test('prompts notify once per task and prompt id', () => {
   assert.deepEqual(newNotifications(new Set([inboxKey(a)]), [a]), [])
   assert.deepEqual(notificationText(a), { title: 'Question Q1 · shop', body: 'Retry?' })
 })
+
+test('inboxKey: pilot write errors differ by source and error, and raise no notification', () => {
+  const err = (over = {}) => ({ namespace: 'team', project: 'shop', kind: 'pilotError', task: 'shop-pilot', title: 'runner/recordProposal', reason: 'bad', ...over })
+  assert.notEqual(inboxKey(err()), inboxKey(err({ reason: 'other' })))
+  assert.equal(notifiable(err()), false)
+})

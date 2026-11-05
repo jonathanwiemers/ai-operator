@@ -32,6 +32,9 @@ const (
 	KindAutopilot   = "autopilot"
 	KindProposal    = "proposal"
 
+	// KindPilotWriteFailed is a status write the API server rejected.
+	KindPilotWriteFailed = "pilot.writeFailed"
+
 	KindPromptPosted   = "prompt.posted"
 	KindPromptAnswered = "prompt.answered"
 	KindPromptClosed   = "prompt.closed"
@@ -192,6 +195,7 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 	}
 	out = append(out, d.autopilot(cur, prev.Autopilot, ns.Autopilot, now)...)
 	out = append(out, d.proposals(cur, prev.Pilot, ns.Pilot, now)...)
+	out = append(out, writeFailures(cur, prev.WriteFailures, ns.WriteFailures, now)...)
 	out = append(out, d.prompts(cur, prev.Prompts, ns.Prompts, now)...)
 	return out
 }
@@ -229,6 +233,31 @@ func (d *Differ) autopilot(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, no
 		e.Data = map[string]any{"sha": it.MergedSHA}
 		if it.MergeRequestURL != "" {
 			e.Data["mergeRequestURL"] = it.MergeRequestURL
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// writeFailures emits an event for every failure that is new or whose count
+// grew.
+func writeFailures(t *aiv1.AgentTask, old, cur []aiv1.WriteFailure, now time.Time) []store.Event {
+	was := map[string]int32{}
+	for _, f := range old {
+		was[f.Key] = f.Count
+	}
+	var out []store.Event
+	for _, f := range cur {
+		if n, ok := was[f.Key]; ok && f.Count <= n {
+			continue
+		}
+		e := base(t, now)
+		e.Key = taskKey(t, fmt.Sprintf("writefail/%s/%d", f.Key, f.Count))
+		e.Kind = KindPilotWriteFailed
+		e.Summary = "Status write rejected: " + f.Source
+		e.Data = map[string]any{"source": f.Source, "error": textutil.Truncate(f.Error, maxText), "count": f.Count}
+		if f.At != nil {
+			e.At = f.At.Time
 		}
 		out = append(out, e)
 	}

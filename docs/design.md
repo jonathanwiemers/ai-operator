@@ -1291,7 +1291,11 @@ counted interventions; more tools are later steps of
   status write of the pilot|operator (…)"); the same error from the same
   source again only bumps the count. Conflicts, not-found and transport
   errors are not reported; a failure that cannot be recorded is only
-  logged and posts nothing. The write itself still fails as before
+  logged and posts nothing. Each new key or count bump is also a
+  `pilot.writeFailed` history event (`writefail/<key>/<count>`: source,
+  error, count), and an entry seen in the last 24 hours is an Inbox item of
+  kind `pilotError` (source, API error), read from the live status.
+  The write itself still fails as before
   (`internal/writefail`).
 * **Accepting.** Proposal prompts are answered like any prompt (see
   [Answering prompts](#answering-prompts)). Proposals posted as "Proposal

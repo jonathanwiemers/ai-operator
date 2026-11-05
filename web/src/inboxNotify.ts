@@ -18,6 +18,9 @@ export function inboxKey(item: InboxItem): string {
     case 'pause':
       parts.push(item.milestoneIID, item.issueIID, item.pauseKind)
       break
+    case 'pilotError':
+      parts.push(item.task, item.title, item.reason)
+      break
   }
   return parts.map((p) => (p == null ? '' : String(p))).join('/')
 }
