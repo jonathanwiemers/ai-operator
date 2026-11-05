@@ -51,9 +51,14 @@ type Fake struct {
 	Merged, Rebased []int64
 	// RebaseConflict makes rebases end in a conflict.
 	RebaseConflict bool
+	// MainSHA is the head of the default branch: a rebase bases an MR's
+	// DiffRefs on it.
+	MainSHA string
 	// MRDiffs are the diffs of an MR; without an entry an MR has one file
 	// whose change is the same before and after a rebase.
 	MRDiffs map[int64][]gitlab.Diff
+	// DiffErrors makes ListMergeRequestDiffs of an MR fail.
+	DiffErrors map[int64]error
 	// CreateIssueError makes CreateIssue fail.
 	CreateIssueError error
 	// CreateErrorsAfterWrite makes the next CreateIssue calls create the
@@ -485,6 +490,10 @@ func (f *Fake) GetMergeRequest(_ context.Context, _ string, iid int64) (*gitlab.
 		}
 		c.HeadPipeline = &hp
 	}
+	if c.DiffRefs != nil {
+		dr := *c.DiffRefs
+		c.DiffRefs = &dr
+	}
 	return &c, nil
 }
 
@@ -597,6 +606,9 @@ func (f *Fake) RebaseMergeRequest(_ context.Context, _ string, iid int64) error 
 	} else {
 		mr.SHA += "-rebased"
 		mr.DetailedMergeStatus = "mergeable"
+		if f.MainSHA != "" {
+			mr.DiffRefs = &gitlab.DiffRefs{BaseSHA: f.MainSHA, StartSHA: f.MainSHA, HeadSHA: mr.SHA}
+		}
 	}
 	mr.UpdatedAt = f.tick()
 	return nil
@@ -605,6 +617,9 @@ func (f *Fake) RebaseMergeRequest(_ context.Context, _ string, iid int64) error 
 func (f *Fake) ListMergeRequestDiffs(_ context.Context, _ string, iid int64) ([]gitlab.Diff, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.DiffErrors[iid]; err != nil {
+		return nil, err
+	}
 	if _, ok := f.MRs[iid]; !ok {
 		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "diffs"}
 	}

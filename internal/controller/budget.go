@@ -176,7 +176,7 @@ func (a *autopilot) resumeBudget(ctx context.Context, why string) error {
 	if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
 		return err
 	}
-	a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = aiv1.AutopilotRunning, "", "", 0, false
+	a.lift()
 	return nil
 }
 

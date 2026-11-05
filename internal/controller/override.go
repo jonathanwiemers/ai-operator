@@ -56,8 +56,7 @@ func (a *autopilot) mergeAnyway(ctx context.Context, arg, by string) (string, bo
 		if err := a.unblockActive(ctx); err != nil {
 			return "", false, err
 		}
-		a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind = aiv1.AutopilotRunning, "", ""
-		a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
+		a.lift()
 	}
 	return fmt.Sprintf("!%d at %s may merge without a full review.", it.MergeRequestIID, short(head)), true, nil
 }

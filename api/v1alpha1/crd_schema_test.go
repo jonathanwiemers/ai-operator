@@ -331,3 +331,18 @@ func TestPilotProposalWithOptionsOnlyAdmitted(t *testing.T) {
 		t.Fatalf("options-only proposal rejected: %v", errs)
 	}
 }
+
+// The operator records the main commit a BaseFailing MR was rebased onto in
+// the queue item (healedOn); the schema must keep it.
+func TestAutopilotItemHealedOnAdmitted(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	item := map[string]any{"iid": int64(1), "state": "Active", "rebasedFrom": "sha-api", "rebases": int64(1), "healedOn": "main-y"}
+	obj, errs := crd.admit(map[string]any{"status": map[string]any{"autopilot": map[string]any{"phase": "Running", "items": []any{item}}}})
+	if len(errs) > 0 {
+		t.Fatalf("item with healedOn rejected: %v", errs)
+	}
+	items := obj["status"].(map[string]any)["autopilot"].(map[string]any)["items"].([]any)
+	if got := items[0].(map[string]any)["healedOn"]; got != "main-y" {
+		t.Fatalf("healedOn not stored: %v", items[0])
+	}
+}

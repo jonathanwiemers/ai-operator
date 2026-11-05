@@ -917,7 +917,18 @@ A pause over the active issue ends **by itself** when it no longer holds:
   findings`, the run succeeded, was reviewed and CI is green. Autopilot then
   continues with the merge;
 - the pause was a merge freeze and the default branch is green again (or its
-  health is no longer watched): the block is lifted and the gate runs again.
+  health is no longer watched): the block is lifted and the gate runs again;
+- the pause was CI red with jobs that also fail on the default branch, and
+  [main health](#main-health) reports the default branch green at a commit
+  the MR is not based on. Nothing would rerun the MR's pipeline, and a retry
+  would run on the old base without the fix, so autopilot rebases the MR
+  itself (as for `need_rebase`, see [the merge gate](#the-merge-gate)),
+  once per green commit, and says so on the tracking issue ("`main` is green
+  at …: rebasing !N"). The rebased head goes through CI like a push; green,
+  it is merged, red, it pauses again with the new reason. If the rebase
+  conflicts, or the MR was rebased before, the agent merges the default
+  branch instead (see [Merge conflicts](#merge-conflicts)). The same happens
+  for such an MR before it paused.
 
 A budget pause ends by itself too, once the budget is raised above the
 spend or removed (see [Budget](#budget)).

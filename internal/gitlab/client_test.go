@@ -264,14 +264,15 @@ func TestMergeRequestActions(t *testing.T) {
 		c := call{method: r.Method, path: r.URL.EscapedPath(), query: r.URL.RawQuery}
 		_ = json.NewDecoder(r.Body).Decode(&c.body)
 		calls = append(calls, c)
-		_ = json.NewEncoder(w).Encode(MergeRequest{IID: 3, State: "merged", SHA: "abc", DetailedMergeStatus: "mergeable", MergeCommitSHA: "m1"})
+		_ = json.NewEncoder(w).Encode(MergeRequest{IID: 3, State: "merged", SHA: "abc", DetailedMergeStatus: "mergeable", MergeCommitSHA: "m1",
+			DiffRefs: &DiffRefs{BaseSHA: "b1", HeadSHA: "abc", StartSHA: "b1"}})
 	}))
 	defer srv.Close()
 	c := New(srv.URL, "tok")
 	ctx := context.Background()
 
 	mr, err := c.GetMergeRequest(ctx, "g/p", 3)
-	if err != nil || mr.SHA != "abc" || mr.DetailedMergeStatus != "mergeable" {
+	if err != nil || mr.SHA != "abc" || mr.DetailedMergeStatus != "mergeable" || mr.DiffRefs == nil || mr.DiffRefs.BaseSHA != "b1" {
 		t.Fatalf("get: %+v %v", mr, err)
 	}
 	if _, err := c.UpdateMergeRequest(ctx, "g/p", 3, UpdateMergeRequestOptions{Title: "Ready"}); err != nil {

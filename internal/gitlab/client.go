@@ -194,6 +194,17 @@ type MergeRequest struct {
 	SquashCommitSHA  string    `json:"squash_commit_sha"`
 	RebaseInProgress bool      `json:"rebase_in_progress"`
 	MergeError       string    `json:"merge_error"`
+	// DiffRefs are the commits the MR's diff is between; only a single MR
+	// GET returns them.
+	DiffRefs *DiffRefs `json:"diff_refs"`
+}
+
+// DiffRefs of a merge request: BaseSHA is the commit of the target branch
+// its change is based on.
+type DiffRefs struct {
+	BaseSHA  string `json:"base_sha"`
+	HeadSHA  string `json:"head_sha"`
+	StartSHA string `json:"start_sha"`
 }
 
 // Issue link types. blocks and is_blocked_by need GitLab Premium; on Free

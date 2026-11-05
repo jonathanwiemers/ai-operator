@@ -1435,6 +1435,12 @@ type AutopilotItem struct {
 	// +optional
 	RebasedAt *metav1.Time `json:"rebasedAt,omitempty"`
 
+	// HealedOn is the commit of the green default branch the operator last
+	// rebased the MR onto because its CI failed with the default branch
+	// (BaseFailing); once per such commit.
+	// +optional
+	HealedOn string `json:"healedOn,omitempty"`
+
 	// MarkedReady is set once the operator marked the draft MR ready, or
 	// found it ready, to run CI. A draft again after that is a human holding
 	// it, or a run that left problems.

@@ -149,6 +149,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.freezeOnMainRed(ctx); err != nil {
 		return err
 	}
+	if err := a.healBaseFailing(ctx); err != nil {
+		return err
+	}
 	if err := a.mainRedLane(ctx); err != nil {
 		return err
 	}
@@ -697,7 +700,11 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	case gateReReview:
 		return a.reReview(ctx, it, task)
 	case gateFailed:
-		return a.failGate(ctx, it, is, task, g)
+		if it.RebasedFrom == "" || g.kind != aiv1.PauseCIRed || task.Status.CI.State != aiv1.CIStateBaseFailing {
+			return a.failGate(ctx, it, is, task, g)
+		}
+		// The red CI is the old head's (healBaseFailing): rebased hands the
+		// new head to CI.
 	}
 	run := task.Status.Run
 
@@ -910,7 +917,7 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
 			return err
 		}
-		a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = aiv1.AutopilotRunning, "", "", 0, false
+		a.lift()
 		return nil
 	}
 	is, ok := a.issues[it.IID]
@@ -1280,6 +1287,12 @@ func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, reason strin
 	return nil
 }
 
+// lift ends a pause: autopilot runs again. Every resume goes through here.
+func (a *autopilot) lift() {
+	a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind = aiv1.AutopilotRunning, "", ""
+	a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
+}
+
 // commands handles "/agent pause|resume|skip #N" on the tracking issue and
 // answers any other command once, in its thread.
 func (a *autopilot) commands(ctx context.Context) error {
@@ -1457,8 +1470,7 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 			if err := a.unblockActive(ctx); err != nil {
 				return "", false, err
 			}
-			a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind = aiv1.AutopilotRunning, "", ""
-			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
+			a.lift()
 		}
 		return "Autopilot resumed.", true, nil
 	case "skip":
