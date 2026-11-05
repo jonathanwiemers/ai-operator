@@ -120,6 +120,7 @@ func TestStructuredQuestionsEndNeedsInput(t *testing.T) {
 			{Label: "Postgres", Detail: "Needs a server."}, {Label: "SQLite", Default: true}}}}}}
 	e.configure(t, func(*aiv1.AgentProjectSpec) {}, func(*aiv1.AgentTaskSpec) {})
 	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	r.DeskURL = "https://desk.example/"
 	if _, err := r.Step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -136,11 +137,23 @@ func TestStructuredQuestionsEndNeedsInput(t *testing.T) {
 		run.Questions[1].Question != "Prose question 1?" || run.Questions[1].Options != nil || !run.Questions[1].AllowFreeText {
 		t.Fatalf("the status keeps the first %d drafts, structured first: %+v", aiv1.MaxQuestionDrafts, run.Questions)
 	}
-	notes := e.gl.IssueNotes[42]
-	q := notes[len(notes)-1].Body
-	for _, want := range []string{"1. Which store?", "**A** Postgres", "**B** SQLite _(default)_", "or answer in your own words", "6. Prose question 5?"} {
+	for _, n := range e.gl.IssueNotes[42] {
+		if strings.Contains(n.Body, "Which store?") {
+			t.Fatalf("the operator posts the questions on the issue, as prompts:\n%s", n.Body)
+		}
+	}
+	q := ""
+	for _, notes := range e.gl.MRNotes {
+		for _, n := range notes {
+			if strings.Contains(n.Body, "### Questions") {
+				q = n.Body
+			}
+		}
+	}
+	desk := "\nAnswer in the Desk: https://desk.example/projects/agents/" + got.Spec.ProjectRef + "/tasks/" + got.Name + "\n"
+	for _, want := range []string{"1. Which store?", "**A** Postgres", "**B** SQLite _(default)_", "or answer in your own words", "6. Prose question 5?", desk} {
 		if !strings.Contains(q, want) {
-			t.Fatalf("the issue comment lists %q:\n%s", want, q)
+			t.Fatalf("the report lists %q:\n%s", want, q)
 		}
 	}
 	if strings.Contains(q, "\n   /merge") || strings.Contains(q, " @bob") {

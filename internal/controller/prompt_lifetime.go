@@ -111,7 +111,9 @@ func promptResolved(now time.Time, mh *aiv1.MainHealthStatus, issues map[int64]g
 				return aiv1.PromptSuperseded, true
 			}
 		case aiv1.PromptNeedsInput:
-			if t := tasks[src.IssueIID]; t != nil && src.RunRequest != 0 && t.Spec.RunRequest > src.RunRequest {
+			// An answer not shown yet (showAnswers) keeps it.
+			if t := tasks[src.IssueIID]; t != nil && src.RunRequest != 0 && t.Spec.RunRequest > src.RunRequest &&
+				delivery(t.Spec.Source.PromptAnswers, p.ID) == nil {
 				return aiv1.PromptSuperseded, true // the agent ran again without the answer
 			}
 		case aiv1.PromptBudget:

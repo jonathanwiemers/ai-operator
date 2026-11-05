@@ -216,7 +216,7 @@ func TestDescribeDisabled(t *testing.T) {
 	}
 }
 
-func TestQuestionsMentionTheOwners(t *testing.T) {
+func TestQuestionsLeaveTheMentionToTheirPrompts(t *testing.T) {
 	e := newImplementEnv(t)
 	engine := &describingEngine{answer: ImplementAnswer{Status: "needs_input", Summary: "Stuck.", Questions: []string{"Which provider?"}}}
 	e.configure(t, func(*aiv1.AgentProjectSpec) {}, func(s *aiv1.AgentTaskSpec) { s.Owners = []string{"alice"} })
@@ -224,14 +224,14 @@ func TestQuestionsMentionTheOwners(t *testing.T) {
 	if _, err := r.Step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	notes := e.gl.IssueNotes[42]
-	q := notes[len(notes)-1].Body
-	if !strings.Contains(q, "Which provider?") || !strings.HasSuffix(q, "cc @alice") {
-		t.Fatalf("the questions mention the owners:\n%s", q)
+	for _, n := range e.gl.IssueNotes[42] {
+		if strings.Contains(n.Body, "Which provider?") || strings.Contains(n.Body, "cc @") {
+			t.Fatalf("the operator's prompt comments ask and mention, not the runner:\n%s", n.Body)
+		}
 	}
 	report := e.gl.MRNotes[1][len(e.gl.MRNotes[1])-1].Body
-	if strings.Contains(report, "cc @") {
-		t.Fatalf("the owners are mentioned once, on the questions:\n%s", report)
+	if strings.Contains(report, "cc @") || !strings.Contains(report, "Which provider?") {
+		t.Fatalf("the report lists the questions without a mention:\n%s", report)
 	}
 	if !strings.Contains(report, "Stuck.") {
 		t.Fatalf("a run that stops for input keeps its summary, also with the first description:\n%s", report)
@@ -288,7 +288,7 @@ func TestFailureOnAutopilotLeavesThePingToThePause(t *testing.T) {
 }
 
 func TestReportRunsNoQuickActions(t *testing.T) {
-	got := renderReport(ImplementAnswer{Summary: "Done.\n/merge\nping @alice"}, nil, nil)
+	got := renderReport(ImplementAnswer{Summary: "Done.\n/merge\nping @alice"}, nil, nil, "")
 	if strings.Contains(got, "\n/merge") || strings.Contains(got, "@alice") {
 		t.Fatalf("agent text must be inert:\n%q", got)
 	}

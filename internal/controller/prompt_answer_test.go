@@ -144,7 +144,7 @@ func TestPromptAnswerRefusals(t *testing.T) {
 	e.addPrompt(st, st, stuckPrompt())
 	e.addPrompt(st, st, stuckPrompt()) // Q2 supersedes Q1
 	free := trackingPrompt()
-	free.Source.Kind, free.AllowFreeText = aiv1.PromptNeedsInput, true // takes its text on its own path
+	free.Source.Kind, free.AllowFreeText = aiv1.PromptNeedsInput, true // answered on its task
 	e.addPrompt(st, st, free)
 	e.reconcile()
 	before := e.toolEffect()
@@ -153,7 +153,7 @@ func TestPromptAnswerRefusals(t *testing.T) {
 		{answerBody("Q1", "A"), "Q1 no longer applies (superseded)."},
 		{answerBody("Q2", "E"), "Q2 has no option E."},
 		{`{"cmd":"answer","prompt":"Q2","text":"retry it twice"}`, "Q2 takes no free text; pick an option."},
-		{`{"cmd":"answer","prompt":"Q3","text":"retry it twice"}`, "Free text answers are not handled yet; pick an option."},
+		{`{"cmd":"answer","prompt":"Q3","text":"retry it twice"}`, "Q3 is a question of the agent; answer it on its task."},
 		{`{"cmd":"answer","prompt":"Q3"}`, "answer needs either an option or a text"},
 	} {
 		if r := e.deskCommand(int64(301+i), "alice@example.com", tc.body); r != tc.want {

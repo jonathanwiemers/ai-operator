@@ -355,12 +355,15 @@ type promptNote struct {
 // tracking issue (an Implement task's issue for its own prompts). A
 // proposal goes on the tracking issue, where the pilot is asked and
 // assesses, and so does a main health prompt: its flaky or main-red issue
-// is the agent's to read, not the owners'.
+// is the agent's to read, not the owners'. The agent's question goes on its
+// issue, where questions were always asked.
 func promptNoteOf(gl gitlab.API, spec aiv1.AgentProjectSpec, holder *aiv1.AgentTask, p aiv1.Prompt, tracking int64) promptNote {
 	n := promptNote{gl: gl, project: spec.GitLab.Project}
 	switch {
 	case (p.Source.Kind == aiv1.PromptProposal || p.Source.Kind == aiv1.PromptMainHealth) && tracking != 0:
 		n.iid = tracking
+	case p.Source.Kind == aiv1.PromptNeedsInput && p.Source.IssueIID != 0:
+		n.iid = p.Source.IssueIID
 	case p.Source.MRIID != 0:
 		n.iid, n.mr = p.Source.MRIID, true
 	case p.Source.IssueIID != 0:

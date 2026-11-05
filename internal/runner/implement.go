@@ -11,6 +11,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
+	"github.com/jonathanwiemers/ai-operator/internal/desklink"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
@@ -575,7 +576,8 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	drafts := questionDrafts(answer)
 	out.Questions = drafts[:min(len(drafts), aiv1.MaxQuestionDrafts)]
-	report := renderReport(reported, remaining, append(reviewNotes, notices...))
+	desk := desklink.Task(r.DeskURL, task.Namespace, task.Spec.ProjectRef, task.Name)
+	report := renderReport(reported, remaining, append(reviewNotes, notices...), desk)
 	if ciFix {
 		report = "CI fix: " + report
 	}
@@ -588,15 +590,14 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	waitForCI := !spec.CI.Disabled && out.PushedSHA != "" && !needsInput
 	pending := !waitForCI && r.morePending(ctx, task.Spec.RunRequest)
 	// The owners are mentioned where the answer is wanted: questions on the
-	// issue, everything else on the MR. On autopilot nobody is: it merges
-	// what reaches review, and its pause on the tracking issue mentions
-	// them for the rest.
+	// issue, by the operator's comments of their prompts, everything else on
+	// the MR. On autopilot nobody is: it merges what reaches review, and its
+	// pause on the tracking issue mentions them for the rest.
 	toReview := !needsInput && !waitForCI && !pending
-	var mrMention, issueMention string
+	var mrMention string
 	switch {
 	case task.Spec.Autopilot:
-	case needsInput && spec.Notify.Wants(aiv1.NotifyNeedsInput) && answer.asks():
-		issueMention = notify.Mention(task.Spec.Owners)
+	case len(drafts) > 0:
 	case needsInput && spec.Notify.Wants(aiv1.NotifyNeedsInput),
 		toReview && spec.Notify.Wants(aiv1.NotifyReview):
 		mrMention = notify.Mention(task.Spec.Owners)
@@ -606,13 +607,8 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+mrMention+runLogMD); err != nil {
 		return out, s.fail(fmt.Errorf("commenting on merge request: %w", err))
 	}
-	if len(drafts) > 0 {
-		// Questions are answered where people look first.
-		note := fmt.Sprintf("🤖 Before this can be finished I need answers (comment here or on %s):\n\n%s", mr.WebURL, notify.Defuse(renderQuestions(drafts)))
-		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, note+issueMention); err != nil {
-			return out, s.fail(fmt.Errorf("commenting on issue: %w", err))
-		}
-	}
+	// The questions go on the issue as prompts: the operator posts one
+	// comment per question from out.Questions.
 	s.done(fmt.Sprintf("on !%d", mr.IID))
 	s = r.step(ctx, "update issue labels")
 	switch {
@@ -1055,17 +1051,21 @@ func reviewErrorOf(reviewer aiv1.ReviewerKind, err error) aiv1.ReviewError {
 }
 
 // renderReport renders the run's report; agent-written text in it pings
-// nobody and runs no quick actions.
-func renderReport(answer ImplementAnswer, findings []Finding, reviewErrs []string) string {
-	return notify.Defuse(renderReportText(answer, findings, reviewErrs))
+// nobody and runs no quick actions. desk is the task's Desk page, where the
+// questions are answered ("": no link).
+func renderReport(answer ImplementAnswer, findings []Finding, reviewErrs []string, desk string) string {
+	return notify.Defuse(renderReportText(answer, findings, reviewErrs, desk))
 }
 
-func renderReportText(answer ImplementAnswer, findings []Finding, reviewErrs []string) string {
+func renderReportText(answer ImplementAnswer, findings []Finding, reviewErrs []string, desk string) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(answer.Summary))
 	if drafts := questionDrafts(answer); len(drafts) > 0 {
 		b.WriteString("\n\n### Questions\n\n")
 		b.WriteString(renderQuestions(drafts))
+		if desk != "" {
+			b.WriteString("\nAnswer in the Desk: " + desk + "\n")
+		}
 	}
 	if len(findings) > 0 {
 		b.WriteString("\n\n### Remaining review findings\n\n")

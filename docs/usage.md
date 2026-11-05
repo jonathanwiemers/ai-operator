@@ -318,19 +318,35 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    you add above or below it, and `Closes #42`, stay. Then the report is
    posted on the MR; the first run's report points to the description
    instead of repeating it, later reports say what that run changed. If the
-   agent has questions, they are also posted on the issue.
+   agent has questions, the report lists them with a link to answer them in
+   the Desk, and the operator posts each on the issue as a prompt.
 8. The agent's decisions are posted on the issue (see
    [Decisions](#decisions)).
 
 If the agent has questions, the issue moves to **`agent::needs-input`**.
-The issue comment lists them; a decision comes with two to four options,
-the agent's default marked, and an open question without. The task keeps
-them, normalised, in `status.run.questions` (at most 5), from which the
-Desk's prompts will be made; until then, answer in a comment. Answers the
-operator hands over in `spec.source.promptAnswers` reach the agent's session
-once, as the owner's words ("Answer to your question Q5 (…) from @alice:
-…", several in one turn), with the run of their request or the next chat
-turn; a fresh session gets them all in its first prompt.
+A decision comes with two to four options, the agent's default marked, and
+an open question without. The task keeps them, normalised, in
+`status.run.questions` (at most 5), and the operator makes each a
+**`needsInput` prompt** on the Implement task ("Q<n>", counted with the
+milestone's prompts), posted as one comment on the issue with "Answer in
+the Desk: <link>"; the first mentions the owners (not on autopilot, and only
+with the `needsInput` notification). An open question is one free-text
+prompt.
+
+The milestone's owners (`/agent owner-subjects`) answer on the Task page or
+with the chat command `{"cmd":"answer","prompt":"Q5","option":"B"}` (or
+`"text"`, the answer in their own words) on the Implement task; anyone
+else is told only the owners can, and a second answer is refused naming
+the first. Once no question of the run is open, the run is requested and
+the issue moves to `agent::working`; the agent gets all answers in one turn
+and continues. The issue's comment of each prompt shows the answer and who
+gave it. A new run before that (a comment, a retry) supersedes the open
+ones. A `/agent` comment still works as an answer, as before.
+
+The answers (`spec.source.promptAnswers`) reach the agent's session once,
+as the owner's words ("Answer to your question Q5 (…) from @alice: …",
+several in one turn), with the run of their request or the next chat turn;
+a fresh session gets them all in its first prompt.
 Otherwise it stays in `agent::working` until the MR pipeline has run; failing
 jobs (lint, tests, …) go back to the agent (see [CI feedback](#ci-feedback)),
 and the issue moves to **`agent::review`** once the pipeline is green.

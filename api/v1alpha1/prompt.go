@@ -223,8 +223,10 @@ type PromptAnswerDelivery struct {
 	// Question is the prompt's question, as the agent asked it.
 	// +optional
 	Question string `json:"question,omitempty"`
-	// OptionLabel is the label of the option the owner chose, empty for an
+	// OptionID and OptionLabel are the option the owner chose, empty for an
 	// answer in free text only.
+	// +optional
+	OptionID string `json:"optionID,omitempty"`
 	// +optional
 	OptionLabel string `json:"optionLabel,omitempty"`
 	// Text is the owner's free text.

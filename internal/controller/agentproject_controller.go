@@ -441,6 +441,13 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 		keep[task.Name] = true
 		implTasks[is.IID] = task
+		var st *aiv1.AgentTask
+		if is.Milestone != nil {
+			st = byMilestone[is.Milestone.IID]
+		}
+		if err := r.syncQuestions(ctx, gl, spec, st, task); err != nil {
+			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
+		}
 		if err := r.syncRunBlock(ctx, gl, spec, is, task); err != nil {
 			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
 			continue
@@ -957,7 +964,8 @@ const maxChatAnswers = 20
 // applyChatCommands applies Desk chat commands newer than
 // src.LastChatCommandID (Implement tasks). It records answers in
 // src.ChatAnswers and advances the mark in the same write as a RunRequest
-// bump. Returns whether a run was requested (retry or a successful review).
+// bump. Returns whether a run was requested (retry, a successful review, or
+// the answer to the last open question of the agent).
 func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec,
 	is *gitlab.Issue, task *aiv1.AgentTask, mr *gitlab.MergeRequest) (bool, error) {
 	src := &task.Spec.Source
@@ -983,6 +991,23 @@ func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitla
 		if err != nil {
 			answer(m.ID, err.Error())
 			logger.Info("chat command skipped", "id", m.ID, "author", m.Author, "error", err.Error())
+			continue
+		}
+		if cmd.PromptCmd() {
+			// The agent's questions: the owners' answers go to its session.
+			if !slices.Contains(task.Spec.OwnerSubjects, m.Author) {
+				answer(m.ID, "Only the milestone's owners can answer prompts.")
+				logger.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
+				continue
+			}
+			who := m.Author
+			if m.AuthorName != "" {
+				who = m.AuthorName
+			}
+			logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "prompt", cmd.Prompt)
+			reply, due := answerQuestion(task, who, cmd)
+			run = run || due
+			answer(m.ID, reply)
 			continue
 		}
 		if !cmd.ImplementOnly() {

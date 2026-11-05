@@ -39,6 +39,10 @@ func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1
 	if refused := answerRefused(p, cmd); refused != "" {
 		return refused, false, nil
 	}
+	if p.Source.Kind == aiv1.PromptNeedsInput {
+		// The agent's questions are answered on its task (answerQuestion).
+		return fmt.Sprintf("%s is a question of the agent; answer it on its task.", p.ID), false, nil
+	}
 	if cmd.Text != "" && p.Source.Kind == aiv1.PromptRevisit {
 		reply, err := r.addFromAnswer(ctx, st, p.ID, revisitFromAnswer(p.Source.Key, cmd.Text), "the option from your answer")
 		return reply, err == nil, err
@@ -164,9 +168,6 @@ func answerRefused(p aiv1.Prompt, cmd chatcmd.Command) string {
 		return fmt.Sprintf("%s no longer applies (%s).", p.ID, p.State)
 	case cmd.Text != "" && !p.AllowFreeText:
 		return fmt.Sprintf("%s takes no free text; pick an option.", p.ID)
-	case cmd.Text != "" && p.Source.Kind == aiv1.PromptNeedsInput:
-		// The agent's question takes the text itself, on its own path.
-		return "Free text answers are not handled yet; pick an option."
 	case cmd.Text != "" && p.Source.Kind == aiv1.PromptRevisit && marker.DecisionIssue(p.Source.Key) == 0:
 		return fmt.Sprintf("%s names no decision to revisit; pick an option.", p.ID)
 	case cmd.Text != "":

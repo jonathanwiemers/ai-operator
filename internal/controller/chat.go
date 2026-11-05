@@ -402,7 +402,7 @@ func chatAuthorName(task *aiv1.AgentTask) string {
 // chatCommandAllowed reports whether cmd may be delivered onto task.
 func chatCommandAllowed(task aiv1.AgentTask, cmd chatcmd.Command) bool {
 	switch {
-	case cmd.ImplementOnly() && task.Spec.Type == aiv1.TaskTypeImplement:
+	case (cmd.ImplementOnly() || cmd.PromptCmd()) && task.Spec.Type == aiv1.TaskTypeImplement:
 		return true
 	case cmd.Autopilot() && task.Spec.Type == aiv1.TaskTypeSpec && task.Spec.Autopilot:
 		return true

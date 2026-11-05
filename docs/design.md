@@ -1479,8 +1479,22 @@ An owner answers a milestone prompt from the Desk with the chat command
   only records the answer.
 * A prompt that is superseded or expired (a proposal past 24 h, or the
   milestone's state changed) is refused. Free text is refused on a prompt
-  without `allowFreeText`, and with "pick an option" on `needsInput`
-  prompts, which take it on their own path.
+  without `allowFreeText`.
+* **The agent's questions** (`prompt_questions.go`). After a run that ended
+  `NeedsInput`, `syncQuestions` makes a `needsInput` prompt of every
+  `status.run.questions` entry on the Implement task, `source {kind:
+  needsInput, issueIID, mrIID, task, key: run/<runCount>/<i>, runRequest}`,
+  once per key and not while a newer run is requested; the mirror posts it
+  on the issue. `answer` on the Implement task (owners: its
+  `ownerSubjects`) does not go through `answerPrompt`: `answerQuestion`
+  appends a `PromptAnswerDelivery` (option or text, `request` = the next run
+  request) to `spec.source.promptAnswers`, in the same update as the chat
+  reply and, once no prompt of that run request is open without one, the
+  run request (which moves the issue to working). `showAnswers` then marks
+  the prompts answered from the deliveries (`via: desk`), and the lifetime
+  check does not supersede a prompt with a delivery: a crash in between
+  shows the answer a poll later, never loses it. A pending delivery counts
+  as an answer, so a second one is refused naming it.
 * **Revisits from the Desk** (`prompt_revisit.go`). `revisit {decision,
   text}` on the Coordinate task, owners only, queues the `revisit` pilot
   command with the owner as "<name> via the Desk" (syncRevisits then keeps

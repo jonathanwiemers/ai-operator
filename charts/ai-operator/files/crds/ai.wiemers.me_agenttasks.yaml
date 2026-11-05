@@ -434,10 +434,12 @@ spec:
                         by:
                           description: By is the owner's username.
                           type: string
-                        optionLabel:
+                        optionID:
                           description: |-
-                            OptionLabel is the label of the option the owner chose, empty for an
+                            OptionID and OptionLabel are the option the owner chose, empty for an
                             answer in free text only.
+                          type: string
+                        optionLabel:
                           type: string
                         prompt:
                           description: Prompt is the prompt's id ("Q5").
