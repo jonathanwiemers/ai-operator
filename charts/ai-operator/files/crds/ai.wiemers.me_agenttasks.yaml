@@ -2782,8 +2782,8 @@ spec:
                     type: integer
                   deferredUntil:
                     description: |-
-                      DeferredUntil is set when the requested run hit a usage or rate limit:
-                      the run is retried after this time.
+                      DeferredUntil is set when the requested run hit a usage or rate limit,
+                      or its agent ran out of memory: the run is retried after this time.
                     format: date-time
                     type: string
                   engineUsage:
@@ -2861,8 +2861,11 @@ spec:
                     description: LastResult of the most recent run.
                     type: string
                   limitedEngine:
-                    description: LimitedEngine is the engine whose limit deferred
-                      the run.
+                    description: |-
+                      LimitedEngine is the engine whose limit deferred the run.
+                      Deprecated: the deferring limit is the usageLimits entry with
+                      deferred set. Still written for one release; read only when no entry
+                      is marked (tasks of an older release).
                     enum:
                     - claude
                     - cursor
@@ -2965,13 +2968,19 @@ spec:
                     type: string
                   usageLimits:
                     description: |-
-                      UsageLimits are the limits this task's runs went around with a
-                      fallback engine instead of being deferred; the operator adds the
-                      active ones to the project's usage limits.
+                      UsageLimits are the limits this task's runs hit: those they went
+                      around with a fallback engine, and the one that deferred the run
+                      (deferred set). The operator adds the active ones to the project's
+                      usage limits.
                     items:
                       description: UsageLimit is an engine's active usage or rate
                         limit.
                       properties:
+                        deferred:
+                          description: |-
+                            Deferred marks, in a task's status.run.usageLimits, the limit that
+                            deferred the run (see status.run.deferredUntil for the retry time).
+                          type: boolean
                         engine:
                           description: Engine is the coding agent CLI that runs a
                             role.

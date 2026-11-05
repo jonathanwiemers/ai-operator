@@ -1197,6 +1197,10 @@ type UsageLimit struct {
 	// Message reported by the engine.
 	// +optional
 	Message string `json:"message,omitempty"`
+	// Deferred marks, in a task's status.run.usageLimits, the limit that
+	// deferred the run (see status.run.deferredUntil for the retry time).
+	// +optional
+	Deferred bool `json:"deferred,omitempty"`
 }
 
 // EngineUsage is what an engine last said about its usage windows (claude

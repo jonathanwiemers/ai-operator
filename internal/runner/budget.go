@@ -52,7 +52,8 @@ func (r *Runner) deferForBudget(ctx context.Context, out *Outcome, err error) er
 		s.ActiveRunRequest = s.ObservedRunRequest
 		s.CurrentStep = ""
 		// Not a usage limit: an earlier one of this request is over.
-		s.DeferredUntil, s.LimitedEngine, s.BlockReason = nil, "", ""
+		s.DeferredUntil, s.BlockReason = nil, ""
+		s.ClearDeferringLimit()
 		s.LastActivityTime = &metav1.Time{Time: now}
 		s.LastResult = aiv1.RunResultDeferred
 		s.Summary = textutil.Truncate(err.Error(), 2000)

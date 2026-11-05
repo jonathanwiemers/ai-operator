@@ -336,10 +336,9 @@ func MergeEngineUsage(list []EngineUsage, u EngineUsage) []EngineUsage {
 
 // ActiveUsageLimit returns the limit of an engine that is still in effect.
 func (s AgentProjectStatus) ActiveUsageLimit(engine Engine, now time.Time) (UsageLimit, bool) {
-	for _, l := range s.UsageLimits {
-		if l.Engine == engine && l.Until.After(now) {
-			return l, true
-		}
+	active := activeUsageLimits(s.UsageLimits, now)
+	if i := slices.IndexFunc(active, func(l UsageLimit) bool { return l.Engine == engine }); i >= 0 {
+		return active[i], true
 	}
 	return UsageLimit{}, false
 }

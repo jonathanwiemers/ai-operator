@@ -307,7 +307,11 @@ func (r *AgentResearchReconciler) validate(ctx context.Context, res *aiv1.AgentR
 	// the project collects it: a run that ended limited is retried on
 	// another candidate or after the limit.
 	usage := project.DeepCopy()
-	addResearchUsage(&usage.Status, project.Name, []aiv1.AgentResearch{*res}, now)
+	own := []aiv1.AgentResearch{*res}
+	addResearchUsage(&usage.Status, project.Name, own)
+	for _, l := range aiv1.ProjectUsageLimits(nil, own, project.Name, now) {
+		usage.Status.UsageLimits = aiv1.MergeUsageLimit(usage.Status.UsageLimits, l)
+	}
 	plan.choice = research.Choose(usage, candidates, r.maxUsagePercent(), now)
 	if plan.choice.Agent == nil && plan.choice.WaitUntil.IsZero() {
 		return plan, "NoAgent", plan.choice.Reason, nil

@@ -323,37 +323,6 @@ func keys(m map[string]aiv1.AgentTask) []string {
 	return out
 }
 
-func TestUsageLimitsAggregation(t *testing.T) {
-	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
-	mk := func(engine aiv1.Engine, until time.Time) aiv1.AgentTask {
-		var task aiv1.AgentTask
-		task.Status.Run.LimitedEngine = engine
-		task.Status.Run.DeferredUntil = &metav1.Time{Time: until}
-		task.Status.Run.Summary = string(engine) + " limit"
-		return task
-	}
-	limits := usageLimits([]aiv1.AgentTask{
-		mk(aiv1.EngineClaude, now.Add(time.Hour)),
-		mk(aiv1.EngineClaude, now.Add(2*time.Hour)),
-		mk(aiv1.EngineCursor, now.Add(-time.Minute)), // expired
-		{},
-	}, now)
-	if len(limits) != 1 || limits[0].Engine != aiv1.EngineClaude || !limits[0].Until.Time.Equal(now.Add(2*time.Hour)) {
-		t.Fatalf("expected the latest active claude limit only, got %+v", limits)
-	}
-	// A limit a run went around with a fallback holds for the others too.
-	var routed aiv1.AgentTask
-	routed.Status.Run.UsageLimits = []aiv1.UsageLimit{
-		{Engine: aiv1.EngineCursor, Until: metav1.NewTime(now.Add(24 * time.Hour)), Message: "monthly"},
-		{Engine: aiv1.EngineClaude, Until: metav1.NewTime(now.Add(-time.Hour))}, // expired
-	}
-	limits = usageLimits([]aiv1.AgentTask{mk(aiv1.EngineClaude, now.Add(time.Hour)), routed}, now)
-	if len(limits) != 2 || limits[0].Engine != aiv1.EngineClaude || !limits[0].Until.Time.Equal(now.Add(time.Hour)) ||
-		limits[1].Engine != aiv1.EngineCursor || limits[1].Message != "monthly" {
-		t.Fatalf("expected claude's deferral and cursor's routed limit, got %+v", limits)
-	}
-}
-
 func TestEngineUsageKeepsTheFreshestReading(t *testing.T) {
 	at := func(min int) metav1.Time { return metav1.NewTime(time.Date(2026, 10, 28, 12, min, 0, 0, time.UTC)) }
 	reading := func(engine aiv1.Engine, min int, percent int32) aiv1.EngineUsage {

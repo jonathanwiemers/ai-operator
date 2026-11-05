@@ -1571,9 +1571,14 @@ Things to keep in mind with subscriptions:
   `|<unix>` suffix, or the date cursor names, "…reset when your monthly
   cycle ends on 10/13/2026", taken as 00:00 UTC of that day), marks the
   task `Waiting` with `status.run.deferredUntil`, and retries then; without
-  a reset time it backs off exponentially (5m → 1h). The
-  operator collects active limits per engine into the project status, and
-  runners don't call a limited engine at all but wait for the same reset.
+  a reset time it backs off exponentially (5m → 1h). The limit goes into
+  the task's `status.run.usageLimits` with `deferred: true` (the
+  deprecated `status.run.limitedEngine` is still written, and read for
+  tasks an older release deferred). The operator collects active limits
+  per engine into the project status, and runners don't call a limited
+  engine at all but wait for the same reset. Merging limits, which ones
+  are active and the project's view live in `api/v1alpha1`
+  (`usagelimits.go`).
 * A role or profile can name a **fallback** (`fallback: {engine, model,
   effort}`, another engine and an allowed model). When its engine reports
   a limit, or the project already knows of one, and the fallback's engine

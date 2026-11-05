@@ -533,7 +533,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.CurrentStep = ""
 		s.RunCount++
 		s.DeferredUntil = nil
-		s.LimitedEngine = ""
+		s.ClearDeferringLimit()
 		s.Deferrals = 0
 		s.BlockReason = block
 		s.OOMRetries = 0
@@ -587,10 +587,10 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 	// With the fallback limited too, the run resumes on whichever agent is
 	// free first; the project keeps knowing both limits.
 	own, resumeOn := until, agentName(lim.Engine, lim.Model)
+	deferring := aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: own}, Message: textutil.Truncate(lim.Message, 300)}
 	if lim.FallbackEngine != "" {
 		r.usageMu.Lock()
-		r.routed = mergeLimit(r.routed, aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: own}, Message: textutil.Truncate(lim.Message, 300)})
-		r.routed = mergeLimit(r.routed, aiv1.UsageLimit{Engine: lim.FallbackEngine, Until: metav1.Time{Time: lim.FallbackUntil}})
+		r.routed = aiv1.MergeUsageLimit(r.routed, aiv1.UsageLimit{Engine: lim.FallbackEngine, Until: metav1.Time{Time: lim.FallbackUntil}})
 		r.usageMu.Unlock()
 		if lim.FallbackUntil.Before(until) {
 			until, resumeOn = lim.FallbackUntil, agentName(lim.FallbackEngine, lim.FallbackModel)
@@ -614,11 +614,11 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 	routed := r.routed
 	return r.patchRunWithCalls(ctx, func(s *aiv1.RunStatus) {
 		s.UsageLimits = routed
+		s.SetDeferringLimit(deferring)
 		// The request stays pending, but nothing is in progress any more.
 		s.ActiveRunRequest = s.ObservedRunRequest
 		s.CurrentStep = ""
 		s.DeferredUntil = &metav1.Time{Time: until}
-		s.LimitedEngine = lim.Engine
 		s.Deferrals = deferrals
 		s.BlockReason = aiv1.BlockQuota
 		s.LastActivityTime = &metav1.Time{Time: now}

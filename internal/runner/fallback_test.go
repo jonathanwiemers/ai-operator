@@ -335,6 +335,9 @@ func TestFallbackLimitedOnItsOwnCallDefersWithBoth(t *testing.T) {
 	if run.LimitedEngine != aiv1.EngineCursor || run.DeferredUntil == nil || !run.DeferredUntil.Time.Equal(claudeReset) {
 		t.Fatalf("expected a deferral until claude's reset, got %+v", run)
 	}
+	if l, ok := run.DeferringLimit(); !ok || l.Engine != aiv1.EngineCursor || len(run.UsageLimits) != 2 {
+		t.Fatalf("cursor's limit defers the run, claude's stays routed: %+v", run.UsageLimits)
+	}
 	if notes := e.issueNotes(); len(notes) != 1 || !strings.Contains(notes[0], "No agent has usage left") ||
 		!strings.Contains(notes[0], "resumes at 2026-10-16 15:00 UTC on `claude/claude-sonnet-5-5`") {
 		t.Fatalf("expected the no-usage-left note, got %q", notes)

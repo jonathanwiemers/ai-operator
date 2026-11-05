@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import Badge from './Badge.vue'
 import StageBadge from './StageBadge.vue'
 import RelTime from './RelTime.vue'
-import { ciLabel, ciTone, cost } from '../format'
+import { ciLabel, ciTone, cost, limitedEngine } from '../format'
 import type { Task } from '../types'
 
 const props = defineProps<{ task: Task }>()
@@ -36,7 +36,7 @@ const to = computed(() => ({
       <Badge v-else-if="task.status.ci" :tone="ciTone(task.status.ci.state)">CI: {{ ciLabel[task.status.ci.state] }}</Badge>
       <Badge v-if="run.mergeRequestIID" tone="neutral">!{{ run.mergeRequestIID }}</Badge>
       <Badge v-if="(run.blockingFindings ?? 0) > 0" tone="danger">{{ run.blockingFindings }} findings</Badge>
-      <Badge v-if="task.status.phase === 'Waiting' && run.limitedEngine" tone="warning">{{ run.limitedEngine }} limit</Badge>
+      <Badge v-if="task.status.phase === 'Waiting' && limitedEngine(run)" tone="warning">{{ limitedEngine(run) }} limit</Badge>
       <span class="spacer" />
       <span class="meta">{{ cost(run.costUSD) }} · <RelTime :time="run.lastActivityTime ?? task.createdAt" /></span>
     </div>

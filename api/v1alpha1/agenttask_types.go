@@ -872,12 +872,15 @@ type RunStatus struct {
 	// +optional
 	MergeRequestURL string `json:"mergeRequestURL,omitempty"`
 
-	// DeferredUntil is set when the requested run hit a usage or rate limit:
-	// the run is retried after this time.
+	// DeferredUntil is set when the requested run hit a usage or rate limit,
+	// or its agent ran out of memory: the run is retried after this time.
 	// +optional
 	DeferredUntil *metav1.Time `json:"deferredUntil,omitempty"`
 
 	// LimitedEngine is the engine whose limit deferred the run.
+	// Deprecated: the deferring limit is the usageLimits entry with
+	// deferred set. Still written for one release; read only when no entry
+	// is marked (tasks of an older release).
 	// +optional
 	LimitedEngine Engine `json:"limitedEngine,omitempty"`
 
@@ -895,9 +898,10 @@ type RunStatus struct {
 	// +optional
 	EngineUsage []EngineUsage `json:"engineUsage,omitempty"`
 
-	// UsageLimits are the limits this task's runs went around with a
-	// fallback engine instead of being deferred; the operator adds the
-	// active ones to the project's usage limits.
+	// UsageLimits are the limits this task's runs hit: those they went
+	// around with a fallback engine, and the one that deferred the run
+	// (deferred set). The operator adds the active ones to the project's
+	// usage limits.
 	// +optional
 	UsageLimits []UsageLimit `json:"usageLimits,omitempty"`
 

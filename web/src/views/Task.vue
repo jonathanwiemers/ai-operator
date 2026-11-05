@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { hasFeature } from '../api'
 import { useResource } from '../live'
-import { ciLabel, ciTone, cost, phaseTone, shortSHA } from '../format'
+import { ciLabel, ciTone, cost, limitedEngine, phaseTone, shortSHA } from '../format'
 import { queueDone } from '../milestoneQueue'
 import Badge from '../components/Badge.vue'
 import CostChip from '../components/CostChip.vue'
@@ -85,7 +85,7 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
       <div v-if="t.runPending && run.deferredUntil" class="banner warning">
         <strong>Waiting for a usage limit</strong>
         <span>
-          {{ run.limitedEngine || 'The engine' }} hit its limit; the run starts again
+          {{ limitedEngine(run) ?? 'The engine' }} hit its limit; the run starts again
           <RelTime :time="run.deferredUntil" /> (deferred {{ run.deferrals ?? 1 }}×).
         </span>
       </div>

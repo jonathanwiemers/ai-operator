@@ -10,7 +10,6 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -527,16 +526,20 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 	project.Status.ActiveTasks = int32(len(keep))
-	project.Status.UsageLimits = usageLimits(tasks.Items, r.now())
 	project.Status.EngineUsage = engineUsage(project.Status.EngineUsage, tasks.Items)
+	var researches []aiv1.AgentResearch
 	if r.Research {
-		var researches aiv1.AgentResearchList
-		if err := r.List(ctx, &researches, client.InNamespace(project.Namespace)); err != nil {
+		var list aiv1.AgentResearchList
+		if err := r.List(ctx, &list, client.InNamespace(project.Namespace)); err != nil {
 			errs = append(errs, fmt.Errorf("listing the researches: %w", err))
 		} else {
-			addResearchUsage(&project.Status, project.Name, researches.Items, r.now())
+			researches = list.Items
+			addResearchUsage(&project.Status, project.Name, researches)
 		}
 	}
+	// The runners read the limits from the project status, so a limit one
+	// run hit makes the others wait or fall back instead of hitting it again.
+	project.Status.UsageLimits = aiv1.ProjectUsageLimits(tasks.Items, researches, project.Name, r.now())
 	return errors.Join(errs...)
 }
 
@@ -556,36 +559,6 @@ func onAutopilot(st *aiv1.AgentTask, iid int64) bool {
 		}
 	}
 	return false
-}
-
-// usageLimits collects the engines whose limits currently defer runs. The
-// runners read them from the project status, so a limit one task ran into
-// makes the other tasks wait instead of hitting it again.
-func usageLimits(tasks []aiv1.AgentTask, now time.Time) []aiv1.UsageLimit {
-	byEngine := map[aiv1.Engine]aiv1.UsageLimit{}
-	for _, t := range tasks {
-		run := t.Status.Run
-		if run.LimitedEngine == "" || run.DeferredUntil == nil || !run.DeferredUntil.After(now) {
-			continue
-		}
-		if cur, ok := byEngine[run.LimitedEngine]; !ok || run.DeferredUntil.After(cur.Until.Time) {
-			byEngine[run.LimitedEngine] = aiv1.UsageLimit{Engine: run.LimitedEngine, Until: *run.DeferredUntil, Message: run.Summary}
-		}
-	}
-	// Limits runs went around with a fallback hold for the others too.
-	for _, t := range tasks {
-		for _, l := range t.Status.Run.UsageLimits {
-			if cur, ok := byEngine[l.Engine]; l.Until.After(now) && (!ok || l.Until.After(cur.Until.Time)) {
-				byEngine[l.Engine] = l
-			}
-		}
-	}
-	limits := make([]aiv1.UsageLimit, 0, len(byEngine))
-	for _, l := range byEngine {
-		limits = append(limits, l)
-	}
-	sort.Slice(limits, func(i, j int) bool { return limits[i].Engine < limits[j].Engine })
-	return limits
 }
 
 // reportFallbacks sets FallbacksValid: a broken fallback shows before a
@@ -610,10 +583,10 @@ func engineUsage(prev []aiv1.EngineUsage, tasks []aiv1.AgentTask) []aiv1.EngineU
 	return prev
 }
 
-// addResearchUsage adds the usage readings and active limits the current
-// runs of the project's researches reported, like a task's, so factory and
-// research share one view of the budget.
-func addResearchUsage(st *aiv1.AgentProjectStatus, project string, researches []aiv1.AgentResearch, now time.Time) {
+// addResearchUsage adds the usage readings the current runs of the
+// project's researches reported, like a task's, so factory and research
+// share one view of the budget. Their limits are in aiv1.ProjectUsageLimits.
+func addResearchUsage(st *aiv1.AgentProjectStatus, project string, researches []aiv1.AgentResearch) {
 	for _, res := range researches {
 		run := res.Status.Run
 		if res.Spec.ProjectRef != project || run == nil {
@@ -622,18 +595,7 @@ func addResearchUsage(st *aiv1.AgentProjectStatus, project string, researches []
 		for _, u := range run.EngineUsage {
 			st.EngineUsage = aiv1.MergeEngineUsage(st.EngineUsage, u)
 		}
-		for _, l := range run.UsageLimits {
-			i := slices.IndexFunc(st.UsageLimits, func(cur aiv1.UsageLimit) bool { return cur.Engine == l.Engine })
-			switch {
-			case !l.Until.After(now):
-			case i < 0:
-				st.UsageLimits = append(st.UsageLimits, l)
-			case l.Until.After(st.UsageLimits[i].Until.Time):
-				st.UsageLimits[i] = l
-			}
-		}
 	}
-	sort.Slice(st.UsageLimits, func(i, j int) bool { return st.UsageLimits[i].Engine < st.UsageLimits[j].Engine })
 }
 
 // titlePattern compiles milestones.titlePattern; nil when unset.

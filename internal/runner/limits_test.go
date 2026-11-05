@@ -249,6 +249,9 @@ func TestUsageLimitDefersRun(t *testing.T) {
 		run.LimitedEngine != aiv1.EngineClaude || run.Deferrals != 1 || run.BlockReason != aiv1.BlockQuota {
 		t.Fatalf("unexpected run status %+v", run)
 	}
+	if l, ok := run.DeferringLimit(); !ok || l.Engine != aiv1.EngineClaude || !l.Until.Time.Equal(reset) || len(run.UsageLimits) != 1 || !run.UsageLimits[0].Deferred {
+		t.Fatalf("the deferring limit must be in usageLimits, marked deferred: %+v", run.UsageLimits)
+	}
 	if run.ObservedRunRequest != 0 || run.RunCount != 0 || run.ActiveRunRequest != 0 {
 		t.Fatalf("the request must stay pending and nothing in progress: %+v", run)
 	}
@@ -282,7 +285,7 @@ func TestUsageLimitDefersRun(t *testing.T) {
 	}
 	run = e.task().Status.Run
 	if run.LastResult != aiv1.RunResultSucceeded || run.DeferredUntil != nil || run.Deferrals != 0 || run.LimitedEngine != "" || run.RunCount != 1 ||
-		run.BlockReason != "" {
+		run.BlockReason != "" || slices.ContainsFunc(run.UsageLimits, func(l aiv1.UsageLimit) bool { return l.Deferred }) {
 		t.Fatalf("deferral not cleared after a successful run: %+v", run)
 	}
 	if len(e.gl.MRs) != 1 {

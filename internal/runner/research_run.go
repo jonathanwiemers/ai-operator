@@ -106,7 +106,7 @@ func (rr *ResearchRun) Run(ctx context.Context) error {
 		}
 		status, message = store.StatusLimited, lim.Error()
 		storeErr = message
-		report.UsageLimits = mergeLimit(run.UsageLimits,
+		report.UsageLimits = aiv1.MergeUsageLimit(run.UsageLimits,
 			aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: until}, Message: textutil.Truncate(lim.Message, 300)})
 	case err != nil:
 		status, message = store.StatusFailed, err.Error()

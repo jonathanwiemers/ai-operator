@@ -101,8 +101,8 @@ func (r *Runner) routeAround(ctx context.Context, lim *UsageLimitError, role str
 		lim.Engine, until.UTC().Format("2006-01-02 15:04"), role, fb.Engine, fb.Model))
 	r.usageMu.Lock()
 	defer r.usageMu.Unlock()
-	r.routed = mergeLimit(r.routed, l)
-	r.projectStatus.UsageLimits = mergeLimit(r.projectStatus.UsageLimits, l)
+	r.routed = aiv1.MergeUsageLimit(r.routed, l)
+	r.projectStatus.UsageLimits = aiv1.MergeUsageLimit(r.projectStatus.UsageLimits, l)
 	routed := r.routed
 	if err := r.patchRun(ctx, func(s *aiv1.RunStatus) { s.UsageLimits = routed }); err != nil {
 		r.log().Info("could not record the usage limit", "engine", lim.Engine, "error", err.Error())
@@ -120,17 +120,6 @@ func (r *Runner) rememberSession(res *Result) {
 		r.sessionEngines = map[string]aiv1.Engine{}
 	}
 	r.sessionEngines[res.SessionID] = res.Engine
-}
-
-// mergeLimit returns limits with l in place of its engine's limit.
-func mergeLimit(limits []aiv1.UsageLimit, l aiv1.UsageLimit) []aiv1.UsageLimit {
-	out := []aiv1.UsageLimit{l}
-	for _, cur := range limits {
-		if cur.Engine != l.Engine {
-			out = append(out, cur)
-		}
-	}
-	return out
 }
 
 // ranOn is the engine a call ran on: the fallback's, if one stood in.

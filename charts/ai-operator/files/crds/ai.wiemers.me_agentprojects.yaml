@@ -2386,6 +2386,11 @@ spec:
                 items:
                   description: UsageLimit is an engine's active usage or rate limit.
                   properties:
+                    deferred:
+                      description: |-
+                        Deferred marks, in a task's status.run.usageLimits, the limit that
+                        deferred the run (see status.run.deferredUntil for the retry time).
+                      type: boolean
                     engine:
                       description: Engine is the coding agent CLI that runs a role.
                       enum:

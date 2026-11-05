@@ -295,9 +295,9 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if waiting && !blocked && !task.Spec.Suspend {
 		task.Status.Phase = aiv1.TaskPhaseWaiting
-		reason := fmt.Sprintf("%s usage limit", task.Status.Run.LimitedEngine)
-		if task.Status.Run.LimitedEngine == "" {
-			reason = "agent ran out of memory, more memory"
+		reason := "agent ran out of memory, more memory"
+		if l, limited := task.Status.Run.DeferringLimit(); limited {
+			reason = fmt.Sprintf("%s usage limit", l.Engine)
 		}
 		task.Status.Message = fmt.Sprintf("%s; retrying at %s", reason, task.Status.Run.DeferredUntil.UTC().Format(time.RFC3339))
 		if retry := waitFor + time.Second; result.RequeueAfter == 0 || retry < result.RequeueAfter {

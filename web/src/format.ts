@@ -1,4 +1,4 @@
-import type { CIState, Cost, Stage, TaskPhase } from './types'
+import type { CIState, Cost, RunStatus, Stage, TaskPhase } from './types'
 
 // safeURL only lets http(s) links through: URLs come from GitLab via the
 // cluster, and a javascript: URL must never become a link.
@@ -134,6 +134,13 @@ export function costTooltip(c: Cost | undefined | null): string {
   }
   if (s.legacyCostUSD) lines.push(`${cost(s.legacyCostUSD)} from runs before calls were recorded, without tokens`)
   return lines.join('\n')
+}
+
+// limitedEngine is the engine whose usage limit deferred the run: the
+// usageLimits entry marked deferred, or limitedEngine on a task an older
+// release deferred.
+export function limitedEngine(run: Pick<RunStatus, 'usageLimits' | 'limitedEngine'>): string | undefined {
+  return run.usageLimits?.find((l) => l.deferred)?.engine ?? (run.limitedEngine || undefined)
 }
 
 export function shortSHA(sha: string | undefined | null): string {

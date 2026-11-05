@@ -30,6 +30,7 @@ export interface UsageLimit {
   engine: string
   until: string
   message?: string
+  deferred?: boolean
 }
 
 export interface UsageWindow {
@@ -157,7 +158,9 @@ export interface RunStatus {
   mergeRequestIID?: number
   mergeRequestURL?: string
   deferredUntil?: string
+  // Deprecated: limitedEngine(run) reads usageLimits first.
   limitedEngine?: string
+  usageLimits?: UsageLimit[]
   deferrals?: number
   oomRetries?: number
   pushedSHA?: string
