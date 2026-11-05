@@ -319,12 +319,22 @@ starts and changes nothing; each gets one reply in its thread, up to 10 a
 day per author.
 
 `inputs` lists where instructions may be given: `gitlab` (comment commands)
-and `desk`. At least one entry; unset means both. So far only one thing
-follows it: with `gitlab`, owners may also answer a prompt with its option's
-letter as a reply in the thread of its comment
-([commands](commands.md)); without it those threads are not read. `/agent`
-and `/pilot` comments still count either way. Labels, milestone planning and
-human MR review threads stay on GitLab.
+and `desk`. At least one entry; unset means both. With `gitlab`, owners may
+also answer a prompt with its option's letter as a reply in the thread of its
+comment ([commands](commands.md)). With only `desk`:
+
+- `/agent` and `/pilot` comments on issues, merge requests, the tracking issue
+  and closed issues (revisits) start and change nothing. Each gets one reply
+  (once per comment, up to 10 a day per author): "This project takes
+  instructions in the Desk", with a link to the issue's open prompt, else the
+  task's Desk page, else the milestone's.
+- Prompt threads (option letters, `yes`/`no` to proposals) are not read.
+- The implementer does not take `/agent` and `/pilot` comments as
+  instructions, and run reports say what to do in the Desk instead of which
+  comment to write.
+
+Labels, milestone planning and human MR review threads stay on GitLab either
+way.
 
 `assignBot` assigns the bot user to an issue when the operator picks it up and
 the issue has no assignee, so GitLab's milestone page lists it under

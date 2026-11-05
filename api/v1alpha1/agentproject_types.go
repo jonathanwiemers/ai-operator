@@ -244,8 +244,8 @@ type WorkflowSpec struct {
 	// Inputs are the places that take instructions: "gitlab" (comment
 	// commands) and "desk" (prompts and chat in the Desk). Unset means both.
 	// Labels, milestone planning and human merge request review threads stay
-	// on GitLab either way. So far it only gates answering prompts with an
-	// option letter in GitLab threads.
+	// on GitLab either way. Without "gitlab", "/agent" and "/pilot" comments
+	// are not acted on: each gets one reply pointing to the Desk.
 	// +kubebuilder:validation:MinItems=1
 	// +listType=set
 	// +optional

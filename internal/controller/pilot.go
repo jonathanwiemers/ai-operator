@@ -71,23 +71,28 @@ func newestNote(notes ...[]gitlab.Note) int64 {
 // pilotIssueNotes hands the comments to the pilot that were written on an
 // issue with a task or its merge request since the last poll that read
 // them. Comments from before the task (or this feature) are history. A
-// failure is logged and tried again the next time the notes are read.
+// failure is logged and tried again the next time the notes are read. A
+// project without GitLab input hands nothing over: it returns the comments,
+// to be answered with the Desk.
 func (r *AgentProjectReconciler) pilotIssueNotes(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	is gitlab.Issue, mr *gitlab.MergeRequest, task *aiv1.AgentTask, issueNotes, mrNotes []gitlab.Note) {
+	is gitlab.Issue, mr *gitlab.MergeRequest, task *aiv1.AgentTask, issueNotes, mrNotes []gitlab.Note) []pilotNote {
 	src := &task.Spec.Source
 	since := src.LastPilotNoteID
 	src.LastPilotNoteID = max(since, newestNote(issueNotes, mrNotes), 1)
 	if since == 0 {
-		return
+		return nil
 	}
 	notes := pilotNotes(project, spec, issueNotes, since, is.IID, 0)
 	if mr != nil {
 		notes = append(notes, pilotNotes(project, spec, mrNotes, since, 0, mr.IID)...)
 	}
+	if !spec.Workflow.Takes(aiv1.InputGitLab) {
+		return notes
+	}
 	// Option letters in the threads of prompts on the issue.
-	letters := spec.Workflow.Takes(aiv1.InputGitLab) && len(letterReplies(issueNotes, since, project.Status.BotUserID)) > 0
+	letters := len(letterReplies(issueNotes, since, project.Status.BotUserID)) > 0
 	if len(notes) == 0 && !letters {
-		return
+		return nil
 	}
 	st, coord, err := r.milestoneTasks(ctx, project, is.Milestone)
 	if err == nil && letters {
@@ -100,6 +105,7 @@ func (r *AgentProjectReconciler) pilotIssueNotes(ctx context.Context, gl gitlab.
 		log.FromContext(ctx).Info("could not hand comments to the pilot", "issue", is.IID, "error", err.Error())
 		src.LastPilotNoteID = since
 	}
+	return nil
 }
 
 // pilot hands the comments on the tracking issue of an autopilot milestone
@@ -115,14 +121,25 @@ func (a *autopilot) pilot(ctx context.Context, notes []gitlab.Note) {
 }
 
 // pilotTracking hands the comments on a milestone's tracking issue to its
-// pilot. Comments from before the pilot listened there are history.
+// pilot. Comments from before the pilot listened there are history. A
+// project without GitLab input answers them with the Desk, and reads no
+// answers in threads.
 func (r *AgentProjectReconciler) pilotTracking(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st, coord *aiv1.AgentTask, tracking int64, notes []gitlab.Note) error {
 	var since int64
 	if st.Status.Pilot != nil {
 		since = st.Status.Pilot.LastNoteID
 	}
-	if since != 0 {
+	switch {
+	case since == 0:
+	case !spec.Workflow.Takes(aiv1.InputGitLab):
+		if ns := pilotNotes(project, spec, notes, since, tracking, 0); len(ns) > 0 {
+			link := r.deskLink(spec, tracking, tracking, nil, st)
+			for _, n := range ns {
+				r.rejectNote(ctx, gl, project, spec, n, toDesk(link))
+			}
+		}
+	default:
 		if coord == nil && trackingIssue(st, nil) != 0 {
 			return nil // created at the end of this poll
 		}

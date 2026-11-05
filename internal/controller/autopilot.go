@@ -1263,7 +1263,7 @@ func (a *autopilot) commands(ctx context.Context) error {
 		if ok, err := a.gate.counts(ctx, n, a.st.Spec.Owners); err != nil {
 			return err
 		} else if !ok {
-			a.gate.deny(ctx, tn, a.st.Spec.Owners)
+			a.gate.deny(ctx, tn, a.st.Spec.Owners, a.r.deskLink(a.spec, tn.issue, tn.issue, nil, a.st))
 			a.ap.LastCommandNoteID = n.ID
 			continue
 		}

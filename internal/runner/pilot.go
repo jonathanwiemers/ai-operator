@@ -311,15 +311,20 @@ const pilotComments = 20
 
 // pilotAddressed reports whether a human's comment is addressed to the
 // pilot, or a comment of the bot is the pilot's or the operator's answer
-// (they start with 🧭).
+// (they start with 🧭). A project without GitLab input takes no "/agent"
+// comment either: the operator answered them with the Desk.
 func pilotAddressed(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) func(gitlab.Note) bool {
 	bot := ""
 	if *spec.Pilot.Mention {
 		bot = project.Status.BotUsername
 	}
+	desk := !spec.Workflow.Takes(aiv1.InputGitLab)
 	return func(n gitlab.Note) bool {
 		if n.Author.ID == project.Status.BotUserID {
 			return strings.HasPrefix(n.Body, "🧭 ")
+		}
+		if _, ok := command.Pilot(n.Body, spec.Workflow.CommandPrefix, ""); ok && desk {
+			return true
 		}
 		_, ok := command.Pilot(n.Body, spec.Workflow.PilotPrefix, bot)
 		return ok

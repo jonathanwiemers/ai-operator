@@ -846,7 +846,7 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 	default:
 		body += "To try again, "
 	}
-	body += fmt.Sprintf("comment `%s retry` (or move the issue back to `%s`).", wf.CommandPrefix, wf.ReadyLabel)
+	body += fmt.Sprintf("%s (or move the issue back to `%s`).", r.steer(spec, task, fmt.Sprintf("comment `%s retry`", wf.CommandPrefix), "ask for a new run"), wf.ReadyLabel)
 	// On autopilot the pause on the tracking issue mentions the owners; a
 	// blocked issue does not pause it, and pings once it waits for a human.
 	if block != "" && !retry && spec.Notify.Wants(aiv1.NotifyBlocked) || block == "" && spec.Notify.Wants(aiv1.NotifyFailed) && !task.Spec.Autopilot {

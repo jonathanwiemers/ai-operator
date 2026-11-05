@@ -794,7 +794,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		if reply, err = r.applyRouting(ctx, gl, spec, &is, cmdIssue, cmdMR, &task.Spec, project.Status.BotUserID); err != nil {
 			return nil, nil, err
 		}
-		r.pilotIssueNotes(ctx, gl, project, spec, is, mr, task, issueNotes, mrNotes)
+		denied = append(denied, r.pilotIssueNotes(ctx, gl, project, spec, is, mr, task, issueNotes, mrNotes)...)
 		if created {
 			// Comments written before the task existed are context, not commands.
 			src.LastCommandNoteID = latest
@@ -865,8 +865,16 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 			log.FromContext(ctx).Info("could not answer the model and effort commands", "issue", is.IID, "error", err.Error())
 		}
 	}
+	link := ""
+	if gate.desk && len(denied) > 0 {
+		st, _, err := r.milestoneTasks(ctx, project, is.Milestone)
+		if err != nil {
+			log.FromContext(ctx).Info("replying without the milestone's prompts", "issue", is.IID, "error", err.Error())
+		}
+		link = r.deskLink(spec, is.IID, trackingIssue(st, nil), task, st)
+	}
 	for _, n := range denied {
-		gate.deny(ctx, n, owners)
+		gate.deny(ctx, n, owners, link)
 	}
 
 	// Acknowledge in GitLab only after the run request is persisted. If this

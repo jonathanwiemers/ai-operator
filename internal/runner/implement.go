@@ -349,7 +349,8 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		seenNote = max(seenNote, seen)
 		if answer.Status == "in_progress" {
 			outOfSteps = true
-			notices = append(notices, fmt.Sprintf("Stopped after %d steps although the agent was not done, so the MR stays a draft. Comment `%s continue` to go on.", maxSteps, wf.CommandPrefix))
+			notices = append(notices, fmt.Sprintf("Stopped after %d steps although the agent was not done, so the MR stays a draft. %s.", maxSteps,
+				r.steer(spec, task, fmt.Sprintf("Comment `%s continue` to go on", wf.CommandPrefix), "Ask for a new run")))
 		}
 	}
 	if answer.Status == "in_progress" {
@@ -378,7 +379,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			s.done("not resolved, merge undone", "files", left)
 			answer.Status = "needs_input"
 			notices = append(notices, fmt.Sprintf("Could not resolve the merge conflicts with `%s` in %s, so the merge was undone. "+
-				"Merge `%s` into the branch by hand, or comment `%s …` with guidance.", base, codeList(left), base, wf.CommandPrefix))
+				"Merge `%s` into the branch by hand, or %s.", base, codeList(left), base, r.steer(spec, task, fmt.Sprintf("comment `%s …` with guidance", wf.CommandPrefix), "give guidance")))
 		}
 	}
 	if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
@@ -1075,6 +1076,18 @@ func renderReportText(answer ImplementAnswer, findings []Finding, reviewErrs []s
 		fmt.Fprintf(&b, "\n> ⚠️ %s\n", e)
 	}
 	return b.String()
+}
+
+// steer is how an owner steers task, for a report: viaComment for a project
+// that takes GitLab input, else what to do in the Desk, with the task's link.
+func (r *Runner) steer(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, viaComment, inDesk string) string {
+	if spec.Workflow.Takes(aiv1.InputGitLab) {
+		return viaComment
+	}
+	if link := desklink.Task(r.DeskURL, task.Namespace, task.Spec.ProjectRef, task.Name); link != "" {
+		return inDesk + " in the Desk: " + link
+	}
+	return inDesk + " in the Desk"
 }
 
 // emptySummary stands in for a summary the agent did not write.

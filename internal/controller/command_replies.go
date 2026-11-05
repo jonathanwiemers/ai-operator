@@ -12,6 +12,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
+	"github.com/jonathanwiemers/ai-operator/internal/desklink"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 )
@@ -28,9 +29,6 @@ import (
 // poll tries again.
 func (r *AgentProjectReconciler) syncCommandReplies(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	autopilots map[int64]*aiv1.AgentTask, started time.Time) {
-	if !spec.Workflow.Takes(aiv1.InputGitLab) {
-		return
-	}
 	cr := repliesStatus(project)
 	if cr.Since == nil {
 		// Start watching now; comments written before are history.
@@ -70,16 +68,17 @@ func (r *AgentProjectReconciler) syncCommandReplies(ctx context.Context, gl gitl
 			delete(watched, ap.TrackingIssueIID)
 		}
 	}
-	r.replyUnhandled(ctx, gl, project, spec, watched, failed)
+	r.replyUnhandled(ctx, gl, project, spec, watched, autopilots, failed)
 	if !keep {
 		project.Status.CommandReplies.Since = &metav1.Time{Time: started}
 	}
 }
 
 // replyUnhandled answers the commands on the watched issues without an
-// agent label that are newer than the window and not answered yet.
+// agent label that are newer than the window and not answered yet;
+// autopilots are the spec tasks of the autopilot milestones, by IID.
 func (r *AgentProjectReconciler) replyUnhandled(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	watched map[int64]gitlab.Issue, failed func(string, error)) {
+	watched map[int64]gitlab.Issue, autopilots map[int64]*aiv1.AgentTask, failed func(string, error)) {
 	cr := project.Status.CommandReplies
 	after := cr.Since.Add(-revisitClockSkew)
 	bot := project.Status.BotUserID
@@ -113,7 +112,15 @@ func (r *AgentProjectReconciler) replyUnhandled(ctx context.Context, gl gitlab.A
 				continue
 			}
 			text := fmt.Sprintf("🤖 Nothing happens yet: #%d has no `%s` label. Add it to hand #%d to the agent.", iid, wf.ReadyLabel, iid)
-			if command.IsRoutingOnly(n.Body, wf.CommandPrefix) {
+			switch {
+			case !wf.Takes(aiv1.InputGitLab):
+				var st *aiv1.AgentTask
+				if is.Milestone != nil {
+					st = autopilots[is.Milestone.IID]
+				}
+				text = toDesk(r.deskLink(spec, iid, trackingIssue(st, nil), nil, st)) +
+					fmt.Sprintf("\n\nTo hand #%d to the agent, add the `%s` label.", iid, wf.ReadyLabel)
+			case command.IsRoutingOnly(n.Body, wf.CommandPrefix):
 				text = fmt.Sprintf("🤖 Nothing happens yet: #%d has no `%s` label. This is applied once it has.", iid, wf.ReadyLabel)
 			}
 			if !r.mayReply(ctx, project, n) {
@@ -133,6 +140,39 @@ func (r *AgentProjectReconciler) replyUnhandled(ctx context.Context, gl gitlab.A
 			}
 		}
 	}
+}
+
+// toDesk is the reply to an "/agent" or "/pilot" comment of a project that
+// takes no GitLab input (workflow.inputs): link is where to go instead.
+func toDesk(link string) string {
+	if link == "" {
+		return "🤖 Nothing happens: this project takes instructions in the Desk, not in comments (`workflow.inputs`)."
+	}
+	return "🤖 Nothing happens: this project takes instructions in the Desk: " + link
+}
+
+// deskLink is where a comment on issue iid that is not acted on sends its
+// author: the newest open prompt posted on the issue, else the Desk page of
+// its Implement task, else that of its milestone (st). tracking is the
+// milestone's tracking issue. "": no Desk URL, or neither task.
+func (r *AgentProjectReconciler) deskLink(spec aiv1.AgentProjectSpec, iid, tracking int64, task, st *aiv1.AgentTask) string {
+	for _, h := range []*aiv1.AgentTask{task, st} {
+		if h == nil {
+			continue
+		}
+		for _, p := range slices.Backward(h.Status.Prompts) {
+			if n := promptNoteOf(nil, spec, h, p, tracking); !p.State.Closed() && n.iid == iid && !n.mr {
+				return desklink.Prompt(r.DeskURL, h, p.ID)
+			}
+		}
+	}
+	switch {
+	case task != nil:
+		return desklink.Task(r.DeskURL, task.Namespace, task.Spec.ProjectRef, task.Name)
+	case st != nil && st.Spec.Milestone != nil:
+		return desklink.Milestone(r.DeskURL, st.Namespace, st.Spec.ProjectRef, st.Spec.Milestone.IID)
+	}
+	return ""
 }
 
 // replyToMarker ends the bot's reply to a comment.
