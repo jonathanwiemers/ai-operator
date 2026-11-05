@@ -1,4 +1,4 @@
-import type { Stage, StreamEvent, StreamKind } from './types'
+import type { PromptView, Stage, StreamEvent, StreamKind } from './types'
 
 // Filter chips map to kinds sent as kinds= on GET /stream.
 export type StreamFilter = 'all' | 'chat' | 'needs' | 'runs' | 'ci' | 'merged'
@@ -16,13 +16,18 @@ export const historyStreamKinds: StreamKind[] = [
   'closed',
   'autopilot',
   'proposal',
+  'prompt.posted',
+  'prompt.answered',
+  'prompt.closed',
 ]
+
+export const promptStreamKinds: StreamKind[] = ['prompt.posted', 'prompt.answered', 'prompt.closed']
 
 export const chatStreamKinds: StreamKind[] = ['chat.user', 'chat.agent']
 
 export const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKind[] }[] = [
   { id: 'all', label: 'All' },
-  { id: 'chat', label: 'Chat', kinds: ['note', 'proposal'] },
+  { id: 'chat', label: 'Chat', kinds: ['note', 'proposal', ...promptStreamKinds] },
   { id: 'needs', label: 'Needs you', kinds: ['needs'] },
   { id: 'runs', label: 'Runs', kinds: ['run.started', 'run.finished', 'push'] },
   { id: 'ci', label: 'CI & review', kinds: ['ci', 'review'] },
@@ -116,6 +121,28 @@ export function dayEndCursor(dayYYYYMMDD: string): string {
   return `t:${end.toISOString()}`
 }
 
+// mirroredPrompt matches the markers of the bot's comments that mirror a
+// prompt (internal/marker Prompt) and its answer reply.
+const mirroredPrompt = /<!-- ai-operator:prompt(?:-answer)?=Q\d+ /
+
+// isMirroredPrompt: the note is the bot's mirror of a prompt (or of its
+// answer); the stream shows the prompt card instead.
+export function isMirroredPrompt(note: Pick<StreamEvent, 'kind' | 'data'>): boolean {
+  return note.kind === 'note' && mirroredPrompt.test(note.data?.body ?? '')
+}
+
+// promptForEvent looks up the prompt a prompt.posted event is about in the
+// milestone view's prompts; undefined when status dropped it (the event's
+// summary line stands alone then).
+export function promptForEvent(
+  e: Pick<StreamEvent, 'kind' | 'data'>,
+  prompts: PromptView[] | undefined,
+): PromptView | undefined {
+  if (e.kind !== 'prompt.posted') return undefined
+  const id = e.data?.promptID
+  return id ? prompts?.find((p) => p.id === id) : undefined
+}
+
 export type ThreadGroup = {
   kind: 'thread'
   key: string
@@ -137,6 +164,7 @@ export function groupThreads(events: StreamEvent[]): StreamItem[] {
     return `${e.namespace}/${e.project}/${noteable}/${iid}`
   }
 
+  events = events.filter((e) => !isMirroredPrompt(e))
   const groups = new Map<string, StreamEvent[]>()
   for (const e of events) {
     const k = noteKey(e)

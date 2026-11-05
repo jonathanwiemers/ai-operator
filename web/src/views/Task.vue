@@ -4,6 +4,7 @@ import { hasFeature } from '../api'
 import { useResource } from '../live'
 import { ciLabel, ciTone, cost, limitedEngine, phaseTone, shortSHA } from '../format'
 import { queueDone } from '../milestoneQueue'
+import { taskPrompts } from '../promptCard'
 import Badge from '../components/Badge.vue'
 import CostChip from '../components/CostChip.vue'
 import ExtLink from '../components/ExtLink.vue'
@@ -11,6 +12,7 @@ import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
 import LiveTranscript from '../components/LiveTranscript.vue'
 import Conversation from '../components/Conversation.vue'
+import PromptCard from '../components/PromptCard.vue'
 import TaskChat from '../components/TaskChat.vue'
 import TaskCalls from '../components/TaskCalls.vue'
 import NotFound from './NotFound.vue'
@@ -47,6 +49,7 @@ const resultTone = (r: string | undefined) =>
   r === 'Succeeded' ? 'success' : r === 'NeedsInput' || r === 'Deferred' ? 'warning' : r === 'Failed' ? 'danger' : 'muted'
 
 // Desk chat: compose with permissions.chat; read when the chat feature is on.
+const prompts = computed(() => taskPrompts(data.value?.prompts))
 const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('chat'))
 </script>
 
@@ -145,6 +148,13 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
           </div>
         </div>
       </div>
+
+      <section v-if="prompts.length" class="section">
+        <h3>Questions from the agent</h3>
+        <div class="prompts">
+          <PromptCard v-for="p in prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
+        </div>
+      </section>
 
       <section v-if="showChat" class="section">
         <h3>Chat with the agent</h3>
@@ -338,6 +348,11 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
 </template>
 
 <style scoped>
+.prompts {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
 .crumbs {
   display: flex;
   gap: 8px;

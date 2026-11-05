@@ -3,10 +3,12 @@ import { computed, ref } from 'vue'
 import { ApiError, post } from '../../api'
 import { ciLabel, ciTone, clockTime, cost, fullTime, duration, shortSHA, type Tone } from '../../format'
 import { useNow } from '../../live'
-import type { CIState, ProjectDetail, StreamEvent } from '../../types'
+import type { CIState, ProjectDetail, PromptView, StreamEvent } from '../../types'
+import { promptForEvent } from '../../stream'
 import Badge from '../Badge.vue'
 import ExtLink from '../ExtLink.vue'
 import MarkdownBody from './MarkdownBody.vue'
+import PromptCardCompact from '../PromptCardCompact.vue'
 import NoteThread from './NoteThread.vue'
 
 const props = defineProps<{
@@ -14,6 +16,7 @@ const props = defineProps<{
   notes?: StreamEvent[]
   project?: ProjectDetail | null
   canSteer?: boolean
+  prompts?: PromptView[]
 }>()
 const emit = defineEmits<{ posted: [] }>()
 const now = useNow()
@@ -21,6 +24,17 @@ const posting = ref(false)
 const sendError = ref('')
 
 const e = computed(() => props.event)
+const prompt = computed(() => (props.event ? promptForEvent(props.event, props.prompts) : undefined))
+const isPrompt = computed(() => !!e.value?.kind.startsWith('prompt.'))
+
+// promptTo: the stream of the prompt's milestone (or project), at its card.
+function promptTo(ev: StreamEvent) {
+  const hash = '#prompt-' + (ev.data.promptID ?? '')
+  const params = { namespace: ev.namespace, name: ev.project }
+  return ev.milestoneIID
+    ? { name: 'stream-milestone' as const, params: { ...params, iid: ev.milestoneIID }, hash }
+    : { name: 'stream-project' as const, params, hash }
+}
 const taskRunning = computed(() => {
   const ev = e.value
   if (!ev || ev.kind !== 'run.started' || !ev.task || !props.project) return false
@@ -84,6 +98,7 @@ function taskLink(ev: StreamEvent) {
       <template v-else-if="e.kind === 'needs'">!</template>
       <template v-else-if="e.kind === 'proposal'">P</template>
       <template v-else-if="e.kind === 'autopilot'">◇</template>
+      <template v-else-if="isPrompt">?</template>
       <template v-else-if="e.kind === 'chat.user' || e.kind === 'chat.agent'">C</template>
       <template v-else>·</template>
     </div>
@@ -183,6 +198,20 @@ function taskLink(ev: StreamEvent) {
           </button>
         </div>
         <p v-if="sendError" class="err">{{ sendError }}</p>
+      </div>
+
+      <!-- prompt.posted: the compact card while status still has the prompt -->
+      <PromptCardCompact
+        v-else-if="prompt"
+        :namespace="e.namespace"
+        :name="e.project"
+        :prompt="prompt"
+        :to="promptTo(e)"
+      />
+
+      <!-- prompt.posted without its prompt, prompt.answered, prompt.closed: one line -->
+      <div v-else-if="isPrompt" class="compact">
+        <span>{{ e.summary }}</span>
       </div>
 
       <!-- Desk chat -->

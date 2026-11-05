@@ -199,3 +199,16 @@ test('splitPrompts: open first, then closed, each in view order', () => {
 test('promptAnchor: the id GitLab links scroll to', () => {
   assert.equal(promptAnchor('Q4'), 'prompt-Q4')
 })
+
+test('taskPrompts keeps open needsInput prompts and the newest closed one', async () => {
+  const { taskPrompts } = await import('../src/promptCard.ts')
+  const p = (id, kind, state) => ({ id, kind, state })
+  const got = taskPrompts([
+    p('Q5', 'needsInput', 'answered'),
+    p('Q4', 'needsInput', 'open'),
+    p('Q3', 'mainHealth', 'open'),
+    p('Q2', 'needsInput', 'superseded'),
+  ])
+  assert.deepEqual(got.map((x) => x.id), ['Q4', 'Q5'])
+  assert.deepEqual(taskPrompts(undefined), [])
+})

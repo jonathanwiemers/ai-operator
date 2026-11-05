@@ -17,7 +17,7 @@ import {
 test('kindsForFilter maps chips to API kinds', () => {
   assert.equal(kindsForFilter('all'), undefined)
   assert.deepEqual(kindsForFilter('all', true), [...historyStreamKinds, 'chat.user', 'chat.agent'])
-  assert.deepEqual(kindsForFilter('chat'), ['note', 'proposal'])
+  assert.deepEqual(kindsForFilter('chat'), ['note', 'proposal', 'prompt.posted', 'prompt.answered', 'prompt.closed'])
   assert.deepEqual(kindsForFilter('runs'), ['run.started', 'run.finished', 'push'])
   assert.deepEqual(kindsForFilter('ci'), ['ci', 'review'])
   assert.deepEqual(kindsForFilter('merged'), ['merged', 'closed'])
@@ -104,4 +104,43 @@ test('groupThreads keeps separate issues apart', () => {
   assert.equal(items.length, 2)
   assert.equal(items[0].notes[0].issueIID, 2)
   assert.equal(items[1].notes[0].issueIID, 1)
+})
+
+test('prompt kinds are history kinds and show under the Chat chip', async () => {
+  const { promptStreamKinds } = await import('../src/stream.ts')
+  assert.deepEqual(promptStreamKinds, ['prompt.posted', 'prompt.answered', 'prompt.closed'])
+  for (const k of promptStreamKinds) {
+    assert.ok(historyStreamKinds.includes(k))
+    assert.equal(filterForKind(k), 'chat')
+  }
+})
+
+test('mirrored prompt notes are dropped from threads', async () => {
+  const { isMirroredPrompt } = await import('../src/stream.ts')
+  const note = (id, body) => ({
+    id, at: '2026-01-01T10:0' + id + ':00Z', namespace: 'n', project: 'p', issueIID: 5,
+    kind: 'note', summary: '', data: { body, bot: true, noteable: 'issue' },
+  })
+  const mirror = note(1, 'Question?\n<!-- ai-operator:prompt=Q3 posted=1700000000 -->')
+  const reply = note(2, 'Answered\n<!-- ai-operator:prompt-answer=Q3 posted=1700000000 -->')
+  const human = note(3, 'looks fine')
+  assert.ok(isMirroredPrompt(mirror))
+  assert.ok(isMirroredPrompt(reply))
+  assert.ok(!isMirroredPrompt(human))
+  assert.ok(!isMirroredPrompt({ kind: 'push', data: { body: mirror.data.body } }))
+  const items = groupThreads([mirror, reply, human])
+  assert.equal(items.length, 1)
+  assert.equal(items[0].kind, 'thread')
+  assert.deepEqual(items[0].notes.map((n) => n.id), [3])
+  assert.deepEqual(groupThreads([mirror]), [])
+})
+
+test('promptForEvent finds the prompt by id, else falls back to the summary', async () => {
+  const { promptForEvent } = await import('../src/stream.ts')
+  const prompts = [{ id: 'Q1' }, { id: 'Q2' }]
+  const posted = (id) => ({ kind: 'prompt.posted', data: { promptID: id } })
+  assert.equal(promptForEvent(posted('Q2'), prompts), prompts[1])
+  assert.equal(promptForEvent(posted('Q9'), prompts), undefined)
+  assert.equal(promptForEvent(posted('Q1'), undefined), undefined)
+  assert.equal(promptForEvent({ kind: 'prompt.answered', data: { promptID: 'Q1' } }, prompts), undefined)
 })

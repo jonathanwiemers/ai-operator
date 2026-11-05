@@ -451,6 +451,7 @@ function showDay(i: number): string | null {
             v-else
             :event="item.event"
             :project="project"
+            :prompts="milestone?.prompts"
             :can-steer="canSteer"
             @posted="loadInitial"
           />

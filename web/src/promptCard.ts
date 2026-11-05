@@ -148,3 +148,12 @@ export function splitPrompts(prompts: PromptView[] | undefined): { open: PromptV
   const list = prompts || []
   return { open: list.filter(promptOpen), closed: list.filter((p) => !promptOpen(p)) }
 }
+
+// taskPrompts: the prompts shown above a task's chat: the open ones, then
+// the newest closed one, so a card that was just answered stays and shows
+// its answer instead of vanishing. Only needsInput prompts (the agent's
+// questions); the view sends them newest first.
+export function taskPrompts(prompts: PromptView[] | undefined): PromptView[] {
+  const { open, closed } = splitPrompts((prompts || []).filter((p) => p.kind === 'needsInput'))
+  return closed.length ? [...open, closed[0]!] : open
+}

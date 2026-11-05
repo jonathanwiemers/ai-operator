@@ -521,6 +521,9 @@ export type StreamKind =
   | 'closed'
   | 'autopilot'
   | 'proposal'
+  | 'prompt.posted'
+  | 'prompt.answered'
+  | 'prompt.closed'
   | 'chat.user'
   | 'chat.agent'
 
@@ -563,6 +566,11 @@ export interface StreamEvent {
     phase?: string
     proposalID?: number
     proposalState?: string
+    // prompt.* events.
+    promptID?: string
+    promptKind?: string
+    optionLabel?: string
+    by?: string
     // Desk chat (chat.user / chat.agent).
     role?: ChatRole
     kind?: ChatKind
