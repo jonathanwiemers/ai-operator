@@ -2,7 +2,8 @@
 import { computed } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { pauseEndsBy, pauseTitle } from '../pauseCard'
-import type { PauseKind } from '../types'
+import type { PauseKind, PromptView } from '../types'
+import PromptCardCompact from './PromptCardCompact.vue'
 
 // PauseCardCompact is the pause card's short form for the Inbox, the project
 // board and the stream: why the autopilot paused, over which issue, what ends
@@ -16,6 +17,11 @@ const props = defineProps<{
   milestoneTitle?: string
   // waiting: the issue a run is working on now (the pause ends by itself).
   waiting?: number
+  // prompt: the open question of this pause (mainRed, budget), shown as its
+  // compact card; namespace and projectName say where it is answered.
+  prompt?: PromptView
+  namespace?: string
+  projectName?: string
   to: RouteLocationRaw
 }>()
 
@@ -39,6 +45,13 @@ const reasonText = computed(() => (props.reason || '').trim())
     <p v-else-if="!kind" class="reason muted">Waiting for a human.</p>
     <p v-if="waiting" class="waiting">A run is working on #{{ waiting }} now.</p>
     <p v-if="endsBy" class="faint ends">{{ endsBy }}</p>
+    <PromptCardCompact
+      v-if="prompt && namespace && projectName"
+      :namespace="namespace"
+      :name="projectName"
+      :prompt="prompt"
+      :to="to"
+    />
   </section>
 </template>
 

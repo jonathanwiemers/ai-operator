@@ -11,6 +11,7 @@ import SpendPanel from '../components/SpendPanel.vue'
 import StreamComposer from '../components/StreamComposer.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import { live, useResource } from '../live'
+import { pausePrompt } from '../pauseCard'
 import {
   dayEndCursor,
   dayLabel,
@@ -404,6 +405,9 @@ function showDay(i: number): string | null {
             :issue="paused.autopilot?.pausedFor"
             :milestone-title="paused.title"
             :waiting="paused.autopilot?.waitingFor"
+            :prompt="pausePrompt(paused.autopilot?.pauseKind, paused.prompts)"
+            :namespace="namespace"
+            :project-name="name"
             :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(paused.iid) } }"
           />
           <StreamComposer

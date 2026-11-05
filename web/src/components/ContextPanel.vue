@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { hasFeature } from '../api'
 import { cost } from '../format'
 import { queueDone } from '../milestoneQueue'
+import { pausePrompt } from '../pauseCard'
 import { promptAnchor, splitPrompts } from '../promptCard'
 import type { HistoryResponse, InboxItem, MilestoneView, QueueItem } from '../types'
 import AskPilot from './AskPilot.vue'
@@ -31,7 +32,16 @@ const done = computed(() => queueDone(queue.value))
 const total = computed(() => queue.value.length)
 const paused = computed(() => props.full && props.milestone?.autopilot?.phase === 'Paused')
 const showPilotChat = computed(() => !!props.milestone?.permissions?.chat || hasFeature('chat'))
-const prompts = computed(() => splitPrompts(props.milestone?.prompts))
+// The pause card shows its own prompt (mainRed, budget): the list leaves it out
+// so one prompt is not two answer widgets with the same anchor.
+const pauseOwn = computed(() =>
+  paused.value ? pausePrompt(props.milestone?.autopilot?.pauseKind, props.milestone?.prompts) : undefined,
+)
+const prompts = computed(() => {
+  const s = splitPrompts(props.milestone?.prompts)
+  const own = pauseOwn.value
+  return own ? { open: s.open.filter((p) => p.id !== own.id), closed: s.closed } : s
+})
 // A Desk link to a closed prompt unfolds the closed ones.
 const route = useRoute()
 const closedLinked = computed(() => prompts.value.closed.some((p) => route.hash === `#${promptAnchor(p.id)}`))

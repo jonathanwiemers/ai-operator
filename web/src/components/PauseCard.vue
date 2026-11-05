@@ -8,6 +8,7 @@ import {
   pauseActions,
   pauseCommand,
   pauseEndsBy,
+  pausePrompt,
   pauseTitle,
   reviewLimitLines,
   type CommandAnswer,
@@ -16,6 +17,7 @@ import {
 } from '../pauseCard'
 import type { MilestoneView } from '../types'
 import ExtLink from './ExtLink.vue'
+import PromptCard from './PromptCard.vue'
 import RelTime from './RelTime.vue'
 
 // PauseCard shows why a milestone's autopilot paused and the actions that
@@ -43,6 +45,10 @@ const issueURL = computed(() =>
   props.milestone.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${issue.value}`),
 )
 const pipelineURL = computed(() => implTask.value?.status.ci?.pipelineURL)
+
+// prompt: the open question this pause asks (mainRed, budget); it replaces
+// the bare actions.
+const prompt = computed(() => pausePrompt(kind.value, props.milestone.prompts))
 
 const canChat = computed(() => !!props.milestone.permissions?.chat)
 const canMerge = computed(() => !!props.milestone.permissions?.merge)
@@ -207,7 +213,9 @@ watch(
       Merge anyway was given by {{ override.by }} <RelTime :time="override.at" />.
     </p>
 
-    <div v-if="shown.length" class="row actions">
+    <PromptCard v-if="prompt" :namespace="namespace" :name="name" :prompt="prompt" />
+
+    <div v-else-if="shown.length" class="row actions">
       <template v-for="s in shown" :key="s.action.id">
         <RouterLink v-if="s.type === 'task'" class="btn" :to="{ name: 'task', params: { namespace, name, task: s.task } }">
           {{ s.action.label }}
@@ -254,7 +262,7 @@ watch(
       <span v-else class="text"> {{ answer.text }}</span>
     </p>
     <p v-if="postError" class="err">{{ postError }}</p>
-    <p v-if="commandsHidden" class="faint">
+    <p v-if="commandsHidden && !prompt" class="faint">
       Commands need Desk chat, or <code>/agent …</code> on the
       <ExtLink v-if="milestone.tracking" :href="milestone.tracking.webURL">tracking issue</ExtLink>
       <template v-else>tracking issue</template>.

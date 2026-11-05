@@ -5,6 +5,7 @@ import {
   pauseActions,
   pauseCommand,
   pauseEndsBy,
+  pausePrompt,
   pauseTitle,
   reviewLimitLines,
   commandAnswer,
@@ -238,4 +239,32 @@ test('commandAnswer: pending, answered, redacted and failed', () => {
     state: 'failed',
     reason: 'The command failed.',
   })
+})
+
+test('pausePrompt: the open prompt of mainRed and budget pauses', () => {
+  const main = { id: 'Q1', kind: 'mainHealth', state: 'open' }
+  const budget = { id: 'Q2', kind: 'budget', state: 'open' }
+  const prompts = [main, budget]
+  assert.equal(pausePrompt('mainRed', prompts), main)
+  assert.equal(pausePrompt('budget', prompts), budget)
+})
+
+test('pausePrompt: no open prompt of the kind falls back to the card', () => {
+  assert.equal(pausePrompt('mainRed', undefined), undefined)
+  assert.equal(pausePrompt('mainRed', []), undefined)
+  assert.equal(pausePrompt('mainRed', [{ id: 'Q1', kind: 'mainHealth', state: 'answered' }]), undefined)
+  assert.equal(pausePrompt('mainRed', [{ id: 'Q2', kind: 'budget', state: 'open' }]), undefined)
+  assert.deepEqual(ids('mainRed'), ['resume'])
+})
+
+test('pausePrompt: other kinds show no prompt and keep their actions', () => {
+  const prompts = [
+    { id: 'Q1', kind: 'mainHealth', state: 'open' },
+    { id: 'Q2', kind: 'budget', state: 'open' },
+  ]
+  for (const kind of allKinds.filter((k) => k !== 'mainRed' && k !== 'budget')) {
+    assert.equal(pausePrompt(kind, prompts), undefined, kind)
+  }
+  assert.equal(pausePrompt(undefined, prompts), undefined)
+  assert.deepEqual(ids('owner'), ['resume'])
 })

@@ -1,5 +1,5 @@
 import type { ChatCommand } from './chatState'
-import type { ChatMessage, PauseKind, ReviewError } from './types'
+import type { ChatMessage, PauseKind, PromptView, ReviewError } from './types'
 
 // PauseActionID names one button of the pause card.
 export type PauseActionID =
@@ -77,6 +77,23 @@ export function pauseActions(kind: PauseKind | undefined, issue?: number): Pause
   return actions.map((a) =>
     a.id === 'openChat' && issue ? { ...a, label: `Open #${issue} chat` } : { ...a },
   )
+}
+
+// pausePromptKinds: the pause kinds that need a choice, and the kind of the
+// prompt that asks it.
+const pausePromptKinds: Partial<Record<string, string>> = {
+  mainRed: 'mainHealth',
+  budget: 'budget',
+}
+
+// pausePrompt is the open prompt a pause shows instead of its bare actions:
+// the newest open mainHealth prompt for mainRed, budget for budget. Other
+// kinds, and a pause without one (not posted yet, or answered), get
+// undefined and keep the card's actions.
+export function pausePrompt(kind: PauseKind | undefined, prompts: PromptView[] | undefined): PromptView | undefined {
+  const want = kind ? pausePromptKinds[kind] : undefined
+  if (!want) return undefined
+  return (prompts || []).find((p) => p.kind === want && (!p.state || p.state === 'open'))
 }
 
 export interface PauseContext {
