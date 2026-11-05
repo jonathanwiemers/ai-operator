@@ -829,7 +829,7 @@ func TestPilotOutsideRunCapacity(t *testing.T) {
 		t.Fatalf("pilot must start while an implementer runs, phase %s: %s", e.task("pilot").Status.Phase, e.task("pilot").Status.Message)
 	}
 	e.reconcile("b")
-	if got := e.task("b").Status.Message; got != "waiting for capacity (1/1 runs in flight)" {
+	if got := e.task("b").Status.Message; got != "waiting for capacity (1/1 runs in flight), next in line" {
 		t.Fatalf("second implementer: message %q, want it to wait for the first only", got)
 	}
 }

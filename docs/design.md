@@ -408,6 +408,19 @@ stateDiagram-v2
   session with the full issue thread and the agent notes as context.
 * **Blocked**: `maxRunsPerTask` reached – a guard against loops.
 * `maxConcurrentRuns` caps token-consuming runs per project; extra runs queue.
+  The queue has an order, `aiv1.QueueLess`: the main-red fix
+  (`spec.queueLane: urgent`, set and cleared by the project controller),
+  then tasks without a milestone, then the lowest milestone iid, then the
+  older task. Before a task without a pod takes a slot, the reconciler lists
+  the project's tasks once; if a task in phase `Queued` that still wants a
+  slot (not suspended, deferred, budget-stopped or blocked) ranks ahead of it,
+  it queues too, even with a free slot. With capacity N the top N start
+  together. A slot is never left idle (a younger milestone runs while the older
+  one has nothing queued), a run in progress is never preempted, and pilots
+  stay outside. A run that lost its pod and a chat turn without a pending run
+  skip the rank check and only need a free slot. A queued task whose start
+  fails with an error leaves the queue (`Pending`), so it holds nobody back.
+  The `Queued` message names the place and the task ahead.
   Pilots (`Coordinate` tasks) neither count toward it nor wait for it: one
   per planned milestone, light model, no builds or pushes, capped by
   `pilot.maxBudgetUSD`.

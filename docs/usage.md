@@ -825,6 +825,28 @@ If the project uses merged-results pipelines, also turn on *Pipelines must
 succeed*: autopilot follows the pipeline of the pushed commit, and a commit
 without any pipeline counts as green after `ci.noPipelineTimeout`.
 
+### Several milestones at once
+
+Each autopilot milestone has its own queue, but all of a project's runs share
+`maxConcurrentRuns`. When a slot frees up, the waiting task that ranks first
+takes it:
+
+1. the fix of a red default branch ([main health](#main-health));
+2. a task without a milestone: an issue somebody labelled by hand;
+3. a task of the **oldest milestone** (lowest milestone number first);
+4. within one rank, the older task.
+
+So a milestone is finished before the next one starts, as far as the slot
+allows. A younger milestone still runs in the gaps: while the older one waits
+for CI, is paused (`/agent pause`) or has nothing queued, its task takes the
+slot. To let a younger milestone go first, pause the older one; a run of the
+older milestone that is already queued still goes first. A run in progress is
+never stopped for a higher rank, and it keeps its place when its pod is lost.
+A chat turn needs a free slot but does not wait for higher ranks, and pilots
+are outside the queue. A queued task says in its message who is ahead of it, for example
+*waiting for capacity (1/1 runs in flight), 2nd in line behind #140
+(milestone %6)*.
+
 ### The merge gate
 
 An MR is merged only when all of these hold:
@@ -1826,8 +1848,9 @@ run that finishes resets the count. Suspending a task (`spec.suspend`)
 mid-run stops its pod too, but does not count: the run starts again when the
 task is resumed.
 
-Task phases: `Pending`, `Queued` (waiting for `maxConcurrentRuns`; pilots
-never queue), `Running`, `Waiting` (paused by a usage limit), `Idle`,
+Task phases: `Pending`, `Queued` (waiting for `maxConcurrentRuns` or for
+a task that ranks ahead, see [several milestones](#several-milestones-at-once);
+pilots never queue), `Running`, `Waiting` (paused by a usage limit), `Idle`,
 `Hibernated`, `Archived`, `Blocked` (hit `maxRunsPerTask`).
 
 To force a task to stop its pod, set `spec.suspend: true` on the AgentTask. To

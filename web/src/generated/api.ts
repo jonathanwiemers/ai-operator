@@ -1933,6 +1933,16 @@ export const TaskTypeImplement = "Implement";
 export const TaskTypeCoordinate = "Coordinate";
 export type TaskType = typeof TaskTypeSpec | typeof TaskTypeImplement | typeof TaskTypeCoordinate;
 /**
+ * QueueLane is the lane of the project's run queue a task waits in.
+ * +kubebuilder:validation:Enum=urgent
+ */
+export type QueueLane = string;
+/**
+ * QueueLaneUrgent goes ahead of every other task: the fix of a red default
+ * branch.
+ */
+export const QueueLaneUrgent: QueueLane = "urgent";
+/**
  * AgentTaskSpec is the desired state of an AgentTask. It is owned by the
  * operator: the project controller creates tasks and bumps RunRequest
  * whenever GitLab asks for (more) work.
@@ -2013,6 +2023,12 @@ export interface AgentTaskSpec {
    * +optional
    */
   budgetStop?: boolean;
+  /**
+   * QueueLane is set by the operator while the task carries the fix of a
+   * red default branch (urgent). Empty: the task queues by its milestone.
+   * +optional
+   */
+  queueLane?: QueueLane;
   /**
    * Source records which GitLab state the operator has already turned into
    * run requests, so that every change triggers exactly one run.

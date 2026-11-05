@@ -17,6 +17,14 @@ const (
 	TaskTypeCoordinate TaskType = "Coordinate"
 )
 
+// QueueLane is the lane of the project's run queue a task waits in.
+// +kubebuilder:validation:Enum=urgent
+type QueueLane string
+
+// QueueLaneUrgent goes ahead of every other task: the fix of a red default
+// branch.
+const QueueLaneUrgent QueueLane = "urgent"
+
 // AgentTaskSpec is the desired state of an AgentTask. It is owned by the
 // operator: the project controller creates tasks and bumps RunRequest
 // whenever GitLab asks for (more) work.
@@ -83,6 +91,11 @@ type AgentTaskSpec struct {
 	// waits until the flag is cleared. Desk chat turns still run.
 	// +optional
 	BudgetStop bool `json:"budgetStop,omitempty"`
+
+	// QueueLane is set by the operator while the task carries the fix of a
+	// red default branch (urgent). Empty: the task queues by its milestone.
+	// +optional
+	QueueLane QueueLane `json:"queueLane,omitempty"`
 
 	// Source records which GitLab state the operator has already turned into
 	// run requests, so that every change triggers exactly one run.

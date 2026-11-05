@@ -384,11 +384,15 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			lane = st
 		}
 	}
-	mainRed := int64(0)
+	mainRed, urgentIssue := int64(0), int64(0)
 	// Handed over by autoFix or by an owner: only agent-labelled issues are
-	// listed below.
-	if mh := r.freshMainHealth(spec, project.Status.MainHealth, mainHealthStale); lane != nil && *spec.MainHealth.FreezeAutopilot && mh != nil {
-		mainRed = mh.IssueIID
+	// listed below. The fix goes first in the run queue with or without a
+	// lane.
+	if mh := r.freshMainHealth(spec, project.Status.MainHealth, mainHealthStale); mh != nil {
+		urgentIssue = mh.IssueIID
+		if lane != nil && *spec.MainHealth.FreezeAutopilot {
+			mainRed = mh.IssueIID
+		}
 	}
 
 	// Issues with an agent label -> implement tasks.
@@ -439,7 +443,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 				description = is.Milestone.Description
 			}
 		}
-		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], autopilot, pause, budgetStop, owners(description), ownerSubjects(description))
+		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], autopilot, pause, budgetStop, is.IID == urgentIssue, owners(description), ownerSubjects(description))
 		if err != nil {
 			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
 			// Keep the existing task, so the cleanup below does not delete
@@ -771,7 +775,7 @@ func (r *AgentProjectReconciler) specRetryDue(task *aiv1.AgentTask, after time.D
 // turns "moved to ready" and "/agent" comments into run requests. It returns
 // the task's merge request too, if it has one.
 func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, pause string, budgetStop bool, owners, ownerSubjects []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
+	is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, pause string, budgetStop, urgent bool, owners, ownerSubjects []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -793,6 +797,12 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	task.Spec.Owners, task.Spec.OwnerSubjects = owners, ownerSubjects
 	task.Spec.Source.AutopilotPause = pause
 	task.Spec.BudgetStop = budgetStop
+	// The main-red fix goes ahead in the run queue; the lane is cleared on
+	// the poll after the fix is over.
+	task.Spec.QueueLane = ""
+	if urgent {
+		task.Spec.QueueLane = aiv1.QueueLaneUrgent
+	}
 
 	ready := is.HasLabel(wf.ReadyLabel)
 	src := &task.Spec.Source

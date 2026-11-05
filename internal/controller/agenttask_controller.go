@@ -95,7 +95,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	pod, err := r.getPod(ctx, &task)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, r.leaveQueue(ctx, &task, orig, err)
 	}
 	pvc, err := r.getClaim(ctx, &task)
 	if err != nil {
@@ -175,7 +175,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 			logger.Info("creating workspace", "pvc", pvc.Name)
 			if err := r.Create(ctx, pvc); err != nil && !apierrors.IsAlreadyExists(err) {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, r.leaveQueue(ctx, &task, orig, err)
 			}
 		}
 		if pod == nil && spec.Agents.Image == "" {
@@ -189,13 +189,18 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			// milestone, light model, no builds or pushes, and an answer
 			// on the Desk must not wait behind an implementer.
 			if task.Spec.Type != aiv1.TaskTypeCoordinate {
-				running, err := r.runningTasks(ctx, &task)
+				q, err := r.queueCheck(ctx, &task, lc.MaxRunsPerTask)
 				if err != nil {
 					return ctrl.Result{}, err
 				}
-				if running >= int(spec.MaxConcurrentRuns) {
+				// A run that lost its pod keeps its place, and somebody is
+				// waiting for a chat turn: they only need a free slot.
+				if inProgress || hasChat && !pending {
+					q.ahead = nil
+				}
+				if !q.admit(int(spec.MaxConcurrentRuns)) {
 					task.Status.Phase = aiv1.TaskPhaseQueued
-					task.Status.Message = fmt.Sprintf("waiting for capacity (%d/%d runs in flight)", running, spec.MaxConcurrentRuns)
+					task.Status.Message = queueMessage(q.running, spec.MaxConcurrentRuns, q.ahead)
 					result.RequeueAfter = queueRetry
 					break
 				}
@@ -206,7 +211,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 			logger.Info("starting agent pod", "pod", pod.Name)
 			if err := r.Create(ctx, pod); err != nil && !apierrors.IsAlreadyExists(err) {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, r.leaveQueue(ctx, &task, orig, err)
 			}
 		}
 		task.Status.Phase = aiv1.TaskPhaseRunning
@@ -400,8 +405,6 @@ func (r *AgentTaskReconciler) getClaim(ctx context.Context, task *aiv1.AgentTask
 	return &pvc, nil
 }
 
-// runningTasks counts the other tasks of the same project that currently have
-// a run in flight.
 // freshNeedsPod reports whether the task, read from the API server, needs its
 // pod for a pending run, an in-progress run, or unanswered chat messages.
 func (r *AgentTaskReconciler) freshNeedsPod(ctx context.Context, task *aiv1.AgentTask) (bool, error) {
@@ -428,21 +431,6 @@ func (r *AgentTaskReconciler) runInProgress(ctx context.Context, task *aiv1.Agen
 		return false, client.IgnoreNotFound(err)
 	}
 	return fresh.Status.Run.ActiveRunRequest > fresh.Status.Run.ObservedRunRequest, nil
-}
-
-func (r *AgentTaskReconciler) runningTasks(ctx context.Context, task *aiv1.AgentTask) (int, error) {
-	var tasks aiv1.AgentTaskList
-	if err := r.List(ctx, &tasks, client.InNamespace(task.Namespace), client.MatchingLabels{LabelProject: task.Spec.ProjectRef}); err != nil {
-		return 0, err
-	}
-	n := 0
-	for i := range tasks.Items {
-		t := &tasks.Items[i]
-		if t.Name != task.Name && t.Status.Phase == aiv1.TaskPhaseRunning && t.Spec.Type != aiv1.TaskTypeCoordinate {
-			n++
-		}
-	}
-	return n, nil
 }
 
 // tasksOfProject maps an AgentProject to its tasks, so changes to the project

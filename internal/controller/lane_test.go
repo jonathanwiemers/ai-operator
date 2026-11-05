@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -207,5 +208,34 @@ func TestStaleMainHealthTakesTheFixOffAutopilot(t *testing.T) {
 	e.reconcile()
 	if e.laneTask(99).Spec.Autopilot {
 		t.Fatal("a stale main health drives no lane, so its issue runs in the normal flow")
+	}
+}
+
+func TestMainRedFixTaskGoesInTheUrgentQueueLane(t *testing.T) {
+	e := laneEnv(t, true)
+	if task := e.laneTask(99); task == nil || task.Spec.QueueLane != aiv1.QueueLaneUrgent {
+		t.Fatalf("the fix queues in the urgent lane: %+v", task)
+	}
+	if task := e.laneTask(1); task == nil || task.Spec.QueueLane != "" {
+		t.Fatalf("a milestone task queues by its milestone: %+v", task)
+	}
+
+	// Green again: the lane is cleared while the task lives on.
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthGreen})
+	e.reconcile()
+	if task := e.laneTask(99); task == nil || task.Spec.QueueLane != "" {
+		t.Fatalf("the lane ends with the red episode: %+v", task)
+	}
+}
+
+func TestMainRedFixIsUrgentWithoutAnAutopilotMilestone(t *testing.T) {
+	e := newProjectEnv(t)
+	e.r.Now = func() time.Time { return e.gl.Clock }
+	e.setMainHealth(aiv1.MainHealthSpec{AutoFix: true})
+	e.gl.AddIssue(99, "🚑 `main` is red: `test`", "ai-generated", "ci::main-red", "agent::ready")
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthRed, IssueIID: 99, FailedJobs: []string{"test"}})
+	e.reconcile()
+	if task := e.laneTask(99); task == nil || task.Spec.QueueLane != aiv1.QueueLaneUrgent {
+		t.Fatalf("the fix is urgent with no milestone to freeze: %+v", task)
 	}
 }

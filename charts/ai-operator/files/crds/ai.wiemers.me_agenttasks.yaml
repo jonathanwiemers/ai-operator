@@ -158,6 +158,13 @@ spec:
                 description: ProjectRef is the name of the AgentProject in the same
                   namespace.
                 type: string
+              queueLane:
+                description: |-
+                  QueueLane is set by the operator while the task carries the fix of a
+                  red default branch (urgent). Empty: the task queues by its milestone.
+                enum:
+                - urgent
+                type: string
               rules:
                 description: |-
                   Rules are the standing rules of the milestone: its description's
