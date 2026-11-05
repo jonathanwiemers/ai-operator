@@ -32,6 +32,13 @@ func phaseRun(t *testing.T, e *implementEnv, engine Engine) *implementRun {
 	spec := project.Spec.WithDefaults()
 	r.projectSpec = spec
 	r.run = newRunLog(r.Log, task)
+	// The progress comment is edited by a timer goroutine: stop it, so no
+	// edit outlives the test.
+	t.Cleanup(func() {
+		if r.progress != nil {
+			_ = r.progress.close(context.Background(), "")
+		}
+	})
 	return r.newImplementRun(e.gl, task, project, spec)
 }
 
@@ -419,7 +426,10 @@ func TestImplementPostDecisionsAndHandoff(t *testing.T) {
 // after the run.
 func reports(e *implementEnv, run *implementRun) []string {
 	var bodies []string
-	for _, n := range e.gl.MRNotes[1] {
+	// Listed under the fake's lock: the progress timer may edit a note
+	// meanwhile.
+	notes, _ := e.gl.ListMergeRequestNotes(context.Background(), "", 1)
+	for _, n := range notes {
 		if !isProgress(n, run.botID) {
 			bodies = append(bodies, n.Body)
 		}

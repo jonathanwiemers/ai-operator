@@ -205,8 +205,13 @@ func TestGrantsRevokeHistoryFromOldWriters(t *testing.T) {
 	role := "agents.research_writer_" + randomHex(t)
 	writer := storetest.Role(t, role)
 	id := pgx.Identifier{role}.Sanitize()
-	exec(t, s.Pool(), "GRANT USAGE ON SCHEMA "+pgx.Identifier{schemaOf(t, s)}.Sanitize()+" TO "+id)
-	exec(t, s.Pool(), "ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER GRANT SELECT, INSERT, UPDATE ON TABLES TO "+id)
+	sc := pgx.Identifier{schemaOf(t, s)}.Sanitize()
+	exec(t, s.Pool(), "GRANT USAGE ON SCHEMA "+sc+" TO "+id)
+	// IN SCHEMA, as earlier versions granted it: without it the default
+	// privilege covers the tables that parallel test packages create in
+	// their schemas, and DROP ROLE on cleanup fails when one is created
+	// between DROP OWNED and DROP ROLE.
+	exec(t, s.Pool(), "ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA "+sc+" GRANT SELECT, INSERT, UPDATE ON TABLES TO "+id)
 	exec(t, s.Pool(), "DROP TABLE history_events")
 	exec(t, s.Pool(), "DROP TABLE agent_calls")
 	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version IN (2, 4)")
