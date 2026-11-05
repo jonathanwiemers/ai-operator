@@ -52,6 +52,11 @@ type AgentProjectSpec struct {
 	// +optional
 	Research *ProjectResearch `json:"research,omitempty"`
 
+	// Budget limits what autopilot work may spend (agent_calls, needs the
+	// research database).
+	// +optional
+	Budget *BudgetSpec `json:"budget,omitempty"`
+
 	// PollInterval is how often GitLab is polled for changes.
 	// +kubebuilder:default="1m"
 	// +optional
@@ -85,6 +90,18 @@ type GitLabSpec struct {
 	// write_repository scopes. The token is used by the operator and by the
 	// runner inside the agent pods; it is never handed to the model.
 	TokenSecretRef corev1.SecretKeySelector `json:"tokenSecretRef"`
+}
+
+// BudgetSpec is the project's budgets (a milestone's own is its
+// description's "/agent budget <usd>" line).
+type BudgetSpec struct {
+	// PerIssueUSD is the budget of every issue of an autopilot milestone, as
+	// a decimal string, e.g. "20": once an issue's calls cost that much,
+	// autopilot pauses. An "/agent budget <usd>" comment on the issue
+	// overrides it. Unset or 0: no per-issue budget.
+	// +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
+	// +optional
+	PerIssueUSD string `json:"perIssueUSD,omitempty"`
 }
 
 // MilestoneSelector selects milestones that should be planned by the spec agent.

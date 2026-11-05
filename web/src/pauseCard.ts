@@ -56,7 +56,8 @@ const actionsByKind: Record<PauseKind, PauseAction[]> = {
   owner: [resume],
   mainRed: [resume],
   config: [resume],
-  // Resume would pause again at once: the owner raises the budget line.
+  // Resume would pause again at once: the owner raises the budget (the
+  // milestone's line, or the issue's with a comment).
   budget: [],
 }
 
@@ -120,7 +121,9 @@ export function pauseEndsBy(kind: PauseKind | undefined, issue?: number): string
     case 'mainRed':
       return 'Continues by itself when main is green.'
     case 'budget':
-      return "Continues by itself once the milestone's budget line is raised above the spend."
+      return issue
+        ? `Continues by itself once the budget of #${issue} is raised above its spend (\`/agent budget <usd>\` on the issue).`
+        : "Continues by itself once the milestone's budget line is raised above the spend."
     default:
       return ''
   }

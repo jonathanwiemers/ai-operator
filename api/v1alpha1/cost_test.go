@@ -63,3 +63,16 @@ func TestBudgetLeft(t *testing.T) {
 		}
 	}
 }
+
+func TestParseBudget(t *testing.T) {
+	for in, want := range map[string]string{"5": "5.0000", "12.5": "12.5000", "$0.75": "0.7500", "40": "40.0000"} {
+		if got, err := ParseBudget(in); got != want || err != nil {
+			t.Errorf("ParseBudget(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "0", "0.00", "-5", "five", "1e3", "Inf", "5 USD", "5,50", "1234567890"} {
+		if got, err := ParseBudget(in); got != "" || err == nil {
+			t.Errorf("ParseBudget(%q) = %q, %v; want an error", in, got, err)
+		}
+	}
+}

@@ -40,6 +40,8 @@ GitLab comments in your name and work exactly the same.
 | `/agent use default` | Back to the model of the issue's profile. |
 | `/agent effort <low\|medium\|high\|xhigh\|max>` | How hard the implementer thinks on this issue (claude only). |
 | `/agent effort default` | Back to the effort of the issue's profile. |
+| `/agent budget <usd>` | The issue's budget in USD on an autopilot milestone, e.g. `/agent budget 40`, in place of the project's `budget.perIssueUSD`. Once the issue's calls cost that much, the autopilot pauses; raising it above the spend resumes it on the next poll. Like `use`, it starts no run and is answered on the issue; an invalid value changes nothing. See [Budget](usage.md#budget). |
+| `/agent budget default` | Back to the project's `budget.perIssueUSD`. |
 
 Moving the issue back to `agent::ready` also starts a run, e.g. after you
 answered the agent's questions.
@@ -64,8 +66,9 @@ implementer of every following run reads them:
   profile on `cursor` with `model: auto` allows `cursor auto`). A model may
   be named by its alias (`opus`) or in full (`claude-opus-5-5`), in any case.
 - **Exact forms only:** `use default`, `use <claude|cursor> <model>
-  [effort]` and `effort <level|default>` are commands; anything else, like
-  `/agent use the existing logger`, is a normal instruction that starts a run.
+  [effort]`, `effort <level|default>` and `budget <one word>` are
+  commands; anything else, like `/agent use the existing logger`, is a
+  normal instruction that starts a run.
 - **The rest of the profile stays:** budget (`maxBudgetUSD`), tools and
   instructions still come from the issue's profile, also on another model.
   A budget sized for a cheap model may cut a strong model's run short.

@@ -70,7 +70,9 @@ type AgentTaskSpec struct {
 	Rules []string `json:"rules,omitempty"`
 
 	// BudgetUSD is the milestone's budget in USD, from its description's
-	// line "/agent budget <usd>" (spec tasks). Empty: no budget.
+	// line "/agent budget <usd>" (spec tasks). Empty: no budget. On implement
+	// tasks the issue's budget, from an "/agent budget <usd>" comment on it,
+	// in place of the project's budget.perIssueUSD.
 	// +optional
 	BudgetUSD string `json:"budgetUSD,omitempty"`
 
@@ -1391,6 +1393,12 @@ type AutopilotItem struct {
 	// re-plan.
 	// +optional
 	FlakyFix bool `json:"flakyFix,omitempty"`
+
+	// Budget is the issue's budget (its implement task's spec.budgetUSD,
+	// else the project's budget.perIssueUSD) and its spend, refreshed every
+	// poll while the issue has one; warnedAt is unused.
+	// +optional
+	Budget *BudgetStatus `json:"budget,omitempty"`
 }
 
 // RevisitStatus is the watermark of handled revisit comments.

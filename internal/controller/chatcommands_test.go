@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
@@ -302,5 +303,29 @@ func TestAutopilotChatCommandsAnsweredWhenOff(t *testing.T) {
 	if st.Spec.Source.LastChatCommandID != 111 || len(st.Spec.Source.ChatAnswers) != 1 ||
 		st.Spec.Source.ChatAnswers[0].Text != "The autopilot is off for this milestone." {
 		t.Fatalf("mark %d, answers %+v", st.Spec.Source.LastChatCommandID, st.Spec.Source.ChatAnswers)
+	}
+}
+
+func TestApplyChatCommandsBudget(t *testing.T) {
+	e := newProjectEnv(t)
+	e.gl.AddIssue(42, "Add PayPal button", "agent::working")
+	is := e.gl.Issues[42]
+	task := &aiv1.AgentTask{
+		Spec: aiv1.AgentTaskSpec{Type: aiv1.TaskTypeImplement, Source: aiv1.SourceState{
+			ChatMessages: []aiv1.ChatMessage{
+				{ID: 5, Kind: "command", Text: `{"cmd":"budget","usd":"40"}`, Author: "bob"},
+			},
+		}},
+	}
+	spec := testProject().Spec.WithDefaults()
+	run, err := e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, nil)
+	if err != nil || run || task.Spec.BudgetUSD != "40.0000" {
+		t.Fatalf("budget sets the issue's budget and starts no run: run=%v err=%v budget=%q", run, err, task.Spec.BudgetUSD)
+	}
+	if n := len(task.Spec.Source.ChatAnswers); n != 1 || !strings.Contains(task.Spec.Source.ChatAnswers[0].Text, "$40.00") {
+		t.Fatalf("answer = %+v", task.Spec.Source.ChatAnswers)
+	}
+	if !chatCommandAllowed(*task, chatcmd.Command{Cmd: "budget", USD: "40"}) {
+		t.Fatal("budget is delivered onto implement tasks")
 	}
 }

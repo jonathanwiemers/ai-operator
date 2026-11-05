@@ -30,6 +30,9 @@ type Command struct {
 	Prompt string `json:"prompt,omitempty"`
 	Option string `json:"option,omitempty"`
 	Text   string `json:"text,omitempty"`
+	// USD is the budget of the issue ("40", or "default" for the
+	// project's), for budget.
+	USD string `json:"usd,omitempty"`
 }
 
 // shaRE is an abbreviated or full commit SHA.
@@ -70,6 +73,10 @@ func Parse(body string) (Command, error) {
 	c.Prompt = strings.ToUpper(strings.TrimSpace(c.Prompt))
 	c.Option = strings.ToUpper(strings.TrimSpace(c.Option))
 	c.Text = strings.TrimSpace(c.Text)
+	c.USD = strings.TrimSpace(c.USD)
+	if c.USD != "" && c.Cmd != "budget" {
+		return Command{}, fmt.Errorf("%s takes no usd", c.Cmd)
+	}
 	switch c.Cmd {
 	case "retry", "review", "pause", "resume":
 		if err := c.noArgs(); err != nil {
@@ -106,6 +113,10 @@ func Parse(body string) (Command, error) {
 		}
 	case "answer":
 		if err := c.parseAnswer(); err != nil {
+			return Command{}, err
+		}
+	case "budget":
+		if err := c.parseBudget(); err != nil {
 			return Command{}, err
 		}
 	default:
@@ -178,10 +189,10 @@ func (c *Command) parseEffort() error {
 }
 
 // ImplementOnly reports whether the command is handled on Implement tasks
-// (retry, review, use, effort).
+// (retry, review, use, effort, budget).
 func (c Command) ImplementOnly() bool {
 	switch c.Cmd {
-	case "retry", "review", "use", "effort":
+	case "retry", "review", "use", "effort", "budget":
 		return true
 	default:
 		return false
@@ -216,8 +227,8 @@ func (c Command) PromptCmd() bool {
 	return c.Cmd == "answer"
 }
 
-// Routing turns a use or effort command into the GitLab routing shape so
-// command.Apply can be reused.
+// Routing turns a use, effort or budget command into the GitLab routing
+// shape so command.Apply can be reused.
 func (c Command) Routing() (command.Routing, bool) {
 	switch c.Cmd {
 	case "use":
@@ -231,7 +242,26 @@ func (c Command) Routing() (command.Routing, bool) {
 		return command.Routing{Verb: "use", Args: args, Only: true}, true
 	case "effort":
 		return command.Routing{Verb: "effort", Args: []string{c.Effort}, Only: true}, true
+	case "budget":
+		return command.Routing{Verb: "budget", Args: []string{c.USD}, Only: true}, true
 	default:
 		return command.Routing{}, false
 	}
+}
+
+// parseBudget checks a budget command: usd is a budget above 0 or
+// "default".
+func (c *Command) parseBudget() error {
+	if c.USD == "" {
+		return fmt.Errorf("budget needs usd, e.g. \"40\", or \"default\"")
+	}
+	if strings.EqualFold(c.USD, "default") {
+		c.USD = "default"
+	} else if _, err := aiv1.ParseBudget(c.USD); err != nil {
+		return err
+	}
+	if c.Engine != "" || c.Model != "" || c.Effort != "" || c.Default || c.Issue != 0 || c.Proposal != 0 {
+		return fmt.Errorf("budget takes only usd")
+	}
+	return nil
 }

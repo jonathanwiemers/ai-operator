@@ -27,6 +27,14 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"merge","issue":12,"sha":" 5A0E000 "}`, Command{Cmd: "merge", Issue: 12, SHA: "5a0e000"}, ""},
 		{`{"cmd":"accept","proposal":3}`, Command{Cmd: "accept", Proposal: 3}, ""},
 		{`{"cmd":"reject","proposal":3}`, Command{Cmd: "reject", Proposal: 3}, ""},
+		{`{"cmd":"budget","usd":" 40 "}`, Command{Cmd: "budget", USD: "40"}, ""},
+		{`{"cmd":"budget","usd":"$12.50"}`, Command{Cmd: "budget", USD: "$12.50"}, ""},
+		{`{"cmd":"budget","usd":"Default"}`, Command{Cmd: "budget", USD: "default"}, ""},
+		{`{"cmd":"budget"}`, Command{}, "budget needs usd"},
+		{`{"cmd":"budget","usd":"0"}`, Command{}, "must be above 0"},
+		{`{"cmd":"budget","usd":"five"}`, Command{}, "no budget"},
+		{`{"cmd":"budget","usd":"40","issue":3}`, Command{}, "budget takes only usd"},
+		{`{"cmd":"retry","usd":"40"}`, Command{}, "retry takes no usd"},
 		{`{}`, Command{}, "cmd is required"},
 		{`{"cmd":""}`, Command{}, "cmd is required"},
 		{`{"cmd":"retry","extra":1}`, Command{}, "invalid command"},
@@ -90,7 +98,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestImplementOnlyAndRouting(t *testing.T) {
-	for _, cmd := range []string{"retry", "review", "use", "effort"} {
+	for _, cmd := range []string{"retry", "review", "use", "effort", "budget"} {
 		c := Command{Cmd: cmd}
 		if cmd == "use" {
 			c.Engine, c.Model = "claude", "opus"
@@ -142,6 +150,10 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 	r, ok = (Command{Cmd: "effort", Effort: "default"}).Routing()
 	if !ok || r.Verb != "effort" || !slices.Equal(r.Args, []string{"default"}) || !r.Only {
 		t.Fatalf("effort: %+v %v", r, ok)
+	}
+	r, ok = (Command{Cmd: "budget", USD: "40"}).Routing()
+	if !ok || r.Verb != "budget" || !slices.Equal(r.Args, []string{"40"}) || !r.Only {
+		t.Fatalf("budget: %+v %v", r, ok)
 	}
 	if _, ok := (Command{Cmd: "retry"}).Routing(); ok {
 		t.Fatal("retry is not routing")

@@ -1063,6 +1063,20 @@ spec:
                 required:
                 - credentialsSecretName
                 type: object
+              budget:
+                description: |-
+                  Budget limits what autopilot work may spend (agent_calls, needs the
+                  research database).
+                properties:
+                  perIssueUSD:
+                    description: |-
+                      PerIssueUSD is the budget of every issue of an autopilot milestone, as
+                      a decimal string, e.g. "20": once an issue's calls cost that much,
+                      autopilot pauses. An "/agent budget <usd>" comment on the issue
+                      overrides it. Unset or 0: no per-issue budget.
+                    pattern: ^[0-9]+(\.[0-9]+)?$
+                    type: string
+                type: object
               ci:
                 description: CI configures how the agent reacts to the merge request
                   pipeline.

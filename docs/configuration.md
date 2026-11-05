@@ -593,6 +593,25 @@ line `/agent budget <usd>` (no rule) caps what an autopilot milestone spends in
 all: at 100 % of it autopilot pauses (needs the research database, see
 [usage.md](usage.md#budget)).
 
+## `spec.budget`
+
+Budgets of autopilot work, from what its agent calls cost (`agent_calls`,
+needs the research database). The operator checks them once per poll, so
+between calls; a running call is never killed.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `perIssueUSD` | – | budget of every open issue of an autopilot milestone, as a decimal string, e.g. `"20"`. Once an issue's calls cost that much, autopilot pauses (`pauseKind: budget`, `pausedFor` the issue). An `/agent budget <usd>` comment on the issue overrides it for that issue ([commands.md](commands.md#on-an-issue-or-its-merge-request)). Unset or `0`: no per-issue budget |
+
+```yaml
+spec:
+  budget:
+    perIssueUSD: "20"
+```
+
+A milestone's own budget is its description's `/agent budget <usd>` line.
+See [usage.md](usage.md#budget).
+
 ## `spec.webhook`
 
 GitLab project webhooks that wake the operator within seconds, see

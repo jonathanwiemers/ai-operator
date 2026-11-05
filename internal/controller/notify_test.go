@@ -291,3 +291,33 @@ func TestAutopilotAnnouncesANewReasonWhilePaused(t *testing.T) {
 		t.Fatalf("green again must continue:\n%s", trackingComments(e))
 	}
 }
+
+func TestBudgetCommandSetsTheIssuesBudget(t *testing.T) {
+	e := newProjectEnv(t)
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddIssue(42, "Add PayPal button", "agent::working")
+	e.reconcile()
+	rr := e.tasks()["shop-42-add-paypal-button"].Spec.RunRequest
+
+	e.gl.AddNote(42, human, "/agent budget 40")
+	e.reconcile()
+	task := e.tasks()["shop-42-add-paypal-button"]
+	notes := e.gl.IssueNotes[42]
+	if task.Spec.BudgetUSD != "40.0000" || task.Spec.RunRequest != rr || !strings.Contains(notes[len(notes)-1].Body, "The issue's budget is $40.00") {
+		t.Fatalf("the command sets the budget, starts no run and is answered: %q, run request %d (was %d), %q",
+			task.Spec.BudgetUSD, task.Spec.RunRequest, rr, notes[len(notes)-1].Body)
+	}
+
+	e.gl.AddNote(42, human, "/agent budget lots")
+	e.reconcile()
+	notes = e.gl.IssueNotes[42]
+	if got := e.tasks()["shop-42-add-paypal-button"].Spec.BudgetUSD; got != "40.0000" || !strings.Contains(notes[len(notes)-1].Body, "is no budget") {
+		t.Fatalf("an invalid budget changes nothing and says why: %q, %q", got, notes[len(notes)-1].Body)
+	}
+
+	e.gl.AddNote(42, human, "/agent budget default")
+	e.reconcile()
+	if got := e.tasks()["shop-42-add-paypal-button"].Spec.BudgetUSD; got != "" {
+		t.Fatalf("default is back to the project's budget: %q", got)
+	}
+}

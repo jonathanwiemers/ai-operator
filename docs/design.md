@@ -988,8 +988,12 @@ stateDiagram-v2
   `ciCanceled`, `mergeRequest`, `mainRed`, `config`, `budget`) for the Desk's
   pause card. A milestone with a `/agent budget <usd>` line pauses with
   `budget` once its `agent_calls` spend reaches it (read once per poll,
-  `status.autopilot.budget`); raising or removing the line resumes it, and
-  without the database it is not enforced. Before pausing because of the active
+  `status.autopilot.budget`); raising or removing the line resumes it. An
+  open issue with a budget (`spec.budgetUSD` of its task, from an `/agent
+  budget <usd>` comment, else `spec.budget.perIssueUSD`) pauses it the same
+  way with `pausedFor` the issue, from the same query (the milestone's
+  issues as children; `items[].budget`); without the database neither is
+  enforced. Before pausing because of the active
   issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause`,
   `skip #N` and `merge #N` on the tracking issue are handled by the operator.
 * **Merge without a full review.** `merge #N <sha>` (GitLab owners, or the
@@ -1748,7 +1752,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/controller/agentproject_controller.go` | GitLab poll → AgentTasks, run requests, label acknowledgement, cleanup |
 | `internal/controller/agenttask_controller.go` | pod / PVC lifecycle, queueing, limits |
 | `internal/controller/chat.go` | Desk live chat: LISTEN/poll dispatch of `chat_messages` into `spec.source.chatMessages`, replies and command answers back into the table |
-| `internal/chatcmd` | Desk chat command JSON (`retry` / `review` / `use` / `effort` / …) |
+| `internal/chatcmd` | Desk chat command JSON (`retry` / `review` / `use` / `effort` / `budget` / …) |
 | `internal/controller/resources.go` | pod and PVC templates |
 | `internal/runner/runner.go` | run loop, status reporting, session state, mirror ⇄ workspace sync |
 | `internal/runner/steps.go` | run steps: step logging, current step, GitLab run log |

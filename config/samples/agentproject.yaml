@@ -74,6 +74,10 @@ spec:
   # MR reviewer on review. A milestone overrides it with "/agent owners @…".
   notify:
     users: [your-gitlab-username]
+  # Pause an autopilot milestone once one of its issues cost $20 (needs the
+  # research database); "/agent budget <usd>" on an issue overrides it.
+  # budget:
+  #   perIssueUSD: "20"
   # Research runs of AgentResearches that reference this project (see
   # docs/research.md). writerSecret is the database login their runner
   # writes results with, a Secret in this namespace with the keys username

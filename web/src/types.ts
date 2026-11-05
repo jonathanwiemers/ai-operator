@@ -235,6 +235,15 @@ export interface AutopilotItem {
   markedReady?: boolean
   decisions?: DecisionRef[]
   revisitOf?: string
+  budget?: BudgetStatus
+}
+
+// BudgetStatus is a budget and its spend (status.autopilot.budget, and an
+// item's budget).
+export interface BudgetStatus {
+  limitUSD: string
+  spentUSD?: string
+  warnedAt?: string
 }
 
 export interface AutopilotStatus {
@@ -245,6 +254,7 @@ export interface AutopilotStatus {
   pausedFor?: number
   resumeWhenReady?: boolean
   items?: AutopilotItem[]
+  budget?: BudgetStatus
 }
 
 export interface PilotStatus {

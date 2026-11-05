@@ -845,7 +845,10 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 	}
 	it := a.item(a.ap.PausedFor)
 	if it == nil || it.State != aiv1.AutopilotItemActive {
-		a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
+		// A budget pause can be for a pending issue; budget ends it.
+		if a.ap.PauseKind != aiv1.PauseBudget {
+			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
+		}
 		return nil
 	}
 	task := a.tasks[it.IID]

@@ -141,6 +141,10 @@ test('pauseEndsBy: every kind', () => {
   assert.equal(pauseEndsBy('mergeRequest', 5), 'Continues by itself when the MR is merged by hand.')
   assert.equal(pauseEndsBy('mainRed'), 'Continues by itself when main is green.')
   assert.equal(pauseEndsBy('budget'), "Continues by itself once the milestone's budget line is raised above the spend.")
+  assert.equal(
+    pauseEndsBy('budget', 5),
+    'Continues by itself once the budget of #5 is raised above its spend (`/agent budget <usd>` on the issue).',
+  )
   for (const kind of ['owner', 'cycle', 'stuck', 'config', undefined, 'somethingNew']) {
     assert.equal(pauseEndsBy(kind, 5), '', String(kind))
   }

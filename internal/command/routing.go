@@ -1,6 +1,7 @@
 // Package command reads the "/agent use" and "/agent effort" comments that
 // pick the engine, model and effort of an issue's implementer, and turns
-// them into the issue's model and effort labels.
+// them into the issue's model and effort labels, and the "/agent budget"
+// comments that set the issue's budget.
 package command
 
 import (
@@ -13,9 +14,9 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 )
 
-// Routing is "/agent use …" or "/agent effort …".
+// Routing is "/agent use …", "/agent effort …" or "/agent budget …".
 type Routing struct {
-	Verb string // "use" or "effort"
+	Verb string // "use", "effort" or "budget"
 	Args []string
 	// Only: the comment is nothing but the command. It starts no run and is
 	// no input for the agent.
@@ -45,6 +46,7 @@ func ParseRouting(body, prefix string) (Routing, bool) {
 	case verb == "use" && len(args) == 1 && strings.EqualFold(args[0], "default"):
 	case verb == "use" && (len(args) == 2 || len(args) == 3) && knownEngine(args[0]):
 	case verb == "effort" && len(args) == 1 && (strings.EqualFold(args[0], "default") || aiv1.ValidEffort(strings.ToLower(args[0]))):
+	case verb == "budget" && len(args) == 1:
 	default:
 		return Routing{}, false
 	}
@@ -84,9 +86,12 @@ func WithoutRouting(notes []gitlab.Note, prefix string) []gitlab.Note {
 	return slices.DeleteFunc(slices.Clone(notes), func(n gitlab.Note) bool { return IsRoutingOnly(n.Body, prefix) || IsReview(n.Body, prefix) })
 }
 
-// Change is what routing commands do to an issue's labels.
+// Change is what routing commands do to an issue's labels and budget.
 type Change struct {
 	Add, Remove []string
+	// Budget is the issue's new budget (spec.budgetUSD of its task), ""
+	// back to the project's budget.perIssueUSD; nil: unchanged.
+	Budget *string
 	// Lines tell the human what was done, or why a command was not.
 	Lines []string
 }
@@ -129,6 +134,17 @@ func Apply(spec aiv1.AgentProjectSpec, labels []string, cmds []Routing) Change {
 		case c.Verb == "effort" && len(c.Args) == 1 && aiv1.ValidEffort(strings.ToLower(c.Args[0])):
 			e := strings.ToLower(c.Args[0])
 			effort = &e
+		case c.Verb == "budget" && len(c.Args) == 1:
+			b := ""
+			if !strings.EqualFold(c.Args[0], "default") {
+				usd, err := aiv1.ParseBudget(c.Args[0])
+				if err != nil {
+					ch.Lines = append(ch.Lines, fmt.Sprintf("`%s`: %v; or `%s budget default` for the project's.", text, err, prefix))
+					continue
+				}
+				b = usd
+			}
+			ch.Budget = &b
 		default:
 			ch.Lines = append(ch.Lines, fmt.Sprintf("`%s` is not understood; use %s.", text, usage))
 		}
@@ -170,6 +186,13 @@ func Apply(spec aiv1.AgentProjectSpec, labels []string, cmds []Routing) Change {
 		default:
 			ch.Lines = append(ch.Lines, fmt.Sprintf("The implementer works with effort `%s` from the next run on.", *effort))
 		}
+	}
+	switch {
+	case ch.Budget == nil:
+	case *ch.Budget == "":
+		ch.Lines = append(ch.Lines, "The issue's budget is back to the project's (`budget.perIssueUSD`).")
+	default:
+		ch.Lines = append(ch.Lines, fmt.Sprintf("The issue's budget is $%s; on an autopilot milestone, autopilot pauses once its calls cost that much.", aiv1.ShowCost(aiv1.CostOf(*ch.Budget))))
 	}
 	return ch
 }

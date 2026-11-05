@@ -849,7 +849,7 @@ comment and in the tracking issue's description. It pauses for:
 - the plan has a dependency cycle, or nothing can start because the
   remaining issues wait for skipped issues, for issues outside the queue
   ("blocked by" links), or for each other (a cycle of links);
-- the milestone spent its [budget](#budget).
+- the milestone, or one of its open issues, spent its [budget](#budget).
 
 While paused, runs that were already requested continue (your `/agent`
 comments still reach the agent), but nothing new is started or merged.
@@ -876,8 +876,8 @@ A pause over the active issue ends **by itself** when it no longer holds:
 - the pause was a merge freeze and the default branch is green again (or its
   health is no longer watched): the block is lifted and the gate runs again.
 
-A budget pause ends by itself too, once the budget line is raised above
-the spend or removed (see [Budget](#budget)).
+A budget pause ends by itself too, once the budget is raised above the
+spend or removed (see [Budget](#budget)).
 
 When such a pause ends, by itself or with `/agent resume` (also after an
 `/agent pause` in between), the active issue's `agent-blocked::infra` block
@@ -925,6 +925,27 @@ A value that is not a number above 0 is ignored (the operator logs it):
 the milestone has no budget then. Without the research database, or while
 the spend cannot be read, the budget is not enforced (logged on every
 poll): autopilot never pauses for lack of data.
+
+#### Per-issue budget
+
+Each open issue of the queue (pending or active) can have a budget of its
+own: the project's default `spec.budget.perIssueUSD` (see
+[configuration.md](configuration.md#specbudget)), or for one issue an
+`/agent budget <usd>` comment on it (or its MR), e.g. `/agent budget 40`;
+`/agent budget default` goes back to the project's. The comment starts no
+run and is answered on the issue; it is stored on the issue's Implement
+task (`spec.budgetUSD`). The same poll reads the issues' spend with the
+milestone's, in one query, and shows it per issue in
+`status.autopilot.items[].budget`.
+
+Once an issue's calls cost its budget, autopilot pauses with
+`pauseKind: budget` and `pausedFor` the issue ("#12 used its budget of
+$20.00 ($20.31 spent). Raise it with `/agent budget <usd>` on the issue").
+A pending issue that spent its budget earlier pauses it too, before it is
+started. The milestone's budget goes first; then the issues in queue order.
+Raising the issue's budget above its spend, `/agent budget default` (when
+the default is above it), or skipping the issue ends the pause on the next
+poll. Merged and skipped issues have no budget any more.
 
 ### Commands on the tracking issue
 

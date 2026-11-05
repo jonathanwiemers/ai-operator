@@ -27,6 +27,10 @@ func TestParseRouting(t *testing.T) {
 		{"/agent use Claude Opus HIGH", true, Routing{Verb: "use", Args: []string{"Claude", "Opus", "HIGH"}, Only: true}},
 		{"/agents use claude opus", false, Routing{}},
 		{"please /agent use claude opus", false, Routing{}},
+		{"/agent budget 40", true, Routing{Verb: "budget", Args: []string{"40"}, Only: true}},
+		{"/agent budget default", true, Routing{Verb: "budget", Args: []string{"default"}, Only: true}},
+		{"/agent budget five", true, Routing{Verb: "budget", Args: []string{"five"}, Only: true}}, // answered as invalid
+		{"/agent budget the API calls carefully", false, Routing{}},
 		{"/agent", false, Routing{}},
 	} {
 		got, ok := ParseRouting(tc.body, "/agent")
@@ -134,5 +138,27 @@ func TestIsReview(t *testing.T) {
 		if got := IsReview(body, "/agent"); got != want {
 			t.Errorf("IsReview(%q) = %v, want %v", body, got, want)
 		}
+	}
+}
+
+func TestApplyBudget(t *testing.T) {
+	budget := func(usd string) Routing { return Routing{Verb: "budget", Args: []string{usd}, Only: true} }
+	ch := Apply(testSpec(), []string{"agent::working"}, []Routing{budget("40")})
+	if ch.Budget == nil || *ch.Budget != "40.0000" || len(ch.Add)+len(ch.Remove) != 0 || len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "$40.00") {
+		t.Fatalf("a budget sets the issue's budget and no label: %+v", ch)
+	}
+	ch = Apply(testSpec(), nil, []Routing{budget("40"), budget("DEFAULT")})
+	if ch.Budget == nil || *ch.Budget != "" || !strings.Contains(ch.Lines[0], "back to the project's") {
+		t.Fatalf("the last budget wins, default is the project's: %+v", ch)
+	}
+	for _, bad := range []string{"0", "five", "-3", "$"} {
+		ch := Apply(testSpec(), nil, []Routing{budget(bad)})
+		if ch.Budget != nil || len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "`/agent budget "+bad+"`") {
+			t.Errorf("%q must change nothing and say why: %+v", bad, ch)
+		}
+	}
+	ch = Apply(testSpec(), nil, []Routing{budget("40"), budget("five")})
+	if ch.Budget == nil || *ch.Budget != "40.0000" || len(ch.Lines) != 2 {
+		t.Fatalf("an invalid budget keeps the valid one before it: %+v", ch)
 	}
 }

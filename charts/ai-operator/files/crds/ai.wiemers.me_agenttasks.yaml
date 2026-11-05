@@ -90,7 +90,9 @@ spec:
               budgetUSD:
                 description: |-
                   BudgetUSD is the milestone's budget in USD, from its description's
-                  line "/agent budget <usd>" (spec tasks). Empty: no budget.
+                  line "/agent budget <usd>" (spec tasks). Empty: no budget. On implement
+                  tasks the issue's budget, from an "/agent budget <usd>" comment on it,
+                  in place of the project's budget.perIssueUSD.
                 type: string
               issue:
                 description: |-
@@ -620,6 +622,29 @@ spec:
                       description: AutopilotItem is one issue in the queue of an autopilot
                         milestone.
                       properties:
+                        budget:
+                          description: |-
+                            Budget is the issue's budget (its implement task's spec.budgetUSD,
+                            else the project's budget.perIssueUSD) and its spend, refreshed every
+                            poll while the issue has one; warnedAt is unused.
+                          properties:
+                            limitUSD:
+                              description: LimitUSD is the budget (spec.budgetUSD).
+                              type: string
+                            spentUSD:
+                              description: |-
+                                SpentUSD is the milestone's spend; empty while it cannot be read
+                                (no database, or the query failed).
+                              type: string
+                            warnedAt:
+                              description: |-
+                                WarnedAt is when the owners were told that 80 % of the budget is
+                                spent.
+                              format: date-time
+                              type: string
+                          required:
+                          - limitUSD
+                          type: object
                         decisions:
                           description: |-
                             Decisions recorded on the issue, collected when it was merged: the
@@ -722,6 +747,29 @@ spec:
                       MainRedFix is the main-red issue (mainHealth.autoFix) this milestone
                       drives through the merge gate while the default branch is red.
                     properties:
+                      budget:
+                        description: |-
+                          Budget is the issue's budget (its implement task's spec.budgetUSD,
+                          else the project's budget.perIssueUSD) and its spend, refreshed every
+                          poll while the issue has one; warnedAt is unused.
+                        properties:
+                          limitUSD:
+                            description: LimitUSD is the budget (spec.budgetUSD).
+                            type: string
+                          spentUSD:
+                            description: |-
+                              SpentUSD is the milestone's spend; empty while it cannot be read
+                              (no database, or the query failed).
+                            type: string
+                          warnedAt:
+                            description: |-
+                              WarnedAt is when the owners were told that 80 % of the budget is
+                              spent.
+                            format: date-time
+                            type: string
+                        required:
+                        - limitUSD
+                        type: object
                       decisions:
                         description: |-
                           Decisions recorded on the issue, collected when it was merged: the

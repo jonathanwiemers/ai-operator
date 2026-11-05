@@ -818,10 +818,10 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		// the task is saved.
 		cmdIssue, cmdMR := withoutNotes(issueNotes, denied), withoutNotes(mrNotes, denied)
 		denied = slices.DeleteFunc(denied, func(n pilotNote) bool { return src.LastPilotNoteID == 0 || n.ID <= src.LastPilotNoteID })
-		// "/agent use" and "/agent effort" become labels at once, also the
-		// ones written before the task existed; the answer follows once the
-		// task is saved.
-		if reply, err = r.applyRouting(ctx, gl, spec, &is, cmdIssue, cmdMR, src, project.Status.BotUserID); err != nil {
+		// "/agent use" and "/agent effort" become labels at once, "/agent
+		// budget" the task's budget, also the ones written before the task
+		// existed; the answer follows once the task is saved.
+		if reply, err = r.applyRouting(ctx, gl, spec, &is, cmdIssue, cmdMR, &task.Spec, project.Status.BotUserID); err != nil {
 			return nil, nil, err
 		}
 		r.pilotIssueNotes(ctx, gl, project, spec, is, mr, task, issueNotes, mrNotes)
@@ -1049,7 +1049,7 @@ func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitla
 				text = "🤖 The reviewers will run again on the pushed head."
 			}
 			answer(m.ID, text)
-		case "use", "effort":
+		case "use", "effort", "budget":
 			rt, ok := cmd.Routing()
 			if !ok {
 				answer(m.ID, "not a routing command")
@@ -1062,6 +1062,9 @@ func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitla
 				}
 				is.Labels = append(slices.DeleteFunc(is.Labels, func(l string) bool { return slices.Contains(ch.Remove, l) }), ch.Add...)
 			}
+			if ch.Budget != nil {
+				task.Spec.BudgetUSD = *ch.Budget
+			}
 			answer(m.ID, ch.Reply())
 		}
 	}
@@ -1071,13 +1074,15 @@ func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitla
 	return run, nil
 }
 
-// applyRouting turns the "/agent use" and "/agent effort" comments of
-// humans that are newer than the last applied one into the issue's model
-// and effort labels. It returns the answer, to be posted once the task is
-// saved, where the last command was written.
+// applyRouting turns the "/agent use", "/agent effort" and "/agent budget"
+// comments of humans that are newer than the last applied one into the
+// issue's model and effort labels and the task's budget (ts). It returns
+// the answer, to be posted once the task is saved, where the last command
+// was written.
 func (r *AgentProjectReconciler) applyRouting(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is *gitlab.Issue,
-	issueNotes, mrNotes []gitlab.Note, src *aiv1.SourceState, botID int64) (*routingReply, error) {
+	issueNotes, mrNotes []gitlab.Note, ts *aiv1.AgentTaskSpec, botID int64) (*routingReply, error) {
 	prefix := spec.Workflow.CommandPrefix
+	src := &ts.Source
 	since := src.LastRoutingNoteID
 	if since == 0 {
 		// A new task (also one made again for the same issue): commands the
@@ -1119,7 +1124,10 @@ func (r *AgentProjectReconciler) applyRouting(ctx context.Context, gl gitlab.API
 		}
 		is.Labels = append(slices.DeleteFunc(is.Labels, func(l string) bool { return slices.Contains(ch.Remove, l) }), ch.Add...)
 	}
-	log.FromContext(ctx).Info("model and effort commands applied", "issue", is.IID, "add", ch.Add, "remove", ch.Remove)
+	if ch.Budget != nil {
+		ts.BudgetUSD = *ch.Budget
+	}
+	log.FromContext(ctx).Info("model, effort and budget commands applied", "issue", is.IID, "add", ch.Add, "remove", ch.Remove, "budgetUSD", ts.BudgetUSD)
 	last := found[len(found)-1]
 	src.LastRoutingNoteID = last.ID
 	return &routingReply{body: ch.Reply(), onMR: last.onMR}, nil

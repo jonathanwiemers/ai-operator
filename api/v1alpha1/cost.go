@@ -1,7 +1,9 @@
 package v1alpha1
 
 import (
+	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 )
 
@@ -39,4 +41,21 @@ func BudgetLeft(budget, spent string, extra float64) float64 {
 		return math.Inf(1)
 	}
 	return CostOf(budget) - CostOf(spent) - extra
+}
+
+var budgetRE = regexp.MustCompile(`^\$?([0-9]{1,9}(?:\.[0-9]+)?)$`)
+
+// ParseBudget reads a budget in USD as an owner writes it ("5", "12.50",
+// "$5"), formatted for storage. A value that is not a decimal above 0 is an
+// error.
+func ParseBudget(s string) (string, error) {
+	v := budgetRE.FindStringSubmatch(s)
+	if v == nil {
+		return "", fmt.Errorf("%q is no budget in USD, e.g. 5 or 12.50", s)
+	}
+	usd, err := strconv.ParseFloat(v[1], 64)
+	if err != nil || usd <= 0 {
+		return "", fmt.Errorf("%q is no budget: it must be above 0", s)
+	}
+	return FormatCost(usd), nil
 }
