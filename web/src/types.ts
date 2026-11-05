@@ -200,6 +200,7 @@ export type PauseKind =
   | 'mergeRequest'
   | 'mainRed'
   | 'config'
+  | 'budget'
 
 // ReviewError mirrors api/v1alpha1.ReviewError: why one reviewer failed.
 export interface ReviewError {

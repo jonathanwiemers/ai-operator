@@ -845,7 +845,8 @@ comment and in the tracking issue's description. It pauses for:
 - no reviewers are configured;
 - the plan has a dependency cycle, or nothing can start because the
   remaining issues wait for skipped issues, for issues outside the queue
-  ("blocked by" links), or for each other (a cycle of links).
+  ("blocked by" links), or for each other (a cycle of links);
+- the milestone spent its [budget](#budget).
 
 While paused, runs that were already requested continue (your `/agent`
 comments still reach the agent), but nothing new is started or merged.
@@ -872,6 +873,9 @@ A pause over the active issue ends **by itself** when it no longer holds:
 - the pause was a merge freeze and the default branch is green again (or its
   health is no longer watched): the block is lifted and the gate runs again.
 
+A budget pause ends by itself too, once the budget line is raised above
+the spend or removed (see [Budget](#budget)).
+
 When such a pause ends, by itself or with `/agent resume` (also after an
 `/agent pause` in between), the active issue's `agent-blocked::infra` block
 is lifted and the issue gets its label back, unless its last run failed
@@ -892,6 +896,32 @@ pause by itself, and the actions that fix it (Retry, Review again, Resume,
 Skip, links to the issue's chat, the pipeline, the MR or the plan, and for
 an owner Merge anyway). The buttons send the same commands as the Desk chat
 and show the operator's answer in the card.
+
+### Budget
+
+A line `/agent budget <usd>` in the milestone description (for example
+`/agent budget 5`, decimals allowed) gives an autopilot milestone a budget. On every
+poll the operator reads what the milestone's agent calls cost so far
+(`agent_calls`, all calls with its milestone: planning, implementers,
+reviewers, CI and conflict rounds, the pilot) and shows it with the limit
+in the spec task's `status.autopilot.budget` (`limitUSD`, `spentUSD`).
+Once the spend reaches the budget, autopilot pauses with
+`pauseKind: budget` ("the budget of $5.00 is used ($5.12 spent) …"). A
+running agent call is never killed: it finishes, and nothing new starts or
+merges, as with every pause. Calls without a known cost (cursor without
+`pricing`, see [configuration.md](configuration.md#pricing)) count $0
+towards it.
+
+To go on, raise the line, e.g. to `/agent budget 50`: once the budget is
+above the spend, autopilot continues on the next poll by itself. Removing
+the line ends the pause too. `/agent resume` alone pauses again at once
+while the budget is spent. Like the owners and the rules, the line is no
+part of the spec: changing it re-plans nothing.
+
+A value that is not a number above 0 is ignored (the operator logs it):
+the milestone has no budget then. Without the research database, or while
+the spend cannot be read, the budget is not enforced (logged on every
+poll): autopilot never pauses for lack of data.
 
 ### Commands on the tracking issue
 

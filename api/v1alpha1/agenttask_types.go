@@ -69,6 +69,11 @@ type AgentTaskSpec struct {
 	// +optional
 	Rules []string `json:"rules,omitempty"`
 
+	// BudgetUSD is the milestone's budget in USD, from its description's
+	// line "/agent budget <usd>" (spec tasks). Empty: no budget.
+	// +optional
+	BudgetUSD string `json:"budgetUSD,omitempty"`
+
 	// Source records which GitLab state the operator has already turned into
 	// run requests, so that every change triggers exactly one run.
 	// +optional
@@ -1202,7 +1207,7 @@ type ReviewError struct {
 }
 
 // PauseKind is why autopilot paused.
-// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config
+// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget
 type PauseKind string
 
 const (
@@ -1234,6 +1239,8 @@ const (
 	// PauseConfig: the project or issue setup does not allow a merge (no
 	// workflow label, no reviewers, no pushed MR).
 	PauseConfig PauseKind = "config"
+	// PauseBudget: the milestone spent its budget (spec.budgetUSD).
+	PauseBudget PauseKind = "budget"
 )
 
 // AutopilotItemState is the state of one issue in the queue.
@@ -1307,6 +1314,26 @@ type AutopilotStatus struct {
 	// to wait for before autopilot closes it.
 	// +optional
 	CloseWaitsFor []int64 `json:"closeWaitsFor,omitempty"`
+
+	// Budget is the milestone's budget and its spend, refreshed every poll
+	// while the milestone has a budget line.
+	// +optional
+	Budget *BudgetStatus `json:"budget,omitempty"`
+}
+
+// BudgetStatus is the budget of an autopilot milestone and what it spent,
+// from the history database (agent_calls).
+type BudgetStatus struct {
+	// LimitUSD is the budget (spec.budgetUSD).
+	LimitUSD string `json:"limitUSD"`
+	// SpentUSD is the milestone's spend; empty while it cannot be read
+	// (no database, or the query failed).
+	// +optional
+	SpentUSD string `json:"spentUSD,omitempty"`
+	// WarnedAt is when the owners were told that 80 % of the budget is
+	// spent.
+	// +optional
+	WarnedAt *metav1.Time `json:"warnedAt,omitempty"`
 }
 
 // AutopilotItem is one issue in the queue of an autopilot milestone.

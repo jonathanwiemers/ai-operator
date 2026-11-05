@@ -56,6 +56,8 @@ const actionsByKind: Record<PauseKind, PauseAction[]> = {
   owner: [resume],
   mainRed: [resume],
   config: [resume],
+  // Resume would pause again at once: the owner raises the budget line.
+  budget: [],
 }
 
 function known(kind: string | undefined): kind is PauseKind {
@@ -117,6 +119,8 @@ export function pauseEndsBy(kind: PauseKind | undefined, issue?: number): string
       return 'Continues by itself when the MR is merged by hand.'
     case 'mainRed':
       return 'Continues by itself when main is green.'
+    case 'budget':
+      return "Continues by itself once the milestone's budget line is raised above the spend."
     default:
       return ''
   }
@@ -136,6 +140,7 @@ const titles: Record<PauseKind, string> = {
   mergeRequest: 'The MR cannot be merged',
   mainRed: 'main is red',
   config: 'Configuration problem',
+  budget: 'The budget is used',
 }
 
 // pauseTitle is the card's heading for a pause.

@@ -87,6 +87,11 @@ spec:
                   Autopilot is set for tasks of autopilot milestones: the agents must
                   not ask questions but take their defaults and record them.
                 type: boolean
+              budgetUSD:
+                description: |-
+                  BudgetUSD is the milestone's budget in USD, from its description's
+                  line "/agent budget <usd>" (spec tasks). Empty: no budget.
+                type: string
               issue:
                 description: |-
                   Issue implemented by this task (Implement tasks), or the tracking
@@ -578,6 +583,28 @@ spec:
                   Autopilot is the operator's queue of an autopilot milestone (spec
                   tasks).
                 properties:
+                  budget:
+                    description: |-
+                      Budget is the milestone's budget and its spend, refreshed every poll
+                      while the milestone has a budget line.
+                    properties:
+                      limitUSD:
+                        description: LimitUSD is the budget (spec.budgetUSD).
+                        type: string
+                      spentUSD:
+                        description: |-
+                          SpentUSD is the milestone's spend; empty while it cannot be read
+                          (no database, or the query failed).
+                        type: string
+                      warnedAt:
+                        description: |-
+                          WarnedAt is when the owners were told that 80 % of the budget is
+                          spent.
+                        format: date-time
+                        type: string
+                    required:
+                    - limitUSD
+                    type: object
                   closeWaitsFor:
                     description: |-
                       CloseWaitsFor are the open issues a done milestone was last reported
@@ -820,6 +847,7 @@ spec:
                     - mergeRequest
                     - mainRed
                     - config
+                    - budget
                     type: string
                   pausedFor:
                     description: |-

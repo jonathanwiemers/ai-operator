@@ -588,7 +588,10 @@ issues: `ci.maxFixRounds` (0 to 5), `ci.retryFailedJobs`,
 `agents.review.retries` and `agents.review.maxIterations` (written
 `review.retries`, `review.maxIterations`; 0 to 5). Nothing else can be
 switched per milestone: budgets and limits, the merge gate, the freeze,
-`pilot.*` and `mainHealth.*` stay as configured here.
+`pilot.*` and `mainHealth.*` stay as configured here. Apart from them, a
+line `/agent budget <usd>` (no rule) caps what an autopilot milestone spends in
+all: at 100 % of it autopilot pauses (needs the research database, see
+[usage.md](usage.md#budget)).
 
 ## `spec.webhook`
 

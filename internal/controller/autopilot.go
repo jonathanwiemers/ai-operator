@@ -134,6 +134,10 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.chatCommands(ctx); err != nil {
 		return err
 	}
+	// After the commands: a resume while the budget is spent pauses again.
+	if err := a.budget(ctx); err != nil {
+		return err
+	}
 	if len(a.st.Status.Plan) == 0 {
 		// Not planned yet, or the planning run failed: the tracking issue
 		// says so, nothing is picked and the milestone is not done.
@@ -1214,8 +1218,11 @@ func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, reason strin
 	// Comment first: if it fails, the pause is tried again on the next poll.
 	// Defuse the reason (it can quote job names and titles); the owners'
 	// mention is appended after, so it stays a real ping.
-	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nFix it, then comment `%s resume`. A pause over the active issue also ends by itself once a later run fixed it or the MR is merged by hand.", notify.Defuse(reason), a.spec.Workflow.CommandPrefix)+
-		a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
+	hint := fmt.Sprintf("Fix it, then comment `%s resume`. A pause over the active issue also ends by itself once a later run fixed it or the MR is merged by hand.", a.spec.Workflow.CommandPrefix)
+	if kind == aiv1.PauseBudget {
+		hint = "It continues by itself once the budget is above the spend."
+	}
+	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\n%s", notify.Defuse(reason), hint)+a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
 		return err
 	}
 	a.ap.Phase = aiv1.AutopilotPaused

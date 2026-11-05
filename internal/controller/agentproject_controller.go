@@ -695,13 +695,16 @@ func (r *AgentProjectReconciler) newTask(project *aiv1.AgentProject, name string
 // that failed for an outside reason (specRetryDue).
 func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners, ownerSubjects []string) (*aiv1.AgentTask, error) {
 	prefix := spec.Workflow.CommandPrefix
-	// The owners, owner-subjects and rules are no part of the spec: changing
-	// them re-plans nothing.
+	// The owners, owner-subjects, rules and budget are no part of the spec:
+	// changing them re-plans nothing.
 	hash := hashString(rules.Spec(m.Description, prefix))
 	ruleLines := rules.Lines(m.Description, prefix)
+	budget, err := rules.Budget(m.Description, prefix)
+	if err != nil {
+		log.FromContext(ctx).Info("ignoring the milestone's budget line: no budget", "milestone", m.Title, "error", err.Error())
+	}
 	ref := &aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title}
 	if task == nil {
-		var err error
 		task, err = r.newTask(project, naming.SpecTask(project.Name, m.IID, m.Title), aiv1.TaskTypeSpec)
 		if err != nil {
 			return nil, err
@@ -712,6 +715,7 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		task.Spec.Source.DescriptionHash = hash
 		task.Spec.Autopilot = autopilot
 		task.Spec.Owners, task.Spec.OwnerSubjects, task.Spec.Rules = owners, ownerSubjects, ruleLines
+		task.Spec.BudgetUSD = budget
 		log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name, "autopilot", autopilot)
 		return task, r.Create(ctx, task)
 	}
@@ -721,6 +725,7 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 	}
 	task.Spec.Autopilot = autopilot
 	task.Spec.Owners, task.Spec.OwnerSubjects, task.Spec.Rules = owners, ownerSubjects, ruleLines
+	task.Spec.BudgetUSD = budget
 	if task.Spec.Source.DescriptionHash != hash {
 		log.FromContext(ctx).Info("milestone spec changed, re-planning", "milestone", m.Title, "task", task.Name)
 		task.Spec.RunRequest++
@@ -735,13 +740,15 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 }
 
 // specTaskCurrent reports whether a milestone's spec task matches it: the
-// spec's hash, the milestone, autopilot, owners, owner-subjects and rules.
+// spec's hash, the milestone, autopilot, owners, owner-subjects, rules and
+// budget.
 func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners, ownerSubjects []string) bool {
 	prefix := spec.Workflow.CommandPrefix
+	budget, _ := rules.Budget(m.Description, prefix)
 	return task.Spec.Source.DescriptionHash == hashString(rules.Spec(m.Description, prefix)) &&
 		*task.Spec.Milestone == aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title} && task.Spec.Autopilot == autopilot &&
 		slices.Equal(task.Spec.Owners, owners) && slices.Equal(task.Spec.OwnerSubjects, ownerSubjects) &&
-		slices.Equal(task.Spec.Rules, rules.Lines(m.Description, prefix))
+		slices.Equal(task.Spec.Rules, rules.Lines(m.Description, prefix)) && task.Spec.BudgetUSD == budget
 }
 
 // specRetryDue reports whether a planning run that failed for an outside

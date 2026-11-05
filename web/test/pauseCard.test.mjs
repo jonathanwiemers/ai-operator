@@ -27,6 +27,7 @@ const allKinds = [
   'mergeRequest',
   'mainRed',
   'config',
+  'budget',
 ]
 
 test('pauseActions: reviewer kinds offer review, merge anyway and skip', () => {
@@ -74,6 +75,10 @@ test('pauseActions: owner, mainRed and config offer resume only', () => {
     assert.deepEqual(ids(kind), ['resume'], kind)
     assert.deepEqual(targets(kind), ['spec'], kind)
   }
+})
+
+test('pauseActions: a budget pause offers no button: the owner raises the budget line', () => {
+  assert.deepEqual(ids('budget'), [])
 })
 
 test('pauseActions: a kind-less or unknown pause offers resume only', () => {
@@ -135,6 +140,7 @@ test('pauseEndsBy: every kind', () => {
   )
   assert.equal(pauseEndsBy('mergeRequest', 5), 'Continues by itself when the MR is merged by hand.')
   assert.equal(pauseEndsBy('mainRed'), 'Continues by itself when main is green.')
+  assert.equal(pauseEndsBy('budget'), "Continues by itself once the milestone's budget line is raised above the spend.")
   for (const kind of ['owner', 'cycle', 'stuck', 'config', undefined, 'somethingNew']) {
     assert.equal(pauseEndsBy(kind, 5), '', String(kind))
   }

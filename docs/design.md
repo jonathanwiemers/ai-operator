@@ -985,8 +985,11 @@ stateDiagram-v2
   after); `status.autopilot.pausedReason` keeps the raw text, and
   `pauseKind` the cause (`owner`, `cycle`, `stuck`, `needsInput`,
   `runFailed`, `findings`, `reviewErrors`, `notReviewed`, `ciRed`,
-  `ciCanceled`, `mergeRequest`, `mainRed`, `config`) for the Desk's pause
-  card. Before pausing because of the active
+  `ciCanceled`, `mergeRequest`, `mainRed`, `config`, `budget`) for the Desk's
+  pause card. A milestone with a `/agent budget <usd>` line pauses with
+  `budget` once its `agent_calls` spend reaches it (read once per poll,
+  `status.autopilot.budget`); raising or removing the line resumes it, and
+  without the database it is not enforced. Before pausing because of the active
   issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause`,
   `skip #N` and `merge #N` on the tracking issue are handled by the operator.
 * **Merge without a full review.** `merge #N <sha>` (GitLab owners, or the

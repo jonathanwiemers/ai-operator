@@ -361,6 +361,7 @@ depend on the kind:
 | `mergeRequest` | Open MR, Resume, Skip |
 | `cycle`, `stuck` | Open plan, Skip (pick a pending or active issue) |
 | `owner`, `mainRed`, `config`, and a pause without a kind | Resume |
+| `budget` | none: raise the milestone's `/agent budget` line above the spend, and it continues by itself |
 
 Retry and Review again go to the paused issue's Implement task; Resume,
 Skip and Merge anyway to the milestone's Spec task, as Desk chat commands
