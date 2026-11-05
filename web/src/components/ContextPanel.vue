@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { hasFeature } from '../api'
 import { cost } from '../format'
 import { queueDone } from '../milestoneQueue'
+import { promptAnchor, splitPrompts } from '../promptCard'
 import type { HistoryResponse, InboxItem, MilestoneView, QueueItem } from '../types'
 import AskPilot from './AskPilot.vue'
+import Badge from './Badge.vue'
 import PauseCard from './PauseCard.vue'
-import PilotProposals from './PilotProposals.vue'
+import PromptCard from './PromptCard.vue'
 import QueueList from './QueueList.vue'
 import RelTime from './RelTime.vue'
 
 // ContextPanel sits beside a project or milestone stream. On a milestone
-// stream (full) it also holds the full pause card, the pilot's proposals and
-// Ask the pilot; the stream keeps the compact pause card.
+// stream (full) it also holds the full pause card, the milestone's prompts
+// (open first, the closed ones folded) and Ask the pilot; the stream keeps
+// the compact pause card.
 const props = defineProps<{
   namespace: string
   name: string
@@ -27,6 +31,10 @@ const done = computed(() => queueDone(queue.value))
 const total = computed(() => queue.value.length)
 const paused = computed(() => props.full && props.milestone?.autopilot?.phase === 'Paused')
 const showPilotChat = computed(() => !!props.milestone?.permissions?.chat || hasFeature('chat'))
+const prompts = computed(() => splitPrompts(props.milestone?.prompts))
+// A Desk link to a closed prompt unfolds the closed ones.
+const route = useRoute()
+const closedLinked = computed(() => prompts.value.closed.some((p) => route.hash === `#${promptAnchor(p.id)}`))
 
 const chart = computed(() => {
   const days = props.history?.days ?? []
@@ -122,9 +130,28 @@ function inboxTo(item: InboxItem) {
       <QueueList :namespace="namespace" :name="name" :milestone="milestone" />
     </div>
 
-    <div v-if="full && milestone?.pilot" class="panel">
-      <h3><span>Pilot</span></h3>
-      <PilotProposals :namespace="namespace" :name="name" :pilot="milestone.pilot" />
+    <div v-if="full && milestone && (milestone.pilot || prompts.open.length || prompts.closed.length)" class="panel">
+      <h3>
+        <span>Questions</span>
+        <span v-if="prompts.open.length">{{ prompts.open.length }} open</span>
+      </h3>
+      <div v-if="milestone.pilot" class="row pilot">
+        <span class="faint">Pilot</span>
+        <Badge :tone="milestone.pilot.autonomy === 'managed' ? 'progress' : 'neutral'">{{ milestone.pilot.autonomy }}</Badge>
+        <span class="faint">{{ cost(milestone.pilot.costUSD) }}</span>
+        <span class="spacer" />
+        <RouterLink :to="{ name: 'task', params: { namespace, name, task: milestone.pilot.task } }">Pilot task</RouterLink>
+      </div>
+      <div class="prompts">
+        <div v-if="!prompts.open.length" class="empty-sm">No open questions.</div>
+        <PromptCard v-for="p in prompts.open" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
+        <details v-if="prompts.closed.length" class="earlier" :open="closedLinked">
+          <summary>Earlier questions ({{ prompts.closed.length }})</summary>
+          <div class="prompts">
+            <PromptCard v-for="p in prompts.closed" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
+          </div>
+        </details>
+      </div>
     </div>
 
     <div v-if="history" class="panel">
@@ -285,6 +312,22 @@ function inboxTo(item: InboxItem) {
 }
 .legend i.spend {
   background: var(--accent-2);
+}
+.pilot {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.prompts {
+  display: grid;
+  gap: 10px;
+}
+.earlier summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.earlier[open] summary {
+  margin-bottom: 10px;
 }
 .empty-sm {
   font-size: 13px;

@@ -73,11 +73,25 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   merges, spend and events against the 30 days before. On a milestone
   stream it also holds the full **pause card** with its actions while the
   autopilot is paused (see below; the stream keeps the compact card), the
-  pilot's autonomy and open proposals, and **Ask the pilot** (the Desk chat
-  with the pilot, with the accept and reject buttons for its proposals).
-  These are proposals "P<n>" posted before prompts; the pilot's new
-  proposals are proposal prompts, which have no card yet and show as their
-  comment on the tracking issue.
+  pilot's autonomy and cost, the milestone's **questions** (prompt cards:
+  the open ones first, the newest closed ones folded under *Earlier
+  questions*), and **Ask the pilot** (the Desk chat with the pilot; its
+  accept and reject buttons remain for any proposal "P<n>" posted before
+  prompts).
+* **Prompt card**: one question to the milestone's owners (`Q<n>`): the
+  question, its context (markdown without HTML: untrusted), the options
+  with the recommended one first, a detail line and what each one does, a
+  text box when the prompt takes free text, and once closed who answered
+  with which option, when and where (Desk or GitLab), or that it was
+  superseded or expired. One click on an option sends
+  `{"cmd":"answer","prompt":"Q<n>","option":"A"}` to the prompt's target
+  task; the text box sends `{"cmd":"answer","prompt":"Q<n>","text":"…"}`
+  (at most 4000 bytes). On an action prompt the pilot turns the text into a
+  new option marked *from your answer*, which you confirm with a click;
+  nothing runs from the text itself. The operator's reply shows under the
+  card. Others see the card read-only: "Only the milestone's owners can
+  answer." The card's anchor is `#prompt-Q<n>`, so the Desk link in the
+  prompt's GitLab comment scrolls to it.
 
 The Desk has no projects list or separate board and milestone pages. The former board page (`/projects/<namespace>/<name>/board`) and milestone page
 (`…/milestones/<iid>/detail`) redirect to the project stream's Board tab and
