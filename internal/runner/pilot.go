@@ -220,6 +220,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		Autopilot  *aiv1.AutopilotStatus  `json:"autopilot,omitempty"`
 		PauseExits []aiv1.PauseExit       `json:"pauseExits,omitempty"`
 		Issues     []pilotIssue           `json:"issues"`
+		Others     []string               `json:"otherMilestones,omitempty"`
 		MainHealth *aiv1.MainHealthStatus `json:"mainHealth,omitempty"`
 		Comments   []string               `json:"trackingIssueComments,omitempty"`
 		Proposals  []aiv1.PilotProposal   `json:"openProposals,omitempty"`
@@ -250,6 +251,11 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		}
 		v.Issues = append(v.Issues, pi)
 	}
+	var items []aiv1.AutopilotItem
+	if v.Autopilot != nil {
+		items = v.Autopilot.Items
+	}
+	v.Others = r.references(ctx, gl, glProject, m, issues, items)
 	if task.Spec.Issue != nil {
 		notes, err := gl.ListIssueNotes(ctx, glProject, task.Spec.Issue.IID)
 		if err != nil {

@@ -1150,7 +1150,12 @@ question's kind is one of: `assessment` (the pilot looked at something),
 Every milestone with a tracking issue has a pilot: an agent you ask about the
 milestone. It knows the spec, the queue and autopilot's state with the pause
 reason, every issue's labels, block, CI and last run, the health of the
-default branch and the last comments of the tracking issue.
+default branch and the last comments of the tracking issue. It also sees up
+to 20 issues of other open milestones that reference this milestone's
+issues: "replaces #X" or "%N #X" (N this milestone) in their descriptions,
+and GitLab's "mentioned in" notes on pending and skipped issues. Only the 10
+most recently updated other milestones are read; a GitLab error leaves the
+list out.
 
 ```text
 /pilot why are we paused?

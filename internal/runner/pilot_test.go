@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -373,5 +375,116 @@ func TestPilotStateHasTheEngines(t *testing.T) {
 	}
 	if strings.Contains(proposalSchema, `"merge"`) {
 		t.Error("merge must not be a proposal tool")
+	}
+}
+
+// refsEnv is ai-operator's milestone 4 with #83 skipped and #88 pending,
+// and milestone 5 "Desk prompts", updated later.
+func refsEnv() (*gitlabfake.Fake, *gitlab.Milestone, []gitlab.Issue, []aiv1.AutopilotItem) {
+	gl := gitlabfake.New()
+	t4, t5 := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
+	m4 := gitlab.Milestone{ID: 40, IID: 4, Title: "Way out", State: "active", UpdatedAt: &t4}
+	m5 := gitlab.Milestone{ID: 50, IID: 5, Title: "Desk prompts", State: "active", UpdatedAt: &t5}
+	gl.Milestones = []gitlab.Milestone{m4, m5}
+	gl.AddIssue(83, "Pilot tools").Milestone = &m4
+	gl.AddIssue(88, "Use the tools").Milestone = &m4
+	issues := []gitlab.Issue{*gl.Issues[83], *gl.Issues[88]}
+	items := []aiv1.AutopilotItem{{IID: 83, State: aiv1.AutopilotItemSkipped}, {IID: 88, State: aiv1.AutopilotItemPending}}
+	return gl, &m4, issues, items
+}
+
+func TestReferencesFromOtherMilestones(t *testing.T) {
+	gl, m4, issues, items := refsEnv()
+	m5 := gl.Milestones[1]
+	gl.AddIssue(125, "Prompt tools").Milestone = &m5
+	gl.Issues[125].Description = "This Replaces %4 #83 and fixes #900."
+	gl.AddIssue(126, "Follow-up").Milestone = &m5
+	gl.Issues[126].Description = "Builds on %4 #88 and %3 #83, see #83." // only %4 counts
+	gl.AddIssue(127, "Notes").Milestone = &m5
+	gl.AddIssue(128, "Elsewhere").Milestone = &m5
+	gl.Issues[128].Description = "replaces #900" // not an issue of milestone 4
+	gl.IssueNotes[83] = []gitlab.Note{{Body: "mentioned in issue #127", System: true}, {Body: "mentioned in #900", System: true},
+		{Body: "mentioned in #126", Author: gitlab.User{Username: "mallory"}}} // not a system note
+	gl.IssueNotes[88] = []gitlab.Note{{Body: "mentioned in #126", System: true}} // weaker than the reference
+
+	lines := (&Runner{}).references(context.Background(), gl, "group/app", m4, issues, items)
+	want := []string{
+		`#125 (%5 "Desk prompts", opened) replaces #83: Prompt tools`,
+		`#126 (%5 "Desk prompts", opened) references #88: Follow-up`,
+		`#127 (%5 "Desk prompts", opened) mentions #83: Notes`,
+	}
+	if !slices.Equal(lines, want) {
+		t.Fatalf("got\n%s\nwant\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestReferencesReadNotesOfPendingAndSkippedOnly(t *testing.T) {
+	gl, m4, issues, _ := refsEnv()
+	m5 := gl.Milestones[1]
+	gl.AddIssue(125, "Prompt tools").Milestone = &m5
+	gl.IssueNotes[83] = []gitlab.Note{{Body: "mentioned in #125", System: true}}
+	items := []aiv1.AutopilotItem{{IID: 83, State: aiv1.AutopilotItemMerged}}
+	gl.ListNoteErrors = map[int64]error{88: errors.New("must not be read")}
+	if lines := (&Runner{}).references(context.Background(), gl, "group/app", m4, issues, items); len(lines) != 0 {
+		t.Fatalf("a merged item's notes are not read: %q", lines)
+	}
+}
+
+func TestReferencesAreCapped(t *testing.T) {
+	gl, m4, issues, items := refsEnv()
+	m5 := gl.Milestones[1]
+	for i := range int64(25) {
+		gl.AddIssue(200+i, strings.Repeat("x", 300)).Milestone = &m5
+		gl.Issues[200+i].Description = "replaces #83"
+	}
+	lines := (&Runner{}).references(context.Background(), gl, "group/app", m4, issues, items)
+	if len(lines) != pilotReferences || !strings.HasPrefix(lines[0], "#200 ") || len(lines[0]) > 200 {
+		t.Fatalf("expected %d short lines from #200 on, got %d:\n%s", pilotReferences, len(lines), strings.Join(lines, "\n"))
+	}
+}
+
+// Only the 10 most recently updated other milestones are read.
+func TestReferencesReadTheLatestMilestones(t *testing.T) {
+	gl, m4, issues, items := refsEnv()
+	for i := range int64(12) {
+		at := time.Date(2026, 10, 1+int(i), 0, 0, 0, 0, time.UTC)
+		m := gitlab.Milestone{ID: 60 + i, IID: 6 + i, Title: fmt.Sprintf("Old %d", i), State: "active", UpdatedAt: &at}
+		gl.Milestones = append(gl.Milestones, m)
+		gl.AddIssue(300+i, "old").Milestone = &m
+		gl.Issues[300+i].Description = "replaces #88"
+	}
+	lines := (&Runner{}).references(context.Background(), gl, "group/app", m4, issues, items)
+	// Milestone 5 and the 9 latest old ones: old 3 to 11.
+	if len(lines) != 9 || !strings.HasPrefix(lines[0], "#303 ") || !strings.HasPrefix(lines[8], "#311 ") {
+		t.Fatalf("got\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+func TestReferencesIgnoreAGitLabError(t *testing.T) {
+	e := newPilotEnv(t, "")
+	m := gitlab.Milestone{ID: 12, IID: 4, Title: "Desk prompts", State: "active"}
+	e.gl.Milestones = append(e.gl.Milestones, m)
+	e.gl.AddIssue(125, "Prompt tools").Milestone = &m
+	e.gl.Issues[125].Description = "replaces %3 #1"
+	e.step(t)
+	if p := e.engine.calls[0].Prompt; !strings.Contains(p, `"otherMilestones": [`+"\n"+`    "#125 (%4 \"Desk prompts\", opened) replaces #1: Prompt tools"`) {
+		t.Errorf("the state lists the replacement:\n%s", p)
+	}
+	if !strings.Contains(e.engine.calls[0].SystemPrompt, `"otherMilestones" lists issues of other open milestones`) {
+		t.Error("the system prompt explains otherMilestones")
+	}
+
+	e.gl.ListMilestonesError = errors.New("gitlab down")
+	var project aiv1.AgentProject
+	if err := e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: "shop"}, &project); err != nil {
+		t.Fatal(err)
+	}
+	pilot := e.task(t)
+	state, _, err := e.r.pilotState(context.Background(), e.gl, &pilot, &project, project.Spec)
+	if err != nil {
+		t.Fatalf("a GitLab error of the references must not fail the run: %v", err)
+	}
+	if strings.Contains(state, "otherMilestones") {
+		t.Errorf("no references after the error:\n%s", state)
 	}
 }

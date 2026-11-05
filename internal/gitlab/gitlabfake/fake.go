@@ -43,6 +43,8 @@ type Fake struct {
 	// the note and then fail, like a write whose answer timed out. Each entry
 	// is used once.
 	NoteErrorsAfterWrite map[int64]error
+	// ListMilestonesError makes ListMilestones fail.
+	ListMilestonesError error
 	// ListNoteErrors makes ListIssueNotes of an issue fail.
 	ListNoteErrors map[int64]error
 	// UpdateErrors makes UpdateIssue of an issue fail.
@@ -197,6 +199,9 @@ func (f *Fake) GetProject(context.Context, string) (*gitlab.Project, error) {
 func (f *Fake) ListMilestones(context.Context, string) ([]gitlab.Milestone, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.ListMilestonesError != nil {
+		return nil, f.ListMilestonesError
+	}
 	var active []gitlab.Milestone
 	for _, m := range f.Milestones {
 		if m.State != "closed" {
