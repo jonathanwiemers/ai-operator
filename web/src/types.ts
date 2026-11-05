@@ -693,7 +693,9 @@ export interface Spend {
 export interface InboxItem {
   namespace: string
   project: string
-  kind: 'task' | 'proposal' | 'pause'
+  kind: 'task' | 'proposal' | 'pause' | 'prompt'
+  // promptID: the open prompt (kind prompt); reason is its kind.
+  promptID?: string
   // pauseKind: why the milestone's autopilot paused (kind pause).
   pauseKind?: PauseKind
   task?: string

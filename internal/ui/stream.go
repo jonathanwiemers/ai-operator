@@ -481,17 +481,19 @@ func (t *HistoryTotals) add(d store.Day) {
 
 // InboxItem is something that needs a human now.
 type InboxItem struct {
-	Namespace    string     `json:"namespace"`
-	Project      string     `json:"project"`
-	Kind         string     `json:"kind"` // task, proposal or pause
-	Task         string     `json:"task,omitempty"`
-	IssueIID     int64      `json:"issueIID,omitempty"`
-	MilestoneIID int64      `json:"milestoneIID,omitempty"`
-	ProposalID   int64      `json:"proposalID,omitempty"`
-	Title        string     `json:"title"`
-	Reason       string     `json:"reason"`
-	At           *time.Time `json:"at,omitempty"`
-	URL          string     `json:"url,omitempty"`
+	Namespace    string `json:"namespace"`
+	Project      string `json:"project"`
+	Kind         string `json:"kind"` // task, proposal, pause or prompt
+	Task         string `json:"task,omitempty"`
+	IssueIID     int64  `json:"issueIID,omitempty"`
+	MilestoneIID int64  `json:"milestoneIID,omitempty"`
+	ProposalID   int64  `json:"proposalID,omitempty"`
+	// PromptID is the open prompt (kind prompt); Reason is its kind.
+	PromptID string     `json:"promptID,omitempty"`
+	Title    string     `json:"title"`
+	Reason   string     `json:"reason"`
+	At       *time.Time `json:"at,omitempty"`
+	URL      string     `json:"url,omitempty"`
 	// PauseKind is the cause of a paused autopilot (kind pause).
 	PauseKind aiv1.PauseKind `json:"pauseKind,omitempty"`
 }
@@ -520,6 +522,16 @@ func (s *Server) inbox(w http.ResponseWriter, r *http.Request) {
 	}
 	items := inboxOf(visible, tasks.Items, time.Now())
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// inboxTitleMax cuts a prompt's question in the Inbox.
+const inboxTitleMax = 140
+
+func truncateRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n-1]) + "…"
+	}
+	return s
 }
 
 func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) []InboxItem {
@@ -552,6 +564,23 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 				items = append(items, it)
 			}
 		}
+		needsInputPrompt := false
+		for _, pr := range t.Status.Prompts {
+			if pr.State.Closed() {
+				continue
+			}
+			it := base
+			it.Kind, it.PromptID, it.Title, it.Reason = "prompt", pr.ID, truncateRunes(pr.Question, inboxTitleMax), string(pr.Source.Kind)
+			if pr.Source.Kind == aiv1.PromptNeedsInput {
+				needsInputPrompt = true
+			}
+			it.At = nil
+			if pr.PostedAt != nil {
+				at := pr.PostedAt.Time
+				it.At = &at
+			}
+			items = append(items, it)
+		}
 		if a := t.Status.Autopilot; a != nil && a.Phase == aiv1.AutopilotPaused && t.Spec.Milestone != nil {
 			it := base
 			it.Kind, it.IssueIID, it.Title, it.Reason, it.PauseKind = "pause", a.PausedFor, t.Spec.Milestone.Title, a.PausedReason, a.PauseKind
@@ -560,6 +589,9 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 		}
 		switch stage := StageOf(t, ciWindow(ap), now); stage {
 		case StageNeedsInput, StageFailed, StageBlocked:
+			if needsInputPrompt && stage == StageNeedsInput {
+				continue // the prompt is the item
+			}
 			it := base
 			it.Kind, it.Reason = "task", string(stage)
 			if it.Title == "" && t.Spec.Milestone != nil {

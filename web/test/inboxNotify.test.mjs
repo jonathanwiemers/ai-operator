@@ -139,3 +139,12 @@ test('notificationText: pause, kind-less pause, proposal and needs-input', () =>
     body: 'shop',
   })
 })
+
+test('prompts notify once per task and prompt id', () => {
+  const p = (task, promptID) => ({ namespace: 'team', project: 'shop', kind: 'prompt', task, promptID, title: 'Retry?', reason: 'mainHealth' })
+  const a = p('spec', 'Q1')
+  assert.notEqual(inboxKey(a), inboxKey(p('impl', 'Q1')))
+  assert.deepEqual(newNotifications(new Set(), [a, { ...a }]), [a])
+  assert.deepEqual(newNotifications(new Set([inboxKey(a)]), [a]), [])
+  assert.deepEqual(notificationText(a), { title: 'Question Q1 · shop', body: 'Retry?' })
+})

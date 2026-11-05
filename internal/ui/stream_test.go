@@ -3,6 +3,7 @@ package ui
 import (
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -160,5 +161,48 @@ func TestInbox(t *testing.T) {
 	}
 	if p := items[2]; p.Kind != "pause" || p.MilestoneIID != 21 || p.Title != "Poker" || p.IssueIID != 391 || p.PauseKind != aiv1.PauseReviewErrors || p.Reason != "1 reviewers failed on #391" {
 		t.Errorf("a paused autopilot is in the inbox, a running one is not: %+v", p)
+	}
+}
+
+func TestInboxPrompts(t *testing.T) {
+	posted := metav1.NewTime(time.Now())
+	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "bloop"}}
+	prompt := func(id string, kind aiv1.PromptKind, state aiv1.PromptState, q string) aiv1.Prompt {
+		return aiv1.Prompt{ID: id, Source: aiv1.PromptSource{Kind: kind}, Question: q, State: state, PostedAt: &posted}
+	}
+	tasks := []aiv1.AgentTask{
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "spec"},
+			Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 5, Title: "Poker"}},
+			Status: aiv1.AgentTaskStatus{Prompts: []aiv1.Prompt{
+				prompt("Q1", aiv1.PromptMainHealth, aiv1.PromptOpen, strings.Repeat("é", 300)),
+				prompt("Q2", aiv1.PromptAssessment, aiv1.PromptAnswered, "closed"),
+				prompt("Q3", aiv1.PromptBudget, aiv1.PromptSuperseded, "closed"),
+			}}},
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "impl"},
+			Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeImplement, RunRequest: 1, Issue: &aiv1.IssueRef{IID: 7}},
+			Status: aiv1.AgentTaskStatus{
+				Run:     aiv1.RunStatus{ObservedRunRequest: 1, RunCount: 1, LastResult: aiv1.RunResultNeedsInput},
+				Prompts: []aiv1.Prompt{prompt("Q1", aiv1.PromptNeedsInput, "", "Which db?")}}},
+	}
+	items := inboxOf(map[string]*aiv1.AgentProject{"agents/bloop": ap}, tasks, time.Now())
+	if len(items) != 2 {
+		t.Fatalf("want the two open prompts and no needs-input task item: %+v", items)
+	}
+	for _, it := range items {
+		if it.Kind != "prompt" || it.At == nil {
+			t.Errorf("item = %+v", it)
+		}
+		switch it.Task {
+		case "spec":
+			if it.PromptID != "Q1" || it.Reason != "mainHealth" || it.MilestoneIID != 5 || len([]rune(it.Title)) != inboxTitleMax {
+				t.Errorf("milestone prompt = %+v", it)
+			}
+		case "impl":
+			if it.PromptID != "Q1" || it.Reason != "needsInput" || it.Title != "Which db?" {
+				t.Errorf("needsInput prompt = %+v", it)
+			}
+		default:
+			t.Errorf("unexpected item %+v", it)
+		}
 	}
 }

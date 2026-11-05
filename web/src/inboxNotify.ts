@@ -12,6 +12,9 @@ export function inboxKey(item: InboxItem): string {
     case 'proposal':
       parts.push(item.milestoneIID, item.proposalID)
       break
+    case 'prompt':
+      parts.push(item.task, item.promptID)
+      break
     case 'pause':
       parts.push(item.milestoneIID, item.issueIID, item.pauseKind)
       break
@@ -22,7 +25,7 @@ export function inboxKey(item: InboxItem): string {
 // notifiable says whether an item raises a browser notification: pauses,
 // proposals and tasks that need input. Failed and blocked tasks only count.
 export function notifiable(item: InboxItem): boolean {
-  return item.kind === 'pause' || item.kind === 'proposal' || (item.kind === 'task' && item.reason === 'needs-input')
+  return item.kind === 'pause' || item.kind === 'proposal' || item.kind === 'prompt' || (item.kind === 'task' && item.reason === 'needs-input')
 }
 
 // newNotifications returns the notifiable items whose key isn't in seen,
@@ -59,6 +62,11 @@ export function notificationText(item: InboxItem): NotificationText {
     case 'proposal':
       return {
         title: item.proposalID != null ? `Proposal P${item.proposalID} · ${item.project}` : `Proposal · ${item.project}`,
+        body: item.title,
+      }
+    case 'prompt':
+      return {
+        title: item.promptID ? `Question ${item.promptID} · ${item.project}` : `Question · ${item.project}`,
         body: item.title,
       }
     default:

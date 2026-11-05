@@ -31,3 +31,16 @@ test('inboxRoute: the rest opens the project stream', () => {
   assert.deepEqual(inboxRoute(item('pause')), want)
   assert.deepEqual(inboxRoute(item('proposal', { task: 'shop-pilot' })), want)
 })
+
+test('inboxRoute: prompts open the milestone stream or the task page, with the prompt hash', () => {
+  assert.deepEqual(inboxRoute(item('prompt', { task: 'shop-spec-m3', milestoneIID: 3, promptID: 'Q4', reason: 'mainHealth' })), {
+    name: 'stream-milestone',
+    params: { namespace: 'team', name: 'shop', iid: '3' },
+    hash: '#prompt-Q4',
+  })
+  assert.deepEqual(inboxRoute(item('prompt', { task: 'shop-impl-12', milestoneIID: 3, promptID: 'Q1', reason: 'needsInput' })), {
+    name: 'task',
+    params: { namespace: 'team', name: 'shop', task: 'shop-impl-12' },
+    hash: '#prompt-Q1',
+  })
+})
