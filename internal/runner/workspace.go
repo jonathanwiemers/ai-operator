@@ -7,7 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
 // Workspace is the agent's checkout. It lives in the agent container, which
@@ -284,6 +287,228 @@ func (w *Workspace) FinishMerge(ctx context.Context, req FinishMerge) (MergeResu
 		return back(req.Files, err)
 	}
 	return MergeResult{Merged: true, From: req.From}, nil
+}
+
+// DefaultCheckpointMaxFileBytes is the largest file a checkpoint commits
+// when CheckpointRequest.MaxFileBytes is 0.
+const DefaultCheckpointMaxFileBytes = 5 << 20
+
+// checkpointTrailer marks a checkpoint commit.
+const checkpointTrailer = "Agent-Checkpoint:"
+
+// checkpointSecrets are the base names of new files a checkpoint leaves out.
+var checkpointSecrets = []string{".env*", "*.pem", "*.key", "id_rsa*", "*.p12"}
+
+// CheckpointRequest asks for the work tree to be saved as a checkpoint
+// commit on the task's work branch.
+type CheckpointRequest struct {
+	// Reason is why the run was cut off (subject and trailer).
+	Reason string `json:"reason"`
+	Issue  int64  `json:"issue"`
+	Run    int64  `json:"run"`
+	Step   int    `json:"step"`
+	Branch string `json:"branch"`
+	Base   string `json:"base"`
+	// Expect, if set, is the last pushed commit: HEAD must be it or descend
+	// from it.
+	Expect string `json:"expect,omitempty"`
+	// MaxFileBytes is the largest file committed; 0 means
+	// DefaultCheckpointMaxFileBytes.
+	MaxFileBytes int64 `json:"maxFileBytes,omitempty"`
+	// Status is the agent's last status text, cut at 1 000 characters.
+	Status string `json:"status,omitempty"`
+}
+
+// CheckpointSkip is a file a checkpoint left out; it stays in the work tree.
+type CheckpointSkip struct {
+	Path string `json:"path"`
+	Why  string `json:"why"`
+}
+
+// CheckpointResult is the outcome of a checkpoint. SHA is empty if no commit
+// was made: the tree was clean, a merge or rebase was aborted (Aborted), or
+// the workspace was not safe to commit in (Refused).
+type CheckpointResult struct {
+	SHA     string           `json:"sha,omitempty"`
+	Files   int              `json:"files,omitempty"`
+	Added   int64            `json:"added,omitempty"`
+	Deleted int64            `json:"deleted,omitempty"`
+	Stat    string           `json:"stat,omitempty"`
+	Skipped []CheckpointSkip `json:"skipped,omitempty"`
+	Aborted string           `json:"aborted,omitempty"`
+	Refused string           `json:"refused,omitempty"`
+}
+
+// Checkpoint commits the work tree on req.Branch so that a run that was cut
+// off loses nothing. It refuses (Refused, no error) to commit anywhere but
+// the task's agent branch, aborts a merge or rebase in progress instead of
+// committing it, and leaves out big files and new files that look like
+// secrets. Errors are failed git commands.
+func (w *Workspace) Checkpoint(ctx context.Context, req CheckpointRequest) (CheckpointResult, error) {
+	w.removeStaleLock()
+	if why := w.checkpointRefusal(ctx, req); why != "" {
+		return CheckpointResult{Refused: why}, nil
+	}
+	if aborted, err := w.abortInProgress(ctx); aborted != "" || err != nil {
+		return CheckpointResult{Aborted: aborted}, err
+	}
+	if _, err := w.git(ctx, "add", "-A"); err != nil {
+		return CheckpointResult{}, err
+	}
+	skipped, err := w.unstageUnsafe(ctx, req.MaxFileBytes)
+	if err != nil {
+		return CheckpointResult{}, err
+	}
+	res := CheckpointResult{Skipped: skipped}
+	numstat, err := w.git(ctx, "diff", "--cached", "--numstat", "--no-renames")
+	if err != nil || strings.TrimSpace(numstat) == "" {
+		return res, err
+	}
+	if res.Stat, err = w.git(ctx, "diff", "--cached", "--stat", "--no-renames"); err != nil {
+		return res, err
+	}
+	for _, line := range strings.Split(numstat, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 3 {
+			continue
+		}
+		res.Files++
+		a, _ := strconv.ParseInt(f[0], 10, 64) // "-" for binary files
+		d, _ := strconv.ParseInt(f[1], 10, 64)
+		res.Added, res.Deleted = res.Added+a, res.Deleted+d
+	}
+	if _, err := w.git(ctx, "commit", "--quiet", "--no-verify", "--cleanup=whitespace", "-m", checkpointMessage(req, res.Stat)); err != nil {
+		return res, err
+	}
+	res.SHA, err = w.git(ctx, "rev-parse", "HEAD")
+	return res, err
+}
+
+// checkpointRefusal returns why the workspace is not safe for a checkpoint
+// of req, or "".
+func (w *Workspace) checkpointRefusal(ctx context.Context, req CheckpointRequest) string {
+	switch {
+	case req.Branch == "":
+		return "no work branch given"
+	case req.Branch == req.Base:
+		return fmt.Sprintf("%s is the base branch", req.Branch)
+	case !strings.HasPrefix(req.Branch, "agent/"):
+		return fmt.Sprintf("%s is not an agent branch", req.Branch)
+	}
+	// In a rebase HEAD is detached; the branch being rebased is in head-name.
+	current, err := w.git(ctx, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if dir := w.rebaseDir(); dir != "" {
+		var name []byte
+		name, err = os.ReadFile(filepath.Join(dir, "head-name"))
+		current = strings.TrimPrefix(strings.TrimSpace(string(name)), "refs/heads/")
+	}
+	if err != nil || current != req.Branch {
+		return fmt.Sprintf("the workspace is on %q, not on %s", current, req.Branch)
+	}
+	if req.Expect != "" {
+		// A missing object fails like a commit that is not an ancestor.
+		if _, err := w.git(ctx, "merge-base", "--is-ancestor", req.Expect, "refs/heads/"+req.Branch); err != nil {
+			return fmt.Sprintf("%s does not descend from the last pushed commit %s", req.Branch, req.Expect)
+		}
+	}
+	return ""
+}
+
+// rebaseDir returns the state directory of a rebase in progress, or "".
+func (w *Workspace) rebaseDir() string {
+	for _, name := range []string{"rebase-merge", "rebase-apply"} {
+		dir := filepath.Join(w.Dir, ".git", name)
+		if _, err := os.Stat(dir); err == nil {
+			return dir
+		}
+	}
+	return ""
+}
+
+// abortInProgress aborts a merge (back to ORIG_HEAD, the commit before it)
+// or a rebase in progress and says which one it was.
+func (w *Workspace) abortInProgress(ctx context.Context) (string, error) {
+	if w.hasRef(ctx, "MERGE_HEAD") {
+		// The reset also ends the merge if the abort failed.
+		_, _ = w.git(ctx, "merge", "--abort")
+		_, err := w.git(ctx, "reset", "--quiet", "--hard", "ORIG_HEAD")
+		return "merge", err
+	}
+	if w.rebaseDir() != "" {
+		_, err := w.git(ctx, "rebase", "--abort")
+		return "rebase", err
+	}
+	return "", nil
+}
+
+// unstageUnsafe takes staged files over maxBytes and new files that look
+// like secrets out of the index. They stay in the work tree.
+func (w *Workspace) unstageUnsafe(ctx context.Context, maxBytes int64) ([]CheckpointSkip, error) {
+	if maxBytes <= 0 {
+		maxBytes = DefaultCheckpointMaxFileBytes
+	}
+	out, err := w.git(ctx, "diff", "--cached", "--name-status", "--no-renames", "-z")
+	if err != nil {
+		return nil, err
+	}
+	fields := strings.Split(out, "\x00")
+	var skipped []CheckpointSkip
+	var paths []string
+	for i := 0; i+1 < len(fields); i += 2 {
+		status, path := fields[i], fields[i+1]
+		why := ""
+		if status == "A" && isSecretName(filepath.Base(path)) {
+			why = "looks like a secret"
+		} else if fi, err := os.Lstat(filepath.Join(w.Dir, path)); err == nil && status != "D" && fi.Size() > maxBytes {
+			why = fmt.Sprintf("larger than %d bytes", maxBytes)
+		}
+		if why != "" {
+			skipped = append(skipped, CheckpointSkip{Path: path, Why: why})
+			paths = append(paths, ":(literal)"+path)
+		}
+	}
+	if len(paths) > 0 {
+		if _, err := w.git(ctx, append([]string{"reset", "--quiet", "--"}, paths...)...); err != nil {
+			return nil, err
+		}
+	}
+	return skipped, nil
+}
+
+func isSecretName(name string) bool {
+	for _, p := range checkpointSecrets {
+		if ok, _ := filepath.Match(p, name); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// checkpointMessage is the message of a checkpoint commit: the fixed subject,
+// the diff stat, the agent's status and the Agent-Checkpoint trailer.
+func checkpointMessage(req CheckpointRequest, stat string) string {
+	reason := strings.Join(strings.Fields(req.Reason), " ")
+	parts := []string{
+		fmt.Sprintf("chore(wip): checkpoint #%d step %d (%s)", req.Issue, req.Step, reason),
+		stat,
+	}
+	if status := strings.TrimSpace(req.Status); status != "" {
+		parts = append(parts, textutil.Truncate(status, 999))
+	}
+	parts = append(parts, fmt.Sprintf("%s %d/%d %s", checkpointTrailer, req.Run, req.Step, reason))
+	return strings.Join(parts, "\n\n")
+}
+
+// IsCheckpoint reports whether a commit message carries the Agent-Checkpoint
+// trailer (in its last paragraph).
+func IsCheckpoint(message string) bool {
+	paras := strings.Split(strings.TrimSpace(strings.ReplaceAll(message, "\r\n", "\n")), "\n\n")
+	for _, line := range strings.Split(paras[len(paras)-1], "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), checkpointTrailer) {
+			return true
+		}
+	}
+	return false
 }
 
 // unmerged lists the files with unresolved conflicts in the index.

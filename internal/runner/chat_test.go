@@ -119,6 +119,9 @@ func (a *chatAgent) MergeBase(context.Context, string, string) (MergeResult, err
 func (a *chatAgent) FinishMerge(context.Context, FinishMerge) (MergeResult, error) {
 	return MergeResult{}, nil
 }
+func (a *chatAgent) Checkpoint(context.Context, CheckpointRequest) (CheckpointResult, error) {
+	return CheckpointResult{}, nil
+}
 
 func (a *chatAgent) Commit(_ context.Context, message string) (bool, error) {
 	if a.commitFn != nil {

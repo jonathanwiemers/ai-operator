@@ -46,6 +46,8 @@ type Agent interface {
 	Bundle(ctx context.Context, branch, base, path string) (bool, error)
 	MergeBase(ctx context.Context, base, message string) (MergeResult, error)
 	FinishMerge(ctx context.Context, req FinishMerge) (MergeResult, error)
+	// Checkpoint commits the work tree of a run that was cut off.
+	Checkpoint(ctx context.Context, req CheckpointRequest) (CheckpointResult, error)
 }
 
 // LocalAgent implements Agent in-process. The agent server wraps it; the
@@ -232,6 +234,10 @@ func (a *LocalAgent) FinishMerge(ctx context.Context, req FinishMerge) (MergeRes
 	return a.Workspace.FinishMerge(ctx, req)
 }
 
+func (a *LocalAgent) Checkpoint(ctx context.Context, req CheckpointRequest) (CheckpointResult, error) {
+	return a.Workspace.Checkpoint(ctx, req)
+}
+
 func (a *LocalAgent) checkPath(path string) error {
 	rel, err := filepath.Rel(a.Exchange, filepath.Clean(path))
 	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
@@ -284,6 +290,11 @@ type mergeRequest struct {
 type mergeResponse struct {
 	Result MergeResult `json:"result"`
 	Error  string      `json:"error,omitempty"`
+}
+
+type checkpointResponse struct {
+	Result CheckpointResult `json:"result"`
+	Error  string           `json:"error,omitempty"`
 }
 
 type refsResponse struct {
@@ -455,6 +466,16 @@ func (s *AgentServer) Handler() http.Handler {
 		res, err := s.Agent.FinishMerge(ctx, req)
 		return reply{mergeResponse{Result: res, Error: errString(err)}, err,
 			[]any{"base", req.Base, "abort", req.Abort, "merged", res.Merged, "conflicts", len(res.Conflicts)}}
+	})
+	handle("checkpoint", func(ctx context.Context, body []byte) reply {
+		var req CheckpointRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{checkpointResponse{Error: err.Error()}, err, nil}
+		}
+		res, err := s.Agent.Checkpoint(ctx, req)
+		return reply{checkpointResponse{Result: res, Error: errString(err)}, err,
+			[]any{"branch", req.Branch, "reason", req.Reason, "sha", res.SHA, "files", res.Files,
+				"skipped", len(res.Skipped), "aborted", res.Aborted, "refused", res.Refused}}
 	})
 	handle("session/open", func(ctx context.Context, body []byte) reply {
 		var req openSessionRequest
@@ -783,6 +804,14 @@ func (c *AgentClient) FinishMerge(ctx context.Context, req FinishMerge) (MergeRe
 	var resp mergeResponse
 	if err := c.call(ctx, "finish-merge", req, &resp); err != nil {
 		return MergeResult{}, err
+	}
+	return resp.Result, remoteErr(resp.Error)
+}
+
+func (c *AgentClient) Checkpoint(ctx context.Context, req CheckpointRequest) (CheckpointResult, error) {
+	var resp checkpointResponse
+	if err := c.call(ctx, "checkpoint", req, &resp); err != nil {
+		return CheckpointResult{}, err
 	}
 	return resp.Result, remoteErr(resp.Error)
 }
