@@ -1,11 +1,19 @@
 # `/agent` commands
 
-Everything you tell the agents, you tell them in GitLab: in comments on
-issues and merge requests, and in the milestone description. This page lists
-all of it. For the workflow around it see [usage.md](usage.md).
+Questions to the owners (what to do about a red `main`, a pilot proposal, an
+agent's question, a budget) are **prompts**. Answer them in the Desk with one
+click or one sentence: see [Prompts](usage.md#prompts) and the [Desk](ui.md).
+The operator mirrors each prompt and its answer as a comment in GitLab.
 
-You can also write these from the [web UI](ui.md#steering): its comments are
-GitLab comments in your name and work exactly the same.
+The comments on this page are the **fallback for projects whose
+`workflow.inputs` has `gitlab`** (the default, `[gitlab, desk]`): everything
+the agents can be told can also be told in comments on issues and merge
+requests and in the milestone description. With `inputs: [desk]` the operator
+acts on none of the `/agent` and `/pilot` comments; it replies and points to
+the Desk (see [Replies](#replies-to-comments-not-acted-on)). Labels, milestone
+planning and the milestone description stay on GitLab either way. For the
+workflow around it see [usage.md](usage.md). The [web UI](ui.md#steering) can
+also write these as GitLab comments in your name.
 
 ## How commands work
 
@@ -162,6 +170,27 @@ proposals they accept.
 | `/pilot coordinate` | On an issue of a planned milestone without autopilot: opens the tracking issue "🧭 Pilot: <milestone>" and starts its pilot. |
 | `/pilot rules` | Lists the milestone's [standing rules](usage.md#talking-to-the-pilot), with the reason for any that is not applied. No model call. |
 | `/pilot forget R2` | Proposes removing rule R2; an owner's `yes` removes its line from the milestone description. |
+
+## Replies to comments not acted on
+
+An `/agent` or `/pilot` comment the operator will not act on is never ignored
+silently: it gets one reply in its thread, once per comment (marked with the
+comment's id, so a re-poll or a webhook never replies twice; up to 10 a day
+per author, more are only logged). This covers the open issues with the
+generated label (`ci::*` too), the queue of autopilot milestones, closed
+issues (revisits), tracking issues and the notes the webhook delivers.
+
+| Reason | Reply |
+|--------|-------|
+| The issue has no `agent::` label | "Nothing happens yet: #N has no `agent::ready` label. Add it to hand #N to the agent." A routing-only command (e.g. `/agent use …`) says it "is applied once it has". |
+| Not an owner (`commandsFrom: owners`) | "Only the owners of this milestone can give `/agent` commands here (`workflow.commandsFrom: owners`)", with a hint to add `/agent owners @…` when the milestone has none. |
+| Not an owner, to the pilot | "Only the owners of this milestone can instruct me." |
+| The tracking issue only takes these commands | The "anything else" answer of [its list](#on-the-tracking-issue-autopilot): the commands, a pointer to `/pilot …` and the active issue. |
+| `inputs` is `[desk]` | "Nothing happens: this project takes instructions in the Desk: <link>", to the issue's open prompt, else its task, else the milestone (without a Desk URL, see `--desk-url`, no link). |
+
+A bare `/pilot yes` is refused for the same reason: it does not say which
+prompt is meant. Answer in the Desk, or with the option's letter in the
+prompt's thread.
 
 ## In the milestone description
 

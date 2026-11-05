@@ -344,6 +344,14 @@ comment ([commands](commands.md)). With only `desk`:
 Labels, milestone planning and human MR review threads stay on GitLab either
 way.
 
+The links in these replies, and in the prompts' comments, are the Desk's
+address: the operator's `--desk-url` flag (the chart's `ui.externalURL`; agent
+pods get `AI_DESK_URL`). Without it prompts say "Answer in the Desk." and
+replies carry no link. What `inputs: [desk]` does not change: labels
+(`agent::ready`), milestone planning and human review threads on merge
+requests stay on GitLab, and the operator still mirrors every prompt and
+answer there.
+
 `assignBot` assigns the bot user to an issue when the operator picks it up and
 the issue has no assignee, so GitLab's milestone page lists it under
 **Ongoing**. It is sent in the same update that adds the working label. An

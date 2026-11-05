@@ -26,7 +26,7 @@ chat included, with your own GitLab token.
 The app is a **Desk**: a left rail, the stream, and a context panel.
 
 * **Rail:** *Inbox* (what needs you now across your projects: tasks with
-  questions, failed or blocked, the pilots' open proposals, and paused
+  questions, failed or blocked, the open prompts (and proposals from before prompts), and paused
   autopilots as the compact pause card, see below, which opens the
   milestone stream; the count also shows in the tab title as `(n) Desk`; see
   [Notifications](#notifications)), *Everything*
@@ -91,6 +91,17 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   nothing runs from the text itself. The operator's reply shows under the
   card. Others see the card read-only: "Only the milestone's owners can
   answer." The card's anchor is `#prompt-Q<n>`, so the Desk link in the
+  prompt's GitLab comment scrolls to it. The compact card shows the
+  question and the recommended option.
+* **Where prompts appear:** the Inbox (kind `prompt`, counted like the rest,
+  with the tab title and the browser notification), the milestone context
+  panel (full cards, replacing the old proposals list), the stream (compact
+  cards), the Task page (an agent's questions above the chat) and the
+  pause cards of `mainRed` and `budget` pauses.
+* **Revisit:** each decision row in the queue has a **Revisit** button. It
+  opens a `revisit` prompt on the decision's issue: the agent's choice and
+  the alternatives it recorded, as options, and a text box. See
+  [Revisiting after the merge](usage.md#revisiting-after-the-merge).
 * **Prompts in the stream and on the Task page**: a `prompt.posted` event
   is the prompt's compact card (question, the recommended option as a
   button, "more…") while the milestone view still has the prompt; if status
@@ -100,7 +111,6 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   threads, so a prompt shows once. On a task page the agent's open
   `needsInput` prompts (and the newest closed one) are full cards above the
   chat.
-  prompt's GitLab comment scrolls to it.
 
 The Desk has no projects list or separate board and milestone pages. The former board page (`/projects/<namespace>/<name>/board`) and milestone page
 (`…/milestones/<iid>/detail`) redirect to the project stream's Board tab and
@@ -199,7 +209,7 @@ permission and, once you allow it, shows *Notifications on* (click it to turn
 them off). The choice is remembered per browser; they are off until you turn
 them on. While they are on, a new Inbox item raises one browser notification:
 a paused autopilot (*Autopilot paused · milestone*, with the cause and the
-reason), a pilot's proposal (*Proposal P3 · project*), or a task with a
+reason), a prompt (*Q5 · project*; a proposal "P3" from before prompts shows as before), or a task with a
 question (*#12 needs input*). Failed and blocked tasks only count in the
 Inbox. Items already there when the tab opens or when you turn notifications
 on don't notify; each item notifies once, also across reloads and live
@@ -352,7 +362,16 @@ command goes to the task that owns it: `retry` / `review` / `use` /
 Spec task, and `accept` / `reject`, `answer` and `revisit` on the
 milestone's Coordinate (pilot) task (author must be in the milestone's
 `owner-subjects`); `answer` to the agent's questions (`needsInput`
-prompts) goes on its Implement task, same owners. Chat events
+prompts) goes on its Implement task, same owners. The prompt commands:
+
+| Command | Effect |
+|---------|--------|
+| `{"cmd":"answer","prompt":"Q5","option":"B"}` | Choose option B of prompt Q5: its actions run (checked again by the operator). |
+| `{"cmd":"answer","prompt":"Q5","text":"…"}` | Your own words (at most 4000 bytes). On an action prompt the pilot adds the option "From your answer: …" to confirm; on an agent's question the text is the answer. |
+| `{"cmd":"revisit","decision":"D42-3","text":"…"}` | Revisit a decision with that instruction. Without `text`: opens the `revisit` prompt. |
+
+An explicit prompt id is always required, and a prompt takes one answer.
+Chat events
 appear in the Desk stream when the `chat` feature is on (keyed apart from
 history events).
 

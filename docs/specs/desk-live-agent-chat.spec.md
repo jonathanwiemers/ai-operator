@@ -340,6 +340,11 @@ dispatcher.
 
 ### 5. GitLab comments as input, per project
 
+**Status: built** with the Desk prompts milestone (`spec.workflow.inputs`,
+the replies to comments that are not acted on, the fresh-session context).
+See [configuration.md](../configuration.md#specworkflow) and
+[commands.md](../commands.md).
+
 `spec.workflow.inputs: [gitlab, desk]` (default both, today's behaviour plus
 the Desk). With only `desk`:
 
@@ -481,8 +486,11 @@ it and say so in their description.
 9. **Commands and owners** (split by steer 4a): 9a shape, path and
    Implement commands; 9b autopilot verbs, proposals, `ownerSubjects`;
    9c web buttons.
-10. **`workflow.inputs`:** gate the note readers, fresh-session context
-    from the chat table, run report wording; docs.
+10. **`workflow.inputs`** (built with the Desk prompts milestone; see
+    [usage.md](../usage.md#prompts) and
+    [configuration.md](../configuration.md#specworkflow)): gate the note
+    readers, fresh-session context from the chat table, run report wording;
+    docs.
 
 Then: Bloop on `[gitlab, desk]`, then `[desk]`; a later spec removes the
 GitLab comment path if nothing needs it.

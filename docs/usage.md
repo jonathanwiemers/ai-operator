@@ -1088,6 +1088,54 @@ If the plan changes (you edit the milestone spec), issues that were not
 started yet follow the new plan; started and merged ones are kept. While the
 milestone is being planned again, no new issue is started.
 
+## Prompts
+
+Every question the operator, the pilot or an agent puts to the owners is a
+**prompt**: a question, two to four options (exactly one recommended, and a
+"do nothing" one on every prompt with actions), and a text box where free
+text is allowed. Owners answer in the Desk
+(see [ui.md](ui.md#desk-and-history)) with one click or one sentence. The
+question's kind is one of: `assessment` (the pilot looked at something),
+`mainHealth` ([red or flaky `main`](#talking-to-the-pilot)), `proposal`,
+`needsInput` ([the agent's questions](#2-answer-questions-and-hand-the-issue-over)),
+`revisit` ([a decision](#revisiting-after-the-merge)) and `budget`
+([the budget](#budget-prompts)).
+
+- **Q-ids.** A prompt is `Q<n>`, counted up per milestone (an agent's
+  question on an issue outside a milestone: per task). An answer always
+  names the prompt and the option (`{"cmd":"answer","prompt":"Q5","option":"B"}`),
+  never "yes". Only the milestone's owners (`/agent owner-subjects`) can
+  answer, once: a second answer is refused naming the first.
+- **Lifecycle.** A prompt is **open**, then **answered** (who, which option
+  or words, when, via the Desk or GitLab), **superseded** when its source
+  resolves (main green again, the issue merged or closed, the run went on,
+  a newer prompt on the same source), or **expired** (proposal prompts only,
+  24 h after posting). There is no fixed time-to-live for the others. The
+  CRD status keeps the newest 20 prompts; every prompt and answer is also
+  recorded as a history event (`prompt.posted`, `prompt.answered`,
+  `prompt.closed`), so the Desk shows answered ones after status dropped them.
+- **Free text** on an action prompt never runs anything: the pilot turns it
+  into one more option, "From your answer: …", that you confirm, or asks one
+  follow-up question. On an agent's question the text *is* the answer and
+  goes to the agent's session.
+- **GitLab mirror.** The operator posts each prompt as one comment on its
+  source (the tracking issue, the issue or the merge request): the
+  question, the options as a list and "Answer in the Desk: <link>" (the link
+  needs `--desk-url`, chart `ui.externalURL`). The comment has no command
+  syntax to copy. When the prompt is answered, superseded or expired the
+  operator edits it ("✅ Answered by `@owner` in the Desk: <option>", "⏹️
+  Superseded: …", "⌛ Expired …") and replies with the chosen option and the
+  free text, quoted as untrusted. With `workflow.inputs` containing `gitlab`
+  an owner may also answer with the option's letter as a reply in the
+  thread ([commands](commands.md)). Context, option text and free text are
+  untrusted: shown as markdown without HTML, and what an option does is
+  always checked by the operator, never taken from text.
+- **Pause cards.** A pause that needs no choice keeps its card; `mainRed`
+  and `budget` pauses show their prompt instead of a bare Resume.
+- **Legacy.** A proposal "P<n>" posted before prompts stays answerable
+  (`yes` / `no`, `/pilot yes P3`, Accept in the Desk) until it expires; new
+  ones are prompts.
+
 ## Talking to the pilot
 
 Every milestone with a tracking issue has a pilot: an agent you ask about the
