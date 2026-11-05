@@ -4,6 +4,8 @@
 //	ai-runner agent-server          the agent server (agent container: agent CLI credentials only)
 //	ai-runner research              one research run (runner container: Kubernetes credentials and the research database writer login, no GitLab token)
 //	ai-runner init-workspace DIR…   create the PVC sub-paths (init container)
+//	ai-runner read-gate [--min-lines N] [--subagents a,b]
+//	                                the read gate, a claude PreToolUse hook (agent container): hook JSON on stdin, deny JSON or nothing on stdout, always exit 0
 //
 // Without AI_AGENT_SOCKET the runner runs the agent in-process (single
 // container, for development only: the model can then reach the runner's
@@ -19,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -30,11 +33,18 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/readgate"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/runner"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "read-gate" {
+		// Before the logger and signal handler: the hook runs before every
+		// Read and Bash call of claude.
+		readGate(os.Args[2:])
+		return
+	}
 	ctrl.SetLogger(newLogger())
 	ctx := ctrl.SetupSignalHandler()
 	if len(os.Args) > 1 {
@@ -57,6 +67,26 @@ func main() {
 		}
 	}
 	runRunner(ctx)
+}
+
+// readGate runs the read gate hook. Bad flags allow the call like every
+// other error of the gate: one line on stderr, exit 0.
+func readGate(args []string) {
+	fs := flag.NewFlagSet("read-gate", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	minLines := fs.Int("min-lines", 350, "files over this many lines are gated")
+	subagents := fs.String("subagents", "", "comma-separated subagent names for the deny message")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "read-gate: allowed after error: %v\n", err)
+		return
+	}
+	var names []string
+	for _, name := range strings.Split(*subagents, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			names = append(names, name)
+		}
+	}
+	readgate.Run(os.Stdin, os.Stdout, os.Stderr, *minLines, names)
 }
 
 // newLogger returns the logger at the level in AI_LOG_LEVEL: debug, info or

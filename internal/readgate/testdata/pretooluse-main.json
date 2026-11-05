@@ -1,0 +1,12 @@
+{
+  "session_id": "6f0c3a5e-2b7d-4c41-9a8e-3d1f0b6c2e94",
+  "transcript_path": "/home/agent/.claude/projects/-workspace-repo/6f0c3a5e-2b7d-4c41-9a8e-3d1f0b6c2e94.jsonl",
+  "cwd": "/workspace/repo",
+  "prompt_id": "0b9e4d2a-7c15-4f3e-8a61-5e2d9c0f7b38",
+  "permission_mode": "bypassPermissions",
+  "effort": {"level": "high"},
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Read",
+  "tool_input": {"file_path": "/workspace/repo/src/big.ts"},
+  "tool_use_id": "toolu_01HcV8yQ2mXkR4sT7uW9zA3b"
+}

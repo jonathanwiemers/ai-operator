@@ -558,6 +558,22 @@ nothing is lost.
   GitLab API exploration and never gets GitLab credentials.
 * **Stable system prompts** (constants, no timestamps) so the prompt prefix
   stays cacheable.
+* **Read gate.** A claude role with subagents is told to delegate reads,
+  but a prompt line alone is ignored, so the gate enforces it: claude calls
+  `ai-runner read-gate` (`internal/readgate`) as a `PreToolUse` hook for
+  `Read` and `Bash` in the agent container, where `ai-runner` is already
+  the entrypoint. It denies a `Read` without `offset`/`limit`, and a whole
+  `cat`/`head`/`tail`/`less`/`more` of a file over `minLines` lines, and
+  the reason tells the agent to ask a subagent or read a section. Calls
+  from subagents (hook input with `agent_id`) are always allowed: reading
+  big files is the scout's job. The hook fails open: bad input, an
+  unreadable file or a panic allow the call with one line on stderr, and
+  it always exits 0, so a gate bug never fails a run. Lines are counted
+  with a bounded read up to `minLines + 1`. The runner sets a 5 s timeout
+  on the hook in the `--settings` it passes. The runner wiring and the
+  `readGate` field come with later slices of the milestone (see
+  [the spec](specs/read-gate-and-writer.spec.md)); until then nothing calls
+  the hook.
 * **Reviewers see the diff**, not the repository; they read more code only to
   confirm a finding. They are one-shot, without session persistence.
 * **Bounded fix loop** (`review.maxIterations`), per-invocation
@@ -1907,6 +1923,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/controller/pilot_spec.go`, `pilot_followups.go`, `internal/runner/pilot_retro.go` | the pilot's spec edits (`editSpec`), the retrospective's `create 1 2`, the retrospective run |
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
+| `internal/readgate` | the read gate (`ai-runner read-gate`): claude `PreToolUse` hook for `Read` and `Bash`, no Kubernetes imports |
 | `internal/runner/pilot.go` | the pilot: milestone state, answers, budget |
 | `internal/runner/git.go` | runner-side bare mirror (the only git that talks to GitLab) |
 | `internal/runner/research.go`, `research_run.go` | research runs (`ai-runner research`): prompt, agent call, validation and repair; store writes and the report in `status.run` |
