@@ -200,6 +200,13 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 	}
 
 	prompt := buildChatPrompt(msg, resend)
+	// Answers to the implementer's questions the session has not had.
+	var answers []aiv1.PromptAnswerDelivery
+	if task.Spec.Type == aiv1.TaskTypeImplement {
+		if answers = promptAnswers(task, st, resume == ""); len(answers) > 0 {
+			prompt = buildPromptAnswers(answers) + "\n\n" + prompt
+		}
+	}
 	if task.Spec.Type == aiv1.TaskTypeCoordinate && task.Spec.Milestone != nil {
 		// The pilot answers from the milestone as it is now, not as its
 		// session last saw it. Read before the interrupt watcher starts, so an
@@ -267,6 +274,7 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 	if err != nil {
 		return r.finishChatTurn(ctx, &st, msg, text, textutil.Truncate(err.Error(), 200), call, nil, start, false)
 	}
+	st.deliveredPrompts(answers)
 	return r.finishChatTurn(ctx, &st, msg, text, "", call, nil, start, !readOnly)
 }
 

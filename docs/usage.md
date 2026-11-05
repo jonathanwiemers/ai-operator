@@ -326,7 +326,11 @@ If the agent has questions, the issue moves to **`agent::needs-input`**.
 The issue comment lists them; a decision comes with two to four options,
 the agent's default marked, and an open question without. The task keeps
 them, normalised, in `status.run.questions` (at most 5), from which the
-Desk's prompts will be made; until then, answer in a comment.
+Desk's prompts will be made; until then, answer in a comment. Answers the
+operator hands over in `spec.source.promptAnswers` reach the agent's session
+once, as the owner's words ("Answer to your question Q5 (…) from @alice:
+…", several in one turn), with the run of their request or the next chat
+turn; a fresh session gets them all in its first prompt.
 Otherwise it stays in `agent::working` until the MR pipeline has run; failing
 jobs (lint, tests, …) go back to the agent (see [CI feedback](#ci-feedback)),
 and the issue moves to **`agent::review`** once the pipeline is green.

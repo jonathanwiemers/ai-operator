@@ -230,6 +230,16 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		inv.Prompt = instruction + "\n\n" + inv.Prompt
 		humanInput++
 	}
+	// Owners' answers to the agent's questions: each reaches the session
+	// once, a fresh session gets them all.
+	answers := promptAnswers(task, st, false)
+	if all := promptAnswers(task, st, true); len(all) > 0 {
+		fullPrompt += "\n\n" + buildPromptAnswers(all)
+	}
+	if len(answers) > 0 {
+		inv.Prompt = buildPromptAnswers(answers) + "\n\n" + inv.Prompt
+		humanInput++
+	}
 
 	// A conflict run: the operator saw the merge request conflict with the
 	// default branch. The default branch is merged in; the implementer
@@ -272,7 +282,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if reviewAsked {
 		head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
 		forImplementer := humanNotes(command.WithoutRouting(newIssueNotes, prefix), botID) + humanNotes(command.WithoutRouting(newMRNotes, prefix), botID)
-		reReview = head == reviewFor && forImplementer == 0 && !ciFix && !mergeBase && len(revisits) == 0 && pilotInstruction(task) == ""
+		reReview = head == reviewFor && forImplementer == 0 && !ciFix && !mergeBase && len(revisits) == 0 && pilotInstruction(task) == "" && len(answers) == 0
 		runAgent = runAgent && !reReview
 	}
 
@@ -299,6 +309,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		st.setSession("implement", ranOn(role, res), res.SessionID)
 		st.ImplementEngine = ranOn(role, res)
+		st.deliveredPrompts(answers)
 		st.LastIssueNoteID = maxNoteID(issueNotes, st.LastIssueNoteID)
 		st.LastMRNoteID = maxNoteID(mrNotes, st.LastMRNoteID)
 		if err := r.saveState(st); err != nil {

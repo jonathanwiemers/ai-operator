@@ -208,6 +208,13 @@ type SourceState struct {
 	// +kubebuilder:validation:MaxItems=5
 	PromptRefines []PromptRefine `json:"promptRefines,omitempty"`
 
+	// PromptAnswers are owners' answers to the implementer's needsInput
+	// prompts (Implement tasks). The runner delivers each to the agent's
+	// session once, from the run of its request on.
+	// +optional
+	// +kubebuilder:validation:MaxItems=5
+	PromptAnswers []PromptAnswerDelivery `json:"promptAnswers,omitempty"`
+
 	// Retrospective is the run request that writes the retrospective of the
 	// milestone (Coordinate tasks), once its autopilot is done.
 	// +optional

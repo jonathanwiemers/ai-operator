@@ -171,6 +171,9 @@ type state struct {
 	// ChatAnswered are the last answered chat message IDs, so a message
 	// the operator hands over again is not answered twice.
 	ChatAnswered []int64 `json:"chatAnswered,omitempty"`
+	// PromptsDelivered are the last prompt ids whose answers reached the
+	// implementer's session (spec.source.promptAnswers).
+	PromptsDelivered []string `json:"promptsDelivered,omitempty"`
 }
 
 // chatInFlight is persisted before a chat turn is sent.

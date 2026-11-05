@@ -420,6 +420,46 @@ spec:
                       human's.
                     format: int64
                     type: integer
+                  promptAnswers:
+                    description: |-
+                      PromptAnswers are owners' answers to the implementer's needsInput
+                      prompts (Implement tasks). The runner delivers each to the agent's
+                      session once, from the run of its request on.
+                    items:
+                      description: |-
+                        PromptAnswerDelivery is an owner's answer to a needsInput prompt of the
+                        implementer (Implement tasks), written by the operator after the owner
+                        check. The runner hands it to the agent's session as one user turn, once.
+                      properties:
+                        by:
+                          description: By is the owner's username.
+                          type: string
+                        optionLabel:
+                          description: |-
+                            OptionLabel is the label of the option the owner chose, empty for an
+                            answer in free text only.
+                          type: string
+                        prompt:
+                          description: Prompt is the prompt's id ("Q5").
+                          type: string
+                        question:
+                          description: Question is the prompt's question, as the agent
+                            asked it.
+                          type: string
+                        request:
+                          description: Request is the run request that delivers it.
+                          format: int64
+                          type: integer
+                        text:
+                          description: Text is the owner's free text.
+                          maxLength: 4000
+                          type: string
+                      required:
+                      - prompt
+                      - request
+                      type: object
+                    maxItems: 5
+                    type: array
                   promptRefines:
                     description: |-
                       PromptRefines are owners' free-text answers to action prompts

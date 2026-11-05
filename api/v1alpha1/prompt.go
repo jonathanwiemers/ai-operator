@@ -211,6 +211,33 @@ type PromptRefine struct {
 	MessageID int64 `json:"messageID,omitempty"`
 }
 
+// MaxPromptAnswers bounds spec.source.promptAnswers.
+const MaxPromptAnswers = 5
+
+// PromptAnswerDelivery is an owner's answer to a needsInput prompt of the
+// implementer (Implement tasks), written by the operator after the owner
+// check. The runner hands it to the agent's session as one user turn, once.
+type PromptAnswerDelivery struct {
+	// Prompt is the prompt's id ("Q5").
+	Prompt string `json:"prompt"`
+	// Question is the prompt's question, as the agent asked it.
+	// +optional
+	Question string `json:"question,omitempty"`
+	// OptionLabel is the label of the option the owner chose, empty for an
+	// answer in free text only.
+	// +optional
+	OptionLabel string `json:"optionLabel,omitempty"`
+	// Text is the owner's free text.
+	// +optional
+	// +kubebuilder:validation:MaxLength=4000
+	Text string `json:"text,omitempty"`
+	// By is the owner's username.
+	// +optional
+	By string `json:"by,omitempty"`
+	// Request is the run request that delivers it.
+	Request int64 `json:"request"`
+}
+
 // PromptRefinement is the pilot's answer to a PromptRefine: exactly one of
 // Option, FollowUp and Error. Written by the runner.
 type PromptRefinement struct {
