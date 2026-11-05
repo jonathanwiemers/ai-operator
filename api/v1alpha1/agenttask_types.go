@@ -394,9 +394,12 @@ type PilotAction struct {
 type PilotProposal struct {
 	// ID is n of "P<n>", given when the operator posts it.
 	// +optional
-	ID      int64         `json:"id,omitempty"`
-	Summary string        `json:"summary"`
-	Actions []PilotAction `json:"actions"`
+	ID      int64  `json:"id,omitempty"`
+	Summary string `json:"summary"`
+	// Actions are empty for a proposal with Options: each option carries
+	// its own.
+	// +optional
+	Actions []PilotAction `json:"actions,omitempty"`
 	// State is PilotState when it was made.
 	State string `json:"state"`
 	// +optional

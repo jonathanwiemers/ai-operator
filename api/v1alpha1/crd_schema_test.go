@@ -305,3 +305,29 @@ func TestPromptRefineSchema(t *testing.T) {
 		}
 	}
 }
+
+// A pilot assessment proposes options only, with no actions of its own. The
+// runner records it with nil Actions; the schema must store it, or the whole
+// status patch fails and the owners never get the prompt.
+func TestPilotProposalWithOptionsOnlyAdmitted(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	task := AgentTask{Status: AgentTaskStatus{Pilot: &PilotStatus{Proposed: []PilotProposal{{
+		Kind: PromptAssessment, Summary: "Autopilot paused", Source: "pause:stuck", State: "s1",
+		Question: "Autopilot paused. What now?",
+		Options: []PromptOption{
+			{ID: "A", Label: "Resume", Recommended: true, Actions: []PilotAction{{Tool: "resume"}}},
+			{ID: "B", Label: "Do nothing"},
+		},
+	}}}}}
+	data, err := json.Marshal(task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(data, &obj); err != nil {
+		t.Fatal(err)
+	}
+	if _, errs := crd.admit(map[string]any{"status": obj["status"]}); len(errs) > 0 {
+		t.Fatalf("options-only proposal rejected: %v", errs)
+	}
+}
