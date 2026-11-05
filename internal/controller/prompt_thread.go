@@ -103,7 +103,7 @@ func (r *AgentProjectReconciler) promptThreadAnswers(ctx context.Context, gl git
 			if owner {
 				cmd := chatcmd.Command{Cmd: "answer", Prompt: p.ID, Option: letter}
 				var answered bool
-				if reply, answered, err = r.answerPrompt(ctx, project, spec, st, coord, n.Author.Username, cmd, "gitlab"); err != nil {
+				if reply, answered, err = r.answerPrompt(ctx, project, spec, st, coord, n.Author.Username, 0, cmd, "gitlab"); err != nil {
 					return err
 				}
 				if answered {

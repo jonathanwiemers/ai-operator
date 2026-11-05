@@ -1479,8 +1479,26 @@ An owner answers a milestone prompt from the Desk with the chat command
   only records the answer.
 * A prompt that is superseded or expired (a proposal past 24 h, or the
   milestone's state changed) is refused. Free text is refused on a prompt
-  without `allowFreeText`; otherwise it waits for the pilot turn that turns
-  it into an option, and is refused with "pick an option" until then.
+  without `allowFreeText`, and with "pick an option" on `needsInput` and
+  `revisit` prompts, which take it on their own paths.
+* **Free text** on an action prompt (`queueRefine`) is never an answer: it
+  goes to the pilot as a `spec.source.promptRefines` entry with a run
+  request (see *Refines* above), the prompt stays open, and a sixth while
+  five wait is refused ("the pilot is still working on your earlier
+  answers"). The owner's chat message gets no answer yet (the chat keeps
+  one reply per message). `consumeRefined`, in `syncPilots` before
+  `runAccepted`, takes each `status.pilot.refined` entry: an option is
+  checked like an option the model made (`checkOption`, the rules of
+  `validOptions`) and, on the prompt if it is still open, takes the place
+  of an earlier one from an answer or follows the producer's options with
+  the next letter, labelled "From your answer: …", `fromAnswer`, never
+  recommended. The message is answered with "Q3 has option E from your
+  answer; confirm it there.", the refused actions, the follow-up question
+  or the pilot's error, made inert; a refine whose run ended without a
+  refinement is answered so. The refines leave the spec with the answers,
+  then their refinements the status. Confirming the option is an answer
+  like any other. The prompt's GitLab comment is not edited for it, and
+  `proposalState` leaves it out, so it does not supersede a proposal.
 * **In GitLab** (`prompt_thread.go`), while `workflow.inputs` has
   `gitlab`: a reply that starts with an option's letter (alone, or before
   a line break or punctuation; the rest is ignored, free text stays in the

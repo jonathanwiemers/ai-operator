@@ -24,8 +24,10 @@ import (
 // chosen option's actions go to coord.Status.Pilot.Accepted, which
 // runAccepted runs at the end of the poll: a crash in between loses the
 // run of the option, never runs it twice, and a second answer is refused.
+// Free text, of Desk chat message msg, goes to the pilot (queueRefine);
+// its reply is "", the message is answered once the pilot has.
 func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st, coord *aiv1.AgentTask, who string, cmd chatcmd.Command, via string) (reply string, answered bool, err error) {
+	st, coord *aiv1.AgentTask, who string, msg int64, cmd chatcmd.Command, via string) (reply string, answered bool, err error) {
 	i := slices.IndexFunc(st.Status.Prompts, func(p aiv1.Prompt) bool { return p.ID == cmd.Prompt })
 	if i < 0 {
 		return fmt.Sprintf("There is no prompt %s.", cmd.Prompt), false, nil
@@ -33,6 +35,9 @@ func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1
 	p := st.Status.Prompts[i]
 	if refused := answerRefused(p, cmd); refused != "" {
 		return refused, false, nil
+	}
+	if cmd.Text != "" {
+		return r.queueRefine(ctx, coord, p, who, msg, cmd.Text)
 	}
 	o := p.Option(cmd.Option)
 	var tasks map[int64]*aiv1.AgentTask
@@ -94,6 +99,40 @@ func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1
 	return fmt.Sprintf("%s answered: %s. The outcome follows on the prompt.", p.ID, label), true, nil
 }
 
+// queueRefine hands an owner's free text on the open action prompt p, of
+// Desk chat message msg, to the pilot with a run request: the pilot makes
+// one option of it or asks one follow-up question, and consumeRefined
+// answers msg once it has. The prompt stays open, nothing runs before the
+// owner confirms that option, and at most aiv1.MaxRefines wait.
+func (r *AgentProjectReconciler) queueRefine(ctx context.Context, coord *aiv1.AgentTask, p aiv1.Prompt, who string, msg int64,
+	text string) (string, bool, error) {
+	full := false
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		src := &coord.Spec.Source
+		if full = len(src.PromptRefines) >= aiv1.MaxRefines; full {
+			return nil
+		}
+		coord.Spec.RunRequest++
+		src.PromptRefines = append(src.PromptRefines, aiv1.PromptRefine{Prompt: p.ID, Question: p.Question, Context: p.Context,
+			Options: slices.Clone(p.Options), Text: text, By: who, Request: coord.Spec.RunRequest, MessageID: msg})
+		err := r.Update(ctx, coord)
+		if apierrors.IsConflict(err) {
+			if err := r.Get(ctx, client.ObjectKeyFromObject(coord), coord); err != nil {
+				return err
+			}
+		}
+		return err
+	}); err != nil {
+		return "", false, err
+	}
+	if full {
+		return "The pilot is still working on your earlier answers; answer again once it has answered them.", false, nil
+	}
+	log.FromContext(ctx).Info("free-text answer handed to the pilot", "task", coord.Name, "prompt", p.ID, "by", who,
+		"request", coord.Spec.RunRequest)
+	return "", true, nil
+}
+
 // promptOutcome records the outcome lines of the actions of the option
 // chosen on prompt id of st in its answer, for the GitLab mirror and the
 // Desk. A prompt that left the status meanwhile keeps none.
@@ -118,9 +157,11 @@ func answerRefused(p aiv1.Prompt, cmd chatcmd.Command) string {
 		return fmt.Sprintf("%s no longer applies (%s).", p.ID, p.State)
 	case cmd.Text != "" && !p.AllowFreeText:
 		return fmt.Sprintf("%s takes no free text; pick an option.", p.ID)
-	case cmd.Text != "":
-		// Turned into an option by a pilot turn once that is built (R5).
+	case cmd.Text != "" && (p.Source.Kind == aiv1.PromptNeedsInput || p.Source.Kind == aiv1.PromptRevisit):
+		// The agent's question and a revisit take the text themselves, on
+		// their own paths.
 		return "Free text answers are not handled yet; pick an option."
+	case cmd.Text != "":
 	case p.Option(cmd.Option) == nil:
 		return fmt.Sprintf("%s has no option %s.", p.ID, cmd.Option)
 	}

@@ -399,6 +399,9 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 				_, err = r.postProposals(ctx, gl, project, spec, st, coord, tracking)
 			}
 			if err == nil {
+				err = r.consumeRefined(ctx, gl, project, spec, st, coord)
+			}
+			if err == nil {
 				err = r.runAccepted(ctx, gl, project, spec, st, coord, tracking)
 			}
 		}

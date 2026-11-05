@@ -1160,6 +1160,16 @@ default branch and the last comments of the tracking issue.
   changed hands, or someone made an owner later, cannot answer it. On a
   milestone without owners there are no proposals.
 
+  **Your own words in the Desk.** On a prompt with a text box, a sentence
+  ("do it differently: …") runs nothing. The pilot turns it into one more
+  option, "From your answer: …", which you confirm with one click like any
+  other, or asks one follow-up question; its answer is the reply to your
+  message in the chat. The option goes through the same checks as the
+  pilot's own (an option with an action the operator would not run is not
+  added, and the reply says why), replaces one from an earlier answer, and
+  leaves the recommendation as it was. GitLab sees it only once you choose
+  it. Five answers can wait for the pilot at a time.
+
   Proposals posted before prompts ("🧭 **Proposal P3:** …") stay open
   until they expire: an owner accepts one with `yes` as a reply in its
   thread, `/pilot yes P3` anywhere in the milestone, or Accept in the Desk;

@@ -134,10 +134,13 @@ func promptResolved(now time.Time, mh *aiv1.MainHealthStatus, issues map[int64]g
 
 // proposalState is PilotState of the milestone and the actions of p's
 // options, which a proposal prompt records as PilotState when it is made.
+// An option made from an owner's answer later does not count.
 func proposalState(st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, p aiv1.Prompt) string {
 	var actions []aiv1.PilotAction
 	for _, o := range p.Options {
-		actions = append(actions, o.Actions...)
+		if !o.FromAnswer {
+			actions = append(actions, o.Actions...)
+		}
 	}
 	return aiv1.PilotState(st, tasks, actions)
 }

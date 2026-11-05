@@ -373,8 +373,11 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, pro
 	// coord with the server's copy, spec included.
 	var answers []aiv1.ChatReply
 	mark := src.LastChatCommandID
+	// No text: the message is answered later (consumeRefined).
 	answer := func(id int64, text string) {
-		answers = append(answers, aiv1.ChatReply{MessageID: id, Text: text, At: now})
+		if text != "" {
+			answers = append(answers, aiv1.ChatReply{MessageID: id, Text: text, At: now})
+		}
 		mark = id
 	}
 	for _, m := range pending {
@@ -403,7 +406,7 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, pro
 		}
 		if cmd.PromptCmd() {
 			logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "prompt", cmd.Prompt)
-			reply, _, err := r.answerPrompt(ctx, project, spec, st, coord, who, cmd, "desk")
+			reply, _, err := r.answerPrompt(ctx, project, spec, st, coord, who, m.ID, cmd, "desk")
 			if err != nil {
 				return err
 			}

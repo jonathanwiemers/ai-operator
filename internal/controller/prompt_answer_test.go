@@ -144,7 +144,7 @@ func TestPromptAnswerRefusals(t *testing.T) {
 	e.addPrompt(st, st, stuckPrompt())
 	e.addPrompt(st, st, stuckPrompt()) // Q2 supersedes Q1
 	free := trackingPrompt()
-	free.AllowFreeText = true
+	free.Source.Kind, free.AllowFreeText = aiv1.PromptRevisit, true // takes its text on its own path
 	e.addPrompt(st, st, free)
 	e.reconcile()
 	before := e.toolEffect()

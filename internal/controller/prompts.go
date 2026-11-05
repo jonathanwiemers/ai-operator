@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -106,25 +107,8 @@ func (r *AgentProjectReconciler) validOptions(ctx context.Context, gl gitlab.API
 	var notes, refused []string
 	acting, recommended := false, false
 	for _, o := range p.Options {
-		o.Actions = forgetFirst(slices.Clone(o.Actions))
+		lines, bad := checkOption(ctx, gl, project, spec, st, tasks, opened, &o, fromModel)
 		acting = acting || len(o.Actions) > 0
-		if len(o.Actions) > 0 && (st == nil || st.Spec.Milestone == nil) {
-			refused = append(refused, fmt.Sprintf("%s: actions need a milestone", inertLine(o.Label, 100)))
-			continue
-		}
-		mine := slices.Clone(opened)
-		var lines []string
-		var bad error
-		for j := range o.Actions {
-			line, err := checkAction(ctx, gl, project, spec, st, tasks, mine, &o.Actions[j], fromModel, !o.Recommended)
-			lines = append(lines, line)
-			switch {
-			case err != nil && bad == nil:
-				bad = err
-			case err == nil && o.Actions[j].Tool == "openIssue":
-				mine = append(mine, titleKey(o.Actions[j].Title))
-			}
-		}
 		if bad != nil {
 			refused = append(refused, fmt.Sprintf("%s: %s", inertLine(o.Label, 100), strings.Join(lines, " ")))
 			continue
@@ -155,6 +139,31 @@ func (r *AgentProjectReconciler) validOptions(ctx context.Context, gl gitlab.API
 	}
 	p.Options = kept
 	return notes, nil
+}
+
+// checkOption checks the actions of o for validOptions, putting forgetRule
+// first, and returns a line per action (or why none ran) and the first
+// refusal.
+func checkOption(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+	st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string, o *aiv1.PromptOption, fromModel bool) ([]string, error) {
+	o.Actions = forgetFirst(slices.Clone(o.Actions))
+	if len(o.Actions) > 0 && (st == nil || st.Spec.Milestone == nil) {
+		return []string{"actions need a milestone"}, errors.New("actions need a milestone")
+	}
+	mine := slices.Clone(opened)
+	var lines []string
+	var bad error
+	for j := range o.Actions {
+		line, err := checkAction(ctx, gl, project, spec, st, tasks, mine, &o.Actions[j], fromModel, !o.Recommended)
+		lines = append(lines, line)
+		switch {
+		case err != nil && bad == nil:
+			bad = err
+		case err == nil && o.Actions[j].Tool == "openIssue":
+			mine = append(mine, titleKey(o.Actions[j].Title))
+		}
+	}
+	return lines, bad
 }
 
 // patchPrompts changes the prompts of holder under an optimistic lock,
