@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  avgCost,
+  avgTokens,
   callCost,
   childLabel,
   childScope,
@@ -12,11 +14,13 @@ import {
   modelSlots,
   modelsLine,
   pctLabel,
+  reviewRounds,
   runNumber,
   runsNewestFirst,
   spendHidden,
   tokenBreakdown,
   scopeFromQuery,
+  sessionRows,
   shareLabel,
   shares,
   sortByCost,
@@ -25,6 +29,8 @@ import {
   spendLocation,
   spendQuery,
   spendUSD,
+  subagentRoles,
+  subagentShare,
   unitFromQuery,
   unitQuery,
   unknownNote,
@@ -362,4 +368,50 @@ test('modelBars: estimated costs are marked ~, models without a cost left out of
   const [t] = modelBars([row([split('gpt', true, 100, '0.42')], { costSource: 'estimated' })], 'tokens')
   assert.equal(t.label, '100')
   assert.match(t.segments[0].title, /100 tokens · ~\$0\.42$/)
+})
+
+test('avgCost: per call with a known cost, n/a when none has one, never $0', () => {
+  assert.equal(avgCost(usd('6.00', { calls: 3 })), '$2.00')
+  // A call without a cost is not in the average.
+  assert.equal(avgCost(usd('6.00', { calls: 4, unknownCalls: 1 })), '$2.00')
+  assert.equal(avgCost(totals({ calls: 2, unknownCalls: 2 })), 'n/a')
+  assert.equal(avgCost(totals()), 'n/a')
+  assert.equal(avgCost(usd('0.01', { calls: 3 })), '<$0.01')
+})
+
+test('avgTokens: all token types per call, 0 without calls', () => {
+  assert.equal(avgTokens(totals({ calls: 4, inputTokens: 100, outputTokens: 20, cacheReadTokens: 250, cacheWriteTokens: 30 })), 100)
+  assert.equal(avgTokens(totals({ inputTokens: 5 })), 0)
+})
+
+test('reviewRounds by number, sessionRows fresh first', () => {
+  const rows = (...keys) => keys.map((key) => ({ key, totals: usd('1.00') }))
+  assert.deepEqual(
+    reviewRounds(rows('10', '2', '1')).map((r) => r.key),
+    ['1', '2', '10'],
+  )
+  assert.deepEqual(
+    sessionRows(rows('resumed', 'fresh')).map((r) => r.key),
+    ['fresh', 'resumed'],
+  )
+})
+
+test('subagentRoles: roles where a subagent ran, with their calls without', () => {
+  const row = (role, withSubagents, over = {}) => ({ role, withSubagents, totals: usd('1.00'), subagentTokens: 0, ...over })
+  const got = subagentRoles([
+    row('review', false),
+    row('implement', true, { subagentTokens: 25, totals: usd('3.00', { inputTokens: 80, outputTokens: 20 }) }),
+    row('implement', false),
+    row('fix', false),
+    row('scout-only', true),
+  ])
+  assert.deepEqual(
+    got.map((r) => [r.role, r.rows.map((x) => x.withSubagents)]),
+    [
+      ['implement', [true, false]],
+      ['scout-only', [true]],
+    ],
+  )
+  assert.equal(subagentShare(got[0].rows[0]), '25%')
+  assert.equal(subagentShare(got[1].rows[0]), '—')
 })

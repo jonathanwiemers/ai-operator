@@ -409,6 +409,13 @@ thoroughly; `0` never inlines. Example:
 `reviewerSettings: [{name: bugbot, maxInlineDiff: 50000}]`. `describe`
 has `disabled`.
 
+To tune the cap, look at *Review rounds* in the [Spend tab](ui.md#spend) of
+a milestone with big changes: round 1 reviews the whole diff, later rounds
+review it again after each fix. If the cost per call stays high in every
+round, a lower `maxInlineDiff` for the costly reviewer saves input tokens on
+each round; if a lower cap raises the cost per call instead (the reviewer
+reads the files itself) or brings more rounds, go back up.
+
 `implement` additionally has `stepSession` (`resume` or `fresh`, default
 `resume`), which also applies to the profiles. It decides how a run that
 works in steps (`workflow.stepCommits`, draft MR) goes on after each step:
@@ -424,7 +431,13 @@ works in steps (`workflow.stepCommits`, draft MR) goes on after each step:
 
 The first step, the review-fix rounds and the next run work as with
 `resume`: fix rounds and the next run resume the last step's session. Compare
-the two in the Spend tab (fresh steps are calls with `resumed: false`).
+the two in the Spend tab's *Implementer steps: resumed vs fresh* table, which
+splits the implement calls of the scope by `resumed`, with tokens and cost per
+call. With `resume`, the *fresh* row is mostly first steps and the *resumed*
+row the later ones, so a resumed cost per call well above the fresh one is the
+growing context. With `fresh`, nearly every step lands in the *fresh* row:
+compare its cost per call (and the runs' totals, which include the extra
+review-fix rounds a forgetful step may cause) with a milestone on `resume`.
 
 ### Subagents
 
@@ -459,7 +472,14 @@ To see whether it pays off, compare runs with and without it in the
 and the model bars (subagent models as their own), the calls count their
 subagent calls, and on the context-growth chart an orange dot marks each
 turn after which a subagent ran. Fewer main-model input and cache tokens
-per step, and a flatter context line, mean the delegation works.
+per step, and a flatter context line, mean the delegation works. The *With
+vs without subagents* table puts it in numbers per role: the calls in which
+a subagent ran against those without one, with tokens and cost per call and
+the subagent models' share of the tokens. A call counts as *with* when a
+subagent actually ran, not when one was configured, so claude's built-in
+subagents count too. A lower cost per call *with* means delegation pays; a
+high subagent share with no saving means the scout reads more than the role
+would have.
 
 ### Per-issue model and effort
 

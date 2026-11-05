@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -267,5 +268,124 @@ func TestSpend(t *testing.T) {
 		if _, err := s.SpendChildTotals(ctx, sc); err == nil {
 			t.Errorf("SpendChildTotals(%+v) succeeded, want an error", sc)
 		}
+	}
+}
+
+func TestSpendTuning(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	base := time.Now().Add(-time.Hour).Truncate(time.Second)
+	exp := time.Now().Add(24 * time.Hour)
+	usd := func(v float64) *float64 { return &v }
+	n := 0
+	call := func(task string, run, seq int64, kind, role string, cost *float64, in, out int64) store.Call {
+		n++
+		source := "reported"
+		if cost == nil {
+			source = "unknown"
+		}
+		return store.Call{Key: "k" + strconv.Itoa(n), At: base.Add(time.Duration(n) * time.Minute), Namespace: "agents",
+			Project: "bloop", MilestoneIID: 20, IssueIID: 148, Task: task, Run: run, Seq: seq, Kind: kind, Role: role,
+			Engine: "claude", Model: "claude-opus-5-5", InputTokens: in, OutputTokens: out, CostUSD: cost,
+			CostSource: source, ExpiresAt: exp}
+	}
+	resumed := func(c store.Call) store.Call { c.Resumed = true; return c }
+	scouted := func(c store.Call, scoutTokens int64) store.Call {
+		c.SubagentCalls = 1
+		c.Models = []store.CallModel{
+			{Model: "claude-opus-5-5", InputTokens: c.InputTokens - scoutTokens, OutputTokens: c.OutputTokens, CostUSD: c.CostUSD},
+			{Model: "claude-haiku-5-5", InputTokens: scoutTokens},
+		}
+		return c
+	}
+	calls := []store.Call{
+		// Run 1: implement, two reviewers, fix, one reviewer, fix, two
+		// reviewers. Inserted out of seq order: rounds follow seq.
+		call("bloop-148", 1, 9, "review", "security", usd(0.5), 50, 5),
+		call("bloop-148", 1, 1, "implement", "implement", usd(4), 400, 40),
+		scouted(resumed(call("bloop-148", 1, 2, "implement", "implement", usd(6), 600, 60)), 100),
+		call("bloop-148", 1, 3, "review", "security", usd(1), 100, 10),
+		call("bloop-148", 1, 4, "review", "style", usd(2), 200, 20),
+		call("bloop-148", 1, 5, "fix", "fix", usd(3), 300, 30),
+		call("bloop-148", 1, 6, "review", "security", usd(0.75), 75, 5),
+		call("bloop-148", 1, 7, "fix", "fix", usd(1), 100, 10),
+		call("bloop-148", 1, 8, "review", "style", nil, 10, 1),
+		// Run 2 starts at round 1 again; a ci call does not end a round.
+		call("bloop-148", 2, 10, "review", "security", usd(0.25), 25, 2),
+		call("bloop-148", 2, 11, "ci", "ci", usd(1), 100, 10),
+		call("bloop-148", 2, 12, "review", "security", usd(0.25), 25, 2),
+		call("bloop-148", 2, 13, "fix", "fix", usd(1), 100, 10),
+		call("bloop-148", 2, 14, "review", "security", usd(0.5), 50, 5),
+		resumed(call("bloop-148", 2, 15, "implement", "implement", usd(8), 800, 80)),
+		scouted(call("bloop-148", 2, 16, "review", "security", usd(2), 300, 20), 200),
+	}
+	if _, err := owner.InsertCalls(ctx, calls); err != nil {
+		t.Fatal(err)
+	}
+	sp, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "bloop", MilestoneIID: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type breakdown struct {
+		key            string
+		cost           float64
+		calls, unknown int64
+		tokens         int64
+	}
+	check := func(what string, got []store.SpendBreakdown, want []breakdown) {
+		t.Helper()
+		var g []breakdown
+		for _, b := range got {
+			g = append(g, breakdown{b.Key, b.Totals.CostUSD, b.Totals.Calls, b.Totals.UnknownCalls, b.Totals.Tokens()})
+		}
+		if !slices.Equal(g, want) {
+			t.Errorf("%s:\n got %+v\nwant %+v", what, g, want)
+		}
+	}
+	// Round 1: run 1's seq 3 and 4, run 2's 10, 12. Round 2: run 1's 6,
+	// run 2's 14, 16. Round 3: run 1's 8 (unknown cost) and 9.
+	check("by review round", sp.ByReviewRound, []breakdown{
+		{"1", 3.5, 4, 0, 384},
+		{"2", 3.25, 3, 0, 455},
+		{"3", 0.5, 2, 1, 66},
+	})
+	check("by session", sp.BySession, []breakdown{
+		{"fresh", 4, 1, 0, 440},
+		{"resumed", 14, 2, 0, 1540},
+	})
+
+	type subagents struct {
+		role       string
+		with       bool
+		cost       float64
+		calls      int64
+		tokens     int64
+		sub, scout int64
+	}
+	var g []subagents
+	for _, b := range sp.BySubagents {
+		g = append(g, subagents{b.Role, b.WithSubagents, b.Totals.CostUSD, b.Totals.Calls, b.Totals.Tokens(),
+			b.Totals.SubagentCalls, b.SubagentTokens})
+	}
+	if want := []subagents{
+		{"ci", false, 1, 1, 110, 0, 0},
+		{"fix", false, 5, 3, 550, 0, 0},
+		{"implement", false, 12, 2, 1320, 0, 0},
+		{"implement", true, 6, 1, 660, 1, 100},
+		{"security", false, 3.25, 6, 354, 0, 0},
+		{"security", true, 2, 1, 320, 1, 200},
+		{"style", false, 2, 2, 231, 0, 0},
+	}; !slices.Equal(g, want) {
+		t.Errorf("by subagents:\n got %+v\nwant %+v", g, want)
+	}
+
+	// A scope without review or implement calls has no rounds or sessions.
+	sp, err = s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "bloop", MilestoneIID: 21})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sp.ByReviewRound) != 0 || len(sp.BySession) != 0 || len(sp.BySubagents) != 0 {
+		t.Errorf("empty scope = %+v", sp)
 	}
 }

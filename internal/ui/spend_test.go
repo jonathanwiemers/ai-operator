@@ -57,7 +57,7 @@ func TestSpendViewUnknownCost(t *testing.T) {
 	}
 	c := v.Children[0]
 	if c.Totals.CostUSD != "" || c.Models[0].CostUSD != "" || c.SpendCallView == nil || c.ContextSeries == nil ||
-		c.SubagentTurns == nil || v.ByKind == nil {
+		c.SubagentTurns == nil || v.ByKind == nil || v.ByReviewRound == nil || v.BySession == nil || v.BySubagents == nil {
 		t.Errorf("child = %+v, want unknown costs and empty lists", c)
 	}
 }
@@ -123,6 +123,18 @@ func TestSpend(t *testing.T) {
 	}
 	if ms.Children[0].SpendCallView != nil || len(ms.ByKind) != 2 || len(ms.ByModel) != 3 {
 		t.Errorf("milestone = %+v", ms)
+	}
+	if s := ms.BySession; len(s) != 1 || s[0].Key != "fresh" || s[0].Totals.Calls != 2 || s[0].Totals.CostUSD != "1.75" {
+		t.Errorf("milestone by session = %+v, want two fresh implement calls", s)
+	}
+	var sub []SubagentBreakdownView
+	for _, b := range ms.BySubagents {
+		if b.WithSubagents {
+			sub = append(sub, b)
+		}
+	}
+	if len(sub) != 1 || sub[0].Role != "implement" || sub[0].Totals.Calls != 1 || sub[0].SubagentTokens != 7 || ms.ByReviewRound == nil {
+		t.Errorf("milestone by subagents = %+v, want #42's implement call with 7 subagent tokens", ms.BySubagents)
 	}
 
 	var run SpendView

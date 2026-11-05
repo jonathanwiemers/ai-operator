@@ -6,6 +6,8 @@ import { clockTime, duration, fullTime, tokenCount } from '../format'
 import { useNow } from '../live'
 import ModelBar from './ModelBar.vue'
 import {
+  avgCost,
+  avgTokens,
   barColors,
   callCost,
   childLabel,
@@ -16,7 +18,9 @@ import {
   modelSlots,
   modelsLine,
   pctLabel,
+  reviewRounds,
   scopeFromQuery,
+  sessionRows,
   shareLabel,
   shares,
   sortByCost,
@@ -25,6 +29,8 @@ import {
   spendTokens,
   tokenBreakdown as tokenTitle,
   spendUSD,
+  subagentRoles,
+  subagentShare,
   unitFromQuery,
   unitQuery,
   unknownNote,
@@ -36,7 +42,8 @@ import type { Spend, SpendBreakdown } from '../types'
 // SpendPanel is the Spend tab of a project or milestone stream: the
 // scope's totals, its children one level down (project → milestone →
 // issue → run → calls, the position in ?spendIssue=&spendTask=&spendRun=)
-// and its calls by kind, role and model.
+// its calls by kind, role and model, and the tuning tables: review cost
+// per round, implementer steps fresh vs resumed, with vs without subagents.
 const props = defineProps<{
   namespace: string
   name: string
@@ -115,6 +122,12 @@ const breakdowns = computed(() => {
     return { ...b, rows, shares: shares(rows.map((r) => r.totals)) }
   })
 })
+
+// The tuning tables: what to set maxInlineDiff, stepSession and subagents
+// by (docs/configuration.md).
+const rounds = computed(() => reviewRounds(data.value?.byReviewRound ?? []))
+const sessions = computed(() => sessionRows(data.value?.bySession ?? []))
+const subagentRows = computed(() => subagentRoles(data.value?.bySubagents ?? []))
 
 // level: what the children are, as the API groups them.
 const level = computed(() => {
@@ -329,6 +342,91 @@ function rowKey(b: SpendBreakdown): string {
               </tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      <section v-if="totals.calls" class="breakdowns tuning">
+        <div class="section">
+          <h3>Review rounds</h3>
+          <div v-if="rounds.length" class="card table">
+            <table class="list">
+              <thead>
+                <tr>
+                  <th>Round</th>
+                  <th class="num">Calls</th>
+                  <th class="num">Tokens</th>
+                  <th class="num">Cost</th>
+                  <th class="num">Per call</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in rounds" :key="r.key">
+                  <td>{{ r.key }}</td>
+                  <td class="num">{{ r.totals.calls }}</td>
+                  <td class="num" :title="tokenTitle(r.totals)">{{ tokenCount(spendTokens(r.totals)) }}</td>
+                  <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ spendUSD(r.totals) }}</td>
+                  <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ avgCost(r.totals) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="muted">No review calls here.</p>
+        </div>
+        <div class="section">
+          <h3>Implementer steps: resumed vs fresh</h3>
+          <div v-if="sessions.length" class="card table">
+            <table class="list">
+              <thead>
+                <tr>
+                  <th>Session</th>
+                  <th class="num">Calls</th>
+                  <th class="num">Tokens per call</th>
+                  <th class="num">Cost</th>
+                  <th class="num">Per call</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in sessions" :key="r.key">
+                  <td>{{ r.key }}</td>
+                  <td class="num">{{ r.totals.calls }}</td>
+                  <td class="num" :title="tokenTitle(r.totals)">{{ tokenCount(avgTokens(r.totals)) }}</td>
+                  <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ spendUSD(r.totals) }}</td>
+                  <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ avgCost(r.totals) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="muted">No implementer steps here.</p>
+        </div>
+        <div class="section">
+          <h3>With vs without subagents</h3>
+          <div v-if="subagentRows.length" class="card table">
+            <table class="list">
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Subagents</th>
+                  <th class="num">Calls</th>
+                  <th class="num">Tokens per call</th>
+                  <th class="num">Per call</th>
+                  <th class="num" title="The subagent models' share of the calls' tokens">Subagent share</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="g in subagentRows" :key="g.role">
+                  <tr v-for="r in g.rows" :key="`${g.role}/${r.withSubagents}`">
+                    <td>{{ r.withSubagents ? g.role || '—' : '' }}</td>
+                    <td>{{ r.withSubagents ? 'with' : 'without' }}</td>
+                    <td class="num">{{ r.totals.calls }}</td>
+                    <td class="num" :title="tokenTitle(r.totals)">{{ tokenCount(avgTokens(r.totals)) }}</td>
+                    <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ avgCost(r.totals) }}</td>
+                    <td class="num">{{ r.withSubagents ? subagentShare(r) : '' }}</td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="muted">No call here ran a subagent.</p>
         </div>
       </section>
     </template>

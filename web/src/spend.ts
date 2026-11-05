@@ -1,5 +1,5 @@
 import { cost, tokenCount } from './format.ts'
-import type { SpendChild, SpendTotals } from './types'
+import type { SpendBreakdown, SpendChild, SpendTotals, SubagentBreakdown } from './types'
 
 // The Spend tab's drill-down (decision 5): project → milestone → issue →
 // run → calls. The milestone is the stream's route parameter, the rest
@@ -386,4 +386,55 @@ export function modelBars(rows: BarRow[], unit: SpendUnit): ModelBarData[] {
       .join('\n')
     return { segments, width, label, fallback, title }
   })
+}
+
+// The tuning tables (R9, decisions 8 and 9): review cost per round,
+// implementer steps fresh vs resumed, calls with vs without subagents.
+// They compare per call, so scopes of different sizes compare.
+
+// avgCost is the average cost of a total's calls with a known cost: "n/a"
+// when none has one, never $0.
+export function avgCost(t: SpendTotals): string {
+  const known = t.calls - Math.max(0, t.unknownCalls)
+  if (!t.costKnown || known <= 0) return 'n/a'
+  return cost(String(usd(t) / known))
+}
+
+// avgTokens is the average token count of a total's calls, 0 without calls.
+export function avgTokens(t: SpendTotals): number {
+  return t.calls > 0 ? spendTokens(t) / t.calls : 0
+}
+
+// reviewRounds orders the review rounds by number: "1", "2", … "10".
+export function reviewRounds(rows: SpendBreakdown[]): SpendBreakdown[] {
+  return [...rows].sort((a, b) => Number(a.key) - Number(b.key))
+}
+
+// sessionRows are the implement calls by session, fresh first.
+export function sessionRows(rows: SpendBreakdown[]): SpendBreakdown[] {
+  const order = ['fresh', 'resumed']
+  return [...rows].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
+}
+
+export interface SubagentRole {
+  role: string
+  // rows: the calls with subagents, then (if any) those without.
+  rows: SubagentBreakdown[]
+}
+
+// subagentRoles pairs each role's calls with and without subagents, the
+// roles where a subagent ran only: without one there is nothing to compare.
+export function subagentRoles(rows: SubagentBreakdown[]): SubagentRole[] {
+  const roles = [...new Set(rows.filter((r) => r.withSubagents && r.totals.calls > 0).map((r) => r.role))].sort()
+  return roles.map((role) => ({
+    role,
+    rows: rows.filter((r) => r.role === role).sort((a, b) => Number(b.withSubagents) - Number(a.withSubagents)),
+  }))
+}
+
+// subagentShare is the subagent models' share of a row's tokens: "23%",
+// "—" without tokens.
+export function subagentShare(r: SubagentBreakdown): string {
+  const all = spendTokens(r.totals)
+  return all > 0 ? shareLabel(r.subagentTokens / all) : '—'
 }

@@ -605,12 +605,26 @@ export interface SpendBreakdown {
   totals: SpendTotals
 }
 
+// SubagentBreakdown sums a role's calls that ran subagents or none;
+// subagentTokens are the tokens of the subagent models.
+export interface SubagentBreakdown {
+  role: string
+  withSubagents: boolean
+  totals: SpendTotals
+  subagentTokens: number
+}
+
+// Spend is what a scope cost. byReviewRound is keyed by round ('1', '2',
+// …), bySession by 'fresh' or 'resumed' (implement calls only).
 export interface Spend {
   totals: SpendTotals
   children: SpendChild[]
   byKind: SpendBreakdown[]
   byRole: SpendBreakdown[]
   byModel: SpendBreakdown[]
+  byReviewRound: SpendBreakdown[]
+  bySession: SpendBreakdown[]
+  bySubagents: SubagentBreakdown[]
   cacheReadShare: number
 }
 

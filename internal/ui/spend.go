@@ -70,14 +70,27 @@ type SpendBreakdownView struct {
 	Totals SpendTotalsView `json:"totals"`
 }
 
-// SpendView is what a scope cost.
+// SubagentBreakdownView sums a role's calls that ran subagents or none;
+// subagentTokens are the tokens of the subagent models.
+type SubagentBreakdownView struct {
+	Role           string          `json:"role"`
+	WithSubagents  bool            `json:"withSubagents"`
+	Totals         SpendTotalsView `json:"totals"`
+	SubagentTokens int64           `json:"subagentTokens"`
+}
+
+// SpendView is what a scope cost. byReviewRound is keyed by round ("1",
+// "2", …), bySession by "fresh" or "resumed" (implement calls only).
 type SpendView struct {
-	Totals         SpendTotalsView      `json:"totals"`
-	Children       []SpendChildView     `json:"children"`
-	ByKind         []SpendBreakdownView `json:"byKind"`
-	ByRole         []SpendBreakdownView `json:"byRole"`
-	ByModel        []SpendBreakdownView `json:"byModel"`
-	CacheReadShare float64              `json:"cacheReadShare"`
+	Totals         SpendTotalsView         `json:"totals"`
+	Children       []SpendChildView        `json:"children"`
+	ByKind         []SpendBreakdownView    `json:"byKind"`
+	ByRole         []SpendBreakdownView    `json:"byRole"`
+	ByModel        []SpendBreakdownView    `json:"byModel"`
+	ByReviewRound  []SpendBreakdownView    `json:"byReviewRound"`
+	BySession      []SpendBreakdownView    `json:"bySession"`
+	BySubagents    []SubagentBreakdownView `json:"bySubagents"`
+	CacheReadShare float64                 `json:"cacheReadShare"`
 }
 
 // spend returns what a project, milestone, issue, task or run cost, from
@@ -129,7 +142,12 @@ func (s *Server) spend(w http.ResponseWriter, r *http.Request) {
 func spendView(sp store.Spend) SpendView {
 	v := SpendView{Totals: spendTotalsView(sp.Totals), Children: make([]SpendChildView, 0, len(sp.Children)),
 		ByKind: breakdownViews(sp.ByKind), ByRole: breakdownViews(sp.ByRole), ByModel: breakdownViews(sp.ByModel),
-		CacheReadShare: sp.CacheReadShare}
+		ByReviewRound: breakdownViews(sp.ByReviewRound), BySession: breakdownViews(sp.BySession),
+		BySubagents: make([]SubagentBreakdownView, 0, len(sp.BySubagents)), CacheReadShare: sp.CacheReadShare}
+	for _, b := range sp.BySubagents {
+		v.BySubagents = append(v.BySubagents, SubagentBreakdownView{Role: b.Role, WithSubagents: b.WithSubagents,
+			Totals: spendTotalsView(b.Totals), SubagentTokens: b.SubagentTokens})
+	}
 	for _, c := range sp.Children {
 		cv := SpendChildView{Level: c.Level, Key: c.Key, Label: c.Label, At: c.At, Totals: spendTotalsView(c.Totals),
 			Models: make([]ModelSplitView, 0, len(c.Models))}

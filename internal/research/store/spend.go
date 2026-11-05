@@ -85,13 +85,32 @@ type SpendBreakdown struct {
 	Totals SpendTotals
 }
 
+// SubagentBreakdown sums a role's calls that ran subagents
+// (subagent_calls > 0) or ran none. SubagentTokens are the tokens of the
+// calls' subagent models, not of their own model.
+type SubagentBreakdown struct {
+	Role           string
+	WithSubagents  bool
+	Totals         SpendTotals
+	SubagentTokens int64
+}
+
 // Spend is what a scope cost. The breakdowns cover its calls (not legacy
 // runs); ByModel splits calls by model, subagent models as their own.
 // CacheReadShare is cache reads / (input + cache reads + cache writes).
+//
+// The tuning breakdowns: ByReviewRound sums review calls by round (key
+// "1", "2", …): within a run, round n is the review calls after its
+// (n-1)th fix call by seq. BySession splits implement calls by session,
+// key "fresh" or "resumed". BySubagents splits each role's calls by
+// whether subagents ran.
 type Spend struct {
 	Totals                  SpendTotals
 	Children                []SpendChild
 	ByKind, ByRole, ByModel []SpendBreakdown
+	ByReviewRound           []SpendBreakdown
+	BySession               []SpendBreakdown
+	BySubagents             []SubagentBreakdown
 	CacheReadShare          float64
 }
 
@@ -117,11 +136,11 @@ func spendWith(where string) string {
 			SELECT 1 FROM agent_calls a WHERE a.namespace = e.namespace AND a.project = e.project
 				AND a.task = e.task AND a.run = e.run AND a.expires_at > now())
 	), spend AS (
-		SELECT false AS legacy, id, milestone_iid, issue_iid, task, run, seq, at, kind, role,
+		SELECT false AS legacy, id, milestone_iid, issue_iid, task, run, seq, at, kind, role, resumed,
 			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms
 		FROM scoped
 		UNION ALL
-		SELECT true, NULL, milestone_iid, issue_iid, task, run, NULL, at, '', '', cost_usd, 0, 0, 0, 0, 0, 0
+		SELECT true, NULL, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0
 		FROM legacy
 	), split AS (
 		SELECT false AS legacy, c.id, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, m.model, m.main,
@@ -267,16 +286,19 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 	if sp.Children, err = s.spendChildren(ctx, sc, with, args); err != nil {
 		return Spend{}, err
 	}
+	const byCost = `sum(cost_usd) DESC NULLS LAST, 1`
 	for _, b := range []struct {
-		out       *[]SpendBreakdown
-		key, from string
+		out              *[]SpendBreakdown
+		key, from, order string
 	}{
-		{&sp.ByKind, "kind", "spend WHERE NOT legacy"},
-		{&sp.ByRole, "role", "spend WHERE NOT legacy"},
-		{&sp.ByModel, "model", "split"},
+		{&sp.ByKind, "kind", "spend WHERE NOT legacy", byCost},
+		{&sp.ByRole, "role", "spend WHERE NOT legacy", byCost},
+		{&sp.ByModel, "model", "split", byCost},
+		{&sp.ByReviewRound, "round::text", reviewRounds, "min(round)"},
+		{&sp.BySession, "CASE WHEN resumed THEN 'resumed' ELSE 'fresh' END", "spend WHERE NOT legacy AND kind = 'implement'", "1"},
 	} {
 		rows, _ := s.pool.Query(ctx, with+`SELECT `+b.key+`, `+spendTotals+` FROM `+b.from+
-			` GROUP BY 1 ORDER BY sum(cost_usd) DESC NULLS LAST, 1`, args...)
+			` GROUP BY 1 ORDER BY `+b.order, args...)
 		if *b.out, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (SpendBreakdown, error) {
 			var br SpendBreakdown
 			br.Totals, err = scanTotals(row, &br.Key)
@@ -285,8 +307,29 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 			return Spend{}, err
 		}
 	}
+	rows, _ := s.pool.Query(ctx, with+`SELECT role, subagent_calls > 0, coalesce(sum(sub_tokens), 0)::bigint, `+spendTotals+`
+		FROM spend LEFT JOIN (
+			SELECT id AS sub_id, sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) AS sub_tokens
+			FROM split WHERE NOT main GROUP BY id
+		) sub ON sub.sub_id = spend.id
+		WHERE NOT legacy GROUP BY 1, 2 ORDER BY 1, 2`, args...)
+	if sp.BySubagents, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (SubagentBreakdown, error) {
+		var b SubagentBreakdown
+		var err error
+		b.Totals, err = scanTotals(row, &b.Role, &b.WithSubagents, &b.SubagentTokens)
+		return b, err
+	}); err != nil {
+		return Spend{}, err
+	}
 	return sp, nil
 }
+
+// reviewRounds numbers the review calls of each run into rounds: 1 plus
+// the fix calls before them by seq.
+const reviewRounds = `(
+	SELECT *, 1 + count(*) FILTER (WHERE kind = 'fix') OVER (PARTITION BY task, run ORDER BY seq, id) AS round
+	FROM spend WHERE NOT legacy AND kind IN ('review', 'fix')
+) r WHERE kind = 'review'`
 
 // spendChildren returns the scope's children with their model split and,
 // for calls, their rows.
