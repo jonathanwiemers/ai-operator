@@ -55,6 +55,10 @@ type AgentProjectReconciler struct {
 	Now       func() time.Time
 	// DefaultOwners are mentioned for projects that set no notify.users.
 	DefaultOwners []string
+	// CrossRepoAllowed is the cluster's allow-list of companion projects
+	// (--cross-repo-allowed-projects). Empty: cross-repo changes are off.
+	// Read the targets through crossRepoTargets only.
+	CrossRepoAllowed []string
 	// DeskURL is the Desk's base URL (the UI's externalURL) for links in
 	// comments. Empty: comments name the Desk without a link.
 	DeskURL string
@@ -156,6 +160,7 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// After the sync, which may replace status.webhook.
 	reportDeliveries(&project, spec, prevDelivery, lastDelivery, receiving)
 	reportFallbacks(&project, spec)
+	r.reportCrossRepo(&project, spec)
 	if err := r.Status().Patch(ctx, &project, client.MergeFrom(orig)); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -583,6 +588,31 @@ func reportFallbacks(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) {
 		cond.Status, cond.Reason, cond.Message = metav1.ConditionFalse, "InvalidFallback", textutil.Truncate(strings.Join(errs, "; "), 1024)
 	}
 	meta.SetStatusCondition(&project.Status.Conditions, cond)
+}
+
+// reportCrossRepo sets CrossRepoReady: True when every spec.crossRepo
+// target is valid, False naming the dropped ones, absent without
+// spec.crossRepo.
+func (r *AgentProjectReconciler) reportCrossRepo(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) {
+	if spec.CrossRepo == nil {
+		meta.RemoveStatusCondition(&project.Status.Conditions, aiv1.ConditionCrossRepoReady)
+		return
+	}
+	cond := metav1.Condition{Type: aiv1.ConditionCrossRepoReady, Status: metav1.ConditionTrue, Reason: "TargetsValid",
+		Message: "every companion target is valid", ObservedGeneration: project.Generation}
+	if _, problems := aiv1.ValidateCrossRepo(spec, r.CrossRepoAllowed); len(problems) > 0 {
+		cond.Status, cond.Reason = metav1.ConditionFalse, "InvalidTargets"
+		cond.Message = textutil.Truncate("dropped: "+strings.Join(problems, "; "), 4096)
+	}
+	meta.SetStatusCondition(&project.Status.Conditions, cond)
+}
+
+// crossRepoTargets returns the spec's valid companion targets: the cluster
+// allows them and they pass ValidateCrossRepo. Every use of the targets
+// goes through it.
+func (r *AgentProjectReconciler) crossRepoTargets(spec aiv1.AgentProjectSpec) []aiv1.CrossRepoTarget {
+	valid, _ := aiv1.ValidateCrossRepo(spec, r.CrossRepoAllowed)
+	return valid
 }
 
 // engineUsage keeps the freshest usage reading per engine of the tasks and

@@ -99,6 +99,13 @@ export interface AgentProjectSpec {
    */
   budget?: BudgetSpec;
   /**
+   * CrossRepo lets the project's issues change a companion repository in
+   * the same run (see docs/specs/cross-repo-changes.spec.md). Needs the
+   * cluster's allow-list (--cross-repo-allowed-projects).
+   * +optional
+   */
+  crossRepo?: CrossRepoSpec;
+  /**
    * PollInterval is how often GitLab is polled for changes.
    * +kubebuilder:default="1m"
    * +optional
@@ -3960,6 +3967,67 @@ export interface BlockedStatus {
    */
   applied?: boolean;
 }
+
+//////////
+// source: crossrepo.go
+
+/**
+ * CrossRepoSpec lets the project's issues change a companion repository in
+ * the same run as their home change (docs/specs/cross-repo-changes.spec.md).
+ * A target is used only when the cluster allows its project
+ * (--cross-repo-allowed-projects, the chart's crossRepo.allowedProjects);
+ * condition CrossRepoReady names the targets that are dropped.
+ */
+export interface CrossRepoSpec {
+  /**
+   * Targets are the companion repositories the project's issues may
+   * change.
+   * +kubebuilder:validation:MinItems=1
+   */
+  targets: CrossRepoTarget[];
+}
+/**
+ * CrossRepoTarget is one companion repository and what may change in it.
+ */
+export interface CrossRepoTarget {
+  /**
+   * Project is the companion's full path, e.g. "my-group/infra/cluster".
+   * It must be in the cluster's allow-list and must not be the home
+   * project.
+   * +kubebuilder:validation:MinLength=1
+   */
+  project: string;
+  /**
+   * Paths is the gitignore-style allow-list of the paths a companion
+   * change may touch: "*" and "?" within a segment, "**" for any number
+   * of segments, a trailing "/" for a directory, a leading or inner "/"
+   * anchors to the root. No "!" negation. A pattern must not match
+   * .gitlab-ci.yml, anything under .gitlab/ or the whole tree.
+   * +kubebuilder:validation:MinItems=1
+   */
+  paths: string[];
+  /**
+   * AutoMerge is the ceiling for autopilot: only with it may a milestone
+   * line "/agent repo <project> merge" let autopilot merge the companion
+   * MR. Otherwise the owners are asked to merge.
+   * +kubebuilder:default=false
+   * +optional
+   */
+  autoMerge?: boolean;
+  /**
+   * TokenSecretRef points to the token for the companion project.
+   * Default: spec.gitlab.tokenSecretRef.
+   * +optional
+   */
+  tokenSecretRef?: unknown;
+}
+/**
+ * ConditionCrossRepoReady is the AgentProject condition that tells whether
+ * every spec.crossRepo target is valid: True, reason TargetsValid, or False,
+ * reason InvalidTargets, naming each dropped target and why. It is absent
+ * without spec.crossRepo.
+ */
+export const ConditionCrossRepoReady = "CrossRepoReady";
 
 //////////
 // source: pause.go

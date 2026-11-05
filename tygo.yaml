@@ -19,6 +19,7 @@ packages:
       - agentproject_types.go
       - agentresearch_types.go
       - agenttask_types.go
+      - crossrepo.go
       - pause.go
       - prompt.go
     type_mappings:

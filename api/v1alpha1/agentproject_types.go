@@ -59,6 +59,12 @@ type AgentProjectSpec struct {
 	// +optional
 	Budget *BudgetSpec `json:"budget,omitempty"`
 
+	// CrossRepo lets the project's issues change a companion repository in
+	// the same run (see docs/specs/cross-repo-changes.spec.md). Needs the
+	// cluster's allow-list (--cross-repo-allowed-projects).
+	// +optional
+	CrossRepo *CrossRepoSpec `json:"crossRepo,omitempty"`
+
 	// PollInterval is how often GitLab is polled for changes.
 	// +kubebuilder:default="1m"
 	// +optional

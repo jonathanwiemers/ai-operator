@@ -38,6 +38,8 @@ func main() {
 	flag.StringVar(&defaultAgentImage, "default-agent-image", "", "Agent image for AgentProjects that do not set spec.agents.image.")
 	var defaultOwners string
 	flag.StringVar(&defaultOwners, "default-owners", "", "Comma separated GitLab usernames mentioned when a task needs a human, for AgentProjects that do not set spec.notify.users.")
+	var crossRepoAllowed string
+	flag.StringVar(&crossRepoAllowed, "cross-repo-allowed-projects", "", "Comma separated full paths of the GitLab projects AgentProjects may name as companion repositories (spec.crossRepo.targets). Empty: cross-repo changes are off.")
 	var agentLogLevel string
 	flag.StringVar(&agentLogLevel, "agent-log-level", "info", "Log level (debug, info or error) of the agent pods of AgentProjects that do not set spec.agents.logLevel.")
 	var webhookAddr string
@@ -133,9 +135,10 @@ func main() {
 		NewGitLab: func(baseURL, token string) gitlab.API {
 			return gitlab.New(baseURL, token)
 		},
-		DefaultOwners: notify.Usernames(strings.Split(defaultOwners, ",")),
-		Research:      researchDB.Host != "",
-		DeskURL:       deskURL,
+		DefaultOwners:    notify.Usernames(strings.Split(defaultOwners, ",")),
+		CrossRepoAllowed: projectList(crossRepoAllowed),
+		Research:         researchDB.Host != "",
+		DeskURL:          deskURL,
 	}
 	// The history needs the research database; it records task changes and
 	// the comments the project reconciler reads.
@@ -227,4 +230,16 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// projectList splits a comma separated list of project paths, without
+// blanks and empty entries.
+func projectList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.Trim(strings.TrimSpace(p), "/"); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

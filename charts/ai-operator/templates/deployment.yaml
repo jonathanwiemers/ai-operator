@@ -66,6 +66,9 @@ spec:
             {{- with .Values.defaultOwners }}
             - --default-owners={{ join "," . }}
             {{- end }}
+            {{- with .Values.crossRepo.allowedProjects }}
+            - --cross-repo-allowed-projects={{ join "," . }}
+            {{- end }}
             {{- $db := .Values.research.database }}
             {{- if $db.host }}
             {{- if not $db.name }}

@@ -582,3 +582,68 @@ func TestFailingIssueDoesNotStopTheSync(t *testing.T) {
 		t.Fatalf("the autopilot must still fill its queue, got %+v", ap)
 	}
 }
+
+func TestCrossRepoReadyCondition(t *testing.T) {
+	e := newProjectEnv(t)
+	e.r.CrossRepoAllowed = []string{"group/infra", "group/app"}
+	key := types.NamespacedName{Namespace: ns, Name: "shop"}
+	setCrossRepo := func(cr *aiv1.CrossRepoSpec) aiv1.AgentProject {
+		t.Helper()
+		var p aiv1.AgentProject
+		if err := e.c.Get(e.ctx, key, &p); err != nil {
+			t.Fatal(err)
+		}
+		p.Spec.CrossRepo = cr
+		if err := e.c.Update(e.ctx, &p); err != nil {
+			t.Fatal(err)
+		}
+		e.reconcile()
+		if err := e.c.Get(e.ctx, key, &p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	infra := aiv1.CrossRepoTarget{Project: "group/infra", Paths: []string{"clusters/app/"}}
+
+	p := setCrossRepo(&aiv1.CrossRepoSpec{Targets: []aiv1.CrossRepoTarget{infra}})
+	if c := meta.FindStatusCondition(p.Status.Conditions, aiv1.ConditionCrossRepoReady); c == nil || c.Status != metav1.ConditionTrue || c.Reason != "TargetsValid" {
+		t.Fatalf("expected CrossRepoReady true, got %+v", c)
+	}
+	if got := e.r.crossRepoTargets(p.Spec.WithDefaults()); len(got) != 1 || got[0].Project != "group/infra" {
+		t.Errorf("crossRepoTargets = %+v, want group/infra", got)
+	}
+
+	p = setCrossRepo(&aiv1.CrossRepoSpec{Targets: []aiv1.CrossRepoTarget{
+		{Project: "group/app", Paths: []string{"docs/"}},
+		infra,
+		{Project: "group/other", Paths: []string{"x/"}},
+		{Project: "group/infra", Paths: []string{"**"}},
+	}})
+	c := meta.FindStatusCondition(p.Status.Conditions, aiv1.ConditionCrossRepoReady)
+	if c == nil || c.Status != metav1.ConditionFalse || c.Reason != "InvalidTargets" {
+		t.Fatalf("expected CrossRepoReady false, got %+v", c)
+	}
+	for _, want := range []string{"group/app: is the home project", "group/other: not in the cluster's allow-list", "group/infra: duplicates an earlier target", `"**" matches the whole tree`} {
+		if !strings.Contains(c.Message, want) {
+			t.Errorf("message %q does not name %q", c.Message, want)
+		}
+	}
+	if got := e.r.crossRepoTargets(p.Spec.WithDefaults()); len(got) != 1 || got[0].Project != "group/infra" || got[0].Paths[0] != "clusters/app/" {
+		t.Errorf("crossRepoTargets = %+v, want only the first group/infra", got)
+	}
+
+	// Off in the cluster: every target is dropped.
+	e.r.CrossRepoAllowed = nil
+	p = setCrossRepo(&aiv1.CrossRepoSpec{Targets: []aiv1.CrossRepoTarget{infra}})
+	if c := meta.FindStatusCondition(p.Status.Conditions, aiv1.ConditionCrossRepoReady); c == nil || c.Status != metav1.ConditionFalse || !strings.Contains(c.Message, "group/infra: cross-repo changes are off") {
+		t.Fatalf("expected CrossRepoReady false without an allow-list, got %+v", c)
+	}
+	if got := e.r.crossRepoTargets(p.Spec.WithDefaults()); len(got) != 0 {
+		t.Errorf("crossRepoTargets = %+v without an allow-list", got)
+	}
+
+	p = setCrossRepo(nil)
+	if c := meta.FindStatusCondition(p.Status.Conditions, aiv1.ConditionCrossRepoReady); c != nil {
+		t.Fatalf("expected no CrossRepoReady without spec.crossRepo, got %+v", c)
+	}
+}

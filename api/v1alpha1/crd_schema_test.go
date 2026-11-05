@@ -450,3 +450,45 @@ func TestAutopilotResumedByAdmitted(t *testing.T) {
 		t.Error("an unknown resolver admitted")
 	}
 }
+
+func TestProjectCrossRepoSchema(t *testing.T) {
+	crd := loadCRD(t, "agentprojects")
+	withCrossRepo := func(crossRepo any) map[string]any {
+		obj := readSample(t, "agentproject.yaml", func(s string) string { return s })
+		spec(obj)["crossRepo"] = crossRepo
+		return obj
+	}
+	obj, errs := crd.admit(withCrossRepo(map[string]any{"targets": []any{
+		map[string]any{"project": "jo.wiemers/infra/cluster", "paths": []any{"clusters/netcup01/applications/ai-operator/"}},
+		map[string]any{"project": "jo.wiemers/bloop", "paths": []any{"apps/"}, "autoMerge": true,
+			"tokenSecretRef": map[string]any{"name": "bloop-token", "key": "token"}},
+	}}))
+	if len(errs) > 0 {
+		t.Fatalf("crossRepo rejected: %v", errs)
+	}
+	targets := spec(obj)["crossRepo"].(map[string]any)["targets"].([]any)
+	if am, ok := targets[0].(map[string]any)["autoMerge"]; !ok || am != false {
+		t.Errorf("autoMerge default %v (set %v), want false", am, ok)
+	}
+	if am := targets[1].(map[string]any)["autoMerge"]; am != true {
+		t.Errorf("autoMerge %v, want true", am)
+	}
+
+	for name, tc := range map[string]struct {
+		crossRepo any
+		want      string
+	}{
+		"no targets":    {map[string]any{}, "spec.crossRepo.targets"},
+		"empty targets": {map[string]any{"targets": []any{}}, "spec.crossRepo.targets"},
+		"no project":    {map[string]any{"targets": []any{map[string]any{"paths": []any{"a/"}}}}, "spec.crossRepo.targets[0].project"},
+		"empty project": {map[string]any{"targets": []any{map[string]any{"project": "", "paths": []any{"a/"}}}}, "spec.crossRepo.targets[0].project"},
+		"no paths":      {map[string]any{"targets": []any{map[string]any{"project": "a/b"}}}, "spec.crossRepo.targets[0].paths"},
+		"empty paths":   {map[string]any{"targets": []any{map[string]any{"project": "a/b", "paths": []any{}}}}, "spec.crossRepo.targets[0].paths"},
+		"no token key":  {map[string]any{"targets": []any{map[string]any{"project": "a/b", "paths": []any{"a/"}, "tokenSecretRef": map[string]any{"name": "x"}}}}, "spec.crossRepo.targets[0].tokenSecretRef.key"},
+		"unknown field": {map[string]any{"targets": []any{map[string]any{"project": "a/b", "paths": []any{"a/"}, "merge": true}}}, "spec.crossRepo.targets[0].merge"},
+	} {
+		if _, errs := crd.admit(withCrossRepo(tc.crossRepo)); !strings.Contains(strings.Join(errs, "\n"), tc.want) {
+			t.Errorf("%s: errors %v, want one on %s", name, errs, tc.want)
+		}
+	}
+}

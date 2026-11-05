@@ -25,6 +25,12 @@ logLevel: info
 # with a line "/agent owners @alice @bob" in its description.
 defaultOwners: []
 
+crossRepo:
+  # Full paths of the GitLab projects (e.g. "my-group/infra/cluster") that
+  # AgentProjects may name as companion repositories in
+  # spec.crossRepo.targets. Empty turns cross-repo changes off.
+  allowedProjects: []
+
 # Install and upgrade the CRDs with the chart.
 crds:
   install: true
