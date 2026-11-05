@@ -9,6 +9,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
 // The system prompts are constants on purpose: they are part of the cached
@@ -106,6 +107,29 @@ reported in an earlier step.`
 
 // stepContinue resumes an implementer after a step.
 const stepContinue = "Your step was committed and pushed. Continue with the next step."
+
+// maxStepSummary bounds each earlier step's summary in a fresh step's prompt.
+const maxStepSummary = 2000
+
+// buildFreshStepPrompt is what a step in a new session (stepSession: fresh)
+// gets on top of the run's prompt: the summaries of the steps before, the
+// agent notes the last of them left, and the comments handed to them.
+func buildFreshStepPrompt(summaries []string, notes string, issueNotes, mrNotes []gitlab.Note, botID int64) string {
+	var b strings.Builder
+	b.WriteString("## Your earlier steps in this run\n\n")
+	b.WriteString("You work in steps, and this step starts in a new session: the steps before ran in another one. " +
+		"Their work is committed and pushed (see `git log` and the diff against the default branch). " +
+		"These are their summaries and the notes you left; check them against the code before relying on them.\n\n")
+	for i, s := range summaries {
+		fmt.Fprintf(&b, "### Step %d\n\n%s\n\n", i+1, textutil.Truncate(strings.TrimSpace(s), maxStepSummary))
+	}
+	if notes = strings.TrimSpace(notes); notes != "" {
+		fmt.Fprintf(&b, "### Your notes\n\n%s\n\n", textutil.Truncate(notes, maxHandoff))
+	}
+	b.WriteString(thread("Comments on the issue during the earlier steps", issueNotes, botID))
+	b.WriteString(thread("Comments on the merge request during the earlier steps", mrNotes, botID))
+	return strings.TrimRight(b.String(), "\n")
+}
 
 // noStepsNote opens a resumed implementer's prompt when it does not work in
 // steps: engines that only send the system prompt to a fresh session may

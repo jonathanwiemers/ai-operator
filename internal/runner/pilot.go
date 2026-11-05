@@ -283,7 +283,7 @@ func enginesOf(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, now time.
 	role := func(r aiv1.RoleSpec) pilotRole {
 		return pilotRole{Engine: r.Engine, Model: r.Model, Fallback: r.Fallback}
 	}
-	e.Roles["spec"], e.Roles["implement"], e.Roles["review"] = role(spec.Agents.Spec), role(spec.Agents.Implement), role(spec.Agents.Review.RoleSpec)
+	e.Roles["spec"], e.Roles["implement"], e.Roles["review"] = role(spec.Agents.Spec), role(spec.Agents.Implement.RoleSpec), role(spec.Agents.Review.RoleSpec)
 	for _, p := range spec.Agents.Profiles {
 		e.Roles["profile "+p.Name] = role(p.RoleSpec)
 	}

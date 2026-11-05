@@ -352,7 +352,8 @@ spec:
                   implement:
                     description: |-
                       Implement configures the implementing agent for issues without a
-                      profile label (e.g. issues created by hand).
+                      profile label (e.g. issues created by hand). Its stepSession applies
+                      to the profiles too.
                     properties:
                       allowedTools:
                         description: |-
@@ -426,6 +427,21 @@ spec:
                           for claude, "auto" for cursor. For the claude engine it defaults to
                           claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
                           default.
+                        type: string
+                      stepSession:
+                        default: resume
+                        description: |-
+                          StepSession is how a stepwise run (draft MR, workflow.stepCommits)
+                          goes on after each step: "resume" continues the same session,
+                          "fresh" starts every step after the first in a new session that gets
+                          the agent notes and the summaries of the steps before. Fresh steps
+                          carry less context, so their cost does not grow with the session,
+                          but they lose what the session remembered beyond the notes.
+                          Review-fix rounds and the next run resume the last step's session
+                          either way. Applies to the profiles too.
+                        enum:
+                        - resume
+                        - fresh
                         type: string
                     type: object
                   logLevel:

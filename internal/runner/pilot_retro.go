@@ -69,7 +69,7 @@ func (r *Runner) runRetrospective(ctx context.Context, gl gitlab.API, task *aiv1
 	}
 	a := RetroAnswer{Summary: plain + fmt.Sprintf("\n\nThe pilot's budget for this milestone ($%s, `pilot.maxBudgetUSD`) is used up, so this is the operator's record only.", spec.Pilot.MaxBudgetUSD)}
 	if left := retroLeft(spec, task); left >= 0.01 {
-		role := spec.Agents.Implement
+		role := spec.Agents.Implement.RoleSpec
 		// Neither the implementer's tools nor its instructions.
 		inv := roleInvocation(aiv1.RoleSpec{Engine: role.Engine, Model: role.Model, Effort: role.Effort}, retroSystemPrompt, readOnlyTools, retroSchema, true)
 		prompt := buildRetroPrompt(facts)

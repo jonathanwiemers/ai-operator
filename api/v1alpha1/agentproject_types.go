@@ -367,9 +367,10 @@ type AgentsSpec struct {
 	Pilot RoleSpec `json:"pilot,omitempty"`
 
 	// Implement configures the implementing agent for issues without a
-	// profile label (e.g. issues created by hand).
+	// profile label (e.g. issues created by hand). Its stepSession applies
+	// to the profiles too.
 	// +optional
-	Implement RoleSpec `json:"implement,omitempty"`
+	Implement ImplementSpec `json:"implement,omitempty"`
 
 	// Profiles are named implementing agents an issue selects with a
 	// profile label, e.g. "agent-profile::fast". The spec agent picks a profile
@@ -558,6 +559,32 @@ type RoleFallback struct {
 	// +optional
 	Effort string `json:"effort,omitempty"`
 }
+
+// ImplementSpec configures the implementing agent.
+type ImplementSpec struct {
+	RoleSpec `json:",inline"`
+
+	// StepSession is how a stepwise run (draft MR, workflow.stepCommits)
+	// goes on after each step: "resume" continues the same session,
+	// "fresh" starts every step after the first in a new session that gets
+	// the agent notes and the summaries of the steps before. Fresh steps
+	// carry less context, so their cost does not grow with the session,
+	// but they lose what the session remembered beyond the notes.
+	// Review-fix rounds and the next run resume the last step's session
+	// either way. Applies to the profiles too.
+	// +kubebuilder:default=resume
+	// +optional
+	StepSession StepSessionMode `json:"stepSession,omitempty"`
+}
+
+// StepSessionMode is how an implementer goes on after a step.
+// +kubebuilder:validation:Enum=resume;fresh
+type StepSessionMode string
+
+const (
+	StepSessionResume StepSessionMode = "resume"
+	StepSessionFresh  StepSessionMode = "fresh"
+)
 
 // ReviewSpec configures the review loop that runs after each implementation.
 type ReviewSpec struct {

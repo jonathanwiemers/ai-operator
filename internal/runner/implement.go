@@ -325,7 +325,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if stepwise && runAgent {
 		var seen int64
 		var err error
-		res, seen, err = r.runSteps(ctx, gl, glProject, issue, mr.IID, botID, wf.CommandPrefix, branch, base, role, inv, fullPrompt, res, &answer, &st, out)
+		res, seen, err = r.runSteps(ctx, gl, glProject, issue, mr.IID, botID, wf.CommandPrefix, branch, base, role, spec.Agents.Implement.StepSession == aiv1.StepSessionFresh, inv, fullPrompt, res, &answer, &st, out)
 		if err != nil {
 			// The steps pushed so far are on the branch: their decisions
 			// must not be lost with the run.
@@ -1139,10 +1139,29 @@ var maxSteps = 25
 // A command ("/agent …") is not handed over: the operator starts a run for
 // it, which handles it (a revisit with its decision) once this one is done.
 // So comments are read up to the first command only.
+//
+// With freshSteps (stepSession: fresh) every step after the first starts a
+// new session with the run's prompt, the earlier steps' summaries, the agent
+// notes and the comments handed over so far. Only the last step's session
+// becomes the implementer's, once the steps are done.
 func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, mrIID, botID int64, prefix, branch, base string,
-	role aiv1.RoleSpec, inv Invocation, fullPrompt string, res *Result, answer *ImplementAnswer, st *state, out *Outcome) (*Result, int64, error) {
+	role aiv1.RoleSpec, freshSteps bool, inv Invocation, fullPrompt string, res *Result, answer *ImplementAnswer, st *state, out *Outcome) (*Result, int64, error) {
 	var seen int64
 	pushSteps := true
+	summaries := []string{answer.Summary}
+	var handedIssue, handedMR []gitlab.Note
+	// last is the last fresh step that ran: the next run resumes it.
+	var last *Result
+	defer func() {
+		if last == nil {
+			return
+		}
+		st.setSession("implement", ranOn(role, last), last.SessionID)
+		st.ImplementEngine = ranOn(role, last)
+		if err := r.saveState(*st); err != nil {
+			r.log().Error(err, "saving the implementer's session")
+		}
+	}()
 	for step := 1; answer.Status == "in_progress" && step < maxSteps; step++ {
 		if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
 			return res, seen, err
@@ -1189,18 +1208,28 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		if fresh > 0 {
 			next.Prompt = stepContinue + "\n\n" + thread("New comments on the issue", newIssue, botID) + thread("New comments on the merge request", newMR, botID)
 		}
-
-		s = r.step(ctx, fmt.Sprintf("run implementer, step %d", step+1), "engine", role.Engine, "model", role.Model, "newNotes", fresh)
 		// Should the session be gone, a fresh one also gets the new comments.
-		res, err = r.invoke(ctx, role, next, fullPrompt+"\n\n"+next.Prompt)
+		stepPrompt := fullPrompt + "\n\n" + next.Prompt
+		if freshSteps {
+			next.Resume = ""
+			stepPrompt = fullPrompt + "\n\n" + buildFreshStepPrompt(summaries, answer.Handoff, handedIssue, handedMR, botID) + "\n\n" + next.Prompt
+		}
+
+		s = r.step(ctx, fmt.Sprintf("run implementer, step %d", step+1), "engine", role.Engine, "model", role.Model, "newNotes", fresh, "resume", next.Resume != "")
+		res, err = r.invoke(ctx, role, next, stepPrompt)
 		if res != nil {
 			out.CostUSD += res.CostUSD
 		}
 		if err != nil {
 			return res, seen, s.fail(err)
 		}
-		st.setSession("implement", ranOn(role, res), res.SessionID)
-		st.ImplementEngine = ranOn(role, res)
+		if freshSteps {
+			last = res
+			handedIssue, handedMR = append(handedIssue, newIssue...), append(handedMR, newMR...)
+		} else {
+			st.setSession("implement", ranOn(role, res), res.SessionID)
+			st.ImplementEngine = ranOn(role, res)
+		}
 		st.LastIssueNoteID = maxNoteID(newIssue, st.LastIssueNoteID)
 		st.LastMRNoteID = maxNoteID(newMR, st.LastMRNoteID)
 		seen = max(seen, maxNoteID(newIssue, 0), maxNoteID(newMR, 0))
@@ -1216,6 +1245,7 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 			more.Handoff = answer.Handoff
 		}
 		*answer = more
+		summaries = append(summaries, more.Summary)
 		s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD, "status", answer.Status)
 	}
 	return res, seen, nil

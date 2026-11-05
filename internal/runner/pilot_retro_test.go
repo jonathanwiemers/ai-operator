@@ -66,7 +66,7 @@ func newRetroEnv(t *testing.T, costUSD string) *pilotEnv {
 func TestRetrospectiveIsPostedOnce(t *testing.T) {
 	e := newRetroEnv(t, "")
 	e.patchProject(t, func(p *aiv1.AgentProject) {
-		p.Spec.Agents.Implement = aiv1.RoleSpec{Model: "claude-strong", AllowedTools: []string{"Bash", "Edit"}, Instructions: "Write code."}
+		p.Spec.Agents.Implement.RoleSpec = aiv1.RoleSpec{Model: "claude-strong", AllowedTools: []string{"Bash", "Edit"}, Instructions: "Write code."}
 	})
 	e.step(t)
 	if len(e.engine.calls) != 1 {

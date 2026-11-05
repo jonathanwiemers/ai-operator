@@ -174,7 +174,7 @@ func TestFastProfileImplementsOnClaudeWhileCursorIsLimited(t *testing.T) {
 func TestFallbackWhoseEngineIsLimitedDefers(t *testing.T) {
 	claudeReset := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
 	e, _, rec := cursorLimitedEnv(t, func(a *aiv1.AgentsSpec) {
-		a.Implement = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}
+		a.Implement.RoleSpec = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}
 	}, func(s *aiv1.AgentProjectStatus) {
 		s.UsageLimits = []aiv1.UsageLimit{{Engine: aiv1.EngineClaude, Until: metav1.NewTime(claudeReset)}}
 	})
@@ -192,7 +192,7 @@ func TestFallbackWhoseEngineIsLimitedDefers(t *testing.T) {
 
 func TestProjectWideLimitGoesStraightToTheFallback(t *testing.T) {
 	e, engine, rec := cursorLimitedEnv(t, func(a *aiv1.AgentsSpec) {
-		a.Implement = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}
+		a.Implement.RoleSpec = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}
 	}, func(s *aiv1.AgentProjectStatus) {
 		s.UsageLimits = []aiv1.UsageLimit{{Engine: aiv1.EngineCursor, Until: metav1.NewTime(time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)), Message: "monthly"}}
 	})
@@ -209,7 +209,7 @@ func TestProjectWideLimitGoesStraightToTheFallback(t *testing.T) {
 
 func TestInvalidFallbackIsIgnored(t *testing.T) {
 	e, _, _ := cursorLimitedEnv(t, func(a *aiv1.AgentsSpec) {
-		a.Implement = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: &aiv1.RoleFallback{Engine: aiv1.EngineClaude, Model: "gpt-9"}}
+		a.Implement.RoleSpec = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: &aiv1.RoleFallback{Engine: aiv1.EngineClaude, Model: "gpt-9"}}
 	}, nil)
 	if e.step() {
 		t.Fatal("a fallback that names no allowed model is ignored: the run is deferred")
@@ -233,7 +233,7 @@ func TestUsageOverTheThresholdSwitchesToTheFallback(t *testing.T) {
 		return func(a *aiv1.AgentsSpec) {
 			at := int32(90)
 			a.FallbackAtPercent = &at
-			a.Implement = aiv1.RoleSpec{Engine: aiv1.EngineClaude, Model: "claude-opus-5-5", Fallback: fallback}
+			a.Implement.RoleSpec = aiv1.RoleSpec{Engine: aiv1.EngineClaude, Model: "claude-opus-5-5", Fallback: fallback}
 			a.Models = append(aiv1.DefaultModels(), aiv1.ModelOption{Engine: aiv1.EngineCursor, Model: "auto"})
 		}
 	}
@@ -275,7 +275,7 @@ func TestNoAgentLeftResumesOnTheFirstFreeOne(t *testing.T) {
 	claudeReset := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
 	cursorReset := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
 	e, _, rec := cursorLimitedEnv(t, func(a *aiv1.AgentsSpec) {
-		a.Implement = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}
+		a.Implement.RoleSpec = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}
 	}, func(s *aiv1.AgentProjectStatus) {
 		s.UsageLimits = []aiv1.UsageLimit{{Engine: aiv1.EngineClaude, Until: metav1.NewTime(claudeReset)}}
 	})
@@ -321,7 +321,7 @@ func TestNoAgentLeftResumesOnTheFirstFreeOne(t *testing.T) {
 
 func TestFallbackLimitedOnItsOwnCallDefersWithBoth(t *testing.T) {
 	e, engine, _ := cursorLimitedEnv(t, func(a *aiv1.AgentsSpec) {
-		a.Implement = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}
+		a.Implement.RoleSpec = aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}
 	}, nil)
 	claudeReset := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
 	// claude is out as well, until earlier than cursor.

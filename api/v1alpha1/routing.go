@@ -52,7 +52,7 @@ func (s AgentProjectSpec) AllowedModels() []ModelOption {
 	for _, p := range s.Agents.Profiles {
 		add(p.RoleSpec)
 	}
-	add(s.Agents.Implement)
+	add(s.Agents.Implement.RoleSpec)
 	return out
 }
 
@@ -92,7 +92,7 @@ func (s AgentProjectSpec) FallbackRole(role RoleSpec) (RoleSpec, error) {
 // FallbackErrors says which roles have a fallback FallbackRole refuses.
 func (s AgentProjectSpec) FallbackErrors() []string {
 	a := s.Agents
-	roles := map[string]RoleSpec{"spec": a.Spec, "pilot": a.Pilot, "implement": a.Implement, "review": a.Review.RoleSpec, "describe": a.Describe.RoleSpec}
+	roles := map[string]RoleSpec{"spec": a.Spec, "pilot": a.Pilot, "implement": a.Implement.RoleSpec, "review": a.Review.RoleSpec, "describe": a.Describe.RoleSpec}
 	for _, p := range a.Profiles {
 		roles["profile "+p.Name] = p.RoleSpec
 	}

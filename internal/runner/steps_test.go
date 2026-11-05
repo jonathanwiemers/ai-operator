@@ -217,3 +217,117 @@ func TestOutOfStepsStaysDraft(t *testing.T) {
 		t.Fatalf("out of steps: %d calls, draft %v, report %q", engine.n, e.gl.MRs[1].Draft, report)
 	}
 }
+
+// threeStepEngine implements in three steps, each in a session of its own
+// ID. A human comments on the MR during the first step.
+type threeStepEngine struct {
+	gl *gitlabfake.Fake
+
+	mu   sync.Mutex
+	invs []Invocation
+}
+
+func (s *threeStepEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var v any = ReviewAnswer{Summary: "fine"}
+	if inv.Role == "implement" {
+		s.invs = append(s.invs, inv)
+		n := len(s.invs)
+		_ = os.WriteFile(filepath.Join(inv.Dir, fmt.Sprintf("part%d.go", n)), []byte("package app\n"), 0o644)
+		a := ImplementAnswer{Status: "in_progress", Summary: fmt.Sprintf("Did part %d, part %d next.", n, n+1),
+			CommitMessage: fmt.Sprintf("Add part %d", n), Handoff: fmt.Sprintf("notes after step %d", n)}
+		switch n {
+		case 1:
+			s.gl.AddMRNote(1, gitlab.User{ID: 7, Username: "jonathan"}, "Name the parts in English.")
+		case 3:
+			a.Status = "done"
+		}
+		v = a
+	}
+	b, _ := json.Marshal(v)
+	return &Result{SessionID: fmt.Sprintf("sess-%d", len(s.invs)), Structured: b}, nil
+}
+
+func runThreeSteps(t *testing.T, mode aiv1.StepSessionMode) (*threeStepEngine, *Runner, aiv1.RunStatus) {
+	t.Helper()
+	ctx := context.Background()
+	e := newImplementEnv(t)
+	if mode != "" {
+		var project aiv1.AgentProject
+		_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop"}, &project)
+		project.Spec.Agents.Implement.StepSession = mode
+		if err := e.k8s.Update(ctx, &project); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := &threeStepEngine{gl: e.gl}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var task aiv1.AgentTask
+	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+	if task.Status.Run.LastResult != aiv1.RunResultSucceeded {
+		t.Fatalf("run failed: %s", task.Status.Run.Summary)
+	}
+	if len(engine.invs) != 3 {
+		t.Fatalf("expected three steps, got %d", len(engine.invs))
+	}
+	return engine, r, task.Status.Run
+}
+
+func TestFreshStepSessions(t *testing.T) {
+	engine, r, run := runThreeSteps(t, aiv1.StepSessionFresh)
+	for i, inv := range engine.invs[1:] {
+		step := i + 2
+		if inv.Resume != "" {
+			t.Errorf("step %d must start a new session, resumes %q", step, inv.Resume)
+		}
+		p := inv.Prompt
+		if !strings.Contains(p, "Implement issue #42") || !strings.Contains(p, "Your earlier steps in this run") ||
+			!strings.Contains(p, fmt.Sprintf("notes after step %d", step-1)) ||
+			!strings.Contains(p, fmt.Sprintf("Did part %d, part %d next.", step-1, step)) ||
+			!strings.Contains(p, "Name the parts in English.") || !strings.Contains(p, "Continue with the next step") {
+			t.Errorf("step %d needs the issue, the notes, the earlier steps' summaries and the comments: %q", step, p)
+		}
+	}
+	if p := engine.invs[2].Prompt; !strings.Contains(p, "Did part 1, part 2 next.") || strings.Contains(p, "notes after step 1") {
+		t.Errorf("step 3 gets every earlier summary and only the newest notes: %q", p)
+	}
+	steps := 0
+	for _, c := range run.Calls {
+		if c.Role == "implement" {
+			steps++
+			if c.Resumed {
+				t.Errorf("a fresh step is recorded as resumed: %+v", c)
+			}
+		}
+	}
+	if steps != 3 {
+		t.Errorf("expected three recorded implement calls, got %d", steps)
+	}
+	st := savedState(t, r)
+	if got := st.session("implement", aiv1.EngineClaude); got != "sess-3" {
+		t.Errorf("the next run resumes the last step's session, state has %q", got)
+	}
+}
+
+func TestResumedStepSessionsByDefault(t *testing.T) {
+	engine, _, run := runThreeSteps(t, "")
+	if engine.invs[1].Resume != "sess-1" || engine.invs[2].Resume != "sess-2" {
+		t.Fatalf("steps resume the session of the step before: %q, %q", engine.invs[1].Resume, engine.invs[2].Resume)
+	}
+	if strings.Contains(engine.invs[1].Prompt, "Your earlier steps in this run") {
+		t.Errorf("a resumed step gets no summaries: %q", engine.invs[1].Prompt)
+	}
+	resumed := 0
+	for _, c := range run.Calls {
+		if c.Role == "implement" && c.Resumed {
+			resumed++
+		}
+	}
+	if resumed != 2 {
+		t.Errorf("expected the two later steps recorded as resumed, got %d: %+v", resumed, run.Calls)
+	}
+}

@@ -133,6 +133,15 @@ func (r RoleSpec) withDefaultModel(model string) RoleSpec {
 	return r
 }
 
+// WithDefaults fills in the implementer's defaults.
+func (i ImplementSpec) WithDefaults() ImplementSpec {
+	i.RoleSpec = i.RoleSpec.WithDefaults()
+	if i.StepSession == "" {
+		i.StepSession = StepSessionResume
+	}
+	return i
+}
+
 // WithDefaults fills in review defaults. Reviews run on the light model.
 func (r ReviewSpec) WithDefaults() ReviewSpec {
 	r.RoleSpec = r.RoleSpec.withDefaultModel(DefaultLightModel)
@@ -285,7 +294,7 @@ func (s AgentProjectSpec) ImplementRole(labels []string) (RoleSpec, string) {
 			}
 		}
 	}
-	return s.Agents.Implement, ""
+	return s.Agents.Implement.RoleSpec, ""
 }
 
 // ProfileOf returns the profile label name an issue carries, if any.

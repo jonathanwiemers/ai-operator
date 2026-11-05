@@ -399,6 +399,23 @@ transiently, e.g. an engine outage; `0` turns it off) and `retryAfter`
 one re-review of a head whose reviewers all failed transiently); `describe`
 has `disabled`.
 
+`implement` additionally has `stepSession` (`resume` or `fresh`, default
+`resume`), which also applies to the profiles. It decides how a run that
+works in steps (`workflow.stepCommits`, draft MR) goes on after each step:
+
+* `resume` continues the same session. The agent remembers everything it
+  read and did, but every step carries the whole session as context, so the
+  cost per step grows with the run.
+* `fresh` starts every step after the first in a new session. It gets the
+  run's prompt (issue, thread, notes from earlier runs), the summaries of
+  the steps before, the agent notes the last of them left and the comments
+  handed over since. A step costs about the same as the first one, but what
+  the session knew beyond the notes and the code is lost.
+
+The first step, the review-fix rounds and the next run work as with
+`resume`: fix rounds and the next run resume the last step's session. Compare
+the two in the Spend tab (fresh steps are calls with `resumed: false`).
+
 ### Per-issue model and effort
 
 On top of its profile, an issue can pick the implementer's engine, model and
