@@ -26,60 +26,151 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if task.Spec.Issue == nil {
 		return nil, fmt.Errorf("implement task has no issue")
 	}
-	glProject := spec.GitLab.Project
-	wf := spec.Workflow
-	botID := project.Status.BotUserID
-	out := &Outcome{}
-
-	s := r.step(ctx, "read issue")
-	issue, err := gl.GetIssue(ctx, glProject, task.Spec.Issue.IID)
-	if err != nil {
-		return out, s.fail(fmt.Errorf("getting issue: %w", err))
+	run := r.newImplementRun(gl, task, project, spec)
+	if closed, err := run.prepare(ctx); err != nil || closed {
+		return run.out, err
 	}
+	for _, phase := range []func(context.Context) error{
+		run.syncBranch, run.readComments, run.buildPrompt, run.addInputs, run.mergeBase, run.implement,
+		run.concludeMerge, run.reviewLoop, run.push, run.postDecisionsAndHandoff, run.report,
+	} {
+		if err := phase(ctx); err != nil {
+			return run.out, err
+		}
+	}
+	return run.outcome(ctx), nil
+}
+
+// implementRun is one run of an implement task. The phases of runImplement
+// are its methods, in that order; they share what they read and decide
+// through its fields. The runner's persisted state is embedded (loaded by
+// readComments), the other fields live only for the run.
+type implementRun struct {
+	*state
+	r    *Runner
+	gl   gitlab.API
+	task *aiv1.AgentTask
+	// spec has the milestone's rule switches applied, wf is the workflow as
+	// the project configures it.
+	spec      aiv1.AgentProjectSpec
+	wf        aiv1.WorkflowSpec
+	glProject string
+	botID     int64
+	out       *Outcome
+
+	issue       *gitlab.Issue
+	milestone   *gitlab.Milestone
+	ownersRules string
+	proj        *gitlab.Project
+	base        string
+	branch      string
+	mr          *gitlab.MergeRequest
+
+	// The thread: all comments, those the agent has not seen yet, its notes
+	// from earlier runs and the decisions to revisit.
+	issueNotes, mrNotes       []gitlab.Note
+	newIssueNotes, newMRNotes []gitlab.Note
+	// deskOnly: the project takes no GitLab input, the issue thread is no
+	// context.
+	deskOnly          bool
+	handoffNote       *gitlab.Note
+	prior             handoff
+	seenNote          int64
+	revisits, ignored []revisit
+	notices           []string
+
+	// The implementer's call and what this run asks of it.
+	role        aiv1.RoleSpec
+	profile     string
+	inv         Invocation
+	plainSystem string
+	fullPrompt  string
+	stepwise    bool
+	ciFix       bool
+	humanInput  int
+	// answers are the owners' prompt answers this session has not seen.
+	answers      []aiv1.PromptAnswerDelivery
+	merge        MergeResult
+	mergeMessage string
+	reviewFor    string
+	reviewAsked  bool
+	reReview     bool
+	runAgent     bool
+
+	// What the agents did.
+	res         *Result
+	answer      ImplementAnswer
+	outOfSteps  bool
+	remaining   []Finding
+	reviewNotes []string
+	// reviewedLast is false when a fix round came after the last review.
+	reviewedLast bool
+	pushed       bool
+	needsInput   bool
+}
+
+func (r *Runner) newImplementRun(gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) *implementRun {
+	return &implementRun{r: r, gl: gl, task: task, spec: spec, wf: spec.Workflow,
+		glProject: spec.GitLab.Project, botID: project.Status.BotUserID, out: &Outcome{}}
+}
+
+// prepare reads the issue, its milestone and the project. It reports whether
+// the issue is closed, which ends the run.
+func (run *implementRun) prepare(ctx context.Context) (closed bool, err error) {
+	r, gl, glProject, out := run.r, run.gl, run.glProject, run.out
+	s := r.step(ctx, "read issue")
+	issue, err := gl.GetIssue(ctx, glProject, run.task.Spec.Issue.IID)
+	if err != nil {
+		return false, s.fail(fmt.Errorf("getting issue: %w", err))
+	}
+	run.issue = issue
 	s.done(fmt.Sprintf("#%d %s", issue.IID, issue.State), "state", issue.State, "labels", issue.Labels)
 	if issue.State != "opened" {
 		out.Result = aiv1.RunResultSucceeded
 		out.Summary = "issue is closed, nothing to do"
-		return out, nil
+		return true, nil
 	}
-	var milestone *gitlab.Milestone
-	var ownersRules string
 	if issue.Milestone != nil {
 		s = r.step(ctx, "read milestone", "milestoneID", issue.Milestone.ID)
-		if milestone, err = gl.GetMilestone(ctx, glProject, issue.Milestone.ID); err != nil {
-			return out, s.fail(fmt.Errorf("getting milestone: %w", err))
+		if run.milestone, err = gl.GetMilestone(ctx, glProject, issue.Milestone.ID); err != nil {
+			return false, s.fail(fmt.Errorf("getting milestone: %w", err))
 		}
 		// The owners and rule lines are for the operator, not the agent:
 		// it gets the switches applied and the prompt rules marked.
-		rs := rules.Parse(rules.Lines(milestone.Description, wf.CommandPrefix))
-		spec, ownersRules = rules.Apply(spec, rs), promptRules(rs)
-		milestone.Description = rules.Spec(milestone.Description, wf.CommandPrefix)
-		s.done(milestone.Title)
+		rs := rules.Parse(rules.Lines(run.milestone.Description, run.wf.CommandPrefix))
+		run.spec, run.ownersRules = rules.Apply(run.spec, rs), promptRules(rs)
+		run.milestone.Description = rules.Spec(run.milestone.Description, run.wf.CommandPrefix)
+		s.done(run.milestone.Title)
 	}
 	s = r.step(ctx, "read project")
-	proj, err := gl.GetProject(ctx, glProject)
-	if err != nil {
-		return out, s.fail(fmt.Errorf("getting project: %w", err))
+	if run.proj, err = gl.GetProject(ctx, glProject); err != nil {
+		return false, s.fail(fmt.Errorf("getting project: %w", err))
 	}
-	base := proj.DefaultBranch
-	s.done("default branch "+base, "defaultBranch", base)
+	run.base = run.proj.DefaultBranch
+	s.done("default branch "+run.base, "defaultBranch", run.base)
+	return false, nil
+}
 
+// syncBranch brings the workspace to the work branch and finds its merge
+// request, opening the draft on the first run.
+func (run *implementRun) syncBranch(ctx context.Context) error {
+	r, gl, glProject, out, issue, base := run.r, run.gl, run.glProject, run.out, run.issue, run.base
 	// The branch name is fixed on the first run, renaming the issue later
 	// does not move the work to another branch.
-	branch := task.Status.Run.Branch
+	branch := run.task.Status.Run.Branch
 	if branch == "" {
 		branch = naming.Branch(issue.IID, issue.Title)
 	}
-	out.Branch = branch
+	run.branch, out.Branch = branch, branch
 
-	if err := r.syncWorkspace(ctx, proj.HTTPURLToRepo, branch, base); err != nil {
-		return out, err
+	if err := r.syncWorkspace(ctx, run.proj.HTTPURLToRepo, branch, base); err != nil {
+		return err
 	}
 
-	s = r.step(ctx, "find merge request", "branch", branch)
+	s := r.step(ctx, "find merge request", "branch", branch)
 	mr, err := gl.FindOpenMergeRequest(ctx, glProject, branch)
 	if err != nil {
-		return out, s.fail(fmt.Errorf("looking up merge request: %w", err))
+		return s.fail(fmt.Errorf("looking up merge request: %w", err))
 	}
 	if mr != nil {
 		s.done(fmt.Sprintf("!%d", mr.IID), "mr", mr.IID)
@@ -88,30 +179,38 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		// Open the draft merge request now, so the whole run (and every
 		// later one) can be followed there.
 		if mr, err = r.openMergeRequest(ctx, gl, glProject, issue, branch, base); err != nil {
-			return out, err
+			return err
 		}
 		// Recorded at once: a run deferred or failing from here on must not
 		// open a second MR, and the operator reads commands on this one.
 		if err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
 			s.Branch, s.MergeRequestIID, s.MergeRequestURL = branch, mr.IID, mr.WebURL
 		}); err != nil {
-			return out, err
+			return err
 		}
 	}
+	run.mr = mr
 	out.MRIID, out.MRURL = mr.IID, mr.WebURL
-	r.startProgress(ctx, gl, glProject, mr.IID, botID)
+	r.startProgress(ctx, gl, glProject, mr.IID, run.botID)
+	return nil
+}
 
+// readComments loads the runner state and reads the thread: the comments on
+// the issue and the MR, the agent notes and the decisions to revisit.
+func (run *implementRun) readComments(ctx context.Context) error {
+	r, gl, glProject, issue, mr, botID := run.r, run.gl, run.glProject, run.issue, run.mr, run.botID
 	// Context: on a resumed session only comments the agent has not seen yet
 	// are sent, everything else is already in the session.
 	st, err := r.loadState()
 	if err != nil {
 		// An empty state would post the notes and decisions again.
-		return out, err
+		return err
 	}
-	s = r.step(ctx, "read comments")
+	run.state = &st
+	s := r.step(ctx, "read comments")
 	issueNotes, err := gl.ListIssueNotes(ctx, glProject, issue.IID)
 	if err != nil {
-		return out, s.fail(fmt.Errorf("listing issue notes: %w", err))
+		return s.fail(fmt.Errorf("listing issue notes: %w", err))
 	}
 	// The handoff note is the agent's own memory, not part of the thread.
 	handoffNote, issueNotes := splitHandoff(issueNotes, botID)
@@ -120,14 +219,15 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// Without GitLab input the issue thread is no context: the session (or
 	// for a fresh one, the Desk chat) is. The agent's own comments stay, and
 	// human review threads on the MR are code review, not chat.
-	deskOnly := !spec.Workflow.Takes(aiv1.InputGitLab)
+	run.deskOnly = !run.spec.Workflow.Takes(aiv1.InputGitLab)
+	deskOnly := run.deskOnly
 	if deskOnly {
 		issueNotes = ownNotes(issueNotes, botID)
 	}
 	var mrNotes []gitlab.Note
 	if mr != nil {
 		if mrNotes, err = gl.ListMergeRequestNotes(ctx, glProject, mr.IID); err != nil {
-			return out, s.fail(fmt.Errorf("listing merge request notes: %w", err))
+			return s.fail(fmt.Errorf("listing merge request notes: %w", err))
 		}
 		// Progress comments are the runner's, not part of the thread.
 		mrNotes = r.withoutPilot(slices.DeleteFunc(mrNotes, func(n gitlab.Note) bool { return isProgress(n, botID) }))
@@ -145,24 +245,33 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	s.done(result, "issueNotes", len(issueNotes), "mrNotes", len(mrNotes), "newNotes", len(newIssueNotes)+len(newMRNotes),
 		"handoffBytes", len(prior.Text))
-	seenNote := max(maxNoteID(issueNotes, 0), maxNoteID(mrNotes, 0))
+	run.seenNote = max(maxNoteID(issueNotes, 0), maxNoteID(mrNotes, 0))
 	// "/agent revisit <id> …" comments since the last run name decisions to
 	// change; the implementer gets them with the decision they refer to.
 	// Without runner state (archived workspace) the agent notes say which
 	// comments were already handled, so old revisits are not applied again.
 	since := max(st.RevisitNoteID, prior.AfterNote)
-	revisits := findRevisits(issue, issueNotes, append(newerThan(issueNotes, since), newerThan(mrNotes, since)...), botID, wf.CommandPrefix)
+	run.revisits = findRevisits(issue, issueNotes, append(newerThan(issueNotes, since), newerThan(mrNotes, since)...), botID, run.wf.CommandPrefix)
+	run.issueNotes, run.mrNotes, run.newIssueNotes, run.newMRNotes = issueNotes, mrNotes, newIssueNotes, newMRNotes
+	run.handoffNote, run.prior = handoffNote, prior
+	return nil
+}
 
+// buildPrompt picks the implementer's role and session and builds its
+// prompts: the whole thread for a new session, what is new for a resumed
+// one, both with the decisions to revisit.
+func (run *implementRun) buildPrompt(ctx context.Context) error {
+	r, st, task, wf, issue, milestone, botID := run.r, run.state, run.task, run.wf, run.issue, run.milestone, run.botID
 	// The model and effort labels ("/agent use", "/agent effort", which the
 	// operator turns into labels) override the profile.
-	role, profile, roleNotes := spec.IssueRole(issue.Labels)
+	role, profile, roleNotes := run.spec.IssueRole(issue.Labels)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
 	inv.Role, inv.Kind = "implement", aiv1.CallKindImplement
-	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs) + toolchainsNote(base, r.Mirror.PinFiles(ctx, base), r.changedPins)
+	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs) + toolchainsNote(run.base, r.Mirror.PinFiles(ctx, run.base), r.changedPins)
 	// While the MR is a draft, the work is pushed step by step so a human can
 	// follow it and steer with comments (not while concluding a merge, whose
 	// conflicts must be resolved before anything is committed).
-	stepwise := *wf.StepCommits && mr.Draft && task.Spec.Source.MergeBaseFor == task.Status.Run.MergedBaseFor
+	stepwise := *wf.StepCommits && run.mr.Draft && task.Spec.Source.MergeBaseFor == task.Status.Run.MergedBaseFor
 	plainSystem := inv.SystemPrompt
 	if stepwise {
 		inv.SystemPrompt += stepsNote
@@ -177,10 +286,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	inv.Resume = st.session("implement", role.Engine)
 	// Comments that are only a model or effort command are the operator's.
 	prefix := wf.CommandPrefix
-	fullPrompt := buildImplementPrompt(issue, milestone, command.WithoutRouting(issueNotes, prefix), command.WithoutRouting(mrNotes, prefix), botID, false, prior)
-	inv.Prompt = buildImplementPrompt(issue, milestone, command.WithoutRouting(newIssueNotes, prefix), command.WithoutRouting(newMRNotes, prefix), botID, true, handoff{})
-	fullPrompt, inv.Prompt = fullPrompt+ownersRules, inv.Prompt+ownersRules
-	if chat := buildChatContext(task.Spec.Source.ChatContext); deskOnly && chat != "" {
+	fullPrompt := buildImplementPrompt(issue, milestone, command.WithoutRouting(run.issueNotes, prefix), command.WithoutRouting(run.mrNotes, prefix), botID, false, run.prior)
+	inv.Prompt = buildImplementPrompt(issue, milestone, command.WithoutRouting(run.newIssueNotes, prefix), command.WithoutRouting(run.newMRNotes, prefix), botID, true, handoff{})
+	fullPrompt, inv.Prompt = fullPrompt+run.ownersRules, inv.Prompt+run.ownersRules
+	if chat := buildChatContext(task.Spec.Source.ChatContext); run.deskOnly && chat != "" {
 		fullPrompt += "\n\n" + chat
 	}
 	if task.Spec.Autopilot {
@@ -193,7 +302,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	notices := roleNotes
 	var active, ignored []revisit
-	for _, rv := range revisits {
+	for _, rv := range run.revisits {
 		switch {
 		case rv.Malformed:
 			notices = append(notices, fmt.Sprintf("%q is not a revisit: use `%s revisit D%d-<n> <what you want instead>`.", rv.Instruction, wf.CommandPrefix, issue.IID))
@@ -208,7 +317,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			active = append(active, rv)
 		}
 	}
-	revisits = active
+	revisits := active
 	if len(ignored) > 0 {
 		ignoredPrompt := buildIgnoredRevisitsPrompt(ignored)
 		fullPrompt += "\n\n" + ignoredPrompt
@@ -220,20 +329,28 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		inv.Prompt = revisitPrompt + "\n\n" + inv.Prompt
 		r.log().Info("revisiting decisions", "decisions", len(revisits), "notices", len(notices))
 	}
+	run.role, run.profile, run.inv, run.stepwise, run.plainSystem, run.fullPrompt = role, profile, inv, stepwise, plainSystem, fullPrompt
+	run.notices, run.revisits, run.ignored = notices, revisits, ignored
+	return nil
+}
 
+// addInputs adds what the operator handed this run to the prompts: the
+// failed jobs of a CI fix run and an instruction accepted from the pilot.
+func (run *implementRun) addInputs(ctx context.Context) error {
+	r, task, inv, botID := run.r, run.task, &run.inv, run.botID
 	// A CI fix run: the operator saw the pipeline of the last push fail.
 	ciPipeline := task.Spec.Source.CIFixPipelineID
-	ciFix := ciPipeline != 0 && ciPipeline != task.Status.Run.CIFixedPipelineID
-	if ciFix {
-		out.CIFixedPipelineID = ciPipeline
-		s = r.step(ctx, "read failed CI jobs", "pipeline", ciPipeline)
-		ciPrompt, err := buildCIPrompt(ctx, gl, glProject, ciPipeline)
+	run.ciFix = ciPipeline != 0 && ciPipeline != task.Status.Run.CIFixedPipelineID
+	if run.ciFix {
+		run.out.CIFixedPipelineID = ciPipeline
+		s := r.step(ctx, "read failed CI jobs", "pipeline", ciPipeline)
+		ciPrompt, err := buildCIPrompt(ctx, run.gl, run.glProject, ciPipeline)
 		if err != nil {
-			return out, s.fail(err)
+			return s.fail(err)
 		}
 		s.done(fmt.Sprintf("pipeline %d", ciPipeline))
-		fullPrompt += "\n\n" + ciPrompt
-		if len(newIssueNotes)+len(newMRNotes) == 0 {
+		run.fullPrompt += "\n\n" + ciPrompt
+		if len(run.newIssueNotes)+len(run.newMRNotes) == 0 {
 			inv.Prompt = ciPrompt
 		} else {
 			inv.Prompt += "\n\n" + ciPrompt
@@ -241,151 +358,170 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 
 	// An instruction an owner accepted from the pilot counts as human input.
-	humanInput := humanNotes(newIssueNotes, botID) + humanNotes(newMRNotes, botID)
+	run.humanInput = humanNotes(run.newIssueNotes, botID) + humanNotes(run.newMRNotes, botID)
 	if instruction := pilotInstruction(task); instruction != "" {
-		fullPrompt += "\n\n" + instruction
+		run.fullPrompt += "\n\n" + instruction
 		inv.Prompt = instruction + "\n\n" + inv.Prompt
-		humanInput++
+		run.humanInput++
 	}
 	// Owners' answers to the agent's questions: each reaches the session
 	// once, a fresh session gets them all.
-	answers := promptAnswers(task, st, false)
-	if all := promptAnswers(task, st, true); len(all) > 0 {
-		fullPrompt += "\n\n" + buildPromptAnswers(all)
+	run.answers = promptAnswers(task, *run.state, false)
+	if all := promptAnswers(task, *run.state, true); len(all) > 0 {
+		run.fullPrompt += "\n\n" + buildPromptAnswers(all)
 	}
-	if len(answers) > 0 {
-		inv.Prompt = buildPromptAnswers(answers) + "\n\n" + inv.Prompt
-		humanInput++
+	if len(run.answers) > 0 {
+		inv.Prompt = buildPromptAnswers(run.answers) + "\n\n" + inv.Prompt
+		run.humanInput++
 	}
+	return nil
+}
 
+// mergeBase merges the default branch into the branch of a conflict run and
+// decides whether the implementer runs at all: a clean merge and a re-review
+// need no agent.
+func (run *implementRun) mergeBase(ctx context.Context) error {
+	r, task, inv, base, branch, botID := run.r, run.task, &run.inv, run.base, run.branch, run.botID
 	// A conflict run: the operator saw the merge request conflict with the
 	// default branch. The default branch is merged in; the implementer
 	// resolves the conflicts. A clean merge needs no agent.
 	mergeFor := task.Spec.Source.MergeBaseFor
 	mergeBase := mergeFor != "" && mergeFor != task.Status.Run.MergedBaseFor
-	var merge MergeResult
-	mergeMessage := fmt.Sprintf("Merge branch '%s' into %s", base, branch)
-	runAgent := true
+	run.mergeMessage = fmt.Sprintf("Merge branch '%s' into %s", base, branch)
+	run.runAgent = true
 	if mergeBase {
-		out.MergedBaseFor = mergeFor
-		s = r.step(ctx, "merge "+base, "base", base)
-		if merge, err = r.Agent.MergeBase(ctx, base, mergeMessage); err != nil {
-			return out, s.fail(fmt.Errorf("merging %s: %w", base, err))
+		run.out.MergedBaseFor = mergeFor
+		s := r.step(ctx, "merge "+base, "base", base)
+		merge, err := r.Agent.MergeBase(ctx, base, run.mergeMessage)
+		if err != nil {
+			return s.fail(fmt.Errorf("merging %s: %w", base, err))
 		}
+		run.merge = merge
 		switch {
 		case merge.UpToDate:
 			s.done("the branch already contains " + base)
 		case len(merge.Conflicts) == 0:
 			s.done("merged without conflicts")
-			notices = append(notices, fmt.Sprintf("Merged `%s` into the branch; there were no conflicts.", base))
+			run.notices = append(run.notices, fmt.Sprintf("Merged `%s` into the branch; there were no conflicts.", base))
 		default:
 			s.done(fmt.Sprintf("conflicts in %d files", len(merge.Conflicts)), "files", merge.Conflicts)
 			conflictPrompt := buildConflictPrompt(base, merge.Conflicts)
-			fullPrompt += "\n\n" + conflictPrompt
-			if humanInput == 0 && !ciFix {
+			run.fullPrompt += "\n\n" + conflictPrompt
+			if run.humanInput == 0 && !run.ciFix {
 				inv.Prompt = conflictPrompt
 			} else {
 				inv.Prompt = conflictPrompt + "\n\n" + inv.Prompt
 			}
 		}
-		runAgent = len(merge.Conflicts) > 0 || humanInput > 0 || ciFix || len(revisits) > 0 || len(ignored) > 0
+		run.runAgent = len(merge.Conflicts) > 0 || run.humanInput > 0 || run.ciFix || len(run.revisits) > 0 || len(run.ignored) > 0
 	}
 	// A re-review run: only the reviewers run again on the head they failed
 	// on (or "/agent review" asked for), unless the branch moved on since or
 	// humans wrote something for the implementer.
-	reviewFor := task.Spec.Source.ReviewFor
-	reviewAsked := reviewFor != "" && reviewFor != task.Status.Run.ReviewedFor
-	reReview := false
-	if reviewAsked {
+	run.reviewFor = task.Spec.Source.ReviewFor
+	run.reviewAsked = run.reviewFor != "" && run.reviewFor != task.Status.Run.ReviewedFor
+	if run.reviewAsked {
+		prefix := run.wf.CommandPrefix
 		head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
-		forImplementer := humanNotes(command.WithoutRouting(newIssueNotes, prefix), botID) + humanNotes(command.WithoutRouting(newMRNotes, prefix), botID)
-		reReview = head == reviewFor && forImplementer == 0 && !ciFix && !mergeBase && len(revisits) == 0 && pilotInstruction(task) == "" && len(answers) == 0
-		runAgent = runAgent && !reReview
+		forImplementer := humanNotes(command.WithoutRouting(run.newIssueNotes, prefix), botID) + humanNotes(command.WithoutRouting(run.newMRNotes, prefix), botID)
+		run.reReview = head == run.reviewFor && forImplementer == 0 && !run.ciFix && !mergeBase && len(run.revisits) == 0 && pilotInstruction(task) == "" && len(run.answers) == 0
+		run.runAgent = run.runAgent && !run.reReview
 	}
+	return nil
+}
 
-	if !stepwise && inv.Resume != "" {
+// implement runs the implementer, step by step while the MR is a draft,
+// unless only the merge or the review is due.
+func (run *implementRun) implement(ctx context.Context) error {
+	r, st, out, inv, answer, role, botID := run.r, run.state, run.out, &run.inv, &run.answer, run.role, run.botID
+	if !run.stepwise && inv.Resume != "" {
 		inv.Prompt = noStepsNote + "\n\n" + inv.Prompt
 	}
-	var res *Result
-	var answer ImplementAnswer
-	if runAgent {
-		s = r.step(ctx, "run implementer", "profile", profile, "engine", role.Engine, "model", role.Model, "effort", role.Effort,
-			"resume", inv.Resume != "", "ciFix", ciFix, "conflicts", len(merge.Conflicts))
+	if run.runAgent {
+		s := r.step(ctx, "run implementer", "profile", run.profile, "engine", role.Engine, "model", role.Model, "effort", role.Effort,
+			"resume", inv.Resume != "", "ciFix", run.ciFix, "conflicts", len(run.merge.Conflicts))
 		switch {
-		case len(merge.Conflicts) > 0:
+		case len(run.merge.Conflicts) > 0:
 			inv.Kind = aiv1.CallKindConflict
-		case ciFix:
+		case run.ciFix:
 			inv.Kind = aiv1.CallKindCI
 		}
-		res, err = r.invoke(ctx, role, inv, fullPrompt)
+		res, err := r.invoke(ctx, role, *inv, run.fullPrompt)
+		run.res = res
 		if res != nil {
 			out.CostUSD += res.CostUSD
 		}
 		if err != nil {
-			return out, s.fail(err)
+			return s.fail(err)
 		}
 		st.setSession("implement", ranOn(role, res), res.SessionID)
 		st.ImplementEngine = ranOn(role, res)
-		st.deliveredPrompts(answers)
-		st.LastIssueNoteID = maxNoteID(issueNotes, st.LastIssueNoteID)
-		st.LastMRNoteID = maxNoteID(mrNotes, st.LastMRNoteID)
-		if err := r.saveState(st); err != nil {
-			return out, s.fail(err)
+		st.deliveredPrompts(run.answers)
+		st.LastIssueNoteID = maxNoteID(run.issueNotes, st.LastIssueNoteID)
+		st.LastMRNoteID = maxNoteID(run.mrNotes, st.LastMRNoteID)
+		if err := r.saveState(*st); err != nil {
+			return s.fail(err)
 		}
-		if err := res.Decode(&answer); err != nil {
-			return out, s.fail(fmt.Errorf("decoding implementer answer: %w", err))
+		if err := res.Decode(answer); err != nil {
+			return s.fail(fmt.Errorf("decoding implementer answer: %w", err))
 		}
 		s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD,
 			"status", answer.Status, "questions", len(answer.Questions), "prompts", len(answer.Prompts), "decisions", len(answer.Decisions))
 	} else {
 		// Only the merge or the review: nothing for the agent to do; review
 		// and CI follow.
-		res = &Result{SessionID: inv.Resume}
-		answer = ImplementAnswer{Status: "done", Summary: fmt.Sprintf("Merged `%s` into the branch.", base)}
+		run.res = &Result{SessionID: inv.Resume}
+		*answer = ImplementAnswer{Status: "done", Summary: fmt.Sprintf("Merged `%s` into the branch.", run.base)}
 		switch {
-		case reReview:
-			answer.Summary = fmt.Sprintf("🔁 Reviewed `%s` again; the implementer did not run.", shortSHA(reviewFor))
-		case merge.UpToDate:
-			answer.Summary = fmt.Sprintf("The branch already contains `%s`; nothing to merge.", base)
+		case run.reReview:
+			answer.Summary = fmt.Sprintf("🔁 Reviewed `%s` again; the implementer did not run.", shortSHA(run.reviewFor))
+		case run.merge.UpToDate:
+			answer.Summary = fmt.Sprintf("The branch already contains `%s`; nothing to merge.", run.base)
 		}
 	}
-	outOfSteps := false
-	if stepwise && runAgent {
-		var seen int64
-		var err error
-		res, seen, err = r.runSteps(ctx, gl, glProject, issue, mr.IID, botID, wf.CommandPrefix, branch, base, role, spec.Agents.Implement.StepSession == aiv1.StepSessionFresh, inv, fullPrompt, res, &answer, &st, out)
+	if run.stepwise && run.runAgent {
+		res, seen, err := r.runSteps(ctx, run.gl, run.glProject, run.issue, run.mr.IID, botID, run.wf.CommandPrefix, run.branch, run.base, role,
+			run.spec.Agents.Implement.StepSession == aiv1.StepSessionFresh, *inv, run.fullPrompt, run.res, answer, st, out)
+		run.res = res
 		if err != nil {
 			// The steps pushed so far are on the branch: their decisions
 			// must not be lost with the run.
 			if botID != 0 {
-				r.postDecisions(ctx, gl, glProject, issue, issueNotes, botID, wf.CommandPrefix, answer.Decisions, revisits)
+				r.postDecisions(ctx, run.gl, run.glProject, run.issue, run.issueNotes, botID, run.wf.CommandPrefix, answer.Decisions, run.revisits)
 			}
-			return out, err
+			return err
 		}
-		seenNote = max(seenNote, seen)
+		run.seenNote = max(run.seenNote, seen)
 		if answer.Status == "in_progress" {
-			outOfSteps = true
-			notices = append(notices, fmt.Sprintf("Stopped after %d steps although the agent was not done, so the MR stays a draft. %s.", maxSteps,
-				r.steer(spec, task, fmt.Sprintf("Comment `%s continue` to go on", wf.CommandPrefix), "Ask for a new run")))
+			run.outOfSteps = true
+			run.notices = append(run.notices, fmt.Sprintf("Stopped after %d steps although the agent was not done, so the MR stays a draft. %s.", maxSteps,
+				r.steer(run.spec, run.task, fmt.Sprintf("Comment `%s continue` to go on", run.wf.CommandPrefix), "Ask for a new run")))
 		}
 	}
 	if answer.Status == "in_progress" {
 		answer.Status = "done" // an engine that ignored the schema
 	}
 	// Fix rounds and later calls finish their work in one go.
-	inv.SystemPrompt, inv.JSONSchema = plainSystem, implementSchema
+	inv.SystemPrompt, inv.JSONSchema = run.plainSystem, implementSchema
+	return nil
+}
+
+// concludeMerge concludes the merge of a conflict run, or undoes it when the
+// conflicts are not resolved, and commits the implementer's work.
+func (run *implementRun) concludeMerge(ctx context.Context) error {
+	r, answer, merge, base := run.r, &run.answer, run.merge, run.base
 	if len(merge.Conflicts) > 0 {
 		// Conclude the merge before anything else is committed: a merge
 		// with conflict markers left must never be committed.
-		s = r.step(ctx, "conclude merge", "files", len(merge.Conflicts))
+		s := r.step(ctx, "conclude merge", "files", len(merge.Conflicts))
 		giveUp := answer.Status == "needs_input" || answer.asks()
-		fin, err := r.Agent.FinishMerge(ctx, FinishMerge{Base: base, Message: mergeMessage, From: merge.From, Files: merge.Conflicts, Abort: giveUp})
+		fin, err := r.Agent.FinishMerge(ctx, FinishMerge{Base: base, Message: run.mergeMessage, From: merge.From, Files: merge.Conflicts, Abort: giveUp})
 		if err != nil {
-			return out, s.fail(fmt.Errorf("concluding the merge: %w", err))
+			return s.fail(fmt.Errorf("concluding the merge: %w", err))
 		}
 		if fin.Merged {
 			s.done("conflicts resolved")
-			notices = append(notices, fmt.Sprintf("Merged `%s` into the branch and resolved the conflicts in %s.", base, codeList(merge.Conflicts)))
+			run.notices = append(run.notices, fmt.Sprintf("Merged `%s` into the branch and resolved the conflicts in %s.", base, codeList(merge.Conflicts)))
 		} else {
 			// Back to the branch as it was: a human has to look.
 			left := fin.Conflicts
@@ -394,42 +530,39 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			}
 			s.done("not resolved, merge undone", "files", left)
 			answer.Status = "needs_input"
-			notices = append(notices, fmt.Sprintf("Could not resolve the merge conflicts with `%s` in %s, so the merge was undone. "+
-				"Merge `%s` into the branch by hand, or %s.", base, codeList(left), base, r.steer(spec, task, fmt.Sprintf("comment `%s …` with guidance", wf.CommandPrefix), "give guidance")))
+			run.notices = append(run.notices, fmt.Sprintf("Could not resolve the merge conflicts with `%s` in %s, so the merge was undone. "+
+				"Merge `%s` into the branch by hand, or %s.", base, codeList(left), base, r.steer(run.spec, run.task, fmt.Sprintf("comment `%s …` with guidance", run.wf.CommandPrefix), "give guidance")))
 		}
 	}
-	if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
-		return out, err
-	}
+	return r.commit(ctx, commitMessage(answer.CommitMessage, run.issue))
+}
 
-	// Review loop: read-only reviewers see the diff, blocking findings go
-	// back to the (resumed) implementer, bounded by maxIterations.
-	review := spec.Agents.Review
-	var remaining []Finding
-	var reviewNotes []string
-	// reviewedLast is false when a fix round came after the last review.
-	reviewedLast := false
+// reviewLoop has read-only reviewers see the diff; blocking findings go back
+// to the (resumed) implementer, bounded by maxIterations.
+func (run *implementRun) reviewLoop(ctx context.Context) error {
+	r, st, out, answer, role, issue, base := run.r, run.state, run.out, &run.answer, run.role, run.issue, run.base
+	review := run.spec.Agents.Review
 	// CI fix runs skip the reviewers: the change is reviewed with the next
 	// regular run, and CI itself is the check here. On autopilot nobody
 	// reviews before the merge, so CI fixes are reviewed as well.
-	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input" && (!ciFix || task.Spec.Autopilot); iter++ {
-		s = r.step(ctx, fmt.Sprintf("review round %d", iter+1), "reviewers", review.Reviewers)
+	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input" && (!run.ciFix || run.task.Spec.Autopilot); iter++ {
+		s := r.step(ctx, fmt.Sprintf("review round %d", iter+1), "reviewers", review.Reviewers)
 		// A budget stop ends the run here, not as reviewer errors.
 		if err := r.budgetStop(ctx); err != nil {
-			return out, s.fail(err)
+			return s.fail(err)
 		}
 		diff, stat, err := r.Agent.Diff(ctx, base)
 		if err != nil {
-			return out, s.fail(err)
+			return s.fail(err)
 		}
 		if strings.TrimSpace(diff) == "" {
 			out.Reviewed, out.BlockingFindings, out.ReviewErrors, out.ReviewErrorsTransient, out.ReviewErrorKinds = true, 0, 0, false, nil
 			s.done("no changes to review")
 			break
 		}
-		findings, cost, errs, kinds := r.review(ctx, review, issue, planDecisionsText(issueNotes, botID), base, stat, diff, ownersRules)
+		findings, cost, errs, kinds := r.review(ctx, review, issue, planDecisionsText(run.issueNotes, run.botID), base, stat, diff, run.ownersRules)
 		out.CostUSD += cost
-		reviewNotes = errs
+		run.reviewNotes = errs
 		transient := 0
 		for _, k := range kinds {
 			if k.Kind == aiv1.ReviewErrorTransient {
@@ -437,10 +570,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			}
 		}
 		out.Reviewed, out.ReviewErrors, out.ReviewErrorsTransient, out.ReviewErrorKinds = true, int32(len(errs)), len(errs) > 0 && transient == len(errs), kinds
-		reviewedLast = true
+		run.reviewedLast = true
 		// Reviewers are read-only; discard anything they touched anyway.
 		if err := r.Agent.Reset(ctx); err != nil {
-			return out, s.fail(err)
+			return s.fail(err)
 		}
 		var blocking []Finding
 		for _, f := range findings {
@@ -450,34 +583,35 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		s.done(fmt.Sprintf("%s; %d findings, %d blocking, $%.2f", diffSummary(stat), len(findings), len(blocking), cost),
 			"diff", diffSummary(stat), "findings", len(findings), "blocking", len(blocking), "reviewerErrors", len(errs), "costUSD", cost)
-		remaining = findings
+		run.remaining = findings
 		out.BlockingFindings = int32(len(blocking))
 		if len(blocking) == 0 || iter >= int(*review.MaxIterations) {
 			break
 		}
 		s = r.step(ctx, fmt.Sprintf("fix round %d", iter+1), "blocking", len(blocking))
-		fix := inv
+		fix := run.inv
 		fix.Kind = aiv1.CallKindFix
-		fix.Resume = res.SessionID
+		fix.Resume = run.res.SessionID
 		fixPrompt := buildFixPrompt(blocking)
 		fix.Prompt = fixPrompt
-		res, err = r.invoke(ctx, role, fix, fullPrompt+"\n\n"+fixPrompt)
+		res, err := r.invoke(ctx, role, fix, run.fullPrompt+"\n\n"+fixPrompt)
+		run.res = res
 		if res != nil {
 			out.CostUSD += res.CostUSD
 		}
 		if _, limited := AsUsageLimit(err); limited {
 			// Keep what is done: publish it with the open findings instead
 			// of throwing the work away until the limit resets.
-			reviewNotes = append(reviewNotes, "fix round skipped: "+err.Error())
+			run.reviewNotes = append(run.reviewNotes, "fix round skipped: "+err.Error())
 			s.done("skipped: usage limit", "error", err.Error())
 			break
 		}
 		if err != nil {
-			return out, s.fail(err)
+			return s.fail(err)
 		}
 		st.setSession("implement", ranOn(role, res), res.SessionID)
 		st.ImplementEngine = ranOn(role, res)
-		if err := r.saveState(st); err != nil {
+		if err := r.saveState(*st); err != nil {
 			r.log().Error(err, "saving the implementer's session")
 		}
 		var fixed ImplementAnswer
@@ -494,41 +628,48 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		s.done(agentResult(role, res, fixed.Status), "session", res.SessionID, "costUSD", res.CostUSD, "status", fixed.Status)
 		if err := r.commit(ctx, commitMessage(fixed.CommitMessage, issue)); err != nil {
-			return out, err
+			return err
 		}
-		reviewedLast = false
+		run.reviewedLast = false
 	}
+	return nil
+}
 
+// push marks the merge request ready or draft and pushes the branch, and
+// starts a pipeline where the head has none yet.
+func (run *implementRun) push(ctx context.Context) error {
+	r, gl, glProject, st, out, answer, task, mr, branch, base := run.r, run.gl, run.glProject, run.state, run.out, &run.answer, run.task, run.mr, run.branch, run.base
 	// Ready means reviewed and clean. The MR leaves draft before the push, so
 	// the push gets its pipeline also where drafts run none; a run that
 	// leaves problems puts it back to draft.
 	readied := false
 	switch {
-	case answer.Status == "needs_input" || answer.asks() || outOfSteps || out.Reviewed && (out.BlockingFindings > 0 || out.ReviewErrors > 0):
-		r.setDraft(ctx, gl, glProject, mr, &st, true)
-	case (out.Reviewed && reviewedLast || len(review.Reviewers) == 0) && r.hasChanges(ctx, base):
-		readied = r.setDraft(ctx, gl, glProject, mr, &st, false)
+	case answer.Status == "needs_input" || answer.asks() || run.outOfSteps || out.Reviewed && (out.BlockingFindings > 0 || out.ReviewErrors > 0):
+		r.setDraft(ctx, gl, glProject, mr, st, true)
+	case (out.Reviewed && run.reviewedLast || len(run.spec.Agents.Review.Reviewers) == 0) && r.hasChanges(ctx, base):
+		readied = r.setDraft(ctx, gl, glProject, mr, st, false)
 	}
 
 	// Push and open / update the merge request.
-	s = r.step(ctx, "push", "branch", branch)
+	s := r.step(ctx, "push", "branch", branch)
 	pushed, err := r.publish(ctx, branch, base, false)
 	if err != nil {
 		if readied {
 			// Ready would vouch for a head that is not this run's work.
-			r.setDraft(ctx, gl, glProject, mr, &st, true)
+			r.setDraft(ctx, gl, glProject, mr, st, true)
 		}
-		return out, s.fail(err)
+		return s.fail(err)
 	}
+	run.pushed = pushed
 	if pushed {
 		out.PushedSHA, _ = r.Mirror.resolve(ctx, "refs/heads/"+branch)
-		out.CIRound = ciRound(task, ciFix)
+		out.CIRound = ciRound(task, run.ciFix)
 		s.done(fmt.Sprintf("%s at %s", branch, shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
 	} else if r.pushedHead != "" {
 		// The last step pushed it all already, without CI: that head is the
 		// one CI has to check, and it needs a pipeline started.
 		out.PushedSHA = r.pushedHead
-		out.CIRound = ciRound(task, ciFix)
+		out.CIRound = ciRound(task, run.ciFix)
 		s.done(fmt.Sprintf("the last step pushed %s already", shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
 	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && head != task.Status.Run.PushedSHA && r.Mirror.HasChanges(ctx, base, head) {
 		// Someone else pushed to the branch (or made it) since the last
@@ -549,59 +690,73 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		r.startPipeline(ctx, gl, glProject, mr, task, head)
 	}
-	if out.Reviewed && reviewedLast {
+	if out.Reviewed && run.reviewedLast {
 		// The last review saw the branch as it is now.
 		out.ReviewedSHA = out.PushedSHA
 		if out.ReviewedSHA == "" {
 			out.ReviewedSHA, _ = r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
 		}
 	}
+	return nil
+}
+
+// postDecisionsAndHandoff stores the agent notes and posts the decisions.
+func (run *implementRun) postDecisionsAndHandoff(ctx context.Context) error {
+	r, st, botID := run.r, run.state, run.botID
 	// The notes go right after the push, so a later failure (merge request,
 	// comment) does not lose them. Without the bot's user ID the note could
 	// not be found again.
 	if botID != 0 {
-		r.updateHandoff(ctx, gl, glProject, issue.IID, handoffNote, answer.Handoff, seenNote)
-		notices = append(notices, r.postDecisions(ctx, gl, glProject, issue, issueNotes, botID, wf.CommandPrefix, answer.Decisions, revisits)...)
+		r.updateHandoff(ctx, run.gl, run.glProject, run.issue.IID, run.handoffNote, run.answer.Handoff, run.seenNote)
+		run.notices = append(run.notices, r.postDecisions(ctx, run.gl, run.glProject, run.issue, run.issueNotes, botID, run.wf.CommandPrefix, run.answer.Decisions, run.revisits)...)
 		// Revisits count as handled once their decisions are posted; a run
 		// that fails before applies them again.
-		st.RevisitNoteID = seenNote
-		if err := r.saveState(st); err != nil {
+		st.RevisitNoteID = run.seenNote
+		if err := r.saveState(*st); err != nil {
 			r.log().Error(err, "saving the state after posting decisions")
-			return out, err
+			return err
 		}
 	}
+	return nil
+}
+
+// report describes the change in the merge request, comments the run's
+// report and moves the issue to the next column.
+func (run *implementRun) report(ctx context.Context) error {
+	r, gl, glProject, out, answer, task, spec, wf, issue, mr := run.r, run.gl, run.glProject, run.out, &run.answer, run.task, run.spec, run.wf, run.issue, run.mr
 	// The description covers the whole change; the first one replaces the
 	// first report's summary (the task status keeps it).
 	// An agent may leave the summary empty (cursor does when it changed
 	// nothing): the report and the task status still say what the run did.
 	if strings.TrimSpace(answer.Summary) == "" {
-		answer.Summary = emptySummary(pushed || r.pushedHead != "", out.PushedSHA)
+		answer.Summary = emptySummary(run.pushed || r.pushedHead != "", out.PushedSHA)
 	}
-	reported := answer
+	reported := *answer
 	if !spec.Agents.Describe.Disabled {
-		first, notice, err := r.describe(ctx, gl, glProject, spec.Agents.Describe, issue, mr.IID, base, answer.Summary, &st, out)
+		first, notice, err := r.describe(ctx, gl, glProject, spec.Agents.Describe, issue, mr.IID, run.base, answer.Summary, run.state, out)
 		if err != nil {
-			return out, err
+			return err
 		}
 		if notice != "" {
-			notices = append(notices, notice)
+			run.notices = append(run.notices, notice)
 		}
 		// A run that stops for input keeps saying why.
 		if first && answer.Status != "needs_input" && !answer.asks() {
 			reported.Summary = "📝 Described the change in the merge request description."
 		}
 	}
-	drafts := questionDrafts(answer)
+	drafts := questionDrafts(*answer)
 	out.Questions = drafts[:min(len(drafts), aiv1.MaxQuestionDrafts)]
 	desk := desklink.Task(r.DeskURL, task.Namespace, task.Spec.ProjectRef, task.Name)
-	report := renderReport(reported, remaining, append(reviewNotes, notices...), desk)
-	if ciFix {
+	report := renderReport(reported, run.remaining, append(run.reviewNotes, run.notices...), desk)
+	if run.ciFix {
 		report = "CI fix: " + report
 	}
 	// Report back and move the issue to the next column - unless another
 	// run was requested meanwhile, in which case the issue stays "working".
 	// The run log covers the steps up to here.
 	needsInput := answer.Status == "needs_input" || answer.asks()
+	run.needsInput = needsInput
 	// With the CI loop, a fresh push stays in "working" until the operator
 	// has seen its pipeline go green (or hands it back).
 	waitForCI := !spec.CI.Disabled && out.PushedSHA != "" && !needsInput
@@ -620,9 +775,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		mrMention = notify.Mention(task.Spec.Owners)
 	}
 	runLogMD := r.run.markdown(out.CostUSD)
-	s = r.step(ctx, "comment")
+	s := r.step(ctx, "comment")
 	if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+mrMention+runLogMD); err != nil {
-		return out, s.fail(fmt.Errorf("commenting on merge request: %w", err))
+		return s.fail(fmt.Errorf("commenting on merge request: %w", err))
 	}
 	// The questions go on the issue as prompts: the operator posts one
 	// comment per question from out.Questions.
@@ -641,7 +796,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		if _, err := gl.UpdateIssue(ctx, glProject, issue.IID, gitlab.UpdateIssueOptions{
 			AddLabels: []string{next}, RemoveLabels: []string{wf.WorkingLabel, wf.ReadyLabel},
 		}); err != nil {
-			return out, s.fail(fmt.Errorf("updating issue labels: %w", err))
+			return s.fail(fmt.Errorf("updating issue labels: %w", err))
 		}
 		s.done("moved to "+next, "label", next)
 		if next == wf.ReviewLabel && !task.Spec.Autopilot && *spec.Notify.RequestReview && len(task.Spec.Owners) > 0 {
@@ -655,18 +810,23 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			}
 		}
 	}
+	return nil
+}
 
+// outcome completes the run's outcome once everything is reported.
+func (run *implementRun) outcome(ctx context.Context) *Outcome {
+	out := run.out
 	out.Result = aiv1.RunResultSucceeded
-	if needsInput {
+	if run.needsInput {
 		out.Result = aiv1.RunResultNeedsInput
 	}
-	if reviewAsked && !r.morePending(ctx, task.Spec.RunRequest) {
+	if run.reviewAsked && !run.r.morePending(ctx, run.task.Spec.RunRequest) {
 		// Handled: a re-review, or a normal run since the head moved on. A
 		// request that came meanwhile (another "/agent review") still sees it.
-		out.ReviewedFor = reviewFor
+		out.ReviewedFor = run.reviewFor
 	}
-	out.Summary = answer.Summary
-	return out, nil
+	out.Summary = run.answer.Summary
+	return out
 }
 
 // setDraft marks the MR draft or ready, if it is not already, and reports
