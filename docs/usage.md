@@ -942,6 +942,28 @@ A pause over the active issue ends **by itself** when it no longer holds:
   `/agent mergeBase #N`) on the tracking issue, and the pilot with its
   tools of that name.
 
+A pause because **nothing can start** (stuck) is checked on every poll too,
+and ends by itself once something can: a skipped issue it waits for was
+closed as done (`agent::done`, or by a merged MR; it counts as merged), a
+"blocked by" link was removed, a waiting issue was closed or skipped, or an
+owner chose one of these ways out (no `resume` needed; the tracking issue
+says "▶️ Autopilot continues: #N can start now"):
+
+- `/agent unskip #N` on the tracking issue: the skipped (and still open)
+  issue goes back to pending and is picked once its dependencies are merged;
+- `/agent startAnyway #N`: the waiting issue may start although an issue it
+  depends on was skipped, for example because another milestone replaces
+  it. Only that issue: others that wait for the same skipped issue keep
+  waiting. Its other dependencies and links still hold, and the tracking
+  issue says so ("▶️ #N may start although #M, which it depends on, was
+  skipped (@you)");
+- the [pilot](#talking-to-the-pilot)'s prompt, whose options can run
+  `unskip`, `startAnyway` or `markDone` (the skipped issue is closed as
+  done, with the pilot's reason on it). The pilot only proposes these, also
+  when it manages; they run on an owner's answer.
+
+By default a skipped issue still holds back the issues that depend on it.
+
 A budget pause ends by itself too, once the budget is raised above the
 spend or removed (see [Budget](#budget)).
 
@@ -1059,6 +1081,8 @@ poll. Merged and skipped issues have no budget any more.
 | `/agent pause` | stop starting and merging |
 | `/agent resume` | continue; the active issue is checked again |
 | `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |
+| `/agent unskip #12` | a skipped issue that is still open goes back to pending |
+| `/agent startAnyway #12` | a pending issue may start although an issue it depends on was skipped (see [When it pauses](#when-it-pauses)) |
 | `/agent merge #12 <sha>` | owners only: merge the active issue's head `sha` without a full review (when the reviewers cannot run); CI, MR state and approvals still apply, a new push or a later review voids it (`status.autopilot.mergeOverride`) |
 | `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](#revisiting-after-the-merge) joins the queue |
 
@@ -1077,7 +1101,7 @@ merge.
 
 You can also finish issues by hand. An issue closed by a merged MR, or closed
 with `agent::done`, counts as merged: the active one (also while paused: the
-pause ends by itself), a skipped one (its dependants continue on `resume`),
+pause ends by itself), a skipped one (its dependants can start: the stuck pause ends by itself),
 and one that was already done before autopilot got to it.
 
 ### Tracking issue
@@ -1290,6 +1314,14 @@ list out.
   - `skip #N`, `pause`, `resume` (autopilot milestones): the tracking
     issue's commands, applied by autopilot on its next poll; a pause says
     "paused by @you via the pilot";
+  - `unskip #N`, `startAnyway #N`, `markDone #N` (autopilot milestones):
+    ways out of a [stuck pause](#when-it-pauses), only ever options of a
+    prompt, run on an owner's answer (never on the pilot's own, also when
+    it manages). `unskip` and `startAnyway` are the tracking issue's
+    commands; `markDone` closes the open issue of a skipped or pending
+    item (never the active or a merged one) with `agent::done` and the
+    pilot's reason as a comment ("Closed as done by the pilot …, answered
+    by @you"), so it counts as done by hand;
   - `revisit D12-3`: the change asked for becomes a follow-up issue, like
     `/agent revisit D12-3 …` on the tracking issue ("requested by @you via
     the pilot"); decisions of open issues are revisited on the issue
@@ -1299,7 +1331,7 @@ list out.
     [spec changes](#spec-changes-through-the-pilot)); always behind a
     `yes`.
 
-  Merging, closing and pushing do not exist; neither do labels or other
+  Merging, pushing and closing (but `markDone`) do not exist; neither do labels or other
   edits (besides the standing rules, below). An
   owner answers in the Desk, or with the option's letter as a **reply in
   the prompt's thread** while the project takes GitLab input. **A** runs

@@ -2350,9 +2350,11 @@ export const MaxAutopilotItemDecisions = 20;
 export interface PilotAction {
   /**
    * Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-   * rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-   * or editSpec; the owner-only raiseBudget and endMilestone come only in
-   * options the operator builds (budget prompts), never from the model.
+   * rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+   * revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+   * and endMilestone come only in options the operator builds (budget
+   * prompts), never from the model. unskip, startAnyway and markDone run
+   * only on an owner's answer.
    */
   tool: string;
   /**
@@ -2371,8 +2373,8 @@ export interface PilotAction {
   kind?: string;
   /**
    * Note: the pilot's hint to the implementer (instruct), the body of
-   * the issue it opens (openIssue), the change asked for (revisit).
-   * Untrusted.
+   * the issue it opens (openIssue), the change asked for (revisit), why
+   * an issue is done (markDone). Untrusted.
    * +optional
    */
   note?: string;
@@ -3810,6 +3812,13 @@ export interface AutopilotItem {
    */
   flakyFix?: boolean;
   /**
+   * StartAnyway is set by an owner's startAnyway: a skipped dependency
+   * counts as met for this item. Pending dependencies and issue links
+   * still hold it back.
+   * +optional
+   */
+  startAnyway?: boolean;
+  /**
    * Budget is the issue's budget (its implement task's spec.budgetUSD,
    * else the project's budget.perIssueUSD) and its spend, refreshed every
    * poll while the issue has one; warnedAt is unused.
@@ -3924,9 +3933,9 @@ export interface PauseExit {
    */
   when?: string;
   /**
-   * Command is the /agent word of a remedy (resume, skip, merge, rebase,
-   * mergeBase, retry, review); after a label or a GitLab action it is the
-   * command that follows, on the tracking issue.
+   * Command is the /agent word of a remedy (resume, skip, unskip,
+   * startAnyway, merge, rebase, mergeBase, retry, review); after a label or
+   * a GitLab action it is the command that follows, on the tracking issue.
    */
   command?: string;
   /**
@@ -3944,6 +3953,11 @@ export interface PauseExit {
    * command or a label.
    */
   gitlab?: boolean;
+  /**
+   * Prompt: the remedy is an owner's answer to the pilot's prompt, whose
+   * tools When names (the owner may ask the pilot for one with /pilot).
+   */
+  prompt?: boolean;
   /**
    * Does says what happens then.
    */

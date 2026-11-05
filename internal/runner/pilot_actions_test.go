@@ -197,3 +197,40 @@ func TestPilotRecordsRebaseAndMergeBase(t *testing.T) {
 		t.Fatalf("recorded %+v", a)
 	}
 }
+
+// unskip, startAnyway and markDone are tools of the schema and the system
+// prompt, which says they wait for an owner's answer; a markDone is
+// recorded with its reason.
+func TestPilotRecordsTheWaysOutOfAStuckPause(t *testing.T) {
+	var s struct {
+		Properties map[string]struct {
+			Enum []string `json:"enum"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(actionSchema), &s); err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range []string{"unskip", "startAnyway", "markDone"} {
+		if !slices.Contains(s.Properties["tool"].Enum, tool) {
+			t.Errorf("the action schema lists %s: %v", tool, s.Properties["tool"].Enum)
+		}
+	}
+	e := newPilotEnv(t, "")
+	e.engine.proposal = proposalOf(t, `{"summary": "%5 replaces #1", "actions": [{"tool": "markDone", "issue": 1, "note": "replaced by %5 #9"}, {"tool": "startAnyway", "issue": 2}, {"tool": "unskip", "issue": 1}]}`)
+	e.step(t)
+	sp := e.engine.calls[0].SystemPrompt
+	for _, want := range []string{"- unskip, issue N: ", "- startAnyway, issue N: ", "- markDone, issue N, with a note (the reason): ",
+		"unskip, startAnyway and markDone always wait for an owner's answer"} {
+		if !strings.Contains(sp, want) {
+			t.Errorf("the pilot is told %q:\n%s", want, sp)
+		}
+	}
+	ps := e.task(t).Status.Pilot
+	if ps == nil || len(ps.Proposed) != 1 {
+		t.Fatalf("expected the proposal recorded: %+v", ps)
+	}
+	a := ps.Proposed[0].Actions
+	if len(a) != 3 || a[0].Tool != "markDone" || a[0].IssueIID != 1 || a[0].Note != "replaced by %5 #9" || a[1].Tool != "startAnyway" || a[1].IssueIID != 2 || a[2].Tool != "unskip" {
+		t.Fatalf("recorded %+v", a)
+	}
+}

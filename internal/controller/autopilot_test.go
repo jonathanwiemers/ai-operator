@@ -428,11 +428,15 @@ func TestAutopilotPauseListsTheWaysOut(t *testing.T) {
 
 // A pause over no issue (stuck) names the label to set and #N for skip.
 func TestPauseExitLinesWithoutAnIssue(t *testing.T) {
-	a := &autopilot{spec: aiv1.AgentProjectSpec{Workflow: aiv1.WorkflowSpec{CommandPrefix: "/bot", DoneLabel: "wf::done"}}}
+	a := &autopilot{spec: aiv1.AgentProjectSpec{Workflow: aiv1.WorkflowSpec{CommandPrefix: "/bot", PilotPrefix: "/copilot", DoneLabel: "wf::done"}}}
 	got := a.exitLines(aiv1.PauseStuck, 0)
 	for _, want := range []string{
-		"- Label the issue `wf::done` and close it (or merge it by hand), then `/bot resume` here: the skipped issue counts as merged",
-		"- In GitLab, remove the \"blocked by\" link of the waiting issue, then `/bot resume` here: ",
+		"- By itself, once an issue can start (a skipped dependency closed as done, a link removed, an unskip or a startAnyway): ",
+		"- Label the issue `wf::done` and close it (or merge it by hand): the skipped issue counts as merged",
+		"- In GitLab, remove the \"blocked by\" link of the waiting issue: ",
+		"- `/bot unskip #N` here: the skipped issue goes back to pending",
+		"- `/bot startAnyway #N` here: the waiting issue may start",
+		"- Answer the pilot's prompt (or ask for one with `/copilot …`) with unskip, markDone ",
 		"- `/bot skip #N` here: the waiting issue is skipped",
 		"- `/bot resume` here: autopilot looks for an issue that can start again.",
 	} {

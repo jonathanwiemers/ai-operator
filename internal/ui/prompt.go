@@ -141,6 +141,16 @@ func actionText(a aiv1.PilotAction) string {
 		return fmt.Sprintf("mergeBase #%d: the agent merges the default branch into its MR", a.IssueIID)
 	case "skip":
 		return fmt.Sprintf("skip #%d: autopilot leaves it out", a.IssueIID)
+	case "unskip":
+		return fmt.Sprintf("unskip #%d: it goes back to pending, and autopilot picks it once it can start", a.IssueIID)
+	case "startAnyway":
+		return fmt.Sprintf("startAnyway #%d: it may start although an issue it depends on was skipped", a.IssueIID)
+	case "markDone":
+		s := fmt.Sprintf("markDone #%d: closed as done, not merged by autopilot; the issues that wait for it can start", a.IssueIID)
+		if a.Note != "" {
+			s += ". The reason: " + a.Note
+		}
+		return s
 	case "pause", "resume":
 		return a.Tool + " autopilot"
 	case "revisit":

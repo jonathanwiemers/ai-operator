@@ -577,8 +577,8 @@ spec:
                                     note:
                                       description: |-
                                         Note: the pilot's hint to the implementer (instruct), the body of
-                                        the issue it opens (openIssue), the change asked for (revisit).
-                                        Untrusted.
+                                        the issue it opens (openIssue), the change asked for (revisit), why
+                                        an issue is done (markDone). Untrusted.
                                       type: string
                                     owner:
                                       description: |-
@@ -611,9 +611,11 @@ spec:
                                     tool:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                        rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                        or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                        options the operator builds (budget prompts), never from the model.
+                                        rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                        revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                        and endMilestone come only in options the operator builds (budget
+                                        prompts), never from the model. unskip, startAnyway and markDone run
+                                        only on an owner's answer.
                                       type: string
                                   required:
                                   - tool
@@ -970,6 +972,12 @@ spec:
                             RevisitOf is set for follow-up issues the operator created to revisit
                             a decision of a merged issue: the decision's ID.
                           type: string
+                        startAnyway:
+                          description: |-
+                            StartAnyway is set by an owner's startAnyway: a skipped dependency
+                            counts as met for this item. Pending dependencies and issue links
+                            still hold it back.
+                          type: boolean
                         state:
                           description: AutopilotItemState is the state of one issue
                             in the queue.
@@ -1101,6 +1109,12 @@ spec:
                           RevisitOf is set for follow-up issues the operator created to revisit
                           a decision of a merged issue: the decision's ID.
                         type: string
+                      startAnyway:
+                        description: |-
+                          StartAnyway is set by an owner's startAnyway: a skipped dependency
+                          counts as met for this item. Pending dependencies and issue links
+                          still hold it back.
+                        type: boolean
                       state:
                         description: AutopilotItemState is the state of one issue
                           in the queue.
@@ -1441,8 +1455,8 @@ spec:
                               note:
                                 description: |-
                                   Note: the pilot's hint to the implementer (instruct), the body of
-                                  the issue it opens (openIssue), the change asked for (revisit).
-                                  Untrusted.
+                                  the issue it opens (openIssue), the change asked for (revisit), why
+                                  an issue is done (markDone). Untrusted.
                                 type: string
                               owner:
                                 description: |-
@@ -1475,9 +1489,11 @@ spec:
                               tool:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                  rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                  or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                  options the operator builds (budget prompts), never from the model.
+                                  rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                  revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                  and endMilestone come only in options the operator builds (budget
+                                  prompts), never from the model. unskip, startAnyway and markDone run
+                                  only on an owner's answer.
                                 type: string
                             required:
                             - tool
@@ -1535,8 +1551,8 @@ spec:
                                     note:
                                       description: |-
                                         Note: the pilot's hint to the implementer (instruct), the body of
-                                        the issue it opens (openIssue), the change asked for (revisit).
-                                        Untrusted.
+                                        the issue it opens (openIssue), the change asked for (revisit), why
+                                        an issue is done (markDone). Untrusted.
                                       type: string
                                     owner:
                                       description: |-
@@ -1569,9 +1585,11 @@ spec:
                                     tool:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                        rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                        or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                        options the operator builds (budget prompts), never from the model.
+                                        rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                        revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                        and endMilestone come only in options the operator builds (budget
+                                        prompts), never from the model. unskip, startAnyway and markDone run
+                                        only on an owner's answer.
                                       type: string
                                   required:
                                   - tool
@@ -1697,8 +1715,8 @@ spec:
                             note:
                               description: |-
                                 Note: the pilot's hint to the implementer (instruct), the body of
-                                the issue it opens (openIssue), the change asked for (revisit).
-                                Untrusted.
+                                the issue it opens (openIssue), the change asked for (revisit), why
+                                an issue is done (markDone). Untrusted.
                               type: string
                             owner:
                               description: |-
@@ -1731,9 +1749,11 @@ spec:
                             tool:
                               description: |-
                                 Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                options the operator builds (budget prompts), never from the model.
+                                rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                and endMilestone come only in options the operator builds (budget
+                                prompts), never from the model. unskip, startAnyway and markDone run
+                                only on an owner's answer.
                               type: string
                           required:
                           - tool
@@ -1834,8 +1854,8 @@ spec:
                               note:
                                 description: |-
                                   Note: the pilot's hint to the implementer (instruct), the body of
-                                  the issue it opens (openIssue), the change asked for (revisit).
-                                  Untrusted.
+                                  the issue it opens (openIssue), the change asked for (revisit), why
+                                  an issue is done (markDone). Untrusted.
                                 type: string
                               owner:
                                 description: |-
@@ -1868,9 +1888,11 @@ spec:
                               tool:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                  rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                  or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                  options the operator builds (budget prompts), never from the model.
+                                  rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                  revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                  and endMilestone come only in options the operator builds (budget
+                                  prompts), never from the model. unskip, startAnyway and markDone run
+                                  only on an owner's answer.
                                 type: string
                             required:
                             - tool
@@ -1928,8 +1950,8 @@ spec:
                                     note:
                                       description: |-
                                         Note: the pilot's hint to the implementer (instruct), the body of
-                                        the issue it opens (openIssue), the change asked for (revisit).
-                                        Untrusted.
+                                        the issue it opens (openIssue), the change asked for (revisit), why
+                                        an issue is done (markDone). Untrusted.
                                       type: string
                                     owner:
                                       description: |-
@@ -1962,9 +1984,11 @@ spec:
                                     tool:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                        rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                        or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                        options the operator builds (budget prompts), never from the model.
+                                        rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                        revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                        and endMilestone come only in options the operator builds (budget
+                                        prompts), never from the model. unskip, startAnyway and markDone run
+                                        only on an owner's answer.
                                       type: string
                                   required:
                                   - tool
@@ -2077,8 +2101,8 @@ spec:
                               note:
                                 description: |-
                                   Note: the pilot's hint to the implementer (instruct), the body of
-                                  the issue it opens (openIssue), the change asked for (revisit).
-                                  Untrusted.
+                                  the issue it opens (openIssue), the change asked for (revisit), why
+                                  an issue is done (markDone). Untrusted.
                                 type: string
                               owner:
                                 description: |-
@@ -2111,9 +2135,11 @@ spec:
                               tool:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                  rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                  or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                  options the operator builds (budget prompts), never from the model.
+                                  rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                  revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                  and endMilestone come only in options the operator builds (budget
+                                  prompts), never from the model. unskip, startAnyway and markDone run
+                                  only on an owner's answer.
                                 type: string
                             required:
                             - tool
@@ -2171,8 +2197,8 @@ spec:
                                     note:
                                       description: |-
                                         Note: the pilot's hint to the implementer (instruct), the body of
-                                        the issue it opens (openIssue), the change asked for (revisit).
-                                        Untrusted.
+                                        the issue it opens (openIssue), the change asked for (revisit), why
+                                        an issue is done (markDone). Untrusted.
                                       type: string
                                     owner:
                                       description: |-
@@ -2205,9 +2231,11 @@ spec:
                                     tool:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                        rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                        or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                        options the operator builds (budget prompts), never from the model.
+                                        rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                        revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                        and endMilestone come only in options the operator builds (budget
+                                        prompts), never from the model. unskip, startAnyway and markDone run
+                                        only on an owner's answer.
                                       type: string
                                   required:
                                   - tool
@@ -2335,8 +2363,8 @@ spec:
                                   note:
                                     description: |-
                                       Note: the pilot's hint to the implementer (instruct), the body of
-                                      the issue it opens (openIssue), the change asked for (revisit).
-                                      Untrusted.
+                                      the issue it opens (openIssue), the change asked for (revisit), why
+                                      an issue is done (markDone). Untrusted.
                                     type: string
                                   owner:
                                     description: |-
@@ -2369,9 +2397,11 @@ spec:
                                   tool:
                                     description: |-
                                       Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                      rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                      or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                      options the operator builds (budget prompts), never from the model.
+                                      rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                      revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                      and endMilestone come only in options the operator builds (budget
+                                      prompts), never from the model. unskip, startAnyway and markDone run
+                                      only on an owner's answer.
                                     type: string
                                 required:
                                 - tool
@@ -2597,8 +2627,8 @@ spec:
                                 note:
                                   description: |-
                                     Note: the pilot's hint to the implementer (instruct), the body of
-                                    the issue it opens (openIssue), the change asked for (revisit).
-                                    Untrusted.
+                                    the issue it opens (openIssue), the change asked for (revisit), why
+                                    an issue is done (markDone). Untrusted.
                                   type: string
                                 owner:
                                   description: |-
@@ -2631,9 +2661,11 @@ spec:
                                 tool:
                                   description: |-
                                     Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                    rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                    or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                    options the operator builds (budget prompts), never from the model.
+                                    rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                    revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                    and endMilestone come only in options the operator builds (budget
+                                    prompts), never from the model. unskip, startAnyway and markDone run
+                                    only on an owner's answer.
                                   type: string
                               required:
                               - tool
@@ -3140,8 +3172,8 @@ spec:
                                     note:
                                       description: |-
                                         Note: the pilot's hint to the implementer (instruct), the body of
-                                        the issue it opens (openIssue), the change asked for (revisit).
-                                        Untrusted.
+                                        the issue it opens (openIssue), the change asked for (revisit), why
+                                        an issue is done (markDone). Untrusted.
                                       type: string
                                     owner:
                                       description: |-
@@ -3174,9 +3206,11 @@ spec:
                                     tool:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                        rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-                                        or editSpec; the owner-only raiseBudget and endMilestone come only in
-                                        options the operator builds (budget prompts), never from the model.
+                                        rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+                                        revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+                                        and endMilestone come only in options the operator builds (budget
+                                        prompts), never from the model. unskip, startAnyway and markDone run
+                                        only on an owner's answer.
                                       type: string
                                   required:
                                   - tool

@@ -347,6 +347,21 @@ func TestAutopilotItemHealedOnAdmitted(t *testing.T) {
 	}
 }
 
+// An owner's startAnyway is recorded on the waiting queue item; the schema
+// must keep it.
+func TestAutopilotItemStartAnywayAdmitted(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	item := map[string]any{"iid": int64(88), "state": "Pending", "startAnyway": true}
+	obj, errs := crd.admit(map[string]any{"status": map[string]any{"autopilot": map[string]any{"phase": "Paused", "items": []any{item}}}})
+	if len(errs) > 0 {
+		t.Fatalf("item with startAnyway rejected: %v", errs)
+	}
+	items := obj["status"].(map[string]any)["autopilot"].(map[string]any)["items"].([]any)
+	if got := items[0].(map[string]any)["startAnyway"]; got != true {
+		t.Fatalf("startAnyway not stored: %v", items[0])
+	}
+}
+
 // Rejected status writes are kept in status.writeFailures (writefail); the
 // schema must keep them and bound them.
 func TestWriteFailuresAdmitted(t *testing.T) {

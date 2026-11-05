@@ -16,9 +16,9 @@ type PauseExit struct {
 	// When is the condition of an automatic exit, or what a remedy needs
 	// first (for a GitLab action: the action).
 	When string `json:"when,omitempty"`
-	// Command is the /agent word of a remedy (resume, skip, merge, rebase,
-	// mergeBase, retry, review); after a label or a GitLab action it is the
-	// command that follows, on the tracking issue.
+	// Command is the /agent word of a remedy (resume, skip, unskip,
+	// startAnyway, merge, rebase, mergeBase, retry, review); after a label or
+	// a GitLab action it is the command that follows, on the tracking issue.
 	Command string `json:"command,omitempty"`
 	// Target is where a remedy's command or label goes: spec (the tracking
 	// issue, the milestone) or implement (the paused issue).
@@ -29,6 +29,9 @@ type PauseExit struct {
 	// GitLab: the remedy is an action in GitLab (When says which), not a
 	// command or a label.
 	GitLab bool `json:"gitlab,omitempty"`
+	// Prompt: the remedy is an owner's answer to the pilot's prompt, whose
+	// tools When names (the owner may ask the pilot for one with /pilot).
+	Prompt bool `json:"prompt,omitempty"`
 	// Does says what happens then.
 	Does string `json:"does"`
 }
@@ -109,10 +112,18 @@ var pauseExits = map[PauseKind][]PauseExit{
 		withDoes(exitResume, "autopilot checks the plan again"),
 	},
 	PauseStuck: {
-		{ID: "closeAsDone", Label: LabelRoleDone, Target: ExitTargetImplement, When: "and close it (or merge it by hand)", Command: "resume",
+		{ID: "somethingCanStart", Auto: true, When: "an issue can start (a skipped dependency closed as done, a link removed, an unskip or a startAnyway)",
+			Does: "autopilot continues with it"},
+		{ID: "closeAsDone", Label: LabelRoleDone, Target: ExitTargetImplement, When: "and close it (or merge it by hand)",
 			Does: "the skipped issue counts as merged, so the issues that wait for it can start"},
-		{ID: "removeLink", GitLab: true, When: `remove the "blocked by" link of the waiting issue`, Command: "resume",
+		{ID: "removeLink", GitLab: true, When: `remove the "blocked by" link of the waiting issue`,
 			Does: "the issue no longer waits for the linked one"},
+		{ID: "unskip", Command: "unskip", Target: ExitTargetSpec,
+			Does: "the skipped issue goes back to pending and autopilot picks it once it can start"},
+		{ID: "startAnyway", Command: "startAnyway", Target: ExitTargetSpec,
+			Does: "the waiting issue may start although an issue it depends on was skipped; the tracking issue says so"},
+		{ID: "pilotPrompt", Prompt: true, When: "with unskip, markDone (the skipped issue is closed as done, with a reason) or startAnyway, e.g. when another milestone replaces the skipped issue",
+			Does: "the answer runs the tool, and autopilot continues once an issue can start"},
 		withDoes(exitSkip, "the waiting issue is skipped and autopilot goes on with the others"),
 		withDoes(exitResume, "autopilot looks for an issue that can start again"),
 	},

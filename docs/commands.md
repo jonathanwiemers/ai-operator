@@ -138,7 +138,9 @@ implementer of every following run reads them:
 |---------|--------|
 | `/agent pause` | Stop starting and merging. Runs already requested still finish. |
 | `/agent resume` | Continue; the active issue is checked again. |
-| `/agent skip #12` | Skip a planned issue. Issues that depend on it stay blocked until it is merged by hand or they are skipped too. |
+| `/agent skip #12` | Skip a planned issue. Issues that depend on it stay blocked until it is merged by hand, they are skipped too, or they may `startAnyway`. |
+| `/agent unskip #12` | A skipped issue that is still open goes back to pending; autopilot picks it once its dependencies are merged. A pause because nothing could start ends by itself once it can. |
+| `/agent startAnyway #12` | A pending issue that waits for a skipped dependency may start without it (that issue only; its other dependencies and "blocked by" links still hold). Said on the tracking issue ("▶️ #12 may start although #8, which it depends on, was skipped (@you)"); the stuck pause ends by itself once it can start. Any case (`startanyway`) works. |
 | `/agent rebase #12` | The active issue only (not a pending one, not the main-red fix), once it has a pushed MR: GitLab rebases the MR onto the default branch. The review carries over if the change is the same (as for `need_rebase`, see [the merge gate](usage.md#the-merge-gate)); a pause about the issue whose way out it is (CI red, merge request) ends, and the rebased head goes through CI. Said on the tracking issue. If the MR was rebased before, or GitLab cannot rebase it, the agent merges the default branch instead. Refused with the reason while a run of the issue is pending, a rebase is in flight, or someone else pushed to the branch. |
 | `/agent mergeBase #12` | The active issue only, like `rebase`: the agent merges the default branch into the MR and resolves conflicts (see [Merge conflicts](usage.md#merge-conflicts)); its push is reviewed and checked by CI like any other, and a pause about the issue whose way out it is ends. Once per head, and not with `workflow.resolveConflicts: false`. |
 | `/agent merge #12 <sha>` | Owners only (also with `commandsFrom: all`): merge the active issue's head `sha` (at least 7 characters; without it the answer names the current head) without a full review. Skips failed or missing reviews and blocking findings; CI, the MR state and approvals still apply. Said on the tracking issue; a new push or a review that finishes later voids it. |
@@ -160,6 +162,11 @@ proposals they accept. Its tools `rebase #N` and `mergeBase #N` are the
 tracking issue's commands above, counted (a managing pilot runs them
 itself), applied by autopilot on its next poll and said there ("the pilot
 asked to rebase !N", or "@you via the pilot" after your answer).
+Its tools `unskip #N` and `startAnyway #N` are the commands above too, and
+`markDone #N` closes the open issue of a skipped or pending queue item with
+`agent::done` and the pilot's reason; these three are only ever options of
+the pilot's prompts and run on an owner's answer, never on its own (see
+[When it pauses](usage.md#when-it-pauses)).
 
 | Comment | Effect |
 |---------|--------|

@@ -350,9 +350,11 @@ const MaxAutopilotItemDecisions = 20
 // validates and executes it once an owner accepts the proposal.
 type PilotAction struct {
 	// Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-	// rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
-	// or editSpec; the owner-only raiseBudget and endMilestone come only in
-	// options the operator builds (budget prompts), never from the model.
+	// rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+	// revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+	// and endMilestone come only in options the operator builds (budget
+	// prompts), never from the model. unskip, startAnyway and markDone run
+	// only on an owner's answer.
 	Tool string `json:"tool"`
 	// Decision to revisit, e.g. D12-3; Note is the change asked for.
 	// +optional
@@ -363,8 +365,8 @@ type PilotAction struct {
 	// +optional
 	Kind string `json:"kind,omitempty"`
 	// Note: the pilot's hint to the implementer (instruct), the body of
-	// the issue it opens (openIssue), the change asked for (revisit).
-	// Untrusted.
+	// the issue it opens (openIssue), the change asked for (revisit), why
+	// an issue is done (markDone). Untrusted.
 	// +optional
 	Note string `json:"note,omitempty"`
 	// Title of the issue it opens (openIssue).
@@ -1502,6 +1504,12 @@ type AutopilotItem struct {
 	// re-plan.
 	// +optional
 	FlakyFix bool `json:"flakyFix,omitempty"`
+
+	// StartAnyway is set by an owner's startAnyway: a skipped dependency
+	// counts as met for this item. Pending dependencies and issue links
+	// still hold it back.
+	// +optional
+	StartAnyway bool `json:"startAnyway,omitempty"`
 
 	// Budget is the issue's budget (its implement task's spec.budgetUSD,
 	// else the project's budget.perIssueUSD) and its spend, refreshed every

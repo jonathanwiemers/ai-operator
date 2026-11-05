@@ -146,6 +146,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.autoResume(ctx); err != nil {
 		return err
 	}
+	if err := a.unstick(ctx); err != nil {
+		return err
+	}
 	if err := a.freezeOnMainRed(ctx); err != nil {
 		return err
 	}
@@ -328,16 +331,78 @@ func (a *autopilot) step(ctx context.Context) error {
 
 // pick activates the next pending issue whose dependencies are merged: the
 // plan's, and open issues it is linked as "blocked by" to in GitLab
-// (Premium), so a link a human adds holds an issue back too.
+// (Premium), so a link a human adds holds an issue back too (startable).
+// With none, it pauses stuck; unstick lifts that pause.
 func (a *autopilot) pick(ctx context.Context) error {
-	pending := 0
+	s, err := a.startable(ctx)
+	if err != nil {
+		return err
+	}
+	wf := a.spec.Workflow
+	switch it := s.it; {
+	case s.dep != nil:
+		// Skipped, then finished by hand: the dependency is met.
+		return a.merged(ctx, s.dep, s.mr)
+	case it != nil && s.closed && s.done:
+		// Done before autopilot got to it (merged in the normal flow, or by
+		// hand).
+		return a.merged(ctx, it, s.mr)
+	case it != nil && s.closed:
+		if err := a.comment(ctx, fmt.Sprintf("⏭️ #%d was closed or deleted before autopilot got to it, so it is skipped.", it.IID)); err != nil {
+			return err
+		}
+		it.State = aiv1.AutopilotItemSkipped
+		return nil
+	case it != nil:
+		a.log.Info("autopilot starts the next issue", "issue", it.IID)
+		if !hasAny(a.issues[it.IID], wf.ActiveLabels()...) { // else a human already handed it over
+			if _, err := a.gl.UpdateIssue(ctx, a.spec.GitLab.Project, it.IID, gitlab.UpdateIssueOptions{
+				AddLabels: []string{wf.ReadyLabel}, RemoveLabels: []string{wf.DraftLabel, wf.DoneLabel},
+			}); err != nil {
+				return fmt.Errorf("moving issue #%d to %q: %w", it.IID, wf.ReadyLabel, err)
+			}
+		}
+		it.State = aiv1.AutopilotItemActive
+		a.ap.Phase = aiv1.AutopilotRunning // a re-plan can add issues after "done"
+		return nil
+	case len(s.waiting) > 0:
+		// Everything left waits for something autopilot does not do: a
+		// skipped issue, an issue outside the queue, or a cycle of links.
+		return a.pause(ctx, aiv1.PauseStuck, 0, fmt.Sprintf("nothing can start: %s; merge the issues they wait for by hand (or close them with `%s`), "+
+			"remove the links, `skip` the waiting ones, `unskip` the skipped ones or let the waiting ones `startAnyway`", strings.Join(s.waiting, ", "), wf.DoneLabel))
+	case a.ap.Phase != aiv1.AutopilotDone:
+		return a.done(ctx)
+	}
+	return nil
+}
+
+// startCheck is what pick would do next (startable).
+type startCheck struct {
+	// dep is a skipped dependency finished by hand (mr: its merged MR, if
+	// any), to be recorded as merged.
+	dep *aiv1.AutopilotItem
+	// it is the pending item to start; closed if its issue is closed or
+	// gone, done if it was finished by hand then (mr).
+	it           *aiv1.AutopilotItem
+	closed, done bool
+	mr           *gitlab.MergeRequest
+	// waiting says why each pending item cannot start, when none can.
+	waiting []string
+}
+
+// startable finds what pick would do next, without doing it (it only reads
+// GitLab): the first pending item whose dependencies are merged (a skipped
+// one is met for an item with StartAnyway) and that no open issue blocks by
+// a link, or a skipped dependency done by hand. With none, waiting lists
+// why each pending item cannot start; empty: nothing is pending.
+func (a *autopilot) startable(ctx context.Context) (startCheck, error) {
+	var s startCheck
 	waits := map[int64]string{} // why a pending issue cannot start
 	for i := range a.ap.Items {
 		it := &a.ap.Items[i]
 		if it.State != aiv1.AutopilotItemPending {
 			continue
 		}
-		pending++
 		blocked := false
 		for _, d := range a.deps(it.IID) {
 			dep := a.item(d)
@@ -345,13 +410,15 @@ func (a *autopilot) pick(ctx context.Context) error {
 				continue
 			}
 			if dep.State == aiv1.AutopilotItemSkipped {
-				// Skipped, then finished by hand: the dependency is met.
 				mr, done, err := a.doneByHand(ctx, d)
 				if err != nil {
-					return err
+					return s, err
 				}
 				if done {
-					return a.merged(ctx, dep, mr)
+					return startCheck{dep: dep, mr: mr}, nil
+				}
+				if it.StartAnyway {
+					continue // an owner let it start without the skipped one
 				}
 				waits[it.IID] = fmt.Sprintf("#%d waits for the skipped #%d", it.IID, d)
 			}
@@ -361,27 +428,17 @@ func (a *autopilot) pick(ctx context.Context) error {
 		if blocked {
 			continue
 		}
-		wf := a.spec.Workflow
-		is, ok := a.issues[it.IID]
-		if !ok || is.State != "opened" {
-			// Done before autopilot got to it (merged in the normal flow, or
-			// by hand), or given up.
+		if is, ok := a.issues[it.IID]; !ok || is.State != "opened" {
+			// Done before autopilot got to it, or given up.
 			mr, done, err := a.doneByHand(ctx, it.IID)
 			if err != nil {
-				return err
+				return s, err
 			}
-			if done {
-				return a.merged(ctx, it, mr)
-			}
-			if err := a.comment(ctx, fmt.Sprintf("⏭️ #%d was closed or deleted before autopilot got to it, so it is skipped.", it.IID)); err != nil {
-				return err
-			}
-			it.State = aiv1.AutopilotItemSkipped
-			return nil
+			return startCheck{it: it, closed: true, done: done, mr: mr}, nil
 		}
 		blockers, err := a.blockedByLinks(ctx, it.IID)
 		if err != nil {
-			return err
+			return s, err
 		}
 		if len(blockers) > 0 {
 			var outside []string
@@ -396,38 +453,54 @@ func (a *autopilot) pick(ctx context.Context) error {
 			}
 			continue
 		}
-		a.log.Info("autopilot starts the next issue", "issue", it.IID)
-		if !hasAny(is, wf.ActiveLabels()...) { // else a human already handed it over
-			if _, err := a.gl.UpdateIssue(ctx, a.spec.GitLab.Project, it.IID, gitlab.UpdateIssueOptions{
-				AddLabels: []string{wf.ReadyLabel}, RemoveLabels: []string{wf.DraftLabel, wf.DoneLabel},
-			}); err != nil {
-				return fmt.Errorf("moving issue #%d to %q: %w", it.IID, wf.ReadyLabel, err)
-			}
+		return startCheck{it: it}, nil
+	}
+	for _, it := range a.ap.Items {
+		if it.State != aiv1.AutopilotItemPending {
+			continue
 		}
-		it.State = aiv1.AutopilotItemActive
-		a.ap.Phase = aiv1.AutopilotRunning // a re-plan can add issues after "done"
+		why, ok := waits[it.IID]
+		if !ok {
+			why = fmt.Sprintf("#%d waits for another pending issue (a cycle of issue links?)", it.IID)
+		}
+		s.waiting = append(s.waiting, why)
+	}
+	return s, nil
+}
+
+// unstick lifts a stuck pause once pick can do something again: an issue
+// can start (a link was removed, an unskip, a startAnyway), a skipped
+// dependency was done by hand (recorded as merged), a waiting issue was
+// closed, or nothing waits any more. While nothing can start it stays.
+func (a *autopilot) unstick(ctx context.Context) error {
+	if a.ap.Phase != aiv1.AutopilotPaused || a.ap.PauseKind != aiv1.PauseStuck || a.st.RunPending() {
 		return nil
 	}
-	if pending > 0 {
-		// Everything left waits for something autopilot does not do: a
-		// skipped issue, an issue outside the queue, or a cycle of links.
-		var reasons []string
-		for _, it := range a.ap.Items {
-			if it.State != aiv1.AutopilotItemPending {
-				continue
-			}
-			why, ok := waits[it.IID]
-			if !ok {
-				why = fmt.Sprintf("#%d waits for another pending issue (a cycle of issue links?)", it.IID)
-			}
-			reasons = append(reasons, why)
+	s, err := a.startable(ctx)
+	if err != nil {
+		return err
+	}
+	var why string
+	switch {
+	case s.dep != nil:
+		if err := a.merged(ctx, s.dep, s.mr); err != nil {
+			return err
 		}
-		return a.pause(ctx, aiv1.PauseStuck, 0, fmt.Sprintf("nothing can start: %s; merge the issues they wait for by hand (or close them with `%s`), "+
-			"remove the links, or `skip` the waiting ones, then `resume`", strings.Join(reasons, ", "), a.spec.Workflow.DoneLabel))
+		why = fmt.Sprintf("the skipped #%d was done by hand", s.dep.IID)
+	case s.it != nil && s.closed:
+		why = fmt.Sprintf("#%d was closed", s.it.IID)
+	case s.it != nil:
+		why = fmt.Sprintf("#%d can start now", s.it.IID)
+	case len(s.waiting) == 0:
+		why = "no issue waits any more"
+	default:
+		return nil
 	}
-	if a.ap.Phase != aiv1.AutopilotDone {
-		return a.done(ctx)
+	a.log.Info("autopilot continues by itself", "why", why)
+	if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
+		return err
 	}
+	a.lift()
 	return nil
 }
 
@@ -1289,7 +1362,7 @@ func (a *autopilot) exitLines(kind aiv1.PauseKind, iid int64) string {
 			head = short(t.Status.Run.PushedSHA)
 		}
 	}
-	args := map[string]string{"skip": " " + ref, "rebase": " " + ref, "mergeBase": " " + ref, "merge": " " + ref + " " + head}
+	args := map[string]string{"skip": " " + ref, "unskip": " " + ref, "startAnyway": " " + ref, "rebase": " " + ref, "mergeBase": " " + ref, "merge": " " + ref + " " + head}
 	cmd := func(word string, target aiv1.ExitTarget) string {
 		where := "here"
 		if target == aiv1.ExitTargetImplement {
@@ -1305,6 +1378,8 @@ func (a *autopilot) exitLines(kind aiv1.PauseKind, iid int64) string {
 			how = "By itself, once " + e.When
 		case e.GitLab:
 			how = "In GitLab, " + e.When
+		case e.Prompt:
+			how = fmt.Sprintf("Answer the pilot's prompt (or ask for one with `%s …`) %s", wf.PilotPrefix, e.When)
 		case e.Label != "":
 			how = fmt.Sprintf("Label %s `%s` %s", issue, wf.RoleLabel(e.Label), e.When)
 		default:
@@ -1519,6 +1594,17 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 		}
 		it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
 		return fmt.Sprintf("#%d skipped.", iid), true, nil
+	case "unskip":
+		iid, _ := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64)
+		it := a.item(iid)
+		if is, ok := a.issues[iid]; it == nil || it.State != aiv1.AutopilotItemSkipped || it == a.ap.MainRedFix || !ok || is.State != "opened" {
+			return fmt.Sprintf("`unskip` needs a skipped issue that is still open, e.g. `%s unskip #12`.", a.spec.Workflow.CommandPrefix), false, nil
+		}
+		a.log.Info("autopilot unskips an issue", "issue", iid, "by", by)
+		it.State = aiv1.AutopilotItemPending
+		return fmt.Sprintf("#%d is pending again.", iid), true, nil
+	case "startAnyway", "startanyway":
+		return a.startAnyway(ctx, arg, by)
 	case "merge":
 		return a.mergeAnyway(ctx, arg, by)
 	case "rebase", "mergeBase", "mergebase":
@@ -1527,6 +1613,47 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 	default:
 		return a.unknownCommand(), false, nil
 	}
+}
+
+// startAnyway lets the pending issue arg start although issues it depends
+// on were skipped (AutopilotItem.StartAnyway), by someone, and says so on
+// the tracking issue. Its other dependencies and links still hold.
+func (a *autopilot) startAnyway(ctx context.Context, arg, by string) (string, bool, error) {
+	iid, _ := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64)
+	it := a.item(iid)
+	var skipped []int64
+	if it != nil && it != a.ap.MainRedFix && it.State == aiv1.AutopilotItemPending {
+		skipped = a.skippedDeps(iid)
+	}
+	if len(skipped) == 0 {
+		return fmt.Sprintf("`startAnyway` needs a pending issue that depends on a skipped one, e.g. `%s startAnyway #12`.", a.spec.Workflow.CommandPrefix), false, nil
+	}
+	if it.StartAnyway {
+		return fmt.Sprintf("#%d may already start without %s.", iid, issueList(skipped)), true, nil
+	}
+	which := issueList(skipped) + ", which it depends on, was skipped"
+	if len(skipped) > 1 {
+		which = issueList(skipped) + ", which it depends on, were skipped"
+	}
+	// Comment first: if it fails, the command is applied again on the next
+	// poll.
+	if err := a.comment(ctx, fmt.Sprintf("▶️ #%d may start although %s (%s).", iid, which, by)); err != nil {
+		return "", false, err
+	}
+	a.log.Info("autopilot lets an issue start without its skipped dependencies", "issue", iid, "skipped", skipped, "by", by)
+	it.StartAnyway = true
+	return fmt.Sprintf("#%d may start although %s.", iid, which), true, nil
+}
+
+// skippedDeps are the dependencies of iid in the plan that are skipped.
+func (a *autopilot) skippedDeps(iid int64) []int64 {
+	var out []int64
+	for _, d := range a.deps(iid) {
+		if dep := a.item(d); dep != nil && dep.State == aiv1.AutopilotItemSkipped {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // unknownCommand answers a command the tracking issue does not understand,
@@ -1539,7 +1666,7 @@ func (a *autopilot) unknownCommand() string {
 			where = fmt.Sprintf("#%d, the active issue", it.IID)
 		}
 	}
-	return fmt.Sprintf("This tracking issue only understands `%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N` and `%[1]s revisit <id> …`. "+
+	return fmt.Sprintf("This tracking issue only understands `%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N` and `%[1]s revisit <id> …`. "+
 		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix)
 }
 

@@ -77,8 +77,10 @@ func TestDeskRevisitWithTextIsTheCommentsRevisit(t *testing.T) {
 	if strings.Contains(fs[0].Description, "via the pilot") || strings.Contains(fs[0].Description, "\n/close") || strings.Contains(fs[0].Description, " @everyone") {
 		t.Fatalf("the follow-up names the Desk and runs nothing:\n%s", fs[0].Description)
 	}
-	if !strings.Contains(lastNote(e, tracking), "to revisit D1-1") {
-		t.Fatalf("the outcome is on the tracking issue: %q", lastNote(e, tracking))
+	// The follow-up can start, so the stuck pause (#2 waits for the skipped #1)
+	// lifts after the outcome.
+	if !strings.Contains(trackingComments(e), "to revisit D1-1") {
+		t.Fatalf("the outcome is on the tracking issue:\n%s", trackingComments(e))
 	}
 }
 

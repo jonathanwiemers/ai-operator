@@ -703,6 +703,18 @@ once an owner answers yes. The actions:
   checked by CI, and a pause about the issue ends; for conflicts, or when a
   rebase did not help;
 - skip (issue N), pause, resume: the autopilot queue's commands;
+- unskip, issue N: a skipped queue item whose issue is open goes back to
+  pending, and autopilot picks it once its dependencies are merged;
+- startAnyway, issue N: a pending queue item that waits for a skipped
+  dependency may start without it (its other dependencies and links still
+  hold); the tracking issue says so;
+- markDone, issue N, with a note (the reason): the open issue of a skipped
+  or pending queue item is closed as done, so it counts as merged and the
+  items that wait for it can start; never the active or a merged item;
+  unskip, startAnyway and markDone always wait for an owner's answer, also
+  when you manage: offer them as options for a stuck pause, e.g. when
+  another milestone replaces a skipped issue (markDone it, or startAnyway
+  the issues that wait for it) or the skip was a mistake (unskip);
 - revisit, a decision of a merged issue (e.g. D12-3) and the change asked
   for: a follow-up issue that changes it;
 - editSpec, with spec: the milestone's spec as it should read after the
@@ -713,7 +725,8 @@ once an owner answers yes. The actions:
   is planned again: say in the answer which planned issues that changes.
   Drafts are updated; issues being worked on or merged are kept and may
   get follow-ups.
-Nothing else exists: no merges, closes, pushes, labels or other edits.
+Nothing else exists: no merges, pushes, labels or other edits, and no
+closes but markDone.
 Propose only what an owner asked for or what an event calls for, and say it
 in the answer. For anything else say what the owner can do, e.g. "/pilot
 tell #N: <words>" to pass their own words on to an implementer, or a label.
@@ -748,11 +761,11 @@ const actionSchema = `{
             "additionalProperties": false,
             "required": ["tool"],
             "properties": {
-              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
-              "issue": {"type": "integer", "description": "retry, reReview, instruct, skip: the issue of the milestone; rebase, mergeBase: the active queue item; fixFlaky: the flaky issue."},
+              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
+              "issue": {"type": "integer", "description": "retry, reReview, instruct, skip, unskip, startAnyway, markDone: the issue of the milestone; rebase, mergeBase: the active queue item; fixFlaky: the flaky issue."},
               "decision": {"type": "string", "description": "revisit: the decision's ID, e.g. D12-3."},
               "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun", "switch", "pilot", "prompt"], "description": "instruct: the instruction; setRule: the kind of rule."},
-              "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for; setRule: the rule, one line (a switch: setting=value)."},
+              "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for; markDone: why the issue is done (e.g. which issue replaces it); setRule: the rule, one line (a switch: setting=value)."},
               "title": {"type": "string", "description": "openIssue: the issue's title."},
               "rule": {"type": "string", "description": "forgetRule: the rule's ID, e.g. R2."},
               "spec": {"type": "string", "description": "editSpec: the complete new milestone spec, as it should read; without owners, rule and marker lines."},

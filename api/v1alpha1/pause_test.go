@@ -31,14 +31,17 @@ func TestPauseExits(t *testing.T) {
 					if remedies {
 						t.Errorf("%s: automatic exits come first", e.ID)
 					}
-					if e.When == "" || e.Command != "" || e.Label != "" || e.GitLab || e.Target != "" {
+					if e.When == "" || e.Command != "" || e.Label != "" || e.GitLab || e.Prompt || e.Target != "" {
 						t.Errorf("%s: an automatic exit has a condition and no remedy: %+v", e.ID, e)
 					}
 					continue
 				}
 				remedies = true
-				if e.Command == "" && e.Label == "" && !e.GitLab {
-					t.Errorf("%s: a remedy needs a command, a label or a GitLab action", e.ID)
+				if e.Command == "" && e.Label == "" && !e.GitLab && !e.Prompt {
+					t.Errorf("%s: a remedy needs a command, a label, a GitLab action or the pilot's prompt", e.ID)
+				}
+				if e.Prompt && (e.When == "" || e.Command != "" || e.Label != "" || e.GitLab) {
+					t.Errorf("%s: a prompt remedy names its tools in When and nothing else: %+v", e.ID, e)
 				}
 				if e.GitLab && e.When == "" {
 					t.Errorf("%s: a GitLab action says which in When", e.ID)

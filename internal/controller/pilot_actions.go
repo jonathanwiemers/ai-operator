@@ -35,14 +35,19 @@ import (
 
 // pilotTools are the tools the pilot may propose; merging, closing and
 // pushing are none of them.
-var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
+var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
 
 // ownerTools are the operator's own options of budget prompts: an owner
 // chooses them, the model never proposes them (checkAction).
 var ownerTools = []string{"raiseBudget", "endMilestone"}
 
+// answerTools are ways out of a stuck pause the pilot only ever proposes:
+// they run on an owner's answer, never on its own (runAccepted), and are
+// not counted (countedTools).
+var answerTools = []string{"unskip", "startAnyway", "markDone"}
+
 // queueTools go through the tracking issue's commands.
-var queueTools = []string{"rebase", "mergeBase", "skip", "pause", "resume", "revisit", "endMilestone"}
+var queueTools = []string{"rebase", "mergeBase", "skip", "unskip", "startAnyway", "pause", "resume", "revisit", "endMilestone"}
 
 // proposalTTL is how long a proposal can be accepted.
 const proposalTTL = 24 * time.Hour
@@ -91,6 +96,8 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return nil
 	case a.Tool == "rebase" || a.Tool == "mergeBase":
 		return activeMR(ap, a.IssueIID)
+	case a.Tool == "unskip" || a.Tool == "startAnyway" || a.Tool == "markDone":
+		return validWayOut(a, st)
 	}
 	if a.Tool == "openIssue" {
 		switch {
@@ -123,6 +130,66 @@ func activeMR(ap *aiv1.AutopilotStatus, iid int64) error {
 		return fmt.Errorf("#%d is not the active issue of the queue", iid)
 	case ap.Items[i].MergeRequestIID == 0:
 		return fmt.Errorf("#%d has no merge request yet", iid)
+	}
+	return nil
+}
+
+// validWayOut checks unskip, startAnyway and markDone against the queue of
+// st: unskip a skipped item, startAnyway a pending item with a skipped
+// dependency, markDone a skipped or pending item (never the active or a
+// merged one: that would pass the merge gate by). Whether the issue is
+// still open is checked in GitLab (checkOpenIssue, autopilot.command).
+func validWayOut(a aiv1.PilotAction, st *aiv1.AgentTask) error {
+	if !queueRunning(st) {
+		return errors.New("this milestone has no autopilot queue")
+	}
+	items := st.Status.Autopilot.Items
+	i := slices.IndexFunc(items, func(it aiv1.AutopilotItem) bool { return it.IID == a.IssueIID })
+	if i < 0 {
+		return fmt.Errorf("#%d is not an issue of the queue", a.IssueIID)
+	}
+	state := items[i].State
+	switch a.Tool {
+	case "unskip":
+		if state != aiv1.AutopilotItemSkipped {
+			return fmt.Errorf("#%d is not skipped", a.IssueIID)
+		}
+	case "markDone":
+		if state != aiv1.AutopilotItemSkipped && state != aiv1.AutopilotItemPending {
+			return fmt.Errorf("#%d is %s; only a skipped or pending issue can be marked done", a.IssueIID, strings.ToLower(string(state)))
+		}
+	case "startAnyway":
+		if state != aiv1.AutopilotItemPending {
+			return fmt.Errorf("#%d is not pending", a.IssueIID)
+		}
+		var deps []int64
+		for _, p := range st.Status.Plan {
+			if p.IID == a.IssueIID {
+				deps = p.DependsOn
+			}
+		}
+		if !slices.ContainsFunc(items, func(it aiv1.AutopilotItem) bool {
+			return it.State == aiv1.AutopilotItemSkipped && slices.Contains(deps, it.IID)
+		}) {
+			return fmt.Errorf("#%d depends on no skipped issue", a.IssueIID)
+		}
+	}
+	return nil
+}
+
+// checkOpenIssue refuses an issue that is closed, gone or no longer in the
+// milestone of st.
+func checkOpenIssue(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, iid int64) error {
+	is, err := gl.GetIssue(ctx, spec.GitLab.Project, iid)
+	switch {
+	case gitlab.IsNotFound(err):
+		return fmt.Errorf("#%d does not exist", iid)
+	case err != nil:
+		return fmt.Errorf("getting issue #%d: %w", iid, err)
+	case is.State != "opened":
+		return fmt.Errorf("#%d is closed", iid)
+	case is.Milestone == nil || st.Spec.Milestone == nil || is.Milestone.ID != st.Spec.Milestone.ID:
+		return fmt.Errorf("#%d is not in this milestone", iid)
 	}
 	return nil
 }
@@ -580,12 +647,14 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 			}
 			if errs[i][j] == nil && p.AcceptedBy == "" && a.Tool == "editSpec" {
 				errs[i][j] = errors.New("a spec edit needs an owner's yes")
-			} else if errs[i][j] == nil && p.AcceptedBy == "" && slices.Contains(ownerTools, a.Tool) {
+			} else if errs[i][j] == nil && p.AcceptedBy == "" && (slices.Contains(ownerTools, a.Tool) || slices.Contains(answerTools, a.Tool)) {
 				errs[i][j] = fmt.Errorf("`%s` needs an owner's answer", a.Tool)
 			} else if errs[i][j] == nil && p.AcceptedBy == "" && spec.Pilot.AutonomyOf(coord) != aiv1.PilotManaged {
 				errs[i][j] = errors.New("the pilot proposes now (`/pilot stop` or `pilot.autonomy`)")
 			} else if errs[i][j] == nil && a.Tool == "openIssue" {
 				opened = append(opened, titleKey(a.Title))
+			} else if errs[i][j] == nil && (a.Tool == "unskip" || a.Tool == "markDone") {
+				errs[i][j] = checkOpenIssue(ctx, gl, spec, st, a.IssueIID)
 			}
 		}
 	}
@@ -656,8 +725,10 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		}
 		_, err := gl.RetryPipeline(ctx, spec.GitLab.Project, a.PipelineID)
 		return err
-	case "rebase", "mergeBase", "skip", "pause", "resume", "revisit", "endMilestone":
+	case "rebase", "mergeBase", "skip", "unskip", "startAnyway", "pause", "resume", "revisit", "endMilestone":
 		return r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
+	case "markDone":
+		return markDone(ctx, gl, spec, st, how, a)
 	case "raiseBudget":
 		return r.raiseBudget(ctx, gl, spec, st, a.Amount)
 	case "setRule", "forgetRule":
@@ -707,6 +778,32 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, a.IssueIID, body); err != nil {
 			log.FromContext(ctx).Info("could not show the pilot's instruction", "issue", a.IssueIID, "error", err.Error())
 		}
+	}
+	return nil
+}
+
+// markDone closes issue a.IssueIID of the milestone of st as done (the done
+// label, the active labels removed) at an owner's answer (how), with the
+// pilot's reason on the issue. Autopilot then counts it as done by hand
+// (doneByHand): merged, so the issues that wait for it can start.
+func markDone(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, how string, a aiv1.PilotAction) error {
+	wf := spec.Workflow
+	// The reason first, so the issue never closes without it; an accepted
+	// action runs once (runAccepted), so neither repeats.
+	reason := "no reason given"
+	if strings.TrimSpace(a.Note) != "" {
+		reason = inertLine(a.Note, 2000)
+	}
+	body := fmt.Sprintf("✅ Closed as done by the pilot of milestone %q (%s), not merged by autopilot: %s",
+		inertLine(st.Spec.Milestone.Title, 100), how, reason)
+	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, a.IssueIID, body); err != nil {
+		return fmt.Errorf("commenting on #%d: %w", a.IssueIID, err)
+	}
+	_, err := gl.UpdateIssue(ctx, spec.GitLab.Project, a.IssueIID, gitlab.UpdateIssueOptions{
+		StateEvent: "close", AddLabels: []string{wf.DoneLabel}, RemoveLabels: append(wf.ActiveLabels(), wf.DraftLabel),
+	})
+	if err != nil {
+		return fmt.Errorf("closing #%d: %w", a.IssueIID, err)
 	}
 	return nil
 }
@@ -798,6 +895,15 @@ func describeAction(a aiv1.PilotAction, err error) string {
 		s = fmt.Sprintf("**mergeBase** #%d: the agent merges the default branch into its MR", a.IssueIID)
 	case "skip":
 		s = fmt.Sprintf("**skip** #%d: autopilot leaves it out", a.IssueIID)
+	case "unskip":
+		s = fmt.Sprintf("**unskip** #%d: it goes back to pending, and autopilot picks it once it can start", a.IssueIID)
+	case "startAnyway":
+		s = fmt.Sprintf("**startAnyway** #%d: it may start although an issue it depends on was skipped", a.IssueIID)
+	case "markDone":
+		s = fmt.Sprintf("**markDone** #%d: closed as done, not merged by autopilot; the issues that wait for it can start", a.IssueIID)
+		if a.Note != "" {
+			s += ". The reason: " + inertLine(a.Note, 2000)
+		}
 	case "pause", "resume":
 		s = fmt.Sprintf("**%s** autopilot", a.Tool)
 	case "revisit":
