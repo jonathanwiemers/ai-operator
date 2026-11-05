@@ -27,6 +27,9 @@ type MilestoneView struct {
 	Autopilot *MilestoneAutopilot `json:"autopilot,omitempty"`
 	Tracking  *TrackingIssueRef   `json:"tracking,omitempty"`
 	Pilot     *MilestonePilot     `json:"pilot,omitempty"`
+	// Prompts are the milestone's questions to its owners, newest first:
+	// the open ones and the newest closed ones. Answers go to the pilot.
+	Prompts []PromptView `json:"prompts"`
 	// Tasks are the implement tasks, by issue IID.
 	Tasks []Task `json:"tasks"`
 	Cost
@@ -84,7 +87,8 @@ type TrackingIssueRef struct {
 type MilestonePilot struct {
 	Task     string             `json:"task"`
 	Autonomy aiv1.PilotAutonomy `json:"autonomy"`
-	// Proposals are the open ones, waiting for an owner's yes.
+	// Proposals are the open ones, waiting for an owner's yes: those made
+	// before proposals became prompts.
 	Proposals []ProposalView `json:"proposals"`
 	CostUSD   string         `json:"costUSD"`
 	// Phase, Message and PodName say whether the pilot is up to answer.
@@ -227,6 +231,11 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 		Chat:       chat,
 		Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name),
 		Merge:      chat && slices.Contains(st.Spec.OwnerSubjects, p.Username)}
+	var target string
+	if coord != nil {
+		target = coord.Name
+	}
+	v.Prompts = promptViews(st, target, p.Username, chat)
 	writeJSON(w, http.StatusOK, v)
 }
 

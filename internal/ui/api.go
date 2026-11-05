@@ -87,11 +87,19 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.PathValue("task")
 	now := time.Now()
+	p := principalOf(r)
 	for i := range tasks {
-		if tasks[i].Name == name {
+		if t := &tasks[i]; t.Name == name {
+			chat := s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name)
+			// The agent's questions; the milestone's are on its view.
+			prompts := []PromptView{}
+			if t.Spec.Type == aiv1.TaskTypeImplement {
+				prompts = promptViews(t, t.Name, p.Username, chat)
+			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"project": summarize(ap, tasks, now),
-				"task":    taskView(&tasks[i], ciWindow(ap), now),
+				"task":    taskView(t, ciWindow(ap), now),
+				"prompts": prompts,
 				"cost": s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, Task: name},
 					tasksCost(aiv1.CostOf(tasks[i].Status.Run.CostUSD))),
 				// What the app may offer; the endpoints check again.
@@ -100,7 +108,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 					// gitlab: the thread can be shown (after connecting).
 					"gitlab": s.gitlab != nil && s.gitlab.serves(ap),
 					"steer":  s.gitlab != nil && s.gitlab.serves(ap) && s.authz.CanSteer(principalOf(r), ap.Namespace, ap.Name),
-					"chat":   s.cfg.ChatEnabled() && s.authz.CanChat(principalOf(r), ap.Namespace, ap.Name),
+					"chat":   chat,
 				},
 			})
 			return

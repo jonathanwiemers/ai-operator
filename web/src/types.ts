@@ -366,6 +366,9 @@ export interface MilestoneView extends Cost {
     message?: string
     podName?: string
   }
+  // prompts: open and the newest closed, newest first; answered on
+  // pilot.task.
+  prompts: PromptView[]
   tasks: Task[]
   permissions?: {
     gitlab: boolean
@@ -393,9 +396,57 @@ export interface ProposalView {
   postedAt?: string
 }
 
+// PromptView mirrors internal/ui/prompt.go: one question to the owners.
+// question, context, option labels, details and actions and the answer's
+// text are untrusted: rendered as markdown without HTML, or as text.
+export type PromptKind = 'assessment' | 'mainHealth' | 'needsInput' | 'revisit' | 'budget' | 'proposal'
+export type PromptState = 'open' | 'answered' | 'superseded' | 'expired'
+
+export interface PromptView {
+  id: string
+  kind: PromptKind
+  question: string
+  context?: string
+  // options: the recommended one first.
+  options: PromptOptionView[]
+  allowFreeText: boolean
+  state: PromptState
+  answer?: PromptAnswerView
+  issueIID?: number
+  mrIID?: number
+  task?: string
+  postedAt?: string
+  closedAt?: string
+  // canAnswer: open, and the user is an owner with the Desk chat.
+  canAnswer: boolean
+  // target: the task whose chat takes the answer command.
+  target: { namespace: string; task: string }
+}
+
+export interface PromptOptionView {
+  id: string
+  label: string
+  detail?: string
+  // actions: what choosing it does, in plain text.
+  actions: string[]
+  recommended: boolean
+  fromAnswer: boolean
+}
+
+export interface PromptAnswerView {
+  optionID?: string
+  text?: string
+  by: string
+  at: string
+  via?: 'desk' | 'gitlab'
+  outcome?: string
+}
+
 export interface TaskResponse {
   project: ProjectSummary
   task: Task
+  // prompts: the agent's questions (Implement tasks), newest first.
+  prompts: PromptView[]
   cost: Cost
   permissions?: Permissions
 }
