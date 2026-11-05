@@ -10,6 +10,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
@@ -21,8 +22,11 @@ import (
 // failed turn, no owners) the runner posts the assessment on the tracking
 // issue, mentioning the owners once; without budget it says so without a
 // model call. Each turn is a fresh session: the comments and logs it reads
-// do not stay in the context of the owners' conversation.
-func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, milestone string, stateOf stateFunc, out *Outcome, events []aiv1.PilotEvent, st *state) error {
+// do not stay in the context of the owners' conversation. A red or flaky
+// default branch gets a mainHealth prompt with the operator's options
+// (mainHealthOptions); bot is the operator's user, whose comments count a
+// flaky job's failures.
+func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, bot int64, milestone string, stateOf stateFunc, out *Outcome, events []aiv1.PilotEvent, st *state) error {
 	if task.Spec.Issue == nil {
 		return nil
 	}
@@ -66,7 +70,13 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 				// that is the assessment's comment.
 				evidence := "**What happened:** " + what + "\n\n" + renderAssessment(a)
 				why := fmt.Sprintf("`%s`: %s", a.Classification, textutil.Truncate(a.Evidence, 800))
-				recorded, perr := r.proposePrompt(ctx, task, a, stateOf, "event/"+id, e.IssueIID, why, evidence)
+				kind := aiv1.PromptAssessment
+				if aiv1.MainHealthEvent(e) {
+					kind = aiv1.PromptMainHealth
+					a.Question = mainHealthQuestion(e)
+					a.Options = mainHealthOptions(e, a, flakyFailures(ctx, gl, spec.GitLab.Project, bot, e), task.Spec.Autopilot)
+				}
+				recorded, perr := r.proposePrompt(ctx, task, a, kind, stateOf, "event/"+id, e.IssueIID, why, evidence)
 				if perr != nil {
 					failed = perr
 				}
@@ -251,20 +261,130 @@ func assessOptions(in []AssessOption) ([]aiv1.PromptOption, string) {
 	return kept, refused.String()
 }
 
+// mainHealthQuestion is the question of a mainHealth prompt.
+func mainHealthQuestion(e aiv1.PilotEvent) string {
+	switch {
+	case !strings.HasPrefix(e.Key, aiv1.FlakyEventPrefix):
+		return fmt.Sprintf("The default branch is red (#%d): what now?", e.IssueIID)
+	case e.IssueIID != 0:
+		return fmt.Sprintf("A job of the default branch passed only on retry (flaky issue #%d): what now?", e.IssueIID)
+	}
+	return "Jobs of the default branch passed only on retry: what now?"
+}
+
+// mainHealthOptions are the options of the prompt of a red or flaky default
+// branch (event e), the operator's, never the model's:
+//   - A, fix it: hand the flaky issue to the agent (fixFlaky), or tell the
+//     agent of the main-red issue the classified cause (instruct ci-fix, the
+//     evidence as its note);
+//   - B, retry the red pipeline's failed jobs (main red only: a flaky
+//     pipeline is green);
+//   - C, ignore this occurrence;
+//   - D, pause the autopilot, when the milestone has one (queue).
+//
+// The classification of assessment a picks the recommended one: flaky A
+// once the job failed MinFlakyOccurrences times (failures), else B;
+// regression A; infra and env B; anything else C, which also stands in for
+// an option that is missing.
+func mainHealthOptions(e aiv1.PilotEvent, a PilotAssessment, failures int, queue bool) []AssessOption {
+	flaky := strings.HasPrefix(e.Key, aiv1.FlakyEventPrefix)
+	var fix, retry *AssessOption
+	switch {
+	case e.IssueIID == 0:
+	case flaky:
+		fix = &AssessOption{Label: fmt.Sprintf("Hand #%d to the agent", e.IssueIID), Detail: "The agent makes the flaky test deterministic; its run starts at once.",
+			Actions: []ProposalAction{{Tool: "fixFlaky", Issue: e.IssueIID}}}
+	default:
+		fix = &AssessOption{Label: fmt.Sprintf("Tell #%d's agent: %s", e.IssueIID, mainHealthCause(a.Classification)),
+			Detail:  "Its agent fixes the failing jobs, with the pilot's evidence as a hint.",
+			Actions: []ProposalAction{{Tool: "instruct", Issue: e.IssueIID, Kind: "ci-fix", Note: a.Evidence}}}
+	}
+	if !flaky && e.PipelineID != 0 {
+		retry = &AssessOption{Label: "Retry the failed jobs", Detail: fmt.Sprintf("The failed jobs of pipeline %d run again.", e.PipelineID),
+			Actions: []ProposalAction{{Tool: "retryPipeline", Pipeline: e.PipelineID}}}
+	}
+	ignore := &AssessOption{Label: "Ignore this occurrence", Detail: "Nothing runs; the answer is recorded."}
+	rec := ignore
+	switch a.Classification {
+	case "flaky":
+		if flaky && failures >= aiv1.MinFlakyOccurrences && fix != nil {
+			rec = fix
+		} else if retry != nil {
+			rec = retry
+		}
+	case "regression":
+		if fix != nil {
+			rec = fix
+		}
+	case "infra", "env":
+		if retry != nil {
+			rec = retry
+		}
+	}
+	rec.Recommended = true
+	var out []AssessOption
+	for _, o := range []*AssessOption{fix, retry, ignore} {
+		if o != nil {
+			out = append(out, *o)
+		}
+	}
+	if queue {
+		out = append(out, AssessOption{Label: "Pause the autopilot", Detail: "The milestone's queue stops until an owner resumes it.",
+			Actions: []ProposalAction{{Tool: "pause"}}})
+	}
+	return out
+}
+
+// mainHealthCause names a classification in an option's label.
+func mainHealthCause(classification string) string {
+	switch classification {
+	case "regression":
+		return "a regression"
+	case "flaky":
+		return "a flaky test"
+	case "infra":
+		return "an infrastructure failure"
+	case "env":
+		return "the environment"
+	}
+	return "the failing jobs"
+}
+
+// flakyFailures counts the failures of event e's flaky job: the pipelines
+// of the bot's occurrence comments on its issue (0 for another event, or
+// when they cannot be read: the pilot then recommends nothing that needs
+// two).
+func flakyFailures(ctx context.Context, gl gitlab.API, glProject string, bot int64, e aiv1.PilotEvent) int {
+	if !strings.HasPrefix(e.Key, aiv1.FlakyEventPrefix) || e.IssueIID == 0 {
+		return 0
+	}
+	notes, err := gl.ListIssueNotes(ctx, glProject, e.IssueIID)
+	if err != nil {
+		return 0
+	}
+	var pipelines []int64
+	for _, n := range notes {
+		if p, ok := marker.FlakyPipeline(n.Body); ok && n.Author.ID == bot && !slices.Contains(pipelines, p) {
+			pipelines = append(pipelines, p)
+		}
+	}
+	return len(pipelines)
+}
+
 // proposePrompt records assessment a in status.pilot.proposed as a prompt
-// with its options (assessOptions), evidence as context and the state of its
-// recommended option's actions (a managing pilot runs only that one, and
-// only on that state); the operator checks the options, puts it to the
-// owners and mirrors it. source, trigger and why are as for propose; the
+// of kind with its options (assessOptions), evidence as context and the
+// state of its recommended option's actions (a managing pilot runs only that
+// one, and only on that state); the operator checks the options, puts it to
+// the owners and mirrors it. source, trigger and why are as for propose; the
 // run mentioned nobody. It reports whether the prompt was recorded: a
 // milestone without owners, whom nobody could answer it from, gets none.
-func (r *Runner) proposePrompt(ctx context.Context, task *aiv1.AgentTask, a PilotAssessment, stateOf stateFunc, source string, trigger int64, why, evidence string) (bool, error) {
+func (r *Runner) proposePrompt(ctx context.Context, task *aiv1.AgentTask, a PilotAssessment, kind aiv1.PromptKind, stateOf stateFunc, source string, trigger int64, why, evidence string) (bool, error) {
 	if len(task.Spec.Owners) == 0 {
 		return false, nil
 	}
 	options, refused := assessOptions(a.Options)
 	rec := options[slices.IndexFunc(options, func(o aiv1.PromptOption) bool { return o.Recommended })]
-	prop := aiv1.PilotProposal{Kind: aiv1.PromptAssessment, Summary: rec.Label, Source: source, Trigger: trigger, Why: textutil.Truncate(why, 1000), Quiet: true,
+	prop := aiv1.PilotProposal{Kind: kind, Summary: rec.Label, Source: source, Trigger: trigger, Why: textutil.Truncate(why, 1000), Quiet: true,
 		Question: textutil.Truncate(strings.Join(strings.Fields(a.Question), " "), aiv1.MaxPromptQuestion-len("…")),
 		Context:  textutil.Truncate(evidence+refused, aiv1.MaxPromptContext-len("…")), Options: options}
 	if stateOf != nil {

@@ -366,9 +366,10 @@ func (r *AgentProjectReconciler) ensurePilot(ctx context.Context, project *aiv1.
 // syncPilots keeps the pilot of every planned milestone that has a tracking
 // issue, reads the tracking issues "/pilot coordinate" opened (the
 // autopilot's are read by autopilot) and wakes the pilots for the events of
-// their milestones. Pilots left out of keep are deleted.
+// their milestones, those of the default branch's health only for lane's.
+// Pilots left out of keep are deleted.
 func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	specTasks []*aiv1.AgentTask, pilots map[int64]*aiv1.AgentTask, keep map[string]bool, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask) error {
+	specTasks []*aiv1.AgentTask, lane *aiv1.AgentTask, pilots map[int64]*aiv1.AgentTask, keep map[string]bool, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask) error {
 	var errs []error
 	for _, st := range specTasks {
 		coord := pilots[st.Spec.Milestone.IID]
@@ -422,7 +423,7 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 			// Desk accept/reject before runAccepted, like GitLab yes/no in
 			// pilotTracking above.
 			if err = r.applyPilotChatCommands(ctx, project, spec, st, coord); err == nil {
-				err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks))
+				err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks, st == lane))
 			}
 			if err == nil {
 				_, err = r.postProposals(ctx, gl, project, spec, st, coord, tracking)

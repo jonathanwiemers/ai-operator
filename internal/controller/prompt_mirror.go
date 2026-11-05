@@ -354,11 +354,12 @@ type promptNote struct {
 // promptNoteOf is the merge request of p, else its issue, else the
 // tracking issue (an Implement task's issue for its own prompts). A
 // proposal goes on the tracking issue, where the pilot is asked and
-// assesses.
+// assesses, and so does a main health prompt: its flaky or main-red issue
+// is the agent's to read, not the owners'.
 func promptNoteOf(gl gitlab.API, spec aiv1.AgentProjectSpec, holder *aiv1.AgentTask, p aiv1.Prompt, tracking int64) promptNote {
 	n := promptNote{gl: gl, project: spec.GitLab.Project}
 	switch {
-	case p.Source.Kind == aiv1.PromptProposal && tracking != 0:
+	case (p.Source.Kind == aiv1.PromptProposal || p.Source.Kind == aiv1.PromptMainHealth) && tracking != 0:
 		n.iid = tracking
 	case p.Source.MRIID != 0:
 		n.iid, n.mr = p.Source.MRIID, true

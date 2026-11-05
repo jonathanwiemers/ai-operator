@@ -209,7 +209,7 @@ func TestPilotEventsFoldAPauseAndItsNeedsInputLabel(t *testing.T) {
 	task := &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha3"},
 		CI: &aiv1.CIStatus{SHA: "sha3", State: aiv1.CIStateFailed, PipelineID: 77}}}
 	issues := map[int64]gitlab.Issue{1: {IID: 1, Milestone: m, Labels: []string{"agent::needs-input"}}}
-	evs := pilotEvents(spec, nil, st, issues, map[int64]*aiv1.AgentTask{1: task})
+	evs := pilotEvents(spec, nil, st, issues, map[int64]*aiv1.AgentTask{1: task}, true)
 	if len(evs) != 1 || evs[0].Key != "stuck/1/sha3" || evs[0].Text != "Autopilot paused: #1 needs input" || evs[0].PipelineID != 77 {
 		t.Fatalf("a pause over #1 and its needs-input label are one event: %+v", evs)
 	}

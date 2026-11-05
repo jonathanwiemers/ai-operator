@@ -93,7 +93,8 @@ func boundPrompts(list []aiv1.Prompt, now metav1.Time) (kept, superseded []aiv1.
 }
 
 // validOptions checks every option's actions as postProposals checks a
-// proposal's (fromModel: the model made them) and drops an option with an
+// proposal's (fromModel: the model made them; an option that is not
+// recommended runs only by an owner's choice) and drops an option with an
 // action the operator would not run; the "do nothing" option is
 // recommended when the recommended one goes. The options get their ids
 // "A".. again. It returns the action lines of each option left, refusing
@@ -115,7 +116,7 @@ func (r *AgentProjectReconciler) validOptions(ctx context.Context, gl gitlab.API
 		var lines []string
 		var bad error
 		for j := range o.Actions {
-			line, err := checkAction(ctx, gl, project, spec, st, tasks, mine, &o.Actions[j], fromModel)
+			line, err := checkAction(ctx, gl, project, spec, st, tasks, mine, &o.Actions[j], fromModel, !o.Recommended)
 			lines = append(lines, line)
 			switch {
 			case err != nil && bad == nil:

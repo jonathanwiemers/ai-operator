@@ -19,8 +19,9 @@ import (
 
 // pilotEvents lists the events of a milestone that hold now: an autopilot
 // pause, an issue that needs input or is blocked by infra or quota, and on
-// autopilot milestones a red or flaky default branch.
-func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1.AgentTask, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask) []aiv1.PilotEvent {
+// the main-red lane (lane: the autopilot milestone that drives the main-red
+// issue) a red or flaky default branch, so the owners get one prompt for it.
+func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1.AgentTask, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask, lane bool) []aiv1.PilotEvent {
 	var out []aiv1.PilotEvent
 	add := func(kind string, iid int64, text string) {
 		ev := aiv1.PilotEvent{Key: fmt.Sprintf("%s/%d/", kind, iid), IssueIID: iid, Text: text}
@@ -54,16 +55,16 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 		}
 	}
 	switch {
-	case mh == nil || !st.Spec.Autopilot:
+	case mh == nil || !st.Spec.Autopilot || !lane:
 	case mh.State == aiv1.MainHealthRed && mh.IssueIID != 0:
-		out = append(out, aiv1.PilotEvent{Key: fmt.Sprintf("main-red/%d", mh.IssueIID), IssueIID: mh.IssueIID, PipelineID: mh.PipelineID,
+		out = append(out, aiv1.PilotEvent{Key: fmt.Sprintf("%s%d", aiv1.MainRedEventPrefix, mh.IssueIID), IssueIID: mh.IssueIID, PipelineID: mh.PipelineID,
 			Text: fmt.Sprintf("The default branch is red (#%d): %s", mh.IssueIID, strings.Join(mh.FailedJobs, ", "))})
 	case mh.State == aiv1.MainHealthFlaky && len(mh.Flaky) > 0:
 		for _, f := range mh.Flaky {
 			out = append(out, flakyEvent(mh.PipelineID, f))
 		}
 	case mh.State == aiv1.MainHealthFlaky:
-		out = append(out, aiv1.PilotEvent{Key: fmt.Sprintf("flaky/%d", mh.PipelineID), PipelineID: mh.PipelineID,
+		out = append(out, aiv1.PilotEvent{Key: fmt.Sprintf("%s%d", aiv1.FlakyEventPrefix, mh.PipelineID), PipelineID: mh.PipelineID,
 			Text: "Jobs of the default branch passed only on retry: " + strings.Join(mh.FailedJobs, ", ")})
 	}
 	slices.SortStableFunc(out, func(a, b aiv1.PilotEvent) int { return strings.Compare(a.Key, b.Key) })
@@ -85,7 +86,7 @@ func flakyEvent(pipeline int64, f aiv1.FlakyJobReport) aiv1.PilotEvent {
 	if n := maxPilotMessage - len(text) - 10; len(tail) > n {
 		tail = strings.ToValidUTF8(tail[len(tail)-max(n, 0):], "")
 	}
-	return aiv1.PilotEvent{Key: fmt.Sprintf("flaky/%d/%d", pipeline, f.IssueIID), IssueIID: f.IssueIID, Text: text + tail + "\n```"}
+	return aiv1.PilotEvent{Key: fmt.Sprintf("%s%d/%d", aiv1.FlakyEventPrefix, pipeline, f.IssueIID), IssueIID: f.IssueIID, Text: text + tail + "\n```"}
 }
 
 // maxPilotEvents bounds the event keys a pilot remembers after their

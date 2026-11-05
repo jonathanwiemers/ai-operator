@@ -1125,8 +1125,9 @@ counted interventions; more tools are later steps of
   operator derives the milestone's events from state it already has: an
   autopilot pause (`status.autopilot`), an issue with `agent::needs-input`,
   an issue blocked by `infra` or `quota` (`status.blocked` of its task),
-  and on autopilot milestones a red default branch with its issue or a
-  flaky one (`status.mainHealth`). Each has a key: `stuck/<issue>/<head>`
+  and on the main-red lane only (the autopilot milestone that drives the
+  main-red issue, so the owners get one prompt) a red default branch with
+  its issue or a flaky one (`status.mainHealth`). Each has a key: `stuck/<issue>/<head>`
   (a pause over the issue and its needs-input label are one event),
   `infra|quota/<issue>/<head>`, `pause-<reason hash>/0/` for a pause over no
   issue, `main-red/<issue>`, `flaky/<pipeline>/<flaky issue>` (its text
@@ -1175,7 +1176,15 @@ counted interventions; more tools are later steps of
   (what happened and the inert classification, evidence and what it would
   do; a classification off the list is shown as `unknown`), `source:
   event/<key>@<request>`, `trigger`, `why`, and `state` of the recommended
-  option's actions (empty when the state could not be read). The runner
+  option's actions (empty when the state could not be read). An event of
+  the default branch's health (`aiv1.MainHealthEvent`: `main-red/`,
+  `flaky/`) is recorded with `kind: mainHealth`, a fixed question and the
+  operator's options instead of the model's (`mainHealthOptions`): fix it
+  (`fixFlaky` on the flaky issue, or `instruct ci-fix` on the main-red
+  issue with the evidence as note), retry (`retryPipeline`, main red only),
+  ignore, and pause when the `Coordinate` task is an autopilot's; the
+  classification picks the recommended one, `fixFlaky` only once the bot's
+  occurrence comments on the flaky issue name two pipelines. The runner
   posts no comment for it: the mirrored prompt is the assessment's comment.
   Without budget, a successful turn, owners or a recorded prompt, it posts
   the assessment on the tracking issue with one `cc` of the owners and
@@ -1263,14 +1272,15 @@ counted interventions; more tools are later steps of
   issue whose title and description are the watcher's (marker and
   one-liner, the same job in all three), not yet ending in the operator's
   task, not in work, in no other milestone, with two bot occurrence
-  comments of that job from distinct pipelines, and not in
-  `status.mainHealth.flakyFixes`. `handOverFlaky` first appends the queue
+  comments of that job from distinct pipelines (one with `byOwner`: an
+  option that is not recommended when posted, an answer with `acceptedBy`
+  when run), and not in `status.mainHealth.flakyFixes`. `handOverFlaky` first appends the queue
   item with `flakyFix` (kept by `mergeQueue` on a re-plan, no revisit side
   effects; a skipped flaky fix is pending again) in a locked patch when the
   milestone's autopilot queue runs, then sets the description to the
   one-liner plus `fixFlakyTask`, the milestone
-  (`UpdateIssueOptions.MilestoneID`) and, without a queue, `agent::ready`
-  in one update: that update is the hand-over (when it fails, the queue
+  (`UpdateIssueOptions.MilestoneID`) and, without a queue or on an
+  owner's answer, `agent::ready` in one update: that update is the hand-over (when it fails, the queue
   item goes again), and the task it leaves in the description refuses
   another one even when the latch is lost. Then it
   records the latch (issue, milestone, time; the newest 100, kept while the

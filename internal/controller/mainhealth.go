@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -425,17 +424,14 @@ func reportFlaky(ctx context.Context, gl gitlab.API, glProject string, bot int64
 func flakyMarker(job string) string { return "<!-- ai-operator:flaky-job=" + job + " -->" }
 
 // flakyOccurrenceMarker starts an occurrence comment, with its pipeline.
-const flakyOccurrenceMarker = "<!-- ai-operator:flaky-occurrence="
+const flakyOccurrenceMarker = marker.FlakyOccurrence
 
 // flakyOccurrences are the pipelines of the bot's occurrence comments
 // among notes, each once.
 func flakyOccurrences(notes []gitlab.Note, bot int64) []int64 {
 	var out []int64
 	for _, n := range notes {
-		rest, ok := strings.CutPrefix(n.Body, flakyOccurrenceMarker)
-		id, _, _ := strings.Cut(rest, " ")
-		pid, err := strconv.ParseInt(id, 10, 64)
-		if ok && err == nil && n.Author.ID == bot && !slices.Contains(out, pid) {
+		if pid, ok := marker.FlakyPipeline(n.Body); ok && n.Author.ID == bot && !slices.Contains(out, pid) {
 			out = append(out, pid)
 		}
 	}

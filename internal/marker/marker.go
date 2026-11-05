@@ -147,3 +147,16 @@ var Prompt = regexp.MustCompile(`<!-- ai-operator:prompt=(Q\d+) posted=(\d+) -->
 // Retrospective marks the pilot's retrospective of a finished autopilot
 // milestone on its tracking issue; owners open its follow-ups in its thread.
 const Retrospective = "<!-- ai-operator:retrospective -->"
+
+// FlakyOccurrence starts the comment of one occurrence of a flaky job on
+// its issue, with the pipeline: "<!-- ai-operator:flaky-occurrence=<id> -->".
+const FlakyOccurrence = "<!-- ai-operator:flaky-occurrence="
+
+// FlakyPipeline is the pipeline of an occurrence comment, false for
+// another comment.
+func FlakyPipeline(body string) (int64, bool) {
+	rest, ok := strings.CutPrefix(body, FlakyOccurrence)
+	id, _, _ := strings.Cut(rest, " ")
+	pid, err := strconv.ParseInt(id, 10, 64)
+	return pid, ok && err == nil
+}

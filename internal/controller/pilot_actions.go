@@ -105,15 +105,25 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 	return nil
 }
 
-// issueTasks returns the implement tasks of a milestone's issues.
+// issueTasks returns the implement tasks of a milestone's issues, and
+// that of the main-red issue, which has no milestone: a main health prompt
+// can instruct its agent.
 func (r *AgentProjectReconciler) issueTasks(ctx context.Context, project *aiv1.AgentProject, milestone int64) (map[int64]*aiv1.AgentTask, error) {
 	var list aiv1.AgentTaskList
 	if err := r.List(ctx, &list, client.InNamespace(project.Namespace), client.MatchingLabels{LabelProject: project.Name}); err != nil {
 		return nil, err
 	}
+	var mainRed int64
+	if mh := project.Status.MainHealth; mh != nil && mh.State == aiv1.MainHealthRed {
+		mainRed = mh.IssueIID
+	}
 	out := map[int64]*aiv1.AgentTask{}
 	for i := range list.Items {
-		if t := &list.Items[i]; t.Spec.Type == aiv1.TaskTypeImplement && t.Spec.Issue != nil && t.Spec.Milestone != nil && t.Spec.Milestone.IID == milestone {
+		t := &list.Items[i]
+		if t.Spec.Type != aiv1.TaskTypeImplement || t.Spec.Issue == nil {
+			continue
+		}
+		if t.Spec.Milestone != nil && t.Spec.Milestone.IID == milestone || t.Spec.Milestone == nil && mainRed != 0 && t.Spec.Issue.IID == mainRed {
 			out[t.Spec.Issue.IID] = t
 		}
 	}
@@ -171,7 +181,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 		var valid []aiv1.PilotAction
 		p.Actions = forgetFirst(p.Actions)
 		for j := range p.Actions {
-			note, err := checkAction(ctx, gl, project, spec, st, tasks, opened, &p.Actions[j], fromRun)
+			note, err := checkAction(ctx, gl, project, spec, st, tasks, opened, &p.Actions[j], fromRun, false)
 			if err == nil {
 				valid = append(valid, p.Actions[j])
 				if p.Actions[j].Tool == "openIssue" {
@@ -293,16 +303,18 @@ func checkRetryPipeline(mh *aiv1.MainHealthStatus, id int64) error {
 // then the flaky issue and the spec edit in GitLab, the pipeline of a
 // retryPipeline against main health. An action the model
 // made (fromModel) loses an owner's words: only the operator passes them
-// on. It returns the action's line for a comment.
+// on. byOwner: only an owner's choice runs it (an option that is not
+// recommended), so a flaky issue needs one failure, not two. It returns the
+// action's line for a comment.
 func checkAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string, a *aiv1.PilotAction, fromModel bool) (string, error) {
+	st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string, a *aiv1.PilotAction, fromModel, byOwner bool) (string, error) {
 	if fromModel {
 		a.Owner, a.Text = "", ""
 	}
 	*a = withRuleText(*a, st)
 	err := validAction(*a, st, tasks, opened)
 	if err == nil && a.Tool == "fixFlaky" {
-		_, err = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID)
+		_, err = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID, byOwner)
 	}
 	if err == nil && a.Tool == "retryPipeline" {
 		err = checkRetryPipeline(project.Status.MainHealth, a.PipelineID)
@@ -522,7 +534,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		errs[i] = make([]error, len(p.Actions))
 		for j, a := range p.Actions {
 			if errs[i][j] = validAction(a, st, tasks, opened); errs[i][j] == nil && a.Tool == "fixFlaky" {
-				_, errs[i][j] = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID)
+				_, errs[i][j] = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID, p.AcceptedBy != "")
 			} else if errs[i][j] == nil && a.Tool == "retryPipeline" {
 				errs[i][j] = checkRetryPipeline(project.Status.MainHealth, a.PipelineID)
 			}
@@ -590,11 +602,11 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 	case "fixFlaky":
 		// Checked again: another pilot may have handed it over meanwhile.
 		mh := project.Status.MainHealth
-		is, err := checkFlaky(ctx, gl, spec, project.Status.BotUserID, mh, a.IssueIID, st.Spec.Milestone.IID)
+		is, err := checkFlaky(ctx, gl, spec, project.Status.BotUserID, mh, a.IssueIID, st.Spec.Milestone.IID, by != "")
 		if err != nil {
 			return err
 		}
-		return r.handOverFlaky(ctx, gl, spec, mh, st, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), how))
+		return r.handOverFlaky(ctx, gl, spec, mh, st, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), how), by != "")
 	case "retryPipeline":
 		// Checked again: the branch may be green or have a newer pipeline.
 		if err := checkRetryPipeline(project.Status.MainHealth, a.PipelineID); err != nil {

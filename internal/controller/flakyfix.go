@@ -28,7 +28,7 @@ const fixFlakyTask = "Make the flaky test of this job deterministic. The failing
 
 // minFlakyOccurrences is how often a job must have been flaky before its
 // issue is handed over.
-const minFlakyOccurrences = 2
+const minFlakyOccurrences = aiv1.MinFlakyOccurrences
 
 // maxFlakyFixes bounds the hand-overs kept; the oldest go first (their
 // issues keep the operator's task, which refuses a second hand-over).
@@ -58,10 +58,11 @@ func flakyLatch(mh *aiv1.MainHealthStatus, iid int64) *aiv1.FlakyFix {
 // checkFlaky returns flaky issue iid if it may be handed over into
 // milestone (IID, 0: none): the bot's open ci::flaky issue with the title
 // and description the watcher wrote, flaky at least twice by the bot's
-// occurrence comments of its job, not handed over yet (the latch, and the
-// operator's task in its description, which outlives the latch) and not in
-// work. A refusal is a flakyRefusal.
-func checkFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, mh *aiv1.MainHealthStatus, iid, milestone int64) (*gitlab.Issue, error) {
+// occurrence comments of its job (once when an owner chose it, byOwner),
+// not handed over yet (the latch, and the operator's task in its
+// description, which outlives the latch) and not in work. A refusal is a
+// flakyRefusal.
+func checkFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, mh *aiv1.MainHealthStatus, iid, milestone int64, byOwner bool) (*gitlab.Issue, error) {
 	if mh == nil || spec.MainHealth.Disabled {
 		return nil, flakyRefusal("the main health watcher is off")
 	}
@@ -98,8 +99,12 @@ func checkFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, 
 		_, line, _ := strings.Cut(n.Body, "\n")
 		return !strings.HasPrefix(line, "🔁 `"+m[1]+"` failed in pipeline ")
 	})
-	if n := len(flakyOccurrences(notes, bot)); n < minFlakyOccurrences {
-		return nil, flakyRefusal(fmt.Sprintf("#%d was flaky %d time(s); it takes %d", iid, n, minFlakyOccurrences))
+	need := minFlakyOccurrences
+	if byOwner {
+		need = 1
+	}
+	if n := len(flakyOccurrences(notes, bot)); n < need {
+		return nil, flakyRefusal(fmt.Sprintf("#%d was flaky %d time(s); it takes %d", iid, n, need))
 	}
 	return is, nil
 }
@@ -115,9 +120,10 @@ func queueRunning(st *aiv1.AgentTask) bool {
 // task st (nil: none) and records it in mh: on a running autopilot into
 // its queue, else with agent::ready, and with the operator's task, set
 // last: that update is the hand-over, so one that failed before it can be
-// repeated. how says who did it.
+// repeated. how says who did it; an owner's choice (byOwner) always gets
+// agent::ready, also on the queue, so its run starts at once.
 func (r *AgentProjectReconciler) handOverFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus,
-	st *aiv1.AgentTask, is *gitlab.Issue, how string) error {
+	st *aiv1.AgentTask, is *gitlab.Issue, how string, byOwner bool) error {
 	glProject := spec.GitLab.Project
 	opts := gitlab.UpdateIssueOptions{Description: is.Description + "\n\n" + fixFlakyTask}
 	fix := aiv1.FlakyFix{IssueIID: is.IID, At: metav1.NewTime(r.now())}
@@ -129,8 +135,12 @@ func (r *AgentProjectReconciler) handOverFlaky(ctx context.Context, gl gitlab.AP
 	}
 	if queue {
 		where = fmt.Sprintf("in milestone %q, queued on its autopilot", inertLine(st.Spec.Milestone.Title, 100))
-	} else {
+	}
+	if !queue || byOwner {
 		opts.AddLabels = []string{spec.Workflow.ReadyLabel}
+	}
+	if queue && byOwner {
+		where += fmt.Sprintf(", with `%s`", spec.Workflow.ReadyLabel)
 	}
 	if queue {
 		if err := r.queueFlakyFix(ctx, st, is.IID, true); err != nil {
@@ -186,7 +196,7 @@ func (r *AgentProjectReconciler) autoFixFlaky(ctx context.Context, gl gitlab.API
 		milestone = lane.Spec.Milestone.IID
 	}
 	for _, f := range st.Flaky {
-		is, err := checkFlaky(ctx, gl, spec, bot, st, f.IssueIID, milestone)
+		is, err := checkFlaky(ctx, gl, spec, bot, st, f.IssueIID, milestone, false)
 		var refused flakyRefusal
 		switch {
 		case errors.As(err, &refused):
@@ -194,7 +204,7 @@ func (r *AgentProjectReconciler) autoFixFlaky(ctx context.Context, gl gitlab.API
 		case err != nil:
 			return err
 		}
-		if err := r.handOverFlaky(ctx, gl, spec, st, lane, is, "`mainHealth.autoFixFlaky`"); err != nil {
+		if err := r.handOverFlaky(ctx, gl, spec, st, lane, is, "`mainHealth.autoFixFlaky`", false); err != nil {
 			return err
 		}
 	}

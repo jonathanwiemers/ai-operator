@@ -107,7 +107,7 @@ func TestPilotFixFlakyNeedsASecondOccurrence(t *testing.T) {
 	// The task in its description outlives a lost latch.
 	latch := e.project().Status.MainHealth.FlakyFixes
 	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthGreen})
-	if _, err := checkFlaky(e.ctx, e.gl, e.project().Spec.WithDefaults(), e.gl.Bot.ID, e.project().Status.MainHealth, 40, 3); err == nil ||
+	if _, err := checkFlaky(e.ctx, e.gl, e.project().Spec.WithDefaults(), e.gl.Bot.ID, e.project().Status.MainHealth, 40, 3, false); err == nil ||
 		!strings.Contains(err.Error(), "its description has the operator's task") {
 		t.Fatalf("a hand-over without the latch is refused by the description: %v", err)
 	}

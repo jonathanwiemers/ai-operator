@@ -4,7 +4,26 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 )
+
+// The keys of the events of a red (MainRedEventPrefix + issue) or flaky
+// (FlakyEventPrefix + pipeline, then "/" + flaky issue) default branch:
+// their assessment is a mainHealth prompt.
+const (
+	MainRedEventPrefix = "main-red/"
+	FlakyEventPrefix   = "flaky/"
+)
+
+// MinFlakyOccurrences is how often a job must have been flaky before the
+// operator hands its issue to the agent on its own or the pilot recommends
+// it; an owner may choose it after one.
+const MinFlakyOccurrences = 2
+
+// MainHealthEvent reports whether e is about the default branch's health.
+func MainHealthEvent(e PilotEvent) bool {
+	return strings.HasPrefix(e.Key, MainRedEventPrefix) || strings.HasPrefix(e.Key, FlakyEventPrefix)
+}
 
 // PilotState hashes what a proposal of the pilot is made on: the milestone
 // description (with its rules) and the autopilot's queue and pause (spec task st) and the

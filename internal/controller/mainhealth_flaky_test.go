@@ -157,3 +157,138 @@ func TestFlakyEvent(t *testing.T) {
 		t.Fatalf("the log is cut from the front to fit: %d bytes", len(ev.Text))
 	}
 }
+
+// mainHealthPrompt records the runner's mainHealth prompt for issue
+// trigger (main-red or flaky) with options.
+func (e *projectEnv) mainHealthPrompt(trigger int64, options ...aiv1.PromptOption) {
+	e.t.Helper()
+	p := aiv1.PilotProposal{Summary: "a flaky job", Source: fmt.Sprintf("event/%d@1", trigger), Trigger: trigger, Quiet: true, Kind: aiv1.PromptMainHealth,
+		Why: "`flaky`: rust:test panicked", Question: "A job of the default branch passed only on retry (flaky issue #40): what now?",
+		Context: "**Classification:** `flaky`", Options: options}
+	p.State = e.pilotState(recommendedActions(options))
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) {
+		if s.Pilot == nil {
+			s.Pilot = &aiv1.PilotStatus{}
+		}
+		s.Pilot.Proposed = append(s.Pilot.Proposed, p)
+	})
+}
+
+var (
+	handOver = aiv1.PromptOption{Label: "Hand #40 to the agent", Actions: []aiv1.PilotAction{{Tool: "fixFlaky", IssueIID: 40}}}
+	ignore   = aiv1.PromptOption{Label: "Ignore this occurrence"}
+	pauseIt  = aiv1.PromptOption{Label: "Pause the autopilot", Actions: []aiv1.PilotAction{{Tool: "pause"}}}
+)
+
+// Bloop #424/#340: after a single flaky failure the pilot recommends
+// ignoring it, an owner hands the issue over anyway, and one click starts
+// the agent: queued on the autopilot and labelled agent::ready.
+func TestMainHealthPromptOwnerHandsAFlakyIssueOver(t *testing.T) {
+	e := newProposalEnv(t)
+	e.flakyIssue(40, 1)
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthFlaky, PipelineID: 901, FailedJobs: []string{"rust:test"},
+		Flaky: []aiv1.FlakyJobReport{{Job: "rust:test", IssueIID: 40}}})
+	rec := ignore
+	rec.Recommended = true
+	e.mainHealthPrompt(40, handOver, rec, pauseIt)
+	e.reconcile()
+	q := e.prompt(specTaskName, "Q1")
+	if q.Source.Kind != aiv1.PromptMainHealth || q.Source.IssueIID != 40 || optionLabels(q) != "A:Hand #40 to the agent B:Ignore this occurrence* C:Pause the autopilot" {
+		t.Fatalf("an owner may choose the hand-over after one failure: %+v", q)
+	}
+	if len(promptNotes(e, 40)) != 0 || !strings.Contains(e.promptNote("Q1").Body, "Hand #40 to the agent") {
+		t.Fatalf("the prompt's comment is on the tracking issue, not on the flaky issue")
+	}
+	e.choose("Q1", "A", alice)
+	e.reconcile()
+	e.handedOver(40, 3)
+	if !slices.Contains(e.gl.Labels(40), "agent::ready") {
+		t.Fatalf("an owner's hand-over starts the run at once: %v", e.gl.Labels(40))
+	}
+	if !slices.ContainsFunc(e.autopilot().Items, func(it aiv1.AutopilotItem) bool { return it.IID == 40 && it.FlakyFix }) {
+		t.Fatalf("and it is on the queue: %+v", e.autopilot().Items)
+	}
+	notes := botComments(e, 40)
+	if n := notes[len(notes)-1]; !strings.Contains(n, "answered by `@alice`") || !strings.Contains(n, "queued on its autopilot, with `agent::ready`") {
+		t.Fatalf("the flaky issue says who handed it over and where: %s", n)
+	}
+	if body := e.promptNote("Q1").Body; !strings.Contains(body, "alice") || !strings.Contains(body, "Hand #40 to the agent") {
+		t.Fatalf("the tracking issue's comment shows the answer and who gave it:\n%s", body)
+	}
+	e.reconcile()
+	if task := e.implTaskOf(40); task == nil {
+		t.Fatal("the agent works on it")
+	}
+}
+
+// The pilot may not recommend a hand-over after one failure: that option
+// goes, and ignoring it is recommended instead.
+func TestMainHealthPromptRecommendsNoHandOverAfterOneFailure(t *testing.T) {
+	e := newProposalEnv(t)
+	e.flakyIssue(40, 1)
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthFlaky, PipelineID: 901, Flaky: []aiv1.FlakyJobReport{{Job: "rust:test", IssueIID: 40}}})
+	rec := handOver
+	rec.Recommended = true
+	e.mainHealthPrompt(40, rec, ignore, pauseIt)
+	e.reconcile()
+	if got := optionLabels(e.prompt(specTaskName, "Q1")); got != "A:Ignore this occurrence* B:Pause the autopilot" {
+		t.Fatalf("the recommended hand-over is refused: %s", got)
+	}
+}
+
+func TestCheckFlakyByOwner(t *testing.T) {
+	e := newPilotEnv(t)
+	e.flakyIssue(40, 1)
+	spec, mh := e.project().Spec.WithDefaults(), e.project().Status.MainHealth
+	if _, err := checkFlaky(e.ctx, e.gl, spec, e.gl.Bot.ID, mh, 40, 3, false); err == nil || !strings.Contains(err.Error(), "was flaky 1 time(s); it takes 2") {
+		t.Fatalf("on its own the operator needs two failures: %v", err)
+	}
+	if is, err := checkFlaky(e.ctx, e.gl, spec, e.gl.Bot.ID, mh, 40, 3, true); err != nil || is.IID != 40 {
+		t.Fatalf("an owner's choice needs one: %v", err)
+	}
+	e.gl.IssueNotes[40] = nil
+	if _, err := checkFlaky(e.ctx, e.gl, spec, e.gl.Bot.ID, mh, 40, 3, true); err == nil || !strings.Contains(err.Error(), "it takes 1") {
+		t.Fatalf("but one: %v", err)
+	}
+}
+
+// Only the main-red lane's pilot hears of a red or flaky default branch,
+// so the owners get one prompt for it.
+func TestMainHealthEventsOnlyOnTheLane(t *testing.T) {
+	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Autopilot: true, Milestone: &aiv1.MilestoneRef{IID: 4}}}
+	for _, mh := range []*aiv1.MainHealthStatus{
+		{State: aiv1.MainHealthRed, IssueIID: 50, PipelineID: 900},
+		{State: aiv1.MainHealthFlaky, PipelineID: 901, Flaky: []aiv1.FlakyJobReport{{Job: "rust:test", IssueIID: 40}}},
+	} {
+		if evs := pilotEvents(aiv1.AgentProjectSpec{}, mh, st, nil, nil, false); len(evs) != 0 {
+			t.Fatalf("another milestone's pilot skips it: %+v", evs)
+		}
+		if evs := pilotEvents(aiv1.AgentProjectSpec{}, mh, st, nil, nil, true); len(evs) != 1 || !aiv1.MainHealthEvent(evs[0]) {
+			t.Fatalf("the lane's pilot assesses it: %+v", evs)
+		}
+	}
+}
+
+// The main-red issue has no milestone; its agent can still be told the
+// classified cause.
+func TestMainHealthPromptInstructsTheMainRedIssue(t *testing.T) {
+	e := newProposalEnv(t)
+	e.gl.AddIssue(50, "🔴 main is red", "ai-generated", "ci::main-red", "agent::ready")
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthRed, IssueIID: 50, AutoFixIssueIID: 50, PipelineID: 900, FailedJobs: []string{"test"}})
+	e.reconcile()
+	if task := e.implTaskOf(50); task == nil || task.Spec.Milestone != nil {
+		t.Fatalf("the main-red issue has a task without a milestone: %+v", task)
+	}
+	tell := aiv1.PromptOption{Label: "Tell #50's agent: a regression", Recommended: true,
+		Actions: []aiv1.PilotAction{{Tool: "instruct", IssueIID: 50, Kind: "ci-fix", Note: "the lobby test fails since abc123"}}}
+	e.mainHealthPrompt(50, tell, ignore)
+	e.reconcile()
+	if got := optionLabels(e.prompt(specTaskName, "Q1")); got != "A:Tell #50's agent: a regression* B:Ignore this occurrence" {
+		t.Fatalf("the instruction is offered: %s", got)
+	}
+	e.choose("Q1", "A", alice)
+	e.reconcile()
+	if pi := e.implTaskOf(50).Spec.Source.PilotInstruction; pi == nil || pi.Kind != "ci-fix" || pi.Note != "the lobby test fails since abc123" {
+		t.Fatalf("its agent gets the instruction: %+v", pi)
+	}
+}

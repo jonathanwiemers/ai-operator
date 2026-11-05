@@ -531,14 +531,17 @@ without it (a flaky job, a fix by hand), the issue is closed as usual and
 the agent's MR is left open for you to merge or close.
 
 **Fixing a flaky test with the agent.** A flaky job's issue goes to the
-agent once, after its job was flaky at least twice (two occurrence
-comments): by the pilot's `fixFlaky` (see [Talking to the
-pilot](#talking-to-the-pilot)), or by the operator itself with
-`mainHealth.autoFixFlaky: true` (off by default) at the second occurrence,
-also without a pilot. The issue moves into the milestone (the pilot's; with
-`autoFixFlaky` the active autopilot milestone with the lowest IID, else
-none) and runs like any of its issues: on a running autopilot it joins the
-queue (a re-plan keeps it), otherwise it gets `agent::ready`. Its
+agent once: by the pilot's `fixFlaky` (see [Talking to the
+pilot](#talking-to-the-pilot)), after its job was flaky at least twice (two
+occurrence comments) when the pilot runs it on its own or recommends it,
+after one when an owner chooses it in a main health prompt; or by the
+operator itself with `mainHealth.autoFixFlaky: true` (off by default) at
+the second occurrence, also without a pilot. The issue moves into the
+milestone (the pilot's; with `autoFixFlaky` the active autopilot milestone
+with the lowest IID, else none) and runs like any of its issues: on a
+running autopilot it joins the queue (a re-plan keeps it), otherwise it
+gets `agent::ready`. An owner's choice always adds `agent::ready`, also
+on the queue, so its run starts at once. Its
 description gets the operator's fixed task: make the flaky test
 deterministic, find the cause in the code or the test, do not delete or
 skip it, a quarantine needs an owner's `yes`. The failing tests and logs
@@ -1031,8 +1034,8 @@ default branch and the last comments of the tracking issue.
   answered for anyone, but `/pilot coordinate` needs owners.
 - **It also speaks first.** When autopilot pauses, an issue of the milestone
   moves to `agent::needs-input` (CI still red after the fix rounds, a failed
-  run, questions), an issue is blocked by `infra` or `quota`, or (on
-  autopilot milestones) the default branch turns red or flaky, the pilot
+  run, questions), an issue is blocked by `infra` or `quota`, or (on the
+  main-red lane, below) the default branch turns red or flaky, the pilot
   assesses it and puts it to the owners as one **assessment prompt**
   (`Q3`), answered in the Desk. Its context is what happened, a
   classification (`infra`, `flaky`, `regression`, `env`, `decision`,
@@ -1045,18 +1048,37 @@ default branch and the last comments of the tracking issue.
   it would not run; when none is left, the options are "Look into it
   myself" and "Do nothing", and the context says why the pilot's went. The
   prompt is mirrored as one comment on the issue it is about (the paused
-  issue, a flaky job's `ci::flaky` issue; else the tracking issue),
+  issue; else, and for the default branch's health, the tracking issue),
   mentioning the owners: it is the assessment's comment. Only when no
   prompt can be made (the pilot's budget is used up, its turn failed, the
   milestone has no owners) does the pilot post the assessment as a comment
-  on the tracking issue instead, with one mention of the owners. A
-  `fixFlaky` option is still refused before the job was flaky twice. Each
+  on the tracking issue instead, with one mention of the owners. The pilot
+  may recommend a `fixFlaky` option only once the job was flaky twice; an
+  owner may choose one that is not recommended after one failure. Each
   event is assessed once: a poll
   while it holds, or a label or pause flapped back and forth, does not
   repeat it; a new head or a new reason does. A pause over an issue and
   that issue's `agent::needs-input` are one event. When the reviewers cannot
   run, the assessment may point owners to `/agent merge #N <sha>`; the pilot
   never proposes it.
+- **Main health prompts.** A red or flaky default branch is assessed only
+  by the pilot of the main-red lane (the active autopilot milestone with
+  the lowest IID, which drives the main-red issue), so the owners get one
+  **main health prompt** for it, mirrored on that milestone's tracking
+  issue. The pilot classifies it and gives the evidence, but the options
+  are the operator's:
+  - **A** "Hand #N to the agent" (`fixFlaky` on the flaky issue), or, when
+    main is red, "Tell #N's agent: <cause>" (`instruct #N` with `ci-fix`
+    and the evidence as its hint, on the main-red issue);
+  - **B** "Retry the failed jobs" (`retryPipeline` on the red pipeline;
+    not for a flaky job, whose pipeline is green);
+  - **C** "Ignore this occurrence": nothing runs, the answer is recorded;
+  - **D** "Pause the autopilot", on a milestone whose queue runs.
+
+  The classification picks the recommended one: `flaky` A once the job
+  was flaky twice, else B (C for a flaky job); `regression` A; `infra` and
+  `env` B; anything else C. The prompt is superseded once the default
+  branch is green again or its issue is closed.
 - **Proposals.** Unless it manages
   (below), the pilot acts only on a proposal an owner accepts. An answer can end with one; the operator puts
   it to the owners as a **proposal prompt** (`Q3`), mirrored on the tracking
@@ -1072,7 +1094,8 @@ default branch and the last comments of the tracking issue.
     handed to the agent; a title is never opened twice;
   - `fixFlaky #N`: the flaky issue #N (`ci::flaky`, from a flaky event)
     goes to the agent in this milestone, with the operator's fixed task
-    (see [Main health](#main-health)); only after two occurrences, only an
+    (see [Main health](#main-health)); only after two occurrences (one
+    for an option that is not recommended, which only an owner runs), only an
     issue the operator opened with the description it wrote, and once: a
     pilot that comes second is told where it went;
   - `retryPipeline <id>`: the failed jobs of the default branch's red

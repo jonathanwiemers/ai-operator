@@ -483,7 +483,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	if err := r.syncOpenPrompts(ctx, gl, project, spec, specTasks, byMilestone, issues, implTasks); err != nil {
 		errs = append(errs, err)
 	}
-	if err := r.syncPilots(ctx, gl, project, spec, specTasks, pilots, keep, issues, implTasks); err != nil {
+	if err := r.syncPilots(ctx, gl, project, spec, specTasks, lane, pilots, keep, issues, implTasks); err != nil {
 		errs = append(errs, err)
 	}
 	// The prompts' GitLab comments, once answers have their outcome.
