@@ -1350,6 +1350,23 @@ const (
 	PauseBudget PauseKind = "budget"
 )
 
+// PauseResolver is who ended a pause (status.autopilot.resumedBy, the
+// autopilot.resumed history event).
+// +kubebuilder:validation:Enum=operator;pilot;owner;selfHealed
+type PauseResolver string
+
+const (
+	// ResolvedByOperator: an automatic exit (the cause went away).
+	ResolvedByOperator PauseResolver = "operator"
+	// ResolvedByPilot: the pilot's own action (managed autonomy).
+	ResolvedByPilot PauseResolver = "pilot"
+	// ResolvedByOwner: an owner's command or answered prompt.
+	ResolvedByOwner PauseResolver = "owner"
+	// ResolvedBySelfHealed: the operator rebased a BaseFailing MR onto a
+	// green default branch.
+	ResolvedBySelfHealed PauseResolver = "selfHealed"
+)
+
 // AutopilotItemState is the state of one issue in the queue.
 // +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped
 type AutopilotItemState string
@@ -1439,6 +1456,10 @@ type AutopilotStatus struct {
 	// PausedAt is when the current pause started; unset while running.
 	// +optional
 	PausedAt *metav1.Time `json:"pausedAt,omitempty"`
+
+	// ResumedBy is who ended the last pause; cleared by the next pause.
+	// +optional
+	ResumedBy PauseResolver `json:"resumedBy,omitempty"`
 }
 
 // BudgetStatus is the budget of an autopilot milestone and what it spent,

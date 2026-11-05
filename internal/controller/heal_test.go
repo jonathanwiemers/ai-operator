@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -62,6 +63,9 @@ func TestAutopilotRebasesABaseFailingMROnceMainIsGreen(t *testing.T) {
 		t.Fatalf("main green on a new commit must rebase !1 once and say so: rebased %v\n%s", e.gl.Rebased, c)
 	}
 	ap := e.autopilot()
+	if ap.ResumedBy != aiv1.ResolvedBySelfHealed {
+		t.Fatalf("the heal is resolved as selfHealed, got %q", ap.ResumedBy)
+	}
 	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].HealedOn != "main-y" {
 		t.Fatalf("the heal must lift the pause and remember main-y: %+v", ap)
 	}
@@ -234,7 +238,7 @@ func TestAutopilotRebaseCommand(t *testing.T) {
 	if c := trackingComments(e); !slices.Equal(e.gl.Rebased, []int64{1}) || !strings.Contains(c, "▶️ Autopilot continues: @jonathan asked to rebase !1 onto `main`.") {
 		t.Fatalf("the active MR is rebased and the pause ends: rebased %v\n%s", e.gl.Rebased, c)
 	}
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.Items[0].RebasedFrom != "sha-api" {
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.Items[0].RebasedFrom != "sha-api" || ap.ResumedBy != aiv1.ResolvedByOwner {
 		t.Fatalf("the rebase is in flight, autopilot runs: %+v", ap)
 	}
 	e.gl.AddNote(tracking, jonathan, "/agent mergebase #1")
@@ -263,5 +267,23 @@ func TestAutopilotMergeBaseCommand(t *testing.T) {
 	}
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning {
 		t.Fatalf("the pause ends: %+v", ap)
+	}
+}
+
+// Another kind while paused is a new pause: its clock starts anew, so the
+// history counts it apart (autopilot.paused per kind); a reworded pause of
+// the same kind keeps its clock.
+func TestAutopilotNewPauseKindRestartsTheClock(t *testing.T) {
+	e, _ := baseFailingEnv(t)
+	start := e.autopilot().PausedAt
+	e.advance(time.Hour)
+	e.reconcile()
+	if ap := e.autopilot(); ap.PauseKind != aiv1.PauseCIRed || !ap.PausedAt.Equal(start) {
+		t.Fatalf("the same pause keeps its clock: %+v (started %v)", ap, start)
+	}
+	e.gl.AddNote(e.autopilot().TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent pause")
+	e.reconcile()
+	if ap := e.autopilot(); ap.PauseKind != aiv1.PauseOwner || ap.PausedAt == nil || !ap.PausedAt.After(start.Time) || ap.ResumedBy != "" {
+		t.Fatalf("an owner's pause over ciRed starts a new clock: %+v (ciRed started %v)", ap, start)
 	}
 }

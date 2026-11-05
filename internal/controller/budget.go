@@ -175,7 +175,7 @@ func (a *autopilot) resumeBudget(ctx context.Context, why string) error {
 	if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
 		return err
 	}
-	a.lift()
+	a.lift(aiv1.ResolvedByOperator)
 	return nil
 }
 

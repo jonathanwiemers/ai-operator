@@ -1199,6 +1199,15 @@ spec:
                     description: 'ResumeWhenReady: the pause is over PausedFor''s
                       run, review or CI.'
                     type: boolean
+                  resumedBy:
+                    description: ResumedBy is who ended the last pause; cleared by
+                      the next pause.
+                    enum:
+                    - operator
+                    - pilot
+                    - owner
+                    - selfHealed
+                    type: string
                   stateChangedAt:
                     format: date-time
                     type: string

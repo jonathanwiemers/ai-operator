@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -74,7 +75,7 @@ func TestDifferTransitions(t *testing.T) {
 			t.Status.Autopilot = &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}
 		}, func(t *aiv1.AgentTask) {
 			t.Status.Autopilot = &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedReason: "CI"}
-		}, []string{"autopilot task/u1/autopilot/Paused/2"}},
+		}, []string{"autopilot task/u1/autopilot/Paused/2", "autopilot.paused task/u1/autopilot.paused/rv2/"}},
 		{"proposal posted, then accepted", func(t *aiv1.AgentTask) {
 			t.Status.Pilot = &aiv1.PilotStatus{Proposals: []aiv1.PilotProposal{{ID: 3}}}
 		}, func(t *aiv1.AgentTask) {
@@ -437,3 +438,114 @@ func TestRecordDropsWhenNotStartedOrFull(t *testing.T) {
 }
 
 func testLogger(t *testing.T) logr.Logger { return testr.New(t) }
+
+// pausedTask is the spec task with autopilot in phase, paused for kind at
+// at (zero: not paused) over issue 88, and resumedBy.
+func pausedTask(rv string, phase aiv1.AutopilotPhase, kind aiv1.PauseKind, reason string, at time.Time, by aiv1.PauseResolver) *aiv1.AgentTask {
+	return task(rv, func(t *aiv1.AgentTask) {
+		ap := &aiv1.AutopilotStatus{Phase: phase, TrackingIssueIID: 7, ResumedBy: by}
+		if phase == aiv1.AutopilotPaused {
+			ap.PauseKind, ap.PausedReason, ap.PausedFor, ap.PausedAt = kind, reason, 88, &metav1.Time{Time: at}
+		}
+		t.Status.Autopilot = ap
+	})
+}
+
+func pauseEvents(es []store.Event) []store.Event {
+	var out []store.Event
+	for _, e := range es {
+		if e.Kind == KindAutopilotPaused || e.Kind == KindAutopilotResumed {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func TestDifferPauseAndResume(t *testing.T) {
+	start := now.Add(-10 * time.Minute)
+	key := func(kind string, at time.Time, pk aiv1.PauseKind) string {
+		return fmt.Sprintf("%s task/u1/%s/%d/%s", kind, kind, at.Unix(), pk)
+	}
+	running := pausedTask("1", aiv1.AutopilotRunning, "", "", time.Time{}, "")
+	paused := pausedTask("2", aiv1.AutopilotPaused, aiv1.PauseCIRed, "CI of !735 is red", start, "")
+
+	es := pauseEvents(NewDiffer().Update(running, paused, now))
+	if got := kinds(es); !slices.Equal(got, []string{key(KindAutopilotPaused, start, aiv1.PauseCIRed)}) {
+		t.Fatalf("pause: %v", got)
+	}
+	if e := es[0]; e.Data["kind"] != "ciRed" || e.Data["reason"] != "CI of !735 is red" || e.Data["item"] != int64(88) ||
+		e.MilestoneIID != 20 || e.IssueIID != 7 || !e.At.Equal(start) {
+		t.Errorf("paused event %+v", e)
+	}
+
+	for _, by := range []aiv1.PauseResolver{aiv1.ResolvedByOperator, aiv1.ResolvedByPilot, aiv1.ResolvedByOwner, aiv1.ResolvedBySelfHealed, ""} {
+		resumed := pausedTask("3", aiv1.AutopilotRunning, "", "", time.Time{}, by)
+		es := pauseEvents(NewDiffer().Update(paused, resumed, now))
+		if got := kinds(es); !slices.Equal(got, []string{key(KindAutopilotResumed, start, aiv1.PauseCIRed)}) {
+			t.Fatalf("resume by %q: %v", by, got)
+		}
+		want := by
+		if want == "" {
+			want = aiv1.ResolvedByOperator // a missing resolver
+		}
+		if e := es[0]; e.Data["resolvedBy"] != string(want) || e.Data["pausedSec"] != int64(600) || e.Data["kind"] != "ciRed" ||
+			e.Data["item"] != int64(88) || e.MilestoneIID != 20 {
+			t.Errorf("resumed by %q: %+v", by, e)
+		}
+	}
+}
+
+func TestDifferPauseKindChange(t *testing.T) {
+	start, later := now.Add(-10*time.Minute), now.Add(-time.Minute)
+	ci := pausedTask("2", aiv1.AutopilotPaused, aiv1.PauseCIRed, "CI is red", start, "")
+
+	// A reason change with the same kind is the same pause.
+	reworded := pausedTask("3", aiv1.AutopilotPaused, aiv1.PauseCIRed, "CI is red on test:race", start, "")
+	if es := pauseEvents(NewDiffer().Update(ci, reworded, now)); len(es) != 0 {
+		t.Errorf("reason change: %v", kinds(es))
+	}
+
+	// Another kind ends the pause (operator) and starts a new one.
+	mr := pausedTask("3", aiv1.AutopilotPaused, aiv1.PauseMergeRequest, "!735 has conflicts", later, "")
+	es := pauseEvents(NewDiffer().Update(ci, mr, now))
+	want := []string{
+		fmt.Sprintf("autopilot.resumed task/u1/autopilot.resumed/%d/ciRed", start.Unix()),
+		fmt.Sprintf("autopilot.paused task/u1/autopilot.paused/%d/mergeRequest", later.Unix()),
+	}
+	if got := kinds(es); !slices.Equal(got, want) {
+		t.Fatalf("kind change: %v", got)
+	}
+	if es[0].Data["resolvedBy"] != "operator" || es[1].Data["kind"] != "mergeRequest" {
+		t.Errorf("kind change: %+v", es)
+	}
+
+	// Replayed (another resource version, same status): the same keys.
+	again := pauseEvents(NewDiffer().Update(ci, pausedTask("4", aiv1.AutopilotPaused, aiv1.PauseMergeRequest, "!735 has conflicts", later, ""), now))
+	if got := kinds(again); !slices.Equal(got, want) {
+		t.Errorf("replay keys: %v", got)
+	}
+}
+
+func TestDifferPauseEndsWithThePhase(t *testing.T) {
+	start := now.Add(-time.Hour)
+	paused := pausedTask("2", aiv1.AutopilotPaused, aiv1.PauseStuck, "#88 waits for the skipped #83", start, "")
+	for _, c := range []struct {
+		phase aiv1.AutopilotPhase
+		by    aiv1.PauseResolver
+		want  string
+	}{
+		{aiv1.AutopilotOff, "", "owner"},
+		{aiv1.AutopilotDone, "", "operator"},
+		{aiv1.AutopilotDone, aiv1.ResolvedByOwner, "owner"}, // endMilestone by an owner
+	} {
+		es := pauseEvents(NewDiffer().Update(paused, pausedTask("3", c.phase, "", "", time.Time{}, c.by), now))
+		if len(es) != 1 || es[0].Kind != KindAutopilotResumed || es[0].Data["resolvedBy"] != c.want || es[0].Data["pausedSec"] != int64(3600) {
+			t.Errorf("%s (%q): %v %+v", c.phase, c.by, kinds(es), es)
+		}
+	}
+	// Running stays running: nothing.
+	running := pausedTask("1", aiv1.AutopilotRunning, "", "", time.Time{}, aiv1.ResolvedByOwner)
+	if es := pauseEvents(NewDiffer().Update(running, pausedTask("2", aiv1.AutopilotRunning, "", "", time.Time{}, aiv1.ResolvedByOwner), now)); len(es) != 0 {
+		t.Errorf("running: %v", kinds(es))
+	}
+}

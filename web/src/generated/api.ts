@@ -3632,6 +3632,29 @@ export const PauseConfig: PauseKind = "config";
  */
 export const PauseBudget: PauseKind = "budget";
 /**
+ * PauseResolver is who ended a pause (status.autopilot.resumedBy, the
+ * autopilot.resumed history event).
+ * +kubebuilder:validation:Enum=operator;pilot;owner;selfHealed
+ */
+export type PauseResolver = string;
+/**
+ * ResolvedByOperator: an automatic exit (the cause went away).
+ */
+export const ResolvedByOperator: PauseResolver = "operator";
+/**
+ * ResolvedByPilot: the pilot's own action (managed autonomy).
+ */
+export const ResolvedByPilot: PauseResolver = "pilot";
+/**
+ * ResolvedByOwner: an owner's command or answered prompt.
+ */
+export const ResolvedByOwner: PauseResolver = "owner";
+/**
+ * ResolvedBySelfHealed: the operator rebased a BaseFailing MR onto a
+ * green default branch.
+ */
+export const ResolvedBySelfHealed: PauseResolver = "selfHealed";
+/**
  * AutopilotItemState is the state of one issue in the queue.
  * +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped
  */
@@ -3738,6 +3761,11 @@ export interface AutopilotStatus {
    * +optional
    */
   pausedAt?: string;
+  /**
+   * ResumedBy is who ended the last pause; cleared by the next pause.
+   * +optional
+   */
+  resumedBy?: PauseResolver;
 }
 /**
  * BudgetStatus is the budget of an autopilot milestone and what it spent,

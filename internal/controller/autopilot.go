@@ -500,7 +500,7 @@ func (a *autopilot) unstick(ctx context.Context) error {
 	if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
 		return err
 	}
-	a.lift()
+	a.lift(aiv1.ResolvedByOperator)
 	return nil
 }
 
@@ -559,8 +559,12 @@ func (a *autopilot) endMilestone(ctx context.Context, by string) error {
 	}
 	prev := *a.ap
 	a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = "", "", 0, false
+	if prev.Phase == aiv1.AutopilotPaused {
+		a.ap.ResumedBy = resolverOf(by) // the pause ends with the milestone
+	}
 	if err := a.done(ctx); err != nil {
 		a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = prev.PausedReason, prev.PauseKind, prev.PausedFor, prev.ResumeWhenReady
+		a.ap.ResumedBy = prev.ResumedBy
 		return err
 	}
 	return nil
@@ -982,7 +986,7 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
 			return err
 		}
-		a.lift()
+		a.lift(aiv1.ResolvedByOperator)
 		return nil
 	}
 	is, ok := a.issues[it.IID]
@@ -1344,7 +1348,7 @@ func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, iid int64, r
 	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nWays out:\n%s", notify.Defuse(reason), a.exitLines(kind, iid))+a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
 		return err
 	}
-	a.startPause()
+	a.startPause(kind)
 	a.ap.PausedReason, a.ap.PauseKind = reason, kind
 	a.ap.PausedFor, a.ap.ResumeWhenReady = iid, false
 	return nil
@@ -1396,16 +1400,34 @@ func (a *autopilot) exitLines(kind aiv1.PauseKind, iid int64) string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
-// lift ends a pause: autopilot runs again. Every resume goes through here.
-func (a *autopilot) lift() {
+// lift ends a pause: autopilot runs again. Every resume goes through here;
+// by is who ended it (status.autopilot.resumedBy, for the history's
+// autopilot.resumed event).
+func (a *autopilot) lift(by aiv1.PauseResolver) {
 	a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind = aiv1.AutopilotRunning, "", ""
 	a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
-	a.ap.PausedAt = nil
+	a.ap.PausedAt, a.ap.ResumedBy = nil, by
 }
 
-// startPause pauses the queue; a new pause starts its clock (PausedAt).
-func (a *autopilot) startPause() {
-	if a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedAt == nil {
+// pilotSelf is the by of a command the pilot runs on its own (managed
+// autonomy); an owner's answer via the pilot names the owner.
+const pilotSelf = "the pilot"
+
+// resolverOf is who ends a pause with a command by someone: the pilot on
+// its own, otherwise an owner.
+func resolverOf(by string) aiv1.PauseResolver {
+	if by == pilotSelf {
+		return aiv1.ResolvedByPilot
+	}
+	return aiv1.ResolvedByOwner
+}
+
+// startPause pauses the queue for kind and clears who ended the last pause.
+// A new pause, also one of another kind while paused, starts its clock
+// (PausedAt).
+func (a *autopilot) startPause(kind aiv1.PauseKind) {
+	a.ap.ResumedBy = ""
+	if a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedAt == nil || a.ap.PauseKind != kind {
 		a.ap.PausedAt = &metav1.Time{Time: a.r.now()}
 	}
 	a.ap.Phase = aiv1.AutopilotPaused
@@ -1534,7 +1556,7 @@ func (a *autopilot) commands(ctx context.Context) error {
 			}
 			by := "@" + c.Owner + " via the pilot"
 			if c.Owner == "" {
-				by = "the pilot" // on its own (managed)
+				by = pilotSelf // on its own (managed)
 			}
 			if c.Action.Tool == "endMilestone" {
 				if err := a.endMilestone(ctx, by); err != nil {
@@ -1625,7 +1647,7 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 	switch word {
 	case "pause":
 		if a.ap.Phase != aiv1.AutopilotDone {
-			a.startPause()
+			a.startPause(aiv1.PauseOwner)
 			a.ap.PausedReason, a.ap.PauseKind = "paused by "+by, aiv1.PauseOwner
 			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
 		}
@@ -1635,7 +1657,7 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 			if err := a.unblockActive(ctx); err != nil {
 				return "", false, err
 			}
-			a.lift()
+			a.lift(resolverOf(by))
 		}
 		return "Autopilot resumed.", true, nil
 	case "skip":

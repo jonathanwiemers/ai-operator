@@ -77,7 +77,7 @@ func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
 	if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
 		return err
 	}
-	a.lift()
+	a.lift(aiv1.ResolvedByOperator)
 	return nil
 }
 

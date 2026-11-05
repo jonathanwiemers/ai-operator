@@ -981,6 +981,19 @@ The tracking issue gets "▶️ Autopilot continues: …". Every other pause (an
 approval, unresolved discussions, someone else's push, a dependency cycle,
 `/agent pause`) waits for `/agent resume`.
 
+Each pause and its end are recorded in the history database
+(`autopilot.paused` and `autopilot.resumed` events with the pause's kind,
+reason and issue). The end says who resolved it (`resolvedBy`) and how long
+it took (`pausedSec`): `operator` for an end by itself (the cause went away,
+a budget raise, a stuck pause that can move again), `selfHealed` for the
+rebase onto a green default branch above, `owner` for a command or an
+answered pilot prompt (also `/agent merge`, ending the milestone, or
+removing the autopilot marker), `pilot` for a rebase or mergeBase the
+[pilot](#talking-to-the-pilot) ran on its own. A new reason of the same
+kind is the same pause; a pause of another kind ends the old one (as
+`operator`) and starts a new one. The operator keeps the last resolver in
+`status.autopilot.resumedBy` until the next pause.
+
 On the Desk ([ui.md](ui.md#what-it-shows)), the milestone page shows a paused
 autopilot as a card: the cause, the paused issue and its MR, what ends the
 pause by itself, and the actions that fix it (Retry, Review again, Resume,

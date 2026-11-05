@@ -405,7 +405,7 @@ func TestPilotManagedRebasesTheActiveMR(t *testing.T) {
 	e.reconcile()
 	e.reconcile()
 	notes := strings.Join(botNotesSince(e, tracking, seen), "\n")
-	if !slices.Equal(e.gl.Rebased, []int64{1}) || e.autopilot().Phase != aiv1.AutopilotRunning {
+	if !slices.Equal(e.gl.Rebased, []int64{1}) || e.autopilot().Phase != aiv1.AutopilotRunning || e.autopilot().ResumedBy != aiv1.ResolvedByPilot {
 		t.Fatalf("the pilot rebases !1 on its own and the pause ends: rebased %v, %+v\n%s", e.gl.Rebased, e.autopilot(), notes)
 	}
 	for _, want := range []string{"The pilot acted on its own", "**rebase** #1", "Interventions left for #1: 1 of 2.",

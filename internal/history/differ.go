@@ -32,6 +32,11 @@ const (
 	KindAutopilot   = "autopilot"
 	KindProposal    = "proposal"
 
+	// KindAutopilotPaused is a new autopilot pause, KindAutopilotResumed
+	// its end with who resolved it (aiv1.PauseResolver).
+	KindAutopilotPaused  = "autopilot.paused"
+	KindAutopilotResumed = "autopilot.resumed"
+
 	// KindPilotWriteFailed is a status write the API server rejected.
 	KindPilotWriteFailed = "pilot.writeFailed"
 
@@ -194,6 +199,7 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 			map[string]any{"reason": "stopped", "message": textutil.Truncate(ns.Message, maxText)})
 	}
 	out = append(out, d.autopilot(cur, prev.Autopilot, ns.Autopilot, now)...)
+	out = append(out, pauses(cur, prev.Autopilot, ns.Autopilot, now)...)
 	out = append(out, d.proposals(cur, prev.Pilot, ns.Pilot, now)...)
 	out = append(out, writeFailures(cur, prev.WriteFailures, ns.WriteFailures, now)...)
 	out = append(out, d.prompts(cur, prev.Prompts, ns.Prompts, now)...)
@@ -237,6 +243,71 @@ func (d *Differ) autopilot(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, no
 		out = append(out, e)
 	}
 	return out
+}
+
+// pauses returns the autopilot.paused and autopilot.resumed events of the
+// change from old to cur. A pause starts when the phase becomes Paused, or
+// when the kind (or the clock, PausedAt) changes while paused; a changed
+// reason with the same kind is the same pause. The pause it replaces, or
+// one the phase leaves, resolves as status.autopilot.resumedBy says, else
+// as the owner for Off (the marker was removed) and the operator otherwise.
+// Keys hold the pause's start and kind, so a replayed update is no new
+// event.
+func pauses(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, now time.Time) []store.Event {
+	if cur == nil {
+		return nil
+	}
+	was := old != nil && old.Phase == aiv1.AutopilotPaused
+	is := cur.Phase == aiv1.AutopilotPaused
+	fresh := is && (!was || old.PauseKind != cur.PauseKind ||
+		old.PausedAt != nil && cur.PausedAt != nil && !old.PausedAt.Equal(cur.PausedAt))
+	var out []store.Event
+	emit := func(kind string, p *aiv1.AutopilotStatus, summary string) *store.Event {
+		e := base(t, now)
+		e.Key = taskKey(t, fmt.Sprintf("%s/%s/%s", kind, pauseStart(t, p), p.PauseKind))
+		e.Kind, e.IssueIID, e.Summary = kind, cur.TrackingIssueIID, textutil.Truncate(summary, maxText)
+		e.Data = map[string]any{"kind": string(p.PauseKind), "reason": textutil.Truncate(p.PausedReason, maxText), "item": p.PausedFor}
+		out = append(out, e)
+		return &out[len(out)-1]
+	}
+	if was && (!is || fresh) {
+		by := aiv1.ResolvedByOperator
+		switch {
+		case !is && cur.ResumedBy != "":
+			by = cur.ResumedBy
+		case cur.Phase == aiv1.AutopilotOff:
+			by = aiv1.ResolvedByOwner
+		}
+		e := emit(KindAutopilotResumed, old, fmt.Sprintf("Autopilot resumed (%s) by %s", pauseWord(old), by))
+		e.Data["resolvedBy"] = string(by)
+		if old.PausedAt != nil {
+			e.Data["pausedSec"] = int64(now.Sub(old.PausedAt.Time).Seconds())
+		}
+	}
+	if fresh {
+		e := emit(KindAutopilotPaused, cur, fmt.Sprintf("Autopilot paused (%s): %s", pauseWord(cur), cur.PausedReason))
+		if cur.PausedAt != nil {
+			e.At = cur.PausedAt.Time
+		}
+	}
+	return out
+}
+
+// pauseStart is the start of the pause in p for its event keys: PausedAt,
+// or the task's resource version for a pause from before PausedAt existed.
+func pauseStart(t *aiv1.AgentTask, p *aiv1.AutopilotStatus) string {
+	if p.PausedAt == nil {
+		return "rv" + t.ResourceVersion
+	}
+	return strconv.FormatInt(p.PausedAt.Unix(), 10)
+}
+
+// pauseWord is the kind of the pause in p for a summary.
+func pauseWord(p *aiv1.AutopilotStatus) string {
+	if p.PauseKind == "" {
+		return "unknown"
+	}
+	return string(p.PauseKind)
 }
 
 // writeFailures emits an event for every failure that is new or whose count

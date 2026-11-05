@@ -432,3 +432,21 @@ func TestAutopilotStateStampsAdmitted(t *testing.T) {
 		}
 	}
 }
+
+// Who ended the last pause (resumedBy) is stored with the autopilot status,
+// one of the resolvers only.
+func TestAutopilotResumedByAdmitted(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	for _, by := range []PauseResolver{ResolvedByOperator, ResolvedByPilot, ResolvedByOwner, ResolvedBySelfHealed} {
+		obj, errs := crd.admit(map[string]any{"status": map[string]any{"autopilot": map[string]any{"phase": "Running", "resumedBy": string(by)}}})
+		if len(errs) > 0 {
+			t.Fatalf("resumedBy %s rejected: %v", by, errs)
+		}
+		if got := obj["status"].(map[string]any)["autopilot"].(map[string]any)["resumedBy"]; got != string(by) {
+			t.Errorf("resumedBy %s not stored: %v", by, got)
+		}
+	}
+	if _, errs := crd.admit(map[string]any{"status": map[string]any{"autopilot": map[string]any{"phase": "Running", "resumedBy": "someone"}}}); len(errs) == 0 {
+		t.Error("an unknown resolver admitted")
+	}
+}

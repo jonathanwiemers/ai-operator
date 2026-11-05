@@ -300,6 +300,9 @@ func TestAutopilotPausesAndResumes(t *testing.T) {
 	if !slices.Equal(e.gl.Merged, []int64{1}) || e.autopilot().Phase != aiv1.AutopilotRunning || e.autopilot().PauseKind != "" {
 		t.Fatalf("resume should continue with the merge and clear the pause: merged %v, %+v", e.gl.Merged, e.autopilot())
 	}
+	if by := e.autopilot().ResumedBy; by != aiv1.ResolvedByOwner {
+		t.Fatalf("an owner's resume is resolved by the owner, got %q", by)
+	}
 	if strings.Contains(trackingComments(e), "Autopilot continues") {
 		t.Fatal("the resume command, not the automatic one, must have continued here")
 	}
@@ -310,6 +313,9 @@ func TestAutopilotPausesAndResumes(t *testing.T) {
 	e.reconcile()
 	if e.autopilot().Phase != aiv1.AutopilotPaused || e.gl.Issues[2].HasLabel("agent::ready") {
 		t.Fatalf("pause must stop the queue: %+v %v", e.autopilot(), e.gl.Labels(2))
+	}
+	if by := e.autopilot().ResumedBy; by != "" {
+		t.Fatalf("a pause clears who ended the last one, got %q", by)
 	}
 	e.gl.AddNote(ap.TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent skip #2")
 	e.gl.AddNote(ap.TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent resume")
@@ -996,6 +1002,9 @@ func TestAutopilotContinuesByItselfOnceTheIssueIsFixed(t *testing.T) {
 	e.reconcile()
 	if !slices.Equal(e.gl.Merged, []int64{1}) || !strings.Contains(trackingComments(e), "Autopilot continues: #1 is reviewed and green again") {
 		t.Fatalf("expected autopilot to continue and merge: merged %v, %+v\n%s", e.gl.Merged, e.autopilot(), trackingComments(e))
+	}
+	if by := e.autopilot().ResumedBy; by != aiv1.ResolvedByOperator {
+		t.Fatalf("an automatic resume is resolved by the operator, got %q", by)
 	}
 }
 
