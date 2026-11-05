@@ -27,11 +27,11 @@ func TestFeaturesAuthNone(t *testing.T) {
 		cfg  *Config
 		want []Feature
 	}{
-		{"without a database", &Config{Auth: AuthConfig{Mode: AuthNone}}, []Feature{{Name: FeatureFactory}}},
+		{"without a database", &Config{Auth: AuthConfig{Mode: AuthNone}}, []Feature{{Name: FeatureNameFactory}}},
 		{"with a database", withResearch(&Config{Auth: AuthConfig{Mode: AuthNone}}, false),
-			[]Feature{{Name: FeatureFactory}, {Name: FeatureHistory}, {Name: FeatureResearch}}},
+			[]Feature{{Name: FeatureNameFactory}, {Name: FeatureNameHistory}, {Name: FeatureNameResearch}}},
 		{"with allowCreate", withResearch(&Config{Auth: AuthConfig{Mode: AuthNone}}, true),
-			[]Feature{{Name: FeatureFactory}, {Name: FeatureHistory}, {Name: FeatureResearch, Write: true, Namespace: "agents"}}},
+			[]Feature{{Name: FeatureNameFactory}, {Name: FeatureNameHistory}, {Name: FeatureNameResearch, Write: true, Namespace: "agents"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -59,10 +59,10 @@ func TestFeaturesOIDC(t *testing.T) {
 		roles    []string
 		want     []Feature
 	}{
-		{"factory only", true, []string{"shop-devs"}, []Feature{{Name: FeatureFactory}, {Name: FeatureHistory}}},
-		{"research reader", true, []string{"readers"}, []Feature{{Name: FeatureResearch}}},
+		{"factory only", true, []string{"shop-devs"}, []Feature{{Name: FeatureNameFactory}, {Name: FeatureNameHistory}}},
+		{"research reader", true, []string{"readers"}, []Feature{{Name: FeatureNameResearch}}},
 		{"both", true, []string{"shop-devs", "writers"},
-			[]Feature{{Name: FeatureFactory}, {Name: FeatureHistory}, {Name: FeatureResearch, Write: true, Namespace: "agents"}}},
+			[]Feature{{Name: FeatureNameFactory}, {Name: FeatureNameHistory}, {Name: FeatureNameResearch, Write: true, Namespace: "agents"}}},
 		{"research rules without a database", false, []string{"readers", "writers"}, []Feature{}},
 		{"no rule", true, []string{"other"}, []Feature{}},
 	}

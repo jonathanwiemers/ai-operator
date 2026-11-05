@@ -909,7 +909,8 @@ If your Gateway cuts long requests, the app reconnects and catches up; set
 ## Development
 
 ```sh
-make ui        # npm ci + type-check + build into web/dist/app, embedded by go build
+make ts-types  # web/src/generated/*.ts from the Go views (tygo.yaml)
+make ui        # ts-types (with Go) + npm ci + type-check + build into web/dist/app, embedded by go build
 make run-ui    # UI without login on http://127.0.0.1:9080, against your kubeconfig
 cd web && npm run dev   # live reload on http://localhost:5173, API proxied to :9080
 ```
@@ -918,6 +919,21 @@ The Go server is in `internal/ui` (`cmd/ui` wires it), the app in `web/src`.
 Without `make ui` the binary serves only the API.
 `make ui` also runs `npm test` (`node --test` in `web/test`, e.g. the markdown
 renderer). `web/src` uses no `v-html` and no `innerHTML`: keep it that way.
+
+**View types.** The TypeScript types of the API's views are generated from
+the Go structs with [tygo](https://github.com/gzuidhof/tygo) (`go tool
+tygo`, pinned in `go.mod`): `internal/ui` into `web/src/generated/views.ts`,
+the CRD types the views embed (`api/v1alpha1`) into
+`web/src/generated/api.ts`. Both are committed. After changing a view
+struct, run `make ts-types`; the CI `drift` job runs it and fails when the
+files change. `tygo.yaml` lists the files with views (server-only types such
+as the GitLab cookie and the log source live in other files) and the type
+mappings; a Go type without a mapping becomes `Unmapped`, which fails the
+type-check. String fields with a closed set of values and the open shapes
+(`map[string]any`, `[]any`) get a `tstype` tag that names a union or type in
+`web/src/types.ts`, which holds only such web-only types and the response
+envelopes the handlers build as maps. Enum types whose constants are not
+named after the type (e.g. `PauseKind`, `PauseOwner`) come out as `string`.
 
 **Research pages with seeded data.** The research pages need a research
 database and `AgentResearch` objects. For development, a local Postgres

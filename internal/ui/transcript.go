@@ -5,42 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
-
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 )
-
-// LogSource streams a container's log, following it until the container
-// stops or ctx ends, and tells whether the pod still runs.
-type LogSource interface {
-	// Stream follows the log from since (nil: from the container's start).
-	Stream(ctx context.Context, namespace, pod, container string, since *time.Time) (io.ReadCloser, error)
-	Running(ctx context.Context, namespace, pod string) bool
-}
-
-// PodLogs reads container logs through the Kubernetes API.
-type PodLogs struct{ Client kubernetes.Interface }
-
-// Stream implements LogSource.
-func (p PodLogs) Stream(ctx context.Context, namespace, pod, container string, since *time.Time) (io.ReadCloser, error) {
-	opts := &corev1.PodLogOptions{Container: container, Follow: true}
-	if since != nil {
-		opts.SinceTime = &metav1.Time{Time: *since}
-	}
-	return p.Client.CoreV1().Pods(namespace).GetLogs(pod, opts).Stream(ctx)
-}
-
-// Running implements LogSource.
-func (p PodLogs) Running(ctx context.Context, namespace, pod string) bool {
-	po, err := p.Client.CoreV1().Pods(namespace).Get(ctx, pod, metav1.GetOptions{})
-	return err == nil && po.DeletionTimestamp == nil && po.Status.Phase == corev1.PodRunning
-}
 
 // Entry is one line of a run's live transcript as the browser gets it: the
 // runner's steps and the agent's session. Only these fields ever leave the
@@ -49,12 +18,12 @@ type Entry struct {
 	Time string `json:"time,omitempty"`
 	Run  string `json:"run,omitempty"`
 	// Kind: step, cli, thinks, says, tool, answers, prompt.
-	Kind string `json:"kind"`
+	Kind string `json:"kind" tstype:"'step' | 'cli' | 'thinks' | 'says' | 'tool' | 'answers' | 'prompt'"`
 	// Step: its number, name and status (started, done, failed, deferred)
 	// and result.
 	StepNo int    `json:"stepNo,omitempty"`
 	Step   string `json:"step,omitempty"`
-	Status string `json:"status,omitempty"`
+	Status string `json:"status,omitempty" tstype:"'started' | 'done' | 'failed' | 'deferred'"`
 	Result string `json:"result,omitempty"`
 	// Agent calls (cli, prompt): which agent.
 	Role     string `json:"role,omitempty"`

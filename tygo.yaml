@@ -1,0 +1,119 @@
+# Generates the web UI's view types (web/src/generated/) from Go: make ts-types.
+# The files are committed; the CI drift job fails when they are out of date.
+#
+# An unmapped Go type becomes "Unmapped", which does not exist in TypeScript:
+# make ui (vue-tsc) fails until it gets a mapping here or a tstype tag.
+type_mappings:
+  time.Time: string
+  metav1.Time: string
+  json.RawMessage: unknown
+
+packages:
+  # The CRD types: the views embed their status types (Task.status is the
+  # AgentTask's status as it is).
+  - path: github.com/jonathanwiemers/ai-operator/api/v1alpha1
+    output_path: web/src/generated/api.ts
+    fallback_type: Unmapped
+    enum_style: union
+    include_files:
+      - agentproject_types.go
+      - agentresearch_types.go
+      - agenttask_types.go
+      - prompt.go
+    type_mappings:
+      metav1.Condition: Condition
+      metav1.ObjectMeta: ObjectMeta
+      metav1.ListMeta: ListMeta
+      metav1.Duration: string
+      resource.Quantity: string
+      corev1.PullPolicy: string
+      # Spec only, never shown in the web.
+      corev1.EnvVar: unknown
+      corev1.ResourceRequirements: unknown
+      corev1.SecretKeySelector: unknown
+      corev1.Toleration: unknown
+      # time.Duration constants, in nanoseconds like Go.
+      time.Hour: "3_600_000_000_000"
+      time.Minute: "60_000_000_000"
+    frontmatter: |
+      // The Kubernetes types the CRDs use, by hand: tygo reads only this
+      // module's packages.
+      declare namespace metav1 {
+        interface TypeMeta {
+          apiVersion?: string;
+          kind?: string;
+        }
+      }
+      export interface ObjectMeta {
+        name?: string;
+        namespace?: string;
+        uid?: string;
+        resourceVersion?: string;
+        creationTimestamp?: string;
+        deletionTimestamp?: string;
+        labels?: { [key: string]: string };
+        annotations?: { [key: string]: string };
+      }
+      export interface ListMeta {
+        resourceVersion?: string;
+        continue?: string;
+      }
+      export interface Condition {
+        type: string;
+        status: "True" | "False" | "Unknown";
+        observedGeneration?: number;
+        lastTransitionTime: string;
+        reason: string;
+        message: string;
+      }
+
+  # The views of the UI API. Only the files with views: the others hold
+  # server types (GitLabToken, the log source, the config) the web never
+  # gets.
+  - path: github.com/jonathanwiemers/ai-operator/internal/ui
+    output_path: web/src/generated/views.ts
+    fallback_type: Unmapped
+    enum_style: union
+    include_files:
+      - chat.go
+      - cost.go
+      - features.go
+      - gitlab.go
+      - milestone.go
+      - oneoff.go
+      - prompt.go
+      - research.go
+      - spend.go
+      - stream.go
+      - transcript.go
+      - view.go
+    frontmatter: |
+      import type * as aiv1 from "./api";
+      // String unions and open shapes (map[string]any, []any) the Go views
+      // leave untyped, by hand in types.ts.
+      import type { Block, ChatKind, ChatRole, ChatState, SpendLevel, StreamEventData, StreamKind } from "../types";
+    type_mappings:
+      metav1.Condition: aiv1.Condition
+      aiv1.AgentTaskStatus: aiv1.AgentTaskStatus
+      aiv1.AutopilotItemState: aiv1.AutopilotItemState
+      aiv1.AutopilotPhase: aiv1.AutopilotPhase
+      aiv1.Engine: aiv1.Engine
+      aiv1.EngineUsage: aiv1.EngineUsage
+      aiv1.IssueRef: aiv1.IssueRef
+      aiv1.MergeOverride: aiv1.MergeOverride
+      aiv1.MilestoneRef: aiv1.MilestoneRef
+      aiv1.PauseKind: aiv1.PauseKind
+      aiv1.PilotAutonomy: aiv1.PilotAutonomy
+      aiv1.PromptKind: aiv1.PromptKind
+      aiv1.PromptState: aiv1.PromptState
+      aiv1.ResearchAgent: aiv1.ResearchAgent
+      aiv1.ResearchDepth: aiv1.ResearchDepth
+      aiv1.ResearchPhase: aiv1.ResearchPhase
+      aiv1.ResearchRunStatus: aiv1.ResearchRunStatus
+      aiv1.ResearchSource: aiv1.ResearchSource
+      aiv1.ResearchView: aiv1.ResearchView
+      aiv1.ResearchWaiting: aiv1.ResearchWaiting
+      aiv1.ReviewError: aiv1.ReviewError
+      aiv1.TaskPhase: aiv1.TaskPhase
+      aiv1.TaskType: aiv1.TaskType
+      aiv1.UsageLimit: aiv1.UsageLimit

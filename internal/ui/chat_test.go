@@ -370,7 +370,7 @@ func TestFeaturesChat(t *testing.T) {
 	if code := env.get(t, "/api/v1/features", &got); code != http.StatusOK {
 		t.Fatalf("status %d", code)
 	}
-	want := []Feature{{Name: FeatureFactory}, {Name: FeatureHistory}, {Name: FeatureChat}, {Name: FeatureResearch}}
+	want := []Feature{{Name: FeatureNameFactory}, {Name: FeatureNameHistory}, {Name: FeatureNameChat}, {Name: FeatureNameResearch}}
 	if fmt.Sprint(got.Features) != fmt.Sprint(want) {
 		t.Errorf("features = %+v, want %+v", got.Features, want)
 	}

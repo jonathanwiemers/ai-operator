@@ -452,7 +452,7 @@ type ModelOption struct {
 // up to date: why, what, how, verification and, where it helps, a mermaid
 // diagram of the change.
 type DescribeSpec struct {
-	RoleSpec `json:",inline"`
+	RoleSpec `json:",inline" tstype:",extends"`
 
 	// Disabled keeps the placeholder description; the reports carry the
 	// summaries.
@@ -470,7 +470,7 @@ type AgentProfile struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
-	RoleSpec `json:",inline"`
+	RoleSpec `json:",inline" tstype:",extends"`
 }
 
 // LogLevel of the agent pods. "info" logs every step of a run and every call
@@ -599,7 +599,7 @@ type RoleFallback struct {
 
 // ImplementSpec configures the implementing agent.
 type ImplementSpec struct {
-	RoleSpec `json:",inline"`
+	RoleSpec `json:",inline" tstype:",extends"`
 
 	// StepSession is how a stepwise run (draft MR, workflow.stepCommits)
 	// goes on after each step: "resume" continues the same session,
@@ -625,7 +625,7 @@ const (
 
 // ReviewSpec configures the review loop that runs after each implementation.
 type ReviewSpec struct {
-	RoleSpec `json:",inline"`
+	RoleSpec `json:",inline" tstype:",extends"`
 
 	// Reviewers to run. Each reviewer is a separate, read-only agent that only
 	// gets the diff plus the issue as input. They run in parallel.
@@ -1245,7 +1245,7 @@ type UsageWindow struct {
 
 // AgentProject connects a GitLab project to the operator.
 type AgentProject struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta   `json:",inline" tstype:",extends"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   AgentProjectSpec   `json:"spec,omitempty"`
@@ -1256,7 +1256,7 @@ type AgentProject struct {
 
 // AgentProjectList contains a list of AgentProject.
 type AgentProjectList struct {
-	metav1.TypeMeta `json:",inline"`
+	metav1.TypeMeta `json:",inline" tstype:",extends"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AgentProject `json:"items"`
 }

@@ -32,7 +32,7 @@ type MilestoneView struct {
 	Prompts []PromptView `json:"prompts"`
 	// Tasks are the implement tasks, by issue IID.
 	Tasks []Task `json:"tasks"`
-	Cost
+	Cost  `tstype:",extends"`
 	// Permissions is what the app may offer; the endpoints check again.
 	Permissions *MilestonePermissions `json:"permissions,omitempty"`
 }

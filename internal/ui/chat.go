@@ -33,11 +33,11 @@ type ChatMessageView struct {
 	At         time.Time `json:"at"`
 	Author     string    `json:"author,omitempty"`
 	AuthorName string    `json:"authorName,omitempty"`
-	Role       string    `json:"role"`
-	Kind       string    `json:"kind"`
+	Role       string    `json:"role" tstype:"ChatRole"`
+	Kind       string    `json:"kind" tstype:"ChatKind"`
 	Body       string    `json:"body,omitempty"`
 	ReplyTo    int64     `json:"replyTo,omitempty"`
-	State      string    `json:"state,omitempty"`
+	State      string    `json:"state,omitempty" tstype:"ChatState"`
 	Reason     string    `json:"reason,omitempty"`
 	Redacted   bool      `json:"redacted,omitempty"`
 }

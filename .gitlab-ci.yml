@@ -46,7 +46,7 @@ drift:
     GOCACHE: /root/.cache/go-build
   cache: []
   script:
-    - make generate manifests
+    - make generate manifests ts-types
     - git diff --exit-code
 
 gofmt:

@@ -263,7 +263,7 @@ type ResearchRunStatus struct {
 // AgentResearch is a research question an agent answers with blocks, once or
 // on a schedule; the results are kept in the research database.
 type AgentResearch struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta   `json:",inline" tstype:",extends"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// +required
@@ -275,7 +275,7 @@ type AgentResearch struct {
 
 // AgentResearchList contains a list of AgentResearch.
 type AgentResearchList struct {
-	metav1.TypeMeta `json:",inline"`
+	metav1.TypeMeta `json:",inline" tstype:",extends"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AgentResearch `json:"items"`
 }

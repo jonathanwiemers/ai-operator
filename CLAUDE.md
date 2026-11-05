@@ -12,6 +12,11 @@
   generated files (deepcopy, CRDs, RBAC, the chart's `files/`) are out of date.
 - Before pushing: `gofmt`, `go vet ./...`, `make test`, `make helm-lint`.
   After changing the web UI (`web/`): `make ui` (type-check and build).
+- The web UI's view types (`web/src/generated/`) are generated from Go by
+  tygo (`tygo.yaml`). After changing view structs in `internal/ui` or the CRD
+  types the views embed, run `make ts-types` (`make ui` does it when Go is
+  installed); the CI `drift` job fails on stale files. Do not mirror Go views
+  in `web/src/types.ts`, it keeps only web-only types.
 - The web UI's service account is defined by hand in the chart
   (`templates/ui-rbac.yaml`): never put kubebuilder RBAC markers into
   `internal/ui`, `make manifests` would grant them to the operator.

@@ -111,13 +111,13 @@ type ProjectSummary struct {
 	EngineUsage       []aiv1.EngineUsage  `json:"engineUsage,omitempty"`
 	Conditions        []metav1.Condition  `json:"conditions,omitempty"`
 	Tasks             int                 `json:"tasks"`
-	Stages            map[Stage]int       `json:"stages"`
+	Stages            map[Stage]int       `json:"stages" tstype:"{ [key in Stage]?: number }"`
 	CreatedAt         metav1.Time         `json:"createdAt"`
 	Autopilots        []AutopilotOverview `json:"autopilots,omitempty"`
 
 	// Cost sums the tasks here; the project endpoint takes it from
 	// agent_calls when the history database is connected.
-	Cost
+	Cost `tstype:",extends"`
 }
 
 // AutopilotOverview is the state of one autopilot milestone.
@@ -135,7 +135,7 @@ type AutopilotOverview struct {
 
 // ProjectDetail is a project with its tasks grouped by milestone.
 type ProjectDetail struct {
-	ProjectSummary
+	ProjectSummary `tstype:",extends"`
 	// Milestones, newest first.
 	Milestones []Milestone `json:"milestones"`
 	// Unplanned are tasks of issues without a milestone.
@@ -155,7 +155,7 @@ type Milestone struct {
 	TrackingIssueIID int64 `json:"trackingIssueIID,omitempty"`
 	// Tasks are the implement tasks, by issue IID.
 	Tasks []Task `json:"tasks"`
-	Cost
+	Cost  `tstype:",extends"`
 }
 
 // Task is an AgentTask.

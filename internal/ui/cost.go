@@ -26,7 +26,7 @@ type Cost struct {
 	CostKnown bool   `json:"costKnown"`
 	// Tokens is the input, output and cache tokens together.
 	Tokens   int64  `json:"tokens"`
-	CostFrom string `json:"costFrom"`
+	CostFrom string `json:"costFrom" tstype:"'calls' | 'tasks'"`
 	// Spend is the breakdown of a cost from calls.
 	Spend *SpendTotalsView `json:"spend,omitempty"`
 }

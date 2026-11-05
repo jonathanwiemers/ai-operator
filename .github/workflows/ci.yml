@@ -38,7 +38,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Generated code and manifests are up to date
         run: |
-          make generate manifests
+          make generate manifests ts-types
           git diff --exit-code
       - name: gofmt
         run: test -z "$(gofmt -l api cmd internal)"

@@ -16,7 +16,7 @@ import PromptCard from '../components/PromptCard.vue'
 import TaskChat from '../components/TaskChat.vue'
 import TaskCalls from '../components/TaskCalls.vue'
 import NotFound from './NotFound.vue'
-import type { TaskResponse } from '../types'
+import type { ProposalView, TaskResponse } from '../types'
 
 const props = defineProps<{ namespace: string; name: string; task: string }>()
 const { data, error, notFound, loading } = useResource<TaskResponse>(
@@ -37,6 +37,10 @@ const heading = computed(() => {
 })
 
 const autopilotItems = computed(() => t.value?.status.autopilot?.items ?? [])
+// proposals: the pilot's proposals the chat can accept or reject (those with an ID).
+const proposals = computed((): ProposalView[] =>
+  (t.value?.status.pilot?.proposals ?? []).flatMap((p) => (p.id ? [{ id: p.id, summary: p.summary, postedAt: p.postedAt }] : [])),
+)
 
 // Conditions whose True state is the bad one.
 const negativeConditions = new Set(['Blocked'])
@@ -170,7 +174,7 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
           :task-type="t.type"
           :autopilot-phase="t.status.autopilot?.phase"
           :autopilot-items="t.status.autopilot?.items"
-          :proposals="t.status.pilot?.proposals"
+          :proposals="proposals"
         />
       </section>
 

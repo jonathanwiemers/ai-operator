@@ -10,21 +10,24 @@ import (
 
 // Feature is a top-level section of the UI the user may see.
 type Feature struct {
-	Name string `json:"name"`
+	Name FeatureName `json:"name"`
 	// Write: the user may start one-off researches, in Namespace.
 	Write     bool   `json:"write,omitempty"`
 	Namespace string `json:"namespace,omitempty"`
 }
 
+// FeatureName names a section of the UI.
+type FeatureName string
+
 // Features of the UI.
 const (
-	FeatureFactory  = "factory"
-	FeatureResearch = "research"
-	// FeatureHistory: the projects' streams reach back through the
+	FeatureNameFactory  FeatureName = "factory"
+	FeatureNameResearch FeatureName = "research"
+	// FeatureNameHistory: the projects' streams reach back through the
 	// database (the research database holds the history).
-	FeatureHistory = "history"
-	// FeatureChat: Desk chat with the agents (chat writer login and grant).
-	FeatureChat = "chat"
+	FeatureNameHistory FeatureName = "history"
+	// FeatureNameChat: Desk chat with the agents (chat writer login and grant).
+	FeatureNameChat FeatureName = "chat"
 )
 
 // features lists the sections the user may see: the factory with a factory
@@ -34,16 +37,16 @@ func (s *Server) features(w http.ResponseWriter, r *http.Request) {
 	p := principalOf(r)
 	out := []Feature{}
 	if s.authz.SeesFactory(p) {
-		out = append(out, Feature{Name: FeatureFactory})
+		out = append(out, Feature{Name: FeatureNameFactory})
 		if s.cfg.Research.Enabled() {
-			out = append(out, Feature{Name: FeatureHistory})
+			out = append(out, Feature{Name: FeatureNameHistory})
 		}
 	}
 	if s.cfg.ChatEnabled() && s.authz.SeesChat(p) {
-		out = append(out, Feature{Name: FeatureChat})
+		out = append(out, Feature{Name: FeatureNameChat})
 	}
 	if read, write := s.authz.ResearchAccess(p); read {
-		f := Feature{Name: FeatureResearch, Write: write}
+		f := Feature{Name: FeatureNameResearch, Write: write}
 		if write {
 			f.Namespace = s.cfg.Research.Namespace
 		}

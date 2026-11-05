@@ -45,7 +45,7 @@ type SpendCallView struct {
 	Effort        string  `json:"effort,omitempty"`
 	Resumed       bool    `json:"resumed"`
 	FallbackFrom  string  `json:"fallbackFrom,omitempty"`
-	CostSource    string  `json:"costSource"`
+	CostSource    string  `json:"costSource" tstype:"'reported' | 'estimated' | 'unknown'"`
 	Turns         int32   `json:"turns"`
 	ContextSeries []int64 `json:"contextSeries"`
 	SubagentTurns []int32 `json:"subagentTurns"`
@@ -55,13 +55,13 @@ type SpendCallView struct {
 // (key its IID, "" for none), an issue (its IID), a run (task/run) or a
 // call (its seq, with the call's fields).
 type SpendChildView struct {
-	Level  string           `json:"level"`
-	Key    string           `json:"key"`
-	Label  string           `json:"label"`
-	At     time.Time        `json:"at"`
-	Totals SpendTotalsView  `json:"totals"`
-	Models []ModelSplitView `json:"models"`
-	*SpendCallView
+	Level          string           `json:"level" tstype:"SpendLevel"`
+	Key            string           `json:"key"`
+	Label          string           `json:"label"`
+	At             time.Time        `json:"at"`
+	Totals         SpendTotalsView  `json:"totals"`
+	Models         []ModelSplitView `json:"models"`
+	*SpendCallView `tstype:",extends"`
 }
 
 // SpendBreakdownView sums the calls of one kind, role or model.

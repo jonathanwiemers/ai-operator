@@ -1,301 +1,90 @@
-// Mirrors the views of internal/ui/view.go and the status types of
-// api/v1alpha1.
+// The view types of the UI API come from Go: generated/views.ts (internal/ui)
+// and generated/api.ts (the CRD types of api/v1alpha1), by make ts-types
+// (tygo.yaml). Do not mirror a Go view here: change the Go struct and
+// regenerate. What stays here is web-only: the string unions and open shapes
+// the Go views leave untyped (tstype tags point here), and the response
+// envelopes the handlers build as maps.
 
-export type Stage =
-  | 'pending'
-  | 'working'
-  | 'waiting'
-  | 'needs-input'
-  | 'ci'
-  | 'review'
-  | 'planned'
-  | 'failed'
-  | 'blocked'
+import type * as views from './generated/views'
 
+export type {
+  ProjectSummary,
+  ProjectDetail,
+  Milestone,
+  Task,
+  Stage,
+  AutopilotOverview,
+  Cost,
+  MilestoneView,
+  QueueItem,
+  ProposalView,
+  PromptView,
+  PromptOptionView,
+  PromptAnswerView,
+  NoteView,
+  ThreadPart,
+  Feature,
+  StreamEvent,
+  StreamPage,
+  HistoryDay,
+  HistoryTotals,
+  HistoryResponse,
+  InboxItem,
+  ResearchSummary,
+  ResearchDetail,
+  ResearchRun,
+  ResearchResult,
+  ResearchForm,
+  ChatMessageView as ChatMessage,
+  GitLabStatusView as GitLabStatus,
+  Entry as TranscriptEntry,
+  SearchHit as ResearchSearchHit,
+  SpendView as Spend,
+  SpendTotalsView as SpendTotals,
+  SpendChildView as SpendChild,
+  SpendBreakdownView as SpendBreakdown,
+  SubagentBreakdownView as SubagentBreakdown,
+  ModelSplitView as ModelSplit,
+} from './generated/views'
+
+export type {
+  Condition,
+  UsageLimit,
+  UsageWindow,
+  EngineUsage,
+  MilestoneRef,
+  IssueRef,
+  TaskPhase,
+  CIState,
+  CIStatus,
+  RunStatus,
+  ContainerTermination,
+  PlannedIssue,
+  AutopilotPhase,
+  AutopilotStatus,
+  AutopilotItem,
+  BudgetStatus,
+  PauseKind,
+  ReviewError,
+  MergeOverride,
+  DecisionRef,
+  PilotAutonomy,
+  PilotStatus,
+  PromptKind,
+  PromptState,
+  ResearchPhase,
+  ResearchRunStatus,
+  AgentTaskStatus as TaskStatus,
+} from './generated/api'
+
+// Me is GET /api/v1/me.
 export interface Me {
   username: string
   roles: string[] | null
   authMode: 'oidc' | 'none'
 }
 
-export interface Condition {
-  type: string
-  status: 'True' | 'False' | 'Unknown'
-  reason?: string
-  message?: string
-  lastTransitionTime?: string
-}
-
-export interface UsageLimit {
-  engine: string
-  until: string
-  message?: string
-  deferred?: boolean
-}
-
-export interface UsageWindow {
-  name: string
-  percent: number
-  resetsAt?: string
-}
-
-// EngineUsage is what an engine last said about its usage windows (claude only).
-export interface EngineUsage {
-  engine: string
-  status?: string
-  windows?: UsageWindow[]
-  observedAt: string
-}
-
-export interface AutopilotOverview {
-  milestoneIID: number
-  title: string
-  phase: AutopilotPhase
-  pausedReason?: string
-  // waitingFor: a run is working on this paused issue; autopilot continues by itself.
-  waitingFor?: number
-  done: number
-  total: number
-}
-
-// Cost is what a project, milestone or task cost (Go: ui.Cost in
-// internal/ui/cost.go): from agent calls (costFrom "calls", with tokens and
-// the spend breakdown) or, without the history database, summed over the
-// live tasks (costFrom "tasks", no tokens). costUSD is "" when unknown.
-export interface Cost {
-  costUSD: string
-  costKnown: boolean
-  tokens: number
-  costFrom: 'calls' | 'tasks'
-  spend?: SpendTotals
-}
-
-export interface ProjectSummary extends Cost {
-  namespace: string
-  name: string
-  gitlab: { url: string; project: string; webURL: string }
-  suspend: boolean
-  maxConcurrentRuns: number
-  pollInterval: string
-  lastSyncTime?: string
-  usageLimits?: UsageLimit[]
-  engineUsage?: EngineUsage[]
-  conditions?: Condition[]
-  tasks: number
-  stages: Partial<Record<Stage, number>>
-  createdAt: string
-  autopilots?: AutopilotOverview[]
-}
-
-export interface ProjectDetail extends ProjectSummary {
-  milestones: Milestone[]
-  unplanned: Task[]
-}
-
-export interface Milestone extends Cost {
-  id: number
-  iid: number
-  title: string
-  webURL: string
-  spec?: Task
-  // trackingIssueIID: the milestone's tracking issue (its chat), if any.
-  trackingIssueIID?: number
-  tasks: Task[]
-}
-
-export interface MilestoneRef {
-  id: number
-  iid: number
-  title: string
-}
-
-export interface IssueRef {
-  id: number
-  iid: number
-  title: string
-  webURL?: string
-}
-
-export type TaskPhase =
-  | 'Pending'
-  | 'Queued'
-  | 'Running'
-  | 'Waiting'
-  | 'Idle'
-  | 'Hibernated'
-  | 'Archived'
-  | 'Blocked'
-
-export type CIState =
-  | 'Pending'
-  | 'Running'
-  | 'Fixing'
-  | 'Success'
-  | 'Failed'
-  | 'BaseFailing'
-  | 'Canceled'
-  | 'None'
-
-export interface CIStatus {
-  sha: string
-  state: CIState
-  pipelineID?: number
-  pipelineURL?: string
-  retried?: boolean
-  failedJobs?: string[]
-}
-
-export interface RunStatus {
-  activeRunRequest?: number
-  observedRunRequest?: number
-  currentStep?: string
-  runCount?: number
-  lastActivityTime?: string
-  lastResult?: 'Succeeded' | 'NeedsInput' | 'Failed' | 'Deferred'
-  summary?: string
-  costUSD?: string
-  branch?: string
-  mergeRequestIID?: number
-  mergeRequestURL?: string
-  deferredUntil?: string
-  // Deprecated: limitedEngine(run) reads usageLimits first.
-  limitedEngine?: string
-  usageLimits?: UsageLimit[]
-  deferrals?: number
-  oomRetries?: number
-  pushedSHA?: string
-  pushedAt?: string
-  ciRound?: number
-  blockingFindings?: number
-  reviewErrors?: number
-  reviewedSHA?: string
-}
-
-export interface ContainerTermination {
-  reason?: string
-  exitCode?: number
-  finishedAt?: string
-  restarts?: number
-  memoryLimit?: string
-}
-
-export interface PlannedIssue {
-  key: string
-  iid: number
-  title?: string
-  dependsOn?: number[]
-}
-
-export type AutopilotPhase = 'Running' | 'Paused' | 'Done' | 'Off'
-
-// PauseKind mirrors api/v1alpha1.PauseKind: why autopilot paused.
-export type PauseKind =
-  | 'owner'
-  | 'cycle'
-  | 'stuck'
-  | 'needsInput'
-  | 'runFailed'
-  | 'findings'
-  | 'reviewErrors'
-  | 'notReviewed'
-  | 'ciRed'
-  | 'ciCanceled'
-  | 'mergeRequest'
-  | 'mainRed'
-  | 'config'
-  | 'budget'
-
-// ReviewError mirrors api/v1alpha1.ReviewError: why one reviewer failed.
-export interface ReviewError {
-  reviewer: string
-  kind: 'usageLimit' | 'transient' | 'other'
-  // engine and resetAt: the limited engine and when it resets (usageLimit).
-  engine?: string
-  resetAt?: string
-}
-
-// MergeOverride mirrors api/v1alpha1.MergeOverride: an owner's "merge anyway".
-export interface MergeOverride {
-  issueIID: number
-  sha: string
-  by: string
-  at: string
-}
-
-export interface DecisionRef {
-  id: string
-  title?: string
-  url?: string
-  superseded?: boolean
-}
-
-export interface AutopilotItem {
-  iid: number
-  state: 'Pending' | 'Active' | 'Merged' | 'Skipped'
-  mergeRequestIID?: number
-  mergeRequestURL?: string
-  mergedSHA?: string
-  markedReady?: boolean
-  decisions?: DecisionRef[]
-  revisitOf?: string
-  budget?: BudgetStatus
-}
-
-// BudgetStatus is a budget and its spend (status.autopilot.budget, and an
-// item's budget).
-export interface BudgetStatus {
-  limitUSD: string
-  spentUSD?: string
-  warnedAt?: string
-}
-
-export interface AutopilotStatus {
-  phase: AutopilotPhase
-  trackingIssueIID?: number
-  pausedReason?: string
-  pauseKind?: PauseKind
-  pausedFor?: number
-  resumeWhenReady?: boolean
-  items?: AutopilotItem[]
-  budget?: BudgetStatus
-}
-
-export interface PilotStatus {
-  // proposals: open proposals on the tracking issue (Coordinate tasks).
-  proposals?: ProposalView[]
-}
-
-export interface TaskStatus {
-  phase?: TaskPhase
-  podName?: string
-  workspaceClaimName?: string
-  message?: string
-  agentTermination?: ContainerTermination
-  agentMemoryLimit?: string
-  run?: RunStatus
-  ci?: CIStatus
-  plan?: PlannedIssue[]
-  autopilot?: AutopilotStatus
-  pilot?: PilotStatus
-  conditions?: Condition[]
-}
-
-export interface Task {
-  namespace: string
-  name: string
-  project: string
-  type: 'Spec' | 'Implement' | 'Coordinate'
-  milestone?: MilestoneRef
-  issue?: IssueRef
-  suspend: boolean
-  autopilot: boolean
-  runRequest: number
-  runPending: boolean
-  stage: Stage
-  createdAt: string
-  status: TaskStatus
-}
-
+// Permissions is what the task page may offer (GET .../tasks/{task}).
 export interface Permissions {
   // transcript: the live transcript (and prompts) of the task's runs.
   transcript: boolean
@@ -307,206 +96,23 @@ export interface Permissions {
   chat?: boolean
 }
 
-export interface GitLabStatus {
-  enabled: boolean
-  url?: string
-  connected?: boolean
-  username?: string
-  // login: where to connect an account; absent without an OAuth app.
-  login?: string
-  // fixed: connected with a configured token (no disconnect).
-  fixed?: boolean
-}
-
-export interface NoteView {
-  id: number
-  author: string
-  body: string
-  system?: boolean
-  createdAt?: string
-}
-
-export interface ThreadPart {
-  target: 'issue' | 'mr' | 'tracking'
-  iid: number
-  webURL: string
-  notes: NoteView[] | null
-}
-
-export type PilotAutonomy = 'propose' | 'managed'
-
-// MilestoneView mirrors internal/ui/milestone.go. pausedReason and proposal
-// summaries are raw agent and CI text: shown as text only.
-export interface MilestoneView extends Cost {
-  id: number
-  iid: number
-  title: string
-  webURL: string
-  spec: Task
-  autopilot?: {
-    phase: AutopilotPhase
-    pausedReason?: string
-    waitingFor?: number
-    // pauseKind and pausedFor: why and over which issue it paused; head is
-    // that issue's pushed SHA (what "merge anyway" names).
-    pauseKind?: PauseKind
-    pausedFor?: number
-    head?: string
-    reviewErrors?: ReviewError[]
-    mergeOverride?: MergeOverride
-    items: QueueItem[]
-  }
-  tracking?: { iid: number; webURL: string }
-  pilot?: {
-    task: string
-    autonomy: PilotAutonomy
-    proposals: ProposalView[]
-    costUSD: string
-    phase?: TaskPhase
-    message?: string
-    podName?: string
-  }
-  // prompts: open and the newest closed, newest first; answered on
-  // pilot.task.
-  prompts: PromptView[]
-  tasks: Task[]
-  permissions?: {
-    gitlab: boolean
-    steer: boolean
-    chat: boolean
-    transcript: boolean
-    // merge: may send the owner-only merge override.
-    merge?: boolean
-  }
-}
-
-export interface QueueItem {
-  iid: number
-  title: string
-  state: AutopilotItem['state']
-  mergeRequestIID?: number
-  mergeRequestURL?: string
-  // task: the issue's implement task, if there is one.
-  task?: string
-}
-
-export interface ProposalView {
-  id: number
-  summary: string
-  postedAt?: string
-}
-
-// PromptView mirrors internal/ui/prompt.go: one question to the owners.
-// question, context, option labels, details and actions and the answer's
-// text are untrusted: rendered as markdown without HTML, or as text.
-export type PromptKind = 'assessment' | 'mainHealth' | 'needsInput' | 'revisit' | 'budget' | 'proposal'
-export type PromptState = 'open' | 'answered' | 'superseded' | 'expired'
-
-export interface PromptView {
-  id: string
-  kind: PromptKind
-  question: string
-  context?: string
-  // options: the recommended one first.
-  options: PromptOptionView[]
-  allowFreeText: boolean
-  state: PromptState
-  answer?: PromptAnswerView
-  issueIID?: number
-  mrIID?: number
-  task?: string
-  postedAt?: string
-  closedAt?: string
-  // canAnswer: open, and the user is an owner with the Desk chat.
-  canAnswer: boolean
-  // target: the task whose chat takes the answer command.
-  target: { namespace: string; task: string }
-}
-
-export interface PromptOptionView {
-  id: string
-  label: string
-  detail?: string
-  // actions: what choosing it does, in plain text.
-  actions: string[]
-  recommended: boolean
-  fromAnswer: boolean
-}
-
-export interface PromptAnswerView {
-  optionID?: string
-  text?: string
-  by: string
-  at: string
-  via?: 'desk' | 'gitlab'
-  outcome?: string
-}
-
+// TaskResponse is GET .../tasks/{task}.
 export interface TaskResponse {
-  project: ProjectSummary
-  task: Task
+  project: views.ProjectSummary
+  task: views.Task
   // prompts: the agent's questions (Implement tasks), newest first.
-  prompts: PromptView[]
-  cost: Cost
+  prompts: views.PromptView[]
+  cost: views.Cost
   permissions?: Permissions
-}
-
-// TranscriptEntry is one line of a run's live transcript.
-export interface TranscriptEntry {
-  time?: string
-  run?: string
-  kind: 'step' | 'cli' | 'thinks' | 'says' | 'tool' | 'answers' | 'prompt'
-  stepNo?: number
-  step?: string
-  status?: 'started' | 'done' | 'failed' | 'deferred'
-  result?: string
-  role?: string
-  engine?: string
-  model?: string
-  readOnly?: boolean
-  text?: string
-  tool?: string
-  input?: string
-  system?: string
-  prompt?: string
-  // Subagents: parent on a subagent's lines (with model and tokens),
-  // toolUseID and subagent on the tool line that started it.
-  parent?: string
-  toolUseID?: string
-  subagent?: string
-  tokens?: number
-}
-
-// Feature is a section of the UI the user may see (GET /api/v1/features).
-// write and namespace: the user may start one-off researches, in namespace.
-// history: the research database is configured (stream history available).
-export interface Feature {
-  name: 'factory' | 'research' | 'history' | 'chat'
-  write?: boolean
-  namespace?: string
 }
 
 export type ChatRole = 'user' | 'agent' | 'system'
 export type ChatKind = 'message' | 'interrupt' | 'command'
 export type ChatState = 'queued' | 'delivered' | 'answered' | 'failed' | 'deferred'
 
-// ChatMessage is one row of GET .../tasks/{task}/chat (newest first).
-export interface ChatMessage {
-  id: number
-  at: string
-  author?: string
-  authorName?: string
-  role: ChatRole
-  kind: ChatKind
-  body?: string
-  redacted?: boolean
-  replyTo?: number
-  state?: ChatState
-  reason?: string
-}
-
+// ChatPage is GET .../tasks/{task}/chat (newest first).
 export interface ChatPage {
-  messages: ChatMessage[]
+  messages: views.ChatMessageView[]
 }
 
 export type StreamKind =
@@ -527,255 +133,56 @@ export type StreamKind =
   | 'chat.user'
   | 'chat.agent'
 
-export interface StreamEvent {
-  id: number
-  at: string
-  namespace: string
-  project: string
-  milestoneIID?: number
-  issueIID?: number
-  mergeRequestIID?: number
-  task?: string
-  kind: StreamKind
-  actor?: string
-  summary: string
-  redacted?: boolean
-  data: {
-    body?: string
-    bot?: boolean
-    url?: string
-    noteable?: 'issue' | 'mr'
-    request?: number
-    result?: string
-    runSummary?: string
-    costUSD?: string
-    durationSec?: number
-    runCount?: number
-    sha?: string
-    branch?: string
-    state?: string
-    pipelineID?: number
-    pipelineURL?: string
-    failedJobs?: string[]
-    round?: number
-    blocking?: number
-    reviewErrors?: number
-    reason?: string
-    message?: string
-    mergeRequestURL?: string
-    phase?: string
-    proposalID?: number
-    proposalState?: string
-    // prompt.* events.
-    promptID?: string
-    promptKind?: string
-    optionLabel?: string
-    by?: string
-    // Desk chat (chat.user / chat.agent).
-    role?: ChatRole
-    kind?: ChatKind
-    authorName?: string
-    replyTo?: number
-  }
-}
-
-export interface StreamPage {
-  events: StreamEvent[]
-  older?: string
-  newest?: string
-  history: boolean
-}
-
-export interface HistoryDay {
-  day: string
-  runs: number
-  merged: number
-  costUSD: number
-  events: number
-}
-
-export interface HistoryTotals {
-  runs: number
-  merged: number
-  costUSD: number
-  events: number
-  medianCycleMin?: number
-}
-
-export interface HistoryResponse {
-  days: HistoryDay[]
-  totals: HistoryTotals
-  previous: HistoryTotals
-}
-
-// SpendTotals sums agent calls. costUSD is '' when no cost is known
-// (costKnown false): show "n/a", never $0.
-export interface SpendTotals {
-  costUSD: string
-  costKnown: boolean
-  unknownCalls: number
-  inputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheWriteTokens: number
-  calls: number
-  subagentCalls: number
-  durationMS: number
-  // legacyCostUSD: the part of costUSD from runs before agent calls were recorded.
-  legacyCostUSD?: string
-}
-
-// ModelSplit is one model's share of a spend child; main is the calls' own
-// model, the others ran as subagents.
-export interface ModelSplit {
-  model: string
-  main: boolean
-  tokens: number
-  costUSD: string
-  costKnown: boolean
+// StreamEventData is a stream event's data (Go: map[string]any): the keys
+// of all kinds.
+export interface StreamEventData {
+  body?: string
+  bot?: boolean
+  url?: string
+  noteable?: 'issue' | 'mr'
+  request?: number
+  result?: string
+  runSummary?: string
+  costUSD?: string
+  durationSec?: number
+  runCount?: number
+  sha?: string
+  branch?: string
+  state?: string
+  pipelineID?: number
+  pipelineURL?: string
+  failedJobs?: string[]
+  round?: number
+  blocking?: number
+  reviewErrors?: number
+  reason?: string
+  message?: string
+  mergeRequestURL?: string
+  phase?: string
+  proposalID?: number
+  proposalState?: string
+  // prompt.* events.
+  promptID?: string
+  promptKind?: string
+  optionLabel?: string
+  by?: string
+  // Desk chat (chat.user / chat.agent).
+  role?: ChatRole
+  kind?: ChatKind
+  authorName?: string
+  replyTo?: number
 }
 
 export type SpendLevel = 'milestone' | 'issue' | 'run' | 'call'
 
-// SpendChild is one part of a spend scope at the next level. key: the
-// milestone or issue IID ('' for no milestone), task/run of a run, the seq of
-// a call. The call fields are set on calls only.
-export interface SpendChild {
-  level: SpendLevel
-  key: string
-  label: string
-  at: string
-  totals: SpendTotals
-  models: ModelSplit[]
-  kind?: string
-  role?: string
-  engine?: string
-  model?: string
-  effort?: string
-  resumed?: boolean
-  fallbackFrom?: string
-  costSource?: 'reported' | 'estimated' | 'unknown'
-  turns?: number
-  // contextSeries: the context tokens of each main-thread turn;
-  // subagentTurns: indexes into it after which a subagent ran.
-  contextSeries?: number[]
-  subagentTurns?: number[]
-}
-
-export interface SpendBreakdown {
-  key: string
-  totals: SpendTotals
-}
-
-// SubagentBreakdown sums a role's calls that ran subagents or none;
-// subagentTokens are the tokens of the subagent models.
-export interface SubagentBreakdown {
-  role: string
-  withSubagents: boolean
-  totals: SpendTotals
-  subagentTokens: number
-}
-
-// Spend is what a scope cost. byReviewRound is keyed by round ('1', '2',
-// …), bySession by 'fresh' or 'resumed' (implement calls only).
-export interface Spend {
-  totals: SpendTotals
-  children: SpendChild[]
-  byKind: SpendBreakdown[]
-  byRole: SpendBreakdown[]
-  byModel: SpendBreakdown[]
-  byReviewRound: SpendBreakdown[]
-  bySession: SpendBreakdown[]
-  bySubagents: SubagentBreakdown[]
-  cacheReadShare: number
-}
-
-export interface InboxItem {
-  namespace: string
-  project: string
-  kind: 'task' | 'proposal' | 'pause' | 'prompt'
-  // promptID: the open prompt (kind prompt); reason is its kind.
-  promptID?: string
-  // pauseKind: why the milestone's autopilot paused (kind pause).
-  pauseKind?: PauseKind
-  task?: string
-  issueIID?: number
-  milestoneIID?: number
-  proposalID?: number
-  title: string
-  reason: string
-  at?: string
-  url?: string
-}
-
+// InboxResponse is GET /api/v1/inbox.
 export interface InboxResponse {
-  items: InboxItem[]
+  items: views.InboxItem[]
 }
 
-export type ResearchPhase = 'Scheduled' | 'Running' | 'Waiting' | 'Succeeded' | 'Failed'
-
-export interface ResearchRunStatus {
-  id?: string
-  startedAt?: string
-  finishedAt?: string
-  engine?: string
-  model?: string
-  effort?: string
-  reason?: string
-  outcome?: 'succeeded' | 'degraded' | 'failed' | 'limited'
-  message?: string
-  costUSD?: string
-}
-
-// ResearchSummary is an AgentResearch as the research pages show it.
-export interface ResearchSummary {
-  namespace: string
-  name: string
-  view: 'newsflash' | 'report'
-  depth: 'quick' | 'deep'
-  schedule?: string
-  timeZone?: string
-  phase?: ResearchPhase
-  lastRun?: string
-  nextRun?: string
-  lastEngine?: string
-  lastModel?: string
-  run?: ResearchRunStatus
-  skippedReason?: string
-  waiting?: { engine: string; until: string }
-  oneOff: boolean
-  createdBy?: string
-  // canDelete: the user may delete it here (their own one-off).
-  canDelete: boolean
-}
-
-// ResearchDetail is a research with what its page shows besides the summary.
-// agent is absent for auto.
-export interface ResearchDetail extends ResearchSummary {
-  prompt: string
-  topics?: string[]
-  sources?: { url: string; name?: string; topic?: string }[]
-  agent?: { engine: string; model: string; effort?: string }
-}
-
-// ResearchRun is a stored run (internal/ui/research.go).
-export interface ResearchRun {
-  id: string
-  startedAt: string
-  finishedAt?: string
-  status: 'running' | 'succeeded' | 'degraded' | 'failed' | 'limited'
-  engine?: string
-  model?: string
-  effort?: string
-  costUSD: string
-  choiceReason?: string
-  error?: string
-  warnings?: string[]
-  expiresAt: string
-}
-
-// Blocks of schema v1 (internal/research/blocks), validated by the server.
-// Their text is untrusted agent output: rendered as text only.
+// Blocks of schema v1 (internal/research/blocks), validated by the server;
+// the result view passes them on as []any. Their text is untrusted agent
+// output: rendered as text only.
 export interface HeadingBlock {
   type: 'heading'
   text: string
@@ -822,55 +229,21 @@ export interface LinksBlock {
 
 export type Block = HeadingBlock | MarkdownBlock | ItemsBlock | TableBlock | StatsBlock | LinksBlock
 
-export interface ResearchResult {
-  runID: string
-  title: string
-  summary: string
-  blocks: Block[]
-  createdAt: string
-  expiresAt: string
-  warnings?: string[]
-}
-
 // ResearchResponse is a research page (GET /researches/{ns}/{name}, run is
 // the latest result's) or a run page (…/runs/{id}). run and result are null
 // before there is one.
 export interface ResearchResponse {
-  research: ResearchDetail
-  run: ResearchRun | null
-  result: ResearchResult | null
+  research: views.ResearchDetail
+  run: views.ResearchRun | null
+  result: views.ResearchResult | null
 }
 
 // ResearchRunsPage is GET /researches/{ns}/{name}/runs (?before=, ?limit=).
 export interface ResearchRunsPage {
-  runs: ResearchRun[]
+  runs: views.ResearchRun[]
 }
 
-// ResearchSearchHit is one hit of GET /api/v1/research/search?q=.
-export interface ResearchSearchHit {
-  runID: string
-  namespace: string
-  research: string
-  title: string
-  summary: string
-  createdAt: string
-}
-
+// ResearchSearchPage is GET /api/v1/research/search?q=.
 export interface ResearchSearchPage {
-  hits: ResearchSearchHit[]
-}
-
-// ResearchForm is GET /api/v1/research/form: what the one-off form offers.
-// A project without a writer login is not available, reason says why.
-export interface ResearchForm {
-  namespace: string
-  projects: {
-    name: string
-    available: boolean
-    reason?: string
-    models: { engine: string; model: string; label: string }[]
-  }[]
-  depths: ResearchSummary['depth'][]
-  views: ResearchSummary['view'][]
-  efforts: string[]
+  hits: views.SearchHit[]
 }

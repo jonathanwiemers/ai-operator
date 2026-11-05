@@ -1160,7 +1160,7 @@ type CallModelUsage struct {
 // AgentTask is one unit of agent work: planning a milestone or implementing
 // an issue. It owns the agent pod and the workspace PVC.
 type AgentTask struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta   `json:",inline" tstype:",extends"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   AgentTaskSpec   `json:"spec,omitempty"`
@@ -1171,7 +1171,7 @@ type AgentTask struct {
 
 // AgentTaskList contains a list of AgentTask.
 type AgentTaskList struct {
-	metav1.TypeMeta `json:",inline"`
+	metav1.TypeMeta `json:",inline" tstype:",extends"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AgentTask `json:"items"`
 }

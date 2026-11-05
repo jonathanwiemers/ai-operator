@@ -42,7 +42,9 @@ const openMR: PauseAction = { id: 'openMR', label: 'Open MR', target: 'link' }
 const openPlan: PauseAction = { id: 'openPlan', label: 'Open plan', target: 'link' }
 
 // The actions per kind (spec desk-pause-card, section 3), in button order.
-const actionsByKind: Record<PauseKind, PauseAction[]> = {
+// PauseKind is a string in Go (its consts are not named after the type, so
+// tygo emits no union): the kinds the card knows are the keys here.
+const actionsByKind = {
   reviewErrors: [review, merge, skip],
   notReviewed: [review, merge, skip],
   findings: [retry, openChat, skip],
@@ -59,9 +61,11 @@ const actionsByKind: Record<PauseKind, PauseAction[]> = {
   // Resume would pause again at once: the owner raises the budget (the
   // milestone's line, or the issue's with a comment).
   budget: [],
-}
+} satisfies Record<PauseKind, PauseAction[]>
 
-function known(kind: string | undefined): kind is PauseKind {
+type KnownPauseKind = keyof typeof actionsByKind
+
+function known(kind: string | undefined): kind is KnownPauseKind {
   return !!kind && Object.prototype.hasOwnProperty.call(actionsByKind, kind)
 }
 
@@ -129,7 +133,7 @@ export function pauseEndsBy(kind: PauseKind | undefined, issue?: number): string
   }
 }
 
-const titles: Record<PauseKind, string> = {
+const titles: Record<KnownPauseKind, string> = {
   owner: 'Paused by an owner',
   cycle: 'The plan has a dependency cycle',
   stuck: 'No issue can start',

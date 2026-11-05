@@ -56,11 +56,11 @@ type ResearchSummary struct {
 // ResearchDetail is a research as its pages show it: the summary with the
 // prompt, the topics, the feed sources and the fixed agent (nil for auto).
 type ResearchDetail struct {
-	ResearchSummary
-	Prompt  string                `json:"prompt"`
-	Topics  []string              `json:"topics,omitempty"`
-	Sources []aiv1.ResearchSource `json:"sources,omitempty"`
-	Agent   *aiv1.ResearchAgent   `json:"agent,omitempty"`
+	ResearchSummary `tstype:",extends"`
+	Prompt          string                `json:"prompt"`
+	Topics          []string              `json:"topics,omitempty"`
+	Sources         []aiv1.ResearchSource `json:"sources,omitempty"`
+	Agent           *aiv1.ResearchAgent   `json:"agent,omitempty"`
 }
 
 // ResearchRun is a stored run.
@@ -68,7 +68,7 @@ type ResearchRun struct {
 	ID           string     `json:"id"`
 	StartedAt    time.Time  `json:"startedAt"`
 	FinishedAt   *time.Time `json:"finishedAt,omitempty"`
-	Status       string     `json:"status"`
+	Status       string     `json:"status" tstype:"'running' | 'succeeded' | 'degraded' | 'failed' | 'limited'"`
 	Engine       string     `json:"engine,omitempty"`
 	Model        string     `json:"model,omitempty"`
 	Effort       string     `json:"effort,omitempty"`
@@ -86,7 +86,7 @@ type ResearchResult struct {
 	RunID     string    `json:"runID"`
 	Title     string    `json:"title"`
 	Summary   string    `json:"summary"`
-	Blocks    []any     `json:"blocks"`
+	Blocks    []any     `json:"blocks" tstype:"Block[]"`
 	CreatedAt time.Time `json:"createdAt"`
 	ExpiresAt time.Time `json:"expiresAt"`
 	Warnings  []string  `json:"warnings,omitempty"`

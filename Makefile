@@ -57,8 +57,15 @@ build:
 	go build -o bin/ai-runner ./cmd/runner
 	go build -o bin/ai-operator-ui ./cmd/ui
 
+.PHONY: ts-types
+ts-types: ## Generate the web UI's view types (web/src/generated) from the Go views (tygo.yaml).
+	go tool tygo generate
+
 .PHONY: ui
+# ts-types first where Go is installed (the CI ui job runs in a node image;
+# the drift job checks the generated types).
 ui: ## Test, type-check and build the web UI into web/dist/app (embedded by go build).
+	if command -v go >/dev/null; then $(MAKE) ts-types; fi
 	cd web && npm ci && npm test && npm run build
 
 .PHONY: docker-build

@@ -67,15 +67,6 @@ function spendDelta(cur: number, prev: number) {
   return { text: `${pct > 0 ? '+' : ''}${pct}%`, cls: pct > 0 ? 'down' : 'up' }
 }
 
-function cycleDelta(cur?: number, prev?: number) {
-  if (cur == null) return { text: '—', cls: '' }
-  if (prev == null) return { text: '', cls: '' }
-  const d = cur - prev
-  if (d === 0) return { text: 'same', cls: '' }
-  // Lower cycle time is better → up.
-  return { text: `${d > 0 ? '+' : ''}${d} min`, cls: d < 0 ? 'up' : 'down' }
-}
-
 function inboxTo(item: InboxItem) {
   if (item.kind === 'task' && item.task) {
     return {
@@ -166,6 +157,13 @@ function inboxTo(item: InboxItem) {
       </div>
       <div class="stats">
         <div class="stat">
+          <div class="v">{{ history.totals.runs }}</div>
+          <div class="l">runs</div>
+          <div class="d" :class="delta(history.totals.runs, history.previous.runs).cls">
+            {{ delta(history.totals.runs, history.previous.runs).text }}
+          </div>
+        </div>
+        <div class="stat">
           <div class="v">{{ history.totals.merged }}</div>
           <div class="l">MRs merged</div>
           <div class="d" :class="delta(history.totals.merged, history.previous.merged).cls">
@@ -177,13 +175,6 @@ function inboxTo(item: InboxItem) {
           <div class="l">model spend</div>
           <div class="d" :class="spendDelta(history.totals.costUSD, history.previous.costUSD).cls">
             {{ spendDelta(history.totals.costUSD, history.previous.costUSD).text }}
-          </div>
-        </div>
-        <div class="stat">
-          <div class="v">{{ history.totals.medianCycleMin != null ? `${history.totals.medianCycleMin} min` : '—' }}</div>
-          <div class="l">median cycle</div>
-          <div class="d" :class="cycleDelta(history.totals.medianCycleMin, history.previous.medianCycleMin).cls">
-            {{ cycleDelta(history.totals.medianCycleMin, history.previous.medianCycleMin).text }}
           </div>
         </div>
         <div class="stat">

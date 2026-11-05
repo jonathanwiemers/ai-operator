@@ -63,7 +63,7 @@ type PromptAnswerView struct {
 	Text     string      `json:"text,omitempty"`
 	By       string      `json:"by"`
 	At       metav1.Time `json:"at"`
-	Via      string      `json:"via,omitempty"`
+	Via      string      `json:"via,omitempty" tstype:"'desk' | 'gitlab'"`
 	// Outcome is the operator's markdown of what the chosen actions did.
 	Outcome string `json:"outcome,omitempty"`
 }

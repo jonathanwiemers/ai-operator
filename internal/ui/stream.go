@@ -26,11 +26,11 @@ type StreamEvent struct {
 	IssueIID        int64          `json:"issueIID,omitempty"`
 	MergeRequestIID int64          `json:"mergeRequestIID,omitempty"`
 	Task            string         `json:"task,omitempty"`
-	Kind            string         `json:"kind"`
+	Kind            string         `json:"kind" tstype:"StreamKind"`
 	Actor           string         `json:"actor,omitempty"`
 	Summary         string         `json:"summary"`
 	Redacted        bool           `json:"redacted,omitempty"`
-	Data            map[string]any `json:"data"`
+	Data            map[string]any `json:"data" tstype:"StreamEventData"`
 }
 
 // StreamPage is a page of events, newest first.
@@ -483,7 +483,7 @@ func (t *HistoryTotals) add(d store.Day) {
 type InboxItem struct {
 	Namespace    string `json:"namespace"`
 	Project      string `json:"project"`
-	Kind         string `json:"kind"` // task, proposal, pause or prompt
+	Kind         string `json:"kind" tstype:"'task' | 'proposal' | 'pause' | 'prompt'"`
 	Task         string `json:"task,omitempty"`
 	IssueIID     int64  `json:"issueIID,omitempty"`
 	MilestoneIID int64  `json:"milestoneIID,omitempty"`
