@@ -46,6 +46,15 @@ GitLab comments in your name and work exactly the same.
 Moving the issue back to `agent::ready` also starts a run, e.g. after you
 answered the agent's questions.
 
+**Issues without an `agent::` label** are not the agent's yet: a command
+there starts nothing. On the issues the operator watches (open issues with
+the generated label, `ci::*` ones too, and the queue of an autopilot
+milestone) an `/agent` or `/pilot` comment gets one reply saying so: add
+`agent::ready` (`workflow.readyLabel`) to hand the issue over. A `use` or
+`effort` command is applied once the issue has the label, and the reply
+says that instead. The operator replies once per comment, also after a
+restart; comments from before the operator watched are not answered.
+
 ### Model and effort
 
 `/agent use` and `/agent effort` change **labels** on the issue, and the

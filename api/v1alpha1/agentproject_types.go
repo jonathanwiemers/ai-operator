@@ -1060,8 +1060,28 @@ type AgentProjectStatus struct {
 	// +optional
 	Webhook *WebhookStatus `json:"webhook,omitempty"`
 
+	// CommandReplies tracks the replies to "/agent" and "/pilot" comments
+	// the operator does not act on, so each gets one.
+	// +optional
+	CommandReplies *CommandRepliesStatus `json:"commandReplies,omitempty"`
+
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// MaxCommandReplies bounds CommandRepliesStatus.Replied.
+const MaxCommandReplies = 200
+
+// CommandRepliesStatus is the watermark of the comments answered with why
+// the operator does not act on them.
+type CommandRepliesStatus struct {
+	// Since is the start of the last scan; older comments were scanned.
+	// +optional
+	Since *metav1.Time `json:"since,omitempty"`
+	// Replied are the IDs of the comments answered, newest last
+	// (MaxCommandReplies at most). The reply's marker covers older ones.
+	// +optional
+	Replied []int64 `json:"replied,omitempty"`
 }
 
 // UsageLimit is an engine's active usage or rate limit.

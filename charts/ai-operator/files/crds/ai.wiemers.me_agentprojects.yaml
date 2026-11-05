@@ -1702,6 +1702,25 @@ spec:
                   BotUsername is the username of BotUserID, read on every poll, so a
                   renamed bot is still recognized in mentions.
                 type: string
+              commandReplies:
+                description: |-
+                  CommandReplies tracks the replies to "/agent" and "/pilot" comments
+                  the operator does not act on, so each gets one.
+                properties:
+                  replied:
+                    description: |-
+                      Replied are the IDs of the comments answered, newest last
+                      (MaxCommandReplies at most). The reply's marker covers older ones.
+                    items:
+                      format: int64
+                      type: integer
+                    type: array
+                  since:
+                    description: Since is the start of the last scan; older comments
+                      were scanned.
+                    format: date-time
+                    type: string
+                type: object
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current

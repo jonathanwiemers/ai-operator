@@ -268,6 +268,7 @@ func (r *AgentProjectReconciler) gitlabClient(ctx context.Context, project *aiv1
 
 // sync performs one GitLab poll.
 func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) error {
+	started := r.now()
 	gl, err := r.gitlabClient(ctx, project, spec)
 	if err != nil {
 		return err
@@ -501,6 +502,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			errs = append(errs, err)
 		}
 	}
+
+	// Commands on watched issues the operator does not act on get a reply.
+	r.syncCommandReplies(ctx, gl, project, spec, autopilots, started)
 
 	// Everything else is done, closed, unlabeled or out of scope: delete the
 	// task, which garbage collects its pod and workspace. Tasks of issues
