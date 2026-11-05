@@ -1,3 +1,5 @@
+import type { ChatCommand } from './chatState'
+import type { MilestonePermissions } from './generated/views'
 import type { AutopilotItem, DecisionRef, QueueItem } from './types'
 
 // QueueRow is one issue of a milestone's autopilot queue: the view's item
@@ -24,4 +26,22 @@ export function queueDone(items: { state: QueueItem['state'] }[]): number {
 
 export function queueTone(s: QueueItem['state']): 'success' | 'progress' | 'warning' | 'muted' {
   return s === 'Merged' ? 'success' : s === 'Active' ? 'progress' : s === 'Skipped' ? 'warning' : 'muted'
+}
+
+// revisitCommand is the chat command that opens a revisit prompt for a
+// decision, the same as `/agent revisit <id>`.
+export function revisitCommand(decisionID: string): ChatCommand {
+  return { cmd: 'revisit', decision: decisionID.trim().toUpperCase() }
+}
+
+// canRevisit: owners (the merge permission is chat plus owner subject) may
+// revisit a decision that is not superseded.
+export function canRevisit(d: DecisionRef, permissions?: Pick<MilestonePermissions, 'chat' | 'merge'>): boolean {
+  return !!permissions?.chat && !!permissions.merge && !d.superseded && !!d.id.trim()
+}
+
+// revisitPromptID finds the prompt id ("Q7") the operator's answer to a
+// revisit names, or '' when it names none.
+export function revisitPromptID(answer: string): string {
+  return /\bQ\d+\b/.exec(answer)?.[0] ?? ''
 }

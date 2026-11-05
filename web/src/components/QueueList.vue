@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { queueRows, queueTone } from '../milestoneQueue'
+import { computed, ref, watch } from 'vue'
+import { chatPostError, getTaskChat, postTaskChat } from '../api'
+import { live } from '../live'
+import { canRevisit, queueRows, queueTone, revisitCommand, revisitPromptID } from '../milestoneQueue'
+import { commandAnswer, type CommandAnswer } from '../pauseCard'
 import type { MilestoneView } from '../types'
 import Badge from './Badge.vue'
 import ExtLink from './ExtLink.vue'
@@ -13,6 +16,47 @@ const props = defineProps<{ namespace: string; name: string; milestone: Mileston
 const rows = computed(() =>
   queueRows(props.milestone.autopilot?.items ?? [], props.milestone.spec.status.autopilot?.items),
 )
+
+// Revisit: owners send {cmd:'revisit', decision} to the pilot task (the
+// target of milestone prompts); the operator's reply names the new prompt.
+const pilotTask = computed(() => props.milestone.pilot?.task)
+const sending = ref('')
+const error = ref('')
+const sent = ref<{ id: number; task: string; decision: string } | null>(null)
+const answer = ref<CommandAnswer>({ state: 'pending' })
+const promptID = computed(() => (answer.value.state === 'answered' ? revisitPromptID(answer.value.text) : ''))
+
+async function revisit(decision: string) {
+  const task = pilotTask.value
+  if (!task || sending.value) return
+  sending.value = decision
+  error.value = ''
+  try {
+    const body = JSON.stringify(revisitCommand(decision))
+    const r = await postTaskChat(props.namespace, props.name, task, { body, clientKey: crypto.randomUUID(), kind: 'command' })
+    sent.value = { id: r.id, task, decision }
+    answer.value = { state: 'pending' }
+    void loadAnswer()
+  } catch (e) {
+    error.value = chatPostError(e)
+  } finally {
+    sending.value = ''
+  }
+}
+
+async function loadAnswer() {
+  const s = sent.value
+  if (!s || answer.value.state !== 'pending') return
+  try {
+    const page = await getTaskChat(props.namespace, props.name, s.task, { limit: 50 })
+    if (sent.value !== s) return
+    answer.value = commandAnswer(page.messages, s.id)
+  } catch {
+    /* best-effort; the next live update tries again */
+  }
+}
+watch(() => live.version, () => void loadAnswer())
+
 const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
 </script>
 
@@ -32,10 +76,28 @@ const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestone
         <span v-for="d in q.decisions" :key="d.id" class="decision" :class="{ superseded: d.superseded }" :title="d.title">
           <ExtLink v-if="d.url" :href="d.url"><code>{{ d.id }}</code></ExtLink>
           <code v-else>{{ d.id }}</code>
+          <button
+            v-if="pilotTask && canRevisit(d, milestone.permissions)"
+            type="button"
+            class="revisit"
+            :disabled="!!sending"
+            @click="revisit(d.id)"
+          >
+            {{ sending === d.id ? '…' : 'Revisit' }}
+          </button>
         </span>
       </div>
     </li>
   </ul>
+  <div v-if="error" class="empty-sm" role="alert">{{ error }}</div>
+  <div v-else-if="sent" class="empty-sm" role="status">
+    <template v-if="answer.state === 'pending'">Revisiting {{ sent.decision }}…</template>
+    <template v-else-if="answer.state === 'failed'">{{ answer.reason }}</template>
+    <template v-else>
+      {{ answer.redacted ? `Revisit of ${sent.decision} opened.` : answer.text }}
+      <a v-if="promptID" :href="`#prompt-${promptID}`">Go to {{ promptID }}</a>
+    </template>
+  </div>
   <div v-if="!rows.length" class="empty-sm">The queue is empty.</div>
 </template>
 
@@ -81,6 +143,11 @@ const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestone
 .decision.superseded {
   opacity: 0.55;
   text-decoration: line-through;
+}
+.revisit {
+  margin-left: 4px;
+  padding: 0 6px;
+  font-size: 11px;
 }
 .empty-sm {
   font-size: 13px;
