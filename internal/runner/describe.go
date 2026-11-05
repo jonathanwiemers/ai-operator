@@ -178,7 +178,7 @@ func buildDescribePrompt(issue *gitlab.Issue, summary, previous, base, stat, dif
 		fmt.Fprintf(&b, "## Previous description\n\n%s\n\n", previous)
 	}
 	fmt.Fprintf(&b, "## Changed files\n\n```\n%s\n```\n\n", stat)
-	if len(diff) <= maxInlineDiff {
+	if len(diff) <= defaultInlineDiff {
 		fmt.Fprintf(&b, "## Diff\n\n```diff\n%s\n```\n", diff)
 	} else {
 		fmt.Fprintf(&b, "The diff is too large to include. Inspect it with `git diff origin/%s...HEAD -- <file>`.\n", base)

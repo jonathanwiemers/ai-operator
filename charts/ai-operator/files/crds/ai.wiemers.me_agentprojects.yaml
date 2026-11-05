@@ -863,6 +863,35 @@ spec:
                           RetryAfter is how long autopilot waits before it asks for one
                           re-review of a head whose reviewers all failed transiently.
                         type: string
+                      reviewerSettings:
+                        description: |-
+                          ReviewerSettings tunes single reviewers. A reviewer without an entry
+                          uses the defaults.
+                        items:
+                          description: ReviewerSettings are the settings of one reviewer.
+                          properties:
+                            maxInlineDiff:
+                              description: |-
+                                MaxInlineDiff is the largest diff, in characters, that is pasted into
+                                this reviewer's prompt each round; a larger diff is referenced and the
+                                reviewer reads it through git. Unset: 150000.
+                              format: int32
+                              minimum: 0
+                              type: integer
+                            name:
+                              description: Name of the reviewer these settings apply
+                                to.
+                              enum:
+                              - bugbot
+                              - security
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
                       reviewers:
                         default:
                         - bugbot

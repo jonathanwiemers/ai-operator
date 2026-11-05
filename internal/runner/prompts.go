@@ -521,11 +521,13 @@ func buildImplementPrompt(issue *gitlab.Issue, milestone *gitlab.Milestone, issu
 	return b.String()
 }
 
-// maxInlineDiff bounds the diff that is pasted into a review prompt; larger
-// diffs are reviewed through git by the reviewer itself.
-const maxInlineDiff = 150_000
+// defaultInlineDiff bounds the diff that is pasted into an MR description
+// prompt; larger diffs are read through git by the agent itself. Review
+// prompts use the reviewer's own cap (review.reviewerSettings).
+const defaultInlineDiff = aiv1.DefaultMaxInlineDiff
 
-func buildReviewPrompt(issue *gitlab.Issue, planDecisions, base, diffStat, diff string) string {
+// buildReviewPrompt inlines the diff when it has at most maxInline chars.
+func buildReviewPrompt(issue *gitlab.Issue, planDecisions, base, diffStat, diff string, maxInline int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Review the changes made for issue #%d: %s\n\n", issue.IID, issue.Title)
 	fmt.Fprintf(&b, "## Issue description\n\n%s\n\n", untrustedData(issue.Description))
@@ -533,7 +535,7 @@ func buildReviewPrompt(issue *gitlab.Issue, planDecisions, base, diffStat, diff 
 		fmt.Fprintf(&b, "## Decisions of the planning agent\n\n%s\n\n", planDecisions)
 	}
 	fmt.Fprintf(&b, "## Changed files\n\n```\n%s\n```\n\n", diffStat)
-	if len(diff) <= maxInlineDiff {
+	if len(diff) <= maxInline {
 		fmt.Fprintf(&b, "## Diff\n\n```diff\n%s\n```\n", diff)
 	} else {
 		fmt.Fprintf(&b, "The diff is too large to include. Inspect it with `git diff origin/%s...HEAD -- <file>`.\n", base)

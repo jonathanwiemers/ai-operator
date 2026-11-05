@@ -387,7 +387,7 @@ func TestPlanDecisionsReachReviewersAndAreLabelled(t *testing.T) {
 	if !strings.Contains(text, "#### D5-P1: Protocol") || strings.Contains(text, "<!--") || strings.Contains(text, "shop-spec#1") {
 		t.Fatalf("unexpected decisions text:\n%s", text)
 	}
-	prompt := buildReviewPrompt(&gitlab.Issue{IID: 5, Title: "API", Description: "Build it."}, text, "main", "a.go | 1 +", "+x")
+	prompt := buildReviewPrompt(&gitlab.Issue{IID: 5, Title: "API", Description: "Build it."}, text, "main", "a.go | 1 +", "+x", defaultInlineDiff)
 	if !strings.Contains(prompt, "## Decisions of the planning agent") || !strings.Contains(prompt, "**Chosen:** REST") {
 		t.Fatalf("reviewers should see the planner's decisions:\n%s", prompt)
 	}

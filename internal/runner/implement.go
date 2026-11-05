@@ -947,7 +947,6 @@ func (r *Runner) commit(ctx context.Context, message string) error {
 // reviewer failed. ownersRules (the milestone's prompt rules)
 // end every reviewer's prompt.
 func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions, base, stat, diff, ownersRules string) ([]Finding, float64, []string, []aiv1.ReviewError) {
-	prompt := buildReviewPrompt(issue, planDecisions, base, stat, diff) + ownersRules
 	var (
 		mu       sync.Mutex
 		wg       sync.WaitGroup
@@ -960,6 +959,7 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 		wg.Add(1)
 		go func(kind aiv1.ReviewerKind) {
 			defer wg.Done()
+			prompt := buildReviewPrompt(issue, planDecisions, base, stat, diff, spec.MaxInlineDiff(kind)) + ownersRules
 			inv := roleInvocation(spec.RoleSpec, reviewerSystemPrompt(kind), readOnlyTools, reviewSchema, true)
 			inv.Role, inv.Kind = string(kind), aiv1.CallKindReview
 			inv.NoPersistence = true

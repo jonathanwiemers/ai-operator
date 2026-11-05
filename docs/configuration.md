@@ -397,7 +397,15 @@ killed together with the run.
 `maxIterations`, `retries` (calls again a reviewer that failed
 transiently, e.g. an engine outage; `0` turns it off) and `retryAfter`
 (how long [autopilot](usage.md#when-it-pauses) waits before it asks for
-one re-review of a head whose reviewers all failed transiently); `describe`
+one re-review of a head whose reviewers all failed transiently) and
+`reviewerSettings`, a list of per-reviewer settings keyed by `name`
+(`bugbot`, `security`). Its `maxInlineDiff` is the largest diff in
+characters that is pasted into that reviewer's prompt each round (default
+`150000`); a larger diff is only referenced and the reviewer reads it
+through git. A lower cap saves input tokens on big changes, but the
+reviewer then spends turns reading files itself and may look less
+thoroughly; `0` never inlines. Example:
+`reviewerSettings: [{name: bugbot, maxInlineDiff: 50000}]`. `describe`
 has `disabled`.
 
 `implement` additionally has `stepSession` (`resume` or `fresh`, default

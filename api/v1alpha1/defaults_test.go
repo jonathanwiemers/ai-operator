@@ -151,3 +151,17 @@ func TestWorkflowTakes(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewMaxInlineDiff(t *testing.T) {
+	n := int32(50_000)
+	r := ReviewSpec{ReviewerSettings: []ReviewerSettings{{Name: ReviewerBugbot, MaxInlineDiff: &n}, {Name: ReviewerSecurity}}}
+	if got := r.MaxInlineDiff(ReviewerBugbot); got != 50_000 {
+		t.Fatalf("bugbot = %d", got)
+	}
+	if got := r.MaxInlineDiff(ReviewerSecurity); got != DefaultMaxInlineDiff {
+		t.Fatalf("security = %d", got)
+	}
+	if got := (ReviewSpec{}).MaxInlineDiff(ReviewerBugbot); got != 150_000 {
+		t.Fatalf("default = %d", got)
+	}
+}

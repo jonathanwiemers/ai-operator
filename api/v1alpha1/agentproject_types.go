@@ -616,6 +616,39 @@ type ReviewSpec struct {
 	// +kubebuilder:default="15m"
 	// +optional
 	RetryAfter metav1.Duration `json:"retryAfter,omitempty"`
+
+	// ReviewerSettings tunes single reviewers. A reviewer without an entry
+	// uses the defaults.
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	ReviewerSettings []ReviewerSettings `json:"reviewerSettings,omitempty"`
+}
+
+// ReviewerSettings are the settings of one reviewer.
+type ReviewerSettings struct {
+	// Name of the reviewer these settings apply to.
+	Name ReviewerKind `json:"name"`
+
+	// MaxInlineDiff is the largest diff, in characters, that is pasted into
+	// this reviewer's prompt each round; a larger diff is referenced and the
+	// reviewer reads it through git. Unset: 150000.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	MaxInlineDiff *int32 `json:"maxInlineDiff,omitempty"`
+}
+
+// DefaultMaxInlineDiff is the default for ReviewerSettings.MaxInlineDiff.
+const DefaultMaxInlineDiff = 150_000
+
+// MaxInlineDiff returns the inline diff cap in characters for a reviewer.
+func (r ReviewSpec) MaxInlineDiff(kind ReviewerKind) int {
+	for _, s := range r.ReviewerSettings {
+		if s.Name == kind && s.MaxInlineDiff != nil {
+			return int(*s.MaxInlineDiff)
+		}
+	}
+	return DefaultMaxInlineDiff
 }
 
 // ReviewerKind names a built-in reviewer.
