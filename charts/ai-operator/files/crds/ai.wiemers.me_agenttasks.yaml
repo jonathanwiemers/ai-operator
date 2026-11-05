@@ -2901,6 +2901,112 @@ spec:
                     description: PushedSHA is the commit the runner last pushed to
                       the agent's branch.
                     type: string
+                  questions:
+                    description: |-
+                      Questions are the questions the agent asked in the most recent run,
+                      structured ones first, at most MaxQuestionDrafts: the operator makes
+                      needsInput prompts of them.
+                    items:
+                      description: |-
+                        QuestionDraft is a question the agent asked in its last run, normalised
+                        by the runner: the operator makes a needsInput prompt of it. Untrusted.
+                      properties:
+                        allowFreeText:
+                          type: boolean
+                        options:
+                          description: |-
+                            Options are 2 to 4 options without actions ("A".."D"), exactly one
+                            Recommended (the agent's default); none: free text only.
+                          items:
+                            description: PromptOption is one answer an owner can choose.
+                            properties:
+                              actions:
+                                description: |-
+                                  Actions run when an owner chooses it, validated like an accepted
+                                  proposal's; none: the "do nothing" option.
+                                items:
+                                  description: |-
+                                    PilotAction is one action of a proposal of the pilot; the operator
+                                    validates and executes it once an owner accepts the proposal.
+                                  properties:
+                                    decision:
+                                      description: Decision to revisit, e.g. D12-3;
+                                        Note is the change asked for.
+                                      type: string
+                                    issueIID:
+                                      format: int64
+                                      type: integer
+                                    kind:
+                                      description: Kind of an instruct, one of PilotInstructKinds.
+                                      type: string
+                                    note:
+                                      description: |-
+                                        Note: the pilot's hint to the implementer (instruct), the body of
+                                        the issue it opens (openIssue), the change asked for (revisit).
+                                        Untrusted.
+                                      type: string
+                                    owner:
+                                      description: |-
+                                        Owner and Text: an owner's own words for the implementer ("/pilot
+                                        tell #N: …"). Only the operator sets them.
+                                      type: string
+                                    pipelineID:
+                                      description: |-
+                                        PipelineID is the red default-branch pipeline whose failed jobs
+                                        retryPipeline retries.
+                                      format: int64
+                                      type: integer
+                                    rule:
+                                      description: |-
+                                        Rule is the ID ("R2") of the standing rule forgetRule removes. A
+                                        setRule has its kind (switch, pilot, prompt) in Kind and its text in
+                                        Note; a forgetRule the operator's copy of the rule's text in Note.
+                                      type: string
+                                    spec:
+                                      description: |-
+                                        Spec is the full new spec text of an editSpec, which replaces the
+                                        milestone description except its command lines (markers, owners,
+                                        rules). Untrusted until an owner accepts its diff.
+                                      type: string
+                                    text:
+                                      type: string
+                                    title:
+                                      description: Title of the issue it opens (openIssue).
+                                      type: string
+                                    tool:
+                                      description: |-
+                                        Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+                                        skip, pause, resume, revisit, setRule, forgetRule or editSpec.
+                                      type: string
+                                  required:
+                                  - tool
+                                  type: object
+                                type: array
+                              detail:
+                                description: Detail says what the option does. Untrusted.
+                                type: string
+                              fromAnswer:
+                                description: |-
+                                  FromAnswer: the pilot made it from an owner's free text; it follows
+                                  the producer's options and waits for the owner to confirm it.
+                                type: boolean
+                              id:
+                                description: ID is "A".."E", in order.
+                                type: string
+                              label:
+                                type: string
+                              recommended:
+                                type: boolean
+                            type: object
+                          maxItems: 4
+                          type: array
+                        question:
+                          type: string
+                      required:
+                      - question
+                      type: object
+                    maxItems: 5
+                    type: array
                   reviewErrorKinds:
                     description: ReviewErrorKinds says why each reviewer failed in
                       the last review.

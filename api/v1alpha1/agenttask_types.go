@@ -856,6 +856,13 @@ type RunStatus struct {
 	// +optional
 	Summary string `json:"summary,omitempty"`
 
+	// Questions are the questions the agent asked in the most recent run,
+	// structured ones first, at most MaxQuestionDrafts: the operator makes
+	// needsInput prompts of them.
+	// +optional
+	// +kubebuilder:validation:MaxItems=5
+	Questions []QuestionDraft `json:"questions,omitempty"`
+
 	// CostUSD is the accumulated model spend of this task, as a decimal string.
 	// +optional
 	CostUSD string `json:"costUSD,omitempty"`

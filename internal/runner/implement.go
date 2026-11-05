@@ -308,7 +308,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			return out, s.fail(fmt.Errorf("decoding implementer answer: %w", err))
 		}
 		s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD,
-			"status", answer.Status, "questions", len(answer.Questions), "decisions", len(answer.Decisions))
+			"status", answer.Status, "questions", len(answer.Questions), "prompts", len(answer.Prompts), "decisions", len(answer.Decisions))
 	} else {
 		// Only the merge or the review: nothing for the agent to do; review
 		// and CI follow.
@@ -349,7 +349,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		// Conclude the merge before anything else is committed: a merge
 		// with conflict markers left must never be committed.
 		s = r.step(ctx, "conclude merge", "files", len(merge.Conflicts))
-		giveUp := answer.Status == "needs_input" || len(answer.Questions) > 0
+		giveUp := answer.Status == "needs_input" || answer.asks()
 		fin, err := r.Agent.FinishMerge(ctx, FinishMerge{Base: base, Message: mergeMessage, From: merge.From, Files: merge.Conflicts, Abort: giveUp})
 		if err != nil {
 			return out, s.fail(fmt.Errorf("concluding the merge: %w", err))
@@ -454,7 +454,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		var fixed ImplementAnswer
 		if err := res.Decode(&fixed); err == nil {
 			answer.Summary = fixed.Summary
-			answer.Questions = fixed.Questions
+			answer.Questions, answer.Prompts = fixed.Questions, fixed.Prompts
 			answer.Decisions = append(answer.Decisions, fixed.Decisions...)
 			if strings.TrimSpace(fixed.Handoff) != "" {
 				answer.Handoff = fixed.Handoff
@@ -475,7 +475,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// leaves problems puts it back to draft.
 	readied := false
 	switch {
-	case answer.Status == "needs_input" || len(answer.Questions) > 0 || outOfSteps || out.Reviewed && (out.BlockingFindings > 0 || out.ReviewErrors > 0):
+	case answer.Status == "needs_input" || answer.asks() || outOfSteps || out.Reviewed && (out.BlockingFindings > 0 || out.ReviewErrors > 0):
 		r.setDraft(ctx, gl, glProject, mr, &st, true)
 	case (out.Reviewed && reviewedLast || len(review.Reviewers) == 0) && r.hasChanges(ctx, base):
 		readied = r.setDraft(ctx, gl, glProject, mr, &st, false)
@@ -558,10 +558,12 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 			notices = append(notices, notice)
 		}
 		// A run that stops for input keeps saying why.
-		if first && answer.Status != "needs_input" && len(answer.Questions) == 0 {
+		if first && answer.Status != "needs_input" && !answer.asks() {
 			reported.Summary = "📝 Described the change in the merge request description."
 		}
 	}
+	drafts := questionDrafts(answer)
+	out.Questions = drafts[:min(len(drafts), aiv1.MaxQuestionDrafts)]
 	report := renderReport(reported, remaining, append(reviewNotes, notices...))
 	if ciFix {
 		report = "CI fix: " + report
@@ -569,7 +571,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// Report back and move the issue to the next column - unless another
 	// run was requested meanwhile, in which case the issue stays "working".
 	// The run log covers the steps up to here.
-	needsInput := answer.Status == "needs_input" || len(answer.Questions) > 0
+	needsInput := answer.Status == "needs_input" || answer.asks()
 	// With the CI loop, a fresh push stays in "working" until the operator
 	// has seen its pipeline go green (or hands it back).
 	waitForCI := !spec.CI.Disabled && out.PushedSHA != "" && !needsInput
@@ -582,7 +584,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	var mrMention, issueMention string
 	switch {
 	case task.Spec.Autopilot:
-	case needsInput && spec.Notify.Wants(aiv1.NotifyNeedsInput) && len(answer.Questions) > 0:
+	case needsInput && spec.Notify.Wants(aiv1.NotifyNeedsInput) && answer.asks():
 		issueMention = notify.Mention(task.Spec.Owners)
 	case needsInput && spec.Notify.Wants(aiv1.NotifyNeedsInput),
 		toReview && spec.Notify.Wants(aiv1.NotifyReview):
@@ -593,9 +595,9 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+mrMention+runLogMD); err != nil {
 		return out, s.fail(fmt.Errorf("commenting on merge request: %w", err))
 	}
-	if len(answer.Questions) > 0 {
+	if len(drafts) > 0 {
 		// Questions are answered where people look first.
-		note := fmt.Sprintf("🤖 Before this can be finished I need answers (comment here or on %s):\n\n%s", mr.WebURL, notify.Defuse(numbered(answer.Questions)))
+		note := fmt.Sprintf("🤖 Before this can be finished I need answers (comment here or on %s):\n\n%s", mr.WebURL, notify.Defuse(renderQuestions(drafts)))
 		if _, err := gl.CreateIssueNote(ctx, glProject, issue.IID, note+issueMention); err != nil {
 			return out, s.fail(fmt.Errorf("commenting on issue: %w", err))
 		}
@@ -1050,9 +1052,9 @@ func renderReport(answer ImplementAnswer, findings []Finding, reviewErrs []strin
 func renderReportText(answer ImplementAnswer, findings []Finding, reviewErrs []string) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(answer.Summary))
-	if len(answer.Questions) > 0 {
+	if drafts := questionDrafts(answer); len(drafts) > 0 {
 		b.WriteString("\n\n### Questions\n\n")
-		b.WriteString(numbered(answer.Questions))
+		b.WriteString(renderQuestions(drafts))
 	}
 	if len(findings) > 0 {
 		b.WriteString("\n\n### Remaining review findings\n\n")
@@ -1097,14 +1099,6 @@ func maxNoteID(notes []gitlab.Note, cur int64) int64 {
 		}
 	}
 	return cur
-}
-
-func numbered(items []string) string {
-	var b strings.Builder
-	for i, q := range items {
-		fmt.Fprintf(&b, "%d. %s\n", i+1, strings.TrimSpace(q))
-	}
-	return b.String()
 }
 
 // codeList renders file names as inline code.

@@ -71,7 +71,9 @@ How to work:
   over the original description.
 - If a decision that changes the design is unresolved, do not guess: return
   status "needs_input" with concrete questions (and the default you would
-  pick), unless the prompt says you must decide yourself.
+  pick), unless the prompt says you must decide yourself. When you need a
+  decision, ask it in prompts with 2-4 options and mark the one you would
+  pick as default; use questions only for open questions.
 - Record every decision you make that a reviewer could reasonably want
   differently (data shapes, names users see, libraries, error handling, scope
   cuts) in decisions: the question, your choice, why, and the alternatives you
@@ -294,7 +296,35 @@ const implementSchemaTemplate = `{
     "status": {"type": "string", "enum": ["done", "needs_input"]},
     "summary": {"type": "string", "description": "Markdown summary for the merge request."},
     "commitMessage": {"type": "string", "description": "Imperative subject line (max 72 chars), blank line, body."},
-    "questions": {"type": "array", "items": {"type": "string"}},
+    "questions": {"type": "array", "items": {"type": "string"}, "description": "Open questions without options."},
+    "prompts": {
+      "type": "array",
+      "description": "Decisions you need, each with options.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question", "options"],
+        "properties": {
+          "question": {"type": "string"},
+          "options": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label"],
+              "properties": {
+                "label": {"type": "string", "description": "A few words."},
+                "detail": {"type": "string", "description": "One sentence: what it means."},
+                "default": {"type": "boolean", "description": "true on exactly one option: the one you would pick."}
+              }
+            }
+          },
+          "allowFreeText": {"type": "boolean", "description": "Whether an answer other than the options is welcome; default true."}
+        }
+      }
+    },
     "decisions": __DECISIONS__,
     "handoff": {"type": "string", "description": "Markdown handoff notes for a later run that does not have this conversation."}
   }
@@ -354,12 +384,34 @@ type PlannedItem struct {
 
 // ImplementAnswer is the implementer's answer.
 type ImplementAnswer struct {
-	Status        string     `json:"status"`
-	Summary       string     `json:"summary"`
-	CommitMessage string     `json:"commitMessage"`
-	Questions     []string   `json:"questions"`
-	Decisions     []Decision `json:"decisions"`
-	Handoff       string     `json:"handoff"`
+	Status        string   `json:"status"`
+	Summary       string   `json:"summary"`
+	CommitMessage string   `json:"commitMessage"`
+	Questions     []string `json:"questions"`
+	// Prompts are the decisions the agent asks for, with options.
+	Prompts   []QuestionPrompt `json:"prompts,omitempty"`
+	Decisions []Decision       `json:"decisions"`
+	Handoff   string           `json:"handoff"`
+}
+
+// asks reports whether the implementer asked anything.
+func (a ImplementAnswer) asks() bool {
+	return len(a.Questions) > 0 || len(a.Prompts) > 0
+}
+
+// QuestionPrompt is one decision the implementer asks for.
+type QuestionPrompt struct {
+	Question string           `json:"question"`
+	Options  []QuestionOption `json:"options"`
+	// AllowFreeText is true when missing.
+	AllowFreeText *bool `json:"allowFreeText,omitempty"`
+}
+
+// QuestionOption is one option of a QuestionPrompt.
+type QuestionOption struct {
+	Label   string `json:"label"`
+	Detail  string `json:"detail,omitempty"`
+	Default bool   `json:"default,omitempty"`
 }
 
 // ReviewAnswer is a reviewer's answer.

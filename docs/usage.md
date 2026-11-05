@@ -323,6 +323,10 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    [Decisions](#decisions)).
 
 If the agent has questions, the issue moves to **`agent::needs-input`**.
+The issue comment lists them; a decision comes with two to four options,
+the agent's default marked, and an open question without. The task keeps
+them, normalised, in `status.run.questions` (at most 5), from which the
+Desk's prompts will be made; until then, answer in a comment.
 Otherwise it stays in `agent::working` until the MR pipeline has run; failing
 jobs (lint, tests, …) go back to the agent (see [CI feedback](#ci-feedback)),
 and the issue moves to **`agent::review`** once the pipeline is green.

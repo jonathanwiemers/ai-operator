@@ -337,3 +337,19 @@ func (p Prompt) DoNothing() *PromptOption {
 	}
 	return nil
 }
+
+// MaxQuestionDrafts bounds status.run.questions.
+const MaxQuestionDrafts = 5
+
+// QuestionDraft is a question the agent asked in its last run, normalised
+// by the runner: the operator makes a needsInput prompt of it. Untrusted.
+type QuestionDraft struct {
+	Question string `json:"question"`
+	// Options are 2 to 4 options without actions ("A".."D"), exactly one
+	// Recommended (the agent's default); none: free text only.
+	// +optional
+	// +kubebuilder:validation:MaxItems=4
+	Options []PromptOption `json:"options,omitempty"`
+	// +optional
+	AllowFreeText bool `json:"allowFreeText,omitempty"`
+}

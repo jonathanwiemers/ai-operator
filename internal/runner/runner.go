@@ -131,6 +131,8 @@ type Outcome struct {
 	ReviewErrorsTransient bool
 	ReviewErrorKinds      []aiv1.ReviewError
 	ReviewedSHA           string
+	// Questions are the agent's normalised questions (Implement runs).
+	Questions []aiv1.QuestionDraft
 	// Plan is set by spec runs: the plan in plan order.
 	Plan []aiv1.PlannedIssue
 }
@@ -541,6 +543,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
 		s.LastResult = out.Result
 		s.Summary = textutil.Truncate(out.Summary, 2000)
+		s.Questions = out.Questions
 		s.CostUSD = aiv1.AddCost(s.CostUSD, out.CostUSD)
 		if out.Branch != "" {
 			s.Branch = out.Branch
