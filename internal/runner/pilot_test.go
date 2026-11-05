@@ -28,7 +28,11 @@ type pilotEngine struct {
 	assessment *PilotAssessment
 	retro      *RetroAnswer
 	proposal   *ProposalAnswer
-	err        error
+	refine     *RefineAnswer
+	// raw, when set, is the structured answer of every turn as is (valid
+	// JSON: the agent server passes it on as such).
+	raw string
+	err error
 }
 
 func (p *pilotEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
@@ -45,6 +49,11 @@ func (p *pilotEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
 		b, _ = json.Marshal(p.assessment)
 	case retroSchema:
 		b, _ = json.Marshal(p.retro)
+	case refineSchema:
+		b, _ = json.Marshal(p.refine)
+	}
+	if p.raw != "" {
+		b = []byte(p.raw)
 	}
 	return &Result{SessionID: "sess-pilot", CostUSD: 0.25, Structured: b}, nil
 }

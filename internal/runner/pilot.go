@@ -48,12 +48,27 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			events = append(events, e)
 		}
 	}
-	if len(msgs)+len(events) == 0 {
+	var refines []aiv1.PromptRefine
+	for _, rf := range task.Spec.Source.PromptRefines {
+		if rf.Request > task.Status.Run.ObservedRunRequest && rf.Request <= task.Spec.RunRequest {
+			refines = append(refines, rf)
+		}
+	}
+	if len(msgs)+len(events)+len(refines) == 0 {
 		return out, nil
 	}
 	st, err := r.loadState()
 	if err != nil {
 		return out, err
+	}
+	// A refine needs only its prompt, not the milestone's state.
+	refineErr := r.refinePrompts(ctx, task, spec, out, refines, &st)
+	if _, limited := AsUsageLimit(refineErr); limited {
+		return out, refineErr
+	}
+	if len(msgs)+len(events) == 0 {
+		out.Summary = fmt.Sprintf("refined %d answers", len(refines))
+		return out, refineErr
 	}
 	s := r.step(ctx, "read milestone state", "messages", len(msgs))
 	state, stateOf, err := r.pilotState(ctx, gl, task, project, spec)
@@ -73,7 +88,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 	s.done(fmt.Sprintf("%d bytes", len(state)))
 	role := spec.Agents.Pilot
 	// A turn that failed does not hold up the others; the run reports it.
-	var failed error
+	failed := refineErr
 	for _, m := range msgs {
 		// Answered before the run was cut off or deferred.
 		if slices.Contains(st.PilotAnswered, m.NoteID) {
@@ -130,7 +145,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 		}
 	}
 	err = r.assessEvents(ctx, gl, task, spec, project.Status.BotUserID, state, stateOf, out, events, &st)
-	out.Summary = fmt.Sprintf("answered %d messages, assessed %d events", len(msgs), len(events))
+	out.Summary = fmt.Sprintf("answered %d messages, assessed %d events, refined %d answers", len(msgs), len(events), len(refines))
 	if _, limited := AsUsageLimit(err); limited || failed == nil {
 		return out, err
 	}

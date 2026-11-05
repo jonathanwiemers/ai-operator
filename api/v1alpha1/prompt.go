@@ -177,6 +177,63 @@ type Prompt struct {
 	OwnerIDs []int64 `json:"ownerIDs,omitempty"`
 }
 
+// MaxRefines bounds spec.source.promptRefines and status.pilot.refined.
+const MaxRefines = 5
+
+// MaxRefineFollowUp bounds the pilot's follow-up question, in bytes.
+const MaxRefineFollowUp = 500
+
+// PromptRefine is an owner's free text on an action prompt, handed to the
+// pilot with the prompt: the pilot makes one option of it or asks one
+// follow-up question. Written by the operator.
+type PromptRefine struct {
+	// Prompt is the prompt's id ("Q3").
+	Prompt string `json:"prompt"`
+	// Question, Context and Options are the prompt's when it was answered.
+	// Untrusted.
+	// +optional
+	Question string `json:"question,omitempty"`
+	// +optional
+	Context string `json:"context,omitempty"`
+	// +optional
+	// +kubebuilder:validation:MaxItems=5
+	Options []PromptOption `json:"options,omitempty"`
+	// Text is the owner's free text. Untrusted.
+	// +kubebuilder:validation:MaxLength=4000
+	Text string `json:"text"`
+	// By is the owner who wrote it.
+	// +optional
+	By string `json:"by,omitempty"`
+	// Request is the run request that refines it.
+	Request int64 `json:"request"`
+	// MessageID is the Desk chat message of the answer, 0 for another.
+	// +optional
+	MessageID int64 `json:"messageID,omitempty"`
+}
+
+// PromptRefinement is the pilot's answer to a PromptRefine: exactly one of
+// Option, FollowUp and Error. Written by the runner.
+type PromptRefinement struct {
+	Prompt string `json:"prompt"`
+	// +optional
+	MessageID int64 `json:"messageID,omitempty"`
+	// Request is the PromptRefine's.
+	// +optional
+	Request int64 `json:"request,omitempty"`
+	// Option is the option the pilot made of the text (FromAnswer), its
+	// actions cut to the operator's bounds; the operator validates them
+	// before the owner confirms it. Untrusted.
+	// +optional
+	Option *PromptOption `json:"option,omitempty"`
+	// FollowUp is the pilot's question back to the owner, at most
+	// MaxRefineFollowUp bytes. Untrusted.
+	// +optional
+	FollowUp string `json:"followUp,omitempty"`
+	// Error says why there is neither.
+	// +optional
+	Error string `json:"error,omitempty"`
+}
+
 var promptID = regexp.MustCompile(`^Q[1-9][0-9]*$`)
 
 // Validate checks the prompt's shape. Whether its actions apply to the

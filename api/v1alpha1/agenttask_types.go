@@ -201,6 +201,13 @@ type SourceState struct {
 	// +optional
 	PilotEvents []PilotEvent `json:"pilotEvents,omitempty"`
 
+	// PromptRefines are owners' free-text answers to action prompts
+	// (Coordinate tasks), each turned by the pilot's run of its request into
+	// one option or one follow-up question (status.pilot.refined).
+	// +optional
+	// +kubebuilder:validation:MaxItems=5
+	PromptRefines []PromptRefine `json:"promptRefines,omitempty"`
+
 	// Retrospective is the run request that writes the retrospective of the
 	// milestone (Coordinate tasks), once its autopilot is done.
 	// +optional
@@ -481,6 +488,12 @@ type PilotStatus struct {
 	// poll.
 	// +optional
 	Accepted []PilotProposal `json:"accepted,omitempty"`
+
+	// Refined are the pilot's answers to spec.source.promptRefines
+	// (Coordinate tasks), newest last, until the operator takes them.
+	// +optional
+	// +kubebuilder:validation:MaxItems=5
+	Refined []PromptRefinement `json:"refined,omitempty"`
 
 	// LastProposal is the ID of the newest proposal.
 	// +optional

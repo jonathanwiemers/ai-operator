@@ -275,3 +275,33 @@ func TestPromptSchema(t *testing.T) {
 		t.Errorf("%d prompts: errors %v", MaxPrompts+1, errs)
 	}
 }
+
+// The operator hands free text to the pilot in spec.source.promptRefines and
+// the runner answers in status.pilot.refined: the schema keeps every field
+// (the runner matches an answer to its refine by prompt, message and
+// request) and bounds both lists.
+func TestPromptRefineSchema(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	option := map[string]any{"id": "C", "label": "From your answer: retry #1", "detail": "d", "fromAnswer": true,
+		"actions": []any{map[string]any{"tool": "retry", "issueIID": int64(1)}}}
+	refine := map[string]any{"prompt": "Q3", "question": "q", "context": "c", "options": []any{option}, "text": "retry it",
+		"by": "alice", "request": int64(4), "messageID": int64(77)}
+	refined := map[string]any{"prompt": "Q3", "messageID": int64(77), "request": int64(4), "option": option, "followUp": "f", "error": "e"}
+	obj := map[string]any{
+		"spec":   map[string]any{"projectRef": "shop", "type": "Coordinate", "source": map[string]any{"promptRefines": []any{refine}}},
+		"status": map[string]any{"pilot": map[string]any{"refined": []any{refined}}},
+	}
+	if _, errs := crd.admit(obj); len(errs) > 0 {
+		t.Errorf("valid refine and refinement rejected: %v", errs)
+	}
+	many := map[string]any{
+		"spec":   map[string]any{"source": map[string]any{"promptRefines": repeat(map[string]any{"prompt": "Q1", "text": "t", "request": int64(1)}, MaxRefines+1)}},
+		"status": map[string]any{"pilot": map[string]any{"refined": repeat(map[string]any{"prompt": "Q1"}, MaxRefines+1)}},
+	}
+	_, errs := crd.admit(many)
+	for _, want := range []string{"spec.source.promptRefines", "status.pilot.refined"} {
+		if !strings.Contains(strings.Join(errs, "\n"), want) {
+			t.Errorf("%d entries: errors %v, want one on %s", MaxRefines+1, errs, want)
+		}
+	}
+}

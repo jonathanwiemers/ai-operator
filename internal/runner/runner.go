@@ -160,6 +160,9 @@ type state struct {
 	PilotAnswered []int64 `json:"pilotAnswered,omitempty"`
 	// PilotAssessed are the pilot's last assessed events ("key@request").
 	PilotAssessed []string `json:"pilotAssessed,omitempty"`
+	// PilotRefined are the pilot's last refined answers
+	// ("prompt/message@request").
+	PilotRefined []string `json:"pilotRefined,omitempty"`
 	// ChatInFlight is the chat turn being sent (or last attempted), so a
 	// restart can resend it with the stored session.
 	ChatInFlight *chatInFlight `json:"chatInFlight,omitempty"`

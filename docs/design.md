@@ -1201,6 +1201,26 @@ counted interventions; more tools are later steps of
   says so. It executes nothing. The runner remembers the last 100 handled
   `key@request`, so a run started again does not assess twice; a comment
   that could not be posted fails the run.
+* **Refines** (`internal/runner/pilot_refine.go`). An owner's free text on
+  an action prompt reaches the pilot as a `spec.source.promptRefines` entry
+  (at most 5: the prompt's id, question, context and options, the text, who
+  wrote it, the Desk message and a run request). The run turns each one of
+  its requests, before the messages, into one option or one follow-up
+  question, in a fresh read-only session with the pilot's system prompt
+  and nothing else: the prompt and the owner's text are each one
+  `<untrusted-data>` block they cannot close; the milestone's state is not
+  read for it. The answer (`refineSchema`: `option {label, detail,
+  actions}` or `followUp`) goes to `status.pilot.refined` under an
+  optimistic lock, at most 5, the newest kept, once per prompt, message and
+  request: an option labelled "From your answer: …" with `fromAnswer`, its
+  actions as `pilotActions` cuts them (at most 5, no `owner` or `text`,
+  those `rejectActions` refuses dropped); or the follow-up cut to 500
+  bytes; or `error` without budget ("the pilot's budget is used up"), when
+  the turn failed, or when the answer has both, neither, or an option with
+  no action left (which also fails the run). It executes nothing: the
+  operator validates the option's actions and the owner confirms it. The
+  runner remembers the last 100 handled `prompt/message@request` and skips
+  one the status already has, so a run started again refines it once.
 * **Assessment prompts** (`optionsPrompt` in
   `internal/controller/pilot_actions.go`). `postProposals` puts a proposed
   entry with `options` as a prompt of its kind (`assessment`; `mainHealth`
