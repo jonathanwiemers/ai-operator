@@ -79,6 +79,23 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"retry","option":"A"}`, Command{}, "retry takes no prompt, option or text"},
 		{`{"cmd":"skip","issue":1,"text":"why"}`, Command{}, "skip takes no prompt, option or text"},
 		{`{"cmd":"use","default":true,"text":" "}`, Command{}, "use takes no prompt, option or text"},
+		{`{"cmd":"revisit","decision":"D12-3"}`, Command{Cmd: "revisit", Decision: "D12-3"}, ""},
+		{`{"cmd":"revisit","decision":" d12-p1 "}`, Command{Cmd: "revisit", Decision: "D12-P1"}, ""},
+		{`{"cmd":"revisit","decision":"D12-3","text":"  use gRPC  "}`, Command{Cmd: "revisit", Decision: "D12-3", Text: "use gRPC"}, ""},
+		{`{"cmd":"revisit","decision":"D12-3","text":"   "}`, Command{Cmd: "revisit", Decision: "D12-3"}, ""},
+		{`{"cmd":"revisit"}`, Command{}, "revisit needs a decision"},
+		{`{"cmd":"revisit","decision":"D12"}`, Command{}, "revisit needs a decision"},
+		{`{"cmd":"revisit","decision":"P3"}`, Command{}, "revisit needs a decision"},
+		{`{"cmd":"revisit","decision":"D12-3 and more"}`, Command{}, "revisit needs a decision"},
+		{`{"cmd":"revisit","text":"use gRPC"}`, Command{}, "revisit needs a decision"},
+		{`{"cmd":"revisit","decision":"D12-3","text":"` + strings.Repeat("x", 4001) + `"}`, Command{}, "longer than 4000 bytes"},
+		{`{"cmd":"revisit","decision":"D12-3","prompt":"Q1"}`, Command{}, "revisit takes only decision and text"},
+		{`{"cmd":"revisit","decision":"D12-3","option":"A"}`, Command{}, "revisit takes only decision and text"},
+		{`{"cmd":"revisit","decision":"D12-3","issue":12}`, Command{}, "revisit takes only decision and text"},
+		{`{"cmd":"revisit","decision":"D12-3","sha":"5a0e000"}`, Command{}, "revisit takes no sha"},
+		{`{"cmd":"revisit","decision":"D12-3","usd":"4"}`, Command{}, "revisit takes no usd"},
+		{`{"cmd":"answer","prompt":"Q3","option":"A","decision":"D12-3"}`, Command{}, "answer takes no decision"},
+		{`{"cmd":"retry","decision":"D12-3"}`, Command{}, "retry takes no decision"},
 	} {
 		got, err := Parse(tc.body)
 		if tc.wantErr != "" {
@@ -133,9 +150,17 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 	if c := (Command{Cmd: "answer"}); !c.PromptCmd() || c.ProposalOnly() || c.Autopilot() {
 		t.Error("answer should be PromptCmd only")
 	}
-	for _, cmd := range []string{"retry", "use", "pause", "merge", "accept", "reject"} {
+	for _, cmd := range []string{"retry", "use", "pause", "merge", "accept", "reject", "revisit"} {
 		if (Command{Cmd: cmd}).PromptCmd() {
 			t.Errorf("%s should not be PromptCmd", cmd)
+		}
+	}
+	if c := (Command{Cmd: "revisit"}); !c.RevisitCmd() || c.ImplementOnly() || c.Autopilot() || c.ProposalOnly() {
+		t.Error("revisit should be RevisitCmd only")
+	}
+	for _, cmd := range []string{"answer", "retry", "skip", "accept"} {
+		if (Command{Cmd: cmd}).RevisitCmd() {
+			t.Errorf("%s should not be RevisitCmd", cmd)
 		}
 	}
 

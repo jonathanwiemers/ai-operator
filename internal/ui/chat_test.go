@@ -190,6 +190,12 @@ func TestPostChat(t *testing.T) {
 		if code != http.StatusBadRequest || !strings.Contains(errBody, "unknown cmd") {
 			t.Fatalf("invalid command: %d %q", code, errBody)
 		}
+		code, errBody = env.postChatErr(t, shop, map[string]any{
+			"body": `{"cmd":"revisit","decision":"D12"}`, "kind": "command", "clientKey": "badrevisit",
+		})
+		if code != http.StatusBadRequest || !strings.Contains(errBody, "revisit needs a decision") {
+			t.Fatalf("malformed decision: %d %q", code, errBody)
+		}
 	})
 
 	t.Run("oversize", func(t *testing.T) {

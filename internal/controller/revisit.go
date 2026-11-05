@@ -108,14 +108,19 @@ func (r *AgentProjectReconciler) syncRevisits(ctx context.Context, gl gitlab.API
 			rs = st.Status.Revisits
 		}
 	}
-	// Revisits from proposals an owner accepted, once each.
+	// Revisits from proposals an owner accepted, and from the Desk (their
+	// owner says so), once each.
 	if ps := st.Status.Pilot; ps != nil {
 		for _, c := range ps.Commands {
 			if c.Seq <= rs.LastPilotCommand {
 				continue
 			}
 			if c.Action.Tool == "revisit" {
-				n := gitlab.Note{Author: gitlab.User{Username: c.Owner + " via the pilot"}}
+				by := c.Owner
+				if !strings.HasSuffix(by, viaDesk) {
+					by += " via the pilot"
+				}
+				n := gitlab.Note{Author: gitlab.User{Username: by}}
 				if err := r.revisitAfterMerge(ctx, gl, spec, st, project.Status.BotUserID, c.OnIssue, n, c.Action.Decision, inert(c.Action.Note)); err != nil {
 					return err
 				}
@@ -147,41 +152,14 @@ func (r *AgentProjectReconciler) revisitAfterMerge(ctx context.Context, gl gitla
 		}
 		return nil
 	}
-	targetIID := marker.DecisionIssue(id)
-	target, err := gl.GetIssue(ctx, glProject, targetIID)
+	target, section, refused, err := revisitDecision(ctx, gl, spec, st, botID, id)
 	switch {
-	case gitlab.IsNotFound(err):
-		return reply(fmt.Sprintf("Decision %s belongs to #%d, which does not exist.", id, targetIID))
 	case err != nil:
-		return fmt.Errorf("getting issue #%d: %w", targetIID, err)
-	case target.Milestone == nil || target.Milestone.ID != st.Spec.Milestone.ID:
-		return reply(fmt.Sprintf("Decision %s belongs to #%d, which is not in this milestone.", id, targetIID))
-	case target.State == "opened":
-		return reply(fmt.Sprintf("#%d is still open: comment `%s revisit %s …` there, and its next run changes the decision.", targetIID, wf.CommandPrefix, id))
-	}
-
-	// Find the decision in the bot's decision comments; planning decisions
-	// of older issues are in the description.
-	notes, err := gl.ListIssueNotes(ctx, glProject, targetIID)
-	if err != nil {
-		return fmt.Errorf("listing notes of issue #%d: %w", targetIID, err)
-	}
-	section := ""
-	for _, tn := range notes {
-		if botID != 0 && tn.Author.ID == botID && !tn.System && strings.HasPrefix(tn.Body, marker.DecisionsHeader) {
-			if section = marker.DecisionSection(tn.Body, id); section != "" {
-				break
-			}
-		}
-	}
-	if section == "" && strings.Contains(id, "-P") {
-		section = marker.DecisionSection(target.Description, id)
-	}
-	switch {
+		return err
+	case refused != "":
+		return reply(refused)
 	case section == "":
-		return reply(fmt.Sprintf("Decision %s was not found on #%d.", id, targetIID))
-	case strings.Contains(section, id+" superseded -->"):
-		return reply(fmt.Sprintf("Decision %s was already superseded; revisit the decision that replaced it.", id))
+		return reply(fmt.Sprintf("Decision %s was not found on #%d.", id, target.IID))
 	}
 
 	// One follow-up per decision.
@@ -236,6 +214,48 @@ func (r *AgentProjectReconciler) revisitAfterMerge(ctx context.Context, gl gitla
 		return r.queueFollowUp(ctx, st, is.IID, id, reply, "Created")
 	}
 	return reply(fmt.Sprintf("Created #%d to revisit %s; the agent starts on it now.", is.IID, id))
+}
+
+// revisitDecision reads decision id of the milestone (spec task st) for a
+// revisit: its issue, and its section in the bot's decision comments (""
+// when it is not found), or why it cannot be revisited (refused).
+func revisitDecision(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, botID int64,
+	id string) (target *gitlab.Issue, section, refused string, err error) {
+	glProject := spec.GitLab.Project
+	targetIID := marker.DecisionIssue(id)
+	target, err = gl.GetIssue(ctx, glProject, targetIID)
+	switch {
+	case gitlab.IsNotFound(err):
+		return nil, "", fmt.Sprintf("Decision %s belongs to #%d, which does not exist.", id, targetIID), nil
+	case err != nil:
+		return nil, "", "", fmt.Errorf("getting issue #%d: %w", targetIID, err)
+	case target.Milestone == nil || target.Milestone.ID != st.Spec.Milestone.ID:
+		return nil, "", fmt.Sprintf("Decision %s belongs to #%d, which is not in this milestone.", id, targetIID), nil
+	case target.State == "opened":
+		return nil, "", fmt.Sprintf("#%d is still open: comment `%s revisit %s …` there, and its next run changes the decision.",
+			targetIID, spec.Workflow.CommandPrefix, id), nil
+	}
+
+	// Find the decision in the bot's decision comments; planning decisions
+	// of older issues are in the description.
+	notes, err := gl.ListIssueNotes(ctx, glProject, targetIID)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("listing notes of issue #%d: %w", targetIID, err)
+	}
+	for _, tn := range notes {
+		if botID != 0 && tn.Author.ID == botID && !tn.System && strings.HasPrefix(tn.Body, marker.DecisionsHeader) {
+			if section = marker.DecisionSection(tn.Body, id); section != "" {
+				break
+			}
+		}
+	}
+	if section == "" && strings.Contains(id, "-P") {
+		section = marker.DecisionSection(target.Description, id)
+	}
+	if strings.Contains(section, id+" superseded -->") {
+		return nil, "", fmt.Sprintf("Decision %s was already superseded; revisit the decision that replaced it.", id), nil
+	}
+	return target, section, "", nil
 }
 
 // queueFollowUp appends a follow-up to the autopilot queue.

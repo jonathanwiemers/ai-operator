@@ -350,11 +350,11 @@ func (r *AgentProjectReconciler) patchProposals(ctx context.Context, coord *aiv1
 	return err
 }
 
-// applyPilotChatCommands applies Desk accept/reject and answers to the
-// milestone's prompts (answerPrompt) on the Coordinate task
-// newer than LastChatCommandID. Authority is ownerSubjects; answers and the
-// mark are saved on the Coordinate task.
-func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+// applyPilotChatCommands applies Desk accept/reject, answers to the
+// milestone's prompts (answerPrompt) and revisits (revisitCommand) on the
+// Coordinate task newer than LastChatCommandID. Authority is
+// ownerSubjects; answers and the mark are saved on the Coordinate task.
+func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st, coord *aiv1.AgentTask) error {
 	src := &coord.Spec.Source
 	var pending []aiv1.ChatMessage
@@ -387,13 +387,15 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, pro
 			logger.Info("chat command skipped", "id", m.ID, "author", m.Author, "error", err.Error())
 			continue
 		}
-		if !cmd.ProposalOnly() && !cmd.PromptCmd() {
+		if !cmd.ProposalOnly() && !cmd.PromptCmd() && !cmd.RevisitCmd() {
 			answer(m.ID, "not supported on this task yet")
 			continue
 		}
 		if !slices.Contains(coord.Spec.OwnerSubjects, m.Author) {
 			if cmd.PromptCmd() {
 				answer(m.ID, "Only the milestone's owners can answer prompts.")
+			} else if cmd.RevisitCmd() {
+				answer(m.ID, "Only the milestone's owners can revisit decisions.")
 			} else {
 				answer(m.ID, "Only the milestone's owners may answer proposals.")
 			}
@@ -407,6 +409,15 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, pro
 		if cmd.PromptCmd() {
 			logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "prompt", cmd.Prompt)
 			reply, _, err := r.answerPrompt(ctx, project, spec, st, coord, who, m.ID, cmd, "desk")
+			if err != nil {
+				return err
+			}
+			answer(m.ID, reply)
+			continue
+		}
+		if cmd.RevisitCmd() {
+			logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "decision", cmd.Decision)
+			reply, err := r.revisitCommand(ctx, gl, project, spec, st, coord, who, cmd)
 			if err != nil {
 				return err
 			}
@@ -673,6 +684,13 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 // maxPilotCommands bounds the queue commands that wait to be applied.
 const maxPilotCommands = 20
 
+// commandsWaiting is queueCommand's refusal when maxPilotCommands wait.
+type commandsWaiting int
+
+func (n commandsWaiting) Error() string {
+	return fmt.Sprintf("%d commands of the pilot wait to be applied", int(n))
+}
+
 // queueCommand hands an accepted queue command to the paths of the
 // tracking issue's commands: autopilot applies skip, pause and resume on
 // its next poll, the revisits a revisit. Each remembers the last it
@@ -702,7 +720,7 @@ func (r *AgentProjectReconciler) queueCommand(ctx context.Context, st *aiv1.Agen
 		}
 		cmds = slices.DeleteFunc(cmds, func(x aiv1.PilotCommand) bool { return x.Seq <= done && x.Seq != c.Seq-1 })
 		if len(cmds) >= maxPilotCommands {
-			return fmt.Errorf("%d commands of the pilot wait to be applied", len(cmds))
+			return commandsWaiting(len(cmds))
 		}
 		t.Status.Pilot.Commands = append(cmds, c)
 		return r.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))

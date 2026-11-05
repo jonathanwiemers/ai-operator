@@ -328,4 +328,8 @@ func TestApplyChatCommandsBudget(t *testing.T) {
 	if !chatCommandAllowed(*task, chatcmd.Command{Cmd: "budget", USD: "40"}) {
 		t.Fatal("budget is delivered onto implement tasks")
 	}
+	revisit := chatcmd.Command{Cmd: "revisit", Decision: "D12-3"}
+	if chatCommandAllowed(*task, revisit) || !chatCommandAllowed(aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Type: aiv1.TaskTypeCoordinate}}, revisit) {
+		t.Fatal("revisit is delivered onto Coordinate tasks only")
+	}
 }

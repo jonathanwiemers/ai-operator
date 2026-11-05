@@ -9,6 +9,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 )
 
 // modelRE is a model name: no spaces or backticks, at most 64 characters.
@@ -30,6 +31,9 @@ type Command struct {
 	Prompt string `json:"prompt,omitempty"`
 	Option string `json:"option,omitempty"`
 	Text   string `json:"text,omitempty"`
+	// Decision ("D12-3") is the decision a revisit is for, with the change
+	// asked for as Text, or without Text to open a revisit prompt.
+	Decision string `json:"decision,omitempty"`
 	// USD is the budget of the issue ("40", or "default" for the
 	// project's), for budget.
 	USD string `json:"usd,omitempty"`
@@ -67,12 +71,16 @@ func Parse(body string) (Command, error) {
 	if c.SHA != "" && c.Cmd != "merge" {
 		return Command{}, fmt.Errorf("%s takes no sha", c.Cmd)
 	}
-	if (c.Prompt != "" || c.Option != "" || c.Text != "") && c.Cmd != "answer" {
+	if (c.Prompt != "" || c.Option != "" || c.Text != "") && c.Cmd != "answer" && c.Cmd != "revisit" {
 		return Command{}, fmt.Errorf("%s takes no prompt, option or text", c.Cmd)
+	}
+	if c.Decision != "" && c.Cmd != "revisit" {
+		return Command{}, fmt.Errorf("%s takes no decision", c.Cmd)
 	}
 	c.Prompt = strings.ToUpper(strings.TrimSpace(c.Prompt))
 	c.Option = strings.ToUpper(strings.TrimSpace(c.Option))
 	c.Text = strings.TrimSpace(c.Text)
+	c.Decision = strings.ToUpper(strings.TrimSpace(c.Decision))
 	c.USD = strings.TrimSpace(c.USD)
 	if c.USD != "" && c.Cmd != "budget" {
 		return Command{}, fmt.Errorf("%s takes no usd", c.Cmd)
@@ -119,6 +127,10 @@ func Parse(body string) (Command, error) {
 		if err := c.parseBudget(); err != nil {
 			return Command{}, err
 		}
+	case "revisit":
+		if err := c.parseRevisit(); err != nil {
+			return Command{}, err
+		}
 	default:
 		return Command{}, fmt.Errorf("unknown cmd %q", c.Cmd)
 	}
@@ -144,6 +156,20 @@ func (c *Command) parseAnswer() error {
 		return fmt.Errorf("the text is longer than %d bytes", aiv1.MaxPromptText)
 	case c.Engine != "" || c.Model != "" || c.Effort != "" || c.Default || c.Issue != 0 || c.Proposal != 0:
 		return fmt.Errorf("answer takes only prompt and option or text")
+	}
+	return nil
+}
+
+// parseRevisit checks a revisit command: a decision id, and optionally the
+// change asked for.
+func (c *Command) parseRevisit() error {
+	switch {
+	case marker.DecisionIssue(c.Decision) == 0:
+		return fmt.Errorf("revisit needs a decision D<issue>-<n>")
+	case len(c.Text) > aiv1.MaxPromptText:
+		return fmt.Errorf("the text is longer than %d bytes", aiv1.MaxPromptText)
+	case c.Prompt != "" || c.Option != "" || c.Engine != "" || c.Model != "" || c.Effort != "" || c.Default || c.Issue != 0 || c.Proposal != 0:
+		return fmt.Errorf("revisit takes only decision and text")
 	}
 	return nil
 }
@@ -225,6 +251,12 @@ func (c Command) ProposalOnly() bool {
 // Coordinate task takes the milestone's.
 func (c Command) PromptCmd() bool {
 	return c.Cmd == "answer"
+}
+
+// RevisitCmd reports whether the command revisits a decision of the
+// milestone (revisit); the Coordinate task takes it.
+func (c Command) RevisitCmd() bool {
+	return c.Cmd == "revisit"
 }
 
 // Routing turns a use, effort or budget command into the GitLab routing

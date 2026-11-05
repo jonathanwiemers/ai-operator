@@ -406,7 +406,7 @@ func chatCommandAllowed(task aiv1.AgentTask, cmd chatcmd.Command) bool {
 		return true
 	case cmd.Autopilot() && task.Spec.Type == aiv1.TaskTypeSpec && task.Spec.Autopilot:
 		return true
-	case (cmd.ProposalOnly() || cmd.PromptCmd()) && task.Spec.Type == aiv1.TaskTypeCoordinate:
+	case (cmd.ProposalOnly() || cmd.PromptCmd() || cmd.RevisitCmd()) && task.Spec.Type == aiv1.TaskTypeCoordinate:
 		return true
 	default:
 		return false

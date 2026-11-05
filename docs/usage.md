@@ -718,6 +718,24 @@ Without autopilot the follow-up goes straight to `agent::ready`, since you
 asked for it. On autopilot it is created as `agent::draft` and joins the
 queue after the planned issues; it is merged like any other.
 
+**From the Desk**, without a comment: an owner of the milestone (its
+`owner-subjects`) revisits a decision on the milestone's pilot.
+`{"cmd":"revisit","decision":"D42-3","text":"…"}` does what the comment
+`/agent revisit D42-3 …` on the tracking issue does: the follow-up says
+"requested by @you via the Desk", and the operator's answer below is on
+the tracking issue. Without `text` (the decision row's **Revisit** button)
+it opens a `revisit` prompt instead, on the decision's issue: the
+recorded question, choice and why as its context; "Keep <choice>"
+(recommended, changes nothing); one "Switch to <alternative>" per
+alternative the decision recorded (at most three), which revisits it
+asking for that alternative; or "Decide later" when it recorded none; and a
+text box. Your own words in the box run nothing and need no pilot: they
+become the option "From your answer: revisit D42-3 asking for: …", which
+you confirm with one click. A second click while the prompt is open names
+it again. When the decision's text cannot be read, the prompt says so and
+offers "Keep the decision", "Decide later" and the text box. The refusals
+are those of the table below, answered in the chat.
+
 The operator answers every revisit comment it handles:
 
 | Reply | Why |

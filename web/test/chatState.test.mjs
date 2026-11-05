@@ -129,6 +129,20 @@ test('commandLabel: merge names the issue and the short head', () => {
   }
 })
 
+test('commandLabel: revisit names the decision and the text', () => {
+  assert.equal(commandLabel('{"cmd":"revisit","decision":"d12-3"}'), 'revisit D12-3')
+  assert.equal(
+    commandLabel('{"cmd":"revisit","decision":"D12-3","text":"use  gRPC\\ninstead"}'),
+    'revisit D12-3: "use gRPC instead"',
+  )
+  assert.equal(
+    commandLabel(`{"cmd":"revisit","decision":"D12-3","text":"${'x'.repeat(41)}"}`),
+    `revisit D12-3: "${'x'.repeat(39)}…"`,
+  )
+  assert.equal(commandLabel('{"cmd":"revisit","decision":"D12-3","text":" "}'), 'revisit D12-3')
+  assert.equal(commandLabel('{"cmd":"revisit"}'), '{"cmd":"revisit"}')
+})
+
 test('commandLabel: answer names the prompt and the option or text', () => {
   assert.equal(commandLabel('{"cmd":"answer","prompt":"Q3","option":"A"}'), 'answer Q3: A')
   assert.equal(

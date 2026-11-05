@@ -140,26 +140,33 @@ func (r *AgentProjectReconciler) addRefined(ctx context.Context, gl gitlab.API, 
 	if lines, err := checkOption(ctx, gl, project, spec, st, tasks, opened, &o, true); err != nil {
 		return fmt.Sprintf("The pilot's option for %s was not added:\n\n%s", id, strings.Join(lines, "\n")), nil
 	}
+	return r.addFromAnswer(ctx, st, id, o, "the pilot's option")
+}
+
+// addFromAnswer adds option o, made from an owner's free text and named
+// what in a refusal, to the open prompt id of st, after the producer's
+// options and in place of an earlier one from an answer, and returns the
+// answer to the owner.
+func (r *AgentProjectReconciler) addFromAnswer(ctx context.Context, st *aiv1.AgentTask, id string, o aiv1.PromptOption, what string) (string, error) {
 	// On the server's copy: it may have been answered or closed meanwhile.
 	refused := ""
 	if err := r.patchPrompts(ctx, st, func(list []aiv1.Prompt) []aiv1.Prompt {
-		refused = fmt.Sprintf("%s is gone from the milestone's prompts, so the pilot's option for it was not added.", id)
+		refused = fmt.Sprintf("%s is gone from the milestone's prompts, so %s for it was not added.", id, what)
 		for i := range list {
 			q := &list[i]
 			switch {
 			case q.ID != id:
 				continue
 			case q.State.Closed():
-				refused = fmt.Sprintf("%s no longer applies (%s), so the pilot's option for it was not added.", id, q.State)
+				refused = fmt.Sprintf("%s no longer applies (%s), so %s for it was not added.", id, q.State, what)
 				continue
 			}
-			// After the producer's options, in place of an earlier one.
 			options := slices.DeleteFunc(slices.Clone(q.Options), func(x aiv1.PromptOption) bool { return x.FromAnswer })
 			o.ID = string(rune('A' + len(options)))
 			p := *q
 			p.Options = append(options, o)
 			if err := p.Validate(); err != nil {
-				refused = fmt.Sprintf("The pilot's option for %s was not added: %s.", id, err)
+				refused = fmt.Sprintf("%s for %s was not added: %s.", strings.ToUpper(what[:1])+what[1:], id, err)
 				continue
 			}
 			q.Options, refused = p.Options, ""

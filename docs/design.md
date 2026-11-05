@@ -1479,8 +1479,26 @@ An owner answers a milestone prompt from the Desk with the chat command
   only records the answer.
 * A prompt that is superseded or expired (a proposal past 24 h, or the
   milestone's state changed) is refused. Free text is refused on a prompt
-  without `allowFreeText`, and with "pick an option" on `needsInput` and
-  `revisit` prompts, which take it on their own paths.
+  without `allowFreeText`, and with "pick an option" on `needsInput`
+  prompts, which take it on their own path.
+* **Revisits from the Desk** (`prompt_revisit.go`). `revisit {decision,
+  text}` on the Coordinate task, owners only, queues the `revisit` pilot
+  command with the owner as "<name> via the Desk" (syncRevisits then keeps
+  that name instead of adding "via the pilot") on the tracking issue (the
+  decision's issue once there is none), so `revisitAfterMerge` does what a
+  comment does. Without text it reads the decision as `revisitAfterMerge`
+  does (`revisitDecision`, with the same refusals), parses its section
+  (`parseDecision`: the heading's title and the `**Question:**`,
+  `**Chosen:**`, `**Why:**` and `**Alternatives:**` fields as
+  `renderDecision` writes them, alternatives split at `; `) and adds a
+  `revisit` prompt with `source {kind: revisit, issueIID, key: <id>}`: "Keep
+  …" recommended without actions, up to three "Switch to …" options with a
+  `revisit` action (note "Choose instead: …"), "Decide later" when there
+  are none, and free text. An open revisit prompt of the decision is named
+  instead of a second one. Free text on a revisit prompt skips the pilot:
+  `answerPrompt` adds the option "From your answer: revisit <id> asking
+  for: …" (`fromAnswer`, the text as the action's note) through the same
+  `addFromAnswer` as a refinement, and the owner confirms it.
 * **Free text** on an action prompt (`queueRefine`) is never an answer: it
   goes to the pilot as a `spec.source.promptRefines` entry with a run
   request (see *Refines* above), the prompt stays open, and a sixth while

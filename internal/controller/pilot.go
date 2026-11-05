@@ -392,7 +392,7 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 		if err == nil && coord != nil && keep[coord.Name] {
 			// Desk accept/reject before runAccepted, like GitLab yes/no in
 			// pilotTracking above.
-			if err = r.applyPilotChatCommands(ctx, project, spec, st, coord); err == nil {
+			if err = r.applyPilotChatCommands(ctx, gl, project, spec, st, coord); err == nil {
 				err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks, st == lane))
 			}
 			if err == nil {

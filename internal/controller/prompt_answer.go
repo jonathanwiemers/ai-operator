@@ -14,6 +14,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
@@ -25,7 +26,9 @@ import (
 // runAccepted runs at the end of the poll: a crash in between loses the
 // run of the option, never runs it twice, and a second answer is refused.
 // Free text, of Desk chat message msg, goes to the pilot (queueRefine);
-// its reply is "", the message is answered once the pilot has.
+// its reply is "", the message is answered once the pilot has. On a
+// revisit prompt it becomes the option to revisit the decision with it,
+// without the pilot.
 func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st, coord *aiv1.AgentTask, who string, msg int64, cmd chatcmd.Command, via string) (reply string, answered bool, err error) {
 	i := slices.IndexFunc(st.Status.Prompts, func(p aiv1.Prompt) bool { return p.ID == cmd.Prompt })
@@ -35,6 +38,10 @@ func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1
 	p := st.Status.Prompts[i]
 	if refused := answerRefused(p, cmd); refused != "" {
 		return refused, false, nil
+	}
+	if cmd.Text != "" && p.Source.Kind == aiv1.PromptRevisit {
+		reply, err := r.addFromAnswer(ctx, st, p.ID, revisitFromAnswer(p.Source.Key, cmd.Text), "the option from your answer")
+		return reply, err == nil, err
 	}
 	if cmd.Text != "" {
 		return r.queueRefine(ctx, coord, p, who, msg, cmd.Text)
@@ -157,10 +164,11 @@ func answerRefused(p aiv1.Prompt, cmd chatcmd.Command) string {
 		return fmt.Sprintf("%s no longer applies (%s).", p.ID, p.State)
 	case cmd.Text != "" && !p.AllowFreeText:
 		return fmt.Sprintf("%s takes no free text; pick an option.", p.ID)
-	case cmd.Text != "" && (p.Source.Kind == aiv1.PromptNeedsInput || p.Source.Kind == aiv1.PromptRevisit):
-		// The agent's question and a revisit take the text themselves, on
-		// their own paths.
+	case cmd.Text != "" && p.Source.Kind == aiv1.PromptNeedsInput:
+		// The agent's question takes the text itself, on its own path.
 		return "Free text answers are not handled yet; pick an option."
+	case cmd.Text != "" && p.Source.Kind == aiv1.PromptRevisit && marker.DecisionIssue(p.Source.Key) == 0:
+		return fmt.Sprintf("%s names no decision to revisit; pick an option.", p.ID)
 	case cmd.Text != "":
 	case p.Option(cmd.Option) == nil:
 		return fmt.Sprintf("%s has no option %s.", p.ID, cmd.Option)
