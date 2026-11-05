@@ -175,6 +175,27 @@ pricing:
 Prices apply to calls written after the operator starts with them; rows
 already written keep their cost.
 
+### Subagents
+
+Not a chart value: a role of an AgentProject can have `subagents`, passed to
+claude as `--agents` (claude only; the default is none). A read-only scout on
+haiku for the implementer:
+
+```yaml
+# AgentProject spec
+agents:
+  implement:
+    subagents:
+      - name: scout
+        description: Searches the code, looks things up on the web and reads logs. Use it for every search and lookup.
+        model: claude-haiku-5-5
+        tools: [Read, Grep, Glob, WebFetch, WebSearch]
+        prompt: You search and read for the implementing agent and never edit. Answer with the file paths, line numbers and short excerpts it needs, not whole files.
+```
+
+See [docs/configuration.md](../../docs/configuration.md#subagents) for how
+the role is told to use it and how to compare the cost in the Spend tab.
+
 ### Web UI
 
 The optional read-only web UI, see [docs/ui.md](../../docs/ui.md). It runs as

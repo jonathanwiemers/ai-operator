@@ -31,7 +31,9 @@ type runLog struct {
 	// fallbacks say which roles ran on a fallback engine (noteFallback);
 	// they head the run log too. Reviewers add them in parallel.
 	fallbacks []string
-	mu        sync.Mutex
+	// warned are the warnings logged once per run (warnOnce).
+	warned []string
+	mu     sync.Mutex
 	// onChange is called when a step starts or ends (the progress comment).
 	onChange func()
 }
@@ -46,6 +48,21 @@ func (rl *runLog) noteFallback(line string) {
 	if !slices.Contains(rl.fallbacks, line) {
 		rl.fallbacks = append(rl.fallbacks, line)
 	}
+}
+
+// warnOnce reports whether key was not warned about yet in this run, and
+// marks it. Without a run every warning is new.
+func (rl *runLog) warnOnce(key string) bool {
+	if rl == nil {
+		return true
+	}
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	if slices.Contains(rl.warned, key) {
+		return false
+	}
+	rl.warned = append(rl.warned, key)
+	return true
 }
 
 func (rl *runLog) changed() {

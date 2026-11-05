@@ -43,6 +43,9 @@ type Invocation struct {
 	ReadOnly bool
 	// JSONSchema requests structured output matching the schema.
 	JSONSchema string
+	// Agents is the role's subagents as claude's --agents JSON (claude
+	// only, see withSubagents).
+	Agents string
 	// Resume continues an earlier session of the same engine, which keeps
 	// the context (and for claude the prompt cache) instead of re-sending
 	// the whole issue thread on follow-up runs.
@@ -196,6 +199,9 @@ func (c *ClaudeCLI) Args(inv Invocation) []string {
 	}
 	if inv.JSONSchema != "" {
 		args = append(args, "--json-schema", inv.JSONSchema)
+	}
+	if inv.Agents != "" {
+		args = append(args, "--agents", inv.Agents)
 	}
 	if inv.Resume != "" {
 		args = append(args, "--resume", inv.Resume)

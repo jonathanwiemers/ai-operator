@@ -389,6 +389,11 @@ func reviewerSystemPrompt(kind aiv1.ReviewerKind) string {
 	return bugbotSystemPrompt
 }
 
+// subagentsNote is appended to the system prompt of a role with subagents.
+func subagentsNote(names []string) string {
+	return fmt.Sprintf("You have subagents (%s). Delegate searches, lookups and log reading to them, and read only the files you edit yourself.", strings.Join(names, ", "))
+}
+
 func withInstructions(system, extra string) string {
 	if strings.TrimSpace(extra) == "" {
 		return system

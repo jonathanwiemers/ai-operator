@@ -392,7 +392,7 @@ killed together with the run.
 | `allowedTools` | claude | override the tool allow-list |
 | `instructions` | both | appended to the role prompt (house rules, test commands) |
 | `fallback` | both | `{engine, model, effort}` the role runs on while its own engine is at a usage limit, see [Fallback engine](#fallback-engine) |
-| `subagents` | claude | up to 8 custom subagents `{name, description, model, tools, prompt}`; default none (claude keeps its built-in ones). `name` is lowercase `[a-z][a-z0-9-]`, at most 40 characters; `tools` from `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `Bash`, `Edit`, `Write`, `NotebookEdit`, `TodoWrite` (empty: claude's default); `model` empty inherits the role's. The CRD only validates them so far; passing them to claude as `--agents` follows in a later release |
+| `subagents` | claude | up to 8 custom subagents `{name, description, model, tools, prompt}`; default none (claude keeps its built-in ones). `name` is lowercase `[a-z][a-z0-9-]`, at most 40 characters; `tools` from `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `Bash`, `Edit`, `Write`, `NotebookEdit`, `TodoWrite` (empty: claude's default); `model` empty inherits the role's. See [Subagents](#subagents) |
 
 `review` additionally has `reviewers` (`bugbot`, `security`),
 `maxIterations`, `retries` (calls again a reviewer that failed
@@ -425,6 +425,41 @@ works in steps (`workflow.stepCommits`, draft MR) goes on after each step:
 The first step, the review-fix rounds and the next run work as with
 `resume`: fix rounds and the next run resume the last step's session. Compare
 the two in the Spend tab (fresh steps are calls with `resumed: false`).
+
+### Subagents
+
+A role's `subagents` are passed to claude as `--agents` JSON, and the role's
+system prompt gets one more line: *You have subagents (scout). Delegate
+searches, lookups and log reading to them, and read only the files you edit
+yourself.* The default is none: no `--agents`, no line, and claude uses its
+built-in subagents at will, as before.
+
+Subagents are claude only. A call that runs on cursor, because the role's
+engine is cursor or because a claude role runs on its cursor
+[fallback](#fallback-engine), goes without them; the runner logs *subagents
+are claude only; ignored for role implement on cursor* once per run and
+role. A cursor role whose claude fallback runs gets them.
+
+A read-only scout on haiku for the implementer:
+
+```yaml
+spec:
+  agents:
+    implement:
+      subagents:
+        - name: scout
+          description: Searches the code, looks things up on the web and reads logs. Use it for every search and lookup.
+          model: claude-haiku-5-5
+          tools: [Read, Grep, Glob, WebFetch, WebSearch]
+          prompt: You search and read for the implementing agent and never edit. Answer with the file paths, line numbers and short excerpts it needs, not whole files.
+```
+
+To see whether it pays off, compare runs with and without it in the
+[Spend tab](ui.md): the scout's model shows up in the by-model breakdown
+and the model bars (subagent models as their own), the calls count their
+subagent calls, and on the context-growth chart an orange dot marks each
+turn after which a subagent ran. Fewer main-model input and cache tokens
+per step, and a flatter context line, mean the delegation works.
 
 ### Per-issue model and effort
 

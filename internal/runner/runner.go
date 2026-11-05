@@ -701,6 +701,7 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 // invokeOn runs a role on its own engine (see invoke). The result says
 // which engine and model ran.
 func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
+	inv = r.withSubagents(role, inv)
 	inv.LogPrompt = r.logPrompts
 	if len(r.changedPins) > 0 && r.run != nil {
 		inv.PerRunToolchains = toolchainsRunName(r.run.id)
@@ -772,6 +773,34 @@ func toolchainsRunName(id string) string {
 		name = strings.TrimLeft(name[len(name)-100:], "-")
 	}
 	return name
+}
+
+// withSubagents gives a claude call the role's subagents (--agents) and the
+// line telling it to delegate to them. role is what the call runs on, so a
+// fallback's engine counts, not the configured one. Cursor has no subagents:
+// the call runs without them, with a warning once per run and role.
+func (r *Runner) withSubagents(role aiv1.RoleSpec, inv Invocation) Invocation {
+	if len(role.Subagents) == 0 {
+		return inv
+	}
+	if role.Engine != aiv1.EngineClaude {
+		if r.run.warnOnce("subagents/" + inv.Role + "/" + string(role.Engine)) {
+			r.log().Info(fmt.Sprintf("subagents are claude only; ignored for role %s on %s", inv.Role, role.Engine))
+		}
+		return inv
+	}
+	agents, err := role.AgentsJSON()
+	if err != nil {
+		r.log().Error(err, "subagents ignored", "role", inv.Role)
+		return inv
+	}
+	names := make([]string, len(role.Subagents))
+	for i, s := range role.Subagents {
+		names[i] = s.Name
+	}
+	inv.Agents = agents
+	inv.SystemPrompt += "\n\n" + subagentsNote(names)
+	return inv
 }
 
 func roleInvocation(role aiv1.RoleSpec, system string, tools []string, schema string, readOnly bool) Invocation {
