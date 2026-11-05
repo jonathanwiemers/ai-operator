@@ -830,10 +830,13 @@ put back by hand); the gate runs again on the next poll, after
 check, so a GitLab outage keeps a red status fresh: stale means the watcher
 stopped, not that GitLab failed.
 
-The main-red lane (`mainHealth.autoFix`, also in `freeze.go`): one autopilot
-per project, the lowest milestone IID that is not done, keeps the main-red
-issue as `status.autopilot.mainRedFix` while main health is red and fresh
-(and while autopilot is paused for it). `loadMainRedFix` reads that issue
+The main-red lane (also in `freeze.go`): one autopilot per project, the
+lowest milestone IID that is not done, keeps the main-red issue as
+`status.autopilot.mainRedFix` while main health is red and fresh (and while
+autopilot is paused for it). With `autoFix` off the item starts only once
+the issue carries an active workflow label (an owner's hand-over); the poll
+keeps `status.mainHealth.issueIID` in scope despite `milestones.titlePattern`,
+like the autoFix issue. `loadMainRedFix` reads that issue
 before `autoResume`, since it is in no milestone; `item()` finds it, so
 pauses, `autoResume` and `doneByHand` treat it like the active issue.
 `mainRedLane` runs `drive` on it after `freezeOnMainRed`, while autopilot runs

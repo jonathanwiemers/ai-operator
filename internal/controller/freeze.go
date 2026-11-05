@@ -81,16 +81,33 @@ func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
 	return nil
 }
 
-// loadMainRedFix keeps the main-red issue (mainHealth.autoFix) as the
-// lane's item while the default branch is red, and while autopilot is
-// paused for it; one item per red episode. Its issue is in no milestone, so
-// it is read on its own.
+// loadMainRedFix keeps the main-red issue as the lane's item while the
+// default branch is red, and while autopilot is paused for it; one item per
+// red episode. The item starts with mainHealth.autoFix, or once an owner
+// handed the issue to the agent (an active workflow label). Its issue is in
+// no milestone, so it is read on its own.
 func (a *autopilot) loadMainRedFix(ctx context.Context) error {
-	if mh := a.r.freshMainHealth(a.spec, a.project.Status.MainHealth, mainHealthStale); a.lane && a.spec.MainHealth.AutoFix && *a.spec.MainHealth.FreezeAutopilot && mh != nil {
+	if mh := a.r.freshMainHealth(a.spec, a.project.Status.MainHealth, mainHealthStale); a.lane && *a.spec.MainHealth.FreezeAutopilot && mh != nil {
 		a.mainRed = mh.IssueIID
+	}
+	var is *gitlab.Issue
+	get := func(iid int64) error {
+		var err error
+		if is, err = a.gl.GetIssue(ctx, a.spec.GitLab.Project, iid); err != nil && !gitlab.IsNotFound(err) {
+			return fmt.Errorf("getting issue #%d: %w", iid, err)
+		}
+		return nil
 	}
 	switch fix := a.ap.MainRedFix; {
 	case fix != nil && (fix.IID == a.mainRed || fix.IID == a.ap.PausedFor):
+	case a.mainRed != 0 && !a.spec.MainHealth.AutoFix:
+		if err := get(a.mainRed); err != nil {
+			return err
+		}
+		a.ap.MainRedFix = nil
+		if is != nil && hasAny(*is, a.spec.Workflow.ActiveLabels()...) {
+			a.ap.MainRedFix = &aiv1.AutopilotItem{IID: a.mainRed, State: aiv1.AutopilotItemActive}
+		}
 	case a.mainRed != 0:
 		a.ap.MainRedFix = &aiv1.AutopilotItem{IID: a.mainRed, State: aiv1.AutopilotItemActive}
 	default:
@@ -100,11 +117,12 @@ func (a *autopilot) loadMainRedFix(ctx context.Context) error {
 	if fix == nil || fix.State != aiv1.AutopilotItemActive {
 		return nil
 	}
-	is, err := a.gl.GetIssue(ctx, a.spec.GitLab.Project, fix.IID)
-	if err != nil && !gitlab.IsNotFound(err) {
-		return fmt.Errorf("getting issue #%d: %w", fix.IID, err)
+	if is == nil {
+		if err := get(fix.IID); err != nil {
+			return err
+		}
 	}
-	if err == nil {
+	if is != nil {
 		a.issues[fix.IID] = *is
 	}
 	return nil

@@ -599,9 +599,12 @@ lifted. `/agent resume` does not end a freeze (it pauses again); to ship
 during a freeze, merge by hand. The freeze holds at the merge gate only: an
 issue already started keeps working until it reaches it.
 
-**The main-red lane.** With `mainHealth.autoFix` and the freeze on, the
-oldest autopilot milestone that is not done also drives the `ci::main-red`
-issue while the branch is red: its run is on autopilot (no questions, CI
+**The main-red lane.** With the freeze on, the oldest autopilot milestone
+that is not done also drives the `ci::main-red` issue while the branch is
+red, once it is handed to the agent: by `mainHealth.autoFix`, or by an owner
+who adds `agent::ready` with `autoFix` off (also when
+`milestones.titlePattern` would skip it); an issue without a workflow label
+stays yours. Its run is on autopilot (no questions, CI
 fixes are reviewed), and it goes through the same merge gate (run, review,
 CI, a mergeable MR) and is merged. That is the only merge during a freeze:
 the queue stays frozen until the next check sees the branch green, then it

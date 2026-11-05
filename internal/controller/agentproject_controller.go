@@ -380,7 +380,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 	mainRed := int64(0)
-	if mh := r.freshMainHealth(spec, project.Status.MainHealth, mainHealthStale); lane != nil && spec.MainHealth.AutoFix && *spec.MainHealth.FreezeAutopilot && mh != nil {
+	// Handed over by autoFix or by an owner: only agent-labelled issues are
+	// listed below.
+	if mh := r.freshMainHealth(spec, project.Status.MainHealth, mainHealthStale); lane != nil && *spec.MainHealth.FreezeAutopilot && mh != nil {
 		mainRed = mh.IssueIID
 	}
 
@@ -392,9 +394,10 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			return fmt.Errorf("listing issues with label %q: %w", label, err)
 		}
 		for _, is := range list {
-			// The main-red issue handed to the agent has no milestone, nor
-			// may a flaky one.
-			autoFix := project.Status.MainHealth != nil && project.Status.MainHealth.AutoFixIssueIID == is.IID || flakyLatch(project.Status.MainHealth, is.IID) != nil
+			// The main-red issue handed to the agent (by autoFix or an
+			// owner) has no milestone, nor may a flaky one.
+			mh := project.Status.MainHealth
+			autoFix := mh != nil && (mh.AutoFixIssueIID == is.IID || mh.IssueIID == is.IID) || flakyLatch(mh, is.IID) != nil
 			if titleRE != nil && !autoFix && (is.Milestone == nil || !titleRE.MatchString(is.Milestone.Title)) {
 				continue
 			}

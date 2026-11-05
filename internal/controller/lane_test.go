@@ -80,13 +80,48 @@ func TestAutopilotMergesTheMainRedFixDuringTheFreeze(t *testing.T) {
 	}
 }
 
-func TestAutopilotLeavesTheMainRedIssueWithoutAutoFix(t *testing.T) {
+// Bloop #425: autoFix is off, an owner hands the main-red issue to the
+// agent. The frozen milestone merges its fix as with autoFix.
+func TestAutopilotMergesAnOwnersMainRedHandoff(t *testing.T) {
 	e := laneEnv(t, false)
+	if task := e.laneTask(99); task == nil || !task.Spec.Autopilot || e.autopilot().MainRedFix == nil {
+		t.Fatalf("the handed-over main-red issue joins the lane: %+v, %+v", task, e.autopilot())
+	}
 	e.finishRun(99, "sha-fix", nil)
 	e.reconcile()
 	e.reconcile()
-	if len(e.gl.Merged) != 0 || e.autopilot().MainRedFix != nil || e.laneTask(99).Spec.Autopilot {
-		t.Fatalf("without autoFix a human merges the fix, merged %v", e.gl.Merged)
+	fix := e.mergeRequestOf(99)
+	if !slices.Equal(e.gl.Merged, []int64{fix}) || e.tasks()["shop-1-api"].Status.Blocked == nil {
+		t.Fatalf("during the freeze the frozen milestone merges the fix !%d, merged %v", fix, e.gl.Merged)
+	}
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthGreen})
+	e.reconcile()
+	e.reconcile()
+	e.reconcile()
+	if !slices.Equal(e.gl.Merged, []int64{fix, e.mergeRequestOf(1)}) {
+		t.Fatalf("green after the fix lifts the freeze and merges #1, merged %v", e.gl.Merged)
+	}
+}
+
+func TestAutopilotLeavesAnUnlabelledMainRedIssueWithoutAutoFix(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.setMainHealth(aiv1.MainHealthSpec{})
+	e.gl.AddIssue(99, "🚑 `main` is red: `test`", "ai-generated", "ci::main-red")
+	e.reconcile()
+	e.reconcile()
+	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthRed, IssueIID: 99, FailedJobs: []string{"test"}})
+	e.finishRun(1, "sha-api", nil)
+	e.reconcile()
+	e.reconcile()
+	if ap := e.autopilot(); ap.MainRedFix != nil || e.laneTask(99) != nil || ap.PausedReason != frozenReason || len(e.gl.Merged) != 0 {
+		t.Fatalf("an unlabelled main-red issue stays a human's: merged %v, %+v", e.gl.Merged, ap)
+	}
+
+	// An owner hands it over: it joins the lane.
+	e.gl.SetLabels(99, "ai-generated", "ci::main-red", "agent::ready")
+	e.reconcile()
+	if task := e.laneTask(99); task == nil || !task.Spec.Autopilot || e.autopilot().MainRedFix == nil {
+		t.Fatalf("the ready label hands it to the lane: %+v, %+v", task, e.autopilot())
 	}
 }
 
