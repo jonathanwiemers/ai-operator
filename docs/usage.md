@@ -859,8 +859,14 @@ anything else.
 ### When it pauses
 
 Autopilot pauses instead of guessing. It comments on the tracking issue with
-the reason and what to do, mentioning the milestone's
-[owners](#owners-and-pings). The reason can quote job names or other text
+the reason and the **ways out** of that kind of pause, mentioning the
+milestone's [owners](#owners-and-pings): first what ends it by itself, then
+the commands, labels or GitLab actions that end it, with what each does
+(for example `` `/agent review` on #12: the reviewers check the pushed head
+again``). The list is one table in the operator (`PauseExits` in
+`api/v1alpha1/pause.go`); the [pilot](#talking-to-the-pilot) gets it in its
+state (`pauseExits`) and the Desk in the milestone view (`exits`), so they
+name the same ways out. The reason can quote job names or other text
 from GitLab, so mentions and quick actions in it are made inert, in the
 comment and in the tracking issue's description. It pauses for:
 

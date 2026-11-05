@@ -217,6 +217,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		Spec       string                 `json:"spec"`
 		Plan       []aiv1.PlannedIssue    `json:"plan,omitempty"`
 		Autopilot  *aiv1.AutopilotStatus  `json:"autopilot,omitempty"`
+		PauseExits []aiv1.PauseExit       `json:"pauseExits,omitempty"`
 		Issues     []pilotIssue           `json:"issues"`
 		MainHealth *aiv1.MainHealthStatus `json:"mainHealth,omitempty"`
 		Comments   []string               `json:"trackingIssueComments,omitempty"`
@@ -237,6 +238,9 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		case t.Spec.Type == aiv1.TaskTypeImplement && t.Spec.Issue != nil:
 			byIID[t.Spec.Issue.IID] = t
 		}
+	}
+	if ap := v.Autopilot; ap != nil && ap.Phase == aiv1.AutopilotPaused {
+		v.PauseExits = aiv1.PauseExits(ap.PauseKind) // the ways out of the pause
 	}
 	for _, is := range issues {
 		pi := pilotIssue{IID: is.IID, Title: is.Title, State: is.State, Labels: is.Labels}

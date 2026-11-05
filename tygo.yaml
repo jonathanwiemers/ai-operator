@@ -19,6 +19,7 @@ packages:
       - agentproject_types.go
       - agentresearch_types.go
       - agenttask_types.go
+      - pause.go
       - prompt.go
     type_mappings:
       metav1.Condition: Condition
@@ -103,6 +104,7 @@ packages:
       aiv1.MergeOverride: aiv1.MergeOverride
       aiv1.MilestoneRef: aiv1.MilestoneRef
       aiv1.PauseKind: aiv1.PauseKind
+      aiv1.PauseExit: aiv1.PauseExit
       aiv1.PilotAutonomy: aiv1.PilotAutonomy
       aiv1.PromptKind: aiv1.PromptKind
       aiv1.PromptState: aiv1.PromptState

@@ -103,10 +103,9 @@ func (a *autopilot) budget(ctx context.Context) error {
 	}
 	switch paused := a.budgetPaused(); {
 	case over >= 0 && (a.ap.Phase == aiv1.AutopilotRunning || paused && a.ap.PausedFor != over):
-		if err := a.pause(ctx, aiv1.PauseBudget, reason); err != nil {
+		if err := a.pause(ctx, aiv1.PauseBudget, over, reason); err != nil {
 			return err
 		}
-		a.ap.PausedFor = over
 	case over < 0 && paused:
 		b, why := a.pausedBudget(), "the budget"
 		if a.ap.PausedFor != 0 {

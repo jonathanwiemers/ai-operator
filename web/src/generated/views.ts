@@ -196,6 +196,10 @@ export interface MilestoneAutopilot {
   head?: string;
   reviewErrors?: aiv1.ReviewError[];
   mergeOverride?: aiv1.MergeOverride;
+  /**
+   * Exits are the ways out of the pause (aiv1.PauseExits), while paused.
+   */
+  exits?: aiv1.PauseExit[];
   items: QueueItem[];
 }
 /**

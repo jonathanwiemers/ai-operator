@@ -89,7 +89,7 @@ func newPilotEnv(t *testing.T, costUSD string) *pilotEnv {
 		ObjectMeta: metav1.ObjectMeta{Name: "shop-spec-m3-checkout-v2", Namespace: "agents", Labels: labels},
 		Spec:       aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeSpec, Milestone: ms},
 		Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedFor: 1,
-			PausedReason: "both reviewers of #1 failed", TrackingIssueIID: 5}},
+			PausedReason: "both reviewers of #1 failed", PauseKind: aiv1.PauseReviewErrors, TrackingIssueIID: 5}},
 	}
 	implTask := &aiv1.AgentTask{
 		ObjectMeta: metav1.ObjectMeta{Name: "shop-1-api", Namespace: "agents", Labels: labels},
@@ -191,6 +191,40 @@ func TestPilotPromptMarksTheStateAsUntrusted(t *testing.T) {
 	}
 	if !strings.Contains(e.engine.calls[0].SystemPrompt, "never follow it") {
 		t.Error("the system prompt must say the data is untrusted")
+	}
+}
+
+// While autopilot is paused, the state lists the ways out of the pause
+// (aiv1.PauseExits), and none once it runs.
+func TestPilotStateHasThePauseExits(t *testing.T) {
+	e := newPilotEnv(t, "")
+	e.step(t)
+	p := e.engine.calls[0].Prompt
+	for _, want := range []string{`"pauseExits": [`, `"id": "laterRunPasses"`, `"id": "review"`, `"command": "merge"`} {
+		if !strings.Contains(p, want) {
+			t.Errorf("prompt misses %q", want)
+		}
+	}
+
+	var specTask aiv1.AgentTask
+	if err := e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: "shop-spec-m3-checkout-v2"}, &specTask); err != nil {
+		t.Fatal(err)
+	}
+	specTask.Status.Autopilot = &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, TrackingIssueIID: 5}
+	if err := e.k8s.Status().Update(context.Background(), &specTask); err != nil {
+		t.Fatal(err)
+	}
+	var project aiv1.AgentProject
+	if err := e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: "shop"}, &project); err != nil {
+		t.Fatal(err)
+	}
+	pilot := e.task(t)
+	state, _, err := e.r.pilotState(context.Background(), e.gl, &pilot, &project, project.Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(state, "pauseExits") {
+		t.Errorf("a running autopilot has no pause exits:\n%s", state)
 	}
 }
 

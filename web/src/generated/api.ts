@@ -3851,6 +3851,76 @@ export interface BlockedStatus {
 }
 
 //////////
+// source: pause.go
+
+/**
+ * PauseExit is one way out of an autopilot pause: an automatic exit (a
+ * condition the operator lifts the pause on by itself) or an owner's remedy
+ * (a command, a label or an action in GitLab, and what it does). The table
+ * (PauseExits) is the one source of the operator's pause comment, the
+ * pilot's state and the Desk's pause card. It holds no project setup:
+ * callers resolve the command prefix and the label names (WorkflowSpec).
+ */
+export interface PauseExit {
+  /**
+   * ID is stable and camelCase, e.g. laterRunPasses or skip.
+   */
+  id: string;
+  /**
+   * Auto: the operator lifts the pause by itself once When holds.
+   */
+  auto?: boolean;
+  /**
+   * When is the condition of an automatic exit, or what a remedy needs
+   * first (for a GitLab action: the action).
+   */
+  when?: string;
+  /**
+   * Command is the /agent word of a remedy (resume, skip, merge, retry,
+   * review); after a label or a GitLab action it is the command that
+   * follows, on the tracking issue.
+   */
+  command?: string;
+  /**
+   * Target is where a remedy's command or label goes: spec (the tracking
+   * issue, the milestone) or implement (the paused issue).
+   */
+  target?: ExitTarget;
+  /**
+   * Label is the workflow label role a remedy sets (done, ready),
+   * resolved with WorkflowSpec.RoleLabel.
+   */
+  label?: LabelRole;
+  /**
+   * GitLab: the remedy is an action in GitLab (When says which), not a
+   * command or a label.
+   */
+  gitlab?: boolean;
+  /**
+   * Does says what happens then.
+   */
+  does: string;
+}
+/**
+ * ExitTarget is where a remedy goes.
+ */
+/**
+ * ExitTargetSpec: the tracking issue (or the milestone).
+ */
+export const ExitTargetSpec = "spec";
+/**
+ * ExitTargetImplement: the paused issue.
+ */
+export const ExitTargetImplement = "implement";
+export type ExitTarget = typeof ExitTargetSpec | typeof ExitTargetImplement;
+/**
+ * LabelRole is a workflow label by its role.
+ */
+export const LabelRoleDone = "done";
+export const LabelRoleReady = "ready";
+export type LabelRole = typeof LabelRoleDone | typeof LabelRoleReady;
+
+//////////
 // source: prompt.go
 
 /**

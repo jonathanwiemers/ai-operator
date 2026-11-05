@@ -64,7 +64,7 @@ func TestBudgetPausesAtTheLimitAndResumesWhenRaised(t *testing.T) {
 	if len(e.gl.Merged) != 0 {
 		t.Fatalf("nothing merges during a budget pause: %v", e.gl.Merged)
 	}
-	if !strings.Contains(trackingComments(e), "Autopilot paused: "+want+".\n\nIt continues by itself once the budget is above the spend.") {
+	if !strings.Contains(trackingComments(e), "Autopilot paused: "+want+".\n\nWays out:\n- By itself, once the budget is raised above the spend or removed") {
 		t.Fatalf("the pause is explained on the tracking issue:\n%s", trackingComments(e))
 	}
 	e.reconcile()

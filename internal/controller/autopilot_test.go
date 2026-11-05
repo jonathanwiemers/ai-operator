@@ -388,7 +388,60 @@ func TestAutopilotMergeGate(t *testing.T) {
 			if ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, c.reason) || ap.PauseKind != c.kind || len(e.gl.Merged) != 0 {
 				t.Fatalf("expected a %s pause with %q and no merge: %+v, merged %v", c.kind, c.reason, ap, e.gl.Merged)
 			}
+			comments := trackingComments(e)
+			for _, x := range aiv1.PauseExits(c.kind) {
+				if !strings.Contains(comments, ": "+x.Does+".\n") {
+					t.Errorf("the pause comment lacks the exit %s:\n%s", x.ID, comments)
+				}
+			}
 		})
+	}
+}
+
+// The pause comment lists the kind's ways out (aiv1.PauseExits), with the
+// project's command prefix, label names, the paused issue and its head.
+func TestAutopilotPauseListsTheWaysOut(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	e.finishRun(1, "sha-api-0123456789", func(r *aiv1.RunStatus) { r.ReviewErrors = 1 })
+	e.reconcile()
+	if ap := e.autopilot(); ap.PauseKind != aiv1.PauseReviewErrors || ap.PausedFor != 1 {
+		t.Fatalf("expected a reviewErrors pause over #1: %+v", ap)
+	}
+	comments := trackingComments(e)
+	for _, want := range []string{
+		"\n\nWays out:\n- By itself, once a later run makes the issue pass the merge gate (reviewed and green): autopilot continues with the merge.\n",
+		"\n- `/agent retry` on #1: the agent runs again on the issue",
+		"\n- `/agent skip #1` here: the issue is skipped",
+		"\n- `/agent review` on #1: the reviewers check the pushed head again.\n",
+		"\n- `/agent merge #1 sha-api-` here: owners only:",
+	} {
+		if !strings.Contains(comments, want) {
+			t.Errorf("the pause comment lacks %q:\n%s", want, comments)
+		}
+	}
+	if strings.Contains(comments, "Fix it, then comment") {
+		t.Errorf("the generic hint is gone:\n%s", comments)
+	}
+}
+
+// A pause over no issue (stuck) names the label to set and #N for skip.
+func TestPauseExitLinesWithoutAnIssue(t *testing.T) {
+	a := &autopilot{spec: aiv1.AgentProjectSpec{Workflow: aiv1.WorkflowSpec{CommandPrefix: "/bot", DoneLabel: "wf::done"}}}
+	got := a.exitLines(aiv1.PauseStuck, 0)
+	for _, want := range []string{
+		"- Label the issue `wf::done` and close it (or merge it by hand), then `/bot resume` here: the skipped issue counts as merged",
+		"- In GitLab, remove the \"blocked by\" link of the waiting issue, then `/bot resume` here: ",
+		"- `/bot skip #N` here: the waiting issue is skipped",
+		"- `/bot resume` here: autopilot looks for an issue that can start again.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("lacks %q:\n%s", want, got)
+		}
+	}
+	if n := strings.Count(got, "\n") + 1; n != len(aiv1.PauseExits(aiv1.PauseStuck)) {
+		t.Errorf("one line per exit, got %d:\n%s", n, got)
 	}
 }
 

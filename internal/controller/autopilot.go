@@ -158,7 +158,7 @@ func (a *autopilot) sync(ctx context.Context) error {
 	switch {
 	case a.ap.Phase != aiv1.AutopilotRunning && a.ap.Phase != aiv1.AutopilotDone:
 	case len(cycle) > 0:
-		if err := a.pause(ctx, aiv1.PauseCycle, "the plan has a dependency cycle between "+issueList(cycle)); err != nil {
+		if err := a.pause(ctx, aiv1.PauseCycle, 0, "the plan has a dependency cycle between "+issueList(cycle)); err != nil {
 			return err
 		}
 	default:
@@ -422,7 +422,7 @@ func (a *autopilot) pick(ctx context.Context) error {
 			}
 			reasons = append(reasons, why)
 		}
-		return a.pause(ctx, aiv1.PauseStuck, fmt.Sprintf("nothing can start: %s; merge the issues they wait for by hand (or close them with `%s`), "+
+		return a.pause(ctx, aiv1.PauseStuck, 0, fmt.Sprintf("nothing can start: %s; merge the issues they wait for by hand (or close them with `%s`), "+
 			"remove the links, or `skip` the waiting ones, then `resume`", strings.Join(reasons, ", "), a.spec.Workflow.DoneLabel))
 	}
 	if a.ap.Phase != aiv1.AutopilotDone {
@@ -858,21 +858,13 @@ func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, kin
 			return a.merged(ctx, it, mr)
 		}
 	}
-	if err := a.pause(ctx, kind, a.about(it, reason)); err != nil {
-		return err
-	}
-	a.ap.PausedFor = it.IID
-	return nil
+	return a.pause(ctx, kind, it.IID, a.about(it, reason))
 }
 
 // pauseMR pauses because of the active issue's MR (approvals, a push, its
 // state): autopilot continues by itself only if it is merged by hand.
 func (a *autopilot) pauseMR(ctx context.Context, it *aiv1.AutopilotItem, reason string) error {
-	if err := a.pause(ctx, aiv1.PauseMergeRequest, a.about(it, reason)); err != nil {
-		return err
-	}
-	a.ap.PausedFor = it.IID
-	return nil
+	return a.pause(ctx, aiv1.PauseMergeRequest, it.IID, a.about(it, reason))
 }
 
 // pauseRun pauses because of the active issue's run, review or CI, which a
@@ -1265,26 +1257,68 @@ func capDecisions(ds []aiv1.DecisionRef) []aiv1.DecisionRef {
 	return ds
 }
 
-// pause stops the queue and says why, once.
-func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, reason string) error {
+// pause stops the queue over issue iid (0: none) and says why and the ways
+// out, once.
+func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, iid int64, reason string) error {
 	if a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedReason == reason {
+		a.ap.PausedFor = iid
 		return nil
 	}
 	a.log.Info("autopilot paused", "reason", reason)
 	// Comment first: if it fails, the pause is tried again on the next poll.
 	// Defuse the reason (it can quote job names and titles); the owners'
 	// mention is appended after, so it stays a real ping.
-	hint := fmt.Sprintf("Fix it, then comment `%s resume`. A pause over the active issue also ends by itself once a later run fixed it or the MR is merged by hand.", a.spec.Workflow.CommandPrefix)
-	if kind == aiv1.PauseBudget {
-		hint = "It continues by itself once the budget is above the spend."
-	}
-	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\n%s", notify.Defuse(reason), hint)+a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
+	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nWays out:\n%s", notify.Defuse(reason), a.exitLines(kind, iid))+a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
 		return err
 	}
 	a.ap.Phase = aiv1.AutopilotPaused
 	a.ap.PausedReason, a.ap.PauseKind = reason, kind
-	a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
+	a.ap.PausedFor, a.ap.ResumeWhenReady = iid, false
 	return nil
+}
+
+// exitLines renders the ways out of a pause of kind over issue iid
+// (aiv1.PauseExits) as a list, with the project's command prefix and labels.
+// A command after a label or a GitLab action goes on the tracking issue.
+func (a *autopilot) exitLines(kind aiv1.PauseKind, iid int64) string {
+	wf := a.spec.Workflow
+	issue, ref, head := "the issue", "#N", "<sha>"
+	if iid != 0 {
+		issue, ref = fmt.Sprintf("#%d", iid), fmt.Sprintf("#%d", iid)
+		if t := a.tasks[iid]; t != nil && t.Status.Run.PushedSHA != "" {
+			head = short(t.Status.Run.PushedSHA)
+		}
+	}
+	args := map[string]string{"skip": " " + ref, "merge": " " + ref + " " + head}
+	cmd := func(word string, target aiv1.ExitTarget) string {
+		where := "here"
+		if target == aiv1.ExitTargetImplement {
+			where = "on " + issue
+		}
+		return fmt.Sprintf("`%s %s%s` %s", wf.CommandPrefix, word, args[word], where)
+	}
+	var b strings.Builder
+	for _, e := range aiv1.PauseExits(kind) {
+		var how string
+		switch {
+		case e.Auto:
+			how = "By itself, once " + e.When
+		case e.GitLab:
+			how = "In GitLab, " + e.When
+		case e.Label != "":
+			how = fmt.Sprintf("Label %s `%s` %s", issue, wf.RoleLabel(e.Label), e.When)
+		default:
+			how = cmd(e.Command, e.Target)
+			if e.When != "" {
+				how += ", " + e.When
+			}
+		}
+		if !e.Auto && e.Command != "" && (e.GitLab || e.Label != "") {
+			how += ", then " + cmd(e.Command, aiv1.ExitTargetSpec)
+		}
+		fmt.Fprintf(&b, "- %s: %s.\n", strings.TrimSpace(how), e.Does)
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 // lift ends a pause: autopilot runs again. Every resume goes through here.

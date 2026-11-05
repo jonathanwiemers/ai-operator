@@ -113,6 +113,9 @@ func TestMilestoneView(t *testing.T) {
 	if a.Head != "5a0e000" || len(a.ReviewErrors) != 1 || a.ReviewErrors[0].Engine != aiv1.EngineCursor {
 		t.Errorf("the paused issue's head and reviewer failures: %q %+v", a.Head, a.ReviewErrors)
 	}
+	if !slices.Equal(a.Exits, aiv1.PauseExits(aiv1.PauseCIRed)) || !slices.ContainsFunc(a.Exits, func(e aiv1.PauseExit) bool { return e.ID == "mainGreenRebase" }) {
+		t.Errorf("the ways out of the ciRed pause: %+v", a.Exits)
+	}
 	want := []QueueItem{
 		{IID: 42, Title: "Add PayPal", State: aiv1.AutopilotItemActive, MergeRequestIID: 5, MergeRequestURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5", Task: "shop-42-add-paypal"},
 		{IID: 43, Title: "Add Klarna", State: aiv1.AutopilotItemPending},

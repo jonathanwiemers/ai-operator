@@ -63,7 +63,9 @@ type MilestoneAutopilot struct {
 	Head          string              `json:"head,omitempty"`
 	ReviewErrors  []aiv1.ReviewError  `json:"reviewErrors,omitempty"`
 	MergeOverride *aiv1.MergeOverride `json:"mergeOverride,omitempty"`
-	Items         []QueueItem         `json:"items"`
+	// Exits are the ways out of the pause (aiv1.PauseExits), while paused.
+	Exits []aiv1.PauseExit `json:"exits,omitempty"`
+	Items []QueueItem      `json:"items"`
 }
 
 // QueueItem is an issue in the autopilot's queue, in queue order.
@@ -169,6 +171,9 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 		a := &MilestoneAutopilot{Phase: ap.Phase, PausedReason: ap.PausedReason, WaitingFor: waitingFor(ap, tasks), PauseKind: ap.PauseKind,
 			PausedFor: ap.PausedFor, MergeOverride: ap.MergeOverride, Items: []QueueItem{}}
+		if ap.Phase == aiv1.AutopilotPaused {
+			a.Exits = aiv1.PauseExits(ap.PauseKind)
+		}
 		for i := range tasks {
 			if t := &tasks[i]; ap.Phase == aiv1.AutopilotPaused && ap.PausedFor != 0 && t.Spec.Issue != nil && t.Spec.Issue.IID == ap.PausedFor {
 				a.Head, a.ReviewErrors = t.Status.Run.PushedSHA, t.Status.Run.ReviewErrorKinds
