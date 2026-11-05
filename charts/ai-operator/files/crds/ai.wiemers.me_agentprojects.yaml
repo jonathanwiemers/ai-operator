@@ -165,6 +165,61 @@ spec:
                           claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
                           default.
                         type: string
+                      subagents:
+                        description: |-
+                          Subagents the role may delegate to, passed to claude as --agents
+                          (claude engine only; cursor roles ignore them with a warning). The
+                          default is none: claude keeps its built-in subagents.
+                        items:
+                          description: |-
+                            Subagent is a custom claude subagent of a role, e.g. a read-only scout on
+                            a cheaper model for searches, lookups and log reading.
+                          properties:
+                            description:
+                              description: Description tells the role when to use
+                                the subagent.
+                              minLength: 1
+                              type: string
+                            model:
+                              description: |-
+                                Model of the subagent, e.g. haiku or claude-haiku-5-5. Empty, it
+                                inherits the role's model.
+                              type: string
+                            name:
+                              description: Name the role delegates to.
+                              pattern: ^[a-z][a-z0-9-]{0,39}$
+                              type: string
+                            prompt:
+                              description: Prompt is the subagent's system prompt.
+                              minLength: 1
+                              type: string
+                            tools:
+                              description: Tools the subagent may use. Empty, claude's
+                                default for subagents.
+                              items:
+                                enum:
+                                - Read
+                                - Grep
+                                - Glob
+                                - WebFetch
+                                - WebSearch
+                                - Bash
+                                - Edit
+                                - Write
+                                - NotebookEdit
+                                - TodoWrite
+                                type: string
+                              type: array
+                          required:
+                          - description
+                          - name
+                          - prompt
+                          type: object
+                        maxItems: 8
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
                     type: object
                   env:
                     description: Env is added to the agent container.
@@ -443,6 +498,61 @@ spec:
                         - resume
                         - fresh
                         type: string
+                      subagents:
+                        description: |-
+                          Subagents the role may delegate to, passed to claude as --agents
+                          (claude engine only; cursor roles ignore them with a warning). The
+                          default is none: claude keeps its built-in subagents.
+                        items:
+                          description: |-
+                            Subagent is a custom claude subagent of a role, e.g. a read-only scout on
+                            a cheaper model for searches, lookups and log reading.
+                          properties:
+                            description:
+                              description: Description tells the role when to use
+                                the subagent.
+                              minLength: 1
+                              type: string
+                            model:
+                              description: |-
+                                Model of the subagent, e.g. haiku or claude-haiku-5-5. Empty, it
+                                inherits the role's model.
+                              type: string
+                            name:
+                              description: Name the role delegates to.
+                              pattern: ^[a-z][a-z0-9-]{0,39}$
+                              type: string
+                            prompt:
+                              description: Prompt is the subagent's system prompt.
+                              minLength: 1
+                              type: string
+                            tools:
+                              description: Tools the subagent may use. Empty, claude's
+                                default for subagents.
+                              items:
+                                enum:
+                                - Read
+                                - Grep
+                                - Glob
+                                - WebFetch
+                                - WebSearch
+                                - Bash
+                                - Edit
+                                - Write
+                                - NotebookEdit
+                                - TodoWrite
+                                type: string
+                              type: array
+                          required:
+                          - description
+                          - name
+                          - prompt
+                          type: object
+                        maxItems: 8
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
                     type: object
                   logLevel:
                     description: |-
@@ -604,6 +714,61 @@ spec:
                           claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
                           default.
                         type: string
+                      subagents:
+                        description: |-
+                          Subagents the role may delegate to, passed to claude as --agents
+                          (claude engine only; cursor roles ignore them with a warning). The
+                          default is none: claude keeps its built-in subagents.
+                        items:
+                          description: |-
+                            Subagent is a custom claude subagent of a role, e.g. a read-only scout on
+                            a cheaper model for searches, lookups and log reading.
+                          properties:
+                            description:
+                              description: Description tells the role when to use
+                                the subagent.
+                              minLength: 1
+                              type: string
+                            model:
+                              description: |-
+                                Model of the subagent, e.g. haiku or claude-haiku-5-5. Empty, it
+                                inherits the role's model.
+                              type: string
+                            name:
+                              description: Name the role delegates to.
+                              pattern: ^[a-z][a-z0-9-]{0,39}$
+                              type: string
+                            prompt:
+                              description: Prompt is the subagent's system prompt.
+                              minLength: 1
+                              type: string
+                            tools:
+                              description: Tools the subagent may use. Empty, claude's
+                                default for subagents.
+                              items:
+                                enum:
+                                - Read
+                                - Grep
+                                - Glob
+                                - WebFetch
+                                - WebSearch
+                                - Bash
+                                - Edit
+                                - Write
+                                - NotebookEdit
+                                - TodoWrite
+                                type: string
+                              type: array
+                          required:
+                          - description
+                          - name
+                          - prompt
+                          type: object
+                        maxItems: 8
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
                     type: object
                   profiles:
                     description: |-
@@ -695,6 +860,61 @@ spec:
                           description: Name used in the profile label.
                           pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
                           type: string
+                        subagents:
+                          description: |-
+                            Subagents the role may delegate to, passed to claude as --agents
+                            (claude engine only; cursor roles ignore them with a warning). The
+                            default is none: claude keeps its built-in subagents.
+                          items:
+                            description: |-
+                              Subagent is a custom claude subagent of a role, e.g. a read-only scout on
+                              a cheaper model for searches, lookups and log reading.
+                            properties:
+                              description:
+                                description: Description tells the role when to use
+                                  the subagent.
+                                minLength: 1
+                                type: string
+                              model:
+                                description: |-
+                                  Model of the subagent, e.g. haiku or claude-haiku-5-5. Empty, it
+                                  inherits the role's model.
+                                type: string
+                              name:
+                                description: Name the role delegates to.
+                                pattern: ^[a-z][a-z0-9-]{0,39}$
+                                type: string
+                              prompt:
+                                description: Prompt is the subagent's system prompt.
+                                minLength: 1
+                                type: string
+                              tools:
+                                description: Tools the subagent may use. Empty, claude's
+                                  default for subagents.
+                                items:
+                                  enum:
+                                  - Read
+                                  - Grep
+                                  - Glob
+                                  - WebFetch
+                                  - WebSearch
+                                  - Bash
+                                  - Edit
+                                  - Write
+                                  - NotebookEdit
+                                  - TodoWrite
+                                  type: string
+                                type: array
+                            required:
+                            - description
+                            - name
+                            - prompt
+                            type: object
+                          maxItems: 8
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
                       required:
                       - name
                       type: object
@@ -906,6 +1126,61 @@ spec:
                           - security
                           type: string
                         type: array
+                      subagents:
+                        description: |-
+                          Subagents the role may delegate to, passed to claude as --agents
+                          (claude engine only; cursor roles ignore them with a warning). The
+                          default is none: claude keeps its built-in subagents.
+                        items:
+                          description: |-
+                            Subagent is a custom claude subagent of a role, e.g. a read-only scout on
+                            a cheaper model for searches, lookups and log reading.
+                          properties:
+                            description:
+                              description: Description tells the role when to use
+                                the subagent.
+                              minLength: 1
+                              type: string
+                            model:
+                              description: |-
+                                Model of the subagent, e.g. haiku or claude-haiku-5-5. Empty, it
+                                inherits the role's model.
+                              type: string
+                            name:
+                              description: Name the role delegates to.
+                              pattern: ^[a-z][a-z0-9-]{0,39}$
+                              type: string
+                            prompt:
+                              description: Prompt is the subagent's system prompt.
+                              minLength: 1
+                              type: string
+                            tools:
+                              description: Tools the subagent may use. Empty, claude's
+                                default for subagents.
+                              items:
+                                enum:
+                                - Read
+                                - Grep
+                                - Glob
+                                - WebFetch
+                                - WebSearch
+                                - Bash
+                                - Edit
+                                - Write
+                                - NotebookEdit
+                                - TodoWrite
+                                type: string
+                              type: array
+                          required:
+                          - description
+                          - name
+                          - prompt
+                          type: object
+                        maxItems: 8
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
                     type: object
                   runnerResources:
                     description: |-
@@ -1051,6 +1326,61 @@ spec:
                           claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
                           default.
                         type: string
+                      subagents:
+                        description: |-
+                          Subagents the role may delegate to, passed to claude as --agents
+                          (claude engine only; cursor roles ignore them with a warning). The
+                          default is none: claude keeps its built-in subagents.
+                        items:
+                          description: |-
+                            Subagent is a custom claude subagent of a role, e.g. a read-only scout on
+                            a cheaper model for searches, lookups and log reading.
+                          properties:
+                            description:
+                              description: Description tells the role when to use
+                                the subagent.
+                              minLength: 1
+                              type: string
+                            model:
+                              description: |-
+                                Model of the subagent, e.g. haiku or claude-haiku-5-5. Empty, it
+                                inherits the role's model.
+                              type: string
+                            name:
+                              description: Name the role delegates to.
+                              pattern: ^[a-z][a-z0-9-]{0,39}$
+                              type: string
+                            prompt:
+                              description: Prompt is the subagent's system prompt.
+                              minLength: 1
+                              type: string
+                            tools:
+                              description: Tools the subagent may use. Empty, claude's
+                                default for subagents.
+                              items:
+                                enum:
+                                - Read
+                                - Grep
+                                - Glob
+                                - WebFetch
+                                - WebSearch
+                                - Bash
+                                - Edit
+                                - Write
+                                - NotebookEdit
+                                - TodoWrite
+                                type: string
+                              type: array
+                          required:
+                          - description
+                          - name
+                          - prompt
+                          type: object
+                        maxItems: 8
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
                     type: object
                   storageClassName:
                     description: StorageClassName for the workspace PVCs.

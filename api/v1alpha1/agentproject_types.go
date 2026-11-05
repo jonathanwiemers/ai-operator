@@ -542,6 +542,41 @@ type RoleSpec struct {
 	// one, or while the fallback's engine is limited too, runs wait.
 	// +optional
 	Fallback *RoleFallback `json:"fallback,omitempty"`
+
+	// Subagents the role may delegate to, passed to claude as --agents
+	// (claude engine only; cursor roles ignore them with a warning). The
+	// default is none: claude keeps its built-in subagents.
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=8
+	// +optional
+	Subagents []Subagent `json:"subagents,omitempty"`
+}
+
+// Subagent is a custom claude subagent of a role, e.g. a read-only scout on
+// a cheaper model for searches, lookups and log reading.
+type Subagent struct {
+	// Name the role delegates to.
+	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{0,39}$`
+	Name string `json:"name"`
+
+	// Description tells the role when to use the subagent.
+	// +kubebuilder:validation:MinLength=1
+	Description string `json:"description"`
+
+	// Model of the subagent, e.g. haiku or claude-haiku-5-5. Empty, it
+	// inherits the role's model.
+	// +optional
+	Model string `json:"model,omitempty"`
+
+	// Tools the subagent may use. Empty, claude's default for subagents.
+	// +kubebuilder:validation:items:Enum=Read;Grep;Glob;WebFetch;WebSearch;Bash;Edit;Write;NotebookEdit;TodoWrite
+	// +optional
+	Tools []string `json:"tools,omitempty"`
+
+	// Prompt is the subagent's system prompt.
+	// +kubebuilder:validation:MinLength=1
+	Prompt string `json:"prompt"`
 }
 
 // RoleFallback is the engine and model a role runs on while its own engine

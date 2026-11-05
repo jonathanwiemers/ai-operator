@@ -392,6 +392,7 @@ killed together with the run.
 | `allowedTools` | claude | override the tool allow-list |
 | `instructions` | both | appended to the role prompt (house rules, test commands) |
 | `fallback` | both | `{engine, model, effort}` the role runs on while its own engine is at a usage limit, see [Fallback engine](#fallback-engine) |
+| `subagents` | claude | up to 8 custom subagents `{name, description, model, tools, prompt}`; default none (claude keeps its built-in ones). `name` is lowercase `[a-z][a-z0-9-]`, at most 40 characters; `tools` from `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `Bash`, `Edit`, `Write`, `NotebookEdit`, `TodoWrite` (empty: claude's default); `model` empty inherits the role's. The CRD only validates them so far; passing them to claude as `--agents` follows in a later release |
 
 `review` additionally has `reviewers` (`bugbot`, `security`),
 `maxIterations`, `retries` (calls again a reviewer that failed
