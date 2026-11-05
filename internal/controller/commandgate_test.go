@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -63,12 +64,12 @@ func TestCommandsFromOwnersOnIssuesAndMergeRequests(t *testing.T) {
 	if got := countIn(e.gl.IssueNotes[42], ownersOnly); got != 1 || !slices.Equal(e.gl.Labels(42), []string{"agent::review"}) {
 		t.Fatalf("expected one reply and no run, got %d replies, labels %v", got, e.gl.Labels(42))
 	}
-	if _, ok := e.tasks()[specTaskName].Status.Pilot.Rejected["8"]; !ok {
-		t.Fatalf("the reply is recorded on the milestone's spec task: %+v", e.tasks()[specTaskName].Status.Pilot)
+	if cr := e.project().Status.CommandReplies; cr == nil || cr.Authors["8"].Count != 1 {
+		t.Fatalf("the reply is counted for its author: %+v", cr)
 	}
 
-	// Within a day: no run, no label, no reply, also on the merge request, as
-	// "/agent use", or from someone who took an owner's username.
+	// Each comment gets its reply, where it was written: also on the merge
+	// request, as "/agent use", or from someone who took an owner's username.
 	e.gl.AddMRNote(1, mallory, "/agent review")
 	e.gl.AddNote(42, mallory, "/agent use claude opus")
 	e.gl.AddNote(42, gitlab.User{ID: 9, Username: "alice"}, "/agent go on")
@@ -79,24 +80,20 @@ func TestCommandsFromOwnersOnIssuesAndMergeRequests(t *testing.T) {
 	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::review"}) {
 		t.Fatalf("a non-owner's /agent use sets no label: %v", labels)
 	}
-	if got := countIn(e.gl.MRNotes[1], ownersOnly); got != 0 {
-		t.Fatalf("one reply a day per user, got %d on the MR", got)
+	if got := countIn(e.gl.MRNotes[1], ownersOnly); got != 1 {
+		t.Fatalf("want one reply on the MR, got %d", got)
 	}
-	if got := countIn(e.gl.IssueNotes[42], ownersOnly); got != 2 {
-		t.Fatalf("the other user is told once too, got %d", got)
+	if got := countIn(e.gl.IssueNotes[42], ownersOnly); got != 3 {
+		t.Fatalf("want a reply per comment on the issue, got %d", got)
 	}
 
-	// A day later the old commands are not answered again; a new one is.
+	// Later polls do not answer the comments again.
 	e.gl.Clock = e.gl.Clock.Add(25 * time.Hour)
 	e.gl.AddNote(42, alice, "thanks")
 	e.reconcile()
-	if got := countIn(e.gl.IssueNotes[42], ownersOnly); got != 2 {
-		t.Fatalf("handled commands are not answered again, got %d", got)
-	}
-	e.gl.AddMRNote(1, mallory, "/agent now?")
 	e.reconcile()
-	if got := countIn(e.gl.MRNotes[1], ownersOnly); got != 1 {
-		t.Fatalf("a day later the user is told again, where they wrote, got %d", got)
+	if got := countIn(e.gl.IssueNotes[42], ownersOnly) + countIn(e.gl.MRNotes[1], ownersOnly); got != 4 {
+		t.Fatalf("handled commands are not answered again, got %d", got)
 	}
 
 	// The owner's command works as before; the bot's do not count.
@@ -125,8 +122,8 @@ func TestCommandsFromOwnersWithoutOwners(t *testing.T) {
 	if task.Spec.RunRequest != 0 || !strings.Contains(lastNote(e, 42), "add a line `/agent owners @…`") {
 		t.Fatalf("without owners nobody's command counts, and the reply says so: %d %q", task.Spec.RunRequest, lastNote(e, 42))
 	}
-	if _, ok := task.Status.Pilot.Rejected["8"]; !ok {
-		t.Fatalf("outside a milestone the reply is recorded on the task: %+v", task.Status.Pilot)
+	if cr := e.project().Status.CommandReplies; cr == nil || cr.Authors["8"].Count != 1 {
+		t.Fatalf("outside a milestone the reply is counted too: %+v", cr)
 	}
 
 	// notify.users own the issues without a milestone.
@@ -165,8 +162,8 @@ func TestCommandsFromOwnersOnTheTrackingIssue(t *testing.T) {
 	if ap.Phase != before.Phase || !slices.EqualFunc(ap.Items, before.Items, func(a, b aiv1.AutopilotItem) bool { return a.IID == b.IID && a.State == b.State }) {
 		t.Fatalf("a non-owner's pause and skip change nothing: %+v, was %+v", ap, before)
 	}
-	if got := countIn(e.gl.IssueNotes[tracking], ownersOnly); got != 1 {
-		t.Fatalf("one reply a day, got %d", got)
+	if got := countIn(e.gl.IssueNotes[tracking], ownersOnly); got != 2 {
+		t.Fatalf("one reply per comment, got %d", got)
 	}
 
 	e.gl.AddNote(tracking, alice, "/agent pause")
@@ -193,12 +190,45 @@ func TestCommandsFromOwnersOnRevisits(t *testing.T) {
 	e.reconcile()
 	e.gl.AddNote(1, mallory, "/agent revisit D1-1 use gRPC, please")
 	e.reconcile()
-	if revisits() != 0 || countIn(e.gl.IssueNotes[1], ownersOnly) != 1 {
-		t.Fatalf("a non-owner's revisit creates nothing and is answered once: %d follow-ups, notes %+v", revisits(), e.gl.IssueNotes[1])
+	if revisits() != 0 || countIn(e.gl.IssueNotes[1], ownersOnly) != 2 {
+		t.Fatalf("a non-owner's revisit creates nothing and each is answered once: %d follow-ups, notes %+v", revisits(), e.gl.IssueNotes[1])
 	}
 	e.gl.AddNote(1, alice, "/agent revisit D1-1 use gRPC")
 	e.reconcile()
 	if revisits() != 1 {
 		t.Fatalf("an owner's revisit creates the follow-up")
+	}
+}
+
+func TestCommandsFromOwnersCapTheRepliesPerDay(t *testing.T) {
+	e := newOwnersEnv(t)
+	for i := range maxRepliesPerDay {
+		e.gl.AddNote(42, mallory, fmt.Sprintf("/agent go %d", i))
+	}
+	e.reconcile()
+	if got := countIn(e.gl.IssueNotes[42], ownersOnly); got != maxRepliesPerDay {
+		t.Fatalf("want a reply per comment up to the cap, got %d", got)
+	}
+	over := e.gl.AddNote(42, mallory, "/agent go once more")
+	e.reconcile()
+	if got := countIn(e.gl.IssueNotes[42], ownersOnly); got != maxRepliesPerDay {
+		t.Fatalf("a comment over the cap is logged, not answered: %d replies", got)
+	}
+	// The cap is per author.
+	e.gl.AddNote(42, gitlab.User{ID: 9, Username: "alice"}, "/agent go on")
+	e.reconcile()
+	if got := countIn(e.gl.IssueNotes[42], ownersOnly); got != maxRepliesPerDay+1 {
+		t.Fatalf("another author is answered, got %d replies", got)
+	}
+	// A day later the author is answered again, the comment over the cap
+	// is not.
+	e.gl.Clock = e.gl.Clock.Add(25 * time.Hour)
+	e.gl.AddNote(42, mallory, "/agent and now?")
+	e.reconcile()
+	if got := countIn(e.gl.IssueNotes[42], ownersOnly); got != maxRepliesPerDay+2 || countIn(e.gl.IssueNotes[42], replyToMarker(over.ID)) != 0 {
+		t.Fatalf("want one more reply, not to the comment over the cap: %d replies", got)
+	}
+	if cr := e.project().Status.CommandReplies; len(cr.Authors) != 1 || cr.Authors["8"].Count != 1 {
+		t.Fatalf("the past day's counts are forgotten: %+v", cr.Authors)
 	}
 }

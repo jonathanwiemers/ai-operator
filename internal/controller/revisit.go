@@ -89,7 +89,7 @@ func (r *AgentProjectReconciler) syncRevisits(ctx context.Context, gl gitlab.API
 			case err != nil:
 				return err
 			case !ok:
-				err = gate.deny(ctx, st, pilotNote{Note: n, issue: t.iid}, st.Spec.Owners)
+				gate.deny(ctx, pilotNote{Note: n, issue: t.iid}, st.Spec.Owners)
 			default:
 				err = r.revisitAfterMerge(ctx, gl, spec, st, project.Status.BotUserID, t.iid, n, strings.ToUpper(m[2]), strings.TrimSpace(m[3]))
 			}

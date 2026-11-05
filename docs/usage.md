@@ -405,9 +405,10 @@ keeps the reviewers to you (see
 By default anyone who can comment gives `/agent …` commands. With
 `spec.workflow.commandsFrom: owners` only the owners above count, checked by
 GitLab user ID: on issues and their MRs, on the tracking issue and on closed
-issues (revisits). Anyone else's command starts and changes nothing; they get
-one reply a day where they wrote it ("🤖 Only the owners of this milestone
-can give `/agent` commands here"). On a milestone without owners nobody's
+issues (revisits). Anyone else's command starts and changes nothing; each such
+comment gets one reply in its thread ("🤖 Only the owners of this milestone
+can give `/agent` commands here"), up to
+[10 a day per author](commands.md#replies-to-comments-not-acted-on). On a milestone without owners nobody's
 command counts, and the reply says to add an `/agent owners` line. Plain
 comments still reach the agent with its next run. For an issue without a
 milestone the owners are `notify.users`, else the operator's default.
@@ -1053,12 +1054,14 @@ default branch and the last comments of the tracking issue.
   re-plan continues a done queue, or autopilot is switched on again, the
   pilot comes back on the autopilot's tracking issue. After a closed "🧭
   Pilot" issue, `/pilot coordinate` opens a new one. On a milestone whose
-  autopilot is done an owner gets "there is no pilot here" (also for `/pilot
-  coordinate`); anyone else gets no answer.
+  autopilot is done everyone gets "there is no pilot here" (also for `/pilot
+  coordinate`).
 - **Owners only.** Only the milestone's [owners](#owners-and-pings) (the
   `/agent owners` line, else `notify.users`, compared by user ID) talk to the
   pilot. Anyone else gets "only the owners of this milestone can instruct
-  me", at most once a day; further comments are ignored and cost nothing. A
+  me" in reply to each comment, up to
+  [10 a day](commands.md#replies-to-comments-not-acted-on); comments beyond
+  that are logged and cost nothing. A
   milestone without owners (`/agent owners` alone, and no `notify.users`) is
   answered for anyone, but `/pilot coordinate` needs owners.
 - **It also speaks first.** When autopilot pauses, an issue of the milestone

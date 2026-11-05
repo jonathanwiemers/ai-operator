@@ -429,11 +429,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 				description = is.Milestone.Description
 			}
 		}
-		var st *aiv1.AgentTask
-		if is.Milestone != nil {
-			st = byMilestone[is.Milestone.IID]
-		}
-		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], st, autopilot, pause, budgetStop, owners(description), ownerSubjects(description))
+		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], autopilot, pause, budgetStop, owners(description), ownerSubjects(description))
 		if err != nil {
 			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
 			// Keep the existing task, so the cleanup below does not delete
@@ -768,10 +764,9 @@ func (r *AgentProjectReconciler) specRetryDue(task *aiv1.AgentTask, after time.D
 
 // syncImplementTask makes sure an issue handed to the agent has a task and
 // turns "moved to ready" and "/agent" comments into run requests. It returns
-// the task's merge request too, if it has one. st is the spec task of the
-// issue's milestone, if there is one.
+// the task's merge request too, if it has one.
 func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	is gitlab.Issue, task, st *aiv1.AgentTask, autopilot bool, pause string, budgetStop bool, owners, ownerSubjects []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
+	is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, pause string, budgetStop bool, owners, ownerSubjects []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -901,15 +896,8 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 			log.FromContext(ctx).Info("could not answer the model and effort commands", "issue", is.IID, "error", err.Error())
 		}
 	}
-	// Recorded on the milestone's spec task, shared with the pilot's
-	// answers; outside a planned milestone on the task itself.
-	if st == nil {
-		st = task
-	}
 	for _, n := range denied {
-		if err := gate.deny(ctx, st, n, owners); err != nil {
-			return nil, nil, err
-		}
+		gate.deny(ctx, n, owners)
 	}
 
 	// Acknowledge in GitLab only after the run request is persisted. If this

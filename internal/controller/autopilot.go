@@ -1235,7 +1235,7 @@ func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, reason strin
 }
 
 // commands handles "/agent pause|resume|skip #N" on the tracking issue and
-// answers any other command once.
+// answers any other command once, in its thread.
 func (a *autopilot) commands(ctx context.Context) error {
 	if a.ap.TrackingIssueIID == 0 {
 		return nil
@@ -1256,14 +1256,14 @@ func (a *autopilot) commands(ctx context.Context) error {
 		if n.ID <= a.ap.LastCommandNoteID || !IsCommand(n, a.project.Status.BotUserID, prefix) {
 			continue
 		}
-		// Someone else's command is answered (once a day per user) and
-		// handled, so it is not answered again.
+		// Every comment gets one reply in its thread (replyPerNote).
+		// Someone else's command is answered and handled, so it is not
+		// answered again.
+		tn := pilotNote{Note: n, issue: a.ap.TrackingIssueIID}
 		if ok, err := a.gate.counts(ctx, n, a.st.Spec.Owners); err != nil {
 			return err
 		} else if !ok {
-			if err := a.gate.deny(ctx, a.st, pilotNote{Note: n, issue: a.ap.TrackingIssueIID}, a.st.Spec.Owners); err != nil {
-				return err
-			}
+			a.gate.deny(ctx, tn, a.st.Spec.Owners)
 			a.ap.LastCommandNoteID = n.ID
 			continue
 		}
@@ -1285,9 +1285,7 @@ func (a *autopilot) commands(ctx context.Context) error {
 			if ok, err := a.gate.byOwner(ctx, n, a.st.Spec.Owners); err != nil {
 				return err
 			} else if !ok {
-				if err := a.r.rejectOnce(ctx, a.gl, a.spec, a.st, pilotNote{Note: n, issue: a.ap.TrackingIssueIID}, "🤖 "+notOwnerMerge); err != nil {
-					return err
-				}
+				a.r.rejectNote(ctx, a.gl, a.project, a.spec, tn, "🤖 "+notOwnerMerge)
 				a.ap.LastCommandNoteID = n.ID
 				continue
 			}
@@ -1299,8 +1297,11 @@ func (a *autopilot) commands(ctx context.Context) error {
 			return err
 		}
 		if !applied {
-			if err := a.comment(ctx, reply); err != nil {
-				return err
+			// Usage and unknown commands; the reply's marker keeps a retry
+			// from answering twice.
+			err := a.r.replyPerNote(ctx, a.gl, a.project, a.spec, tn, "🤖 "+reply)
+			if err != nil && !a.trackingGone(err) {
+				return fmt.Errorf("answering a command on the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
 			}
 		}
 		a.ap.LastCommandNoteID = n.ID

@@ -230,10 +230,12 @@ With `workflow.commandsFrom: owners`, `commandGate`
 comments (run requests, `reviewOnly`, routing, the tracking issue's
 commands, revisits) to those whose author ID is an owner's, looking the
 owners' IDs up lazily once per poll (`members`, the default, costs no
-GitLab call). A denied command gets one reply per user and 24 h
-(`rejectOnce`, recorded in the milestone spec task's
-`status.pilot.rejected`, outside a planned milestone in the issue task's),
-and the place's watermark moves past it, so it is not answered again.
+GitLab call). A denied command gets one reply in its thread (`replyPerNote` in
+`command_replies.go`: the reply carries a `reply-to` marker, so a repeated
+poll does not answer twice), at most `maxRepliesPerDay` (10) per author and
+24 h, counted in the AgentProject's `status.commandReplies.authors`; beyond
+the cap it is logged. The place's watermark moves past it either way. The
+older `status.pilot.rejected` is no longer written.
 
 **Model and effort per issue.** `/agent use` and `/agent effort` start no
 run: on the poll that sees them the operator validates them against
@@ -1773,7 +1775,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/ci.go` | CI fix prompt, log excerpts |
 | `internal/controller/ci.go` | CI feedback loop: pipeline tracking, retry, fix requests, final labels |
 | `internal/controller/mainhealth.go` | main health: default branch pipelines, retry, flaky and main-red issues |
-| `internal/controller/commandgate.go` | `workflow.commandsFrom`: whose `/agent` comments count, the once-a-day reply |
+| `internal/controller/commandgate.go` | `workflow.commandsFrom`: whose `/agent` comments count, the reply to the others |
 | `internal/controller/webhook.go` | self-registration of the project hook, the `WebhookRegistered` and `WebhookDeliveries` conditions |
 | `internal/webhook` | webhook receiver (`POST /hooks/gitlab`, token check), server, waker (debounce), deliveries |
 | `internal/history` | the factory's history: AgentTask status diffs and mirrored GitLab comments, written to the research database in batches |

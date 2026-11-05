@@ -315,7 +315,8 @@ MR, the tracking issue or a closed issue (revisits) counts only from the
 milestone's owners (`/agent owners @…`, else `notify.users`, else the
 operator's default owners; for an issue without a milestone `notify.users`,
 else the default owners), checked by GitLab user ID. Anyone else's command
-starts and changes nothing; they get one reply a day where they wrote it.
+starts and changes nothing; each gets one reply in its thread, up to 10 a
+day per author.
 
 `inputs` lists where instructions may be given: `gitlab` (comment commands)
 and `desk`. At least one entry; unset means both. So far only one thing

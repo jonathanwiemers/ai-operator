@@ -1723,6 +1723,26 @@ spec:
                   CommandReplies tracks the replies to "/agent" and "/pilot" comments
                   the operator does not act on, so each gets one.
                 properties:
+                  authors:
+                    additionalProperties:
+                      description: CommandReplyCount is the replies to one author's
+                        comments within a day.
+                      properties:
+                        count:
+                          format: int32
+                          type: integer
+                        since:
+                          description: Since is the first reply of the day.
+                          format: date-time
+                          type: string
+                      required:
+                      - count
+                      - since
+                      type: object
+                    description: |-
+                      Authors counts the replies per author, by GitLab user ID, within a
+                      day of the first; an author's comments beyond the cap get none.
+                    type: object
                   replied:
                     description: |-
                       Replied are the IDs of the comments answered, newest last

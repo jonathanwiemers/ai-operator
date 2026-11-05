@@ -145,8 +145,8 @@ func TestCommandRepliesOnAutopilotItemWithoutLabel(t *testing.T) {
 	if got := commandReplies(e, 2); len(got) != 1 || !strings.Contains(got[0], "#2 has no `agent::ready` label") {
 		t.Fatalf("want one reply on the autopilot item, got %q", got)
 	}
-	if got := commandReplies(e, tracking); len(got) != 0 {
-		t.Fatalf("the tracking issue takes its own commands: %q", got)
+	if got := commandReplies(e, tracking); len(got) != 1 || strings.Contains(got[0], "label") || !strings.Contains(got[0], "This tracking issue only understands") {
+		t.Fatalf("the tracking issue answers its own commands: %q", got)
 	}
 }
 

@@ -2,9 +2,9 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 
@@ -124,27 +124,31 @@ func TestPilotMentionCanBeTurnedOff(t *testing.T) {
 	}
 }
 
-func TestPilotRejectsOthersOnceADay(t *testing.T) {
+func TestPilotRejectsOthersPerComment(t *testing.T) {
 	e := newPilotEnv(t)
 	tracking := e.autopilot().TrackingIssueIID
 	const rejection = "Only the owners of this milestone can instruct me."
-	e.gl.AddNote(tracking, mallory, "/pilot skip #1")
+	first := e.gl.AddNote(tracking, mallory, "/pilot skip #1")
 	// Same username as an owner, another user: still not an owner.
 	e.gl.AddNote(tracking, gitlab.User{ID: 9, Username: "alice"}, "/pilot skip #1")
 	e.reconcile()
 	e.gl.AddNote(tracking, mallory, "/pilot skip #1, now")
 	e.reconcile()
-	if got := strings.Count(strings.Join(botComments(e, tracking), "\n"), rejection); got != 2 {
-		t.Fatalf("each user gets one rejection, got %d:\n%s", got, strings.Join(botComments(e, tracking), "\n"))
+	e.reconcile()
+	c := strings.Join(botComments(e, tracking), "\n")
+	if got := strings.Count(c, rejection); got != 3 || !strings.Contains(c, replyToMarker(first.ID)) {
+		t.Fatalf("each comment gets one rejection, got %d:\n%s", got, c)
 	}
 	if p := e.pilot(); len(p.Spec.Source.PilotMessages) != 0 || p.Spec.RunRequest != 0 {
 		t.Fatalf("no owner, no message and no run: %+v", p.Spec)
 	}
-	e.gl.Clock = e.gl.Clock.Add(25 * time.Hour)
-	e.gl.AddNote(tracking, mallory, "/pilot skip #1, please")
+	// Up to the cap of replies a day per author; beyond it, nothing.
+	for i := 2; i < maxRepliesPerDay+2; i++ {
+		e.gl.AddNote(tracking, mallory, fmt.Sprintf("/pilot skip #1, %d", i))
+	}
 	e.reconcile()
-	if got := strings.Count(strings.Join(botComments(e, tracking), "\n"), rejection); got != 3 {
-		t.Fatalf("a day later the user is told again, got %d", got)
+	if got := strings.Count(strings.Join(botComments(e, tracking), "\n"), rejection); got != maxRepliesPerDay+1 {
+		t.Fatalf("want %d rejections, the cap for mallory and one for the other user, got %d", maxRepliesPerDay+1, got)
 	}
 }
 
@@ -158,16 +162,15 @@ func TestPilotListensOnTheMilestonesIssues(t *testing.T) {
 		t.Fatalf("a question on an issue of the milestone goes to its pilot: %+v", msgs)
 	}
 
-	// An issue without a planned milestone has no pilot: its owners are told,
-	// nobody else gets an answer.
+	// An issue without a planned milestone has no pilot: everyone is told.
 	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Notify.Users = []string{"alice"} })
 	e.gl.AddIssue(9, "Elsewhere", "agent::needs-input")
 	e.reconcile()
 	e.gl.AddNote(9, mallory, "/pilot hello?")
 	e.gl.AddNote(9, alice, "/pilot hello?")
 	e.reconcile()
-	if c := botComments(e, 9); len(c) != 1 || !strings.Contains(c[0], "not in a planned milestone") {
-		t.Fatalf("expected one no-pilot answer, got %q", c)
+	if c := botComments(e, 9); len(c) != 2 || !strings.Contains(c[0], "not in a planned milestone") || !strings.Contains(c[1], "not in a planned milestone") {
+		t.Fatalf("expected a no-pilot answer per comment, got %q", c)
 	}
 }
 
@@ -293,15 +296,15 @@ func TestPilotEndsWhenTheAutopilotIsDone(t *testing.T) {
 		t.Fatalf("a done autopilot ends its pilot: %v %+v", keys(e.tasks()), e.autopilot())
 	}
 
-	// Owners are told there is no pilot, also for "coordinate"; nobody else
-	// gets an answer, and no pilot comes back.
+	// Everyone is told there is no pilot, also for "coordinate", and no
+	// pilot comes back.
 	e.gl.AddNote(tracking, mallory, "/pilot hello?")
 	e.gl.AddNote(tracking, alice, "/pilot how did it go?")
 	e.gl.AddNote(tracking, alice, "/pilot coordinate")
 	e.reconcile()
 	e.reconcile()
-	if c := strings.Join(botComments(e, tracking), "\n"); strings.Count(c, "autopilot of this milestone is done") != 2 || strings.Contains(c, "Only the owners") {
-		t.Fatalf("expected two no-pilot answers for alice: %q", c)
+	if c := strings.Join(botComments(e, tracking), "\n"); strings.Count(c, "autopilot of this milestone is done") != 3 || strings.Contains(c, "Only the owners") {
+		t.Fatalf("expected a no-pilot answer per comment: %q", c)
 	}
 	if _, ok := e.tasks()[pilotTaskName]; ok {
 		t.Fatalf("a done autopilot gets no pilot: %v", keys(e.tasks()))

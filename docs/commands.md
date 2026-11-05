@@ -21,8 +21,8 @@ GitLab comments in your name and work exactly the same.
   who can comment) or `owners`. With `owners`, an `/agent …` comment on an
   issue, its MR, the tracking issue or a closed issue counts only from the
   milestone's [owners](usage.md#commands-from-owners-only), by GitLab user
-  ID; anyone else's starts and changes nothing, and they get one reply a day
-  where they wrote it. `/pilot` comments have their own owners check,
+  ID; anyone else's starts and changes nothing, and each such comment gets
+  one reply in its thread ([up to a cap](#replies-to-comments-not-acted-on)). `/pilot` comments have their own owners check,
   whatever this setting says.
 - On an issue's merge request a command works the same as on the issue.
 - The operator polls GitLab (`pollInterval`, default `1m`), so a command takes
@@ -54,6 +54,18 @@ milestone) an `/agent` or `/pilot` comment gets one reply saying so: add
 `effort` command is applied once the issue has the label, and the reply
 says that instead. The operator replies once per comment, also after a
 restart; comments from before the operator watched are not answered.
+
+#### Replies to comments not acted on
+
+An `/agent` or `/pilot` comment the operator does not act on gets one
+reply in its thread naming the reason: no `agent::` label (above), the
+commenter is not an owner (`commandsFrom: owners`, `/pilot`, `merge`), or a
+command the tracking issue does not take (the reply lists `pause`, `resume`,
+`skip #N`, `merge #N` and `revisit <id> …`). Each comment is answered once,
+also when a poll is repeated. To bound the bot's comments, one author gets
+at most 10 such replies a day (`status.commandReplies.authors` of the
+AgentProject); the operator logs the comments beyond that instead of
+answering them. This is the only case a command is ignored without a reply.
 
 ### Model and effort
 

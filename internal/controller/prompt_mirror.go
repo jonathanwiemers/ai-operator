@@ -105,7 +105,7 @@ func (r *AgentProjectReconciler) mirrorPrompt(ctx context.Context, gl gitlab.API
 			}
 		}
 		if p.State == aiv1.PromptAnswered && p.Answer != nil {
-			if err := n.reply(ctx, bot, id, answerReply(p, noteBodyBytes), answerMarker(p)); err != nil {
+			if _, err := n.reply(ctx, bot, id, answerReply(p, noteBodyBytes), answerMarker(p)); err != nil {
 				logger.Info("could not reply with the answer to a prompt", "note", id, "error", err.Error())
 				return nil
 			}
@@ -398,25 +398,26 @@ func (n promptNote) update(ctx context.Context, id int64, body string) error {
 }
 
 // reply posts body in the thread of note root, unless the bot's note with
-// the marker is there already. A merge request, or an issue whose thread
-// is not found, gets it as a comment of its own.
-func (n promptNote) reply(ctx context.Context, bot, root int64, body, marker string) error {
+// the marker is there already; posted says whether it was not. A merge
+// request, or an issue whose thread is not found, gets it as a comment of
+// its own.
+func (n promptNote) reply(ctx context.Context, bot, root int64, body, marker string) (posted bool, err error) {
 	if n.mr {
 		notes, err := n.list(ctx)
 		if err != nil || botNote(notes, bot, marker) != 0 {
-			return err
+			return false, err
 		}
 		_, err = n.create(ctx, body)
-		return err
+		return err == nil, err
 	}
 	threads, err := n.gl.ListIssueDiscussions(ctx, n.project, n.iid)
 	if err != nil {
-		return err
+		return false, err
 	}
 	thread := ""
 	for _, d := range threads {
 		if botNote(d.Notes, bot, marker) != 0 {
-			return nil
+			return false, nil
 		}
 		if len(d.Notes) > 0 && d.Notes[0].ID == root {
 			thread = d.ID
@@ -427,7 +428,7 @@ func (n promptNote) reply(ctx context.Context, bot, root int64, body, marker str
 	} else {
 		_, err = n.gl.ReplyIssueDiscussion(ctx, n.project, n.iid, thread, body)
 	}
-	return err
+	return err == nil, err
 }
 
 func (n promptNote) url(spec aiv1.AgentProjectSpec, id int64) string {

@@ -1050,11 +1050,17 @@ func TestAutopilotAnswersUnknownTrackingCommandsOnce(t *testing.T) {
 	if ap := e.autopilot(); ap.Items[1].State != aiv1.AutopilotItemSkipped || ap.Phase != aiv1.AutopilotRunning {
 		t.Fatalf("known commands must work as before: %+v", ap)
 	}
-	e.gl.AddNote(tracking, human, "/agent")
-	e.gl.AddNote(tracking, human, "/agent revisit the API please")
+	bare := e.gl.AddNote(tracking, human, "/agent")
+	malformed := e.gl.AddNote(tracking, human, "/agent revisit the API please")
 	e.reconcile()
 	if n := strings.Count(trackingComments(e), answer); n != 3 {
 		t.Fatalf("a bare command and a malformed revisit must be answered, got %d answers:\n%s", n, trackingComments(e))
+	}
+	// Each in its own thread, and once.
+	e.reconcile()
+	c := trackingComments(e)
+	if n := strings.Count(c, answer); n != 3 || !strings.Contains(c, replyToMarker(bare.ID)) || !strings.Contains(c, replyToMarker(malformed.ID)) {
+		t.Fatalf("want one reply per comment, got %d:\n%s", n, c)
 	}
 }
 

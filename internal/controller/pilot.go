@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -34,7 +33,7 @@ type pilotNote struct {
 	issue, mr int64
 }
 
-// rejectEvery is how often a user who is no owner is told so.
+// rejectEvery is the day maxRepliesPerDay counts in.
 const rejectEvery = 24 * time.Hour
 
 // maxPilotMessage bounds a message handed to the pilot.
@@ -167,8 +166,8 @@ func (r *AgentProjectReconciler) milestoneTasks(ctx context.Context, project *ai
 }
 
 // routePilot hands the owners' messages to the pilot and answers the others
-// itself: no planned milestone, no owner (once a day per user), no pilot
-// yet, or "/pilot coordinate", which starts one.
+// itself: no planned milestone, no owner, no pilot yet, or "/pilot
+// coordinate", which starts one. Others get one reply per comment.
 func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st, coord *aiv1.AgentTask, owners []string, notes []pilotNote) error {
 	prefix := spec.Workflow.PilotPrefix
@@ -192,19 +191,14 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		var err error
 		done := autopilotDone(st)
 		switch tracking := trackingIssue(st, coord); {
-		case (st == nil || done) && !owner:
-			continue // no pilot here, and only owners are told so
-		// A milestone without owners gets answers only, which is all the
-		// pilot does yet.
-		case !owner && len(owners) > 0:
-			if err := r.rejectOnce(ctx, gl, spec, st, n, "🧭 Only the owners of this milestone can instruct me."); err != nil {
-				return err
-			}
-			continue
 		case st == nil:
 			reply = "There is no pilot here: this issue is not in a planned milestone."
 		case done:
 			reply = "There is no pilot here: the autopilot of this milestone is done."
+		// A milestone without owners gets answers only, which is all the
+		// pilot does yet.
+		case !owner && len(owners) > 0:
+			reply = "Only the owners of this milestone can instruct me."
 		case coordinate && tracking != 0:
 			reply = fmt.Sprintf("The pilot of this milestone listens on #%d.", tracking)
 		case coordinate && st.Spec.Autopilot:
@@ -240,8 +234,13 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		if err != nil {
 			return err
 		}
-		if reply != "" {
+		switch {
+		case reply == "":
+		case owner:
 			pilotReply(ctx, gl, spec, n, reply)
+		default:
+			// Once per comment, capped: others can comment a lot.
+			r.rejectNote(ctx, gl, project, spec, n, "🧭 "+reply)
 		}
 	}
 	if len(msgs) == 0 {
@@ -256,35 +255,6 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 	coord.Spec.Source.PilotMessages = append(pending, msgs...)
 	log.FromContext(ctx).Info("messages for the pilot", "task", coord.Name, "messages", len(msgs))
 	return r.Update(ctx, coord)
-}
-
-// rejectOnce tells a user who is no owner that their comment is not taken
-// (body: to the pilot, or an "/agent" command), once a day; st records it.
-func (r *AgentProjectReconciler) rejectOnce(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, n pilotNote, body string) error {
-	key := strconv.FormatInt(n.Author.ID, 10)
-	now := r.now()
-	if ps := st.Status.Pilot; ps != nil {
-		if at, ok := ps.Rejected[key]; ok && now.Sub(at.Time) < rejectEvery {
-			return nil
-		}
-	}
-	// Recorded first: a failed reply is not tried again, a repeated one
-	// would be noise.
-	if err := r.patchPilot(ctx, st, func(ps *aiv1.PilotStatus) {
-		for k, at := range ps.Rejected {
-			if now.Sub(at.Time) >= rejectEvery {
-				delete(ps.Rejected, k)
-			}
-		}
-		if ps.Rejected == nil {
-			ps.Rejected = map[string]metav1.Time{}
-		}
-		ps.Rejected[key] = metav1.NewTime(now)
-	}); err != nil {
-		return err
-	}
-	noteReply(ctx, gl, spec, n, body)
-	return nil
 }
 
 // trackingIssue is the issue the pilot of a milestone listens on: the

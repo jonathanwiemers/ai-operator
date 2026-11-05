@@ -458,7 +458,8 @@ type PilotStatus struct {
 	LastNoteID int64 `json:"lastNoteID,omitempty"`
 
 	// Rejected is when a user who is no owner was last told so, by GitLab
-	// user ID; later messages within a day get no answer.
+	// user ID. No longer written: each comment gets its own reply, counted
+	// in the project's status.commandReplies.authors.
 	// +optional
 	Rejected map[string]metav1.Time `json:"rejected,omitempty"`
 

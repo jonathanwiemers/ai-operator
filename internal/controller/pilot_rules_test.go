@@ -135,7 +135,7 @@ func TestRuleProposalsAreChecked(t *testing.T) {
 	}
 	e.gl.AddNote(tracking, mallory, "/pilot forget R1")
 	e.reconcile()
-	if r := e.lastReply(); r != "🧭 Only the owners of this milestone can instruct me." {
+	if r := e.lastReply(); !strings.HasPrefix(r, "🧭 Only the owners of this milestone can instruct me.") {
 		t.Fatalf("only owners forget rules: %q", r)
 	}
 }

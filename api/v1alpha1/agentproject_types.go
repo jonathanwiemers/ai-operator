@@ -1109,6 +1109,17 @@ type CommandRepliesStatus struct {
 	// (MaxCommandReplies at most). The reply's marker covers older ones.
 	// +optional
 	Replied []int64 `json:"replied,omitempty"`
+	// Authors counts the replies per author, by GitLab user ID, within a
+	// day of the first; an author's comments beyond the cap get none.
+	// +optional
+	Authors map[string]CommandReplyCount `json:"authors,omitempty"`
+}
+
+// CommandReplyCount is the replies to one author's comments within a day.
+type CommandReplyCount struct {
+	// Since is the first reply of the day.
+	Since metav1.Time `json:"since"`
+	Count int32       `json:"count"`
 }
 
 // UsageLimit is an engine's active usage or rate limit.

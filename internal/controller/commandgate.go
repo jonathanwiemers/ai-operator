@@ -13,16 +13,17 @@ import (
 // "owners" only the owners'. It looks the owners' user IDs up when first
 // needed and keeps them for the poll, so "members" costs no GitLab call.
 type commandGate struct {
-	r     *AgentProjectReconciler
-	gl    gitlab.API
-	spec  aiv1.AgentProjectSpec
-	botID int64
+	r       *AgentProjectReconciler
+	gl      gitlab.API
+	project *aiv1.AgentProject
+	spec    aiv1.AgentProjectSpec
+	botID   int64
 	// ids maps an owner's username to their user ID, 0 if there is none.
 	ids map[string]int64
 }
 
 func (r *AgentProjectReconciler) commandGate(gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) *commandGate {
-	return &commandGate{r: r, gl: gl, spec: spec, botID: project.Status.BotUserID, ids: map[string]int64{}}
+	return &commandGate{r: r, gl: gl, project: project, spec: spec, botID: project.Status.BotUserID, ids: map[string]int64{}}
 }
 
 // counts reports whether n is a command of someone who may give one.
@@ -78,14 +79,14 @@ func (g *commandGate) split(ctx context.Context, notes []gitlab.Note, owners []s
 	return kept, denied, nil
 }
 
-// deny tells the author of a command that does not count why, where it was
-// written, once a day per user; st records it.
-func (g *commandGate) deny(ctx context.Context, st *aiv1.AgentTask, n pilotNote, owners []string) error {
+// deny tells the author of a command that does not count why, in its
+// thread (replyPerNote).
+func (g *commandGate) deny(ctx context.Context, n pilotNote, owners []string) {
 	prefix := g.spec.Workflow.CommandPrefix
 	text := fmt.Sprintf("🤖 Only the owners of this milestone can give `%s` commands here (`workflow.commandsFrom: owners`).", prefix)
 	if len(owners) == 0 {
 		text = fmt.Sprintf("🤖 Only the owners of this milestone can give `%s` commands here (`workflow.commandsFrom: owners`), "+
 			"and it has none: add a line `%s owners @…` to the milestone description.", prefix, prefix)
 	}
-	return g.r.rejectOnce(ctx, g.gl, g.spec, st, n, text)
+	g.r.rejectNote(ctx, g.gl, g.project, g.spec, n, text)
 }
