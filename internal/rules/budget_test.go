@@ -47,3 +47,26 @@ func TestBudgetLineIsNoPartOfTheSpec(t *testing.T) {
 		}
 	}
 }
+
+func TestSetBudget(t *testing.T) {
+	for _, c := range []struct{ desc, want string }{
+		{desc: spec + "\n/agent budget 5", want: spec + "\n/agent budget 48"},
+		{desc: "/agent budget 5\n" + spec, want: "/agent budget 48\n" + spec},
+		{desc: spec + "\n  /agent budget $5  \r\nmore", want: spec + "\n/agent budget 48\r\nmore"},
+		{desc: spec + "\n/agent budget 5\n/agent budget 50", want: spec + "\n/agent budget 48\n/agent budget 50"}, // the first line counts
+		{desc: spec + "\n/agent budget five", want: spec + "\n/agent budget 48"},
+		{desc: spec + "\n", want: spec + "\n\n/agent budget 48"},
+		{desc: "", want: "/agent budget 48"},
+	} {
+		got := SetBudget(c.desc, "/agent", "48")
+		if got != c.want {
+			t.Errorf("SetBudget(%q) = %q; want %q", c.desc, got, c.want)
+		}
+		if usd, err := Budget(got, "/agent"); err != nil || usd != "48.0000" {
+			t.Errorf("SetBudget(%q) reads back as %q, %v", c.desc, usd, err)
+		}
+		if strings.TrimSpace(Spec(got, "/agent")) != strings.TrimSpace(Spec(c.desc, "/agent")) {
+			t.Errorf("SetBudget(%q) changed the spec: %q", c.desc, got)
+		}
+	}
+}

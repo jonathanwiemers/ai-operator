@@ -35,8 +35,8 @@ func TestBudgetBelowTheLimitDoesNotPause(t *testing.T) {
 	if ap.Phase != aiv1.AutopilotRunning || !e.gl.Issues[1].HasLabel("agent::ready") {
 		t.Fatalf("below its budget the autopilot runs: %+v", ap)
 	}
-	if ap.Budget == nil || *ap.Budget != (aiv1.BudgetStatus{LimitUSD: "5.0000", SpentUSD: "4.9900"}) {
-		t.Fatalf("the status shows the budget and the spend: %+v", ap.Budget)
+	if ap.Budget == nil || ap.Budget.LimitUSD != "5.0000" || ap.Budget.SpentUSD != "4.9900" || ap.Budget.WarnedAt == nil {
+		t.Fatalf("the status shows the budget and the spend, warned at 80 %%: %+v", ap.Budget)
 	}
 	st := e.tasks()[specTaskName]
 	if len(src.scopes) != 1 || src.scopes[0] != (store.SpendScope{Namespace: st.Namespace, Project: st.Spec.ProjectRef, MilestoneIID: 3}) {
@@ -320,6 +320,12 @@ func TestBudgetStopped(t *testing.T) {
 	}
 	off := paused(aiv1.PauseBudget, 0)
 	off.Spec.Autopilot = false
+	done := func(limit, spent string) *aiv1.AgentTask {
+		st := paused("", 0)
+		st.Status.Autopilot.Phase = aiv1.AutopilotDone
+		st.Status.Autopilot.Budget = &aiv1.BudgetStatus{LimitUSD: limit, SpentUSD: spent}
+		return st
+	}
 	for name, c := range map[string]struct {
 		st   *aiv1.AgentTask
 		want bool
@@ -330,6 +336,9 @@ func TestBudgetStopped(t *testing.T) {
 		"another kind of pause":  {paused(aiv1.PauseRunFailed, 7), false},
 		"autopilot switched off": {off, false},
 		"no autopilot status":    {&aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Autopilot: true}}, false},
+		"done, budget used":      {done("40.0000", "41.0000"), true},
+		"done, budget left":      {done("40.0000", "39.0000"), false},
+		"done, spend unknown":    {done("40.0000", ""), false},
 	} {
 		if got := budgetStopped(c.st, 7); got != c.want {
 			t.Errorf("%s: budgetStopped = %v, want %v", name, got, c.want)

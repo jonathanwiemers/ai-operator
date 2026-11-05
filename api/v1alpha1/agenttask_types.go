@@ -350,7 +350,9 @@ const MaxAutopilotItemDecisions = 20
 // validates and executes it once an owner accepts the proposal.
 type PilotAction struct {
 	// Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-	// skip, pause, resume, revisit, setRule, forgetRule or editSpec.
+	// skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
+	// owner-only raiseBudget and endMilestone come only in options the
+	// operator builds (budget prompts), never from the model.
 	Tool string `json:"tool"`
 	// Decision to revisit, e.g. D12-3; Note is the change asked for.
 	// +optional
@@ -388,6 +390,10 @@ type PilotAction struct {
 	// retryPipeline retries.
 	// +optional
 	PipelineID int64 `json:"pipelineID,omitempty"`
+	// Amount is the new milestone budget of a raiseBudget, a decimal in
+	// USD ("48").
+	// +optional
+	Amount string `json:"amount,omitempty"`
 }
 
 // PilotProposal is a set of actions that waits for an owner's "yes".

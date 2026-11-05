@@ -1004,7 +1004,17 @@ stateDiagram-v2
   on the affected Implement tasks; the runner re-reads its task before every
   agent call and ends the run `Deferred` instead of starting one (the
   request stays pending, without a pod, until the flag is cleared; chat
-  turns still run). Before pausing because of the active
+  turns still run). The milestone's budget is put to the owners as
+  `budget` prompts on the spec task (keys `budget/80/<limitUSD>` once per
+  budget value, `warnedAt`; `budget/100/<limitUSD>` with the pause): two
+  raises (1.25 and 1.5 times the spend, whole dollars, at least budget + 1)
+  with keep going or pause now at 80 %, end the milestone here or stay
+  paused at 100 %. Their actions are the owner-only tools `raiseBudget`
+  (`amount`; rewrites the budget line) and `endMilestone` (a queue command:
+  pending issues skipped, the active one too during a budget pause, then
+  done); `checkAction` refuses both in options the model made. A done
+  milestone with its budget used keeps `spec.budgetStop` on its issues.
+  Before pausing because of the active
   issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause`,
   `skip #N` and `merge #N` on the tracking issue are handled by the operator.
 * **Merge without a full review.** `merge #N <sha>` (GitLab owners, or the

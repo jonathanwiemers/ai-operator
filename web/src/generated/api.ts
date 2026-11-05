@@ -2350,7 +2350,9 @@ export const MaxAutopilotItemDecisions = 20;
 export interface PilotAction {
   /**
    * Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-   * skip, pause, resume, revisit, setRule, forgetRule or editSpec.
+   * skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
+   * owner-only raiseBudget and endMilestone come only in options the
+   * operator builds (budget prompts), never from the model.
    */
   tool: string;
   /**
@@ -2409,6 +2411,12 @@ export interface PilotAction {
    * +optional
    */
   pipelineID?: number /* int64 */;
+  /**
+   * Amount is the new milestone budget of a raiseBudget, a decimal in
+   * USD ("48").
+   * +optional
+   */
+  amount?: string;
 }
 /**
  * PilotProposal is a set of actions that waits for an owner's "yes".

@@ -2,11 +2,20 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
+	"slices"
 	"strconv"
+	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
+	"github.com/jonathanwiemers/ai-operator/internal/rules"
 )
 
 // budget holds the milestone to its budget (spec.budgetUSD) and every open
@@ -105,7 +114,7 @@ func (a *autopilot) budget(ctx context.Context) error {
 		}
 		return a.resumeBudget(ctx, fmt.Sprintf("%s is $%s now ($%s spent)", why, showBudget(b.LimitUSD), showBudget(b.SpentUSD)))
 	}
-	return nil
+	return a.budgetPrompts(ctx)
 }
 
 // issueBudget is the budget of an item that can still spend (pending or
@@ -131,12 +140,19 @@ func (a *autopilot) budgetPaused() bool {
 
 // budgetStopped reports whether the implement task of issue iid gets
 // spec.budgetStop: the autopilot of its milestone (spec task st) is paused
-// for the issue's budget, or for the milestone's (every issue of it). Like
-// the pause reason, a pause from this poll reaches the task next poll, and
-// a resume clears it.
+// for the issue's budget, or for the milestone's (every issue of it), or it
+// is done with the milestone's budget used (ended at its budget prompt).
+// Like the pause reason, a pause from this poll reaches the task next poll,
+// and a resume clears it.
 func budgetStopped(st *aiv1.AgentTask, iid int64) bool {
 	ap := st.Status.Autopilot
-	return st.Spec.Autopilot && ap != nil && ap.Phase == aiv1.AutopilotPaused && ap.PauseKind == aiv1.PauseBudget && (ap.PausedFor == 0 || ap.PausedFor == iid)
+	if !st.Spec.Autopilot || ap == nil {
+		return false
+	}
+	if b := ap.Budget; ap.Phase == aiv1.AutopilotDone && b != nil && b.SpentUSD != "" && aiv1.BudgetLeft(b.LimitUSD, b.SpentUSD, 0) <= 0 {
+		return true
+	}
+	return ap.Phase == aiv1.AutopilotPaused && ap.PauseKind == aiv1.PauseBudget && (ap.PausedFor == 0 || ap.PausedFor == iid)
 }
 
 // pausedBudget is the budget a budget pause is for, nil once it is gone.
@@ -161,5 +177,170 @@ func (a *autopilot) resumeBudget(ctx context.Context, why string) error {
 		return err
 	}
 	a.ap.Phase, a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = aiv1.AutopilotRunning, "", "", 0, false
+	return nil
+}
+
+// warnAt is the share of the milestone's budget spent that posts the 80 %
+// prompt.
+const warnAt = 0.8
+
+// Keys of the budget prompts: "budget/80/<limitUSD>" and
+// "budget/100/<limitUSD>", once per budget value.
+const (
+	budgetKey80  = "budget/80/"
+	budgetKey100 = "budget/100/"
+)
+
+// budgetPrompts puts the milestone's budget to the owners: at 80 % of it
+// spent (once per budget value, b.WarnedAt) a heads-up that offers two
+// raises, keeping going and pausing now; during a pause for it (100 %)
+// two raises, ending the milestone here and staying paused. A prompt of its
+// key in the status is not posted again. Issue budgets get no prompt.
+func (a *autopilot) budgetPrompts(ctx context.Context) error {
+	b := a.ap.Budget
+	if b == nil || b.SpentUSD == "" || a.ap.Phase == aiv1.AutopilotDone {
+		return nil
+	}
+	limit, spent := aiv1.CostOf(b.LimitUSD), aiv1.CostOf(b.SpentUSD)
+	if limit <= 0 {
+		return nil
+	}
+	var key string
+	switch {
+	case a.budgetPaused() && a.ap.PausedFor == 0:
+		key = budgetKey100 + b.LimitUSD
+	case spent >= warnAt*limit && spent < limit && b.WarnedAt == nil:
+		key = budgetKey80 + b.LimitUSD
+	default:
+		return nil
+	}
+	posted := slices.ContainsFunc(a.st.Status.Prompts, func(p aiv1.Prompt) bool {
+		return p.Source.Kind == aiv1.PromptBudget && p.Source.Key == key
+	})
+	if !posted {
+		p := a.budgetPrompt(key, limit, spent)
+		q, err := a.r.addPrompt(ctx, a.gl, a.st, a.st, p)
+		if err != nil {
+			return fmt.Errorf("posting the budget prompt: %w", err)
+		}
+		a.log.Info("budget prompt posted", "prompt", q.ID, "key", key, "budgetUSD", b.LimitUSD, "spentUSD", b.SpentUSD)
+	}
+	if b.WarnedAt == nil {
+		now := metav1.NewTime(a.r.now())
+		b.WarnedAt = &now
+	}
+	return nil
+}
+
+// budgetPrompt is the budget prompt of key, for a budget of limit with
+// spent spent.
+func (a *autopilot) budgetPrompt(key string, limit, spent float64) aiv1.Prompt {
+	lo, hi := budgetAmounts(limit, spent)
+	prefix := a.spec.Workflow.CommandPrefix
+	raise := func(id, usd string, recommended bool) aiv1.PromptOption {
+		return aiv1.PromptOption{ID: id, Label: "Raise the budget to $" + usd, Recommended: recommended,
+			Detail:  fmt.Sprintf("The milestone description's budget line becomes `%s budget %s`.", prefix, usd),
+			Actions: []aiv1.PilotAction{{Tool: "raiseBudget", Amount: usd}}}
+	}
+	p := aiv1.Prompt{
+		Source:  aiv1.PromptSource{Kind: aiv1.PromptBudget, Task: a.st.Name, Key: key},
+		Context: "The raises are 1.25 and 1.5 times the spend so far, in whole dollars. The spend is what the milestone's agent calls cost (`agent_calls`).",
+	}
+	if strings.HasPrefix(key, budgetKey100) {
+		p.Question = fmt.Sprintf("The milestone used its budget of $%s ($%s spent), so autopilot is paused. How should it go on?",
+			aiv1.ShowCost(limit), aiv1.ShowCost(spent))
+		p.Options = []aiv1.PromptOption{raise("A", lo, true), raise("B", hi, false),
+			{ID: "C", Label: "End the milestone here", Actions: []aiv1.PilotAction{{Tool: "endMilestone"}},
+				Detail: "No further issue is picked: the pending ones are skipped, and so is the active one, which cannot go on without spend. Autopilot is done."},
+			{ID: "D", Label: "Stay paused", Detail: "Nothing changes; autopilot continues once the budget line is above the spend."}}
+		// The pause comment mentioned the owners.
+		p.Quiet = a.spec.Notify.Wants(aiv1.NotifyAutopilotPaused)
+		return p
+	}
+	p.Question = fmt.Sprintf("The milestone spent $%s of its budget of $%s (%.0f %%). How should it go on?",
+		aiv1.ShowCost(spent), aiv1.ShowCost(limit), math.Floor(100*spent/limit))
+	p.Options = []aiv1.PromptOption{raise("A", lo, false), raise("B", hi, false),
+		{ID: "C", Label: "Keep going", Recommended: true, Detail: fmt.Sprintf("Nothing changes; autopilot pauses once $%s are spent.", aiv1.ShowCost(limit))}}
+	if a.ap.Phase == aiv1.AutopilotRunning {
+		p.Options = append(p.Options, aiv1.PromptOption{ID: "D", Label: "Pause now", Actions: []aiv1.PilotAction{{Tool: "pause"}},
+			Detail: fmt.Sprintf("Autopilot pauses now; `%s resume` continues it.", prefix)})
+	}
+	return p
+}
+
+// budgetAmounts are the two raises a budget prompt offers for a budget of
+// budget with spent spent: 1.25 and 1.5 times the spend, rounded up to
+// whole dollars, the first at least budget + 1, the second above the first.
+func budgetAmounts(budget, spent float64) (lo, hi string) {
+	up := func(v float64) float64 { return math.Ceil(v - 1e-9) } // 1.25 * 32 is 40, not 41
+	l := max(up(spent*1.25), up(budget+1))
+	h := max(up(spent*1.5), l+1)
+	return strconv.FormatFloat(l, 'f', 0, 64), strconv.FormatFloat(h, 'f', 0, 64)
+}
+
+// budgetResolved reports whether the budget condition of budget prompt p
+// no longer holds on the milestone of spec task st: its budget is another
+// (raised, lowered or removed), or the spend is under the prompt's
+// threshold of it. The 80 % prompt also gives way once the budget is used:
+// the 100 % prompt follows. An unknown spend resolves nothing.
+func budgetResolved(p aiv1.Prompt, st *aiv1.AgentTask) bool {
+	limit, threshold := "", 0.0
+	switch key := p.Source.Key; {
+	case strings.HasPrefix(key, budgetKey80):
+		limit, threshold = strings.TrimPrefix(key, budgetKey80), warnAt
+	case strings.HasPrefix(key, budgetKey100):
+		limit, threshold = strings.TrimPrefix(key, budgetKey100), 1
+	default:
+		return false
+	}
+	if st == nil || st.Status.Autopilot == nil {
+		return false
+	}
+	b := st.Status.Autopilot.Budget
+	switch {
+	case b == nil || b.LimitUSD != limit:
+		return true
+	case b.SpentUSD == "":
+		return false
+	}
+	spent, lim := aiv1.CostOf(b.SpentUSD), aiv1.CostOf(b.LimitUSD)
+	return spent < threshold*lim || threshold < 1 && spent >= lim
+}
+
+// validRaise checks a raiseBudget against the milestone (spec task st): a
+// budget in USD above the milestone's.
+func validRaise(a aiv1.PilotAction, st *aiv1.AgentTask) error {
+	usd, err := aiv1.ParseBudget(a.Amount)
+	switch {
+	case err != nil:
+		return err
+	case st.Spec.BudgetUSD == "":
+		return errors.New("the milestone has no budget any more")
+	case aiv1.CostOf(usd) <= aiv1.CostOf(st.Spec.BudgetUSD):
+		return fmt.Errorf("the budget is $%s already", showBudget(st.Spec.BudgetUSD))
+	}
+	return nil
+}
+
+// raiseBudget sets the milestone description's budget line to usd, read
+// again: a budget raised (or removed) by hand meanwhile stays. The next
+// poll reads it, and a pause for the budget ends by itself.
+func (r *AgentProjectReconciler) raiseBudget(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, usd string) error {
+	prefix := spec.Workflow.CommandPrefix
+	m, err := gl.GetMilestone(ctx, spec.GitLab.Project, st.Spec.Milestone.ID)
+	if err != nil {
+		return fmt.Errorf("reading the milestone: %w", err)
+	}
+	cur, err := rules.Budget(m.Description, prefix)
+	switch {
+	case err != nil || cur == "":
+		return errors.New("the milestone description has no budget line any more")
+	case aiv1.CostOf(cur) >= aiv1.CostOf(usd):
+		return fmt.Errorf("the budget is $%s already", showBudget(cur))
+	}
+	if _, err := gl.UpdateMilestoneDescription(ctx, spec.GitLab.Project, m.ID, rules.SetBudget(m.Description, prefix, usd)); err != nil {
+		return err
+	}
+	log.FromContext(ctx).Info("milestone budget raised", "milestone", st.Spec.Milestone.Title, "from", cur, "to", usd)
 	return nil
 }

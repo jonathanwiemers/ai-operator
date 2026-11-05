@@ -977,6 +977,35 @@ the milestone has no budget then. Without the research database, or while
 the spend cannot be read, the budget is not enforced (logged on every
 poll): autopilot never pauses for lack of data.
 
+#### Budget prompts
+
+The owners get the milestone's budget as a `budget` prompt in the Desk,
+mirrored on the tracking issue. The two raises are computed by the
+operator from the spend so far: 1.25 and 1.5 times it, rounded up to whole
+dollars, the first at least the budget + 1 (e.g. $41 and $49 for $32.40 of
+$40).
+
+- **At 80 %** of the budget spent, once per budget value
+  (`status.autopilot.budget.warnedAt`): raise the budget to either amount,
+  **keep going** (recommended, nothing changes) or **pause now** (only
+  while autopilot runs).
+- **At 100 %**, with the budget pause: raise the budget to either amount
+  (the first recommended), **end the milestone here**, or **stay paused**.
+
+A raise rewrites the description's `/agent budget` line, read again first:
+a budget raised above the amount or removed by hand meanwhile is kept, and
+the outcome says so. The next poll reads the new budget and a budget pause
+ends by itself. Ending the milestone skips its pending issues, so none is
+picked any more, and autopilot is done after the active issue; during the
+budget pause the active issue cannot go on without spend, so it is skipped
+too and autopilot is done at once. While a done milestone's budget is used
+its issues' runs stay stopped (`spec.budgetStop`); raising the line lets
+them go on. A prompt closes (superseded) once its budget is another or the
+spend is under its threshold again; the 80 % prompt also closes when the
+100 % one follows. Issue budgets get no prompt. Raising the budget and
+ending the milestone are the operator's options only: the pilot cannot
+propose them, and options of the model that use them are dropped.
+
 #### Per-issue budget
 
 Each open issue of the queue (pending or active) can have a budget of its

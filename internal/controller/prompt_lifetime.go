@@ -164,12 +164,6 @@ func mainUnhealthy(mh *aiv1.MainHealthStatus, iid int64) bool {
 	return false
 }
 
-// budgetResolved reports whether the budget condition of a budget prompt
-// no longer holds. Budget prompts come with R16; until then it never does.
-func budgetResolved(aiv1.Prompt, *aiv1.AgentTask) bool {
-	return false
-}
-
 // autopilotItemState is the state of issue iid in the autopilot queue of
 // st, empty if it is not in it.
 func autopilotItemState(st *aiv1.AgentTask, iid int64) aiv1.AutopilotItemState {

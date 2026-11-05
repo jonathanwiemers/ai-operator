@@ -37,8 +37,12 @@ import (
 // pushing are none of them.
 var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
 
+// ownerTools are the operator's own options of budget prompts: an owner
+// chooses them, the model never proposes them (checkAction).
+var ownerTools = []string{"raiseBudget", "endMilestone"}
+
 // queueTools go through the tracking issue's commands.
-var queueTools = []string{"skip", "pause", "resume", "revisit"}
+var queueTools = []string{"skip", "pause", "resume", "revisit", "endMilestone"}
 
 // proposalTTL is how long a proposal can be accepted.
 const proposalTTL = 24 * time.Hour
@@ -51,8 +55,10 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 	ap := st.Status.Autopilot
 	running := queueRunning(st)
 	switch {
-	case !slices.Contains(pilotTools, a.Tool):
+	case !slices.Contains(pilotTools, a.Tool) && !slices.Contains(ownerTools, a.Tool):
 		return fmt.Errorf("`%s` is not a tool of the pilot; merging, closing and pushing are not available", inertLine(a.Tool, 40))
+	case a.Tool == "raiseBudget":
+		return validRaise(a, st)
 	case isRuleTool(a.Tool):
 		return validRule(a)
 	case a.Tool == "revisit" && marker.DecisionIssue(a.Decision) == 0:
@@ -77,7 +83,7 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return errors.New("this milestone has no autopilot queue")
 	case a.Tool == "pause" && ap.Phase == aiv1.AutopilotPaused, a.Tool == "resume" && ap.Phase != aiv1.AutopilotPaused:
 		return fmt.Errorf("autopilot is %s", strings.ToLower(string(ap.Phase)))
-	case a.Tool == "pause" || a.Tool == "resume":
+	case a.Tool == "pause" || a.Tool == "resume" || a.Tool == "endMilestone":
 		return nil
 	case a.Tool == "skip" && !slices.ContainsFunc(ap.Items, func(it aiv1.AutopilotItem) bool { return it.IID == a.IssueIID && it.State != aiv1.AutopilotItemMerged }):
 		return fmt.Errorf("#%d is no planned issue that is not merged yet", a.IssueIID)
@@ -310,6 +316,10 @@ func checkAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject,
 	st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string, a *aiv1.PilotAction, fromModel, byOwner bool) (string, error) {
 	if fromModel {
 		a.Owner, a.Text = "", ""
+		if slices.Contains(ownerTools, a.Tool) {
+			err := fmt.Errorf("`%s` is only offered by the operator, in its budget prompts", a.Tool)
+			return describeAction(*a, err), err
+		}
 	}
 	*a = withRuleText(*a, st)
 	err := validAction(*a, st, tasks, opened)
@@ -554,6 +564,8 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 			}
 			if errs[i][j] == nil && p.AcceptedBy == "" && a.Tool == "editSpec" {
 				errs[i][j] = errors.New("a spec edit needs an owner's yes")
+			} else if errs[i][j] == nil && p.AcceptedBy == "" && slices.Contains(ownerTools, a.Tool) {
+				errs[i][j] = fmt.Errorf("`%s` needs an owner's answer", a.Tool)
 			} else if errs[i][j] == nil && p.AcceptedBy == "" && spec.Pilot.AutonomyOf(coord) != aiv1.PilotManaged {
 				errs[i][j] = errors.New("the pilot proposes now (`/pilot stop` or `pilot.autonomy`)")
 			} else if errs[i][j] == nil && a.Tool == "openIssue" {
@@ -628,8 +640,10 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		}
 		_, err := gl.RetryPipeline(ctx, spec.GitLab.Project, a.PipelineID)
 		return err
-	case "skip", "pause", "resume", "revisit":
+	case "skip", "pause", "resume", "revisit", "endMilestone":
 		return r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
+	case "raiseBudget":
+		return r.raiseBudget(ctx, gl, spec, st, a.Amount)
 	case "setRule", "forgetRule":
 		return r.runRule(ctx, gl, spec, st, a)
 	case "editSpec":
@@ -778,6 +792,10 @@ func describeAction(a aiv1.PilotAction, err error) string {
 		s = describeRule(a)
 	case "editSpec":
 		s = "**editSpec**: a new spec replaces the milestone description, its command lines kept"
+	case "raiseBudget":
+		s = fmt.Sprintf("**raiseBudget** to $%s: the milestone description's budget line", showBudget(a.Amount))
+	case "endMilestone":
+		s = "**endMilestone**: autopilot picks no further issue and is done after the active one"
 	default:
 		s = fmt.Sprintf("**%s**", inertLine(a.Tool, 40))
 	}

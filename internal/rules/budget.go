@@ -3,6 +3,7 @@ package rules
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
@@ -28,4 +29,28 @@ func Budget(description, prefix string) (string, error) {
 		return "", fmt.Errorf("%w: write `%s budget <usd>`, e.g. `%s budget 5`", err, prefix, prefix)
 	}
 	return usd, nil
+}
+
+// SetBudget sets the budget line of a description to usd: the first budget
+// line is replaced (the one Budget reads), else one is appended after the
+// last line.
+func SetBudget(description, prefix, usd string) string {
+	line := prefix + " budget " + usd
+	re := budgetLine(prefix)
+	if loc := re.FindStringIndex(description); loc != nil {
+		old := description[loc[0]:loc[1]]
+		end := ""
+		switch {
+		case strings.HasSuffix(old, "\r\n"):
+			end = "\r\n"
+		case strings.HasSuffix(old, "\n"):
+			end = "\n"
+		}
+		return description[:loc[0]] + line + end + description[loc[1]:]
+	}
+	description = strings.TrimRight(description, " \t\r\n")
+	if description == "" {
+		return line
+	}
+	return description + "\n\n" + line
 }

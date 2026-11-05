@@ -423,23 +423,69 @@ func (a *autopilot) pick(ctx context.Context) error {
 			"remove the links, or `skip` the waiting ones, then `resume`", strings.Join(reasons, ", "), a.spec.Workflow.DoneLabel))
 	}
 	if a.ap.Phase != aiv1.AutopilotDone {
-		merged := 0
-		for _, it := range a.ap.Items {
-			if it.State == aiv1.AutopilotItemMerged {
-				merged++
-			}
+		return a.done(ctx)
+	}
+	return nil
+}
+
+// done marks the milestone done, closes its tracking issue and says so.
+func (a *autopilot) done(ctx context.Context) error {
+	merged := 0
+	for _, it := range a.ap.Items {
+		if it.State == aiv1.AutopilotItemMerged {
+			merged++
 		}
-		a.log.Info("autopilot milestone done", "merged", merged)
-		// Close first and comment after, so a failing close does not repeat
-		// the comment.
-		prev := a.ap.Phase
-		a.ap.Phase = aiv1.AutopilotDone // for the description
-		if err := a.closeTracking(ctx); err != nil {
-			a.ap.Phase = prev // tried again on the next poll
-			return err
+	}
+	a.log.Info("autopilot milestone done", "merged", merged)
+	// Close first and comment after, so a failing close does not repeat
+	// the comment.
+	prev := a.ap.Phase
+	a.ap.Phase = aiv1.AutopilotDone // for the description
+	if err := a.closeTracking(ctx); err != nil {
+		a.ap.Phase = prev // tried again on the next poll
+		return err
+	}
+	return a.comment(ctx, fmt.Sprintf("✅ Autopilot is done: %d of %d issues merged. The decisions are listed in the description.", merged, len(a.ap.Items))+
+		a.mention(aiv1.NotifyAutopilotDone))
+}
+
+// endMilestone ends the milestone at an owner's answer (by): the pending
+// issues are skipped, so none is picked any more, and autopilot is done
+// after the active issue. During a pause for a budget the active issue
+// cannot go on without spend: it is skipped too, the pause ends and
+// autopilot is done now.
+func (a *autopilot) endMilestone(ctx context.Context, by string) error {
+	budget := a.budgetPaused()
+	var skipped []int64
+	var active *aiv1.AutopilotItem
+	for i := range a.ap.Items {
+		switch it := &a.ap.Items[i]; {
+		case it.State == aiv1.AutopilotItemPending, it.State == aiv1.AutopilotItemActive && budget:
+			it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+			skipped = append(skipped, it.IID)
+		case it.State == aiv1.AutopilotItemActive:
+			active = it
 		}
-		return a.comment(ctx, fmt.Sprintf("✅ Autopilot is done: %d of %d issues merged. The decisions are listed in the description.", merged, len(a.ap.Items))+
-			a.mention(aiv1.NotifyAutopilotDone))
+	}
+	a.log.Info("autopilot milestone ends here", "by", by, "skipped", skipped)
+	what := "nothing is left to skip"
+	if len(skipped) > 0 {
+		what = issueList(skipped) + " skipped"
+	}
+	if active != nil {
+		return a.comment(ctx, fmt.Sprintf("⏹️ The milestone ends here (%s): %s. Autopilot picks no further issue and is done after #%d.", by, what, active.IID))
+	}
+	if err := a.comment(ctx, fmt.Sprintf("⏹️ The milestone ends here (%s): %s.", by, what)); err != nil {
+		return err
+	}
+	if a.ap.Phase == aiv1.AutopilotDone {
+		return nil
+	}
+	prev := *a.ap
+	a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = "", "", 0, false
+	if err := a.done(ctx); err != nil {
+		a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = prev.PausedReason, prev.PauseKind, prev.PausedFor, prev.ResumeWhenReady
+		return err
 	}
 	return nil
 }
@@ -1313,7 +1359,11 @@ func (a *autopilot) commands(ctx context.Context) error {
 			if c.Seq <= a.ap.LastPilotCommand {
 				continue
 			}
-			if c.Action.Tool != "revisit" {
+			if c.Action.Tool == "endMilestone" {
+				if err := a.endMilestone(ctx, "@"+c.Owner+" via the pilot"); err != nil {
+					return err
+				}
+			} else if c.Action.Tool != "revisit" {
 				reply, applied, err := a.command(ctx, c.Action.Tool, fmt.Sprintf("#%d", c.Action.IssueIID), "@"+c.Owner+" via the pilot")
 				if err != nil {
 					return err
