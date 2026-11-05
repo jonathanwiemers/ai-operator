@@ -404,7 +404,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	// below: its error is collected and returned at the end.
 	var errs []error
 	for _, is := range issues {
-		autopilot, pause := false, ""
+		autopilot, pause, budgetStop := false, "", false
 		if is.Milestone != nil {
 			if st := autopilots[is.Milestone.IID]; st != nil {
 				// Only issues of the queue are merged by autopilot; others
@@ -415,6 +415,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 				if ap := st.Status.Autopilot; autopilot && ap != nil && ap.Phase == aiv1.AutopilotPaused && ap.PausedFor == is.IID {
 					pause = ap.PausedReason
 				}
+				budgetStop = budgetStopped(st, is.IID)
 			}
 		}
 		if is.IID == mainRed {
@@ -432,7 +433,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		if is.Milestone != nil {
 			st = byMilestone[is.Milestone.IID]
 		}
-		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], st, autopilot, pause, owners(description), ownerSubjects(description))
+		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], st, autopilot, pause, budgetStop, owners(description), ownerSubjects(description))
 		if err != nil {
 			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
 			// Keep the existing task, so the cleanup below does not delete
@@ -770,7 +771,7 @@ func (r *AgentProjectReconciler) specRetryDue(task *aiv1.AgentTask, after time.D
 // the task's merge request too, if it has one. st is the spec task of the
 // issue's milestone, if there is one.
 func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	is gitlab.Issue, task, st *aiv1.AgentTask, autopilot bool, pause string, owners, ownerSubjects []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
+	is gitlab.Issue, task, st *aiv1.AgentTask, autopilot bool, pause string, budgetStop bool, owners, ownerSubjects []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -791,6 +792,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	task.Spec.Autopilot = autopilot
 	task.Spec.Owners, task.Spec.OwnerSubjects = owners, ownerSubjects
 	task.Spec.Source.AutopilotPause = pause
+	task.Spec.BudgetStop = budgetStop
 
 	ready := is.HasLabel(wf.ReadyLabel)
 	src := &task.Spec.Source

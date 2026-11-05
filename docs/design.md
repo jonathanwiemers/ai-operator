@@ -993,7 +993,11 @@ stateDiagram-v2
   budget <usd>` comment, else `spec.budget.perIssueUSD`) pauses it the same
   way with `pausedFor` the issue, from the same query (the milestone's
   issues as children; `items[].budget`); without the database neither is
-  enforced. Before pausing because of the active
+  enforced. While paused for a budget, the operator sets `spec.budgetStop`
+  on the affected Implement tasks; the runner re-reads its task before every
+  agent call and ends the run `Deferred` instead of starting one (the
+  request stays pending, without a pod, until the flag is cleared; chat
+  turns still run). Before pausing because of the active
   issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause`,
   `skip #N` and `merge #N` on the tracking issue are handled by the operator.
 * **Merge without a full review.** `merge #N <sha>` (GitLab owners, or the

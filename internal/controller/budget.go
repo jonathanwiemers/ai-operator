@@ -129,6 +129,16 @@ func (a *autopilot) budgetPaused() bool {
 	return a.ap.Phase == aiv1.AutopilotPaused && a.ap.PauseKind == aiv1.PauseBudget
 }
 
+// budgetStopped reports whether the implement task of issue iid gets
+// spec.budgetStop: the autopilot of its milestone (spec task st) is paused
+// for the issue's budget, or for the milestone's (every issue of it). Like
+// the pause reason, a pause from this poll reaches the task next poll, and
+// a resume clears it.
+func budgetStopped(st *aiv1.AgentTask, iid int64) bool {
+	ap := st.Status.Autopilot
+	return st.Spec.Autopilot && ap != nil && ap.Phase == aiv1.AutopilotPaused && ap.PauseKind == aiv1.PauseBudget && (ap.PausedFor == 0 || ap.PausedFor == iid)
+}
+
 // pausedBudget is the budget a budget pause is for, nil once it is gone.
 func (a *autopilot) pausedBudget() *aiv1.BudgetStatus {
 	if a.ap.PausedFor == 0 {

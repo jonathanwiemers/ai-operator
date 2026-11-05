@@ -564,6 +564,39 @@ func TestDeferredTaskWaits(t *testing.T) {
 	}
 }
 
+func TestBudgetStoppedTaskWaitsWithoutAPod(t *testing.T) {
+	task := newImplTask("x", 1)
+	task.Spec.BudgetStop = true
+	e := newTaskEnv(t, task)
+	e.reconcile("x")
+	var pod corev1.Pod
+	if got := e.task("x"); got.Status.Phase != aiv1.TaskPhaseWaiting || e.exists(&pod, "x") {
+		t.Fatalf("a run stopped by the budget waits without a pod: phase %s, %q", got.Status.Phase, got.Status.Message)
+	}
+
+	// A chat turn still gets a pod.
+	got := e.task("x")
+	got.Spec.Source.ChatMessages = []aiv1.ChatMessage{{ID: 1, Kind: "message", Text: "how much is left?", Author: "u", At: metav1.NewTime(t0)}}
+	if err := e.c.Update(e.ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if !e.exists(&pod, "x") {
+		t.Fatal("chat turns run while the budget is used")
+	}
+
+	// Once the operator clears the flag, the run gets its pod.
+	got = e.task("x")
+	got.Spec.Source.ChatMessages, got.Spec.BudgetStop = nil, false
+	if err := e.c.Update(e.ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("x")
+	if got := e.task("x"); got.Status.Phase != aiv1.TaskPhaseRunning || !e.exists(&pod, "x") {
+		t.Fatalf("the cleared run should run, phase %s", got.Status.Phase)
+	}
+}
+
 func TestLongWaitHibernatesPod(t *testing.T) {
 	until := t0.Add(5 * time.Hour)
 	task := deferredTask("x", until)

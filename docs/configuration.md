@@ -597,7 +597,9 @@ all: at 100 % of it autopilot pauses (needs the research database, see
 
 Budgets of autopilot work, from what its agent calls cost (`agent_calls`,
 needs the research database). The operator checks them once per poll, so
-between calls; a running call is never killed.
+between calls; a running call is never killed, but a running run makes no
+further call once its budget is used (`spec.budgetStop`, see
+[usage.md](usage.md#budget)).
 
 | Field | Default | Description |
 |-------|---------|-------------|

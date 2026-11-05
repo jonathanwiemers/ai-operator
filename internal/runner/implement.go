@@ -385,6 +385,10 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	// reviews before the merge, so CI fixes are reviewed as well.
 	for iter := 0; len(review.Reviewers) > 0 && answer.Status != "needs_input" && (!ciFix || task.Spec.Autopilot); iter++ {
 		s = r.step(ctx, fmt.Sprintf("review round %d", iter+1), "reviewers", review.Reviewers)
+		// A budget stop ends the run here, not as reviewer errors.
+		if err := r.budgetStop(ctx); err != nil {
+			return out, s.fail(err)
+		}
 		diff, stat, err := r.Agent.Diff(ctx, base)
 		if err != nil {
 			return out, s.fail(err)

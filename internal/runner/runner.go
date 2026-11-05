@@ -388,6 +388,9 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	if err != nil || task == nil || !task.RunPending() {
 		return false, err
 	}
+	if task.Spec.BudgetStop {
+		return false, nil // the budget is used: waiting until it is raised
+	}
 	// A run resumes the session through the CLI; close the live chat one first.
 	if err := r.Agent.CloseSession(ctx); err != nil {
 		r.Log.Error(err, "closing the chat session before a run")
@@ -473,6 +476,8 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		headline := ""
 		if _, ok := AsUsageLimit(err); ok && task.Status.Run.Deferrals < MaxDeferrals {
 			headline = "⏸️ Paused by a usage limit; the run continues once it resets."
+		} else if isBudgetStop(err) {
+			headline = "⏸️ Stopped between agent calls: the budget is used. The run continues once it is raised."
 		} else if moreMemory != "" {
 			headline = "⏸️ The agent container ran out of memory; the run starts again with " + moreMemory + "."
 		} else if err != nil {
@@ -487,6 +492,9 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	}
 	if moreMemory != "" {
 		return false, r.retryWithMoreMemory(ctx, gl, spec, task, out, err, moreMemory)
+	}
+	if isBudgetStop(err) {
+		return false, r.deferForBudget(ctx, out, err)
 	}
 	if lim, ok := AsUsageLimit(err); ok {
 		if task.Status.Run.Deferrals < MaxDeferrals {
@@ -665,7 +673,11 @@ func (r *Runner) morePending(ctx context.Context, request int64) bool {
 // Usage and rate limits come back as *UsageLimitError. If the project already
 // knows the engine is limited, the engine is not called at all. A role with a
 // fallback whose engine is not limited runs on it instead (see fallBack).
+// Once the operator set spec.budgetStop, no call starts: *BudgetStopError.
 func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
+	if err := r.budgetStop(ctx); err != nil {
+		return nil, err
+	}
 	if near := r.nearLimit(role); near != nil {
 		// fallBack hands the soft limit back when there is no usable
 		// fallback: then the role runs on its own engine.

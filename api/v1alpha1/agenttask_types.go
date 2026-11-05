@@ -76,6 +76,14 @@ type AgentTaskSpec struct {
 	// +optional
 	BudgetUSD string `json:"budgetUSD,omitempty"`
 
+	// BudgetStop is set by the operator on implement tasks while autopilot
+	// is paused for their budget (the issue's, or the milestone's for all
+	// of its implement tasks). The runner starts no further agent call: a
+	// run in progress ends deferred after its current call, a pending one
+	// waits until the flag is cleared. Desk chat turns still run.
+	// +optional
+	BudgetStop bool `json:"budgetStop,omitempty"`
+
 	// Source records which GitLab state the operator has already turned into
 	// run requests, so that every change triggers exactly one run.
 	// +optional

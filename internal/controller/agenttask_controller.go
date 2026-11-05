@@ -124,10 +124,13 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	idleTimeout := lc.IdleTimeout.Duration
 	pending := task.RunPending()
 	hasChat := task.HasChatTurns()
-	needsPod := pending || hasChat
 	// The runner bumps RunCount when a run finishes, so a run in progress is
 	// never cut off by the limit.
 	inProgress := task.Status.Run.ActiveRunRequest > task.Status.Run.ObservedRunRequest
+	// A run stopped by the budget (spec.budgetStop) waits for it to be
+	// raised without a pod; chat turns still get one.
+	budgetWait := pending && !inProgress && task.Spec.BudgetStop
+	needsPod := pending && !budgetWait || hasChat
 	// The pilot answers many messages; pilot.maxBudgetUSD bounds it.
 	blocked := pending && !inProgress && task.Status.Run.RunCount >= lc.MaxRunsPerTask && task.Spec.Type != aiv1.TaskTypeCoordinate
 	// A run deferred because of a usage limit waits until its retry time. In
@@ -207,7 +210,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 		}
 		task.Status.Phase = aiv1.TaskPhaseRunning
-		if pending {
+		if pending && !budgetWait {
 			task.Status.Message = fmt.Sprintf("run %d requested", task.Spec.RunRequest)
 		} else {
 			task.Status.Message = "answering chat"
@@ -300,6 +303,10 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if retry := waitFor + time.Second; result.RequeueAfter == 0 || retry < result.RequeueAfter {
 			result.RequeueAfter = retry
 		}
+	}
+	if budgetWait && !hasChat && !blocked && !task.Spec.Suspend {
+		task.Status.Phase = aiv1.TaskPhaseWaiting
+		task.Status.Message = "the budget is used; the run continues once it is raised"
 	}
 	if blocked {
 		task.Status.Phase = aiv1.TaskPhaseBlocked
@@ -405,7 +412,7 @@ func (r *AgentTaskReconciler) freshNeedsPod(ctx context.Context, task *aiv1.Agen
 	if err := r.APIReader.Get(ctx, client.ObjectKeyFromObject(task), &fresh); err != nil {
 		return false, client.IgnoreNotFound(err)
 	}
-	return fresh.RunPending() ||
+	return fresh.RunPending() && !fresh.Spec.BudgetStop ||
 		fresh.Status.Run.ActiveRunRequest > fresh.Status.Run.ObservedRunRequest ||
 		fresh.HasChatTurns(), nil
 }

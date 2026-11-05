@@ -87,6 +87,14 @@ spec:
                   Autopilot is set for tasks of autopilot milestones: the agents must
                   not ask questions but take their defaults and record them.
                 type: boolean
+              budgetStop:
+                description: |-
+                  BudgetStop is set by the operator on implement tasks while autopilot
+                  is paused for their budget (the issue's, or the milestone's for all
+                  of its implement tasks). The runner starts no further agent call: a
+                  run in progress ends deferred after its current call, a pending one
+                  waits until the flag is cleared. Desk chat turns still run.
+                type: boolean
               budgetUSD:
                 description: |-
                   BudgetUSD is the milestone's budget in USD, from its description's

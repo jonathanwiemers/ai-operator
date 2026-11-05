@@ -911,7 +911,15 @@ in the spec task's `status.autopilot.budget` (`limitUSD`, `spentUSD`).
 Once the spend reaches the budget, autopilot pauses with
 `pauseKind: budget` ("the budget of $5.00 is used ($5.12 spent) …"). A
 running agent call is never killed: it finishes, and nothing new starts or
-merges, as with every pause. Calls without a known cost (cursor without
+merges, as with every pause. A run in progress stops too, between calls:
+on the next poll the operator sets `spec.budgetStop` on the milestone's
+Implement tasks (for an issue's budget, on that issue's task), and the
+runner reads it before every agent call. After the call in progress the
+run ends `Deferred` ("the budget is used"), like a run that hit a usage
+limit: the steps it pushed stay on the branch, its workspace and session
+are kept, and the run request stays pending without a pod. Once the pause
+ends the flag is cleared and the run continues from where it stopped. Desk
+chat turns still run. Calls without a known cost (cursor without
 `pricing`, see [configuration.md](configuration.md#pricing)) count $0
 towards it.
 

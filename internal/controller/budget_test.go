@@ -283,3 +283,56 @@ func TestMilestoneBudgetComesBeforeTheIssues(t *testing.T) {
 		t.Fatalf("without a budget for #1 the pause ends: %+v", ap)
 	}
 }
+
+func TestBudgetStopIsSetOnPauseAndClearedOnResume(t *testing.T) {
+	e, src := newBudgetEnv(t, "5", 1)
+	e.reconcile()
+	e.reconcile()
+	if task := e.implTaskOf(1); task == nil || task.Spec.BudgetStop {
+		t.Fatalf("below its budget the run is not stopped: %+v", task)
+	}
+
+	src.spend.Totals.CostUSD = 6
+	e.reconcile()
+	if ap := e.autopilot(); ap.PauseKind != aiv1.PauseBudget {
+		t.Fatalf("a spent budget pauses: %+v", ap)
+	}
+	e.reconcile()
+	if task := e.implTaskOf(1); !task.Spec.BudgetStop {
+		t.Fatal("a milestone budget pause stops the runs of its issues between calls")
+	}
+
+	setBudgetLine(e, "50")
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning {
+		t.Fatalf("a raised budget resumes: %+v", ap)
+	}
+	e.reconcile()
+	if task := e.implTaskOf(1); task.Spec.BudgetStop {
+		t.Fatal("the resume lets the run continue")
+	}
+}
+
+func TestBudgetStopped(t *testing.T) {
+	paused := func(kind aiv1.PauseKind, iid int64) *aiv1.AgentTask {
+		return &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Autopilot: true},
+			Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PauseKind: kind, PausedFor: iid}}}
+	}
+	off := paused(aiv1.PauseBudget, 0)
+	off.Spec.Autopilot = false
+	for name, c := range map[string]struct {
+		st   *aiv1.AgentTask
+		want bool
+	}{
+		"milestone budget":       {paused(aiv1.PauseBudget, 0), true},
+		"this issue's budget":    {paused(aiv1.PauseBudget, 7), true},
+		"another issue's":        {paused(aiv1.PauseBudget, 8), false},
+		"another kind of pause":  {paused(aiv1.PauseRunFailed, 7), false},
+		"autopilot switched off": {off, false},
+		"no autopilot status":    {&aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Autopilot: true}}, false},
+	} {
+		if got := budgetStopped(c.st, 7); got != c.want {
+			t.Errorf("%s: budgetStopped = %v, want %v", name, got, c.want)
+		}
+	}
+}

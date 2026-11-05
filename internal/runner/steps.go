@@ -126,6 +126,11 @@ func (s *step) fail(err error) error {
 		s.log.Info("step deferred", "durationMs", s.elapsed.Milliseconds(), "reason", err.Error())
 		return err
 	}
+	if isBudgetStop(err) {
+		s.end("budget used")
+		s.log.Info("step deferred", "durationMs", s.elapsed.Milliseconds(), "reason", err.Error())
+		return err
+	}
 	s.failed = true
 	s.end("failed")
 	s.log.Error(err, "step failed", "durationMs", s.elapsed.Milliseconds())
