@@ -1653,7 +1653,7 @@ func (a *autopilot) save(ctx context.Context) error {
 	}
 	orig := a.st.DeepCopy()
 	a.st.Status.Autopilot = a.ap
-	return a.r.Status().Patch(ctx, a.st, client.MergeFrom(orig))
+	return a.r.writeFailed(ctx, a.st, "autopilot.save", a.r.Status().Patch(ctx, a.st, client.MergeFrom(orig)))
 }
 
 // renderTracking renders the tracking issue's description.

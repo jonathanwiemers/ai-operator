@@ -2986,9 +2986,57 @@ export interface AgentTaskStatus {
    */
   lastPrompt?: number /* int64 */;
   /**
+   * WriteFailures are the status writes of the pilot and the operator to
+   * this task that the API server rejected, one per source and error,
+   * newest last, at most MaxWriteFailures.
+   * +optional
+   * +kubebuilder:validation:MaxItems=5
+   */
+  writeFailures?: WriteFailure[];
+  /**
    * +optional
    */
   conditions?: Condition[];
+}
+export const MaxWriteFailures = 5;
+export const MaxWriteFailureError = 1000;
+/**
+ * MaxWriteFailures and MaxWriteFailureError bound status.writeFailures.
+ */
+export type MaxWriteFailure = typeof MaxWriteFailures | typeof MaxWriteFailureError;
+/**
+ * WriteFailure is a rejected status write: the pilot's (runner) or the
+ * operator's patch the API server refused, e.g. for a schema violation.
+ */
+export interface WriteFailure {
+  /**
+   * Source is the write, e.g. "runner/recordProposal" or
+   * "operator/autopilot.save".
+   * +kubebuilder:validation:MaxLength=100
+   */
+  source: string;
+  /**
+   * Error is the API server's error, cut to MaxWriteFailureError bytes.
+   * +kubebuilder:validation:MaxLength=1000
+   */
+  error: string;
+  /**
+   * Key is a hash of source and error: the same failure again only
+   * bumps Count.
+   * +kubebuilder:validation:MaxLength=64
+   */
+  key: string;
+  /**
+   * At is the last time it failed.
+   * +optional
+   */
+  at?: string;
+  /**
+   * Count is how often it failed.
+   * +optional
+   * +kubebuilder:validation:Minimum=0
+   */
+  count?: number /* int32 */;
 }
 /**
  * ChatStatus is the runner's answers to Desk chat turns.

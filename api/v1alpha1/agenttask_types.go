@@ -818,8 +818,48 @@ type AgentTaskStatus struct {
 	// +optional
 	LastPrompt int64 `json:"lastPrompt,omitempty"`
 
+	// WriteFailures are the status writes of the pilot and the operator to
+	// this task that the API server rejected, one per source and error,
+	// newest last, at most MaxWriteFailures.
+	// +optional
+	// +kubebuilder:validation:MaxItems=5
+	WriteFailures []WriteFailure `json:"writeFailures,omitempty"`
+
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// MaxWriteFailures and MaxWriteFailureError bound status.writeFailures.
+const (
+	MaxWriteFailures     = 5
+	MaxWriteFailureError = 1000
+)
+
+// WriteFailure is a rejected status write: the pilot's (runner) or the
+// operator's patch the API server refused, e.g. for a schema violation.
+type WriteFailure struct {
+	// Source is the write, e.g. "runner/recordProposal" or
+	// "operator/autopilot.save".
+	// +kubebuilder:validation:MaxLength=100
+	Source string `json:"source"`
+
+	// Error is the API server's error, cut to MaxWriteFailureError bytes.
+	// +kubebuilder:validation:MaxLength=1000
+	Error string `json:"error"`
+
+	// Key is a hash of source and error: the same failure again only
+	// bumps Count.
+	// +kubebuilder:validation:MaxLength=64
+	Key string `json:"key"`
+
+	// At is the last time it failed.
+	// +optional
+	At *metav1.Time `json:"at,omitempty"`
+
+	// Count is how often it failed.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	Count int32 `json:"count,omitempty"`
 }
 
 // ChatStatus is the runner's answers to Desk chat turns.

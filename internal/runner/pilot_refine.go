@@ -127,7 +127,7 @@ const refineLabel = "From your answer: "
 // keeping the newest aiv1.MaxRefines.
 func (r *Runner) recordRefinement(ctx context.Context, task *aiv1.AgentTask, res aiv1.PromptRefinement) error {
 	// Optimistic: the operator takes refinements out concurrently.
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	return r.writeFailed(ctx, task, "recordRefinement", retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var t aiv1.AgentTask
 		if err := r.K8s.Get(ctx, client.ObjectKeyFromObject(task), &t); err != nil {
 			return err
@@ -145,7 +145,7 @@ func (r *Runner) recordRefinement(ctx context.Context, task *aiv1.AgentTask, res
 			ps.Refined = ps.Refined[n-aiv1.MaxRefines:]
 		}
 		return r.K8s.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
-	})
+	}))
 }
 
 const refineSchema = `{

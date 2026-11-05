@@ -18,6 +18,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
+	"github.com/jonathanwiemers/ai-operator/internal/writefail"
 )
 
 // The pilot of a milestone is its Coordinate task. The operator reads the
@@ -482,7 +483,29 @@ func (r *AgentProjectReconciler) patchPilot(ctx context.Context, st *aiv1.AgentT
 		st.Status.Pilot = &aiv1.PilotStatus{}
 	}
 	mutate(st.Status.Pilot)
-	return r.Status().Patch(ctx, st, client.MergeFrom(orig))
+	return r.writeFailed(ctx, st, "patchPilot", r.Status().Patch(ctx, st, client.MergeFrom(orig)))
+}
+
+// writeFailed reports a status write of the operator that the API server
+// rejected (writefail) and returns err.
+func (r *AgentProjectReconciler) writeFailed(ctx context.Context, task *aiv1.AgentTask, source string, err error) error {
+	if !writefail.Rejected(err) {
+		return err
+	}
+	var project aiv1.AgentProject
+	var gl gitlab.API
+	gerr := r.Get(ctx, client.ObjectKey{Namespace: task.Namespace, Name: task.Spec.ProjectRef}, &project)
+	spec := project.Spec.WithDefaults()
+	if gerr == nil {
+		gl, gerr = r.gitlabClient(ctx, &project, spec)
+	}
+	if gerr != nil {
+		log.FromContext(ctx).Error(gerr, "no GitLab client for the rejected status write", "source", source)
+	}
+	if rerr := writefail.Report(ctx, r.Client, gl, spec.GitLab.Project, task, writefail.Tracking(task), "operator/"+source, err); rerr != nil {
+		log.FromContext(ctx).Error(rerr, "reporting a rejected status write", "source", source)
+	}
+	return err
 }
 
 // pilotReply answers a comment where it was written. A failed answer is not

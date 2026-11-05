@@ -181,7 +181,7 @@ func (r *AgentProjectReconciler) patchPrompts(ctx context.Context, holder *aiv1.
 // keeps its status when mutate or the patch fails.
 func (r *AgentProjectReconciler) patchTaskStatus(ctx context.Context, t *aiv1.AgentTask, mutate func(*aiv1.AgentTaskStatus) error) error {
 	first := true
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	return r.writeFailed(ctx, t, "patchTaskStatus", retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if !first {
 			var fresh aiv1.AgentTask
 			if err := r.Get(ctx, client.ObjectKeyFromObject(t), &fresh); err != nil {
@@ -200,5 +200,5 @@ func (r *AgentProjectReconciler) patchTaskStatus(ctx context.Context, t *aiv1.Ag
 			return err
 		}
 		return nil
-	})
+	}))
 }

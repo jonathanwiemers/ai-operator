@@ -3315,6 +3315,49 @@ spec:
                 type: string
               workspaceClaimName:
                 type: string
+              writeFailures:
+                description: |-
+                  WriteFailures are the status writes of the pilot and the operator to
+                  this task that the API server rejected, one per source and error,
+                  newest last, at most MaxWriteFailures.
+                items:
+                  description: |-
+                    WriteFailure is a rejected status write: the pilot's (runner) or the
+                    operator's patch the API server refused, e.g. for a schema violation.
+                  properties:
+                    at:
+                      description: At is the last time it failed.
+                      format: date-time
+                      type: string
+                    count:
+                      description: Count is how often it failed.
+                      format: int32
+                      minimum: 0
+                      type: integer
+                    error:
+                      description: Error is the API server's error, cut to MaxWriteFailureError
+                        bytes.
+                      maxLength: 1000
+                      type: string
+                    key:
+                      description: |-
+                        Key is a hash of source and error: the same failure again only
+                        bumps Count.
+                      maxLength: 64
+                      type: string
+                    source:
+                      description: |-
+                        Source is the write, e.g. "runner/recordProposal" or
+                        "operator/autopilot.save".
+                      maxLength: 100
+                      type: string
+                  required:
+                  - error
+                  - key
+                  - source
+                  type: object
+                maxItems: 5
+                type: array
             type: object
         type: object
     served: true

@@ -357,7 +357,7 @@ func (r *AgentProjectReconciler) patchProposals(ctx context.Context, coord *aiv1
 	if err != nil {
 		coord.Status = orig.Status // nothing of it holds
 	}
-	return err
+	return r.writeFailed(ctx, coord, "patchProposals", err)
 }
 
 // applyPilotChatCommands applies Desk accept/reject, answers to the
@@ -710,7 +710,7 @@ func (n commandsWaiting) Error() string {
 // its next poll, the revisits a revisit. Each remembers the last it
 // applied, so a command applies once.
 func (r *AgentProjectReconciler) queueCommand(ctx context.Context, st *aiv1.AgentTask, c aiv1.PilotCommand) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	return r.writeFailed(ctx, st, "queueCommand", retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var t aiv1.AgentTask
 		if err := r.Get(ctx, client.ObjectKeyFromObject(st), &t); err != nil {
 			return err
@@ -738,7 +738,7 @@ func (r *AgentProjectReconciler) queueCommand(ctx context.Context, st *aiv1.Agen
 		}
 		t.Status.Pilot.Commands = append(cmds, c)
 		return r.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
-	})
+	}))
 }
 
 // askReview asks the next run of task to review head again without the

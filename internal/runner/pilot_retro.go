@@ -152,7 +152,7 @@ func (r *Runner) retroFailed(ctx context.Context, task *aiv1.AgentTask, err erro
 // recordRetro sets status.pilot.retrospective, where the operator copies it
 // from before it deletes the pilot.
 func (r *Runner) recordRetro(ctx context.Context, task *aiv1.AgentTask, retro *aiv1.PilotRetrospective) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	return r.writeFailed(ctx, task, "recordRetro", retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var t aiv1.AgentTask
 		if err := r.K8s.Get(ctx, client.ObjectKeyFromObject(task), &t); err != nil {
 			return err
@@ -163,7 +163,7 @@ func (r *Runner) recordRetro(ctx context.Context, task *aiv1.AgentTask, retro *a
 		}
 		t.Status.Pilot.Retrospective = retro
 		return r.K8s.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
-	})
+	}))
 }
 
 func metaTime(t *time.Time) *metav1.Time {

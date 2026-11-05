@@ -1278,6 +1278,21 @@ counted interventions; more tools are later steps of
   a model call, sets them. Both writers use optimistic locking on the
   status (the runner retries on a conflict, the operator tries again next
   poll), so no proposal is lost or put twice.
+* **Rejected writes.** A status patch of the pilot (runner: proposals,
+  refinements, the retrospective) or the operator (pilot status,
+  proposals, queued commands, prompts, the autopilot queue) that the API
+  server rejects as Invalid or BadRequest (a schema violation such as
+  `actions: null`) is recorded in `status.writeFailures` of the task
+  whose patch failed: source (e.g. `runner/recordProposal`,
+  `operator/autopilot.save`), the error cut to 1000 bytes, a key of both,
+  the time and a count, newest last, at most 5. It is written with a
+  patch of only that field, so the rejected data is not sent again. A new
+  key posts one line on the tracking issue ("⚠️ The API server rejected a
+  status write of the pilot|operator (…)"); the same error from the same
+  source again only bumps the count. Conflicts, not-found and transport
+  errors are not reported; a failure that cannot be recorded is only
+  logged and posts nothing. The write itself still fails as before
+  (`internal/writefail`).
 * **Accepting.** Proposal prompts are answered like any prompt (see
   [Answering prompts](#answering-prompts)). Proposals posted as "Proposal
   P<n>" before prompts stay in `status.pilot.proposals` until their 24 h

@@ -346,3 +346,35 @@ func TestAutopilotItemHealedOnAdmitted(t *testing.T) {
 		t.Fatalf("healedOn not stored: %v", items[0])
 	}
 }
+
+// Rejected status writes are kept in status.writeFailures (writefail); the
+// schema must keep them and bound them.
+func TestWriteFailuresAdmitted(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	entry := func(i int) any {
+		return map[string]any{"source": "runner/recordProposal", "error": strings.Repeat("e", MaxWriteFailureError), "key": strings.Repeat("k", 16),
+			"at": "2026-11-05T10:12:00Z", "count": int64(i + 1)}
+	}
+	list := func(n int) []any {
+		var out []any
+		for i := range n {
+			out = append(out, entry(i))
+		}
+		return out
+	}
+	obj, errs := crd.admit(map[string]any{"status": map[string]any{"writeFailures": list(MaxWriteFailures)}})
+	if len(errs) > 0 {
+		t.Fatalf("write failures rejected: %v", errs)
+	}
+	if got := obj["status"].(map[string]any)["writeFailures"].([]any); len(got) != MaxWriteFailures || got[0].(map[string]any)["key"] == nil {
+		t.Fatalf("write failures not stored: %v", got)
+	}
+	if _, errs := crd.admit(map[string]any{"status": map[string]any{"writeFailures": list(MaxWriteFailures + 1)}}); len(errs) == 0 {
+		t.Fatal("more than MaxWriteFailures admitted")
+	}
+	long := entry(0).(map[string]any)
+	long["error"] = strings.Repeat("e", MaxWriteFailureError+1)
+	if _, errs := crd.admit(map[string]any{"status": map[string]any{"writeFailures": []any{long}}}); len(errs) == 0 {
+		t.Fatal("an error over MaxWriteFailureError admitted")
+	}
+}

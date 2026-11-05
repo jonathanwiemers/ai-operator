@@ -17,6 +17,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/rules"
+	"github.com/jonathanwiemers/ai-operator/internal/writefail"
 )
 
 // labelProject is the controller's LabelProject.
@@ -389,7 +390,7 @@ func pilotActions(actions []ProposalAction) []aiv1.PilotAction {
 func (r *Runner) recordProposal(ctx context.Context, task *aiv1.AgentTask, prop aiv1.PilotProposal) error {
 	source := prop.Source
 	// Optimistic: the operator takes proposals out concurrently.
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	return r.writeFailed(ctx, task, "recordProposal", retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var t aiv1.AgentTask
 		if err := r.K8s.Get(ctx, client.ObjectKeyFromObject(task), &t); err != nil {
 			return err
@@ -407,7 +408,23 @@ func (r *Runner) recordProposal(ctx context.Context, task *aiv1.AgentTask, prop 
 		}
 		t.Status.Pilot.Proposed = append(t.Status.Pilot.Proposed, prop)
 		return r.K8s.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
-	})
+	}))
+}
+
+// writeFailed reports a status write of the pilot that the API server
+// rejected (writefail) and returns err.
+func (r *Runner) writeFailed(ctx context.Context, task *aiv1.AgentTask, source string, err error) error {
+	if !writefail.Rejected(err) {
+		return err
+	}
+	var gl gitlab.API
+	if r.NewGitLab != nil {
+		gl = r.NewGitLab(r.projectSpec.GitLab.URL, r.GitLabToken)
+	}
+	if rerr := writefail.Report(ctx, r.K8s, gl, r.projectSpec.GitLab.Project, task, writefail.Tracking(task), "runner/"+source, err); rerr != nil {
+		r.log().Error(rerr, "reporting a rejected status write", "source", source)
+	}
+	return err
 }
 
 // followsOn says what becomes of the pilot's proposal: a pilot that
