@@ -18,9 +18,9 @@ import (
 // per issue and head, and audits each on the tracking issue; the rest it
 // proposes, pinging the owners. An owner's "/pilot stop" makes it propose.
 
-// countedTools run without a "yes" when the pilot manages; queue tools,
-// spec edits and rules never do.
-var countedTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline"}
+// countedTools run without a "yes" when the pilot manages; of the queue
+// tools only rebase and mergeBase; spec edits and rules never do.
+var countedTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase"}
 
 // manage takes the actions the pilot runs on its own out of its runs'
 // proposals: valid, counted tools on issues with interventions left; of a
@@ -161,7 +161,7 @@ func (r *AgentProjectReconciler) switchAutonomy(ctx context.Context, spec aiv1.A
 	case stop:
 		return fmt.Sprintf("Stopped by `@%s`: the pilot proposes every action on this milestone until an owner says `%s go`.", by, prefix), nil
 	case spec.Pilot.AutonomyOf(coord) == aiv1.PilotManaged:
-		return fmt.Sprintf("Managed again, by `@%s`: the pilot retries, re-reviews, instructs and opens issues on its own, at most %d per issue and head, "+
+		return fmt.Sprintf("Managed again, by `@%s`: the pilot retries, re-reviews, instructs, rebases and opens issues on its own, at most %d per issue and head, "+
 			"each with an audit comment here.", by, spec.Pilot.MaxInterventionsPerIssue), nil
 	}
 	return "The pilot still proposes every action: `pilot.autonomy` of the project (or, unset, a milestone without autopilot) says so, and `go` cannot raise it.", nil

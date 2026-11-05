@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -50,22 +52,83 @@ func (a *autopilot) healBaseFailing(ctx context.Context) error {
 
 // rebaseActive rebases the active issue's MR (or, if a rebase cannot help,
 // mergeBase hands it to the agent) and says so on the tracking issue with
-// why. A pause about the issue ends, unless the rebase paused anew, so drive
-// follows the rebased head to CI. The rebase goes first: if it fails, nothing
-// is said and the next poll tries again. Once it was requested, requested
-// runs (which records it) and the pause ends before the comment, so a failed
-// comment can neither repeat the rebase nor leave the pause in place.
+// why. The rebase goes first: if it fails, nothing is said and the next poll
+// tries again. Once it was requested, requested runs (which records it).
 func (a *autopilot) rebaseActive(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask, why string, requested func()) error {
-	paused, reason := a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedFor == it.IID, a.ap.PausedReason
 	a.log.Info("autopilot rebases the active merge request", "issue", it.IID, "mr", mr.IID, "why", why)
-	if err := a.rebase(ctx, it, mr, task); err != nil {
+	return a.remedyActive(ctx, it, "rebase", why, func() error {
+		if err := a.rebase(ctx, it, mr, task); err != nil {
+			return err
+		}
+		requested()
+		return nil
+	})
+}
+
+// remedyActive runs act, the remedy exit (aiv1.PauseExits) on the active
+// issue, and says so on the tracking issue with why. A pause about the
+// issue of a kind the remedy is an exit of ends, unless act paused anew,
+// so drive follows the new head. The pause ends before the comment, so a
+// failed comment can neither repeat act nor leave the pause in place.
+func (a *autopilot) remedyActive(ctx context.Context, it *aiv1.AutopilotItem, remedy, why string, act func() error) error {
+	paused := a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedFor == it.IID &&
+		slices.ContainsFunc(aiv1.PauseExits(a.ap.PauseKind), func(e aiv1.PauseExit) bool { return e.ID == remedy })
+	reason := a.ap.PausedReason
+	if err := act(); err != nil {
 		return err
 	}
-	requested()
 	line := "🔄 " + why + "."
 	if paused && a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedReason == reason {
 		a.lift()
 		line = "▶️ Autopilot continues: " + why + "."
 	}
 	return a.comment(ctx, line)
+}
+
+// mrCommand applies "rebase #N" and "mergeBase #N" (by an owner on the
+// tracking issue, or the pilot's tools): GitLab rebases the active issue's
+// MR (rebaseActive), or the agent merges the default branch into it
+// (mergeBase). Anything else, or a head either cannot help, is answered.
+func (a *autopilot) mrCommand(ctx context.Context, word, arg, by string) (string, bool, error) {
+	prefix := a.spec.Workflow.CommandPrefix
+	iid, _ := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64)
+	it, task := a.item(iid), a.tasks[iid]
+	refuse := func(format string, args ...any) (string, bool, error) {
+		return fmt.Sprintf("`%s` needs the active issue with a merge request, e.g. `%s %s #12`: ", word, prefix, word) + fmt.Sprintf(format, args...) + ".", false, nil
+	}
+	switch {
+	case it == nil || it.State != aiv1.AutopilotItemActive || it == a.ap.MainRedFix:
+		return refuse("#%d is not the active issue of the queue", iid)
+	case it.MergeRequestIID == 0 || task == nil || task.Status.Run.PushedSHA == "":
+		return refuse("#%d has no pushed merge request", iid)
+	case task.RunPending():
+		return refuse("a run of #%d is pending, wait for it", iid)
+	case it.RebasedFrom != "":
+		return refuse("a rebase of !%d is in progress", it.MergeRequestIID)
+	}
+	mr, err := a.gl.GetMergeRequest(ctx, a.spec.GitLab.Project, it.MergeRequestIID)
+	if err != nil {
+		return "", false, fmt.Errorf("getting merge request !%d: %w", it.MergeRequestIID, err)
+	}
+	base, err := a.base(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	switch {
+	case mr.State != "opened":
+		return refuse("!%d is %s", mr.IID, mr.State)
+	case word == "rebase" && mr.SHA != task.Status.Run.PushedSHA:
+		// A rebase would carry someone's push past the review.
+		return refuse("the head of !%d (%s) is not the commit the agent pushed (%s)", mr.IID, short(mr.SHA), short(task.Status.Run.PushedSHA))
+	case word == "mergeBase" && !*a.spec.Workflow.ResolveConflicts:
+		return refuse("the agent does not merge the default branch here (`workflow.resolveConflicts` is off)")
+	case word == "mergeBase" && task.Spec.Source.MergeBaseFor == mr.SHA:
+		return refuse("the agent merged `%s` into this head of !%d before", base, mr.IID)
+	case word == "rebase":
+		return fmt.Sprintf("Rebasing !%d.", mr.IID), true, a.rebaseActive(ctx, it, mr, task, fmt.Sprintf("%s asked to rebase !%d onto `%s`", by, mr.IID, base), func() {})
+	}
+	a.log.Info("autopilot asks the agent to merge the default branch", "issue", it.IID, "mr", mr.IID, "by", by)
+	return fmt.Sprintf("The agent merges `%s` into !%d.", base, mr.IID), true, a.remedyActive(ctx, it, "mergeBase", fmt.Sprintf("%s asked the agent to merge `%s` into !%d", by, base, mr.IID), func() error {
+		return a.mergeBase(ctx, it, mr, task, "asked by "+by)
+	})
 }

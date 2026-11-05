@@ -16,9 +16,9 @@ type PauseExit struct {
 	// When is the condition of an automatic exit, or what a remedy needs
 	// first (for a GitLab action: the action).
 	When string `json:"when,omitempty"`
-	// Command is the /agent word of a remedy (resume, skip, merge, retry,
-	// review); after a label or a GitLab action it is the command that
-	// follows, on the tracking issue.
+	// Command is the /agent word of a remedy (resume, skip, merge, rebase,
+	// mergeBase, retry, review); after a label or a GitLab action it is the
+	// command that follows, on the tracking issue.
 	Command string `json:"command,omitempty"`
 	// Target is where a remedy's command or label goes: spec (the tracking
 	// issue, the milestone) or implement (the paused issue).
@@ -88,6 +88,10 @@ var (
 		Does: "owners only: autopilot merges this head without a full review; CI, the merge request's state and approvals still apply"}
 	exitResume = PauseExit{ID: "resume", Command: "resume", Target: ExitTargetSpec,
 		Does: "autopilot continues"}
+	exitRebase = PauseExit{ID: "rebase", Command: "rebase", Target: ExitTargetSpec,
+		Does: "GitLab rebases the issue's merge request onto the default branch and the pause ends; the review holds if the change is unchanged, the new pipeline decides"}
+	exitMergeBase = PauseExit{ID: "mergeBase", Command: "mergeBase", Target: ExitTargetSpec,
+		Does: "the agent merges the default branch into the issue's merge request and the pause ends; the new head is reviewed and checked by CI like any push"}
 )
 
 // pauseRunExits are the exits of a pause over the active issue's run, review
@@ -122,13 +126,15 @@ var pauseExits = map[PauseKind][]PauseExit{
 	PauseCIRed: append([]PauseExit{
 		{ID: "mainGreenRebase", Auto: true, When: "the failing jobs also fail on the default branch, and it is green again at a commit the MR is not based on",
 			Does: "autopilot rebases the merge request once, and the new pipeline decides"},
-	}, pauseRunExits()...),
+	}, pauseRunExits(exitRebase, exitMergeBase)...),
 	PauseCICanceled: pauseRunExits(),
 	PauseMergeRequest: {
 		exitMergedByHand,
 		exitClosed,
 		{ID: "fixInGitLab", GitLab: true, When: "fix the merge request (approve it, resolve its discussions or conflicts, mark it ready, let the bot merge)", Command: "resume",
 			Does: "the merge gate checks it again"},
+		exitRebase,
+		exitMergeBase,
 		exitSkip,
 	},
 	PauseMainRed: {

@@ -139,6 +139,8 @@ implementer of every following run reads them:
 | `/agent pause` | Stop starting and merging. Runs already requested still finish. |
 | `/agent resume` | Continue; the active issue is checked again. |
 | `/agent skip #12` | Skip a planned issue. Issues that depend on it stay blocked until it is merged by hand or they are skipped too. |
+| `/agent rebase #12` | The active issue only (not a pending one, not the main-red fix), once it has a pushed MR: GitLab rebases the MR onto the default branch. The review carries over if the change is the same (as for `need_rebase`, see [the merge gate](usage.md#the-merge-gate)); a pause about the issue whose way out it is (CI red, merge request) ends, and the rebased head goes through CI. Said on the tracking issue. If the MR was rebased before, or GitLab cannot rebase it, the agent merges the default branch instead. Refused with the reason while a run of the issue is pending, a rebase is in flight, or someone else pushed to the branch. |
+| `/agent mergeBase #12` | The active issue only, like `rebase`: the agent merges the default branch into the MR and resolves conflicts (see [Merge conflicts](usage.md#merge-conflicts)); its push is reviewed and checked by CI like any other, and a pause about the issue whose way out it is ends. Once per head, and not with `workflow.resolveConflicts: false`. |
 | `/agent merge #12 <sha>` | Owners only (also with `commandsFrom: all`): merge the active issue's head `sha` (at least 7 characters; without it the answer names the current head) without a full review. Skips failed or missing reviews and blocking findings; CI, the MR state and approvals still apply. Said on the tracking issue; a new push or a review that finishes later voids it. |
 | `/agent revisit D42-3 …` | Change a decision of a merged issue: a follow-up issue joins the queue. |
 | anything else | Answered once with this list, a pointer to `/pilot …` and the active issue. Instructions for the agent go on the active issue or its MR, not here. |
@@ -154,7 +156,10 @@ of the bot (`@ai-bot …`; `pilot.mention`) talks to the milestone's
 (or MR) of the milestone that has a task. Only the milestone's owners; the
 pilot runs its counted tools on its own when it
 [manages](usage.md#talking-to-the-pilot), and everything else only on
-proposals they accept.
+proposals they accept. Its tools `rebase #N` and `mergeBase #N` are the
+tracking issue's commands above, counted (a managing pilot runs them
+itself), applied by autopilot on its next poll and said there ("the pilot
+asked to rebase !N", or "@you via the pilot" after your answer).
 
 | Comment | Effect |
 |---------|--------|

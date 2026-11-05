@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -388,5 +389,48 @@ func TestPilotManagesBloop331(t *testing.T) {
 	}
 	if c := lastNote(e, 1); !strings.Contains(c, "Instruction from the pilot (on its own") {
 		t.Fatalf("#1 shows the instruction: %q", c)
+	}
+}
+
+// A managing pilot rebases the active MR without a yes, counted against
+// the issue's head and audited; past pilot.maxInterventionsPerIssue it
+// proposes.
+func TestPilotManagedRebasesTheActiveMR(t *testing.T) {
+	e := newManagedEnv(t)
+	e.pauseBaseFailing()
+	e.gl.MRs[1].RebaseInProgress = true // the head stays while GitLab rebases
+	tracking := e.autopilot().TrackingIssueIID
+	seen := len(botComments(e, tracking))
+	e.proposeFor(1, "event/a", aiv1.PilotAction{Tool: "rebase", IssueIID: 1})
+	e.reconcile()
+	e.reconcile()
+	notes := strings.Join(botNotesSince(e, tracking, seen), "\n")
+	if !slices.Equal(e.gl.Rebased, []int64{1}) || e.autopilot().Phase != aiv1.AutopilotRunning {
+		t.Fatalf("the pilot rebases !1 on its own and the pause ends: rebased %v, %+v\n%s", e.gl.Rebased, e.autopilot(), notes)
+	}
+	for _, want := range []string{"The pilot acted on its own", "**rebase** #1", "Interventions left for #1: 1 of 2.",
+		"▶️ Autopilot continues: the pilot asked to rebase !1 onto `main`."} {
+		if !strings.Contains(notes, want) {
+			t.Errorf("the tracking issue misses %q:\n%s", want, notes)
+		}
+	}
+	if got := promptStates(e.task(specTaskName)); got != "" {
+		t.Fatalf("what the pilot runs on its own is no prompt: %s", got)
+	}
+	// Two more on the same head: the second counts (and is refused while
+	// the rebase runs), the third is proposed.
+	for _, src := range []string{"event/b", "event/c"} {
+		e.proposeFor(1, src, aiv1.PilotAction{Tool: "rebase", IssueIID: 1})
+		e.reconcile()
+		e.reconcile()
+	}
+	if ps := e.pilot().Status.Pilot; ps.Interventions["1"].Count != 2 || !slices.Equal(e.gl.Rebased, []int64{1}) {
+		t.Fatalf("two interventions on #1's head: %+v, rebased %v", ps.Interventions, e.gl.Rebased)
+	}
+	if c := trackingComments(e); !strings.Contains(c, "a rebase of !1 is in progress") {
+		t.Fatalf("the second rebase is answered:\n%s", c)
+	}
+	if p := e.promptNote("Q1"); !strings.Contains(p.Body, "**rebase** #1") || !strings.Contains(p.Body, "@alice") {
+		t.Fatalf("past the limit it proposes and pings the owners:\n%s", p.Body)
 	}
 }

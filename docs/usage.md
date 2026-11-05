@@ -938,6 +938,9 @@ A pause over the active issue ends **by itself** when it no longer holds:
   conflicts, or the MR was rebased before, the agent merges the default
   branch instead (see [Merge conflicts](#merge-conflicts)). The same happens
   for such an MR before it paused.
+  An owner can ask for the same at any time with `/agent rebase #N` (or
+  `/agent mergeBase #N`) on the tracking issue, and the pilot with its
+  tools of that name.
 
 A budget pause ends by itself too, once the budget is raised above the
 spend or removed (see [Budget](#budget)).
@@ -1277,6 +1280,13 @@ list out.
   - `retryPipeline <id>`: the failed jobs of the default branch's red
     pipeline run again; only the newest red pipeline main health knows
     (`status.mainHealth.pipelineID`), any other is refused;
+  - `rebase #N`, `mergeBase #N` (autopilot milestones): the tracking
+    issue's [commands](commands.md#on-the-tracking-issue-autopilot) on the
+    active issue's MR. GitLab rebases it (the review holds if the change
+    is the same), or the agent merges the default branch into it; a pause
+    about the issue (CI red, merge request) ends, and the new head goes
+    through CI. Only the active issue with an MR, never a pending one or
+    the main-red fix;
   - `skip #N`, `pause`, `resume` (autopilot milestones): the tracking
     issue's commands, applied by autopilot on its next poll; a pause says
     "paused by @you via the pilot";
@@ -1322,7 +1332,7 @@ list out.
   proposals and the open prompts, which are answered in the Desk.
 - **Managed.** On autopilot milestones the pilot **manages** by default
   (`pilot.autonomy`): `retry`, `reReview`, `instruct`, `openIssue`,
-  `fixFlaky` and `retryPipeline` run without a `yes`, from an assessment or from an owner's
+  `fixFlaky`, `retryPipeline`, `rebase` and `mergeBase` run without a `yes`, from an assessment or from an owner's
   message. Each counts against its issue and that issue's head (an
   `openIssue` against the issue whose event triggered it, on the tracking
   issue against the milestone; a `fixFlaky` or `retryPipeline` against the milestone), at most `pilot.maxInterventionsPerIssue` (2) per head, and

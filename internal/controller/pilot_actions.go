@@ -35,14 +35,14 @@ import (
 
 // pilotTools are the tools the pilot may propose; merging, closing and
 // pushing are none of them.
-var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
+var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
 
 // ownerTools are the operator's own options of budget prompts: an owner
 // chooses them, the model never proposes them (checkAction).
 var ownerTools = []string{"raiseBudget", "endMilestone"}
 
 // queueTools go through the tracking issue's commands.
-var queueTools = []string{"skip", "pause", "resume", "revisit", "endMilestone"}
+var queueTools = []string{"rebase", "mergeBase", "skip", "pause", "resume", "revisit", "endMilestone"}
 
 // proposalTTL is how long a proposal can be accepted.
 const proposalTTL = 24 * time.Hour
@@ -89,6 +89,8 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return fmt.Errorf("#%d is no planned issue that is not merged yet", a.IssueIID)
 	case a.Tool == "skip":
 		return nil
+	case a.Tool == "rebase" || a.Tool == "mergeBase":
+		return activeMR(ap, a.IssueIID)
 	}
 	if a.Tool == "openIssue" {
 		switch {
@@ -107,6 +109,20 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return fmt.Errorf("#%d has no pushed head to review", a.IssueIID)
 	case a.Tool == "instruct" && a.Text == "" && !slices.Contains(aiv1.PilotInstructKinds, a.Kind):
 		return fmt.Errorf("`%s` is not a kind of instruction", inertLine(a.Kind, 40))
+	}
+	return nil
+}
+
+// activeMR refuses rebase and mergeBase on anything but the active issue of
+// the queue (ap) with a merge request; not on the main-red fix. The tracking
+// issue's command checks the MR itself when it runs (mrCommand).
+func activeMR(ap *aiv1.AutopilotStatus, iid int64) error {
+	i := slices.IndexFunc(ap.Items, func(it aiv1.AutopilotItem) bool { return it.IID == iid })
+	switch {
+	case i < 0 || ap.Items[i].State != aiv1.AutopilotItemActive:
+		return fmt.Errorf("#%d is not the active issue of the queue", iid)
+	case ap.Items[i].MergeRequestIID == 0:
+		return fmt.Errorf("#%d has no merge request yet", iid)
 	}
 	return nil
 }
@@ -640,7 +656,7 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		}
 		_, err := gl.RetryPipeline(ctx, spec.GitLab.Project, a.PipelineID)
 		return err
-	case "skip", "pause", "resume", "revisit", "endMilestone":
+	case "rebase", "mergeBase", "skip", "pause", "resume", "revisit", "endMilestone":
 		return r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
 	case "raiseBudget":
 		return r.raiseBudget(ctx, gl, spec, st, a.Amount)
@@ -776,6 +792,10 @@ func describeAction(a aiv1.PilotAction, err error) string {
 				s += ", with the pilot's hint: " + inertLine(a.Note, 2000)
 			}
 		}
+	case "rebase":
+		s = fmt.Sprintf("**rebase** #%d: GitLab rebases its MR onto the default branch; the review holds if the change is unchanged", a.IssueIID)
+	case "mergeBase":
+		s = fmt.Sprintf("**mergeBase** #%d: the agent merges the default branch into its MR", a.IssueIID)
 	case "skip":
 		s = fmt.Sprintf("**skip** #%d: autopilot leaves it out", a.IssueIID)
 	case "pause", "resume":

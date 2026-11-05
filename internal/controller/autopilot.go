@@ -1289,7 +1289,7 @@ func (a *autopilot) exitLines(kind aiv1.PauseKind, iid int64) string {
 			head = short(t.Status.Run.PushedSHA)
 		}
 	}
-	args := map[string]string{"skip": " " + ref, "merge": " " + ref + " " + head}
+	args := map[string]string{"skip": " " + ref, "rebase": " " + ref, "mergeBase": " " + ref, "merge": " " + ref + " " + head}
 	cmd := func(word string, target aiv1.ExitTarget) string {
 		where := "here"
 		if target == aiv1.ExitTargetImplement {
@@ -1406,12 +1406,16 @@ func (a *autopilot) commands(ctx context.Context) error {
 			if c.Seq <= a.ap.LastPilotCommand {
 				continue
 			}
+			by := "@" + c.Owner + " via the pilot"
+			if c.Owner == "" {
+				by = "the pilot" // on its own (managed)
+			}
 			if c.Action.Tool == "endMilestone" {
-				if err := a.endMilestone(ctx, "@"+c.Owner+" via the pilot"); err != nil {
+				if err := a.endMilestone(ctx, by); err != nil {
 					return err
 				}
 			} else if c.Action.Tool != "revisit" {
-				reply, applied, err := a.command(ctx, c.Action.Tool, fmt.Sprintf("#%d", c.Action.IssueIID), "@"+c.Owner+" via the pilot")
+				reply, applied, err := a.command(ctx, c.Action.Tool, fmt.Sprintf("#%d", c.Action.IssueIID), by)
 				if err != nil {
 					return err
 				}
@@ -1488,7 +1492,7 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 }
 
 // command applies one command of the tracking issue: pause, resume,
-// skip arg or merge arg, by someone. It returns the answer and whether the command was
+// skip, rebase, mergeBase or merge arg, by someone. It returns the answer and whether the command was
 // applied; the tracking issue gets only the answers of commands that were
 // not (usage, unknown), the Desk gets every answer.
 func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer string, applied bool, err error) {
@@ -1517,6 +1521,9 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 		return fmt.Sprintf("#%d skipped.", iid), true, nil
 	case "merge":
 		return a.mergeAnyway(ctx, arg, by)
+	case "rebase", "mergeBase", "mergebase":
+		// The tracking issue's words are lower case, the pilot's tools not.
+		return a.mrCommand(ctx, strings.Replace(word, "mergebase", "mergeBase", 1), arg, by)
 	default:
 		return a.unknownCommand(), false, nil
 	}
@@ -1532,7 +1539,7 @@ func (a *autopilot) unknownCommand() string {
 			where = fmt.Sprintf("#%d, the active issue", it.IID)
 		}
 	}
-	return fmt.Sprintf("This tracking issue only understands `%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s merge #N` and `%[1]s revisit <id> …`. "+
+	return fmt.Sprintf("This tracking issue only understands `%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N` and `%[1]s revisit <id> …`. "+
 		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix)
 }
 

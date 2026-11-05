@@ -22,6 +22,14 @@ func baseFailingEnv(t *testing.T) (*projectEnv, string) {
 	e := newAutopilotEnv(t)
 	e.reconcile()
 	e.reconcile()
+	return e, e.pauseBaseFailing()
+}
+
+// pauseBaseFailing pauses e's autopilot ciRed over #1's BaseFailing MR !1
+// (baseFailingEnv) and returns #1's task.
+func (e *projectEnv) pauseBaseFailing() string {
+	t := e.t
+	t.Helper()
 	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthRed, SHA: "main-x", IssueIID: 99, FailedJobs: []string{"test"}})
 	name := e.finishRun(1, "sha-api", nil)
 	mr := e.gl.MRs[1]
@@ -35,7 +43,7 @@ func baseFailingEnv(t *testing.T) (*projectEnv, string) {
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseCIRed || ap.PausedFor != 1 || !ap.ResumeWhenReady {
 		t.Fatalf("a BaseFailing MR must pause ciRed: %+v", ap)
 	}
-	return e, name
+	return name
 }
 
 // mainGreenAt reports the default branch green at sha.
@@ -206,4 +214,54 @@ func TestAutopilotHealSaysItOnce(t *testing.T) {
 // reconcileFailing polls once where the sync is expected to fail.
 func (e *projectEnv) reconcileFailing() {
 	_, _ = e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "shop"}})
+}
+
+// An owner's "/agent rebase #1" on the tracking issue rebases the active MR
+// and lifts its ciRed pause, so the rebased head goes to CI; other targets
+// and a rebase in flight are answered with the reason.
+func TestAutopilotRebaseCommand(t *testing.T) {
+	e, name := baseFailingEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	jonathan := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddNote(tracking, jonathan, "/agent rebase #2")
+	e.reconcile()
+	if c := trackingComments(e); len(e.gl.Rebased) != 0 || !strings.Contains(c, "`rebase` needs the active issue with a merge request, e.g. `/agent rebase #12`: #2 is not the active issue of the queue.") {
+		t.Fatalf("a pending issue is refused with the reason: rebased %v\n%s", e.gl.Rebased, c)
+	}
+	e.gl.MRs[1].RebaseInProgress = true
+	e.gl.AddNote(tracking, jonathan, "/agent rebase #1")
+	e.reconcile()
+	if c := trackingComments(e); !slices.Equal(e.gl.Rebased, []int64{1}) || !strings.Contains(c, "▶️ Autopilot continues: @jonathan asked to rebase !1 onto `main`.") {
+		t.Fatalf("the active MR is rebased and the pause ends: rebased %v\n%s", e.gl.Rebased, c)
+	}
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.Items[0].RebasedFrom != "sha-api" {
+		t.Fatalf("the rebase is in flight, autopilot runs: %+v", ap)
+	}
+	e.gl.AddNote(tracking, jonathan, "/agent mergebase #1")
+	e.reconcile()
+	if c := trackingComments(e); mergeBaseRequested(e, name, "sha-api") || !strings.Contains(c, "`mergeBase` needs the active issue with a merge request, e.g. `/agent mergeBase #12`: a rebase of !1 is in progress.") {
+		t.Fatalf("a rebase in flight refuses mergeBase: %+v\n%s", e.tasks()[name].Spec.Source, c)
+	}
+	// GitLab is done: the rebased head goes to CI.
+	e.gl.MRs[1].RebaseInProgress = false
+	e.reconcile()
+	if run := e.tasks()[name].Status; run.Run.PushedSHA != "sha-api-rebased" || run.CI != nil || !e.gl.Issues[1].HasLabel("agent::working") {
+		t.Fatalf("the rebased head must go to CI: %+v %v", run, e.gl.Labels(1))
+	}
+}
+
+// "/agent mergeBase #1" hands the active MR to the agent, which merges the
+// default branch, and lifts the pause; once per head.
+func TestAutopilotMergeBaseCommand(t *testing.T) {
+	e, name := baseFailingEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.AddNote(tracking, gitlab.User{ID: 1, Username: "jonathan"}, "/agent mergeBase #1")
+	e.reconcile()
+	if c := trackingComments(e); !mergeBaseRequested(e, name, "sha-api") || len(e.gl.Rebased) != 0 ||
+		!strings.Contains(c, "▶️ Autopilot continues: @jonathan asked the agent to merge `main` into !1.") {
+		t.Fatalf("the agent merges the default branch: %+v, rebased %v\n%s", e.tasks()[name].Spec.Source, e.gl.Rebased, c)
+	}
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning {
+		t.Fatalf("the pause ends: %+v", ap)
+	}
 }

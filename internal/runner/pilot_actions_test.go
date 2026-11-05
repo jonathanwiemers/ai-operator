@@ -168,3 +168,32 @@ func TestPilotRecordsARetryPipelineWithItsPipeline(t *testing.T) {
 		t.Fatalf("option action %+v", a)
 	}
 }
+
+// rebase and mergeBase are tools of the schema and the system prompt, and a
+// proposal of them is recorded with its issue.
+func TestPilotRecordsRebaseAndMergeBase(t *testing.T) {
+	var s struct {
+		Properties map[string]struct {
+			Enum []string `json:"enum"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(actionSchema), &s); err != nil {
+		t.Fatal(err)
+	}
+	if enum := s.Properties["tool"].Enum; !slices.Contains(enum, "rebase") || !slices.Contains(enum, "mergeBase") {
+		t.Fatalf("the action schema lists rebase and mergeBase: %v", enum)
+	}
+	e := newPilotEnv(t, "")
+	e.engine.proposal = proposalOf(t, `{"summary": "rebase #1", "actions": [{"tool": "rebase", "issue": 1}, {"tool": "mergeBase", "issue": 1}]}`)
+	e.step(t)
+	if sp := e.engine.calls[0].SystemPrompt; !strings.Contains(sp, "- rebase, issue N: ") || !strings.Contains(sp, "- mergeBase, issue N: ") {
+		t.Fatalf("the pilot is told about rebase and mergeBase:\n%s", sp)
+	}
+	ps := e.task(t).Status.Pilot
+	if ps == nil || len(ps.Proposed) != 1 {
+		t.Fatalf("expected the proposal recorded: %+v", ps)
+	}
+	if a := ps.Proposed[0].Actions; len(a) != 2 || a[0].Tool != "rebase" || a[0].IssueIID != 1 || a[1].Tool != "mergeBase" || a[1].IssueIID != 1 {
+		t.Fatalf("recorded %+v", a)
+	}
+}

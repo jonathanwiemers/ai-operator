@@ -2350,9 +2350,9 @@ export const MaxAutopilotItemDecisions = 20;
 export interface PilotAction {
   /**
    * Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-   * skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-   * owner-only raiseBudget and endMilestone come only in options the
-   * operator builds (budget prompts), never from the model.
+   * rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+   * or editSpec; the owner-only raiseBudget and endMilestone come only in
+   * options the operator builds (budget prompts), never from the model.
    */
   tool: string;
   /**
@@ -3924,9 +3924,9 @@ export interface PauseExit {
    */
   when?: string;
   /**
-   * Command is the /agent word of a remedy (resume, skip, merge, retry,
-   * review); after a label or a GitLab action it is the command that
-   * follows, on the tracking issue.
+   * Command is the /agent word of a remedy (resume, skip, merge, rebase,
+   * mergeBase, retry, review); after a label or a GitLab action it is the
+   * command that follows, on the tracking issue.
    */
   command?: string;
   /**

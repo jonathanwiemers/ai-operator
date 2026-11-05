@@ -724,3 +724,66 @@ func TestManagedPilotRetryPipelineIsCounted(t *testing.T) {
 		t.Fatalf("a managing pilot retries on its own, counted against the milestone: %v, %+v", e.gl.Retried, ps.Interventions)
 	}
 }
+
+// rebase and mergeBase only target the active queue item with an MR.
+func TestPilotRebaseAndMergeBaseValidation(t *testing.T) {
+	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Autopilot: true}, Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{
+		Phase: aiv1.AutopilotPaused,
+		Items: []aiv1.AutopilotItem{{IID: 1, State: aiv1.AutopilotItemActive, MergeRequestIID: 5}, {IID: 2, State: aiv1.AutopilotItemPending},
+			{IID: 3, State: aiv1.AutopilotItemMerged, MergeRequestIID: 6}},
+		MainRedFix: &aiv1.AutopilotItem{IID: 99, State: aiv1.AutopilotItemActive, MergeRequestIID: 7},
+	}}}
+	noMR := st.DeepCopy()
+	noMR.Status.Autopilot.Items[0].MergeRequestIID = 0
+	off := st.DeepCopy()
+	off.Status.Autopilot.Phase = aiv1.AutopilotDone
+	for _, tool := range []string{"rebase", "mergeBase"} {
+		for _, tc := range []struct {
+			st   *aiv1.AgentTask
+			iid  int64
+			want string
+		}{
+			{st, 1, ""},
+			{st, 2, "#2 is not the active issue of the queue"},
+			{st, 3, "#3 is not the active issue of the queue"},
+			{st, 99, "#99 is not the active issue of the queue"},
+			{st, 0, "#0 is not the active issue of the queue"},
+			{noMR, 1, "#1 has no merge request yet"},
+			{off, 1, "this milestone has no autopilot queue"},
+		} {
+			a := aiv1.PilotAction{Tool: tool, IssueIID: tc.iid}
+			err := validAction(a, tc.st, nil, nil)
+			if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
+				t.Errorf("%s #%d: got %v, want %q", tool, tc.iid, err, tc.want)
+			}
+		}
+	}
+	if d := describeAction(aiv1.PilotAction{Tool: "rebase", IssueIID: 1}, nil); d != "- **rebase** #1: GitLab rebases its MR onto the default branch; the review holds if the change is unchanged" {
+		t.Errorf("rebase reads %q", d)
+	}
+	if d := describeAction(aiv1.PilotAction{Tool: "mergeBase", IssueIID: 1}, nil); d != "- **mergeBase** #1: the agent merges the default branch into its MR" {
+		t.Errorf("mergeBase reads %q", d)
+	}
+}
+
+// Under propose, a mergeBase is a prompt; an owner's answer hands the active
+// MR to the agent (spec.source.mergeBaseFor) and lifts the ciRed pause.
+func TestPilotMergeBaseRunsOnAnOwnersAnswer(t *testing.T) {
+	e := newProposalEnv(t)
+	name := e.pauseBaseFailing()
+	e.propose("merge main into !1", aiv1.PilotAction{Tool: "mergeBase", IssueIID: 1})
+	e.reconcile()
+	if body := e.promptNote("Q1").Body; !strings.Contains(body, "**mergeBase** #1: the agent merges the default branch into its MR") ||
+		e.tasks()[name].Spec.Source.MergeBaseFor != "" {
+		t.Fatalf("a prompt, nothing runs without an answer:\n%s", body)
+	}
+	e.choose("Q1", "A", alice)
+	e.reconcile()
+	e.reconcile()
+	if !mergeBaseRequested(e, name, "sha-api") || e.autopilot().Phase != aiv1.AutopilotRunning {
+		t.Fatalf("the answer hands !1 to the agent and ends the pause: %+v, %+v", e.tasks()[name].Spec.Source, e.autopilot())
+	}
+	if c := trackingComments(e); !strings.Contains(c, "▶️ Autopilot continues: @alice via the pilot asked the agent to merge `main` into !1.") {
+		t.Fatalf("the tracking issue says who asked:\n%s", c)
+	}
+}

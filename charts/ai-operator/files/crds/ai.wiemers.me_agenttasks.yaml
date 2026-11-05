@@ -611,9 +611,9 @@ spec:
                                     tool:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                        skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                        owner-only raiseBudget and endMilestone come only in options the
-                                        operator builds (budget prompts), never from the model.
+                                        rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                        or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                        options the operator builds (budget prompts), never from the model.
                                       type: string
                                   required:
                                   - tool
@@ -1475,9 +1475,9 @@ spec:
                               tool:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                  skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                  owner-only raiseBudget and endMilestone come only in options the
-                                  operator builds (budget prompts), never from the model.
+                                  rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                  or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                  options the operator builds (budget prompts), never from the model.
                                 type: string
                             required:
                             - tool
@@ -1569,9 +1569,9 @@ spec:
                                     tool:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                        skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                        owner-only raiseBudget and endMilestone come only in options the
-                                        operator builds (budget prompts), never from the model.
+                                        rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                        or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                        options the operator builds (budget prompts), never from the model.
                                       type: string
                                   required:
                                   - tool
@@ -1731,9 +1731,9 @@ spec:
                             tool:
                               description: |-
                                 Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                owner-only raiseBudget and endMilestone come only in options the
-                                operator builds (budget prompts), never from the model.
+                                rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                options the operator builds (budget prompts), never from the model.
                               type: string
                           required:
                           - tool
@@ -1868,9 +1868,9 @@ spec:
                               tool:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                  skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                  owner-only raiseBudget and endMilestone come only in options the
-                                  operator builds (budget prompts), never from the model.
+                                  rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                  or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                  options the operator builds (budget prompts), never from the model.
                                 type: string
                             required:
                             - tool
@@ -1962,9 +1962,9 @@ spec:
                                     tool:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                        skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                        owner-only raiseBudget and endMilestone come only in options the
-                                        operator builds (budget prompts), never from the model.
+                                        rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                        or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                        options the operator builds (budget prompts), never from the model.
                                       type: string
                                   required:
                                   - tool
@@ -2111,9 +2111,9 @@ spec:
                               tool:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                  skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                  owner-only raiseBudget and endMilestone come only in options the
-                                  operator builds (budget prompts), never from the model.
+                                  rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                  or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                  options the operator builds (budget prompts), never from the model.
                                 type: string
                             required:
                             - tool
@@ -2205,9 +2205,9 @@ spec:
                                     tool:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                        skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                        owner-only raiseBudget and endMilestone come only in options the
-                                        operator builds (budget prompts), never from the model.
+                                        rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                        or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                        options the operator builds (budget prompts), never from the model.
                                       type: string
                                   required:
                                   - tool
@@ -2369,9 +2369,9 @@ spec:
                                   tool:
                                     description: |-
                                       Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                      skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                      owner-only raiseBudget and endMilestone come only in options the
-                                      operator builds (budget prompts), never from the model.
+                                      rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                      or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                      options the operator builds (budget prompts), never from the model.
                                     type: string
                                 required:
                                 - tool
@@ -2631,9 +2631,9 @@ spec:
                                 tool:
                                   description: |-
                                     Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                    skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                    owner-only raiseBudget and endMilestone come only in options the
-                                    operator builds (budget prompts), never from the model.
+                                    rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                    or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                    options the operator builds (budget prompts), never from the model.
                                   type: string
                               required:
                               - tool
@@ -3174,9 +3174,9 @@ spec:
                                     tool:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-                                        skip, pause, resume, revisit, setRule, forgetRule or editSpec; the
-                                        owner-only raiseBudget and endMilestone come only in options the
-                                        operator builds (budget prompts), never from the model.
+                                        rebase, mergeBase, skip, pause, resume, revisit, setRule, forgetRule
+                                        or editSpec; the owner-only raiseBudget and endMilestone come only in
+                                        options the operator builds (budget prompts), never from the model.
                                       type: string
                                   required:
                                   - tool

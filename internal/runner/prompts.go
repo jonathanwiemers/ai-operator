@@ -694,6 +694,14 @@ once an owner answers yes. The actions:
   the job was flaky at least twice, and only one pilot hands it over;
 - retryPipeline, pipeline N: the failed jobs of the red default-branch
   pipeline (mainHealth.pipelineID, state red) run again; no other pipeline;
+- rebase, issue N: GitLab rebases the merge request of the active queue
+  item onto the default branch; the review holds if the change is unchanged,
+  and a pause about the issue ends; e.g. for an MR red only on jobs that
+  also fail on the default branch (BaseFailing) once that branch is green;
+- mergeBase, issue N: the agent merges the default branch into the active
+  item's merge request (resolving conflicts); the new head is reviewed and
+  checked by CI, and a pause about the issue ends; for conflicts, or when a
+  rebase did not help;
 - skip (issue N), pause, resume: the autopilot queue's commands;
 - revisit, a decision of a merged issue (e.g. D12-3) and the change asked
   for: a follow-up issue that changes it;
@@ -740,8 +748,8 @@ const actionSchema = `{
             "additionalProperties": false,
             "required": ["tool"],
             "properties": {
-              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
-              "issue": {"type": "integer", "description": "retry, reReview, instruct, skip: the issue of the milestone; fixFlaky: the flaky issue."},
+              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "skip", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
+              "issue": {"type": "integer", "description": "retry, reReview, instruct, skip: the issue of the milestone; rebase, mergeBase: the active queue item; fixFlaky: the flaky issue."},
               "decision": {"type": "string", "description": "revisit: the decision's ID, e.g. D12-3."},
               "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun", "switch", "pilot", "prompt"], "description": "instruct: the instruction; setRule: the kind of rule."},
               "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for; setRule: the rule, one line (a switch: setting=value)."},
