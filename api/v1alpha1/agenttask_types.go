@@ -1635,6 +1635,12 @@ type AutopilotStatus struct {
 	// +optional
 	MergeOverride *MergeOverride `json:"mergeOverride,omitempty"`
 
+	// StartRequestedBy is the owner who asked, with the `start` command,
+	// to plan the milestone ahead of its turn. The spec task's turn check
+	// reads it on the next poll.
+	// +optional
+	StartRequestedBy string `json:"startRequestedBy,omitempty"`
+
 	// Items in queue order: dependencies first, ties in plan order.
 	// +optional
 	Items []AutopilotItem `json:"items,omitempty"`

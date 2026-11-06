@@ -1749,15 +1749,21 @@ func (a *autopilot) commands(ctx context.Context) error {
 			word = ""
 		}
 		arg := fields[1]
-		if word == "merge" {
+		if word == "merge" || word == "start" {
 			// Owners only, also where anyone may give commands.
 			if ok, err := a.gate.byOwner(ctx, n, a.st.Spec.Owners); err != nil {
 				return err
 			} else if !ok {
-				a.r.rejectNote(ctx, a.gl, a.project, a.spec, tn, "🤖 "+notOwnerMerge)
+				reply := notOwnerMerge
+				if word == "start" {
+					reply = notOwnerStart
+				}
+				a.r.rejectNote(ctx, a.gl, a.project, a.spec, tn, "🤖 "+reply)
 				a.ap.LastCommandNoteID = n.ID
 				continue
 			}
+		}
+		if word == "merge" {
 			arg += " " + fields[2]
 		}
 		// Tried again on the next poll when it fails.
@@ -1912,6 +1918,8 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 		return a.startAnyway(ctx, arg, by)
 	case "merge":
 		return a.mergeAnyway(ctx, arg, by)
+	case "start":
+		return a.startNow(ctx, by)
 	case "rebase", "mergeBase", "mergebase":
 		// The tracking issue's words are lower case, the pilot's tools not.
 		return a.mrCommand(ctx, strings.Replace(word, "mergebase", "mergeBase", 1), arg, by)
@@ -1950,6 +1958,31 @@ func (a *autopilot) startAnyway(ctx context.Context, arg, by string) (string, bo
 	return fmt.Sprintf("#%d may start although %s.", iid, which), true, nil
 }
 
+// startNow plans a milestone that waits for its turn now (`start`, owners
+// only, decision 10): StartRequestedBy makes syncSpecTask ask for the first
+// planning run on the next poll. A planned or planning milestone is not
+// touched.
+func (a *autopilot) startNow(ctx context.Context, by string) (string, bool, error) {
+	if !a.waitingForTurn() {
+		return "The milestone is already planned (or being planned); `start` does nothing.", false, nil
+	}
+	// Comment first: if it fails, the command is applied again on the next
+	// poll.
+	if err := a.comment(ctx, fmt.Sprintf("▶️ Planning starts now, ahead of its turn (by %s).", by)); err != nil {
+		return "", false, err
+	}
+	a.log.Info("autopilot starts planning ahead of the milestone's turn", "by", by)
+	a.ap.StartRequestedBy = by
+	return "Planning starts now.", true, nil
+}
+
+// waitingForTurn reports whether the milestone waits for its turn to be
+// planned: its spec task has never asked for a run, it has no plan and no
+// owner asked to start it yet.
+func (a *autopilot) waitingForTurn() bool {
+	return a.st.Spec.RunRequest == 0 && len(a.st.Status.Plan) == 0 && a.ap.StartRequestedBy == ""
+}
+
 // skippedDeps are the dependencies of iid in the plan that are skipped.
 func (a *autopilot) skippedDeps(iid int64) []int64 {
 	var out []int64
@@ -1971,8 +2004,12 @@ func (a *autopilot) unknownCommand() string {
 			where = fmt.Sprintf("#%d, the active issue", it.IID)
 		}
 	}
-	return fmt.Sprintf("This tracking issue only understands `%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N` and `%[1]s revisit <id> …`. "+
-		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix)
+	start := ""
+	if a.waitingForTurn() {
+		start = fmt.Sprintf("`%s start`, ", prefix)
+	}
+	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N` and `%[1]s revisit <id> …`. "+
+		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix, start)
 }
 
 // ensureTracking creates the tracking issue on the first poll.
@@ -2130,7 +2167,11 @@ func (a *autopilot) renderTracking() string {
 	b.WriteString("\nThe operator works through the planned issues one at a time, in dependency order. It merges each merge request " +
 		"when its pipeline is green and its review is clean, then starts the next issue. The agents take their defaults instead of " +
 		"asking; every decision is listed below and can be changed with `" + prefix + " revisit <id> <what you want instead>` on its issue.\n\n")
-	fmt.Fprintf(&b, "Commands, as comments here: `%s pause`, `%s resume`, `%s skip #<issue>`.\n\n### Issues\n\n", prefix, prefix, prefix)
+	start := ""
+	if a.waitingForTurn() {
+		start = fmt.Sprintf("`%s start` (owners: plan it now, ahead of its turn), ", prefix)
+	}
+	fmt.Fprintf(&b, "Commands, as comments here: %s`%s pause`, `%s resume`, `%s skip #<issue>`.\n\n### Issues\n\n", start, prefix, prefix, prefix)
 	if len(a.st.Status.Plan) == 0 && len(a.ap.Items) == 0 {
 		b.WriteString("_Listed once the milestone is planned._\n")
 	}

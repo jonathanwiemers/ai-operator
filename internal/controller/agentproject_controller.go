@@ -831,9 +831,10 @@ func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.
 }
 
 // specTurn reports whether a spec task that has never asked for a run (or a
-// new one) may ask for its first: nothing is ahead of it.
-func specTurn(_ *aiv1.AgentTask, ahead []int64) bool {
-	return len(ahead) == 0
+// new one) may ask for its first: nothing is ahead of it, or an owner asked
+// to start it now (`start`, AutopilotStatus.StartRequestedBy).
+func specTurn(task *aiv1.AgentTask, ahead []int64) bool {
+	return len(ahead) == 0 || task.Status.Autopilot != nil && task.Status.Autopilot.StartRequestedBy != ""
 }
 
 // queuedAhead returns, for every selected autopilot milestone, the iids of

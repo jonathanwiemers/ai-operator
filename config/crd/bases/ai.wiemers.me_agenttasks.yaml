@@ -1340,6 +1340,12 @@ spec:
                     - owner
                     - selfHealed
                     type: string
+                  startRequestedBy:
+                    description: |-
+                      StartRequestedBy is the owner who asked, with the `start` command,
+                      to plan the milestone ahead of its turn. The spec task's turn check
+                      reads it on the next poll.
+                    type: string
                   stateChangedAt:
                     format: date-time
                     type: string

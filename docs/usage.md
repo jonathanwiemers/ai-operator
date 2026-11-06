@@ -914,7 +914,9 @@ that is done, closed or off autopilot holds back nothing. When its turn comes
 the milestone is planned from its description of that moment; edits while it
 waits start nothing. A milestone that was planned already (or is being
 planned) keeps going, and a milestone with `/agent spec` but no
-`/agent autopilot` is planned at once, as before.
+`/agent autopilot` is planned at once, as before. An owner who does not want
+to wait comments `/agent start` on the tracking issue: the next poll asks for
+the planning run with the description of that moment.
 
 ### The merge gate
 
@@ -1676,6 +1678,7 @@ whether autopilot or a human merged them.
 
 | Comment | Effect |
 |---------|--------|
+| `/agent start` | owners only, while the milestone waits for its turn: plan it now (`status.autopilot.startRequestedBy`); on a planned or planning milestone it answers so and does nothing |
 | `/agent pause` | stop starting and merging |
 | `/agent resume` | continue; the active issue is checked again |
 | `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |

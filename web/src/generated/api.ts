@@ -4085,6 +4085,13 @@ export interface AutopilotStatus {
    */
   mergeOverride?: MergeOverride;
   /**
+   * StartRequestedBy is the owner who asked, with the `start` command,
+   * to plan the milestone ahead of its turn. The spec task's turn check
+   * reads it on the next poll.
+   * +optional
+   */
+  startRequestedBy?: string;
+  /**
    * Items in queue order: dependencies first, ties in plan order.
    * +optional
    */
