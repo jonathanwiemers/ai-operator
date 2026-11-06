@@ -1193,6 +1193,25 @@ The active issue landed in `agent::needs-input`. Ends by itself once a later
 run passes the merge gate (reviewed and green), or when the MR is merged by
 hand or the issue is closed.
 
+The reason names the cause the operator or the runner recorded next to the
+label (`status.run.needsInputCause`):
+
+- `ciRed`: "#N needs input: CI is red after the fix rounds: failing jobs
+  `a`, `b` (pipeline URL)", the jobs sorted;
+- `runFailed`: "#N needs input: the run failed: <error> (link to the failure
+  comment)". A usage limit names the engine and its reset as a UTC time, with
+  the date when it is not the day the run ended ("claude usage limit, resets
+  16:00 UTC");
+- `agentQuestion`: "#N needs input: the agent asks: <question> (link to the
+  run's report)", the first question if it asked several.
+
+The error or question is cut to its first line and 200 characters; the link
+has the rest. A reason holds no times relative to now and no counters, so a
+pause comments once while its cause stays the same. A label set by a release
+before this one has no cause, and the reason then lists all three ("CI is
+still red, the run failed or the agent asked a question"). The pilot's event
+for an issue in `agent::needs-input` has the same text.
+
 - Answer its questions and set `agent::ready` on the issue: a new run
   starts with the answers.
 - `/agent retry` on the issue: the agent runs again; a run that passes the

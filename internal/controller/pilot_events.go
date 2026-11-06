@@ -57,6 +57,10 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 		case b != nil && (b.Reason == aiv1.BlockInfra || b.Reason == aiv1.BlockQuota):
 			add(string(b.Reason), iid, fmt.Sprintf("#%d is blocked (%s): %s", iid, b.Reason, b.Message))
 		case is.HasLabel(spec.Workflow.NeedsInputLabel):
+			if reason, ok := needsInputReason(iid, t); ok {
+				add("stuck", iid, reason)
+				break
+			}
 			add("stuck", iid, fmt.Sprintf("#%d needs input: CI is still red after the fix rounds, the run failed or the agent asked a question", iid))
 		}
 	}

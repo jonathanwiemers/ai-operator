@@ -1251,6 +1251,9 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 		// rounds: red CI, in the companion.
 		return failed(true, aiv1.PauseCIRed, "%s", companionCIRed(task))
 	case is.HasLabel(wf.NeedsInputLabel):
+		if reason, ok := needsInputReason(it.IID, task); ok {
+			return failed(true, aiv1.PauseNeedsInput, "%s", reason)
+		}
 		return failed(true, aiv1.PauseNeedsInput, "#%d needs input (see its last comments): CI is still red, the run failed or the agent asked a question", it.IID)
 	case !hasAny(is, wf.ActiveLabels()...):
 		return failed(false, aiv1.PauseConfig, "#%d is open but has no workflow label any more; move it back to `%s` or close it", it.IID, wf.ReviewLabel)
