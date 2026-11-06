@@ -150,6 +150,11 @@ func (d *Database) deleteExpired(ctx context.Context) {
 		return
 	}
 	d.log.Info("deleted expired agent calls", "calls", n)
+	if n, err = d.store.DeleteExpiredSnapshot(ctx, d.clock.Now()); err != nil {
+		d.log.Error(err, "deleting expired milestone snapshots")
+		return
+	}
+	d.log.Info("deleted expired milestone snapshots", "milestones", n)
 }
 
 // FinishRunOrInsert records a run's outcome in the store, see

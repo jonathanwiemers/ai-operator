@@ -695,6 +695,27 @@ their own model in the breakdown. Runs from before `agent_calls`: a
 adds that cost as `LegacyCostUSD`, without tokens, and shows up as a run of
 its issue.
 
+### Desk snapshot
+
+A closed milestone loses its tasks, and with them its title, issue list,
+states, MRs and retrospective. The Desk keeps them in three tables of the
+research database, written by the operator as the owner
+(`internal/research/store/snapshot.go`, migration `0006`): `desk_milestones`
+(project, iid, GitLab milestone ID, title, URL, `open` or `closed`, autopilot
+phase, start and done times, tracking issue, owners and their Desk subjects,
+the retrospective's note ID, text and posted time), `desk_milestone_issues`
+(iid, title, state, MR, position) and `desk_follow_ups` (number, title, body,
+state `open`, `issue`, `milestone` or `dismissed`, and the target's iid).
+`SaveMilestone` writes a milestone with its issues and follow-ups in one
+transaction and writes only rows whose values changed (`ON CONFLICT … DO
+UPDATE … WHERE … IS DISTINCT FROM …`), so a repeated snapshot changes no row
+and keeps `updated_at`. Start and done times, once set, stay, and so does a
+stored retrospective. Issues missing from a snapshot are deleted (a re-plan
+dropped them); follow-ups never are. Each row expires at its last change
+plus the history retention; retention deletes a milestone with its issues
+and follow-ups once all of them expired, so an active milestone stays whole.
+Research run pods have no rights on these tables.
+
 ## GitLab webhooks
 
 GitLab project hooks (GitLab Free; group hooks need Premium) wake the

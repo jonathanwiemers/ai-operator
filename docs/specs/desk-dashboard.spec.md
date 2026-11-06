@@ -254,3 +254,13 @@ slice by its key (the first word of this list).
 
 One line per slice, appended when it lands: date, slice key, what landed,
 about how many production lines, and deviations from this spec.
+
+- 2026-11-06, `store` (R1, #215): migration `0006_desk_snapshot` with
+  `desk_milestones`, `desk_milestone_issues` and `desk_follow_ups`, the store's
+  `SaveMilestone`, `CloseMilestone` and `DeleteExpiredSnapshot`, writers
+  revoked, retention wired; about 210 production lines (SQL included), over
+  the budget because the issue asked for the whole store side of R1 at once.
+  Deviations: issues and follow-ups reference their milestone (`ON DELETE
+  CASCADE`) and retention deletes a milestone only once all its rows expired;
+  `CloseMilestone` takes the new expiry too; R2's recorder and R3's queries
+  follow.

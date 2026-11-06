@@ -139,7 +139,7 @@ login with the keys `username` and `password`.
 | `research.candidates.quick` | `claude/claude-sonnet-5-5`, `cursor/auto` | default agents of quick research runs, in order, see [research.md](research.md#choosing-agents) |
 | `research.candidates.deep` | `claude/claude-opus-5-5` (effort `high`), `claude/claude-sonnet-5-5`, `cursor/auto` | the same for deep runs |
 | `research.maxUsagePercent` | `70` | research uses an engine only while every usage window not reset since is below this (1 to 100) |
-| `research.historyRetention` | `8760h` | how long the factory's history (the Desk's streams, see [ui.md](ui.md#desk-and-history)), the agent calls (`agent_calls`, see [design.md](design.md#history)) and Desk chat messages are kept; `--history-retention` |
+| `research.historyRetention` | `8760h` | how long the factory's history (the Desk's streams, see [ui.md](ui.md#desk-and-history)), the agent calls (`agent_calls`, see [design.md](design.md#history)), Desk chat messages and the Desk's milestone snapshot ([design.md](design.md#desk-snapshot)) are kept; `--history-retention` |
 | `ui.research.allowCreate` | `false` | one-off researches from the UI, see [Web UI](#web-ui) |
 | `ui.research.namespace` | `""` | where the UI creates one-off researches; required with `allowCreate` |
 
@@ -188,8 +188,8 @@ hand (see [research.md](research.md#database)). If the database is
 unreachable or a migration fails, the operator keeps running the factory and
 retries with backoff (5 s up to 5 min). Once ready, it deletes expired runs
 with their results and items at once and then every hour, and with
-`--history-retention` also expired history events, agent calls and chat
-messages.
+`--history-retention` also expired history events, agent calls, chat
+messages and milestone snapshots.
 
 The runner of a research run logs in as a writer: name its Secret per
 project in `spec.research.writerSecret` (see
