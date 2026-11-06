@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,8 +16,9 @@ import (
 )
 
 // A prompt lives until it is answered or its source resolves: main is
-// green again, its issue is merged or closed, the agent's run moved on, or
-// a newer prompt has the same source (addPrompt). Only proposals expire by
+// green again, its issue is merged or closed, the agent's run moved on, the
+// pause it assessed is over (pauseOver), or a newer prompt has the same source
+// (addPrompt). Only proposals expire by
 // time, after proposalTTL, as PilotProposals do.
 
 // syncOpenPrompts runs syncPrompts on the spec tasks and the Implement
@@ -124,6 +126,10 @@ func promptResolved(now time.Time, mh *aiv1.MainHealthStatus, issues map[int64]g
 			// A revisit is about a merged issue's decision: its issue
 			// resolves nothing.
 			return "", false
+		case aiv1.PromptAssessment:
+			if pauseOver(p, st, tasks) {
+				return aiv1.PromptSuperseded, true
+			}
 		}
 		if iid := src.IssueIID; iid != 0 {
 			if _, open := issues[iid]; autopilotItemState(st, iid) == aiv1.AutopilotItemMerged || !open && closed(iid) {
@@ -132,6 +138,33 @@ func promptResolved(now time.Time, mh *aiv1.MainHealthStatus, issues map[int64]g
 		}
 		return "", false
 	}
+}
+
+// pauseOver reports whether assessment p, of a pause event (pilotEvents), is
+// about a pause that ended or a state that moved on. A "stuck" event can also
+// be an issue's needs-input label, so it stays while its head and the pause
+// it could be about do.
+func pauseOver(p aiv1.Prompt, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask) bool {
+	if st == nil || st.Status.Autopilot == nil {
+		return false
+	}
+	ap := st.Status.Autopilot
+	paused := ap.Phase == aiv1.AutopilotPaused && ap.PausedAt != nil
+	key, _, _ := strings.Cut(strings.TrimPrefix(p.Source.Key, "event/"), "@")
+	switch {
+	case strings.HasPrefix(key, "pause-"):
+		return !paused || key != fmt.Sprintf("pause-%s/0/", hashString(ap.PausedReason))
+	case strings.HasPrefix(key, aiv1.StalledEventPrefix):
+		return !paused || key != fmt.Sprintf("%s%d", aiv1.StalledEventPrefix, ap.PausedAt.Unix())
+	case strings.HasPrefix(key, "stuck/"):
+		iid := p.Source.IssueIID
+		if paused && ap.PausedFor == iid && p.PostedAt != nil && ap.PausedAt.After(p.PostedAt.Time) {
+			return true // a later pause of the issue
+		}
+		t := tasks[iid]
+		return t != nil && !strings.HasSuffix(key, "/"+t.Status.Run.PushedSHA)
+	}
+	return false
 }
 
 // proposalState is PilotState of the milestone and the actions of p's

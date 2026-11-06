@@ -201,6 +201,50 @@ func TestSyncPromptsWritesOnlyWhenSomethingCloses(t *testing.T) {
 	}
 }
 
+func TestAssessmentOfAPauseClosesWithThePause(t *testing.T) {
+	now := time.Date(2026, 11, 6, 19, 0, 0, 0, time.UTC)
+	at := func(d time.Duration) *metav1.Time { return &metav1.Time{Time: now.Add(d)} }
+	paused := func(reason string, iid int64, since *metav1.Time) *aiv1.AutopilotStatus {
+		return &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedReason: reason, PausedFor: iid, PausedAt: since}
+	}
+	running := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}
+	since := at(-time.Hour)
+	assessment := func(iid int64, key string) aiv1.Prompt {
+		return aiv1.Prompt{PostedAt: at(-30 * time.Minute), Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: iid, Key: "event/" + key + "@3"}}
+	}
+	owner := assessment(0, "pause-"+hashString("paused by @owner")+"/0/")
+	stalled := assessment(1, fmt.Sprintf("%s%d", aiv1.StalledEventPrefix, since.Unix()))
+	stuck := assessment(1, "stuck/1/sha1")
+	tasks := map[int64]*aiv1.AgentTask{1: {Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha1"}}}}
+	moved := map[int64]*aiv1.AgentTask{1: {Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha2"}}}}
+
+	for _, tc := range []struct {
+		name  string
+		p     aiv1.Prompt
+		ap    *aiv1.AutopilotStatus
+		tasks map[int64]*aiv1.AgentTask
+		over  bool
+	}{
+		{"owner's pause holds", owner, paused("paused by @owner", 0, since), tasks, false},
+		{"owner's pause resumed", owner, running, tasks, true},
+		{"another pause without an issue", owner, paused("the plan has a cycle", 0, since), tasks, true},
+		{"stalled pause holds", stalled, paused("x", 1, since), tasks, false},
+		{"stalled pause lifted", stalled, running, tasks, true},
+		{"a later pause after the stalled one", stalled, paused("x", 1, at(-time.Minute)), tasks, true},
+		{"stuck pause holds", stuck, paused("x", 1, since), tasks, false},
+		{"a later pause of the issue", stuck, paused("y", 1, at(-time.Minute)), tasks, true},
+		{"the head moved", stuck, paused("x", 1, since), moved, true},
+		{"needs input without a pause, same head", stuck, running, tasks, false},
+		{"needs input without a pause, head moved", stuck, running, moved, true},
+		{"not about a pause", assessment(1, "reviewRounds/1/sha1"), running, moved, false},
+	} {
+		st := &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Autopilot: tc.ap}}
+		if got := pauseOver(tc.p, st, tc.tasks); got != tc.over {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.over)
+		}
+	}
+}
+
 func TestPromptResolved(t *testing.T) {
 	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 	posted := metav1.NewTime(now.Add(-time.Hour))

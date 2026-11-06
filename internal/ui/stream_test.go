@@ -157,14 +157,14 @@ func TestInbox(t *testing.T) {
 			Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{LastResult: aiv1.RunResultFailed}}},
 	}
 	items := inboxOf(map[string]*aiv1.AgentProject{"agents/bloop": ap}, tasks, time.Now())
-	if len(items) != 3 || items[0].Kind != "proposal" || items[0].ProposalID != 4 || items[1].IssueIID != 143 || items[1].Reason != "needs-input" {
+	if len(items) != 3 || items[0].Kind != "proposal" || items[0].ProposalID != 4 || items[2].IssueIID != 143 || items[2].Reason != "needs-input" {
 		t.Fatalf("inbox = %+v", items)
 	}
-	if p := items[2]; p.Kind != "pause" || p.MilestoneIID != 21 || p.Title != "Poker" || p.IssueIID != 391 || p.PauseKind != aiv1.PauseReviewErrors || p.Reason != "1 reviewers failed on #391" {
+	if p := items[1]; p.Kind != "pause" || p.MilestoneIID != 21 || p.Title != "Poker" || p.IssueIID != 391 || p.PauseKind != aiv1.PauseReviewErrors || p.Reason != "1 reviewers failed on #391" {
 		t.Errorf("a paused autopilot is in the inbox, a running one is not: %+v", p)
 	}
-	if p := items[2]; p.PausedSince == nil || !p.PausedSince.Equal(pausedAt.Time) {
-		t.Errorf("pausedSince = %v, want %v", p.PausedSince, pausedAt.Time)
+	if p := items[1]; p.PausedSince == nil || !p.PausedSince.Equal(pausedAt.Time) || p.At == nil || !p.At.Equal(pausedAt.Time) {
+		t.Errorf("pausedSince = %v, at = %v, want %v", p.PausedSince, p.At, pausedAt.Time)
 	}
 }
 

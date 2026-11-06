@@ -604,7 +604,7 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 			it.Kind, it.IssueIID, it.Title, it.Reason, it.PauseKind = "pause", a.PausedFor, t.Spec.Milestone.Title, a.PausedReason, a.PauseKind
 			if a.PausedAt != nil {
 				since := a.PausedAt.Time
-				it.PausedSince = &since
+				it.PausedSince, it.At = &since, &since
 			}
 			items = append(items, it)
 			continue
