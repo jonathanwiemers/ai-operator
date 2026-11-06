@@ -82,7 +82,15 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   events within the history retention: the newest 20 pauses with kind,
   reason, start, end and who resolved each, an open one counting up to
   now, plus totals of all: time paused, per kind, mean time to resume, per
-  resolver); it is absent without the history database.
+  resolver); it is absent without the history database. Below the
+  questions, the **Pauses** card shows it: the totals line (*paused 3h 10m
+  in 4 pauses · mean 47m to resume*; the mean once a pause has ended), a
+  chip per kind with its count and time, longest first, who resolved them
+  (operator, pilot, owner, self-healed), and the newest pauses (five, the
+  rest of the 20 behind *Earlier pauses*) with kind, issue, duration, who
+  resolved it or *open*, and the reason as text. An open pause keeps
+  counting on the Desk between reloads. Without pause history (no history
+  database, no pauses yet) there is no card.
 * **Prompt card**: one question to the milestone's owners (`Q<n>`): the
   question, its context (markdown without HTML: untrusted), the options
   with the recommended one first, a detail line and what each one does, a

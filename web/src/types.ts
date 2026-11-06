@@ -47,6 +47,8 @@ export type {
   ModelSplitView as ModelSplit,
   ExitView,
   ExitStatus,
+  PauseHistoryView,
+  PauseView,
 } from './generated/views'
 
 export type {

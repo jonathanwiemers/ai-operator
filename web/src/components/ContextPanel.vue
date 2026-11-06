@@ -10,6 +10,7 @@ import type { HistoryResponse, InboxItem, MilestoneView, QueueItem } from '../ty
 import AskPilot from './AskPilot.vue'
 import Badge from './Badge.vue'
 import PauseCard from './PauseCard.vue'
+import PausesCard from './PausesCard.vue'
 import PromptCard from './PromptCard.vue'
 import QueueList from './QueueList.vue'
 import RelTime from './RelTime.vue'
@@ -17,7 +18,8 @@ import RelTime from './RelTime.vue'
 // ContextPanel sits beside a project or milestone stream. On a milestone
 // stream (full) it also holds the full pause card, the milestone's prompts
 // (open first, the closed ones folded) and Ask the pilot; the stream keeps
-// the compact pause card.
+// the compact pause card. Below the prompts, the Pauses card shows the
+// milestone's pause history.
 const props = defineProps<{
   namespace: string
   name: string
@@ -154,6 +156,8 @@ function inboxTo(item: InboxItem) {
         </details>
       </div>
     </div>
+
+    <PausesCard v-if="full && milestone?.pauses" :pauses="milestone.pauses" />
 
     <div v-if="history" class="panel">
       <h3><span>Last 30 days</span></h3>
