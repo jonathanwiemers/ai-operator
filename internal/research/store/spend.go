@@ -105,13 +105,15 @@ type SubagentBreakdown struct {
 // "1", "2", …): within a run, round n is the review calls after its
 // (n-1)th fix call by seq. BySession splits implement calls by session,
 // key "fresh" or "resumed". BySubagents splits each role's calls by
-// whether subagents ran.
+// whether subagents ran. ByCheckpoint sums the calls that saved a
+// checkpoint by its reason, the most frequent first.
 type Spend struct {
 	Totals                  SpendTotals
 	Children                []SpendChild
 	ByKind, ByRole, ByModel []SpendBreakdown
 	ByReviewRound           []SpendBreakdown
 	BySession               []SpendBreakdown
+	ByCheckpoint            []SpendBreakdown
 	BySubagents             []SubagentBreakdown
 	CacheReadShare          float64
 }
@@ -140,10 +142,11 @@ func spendWith(where string) string {
 				AND a.task = e.task AND a.run = e.run AND a.expires_at > now())
 	), spend AS (
 		SELECT false AS legacy, id, namespace, project, milestone_iid, issue_iid, task, run, seq, at, kind, role, resumed,
-			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms, read_gate_blocks
+			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms, read_gate_blocks,
+			checkpoint
 		FROM scoped
 		UNION ALL
-		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0
+		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0, ''
 		FROM legacy
 	), split AS (
 		SELECT false AS legacy, c.id, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, m.model, m.main,
@@ -299,6 +302,7 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 		{&sp.ByModel, "model", "split", byCost},
 		{&sp.ByReviewRound, "round::text", reviewRounds, "min(round)"},
 		{&sp.BySession, "CASE WHEN resumed THEN 'resumed' ELSE 'fresh' END", "spend WHERE NOT legacy AND kind = 'implement'", "1"},
+		{&sp.ByCheckpoint, "checkpoint", "spend WHERE NOT legacy AND checkpoint <> ''", "count(*) DESC, 1"},
 	} {
 		rows, _ := s.pool.Query(ctx, with+`SELECT `+b.key+`, `+spendTotals+` FROM `+b.from+
 			` GROUP BY 1 ORDER BY `+b.order, args...)
@@ -437,7 +441,8 @@ func childLabel(c *SpendChild, sc SpendScope) (key, label string) {
 const callColumns = `id, key, at, namespace, project, coalesce(milestone_iid, 0), coalesce(issue_iid, 0),
 	coalesce(mr_iid, 0), task, run, seq, kind, role, engine, model, effort, resumed, fallback_from,
 	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd::float8, cost_source,
-	turns, duration_ms, models, subagent_calls, context_series, subagent_turns, expires_at, read_gate_blocks`
+	turns, duration_ms, models, subagent_calls, context_series, subagent_turns, expires_at, read_gate_blocks,
+	checkpoint, checkpoint_sha, lines_added, lines_deleted`
 
 func scanCall(row pgx.Row) (Call, error) {
 	var c Call
@@ -445,6 +450,6 @@ func scanCall(row pgx.Row) (Call, error) {
 		&c.MergeRequestIID, &c.Task, &c.Run, &c.Seq, &c.Kind, &c.Role, &c.Engine, &c.Model, &c.Effort, &c.Resumed,
 		&c.FallbackFrom, &c.InputTokens, &c.OutputTokens, &c.CacheReadTokens, &c.CacheWriteTokens, &c.CostUSD,
 		&c.CostSource, &c.Turns, &c.DurationMS, &c.Models, &c.SubagentCalls, &c.ContextSeries, &c.SubagentTurns,
-		&c.ExpiresAt, &c.ReadGateBlocks)
+		&c.ExpiresAt, &c.ReadGateBlocks, &c.Checkpoint, &c.CheckpointSHA, &c.LinesAdded, &c.LinesDeleted)
 	return c, err
 }

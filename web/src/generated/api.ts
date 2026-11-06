@@ -3785,6 +3785,28 @@ export interface AgentCall {
    */
   readGateBlocks?: number /* int32 */;
   /**
+   * Checkpoint is the reason (e.g. usage-limit) when the call's end saved
+   * a checkpoint commit of the work tree; CheckpointSHA is that commit.
+   * +optional
+   */
+  checkpoint?: string;
+  /**
+   * +optional
+   */
+  checkpointSHA?: string;
+  /**
+   * LinesAdded and LinesDeleted are the uncommitted diff the implementer
+   * call left in the work tree (git diff --numstat HEAD plus untracked
+   * text files): the lines of the step commit that follows it. Other
+   * roles' calls leave them zero.
+   * +optional
+   */
+  linesAdded?: number /* int64 */;
+  /**
+   * +optional
+   */
+  linesDeleted?: number /* int64 */;
+  /**
    * ContextSeries is the context size (input and cache tokens) of each
    * main-thread assistant turn. Only the newest calls in status keep it.
    * +optional

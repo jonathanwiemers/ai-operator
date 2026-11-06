@@ -288,6 +288,13 @@ spec:
                         cacheWriteTokens:
                           format: int64
                           type: integer
+                        checkpoint:
+                          description: |-
+                            Checkpoint is the reason (e.g. usage-limit) when the call's end saved
+                            a checkpoint commit of the work tree; CheckpointSHA is that commit.
+                          type: string
+                        checkpointSHA:
+                          type: string
                         contextSeries:
                           description: |-
                             ContextSeries is the context size (input and cache tokens) of each
@@ -335,6 +342,17 @@ spec:
                             Kind is what the call was for: spec, implement, review, fix, ci,
                             conflict, describe, pilot, retro, chat or research.
                           type: string
+                        linesAdded:
+                          description: |-
+                            LinesAdded and LinesDeleted are the uncommitted diff the implementer
+                            call left in the work tree (git diff --numstat HEAD plus untracked
+                            text files): the lines of the step commit that follows it. Other
+                            roles' calls leave them zero.
+                          format: int64
+                          type: integer
+                        linesDeleted:
+                          format: int64
+                          type: integer
                         model:
                           description: |-
                             Model is the configured model, or the reported main model when the

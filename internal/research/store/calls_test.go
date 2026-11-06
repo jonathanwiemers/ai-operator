@@ -26,6 +26,7 @@ func TestAgentCalls(t *testing.T) {
 				{Model: "claude-haiku-5-5", InputTokens: 2, OutputTokens: 5},
 			},
 			SubagentCalls: 1, ContextSeries: []int64{1000, 2500, 4000}, SubagentTurns: []int32{1}, ReadGateBlocks: 3,
+			Checkpoint: "usage-limit", CheckpointSHA: "0123abcd", LinesAdded: 412, LinesDeleted: 38,
 			ExpiresAt: exp},
 		// A cursor call without IIDs or a known cost.
 		{Key: "call/u2/1", At: base, Namespace: "agents", Project: "bloop", Task: "bloop-pilot", Seq: 1,
@@ -51,6 +52,8 @@ func TestAgentCalls(t *testing.T) {
 		resumed               bool
 		models                []store.CallModel
 		subagents, gateBlocks int32
+		checkpoint, cpSHA     string
+		added, deleted        int64
 		series                []int64
 		turns                 []int32
 	}
@@ -58,9 +61,11 @@ func TestAgentCalls(t *testing.T) {
 		t.Helper()
 		var r row
 		if err := s.Pool().QueryRow(ctx, `SELECT milestone_iid, issue_iid, mr_iid, cost_usd::float8, cost_source,
-				fallback_from, resumed, models, subagent_calls, context_series, subagent_turns, read_gate_blocks
+				fallback_from, resumed, models, subagent_calls, context_series, subagent_turns, read_gate_blocks,
+				checkpoint, checkpoint_sha, lines_added, lines_deleted
 			FROM agent_calls WHERE key = $1`, key).Scan(&r.milestone, &r.issue, &r.mr, &r.cost, &r.source,
-			&r.fallback, &r.resumed, &r.models, &r.subagents, &r.series, &r.turns, &r.gateBlocks); err != nil {
+			&r.fallback, &r.resumed, &r.models, &r.subagents, &r.series, &r.turns, &r.gateBlocks,
+			&r.checkpoint, &r.cpSHA, &r.added, &r.deleted); err != nil {
 			t.Fatal(err)
 		}
 		return r
@@ -88,6 +93,9 @@ func TestAgentCalls(t *testing.T) {
 	if r.gateBlocks != 3 {
 		t.Errorf("read gate blocks %d, want 3", r.gateBlocks)
 	}
+	if r.checkpoint != "usage-limit" || r.cpSHA != "0123abcd" || r.added != 412 || r.deleted != 38 {
+		t.Errorf("checkpoint %q %q, lines +%d/−%d; want usage-limit 0123abcd, +412/−38", r.checkpoint, r.cpSHA, r.added, r.deleted)
+	}
 
 	r = get("call/u2/1")
 	if r.milestone != nil || r.issue != nil || r.mr != nil || r.cost != nil || r.source != "unknown" || r.fallback != "claude" {
@@ -95,6 +103,9 @@ func TestAgentCalls(t *testing.T) {
 	}
 	if r.gateBlocks != 0 {
 		t.Errorf("cursor call read gate blocks %d, want 0", r.gateBlocks)
+	}
+	if r.checkpoint != "" || r.cpSHA != "" || r.added != 0 || r.deleted != 0 {
+		t.Errorf("cursor call checkpoint %q %q, lines +%d/−%d; want none", r.checkpoint, r.cpSHA, r.added, r.deleted)
 	}
 	if r.models == nil || len(r.models) != 0 || r.series == nil || len(r.series) != 0 || r.turns == nil || len(r.turns) != 0 {
 		t.Errorf("empty jsonb columns = %v %v %v; want []", r.models, r.series, r.turns)
@@ -134,5 +145,25 @@ func TestReadGateBlocksMigration(t *testing.T) {
 	var n int32
 	if err := s.Pool().QueryRow(ctx, "SELECT read_gate_blocks FROM agent_calls WHERE key = 'k'").Scan(&n); err != nil || n != 0 {
 		t.Errorf("old row read_gate_blocks = %d, %v; want 0", n, err)
+	}
+}
+
+// Migration 7 adds the checkpoint and lines columns to agent_calls; rows
+// written before it read an empty checkpoint and no lines.
+func TestCheckpointColumnsMigration(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	exec(t, s.Pool(), `ALTER TABLE agent_calls DROP COLUMN checkpoint, DROP COLUMN checkpoint_sha,
+		DROP COLUMN lines_added, DROP COLUMN lines_deleted`)
+	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version = 7")
+	exec(t, s.Pool(), insertCall)
+	if err := s.Migrate(ctx, store.Grants{}); err != nil {
+		t.Fatal(err)
+	}
+	var reason, sha string
+	var added, deleted int64
+	if err := s.Pool().QueryRow(ctx, "SELECT checkpoint, checkpoint_sha, lines_added, lines_deleted FROM agent_calls WHERE key = 'k'").
+		Scan(&reason, &sha, &added, &deleted); err != nil || reason != "" || sha != "" || added != 0 || deleted != 0 {
+		t.Errorf("old row = %q %q +%d/−%d, %v; want '' '' 0 0", reason, sha, added, deleted, err)
 	}
 }

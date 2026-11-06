@@ -36,11 +36,14 @@ func TestSpend(t *testing.T) {
 		{Model: "claude-haiku-5-5", InputTokens: 2, OutputTokens: 5, CostUSD: usd(0.03)},
 	}
 	impl.SubagentCalls, impl.ContextSeries, impl.SubagentTurns, impl.ReadGateBlocks = 1, []int64{1000, 2500, 4000}, []int32{1}, 3
+	// It was cut off by the usage limit and left 120 lines.
+	impl.Checkpoint, impl.CheckpointSHA, impl.LinesAdded, impl.LinesDeleted = "usage-limit", "abc123", 120, 7
 	review := call("c2", 3*time.Hour, 20, 148, "bloop-148", 2, 2, "review", "security", "claude-sonnet-5-5", usd(0.5), 100, 10, 1000, 0, 10000)
 	review.ReadGateBlocks = 1
 	// #150: a cursor call without a cost.
 	fix := call("c3", 4*time.Hour, 20, 150, "bloop-150", 1, 1, "fix", "fix", "gpt-5", nil, 100, 50, 0, 0, 5000)
 	fix.Engine = "cursor"
+	fix.Checkpoint, fix.CheckpointSHA = "usage-limit", "def456"
 	// The milestone's spec: no issue.
 	spec := call("c4", time.Hour, 20, 0, "bloop-spec-20", 1, 1, "spec", "spec", "claude-opus-5-5", usd(0.25), 1, 2, 3, 4, 1000)
 	// Milestone 21, #160: the row has the model's alias, models the full
@@ -51,6 +54,7 @@ func TestSpend(t *testing.T) {
 		{Model: "claude-opus-5-5", InputTokens: 4, OutputTokens: 5, CacheReadTokens: 100, CostUSD: usd(2.9)},
 	}
 	alias.SubagentCalls = 2
+	alias.Checkpoint, alias.CheckpointSHA = "engine-error", "0a1b2c"
 	// A Desk chat turn: no milestone.
 	chat := call("c6", 6*time.Hour, 0, 0, "bloop-chat", 0, 1, "chat", "chat", "claude-sonnet-5-5", usd(0.1), 1, 1, 0, 0, 500)
 	// Not in scope: expired, another project.
@@ -161,6 +165,11 @@ func TestSpend(t *testing.T) {
 		{"claude-haiku-5-5", 0.13, true, 2},
 		{"gpt-5", 0, false, 1},
 	})
+	// The calls that saved a checkpoint, by reason, the most frequent first.
+	checkBreakdown("project by checkpoint", sp.ByCheckpoint, []breakdown{
+		{"usage-limit", 1.23, true, 2},
+		{"engine-error", 3, true, 1},
+	})
 	// Subagent calls and duration go to the main model.
 	if b := sp.ByModel[0].Totals; b.SubagentCalls != 3 || b.DurationMS != 81000 {
 		t.Errorf("opus subagent calls %d, duration %d; want 3, 81000", b.SubagentCalls, b.DurationMS)
@@ -220,9 +229,14 @@ func TestSpend(t *testing.T) {
 		{"call", "2", "review (security)", 0.5, 0, true, 1, 0},
 	})
 	if c := sp.Children[0].Call; c == nil || c.Key != "c1" || c.MilestoneIID != 20 || !slices.Equal(c.ContextSeries, []int64{1000, 2500, 4000}) ||
-		!slices.Equal(c.SubagentTurns, []int32{1}) || c.ReadGateBlocks != 3 || len(c.Models) != 2 || c.CostUSD == nil || *c.CostUSD != 1.23 {
+		!slices.Equal(c.SubagentTurns, []int32{1}) || c.ReadGateBlocks != 3 || len(c.Models) != 2 || c.CostUSD == nil || *c.CostUSD != 1.23 ||
+		c.Checkpoint != "usage-limit" || c.CheckpointSHA != "abc123" || c.LinesAdded != 120 || c.LinesDeleted != 7 {
 		t.Errorf("call 1 row = %+v", c)
 	}
+	if c := sp.Children[1].Call; c == nil || c.Checkpoint != "" || c.CheckpointSHA != "" || c.LinesAdded != 0 || c.LinesDeleted != 0 {
+		t.Errorf("call 2 (a review) row = %+v; want no checkpoint or lines", c)
+	}
+	checkBreakdown("run 2 by checkpoint", sp.ByCheckpoint, []breakdown{{"usage-limit", 1.23, true, 1}})
 	checkModels("call 1", sp.Children[0].Models, []store.ModelSplit{
 		{Model: "claude-opus-5-5", Main: true, Tokens: 93, CostUSD: 1.2, CostKnown: true},
 		{Model: "claude-haiku-5-5", Tokens: 7, CostUSD: 0.03, CostKnown: true},

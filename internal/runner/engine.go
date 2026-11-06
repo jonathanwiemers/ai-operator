@@ -74,6 +74,10 @@ type Invocation struct {
 	// the branch changes a pin file. The runner sends only the name; the
 	// agent side validates it and turns it into Env.
 	PerRunToolchains string `json:"perRunToolchains,omitempty"`
+	// CountLines asks the agent side to measure the uncommitted diff of the
+	// home tree when the engine returns (CallUsage.LinesAdded/Deleted). The
+	// runner sets it for implementer calls.
+	CountLines bool `json:"countLines,omitempty"`
 	// Env overrides variables of the engine's environment. It is set by the
 	// agent side and never crosses the socket.
 	Env []string `json:"-"`
@@ -125,6 +129,10 @@ type CallUsage struct {
 	// ReadGateBlocks is how many tool calls the read gate denied: error
 	// tool_results whose text contains readgate.Marker, in every thread.
 	ReadGateBlocks int32
+	// LinesAdded and LinesDeleted are the uncommitted diff an implementer
+	// call left in the home tree (Workspace.UncommittedLines), measured by
+	// the agent container when the engine returned.
+	LinesAdded, LinesDeleted int64
 }
 
 // ModelUsage is one model's share of a call.

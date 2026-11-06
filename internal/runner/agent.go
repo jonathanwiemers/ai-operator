@@ -99,7 +99,31 @@ func (a *LocalAgent) Run(ctx context.Context, engine aiv1.Engine, inv Invocation
 		ctx = withStatusSink(ctx, w.set)
 		defer w.flush()
 	}
-	return eng.Run(ctx, inv)
+	res, err := eng.Run(ctx, inv)
+	if inv.CountLines && !inv.ReadOnly && res != nil && a.Workspace.exists() {
+		a.countLines(ctx, res)
+	}
+	return res, err
+}
+
+// countLinesTimeout bounds the count, which also runs after a call that
+// timed out.
+const countLinesTimeout = 30 * time.Second
+
+// countLines adds the uncommitted lines the call left in the home tree to
+// res.CallUsage. A failed count leaves them zero: it is a measurement.
+func (a *LocalAgent) countLines(ctx context.Context, res *Result) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), countLinesTimeout)
+	defer cancel()
+	added, deleted, err := a.Workspace.UncommittedLines(ctx)
+	if err != nil {
+		logr.FromContextOrDiscard(ctx).Info("could not count the uncommitted lines", "error", err.Error())
+		return
+	}
+	if res.CallUsage == nil {
+		res.CallUsage = &CallUsage{}
+	}
+	res.CallUsage.LinesAdded, res.CallUsage.LinesDeleted = added, deleted
 }
 
 // statusInterval is how often at most the last status is written.

@@ -5,6 +5,8 @@ import {
   avgCost,
   avgTokens,
   callCost,
+  callLines,
+  checkpointsLine,
   childLabel,
   companionNote,
   childScope,
@@ -423,6 +425,25 @@ test('gateBlocksPerCall: blocks per call, empty without calls or blocks', () => 
   assert.equal(gateBlocksPerCall(row(2, 3)), '1.5')
   assert.equal(gateBlocksPerCall(row(2, 0)), '')
   assert.equal(gateBlocksPerCall(row(0, 3)), '')
+})
+
+test('callLines shows the uncommitted lines of implementer calls only', () => {
+  assert.equal(callLines({ kind: 'implement', linesAdded: 412, linesDeleted: 38 }), '+412/−38')
+  assert.equal(callLines({ kind: 'fix', linesAdded: 0, linesDeleted: 0 }), '+0/−0')
+  assert.equal(callLines({ kind: 'ci', linesAdded: 3, linesDeleted: 1 }), '+3/−1')
+  assert.equal(callLines({ kind: 'review', linesAdded: 0, linesDeleted: 0 }), '')
+  assert.equal(callLines({ kind: 'implement' }), '')
+  assert.equal(callLines({ linesAdded: 1, linesDeleted: 0 }), '')
+})
+
+test('checkpointsLine counts the checkpoints with their reasons', () => {
+  const row = (key, calls) => ({ key, totals: { calls } })
+  assert.equal(checkpointsLine([]), '')
+  assert.equal(checkpointsLine([row('timeout', 1)]), '1 checkpoint: timeout')
+  assert.equal(
+    checkpointsLine([row('usage-limit', 2), row('engine-error', 1)]),
+    '3 checkpoints: usage-limit ×2, engine-error',
+  )
 })
 
 test('companionNote: issue rows with a companion project only', () => {

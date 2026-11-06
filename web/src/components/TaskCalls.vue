@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, toRaw, watch } from 'vue'
 import { getSpend, LoginRequiredError } from '../api'
-import { clockTime, duration, fullTime, tokenCount } from '../format'
+import { clockTime, duration, fullTime, shortSHA, tokenCount } from '../format'
 import { useNow } from '../live'
 import {
   callCost,
+  callLines,
+  checkpointsLine,
   costSourceLabel,
   legacyNote,
   runNumber,
@@ -16,6 +18,7 @@ import {
   unknownNote,
 } from '../spend'
 import type { Spend, SpendChild } from '../types'
+import Badge from './Badge.vue'
 import ContextChart from './ContextChart.vue'
 
 // TaskCalls is the "Agent calls" section of the Task page: the task's
@@ -31,6 +34,7 @@ const open = ref<Record<string, { loading: boolean; error: string; calls: SpendC
 let seq = 0
 
 const runs = computed(() => runsNewestFirst(data.value?.children ?? []))
+const checkpoints = computed(() => checkpointsLine(data.value?.byCheckpoint ?? []))
 
 async function load() {
   const mine = ++seq
@@ -83,6 +87,7 @@ async function toggle(r: SpendChild) {
         <span v-if="data.totals.durationMS">{{ duration(data.totals.durationMS) }}</span>
         <span v-if="unknownNote(data.totals)" class="faint">{{ unknownNote(data.totals) }}</span>
         <span v-if="legacyNote(data.totals)" class="faint">{{ legacyNote(data.totals) }}</span>
+        <span v-if="checkpoints" title="Calls whose end saved a checkpoint commit of the work tree">💾 {{ checkpoints }}</span>
       </div>
       <div v-if="!runs.length" class="card empty">No agent calls recorded for this task.</div>
       <div v-else class="card">
@@ -128,6 +133,7 @@ async function toggle(r: SpendChild) {
                         <th>Role</th>
                         <th>Engine / model</th>
                         <th>Resumed</th>
+                        <th class="num" title="Uncommitted lines an implementer call left: its step commit">Lines</th>
                         <th class="num">In</th>
                         <th class="num">Out</th>
                         <th class="num">Cache read</th>
@@ -140,7 +146,16 @@ async function toggle(r: SpendChild) {
                       <tr v-for="c in st(r.key).calls" :key="c.key">
                         <td class="num">{{ c.key }}</td>
                         <td :title="fullTime(c.at)">{{ clockTime(c.at, now) }}</td>
-                        <td>{{ c.kind }}</td>
+                        <td>
+                          {{ c.kind }}
+                          <Badge
+                            v-if="c.checkpoint"
+                            tone="warning"
+                            :title="`Its end saved the checkpoint commit ${shortSHA(c.checkpointSHA)}`"
+                          >
+                            💾 {{ c.checkpoint }}
+                          </Badge>
+                        </td>
                         <td>{{ c.role || '—' }}</td>
                         <td>
                           {{ c.engine }}<template v-if="c.model">/{{ c.model }}</template>
@@ -150,6 +165,7 @@ async function toggle(r: SpendChild) {
                           </span>
                         </td>
                         <td>{{ c.resumed ? 'resumed' : '—' }}</td>
+                        <td class="num">{{ callLines(c) || '—' }}</td>
                         <td class="num">{{ tokenCount(c.totals.inputTokens) }}</td>
                         <td class="num">{{ tokenCount(c.totals.outputTokens) }}</td>
                         <td class="num">{{ tokenCount(c.totals.cacheReadTokens) }}</td>

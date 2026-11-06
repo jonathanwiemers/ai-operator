@@ -445,6 +445,27 @@ export function subagentShare(r: SubagentBreakdown): string {
   return all > 0 ? shareLabel(r.subagentTokens / all) : '—'
 }
 
+// The call kinds of the implementer: their calls leave the step commit's
+// lines (linesAdded/linesDeleted).
+const implementerKinds = ['implement', 'fix', 'ci', 'conflict']
+
+// callLines is "+A/−D", the uncommitted lines an implementer call left;
+// "" for other kinds and calls without the field.
+export function callLines(c: Pick<SpendChild, 'kind' | 'linesAdded' | 'linesDeleted'>): string {
+  if (!c.kind || !implementerKinds.includes(c.kind) || c.linesAdded === undefined) return ''
+  return `+${c.linesAdded}/−${c.linesDeleted ?? 0}`
+}
+
+// checkpointsLine sums the calls that saved a checkpoint: "2 checkpoints:
+// usage-limit ×2" or "1 checkpoint: timeout"; "" without one. Rows come by
+// reason, the most frequent first.
+export function checkpointsLine(rows: SpendBreakdown[]): string {
+  const n = rows.reduce((s, r) => s + r.totals.calls, 0)
+  if (n === 0) return ''
+  const reasons = rows.map((r) => (r.totals.calls > 1 ? `${r.key} ×${r.totals.calls}` : r.key))
+  return `${n} ${n === 1 ? 'checkpoint' : 'checkpoints'}: ${reasons.join(', ')}`
+}
+
 // companionNote is the tooltip of an issue row's companion marker: the
 // companion project whose changes its calls made too (they count to the
 // home issue); '' for other rows and issues without a companion.

@@ -673,7 +673,13 @@ included), `context_series` (context size of each main-thread turn, at most
 500 points) and `subagent_turns` (indexes into it after which a subagent
 ran); `subagent_calls` counts the subagents and `read_gate_blocks` the tool
 calls the read gate denied (error `tool_result`s of the stream whose text
-contains the gate's marker `read gate: `, in every thread). The runner only appends the
+contains the gate's marker `read gate: `, in every thread). `checkpoint` and
+`checkpoint_sha` name the reason and commit when the call's end saved a
+checkpoint (empty otherwise); `lines_added` and `lines_deleted` are the
+uncommitted diff an implementer call left, counted by the agent container
+when the engine returned (`git diff --numstat HEAD` plus untracked text
+files), so they are the lines of the step commit after it; other calls
+have 0. The runner only appends the
 call to the task's `status.run.calls` (the newest 50, each with a task-wide
 `seq`); the operator stays the only writer. The differ writes each call
 whose seq the previous status did not have, keyed `call/<task UID>/<seq>`.

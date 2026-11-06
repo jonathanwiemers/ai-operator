@@ -56,6 +56,14 @@ type SpendCallView struct {
 	SubagentTurns []int32 `json:"subagentTurns"`
 	// ReadGateBlocks is how often the read gate denied a tool call.
 	ReadGateBlocks int32 `json:"readGateBlocks"`
+	// Checkpoint is the reason when the call's end saved a checkpoint
+	// commit (CheckpointSHA), "" otherwise.
+	Checkpoint    string `json:"checkpoint,omitempty"`
+	CheckpointSHA string `json:"checkpointSHA,omitempty"`
+	// LinesAdded and LinesDeleted are the uncommitted diff an implementer
+	// call left: the lines of the step commit after it.
+	LinesAdded   int64 `json:"linesAdded"`
+	LinesDeleted int64 `json:"linesDeleted"`
 }
 
 // SpendChildView is one part of the scope at the next level: a milestone
@@ -91,7 +99,8 @@ type SubagentBreakdownView struct {
 }
 
 // SpendView is what a scope cost. byReviewRound is keyed by round ("1",
-// "2", …), bySession by "fresh" or "resumed" (implement calls only).
+// "2", …), bySession by "fresh" or "resumed" (implement calls only),
+// byCheckpoint by the reason of the calls that saved a checkpoint.
 type SpendView struct {
 	Totals         SpendTotalsView         `json:"totals"`
 	Children       []SpendChildView        `json:"children"`
@@ -100,6 +109,7 @@ type SpendView struct {
 	ByModel        []SpendBreakdownView    `json:"byModel"`
 	ByReviewRound  []SpendBreakdownView    `json:"byReviewRound"`
 	BySession      []SpendBreakdownView    `json:"bySession"`
+	ByCheckpoint   []SpendBreakdownView    `json:"byCheckpoint"`
 	BySubagents    []SubagentBreakdownView `json:"bySubagents"`
 	CacheReadShare float64                 `json:"cacheReadShare"`
 }
@@ -201,7 +211,7 @@ func projectTasks(tasks []aiv1.AgentTask, ap *aiv1.AgentProject) []aiv1.AgentTas
 func spendView(sp store.Spend) SpendView {
 	v := SpendView{Totals: spendTotalsView(sp.Totals), Children: make([]SpendChildView, 0, len(sp.Children)),
 		ByKind: breakdownViews(sp.ByKind), ByRole: breakdownViews(sp.ByRole), ByModel: breakdownViews(sp.ByModel),
-		ByReviewRound: breakdownViews(sp.ByReviewRound), BySession: breakdownViews(sp.BySession),
+		ByReviewRound: breakdownViews(sp.ByReviewRound), BySession: breakdownViews(sp.BySession), ByCheckpoint: breakdownViews(sp.ByCheckpoint),
 		BySubagents: make([]SubagentBreakdownView, 0, len(sp.BySubagents)), CacheReadShare: sp.CacheReadShare}
 	for _, b := range sp.BySubagents {
 		v.BySubagents = append(v.BySubagents, SubagentBreakdownView{Role: b.Role, WithSubagents: b.WithSubagents,
@@ -219,7 +229,8 @@ func spendView(sp store.Spend) SpendView {
 			cv.SpendCallView = &SpendCallView{Kind: call.Kind, Role: call.Role, Engine: call.Engine, Model: call.Model,
 				Effort: call.Effort, Resumed: call.Resumed, FallbackFrom: call.FallbackFrom, CostSource: call.CostSource,
 				Turns: call.Turns, ContextSeries: call.ContextSeries, SubagentTurns: call.SubagentTurns,
-				ReadGateBlocks: call.ReadGateBlocks}
+				ReadGateBlocks: call.ReadGateBlocks, Checkpoint: call.Checkpoint, CheckpointSHA: call.CheckpointSHA,
+				LinesAdded: call.LinesAdded, LinesDeleted: call.LinesDeleted}
 			if cv.ContextSeries == nil {
 				cv.ContextSeries = []int64{}
 			}

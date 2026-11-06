@@ -241,6 +241,7 @@ func TestCallsCostAndDetail(t *testing.T) {
 			{Seq: 3, Kind: aiv1.CallKindPilot, Engine: aiv1.EngineCursor},
 			{Seq: 4, Kind: aiv1.CallKindImplement, Engine: aiv1.EngineClaude, CostSource: aiv1.CostReported, CostUSD: "1.5000",
 				Resumed: true, SubagentCalls: 2, ReadGateBlocks: 3, ContextSeries: []int64{100, 200}, SubagentTurns: []int32{1},
+				Checkpoint: "usage-limit", CheckpointSHA: "abc123", LinesAdded: 40, LinesDeleted: 2,
 				Models: []aiv1.CallModelUsage{{Model: "claude-opus-5-5", OutputTokens: 9, CostUSD: "1.2500"}, {Model: "claude-haiku-5-5"}}},
 		}
 	})
@@ -258,7 +259,8 @@ func TestCallsCostAndDetail(t *testing.T) {
 		t.Errorf("no source = %+v; want unknown", c)
 	}
 	c := got[3]
-	if !c.Resumed || c.SubagentCalls != 2 || c.ReadGateBlocks != 3 || !slices.Equal(c.ContextSeries, []int64{100, 200}) || !slices.Equal(c.SubagentTurns, []int32{1}) {
+	if !c.Resumed || c.SubagentCalls != 2 || c.ReadGateBlocks != 3 || !slices.Equal(c.ContextSeries, []int64{100, 200}) || !slices.Equal(c.SubagentTurns, []int32{1}) ||
+		c.Checkpoint != "usage-limit" || c.CheckpointSHA != "abc123" || c.LinesAdded != 40 || c.LinesDeleted != 2 {
 		t.Errorf("detail = %+v", c)
 	}
 	if len(c.Models) != 2 || c.Models[0].Model != "claude-opus-5-5" || c.Models[0].OutputTokens != 9 ||

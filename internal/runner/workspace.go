@@ -357,6 +357,77 @@ func (w *Workspace) Diff(ctx context.Context, base string) (diff, stat string, e
 	return diff, stat, err
 }
 
+// UncommittedLines counts the lines the work tree changes against HEAD:
+// git diff --numstat HEAD (binary files count nothing) plus every line of
+// the untracked, not ignored text files. A tree without commits counts its
+// untracked files only.
+func (w *Workspace) UncommittedLines(ctx context.Context) (added, deleted int64, err error) {
+	if w.hasRef(ctx, "HEAD") {
+		out, err := w.git(ctx, "diff", "--numstat", "--no-renames", "--no-ext-diff", "HEAD")
+		if err != nil {
+			return 0, 0, err
+		}
+		for _, line := range strings.Split(out, "\n") {
+			f := strings.Fields(line)
+			if len(f) < 3 {
+				continue
+			}
+			a, _ := strconv.ParseInt(f[0], 10, 64) // "-" for binary files
+			d, _ := strconv.ParseInt(f[1], 10, 64)
+			added, deleted = added+a, deleted+d
+		}
+	}
+	out, err := w.git(ctx, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, path := range strings.Split(out, "\x00") {
+		if path != "" {
+			added += textLines(filepath.Join(w.Dir, path))
+		}
+	}
+	return added, deleted, nil
+}
+
+// textLines counts the lines of the regular file at path, a last line
+// without a newline included; 0 for a binary file (a NUL byte in its first
+// 8000 bytes, as git decides it) or one it cannot read.
+func textLines(path string) int64 {
+	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
+		return 0
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	const probe = 8000
+	buf := make([]byte, 64*1024)
+	var lines, read int64
+	var last byte
+	for {
+		n, err := f.Read(buf)
+		chunk := buf[:n]
+		if read < probe && bytes.IndexByte(chunk[:min(int64(n), probe-read)], 0) >= 0 {
+			return 0
+		}
+		if n > 0 {
+			lines += int64(bytes.Count(chunk, []byte{'\n'}))
+			read, last = read+int64(n), chunk[n-1]
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return 0
+		}
+	}
+	if read > 0 && last != '\n' {
+		lines++
+	}
+	return lines
+}
+
 // Bundle writes the commits of branch that origin does not have yet into a
 // bundle at path. It reports false (and writes nothing) if there are none.
 func (w *Workspace) Bundle(ctx context.Context, branch, base, path string) (bool, error) {

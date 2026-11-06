@@ -57,7 +57,7 @@ func TestSpendViewUnknownCost(t *testing.T) {
 	}
 	c := v.Children[0]
 	if c.Totals.CostUSD != "" || c.Models[0].CostUSD != "" || c.SpendCallView == nil || c.ContextSeries == nil ||
-		c.SubagentTurns == nil || v.ByKind == nil || v.ByReviewRound == nil || v.BySession == nil || v.BySubagents == nil {
+		c.SubagentTurns == nil || v.ByKind == nil || v.ByReviewRound == nil || v.BySession == nil || v.ByCheckpoint == nil || v.BySubagents == nil {
 		t.Errorf("child = %+v, want unknown costs and empty lists", c)
 	}
 }
@@ -82,6 +82,7 @@ func TestSpend(t *testing.T) {
 		{Model: "claude-haiku-5-5", InputTokens: 2, OutputTokens: 5, CostUSD: usd(0.1)},
 	}
 	impl.SubagentCalls, impl.ContextSeries, impl.SubagentTurns, impl.ReadGateBlocks = 1, []int64{1000, 2500, 4000}, []int32{1}, 4
+	impl.Checkpoint, impl.CheckpointSHA, impl.LinesAdded, impl.LinesDeleted = "usage-limit", "abc123", 84, 9
 	fix := call("c2", 42, "shop-42", 2, 2, "fix", "gpt-5", nil)
 	fix.Engine = "cursor"
 	other := call("c3", 43, "shop-43", 1, 1, "implement", "claude-opus-5-5", usd(0.25))
@@ -146,10 +147,42 @@ func TestSpend(t *testing.T) {
 	}
 	c := run.Children[0]
 	if c.Level != "call" || c.Key != "1" || c.SpendCallView == nil || c.Kind != "implement" ||
-		!slices.Equal(c.ContextSeries, []int64{1000, 2500, 4000}) || !slices.Equal(c.SubagentTurns, []int32{1}) || c.ReadGateBlocks != 4 {
+		!slices.Equal(c.ContextSeries, []int64{1000, 2500, 4000}) || !slices.Equal(c.SubagentTurns, []int32{1}) || c.ReadGateBlocks != 4 ||
+		c.Checkpoint != "usage-limit" || c.CheckpointSHA != "abc123" || c.LinesAdded != 84 || c.LinesDeleted != 9 {
 		t.Errorf("first call = %+v", c)
+	}
+	if f := run.Children[1]; f.Checkpoint != "" || f.LinesAdded != 0 {
+		t.Errorf("fix call = %+v, want no checkpoint or lines", f)
+	}
+	if b := run.ByCheckpoint; len(b) != 1 || b[0].Key != "usage-limit" || b[0].Totals.Calls != 1 {
+		t.Errorf("run by checkpoint = %+v, want one usage-limit call", b)
 	}
 	if f := run.Children[1]; f.Totals.CostUSD != "" || f.Totals.CostKnown || f.CostSource != "unknown" {
 		t.Errorf("cursor call = %+v, want an unknown cost", f)
+	}
+}
+
+// The call view carries the checkpoint and the uncommitted lines, and the
+// checkpoints of the scope come by reason.
+func TestSpendViewCheckpoints(t *testing.T) {
+	v := spendView(store.Spend{
+		Children: []store.SpendChild{
+			{Level: store.SpendCall, Key: "1", Call: &store.Call{Kind: "implement", Engine: "claude", CostSource: "reported",
+				Checkpoint: "usage-limit", CheckpointSHA: "abc123", LinesAdded: 412, LinesDeleted: 38}},
+			{Level: store.SpendCall, Key: "2", Call: &store.Call{Kind: "review", Engine: "claude", CostSource: "reported"}},
+		},
+		ByCheckpoint: []store.SpendBreakdown{
+			{Key: "usage-limit", Totals: store.SpendTotals{Calls: 2, CostKnown: true}},
+			{Key: "engine-error", Totals: store.SpendTotals{Calls: 1, CostKnown: true}},
+		},
+	})
+	if c := v.Children[0]; c.Checkpoint != "usage-limit" || c.CheckpointSHA != "abc123" || c.LinesAdded != 412 || c.LinesDeleted != 38 {
+		t.Errorf("implement call = %+v", c.SpendCallView)
+	}
+	if c := v.Children[1]; c.Checkpoint != "" || c.CheckpointSHA != "" || c.LinesAdded != 0 || c.LinesDeleted != 0 {
+		t.Errorf("review call = %+v, want no checkpoint or lines", c.SpendCallView)
+	}
+	if b := v.ByCheckpoint; len(b) != 2 || b[0].Key != "usage-limit" || b[0].Totals.Calls != 2 || b[1].Key != "engine-error" {
+		t.Errorf("by checkpoint = %+v", b)
 	}
 }

@@ -83,10 +83,13 @@ func (r *Runner) cutReason(ctx context.Context, inv Invocation, res *Result, err
 // cutsOff reports whether inv is an implementer call whose cut-off leaves a
 // checkpoint: one of the run's implementer part, with checkpoints on.
 func (r *Runner) cutsOff(inv Invocation) bool {
-	if r.cut == nil {
-		return false
-	}
-	switch inv.Kind {
+	return r.cut != nil && implementerKind(inv.Kind)
+}
+
+// implementerKind reports whether calls of kind are the implementer's:
+// they edit the work tree for a step commit.
+func implementerKind(kind string) bool {
+	switch kind {
 	case aiv1.CallKindImplement, aiv1.CallKindFix, aiv1.CallKindCI, aiv1.CallKindConflict:
 		return true
 	}
@@ -116,17 +119,19 @@ func isTimeout(ctx context.Context, err error) bool {
 // checkpoint commit on the work branch and pushes it without CI, the MR set
 // to draft first. res is the call's result, if any: its text is the agent's
 // last status. Failures are logged in the run log and never replace the
-// error that cut the call off. It returns nil when nothing was attempted.
-func (r *Runner) checkpoint(ctx context.Context, reason string, res *Result) *CheckpointResult {
+// error that cut the call off. It returns nil when nothing was attempted,
+// and the checkpoint commit on the branch: "" unless it was pushed.
+func (r *Runner) checkpoint(ctx context.Context, reason string, res *Result) (*CheckpointResult, string) {
 	cp, pushed := r.saveCheckpoint(ctx, reason, res)
-	if cp != nil {
-		noted := *cp
-		if !pushed {
-			noted.SHA = "" // the reports only claim what is on the branch
-		}
-		r.run.noteCheckpoint(checkpointNote{Reason: reason, CheckpointResult: noted})
+	if cp == nil {
+		return nil, ""
 	}
-	return cp
+	noted := *cp
+	if !pushed {
+		noted.SHA = "" // the reports only claim what is on the branch
+	}
+	r.run.noteCheckpoint(checkpointNote{Reason: reason, CheckpointResult: noted})
+	return cp, noted.SHA
 }
 
 func (r *Runner) saveCheckpoint(ctx context.Context, reason string, res *Result) (*CheckpointResult, bool) {
@@ -327,7 +332,7 @@ func (run *implementRun) checkpointLostAttempt(ctx context.Context) {
 	}
 	r.cut = &cutTarget{gl: run.gl, glProject: run.glProject, branch: branch, base: run.base, issue: run.issue.IID,
 		mr: &gitlab.MergeRequest{IID: mrIID}, st: &st, step: lost.Step, run: lost.Run, expect: expect}
-	cp := r.checkpoint(ctx, r.lostAttempt, nil)
+	cp, _ := r.checkpoint(ctx, r.lostAttempt, nil)
 	r.cut = nil
 	if cp == nil || cp.Refused != "" || cp.SHA != "" {
 		return

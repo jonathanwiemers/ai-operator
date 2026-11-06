@@ -1376,6 +1376,22 @@ type AgentCall struct {
 	// +optional
 	ReadGateBlocks int32 `json:"readGateBlocks,omitempty"`
 
+	// Checkpoint is the reason (e.g. usage-limit) when the call's end saved
+	// a checkpoint commit of the work tree; CheckpointSHA is that commit.
+	// +optional
+	Checkpoint string `json:"checkpoint,omitempty"`
+	// +optional
+	CheckpointSHA string `json:"checkpointSHA,omitempty"`
+
+	// LinesAdded and LinesDeleted are the uncommitted diff the implementer
+	// call left in the work tree (git diff --numstat HEAD plus untracked
+	// text files): the lines of the step commit that follows it. Other
+	// roles' calls leave them zero.
+	// +optional
+	LinesAdded int64 `json:"linesAdded,omitempty"`
+	// +optional
+	LinesDeleted int64 `json:"linesDeleted,omitempty"`
+
 	// ContextSeries is the context size (input and cache tokens) of each
 	// main-thread assistant turn. Only the newest calls in status keep it.
 	// +optional

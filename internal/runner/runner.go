@@ -815,7 +815,7 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 		if r.cutsOff(inv) {
 			// No call ran, so none is retried; usually a clean tree, the
 			// call before ended normally.
-			r.checkpoint(ctx, cutBudgetStop, nil)
+			r.checkpoint(ctx, cutBudgetStop, nil) // no call to note it on
 		}
 		return nil, err
 	}
@@ -841,6 +841,7 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
 	inv = r.withReadGate(role, r.withSubagents(role, inv))
 	inv.LogPrompt = r.logPrompts
+	inv.CountLines = implementerKind(inv.Kind)
 	if len(r.changedPins) > 0 && r.run != nil {
 		inv.PerRunToolchains = toolchainsRunName(r.run.id)
 	}
@@ -854,19 +855,30 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 			start := r.now()
 			res, err := r.Agent.Run(ctx, role.Engine, inv)
 			lost := r.agentLost(ctx, err, start)
+			cpReason := ""
 			if lost == nil {
 				err = classifyLimit(role.Engine, err, res)
 				// The agent is up: save the work of an implementer call cut off.
-				if reason := r.cutReason(ctx, inv, res, err); reason != "" {
-					r.checkpoint(ctx, reason, res)
-				}
+				cpReason = r.cutReason(ctx, inv, res, err)
 			} else if retriesRestart(lost, redialed, retried) && r.cutsOff(inv) {
 				// Saved before the reset below throws the edits away; the
 				// retried call continues from the checkpoint.
-				r.checkpoint(ctx, cutContainerRestart, nil)
+				cpReason = cutContainerRestart
+			}
+			cpSHA := ""
+			if cpReason != "" {
+				cpRes := res
+				if lost != nil {
+					cpRes = nil
+				}
+				_, cpSHA = r.checkpoint(ctx, cpReason, cpRes)
 			}
 			if lost == nil || !lost.notSent {
-				r.recordCall(ctx, r.newCall(role.Engine, inv, res, start))
+				c := r.newCall(role.Engine, inv, res, start)
+				if cpSHA != "" {
+					c.Checkpoint, c.CheckpointSHA = cpReason, cpSHA
+				}
+				r.recordCall(ctx, c)
 			}
 			switch {
 			case lost == nil:

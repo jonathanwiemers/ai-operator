@@ -188,6 +188,19 @@ func TestCheckpointOnUsageLimit(t *testing.T) {
 		t.Fatalf("the usage limit must still defer the run: %+v", run)
 	}
 	head := e.checkCheckpoint(1, 1, cutUsageLimit)
+	// The cut-off call carries its checkpoint and the lines it left; the
+	// reviewers' calls carry neither.
+	for _, c := range run.Calls {
+		switch {
+		case c.Kind == aiv1.CallKindImplement:
+			if c.Checkpoint != cutUsageLimit || c.CheckpointSHA != head || c.LinesAdded != 3 || c.LinesDeleted != 0 {
+				t.Errorf("cut-off implement call: checkpoint %q %s, +%d/−%d; want usage-limit %s, +3/−0",
+					c.Checkpoint, c.CheckpointSHA, c.LinesAdded, c.LinesDeleted, head)
+			}
+		case c.Checkpoint != "" || c.CheckpointSHA != "" || c.LinesAdded != 0 || c.LinesDeleted != 0:
+			t.Errorf("%s call carries checkpoint or lines: %+v", c.Kind, c)
+		}
+	}
 	line := "💾 Saved a checkpoint (`" + shortSHA(head) + "`, 1 files, +3/−0) because the usage limit was reached."
 	if notes := e.gl.MRNotes[1]; len(notes) != 1 || !strings.Contains(notes[0].Body, line) {
 		t.Fatalf("the progress comment should name the checkpoint: %+v", notes)

@@ -648,6 +648,18 @@ export interface SpendCallView {
    * ReadGateBlocks is how often the read gate denied a tool call.
    */
   readGateBlocks: number /* int32 */;
+  /**
+   * Checkpoint is the reason when the call's end saved a checkpoint
+   * commit (CheckpointSHA), "" otherwise.
+   */
+  checkpoint?: string;
+  checkpointSHA?: string;
+  /**
+   * LinesAdded and LinesDeleted are the uncommitted diff an implementer
+   * call left: the lines of the step commit after it.
+   */
+  linesAdded: number /* int64 */;
+  linesDeleted: number /* int64 */;
 }
 /**
  * SpendChildView is one part of the scope at the next level: a milestone
@@ -687,7 +699,8 @@ export interface SubagentBreakdownView {
 }
 /**
  * SpendView is what a scope cost. byReviewRound is keyed by round ("1",
- * "2", …), bySession by "fresh" or "resumed" (implement calls only).
+ * "2", …), bySession by "fresh" or "resumed" (implement calls only),
+ * byCheckpoint by the reason of the calls that saved a checkpoint.
  */
 export interface SpendView {
   totals: SpendTotalsView;
@@ -697,6 +710,7 @@ export interface SpendView {
   byModel: SpendBreakdownView[];
   byReviewRound: SpendBreakdownView[];
   bySession: SpendBreakdownView[];
+  byCheckpoint: SpendBreakdownView[];
   bySubagents: SubagentBreakdownView[];
   cacheReadShare: number /* float64 */;
 }
