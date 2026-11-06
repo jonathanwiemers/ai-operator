@@ -251,6 +251,14 @@ func (p *Projects) RebaseMergeRequest(ctx context.Context, project string, iid i
 	return f.RebaseMergeRequest(ctx, project, iid)
 }
 
+func (p *Projects) DeleteBranch(ctx context.Context, project, branch string) error {
+	f, err := p.route(project)
+	if err != nil {
+		return err
+	}
+	return f.DeleteBranch(ctx, project, branch)
+}
+
 func (p *Projects) ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]gitlab.Diff, error) {
 	f, err := p.route(project)
 	if err != nil {

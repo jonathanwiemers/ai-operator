@@ -148,6 +148,7 @@ func (run *implementRun) prepare(ctx context.Context) (closed bool, err error) {
 		return false, s.fail(fmt.Errorf("getting project: %w", err))
 	}
 	run.base = run.proj.DefaultBranch
+	r.Mirror.Policy = homePushPolicy(glProject, run.proj)
 	s.done("default branch "+run.base, "defaultBranch", run.base)
 	return false, nil
 }

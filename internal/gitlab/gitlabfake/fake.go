@@ -51,6 +51,8 @@ type Fake struct {
 	UpdateErrors map[int64]error
 	// Merged and Rebased record the MRs merged and rebased, in order.
 	Merged, Rebased []int64
+	// DeletedBranches records the branches DeleteBranch deleted, in order.
+	DeletedBranches []string
 	// RebaseConflict makes rebases end in a conflict.
 	RebaseConflict bool
 	// MainSHA is the head of the default branch: a rebase bases an MR's
@@ -630,6 +632,15 @@ func (f *Fake) RebaseMergeRequest(_ context.Context, _ string, iid int64) error 
 		}
 	}
 	mr.UpdatedAt = f.tick()
+	return nil
+}
+
+// DeleteBranch records the branch in DeletedBranches; the fake keeps no
+// branches otherwise.
+func (f *Fake) DeleteBranch(_ context.Context, _ string, branch string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.DeletedBranches = append(f.DeletedBranches, branch)
 	return nil
 }
 

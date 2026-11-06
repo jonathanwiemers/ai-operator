@@ -425,7 +425,7 @@ func (r *Runner) writeFailed(ctx context.Context, task *aiv1.AgentTask, source s
 	}
 	var gl gitlab.API
 	if r.NewGitLab != nil {
-		gl = r.NewGitLab(r.projectSpec.GitLab.URL, r.GitLabToken)
+		gl = r.guardedGitLab(r.projectSpec, task)
 	}
 	if rerr := writefail.Report(ctx, r.K8s, gl, r.projectSpec.GitLab.Project, task, writefail.Tracking(task), "runner/"+source, err); rerr != nil {
 		r.log().Error(rerr, "reporting a rejected status write", "source", source)

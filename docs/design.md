@@ -1800,6 +1800,30 @@ flowchart LR
   paths outside `/exchange` are rejected. Everything the agent returns
   (results, diffs) is treated as untrusted data.
 
+**Merge/push guard.** The bot's token usually reaches far more than the
+AgentProject's own project (e.g. as a group Maintainer), so the operator and
+the runner restrict themselves (`internal/gitlab/guard.go`):
+
+* Their GitLab clients are wrapped by `gitlab.Guard` with a policy built
+  only from `spec.gitlab.project` and the targets `ValidateCrossRepo`
+  accepts. The runner narrows it to the task's `spec.companion`.
+  `jo.wiemers/personal/kubernetes` is never a target.
+  * A merge is allowed in the home project, or in a target with `autoMerge`.
+    In the runner, the task's resolved `autoMerge` must allow it too.
+  * Creating, updating or rebasing a merge request, and starting a pipeline,
+    are allowed in the home project and its targets.
+  * Deleting a branch is allowed only for `agent/` branches there, and never
+    for the project's default branch.
+  * Reads and issue and note writes are not guarded: links and comments in
+    other projects are wanted.
+* Every push of a mirror goes through its `PushPolicy`. It allows only an
+  unforced push of a commit to an `agent/` branch, never the default branch.
+  No tags, no deletes, and only to the remote URL of the policy's project. A
+  mirror without a policy pushes nothing.
+
+A refusal is a `*gitlab.GuardError`, which is not retried, and is logged at
+info with `project`, `op` and `reason`.
+
 **Read-only roles are no sandbox.** Reviewers, the planner and the describer
 run read-only: claude with a tool allow-list, cursor-agent without `--force`
 (and with `--trust`, so it runs in the fresh checkout at all). For cursor the

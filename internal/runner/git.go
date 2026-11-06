@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
 // Mirror is the runner's bare copy of the repository. It is the only git
@@ -28,6 +30,67 @@ type Mirror struct {
 	// Log receives every git command at debug level (V(1)). The token is
 	// never part of the arguments.
 	Log logr.Logger
+	// Policy is what the mirror may push (the merge/push guard). Without
+	// one, every push is refused.
+	Policy *PushPolicy
+
+	// remoteURL is origin's URL as the last Sync set it.
+	remoteURL string
+}
+
+// PushPolicy is the push side of the merge/push guard: only agent/ branches
+// of the project the mirror belongs to, never its default branch, no tags,
+// no deletes, no forced pushes.
+type PushPolicy struct {
+	// Project is the GitLab project the mirror's remote belongs to.
+	Project string
+	// DefaultBranch is the project's default branch.
+	DefaultBranch string
+	// URL is the project's repository URL (GitLab's http_url_to_repo): a
+	// push to a mirror whose origin is another URL is refused.
+	URL string
+}
+
+// homePushPolicy is the push policy of the home mirror, from the project
+// as GitLab returns it.
+func homePushPolicy(project string, proj *gitlab.Project) *PushPolicy {
+	return &PushPolicy{Project: project, DefaultBranch: proj.DefaultBranch, URL: proj.HTTPURLToRepo}
+}
+
+// checkPush refuses a push the policy does not allow; dst is the
+// destination of the refspec src:dst.
+func (m *Mirror) checkPush(ctx context.Context, src, dst string) error {
+	p := m.Policy
+	project, op := "", "push "+src+":"+dst
+	if p != nil {
+		project = p.Project
+	}
+	refuse := func(reason string) error { return gitlab.Refuse(m.Log, project, op, reason) }
+	if p == nil {
+		return refuse("the mirror has no push policy")
+	}
+	branch := strings.TrimPrefix(dst, "refs/heads/")
+	switch {
+	case src == "" || strings.HasPrefix(src, "+") || strings.HasPrefix(src, "-") || strings.Contains(src, ":"):
+		return refuse("not a plain, unforced push of a commit (a delete, a forced push or a refspec)")
+	case strings.HasPrefix(dst, "refs/") && !strings.HasPrefix(dst, "refs/heads/"),
+		// A tag as the source of a bare destination would create a tag.
+		strings.HasPrefix(src, "refs/") && !strings.HasPrefix(src, "refs/heads/"):
+		return refuse("not a branch (e.g. a tag)")
+	case !gitlab.IsAgentBranch(branch):
+		return refuse("not an " + gitlab.AgentBranchPrefix + " branch")
+	case p.DefaultBranch == "" || branch == p.DefaultBranch:
+		return refuse("the project's default branch, or the default branch is unknown")
+	}
+	url := m.remoteURL
+	if url == "" {
+		// Synced by an earlier process: the mirror's own config says it.
+		url, _ = m.run(ctx, false, "config", "--get", "remote.origin.url")
+	}
+	if p.URL == "" || url != p.URL {
+		return refuse(fmt.Sprintf("the mirror's remote %q is not the project's repository", url))
+	}
+	return nil
 }
 
 // env is deliberately minimal: no GITLAB_TOKEN, no Kubernetes variables, no
@@ -92,6 +155,7 @@ func (m *Mirror) Sync(ctx context.Context, url string, branches ...string) error
 	} else if _, err := m.run(ctx, false, "remote", "set-url", "origin", url); err != nil {
 		return err
 	}
+	m.remoteURL = url
 
 	heads := make([]string, 0, len(branches))
 	for _, b := range branches {
@@ -203,8 +267,11 @@ func (m *Mirror) Push(ctx context.Context, branch string, skipCI bool) error {
 }
 
 // push pushes src to dst, with ci.skip if skipCI. A remote that takes no
-// push options gets a plain push.
+// push options gets a plain push. The policy is checked first (checkPush).
 func (m *Mirror) push(ctx context.Context, src, dst string, skipCI bool) error {
+	if err := m.checkPush(ctx, src, dst); err != nil {
+		return err
+	}
 	if skipCI {
 		_, err := m.run(ctx, true, "push", "--quiet", "-o", "ci.skip", "origin", src+":"+dst)
 		if err == nil || !strings.Contains(err.Error(), "push options") {

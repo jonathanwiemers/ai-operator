@@ -266,7 +266,12 @@ func (r *AgentProjectReconciler) gitlabClient(ctx context.Context, project *aiv1
 	if base == "" {
 		base = "https://gitlab.com"
 	}
-	return r.History.WrapGitLab(r.NewGitLab(spec.GitLab.URL, token), history.Project{
+	// The merge/push guard: the bot's token reaches the whole group, the
+	// operator merges and writes merge requests only at home and in the
+	// valid companion targets.
+	guarded := gitlab.Guard(r.NewGitLab(spec.GitLab.URL, token), gitlab.NewPolicy(spec, r.CrossRepoAllowed),
+		log.FromContext(ctx).WithName("guard"))
+	return r.History.WrapGitLab(guarded, history.Project{
 		Namespace: project.Namespace, Name: project.Name,
 		WebURL: base + "/" + spec.GitLab.Project,
 		Bot:    project.Status.BotUsername,

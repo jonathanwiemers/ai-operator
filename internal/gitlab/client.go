@@ -45,6 +45,7 @@ type API interface {
 	UpdateMergeRequest(ctx context.Context, project string, iid int64, opts UpdateMergeRequestOptions) (*MergeRequest, error)
 	MergeMergeRequest(ctx context.Context, project string, iid int64, opts MergeOptions) (*MergeRequest, error)
 	RebaseMergeRequest(ctx context.Context, project string, iid int64) error
+	DeleteBranch(ctx context.Context, project, branch string) error
 	ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error)
 	ListIssueStateEvents(ctx context.Context, project string, iid int64) ([]StateEvent, error)
 	ListIssueLabelEvents(ctx context.Context, project string, iid int64) ([]LabelEvent, error)
@@ -834,6 +835,12 @@ func (c *Client) MergeMergeRequest(ctx context.Context, project string, iid int6
 
 func (c *Client) RebaseMergeRequest(ctx context.Context, project string, iid int64) error {
 	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/merge_requests/%d/rebase", projectPath(project), iid), nil, nil, nil)
+	return err
+}
+
+// DeleteBranch deletes a branch of the project's repository.
+func (c *Client) DeleteBranch(ctx context.Context, project, branch string) error {
+	_, err := c.do(ctx, http.MethodDelete, fmt.Sprintf("%s/repository/branches/%s", projectPath(project), url.PathEscape(branch)), nil, nil, nil)
 	return err
 }
 

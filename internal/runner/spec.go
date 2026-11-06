@@ -48,6 +48,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 		return nil, s.fail(fmt.Errorf("getting project: %w", err))
 	}
 	s.done("default branch "+proj.DefaultBranch, "defaultBranch", proj.DefaultBranch)
+	r.Mirror.Policy = homePushPolicy(glProject, proj)
 	if err := r.syncWorkspace(ctx, proj.HTTPURLToRepo, proj.DefaultBranch, proj.DefaultBranch, nil); err != nil {
 		return nil, err
 	}

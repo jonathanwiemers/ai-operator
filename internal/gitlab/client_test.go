@@ -284,11 +284,15 @@ func TestMergeRequestActions(t *testing.T) {
 	if err := c.RebaseMergeRequest(ctx, "g/p", 3); err != nil {
 		t.Fatal(err)
 	}
+	if err := c.DeleteBranch(ctx, "g/p", "agent/3-x"); err != nil {
+		t.Fatal(err)
+	}
 	want := []call{
 		{method: "GET", path: "/api/v4/projects/g%2Fp/merge_requests/3", query: "include_rebase_in_progress=true"},
 		{method: "PUT", path: "/api/v4/projects/g%2Fp/merge_requests/3", body: map[string]any{"title": "Ready"}},
 		{method: "PUT", path: "/api/v4/projects/g%2Fp/merge_requests/3/merge", body: map[string]any{"sha": "abc", "should_remove_source_branch": true}},
 		{method: "PUT", path: "/api/v4/projects/g%2Fp/merge_requests/3/rebase"},
+		{method: "DELETE", path: "/api/v4/projects/g%2Fp/repository/branches/agent%2F3-x"},
 	}
 	if len(calls) != len(want) {
 		t.Fatalf("calls %+v", calls)

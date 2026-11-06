@@ -354,6 +354,22 @@ func (r *Runner) publish(ctx context.Context, branch, base string, skipCI bool) 
 	return true, nil
 }
 
+// guardedGitLab is the GitLab client of the task's runs, behind the
+// merge/push guard: the home project and, if the task has one, its
+// companion as the only target. The operator wrote spec.companion only for
+// a target the cluster allows, so its project is the allow-list here;
+// NewPolicy still drops the home project and the never-targets.
+func (r *Runner) guardedGitLab(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask) gitlab.API {
+	var allowed []string
+	var companion *aiv1.CompanionSpec
+	if task != nil && task.Spec.Companion != nil {
+		companion = task.Spec.Companion
+		allowed = []string{companion.Project}
+	}
+	policy := gitlab.NewPolicy(spec, allowed).ForCompanion(companion)
+	return gitlab.Guard(r.NewGitLab(spec.GitLab.URL, r.GitLabToken), policy, r.Log.WithName("guard"))
+}
+
 // Loop processes chat turns and run requests until ctx is cancelled.
 func (r *Runner) Loop(ctx context.Context) error {
 	interval := r.PollInterval
@@ -480,7 +496,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	r.projectSpec = spec
 	r.logPrompts = spec.Agents.LogPrompts
 	r.pilot = pilotAddressed(project, spec)
-	gl := r.NewGitLab(spec.GitLab.URL, r.GitLabToken)
+	gl := r.guardedGitLab(spec, task)
 	var out *Outcome
 	var block aiv1.BlockReason
 	switch {

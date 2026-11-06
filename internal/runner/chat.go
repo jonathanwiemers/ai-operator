@@ -211,7 +211,7 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 		// The pilot answers from the milestone as it is now, not as its
 		// session last saw it. Read before the interrupt watcher starts, so an
 		// interrupt cannot cancel a prompt that has not started yet.
-		state, _, serr := r.pilotState(ctx, r.NewGitLab(spec.GitLab.URL, r.GitLabToken), task, project, spec)
+		state, _, serr := r.pilotState(ctx, r.guardedGitLab(spec, task), task, project, spec)
 		if serr != nil {
 			r.Log.Info("pilot chat without the milestone state", "error", serr.Error())
 		}
@@ -439,10 +439,13 @@ func (r *Runner) publishChatTurn(ctx context.Context, msg aiv1.ChatMessage) (str
 	}
 	base := "main"
 	if r.NewGitLab != nil {
-		gl := r.NewGitLab(spec.GitLab.URL, r.GitLabToken)
+		gl := r.guardedGitLab(spec, task)
 		if proj, err := gl.GetProject(ctx, spec.GitLab.Project); err == nil && proj.DefaultBranch != "" {
 			base = proj.DefaultBranch
+			r.Mirror.Policy = homePushPolicy(spec.GitLab.Project, proj)
 		}
+		// Otherwise the policy of an earlier run in this pod, if any: without
+		// one the push is refused.
 	}
 	pushed, err := r.publish(ctx, branch, base, false)
 	if err != nil || !pushed {
