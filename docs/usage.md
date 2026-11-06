@@ -1422,7 +1422,7 @@ poll. Merged and skipped issues have no budget any more.
 An issue can change one **companion repository** besides its own project
 (the design: [specs/cross-repo-changes.spec.md](specs/cross-repo-changes.spec.md)).
 The project must be one of the AgentProject's valid `spec.crossRepo.targets`
-(see [configuration.md](configuration.md), allowed by the cluster's
+(see [configuration.md](configuration.md#speccrossrepo), allowed by the cluster's
 `crossRepo.allowedProjects`). Which issue gets one is decided per issue:
 
 - **The milestone line** `/agent repo <project> [merge]` (a full path such as

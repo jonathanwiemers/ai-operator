@@ -900,6 +900,73 @@ run on full syncs, so they can be up to
 [chart values](../charts/ai-operator/README.md#values)); it serves on the
 leader only.
 
+## `spec.crossRepo`
+
+The companion repositories the project's issues may change in the same run
+as their home change, see [usage.md](usage.md#companion-repository) and
+the design in [design.md](design.md#cross-repo). Three gates must all
+agree: the cluster allows the project, the AgentProject names it here, and
+a milestone line `/agent repo <project> [merge]` (or an owner's
+`/agent repo <project>` on the issue) gives it to an issue.
+
+```yaml
+spec:
+  crossRepo:
+    targets:
+      - project: my-group/infra/cluster
+        paths:
+          - clusters/netcup01/applications/ai-operator/
+        autoMerge: true
+        # tokenSecretRef: {name: gitlab-infra, key: token}
+```
+
+`targets[]` (at least one):
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `project` | – | the companion's full path, e.g. `my-group/infra/cluster` (compared case-insensitively, without leading or trailing `/`) |
+| `paths` | – | gitignore-style allow-list of the paths a companion change may touch (at least one pattern): `*` and `?` within a segment, `**` for any number of segments, a trailing `/` for a directory (everything under it), a leading or inner `/` anchors to the root, a pattern without one matches a name at any depth. Refused: `!` negation, absolute paths, `.` and `..`, character classes (`[`, `]`), backslashes, a leading `#`, surrounding whitespace |
+| `autoMerge` | `false` | the ceiling for autopilot: only with it may a milestone line `/agent repo <project> merge` let autopilot merge the companion's merge request. Otherwise the owners are asked to merge it |
+| `tokenSecretRef` | `spec.gitlab.tokenSecretRef` | `{name, key}` of a Secret in the AgentProject's namespace with the token for the companion project. It goes into the runner container only (`GITLAB_COMPANION_TOKEN`), never into the agent container |
+
+A target is **dropped** when:
+
+- cross-repo changes are off in the cluster (`--cross-repo-allowed-projects`
+  is empty), or the project is not in that list;
+- the project is the home project (`spec.gitlab.project`), or
+  `jo.wiemers/personal/kubernetes`, which is never a valid target;
+- it repeats an earlier target's project;
+- `paths` is empty, a pattern does not compile, or a pattern matches
+  `.gitlab-ci.yml`, anything under `.gitlab/`, or the whole tree (a
+  top-level file or a file in any top-level directory, e.g. `*` or `**`).
+
+The condition `CrossRepoReady` tells how it went: `True` with reason
+`TargetsValid`, or `False` with reason `InvalidTargets` and the message
+`dropped: <project>: <why>; …`, one entry per reason. It is absent without
+`spec.crossRepo`. The valid targets still work; a dropped target is used
+nowhere (no milestone line, label, token or guard permission counts for
+it). The runner itself refuses a companion change outside `paths`, in
+`.gitlab-ci.yml`, `.gitlab/` or `.gitmodules`, with a symlink or submodule,
+or over 1 MiB of new files, see
+[usage.md](usage.md#companion-repository).
+
+**Cluster settings.** Two operator flags, set by the chart (see the
+[chart values](../charts/ai-operator/README.md#values)):
+
+| Flag | Helm value | Default | Description |
+|------|------------|---------|-------------|
+| `--cross-repo-allowed-projects` | `crossRepo.allowedProjects` (a list, joined with `,`) | empty | comma separated full paths of the projects AgentProjects may name in `spec.crossRepo.targets`. Empty turns cross-repo changes off: every target is dropped |
+| `--self-project` | `selfProject` | empty | full path of the GitLab project this operator is built from, e.g. `my-group/ai-operator`. A companion of one of its merge requests [lands](usage.md#landing) once the running operator's version is at least the first release tag that contains the merge. Empty: that project's companions follow the tag rule like any other project's |
+
+**The build version.** The operator knows its release from the build:
+the Dockerfile's `ARG VERSION` (default `dev`) is linked in as
+`main.version` (`-ldflags "-X main.version=…"`), and the release jobs set it
+to the calendar version (`YEAR.MONTH.N`, see
+[releasing.md](releasing.md)). The operator logs it at start
+(`ai-operator starting`, `version`, `selfProject`). A `dev` build never
+counts as a release, so the companions of `--self-project` wait until a
+released operator runs.
+
 ## Other `spec` fields
 
 | Field | Default | Description |

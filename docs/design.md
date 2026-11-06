@@ -1844,6 +1844,196 @@ Things to keep in mind with subscriptions:
 * With a subscription the reported cost is the notional API price. It is
   still useful to compare tasks and roles.
 
+## Cross-repo
+
+An issue can change one **companion repository** besides its home project
+(the AgentProject's `spec.gitlab.project`) in the same run and the same
+agent session: typically a feature here plus the infra config that turns it
+on. The spec with the options and trade-offs is
+[specs/cross-repo-changes.spec.md](specs/cross-repo-changes.spec.md); how
+it is used: [usage.md](usage.md#companion-repository).
+
+**The companion checkout in the home task (option A).** The issue's pod
+gets a second mirror and checkout, the one implementer session edits both
+trees, and the reviewers see both diffs. The companion project has no
+AgentProject and no runs of its own: an infra repository whose `main` Flux
+applies to production should not get one. Big two-sided work keeps using
+two AgentProjects with issues linked `is_blocked_by`; there is no
+coordinator across AgentProjects. **One companion per issue.**
+
+**Three gates, all required.** Nothing about a companion is decided by a
+model.
+
+1. The cluster: `--cross-repo-allowed-projects` (Helm
+   `crossRepo.allowedProjects`), empty by default, which turns the feature
+   off.
+2. The AgentProject: `spec.crossRepo.targets[]` with `project`, `paths`
+   (the allow-list), `autoMerge` (the ceiling for autopilot, default
+   `false`) and `tokenSecretRef`. `ValidateCrossRepo`
+   (`api/v1alpha1/crossrepo.go`) drops a target outside the allow-list, the
+   home project, `jo.wiemers/personal/kubernetes`, a repeated one, and one
+   whose `paths` is empty or matches `.gitlab-ci.yml`, `.gitlab/` or the
+   whole tree (`internal/pathspec`); condition `CrossRepoReady` names them
+   (see [configuration.md](configuration.md#speccrossrepo)). Every use of
+   the targets goes through `crossRepoTargets`, so a dropped target counts
+   nowhere.
+3. The issue: a milestone line `/agent repo <path|url> [merge]`
+   (`rules.Repos`, `internal/rules/repo.go`; part of the description hash,
+   so a change re-plans; an ignored line is named once on the tracking
+   issue, `status.autopilot.repoNotices`). The planner sees the lines'
+   targets with their paths and a short tree of the files under them, and
+   sets `repo` on the plan items that need one; `applyPlan` writes the
+   scoped label `agent-repo::<project>`. Outside such a milestone an owner's
+   `/agent repo <project>` or `/agent repo none` (a routing command like
+   `/agent use`, `internal/command/routing.go`, through `commandGate`) sets
+   or clears the label. A label counts under a milestone line for its
+   project, or when an owner or the bot added it (the issue's label events,
+   `syncCompanion` in `internal/controller/repos.go`); otherwise the issue
+   is told once and the label is ignored.
+
+From a label that counts the operator writes `AgentTask.spec.companion`
+(`project`, `paths`, `branch` `agent/<home-slug>-<iid>-<slug>`,
+`autoMerge`); the runner only reads it. `autoMerge` is set only when the
+milestone line has `merge`, the milestone is on autopilot and the target
+has `autoMerge: true`, so a companion an owner gave an issue by command is
+never merged by autopilot.
+
+**Two trees, one trust model.** The runner keeps a second bare mirror
+(`/runner/mirrors/<slug>.git`) and the agent a second checkout
+(`/workspace/repos/<slug>`), moved by git bundle like the home tree; the
+agent server accepts only `/workspace/repo` and `/workspace/repos/<valid
+slug>` (details under [Security](#security)). The implementer's user
+prompt gets a "Companion repository" section, the system prompts are
+unchanged (prompt cache). claude gets `--add-dir`; a cursor implementer is
+routed to the role's claude fallback, else `agents.implement`, with a
+notice (see [configuration.md](configuration.md#fallback-engine)).
+
+**The path check.** Before any push of either tree the runner checks the
+companion range in its own mirror: every path within `paths`, no CI
+configuration, no symlink or submodule, at most 1 MiB of new blobs. A
+violation fails the run and pushes neither tree (details under
+[Security](#security)).
+
+**The companion merge request and the links.**
+
+* The companion branch is pushed from the companion mirror after the home
+  push, and only at the head the check passed (`pushCompanion`,
+  `internal/runner/companionmr.go`). Its merge request is opened as a draft
+  and kept one; the operator alone marks it ready. The links between the two
+  merge requests are lines at the head of the runner's description block
+  ending in `<!-- ai-operator:link -->`; agent prose escapes `<!--`, so it
+  cannot forge or remove one. The companion's description never gets a
+  closing pattern: `#<iid>` there is another project's issue.
+* The reviewers get one input for both trees (`internal/runner/companionreview.go`),
+  with tree headers; the companion is committed before the review loop and
+  after each fix round, and both checkouts are reset after each review. The
+  inline-diff cap applies to the sum of both diffs (both trees fall back to
+  their stat together). The security reviewer's companion note is in its user
+  prompt; system prompts are unchanged. `status.run.companion.reviewedSHA`
+  is set with `status.run.reviewedSHA` when the last review covered the
+  companion. A re-review key (`spec.source.reviewFor`,
+  `RunStatus.ReviewKey`) is `<home>+<companion>` with a pushed companion
+  head; the runner compares it with both remote heads.
+
+**CI and the home gate.**
+
+* The operator follows the companion's pipeline with its guarded client
+  (`internal/controller/ci.go`, `status.ci.companion`) and checks the
+  companion's merge request in the home merge gate
+  (`internal/controller/companion_gate.go`): green, reviewed, open and
+  mergeable, `draft_status` counting as mergeable; one GitLab rebase per
+  companion head (`spec.source.companionRebase`, with the diff hash the
+  review is carried over by), else pause kind `companion`. A rebase in the
+  companion project is a merge request write the guard allows only for a
+  valid target. The fix rounds are shared; `spec.source.ciFixProject` tells
+  the runner which project's jobs to read.
+
+**Landing by rule.** There is no ordering knob: a companion lands after
+its home change is merged and live, decided by operator rules alone
+(`internal/controller/companions.go`). The state lives on the AgentProject
+(`status.companions[]`: home issue, milestone, home merge request and merge
+commit, companion project, merge request and head, `state`, `reason`,
+`release`, `readyAt`, `notifiedAt`, `endedAt`, …), because the home task is
+deleted once its issue closes. `syncCompanions` runs once per poll, before
+the autopilots and before finished tasks are deleted. A task whose home
+merge cannot be checked is kept for the next poll.
+
+* An entry is created for a task with a companion merge request whose home
+  merge request is merged, once per companion project and merge request.
+  The states are `waitingRelease`, `rebasing`, `waitingCI`, `ready`,
+  `merging`, `merged`, `closed` and `blocked` (`LandingState`).
+* `homeLive` decides when the home change is live (live detection):
+  * a home merge that touches only `docs/**` and `*.md` is live at merge
+    (`docsOnly`);
+  * the home project is `--self-project`: the running operator's
+    `main.version` (the build version) is at least the smallest calendar
+    tag that contains the merge commit
+    (`commits/:sha/refs?type=tag`); a `dev` build is never live;
+  * else, a project that tags its default branch (one of its 20 newest tags
+    points to a merge commit from the last 30 days): once a tag contains
+    the merge commit;
+  * else: merged is enough.
+* Then the operator rebases the companion if GitLab asks for it, once per
+  entry (a conflict blocks it, which pauses with `companion`). A new head
+  counts only if its change hashes like the head recorded at the home
+  merge. It then needs a green pipeline on that head and a mergeable
+  `detailed_merge_status`, and the entry is `ready`.
+
+**Who merges.**
+
+* Who merges a ready entry (`internal/controller/companions_merge.go`):
+  `mergeSwitches` re-reads the milestone (`GetMilestone` by the entry's
+  `milestoneID`) and needs the entry's `autoMerge`, the milestone's
+  `/agent repo <project> merge` line, its autopilot marker
+  (`milestoneSelection`) and a valid target with `autoMerge`, the same
+  check the guard's policy is built from, so the guard never refuses in
+  normal operation. With all of them the entry is `merging`: mark ready,
+  one merge request pipeline if the head has none (only a 400/422 answer
+  counts as "none possible", and even then it waits
+  `ci.noPipelineTimeout`; 401/403 go to the owners, anything else is
+  retried), merge with the checked
+  `sha`, then the default branch's pipeline of `mergeSHA` decides `merged`
+  or `blocked`. GitLab refusing the merge sends it back to the ready checks
+  once (`mergeRefusals`), then blocks it until a resume. Without them
+  (`askOwners`) the merge request is marked ready, gets one comment with
+  the owners (the spec task's, else the entry's, else `notify.users` or
+  the default owners) and one reminder after 7 days; `autoMerge` is
+  cleared so the Desk's Inbox item (`ready`, no `autoMerge`, `notifiedAt`)
+  stays stable. A merge or close by hand ends the entry in any state. No
+  history events: they come from AgentTask status diffs, and the entries
+  live on the AgentProject.
+* A `blocked` entry pauses its autopilot milestone with kind `companion`
+  (about no issue, `pausedFor` 0). The autopilot lifts that pause when no
+  entry of the milestone is blocked any more, and `resume` resets the
+  blocked entries for one more rebase and merge (an entry autopilot merged
+  onto a red default branch is recorded as merged). The autopilot stays the only writer
+  of `status.autopilot`. Outside autopilot, a blocked companion gets one
+  comment per block.
+
+**The queue.**
+
+* The queue (`internal/controller/companions_queue.go`): the next issue
+  does not wait for a companion to land, except that `startable` holds an
+  issue whose companion is on project P (its task's `spec.companion`, else
+  its `agent-repo::P` label under a milestone line for P) while another
+  companion on P from the same milestone is open: an entry of the
+  milestone that has not ended, or another queued issue's
+  `status.run.companion` merge request that is not recorded yet and open
+  in GitLab. The hold is named on the pending issue's line of the tracking
+  issue (`<project>!<iid>`). One that lands by rule (an entry, or the
+  companion of the active or a merged issue) is a wait, not a pause: with
+  nothing else startable the autopilot keeps running, and `unstick` lifts
+  a stuck pause for it. The open companion of a skipped issue never lands
+  without its home merge, so an issue it holds counts towards a `stuck`
+  pause.
+* `done` keeps the phase `Running` while the milestone has entries that
+  have not ended (or a merged issue's companion is not recorded yet), and
+  names them once per change of the set on the tracking issue
+  (`status.autopilot.closeWaitsForCompanions`). The phase becomes `Done`
+  once they are merged or closed. `closeMilestone` checks the entries
+  again (one recorded after done, its issue finished by hand) and does not
+  close the milestone while there are any.
+
 ## Security
 
 The threat model: the model can do anything a shell in the agent container
@@ -1935,108 +2125,32 @@ flowchart LR
   that cannot run refuses too. Only the head this run imported is checked,
   so a `refs/heads/<branch>` an earlier run left in the mirror does not
   count.
-* The companion branch is pushed from the companion mirror after the home
-  push, and only at the head the check passed (`pushCompanion`,
-  `internal/runner/companionmr.go`). Its merge request is opened as a draft
-  and kept one; the operator alone marks it ready. The links between the two
-  merge requests are lines at the head of the runner's description block
-  ending in `<!-- ai-operator:link -->`; agent prose escapes `<!--`, so it
-  cannot forge or remove one. The companion's description never gets a
-  closing pattern: `#<iid>` there is another project's issue.
-* The reviewers get one input for both trees (`internal/runner/companionreview.go`),
-  with tree headers; the companion is committed before the review loop and
-  after each fix round, and both checkouts are reset after each review. The
-  inline-diff cap applies to the sum of both diffs (both trees fall back to
-  their stat together). The security reviewer's companion note is in its user
-  prompt; system prompts are unchanged. `status.run.companion.reviewedSHA`
-  is set with `status.run.reviewedSHA` when the last review covered the
-  companion. A re-review key (`spec.source.reviewFor`,
-  `RunStatus.ReviewKey`) is `<home>+<companion>` with a pushed companion
-  head; the runner compares it with both remote heads.
 * A task that lost `spec.companion` while `status.run.companion` still
   records its merge request keeps the companion token and the guard's target
   (merges refused) until a run has closed it, if the project is still a
   valid target.
-* The operator follows the companion's pipeline with its guarded client
-  (`internal/controller/ci.go`, `status.ci.companion`) and checks the
-  companion's merge request in the home merge gate
-  (`internal/controller/companion_gate.go`): green, reviewed, open and
-  mergeable, `draft_status` counting as mergeable; one GitLab rebase per
-  companion head (`spec.source.companionRebase`, with the diff hash the
-  review is carried over by), else pause kind `companion`. A rebase in the
-  companion project is a merge request write the guard allows only for a
-  valid target. The fix rounds are shared; `spec.source.ciFixProject` tells
-  the runner which project's jobs to read.
-* After the home merge, the companion lands by rule
-  (`internal/controller/companions.go`). The state lives on the AgentProject
-  (`status.companions`), because the home task is deleted once its issue
-  closes. `syncCompanions` runs once per poll, before the autopilots and
-  before finished tasks are deleted. A task whose home merge cannot be
-  checked is kept for the next poll.
-  * An entry is created for a task with a companion merge request whose home
-    merge request is merged, once per companion project and merge request.
-  * `homeLive` decides when the home change is live: a docs-only home merge
-    at once; `--self-project` once the running operator's `main.version` is
-    at least the smallest calendar tag that contains the merge commit (the
-    commit refs API); a project that tags its default branch (a recent tag on
-    a merge commit) once a tag contains it; any other project at merge.
-  * Then the operator rebases the companion once per entry. A new head counts
-    only if its change hashes like the head recorded at the home merge. It
-    then needs a green pipeline and a mergeable status, and the entry is
-    `ready`.
-  * Who merges a ready entry (`internal/controller/companions_merge.go`):
-    `mergeSwitches` re-reads the milestone (`GetMilestone` by the entry's
-    `milestoneID`) and needs the entry's `autoMerge`, the milestone's
-    `/agent repo <project> merge` line, its autopilot marker
-    (`milestoneSelection`) and a valid target with `autoMerge`, the same
-    check the guard's policy is built from, so the guard never refuses in
-    normal operation. With all of them the entry is `merging`: mark ready,
-    one merge request pipeline if the head has none (only a 400/422 answer
-    counts as "none possible", and even then it waits
-    `ci.noPipelineTimeout`; 401/403 go to the owners, anything else is
-    retried), merge with the checked
-    `sha`, then the default branch's pipeline of `mergeSHA` decides `merged`
-    or `blocked`. GitLab refusing the merge sends it back to the ready checks
-    once (`mergeRefusals`), then blocks it until a resume. Without them
-    (`askOwners`) the merge request is marked ready, gets one comment with
-    the owners (the spec task's, else the entry's, else `notify.users` or
-    the default owners) and one reminder after 7 days; `autoMerge` is
-    cleared so the Desk's Inbox item (`ready`, no `autoMerge`, `notifiedAt`)
-    stays stable. A merge or close by hand ends the entry in any state. No
-    history events: they come from AgentTask status diffs, and the entries
-    live on the AgentProject.
-  * A `blocked` entry pauses its autopilot milestone with kind `companion`
-    (about no issue, `pausedFor` 0). The autopilot lifts that pause when no
-    entry of the milestone is blocked any more, and `resume` resets the
-    blocked entries for one more rebase and merge (an entry autopilot merged
-    onto a red default branch is recorded as merged). The autopilot stays the only writer
-    of `status.autopilot`. Outside autopilot, a blocked companion gets one
-    comment per block.
-  * The queue (`internal/controller/companions_queue.go`): the next issue
-    does not wait for a companion to land, except that `startable` holds an
-    issue whose companion is on project P (its task's `spec.companion`, else
-    its `agent-repo::P` label under a milestone line for P) while another
-    companion on P from the same milestone is open: an entry of the
-    milestone that has not ended, or another queued issue's
-    `status.run.companion` merge request that is not recorded yet and open
-    in GitLab. The hold is named on the pending issue's line of the tracking
-    issue (`<project>!<iid>`). One that lands by rule (an entry, or the
-    companion of the active or a merged issue) is a wait, not a pause: with
-    nothing else startable the autopilot keeps running, and `unstick` lifts
-    a stuck pause for it. The open companion of a skipped issue never lands
-    without its home merge, so an issue it holds counts towards a `stuck`
-    pause.
-  * `done` keeps the phase `Running` while the milestone has entries that
-    have not ended (or a merged issue's companion is not recorded yet), and
-    names them once per change of the set on the tracking issue
-    (`status.autopilot.closeWaitsForCompanions`). The phase becomes `Done`
-    once they are merged or closed. `closeMilestone` checks the entries
-    again (one recorded after done, its issue finished by hand) and does not
-    close the milestone while there are any.
 
-**Merge/push guard.** The bot's token usually reaches far more than the
-AgentProject's own project (e.g. as a group Maintainer), so the operator and
-the runner restrict themselves (`internal/gitlab/guard.go`):
+**What the agent can read across repositories.** With a companion, the
+agent container holds a full checkout of the companion's default branch and
+branch, and the reviewers read its diff. That is accepted only for
+repositories without plaintext secrets: an infra repository with
+SealedSecrets (encrypted, decryptable only in the cluster) and the public
+sealing certificate qualifies. A target's `paths` limit what the agent may
+**change**, not what it can read: the whole checkout is in the container.
+`jo.wiemers/personal/kubernetes` (its tfvars hold live secrets) is never a
+valid target (`NeverTargets`), even when the cluster's allow-list names it,
+so no pod ever gets a checkout or a token for it. The agent container still
+gets no GitLab token for either project, and companion trees move by git
+bundle only. Agent prose in a merge request description cannot forge or
+remove the links between home and companion merge requests (see
+[Cross-repo](#cross-repo)).
+
+**Merge/push guard.** The bot `operator-ai` stays **Maintainer on the
+`jo.wiemers` group**, and all AgentProjects share its token: it could merge
+into `infra/cluster`'s `main` or read `jo.wiemers/personal/kubernetes`.
+Changing the bot's memberships, a second seat or project access tokens are
+not options on the Free plan, so the gates live in the operator and the
+runner, which restrict themselves (`internal/gitlab/guard.go`):
 
 * Their GitLab clients are wrapped by `gitlab.Guard` with a policy built
   only from `spec.gitlab.project` and the targets `ValidateCrossRepo`
@@ -2060,7 +2174,11 @@ the runner restrict themselves (`internal/gitlab/guard.go`):
   removes carries `Agent-Checkpoint`.
 
 A refusal is a `*gitlab.GuardError`, which is not retried, and is logged at
-info with `project`, `op` and `reason`.
+info with `project`, `op` and `reason`. Every refusal has a unit test
+(`internal/gitlab/guard_test.go` for the wrapper,
+`TestMirrorRefusesPushes` in `internal/runner/git_test.go` for the mirror): a merge in a project that is no target,
+a merge in a target without `autoMerge`, a push to a default branch or to a
+branch outside `agent/`.
 
 **Read-only roles are no sandbox.** Reviewers, the planner and the describer
 run read-only: claude with a tool allow-list, cursor-agent without `--force`
@@ -2111,7 +2229,9 @@ after every read-only run); the boundary is the agent container itself.
   see the item above.
 * Use a project access token (role Developer, scopes `api`,
   `write_repository`) and protect the default branch – the agent only pushes
-  `agent/*` branches and opens draft MRs.
+  `agent/*` branches and opens draft MRs. Where that is not possible (a bot
+  account with wider rights, as on GitLab Free), the
+  [merge/push guard](#security) is what keeps the operator to its projects.
 
 **Web UI.** The optional UI runs as its own Deployment with a service
 account that can only read AgentProjects and AgentTasks (and AgentResearches;
@@ -2216,6 +2336,11 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/ui/research.go`, `oneoff.go`, `features.go` | the UI's research API: features, read endpoints and search, one-off create and delete |
 | `hack/research-migrate`, `hack/research-seed.sql` | `make research-seed`: a local database with seeded results for the UI's research pages |
 | `internal/gitlab` | minimal REST client with retries; `gitlabfake` for tests |
+| `internal/gitlab/guard.go` | the merge/push guard around the GitLab client |
+| `api/v1alpha1/crossrepo.go`, `internal/pathspec` | cross-repo: `spec.crossRepo` targets, `ValidateCrossRepo`, `NeverTargets`, the `status.companions` types; the gitignore-style matcher of `paths` |
+| `internal/rules/repo.go`, `internal/command/routing.go`, `internal/controller/repos.go` | the `/agent repo` milestone line, the owner command, the `agent-repo::` label rule and `AgentTask.spec.companion` |
+| `internal/runner/companion*.go` | the companion mirror and checkout, the path check, the companion push and merge request, the combined reviewer diff |
+| `internal/controller/companion_gate.go`, `companions.go`, `companions_merge.go`, `companions_queue.go` | the companion in the home merge gate, landing by rule, who merges, the queue rule |
 | `internal/e2e` | end-to-end tests over the exported operator, runner and UI APIs: fake Kubernetes, `gitlabfake.Projects` with local bare git remotes, a scripted engine and a fake clock, stepped poll by poll (a companion milestone with and without `merge`, a path violation) |
 | `internal/ui` | web UI server: OIDC login, CEL claim mapping, access rules, session cookies, JSON API, change events |
 | `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app` |

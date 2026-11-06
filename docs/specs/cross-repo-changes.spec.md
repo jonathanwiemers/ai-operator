@@ -268,3 +268,28 @@ End to end
   pipeline after a companion merge pauses the milestone with `companion`.
 - The Desk shows each companion's state on its issue, and Spend attributes
   its cost to the home issue.
+
+## Merge requests
+
+The merge requests of this milestone, in merge order (from the git log; the
+squash commits carry no MR number, so each line names its commit on `main`).
+
+| Req | Title | Commit | Status |
+|---|---|---|---|
+| R1 | Spec copy + R1: `CrossRepoSpec` on AgentProject, `--cross-repo-allowed-projects`, validation and `CrossRepoReady` | `0fd705b` | merged |
+| R2 (1/2) | `/agent repo` milestone line, owner command, `agent-repo` label rule and `AgentTask.spec.companion` | `18b85ba` | merged |
+| R2 (2/2) | planner sees the milestone's companion targets and sets `repo` on plan items; `applyPlan` writes `agent-repo` | `6b07431` | merged |
+| R7 | merge/push guard in the GitLab wrapper and the mirror | `360d5a1` | merged |
+| R3 (1/2) | companion mirror and checkout, agent-server path rules, companion token | `fbfb0bd` | merged |
+| R3 (2/2) | Companion repository prompt section, claude `--add-dir` and cursor rerouting | `68b0339` | merged |
+| R4 | companion path check in the runner's mirror; a violation pushes neither tree | `f3b6608` | merged |
+| R5 (1/2) | companion push and draft MR, links both ways, `status.run.companion`, close on removal | `a452933` | merged |
+| R5 (2/2) | combined reviewer diff with tree headers, security reviewer note, companion `reviewedSHA` | `7e595dd` | merged |
+| R6 | companion pipeline in the CI loop, shared fix rounds, home merge gate checks, pause kind `companion` | `82f4e39` | merged |
+| R8 (1/2) | `status.companions` and the landing readiness rules (live detection, docs-only, rebase once) | `7a6093d` | merged |
+| R8 (2/2) | who merges a ready companion: autopilot with three switches, else owners once plus a reminder | `83be201` | merged |
+| R9 | queue rule for companions on one project, `closeWaitsFor` with open companions, retrospective list | `b375e2e` | merged |
+| R10 (1/2) | companion in the Desk API views, Inbox kind `companionReady`, pilot state, Spend marker | `887b08a` | merged |
+| R10 (2/2) | Desk companion chip, milestone panel list, Inbox `companionReady` and the companion pause card | `b950db7` | merged |
+| R12 | fake-GitLab end-to-end test of a companion milestone, with and without merge | `6345ae0` | merged |
+| R11 | docs pass: Cross-repo in design.md, `spec.crossRepo` in configuration.md, this list | [!238](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/238) | open |
