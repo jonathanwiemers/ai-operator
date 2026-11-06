@@ -573,6 +573,72 @@ func TestAutopilotRebaseKeepsTheReviewOnlyForTheSameChange(t *testing.T) {
 	}
 }
 
+func TestAutopilotRebasePauseEndsOnceTheNewHeadIsReviewedAndGreen(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "need_rebase"
+	e.reconcile() // rebase requested
+	e.gl.MRDiffs = map[int64][]gitlab.Diff{1: {{OldPath: "app.go", NewPath: "app.go", Diff: "@@ -1 +1 @@\n-old\n+adapted by the rebase\n"}}}
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseMergeRequest || !ap.ResumeWhenReady {
+		t.Fatalf("a changed diff pauses until a run settles it: %+v", ap)
+	}
+	head := e.gl.MRs[1].SHA
+	task := e.tasks()[name]
+	if task.Spec.Source.ReviewFor != head || !task.RunPending() || !e.gl.Issues[1].HasLabel("agent::working") {
+		t.Fatalf("the reviewers must be asked for the new head %s: %+v, %v", head, task.Spec, e.gl.Labels(1))
+	}
+	// The status still shows the reviewed, green head from before the rebase:
+	// it says nothing about the MR's head now.
+	e.gl.SetLabels(1, "ai-generated", "agent::review")
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.Run.ObservedRunRequest = task.Spec.RunRequest })
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || len(e.gl.Merged) != 0 {
+		t.Fatalf("the old head's review must not end the pause: %+v, merged %v", ap, e.gl.Merged)
+	}
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.Run.PushedSHA, s.Run.ReviewedSHA = head, head
+		s.CI = &aiv1.CIStatus{SHA: head, State: aiv1.CIStateSuccess}
+	})
+	e.gl.MRs[1].DetailedMergeStatus = "mergeable"
+	e.reconcile()
+	if !slices.Equal(e.gl.Merged, []int64{1}) {
+		t.Fatalf("reviewed and green, it goes on by itself: %v, %+v", e.gl.Merged, e.autopilot())
+	}
+}
+
+// One open merge request per project: an older open milestone lets the active
+// issue finish and holds the next one back, also while it is paused.
+func TestOlderMilestoneHoldsTheNextIssue(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile() // #1 starts before the older milestone is selected
+	e.gl.Milestones = append(e.gl.Milestones, turnMilestone(2, "/agent autopilot\nOlder."))
+	e.reconcile()
+	e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "mergeable"
+	e.reconcile()
+	e.reconcile()
+	ap := e.specFor(3).Status.Autopilot
+	if !slices.Equal(e.gl.Merged, []int64{1}) || ap.Items[1].State != aiv1.AutopilotItemPending || e.gl.Issues[2].HasLabel("agent::ready") {
+		t.Fatalf("#1 finishes, #2 waits: merged %v, %+v, %v", e.gl.Merged, ap, e.gl.Labels(2))
+	}
+	if d := e.gl.Issues[ap.TrackingIssueIID].Description; !strings.Contains(d, "waiting for its turn: %2 go first") {
+		t.Fatalf("the tracking issue must say why nothing moves: %s", d)
+	}
+	e.setPhase(2, aiv1.AutopilotPaused)
+	e.reconcile()
+	if ap := e.specFor(3).Status.Autopilot; ap.Items[1].State != aiv1.AutopilotItemPending {
+		t.Fatalf("a paused older milestone still holds: %+v", ap)
+	}
+	e.setPhase(2, aiv1.AutopilotDone)
+	e.reconcile()
+	if ap := e.specFor(3).Status.Autopilot; ap.Items[1].State != aiv1.AutopilotItemActive {
+		t.Fatalf("%%2 done: #2 starts: %+v", ap)
+	}
+}
+
 // mergeBaseRequested reports whether the next run of #1 merges the default
 // branch for head sha, and the issue went back to working.
 func mergeBaseRequested(e *projectEnv, name, sha string) bool {

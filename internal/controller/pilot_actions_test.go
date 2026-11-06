@@ -322,7 +322,10 @@ func TestPilotLegacyYesOnAnIssueRunsAtTheEndOfThePoll(t *testing.T) {
 }
 
 func TestPilotActionValidation(t *testing.T) {
-	tasks := map[int64]*aiv1.AgentTask{1: {Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha1"}}}, 2: {}}
+	tasks := map[int64]*aiv1.AgentTask{1: {Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha1"}}}, 2: {},
+		3: {Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha1", ReviewedSHA: "sha1", LastResult: aiv1.RunResultSucceeded}}},
+		4: {Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha1", ReviewedSHA: "sha1", LastResult: aiv1.RunResultSucceeded, ReviewErrors: 1}}},
+		5: {Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha1", ReviewedSHA: "sha1", LastResult: aiv1.RunResultFailed}}}}
 	for _, tc := range []struct {
 		a    aiv1.PilotAction
 		want string
@@ -333,6 +336,10 @@ func TestPilotActionValidation(t *testing.T) {
 		{aiv1.PilotAction{Tool: "close", IssueIID: 1}, "not a tool"},
 		{aiv1.PilotAction{Tool: "push", IssueIID: 1}, "not a tool"},
 		{aiv1.PilotAction{Tool: "reReview", IssueIID: 2}, "no pushed head"},
+		{aiv1.PilotAction{Tool: "reReview", IssueIID: 1}, ""},
+		{aiv1.PilotAction{Tool: "reReview", IssueIID: 3}, "already reviewed"},
+		{aiv1.PilotAction{Tool: "reReview", IssueIID: 4}, ""},
+		{aiv1.PilotAction{Tool: "reReview", IssueIID: 5}, ""},
 		{aiv1.PilotAction{Tool: "instruct", IssueIID: 1, Kind: "merge !9"}, "not a kind of instruction"},
 		{aiv1.PilotAction{Tool: "instruct", IssueIID: 1, Kind: "rerun"}, ""},
 		{aiv1.PilotAction{Tool: "openIssue"}, "needs a title"},

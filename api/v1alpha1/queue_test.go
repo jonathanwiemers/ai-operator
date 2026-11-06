@@ -17,12 +17,21 @@ func TestQueueLess(t *testing.T) {
 		}
 		return t
 	}
+	review := func(name string, milestone int64, reviewedFor string) *AgentTask {
+		t := task(name, "", milestone, 0)
+		t.Spec.Source.ReviewFor, t.Status.Run.PushedSHA, t.Status.Run.ReviewedFor = "sha", "sha", reviewedFor
+		return t
+	}
 	tests := []struct {
 		name string
 		a, b *AgentTask
 	}{
 		{"urgent before no milestone", task("a", QueueLaneUrgent, 9, time.Hour), task("b", "", 0, 0)},
 		{"urgent before the oldest milestone", task("a", QueueLaneUrgent, 9, time.Hour), task("b", "", 1, 0)},
+		{"urgent before a review-only run", task("a", QueueLaneUrgent, 9, time.Hour), review("b", 1, "")},
+		{"review-only run before no milestone", review("a", 9, ""), task("b", "", 0, 0)},
+		{"review-only run before an older milestone", review("a", 9, ""), task("b", "", 1, 0)},
+		{"a review already done ranks normally", task("a", "", 1, 0), review("b", 9, "sha")},
 		{"no milestone before a milestone", task("a", "", 0, time.Hour), task("b", "", 1, 0)},
 		{"older milestone first", task("a", "", 6, time.Hour), task("b", "", 9, 0)},
 		{"same milestone, older task first", task("a", "", 6, 0), task("b", "", 6, time.Minute)},

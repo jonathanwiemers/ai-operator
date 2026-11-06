@@ -35,7 +35,7 @@ import (
 // The operator only calls the GitLab API here; no model decides whether to
 // merge. State lives in the spec task's status.autopilot, the tracking issue
 // shows it.
-func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, pilot *aiv1.AgentTask, lane bool) error {
+func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, pilot *aiv1.AgentTask, lane bool, ahead []int64) error {
 	switch {
 	case st.Spec.Milestone == nil:
 		return nil
@@ -47,7 +47,7 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 	if st.Status.Autopilot != nil {
 		ap = st.Status.Autopilot.DeepCopy()
 	}
-	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, pilotTask: pilot, lane: lane,
+	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, pilotTask: pilot, lane: lane, ahead: ahead,
 		log: log.FromContext(ctx).WithValues("milestone", st.Spec.Milestone.Title)}
 	err := a.sync(ctx)
 	// Save what was done even if a later step failed: its GitLab side
@@ -255,7 +255,11 @@ type autopilot struct {
 	// proj is read once per poll, when needed.
 	proj *gitlab.Project
 	// lane: this milestone drives the main-red issue, mainRed while red.
-	lane    bool
+	lane bool
+	// ahead are the older autopilot milestones of the project still open
+	// (queuedAhead); holding: pick has an issue to start but waits for them.
+	ahead   []int64
+	holding bool
 	mainRed int64
 	// New Desk command answers to write after the autopilot status is
 	// saved (a status patch must not wipe them from the Spec).
@@ -377,7 +381,9 @@ func (a *autopilot) step(ctx context.Context) error {
 // pick activates the next pending issue whose dependencies are merged: the
 // plan's, and open issues it is linked as "blocked by" to in GitLab
 // (Premium), so a link a human adds holds an issue back too (startable).
-// With none, it pauses stuck; unstick lifts that pause.
+// With none, it pauses stuck; unstick lifts that pause. An older open
+// milestone holds the start back: one open merge request per project, so
+// milestones do not rebase each other's reviewed changes away.
 func (a *autopilot) pick(ctx context.Context) error {
 	s, err := a.startable(ctx)
 	if err != nil {
@@ -397,6 +403,10 @@ func (a *autopilot) pick(ctx context.Context) error {
 			return err
 		}
 		it.State = aiv1.AutopilotItemSkipped
+		return nil
+	case it != nil && len(a.ahead) > 0:
+		a.log.Info("autopilot waits for its turn", "issue", it.IID, "behind", a.ahead)
+		a.holding = true
 		return nil
 	case it != nil:
 		a.log.Info("autopilot starts the next issue", "issue", it.IID)
@@ -920,7 +930,7 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 		it.MarkedReady = false
 		return nil
 	case mr.SHA != run.PushedSHA:
-		return a.pauseMR(ctx, it, fmt.Sprintf("the head of !%d (%s) is not the commit the agent pushed and CI checked (%s); someone pushed to the branch. "+
+		return a.pauseHead(ctx, it, fmt.Sprintf("the head of !%d (%s) is not the commit the agent pushed and CI checked (%s); someone pushed to the branch. "+
 			"Comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, short(mr.SHA), short(run.PushedSHA), wf.CommandPrefix, it.IID))
 	case !a.spec.CI.Disabled && task.Status.CI != nil && task.Status.CI.State == aiv1.CIStateNone && !it.MarkedReady:
 		// No pipeline ran, and projects may skip pipelines for drafts (a run
@@ -1076,6 +1086,17 @@ func (a *autopilot) pauseMR(ctx context.Context, it *aiv1.AutopilotItem, reason 
 	return a.pause(ctx, aiv1.PauseMergeRequest, it.IID, a.about(it, reason))
 }
 
+// pauseHead pauses because the MR's head is not the one the run reviewed: a
+// run that takes it over can settle that, then autopilot continues by itself
+// (autoResume).
+func (a *autopilot) pauseHead(ctx context.Context, it *aiv1.AutopilotItem, reason string) error {
+	if err := a.pauseMR(ctx, it, reason); err != nil {
+		return err
+	}
+	a.ap.ResumeWhenReady = a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedFor == it.IID
+	return nil
+}
+
 // pauseRun pauses because of the active issue's run, review or CI, which a
 // later run can fix: then autopilot continues by itself (autoResume).
 func (a *autopilot) pauseRun(ctx context.Context, it *aiv1.AutopilotItem, kind aiv1.PauseKind, reason string) error {
@@ -1090,7 +1111,8 @@ func (a *autopilot) pauseRun(ctx context.Context, it *aiv1.AutopilotItem, kind a
 
 // autoResume ends a pause about the active issue that no longer holds: it was
 // merged or closed by hand, or (for a pause over its run, review or CI) a
-// later run made it pass the gate. If a later run fixed the reason but the
+// later run made it pass the gate; a pauseHead also needs the run to have
+// taken over the MR's head. If a later run fixed the reason but the
 // issue fails the gate for another one, the pause is announced again with
 // that reason. A pause of any other kind waits for "resume".
 func (a *autopilot) autoResume(ctx context.Context) error {
@@ -1147,6 +1169,10 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 				return err
 			}
 			return a.merged(ctx, it, mr)
+		case err == nil && a.ap.PauseKind == aiv1.PauseMergeRequest && task != nil && mr.SHA != task.Status.Run.PushedSHA:
+			// The gate would judge the head before the rebase: no run took
+			// the new one over yet.
+			return nil
 		}
 	}
 	if a.ap.PauseKind == aiv1.PauseCompanion && task != nil {
@@ -1353,7 +1379,7 @@ const rebaseGrace = 5 * time.Minute
 // is done and the change is still the one that was reviewed.
 func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask) error {
 	unrebased := func(reason string) error {
-		if err := a.pauseMR(ctx, it, reason); err != nil {
+		if err := a.pauseHead(ctx, it, reason); err != nil {
 			return err
 		}
 		it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
@@ -1386,8 +1412,19 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 		return err
 	}
 	if diff == "" || diff != it.RebasedDiff {
-		return unrebased(fmt.Sprintf("after the rebase, the change of !%d is not the one that was reviewed (someone pushed, or the rebase changed lines). "+
-			"Comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, a.spec.Workflow.CommandPrefix, it.IID))
+		if err := unrebased(fmt.Sprintf("after the rebase, the change of !%d is not the one that was reviewed (someone pushed, or the rebase changed lines). "+
+			"The reviewers take the new head over and autopilot goes on once it is reviewed and green; "+
+			"or comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, a.spec.Workflow.CommandPrefix, it.IID)); err != nil {
+			return err
+		}
+		var companion string
+		if c := task.Status.Run.Companion; c != nil {
+			companion = c.PushedSHA
+		}
+		if err := a.r.askReview(ctx, task, aiv1.ReviewHeads(mr.SHA, companion)); err != nil {
+			return err
+		}
+		return a.r.requestRun(ctx, a.gl, a.spec, task, it.IID)
 	}
 	a.log.Info("autopilot rebase done, waiting for CI", "mr", mr.IID, "sha", mr.SHA)
 	orig := task.DeepCopy()
@@ -2080,6 +2117,8 @@ func (a *autopilot) renderTracking() string {
 		case len(a.st.Status.Plan) > 0 && len(a.ap.CloseWaitsForCompanions) > 0:
 			fmt.Fprintf(&b, "▶️ running, every issue is through; done once the companions %s have landed (merged or closed).\n",
 				strings.Join(a.ap.CloseWaitsForCompanions, ", "))
+		case a.holding:
+			fmt.Fprintf(&b, "⏳ waiting for its turn: %s go first.\n", milestoneList(a.ahead))
 		case len(a.st.Status.Plan) > 0:
 			b.WriteString("▶️ running.\n")
 		case a.st.RunPending():
@@ -2158,6 +2197,15 @@ func hasAny(is gitlab.Issue, labels ...string) bool {
 		}
 	}
 	return false
+}
+
+// milestoneList renders milestone iids as GitLab references.
+func milestoneList(iids []int64) string {
+	refs := make([]string, len(iids))
+	for i, iid := range iids {
+		refs[i] = fmt.Sprintf("%%%d", iid)
+	}
+	return strings.Join(refs, ", ")
 }
 
 func issueList(iids []int64) string {

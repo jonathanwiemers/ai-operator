@@ -196,6 +196,13 @@ func (s RunStatus) ReviewKey() string {
 	return ReviewHeads(s.PushedSHA, companion)
 }
 
+// FullyReviewed reports whether the last review saw the pushed head and left
+// nothing to look at again: another review cannot change the outcome.
+func (s RunStatus) FullyReviewed() bool {
+	return s.PushedSHA != "" && s.ReviewedSHA == s.PushedSHA && s.LastResult == RunResultSucceeded &&
+		s.ReviewErrors == 0 && s.BlockingFindings == 0 && !s.CompanionUnreviewed()
+}
+
 // CompanionUnreviewed reports whether the companion's pushed head is not
 // the one the last review saw. Without a pushed companion head it is false.
 func (s RunStatus) CompanionUnreviewed() bool {

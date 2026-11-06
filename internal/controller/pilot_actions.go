@@ -114,6 +114,8 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return fmt.Errorf("#%d is not an issue of this milestone with a task", a.IssueIID)
 	case a.Tool == "reReview" && t.Status.Run.PushedSHA == "":
 		return fmt.Errorf("#%d has no pushed head to review", a.IssueIID)
+	case a.Tool == "reReview" && t.Status.Run.FullyReviewed():
+		return fmt.Errorf("the head of #%d is already reviewed, without findings or reviewer errors", a.IssueIID)
 	case a.Tool == "instruct" && a.Text == "" && !slices.Contains(aiv1.PilotInstructKinds, a.Kind):
 		return fmt.Errorf("`%s` is not a kind of instruction", inertLine(a.Kind, 40))
 	}

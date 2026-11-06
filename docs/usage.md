@@ -885,15 +885,19 @@ Each autopilot milestone has its own queue, but all of a project's runs share
 takes it:
 
 1. the fix of a red default branch ([main health](#main-health));
-2. a task without a milestone: an issue somebody labelled by hand;
-3. a task of the **oldest milestone** (lowest milestone number first);
-4. within one rank, the older task.
+2. a run that only reviews a head again: it holds a finished change back from
+   its merge;
+3. a task without a milestone: an issue somebody labelled by hand;
+4. a task of the **oldest milestone** (lowest milestone number first);
+5. within one rank, the older task.
 
-So a milestone is finished before the next one starts, as far as the slot
-allows. A younger milestone still runs in the gaps: while the older one waits
-for CI, is paused (`/agent pause`) or has nothing queued, its task takes the
-slot. To let a younger milestone go first, pause the older one; a run of the
-older milestone that is already queued still goes first. A run in progress is
+Autopilot milestones of a project go **one after another**: a milestone starts
+no new issue while an older autopilot milestone is open (not done, off or
+closed), also while that one is paused. Its active issue finishes, the next one
+waits, and the tracking issue says "⏳ waiting for its turn". So only one merge
+request is open at a time, and merges of one milestone do not rebase a reviewed
+change of another away. The slot stays free while the older milestone waits for
+CI. To let a younger milestone go first, turn the older one off. A run in progress is
 never stopped for a higher rank, and it keeps its place when its pod is lost.
 A chat turn needs a free slot but does not wait for higher ranks, and pilots
 are outside the queue. A queued task says in its message who is ahead of it, for example

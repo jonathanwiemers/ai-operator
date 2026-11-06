@@ -905,7 +905,7 @@ leader only.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `pollInterval` | `1m` | GitLab polling interval (with webhooks receiving, see [`spec.webhook`](#specwebhook)) |
-| `maxConcurrentRuns` | `3` | runs in flight per project; more runs queue, the main-red fix first, then issues without a milestone, then the oldest milestone (see [several milestones at once](usage.md#several-milestones-at-once)). Pilots (`Coordinate` tasks) are not counted and never queue for it. Keep this low on subscriptions, which have usage windows |
+| `maxConcurrentRuns` | `3` | runs in flight per project; more runs queue, the main-red fix first, then review-only runs, then issues without a milestone, then the oldest milestone (see [several milestones at once](usage.md#several-milestones-at-once)). Pilots (`Coordinate` tasks) are not counted and never queue for it. Keep this low on subscriptions, which have usage windows |
 | `suspend` | `false` | stop polling and starting runs |
 | `research` | | research runs of the AgentResearches that reference this project: `writerSecret` (`{name, usernameKey: username, passwordKey: password}`, the database login of their runner, a Secret in this namespace) and `candidates` (`quick`, `deep`: up to 5 `{engine, model, effort}` each, replacing the chart's `research.candidates`), see [research.md](research.md#specresearch-on-agentproject) |
 
