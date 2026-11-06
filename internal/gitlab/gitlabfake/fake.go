@@ -94,6 +94,12 @@ type Fake struct {
 	// DiscussionLists counts ListIssueDiscussions calls.
 	Replies         map[int64]int64
 	DiscussionLists int
+	// Files are the paths of the default branch's files, for
+	// ListRepositoryTree; TreeError makes it fail, TreeLists records the
+	// paths it was called for.
+	Files     []string
+	TreeError error
+	TreeLists []string
 	// Hooks are the project hooks, oldest first; HookWrites records every
 	// write ("add 1001", "edit 1001", "delete 1001"); HookError makes every
 	// hook call fail, e.g. a 403 for a bot without the Maintainer role;
@@ -993,4 +999,51 @@ func (f *Fake) ListIssueLabelEvents(_ context.Context, _ string, iid int64) ([]g
 		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "resource_label_events"}
 	}
 	return slices.Clone(f.LabelEvents[iid]), nil
+}
+
+// ListRepositoryTree lists f.Files and their directories under path, all
+// of them with recursive, else the direct children. A path with nothing
+// under it is a 404, like GitLab's "Tree Not Found". ref is ignored.
+func (f *Fake) ListRepositoryTree(_ context.Context, _ string, path, _ string, recursive bool) ([]gitlab.TreeEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.TreeLists = append(f.TreeLists, path)
+	if f.TreeError != nil {
+		return nil, f.TreeError
+	}
+	path = strings.Trim(path, "/")
+	prefix := ""
+	if path != "" {
+		prefix = path + "/"
+	}
+	seen := map[string]bool{}
+	var out []gitlab.TreeEntry
+	add := func(p, typ string) {
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, gitlab.TreeEntry{Path: p, Name: p[strings.LastIndex(p, "/")+1:], Type: typ})
+		}
+	}
+	for _, file := range slices.Sorted(slices.Values(f.Files)) {
+		rest, ok := strings.CutPrefix(file, prefix)
+		if !ok || rest == "" {
+			continue
+		}
+		segs := strings.Split(rest, "/")
+		depth := len(segs)
+		if !recursive {
+			segs = segs[:1]
+		}
+		for i := range segs {
+			typ := "tree"
+			if i == depth-1 {
+				typ = "blob"
+			}
+			add(prefix+strings.Join(segs[:i+1], "/"), typ)
+		}
+	}
+	if path != "" && len(out) == 0 {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "repository/tree", Body: `{"message":"404 Tree Not Found"}`}
+	}
+	return out, nil
 }

@@ -1301,6 +1301,16 @@ The project must be one of the AgentProject's valid `spec.crossRepo.targets`
   ignored; on an autopilot milestone the tracking issue names it once
   (`status.autopilot.repoNotices`), otherwise only the operator log and the
   spec task's `spec.repos[].problem` do.
+- **The planner** sees each companion of the milestone's lines that count:
+  the project, its allowed `paths`, and the files under them on its default
+  branch (at most 200 in total, read through the GitLab API). It sets
+  `repo` on the plan items that must change the companion, and the plan
+  gives those issues the label `agent-repo::<project>` (recorded in the
+  issue description). A `repo` that is none of the milestone's companions
+  gives no label; the issue's plan comment says so. On a re-plan, a label
+  the plan set follows the plan (replaced, or removed when the item drops
+  `repo`); a label an owner set stays. Without such lines the planner's
+  prompt is unchanged.
 - **The label** `agent-repo::<project>` on the issue gives it the companion.
   It counts under a milestone line for that project, or when an owner or
   the bot added it (the issue's label events). An owner sets it with

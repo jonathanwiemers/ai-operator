@@ -557,3 +557,25 @@ func TestListIssueLabelEvents(t *testing.T) {
 		t.Fatalf("paths %v", paths)
 	}
 }
+
+func TestListRepositoryTree(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.EscapedPath()+"?"+r.URL.Query().Get("path")+"|"+r.URL.Query().Get("ref")+"|"+r.URL.Query().Get("recursive")+"|"+r.URL.Query().Get("page"))
+		if r.URL.Query().Get("page") == "1" {
+			w.Header().Set("X-Next-Page", "2")
+			_, _ = w.Write([]byte(`[{"path":"clusters/a","name":"a","type":"tree"}]`))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"path":"clusters/a/x.yaml","name":"x.yaml","type":"blob"}]`))
+	}))
+	defer srv.Close()
+	es, err := New(srv.URL, "tok").ListRepositoryTree(context.Background(), "group/infra", "clusters", "main", true)
+	if err != nil || len(es) != 2 || es[1].Path != "clusters/a/x.yaml" || es[1].Type != "blob" || es[0].Type != "tree" {
+		t.Fatalf("tree %+v %v", es, err)
+	}
+	want := []string{"/api/v4/projects/group%2Finfra/repository/tree?clusters|main|true|1", "/api/v4/projects/group%2Finfra/repository/tree?clusters|main|true|2"}
+	if !slices.Equal(queries, want) {
+		t.Fatalf("queries %v", queries)
+	}
+}

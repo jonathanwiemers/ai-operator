@@ -48,6 +48,7 @@ type API interface {
 	ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error)
 	ListIssueStateEvents(ctx context.Context, project string, iid int64) ([]StateEvent, error)
 	ListIssueLabelEvents(ctx context.Context, project string, iid int64) ([]LabelEvent, error)
+	ListRepositoryTree(ctx context.Context, project, path, ref string, recursive bool) ([]TreeEntry, error)
 	ListIssueLinks(ctx context.Context, project string, iid int64) ([]LinkedIssue, error)
 	CreateIssueLink(ctx context.Context, project string, iid, targetIID int64, linkType string) error
 	DeleteIssueLink(ctx context.Context, project string, iid, linkID int64) error
@@ -258,6 +259,15 @@ func (e LabelEvent) LabelName() string {
 		return ""
 	}
 	return e.Label.Name
+}
+
+// TreeEntry is a file ("blob") or directory ("tree") of a repository tree.
+type TreeEntry struct {
+	// Path is relative to the repository root.
+	Path string `json:"path"`
+	Name string `json:"name"`
+	// Type is "blob", "tree" or "commit" (a submodule).
+	Type string `json:"type"`
 }
 
 // MergeRequestRef identifies a merge request, possibly of another project.
@@ -856,6 +866,22 @@ func (c *Client) ListIssueStateEvents(ctx context.Context, project string, iid i
 // ListIssueLabelEvents lists the label changes of an issue, oldest first.
 func (c *Client) ListIssueLabelEvents(ctx context.Context, project string, iid int64) ([]LabelEvent, error) {
 	return list[LabelEvent](ctx, c, fmt.Sprintf("%s/issues/%d/resource_label_events", projectPath(project), iid), nil)
+}
+
+// ListRepositoryTree lists the entries under path ("" for the root) at ref
+// ("" for the default branch); with recursive, everything below it.
+func (c *Client) ListRepositoryTree(ctx context.Context, project, path, ref string, recursive bool) ([]TreeEntry, error) {
+	q := url.Values{}
+	if path != "" {
+		q.Set("path", path)
+	}
+	if ref != "" {
+		q.Set("ref", ref)
+	}
+	if recursive {
+		q.Set("recursive", "true")
+	}
+	return list[TreeEntry](ctx, c, projectPath(project)+"/repository/tree", q)
 }
 
 func (c *Client) FindOpenMergeRequest(ctx context.Context, project, sourceBranch string) (*MergeRequest, error) {

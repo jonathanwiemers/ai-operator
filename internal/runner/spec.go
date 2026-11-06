@@ -81,6 +81,18 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	inv.Role, inv.Kind = "spec", aiv1.CallKindSpec
 	inv.Resume = st.session("spec", role.Engine)
 	prompt := buildSpecPrompt(milestone, existing, spec.Agents.Profiles, task.Status.Run.RunCount > 0)
+	// Only a milestone with companion repositories changes the prompt.
+	targets := planTargets(task, spec)
+	if len(targets) > 0 {
+		s = r.step(ctx, "read companion trees", "targets", len(targets))
+		trees := readTargetTrees(ctx, s.log, gl, targets)
+		files := 0
+		for _, t := range trees {
+			files += len(t.Files)
+		}
+		s.done(fmt.Sprintf("%d targets, %d files", len(trees), files), "targets", len(trees), "files", files)
+		prompt += "\n" + companionSection(trees)
+	}
 	if task.Spec.Autopilot {
 		prompt = autopilotSpecNote + "\n\n" + prompt
 	}
@@ -106,7 +118,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	s.done(agentResult(role, res, fmt.Sprintf("%d issues planned", len(plan.Issues))),
 		"session", res.SessionID, "costUSD", res.CostUSD, "planned", len(plan.Issues))
 	s = r.step(ctx, "apply plan", "planned", len(plan.Issues))
-	created, updated, skipped, err := applyPlan(ctx, s.log, gl, glProject, milestone, spec, plan, issues,
+	created, updated, skipped, err := applyPlan(ctx, s.log, gl, glProject, milestone, spec, targetProjects(targets), plan, issues,
 		planComment{botID: project.Status.BotUserID, runID: r.run.id})
 	if err != nil {
 		return out, s.fail(err)
@@ -179,7 +191,7 @@ func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
 // The planner's decisions for an issue go into a comment of the bot on it
 // (planComment), with the reasons and alternatives, so they are discussed and
 // revisited where the rest of the conversation is.
-func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject string, m *gitlab.Milestone, spec aiv1.AgentProjectSpec, plan SpecPlan, issues []gitlab.Issue, pc planComment) (created, updated, skipped int, err error) {
+func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject string, m *gitlab.Milestone, spec aiv1.AgentProjectSpec, companions []string, plan SpecPlan, issues []gitlab.Issue, pc planComment) (created, updated, skipped int, err error) {
 	wf := spec.Workflow
 	byIID := map[int64]*gitlab.Issue{}
 	keyToIID := map[string]int64{}
@@ -203,7 +215,13 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			// No IID, or one not in the milestone: the key decides.
 			iid = keyToIID[item.Key]
 		}
-		desc, missing := renderIssue(item, keyToIID)
+		var notes []string
+		if note := resolveRepo(&item, companions); note != "" {
+			notes = append(notes, note)
+			log.Info("dropped the plan's companion repository", "key", item.Key, "note", note)
+		}
+		var desc string
+		var missing bool
 		isNew := false
 		if ex := byIID[iid]; ex != nil {
 			// Drafts only: an issue that was handed over keeps its plan (and
@@ -224,15 +242,25 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			if !hasLabelPrefix(ex.Labels, wf.EffortLabelPrefix) {
 				add = append(add, effortLabels(spec, item)...)
 			}
+			repoAdd, repoRemove, planOwned, err := repoLabelChange(ctx, gl, glProject, ex, item.Repo, pc.botID)
+			if err != nil {
+				return created, updated, skipped, err
+			}
+			add = append(add, repoAdd...)
+			if !planOwned {
+				item.Repo = "" // the description records only a label the plan set
+			}
+			desc, missing = renderIssue(item, keyToIID)
 			if err := gitlab.RetryTransient(ctx, func() error {
-				_, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Title: item.Title, Description: desc, AddLabels: add})
+				_, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Title: item.Title, Description: desc, AddLabels: add, RemoveLabels: repoRemove})
 				return err
 			}); err != nil {
 				return created, updated, skipped, fmt.Errorf("updating issue #%d: %w", iid, err)
 			}
 			updated++
-			log.Info("issue updated", "iid", iid, "key", item.Key)
+			log.Info("issue updated", "iid", iid, "key", item.Key, "repo", item.Repo)
 		} else {
+			desc, missing = renderIssue(item, keyToIID)
 			var is *gitlab.Issue
 			retry := false
 			if err := gitlab.RetryTransient(ctx, func() (err error) {
@@ -247,7 +275,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 				is, err = gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{
 					Title:       item.Title,
 					Description: desc,
-					Labels:      strings.Join(slices.Concat([]string{wf.GeneratedLabel, wf.DraftLabel}, profileLabels(spec, item), effortLabels(spec, item)), ","),
+					Labels:      strings.Join(slices.Concat([]string{wf.GeneratedLabel, wf.DraftLabel}, profileLabels(spec, item), effortLabels(spec, item), repoLabels(item)), ","),
 					MilestoneID: m.ID,
 				})
 				isNew = err == nil
@@ -257,12 +285,12 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			}
 			iid = is.IID
 			created++
-			log.Info("issue created", "iid", iid, "key", item.Key, "profile", item.Profile, "effort", item.Effort)
+			log.Info("issue created", "iid", iid, "key", item.Key, "profile", item.Profile, "effort", item.Effort, "repo", item.Repo)
 		}
 		// Decision IDs carry the IID, which is known now. A post that failed
 		// transiently may have been stored: a retry looks for the note.
 		if err := gitlab.RetryTransient(ctx, func() error {
-			err := pc.post(ctx, gl, glProject, iid, isNew, item.Decisions, wf.CommandPrefix)
+			err := pc.post(ctx, gl, glProject, iid, isNew, item.Decisions, notes, wf.CommandPrefix)
 			isNew = false
 			return err
 		}); err != nil {
@@ -320,8 +348,10 @@ type planComment struct {
 // post creates or updates the plan decisions comment of issue iid. Planning
 // IDs are numbered from 1 again whenever the plan for a draft changes;
 // nothing has been built on them yet. Without decisions no comment is
-// created, and an existing one says there are none any more.
-func (pc planComment) post(ctx context.Context, gl gitlab.API, glProject string, iid int64, isNew bool, ds []Decision, prefix string) error {
+// created, and an existing one says there are none any more. notes are
+// lines about the issue's plan that are no decision, e.g. a dropped
+// companion repository.
+func (pc planComment) post(ctx context.Context, gl gitlab.API, glProject string, iid int64, isNew bool, ds []Decision, notes []string, prefix string) error {
 	if pc.botID == 0 {
 		// Without the bot's ID the comment could not be found again (and
 		// would not be trusted): post nothing rather than duplicates.
@@ -342,14 +372,14 @@ func (pc planComment) post(ctx context.Context, gl gitlab.API, glProject string,
 		}
 	}
 	switch {
-	case existing == nil && len(numbered) == 0:
+	case existing == nil && len(numbered) == 0 && len(notes) == 0:
 		return nil
 	case existing == nil:
-		if _, err := gl.CreateIssueNote(ctx, glProject, iid, renderPlanDecisions(pc.runID, prefix, numbered)); err != nil {
+		if _, err := gl.CreateIssueNote(ctx, glProject, iid, renderPlanDecisions(pc.runID, prefix, numbered, notes...)); err != nil {
 			return fmt.Errorf("posting the decisions of #%d: %w", iid, err)
 		}
-	case decisionsOf(existing.Body) != decisionsOf(renderPlanDecisions("", prefix, numbered)):
-		if _, err := gl.UpdateIssueNote(ctx, glProject, iid, existing.ID, renderPlanDecisions(pc.runID, prefix, numbered)); err != nil {
+	case decisionsOf(existing.Body) != decisionsOf(renderPlanDecisions("", prefix, numbered, notes...)):
+		if _, err := gl.UpdateIssueNote(ctx, glProject, iid, existing.ID, renderPlanDecisions(pc.runID, prefix, numbered, notes...)); err != nil {
 			return fmt.Errorf("updating the decisions of #%d: %w", iid, err)
 		}
 	}
@@ -401,6 +431,9 @@ func renderIssue(item PlannedItem, keyToIID map[string]int64) (string, bool) {
 	}
 	if len(item.Decisions) > 0 {
 		b.WriteString("\n_The planning agent's decisions are in a comment below._\n")
+	}
+	if item.Repo != "" {
+		fmt.Fprintf(&b, "\n<!-- ai-operator:plan-repo=%s -->", item.Repo)
 	}
 	fmt.Fprintf(&b, "\n<!-- ai-operator:key=%s -->\n", item.Key)
 	return b.String(), missing

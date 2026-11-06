@@ -260,7 +260,8 @@ const specSchemaTemplate = `{
           "effort": {"type": "string", "enum": ["", "low", "medium", "high", "xhigh", "max"], "description": "How hard the implementer should think; empty keeps the profile's setting."},
           "questions": {"type": "array", "items": {"type": "string"}},
           "decisions": __DECISIONS__,
-          "dependsOn": {"type": "array", "items": {"type": "string"}, "description": "Keys of issues that must be merged first."}
+          "dependsOn": {"type": "array", "items": {"type": "string"}, "description": "Keys of issues that must be merged first."},
+          "repo": {"type": "string", "description": "Companion repository the issue also changes, see the prompt; empty for none."}
         }
       }
     }
@@ -380,6 +381,9 @@ type PlannedItem struct {
 	Questions   []string   `json:"questions"`
 	Decisions   []Decision `json:"decisions"`
 	DependsOn   []string   `json:"dependsOn"`
+	// Repo is the companion repository the issue changes too, one of the
+	// milestone's; empty for none.
+	Repo string `json:"repo,omitempty"`
 }
 
 // ImplementAnswer is the implementer's answer.

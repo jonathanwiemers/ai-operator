@@ -410,3 +410,11 @@ func (p *Projects) DeleteProjectHook(ctx context.Context, project string, id int
 	}
 	return f.DeleteProjectHook(ctx, project, id)
 }
+
+func (p *Projects) ListRepositoryTree(ctx context.Context, project, path, ref string, recursive bool) ([]gitlab.TreeEntry, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.ListRepositoryTree(ctx, project, path, ref, recursive)
+}

@@ -159,13 +159,16 @@ func renderDecisionsComments(runID, prefix string, ds []numberedDecision) []stri
 const planDecisionsMarker = "<!-- ai-operator:plan-decisions -->"
 
 // renderPlanDecisions renders the comment with the planner's decisions for
-// an issue.
-func renderPlanDecisions(runID, prefix string, ds []numberedDecision) string {
+// an issue, with notes (one line each) after the header.
+func renderPlanDecisions(runID, prefix string, ds []numberedDecision, notes ...string) string {
 	var b strings.Builder
 	if len(ds) == 0 {
 		fmt.Fprintf(&b, "%s of the plan: none since run `%s`.\n", decisionsHeader, runID)
 	} else {
 		fmt.Fprintf(&b, "%s of the plan in run `%s`. Change one with `%s revisit <id> <what you want instead>`.\n", decisionsHeader, runID, prefix)
+	}
+	for _, n := range notes {
+		b.WriteString("\n" + n + "\n")
 	}
 	for _, d := range ds {
 		b.WriteString("\n")

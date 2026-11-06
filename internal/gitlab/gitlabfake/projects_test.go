@@ -2,6 +2,7 @@ package gitlabfake
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -136,5 +137,29 @@ func TestLabelEvents(t *testing.T) {
 	}
 	if evs, _ := p.ListIssueLabelEvents(ctx, "group/app", 1); len(evs) != 0 {
 		t.Errorf("label events of b visible in a: %+v", evs)
+	}
+}
+
+func TestListRepositoryTree(t *testing.T) {
+	ctx := context.Background()
+	p := NewProjects(New())
+	b := p.Add("group/infra")
+	b.Files = []string{"clusters/a/x.yaml", "clusters/a/sub/y.yaml", "README.md"}
+	es, err := p.ListRepositoryTree(ctx, "group/infra", "clusters", "", true)
+	var got []string
+	for _, e := range es {
+		got = append(got, e.Type+" "+e.Path)
+	}
+	if err != nil || !slices.Equal(got, []string{"tree clusters/a", "tree clusters/a/sub", "blob clusters/a/sub/y.yaml", "blob clusters/a/x.yaml"}) {
+		t.Fatalf("recursive tree %v %v", got, err)
+	}
+	if es, _ := p.ListRepositoryTree(ctx, "group/infra", "", "", false); len(es) != 2 || es[0].Path != "README.md" || es[1].Path != "clusters" || es[1].Type != "tree" {
+		t.Fatalf("root %+v", es)
+	}
+	if _, err := p.ListRepositoryTree(ctx, "group/infra", "nope", "", true); gitlab.StatusCode(err) != 404 {
+		t.Fatalf("missing path: %v", err)
+	}
+	if es, _ := p.ListRepositoryTree(ctx, "group/app", "", "", true); len(es) != 0 {
+		t.Fatalf("tree of infra visible in app: %+v", es)
 	}
 }

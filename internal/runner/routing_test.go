@@ -24,7 +24,7 @@ func TestApplyPlanSetsEffort(t *testing.T) {
 		{Key: "core", Title: "Core", Description: "y", Profile: "strong", Effort: "max"},
 		{Key: "docs", Title: "Docs", Description: "z", Profile: "fast"},
 	}}
-	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, nil, planComment{botID: gl.Bot.ID, runID: "s#1"}); err != nil {
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, nil, planComment{botID: gl.Bot.ID, runID: "s#1"}); err != nil {
 		t.Fatal(err)
 	}
 	ui, core, docs := gl.Issues[1], gl.Issues[2], gl.Issues[3]
@@ -35,7 +35,7 @@ func TestApplyPlanSetsEffort(t *testing.T) {
 	gl.SetLabels(1, "agent::draft", "ai-generated", "agent-profile::fast", "agent-effort::medium")
 	issues, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
 	plan.Issues[0].ExistingIID = 1
-	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "s#2"}); err != nil {
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, issues, planComment{botID: gl.Bot.ID, runID: "s#2"}); err != nil {
 		t.Fatal(err)
 	}
 	if l := gl.Labels(1); !slices.Contains(l, "agent-effort::medium") || slices.Contains(l, "agent-effort::low") {

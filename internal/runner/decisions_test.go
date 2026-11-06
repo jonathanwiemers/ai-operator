@@ -221,7 +221,7 @@ func TestPlannedDecisionsAreAComment(t *testing.T) {
 	ctx := context.Background()
 	plan := SpecPlan{Issues: []PlannedItem{{Key: "api", Title: "API", Description: "Build it.", Profile: "fast",
 		Decisions: []Decision{{Title: "Protocol", Question: "Which protocol?", Choice: "REST", Why: "existing clients", Alternatives: []string{"gRPC"}}}}}}
-	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, nil, planComment{botID: gl.Bot.ID, runID: "shop-spec#1"}); err != nil {
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, nil, planComment{botID: gl.Bot.ID, runID: "shop-spec#1"}); err != nil {
 		t.Fatal(err)
 	}
 	is := gl.Issues[1]
@@ -248,14 +248,14 @@ func TestPlannedDecisionsAreAComment(t *testing.T) {
 	// unchanged plan leaves it alone.
 	issues, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
 	plan.Issues[0].Decisions[0].Choice = "gRPC"
-	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#2"}); err != nil {
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#2"}); err != nil {
 		t.Fatal(err)
 	}
 	if notes := gl.IssueNotes[1]; len(notes) != 1 || !strings.Contains(notes[0].Body, "**Chosen:** gRPC") || !strings.Contains(notes[0].Body, "run `shop-spec#2`") {
 		t.Fatalf("the plan comment should be updated in place: %+v", notes)
 	}
 	before := gl.IssueNotes[1][0].Body
-	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#3"}); err != nil {
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#3"}); err != nil {
 		t.Fatal(err)
 	}
 	if gl.IssueNotes[1][0].Body != before {
@@ -263,7 +263,7 @@ func TestPlannedDecisionsAreAComment(t *testing.T) {
 	}
 	// Decisions dropped by the plan: the comment says so.
 	plan.Issues[0].Decisions = nil
-	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#4"}); err != nil {
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#4"}); err != nil {
 		t.Fatal(err)
 	}
 	if body := gl.IssueNotes[1][0].Body; !strings.Contains(body, "none since run `shop-spec#4`") || strings.Contains(body, "D1-P1") {
@@ -408,7 +408,7 @@ func TestReplanLeavesHandedOverIssuesAlone(t *testing.T) {
 	plan := SpecPlan{Issues: []PlannedItem{{Key: "api", Title: "API", Description: "Build it.",
 		Decisions: []Decision{{Title: "Protocol", Choice: "REST"}}}}}
 	pc := planComment{botID: gl.Bot.ID, runID: "shop-spec#1"}
-	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, nil, pc); err != nil {
+	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, nil, pc); err != nil {
 		t.Fatal(err)
 	}
 	// Labels that are not scoped: the draft label stays next to working.
@@ -416,7 +416,7 @@ func TestReplanLeavesHandedOverIssuesAlone(t *testing.T) {
 	before := gl.IssueNotes[1][0].Body
 	issues, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
 	plan.Issues[0].Decisions[0].Choice = "gRPC"
-	_, _, skipped, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#2"})
+	_, _, skipped, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, issues, planComment{botID: gl.Bot.ID, runID: "shop-spec#2"})
 	if err != nil || skipped != 1 || gl.IssueNotes[1][0].Body != before {
 		t.Fatalf("an issue in progress keeps its plan and decisions: skipped %d, err %v", skipped, err)
 	}
