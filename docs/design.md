@@ -734,6 +734,15 @@ no snapshot. A queue full of 2000 other milestones drops the snapshot and
 logs a count. The recorder knows no project, so `web_url` stays empty and
 the UI builds the link from the project.
 
+The UI lists them with `Milestones` (`internal/research/store/milestones.go`)
+in one statement for any number of projects and milestones: the snapshot rows
+of the projects the user may see, optionally only `open` or `closed`, joined
+with their issue counts (merged and skipped count as done), their open
+follow-ups and their spend, summed from `agent_calls` and legacy runs as the
+spend views do. A milestone without calls reports an unknown cost and no
+tokens, never $0. Open milestones come first, the longest running first, then
+closed ones, newest done first; at most 200 rows.
+
 ## GitLab webhooks
 
 GitLab project hooks (GitLab Free; group hooks need Premium) wake the

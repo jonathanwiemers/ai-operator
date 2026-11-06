@@ -121,7 +121,8 @@ type Spend struct {
 //   - scoped: the calls in scope;
 //   - legacy: the run.finished events in scope with a cost whose run has no
 //     call;
-//   - spend: both as one shape, legacy rows without tokens;
+//   - spend: both as one shape with their project, legacy rows without
+//     tokens;
 //   - split: the calls split by model, from models or else the row's model.
 //     The main model is the row's; when models lacks it (the row has an
 //     alias, say), the one with the most output tokens, as the runner picks
@@ -138,11 +139,11 @@ func spendWith(where string) string {
 			SELECT 1 FROM agent_calls a WHERE a.namespace = e.namespace AND a.project = e.project
 				AND a.task = e.task AND a.run = e.run AND a.expires_at > now())
 	), spend AS (
-		SELECT false AS legacy, id, milestone_iid, issue_iid, task, run, seq, at, kind, role, resumed,
+		SELECT false AS legacy, id, namespace, project, milestone_iid, issue_iid, task, run, seq, at, kind, role, resumed,
 			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms, read_gate_blocks
 		FROM scoped
 		UNION ALL
-		SELECT true, NULL, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0
+		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0
 		FROM legacy
 	), split AS (
 		SELECT false AS legacy, c.id, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, m.model, m.main,

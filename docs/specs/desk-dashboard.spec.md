@@ -270,3 +270,8 @@ about how many production lines, and deviations from this spec.
   snapshot, a delete closes; about 150 production lines. Deviations: the
   tracking issue is the autopilot's (the recorder sees no Coordinate task);
   `web_url` stays empty; issue states and the phase are stored in lower case.
+- 2026-11-06, `store` (R3 list, #217): `Store.Milestones`, the milestone list
+  with progress, open follow-ups and spend for many projects in one statement;
+  about 70 production lines (SQL included). Deviations: spend includes the
+  legacy runs' cost as the spend views do; open milestones sort oldest start
+  first, ahead of closed ones; a limit of 0 means the cap of 200.
