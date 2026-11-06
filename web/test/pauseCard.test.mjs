@@ -9,6 +9,9 @@ import {
   pauseTitle,
   reviewLimitLines,
   commandAnswer,
+  deskCommand,
+  wayOut,
+  wayOutLine,
 } from '../src/pauseCard.ts'
 
 const ids = (kind) => pauseActions(kind).map((a) => a.id)
@@ -267,4 +270,205 @@ test('pausePrompt: other kinds show no prompt and keep their actions', () => {
   }
   assert.equal(pausePrompt(undefined, prompts), undefined)
   assert.deepEqual(ids('owner'), ['resume'])
+})
+
+// Exit views as the milestone API sends them (aiv1.PauseExits with status
+// and allowed, internal/ui/pause_exits.go), shortened to what wayOut reads.
+const auto = (id, status = 'waiting', detail) => ({ id, auto: true, when: `${id} holds`, does: `${id} does`, status, detail })
+const cmd = (id, command, target, allowed = true) => ({ id, command, target, does: `${id} does`, allowed })
+const runExits = (allowed, ...more) => [
+  auto('laterRunPasses'),
+  auto('mergedByHand', 'unknown'),
+  auto('closed', 'unknown'),
+  cmd('retry', 'retry', 'implement', allowed),
+  cmd('skip', 'skip', 'spec', allowed),
+  ...more,
+]
+// exitsOf: every kind's exits for a viewer with chat (merge: also the merge grant).
+function exitsOf(kind, { chat = true, merge = false } = {}) {
+  const review = cmd('review', 'review', 'implement', chat)
+  const mergeAnyway = cmd('mergeAnyway', 'merge', 'spec', chat && merge)
+  const rebase = cmd('rebase', 'rebase', 'spec', false)
+  const mergeBase = cmd('mergeBase', 'mergeBase', 'spec', false)
+  const resume = cmd('resume', 'resume', 'spec', chat)
+  const skip = cmd('skip', 'skip', 'spec', chat)
+  return {
+    owner: [resume],
+    cycle: [{ id: 'changePlan', gitlab: true, when: 'change the milestone description', command: 'resume', does: 'replans' }, skip, resume],
+    stuck: [
+      auto('somethingCanStart'),
+      { id: 'closeAsDone', label: 'done', target: 'implement', when: 'and close it', does: 'counts as merged' },
+      { id: 'removeLink', gitlab: true, when: 'remove the "blocked by" link', does: 'no longer waits' },
+      cmd('unskip', 'unskip', 'spec', false),
+      cmd('startAnyway', 'startAnyway', 'spec', false),
+      { id: 'pilotPrompt', prompt: true, when: 'with unskip, markDone or startAnyway', does: 'runs the tool' },
+      skip,
+      resume,
+    ],
+    needsInput: runExits(chat, { id: 'answered', label: 'ready', target: 'implement', when: 'after answering its questions', does: 'a new run starts' }),
+    runFailed: runExits(chat),
+    findings: runExits(chat, mergeAnyway),
+    reviewErrors: runExits(chat, review, mergeAnyway),
+    notReviewed: runExits(chat, review, mergeAnyway),
+    ciRed: [auto('mainGreenRebase', 'met', 'main is green at ffe0123'), ...runExits(chat, rebase, mergeBase)],
+    ciCanceled: runExits(chat),
+    mergeRequest: [
+      auto('mergedByHand', 'unknown'),
+      auto('closed', 'unknown'),
+      { id: 'fixInGitLab', gitlab: true, when: 'fix the merge request', command: 'resume', does: 'checks again' },
+      rebase,
+      mergeBase,
+      skip,
+    ],
+    mainRed: [auto('mainGreen', 'waiting', 'main is red at abc1234'), auto('freezeOff'), auto('healthStale'), auto('mergedByHand', 'unknown'), auto('closed', 'unknown')],
+    config: [auto('mergedByHand', 'unknown'), auto('closed', 'unknown'), { ...resume, when: 'after fixing the setup' }, skip],
+    budget: [auto('budgetRaised', 'inProgress')],
+  }[kind]
+}
+
+const buttons = (w) => w.remedies.filter((r) => r.action).map((r) => r.action.id)
+
+test('wayOut: every kind shows all its exits, automatic ones with a status chip', () => {
+  for (const kind of allKinds) {
+    const exits = exitsOf(kind)
+    const w = wayOut(exits)
+    assert.ok(exits.length > 0, kind)
+    assert.deepEqual([...w.auto, ...w.remedies].map((e) => e.id).sort(), exits.map((e) => e.id).sort(), kind)
+    assert.deepEqual(w.auto.map((e) => e.id), exits.filter((e) => e.auto).map((e) => e.id), kind)
+    for (const a of w.auto) assert.ok(a.chip && a.when && a.does, `${kind} ${a.id}`)
+    for (const r of w.remedies) assert.ok(r.text || r.action, `${kind} ${r.id}`)
+  }
+})
+
+test('wayOut: status chips and details', () => {
+  const w = wayOut([
+    auto('a', 'met', ' main is green at ffe0123 '),
+    auto('b', 'inProgress'),
+    auto('c', 'waiting'),
+    auto('d', 'unknown'),
+    auto('e', 'newer'),
+    { id: 'f', auto: true, when: 'x', does: 'y' },
+  ])
+  assert.deepEqual(
+    w.auto.map((a) => [a.status, a.chip, a.tone]),
+    [
+      ['met', 'lifts on the next poll', 'success'],
+      ['inProgress', 'in progress', 'progress'],
+      ['waiting', 'waiting', 'muted'],
+      ['unknown', 'not known', 'muted'],
+      ['unknown', 'not known', 'muted'],
+      ['unknown', 'not known', 'muted'],
+    ],
+  )
+  assert.equal(w.auto[0].detail, 'main is green at ffe0123')
+  assert.equal(w.auto[0].when, 'A holds')
+  assert.equal(w.remedies.length, 0)
+})
+
+test('wayOut: remedy commands map to the card actions and their targets', () => {
+  const w = wayOut(exitsOf('reviewErrors', { merge: true }))
+  const by = Object.fromEntries(w.remedies.filter((r) => r.action).map((r) => [r.id, r.action]))
+  assert.deepEqual(
+    Object.entries(by).map(([id, a]) => [id, a.id, a.target]),
+    [
+      ['retry', 'retry', 'implement'],
+      ['skip', 'skip', 'spec'],
+      ['review', 'review', 'implement'],
+      ['mergeAnyway', 'merge', 'spec'],
+    ],
+  )
+  assert.equal(by.mergeAnyway.confirm, true)
+  assert.equal(by.mergeAnyway.ownerOnly, true)
+  assert.equal(by.mergeAnyway.label, 'Merge anyway')
+  assert.deepEqual(buttons(wayOut(exitsOf('owner'))), ['resume'])
+  assert.equal(wayOut(exitsOf('owner')).remedies[0].action.target, 'spec')
+  // The actions send the existing commands.
+  const ctx = { issue: 7, head: 'abcdef0' }
+  assert.deepEqual(
+    w.remedies.filter((r) => r.action).map((r) => pauseCommand(r.action, ctx)),
+    [{ cmd: 'retry' }, { cmd: 'skip', issue: 7 }, { cmd: 'review' }, { cmd: 'merge', issue: 7, sha: 'abcdef0' }],
+  )
+  // A remedy's condition is its text.
+  const config = wayOut(exitsOf('config')).remedies.find((r) => r.id === 'resume')
+  assert.equal(config.text, 'After fixing the setup')
+  assert.equal(config.action.id, 'resume')
+})
+
+test('wayOut: remedies that are not allowed, or not Desk commands, give no button', () => {
+  assert.deepEqual(buttons(wayOut(exitsOf('reviewErrors'))), ['retry', 'skip', 'review'])
+  for (const kind of allKinds) {
+    assert.deepEqual(buttons(wayOut(exitsOf(kind, { chat: false }))), [], kind)
+  }
+  const ci = wayOut(exitsOf('ciRed', { merge: true }))
+  assert.deepEqual(buttons(ci), ['retry', 'skip'])
+  const rebase = ci.remedies.find((r) => r.id === 'rebase')
+  assert.equal(rebase.kind, 'command')
+  assert.equal(rebase.command, 'rebase')
+  assert.equal(rebase.text, 'on the tracking issue')
+  // allowed from a confused server does not make rebase a button.
+  assert.deepEqual(buttons(wayOut([{ ...cmd('rebase', 'rebase', 'spec'), allowed: true }])), [])
+  assert.deepEqual(buttons(wayOut([cmd('x', 'constructor', 'spec')])), [])
+  const noChat = wayOut(exitsOf('runFailed', { chat: false })).remedies.find((r) => r.id === 'retry')
+  assert.deepEqual([noChat.kind, noChat.command, noChat.text], ['command', 'retry', 'on the issue'])
+})
+
+test('wayOut: labels, GitLab actions and prompts are text, with a link where the card has one', () => {
+  const w = wayOut(exitsOf('stuck'))
+  const by = Object.fromEntries(w.remedies.map((r) => [r.id, r]))
+  assert.deepEqual([by.closeAsDone.kind, by.closeAsDone.text], ['label', 'Set the done label and close it'])
+  assert.deepEqual([by.removeLink.kind, by.removeLink.text, by.removeLink.link], ['gitlab', 'In GitLab: remove the "blocked by" link', 'issue'])
+  assert.deepEqual([by.pilotPrompt.kind, by.pilotPrompt.text], ['prompt', "Answer the pilot's prompt with unskip, markDone or startAnyway"])
+  for (const id of ['closeAsDone', 'removeLink', 'pilotPrompt']) assert.equal(by[id].action, undefined, id)
+  const plan = wayOut(exitsOf('cycle')).remedies[0]
+  assert.deepEqual([plan.kind, plan.text, plan.link, plan.action], ['gitlab', 'In GitLab: change the milestone description, then resume', 'milestone', undefined])
+  assert.equal(wayOut(exitsOf('mergeRequest')).remedies[0].link, 'mergeRequest')
+  assert.equal(wayOut(exitsOf('needsInput')).remedies.find((r) => r.id === 'answered').link, 'issue')
+})
+
+test('wayOut: a command gives one button even when two exits name it', () => {
+  const w = wayOut([cmd('resume', 'resume', 'spec'), { ...cmd('resume2', 'resume', 'spec'), when: 'after x' }])
+  assert.deepEqual(buttons(w), ['resume'])
+  assert.deepEqual([w.remedies[1].kind, w.remedies[1].text], ['command', 'on the tracking issue, after x'])
+})
+
+test('pauseActions with exits: the links stay, the commands come from wayOut, nothing twice', () => {
+  for (const kind of allKinds) {
+    const exits = exitsOf(kind, { merge: true })
+    const row = pauseActions(kind, 5, exits)
+    assert.ok(row.every((a) => a.target === 'link'), kind)
+    assert.deepEqual(
+      row.map((a) => a.id),
+      pauseActions(kind, 5).filter((a) => a.target === 'link').map((a) => a.id),
+      kind,
+    )
+    const all = [...row.map((a) => a.id), ...buttons(wayOut(exits))]
+    assert.equal(new Set(all).size, all.length, `${kind}: ${all}`)
+  }
+  assert.deepEqual(
+    pauseActions('findings', 5, exitsOf('findings')).map((a) => a.label),
+    ['Open #5 chat'],
+  )
+})
+
+test('pauseActions without exits: the kind buttons of an older operator', () => {
+  for (const kind of allKinds) {
+    assert.deepEqual(pauseActions(kind, 5, undefined), pauseActions(kind, 5), kind)
+    assert.deepEqual(pauseActions(kind, 5, []), pauseActions(kind, 5), kind)
+  }
+  assert.deepEqual(ids('ciRed'), ['retry', 'openPipeline', 'skip'])
+  assert.deepEqual(wayOut(undefined), { auto: [], remedies: [] })
+  assert.equal(wayOutLine(undefined), '')
+  assert.equal(wayOutLine([]), '')
+})
+
+test('wayOutLine: the first automatic exit with its status and the remedy count', () => {
+  assert.equal(wayOutLine(exitsOf('ciRed')), 'Way out: MainGreenRebase holds — lifts on the next poll · 4 remedies')
+  assert.equal(wayOutLine(exitsOf('budget')), 'Way out: BudgetRaised holds — in progress')
+  assert.equal(wayOutLine(exitsOf('owner')), 'Way out: 1 remedy')
+  assert.equal(wayOutLine(exitsOf('config', { chat: false })), 'Way out: MergedByHand holds — not known · 2 remedies')
+})
+
+test('deskCommand: the commands the card can send', () => {
+  for (const c of ['resume', 'skip', 'merge', 'retry', 'review']) assert.equal(deskCommand(c), true, c)
+  for (const c of ['rebase', 'mergeBase', 'unskip', 'startAnyway', '', undefined, 'toString']) assert.equal(deskCommand(c), false, String(c))
 })

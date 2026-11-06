@@ -5,12 +5,14 @@ import type { ChatCommand } from '../chatState'
 import { live } from '../live'
 import {
   commandAnswer,
+  deskCommand,
   pauseActions,
   pauseCommand,
   pauseEndsBy,
   pausePrompt,
   pauseTitle,
   reviewLimitLines,
+  wayOut,
   type CommandAnswer,
   type PauseAction,
   type PauseActionID,
@@ -71,42 +73,56 @@ type Shown =
   | { action: PauseAction; type: 'command' }
   | { action: PauseAction; type: 'skipSelect' }
 
-// shown: the kind's actions this user can use now. Links need their target;
-// commands the chat grant, and the implement task or the issue and head
-// they name; Merge anyway the merge permission.
-const all = computed(() => pauseActions(kind.value, issue.value || undefined))
-const shown = computed<Shown[]>(() => {
-  const out: Shown[] = []
-  for (const a of all.value) {
-    switch (a.id) {
-      case 'openChat':
-        if (implTaskName.value) out.push({ action: a, type: 'task', task: implTaskName.value })
-        break
-      case 'openPlan':
-        out.push({ action: a, type: 'task', task: props.milestone.spec.name })
-        break
-      case 'openPipeline':
-        if (pipelineURL.value) out.push({ action: a, type: 'ext', href: pipelineURL.value })
-        break
-      case 'openMR':
-        if (item.value?.mergeRequestURL) out.push({ action: a, type: 'ext', href: item.value.mergeRequestURL })
-        break
-      default:
-        if (!canChat.value) break
-        if (a.target === 'implement' && !implTaskName.value) break
-        if (a.ownerOnly && !canMerge.value) break
-        if (a.id === 'skip' && !issue.value) {
-          if (skipOptions.value.length) out.push({ action: a, type: 'skipSelect' })
-          break
-        }
-        if (pauseCommand(a, { issue: issue.value, head: head.value })) out.push({ action: a, type: 'command' })
-    }
+// usable is an action as this user can use it now, undefined when not.
+// Links need their target; commands the chat grant, and the implement task
+// or the issue and head they name; Merge anyway the merge permission.
+function usable(a: PauseAction): Shown | undefined {
+  switch (a.id) {
+    case 'openChat':
+      return implTaskName.value ? { action: a, type: 'task', task: implTaskName.value } : undefined
+    case 'openPlan':
+      return { action: a, type: 'task', task: props.milestone.spec.name }
+    case 'openPipeline':
+      return pipelineURL.value ? { action: a, type: 'ext', href: pipelineURL.value } : undefined
+    case 'openMR':
+      return item.value?.mergeRequestURL ? { action: a, type: 'ext', href: item.value.mergeRequestURL } : undefined
   }
-  return out
-})
-const mergeAction = computed(() => shown.value.find((s) => s.action.confirm)?.action)
-// The kind has commands this user cannot send without the chat grant.
-const commandsHidden = computed(() => !canChat.value && all.value.some((a) => a.target !== 'link'))
+  if (!canChat.value) return undefined
+  if (a.target === 'implement' && !implTaskName.value) return undefined
+  if (a.ownerOnly && !canMerge.value) return undefined
+  if (a.id === 'skip' && !issue.value) return skipOptions.value.length ? { action: a, type: 'skipSelect' } : undefined
+  return pauseCommand(a, { issue: issue.value, head: head.value }) ? { action: a, type: 'command' } : undefined
+}
+
+// exits: the ways out (an operator without them gets the kind's buttons).
+// The action row then keeps the links; the remedies bring the commands.
+const exits = computed(() => ap.value?.exits || [])
+const way = computed(() => wayOut(exits.value))
+const remedyLinks = computed(() => ({
+  milestone: props.milestone.webURL,
+  mergeRequest: item.value?.mergeRequestURL,
+  issue: issue.value ? issueURL.value : undefined,
+}))
+const remedies = computed(() =>
+  way.value.remedies.map((r) => ({
+    ...r,
+    shown: r.action ? usable(r.action) : undefined,
+    href: r.link ? remedyLinks.value[r.link] : undefined,
+  })),
+)
+const all = computed(() => pauseActions(kind.value, issue.value || undefined, exits.value))
+const shown = computed(() => all.value.map(usable).filter((s): s is Shown => !!s))
+const mergeAction = computed(
+  () => [...shown.value, ...remedies.value.map((r) => r.shown)].find((s) => s?.action.confirm)?.action,
+)
+// The pause has commands this user cannot send without the chat grant.
+const commandsHidden = computed(
+  () =>
+    !canChat.value &&
+    (exits.value.length
+      ? way.value.remedies.some((r) => r.kind === 'command' && deskCommand(r.command))
+      : all.value.some((a) => a.target !== 'link')),
+)
 
 // Sending: one command at a time; the card follows the last one sent.
 const sending = ref<PauseActionID | null>(null)
@@ -207,11 +223,54 @@ watch(
     <ul v-if="limitLines.length" class="limits">
       <li v-for="l in limitLines" :key="l">{{ l }}</li>
     </ul>
-    <p v-if="endsBy" class="faint">{{ endsBy }}</p>
+    <p v-if="endsBy && !exits.length" class="faint">{{ endsBy }}</p>
     <div v-if="ap.waitingFor" class="banner info">A run is working on #{{ ap.waitingFor }} now.</div>
     <p v-if="override" class="muted">
       Merge anyway was given by {{ override.by }} <RelTime :time="override.at" />.
     </p>
+
+    <div v-if="exits.length" class="way">
+      <h3>Way out</h3>
+      <ul v-if="way.auto.length" class="exits">
+        <li v-for="e in way.auto" :key="e.id">
+          <span class="row">
+            <span class="when">{{ e.when }}</span>
+            <span class="chip" :class="e.tone">{{ e.chip }}</span>
+          </span>
+          <span v-if="e.detail" class="muted detail">{{ e.detail }}</span>
+          <span class="faint">→ {{ e.does }}</span>
+        </li>
+      </ul>
+      <ul v-if="way.remedies.length" class="exits">
+        <li v-for="r in remedies" :key="r.id">
+          <span class="row">
+            <span v-if="r.shown?.type === 'skipSelect'" class="row skip">
+              <select v-model="skipIssue" aria-label="Issue to skip" :disabled="!!sending">
+                <option value="">issue…</option>
+                <option v-for="it in skipOptions" :key="it.iid" :value="it.iid">#{{ it.iid }} {{ it.title }}</option>
+              </select>
+              <button type="button" class="btn" :disabled="!!sending || !skipIssue" @click="skipPicked(r.shown.action)">
+                {{ sending === r.shown.action.id ? '…' : r.shown.action.label }}
+              </button>
+            </span>
+            <button
+              v-else-if="r.shown"
+              type="button"
+              class="btn"
+              :disabled="!!sending || (r.shown.action.confirm && !!confirmHead)"
+              @click="run(r.shown.action)"
+            >
+              {{ sending === r.shown.action.id ? '…' : r.shown.action.label }}
+            </button>
+            <code v-else-if="r.elsewhere">{{ r.command }}</code>
+            <span v-if="r.shown || !r.elsewhere" class="when">{{ r.text }}</span>
+            <span v-else class="when">{{ r.elsewhere }}</span>
+            <ExtLink v-if="r.href" :href="r.href">open</ExtLink>
+          </span>
+          <span class="faint">→ {{ r.does }}</span>
+        </li>
+      </ul>
+    </div>
 
     <PromptCard v-if="prompt" :namespace="namespace" :name="name" :prompt="prompt" />
 
@@ -299,6 +358,58 @@ watch(
 
 .actions {
   margin-top: 4px;
+}
+
+.way h3 {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.exits {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.exits li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.exits .row {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.when,
+.detail {
+  overflow-wrap: anywhere;
+}
+
+.chip {
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.chip.success {
+  background: var(--tone-success-bg);
+  color: var(--tone-success-fg);
+}
+
+.chip.progress {
+  background: var(--tone-progress-bg);
+  color: var(--tone-progress-fg);
+}
+
+.chip.muted {
+  background: var(--tone-muted-bg);
+  color: var(--tone-muted-fg);
 }
 
 .skip {

@@ -1,5 +1,5 @@
 import type { ChatCommand } from './chatState'
-import type { ChatMessage, PauseKind, PromptView, ReviewError } from './types'
+import type { ChatMessage, ExitStatus, ExitView, PauseKind, PromptView, ReviewError } from './types'
 
 // PauseActionID names one button of the pause card.
 export type PauseActionID =
@@ -69,14 +69,145 @@ function known(kind: string | undefined): kind is KnownPauseKind {
   return !!kind && Object.prototype.hasOwnProperty.call(actionsByKind, kind)
 }
 
-// pauseActions lists the card's buttons for a pause; a pause without a kind
-// (from before the field existed) or with an unknown one offers Resume only.
-// issue labels the chat link ("Open #N chat").
-export function pauseActions(kind: PauseKind | undefined, issue?: number): PauseAction[] {
-  const actions = known(kind) ? actionsByKind[kind] : [resume]
+// pauseActions lists the card's action row for a pause; a pause without a
+// kind (from before the field existed) or with an unknown one offers Resume
+// only. issue labels the chat link ("Open #N chat"). With exits (an operator
+// that sends them) the row keeps the kind's links: its command buttons are
+// the Way out's remedies (wayOut), so none shows twice.
+export function pauseActions(kind: PauseKind | undefined, issue?: number, exits?: ExitView[]): PauseAction[] {
+  let actions = known(kind) ? actionsByKind[kind] : [resume]
+  if (exits?.length) actions = actions.filter((a) => a.target === 'link')
   return actions.map((a) =>
     a.id === 'openChat' && issue ? { ...a, label: `Open #${issue} chat` } : { ...a },
   )
+}
+
+// The Desk command each remedy command word sends (chatState's ChatCommand);
+// other words (rebase, mergeBase, unskip, startAnyway) are text.
+const remedyActions: Record<string, PauseAction> = { resume, skip, merge, retry, review }
+
+// deskCommand: the card can send the remedy command word (with the grants).
+export function deskCommand(cmd: string | undefined): boolean {
+  return !!cmd && Object.prototype.hasOwnProperty.call(remedyActions, cmd)
+}
+
+export type ExitTone = 'success' | 'progress' | 'muted'
+
+// WayOutAuto is an automatic exit with its live status chip.
+export interface WayOutAuto {
+  id: string
+  when: string
+  does: string
+  status: ExitStatus
+  chip: string
+  tone: ExitTone
+  detail: string
+}
+
+// WayOutRemedy is one of the owner's remedies. kind says how it is taken:
+// button (action set: the viewer may send it from the card), command (a
+// command word to send elsewhere), label, gitlab (an action in GitLab) or
+// prompt (an answer to the pilot's prompt). text is the plain-text
+// instruction (for a button: what it needs first, often ''); elsewhere says
+// where the command word goes when not as a button ("on the tracking
+// issue"); link names the GitLab page it happens on.
+export interface WayOutRemedy {
+  id: string
+  kind: 'button' | 'command' | 'label' | 'gitlab' | 'prompt'
+  text: string
+  does: string
+  command?: string
+  elsewhere?: string
+  action?: PauseAction
+  link?: 'milestone' | 'mergeRequest' | 'issue'
+}
+
+export interface WayOut {
+  auto: WayOutAuto[]
+  remedies: WayOutRemedy[]
+}
+
+const chips: Record<ExitStatus, { chip: string; tone: ExitTone }> = {
+  met: { chip: 'lifts on the next poll', tone: 'success' },
+  inProgress: { chip: 'in progress', tone: 'progress' },
+  waiting: { chip: 'waiting', tone: 'muted' },
+  unknown: { chip: 'not known', tone: 'muted' },
+}
+
+// GitLab pages of the GitLab actions and labels.
+const exitLinks: Partial<Record<string, WayOutRemedy['link']>> = {
+  changePlan: 'milestone',
+  fixInGitLab: 'mergeRequest',
+  removeLink: 'issue',
+  answered: 'issue',
+}
+
+// statusOf is a status the card knows, unknown for others (a newer operator).
+function statusOf(status: string | undefined): ExitStatus {
+  return status && Object.prototype.hasOwnProperty.call(chips, status) ? (status as ExitStatus) : 'unknown'
+}
+
+// remedy turns a remedy exit into its instruction; used names the Desk
+// actions already given, so a second exit with the same command is text.
+function remedy(e: ExitView, used: Set<PauseActionID>): WayOutRemedy {
+  const when = (e.when || '').trim()
+  const base = { id: e.id, does: (e.does || '').trim() }
+  const then = e.command ? `, then ${e.command}` : ''
+  if (e.label) {
+    return { ...base, kind: 'label', text: `Set the ${e.label} label${when ? ` ${when}` : ''}${then}`, link: exitLinks[e.id] }
+  }
+  if (e.gitlab) {
+    return { ...base, kind: 'gitlab', text: `In GitLab: ${when}${then}`, link: exitLinks[e.id] }
+  }
+  if (e.prompt) {
+    return { ...base, kind: 'prompt', text: `Answer the pilot's prompt${when ? ` ${when}` : ''}` }
+  }
+  const command = (e.command || '').trim()
+  const where = e.target === 'implement' ? 'on the issue' : 'on the tracking issue'
+  const elsewhere = `${where}${when ? `, ${when}` : ''}`
+  const a = deskCommand(command) ? remedyActions[command] : undefined
+  if (e.allowed && a && !used.has(a.id)) {
+    used.add(a.id)
+    return { ...base, kind: 'button', text: capitalise(when), command, elsewhere, action: { ...a } }
+  }
+  return { ...base, kind: 'command', text: elsewhere, command, elsewhere }
+}
+
+// wayOut groups a pause's exits: the automatic ones with their status chip
+// (met: lifts on the next poll), and the remedies, as buttons where the
+// viewer's grants allow them (allowed) and the Desk can send them, else as
+// text.
+export function wayOut(exits: ExitView[] | undefined): WayOut {
+  const out: WayOut = { auto: [], remedies: [] }
+  const used = new Set<PauseActionID>()
+  for (const e of exits || []) {
+    if (e.auto) {
+      const status = statusOf(e.status)
+      out.auto.push({
+        id: e.id,
+        when: capitalise((e.when || '').trim()),
+        does: (e.does || '').trim(),
+        status,
+        ...chips[status],
+        detail: (e.detail || '').trim(),
+      })
+    } else {
+      out.remedies.push(remedy(e, used))
+    }
+  }
+  return out
+}
+
+// wayOutLine is the compact card's line: the first automatic exit with its
+// status, and the number of remedies; '' without exits.
+export function wayOutLine(exits: ExitView[] | undefined): string {
+  const w = wayOut(exits)
+  const parts: string[] = []
+  const first = w.auto[0]
+  if (first) parts.push(`${first.when} — ${first.chip}`)
+  const n = w.remedies.length
+  if (n) parts.push(`${n} ${n === 1 ? 'remedy' : 'remedies'}`)
+  return parts.length ? `Way out: ${parts.join(' · ')}` : ''
 }
 
 // pausePromptKinds: the pause kinds that need a choice, and the kind of the

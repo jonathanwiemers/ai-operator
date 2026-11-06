@@ -405,6 +405,7 @@ function showDay(i: number): string | null {
             :issue="paused.autopilot?.pausedFor"
             :milestone-title="paused.title"
             :waiting="paused.autopilot?.waitingFor"
+            :exits="paused.autopilot?.exits"
             :prompt="pausePrompt(paused.autopilot?.pauseKind, paused.prompts)"
             :namespace="namespace"
             :project-name="name"

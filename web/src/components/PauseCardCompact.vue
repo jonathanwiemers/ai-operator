@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
-import { pauseEndsBy, pauseTitle } from '../pauseCard'
-import type { PauseKind, PromptView } from '../types'
+import { pauseEndsBy, pauseTitle, wayOutLine } from '../pauseCard'
+import type { ExitView, PauseKind, PromptView } from '../types'
 import PromptCardCompact from './PromptCardCompact.vue'
 
 // PauseCardCompact is the pause card's short form for the Inbox, the project
 // board and the stream: why the autopilot paused, over which issue, what ends
-// it, and a link to the milestone page, where the full card has the actions.
+// it (with exits: the short Way out), and a link to the milestone page,
+// where the full card has the actions.
 // The reason is untrusted text: rendered as text, on one line.
 const props = defineProps<{
   kind?: PauseKind
@@ -17,6 +18,8 @@ const props = defineProps<{
   milestoneTitle?: string
   // waiting: the issue a run is working on now (the pause ends by itself).
   waiting?: number
+  // exits: the ways out of the pause (milestone views have them).
+  exits?: ExitView[]
   // prompt: the open question of this pause (mainRed, budget), shown as its
   // compact card; namespace and projectName say where it is answered.
   prompt?: PromptView
@@ -27,6 +30,7 @@ const props = defineProps<{
 
 const endsBy = computed(() => pauseEndsBy(props.kind, props.issue || undefined))
 const reasonText = computed(() => (props.reason || '').trim())
+const way = computed(() => wayOutLine(props.exits))
 </script>
 
 <template>
@@ -44,7 +48,8 @@ const reasonText = computed(() => (props.reason || '').trim())
     <p v-if="reasonText" class="reason" :title="reasonText">{{ reasonText }}</p>
     <p v-else-if="!kind" class="reason muted">Waiting for a human.</p>
     <p v-if="waiting" class="waiting">A run is working on #{{ waiting }} now.</p>
-    <p v-if="endsBy" class="faint ends">{{ endsBy }}</p>
+    <p v-if="way" class="faint ends" :title="way">{{ way }}</p>
+    <p v-else-if="endsBy" class="faint ends">{{ endsBy }}</p>
     <PromptCardCompact
       v-if="prompt && namespace && projectName"
       :namespace="namespace"

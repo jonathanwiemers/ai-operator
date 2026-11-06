@@ -405,6 +405,10 @@ reason on one line (the free text for a pause without a kind), the paused
 issue, *A run is working on #N now* while one is, what ends the pause by
 itself, and *Open* to the milestone stream. It has no buttons; the actions are
 on the full card there. The Inbox and the stream show the same compact card.
+In the milestone stream, where the card has the pause's exits, the line on
+what ends the pause becomes the short **Way out**: the first automatic exit
+with its status and the number of remedies, e.g. *Way out: A later run makes
+the issue pass the merge gate (reviewed and green) — waiting · 5 remedies*.
 While a run works on a task, its card marks the CI result as the last
 push's.
 
@@ -414,8 +418,26 @@ the `pauseKind`, the pause reason as text, the
 paused issue with its title, MR and pushed head, what ends the pause by
 itself, for failed reviewers which engine is usage-limited until when
 (*Cursor is limited until 13 Nov*), *A run is working on #N now* while one
-is, and a merge anyway an owner already gave for this head. Its actions
-depend on the kind:
+is, and a merge anyway an owner already gave for this head.
+
+Its **Way out** section lists every exit of the pause (`exits` of the
+milestone API, from the operator's `PauseExits` table). The automatic exits
+come first, each with its condition, what follows, a status chip and the
+operator's detail (*main is red at abc1234*): *lifts on the next poll* (the
+condition holds), *in progress* (a run pending, a rebase in flight),
+*waiting* or *not known*. Then the owner's remedies with what each does: a
+remedy the API marks `allowed` for you (`resume`, `skip`, `retry`, `review`
+with the chat grant, `merge` with `permissions.merge`) is a button that sends
+the same Desk chat command as the buttons below; other commands (`rebase`,
+`mergeBase`, `unskip`, `startAnyway`, or any without the grant) show as the
+word to send on the tracking issue or the issue; labels, GitLab actions and
+answers to the pilot's prompt show as text, with a link to the merge
+request, the issue or the milestone where it applies. With the section the
+card drops its *Continues by itself* line, and its action row keeps only the
+links (Open chat, Open pipeline, Open MR, Open plan): the commands come from
+the remedies, so none shows twice.
+
+Against an operator that sends no exits, the actions depend on the kind:
 
 | Kind | Actions |
 |------|---------|
