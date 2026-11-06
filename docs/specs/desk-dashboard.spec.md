@@ -275,3 +275,9 @@ about how many production lines, and deviations from this spec.
   about 70 production lines (SQL included). Deviations: spend includes the
   legacy runs' cost as the spend views do; open milestones sort oldest start
   first, ahead of closed ones; a limit of 0 means the cap of 200.
+- 2026-11-06, `store` (R3 detail, #218): `Store.Milestone` and
+  `Store.IssueFigures`, one milestone with per-issue figures (decision 8) in
+  five statements; about 150 production lines (SQL included), the list's
+  statement shared with the detail. Deviations: `IssueFigures` carries
+  `WallSec` too; spend and events count for an issue only within its
+  milestone; an issue missing from the snapshot is not found.

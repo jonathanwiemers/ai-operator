@@ -781,6 +781,17 @@ spend views do. A milestone without calls reports an unknown cost and no
 tokens, never $0. Open milestones come first, the longest running first, then
 closed ones, newest done first; at most 200 rows.
 
+One milestone comes from `Milestone`, in five statements however many issues
+it has: the list's row with the retrospective and owners, its follow-ups, its
+issues in order joined with their calls' spend (agent time is the calls'
+`duration_ms`), their `run.started` and `merged` events (first run and latest
+merge per issue) and the milestone's pause history (`Pauses`), summed in Go
+per pause item. Wall time runs from the first run to the latest merge, or to
+now; an issue that never ran has none, one without calls an unknown cost.
+Pauses without an item count for no issue. `IssueFigures` gives one issue's
+figures from the same statements for the issue page. Both return the store's
+not-found error without a snapshot row.
+
 ## GitLab webhooks
 
 GitLab project hooks (GitLab Free; group hooks need Premium) wake the
