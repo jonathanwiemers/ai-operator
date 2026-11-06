@@ -389,6 +389,42 @@ func TestCheckpointDisabled(t *testing.T) {
 	}
 }
 
+// TestEarlierCheckpointHeadStaysADraft: a run cut off by an engine error
+// left a checkpoint; the next run changes nothing more, so that checkpoint
+// is still the head. Its clean review must not mark the MR ready, take the
+// checkpoint for a push, start a pipeline or ask the owners to review.
+func TestEarlierCheckpointHeadStaysADraft(t *testing.T) {
+	e := newLimitEnv(t, &cutEngine{next: quietEngine{}, cutIf: cutAt(1), fail: errors.New("claude failed: exit status 1: boom")})
+	if !e.step() {
+		t.Fatal("expected a failed run")
+	}
+	head := e.checkCheckpoint(1, 1, cutEngineError)
+	e.gl.Users = []gitlab.User{{ID: 7, Username: "alice"}}
+	e.requestRun(func(task *aiv1.AgentTask) { task.Spec.Owners = []string{"alice"} })
+	if !e.step() {
+		t.Fatal("the second run should happen")
+	}
+	run := e.task().Status.Run
+	if run.LastResult != aiv1.RunResultSucceeded || e.origin1("rev-parse", cpBranch) != head {
+		t.Fatalf("the second run changes nothing: %+v", run)
+	}
+	if run.PushedSHA != "" || run.ReviewedSHA != "" || run.Checkpoint == nil || run.Checkpoint.SHA != head {
+		t.Fatalf("an earlier checkpoint as the head is no push: %+v", run)
+	}
+	if mr := e.gl.MRs[1]; !mr.Draft || len(mr.Reviewers) != 0 {
+		t.Fatalf("a checkpoint head stays a draft without reviewers: %+v", mr)
+	}
+	if len(e.gl.MRPipelines)+len(e.gl.BranchPipelines) != 0 {
+		t.Fatalf("no pipeline for a checkpoint: MR %v, branch %v", e.gl.MRPipelines, e.gl.BranchPipelines)
+	}
+	if _, res := e.stepResult("request review"); res != "none requested: the head is a checkpoint" {
+		t.Fatalf("request review step: %q (%v)", res, stepNames(e.r.run))
+	}
+	if notes := e.gl.MRNotes[1]; strings.Contains(notes[len(notes)-1].Body, "cc @alice") {
+		t.Fatalf("nobody is asked to review a checkpoint: %s", notes[len(notes)-1].Body)
+	}
+}
+
 // TestCheckpointHeadIsNoPush: the fallback continues from the checkpoint and
 // changes nothing more, so the checkpoint stays the head. push() must not
 // take it for the push of a step.

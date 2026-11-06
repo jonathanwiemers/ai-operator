@@ -778,6 +778,82 @@ func TestAutopilotDraftAgainPauses(t *testing.T) {
 	}
 }
 
+// An MR whose head is a checkpoint (a run was cut off and saved its work) is
+// work in progress: autopilot neither merges it, nor marks it ready, nor
+// starts CI, nor pauses; it waits. A draft the runner set for it is not a
+// human's (MarkedReady is reset). Once the head moves on, it merges.
+func TestAutopilotWaitsForACheckpointHead(t *testing.T) {
+	draft := func(m *gitlab.MergeRequest) {
+		m.Title, m.Draft, m.DetailedMergeStatus = "Draft: issue", true, "draft_status"
+	}
+	cases := []struct {
+		name   string
+		pushed string // status.run.pushedSHA
+		mr     func(*gitlab.MergeRequest)
+		ci     aiv1.CIState
+	}{
+		// Without the check, these merge right away.
+		{name: "green and mergeable", pushed: "sha-cp", ci: aiv1.CIStateSuccess},
+		// ... pauses ("someone pushed"),
+		{name: "head past the pushed commit", pushed: "sha-api", ci: aiv1.CIStateSuccess},
+		// ... marks the MR ready,
+		{name: "draft", pushed: "sha-cp", ci: aiv1.CIStateSuccess, mr: draft},
+		// ... marks it ready and starts a pipeline.
+		{name: "no pipeline", pushed: "sha-cp", ci: aiv1.CIStateNone, mr: draft},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newAutopilotEnv(t)
+			e.reconcile()
+			e.reconcile()
+			name := e.finishRun(1, c.pushed, func(r *aiv1.RunStatus) {
+				r.Checkpoint = &aiv1.CheckpointStatus{SHA: "sha-cp", Branch: "agent/1", Reason: "usage-limit"}
+			})
+			e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.CI = &aiv1.CIStatus{SHA: c.pushed, State: c.ci} })
+			mr := e.gl.MRs[1]
+			mr.SHA, mr.Title, mr.Draft, mr.DetailedMergeStatus = "sha-cp", "issue", false, "mergeable"
+			if c.mr != nil {
+				c.mr(mr)
+			}
+			title := mr.Title
+			e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) { s.Autopilot.Items[0].MarkedReady = true })
+			e.reconcile()
+			ap := e.autopilot()
+			if len(e.gl.Merged) != 0 || mr.Title != title || len(e.gl.MRPipelines) != 0 {
+				t.Fatalf("a checkpoint head must not be merged, marked ready or checked: merged %v, title %q, pipelines %v", e.gl.Merged, mr.Title, e.gl.MRPipelines)
+			}
+			if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].State != aiv1.AutopilotItemActive || ap.Items[0].MarkedReady {
+				t.Fatalf("autopilot must wait, not pause, and forget MarkedReady: %+v", ap)
+			}
+			// The next run pushed past the checkpoint: the normal flow resumes.
+			e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+				s.Run.PushedSHA, s.Run.ReviewedSHA, s.Run.Checkpoint = "sha-next", "sha-next", nil
+				s.CI = &aiv1.CIStatus{SHA: "sha-next", State: aiv1.CIStateSuccess}
+			})
+			mr.SHA, mr.Title, mr.Draft, mr.DetailedMergeStatus = "sha-next", "issue", false, "mergeable"
+			e.reconcile()
+			if !slices.Equal(e.gl.Merged, []int64{1}) {
+				t.Fatalf("expected the merge once the head moved past the checkpoint: %v %+v", e.gl.Merged, e.autopilot())
+			}
+		})
+	}
+}
+
+// A recorded checkpoint that is no longer the head changes nothing.
+func TestAutopilotMergesPastAStaleCheckpoint(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	e.finishRun(1, "sha-api", func(r *aiv1.RunStatus) {
+		r.Checkpoint = &aiv1.CheckpointStatus{SHA: "sha-old-cp", Branch: "agent/1", Reason: "usage-limit"}
+	})
+	e.gl.MRs[1].Title, e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = "issue", false, "mergeable"
+	e.reconcile()
+	if !slices.Equal(e.gl.Merged, []int64{1}) {
+		t.Fatalf("a stale checkpoint must not hold the merge: %v %+v", e.gl.Merged, e.autopilot())
+	}
+}
+
 func TestAutopilotOffAfterDoneSaysNothing(t *testing.T) {
 	e := newAutopilotEnv(t)
 	e.reconcile()

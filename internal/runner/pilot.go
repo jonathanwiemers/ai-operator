@@ -192,6 +192,9 @@ type pilotIssue struct {
 	Summary    string              `json:"lastRunSummary,omitempty"`
 	CI         *aiv1.CIStatus      `json:"ci,omitempty"`
 	Blocked    *aiv1.BlockedStatus `json:"blocked,omitempty"`
+	// Checkpoint is the work a cut-off run saved (pilotPrompt says what it
+	// means).
+	Checkpoint *aiv1.CheckpointStatus `json:"checkpoint,omitempty"`
 }
 
 // pilotState renders the milestone's state as JSON: the spec, autopilot,
@@ -248,6 +251,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		pi := pilotIssue{IID: is.IID, Title: is.Title, State: is.State, Labels: is.Labels}
 		if t := byIID[is.IID]; t != nil {
 			pi.LastResult, pi.Summary, pi.CI, pi.Blocked = t.Status.Run.LastResult, textutil.Truncate(t.Status.Run.Summary, 500), t.Status.CI, t.Status.Blocked
+			pi.Checkpoint = t.Status.Run.Checkpoint
 		}
 		v.Issues = append(v.Issues, pi)
 	}

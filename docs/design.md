@@ -532,7 +532,11 @@ nothing is lost.
   `ci.skip`, the MR set to draft first (`internal/runner/checkpoint.go`).
   The commit is recorded in `status.run.checkpoint` and kept apart from the
   run's pushes (`checkpointHead`): it gets no pipeline and is never
-  `pushedSHA` or `reviewedSHA`. A fix round's usage limit is excluded, it
+  `pushedSHA` or `reviewedSHA`. While an MR's head is a checkpoint
+  (`RunStatus.CheckpointHead`, also for one an earlier run left), the
+  runner does not mark it ready or request reviewers, the CI loop requests
+  none, and autopilot's `drive` waits without pausing (it resets
+  `MarkedReady`, since the draft is the runner's). A fix round's usage limit is excluded, it
   publishes the committed work itself. A restarted agent container is
   checkpointed before `Reset` (`container-restart`). For a lost pod or an
   OOM kill, the runner keeps `state.InFlight` (run, step, branch) on the

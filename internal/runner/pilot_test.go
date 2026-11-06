@@ -230,6 +230,50 @@ func TestPilotStateHasThePauseExits(t *testing.T) {
 	}
 }
 
+// An issue whose run was cut off shows its checkpoint, and the system prompt
+// says that it is in progress, not ready.
+func TestPilotStateHasTheCheckpoint(t *testing.T) {
+	e := newPilotEnv(t, "")
+	ctx := context.Background()
+	var impl aiv1.AgentTask
+	if err := e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop-1-api"}, &impl); err != nil {
+		t.Fatal(err)
+	}
+	impl.Status.Run.Checkpoint = &aiv1.CheckpointStatus{SHA: "c0ffee", Branch: "agent/1-api", Reason: "usage-limit", Run: 2, Step: 3}
+	if err := e.k8s.Status().Update(ctx, &impl); err != nil {
+		t.Fatal(err)
+	}
+	var project aiv1.AgentProject
+	if err := e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop"}, &project); err != nil {
+		t.Fatal(err)
+	}
+	pilot := e.task(t)
+	state, _, err := e.r.pilotState(ctx, e.gl, &pilot, &project, project.Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Issues []struct {
+			IID        int64                  `json:"iid"`
+			Checkpoint *aiv1.CheckpointStatus `json:"checkpoint"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal([]byte(state), &v); err != nil {
+		t.Fatal(err)
+	}
+	for _, is := range v.Issues {
+		switch cp := is.Checkpoint; {
+		case is.IID == 1 && (cp == nil || cp.SHA != "c0ffee" || cp.Reason != "usage-limit" || cp.Step != 3):
+			t.Errorf("#1 should show its checkpoint: %+v\n%s", cp, state)
+		case is.IID != 1 && cp != nil:
+			t.Errorf("#%d has no checkpoint: %+v", is.IID, cp)
+		}
+	}
+	if !strings.Contains(pilotSystemPrompt, `An issue with a "checkpoint" is in progress after a cut-off`) {
+		t.Error("the system prompt explains the checkpoint")
+	}
+}
+
 func TestPilotBudgetStopsAnswers(t *testing.T) {
 	e := newPilotEnv(t, "20.0000")
 	e.step(t)

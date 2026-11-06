@@ -805,6 +805,13 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 		return a.pauseMR(ctx, it, fmt.Sprintf("!%d targets `%s`, not the default branch `%s`", mr.IID, mr.TargetBranch, base))
 	case it.RebasedFrom != "":
 		return a.rebased(ctx, it, mr, task)
+	case run.CheckpointHead(mr.SHA):
+		// A run was cut off and saved its work: the run it continues in
+		// moves the head on. Never ready, CI or a merge for it; the runner
+		// set the draft, which is not a human holding the MR.
+		a.log.Info("autopilot waits: the head of the merge request is a checkpoint", "mr", mr.IID, "sha", mr.SHA)
+		it.MarkedReady = false
+		return nil
 	case mr.SHA != run.PushedSHA:
 		return a.pauseMR(ctx, it, fmt.Sprintf("the head of !%d (%s) is not the commit the agent pushed and CI checked (%s); someone pushed to the branch. "+
 			"Comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, short(mr.SHA), short(run.PushedSHA), wf.CommandPrefix, it.IID))
@@ -817,6 +824,9 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	switch mr.DetailedMergeStatus {
 	case "mergeable":
 	case "draft_status":
+		if run.CheckpointHead(mr.SHA) {
+			return nil // never ready (see above)
+		}
 		if it.MarkedReady {
 			return a.pauseMR(ctx, it, fmt.Sprintf("!%d was marked draft again; mark it ready, or merge by hand", mr.IID))
 		}
@@ -869,6 +879,9 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 func (a *autopilot) readyForCI(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask) error {
 	glProject := a.spec.GitLab.Project
 	wf := a.spec.Workflow
+	if task.Status.Run.CheckpointHead(mr.SHA) {
+		return nil // a checkpoint is never marked ready or checked
+	}
 	if mr.Draft || mr.DetailedMergeStatus == "draft_status" {
 		res, err := a.gl.UpdateMergeRequest(ctx, glProject, mr.IID, gitlab.UpdateMergeRequestOptions{Title: gitlab.ReadyTitle(mr.Title)})
 		switch {

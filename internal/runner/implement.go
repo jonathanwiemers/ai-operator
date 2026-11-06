@@ -108,6 +108,9 @@ type implementRun struct {
 	reviewedLast bool
 	pushed       bool
 	needsInput   bool
+	// checkpointHead is set when the branch head after the push is a
+	// checkpoint: nobody is asked to review it.
+	checkpointHead bool
 }
 
 func (r *Runner) newImplementRun(gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) *implementRun {
@@ -671,10 +674,16 @@ func (run *implementRun) push(ctx context.Context) error {
 		return s.fail(err)
 	}
 	run.pushed = pushed
-	// A checkpoint this run pushed counts as no push: no pipeline, never
-	// PushedSHA or ReviewedSHA, and the MR stays a draft.
+	// A checkpoint counts as no push: no pipeline, never PushedSHA or
+	// ReviewedSHA, no reviewers, and the MR stays a draft. It is one this run
+	// pushed, or one an earlier run left as the head and this run added
+	// nothing to.
 	stepHead := r.stepHead()
-	if head, _ := r.Mirror.resolve(ctx, "refs/heads/"+branch); readied && r.checkpointHead != "" && head == r.checkpointHead {
+	head := r.pushedHead
+	if head == "" {
+		head, _ = r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
+	}
+	if run.checkpointHead = run.isCheckpoint(head); readied && run.checkpointHead {
 		r.setDraft(ctx, gl, glProject, mr, st, true)
 		readied = false
 	}
@@ -688,7 +697,7 @@ func (run *implementRun) push(ctx context.Context) error {
 		out.PushedSHA = stepHead
 		out.CIRound = ciRound(task, run.ciFix)
 		s.done(fmt.Sprintf("the last step pushed %s already", shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
-	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && head != r.checkpointHead && head != task.Status.Run.PushedSHA && r.Mirror.HasChanges(ctx, base, head) {
+	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && !run.isCheckpoint(head) && head != task.Status.Run.PushedSHA && r.Mirror.HasChanges(ctx, base, head) {
 		// Someone else pushed to the branch (or made it) since the last
 		// recorded push, and this run took it over unchanged: that head is
 		// the one CI has to check.
@@ -705,7 +714,7 @@ func (run *implementRun) push(ctx context.Context) error {
 		if head == "" {
 			head, _ = r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
 		}
-		if r.checkpointHead == "" || head != r.checkpointHead {
+		if !run.isCheckpoint(head) {
 			r.startPipeline(ctx, gl, glProject, mr, task, head)
 		}
 	}
@@ -715,11 +724,17 @@ func (run *implementRun) push(ctx context.Context) error {
 		if out.ReviewedSHA == "" {
 			out.ReviewedSHA, _ = r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
 		}
-		if out.ReviewedSHA == r.checkpointHead {
+		if run.isCheckpoint(out.ReviewedSHA) {
 			out.ReviewedSHA = ""
 		}
 	}
 	return nil
+}
+
+// isCheckpoint reports whether sha is a checkpoint: the one this run pushed,
+// or the task's last one.
+func (run *implementRun) isCheckpoint(sha string) bool {
+	return sha != "" && (sha == run.r.checkpointHead || run.task.Status.Run.CheckpointHead(sha))
 }
 
 // postDecisionsAndHandoff stores the agent notes and posts the decisions.
@@ -787,7 +802,7 @@ func (run *implementRun) report(ctx context.Context) error {
 	// issue, by the operator's comments of their prompts, everything else on
 	// the MR. On autopilot nobody is: it merges what reaches review, and its
 	// pause on the tracking issue mentions them for the rest.
-	toReview := !needsInput && !waitForCI && !pending
+	toReview := !needsInput && !waitForCI && !pending && !run.checkpointHead
 	var mrMention string
 	switch {
 	case task.Spec.Autopilot:
@@ -823,7 +838,9 @@ func (run *implementRun) report(ctx context.Context) error {
 		s.done("moved to "+next, "label", next)
 		if next == wf.ReviewLabel && !task.Spec.Autopilot && *spec.Notify.RequestReview && len(task.Spec.Owners) > 0 {
 			s = r.step(ctx, "request review")
-			if names, err := notify.RequestReview(ctx, gl, glProject, mr.IID, task.Spec.Owners); err != nil {
+			if run.checkpointHead {
+				s.done("none requested: the head is a checkpoint")
+			} else if names, err := notify.RequestReview(ctx, gl, glProject, mr.IID, task.Spec.Owners); err != nil {
 				s.done("failed: "+textutil.Truncate(err.Error(), 300), "error", err.Error())
 			} else if len(names) == 0 {
 				s.done("none requested: the merge request has reviewers, or the owners are unknown")

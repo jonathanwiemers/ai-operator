@@ -861,6 +861,12 @@ An MR is merged only when all of these hold:
   saw goes back to `agent::working` first;
 - the MR is open, targets the default branch, and its head is exactly that
   commit (nobody pushed since);
+- the MR's head is not a [checkpoint](#usage-and-rate-limits) (the
+  `status.run.checkpoint` commit of a run that was cut off). Autopilot then
+  waits without pausing: it does not mark the MR ready, start CI or merge,
+  and the run that continues the work moves the head on. Nobody is asked to
+  review a checkpoint either, and the pilot's state shows it as
+  `checkpoint`;
 - the default branch is not red ([merge freeze](#main-health)). Checked
   after the run, review and CI, so the CI loop is final when the issue is
   blocked;
@@ -1775,6 +1781,9 @@ CLI reports such a limit, the run is **paused, not failed**:
   a checkpoint, and on a budget stop that did) and the failure report say
   so: `💾 Saved a checkpoint (<sha>, N files, +A/−D) because …`, plus the
   files left out and why, or that an aborted merge saved nothing.
+  While the MR's head is a checkpoint, the MR stays a draft, nobody is
+  asked to review it and autopilot does not merge it
+  ([merge gate](#the-merge-gate)).
 - The run is retried at the reset time the CLI reports (claude's from its
   limit message or, when that names none, from its usage windows; cursor's
   monthly reset date). If it doesn't report one, the wait is 5 minutes, doubling with every further limit hit

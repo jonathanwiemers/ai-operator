@@ -59,7 +59,7 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 
 	// A fix run was requested and is done, but it pushed nothing new.
 	if ci.State == aiv1.CIStateFixing {
-		return r.finishCI(ctx, gl, spec, is, task, ci, aiv1.CIStateFailed,
+		return r.finishCI(ctx, gl, spec, is, task, mr, ci, aiv1.CIStateFailed,
 			fmt.Sprintf("🤖 The agent could not fix the failing pipeline (%s): failing jobs %s. Comment `%s …` with guidance or fix it by hand.",
 				ci.PipelineURL, jobList(ci.FailedJobs), spec.Workflow.CommandPrefix))
 	}
@@ -85,7 +85,7 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 			pushedAt = run.LastActivityTime
 		}
 		if pushedAt != nil && r.now().Sub(pushedAt.Time) >= spec.CI.NoPipelineTimeout.Duration {
-			return r.finishCI(ctx, gl, spec, is, task, ci, aiv1.CIStateNone, "")
+			return r.finishCI(ctx, gl, spec, is, task, mr, ci, aiv1.CIStateNone, "")
 		}
 		return r.patchCI(ctx, task, ci)
 	}
@@ -94,9 +94,9 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 
 	switch p.Status {
 	case "success", "manual":
-		return r.finishCI(ctx, gl, spec, is, task, ci, aiv1.CIStateSuccess, "")
+		return r.finishCI(ctx, gl, spec, is, task, mr, ci, aiv1.CIStateSuccess, "")
 	case "canceled":
-		return r.finishCI(ctx, gl, spec, is, task, ci, aiv1.CIStateCanceled,
+		return r.finishCI(ctx, gl, spec, is, task, mr, ci, aiv1.CIStateCanceled,
 			fmt.Sprintf("🤖 The pipeline %s was canceled, so CI could not confirm this change. Moving the issue to review.", p.WebURL))
 	case "failed":
 	default:
@@ -132,13 +132,13 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 		if mainRed != 0 {
 			see = fmt.Sprintf(" (#%d)", mainRed)
 		}
-		return r.finishCI(ctx, gl, spec, is, task, ci, aiv1.CIStateBaseFailing,
+		return r.finishCI(ctx, gl, spec, is, task, mr, ci, aiv1.CIStateBaseFailing,
 			fmt.Sprintf("🤖 CI is red (%s), but the failing jobs %s also fail on the default branch%s, so this change is not the cause. Moving the issue to review.",
 				p.WebURL, jobList(ci.FailedJobs), see))
 	}
 
 	if run.CIRound >= *spec.CI.MaxFixRounds {
-		return r.finishCI(ctx, gl, spec, is, task, ci, aiv1.CIStateFailed,
+		return r.finishCI(ctx, gl, spec, is, task, mr, ci, aiv1.CIStateFailed,
 			fmt.Sprintf("🤖 CI is still red after %d fix attempts (%s): failing jobs %s. Comment `%s …` with guidance or fix it by hand.",
 				run.CIRound, p.WebURL, jobList(ci.FailedJobs), spec.Workflow.CommandPrefix))
 	}
@@ -255,8 +255,10 @@ func (r *AgentProjectReconciler) baseFailing(ctx context.Context, gl gitlab.API,
 }
 
 // finishCI ends the loop for the pushed commit: success, no CI, canceled and
-// base failures go to review; Failed goes to needs-input.
-func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, ci *aiv1.CIStatus, state aiv1.CIState, note string) error {
+// base failures go to review; Failed goes to needs-input. mr is the task's
+// merge request, if known: while its head is a checkpoint, nobody is asked
+// to review.
+func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask, mr *gitlab.MergeRequest, ci *aiv1.CIStatus, state aiv1.CIState, note string) error {
 	wf := spec.Workflow
 	prev := ci.State
 	ci.State = state
@@ -266,8 +268,10 @@ func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, sp
 	}
 	logger := log.FromContext(ctx)
 	logger.Info("CI loop finished", "task", task.Name, "state", state, "label", next)
-	// Autopilot merges what reaches review; nobody needs to look.
-	review := next == wf.ReviewLabel && !task.Spec.Autopilot
+	// Autopilot merges what reaches review; nobody needs to look. Nor at a
+	// checkpoint: the run it continues in asks once it pushed.
+	checkpoint := mr != nil && task.Status.Run.CheckpointHead(mr.SHA)
+	review := next == wf.ReviewLabel && !task.Spec.Autopilot && !checkpoint
 	var event aiv1.NotifyEvent
 	switch {
 	case task.Spec.Autopilot:

@@ -112,7 +112,7 @@ func TestCIGreenRequestsReview(t *testing.T) {
 		t.Fatalf("the ping must be recorded: %+v", ci)
 	}
 	is := *e.gl.Issues[42]
-	if err := e.r.finishCI(e.ctx, e.gl, testProject().Spec.WithDefaults(), is, &task, ci, aiv1.CIStateSuccess, ""); err != nil {
+	if err := e.r.finishCI(e.ctx, e.gl, testProject().Spec.WithDefaults(), is, &task, nil, ci, aiv1.CIStateSuccess, ""); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(e.gl.MRNotes[mr.IID]); n != 1 {
@@ -120,6 +120,34 @@ func TestCIGreenRequestsReview(t *testing.T) {
 	}
 	if e.notes() != "" {
 		t.Fatalf("a green pipeline needs no issue comment, got %q", e.notes())
+	}
+}
+
+// The pushed commit is green, but a later run was cut off and its
+// checkpoint is the MR's head: nobody is asked to review that.
+func TestCIGreenRequestsNoReviewOfACheckpoint(t *testing.T) {
+	e := newCIEnv(t, "sha1")
+	e.r.DefaultOwners = []string{"alice"}
+	e.gl.Users = []gitlab.User{{ID: 7, Username: "alice"}}
+	mr, _ := e.gl.CreateMergeRequest(e.ctx, "group/app", gitlab.CreateMergeRequestOptions{SourceBranch: "agent/42", TargetBranch: "main", Title: "Draft: Add PayPal button"})
+	e.gl.MRs[mr.IID].SHA = "sha-cp"
+	task := e.ciTask()
+	orig := task.DeepCopy()
+	task.Status.Run.MergeRequestIID = mr.IID
+	task.Status.Run.Checkpoint = &aiv1.CheckpointStatus{SHA: "sha-cp", Branch: "agent/42", Reason: "engine-error"}
+	if err := e.c.Status().Patch(context.Background(), &task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	e.gl.AddPipeline("sha1", "agent/42", "success")
+	e.reconcile()
+	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::review"}) {
+		t.Fatalf("green should still end the CI loop, has %v", labels)
+	}
+	if got := e.gl.MRs[mr.IID]; len(got.Reviewers) != 0 || len(e.gl.MRNotes[mr.IID]) != 0 {
+		t.Fatalf("a checkpoint head must get no reviewers and no review ping: %+v, notes %+v", got.Reviewers, e.gl.MRNotes[mr.IID])
+	}
+	if ci := e.ciTask().Status.CI; ci.PingedFor != "" {
+		t.Fatalf("no review ping may be recorded for a checkpoint head: %+v", ci)
 	}
 }
 
