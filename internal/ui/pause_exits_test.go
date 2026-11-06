@@ -79,6 +79,7 @@ func TestExitViewStatus(t *testing.T) {
 		{"budget unread", unread, nil, nil, map[string]want{"budgetRaised": {ExitStatusUnknown, "the spend of the milestone cannot be read"}}},
 		{"issue budget spent", pausedOn(aiv1.PauseBudget, ownBudget), nil, nil, map[string]want{"budgetRaised": {ExitStatusWaiting, "#88 spent 1.50 of 1.00 USD"}}},
 		{"stuck", stuck, nil, nil, map[string]want{"somethingCanStart": {ExitStatusWaiting, ""}}},
+		{"empty plan", &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PauseKind: aiv1.PauseEmptyPlan}, nil, nil, map[string]want{"replanned": {ExitStatusWaiting, ""}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

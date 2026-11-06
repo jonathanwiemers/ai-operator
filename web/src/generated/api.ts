@@ -3932,7 +3932,7 @@ export interface ReviewError {
 }
 /**
  * PauseKind is why autopilot paused.
- * +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion
+ * +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan
  */
 export type PauseKind = string;
 /**
@@ -4000,6 +4000,10 @@ export const PauseBudget: PauseKind = "budget";
  * head). A red companion pipeline pauses with ciRed.
  */
 export const PauseCompanion: PauseKind = "companion";
+/**
+ * PauseEmptyPlan: the planning run succeeded but planned no issues.
+ */
+export const PauseEmptyPlan: PauseKind = "emptyPlan";
 /**
  * PauseResolver is who ended a pause (status.autopilot.resumedBy, the
  * autopilot.resumed history event).

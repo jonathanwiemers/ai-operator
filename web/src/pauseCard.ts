@@ -61,6 +61,9 @@ const actionsByKind = {
   // Resume would pause again at once: the owner raises the budget (the
   // milestone's line, or the issue's with a comment).
   budget: [],
+  // Its way out is a milestone description change, a GitLab action: the
+  // Way out links the milestone.
+  emptyPlan: [],
 } satisfies Record<PauseKind, PauseAction[]>
 
 type KnownPauseKind = keyof typeof actionsByKind
@@ -137,6 +140,7 @@ const chips: Record<ExitStatus, { chip: string; tone: ExitTone }> = {
 // GitLab pages of the GitLab actions and labels.
 const exitLinks: Partial<Record<string, WayOutRemedy['link']>> = {
   changePlan: 'milestone',
+  changeSpec: 'milestone',
   fixInGitLab: 'mergeRequest',
   removeLink: 'issue',
   answered: 'issue',
@@ -276,6 +280,8 @@ export function pauseEndsBy(kind: PauseKind | undefined, issue?: number): string
       return issue
         ? `Continues by itself once the budget of #${issue} is raised above its spend (\`/agent budget <usd>\` on the issue).`
         : "Continues by itself once the milestone's budget line is raised above the spend."
+    case 'emptyPlan':
+      return 'Continues once the milestone description is changed and planned again.'
     default:
       return ''
   }
@@ -296,6 +302,7 @@ const titles: Record<KnownPauseKind, string> = {
   mainRed: 'main is red',
   config: 'Configuration problem',
   budget: 'The budget is used',
+  emptyPlan: 'Nothing was planned',
 }
 
 // pauseTitle is the card's heading for a pause.

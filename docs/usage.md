@@ -986,7 +986,8 @@ comment and in the tracking issue's description. It pauses for:
 - the plan has a dependency cycle, or nothing can start because the
   remaining issues wait for skipped issues, for issues outside the queue
   ("blocked by" links), or for each other (a cycle of links);
-- the milestone, or one of its open issues, spent its [budget](#budget).
+- the milestone, or one of its open issues, spent its [budget](#budget);
+- the planning run succeeded but planned no issues.
 
 While paused, runs that were already requested continue (your `/agent`
 comments still reach the agent), but nothing new is started or merged.
@@ -1295,6 +1296,17 @@ hand, merged or closed by hand).
   rebase.
 - `/agent skip #N`: the issue is skipped; its companion merge request is
   left to the owners.
+
+#### `emptyPlan`
+
+The planning run succeeded but planned no issues. A planning run that is
+still pending, one that failed, and a milestone whose planning has not run
+yet do not pause. Ends by itself once the milestone is planned again and the
+plan has issues: autopilot starts with the new plan. The pause lifts as soon
+as the re-plan is pending; if that plan comes back empty, it pauses again.
+
+- Change the milestone description so the planning agent plans issues: the
+  milestone is planned again. `/agent resume` alone pauses again.
 
 ### Budget
 

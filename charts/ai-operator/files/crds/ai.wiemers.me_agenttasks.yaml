@@ -1274,6 +1274,7 @@ spec:
                     - config
                     - budget
                     - companion
+                    - emptyPlan
                     type: string
                   pausedAt:
                     description: PausedAt is when the current pause started; unset

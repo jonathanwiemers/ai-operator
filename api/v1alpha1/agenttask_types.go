@@ -1524,7 +1524,7 @@ type ReviewError struct {
 }
 
 // PauseKind is why autopilot paused.
-// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion
+// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan
 type PauseKind string
 
 const (
@@ -1563,6 +1563,8 @@ const (
 	// conflict a rebase did not fix, another blocking merge status, a moved
 	// head). A red companion pipeline pauses with ciRed.
 	PauseCompanion PauseKind = "companion"
+	// PauseEmptyPlan: the planning run succeeded but planned no issues.
+	PauseEmptyPlan PauseKind = "emptyPlan"
 )
 
 // PauseResolver is who ended a pause (status.autopilot.resumedBy, the

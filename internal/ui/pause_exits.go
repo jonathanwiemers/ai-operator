@@ -95,7 +95,9 @@ func exitStatus(id string, ap *aiv1.AutopilotStatus, tasks []aiv1.AgentTask, pro
 		return mainGreenRebase(item, issueTask(tasks, ap.PausedFor), mh)
 	case "budgetRaised":
 		return budgetRaised(ap, item)
-	case "somethingCanStart":
+	// replanned: a pending re-plan lifts the pause on the next poll, so
+	// while paused nothing is under way.
+	case "somethingCanStart", "replanned":
 		return ExitStatusWaiting, ""
 	}
 	return ExitStatusUnknown, ""

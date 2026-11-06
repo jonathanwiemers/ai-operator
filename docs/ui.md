@@ -467,6 +467,7 @@ Against an operator that sends no exits, the actions depend on the kind:
 | `cycle`, `stuck` | Open plan, Skip (pick a pending or active issue) |
 | `owner`, `mainRed`, `config`, and a pause without a kind | Resume |
 | `budget` | none: raise the budget above the spend (the milestone's `/agent budget` line, or for a `pausedFor` issue an `/agent budget <usd>` comment on it), and it continues by itself |
+| `emptyPlan` | none: change the milestone description, which plans it again; it continues by itself once the plan has issues |
 
 Retry and Review again go to the paused issue's Implement task; Resume,
 Skip and Merge anyway to the milestone's Spec task, as Desk chat commands

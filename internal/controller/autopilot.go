@@ -142,9 +142,13 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.budget(ctx); err != nil {
 		return err
 	}
+	if err := a.emptyPlan(ctx); err != nil {
+		return err
+	}
 	if len(a.st.Status.Plan) == 0 {
-		// Not planned yet, or the planning run failed: the tracking issue
-		// says so, nothing is picked and the milestone is not done.
+		// Not planned yet, the planning run failed or planned no issues:
+		// the tracking issue says so, nothing is picked and the milestone
+		// is not done.
 		return a.updateTracking(ctx)
 	}
 	if err := a.autoResume(ctx); err != nil {
@@ -182,6 +186,35 @@ func (a *autopilot) sync(ctx context.Context) error {
 		}
 	}
 	return a.updateTracking(ctx)
+}
+
+// emptyPlan pauses a running autopilot whose planning run succeeded but
+// planned no issues (decision 8), and lifts that pause once a re-plan is
+// pending (the spec was changed) or the plan has issues. An empty re-plan
+// pauses again. A spec task that never ran, a pending and a failed planning
+// run do not pause.
+func (a *autopilot) emptyPlan(ctx context.Context) error {
+	run := a.st.Status.Run
+	empty := len(a.st.Status.Plan) == 0 && run.ObservedRunRequest > 0 && !a.st.RunPending() && run.LastResult == aiv1.RunResultSucceeded
+	if a.ap.Phase == aiv1.AutopilotPaused && a.ap.PauseKind == aiv1.PauseEmptyPlan {
+		if empty {
+			return nil
+		}
+		why := "the milestone is being planned again"
+		if len(a.st.Status.Plan) > 0 {
+			why = fmt.Sprintf("the milestone was planned again with %d issues", len(a.st.Status.Plan))
+		}
+		a.log.Info("autopilot continues by itself", "why", why)
+		if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
+			return err
+		}
+		a.lift(aiv1.ResolvedByOperator)
+		return nil
+	}
+	if !empty || a.ap.Phase != aiv1.AutopilotRunning {
+		return nil
+	}
+	return a.pause(ctx, aiv1.PauseEmptyPlan, 0, "the planning run succeeded but planned no issues")
 }
 
 // off stops autopilot after its marker was removed or the milestone is no
@@ -1976,7 +2009,11 @@ func (a *autopilot) renderTracking() string {
 	fmt.Fprintf(&b, "**Autopilot** for milestone **%s**: ", a.st.Spec.Milestone.Title)
 	switch a.ap.Phase {
 	case aiv1.AutopilotPaused:
-		fmt.Fprintf(&b, "⏸️ paused, %s. Comment `%s resume` to continue.\n", notify.Defuse(a.ap.PausedReason), prefix)
+		next := fmt.Sprintf("Comment `%s resume` to continue", prefix)
+		if a.ap.PauseKind == aiv1.PauseEmptyPlan {
+			next = "Change the milestone description to plan it again"
+		}
+		fmt.Fprintf(&b, "⏸️ paused, %s. %s.\n", notify.Defuse(a.ap.PausedReason), next)
 	case aiv1.AutopilotDone:
 		b.WriteString("✅ done.\n")
 	case aiv1.AutopilotOff:

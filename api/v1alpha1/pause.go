@@ -71,6 +71,7 @@ func (w WorkflowSpec) RoleLabel(role LabelRole) string {
 var PauseKinds = []PauseKind{
 	PauseOwner, PauseCycle, PauseStuck, PauseNeedsInput, PauseRunFailed, PauseFindings, PauseReviewErrors,
 	PauseNotReviewed, PauseCIRed, PauseCICanceled, PauseMergeRequest, PauseMainRed, PauseConfig, PauseBudget, PauseCompanion,
+	PauseEmptyPlan,
 }
 
 // The exits several kinds share.
@@ -177,6 +178,14 @@ var pauseExits = map[PauseKind][]PauseExit{
 			Does: "the merge gate, or the companion's landing, checks it again"},
 		withDoes(exitResume, "the merge gate, or the companion's landing, checks the companion again"),
 		withDoes(exitSkip, "the issue is skipped and autopilot goes on without it; its companion merge request is left to the owners"),
+	},
+	// A planning run that succeeded with no issues. A re-plan ends it; an
+	// empty one pauses again.
+	PauseEmptyPlan: {
+		{ID: "replanned", Auto: true, When: "the milestone is planned again and the plan has issues",
+			Does: "autopilot starts with the new plan"},
+		{ID: "changeSpec", GitLab: true, When: "change the milestone description so the planning agent plans issues",
+			Does: "the milestone is planned again"},
 	},
 }
 

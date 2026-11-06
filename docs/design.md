@@ -1107,8 +1107,10 @@ stateDiagram-v2
   after); `status.autopilot.pausedReason` keeps the raw text, and
   `pauseKind` the cause (`owner`, `cycle`, `stuck`, `needsInput`,
   `runFailed`, `findings`, `reviewErrors`, `notReviewed`, `ciRed`,
-  `ciCanceled`, `mergeRequest`, `mainRed`, `config`, `budget`) for the Desk's
-  pause card. A milestone with a `/agent budget <usd>` line pauses with
+  `ciCanceled`, `mergeRequest`, `mainRed`, `config`, `budget`, `companion`,
+  `emptyPlan`) for the Desk's pause card. A planning run that succeeded
+  with no issues pauses with `emptyPlan`; a pending re-plan or a plan with
+  issues lifts it. A milestone with a `/agent budget <usd>` line pauses with
   `budget` once its `agent_calls` spend reaches it (read once per poll,
   `status.autopilot.budget`); raising or removing the line resumes it. An
   open issue with a budget (`spec.budgetUSD` of its task, from an `/agent
