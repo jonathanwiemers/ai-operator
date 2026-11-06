@@ -76,6 +76,13 @@ func failedTest() gitlab.Job { return gitlab.Job{Name: "test", Stage: "test", St
 
 func TestCIGreenMovesToReview(t *testing.T) {
 	e := newCIEnv(t, "sha1")
+	// A cause from an earlier pause is cleared once the loop ends in review.
+	task := e.ciTask()
+	orig := task.DeepCopy()
+	task.Status.Run.NeedsInputCause, task.Status.Run.NeedsInputURL = aiv1.NeedsInputRunFailed, "https://gitlab.example/note"
+	if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
 	pid := e.gl.AddPipeline("sha1", "agent/42", "running")
 	e.reconcile()
 	if got := e.ciState(); got != aiv1.CIStateRunning {
@@ -91,6 +98,9 @@ func TestCIGreenMovesToReview(t *testing.T) {
 	}
 	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::review"}) {
 		t.Fatalf("green pipeline should move the issue to review, has %v", labels)
+	}
+	if run := e.ciTask().Status.Run; run.NeedsInputCause != "" || run.NeedsInputURL != "" {
+		t.Fatalf("a green loop clears the cause: %q %q", run.NeedsInputCause, run.NeedsInputURL)
 	}
 	if e.notes() != "" {
 		t.Fatalf("a green pipeline needs no comment, got %q", e.notes())
@@ -170,6 +180,9 @@ func TestCIRetryThenFixRoundsThenGiveUp(t *testing.T) {
 	}
 	if labels := e.gl.Labels(42); !slices.Equal(labels, []string{"agent::needs-input"}) {
 		t.Fatalf("expected needs-input, has %v", labels)
+	}
+	if run := e.ciTask().Status.Run; run.NeedsInputCause != aiv1.NeedsInputCIRed || run.NeedsInputURL != "" {
+		t.Fatalf("red CI records its cause, links to status.ci: %q %q", run.NeedsInputCause, run.NeedsInputURL)
 	}
 	if n := e.notes(); !strings.Contains(n, "still red after 2 fix attempts") || !strings.Contains(n, "`test`") {
 		t.Fatalf("unexpected note %q", n)

@@ -908,7 +908,8 @@ func (run *implementRun) report(ctx context.Context) error {
 	}
 	runLogMD := r.run.markdown(out.CostUSD)
 	s := r.step(ctx, "comment")
-	if _, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+mrMention+runLogMD); err != nil {
+	note, err := gl.CreateMergeRequestNote(ctx, glProject, mr.IID, "🤖 "+report+mrMention+runLogMD)
+	if err != nil {
 		return s.fail(fmt.Errorf("commenting on merge request: %w", err))
 	}
 	// The questions go on the issue as prompts: the operator posts one
@@ -924,6 +925,13 @@ func (run *implementRun) report(ctx context.Context) error {
 		next := wf.ReviewLabel
 		if needsInput {
 			next = wf.NeedsInputLabel
+			// The cause goes before the label; the final patch keeps it.
+			out.NeedsInputCause, out.NeedsInputURL = aiv1.NeedsInputAgentQuestion, noteURL(mr.WebURL, note)
+			if err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
+				s.NeedsInputCause, s.NeedsInputURL = out.NeedsInputCause, out.NeedsInputURL
+			}); err != nil {
+				return s.fail(fmt.Errorf("recording the needs-input cause: %w", err))
+			}
 		}
 		if _, err := gl.UpdateIssue(ctx, glProject, issue.IID, gitlab.UpdateIssueOptions{
 			AddLabels: []string{next}, RemoveLabels: []string{wf.WorkingLabel, wf.ReadyLabel},

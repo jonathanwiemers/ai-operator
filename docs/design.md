@@ -435,6 +435,14 @@ stateDiagram-v2
   per planned milestone, light model, no builds or pushes, capped by
   `pilot.maxBudgetUSD`.
 
+Whoever sets the needs-input label first writes why in
+`status.run.needsInputCause`: `ciRed` (`finishCI`, the details are in
+`status.ci`), `runFailed` or `agentQuestion` (the runner).
+`status.run.needsInputURL` links to the runner's failure note on the issue
+or its report on the merge request. Status first, then the label, so the
+operator never sees the label without its cause. A run or CI loop that ends
+without needs-input clears both; tasks of an older release have neither.
+
 The runner never sets the blocked labels. It reports why a run waits or
 gave up in `status.run.blockReason` (`quota` while deferred by a usage limit
 and after giving up on one; `infra` when the agent pod or container was

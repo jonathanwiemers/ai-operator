@@ -3431,6 +3431,23 @@ spec:
                       MergedBaseFor is the head the last merge of the default branch was
                       asked for (spec.source.mergeBaseFor).
                     type: string
+                  needsInputCause:
+                    description: |-
+                      NeedsInputCause is why the issue got the needs-input label, written
+                      before the label. Empty once a run or CI loop ends without it, and on
+                      tasks of an older release.
+                    enum:
+                    - ciRed
+                    - runFailed
+                    - agentQuestion
+                    type: string
+                  needsInputURL:
+                    description: |-
+                      NeedsInputURL is the comment NeedsInputCause links to: the failure
+                      note on the issue (runFailed) or the report on the merge request
+                      (agentQuestion). ciRed leaves it empty and links to
+                      status.ci.pipelineURL.
+                    type: string
                   observedRunRequest:
                     description: ObservedRunRequest is the last run request the runner
                       has finished.

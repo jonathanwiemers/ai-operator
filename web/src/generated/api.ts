@@ -3423,6 +3423,21 @@ export interface RunStatus {
    */
   questions?: QuestionDraft[];
   /**
+   * NeedsInputCause is why the issue got the needs-input label, written
+   * before the label. Empty once a run or CI loop ends without it, and on
+   * tasks of an older release.
+   * +optional
+   */
+  needsInputCause?: NeedsInputCause;
+  /**
+   * NeedsInputURL is the comment NeedsInputCause links to: the failure
+   * note on the issue (runFailed) or the report on the merge request
+   * (agentQuestion). ciRed leaves it empty and links to
+   * status.ci.pipelineURL.
+   * +optional
+   */
+  needsInputURL?: string;
+  /**
    * CostUSD is the accumulated model spend of this task, as a decimal string.
    * +optional
    */
@@ -4366,6 +4381,23 @@ export interface DecisionRef {
    */
   superseded?: boolean;
 }
+/**
+ * NeedsInputCause is why an issue got the needs-input label.
+ * +kubebuilder:validation:Enum=ciRed;runFailed;agentQuestion
+ */
+export type NeedsInputCause = string;
+/**
+ * NeedsInputCIRed: CI stayed red after the fix rounds (status.ci).
+ */
+export const NeedsInputCIRed: NeedsInputCause = "ciRed";
+/**
+ * NeedsInputRunFailed: the run failed (status.run.summary).
+ */
+export const NeedsInputRunFailed: NeedsInputCause = "runFailed";
+/**
+ * NeedsInputAgentQuestion: the agent asked (status.run.questions).
+ */
+export const NeedsInputAgentQuestion: NeedsInputCause = "agentQuestion";
 /**
  * BlockReason is why an issue is blocked; it is the suffix of its reason label.
  * +kubebuilder:validation:Enum=infra;main-red;quota;dependency

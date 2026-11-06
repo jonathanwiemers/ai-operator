@@ -1076,6 +1076,19 @@ type RunStatus struct {
 	// +kubebuilder:validation:MaxItems=5
 	Questions []QuestionDraft `json:"questions,omitempty"`
 
+	// NeedsInputCause is why the issue got the needs-input label, written
+	// before the label. Empty once a run or CI loop ends without it, and on
+	// tasks of an older release.
+	// +optional
+	NeedsInputCause NeedsInputCause `json:"needsInputCause,omitempty"`
+
+	// NeedsInputURL is the comment NeedsInputCause links to: the failure
+	// note on the issue (runFailed) or the report on the merge request
+	// (agentQuestion). ciRed leaves it empty and links to
+	// status.ci.pipelineURL.
+	// +optional
+	NeedsInputURL string `json:"needsInputURL,omitempty"`
+
 	// CostUSD is the accumulated model spend of this task, as a decimal string.
 	// +optional
 	CostUSD string `json:"costUSD,omitempty"`
@@ -1840,6 +1853,19 @@ type DecisionRef struct {
 	// +optional
 	Superseded bool `json:"superseded,omitempty"`
 }
+
+// NeedsInputCause is why an issue got the needs-input label.
+// +kubebuilder:validation:Enum=ciRed;runFailed;agentQuestion
+type NeedsInputCause string
+
+const (
+	// NeedsInputCIRed: CI stayed red after the fix rounds (status.ci).
+	NeedsInputCIRed NeedsInputCause = "ciRed"
+	// NeedsInputRunFailed: the run failed (status.run.summary).
+	NeedsInputRunFailed NeedsInputCause = "runFailed"
+	// NeedsInputAgentQuestion: the agent asked (status.run.questions).
+	NeedsInputAgentQuestion NeedsInputCause = "agentQuestion"
+)
 
 // BlockReason is why an issue is blocked; it is the suffix of its reason label.
 // +kubebuilder:validation:Enum=infra;main-red;quota;dependency

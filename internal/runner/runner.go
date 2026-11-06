@@ -154,6 +154,10 @@ type Outcome struct {
 	ReviewErrorsTransient bool
 	ReviewErrorKinds      []aiv1.ReviewError
 	ReviewedSHA           string
+	// NeedsInputCause and NeedsInputURL are set when the run put the issue
+	// into needs-input; the final patch clears them otherwise.
+	NeedsInputCause aiv1.NeedsInputCause
+	NeedsInputURL   string
 	// Questions are the agent's normalised questions (Implement runs).
 	Questions []aiv1.QuestionDraft
 	// Plan is set by spec runs: the plan in plan order.
@@ -667,6 +671,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.LastResult = out.Result
 		s.Summary = textutil.Truncate(out.Summary, 2000)
 		s.Questions = out.Questions
+		s.NeedsInputCause, s.NeedsInputURL = out.NeedsInputCause, out.NeedsInputURL
 		s.CostUSD = aiv1.AddCost(s.CostUSD, out.CostUSD)
 		if out.Branch != "" {
 			s.Branch = out.Branch
@@ -1009,17 +1014,35 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 		body += "\n\n" + saved
 	}
 	body += r.run.markdown(out.CostUSD)
-	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); err != nil {
+	note, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body)
+	if err != nil {
 		r.log().Error(err, "posting failure note")
 	}
 	if block != "" {
 		return
+	}
+	// The cause goes before the label, so the operator never sees the label
+	// without it; the final patch writes it again.
+	out.NeedsInputCause, out.NeedsInputURL = aiv1.NeedsInputRunFailed, noteURL(task.Spec.Issue.WebURL, note)
+	if err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
+		s.NeedsInputCause, s.NeedsInputURL = out.NeedsInputCause, out.NeedsInputURL
+	}); err != nil {
+		r.log().Error(err, "recording the needs-input cause")
 	}
 	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, task.Spec.Issue.IID, gitlab.UpdateIssueOptions{
 		AddLabels: []string{wf.NeedsInputLabel}, RemoveLabels: []string{wf.WorkingLabel},
 	}); err != nil {
 		r.log().Error(err, "updating labels after failure")
 	}
+}
+
+// noteURL links to note under the web URL of its issue or merge request;
+// empty without either.
+func noteURL(webURL string, note *gitlab.Note) string {
+	if webURL == "" || note == nil || note.ID == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s#note_%d", webURL, note.ID)
 }
 
 // reportSpecFailure tells the milestone's owners on its autopilot tracking

@@ -539,6 +539,19 @@ func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, sp
 			return fmt.Errorf("commenting on issue #%d: %w", is.IID, err)
 		}
 	}
+	// The cause goes before the label (ciRed links to status.ci); a loop that
+	// ends in review clears an older one.
+	var cause aiv1.NeedsInputCause
+	if failed {
+		cause = aiv1.NeedsInputCIRed
+	}
+	if run := task.Status.Run; run.NeedsInputCause != cause || run.NeedsInputURL != "" {
+		orig := task.DeepCopy()
+		task.Status.Run.NeedsInputCause, task.Status.Run.NeedsInputURL = cause, ""
+		if err := client.IgnoreNotFound(r.Status().Patch(ctx, task, client.MergeFrom(orig))); err != nil {
+			return fmt.Errorf("recording the needs-input cause: %w", err)
+		}
+	}
 	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{
 		AddLabels: []string{next}, RemoveLabels: []string{wf.WorkingLabel},
 	}); err != nil {
