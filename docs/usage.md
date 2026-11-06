@@ -1024,6 +1024,184 @@ Skip, links to the issue's chat, the pipeline, the MR or the plan, and for
 an owner Merge anyway). The buttons send the same commands as the Desk chat
 and show the operator's answer in the card.
 
+**A pause that nothing moves.** While autopilot is paused, the operator
+checks on every poll whether the pause still holds (the stuck re-check
+above: a stuck pause ends as soon as an issue can start). If the pause's
+state (the queue's items, their heads and CI states, main health, the
+reason) has not changed for `pilot.stuckAfter` (default 30m, see
+[configuration.md](configuration.md#specpilot)), the pause is **stuck**: the
+[pilot](#talking-to-the-pilot) assesses it once per pause and the owners get
+a Desk prompt whose options are the pause's ways out below and the pilot's
+tools (for example `markDone #83` or `startAnyway #88`). That prompt always
+waits for an owner, also when the pilot manages, and nothing resumes on its
+own. A new pause gets its own assessment; an owner's `/agent pause` is
+never assessed.
+
+**Rejected status writes.** When the API server rejects a status write of
+the pilot or the operator (a schema violation, for example), it is not
+lost silently: the tracking issue gets one line ("⚠️ The API server
+rejected a status write of the pilot …"), the history gets a
+`pilot.writeFailed` event, and the Desk Inbox shows *Pilot write rejected*
+(kind `pilotError`) with the API error for 24 hours. The same error from the
+same source again is counted, not posted again.
+
+The ways out of each kind of pause (`pauseKind` in `status.autopilot`), as
+in `PauseExits`; a test keeps this list and the table in step. Commands go
+on the tracking issue unless they say "on the issue". Every issue-level
+pause also ends when its MR is merged by hand or the issue is closed.
+
+#### `owner`
+
+An owner commented `/agent pause`. Nothing ends it by itself.
+
+- `/agent resume`: autopilot continues.
+
+#### `cycle`
+
+The plan has a dependency cycle.
+
+- Change the milestone description so the issues no longer depend on each
+  other in a cycle, then `/agent resume`: the milestone is planned again and
+  autopilot continues with the new plan.
+- `/agent skip #N`: the issue is skipped, which breaks the cycle of the
+  issues after it.
+- `/agent resume`: autopilot checks the plan again.
+
+#### `stuck`
+
+Nothing can start: the remaining issues wait for skipped issues, for issues
+outside the queue, or for each other. Ends by itself once an issue can start
+(a skipped dependency closed as done, a link removed, an unskip or a
+startAnyway). Owners can:
+
+- set `agent::done` on the skipped issue and close it (or merge it by
+  hand): it counts as merged, so the issues that wait for it can start;
+- remove the "blocked by" link of the waiting issue;
+- `/agent unskip #N`: the skipped issue goes back to pending and autopilot
+  picks it once it can start;
+- `/agent startAnyway #N`: the waiting issue may start although an issue it
+  depends on was skipped; the tracking issue says so;
+- answer the pilot's prompt with `unskip`, `markDone` (the skipped issue is
+  closed as done, with a reason) or `startAnyway`, e.g. when another
+  milestone replaces the skipped issue;
+- `/agent skip #N`: the waiting issue is skipped and autopilot goes on with
+  the others;
+- `/agent resume`: autopilot looks for an issue that can start again.
+
+#### `needsInput`
+
+The active issue landed in `agent::needs-input`. Ends by itself once a later
+run passes the merge gate (reviewed and green), or when the MR is merged by
+hand or the issue is closed.
+
+- Answer its questions and set `agent::ready` on the issue: a new run
+  starts with the answers.
+- `/agent retry` on the issue: the agent runs again; a run that passes the
+  gate ends the pause.
+- `/agent skip #N`: the issue is skipped and autopilot goes on; issues that
+  depend on it wait until it is done by hand.
+
+#### `runFailed`
+
+The active issue's run failed. Ends by itself like `needsInput`.
+
+- `/agent retry` on the issue: the agent runs again.
+- `/agent skip #N`: the issue is skipped.
+
+#### `findings`
+
+The review left blocker or major findings. Ends by itself like `needsInput`
+(for example after `/agent fix the findings` on the issue).
+
+- `/agent retry` on the issue, or `/agent skip #N`.
+- `/agent merge #N <sha>` (owners only): autopilot merges this head without
+  a full review; CI, the MR's state and approvals still apply.
+
+#### `reviewErrors`
+
+Reviewers failed (after the one re-review of a transient outage). Ends by
+itself like `needsInput`.
+
+- `/agent review` on the issue: the reviewers check the pushed head again.
+- `/agent retry` on the issue, or `/agent skip #N`.
+- `/agent merge #N <sha>` (owners only), as for `findings`.
+
+#### `notReviewed`
+
+The review did not see the pushed head. Ends by itself like `needsInput`.
+
+- `/agent review` on the issue: the reviewers check the pushed head again.
+- `/agent retry` on the issue, or `/agent skip #N`.
+- `/agent merge #N <sha>` (owners only), as for `findings`.
+
+#### `ciRed`
+
+CI is red with jobs that also fail on the default branch. Ends by itself
+like `needsInput`, and when [main health](#main-health) reports the default
+branch green at a commit the MR is not based on: autopilot rebases the MR
+once (the self-heal of a `BaseFailing` MR above) and the new pipeline
+decides.
+
+- `/agent rebase #N`: GitLab rebases the MR onto the default branch and the
+  pause ends; the review holds if the change is unchanged, the new pipeline
+  decides.
+- `/agent mergeBase #N`: the agent merges the default branch into the MR and
+  the pause ends; the new head is reviewed and checked by CI like any push.
+- `/agent retry` on the issue, or `/agent skip #N`.
+
+#### `ciCanceled`
+
+The MR's pipeline was canceled. Ends by itself like `needsInput`.
+
+- `/agent retry` on the issue, or `/agent skip #N`.
+
+#### `mergeRequest`
+
+The MR cannot be merged: someone pushed to the branch, it was closed or
+retargeted, needs an approval, has unresolved discussions or conflicts, is a
+draft again, the merge was refused, or the rebased change differs from the
+reviewed one. Ends by itself when the MR is merged by hand or the issue is
+closed.
+
+- Fix the merge request in GitLab (approve it, resolve its discussions or
+  conflicts, mark it ready, let the bot merge), then `/agent resume`: the
+  merge gate checks it again.
+- `/agent rebase #N` or `/agent mergeBase #N`, as for `ciRed`.
+- `/agent skip #N`: the issue is skipped.
+
+#### `mainRed`
+
+The default branch is red ([merge freeze](#main-health)), or the fix of the
+red default branch cannot be merged. A `ci::main-red` issue handed to the
+agent (by `mainHealth.autoFix` or by an owner's `agent::ready`) is driven
+and merged by the frozen milestone: the [main-red lane](#main-health). Ends
+by itself when:
+
+- the default branch turns green;
+- the merge freeze is switched off (`mainHealth.freezeAutopilot`);
+- the default branch's health is no longer watched or checked;
+- the issue's MR is merged by hand, or the issue is closed.
+
+`/agent resume` does not end a freeze; to ship during one, merge by hand.
+
+#### `config`
+
+The setup does not allow a merge: the active issue lost its workflow label,
+no reviewers are configured, or there is no pushed MR. Ends by itself when
+the MR is merged by hand or the issue is closed.
+
+- Fix the setup (the issue's workflow label, `agents.review.reviewers`, a
+  pushed merge request), then `/agent resume`: the merge gate checks the
+  issue again.
+- `/agent skip #N`: the issue is skipped.
+
+#### `budget`
+
+The milestone, or an open issue of it, spent its budget. Ends by itself once
+the budget is raised above the spend or removed (`/agent budget <usd>` in
+the milestone description, or on the issue for its own budget); see
+[Budget](#budget). `/agent resume` alone pauses again.
+
 ### Budget
 
 A line `/agent budget <usd>` in the milestone description (for example
@@ -1149,6 +1327,8 @@ is never merged by autopilot. Changing the companion starts no run.
 | `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |
 | `/agent unskip #12` | a skipped issue that is still open goes back to pending |
 | `/agent startAnyway #12` | a pending issue may start although an issue it depends on was skipped (see [When it pauses](#when-it-pauses)) |
+| `/agent rebase #12` | the active issue's MR is rebased onto the default branch; a CI red or merge request pause about it ends (see [When it pauses](#when-it-pauses)) |
+| `/agent mergeBase #12` | the agent merges the default branch into the active issue's MR and resolves conflicts; a pause about it ends |
 | `/agent merge #12 <sha>` | owners only: merge the active issue's head `sha` without a full review (when the reviewers cannot run); CI, MR state and approvals still apply, a new push or a later review voids it (`status.autopilot.mergeOverride`) |
 | `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](#revisiting-after-the-merge) joins the queue |
 

@@ -29,7 +29,11 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   questions, failed or blocked, the open prompts (and proposals from before prompts), rejected pilot status writes (*Pilot write rejected*, with the API error, for 24 hours), and paused
   autopilots as the compact pause card, see below, which opens the
   milestone stream; the count also shows in the tab title as `(n) Desk`; see
-  [Notifications](#notifications)), *Everything*
+  [Notifications](#notifications)). While any autopilot you may see is
+  paused, the Inbox opens with a strip *N autopilots paused, longest
+  &lt;duration&gt;* across projects, with a link to each milestone and how long
+  it has been paused (longest first; from `status.autopilot.pausedAt`, a
+  pause without a start counts but shows no time). *Everything*
   (all your projects' streams in one), your projects with a status dot
   (running, needs you, idle), a one-line state and a needs-you count, the
   researches (with the research section) and the engine usage. On narrow
