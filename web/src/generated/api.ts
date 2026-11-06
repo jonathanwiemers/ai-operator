@@ -72,6 +72,13 @@ export interface AgentProjectSpec {
    */
   mainHealth?: MainHealthSpec;
   /**
+   * Checkpoint configures the checkpoint commits that save the work tree
+   * of an implementer call that was cut off (usage limit, engine error,
+   * timeout, budget stop). On unless disabled.
+   * +optional
+   */
+  checkpoint?: CheckpointSpec;
+  /**
    * Notify says whom the operator mentions when it needs a human.
    * +optional
    */
@@ -932,6 +939,27 @@ export interface CISpec {
    * +optional
    */
   noPipelineTimeout?: string;
+}
+/**
+ * CheckpointSpec configures checkpoints: when an implementer call is cut
+ * off, the runner commits the work tree on the work branch as
+ * "chore(wip): checkpoint #<issue> step <n> (<reason>)" and pushes it
+ * without CI, so the next run continues from it.
+ */
+export interface CheckpointSpec {
+  /**
+   * Disabled turns checkpoints off: the work of a call that was cut off
+   * is reset with the workspace, as before.
+   * +optional
+   */
+  disabled?: boolean;
+  /**
+   * MaxFileBytes is the largest file a checkpoint commits; bigger ones
+   * stay in the workspace and are named in the run log. Default 5 MiB.
+   * +kubebuilder:validation:Minimum=1
+   * +optional
+   */
+  maxFileBytes?: number /* int64 */;
 }
 /**
  * MainHealthSpec configures the watcher of the default branch: its newest
@@ -3305,6 +3333,12 @@ export interface RunStatus {
    */
   reviewedSHA?: string;
   /**
+   * Checkpoint is the last checkpoint pushed; compare SHA with the branch
+   * head, it may be stale. Cleared when a run pushes a regular head.
+   * +optional
+   */
+  checkpoint?: CheckpointStatus;
+  /**
    * Calls are the task's newest engine calls, oldest first (AppendCalls
    * keeps the last MaxCalls). The operator writes each call it has not
    * seen yet to its history.
@@ -3319,6 +3353,59 @@ export interface RunStatus {
    * +optional
    */
   lastCallSeq?: number /* int64 */;
+}
+/**
+ * CheckpointStatus is a checkpoint commit the runner pushed after an
+ * implementer call was cut off.
+ */
+export interface CheckpointStatus {
+  /**
+   * SHA is the checkpoint commit.
+   */
+  sha: string;
+  /**
+   * Branch it was pushed to.
+   */
+  branch: string;
+  /**
+   * Reason the call was cut off: usage-limit, engine-error, timeout or
+   * budget-stop.
+   */
+  reason: string;
+  /**
+   * Run is the run (status.run.runCount after it) and Step the
+   * implementer call of the run that was cut off, from 1.
+   * +optional
+   */
+  run?: number /* int64 */;
+  /**
+   * +optional
+   */
+  step?: number /* int32 */;
+  /**
+   * Files, Added and Deleted are the checkpoint's diff stat.
+   * +optional
+   */
+  files?: number /* int32 */;
+  /**
+   * +optional
+   */
+  added?: number /* int64 */;
+  /**
+   * +optional
+   */
+  deleted?: number /* int64 */;
+  /**
+   * Skipped are the files left out (too big, or new files that look like
+   * secrets); they stayed in the workspace.
+   * +optional
+   * +listType=atomic
+   */
+  skipped?: string[];
+  /**
+   * At is when the checkpoint was pushed.
+   */
+  at: string;
 }
 export const CallKindSpec = "spec";
 export const CallKindImplement = "implement";

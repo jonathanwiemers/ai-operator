@@ -37,6 +37,12 @@ type AgentProjectSpec struct {
 	// +optional
 	MainHealth MainHealthSpec `json:"mainHealth,omitempty"`
 
+	// Checkpoint configures the checkpoint commits that save the work tree
+	// of an implementer call that was cut off (usage limit, engine error,
+	// timeout, budget stop). On unless disabled.
+	// +optional
+	Checkpoint CheckpointSpec `json:"checkpoint,omitempty"`
+
 	// Notify says whom the operator mentions when it needs a human.
 	// +optional
 	Notify NotifySpec `json:"notify,omitempty"`
@@ -790,6 +796,23 @@ type CISpec struct {
 	// +kubebuilder:default="10m"
 	// +optional
 	NoPipelineTimeout metav1.Duration `json:"noPipelineTimeout,omitempty"`
+}
+
+// CheckpointSpec configures checkpoints: when an implementer call is cut
+// off, the runner commits the work tree on the work branch as
+// "chore(wip): checkpoint #<issue> step <n> (<reason>)" and pushes it
+// without CI, so the next run continues from it.
+type CheckpointSpec struct {
+	// Disabled turns checkpoints off: the work of a call that was cut off
+	// is reset with the workspace, as before.
+	// +optional
+	Disabled bool `json:"disabled,omitempty"`
+
+	// MaxFileBytes is the largest file a checkpoint commits; bigger ones
+	// stay in the workspace and are named in the run log. Default 5 MiB.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MaxFileBytes *int64 `json:"maxFileBytes,omitempty"`
 }
 
 // MainHealthSpec configures the watcher of the default branch: its newest

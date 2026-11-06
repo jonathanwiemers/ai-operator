@@ -1452,6 +1452,25 @@ spec:
                     pattern: ^[0-9]+(\.[0-9]+)?$
                     type: string
                 type: object
+              checkpoint:
+                description: |-
+                  Checkpoint configures the checkpoint commits that save the work tree
+                  of an implementer call that was cut off (usage limit, engine error,
+                  timeout, budget stop). On unless disabled.
+                properties:
+                  disabled:
+                    description: |-
+                      Disabled turns checkpoints off: the work of a call that was cut off
+                      is reset with the workspace, as before.
+                    type: boolean
+                  maxFileBytes:
+                    description: |-
+                      MaxFileBytes is the largest file a checkpoint commits; bigger ones
+                      stay in the workspace and are named in the run log. Default 5 MiB.
+                    format: int64
+                    minimum: 1
+                    type: integer
+                type: object
               ci:
                 description: CI configures how the agent reacts to the merge request
                   pipeline.

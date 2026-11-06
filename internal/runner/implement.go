@@ -27,6 +27,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		return nil, fmt.Errorf("implement task has no issue")
 	}
 	run := r.newImplementRun(gl, task, project, spec)
+	defer func() { r.cut = nil }()
 	if closed, err := run.prepare(ctx); err != nil || closed {
 		return run.out, err
 	}
@@ -437,7 +438,12 @@ func (run *implementRun) implement(ctx context.Context) error {
 	if !run.stepwise && inv.Resume != "" {
 		inv.Prompt = noStepsNote + "\n\n" + inv.Prompt
 	}
+	// Until the push, a call that is cut off leaves a checkpoint.
+	if !run.spec.Checkpoint.Disabled {
+		r.cut = &cutTarget{gl: run.gl, glProject: run.glProject, branch: run.branch, base: run.base, issue: run.issue.IID, mr: run.mr, st: st}
+	}
 	if run.runAgent {
+		r.cutStep(false)
 		s := r.step(ctx, "run implementer", "profile", run.profile, "engine", role.Engine, "model", role.Model, "effort", role.Effort,
 			"resume", inv.Resume != "", "ciFix", run.ciFix, "conflicts", len(run.merge.Conflicts))
 		switch {
@@ -594,6 +600,8 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 		fix.Resume = run.res.SessionID
 		fixPrompt := buildFixPrompt(blocking)
 		fix.Prompt = fixPrompt
+		// A usage limit keeps the work below, without a checkpoint.
+		r.cutStep(true)
 		res, err := r.invoke(ctx, role, fix, run.fullPrompt+"\n\n"+fixPrompt)
 		run.res = res
 		if res != nil {
@@ -639,6 +647,7 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 // starts a pipeline where the head has none yet.
 func (run *implementRun) push(ctx context.Context) error {
 	r, gl, glProject, st, out, answer, task, mr, branch, base := run.r, run.gl, run.glProject, run.state, run.out, &run.answer, run.task, run.mr, run.branch, run.base
+	r.cut = nil // the implementer is done
 	// Ready means reviewed and clean. The MR leaves draft before the push, so
 	// the push gets its pipeline also where drafts run none; a run that
 	// leaves problems puts it back to draft.
@@ -661,17 +670,24 @@ func (run *implementRun) push(ctx context.Context) error {
 		return s.fail(err)
 	}
 	run.pushed = pushed
+	// A checkpoint this run pushed counts as no push: no pipeline, never
+	// PushedSHA or ReviewedSHA, and the MR stays a draft.
+	stepHead := r.stepHead()
+	if head, _ := r.Mirror.resolve(ctx, "refs/heads/"+branch); readied && r.checkpointHead != "" && head == r.checkpointHead {
+		r.setDraft(ctx, gl, glProject, mr, st, true)
+		readied = false
+	}
 	if pushed {
 		out.PushedSHA, _ = r.Mirror.resolve(ctx, "refs/heads/"+branch)
 		out.CIRound = ciRound(task, run.ciFix)
 		s.done(fmt.Sprintf("%s at %s", branch, shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
-	} else if r.pushedHead != "" {
+	} else if stepHead != "" {
 		// The last step pushed it all already, without CI: that head is the
 		// one CI has to check, and it needs a pipeline started.
-		out.PushedSHA = r.pushedHead
+		out.PushedSHA = stepHead
 		out.CIRound = ciRound(task, run.ciFix)
 		s.done(fmt.Sprintf("the last step pushed %s already", shortSHA(out.PushedSHA)), "sha", out.PushedSHA)
-	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && head != task.Status.Run.PushedSHA && r.Mirror.HasChanges(ctx, base, head) {
+	} else if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch); head != "" && head != r.checkpointHead && head != task.Status.Run.PushedSHA && r.Mirror.HasChanges(ctx, base, head) {
 		// Someone else pushed to the branch (or made it) since the last
 		// recorded push, and this run took it over unchanged: that head is
 		// the one CI has to check.
@@ -680,21 +696,26 @@ func (run *implementRun) push(ctx context.Context) error {
 	} else {
 		s.done("nothing new to push")
 	}
-	if !pushed && (readied || r.pushedHead != "") {
+	if !pushed && (readied || stepHead != "") {
 		// Marking ready starts no pipeline, projects that skip pipelines for
 		// drafts may have run none for the head yet, and steps are pushed
 		// without CI.
-		head := r.pushedHead
+		head := stepHead
 		if head == "" {
 			head, _ = r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
 		}
-		r.startPipeline(ctx, gl, glProject, mr, task, head)
+		if r.checkpointHead == "" || head != r.checkpointHead {
+			r.startPipeline(ctx, gl, glProject, mr, task, head)
+		}
 	}
 	if out.Reviewed && run.reviewedLast {
 		// The last review saw the branch as it is now.
 		out.ReviewedSHA = out.PushedSHA
 		if out.ReviewedSHA == "" {
 			out.ReviewedSHA, _ = r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
+		}
+		if out.ReviewedSHA == r.checkpointHead {
+			out.ReviewedSHA = ""
 		}
 	}
 	return nil
@@ -729,7 +750,7 @@ func (run *implementRun) report(ctx context.Context) error {
 	// An agent may leave the summary empty (cursor does when it changed
 	// nothing): the report and the task status still say what the run did.
 	if strings.TrimSpace(answer.Summary) == "" {
-		answer.Summary = emptySummary(run.pushed || r.pushedHead != "", out.PushedSHA)
+		answer.Summary = emptySummary(run.pushed || r.stepHead() != "", out.PushedSHA)
 	}
 	reported := *answer
 	if !spec.Agents.Describe.Disabled {
@@ -1419,6 +1440,7 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		}
 
 		s = r.step(ctx, fmt.Sprintf("run implementer, step %d", step+1), "engine", role.Engine, "model", role.Model, "newNotes", fresh, "resume", next.Resume != "")
+		r.cutStep(false)
 		res, err = r.invoke(ctx, role, next, stepPrompt)
 		if res != nil {
 			out.CostUSD += res.CostUSD

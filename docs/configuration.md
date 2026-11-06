@@ -644,6 +644,28 @@ Premium) run on a merge commit instead and are not found; with them the loop
 ends after `noPipelineTimeout` as "no CI". Set `ci.disabled: true` in that
 case until this is supported.
 
+## `spec.checkpoint`
+
+When an implementer call (the first call of a run, a step, a fix round, a
+CI or conflict round) is cut off by a usage limit, an engine error or
+timeout, or a budget stop, the runner saves the uncommitted work tree as a
+checkpoint commit on the work branch,
+`chore(wip): checkpoint #<issue> step <n> (<reason>)` with the trailer
+`Agent-Checkpoint: <run>/<step> <reason>`, and pushes it with `ci.skip`,
+never forced. A ready merge request is set to draft first. The next run
+starts from the checkpoint. A clean tree saves nothing; a merge in progress
+(conflict round) is aborted and saves nothing. A usage limit in a fix round
+keeps its own path: the run publishes what is committed with the open
+findings. The checkpoint is recorded in the task's `status.run.checkpoint`
+(cleared by the next regular push) and the run log's `save checkpoint`
+step. It starts no pipeline and never counts as the pushed or reviewed
+commit.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `disabled` | `false` | save no checkpoints: the work of a call that is cut off is reset with the workspace by the next run |
+| `maxFileBytes` | `5242880` (5 MiB) | files larger than this are left out of a checkpoint (they stay in the workspace and the run log names them); new files named like secrets (`.env*`, `*.pem`, `*.key`, `id_rsa*`, `*.p12`) are always left out |
+
 ## `spec.mainHealth`
 
 The watcher of the default branch, see [usage.md](usage.md#main-health).

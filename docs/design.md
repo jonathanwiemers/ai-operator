@@ -525,6 +525,15 @@ nothing is lost.
   push gets CI as usual; if the last step already pushed the final head, the
   runner starts a pipeline for it (merge request pipeline, else a branch
   pipeline).
+* **Checkpoints.** An implementer call cut off by a usage limit, an engine
+  error or timeout, or a budget stop does not lose its edits: in
+  `invokeOn`, before the call is recorded, the runner has the agent commit
+  the work tree (`Workspace.Checkpoint`, with its guards) and pushes it with
+  `ci.skip`, the MR set to draft first (`internal/runner/checkpoint.go`).
+  The commit is recorded in `status.run.checkpoint` and kept apart from the
+  run's pushes (`checkpointHead`): it gets no pipeline and is never
+  `pushedSHA` or `reviewedSHA`. A fix round's usage limit is excluded, it
+  publishes the committed work itself.
 * **Agent notes.** The implementer also returns handoff notes, which the
   runner keeps in one bot comment on the issue (created on the first run,
   edited right after each later push, `internal/runner/handoff.go`). A

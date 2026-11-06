@@ -135,6 +135,17 @@ func TestWebhookDefaults(t *testing.T) {
 	}
 }
 
+func TestCheckpointDefaults(t *testing.T) {
+	c := AgentProjectSpec{}.WithDefaults().Checkpoint
+	if c.Disabled || c.MaxFileBytes == nil || *c.MaxFileBytes != 5<<20 {
+		t.Fatalf("checkpoints are on with 5 MiB files: %+v", c)
+	}
+	n := int64(100)
+	if got := (AgentProjectSpec{Checkpoint: CheckpointSpec{MaxFileBytes: &n}}).WithDefaults().Checkpoint.MaxFileBytes; *got != 100 {
+		t.Fatalf("a set maxFileBytes is kept: %d", *got)
+	}
+}
+
 func TestWorkflowTakes(t *testing.T) {
 	for _, c := range []struct {
 		inputs       []InputSource

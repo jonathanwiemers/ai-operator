@@ -44,6 +44,9 @@ const (
 	DefaultWebhookSilence       = 30 * time.Minute
 )
 
+// DefaultCheckpointMaxFileBytes is checkpoint.maxFileBytes: 5 MiB.
+const DefaultCheckpointMaxFileBytes = 5 << 20
+
 // WithDefaults returns a copy of the workflow labels with defaults filled in.
 func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 	def := func(s *string, v string) {
@@ -198,6 +201,10 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 	s.Lifecycle = s.Lifecycle.WithDefaults()
 	s.CI = s.CI.WithDefaults()
 	s.MainHealth = s.MainHealth.WithDefaults()
+	if s.Checkpoint.MaxFileBytes == nil {
+		n := int64(DefaultCheckpointMaxFileBytes)
+		s.Checkpoint.MaxFileBytes = &n
+	}
 	s.Agents.Spec = s.Agents.Spec.WithDefaults()
 	s.Agents.Implement = s.Agents.Implement.WithDefaults()
 	if len(s.Agents.Profiles) == 0 {

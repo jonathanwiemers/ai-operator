@@ -72,6 +72,12 @@ type Runner struct {
 	progress *progress
 	// pushedHead is the commit this run last pushed, e.g. a step.
 	pushedHead string
+	// checkpointHead is the checkpoint this run last pushed: as pushedHead
+	// it is no push CI checks or a review covers (see stepHead).
+	checkpointHead string
+	// cut is where a checkpoint of a cut-off implementer call goes; nil
+	// outside the implementer part of a run.
+	cut *cutTarget
 	// changedPins are the pin files the run's branch changes; with any, every
 	// agent call of the run gets per-run toolchain directories.
 	changedPins []string
@@ -419,7 +425,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	r.usage, r.routed, r.sessionEngines = task.Status.Run.EngineUsage, task.Status.Run.UsageLimits, nil
 	request := task.Spec.RunRequest
 	r.run = newRunLog(r.Log, task)
-	r.blamedRestarts, r.pushedHead, r.changedPins = 0, "", nil
+	r.blamedRestarts, r.pushedHead, r.checkpointHead, r.changedPins, r.cut = 0, "", "", nil, nil
 	r.runNumber = int64(task.Status.Run.RunCount) + 1
 	ctx = withRunID(ctx, r.run.id)
 	log := r.run.log
@@ -559,6 +565,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 			s.PushedSHA = out.PushedSHA
 			s.PushedAt = &metav1.Time{Time: r.now()}
 			s.CIRound = out.CIRound
+			s.Checkpoint = nil // a regular head is on the branch now
 		}
 		if out.CIFixedPipelineID != 0 {
 			s.CIFixedPipelineID = out.CIFixedPipelineID
@@ -685,6 +692,11 @@ func (r *Runner) morePending(ctx context.Context, request int64) bool {
 // Once the operator set spec.budgetStop, no call starts: *BudgetStopError.
 func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
 	if err := r.budgetStop(ctx); err != nil {
+		if r.cutsOff(inv) {
+			// No call ran, so none is retried; usually a clean tree, the
+			// call before ended normally.
+			r.checkpoint(ctx, cutBudgetStop, nil)
+		}
 		return nil, err
 	}
 	if near := r.nearLimit(role); near != nil {
@@ -721,6 +733,13 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 			start := r.now()
 			res, err := r.Agent.Run(ctx, role.Engine, inv)
 			lost := r.agentLost(ctx, err, start)
+			if lost == nil {
+				err = classifyLimit(role.Engine, err, res)
+				// The agent is up: save the work of an implementer call cut off.
+				if reason := r.cutReason(ctx, inv, res, err); reason != "" {
+					r.checkpoint(ctx, reason, res)
+				}
+			}
 			if lost == nil || !lost.notSent {
 				r.recordCall(ctx, r.newCall(role.Engine, inv, res, start))
 			}
@@ -731,7 +750,7 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 					r.recordUsage(ctx, role.Engine, res.Usage)
 					r.rememberSession(res)
 				}
-				return res, classifyLimit(role.Engine, err, res)
+				return res, err
 			case !lost.back:
 				return nil, lost
 			case lost.notSent && !redialed:
@@ -755,8 +774,7 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 		return run(inv)
 	}
 	res, err := run(inv)
-	var lost *AgentLostError
-	if _, limited := AsUsageLimit(err); err == nil || limited || errors.As(err, &lost) || (res != nil && res.SessionID != "") {
+	if !retriedFresh(inv, res, err) {
 		return res, err
 	}
 	r.log().Info("could not resume session, starting fresh", "session", inv.Resume, "error", err.Error())

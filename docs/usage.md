@@ -1541,6 +1541,12 @@ CLI reports such a limit, the run is **paused, not failed**:
   `agent::working`); a later limit blocks it again.
   `/agent …` or a move to `agent::ready` lifts the block as usual, but the
   run still waits for the reset.
+- The implementer's uncommitted edits of the call that hit the limit are
+  saved as a checkpoint commit (`chore(wip): checkpoint #<issue> step <n>
+  (usage-limit)`), pushed without CI to the work branch of a draft MR, and
+  the next run starts from it. Failed or timed-out implementer calls and
+  budget stops save one the same way (see
+  [configuration.md](configuration.md#speccheckpoint)).
 - The run is retried at the reset time the CLI reports (claude's from its
   limit message or, when that names none, from its usage windows; cursor's
   monthly reset date). If it doesn't report one, the wait is 5 minutes, doubling with every further limit hit

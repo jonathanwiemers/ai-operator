@@ -3011,6 +3011,60 @@ spec:
                     maxItems: 50
                     type: array
                     x-kubernetes-list-type: atomic
+                  checkpoint:
+                    description: |-
+                      Checkpoint is the last checkpoint pushed; compare SHA with the branch
+                      head, it may be stale. Cleared when a run pushes a regular head.
+                    properties:
+                      added:
+                        format: int64
+                        type: integer
+                      at:
+                        description: At is when the checkpoint was pushed.
+                        format: date-time
+                        type: string
+                      branch:
+                        description: Branch it was pushed to.
+                        type: string
+                      deleted:
+                        format: int64
+                        type: integer
+                      files:
+                        description: Files, Added and Deleted are the checkpoint's
+                          diff stat.
+                        format: int32
+                        type: integer
+                      reason:
+                        description: |-
+                          Reason the call was cut off: usage-limit, engine-error, timeout or
+                          budget-stop.
+                        type: string
+                      run:
+                        description: |-
+                          Run is the run (status.run.runCount after it) and Step the
+                          implementer call of the run that was cut off, from 1.
+                        format: int64
+                        type: integer
+                      sha:
+                        description: SHA is the checkpoint commit.
+                        type: string
+                      skipped:
+                        description: |-
+                          Skipped are the files left out (too big, or new files that look like
+                          secrets); they stayed in the workspace.
+                        items:
+                          type: string
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      step:
+                        format: int32
+                        type: integer
+                    required:
+                    - at
+                    - branch
+                    - reason
+                    - sha
+                    type: object
                   ciFixedPipelineID:
                     description: CIFixedPipelineID is the failed pipeline the last
                       CI fix run handled.
