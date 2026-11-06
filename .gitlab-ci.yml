@@ -172,6 +172,11 @@ release:
       fi
     - VERSION="$(hack/next-version.sh)"
     - echo "Releasing ${VERSION}"
+    # The operator reports its release and compares it with the tags
+    # (--self-project): the Dockerfile's ARG VERSION, set in this job's
+    # copy as its default (no build argument needed from jo-docker-build).
+    - sed -i "s/^ARG VERSION=dev\$/ARG VERSION=${VERSION}/" Dockerfile
+    - grep -qx "ARG VERSION=${VERSION}" Dockerfile
     - |
       # jo-docker-build creates the docker context tls-env and fails if it
       # already exists, so the second build needs it removed first.

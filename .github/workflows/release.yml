@@ -87,6 +87,9 @@ jobs:
           tags: |
             ${{ steps.version.outputs.registry }}/ai-operator:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.registry }}/ai-operator:latest
+          # The operator reports it and compares it with the tags (--self-project).
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}

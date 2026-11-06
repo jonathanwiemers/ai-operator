@@ -31,6 +31,12 @@ crossRepo:
   # spec.crossRepo.targets. Empty turns cross-repo changes off.
   allowedProjects: []
 
+# Full path of the GitLab project this operator is built from (e.g.
+# "my-group/ai-operator"). A companion of one of its merge requests lands once
+# the running operator is a release that contains the merge. Empty: that
+# project's companions follow the tag rule like any other project's.
+selfProject: ""
+
 # Install and upgrade the CRDs with the chart.
 crds:
   install: true

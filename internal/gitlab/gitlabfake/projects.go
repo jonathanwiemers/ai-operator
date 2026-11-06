@@ -426,3 +426,19 @@ func (p *Projects) ListRepositoryTree(ctx context.Context, project, path, ref st
 	}
 	return f.ListRepositoryTree(ctx, project, path, ref, recursive)
 }
+
+func (p *Projects) ListTags(ctx context.Context, project string, opts gitlab.ListTagsOptions) ([]gitlab.Tag, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.ListTags(ctx, project, opts)
+}
+
+func (p *Projects) ListCommitRefs(ctx context.Context, project, sha, refType string) ([]gitlab.CommitRef, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.ListCommitRefs(ctx, project, sha, refType)
+}

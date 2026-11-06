@@ -3,8 +3,10 @@ package v1alpha1
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/jonathanwiemers/ai-operator/internal/pathspec"
 )
@@ -199,4 +201,127 @@ func (s RunStatus) ReviewKey() string {
 func (s RunStatus) CompanionUnreviewed() bool {
 	c := s.Companion
 	return c != nil && c.PushedSHA != "" && c.ReviewedSHA != c.PushedSHA
+}
+
+// LandingState is where a companion merge request stands after its home
+// merge (status.companions[].state).
+// +kubebuilder:validation:Enum=waitingRelease;rebasing;waitingCI;ready;merging;merged;closed;blocked
+type LandingState string
+
+const (
+	// LandingWaitingRelease: the home change is merged, but not live yet
+	// (no release that contains it runs, or no tag contains it).
+	LandingWaitingRelease LandingState = "waitingRelease"
+	// LandingRebasing: GitLab rebases the companion merge request.
+	LandingRebasing LandingState = "rebasing"
+	// LandingWaitingCI: the home change is live; the companion waits for a
+	// green pipeline on its head, or for GitLab to check it.
+	LandingWaitingCI LandingState = "waitingCI"
+	// LandingReady: the companion can land: live, rebased if it had to be,
+	// green on its head and mergeable.
+	LandingReady LandingState = "ready"
+	// LandingMerging: autopilot merges it.
+	LandingMerging LandingState = "merging"
+	// LandingMerged: it was merged.
+	LandingMerged LandingState = "merged"
+	// LandingClosed: it was closed without a merge (or is gone).
+	LandingClosed LandingState = "closed"
+	// LandingBlocked: a human must act (a conflict a rebase did not resolve,
+	// a red pipeline, someone's push, an approval); reason says why.
+	LandingBlocked LandingState = "blocked"
+)
+
+// Ended reports whether the companion's landing is over (merged or closed).
+func (s LandingState) Ended() bool { return s == LandingMerged || s == LandingClosed }
+
+// CompanionRetention is how long an ended companion stays in
+// status.companions.
+const CompanionRetention = 7 * 24 * time.Hour
+
+// CompanionStatus is a companion merge request after its home merge
+// (docs/specs/cross-repo-changes.spec.md, decision 8): the operator checks
+// it once per poll until it is ready to land.
+type CompanionStatus struct {
+	// HomeIssueIID is the home issue the companion belongs to.
+	HomeIssueIID int64 `json:"homeIssueIID"`
+	// MilestoneIID and MilestoneTitle are the home issue's milestone.
+	// +optional
+	MilestoneIID int64 `json:"milestoneIID,omitempty"`
+	// +optional
+	MilestoneTitle string `json:"milestoneTitle,omitempty"`
+	// HomeMRIID is the home merge request that was merged.
+	HomeMRIID int64 `json:"homeMRIID"`
+	// HomeMergeSHA is the commit the home merge left on the default branch
+	// (the merge commit, else the squash commit, else the head).
+	// +optional
+	HomeMergeSHA string `json:"homeMergeSHA,omitempty"`
+	// DocsOnly: the home merge touches only docs/** and *.md, so it is live
+	// at merge.
+	// +optional
+	DocsOnly bool `json:"docsOnly,omitempty"`
+
+	// Project is the companion's full path; MRIID its merge request, MRURL
+	// the merge request's web URL.
+	Project string `json:"project"`
+	MRIID   int64  `json:"mrIID"`
+	// +optional
+	MRURL string `json:"mrURL,omitempty"`
+	// HeadSHA is the companion head the landing checks: the agent's pushed
+	// head at the home merge, then a rebased head whose change hashes as
+	// Diff. A head with another change blocks the landing.
+	// +optional
+	HeadSHA string `json:"headSHA,omitempty"`
+	// HeadSince is when HeadSHA was taken: a head without a pipeline after
+	// spec.ci.noPipelineTimeout counts as one without CI.
+	// +optional
+	HeadSince *metav1.Time `json:"headSince,omitempty"`
+	// Diff is the hash of the companion's change at HeadSHA when the home
+	// merge was recorded; empty when it could not be hashed.
+	// +optional
+	Diff string `json:"diff,omitempty"`
+
+	// State is where the landing stands; Reason says why it waits or is
+	// blocked.
+	State LandingState `json:"state"`
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// Release is the release (tag) that made the home change live; empty
+	// for a docs-only change or a project that does not tag.
+	// +optional
+	Release string `json:"release,omitempty"`
+	// AutoMerge is the home task's spec.companion.autoMerge at the home
+	// merge: autopilot may merge the companion.
+	// +optional
+	AutoMerge bool `json:"autoMerge,omitempty"`
+	// Owners are the home task's owners, mentioned when the companion needs
+	// a human outside autopilot.
+	// +optional
+	Owners []string `json:"owners,omitempty"`
+
+	// RebasedSHA is the companion head the operator asked GitLab to rebase,
+	// once per entry (an owner's resume allows one more); RebasedAt when.
+	// +optional
+	RebasedSHA string `json:"rebasedSHA,omitempty"`
+	// +optional
+	RebasedAt *metav1.Time `json:"rebasedAt,omitempty"`
+	// BlockedNotice is the block reason the companion merge request was
+	// told about (outside autopilot), so each block is commented once.
+	// +optional
+	BlockedNotice string `json:"blockedNotice,omitempty"`
+
+	// ReadyAt is when the companion became ready; NotifiedAt when the owners
+	// were told, RemindedAt when they were reminded.
+	// +optional
+	ReadyAt *metav1.Time `json:"readyAt,omitempty"`
+	// +optional
+	NotifiedAt *metav1.Time `json:"notifiedAt,omitempty"`
+	// +optional
+	RemindedAt *metav1.Time `json:"remindedAt,omitempty"`
+	// EndedAt is when it was seen merged or closed; the entry is removed
+	// CompanionRetention later.
+	// +optional
+	EndedAt *metav1.Time `json:"endedAt,omitempty"`
+	// MergeSHA is the commit the companion's merge left.
+	// +optional
+	MergeSHA string `json:"mergeSHA,omitempty"`
 }

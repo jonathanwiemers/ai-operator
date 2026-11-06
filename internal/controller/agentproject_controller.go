@@ -59,6 +59,14 @@ type AgentProjectReconciler struct {
 	// (--cross-repo-allowed-projects). Empty: cross-repo changes are off.
 	// Read the targets through crossRepoTargets only.
 	CrossRepoAllowed []string
+	// SelfProject is the GitLab project the operator is built from
+	// (--self-project), normalized. A companion of its merge request lands
+	// once Version is a release that contains the merge. Empty: that
+	// project follows the tag rule like any other.
+	SelfProject string
+	// Version is the running operator's release (main.version); "dev" or
+	// empty is no release, so SelfProject's companions wait.
+	Version string
 	// DeskURL is the Desk's base URL (the UI's externalURL) for links in
 	// comments. Empty: comments name the Desk without a link.
 	DeskURL string
@@ -419,6 +427,8 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 	}
 	implTasks := map[int64]*aiv1.AgentTask{}
+	// The home merge requests the issue sync read, by task name.
+	homeMRs := map[string]*gitlab.MergeRequest{}
 	// One failing issue does not hold up the other issues or the steps
 	// below: its error is collected and returned at the end.
 	var errs []error
@@ -464,6 +474,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		}
 		keep[task.Name] = true
 		implTasks[is.IID] = task
+		homeMRs[task.Name] = mr
 		var st *aiv1.AgentTask
 		if is.Milestone != nil {
 			st = byMilestone[is.Milestone.IID]
@@ -499,6 +510,11 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		if err := r.syncRevisits(ctx, gl, gate, project, spec, st); err != nil {
 			errs = append(errs, fmt.Errorf("revisits of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
+	}
+	// Companions whose home merge request was merged (also of tasks deleted
+	// below), before the autopilots pause or go on over them.
+	if err := r.syncCompanions(ctx, gl, project, spec, tasks.Items, homeMRs, autopilots, keep); err != nil {
+		errs = append(errs, fmt.Errorf("companions: %w", err))
 	}
 	for _, st := range autopilots {
 		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, pilots[st.Spec.Milestone.IID], st == lane); err != nil {

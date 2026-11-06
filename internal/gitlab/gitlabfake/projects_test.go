@@ -163,3 +163,29 @@ func TestListRepositoryTree(t *testing.T) {
 		t.Fatalf("tree of infra visible in app: %+v", es)
 	}
 }
+
+func TestTagsAndCommitRefs(t *testing.T) {
+	ctx := context.Background()
+	p := NewProjects(New())
+	b := p.Add("group/b")
+	b.AddTag("2026.11.1", gitlab.TagCommit{ID: "m1", ParentIDs: []string{"a", "b"}}, "c0")
+	b.AddTag("2026.11.2", gitlab.TagCommit{ID: "m2", ParentIDs: []string{"m1", "c"}}, "m1", "c0")
+
+	tags, err := p.ListTags(ctx, "group/b", gitlab.ListTagsOptions{Limit: 1})
+	if err != nil || len(tags) != 1 || tags[0].Name != "2026.11.2" {
+		t.Fatalf("the newest tag first, within the limit: %+v %v", tags, err)
+	}
+	if tags, _ := p.ListTags(ctx, "group/app", gitlab.ListTagsOptions{}); len(tags) != 0 {
+		t.Fatalf("the default project has no tags: %+v", tags)
+	}
+	refs, err := p.ListCommitRefs(ctx, "group/b", "c0", "tag")
+	if err != nil || !slices.Equal(refs, []gitlab.CommitRef{{Type: "tag", Name: "2026.11.1"}, {Type: "tag", Name: "2026.11.2"}}) {
+		t.Fatalf("both tags contain c0: %+v %v", refs, err)
+	}
+	if refs, _ := p.ListCommitRefs(ctx, "group/b", "m2", "branch"); len(refs) != 0 {
+		t.Fatalf("no branch refs: %+v", refs)
+	}
+	if !slices.Equal(b.RefLists, []string{"c0", "m2"}) || b.TagLists != 1 {
+		t.Fatalf("calls recorded: %v %d", b.RefLists, b.TagLists)
+	}
+}

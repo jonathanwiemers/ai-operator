@@ -583,3 +583,47 @@ func TestListRepositoryTree(t *testing.T) {
 		t.Fatalf("queries %v", queries)
 	}
 }
+
+func TestListTags(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.EscapedPath() + "?" + r.URL.RawQuery
+		_, _ = w.Write([]byte(`[{"name":"2026.11.3","commit":{"id":"m1","parent_ids":["a","b"],"created_at":"2026-11-02T10:00:00.000+01:00"}},
+			{"name":"old","commit":{"id":"c1","parent_ids":["a"]}}]`))
+	}))
+	defer srv.Close()
+	tags, err := New(srv.URL, "tok").ListTags(context.Background(), "group/app", ListTagsOptions{Limit: 5})
+	if err != nil || len(tags) != 2 {
+		t.Fatalf("tags %+v %v", tags, err)
+	}
+	c := tags[0].Commit
+	if tags[0].Name != "2026.11.3" || c.ID != "m1" || !slices.Equal(c.ParentIDs, []string{"a", "b"}) || c.CreatedAt == nil ||
+		!c.CreatedAt.Equal(time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC)) || tags[1].Commit.CreatedAt != nil {
+		t.Fatalf("tags decoded wrong: %+v", tags)
+	}
+	if got != "/api/v4/projects/group%2Fapp/repository/tags?order_by=updated&per_page=5&sort=desc" {
+		t.Fatalf("request %s", got)
+	}
+}
+
+func TestListCommitRefs(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.EscapedPath()+"?"+r.URL.Query().Get("type")+"|"+r.URL.Query().Get("page"))
+		if r.URL.Query().Get("page") == "1" {
+			w.Header().Set("X-Next-Page", "2")
+			_, _ = w.Write([]byte(`[{"type":"tag","name":"2026.11.4"}]`))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"type":"tag","name":"2026.11.3"}]`))
+	}))
+	defer srv.Close()
+	refs, err := New(srv.URL, "tok").ListCommitRefs(context.Background(), "group/app", "abc123", "tag")
+	if err != nil || len(refs) != 2 || refs[1] != (CommitRef{Type: "tag", Name: "2026.11.3"}) {
+		t.Fatalf("refs %+v %v", refs, err)
+	}
+	want := []string{"/api/v4/projects/group%2Fapp/repository/commits/abc123/refs?tag|1", "/api/v4/projects/group%2Fapp/repository/commits/abc123/refs?tag|2"}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("paths %v", paths)
+	}
+}

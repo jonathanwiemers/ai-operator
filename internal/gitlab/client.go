@@ -50,6 +50,8 @@ type API interface {
 	ListIssueStateEvents(ctx context.Context, project string, iid int64) ([]StateEvent, error)
 	ListIssueLabelEvents(ctx context.Context, project string, iid int64) ([]LabelEvent, error)
 	ListRepositoryTree(ctx context.Context, project, path, ref string, recursive bool) ([]TreeEntry, error)
+	ListTags(ctx context.Context, project string, opts ListTagsOptions) ([]Tag, error)
+	ListCommitRefs(ctx context.Context, project, sha, refType string) ([]CommitRef, error)
 	ListIssueLinks(ctx context.Context, project string, iid int64) ([]LinkedIssue, error)
 	CreateIssueLink(ctx context.Context, project string, iid, targetIID int64, linkType string) error
 	DeleteIssueLink(ctx context.Context, project string, iid, linkID int64) error
@@ -289,6 +291,33 @@ type Diff struct {
 	// Collapsed and TooLarge diffs come without their content.
 	Collapsed bool `json:"collapsed"`
 	TooLarge  bool `json:"too_large"`
+}
+
+// Tag is a tag of a project's repository with the commit it points to.
+type Tag struct {
+	Name   string    `json:"name"`
+	Commit TagCommit `json:"commit"`
+}
+
+// TagCommit is the commit a tag points to.
+type TagCommit struct {
+	ID string `json:"id"`
+	// ParentIDs: more than one makes it a merge commit.
+	ParentIDs []string   `json:"parent_ids"`
+	CreatedAt *time.Time `json:"created_at"`
+}
+
+// ListTagsOptions selects tags; they come newest first (by update).
+type ListTagsOptions struct {
+	// Limit caps the number of results (default: one page of 20).
+	Limit int
+}
+
+// CommitRef is a branch or tag that contains a commit.
+type CommitRef struct {
+	// Type is "branch" or "tag".
+	Type string `json:"type"`
+	Name string `json:"name"`
 }
 
 // ListIssuesOptions filters issues.
@@ -897,6 +926,29 @@ func (c *Client) ListRepositoryTree(ctx context.Context, project, path, ref stri
 		q.Set("recursive", "true")
 	}
 	return list[TreeEntry](ctx, c, projectPath(project)+"/repository/tree", q)
+}
+
+// ListTags lists the newest tags of the project's repository (by update),
+// with the commits they point to.
+func (c *Client) ListTags(ctx context.Context, project string, opts ListTagsOptions) ([]Tag, error) {
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	q := url.Values{"order_by": {"updated"}, "sort": {"desc"}, "per_page": {strconv.Itoa(limit)}}
+	var tags []Tag
+	_, err := c.do(ctx, http.MethodGet, projectPath(project)+"/repository/tags", q, nil, &tags)
+	return tags, err
+}
+
+// ListCommitRefs lists the branches or tags (refType "branch", "tag", or
+// "all") that contain the commit sha.
+func (c *Client) ListCommitRefs(ctx context.Context, project, sha, refType string) ([]CommitRef, error) {
+	q := url.Values{}
+	if refType != "" {
+		q.Set("type", refType)
+	}
+	return list[CommitRef](ctx, c, fmt.Sprintf("%s/repository/commits/%s/refs", projectPath(project), url.PathEscape(sha)), q)
 }
 
 func (c *Client) FindOpenMergeRequest(ctx context.Context, project, sourceBranch string) (*MergeRequest, error) {

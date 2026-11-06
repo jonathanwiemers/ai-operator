@@ -1280,10 +1280,19 @@ companion pipeline pauses with `ciRed`, an unreviewed one with
 merged again (also after a rebase by hand: the rebased head is taken over,
 its review holds if the change is the same), or is merged by hand.
 
+After the home merge, the same kind pauses the milestone while one of its
+companions is `blocked` in its [landing](#landing): a conflict or a
+`need_rebase` after the one rebase, a failed rebase, a red pipeline, an
+approval, or someone's push. That pause is about no issue. It ends by itself
+once no companion of the milestone is blocked any more (fixed or rebased by
+hand, merged or closed by hand).
+
 - Fix the companion's merge request in GitLab (resolve its conflicts or
   discussions, approve it), then `/agent resume`: the merge gate checks it
   again.
-- `/agent resume`: the merge gate checks the companion again.
+- `/agent resume`: the merge gate checks the companion again. After the
+  home merge, the blocked companions are checked again, each with one more
+  rebase.
 - `/agent skip #N`: the issue is skipped; its companion merge request is
   left to the owners.
 
@@ -1517,6 +1526,56 @@ blocks it (closed, a conflict the rebase did not fix, an approval, open
 discussions, someone pushed to its branch) pauses with
 [`companion`](#companion). `/agent merge #N <sha>` skips the review checks
 of both trees; CI and the companion's open and mergeable checks still apply.
+
+#### Landing
+
+Once the home merge request is merged (by autopilot or by hand), the
+AgentProject's `status.companions` tracks its companion merge request until
+it can land. The entry outlives the home issue's AgentTask, which is deleted
+when the issue closes. It records the home issue, milestone, merge request
+and merge commit (`homeMergeSHA`), the companion merge request and the head
+the agent pushed (`headSHA`, with the hash of its change), the task's
+`autoMerge` and owners, and the `state` with a `reason`. The operator checks
+each entry once per poll. No model decides any of it:
+
+1. **`waitingRelease`**: the home change must be **live**:
+   - a home merge that touches only `docs/**` and `*.md` files is live at
+     merge;
+   - the operator's own project (`--self-project`, chart value
+     `selfProject`): the running operator's version is at least the first
+     release that contains the merge commit. That release is the smallest
+     calendar tag (`YEAR.MONTH.N`, compared number by number) among the tags
+     that contain it (`GET /projects/:id/repository/commits/:sha/refs?type=tag`).
+     A build without a release version (`dev`) is never live, and the reason
+     says so;
+   - a project that tags its default branch (one of its 20 newest tags
+     points to a merge commit created in the last 30 days): a tag contains
+     the merge commit;
+   - any other project: merged is enough.
+
+   `release` records the tag that made it live.
+2. **`rebasing`**: on `need_rebase` or a conflict, the operator asks GitLab
+   to rebase the companion's merge request, **once per entry**
+   (`rebasedSHA`). A head that changes after the home merge is taken over
+   only if its change hashes as it did at the home merge (a rebase, also one
+   by hand). Any other head is `blocked`: someone pushed to the branch.
+3. **`waitingCI`**: the head needs a green pipeline (none within
+   `ci.noPipelineTimeout` counts as no CI), and GitLab must report it
+   `mergeable` (a draft, `draft_status`, counts).
+4. **`ready`**, with `readyAt`. Nothing is merged at this point.
+
+A failed rebase, a conflict or a `need_rebase` after the one rebase, a red
+pipeline, an approval, unresolved discussions, or someone's push makes the
+entry **`blocked`**, with the reason. On an autopilot milestone, the
+milestone [pauses](#companion) with kind `companion`. The pause ends by
+itself when no companion of the milestone is blocked any more (resolved or
+rebased by hand, merged or closed). `/agent resume` checks the blocked
+companions again and allows one more rebase each. Outside autopilot, the
+companion's merge request gets one comment per block, mentioning the owners.
+
+A merge or close by hand at any point is recorded as `merged` (with
+`mergeSHA`) or `closed`, with `endedAt`. Ended entries are removed from the
+status 7 days later.
 
 ### Commands on the tracking issue
 

@@ -2322,6 +2322,147 @@ spec:
                     format: date-time
                     type: string
                 type: object
+              companions:
+                description: |-
+                  Companions tracks the companion merge requests whose home merge
+                  request was merged, until they land: one entry per companion merge
+                  request (project and mrIID), kept for CompanionRetention after it
+                  ended. The AgentTask of the home issue may be gone by then.
+                items:
+                  description: |-
+                    CompanionStatus is a companion merge request after its home merge
+                    (docs/specs/cross-repo-changes.spec.md, decision 8): the operator checks
+                    it once per poll until it is ready to land.
+                  properties:
+                    autoMerge:
+                      description: |-
+                        AutoMerge is the home task's spec.companion.autoMerge at the home
+                        merge: autopilot may merge the companion.
+                      type: boolean
+                    blockedNotice:
+                      description: |-
+                        BlockedNotice is the block reason the companion merge request was
+                        told about (outside autopilot), so each block is commented once.
+                      type: string
+                    diff:
+                      description: |-
+                        Diff is the hash of the companion's change at HeadSHA when the home
+                        merge was recorded; empty when it could not be hashed.
+                      type: string
+                    docsOnly:
+                      description: |-
+                        DocsOnly: the home merge touches only docs/** and *.md, so it is live
+                        at merge.
+                      type: boolean
+                    endedAt:
+                      description: |-
+                        EndedAt is when it was seen merged or closed; the entry is removed
+                        CompanionRetention later.
+                      format: date-time
+                      type: string
+                    headSHA:
+                      description: |-
+                        HeadSHA is the companion head the landing checks: the agent's pushed
+                        head at the home merge, then a rebased head whose change hashes as
+                        Diff. A head with another change blocks the landing.
+                      type: string
+                    headSince:
+                      description: |-
+                        HeadSince is when HeadSHA was taken: a head without a pipeline after
+                        spec.ci.noPipelineTimeout counts as one without CI.
+                      format: date-time
+                      type: string
+                    homeIssueIID:
+                      description: HomeIssueIID is the home issue the companion belongs
+                        to.
+                      format: int64
+                      type: integer
+                    homeMRIID:
+                      description: HomeMRIID is the home merge request that was merged.
+                      format: int64
+                      type: integer
+                    homeMergeSHA:
+                      description: |-
+                        HomeMergeSHA is the commit the home merge left on the default branch
+                        (the merge commit, else the squash commit, else the head).
+                      type: string
+                    mergeSHA:
+                      description: MergeSHA is the commit the companion's merge left.
+                      type: string
+                    milestoneIID:
+                      description: MilestoneIID and MilestoneTitle are the home issue's
+                        milestone.
+                      format: int64
+                      type: integer
+                    milestoneTitle:
+                      type: string
+                    mrIID:
+                      format: int64
+                      type: integer
+                    mrURL:
+                      type: string
+                    notifiedAt:
+                      format: date-time
+                      type: string
+                    owners:
+                      description: |-
+                        Owners are the home task's owners, mentioned when the companion needs
+                        a human outside autopilot.
+                      items:
+                        type: string
+                      type: array
+                    project:
+                      description: |-
+                        Project is the companion's full path; MRIID its merge request, MRURL
+                        the merge request's web URL.
+                      type: string
+                    readyAt:
+                      description: |-
+                        ReadyAt is when the companion became ready; NotifiedAt when the owners
+                        were told, RemindedAt when they were reminded.
+                      format: date-time
+                      type: string
+                    reason:
+                      type: string
+                    rebasedAt:
+                      format: date-time
+                      type: string
+                    rebasedSHA:
+                      description: |-
+                        RebasedSHA is the companion head the operator asked GitLab to rebase,
+                        once per entry (an owner's resume allows one more); RebasedAt when.
+                      type: string
+                    release:
+                      description: |-
+                        Release is the release (tag) that made the home change live; empty
+                        for a docs-only change or a project that does not tag.
+                      type: string
+                    remindedAt:
+                      format: date-time
+                      type: string
+                    state:
+                      description: |-
+                        State is where the landing stands; Reason says why it waits or is
+                        blocked.
+                      enum:
+                      - waitingRelease
+                      - rebasing
+                      - waitingCI
+                      - ready
+                      - merging
+                      - merged
+                      - closed
+                      - blocked
+                      type: string
+                  required:
+                  - homeIssueIID
+                  - homeMRIID
+                  - mrIID
+                  - project
+                  - state
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current

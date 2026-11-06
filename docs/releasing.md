@@ -72,6 +72,14 @@ run in parallel, so two merges cannot get the same version.
 The chart's default image tags are its `appVersion`, so a chart version always
 deploys the operator and agent images built from the same commit.
 
+The operator binary knows its release: the Dockerfile's `ARG VERSION`
+(default `dev`) is linked in as `main.version`, which the operator logs at
+start and compares with the tags of `--self-project` (a companion of the
+operator's own project lands once the running release contains the merge,
+see [usage.md](usage.md#landing)). GitHub passes it as a build argument; the
+GitLab job writes it into its copy of the Dockerfile before the build. A
+local `make docker-build` is `dev`, which never counts as a release.
+
 ## GitLab releases
 
 The `release` job in [`.gitlab-ci.yml`](../.gitlab-ci.yml) runs on the same

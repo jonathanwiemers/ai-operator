@@ -28,6 +28,12 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/webhook"
 )
 
+// version is the operator's release (YEAR.MONTH.N), set at build time with
+// -ldflags "-X main.version=<version>" (the Dockerfile's VERSION). A build
+// without it is "dev", which never counts as a release: the companions of
+// --self-project wait for a released operator.
+var version = "dev"
+
 func main() {
 	var metricsAddr, probeAddr string
 	var leaderElect bool
@@ -40,6 +46,8 @@ func main() {
 	flag.StringVar(&defaultOwners, "default-owners", "", "Comma separated GitLab usernames mentioned when a task needs a human, for AgentProjects that do not set spec.notify.users.")
 	var crossRepoAllowed string
 	flag.StringVar(&crossRepoAllowed, "cross-repo-allowed-projects", "", "Comma separated full paths of the GitLab projects AgentProjects may name as companion repositories (spec.crossRepo.targets). Empty: cross-repo changes are off.")
+	var selfProject string
+	flag.StringVar(&selfProject, "self-project", "", "Full path of the GitLab project this operator is built from (e.g. my-group/ai-operator). A companion of one of its merge requests lands once this operator runs a release that contains the merge. Empty: that project's companions follow the tag rule like any other.")
 	var agentLogLevel string
 	flag.StringVar(&agentLogLevel, "agent-log-level", "info", "Log level (debug, info or error) of the agent pods of AgentProjects that do not set spec.agents.logLevel.")
 	var webhookAddr string
@@ -70,6 +78,7 @@ func main() {
 	flag.Parse()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	setupLog := ctrl.Log.WithName("setup")
+	setupLog.Info("ai-operator starting", "version", version, "selfProject", selfProject)
 	switch aiv1.LogLevel(agentLogLevel) {
 	case aiv1.LogLevelDebug, aiv1.LogLevelInfo, aiv1.LogLevelError:
 	default:
@@ -137,6 +146,8 @@ func main() {
 		},
 		DefaultOwners:    notify.Usernames(strings.Split(defaultOwners, ",")),
 		CrossRepoAllowed: projectList(crossRepoAllowed),
+		SelfProject:      aiv1.NormalizeProject(selfProject),
+		Version:          version,
 		Research:         researchDB.Host != "",
 		DeskURL:          deskURL,
 	}

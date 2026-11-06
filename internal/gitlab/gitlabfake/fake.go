@@ -112,6 +112,13 @@ type Fake struct {
 	HookWrites []string
 	HookError  error
 	HookLists  int
+	// Tags of the repository, newest first (AddTag); CommitRefs are the
+	// refs that contain a commit, by SHA. RefLists records the SHAs
+	// ListCommitRefs was called for, TagLists counts ListTags calls.
+	Tags       []gitlab.Tag
+	CommitRefs map[string][]gitlab.CommitRef
+	RefLists   []string
+	TagLists   int
 }
 
 var _ gitlab.API = (*Fake)(nil)
@@ -1072,6 +1079,46 @@ func (f *Fake) ListRepositoryTree(_ context.Context, _ string, path, _ string, r
 	}
 	if path != "" && len(out) == 0 {
 		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "repository/tree", Body: `{"message":"404 Tree Not Found"}`}
+	}
+	return out, nil
+}
+
+// AddTag adds a tag at commit, as the newest one, and makes it a ref that
+// contains commit.ID and each of contains (older commits it includes).
+func (f *Fake) AddTag(name string, commit gitlab.TagCommit, contains ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Tags = append([]gitlab.Tag{{Name: name, Commit: commit}}, f.Tags...)
+	if f.CommitRefs == nil {
+		f.CommitRefs = map[string][]gitlab.CommitRef{}
+	}
+	for _, sha := range append([]string{commit.ID}, contains...) {
+		f.CommitRefs[sha] = append(f.CommitRefs[sha], gitlab.CommitRef{Type: "tag", Name: name})
+	}
+}
+
+func (f *Fake) ListTags(_ context.Context, _ string, opts gitlab.ListTagsOptions) ([]gitlab.Tag, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.TagLists++
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	return slices.Clone(f.Tags[:min(limit, len(f.Tags))]), nil
+}
+
+// ListCommitRefs returns the refs of sha of refType ("all" or "": every
+// type).
+func (f *Fake) ListCommitRefs(_ context.Context, _ string, sha, refType string) ([]gitlab.CommitRef, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.RefLists = append(f.RefLists, sha)
+	var out []gitlab.CommitRef
+	for _, r := range f.CommitRefs[sha] {
+		if refType == "" || refType == "all" || r.Type == refType {
+			out = append(out, r)
+		}
 	}
 	return out, nil
 }

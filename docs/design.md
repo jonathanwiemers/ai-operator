@@ -1919,6 +1919,29 @@ flowchart LR
   companion project is a merge request write the guard allows only for a
   valid target. The fix rounds are shared; `spec.source.ciFixProject` tells
   the runner which project's jobs to read.
+* After the home merge, the companion lands by rule
+  (`internal/controller/companions.go`). The state lives on the AgentProject
+  (`status.companions`), because the home task is deleted once its issue
+  closes. `syncCompanions` runs once per poll, before the autopilots and
+  before finished tasks are deleted. A task whose home merge cannot be
+  checked is kept for the next poll.
+  * An entry is created for a task with a companion merge request whose home
+    merge request is merged, once per companion project and merge request.
+  * `homeLive` decides when the home change is live: a docs-only home merge
+    at once; `--self-project` once the running operator's `main.version` is
+    at least the smallest calendar tag that contains the merge commit (the
+    commit refs API); a project that tags its default branch (a recent tag on
+    a merge commit) once a tag contains it; any other project at merge.
+  * Then the operator rebases the companion once per entry. A new head counts
+    only if its change hashes like the head recorded at the home merge. It
+    then needs a green pipeline and a mergeable status, and the entry ends in
+    `ready`.
+  * A `blocked` entry pauses its autopilot milestone with kind `companion`
+    (about no issue, `pausedFor` 0). The autopilot lifts that pause when no
+    entry of the milestone is blocked any more, and `resume` resets the
+    blocked entries for one more rebase. The autopilot stays the only writer
+    of `status.autopilot`. Outside autopilot, a blocked companion gets one
+    comment per block.
 
 **Merge/push guard.** The bot's token usually reaches far more than the
 AgentProject's own project (e.g. as a group Maintainer), so the operator and

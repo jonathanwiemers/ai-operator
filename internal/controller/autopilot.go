@@ -150,6 +150,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.autoResume(ctx); err != nil {
 		return err
 	}
+	if err := a.companionLanding(ctx); err != nil {
+		return err
+	}
 	if err := a.unstick(ctx); err != nil {
 		return err
 	}
@@ -1330,7 +1333,12 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 // rebase that only moves the change keeps the
 // hash. It is empty if GitLab does not return the whole change.
 func (a *autopilot) diffHash(ctx context.Context, project string, iid int64) (string, error) {
-	diffs, err := a.gl.ListMergeRequestDiffs(ctx, project, iid)
+	return diffHash(ctx, a.gl, project, iid)
+}
+
+// diffHash is autopilot.diffHash with the client gl.
+func diffHash(ctx context.Context, gl gitlab.API, project string, iid int64) (string, error) {
+	diffs, err := gl.ListMergeRequestDiffs(ctx, project, iid)
 	if err != nil {
 		return "", fmt.Errorf("listing the diffs of !%d: %w", iid, err)
 	}
@@ -1747,6 +1755,9 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 		return "Autopilot paused.", true, nil
 	case "resume":
 		if a.ap.Phase == aiv1.AutopilotPaused {
+			if a.landingPause() {
+				a.retryLandings(by) // one more rebase for each
+			}
 			if err := a.unblockActive(ctx); err != nil {
 				return "", false, err
 			}

@@ -1254,6 +1254,14 @@ type AgentProjectStatus struct {
 	// +optional
 	CommandReplies *CommandRepliesStatus `json:"commandReplies,omitempty"`
 
+	// Companions tracks the companion merge requests whose home merge
+	// request was merged, until they land: one entry per companion merge
+	// request (project and mrIID), kept for CompanionRetention after it
+	// ended. The AgentTask of the home issue may be gone by then.
+	// +optional
+	// +listType=atomic
+	Companions []CompanionStatus `json:"companions,omitempty"`
+
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
