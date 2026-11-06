@@ -45,6 +45,8 @@ export type {
   SpendBreakdownView as SpendBreakdown,
   SubagentBreakdownView as SubagentBreakdown,
   ModelSplitView as ModelSplit,
+  ExitView,
+  ExitStatus,
 } from './generated/views'
 
 export type {
@@ -67,6 +69,7 @@ export type {
   PauseKind,
   ReviewError,
   MergeOverride,
+  PauseExit,
   DecisionRef,
   PilotAutonomy,
   PilotStatus,

@@ -117,7 +117,14 @@ func TestMilestoneView(t *testing.T) {
 	if a.Head != "5a0e000" || len(a.ReviewErrors) != 1 || a.ReviewErrors[0].Engine != aiv1.EngineCursor {
 		t.Errorf("the paused issue's head and reviewer failures: %q %+v", a.Head, a.ReviewErrors)
 	}
-	if !slices.Equal(a.Exits, aiv1.PauseExits(aiv1.PauseCIRed)) || !slices.ContainsFunc(a.Exits, func(e aiv1.PauseExit) bool { return e.ID == "mainGreenRebase" }) {
+	var exits []aiv1.PauseExit
+	for _, e := range a.Exits {
+		exits = append(exits, e.PauseExit)
+		if e.Allowed {
+			t.Errorf("a viewer without chat gets no buttons: %+v", e)
+		}
+	}
+	if !slices.Equal(exits, aiv1.PauseExits(aiv1.PauseCIRed)) || !slices.ContainsFunc(a.Exits, func(e ExitView) bool { return e.ID == "mainGreenRebase" && e.Status != "" }) {
 		t.Errorf("the ways out of the ciRed pause: %+v", a.Exits)
 	}
 	want := []QueueItem{

@@ -83,6 +83,7 @@ packages:
       - gitlab.go
       - milestone.go
       - oneoff.go
+      - pause_exits.go
       - prompt.go
       - research.go
       - spend.go

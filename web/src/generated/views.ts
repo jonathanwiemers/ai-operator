@@ -202,9 +202,11 @@ export interface MilestoneAutopilot {
   reviewErrors?: aiv1.ReviewError[];
   mergeOverride?: aiv1.MergeOverride;
   /**
-   * Exits are the ways out of the pause (aiv1.PauseExits), while paused.
+   * Exits are the ways out of the pause (aiv1.PauseExits) with their
+   * live state and the viewer's buttons, while paused (set by the handler,
+   * which knows the viewer).
    */
-  exits?: aiv1.PauseExit[];
+  exits?: ExitView[];
   items: QueueItem[];
 }
 /**
@@ -327,6 +329,45 @@ export interface ModelChoice {
   engine: aiv1.Engine;
   model: string;
   label: string;
+}
+
+//////////
+// source: pause_exits.go
+
+/**
+ * ExitStatus is the live state of an automatic exit of a pause.
+ */
+/**
+ * ExitStatusMet: the condition holds now; the operator lifts the pause on its
+ * next poll.
+ */
+export const ExitStatusMet = "met";
+/**
+ * ExitStatusInProgress: something that may meet it is under way (a run
+ * pending, a rebase in flight).
+ */
+export const ExitStatusInProgress = "inProgress";
+/**
+ * ExitStatusWaiting: the condition does not hold yet.
+ */
+export const ExitStatusWaiting = "waiting";
+/**
+ * ExitStatusUnknown: the view cannot tell from what it has.
+ */
+export const ExitStatusUnknown = "unknown";
+export type ExitStatus = typeof ExitStatusMet | typeof ExitStatusInProgress | typeof ExitStatusWaiting | typeof ExitStatusUnknown;
+/**
+ * ExitView is one way out of the pause (aiv1.PauseExits) with its live
+ * state: an automatic exit has a Status and maybe a Detail ("main is red at
+ * abc1234"); a remedy is Allowed when the viewer may send it as a button
+ * (merge with the merge grant, the other Desk commands with chat). Labels,
+ * GitLab actions, prompts and commands the Desk cannot send are never
+ * buttons. Detail is plain text.
+ */
+export interface ExitView extends aiv1.PauseExit {
+  status?: ExitStatus;
+  detail?: string;
+  allowed?: boolean;
 }
 
 //////////
