@@ -55,9 +55,13 @@ type Invocation struct {
 	// Agents is the role's subagents as claude's --agents JSON (claude
 	// only, see withSubagents).
 	Agents string
-	// Settings is claude's --settings JSON, the read gate's hooks (claude
-	// only, see withReadGate).
+	// Settings is claude's --settings JSON, the hooks of the read gate and
+	// the step-size gate (claude only, see withReadGate and withStepGate).
 	Settings string
+	// StepGateMaxLines turns on the step-size gate (agents.implement or the
+	// profile's maxStepLines) for a stepwise implement call; 0 is off. The
+	// runner turns it into Settings; it never crosses the socket.
+	StepGateMaxLines int `json:"-"`
 	// Resume continues an earlier session of the same engine, which keeps
 	// the context (and for claude the prompt cache) instead of re-sending
 	// the whole issue thread on follow-up runs.

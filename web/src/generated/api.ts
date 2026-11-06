@@ -618,6 +618,13 @@ export interface AgentProfile extends RoleSpec {
    * +optional
    */
   description?: string;
+  /**
+   * MaxStepLines overrides agents.implement.maxStepLines for this
+   * profile; unset inherits it.
+   * +kubebuilder:validation:Minimum=1
+   * +optional
+   */
+  maxStepLines?: number /* int32 */;
 }
 /**
  * LogLevel of the agent pods. "info" logs every step of a run and every call
@@ -801,6 +808,16 @@ export interface ImplementSpec extends RoleSpec {
    * +optional
    */
   stepSession?: StepSessionMode;
+  /**
+   * MaxStepLines turns on the step-size gate of stepwise runs (draft MR,
+   * workflow.stepCommits): once the uncommitted diff passes this many
+   * changed lines, a hook tells the implementer to finish its step, and
+   * the steps note asks to keep a step under it. Claude only; unset is
+   * off. A profile's maxStepLines overrides it.
+   * +kubebuilder:validation:Minimum=1
+   * +optional
+   */
+  maxStepLines?: number /* int32 */;
 }
 /**
  * StepSessionMode is how an implementer goes on after a step.

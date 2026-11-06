@@ -311,7 +311,10 @@ func (run *implementRun) buildPrompt(ctx context.Context) error {
 	}
 	plainSystem := inv.SystemPrompt
 	if stepwise {
-		inv.SystemPrompt += stepsNote + conventionalPointer(run.types)
+		// The step-size gate tells the implementer to close a step that
+		// grows too big (claude only, see withStepGate).
+		inv.StepGateMaxLines = run.spec.MaxStepLines(profile)
+		inv.SystemPrompt += stepsNote(inv.StepGateMaxLines) + conventionalPointer(run.types)
 		inv.JSONSchema = implementStepSchemaFor(run.types)
 	}
 	inv.DisallowedTools = implementDenied
@@ -568,7 +571,7 @@ func (run *implementRun) implement(ctx context.Context) error {
 		answer.Status = "done" // an engine that ignored the schema
 	}
 	// Fix rounds and later calls finish their work in one go.
-	inv.SystemPrompt, inv.JSONSchema = run.plainSystem, implementSchemaFor(run.types)
+	inv.SystemPrompt, inv.JSONSchema, inv.StepGateMaxLines = run.plainSystem, implementSchemaFor(run.types), 0
 	return nil
 }
 

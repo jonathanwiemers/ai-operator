@@ -839,7 +839,7 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 // invokeOn runs a role on its own engine (see invoke). The result says
 // which engine and model ran.
 func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
-	inv = r.withReadGate(role, r.withSubagents(role, inv))
+	inv = r.withStepGate(role, r.withReadGate(role, r.withSubagents(role, inv)))
 	inv.LogPrompt = r.logPrompts
 	inv.CountLines = implementerKind(inv.Kind)
 	if len(r.changedPins) > 0 && r.run != nil {

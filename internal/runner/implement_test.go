@@ -303,7 +303,7 @@ func TestImplementImplement(t *testing.T) {
 			t.Fatalf("the session must be saved: %+v %v", st, err)
 		}
 		// Fix rounds finish in one go.
-		if run.inv.JSONSchema != implementSchema || strings.Contains(run.inv.SystemPrompt, stepsNote) {
+		if run.inv.JSONSchema != implementSchema || strings.Contains(run.inv.SystemPrompt, stepsNote(0)) {
 			t.Fatal("later calls must not work in steps")
 		}
 	})

@@ -190,3 +190,33 @@ func TestConventionalCommitsDefaults(t *testing.T) {
 		t.Fatalf("chore is not added twice: %v", got)
 	}
 }
+
+func TestMaxStepLines(t *testing.T) {
+	n := func(v int32) *int32 { return &v }
+	spec := AgentProjectSpec{Agents: AgentsSpec{
+		Implement: ImplementSpec{MaxStepLines: n(400)},
+		Profiles: []AgentProfile{
+			{Name: "fast", MaxStepLines: n(150)},
+			{Name: "strong"},
+		},
+	}}.WithDefaults()
+	if got := spec.Agents.Implement.MaxStepLines; got == nil || *got != 400 {
+		t.Fatalf("defaults keep the value: %v", got)
+	}
+	if spec.Agents.Profiles[1].MaxStepLines != nil {
+		t.Fatal("defaults do not copy implement's value into a profile")
+	}
+	for profile, want := range map[string]int{"": 400, "fast": 150, "strong": 400, "missing": 400} {
+		if got := spec.MaxStepLines(profile); got != want {
+			t.Errorf("profile %q: %d, want %d", profile, got, want)
+		}
+	}
+	off := AgentProjectSpec{}.WithDefaults()
+	if off.Agents.Implement.MaxStepLines != nil || off.MaxStepLines("") != 0 || off.MaxStepLines("fast") != 0 {
+		t.Fatal("unset is off")
+	}
+	off.Agents.Profiles[0].MaxStepLines = n(300)
+	if off.MaxStepLines(off.Agents.Profiles[0].Name) != 300 || off.MaxStepLines("") != 0 {
+		t.Fatal("a profile's value applies to that profile only")
+	}
+}

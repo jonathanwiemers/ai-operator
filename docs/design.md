@@ -641,10 +641,12 @@ nothing is lost.
   (`StepGateNudges`). Subagents' calls and other tools are ignored. Like
   the read gate it fails open: bad flags or input, a git failure, or a
   state file it cannot read or write give no output, one line on stderr
-  and exit 0. The `implement.maxStepLines` field and the `--settings`
-  entry come with a later slice of
-  [the spec](specs/checkpoints-and-conventional-commits.spec.md) (R8);
-  until then nothing calls the hook.
+  and exit 0. `agents.implement.maxStepLines` (or a profile's, which
+  wins) turns it on for stepwise implement calls: `buildPrompt` sets
+  `Invocation.StepGateMaxLines` and the steps note's sentence, the fix
+  rounds clear it, and `withStepGate` (after `withReadGate`, claude only)
+  adds the hook (matcher `Edit|Write|Bash`) to the same `--settings`
+  object as the read gate's.
 * **Reviewers see the diff**, not the repository; they read more code only to
   confirm a finding. They are one-shot, without session persistence.
 * **Bounded fix loop** (`review.maxIterations`), per-invocation

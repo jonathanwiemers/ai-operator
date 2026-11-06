@@ -93,9 +93,9 @@ state of the work, decisions and why, what is left or open, and pitfalls
 than appending to them. Do not repeat the issue or the summary; at most a
 few hundred words.`
 
-// stepsNote is added to the implementer's system prompt while the merge
+// stepsNoteText is added to the implementer's system prompt while the merge
 // request is a draft.
-const stepsNote = `
+const stepsNoteText = `
 
 The merge request is a draft and a human may follow along. Work in steps:
 after each coherent piece of work that could be a commit of its own (a data
@@ -107,6 +107,15 @@ the plan. Don't stop for trivial changes; a step is worth a commit. Return
 "done" (or "needs_input") once the whole issue is implemented and tested;
 that summary covers the whole work, and decisions list only the ones not
 reported in an earlier step.`
+
+// stepsNote is stepsNoteText, with the step-size gate's limit (maxLines,
+// 0 for no gate) as one more sentence.
+func stepsNote(maxLines int) string {
+	if maxLines <= 0 {
+		return stepsNoteText
+	}
+	return stepsNoteText + fmt.Sprintf("\nKeep a step under %d changed lines where you can.", maxLines)
+}
 
 // stepContinue resumes an implementer after a step.
 const stepContinue = "Your step was committed and pushed. Continue with the next step."

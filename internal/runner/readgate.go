@@ -11,33 +11,53 @@ import (
 // readGateTimeout is the hook's timeout in seconds; the gate fails open.
 const readGateTimeout = 5
 
-// readGateSettings is claude's --settings JSON for the read gate: only the
-// PreToolUse hooks for Read and Bash, both running `ai-runner read-gate`.
-// Subagent names match ^[a-z][a-z0-9-]*$, so the command needs no quoting.
-func readGateSettings(minLines int, subagents []string) string {
-	type hook struct {
-		Type    string `json:"type"`
-		Command string `json:"command"`
-		Timeout int    `json:"timeout"`
+// hookCommand is one command hook of claude's settings.
+type hookCommand struct {
+	Type    string `json:"type"`
+	Command string `json:"command"`
+	Timeout int    `json:"timeout"`
+}
+
+// hookMatcher runs its hooks on the tools its matcher (a regex) names.
+type hookMatcher struct {
+	Matcher string        `json:"matcher"`
+	Hooks   []hookCommand `json:"hooks"`
+}
+
+// hookSettings is claude's --settings JSON: only hooks, by event
+// (PreToolUse, PostToolUse). The read gate and the step-size gate share
+// one object.
+type hookSettings struct {
+	Hooks map[string][]hookMatcher `json:"hooks"`
+}
+
+// withHooks adds matchers of an event to the settings JSON (empty for
+// none) and returns the merged JSON. The settings are the runner's own.
+func withHooks(settings, event string, matchers ...hookMatcher) string {
+	s := hookSettings{Hooks: map[string][]hookMatcher{}}
+	if settings != "" {
+		if err := json.Unmarshal([]byte(settings), &s); err != nil {
+			panic(fmt.Sprintf("settings %q: %v", settings, err)) // built here
+		}
 	}
-	type matcher struct {
-		Matcher string `json:"matcher"`
-		Hooks   []hook `json:"hooks"`
-	}
-	command := fmt.Sprintf("ai-runner read-gate --min-lines %d", minLines)
-	if len(subagents) > 0 {
-		command += " --subagents " + strings.Join(subagents, ",")
-	}
-	h := []hook{{Type: "command", Command: command, Timeout: readGateTimeout}}
-	settings := map[string]map[string][]matcher{"hooks": {"PreToolUse": {
-		{Matcher: "Read", Hooks: h},
-		{Matcher: "Bash", Hooks: h},
-	}}}
-	out, err := json.Marshal(settings)
+	s.Hooks[event] = append(s.Hooks[event], matchers...)
+	out, err := json.Marshal(s)
 	if err != nil {
 		panic(err) // only strings and ints
 	}
 	return string(out)
+}
+
+// readGateSettings is claude's --settings JSON for the read gate: only the
+// PreToolUse hooks for Read and Bash, both running `ai-runner read-gate`.
+// Subagent names match ^[a-z][a-z0-9-]*$, so the command needs no quoting.
+func readGateSettings(minLines int, subagents []string) string {
+	command := fmt.Sprintf("ai-runner read-gate --min-lines %d", minLines)
+	if len(subagents) > 0 {
+		command += " --subagents " + strings.Join(subagents, ",")
+	}
+	h := []hookCommand{{Type: "command", Command: command, Timeout: readGateTimeout}}
+	return withHooks("", "PreToolUse", hookMatcher{Matcher: "Read", Hooks: h}, hookMatcher{Matcher: "Bash", Hooks: h})
 }
 
 // readGateNote is the prompt sentence of a role with a read gate. With

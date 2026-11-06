@@ -289,7 +289,13 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    comments after it wait for that run too. At most 25 steps per run; a run
    that runs out of steps leaves the MR a draft and says so. Each step's
    commit carries the agent's message and `Refs #42` (see
-   [Commit messages](#commit-messages)).
+   [Commit messages](#commit-messages)). With
+   [`agents.implement.maxStepLines`](configuration.md#roles) (or a
+   profile's) the **step-size gate** keeps steps small on claude: once the
+   uncommitted diff passes that many changed lines, a hook tells the agent
+   to finish the step (get it to build, return it with its commit message),
+   again at most every 5 tool calls, and the steps note asks it to keep a
+   step under the limit. Fix, CI and conflict rounds have no gate.
 4. The **bugbot** and **security** reviewers check the diff in parallel. A
    reviewer that fails because its engine's service is briefly unavailable
    (for example cursor-agent's `RetriableError: [unavailable]`, a reset

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
 // The step-size gate (`ai-runner step-gate --max-lines N`) is a claude
@@ -180,4 +182,36 @@ func writeStepGateState(path string, state stepGateState) error {
 		_ = os.Remove(f.Name())
 	}
 	return err
+}
+
+// stepGateTimeout is the hook's timeout in seconds, above the git
+// commands' bound; the gate fails open.
+const stepGateTimeout = 15
+
+// stepGateSettings adds the step-size gate's PostToolUse hook for Edit,
+// Write and Bash to claude's settings JSON (empty for none, or the read
+// gate's), into the same object.
+func stepGateSettings(settings string, maxLines int) string {
+	return withHooks(settings, "PostToolUse", hookMatcher{Matcher: "Edit|Write|Bash", Hooks: []hookCommand{{
+		Type: "command", Command: fmt.Sprintf("ai-runner step-gate --max-lines %d", maxLines), Timeout: stepGateTimeout,
+	}}})
+}
+
+// withStepGate gives a claude call the step-size gate's hook when the
+// runner asked for it (inv.StepGateMaxLines, a stepwise implement call).
+// It runs after withReadGate and merges into its settings. Like the read
+// gate it is claude only: on cursor (own engine or fallback) the call runs
+// without it, with a warning once per run and role.
+func (r *Runner) withStepGate(role aiv1.RoleSpec, inv Invocation) Invocation {
+	if inv.StepGateMaxLines <= 0 {
+		return inv
+	}
+	if role.Engine != aiv1.EngineClaude {
+		if r.run.warnOnce("stepgate/" + inv.Role + "/" + string(role.Engine)) {
+			r.log().Info(fmt.Sprintf("step-size gate is claude only; ignored for role %s on %s", inv.Role, role.Engine))
+		}
+		return inv
+	}
+	inv.Settings = stepGateSettings(inv.Settings, inv.StepGateMaxLines)
+	return inv
 }

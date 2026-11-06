@@ -314,6 +314,20 @@ func (s AgentProjectSpec) ImplementRole(labels []string) (RoleSpec, string) {
 	return s.Agents.Implement.RoleSpec, ""
 }
 
+// MaxStepLines returns the step-size gate's limit for the implementer of
+// the given profile (ImplementRole's name, "" for agents.implement): the
+// profile's maxStepLines, else agents.implement's. 0 means off.
+func (s AgentProjectSpec) MaxStepLines(profile string) int {
+	n := s.Agents.Implement.MaxStepLines
+	if p, ok := s.Profile(profile); ok && profile != "" && p.MaxStepLines != nil {
+		n = p.MaxStepLines
+	}
+	if n == nil || *n < 1 {
+		return 0
+	}
+	return int(*n)
+}
+
 // ProfileOf returns the profile label name an issue carries, if any.
 func (s AgentProjectSpec) ProfileOf(labels []string) string {
 	for _, l := range labels {

@@ -187,7 +187,8 @@ haiku and a writer on sonnet for the implementer:
 # AgentProject spec
 agents:
   implement:
-    readGate: {}   # optional: block whole reads of files over 350 lines
+    readGate: {}        # optional: block whole reads of files over 350 lines
+    maxStepLines: 400   # optional: tell it to close a step past 400 changed lines
     subagents:
       - name: scout
         description: Searches the code, looks things up on the web and reads logs. Use it for every search and lookup.
@@ -209,7 +210,8 @@ cost of its own calls. Every other subagent is a reader.
 See [docs/configuration.md](../../docs/configuration.md#subagents) for how
 the role is told to use it and how to compare the cost in the Spend tab, and
 [Read gate](../../docs/configuration.md#read-gate) for what `readGate`
-blocks (claude only, like `subagents`).
+blocks (claude only, like `subagents`), and [Roles](../../docs/configuration.md#roles)
+for `maxStepLines`, the step-size gate of draft runs (claude only too).
 
 ### Web UI
 

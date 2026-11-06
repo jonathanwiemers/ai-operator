@@ -499,6 +499,38 @@ growing context. With `fresh`, nearly every step lands in the *fresh* row:
 compare its cost per call (and the runs' totals, which include the extra
 review-fix rounds a forgetful step may cause) with a milestone on `resume`.
 
+`implement` and every profile also have `maxStepLines` (minimum 1, unset
+is off), the **step-size gate** of runs that work in steps. A profile's
+value wins; a profile without one inherits `implement`'s, so
+`implement: {maxStepLines: 400}` covers every profile. With it, a stepwise
+implement call (draft MR, `workflow.stepCommits`; not the review-fix, CI or
+conflict rounds, nor a run that does not work in steps) gets:
+
+* a claude `PostToolUse` hook on `Edit`, `Write` and `Bash`
+  (`ai-runner step-gate --max-lines N`, in the same `--settings` object as
+  the [read gate](#read-gate)'s hooks). Once the uncommitted diff
+  (`git diff --numstat HEAD` plus untracked text files, added plus deleted
+  lines) passes `N`, it tells the agent: *Your uncommitted diff is L lines
+  (step limit N). Finish this step: get it to build, then return
+  in_progress with its commitMessage.* It repeats at most once every 5 tool
+  calls. Like the read gate it fails open: an error means no nudge;
+* one more sentence in the steps note: *Keep a step under N changed lines
+  where you can.*
+
+The gate is claude only: a cursor role (or a cursor fallback) runs without
+the hook, with a warning in the run log once per run; it still gets the
+sentence. Smaller steps mean more commits and pushes, and a cut-off call
+loses less (see [checkpoints](#speccheckpoint)).
+
+```yaml
+agents:
+  implement:
+    maxStepLines: 400
+  profiles:
+    - name: fast
+      maxStepLines: 200   # overrides implement's 400
+```
+
 ### Subagents
 
 A role's `subagents` are passed to claude as `--agents` JSON, and the role's

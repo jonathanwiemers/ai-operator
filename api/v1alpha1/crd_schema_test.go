@@ -492,3 +492,40 @@ func TestProjectCrossRepoSchema(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectMaxStepLinesSchema(t *testing.T) {
+	crd := loadCRD(t, "agentprojects")
+	withLines := func(implement, profile any) map[string]any {
+		obj := readSample(t, "agentproject.yaml", func(s string) string { return s })
+		agents := spec(obj)["agents"].(map[string]any)
+		if implement != nil {
+			agents["implement"].(map[string]any)["maxStepLines"] = implement
+		}
+		if profile != nil {
+			agents["profiles"].([]any)[0].(map[string]any)["maxStepLines"] = profile
+		}
+		return obj
+	}
+	if _, errs := crd.admit(withLines(nil, nil)); len(errs) > 0 {
+		t.Fatalf("unset rejected: %v", errs)
+	}
+	obj, errs := crd.admit(withLines(int64(400), int64(150)))
+	if len(errs) > 0 {
+		t.Fatalf("maxStepLines rejected: %v", errs)
+	}
+	if got := spec(obj)["agents"].(map[string]any)["implement"].(map[string]any)["maxStepLines"]; got != int64(400) {
+		t.Fatalf("implement.maxStepLines %v", got)
+	}
+	for name, tc := range map[string]struct {
+		implement, profile any
+		want               string
+	}{
+		"implement zero":     {int64(0), nil, "spec.agents.implement.maxStepLines"},
+		"profile negative":   {nil, int64(-1), "spec.agents.profiles[0].maxStepLines"},
+		"implement a string": {"400", nil, "spec.agents.implement.maxStepLines"},
+	} {
+		if _, errs := crd.admit(withLines(tc.implement, tc.profile)); !strings.Contains(strings.Join(errs, "\n"), tc.want) {
+			t.Errorf("%s: errors %v, want one on %s", name, errs, tc.want)
+		}
+	}
+}
