@@ -277,6 +277,12 @@ export interface MilestoneAutopilot {
    */
   exits?: ExitView[];
   items: QueueItem[];
+  /**
+   * QueuedBehind are the older autopilot milestones it waits for, ascending,
+   * while it waits for its turn to be planned (running, not paused: no
+   * Inbox item).
+   */
+  queuedBehind?: number /* int64 */[];
 }
 /**
  * QueueItem is an issue in the autopilot's queue, in queue order.

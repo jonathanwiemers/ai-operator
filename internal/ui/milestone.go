@@ -77,6 +77,10 @@ type MilestoneAutopilot struct {
 	// which knows the viewer).
 	Exits []ExitView  `json:"exits,omitempty"`
 	Items []QueueItem `json:"items"`
+	// QueuedBehind are the older autopilot milestones it waits for, ascending,
+	// while it waits for its turn to be planned (running, not paused: no
+	// Inbox item).
+	QueuedBehind []int64 `json:"queuedBehind,omitempty"`
 }
 
 // QueueItem is an issue in the autopilot's queue, in queue order.
@@ -274,6 +278,9 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 			if t := &tasks[i]; ap.Phase == aiv1.AutopilotPaused && ap.PausedFor != 0 && t.Spec.Issue != nil && t.Spec.Issue.IID == ap.PausedFor {
 				a.Head, a.ReviewErrors = t.Status.Run.PushedSHA, t.Status.Run.ReviewErrorKinds
 			}
+		}
+		if st.Spec.RunRequest == 0 && len(st.Status.Plan) == 0 && ap.StartRequestedBy == "" {
+			a.QueuedBehind = slices.Sorted(slices.Values(st.Spec.QueuedBehind))
 		}
 		for _, it := range ap.Items {
 			a.Items = append(a.Items, QueueItem{IID: it.IID, Title: titles[it.IID], State: it.State, MergeRequestIID: it.MergeRequestIID, MergeRequestURL: it.MergeRequestURL, Task: byIssue[it.IID]})

@@ -2156,7 +2156,15 @@ func (a *autopilot) renderTracking() string {
 			fmt.Fprintf(&b, "⏳ waiting for its turn: %s go first.\n", milestoneList(a.ahead))
 		case len(a.st.Status.Plan) > 0:
 			b.WriteString("▶️ running.\n")
-		case a.st.RunPending():
+		case a.waitingForTurn():
+			// Not planned until the older milestones are through (decision 9).
+			ahead := slices.Sorted(slices.Values(a.st.Spec.QueuedBehind))
+			if len(ahead) == 0 {
+				b.WriteString("⏳ waiting for its turn, planning starts on the next poll.\n")
+				break
+			}
+			fmt.Fprintf(&b, "⏳ waiting for its turn: %s go first. Comment `%s start` to plan it now (owners).\n", milestoneList(ahead), prefix)
+		case a.st.RunPending() || a.st.Spec.RunRequest == 0 && a.ap.StartRequestedBy != "":
 			b.WriteString("📝 planning, the planning agent is writing the issues.\n")
 		default:
 			b.WriteString("⚠️ not planned, planning has not succeeded yet. Nothing starts until the milestone is planned.\n")

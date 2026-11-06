@@ -856,8 +856,9 @@ to, `/agent spec`), the milestone runs without you:
    questions. It takes the default it would propose and records it as a
    [decision](#decisions), with why and the alternatives, in a comment on
    each issue. Until a plan exists the tracking issue says that the milestone
-   is being planned (or that planning has not succeeded yet) and nothing
-   starts; `/agent pause` and `/agent resume` already work. A planning
+   waits for its turn ("⏳ waiting for its turn: %7, %9 go first. Comment
+   `/agent start` to plan it now (owners)."), is being planned ("📝
+   planning") or that planning has not succeeded yet, and nothing starts; `/agent pause` and `/agent resume` already work. A planning
    failure is a comment there that mentions the owners
    ([details](#1-write-the-milestone-spec)).
 2. Once planned, the operator moves the first issue to `agent::ready`. Issues go **one at a time**, in

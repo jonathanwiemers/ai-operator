@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { hasFeature } from '../api'
 import { companionRef } from '../companion'
 import { cost } from '../format'
-import { queueDone } from '../milestoneQueue'
+import { queueDone, waitingForTurn } from '../milestoneQueue'
 import { pausePrompt } from '../pauseCard'
 import { promptAnchor, splitPrompts } from '../promptCard'
 import type { HistoryResponse, InboxItem, MilestoneView, QueueItem } from '../types'
@@ -39,6 +39,8 @@ const homeTask = (iid: number) =>
 const issueURL = (iid: number) => props.milestone?.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
 const done = computed(() => queueDone(queue.value))
 const total = computed(() => queue.value.length)
+// Waiting for its turn to be planned: running, so no Inbox item and no pause card.
+const waiting = computed(() => waitingForTurn(props.milestone?.autopilot?.queuedBehind))
 const paused = computed(() => props.full && props.milestone?.autopilot?.phase === 'Paused')
 const showPilotChat = computed(() => !!props.milestone?.permissions?.chat || hasFeature('chat'))
 // The pause card shows its own prompt (mainRed, budget): the list leaves it out
@@ -137,6 +139,10 @@ function inboxTo(item: InboxItem) {
         <span>{{ milestone.title }}</span>
         <span v-if="total">{{ done }} / {{ total }}</span>
       </h3>
+      <p v-if="waiting" class="waiting">
+        ⏳ {{ waiting }}.
+        <small>Comment <code>/agent start</code> on the tracking issue to plan it now (owners).</small>
+      </p>
       <QueueList :namespace="namespace" :name="name" :milestone="milestone" />
     </div>
 
@@ -271,6 +277,17 @@ function inboxTo(item: InboxItem) {
 .panel:last-child {
   border-bottom: 0;
   padding-bottom: 0;
+}
+.waiting {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--tone-progress-bg);
+}
+.waiting small {
+  display: block;
+  color: var(--text-2);
+  font-size: 12px;
 }
 .need {
   display: grid;

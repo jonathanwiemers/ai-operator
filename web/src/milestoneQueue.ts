@@ -45,3 +45,11 @@ export function canRevisit(d: DecisionRef, permissions?: Pick<MilestonePermissio
 export function revisitPromptID(answer: string): string {
   return /\bQ\d+\b/.exec(answer)?.[0] ?? ''
 }
+
+// waitingForTurn is the Desk's line for a milestone that waits for its turn
+// to be planned (queuedBehind: the older milestones, ascending), or '' when
+// it does not wait.
+export function waitingForTurn(queuedBehind?: number[] | null): string {
+  if (!queuedBehind?.length) return ''
+  return `Waiting for its turn: ${queuedBehind.map((iid) => `%${iid}`).join(', ')} go first`
+}

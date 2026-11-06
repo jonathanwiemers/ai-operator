@@ -1,7 +1,7 @@
 // Tests of src/milestoneQueue.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { canRevisit, queueDone, queueRows, queueTone, revisitCommand, revisitPromptID } from '../src/milestoneQueue.ts'
+import { canRevisit, queueDone, queueRows, queueTone, revisitCommand, revisitPromptID, waitingForTurn } from '../src/milestoneQueue.ts'
 
 test('queueRows: joins decisions and revisits by issue, in queue order', () => {
   const items = [
@@ -55,4 +55,10 @@ test('canRevisit: owners on live decisions only', () => {
 test('revisitPromptID: finds the prompt in the answer', () => {
   assert.equal(revisitPromptID('Q7 opened for D12-3'), 'Q7')
   assert.equal(revisitPromptID('nothing here'), '')
+})
+
+test('waitingForTurn: names the older milestones, nothing when not waiting', () => {
+  assert.equal(waitingForTurn([7, 9]), 'Waiting for its turn: %7, %9 go first')
+  assert.equal(waitingForTurn([]), '')
+  assert.equal(waitingForTurn(undefined), '')
 })
