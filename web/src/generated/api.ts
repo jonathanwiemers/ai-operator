@@ -4435,11 +4435,13 @@ export const LandingRebasing: LandingState = "rebasing";
 export const LandingWaitingCI: LandingState = "waitingCI";
 /**
  * LandingReady: the companion can land: live, rebased if it had to be,
- * green on its head and mergeable.
+ * green on its head and mergeable. Without autopilot's switches it stays
+ * here until the owners merge or close it.
  */
 export const LandingReady: LandingState = "ready";
 /**
- * LandingMerging: autopilot merges it.
+ * LandingMerging: autopilot merges it, then follows its default
+ * branch's pipeline of the merge commit.
  */
 export const LandingMerging: LandingState = "merging";
 /**
@@ -4452,7 +4454,8 @@ export const LandingMerged: LandingState = "merged";
 export const LandingClosed: LandingState = "closed";
 /**
  * LandingBlocked: a human must act (a conflict a rebase did not resolve,
- * a red pipeline, someone's push, an approval); reason says why.
+ * a red pipeline, someone's push, an approval, a merge GitLab refused
+ * twice, a red default branch after autopilot's merge); reason says why.
  */
 export const LandingBlocked: LandingState = "blocked";
 /**
@@ -4471,10 +4474,16 @@ export interface CompanionStatus {
    */
   homeIssueIID: number /* int64 */;
   /**
-   * MilestoneIID and MilestoneTitle are the home issue's milestone.
+   * MilestoneIID and MilestoneTitle are the home issue's milestone;
+   * MilestoneID is its global ID, by which its description is read again
+   * before autopilot merges the companion.
    * +optional
    */
   milestoneIID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  milestoneID?: number /* int64 */;
   /**
    * +optional
    */
@@ -4541,7 +4550,9 @@ export interface CompanionStatus {
   release?: string;
   /**
    * AutoMerge is the home task's spec.companion.autoMerge at the home
-   * merge: autopilot may merge the companion.
+   * merge: autopilot may merge the companion, if the milestone line's
+   * "merge", the autopilot marker and the target's autoMerge still allow
+   * it when it is ready. It is cleared once the owners are asked instead.
    * +optional
    */
   autoMerge?: boolean;
@@ -4592,6 +4603,26 @@ export interface CompanionStatus {
    * +optional
    */
   mergeSHA?: string;
+  /**
+   * PipelineStartedAt is when autopilot started a merge request pipeline
+   * for the head it is about to merge, because the head had none.
+   * +optional
+   */
+  pipelineStartedAt?: string;
+  /**
+   * MergeStartedAt is when GitLab accepted autopilot's merge: from then on
+   * the default branch's pipeline of MergeSHA decides between merged and
+   * blocked.
+   * +optional
+   */
+  mergeStartedAt?: string;
+  /**
+   * MergeRefusals counts the merges of autopilot GitLab refused: the first
+   * sends the entry back to the ready checks, the second blocks it until a
+   * resume (which resets it).
+   * +optional
+   */
+  mergeRefusals?: number /* int32 */;
 }
 
 //////////

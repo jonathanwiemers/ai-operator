@@ -174,9 +174,12 @@ var pauseExits = map[PauseKind][]PauseExit{
 			Does: "the merge gate, or the companion's landing, checks it again and autopilot continues"},
 		{ID: "companionByHand", Auto: true, When: "the companion merge request is merged by hand (or closed by hand once the home change is merged)",
 			Does: "it is recorded and autopilot goes on"},
+		{ID: "companionDefaultBranchGreen", Auto: true, When: "the companion's default-branch pipeline of autopilot's merge succeeds (retried)",
+			Does: "the companion is recorded as merged and autopilot continues"},
 		{ID: "fixCompanion", GitLab: true, When: "fix the companion merge request (resolve its conflicts or discussions, approve it)", Command: "resume",
 			Does: "the merge gate, or the companion's landing, checks it again"},
-		withDoes(exitResume, "the merge gate, or the companion's landing, checks the companion again"),
+		withDoes(exitResume, "the merge gate, or the companion's landing, checks the companion again; "+
+			"a companion autopilot merged onto a red default branch is recorded as merged"),
 		withDoes(exitSkip, "the issue is skipped and autopilot goes on without it; its companion merge request is left to the owners"),
 	},
 	// A planning run that succeeded with no issues. A re-plan ends it; an

@@ -27,11 +27,19 @@ import (
 //	                  release, a tag, or merged is enough)
 //	rebasing       -> GitLab rebases it, once per entry
 //	waitingCI      -> a green pipeline on its head, and mergeable
-//	ready          -> the end state here; who merges is decided elsewhere
+//	ready          -> who merges (decision 9): with all of autopilot's
+//	                  switches (mergeSwitches) it goes on to merging; else
+//	                  the owners are asked once and reminded once, and it
+//	                  stays ready until they merge or close it
+//	merging        -> autopilot marks it ready, has a green pipeline on the
+//	                  head, merges the checked head, then follows the
+//	                  default branch's pipeline of the merge commit
 //	blocked        -> a human must act; autopilot pauses with kind companion
-//	merged, closed -> by hand at any point; removed CompanionRetention later
+//	merged, closed -> by hand at any point, or after autopilot's merge once
+//	                  the default branch is green; removed CompanionRetention
+//	                  later
 //
-// No model decides any of it, and nothing here merges.
+// No model decides any of it.
 
 // tagWindow is how recent a tag on a merge commit must be for a project to
 // count as one that tags its default branch.
@@ -41,10 +49,12 @@ const tagWindow = 30 * 24 * time.Hour
 // and checks each one that has not ended, once per poll. tasks are all the
 // project's tasks of this poll, also those of closed issues that are deleted
 // after it; homeMRs are the home merge requests the issue sync read, by task
-// name. A task whose home merge could not be checked is kept (keep), so it
-// is not deleted before its companion is recorded.
+// name; specTasks the milestones' spec tasks by milestone IID, whose owners
+// the companion's comments mention. A task whose home merge could not be
+// checked is kept (keep), so it is not deleted before its companion is
+// recorded.
 func (r *AgentProjectReconciler) syncCompanions(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	tasks []aiv1.AgentTask, homeMRs map[string]*gitlab.MergeRequest, autopilots map[int64]*aiv1.AgentTask, keep map[string]bool) error {
+	tasks []aiv1.AgentTask, homeMRs map[string]*gitlab.MergeRequest, autopilots, specTasks map[int64]*aiv1.AgentTask, keep map[string]bool) error {
 	logger := log.FromContext(ctx)
 	st := &project.Status
 	var errs []error
@@ -97,14 +107,15 @@ func (r *AgentProjectReconciler) syncCompanions(ctx context.Context, gl gitlab.A
 			continue
 		}
 		was := e.State
-		if err := r.landCompanion(ctx, gl, spec, e); err != nil {
+		owners := r.companionOwners(spec, e, specTasks)
+		if err := r.landCompanion(ctx, gl, spec, e, owners); err != nil {
 			errs = append(errs, fmt.Errorf("companion %s: %w", landingRef(e), err))
 			continue
 		}
 		if e.State != was {
 			logger.Info("companion landing", "companion", landingRef(e), "issue", e.HomeIssueIID, "from", was, "to", e.State, "reason", e.Reason)
 		}
-		if err := r.noticeBlocked(ctx, gl, spec, e, autopilots); err != nil {
+		if err := r.noticeBlocked(ctx, gl, spec, e, autopilots, owners); err != nil {
 			errs = append(errs, fmt.Errorf("companion %s: %w", landingRef(e), err))
 		}
 	}
@@ -124,7 +135,7 @@ func (r *AgentProjectReconciler) newCompanion(ctx context.Context, gl gitlab.API
 		State: aiv1.LandingWaitingRelease, Owners: slices.Clone(t.Spec.Owners),
 	}
 	if m := t.Spec.Milestone; m != nil {
-		e.MilestoneIID, e.MilestoneTitle = m.IID, m.Title
+		e.MilestoneIID, e.MilestoneID, e.MilestoneTitle = m.IID, m.ID, m.Title
 	}
 	if sc := t.Spec.Companion; sc != nil && aiv1.NormalizeProject(sc.Project) == aiv1.NormalizeProject(c.Project) {
 		e.AutoMerge = sc.AutoMerge
@@ -155,8 +166,9 @@ func (r *AgentProjectReconciler) newCompanion(ctx context.Context, gl gitlab.API
 	return e, nil
 }
 
-// landCompanion checks one entry that has not ended and moves it on.
-func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, e *aiv1.CompanionStatus) error {
+// landCompanion checks one entry that has not ended and moves it on;
+// owners are the ones its comments mention.
+func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, e *aiv1.CompanionStatus, owners []string) error {
 	now := metav1.NewTime(r.now())
 	ref := landingRef(e)
 	mr, err := gl.GetMergeRequest(ctx, e.Project, e.MRIID)
@@ -169,16 +181,25 @@ func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.AP
 	}
 	switch mr.State {
 	case "merged":
+		e.MergeSHA = cmp.Or(e.MergeSHA, firstNonEmpty(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA))
+		if e.MergeStartedAt != nil {
+			return r.followMerge(ctx, gl, spec, e) // autopilot's merge
+		}
 		e.State, e.Reason, e.EndedAt = aiv1.LandingMerged, "", &now
-		e.MergeSHA = firstNonEmpty(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA)
 		return nil
 	case "closed":
 		e.State, e.Reason, e.EndedAt = aiv1.LandingClosed, "closed without a merge", &now
 		return nil
 	}
 	e.MRURL = cmp.Or(e.MRURL, mr.WebURL)
-	if e.State == aiv1.LandingReady || e.State == aiv1.LandingMerging {
-		return nil // only a merge or close by hand moves it on here
+	switch {
+	case e.State == aiv1.LandingReady || e.State == aiv1.LandingMerging:
+		return r.landReady(ctx, gl, spec, e, mr, owners)
+	case e.State == aiv1.LandingBlocked && e.MergeRefusals >= maxMergeRefusals:
+		// GitLab refused autopilot's merge twice: that is not seen in the
+		// checks below, so it stays blocked until a resume or a merge or
+		// close by hand.
+		return nil
 	}
 	set := func(s aiv1.LandingState, format string, args ...any) error {
 		e.State, e.Reason = s, fmt.Sprintf(format, args...)
@@ -215,7 +236,7 @@ func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.AP
 				"or a rebase changed lines); check it and merge it by hand, or close it", ref, short(mr.SHA))
 		}
 		log.FromContext(ctx).Info("companion head taken over, its change is the same", "companion", ref, "from", e.HeadSHA, "to", mr.SHA)
-		e.HeadSHA, e.HeadSince = mr.SHA, &now
+		e.HeadSHA, e.HeadSince, e.PipelineStartedAt = mr.SHA, &now, nil
 	}
 
 	status := mr.DetailedMergeStatus
@@ -256,13 +277,10 @@ func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.AP
 
 	// A green pipeline on the head; none within ci.noPipelineTimeout is a
 	// companion without CI, like in the CI loop.
-	var pipelines []gitlab.Pipeline
-	if mr.HeadPipeline != nil && mr.HeadPipeline.SHA == mr.SHA {
-		pipelines = []gitlab.Pipeline{*mr.HeadPipeline}
-	} else if pipelines, err = gl.ListPipelines(ctx, e.Project, gitlab.ListPipelinesOptions{SHA: mr.SHA, Limit: 1}); err != nil {
-		return fmt.Errorf("listing the pipelines of %s: %w", short(mr.SHA), err)
+	pipelines, err := headPipelines(ctx, gl, e.Project, mr)
+	if err != nil {
+		return err
 	}
-	pipelines = slices.DeleteFunc(pipelines, func(p gitlab.Pipeline) bool { return p.Status == "skipped" })
 	switch {
 	case len(pipelines) == 0 && e.HeadSince != nil && now.Sub(e.HeadSince.Time) >= spec.CI.NoPipelineTimeout.Duration:
 		// no CI for it
@@ -279,7 +297,7 @@ func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.AP
 		return set(aiv1.LandingWaitingCI, "GitLab reports %s as %q", ref, mr.DetailedMergeStatus)
 	}
 	e.State, e.Reason, e.ReadyAt = aiv1.LandingReady, "", &now
-	return nil
+	return r.landReady(ctx, gl, spec, e, mr, owners)
 }
 
 // homeLive reports whether the home change of e is live, the release that
@@ -401,7 +419,8 @@ func firstRelease(refs []gitlab.CommitRef) (release, bool) {
 // noticeBlocked tells the companion merge request, once per block, why it
 // cannot land and mentions the owners, unless the home milestone is on
 // autopilot (its pause says so on the tracking issue).
-func (r *AgentProjectReconciler) noticeBlocked(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, e *aiv1.CompanionStatus, autopilots map[int64]*aiv1.AgentTask) error {
+func (r *AgentProjectReconciler) noticeBlocked(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, e *aiv1.CompanionStatus,
+	autopilots map[int64]*aiv1.AgentTask, owners []string) error {
 	if e.State != aiv1.LandingBlocked {
 		e.BlockedNotice = ""
 		return nil
@@ -413,7 +432,7 @@ func (r *AgentProjectReconciler) noticeBlocked(ctx context.Context, gl gitlab.AP
 		return nil
 	}
 	body := fmt.Sprintf("🤖 This companion of %s#%d (merged in !%d) cannot land: %s.", spec.GitLab.Project, e.HomeIssueIID, e.HomeMRIID, notify.Defuse(e.Reason)) +
-		notify.Mention(e.Owners)
+		notify.Mention(owners)
 	if _, err := gl.CreateMergeRequestNote(ctx, e.Project, e.MRIID, body); err != nil {
 		return fmt.Errorf("commenting on the blocked companion: %w", err)
 	}
@@ -476,15 +495,24 @@ func (a *autopilot) companionLanding(ctx context.Context) error {
 }
 
 // retryLandings lets the milestone's blocked companions be checked again,
-// with one more rebase: an owner resumed the landing pause.
+// with one more rebase and merge: an owner resumed the landing pause. A
+// companion autopilot merged whose default branch is red is recorded as
+// merged instead: the owner goes on with it.
 func (a *autopilot) retryLandings(by string) {
+	now := metav1.NewTime(a.r.now())
 	for i := range a.project.Status.Companions {
 		e := &a.project.Status.Companions[i]
 		if e.MilestoneIID != a.st.Spec.Milestone.IID || e.State != aiv1.LandingBlocked {
 			continue
 		}
+		if e.MergeStartedAt != nil && e.MergeSHA != "" {
+			a.log.Info("companion recorded as merged after a resume, its default branch was red", "companion", landingRef(e), "by", by)
+			e.State, e.Reason, e.EndedAt = aiv1.LandingMerged, "recorded as merged after a resume by "+by+" (its default branch's pipeline was red)", &now
+			continue
+		}
 		a.log.Info("companion checked again after a resume", "companion", landingRef(e), "by", by)
 		e.State, e.Reason = aiv1.LandingWaitingCI, "checked again after a resume by "+by
 		e.RebasedSHA, e.RebasedAt = "", nil
+		e.MergeRefusals, e.PipelineStartedAt = 0, nil
 	}
 }

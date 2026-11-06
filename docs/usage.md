@@ -1284,16 +1284,19 @@ its review holds if the change is the same), or is merged by hand.
 After the home merge, the same kind pauses the milestone while one of its
 companions is `blocked` in its [landing](#landing): a conflict or a
 `need_rebase` after the one rebase, a failed rebase, a red pipeline, an
-approval, or someone's push. That pause is about no issue. It ends by itself
-once no companion of the milestone is blocked any more (fixed or rebased by
-hand, merged or closed by hand).
+approval, someone's push, a merge GitLab refused twice, or a red
+default-branch pipeline after autopilot merged it. That pause is about no
+issue. It ends by itself once no companion of the milestone is blocked any
+more (fixed or rebased by hand, merged or closed by hand, or the
+default-branch pipeline green on a retry).
 
 - Fix the companion's merge request in GitLab (resolve its conflicts or
   discussions, approve it), then `/agent resume`: the merge gate checks it
   again.
 - `/agent resume`: the merge gate checks the companion again. After the
   home merge, the blocked companions are checked again, each with one more
-  rebase.
+  rebase and merge; one autopilot merged onto a red default branch is
+  recorded as merged (fix the default branch yourself).
 - `/agent skip #N`: the issue is skipped; its companion merge request is
   left to the owners.
 
@@ -1574,20 +1577,61 @@ each entry once per poll. No model decides any of it:
 3. **`waitingCI`**: the head needs a green pipeline (none within
    `ci.noPipelineTimeout` counts as no CI), and GitLab must report it
    `mergeable` (a draft, `draft_status`, counts).
-4. **`ready`**, with `readyAt`. Nothing is merged at this point.
+4. **`ready`**, with `readyAt`. Then it is decided who merges it.
+
+**Autopilot merges** a ready companion only when all of these hold at that
+moment, not only at the home merge (an owner who removes `merge` or turns
+`autoMerge` off in the meantime stops the merge):
+
+- the issue's companion was set to be merged by autopilot (`autoMerge` in
+  the entry, from `spec.companion.autoMerge`);
+- the milestone still has the line `/agent repo <project> merge` (the
+  operator reads the milestone again);
+- the milestone still has the autopilot marker;
+- the project is still a valid target with `autoMerge: true`.
+
+Then the entry is **`merging`**: autopilot marks the merge request ready,
+starts a merge request pipeline if its head has none (once, `pipelineStartedAt`;
+none within `ci.noPipelineTimeout` counts as no CI) and waits for it to be
+green. If GitLab starts no merge request pipeline for it (HTTP 400 or 422),
+autopilot still waits `ci.noPipelineTimeout` for any pipeline of the head
+before it merges without CI; if the bot may not start one (401, 403), the
+owners merge it instead; a rate limit or a GitLab error is tried again on
+the next poll. Then it merges with `sha` set to the checked head. It then follows the
+companion's default-branch pipeline of the merge commit (`mergeSHA`, from
+`mergeStartedAt` on): green, or none within `ci.noPipelineTimeout`, is
+**`merged`** with `endedAt`. A red or canceled one makes the entry `blocked`,
+which pauses the milestone with [`companion`](#companion); the pause comment
+on the tracking issue mentions the owners. A merge GitLab refuses (the head
+moved, not mergeable) goes back to the checks of step 3 once
+(`mergeRefusals`); a second refusal blocks it until `/agent resume`. A head
+that moved, a red head pipeline or a new merge status goes back through the
+checks too. Marking the merge request draft again hands it to the owners.
+
+**Otherwise the owners merge it.** The operator marks the merge request
+ready and comments on it once (`notifiedAt`), mentioning the milestone's
+owners (else the project's `notify.users` or the default owners). The
+comment names the home merge request, the release that made the home change
+live, and why autopilot does not merge it. The entry's `autoMerge` is
+cleared, so a later change of the switches does not merge it either; such
+an entry (`ready`, no `autoMerge`, `notifiedAt`) is what the Desk's
+`companionReady` Inbox item is raised from. After 7 days still open, it
+gets one reminder (`remindedAt`), no further one. Nothing is merged.
 
 A failed rebase, a conflict or a `need_rebase` after the one rebase, a red
 pipeline, an approval, unresolved discussions, or someone's push makes the
 entry **`blocked`**, with the reason. On an autopilot milestone, the
 milestone [pauses](#companion) with kind `companion`. The pause ends by
 itself when no companion of the milestone is blocked any more (resolved or
-rebased by hand, merged or closed). `/agent resume` checks the blocked
-companions again and allows one more rebase each. Outside autopilot, the
-companion's merge request gets one comment per block, mentioning the owners.
+rebased by hand, merged or closed, or its default-branch pipeline green on a
+retry). `/agent resume` checks the blocked companions again and allows one
+more rebase and merge each; a companion autopilot merged onto a red default
+branch is recorded as `merged`. Outside autopilot, the companion's merge
+request gets one comment per block, mentioning the owners.
 
-A merge or close by hand at any point is recorded as `merged` (with
-`mergeSHA`) or `closed`, with `endedAt`. Ended entries are removed from the
-status 7 days later.
+A merge or close by hand at any point, also while `ready` or `merging`, is
+recorded as `merged` (with `mergeSHA`) or `closed`, with `endedAt`, and ends
+a pause about it. Ended entries are removed from the status 7 days later.
 
 ### Commands on the tracking issue
 

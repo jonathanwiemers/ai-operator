@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr/funcr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -14,8 +15,11 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab/gitlabfake"
 )
 
-// landingEnv is a companion entry of group/app#1 (merged in !1 as m1) for
-// its draft merge request in group/infra at c1.
+// landingEnv is a companion entry of group/app#1 (merged in !1 as m1, in
+// milestone %3 "Checkout v2", ID 11) for its draft merge request in
+// group/infra at c1. group/infra is a valid target, without autoMerge, and
+// the milestone is on autopilot with the line "/agent repo group/infra
+// merge"; the entry has no autoMerge (autoMerge sets all three switches).
 type landingEnv struct {
 	t           *testing.T
 	ctx         context.Context
@@ -25,7 +29,11 @@ type landingEnv struct {
 	cmr         *gitlab.MergeRequest
 	spec        aiv1.AgentProjectSpec
 	e           aiv1.CompanionStatus
+	// refusals counts the merge/push guard's refusals.
+	refusals int
 }
+
+const landingMilestone = "/agent autopilot\n/agent repo group/infra merge\nBuild a new checkout."
 
 func newLandingEnv(t *testing.T) *landingEnv {
 	t.Helper()
@@ -33,8 +41,11 @@ func newLandingEnv(t *testing.T) *landingEnv {
 	home := gitlabfake.New()
 	gl := gitlabfake.NewProjects(home)
 	infra := gl.Add("group/infra")
-	l := &landingEnv{t: t, ctx: ctx, gl: gl, home: home, infra: infra, spec: testProject().Spec.WithDefaults()}
-	l.r = &AgentProjectReconciler{Now: func() time.Time { return home.Clock }}
+	spec := testProject().Spec
+	spec.CrossRepo = &aiv1.CrossRepoSpec{Targets: []aiv1.CrossRepoTarget{{Project: "group/infra", Paths: []string{"clusters/app/"}}}}
+	home.Milestones = []gitlab.Milestone{{ID: 11, IID: 3, Title: "Checkout v2", State: "active", Description: landingMilestone}}
+	l := &landingEnv{t: t, ctx: ctx, gl: gl, home: home, infra: infra, spec: spec.WithDefaults()}
+	l.r = &AgentProjectReconciler{Now: func() time.Time { return home.Clock }, CrossRepoAllowed: []string{"group/infra"}}
 	mr, err := infra.CreateMergeRequest(ctx, "group/infra", gitlab.CreateMergeRequestOptions{
 		SourceBranch: "agent/app-1-api", TargetBranch: "main", Title: "Draft: API (companion of group/app#1)"})
 	if err != nil {
@@ -47,17 +58,41 @@ func newLandingEnv(t *testing.T) *landingEnv {
 		t.Fatalf("hashing the companion's change: %q %v", diff, err)
 	}
 	now := metav1.NewTime(home.Clock)
-	l.e = aiv1.CompanionStatus{HomeIssueIID: 1, MilestoneIID: 3, HomeMRIID: 1, HomeMergeSHA: "m1",
+	l.e = aiv1.CompanionStatus{HomeIssueIID: 1, MilestoneIID: 3, MilestoneID: 11, HomeMRIID: 1, HomeMergeSHA: "m1",
 		Project: "group/infra", MRIID: mr.IID, HeadSHA: "c1", HeadSince: &now, Diff: diff, State: aiv1.LandingWaitingRelease}
 	return l
 }
 
+// api is the env's GitLab behind the merge/push guard of the current spec,
+// like the operator's client; its refusals are counted.
+func (l *landingEnv) api() gitlab.API {
+	logger := funcr.New(func(_, args string) {
+		if strings.Contains(args, "guard refused") {
+			l.refusals++
+		}
+	}, funcr.Options{})
+	return gitlab.Guard(l.gl, gitlab.NewPolicy(l.spec, l.r.CrossRepoAllowed), logger)
+}
+
 func (l *landingEnv) poll() {
 	l.t.Helper()
-	if err := l.r.landCompanion(l.ctx, l.gl, l.spec, &l.e); err != nil {
+	if err := l.r.landCompanion(l.ctx, l.api(), l.spec, &l.e, []string{"alice"}); err != nil {
 		l.t.Fatal(err)
 	}
 }
+
+// autoMerge sets all three of autopilot's switches: the entry's autoMerge,
+// and the target's (the milestone has the other two).
+func (l *landingEnv) autoMerge() {
+	l.e.AutoMerge = true
+	l.spec.CrossRepo.Targets[0].AutoMerge = true
+}
+
+// milestone sets the milestone's description.
+func (l *landingEnv) milestone(description string) { l.home.Milestones[0].Description = description }
+
+// notes are the comments on the companion merge request.
+func (l *landingEnv) notes() []gitlab.Note { return l.infra.MRNotes[l.cmr.IID] }
 
 // tag tags the home project with name at a commit with parents parents,
 // age old, containing the merge m1 or not.
@@ -236,13 +271,14 @@ func TestCompanionLanding(t *testing.T) {
 			if len(l.home.RefLists) != c.refs {
 				t.Errorf("tag lookups %v, want %d", l.home.RefLists, c.refs)
 			}
-			if len(l.infra.Merged) != 0 || len(l.home.Merged) != 0 {
-				t.Errorf("nothing is merged: %v %v", l.infra.Merged, l.home.Merged)
+			if len(l.infra.Merged) != 0 || len(l.home.Merged) != 0 || l.refusals != 0 {
+				t.Errorf("nothing is merged, and the guard is not hit: %v %v, %d refusals", l.infra.Merged, l.home.Merged, l.refusals)
 			}
 			switch l.e.State {
 			case aiv1.LandingReady:
-				if l.e.ReadyAt == nil {
-					t.Error("ready without readyAt")
+				// Without autopilot's switches: marked ready, the owners asked.
+				if l.e.ReadyAt == nil || l.e.NotifiedAt == nil || l.cmr.Draft || len(l.notes()) != 1 {
+					t.Errorf("ready without readyAt, or the owners not asked: %+v, draft %v, notes %+v", l.e, l.cmr.Draft, l.notes())
 				}
 			case aiv1.LandingMerged, aiv1.LandingClosed:
 				if l.e.EndedAt == nil {
@@ -253,6 +289,254 @@ func TestCompanionLanding(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Who merges a ready companion: autopilot with all three switches (read
+// again when it is about to merge), else the owners, asked once and
+// reminded once. The guard is never hit.
+func TestCompanionWhoMerges(t *testing.T) {
+	day := 24 * time.Hour
+	merged := func(l *landingEnv) { l.cmr.State, l.cmr.MergeCommitSHA = "merged", "cm1" }
+	mainPipeline := func(status string) func(*landingEnv) {
+		return func(l *landingEnv) { l.infra.AddPipeline("merge-c1", "main", status) }
+	}
+	headPipeline := func(status string) func(*landingEnv) {
+		return func(l *landingEnv) { l.infra.AddPipeline("c1", "agent/app-1-api", status) }
+	}
+	later := func(d time.Duration) func(*landingEnv) {
+		return func(l *landingEnv) { l.home.Clock = l.home.Clock.Add(d) }
+	}
+	line := func(description string) func(*landingEnv) { return func(l *landingEnv) { l.milestone(description) } }
+	cases := []struct {
+		name  string
+		setup func(*landingEnv)
+		// noCI: the head has no pipeline (else a green one).
+		noCI  bool
+		steps []landingStep
+		// Afterwards: merged or not, the comments on the companion merge
+		// request (by substring, each mentions the owners), the merge
+		// request pipelines started, the merge request still a draft, the
+		// guard's refusals.
+		merged    bool
+		notes     []string
+		pipelines int
+		draft     bool
+		refusals  int
+	}{
+		{name: "all switches: merged once the default branch is green", setup: (*landingEnv).autoMerge, steps: []landingStep{
+			{want: aiv1.LandingMerging, reason: "autopilot merges group/infra!1"}, // marked ready
+			{want: aiv1.LandingMerging, reason: "autopilot merged group/infra!1; waiting for the pipeline of merge-c1 on main"},
+			{do: mainPipeline("running"), want: aiv1.LandingMerging, reason: "the pipeline of merge-c1 on main is running"},
+			{do: mainPipeline("success"), want: aiv1.LandingMerged},
+		}, merged: true},
+		{name: "all switches: a red default branch blocks until its pipeline is green", setup: (*landingEnv).autoMerge, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{want: aiv1.LandingMerging},
+			{do: mainPipeline("failed"), want: aiv1.LandingBlocked,
+				reason: "autopilot merged group/infra!1, and the pipeline https://gitlab.example/group/app/-/pipelines/"},
+			{want: aiv1.LandingBlocked, reason: "of the merge merge-c1 on group/infra's default branch main is failed"},
+			{do: mainPipeline("success"), want: aiv1.LandingMerged}, // retried
+		}, merged: true},
+		{name: "all switches: a canceled default-branch pipeline blocks", setup: (*landingEnv).autoMerge, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{do: mainPipeline("canceled"), want: aiv1.LandingBlocked, reason: "is canceled"},
+		}, merged: true},
+		{name: "all switches, an entry without the milestone's ID: found by IID", setup: func(l *landingEnv) {
+			l.autoMerge()
+			l.e.MilestoneID = 0
+		}, steps: []landingStep{
+			{want: aiv1.LandingMerging, reason: "autopilot merges"},
+			{do: mainPipeline("success"), want: aiv1.LandingMerged},
+		}, merged: true},
+		{name: "all switches: no default-branch pipeline is no CI", setup: (*landingEnv).autoMerge, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{want: aiv1.LandingMerging, reason: "waiting for the pipeline of merge-c1"},
+			{do: later(11 * time.Minute), want: aiv1.LandingMerged},
+		}, merged: true},
+		{name: "merge missing on the line: the owners", setup: func(l *landingEnv) {
+			l.autoMerge()
+			l.milestone("/agent autopilot\n/agent repo group/infra\nBuild.")
+		}, steps: []landingStep{
+			{want: aiv1.LandingReady, reason: "the milestone \"Checkout v2\" has no line `/agent repo group/infra merge` any more"},
+			{want: aiv1.LandingReady},
+		}, notes: []string{"can land now: its home change group/app!1 is merged, and this merge request is green and mergeable"}},
+		{name: "not on autopilot: the owners", setup: func(l *landingEnv) {
+			l.autoMerge()
+			l.milestone("/agent spec\n/agent repo group/infra merge\nBuild.")
+		}, steps: []landingStep{{want: aiv1.LandingReady, reason: "is not on autopilot any more"}},
+			notes: []string{"Autopilot does not merge it (the milestone \"Checkout v2\" is not on autopilot any more)"}},
+		{name: "target without autoMerge: the owners", setup: func(l *landingEnv) {
+			l.autoMerge()
+			l.spec.CrossRepo.Targets[0].AutoMerge = false
+		}, steps: []landingStep{{want: aiv1.LandingReady, reason: "the companion target group/infra does not have `autoMerge: true`"}},
+			notes: []string{"so please merge it"}},
+		{name: "target no longer allowed by the cluster: the owners", setup: func(l *landingEnv) {
+			l.autoMerge()
+			l.r.CrossRepoAllowed = []string{"group/other"}
+		}, steps: []landingStep{{want: aiv1.LandingReady, reason: "group/infra is no valid companion target of this project any more"}},
+			// Not a target, so the guard refuses marking it ready too.
+			notes: []string{"It could not be marked ready (refused by the merge/push guard"}, draft: true, refusals: 1},
+		{name: "the entry without autoMerge: the owners, with the release", setup: func(l *landingEnv) {
+			l.spec.CrossRepo.Targets[0].AutoMerge = true
+			l.tag("v1.3.0", 2, 0, true)
+		}, steps: []landingStep{{want: aiv1.LandingReady, reason: "its issue was not set to have it merged by autopilot"}},
+			notes: []string{"its home change group/app!1 is live in release v1.3.0"}},
+		{name: "merge removed from the line before the merge: the owners", setup: (*landingEnv).autoMerge, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{do: headPipeline("running"), want: aiv1.LandingMerging, reason: "is running"},
+			{do: line("/agent autopilot\n/agent repo group/infra\nBuild."), want: aiv1.LandingReady, reason: "has no line"},
+			// Asked once, the owners merge it, also with the line back.
+			{do: func(l *landingEnv) { l.milestone(landingMilestone); headPipeline("success")(l) }, want: aiv1.LandingReady},
+		}, notes: []string{"so please merge it"}},
+		{name: "marked draft again while merging: the owners", setup: (*landingEnv).autoMerge, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{do: headPipeline("running"), want: aiv1.LandingMerging, reason: "is running"},
+			{do: func(l *landingEnv) { l.cmr.Title, l.cmr.Draft = "Draft: "+l.cmr.Title, true }, want: aiv1.LandingReady, reason: "someone marked it draft again"},
+		}, notes: []string{"Autopilot does not merge it (someone marked it draft again)"}, draft: true},
+		{name: "no pipeline on the head: one is started", noCI: true, setup: func(l *landingEnv) {
+			l.autoMerge()
+			l.e.HeadSince.Time = l.home.Clock.Add(-11 * time.Minute) // no CI so far
+		}, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{want: aiv1.LandingMerging, reason: "waiting for the pipeline autopilot started on the head c1"},
+			{want: aiv1.LandingMerging, reason: "waiting for the pipeline autopilot started"},
+			{do: func(l *landingEnv) { l.green("c1") }, want: aiv1.LandingMerging, reason: "waiting for the pipeline of merge-c1"},
+			{do: mainPipeline("success"), want: aiv1.LandingMerged},
+		}, merged: true, pipelines: 1},
+		{name: "the started pipeline never comes: merged without CI", noCI: true, setup: func(l *landingEnv) {
+			l.autoMerge()
+			l.e.HeadSince.Time = l.home.Clock.Add(-11 * time.Minute)
+		}, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{want: aiv1.LandingMerging, reason: "waiting for the pipeline autopilot started"},
+			{do: later(11 * time.Minute), want: aiv1.LandingMerging, reason: "waiting for the pipeline of merge-c1"},
+		}, merged: true, pipelines: 1},
+		{name: "no merge request pipelines: waits for the timeout before merging without CI", noCI: true, setup: func(l *landingEnv) {
+			l.autoMerge()
+			l.e.HeadSince.Time = l.home.Clock.Add(-11 * time.Minute)
+			l.infra.NoMRPipelines = true
+		}, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{want: aiv1.LandingMerging, reason: "GitLab starts no merge request pipeline for group/infra!1; waiting for a pipeline on its head c1"},
+			{do: later(5 * time.Minute), want: aiv1.LandingMerging, reason: "waiting for the pipeline autopilot started"},
+			{do: later(6 * time.Minute), want: aiv1.LandingMerging, reason: "waiting for the pipeline of merge-c1"},
+		}, merged: true},
+		{name: "no pipeline permission: the owners, never merged without CI", noCI: true, setup: func(l *landingEnv) {
+			l.autoMerge()
+			l.e.HeadSince.Time = l.home.Clock.Add(-11 * time.Minute)
+			l.infra.MRPipelineError = &gitlab.Error{StatusCode: 403, Method: "POST", Path: "pipelines", Body: "403 Forbidden"}
+		}, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{want: aiv1.LandingReady, reason: "it may not start a pipeline for its head (HTTP 403)"},
+			{do: later(time.Hour), want: aiv1.LandingReady},
+		}, notes: []string{"Autopilot does not merge it (it may not start a pipeline for its head (HTTP 403))"}},
+		{name: "a red pipeline before the merge blocks until green", setup: (*landingEnv).autoMerge, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{do: headPipeline("failed"), want: aiv1.LandingBlocked, reason: "is failed on its head c1"},
+			{want: aiv1.LandingBlocked, reason: "is failed on its head c1"},
+			{do: headPipeline("success"), want: aiv1.LandingMerging, reason: "autopilot merged"},
+		}, merged: true},
+		{name: "one comment, one reminder after 7 days, no third", steps: []landingStep{
+			{want: aiv1.LandingReady},
+			{do: later(7*day - time.Minute), want: aiv1.LandingReady},
+			{do: later(time.Minute), want: aiv1.LandingReady},
+			{do: later(30 * day), want: aiv1.LandingReady},
+		}, notes: []string{"can land now", "Reminder: this companion of group/app#1 has been ready to land since"}},
+		{name: "merged by hand while ready", steps: []landingStep{
+			{want: aiv1.LandingReady},
+			{do: merged, want: aiv1.LandingMerged},
+		}, notes: []string{"can land now"}},
+		{name: "merged by hand while merging", setup: (*landingEnv).autoMerge, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{do: merged, want: aiv1.LandingMerged},
+		}},
+		{name: "closed by hand while merging", setup: (*landingEnv).autoMerge, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{do: func(l *landingEnv) { l.cmr.State = "closed" }, want: aiv1.LandingClosed},
+		}},
+		{name: "a merge GitLab refuses: the ready checks once, then blocked", setup: func(l *landingEnv) {
+			l.autoMerge()
+			l.infra.MergeErrors = map[int64]error{1: &gitlab.Error{StatusCode: 409, Method: "PUT", Path: "merge", Body: "SHA does not match HEAD of source branch"}}
+		}, steps: []landingStep{
+			{want: aiv1.LandingMerging},
+			{want: aiv1.LandingWaitingCI, reason: "GitLab refused to merge group/infra!1 (gitlab: PUT merge: 409 SHA does not match"},
+			{want: aiv1.LandingBlocked, reason: "GitLab refused to merge group/infra!1 again"},
+			// The checks pass, but it stays blocked until a resume.
+			{want: aiv1.LandingBlocked, reason: "again"},
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			l := newLandingEnv(t)
+			if !c.noCI {
+				l.green("c1")
+			}
+			if c.setup != nil {
+				c.setup(l)
+			}
+			for i, s := range c.steps {
+				if s.do != nil {
+					s.do(l)
+				}
+				l.poll()
+				if l.e.State != s.want || !strings.Contains(l.e.Reason, s.reason) {
+					t.Fatalf("poll %d: want %s with %q, got %s with %q", i+1, s.want, s.reason, l.e.State, l.e.Reason)
+				}
+			}
+			if c.merged != (len(l.infra.Merged) == 1) || len(l.infra.Merged) > 1 {
+				t.Errorf("merged %v, want merged %v", l.infra.Merged, c.merged)
+			}
+			if c.merged {
+				if opts := l.infra.MergeOpts[1]; opts.SHA != "c1" || l.e.MergeSHA != "merge-c1" || l.e.MergeStartedAt == nil {
+					t.Errorf("merged with the checked head: %+v, entry %+v", opts, l.e)
+				}
+			}
+			if l.e.NotifiedAt != nil && l.e.AutoMerge {
+				t.Errorf("the owners' path clears autoMerge: %+v", l.e)
+			}
+			notes := l.notes()
+			if len(notes) != len(c.notes) {
+				t.Fatalf("%d comments, want %d: %+v", len(notes), len(c.notes), notes)
+			}
+			for i, want := range c.notes {
+				if !strings.Contains(notes[i].Body, want) || !strings.HasSuffix(notes[i].Body, "cc @alice") {
+					t.Errorf("comment %d without %q or the owners: %s", i+1, want, notes[i].Body)
+				}
+			}
+			if l.cmr.Draft != c.draft {
+				t.Errorf("draft %v, want %v", l.cmr.Draft, c.draft)
+			}
+			if len(l.infra.MRPipelines) != c.pipelines {
+				t.Errorf("merge request pipelines %v, want %d", l.infra.MRPipelines, c.pipelines)
+			}
+			if l.refusals != c.refusals {
+				t.Errorf("guard refusals %d, want %d", l.refusals, c.refusals)
+			}
+			if l.e.State.Ended() && l.e.EndedAt == nil {
+				t.Error("ended without endedAt")
+			}
+		})
+	}
+}
+
+// A switch that does not hold can never merge: forced past mergeSwitches,
+// the guard refuses the merge in a target without autoMerge, and the entry
+// is blocked.
+func TestCompanionMergeGuard(t *testing.T) {
+	l := newLandingEnv(t)
+	l.e.AutoMerge = true // the target has no autoMerge
+	l.e.State = aiv1.LandingMerging
+	if err := l.r.mergeNow(l.ctx, l.api(), l.spec, &l.e); err != nil {
+		t.Fatal(err)
+	}
+	if len(l.infra.Merged) != 0 || l.refusals != 1 || l.e.State != aiv1.LandingBlocked ||
+		!strings.Contains(l.e.Reason, "the merge/push guard refused to merge group/infra!1: a companion target without autoMerge") {
+		t.Fatalf("the guard refuses: merged %v, %d refusals, %+v", l.infra.Merged, l.refusals, l.e)
+	}
+	l.poll()
+	if l.e.State != aiv1.LandingBlocked || len(l.infra.Merged) != 0 {
+		t.Fatalf("it stays blocked: %+v", l.e)
 	}
 }
 
@@ -333,7 +617,7 @@ func TestSyncCompanions(t *testing.T) {
 	sync := func(homeMRs map[string]*gitlab.MergeRequest, autopilots map[int64]*aiv1.AgentTask) map[string]bool {
 		t.Helper()
 		keep := map[string]bool{}
-		if err := l.r.syncCompanions(l.ctx, l.gl, project, spec, tasks, homeMRs, autopilots, keep); err != nil {
+		if err := l.r.syncCompanions(l.ctx, l.api(), project, spec, tasks, homeMRs, autopilots, nil, keep); err != nil {
 			t.Fatal(err)
 		}
 		return keep
@@ -407,7 +691,7 @@ func TestSyncCompanionsKeepsUncheckedTasks(t *testing.T) {
 	l.home.MRs[home.IID].State = "merged"
 	l.home.DiffErrors = map[int64]error{home.IID: &gitlab.Error{StatusCode: 500, Method: "GET", Path: "diffs"}}
 	keep := map[string]bool{}
-	err := l.r.syncCompanions(l.ctx, l.gl, project, l.spec, []aiv1.AgentTask{companionTask(false)}, nil, nil, keep)
+	err := l.r.syncCompanions(l.ctx, l.api(), project, l.spec, []aiv1.AgentTask{companionTask(false)}, nil, nil, nil, keep)
 	if err == nil || !keep["shop-1-api"] || len(project.Status.Companions) != 0 {
 		t.Fatalf("the task is kept and the error reported: %v, keep %v, %+v", err, keep, project.Status.Companions)
 	}
@@ -501,5 +785,85 @@ func TestCompanionLandingPausesTheMilestone(t *testing.T) {
 	}
 	if !strings.Contains(trackingComments(e), "Autopilot continues: the companions of the milestone can land again") {
 		t.Fatalf("the lift is said:\n%s", trackingComments(e))
+	}
+}
+
+// With all three switches, autopilot merges the companion after the home
+// merge with the checked head, and a red default branch afterwards pauses
+// the milestone with kind companion, mentioning the owners once.
+func TestCompanionAutopilotMergeAndRedDefaultBranch(t *testing.T) {
+	e, infra := newCompanionGateEnv(t)
+	e.r.DefaultOwners = []string{"alice"}
+	withInfraTarget(e, true)
+	e.gl.Milestones[0].Description = "/agent autopilot\n/agent repo group/infra merge\nBuild a new checkout."
+	_, cmr := e.finishCompanionRun(infra, 1, "sha-api", "sha-infra", aiv1.CIStateSuccess, nil)
+	e.gl.SetLabels(1, "ai-generated", "agent::review", "agent-repo::group/infra")
+	e.reconcile() // marked ready
+	if c := e.implTaskOf(1).Spec.Companion; c == nil || !c.AutoMerge {
+		t.Fatalf("the issue's companion may be merged by autopilot: %+v", c)
+	}
+	e.reconcile() // merged
+	if !slices.Equal(e.gl.Merged, []int64{1}) {
+		t.Fatalf("the home MR merges: %v", e.gl.Merged)
+	}
+	infra.AddPipeline("sha-infra", "agent/app-1-api", "success")
+	e.reconcile() // recorded, ready: marked ready
+	if cs := e.project().Status.Companions; len(cs) != 1 || cs[0].State != aiv1.LandingMerging || !cs[0].AutoMerge || cs[0].MilestoneID != 11 || cmr.Draft {
+		t.Fatalf("autopilot marks the companion ready to merge it: %+v, draft %v", cs, cmr.Draft)
+	}
+	e.reconcile() // merged
+	if !slices.Equal(infra.Merged, []int64{cmr.IID}) || infra.MergeOpts[cmr.IID].SHA != "sha-infra" {
+		t.Fatalf("autopilot merges the checked head: %v %+v", infra.Merged, infra.MergeOpts)
+	}
+	infra.AddPipeline("merge-sha-infra", "main", "failed")
+	e.reconcile() // blocked
+	e.reconcile() // paused
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseCompanion ||
+		!strings.Contains(ap.PausedReason, "autopilot merged group/infra!1, and the pipeline") {
+		t.Fatalf("a red default branch after the merge pauses with kind companion: %+v", ap)
+	}
+	comments := trackingComments(e)
+	if strings.Count(comments, "Autopilot paused: the companion group/infra!1 of #1 cannot land") != 1 || !strings.Contains(comments, "cc @alice") {
+		t.Fatalf("one pause comment, mentioning the owners:\n%s", comments)
+	}
+	if len(infra.MRNotes[cmr.IID]) != 0 {
+		t.Fatalf("on autopilot the companion merge request gets no comment: %+v", infra.MRNotes[cmr.IID])
+	}
+
+	// resume: the owner goes on, it is recorded as merged and the pause ends.
+	e.gl.AddNote(ap.TrackingIssueIID, alice, "/agent resume")
+	e.reconcile()
+	e.reconcile()
+	if cs := e.project().Status.Companions; cs[0].State != aiv1.LandingMerged || cs[0].EndedAt == nil {
+		t.Fatalf("resume records it as merged: %+v", cs[0])
+	}
+	if ap := e.autopilot(); ap.Phase == aiv1.AutopilotPaused {
+		t.Fatalf("the pause ends: %+v", ap)
+	}
+}
+
+// A rate limit (or a GitLab error) when starting the head's pipeline is not
+// "no CI": the poll fails, it is tried again, and nothing is merged.
+func TestCompanionMergePipelineRateLimited(t *testing.T) {
+	l := newLandingEnv(t)
+	l.autoMerge()
+	l.e.HeadSince.Time = l.home.Clock.Add(-11 * time.Minute)
+	l.infra.MRPipelineError = &gitlab.Error{StatusCode: 429, Method: "POST", Path: "pipelines", Body: "Retry later"}
+	l.poll() // marked ready
+	for range 2 {
+		l.home.Clock = l.home.Clock.Add(time.Hour)
+		if err := l.r.landCompanion(l.ctx, l.api(), l.spec, &l.e, []string{"alice"}); err == nil || !strings.Contains(err.Error(), "starting a pipeline for group/infra!1") {
+			t.Fatalf("the rate limit is an error: %v", err)
+		}
+	}
+	if l.e.State != aiv1.LandingMerging || l.e.PipelineStartedAt != nil || len(l.infra.Merged) != 0 {
+		t.Fatalf("still merging, no pipeline on record, nothing merged: %+v, merged %v", l.e, l.infra.Merged)
+	}
+	l.infra.MRPipelineError = nil
+	l.poll()
+	if len(l.infra.MRPipelines) != 1 || l.e.PipelineStartedAt == nil || len(l.infra.Merged) != 0 {
+		t.Fatalf("started once GitLab allows it, not merged yet: %v %+v", l.infra.MRPipelines, l.e)
 	}
 }

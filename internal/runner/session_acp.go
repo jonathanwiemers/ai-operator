@@ -422,6 +422,7 @@ func (s *CursorSession) call(ctx context.Context, method string, params any) (js
 		s.mu.Lock()
 		delete(s.pending, id)
 		s.mu.Unlock()
+		s.settle()
 		return nil, fmt.Errorf("%s failed: %s", filepath.Base(s.bin), tail(s.errBuf.String(), 2000))
 	}
 }
@@ -543,6 +544,7 @@ func (s *CursorSession) Prompt(ctx context.Context, text string, fn func(Event))
 			s.mu.Unlock()
 			tr.flushEnd()
 			s.markDead()
+			s.settle()
 			return nil, fmt.Errorf("%s failed: %s", filepath.Base(s.bin), tail(s.errBuf.String(), 2000))
 		}
 	}

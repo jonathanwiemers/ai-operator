@@ -218,16 +218,19 @@ const (
 	// green pipeline on its head, or for GitLab to check it.
 	LandingWaitingCI LandingState = "waitingCI"
 	// LandingReady: the companion can land: live, rebased if it had to be,
-	// green on its head and mergeable.
+	// green on its head and mergeable. Without autopilot's switches it stays
+	// here until the owners merge or close it.
 	LandingReady LandingState = "ready"
-	// LandingMerging: autopilot merges it.
+	// LandingMerging: autopilot merges it, then follows its default
+	// branch's pipeline of the merge commit.
 	LandingMerging LandingState = "merging"
 	// LandingMerged: it was merged.
 	LandingMerged LandingState = "merged"
 	// LandingClosed: it was closed without a merge (or is gone).
 	LandingClosed LandingState = "closed"
 	// LandingBlocked: a human must act (a conflict a rebase did not resolve,
-	// a red pipeline, someone's push, an approval); reason says why.
+	// a red pipeline, someone's push, an approval, a merge GitLab refused
+	// twice, a red default branch after autopilot's merge); reason says why.
 	LandingBlocked LandingState = "blocked"
 )
 
@@ -244,9 +247,13 @@ const CompanionRetention = 7 * 24 * time.Hour
 type CompanionStatus struct {
 	// HomeIssueIID is the home issue the companion belongs to.
 	HomeIssueIID int64 `json:"homeIssueIID"`
-	// MilestoneIID and MilestoneTitle are the home issue's milestone.
+	// MilestoneIID and MilestoneTitle are the home issue's milestone;
+	// MilestoneID is its global ID, by which its description is read again
+	// before autopilot merges the companion.
 	// +optional
 	MilestoneIID int64 `json:"milestoneIID,omitempty"`
+	// +optional
+	MilestoneID int64 `json:"milestoneID,omitempty"`
 	// +optional
 	MilestoneTitle string `json:"milestoneTitle,omitempty"`
 	// HomeMRIID is the home merge request that was merged.
@@ -290,7 +297,9 @@ type CompanionStatus struct {
 	// +optional
 	Release string `json:"release,omitempty"`
 	// AutoMerge is the home task's spec.companion.autoMerge at the home
-	// merge: autopilot may merge the companion.
+	// merge: autopilot may merge the companion, if the milestone line's
+	// "merge", the autopilot marker and the target's autoMerge still allow
+	// it when it is ready. It is cleared once the owners are asked instead.
 	// +optional
 	AutoMerge bool `json:"autoMerge,omitempty"`
 	// Owners are the home task's owners, mentioned when the companion needs
@@ -324,4 +333,19 @@ type CompanionStatus struct {
 	// MergeSHA is the commit the companion's merge left.
 	// +optional
 	MergeSHA string `json:"mergeSHA,omitempty"`
+
+	// PipelineStartedAt is when autopilot started a merge request pipeline
+	// for the head it is about to merge, because the head had none.
+	// +optional
+	PipelineStartedAt *metav1.Time `json:"pipelineStartedAt,omitempty"`
+	// MergeStartedAt is when GitLab accepted autopilot's merge: from then on
+	// the default branch's pipeline of MergeSHA decides between merged and
+	// blocked.
+	// +optional
+	MergeStartedAt *metav1.Time `json:"mergeStartedAt,omitempty"`
+	// MergeRefusals counts the merges of autopilot GitLab refused: the first
+	// sends the entry back to the ready checks, the second blocks it until a
+	// resume (which resets it).
+	// +optional
+	MergeRefusals int32 `json:"mergeRefusals,omitempty"`
 }

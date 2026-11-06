@@ -2337,7 +2337,9 @@ spec:
                     autoMerge:
                       description: |-
                         AutoMerge is the home task's spec.companion.autoMerge at the home
-                        merge: autopilot may merge the companion.
+                        merge: autopilot may merge the companion, if the milestone line's
+                        "merge", the autopilot marker and the target's autoMerge still allow
+                        it when it is ready. It is cleared once the owners are asked instead.
                       type: boolean
                     blockedNotice:
                       description: |-
@@ -2386,12 +2388,31 @@ spec:
                         HomeMergeSHA is the commit the home merge left on the default branch
                         (the merge commit, else the squash commit, else the head).
                       type: string
+                    mergeRefusals:
+                      description: |-
+                        MergeRefusals counts the merges of autopilot GitLab refused: the first
+                        sends the entry back to the ready checks, the second blocks it until a
+                        resume (which resets it).
+                      format: int32
+                      type: integer
                     mergeSHA:
                       description: MergeSHA is the commit the companion's merge left.
                       type: string
+                    mergeStartedAt:
+                      description: |-
+                        MergeStartedAt is when GitLab accepted autopilot's merge: from then on
+                        the default branch's pipeline of MergeSHA decides between merged and
+                        blocked.
+                      format: date-time
+                      type: string
+                    milestoneID:
+                      format: int64
+                      type: integer
                     milestoneIID:
-                      description: MilestoneIID and MilestoneTitle are the home issue's
-                        milestone.
+                      description: |-
+                        MilestoneIID and MilestoneTitle are the home issue's milestone;
+                        MilestoneID is its global ID, by which its description is read again
+                        before autopilot merges the companion.
                       format: int64
                       type: integer
                     milestoneTitle:
@@ -2411,6 +2432,12 @@ spec:
                       items:
                         type: string
                       type: array
+                    pipelineStartedAt:
+                      description: |-
+                        PipelineStartedAt is when autopilot started a merge request pipeline
+                        for the head it is about to merge, because the head had none.
+                      format: date-time
+                      type: string
                     project:
                       description: |-
                         Project is the companion's full path; MRIID its merge request, MRURL

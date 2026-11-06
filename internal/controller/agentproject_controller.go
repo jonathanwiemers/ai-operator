@@ -513,7 +513,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	}
 	// Companions whose home merge request was merged (also of tasks deleted
 	// below), before the autopilots pause or go on over them.
-	if err := r.syncCompanions(ctx, gl, project, spec, tasks.Items, homeMRs, autopilots, keep); err != nil {
+	if err := r.syncCompanions(ctx, gl, project, spec, tasks.Items, homeMRs, autopilots, byMilestone, keep); err != nil {
 		errs = append(errs, fmt.Errorf("companions: %w", err))
 	}
 	for _, st := range autopilots {

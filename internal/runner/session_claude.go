@@ -139,6 +139,7 @@ func (s *ClaudeSession) Prompt(ctx context.Context, text string, fn func(Event))
 			if !ok {
 				tr.flush()
 				s.markDead()
+				s.settle()
 				return nil, fmt.Errorf("%s failed: %s", filepath.Base(s.bin), tail(s.errBuf.String(), 2000))
 			}
 			ev := parseEvent(line)

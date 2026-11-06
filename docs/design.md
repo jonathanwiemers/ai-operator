@@ -1963,12 +1963,34 @@ flowchart LR
     a merge commit) once a tag contains it; any other project at merge.
   * Then the operator rebases the companion once per entry. A new head counts
     only if its change hashes like the head recorded at the home merge. It
-    then needs a green pipeline and a mergeable status, and the entry ends in
+    then needs a green pipeline and a mergeable status, and the entry is
     `ready`.
+  * Who merges a ready entry (`internal/controller/companions_merge.go`):
+    `mergeSwitches` re-reads the milestone (`GetMilestone` by the entry's
+    `milestoneID`) and needs the entry's `autoMerge`, the milestone's
+    `/agent repo <project> merge` line, its autopilot marker
+    (`milestoneSelection`) and a valid target with `autoMerge`, the same
+    check the guard's policy is built from, so the guard never refuses in
+    normal operation. With all of them the entry is `merging`: mark ready,
+    one merge request pipeline if the head has none (only a 400/422 answer
+    counts as "none possible", and even then it waits
+    `ci.noPipelineTimeout`; 401/403 go to the owners, anything else is
+    retried), merge with the checked
+    `sha`, then the default branch's pipeline of `mergeSHA` decides `merged`
+    or `blocked`. GitLab refusing the merge sends it back to the ready checks
+    once (`mergeRefusals`), then blocks it until a resume. Without them
+    (`askOwners`) the merge request is marked ready, gets one comment with
+    the owners (the spec task's, else the entry's, else `notify.users` or
+    the default owners) and one reminder after 7 days; `autoMerge` is
+    cleared so the Desk's Inbox item (`ready`, no `autoMerge`, `notifiedAt`)
+    stays stable. A merge or close by hand ends the entry in any state. No
+    history events: they come from AgentTask status diffs, and the entries
+    live on the AgentProject.
   * A `blocked` entry pauses its autopilot milestone with kind `companion`
     (about no issue, `pausedFor` 0). The autopilot lifts that pause when no
     entry of the milestone is blocked any more, and `resume` resets the
-    blocked entries for one more rebase. The autopilot stays the only writer
+    blocked entries for one more rebase and merge (an entry autopilot merged
+    onto a red default branch is recorded as merged). The autopilot stays the only writer
     of `status.autopilot`. Outside autopilot, a blocked companion gets one
     comment per block.
 

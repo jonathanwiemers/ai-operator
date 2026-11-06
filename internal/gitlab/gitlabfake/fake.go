@@ -80,6 +80,8 @@ type Fake struct {
 	// NoMRPipelines refuses them like a project without such pipelines.
 	MRPipelines   []int64
 	NoMRPipelines bool
+	// MRPipelineError, if set, is what CreateMergeRequestPipeline returns.
+	MRPipelineError error
 	// BranchPipelines records the branches a pipeline was started for;
 	// NoPipelines refuses them.
 	BranchPipelines []string
@@ -808,6 +810,9 @@ func (f *Fake) CreateMergeRequestPipeline(_ context.Context, _ string, iid int64
 	defer f.mu.Unlock()
 	if _, ok := f.MRs[iid]; !ok {
 		return &gitlab.Error{StatusCode: 404, Method: "POST", Path: "pipelines"}
+	}
+	if f.MRPipelineError != nil {
+		return f.MRPipelineError
 	}
 	if f.NoMRPipelines {
 		return &gitlab.Error{StatusCode: 400, Method: "POST", Path: "pipelines", Body: `{"message":{"base":["No stages / jobs for this pipeline."]}}`}

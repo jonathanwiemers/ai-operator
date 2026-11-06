@@ -57,6 +57,20 @@ func (p *sessionProc) exited() <-chan struct{} {
 	return p.done
 }
 
+// stderrSettleWait bounds how long a session whose stdout closed waits for
+// its process to exit, so the stderr tail of its error is complete.
+const stderrSettleWait = 2 * time.Second
+
+// settle waits, at most stderrSettleWait, for the process to exit. Its
+// stderr is copied into the session's buffer by exec until cmd.Wait
+// returns, so stdout's EOF can come before the last stderr lines are in.
+func (p *sessionProc) settle() {
+	select {
+	case <-p.exited():
+	case <-time.After(stderrSettleWait):
+	}
+}
+
 func (p *sessionProc) kill() {
 	if p.cmd.Process == nil {
 		return
