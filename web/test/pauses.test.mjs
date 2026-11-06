@@ -68,6 +68,7 @@ test('resolvers are counted and named', () => {
     ],
   )
   assert.equal(resolverLabel('pilot'), 'pilot')
+  assert.equal(resolverLabel('laterRun'), 'later run')
   assert.equal(resolverLabel(undefined), 'unknown')
 })
 

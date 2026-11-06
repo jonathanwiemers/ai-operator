@@ -1099,7 +1099,14 @@ already pauses at once. `/agent resume` with the reviewers still failing on the 
 pauses again; comment `/agent review` on the issue to have it reviewed once
 more.
 
-The tracking issue gets "▶️ Autopilot continues: …". Every other pause (an
+The tracking issue gets "▶️ Autopilot continues: …", which ends with who
+ended the pause: "(ended by @alice)" or "(ended by Ada via the Desk)" for an
+owner, "(ended by the pilot)", "(ended by a later run of #N)" when a new run
+made the issue pass the gate, "(ended by the operator: it rebased the merge
+request)" for the rebase onto a green default branch, or "(ended by the
+operator: the cause went away)" for every other end by itself. An owner's `/agent resume`, also from
+the Desk or through the pilot, posts it with "resumed", so every resume is
+visible on GitLab. Every other pause (an
 approval, unresolved discussions, someone else's push, a dependency cycle,
 `/agent pause`) waits for `/agent resume`.
 
@@ -1107,7 +1114,8 @@ Each pause and its end are recorded in the history database
 (`autopilot.paused` and `autopilot.resumed` events with the pause's kind,
 reason and issue). The end says who resolved it (`resolvedBy`) and how long
 it took (`pausedSec`): `operator` for an end by itself (the cause went away,
-a budget raise, a stuck pause that can move again), `selfHealed` for the
+a budget raise, a stuck pause that can move again, a merge by hand),
+`laterRun` when a later run made the paused issue pass the gate, `selfHealed` for the
 rebase onto a green default branch above, `owner` for a command or an
 answered pilot prompt (also `/agent merge`, ending the milestone, or
 removing the autopilot marker), `pilot` for a rebase or mergeBase the

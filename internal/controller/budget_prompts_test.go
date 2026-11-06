@@ -181,7 +181,7 @@ func TestBudgetPauseAsksAndARaiseResumes(t *testing.T) {
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.PauseKind != "" || ap.Budget.LimitUSD != "52.0000" {
 		t.Fatalf("the raise resumes the autopilot: %+v", ap)
 	}
-	if !strings.Contains(trackingComments(e), "Autopilot continues: the budget is $52.00 now ($41.00 spent).") {
+	if !strings.Contains(trackingComments(e), "Autopilot continues: the budget is $52.00 now ($41.00 spent) (ended by the operator: the cause went away).") {
 		t.Fatalf("the resume is explained:\n%s", trackingComments(e))
 	}
 	if ps := e.budgetPrompts(); len(ps) != 1 || ps[0].State != aiv1.PromptAnswered {

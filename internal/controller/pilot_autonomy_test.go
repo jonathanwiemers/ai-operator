@@ -409,7 +409,7 @@ func TestPilotManagedRebasesTheActiveMR(t *testing.T) {
 		t.Fatalf("the pilot rebases !1 on its own and the pause ends: rebased %v, %+v\n%s", e.gl.Rebased, e.autopilot(), notes)
 	}
 	for _, want := range []string{"The pilot acted on its own", "**rebase** #1", "Interventions left for #1: 1 of 2.",
-		"▶️ Autopilot continues: the pilot asked to rebase !1 onto `main`."} {
+		"▶️ Autopilot continues: the pilot asked to rebase !1 onto `main` (ended by the pilot)."} {
 		if !strings.Contains(notes, want) {
 			t.Errorf("the tracking issue misses %q:\n%s", want, notes)
 		}

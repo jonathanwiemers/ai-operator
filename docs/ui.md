@@ -94,7 +94,7 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   questions, the **Pauses** card shows it: the totals line (*paused 3h 10m
   in 4 pauses · mean 47m to resume*; the mean once a pause has ended), a
   chip per kind with its count and time, longest first, who resolved them
-  (operator, pilot, owner, self-healed), and the newest pauses (five, the
+  (operator, later run, pilot, owner, self-healed), and the newest pauses (five, the
   rest of the 20 behind *Earlier pauses*) with kind, issue, duration, who
   resolved it or *open*, and the reason as text. An open pause keeps
   counting on the Desk between reloads. Without pause history (no history

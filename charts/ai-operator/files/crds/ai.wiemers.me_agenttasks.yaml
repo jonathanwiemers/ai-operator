@@ -1341,6 +1341,7 @@ spec:
                     - pilot
                     - owner
                     - selfHealed
+                    - laterRun
                     type: string
                   startRequestedBy:
                     description: |-

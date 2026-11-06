@@ -4075,7 +4075,7 @@ export const PauseEmptyPlan: PauseKind = "emptyPlan";
 /**
  * PauseResolver is who ended a pause (status.autopilot.resumedBy, the
  * autopilot.resumed history event).
- * +kubebuilder:validation:Enum=operator;pilot;owner;selfHealed
+ * +kubebuilder:validation:Enum=operator;pilot;owner;selfHealed;laterRun
  */
 export type PauseResolver = string;
 /**
@@ -4095,6 +4095,11 @@ export const ResolvedByOwner: PauseResolver = "owner";
  * green default branch.
  */
 export const ResolvedBySelfHealed: PauseResolver = "selfHealed";
+/**
+ * ResolvedByLaterRun: a later run of the paused issue made it pass the
+ * merge gate.
+ */
+export const ResolvedByLaterRun: PauseResolver = "laterRun";
 /**
  * AutopilotItemState is the state of one issue in the queue.
  * +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped

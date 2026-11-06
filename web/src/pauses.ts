@@ -41,6 +41,7 @@ const resolverLabels = new Map<string, string>(Object.entries({
   pilot: 'pilot',
   owner: 'owner',
   selfHealed: 'self-healed',
+  laterRun: 'later run',
 }))
 
 // resolverLabel names who ended a pause.

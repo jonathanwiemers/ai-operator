@@ -1610,7 +1610,7 @@ const (
 
 // PauseResolver is who ended a pause (status.autopilot.resumedBy, the
 // autopilot.resumed history event).
-// +kubebuilder:validation:Enum=operator;pilot;owner;selfHealed
+// +kubebuilder:validation:Enum=operator;pilot;owner;selfHealed;laterRun
 type PauseResolver string
 
 const (
@@ -1623,6 +1623,9 @@ const (
 	// ResolvedBySelfHealed: the operator rebased a BaseFailing MR onto a
 	// green default branch.
 	ResolvedBySelfHealed PauseResolver = "selfHealed"
+	// ResolvedByLaterRun: a later run of the paused issue made it pass the
+	// merge gate.
+	ResolvedByLaterRun PauseResolver = "laterRun"
 )
 
 // AutopilotItemState is the state of one issue in the queue.

@@ -57,7 +57,7 @@ func TestAutopilotFreezesWhileMainIsRed(t *testing.T) {
 	// Green: the block is lifted, autopilot continues and merges.
 	e.setMainHealthStatus(aiv1.MainHealthStatus{State: aiv1.MainHealthGreen})
 	e.reconcile()
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || !strings.Contains(trackingComments(e), "▶️ Autopilot continues: `main` is green again.") {
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || !strings.Contains(trackingComments(e), "▶️ Autopilot continues: `main` is green again (ended by the operator: the cause went away).") {
 		t.Fatalf("green must continue by itself: %+v\n%s", ap, trackingComments(e))
 	}
 	if b := e.tasks()["shop-1-api"].Status.Blocked; b != nil || !slices.Equal(e.gl.Labels(1), []string{"ai-generated", "agent::review"}) {

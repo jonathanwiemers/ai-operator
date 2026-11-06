@@ -144,8 +144,13 @@ func TestAutopilotChatCommandsPauseResumeSkip(t *testing.T) {
 	}) {
 		t.Fatalf("items = %+v", it)
 	}
-	if n := len(e.gl.IssueNotes[e.autopilot().TrackingIssueIID]); n != notesBefore {
-		t.Fatalf("Desk path must not comment on GitLab: notes %d → %d", notesBefore, n)
+	// The resume is the one comment on GitLab and names who ended the pause.
+	notes := e.gl.IssueNotes[e.autopilot().TrackingIssueIID]
+	if n := len(notes); n != notesBefore+1 || notes[n-1].Body != "🤖 ▶️ Autopilot continues: resumed (ended by Ada via the Desk)." {
+		t.Fatalf("a Desk resume leaves one comment naming the owner: notes %d → %d\n%s", notesBefore, n, trackingComments(e))
+	}
+	if by := e.autopilot().ResumedBy; by != aiv1.ResolvedByOwner {
+		t.Fatalf("resumedBy = %q", by)
 	}
 
 	answers := len(st.Spec.Source.ChatAnswers)

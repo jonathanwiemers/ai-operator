@@ -139,7 +139,7 @@ func TestPilotStartAnywayStartsTheWaitingIssue(t *testing.T) {
 		t.Fatalf("#2 starts and the pause ends: %+v, %v", ap, e.gl.Labels(2))
 	}
 	c := trackingComments(e)
-	for _, want := range []string{"▶️ #2 may start although #1, which it depends on, was skipped (@alice via the pilot).", "▶️ Autopilot continues: #2 can start now."} {
+	for _, want := range []string{"▶️ #2 may start although #1, which it depends on, was skipped (@alice via the pilot).", "▶️ Autopilot continues: #2 can start now (ended by the operator: the cause went away)."} {
 		if !strings.Contains(c, want) {
 			t.Errorf("the tracking issue lacks %q:\n%s", want, c)
 		}
@@ -177,7 +177,7 @@ func TestPilotMarkDoneClosesTheSkippedIssue(t *testing.T) {
 	if e.itemState(1) != aiv1.AutopilotItemMerged || e.itemState(2) != aiv1.AutopilotItemActive || e.autopilot().Phase != aiv1.AutopilotRunning {
 		t.Fatalf("#1 counts as merged and #2 starts: %+v", e.autopilot())
 	}
-	if c := trackingComments(e); !strings.Contains(c, "▶️ Autopilot continues: the skipped #1 was done by hand.") {
+	if c := trackingComments(e); !strings.Contains(c, "▶️ Autopilot continues: the skipped #1 was done by hand (ended by the operator: the cause went away).") {
 		t.Fatalf("the tracking issue says why it continues:\n%s", c)
 	}
 }
@@ -194,7 +194,7 @@ func TestPilotUnskipPutsTheIssueBack(t *testing.T) {
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || e.itemState(1) != aiv1.AutopilotItemActive || e.itemState(2) != aiv1.AutopilotItemPending {
 		t.Fatalf("#1 is picked again: %+v", ap)
 	}
-	if c := trackingComments(e); !strings.Contains(c, "▶️ Autopilot continues: #1 can start now.") {
+	if c := trackingComments(e); !strings.Contains(c, "▶️ Autopilot continues: #1 can start now (ended by the operator: the cause went away).") {
 		t.Fatalf("the tracking issue says why it continues:\n%s", c)
 	}
 }
@@ -248,7 +248,7 @@ func TestAutopilotStuckPauseLiftsOnceSomethingCanStart(t *testing.T) {
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || e.itemState(1) != aiv1.AutopilotItemMerged || e.itemState(2) != aiv1.AutopilotItemActive {
 		t.Fatalf("#1 counts as merged and #2 starts: %+v", ap)
 	}
-	if c := strings.Join(botNotesSince(e, tracking, seen), "\n"); !strings.Contains(c, "▶️ Autopilot continues: the skipped #1 was done by hand.") {
+	if c := strings.Join(botNotesSince(e, tracking, seen), "\n"); !strings.Contains(c, "▶️ Autopilot continues: the skipped #1 was done by hand (ended by the operator: the cause went away).") {
 		t.Fatalf("the tracking issue says why it continues:\n%s", c)
 	}
 }

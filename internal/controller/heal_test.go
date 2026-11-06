@@ -58,7 +58,7 @@ func TestAutopilotRebasesABaseFailingMROnceMainIsGreen(t *testing.T) {
 	e, name := baseFailingEnv(t)
 	e.mainGreenAt("main-y")
 	e.reconcile()
-	const line = "▶️ Autopilot continues: `main` is green at main-y: rebasing !1, whose CI failed on jobs that also failed on `main`."
+	const line = "▶️ Autopilot continues: `main` is green at main-y: rebasing !1, whose CI failed on jobs that also failed on `main` (ended by the operator: it rebased the merge request)."
 	if c := trackingComments(e); !slices.Equal(e.gl.Rebased, []int64{1}) || !strings.Contains(c, line) {
 		t.Fatalf("main green on a new commit must rebase !1 once and say so: rebased %v\n%s", e.gl.Rebased, c)
 	}
@@ -235,7 +235,7 @@ func TestAutopilotRebaseCommand(t *testing.T) {
 	e.gl.MRs[1].RebaseInProgress = true
 	e.gl.AddNote(tracking, jonathan, "/agent rebase #1")
 	e.reconcile()
-	if c := trackingComments(e); !slices.Equal(e.gl.Rebased, []int64{1}) || !strings.Contains(c, "▶️ Autopilot continues: @jonathan asked to rebase !1 onto `main`.") {
+	if c := trackingComments(e); !slices.Equal(e.gl.Rebased, []int64{1}) || !strings.Contains(c, "▶️ Autopilot continues: @jonathan asked to rebase !1 onto `main` (ended by @\u200bjonathan).") {
 		t.Fatalf("the active MR is rebased and the pause ends: rebased %v\n%s", e.gl.Rebased, c)
 	}
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.Items[0].RebasedFrom != "sha-api" || ap.ResumedBy != aiv1.ResolvedByOwner {
@@ -262,7 +262,7 @@ func TestAutopilotMergeBaseCommand(t *testing.T) {
 	e.gl.AddNote(tracking, gitlab.User{ID: 1, Username: "jonathan"}, "/agent mergeBase #1")
 	e.reconcile()
 	if c := trackingComments(e); !mergeBaseRequested(e, name, "sha-api") || len(e.gl.Rebased) != 0 ||
-		!strings.Contains(c, "▶️ Autopilot continues: @jonathan asked the agent to merge `main` into !1.") {
+		!strings.Contains(c, "▶️ Autopilot continues: @jonathan asked the agent to merge `main` into !1 (ended by @\u200bjonathan).") {
 		t.Fatalf("the agent merges the default branch: %+v, rebased %v\n%s", e.tasks()[name].Spec.Source, e.gl.Rebased, c)
 	}
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning {

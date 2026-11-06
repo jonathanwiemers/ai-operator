@@ -205,11 +205,7 @@ func (a *autopilot) emptyPlan(ctx context.Context) error {
 			why = fmt.Sprintf("the milestone was planned again with %d issues", len(a.st.Status.Plan))
 		}
 		a.log.Info("autopilot continues by itself", "why", why)
-		if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
-			return err
-		}
-		a.lift(aiv1.ResolvedByOperator)
-		return nil
+		return a.resumed(ctx, aiv1.ResolvedByOperator, "", why)
 	}
 	if !empty || a.ap.Phase != aiv1.AutopilotRunning {
 		return nil
@@ -578,11 +574,7 @@ func (a *autopilot) unstick(ctx context.Context) error {
 		return nil
 	}
 	a.log.Info("autopilot continues by itself", "why", why)
-	if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
-		return err
-	}
-	a.lift(aiv1.ResolvedByOperator)
-	return nil
+	return a.resumed(ctx, aiv1.ResolvedByOperator, "", why)
 }
 
 // done marks the milestone done, closes its tracking issue and says so.
@@ -1133,17 +1125,14 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		// A run during the pause may have opened another MR.
 		it.MergeRequestIID, it.MergeRequestURL = task.Status.Run.MergeRequestIID, task.Status.Run.MergeRequestURL
 	}
-	resume := func(why string) error {
+	resumeBy := func(by aiv1.PauseResolver, why string) error {
 		if err := a.unblockActive(ctx); err != nil {
 			return err
 		}
 		a.log.Info("autopilot continues by itself", "issue", it.IID, "why", why)
-		if err := a.comment(ctx, fmt.Sprintf("▶️ Autopilot continues: %s.", why)); err != nil {
-			return err
-		}
-		a.lift(aiv1.ResolvedByOperator)
-		return nil
+		return a.resumed(ctx, by, fmt.Sprintf("#%d", it.IID), why)
 	}
+	resume := func(why string) error { return resumeBy(aiv1.ResolvedByOperator, why) }
 	is, ok := a.issues[it.IID]
 	if !ok || is.State != "opened" {
 		mr, done, err := a.doneByHand(ctx, it.IID)
@@ -1192,9 +1181,9 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 	}
 	switch g := a.gateCheck(it, is, task); {
 	case g.state == gatePassed && a.overridden(it, task.Status.Run.PushedSHA, task.Status.Run):
-		return resume(fmt.Sprintf("#%d is green and may merge without a full review", it.IID))
+		return resumeBy(aiv1.ResolvedByLaterRun, fmt.Sprintf("#%d is green and may merge without a full review", it.IID))
 	case g.state == gatePassed:
-		return resume(fmt.Sprintf("#%d is reviewed and green again", it.IID))
+		return resumeBy(aiv1.ResolvedByLaterRun, fmt.Sprintf("#%d is reviewed and green again", it.IID))
 	case g.state == gateReReview:
 		return a.reReview(ctx, it, task)
 	case g.state == gateFailed && a.about(it, g.reason) != a.ap.PausedReason:
@@ -1638,6 +1627,37 @@ func (a *autopilot) lift(by aiv1.PauseResolver) {
 	a.ap.PausedAt, a.ap.ResumedBy = nil, by
 }
 
+// resumed says on the tracking issue that autopilot continues, why and who
+// ended the pause, then ends it. The comment goes first: if it fails, the
+// pause stays and the next poll tries again.
+func (a *autopilot) resumed(ctx context.Context, by aiv1.PauseResolver, who, why string) error {
+	if err := a.comment(ctx, resumeLine(by, who, why)); err != nil {
+		return err
+	}
+	a.lift(by)
+	return nil
+}
+
+// resumeLine is the "▶️ Autopilot continues" comment for a pause ended by
+// by: who is the command's by for an owner, the paused issue (#N) for a
+// later run. who is defused: it names a person but pings nobody.
+func resumeLine(by aiv1.PauseResolver, who, why string) string {
+	ended := "ended by the operator: the cause went away"
+	switch {
+	case by == aiv1.ResolvedByOwner && who != "":
+		ended = "ended by " + notify.Defuse(who)
+	case by == aiv1.ResolvedByOwner:
+		ended = "ended by an owner"
+	case by == aiv1.ResolvedByPilot:
+		ended = "ended by the pilot"
+	case by == aiv1.ResolvedByLaterRun:
+		ended = "ended by a later run of " + notify.Defuse(who)
+	case by == aiv1.ResolvedBySelfHealed:
+		ended = "ended by the operator: it rebased the merge request"
+	}
+	return fmt.Sprintf("▶️ Autopilot continues: %s (%s).", why, ended)
+}
+
 // pilotSelf is the by of a command the pilot runs on its own (managed
 // autonomy); an owner's answer via the pilot names the owner.
 const pilotSelf = "the pilot"
@@ -1895,7 +1915,9 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 			if err := a.unblockActive(ctx); err != nil {
 				return "", false, err
 			}
-			a.lift(resolverOf(by))
+			if err := a.resumed(ctx, resolverOf(by), by, "resumed"); err != nil {
+				return "", false, err
+			}
 		}
 		return "Autopilot resumed.", true, nil
 	case "skip":

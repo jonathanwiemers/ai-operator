@@ -92,7 +92,7 @@ func TestBudgetPausesAtTheLimitAndResumesWhenRaised(t *testing.T) {
 		ap.Budget == nil || *ap.Budget != (aiv1.BudgetStatus{LimitUSD: "50.0000", SpentUSD: "5.1230"}) {
 		t.Fatalf("a raised budget resumes the autopilot: %+v %+v", ap, ap.Budget)
 	}
-	if !strings.Contains(trackingComments(e), "Autopilot continues: the budget is $50.00 now ($5.12 spent).") {
+	if !strings.Contains(trackingComments(e), "Autopilot continues: the budget is $50.00 now ($5.12 spent) (ended by the operator: the cause went away).") {
 		t.Fatalf("the resume is explained on the tracking issue:\n%s", trackingComments(e))
 	}
 	e.reconcile()
@@ -209,7 +209,7 @@ func TestIssueBudgetPausesAtTheDefaultAndTheOverrideResumes(t *testing.T) {
 		*ap.Items[1].Budget != (aiv1.BudgetStatus{LimitUSD: "20.0000", SpentUSD: "0.0000"}) {
 		t.Fatalf("the override wins and resumes autopilot: %+v %+v", ap, ap.Items)
 	}
-	if !strings.Contains(trackingComments(e), "Autopilot continues: the budget of #1 is $40.00 now ($20.00 spent).") {
+	if !strings.Contains(trackingComments(e), "Autopilot continues: the budget of #1 is $40.00 now ($20.00 spent) (ended by the operator: the cause went away).") {
 		t.Fatalf("the resume is explained:\n%s", trackingComments(e))
 	}
 	e.reconcile()

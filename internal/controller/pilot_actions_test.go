@@ -790,7 +790,7 @@ func TestPilotMergeBaseRunsOnAnOwnersAnswer(t *testing.T) {
 	if !mergeBaseRequested(e, name, "sha-api") || e.autopilot().Phase != aiv1.AutopilotRunning || e.autopilot().ResumedBy != aiv1.ResolvedByOwner {
 		t.Fatalf("the answer hands !1 to the agent and ends the pause: %+v, %+v", e.tasks()[name].Spec.Source, e.autopilot())
 	}
-	if c := trackingComments(e); !strings.Contains(c, "▶️ Autopilot continues: @alice via the pilot asked the agent to merge `main` into !1.") {
+	if c := trackingComments(e); !strings.Contains(c, "▶️ Autopilot continues: @alice via the pilot asked the agent to merge `main` into !1 (ended by @\u200balice via the pilot).") {
 		t.Fatalf("the tracking issue says who asked:\n%s", c)
 	}
 }

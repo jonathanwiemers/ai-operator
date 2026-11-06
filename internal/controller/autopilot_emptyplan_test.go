@@ -64,7 +64,7 @@ func TestEmptyPlanPauses(t *testing.T) {
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.PauseKind != "" || ap.ResumedBy != aiv1.ResolvedByOperator {
 		t.Fatalf("a pending re-plan lifts the pause: %+v", ap)
 	}
-	if n := countComments(e, tracking, "▶️ Autopilot continues: the milestone is being planned again."); n != 1 {
+	if n := countComments(e, tracking, "▶️ Autopilot continues: the milestone is being planned again (ended by the operator: the cause went away)."); n != 1 {
 		t.Fatalf("one resume comment, not %d: %v", n, botComments(e, tracking))
 	}
 
@@ -86,7 +86,7 @@ func TestEmptyPlanPauses(t *testing.T) {
 	if ap.Phase != aiv1.AutopilotRunning || len(ap.Items) != 2 || ap.Items[0].IID != 1 || ap.Items[0].State != aiv1.AutopilotItemActive {
 		t.Fatalf("the new plan starts the queue: %+v", ap)
 	}
-	if countComments(e, tracking, "▶️ Autopilot continues: the milestone was planned again with 2 issues.") != 1 {
+	if countComments(e, tracking, "▶️ Autopilot continues: the milestone was planned again with 2 issues (ended by the operator: the cause went away).") != 1 {
 		t.Fatalf("the resume says the plan has issues: %v", botComments(e, tracking))
 	}
 }

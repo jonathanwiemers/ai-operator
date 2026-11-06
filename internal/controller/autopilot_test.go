@@ -304,8 +304,8 @@ func TestAutopilotPausesAndResumes(t *testing.T) {
 	if by := e.autopilot().ResumedBy; by != aiv1.ResolvedByOwner {
 		t.Fatalf("an owner's resume is resolved by the owner, got %q", by)
 	}
-	if strings.Contains(trackingComments(e), "Autopilot continues") {
-		t.Fatal("the resume command, not the automatic one, must have continued here")
+	if c := trackingComments(e); strings.Count(c, "Autopilot continues") != 1 || !strings.Contains(c, "▶️ Autopilot continues: resumed (ended by @\u200bjonathan).") {
+		t.Fatalf("the resume command, not the automatic one, continues here, and names the owner:\n%s", c)
 	}
 
 	// "/agent pause" stops it, "/agent skip #2" skips the UI, and the
@@ -1186,11 +1186,11 @@ func TestAutopilotContinuesByItselfOnceTheIssueIsFixed(t *testing.T) {
 	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.Run.BlockingFindings, s.Run.RunCount = 0, 2 })
 	e.reconcile()
 	e.reconcile()
-	if !slices.Equal(e.gl.Merged, []int64{1}) || !strings.Contains(trackingComments(e), "Autopilot continues: #1 is reviewed and green again") {
+	if !slices.Equal(e.gl.Merged, []int64{1}) || !strings.Contains(trackingComments(e), "Autopilot continues: #1 is reviewed and green again (ended by a later run of #1).") {
 		t.Fatalf("expected autopilot to continue and merge: merged %v, %+v\n%s", e.gl.Merged, e.autopilot(), trackingComments(e))
 	}
-	if by := e.autopilot().ResumedBy; by != aiv1.ResolvedByOperator {
-		t.Fatalf("an automatic resume is resolved by the operator, got %q", by)
+	if by := e.autopilot().ResumedBy; by != aiv1.ResolvedByLaterRun {
+		t.Fatalf("a gate pass after a later run is resolved by laterRun, got %q", by)
 	}
 }
 
@@ -1214,8 +1214,8 @@ func TestAutopilotContinuesWhenTheIssueIsMergedByHand(t *testing.T) {
 	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].State != aiv1.AutopilotItemMerged || !e.gl.Issues[2].HasLabel("agent::ready") {
 		t.Fatalf("a hand merge must count and the next issue start: %+v %v", ap, e.gl.Labels(2))
 	}
-	if !strings.Contains(trackingComments(e), fmt.Sprintf("Autopilot continues: !%d was merged", mr)) {
-		t.Fatalf("expected the continue note:\n%s", trackingComments(e))
+	if !strings.Contains(trackingComments(e), fmt.Sprintf("Autopilot continues: !%d was merged (ended by the operator: the cause went away).", mr)) || ap.ResumedBy != aiv1.ResolvedByOperator {
+		t.Fatalf("expected the continue note, resolved by the operator (%q):\n%s", ap.ResumedBy, trackingComments(e))
 	}
 }
 
