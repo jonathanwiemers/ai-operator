@@ -625,6 +625,26 @@ nothing is lost.
   `readGate` field come with later slices of the milestone (see
   [the spec](specs/read-gate-and-writer.spec.md)); until then nothing calls
   the hook.
+* **Step-size gate.** `ai-runner step-gate --max-lines N [--state-dir DIR]`
+  (`internal/runner/stepgate.go`) is a claude `PostToolUse` hook for
+  `Edit`, `Write` and `Bash`. It counts the uncommitted lines (added plus
+  deleted, `Workspace.UncommittedLines`: `git diff --numstat HEAD` plus the
+  untracked text files; binary files count nothing) of the repository
+  holding the hook's `cwd`. Over `N` it answers with
+  `hookSpecificOutput.additionalContext`: *Your uncommitted diff is L lines
+  (step limit N). Finish this step: get it to build, then return
+  in_progress with its commitMessage.* The first nudge comes at once, then
+  at most one every 5 tool calls; calls under the limit count too. Each
+  hook call is a new process, so the cadence lives in
+  `<stateDir>/step-gate-<session_id>.json` (default the temp dir, outside
+  the work tree), which also counts the session's nudges
+  (`StepGateNudges`). Subagents' calls and other tools are ignored. Like
+  the read gate it fails open: bad flags or input, a git failure, or a
+  state file it cannot read or write give no output, one line on stderr
+  and exit 0. The `implement.maxStepLines` field and the `--settings`
+  entry come with a later slice of
+  [the spec](specs/checkpoints-and-conventional-commits.spec.md) (R8);
+  until then nothing calls the hook.
 * **Reviewers see the diff**, not the repository; they read more code only to
   confirm a finding. They are one-shot, without session persistence.
 * **Bounded fix loop** (`review.maxIterations`), per-invocation
@@ -2362,6 +2382,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/readgate` | the read gate (`ai-runner read-gate`): claude `PreToolUse` hook for `Read` and `Bash`, no Kubernetes imports |
+| `internal/runner/stepgate.go` | the step-size gate (`ai-runner step-gate`): claude `PostToolUse` hook for `Edit`, `Write` and `Bash`, per-session state file |
 | `internal/runner/pilot.go` | the pilot: milestone state, answers, budget |
 | `internal/runner/git.go` | runner-side bare mirror (the only git that talks to GitLab) |
 | `internal/runner/research.go`, `research_run.go` | research runs (`ai-runner research`): prompt, agent call, validation and repair; store writes and the report in `status.run` |

@@ -6,6 +6,8 @@
 //	ai-runner init-workspace DIR…   create the PVC sub-paths (init container)
 //	ai-runner read-gate [--min-lines N] [--subagents a,b]
 //	                                the read gate, a claude PreToolUse hook (agent container): hook JSON on stdin, deny JSON or nothing on stdout, always exit 0
+//	ai-runner step-gate --max-lines N [--state-dir DIR]
+//	                                the step-size gate, a claude PostToolUse hook (agent container): hook JSON on stdin, additionalContext JSON or nothing on stdout, always exit 0
 //
 // Without AI_AGENT_SOCKET the runner runs the agent in-process (single
 // container, for development only: the model can then reach the runner's
@@ -43,6 +45,11 @@ func main() {
 		// Before the logger and signal handler: the hook runs before every
 		// Read and Bash call of claude.
 		readGate(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "step-gate" {
+		// Like the read gate: it runs after every Edit, Write and Bash call.
+		stepGate(os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 		return
 	}
 	ctrl.SetLogger(newLogger())
@@ -87,6 +94,32 @@ func readGate(args []string) {
 		}
 	}
 	readgate.Run(os.Stdin, os.Stdout, os.Stderr, *minLines, names)
+}
+
+// stepGate runs the step-size gate hook. It fails open: bad flags or any
+// error of the gate write one line on stderr and nothing on stdout, and
+// the process exits 0.
+func stepGate(args []string, stdin io.Reader, stdout, stderr io.Writer) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(stderr, "step-gate: no nudge after error: panic: %v\n", r)
+		}
+	}()
+	fs := flag.NewFlagSet("step-gate", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	maxLines := fs.Int("max-lines", 0, "nudge once the uncommitted diff has more lines (required, > 0)")
+	stateDir := fs.String("state-dir", "", "directory of the per-session state files (default: the temp dir)")
+	err := fs.Parse(args)
+	if err == nil && *maxLines <= 0 {
+		err = fmt.Errorf("--max-lines %d, want > 0", *maxLines)
+	}
+	if err == nil {
+		err = runner.StepGate(stdin, stdout, *maxLines, *stateDir)
+	}
+	if err != nil {
+		msg := strings.Join(strings.Fields(err.Error()), " ")
+		fmt.Fprintf(stderr, "step-gate: no nudge after error: %s\n", msg)
+	}
 }
 
 // newLogger returns the logger at the level in AI_LOG_LEVEL: debug, info or
