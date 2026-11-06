@@ -430,7 +430,7 @@ func (r *Runner) publishChatTurn(ctx context.Context, msg aiv1.ChatMessage) (str
 	if who == "" {
 		who = msg.Author
 	}
-	committed, err := r.Agent.Commit(ctx, fmt.Sprintf("chat turn by %s", who))
+	committed, err := r.Agent.Commit(ctx, homeTree, fmt.Sprintf("chat turn by %s", who))
 	if err != nil {
 		return "", err
 	}

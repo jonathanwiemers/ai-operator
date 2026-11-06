@@ -1332,6 +1332,17 @@ ends in `merge`, the milestone is on autopilot, and the target has
 `autoMerge: true`. A companion an owner gave an issue outside such a line
 is never merged by autopilot. Changing the companion starts no run.
 
+In a run, the runner fetches the companion branch and the companion's
+default branch into its own mirror of the companion, and the agent
+container gets a checkout of it at `/workspace/repos/<slug>` (the
+project's path lowercased, `/` as `-`, e.g. `my-group-infra-cluster`), on
+the companion branch: on its remote head if it exists, else on the
+companion's default branch. After the implementer and the fix rounds, the
+companion's changes are committed and brought back into the runner's
+mirror. The companion token goes to the runner container only. If the
+companion's target is no longer valid, the run goes on without it and its
+report says so.
+
 ### Commands on the tracking issue
 
 (All commands: [commands.md](commands.md).)

@@ -402,7 +402,7 @@ func TestPodIsolatesCredentials(t *testing.T) {
 	spec := testProject().Spec.WithDefaults()
 	spec.Agents.Env = []corev1.EnvVar{{Name: "EXTRA", Value: "1"}}
 	spec.Agents.CacheClaimName = "cache"
-	pod := buildPod(newImplTask("x", 1), spec, "")
+	pod := buildPod(newImplTask("x", 1), spec, "", nil)
 
 	if pod.Spec.AutomountServiceAccountToken == nil || *pod.Spec.AutomountServiceAccountToken {
 		t.Fatal("the service account token must not be auto-mounted into every container")
@@ -603,7 +603,7 @@ func TestLongWaitHibernatesPod(t *testing.T) {
 	e := newTaskEnv(t, task)
 	// Simulate the pod that was running when the limit hit.
 	if err := e.c.Create(e.ctx, func() *corev1.Pod {
-		p := buildPod(task, testProject().Spec.WithDefaults(), "")
+		p := buildPod(task, testProject().Spec.WithDefaults(), "", nil)
 		_ = controllerutil.SetControllerReference(e.task("x"), p, e.c.Scheme())
 		return p
 	}()); err != nil {
@@ -630,20 +630,20 @@ func TestRunnerKnowsTheAgentLimits(t *testing.T) {
 		return m
 	}
 	spec := testProject().Spec.WithDefaults()
-	if e := env(buildPod(newImplTask("x", 1), spec, "")); e["AI_AGENT_MEMORY_LIMIT"] != "" || e["AI_AGENT_CPUS"] != "" {
+	if e := env(buildPod(newImplTask("x", 1), spec, "", nil)); e["AI_AGENT_MEMORY_LIMIT"] != "" || e["AI_AGENT_CPUS"] != "" {
 		t.Fatalf("no limits, nothing to tell: %v", e)
 	}
 	spec.Agents.Resources = corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1125m")},
 		Limits:   corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("6Gi")},
 	}
-	if e := env(buildPod(newImplTask("x", 1), spec, "")); e["AI_AGENT_MEMORY_LIMIT"] != "6Gi" || e["AI_AGENT_CPUS"] != "1.125" {
+	if e := env(buildPod(newImplTask("x", 1), spec, "", nil)); e["AI_AGENT_MEMORY_LIMIT"] != "6Gi" || e["AI_AGENT_CPUS"] != "1.125" {
 		t.Fatalf("the runner must know the agent's memory limit and CPUs: %v", e)
 	}
-	if _, ok := env(buildPod(newImplTask("x", 1), spec, ""))["AI_DESK_URL"]; ok {
+	if _, ok := env(buildPod(newImplTask("x", 1), spec, "", nil))["AI_DESK_URL"]; ok {
 		t.Fatal("without a Desk URL there is no AI_DESK_URL")
 	}
-	if e := env(buildPod(newImplTask("x", 1), spec, "https://ai.example.com")); e["AI_DESK_URL"] != "https://ai.example.com" {
+	if e := env(buildPod(newImplTask("x", 1), spec, "https://ai.example.com", nil)); e["AI_DESK_URL"] != "https://ai.example.com" {
 		t.Fatalf("the runner must know the Desk URL: %v", e)
 	}
 }

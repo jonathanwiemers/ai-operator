@@ -1803,6 +1803,22 @@ flowchart LR
   (RPC: run an agent CLI, prepare / commit / diff / reset / bundle). Bundle
   paths outside `/exchange` are rejected. Everything the agent returns
   (results, diffs) is treated as untrusted data.
+* A task with `spec.companion` has a second tree with the same trust model:
+  the runner's mirror `/runner/mirrors/<slug>.git` and the agent's checkout
+  `/workspace/repos/<slug>`, where the slug is `naming.ProjectSlug` of the
+  companion's path (e.g. `jo.wiemers-infra-cluster`). Its bundles are
+  `/exchange/to-agent-<slug>.bundle` and `from-agent-<slug>.bundle`. The
+  RPC calls on a tree carry a `repo`: empty for `/workspace/repo`, else a
+  slug that the agent server checks with `naming.ValidProjectSlug` and maps
+  to `/workspace/repos/<slug>` itself. Any other value (a path, `..`, an
+  invalid slug) is refused, and merging the base is refused for a
+  companion. The runner never sends a directory.
+* The companion's token (the target's `tokenSecretRef`, default
+  `spec.gitlab.tokenSecretRef`) is `GITLAB_COMPANION_TOKEN` in the runner
+  container only. The operator sets it only while the companion's project
+  is a valid target; a pod whose companion changed is replaced between
+  runs (annotation `ai.wiemers.me/companion`). A run whose pod has no token
+  for its companion leaves the companion out and says so in its report.
 
 **Merge/push guard.** The bot's token usually reaches far more than the
 AgentProject's own project (e.g. as a group Maintainer), so the operator and

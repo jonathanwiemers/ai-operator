@@ -109,11 +109,11 @@ func (a *chatAgent) CloseSession(context.Context) error {
 	return nil
 }
 
-func (a *chatAgent) RemoteRefs(context.Context) (map[string]string, error) { return nil, nil }
-func (a *chatAgent) Prepare(context.Context, PrepareRequest) error         { return nil }
-func (a *chatAgent) Diff(context.Context, string) (string, string, error)  { return "", "", nil }
-func (a *chatAgent) Reset(context.Context) error                           { return nil }
-func (a *chatAgent) MergeBase(context.Context, string, string) (MergeResult, error) {
+func (a *chatAgent) RemoteRefs(context.Context, string) (map[string]string, error) { return nil, nil }
+func (a *chatAgent) Prepare(context.Context, PrepareRequest) error                 { return nil }
+func (a *chatAgent) Diff(context.Context, string, string) (string, string, error)  { return "", "", nil }
+func (a *chatAgent) Reset(context.Context, string) error                           { return nil }
+func (a *chatAgent) MergeBase(context.Context, MergeRequest) (MergeResult, error) {
 	return MergeResult{}, nil
 }
 func (a *chatAgent) FinishMerge(context.Context, FinishMerge) (MergeResult, error) {
@@ -123,16 +123,16 @@ func (a *chatAgent) Checkpoint(context.Context, CheckpointRequest) (CheckpointRe
 	return CheckpointResult{}, nil
 }
 
-func (a *chatAgent) Commit(_ context.Context, message string) (bool, error) {
+func (a *chatAgent) Commit(_ context.Context, _, message string) (bool, error) {
 	if a.commitFn != nil {
 		return a.commitFn(message)
 	}
 	return false, nil
 }
 
-func (a *chatAgent) Bundle(_ context.Context, branch, base, path string) (bool, error) {
+func (a *chatAgent) Bundle(_ context.Context, req BundleRequest) (bool, error) {
 	if a.bundleFn != nil {
-		return a.bundleFn(branch, base, path)
+		return a.bundleFn(req.Branch, req.Base, req.Path)
 	}
 	return false, nil
 }

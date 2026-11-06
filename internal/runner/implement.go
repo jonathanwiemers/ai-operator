@@ -33,7 +33,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	for _, phase := range []func(context.Context) error{
 		run.syncBranch, run.readComments, run.buildPrompt, run.addInputs, run.mergeBase, run.implement,
-		run.concludeMerge, run.reviewLoop, run.push, run.postDecisionsAndHandoff, run.report,
+		run.concludeMerge, run.reviewLoop, run.companionChange, run.push, run.postDecisionsAndHandoff, run.report,
 	} {
 		if err := phase(ctx); err != nil {
 			return run.out, err
@@ -66,6 +66,9 @@ type implementRun struct {
 	base        string
 	branch      string
 	mr          *gitlab.MergeRequest
+	// companion is the task's companion repository; nil without one, or
+	// when the pod has no token for it.
+	companion *companionTree
 
 	// The thread: all comments, those the agent has not seen yet, its notes
 	// from earlier runs and the decisions to revisit.
@@ -153,7 +156,7 @@ func (run *implementRun) prepare(ctx context.Context) (closed bool, err error) {
 	run.base = run.proj.DefaultBranch
 	r.Mirror.Policy = homePushPolicy(glProject, run.proj)
 	s.done("default branch "+run.base, "defaultBranch", run.base)
-	return false, nil
+	return false, run.readCompanion(ctx)
 }
 
 // syncBranch brings the workspace to the work branch and finds its merge
@@ -170,6 +173,11 @@ func (run *implementRun) syncBranch(ctx context.Context) error {
 
 	if err := r.syncWorkspace(ctx, run.proj.HTTPURLToRepo, branch, base, run.checkpointLostAttempt); err != nil {
 		return err
+	}
+	if run.companion != nil {
+		if err := r.syncCompanion(ctx, run.companion); err != nil {
+			return err
+		}
 	}
 
 	s := r.step(ctx, "find merge request", "branch", branch)
@@ -305,7 +313,8 @@ func (run *implementRun) buildPrompt(ctx context.Context) error {
 		fullPrompt = autopilotPauseNote(reason) + "\n\n" + fullPrompt
 		inv.Prompt = autopilotPauseNote(reason) + "\n\n" + inv.Prompt
 	}
-	notices := roleNotes
+	// The notices of prepare (a companion left out) come first.
+	notices := append(run.notices, roleNotes...)
 	var active, ignored []revisit
 	for _, rv := range run.revisits {
 		switch {
@@ -397,7 +406,7 @@ func (run *implementRun) mergeBase(ctx context.Context) error {
 	if mergeBase {
 		run.out.MergedBaseFor = mergeFor
 		s := r.step(ctx, "merge "+base, "base", base)
-		merge, err := r.Agent.MergeBase(ctx, base, run.mergeMessage)
+		merge, err := r.Agent.MergeBase(ctx, MergeRequest{Base: base, Message: run.mergeMessage})
 		if err != nil {
 			return s.fail(fmt.Errorf("merging %s: %w", base, err))
 		}
@@ -561,7 +570,7 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 		if err := r.budgetStop(ctx); err != nil {
 			return s.fail(err)
 		}
-		diff, stat, err := r.Agent.Diff(ctx, base)
+		diff, stat, err := r.Agent.Diff(ctx, homeTree, base)
 		if err != nil {
 			return s.fail(err)
 		}
@@ -582,7 +591,7 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 		out.Reviewed, out.ReviewErrors, out.ReviewErrorsTransient, out.ReviewErrorKinds = true, int32(len(errs)), len(errs) > 0 && transient == len(errs), kinds
 		run.reviewedLast = true
 		// Reviewers are read-only; discard anything they touched anyway.
-		if err := r.Agent.Reset(ctx); err != nil {
+		if err := r.Agent.Reset(ctx, homeTree); err != nil {
 			return s.fail(err)
 		}
 		var blocking []Finding
@@ -942,7 +951,7 @@ func (r *Runner) startPipeline(ctx context.Context, gl gitlab.API, glProject str
 // hasChanges reports whether the work branch changes anything against the
 // default branch; an MR with only the start commit is not ready.
 func (r *Runner) hasChanges(ctx context.Context, base string) bool {
-	diff, _, err := r.Agent.Diff(ctx, base)
+	diff, _, err := r.Agent.Diff(ctx, homeTree, base)
 	return err != nil || strings.TrimSpace(diff) != ""
 }
 
@@ -1153,8 +1162,18 @@ func (r *Runner) supersedeElsewhere(ctx context.Context, gl gitlab.API, glProjec
 
 // commit commits the agent's changes as a step of the run.
 func (r *Runner) commit(ctx context.Context, message string) error {
-	s := r.step(ctx, "commit")
-	committed, err := r.Agent.Commit(ctx, message)
+	return r.commitTree(ctx, homeTree, message)
+}
+
+// commitTree commits the agent's changes in the checkout of repo (homeTree
+// or a companion's slug) as a step of the run.
+func (r *Runner) commitTree(ctx context.Context, repo, message string) error {
+	name, kv := "commit", []any(nil)
+	if repo != homeTree {
+		name, kv = "commit companion", []any{"repo", repo}
+	}
+	s := r.step(ctx, name, kv...)
+	committed, err := r.Agent.Commit(ctx, repo, message)
 	if err != nil {
 		return s.fail(err)
 	}

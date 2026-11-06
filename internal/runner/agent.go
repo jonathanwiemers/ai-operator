@@ -20,6 +20,7 @@ import (
 	"github.com/go-logr/logr"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/naming"
 )
 
 // Agent is everything the runner needs from the agent container: running
@@ -38,23 +39,32 @@ type Agent interface {
 	CancelSession(ctx context.Context) error
 	// CloseSession ends the open session; idempotent.
 	CloseSession(ctx context.Context) error
-	RemoteRefs(ctx context.Context) (map[string]string, error)
+	// The calls on a tree take its repo: homeTree ("") for the home
+	// checkout, else the companion's project slug (naming.ProjectSlug). The
+	// agent side maps it to a directory itself and refuses anything else.
+	RemoteRefs(ctx context.Context, repo string) (map[string]string, error)
 	Prepare(ctx context.Context, req PrepareRequest) error
-	Commit(ctx context.Context, message string) (bool, error)
-	Diff(ctx context.Context, base string) (diff, stat string, err error)
-	Reset(ctx context.Context) error
-	Bundle(ctx context.Context, branch, base, path string) (bool, error)
-	MergeBase(ctx context.Context, base, message string) (MergeResult, error)
+	Commit(ctx context.Context, repo, message string) (bool, error)
+	Diff(ctx context.Context, repo, base string) (diff, stat string, err error)
+	Reset(ctx context.Context, repo string) error
+	Bundle(ctx context.Context, req BundleRequest) (bool, error)
+	// MergeBase is for the home tree only: a companion request is refused.
+	MergeBase(ctx context.Context, req MergeRequest) (MergeResult, error)
 	FinishMerge(ctx context.Context, req FinishMerge) (MergeResult, error)
-	// Checkpoint commits the work tree of a run that was cut off.
+	// Checkpoint commits the home work tree of a run that was cut off.
 	Checkpoint(ctx context.Context, req CheckpointRequest) (CheckpointResult, error)
 }
 
 // LocalAgent implements Agent in-process. The agent server wraps it; the
 // runner uses it directly only in single-container mode (development).
 type LocalAgent struct {
+	// Workspace is the home checkout (/workspace/repo).
 	Workspace *Workspace
-	Engines   map[aiv1.Engine]Engine
+	// Workspaces is the root of the agent's trees (AI_WORKSPACE,
+	// "/workspace"): a companion's checkout is <Workspaces>/repos/<slug>.
+	// Empty: every companion request is refused.
+	Workspaces string
+	Engines    map[aiv1.Engine]Engine
 	// Exchange is the only directory bundles may be read from or written to.
 	Exchange string
 
@@ -245,42 +255,101 @@ func perRunToolchains(ctx context.Context, name string) ([]string, error) {
 	return env, nil
 }
 
-func (a *LocalAgent) RemoteRefs(ctx context.Context) (map[string]string, error) {
-	return a.Workspace.RemoteRefs(ctx)
+// homeTree is the repo of the home checkout in the calls on a tree.
+const homeTree = ""
+
+// tree resolves the repo of a call to its checkout: homeTree is the home
+// Workspace, a valid project slug is <Workspaces>/repos/<slug>. Anything
+// else (a path, "..", an invalid slug) is refused, so the agent server
+// only ever works in those two kinds of directories.
+func (a *LocalAgent) tree(repo string) (*Workspace, error) {
+	if repo == homeTree {
+		return a.Workspace, nil
+	}
+	if !naming.ValidProjectSlug(repo) {
+		return nil, fmt.Errorf("repo %q is not a valid project slug", repo)
+	}
+	if a.Workspaces == "" {
+		return nil, fmt.Errorf("repo %q: the agent has no workspace root for companion checkouts", repo)
+	}
+	return &Workspace{Dir: CompanionDir(a.Workspaces, repo), AuthorName: a.Workspace.AuthorName, AuthorEmail: a.Workspace.AuthorEmail}, nil
+}
+
+// CompanionDir is the checkout of the companion with the given (valid)
+// slug under the agent's workspace root.
+func CompanionDir(root, slug string) string { return filepath.Join(root, "repos", slug) }
+
+func (a *LocalAgent) RemoteRefs(ctx context.Context, repo string) (map[string]string, error) {
+	w, err := a.tree(repo)
+	if err != nil {
+		return nil, err
+	}
+	return w.RemoteRefs(ctx)
 }
 
 func (a *LocalAgent) Prepare(ctx context.Context, req PrepareRequest) error {
+	w, err := a.tree(req.Repo)
+	if err != nil {
+		return err
+	}
 	if req.Bundle != "" {
 		if err := a.checkPath(req.Bundle); err != nil {
 			return err
 		}
 	}
-	return a.Workspace.Prepare(ctx, req)
+	return w.Prepare(ctx, req)
 }
 
-func (a *LocalAgent) Commit(ctx context.Context, message string) (bool, error) {
-	return a.Workspace.Commit(ctx, message)
-}
-
-func (a *LocalAgent) Diff(ctx context.Context, base string) (string, string, error) {
-	return a.Workspace.Diff(ctx, base)
-}
-
-func (a *LocalAgent) Reset(ctx context.Context) error { return a.Workspace.Reset(ctx) }
-
-func (a *LocalAgent) Bundle(ctx context.Context, branch, base, path string) (bool, error) {
-	if err := a.checkPath(path); err != nil {
+func (a *LocalAgent) Commit(ctx context.Context, repo, message string) (bool, error) {
+	w, err := a.tree(repo)
+	if err != nil {
 		return false, err
 	}
-	return a.Workspace.Bundle(ctx, branch, base, path)
+	return w.Commit(ctx, message)
 }
 
-func (a *LocalAgent) MergeBase(ctx context.Context, base, message string) (MergeResult, error) {
-	return a.Workspace.MergeBase(ctx, base, message)
+func (a *LocalAgent) Diff(ctx context.Context, repo, base string) (string, string, error) {
+	w, err := a.tree(repo)
+	if err != nil {
+		return "", "", err
+	}
+	return w.Diff(ctx, base)
+}
+
+func (a *LocalAgent) Reset(ctx context.Context, repo string) error {
+	w, err := a.tree(repo)
+	if err != nil {
+		return err
+	}
+	return w.Reset(ctx)
+}
+
+func (a *LocalAgent) Bundle(ctx context.Context, req BundleRequest) (bool, error) {
+	w, err := a.tree(req.Repo)
+	if err != nil {
+		return false, err
+	}
+	if err := a.checkPath(req.Path); err != nil {
+		return false, err
+	}
+	return w.Bundle(ctx, req.Branch, req.Base, req.Path)
+}
+
+// MergeBase merges the default branch into the home tree. A companion has
+// no use for it, so any other repo is refused.
+func (a *LocalAgent) MergeBase(ctx context.Context, req MergeRequest) (MergeResult, error) {
+	if req.Repo != homeTree {
+		return MergeResult{}, fmt.Errorf("repo %q: merging the base branch is for the home checkout only", req.Repo)
+	}
+	return a.Workspace.MergeBase(ctx, req.Base, req.Message)
 }
 
 func (a *LocalAgent) FinishMerge(ctx context.Context, req FinishMerge) (MergeResult, error) {
-	return a.Workspace.FinishMerge(ctx, req)
+	w, err := a.tree(req.Repo)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	return w.FinishMerge(ctx, req)
 }
 
 func (a *LocalAgent) Checkpoint(ctx context.Context, req CheckpointRequest) (CheckpointResult, error) {
@@ -320,7 +389,27 @@ type diffResponse struct {
 	Error string `json:"error,omitempty"`
 }
 
-type bundleRequest struct {
+// repoRequest is the request of the calls on a tree that take nothing
+// else (refs, reset).
+type repoRequest struct {
+	Repo string `json:"repo,omitempty"`
+}
+
+type commitRequest struct {
+	Repo    string `json:"repo,omitempty"`
+	Message string `json:"message"`
+}
+
+type diffRequest struct {
+	Repo string `json:"repo,omitempty"`
+	Base string `json:"base"`
+}
+
+// BundleRequest asks for the commits of Branch that origin does not have
+// yet, written to Path inside the exchange directory.
+type BundleRequest struct {
+	// Repo is the tree: homeTree or a companion's project slug.
+	Repo   string `json:"repo,omitempty"`
 	Branch string `json:"branch"`
 	Base   string `json:"base"`
 	Path   string `json:"path"`
@@ -331,7 +420,10 @@ type bundleResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
-type mergeRequest struct {
+// MergeRequest asks to merge origin/<Base> into the work branch.
+type MergeRequest struct {
+	// Repo must be homeTree: a companion request is refused.
+	Repo    string `json:"repo,omitempty"`
 	Base    string `json:"base"`
 	Message string `json:"message"`
 }
@@ -457,9 +549,13 @@ func (s *AgentServer) Handler() http.Handler {
 		}
 		return reply{runResponse{Result: res, Error: errString(err)}, err, kv}
 	})
-	handle("refs", func(ctx context.Context, _ []byte) reply {
-		refs, err := s.Agent.RemoteRefs(ctx)
-		return reply{refsResponse{Refs: refs, Error: errString(err)}, err, []any{"refs", len(refs)}}
+	handle("refs", func(ctx context.Context, body []byte) reply {
+		var req repoRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{refsResponse{Error: err.Error()}, err, nil}
+		}
+		refs, err := s.Agent.RemoteRefs(ctx, req.Repo)
+		return reply{refsResponse{Refs: refs, Error: errString(err)}, err, []any{"repo", req.Repo, "refs", len(refs)}}
 	})
 	handle("prepare", func(ctx context.Context, body []byte) reply {
 		var req PrepareRequest
@@ -467,45 +563,49 @@ func (s *AgentServer) Handler() http.Handler {
 			return reply{errorResponse{Error: err.Error()}, err, nil}
 		}
 		err := s.Agent.Prepare(ctx, req)
-		return reply{errorResponse{Error: errString(err)}, err, []any{"branch", req.Branch, "base", req.Base, "bundle", req.Bundle != ""}}
+		return reply{errorResponse{Error: errString(err)}, err, []any{"repo", req.Repo, "branch", req.Branch, "base", req.Base, "bundle", req.Bundle != ""}}
 	})
 	handle("commit", func(ctx context.Context, body []byte) reply {
-		var msg string
-		if err := json.Unmarshal(body, &msg); err != nil {
+		var req commitRequest
+		if err := json.Unmarshal(body, &req); err != nil {
 			return reply{commitResponse{Error: err.Error()}, err, nil}
 		}
-		ok, err := s.Agent.Commit(ctx, msg)
-		return reply{commitResponse{Committed: ok, Error: errString(err)}, err, []any{"committed", ok}}
+		ok, err := s.Agent.Commit(ctx, req.Repo, req.Message)
+		return reply{commitResponse{Committed: ok, Error: errString(err)}, err, []any{"repo", req.Repo, "committed", ok}}
 	})
 	handle("diff", func(ctx context.Context, body []byte) reply {
-		var base string
-		if err := json.Unmarshal(body, &base); err != nil {
+		var req diffRequest
+		if err := json.Unmarshal(body, &req); err != nil {
 			return reply{diffResponse{Error: err.Error()}, err, nil}
 		}
-		diff, stat, err := s.Agent.Diff(ctx, base)
+		diff, stat, err := s.Agent.Diff(ctx, req.Repo, req.Base)
 		return reply{diffResponse{Diff: diff, Stat: stat, Error: errString(err)}, err,
-			[]any{"base", base, "diffBytes", len(diff), "summary", diffSummary(stat)}}
+			[]any{"repo", req.Repo, "base", req.Base, "diffBytes", len(diff), "summary", diffSummary(stat)}}
 	})
-	handle("reset", func(ctx context.Context, _ []byte) reply {
-		err := s.Agent.Reset(ctx)
-		return reply{errorResponse{Error: errString(err)}, err, nil}
+	handle("reset", func(ctx context.Context, body []byte) reply {
+		var req repoRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{errorResponse{Error: err.Error()}, err, nil}
+		}
+		err := s.Agent.Reset(ctx, req.Repo)
+		return reply{errorResponse{Error: errString(err)}, err, []any{"repo", req.Repo}}
 	})
 	handle("bundle", func(ctx context.Context, body []byte) reply {
-		var req bundleRequest
+		var req BundleRequest
 		if err := json.Unmarshal(body, &req); err != nil {
 			return reply{bundleResponse{Error: err.Error()}, err, nil}
 		}
-		ok, err := s.Agent.Bundle(ctx, req.Branch, req.Base, req.Path)
-		return reply{bundleResponse{Written: ok, Error: errString(err)}, err, []any{"branch", req.Branch, "written", ok}}
+		ok, err := s.Agent.Bundle(ctx, req)
+		return reply{bundleResponse{Written: ok, Error: errString(err)}, err, []any{"repo", req.Repo, "branch", req.Branch, "written", ok}}
 	})
 	handle("merge-base", func(ctx context.Context, body []byte) reply {
-		var req mergeRequest
+		var req MergeRequest
 		if err := json.Unmarshal(body, &req); err != nil {
 			return reply{mergeResponse{Error: err.Error()}, err, nil}
 		}
-		res, err := s.Agent.MergeBase(ctx, req.Base, req.Message)
+		res, err := s.Agent.MergeBase(ctx, req)
 		return reply{mergeResponse{Result: res, Error: errString(err)}, err,
-			[]any{"base", req.Base, "upToDate", res.UpToDate, "merged", res.Merged, "conflicts", len(res.Conflicts)}}
+			[]any{"repo", req.Repo, "base", req.Base, "upToDate", res.UpToDate, "merged", res.Merged, "conflicts", len(res.Conflicts)}}
 	})
 	handle("finish-merge", func(ctx context.Context, body []byte) reply {
 		var req FinishMerge
@@ -514,7 +614,7 @@ func (s *AgentServer) Handler() http.Handler {
 		}
 		res, err := s.Agent.FinishMerge(ctx, req)
 		return reply{mergeResponse{Result: res, Error: errString(err)}, err,
-			[]any{"base", req.Base, "abort", req.Abort, "merged", res.Merged, "conflicts", len(res.Conflicts)}}
+			[]any{"repo", req.Repo, "base", req.Base, "abort", req.Abort, "merged", res.Merged, "conflicts", len(res.Conflicts)}}
 	})
 	handle("checkpoint", func(ctx context.Context, body []byte) reply {
 		var req CheckpointRequest
@@ -793,9 +893,9 @@ func (c *AgentClient) CloseSession(ctx context.Context) error {
 	return remoteErr(resp.Error)
 }
 
-func (c *AgentClient) RemoteRefs(ctx context.Context) (map[string]string, error) {
+func (c *AgentClient) RemoteRefs(ctx context.Context, repo string) (map[string]string, error) {
 	var resp refsResponse
-	if err := c.call(ctx, "refs", nil, &resp); err != nil {
+	if err := c.call(ctx, "refs", repoRequest{Repo: repo}, &resp); err != nil {
 		return nil, err
 	}
 	return resp.Refs, remoteErr(resp.Error)
@@ -809,41 +909,41 @@ func (c *AgentClient) Prepare(ctx context.Context, req PrepareRequest) error {
 	return remoteErr(resp.Error)
 }
 
-func (c *AgentClient) Commit(ctx context.Context, message string) (bool, error) {
+func (c *AgentClient) Commit(ctx context.Context, repo, message string) (bool, error) {
 	var resp commitResponse
-	if err := c.call(ctx, "commit", message, &resp); err != nil {
+	if err := c.call(ctx, "commit", commitRequest{Repo: repo, Message: message}, &resp); err != nil {
 		return false, err
 	}
 	return resp.Committed, remoteErr(resp.Error)
 }
 
-func (c *AgentClient) Diff(ctx context.Context, base string) (string, string, error) {
+func (c *AgentClient) Diff(ctx context.Context, repo, base string) (string, string, error) {
 	var resp diffResponse
-	if err := c.call(ctx, "diff", base, &resp); err != nil {
+	if err := c.call(ctx, "diff", diffRequest{Repo: repo, Base: base}, &resp); err != nil {
 		return "", "", err
 	}
 	return resp.Diff, resp.Stat, remoteErr(resp.Error)
 }
 
-func (c *AgentClient) Reset(ctx context.Context) error {
+func (c *AgentClient) Reset(ctx context.Context, repo string) error {
 	var resp errorResponse
-	if err := c.call(ctx, "reset", nil, &resp); err != nil {
+	if err := c.call(ctx, "reset", repoRequest{Repo: repo}, &resp); err != nil {
 		return err
 	}
 	return remoteErr(resp.Error)
 }
 
-func (c *AgentClient) Bundle(ctx context.Context, branch, base, path string) (bool, error) {
+func (c *AgentClient) Bundle(ctx context.Context, req BundleRequest) (bool, error) {
 	var resp bundleResponse
-	if err := c.call(ctx, "bundle", bundleRequest{Branch: branch, Base: base, Path: path}, &resp); err != nil {
+	if err := c.call(ctx, "bundle", req, &resp); err != nil {
 		return false, err
 	}
 	return resp.Written, remoteErr(resp.Error)
 }
 
-func (c *AgentClient) MergeBase(ctx context.Context, base, message string) (MergeResult, error) {
+func (c *AgentClient) MergeBase(ctx context.Context, req MergeRequest) (MergeResult, error) {
 	var resp mergeResponse
-	if err := c.call(ctx, "merge-base", mergeRequest{Base: base, Message: message}, &resp); err != nil {
+	if err := c.call(ctx, "merge-base", req, &resp); err != nil {
 		return MergeResult{}, err
 	}
 	return resp.Result, remoteErr(resp.Error)

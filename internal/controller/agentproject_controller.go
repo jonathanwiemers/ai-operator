@@ -623,7 +623,13 @@ func (r *AgentProjectReconciler) reportCrossRepo(project *aiv1.AgentProject, spe
 // allows them and they pass ValidateCrossRepo. Every use of the targets
 // goes through it.
 func (r *AgentProjectReconciler) crossRepoTargets(spec aiv1.AgentProjectSpec) []aiv1.CrossRepoTarget {
-	valid, _ := aiv1.ValidateCrossRepo(spec, r.CrossRepoAllowed)
+	return crossRepoTargets(spec, r.CrossRepoAllowed)
+}
+
+// crossRepoTargets returns the spec's valid companion targets under the
+// cluster's allow-list (both reconcilers).
+func crossRepoTargets(spec aiv1.AgentProjectSpec, allowed []string) []aiv1.CrossRepoTarget {
+	valid, _ := aiv1.ValidateCrossRepo(spec, allowed)
 	return valid
 }
 

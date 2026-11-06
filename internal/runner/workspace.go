@@ -75,6 +75,9 @@ func (w *Workspace) RemoteRefs(ctx context.Context) (map[string]string, error) {
 
 // PrepareRequest describes the state the workspace must be in before a run.
 type PrepareRequest struct {
+	// Repo is the tree: homeTree or a companion's project slug (the agent
+	// side resolves it, see LocalAgent.tree).
+	Repo string `json:"repo,omitempty"`
 	// Bundle with new objects from the mirror; empty if nothing is new.
 	Bundle string `json:"bundle,omitempty"`
 	// Refs is the authoritative set of refs/remotes/origin/* refs.
@@ -258,6 +261,8 @@ func (w *Workspace) MergeBase(ctx context.Context, base, message string) (MergeR
 
 // FinishMerge describes how to end a merge with conflicts.
 type FinishMerge struct {
+	// Repo is the tree: homeTree or a companion's project slug.
+	Repo    string `json:"repo,omitempty"`
 	Base    string `json:"base"`
 	Message string `json:"message"`
 	// From is HEAD before the merge (MergeResult.From).

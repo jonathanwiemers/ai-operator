@@ -57,6 +57,10 @@ type AgentTaskReconciler struct {
 	// DeskURL is the Desk's base URL, handed to the runner as AI_DESK_URL.
 	// Empty: no links.
 	DeskURL string
+	// CrossRepoAllowed is the cluster's allow-list of companion projects
+	// (--cross-repo-allowed-projects): a task's companion gets its token in
+	// the pod only while it is a valid target (crossRepoTargets).
+	CrossRepoAllowed []string
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;update;patch
@@ -153,7 +157,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// A pod started with other agent resources (raised after an OOM kill) is
 	// replaced between runs, so the next run gets them.
-	if pod != nil && !inProgress && podOutdated(pod, &task, spec) {
+	if pod != nil && !inProgress && podOutdated(pod, &task, spec, crossRepoTargets(spec, r.CrossRepoAllowed)) {
 		if busy, err := r.runInProgress(ctx, &task); err != nil {
 			return ctrl.Result{}, err
 		} else if !busy {
@@ -205,7 +209,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					break
 				}
 			}
-			pod = buildPod(&task, spec, r.DeskURL)
+			pod = buildPod(&task, spec, r.DeskURL, crossRepoTargets(spec, r.CrossRepoAllowed))
 			if err := controllerutil.SetControllerReference(&task, pod, r.Scheme); err != nil {
 				return ctrl.Result{}, err
 			}

@@ -95,7 +95,10 @@ var DefaultRunnerResources = corev1.ResourceRequirements{
 //
 // Containers of a pod do not share a process namespace, so the model cannot
 // read the runner's environment either.
-func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string) *corev1.Pod {
+// targets are the project's valid companion targets (crossRepoTargets): a
+// task's companion gets its token (GITLAB_COMPANION_TOKEN) in the runner
+// container only while its project is one of them.
+func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, targets []aiv1.CrossRepoTarget) *corev1.Pod {
 	agents := spec.Agents
 	claim := naming.Workspace(task.Name)
 	runnerEnv := []corev1.EnvVar{
@@ -150,6 +153,12 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string) 
 		}
 	}
 	runnerEnv = append(runnerEnv, logLevelEnv(agents)...)
+	annotations := map[string]string{}
+	if ref, project := companionToken(task, spec, targets); ref != nil {
+		// The runner only: the agent container never holds a GitLab token.
+		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "GITLAB_COMPANION_TOKEN", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: ref}})
+		annotations[AnnotationCompanion] = project
+	}
 	if deskURL != "" {
 		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_DESK_URL", Value: deskURL})
 	}
@@ -166,6 +175,8 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string) 
 	if ok {
 		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_AGENT_CPUS", Value: strconv.FormatFloat(float64(cpu.MilliValue())/1000, 'f', -1, 64)})
 	}
+
+	annotations[AnnotationAgentResources] = resourcesHash(agentRes)
 
 	initResources := runnerResources(agents)
 	podSpec := agentPodSpec(agents)
@@ -192,7 +203,7 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string) 
 			Name:        task.Name,
 			Namespace:   task.Namespace,
 			Labels:      taskLabels(task),
-			Annotations: map[string]string{AnnotationAgentResources: resourcesHash(agentRes)},
+			Annotations: annotations,
 		},
 		Spec: podSpec,
 	}
@@ -325,9 +336,39 @@ func resourcesHash(r corev1.ResourceRequirements) string {
 	return hex.EncodeToString(sum[:8])
 }
 
+// AnnotationCompanion on a task's pod is the companion project whose token
+// the pod has; absent without one.
+const AnnotationCompanion = "ai.wiemers.me/companion"
+
+// companionToken is the secret of the task's companion token and the
+// companion's project: the target's tokenSecretRef, else the project's
+// token. Nil without spec.companion, and when its project is no longer one
+// of the valid targets: the pod then has no companion token, and the
+// runner leaves the companion out of the run with a notice.
+func companionToken(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, targets []aiv1.CrossRepoTarget) (*corev1.SecretKeySelector, string) {
+	c := task.Spec.Companion
+	if c == nil {
+		return nil, ""
+	}
+	t, ok := aiv1.FindCrossRepoTarget(targets, c.Project)
+	if !ok {
+		return nil, ""
+	}
+	project := aiv1.NormalizeProject(t.Project)
+	if t.TokenSecretRef != nil {
+		return t.TokenSecretRef.DeepCopy(), project
+	}
+	return spec.GitLab.TokenSecretRef.DeepCopy(), project
+}
+
 // podOutdated reports whether pod was started with other agent resources than
-// spec asks for now. Pods from before the annotation count as current.
-func podOutdated(pod *corev1.Pod, task *aiv1.AgentTask, spec aiv1.AgentProjectSpec) bool {
+// spec asks for now (pods from before the annotation count as current), or
+// with another companion token than the task needs now.
+func podOutdated(pod *corev1.Pod, task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, targets []aiv1.CrossRepoTarget) bool {
+	_, companion := companionToken(task, spec, targets)
+	if pod.Annotations[AnnotationCompanion] != companion {
+		return true
+	}
 	h, ok := pod.Annotations[AnnotationAgentResources]
 	return ok && h != resourcesHash(agentResources(task, spec))
 }

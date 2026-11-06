@@ -184,6 +184,7 @@ func main() {
 		DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
 		APIReader:            mgr.GetAPIReader(),
 		DeskURL:              deskURL,
+		CrossRepoAllowed:     projectList(crossRepoAllowed),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentTask")
 		os.Exit(1)

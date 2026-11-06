@@ -199,7 +199,7 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 		s.done("not updated: "+why, "error", err.Error())
 		return false, "The merge request description was not updated: " + why, nil
 	}
-	diff, stat, err := r.Agent.Diff(ctx, base)
+	diff, stat, err := r.Agent.Diff(ctx, homeTree, base)
 	if err != nil {
 		return skip(textutil.Truncate(err.Error(), 300), err)
 	}
@@ -234,7 +234,7 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 		return skip("the describer failed: "+textutil.Truncate(err.Error(), 300), err)
 	}
 	// Describers are read-only; discard anything they touched anyway.
-	if err := r.Agent.Reset(ctx); err != nil {
+	if err := r.Agent.Reset(ctx, homeTree); err != nil {
 		r.log().Info("could not reset the checkout after the describer", "error", err.Error())
 	}
 	body, err := renderDescription(answer)

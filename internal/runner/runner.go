@@ -41,7 +41,10 @@ type Runner struct {
 	TaskName  string
 	// GitLabToken is used for the GitLab API and git over HTTPS.
 	GitLabToken string
-	NewGitLab   func(baseURL, token string) gitlab.API
+	// CompanionToken is the token for the task's companion project
+	// (GITLAB_COMPANION_TOKEN); empty when the pod has no companion.
+	CompanionToken string
+	NewGitLab      func(baseURL, token string) gitlab.API
 	// Agent runs the agent CLIs and owns the checkout.
 	Agent Agent
 	// Mirror is the runner's own copy of the repository.
@@ -299,21 +302,31 @@ func (r *Runner) syncWorkspace(ctx context.Context, url, branch, base string, be
 // prepareCheckout hands the agent's checkout the commits of the mirror it
 // lacks and checks out branch.
 func (r *Runner) prepareCheckout(ctx context.Context, branch, base string) error {
+	return r.prepareTree(ctx, r.Mirror, homeTree, branch, base)
+}
+
+// prepareTree hands the agent's checkout of repo (homeTree or a companion's
+// slug) the commits of its mirror m it lacks and checks out branch.
+func (r *Runner) prepareTree(ctx context.Context, m *Mirror, repo, branch, base string) error {
 	branches := []string{base}
 	if branch != base {
 		branches = append(branches, branch)
 	}
-	s := r.step(ctx, "prepare checkout", "branch", branch)
-	known, err := r.Agent.RemoteRefs(ctx)
+	name, kv := "prepare checkout", []any{"branch", branch}
+	if repo != homeTree {
+		name, kv = "prepare companion checkout", append(kv, "repo", repo)
+	}
+	s := r.step(ctx, name, kv...)
+	known, err := r.Agent.RemoteRefs(ctx, repo)
 	if err != nil {
 		return s.fail(err)
 	}
-	path := filepath.Join(r.Exchange, "to-agent.bundle")
-	refs, written, err := r.Mirror.Bundle(ctx, path, known, branches...)
+	path := r.exchangePath("to-agent", repo)
+	refs, written, err := m.Bundle(ctx, path, known, branches...)
 	if err != nil {
 		return s.fail(err)
 	}
-	req := PrepareRequest{Refs: refs, Branch: branch, Base: base}
+	req := PrepareRequest{Repo: repo, Refs: refs, Branch: branch, Base: base}
 	if written {
 		req.Bundle = path
 		defer os.Remove(path)
@@ -332,13 +345,7 @@ func (r *Runner) prepareCheckout(ctx context.Context, branch, base string) error
 // publish moves the agent's new commits on branch to the remote. It reports
 // whether anything was pushed.
 func (r *Runner) publish(ctx context.Context, branch, base string, skipCI bool) (bool, error) {
-	path := filepath.Join(r.Exchange, "from-agent.bundle")
-	written, err := r.Agent.Bundle(ctx, branch, base, path)
-	if err != nil || !written {
-		return false, err
-	}
-	defer os.Remove(path)
-	if err := r.Mirror.Import(ctx, path, branch); err != nil {
+	if imported, err := r.importTree(ctx, r.Mirror, homeTree, branch, base); err != nil || !imported {
 		return false, err
 	}
 	// The agent's checkout does not learn about the runner's pushes, so its
@@ -354,12 +361,42 @@ func (r *Runner) publish(ctx context.Context, branch, base string, skipCI bool) 
 	return true, nil
 }
 
+// importTree moves the new commits on branch of the agent's checkout of
+// repo into refs/heads/<branch> of its mirror m, without pushing. It
+// reports false when the checkout has no commits origin lacks.
+func (r *Runner) importTree(ctx context.Context, m *Mirror, repo, branch, base string) (bool, error) {
+	path := r.exchangePath("from-agent", repo)
+	written, err := r.Agent.Bundle(ctx, BundleRequest{Repo: repo, Branch: branch, Base: base, Path: path})
+	if err != nil || !written {
+		return false, err
+	}
+	defer os.Remove(path)
+	if err := m.Import(ctx, path, branch); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// exchangePath is the bundle file name of a tree in the exchange directory:
+// "<name>.bundle" for the home tree, "<name>-<slug>.bundle" for a companion.
+func (r *Runner) exchangePath(name, repo string) string {
+	if repo != homeTree {
+		name += "-" + repo
+	}
+	return filepath.Join(r.Exchange, name+".bundle")
+}
+
 // guardedGitLab is the GitLab client of the task's runs, behind the
 // merge/push guard: the home project and, if the task has one, its
 // companion as the only target. The operator wrote spec.companion only for
 // a target the cluster allows, so its project is the allow-list here;
 // NewPolicy still drops the home project and the never-targets.
 func (r *Runner) guardedGitLab(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask) gitlab.API {
+	return r.guardedGitLabWith(spec, task, r.GitLabToken)
+}
+
+// guardedGitLabWith is guardedGitLab with another token (the companion's).
+func (r *Runner) guardedGitLabWith(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, token string) gitlab.API {
 	var allowed []string
 	var companion *aiv1.CompanionSpec
 	if task != nil && task.Spec.Companion != nil {
@@ -367,7 +404,7 @@ func (r *Runner) guardedGitLab(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask)
 		allowed = []string{companion.Project}
 	}
 	policy := gitlab.NewPolicy(spec, allowed).ForCompanion(companion)
-	return gitlab.Guard(r.NewGitLab(spec.GitLab.URL, r.GitLabToken), policy, r.Log.WithName("guard"))
+	return gitlab.Guard(r.NewGitLab(spec.GitLab.URL, token), policy, r.Log.WithName("guard"))
 }
 
 // Loop processes chat turns and run requests until ctx is cancelled.
@@ -816,7 +853,7 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 				// implementer's) and a stale git lock go first.
 				retried = true
 				r.log().Info("agent container restarted during the call, trying once more", "reason", lost.Term.Reason, "exitCode", lost.Term.ExitCode)
-				if err := r.Agent.Reset(ctx); err != nil {
+				if err := r.Agent.Reset(ctx, homeTree); err != nil {
 					return nil, lost
 				}
 			default:

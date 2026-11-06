@@ -725,9 +725,10 @@ func newTestRunner(t *testing.T, tmp string, k8s client.Client, gl gitlab.API, e
 	t.Helper()
 	exchange := filepath.Join(tmp, "exchange")
 	agent := serveAgent(t, &AgentServer{Agent: &LocalAgent{
-		Workspace: &Workspace{Dir: filepath.Join(tmp, "agent", "repo"), AuthorName: "AI Operator", AuthorEmail: "ai@example.com"},
-		Engines:   map[aiv1.Engine]Engine{aiv1.EngineClaude: engine, aiv1.EngineCursor: engine},
-		Exchange:  exchange,
+		Workspace:  &Workspace{Dir: filepath.Join(tmp, "agent", "repo"), AuthorName: "AI Operator", AuthorEmail: "ai@example.com"},
+		Workspaces: filepath.Join(tmp, "agent"),
+		Engines:    map[aiv1.Engine]Engine{aiv1.EngineClaude: engine, aiv1.EngineCursor: engine},
+		Exchange:   exchange,
 	}})
 	return &Runner{
 		K8s: k8s, Namespace: "agents", TaskName: task,
@@ -824,7 +825,7 @@ func TestMirrorPinFilesListsDefaultBranchPins(t *testing.T) {
 func TestAgentRejectsPathsOutsideExchange(t *testing.T) {
 	a := &LocalAgent{Workspace: &Workspace{Dir: t.TempDir()}, Exchange: "/exchange"}
 	for _, p := range []string{"/runner/mirror.git/config", "/exchange/../runner/x", "/exchange"} {
-		if _, err := a.Bundle(context.Background(), "b", "main", p); err == nil {
+		if _, err := a.Bundle(context.Background(), BundleRequest{Branch: "b", Base: "main", Path: p}); err == nil {
 			t.Errorf("bundle path %q must be rejected", p)
 		}
 		if err := a.Prepare(context.Background(), PrepareRequest{Bundle: p}); err == nil {
