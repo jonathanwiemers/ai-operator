@@ -3044,6 +3044,12 @@ spec:
                         outputTokens:
                           format: int64
                           type: integer
+                        readGateBlocks:
+                          description: |-
+                            ReadGateBlocks is how many tool calls the read gate denied in the
+                            call.
+                          format: int32
+                          type: integer
                         resumed:
                           description: Resumed is set when the call continued an earlier
                             session.

@@ -25,7 +25,7 @@ func TestAgentCalls(t *testing.T) {
 				{Model: "claude-opus-5-5", InputTokens: 8, OutputTokens: 15, CacheReadTokens: 30, CacheWriteTokens: 40, CostUSD: &opusCost},
 				{Model: "claude-haiku-5-5", InputTokens: 2, OutputTokens: 5},
 			},
-			SubagentCalls: 1, ContextSeries: []int64{1000, 2500, 4000}, SubagentTurns: []int32{1},
+			SubagentCalls: 1, ContextSeries: []int64{1000, 2500, 4000}, SubagentTurns: []int32{1}, ReadGateBlocks: 3,
 			ExpiresAt: exp},
 		// A cursor call without IIDs or a known cost.
 		{Key: "call/u2/1", At: base, Namespace: "agents", Project: "bloop", Task: "bloop-pilot", Seq: 1,
@@ -45,22 +45,22 @@ func TestAgentCalls(t *testing.T) {
 	}
 
 	type row struct {
-		milestone, issue, mr *int64
-		cost                 *float64
-		source, fallback     string
-		resumed              bool
-		models               []store.CallModel
-		subagents            int32
-		series               []int64
-		turns                []int32
+		milestone, issue, mr  *int64
+		cost                  *float64
+		source, fallback      string
+		resumed               bool
+		models                []store.CallModel
+		subagents, gateBlocks int32
+		series                []int64
+		turns                 []int32
 	}
 	get := func(key string) row {
 		t.Helper()
 		var r row
 		if err := s.Pool().QueryRow(ctx, `SELECT milestone_iid, issue_iid, mr_iid, cost_usd::float8, cost_source,
-				fallback_from, resumed, models, subagent_calls, context_series, subagent_turns
+				fallback_from, resumed, models, subagent_calls, context_series, subagent_turns, read_gate_blocks
 			FROM agent_calls WHERE key = $1`, key).Scan(&r.milestone, &r.issue, &r.mr, &r.cost, &r.source,
-			&r.fallback, &r.resumed, &r.models, &r.subagents, &r.series, &r.turns); err != nil {
+			&r.fallback, &r.resumed, &r.models, &r.subagents, &r.series, &r.turns, &r.gateBlocks); err != nil {
 			t.Fatal(err)
 		}
 		return r
@@ -85,10 +85,16 @@ func TestAgentCalls(t *testing.T) {
 	if r.subagents != 1 || !slices.Equal(r.series, []int64{1000, 2500, 4000}) || !slices.Equal(r.turns, []int32{1}) {
 		t.Errorf("subagents %d, series %v, turns %v", r.subagents, r.series, r.turns)
 	}
+	if r.gateBlocks != 3 {
+		t.Errorf("read gate blocks %d, want 3", r.gateBlocks)
+	}
 
 	r = get("call/u2/1")
 	if r.milestone != nil || r.issue != nil || r.mr != nil || r.cost != nil || r.source != "unknown" || r.fallback != "claude" {
 		t.Errorf("cursor call = %+v; want NULL IIDs and cost", r)
+	}
+	if r.gateBlocks != 0 {
+		t.Errorf("cursor call read gate blocks %d, want 0", r.gateBlocks)
 	}
 	if r.models == nil || len(r.models) != 0 || r.series == nil || len(r.series) != 0 || r.turns == nil || len(r.turns) != 0 {
 		t.Errorf("empty jsonb columns = %v %v %v; want []", r.models, r.series, r.turns)
@@ -111,5 +117,22 @@ func TestAgentCalls(t *testing.T) {
 		SELECT 'bulk/' || i, now(), 'agents', 'bloop', 't', i, 'review', 'unknown', $1 FROM generate_series(1, 1500) i`, base)
 	if n, err := s.DeleteExpiredCalls(ctx, exp.Add(time.Second)); err != nil || n != 1501 {
 		t.Errorf("DeleteExpiredCalls = %d, %v; want 1501 (more than a batch)", n, err)
+	}
+}
+
+// Migration 5 adds read_gate_blocks on top of 0004; rows written before it
+// read 0.
+func TestReadGateBlocksMigration(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	exec(t, s.Pool(), "ALTER TABLE agent_calls DROP COLUMN read_gate_blocks")
+	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version = 5")
+	exec(t, s.Pool(), insertCall)
+	if err := s.Migrate(ctx, store.Grants{}); err != nil {
+		t.Fatal(err)
+	}
+	var n int32
+	if err := s.Pool().QueryRow(ctx, "SELECT read_gate_blocks FROM agent_calls WHERE key = 'k'").Scan(&n); err != nil || n != 0 {
+		t.Errorf("old row read_gate_blocks = %d, %v; want 0", n, err)
 	}
 }

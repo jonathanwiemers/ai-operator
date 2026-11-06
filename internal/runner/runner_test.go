@@ -147,8 +147,8 @@ func TestClaudeStreamSubagent(t *testing.T) {
 		if want := []int32{1}; !slices.Equal(u.SubagentTurns, want) {
 			t.Fatalf("SubagentTurns %v, want %v", u.SubagentTurns, want)
 		}
-		if u.SubagentCalls != 1 {
-			t.Fatalf("SubagentCalls %d, want 1", u.SubagentCalls)
+		if u.SubagentCalls != 1 || u.ReadGateBlocks != 0 {
+			t.Fatalf("SubagentCalls %d, ReadGateBlocks %d; want 1, 0", u.SubagentCalls, u.ReadGateBlocks)
 		}
 		var models []string
 		for _, m := range u.Models {
@@ -203,6 +203,58 @@ func TestClaudeStreamSubagent(t *testing.T) {
 			t.Fatalf("counted from parent_tool_use_id: %+v", u)
 		}
 	})
+}
+
+// TestClaudeStreamReadGate replays a stream with one Read denied by the read
+// gate and one ordinary failed Bash call. The denial line is reconstructed
+// from claude 2.1.318's bundle (the R2 finding in
+// docs/specs/read-gate-and-writer.spec.md), not recorded live: claude
+// answers a hook deny with an is_error tool_result whose text is
+// "PreToolUse:Read hook error: <reason>".
+func TestClaudeStreamReadGate(t *testing.T) {
+	fixture, err := filepath.Abs("testdata/claude-stream-read-gate.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := sessionFake(t, "#!/bin/sh\ncat "+fixture+"\n")
+	res, err := (&ClaudeCLI{Binary: bin, Env: os.Environ()}).Run(context.Background(), Invocation{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := res.CallUsage
+	if u == nil {
+		t.Fatal("CallUsage is nil")
+	}
+	if u.ReadGateBlocks != 1 {
+		t.Fatalf("ReadGateBlocks %d, want 1 (the Bash error is not the gate's)", u.ReadGateBlocks)
+	}
+	if want := []int64{15003, 15307, 15504}; !slices.Equal(u.ContextSeries, want) || u.SubagentCalls != 0 || u.Turns != 3 {
+		t.Fatalf("usage %+v", u)
+	}
+}
+
+func TestReadGateBlocks(t *testing.T) {
+	const deny = "PreToolUse:Read hook error: File big.ts is over 350 lines (read gate: 350). Ask a subagent."
+	for _, tc := range []struct {
+		name string
+		line string
+		want int32
+	}{
+		{"string content", `{"type":"user","message":{"content":[{"type":"tool_result","is_error":true,"content":"` + deny + `"}]}}`, 1},
+		{"text blocks", `{"type":"user","message":{"content":[{"type":"tool_result","is_error":true,"content":[{"type":"text","text":"` + deny + `"}]}]}}`, 1},
+		{"two denials", `{"type":"user","message":{"content":[{"type":"tool_result","is_error":true,"content":"` + deny +
+			`"},{"type":"tool_result","is_error":true,"content":"` + deny + `"}]}}`, 2},
+		{"subagent thread", `{"type":"user","message":{"content":[{"type":"tool_result","is_error":true,"content":"` + deny + `"}]},"parent_tool_use_id":"toolu_x"}`, 1},
+		{"not an error", `{"type":"user","message":{"content":[{"type":"tool_result","content":"the docs say read gate: 350"}]}}`, 0},
+		{"ordinary error", `{"type":"user","message":{"content":[{"type":"tool_result","is_error":true,"content":"Exit code 1"}]}}`, 0},
+		{"marker in a text block of the prompt", `{"type":"user","message":{"content":[{"type":"text","text":"read gate: 350"}]}}`, 0},
+		{"string message content", `{"type":"user","message":{"content":"read gate: 350"}}`, 0},
+		{"malformed", `{"type":"user","message":read gate: `, 0},
+	} {
+		if got := readGateBlocks([]byte(tc.line)); got != tc.want {
+			t.Errorf("%s: %d, want %d", tc.name, got, tc.want)
+		}
+	}
 }
 
 func TestThinSeries(t *testing.T) {

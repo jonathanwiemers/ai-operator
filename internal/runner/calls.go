@@ -40,7 +40,7 @@ func agentCall(engine aiv1.Engine, inv Invocation, res *Result, start, end time.
 		c.Model = u.MainModel()
 	}
 	c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheWriteTokens = u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens
-	c.Turns, c.SubagentCalls = u.Turns, u.SubagentCalls
+	c.Turns, c.SubagentCalls, c.ReadGateBlocks = u.Turns, u.SubagentCalls, u.ReadGateBlocks
 	if u.DurationMS > 0 {
 		c.DurationMS = u.DurationMS
 	}

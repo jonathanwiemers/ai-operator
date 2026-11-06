@@ -3626,6 +3626,12 @@ export interface AgentCall {
    */
   subagentCalls?: number /* int32 */;
   /**
+   * ReadGateBlocks is how many tool calls the read gate denied in the
+   * call.
+   * +optional
+   */
+  readGateBlocks?: number /* int32 */;
+  /**
    * ContextSeries is the context size (input and cache tokens) of each
    * main-thread assistant turn. Only the newest calls in status keep it.
    * +optional

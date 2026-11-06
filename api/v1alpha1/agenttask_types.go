@@ -1272,6 +1272,11 @@ type AgentCall struct {
 	// +optional
 	SubagentCalls int32 `json:"subagentCalls,omitempty"`
 
+	// ReadGateBlocks is how many tool calls the read gate denied in the
+	// call.
+	// +optional
+	ReadGateBlocks int32 `json:"readGateBlocks,omitempty"`
+
 	// ContextSeries is the context size (input and cache tokens) of each
 	// main-thread assistant turn. Only the newest calls in status keep it.
 	// +optional

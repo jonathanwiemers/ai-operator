@@ -637,7 +637,9 @@ see [configuration.md](configuration.md#pricing)). Three jsonb columns
 hold the detail: `models` (per model tokens and `costUSD`, subagent models
 included), `context_series` (context size of each main-thread turn, at most
 500 points) and `subagent_turns` (indexes into it after which a subagent
-ran); `subagent_calls` counts the subagents. The runner only appends the
+ran); `subagent_calls` counts the subagents and `read_gate_blocks` the tool
+calls the read gate denied (error `tool_result`s of the stream whose text
+contains the gate's marker `read gate: `, in every thread). The runner only appends the
 call to the task's `status.run.calls` (the newest 50, each with a task-wide
 `seq`); the operator stays the only writer. The differ writes each call
 whose seq the previous status did not have, keyed `call/<task UID>/<seq>`.

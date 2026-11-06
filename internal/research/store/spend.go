@@ -433,7 +433,7 @@ func childLabel(c *SpendChild, sc SpendScope) (key, label string) {
 const callColumns = `id, key, at, namespace, project, coalesce(milestone_iid, 0), coalesce(issue_iid, 0),
 	coalesce(mr_iid, 0), task, run, seq, kind, role, engine, model, effort, resumed, fallback_from,
 	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd::float8, cost_source,
-	turns, duration_ms, models, subagent_calls, context_series, subagent_turns, expires_at`
+	turns, duration_ms, models, subagent_calls, context_series, subagent_turns, expires_at, read_gate_blocks`
 
 func scanCall(row pgx.Row) (Call, error) {
 	var c Call
@@ -441,6 +441,6 @@ func scanCall(row pgx.Row) (Call, error) {
 		&c.MergeRequestIID, &c.Task, &c.Run, &c.Seq, &c.Kind, &c.Role, &c.Engine, &c.Model, &c.Effort, &c.Resumed,
 		&c.FallbackFrom, &c.InputTokens, &c.OutputTokens, &c.CacheReadTokens, &c.CacheWriteTokens, &c.CostUSD,
 		&c.CostSource, &c.Turns, &c.DurationMS, &c.Models, &c.SubagentCalls, &c.ContextSeries, &c.SubagentTurns,
-		&c.ExpiresAt)
+		&c.ExpiresAt, &c.ReadGateBlocks)
 	return c, err
 }

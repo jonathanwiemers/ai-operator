@@ -16,6 +16,7 @@ import (
 	"github.com/go-logr/logr"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/readgate"
 )
 
 // Invocation is one headless call of an agent CLI. It is engine neutral; each
@@ -113,6 +114,9 @@ type CallUsage struct {
 	// SubagentTurns are indexes into ContextSeries: the main turns after
 	// which a subagent ran, ascending, without duplicates.
 	SubagentTurns []int32
+	// ReadGateBlocks is how many tool calls the read gate denied: error
+	// tool_results whose text contains readgate.Marker, in every thread.
+	ReadGateBlocks int32
 }
 
 // ModelUsage is one model's share of a call.
@@ -326,6 +330,8 @@ type turnReader struct {
 	subTurns  []int32
 	// counted are the subagent message ids whose tokens were logged.
 	counted map[string]bool
+	// gateBlocks counts the read gate's denials (see readGateBlocks).
+	gateBlocks int32
 }
 
 func (t *turnReader) flush() {
@@ -357,6 +363,7 @@ func (t *turnReader) consume(line []byte) bool {
 	case "tool_call", "user":
 		if ev.Type == "user" {
 			t.track(line)
+			t.gateBlocks += readGateBlocks(line)
 		}
 		t.flush()
 		if ev.Type == "tool_call" && ev.Subtype == "started" {
@@ -422,12 +429,64 @@ func (t *turnReader) track(line []byte) {
 	t.series = append(t.series, u.InputTokens+u.CacheReadInputTokens+u.CacheCreationInputTokens)
 }
 
+// readGateBlocks counts the tool_result blocks of a claude user line that
+// are errors whose text contains readgate.Marker. Claude wraps the hook's
+// reason ("PreToolUse:Read hook error: …"), so the marker may be anywhere;
+// a block's content is a string or a list of text blocks.
+func readGateBlocks(line []byte) int32 {
+	if !bytes.Contains(line, []byte(readgate.Marker)) {
+		return 0
+	}
+	var ev struct {
+		Message struct {
+			Content []struct {
+				Type    string          `json:"type"`
+				IsError bool            `json:"is_error"`
+				Content json.RawMessage `json:"content"`
+			} `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(line, &ev) != nil {
+		return 0
+	}
+	var n int32
+	for _, b := range ev.Message.Content {
+		if b.Type == "tool_result" && b.IsError && strings.Contains(toolResultText(b.Content), readgate.Marker) {
+			n++
+		}
+	}
+	return n
+}
+
+// toolResultText is the text of a tool_result's content: the string, or
+// its text blocks joined by newlines.
+func toolResultText(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return ""
+	}
+	texts := make([]string, 0, len(blocks))
+	for _, b := range blocks {
+		if b.Type == "text" {
+			texts = append(texts, b.Text)
+		}
+	}
+	return strings.Join(texts, "\n")
+}
+
 // maxContextPoints caps CallUsage.ContextSeries.
 const maxContextPoints = 500
 
 // addCallUsage merges what the stream showed into the result's CallUsage.
 func (t *turnReader) addCallUsage(res *Result) {
-	if len(t.series) == 0 && len(t.subagents) == 0 {
+	if len(t.series) == 0 && len(t.subagents) == 0 && t.gateBlocks == 0 {
 		return
 	}
 	if res.CallUsage == nil {
@@ -438,6 +497,7 @@ func (t *turnReader) addCallUsage(res *Result) {
 	if u.SubagentCalls == 0 {
 		u.SubagentCalls = int32(len(t.subagents))
 	}
+	u.ReadGateBlocks = t.gateBlocks
 }
 
 // thinSeries keeps at most max evenly spaced points of series, always the

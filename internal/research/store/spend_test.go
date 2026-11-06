@@ -35,7 +35,7 @@ func TestSpend(t *testing.T) {
 		{Model: "claude-opus-5-5", InputTokens: 8, OutputTokens: 15, CacheReadTokens: 30, CacheWriteTokens: 40, CostUSD: usd(1.2)},
 		{Model: "claude-haiku-5-5", InputTokens: 2, OutputTokens: 5, CostUSD: usd(0.03)},
 	}
-	impl.SubagentCalls, impl.ContextSeries, impl.SubagentTurns = 1, []int64{1000, 2500, 4000}, []int32{1}
+	impl.SubagentCalls, impl.ContextSeries, impl.SubagentTurns, impl.ReadGateBlocks = 1, []int64{1000, 2500, 4000}, []int32{1}, 2
 	review := call("c2", 3*time.Hour, 20, 148, "bloop-148", 2, 2, "review", "security", "claude-sonnet-5-5", usd(0.5), 100, 10, 1000, 0, 10000)
 	// #150: a cursor call without a cost.
 	fix := call("c3", 4*time.Hour, 20, 150, "bloop-150", 1, 1, "fix", "fix", "gpt-5", nil, 100, 50, 0, 0, 5000)
@@ -219,7 +219,7 @@ func TestSpend(t *testing.T) {
 		{"call", "2", "review (security)", 0.5, 0, true, 1, 0},
 	})
 	if c := sp.Children[0].Call; c == nil || c.Key != "c1" || c.MilestoneIID != 20 || !slices.Equal(c.ContextSeries, []int64{1000, 2500, 4000}) ||
-		!slices.Equal(c.SubagentTurns, []int32{1}) || len(c.Models) != 2 || c.CostUSD == nil || *c.CostUSD != 1.23 {
+		!slices.Equal(c.SubagentTurns, []int32{1}) || c.ReadGateBlocks != 2 || len(c.Models) != 2 || c.CostUSD == nil || *c.CostUSD != 1.23 {
 		t.Errorf("call 1 row = %+v", c)
 	}
 	checkModels("call 1", sp.Children[0].Models, []store.ModelSplit{
