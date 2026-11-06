@@ -229,6 +229,7 @@ func (r *AgentProjectReconciler) milestonesChanged(ctx context.Context, project 
 		return false, fmt.Errorf("listing milestones: %w", err)
 	}
 	selected := map[int64]bool{}
+	ahead := queuedAhead(spec, titleRE, milestones, planned)
 	for _, m := range milestones {
 		ok, autopilot := milestoneSelection(spec, titleRE, m)
 		if !ok {
@@ -237,7 +238,7 @@ func (r *AgentProjectReconciler) milestonesChanged(ctx context.Context, project 
 		task := planned[m.IID]
 		owners := notify.Resolve(m.Description, spec.Workflow.CommandPrefix, spec.Notify.Users, r.DefaultOwners)
 		subjects := notify.MilestoneOwnerSubjects(m.Description, spec.Workflow.CommandPrefix)
-		if task == nil || !specTaskCurrent(spec, m, task, autopilot, owners, subjects, r.milestoneRepos(spec, m.Description)) || r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration) {
+		if task == nil || !specTaskCurrent(spec, m, task, autopilot, owners, subjects, r.milestoneRepos(spec, m.Description), ahead[m.IID]) || r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration) {
 			return true, nil
 		}
 		selected[m.IID] = true
@@ -371,13 +372,15 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	for _, m := range milestones {
 		descriptions[m.ID] = m.Description
 	}
+	// Before any spec task changes: the older milestones still open.
+	ahead := queuedAhead(spec, titleRE, milestones, byMilestone)
 	for _, m := range milestones {
 		selected, autopilot := milestoneSelection(spec, titleRE, m)
 		if !selected {
 			continue
 		}
 		active++
-		task, err := r.syncSpecTask(ctx, project, spec, m, byMilestone[m.IID], autopilot, owners(m.Description), ownerSubjects(m.Description))
+		task, err := r.syncSpecTask(ctx, project, spec, m, byMilestone[m.IID], autopilot, ahead[m.IID], owners(m.Description), ownerSubjects(m.Description))
 		if err != nil {
 			return err
 		}
@@ -732,8 +735,10 @@ func (r *AgentProjectReconciler) newTask(project *aiv1.AgentProject, name string
 
 // syncSpecTask makes sure a planned milestone has a spec task and requests a
 // new run whenever the milestone description changes, and once after a run
-// that failed for an outside reason (specRetryDue).
-func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners, ownerSubjects []string) (*aiv1.AgentTask, error) {
+// that failed for an outside reason (specRetryDue). An autopilot milestone
+// with older ones still open (ahead) waits with runRequest 0 until its turn
+// comes (specTurn), then asks for its first run with the hash of that moment.
+func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, ahead []int64, owners, ownerSubjects []string) (*aiv1.AgentTask, error) {
 	prefix := spec.Workflow.CommandPrefix
 	// The owners, owner-subjects, rules and budget are no part of the spec:
 	// changing them re-plans nothing.
@@ -755,17 +760,23 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		task.Labels[LabelMilestoneIID] = strconv.FormatInt(m.IID, 10)
 		task.Spec.Milestone = ref
 		task.Spec.RunRequest = 1
+		if !specTurn(task, ahead) {
+			task.Spec.RunRequest, task.Spec.QueuedBehind = 0, ahead
+			log.FromContext(ctx).Info("milestone waits for its turn", "milestone", m.Title, "task", task.Name, "queuedBehind", ahead)
+		}
 		task.Spec.Source.DescriptionHash = hash
 		task.Spec.Autopilot = autopilot
 		task.Spec.Owners, task.Spec.OwnerSubjects, task.Spec.Rules = owners, ownerSubjects, ruleLines
 		task.Spec.Repos = repos
 		logRepoProblems(ctx, m.Title, repos)
 		task.Spec.BudgetUSD = budget
-		log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name, "autopilot", autopilot)
+		if task.Spec.RunRequest > 0 {
+			log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name, "autopilot", autopilot)
+		}
 		return task, r.Create(ctx, task)
 	}
 	retry := r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration)
-	if specTaskCurrent(spec, m, task, autopilot, owners, ownerSubjects, repos) && !retry {
+	if specTaskCurrent(spec, m, task, autopilot, owners, ownerSubjects, repos, ahead) && !retry {
 		return task, nil
 	}
 	task.Spec.Autopilot = autopilot
@@ -775,11 +786,22 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 	}
 	task.Spec.Repos = repos
 	task.Spec.BudgetUSD = budget
-	if task.Spec.Source.DescriptionHash != hash {
+	switch waiting := task.Spec.RunRequest == 0; {
+	case waiting && specTurn(task, ahead):
+		// The first run plans the description of this moment.
+		log.FromContext(ctx).Info("its turn has come, planning", "milestone", m.Title, "task", task.Name)
+		task.Spec.RunRequest, task.Spec.Source.DescriptionHash, task.Spec.QueuedBehind = 1, hash, nil
+	case waiting:
+		// An edit while waiting plans nothing.
+		if !slices.Equal(task.Spec.QueuedBehind, ahead) {
+			log.FromContext(ctx).Info("milestone waits for its turn", "milestone", m.Title, "task", task.Name, "queuedBehind", ahead)
+		}
+		task.Spec.Source.DescriptionHash, task.Spec.QueuedBehind = hash, ahead
+	case task.Spec.Source.DescriptionHash != hash:
 		log.FromContext(ctx).Info("milestone spec changed, re-planning", "milestone", m.Title, "task", task.Name)
 		task.Spec.RunRequest++
 		task.Spec.Source.DescriptionHash = hash
-	} else if retry {
+	case retry:
 		log.FromContext(ctx).Info("planning again after a failure for an outside reason", "milestone", m.Title, "task", task.Name)
 		task.Spec.Source.InfraRetry = task.Spec.RunRequest + 1
 		task.Spec.RunRequest++
@@ -790,15 +812,51 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 
 // specTaskCurrent reports whether a milestone's spec task matches it: the
 // spec's hash, the milestone, autopilot, owners, owner-subjects, rules,
-// budget and repo lines.
-func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners, ownerSubjects []string, repos []aiv1.MilestoneRepo) bool {
+// budget, repo lines and, while it waits for its turn, the milestones
+// ahead. A waiting task whose turn has come is not current.
+func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners, ownerSubjects []string, repos []aiv1.MilestoneRepo, ahead []int64) bool {
 	prefix := spec.Workflow.CommandPrefix
 	budget, _ := rules.Budget(m.Description, prefix)
-	return task.Spec.Source.DescriptionHash == hashString(rules.Spec(m.Description, prefix)) &&
+	queued := ahead
+	if task.Spec.RunRequest > 0 {
+		queued = nil // a task that has asked for a run waits for nothing
+	} else if specTurn(task, ahead) {
+		return false
+	}
+	return slices.Equal(task.Spec.QueuedBehind, queued) && task.Spec.Source.DescriptionHash == hashString(rules.Spec(m.Description, prefix)) &&
 		*task.Spec.Milestone == aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title} && task.Spec.Autopilot == autopilot &&
 		slices.Equal(task.Spec.Owners, owners) && slices.Equal(task.Spec.OwnerSubjects, ownerSubjects) &&
 		slices.Equal(task.Spec.Rules, rules.Lines(m.Description, prefix)) && task.Spec.BudgetUSD == budget &&
 		slices.Equal(task.Spec.Repos, repos)
+}
+
+// specTurn reports whether a spec task that has never asked for a run (or a
+// new one) may ask for its first: nothing is ahead of it.
+func specTurn(_ *aiv1.AgentTask, ahead []int64) bool {
+	return len(ahead) == 0
+}
+
+// queuedAhead returns, for every selected autopilot milestone, the iids of
+// the older selected autopilot milestones that are still open, ascending:
+// their spec task is missing or not done (a paused one counts). A milestone
+// off autopilot or closed (not listed) holds back nothing.
+func queuedAhead(spec aiv1.AgentProjectSpec, titleRE *regexp.Regexp, milestones []gitlab.Milestone, byMilestone map[int64]*aiv1.AgentTask) map[int64][]int64 {
+	var iids []int64
+	for _, m := range milestones {
+		if _, autopilot := milestoneSelection(spec, titleRE, m); autopilot {
+			iids = append(iids, m.IID)
+		}
+	}
+	slices.Sort(iids)
+	ahead := map[int64][]int64{}
+	var open []int64
+	for _, iid := range iids {
+		ahead[iid] = slices.Clone(open)
+		if t := byMilestone[iid]; t == nil || t.Status.Autopilot == nil || t.Status.Autopilot.Phase != aiv1.AutopilotDone {
+			open = append(open, iid)
+		}
+	}
+	return ahead
 }
 
 // specRetryDue reports whether a planning run that failed for an outside

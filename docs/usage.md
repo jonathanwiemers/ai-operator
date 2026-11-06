@@ -900,6 +900,18 @@ are outside the queue. A queued task says in its message who is ahead of it, for
 *waiting for capacity (1/1 runs in flight), 2nd in line behind #140
 (milestone %6)*.
 
+An autopilot milestone is also **planned** only when its turn comes, so its
+issues describe the code as it is when work begins: as long as an older
+autopilot milestone of the project is still open, its spec task waits
+(`spec.runRequest` 0, the older ones in `spec.queuedBehind`) and starts no
+planning run. Open means not done: a paused older milestone keeps the younger
+ones waiting, and so does an older one that waits itself. An older milestone
+that is done, closed or off autopilot holds back nothing. When its turn comes
+the milestone is planned from its description of that moment; edits while it
+waits start nothing. A milestone that was planned already (or is being
+planned) keeps going, and a milestone with `/agent spec` but no
+`/agent autopilot` is planned at once, as before.
+
 ### The merge gate
 
 An MR is merged only when all of these hold:

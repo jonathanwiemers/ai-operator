@@ -199,6 +199,16 @@ spec:
                 enum:
                 - urgent
                 type: string
+              queuedBehind:
+                description: |-
+                  QueuedBehind are the iids of the older autopilot milestones that are
+                  still open, ascending (spec tasks of autopilot milestones). Set while
+                  the task waits for its turn with runRequest 0; empty once its first
+                  run is requested.
+                items:
+                  format: int64
+                  type: integer
+                type: array
               repos:
                 description: |-
                   Repos are the milestone's "/agent repo <project> [merge]" lines (spec

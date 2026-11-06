@@ -275,6 +275,15 @@ that arrive during a run are coalesced into one follow-up run. The operator
 writes the top-level status, the runner only `status.run`; both use merge
 patches so they never overwrite each other.
 
+A spec task starts at `runRequest` 1, except an autopilot milestone's while
+an older autopilot milestone of the project is open (its spec task missing
+or not `Done`; paused and waiting ones count). That task waits at 0 with the
+older iids in `spec.queuedBehind`; `syncSpecTask` keeps its owners, rules,
+budget, repos and description hash current without a run request and, once
+nothing is ahead (`specTurn`), sets `runRequest` 1 with the hash of that
+moment and clears `queuedBehind`. A task at 1 or more is never put back to
+waiting.
+
 Names are declarative: `shop-spec-m3-checkout-v2` (milestone !3) and
 `shop-42-add-paypal-button` (issue #42). Pod, task and PVC (`…-ws`) share the
 name, so `kubectl get pods` reads like the board. Tasks are found by the
@@ -817,7 +826,8 @@ sequenceDiagram
   failed sync or a generation change; otherwise it lists only the milestones
   (`milestonesChanged`; milestone events have no hook) and syncs fully when
   a planned one appeared, vanished or its spec task would change
-  (`specTaskCurrent`, also a due spec retry). The requeue stays
+  (`specTaskCurrent`, also a due spec retry or a waiting milestone's turn).
+  The requeue stays
   `pollInterval`. Steps that only time advances (infra retries, auto-resume,
   the main health interval, the hourly hook check) run on full syncs, so at
   most `fallbackInterval` late while receiving. After a restart nothing is

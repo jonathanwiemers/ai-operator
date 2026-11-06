@@ -50,6 +50,13 @@ type AgentTaskSpec struct {
 	// +optional
 	RunRequest int64 `json:"runRequest,omitempty"`
 
+	// QueuedBehind are the iids of the older autopilot milestones that are
+	// still open, ascending (spec tasks of autopilot milestones). Set while
+	// the task waits for its turn with runRequest 0; empty once its first
+	// run is requested.
+	// +optional
+	QueuedBehind []int64 `json:"queuedBehind,omitempty"`
+
 	// Suspend hibernates the task: its pod is deleted, the workspace is kept.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`

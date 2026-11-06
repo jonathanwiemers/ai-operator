@@ -432,6 +432,11 @@ func (in *AgentTaskSpec) DeepCopyInto(out *AgentTaskSpec) {
 		*out = new(IssueRef)
 		**out = **in
 	}
+	if in.QueuedBehind != nil {
+		in, out := &in.QueuedBehind, &out.QueuedBehind
+		*out = make([]int64, len(*in))
+		copy(*out, *in)
+	}
 	if in.Owners != nil {
 		in, out := &in.Owners, &out.Owners
 		*out = make([]string, len(*in))

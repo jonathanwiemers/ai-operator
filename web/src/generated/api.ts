@@ -2054,6 +2054,14 @@ export interface AgentTaskSpec {
    */
   runRequest?: number /* int64 */;
   /**
+   * QueuedBehind are the iids of the older autopilot milestones that are
+   * still open, ascending (spec tasks of autopilot milestones). Set while
+   * the task waits for its turn with runRequest 0; empty once its first
+   * run is requested.
+   * +optional
+   */
+  queuedBehind?: number /* int64 */[];
+  /**
    * Suspend hibernates the task: its pod is deleted, the workspace is kept.
    * +optional
    */
