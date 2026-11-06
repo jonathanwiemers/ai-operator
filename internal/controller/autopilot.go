@@ -860,9 +860,10 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	if task != nil && task.Status.Run.MergeRequestIID != 0 {
 		it.MergeRequestIID, it.MergeRequestURL = task.Status.Run.MergeRequestIID, task.Status.Run.MergeRequestURL
 	}
-	if task != nil && it.RebasedFrom != "" && task.Spec.Source.MergeBaseFor == it.RebasedFrom {
+	if task != nil && it.RebasedFrom != "" && task.Spec.Source.MergeBaseFor == it.RebasedFrom && task.Status.Run.MergedBaseFor != it.RebasedFrom {
 		// The agent was asked to merge the default branch instead of the
-		// rebase (it conflicted); its push is reviewed and checked anew.
+		// rebase (it conflicted); its push is reviewed and checked anew. A
+		// request already handled for this head says nothing about this rebase.
 		it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
 	}
 	if !ok || is.State != "opened" {

@@ -591,10 +591,16 @@ func TestAutopilotRebasesAgainWhenTheDefaultBranchMovesAgain(t *testing.T) {
 	if err := e.c.Update(e.ctx, &task); err != nil {
 		t.Fatal(err)
 	}
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.Run.MergedBaseFor = head })
 	e.gl.MRs[1].DetailedMergeStatus = "need_rebase"
 	e.reconcile()
 	if ap := e.autopilot(); !slices.Equal(e.gl.Rebased, []int64{1, 1}) || ap.Phase != aiv1.AutopilotRunning {
 		t.Fatalf("a second rebase is due, no pause: rebased %v, %+v", e.gl.Rebased, ap)
+	}
+	e.reconcile() // the rebased head goes to the CI loop, reviewed like the first
+	run := e.tasks()[name].Status.Run
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || run.PushedSHA != e.gl.MRs[1].SHA || run.ReviewedSHA != run.PushedSHA {
+		t.Fatalf("the old mergeBase request must not disown the rebase: %+v, %+v", ap, run)
 	}
 }
 
