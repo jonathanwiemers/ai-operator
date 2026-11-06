@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
@@ -33,7 +34,7 @@ func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.Age
 	}
 	for _, phase := range []func(context.Context) error{
 		run.syncBranch, run.readComments, run.buildPrompt, run.addInputs, run.mergeBase, run.implement,
-		run.concludeMerge, run.reviewLoop, run.companionChange, run.push, run.postDecisionsAndHandoff, run.report,
+		run.concludeMerge, run.companionChange, run.reviewLoop, run.push, run.postDecisionsAndHandoff, run.report,
 	} {
 		if err := phase(ctx); err != nil {
 			return run.out, err
@@ -114,10 +115,13 @@ type implementRun struct {
 	outOfSteps  bool
 	remaining   []Finding
 	reviewNotes []string
-	// reviewedLast is false when a fix round came after the last review.
-	reviewedLast bool
-	pushed       bool
-	needsInput   bool
+	// reviewedLast is false when a fix round came after the last review;
+	// reviewedCompanion is set when the last review covered a companion
+	// change as well.
+	reviewedLast      bool
+	reviewedCompanion bool
+	pushed            bool
+	needsInput        bool
 	// checkpointHead is set when the branch head after the push is a
 	// checkpoint: nobody is asked to review it.
 	checkpointHead bool
@@ -466,6 +470,11 @@ func (run *implementRun) mergeBase(ctx context.Context) error {
 	if run.reviewAsked {
 		prefix := run.wf.CommandPrefix
 		head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+branch)
+		if c := run.companion; c != nil {
+			// A re-review covers both trees as they are pushed.
+			companion, _ := c.mirror.resolve(ctx, "refs/remotes/origin/"+c.spec.Branch)
+			head = aiv1.ReviewHeads(head, companion)
+		}
 		forImplementer := humanNotes(command.WithoutRouting(run.newIssueNotes, prefix), botID) + humanNotes(command.WithoutRouting(run.newMRNotes, prefix), botID)
 		run.reReview = head == run.reviewFor && forImplementer == 0 && !run.ciFix && !mergeBase && len(run.revisits) == 0 && pilotInstruction(task) == "" && len(run.answers) == 0
 		run.runAgent = run.runAgent && !run.reReview
@@ -523,7 +532,7 @@ func (run *implementRun) implement(ctx context.Context) error {
 		*answer = ImplementAnswer{Status: "done", Summary: fmt.Sprintf("Merged `%s` into the branch.", run.base)}
 		switch {
 		case run.reReview:
-			answer.Summary = fmt.Sprintf("🔁 Reviewed `%s` again; the implementer did not run.", shortSHA(run.reviewFor))
+			answer.Summary = fmt.Sprintf("🔁 Reviewed %s again; the implementer did not run.", reviewedHeads(run.reviewFor))
 		case run.merge.UpToDate:
 			answer.Summary = fmt.Sprintf("The branch already contains `%s`; nothing to merge.", run.base)
 		}
@@ -593,7 +602,7 @@ func (run *implementRun) concludeMerge(ctx context.Context) error {
 // reviewLoop has read-only reviewers see the diff; blocking findings go back
 // to the (resumed) implementer, bounded by maxIterations.
 func (run *implementRun) reviewLoop(ctx context.Context) error {
-	r, st, out, answer, role, issue, base := run.r, run.state, run.out, &run.answer, run.role, run.issue, run.base
+	r, st, out, answer, role, issue := run.r, run.state, run.out, &run.answer, run.role, run.issue
 	review := run.spec.Agents.Review
 	// CI fix runs skip the reviewers: the change is reviewed with the next
 	// regular run, and CI itself is the check here. On autopilot nobody
@@ -604,16 +613,20 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 		if err := r.budgetStop(ctx); err != nil {
 			return s.fail(err)
 		}
-		diff, stat, err := r.Agent.Diff(ctx, homeTree, base)
+		in, err := run.reviewInput(ctx)
 		if err != nil {
 			return s.fail(err)
 		}
-		if strings.TrimSpace(diff) == "" {
+		if strings.TrimSpace(in.diff) == "" && in.companion == nil {
 			out.Reviewed, out.BlockingFindings, out.ReviewErrors, out.ReviewErrorsTransient, out.ReviewErrorKinds = true, 0, 0, false, nil
 			s.done("no changes to review")
 			break
 		}
-		findings, cost, errs, kinds := r.review(ctx, review, issue, planDecisionsText(run.issueNotes, run.botID), base, stat, diff, run.ownersRules)
+		summary := diffSummary(in.stat)
+		if in.companion != nil {
+			summary = fmt.Sprintf("%s; companion: %s", cmp.Or(summary, "no home changes"), diffSummary(in.companion.stat))
+		}
+		findings, cost, errs, kinds := r.review(ctx, review, issue, planDecisionsText(run.issueNotes, run.botID), in, run.ownersRules)
 		out.CostUSD += cost
 		run.reviewNotes = errs
 		transient := 0
@@ -623,10 +636,15 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 			}
 		}
 		out.Reviewed, out.ReviewErrors, out.ReviewErrorsTransient, out.ReviewErrorKinds = true, int32(len(errs)), len(errs) > 0 && transient == len(errs), kinds
-		run.reviewedLast = true
+		run.reviewedLast, run.reviewedCompanion = true, in.companion != nil
 		// Reviewers are read-only; discard anything they touched anyway.
 		if err := r.Agent.Reset(ctx, homeTree); err != nil {
 			return s.fail(err)
+		}
+		if in.companion != nil {
+			if err := r.Agent.Reset(ctx, run.companion.slug); err != nil {
+				return s.fail(err)
+			}
 		}
 		var blocking []Finding
 		for _, f := range findings {
@@ -634,8 +652,8 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 				blocking = append(blocking, f)
 			}
 		}
-		s.done(fmt.Sprintf("%s; %d findings, %d blocking, $%.2f", diffSummary(stat), len(findings), len(blocking), cost),
-			"diff", diffSummary(stat), "findings", len(findings), "blocking", len(blocking), "reviewerErrors", len(errs), "costUSD", cost)
+		s.done(fmt.Sprintf("%s; %d findings, %d blocking, $%.2f", summary, len(findings), len(blocking), cost),
+			"diff", summary, "findings", len(findings), "blocking", len(blocking), "reviewerErrors", len(errs), "costUSD", cost)
 		run.remaining = findings
 		out.BlockingFindings = int32(len(blocking))
 		if len(blocking) == 0 || iter >= int(*review.MaxIterations) {
@@ -682,8 +700,14 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 			}
 		}
 		s.done(agentResult(role, res, fixed.Status), "session", res.SessionID, "costUSD", res.CostUSD, "status", fixed.Status)
-		if err := r.commit(ctx, run.branch, base, commitMessage(fixed.CommitMessage, issue, run.types)); err != nil {
+		if err := r.commit(ctx, run.branch, run.base, commitMessage(fixed.CommitMessage, issue, run.types)); err != nil {
 			return err
+		}
+		if c := run.companion; c != nil {
+			// The next round, and the push, see the companion's fixes too.
+			if err := r.commitCompanion(ctx, c, commitMessage(fixed.CommitMessage, issue, run.types)); err != nil {
+				return err
+			}
 		}
 		run.reviewedLast = false
 	}
@@ -1257,7 +1281,7 @@ func (r *Runner) commitTree(ctx context.Context, repo string, message agentMessa
 // fail the run; they are reported alongside the result, with why each
 // reviewer failed. ownersRules (the milestone's prompt rules)
 // end every reviewer's prompt.
-func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions, base, stat, diff, ownersRules string) ([]Finding, float64, []string, []aiv1.ReviewError) {
+func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab.Issue, planDecisions string, in reviewInput, ownersRules string) ([]Finding, float64, []string, []aiv1.ReviewError) {
 	var (
 		mu       sync.Mutex
 		wg       sync.WaitGroup
@@ -1270,7 +1294,7 @@ func (r *Runner) review(ctx context.Context, spec aiv1.ReviewSpec, issue *gitlab
 		wg.Add(1)
 		go func(kind aiv1.ReviewerKind) {
 			defer wg.Done()
-			prompt := buildReviewPrompt(issue, planDecisions, base, stat, diff, spec.MaxInlineDiff(kind)) + ownersRules
+			prompt := buildReviewPrompt(issue, planDecisions, in, spec.MaxInlineDiff(kind)) + reviewerNote(kind, in) + ownersRules
 			inv := roleInvocation(spec.RoleSpec, reviewerSystemPrompt(kind), readOnlyTools, reviewSchema, true)
 			inv.Role, inv.Kind = string(kind), aiv1.CallKindReview
 			inv.NoPersistence = true

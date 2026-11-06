@@ -172,3 +172,31 @@ func FindCrossRepoTarget(targets []CrossRepoTarget, project string) (CrossRepoTa
 	}
 	return CrossRepoTarget{}, false
 }
+
+// ReviewHeads is what spec.source.reviewFor names for a re-review: the
+// pushed home head, and with a companion that has a pushed head
+// "<home>+<companion>". A new companion head with the home head unchanged
+// is a new review key, so it is reviewed again (also by "/agent review").
+func ReviewHeads(home, companion string) string {
+	if companion == "" {
+		return home
+	}
+	return home + "+" + companion
+}
+
+// ReviewKey is ReviewHeads of the pushed heads in the status: the review
+// key a re-review of the task's current change asks for.
+func (s RunStatus) ReviewKey() string {
+	var companion string
+	if c := s.Companion; c != nil {
+		companion = c.PushedSHA
+	}
+	return ReviewHeads(s.PushedSHA, companion)
+}
+
+// CompanionUnreviewed reports whether the companion's pushed head is not
+// the one the last review saw. Without a pushed companion head it is false.
+func (s RunStatus) CompanionUnreviewed() bool {
+	c := s.Companion
+	return c != nil && c.PushedSHA != "" && c.ReviewedSHA != c.PushedSHA
+}

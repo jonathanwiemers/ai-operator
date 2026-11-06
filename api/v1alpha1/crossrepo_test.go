@@ -89,3 +89,26 @@ func TestValidateCrossRepoKeepsTargets(t *testing.T) {
 		t.Errorf("valid = %+v, want the target as it is", valid)
 	}
 }
+
+func TestReviewKeyAndCompanionUnreviewed(t *testing.T) {
+	s := RunStatus{PushedSHA: "home"}
+	if s.ReviewKey() != "home" || s.CompanionUnreviewed() {
+		t.Fatalf("without a companion the key is the home head: %q", s.ReviewKey())
+	}
+	s.Companion = &CompanionRun{Project: "group/infra"}
+	if s.ReviewKey() != "home" || s.CompanionUnreviewed() {
+		t.Fatalf("a companion without a pushed head adds nothing: %q", s.ReviewKey())
+	}
+	s.Companion.PushedSHA = "c1"
+	if s.ReviewKey() != "home+c1" || !s.CompanionUnreviewed() {
+		t.Fatalf("a pushed companion head is part of the key and unreviewed: %q", s.ReviewKey())
+	}
+	s.Companion.ReviewedSHA = "c1"
+	if s.CompanionUnreviewed() {
+		t.Fatal("reviewed at its pushed head")
+	}
+	s.Companion.PushedSHA = "c2"
+	if s.ReviewKey() != ReviewHeads("home", "c2") || !s.CompanionUnreviewed() {
+		t.Fatal("a companion-only push is unreviewed again")
+	}
+}

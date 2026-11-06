@@ -138,6 +138,12 @@ func (run *implementRun) pushCompanion(ctx context.Context) error {
 		s.done(fmt.Sprintf("%s at %s", c.spec.Branch, shortSHA(head)), "sha", head)
 	}
 	rec.PushedSHA = head
+	if run.out.ReviewedSHA != "" && run.reviewedCompanion {
+		// The last review saw both trees as they are pushed now: the
+		// companion head with the home ReviewedSHA. A run without a review
+		// keeps the earlier one, so a new head stays unreviewed.
+		rec.ReviewedSHA = head
+	}
 	gl := run.companionGL()
 	mr, opened, err := run.companionMergeRequest(ctx, gl, c)
 	if err != nil {

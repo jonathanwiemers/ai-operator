@@ -19,7 +19,7 @@ func (a *autopilot) reviewErrors(it *aiv1.AutopilotItem, task *aiv1.AgentTask) g
 		reason: fmt.Sprintf("%d reviewers failed on #%d, so the change is not fully reviewed", run.ReviewErrors, it.IID)}
 	switch {
 	case !run.ReviewErrorsTransient || run.PushedSHA == "":
-	case task.Spec.Source.ReviewFor != run.PushedSHA:
+	case task.Spec.Source.ReviewFor != run.ReviewKey():
 		return gateResult{state: gateReReview}
 	default:
 		g.reason += ", also when reviewed again (an outage of their service)"
@@ -36,7 +36,7 @@ func (a *autopilot) reReview(ctx context.Context, it *aiv1.AutopilotItem, task *
 		return nil
 	}
 	a.log.Info("autopilot asks for a re-review, the reviewers failed transiently", "issue", it.IID, "sha", run.PushedSHA)
-	task.Spec.Source.ReviewFor = run.PushedSHA
+	task.Spec.Source.ReviewFor = run.ReviewKey()
 	return a.r.requestRun(ctx, a.gl, a.spec, task, it.IID)
 }
 

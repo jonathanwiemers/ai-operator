@@ -370,6 +370,12 @@ func TestAutopilotMergeGate(t *testing.T) {
 	}{
 		{name: "reviewer failed", run: func(r *aiv1.RunStatus) { r.ReviewErrors = 1 }, reason: "reviewers failed", kind: aiv1.PauseReviewErrors},
 		{name: "unreviewed head", run: func(r *aiv1.RunStatus) { r.ReviewedSHA = "older" }, reason: "was not reviewed", kind: aiv1.PauseNotReviewed},
+		{name: "unreviewed companion head", run: func(r *aiv1.RunStatus) {
+			r.Companion = &aiv1.CompanionRun{Project: "group/infra", MRIID: 3, PushedSHA: "sha-infra-2", ReviewedSHA: "sha-infra-1"}
+		}, reason: "companion head of #1 (group/infra, sha-infr) was not reviewed", kind: aiv1.PauseNotReviewed},
+		{name: "companion never reviewed", run: func(r *aiv1.RunStatus) {
+			r.Companion = &aiv1.CompanionRun{Project: "group/infra", MRIID: 3, PushedSHA: "sha-infra-1"}
+		}, reason: "the last review saw none", kind: aiv1.PauseNotReviewed},
 		{name: "findings", run: func(r *aiv1.RunStatus) { r.BlockingFindings = 1 }, reason: "blocking review findings", kind: aiv1.PauseFindings},
 		{name: "run failed", run: func(r *aiv1.RunStatus) { r.LastResult = aiv1.RunResultFailed }, reason: "ended with", kind: aiv1.PauseRunFailed},
 		{name: "head moved", mr: func(m *gitlab.MergeRequest) { m.SHA = "someone-else" }, reason: "someone pushed", kind: aiv1.PauseMergeRequest},
@@ -1237,5 +1243,21 @@ func TestCollectDecisionsKeepsTheNewest20(t *testing.T) {
 	}
 	if got[0].ID != "D1-P6" || got[19].ID != "D1-P25" {
 		t.Fatalf("kept %s … %s, want D1-P6 … D1-P25", got[0].ID, got[19].ID)
+	}
+}
+
+// A companion reviewed at its pushed head does not hold the merge on the
+// review check.
+func TestAutopilotMergeGateReviewedCompanion(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	e.finishRun(1, "sha-api", func(r *aiv1.RunStatus) {
+		r.Companion = &aiv1.CompanionRun{Project: "group/infra", MRIID: 3, PushedSHA: "sha-infra", ReviewedSHA: "sha-infra"}
+	})
+	e.reconcile() // marked ready
+	e.reconcile() // merged
+	if ap := e.autopilot(); !slices.Equal(e.gl.Merged, []int64{1}) || ap.PauseKind == aiv1.PauseNotReviewed {
+		t.Fatalf("a reviewed companion passes the review check: merged %v, %+v", e.gl.Merged, ap)
 	}
 }

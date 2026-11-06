@@ -159,7 +159,7 @@ func TestImplementCompanionPushAndMergeRequest(t *testing.T) {
 	}
 
 	st := e.taskStatus(t)
-	want := aiv1.CompanionRun{Project: "group/infra", MRIID: 1, MRURL: cmr.WebURL, Branch: companionBranch, PushedSHA: pushed}
+	want := aiv1.CompanionRun{Project: "group/infra", MRIID: 1, MRURL: cmr.WebURL, Branch: companionBranch, PushedSHA: pushed, ReviewedSHA: pushed}
 	if st.Companion == nil || *st.Companion != want {
 		t.Fatalf("status.run.companion = %+v, want %+v", st.Companion, want)
 	}

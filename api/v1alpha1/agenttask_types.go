@@ -206,7 +206,8 @@ type SourceState struct {
 	MergeBaseFor string `json:"mergeBaseFor,omitempty"`
 
 	// ReviewFor is a merge request head to review again without the
-	// implementer (after its reviewers failed, or "/agent review"). It is
+	// implementer (after its reviewers failed, or "/agent review"). With a
+	// companion it names both heads, "<home>+<companion>" (ReviewHeads). It is
 	// asked once per head; if the branch moved on, the run is a normal one.
 	// +optional
 	ReviewFor string `json:"reviewFor,omitempty"`
@@ -1478,7 +1479,8 @@ const (
 	PauseFindings PauseKind = "findings"
 	// PauseReviewErrors: reviewers failed (status.run.reviewErrorKinds).
 	PauseReviewErrors PauseKind = "reviewErrors"
-	// PauseNotReviewed: the head was pushed after the last review.
+	// PauseNotReviewed: the head, or the companion head, was pushed after the
+	// last review.
 	PauseNotReviewed PauseKind = "notReviewed"
 	// PauseCIRed: CI of the MR is red.
 	PauseCIRed PauseKind = "ciRed"

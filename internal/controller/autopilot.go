@@ -1115,6 +1115,11 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 		return failed(false, aiv1.PauseConfig, "no reviewers are configured (`agents.review.reviewers`), and autopilot only merges reviewed changes")
 	case reviewed && run.ReviewedSHA != run.PushedSHA:
 		return failed(true, aiv1.PauseNotReviewed, "the head of !%d (%s) was not reviewed (the last review saw %s)", it.MergeRequestIID, short(run.PushedSHA), short(run.ReviewedSHA))
+	case reviewed && run.CompanionUnreviewed():
+		// A companion-only push (a run without reviewers) after the review.
+		c := run.Companion
+		return failed(true, aiv1.PauseNotReviewed, "the companion head of #%d (%s, %s) was not reviewed (the last review saw %s)",
+			it.IID, c.Project, short(c.PushedSHA), cmp.Or(short(c.ReviewedSHA), "none"))
 	}
 	if a.spec.CI.Disabled {
 		return gateResult{state: gatePassed}

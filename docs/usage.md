@@ -1162,15 +1162,18 @@ The review left blocker or major findings. Ends by itself like `needsInput`
 Reviewers failed (after the one re-review of a transient outage). Ends by
 itself like `needsInput`.
 
-- `/agent review` on the issue: the reviewers check the pushed head again.
+- `/agent review` on the issue: the reviewers check the pushed head (and
+  companion head) again.
 - `/agent retry` on the issue, or `/agent skip #N`.
 - `/agent merge #N <sha>` (owners only), as for `findings`.
 
 #### `notReviewed`
 
-The review did not see the pushed head. Ends by itself like `needsInput`.
+The review did not see the pushed head, or (with a companion) the pushed
+companion head. Ends by itself like `needsInput`.
 
-- `/agent review` on the issue: the reviewers check the pushed head again.
+- `/agent review` on the issue: the reviewers check the pushed head (and
+  companion head) again.
 - `/agent retry` on the issue, or `/agent skip #N`.
 - `/agent merge #N <sha>` (owners only), as for `findings`.
 
@@ -1402,7 +1405,25 @@ It stays a draft (a run puts one marked ready back to draft): the operator
 marks it ready when it can land. The home merge request's description gets
 a line `Companion: <project>!<iid>` inside the runner's part of it. The task
 records it all in `status.run.companion` (`project`, `mrIID`, `mrURL`,
-`branch`, `pushedSHA`).
+`branch`, `pushedSHA`, `reviewedSHA`).
+
+The companion change is committed before the reviewers run (and after
+each fix round), so **the reviewers see both trees** in one input: the
+section `## Tree: home (<project>)` with its changed files and diff, then
+`## Tree: companion (<project>, allowed paths: …; lands after the home change
+is released)` with the companion's. The reviewer's inline-diff cap
+(`maxInlineDiff`) counts both diffs together: when they exceed it, both
+trees are listed by their changed files only, so the companion is never cut
+off. The security reviewer's prompt also says that the companion is applied
+to production by Flux on merge, and asks it to flag secrets, plaintext
+credentials, RBAC widening, and changes that break when applied before the
+home release. A review of both trees sets `status.run.companion.reviewedSHA`
+to the companion head it saw, with `status.run.reviewedSHA`; a run without a
+review (a CI fix) that pushes a new companion head leaves the companion
+unreviewed, and autopilot pauses with `notReviewed` before the merge. `/agent review` then reviews both heads again: the re-review is
+asked for `<home head>+<companion head>`, so a new companion head is a new
+review even when the home head did not change. Without a companion change
+the reviewers' input is the same as without a companion.
 
 A later run that ends without a companion change (the agent reverted it, or
 the issue lost its `agent-repo::` label) closes the companion's merge

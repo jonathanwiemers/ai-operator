@@ -758,7 +758,7 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		}
 		switch a.Tool {
 		case "reReview":
-			if err := r.askReview(ctx, t, t.Status.Run.PushedSHA); err != nil {
+			if err := r.askReview(ctx, t, t.Status.Run.ReviewKey()); err != nil {
 				return err
 			}
 		case "instruct":
@@ -854,7 +854,8 @@ func (r *AgentProjectReconciler) queueCommand(ctx context.Context, st *aiv1.Agen
 	}))
 }
 
-// askReview asks the next run of task to review head again without the
+// askReview asks the next run of task to review head (the review key,
+// RunStatus.ReviewKey: with a companion it names both heads) again without the
 // implementer, also a head it reviewed again before.
 func (r *AgentProjectReconciler) askReview(ctx context.Context, task *aiv1.AgentTask, head string) error {
 	task.Spec.Source.ReviewFor = head

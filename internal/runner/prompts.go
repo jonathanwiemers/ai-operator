@@ -653,18 +653,22 @@ func buildChatContext(msgs []aiv1.ChatMessage) string {
 const defaultInlineDiff = aiv1.DefaultMaxInlineDiff
 
 // buildReviewPrompt inlines the diff when it has at most maxInline chars.
-func buildReviewPrompt(issue *gitlab.Issue, planDecisions, base, diffStat, diff string, maxInline int) string {
+func buildReviewPrompt(issue *gitlab.Issue, planDecisions string, in reviewInput, maxInline int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Review the changes made for issue #%d: %s\n\n", issue.IID, issue.Title)
 	fmt.Fprintf(&b, "## Issue description\n\n%s\n\n", untrustedData(issue.Description))
 	if planDecisions != "" {
 		fmt.Fprintf(&b, "## Decisions of the planning agent\n\n%s\n\n", planDecisions)
 	}
-	fmt.Fprintf(&b, "## Changed files\n\n```\n%s\n```\n\n", diffStat)
-	if len(diff) <= maxInline {
-		fmt.Fprintf(&b, "## Diff\n\n```diff\n%s\n```\n", diff)
+	if in.companion != nil {
+		buildTreesReviewPrompt(&b, in, maxInline)
+		return b.String()
+	}
+	fmt.Fprintf(&b, "## Changed files\n\n```\n%s\n```\n\n", in.stat)
+	if len(in.diff) <= maxInline {
+		fmt.Fprintf(&b, "## Diff\n\n```diff\n%s\n```\n", in.diff)
 	} else {
-		fmt.Fprintf(&b, "The diff is too large to include. Inspect it with `git diff origin/%s...HEAD -- <file>`.\n", base)
+		fmt.Fprintf(&b, "The diff is too large to include. Inspect it with `git diff origin/%s...HEAD -- <file>`.\n", in.base)
 	}
 	return b.String()
 }

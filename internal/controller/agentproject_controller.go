@@ -894,7 +894,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	// "/agent review": the next run reviews the agent's pushed head again.
 	// A head someone else pushed is taken over by a normal run instead.
 	if review && mr != nil && mr.SHA != "" && mr.SHA == task.Status.Run.PushedSHA {
-		if err := r.askReview(ctx, task, mr.SHA); err != nil {
+		if err := r.askReview(ctx, task, task.Status.Run.ReviewKey()); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -1115,7 +1115,7 @@ func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitla
 		case "review":
 			text := "There is no pushed head of the agent to review."
 			if mr != nil && mr.SHA != "" && mr.SHA == task.Status.Run.PushedSHA {
-				if err := r.askReview(ctx, task, mr.SHA); err != nil {
+				if err := r.askReview(ctx, task, task.Status.Run.ReviewKey()); err != nil {
 					return false, err
 				}
 				run = true

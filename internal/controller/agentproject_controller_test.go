@@ -647,3 +647,44 @@ func TestCrossRepoReadyCondition(t *testing.T) {
 		t.Fatalf("expected no CrossRepoReady without spec.crossRepo, got %+v", c)
 	}
 }
+
+// With a companion, "/agent review" asks for both pushed heads; a new
+// companion head with the home head unchanged is a new review, also after
+// the old pair was reviewed again.
+func TestReviewCommandCoversTheCompanionHead(t *testing.T) {
+	e := newProjectEnv(t)
+	human := gitlab.User{ID: 1, Username: "jonathan"}
+	e.gl.AddIssue(42, "Add PayPal button", "agent::ready")
+	e.reconcile()
+	name := "shop-42-add-paypal-button"
+	e.gl.MRs[1] = &gitlab.MergeRequest{IID: 1, State: "opened", SHA: "sha-head", SourceBranch: "agent/42-add-paypal-button"}
+	finished := func(companion, reviewedFor string) {
+		task := e.tasks()[name]
+		orig := task.DeepCopy()
+		task.Status.Run.ObservedRunRequest, task.Status.Run.MergeRequestIID, task.Status.Run.PushedSHA = task.Spec.RunRequest, 1, "sha-head"
+		task.Status.Run.Companion = &aiv1.CompanionRun{Project: "group/infra", MRIID: 3, PushedSHA: companion, ReviewedSHA: "sha-infra-1"}
+		task.Status.Run.ReviewedFor = reviewedFor
+		if err := e.c.Status().Patch(e.ctx, &task, client.MergeFrom(orig)); err != nil {
+			t.Fatal(err)
+		}
+		e.gl.SetLabels(42, "agent::review")
+	}
+	finished("sha-infra-1", "")
+	e.gl.AddMRNote(1, human, "/agent review")
+	e.reconcile()
+	task := e.tasks()[name]
+	if task.Spec.RunRequest != 2 || task.Spec.Source.ReviewFor != "sha-head+sha-infra-1" {
+		t.Fatalf("/agent review asks for both heads: %+v", task.Spec.Source)
+	}
+
+	// Reviewed again; then only the companion moves on.
+	finished("sha-infra-2", "sha-head+sha-infra-1")
+	if !e.tasks()[name].Status.Run.CompanionUnreviewed() {
+		t.Fatal("a companion-only push leaves the companion unreviewed")
+	}
+	e.gl.AddMRNote(1, human, "/agent review")
+	e.reconcile()
+	if task = e.tasks()[name]; task.Spec.RunRequest != 3 || task.Spec.Source.ReviewFor != "sha-head+sha-infra-2" || task.Status.Run.ReviewedFor != "sha-head+sha-infra-1" {
+		t.Fatalf("a new companion head is a new review: %+v %+v", task.Spec.Source, task.Status.Run)
+	}
+}

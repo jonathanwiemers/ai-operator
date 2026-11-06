@@ -931,8 +931,9 @@ moves it. Conflicts are resolved by the agent, with git doing the mechanics:
   cannot resolve does not loop. Autopilot uses the same request when GitLab
   cannot rebase an MR.
 * **Re-review.** `spec.source.reviewFor` (set by `/agent review` when the
-  MR head is the agent's `pushedSHA`) asks the next run to only review: the
-  implementer is skipped if the remote branch is still at that head, no
+  MR head is the agent's `pushedSHA`; with a companion it names both heads,
+  `<home>+<companion>`) asks the next run to only review: the
+  implementer is skipped if the remote branch (and companion branch) is still at that head, no
   human commented since the last run (other than `/agent review` and
   routing commands) and the run has no CI fix, merge or revisit to do. The review loop then runs as usual (blocking findings go to
   the implementer, whose fix is pushed). The run records the head as
@@ -1869,6 +1870,16 @@ flowchart LR
   ending in `<!-- ai-operator:link -->`; agent prose escapes `<!--`, so it
   cannot forge or remove one. The companion's description never gets a
   closing pattern: `#<iid>` there is another project's issue.
+* The reviewers get one input for both trees (`internal/runner/companionreview.go`),
+  with tree headers; the companion is committed before the review loop and
+  after each fix round, and both checkouts are reset after each review. The
+  inline-diff cap applies to the sum of both diffs (both trees fall back to
+  their stat together). The security reviewer's companion note is in its user
+  prompt; system prompts are unchanged. `status.run.companion.reviewedSHA`
+  is set with `status.run.reviewedSHA` when the last review covered the
+  companion. A re-review key (`spec.source.reviewFor`,
+  `RunStatus.ReviewKey`) is `<home>+<companion>` with a pushed companion
+  head; the runner compares it with both remote heads.
 * A task that lost `spec.companion` while `status.run.companion` still
   records its merge request keeps the companion token and the guard's target
   (merges refused) until a run has closed it, if the project is still a
