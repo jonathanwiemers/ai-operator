@@ -701,7 +701,10 @@ checkpoint (empty otherwise); `lines_added` and `lines_deleted` are the
 uncommitted diff an implementer call left, counted by the agent container
 when the engine returned (`git diff --numstat HEAD` plus untracked text
 files), so they are the lines of the step commit after it; other calls
-have 0. The runner only appends the
+have 0. `step_gate_nudges` is how often the step-size gate nudged an
+implementer call: the agent container reads the gate's per-session state
+file before and after the call and records the difference, since a
+session is resumed across calls. The runner only appends the
 call to the task's `status.run.calls` (the newest 50, each with a task-wide
 `seq`); the operator stays the only writer. The differ writes each call
 whose seq the previous status did not have, keyed `call/<task UID>/<seq>`.

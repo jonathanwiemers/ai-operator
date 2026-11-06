@@ -521,7 +521,8 @@ func StoreCall(c aiv1.AgentCall) store.Call {
 		CacheReadTokens: c.CacheReadTokens, CacheWriteTokens: c.CacheWriteTokens,
 		CostSource: c.CostSource, Turns: c.Turns, DurationMS: c.DurationMS,
 		SubagentCalls: c.SubagentCalls, ReadGateBlocks: c.ReadGateBlocks, ContextSeries: c.ContextSeries, SubagentTurns: c.SubagentTurns,
-		Checkpoint: c.Checkpoint, CheckpointSHA: c.CheckpointSHA, LinesAdded: c.LinesAdded, LinesDeleted: c.LinesDeleted}
+		Checkpoint: c.Checkpoint, CheckpointSHA: c.CheckpointSHA, LinesAdded: c.LinesAdded, LinesDeleted: c.LinesDeleted,
+		StepGateNudges: c.StepGateNudges}
 	switch c.CostSource {
 	case aiv1.CostReported, aiv1.CostEstimated:
 		call.CostUSD = costOf(c.CostUSD)

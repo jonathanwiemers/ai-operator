@@ -116,6 +116,8 @@ type Spend struct {
 	ByCheckpoint            []SpendBreakdown
 	BySubagents             []SubagentBreakdown
 	CacheReadShare          float64
+	// StepLines is the size of the scope's step commits.
+	StepLines StepLines
 }
 
 // spendWith is the common table expressions of the spend queries for the
@@ -329,6 +331,9 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 	}); err != nil {
 		return Spend{}, err
 	}
+	if sp.StepLines, err = stepLines(s.pool.QueryRow(ctx, with+stepLinesQuery, args...)); err != nil {
+		return Spend{}, err
+	}
 	return sp, nil
 }
 
@@ -442,7 +447,7 @@ const callColumns = `id, key, at, namespace, project, coalesce(milestone_iid, 0)
 	coalesce(mr_iid, 0), task, run, seq, kind, role, engine, model, effort, resumed, fallback_from,
 	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd::float8, cost_source,
 	turns, duration_ms, models, subagent_calls, context_series, subagent_turns, expires_at, read_gate_blocks,
-	checkpoint, checkpoint_sha, lines_added, lines_deleted`
+	checkpoint, checkpoint_sha, lines_added, lines_deleted, step_gate_nudges`
 
 func scanCall(row pgx.Row) (Call, error) {
 	var c Call
@@ -450,6 +455,41 @@ func scanCall(row pgx.Row) (Call, error) {
 		&c.MergeRequestIID, &c.Task, &c.Run, &c.Seq, &c.Kind, &c.Role, &c.Engine, &c.Model, &c.Effort, &c.Resumed,
 		&c.FallbackFrom, &c.InputTokens, &c.OutputTokens, &c.CacheReadTokens, &c.CacheWriteTokens, &c.CostUSD,
 		&c.CostSource, &c.Turns, &c.DurationMS, &c.Models, &c.SubagentCalls, &c.ContextSeries, &c.SubagentTurns,
-		&c.ExpiresAt, &c.ReadGateBlocks, &c.Checkpoint, &c.CheckpointSHA, &c.LinesAdded, &c.LinesDeleted)
+		&c.ExpiresAt, &c.ReadGateBlocks, &c.Checkpoint, &c.CheckpointSHA, &c.LinesAdded, &c.LinesDeleted, &c.StepGateNudges)
 	return c, err
+}
+
+// StepLines is the size of a scope's step commits: the lines (added plus
+// deleted) of its implement calls that left uncommitted lines, which equal
+// the step commit after each. Median and P90 are interpolated and rounded,
+// all zero without such a call. Nudges is the step-size gate's nudges of
+// all the scope's calls.
+type StepLines struct {
+	Count, Median, P90, Max int64
+	Nudges                  int64
+}
+
+// stepLinesQuery selects the StepLines columns of the scope's calls.
+const stepLinesQuery = `, steps AS (
+		SELECT lines_added + lines_deleted AS lines FROM scoped WHERE kind = 'implement' AND lines_added + lines_deleted > 0
+	)
+	SELECT (SELECT count(*) FROM steps),
+		coalesce((SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY lines))::bigint FROM steps), 0),
+		coalesce((SELECT round(percentile_cont(0.9) WITHIN GROUP (ORDER BY lines))::bigint FROM steps), 0),
+		coalesce((SELECT max(lines) FROM steps), 0)::bigint,
+		(SELECT coalesce(sum(step_gate_nudges), 0)::bigint FROM scoped)`
+
+func stepLines(row pgx.Row) (StepLines, error) {
+	var l StepLines
+	err := row.Scan(&l.Count, &l.Median, &l.P90, &l.Max, &l.Nudges)
+	return l, err
+}
+
+// StepLines returns the size of the scope's step commits as Spend does.
+func (s *Store) StepLines(ctx context.Context, sc SpendScope) (StepLines, error) {
+	with, args, err := spendQuery(sc)
+	if err != nil {
+		return StepLines{}, err
+	}
+	return stepLines(s.pool.QueryRow(ctx, with+stepLinesQuery, args...))
 }

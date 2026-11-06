@@ -186,3 +186,28 @@ func TestSpendViewCheckpoints(t *testing.T) {
 		t.Errorf("by checkpoint = %+v", b)
 	}
 }
+
+// The view carries the scope's step lines and each call's nudges; without
+// step data both read 0.
+func TestSpendViewStepLines(t *testing.T) {
+	v := spendView(store.Spend{
+		Children: []store.SpendChild{
+			{Level: store.SpendCall, Key: "1", Call: &store.Call{Kind: "implement", Engine: "claude", CostSource: "reported",
+				LinesAdded: 380, LinesDeleted: 40, StepGateNudges: 2}},
+			{Level: store.SpendCall, Key: "2", Call: &store.Call{Kind: "review", Engine: "claude", CostSource: "reported"}},
+		},
+		StepLines: store.StepLines{Count: 4, Median: 175, P90: 775, Max: 1000, Nudges: 2},
+	})
+	if want := (StepLinesView{Count: 4, Median: 175, P90: 775, Max: 1000, Nudges: 2}); v.StepLines != want {
+		t.Errorf("step lines = %+v, want %+v", v.StepLines, want)
+	}
+	if c := v.Children[0]; c.StepGateNudges != 2 || c.LinesAdded != 380 {
+		t.Errorf("implement call = %+v", c.SpendCallView)
+	}
+	if c := v.Children[1]; c.StepGateNudges != 0 {
+		t.Errorf("review call = %+v, want no nudges", c.SpendCallView)
+	}
+	if v := spendView(store.Spend{}); v.StepLines != (StepLinesView{}) {
+		t.Errorf("no step data: %+v, want zeros", v.StepLines)
+	}
+}

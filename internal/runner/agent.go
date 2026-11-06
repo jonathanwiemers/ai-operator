@@ -72,6 +72,10 @@ type LocalAgent struct {
 	Engines    map[aiv1.Engine]Engine
 	// Exchange is the only directory bundles may be read from or written to.
 	Exchange string
+	// StepGateDir is where the step-size gate keeps its per-session state
+	// (ai-runner step-gate --state-dir); empty is the temp dir, the gate's
+	// default.
+	StepGateDir string
 
 	mu      sync.Mutex
 	session Session
@@ -99,11 +103,35 @@ func (a *LocalAgent) Run(ctx context.Context, engine aiv1.Engine, inv Invocation
 		ctx = withStatusSink(ctx, w.set)
 		defer w.flush()
 	}
+	// Sessions are resumed across calls and the gate's count is per
+	// session: the call's nudges are the difference.
+	nudgesBefore := StepGateNudges(a.StepGateDir, inv.Resume)
 	res, err := eng.Run(ctx, inv)
 	if inv.CountLines && !inv.ReadOnly && res != nil && a.Workspace.exists() {
 		a.countLines(ctx, res)
 	}
+	if inv.CountLines && res != nil {
+		a.countNudges(res, inv.Resume, nudgesBefore)
+	}
 	return res, err
+}
+
+// countNudges adds the step-size gate's nudges of the call to
+// res.CallUsage: the count of the result's session minus before, the count
+// of the resumed session before the call (only when the call kept that
+// session; a new session starts at zero).
+func (a *LocalAgent) countNudges(res *Result, resumed string, before int) {
+	if res.SessionID != resumed {
+		before = 0
+	}
+	n := StepGateNudges(a.StepGateDir, res.SessionID) - before
+	if n <= 0 {
+		return
+	}
+	if res.CallUsage == nil {
+		res.CallUsage = &CallUsage{}
+	}
+	res.CallUsage.StepGateNudges = int32(n)
 }
 
 // countLinesTimeout bounds the count, which also runs after a call that

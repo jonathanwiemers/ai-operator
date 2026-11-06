@@ -1392,6 +1392,11 @@ type AgentCall struct {
 	// +optional
 	LinesDeleted int64 `json:"linesDeleted,omitempty"`
 
+	// StepGateNudges is how often the step-size gate told the implementer
+	// to close its step during the call.
+	// +optional
+	StepGateNudges int32 `json:"stepGateNudges,omitempty"`
+
 	// ContextSeries is the context size (input and cache tokens) of each
 	// main-thread assistant turn. Only the newest calls in status keep it.
 	// +optional

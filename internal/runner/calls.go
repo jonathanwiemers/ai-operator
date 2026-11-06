@@ -41,7 +41,7 @@ func agentCall(engine aiv1.Engine, inv Invocation, res *Result, start, end time.
 	}
 	c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheWriteTokens = u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens
 	c.Turns, c.SubagentCalls, c.ReadGateBlocks = u.Turns, u.SubagentCalls, u.ReadGateBlocks
-	c.LinesAdded, c.LinesDeleted = u.LinesAdded, u.LinesDeleted
+	c.LinesAdded, c.LinesDeleted, c.StepGateNudges = u.LinesAdded, u.LinesDeleted, u.StepGateNudges
 	if u.DurationMS > 0 {
 		c.DurationMS = u.DurationMS
 	}

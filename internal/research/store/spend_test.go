@@ -406,3 +406,63 @@ func TestSpendTuning(t *testing.T) {
 		t.Errorf("empty scope = %+v", sp)
 	}
 }
+
+// StepLines sums the scope's implement calls that left lines: 40, 100, 250
+// and 1000 lines, so the median is 175 and the p90 775.
+func TestStepLines(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	base := time.Now().Add(-time.Hour).Truncate(time.Second)
+	exp := time.Now().Add(24 * time.Hour)
+	n := 0
+	call := func(issue int64, kind string, added, deleted int64, nudges int32) store.Call {
+		n++
+		return store.Call{Key: "k" + strconv.Itoa(n), At: base.Add(time.Duration(n) * time.Minute), Namespace: "agents",
+			Project: "bloop", MilestoneIID: 20, IssueIID: issue, Task: "bloop-" + strconv.FormatInt(issue, 10), Run: 1,
+			Seq: int64(n), Kind: kind, Role: "implement", Engine: "claude", CostSource: "unknown", ExpiresAt: exp,
+			LinesAdded: added, LinesDeleted: deleted, StepGateNudges: nudges}
+	}
+	calls := []store.Call{
+		call(148, "implement", 100, 0, 0),
+		call(148, "implement", 200, 50, 1),
+		call(148, "implement", 30, 10, 0),
+		call(148, "implement", 400, 600, 3),
+		// No lines: a step that only answered.
+		call(148, "implement", 0, 0, 0),
+		// Not a step commit: a fix round and a review.
+		call(148, "fix", 500, 0, 0),
+		call(148, "review", 0, 0, 0),
+		// Another issue.
+		call(150, "implement", 9000, 999, 7),
+	}
+	if _, err := owner.InsertCalls(ctx, calls); err != nil {
+		t.Fatal(err)
+	}
+	scope := store.SpendScope{Namespace: "agents", Project: "bloop", IssueIID: 148}
+	want := store.StepLines{Count: 4, Median: 175, P90: 775, Max: 1000, Nudges: 4}
+	if got, err := s.StepLines(ctx, scope); err != nil || got != want {
+		t.Errorf("StepLines(#148) = %+v, %v; want %+v", got, err, want)
+	}
+	if sp, err := s.Spend(ctx, scope); err != nil || sp.StepLines != want {
+		t.Errorf("Spend(#148).StepLines = %+v, %v; want %+v", sp.StepLines, err, want)
+	}
+	if got, err := s.StepLines(ctx, store.SpendScope{Namespace: "agents", Project: "bloop"}); err != nil ||
+		got != (store.StepLines{Count: 5, Median: 250, P90: 6399, Max: 9999, Nudges: 11}) {
+		t.Errorf("StepLines(project) = %+v, %v", got, err)
+	}
+	if got, err := s.StepLines(ctx, store.SpendScope{Namespace: "agents", Project: "bloop", IssueIID: 999}); err != nil || got != (store.StepLines{}) {
+		t.Errorf("StepLines(no calls) = %+v, %v; want zeros", got, err)
+	}
+	// The call rows carry their nudges.
+	sp, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "bloop", IssueIID: 148, Task: "bloop-148"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := sp.Children[3].Call; c == nil || c.StepGateNudges != 3 {
+		t.Errorf("call 4 row = %+v; want 3 nudges", c)
+	}
+	if c := sp.Children[0].Call; c == nil || c.StepGateNudges != 0 {
+		t.Errorf("call 1 row = %+v; want no nudges", c)
+	}
+}

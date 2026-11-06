@@ -660,6 +660,11 @@ export interface SpendCallView {
    */
   linesAdded: number /* int64 */;
   linesDeleted: number /* int64 */;
+  /**
+   * StepGateNudges is how often the step-size gate told the implementer
+   * to close its step during the call.
+   */
+  stepGateNudges: number /* int32 */;
 }
 /**
  * SpendChildView is one part of the scope at the next level: a milestone
@@ -713,6 +718,23 @@ export interface SpendView {
   byCheckpoint: SpendBreakdownView[];
   bySubagents: SubagentBreakdownView[];
   cacheReadShare: number /* float64 */;
+  /**
+   * StepLines is the size of the scope's step commits.
+   */
+  stepLines: StepLinesView;
+}
+/**
+ * StepLinesView is the size of a scope's step commits: the implement
+ * calls that left lines (count) and their lines (added plus deleted):
+ * median, p90 and max. Nudges is the step-size gate's nudges in scope. All
+ * zero without step data.
+ */
+export interface StepLinesView {
+  count: number /* int64 */;
+  median: number /* int64 */;
+  p90: number /* int64 */;
+  max: number /* int64 */;
+  nudges: number /* int64 */;
 }
 
 //////////

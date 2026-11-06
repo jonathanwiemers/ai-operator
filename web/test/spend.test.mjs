@@ -6,6 +6,7 @@ import {
   avgTokens,
   callCost,
   callLines,
+  callNudges,
   checkpointsLine,
   childLabel,
   companionNote,
@@ -32,6 +33,7 @@ import {
   spendLocation,
   spendQuery,
   spendUSD,
+  stepLinesLine,
   subagentRoles,
   gateBlocksPerCall,
   subagentShare,
@@ -451,4 +453,26 @@ test('companionNote: issue rows with a companion project only', () => {
   assert.equal(companionNote({ level: 'issue' }), '')
   assert.equal(companionNote({ level: 'issue', companion: ' ' }), '')
   assert.equal(companionNote({ level: 'run', companion: 'group/infra' }), '')
+})
+
+test('callNudges counts the step-size gate nudges of a call', () => {
+  assert.equal(callNudges({ stepGateNudges: 2 }), '2 step-gate nudges')
+  assert.equal(callNudges({ stepGateNudges: 1 }), '1 step-gate nudge')
+  assert.equal(callNudges({ stepGateNudges: 0 }), '')
+  assert.equal(callNudges({}), '')
+})
+
+test('stepLinesLine sums the step commits and nudges, empty without step data', () => {
+  const s = (over = {}) => ({ count: 0, median: 0, p90: 0, max: 0, nudges: 0, ...over })
+  assert.equal(stepLinesLine(undefined), '')
+  assert.equal(stepLinesLine(s()), '')
+  assert.equal(
+    stepLinesLine(s({ count: 4, median: 175, p90: 775, max: 1000, nudges: 2 })),
+    '4 step commits: median 175, p90 775, max 1000 lines · 2 step-gate nudges',
+  )
+  assert.equal(
+    stepLinesLine(s({ count: 1, median: 40, p90: 40, max: 40 })),
+    '1 step commit: median 40, p90 40, max 40 lines · 0 step-gate nudges',
+  )
+  assert.equal(stepLinesLine(s({ nudges: 1 })), '1 step-gate nudge')
 })

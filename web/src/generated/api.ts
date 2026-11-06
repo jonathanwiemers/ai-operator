@@ -3824,6 +3824,12 @@ export interface AgentCall {
    */
   linesDeleted?: number /* int64 */;
   /**
+   * StepGateNudges is how often the step-size gate told the implementer
+   * to close its step during the call.
+   * +optional
+   */
+  stepGateNudges?: number /* int32 */;
+  /**
    * ContextSeries is the context size (input and cache tokens) of each
    * main-thread assistant turn. Only the newest calls in status keep it.
    * +optional

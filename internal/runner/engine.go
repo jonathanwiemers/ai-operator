@@ -137,6 +137,10 @@ type CallUsage struct {
 	// call left in the home tree (Workspace.UncommittedLines), measured by
 	// the agent container when the engine returned.
 	LinesAdded, LinesDeleted int64
+	// StepGateNudges is how often the step-size gate nudged the call's
+	// session during the call, read by the agent container from the gate's
+	// state file (with the lines, see Invocation.CountLines).
+	StepGateNudges int32
 }
 
 // ModelUsage is one model's share of a call.

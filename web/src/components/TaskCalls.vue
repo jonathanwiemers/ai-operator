@@ -6,6 +6,7 @@ import { useNow } from '../live'
 import {
   callCost,
   callLines,
+  callNudges,
   checkpointsLine,
   costSourceLabel,
   legacyNote,
@@ -165,7 +166,16 @@ async function toggle(r: SpendChild) {
                           </span>
                         </td>
                         <td>{{ c.resumed ? 'resumed' : '—' }}</td>
-                        <td class="num">{{ callLines(c) || '—' }}</td>
+                        <td class="num">
+                          {{ callLines(c) || '—' }}
+                          <span
+                            v-if="callNudges(c)"
+                            class="faint"
+                            title="How often the step-size gate told the implementer to close its step"
+                          >
+                            · {{ callNudges(c) }}
+                          </span>
+                        </td>
                         <td class="num">{{ tokenCount(c.totals.inputTokens) }}</td>
                         <td class="num">{{ tokenCount(c.totals.outputTokens) }}</td>
                         <td class="num">{{ tokenCount(c.totals.cacheReadTokens) }}</td>

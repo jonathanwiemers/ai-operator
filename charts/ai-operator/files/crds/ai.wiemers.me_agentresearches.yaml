@@ -414,6 +414,12 @@ spec:
                           description: Seq numbers the task's calls, starting at 1.
                           format: int64
                           type: integer
+                        stepGateNudges:
+                          description: |-
+                            StepGateNudges is how often the step-size gate told the implementer
+                            to close its step during the call.
+                          format: int32
+                          type: integer
                         subagentCalls:
                           description: SubagentCalls is how many subagents the call
                             started.

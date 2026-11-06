@@ -1,5 +1,5 @@
 import { cost, tokenCount } from './format.ts'
-import type { SpendBreakdown, SpendChild, SpendTotals, SubagentBreakdown } from './types'
+import type { SpendBreakdown, SpendChild, SpendTotals, StepLines, SubagentBreakdown } from './types'
 
 // The Spend tab's drill-down (decision 5): project → milestone → issue →
 // run → calls. The milestone is the stream's route parameter, the rest
@@ -454,6 +454,24 @@ const implementerKinds = ['implement', 'fix', 'ci', 'conflict']
 export function callLines(c: Pick<SpendChild, 'kind' | 'linesAdded' | 'linesDeleted'>): string {
   if (!c.kind || !implementerKinds.includes(c.kind) || c.linesAdded === undefined) return ''
   return `+${c.linesAdded}/−${c.linesDeleted ?? 0}`
+}
+
+// callNudges is "2 step-gate nudges", how often the step-size gate told
+// the implementer to close its step during the call; "" without a nudge.
+export function callNudges(c: Pick<SpendChild, 'stepGateNudges'>): string {
+  const n = c.stepGateNudges ?? 0
+  return n > 0 ? `${n} step-gate ${n === 1 ? 'nudge' : 'nudges'}` : ''
+}
+
+// stepLinesLine sums the scope's step commits (implement calls that left
+// lines): "4 step commits: median 175, p90 775, max 1000 lines · 2
+// step-gate nudges"; "" without step data.
+export function stepLinesLine(s: StepLines | undefined): string {
+  if (!s || (s.count === 0 && s.nudges === 0)) return ''
+  const nudges = `${s.nudges} step-gate ${s.nudges === 1 ? 'nudge' : 'nudges'}`
+  if (s.count === 0) return nudges
+  const commits = `${s.count} step ${s.count === 1 ? 'commit' : 'commits'}`
+  return `${commits}: median ${s.median}, p90 ${s.p90}, max ${s.max} lines · ${nudges}`
 }
 
 // checkpointsLine sums the calls that saved a checkpoint: "2 checkpoints:

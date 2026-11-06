@@ -28,6 +28,7 @@ import {
   spendCrumbs,
   spendLocation,
   spendTokens,
+  stepLinesLine,
   tokenBreakdown as tokenTitle,
   spendUSD,
   subagentRoles,
@@ -129,6 +130,7 @@ const breakdowns = computed(() => {
 // by (docs/configuration.md).
 const rounds = computed(() => reviewRounds(data.value?.byReviewRound ?? []))
 const sessions = computed(() => sessionRows(data.value?.bySession ?? []))
+const stepLines = computed(() => stepLinesLine(data.value?.stepLines))
 const subagentRows = computed(() => subagentRoles(data.value?.bySubagents ?? []))
 
 // level: what the children are, as the API groups them.
@@ -400,6 +402,13 @@ function rowKey(b: SpendBreakdown): string {
             </table>
           </div>
           <p v-else class="muted">No implementer steps here.</p>
+          <p
+            v-if="stepLines"
+            class="muted"
+            title="Lines (added plus deleted) of the implement calls that left a step commit, and the step-size gate's nudges"
+          >
+            {{ stepLines }}
+          </p>
         </div>
         <div class="section">
           <h3>With vs without subagents</h3>

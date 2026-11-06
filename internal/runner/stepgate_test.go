@@ -2,12 +2,15 @@ package runner
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
 // stepGateRepo is a repository with one committed file of 10 lines.
@@ -227,5 +230,57 @@ func TestStepGateDefaultStateDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(tmp, "step-gate-d.json")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// nudgingEngine sets the step-size gate's count of its session to nudges,
+// as the gate's hook would during the call.
+type nudgingEngine struct {
+	dir, session string
+	nudges       int
+}
+
+func (e nudgingEngine) Run(context.Context, Invocation) (*Result, error) {
+	if err := writeStepGateState(stepGatePath(e.dir, e.session), stepGateState{Nudges: e.nudges}); err != nil {
+		return nil, err
+	}
+	return &Result{SessionID: e.session}, nil
+}
+
+func TestLocalAgentCountsStepGateNudges(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeStepGateState(stepGatePath(dir, "sess"), stepGateState{Nudges: 1}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name       string
+		engine     nudgingEngine
+		inv        Invocation
+		want       int32
+		wantNoUsed bool
+	}{
+		{"resumed session from 1 to 3", nudgingEngine{dir, "sess", 3}, Invocation{Resume: "sess", CountLines: true}, 2, false},
+		{"fresh session", nudgingEngine{dir, "fresh", 2}, Invocation{CountLines: true}, 2, false},
+		{"resume that became a new session", nudgingEngine{dir, "other", 1}, Invocation{Resume: "sess", CountLines: true}, 1, false},
+		{"no nudge", nudgingEngine{dir, "quiet", 0}, Invocation{CountLines: true}, 0, true},
+		{"not an implementer call", nudgingEngine{dir, "review", 4}, Invocation{}, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &LocalAgent{Workspace: &Workspace{Dir: filepath.Join(dir, "missing")}, StepGateDir: dir,
+				Engines: map[aiv1.Engine]Engine{aiv1.EngineClaude: tc.engine}}
+			res, err := a.Run(context.Background(), aiv1.EngineClaude, tc.inv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantNoUsed {
+				if res.CallUsage != nil {
+					t.Fatalf("usage %+v, want none", res.CallUsage)
+				}
+				return
+			}
+			if res.CallUsage == nil || res.CallUsage.StepGateNudges != tc.want {
+				t.Fatalf("usage %+v, want %d nudges", res.CallUsage, tc.want)
+			}
+		})
 	}
 }

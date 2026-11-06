@@ -64,6 +64,9 @@ type SpendCallView struct {
 	// call left: the lines of the step commit after it.
 	LinesAdded   int64 `json:"linesAdded"`
 	LinesDeleted int64 `json:"linesDeleted"`
+	// StepGateNudges is how often the step-size gate told the implementer
+	// to close its step during the call.
+	StepGateNudges int32 `json:"stepGateNudges"`
 }
 
 // SpendChildView is one part of the scope at the next level: a milestone
@@ -112,6 +115,20 @@ type SpendView struct {
 	ByCheckpoint   []SpendBreakdownView    `json:"byCheckpoint"`
 	BySubagents    []SubagentBreakdownView `json:"bySubagents"`
 	CacheReadShare float64                 `json:"cacheReadShare"`
+	// StepLines is the size of the scope's step commits.
+	StepLines StepLinesView `json:"stepLines"`
+}
+
+// StepLinesView is the size of a scope's step commits: the implement
+// calls that left lines (count) and their lines (added plus deleted):
+// median, p90 and max. Nudges is the step-size gate's nudges in scope. All
+// zero without step data.
+type StepLinesView struct {
+	Count  int64 `json:"count"`
+	Median int64 `json:"median"`
+	P90    int64 `json:"p90"`
+	Max    int64 `json:"max"`
+	Nudges int64 `json:"nudges"`
 }
 
 // spend returns what a project, milestone, issue, task or run cost, from
@@ -212,7 +229,8 @@ func spendView(sp store.Spend) SpendView {
 	v := SpendView{Totals: spendTotalsView(sp.Totals), Children: make([]SpendChildView, 0, len(sp.Children)),
 		ByKind: breakdownViews(sp.ByKind), ByRole: breakdownViews(sp.ByRole), ByModel: breakdownViews(sp.ByModel),
 		ByReviewRound: breakdownViews(sp.ByReviewRound), BySession: breakdownViews(sp.BySession), ByCheckpoint: breakdownViews(sp.ByCheckpoint),
-		BySubagents: make([]SubagentBreakdownView, 0, len(sp.BySubagents)), CacheReadShare: sp.CacheReadShare}
+		BySubagents: make([]SubagentBreakdownView, 0, len(sp.BySubagents)), CacheReadShare: sp.CacheReadShare,
+		StepLines: StepLinesView(sp.StepLines)}
 	for _, b := range sp.BySubagents {
 		v.BySubagents = append(v.BySubagents, SubagentBreakdownView{Role: b.Role, WithSubagents: b.WithSubagents,
 			Totals: spendTotalsView(b.Totals), SubagentTokens: b.SubagentTokens,
@@ -230,7 +248,7 @@ func spendView(sp store.Spend) SpendView {
 				Effort: call.Effort, Resumed: call.Resumed, FallbackFrom: call.FallbackFrom, CostSource: call.CostSource,
 				Turns: call.Turns, ContextSeries: call.ContextSeries, SubagentTurns: call.SubagentTurns,
 				ReadGateBlocks: call.ReadGateBlocks, Checkpoint: call.Checkpoint, CheckpointSHA: call.CheckpointSHA,
-				LinesAdded: call.LinesAdded, LinesDeleted: call.LinesDeleted}
+				LinesAdded: call.LinesAdded, LinesDeleted: call.LinesDeleted, StepGateNudges: call.StepGateNudges}
 			if cv.ContextSeries == nil {
 				cv.ContextSeries = []int64{}
 			}

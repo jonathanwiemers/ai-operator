@@ -167,3 +167,20 @@ func TestCheckpointColumnsMigration(t *testing.T) {
 		t.Errorf("old row = %q %q +%d/−%d, %v; want '' '' 0 0", reason, sha, added, deleted, err)
 	}
 }
+
+// Migration 8 adds step_gate_nudges to agent_calls; rows written before it
+// read 0.
+func TestStepGateNudgesMigration(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	exec(t, s.Pool(), "ALTER TABLE agent_calls DROP COLUMN step_gate_nudges")
+	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version = 8")
+	exec(t, s.Pool(), insertCall)
+	if err := s.Migrate(ctx, store.Grants{}); err != nil {
+		t.Fatal(err)
+	}
+	var n int32
+	if err := s.Pool().QueryRow(ctx, "SELECT step_gate_nudges FROM agent_calls WHERE key = 'k'").Scan(&n); err != nil || n != 0 {
+		t.Errorf("old row step_gate_nudges = %d, %v; want 0", n, err)
+	}
+}

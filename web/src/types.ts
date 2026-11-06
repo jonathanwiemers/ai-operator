@@ -44,6 +44,7 @@ export type {
   SpendChildView as SpendChild,
   SpendBreakdownView as SpendBreakdown,
   SubagentBreakdownView as SubagentBreakdown,
+  StepLinesView as StepLines,
   ModelSplitView as ModelSplit,
   ExitView,
   ExitStatus,

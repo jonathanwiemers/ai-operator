@@ -154,11 +154,11 @@ func TestNewCall(t *testing.T) {
 
 	// No model configured: the main model of the split.
 	c := r.newCall(aiv1.EngineClaude, inv, &Result{CostUSD: 1.23456, CallUsage: &CallUsage{OutputTokens: 9, ReadGateBlocks: 2,
-		LinesAdded: 120, LinesDeleted: 7,
+		LinesAdded: 120, LinesDeleted: 7, StepGateNudges: 2,
 		Models: []ModelUsage{{Model: "claude-haiku-5-5", OutputTokens: 2}, {Model: "claude-opus-5-5", OutputTokens: 7}}}}, start)
 	if c.Model != "claude-opus-5-5" || c.CostUSD != "1.2346" || c.CostSource != aiv1.CostReported || !c.Resumed ||
 		c.DurationMS != 90000 || c.Run != 3 || c.Effort != "high" || c.Kind != aiv1.CallKindCI || c.ReadGateBlocks != 2 ||
-		c.LinesAdded != 120 || c.LinesDeleted != 7 {
+		c.LinesAdded != 120 || c.LinesDeleted != 7 || c.StepGateNudges != 2 {
 		t.Errorf("claude call: %+v", c)
 	}
 

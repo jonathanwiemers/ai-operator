@@ -88,16 +88,16 @@ func TestMigrateEmptyAndConcurrent(t *testing.T) {
 			t.Errorf("table %s missing (%v)", table, err)
 		}
 	}
-	if n := count(t, s.Pool(), "schema_migrations"); n != 7 {
-		t.Errorf("schema_migrations has %d rows, want 7", n)
+	if n := count(t, s.Pool(), "schema_migrations"); n != 8 {
+		t.Errorf("schema_migrations has %d rows, want 8", n)
 	}
 
 	// A second run is a no-op.
 	if err := s.Migrate(ctx, store.Grants{}); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, s.Pool(), "schema_migrations"); n != 7 {
-		t.Errorf("after a second Migrate schema_migrations has %d rows, want 7", n)
+	if n := count(t, s.Pool(), "schema_migrations"); n != 8 {
+		t.Errorf("after a second Migrate schema_migrations has %d rows, want 8", n)
 	}
 }
 
