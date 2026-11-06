@@ -146,3 +146,41 @@ func TestAutopilotWithoutAPushedHeadDoesNotBlock(t *testing.T) {
 		t.Fatalf("no re-review and no block: %+v %+v", task.Spec, task.Status.Blocked)
 	}
 }
+
+func TestFailedReviewersNamesEachReviewer(t *testing.T) {
+	at := time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC)
+	reset := metav1.NewTime(time.Date(2026, 11, 6, 16, 0, 0, 0, time.UTC))
+	next := metav1.NewTime(time.Date(2026, 11, 7, 1, 0, 0, 0, time.UTC))
+	run := aiv1.RunStatus{ReviewErrors: 2, LastActivityTime: &metav1.Time{Time: at}}
+	if got := failedReviewers(run); got != "2 reviewers failed" {
+		t.Fatalf("without kinds the count stays: %q", got)
+	}
+	run.ReviewErrorKinds = []aiv1.ReviewError{
+		{Reviewer: "coderabbit", Kind: "timeout"},
+		{Reviewer: "bugbot", Kind: "usageLimit", ResetAt: &reset},
+	}
+	want := "bugbot failed (usageLimit, resets 16:00 UTC), coderabbit failed (timeout)"
+	if got := failedReviewers(run); got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	run.ReviewErrorKinds[1].ResetAt = &next
+	if got := failedReviewers(run); !strings.Contains(got, "resets 2026-11-07 01:00 UTC") {
+		t.Fatalf("a reset on another day names the date: %q", got)
+	}
+	run.ReviewErrorKinds = []aiv1.ReviewError{{Reviewer: "bugbot", Kind: "usageLimit", Engine: "cursor"}}
+	if got := failedReviewers(run); got != "bugbot failed (usageLimit, cursor)" {
+		t.Fatalf("engine: %q", got)
+	}
+}
+
+func TestAutopilotReviewerReasonNamesKindsAndTransientAgain(t *testing.T) {
+	e, name := reviewersDown(t, true)
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ReviewErrorKinds = []aiv1.ReviewError{{Reviewer: "coderabbit", Kind: "timeout"}, {Reviewer: "bugbot", Kind: "outage"}}
+	})
+	reReviewed(t, e, name)
+	failedAgain(t, e, name)
+	if r := e.autopilot().PausedReason; !strings.Contains(r, "bugbot failed (outage), coderabbit failed (timeout) on #1") || !strings.Contains(r, "also when reviewed again") {
+		t.Fatalf("reason: %q", r)
+	}
+}

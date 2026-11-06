@@ -1238,7 +1238,10 @@ The review left blocker or major findings. Ends by itself like `needsInput`
 #### `reviewErrors`
 
 Reviewers failed (after the one re-review of a transient outage). Ends by
-itself like `needsInput`.
+itself like `needsInput`. The reason names each failed reviewer and why,
+sorted by reviewer, for example "bugbot failed (usageLimit, resets 16:00 UTC),
+coderabbit failed (timeout)"; runs from before the kinds were recorded say
+"N reviewers failed".
 
 - `/agent review` on the issue: the reviewers check the pushed head (and
   companion head) again.

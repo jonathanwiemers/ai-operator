@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -16,7 +18,7 @@ import (
 func (a *autopilot) reviewErrors(it *aiv1.AutopilotItem, task *aiv1.AgentTask) gateResult {
 	run := task.Status.Run
 	g := gateResult{state: gateFailed, kind: aiv1.PauseReviewErrors, byRun: true,
-		reason: fmt.Sprintf("%d reviewers failed on #%d, so the change is not fully reviewed", run.ReviewErrors, it.IID)}
+		reason: fmt.Sprintf("%s on #%d, so the change is not fully reviewed", failedReviewers(run), it.IID)}
 	switch {
 	case !run.ReviewErrorsTransient || run.PushedSHA == "":
 	case task.Spec.Source.ReviewFor != run.ReviewKey():
@@ -26,6 +28,35 @@ func (a *autopilot) reviewErrors(it *aiv1.AutopilotItem, task *aiv1.AgentTask) g
 		g.block = aiv1.BlockInfra
 	}
 	return g
+}
+
+// failedReviewers names each failed reviewer and why, sorted so the reason
+// does not change with the status order. A resetAt is written by the review
+// run, so it stays the same across polls; its date is relative to the run's.
+func failedReviewers(run aiv1.RunStatus) string {
+	if len(run.ReviewErrorKinds) == 0 {
+		return fmt.Sprintf("%d reviewers failed", run.ReviewErrors)
+	}
+	errs := slices.Clone(run.ReviewErrorKinds)
+	slices.SortStableFunc(errs, func(x, y aiv1.ReviewError) int {
+		return cmp.Or(strings.Compare(string(x.Reviewer), string(y.Reviewer)), strings.Compare(string(x.Kind), string(y.Kind)))
+	})
+	parts := make([]string, 0, len(errs))
+	for _, e := range errs {
+		why := []string{string(e.Kind)}
+		if e.Engine != "" {
+			why = append(why, string(e.Engine))
+		}
+		if e.ResetAt != nil {
+			day := e.ResetAt.Time
+			if run.LastActivityTime != nil {
+				day = run.LastActivityTime.Time
+			}
+			why = append(why, "resets "+resetTime(e.ResetAt.Time, day))
+		}
+		parts = append(parts, fmt.Sprintf("%s failed (%s)", e.Reviewer, strings.Join(why, ", ")))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // reReview asks for the re-review of the pushed head once
