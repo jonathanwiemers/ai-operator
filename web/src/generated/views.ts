@@ -712,6 +712,11 @@ export interface InboxItem {
    * PauseKind is the cause of a paused autopilot (kind pause).
    */
   pauseKind?: aiv1.PauseKind;
+  /**
+   * PausedSince is when the pause started (kind pause), from
+   * status.autopilot.pausedAt; unset when the operator did not record it.
+   */
+  pausedSince?: string;
 }
 
 //////////

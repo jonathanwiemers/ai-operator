@@ -137,6 +137,7 @@ func TestParseCursor(t *testing.T) {
 func TestInbox(t *testing.T) {
 	posted := metav1.NewTime(time.Now())
 	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "bloop"}}
+	pausedAt := metav1.NewTime(time.Now().Add(-2 * time.Hour).Truncate(time.Second))
 	tasks := []aiv1.AgentTask{
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "q"},
 			Spec:   aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeImplement, RunRequest: 1, Issue: &aiv1.IssueRef{IID: 143, Title: "All-in"}},
@@ -147,7 +148,7 @@ func TestInbox(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "spec"},
 			Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 21, Title: "Poker"}},
 			Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedFor: 391,
-				PausedReason: "1 reviewers failed on #391", PauseKind: aiv1.PauseReviewErrors}}},
+				PausedReason: "1 reviewers failed on #391", PauseKind: aiv1.PauseReviewErrors, PausedAt: &pausedAt}}},
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "running"},
 			Spec:   aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 22, Title: "Lobby"}},
 			Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}}},
@@ -161,6 +162,9 @@ func TestInbox(t *testing.T) {
 	}
 	if p := items[2]; p.Kind != "pause" || p.MilestoneIID != 21 || p.Title != "Poker" || p.IssueIID != 391 || p.PauseKind != aiv1.PauseReviewErrors || p.Reason != "1 reviewers failed on #391" {
 		t.Errorf("a paused autopilot is in the inbox, a running one is not: %+v", p)
+	}
+	if p := items[2]; p.PausedSince == nil || !p.PausedSince.Equal(pausedAt.Time) {
+		t.Errorf("pausedSince = %v, want %v", p.PausedSince, pausedAt.Time)
 	}
 }
 

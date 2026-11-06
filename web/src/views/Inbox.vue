@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
+import { duration } from '../format'
+import { pausedStrip } from '../inboxStrip'
 import { useResource } from '../live'
 import { disableNotify, enableNotify, notify, notifyActive, refreshPermission } from '../notify'
 import { inboxRoute } from '../inboxRoute'
@@ -8,6 +10,8 @@ import PauseCardCompact from '../components/PauseCardCompact.vue'
 import RelTime from '../components/RelTime.vue'
 
 const { data, error, loading } = useResource<InboxResponse>(() => '/inbox', ['project', 'task'])
+
+const strip = computed(() => pausedStrip(data.value?.items ?? [], Date.now()))
 
 onMounted(refreshPermission)
 </script>
@@ -40,6 +44,19 @@ onMounted(refreshPermission)
       </button>
     </div>
     <p class="muted">What needs you now, across projects.</p>
+    <div v-if="strip.count" class="banner warning paused-strip">
+      <b>{{ strip.count }} {{ strip.count === 1 ? 'autopilot' : 'autopilots' }} paused</b
+      ><template v-if="strip.longestMs">, longest {{ duration(strip.longestMs) }}</template>
+      <div class="strip-links">
+        <RouterLink
+          v-for="m in strip.milestones"
+          :key="`${m.namespace}/${m.project}/${m.milestoneIID}`"
+          :to="{ name: 'stream-milestone', params: { namespace: m.namespace, name: m.project, iid: String(m.milestoneIID) } }"
+        >
+          {{ m.project }} · {{ m.title || `%${m.milestoneIID}` }}<template v-if="m.sinceMs != null"> ({{ duration(m.sinceMs) }})</template>
+        </RouterLink>
+      </div>
+    </div>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !data" class="card empty">Loading…</div>
     <div v-else-if="data && !data.items.length" class="card empty">Nothing waiting.</div>
@@ -72,6 +89,12 @@ onMounted(refreshPermission)
 </template>
 
 <style scoped>
+.strip-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 4px;
+}
 .inbox h1 {
   margin-bottom: 4px;
 }

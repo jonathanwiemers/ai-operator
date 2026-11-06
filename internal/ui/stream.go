@@ -496,6 +496,9 @@ type InboxItem struct {
 	URL      string     `json:"url,omitempty"`
 	// PauseKind is the cause of a paused autopilot (kind pause).
 	PauseKind aiv1.PauseKind `json:"pauseKind,omitempty"`
+	// PausedSince is when the pause started (kind pause), from
+	// status.autopilot.pausedAt; unset when the operator did not record it.
+	PausedSince *time.Time `json:"pausedSince,omitempty"`
 }
 
 // inbox lists what needs the user across the projects they may see: tasks
@@ -598,6 +601,10 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 		if a := t.Status.Autopilot; a != nil && a.Phase == aiv1.AutopilotPaused && t.Spec.Milestone != nil {
 			it := base
 			it.Kind, it.IssueIID, it.Title, it.Reason, it.PauseKind = "pause", a.PausedFor, t.Spec.Milestone.Title, a.PausedReason, a.PauseKind
+			if a.PausedAt != nil {
+				since := a.PausedAt.Time
+				it.PausedSince = &since
+			}
 			items = append(items, it)
 			continue
 		}
