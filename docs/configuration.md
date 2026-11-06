@@ -387,7 +387,11 @@ it added. With `true`:
   not match becomes `chore(agent): <first line, lowercased>` (the body and
   `Refs #N` stay); it is logged and counted in the run report;
 - a new branch starts with `chore: start work on #N`, and a conflict run's
-  merge commit is `chore: merge <base> into <branch>`.
+  merge commit is `chore: merge <base> into <branch>`;
+- the describe agent also returns the MR `title` (same `pattern`, one line,
+  no `Draft:` prefix), and the runner sets it, with `Draft: ` while the MR is
+  a draft, so a squash merge lands a conventional commit. A title renamed by
+  hand, or a describer title that does not match, leaves the title as it is.
 
 See [usage.md](usage.md#commit-messages).
 

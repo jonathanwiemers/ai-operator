@@ -4,13 +4,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/conventional"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
 // The runner owns the part of the merge request description between these
@@ -73,6 +75,54 @@ type DescribeAnswer struct {
 	How          string `json:"how"`
 	Verification string `json:"verification"`
 	Diagram      string `json:"diagram"`
+	// Title is the merge request's Conventional Commits title, asked for
+	// while workflow.conventionalCommits is on.
+	Title string `json:"title,omitempty"`
+}
+
+// describeSchemaFor is describeSchema; with types it also requires a
+// Conventional Commits title.
+func describeSchemaFor(types []string) string {
+	if types == nil {
+		return describeSchema
+	}
+	pattern, _ := json.Marshal(conventional.Pattern(types))
+	desc, _ := json.Marshal(`The merge request title in Conventional Commits format: type(scope): subject. One line, at most 72 characters, ` +
+		`no "Draft:" prefix. Type and scope summarise the whole change of the branch. Types: ` + strings.Join(types, ", ") + ".")
+	s := strings.Replace(describeSchema, `"required": ["why", "what", "how", "verification", "diagram"]`,
+		`"required": ["why", "what", "how", "verification", "diagram", "title"]`, 1)
+	return strings.Replace(s, `"diagram": {"type": "string", "description": "Mermaid source without a code fence, or empty."}`,
+		`"diagram": {"type": "string", "description": "Mermaid source without a code fence, or empty."},
+    "title": {"type": "string", "pattern": `+string(pattern)+`, "description": `+string(desc)+`}`, 1)
+}
+
+// describeTitleNote ends the describer's prompt while
+// workflow.conventionalCommits is on.
+const describeTitleNote = "\nAlso write the merge request's `title` in the Conventional Commits format of the schema " +
+	"(`type(scope): subject`), one line for the whole change: the merge squashes the branch into a commit with this title.\n"
+
+// mrTitle is the title the merge request should get for the describer's
+// title, "" to keep cur. why says why cur is kept: "invalid" for a title
+// that does not follow Conventional Commits, "renamed" for a title a human
+// set (neither the issue's title nor last, the title the runner last set),
+// "" when cur is right already or is replaced.
+func mrTitle(cur string, draft bool, title string, types []string, issueTitle, last string) (want, why string) {
+	title = strings.TrimSpace(title)
+	if strings.Contains(title, "\n") || !conventional.Valid(title, types) {
+		return "", "invalid"
+	}
+	bare := strings.TrimSpace(gitlab.ReadyTitle(cur))
+	if bare != title && bare != strings.TrimSpace(issueTitle) && (last == "" || bare != last) {
+		return "", "renamed"
+	}
+	want = title
+	if draft {
+		want = gitlab.DraftTitle(title)
+	}
+	if want == cur {
+		return "", ""
+	}
+	return want, ""
 }
 
 // newDescription is the description a merge request is opened with.
@@ -237,6 +287,12 @@ type describeTarget struct {
 	// companionOf is the home merge request ("<project>!<iid>") of a
 	// companion's merge request; "" for the home merge request.
 	companionOf string
+	// types are the Conventional Commits types while
+	// workflow.conventionalCommits is on, for the home merge request: the
+	// describer then writes its title too. title is the state's title the
+	// runner last set.
+	types []string
+	title *string
 }
 
 // describe rewrites the runner's part of a merge request description when
@@ -277,10 +333,15 @@ func (r *Runner) describe(ctx context.Context, role aiv1.DescribeSpec, issue *gi
 	previous, ok := managedDescription(mr.Description)
 	previous = stripLinks(previous)
 	first = !ok || previous == descriptionPlaceholder
-	inv := roleInvocation(role.RoleSpec, describeSystemPrompt, readOnlyTools, describeSchema, true)
+	titled := t.types != nil && t.title != nil
+	schema, prompt := describeSchema, buildDescribePrompt(issue, summary, previous, t.base, stat, diff, t.companionOf)
+	if titled {
+		schema, prompt = describeSchemaFor(t.types), prompt+describeTitleNote
+	}
+	inv := roleInvocation(role.RoleSpec, describeSystemPrompt, readOnlyTools, schema, true)
 	inv.Role, inv.Kind = "describe", aiv1.CallKindDescribe
 	inv.NoPersistence = true
-	res, err := r.invoke(ctx, role.RoleSpec, inv, buildDescribePrompt(issue, summary, previous, t.base, stat, diff, t.companionOf))
+	res, err := r.invoke(ctx, role.RoleSpec, inv, prompt)
 	if res != nil {
 		out.CostUSD += res.CostUSD
 	}
@@ -309,14 +370,31 @@ func (r *Runner) describe(ctx context.Context, role aiv1.DescribeSpec, issue *gi
 	if t.companionOf != "" {
 		desc = withCompanionDescription(mr.Description, body)
 	}
-	if _, err := t.gl.UpdateMergeRequest(ctx, t.project, t.mrIID, gitlab.UpdateMergeRequestOptions{Description: desc}); err != nil {
+	opts := gitlab.UpdateMergeRequestOptions{Description: desc}
+	var kept string
+	if titled {
+		// The title as read just now: a rename during the run stays.
+		opts.Title, kept = mrTitle(mr.Title, mr.Draft, answer.Title, t.types, issue.Title, *t.title)
+		switch kept {
+		case "invalid":
+			r.log().Info("the describer's title does not follow Conventional Commits, the merge request title stays",
+				"title", textutil.Truncate(answer.Title, 200))
+		case "renamed":
+			r.log().Info("the merge request was renamed by hand, its title stays", "title", mr.Title)
+		}
+	}
+	if _, err := t.gl.UpdateMergeRequest(ctx, t.project, t.mrIID, opts); err != nil {
 		return skip("GitLab refused it", err)
+	}
+	if opts.Title != "" {
+		*t.title = strings.TrimSpace(gitlab.ReadyTitle(opts.Title))
 	}
 	*t.described = hash
 	if err := r.saveState(*st); err != nil {
 		r.log().Error(err, "saving the described diff")
 		return false, "", s.fail(err)
 	}
-	s.done(agentResult(role.RoleSpec, res, ""), "costUSD", res.CostUSD, "diagram", cleanDiagram(answer.Diagram) != "", "first", first)
+	s.done(agentResult(role.RoleSpec, res, ""), "costUSD", res.CostUSD, "diagram", cleanDiagram(answer.Diagram) != "", "first", first,
+		"title", opts.Title, "titleKept", kept)
 	return first, "", nil
 }

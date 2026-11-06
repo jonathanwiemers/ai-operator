@@ -841,6 +841,7 @@ func (run *implementRun) report(ctx context.Context) error {
 	if !spec.Agents.Describe.Disabled {
 		first, notice, err := r.describe(ctx, spec.Agents.Describe, issue, answer.Summary, describeTarget{
 			gl: gl, project: glProject, mrIID: mr.IID, repo: homeTree, base: run.base, described: &run.state.DescribedDiff, links: []string{run.homeLink},
+			types: run.types, title: &run.state.MRTitle,
 		}, run.state, out)
 		if err != nil {
 			return err

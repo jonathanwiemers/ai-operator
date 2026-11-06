@@ -318,7 +318,9 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    description**: Why, What, How, Verification and, when it helps, a mermaid
    diagram of the change at the bottom. It describes the whole branch, not
    the run, and only rewrites its own part (between hidden markers): text
-   you add above or below it, and `Closes #42`, stay. Then the report is
+   you add above or below it, and `Closes #42`, stay. With
+   `workflow.conventionalCommits` it also writes the **MR title** (see
+   [Commit messages](#commit-messages)). Then the report is
    posted on the MR; the first run's report points to the description
    instead of repeating it, later reports say what that run changed. If the
    agent has questions, the report lists them with a link to answer them in
@@ -386,9 +388,20 @@ With `workflow.conventionalCommits: true` (see
   as `chore(agent): …`".
 - The branch's start commit is `chore: start work on #42`, and the merge
   commit of a conflict run is `chore: merge main into agent/42-…`.
+- The **MR title** follows the format too. Squash merges, also the ones you
+  do by hand, land a commit with the MR title on the default branch. The
+  describe agent (step 7) writes a title for the whole change, for example
+  `feat(checkout): add the paypal button`, each time it rewrites the
+  description. The runner reads the MR again and sets the title,
+  `Draft: feat(checkout): …` while the MR is a draft. A title you renamed by
+  hand (neither the issue title nor the title the runner last set) stays,
+  and so does the current title when the describer's title does not match
+  the format; both are logged, and the run goes on. The title changes only
+  with a description rewrite, so after you turn the option on it follows
+  with the next push that changes the diff. A companion MR keeps its title.
 
-With the option off (the default), messages, schema and prompts are as
-before.
+With the option off (the default), messages, titles, schema and prompts are
+as before.
 
 ### Toolchains the agent installs
 

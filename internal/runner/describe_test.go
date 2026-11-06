@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/conventional"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
@@ -79,6 +80,8 @@ type describingEngine struct {
 	runErr    error
 	// onDescribe runs while the describer works, e.g. a human's edit.
 	onDescribe func()
+	// title is the describer's title.
+	title string
 }
 
 func (d *describingEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
@@ -87,7 +90,7 @@ func (d *describingEngine) Run(_ context.Context, inv Invocation) (*Result, erro
 	d.calls = append(d.calls, inv)
 	var v any = ReviewAnswer{Summary: "fine"}
 	switch {
-	case inv.JSONSchema == describeSchema:
+	case inv.Role == "describe":
 		d.describes++
 		if d.onDescribe != nil {
 			d.onDescribe()
@@ -95,7 +98,7 @@ func (d *describingEngine) Run(_ context.Context, inv Invocation) (*Result, erro
 		if d.failWith != nil {
 			return nil, d.failWith
 		}
-		v = DescribeAnswer{Why: "w", What: "- steady", How: "- steady.go", Verification: "- none"}
+		v = DescribeAnswer{Why: "w", What: "- steady", How: "- steady.go", Verification: "- none", Title: d.title}
 	case !inv.ReadOnly:
 		if d.runErr != nil {
 			return nil, d.runErr
@@ -346,5 +349,152 @@ func TestEmptySummaryGetsAFallback(t *testing.T) {
 	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &got)
 	if got.Status.Run.Summary != "The agent left no summary and changed nothing in this run." {
 		t.Fatalf("the task status carries it too: %q", got.Status.Run.Summary)
+	}
+}
+
+func TestDescribeSchemaFor(t *testing.T) {
+	if got := describeSchemaFor(nil); got != describeSchema || strings.Contains(got, "title") {
+		t.Fatalf("without Conventional Commits the schema stays:\n%s", got)
+	}
+	var schema struct {
+		Required   []string `json:"required"`
+		Properties map[string]struct {
+			Pattern     string `json:"pattern"`
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	types := []string{"feat", "fix", "chore"}
+	if err := json.Unmarshal([]byte(describeSchemaFor(types)), &schema); err != nil {
+		t.Fatal(err)
+	}
+	title := schema.Properties["title"]
+	if !slices.Contains(schema.Required, "title") || title.Pattern != conventional.Pattern(types) ||
+		!strings.Contains(title.Description, `no "Draft:" prefix`) {
+		t.Fatalf("the title is required with the pattern: %+v", schema)
+	}
+}
+
+func TestMRTitle(t *testing.T) {
+	types := []string{"feat", "fix", "chore"}
+	const issue, set = "Add PayPal button", "feat(pay): add the paypal button"
+	for _, tc := range []struct {
+		name, cur string
+		draft     bool
+		title     string
+		last      string
+		want, why string
+	}{
+		{"draft keeps its prefix", "Draft: " + issue, true, set, "", "Draft: " + set, ""},
+		{"ready without prefix", issue, false, set, "", set, ""},
+		{"the runner's last title is replaced", "Draft: fix(pay): old", true, set, "fix(pay): old", "Draft: " + set, ""},
+		{"already set", "Draft: " + set, true, set, set, "", ""},
+		{"a ready MR loses the prefix of a draft title", "Draft: " + set, false, set, set, set, ""},
+		{"renamed by hand", "Draft: PayPal checkout", true, set, "", "", "renamed"},
+		{"renamed by hand after the runner's title", "fix: my own title", false, set, "feat: older", "", "renamed"},
+		{"not conventional", "Draft: " + issue, true, "Add the PayPal button", "", "", "invalid"},
+		{"empty", "Draft: " + issue, true, "", "", "", "invalid"},
+		{"with a draft prefix", "Draft: " + issue, true, "Draft: " + set, "", "", "invalid"},
+		{"two lines", "Draft: " + issue, true, set + "\n\nbody", "", "", "invalid"},
+		{"unknown type", "Draft: " + issue, true, "docs: add it", "", "", "invalid"},
+	} {
+		want, why := mrTitle(tc.cur, tc.draft, tc.title, types, issue, tc.last)
+		if want != tc.want || why != tc.why {
+			t.Errorf("%s: got %q %q, want %q %q", tc.name, want, why, tc.want, tc.why)
+		}
+	}
+}
+
+// conventionalTitleRun runs the implementer with workflow.conventionalCommits
+// and the describer's title; mr sets the merge request's title and draft
+// state while the describer works.
+func conventionalTitleRun(t *testing.T, on bool, title string, mr func(*gitlab.MergeRequest)) (*implementEnv, *describingEngine, *Runner) {
+	t.Helper()
+	e := newImplementEnv(t)
+	e.configure(t, func(p *aiv1.AgentProjectSpec) { p.Workflow.ConventionalCommits = &on }, func(*aiv1.AgentTaskSpec) {})
+	engine := &describingEngine{title: title, answer: ImplementAnswer{Status: "done", Summary: "Done.", CommitMessage: "feat(pay): add steady", Handoff: "done"}}
+	if mr != nil {
+		engine.onDescribe = func() { mr(e.gl.MRs[1]) }
+	}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
+	if _, err := r.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if engine.describes != 1 {
+		t.Fatalf("one describer call, got %d", engine.describes)
+	}
+	var got aiv1.AgentTask
+	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &got)
+	if got.Status.Run.LastResult != aiv1.RunResultSucceeded {
+		t.Fatalf("the run succeeds: %s", got.Status.Run.LastResult)
+	}
+	return e, engine, r
+}
+
+func describeCall(t *testing.T, engine *describingEngine) Invocation {
+	t.Helper()
+	for _, c := range engine.calls {
+		if c.Role == "describe" {
+			return c
+		}
+	}
+	t.Fatal("no describer call")
+	return Invocation{}
+}
+
+// setTitle is the merge request as a human or an earlier step left it.
+func setTitle(title string) func(*gitlab.MergeRequest) {
+	return func(mr *gitlab.MergeRequest) { mr.Title, mr.Draft = title, strings.HasPrefix(title, "Draft:") }
+}
+
+func TestDescribeSetsTheConventionalTitleOfADraft(t *testing.T) {
+	const title = "feat(pay): add the paypal button"
+	e, engine, r := conventionalTitleRun(t, true, title, setTitle("Draft: Add PayPal button"))
+	if got := e.gl.MRs[1].Title; got != "Draft: "+title {
+		t.Fatalf("a draft keeps its prefix: %q", got)
+	}
+	inv := describeCall(t, engine)
+	if !strings.Contains(inv.JSONSchema, `"title"`) || !strings.Contains(inv.Prompt, "Conventional Commits") {
+		t.Fatalf("the describer is asked for the title:\n%s\n%s", inv.JSONSchema, inv.Prompt)
+	}
+	if st, _ := r.loadState(); st.MRTitle != title {
+		t.Fatalf("the state remembers the title: %q", st.MRTitle)
+	}
+}
+
+func TestDescribeSetsTheConventionalTitleOfAReadyMR(t *testing.T) {
+	const title = "feat(pay): add the paypal button"
+	e, _, _ := conventionalTitleRun(t, true, title, setTitle("Add PayPal button"))
+	if got := e.gl.MRs[1].Title; got != title {
+		t.Fatalf("a ready MR gets the title without prefix: %q", got)
+	}
+}
+
+func TestDescribeKeepsATitleRenamedByHand(t *testing.T) {
+	e, _, r := conventionalTitleRun(t, true, "feat(pay): add the paypal button", setTitle("Draft: PayPal checkout, take two"))
+	if got := e.gl.MRs[1].Title; got != "Draft: PayPal checkout, take two" {
+		t.Fatalf("a rename stays: %q", got)
+	}
+	if st, _ := r.loadState(); st.MRTitle != "" {
+		t.Fatalf("nothing was set: %q", st.MRTitle)
+	}
+}
+
+func TestDescribeKeepsTheTitleForAnInvalidOne(t *testing.T) {
+	e, _, _ := conventionalTitleRun(t, true, "Add the PayPal button", setTitle("Draft: Add PayPal button"))
+	if got := e.gl.MRs[1].Title; got != "Draft: Add PayPal button" {
+		t.Fatalf("an invalid title keeps the current one: %q", got)
+	}
+	if !strings.Contains(e.gl.MRs[1].Description, "- steady") {
+		t.Fatalf("the description is written anyway:\n%s", e.gl.MRs[1].Description)
+	}
+}
+
+func TestDescribeTitleOff(t *testing.T) {
+	e, engine, _ := conventionalTitleRun(t, false, "feat(pay): add the paypal button", setTitle("Draft: Add PayPal button"))
+	if got := e.gl.MRs[1].Title; got != "Draft: Add PayPal button" {
+		t.Fatalf("without the option the title stays: %q", got)
+	}
+	if inv := describeCall(t, engine); inv.JSONSchema != describeSchema || strings.Contains(inv.Prompt, "Conventional Commits") {
+		t.Fatalf("without the option the schema and prompt stay:\n%s", inv.Prompt)
 	}
 }

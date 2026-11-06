@@ -177,6 +177,10 @@ type state struct {
 	DescribedDiff string `json:"describedDiff,omitempty"`
 	// DescribedCompanionDiff is the same for the companion's merge request.
 	DescribedCompanionDiff string `json:"describedCompanionDiff,omitempty"`
+	// MRTitle is the merge request title the runner last set from the
+	// describer, without the draft prefix. A title that is neither it nor
+	// the issue's is a human's rename and stays.
+	MRTitle string `json:"mrTitle,omitempty"`
 	// ImplementEngine is the engine of the last implementer session; a run
 	// on another engine starts that engine's session fresh.
 	ImplementEngine aiv1.Engine `json:"implementEngine,omitempty"`
