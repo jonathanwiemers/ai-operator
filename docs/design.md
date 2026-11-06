@@ -693,7 +693,13 @@ conflict round, describe, spec, pilot turn, retro, chat turn) is one row of
 `agent_calls`: what ran (kind, role, engine, model, effort, resumed session,
 fallback), for what (namespace, project, milestone, issue and MR IIDs, task,
 run, seq), and what it consumed (input, output, cache read and write tokens,
-`cost_usd`, `cost_source`, turns, duration). `cost_usd` is NULL when
+`cost_usd`, `cost_source`, turns, duration). A call with a per-model split
+(claude's `modelUsage`) records the sum of its models as its tokens, so the
+totals, by issue, by kind and by model share one basis: claude's `usage`
+holds the main thread only, without subagents. Rows written before this
+was introduced keep `usage` and are not rewritten. A call without a split
+(cursor) records its own usage.
+`cost_usd` is NULL when
 `cost_source` is `unknown`, so "n/a" never reads as $0. Claude's cost is
 `reported`; for calls that report tokens but no cost (cursor), the operator
 estimates it from `--pricing-file` when it writes the row (`estimated`,

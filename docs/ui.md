@@ -162,6 +162,9 @@ the tab says it needs the database):
   calls (and subagent calls), duration and the cache-read share (cache
   reads of all input tokens). Runs recorded before agent calls add their
   cost without tokens: *includes $X from runs before token tracking*.
+  A call's tokens include its subagents (the sum of its models), so the
+  totals, the drill-down and the breakdowns add up to the same tokens.
+  Calls recorded before that count the main thread only.
 * **Drill-down:** a table one level down, with calls, tokens, cost and a
   share bar per row: a project's milestones, a milestone's issues (and
   its own spec, pilot and retro calls), an issue's runs, a run's calls.

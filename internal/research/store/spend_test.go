@@ -286,6 +286,75 @@ func TestSpend(t *testing.T) {
 	}
 }
 
+// TestSpendOneTokenBasis (R6): the runner records a call's tokens as the
+// sum of its models, so totals, by issue, by kind and by model show the
+// same token total, with subagents and with a call without a split.
+func TestSpendOneTokenBasis(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	at, exp := time.Now().Add(-time.Hour).Truncate(time.Second), time.Now().Add(24*time.Hour)
+	usd := func(v float64) *float64 { return &v }
+	call := func(key string, issue int64, kind, engine, model string, cost *float64, models ...store.CallModel) store.Call {
+		c := store.Call{Key: key, At: at, Namespace: "agents", Project: "basis", MilestoneIID: 30, IssueIID: issue,
+			Task: "basis-" + key, Run: 1, Seq: 1, Kind: kind, Role: kind, Engine: engine, Model: model,
+			CostUSD: cost, CostSource: "reported", SubagentCalls: 1, Models: models, ExpiresAt: exp}
+		if cost == nil {
+			c.CostSource = "unknown"
+		}
+		for _, m := range models {
+			c.InputTokens, c.OutputTokens = c.InputTokens+m.InputTokens, c.OutputTokens+m.OutputTokens
+			c.CacheReadTokens, c.CacheWriteTokens = c.CacheReadTokens+m.CacheReadTokens, c.CacheWriteTokens+m.CacheWriteTokens
+		}
+		return c
+	}
+	// The R5 fixture's call: a general-purpose subagent on the main model.
+	impl := call("b1", 301, "implement", "claude", "claude-opus-5-5", usd(0.2104),
+		store.CallModel{Model: "claude-opus-5-5", InputTokens: 14, OutputTokens: 460, CacheReadTokens: 39000, CacheWriteTokens: 16500, CostUSD: usd(0.2104)})
+	// A review with a haiku subagent.
+	review := call("b2", 302, "review", "claude", "claude-sonnet-5-5", usd(0.6),
+		store.CallModel{Model: "claude-sonnet-5-5", InputTokens: 100, OutputTokens: 20, CacheReadTokens: 1000, CostUSD: usd(0.55)},
+		store.CallModel{Model: "claude-haiku-5-5", InputTokens: 10, OutputTokens: 5, CacheWriteTokens: 300, CostUSD: usd(0.05)})
+	// A cursor call: no split, its own usage.
+	fix := call("b3", 302, "fix", "cursor", "auto", nil)
+	fix.InputTokens, fix.OutputTokens, fix.SubagentCalls = 50, 10, 0
+	// The milestone's spec: no issue.
+	spec := call("b4", 0, "spec", "claude", "claude-opus-5-5", usd(0.1),
+		store.CallModel{Model: "claude-opus-5-5", InputTokens: 1, OutputTokens: 2, CacheReadTokens: 3, CacheWriteTokens: 4, CostUSD: usd(0.1)})
+	if _, err := owner.InsertCalls(ctx, []store.Call{impl, review, fix, spec}); err != nil {
+		t.Fatal(err)
+	}
+	const want = 55974 + 1435 + 60 + 10
+	sp, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "basis", MilestoneIID: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sp.Totals.Tokens(); got != want {
+		t.Errorf("totals: %d tokens, want %d", got, want)
+	}
+	sum := func(what string, n int, tokens func(i int) int64) {
+		t.Helper()
+		var got int64
+		for i := range n {
+			got += tokens(i)
+		}
+		if got != want {
+			t.Errorf("%s: %d tokens, want the total %d", what, got, want)
+		}
+	}
+	sum("by issue", len(sp.Children), func(i int) int64 { return sp.Children[i].Totals.Tokens() })
+	sum("by kind", len(sp.ByKind), func(i int) int64 { return sp.ByKind[i].Totals.Tokens() })
+	sum("by model", len(sp.ByModel), func(i int) int64 { return sp.ByModel[i].Totals.Tokens() })
+	var split []store.ModelSplit
+	for _, c := range sp.Children {
+		split = append(split, c.Models...)
+	}
+	sum("the issues' model bars", len(split), func(i int) int64 { return split[i].Tokens })
+	if len(sp.Children) != 3 || len(sp.ByKind) != 4 || len(sp.ByModel) != 4 {
+		t.Errorf("%d issues, %d kinds, %d models; want 3, 4, 4", len(sp.Children), len(sp.ByKind), len(sp.ByModel))
+	}
+}
+
 func TestSpendTuning(t *testing.T) {
 	owner := storetest.New(t)
 	s := asReader(t, owner)

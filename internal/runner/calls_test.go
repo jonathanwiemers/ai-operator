@@ -176,6 +176,43 @@ func TestNewCall(t *testing.T) {
 	}
 }
 
+// TestCallTokensAreTheSumOfItsModels (R6): on the R5 subagent fixture,
+// usage holds the main thread, modelUsage the subagent too. The row records
+// the models' sum, so its tokens and its split share one basis; the cost
+// stays total_cost_usd.
+func TestCallTokensAreTheSumOfItsModels(t *testing.T) {
+	path, lines := basisFixture(t, "claude-stream-subagent-main-model.jsonl", "reconstructed")
+	res := runFixture(t, path)
+	start := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	c := agentCall(aiv1.EngineClaude, Invocation{Kind: aiv1.CallKindImplement, Role: "implement"}, res, start, start.Add(time.Minute))
+
+	var models tokens
+	for _, m := range c.Models {
+		models = models.plus(tokens{m.InputTokens, m.OutputTokens, m.CacheReadTokens, m.CacheWriteTokens})
+	}
+	row := tokens{c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheWriteTokens}
+	if row != models {
+		t.Errorf("row tokens %v, want the sum of its models %v", row, models)
+	}
+	main, sub := messageTokens(lines, true), messageTokens(lines, false)
+	if row != main.plus(sub) || usageTokens(res.CallUsage) != main {
+		t.Errorf("row tokens %v, want main %v + subagent %v; usage %v stays the main thread", row, main, sub, usageTokens(res.CallUsage))
+	}
+	if c.CostUSD != aiv1.FormatCost(res.CostUSD) || c.CostUSD == "" {
+		t.Errorf("cost %q, want total_cost_usd %v", c.CostUSD, res.CostUSD)
+	}
+
+	// Without a split (cursor, or claude before modelUsage) the row keeps
+	// the reported usage.
+	u := &CallUsage{InputTokens: 5, OutputTokens: 6, CacheReadTokens: 7, CacheWriteTokens: 8}
+	for _, engine := range []aiv1.Engine{aiv1.EngineCursor, aiv1.EngineClaude} {
+		c = agentCall(engine, Invocation{Model: "auto"}, &Result{CallUsage: u}, start, start)
+		if got := (tokens{c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheWriteTokens}); got != (tokens{5, 6, 7, 8}) || c.Models != nil {
+			t.Errorf("%s call without models: tokens %v, models %+v; want the usage 5 6 7 8", engine, got, c.Models)
+		}
+	}
+}
+
 func TestCallsStayPendingWhenThePatchFails(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = aiv1.AddToScheme(scheme)

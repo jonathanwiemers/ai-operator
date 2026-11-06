@@ -330,6 +330,28 @@ wrong for a one-shot `--resume`. R6 and R7 should take
 and cost as the sum of its `costUSD`), and fall back to `modelUsage` minus
 the session's previous result otherwise.
 
+### R6: one token basis
+
+R5 shows `usage` misses the subagents, so the stop condition of decision 4
+does not apply. `agentCall` (`internal/runner/calls.go`) records
+`CallUsage.tokens()`: with `modelUsage` present, the sum of its models'
+input, output, cache read and cache write tokens; without it (cursor, older
+CLIs) the reported `usage`. `CallUsage` keeps the parsed `usage` as it is,
+which the R5 basis tests pin. The cost stays `total_cost_usd`.
+
+What changes for spend and budgets, on new rows only (decision 6):
+
+- Calls with subagents: their tokens go **up**, to the models' sum. On the
+  R5 fixture from 42,919 (main thread) to 55,974.
+- Calls without subagents: unchanged, `usage` and the models' sum agree.
+- USD: unchanged. Budgets read USD, so no budget trips earlier or later.
+
+Resumed calls (`--resume`) on claude 2.1.318: their `modelUsage` includes
+the session's earlier totals (R5, point 2), so from R6 on their tokens
+include them too, as their by-model split and their cost already did. The
+basis is one, the over-count is not new to the split; R7 is to remove it for
+tokens, models and cost alike.
+
 ### R9: how Bloop %20 reached done
 
 Traced from the code at origin/main (`internal/controller/autopilot.go`,

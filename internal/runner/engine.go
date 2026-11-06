@@ -115,6 +115,8 @@ type Result struct {
 
 // CallUsage is what one engine call consumed, as the engine reported it.
 type CallUsage struct {
+	// InputTokens … CacheWriteTokens are the call's usage as reported
+	// (claude: the main thread only); the row records tokens().
 	InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens int64
 	Turns                                                        int32
 	DurationMS                                                   int64
@@ -148,6 +150,23 @@ type ModelUsage struct {
 	Model                                                        string
 	InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens int64
 	CostUSD                                                      float64
+}
+
+// tokens is what the call's row records: input, output, cache read and
+// cache write on the basis of Models, so a call's tokens, its by-model split
+// and every sum over them agree (decision 4 of
+// docs/specs/honest-reporting.spec.md). claude's usage holds the main
+// thread only, its modelUsage subagents and compaction too. Without a split
+// (cursor) it is the call's own usage.
+func (u *CallUsage) tokens() (in, out, cacheRead, cacheWrite int64) {
+	if len(u.Models) == 0 {
+		return u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens
+	}
+	for _, m := range u.Models {
+		in, out = in+m.InputTokens, out+m.OutputTokens
+		cacheRead, cacheWrite = cacheRead+m.CacheReadTokens, cacheWrite+m.CacheWriteTokens
+	}
+	return in, out, cacheRead, cacheWrite
 }
 
 // MainModel is the model with the most output tokens, for calls whose

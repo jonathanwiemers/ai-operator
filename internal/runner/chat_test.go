@@ -604,7 +604,7 @@ func TestChatTurnRecordsCall(t *testing.T) {
 	agent.promptFn = func(string) (*Result, error) {
 		return &Result{Text: "ok", SessionID: "sess-chat", CostUSD: 0.25, CallUsage: &CallUsage{
 			InputTokens: 100, OutputTokens: 20, CacheReadTokens: 3000, Turns: 2,
-			Models: []ModelUsage{{Model: "claude-opus-5-5", OutputTokens: 20, CostUSD: 0.25}}}}, nil
+			Models: []ModelUsage{{Model: "claude-opus-5-5", InputTokens: 100, OutputTokens: 20, CacheReadTokens: 3000, CostUSD: 0.25}}}}, nil
 	}
 	setChatMessages(t, e.k8s, e.task.Name, chatMsg(10, "message", "why?", "alice"))
 	if _, err := r.tick(context.Background(), nil); err != nil {
