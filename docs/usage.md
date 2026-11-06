@@ -1337,7 +1337,10 @@ the outcome says so. The next poll reads the new budget and a budget pause
 ends by itself. Ending the milestone skips its pending issues, so none is
 picked any more, and autopilot is done after the active issue; during the
 budget pause the active issue cannot go on without spend, so it is skipped
-too and autopilot is done at once. While a done milestone's budget is used
+too and autopilot is done at once. A milestone with nothing in its queue
+(not planned yet, or a re-plan that left no issue) is never done: ending it
+only answers that there is nothing to end; close the milestone in GitLab or
+remove `/agent autopilot` to stop it. While a done milestone's budget is used
 its issues' runs stay stopped (`spec.budgetStop`); raising the line lets
 them go on. A prompt closes (superseded) once its budget is another or the
 spend is under its threshold again; the 80 % prompt also closes when the

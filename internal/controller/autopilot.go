@@ -508,7 +508,13 @@ func (a *autopilot) unstick(ctx context.Context) error {
 }
 
 // done marks the milestone done, closes its tracking issue and says so.
+// With an empty queue it does nothing: a milestone whose plan is empty or
+// was dropped by a re-plan merged nothing and is not done (Bloop %20).
 func (a *autopilot) done(ctx context.Context) error {
+	if len(a.ap.Items) == 0 {
+		a.log.Info("autopilot is not done: its queue is empty")
+		return nil
+	}
 	merged := 0
 	for _, it := range a.ap.Items {
 		if it.State == aiv1.AutopilotItemMerged {
@@ -532,8 +538,15 @@ func (a *autopilot) done(ctx context.Context) error {
 // issues are skipped, so none is picked any more, and autopilot is done
 // after the active issue. During a pause for a budget the active issue
 // cannot go on without spend: it is skipped too, the pause ends and
-// autopilot is done now.
+// autopilot is done now. With an empty queue it only answers that there is
+// nothing to end.
 func (a *autopilot) endMilestone(ctx context.Context, by string) error {
+	if len(a.ap.Items) == 0 {
+		// Nothing to skip and nothing to be done with (done): the state stays.
+		a.log.Info("autopilot milestone not ended: nothing is planned", "by", by)
+		return a.comment(ctx, fmt.Sprintf("⏹️ Nothing to end (%s): nothing is planned in this milestone, so autopilot is not done. "+
+			"To stop it, close the milestone in GitLab or remove `%s autopilot` from its description.", by, a.spec.Workflow.CommandPrefix))
+	}
 	budget := a.budgetPaused()
 	var skipped []int64
 	var active *aiv1.AutopilotItem

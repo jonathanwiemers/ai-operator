@@ -1,13 +1,16 @@
 package controller
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
 // doneAndClosed finishes the pilot env's autopilot by skipping both issues,
@@ -149,5 +152,116 @@ func TestDoneAutopilotClosesAfterAFailedRetrospective(t *testing.T) {
 	e.reconcile()
 	if e.gl.Milestones[0].State != "closed" {
 		t.Fatalf("a failed retrospective has nothing to wait for: milestone %s", e.gl.Milestones[0].State)
+	}
+}
+
+// replan plays a finished planning run of the spec task: plan is what it
+// recorded, and the run request is observed.
+func replan(e *projectEnv, plan []aiv1.PlannedIssue) {
+	e.t.Helper()
+	st := e.task(specTaskName)
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Plan = plan
+		s.Run.ObservedRunRequest = st.Spec.RunRequest
+	})
+}
+
+// notDone fails unless autopilot of the env's milestone is still undone:
+// no done comment, tracking issue and milestone open, no retrospective.
+func notDone(e *projectEnv, tracking int64) {
+	e.t.Helper()
+	if ap := e.autopilot(); ap.Phase == aiv1.AutopilotDone {
+		e.t.Fatalf("an empty queue is not done: %+v", ap)
+	}
+	if n := countComments(e, tracking, "Autopilot is done"); n != 0 {
+		e.t.Fatalf("no done comment: %v", botComments(e, tracking))
+	}
+	if is := e.gl.Issues[tracking]; is == nil || is.State == "closed" {
+		e.t.Fatalf("the tracking issue stays open: %+v", is)
+	}
+	if e.gl.Milestones[0].State == "closed" {
+		e.t.Fatal("the milestone stays open")
+	}
+	if coord, ok := e.tasks()[pilotTaskName]; ok && coord.Spec.Source.Retrospective != 0 {
+		e.t.Fatalf("no retrospective: %+v", coord.Spec.Source)
+	}
+}
+
+// Bloop %20: a planned milestone, nothing started yet, whose owner edits the
+// description. The re-plan records an empty plan, so the queue drops both
+// pending issues, and an accepted endMilestone then reached done with 0 of 0.
+func TestEmptyQueueIsNeverDone(t *testing.T) {
+	e := newUnplannedAutopilotEnv(t)
+	e.gl.Users = []gitlab.User{alice, mallory}
+	e.gl.Milestones[0].Description += "\n/agent owners @alice"
+	e.reconcile()
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.AddNote(tracking, alice, "/agent pause")
+	e.reconcile()
+	replan(e, []aiv1.PlannedIssue{{Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}}, {Key: "api", IID: 1, Title: "API"}})
+	e.reconcile()
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || len(ap.Items) != 2 || ap.Items[0].State != aiv1.AutopilotItemPending {
+		t.Fatalf("planned and paused before anything started: %+v", ap)
+	}
+	if _, ok := e.tasks()[pilotTaskName]; !ok {
+		t.Fatalf("the milestone has a pilot: %v", keys(e.tasks()))
+	}
+
+	e.gl.Milestones[0].Description += "\nAlso a receipt page."
+	e.reconcile()
+	if !e.task(specTaskName).RunPending() {
+		t.Fatal("the edit plans the milestone again")
+	}
+	replan(e, []aiv1.PlannedIssue{})
+	if err := e.r.queueCommand(e.ctx, e.task(specTaskName), aiv1.PilotCommand{Action: aiv1.PilotAction{Tool: "endMilestone"}, Owner: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	e.reconcile()
+	e.reconcile()
+	notDone(e, tracking)
+	if ap := e.autopilot(); len(ap.Items) != 0 || ap.Phase != aiv1.AutopilotPaused {
+		t.Fatalf("the empty plan dropped the pending issues, the pause stays: %+v", ap)
+	}
+	if countComments(e, tracking, "Nothing to end (@alice via the pilot): nothing is planned in this milestone") != 1 ||
+		countComments(e, tracking, "close the milestone in GitLab or remove `/agent autopilot`") != 1 {
+		t.Fatalf("endMilestone says there is nothing to end, once: %v", botComments(e, tracking))
+	}
+
+	// Planned again with both issues, the queue goes on.
+	e.gl.Milestones[0].Description += "\nAnd a receipt mail."
+	e.reconcile()
+	replan(e, []aiv1.PlannedIssue{{Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}}, {Key: "api", IID: 1, Title: "API"}})
+	e.reconcile()
+	if ap := e.autopilot(); len(ap.Items) != 2 {
+		t.Fatalf("the new plan fills the queue again: %+v", ap)
+	}
+	notDone(e, tracking)
+}
+
+func TestEndMilestoneBeforeThePlan(t *testing.T) {
+	e := newUnplannedAutopilotEnv(t)
+	e.gl.Users = []gitlab.User{alice}
+	e.gl.Milestones[0].Description += "\n/agent owners @alice"
+	e.reconcile()
+	tracking := e.autopilot().TrackingIssueIID
+	if err := e.r.queueCommand(e.ctx, e.task(specTaskName), aiv1.PilotCommand{Action: aiv1.PilotAction{Tool: "endMilestone"}, Owner: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	notDone(e, tracking)
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || countComments(e, tracking, "Nothing to end") != 1 {
+		t.Fatalf("a milestone still being planned keeps running: %+v\n%v", ap, botComments(e, tracking))
+	}
+}
+
+func TestDoneWithAnEmptyQueueKeepsThePhase(t *testing.T) {
+	for _, phase := range []aiv1.AutopilotPhase{aiv1.AutopilotRunning, aiv1.AutopilotPaused} {
+		a := &autopilot{ap: &aiv1.AutopilotStatus{Phase: phase, TrackingIssueIID: 7}, log: logr.Discard()}
+		// No GitLab: done must not close or comment anything.
+		if err := a.done(context.Background()); err != nil || a.ap.Phase != phase {
+			t.Fatalf("done with no items keeps %s: %v %+v", phase, err, a.ap)
+		}
 	}
 }

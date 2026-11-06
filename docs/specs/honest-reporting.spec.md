@@ -255,6 +255,63 @@ totals over, and which of the two explains Bloop %24.
 
 ### R9: how Bloop %20 reached done
 
-_Open: filled in by the MR for R5 / R9._
+Traced from the code at origin/main (`internal/controller/autopilot.go`,
+`internal/runner/spec.go`, `runner.go`) and replayed by
+`TestEmptyQueueIsNeverDone` (`autopilot_close_test.go`). Without the R10
+guard that test ends in `Phase: Done` with `Items: []`. The Bloop operator
+logs were not available, so the path is the only one the code allows, not
+one read from %20's events.
 
-To record: the traced path from a planned milestone to `done` with no items.
+`done` has two callers, `pick` and `endMilestone`. "0 of 0" means
+`len(a.ap.Items) == 0` when `done` ran.
+
+The path:
+
+1. The milestone is planned (`status.plan` = #384, #385). Nothing has
+   started, so both items are `pending` (for example, the milestone was
+   paused before its first pick).
+2. An owner edits the description. `syncSpecTask` bumps `RunRequest`, which
+   starts a re-plan.
+3. The re-plan succeeds, but `planOrder` maps none of the planner's issues,
+   so `out.Plan` is `[]`. The re-plan prompt says that issues "already in
+   progress are context: do not re-plan them", so a planner that only lists
+   what it changes returns no issues. `planOrder` returns a non-nil empty
+   slice, and `runner.go` records it (`if out.Plan != nil`) before
+   `ObservedRunRequest`.
+4. On the next poll, `sync` computes `mergeQueue(items, queueOrder([]))`.
+   That drops every pending item, so `Items` is now `[]`.
+5. `sync` runs `commands()` before the plan guard
+   (`len(Status.Plan) == 0`). An accepted `endMilestone` in
+   `status.pilot.commands` (the "End the milestone here" option of a budget
+   prompt, answered by an owner) then calls `endMilestone`. It finds nothing
+   to skip and no active item, comments "The milestone ends here: nothing is
+   left to skip", and calls `done`.
+6. `done` sets `Done`, closes the tracking issue and comments "✅ Autopilot
+   is done: 0 of 0 issues merged". `syncPilots` then asks the pilot for the
+   retrospective (`autopilotDone`), and `closeMilestone` closes the milestone
+   once that is in.
+7. A later re-plan lists #384 and #385 again. `pick` sets `Running` ("a
+   re-plan can add issues after done"), and both are merged.
+
+Ruled out:
+
+- `pick` → `done`. `mergeQueue` keeps every IID of the plan order, so
+  `Items` is never shorter than the order. An empty order means an empty
+  plan, and the guard returns before `step`. A plan that is all cycle gives
+  an empty order too, but `sync` then pauses with `cycle` and does not step.
+- `chatCommands`. The Desk verbs go through `command()`, which never calls
+  `done`. `endMilestone` is no Desk verb.
+- `budget()`. It pauses and posts prompts, and never sets `Done`
+  (`budget.go:151` only reads `Done`, for `budgetStopped`).
+- `pilotSelf`. `endMilestone` is an owner tool: `checkAction` refuses it in
+  options the model made, so the pilot cannot end a milestone on its own,
+  even under managed autonomy.
+- A status write that drops the plan. Autopilot saves with a merge patch of
+  `status.autopilot` only, so it cannot overwrite the `status.plan` that the
+  runner patched.
+
+R10 guards the sink. `done` with no items keeps the phase and closes and
+comments nothing. `endMilestone` with no items answers "Nothing to end: …
+close the milestone in GitLab or remove `/agent autopilot`" and changes
+nothing. A pause stays a pause. R11 (`emptyPlan`) is what makes step 3
+visible to the owners.

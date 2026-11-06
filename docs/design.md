@@ -1088,7 +1088,11 @@ stateDiagram-v2
   paused at 100 %. Their actions are the owner-only tools `raiseBudget`
   (`amount`; rewrites the budget line) and `endMilestone` (a queue command:
   pending issues skipped, the active one too during a budget pause, then
-  done); `checkAction` refuses both in options the model made. A done
+  done); `checkAction` refuses both in options the model made. `done`
+  needs a non-empty queue: with no items (nothing planned, or a re-plan
+  that dropped every pending issue) it keeps the phase and closes and
+  comments nothing, and `endMilestone` only answers that there is nothing
+  to end (close the milestone in GitLab or remove the marker). A done
   milestone with its budget used keeps `spec.budgetStop` on its issues.
   Before pausing because of the active
   issue, the operator checks whether its MR was merged meanwhile. `/agent resume`, `pause`,
