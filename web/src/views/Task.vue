@@ -7,6 +7,7 @@ import { queueDone } from '../milestoneQueue'
 import { taskPrompts } from '../promptCard'
 import Badge from '../components/Badge.vue'
 import CostChip from '../components/CostChip.vue'
+import CompanionChip from '../components/CompanionChip.vue'
 import ExtLink from '../components/ExtLink.vue'
 import RelTime from '../components/RelTime.vue'
 import StageBadge from '../components/StageBadge.vue'
@@ -85,6 +86,7 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
           <span class="spacer" />
           <ExtLink v-if="t.issue" :href="t.issue.webURL || issueURL(t.issue.iid)">Issue</ExtLink>
           <ExtLink v-if="run.mergeRequestURL" :href="run.mergeRequestURL">Merge request !{{ run.mergeRequestIID }}</ExtLink>
+          <CompanionChip v-if="t.companion" :companion="t.companion" />
           <ExtLink v-if="t.status.ci?.pipelineURL" :href="t.status.ci.pipelineURL">Pipeline</ExtLink>
         </div>
       </div>

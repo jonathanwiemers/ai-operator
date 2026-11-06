@@ -6,6 +6,7 @@ import { useResource } from '../live'
 import { disableNotify, enableNotify, notify, notifyActive, refreshPermission } from '../notify'
 import { inboxRoute } from '../inboxRoute'
 import type { InboxResponse } from '../types'
+import ExtLink from '../components/ExtLink.vue'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
 import RelTime from '../components/RelTime.vue'
 
@@ -37,7 +38,7 @@ onMounted(refreshPermission)
         v-else-if="notify.permission !== 'unsupported'"
         type="button"
         class="btn notify"
-        title="Get a browser notification for new pauses, proposals and questions while a Desk tab is open"
+        title="Get a browser notification for new pauses, proposals, questions and ready companions while a Desk tab is open"
         @click="enableNotify"
       >
         Notify me
@@ -72,6 +73,16 @@ onMounted(refreshPermission)
           :milestone-title="item.title"
           :to="inboxRoute(item)"
         />
+        <!-- A ready companion: the row opens the home task, the ref the companion MR in GitLab. -->
+        <div v-else-if="item.kind === 'companionReady'" class="row companion">
+          <span class="proj">{{ item.project }}</span>
+          <span class="title">
+            <RouterLink :to="inboxRoute(item)"><b>Companion ready</b><template v-if="item.issueIID"> · #{{ item.issueIID }}</template></RouterLink>
+            <ExtLink :href="item.url" class="mono">{{ item.title }}</ExtLink>
+          </span>
+          <span class="reason muted">{{ item.reason }}</span>
+          <span class="when faint"><RelTime :time="item.at" /></span>
+        </div>
         <RouterLink v-else :to="inboxRoute(item)" class="row">
           <span class="proj">{{ item.project }}</span>
           <span class="title">
@@ -144,7 +155,7 @@ onMounted(refreshPermission)
   color: inherit;
   align-items: baseline;
 }
-.row:hover {
+.row:not(.companion):hover {
   background: var(--surface-2);
   text-decoration: none;
 }

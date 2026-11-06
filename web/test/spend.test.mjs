@@ -6,6 +6,7 @@ import {
   avgTokens,
   callCost,
   childLabel,
+  companionNote,
   childScope,
   costSourceLabel,
   legacyNote,
@@ -422,4 +423,11 @@ test('gateBlocksPerCall: blocks per call, empty without calls or blocks', () => 
   assert.equal(gateBlocksPerCall(row(2, 3)), '1.5')
   assert.equal(gateBlocksPerCall(row(2, 0)), '')
   assert.equal(gateBlocksPerCall(row(0, 3)), '')
+})
+
+test('companionNote: issue rows with a companion project only', () => {
+  assert.equal(companionNote({ level: 'issue', companion: 'group/infra' }), 'Also changes group/infra: its calls count to this issue')
+  assert.equal(companionNote({ level: 'issue' }), '')
+  assert.equal(companionNote({ level: 'issue', companion: ' ' }), '')
+  assert.equal(companionNote({ level: 'run', companion: 'group/infra' }), '')
 })

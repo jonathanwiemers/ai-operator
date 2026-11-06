@@ -32,6 +32,7 @@ const allKinds = [
   'mainRed',
   'config',
   'budget',
+  'companion',
 ]
 
 test('pauseActions: reviewer kinds offer review, merge anyway and skip', () => {
@@ -323,6 +324,14 @@ function exitsOf(kind, { chat = true, merge = false } = {}) {
     mainRed: [auto('mainGreen', 'waiting', 'main is red at abc1234'), auto('freezeOff'), auto('healthStale'), auto('mergedByHand', 'unknown'), auto('closed', 'unknown')],
     config: [auto('mergedByHand', 'unknown'), auto('closed', 'unknown'), { ...resume, when: 'after fixing the setup' }, skip],
     budget: [auto('budgetRaised', 'inProgress')],
+    companion: [
+      auto('companionMergeable'),
+      auto('companionByHand', 'unknown'),
+      auto('companionDefaultBranchGreen', 'unknown'),
+      { id: 'fixCompanion', gitlab: true, when: 'fix the companion merge request', command: 'resume', does: 'checks it again' },
+      resume,
+      skip,
+    ],
   }[kind]
 }
 
@@ -471,4 +480,20 @@ test('wayOutLine: the first automatic exit with its status and the remedy count'
 test('deskCommand: the commands the card can send', () => {
   for (const c of ['resume', 'skip', 'merge', 'retry', 'review']) assert.equal(deskCommand(c), true, c)
   for (const c of ['rebase', 'mergeBase', 'unskip', 'startAnyway', '', undefined, 'toString']) assert.equal(deskCommand(c), false, String(c))
+})
+
+test('companion: its title, how it ends, the companion MR link and its way out', () => {
+  assert.equal(pauseTitle('companion'), 'The companion MR cannot go on')
+  assert.equal(pauseEndsBy('companion', 5), 'Continues by itself once the companion MR can be merged again, or is merged by hand.')
+  assert.deepEqual(ids('companion'), ['openCompanion', 'resume', 'skip'])
+  assert.deepEqual(targets('companion'), ['link', 'spec', 'spec'])
+  const exits = exitsOf('companion')
+  // With exits the action row keeps the link; resume and skip are remedies.
+  assert.deepEqual(pauseActions('companion', 5, exits).map((a) => a.id), ['openCompanion'])
+  const w = wayOut(exits)
+  assert.deepEqual(w.auto.map((a) => a.id), ['companionMergeable', 'companionByHand', 'companionDefaultBranchGreen'])
+  const fix = w.remedies.find((r) => r.id === 'fixCompanion')
+  assert.deepEqual([fix.kind, fix.text, fix.link], ['gitlab', 'In GitLab: fix the companion merge request, then resume', 'companion'])
+  assert.deepEqual(buttons(w), ['resume', 'skip'])
+  assert.equal(wayOutLine(exits), 'Way out: CompanionMergeable holds — waiting · 3 remedies')
 })

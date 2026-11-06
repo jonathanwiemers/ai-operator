@@ -21,14 +21,18 @@ export function inboxKey(item: InboxItem): string {
     case 'pilotError':
       parts.push(item.task, item.title, item.reason)
       break
+    case 'companionReady':
+      parts.push(item.issueIID, item.title)
+      break
   }
   return parts.map((p) => (p == null ? '' : String(p))).join('/')
 }
 
 // notifiable says whether an item raises a browser notification: pauses,
-// proposals and tasks that need input. Failed and blocked tasks only count.
+// proposals, prompts, companions ready for the owners to merge
+// and tasks that need input. Failed and blocked tasks only count.
 export function notifiable(item: InboxItem): boolean {
-  return item.kind === 'pause' || item.kind === 'proposal' || item.kind === 'prompt' || (item.kind === 'task' && item.reason === 'needs-input')
+  return item.kind === 'pause' || item.kind === 'proposal' || item.kind === 'prompt' || item.kind === 'companionReady' || (item.kind === 'task' && item.reason === 'needs-input')
 }
 
 // newNotifications returns the notifiable items whose key isn't in seen,
@@ -71,6 +75,13 @@ export function notificationText(item: InboxItem): NotificationText {
       return {
         title: item.promptID ? `Question ${item.promptID} · ${item.project}` : `Question · ${item.project}`,
         body: item.title,
+      }
+    case 'companionReady':
+      return {
+        title: `Companion ready to merge · ${item.project}`,
+        body: [[item.title, item.issueIID ? `companion of #${item.issueIID}` : ''].filter(Boolean).join(' · '), item.reason]
+          .filter(Boolean)
+          .join('\n'),
       }
     default:
       return {

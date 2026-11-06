@@ -154,3 +154,36 @@ test('inboxKey: pilot write errors differ by source and error, and raise no noti
   assert.notEqual(inboxKey(err()), inboxKey(err({ reason: 'other' })))
   assert.equal(notifiable(err()), false)
 })
+
+const companion = (over = {}) => ({
+  namespace: 'team',
+  project: 'shop',
+  kind: 'companionReady',
+  task: 'shop-impl-12',
+  milestoneIID: 3,
+  issueIID: 12,
+  title: 'group/infra!7',
+  reason: 'ready to merge: release 2026.11.4 runs',
+  url: 'https://gitlab.example/group/infra/-/merge_requests/7',
+  at: '2026-11-06T10:00:00Z',
+  ...over,
+})
+
+test('companionReady: notifies once per companion merge request, with its text', () => {
+  assert.equal(notifiable(companion()), true)
+  assert.equal(inboxKey(companion()), 'team/shop/companionReady/12/group/infra!7')
+  assert.equal(inboxKey(companion({ reason: 'ready to merge', at: '2026-11-07T10:00:00Z' })), inboxKey(companion()))
+  assert.notEqual(inboxKey(companion({ title: 'group/infra!8' })), inboxKey(companion()))
+  assert.notEqual(inboxKey(companion()), inboxKey(task('needs-input')))
+  assert.deepEqual(newNotifications(new Set([inboxKey(companion())]), [companion(), companion({ title: 'group/infra!8' })]).map((i) => i.title), [
+    'group/infra!8',
+  ])
+  assert.deepEqual(notificationText(companion()), {
+    title: 'Companion ready to merge · shop',
+    body: 'group/infra!7 · companion of #12\nready to merge: release 2026.11.4 runs',
+  })
+  assert.deepEqual(notificationText(companion({ issueIID: undefined, reason: '' })), {
+    title: 'Companion ready to merge · shop',
+    body: 'group/infra!7',
+  })
+})

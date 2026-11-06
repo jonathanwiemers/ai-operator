@@ -7,7 +7,8 @@ export type InboxRoute =
 
 // inboxRoute is where an Inbox item leads, for a click on its row and on its
 // notification alike. Pauses and proposals open the milestone stream, whose
-// context panel holds the full pause card and the proposal actions.
+// context panel holds the full pause card and the proposal actions. A ready
+// companion opens its home task, without one its milestone.
 export function inboxRoute(item: InboxItem): InboxRoute {
   const base = { namespace: item.namespace, name: item.project }
   if (item.kind === 'prompt') {
@@ -21,7 +22,9 @@ export function inboxRoute(item: InboxItem): InboxRoute {
     const iid = String(item.milestoneIID)
     if (item.kind === 'pause' || item.kind === 'proposal') return { name: 'stream-milestone', params: { ...base, iid } }
   }
-  if (item.kind === 'task' && item.task) return { name: 'task', params: { ...base, task: item.task } }
+  // A ready companion opens its home task (release, home MR, owners); the
+  // Inbox row also links the companion MR itself.
+  if ((item.kind === 'task' || item.kind === 'companionReady') && item.task) return { name: 'task', params: { ...base, task: item.task } }
   if (item.milestoneIID) return { name: 'stream-milestone', params: { ...base, iid: String(item.milestoneIID) } }
   return { name: 'stream-project', params: base }
 }

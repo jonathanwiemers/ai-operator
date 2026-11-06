@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { hasFeature } from '../api'
+import { companionRef } from '../companion'
 import { cost } from '../format'
 import { queueDone } from '../milestoneQueue'
 import { pausePrompt } from '../pauseCard'
@@ -9,6 +10,8 @@ import { promptAnchor, splitPrompts } from '../promptCard'
 import type { HistoryResponse, InboxItem, MilestoneView, QueueItem } from '../types'
 import AskPilot from './AskPilot.vue'
 import Badge from './Badge.vue'
+import CompanionChip from './CompanionChip.vue'
+import ExtLink from './ExtLink.vue'
 import PauseCard from './PauseCard.vue'
 import PausesCard from './PausesCard.vue'
 import PromptCard from './PromptCard.vue'
@@ -30,6 +33,10 @@ const props = defineProps<{
 }>()
 
 const queue = computed((): QueueItem[] => props.milestone?.autopilot?.items ?? [])
+// Companions: the home issue links its implement task, else the GitLab issue.
+const homeTask = (iid: number) =>
+  props.milestone?.tasks.find((t) => t.type === 'Implement' && t.issue?.iid === iid)?.name
+const issueURL = (iid: number) => props.milestone?.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
 const done = computed(() => queueDone(queue.value))
 const total = computed(() => queue.value.length)
 const paused = computed(() => props.full && props.milestone?.autopilot?.phase === 'Paused')
@@ -80,7 +87,7 @@ function spendDelta(cur: number, prev: number) {
 }
 
 function inboxTo(item: InboxItem) {
-  if (item.kind === 'task' && item.task) {
+  if ((item.kind === 'task' || item.kind === 'companionReady') && item.task) {
     return {
       name: 'task' as const,
       params: { namespace: item.namespace, name: item.project, task: item.task },
@@ -131,6 +138,30 @@ function inboxTo(item: InboxItem) {
         <span v-if="total">{{ done }} / {{ total }}</span>
       </h3>
       <QueueList :namespace="namespace" :name="name" :milestone="milestone" />
+    </div>
+
+    <div v-if="milestone && milestone.companions?.length" class="panel">
+      <h3>
+        <span>Companions</span>
+        <span>{{ milestone.companions.length }}</span>
+      </h3>
+      <ul class="companions">
+        <li v-for="c in milestone.companions" :key="`${c.homeIssueIID}/${companionRef(c)}`">
+          <div class="row">
+            <ExtLink :href="c.mrURL" class="mono ref">{{ companionRef(c) }}</ExtLink>
+            <span class="spacer" />
+            <CompanionChip :companion="c" plain />
+          </div>
+          <div class="row faint">
+            <RouterLink v-if="homeTask(c.homeIssueIID)" :to="{ name: 'task', params: { namespace, name, task: homeTask(c.homeIssueIID)! } }">
+              #{{ c.homeIssueIID }}
+            </RouterLink>
+            <ExtLink v-else :href="issueURL(c.homeIssueIID)">#{{ c.homeIssueIID }}</ExtLink>
+            <span v-if="c.release">release {{ c.release }}</span>
+            <span v-if="c.reason" class="reason" :title="c.reason">{{ c.reason }}</span>
+          </div>
+        </li>
+      </ul>
     </div>
 
     <div v-if="full && milestone && (milestone.pilot || prompts.open.length || prompts.closed.length)" class="panel">
@@ -337,5 +368,23 @@ function inboxTo(item: InboxItem) {
 .empty-sm {
   font-size: 13px;
   color: var(--text-3);
+}
+.companions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+}
+.companions .ref {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.companions .reason {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -11,6 +11,7 @@ import {
   barColors,
   callCost,
   childLabel,
+  companionNote,
   childScope,
   costSourceLabel,
   legacyNote,
@@ -285,6 +286,7 @@ function rowKey(b: SpendBreakdown): string {
                     {{ childLabel(c, scope, milestones) }}
                   </RouterLink>
                   <span v-else>{{ childLabel(c, scope, milestones) }}</span>
+                  <span v-if="companionNote(c)" class="companion-mark" :title="companionNote(c)">companion</span>
                 </td>
                 <td :title="fullTime(c.at)">{{ clockTime(c.at, now) }}</td>
                 <td class="num">
@@ -462,6 +464,15 @@ function rowKey(b: SpendBreakdown): string {
 .usd strong {
   font-size: 24px;
   font-variant-numeric: tabular-nums;
+}
+.companion-mark {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--tone-info-bg);
+  color: var(--tone-info-fg);
 }
 .unknown {
   font-style: italic;

@@ -11,6 +11,7 @@ export type PauseActionID =
   | 'openChat'
   | 'openPipeline'
   | 'openMR'
+  | 'openCompanion'
   | 'openPlan'
 
 // PauseAction is one button of the pause card. target says where it goes:
@@ -39,6 +40,7 @@ const resume: PauseAction = { id: 'resume', label: 'Resume', target: 'spec' }
 const openChat: PauseAction = { id: 'openChat', label: 'Open chat', target: 'link' }
 const openPipeline: PauseAction = { id: 'openPipeline', label: 'Open pipeline', target: 'link' }
 const openMR: PauseAction = { id: 'openMR', label: 'Open MR', target: 'link' }
+const openCompanion: PauseAction = { id: 'openCompanion', label: 'Open companion MR', target: 'link' }
 const openPlan: PauseAction = { id: 'openPlan', label: 'Open plan', target: 'link' }
 
 // The actions per kind (spec desk-pause-card, section 3), in button order.
@@ -64,6 +66,9 @@ const actionsByKind = {
   // Its way out is a milestone description change, a GitLab action: the
   // Way out links the milestone.
   emptyPlan: [],
+  // The companion merge request cannot go on: fixed in GitLab (rebase,
+  // discussions, approval), then Resume; or the issue skipped.
+  companion: [openCompanion, resume, skip],
 } satisfies Record<PauseKind, PauseAction[]>
 
 type KnownPauseKind = keyof typeof actionsByKind
@@ -122,7 +127,7 @@ export interface WayOutRemedy {
   command?: string
   elsewhere?: string
   action?: PauseAction
-  link?: 'milestone' | 'mergeRequest' | 'issue'
+  link?: 'milestone' | 'mergeRequest' | 'issue' | 'companion'
 }
 
 export interface WayOut {
@@ -142,6 +147,7 @@ const exitLinks: Partial<Record<string, WayOutRemedy['link']>> = {
   changePlan: 'milestone',
   changeSpec: 'milestone',
   fixInGitLab: 'mergeRequest',
+  fixCompanion: 'companion',
   removeLink: 'issue',
   answered: 'issue',
 }
@@ -282,6 +288,8 @@ export function pauseEndsBy(kind: PauseKind | undefined, issue?: number): string
         : "Continues by itself once the milestone's budget line is raised above the spend."
     case 'emptyPlan':
       return 'Continues once the milestone description is changed and planned again.'
+    case 'companion':
+      return 'Continues by itself once the companion MR can be merged again, or is merged by hand.'
     default:
       return ''
   }
@@ -303,6 +311,7 @@ const titles: Record<KnownPauseKind, string> = {
   config: 'Configuration problem',
   budget: 'The budget is used',
   emptyPlan: 'Nothing was planned',
+  companion: 'The companion MR cannot go on',
 }
 
 // pauseTitle is the card's heading for a pause.

@@ -49,6 +49,8 @@ export type {
   ExitStatus,
   PauseHistoryView,
   PauseView,
+  CompanionView,
+  CompanionChip,
 } from './generated/views'
 
 export type {

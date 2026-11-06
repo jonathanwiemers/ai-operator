@@ -444,3 +444,12 @@ export function subagentShare(r: SubagentBreakdown): string {
   const all = spendTokens(r.totals)
   return all > 0 ? shareLabel(r.subagentTokens / all) : '—'
 }
+
+// companionNote is the tooltip of an issue row's companion marker: the
+// companion project whose changes its calls made too (they count to the
+// home issue); '' for other rows and issues without a companion.
+export function companionNote(c: Pick<SpendChild, 'level' | 'companion'>): string {
+  const project = (c.companion || '').trim()
+  if (c.level !== 'issue' || !project) return ''
+  return `Also changes ${project}: its calls count to this issue`
+}

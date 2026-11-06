@@ -26,7 +26,7 @@ chat included, with your own GitLab token.
 The app is a **Desk**: a left rail, the stream, and a context panel.
 
 * **Rail:** *Inbox* (what needs you now across your projects: tasks with
-  questions, failed or blocked, the open prompts (and proposals from before prompts), rejected pilot status writes (*Pilot write rejected*, with the API error, for 24 hours), and paused
+  questions, failed or blocked, the open prompts (and proposals from before prompts), rejected pilot status writes (*Pilot write rejected*, with the API error, for 24 hours), companion merge requests ready for the owners to merge (*Companion ready · #N* with the companion `project!iid` linking the merge request in GitLab and the release in the reason; the row opens the home issue's task page), and paused
   autopilots as the compact pause card, see below, which opens the
   milestone stream; the count also shows in the tab title as `(n) Desk`; see
   [Notifications](#notifications)). While any autopilot you may see is
@@ -94,7 +94,20 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   rest of the 20 behind *Earlier pauses*) with kind, issue, duration, who
   resolved it or *open*, and the reason as text. An open pause keeps
   counting on the Desk between reloads. Without pause history (no history
-  database, no pauses yet) there is no card.
+  database, no pauses yet) there is no card. A milestone whose issues have
+  companion merge requests (cross-repo changes) lists them under
+  **Companions**: per companion its `project!iid` linking the merge
+  request, its chip, the home issue (its task page, else the GitLab issue),
+  the release that made the home change live and the operator's reason.
+* **Companion chip**: an issue with a companion merge request shows
+  *companion: \<chip\>* on its board card, in the milestone queue, on the
+  Task page header and on the pause card of its issue: `draft` (the home MR
+  is not merged), `waiting for release` (waiting for the release, a rebase
+  or CI), `ready`, `merging` (autopilot merges it) or `merged`; a blocked or
+  closed companion keeps its chip with *· blocked* (red) or *· closed*. The
+  tooltip names the merge request and the reason. The chip links the
+  companion merge request everywhere but on the board card, which is a link
+  to the task page itself.
 * **Prompt card**: one question to the milestone's owners (`Q<n>`): the
   question, its context (markdown without HTML: untrusted), the options
   with the recommended one first, a detail line and what each one does, a
@@ -153,6 +166,9 @@ the tab says it needs the database):
   (`?tab=spend&spendIssue=77&spendTask=…&spendRun=2`), so it can be
   linked to and back goes up again; breadcrumbs lead back to the project.
   Calls of no milestone and a milestone's own calls are not split further.
+  An issue with a companion repository has a *companion* marker on its row
+  (the tooltip names the project): its calls edit both trees and count to
+  the home issue.
 * **Calls** (a run's): seq, time, kind, role, engine and model (with the
   effort), whether the session was resumed, the engine it fell back from,
   tokens, cost and its source: *reported* by the engine, *estimated*
@@ -234,12 +250,14 @@ them off). The choice is remembered per browser; they are off until you turn
 them on. While they are on, a new Inbox item raises one browser notification:
 a paused autopilot (*Autopilot paused · milestone*, with the cause and the
 reason), a prompt (*Q5 · project*; a proposal "P3" from before prompts shows as before), or a task with a
-question (*#12 needs input*). Failed and blocked tasks only count in the
+question (*#12 needs input*), or a companion merge request ready for the
+owners to merge (*Companion ready to merge · project*, with the merge
+request, the home issue and the release). Failed and blocked tasks only count in the
 Inbox. Items already there when the tab opens or when you turn notifications
 on don't notify; each item notifies once, also across reloads and live
 updates, and an autopilot that pauses again for another cause or issue is a
 new item. Clicking a notification opens the milestone stream (pause, proposal)
-or the task page. Notifications work only while a Desk tab is open: there is
+or the task page (a ready companion: its home issue's task). Notifications work only while a Desk tab is open: there is
 no service worker, no Web Push and no e-mail. When the browser blocks them,
 the header says *Notifications are blocked in this browser* (allow them in
 the site settings); a browser without the Notification API shows no button.
@@ -451,9 +469,10 @@ the same Desk chat command as the buttons below; other commands (`rebase`,
 `mergeBase`, `unskip`, `startAnyway`, or any without the grant) show as the
 word to send on the tracking issue or the issue; labels, GitLab actions and
 answers to the pilot's prompt show as text, with a link to the merge
-request, the issue or the milestone where it applies. With the section the
+request, the companion merge request, the issue or the milestone where it
+applies. With the section the
 card drops its *Continues by itself* line, and its action row keeps only the
-links (Open chat, Open pipeline, Open MR, Open plan): the commands come from
+links (Open chat, Open pipeline, Open MR, Open companion MR, Open plan): the commands come from
 the remedies, so none shows twice.
 
 Against an operator that sends no exits, the actions depend on the kind:
@@ -464,6 +483,7 @@ Against an operator that sends no exits, the actions depend on the kind:
 | `findings`, `runFailed`, `needsInput` | Retry, Open #N chat, Skip |
 | `ciRed`, `ciCanceled` | Retry, Open pipeline (when there is one), Skip |
 | `mergeRequest` | Open MR, Resume, Skip |
+| `companion` | Open companion MR, Resume, Skip; it continues by itself once the companion merge request can be merged again or is merged by hand |
 | `cycle`, `stuck` | Open plan, Skip (pick a pending or active issue) |
 | `owner`, `mainRed`, `config`, and a pause without a kind | Resume |
 | `budget` | none: raise the budget above the spend (the milestone's `/agent budget` line, or for a `pausedFor` issue an `/agent budget <usd>` comment on it), and it continues by itself |

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Badge from './Badge.vue'
+import CompanionChip from './CompanionChip.vue'
 import StageBadge from './StageBadge.vue'
 import RelTime from './RelTime.vue'
 import { ciLabel, ciTone, cost, limitedEngine } from '../format'
@@ -35,6 +36,8 @@ const to = computed(() => ({
       </Badge>
       <Badge v-else-if="task.status.ci" :tone="ciTone(task.status.ci.state)">CI: {{ ciLabel[task.status.ci.state] }}</Badge>
       <Badge v-if="run.mergeRequestIID" tone="neutral">!{{ run.mergeRequestIID }}</Badge>
+      <!-- The card is a link itself: the task page and the milestone panel link the companion MR. -->
+      <CompanionChip v-if="task.companion" :companion="task.companion" plain />
       <Badge v-if="(run.blockingFindings ?? 0) > 0" tone="danger">{{ run.blockingFindings }} findings</Badge>
       <Badge v-if="task.status.phase === 'Waiting' && limitedEngine(run)" tone="warning">{{ limitedEngine(run) }} limit</Badge>
       <span class="spacer" />

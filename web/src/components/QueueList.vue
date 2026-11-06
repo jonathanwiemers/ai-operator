@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { chatPostError, getTaskChat, postTaskChat } from '../api'
+import { companionOf } from '../companion'
 import { live } from '../live'
 import { canRevisit, queueRows, queueTone, revisitCommand, revisitPromptID } from '../milestoneQueue'
 import { commandAnswer, type CommandAnswer } from '../pauseCard'
 import type { MilestoneView } from '../types'
 import Badge from './Badge.vue'
+import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
 
 // QueueList is a milestone's autopilot queue: per issue its state, merge
@@ -57,6 +59,9 @@ async function loadAnswer() {
 }
 watch(() => live.version, () => void loadAnswer())
 
+// companion: the issue's companion merge request, if it has one.
+const companion = (iid: number) => companionOf(props.milestone.companions, iid)
+
 const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
 </script>
 
@@ -68,9 +73,10 @@ const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestone
         <span class="tt" :title="q.title">{{ q.title }}</span>
         <Badge :tone="queueTone(q.state)">{{ q.state.toLowerCase() }}</Badge>
       </div>
-      <div v-if="q.mergeRequestIID || q.task || q.decisions.length || q.revisitOf" class="sub">
+      <div v-if="q.mergeRequestIID || q.task || q.decisions.length || q.revisitOf || companion(q.iid)" class="sub">
         <ExtLink v-if="q.mergeRequestURL" :href="q.mergeRequestURL">!{{ q.mergeRequestIID }}</ExtLink>
         <span v-else-if="q.mergeRequestIID">!{{ q.mergeRequestIID }}</span>
+        <CompanionChip v-if="companion(q.iid)" :companion="companion(q.iid)!" />
         <RouterLink v-if="q.task" :to="{ name: 'task', params: { namespace, name, task: q.task } }">task</RouterLink>
         <span v-if="q.revisitOf">revisits {{ q.revisitOf }}</span>
         <span v-for="d in q.decisions" :key="d.id" class="decision" :class="{ superseded: d.superseded }" :title="d.title">

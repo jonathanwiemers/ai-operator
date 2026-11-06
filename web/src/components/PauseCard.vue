@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { chatPostError, getTaskChat, postTaskChat } from '../api'
 import type { ChatCommand } from '../chatState'
+import { companionOf } from '../companion'
 import { live } from '../live'
 import {
   commandAnswer,
@@ -18,6 +19,7 @@ import {
   type PauseActionID,
 } from '../pauseCard'
 import type { MilestoneView } from '../types'
+import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
 import PromptCard from './PromptCard.vue'
 import RelTime from './RelTime.vue'
@@ -47,6 +49,8 @@ const issueURL = computed(() =>
   props.milestone.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${issue.value}`),
 )
 const pipelineURL = computed(() => implTask.value?.status.ci?.pipelineURL)
+// companion: the paused issue's companion merge request (kind companion).
+const companion = computed(() => companionOf(props.milestone.companions, issue.value))
 
 // prompt: the open question this pause asks (mainRed, budget); it replaces
 // the bare actions.
@@ -86,6 +90,8 @@ function usable(a: PauseAction): Shown | undefined {
       return pipelineURL.value ? { action: a, type: 'ext', href: pipelineURL.value } : undefined
     case 'openMR':
       return item.value?.mergeRequestURL ? { action: a, type: 'ext', href: item.value.mergeRequestURL } : undefined
+    case 'openCompanion':
+      return companion.value?.mrURL ? { action: a, type: 'ext', href: companion.value.mrURL } : undefined
   }
   if (!canChat.value) return undefined
   if (a.target === 'implement' && !implTaskName.value) return undefined
@@ -102,6 +108,7 @@ const remedyLinks = computed(() => ({
   milestone: props.milestone.webURL,
   mergeRequest: item.value?.mergeRequestURL,
   issue: issue.value ? issueURL.value : undefined,
+  companion: companion.value?.mrURL,
 }))
 const remedies = computed(() =>
   way.value.remedies.map((r) => ({
@@ -218,6 +225,7 @@ watch(
         {{ item.mergeRequestIID ? `!${item.mergeRequestIID}` : 'MR' }}
       </ExtLink>
       <code v-if="head" class="faint" :title="head">{{ head.slice(0, 7) }}</code>
+      <CompanionChip v-if="companion" :companion="companion" />
     </div>
 
     <ul v-if="limitLines.length" class="limits">

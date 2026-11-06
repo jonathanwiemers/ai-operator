@@ -44,3 +44,14 @@ test('inboxRoute: prompts open the milestone stream or the task page, with the p
     hash: '#prompt-Q1',
   })
 })
+
+test('inboxRoute: a ready companion opens its home task, without one its milestone', () => {
+  const ready = (over = {}) =>
+    item('companionReady', { issueIID: 12, milestoneIID: 3, title: 'group/infra!7', url: 'https://gitlab.example/group/infra/-/merge_requests/7', ...over })
+  assert.deepEqual(inboxRoute(ready({ task: 'shop-impl-12' })), {
+    name: 'task',
+    params: { namespace: 'team', name: 'shop', task: 'shop-impl-12' },
+  })
+  assert.deepEqual(inboxRoute(ready()), { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' } })
+  assert.deepEqual(inboxRoute(ready({ milestoneIID: undefined })), { name: 'stream-project', params: { namespace: 'team', name: 'shop' } })
+})
