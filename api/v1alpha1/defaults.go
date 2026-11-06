@@ -83,6 +83,15 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 		t := true
 		w.StepCommits = &t
 	}
+	if w.ConventionalCommits == nil {
+		f := false
+		w.ConventionalCommits = &f
+	}
+	if len(w.CommitTypes) == 0 {
+		w.CommitTypes = []string{"feat", "fix", "refactor", "perf", "test", "docs", "build", "ci", "chore", "style", "revert"}
+	} else if !slices.Contains(w.CommitTypes, "chore") {
+		w.CommitTypes = append(slices.Clone(w.CommitTypes), "chore")
+	}
 	return w
 }
 

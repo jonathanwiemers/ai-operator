@@ -2131,6 +2131,25 @@ spec:
                     - members
                     - owners
                     type: string
+                  commitTypes:
+                    description: |-
+                      CommitTypes are the allowed Conventional Commits types. Default: feat,
+                      fix, refactor, perf, test, docs, build, ci, chore, style, revert. chore
+                      is always allowed (the runner's own messages use it); the defaults add
+                      it to a list that lacks it.
+                    items:
+                      pattern: ^[a-z][a-z0-9]*$
+                      type: string
+                    maxItems: 20
+                    minItems: 1
+                    type: array
+                  conventionalCommits:
+                    default: false
+                    description: |-
+                      ConventionalCommits: commit messages and merge request titles follow
+                      Conventional Commits (type(scope): subject). Off keeps today's messages
+                      and titles.
+                    type: boolean
                   doneLabel:
                     default: agent::done
                     description: |-

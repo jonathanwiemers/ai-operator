@@ -290,6 +290,23 @@ type WorkflowSpec struct {
 	// +kubebuilder:default=true
 	// +optional
 	StepCommits *bool `json:"stepCommits,omitempty"`
+
+	// ConventionalCommits: commit messages and merge request titles follow
+	// Conventional Commits (type(scope): subject). Off keeps today's messages
+	// and titles.
+	// +kubebuilder:default=false
+	// +optional
+	ConventionalCommits *bool `json:"conventionalCommits,omitempty"`
+
+	// CommitTypes are the allowed Conventional Commits types. Default: feat,
+	// fix, refactor, perf, test, docs, build, ci, chore, style, revert. chore
+	// is always allowed (the runner's own messages use it); the defaults add
+	// it to a list that lacks it.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=20
+	// +kubebuilder:validation:items:Pattern=`^[a-z][a-z0-9]*$`
+	// +optional
+	CommitTypes []string `json:"commitTypes,omitempty"`
 }
 
 // AgentsSpec configures the agent pods and the roles running inside them.

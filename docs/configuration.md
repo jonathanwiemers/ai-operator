@@ -308,6 +308,8 @@ All labels can be renamed. Defaults:
 | `assignBot` | `true` |
 | `resolveConflicts` | `true` |
 | `stepCommits` | `true` |
+| `conventionalCommits` | `false` |
+| `commitTypes` | `feat, fix, refactor, perf, test, docs, build, ci, chore, style, revert` |
 
 `commandsFrom` is who may give `/agent` commands: `members` (anyone who can
 comment) or `owners`. With `owners`, an `/agent …` comment on an issue, its
@@ -370,6 +372,13 @@ step is committed and pushed as it is done (without CI), and comments written
 in the meantime reach the agent before its next step, so you can follow the
 work on the MR and steer it (see [usage.md](usage.md#3-the-agent-works)). Set
 it to `false` for one commit per run.
+
+`conventionalCommits`: with `true`, commit messages and MR titles follow
+Conventional Commits (`type(scope): subject`, subject up to 72 characters).
+`false` keeps today's messages and titles. `commitTypes` lists the allowed
+types (1 to 20 entries, each matching `^[a-z][a-z0-9]*$`). `chore` is always
+allowed because the runner's own messages use it: a list without `chore` gets
+it added.
 
 ## `spec.agents`
 

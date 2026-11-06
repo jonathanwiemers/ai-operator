@@ -176,3 +176,17 @@ func TestReviewMaxInlineDiff(t *testing.T) {
 		t.Fatalf("default = %d", got)
 	}
 }
+
+func TestConventionalCommitsDefaults(t *testing.T) {
+	w := AgentProjectSpec{}.WithDefaults().Workflow
+	if *w.ConventionalCommits || len(w.CommitTypes) != 11 || w.CommitTypes[0] != "feat" {
+		t.Fatalf("off, default types: %+v", w.CommitTypes)
+	}
+	got := WorkflowSpec{CommitTypes: []string{"feat"}}.WithDefaults().CommitTypes
+	if len(got) != 2 || got[1] != "chore" {
+		t.Fatalf("chore is added: %v", got)
+	}
+	if got := (WorkflowSpec{CommitTypes: []string{"chore", "fix"}}).WithDefaults().CommitTypes; len(got) != 2 {
+		t.Fatalf("chore is not added twice: %v", got)
+	}
+}
