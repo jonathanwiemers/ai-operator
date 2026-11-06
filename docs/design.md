@@ -546,6 +546,26 @@ nothing is lost.
   since, or a workspace on another branch, saves nothing. The agent server
   writes the call's last todo list or text to `.git/ai-last-status`
   (throttled) for the commit body.
+* **Folding checkpoints.** `Runner.commit` (each implementer commit, not
+  the merge commit of a conflict run, and not runs in which the
+  implementer does not run) calls `Workspace.CommitStep`. When the tip of
+  the `agent/` branch (never the base branch) is a checkpoint that was
+  pushed (the checkout's `origin/<branch>`, or the head this run pushed),
+  it walks back from `HEAD` over the commits with the `Agent-Checkpoint`
+  trailer (single parent, down to the merge base with `origin/<base>`),
+  `reset --soft`s to the commit before them and commits with the agent's
+  message, also when the step changed nothing itself. The next `publish`
+  pushes it with `Mirror.PushWithLease`
+  (`--force-with-lease=refs/heads/<branch>:<checkpoint>`). **This is the
+  only force push the operator does**: it is limited to the agent branch
+  by the push policy, and the mirror itself checks (with its own git, not
+  the agent's answer) that every commit it removes from the branch is a
+  checkpoint. A rejected lease (`ErrLeaseRejected`, someone pushed) or a
+  refused fold makes the runner `Unfold`: the fold commit, and any commit
+  on it, are re-created on top of the checkpoint (same trees and
+  messages), which is published with a normal push and so hits the usual
+  conflict path. The run report says the checkpoint was kept. A
+  successful fold clears `checkpointHead` and `status.run.checkpoint`.
 * **Agent notes.** The implementer also returns handoff notes, which the
   runner keeps in one bot comment on the issue (created on the first run,
   edited right after each later push, `internal/runner/handoff.go`). A
@@ -1874,7 +1894,10 @@ the runner restrict themselves (`internal/gitlab/guard.go`):
 * Every push of a mirror goes through its `PushPolicy`. It allows only an
   unforced push of a commit to an `agent/` branch, never the default branch.
   No tags, no deletes, and only to the remote URL of the policy's project. A
-  mirror without a policy pushes nothing.
+  mirror without a policy pushes nothing. The one exception to "unforced"
+  is the fold of checkpoints (`PushWithLease`): under the same policy, with
+  `--force-with-lease` on the checkpoint, and only when every commit it
+  removes carries `Agent-Checkpoint`.
 
 A refusal is a `*gitlab.GuardError`, which is not retried, and is logged at
 info with `project`, `op` and `reason`.

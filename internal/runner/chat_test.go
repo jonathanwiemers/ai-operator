@@ -130,6 +130,13 @@ func (a *chatAgent) Commit(_ context.Context, _, message string) (bool, error) {
 	return false, nil
 }
 
+func (a *chatAgent) CommitStep(ctx context.Context, req CommitRequest) (CommitResult, error) {
+	ok, err := a.Commit(ctx, homeTree, req.Message)
+	return CommitResult{Committed: ok}, err
+}
+
+func (a *chatAgent) Unfold(context.Context, UnfoldRequest) (string, error) { return "", nil }
+
 func (a *chatAgent) Bundle(_ context.Context, req BundleRequest) (bool, error) {
 	if a.bundleFn != nil {
 		return a.bundleFn(req.Branch, req.Base, req.Path)

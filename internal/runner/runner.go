@@ -78,6 +78,9 @@ type Runner struct {
 	// checkpointHead is the checkpoint this run last pushed: as pushedHead
 	// it is no push CI checks or a review covers (see stepHead).
 	checkpointHead string
+	// foldLease is the checkpoint a step's commit folded (foldCommit) and
+	// the next publish replaces with --force-with-lease; "" if none.
+	foldLease, foldCommit string
 	// cut is where a checkpoint of a cut-off implementer call goes; nil
 	// outside the implementer part of a run.
 	cut *cutTarget
@@ -364,6 +367,9 @@ func (r *Runner) publish(ctx context.Context, branch, base string, skipCI bool) 
 	if head != "" && head == r.pushedHead {
 		return false, nil
 	}
+	if r.foldLease != "" {
+		return r.publishFold(ctx, branch, base, head, skipCI)
+	}
 	if err := r.Mirror.Push(ctx, branch, skipCI); err != nil {
 		return false, err
 	}
@@ -517,6 +523,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	request := task.Spec.RunRequest
 	r.run = newRunLog(r.Log, task)
 	r.blamedRestarts, r.pushedHead, r.checkpointHead, r.changedPins, r.cut, r.companion = 0, "", "", nil, nil, nil
+	r.foldLease, r.foldCommit = "", ""
 	r.runNumber = int64(task.Status.Run.RunCount) + 1
 	ctx = withRunID(ctx, r.run.id)
 	log := r.run.log

@@ -1839,6 +1839,16 @@ CLI reports such a limit, the run is **paused, not failed**:
   While the MR's head is a checkpoint, the MR stays a draft, nobody is
   asked to review it and autopilot does not merge it
   ([merge gate](#the-merge-gate)).
+  The next implementer commit on the branch (its first step, or its only
+  commit without steps) replaces the checkpoints at the tip: they are
+  folded into that commit, which carries the agent's own message, and the
+  branch is pushed with `--force-with-lease` over the checkpoint. If
+  someone pushed to the branch after the checkpoint, the lease fails: the
+  checkpoint stays, the step's commit goes on top of it, the push then
+  fails as any push after someone else's does, and the report says
+  ``The checkpoint `<sha>` was kept: …``. Runs in which the implementer
+  does not run (a merge of the base branch only, a review again) fold
+  nothing.
 - The run is retried at the reset time the CLI reports (claude's from its
   limit message or, when that names none, from its usage windows; cursor's
   monthly reset date). If it doesn't report one, the wait is 5 minutes, doubling with every further limit hit

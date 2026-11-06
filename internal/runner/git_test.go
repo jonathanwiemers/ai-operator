@@ -173,3 +173,119 @@ func TestGuardedGitLab(t *testing.T) {
 		t.Fatalf("companion merge: %v", err)
 	}
 }
+
+// leaseMirror is guardedMirror with a checkpoint pushed on agent/42-x and,
+// in the mirror's refs/heads/agent/42-x, a step commit that folds it: on the
+// checkpoint's parent. It returns the checkpoint.
+func leaseMirror(t *testing.T) (m *Mirror, origin, cp string) {
+	t.Helper()
+	m, origin, _ = guardedMirror(t)
+	ctx := context.Background()
+	base, _ := m.resolve(ctx, "refs/remotes/origin/agent/42-x")
+	commit := func(parent, msg string) string {
+		sha, err := m.run(ctx, false, "-c", "user.name=t", "-c", "user.email=t@t", "commit-tree", parent+"^{tree}", "-p", parent, "-m", msg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sha
+	}
+	setHead := func(sha string) {
+		if _, err := m.run(ctx, false, "update-ref", "refs/heads/agent/42-x", sha); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cp = commit(base, "chore(wip): checkpoint #42 step 1 (usage-limit)\n\nstat\n\nAgent-Checkpoint: 1/1 usage-limit")
+	setHead(cp)
+	if err := m.Push(ctx, "agent/42-x", false); err != nil {
+		t.Fatal(err)
+	}
+	setHead(commit(base, "feat: the step"))
+	return m, origin, cp
+}
+
+func originHead(t *testing.T, origin string) string {
+	t.Helper()
+	return gitCmd(t, filepath.Dir(origin), "--git-dir", origin, "rev-parse", "agent/42-x")
+}
+
+func TestMirrorPushWithLeaseFolds(t *testing.T) {
+	m, origin, cp := leaseMirror(t)
+	ctx := context.Background()
+	// ci.skip, with the fallback for a remote without push options.
+	if err := m.PushWithLease(ctx, "agent/42-x", cp, true); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := m.resolve(ctx, "refs/heads/agent/42-x")
+	if got := originHead(t, origin); got != want {
+		t.Fatalf("remote agent/42-x at %s, want the fold %s", got, want)
+	}
+}
+
+func TestMirrorPushWithLeaseRejected(t *testing.T) {
+	m, origin, cp := leaseMirror(t)
+	ctx := context.Background()
+	// Someone pushes on top of the checkpoint.
+	dir := filepath.Dir(origin)
+	human := gitCmd(t, dir, "--git-dir", origin, "commit-tree", cp+"^{tree}", "-p", cp, "-m", "Human fix")
+	gitCmd(t, dir, "--git-dir", origin, "update-ref", "refs/heads/agent/42-x", human)
+	err := m.PushWithLease(ctx, "agent/42-x", cp, false)
+	if !errors.Is(err, ErrLeaseRejected) {
+		t.Fatalf("want ErrLeaseRejected, got %v", err)
+	}
+	if got := originHead(t, origin); got != human {
+		t.Fatalf("the human commit must stay: %s", got)
+	}
+}
+
+func TestMirrorPushWithLeaseRefuses(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name   string
+		expect func(m *Mirror, cp string) string
+	}{
+		{"not a commit ID", func(*Mirror, string) string { return "refs/heads/agent/42-x" }},
+		{"unknown commit", func(*Mirror, string) string { return strings.Repeat("a", 40) }},
+		// A regular commit on the checkpoint was pushed, and the lease is
+		// it: the push would remove it with the checkpoint.
+		{"removes a regular commit", func(m *Mirror, cp string) string {
+			fold, _ := m.resolve(ctx, "refs/heads/agent/42-x")
+			human, err := m.run(ctx, false, "-c", "user.name=t", "-c", "user.email=t@t", "commit-tree", cp+"^{tree}", "-p", cp, "-m", "Human fix")
+			for _, ref := range []string{human, fold} {
+				if err == nil {
+					_, err = m.run(ctx, false, "update-ref", "refs/heads/agent/42-x", ref)
+				}
+				if err == nil && ref == human {
+					err = m.Push(ctx, "agent/42-x", false)
+				}
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			return human
+		}},
+		{"removes nothing", func(m *Mirror, _ string) string {
+			sha, _ := m.resolve(ctx, "refs/heads/agent/42-x")
+			return sha
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, origin, cp := leaseMirror(t)
+			expect := tc.expect(m, cp)
+			before := remoteRefs(t, origin)
+			err := m.PushWithLease(ctx, "agent/42-x", expect, false)
+			var ge *gitlab.GuardError
+			if !errors.As(err, &ge) || errors.Is(err, ErrLeaseRejected) {
+				t.Fatalf("want a *GuardError, got %v", err)
+			}
+			if after := remoteRefs(t, origin); after != before {
+				t.Fatalf("the remote changed:\n%s\nwas\n%s", after, before)
+			}
+		})
+	}
+	// The policy applies as to every push.
+	m, _, cp := leaseMirror(t)
+	var ge *gitlab.GuardError
+	if err := m.PushWithLease(ctx, "main", cp, false); !errors.As(err, &ge) {
+		t.Fatalf("a lease push to main: %v", err)
+	}
+}

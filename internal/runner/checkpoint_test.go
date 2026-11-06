@@ -204,7 +204,8 @@ func TestCheckpointOnUsageLimit(t *testing.T) {
 		t.Fatalf("expected a fast-forward push with ci.skip from %s: %s", parent, line)
 	}
 
-	// The next run continues from the checkpoint; its regular push clears it.
+	// The next run continues from the checkpoint. Its first commit, with the
+	// agent's message, folds the checkpoint; the fix round's goes on top.
 	e.now = reset.Add(time.Minute)
 	if !e.step() {
 		t.Fatal("the run should continue after the reset")
@@ -213,9 +214,25 @@ func TestCheckpointOnUsageLimit(t *testing.T) {
 	if run.LastResult != aiv1.RunResultSucceeded || run.Checkpoint != nil || run.PushedSHA == "" {
 		t.Fatalf("a regular push clears the checkpoint: %+v", run)
 	}
-	if log := e.origin1("log", "--format=%s", cpBranch); !strings.Contains(log, "chore(wip): checkpoint #42 step 1 (usage-limit)") ||
-		!strings.Contains(e.origin1("ls-tree", "--name-only", cpBranch), "wip.go") {
-		t.Fatalf("the next run builds on the checkpoint:\n%s", log)
+	if log := strings.Split(e.origin1("log", "--format=%s", cpBranch), "\n"); !slices.Equal(log, []string{"Fix nil deref", "Add PayPal button", "Start work on #42", "init"}) {
+		t.Fatalf("history %q", log)
+	}
+	fold := e.origin1("rev-parse", cpBranch+"^")
+	if files := e.origin1("ls-tree", "--name-only", fold); !strings.Contains(files, "wip.go") || !strings.Contains(files, "paypal.go") {
+		t.Fatalf("the step's commit holds the checkpoint's changes and its own: %s", files)
+	}
+	if e.origin1("rev-parse", fold+"^") != parent {
+		t.Fatal("the step's commit replaces the checkpoint on the start commit")
+	}
+	// One push moved the branch from the checkpoint, with the lease.
+	if line := pushOf(t, pushes, run.PushedSHA); !strings.HasPrefix(line, "[] "+head+" ") {
+		t.Fatalf("expected the push over the checkpoint %s: %s", head, line)
+	}
+	if _, res := e.stepResult("fold checkpoints"); !strings.Contains(res, "replaces the checkpoint "+shortSHA(head)+" (--force-with-lease)") {
+		t.Fatalf("fold checkpoints step: %q", res)
+	}
+	if _, res := e.stepResult("commit"); !strings.Contains(res, "folding 1 checkpoint(s) up to "+shortSHA(head)) {
+		t.Fatalf("commit step: %q", res)
 	}
 }
 
@@ -390,17 +407,27 @@ func TestCheckpointDisabled(t *testing.T) {
 }
 
 // TestEarlierCheckpointHeadStaysADraft: a run cut off by an engine error
-// left a checkpoint; the next run changes nothing more, so that checkpoint
-// is still the head. Its clean review must not mark the MR ready, take the
-// checkpoint for a push, start a pipeline or ask the owners to review.
+// left a checkpoint; the next run only reviews it again (no implementer
+// step, so nothing folds it), so that checkpoint is still the head. Its
+// clean review must not mark the MR ready, take the checkpoint for a push,
+// start a pipeline or ask the owners to review.
 func TestEarlierCheckpointHeadStaysADraft(t *testing.T) {
-	e := newLimitEnv(t, &cutEngine{next: quietEngine{}, cutIf: cutAt(1), fail: errors.New("claude failed: exit status 1: boom")})
+	engine := &cutEngine{next: quietEngine{}, cutIf: cutAt(1), fail: errors.New("claude failed: exit status 1: boom")}
+	e := newLimitEnv(t, engine)
 	if !e.step() {
 		t.Fatal("expected a failed run")
 	}
 	head := e.checkCheckpoint(1, 1, cutEngineError)
 	e.gl.Users = []gitlab.User{{ID: 7, Username: "alice"}}
-	e.requestRun(func(task *aiv1.AgentTask) { task.Spec.Owners = []string{"alice"} })
+	e.requestRun(func(task *aiv1.AgentTask) {
+		task.Spec.Owners = []string{"alice"}
+		task.Spec.Source.ReviewFor = head
+	})
+	defer func() {
+		if engine.n != 1 {
+			t.Errorf("the implementer runs only in the first run: %d calls", engine.n)
+		}
+	}()
 	if !e.step() {
 		t.Fatal("the second run should happen")
 	}
@@ -425,10 +452,11 @@ func TestEarlierCheckpointHeadStaysADraft(t *testing.T) {
 	}
 }
 
-// TestCheckpointHeadIsNoPush: the fallback continues from the checkpoint and
-// changes nothing more, so the checkpoint stays the head. push() must not
-// take it for the push of a step.
-func TestCheckpointHeadIsNoPush(t *testing.T) {
+// TestFallbackFoldsTheRunsCheckpoint: the fallback continues from the
+// checkpoint the same run pushed and changes nothing more. Its commit still
+// folds the checkpoint (the checkout's origin ref does not know the run's
+// pushes), and that head is a regular push.
+func TestFallbackFoldsTheRunsCheckpoint(t *testing.T) {
 	engine := &cutEngine{next: quietEngine{}, cutIf: func(_ int, inv Invocation) bool { return inv.Model == "auto" }, fail: errors.New(cursorLimit)}
 	e := newLimitEnv(t, engine)
 	e.updateProject(func(p *aiv1.AgentProject) {
@@ -437,12 +465,9 @@ func TestCheckpointHeadIsNoPush(t *testing.T) {
 	if !e.step() {
 		t.Fatal("the fallback finishes the run")
 	}
-	head := e.checkCheckpoint(1, 1, cutUsageLimit)
-	run := e.task().Status.Run
-	if run.LastResult != aiv1.RunResultSucceeded || run.PushedSHA != "" || run.ReviewedSHA != "" || run.Checkpoint.SHA != head {
-		t.Fatalf("the checkpoint head is no push: %+v", run)
-	}
-	if _, res := e.stepResult("push"); res != "nothing new to push" {
-		t.Fatalf("push step: %q", res)
+	cp, _ := e.checkpointCommit("chore(wip): checkpoint #42 step 1 (usage-limit)")
+	head := e.checkFolded(cp, "Nothing")
+	if run := e.task().Status.Run; run.LastResult != aiv1.RunResultSucceeded || run.ReviewedSHA != head {
+		t.Fatalf("the folded head is pushed and reviewed: %+v", run)
 	}
 }

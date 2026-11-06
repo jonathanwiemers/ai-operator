@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -280,13 +282,56 @@ func (m *Mirror) push(ctx context.Context, src, dst string, skipCI bool) error {
 	if err := m.checkPush(ctx, src, dst); err != nil {
 		return err
 	}
+	return m.pushArgs(ctx, skipCI, src+":"+dst)
+}
+
+// pushArgs runs git push origin args, with ci.skip if skipCI and without
+// it where the remote takes no push options.
+func (m *Mirror) pushArgs(ctx context.Context, skipCI bool, args ...string) error {
 	if skipCI {
-		_, err := m.run(ctx, true, "push", "--quiet", "-o", "ci.skip", "origin", src+":"+dst)
+		_, err := m.run(ctx, true, append([]string{"push", "--quiet", "-o", "ci.skip", "origin"}, args...)...)
 		if err == nil || !strings.Contains(err.Error(), "push options") {
 			return err
 		}
 	}
-	_, err := m.run(ctx, true, "push", "--quiet", "origin", src+":"+dst)
+	_, err := m.run(ctx, true, append([]string{"push", "--quiet", "origin"}, args...)...)
+	return err
+}
+
+// ErrLeaseRejected is the error of PushWithLease when the branch on the
+// remote is no longer the commit it expected: someone pushed to it.
+var ErrLeaseRejected = errors.New("the branch moved on the remote, the lease was rejected")
+
+var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+
+// PushWithLease pushes the imported branch over expect, the checkpoint at
+// the tip of the branch on the remote, with --force-with-lease: the fold of
+// checkpoints into a step's commit, the only forced push there is. On top
+// of the policy (checkPush) it refuses unless every commit it removes from
+// the branch is a checkpoint. If the branch on the remote is no longer
+// expect, nothing is pushed and the error is ErrLeaseRejected.
+func (m *Mirror) PushWithLease(ctx context.Context, branch, expect string, skipCI bool) error {
+	ref := "refs/heads/" + branch
+	if err := m.checkPush(ctx, ref, ref); err != nil {
+		return err
+	}
+	refuse := func(reason string) error {
+		return gitlab.Refuse(m.Log, m.Policy.Project, "push --force-with-lease="+ref+":"+expect, reason)
+	}
+	if !fullSHA.MatchString(expect) {
+		return refuse("the lease is not a commit ID")
+	}
+	out, err := m.run(ctx, false, "log", "--first-parent", "--format="+checkpointLogFormat, expect, "^"+ref)
+	if err != nil {
+		return refuse("the commits the push would remove are unknown: " + err.Error())
+	}
+	if _, _, all := checkpointRun(out, expect); !all {
+		return refuse("the push would remove commits that are not checkpoints")
+	}
+	err = m.pushArgs(ctx, skipCI, "--force-with-lease="+ref+":"+expect, ref+":"+ref)
+	if err != nil && strings.Contains(err.Error(), "stale info") {
+		return fmt.Errorf("%w: %s", ErrLeaseRejected, err.Error())
+	}
 	return err
 }
 

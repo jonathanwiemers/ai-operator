@@ -76,16 +76,50 @@ func (k *killEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
 }
 
 // checkpointCommit returns origin's commit with subject, failing if there is
-// none, with its full message.
+// none, with its full message. A checkpoint the next step folded is no
+// longer on the branch, but origin still has its commit.
 func (e *limitEnv) checkpointCommit(subject string) (string, string) {
 	e.t.Helper()
-	for _, line := range strings.Split(e.origin1("log", "--format=%H %s", cpBranch), "\n") {
+	lines := strings.Split(e.origin1("log", "--format=%H %s", cpBranch), "\n")
+	for _, line := range strings.Split(e.origin1("fsck", "--unreachable", "--no-reflogs", "--no-progress"), "\n") {
+		if sha, ok := strings.CutPrefix(line, "unreachable commit "); ok {
+			lines = append(lines, e.origin1("log", "-1", "--format=%H %s", sha))
+		}
+	}
+	for _, line := range lines {
 		if sha, s, _ := strings.Cut(line, " "); s == subject {
 			return sha, e.origin1("log", "-1", "--format=%B", sha)
 		}
 	}
 	e.t.Fatalf("no commit %q on %s:\n%s", subject, cpBranch, e.origin1("log", "--format=%s", cpBranch))
 	return "", ""
+}
+
+// checkFolded checks that the branch head is the step commit subject that
+// folded the checkpoint cp (with wip.go), on the commit before cp, pushed
+// over cp with the lease. It returns the head.
+func (e *limitEnv) checkFolded(cp, subject string) string {
+	e.t.Helper()
+	head := e.origin1("rev-parse", cpBranch)
+	if got := e.origin1("log", "-1", "--format=%s", head); got != subject {
+		e.t.Fatalf("head %q, want the step's commit %q", got, subject)
+	}
+	if got, want := e.origin1("rev-parse", head+"^"), e.origin1("rev-parse", cp+"^"); got != want {
+		e.t.Fatalf("the step's commit is on %s, want %s:\n%s", got, want, e.origin1("log", "--format=%s", cpBranch))
+	}
+	if strings.Contains(e.origin1("log", "--format=%B", cpBranch), "Agent-Checkpoint") {
+		e.t.Fatalf("a checkpoint is still on the branch:\n%s", e.origin1("log", "--format=%s", cpBranch))
+	}
+	if !strings.Contains(e.origin1("ls-tree", "--name-only", head), "wip.go") {
+		e.t.Fatal("the step's commit misses the checkpoint's changes")
+	}
+	if _, res := e.stepResult("fold checkpoints"); !strings.Contains(res, "replaces the checkpoint "+shortSHA(cp)+" (--force-with-lease)") {
+		e.t.Fatalf("fold checkpoints step: %q (%v)", res, stepNames(e.r.run))
+	}
+	if run := e.task().Status.Run; run.Checkpoint != nil || run.PushedSHA != head {
+		e.t.Fatalf("a folded checkpoint is gone from the status, the head is a push: %+v %q", run.Checkpoint, run.PushedSHA)
+	}
+	return head
 }
 
 func (e *limitEnv) savedState() state {
@@ -127,6 +161,8 @@ func TestCheckpointBeforeContainerRestartReset(t *testing.T) {
 	if !engine.sawWip || engine.head != subject {
 		t.Fatalf("the retry continues from the checkpoint: wip.go %v, origin head %q", engine.sawWip, engine.head)
 	}
+	// The retry's commit folds the checkpoint this run pushed.
+	e.checkFolded(sha, "Nothing")
 	if _, err := os.Stat(filepath.Join(e.tmp, "agent", "repo", ".git", lastStatusFile)); !os.IsNotExist(err) {
 		t.Fatalf("the status file goes with the checkpoint: %v", err)
 	}
@@ -194,7 +230,8 @@ func TestLostPodLeavesCheckpointBeforePrepare(t *testing.T) {
 	}
 	names := stepNames(e.r.run)
 	cp, prep, draft := slices.Index(names, "save checkpoint"), slices.Index(names, "prepare checkout"), slices.Index(names, "mark draft")
-	if cp < 0 || prep < cp || draft < cp {
+	// The MR is a draft already when nothing marked it ready before.
+	if cp < 0 || prep < cp || draft >= 0 && draft < cp {
 		t.Fatalf("the checkpoint (draft first) comes before prepare: %v", names)
 	}
 	if _, res := e.stepResult("save checkpoint"); !strings.Contains(res, shortSHA(sha)+" pushed without CI: 1 files, +3/−0") {
@@ -207,6 +244,7 @@ func TestLostPodLeavesCheckpointBeforePrepare(t *testing.T) {
 	if run := e.task().Status.Run; run.LastResult != aiv1.RunResultSucceeded {
 		t.Fatalf("the run goes on: %+v", run)
 	}
+	e.checkFolded(sha, "Nothing")
 	if st := e.savedState(); st.InFlight != nil {
 		t.Fatalf("the marker is used up: %+v", st.InFlight)
 	}
@@ -327,10 +365,11 @@ func TestOOMKillLeavesCheckpointInNewPod(t *testing.T) {
 	if !e.step() {
 		t.Fatal("the run should start again")
 	}
-	_, msg := e.checkpointCommit("chore(wip): checkpoint #42 step 1 (oom-kill)")
+	sha, msg := e.checkpointCommit("chore(wip): checkpoint #42 step 1 (oom-kill)")
 	if !strings.Contains(msg, "Agent-Checkpoint: 1/1 oom-kill") || !strings.Contains(msg, "- [>] wip.go") {
 		t.Fatalf("checkpoint message:\n%s", msg)
 	}
+	e.checkFolded(sha, "Nothing")
 	if !engine.sawWip {
 		t.Fatal("the new pod's call has the files")
 	}

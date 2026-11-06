@@ -194,6 +194,51 @@ func (r *Runner) saveCheckpoint(ctx context.Context, reason string, res *Result)
 	return &cp, true
 }
 
+// noteFold remembers the checkpoint a step's commit folded (CommitStep), for
+// the next publish.
+func (r *Runner) noteFold(res CommitResult) {
+	if res.FoldedFrom != "" {
+		r.foldLease, r.foldCommit = res.FoldedFrom, res.SHA
+	}
+}
+
+// publishFold pushes head, the step's commit that folded the checkpoints up
+// to r.foldLease, over that checkpoint with --force-with-lease, the only
+// forced push there is. If someone pushed to the branch since, or the
+// mirror refuses the fold, the fold is undone: the step's commit goes on top
+// of the checkpoint, which is kept, and is published normally. Any other
+// failure leaves the fold for the next publish to try again.
+func (r *Runner) publishFold(ctx context.Context, branch, base, head string, skipCI bool) (bool, error) {
+	lease, fold := r.foldLease, r.foldCommit
+	s := r.step(ctx, "fold checkpoints", "branch", branch, "checkpoint", lease)
+	err := r.Mirror.PushWithLease(ctx, branch, lease, skipCI)
+	var refused *gitlab.GuardError
+	switch {
+	case err == nil:
+		r.foldLease, r.foldCommit = "", ""
+		r.pushedHead, r.checkpointHead = head, ""
+		if err := r.patchRun(ctx, func(st *aiv1.RunStatus) { st.Checkpoint = nil }); err != nil {
+			r.log().Error(err, "clearing the folded checkpoint")
+		}
+		s.done(fmt.Sprintf("%s replaces the checkpoint %s (--force-with-lease)", shortSHA(head), shortSHA(lease)), "sha", head)
+		return true, nil
+	case !errors.Is(err, ErrLeaseRejected) && !errors.As(err, &refused):
+		return false, s.fail(err)
+	}
+	r.foldLease, r.foldCommit = "", ""
+	why := "someone pushed to the branch"
+	if refused != nil {
+		why = "the fold was refused (" + refused.Reason + ")"
+	}
+	if _, uerr := r.Agent.Unfold(ctx, UnfoldRequest{Tip: lease, Fold: fold}); uerr != nil {
+		return false, s.fail(fmt.Errorf("%s, and undoing the fold failed: %w", why, uerr))
+	}
+	r.run.noteCheckpoint(checkpointNote{Kept: fmt.Sprintf("The checkpoint `%s` was kept: %s, so it was not folded into the step's commit.",
+		shortSHA(lease), notify.Defuse(why))})
+	s.done("checkpoint kept: "+why, "error", err.Error())
+	return r.publish(ctx, branch, base, skipCI)
+}
+
 // skippedNote names the files a checkpoint left out, for the run log.
 func skippedNote(skipped []CheckpointSkip) string {
 	if len(skipped) == 0 {
@@ -304,6 +349,8 @@ func (run *implementRun) checkpointLostAttempt(ctx context.Context) {
 type checkpointNote struct {
 	Reason string
 	CheckpointResult
+	// Kept, if set, is the whole note: a checkpoint that was not folded.
+	Kept string
 }
 
 func (rl *runLog) noteCheckpoint(n checkpointNote) {
@@ -326,6 +373,23 @@ func (rl *runLog) checkpointText() string {
 	return strings.Join(checkpointLines(notes), "\n\n")
 }
 
+// keptNotices are the run's notes about checkpoints that were kept instead
+// of folded, for the report of a run that ends normally.
+func (rl *runLog) keptNotices() []string {
+	if rl == nil {
+		return nil
+	}
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	var kept []string
+	for _, n := range rl.checkpoints {
+		if n.Kept != "" {
+			kept = append(kept, n.Kept)
+		}
+	}
+	return kept
+}
+
 // cutWords says why a checkpoint was saved.
 var cutWords = map[string]string{
 	cutUsageLimit:       "the usage limit was reached",
@@ -343,6 +407,10 @@ var cutWords = map[string]string{
 func checkpointLines(notes []checkpointNote) []string {
 	var lines []string
 	for _, n := range notes {
+		if n.Kept != "" {
+			lines = append(lines, n.Kept)
+			continue
+		}
 		if n.SHA != "" {
 			why := cutWords[n.Reason]
 			if why == "" {

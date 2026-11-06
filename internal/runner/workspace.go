@@ -185,11 +185,166 @@ func (w *Workspace) Commit(ctx context.Context, message string) (bool, error) {
 	if strings.TrimSpace(status) == "" {
 		return false, nil
 	}
-	if strings.TrimSpace(message) == "" {
-		message = "WIP: agent changes"
-	}
-	_, err = w.git(ctx, "commit", "--quiet", "--no-verify", "-m", message)
+	_, err = w.git(ctx, "commit", "--quiet", "--no-verify", "-m", orWIP(message))
 	return err == nil, err
+}
+
+func orWIP(message string) string {
+	if strings.TrimSpace(message) == "" {
+		return "WIP: agent changes"
+	}
+	return message
+}
+
+// CommitRequest asks for the commit of a step of the run on the home tree's
+// work branch.
+type CommitRequest struct {
+	Message string `json:"message"`
+	Branch  string `json:"branch"`
+	Base    string `json:"base"`
+	// Pushed, if set, is the head the runner pushed last in this run: the
+	// checkout's refs/remotes/origin/<branch> does not learn about it.
+	Pushed string `json:"pushed,omitempty"`
+}
+
+// CommitResult is the outcome of CommitStep. FoldedFrom is set when the
+// commit folded Folded checkpoints: it is the checkpoint that was the tip,
+// SHA the new commit that replaces them.
+type CommitResult struct {
+	Committed  bool   `json:"committed"`
+	SHA        string `json:"sha,omitempty"`
+	FoldedFrom string `json:"foldedFrom,omitempty"`
+	Folded     int    `json:"folded,omitempty"`
+}
+
+// CommitStep commits a step like Commit. When the tip of req.Branch is a
+// pushed checkpoint, every checkpoint at the tip is folded into the step's
+// commit, which carries req.Message: the branch is reset (soft) to the
+// commit before them, so the commit holds their changes and the step's. It
+// folds even when the step changed nothing itself, so the agent's message
+// replaces the checkpoint's placeholder.
+func (w *Workspace) CommitStep(ctx context.Context, req CommitRequest) (CommitResult, error) {
+	tip, keep, n := w.foldTarget(ctx, req)
+	if n > 0 {
+		if _, err := w.git(ctx, "add", "-A"); err != nil {
+			return CommitResult{}, err
+		}
+		// Checkpoints that cancel out leave nothing to fold into.
+		if _, err := w.git(ctx, "diff", "--cached", "--quiet", keep); err == nil {
+			n = 0
+		}
+	}
+	if n == 0 {
+		ok, err := w.Commit(ctx, req.Message)
+		return CommitResult{Committed: ok}, err
+	}
+	if _, err := w.git(ctx, "reset", "--quiet", "--soft", keep); err != nil {
+		return CommitResult{}, err
+	}
+	if _, err := w.git(ctx, "commit", "--quiet", "--no-verify", "-m", orWIP(req.Message)); err != nil {
+		_, _ = w.git(ctx, "reset", "--quiet", "--soft", tip) // back to the checkpoint
+		return CommitResult{}, err
+	}
+	sha, err := w.git(ctx, "rev-parse", "HEAD")
+	return CommitResult{Committed: true, SHA: sha, FoldedFrom: tip, Folded: n}, err
+}
+
+// foldTarget returns what CommitStep folds: the tip, the commit before the
+// checkpoints at the tip and their count. n is 0 (no fold) unless req.Branch
+// is an agent branch other than the base, checked out, without a merge or
+// rebase in progress, and its tip is a checkpoint that was pushed.
+func (w *Workspace) foldTarget(ctx context.Context, req CommitRequest) (tip, keep string, n int) {
+	if req.Branch == req.Base || !strings.HasPrefix(req.Branch, "agent/") || w.hasRef(ctx, "MERGE_HEAD") || w.rebaseDir() != "" {
+		return "", "", 0
+	}
+	if cur, err := w.git(ctx, "symbolic-ref", "--quiet", "HEAD"); err != nil || cur != "refs/heads/"+req.Branch {
+		return "", "", 0
+	}
+	tip, err := w.git(ctx, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	if err != nil {
+		return "", "", 0
+	}
+	if pushed, _ := w.git(ctx, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/"+req.Branch+"^{commit}"); tip != pushed && tip != req.Pushed {
+		return "", "", 0
+	}
+	args := []string{"log", "--first-parent", "--format=" + checkpointLogFormat, "HEAD"}
+	if mb, err := w.git(ctx, "merge-base", "refs/remotes/origin/"+req.Base, "HEAD"); err == nil {
+		args = append(args, "^"+mb)
+	}
+	out, err := w.git(ctx, args...)
+	if err != nil {
+		return "", "", 0
+	}
+	keep, n, _ = checkpointRun(out, tip)
+	if n == 0 {
+		return "", "", 0
+	}
+	return tip, keep, n
+}
+
+// checkpointLogFormat is the git log format checkpointRun reads: the commit,
+// its parents and the values of its Agent-Checkpoint trailers.
+const checkpointLogFormat = "%H %P%x00%(trailers:key=Agent-Checkpoint,valueonly,separator=%x2C)"
+
+// checkpointRun reads git log output in checkpointLogFormat, newest first,
+// from tip. It counts the checkpoints in a row from tip: each with one
+// parent, the next line's commit, and the trailer. keep is the parent of the
+// last one. all reports whether every line was such a checkpoint.
+func checkpointRun(out, tip string) (keep string, n int, all bool) {
+	keep = tip
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	for _, line := range lines {
+		commit, trailer, _ := strings.Cut(line, "\x00")
+		f := strings.Fields(commit)
+		if len(f) != 2 || f[0] != keep || strings.TrimSpace(trailer) == "" {
+			return keep, n, false
+		}
+		keep = f[1]
+		n++
+	}
+	return keep, n, n > 0
+}
+
+// UnfoldRequest asks to undo a fold whose push was refused.
+type UnfoldRequest struct {
+	// Tip is the checkpoint that was the tip (CommitResult.FoldedFrom).
+	Tip string `json:"tip"`
+	// Fold is the commit that folded the checkpoints (CommitResult.SHA).
+	Fold string `json:"fold"`
+}
+
+// Unfold puts the fold commit, and the commits on top of it, back on top of
+// the checkpoint req.Tip, with their trees and messages: the step's work
+// becomes a normal commit on the checkpoint. The index and the work tree
+// stay as they are. It returns the new HEAD.
+func (w *Workspace) Unfold(ctx context.Context, req UnfoldRequest) (string, error) {
+	_, errFold := w.git(ctx, "merge-base", "--is-ancestor", req.Fold, "HEAD")
+	keep, errKeep := w.git(ctx, "rev-parse", "--verify", "--quiet", req.Fold+"^1")
+	if _, err := w.git(ctx, "merge-base", "--is-ancestor", keep, req.Tip); errFold != nil || errKeep != nil || err != nil {
+		return "", fmt.Errorf("%s on HEAD is not a fold of the checkpoint %s", req.Fold, req.Tip)
+	}
+	out, err := w.git(ctx, "rev-list", "--reverse", "--parents", keep+"..HEAD")
+	if err != nil {
+		return "", err
+	}
+	head, prev := req.Tip, keep
+	for _, line := range strings.Split(out, "\n") {
+		// The commits from the fold to HEAD, each on the one before.
+		f := strings.Fields(line)
+		if len(f) != 2 || f[1] != prev || prev == keep && f[0] != req.Fold {
+			return "", fmt.Errorf("the commits from %s to HEAD are not a line of single-parent commits", req.Fold)
+		}
+		msg, err := w.git(ctx, "log", "-1", "--format=%B", f[0])
+		if err != nil {
+			return "", err
+		}
+		if head, err = w.git(ctx, "commit-tree", f[0]+"^{tree}", "-p", head, "-m", msg); err != nil {
+			return "", err
+		}
+		prev = f[0]
+	}
+	_, err = w.git(ctx, "reset", "--quiet", "--soft", head)
+	return head, err
 }
 
 // Diff returns the diff of HEAD against the merge base with origin/<base> and

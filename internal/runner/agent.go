@@ -45,6 +45,11 @@ type Agent interface {
 	RemoteRefs(ctx context.Context, repo string) (map[string]string, error)
 	Prepare(ctx context.Context, req PrepareRequest) error
 	Commit(ctx context.Context, repo, message string) (bool, error)
+	// CommitStep commits a step of the run in the home tree, folding the
+	// checkpoints at the tip of the branch (Workspace.CommitStep).
+	CommitStep(ctx context.Context, req CommitRequest) (CommitResult, error)
+	// Unfold undoes a fold in the home tree whose push was refused.
+	Unfold(ctx context.Context, req UnfoldRequest) (string, error)
 	Diff(ctx context.Context, repo, base string) (diff, stat string, err error)
 	Reset(ctx context.Context, repo string) error
 	Bundle(ctx context.Context, req BundleRequest) (bool, error)
@@ -321,6 +326,14 @@ func (a *LocalAgent) Commit(ctx context.Context, repo, message string) (bool, er
 	return w.Commit(ctx, message)
 }
 
+func (a *LocalAgent) CommitStep(ctx context.Context, req CommitRequest) (CommitResult, error) {
+	return a.Workspace.CommitStep(ctx, req)
+}
+
+func (a *LocalAgent) Unfold(ctx context.Context, req UnfoldRequest) (string, error) {
+	return a.Workspace.Unfold(ctx, req)
+}
+
 func (a *LocalAgent) Diff(ctx context.Context, repo, base string) (string, string, error) {
 	w, err := a.tree(repo)
 	if err != nil {
@@ -394,6 +407,16 @@ type runResponse struct {
 type commitResponse struct {
 	Committed bool   `json:"committed"`
 	Error     string `json:"error,omitempty"`
+}
+
+type commitStepResponse struct {
+	Result CommitResult `json:"result"`
+	Error  string       `json:"error,omitempty"`
+}
+
+type unfoldResponse struct {
+	Head  string `json:"head"`
+	Error string `json:"error,omitempty"`
 }
 
 type diffResponse struct {
@@ -585,6 +608,23 @@ func (s *AgentServer) Handler() http.Handler {
 		}
 		ok, err := s.Agent.Commit(ctx, req.Repo, req.Message)
 		return reply{commitResponse{Committed: ok, Error: errString(err)}, err, []any{"repo", req.Repo, "committed", ok}}
+	})
+	handle("commit-step", func(ctx context.Context, body []byte) reply {
+		var req CommitRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{commitStepResponse{Error: err.Error()}, err, nil}
+		}
+		res, err := s.Agent.CommitStep(ctx, req)
+		return reply{commitStepResponse{Result: res, Error: errString(err)}, err,
+			[]any{"branch", req.Branch, "committed", res.Committed, "folded", res.Folded, "foldedFrom", res.FoldedFrom}}
+	})
+	handle("unfold", func(ctx context.Context, body []byte) reply {
+		var req UnfoldRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{unfoldResponse{Error: err.Error()}, err, nil}
+		}
+		head, err := s.Agent.Unfold(ctx, req)
+		return reply{unfoldResponse{Head: head, Error: errString(err)}, err, []any{"tip", req.Tip, "fold", req.Fold, "head", head}}
 	})
 	handle("diff", func(ctx context.Context, body []byte) reply {
 		var req diffRequest
@@ -928,6 +968,22 @@ func (c *AgentClient) Commit(ctx context.Context, repo, message string) (bool, e
 		return false, err
 	}
 	return resp.Committed, remoteErr(resp.Error)
+}
+
+func (c *AgentClient) CommitStep(ctx context.Context, req CommitRequest) (CommitResult, error) {
+	var resp commitStepResponse
+	if err := c.call(ctx, "commit-step", req, &resp); err != nil {
+		return CommitResult{}, err
+	}
+	return resp.Result, remoteErr(resp.Error)
+}
+
+func (c *AgentClient) Unfold(ctx context.Context, req UnfoldRequest) (string, error) {
+	var resp unfoldResponse
+	if err := c.call(ctx, "unfold", req, &resp); err != nil {
+		return "", err
+	}
+	return resp.Head, remoteErr(resp.Error)
 }
 
 func (c *AgentClient) Diff(ctx context.Context, repo, base string) (string, string, error) {

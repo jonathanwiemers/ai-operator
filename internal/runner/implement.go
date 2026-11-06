@@ -578,7 +578,11 @@ func (run *implementRun) concludeMerge(ctx context.Context) error {
 				"Merge `%s` into the branch by hand, or %s.", base, codeList(left), base, r.steer(run.spec, run.task, fmt.Sprintf("comment `%s …` with guidance", run.wf.CommandPrefix), "give guidance")))
 		}
 	}
-	return r.commit(ctx, commitMessage(answer.CommitMessage, run.issue))
+	if !run.runAgent {
+		// No step of the agent ends here: nothing replaces a checkpoint.
+		return r.commitTree(ctx, homeTree, commitMessage(answer.CommitMessage, run.issue))
+	}
+	return r.commit(ctx, run.branch, base, commitMessage(answer.CommitMessage, run.issue))
 }
 
 // reviewLoop has read-only reviewers see the diff; blocking findings go back
@@ -673,7 +677,7 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 			}
 		}
 		s.done(agentResult(role, res, fixed.Status), "session", res.SessionID, "costUSD", res.CostUSD, "status", fixed.Status)
-		if err := r.commit(ctx, commitMessage(fixed.CommitMessage, issue)); err != nil {
+		if err := r.commit(ctx, run.branch, base, commitMessage(fixed.CommitMessage, issue)); err != nil {
 			return err
 		}
 		run.reviewedLast = false
@@ -829,7 +833,7 @@ func (run *implementRun) report(ctx context.Context) error {
 	drafts := questionDrafts(*answer)
 	out.Questions = drafts[:min(len(drafts), aiv1.MaxQuestionDrafts)]
 	desk := desklink.Task(r.DeskURL, task.Namespace, task.Spec.ProjectRef, task.Name)
-	report := renderReport(reported, run.remaining, append(run.reviewNotes, run.notices...), desk)
+	report := renderReport(reported, run.remaining, append(append(run.reviewNotes, run.notices...), r.run.keptNotices()...), desk)
 	if run.ciFix {
 		report = "CI fix: " + report
 	}
@@ -1195,9 +1199,25 @@ func (r *Runner) supersedeElsewhere(ctx context.Context, gl gitlab.API, glProjec
 	return nil
 }
 
-// commit commits the agent's changes as a step of the run.
-func (r *Runner) commit(ctx context.Context, message string) error {
-	return r.commitTree(ctx, homeTree, message)
+// commit commits the agent's changes in the home tree as a step of the run
+// on branch. A commit that folds the checkpoints at the tip of the branch
+// (CommitStep) leaves the lease for the next publish.
+func (r *Runner) commit(ctx context.Context, branch, base, message string) error {
+	s := r.step(ctx, "commit")
+	res, err := r.Agent.CommitStep(ctx, CommitRequest{Message: message, Branch: branch, Base: base, Pushed: r.pushedHead})
+	switch {
+	case err != nil:
+		return s.fail(err)
+	case res.FoldedFrom != "":
+		r.noteFold(res)
+		s.done(fmt.Sprintf("committed, folding %d checkpoint(s) up to %s", res.Folded, shortSHA(res.FoldedFrom)),
+			"committed", true, "folded", res.Folded, "foldedFrom", res.FoldedFrom)
+	case res.Committed:
+		s.done("committed", "committed", true)
+	default:
+		s.done("no changes", "committed", false)
+	}
+	return nil
 }
 
 // commitTree commits the agent's changes in the checkout of repo (homeTree
@@ -1455,7 +1475,7 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		}
 	}()
 	for step := 1; answer.Status == "in_progress" && step < maxSteps; step++ {
-		if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
+		if err := r.commit(ctx, branch, base, commitMessage(answer.CommitMessage, issue)); err != nil {
 			return res, seen, err
 		}
 		// The companion's step commit: the push below checks it.
