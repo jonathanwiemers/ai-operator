@@ -2,12 +2,14 @@ package controller
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -263,5 +265,77 @@ func TestDoneWithAnEmptyQueueKeepsThePhase(t *testing.T) {
 		if err := a.done(context.Background()); err != nil || a.ap.Phase != phase {
 			t.Fatalf("done with no items keeps %s: %v %+v", phase, err, a.ap)
 		}
+	}
+}
+
+// Every issue merged, autopilot keeps running while a companion of the
+// milestone has not landed, says so once, and is done once it has.
+func TestAutopilotIsDoneOnceItsCompanionsHaveLanded(t *testing.T) {
+	e, infra := newCompanionQueueEnv(t, "")
+	cmr := mergeWithCompanion(e, infra) // #2 starts right away
+	e.reconcile()
+	e.finishRun(2, "sha-ui", nil)
+	e.reconcile() // marked ready
+	e.reconcile() // merged
+	e.reconcile()
+	e.reconcile()
+	ap := e.autopilot()
+	tracking := ap.TrackingIssueIID
+	const waits = "Every issue of the queue is through. Autopilot is done once the companions group/infra!1 have landed (merged or closed)."
+	if !slices.Equal(e.gl.Merged, []int64{1, 2}) || ap.Phase != aiv1.AutopilotRunning || !slices.Equal(ap.CloseWaitsForCompanions, []string{"group/infra!1"}) {
+		t.Fatalf("both merged, autopilot waits for the companion: merged %v, %+v", e.gl.Merged, ap)
+	}
+	if countComments(e, tracking, waits) != 1 || countComments(e, tracking, "Autopilot is done:") != 0 || e.gl.Issues[tracking].State != "opened" {
+		t.Fatalf("the wait is said once, the tracking issue stays open:\n%v", botComments(e, tracking))
+	}
+	if body := e.gl.Issues[tracking].Description; !strings.Contains(body, "▶️ running, every issue is through; done once the companions group/infra!1 have landed") {
+		t.Fatalf("the tracking issue names the open companions:\n%s", body)
+	}
+
+	cmr.State, cmr.MergeCommitSHA = "merged", "merge-sha-infra"
+	e.reconcile()
+	ap = e.autopilot()
+	if ap.Phase != aiv1.AutopilotDone || len(ap.CloseWaitsForCompanions) != 0 || countComments(e, tracking, "Autopilot is done: 2 of 2 issues merged") != 1 {
+		t.Fatalf("done once the companion has landed: %+v\n%v", ap, botComments(e, tracking))
+	}
+}
+
+// A companion recorded after done (its issue was finished by hand) keeps
+// the milestone open, said once, until it lands.
+func TestDoneAutopilotKeepsAMilestoneWithOpenCompanions(t *testing.T) {
+	e := newPilotEnv(t)
+	infra := withCompanion(e)
+	tracking := e.autopilot().TrackingIssueIID
+	pilot := e.pilot()
+	if err := e.c.Delete(e.ctx, &pilot); err != nil {
+		t.Fatal(err)
+	}
+	doneAndClosed(e)
+	cmr, err := infra.CreateMergeRequest(e.ctx, "group/infra", gitlab.CreateMergeRequestOptions{SourceBranch: "agent/app-1-api", TargetBranch: "main", Title: "Draft: API"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	infra.MRs[cmr.IID].SHA, infra.MRs[cmr.IID].DetailedMergeStatus = "c1", "draft_status"
+	var p aiv1.AgentProject
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &p); err != nil {
+		t.Fatal(err)
+	}
+	p.Status.Companions = []aiv1.CompanionStatus{{HomeIssueIID: 1, MilestoneIID: 3, HomeMRIID: 7, HomeMergeSHA: "m1",
+		Project: "group/infra", MRIID: cmr.IID, HeadSHA: "c1", State: aiv1.LandingWaitingRelease}}
+	if err := e.c.Status().Update(e.ctx, &p); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	e.reconcile()
+	const waits = "The milestone stays open while the companions group/infra!1 have not landed. Autopilot closes it once they are merged or closed."
+	if e.gl.Milestones[0].State == "closed" || countComments(e, tracking, waits) != 1 ||
+		!slices.Equal(e.autopilot().CloseWaitsForCompanions, []string{"group/infra!1"}) {
+		t.Fatalf("an open companion keeps the milestone open, said once: %s, %+v\n%v", e.gl.Milestones[0].State, e.autopilot(), botComments(e, tracking))
+	}
+
+	infra.MRs[cmr.IID].State = "closed"
+	e.reconcile()
+	if e.gl.Milestones[0].State != "closed" || len(e.autopilot().CloseWaitsForCompanions) != 0 || countComments(e, tracking, waits) != 1 {
+		t.Fatalf("closed once the companion has landed, the list cleared: %s, %+v", e.gl.Milestones[0].State, e.autopilot())
 	}
 }

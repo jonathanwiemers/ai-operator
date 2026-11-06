@@ -1179,9 +1179,11 @@ stateDiagram-v2
   the retrospective is
   on the spec task (or the milestone has no pilot to write one), its
   follow-ups are settled (none, all opened, failed, or posted at least
-  `followUpWindow` = 7 days ago) and no issue besides the tracking issue is
-  open. Open issues are named once on the tracking issue
-  (`status.autopilot.closeWaitsFor`, again only when the list changes). It
+  `followUpWindow` = 7 days ago), no issue besides the tracking issue is
+  open and every companion of the milestone has landed. Open issues are
+  named once on the tracking issue (`status.autopilot.closeWaitsFor`, again
+  only when the list changes), open companions likewise
+  (`status.autopilot.closeWaitsForCompanions`, `<project>!<iid>`). It
   closes first and comments after: the next poll lists active milestones
   only, so the spec task is deleted and the comment cannot repeat. See
   [autopilot-close-milestone.spec.md](specs/autopilot-close-milestone.spec.md).
@@ -2003,6 +2005,27 @@ flowchart LR
     onto a red default branch is recorded as merged). The autopilot stays the only writer
     of `status.autopilot`. Outside autopilot, a blocked companion gets one
     comment per block.
+  * The queue (`internal/controller/companions_queue.go`): the next issue
+    does not wait for a companion to land, except that `startable` holds an
+    issue whose companion is on project P (its task's `spec.companion`, else
+    its `agent-repo::P` label under a milestone line for P) while another
+    companion on P from the same milestone is open: an entry of the
+    milestone that has not ended, or another queued issue's
+    `status.run.companion` merge request that is not recorded yet and open
+    in GitLab. The hold is named on the pending issue's line of the tracking
+    issue (`<project>!<iid>`). One that lands by rule (an entry, or the
+    companion of the active or a merged issue) is a wait, not a pause: with
+    nothing else startable the autopilot keeps running, and `unstick` lifts
+    a stuck pause for it. The open companion of a skipped issue never lands
+    without its home merge, so an issue it holds counts towards a `stuck`
+    pause.
+  * `done` keeps the phase `Running` while the milestone has entries that
+    have not ended (or a merged issue's companion is not recorded yet), and
+    names them once per change of the set on the tracking issue
+    (`status.autopilot.closeWaitsForCompanions`). The phase becomes `Done`
+    once they are merged or closed. `closeMilestone` checks the entries
+    again (one recorded after done, its issue finished by hand) and does not
+    close the milestone while there are any.
 
 **Merge/push guard.** The bot's token usually reaches far more than the
 AgentProject's own project (e.g. as a group Maintainer), so the operator and

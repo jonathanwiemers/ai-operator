@@ -14,6 +14,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab/gitlabfake"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
@@ -1280,5 +1281,124 @@ func TestAutopilotSquashCommitMessage(t *testing.T) {
 				t.Fatalf("squash message = %q, want %q", got, c.want)
 			}
 		})
+	}
+}
+
+// newCompanionQueueEnv is the companion gate env under the milestone lines
+// for group/infra and group/other (both targets), planned again after they
+// were added: #1 is active, #2 (after #1) labelled label, if any.
+func newCompanionQueueEnv(t *testing.T, label string) (*projectEnv, *gitlabfake.Fake) {
+	t.Helper()
+	e, infra := newCompanionGateEnv(t)
+	e.patchProject(func(p *aiv1.AgentProject) {
+		p.Spec.CrossRepo.Targets = append(p.Spec.CrossRepo.Targets, aiv1.CrossRepoTarget{Project: "group/other", Paths: []string{"apps/"}})
+	})
+	e.gl.Milestones[0].Description = "/agent autopilot\n/agent repo group/infra\n/agent repo group/other\nBuild a new checkout."
+	if label != "" {
+		e.gl.SetLabels(2, append(e.gl.Labels(2), label)...)
+	}
+	e.reconcile()
+	replan(e, e.task(specTaskName).Status.Plan)
+	if repos := e.task(specTaskName).Spec.Repos; len(repos) != 2 || repos[0].Problem != "" || repos[1].Problem != "" {
+		t.Fatalf("both lines name a target: %+v", repos)
+	}
+	return e, infra
+}
+
+// mergeWithCompanion runs #1 with its companion group/infra!1 and lets
+// autopilot merge the home MR; the next poll records the companion.
+func mergeWithCompanion(e *projectEnv, infra *gitlabfake.Fake) *gitlab.MergeRequest {
+	e.t.Helper()
+	_, cmr := e.finishCompanionRun(infra, 1, "sha-api", "sha-infra", aiv1.CIStateSuccess, nil)
+	cmr.DetailedMergeStatus = "draft_status"
+	e.reconcile() // marked ready
+	e.reconcile() // merged
+	if !slices.Equal(e.gl.Merged, []int64{1}) {
+		e.t.Fatalf("the home MR merges: %v", e.gl.Merged)
+	}
+	e.reconcile() // the companion is recorded, waiting for its pipeline
+	if cs := e.project().Status.Companions; len(cs) != 1 || cs[0].State.Ended() {
+		e.t.Fatalf("the companion waits to land: %+v", cs)
+	}
+	return cmr
+}
+
+// A second issue with a companion on the same project waits while the
+// first one's companion has not landed, without a pause, and starts once
+// it has.
+func TestAutopilotHoldsASecondCompanionOnTheSameProject(t *testing.T) {
+	e, infra := newCompanionQueueEnv(t, infraLabel)
+	cmr := mergeWithCompanion(e, infra)
+	e.reconcile()
+	ap := e.autopilot()
+	if !e.gl.Issues[2].HasLabel("agent::draft") || ap.Items[1].State != aiv1.AutopilotItemPending || ap.Phase != aiv1.AutopilotRunning {
+		t.Fatalf("#2 waits for the companion of #1: %v, %+v", e.gl.Labels(2), ap)
+	}
+	if c := trackingComments(e); strings.Contains(c, "Autopilot paused") {
+		t.Fatalf("a wait, not a pause:\n%s", c)
+	}
+	body := e.gl.Issues[ap.TrackingIssueIID].Description
+	if !strings.Contains(body, "- [ ] #2 UI: pending, after #1, waits for the companion group/infra!1 of #1 to land") {
+		t.Fatalf("the tracking issue names the companion #2 waits for:\n%s", body)
+	}
+
+	cmr.State, cmr.MergeCommitSHA = "merged", "merge-sha-infra"
+	e.reconcile()
+	if cs := e.project().Status.Companions; cs[0].State != aiv1.LandingMerged {
+		t.Fatalf("merged by hand: %+v", cs[0])
+	}
+	if !e.gl.Issues[2].HasLabel("agent::ready") || e.autopilot().Items[1].State != aiv1.AutopilotItemActive {
+		t.Fatalf("#2 starts once the companion has landed: %v, %+v", e.gl.Labels(2), e.autopilot().Items)
+	}
+	if body := e.gl.Issues[ap.TrackingIssueIID].Description; strings.Contains(body, "waits for the companion") {
+		t.Fatalf("the wait is gone from the tracking issue:\n%s", body)
+	}
+}
+
+// An issue with a companion on another project, or none, does not wait for
+// the open companion of #1.
+func TestAutopilotDoesNotHoldOtherIssuesForACompanion(t *testing.T) {
+	for _, label := range []string{"agent-repo::group/other", ""} {
+		t.Run("label "+label, func(t *testing.T) {
+			e, infra := newCompanionQueueEnv(t, label)
+			mergeWithCompanion(e, infra)
+			if !e.gl.Issues[2].HasLabel("agent::ready") || e.autopilot().Items[1].State != aiv1.AutopilotItemActive {
+				t.Fatalf("#2 starts while the companion of #1 lands: %v, %+v", e.gl.Labels(2), e.autopilot().Items)
+			}
+		})
+	}
+}
+
+// A hand-set label for a project without a milestone line does not count:
+// the issue is not held.
+func TestAutopilotCompanionHoldNeedsTheMilestoneLine(t *testing.T) {
+	e, infra := newCompanionQueueEnv(t, "")
+	e.gl.Milestones[0].Description = "/agent autopilot\n/agent repo group/other\nBuild a new checkout."
+	e.gl.SetLabels(2, append(e.gl.Labels(2), infraLabel)...)
+	e.reconcile()
+	replan(e, e.task(specTaskName).Status.Plan)
+	mergeWithCompanion(e, infra)
+	if !e.gl.Issues[2].HasLabel("agent::ready") {
+		t.Fatalf("a label without a line gives #2 no companion, so it starts: %v", e.gl.Labels(2))
+	}
+}
+
+// The open companion of a skipped issue does not land by rule: an issue
+// it holds back is stuck, and goes on once the companion is closed.
+func TestAutopilotOpenCompanionOfASkippedIssueIsStuck(t *testing.T) {
+	e, infra := newCompanionQueueEnv(t, infraLabel)
+	_, cmr := e.finishCompanionRun(infra, 1, "sha-api", "sha-infra", aiv1.CIStateFailed, nil)
+	replan(e, []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API"}, {Key: "ui", IID: 2, Title: "UI"}})
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) { s.Autopilot.Items[0].State = aiv1.AutopilotItemSkipped })
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseStuck ||
+		!strings.Contains(ap.PausedReason, "#2 waits for the companion group/infra!1 of #1, which is open (merge or close it)") {
+		t.Fatalf("a companion nothing lands holds #2: stuck: %+v", ap)
+	}
+	cmr.State = "closed"
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || !e.gl.Issues[2].HasLabel("agent::ready") {
+		t.Fatalf("closed, #2 starts: %+v, %v", ap, e.gl.Labels(2))
 	}
 }

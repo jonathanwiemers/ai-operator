@@ -687,6 +687,11 @@ func (in *AutopilotStatus) DeepCopyInto(out *AutopilotStatus) {
 		*out = make([]int64, len(*in))
 		copy(*out, *in)
 	}
+	if in.CloseWaitsForCompanions != nil {
+		in, out := &in.CloseWaitsForCompanions, &out.CloseWaitsForCompanions
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.Budget != nil {
 		in, out := &in.Budget, &out.Budget
 		*out = new(BudgetStatus)

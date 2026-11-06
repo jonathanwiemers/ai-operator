@@ -1662,6 +1662,12 @@ type AutopilotStatus struct {
 	// to wait for before autopilot closes it.
 	// +optional
 	CloseWaitsFor []int64 `json:"closeWaitsFor,omitempty"`
+	// CloseWaitsForCompanions are the companion merge requests of the
+	// milestone ("<project>!<iid>") that had not landed (merged or closed)
+	// when last reported: while there are any, autopilot is not done and does
+	// not close the milestone.
+	// +optional
+	CloseWaitsForCompanions []string `json:"closeWaitsForCompanions,omitempty"`
 
 	// Budget is the milestone's budget and its spend, refreshed every poll
 	// while the milestone has a budget line.

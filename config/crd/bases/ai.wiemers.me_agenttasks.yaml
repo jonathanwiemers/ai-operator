@@ -978,6 +978,15 @@ spec:
                       format: int64
                       type: integer
                     type: array
+                  closeWaitsForCompanions:
+                    description: |-
+                      CloseWaitsForCompanions are the companion merge requests of the
+                      milestone ("<project>!<iid>") that had not landed (merged or closed)
+                      when last reported: while there are any, autopilot is not done and does
+                      not close the milestone.
+                    items:
+                      type: string
+                    type: array
                   items:
                     description: 'Items in queue order: dependencies first, ties in
                       plan order.'

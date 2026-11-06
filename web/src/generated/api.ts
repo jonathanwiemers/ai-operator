@@ -4120,6 +4120,14 @@ export interface AutopilotStatus {
    */
   closeWaitsFor?: number /* int64 */[];
   /**
+   * CloseWaitsForCompanions are the companion merge requests of the
+   * milestone ("<project>!<iid>") that had not landed (merged or closed)
+   * when last reported: while there are any, autopilot is not done and does
+   * not close the milestone.
+   * +optional
+   */
+  closeWaitsForCompanions?: string[];
+  /**
    * Budget is the milestone's budget and its spend, refreshed every poll
    * while the milestone has a budget line.
    * +optional

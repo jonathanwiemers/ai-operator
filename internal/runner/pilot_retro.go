@@ -185,9 +185,83 @@ type retroIssue struct {
 	Summary      string             `json:"lastRunSummary,omitempty"`
 }
 
+// retroCompanion is what the retrospective sees of a companion merge
+// request of the milestone.
+type retroCompanion struct {
+	HomeIssue    int64  `json:"homeIssueIID"`
+	Project      string `json:"project"`
+	MergeRequest int64  `json:"mergeRequestIID,omitempty"`
+	URL          string `json:"mergeRequestURL,omitempty"`
+	// State is the landing state (status.companions), or "homeNotMerged"
+	// for a companion whose home merge request was never merged.
+	State string `json:"state"`
+	// Release made the home change live; MergedBy is "autopilot" or "hand".
+	Release  string `json:"release,omitempty"`
+	MergedBy string `json:"mergedBy,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// plain is the companion in a few words for the comment without a model.
+func (c retroCompanion) plain() string {
+	state := c.State
+	if state == "homeNotMerged" {
+		state = "not landed, its home merge request was not merged"
+	}
+	s := fmt.Sprintf("%s!%d of #%d %s", c.Project, c.MergeRequest, c.HomeIssue, state)
+	switch c.MergedBy {
+	case "autopilot":
+		s += " by autopilot"
+	case "hand":
+		s += " by hand"
+	}
+	if c.Release != "" {
+		s += " after " + c.Release
+	}
+	return s
+}
+
+// retroCompanions lists the companions of milestone mIID: the landing
+// entries of status.companions, then the companion merge requests of the
+// queue's tasks that never got one (their home merge request was not
+// merged).
+func retroCompanions(entries []aiv1.CompanionStatus, mIID int64, items []aiv1.AutopilotItem, byIID map[int64]*aiv1.AgentTask) []retroCompanion {
+	var out []retroCompanion
+	recorded := map[string]bool{}
+	key := func(project string, iid int64) string {
+		return fmt.Sprintf("%s!%d", aiv1.NormalizeProject(project), iid)
+	}
+	for _, e := range entries {
+		if e.MilestoneIID != mIID {
+			continue
+		}
+		recorded[key(e.Project, e.MRIID)] = true
+		c := retroCompanion{HomeIssue: e.HomeIssueIID, Project: e.Project, MergeRequest: e.MRIID, URL: e.MRURL, State: string(e.State),
+			Release: e.Release, Reason: textutil.Truncate(e.Reason, 300)}
+		if e.State == aiv1.LandingMerged {
+			c.MergedBy = "hand"
+			if e.MergeStartedAt != nil {
+				c.MergedBy = "autopilot"
+			}
+		}
+		out = append(out, c)
+	}
+	for _, it := range items {
+		t := byIID[it.IID]
+		if t == nil || t.Status.Run.Companion == nil || t.Status.Run.Companion.MRIID == 0 {
+			continue
+		}
+		rc := t.Status.Run.Companion
+		if recorded[key(rc.Project, rc.MRIID)] {
+			continue
+		}
+		out = append(out, retroCompanion{HomeIssue: it.IID, Project: rc.Project, MergeRequest: rc.MRIID, URL: rc.MRURL, State: "homeNotMerged"})
+	}
+	return out
+}
+
 // retroFacts gathers what the operator knows of the finished milestone: the
 // queue with states, merge requests, decisions and revisits, the
-// autopilot's comments on the tracking issue (pauses with how they ended,
+// companions with how each landed, the autopilot's comments on the tracking issue (pauses with how they ended,
 // skips), the cost over the milestone's tasks and the time from the
 // tracking issue's creation to done. It returns them as JSON for the model,
 // as a few plain lines for the comment without one, and the tracking
@@ -215,16 +289,17 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		return "", "", nil, fmt.Errorf("listing tasks: %w", err)
 	}
 	var v struct {
-		Milestone string             `json:"milestone"`
-		Spec      string             `json:"spec"`
-		Queue     []retroIssue       `json:"queue"`
-		Autopilot []string           `json:"autopilotComments,omitempty"`
-		CostUSD   string             `json:"costUSD"`
-		CostFrom  string             `json:"costFrom"`
-		Spend     *aiv1.SpendSummary `json:"spend,omitempty"`
-		Started   time.Time          `json:"started"`
-		Done      time.Time          `json:"done"`
-		Duration  string             `json:"duration"`
+		Milestone  string             `json:"milestone"`
+		Spec       string             `json:"spec"`
+		Queue      []retroIssue       `json:"queue"`
+		Companions []retroCompanion   `json:"companions,omitempty"`
+		Autopilot  []string           `json:"autopilotComments,omitempty"`
+		CostUSD    string             `json:"costUSD"`
+		CostFrom   string             `json:"costFrom"`
+		Spend      *aiv1.SpendSummary `json:"spend,omitempty"`
+		Started    time.Time          `json:"started"`
+		Done       time.Time          `json:"done"`
+		Duration   string             `json:"duration"`
 	}
 	v.Milestone, v.Spec = m.Title, rules.Spec(m.Description, spec.Workflow.CommandPrefix)
 	var cost float64
@@ -266,6 +341,7 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		}
 		v.Queue = append(v.Queue, ri)
 	}
+	v.Companions = retroCompanions(project.Status.Companions, m.IID, items, byIID)
 	pauses := 0
 	for _, n := range notes {
 		if n.Author.ID != project.Status.BotUserID || !strings.HasPrefix(n.Body, "🤖 ") {
@@ -303,6 +379,13 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 	b, err := json.MarshalIndent(v, "", "  ")
 	plain := fmt.Sprintf("Autopilot merged %d of %d issues in %s (from the tracking issue's creation to done), for %s, with %d pauses.",
 		merged, len(v.Queue), v.Duration, spent, pauses)
+	if len(v.Companions) > 0 {
+		parts := make([]string, len(v.Companions))
+		for i, c := range v.Companions {
+			parts[i] = c.plain()
+		}
+		plain += " Companions: " + strings.Join(parts, "; ") + "."
+	}
 	return textutil.Truncate(string(b), maxRetroFacts), plain, notes, err
 }
 

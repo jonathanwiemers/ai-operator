@@ -261,6 +261,11 @@ type autopilot struct {
 	// saved (a status patch must not wipe them from the Spec).
 	chatMark    int64
 	chatAnswers []aiv1.ChatReply
+	// companionOpen caches whether a task's companion merge request is open,
+	// by ref; holds are the pending issues a companion held back in this
+	// poll's startable, for the tracking issue.
+	companionOpen map[string]bool
+	holds         map[int64]*openCompanion
 }
 
 // queueOrder orders the plan topologically: dependencies first, ties in plan
@@ -404,6 +409,14 @@ func (a *autopilot) pick(ctx context.Context) error {
 		}
 		it.State = aiv1.AutopilotItemActive
 		a.ap.Phase = aiv1.AutopilotRunning // a re-plan can add issues after "done"
+		a.ap.CloseWaitsForCompanions = nil
+		return nil
+	case len(s.waiting) > 0 && s.landing:
+		// A companion that lands by rule holds an issue back: a wait, not a
+		// pause; it starts once the companion has landed.
+		a.log.Info("autopilot waits for a companion to land", "waiting", s.waiting)
+		a.ap.Phase = aiv1.AutopilotRunning
+		a.ap.CloseWaitsForCompanions = nil
 		return nil
 	case len(s.waiting) > 0:
 		// Everything left waits for something autopilot does not do: a
@@ -426,18 +439,24 @@ type startCheck struct {
 	it           *aiv1.AutopilotItem
 	closed, done bool
 	mr           *gitlab.MergeRequest
-	// waiting says why each pending item cannot start, when none can.
+	// waiting says why each pending item cannot start, when none can;
+	// landing: one of them waits for a companion that lands by rule, so the
+	// queue goes on by itself.
 	waiting []string
+	landing bool
 }
 
 // startable finds what pick would do next, without doing it (it only reads
 // GitLab): the first pending item whose dependencies are merged (a skipped
 // one is met for an item with StartAnyway) and that no open issue blocks by
 // a link, or a skipped dependency done by hand. With none, waiting lists
-// why each pending item cannot start; empty: nothing is pending.
+// why each pending item cannot start; empty: nothing is pending. An item
+// with a companion on project P waits while another companion on P from
+// the milestone is open (companionHold).
 func (a *autopilot) startable(ctx context.Context) (startCheck, error) {
 	var s startCheck
 	waits := map[int64]string{} // why a pending issue cannot start
+	a.holds = map[int64]*openCompanion{}
 	for i := range a.ap.Items {
 		it := &a.ap.Items[i]
 		if it.State != aiv1.AutopilotItemPending {
@@ -475,6 +494,16 @@ func (a *autopilot) startable(ctx context.Context) (startCheck, error) {
 				return s, err
 			}
 			return startCheck{it: it, closed: true, done: done, mr: mr}, nil
+		}
+		hold, err := a.companionHold(ctx, it)
+		if err != nil {
+			return s, err
+		}
+		if hold != nil {
+			waits[it.IID] = fmt.Sprintf("#%d %s", it.IID, hold.waits())
+			a.holds[it.IID] = hold
+			s.landing = s.landing || hold.landing
+			continue
 		}
 		blockers, err := a.blockedByLinks(ctx, it.IID)
 		if err != nil {
@@ -533,6 +562,8 @@ func (a *autopilot) unstick(ctx context.Context) error {
 		why = fmt.Sprintf("#%d can start now", s.it.IID)
 	case len(s.waiting) == 0:
 		why = "no issue waits any more"
+	case s.landing:
+		why = "the queue waits for a companion to land, and goes on by itself once it has"
 	default:
 		return nil
 	}
@@ -547,11 +578,25 @@ func (a *autopilot) unstick(ctx context.Context) error {
 // done marks the milestone done, closes its tracking issue and says so.
 // With an empty queue it does nothing: a milestone whose plan is empty or
 // was dropped by a re-plan merged nothing and is not done (Bloop %20).
+// While companions of the milestone have not landed it keeps running and
+// says once per change which ones it waits for (CloseWaitsForCompanions).
 func (a *autopilot) done(ctx context.Context) error {
 	if len(a.ap.Items) == 0 {
 		a.log.Info("autopilot is not done: its queue is empty")
 		return nil
 	}
+	open, err := a.landingCompanions(ctx)
+	if err != nil {
+		return err
+	}
+	if len(open) > 0 {
+		if err := a.reportCompanionWaits(ctx, open, "⏳ Every issue of the queue is through. Autopilot is done once the companions %s have landed (merged or closed)."); err != nil {
+			return err
+		}
+		a.ap.Phase = aiv1.AutopilotRunning
+		return nil
+	}
+	a.ap.CloseWaitsForCompanions = nil
 	merged := 0
 	for _, it := range a.ap.Items {
 		if it.State == aiv1.AutopilotItemMerged {
@@ -628,7 +673,8 @@ func (a *autopilot) endMilestone(ctx context.Context, by string) error {
 const followUpWindow = 7 * 24 * time.Hour
 
 // closeMilestone closes the milestone of a done autopilot once the
-// retrospective and its follow-ups are settled and no issue in it is open.
+// retrospective and its follow-ups are settled, no issue in it is open and
+// all its companions have landed.
 // A closed milestone is no longer planned: the next poll deletes its tasks,
 // so the comment after the close is not repeated.
 func (a *autopilot) closeMilestone(ctx context.Context) error {
@@ -651,10 +697,7 @@ func (a *autopilot) closeMilestone(ctx context.Context) error {
 		}
 	}
 	slices.Sort(open)
-	if len(open) > 0 {
-		if slices.Equal(open, a.ap.CloseWaitsFor) {
-			return nil
-		}
+	if len(open) > 0 && !slices.Equal(open, a.ap.CloseWaitsFor) {
 		verb := "are"
 		if len(open) == 1 {
 			verb = "is"
@@ -664,13 +707,27 @@ func (a *autopilot) closeMilestone(ctx context.Context) error {
 			return err
 		}
 		a.ap.CloseWaitsFor = open
+	}
+	// A companion recorded after done (its issue finished by hand): the
+	// milestone waits for it to land too.
+	companions, err := a.landingCompanions(ctx)
+	if err != nil {
+		return err
+	}
+	if len(companions) > 0 {
+		if err := a.reportCompanionWaits(ctx, companions, "📌 The milestone stays open while the companions %s have not landed. Autopilot closes it once they are merged or closed."); err != nil {
+			return err
+		}
+	}
+	a.ap.CloseWaitsForCompanions = companions
+	if len(open) > 0 || len(companions) > 0 {
 		return nil
 	}
 	a.log.Info("closing the done autopilot milestone")
 	if err := a.gl.CloseMilestone(ctx, a.spec.GitLab.Project, a.st.Spec.Milestone.ID); err != nil && !gitlab.IsNotFound(err) {
 		return fmt.Errorf("closing the milestone: %w", err)
 	}
-	a.ap.CloseWaitsFor = nil
+	a.ap.CloseWaitsFor, a.ap.CloseWaitsForCompanions = nil, nil
 	return a.comment(ctx, "🏁 The milestone is closed.")
 }
 
@@ -2020,6 +2077,9 @@ func (a *autopilot) renderTracking() string {
 		b.WriteString("⏹️ off (the marker was removed from the milestone).\n")
 	default:
 		switch {
+		case len(a.st.Status.Plan) > 0 && len(a.ap.CloseWaitsForCompanions) > 0:
+			fmt.Fprintf(&b, "▶️ running, every issue is through; done once the companions %s have landed (merged or closed).\n",
+				strings.Join(a.ap.CloseWaitsForCompanions, ", "))
 		case len(a.st.Status.Plan) > 0:
 			b.WriteString("▶️ running.\n")
 		case a.st.RunPending():
@@ -2052,6 +2112,9 @@ func (a *autopilot) renderTracking() string {
 			waits := ""
 			if deps := a.deps(it.IID); len(deps) > 0 {
 				waits = ", after " + issueList(deps)
+			}
+			if h := a.holds[it.IID]; h != nil {
+				waits += ", " + h.waits()
 			}
 			fmt.Fprintf(&b, "- [ ] #%d %s: pending%s\n", it.IID, title, waits)
 		}

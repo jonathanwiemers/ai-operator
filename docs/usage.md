@@ -1645,6 +1645,27 @@ A merge or close by hand at any point, also while `ready` or `merging`, is
 recorded as `merged` (with `mergeSHA`) or `closed`, with `endedAt`, and ends
 a pause about it. Ended entries are removed from the status 7 days later.
 
+**The autopilot queue and companions.** The next issue does not wait for a
+companion to land. The one exception: an issue with a companion on project
+P (its `agent-repo::P` label under the milestone's line for P) does not
+start while another companion on P from the same milestone is open, so two
+changes to the same companion project land one after the other. The
+tracking issue names the companion it waits for on the issue's line
+(`waits for the companion my-group/infra/cluster!12 of #4 to land`). This is
+a wait, not a pause: the issue starts by itself once that companion is
+merged or closed. Only the open companion of a skipped issue, which never
+lands without its home merge, can make the milestone pause as `stuck`;
+merge or close it. Issues without a companion, or with one on another
+project, are not held.
+
+The milestone is **done only once all its companions have landed**. Until
+then autopilot keeps running after the last issue merged and says once on
+the tracking issue which companions it waits for
+(`status.autopilot.closeWaitsForCompanions`). A done milestone is not
+closed while one of its companions is open either. The retrospective lists
+the milestone's companions with their merge request, state, release and
+whether autopilot or a human merged them.
+
 ### Commands on the tracking issue
 
 (All commands: [commands.md](commands.md).)

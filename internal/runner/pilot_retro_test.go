@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -192,5 +193,57 @@ func TestRetrospectiveWithoutDatabaseSumsLiveTasks(t *testing.T) {
 	c := notes[len(notes)-1]
 	if !strings.Contains(c, "for $21.50 over the milestone's runs (from live tasks)") || strings.Contains(c, "Cost drivers") {
 		t.Fatalf("without the database, the cost is the live tasks' sum:\n%s", c)
+	}
+}
+
+// The facts list the milestone's companions: how each landed, its release
+// and who merged it, and a companion whose home merge request never merged.
+func TestRetrospectiveListsTheCompanions(t *testing.T) {
+	for _, budget := range []string{"", "20.0000"} {
+		t.Run("budget used "+budget, func(t *testing.T) {
+			e := newRetroEnv(t, budget)
+			ctx := context.Background()
+			var p aiv1.AgentProject
+			if err := e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop"}, &p); err != nil {
+				t.Fatal(err)
+			}
+			started := metav1.Now()
+			p.Status.Companions = []aiv1.CompanionStatus{
+				{HomeIssueIID: 1, MilestoneIID: 3, Project: "group/infra", MRIID: 4, State: aiv1.LandingMerged, Release: "2026.11.3", MergeStartedAt: &started},
+				{HomeIssueIID: 8, MilestoneIID: 9, Project: "group/infra", MRIID: 7, State: aiv1.LandingReady},
+				{HomeIssueIID: 2, MilestoneIID: 3, Project: "group/other", MRIID: 5, State: aiv1.LandingMerged},
+			}
+			if err := e.k8s.Update(ctx, &p); err != nil {
+				t.Fatal(err)
+			}
+			var impl aiv1.AgentTask
+			if err := e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop-1-api"}, &impl); err != nil {
+				t.Fatal(err)
+			}
+			impl.Status.Run.Companion = &aiv1.CompanionRun{Project: "group/infra", MRIID: 6}
+			if err := e.k8s.Status().Update(ctx, &impl); err != nil {
+				t.Fatal(err)
+			}
+			e.step(t)
+			if budget != "" {
+				notes := botNotes(e.gl, 5)
+				c := notes[len(notes)-1]
+				if !strings.Contains(c, "Companions: group/infra!4 of #1 merged by autopilot after 2026.11.3; group/other!5 of #2 merged by hand; "+
+					"group/infra!6 of #1 not landed, its home merge request was not merged.") {
+					t.Fatalf("the operator's record lists the companions:\n%s", c)
+				}
+				return
+			}
+			prompt := e.engine.calls[0].Prompt
+			for _, want := range []string{`"companions": [`, `"mergeRequestIID": 4`, `"release": "2026.11.3"`, `"mergedBy": "autopilot"`,
+				`"project": "group/other"`, `"mergedBy": "hand"`, `"mergeRequestIID": 6`, `"state": "homeNotMerged"`} {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("the facts miss %s", want)
+				}
+			}
+			if strings.Contains(prompt, `"mergeRequestIID": 7`) {
+				t.Error("a companion of another milestone is not listed")
+			}
+		})
 	}
 }
