@@ -310,10 +310,17 @@ the time (stream-json schema in the CLI bundle; no billed live run).
   nested ones included; refused or failed launches not counted) plus
   `requested`, `started_in_background`, `by_type`, `max_depth`,
   `spawned_by_subagents`, `completed`, `failed`, `killed`, `refused`.
-- **Running totals:** `subagent_stats`, like `modelUsage` and
-  `total_cost_usd`, is a running total of the CLI process's session. A
-  one-shot call (also with `--resume`) is one process; a long-lived session
-  (Desk chat) reports the session total on every turn's result.
+- **Running totals** (corrected on 2026-11-06 against claude 2.1.318, see
+  R5 in `docs/specs/honest-reporting.spec.md`): `modelUsage` and
+  `total_cost_usd` are running totals of the *session*, not of the process.
+  A long-lived session (Desk chat) reports them summed over all its turns
+  on every result. A `--resume`, one-shot or long-lived, starts from the
+  totals the transcript saved, so its first result already holds the
+  earlier calls (recorded, unbilled). `usage` holds the main loop only (no
+  subagents) and is per turn; it is not carried over by `--resume`.
+  `subagent_stats` is a running total of the process: a resumed session
+  starts it at zero. `model_usage_since_last_result` (stream-json only)
+  holds what the process counted since its previous result.
 
 Example (shortened, `internal/runner/testdata/claude-stream-subagent.jsonl`):
 
@@ -329,6 +336,7 @@ or the number of distinct `parent_tool_use_id`s when the field is absent.
 message, once per `message.id`; `SubagentTurns` holds the series index of
 the main turn after which each subagent started (deduplicated). The runner
 thins the series to 500 evenly spaced points (first and last kept) and maps
-the markers to the nearest kept point. Chat turns of a long-lived session
-report session totals; recording them per call (R2) has to take the
-difference to the previous turn.
+the markers to the nearest kept point. Chat turns of a long-lived session,
+and every resumed call, report session totals; recording them per call (R2)
+has to take the difference to the session's previous result, or
+`model_usage_since_last_result` where the CLI sends it.

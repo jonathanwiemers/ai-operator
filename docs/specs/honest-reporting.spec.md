@@ -248,10 +248,87 @@ Filled in by the MRs that establish them.
 
 ### R5: token basis (recorded vs reconstructed)
 
-_Open: filled in by the MR for R5 / R9._
+Established on 2026-11-06 against claude **2.1.318**, the CLI in the agent
+image (`Dockerfile.agent`). **No billed run was possible**: that CLI is
+logged out in the implementer's container ("Not logged in"). So:
 
-To record: whether `usage` holds subagent threads, whether `--resume` carries
-totals over, and which of the two explains Bloop %24.
+- **Reconstructed, not recorded:** the subagent call
+  (`testdata/claude-stream-subagent-main-model.jsonl`, a general-purpose
+  subagent on the main model) and the two-turn chat
+  (`testdata/claude-chat-two-turns.jsonl`). Their token numbers are
+  invented; their relations follow the result schema in the 2.1.318 bundle,
+  whose field descriptions are quoted below.
+- **Recorded, unbilled:** the `--resume` fixtures
+  (`testdata/claude-resume-carryover.jsonl`,
+  `testdata/claude-chat-resume-two-turns.jsonl`). A logged-out `claude -p`
+  wrote a transcript with its `cost-state` entry, its totals were set by
+  hand, and the real CLI resumed it (one prompt; then
+  `--input-format stream-json` with two turns). It made no model call, so
+  the result lines are the CLI's own output.
+
+`testdata/README.md` lists every fixture with its source. The tests in
+`internal/runner/engine_basis_test.go` assert the relations below; they
+change no code.
+
+**1. Does `usage` hold subagent threads? No.** The bundle describes
+`usage` as "MAIN AGENT LOOP ONLY — excludes Task subagent, sidechain, and
+auxiliary model calls, and is per-turn in streaming-input sessions. Prefer
+modelUsage for token/cost accounting." `modelUsage` covers "main loop, Task
+subagents, sidechains, and internal calls such as compaction and Workflow
+agents" and is called "the correct field for token/cost accounting". On the
+subagent fixture, Σ `modelUsage` = `usage` + the subagent's turns, all on
+the main model (`TestBasisUsageExcludesSubagents`).
+
+**2. Does `--resume` carry totals over? Yes, `modelUsage` and
+`total_cost_usd` do; `usage` does not.** Recorded: a resumed call's first
+result holds the saved `cost-state` totals (here $1.50 and both models)
+although this process spent nothing; `usage` is zero, `subagent_stats` start
+at zero (`TestBasisResumeCarriesTotals`). The bundle agrees: "a resumed or
+forked session continues from the totals its transcript saved". Both turns
+of a resumed stream-json session carry the same totals
+(`TestBasisResumedChatKeepsTotals`), so these fields are not per turn.
+Within one process (reconstructed, `TestBasisChatRunningTotals`), turn 2's
+`modelUsage` and `total_cost_usd` hold turns 1 and 2, its `usage` turn 2
+alone.
+
+**`model_usage_since_last_result`** (marked `@internal` in the bundle) is
+"per-model usage and cost of the calls this process counted since it wrote
+its previous result", subagents included, nothing carried from one process
+to the next: "sum it over a conversation's results instead of subtracting
+modelUsage totals". The recorded stream-json results carry it (`{}` when
+nothing was counted), a fresh `-p` stream-json run too; `--output-format
+json` runs and older versions do not.
+
+**3. Which explains Bloop %24? The subagent threads.**
+
+- Gap: Σ models 671.0M − Σ `usage` 408.6M = 262.4M, 39 % of the per-model
+  figure. Opus alone (642.8M) exceeds the whole total, so the missing tokens
+  ran mostly on Opus, the main model, which is where a general-purpose
+  subagent runs; the other models hold 671.0 − 642.8 = 28.2M.
+- ai-operator %8 ran without subagents and has no gap (7.64M + 5.07M =
+  12.71M). Resumed calls are routine in every milestone (implementer steps,
+  fix rounds, re-runs and chat pass `--resume`), so carried-over totals
+  would have opened a gap in %8 too. They did not, so the CLI that ran %8
+  did not carry totals into its rows, and only the subagents distinguish
+  %24. That is an inference from the two milestones: which CLI version ran
+  each is not recorded (the image installs the latest at build time).
+- Not checked against %24's rows, which are not available here. The check:
+  over its `agent_calls`, Σ (models − `usage`) is 0 on rows with
+  `subagent_calls = 0` and `resumed = false`; the 262.4M split by those two
+  columns.
+
+**What it means for decisions 4 and 5.** `usage` is not right where
+`modelUsage` is wrong: `usage` misses subagents, sidechains and compaction,
+and `modelUsage` is the CLI's accounting field. Decision 4 does not stop.
+**But on 2.1.318 a resumed call's `modelUsage` and `total_cost_usd` include
+the earlier calls of its session.** Summing the models (decision 4) would
+count them again, and the row's cost (`total_cost_usd`) already does so for
+every resumed call on this version: spend and budgets over-count, never
+under-count. Decision 5 as written records "a one-shot call as is", which is
+wrong for a one-shot `--resume`. R6 and R7 should take
+`model_usage_since_last_result` when present (tokens, per-model figures,
+and cost as the sum of its `costUSD`), and fall back to `modelUsage` minus
+the session's previous result otherwise.
 
 ### R9: how Bloop %20 reached done
 
