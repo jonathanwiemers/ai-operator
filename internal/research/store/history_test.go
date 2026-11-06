@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -93,4 +94,64 @@ func equal(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func TestPauses(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	base := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
+	now := base.Add(100 * time.Minute)
+	exp := now.Add(24 * time.Hour)
+	ev := func(kind string, minutes, start int, project string, milestone int64, pk, by string, expires time.Time) store.Event {
+		d := map[string]any{"kind": pk, "reason": "why " + pk, "item": int64(88)}
+		if kind == "autopilot.resumed" {
+			d["resolvedBy"], d["pausedSec"] = by, int64((minutes-start)*60)
+		}
+		startAt := base.Add(time.Duration(start) * time.Minute)
+		return store.Event{Key: fmt.Sprintf("task/u1/%s/%d/%s", kind, startAt.Unix(), pk), At: base.Add(time.Duration(minutes) * time.Minute),
+			Namespace: "agents", Project: project, MilestoneIID: milestone, IssueIID: 7, Kind: kind, Summary: kind, Data: d, ExpiresAt: expires}
+	}
+	events := []store.Event{
+		ev("autopilot.paused", 0, 0, "bloop", 24, "ciRed", "", exp),
+		ev("autopilot.resumed", 10, 0, "bloop", 24, "ciRed", "selfHealed", exp),
+		ev("autopilot.paused", 20, 20, "bloop", 24, "stuck", "", exp),
+		ev("autopilot.resumed", 50, 20, "bloop", 24, "stuck", "owner", exp),
+		ev("autopilot.paused", 90, 90, "bloop", 24, "budget", "", exp),
+		// Past the retention: left out.
+		ev("autopilot.paused", -60, -60, "bloop", 24, "review", "", now.Add(-time.Minute)),
+		// Other kinds, milestones and projects: left out.
+		{Key: "autopilot-1", At: base, Namespace: "agents", Project: "bloop", MilestoneIID: 24, Kind: "autopilot", ExpiresAt: exp},
+		ev("autopilot.paused", 5, 5, "bloop", 25, "merge", "", exp),
+		ev("autopilot.paused", 6, 6, "shop", 24, "merge", "", exp),
+	}
+	// Keys must differ across projects and milestones.
+	events[7].Key += "/m25"
+	events[8].Key += "/shop"
+	if _, err := s.InsertEvents(ctx, events); err != nil {
+		t.Fatal(err)
+	}
+	h, err := s.Pauses(ctx, store.ProjectKey{Namespace: "agents", Name: "bloop"}, 24, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h.Pauses) != 3 {
+		t.Fatalf("pauses = %+v", h.Pauses)
+	}
+	if p := h.Pauses[0]; p.Kind != "ciRed" || p.Reason != "why ciRed" || p.Item != 88 || p.ResolvedBy != "selfHealed" ||
+		p.Seconds != 600 || !p.Since.Equal(base) || p.Until == nil || !p.Until.Equal(base.Add(10*time.Minute)) {
+		t.Errorf("first pause = %+v", p)
+	}
+	if p := h.Pauses[2]; p.Kind != "budget" || p.Until != nil || p.Seconds != 600 {
+		t.Errorf("open pause = %+v", p)
+	}
+	tot := h.Totals
+	if tot.Count != 3 || tot.PausedSec != 600+1800+600 || tot.MeanResumeSec != 1200 ||
+		tot.ByKind["stuck"] != (store.PauseKindTotal{Count: 1, Sec: 1800}) || len(tot.ByKind) != 3 ||
+		tot.ByResolver["owner"] != 1 || tot.ByResolver["selfHealed"] != 1 || len(tot.ByResolver) != 2 {
+		t.Errorf("totals = %+v", tot)
+	}
+
+	if h, err := s.Pauses(ctx, store.ProjectKey{Namespace: "agents", Name: "bloop"}, 99, now); err != nil || len(h.Pauses) != 0 || h.Totals.Count != 0 {
+		t.Errorf("no pauses = %+v, %v", h, err)
+	}
 }

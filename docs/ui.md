@@ -77,7 +77,12 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   the open ones first, the newest closed ones folded under *Earlier
   questions*), and **Ask the pilot** (the Desk chat with the pilot; its
   accept and reject buttons remain for any proposal "P<n>" posted before
-  prompts).
+  prompts). The milestone API also carries the autopilot's **pause
+  history** (`pauses`, from the `autopilot.paused`/`autopilot.resumed`
+  events within the history retention: the newest 20 pauses with kind,
+  reason, start, end and who resolved each, an open one counting up to
+  now, plus totals of all: time paused, per kind, mean time to resume, per
+  resolver); it is absent without the history database.
 * **Prompt card**: one question to the milestone's owners (`Q<n>`): the
   question, its context (markdown without HTML: untrusted), the options
   with the recommended one first, a detail line and what each one does, a

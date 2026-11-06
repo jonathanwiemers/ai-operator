@@ -161,6 +161,11 @@ export interface MilestoneView extends Cost {
    */
   tasks: Task[];
   /**
+   * Pauses is the autopilot's pause history, absent without the history
+   * database or when it cannot be read.
+   */
+  pauses?: PauseHistoryView;
+  /**
    * Permissions is what the app may offer; the endpoints check again.
    */
   permissions?: MilestonePermissions;
@@ -249,6 +254,46 @@ export interface ProposalView {
   id: number /* int64 */;
   summary: string;
   postedAt?: string;
+}
+/**
+ * PauseHistoryView is a milestone's autopilot pauses within the history's
+ * retention: the newest ones, newest first, and the totals of all.
+ */
+export interface PauseHistoryView {
+  pauses: PauseView[];
+  totals: PauseTotalsView;
+}
+/**
+ * PauseView is one pause. Until is absent while it is open; Seconds then
+ * counts up to the view's time. Kind is "unknown" for a pause without one.
+ */
+export interface PauseView {
+  kind: aiv1.PauseKind | 'unknown';
+  reason?: string;
+  item?: number /* int64 */;
+  since: string;
+  until?: string;
+  resolvedBy?: aiv1.PauseResolver;
+  seconds: number /* int64 */;
+}
+/**
+ * PauseKindTotalView sums the pauses of one kind.
+ */
+export interface PauseKindTotalView {
+  count: number /* int */;
+  sec: number /* int64 */;
+}
+/**
+ * PauseTotalsView sums all pauses: pausedSec their time (open ones up to
+ * now), meanResumeSec the mean time to resume of the ended ones, byResolver
+ * who ended them ("unknown" when not recorded).
+ */
+export interface PauseTotalsView {
+  count: number /* int */;
+  pausedSec: number /* int64 */;
+  byKind: { [kind: string]: PauseKindTotalView };
+  meanResumeSec: number /* int64 */;
+  byResolver: { [resolver: string]: number };
 }
 
 //////////

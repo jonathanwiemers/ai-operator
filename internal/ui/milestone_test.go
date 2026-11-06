@@ -3,11 +3,14 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr/funcr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,6 +18,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 const shopMilestone = "/api/v1/projects/team-a/shop/milestones/3"
@@ -506,5 +510,72 @@ func TestMilestoneMergePermissionNeedsTheDeskChat(t *testing.T) {
 	var m MilestoneView
 	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Permissions == nil || m.Permissions.Merge {
 		t.Errorf("with the Desk chat off an owner may not merge: status %d, %+v", code, m.Permissions)
+	}
+}
+
+// fakePauses is a pause store that answers h or err.
+type fakePauses struct {
+	h   store.PauseHistory
+	err error
+	got []any
+}
+
+func (f *fakePauses) Pauses(_ context.Context, p store.ProjectKey, milestone int64, _ time.Time) (store.PauseHistory, error) {
+	f.got = append(f.got, p, milestone)
+	return f.h, f.err
+}
+
+func TestMilestonePauses(t *testing.T) {
+	env, gl := newSteeringEnv(t, Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}})
+	withAutopilot(t, env, gl)
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}}}
+	env.login(t, "/")
+
+	var m MilestoneView
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Pauses != nil || m.Autopilot == nil {
+		t.Fatalf("without a database: status %d, pauses %+v", code, m.Pauses)
+	}
+
+	since := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
+	until := since.Add(10 * time.Minute)
+	h := store.PauseHistory{Totals: store.PauseTotals{Count: 25, PausedSec: 9000, MeanResumeSec: 300,
+		ByKind: map[string]store.PauseKindTotal{"ciRed": {Count: 25, Sec: 9000}}, ByResolver: map[string]int{"selfHealed": 24}}}
+	for i := range 25 {
+		p := store.Pause{Kind: "ciRed", Reason: fmt.Sprint(i), Item: 42, Since: since.Add(time.Duration(i) * time.Hour), Seconds: 600}
+		if i < 24 {
+			u := until.Add(time.Duration(i) * time.Hour)
+			p.Until, p.ResolvedBy = &u, "selfHealed"
+		}
+		h.Pauses = append(h.Pauses, p)
+	}
+	fake := &fakePauses{h: h}
+	env.server.pauses = fake
+	m = MilestoneView{}
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK {
+		t.Fatalf("milestone: status %d", code)
+	}
+	if !slices.Equal(fake.got, []any{store.ProjectKey{Namespace: "team-a", Name: "shop"}, int64(3)}) {
+		t.Errorf("queried %v", fake.got)
+	}
+	ph := m.Pauses
+	if ph == nil || len(ph.Pauses) != maxPauseViews {
+		t.Fatalf("pauses = %+v", ph)
+	}
+	if p := ph.Pauses[0]; p.Reason != "24" || p.Until != nil || p.Kind != aiv1.PauseCIRed || p.Seconds != 600 || p.Item != 42 {
+		t.Errorf("the newest pause first, open: %+v", p)
+	}
+	if p := ph.Pauses[1]; p.Reason != "23" || p.Until == nil || p.ResolvedBy != aiv1.ResolvedBySelfHealed {
+		t.Errorf("second pause: %+v", p)
+	}
+	if tot := ph.Totals; tot.Count != 25 || tot.PausedSec != 9000 || tot.MeanResumeSec != 300 ||
+		tot.ByKind["ciRed"] != (PauseKindTotalView{Count: 25, Sec: 9000}) || tot.ByResolver["selfHealed"] != 24 {
+		t.Errorf("totals = %+v", tot)
+	}
+
+	fake.err = errors.New("connection refused")
+	m = MilestoneView{}
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Pauses != nil || m.Autopilot == nil {
+		t.Errorf("a failing query: status %d, pauses %+v", code, m.Pauses)
 	}
 }

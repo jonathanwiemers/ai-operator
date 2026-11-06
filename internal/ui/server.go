@@ -49,6 +49,8 @@ type Server struct {
 	writer client.Client
 	// research is the reader's store, nil until connected.
 	research atomic.Pointer[store.Store]
+	// pauses reads milestones' pauses instead of research (tests).
+	pauses pauseReader
 	// chat is the chat writer's store, nil until connected or without
 	// the writer login.
 	chat atomic.Pointer[store.Store]

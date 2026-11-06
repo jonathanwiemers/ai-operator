@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -32,7 +34,10 @@ type MilestoneView struct {
 	Prompts []PromptView `json:"prompts"`
 	// Tasks are the implement tasks, by issue IID.
 	Tasks []Task `json:"tasks"`
-	Cost  `tstype:",extends"`
+	// Pauses is the autopilot's pause history, absent without the history
+	// database or when it cannot be read.
+	Pauses *PauseHistoryView `json:"pauses,omitempty"`
+	Cost   `tstype:",extends"`
 	// Permissions is what the app may offer; the endpoints check again.
 	Permissions *MilestonePermissions `json:"permissions,omitempty"`
 }
@@ -104,6 +109,93 @@ type ProposalView struct {
 	ID       int64        `json:"id"`
 	Summary  string       `json:"summary"`
 	PostedAt *metav1.Time `json:"postedAt,omitempty"`
+}
+
+// maxPauseViews bounds the pauses a milestone view carries; its totals
+// cover all of them.
+const maxPauseViews = 20
+
+// PauseHistoryView is a milestone's autopilot pauses within the history's
+// retention: the newest ones, newest first, and the totals of all.
+type PauseHistoryView struct {
+	Pauses []PauseView     `json:"pauses"`
+	Totals PauseTotalsView `json:"totals"`
+}
+
+// PauseView is one pause. Until is absent while it is open; Seconds then
+// counts up to the view's time. Kind is "unknown" for a pause without one.
+type PauseView struct {
+	Kind       aiv1.PauseKind     `json:"kind" tstype:"aiv1.PauseKind | 'unknown'"`
+	Reason     string             `json:"reason,omitempty"`
+	Item       int64              `json:"item,omitempty"`
+	Since      time.Time          `json:"since"`
+	Until      *time.Time         `json:"until,omitempty"`
+	ResolvedBy aiv1.PauseResolver `json:"resolvedBy,omitempty"`
+	Seconds    int64              `json:"seconds"`
+}
+
+// PauseKindTotalView sums the pauses of one kind.
+type PauseKindTotalView struct {
+	Count int   `json:"count"`
+	Sec   int64 `json:"sec"`
+}
+
+// PauseTotalsView sums all pauses: pausedSec their time (open ones up to
+// now), meanResumeSec the mean time to resume of the ended ones, byResolver
+// who ended them ("unknown" when not recorded).
+type PauseTotalsView struct {
+	Count         int                           `json:"count"`
+	PausedSec     int64                         `json:"pausedSec"`
+	ByKind        map[string]PauseKindTotalView `json:"byKind" tstype:"{ [kind: string]: PauseKindTotalView }"`
+	MeanResumeSec int64                         `json:"meanResumeSec"`
+	ByResolver    map[string]int                `json:"byResolver" tstype:"{ [resolver: string]: number }"`
+}
+
+// pauseReader reads a milestone's pauses (the history store).
+type pauseReader interface {
+	Pauses(ctx context.Context, project store.ProjectKey, milestone int64, now time.Time) (store.PauseHistory, error)
+}
+
+// pauseStore is the reader of pauses, nil without the history database.
+func (s *Server) pauseStore() pauseReader {
+	if s.pauses != nil {
+		return s.pauses
+	}
+	if st := s.spendStore(); st != nil {
+		return st
+	}
+	return nil
+}
+
+// milestonePauses is the pause history of the milestone, nil without the
+// history database or when it fails (logged).
+func (s *Server) milestonePauses(ctx context.Context, ap *aiv1.AgentProject, iid int64, now time.Time) *PauseHistoryView {
+	st := s.pauseStore()
+	if st == nil {
+		return nil
+	}
+	h, err := st.Pauses(ctx, store.ProjectKey{Namespace: ap.Namespace, Name: ap.Name}, iid, now)
+	if err != nil {
+		s.log.Error(err, "cannot read the milestone's pauses", "namespace", ap.Namespace, "project", ap.Name, "milestone", iid)
+		return nil
+	}
+	return pauseHistoryView(h)
+}
+
+func pauseHistoryView(h store.PauseHistory) *PauseHistoryView {
+	t := h.Totals
+	v := &PauseHistoryView{Pauses: []PauseView{}, Totals: PauseTotalsView{Count: t.Count, PausedSec: t.PausedSec,
+		ByKind: map[string]PauseKindTotalView{}, MeanResumeSec: t.MeanResumeSec, ByResolver: map[string]int{}}}
+	for k, kt := range t.ByKind {
+		v.Totals.ByKind[k] = PauseKindTotalView{Count: kt.Count, Sec: kt.Sec}
+	}
+	maps.Copy(v.Totals.ByResolver, t.ByResolver)
+	for i := len(h.Pauses) - 1; i >= 0 && len(v.Pauses) < maxPauseViews; i-- {
+		p := h.Pauses[i]
+		v.Pauses = append(v.Pauses, PauseView{Kind: aiv1.PauseKind(p.Kind), Reason: p.Reason, Item: p.Item, Since: p.Since,
+			Until: p.Until, ResolvedBy: aiv1.PauseResolver(p.ResolvedBy), Seconds: p.Seconds})
+	}
+	return v
 }
 
 // milestoneTasks returns the spec task and the Coordinate task of the
@@ -227,8 +319,10 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v := milestoneView(ap, tasks, st, coord, time.Now())
+	now := time.Now()
+	v := milestoneView(ap, tasks, st, coord, now)
 	v.Cost = s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, MilestoneIID: v.IID}, v.Cost)
+	v.Pauses = s.milestonePauses(r.Context(), ap, v.IID, now)
 	gl := s.gitlab != nil && s.gitlab.serves(ap)
 	p := principalOf(r)
 	chat := s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name)
