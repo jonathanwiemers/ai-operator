@@ -153,6 +153,16 @@ func newCompanionEnv(t *testing.T) *companionEnv {
 	if err := e.k8s.Update(ctx, &task); err != nil {
 		t.Fatal(err)
 	}
+	// The project has the companion as a target: the guard lets the runner
+	// open and close merge requests there.
+	var project aiv1.AgentProject
+	if err := e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: task.Spec.ProjectRef}, &project); err != nil {
+		t.Fatal(err)
+	}
+	project.Spec.CrossRepo = &aiv1.CrossRepoSpec{Targets: []aiv1.CrossRepoTarget{{Project: "group/infra", Paths: []string{"clusters/app/"}}}}
+	if err := e.k8s.Update(ctx, &project); err != nil {
+		t.Fatal(err)
+	}
 	return &companionEnv{implementEnv: e, infraOrigin: origin, infraSeed: seed, gl: gl}
 }
 
@@ -190,7 +200,8 @@ func TestImplementPreparesAndImportsTheCompanion(t *testing.T) {
 		t.Fatalf("home checkout on %q", got)
 	}
 
-	// The companion's commit is in the companion mirror, not on its remote.
+	// The companion's commit is in the companion mirror, and pushed from it
+	// (TestImplementCompanionPushAndMergeRequest covers the push).
 	mirror := filepath.Join(e.tmp, "runner", "mirrors", "group-infra.git")
 	files := gitCmd(t, e.tmp, "--git-dir", mirror, "ls-tree", "-r", "--name-only", "refs/heads/"+companionBranch)
 	if !strings.Contains(files, "clusters/app/paypal.yaml") || !strings.Contains(files, "clusters/app/kustomization.yaml") {
@@ -199,8 +210,8 @@ func TestImplementPreparesAndImportsTheCompanion(t *testing.T) {
 	if msg := gitCmd(t, e.tmp, "--git-dir", mirror, "log", "-1", "--format=%s", "refs/heads/"+companionBranch); !strings.Contains(msg, "Add PayPal button") {
 		t.Fatalf("companion commit message %q", msg)
 	}
-	if heads := gitCmd(t, e.tmp, "--git-dir", e.infraOrigin, "for-each-ref", "--format=%(refname)", "refs/heads/"); heads != "refs/heads/main" {
-		t.Fatalf("the companion must not be pushed in this run: %s", heads)
+	if pushed := gitCmd(t, e.tmp, "--git-dir", e.infraOrigin, "rev-parse", companionBranch); pushed != gitCmd(t, e.tmp, "--git-dir", mirror, "rev-parse", "refs/heads/"+companionBranch) {
+		t.Fatalf("the companion remote must have the mirror's branch head: %s", pushed)
 	}
 	// The home change went its usual way, without the companion's file.
 	home := gitCmd(t, e.tmp, "--git-dir", e.origin, "ls-tree", "-r", "--name-only", "agent/42-add-paypal-button")

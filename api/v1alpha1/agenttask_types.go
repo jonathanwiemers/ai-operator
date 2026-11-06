@@ -1126,6 +1126,13 @@ type RunStatus struct {
 	// +optional
 	Checkpoint *CheckpointStatus `json:"checkpoint,omitempty"`
 
+	// Companion is the companion repository's side of the run
+	// (spec.companion): its branch, last push and draft merge request. Set
+	// by the run that first pushes a companion change, cleared (and the
+	// merge request closed) by a run that ends without one.
+	// +optional
+	Companion *CompanionRun `json:"companion,omitempty"`
+
 	// Calls are the task's newest engine calls, oldest first (AppendCalls
 	// keeps the last MaxCalls). The operator writes each call it has not
 	// seen yet to its history.
@@ -1138,6 +1145,27 @@ type RunStatus struct {
 	// across runs while Calls is trimmed.
 	// +optional
 	LastCallSeq int64 `json:"lastCallSeq,omitempty"`
+}
+
+// CompanionRun is what the runner pushed and opened in the companion
+// project (docs/specs/cross-repo-changes.spec.md, decision 6).
+type CompanionRun struct {
+	// Project is the companion's full path (spec.companion.project).
+	Project string `json:"project"`
+	// MRIID is the companion's draft merge request; MRURL its web URL.
+	// +optional
+	MRIID int64 `json:"mrIID,omitempty"`
+	// +optional
+	MRURL string `json:"mrURL,omitempty"`
+	// Branch is the companion branch (spec.companion.branch).
+	// +optional
+	Branch string `json:"branch,omitempty"`
+	// PushedSHA is the companion branch head the last push left.
+	// +optional
+	PushedSHA string `json:"pushedSHA,omitempty"`
+	// ReviewedSHA is the companion head the last review saw.
+	// +optional
+	ReviewedSHA string `json:"reviewedSHA,omitempty"`
 }
 
 // CheckpointStatus is a checkpoint commit the runner pushed after an

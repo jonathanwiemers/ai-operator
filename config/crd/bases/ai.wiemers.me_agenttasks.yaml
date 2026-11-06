@@ -3159,6 +3159,37 @@ spec:
                       a human asked for.
                     format: int32
                     type: integer
+                  companion:
+                    description: |-
+                      Companion is the companion repository's side of the run
+                      (spec.companion): its branch, last push and draft merge request. Set
+                      by the run that first pushes a companion change, cleared (and the
+                      merge request closed) by a run that ends without one.
+                    properties:
+                      branch:
+                        description: Branch is the companion branch (spec.companion.branch).
+                        type: string
+                      mrIID:
+                        description: MRIID is the companion's draft merge request;
+                          MRURL its web URL.
+                        format: int64
+                        type: integer
+                      mrURL:
+                        type: string
+                      project:
+                        description: Project is the companion's full path (spec.companion.project).
+                        type: string
+                      pushedSHA:
+                        description: PushedSHA is the companion branch head the last
+                          push left.
+                        type: string
+                      reviewedSHA:
+                        description: ReviewedSHA is the companion head the last review
+                          saw.
+                        type: string
+                    required:
+                    - project
+                    type: object
                   costUSD:
                     description: CostUSD is the accumulated model spend of this task,
                       as a decimal string.

@@ -344,17 +344,25 @@ const AnnotationCompanion = "ai.wiemers.me/companion"
 // companion's project: the target's tokenSecretRef, else the project's
 // token. Nil without spec.companion, and when its project is no longer one
 // of the valid targets: the pod then has no companion token, and the
-// runner leaves the companion out of the run with a notice.
+// runner leaves the companion out of the run with a notice. Without
+// spec.companion, a companion the runner still records (status.run.companion)
+// keeps its token, so the next run can close its merge request and delete its
+// branch.
 func companionToken(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, targets []aiv1.CrossRepoTarget) (*corev1.SecretKeySelector, string) {
-	c := task.Spec.Companion
-	if c == nil {
+	project := ""
+	switch {
+	case task.Spec.Companion != nil:
+		project = task.Spec.Companion.Project
+	case task.Status.Run.Companion != nil:
+		project = task.Status.Run.Companion.Project
+	default:
 		return nil, ""
 	}
-	t, ok := aiv1.FindCrossRepoTarget(targets, c.Project)
+	t, ok := aiv1.FindCrossRepoTarget(targets, project)
 	if !ok {
 		return nil, ""
 	}
-	project := aiv1.NormalizeProject(t.Project)
+	project = aiv1.NormalizeProject(t.Project)
 	if t.TokenSecretRef != nil {
 		return t.TokenSecretRef.DeepCopy(), project
 	}

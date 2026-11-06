@@ -3440,6 +3440,14 @@ export interface RunStatus {
    */
   checkpoint?: CheckpointStatus;
   /**
+   * Companion is the companion repository's side of the run
+   * (spec.companion): its branch, last push and draft merge request. Set
+   * by the run that first pushes a companion change, cleared (and the
+   * merge request closed) by a run that ends without one.
+   * +optional
+   */
+  companion?: CompanionRun;
+  /**
    * Calls are the task's newest engine calls, oldest first (AppendCalls
    * keeps the last MaxCalls). The operator writes each call it has not
    * seen yet to its history.
@@ -3454,6 +3462,40 @@ export interface RunStatus {
    * +optional
    */
   lastCallSeq?: number /* int64 */;
+}
+/**
+ * CompanionRun is what the runner pushed and opened in the companion
+ * project (docs/specs/cross-repo-changes.spec.md, decision 6).
+ */
+export interface CompanionRun {
+  /**
+   * Project is the companion's full path (spec.companion.project).
+   */
+  project: string;
+  /**
+   * MRIID is the companion's draft merge request; MRURL its web URL.
+   * +optional
+   */
+  mrIID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  mrURL?: string;
+  /**
+   * Branch is the companion branch (spec.companion.branch).
+   * +optional
+   */
+  branch?: string;
+  /**
+   * PushedSHA is the companion branch head the last push left.
+   * +optional
+   */
+  pushedSHA?: string;
+  /**
+   * ReviewedSHA is the companion head the last review saw.
+   * +optional
+   */
+  reviewedSHA?: string;
 }
 /**
  * CheckpointStatus is a checkpoint commit the runner pushed after an
@@ -4252,6 +4294,11 @@ export const ConditionCrossRepoReady = "CrossRepoReady";
  * one.
  */
 export const RepoLabelPrefix = "agent-repo::";
+/**
+ * CompanionMRLabel marks the merge request the runner opens in a companion
+ * project.
+ */
+export const CompanionMRLabel = "agent::companion";
 
 //////////
 // source: pause.go

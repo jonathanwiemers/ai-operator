@@ -69,6 +69,11 @@ type implementRun struct {
 	// companion is the task's companion repository; nil without one, or
 	// when the pod has no token for it.
 	companion *companionTree
+	// companionMR is the companion's merge request once the push found or
+	// opened it; homeLink is the home merge request's companion line, ""
+	// without one.
+	companionMR *gitlab.MergeRequest
+	homeLink    string
 
 	// The thread: all comments, those the agent has not seen yet, its notes
 	// from earlier runs and the decisions to revisit.
@@ -757,7 +762,9 @@ func (run *implementRun) push(ctx context.Context) error {
 			out.ReviewedSHA = ""
 		}
 	}
-	return nil
+	// The companion goes after the home branch (D157-P1); the merge gate
+	// holds the home merge request until the companion is green anyway.
+	return run.pushCompanion(ctx)
 }
 
 // isCheckpoint reports whether sha is a checkpoint: the one this run pushed,
@@ -799,8 +806,16 @@ func (run *implementRun) report(ctx context.Context) error {
 	}
 	reported := *answer
 	if !spec.Agents.Describe.Disabled {
-		first, notice, err := r.describe(ctx, gl, glProject, spec.Agents.Describe, issue, mr.IID, run.base, answer.Summary, run.state, out)
+		first, notice, err := r.describe(ctx, spec.Agents.Describe, issue, answer.Summary, describeTarget{
+			gl: gl, project: glProject, mrIID: mr.IID, repo: homeTree, base: run.base, described: &run.state.DescribedDiff, links: []string{run.homeLink},
+		}, run.state, out)
 		if err != nil {
+			return err
+		}
+		if notice != "" {
+			run.notices = append(run.notices, notice)
+		}
+		if notice, err = run.describeCompanion(ctx); err != nil {
 			return err
 		}
 		if notice != "" {

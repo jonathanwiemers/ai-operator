@@ -183,6 +183,7 @@ type MergeRequest struct {
 	WebURL          string     `json:"web_url"`
 	UpdatedAt       *time.Time `json:"updated_at"`
 	Reviewers       []User     `json:"reviewers"`
+	Labels          []string   `json:"labels"`
 	// SHA is the head commit of the source branch.
 	SHA   string `json:"sha"`
 	Draft bool   `json:"draft"`
@@ -333,6 +334,8 @@ type CreateMergeRequestOptions struct {
 	Description        string `json:"description,omitempty"`
 	RemoveSourceBranch bool   `json:"remove_source_branch,omitempty"`
 	MilestoneID        int64  `json:"milestone_id,omitempty"`
+	// Labels is a comma separated list; GitLab creates missing labels.
+	Labels string `json:"labels,omitempty"`
 }
 
 // UpdateMergeRequestOptions updates a merge request. Empty fields are left
@@ -342,6 +345,8 @@ type UpdateMergeRequestOptions struct {
 	Description string `json:"description,omitempty"`
 	// ReviewerIDs replaces all reviewers of the merge request.
 	ReviewerIDs []int64 `json:"reviewer_ids,omitempty"`
+	// StateEvent is "close" or "reopen"; empty leaves the state.
+	StateEvent string `json:"state_event,omitempty"`
 }
 
 // MergeOptions merges a merge request.

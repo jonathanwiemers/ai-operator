@@ -157,6 +157,10 @@ func crossRepoPathProblems(paths []string) []string {
 // one.
 const RepoLabelPrefix = "agent-repo::"
 
+// CompanionMRLabel marks the merge request the runner opens in a companion
+// project.
+const CompanionMRLabel = "agent::companion"
+
 // FindCrossRepoTarget returns the target of project among targets,
 // compared as NormalizeProject does.
 func FindCrossRepoTarget(targets []CrossRepoTarget, project string) (CrossRepoTarget, bool) {

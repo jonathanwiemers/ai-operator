@@ -172,6 +172,8 @@ type state struct {
 	// DescribedDiff is the hash of the diff the merge request description
 	// was last written for.
 	DescribedDiff string `json:"describedDiff,omitempty"`
+	// DescribedCompanionDiff is the same for the companion's merge request.
+	DescribedCompanionDiff string `json:"describedCompanionDiff,omitempty"`
 	// ImplementEngine is the engine of the last implementer session; a run
 	// on another engine starts that engine's session fresh.
 	ImplementEngine aiv1.Engine `json:"implementEngine,omitempty"`
@@ -407,8 +409,16 @@ func (r *Runner) guardedGitLab(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask)
 func (r *Runner) guardedGitLabWith(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, token string) gitlab.API {
 	var allowed []string
 	var companion *aiv1.CompanionSpec
-	if task != nil && task.Spec.Companion != nil {
+	switch {
+	case task == nil:
+	case task.Spec.Companion != nil:
 		companion = task.Spec.Companion
+		allowed = []string{companion.Project}
+	case task.Status.Run.Companion != nil:
+		// The companion was removed from the issue: the run closes its
+		// merge request and deletes its branch (removeCompanion), while the
+		// project is still a target. Never merged.
+		companion = &aiv1.CompanionSpec{Project: task.Status.Run.Companion.Project}
 		allowed = []string{companion.Project}
 	}
 	policy := gitlab.NewPolicy(spec, allowed).ForCompanion(companion)

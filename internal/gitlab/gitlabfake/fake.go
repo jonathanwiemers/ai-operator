@@ -535,8 +535,13 @@ func (f *Fake) CreateMergeRequest(_ context.Context, _ string, opts gitlab.Creat
 	defer f.mu.Unlock()
 	iid := int64(len(f.MRs) + 1)
 	mr := &gitlab.MergeRequest{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "opened", SourceBranch: opts.SourceBranch,
-		TargetBranch: opts.TargetBranch, WebURL: fmt.Sprintf("https://gitlab.example/group/app/-/merge_requests/%d", iid), UpdatedAt: f.tick(),
+		TargetBranch: opts.TargetBranch, WebURL: fmt.Sprintf("https://gitlab.example/%s/-/merge_requests/%d", f.Project.PathWithNamespace, iid), UpdatedAt: f.tick(),
 		Draft: strings.HasPrefix(opts.Title, "Draft:"), DetailedMergeStatus: "mergeable"}
+	for _, l := range strings.Split(opts.Labels, ",") {
+		if l = strings.TrimSpace(l); l != "" {
+			mr.Labels = append(mr.Labels, l)
+		}
+	}
 	if mr.Draft {
 		mr.DetailedMergeStatus = "draft_status"
 	}
@@ -564,6 +569,12 @@ func (f *Fake) UpdateMergeRequest(_ context.Context, _ string, iid int64, opts g
 		if !mr.Draft && mr.DetailedMergeStatus == "draft_status" {
 			mr.DetailedMergeStatus = "mergeable"
 		}
+	}
+	switch opts.StateEvent {
+	case "close":
+		mr.State = "closed"
+	case "reopen":
+		mr.State = "opened"
 	}
 	if opts.Description != "" {
 		mr.Description = opts.Description

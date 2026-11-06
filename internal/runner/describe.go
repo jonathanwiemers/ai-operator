@@ -104,15 +104,38 @@ func managedDescription(desc string) (string, bool) {
 // follows the block.
 func withDescription(desc, body string, iid int64) string {
 	block := descriptionBlock(body)
-	if i := strings.Index(desc, descriptionBegin); i >= 0 {
-		if j := strings.Index(desc[i:], descriptionEnd); j >= 0 {
-			return desc[:i] + block + desc[i+j+len(descriptionEnd):]
-		}
+	if d, ok := replaceBlock(desc, block); ok {
+		return d
 	}
 	if d := strings.TrimSpace(desc); d == "" || d == fmt.Sprintf(legacyDescription, iid) {
 		return block + fmt.Sprintf("\n\nCloses #%d", iid)
 	}
 	return block + "\n\n" + desc
+}
+
+// withCompanionDescription is withDescription for a companion's merge
+// request: never a closing pattern, "#<iid>" there is another project's
+// issue.
+func withCompanionDescription(desc, body string) string {
+	block := descriptionBlock(body)
+	if d, ok := replaceBlock(desc, block); ok {
+		return d
+	}
+	if d := strings.TrimSpace(desc); d != "" {
+		return block + "\n\n" + desc
+	}
+	return block
+}
+
+// replaceBlock puts block in place of the runner's block of desc, if it
+// has one.
+func replaceBlock(desc, block string) (string, bool) {
+	if i := strings.Index(desc, descriptionBegin); i >= 0 {
+		if j := strings.Index(desc[i:], descriptionEnd); j >= 0 {
+			return desc[:i] + block + desc[i+j+len(descriptionEnd):], true
+		}
+	}
+	return "", false
 }
 
 // mermaidTypes are the diagram types a description may carry.
@@ -167,9 +190,19 @@ func renderDescription(a DescribeAnswer) (string, error) {
 	return b.String(), nil
 }
 
-func buildDescribePrompt(issue *gitlab.Issue, summary, previous, base, stat, diff string) string {
+// buildDescribePrompt is the describer's prompt. companionOf is set for a
+// companion's merge request: it names the home merge request, and the diff
+// is the companion repository's, which the describer's checkout lacks.
+func buildDescribePrompt(issue *gitlab.Issue, summary, previous, base, stat, diff, companionOf string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Describe the merge request of issue #%d: %s\n\n", issue.IID, issue.Title)
+	if companionOf != "" {
+		fmt.Fprintf(&b, "Describe the companion merge request of issue #%d: %s\n\n", issue.IID, issue.Title)
+		fmt.Fprintf(&b, "The issue changes two repositories. This merge request is the change in the companion repository; "+
+			"the home merge request %s has the rest and lands first. Describe only the companion's diff below; "+
+			"the issue and the summary cover both.\n\n", companionOf)
+	} else {
+		fmt.Fprintf(&b, "Describe the merge request of issue #%d: %s\n\n", issue.IID, issue.Title)
+	}
 	fmt.Fprintf(&b, "## Issue description\n\n%s\n\n", untrustedData(issue.Description))
 	if s := strings.TrimSpace(summary); s != "" {
 		fmt.Fprintf(&b, "## Summary of the implementer's last run\n\n%s\n\n", s)
@@ -178,28 +211,52 @@ func buildDescribePrompt(issue *gitlab.Issue, summary, previous, base, stat, dif
 		fmt.Fprintf(&b, "## Previous description\n\n%s\n\n", previous)
 	}
 	fmt.Fprintf(&b, "## Changed files\n\n```\n%s\n```\n\n", stat)
-	if len(diff) <= defaultInlineDiff {
+	switch {
+	case len(diff) <= defaultInlineDiff:
 		fmt.Fprintf(&b, "## Diff\n\n```diff\n%s\n```\n", diff)
-	} else {
+	case companionOf != "":
+		b.WriteString("The diff is too large to include, and the companion repository is not in your checkout: describe it from the changed files above.\n")
+	default:
 		fmt.Fprintf(&b, "The diff is too large to include. Inspect it with `git diff origin/%s...HEAD -- <file>`.\n", base)
 	}
 	return b.String()
 }
 
-// describe rewrites the runner's part of the merge request description when
-// the branch's diff changed since it was last described. A problem comes
-// back as a notice for the report; only a failed state save after the update
+// describeTarget is the merge request a describer call writes.
+type describeTarget struct {
+	gl      gitlab.API
+	project string
+	mrIID   int64
+	// repo is the tree whose diff against base is described: homeTree or a
+	// companion's slug.
+	repo, base string
+	// described is the state's hash of the diff last described there.
+	described *string
+	// links are the runner's link lines at the head of the block.
+	links []string
+	// companionOf is the home merge request ("<project>!<iid>") of a
+	// companion's merge request; "" for the home merge request.
+	companionOf string
+}
+
+// describe rewrites the runner's part of a merge request description when
+// the tree's diff changed since it was last described. A problem comes back
+// as a notice for the report; only a failed state save after the update
 // fails the run, since the state keeps the agent from describing the same
 // diff again. first is set when the description was written for the first
 // time.
-func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, role aiv1.DescribeSpec, issue *gitlab.Issue, mrIID int64,
-	base, summary string, st *state, out *Outcome) (first bool, notice string, err error) {
-	s := r.step(ctx, "describe merge request")
+func (r *Runner) describe(ctx context.Context, role aiv1.DescribeSpec, issue *gitlab.Issue, summary string, t describeTarget,
+	st *state, out *Outcome) (first bool, notice string, err error) {
+	name, what := "describe merge request", "The merge request description"
+	if t.companionOf != "" {
+		name, what = "describe companion merge request", "The companion merge request's description"
+	}
+	s := r.step(ctx, name)
 	skip := func(why string, err error) (bool, string, error) {
 		s.done("not updated: "+why, "error", err.Error())
-		return false, "The merge request description was not updated: " + why, nil
+		return false, what + " was not updated: " + why, nil
 	}
-	diff, stat, err := r.Agent.Diff(ctx, homeTree, base)
+	diff, stat, err := r.Agent.Diff(ctx, t.repo, t.base)
 	if err != nil {
 		return skip(textutil.Truncate(err.Error(), 300), err)
 	}
@@ -209,20 +266,21 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 	}
 	sum := sha256.Sum256([]byte(diff))
 	hash := hex.EncodeToString(sum[:])
-	if hash == st.DescribedDiff {
+	if hash == *t.described {
 		s.done("the diff is described already")
 		return false, "", nil
 	}
-	mr, err := gl.GetMergeRequest(ctx, glProject, mrIID)
+	mr, err := t.gl.GetMergeRequest(ctx, t.project, t.mrIID)
 	if err != nil {
 		return skip("reading the merge request failed", err)
 	}
 	previous, ok := managedDescription(mr.Description)
+	previous = stripLinks(previous)
 	first = !ok || previous == descriptionPlaceholder
 	inv := roleInvocation(role.RoleSpec, describeSystemPrompt, readOnlyTools, describeSchema, true)
 	inv.Role, inv.Kind = "describe", aiv1.CallKindDescribe
 	inv.NoPersistence = true
-	res, err := r.invoke(ctx, role.RoleSpec, inv, buildDescribePrompt(issue, summary, previous, base, stat, diff))
+	res, err := r.invoke(ctx, role.RoleSpec, inv, buildDescribePrompt(issue, summary, previous, t.base, stat, diff, t.companionOf))
 	if res != nil {
 		out.CostUSD += res.CostUSD
 	}
@@ -233,7 +291,8 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 	if err != nil {
 		return skip("the describer failed: "+textutil.Truncate(err.Error(), 300), err)
 	}
-	// Describers are read-only; discard anything they touched anyway.
+	// Describers are read-only, and run in the home checkout; discard
+	// anything they touched anyway.
 	if err := r.Agent.Reset(ctx, homeTree); err != nil {
 		r.log().Info("could not reset the checkout after the describer", "error", err.Error())
 	}
@@ -241,16 +300,19 @@ func (r *Runner) describe(ctx context.Context, gl gitlab.API, glProject string, 
 	if err != nil {
 		return skip(err.Error(), err)
 	}
+	body = withLinks(body, t.links...)
 	// Read again: a human may have edited the description meanwhile.
-	if mr, err = gl.GetMergeRequest(ctx, glProject, mrIID); err != nil {
+	if mr, err = t.gl.GetMergeRequest(ctx, t.project, t.mrIID); err != nil {
 		return skip("reading the merge request failed", err)
 	}
-	if _, err := gl.UpdateMergeRequest(ctx, glProject, mrIID, gitlab.UpdateMergeRequestOptions{
-		Description: withDescription(mr.Description, body, issue.IID),
-	}); err != nil {
+	desc := withDescription(mr.Description, body, issue.IID)
+	if t.companionOf != "" {
+		desc = withCompanionDescription(mr.Description, body)
+	}
+	if _, err := t.gl.UpdateMergeRequest(ctx, t.project, t.mrIID, gitlab.UpdateMergeRequestOptions{Description: desc}); err != nil {
 		return skip("GitLab refused it", err)
 	}
-	st.DescribedDiff = hash
+	*t.described = hash
 	if err := r.saveState(*st); err != nil {
 		r.log().Error(err, "saving the described diff")
 		return false, "", s.fail(err)

@@ -1355,6 +1355,28 @@ or a submodule, or when the new files of the range add up to more than
 push publishes every commit. The failure report on the issue names the path
 and the reason.
 
+After the home branch is pushed, a run whose companion branch changes
+anything against the companion's default branch pushes the companion branch
+too (a normal push, so the companion's CI runs). If that push fails, the
+run fails with a report; the next run pushes both again. The first such run
+opens the companion's merge request in the companion project, **as a
+draft**: titled `<home title> (companion of <home project>#<iid>)`, labelled
+`agent::companion`, with the describer's text for the companion diff and the
+line `Lands after: <home project>!<home MR> is merged and live.` Later runs
+find it again and rewrite its description when the companion diff changed.
+It stays a draft (a run puts one marked ready back to draft): the operator
+marks it ready when it can land. The home merge request's description gets
+a line `Companion: <project>!<iid>` inside the runner's part of it. The task
+records it all in `status.run.companion` (`project`, `mrIID`, `mrURL`,
+`branch`, `pushedSHA`).
+
+A later run that ends without a companion change (the agent reverted it, or
+the issue lost its `agent-repo::` label) closes the companion's merge
+request, deletes its branch, removes the `Companion:` line and clears
+`status.run.companion`, and its report says so. A merge request merged by
+hand meanwhile is left as it is. Without a token for the companion (its
+target is no longer valid) the report asks to close it by hand.
+
 The implementer's prompt gets a "Companion repository" section: the
 project, its checkout `/workspace/repos/<slug>` and branch, the allowed
 paths (a change outside them, to CI configuration, or adding a symlink or

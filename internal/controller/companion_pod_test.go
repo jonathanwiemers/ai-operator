@@ -104,3 +104,29 @@ func TestPodOutdatedByCompanion(t *testing.T) {
 		t.Fatal("a target no longer valid needs a pod without its token")
 	}
 }
+
+// TestCompanionTokenKeptForTheRecordedCompanion: a task that lost
+// spec.companion while status.run.companion still records its merge request
+// keeps the token, so its next run can close the merge request; once the
+// runner cleared the record, or the target is no longer valid, it goes.
+func TestCompanionTokenKeptForTheRecordedCompanion(t *testing.T) {
+	spec := testProject().Spec.WithDefaults()
+	spec.CrossRepo = &aiv1.CrossRepoSpec{Targets: []aiv1.CrossRepoTarget{{Project: "group/infra", Paths: []string{"clusters/app/"}}}}
+	targets := crossRepoTargets(spec, []string{"group/infra"})
+	task := newImplTask("x", 1)
+	task.Status.Run.Companion = &aiv1.CompanionRun{Project: "group/infra", MRIID: 3, Branch: "agent/app-1-x"}
+
+	if ref, project := companionToken(task, spec, targets); ref == nil || project != "group/infra" {
+		t.Fatalf("the recorded companion keeps its token: %v %q", ref, project)
+	}
+	if podOutdated(buildPod(task, spec, "", targets), task, spec, targets) {
+		t.Fatal("a pod with the recorded companion's token is current")
+	}
+	if ref, _ := companionToken(task, spec, nil); ref != nil {
+		t.Fatal("no token for a recorded companion whose target is no longer valid")
+	}
+	task.Status.Run.Companion = nil
+	if ref, _ := companionToken(task, spec, targets); ref != nil {
+		t.Fatal("no token once the record is cleared")
+	}
+}

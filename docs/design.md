@@ -1841,6 +1841,18 @@ flowchart LR
   that cannot run refuses too. Only the head this run imported is checked,
   so a `refs/heads/<branch>` an earlier run left in the mirror does not
   count.
+* The companion branch is pushed from the companion mirror after the home
+  push, and only at the head the check passed (`pushCompanion`,
+  `internal/runner/companionmr.go`). Its merge request is opened as a draft
+  and kept one; the operator alone marks it ready. The links between the two
+  merge requests are lines at the head of the runner's description block
+  ending in `<!-- ai-operator:link -->`; agent prose escapes `<!--`, so it
+  cannot forge or remove one. The companion's description never gets a
+  closing pattern: `#<iid>` there is another project's issue.
+* A task that lost `spec.companion` while `status.run.companion` still
+  records its merge request keeps the companion token and the guard's target
+  (merges refused) until a run has closed it, if the project is still a
+  valid target.
 
 **Merge/push guard.** The bot's token usually reaches far more than the
 AgentProject's own project (e.g. as a group Maintainer), so the operator and
@@ -1848,7 +1860,8 @@ the runner restrict themselves (`internal/gitlab/guard.go`):
 
 * Their GitLab clients are wrapped by `gitlab.Guard` with a policy built
   only from `spec.gitlab.project` and the targets `ValidateCrossRepo`
-  accepts. The runner narrows it to the task's `spec.companion`.
+  accepts. The runner narrows it to the task's `spec.companion` (without
+  one, to the companion `status.run.companion` records, merges refused).
   `jo.wiemers/personal/kubernetes` is never a target.
   * A merge is allowed in the home project, or in a target with `autoMerge`.
     In the runner, the task's resolved `autoMerge` must allow it too.
