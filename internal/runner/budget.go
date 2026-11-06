@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
@@ -44,9 +45,16 @@ func (r *Runner) budgetStop(ctx context.Context) error {
 // deferForBudget ends a run stopped by the budget: the request stays
 // pending (Step waits while spec.budgetStop is set), what the run pushed
 // stays, the workspace and session resume with the next attempt.
-func (r *Runner) deferForBudget(ctx context.Context, out *Outcome, err error) error {
+func (r *Runner) deferForBudget(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome, err error) error {
 	r.log().Info("budget used, deferring run", "steps", r.run.lines())
 	now := r.now()
+	// A note only when a checkpoint was saved: it is a new commit on the MR.
+	if saved := r.run.checkpointText(); saved != "" && task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
+		body := "⏸️ Stopped between agent calls: the budget is used. The run continues once it is raised.\n\n" + saved
+		if _, nerr := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); nerr != nil {
+			r.log().Error(nerr, "posting budget stop note")
+		}
+	}
 	return r.patchRunWithCalls(ctx, func(s *aiv1.RunStatus) {
 		// The request stays pending, but nothing is in progress any more.
 		s.ActiveRunRequest = s.ObservedRunRequest

@@ -1771,6 +1771,10 @@ CLI reports such a limit, the run is **paused, not failed**:
   dies](#when-the-agent-container-dies),
   [When the whole pod is lost](#when-the-whole-pod-is-lost) and
   [configuration.md](configuration.md#speccheckpoint)).
+  The progress comment, the note on the issue (on every deferral that saved
+  a checkpoint, and on a budget stop that did) and the failure report say
+  so: `💾 Saved a checkpoint (<sha>, N files, +A/−D) because …`, plus the
+  files left out and why, or that an aborted merge saved nothing.
 - The run is retried at the reset time the CLI reports (claude's from its
   limit message or, when that names none, from its usage windows; cursor's
   monthly reset date). If it doesn't report one, the wait is 5 minutes, doubling with every further limit hit

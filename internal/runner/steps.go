@@ -33,7 +33,9 @@ type runLog struct {
 	fallbacks []string
 	// warned are the warnings logged once per run (warnOnce).
 	warned []string
-	mu     sync.Mutex
+	// checkpoints are the checkpoints this run saved or tried (checkpointLines).
+	checkpoints []checkpointNote
+	mu          sync.Mutex
 	// onChange is called when a step starts or ends (the progress comment).
 	onChange func()
 }

@@ -188,6 +188,13 @@ func TestCheckpointOnUsageLimit(t *testing.T) {
 		t.Fatalf("the usage limit must still defer the run: %+v", run)
 	}
 	head := e.checkCheckpoint(1, 1, cutUsageLimit)
+	line := "💾 Saved a checkpoint (`" + shortSHA(head) + "`, 1 files, +3/−0) because the usage limit was reached."
+	if notes := e.gl.MRNotes[1]; len(notes) != 1 || !strings.Contains(notes[0].Body, line) {
+		t.Fatalf("the progress comment should name the checkpoint: %+v", notes)
+	}
+	if notes := strings.Join(e.issueNotes(), "\n"); !strings.Contains(notes, line) {
+		t.Fatalf("the usage limit note should name the checkpoint:\n%s", notes)
+	}
 	// On top of the start commit, pushed with ci.skip and without force.
 	if log := strings.Split(e.origin1("log", "--format=%s", cpBranch), "\n"); len(log) != 3 || log[1] != "Start work on #42" || log[2] != "init" {
 		t.Fatalf("history %q", log)
@@ -324,6 +331,16 @@ func TestCheckpointOnBudgetStop(t *testing.T) {
 	}
 	if !e.gl.MRs[1].Draft {
 		t.Fatal("the ready MR must be set to draft")
+	}
+	// Ending the run posts a note, because a checkpoint was saved.
+	before := len(e.issueNotes())
+	tk := e.task()
+	if err := e.r.deferForBudget(ctx, e.gl, aiv1.AgentProjectSpec{GitLab: aiv1.GitLabSpec{Project: "group/app"}}, &tk, &Outcome{}, err); err != nil {
+		t.Fatal(err)
+	}
+	if notes := e.issueNotes(); len(notes) != before+1 || !strings.Contains(notes[before], "💾 Saved a checkpoint (`"+shortSHA(head)+"`") ||
+		!strings.Contains(notes[before], "because the budget is used.") {
+		t.Fatalf("the budget stop should post the checkpoint line: %q", notes)
 	}
 
 	// A reviewer's call is no implementer call: nothing is saved.

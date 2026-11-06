@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // Reasons a checkpoint is saved for (subject, trailer, status).
@@ -116,9 +118,21 @@ func isTimeout(ctx context.Context, err error) bool {
 // last status. Failures are logged in the run log and never replace the
 // error that cut the call off. It returns nil when nothing was attempted.
 func (r *Runner) checkpoint(ctx context.Context, reason string, res *Result) *CheckpointResult {
+	cp, pushed := r.saveCheckpoint(ctx, reason, res)
+	if cp != nil {
+		noted := *cp
+		if !pushed {
+			noted.SHA = "" // the reports only claim what is on the branch
+		}
+		r.run.noteCheckpoint(checkpointNote{Reason: reason, CheckpointResult: noted})
+	}
+	return cp
+}
+
+func (r *Runner) saveCheckpoint(ctx context.Context, reason string, res *Result) (*CheckpointResult, bool) {
 	cut := r.cut
 	if cut == nil {
-		return nil
+		return nil, false
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), checkpointTimeout)
 	defer cancel()
@@ -137,19 +151,19 @@ func (r *Runner) checkpoint(ctx context.Context, reason string, res *Result) *Ch
 	cp, err := r.Agent.Checkpoint(ctx, req)
 	if err != nil {
 		s.done("failed: "+err.Error(), "error", err.Error())
-		return &cp
+		return &cp, false
 	}
 	skipped := skippedNote(cp.Skipped)
 	switch {
 	case cp.Refused != "":
 		s.done("nothing saved: "+cp.Refused, "refused", cp.Refused)
-		return &cp
+		return &cp, false
 	case cp.Aborted != "":
 		s.done(fmt.Sprintf("nothing saved: the %s in progress was aborted", cp.Aborted), "aborted", cp.Aborted)
-		return &cp
+		return &cp, false
 	case cp.SHA == "":
 		s.done("nothing to save, the work tree is clean"+skipped, "skipped", len(cp.Skipped))
-		return &cp
+		return &cp, false
 	}
 	// A checkpoint is never ready: draft before the push.
 	if cur, gerr := cut.gl.GetMergeRequest(ctx, cut.glProject, cut.mr.IID); gerr != nil || !cur.Draft {
@@ -162,7 +176,7 @@ func (r *Runner) checkpoint(ctx context.Context, reason string, res *Result) *Ch
 			why = err.Error()
 		}
 		s.done(fmt.Sprintf("committed %s, not pushed: %s", shortSHA(cp.SHA), why)+skipped, "sha", cp.SHA, "error", why)
-		return &cp
+		return &cp, false
 	}
 	r.checkpointHead = r.pushedHead
 	paths := make([]string, len(cp.Skipped))
@@ -177,7 +191,7 @@ func (r *Runner) checkpoint(ctx context.Context, reason string, res *Result) *Ch
 	}
 	s.done(fmt.Sprintf("%s pushed without CI: %d files, +%d/−%d", shortSHA(r.checkpointHead), cp.Files, cp.Added, cp.Deleted)+skipped,
 		"sha", r.checkpointHead, "files", cp.Files, "added", cp.Added, "deleted", cp.Deleted, "skipped", paths)
-	return &cp
+	return &cp, true
 }
 
 // skippedNote names the files a checkpoint left out, for the run log.
@@ -283,4 +297,73 @@ func (run *implementRun) checkpointLostAttempt(ctx context.Context) {
 	case pushed:
 		r.step(ctx, "push unpushed steps", "branch", branch).done(fmt.Sprintf("%s pushed without CI", shortSHA(r.pushedHead)), "sha", r.pushedHead)
 	}
+}
+
+// checkpointNote is a checkpoint of this run and why it was made. SHA is
+// empty when the commit is not on the branch.
+type checkpointNote struct {
+	Reason string
+	CheckpointResult
+}
+
+func (rl *runLog) noteCheckpoint(n checkpointNote) {
+	if rl == nil {
+		return
+	}
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	rl.checkpoints = append(rl.checkpoints, n)
+}
+
+// checkpointText is the report text for the run's checkpoints ("" if none).
+func (rl *runLog) checkpointText() string {
+	if rl == nil {
+		return ""
+	}
+	rl.mu.Lock()
+	notes := slices.Clone(rl.checkpoints)
+	rl.mu.Unlock()
+	return strings.Join(checkpointLines(notes), "\n\n")
+}
+
+// cutWords says why a checkpoint was saved.
+var cutWords = map[string]string{
+	cutUsageLimit:       "the usage limit was reached",
+	cutEngineError:      "the agent call failed",
+	cutTimeout:          "the agent call timed out",
+	cutBudgetStop:       "the budget is used",
+	cutContainerRestart: "the agent container restarted",
+	cutPodLost:          "the pod was lost",
+	cutOOMKill:          "the agent container ran out of memory",
+}
+
+// checkpointLines renders what the checkpoints of a run did, for the run
+// report and the progress comment. Text from the agent and the workspace goes
+// through notify.Defuse.
+func checkpointLines(notes []checkpointNote) []string {
+	var lines []string
+	for _, n := range notes {
+		if n.SHA != "" {
+			why := cutWords[n.Reason]
+			if why == "" {
+				why = notify.Defuse(n.Reason)
+			}
+			lines = append(lines, fmt.Sprintf("💾 Saved a checkpoint (`%s`, %d files, +%d/−%d) because %s.",
+				shortSHA(n.SHA), n.Files, n.Added, n.Deleted, why))
+		}
+		if len(n.Skipped) > 0 {
+			parts := make([]string, len(n.Skipped))
+			for i, f := range n.Skipped {
+				parts[i] = fmt.Sprintf("%s (%s)", codeList([]string{f.Path}), f.Why)
+			}
+			lines = append(lines, notify.Defuse("Left out of the checkpoint (still in the workspace): "+strings.Join(parts, ", ")+"."))
+		}
+		if n.Aborted != "" {
+			lines = append(lines, fmt.Sprintf("A %s was in progress; it was aborted and nothing was saved, half-resolved conflicts are never committed.", notify.Defuse(n.Aborted)))
+		}
+		if n.Refused != "" {
+			lines = append(lines, "No checkpoint: "+notify.Defuse(n.Refused)+".")
+		}
+	}
+	return lines
 }

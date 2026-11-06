@@ -539,6 +539,9 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		} else if err != nil {
 			headline = "❌ The run failed; the issue has the details."
 		}
+		if cp := r.run.checkpointText(); cp != "" && headline != "" {
+			headline += "\n\n" + cp
+		}
 		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		if cerr := r.progress.close(cctx, headline); cerr != nil {
 			log.Info("could not close the progress comment", "error", cerr.Error())
@@ -550,7 +553,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		return false, r.retryWithMoreMemory(ctx, gl, spec, task, out, err, moreMemory)
 	}
 	if isBudgetStop(err) {
-		return false, r.deferForBudget(ctx, out, err)
+		return false, r.deferForBudget(ctx, gl, spec, task, out, err)
 	}
 	if lim, ok := AsUsageLimit(err); ok {
 		if task.Status.Run.Deferrals < MaxDeferrals {
@@ -654,7 +657,8 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 	r.log().Info("usage limit reached, deferring run", "engine", lim.Engine, "until", until.UTC(), "resumeOn", resumeOn, "deferrals", deferrals,
 		"message", lim.Message, "steps", r.run.lines())
 
-	if deferrals == 1 && task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
+	saved := r.run.checkpointText()
+	if (deferrals == 1 || saved != "") && task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
 		body := fmt.Sprintf("⏳ `%s` reached its usage limit (until %s UTC).", lim.Engine, utcMinute(own))
 		if lim.FallbackEngine != "" {
 			body = fmt.Sprintf("⏳ No agent has usage left: `%s` is limited until %s UTC, its fallback `%s` until %s UTC.",
@@ -662,6 +666,9 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 		}
 		body += fmt.Sprintf(" The run is paused and resumes at %s UTC on `%s`; until then the issue is blocked (`%squota`).",
 			utcMinute(until), resumeOn, spec.Workflow.BlockedReasonPrefix)
+		if saved != "" {
+			body += "\n\n" + saved
+		}
 		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); err != nil {
 			r.log().Error(err, "posting usage limit note")
 		}
@@ -914,6 +921,9 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 	// blocked issue does not pause it, and pings once it waits for a human.
 	if block != "" && !retry && spec.Notify.Wants(aiv1.NotifyBlocked) || block == "" && spec.Notify.Wants(aiv1.NotifyFailed) && !task.Spec.Autopilot {
 		body += notify.Mention(task.Spec.Owners)
+	}
+	if saved := r.run.checkpointText(); saved != "" {
+		body += "\n\n" + saved
 	}
 	body += r.run.markdown(out.CostUSD)
 	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body); err != nil {
