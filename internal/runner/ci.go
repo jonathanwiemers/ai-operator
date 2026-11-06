@@ -71,8 +71,9 @@ func failedJobs(ctx context.Context, gl gitlab.API, glProject string, pipelineID
 }
 
 // buildCIPrompt asks the implementer to fix a red pipeline. The jobs and
-// their logs come from CI and are therefore given as untrusted data.
-func buildCIPrompt(ctx context.Context, gl gitlab.API, glProject string, pipelineID int64) (string, error) {
+// their logs come from CI and are therefore given as untrusted data; note
+// (conventionalPointer) ends the instructions before them.
+func buildCIPrompt(ctx context.Context, gl gitlab.API, glProject string, pipelineID int64, note string) (string, error) {
 	logs, err := jobLogs(ctx, gl, glProject, pipelineID)
 	if err != nil {
 		return "", err
@@ -82,7 +83,7 @@ func buildCIPrompt(ctx context.Context, gl gitlab.API, glProject string, pipelin
 	if logs == "" {
 		b.WriteString("\nNo failed job details are available; check the build and tests yourself.\n")
 	}
-	return untrustedData(b.String() + marker.UntrustedData + logs), nil
+	return untrustedData(b.String() + note + marker.UntrustedData + logs), nil
 }
 
 // jobLogs renders the failed jobs of a pipeline with the ends of their

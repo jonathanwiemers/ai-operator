@@ -378,7 +378,18 @@ Conventional Commits (`type(scope): subject`, subject up to 72 characters).
 `false` keeps today's messages and titles. `commitTypes` lists the allowed
 types (1 to 20 entries, each matching `^[a-z][a-z0-9]*$`). `chore` is always
 allowed because the runner's own messages use it: a list without `chore` gets
-it added.
+it added. With `true`:
+
+- the implementer's answer schema gets a `pattern` on `commitMessage`
+  (`^(<types>)(\([a-z0-9._/-]+\))?!?: .{1,72}(\n\n[\s\S]*)?$`), and its
+  prompts say how to pick the type and the scope;
+- the runner checks every message it commits for the agent. One that does
+  not match becomes `chore(agent): <first line, lowercased>` (the body and
+  `Refs #N` stay); it is logged and counted in the run report;
+- a new branch starts with `chore: start work on #N`, and a conflict run's
+  merge commit is `chore: merge <base> into <branch>`.
+
+See [usage.md](usage.md#commit-messages).
 
 ## `spec.agents`
 

@@ -35,7 +35,10 @@ type runLog struct {
 	warned []string
 	// checkpoints are the checkpoints this run saved or tried (checkpointLines).
 	checkpoints []checkpointNote
-	mu          sync.Mutex
+	// rewritten counts the commit messages that did not follow
+	// Conventional Commits (noteRewrite).
+	rewritten int
+	mu        sync.Mutex
 	// onChange is called when a step starts or ends (the progress comment).
 	onChange func()
 }

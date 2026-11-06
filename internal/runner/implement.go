@@ -105,6 +105,8 @@ type implementRun struct {
 	reviewAsked  bool
 	reReview     bool
 	runAgent     bool
+	// types are the Conventional Commits types, nil while the option is off.
+	types []string
 
 	// What the agents did.
 	res         *Result
@@ -123,7 +125,7 @@ type implementRun struct {
 
 func (r *Runner) newImplementRun(gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) *implementRun {
 	return &implementRun{r: r, gl: gl, task: task, spec: spec, wf: spec.Workflow,
-		glProject: spec.GitLab.Project, botID: project.Status.BotUserID, out: &Outcome{}}
+		glProject: spec.GitLab.Project, botID: project.Status.BotUserID, out: &Outcome{}, types: commitTypes(spec.Workflow)}
 }
 
 // prepare reads the issue, its milestone and the project. It reports whether
@@ -198,7 +200,7 @@ func (run *implementRun) syncBranch(ctx context.Context) error {
 		s.done("none yet")
 		// Open the draft merge request now, so the whole run (and every
 		// later one) can be followed there.
-		if mr, err = r.openMergeRequest(ctx, gl, glProject, issue, branch, base); err != nil {
+		if mr, err = r.openMergeRequest(ctx, gl, glProject, issue, branch, base, run.types); err != nil {
 			return err
 		}
 		// Recorded at once: a run deferred or failing from here on must not
@@ -290,7 +292,7 @@ func (run *implementRun) buildPrompt(ctx context.Context) error {
 		return err
 	}
 	roleNotes = append(routeNotes, roleNotes...)
-	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
+	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchemaFor(run.types), false)
 	inv.Role, inv.Kind = "implement", aiv1.CallKindImplement
 	if run.companion != nil {
 		inv.Companion = run.companion.slug
@@ -300,10 +302,13 @@ func (run *implementRun) buildPrompt(ctx context.Context) error {
 	// follow it and steer with comments (not while concluding a merge, whose
 	// conflicts must be resolved before anything is committed).
 	stepwise := *wf.StepCommits && run.mr.Draft && task.Spec.Source.MergeBaseFor == task.Status.Run.MergedBaseFor
+	if run.types != nil {
+		inv.SystemPrompt += conventionalNote(run.types)
+	}
 	plainSystem := inv.SystemPrompt
 	if stepwise {
-		inv.SystemPrompt += stepsNote
-		inv.JSONSchema = implementStepSchema
+		inv.SystemPrompt += stepsNote + conventionalPointer(run.types)
+		inv.JSONSchema = implementStepSchemaFor(run.types)
 	}
 	inv.DisallowedTools = implementDenied
 	// A session another engine continued meanwhile has missed that work:
@@ -382,7 +387,7 @@ func (run *implementRun) addInputs(ctx context.Context) error {
 	if run.ciFix {
 		run.out.CIFixedPipelineID = ciPipeline
 		s := r.step(ctx, "read failed CI jobs", "pipeline", ciPipeline)
-		ciPrompt, err := buildCIPrompt(ctx, run.gl, run.glProject, ciPipeline)
+		ciPrompt, err := buildCIPrompt(ctx, run.gl, run.glProject, ciPipeline, conventionalPointer(run.types))
 		if err != nil {
 			return s.fail(err)
 		}
@@ -425,7 +430,7 @@ func (run *implementRun) mergeBase(ctx context.Context) error {
 	// resolves the conflicts. A clean merge needs no agent.
 	mergeFor := task.Spec.Source.MergeBaseFor
 	mergeBase := mergeFor != "" && mergeFor != task.Status.Run.MergedBaseFor
-	run.mergeMessage = fmt.Sprintf("Merge branch '%s' into %s", base, branch)
+	run.mergeMessage = mergeMessage(base, branch, run.types)
 	run.runAgent = true
 	if mergeBase {
 		run.out.MergedBaseFor = mergeFor
@@ -443,7 +448,7 @@ func (run *implementRun) mergeBase(ctx context.Context) error {
 			run.notices = append(run.notices, fmt.Sprintf("Merged `%s` into the branch; there were no conflicts.", base))
 		default:
 			s.done(fmt.Sprintf("conflicts in %d files", len(merge.Conflicts)), "files", merge.Conflicts)
-			conflictPrompt := buildConflictPrompt(base, merge.Conflicts)
+			conflictPrompt := buildConflictPrompt(base, merge.Conflicts) + conventionalPointer(run.types)
 			run.fullPrompt += "\n\n" + conflictPrompt
 			if run.humanInput == 0 && !run.ciFix {
 				inv.Prompt = conflictPrompt
@@ -524,7 +529,7 @@ func (run *implementRun) implement(ctx context.Context) error {
 		}
 	}
 	if run.stepwise && run.runAgent {
-		res, seen, err := r.runSteps(ctx, run.gl, run.glProject, run.issue, run.mr.IID, botID, run.wf.CommandPrefix, run.branch, run.base, role,
+		res, seen, err := r.runSteps(ctx, run.gl, run.glProject, run.issue, run.mr.IID, botID, run.wf.CommandPrefix, run.branch, run.base, run.types, role,
 			run.spec.Agents.Implement.StepSession == aiv1.StepSessionFresh, *inv, run.fullPrompt, run.res, answer, st, out)
 		run.res = res
 		if err != nil {
@@ -546,7 +551,7 @@ func (run *implementRun) implement(ctx context.Context) error {
 		answer.Status = "done" // an engine that ignored the schema
 	}
 	// Fix rounds and later calls finish their work in one go.
-	inv.SystemPrompt, inv.JSONSchema = run.plainSystem, implementSchema
+	inv.SystemPrompt, inv.JSONSchema = run.plainSystem, implementSchemaFor(run.types)
 	return nil
 }
 
@@ -580,9 +585,9 @@ func (run *implementRun) concludeMerge(ctx context.Context) error {
 	}
 	if !run.runAgent {
 		// No step of the agent ends here: nothing replaces a checkpoint.
-		return r.commitTree(ctx, homeTree, commitMessage(answer.CommitMessage, run.issue))
+		return r.commitTree(ctx, homeTree, commitMessage(answer.CommitMessage, run.issue, run.types))
 	}
-	return r.commit(ctx, run.branch, base, commitMessage(answer.CommitMessage, run.issue))
+	return r.commit(ctx, run.branch, base, commitMessage(answer.CommitMessage, run.issue, run.types))
 }
 
 // reviewLoop has read-only reviewers see the diff; blocking findings go back
@@ -640,7 +645,7 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 		fix := run.inv
 		fix.Kind = aiv1.CallKindFix
 		fix.Resume = run.res.SessionID
-		fixPrompt := buildFixPrompt(blocking)
+		fixPrompt := buildFixPrompt(blocking) + conventionalPointer(run.types)
 		fix.Prompt = fixPrompt
 		// A usage limit keeps the work below, without a checkpoint.
 		r.cutStep(true)
@@ -677,7 +682,7 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 			}
 		}
 		s.done(agentResult(role, res, fixed.Status), "session", res.SessionID, "costUSD", res.CostUSD, "status", fixed.Status)
-		if err := r.commit(ctx, run.branch, base, commitMessage(fixed.CommitMessage, issue)); err != nil {
+		if err := r.commit(ctx, run.branch, base, commitMessage(fixed.CommitMessage, issue, run.types)); err != nil {
 			return err
 		}
 		run.reviewedLast = false
@@ -833,7 +838,11 @@ func (run *implementRun) report(ctx context.Context) error {
 	drafts := questionDrafts(*answer)
 	out.Questions = drafts[:min(len(drafts), aiv1.MaxQuestionDrafts)]
 	desk := desklink.Task(r.DeskURL, task.Namespace, task.Spec.ProjectRef, task.Name)
-	report := renderReport(reported, run.remaining, append(append(run.reviewNotes, run.notices...), r.run.keptNotices()...), desk)
+	notices := append(append(run.reviewNotes, run.notices...), r.run.keptNotices()...)
+	if n := r.run.rewriteNotice(); n != "" {
+		notices = append(notices, n)
+	}
+	report := renderReport(reported, run.remaining, notices, desk)
 	if run.ciFix {
 		report = "CI fix: " + report
 	}
@@ -997,13 +1006,11 @@ func (r *Runner) hasChanges(ctx context.Context, base string) bool {
 // openMergeRequest opens the draft merge request of an issue before the
 // agent starts. A new branch gets an empty start commit, pushed without CI;
 // the agent's checkout then continues from it.
-func (r *Runner) openMergeRequest(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, branch, base string) (*gitlab.MergeRequest, error) {
+func (r *Runner) openMergeRequest(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, branch, base string, types []string) (*gitlab.MergeRequest, error) {
 	s := r.step(ctx, "open merge request", "branch", branch, "target", base)
 	started := false
 	if !r.Mirror.HasRemoteBranch(ctx, branch) {
-		// One line, no "[skip ci]": merge commit templates may copy it to
-		// the default branch. The push itself skips CI.
-		if _, err := r.Mirror.StartBranch(ctx, branch, base, fmt.Sprintf("Start work on #%d", issue.IID)); err != nil {
+		if _, err := r.Mirror.StartBranch(ctx, branch, base, startMessage(issue.IID, types)); err != nil {
 			return nil, s.fail(fmt.Errorf("creating branch %s: %w", branch, err))
 		}
 		started = true
@@ -1202,17 +1209,19 @@ func (r *Runner) supersedeElsewhere(ctx context.Context, gl gitlab.API, glProjec
 // commit commits the agent's changes in the home tree as a step of the run
 // on branch. A commit that folds the checkpoints at the tip of the branch
 // (CommitStep) leaves the lease for the next publish.
-func (r *Runner) commit(ctx context.Context, branch, base, message string) error {
+func (r *Runner) commit(ctx context.Context, branch, base string, message agentMessage) error {
 	s := r.step(ctx, "commit")
-	res, err := r.Agent.CommitStep(ctx, CommitRequest{Message: message, Branch: branch, Base: base, Pushed: r.pushedHead})
+	res, err := r.Agent.CommitStep(ctx, CommitRequest{Message: message.text, Branch: branch, Base: base, Pushed: r.pushedHead})
 	switch {
 	case err != nil:
 		return s.fail(err)
 	case res.FoldedFrom != "":
+		r.committed(message)
 		r.noteFold(res)
 		s.done(fmt.Sprintf("committed, folding %d checkpoint(s) up to %s", res.Folded, shortSHA(res.FoldedFrom)),
 			"committed", true, "folded", res.Folded, "foldedFrom", res.FoldedFrom)
 	case res.Committed:
+		r.committed(message)
 		s.done("committed", "committed", true)
 	default:
 		s.done("no changes", "committed", false)
@@ -1222,17 +1231,20 @@ func (r *Runner) commit(ctx context.Context, branch, base, message string) error
 
 // commitTree commits the agent's changes in the checkout of repo (homeTree
 // or a companion's slug) as a step of the run.
-func (r *Runner) commitTree(ctx context.Context, repo, message string) error {
+func (r *Runner) commitTree(ctx context.Context, repo string, message agentMessage) error {
 	name, kv := "commit", []any(nil)
 	if repo != homeTree {
 		name, kv = "commit companion", []any{"repo", repo}
 	}
 	s := r.step(ctx, name, kv...)
-	committed, err := r.Agent.Commit(ctx, repo, message)
+	committed, err := r.Agent.Commit(ctx, repo, message.text)
 	if err != nil {
 		return s.fail(err)
 	}
 	if committed {
+		if repo == homeTree {
+			r.committed(message) // a companion commit repeats the home commit's message
+		}
 		s.done("committed", "committed", true)
 	} else {
 		s.done("no changes", "committed", false)
@@ -1387,14 +1399,6 @@ func emptySummary(pushed bool, sha string) string {
 	return "The agent left no summary and changed nothing in this run."
 }
 
-func commitMessage(msg string, issue *gitlab.Issue) string {
-	msg = strings.TrimSpace(msg)
-	if msg == "" {
-		msg = issue.Title
-	}
-	return fmt.Sprintf("%s\n\nRefs #%d", msg, issue.IID)
-}
-
 func newerThan(notes []gitlab.Note, id int64) []gitlab.Note {
 	var out []gitlab.Note
 	for _, n := range notes {
@@ -1456,7 +1460,7 @@ var maxSteps = 25
 // new session with the run's prompt, the earlier steps' summaries, the agent
 // notes and the comments handed over so far. Only the last step's session
 // becomes the implementer's, once the steps are done.
-func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, mrIID, botID int64, prefix, branch, base string,
+func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, mrIID, botID int64, prefix, branch, base string, types []string,
 	role aiv1.RoleSpec, freshSteps bool, inv Invocation, fullPrompt string, res *Result, answer *ImplementAnswer, st *state, out *Outcome) (*Result, int64, error) {
 	var seen int64
 	pushSteps := true
@@ -1475,12 +1479,12 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		}
 	}()
 	for step := 1; answer.Status == "in_progress" && step < maxSteps; step++ {
-		if err := r.commit(ctx, branch, base, commitMessage(answer.CommitMessage, issue)); err != nil {
+		if err := r.commit(ctx, branch, base, commitMessage(answer.CommitMessage, issue, types)); err != nil {
 			return res, seen, err
 		}
 		// The companion's step commit: the push below checks it.
 		if c := r.companion; c != nil {
-			if err := r.commitCompanion(ctx, c, commitMessage(answer.CommitMessage, issue)); err != nil {
+			if err := r.commitCompanion(ctx, c, commitMessage(answer.CommitMessage, issue, types)); err != nil {
 				return res, seen, err
 			}
 		}

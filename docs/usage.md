@@ -267,7 +267,8 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    `agent/42-add-paypal-button` starts with an empty "Start work on #42"
    commit pushed with `ci.skip`, so no pipeline runs for it (the message has
    no `[skip ci]`, which a merge commit template could copy to the default
-   branch).
+   branch). With `workflow.conventionalCommits` it is
+   `chore: start work on #42` (see [Commit messages](#commit-messages)).
    The issue gets a comment linking the MR; from then on every run reports
    there.
 2. While a run goes on, the MR has a **progress comment** with the run log so
@@ -286,7 +287,9 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    can steer while it works; they need no `/agent` prefix. A `/agent …`
    command is not handed over: it starts its own run after this one, and the
    comments after it wait for that run too. At most 25 steps per run; a run
-   that runs out of steps leaves the MR a draft and says so.
+   that runs out of steps leaves the MR a draft and says so. Each step's
+   commit carries the agent's message and `Refs #42` (see
+   [Commit messages](#commit-messages)).
 4. The **bugbot** and **security** reviewers check the diff in parallel. A
    reviewer that fails because its engine's service is briefly unavailable
    (for example cursor-agent's `RetriableError: [unavailable]`, a reset
@@ -357,6 +360,35 @@ run report lists (and, where pipelines skip drafts, no CI). On
 
 So an issue's MR goes: draft MR → code → review → ready → pipeline → CI fixes
 if needed → merge (by you, or by autopilot).
+
+### Commit messages
+
+The agent writes the message of every commit it leaves on the branch (each
+step, each fix, CI or conflict round); the runner adds `Refs #42`, and uses
+the issue title when the agent wrote none. Checkpoints have their own
+`chore(wip): checkpoint …` subject until the next step folds them.
+
+With `workflow.conventionalCommits: true` (see
+[configuration](configuration.md#specworkflow)) the messages follow
+[Conventional Commits](https://www.conventionalcommits.org/):
+`type(scope): subject`, a blank line, then the body.
+
+- The implementer's answer schema requires the format for `commitMessage`
+  (a `pattern` built from `workflow.commitTypes`), and its instructions say
+  how to pick the type (`feat` for new behaviour, `fix` for a bug fix, …)
+  and the scope (the package, directory or component the step touches, in
+  lowercase), with an imperative, lowercase subject of at most 72
+  characters. The fix, CI and conflict prompts point to it.
+- The runner checks every message before it commits. One that still does
+  not match (for example `Add thing`) becomes `chore(agent): add thing`,
+  with the body kept. The runner logs it, and the run report says
+  "N commit messages did not follow Conventional Commits and were rewritten
+  as `chore(agent): …`".
+- The branch's start commit is `chore: start work on #42`, and the merge
+  commit of a conflict run is `chore: merge main into agent/42-…`.
+
+With the option off (the default), messages, schema and prompts are as
+before.
 
 ### Toolchains the agent installs
 
@@ -629,7 +661,9 @@ gets conflicts, the agent resolves them:
    `has_conflicts` / `detailed_merge_status`) and moves the issue back to
    `agent::working`.
 2. The run merges the default branch into the agent's branch (a merge commit,
-   no force push, so your checkout of the branch stays valid).
+   no force push, so your checkout of the branch stays valid). Its message is
+   `Merge branch 'main' into agent/42-…`, or `chore: merge main into
+   agent/42-…` with `workflow.conventionalCommits`.
 3. The conflicted files go to the implementer with their conflict markers. It
    resolves them, keeping the intent of both sides, checks that the change
    still fits the new code, and records decisions for resolutions that are not

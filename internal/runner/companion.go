@@ -127,7 +127,7 @@ func (r *Runner) prepareCompanion(ctx context.Context, c *companionTree) error {
 }
 
 // commitCompanion commits the agent's changes in the companion checkout.
-func (r *Runner) commitCompanion(ctx context.Context, c *companionTree, message string) error {
+func (r *Runner) commitCompanion(ctx context.Context, c *companionTree, message agentMessage) error {
 	return r.commitTree(ctx, c.slug, message)
 }
 
@@ -200,7 +200,7 @@ func (run *implementRun) companionChange(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
-	return run.r.commitCompanion(ctx, c, commitMessage(run.answer.CommitMessage, run.issue))
+	return run.r.commitCompanion(ctx, c, commitMessage(run.answer.CommitMessage, run.issue, run.types))
 }
 
 // agentWorkspaceRoot is the agent container's workspace mount
