@@ -34,6 +34,10 @@ type MilestoneView struct {
 	Prompts []PromptView `json:"prompts"`
 	// Tasks are the implement tasks, by issue IID.
 	Tasks []Task `json:"tasks"`
+	// Companions are the companion merge requests of the milestone's
+	// issues, by home issue: drafts before the home merge, then their
+	// landing.
+	Companions []CompanionView `json:"companions"`
 	// Pauses is the autopilot's pause history, absent without the history
 	// database or when it cannot be read.
 	Pauses *PauseHistoryView `json:"pauses,omitempty"`
@@ -240,7 +244,7 @@ func trackingIssueIID(st, coord *aiv1.AgentTask) int64 {
 func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1.AgentTask, now time.Time) MilestoneView {
 	ms, web := st.Spec.Milestone, gitLabRef(p).WebURL
 	v := MilestoneView{ID: ms.ID, IID: ms.IID, Title: ms.Title, WebURL: fmt.Sprintf("%s/-/milestones/%d", web, ms.IID),
-		Spec: taskView(st, ciWindow(p), now), Tasks: []Task{}}
+		Spec: taskView(st, p, now), Tasks: []Task{}}
 	var cost float64
 	byIssue := map[int64]string{}
 	for i := range tasks {
@@ -250,13 +254,14 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 		cost += aiv1.CostOf(t.Status.Run.CostUSD)
 		if t.Spec.Type == aiv1.TaskTypeImplement {
-			v.Tasks = append(v.Tasks, taskView(t, ciWindow(p), now))
+			v.Tasks = append(v.Tasks, taskView(t, p, now))
 			if t.Spec.Issue != nil {
 				byIssue[t.Spec.Issue.IID] = t.Name
 			}
 		}
 	}
 	sortTasks(v.Tasks)
+	v.Companions = milestoneCompanions(p, tasks, ms.IID)
 	v.Cost = tasksCost(cost)
 	if ap := st.Status.Autopilot; ap != nil {
 		titles := map[int64]string{}

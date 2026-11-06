@@ -98,7 +98,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"project": summarize(ap, tasks, now),
-				"task":    taskView(t, ciWindow(ap), now),
+				"task":    taskView(t, ap, now),
 				"prompts": prompts,
 				"cost": s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, Task: name},
 					tasksCost(aiv1.CostOf(tasks[i].Status.Run.CostUSD))),

@@ -274,6 +274,54 @@ func TestPilotStateHasTheCheckpoint(t *testing.T) {
 	}
 }
 
+// The state lists the milestone's companions: a draft before the home
+// merge, then the landing entries of status.companions (not those of other
+// milestones).
+func TestPilotStateHasTheCompanions(t *testing.T) {
+	e := newPilotEnv(t, "")
+	ctx := context.Background()
+	var impl aiv1.AgentTask
+	if err := e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop-1-api"}, &impl); err != nil {
+		t.Fatal(err)
+	}
+	impl.Status.Run.Companion = &aiv1.CompanionRun{Project: "acme/infra", MRIID: 8, PushedSHA: "abc"}
+	if err := e.k8s.Status().Update(ctx, &impl); err != nil {
+		t.Fatal(err)
+	}
+	var project aiv1.AgentProject
+	if err := e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop"}, &project); err != nil {
+		t.Fatal(err)
+	}
+	state, _, err := e.r.pilotState(ctx, e.gl, ptr(e.task(t)), &project, project.Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(state, `"companions": [`) || !strings.Contains(state, `"state": "draft"`) {
+		t.Errorf("the draft companion of #1 is missing:\n%s", state)
+	}
+
+	project.Status.Companions = []aiv1.CompanionStatus{
+		{HomeIssueIID: 1, MilestoneIID: 3, Project: "acme/infra", MRIID: 8, State: aiv1.LandingWaitingRelease, Reason: "no tag contains abc yet"},
+		{HomeIssueIID: 9, MilestoneIID: 4, Project: "acme/infra", MRIID: 9, State: aiv1.LandingReady},
+	}
+	state, _, err = e.r.pilotState(ctx, e.gl, ptr(e.task(t)), &project, project.Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Companions []pilotCompanion `json:"companions"`
+	}
+	if err := json.Unmarshal([]byte(state), &v); err != nil {
+		t.Fatal(err)
+	}
+	want := []pilotCompanion{{HomeIssueIID: 1, Project: "acme/infra", MRIID: 8, State: "waitingRelease", Reason: "no tag contains abc yet"}}
+	if !slices.Equal(v.Companions, want) {
+		t.Errorf("companions = %+v, want %+v", v.Companions, want)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
 func TestPilotBudgetStopsAnswers(t *testing.T) {
 	e := newPilotEnv(t, "20.0000")
 	e.step(t)

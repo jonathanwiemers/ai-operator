@@ -78,6 +78,7 @@ packages:
     enum_style: union
     include_files:
       - chat.go
+      - companion.go
       - cost.go
       - features.go
       - gitlab.go
@@ -103,6 +104,7 @@ packages:
       aiv1.Engine: aiv1.Engine
       aiv1.EngineUsage: aiv1.EngineUsage
       aiv1.IssueRef: aiv1.IssueRef
+      aiv1.LandingState: aiv1.LandingState
       aiv1.MergeOverride: aiv1.MergeOverride
       aiv1.MilestoneRef: aiv1.MilestoneRef
       aiv1.PauseKind: aiv1.PauseKind

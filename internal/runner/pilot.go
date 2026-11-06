@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -197,6 +198,40 @@ type pilotIssue struct {
 	Checkpoint *aiv1.CheckpointStatus `json:"checkpoint,omitempty"`
 }
 
+// pilotCompanion is what the pilot sees of a companion merge request of
+// its milestone: state "draft" before the home merge, then its landing
+// state (status.companions). The operator lands it by rule; the pilot has
+// no tool for it.
+type pilotCompanion struct {
+	HomeIssueIID int64  `json:"homeIssue"`
+	Project      string `json:"project"`
+	MRIID        int64  `json:"mrIID,omitempty"`
+	State        string `json:"state"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+// pilotCompanions lists the companions of the milestone with the IID: the
+// landing entries, then the drafts of its tasks (byIID) not merged yet, by
+// home issue.
+func pilotCompanions(project *aiv1.AgentProject, byIID map[int64]*aiv1.AgentTask, milestone int64) []pilotCompanion {
+	var out []pilotCompanion
+	landing := map[int64]bool{}
+	for _, c := range project.Status.Companions {
+		if c.MilestoneIID == milestone {
+			out = append(out, pilotCompanion{HomeIssueIID: c.HomeIssueIID, Project: c.Project, MRIID: c.MRIID, State: string(c.State), Reason: c.Reason})
+			landing[c.HomeIssueIID] = true
+		}
+	}
+	for iid, t := range byIID {
+		if c := t.Status.Run.Companion; c != nil && !landing[iid] {
+			out = append(out, pilotCompanion{HomeIssueIID: iid, Project: c.Project, MRIID: c.MRIID, State: "draft",
+				Reason: "lands after the home merge request is merged"})
+		}
+	}
+	slices.SortStableFunc(out, func(a, b pilotCompanion) int { return cmp.Compare(a.HomeIssueIID, b.HomeIssueIID) })
+	return out
+}
+
 // pilotState renders the milestone's state as JSON: the spec, autopilot,
 // the issues with their tasks, the default branch's health and the last
 // comments of the tracking issue.
@@ -223,6 +258,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		Autopilot  *aiv1.AutopilotStatus  `json:"autopilot,omitempty"`
 		PauseExits []aiv1.PauseExit       `json:"pauseExits,omitempty"`
 		Issues     []pilotIssue           `json:"issues"`
+		Companions []pilotCompanion       `json:"companions,omitempty"`
 		Others     []string               `json:"otherMilestones,omitempty"`
 		MainHealth *aiv1.MainHealthStatus `json:"mainHealth,omitempty"`
 		Comments   []string               `json:"trackingIssueComments,omitempty"`
@@ -255,6 +291,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		}
 		v.Issues = append(v.Issues, pi)
 	}
+	v.Companions = pilotCompanions(project, byIID, m.IID)
 	var items []aiv1.AutopilotItem
 	if v.Autopilot != nil {
 		items = v.Autopilot.Items

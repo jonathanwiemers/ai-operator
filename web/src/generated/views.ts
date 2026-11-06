@@ -25,6 +25,69 @@ export interface ChatMessageView {
 }
 
 //////////
+// source: companion.go
+
+/**
+ * CompanionChip is what the Desk shows of a companion merge request
+ * (docs/specs/cross-repo-changes.spec.md, decision 12). Closed and blocked
+ * companions keep the closest chip and say why in the view's reason.
+ */
+/**
+ * CompanionChipDraft: the home merge request is not merged yet.
+ */
+export const CompanionChipDraft = "draft";
+/**
+ * CompanionChipWaitingRelease: the home change is merged; the companion
+ * waits for its release, a rebase or its pipeline.
+ */
+export const CompanionChipWaitingRelease = "waiting for release";
+/**
+ * CompanionChipReady: it can be merged (by autopilot or the owners).
+ */
+export const CompanionChipReady = "ready";
+/**
+ * CompanionChipMerging: autopilot merges it and follows the pipeline.
+ */
+export const CompanionChipMerging = "merging";
+/**
+ * CompanionChipMerged: it was merged.
+ */
+export const CompanionChipMerged = "merged";
+export type CompanionChip = typeof CompanionChipDraft | typeof CompanionChipWaitingRelease | typeof CompanionChipReady | typeof CompanionChipMerging | typeof CompanionChipMerged;
+/**
+ * CompanionView is the companion merge request of an issue: its state
+ * before the home merge (from the task's run, State empty) or while it
+ * lands after it (the project's status.companions entry).
+ */
+export interface CompanionView {
+  /**
+   * HomeIssueIID is the issue the companion belongs to.
+   */
+  homeIssueIID: number /* int64 */;
+  project: string;
+  mrIID?: number /* int64 */;
+  mrURL?: string;
+  /**
+   * State is the landing state, empty before the home merge.
+   */
+  state?: aiv1.LandingState;
+  chip: CompanionChip;
+  /**
+   * Reason says why it waits, is blocked or was closed (operator text).
+   */
+  reason?: string;
+  /**
+   * Release is the release that made the home change live.
+   */
+  release?: string;
+  readyAt?: string;
+  /**
+   * AutoMerge: autopilot may merge it once it is ready.
+   */
+  autoMerge?: boolean;
+}
+
+//////////
 // source: cost.go
 
 /**
@@ -160,6 +223,12 @@ export interface MilestoneView extends Cost {
    * Tasks are the implement tasks, by issue IID.
    */
   tasks: Task[];
+  /**
+   * Companions are the companion merge requests of the milestone's
+   * issues, by home issue: drafts before the home merge, then their
+   * landing.
+   */
+  companions: CompanionView[];
   /**
    * Pauses is the autopilot's pause history, absent without the history
    * database or when it cannot be read.
@@ -592,6 +661,11 @@ export interface SpendChildView extends Partial<SpendCallView> {
   at: string;
   totals: SpendTotalsView;
   models: ModelSplitView[];
+  /**
+   * Companion is the companion project of an issue that has one (issue
+   * rows only): its calls edit both trees and count to the home issue.
+   */
+  companion?: string;
 }
 /**
  * SpendBreakdownView sums the calls of one kind, role or model.
@@ -700,7 +774,7 @@ export interface HistoryResponse {
 export interface InboxItem {
   namespace: string;
   project: string;
-  kind: 'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError';
+  kind: 'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady';
   task?: string;
   issueIID?: number /* int64 */;
   milestoneIID?: number /* int64 */;
@@ -917,4 +991,10 @@ export interface Task {
   stage: Stage;
   createdAt: string;
   status: aiv1.AgentTaskStatus;
+  /**
+   * Companion is the issue's companion merge request, with the landing
+   * state of the project's status once the home change is merged; the
+   * issue and merge request cards show it as a chip.
+   */
+  companion?: CompanionView;
 }

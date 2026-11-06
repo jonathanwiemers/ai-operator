@@ -173,6 +173,10 @@ type Task struct {
 	Stage      Stage                `json:"stage"`
 	CreatedAt  metav1.Time          `json:"createdAt"`
 	Status     aiv1.AgentTaskStatus `json:"status"`
+	// Companion is the issue's companion merge request, with the landing
+	// state of the project's status once the home change is merged; the
+	// issue and merge request cards show it as a chip.
+	Companion *CompanionView `json:"companion,omitempty"`
 }
 
 func gitLabRef(p *aiv1.AgentProject) GitLabRef {
@@ -200,7 +204,8 @@ func ciWindow(p *aiv1.AgentProject) time.Duration {
 	return timeout + poll
 }
 
-func taskView(t *aiv1.AgentTask, ciWindow time.Duration, now time.Time) Task {
+// taskView is the view of t, a task of p.
+func taskView(t *aiv1.AgentTask, p *aiv1.AgentProject, now time.Time) Task {
 	return Task{
 		Namespace:  t.Namespace,
 		Name:       t.Name,
@@ -212,9 +217,10 @@ func taskView(t *aiv1.AgentTask, ciWindow time.Duration, now time.Time) Task {
 		Autopilot:  t.Spec.Autopilot,
 		RunRequest: t.Spec.RunRequest,
 		RunPending: t.RunPending(),
-		Stage:      StageOf(t, ciWindow, now),
+		Stage:      StageOf(t, ciWindow(p), now),
 		CreatedAt:  t.CreationTimestamp,
 		Status:     t.Status,
+		Companion:  taskCompanion(t, p),
 	}
 }
 
@@ -270,7 +276,7 @@ func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Project
 	costs := map[int64]float64{}
 	for i := range tasks {
 		t := &tasks[i]
-		v := taskView(t, ciWindow(p), now)
+		v := taskView(t, p, now)
 		ms := t.Spec.Milestone
 		if ms == nil {
 			d.Unplanned = append(d.Unplanned, v)

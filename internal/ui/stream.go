@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"sort"
@@ -483,7 +484,7 @@ func (t *HistoryTotals) add(d store.Day) {
 type InboxItem struct {
 	Namespace    string `json:"namespace"`
 	Project      string `json:"project"`
-	Kind         string `json:"kind" tstype:"'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError'"`
+	Kind         string `json:"kind" tstype:"'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady'"`
 	Task         string `json:"task,omitempty"`
 	IssueIID     int64  `json:"issueIID,omitempty"`
 	MilestoneIID int64  `json:"milestoneIID,omitempty"`
@@ -621,6 +622,7 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 			items = append(items, it)
 		}
 	}
+	items = append(items, companionReadyItems(projects, tasks)...)
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i].At, items[j].At
 		switch {
@@ -631,5 +633,40 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 		}
 		return a.After(*b)
 	})
+	return items
+}
+
+// companionReadyItems are the companion merge requests that are ready and
+// wait for the owners to merge them: autopilot does not, and the owners
+// were told (status.companions, decision 9 of
+// docs/specs/cross-repo-changes.spec.md). Merged and closed ones are no
+// longer ready, so they leave the Inbox.
+func companionReadyItems(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask) []InboxItem {
+	// The home issue's implement task, by project and issue.
+	homeTask := map[string]string{}
+	for i := range tasks {
+		if t := &tasks[i]; t.Spec.Type == aiv1.TaskTypeImplement && t.Spec.Issue != nil {
+			homeTask[fmt.Sprintf("%s/%s#%d", t.Namespace, t.Spec.ProjectRef, t.Spec.Issue.IID)] = t.Name
+		}
+	}
+	var items []InboxItem
+	for _, k := range slices.Sorted(maps.Keys(projects)) {
+		ap := projects[k]
+		for i := range ap.Status.Companions {
+			c := &ap.Status.Companions[i]
+			if c.State != aiv1.LandingReady || c.AutoMerge || c.NotifiedAt == nil {
+				continue
+			}
+			it := InboxItem{Namespace: ap.Namespace, Project: ap.Name, Kind: "companionReady", IssueIID: c.HomeIssueIID,
+				MilestoneIID: c.MilestoneIID, Task: homeTask[fmt.Sprintf("%s#%d", k, c.HomeIssueIID)],
+				Title: companionRef(c.Project, c.MRIID), URL: c.MRURL, Reason: "ready to merge"}
+			if c.Release != "" {
+				it.Reason = "ready to merge: release " + c.Release + " runs"
+			}
+			at := c.NotifiedAt.Time
+			it.At = &at
+			items = append(items, it)
+		}
+	}
 	return items
 }

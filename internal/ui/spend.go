@@ -1,9 +1,14 @@
 package ui
 
 import (
+	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
@@ -57,12 +62,15 @@ type SpendCallView struct {
 // (key its IID, "" for none), an issue (its IID), a run (task/run) or a
 // call (its seq, with the call's fields).
 type SpendChildView struct {
-	Level          string           `json:"level" tstype:"SpendLevel"`
-	Key            string           `json:"key"`
-	Label          string           `json:"label"`
-	At             time.Time        `json:"at"`
-	Totals         SpendTotalsView  `json:"totals"`
-	Models         []ModelSplitView `json:"models"`
+	Level  string           `json:"level" tstype:"SpendLevel"`
+	Key    string           `json:"key"`
+	Label  string           `json:"label"`
+	At     time.Time        `json:"at"`
+	Totals SpendTotalsView  `json:"totals"`
+	Models []ModelSplitView `json:"models"`
+	// Companion is the companion project of an issue that has one (issue
+	// rows only): its calls edit both trees and count to the home issue.
+	Companion      string `json:"companion,omitempty"`
 	*SpendCallView `tstype:",extends"`
 }
 
@@ -139,7 +147,55 @@ func (s *Server) spend(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, spendView(sp))
+	v := spendView(sp)
+	s.markCompanions(r.Context(), sc, &v)
+	writeJSON(w, http.StatusOK, v)
+}
+
+// markCompanions sets the companion project on the issue rows of v whose
+// issue has one. The live state is read only when v has issue rows; when it
+// cannot be read the rows go without the marker (logged).
+func (s *Server) markCompanions(ctx context.Context, sc store.SpendScope, v *SpendView) {
+	if !slices.ContainsFunc(v.Children, func(c SpendChildView) bool { return c.Level == store.SpendIssue }) {
+		return
+	}
+	var ap aiv1.AgentProject
+	if err := s.reader.Get(ctx, client.ObjectKey{Namespace: sc.Namespace, Name: sc.Project}, &ap); err != nil {
+		if !apierrors.IsNotFound(err) {
+			s.log.Error(err, "cannot read the project for the companion markers", "namespace", sc.Namespace, "project", sc.Project)
+		}
+		return
+	}
+	var list aiv1.AgentTaskList
+	if err := s.reader.List(ctx, &list, client.InNamespace(sc.Namespace)); err != nil {
+		s.log.Error(err, "cannot read the tasks for the companion markers", "namespace", sc.Namespace, "project", sc.Project)
+		return
+	}
+	markCompanions(v, issueCompanions(&ap, projectTasks(list.Items, &ap)))
+}
+
+// markCompanions sets the companion of each issue row from byIssue.
+func markCompanions(v *SpendView, byIssue map[int64]string) {
+	for i := range v.Children {
+		c := &v.Children[i]
+		if c.Level != store.SpendIssue {
+			continue
+		}
+		if iid, err := strconv.ParseInt(c.Key, 10, 64); err == nil {
+			c.Companion = byIssue[iid]
+		}
+	}
+}
+
+// projectTasks are the tasks of ap among tasks.
+func projectTasks(tasks []aiv1.AgentTask, ap *aiv1.AgentProject) []aiv1.AgentTask {
+	var out []aiv1.AgentTask
+	for _, t := range tasks {
+		if t.Namespace == ap.Namespace && t.Spec.ProjectRef == ap.Name {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func spendView(sp store.Spend) SpendView {
