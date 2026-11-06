@@ -178,6 +178,8 @@ func (run *implementRun) syncBranch(ctx context.Context) error {
 		if err := r.syncCompanion(ctx, run.companion); err != nil {
 			return err
 		}
+		// From here on every home push checks the companion first.
+		r.companion = run.companion
 	}
 
 	s := r.step(ctx, "find merge request", "branch", branch)
@@ -1441,9 +1443,20 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		if err := r.commit(ctx, commitMessage(answer.CommitMessage, issue)); err != nil {
 			return res, seen, err
 		}
+		// The companion's step commit: the push below checks it.
+		if c := r.companion; c != nil {
+			if err := r.commitCompanion(ctx, c, commitMessage(answer.CommitMessage, issue)); err != nil {
+				return res, seen, err
+			}
+		}
 		if pushSteps {
 			s := r.step(ctx, fmt.Sprintf("push step %d", step), "branch", branch)
-			switch pushed, err := r.publish(ctx, branch, base, true); {
+			pushed, err := r.publish(ctx, branch, base, true)
+			if _, refused := AsCompanionViolation(err); refused {
+				// Not a race with another push: the run fails, unpushed.
+				return res, seen, s.fail(err)
+			}
+			switch {
 			case err != nil:
 				// Someone pushed to the branch meanwhile: the steps are pushed
 				// with the run, which reports a conflict then.

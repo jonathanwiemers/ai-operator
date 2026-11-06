@@ -9,6 +9,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
+	"github.com/jonathanwiemers/ai-operator/internal/pathspec"
 )
 
 // The companion repository of an implement run
@@ -28,6 +29,10 @@ type companionTree struct {
 	mirror *Mirror
 	// base is the companion project's default branch.
 	base string
+	// head is the companion branch head this run imported into the
+	// mirror, "" before the first import; checked is the last head
+	// checkCompanion passed.
+	head, checked string
 }
 
 // CompanionMirror returns the runner's mirror of the companion with the
@@ -133,33 +138,69 @@ func (r *Runner) companionDiff(ctx context.Context, c *companionTree) (diff, sta
 }
 
 // importCompanion moves the companion checkout's new commits into the
-// companion mirror's refs/heads/<branch>. It does not push.
-func (r *Runner) importCompanion(ctx context.Context, c *companionTree) error {
+// companion mirror's refs/heads/<branch>. It does not push. It returns the
+// companion head this run imported, "" while it has imported none: a
+// refs/heads/<branch> left by an earlier run is not this run's change.
+func (r *Runner) importCompanion(ctx context.Context, c *companionTree) (string, error) {
 	s := r.step(ctx, "import companion", "repo", c.slug, "branch", c.spec.Branch)
 	imported, err := r.importTree(ctx, c.mirror, c.slug, c.spec.Branch, c.base)
 	if err != nil {
-		return s.fail(err)
+		return "", s.fail(err)
 	}
 	if !imported {
 		s.done("no new commits", "imported", false)
+		return c.head, nil
+	}
+	head, ok := c.mirror.resolve(ctx, "refs/heads/"+c.spec.Branch)
+	if !ok {
+		return "", s.fail(fmt.Errorf("companion %s: refs/heads/%s is missing after the import", c.spec.Project, c.spec.Branch))
+	}
+	c.head = head
+	s.done(fmt.Sprintf("%s at %s, not pushed", c.spec.Branch, shortSHA(head)), "imported", true, "sha", head)
+	return head, nil
+}
+
+// checkCompanion imports the companion checkout's commits into the
+// companion mirror and checks the companion branch there
+// (Mirror.CheckCompanion). Every push of the home branch of a companion
+// task runs it first (publish): steps, the final push, CI-fix and
+// merge-base runs, checkpoints. A violation is a *CompanionViolation, which
+// fails the run before either tree is pushed. Without a companion, or
+// without a companion change in this run, it does nothing.
+func (r *Runner) checkCompanion(ctx context.Context) error {
+	c := r.companion
+	if c == nil {
 		return nil
 	}
-	head, _ := c.mirror.resolve(ctx, "refs/heads/"+c.spec.Branch)
-	s.done(fmt.Sprintf("%s at %s, not pushed", c.spec.Branch, shortSHA(head)), "imported", true, "sha", head)
+	head, err := r.importCompanion(ctx, c)
+	if err != nil || head == "" || head == c.checked {
+		return err
+	}
+	s := r.step(ctx, "check companion", "repo", c.slug, "sha", head)
+	paths, err := pathspec.Compile(c.spec.Paths)
+	if err != nil {
+		return s.fail(fmt.Errorf("companion %s: its allowed paths do not compile: %w", c.spec.Project, err))
+	}
+	if err := c.mirror.CheckCompanion(ctx, c.base, head, paths, companionMaxBytes); err != nil {
+		if v, ok := AsCompanionViolation(err); ok {
+			r.log().Info("companion change refused", "project", c.spec.Project, "path", v.Path, "reason", v.Reason, "commit", v.Commit)
+		}
+		return s.fail(err)
+	}
+	c.checked = head
+	s.done(fmt.Sprintf("%s at %s is within the allowed paths", c.spec.Branch, shortSHA(head)), "sha", head)
 	return nil
 }
 
-// companionChange commits and imports the companion's work of the run
-// into its mirror. Pushing it is not part of this phase.
+// companionChange commits the companion's work of the run. The push of
+// the home branch right after it imports and checks it (checkCompanion);
+// pushing the companion is not part of this phase.
 func (run *implementRun) companionChange(ctx context.Context) error {
 	c := run.companion
 	if c == nil {
 		return nil
 	}
-	if err := run.r.commitCompanion(ctx, c, commitMessage(run.answer.CommitMessage, run.issue)); err != nil {
-		return err
-	}
-	return run.r.importCompanion(ctx, c)
+	return run.r.commitCompanion(ctx, c, commitMessage(run.answer.CommitMessage, run.issue))
 }
 
 // agentWorkspaceRoot is the agent container's workspace mount

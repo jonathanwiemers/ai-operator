@@ -1339,9 +1339,21 @@ project's path lowercased, `/` as `-`, e.g. `my-group-infra-cluster`), on
 the companion branch: on its remote head if it exists, else on the
 companion's default branch. After the implementer and the fix rounds, the
 companion's changes are committed and brought back into the runner's
-mirror. The companion token goes to the runner container only. If the
-companion's target is no longer valid, the run goes on without it and its
-report says so.
+mirror (in a run that pushes steps, with each step too). The companion
+token goes to the runner container only. If the companion's target is no
+longer valid, the run goes on without it and its report says so.
+
+Before every push of the home branch (each step, the final push, CI-fix,
+conflict and checkpoint pushes), the runner checks the companion branch in
+its own mirror, from where it branched off the companion's default branch:
+every commit and the net change. The run fails, and neither repository is
+pushed, when a commit is a merge commit, when a change (also a deletion, or
+either side of a rename) is outside the allowed `paths`, touches
+`.gitlab-ci.yml`, a `.gitlab/` directory or `.gitmodules`, or adds a symlink
+or a submodule, or when the new files of the range add up to more than
+1 MiB. A file added and removed again in a later commit still fails it: a
+push publishes every commit. The failure report on the issue names the path
+and the reason.
 
 The implementer's prompt gets a "Companion repository" section: the
 project, its checkout `/workspace/repos/<slug>` and branch, the allowed

@@ -1823,6 +1823,24 @@ flowchart LR
   (`Invocation.Companion`); the agent server resolves it like a tree's
   `repo` and passes the checkout to claude as `--add-dir` (`AddDirs`,
   never sent over the socket). Any other engine is refused a companion.
+* The companion change is checked in the runner's mirror, by trusted git
+  only (`Mirror.CheckCompanion`, `internal/runner/companioncheck.go`), before
+  every push of the home branch (`publish`: steps, final, CI-fix,
+  merge-base and checkpoint pushes, from the companion's sync on; the
+  checkpoint of a lost attempt comes before it and carries the home tree
+  only). The range is
+  `merge-base(origin/<default>, head)..head`; a merge commit in it is
+  refused. Each commit and the net diff are listed with
+  `git diff-tree -r -z --raw --no-renames`, so a rename shows both paths.
+  Every path must match the target's `paths` (`internal/pathspec`), no
+  path may be or lie in `.gitlab-ci.yml`, `.gitlab/` or `.gitmodules`, and
+  no new mode may be `120000` (symlink) or `160000` (submodule). The new
+  blobs of all commits (`git cat-file --batch-check`) may add up to 1 MiB
+  (`companionMaxBytes`). A refusal is a `*CompanionViolation` (path,
+  reason, commit) and fails the run before either tree is pushed; a check
+  that cannot run refuses too. Only the head this run imported is checked,
+  so a `refs/heads/<branch>` an earlier run left in the mirror does not
+  count.
 
 **Merge/push guard.** The bot's token usually reaches far more than the
 AgentProject's own project (e.g. as a group Maintainer), so the operator and

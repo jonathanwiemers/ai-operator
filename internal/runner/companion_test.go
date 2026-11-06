@@ -100,12 +100,19 @@ func TestRunnerCompanionMirrorPath(t *testing.T) {
 type companionEngine struct {
 	scriptedEngine
 	dir string
+	// edit changes the companion checkout instead of adding
+	// clusters/app/paypal.yaml.
+	edit func(dir string)
 }
 
 func (c *companionEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
 	if !inv.ReadOnly && inv.JSONSchema != describeSchema && !strings.Contains(inv.Prompt, "Automated reviewers found") {
-		_ = os.MkdirAll(filepath.Join(c.dir, "clusters", "app"), 0o755)
-		_ = os.WriteFile(filepath.Join(c.dir, "clusters", "app", "paypal.yaml"), []byte("paypal: true\n"), 0o644)
+		if c.edit != nil {
+			c.edit(c.dir)
+		} else {
+			_ = os.MkdirAll(filepath.Join(c.dir, "clusters", "app"), 0o755)
+			_ = os.WriteFile(filepath.Join(c.dir, "clusters", "app", "paypal.yaml"), []byte("paypal: true\n"), 0o644)
+		}
 	}
 	return c.scriptedEngine.Run(ctx, inv)
 }
@@ -165,7 +172,7 @@ func TestImplementPreparesAndImportsTheCompanion(t *testing.T) {
 		}
 	}
 	steps := stepNames(r.run)
-	for _, want := range []string{"read companion project", "clone companion", "prepare companion checkout", "commit companion", "import companion"} {
+	for _, want := range []string{"read companion project", "clone companion", "prepare companion checkout", "commit companion", "import companion", "check companion"} {
 		if !slices.Contains(steps, want) {
 			t.Fatalf("missing step %q in %v", want, steps)
 		}

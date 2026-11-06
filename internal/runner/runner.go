@@ -81,6 +81,10 @@ type Runner struct {
 	// cut is where a checkpoint of a cut-off implementer call goes; nil
 	// outside the implementer part of a run.
 	cut *cutTarget
+	// companion is the current implement run's companion once its mirror
+	// and checkout are synced: every push of the home branch checks it
+	// first (publish, checkCompanion). nil without one.
+	companion *companionTree
 	// lostAttempt is why the run's previous attempt ended without finishing
 	// (cutPodLost, cutOOMKill), or "": its pod's implementer call may have
 	// left work in the workspace (checkpointLostAttempt).
@@ -343,8 +347,12 @@ func (r *Runner) prepareTree(ctx context.Context, m *Mirror, repo, branch, base 
 }
 
 // publish moves the agent's new commits on branch to the remote. It reports
-// whether anything was pushed.
+// whether anything was pushed. With a companion, its change is imported and
+// checked first: a violation pushes nothing (checkCompanion).
 func (r *Runner) publish(ctx context.Context, branch, base string, skipCI bool) (bool, error) {
+	if err := r.checkCompanion(ctx); err != nil {
+		return false, err
+	}
 	if imported, err := r.importTree(ctx, r.Mirror, homeTree, branch, base); err != nil || !imported {
 		return false, err
 	}
@@ -498,7 +506,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	r.usage, r.routed, r.sessionEngines = task.Status.Run.EngineUsage, task.Status.Run.UsageLimits, nil
 	request := task.Spec.RunRequest
 	r.run = newRunLog(r.Log, task)
-	r.blamedRestarts, r.pushedHead, r.checkpointHead, r.changedPins, r.cut = 0, "", "", nil, nil
+	r.blamedRestarts, r.pushedHead, r.checkpointHead, r.changedPins, r.cut, r.companion = 0, "", "", nil, nil, nil
 	r.runNumber = int64(task.Status.Run.RunCount) + 1
 	ctx = withRunID(ctx, r.run.id)
 	log := r.run.log
