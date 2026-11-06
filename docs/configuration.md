@@ -308,8 +308,13 @@ All labels can be renamed. Defaults:
 | `assignBot` | `true` |
 | `resolveConflicts` | `true` |
 | `stepCommits` | `true` |
-| `conventionalCommits` | `false` |
+| `conventionalCommits` | `false` (see [usage](usage.md#commit-messages)) |
 | `commitTypes` | `feat, fix, refactor, perf, test, docs, build, ci, chore, style, revert` |
+
+The checkpoint fields (`checkpoint.disabled`, default `false`, and
+`checkpoint.maxFileBytes`, default 5 MiB) are in
+[`spec.checkpoint`](#speccheckpoint); usage is in [When a run is cut
+off](usage.md#when-a-run-is-cut-off).
 
 `commandsFrom` is who may give `/agent` commands: `members` (anyone who can
 comment) or `owners`. With `owners`, an `/agent …` comment on an issue, its

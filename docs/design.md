@@ -983,6 +983,43 @@ the episode ends, so it is merged once. The poll runs that issue's task on
 autopilot while main health is fresh. Pause reasons
 about it carry a prefix (`about`).
 
+## Checkpoints and Conventional Commits
+
+Usage: [When a run is cut off](usage.md#when-a-run-is-cut-off). The
+implementation notes are under Token economy ("Checkpoints", "Folding
+checkpoints").
+
+* **Where.** The checkpoint is made in the agent container, in the
+  workspace, where the files are (`Workspace.Checkpoint`). The runner pushes
+  it from its mirror (`Mirror.push`, `ci.skip`), the same path as a step
+  commit, so the push policy applies.
+* **Why the PVC check.** After a lost pod or OOM kill the volume still holds
+  the workspace, but the runner cannot know what state it is in. It saves
+  only if the workspace is on the task's branch and `HEAD` is the mirror's
+  last pushed commit or a descendant. A workspace on another branch, or one
+  behind a branch someone pushed to, would put foreign or stale files on the
+  work branch, so nothing is saved.
+* **One force push.** The fold replaces the checkpoints with the agent's
+  commit and pushes with `--force-with-lease=<branch>:<checkpoint sha>`. It
+  runs on `agent/*` only, and only when every commit removed carries
+  `Agent-Checkpoint`, which the mirror checks itself. The lease makes it fail
+  if anyone pushed after the checkpoint; the runner then keeps the
+  checkpoint and pushes normally. Nothing else is ever forced.
+* **The signal.** `status.run.checkpoint` (SHA, branch, reason,
+  step, diff stat) tells the operator, autopilot and the pilot that the
+  branch head is work in progress: compare it with the head (`RunStatus.CheckpointHead`). Then no
+  reviewers, no "ready", no merge. A regular push clears it.
+* **Conventional Commits** (`workflow.conventionalCommits`, off by default).
+  The implementer's `commitMessage` schema gets a `pattern` built from
+  `workflow.commitTypes`. The runner still checks every message it commits
+  and rewrites a failing one to `chore(agent): <first line>` (logged,
+  counted); the start commit is `chore: start work on #N`. The describe role
+  returns a `title` in the same format; the runner sets the MR title to it,
+  keeping `Draft: `. Merges squash into the MR title, so human merges are
+  conventional too, and autopilot sends the title plus `Refs #N` as
+  `squash_commit_message`. Checkpoints keep their own fixed
+  `chore(wip)` subject until the fold.
+
 ## Merge conflicts
 
 A long-lived MR falls behind the default branch; with autopilot every merge

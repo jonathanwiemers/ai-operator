@@ -2091,6 +2091,73 @@ milestone is no longer planned, so its tasks are deleted and `create` no
 longer works; open a late follow-up by hand from the retrospective, or
 reopen the milestone, which brings autopilot back.
 
+## When a run is cut off
+
+Work that is not pushed yet is not thrown away. When a run is cut off, the
+runner saves the implementer's work tree as a **checkpoint** commit on the
+work branch, pushes it, and the next run continues from it.
+
+**Triggers.** An implementer call (the first call, a step, a fix round, a CI
+or conflict round) that ends with
+
+- a [usage limit](#usage-and-rate-limits) (`usage-limit`),
+- an engine error or a timeout (`engine-error`, `timeout`),
+- a budget stop (`budget-stop`);
+
+an agent container that restarts, before the runner resets the work tree
+(`container-restart`, see [When the agent container
+dies](#when-the-agent-container-dies)); and a lost pod or an OOM kill
+(`pod-lost`, `oom-kill`), where the new pod saves the workspace before it
+resets it ([When the whole pod is lost](#when-the-whole-pod-is-lost)). In
+the last case the volume must still hold the files, the workspace must be on
+the task's branch, and its `HEAD` must be the last pushed commit or descend
+from it; otherwise nothing is saved. A usage limit in a fix round keeps its
+own path: the run publishes the committed work with the open findings.
+
+**The commit.** One commit with everything a step commit would stage:
+subject `chore(wip): checkpoint #42 step 3 (usage-limit)`, a body with the
+diff stat and the agent's last todo list or message (cut at 1 000
+characters), and the trailer `Agent-Checkpoint: <run>/<step> <reason>`. It is
+pushed with `ci.skip` and never forced, and it goes only to the task's
+`agent/*` branch, never the base branch. A clean tree saves nothing.
+
+**Files left out.** Files larger than `checkpoint.maxFileBytes` (5 MiB) and
+new files named like secrets (`.env*`, `*.pem`, `*.key`, `id_rsa*`, `*.p12`)
+stay in the workspace but not in the commit, so no key or build artefact
+lands on the remote. The progress comment and the run report name them.
+
+**A merge in progress is aborted.** If the cut-off came during a conflict
+round, the merge is aborted back to the commit before it and nothing is
+saved: half-resolved conflicts are never committed. The next run merges
+again.
+
+**Draft, no review, no merge.** A ready MR is set to draft before the push.
+While its head is the checkpoint, the runner does not mark it ready or
+request reviewers, and autopilot does not merge it
+([merge gate](#the-merge-gate)); the pilot's state shows `checkpoint`.
+
+**Resuming.** The next run starts from the checkpoint, so the resumed
+session and the files agree again. Its prompt, fresh or resumed, gets one
+line: "The previous attempt was cut off (<reason>) after step <n>; its
+uncommitted work was saved as a checkpoint commit. Check `git show --stat
+HEAD` before you continue."
+
+**The fold.** The next commit the implementer makes on that branch (a step
+or the only commit) replaces the checkpoints at the tip: the runner resets
+softly to the last commit before them and commits with the agent's own
+message, so the history shows no `chore(wip)` commit. It pushes with
+`--force-with-lease` on the checkpoint, the only force push the operator
+does. It folds only on the agent branch and only when every commit it
+removes carries `Agent-Checkpoint`. If someone pushed in between, the lease
+fails: the checkpoint is kept, the step's commit goes on top, and the report
+says "The checkpoint `<sha>` was kept". Commits other people pushed are
+never rewritten.
+
+**Turning it off.** `checkpoint.disabled: true` in the project saves nothing;
+the next run then resets the work tree from the last pushed commit and the
+uncommitted work of the cut-off call is lost. See
+[configuration](configuration.md#speccheckpoint).
+
 ## Usage and rate limits
 
 Subscriptions have usage windows, and APIs have rate limits. When an agent
@@ -2382,8 +2449,9 @@ its call to the agent, waits for the container to be back and reports it:
   saves its uncommitted edits as a checkpoint (`chore(wip): checkpoint
   #<issue> step <n> (oom-kill)`, see
   [When the whole pod is lost](#when-the-whole-pod-is-lost)), and the run
-  starts again from it. Otherwise the run starts again from the last pushed
-  commit and the edits are lost. If no node has room for the raised memory, the task's status says the pod cannot be
+  starts again from it. If nothing can be saved (see [When a run is cut
+  off](#when-a-run-is-cut-off)), the run starts again from the last pushed
+  commit. If no node has room for the raised memory, the task's status says the pod cannot be
   scheduled (`kubectl get agenttasks -o wide`).
 - **Out of memory at the cap** (or after 3 restarts, or without a memory
   limit to raise): the run fails with that reason, and the issue is
@@ -2424,10 +2492,10 @@ resets the workspace: uncommitted edits become a checkpoint commit
 (`chore(wip): checkpoint #<issue> step <n> (pod-lost)`, its body taken from
 the agent's last todo list or message), pushed without CI with the MR set to
 draft, together with step commits the lost pod made but had not pushed. The
-run then starts again from that commit. Nothing is saved, and the edits of
-the lost attempt are gone, when checkpoints are off, the workspace is on
+run then starts again from that commit. Nothing is saved, and the run starts
+from the last pushed commit, when checkpoints are off, the workspace is on
 another branch, or someone pushed to the branch after the lost pod's last
-push. A progress comment the lost attempt left on the merge request is
+push (see [When a run is cut off](#when-a-run-is-cut-off)). A progress comment the lost attempt left on the merge request is
 removed. The new attempt's progress comment and report say so above the run
 log: "↻ Started again: the previous attempt was interrupted (its pod stopped
 before the run finished, e.g. evicted or the node went down). Restart 1 of
