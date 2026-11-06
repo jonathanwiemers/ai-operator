@@ -49,6 +49,8 @@ type SpendCallView struct {
 	Turns         int32   `json:"turns"`
 	ContextSeries []int64 `json:"contextSeries"`
 	SubagentTurns []int32 `json:"subagentTurns"`
+	// ReadGateBlocks is how often the read gate denied a tool call.
+	ReadGateBlocks int32 `json:"readGateBlocks"`
 }
 
 // SpendChildView is one part of the scope at the next level: a milestone
@@ -77,6 +79,7 @@ type SubagentBreakdownView struct {
 	WithSubagents  bool            `json:"withSubagents"`
 	Totals         SpendTotalsView `json:"totals"`
 	SubagentTokens int64           `json:"subagentTokens"`
+	ReadGateBlocks int64           `json:"readGateBlocks"`
 }
 
 // SpendView is what a scope cost. byReviewRound is keyed by round ("1",
@@ -146,7 +149,8 @@ func spendView(sp store.Spend) SpendView {
 		BySubagents: make([]SubagentBreakdownView, 0, len(sp.BySubagents)), CacheReadShare: sp.CacheReadShare}
 	for _, b := range sp.BySubagents {
 		v.BySubagents = append(v.BySubagents, SubagentBreakdownView{Role: b.Role, WithSubagents: b.WithSubagents,
-			Totals: spendTotalsView(b.Totals), SubagentTokens: b.SubagentTokens})
+			Totals: spendTotalsView(b.Totals), SubagentTokens: b.SubagentTokens,
+			ReadGateBlocks: b.ReadGateBlocks})
 	}
 	for _, c := range sp.Children {
 		cv := SpendChildView{Level: c.Level, Key: c.Key, Label: c.Label, At: c.At, Totals: spendTotalsView(c.Totals),
@@ -158,7 +162,8 @@ func spendView(sp store.Spend) SpendView {
 		if call := c.Call; call != nil {
 			cv.SpendCallView = &SpendCallView{Kind: call.Kind, Role: call.Role, Engine: call.Engine, Model: call.Model,
 				Effort: call.Effort, Resumed: call.Resumed, FallbackFrom: call.FallbackFrom, CostSource: call.CostSource,
-				Turns: call.Turns, ContextSeries: call.ContextSeries, SubagentTurns: call.SubagentTurns}
+				Turns: call.Turns, ContextSeries: call.ContextSeries, SubagentTurns: call.SubagentTurns,
+				ReadGateBlocks: call.ReadGateBlocks}
 			if cv.ContextSeries == nil {
 				cv.ContextSeries = []int64{}
 			}

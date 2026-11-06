@@ -432,6 +432,12 @@ export function subagentRoles(rows: SubagentBreakdown[]): SubagentRole[] {
   }))
 }
 
+// gateBlocksPerCall is the read gate's denials per call with one decimal:
+// "1.5", "" without calls or without a block.
+export function gateBlocksPerCall(r: SubagentBreakdown): string {
+  return r.totals.calls > 0 && r.readGateBlocks > 0 ? (r.readGateBlocks / r.totals.calls).toFixed(1) : ''
+}
+
 // subagentShare is the subagent models' share of a row's tokens: "23%",
 // "—" without tokens.
 export function subagentShare(r: SubagentBreakdown): string {

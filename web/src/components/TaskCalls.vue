@@ -145,6 +145,9 @@ async function toggle(r: SpendChild) {
                         <td>
                           {{ c.engine }}<template v-if="c.model">/{{ c.model }}</template>
                           <span v-if="c.fallbackFrom" class="faint"> · fallback from {{ c.fallbackFrom }}</span>
+                          <span v-if="c.readGateBlocks" class="faint" title="Reads the read gate blocked">
+                            · {{ c.readGateBlocks }} gate {{ c.readGateBlocks === 1 ? 'block' : 'blocks' }}
+                          </span>
                         </td>
                         <td>{{ c.resumed ? 'resumed' : '—' }}</td>
                         <td class="num">{{ tokenCount(c.totals.inputTokens) }}</td>

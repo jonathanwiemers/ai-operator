@@ -30,6 +30,7 @@ import {
   tokenBreakdown as tokenTitle,
   spendUSD,
   subagentRoles,
+  gateBlocksPerCall,
   subagentShare,
   unitFromQuery,
   unitQuery,
@@ -410,6 +411,7 @@ function rowKey(b: SpendBreakdown): string {
                   <th class="num">Tokens per call</th>
                   <th class="num">Per call</th>
                   <th class="num" title="The subagent models' share of the calls' tokens">Subagent share</th>
+                  <th class="num" title="Reads the read gate blocked, per call">Gate blocks per call</th>
                 </tr>
               </thead>
               <tbody>
@@ -421,6 +423,7 @@ function rowKey(b: SpendBreakdown): string {
                     <td class="num" :title="tokenTitle(r.totals)">{{ tokenCount(avgTokens(r.totals)) }}</td>
                     <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ avgCost(r.totals) }}</td>
                     <td class="num">{{ r.withSubagents ? subagentShare(r) : '' }}</td>
+                    <td class="num">{{ gateBlocksPerCall(r) }}</td>
                   </tr>
                 </template>
               </tbody>

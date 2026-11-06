@@ -35,8 +35,9 @@ func TestSpend(t *testing.T) {
 		{Model: "claude-opus-5-5", InputTokens: 8, OutputTokens: 15, CacheReadTokens: 30, CacheWriteTokens: 40, CostUSD: usd(1.2)},
 		{Model: "claude-haiku-5-5", InputTokens: 2, OutputTokens: 5, CostUSD: usd(0.03)},
 	}
-	impl.SubagentCalls, impl.ContextSeries, impl.SubagentTurns, impl.ReadGateBlocks = 1, []int64{1000, 2500, 4000}, []int32{1}, 2
+	impl.SubagentCalls, impl.ContextSeries, impl.SubagentTurns, impl.ReadGateBlocks = 1, []int64{1000, 2500, 4000}, []int32{1}, 3
 	review := call("c2", 3*time.Hour, 20, 148, "bloop-148", 2, 2, "review", "security", "claude-sonnet-5-5", usd(0.5), 100, 10, 1000, 0, 10000)
+	review.ReadGateBlocks = 1
 	// #150: a cursor call without a cost.
 	fix := call("c3", 4*time.Hour, 20, 150, "bloop-150", 1, 1, "fix", "fix", "gpt-5", nil, 100, 50, 0, 0, 5000)
 	fix.Engine = "cursor"
@@ -219,7 +220,7 @@ func TestSpend(t *testing.T) {
 		{"call", "2", "review (security)", 0.5, 0, true, 1, 0},
 	})
 	if c := sp.Children[0].Call; c == nil || c.Key != "c1" || c.MilestoneIID != 20 || !slices.Equal(c.ContextSeries, []int64{1000, 2500, 4000}) ||
-		!slices.Equal(c.SubagentTurns, []int32{1}) || c.ReadGateBlocks != 2 || len(c.Models) != 2 || c.CostUSD == nil || *c.CostUSD != 1.23 {
+		!slices.Equal(c.SubagentTurns, []int32{1}) || c.ReadGateBlocks != 3 || len(c.Models) != 2 || c.CostUSD == nil || *c.CostUSD != 1.23 {
 		t.Errorf("call 1 row = %+v", c)
 	}
 	checkModels("call 1", sp.Children[0].Models, []store.ModelSplit{
@@ -299,12 +300,13 @@ func TestSpendTuning(t *testing.T) {
 		}
 		return c
 	}
+	gated := func(c store.Call, blocks int32) store.Call { c.ReadGateBlocks = blocks; return c }
 	calls := []store.Call{
 		// Run 1: implement, two reviewers, fix, one reviewer, fix, two
 		// reviewers. Inserted out of seq order: rounds follow seq.
-		call("bloop-148", 1, 9, "review", "security", usd(0.5), 50, 5),
+		gated(call("bloop-148", 1, 9, "review", "security", usd(0.5), 50, 5), 1),
 		call("bloop-148", 1, 1, "implement", "implement", usd(4), 400, 40),
-		scouted(resumed(call("bloop-148", 1, 2, "implement", "implement", usd(6), 600, 60)), 100),
+		gated(scouted(resumed(call("bloop-148", 1, 2, "implement", "implement", usd(6), 600, 60)), 100), 3),
 		call("bloop-148", 1, 3, "review", "security", usd(1), 100, 10),
 		call("bloop-148", 1, 4, "review", "style", usd(2), 200, 20),
 		call("bloop-148", 1, 5, "fix", "fix", usd(3), 300, 30),
@@ -362,20 +364,21 @@ func TestSpendTuning(t *testing.T) {
 		calls      int64
 		tokens     int64
 		sub, scout int64
+		blocks     int64
 	}
 	var g []subagents
 	for _, b := range sp.BySubagents {
 		g = append(g, subagents{b.Role, b.WithSubagents, b.Totals.CostUSD, b.Totals.Calls, b.Totals.Tokens(),
-			b.Totals.SubagentCalls, b.SubagentTokens})
+			b.Totals.SubagentCalls, b.SubagentTokens, b.ReadGateBlocks})
 	}
 	if want := []subagents{
-		{"ci", false, 1, 1, 110, 0, 0},
-		{"fix", false, 5, 3, 550, 0, 0},
-		{"implement", false, 12, 2, 1320, 0, 0},
-		{"implement", true, 6, 1, 660, 1, 100},
-		{"security", false, 3.25, 6, 354, 0, 0},
-		{"security", true, 2, 1, 320, 1, 200},
-		{"style", false, 2, 2, 231, 0, 0},
+		{"ci", false, 1, 1, 110, 0, 0, 0},
+		{"fix", false, 5, 3, 550, 0, 0, 0},
+		{"implement", false, 12, 2, 1320, 0, 0, 0},
+		{"implement", true, 6, 1, 660, 1, 100, 3},
+		{"security", false, 3.25, 6, 354, 0, 0, 1},
+		{"security", true, 2, 1, 320, 1, 200, 0},
+		{"style", false, 2, 2, 231, 0, 0, 0},
 	}; !slices.Equal(g, want) {
 		t.Errorf("by subagents:\n got %+v\nwant %+v", g, want)
 	}

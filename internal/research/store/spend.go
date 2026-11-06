@@ -93,6 +93,8 @@ type SubagentBreakdown struct {
 	WithSubagents  bool
 	Totals         SpendTotals
 	SubagentTokens int64
+	// ReadGateBlocks is the sum of the calls' read gate denials.
+	ReadGateBlocks int64
 }
 
 // Spend is what a scope cost. The breakdowns cover its calls (not legacy
@@ -137,10 +139,10 @@ func spendWith(where string) string {
 				AND a.task = e.task AND a.run = e.run AND a.expires_at > now())
 	), spend AS (
 		SELECT false AS legacy, id, milestone_iid, issue_iid, task, run, seq, at, kind, role, resumed,
-			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms
+			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms, read_gate_blocks
 		FROM scoped
 		UNION ALL
-		SELECT true, NULL, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0
+		SELECT true, NULL, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0
 		FROM legacy
 	), split AS (
 		SELECT false AS legacy, c.id, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, m.model, m.main,
@@ -307,7 +309,8 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 			return Spend{}, err
 		}
 	}
-	rows, _ := s.pool.Query(ctx, with+`SELECT role, subagent_calls > 0, coalesce(sum(sub_tokens), 0)::bigint, `+spendTotals+`
+	rows, _ := s.pool.Query(ctx, with+`SELECT role, subagent_calls > 0, coalesce(sum(sub_tokens), 0)::bigint,
+			coalesce(sum(read_gate_blocks), 0)::bigint, `+spendTotals+`
 		FROM spend LEFT JOIN (
 			SELECT id AS sub_id, sum(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens) AS sub_tokens
 			FROM split WHERE NOT main GROUP BY id
@@ -316,7 +319,7 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 	if sp.BySubagents, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (SubagentBreakdown, error) {
 		var b SubagentBreakdown
 		var err error
-		b.Totals, err = scanTotals(row, &b.Role, &b.WithSubagents, &b.SubagentTokens)
+		b.Totals, err = scanTotals(row, &b.Role, &b.WithSubagents, &b.SubagentTokens, &b.ReadGateBlocks)
 		return b, err
 	}); err != nil {
 		return Spend{}, err

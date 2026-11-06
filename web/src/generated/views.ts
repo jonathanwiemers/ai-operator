@@ -575,6 +575,10 @@ export interface SpendCallView {
   turns: number /* int32 */;
   contextSeries: number /* int64 */[];
   subagentTurns: number /* int32 */[];
+  /**
+   * ReadGateBlocks is how often the read gate denied a tool call.
+   */
+  readGateBlocks: number /* int32 */;
 }
 /**
  * SpendChildView is one part of the scope at the next level: a milestone
@@ -605,6 +609,7 @@ export interface SubagentBreakdownView {
   withSubagents: boolean;
   totals: SpendTotalsView;
   subagentTokens: number /* int64 */;
+  readGateBlocks: number /* int64 */;
 }
 /**
  * SpendView is what a scope cost. byReviewRound is keyed by round ("1",

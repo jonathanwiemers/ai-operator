@@ -30,6 +30,7 @@ import {
   spendQuery,
   spendUSD,
   subagentRoles,
+  gateBlocksPerCall,
   subagentShare,
   unitFromQuery,
   unitQuery,
@@ -414,4 +415,11 @@ test('subagentRoles: roles where a subagent ran, with their calls without', () =
   )
   assert.equal(subagentShare(got[0].rows[0]), '25%')
   assert.equal(subagentShare(got[1].rows[0]), '—')
+})
+
+test('gateBlocksPerCall: blocks per call, empty without calls or blocks', () => {
+  const row = (calls, readGateBlocks) => ({ role: 'implement', withSubagents: true, totals: { calls }, subagentTokens: 0, readGateBlocks })
+  assert.equal(gateBlocksPerCall(row(2, 3)), '1.5')
+  assert.equal(gateBlocksPerCall(row(2, 0)), '')
+  assert.equal(gateBlocksPerCall(row(0, 3)), '')
 })

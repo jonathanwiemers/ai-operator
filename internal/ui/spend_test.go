@@ -81,7 +81,7 @@ func TestSpend(t *testing.T) {
 		{Model: "claude-opus-5-5", InputTokens: 8, OutputTokens: 15, CostUSD: usd(1.4)},
 		{Model: "claude-haiku-5-5", InputTokens: 2, OutputTokens: 5, CostUSD: usd(0.1)},
 	}
-	impl.SubagentCalls, impl.ContextSeries, impl.SubagentTurns = 1, []int64{1000, 2500, 4000}, []int32{1}
+	impl.SubagentCalls, impl.ContextSeries, impl.SubagentTurns, impl.ReadGateBlocks = 1, []int64{1000, 2500, 4000}, []int32{1}, 4
 	fix := call("c2", 42, "shop-42", 2, 2, "fix", "gpt-5", nil)
 	fix.Engine = "cursor"
 	other := call("c3", 43, "shop-43", 1, 1, "implement", "claude-opus-5-5", usd(0.25))
@@ -133,7 +133,7 @@ func TestSpend(t *testing.T) {
 			sub = append(sub, b)
 		}
 	}
-	if len(sub) != 1 || sub[0].Role != "implement" || sub[0].Totals.Calls != 1 || sub[0].SubagentTokens != 7 || ms.ByReviewRound == nil {
+	if len(sub) != 1 || sub[0].Role != "implement" || sub[0].Totals.Calls != 1 || sub[0].SubagentTokens != 7 || sub[0].ReadGateBlocks != 4 || ms.ByReviewRound == nil {
 		t.Errorf("milestone by subagents = %+v, want #42's implement call with 7 subagent tokens", ms.BySubagents)
 	}
 
@@ -146,7 +146,7 @@ func TestSpend(t *testing.T) {
 	}
 	c := run.Children[0]
 	if c.Level != "call" || c.Key != "1" || c.SpendCallView == nil || c.Kind != "implement" ||
-		!slices.Equal(c.ContextSeries, []int64{1000, 2500, 4000}) || !slices.Equal(c.SubagentTurns, []int32{1}) {
+		!slices.Equal(c.ContextSeries, []int64{1000, 2500, 4000}) || !slices.Equal(c.SubagentTurns, []int32{1}) || c.ReadGateBlocks != 4 {
 		t.Errorf("first call = %+v", c)
 	}
 	if f := run.Children[1]; f.Totals.CostUSD != "" || f.Totals.CostKnown || f.CostSource != "unknown" {
