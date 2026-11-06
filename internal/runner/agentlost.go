@@ -102,6 +102,13 @@ func (r *Runner) agentLost(ctx context.Context, err error, start time.Time) *Age
 	return lost
 }
 
+// retriesRestart reports whether invokeOn tries a call again after it lost
+// the agent container: back, the call was sent (or already redialed), it
+// crashed rather than ran out of memory, and it was not tried again yet.
+func retriesRestart(lost *AgentLostError, redialed, retried bool) bool {
+	return lost.back && (!lost.notSent || redialed) && !retried && lost.Term != nil && !lost.Term.OOMKilled()
+}
+
 // oomRetry returns the memory limit the run starts again with, if it lost the
 // agent container to an OOM kill and the operator raises the limit (it
 // computes the same from the same record): see agents.maxMemory.
@@ -131,9 +138,13 @@ func (r *Runner) retryWithMoreMemory(ctx context.Context, gl gitlab.API, spec ai
 	if task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
 		var lost *AgentLostError
 		errors.As(err, &lost)
+		edits := "the killed call's uncommitted edits are lost."
+		if !spec.Checkpoint.Disabled {
+			edits = "the new pod first saves the killed implementer call's uncommitted edits as a checkpoint."
+		}
 		body := fmt.Sprintf("🤖 The agent container ran out of memory after %s and was killed (OOMKilled, memory limit %s). "+
-			"The run starts again with %s (restart %d of at most %d); the killed call's uncommitted edits are lost.",
-			lost.After.Round(time.Second), lost.Term.MemoryLimit, memory, task.Status.Run.OOMRetries+1, aiv1.MaxOOMRetries)
+			"The run starts again with %s (restart %d of at most %d); %s",
+			lost.After.Round(time.Second), lost.Term.MemoryLimit, memory, task.Status.Run.OOMRetries+1, aiv1.MaxOOMRetries, edits)
 		if _, cerr := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body+r.run.markdown(out.CostUSD)); cerr != nil {
 			r.log().Info("could not post the out of memory note", "error", cerr.Error())
 		}

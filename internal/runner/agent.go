@@ -76,7 +76,56 @@ func (a *LocalAgent) Run(ctx context.Context, engine aiv1.Engine, inv Invocation
 	if err := a.prepareInvocation(ctx, &inv); err != nil {
 		return nil, err
 	}
+	if !inv.ReadOnly && a.Workspace.exists() {
+		// A call that may edit keeps its status where a checkpoint finds it,
+		// also when this container or its pod does not survive the call.
+		w := &statusWriter{path: a.Workspace.lastStatusPath(), every: statusInterval}
+		_ = os.Remove(w.path)
+		ctx = withStatusSink(ctx, w.set)
+		defer w.flush()
+	}
 	return eng.Run(ctx, inv)
+}
+
+// statusInterval is how often at most the last status is written.
+var statusInterval = 5 * time.Second
+
+// statusWriter writes the newest status text of a call to path, at most
+// once per interval; flush writes what is left. One goroutine uses it.
+type statusWriter struct {
+	path    string
+	every   time.Duration
+	last    time.Time
+	pending string
+}
+
+func (w *statusWriter) set(text string) {
+	w.pending = text
+	if time.Since(w.last) >= w.every {
+		w.flush()
+	}
+}
+
+func (w *statusWriter) flush() {
+	if w.pending == "" {
+		return
+	}
+	_ = os.WriteFile(w.path, []byte(w.pending), 0o600)
+	w.pending, w.last = "", time.Now()
+}
+
+type statusSinkKey struct{}
+
+// withStatusSink passes fn to the engine, which calls it with the agent's
+// status text (streamStatus) as the call streams.
+func withStatusSink(ctx context.Context, fn func(string)) context.Context {
+	return context.WithValue(ctx, statusSinkKey{}, fn)
+}
+
+// statusSink is the function withStatusSink set, or nil.
+func statusSink(ctx context.Context) func(string) {
+	fn, _ := ctx.Value(statusSinkKey{}).(func(string))
+	return fn
 }
 
 // prepareInvocation sets Dir and Env like Run, for one-shot calls and sessions.

@@ -533,7 +533,15 @@ nothing is lost.
   The commit is recorded in `status.run.checkpoint` and kept apart from the
   run's pushes (`checkpointHead`): it gets no pipeline and is never
   `pushedSHA` or `reviewedSHA`. A fix round's usage limit is excluded, it
-  publishes the committed work itself.
+  publishes the committed work itself. A restarted agent container is
+  checkpointed before `Reset` (`container-restart`). For a lost pod or an
+  OOM kill, the runner keeps `state.InFlight` (run, step, branch) on the
+  PVC during each implementer call; the next attempt's `syncBranch` runs
+  `checkpointLostAttempt` between `Mirror.Sync` and `Prepare`, with
+  `Expect` = the mirror's `origin/<branch>`, so a branch someone pushed to
+  since, or a workspace on another branch, saves nothing. The agent server
+  writes the call's last todo list or text to `.git/ai-last-status`
+  (throttled) for the commit body.
 * **Agent notes.** The implementer also returns handoff notes, which the
   runner keeps in one bot comment on the issue (created on the first run,
   edited right after each later push, `internal/runner/handoff.go`). A

@@ -22,12 +22,12 @@ import (
 
 // runImplement implements an issue: implement -> review -> fix (bounded) ->
 // push -> merge request -> report back on GitLab.
-func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (*Outcome, error) {
+func (r *Runner) runImplement(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (_ *Outcome, err error) {
 	if task.Spec.Issue == nil {
 		return nil, fmt.Errorf("implement task has no issue")
 	}
 	run := r.newImplementRun(gl, task, project, spec)
-	defer func() { r.cut = nil }()
+	defer func() { r.endCut(ctx, err) }()
 	if closed, err := run.prepare(ctx); err != nil || closed {
 		return run.out, err
 	}
@@ -164,7 +164,7 @@ func (run *implementRun) syncBranch(ctx context.Context) error {
 	}
 	run.branch, out.Branch = branch, branch
 
-	if err := r.syncWorkspace(ctx, run.proj.HTTPURLToRepo, branch, base); err != nil {
+	if err := r.syncWorkspace(ctx, run.proj.HTTPURLToRepo, branch, base, run.checkpointLostAttempt); err != nil {
 		return err
 	}
 
@@ -647,7 +647,7 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 // starts a pipeline where the head has none yet.
 func (run *implementRun) push(ctx context.Context) error {
 	r, gl, glProject, st, out, answer, task, mr, branch, base := run.r, run.gl, run.glProject, run.state, run.out, &run.answer, run.task, run.mr, run.branch, run.base
-	r.cut = nil // the implementer is done
+	r.endCut(ctx, nil) // the implementer is done
 	// Ready means reviewed and clean. The MR leaves draft before the push, so
 	// the push gets its pipeline also where drafts run none; a run that
 	// leaves problems puts it back to draft.

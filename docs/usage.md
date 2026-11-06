@@ -1576,7 +1576,10 @@ CLI reports such a limit, the run is **paused, not failed**:
   saved as a checkpoint commit (`chore(wip): checkpoint #<issue> step <n>
   (usage-limit)`), pushed without CI to the work branch of a draft MR, and
   the next run starts from it. Failed or timed-out implementer calls and
-  budget stops save one the same way (see
+  budget stops save one the same way, and so do a restarted agent container
+  and a lost pod (see [When the agent container
+  dies](#when-the-agent-container-dies),
+  [When the whole pod is lost](#when-the-whole-pod-is-lost) and
   [configuration.md](configuration.md#speccheckpoint)).
 - The run is retried at the reset time the CLI reports (claude's from its
   limit message or, when that names none, from its usage windows; cursor's
@@ -1819,9 +1822,13 @@ its call to the agent, waits for the container to be back and reports it:
   memory after 1h28m and was killed (OOMKilled, memory limit 4Gi). The run
   starts again with 6Gi (restart 1 of at most 3)". The raised limit stays
   with the task for its later runs (`status.agentMemoryLimit`); lowering
-  `maxMemory` or the limit lowers it too. The killed call's uncommitted edits
-  are lost; the run starts again from the last pushed commit. If no node has
-  room for the raised memory, the task's status says the pod cannot be
+  `maxMemory` or the limit lowers it too. If the killed call was the
+  implementer's and the volume still holds its files, the new pod first
+  saves its uncommitted edits as a checkpoint (`chore(wip): checkpoint
+  #<issue> step <n> (oom-kill)`, see
+  [When the whole pod is lost](#when-the-whole-pod-is-lost)), and the run
+  starts again from it. Otherwise the run starts again from the last pushed
+  commit and the edits are lost. If no node has room for the raised memory, the task's status says the pod cannot be
   scheduled (`kubectl get agenttasks -o wide`).
 - **Out of memory at the cap** (or after 3 restarts, or without a memory
   limit to raise): the run fails with that reason, and the issue is
@@ -1831,8 +1838,11 @@ its call to the agent, waits for the container to be back and reports it:
   `spec.agents.maxMemory`, then comment `/agent retry`. A pod started with
   other agent resources is replaced between runs, so the retry gets the new
   limit.
-- **Another reason** (a crash): the checkout is reset to the last commit and
-  the call is tried once more; if it loses the container again, the run
+- **Another reason** (a crash): an implementer call's uncommitted edits are
+  saved as a checkpoint (`chore(wip): checkpoint #<issue> step <n>
+  (container-restart)`, pushed without CI, the MR set to draft), then the
+  checkout is reset to the last commit, which is that checkpoint, so the
+  call is tried once more with its files; if it loses the container again, the run
   fails with the reason and exit code, and the issue is blocked
   (`agent-blocked::infra`).
 - A call made while the container was down (it died between calls, e.g.
@@ -1852,8 +1862,17 @@ kubectl -n agents get agenttask shop-42-add-paypal-button -o jsonpath='{.status.
 If the pod stops mid-run (evicted, the node shut down or went away, or the
 runner itself crashed), the run request stays open. The operator replaces a
 pod that has terminated for good, and the new pod's runner starts the run
-again from the last pushed commit; uncommitted edits of the lost attempt are
-gone. A progress comment the lost attempt left on the merge request is
+again from the last pushed commit. If the lost pod was in an implementer
+call (the runner notes that in its state on the volume) and the volume still
+holds the workspace, the new pod first saves what that call left, before it
+resets the workspace: uncommitted edits become a checkpoint commit
+(`chore(wip): checkpoint #<issue> step <n> (pod-lost)`, its body taken from
+the agent's last todo list or message), pushed without CI with the MR set to
+draft, together with step commits the lost pod made but had not pushed. The
+run then starts again from that commit. Nothing is saved, and the edits of
+the lost attempt are gone, when checkpoints are off, the workspace is on
+another branch, or someone pushed to the branch after the lost pod's last
+push. A progress comment the lost attempt left on the merge request is
 removed. The new attempt's progress comment and report say so above the run
 log: "↻ Started again: the previous attempt was interrupted (its pod stopped
 before the run finished, e.g. evicted or the node went down). Restart 1 of

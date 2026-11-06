@@ -304,7 +304,10 @@ func (c *CursorCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
 // logging, rate_limit_event usage, claude's per-turn context sizes and
 // subagents, and the result line.
 type turnReader struct {
-	log    logr.Logger
+	log logr.Logger
+	// status, if set, gets the agent's status text as it changes (see
+	// streamStatus).
+	status func(string)
 	held   [][]byte
 	usage  *aiv1.EngineUsage
 	result []byte
@@ -335,6 +338,11 @@ func (t *turnReader) consume(line []byte) bool {
 	switch ev := parseEvent(line); ev.Type {
 	case "assistant":
 		t.track(line)
+		if t.status != nil {
+			if s := streamStatus(line); s != "" {
+				t.status(s)
+			}
+		}
 		t.held = append(t.held, line)
 		if callsTool(line) {
 			// A claude message that calls a tool is no answer.
@@ -459,7 +467,7 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 	var stdout, stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	var runErr error
-	tr := &turnReader{log: logr.FromContextOrDiscard(ctx)}
+	tr := &turnReader{log: logr.FromContextOrDiscard(ctx), status: statusSink(ctx)}
 	if stream {
 		pipe, err := cmd.StdoutPipe()
 		if err != nil {

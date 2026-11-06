@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,6 +88,7 @@ type PrepareRequest struct {
 // origin/<base>. Leftovers of an interrupted run are discarded.
 func (w *Workspace) Prepare(ctx context.Context, req PrepareRequest) error {
 	w.removeStaleLock()
+	_ = os.Remove(w.lastStatusPath())
 	if !w.exists() {
 		if err := os.MkdirAll(w.Dir, 0o755); err != nil {
 			return err
@@ -148,6 +150,23 @@ func (w *Workspace) Reset(ctx context.Context) error {
 // request, one call at a time, so a lock between calls is always stale.
 func (w *Workspace) removeStaleLock() {
 	_ = os.Remove(filepath.Join(w.Dir, ".git", "index.lock"))
+}
+
+// lastStatusFile, in .git so it is never committed, holds the last status
+// text of the agent's call in progress (LocalAgent.Run).
+const lastStatusFile = "ai-last-status"
+
+func (w *Workspace) lastStatusPath() string { return filepath.Join(w.Dir, ".git", lastStatusFile) }
+
+// lastStatus reads the status text LocalAgent.Run kept, "" if there is none.
+func (w *Workspace) lastStatus() string {
+	f, err := os.Open(w.lastStatusPath())
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	b, _ := io.ReadAll(io.LimitReader(f, 4*maxStatusText))
+	return strings.TrimSpace(string(b))
 }
 
 // Commit commits every change in the work tree. It reports false if there
@@ -346,6 +365,11 @@ type CheckpointResult struct {
 // secrets. Errors are failed git commands.
 func (w *Workspace) Checkpoint(ctx context.Context, req CheckpointRequest) (CheckpointResult, error) {
 	w.removeStaleLock()
+	// A restarted container or a lost pod has no result to take it from.
+	if strings.TrimSpace(req.Status) == "" {
+		req.Status = w.lastStatus()
+	}
+	defer os.Remove(w.lastStatusPath())
 	if why := w.checkpointRefusal(ctx, req); why != "" {
 		return CheckpointResult{Refused: why}, nil
 	}

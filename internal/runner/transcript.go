@@ -2,6 +2,7 @@ package runner
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"math"
 	"slices"
@@ -273,4 +274,54 @@ func toolInput(name string, raw json.RawMessage) string {
 	}
 	sort.Strings(keys)
 	return strings.Join(keys, ", ")
+}
+
+// maxStatusText caps the status text a checkpoint body takes.
+const maxStatusText = 1000
+
+// streamStatus is the agent's status in a main-thread assistant line: its
+// todo list (TodoWrite) or its text, whichever the line ends with; "" for
+// other lines. Subagents' lines are no status of the call.
+func streamStatus(line []byte) string {
+	var ev struct {
+		Type            string `json:"type"`
+		ParentToolUseID string `json:"parent_tool_use_id"`
+		Message         struct {
+			Content []struct {
+				Type  string `json:"type"`
+				Text  string `json:"text"`
+				Name  string `json:"name"`
+				Input struct {
+					Todos []struct {
+						Content string `json:"content"`
+						Status  string `json:"status"`
+					} `json:"todos"`
+				} `json:"input"`
+			} `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(line, &ev) != nil || ev.Type != "assistant" || ev.ParentToolUseID != "" {
+		return ""
+	}
+	status := ""
+	for _, b := range ev.Message.Content {
+		switch {
+		case b.Type == "text" && strings.TrimSpace(b.Text) != "":
+			status = strings.TrimSpace(b.Text)
+		case b.Type == "tool_use" && b.Name == "TodoWrite" && len(b.Input.Todos) > 0:
+			lines := []string{"Todo list:"}
+			for _, todo := range b.Input.Todos {
+				mark := " "
+				switch todo.Status {
+				case "completed":
+					mark = "x"
+				case "in_progress":
+					mark = ">"
+				}
+				lines = append(lines, fmt.Sprintf("- [%s] %s", mark, strings.Join(strings.Fields(todo.Content), " ")))
+			}
+			status = strings.Join(lines, "\n")
+		}
+	}
+	return textutil.Truncate(status, maxStatusText)
 }

@@ -78,6 +78,10 @@ type Runner struct {
 	// cut is where a checkpoint of a cut-off implementer call goes; nil
 	// outside the implementer part of a run.
 	cut *cutTarget
+	// lostAttempt is why the run's previous attempt ended without finishing
+	// (cutPodLost, cutOOMKill), or "": its pod's implementer call may have
+	// left work in the workspace (checkpointLostAttempt).
+	lostAttempt string
 	// changedPins are the pin files the run's branch changes; with any, every
 	// agent call of the run gets per-run toolchain directories.
 	changedPins []string
@@ -180,6 +184,18 @@ type state struct {
 	// PromptsDelivered are the last prompt ids whose answers reached the
 	// implementer's session (spec.source.promptAnswers).
 	PromptsDelivered []string `json:"promptsDelivered,omitempty"`
+	// InFlight is the implementer call running (or last cut off with the
+	// agent or the pod lost), so the next pod can save its work.
+	InFlight *inFlight `json:"inFlight,omitempty"`
+}
+
+// inFlight marks an implementer call in progress (see state.InFlight).
+type inFlight struct {
+	Run    int64  `json:"run"`
+	Step   int    `json:"step"`
+	Branch string `json:"branch"`
+	// Kind is the call's kind (implement, fix, ci, conflict).
+	Kind string `json:"kind,omitempty"`
 }
 
 // chatInFlight is persisted before a chat turn is sent.
@@ -243,8 +259,9 @@ func (r *Runner) saveState(s state) error {
 }
 
 // syncWorkspace brings the mirror up to date and hands the agent's checkout
-// exactly the commits it needs, then checks out branch.
-func (r *Runner) syncWorkspace(ctx context.Context, url, branch, base string) error {
+// exactly the commits it needs, then checks out branch. beforePrepare, if
+// set, runs in between, while the workspace is still as the last run left it.
+func (r *Runner) syncWorkspace(ctx context.Context, url, branch, base string, beforePrepare func(context.Context)) error {
 	branches := []string{base}
 	if branch != base {
 		branches = append(branches, branch)
@@ -273,6 +290,9 @@ func (r *Runner) syncWorkspace(ctx context.Context, url, branch, base string) er
 		}
 	}
 	s.done(result, kv...)
+	if beforePrepare != nil {
+		beforePrepare(ctx)
+	}
 	return r.prepareCheckout(ctx, branch, base)
 }
 
@@ -433,6 +453,12 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	// one, so one still ahead of it was cut off: the pod stopped mid-run.
 	interrupted := task.Status.Run.ActiveRunRequest > task.Status.Run.ObservedRunRequest
 	interruptions := task.Status.Run.Interruptions
+	switch r.lostAttempt = ""; {
+	case interrupted:
+		r.lostAttempt = cutPodLost
+	case task.Status.Run.OOMRetries > 0:
+		r.lostAttempt = cutOOMKill
+	}
 	if interrupted {
 		interruptions++
 		r.run.restart = fmt.Sprintf("↻ Started again: the previous attempt was interrupted (its pod stopped before the run finished, e.g. evicted or the node went down). Restart %d of at most %d.",
@@ -730,6 +756,7 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 	redialed, retried := false, false
 	run := func(inv Invocation) (*Result, error) {
 		for {
+			r.markInFlight(inv)
 			start := r.now()
 			res, err := r.Agent.Run(ctx, role.Engine, inv)
 			lost := r.agentLost(ctx, err, start)
@@ -739,6 +766,10 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 				if reason := r.cutReason(ctx, inv, res, err); reason != "" {
 					r.checkpoint(ctx, reason, res)
 				}
+			} else if retriesRestart(lost, redialed, retried) && r.cutsOff(inv) {
+				// Saved before the reset below throws the edits away; the
+				// retried call continues from the checkpoint.
+				r.checkpoint(ctx, cutContainerRestart, nil)
 			}
 			if lost == nil || !lost.notSent {
 				r.recordCall(ctx, r.newCall(role.Engine, inv, res, start))
@@ -756,9 +787,10 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 			case lost.notSent && !redialed:
 				// The agent was down before the call, nothing ran: call again.
 				redialed = true
-			case !retried && lost.Term != nil && !lost.Term.OOMKilled():
+			case retriesRestart(lost, redialed, retried):
 				// A crash may not happen again; running out of memory would.
-				// The killed call's edits (and a stale git lock) go first.
+				// The killed call's edits (saved above when it is the
+				// implementer's) and a stale git lock go first.
 				retried = true
 				r.log().Info("agent container restarted during the call, trying once more", "reason", lost.Term.Reason, "exitCode", lost.Term.ExitCode)
 				if err := r.Agent.Reset(ctx); err != nil {

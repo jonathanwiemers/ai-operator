@@ -667,6 +667,18 @@ findings. The checkpoint is recorded in the task's `status.run.checkpoint`
 step. It starts no pipeline and never counts as the pushed or reviewed
 commit.
 
+The same happens before the work tree is reset after an agent container
+restart (`container-restart`; the call is then tried again from the
+checkpoint), and in the new pod after a lost pod or an OOM kill
+(`pod-lost`, `oom-kill`), before it resets the workspace. For that the
+runner notes the implementer call in flight in its state on the volume, and
+the new pod saves only when the workspace is on the task's branch and its
+`HEAD` is the last pushed commit or descends from it. Step commits the lost
+pod made but had not pushed are pushed with it. Where the runner has no
+result of the call, the commit body takes the agent's last todo list or
+message, which the agent container keeps in `.git/ai-last-status` while a
+call runs.
+
 | Field | Default | Description |
 |-------|---------|-------------|
 | `disabled` | `false` | save no checkpoints: the work of a call that is cut off is reset with the workspace by the next run |
