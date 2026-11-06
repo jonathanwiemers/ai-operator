@@ -153,7 +153,8 @@ Most of this came up in the retrospectives of Bloop %20–%24 and ai-operator
   reconstructed and not recorded.
 - R6 Apply decision 4 in `CallUsage` and `agentCall` (`calls.go`).
 - R7 Apply decision 5 to chat turns, or record in the spec why they are not
-  affected.
+  affected. Chat turns are affected and record deltas; see "R7: chat turns
+  record deltas" below.
 - R8 `SpendSummary`, the Spend tab and the retrospective's cost drivers show
   unmetered calls (decision 7).
 
@@ -351,6 +352,48 @@ the session's earlier totals (R5, point 2), so from R6 on their tokens
 include them too, as their by-model split and their cost already did. The
 basis is one, the over-count is not new to the split; R7 is to remove it for
 tokens, models and cost alike.
+
+### R7: chat turns record deltas
+
+The Desk chat is the only long-lived process (`ClaudeSession`). Per R5,
+`modelUsage` and `total_cost_usd` are running totals of the session and
+`subagent_stats` of the process, so chat turns were affected: turn n
+recorded turns 1 to n again. `usage`, `num_turns` and `duration_ms` are per
+result (the recorded resumed chat reports `num_turns: 1` on both turns), as
+are `ContextSeries` and `ReadGateBlocks`, which come from the turn's stream.
+
+`ClaudeSession.perTurn` keeps the previous result's totals and makes each
+result hold its turn only, before `agentCall` builds the row and
+`finishChatTurn` adds `res.CostUSD` to the task:
+
+- Models and cost: `model_usage_since_last_result` when the result carries
+  it (cost = the sum of its `costUSD`), as R5 recommends and the CLI
+  bundle advises. Otherwise `modelUsage` and `total_cost_usd` minus the
+  previous result's; a model missing there counts from zero, a model
+  without change is dropped from the turn.
+- Subagent count: `subagent_stats.spawned` minus the previous result's.
+- A figure that shrinks is clamped to zero and logged ("claude session
+  totals shrank between turns").
+- The first result of a process is recorded as is. A restarted or resumed
+  chat is a new process, so it starts a new baseline.
+
+**Gap:** the chat resumes by ID in a new process (after a restart, a dead
+session or `--resume`). Its first turn's `modelUsage` and `total_cost_usd`
+then carry the session's earlier calls (R5, point 2). With
+`model_usage_since_last_result` (claude 2.1.318, stream-json) that turn is
+right. Without it, the turn records the carried-over totals: no baseline is
+stored across processes and nothing is backfilled.
+
+**Not changed:** one-shot calls (`runCLI`), `--resume` ones included, still
+record the result as is. Their over-count (R6) stays until they take
+`model_usage_since_last_result` too.
+
+What changes for spend and budgets, on new rows only (decision 6): Desk chat
+spend goes **down**, tokens and USD alike, because a turn no longer counts
+the earlier turns of its session again. On the two-turn fixture, turn 2
+goes from 47,029 tokens and $0.1387 to 31,876 tokens and $0.0412. Budgets
+read the same spend, so a project that chats a lot reaches its budget later
+than before. Old rows keep their totals.
 
 ### R9: how Bloop %20 reached done
 

@@ -33,7 +33,19 @@ type ClaudeSession struct {
 	id                   string
 	dead, closed, inTurn bool
 	reqSeq               atomic.Uint64
+	// prev holds the running totals of the process's previous result; nil
+	// before the first. Only Prompt (under promptMu) touches it.
+	prev *turnTotals
 	sessionProc
+}
+
+// turnTotals are the figures of a claude result that sum up over the turns
+// of one process: modelUsage and total_cost_usd (of the session) and
+// subagent_stats.spawned (of the process).
+type turnTotals struct {
+	cost      float64
+	models    map[string]ModelUsage
+	subagents int32
 }
 
 // StartSession opens a ClaudeSession. It implements SessionEngine.
@@ -158,6 +170,7 @@ func (s *ClaudeSession) Prompt(ctx context.Context, text string, fn func(Event))
 					return nil, err
 				}
 				res.Usage = tr.usage
+				s.perTurn(tr.log, res)
 				tr.addCallUsage(res)
 				emit()
 				if res.IsError {
@@ -183,6 +196,81 @@ func (s *ClaudeSession) Prompt(ctx context.Context, text string, fn func(Event))
 			}
 			return nil, ctx.Err()
 		}
+	}
+}
+
+// perTurn makes res hold this turn only (R7 of
+// docs/specs/honest-reporting.spec.md). Models and cost are
+// model_usage_since_last_result when the CLI sent it, else modelUsage and
+// total_cost_usd minus the previous result's (a model missing there counts
+// from zero, a model without change is dropped). The subagent count is
+// subagent_stats minus the previous result's. A shrinking figure is clamped
+// to zero and logged. The first result of a process keeps its figures:
+// after --resume without model_usage_since_last_result they include the
+// session's earlier calls, for which no baseline is stored.
+func (s *ClaudeSession) perTurn(log logr.Logger, res *Result) {
+	prev, u := s.prev, res.CallUsage
+	cur := &turnTotals{cost: res.CostUSD, models: map[string]ModelUsage{}}
+	if u != nil {
+		cur.subagents = u.SubagentCalls
+		for _, m := range u.Models {
+			cur.models[m.Model] = m
+		}
+	}
+	s.prev = cur
+	since := u != nil && u.sinceLast != nil
+	if since {
+		u.Models, res.CostUSD = u.sinceLast, 0
+		for _, m := range u.Models {
+			res.CostUSD += m.CostUSD
+		}
+	}
+	if prev == nil {
+		return
+	}
+	shrank := false
+	d := func(a, b int64) int64 {
+		if a < b {
+			shrank = true
+			return 0
+		}
+		return a - b
+	}
+	df := func(a, b float64) float64 {
+		if a < b {
+			shrank = true
+			return 0
+		}
+		return a - b
+	}
+	if !since {
+		res.CostUSD = df(res.CostUSD, prev.cost)
+		for name := range prev.models {
+			if _, ok := cur.models[name]; !ok {
+				shrank = true
+			}
+		}
+		if u != nil {
+			var models []ModelUsage
+			for _, m := range u.Models {
+				p := prev.models[m.Model]
+				m = ModelUsage{Model: m.Model, InputTokens: d(m.InputTokens, p.InputTokens), OutputTokens: d(m.OutputTokens, p.OutputTokens),
+					CacheReadTokens: d(m.CacheReadTokens, p.CacheReadTokens), CacheWriteTokens: d(m.CacheWriteTokens, p.CacheWriteTokens),
+					CostUSD: df(m.CostUSD, p.CostUSD)}
+				if m != (ModelUsage{Model: m.Model}) {
+					models = append(models, m)
+				}
+			}
+			u.Models = models
+		}
+	}
+	if u != nil {
+		u.SubagentCalls = int32(d(int64(u.SubagentCalls), int64(prev.subagents)))
+	}
+	if shrank {
+		log.Info("claude session totals shrank between turns, clamped to zero",
+			"session", res.SessionID, "costUSD", cur.cost, "previousCostUSD", prev.cost,
+			"subagents", cur.subagents, "previousSubagents", prev.subagents)
 	}
 }
 

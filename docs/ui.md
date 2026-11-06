@@ -164,7 +164,9 @@ the tab says it needs the database):
   cost without tokens: *includes $X from runs before token tracking*.
   A call's tokens include its subagents (the sum of its models), so the
   totals, the drill-down and the breakdowns add up to the same tokens.
-  Calls recorded before that count the main thread only.
+  Calls recorded before that count the main thread only. A Desk chat turn
+  counts only that turn's tokens, models and cost; turns recorded before
+  that counted all earlier turns of their chat session again.
 * **Drill-down:** a table one level down, with calls, tokens, cost and a
   share bar per row: a project's milestones, a milestone's issues (and
   its own spec, pilot and retro calls), an issue's runs, a run's calls.

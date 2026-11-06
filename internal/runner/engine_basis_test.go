@@ -174,7 +174,7 @@ func TestBasisChatRunningTotals(t *testing.T) {
 		}
 	}
 	turn1, turn2 := messageTokens(lines[:cut], true), messageTokens(lines[cut+1:], true)
-	results := sessionTurns(t, path, cut+1, 2)
+	results := rawResults(t, path)
 	r1, r2 := results[0], results[1]
 
 	if got := usageTokens(r1.CallUsage); got != turn1 {
@@ -221,16 +221,15 @@ func TestBasisResumeCarriesTotals(t *testing.T) {
 func TestBasisResumedChatKeepsTotals(t *testing.T) {
 	path, lines := basisFixture(t, "claude-chat-resume-two-turns.jsonl", "recorded")
 	var resultLines []basisLine
-	var cut int
-	for i, l := range lines {
+	for _, l := range lines {
 		if l.Type == "result" {
-			if cut == 0 {
-				cut = i
-			}
 			resultLines = append(resultLines, l)
 		}
 	}
-	results := sessionTurns(t, path, cut+1, 2)
+	results := rawResults(t, path)
+	if len(results) != 2 {
+		t.Fatalf("%d results, want 2", len(results))
+	}
 	for i, res := range results {
 		checkCarried(t, lines[1], res, resultLines[i])
 		if idx := resultLines[i].ResultIndex; idx == nil || *idx != i {
@@ -287,6 +286,29 @@ func sameModels(got, want []ModelUsage) bool {
 func closeTo(a, b float64) bool {
 	d := a - b
 	return d < 1e-9 && d > -1e-9
+}
+
+// rawResults parses each result line of the fixture as the CLI wrote it.
+// ClaudeSession turns them into per-turn figures (TestClaudeSessionTurnDeltas).
+func rawResults(t *testing.T, path string) []*Result {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []*Result
+	for _, raw := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var l basisLine
+		if err := json.Unmarshal([]byte(raw), &l); err != nil || l.Type != "result" {
+			continue
+		}
+		res, err := ParseResult([]byte(raw))
+		if err != nil || res.CallUsage == nil {
+			t.Fatalf("result line %d: %v, CallUsage %v", len(out), err, res)
+		}
+		out = append(out, res)
+	}
+	return out
 }
 
 // sessionTurns runs a ClaudeSession whose fake prints the fixture's lines up

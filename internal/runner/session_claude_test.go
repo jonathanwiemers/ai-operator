@@ -6,10 +6,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/go-logr/logr"
+	"github.com/go-logr/logr/funcr"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
 func sessionFake(t *testing.T, script string) string {
@@ -305,5 +311,117 @@ while read -r line; do :; done
 	}
 	if _, err := s.Prompt(context.Background(), "again", nil); err == nil {
 		t.Fatal("the session must be over after an ignored interrupt")
+	}
+}
+
+// TestClaudeSessionTurnDeltas (R7): on the two-turn chat fixture the second
+// result holds only turn 2: tokens, models and cost. The first is as is.
+// One-shot calls keep the result's figures (TestBasisResumeCarriesTotals,
+// TestBasisUsageExcludesSubagents).
+func TestClaudeSessionTurnDeltas(t *testing.T) {
+	path, lines := basisFixture(t, "claude-chat-two-turns.jsonl", "reconstructed")
+	cut := slices.IndexFunc(lines, func(l basisLine) bool { return l.Type == "result" })
+	turn1, turn2 := messageTokens(lines[:cut], true), messageTokens(lines[cut+1:], true)
+	raw := rawResults(t, path)
+	results := sessionTurns(t, path, cut+1, 2)
+
+	if got := modelsTokens(results[0].CallUsage); got != turn1 || results[0].CostUSD != raw[0].CostUSD {
+		t.Errorf("turn 1: models %v cost %v, want as reported %v %v", got, results[0].CostUSD, turn1, raw[0].CostUSD)
+	}
+	r2 := results[1]
+	if got := modelsTokens(r2.CallUsage); got != turn2 {
+		t.Errorf("turn 2 models %v, want turn 2 alone %v", got, turn2)
+	}
+	if want := raw[1].CostUSD - raw[0].CostUSD; !closeTo(r2.CostUSD, want) {
+		t.Errorf("turn 2 cost %v, want %v", r2.CostUSD, want)
+	}
+	if ms := r2.CallUsage.Models; len(ms) != 1 || ms[0].Model != "claude-opus-5-5" || !closeTo(ms[0].CostUSD, r2.CostUSD) {
+		t.Errorf("turn 2 models %+v", ms)
+	}
+	c := agentCall(aiv1.EngineClaude, Invocation{}, r2, time.Now(), time.Now())
+	if got := (tokens{c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheWriteTokens}); got != turn2 || c.CostUSD != aiv1.FormatCost(r2.CostUSD) {
+		t.Errorf("turn 2 row: tokens %v cost %s, want %v %s", got, c.CostUSD, turn2, aiv1.FormatCost(r2.CostUSD))
+	}
+}
+
+// TestClaudeSessionResumedTurnsSinceLast (recorded): a resumed process whose
+// turns made no model call records nothing, although modelUsage and
+// total_cost_usd carry the saved totals: model_usage_since_last_result is {}.
+func TestClaudeSessionResumedTurnsSinceLast(t *testing.T) {
+	path, lines := basisFixture(t, "claude-chat-resume-two-turns.jsonl", "recorded")
+	cut := slices.IndexFunc(lines, func(l basisLine) bool { return l.Type == "result" })
+	for i, res := range sessionTurns(t, path, cut+1, 2) {
+		if res.CostUSD != 0 || len(res.CallUsage.Models) != 0 {
+			t.Errorf("turn %d: cost %v models %+v, want nothing", i+1, res.CostUSD, res.CallUsage.Models)
+		}
+	}
+}
+
+// TestClaudeSessionTurnDeltasWithoutSinceLast: without
+// model_usage_since_last_result each result's running totals minus the
+// previous one's. A new model counts from zero, an unchanged one is dropped,
+// and a shrinking figure is clamped to zero and logged.
+func TestClaudeSessionTurnDeltasWithoutSinceLast(t *testing.T) {
+	bin := sessionFake(t, `#!/bin/sh
+n=0
+while read -r line; do
+  n=$((n+1))
+  case $n in
+  1) echo '{"type":"result","subtype":"success","session_id":"s","num_turns":1,"total_cost_usd":0.5,"usage":{"input_tokens":10,"output_tokens":100},"modelUsage":{"opus":{"inputTokens":10,"outputTokens":100,"cacheReadInputTokens":1000,"cacheCreationInputTokens":200,"costUSD":0.5}},"subagent_stats":{"spawned":1}}' ;;
+  2) echo '{"type":"result","subtype":"success","session_id":"s","num_turns":2,"total_cost_usd":0.8,"usage":{"input_tokens":5,"output_tokens":60},"modelUsage":{"opus":{"inputTokens":15,"outputTokens":160,"cacheReadInputTokens":2000,"cacheCreationInputTokens":300,"costUSD":0.6},"haiku":{"inputTokens":5,"outputTokens":50,"cacheReadInputTokens":0,"cacheCreationInputTokens":500,"costUSD":0.2}},"subagent_stats":{"spawned":3}}' ;;
+  *) echo '{"type":"result","subtype":"success","session_id":"s","num_turns":1,"total_cost_usd":0.7,"usage":{"input_tokens":1,"output_tokens":2},"modelUsage":{"opus":{"inputTokens":15,"outputTokens":160,"cacheReadInputTokens":2000,"cacheCreationInputTokens":300,"costUSD":0.6},"haiku":{"inputTokens":5,"outputTokens":40,"cacheReadInputTokens":0,"cacheCreationInputTokens":500,"costUSD":0.1}},"subagent_stats":{"spawned":3}}' ;;
+  esac
+done
+`)
+	s, err := (&ClaudeCLI{Binary: bin, Env: os.Environ()}).Start(context.Background(), Invocation{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var logs []string
+	ctx := logr.NewContext(context.Background(), funcr.New(func(_, args string) { logs = append(logs, args) }, funcr.Options{}))
+	var results []*Result
+	logsAfter2 := -1
+	for i := range 3 {
+		res, err := s.Prompt(ctx, "turn", nil)
+		if err != nil {
+			t.Fatalf("turn %d: %v", i+1, err)
+		}
+		results = append(results, res)
+		if i == 1 {
+			logsAfter2 = len(logs)
+		}
+	}
+
+	if u := results[0].CallUsage; results[0].CostUSD != 0.5 || u.SubagentCalls != 1 || len(u.Models) != 1 || u.Models[0].OutputTokens != 100 {
+		t.Errorf("turn 1 not as reported: cost %v %+v", results[0].CostUSD, u)
+	}
+	u := results[1].CallUsage
+	want := []ModelUsage{
+		{Model: "haiku", InputTokens: 5, OutputTokens: 50, CacheWriteTokens: 500, CostUSD: 0.2},
+		{Model: "opus", InputTokens: 5, OutputTokens: 60, CacheReadTokens: 1000, CacheWriteTokens: 100, CostUSD: 0.1},
+	}
+	if len(u.Models) != 2 || !closeTo(results[1].CostUSD, 0.3) || u.SubagentCalls != 2 || u.Turns != 2 || u.OutputTokens != 60 {
+		t.Fatalf("turn 2: cost %v %+v", results[1].CostUSD, u)
+	}
+	for i, m := range u.Models {
+		w := want[i]
+		if !closeTo(m.CostUSD, w.CostUSD) {
+			t.Errorf("turn 2 %s cost %v, want %v", m.Model, m.CostUSD, w.CostUSD)
+		}
+		m.CostUSD, w.CostUSD = 0, 0
+		if m != w {
+			t.Errorf("turn 2 model %+v, want %+v", m, w)
+		}
+	}
+	if logsAfter2 != 0 {
+		t.Errorf("logged before anything shrank: %v", logs)
+	}
+	u = results[2].CallUsage
+	if results[2].CostUSD != 0 || len(u.Models) != 0 || u.SubagentCalls != 0 || u.OutputTokens != 2 {
+		t.Errorf("turn 3 (shrank): cost %v %+v, want zero and usage as reported", results[2].CostUSD, u)
+	}
+	if len(logs) != 1 || !strings.Contains(logs[0], "shrank") {
+		t.Errorf("logs %v, want one about the shrink", logs)
 	}
 }

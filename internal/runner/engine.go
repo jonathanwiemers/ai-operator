@@ -126,6 +126,10 @@ type CallUsage struct {
 	// SubagentCalls is how many subagents claude started (subagent_stats,
 	// else the distinct parent_tool_use_ids of the stream).
 	SubagentCalls int32
+	// sinceLast is claude's model_usage_since_last_result, sorted by name:
+	// non-nil (maybe empty) when the result carried it. ClaudeSession reads
+	// it (perTurn); one-shot calls record Models.
+	sinceLast []ModelUsage
 	// ContextSeries is the context size (input + cache tokens) of each
 	// main-thread assistant turn, thinned to maxContextPoints.
 	ContextSeries []int64
@@ -638,15 +642,12 @@ func ParseResult(out []byte) (*Result, error) {
 			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
 		} `json:"usage"`
-		ModelUsage map[string]struct {
-			InputTokens              int64   `json:"inputTokens"`
-			OutputTokens             int64   `json:"outputTokens"`
-			CacheReadInputTokens     int64   `json:"cacheReadInputTokens"`
-			CacheCreationInputTokens int64   `json:"cacheCreationInputTokens"`
-			CostUSD                  float64 `json:"costUSD"`
-		} `json:"modelUsage"`
-		NumTurns   *int32 `json:"num_turns"`
-		DurationMS *int64 `json:"duration_ms"`
+		ModelUsage map[string]modelFigures `json:"modelUsage"`
+		// SinceLast (stream-json, @internal in the CLI) is what the process
+		// counted since its previous result.
+		SinceLast  map[string]modelFigures `json:"model_usage_since_last_result"`
+		NumTurns   *int32                  `json:"num_turns"`
+		DurationMS *int64                  `json:"duration_ms"`
 		// SubagentStats has more (by_type, completed, failed, …); spawned
 		// counts every subagent started, nested ones included.
 		SubagentStats *struct {
@@ -688,18 +689,37 @@ func ParseResult(out []byte) (*Result, error) {
 		if raw.SubagentStats != nil {
 			u.SubagentCalls = raw.SubagentStats.Spawned
 		}
-		for name, m := range raw.ModelUsage {
-			u.Models = append(u.Models, ModelUsage{
-				Model:       name,
-				InputTokens: m.InputTokens, OutputTokens: m.OutputTokens,
-				CacheReadTokens: m.CacheReadInputTokens, CacheWriteTokens: m.CacheCreationInputTokens,
-				CostUSD: m.CostUSD,
-			})
+		u.Models = modelList(raw.ModelUsage)
+		if raw.SinceLast != nil {
+			u.sinceLast = append([]ModelUsage{}, modelList(raw.SinceLast)...)
 		}
-		slices.SortFunc(u.Models, func(a, b ModelUsage) int { return strings.Compare(a.Model, b.Model) })
 		res.CallUsage = u
 	}
 	return res, nil
+}
+
+// modelFigures is one model's entry in claude's modelUsage.
+type modelFigures struct {
+	InputTokens              int64   `json:"inputTokens"`
+	OutputTokens             int64   `json:"outputTokens"`
+	CacheReadInputTokens     int64   `json:"cacheReadInputTokens"`
+	CacheCreationInputTokens int64   `json:"cacheCreationInputTokens"`
+	CostUSD                  float64 `json:"costUSD"`
+}
+
+// modelList is ms sorted by model name, nil if ms is empty.
+func modelList(ms map[string]modelFigures) []ModelUsage {
+	var out []ModelUsage
+	for name, m := range ms {
+		out = append(out, ModelUsage{
+			Model:       name,
+			InputTokens: m.InputTokens, OutputTokens: m.OutputTokens,
+			CacheReadTokens: m.CacheReadInputTokens, CacheWriteTokens: m.CacheCreationInputTokens,
+			CostUSD: m.CostUSD,
+		})
+	}
+	slices.SortFunc(out, func(a, b ModelUsage) int { return strings.Compare(a.Model, b.Model) })
+	return out
 }
 
 // Decode unmarshals the structured output into v. It falls back to the first
