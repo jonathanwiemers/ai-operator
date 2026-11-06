@@ -390,8 +390,16 @@ func (run *implementRun) addInputs(ctx context.Context) error {
 	run.ciFix = ciPipeline != 0 && ciPipeline != task.Status.Run.CIFixedPipelineID
 	if run.ciFix {
 		run.out.CIFixedPipelineID = ciPipeline
-		s := r.step(ctx, "read failed CI jobs", "pipeline", ciPipeline)
-		ciPrompt, err := buildCIPrompt(ctx, run.gl, run.glProject, ciPipeline, conventionalPointer(run.types))
+		// The companion's pipeline is read with the companion's client.
+		gl, project, companion := run.gl, run.glProject, task.Spec.Source.CIFixProject != ""
+		if companion {
+			project = task.Spec.Source.CIFixProject
+			if cgl := run.companionGL(); cgl != nil {
+				gl = cgl
+			}
+		}
+		s := r.step(ctx, "read failed CI jobs", "pipeline", ciPipeline, "project", project)
+		ciPrompt, err := buildCIPrompt(ctx, gl, project, ciPipeline, companion, conventionalPointer(run.types))
 		if err != nil {
 			return s.fail(err)
 		}
@@ -877,8 +885,10 @@ func (run *implementRun) report(ctx context.Context) error {
 	needsInput := answer.Status == "needs_input" || answer.asks()
 	run.needsInput = needsInput
 	// With the CI loop, a fresh push stays in "working" until the operator
-	// has seen its pipeline go green (or hands it back).
-	waitForCI := !spec.CI.Disabled && out.PushedSHA != "" && !needsInput
+	// has seen its pipeline go green (or hands it back); so does a fresh
+	// companion push next to a pushed home head.
+	pushedCI := out.PushedSHA != "" || out.CompanionPushed && task.Status.Run.PushedSHA != ""
+	waitForCI := !spec.CI.Disabled && pushedCI && !needsInput
 	pending := !waitForCI && r.morePending(ctx, task.Spec.RunRequest)
 	// The owners are mentioned where the answer is wanted: questions on the
 	// issue, by the operator's comments of their prompts, everything else on

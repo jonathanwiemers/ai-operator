@@ -8,6 +8,7 @@ import (
 
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/naming"
 )
 
 // Limits for what a CI fix prompt contains: enough to see the failure,
@@ -70,16 +71,23 @@ func failedJobs(ctx context.Context, gl gitlab.API, glProject string, pipelineID
 	return out, nil
 }
 
-// buildCIPrompt asks the implementer to fix a red pipeline. The jobs and
-// their logs come from CI and are therefore given as untrusted data; note
+// buildCIPrompt asks the implementer to fix a red pipeline of glProject:
+// the home project, or with companion the companion repository, whose
+// checkout the prompt names. The jobs and their logs
+// come from CI and are therefore given as untrusted data; note
 // (conventionalPointer) ends the instructions before them.
-func buildCIPrompt(ctx context.Context, gl gitlab.API, glProject string, pipelineID int64, note string) (string, error) {
+func buildCIPrompt(ctx context.Context, gl gitlab.API, glProject string, pipelineID int64, companion bool, note string) (string, error) {
 	logs, err := jobLogs(ctx, gl, glProject, pipelineID)
 	if err != nil {
 		return "", err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "The CI pipeline for your last push failed (pipeline %d). Find and fix the cause, then run the relevant checks locally.\n", pipelineID)
+	if companion {
+		fmt.Fprintf(&b, "The companion repository's pipeline failed (%s, pipeline %d), checkout %s. Find and fix the cause there, then run the relevant checks locally.\n",
+			glProject, pipelineID, CompanionDir(agentWorkspaceRoot, naming.ProjectSlug(glProject)))
+	} else {
+		fmt.Fprintf(&b, "The CI pipeline for your last push failed (pipeline %d). Find and fix the cause, then run the relevant checks locally.\n", pipelineID)
+	}
 	if logs == "" {
 		b.WriteString("\nNo failed job details are available; check the build and tests yourself.\n")
 	}

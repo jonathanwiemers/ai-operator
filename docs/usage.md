@@ -931,6 +931,10 @@ An MR is merged only when all of these hold:
   it (conflicts during the rebase, a failed rebase, or a change too large to
   check), the agent merges the default branch and resolves the conflicts. That
   run is reviewed and checked by CI like any other, then the gate runs again.
+- With a [companion repository](#companion-repository): the companion is
+  green on its pushed head, reviewed at it, open and mergeable (a draft
+  counts; one rebase if it needs one), see
+  [Before the home merge](#companion-repository).
 
 The merge call passes the checked commit (`sha`), so GitLab refuses to merge
 anything else.
@@ -1192,7 +1196,9 @@ companion head. Ends by itself like `needsInput`.
 
 #### `ciRed`
 
-CI is red with jobs that also fail on the default branch. Ends by itself
+CI is red with jobs that also fail on the default branch, or the
+[companion's](#companion-repository) pipeline is red (also after the fix
+rounds; the reason names the companion). Ends by itself
 like `needsInput`, and when [main health](#main-health) reports the default
 branch green at a commit the MR is not based on: autopilot rebases the MR
 once (the self-heal of a `BaseFailing` MR above) and the new pipeline
@@ -1257,6 +1263,24 @@ The milestone, or an open issue of it, spent its budget. Ends by itself once
 the budget is raised above the spend or removed (`/agent budget <usd>` in
 the milestone description, or on the issue for its own budget); see
 [Budget](#budget). `/agent resume` alone pauses again.
+
+#### `companion`
+
+The [companion's](#companion-repository) merge request cannot follow the
+home merge: it was closed, a rebase did not resolve its conflicts or it
+still needs one, it needs an approval or has unresolved discussions, someone
+pushed to its branch, or GitLab reports another blocking status. (A red
+companion pipeline pauses with `ciRed`, an unreviewed one with
+`notReviewed`.) Ends by itself when the companion's merge request can be
+merged again (also after a rebase by hand: the rebased head is taken over,
+its review holds if the change is the same), or is merged by hand.
+
+- Fix the companion's merge request in GitLab (resolve its conflicts or
+  discussions, approve it), then `/agent resume`: the merge gate checks it
+  again.
+- `/agent resume`: the merge gate checks the companion again.
+- `/agent skip #N`: the issue is skipped; its companion merge request is
+  left to the owners.
 
 ### Budget
 
@@ -1454,6 +1478,37 @@ claude is started with `--add-dir /workspace/repos/<slug>`. A cursor
 implementer is moved to claude for such a run, see
 [Fallback engine](configuration.md#fallback-engine). The system prompts
 are the same with and without a companion.
+
+**CI.** The [CI loop](#ci-feedback) follows the companion's pipeline of
+`status.run.companion.pushedSHA` too (the companion merge request's head
+pipeline if its head is that commit, else the newest pipeline of the
+commit), with the same rules: the failed jobs are retried once, a canceled
+pipeline goes to review with a comment, none within `ci.noPipelineTimeout`
+counts as no CI. The default-branch check is the home project's only. The
+issue stays in `agent::working` until both trees are done, and the state is
+in `status.ci.companion` (`sha`, `state`, `pipelineID`, `failedJobs`,
+`since`). A red companion pipeline gets a CI fix run like a red home one:
+`spec.source.ciFixProject` names the companion, and the fix prompt names its
+pipeline and checkout and has its jobs and logs. Both trees share the fix
+rounds (`ci.maxFixRounds`, counted in `status.run.ciRound`); if both are
+red, home is fixed first. A companion still red after the rounds moves the
+issue to `agent::needs-input`, with a comment naming the companion.
+
+**Before the home merge.** On autopilot the [merge gate](#the-merge-gate)
+also needs the companion green on its pushed head, reviewed at that head,
+open, and mergeable by GitLab's `detailed_merge_status`. It stays a draft
+until it lands, so `draft_status` counts as mergeable (a draft with
+conflicts does not). On `need_rebase` or a conflict the operator asks
+GitLab to rebase the companion's merge request once per companion head
+(`spec.source.companionRebase`); its rebased head becomes the pushed one,
+keeps its review if the change hashes the same (like a rebase of the home
+MR), and is checked by CI before the home merge. A red companion pauses
+with [`ciRed`](#cired), an unreviewed one with
+[`notReviewed`](#notreviewed), both naming the companion; anything else that
+blocks it (closed, a conflict the rebase did not fix, an approval, open
+discussions, someone pushed to its branch) pauses with
+[`companion`](#companion). `/agent merge #N <sha>` skips the review checks
+of both trees; CI and the companion's open and mergeable checks still apply.
 
 ### Commands on the tracking issue
 

@@ -112,7 +112,7 @@ func TestCIGreenRequestsReview(t *testing.T) {
 		t.Fatalf("the ping must be recorded: %+v", ci)
 	}
 	is := *e.gl.Issues[42]
-	if err := e.r.finishCI(e.ctx, e.gl, testProject().Spec.WithDefaults(), is, &task, nil, ci, aiv1.CIStateSuccess, ""); err != nil {
+	if err := e.r.finishCI(e.ctx, e.gl, testProject().Spec.WithDefaults(), is, &task, nil, ci.DeepCopy(), ci, ""); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(e.gl.MRNotes[mr.IID]); n != 1 {

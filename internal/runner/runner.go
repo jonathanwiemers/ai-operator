@@ -137,6 +137,9 @@ type Outcome struct {
 	// PushedSHA is set when the run pushed; CIRound goes with it.
 	PushedSHA string
 	CIRound   int32
+	// CompanionPushed is set when the run pushed a new companion head (its
+	// status.run.companion is written by the run); CIRound goes with it too.
+	CompanionPushed bool
 	// CIFixedPipelineID is set by CI fix runs.
 	CIFixedPipelineID int64
 	// MergedBaseFor is set by runs that merged the default branch.
@@ -677,6 +680,8 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 			s.PushedAt = &metav1.Time{Time: r.now()}
 			s.CIRound = out.CIRound
 			s.Checkpoint = nil // a regular head is on the branch now
+		} else if out.CompanionPushed {
+			s.CIRound = out.CIRound // the fix rounds are shared by both trees
 		}
 		if out.CIFixedPipelineID != 0 {
 			s.CIFixedPipelineID = out.CIFixedPipelineID

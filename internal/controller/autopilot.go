@@ -821,6 +821,10 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 		// it ready and run CI before anything is merged.
 		return a.readyForCI(ctx, it, mr, task)
 	}
+	// The companion's merge request must be able to follow (companionGate).
+	if pass, err := a.companionGate(ctx, it, task); err != nil || !pass {
+		return err
+	}
 	switch mr.DetailedMergeStatus {
 	case "mergeable":
 	case "draft_status":
@@ -905,7 +909,7 @@ func (a *autopilot) readyForCI(ctx context.Context, it *aiv1.AutopilotItem, mr *
 		return fmt.Errorf("starting a pipeline for !%d: %w", mr.IID, err)
 	}
 	orig := task.DeepCopy()
-	task.Status.CI = nil
+	task.Status.CI = homeCIReset(task.Status.CI, mr.SHA)
 	task.Status.Run.PushedAt = &metav1.Time{Time: a.r.now()}
 	if err := a.r.Status().Patch(ctx, task, client.MergeFrom(orig)); err != nil {
 		return err
@@ -1033,6 +1037,17 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 			return a.merged(ctx, it, mr)
 		}
 	}
+	if a.ap.PauseKind == aiv1.PauseCompanion && task != nil {
+		// The pause holds as long as the companion's merge request does.
+		v, err := a.companionCheck(ctx, task)
+		switch {
+		case err != nil:
+			a.log.Info("could not check the paused issue's companion", "issue", it.IID, "error", err.Error())
+		case v.state == companionOK || v.state == companionRebased:
+			return resume(fmt.Sprintf("the companion of #%d can go on", it.IID))
+		}
+		return nil
+	}
 	if !a.ap.ResumeWhenReady {
 		return nil
 	}
@@ -1092,6 +1107,10 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 		return gateResult{state: gateFailed, kind: kind, reason: fmt.Sprintf(format, args...), byRun: byRun}
 	}
 	switch {
+	case is.HasLabel(wf.NeedsInputLabel) && task != nil && companionCIRed(task) != "":
+		// The CI loop handed the red companion to a human after the fix
+		// rounds: red CI, in the companion.
+		return failed(true, aiv1.PauseCIRed, "%s", companionCIRed(task))
 	case is.HasLabel(wf.NeedsInputLabel):
 		return failed(true, aiv1.PauseNeedsInput, "#%d needs input (see its last comments): CI is still red, the run failed or the agent asked a question", it.IID)
 	case !hasAny(is, wf.ActiveLabels()...):
@@ -1134,7 +1153,40 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 	case ci.State == aiv1.CIStateFailed:
 		return failed(true, aiv1.PauseCIRed, "CI of !%d is red (%s)", it.MergeRequestIID, jobList(ci.FailedJobs))
 	}
+	// The companion must be green on its pushed head too. No pipeline (None)
+	// passes like at home: its landing checks it again before its merge.
+	if c := run.Companion; c != nil && c.PushedSHA != "" {
+		ref := companionRef(c)
+		switch cc := task.Status.CI.Companion; {
+		case cc == nil || cc.SHA != c.PushedSHA || !cc.State.Final():
+			return gateResult{state: gateCIUnfinished}
+		case cc.State == aiv1.CIStateCanceled:
+			return failed(true, aiv1.PauseCICanceled, "the pipeline of the companion %s was canceled", ref)
+		case cc.State == aiv1.CIStateFailed:
+			return failed(true, aiv1.PauseCIRed, "CI of the companion %s is red (%s)", ref, jobList(cc.FailedJobs))
+		}
+	}
 	return gateResult{state: gatePassed}
+}
+
+// companionRef names a companion merge request, "group/infra!3", or its
+// project without one.
+func companionRef(c *aiv1.CompanionRun) string {
+	if c.MRIID == 0 {
+		return c.Project
+	}
+	return fmt.Sprintf("%s!%d", c.Project, c.MRIID)
+}
+
+// companionCIRed is the reason a companion pipeline that stayed red after
+// the fix rounds holds the issue, "" if it did not.
+func companionCIRed(task *aiv1.AgentTask) string {
+	c, ci := task.Status.Run.Companion, task.Status.CI
+	if c == nil || c.PushedSHA == "" || ci == nil || ci.SHA != task.Status.Run.PushedSHA || ci.State == aiv1.CIStateFailed ||
+		ci.Companion == nil || ci.Companion.SHA != c.PushedSHA || ci.Companion.State != aiv1.CIStateFailed {
+		return ""
+	}
+	return fmt.Sprintf("CI of the companion %s is still red after %d fix rounds (%s)", companionRef(c), task.Status.Run.CIRound, jobList(ci.Companion.FailedJobs))
 }
 
 // mergeBase asks the agent to merge the default branch into the MR and
@@ -1164,7 +1216,7 @@ func (a *autopilot) rebase(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 	if it.Rebases > 0 {
 		return a.mergeBase(ctx, it, mr, task, fmt.Sprintf("!%d still cannot be merged after a rebase", mr.IID))
 	}
-	diff, err := a.diffHash(ctx, mr.IID)
+	diff, err := a.diffHash(ctx, a.spec.GitLab.Project, mr.IID)
 	if err != nil {
 		return err
 	}
@@ -1217,7 +1269,7 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 	// The review only holds if the rebase moved the change without changing
 	// it; a commit pushed meanwhile, or a rebase that had to adapt lines,
 	// changes the diff.
-	diff, err := a.diffHash(ctx, mr.IID)
+	diff, err := a.diffHash(ctx, a.spec.GitLab.Project, mr.IID)
 	if err != nil {
 		return err
 	}
@@ -1232,7 +1284,7 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 	}
 	task.Status.Run.PushedSHA = mr.SHA
 	task.Status.Run.PushedAt = &metav1.Time{Time: a.r.now()}
-	task.Status.CI = nil
+	task.Status.CI = homeCIReset(task.Status.CI, mr.SHA)
 	if err := a.r.Status().Patch(ctx, task, client.MergeFrom(orig)); err != nil {
 		return err
 	}
@@ -1254,11 +1306,12 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 	return nil
 }
 
-// diffHash hashes the change of an MR: the files and their added and removed
-// lines, without positions, so a rebase that only moves the change keeps the
+// diffHash hashes the change of an MR of project (home, or the companion's):
+// the files and their added and removed lines, without positions, so a
+// rebase that only moves the change keeps the
 // hash. It is empty if GitLab does not return the whole change.
-func (a *autopilot) diffHash(ctx context.Context, iid int64) (string, error) {
-	diffs, err := a.gl.ListMergeRequestDiffs(ctx, a.spec.GitLab.Project, iid)
+func (a *autopilot) diffHash(ctx context.Context, project string, iid int64) (string, error) {
+	diffs, err := a.gl.ListMergeRequestDiffs(ctx, project, iid)
 	if err != nil {
 		return "", fmt.Errorf("listing the diffs of !%d: %w", iid, err)
 	}

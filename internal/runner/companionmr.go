@@ -136,6 +136,12 @@ func (run *implementRun) pushCompanion(ctx context.Context) error {
 				c.spec.Branch, c.spec.Project, err))
 		}
 		s.done(fmt.Sprintf("%s at %s", c.spec.Branch, shortSHA(head)), "sha", head)
+		run.out.CompanionPushed = true
+		if run.out.PushedSHA == "" {
+			// A companion-only push counts as a fix round like a home one
+			// (the rounds are shared); with a home push it is set already.
+			run.out.CIRound = ciRound(run.task, run.ciFix)
+		}
 	}
 	rec.PushedSHA = head
 	if run.out.ReviewedSHA != "" && run.reviewedCompanion {

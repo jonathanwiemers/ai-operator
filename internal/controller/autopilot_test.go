@@ -392,6 +392,12 @@ func TestAutopilotMergeGate(t *testing.T) {
 			if c.ci != nil {
 				e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.CI = c.ci })
 			}
+			// A companion's pipeline is green: the CI loop is done.
+			e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+				if cr := s.Run.Companion; cr != nil && s.CI != nil {
+					s.CI.Companion = &aiv1.CompanionCI{SHA: cr.PushedSHA, State: aiv1.CIStateSuccess}
+				}
+			})
 			if c.mr != nil {
 				c.mr(e.gl.MRs[1])
 			}
@@ -1243,21 +1249,5 @@ func TestCollectDecisionsKeepsTheNewest20(t *testing.T) {
 	}
 	if got[0].ID != "D1-P6" || got[19].ID != "D1-P25" {
 		t.Fatalf("kept %s … %s, want D1-P6 … D1-P25", got[0].ID, got[19].ID)
-	}
-}
-
-// A companion reviewed at its pushed head does not hold the merge on the
-// review check.
-func TestAutopilotMergeGateReviewedCompanion(t *testing.T) {
-	e := newAutopilotEnv(t)
-	e.reconcile()
-	e.reconcile()
-	e.finishRun(1, "sha-api", func(r *aiv1.RunStatus) {
-		r.Companion = &aiv1.CompanionRun{Project: "group/infra", MRIID: 3, PushedSHA: "sha-infra", ReviewedSHA: "sha-infra"}
-	})
-	e.reconcile() // marked ready
-	e.reconcile() // merged
-	if ap := e.autopilot(); !slices.Equal(e.gl.Merged, []int64{1}) || ap.PauseKind == aiv1.PauseNotReviewed {
-		t.Fatalf("a reviewed companion passes the review check: merged %v, %+v", e.gl.Merged, ap)
 	}
 }

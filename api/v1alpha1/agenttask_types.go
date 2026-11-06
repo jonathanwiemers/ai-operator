@@ -154,6 +154,20 @@ type CompanionSpec struct {
 	AutoMerge bool `json:"autoMerge,omitempty"`
 }
 
+// CompanionRebase is a rebase of the companion's merge request the
+// autopilot asked GitLab for.
+type CompanionRebase struct {
+	// From is the companion head that was rebased.
+	From string `json:"from"`
+	// Diff is the hash of the companion's change at From: the review holds
+	// on the rebased head if its change hashes the same.
+	// +optional
+	Diff string `json:"diff,omitempty"`
+	// At is when the rebase was asked for.
+	// +optional
+	At *metav1.Time `json:"at,omitempty"`
+}
+
 // MilestoneRef identifies a GitLab milestone.
 type MilestoneRef struct {
 	ID    int64  `json:"id"`
@@ -197,6 +211,16 @@ type SourceState struct {
 	// fix with the latest run request.
 	// +optional
 	CIFixPipelineID int64 `json:"ciFixPipelineID,omitempty"`
+
+	// CIFixProject is the project of CIFixPipelineID: the companion's full
+	// path when its pipeline failed, empty for the home project.
+	// +optional
+	CIFixProject string `json:"ciFixProject,omitempty"`
+
+	// CompanionRebase is the autopilot's rebase of the companion's merge
+	// request, asked once per companion head (From).
+	// +optional
+	CompanionRebase *CompanionRebase `json:"companionRebase,omitempty"`
 
 	// MergeBaseFor is the merge request head the operator saw conflicting
 	// with the default branch. The next run merges the default branch into
@@ -743,6 +767,45 @@ type CIStatus struct {
 	// fails, the comment is posted again without it.
 	// +optional
 	PingedFor NotifyEvent `json:"pingedFor,omitempty"`
+	// Companion is the pipeline of the companion's pushed head
+	// (status.run.companion.pushedSHA); unset without a pushed companion.
+	// +optional
+	Companion *CompanionCI `json:"companion,omitempty"`
+}
+
+// CompanionCI tracks the pipeline of the companion's pushed head, with the
+// rules of the home pipeline except the default-branch check (BaseFailing).
+type CompanionCI struct {
+	// SHA is the companion head this status is about.
+	SHA   string  `json:"sha"`
+	State CIState `json:"state"`
+	// +optional
+	PipelineID int64 `json:"pipelineID,omitempty"`
+	// +optional
+	PipelineURL string `json:"pipelineURL,omitempty"`
+	// Retried is set once the failed jobs of the pipeline were retried.
+	// +optional
+	Retried bool `json:"retried,omitempty"`
+	// FailedJobs of the latest failed pipeline.
+	// +optional
+	FailedJobs []string `json:"failedJobs,omitempty"`
+	// Since is when the operator first followed SHA: without a pipeline
+	// after ci.noPipelineTimeout it counts as no CI (None).
+	// +optional
+	Since *metav1.Time `json:"since,omitempty"`
+}
+
+// Done reports whether the CI loop is done with the pushed heads: one tree
+// failed (handed to a human), or both are final.
+func (s *CIStatus) Done() bool {
+	c := s.Companion
+	switch {
+	case s.State == CIStateFailed || c != nil && c.State == CIStateFailed:
+		return true
+	case c != nil && !c.State.Final():
+		return false
+	}
+	return s.State.Final()
 }
 
 // TaskPhase is a coarse summary of where a task is in its lifecycle.
@@ -1461,7 +1524,7 @@ type ReviewError struct {
 }
 
 // PauseKind is why autopilot paused.
-// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget
+// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion
 type PauseKind string
 
 const (
@@ -1496,6 +1559,10 @@ const (
 	PauseConfig PauseKind = "config"
 	// PauseBudget: the milestone spent its budget (spec.budgetUSD).
 	PauseBudget PauseKind = "budget"
+	// PauseCompanion: the companion's merge request cannot go on (closed, a
+	// conflict a rebase did not fix, another blocking merge status, a moved
+	// head). A red companion pipeline pauses with ciRed.
+	PauseCompanion PauseKind = "companion"
 )
 
 // PauseResolver is who ended a pause (status.autopilot.resumedBy, the

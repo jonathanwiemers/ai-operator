@@ -1884,6 +1884,16 @@ flowchart LR
   records its merge request keeps the companion token and the guard's target
   (merges refused) until a run has closed it, if the project is still a
   valid target.
+* The operator follows the companion's pipeline with its guarded client
+  (`internal/controller/ci.go`, `status.ci.companion`) and checks the
+  companion's merge request in the home merge gate
+  (`internal/controller/companion_gate.go`): green, reviewed, open and
+  mergeable, `draft_status` counting as mergeable; one GitLab rebase per
+  companion head (`spec.source.companionRebase`, with the diff hash the
+  review is carried over by), else pause kind `companion`. A rebase in the
+  companion project is a merge request write the guard allows only for a
+  valid target. The fix rounds are shared; `spec.source.ciFixProject` tells
+  the runner which project's jobs to read.
 
 **Merge/push guard.** The bot's token usually reaches far more than the
 AgentProject's own project (e.g. as a group Maintainer), so the operator and

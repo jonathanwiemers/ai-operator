@@ -70,7 +70,7 @@ func (w WorkflowSpec) RoleLabel(role LabelRole) string {
 // compares them).
 var PauseKinds = []PauseKind{
 	PauseOwner, PauseCycle, PauseStuck, PauseNeedsInput, PauseRunFailed, PauseFindings, PauseReviewErrors,
-	PauseNotReviewed, PauseCIRed, PauseCICanceled, PauseMergeRequest, PauseMainRed, PauseConfig, PauseBudget,
+	PauseNotReviewed, PauseCIRed, PauseCICanceled, PauseMergeRequest, PauseMainRed, PauseConfig, PauseBudget, PauseCompanion,
 }
 
 // The exits several kinds share.
@@ -88,7 +88,7 @@ var (
 	exitReview = PauseExit{ID: "review", Command: "review", Target: ExitTargetImplement,
 		Does: "the reviewers check the pushed head again"}
 	exitMergeAnyway = PauseExit{ID: "mergeAnyway", Command: "merge", Target: ExitTargetSpec,
-		Does: "owners only: autopilot merges this head without a full review; CI, the merge request's state and approvals still apply"}
+		Does: "owners only: autopilot merges this head without a full review (nor of its companion); CI, the merge request's state and approvals still apply, also the companion's"}
 	exitResume = PauseExit{ID: "resume", Command: "resume", Target: ExitTargetSpec,
 		Does: "autopilot continues"}
 	exitRebase = PauseExit{ID: "rebase", Command: "rebase", Target: ExitTargetSpec,
@@ -165,6 +165,18 @@ var pauseExits = map[PauseKind][]PauseExit{
 	PauseBudget: {
 		{ID: "budgetRaised", Auto: true, When: "the budget is raised above the spend or removed (`budget <usd>` in the milestone description, or on the issue for its own budget)",
 			Does: "autopilot continues"},
+	},
+	// The companion's merge request, before the home merge (the merge gate)
+	// and while it lands after it.
+	PauseCompanion: {
+		{ID: "companionMergeable", Auto: true, When: "the companion merge request can be merged again, or was rebased by hand",
+			Does: "the merge gate, or the companion's landing, checks it again and autopilot continues"},
+		{ID: "companionByHand", Auto: true, When: "the companion merge request is merged by hand (or closed by hand once the home change is merged)",
+			Does: "it is recorded and autopilot goes on"},
+		{ID: "fixCompanion", GitLab: true, When: "fix the companion merge request (resolve its conflicts or discussions, approve it)", Command: "resume",
+			Does: "the merge gate, or the companion's landing, checks it again"},
+		withDoes(exitResume, "the merge gate, or the companion's landing, checks the companion again"),
+		withDoes(exitSkip, "the issue is skipped and autopilot goes on without it; its companion merge request is left to the owners"),
 	},
 }
 

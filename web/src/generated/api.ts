@@ -2178,6 +2178,27 @@ export interface CompanionSpec {
   autoMerge?: boolean;
 }
 /**
+ * CompanionRebase is a rebase of the companion's merge request the
+ * autopilot asked GitLab for.
+ */
+export interface CompanionRebase {
+  /**
+   * From is the companion head that was rebased.
+   */
+  from: string;
+  /**
+   * Diff is the hash of the companion's change at From: the review holds
+   * on the rebased head if its change hashes the same.
+   * +optional
+   */
+  diff?: string;
+  /**
+   * At is when the rebase was asked for.
+   * +optional
+   */
+  at?: string;
+}
+/**
  * MilestoneRef identifies a GitLab milestone.
  */
 export interface MilestoneRef {
@@ -2234,6 +2255,18 @@ export interface SourceState {
    * +optional
    */
   ciFixPipelineID?: number /* int64 */;
+  /**
+   * CIFixProject is the project of CIFixPipelineID: the companion's full
+   * path when its pipeline failed, empty for the home project.
+   * +optional
+   */
+  ciFixProject?: string;
+  /**
+   * CompanionRebase is the autopilot's rebase of the companion's merge
+   * request, asked once per companion head (From).
+   * +optional
+   */
+  companionRebase?: CompanionRebase;
   /**
    * MergeBaseFor is the merge request head the operator saw conflicting
    * with the default branch. The next run merges the default branch into
@@ -2987,6 +3020,47 @@ export interface CIStatus {
    * +optional
    */
   pingedFor?: NotifyEvent;
+  /**
+   * Companion is the pipeline of the companion's pushed head
+   * (status.run.companion.pushedSHA); unset without a pushed companion.
+   * +optional
+   */
+  companion?: CompanionCI;
+}
+/**
+ * CompanionCI tracks the pipeline of the companion's pushed head, with the
+ * rules of the home pipeline except the default-branch check (BaseFailing).
+ */
+export interface CompanionCI {
+  /**
+   * SHA is the companion head this status is about.
+   */
+  sha: string;
+  state: CIState;
+  /**
+   * +optional
+   */
+  pipelineID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  pipelineURL?: string;
+  /**
+   * Retried is set once the failed jobs of the pipeline were retried.
+   * +optional
+   */
+  retried?: boolean;
+  /**
+   * FailedJobs of the latest failed pipeline.
+   * +optional
+   */
+  failedJobs?: string[];
+  /**
+   * Since is when the operator first followed SHA: without a pipeline
+   * after ci.noPipelineTimeout it counts as no CI (None).
+   * +optional
+   */
+  since?: string;
 }
 /**
  * TaskPhase is a coarse summary of where a task is in its lifecycle.
@@ -3849,7 +3923,7 @@ export interface ReviewError {
 }
 /**
  * PauseKind is why autopilot paused.
- * +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget
+ * +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion
  */
 export type PauseKind = string;
 /**
@@ -3911,6 +3985,12 @@ export const PauseConfig: PauseKind = "config";
  * PauseBudget: the milestone spent its budget (spec.budgetUSD).
  */
 export const PauseBudget: PauseKind = "budget";
+/**
+ * PauseCompanion: the companion's merge request cannot go on (closed, a
+ * conflict a rebase did not fix, another blocking merge status, a moved
+ * head). A red companion pipeline pauses with ciRed.
+ */
+export const PauseCompanion: PauseKind = "companion";
 /**
  * PauseResolver is who ended a pause (status.autopilot.resumedBy, the
  * autopilot.resumed history event).

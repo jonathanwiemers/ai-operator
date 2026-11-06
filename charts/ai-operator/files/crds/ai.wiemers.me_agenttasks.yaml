@@ -404,12 +404,37 @@ spec:
                       fix with the latest run request.
                     format: int64
                     type: integer
+                  ciFixProject:
+                    description: |-
+                      CIFixProject is the project of CIFixPipelineID: the companion's full
+                      path when its pipeline failed, empty for the home project.
+                    type: string
                   companionNotice:
                     description: |-
                       CompanionNotice is the agent-repo label the operator told the issue
                       it ignores (Implement tasks), so it is told once per label. Cleared
                       when the label goes or counts.
                     type: string
+                  companionRebase:
+                    description: |-
+                      CompanionRebase is the autopilot's rebase of the companion's merge
+                      request, asked once per companion head (From).
+                    properties:
+                      at:
+                        description: At is when the rebase was asked for.
+                        format: date-time
+                        type: string
+                      diff:
+                        description: |-
+                          Diff is the hash of the companion's change at From: the review holds
+                          on the rebased head if its change hashes the same.
+                        type: string
+                      from:
+                        description: From is the companion head that was rebased.
+                        type: string
+                    required:
+                    - from
+                    type: object
                   descriptionHash:
                     description: DescriptionHash of the milestone description (Spec
                       tasks).
@@ -1248,6 +1273,7 @@ spec:
                     - mainRed
                     - config
                     - budget
+                    - companion
                     type: string
                   pausedAt:
                     description: PausedAt is when the current pause started; unset
@@ -1397,6 +1423,51 @@ spec:
                 description: CI is the operator's view of the pipeline of the agent's
                   last push.
                 properties:
+                  companion:
+                    description: |-
+                      Companion is the pipeline of the companion's pushed head
+                      (status.run.companion.pushedSHA); unset without a pushed companion.
+                    properties:
+                      failedJobs:
+                        description: FailedJobs of the latest failed pipeline.
+                        items:
+                          type: string
+                        type: array
+                      pipelineID:
+                        format: int64
+                        type: integer
+                      pipelineURL:
+                        type: string
+                      retried:
+                        description: Retried is set once the failed jobs of the pipeline
+                          were retried.
+                        type: boolean
+                      sha:
+                        description: SHA is the companion head this status is about.
+                        type: string
+                      since:
+                        description: |-
+                          Since is when the operator first followed SHA: without a pipeline
+                          after ci.noPipelineTimeout it counts as no CI (None).
+                        format: date-time
+                        type: string
+                      state:
+                        description: CIState is the state of the pipeline of the agent's
+                          last push.
+                        enum:
+                        - Pending
+                        - Running
+                        - Fixing
+                        - Success
+                        - Failed
+                        - BaseFailing
+                        - Canceled
+                        - None
+                        type: string
+                    required:
+                    - sha
+                    - state
+                    type: object
                   failedJobs:
                     description: FailedJobs of the latest failed pipeline.
                     items:
