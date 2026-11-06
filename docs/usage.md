@@ -399,6 +399,11 @@ With `workflow.conventionalCommits: true` (see
   the format; both are logged, and the run goes on. The title changes only
   with a description rewrite, so after you turn the option on it follows
   with the next push that changes the diff. A companion MR keeps its title.
+- **Autopilot's merge** passes a `squash_commit_message`: the MR title
+  (without `Draft: `; `chore(agent): …` if it does not match the format), a
+  blank line and `Refs #N`. So the commit on the default branch is
+  conventional even when the MR title was renamed by hand. GitLab ignores the
+  message when the project does not squash.
 
 With the option off (the default), messages, titles, schema and prompts are
 as before.

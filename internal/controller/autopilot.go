@@ -18,6 +18,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
+	"github.com/jonathanwiemers/ai-operator/internal/conventional"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
@@ -872,7 +873,12 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	}
 
 	a.log.Info("autopilot merges", "mr", mr.IID, "sha", mr.SHA)
-	res, err := a.gl.MergeMergeRequest(ctx, glProject, mr.IID, gitlab.MergeOptions{SHA: run.PushedSHA, ShouldRemoveSourceBranch: true})
+	opts := gitlab.MergeOptions{SHA: run.PushedSHA, ShouldRemoveSourceBranch: true}
+	if wf.ConventionalCommits != nil && *wf.ConventionalCommits {
+		// GitLab ignores the message when the project does not squash.
+		opts.SquashCommitMessage = conventional.Title(gitlab.ReadyTitle(mr.Title), wf.WithDefaults().CommitTypes) + fmt.Sprintf("\n\nRefs #%d", it.IID)
+	}
+	res, err := a.gl.MergeMergeRequest(ctx, glProject, mr.IID, opts)
 	switch code := gitlab.StatusCode(err); {
 	case err == nil:
 		if res.State != "merged" {

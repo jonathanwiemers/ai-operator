@@ -37,6 +37,8 @@ type Fake struct {
 	IssueUpdates []gitlab.UpdateIssueOptions
 	// MergeErrors makes MergeMergeRequest of an MR fail.
 	MergeErrors map[int64]error
+	// MergeOpts holds the options of the last merge call of each MR.
+	MergeOpts map[int64]gitlab.MergeOptions
 	// NoteErrors makes CreateIssueNote on an issue fail.
 	NoteErrors map[int64]error
 	// NoteErrorsAfterWrite makes the next CreateIssueNote on an issue store
@@ -604,6 +606,10 @@ func (f *Fake) MergeMergeRequest(_ context.Context, _ string, iid int64, opts gi
 	if !ok {
 		return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "merge"}
 	}
+	if f.MergeOpts == nil {
+		f.MergeOpts = map[int64]gitlab.MergeOptions{}
+	}
+	f.MergeOpts[iid] = opts
 	if err := f.MergeErrors[iid]; err != nil {
 		return nil, err
 	}

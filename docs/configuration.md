@@ -391,7 +391,11 @@ it added. With `true`:
 - the describe agent also returns the MR `title` (same `pattern`, one line,
   no `Draft:` prefix), and the runner sets it, with `Draft: ` while the MR is
   a draft, so a squash merge lands a conventional commit. A title renamed by
-  hand, or a describer title that does not match, leaves the title as it is.
+  hand, or a describer title that does not match, leaves the title as it is;
+- the autopilot's merge sends a `squash_commit_message` (the MR title, or its
+  `chore(agent): …` fallback, then `Refs #N`), so the default branch gets a
+  conventional commit even if the title is not. Ignored by GitLab when the
+  project does not squash.
 
 See [usage.md](usage.md#commit-messages).
 

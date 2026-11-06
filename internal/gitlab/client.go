@@ -355,6 +355,9 @@ type MergeOptions struct {
 	// commit is merged.
 	SHA                      string `json:"sha,omitempty"`
 	ShouldRemoveSourceBranch bool   `json:"should_remove_source_branch,omitempty"`
+	// SquashCommitMessage is the message of the squash commit (GitLab
+	// ignores it when the merge does not squash).
+	SquashCommitMessage string `json:"squash_commit_message,omitempty"`
 }
 
 // ProjectHook is a project webhook. GitLab never returns its token.

@@ -1251,3 +1251,34 @@ func TestCollectDecisionsKeepsTheNewest20(t *testing.T) {
 		t.Fatalf("kept %s … %s, want D1-P6 … D1-P25", got[0].ID, got[19].ID)
 	}
 }
+
+func TestAutopilotSquashCommitMessage(t *testing.T) {
+	on, off := true, false
+	for _, c := range []struct {
+		name, title string
+		opt         *bool
+		want        string
+	}{
+		{"conventional title", "Draft: feat(ui): add x", &on, "feat(ui): add x\n\nRefs #1"},
+		{"fallback", "Draft: Knobloo: LED screen", &on, "chore(agent): knobloo: LED screen\n\nRefs #1"},
+		{"off", "Draft: feat(ui): add x", &off, ""},
+		{"unset", "Draft: feat(ui): add x", nil, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newAutopilotEnv(t)
+			e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Workflow.ConventionalCommits = c.opt })
+			e.reconcile()
+			e.reconcile()
+			e.finishRun(1, "sha-api", nil)
+			e.gl.MRs[1].Title = c.title
+			e.reconcile() // ready
+			e.reconcile() // merged
+			if !slices.Equal(e.gl.Merged, []int64{1}) {
+				t.Fatalf("not merged: %v", e.gl.Merged)
+			}
+			if got := e.gl.MergeOpts[1].SquashCommitMessage; got != c.want {
+				t.Fatalf("squash message = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
