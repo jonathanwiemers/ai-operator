@@ -62,22 +62,35 @@ func NewDiffer() *Differ { return &Differ{started: map[types.UID]time.Time{}} }
 // cache, and the calls of every AgentTask the recorder has not seen. Adds
 // (start, resync) record no events, only real changes do; they record the
 // task's calls, idempotently, as does the recorder's start for every task
-// in the cache.
+// in the cache. Adds and updates of spec tasks record their milestone's
+// snapshot, as does the start; deleting one closes it.
 func Watch(ctx context.Context, c cache.Cache, r *Recorder, clk func() time.Time) error {
 	inf, err := c.GetInformer(ctx, &aiv1.AgentTask{})
 	if err != nil {
 		return err
 	}
-	r.existing = func(ctx context.Context) ([]store.Call, error) {
+	list := func(ctx context.Context) ([]aiv1.AgentTask, error) {
 		var tasks aiv1.AgentTaskList
-		if err := c.List(ctx, &tasks); err != nil {
-			return nil, err
-		}
+		err := c.List(ctx, &tasks)
+		return tasks.Items, err
+	}
+	r.existing = func(ctx context.Context) ([]store.Call, error) {
+		tasks, err := list(ctx)
 		var out []store.Call
-		for i := range tasks.Items {
-			out = append(out, Calls(nil, &tasks.Items[i])...)
+		for i := range tasks {
+			out = append(out, Calls(nil, &tasks[i])...)
 		}
-		return out, nil
+		return out, err
+	}
+	r.existingSnaps = func(ctx context.Context) ([]store.MilestoneSnapshot, error) {
+		tasks, err := list(ctx)
+		var out []store.MilestoneSnapshot
+		for i := range tasks {
+			if m, ok := Snapshot(&tasks[i], "", clk()); ok {
+				out = append(out, m)
+			}
+		}
+		return out, err
 	}
 	d := NewDiffer()
 	_, err = inf.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
@@ -86,6 +99,7 @@ func Watch(ctx context.Context, c cache.Cache, r *Recorder, clk func() time.Time
 				for _, call := range Calls(nil, t) {
 					r.RecordCall(call)
 				}
+				r.snapshotTask(t, clk())
 			}
 		},
 		UpdateFunc: func(o, n any) {
@@ -98,6 +112,7 @@ func Watch(ctx context.Context, c cache.Cache, r *Recorder, clk func() time.Time
 				for _, call := range Calls(old, cur) {
 					r.RecordCall(call)
 				}
+				r.snapshotTask(cur, clk())
 			}
 		},
 		DeleteFunc: func(o any) {
@@ -106,6 +121,7 @@ func Watch(ctx context.Context, c cache.Cache, r *Recorder, clk func() time.Time
 			}
 			if t, ok := o.(*aiv1.AgentTask); ok {
 				r.Record(d.Delete(t, clk()))
+				r.closeTask(t, clk())
 			}
 		},
 	})

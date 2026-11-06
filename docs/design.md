@@ -716,6 +716,24 @@ plus the history retention; retention deletes a milestone with its issues
 and follow-ups once all of them expired, so an active milestone stays whole.
 Research run pods have no rights on these tables.
 
+The recorder fills them from the spec tasks' status
+(`internal/history/snapshot.go`): every informer add and update of a spec
+task, and its start for every cached spec task (adds arrive before leader
+election), queue the milestone's snapshot, built by the pure `Snapshot`:
+title and owners from the spec, issues in plan order with their autopilot
+item's state in lower case (else `planned`) and MR, then queue items the
+plan lacks (flaky fixes); the autopilot phase in lower case and its tracking
+issue; start time at the first write, done time once the phase is `Done`;
+the retrospective's note and posted time, and follow-ups `issue` with their
+iid for the numbers in `created`, else `open`. The queue holds the newest
+snapshot per milestone and is written with the events every second, so a
+busy autopilot is one write per second at most, and an unchanged status is
+no write at all. Deleting a spec task queues `CloseMilestone`: state
+`closed`, the done time kept or set, no row deleted. Implement tasks feed
+no snapshot. A queue full of 2000 other milestones drops the snapshot and
+logs a count. The recorder knows no project, so `web_url` stays empty and
+the UI builds the link from the project.
+
 ## GitLab webhooks
 
 GitLab project hooks (GitLab Free; group hooks need Premium) wake the

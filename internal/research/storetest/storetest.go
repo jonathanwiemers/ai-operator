@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -218,4 +219,47 @@ func Warnings(t testing.TB, id string) []string {
 		t.Fatal(err)
 	}
 	return w
+}
+
+// Rows runs the query sql as the URL's user in the schema of New and
+// returns its rows; every column must be text (cast it, coalesce NULLs).
+func Rows(t testing.TB, sql string, args ...any) [][]string {
+	t.Helper()
+	mu.Lock()
+	db, found := dbs[t]
+	mu.Unlock()
+	if !found {
+		t.Fatal("storetest.Rows needs storetest.New first")
+	}
+	ctx := t.Context()
+	var out [][]string
+	if err := pgx.BeginFunc(ctx, db.admin, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "SET LOCAL search_path TO "+pgx.Identifier{db.schema}.Sanitize()); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, sql, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			vals, err := rows.Values()
+			if err != nil {
+				return err
+			}
+			row := make([]string, len(vals))
+			for i, v := range vals {
+				s, ok := v.(string)
+				if !ok {
+					return fmt.Errorf("column %d is %T, not text", i, v)
+				}
+				row[i] = s
+			}
+			out = append(out, row)
+		}
+		return rows.Err()
+	}); err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+	return out
 }

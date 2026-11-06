@@ -264,3 +264,9 @@ about how many production lines, and deviations from this spec.
   CASCADE`) and retention deletes a milestone only once all its rows expired;
   `CloseMilestone` takes the new expiry too; R2's recorder and R3's queries
   follow.
+- 2026-11-06, `store` (R2, #216): the recorder's snapshot queue
+  (`internal/history/snapshot.go`): `Snapshot` of spec tasks, coalescing
+  `RecordSnapshot` and `RecordClosed`, adds, updates and the recorder's start
+  snapshot, a delete closes; about 150 production lines. Deviations: the
+  tracking issue is the autopilot's (the recorder sees no Coordinate task);
+  `web_url` stays empty; issue states and the phase are stored in lower case.

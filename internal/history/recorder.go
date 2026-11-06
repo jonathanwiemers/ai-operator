@@ -8,6 +8,7 @@ package history
 import (
 	"context"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -49,6 +50,14 @@ type Recorder struct {
 	// existing returns the calls of every task, written when the recorder
 	// starts: runners append calls while no leader records (Watch sets it).
 	existing func(context.Context) ([]store.Call, error)
+	// snaps is the snapshot queue: the newest snapshot (and close) per
+	// milestone, written with the events.
+	snapMu       sync.Mutex
+	snaps        map[snapKey]snapOp
+	droppedSnaps atomic.Int64
+	// existingSnaps returns the snapshots of every spec task, queued when
+	// the recorder starts (Watch sets it).
+	existingSnaps func(context.Context) ([]store.MilestoneSnapshot, error)
 	// Pricing estimates the cost of calls the engine reported none for;
 	// nil estimates none.
 	Pricing *pricing.Table
@@ -57,7 +66,8 @@ type Recorder struct {
 // NewRecorder returns a recorder that keeps events and calls for retention.
 func NewRecorder(db Database, retention time.Duration, clk clock.Clock, log logr.Logger) *Recorder {
 	return &Recorder{db: db, retention: retention, clock: clk, log: log,
-		queue: make(chan store.Event, queueSize), calls: make(chan store.Call, queueSize), notes: newSeenNotes()}
+		queue: make(chan store.Event, queueSize), calls: make(chan store.Call, queueSize), notes: newSeenNotes(),
+		snaps: map[snapKey]snapOp{}}
 }
 
 // NeedLeaderElection makes it a leader-only runnable.
@@ -101,8 +111,9 @@ func (r *Recorder) prepare(c *store.Call) {
 	Estimate(c, r.Pricing)
 }
 
-// Start writes the queued events and calls until ctx ends, once the
-// database is ready. It first writes the calls of the existing tasks.
+// Start writes the queued events, calls and snapshots until ctx ends, once the
+// database is ready. It first writes the calls of the existing tasks and
+// queues the snapshots of the existing spec tasks.
 func (r *Recorder) Start(ctx context.Context) error {
 	r.started.Store(true)
 	defer r.started.Store(false)
@@ -112,6 +123,7 @@ func (r *Recorder) Start(ctx context.Context) error {
 	case <-r.db.Ready():
 	}
 	r.writeExisting(ctx)
+	r.queueExisting(ctx)
 	tick := time.NewTicker(flushEvery)
 	defer tick.Stop()
 	batch := make([]store.Event, 0, batchSize)
@@ -129,6 +141,7 @@ func (r *Recorder) Start(ctx context.Context) error {
 			}
 			calls = calls[:0]
 		}
+		r.writeSnapshots(ctx)
 		if n := r.dropped.Swap(0); n > 0 {
 			r.log.Info("history queue full, events dropped", "events", n)
 		}
