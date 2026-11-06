@@ -474,13 +474,25 @@ searches, lookups and log reading to them, and read only the files you edit
 yourself.* The default is none: no `--agents`, no line, and claude uses its
 built-in subagents at will, as before.
 
+The line depends on the kind of subagent. A **writer** is a subagent whose
+`tools` explicitly list `Write` or `Edit`; every other one is a **reader**,
+including one with empty `tools` (claude's default) and a Bash-only one.
+Readers get the sentence above; with writers present it names them instead
+of "them" (*Delegate searches, lookups and log reading to scout, and …*).
+Writers get another: *Give boilerplate (tests, fixtures, configs, stubs that
+follow an existing file) to writer with a short spec and one reference file.
+It writes the files and answers with their paths only. Review its changes
+with git diff and fix what needs judgment.* Several writers are joined with
+"or". A role whose subagents are all readers gets exactly the line above.
+The [read gate](#read-gate) sentence, if any, comes last.
+
 Subagents are claude only. A call that runs on cursor, because the role's
 engine is cursor or because a claude role runs on its cursor
 [fallback](#fallback-engine), goes without them; the runner logs *subagents
 are claude only; ignored for role implement on cursor* once per run and
 role. A cursor role whose claude fallback runs gets them.
 
-A read-only scout on haiku for the implementer:
+A read-only scout on haiku and a writer on sonnet for the implementer:
 
 ```yaml
 spec:
@@ -491,8 +503,23 @@ spec:
           description: Searches the code, looks things up on the web and reads logs. Use it for every search and lookup.
           model: claude-haiku-5-5
           tools: [Read, Grep, Glob, WebFetch, WebSearch]
-          prompt: You search and read for the implementing agent and never edit. Answer with the file paths, line numbers and short excerpts it needs, not whole files.
+          prompt: You search and read for the implementing agent and never edit. Answer in bullets with exact names, paths and line numbers, no preamble. The caller checks line numbers before editing.
+        - name: writer
+          description: Writes boilerplate (tests, fixtures, configs, stubs that follow an existing file) from a short spec and one reference file.
+          model: claude-sonnet-5-5
+          tools: [Read, Grep, Glob, Write, Edit]
+          prompt: You write boilerplate for the implementing agent. Read the reference file it names and follow its patterns (naming, structure, imports, style). Write the files with Write or Edit. Never answer with code; answer with the list of paths you wrote, one per line.
 ```
+
+The scout answers in bullets with exact names, paths and line numbers and no
+preamble; the implementer checks the line numbers before it edits.
+
+The writer trades money for context: its calls cost something, but what it
+writes never enters the implementer's context (it answers with paths only),
+so the expensive model neither generates the boilerplate nor carries it
+through the later steps. The implementer reviews the result with `git diff`
+and fixes what needs judgment. Give a writer only work that follows an
+existing file.
 
 To see whether it pays off, compare runs with and without it in the
 [Spend tab](ui.md): the scout's model shows up in the by-model breakdown
@@ -510,7 +537,7 @@ would have.
 
 ### Read gate
 
-The subagents line is a hint, and models often ignore it: they read big files
+The [subagents](#subagents) line is a hint, and models often ignore it: they read big files
 whole into their own context anyway. A role's `readGate` turns it into a
 rule. It is a `PreToolUse` hook (`ai-runner read-gate`, on the agent image)
 that claude runs before every `Read` and `Bash` call of the role:

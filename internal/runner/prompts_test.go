@@ -257,3 +257,35 @@ func TestSpecSchemaHasRepo(t *testing.T) {
 		t.Errorf("an item without repo has none: %s", b)
 	}
 }
+
+func TestSubagentsNote(t *testing.T) {
+	const (
+		readSentence  = "Delegate searches, lookups and log reading to %s, and read only the files you edit yourself."
+		writeSentence = "Give boilerplate (tests, fixtures, configs, stubs that follow an existing file) to %s with a short spec and one reference file. It writes the files and answers with their paths only. Review its changes with git diff and fix what needs judgment."
+	)
+	sub := func(name string, tools ...string) aiv1.Subagent { return aiv1.Subagent{Name: name, Tools: tools} }
+	for _, tc := range []struct {
+		name string
+		in   []aiv1.Subagent
+		want string
+	}{
+		{"scout only", []aiv1.Subagent{sub("scout", "Read", "Grep", "Glob")},
+			"You have subagents (scout). Delegate searches, lookups and log reading to them, and read only the files you edit yourself."},
+		{"writer only", []aiv1.Subagent{sub("writer", "Read", "Write", "Edit")},
+			"You have subagents (writer). " + fmt.Sprintf(writeSentence, "writer")},
+		{"scout and writer", []aiv1.Subagent{sub("scout", "Read"), sub("writer", "Write")},
+			"You have subagents (scout, writer). " + fmt.Sprintf(readSentence, "scout") + " " + fmt.Sprintf(writeSentence, "writer")},
+		{"two writers", []aiv1.Subagent{sub("a", "Write"), sub("b", "Edit")},
+			"You have subagents (a, b). " + fmt.Sprintf(writeSentence, "a or b")},
+		{"empty tools is a reader", []aiv1.Subagent{sub("any")},
+			"You have subagents (any). Delegate searches, lookups and log reading to them, and read only the files you edit yourself."},
+		{"bash only is a reader", []aiv1.Subagent{sub("sh", "Bash")},
+			"You have subagents (sh). Delegate searches, lookups and log reading to them, and read only the files you edit yourself."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := subagentsNote(tc.in); got != tc.want {
+				t.Fatalf("got  %q\nwant %q", got, tc.want)
+			}
+		})
+	}
+}

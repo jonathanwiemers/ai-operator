@@ -202,3 +202,17 @@ func TestReadGateDroppedOnACursorFallback(t *testing.T) {
 		t.Fatalf("expected one warning, got %d", n)
 	}
 }
+
+func TestMixedSubagentsWithReadGateEndWithTheGateSentence(t *testing.T) {
+	subs := append(scout(), aiv1.Subagent{Name: "writer", Description: "Writes boilerplate", Tools: []string{"Read", "Write", "Edit"}, Prompt: "Write files."})
+	rec, _ := subagentEnv(t, func(a *aiv1.AgentsSpec) { a.Implement.Subagents, a.Implement.ReadGate = subs, gate() }, nil)
+	want := subagentsNote(subs) + " " + gateSentence
+	for _, c := range rec.roleCalls("implement") {
+		if !strings.HasSuffix(c.SystemPrompt, "\n\n"+want) || strings.Count(c.SystemPrompt, "are blocked") != 1 {
+			t.Fatalf("expected the mixed note then the gate sentence once, got …%q", c.SystemPrompt[max(0, len(c.SystemPrompt)-600):])
+		}
+		if !strings.Contains(c.SystemPrompt, "to scout, and read only") || !strings.Contains(c.SystemPrompt, "to writer with a short spec") {
+			t.Fatalf("each sentence should name its subagents: %q", c.SystemPrompt)
+		}
+	}
+}

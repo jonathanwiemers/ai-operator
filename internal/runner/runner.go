@@ -867,12 +867,8 @@ func (r *Runner) withSubagents(role aiv1.RoleSpec, inv Invocation) Invocation {
 		r.log().Error(err, "subagents ignored", "role", inv.Role)
 		return inv
 	}
-	names := make([]string, len(role.Subagents))
-	for i, s := range role.Subagents {
-		names[i] = s.Name
-	}
 	inv.Agents = agents
-	inv.SystemPrompt += "\n\n" + subagentsNote(names)
+	inv.SystemPrompt += "\n\n" + subagentsNote(role.Subagents)
 	return inv
 }
 

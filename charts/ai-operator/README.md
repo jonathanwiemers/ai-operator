@@ -180,7 +180,7 @@ already written keep their cost.
 
 Not a chart value: a role of an AgentProject can have `subagents`, passed to
 claude as `--agents` (claude only; the default is none). A read-only scout on
-haiku for the implementer:
+haiku and a writer on sonnet for the implementer:
 
 ```yaml
 # AgentProject spec
@@ -192,8 +192,18 @@ agents:
         description: Searches the code, looks things up on the web and reads logs. Use it for every search and lookup.
         model: claude-haiku-5-5
         tools: [Read, Grep, Glob, WebFetch, WebSearch]
-        prompt: You search and read for the implementing agent and never edit. Answer with the file paths, line numbers and short excerpts it needs, not whole files.
+        prompt: You search and read for the implementing agent and never edit. Answer in bullets with exact names, paths and line numbers, no preamble. The caller checks line numbers before editing.
+      - name: writer
+        description: Writes boilerplate (tests, fixtures, configs, stubs that follow an existing file) from a short spec and one reference file.
+        model: claude-sonnet-5-5
+        tools: [Read, Grep, Glob, Write, Edit]
+        prompt: You write boilerplate for the implementing agent. Read the reference file it names and follow its patterns (naming, structure, imports, style). Write the files with Write or Edit. Never answer with code; answer with the list of paths you wrote, one per line.
 ```
+
+A subagent whose `tools` list `Write` or `Edit` is a writer: the role is told
+to hand it boilerplate with a short spec and one reference file, and what it
+writes never enters the main context (it answers with paths only), at the
+cost of its own calls. Every other subagent is a reader.
 
 See [docs/configuration.md](../../docs/configuration.md#subagents) for how
 the role is told to use it and how to compare the cost in the Spend tab, and

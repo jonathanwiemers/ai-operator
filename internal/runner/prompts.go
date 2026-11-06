@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -446,8 +447,32 @@ func reviewerSystemPrompt(kind aiv1.ReviewerKind) string {
 }
 
 // subagentsNote is appended to the system prompt of a role with subagents.
-func subagentsNote(names []string) string {
-	return fmt.Sprintf("You have subagents (%s). Delegate searches, lookups and log reading to them, and read only the files you edit yourself.", strings.Join(names, ", "))
+// A subagent whose tools explicitly list Write or Edit is a writer and gets
+// boilerplate; every other one (including empty tools and Bash-only) is a
+// reader and gets searches, lookups and log reading. A role with readers
+// only keeps the original line.
+func subagentsNote(subagents []aiv1.Subagent) string {
+	var all, readers, writers []string
+	for _, s := range subagents {
+		all = append(all, s.Name)
+		if slices.Contains(s.Tools, "Write") || slices.Contains(s.Tools, "Edit") {
+			writers = append(writers, s.Name)
+		} else {
+			readers = append(readers, s.Name)
+		}
+	}
+	note := fmt.Sprintf("You have subagents (%s).", strings.Join(all, ", "))
+	if len(readers) > 0 {
+		to := "them"
+		if len(writers) > 0 {
+			to = strings.Join(readers, ", ")
+		}
+		note += fmt.Sprintf(" Delegate searches, lookups and log reading to %s, and read only the files you edit yourself.", to)
+	}
+	if len(writers) > 0 {
+		note += fmt.Sprintf(" Give boilerplate (tests, fixtures, configs, stubs that follow an existing file) to %s with a short spec and one reference file. It writes the files and answers with their paths only. Review its changes with git diff and fix what needs judgment.", strings.Join(writers, " or "))
+	}
+	return note
 }
 
 func withInstructions(system, extra string) string {
