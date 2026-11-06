@@ -168,3 +168,39 @@ func (s AgentProjectSpec) IssueRole(labels []string) (role RoleSpec, profile str
 	}
 	return role, profile, notes
 }
+
+// Where CompanionRole found the claude role of a run with a companion.
+const (
+	CompanionRoleOwn       = ""
+	CompanionRoleFallback  = "fallback"
+	CompanionRoleImplement = "agents.implement"
+)
+
+// CompanionRole returns the implementer role for a run with a companion
+// repository: only claude can work on the second checkout (--add-dir). A
+// claude role stays. A cursor role runs on its fallback if that is claude
+// (and an allowed model), else on agents.implement if that is claude; via
+// says which (CompanionRole*). Without either it is an error. The role
+// returned keeps a fallback only if it is claude, so a usage limit cannot
+// move the run back to cursor.
+func (s AgentProjectSpec) CompanionRole(role RoleSpec) (_ RoleSpec, via string, _ error) {
+	claudeOnly := func(r RoleSpec) RoleSpec {
+		if r.Fallback != nil && r.Fallback.Engine != EngineClaude {
+			r.Fallback = nil
+		}
+		return r
+	}
+	if role.Engine == EngineClaude {
+		return claudeOnly(role), CompanionRoleOwn, nil
+	}
+	if role.Fallback != nil && role.Fallback.Engine == EngineClaude {
+		if fb, err := s.FallbackRole(role); err == nil {
+			return fb, CompanionRoleFallback, nil
+		}
+	}
+	if impl := s.Agents.Implement.RoleSpec; impl.Engine == EngineClaude {
+		return claudeOnly(impl), CompanionRoleImplement, nil
+	}
+	return RoleSpec{}, "", fmt.Errorf("the implementer runs on `%s/%s`, which cannot work on a second checkout, and neither its fallback nor agents.implement is a claude engine",
+		role.Engine, role.Model)
+}

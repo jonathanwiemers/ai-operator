@@ -2,11 +2,13 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
@@ -264,5 +266,228 @@ func TestImplementWithoutCompanionTokenLeavesItOut(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("the run's report must say the companion was left out")
+	}
+}
+
+// TestClaudeAddDirs: claude gets --add-dir for each AddDirs entry, in the
+// one-shot args and in the session start, which share Args.
+func TestClaudeAddDirs(t *testing.T) {
+	c := &ClaudeCLI{}
+	if args := c.Args(Invocation{SystemPrompt: "sys"}); slices.Contains(args, "--add-dir") {
+		t.Fatalf("no --add-dir without AddDirs: %v", args)
+	}
+	args := strings.Join(c.Args(Invocation{SystemPrompt: "sys", AddDirs: []string{"/workspace/repos/a", "/workspace/repos/b"}}), " ")
+	if !strings.Contains(args, "--add-dir /workspace/repos/a --add-dir /workspace/repos/b") {
+		t.Fatalf("args: %s", args)
+	}
+}
+
+// TestAgentSessionAddsTheCompanionDir: the agent side turns the companion
+// slug into --add-dir <root>/repos/<slug> for a claude session, refuses it
+// for cursor and refuses an invalid slug. The runner cannot set AddDirs.
+func TestAgentSessionAddsTheCompanionDir(t *testing.T) {
+	bin := sessionFake(t, `#!/bin/sh
+printf '%s\n' "$@" > "$(dirname "$0")/args.tmp"
+mv "$(dirname "$0")/args.tmp" "$(dirname "$0")/args"
+while read -r line; do :; done
+`)
+	root := t.TempDir()
+	claude := &ClaudeCLI{Binary: bin, Env: os.Environ()}
+	local := &LocalAgent{Workspace: &Workspace{Dir: filepath.Join(root, "repo")}, Workspaces: root, Exchange: filepath.Join(root, "exchange"),
+		Engines: map[aiv1.Engine]Engine{aiv1.EngineClaude: claude, aiv1.EngineCursor: &CursorCLI{Binary: bin}}}
+	client := serveAgent(t, &AgentServer{Agent: local, Log: logr.Discard()})
+	ctx := context.Background()
+
+	if _, err := client.OpenSession(ctx, aiv1.EngineClaude, Invocation{Companion: "group-infra", AddDirs: []string{"/etc"}}); err != nil {
+		t.Fatal(err)
+	}
+	defer local.CloseSession(ctx)
+	argsFile := filepath.Join(filepath.Dir(bin), "args")
+	var raw []byte
+	for range 200 {
+		if b, err := os.ReadFile(argsFile); err == nil {
+			raw = b
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	args := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	i := slices.Index(args, "--add-dir")
+	if i < 0 || i+1 >= len(args) || args[i+1] != filepath.Join(root, "repos", "group-infra") || slices.Contains(args, "/etc") {
+		t.Fatalf("the session must add the companion checkout only: %v", args)
+	}
+
+	if _, err := client.OpenSession(ctx, aiv1.EngineCursor, Invocation{Companion: "group-infra"}); err == nil || !strings.Contains(err.Error(), "only claude") {
+		t.Fatalf("cursor must refuse a companion: %v", err)
+	}
+	for _, slug := range []string{"../x", "/etc", "a/b"} {
+		if _, err := client.Run(ctx, aiv1.EngineClaude, Invocation{Companion: slug}); err == nil {
+			t.Errorf("companion %q must be refused", slug)
+		}
+	}
+}
+
+// implementCalls are the implementer's calls the engine saw.
+func implementCalls(rec *recordedEngine) []Invocation {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	var out []Invocation
+	for _, c := range rec.calls {
+		if c.Role == "implement" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// allNotes are the comments on the issue and the merge request.
+func (e *companionEnv) allNotes() string {
+	var b strings.Builder
+	for _, notes := range e.implementEnv.gl.IssueNotes {
+		for _, n := range notes {
+			b.WriteString(n.Body + "\n")
+		}
+	}
+	for _, notes := range e.implementEnv.gl.MRNotes {
+		for _, n := range notes {
+			b.WriteString(n.Body + "\n")
+		}
+	}
+	return b.String()
+}
+
+// TestImplementCompanionPromptAndAddDir: the implementer's prompts get the
+// "Companion repository" section and its call the companion slug, which
+// the agent side turns into --add-dir. The system prompt is the one of a
+// run without a companion, and the reviewers and the describer get no
+// companion.
+func TestImplementCompanionPromptAndAddDir(t *testing.T) {
+	plain := newImplementEnv(t)
+	plainRec := &recordedEngine{next: &scriptedEngine{}}
+	if ran, err := newTestRunner(t, plain.tmp, plain.k8s, plain.gl, plainRec, plain.task.Name).Step(context.Background()); err != nil || !ran {
+		t.Fatalf("plain run: ran=%v err=%v", ran, err)
+	}
+	plainCalls := implementCalls(plainRec)
+	for _, c := range plainCalls {
+		if strings.Contains(c.Prompt, "Companion repository") || c.Companion != "" || len(c.AddDirs) > 0 {
+			t.Fatalf("no companion, no section and no extra dir: %+v", c)
+		}
+	}
+
+	e := newCompanionEnv(t)
+	companionDir := CompanionDir(filepath.Join(e.tmp, "agent"), "group-infra")
+	rec := &recordedEngine{next: &companionEngine{dir: companionDir}}
+	r := newTestRunner(t, e.tmp, e.k8s, e.gl, rec, e.task.Name)
+	r.CompanionToken = "companion-token"
+	if ran, err := r.Step(context.Background()); err != nil || !ran {
+		t.Fatalf("ran=%v err=%v", ran, err)
+	}
+	calls := implementCalls(rec)
+	if len(calls) < 2 || len(calls) != len(plainCalls) {
+		t.Fatalf("implementer calls: %d, without a companion %d", len(calls), len(plainCalls))
+	}
+	first := calls[0]
+	for _, want := range []string{
+		"## Companion repository\n\nThis issue also changes the companion repository `group/infra`",
+		"Its checkout is `/workspace/repos/group-infra`, on the branch `" + companionBranch + "`",
+		"Allowed paths (gitignore-style): `clusters/app/`",
+		"to CI configuration (`.gitlab-ci.yml`, `.gitlab/`), or one that adds a symlink or a submodule fails the run",
+		"lands only after the change in this repository is merged and released",
+		"the runner commits and pushes both",
+	} {
+		if !strings.Contains(first.Prompt, want) {
+			t.Errorf("prompt lacks %q:\n%s", want, first.Prompt)
+		}
+	}
+	for i, c := range calls {
+		if c.Companion != "group-infra" || !slices.Equal(c.AddDirs, []string{companionDir}) {
+			t.Errorf("call %d: companion %q, add dirs %v", i, c.Companion, c.AddDirs)
+		}
+		if c.SystemPrompt != plainCalls[i].SystemPrompt {
+			t.Errorf("call %d: the system prompt changed with the companion:\n%s\n---\n%s", i, c.SystemPrompt, plainCalls[i].SystemPrompt)
+		}
+	}
+	// The fix round resumes the session: its prompt is the findings only.
+	if strings.Contains(calls[1].Prompt, "Companion repository") {
+		t.Errorf("a resumed fix round needs no section again:\n%s", calls[1].Prompt)
+	}
+	rec.mu.Lock()
+	for _, c := range rec.calls {
+		if c.Role != "implement" && (c.Companion != "" || len(c.AddDirs) > 0) {
+			t.Errorf("%s got the companion", c.Role)
+		}
+	}
+	rec.mu.Unlock()
+}
+
+// TestImplementCompanionRoutesCursorToClaude: a cursor implementer runs on
+// its claude fallback, else on agents.implement, with a notice naming the
+// engine and model; without a claude option the run fails before any agent
+// call.
+func TestImplementCompanionRoutesCursorToClaude(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		agents  func(*aiv1.AgentsSpec)
+		models  string
+		notice  string
+		failure string
+	}{
+		{name: "profile fallback",
+			agents: func(a *aiv1.AgentsSpec) {
+				a.Profiles = []aiv1.AgentProfile{{Name: "fast", RoleSpec: aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}}}
+			},
+			models: "claude-sonnet-5-5",
+			notice: "↪️ The implementer runs on `claude/claude-sonnet-5-5` (its fallback) instead of `cursor/auto`: the companion repository `group/infra` needs claude."},
+		{name: "agents.implement",
+			agents: func(a *aiv1.AgentsSpec) {
+				a.Profiles = []aiv1.AgentProfile{{Name: "fast", RoleSpec: aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto"}}}
+			},
+			models: aiv1.DefaultModel,
+			notice: "↪️ The implementer runs on `claude/" + aiv1.DefaultModel + "` (`agents.implement`) instead of `cursor/auto`: the companion repository `group/infra` needs claude."},
+		{name: "no claude",
+			agents: func(a *aiv1.AgentsSpec) {
+				a.Implement.Engine, a.Implement.Model = aiv1.EngineCursor, "auto"
+				a.Profiles = []aiv1.AgentProfile{{Name: "fast", RoleSpec: aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto", Fallback: &aiv1.RoleFallback{Engine: aiv1.EngineCursor, Model: "gpt-5"}}}}
+			},
+			failure: "the companion repository group/infra needs a claude implementer"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newCompanionEnv(t)
+			e.configure(t, func(p *aiv1.AgentProjectSpec) { tc.agents(&p.Agents) }, func(*aiv1.AgentTaskSpec) {})
+			e.implementEnv.gl.SetLabels(42, "agent::working", "agent-profile::fast")
+			companionDir := CompanionDir(filepath.Join(e.tmp, "agent"), "group-infra")
+			rec := &recordedEngine{next: &companionEngine{dir: companionDir}}
+			r := newTestRunner(t, e.tmp, e.k8s, e.gl, rec, e.task.Name)
+			r.CompanionToken = "companion-token"
+			_, err := r.Step(context.Background())
+			calls := implementCalls(rec)
+			if tc.failure != "" {
+				rec.mu.Lock()
+				n := len(rec.calls)
+				rec.mu.Unlock()
+				if n != 0 {
+					t.Fatalf("no agent call may run, %d did", n)
+				}
+				var task aiv1.AgentTask
+				_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &task)
+				got := task.Status.Run.LastResult
+				msg := fmt.Sprint(err) + " " + task.Status.Run.Summary + " " + e.allNotes()
+				if got != aiv1.RunResultFailed || !strings.Contains(msg, tc.failure) || !strings.Contains(msg, "cursor/auto") {
+					t.Fatalf("expected a failed run naming the problem, got %q: %s", got, msg)
+				}
+				return
+			}
+			if err != nil || len(calls) < 2 {
+				t.Fatalf("err=%v, %d implementer calls", err, len(calls))
+			}
+			for _, c := range calls {
+				if c.Model != tc.models || c.Companion != "group-infra" {
+					t.Errorf("implementer ran on %q with companion %q, want %q", c.Model, c.Companion, tc.models)
+				}
+			}
+			if notes := e.allNotes(); !strings.Contains(notes, tc.notice) {
+				t.Fatalf("the report must carry the notice %q:\n%s", tc.notice, notes)
+			}
+		})
 	}
 }

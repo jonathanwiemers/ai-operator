@@ -1819,6 +1819,10 @@ flowchart LR
   is a valid target; a pod whose companion changed is replaced between
   runs (annotation `ai.wiemers.me/companion`). A run whose pod has no token
   for its companion leaves the companion out and says so in its report.
+* The implementer call names the companion by its slug
+  (`Invocation.Companion`); the agent server resolves it like a tree's
+  `repo` and passes the checkout to claude as `--add-dir` (`AddDirs`,
+  never sent over the socket). Any other engine is refused a companion.
 
 **Merge/push guard.** The bot's token usually reaches far more than the
 AgentProject's own project (e.g. as a group Maintainer), so the operator and

@@ -1343,6 +1343,16 @@ mirror. The companion token goes to the runner container only. If the
 companion's target is no longer valid, the run goes on without it and its
 report says so.
 
+The implementer's prompt gets a "Companion repository" section: the
+project, its checkout `/workspace/repos/<slug>` and branch, the allowed
+paths (a change outside them, to CI configuration, or adding a symlink or
+a submodule fails the run), that the companion lands only after the home
+change is merged and released, and that the runner commits both trees.
+claude is started with `--add-dir /workspace/repos/<slug>`. A cursor
+implementer is moved to claude for such a run, see
+[Fallback engine](configuration.md#fallback-engine). The system prompts
+are the same with and without a companion.
+
 ### Commands on the tracking issue
 
 (All commands: [commands.md](commands.md).)

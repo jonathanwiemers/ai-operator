@@ -98,3 +98,40 @@ func TestFallbackErrors(t *testing.T) {
 		t.Fatalf("expected the pilot's and the fast profile's fallbacks, got %v", errs)
 	}
 }
+
+func TestCompanionRole(t *testing.T) {
+	s := routingSpec()
+	claudeFB := &RoleFallback{Engine: EngineClaude, Model: "sonnet", Effort: "low"}
+	cursorFB := &RoleFallback{Engine: EngineCursor, Model: "auto"}
+
+	// A claude role stays, without a cursor fallback.
+	got, via, err := s.CompanionRole(RoleSpec{Engine: EngineClaude, Model: "claude-opus-5-5", Fallback: cursorFB})
+	if err != nil || via != CompanionRoleOwn || got.Engine != EngineClaude || got.Fallback != nil {
+		t.Fatalf("claude stays without its cursor fallback: %+v %q %v", got, via, err)
+	}
+	if got, _, _ := s.CompanionRole(RoleSpec{Engine: EngineClaude, Model: "claude-opus-5-5", Fallback: claudeFB}); got.Fallback == nil {
+		t.Error("a claude fallback stays")
+	}
+
+	// Cursor with a claude fallback: the fallback.
+	got, via, err = s.CompanionRole(RoleSpec{Engine: EngineCursor, Model: "auto", Fallback: claudeFB})
+	if err != nil || via != CompanionRoleFallback || got.Engine != EngineClaude || got.Model != "claude-sonnet-5-5" || got.Effort != "low" {
+		t.Fatalf("expected the claude fallback, got %+v %q %v", got, via, err)
+	}
+
+	// Cursor without a usable claude fallback: agents.implement.
+	s.Agents.Implement.RoleSpec = RoleSpec{Engine: EngineClaude, Model: "claude-opus-5-5", Effort: "high", Fallback: cursorFB}
+	for _, fb := range []*RoleFallback{nil, cursorFB, {Engine: EngineClaude, Model: "gpt-9"}} {
+		got, via, err = s.CompanionRole(RoleSpec{Engine: EngineCursor, Model: "auto", Fallback: fb})
+		if err != nil || via != CompanionRoleImplement || got.Engine != EngineClaude || got.Effort != "high" || got.Fallback != nil {
+			t.Errorf("fallback %+v: expected agents.implement without its cursor fallback, got %+v %q %v", fb, got, via, err)
+		}
+	}
+
+	// No claude anywhere: an error naming the engine.
+	s.Agents.Implement.RoleSpec = RoleSpec{Engine: EngineCursor, Model: "auto", Fallback: cursorFB}
+	if _, _, err := s.CompanionRole(RoleSpec{Engine: EngineCursor, Model: "gpt-5", Fallback: cursorFB}); err == nil ||
+		!strings.Contains(err.Error(), "cursor/gpt-5") || !strings.Contains(err.Error(), "claude") {
+		t.Fatalf("expected an error naming cursor/gpt-5 and claude, got %v", err)
+	}
+}

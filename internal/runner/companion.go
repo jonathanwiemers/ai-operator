@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -159,4 +160,70 @@ func (run *implementRun) companionChange(ctx context.Context) error {
 		return err
 	}
 	return run.r.importCompanion(ctx, c)
+}
+
+// agentWorkspaceRoot is the agent container's workspace mount
+// (controller.WorkspaceMountPath): the prompt names the companion checkout
+// as the agent sees it, CompanionDir(agentWorkspaceRoot, slug).
+const agentWorkspaceRoot = "/workspace"
+
+// companionPrompt is the "Companion repository" section of the
+// implementer's user prompt. The system prompts stay the same with and
+// without a companion (prompt cache).
+func companionPrompt(c *companionTree) string {
+	var b strings.Builder
+	b.WriteString("## Companion repository\n\n")
+	fmt.Fprintf(&b, "This issue also changes the companion repository `%s`, in this run and this session. "+
+		"Its checkout is `%s`, on the branch `%s`; edit it there, next to this repository.\n\n",
+		c.spec.Project, CompanionDir(agentWorkspaceRoot, c.slug), c.spec.Branch)
+	fmt.Fprintf(&b, "Allowed paths (gitignore-style): %s\n\n", inlineCodeList(c.spec.Paths))
+	b.WriteString("Change only files under these paths. A change outside them, to CI configuration (`.gitlab-ci.yml`, `.gitlab/`), " +
+		"or one that adds a symlink or a submodule fails the run, and neither repository is pushed.\n\n")
+	b.WriteString("The companion's merge request lands only after the change in this repository is merged and released, " +
+		"so the companion change may rely on it.\n\n")
+	b.WriteString("Commit, push and open merge requests in neither checkout: the runner commits and pushes both, " +
+		"as it does for this repository. If the issue needs no change in the companion, leave its checkout as it is.")
+	return b.String()
+}
+
+// withCompanionPrompt puts the companion section at the head of the
+// implementer's prompts, the fresh session's and this turn's, once the
+// operator's inputs (CI failures, conflicts) are in: a CI fix or conflict
+// turn replaces the turn's prompt. Fix rounds and steps that start fresh
+// get it with the full prompt.
+func (run *implementRun) withCompanionPrompt() {
+	if run.companion == nil {
+		return
+	}
+	section := companionPrompt(run.companion)
+	run.fullPrompt = section + "\n\n" + run.fullPrompt
+	run.inv.Prompt = section + "\n\n" + run.inv.Prompt
+}
+
+// routeForCompanion moves the implementer of a run with a companion to
+// claude, the only engine that works on a second checkout (--add-dir): the
+// role's claude fallback, else agents.implement (CompanionRole). The notice
+// names the engine and model. Without a claude option the run fails before
+// any agent call.
+func (run *implementRun) routeForCompanion(ctx context.Context, role aiv1.RoleSpec) (aiv1.RoleSpec, []string, error) {
+	c := run.companion
+	if c == nil {
+		return role, nil, nil
+	}
+	routed, via, err := run.spec.CompanionRole(role)
+	if err == nil && via == aiv1.CompanionRoleOwn {
+		return routed, nil, nil
+	}
+	s := run.r.step(ctx, "route implementer for the companion", "project", c.spec.Project, "engine", role.Engine, "model", role.Model)
+	if err != nil {
+		return role, nil, s.fail(fmt.Errorf("the companion repository %s needs a claude implementer: %w. Give the profile a claude fallback or agents.implement a claude engine, or remove the companion with `%s repo none`",
+			c.spec.Project, err, run.wf.CommandPrefix))
+	}
+	from := "its fallback"
+	if via == aiv1.CompanionRoleImplement {
+		from = "`agents.implement`"
+	}
+	s.done(fmt.Sprintf("%s/%s (%s)", routed.Engine, routed.Model, via), "via", via, "routedEngine", routed.Engine, "routedModel", routed.Model)
+	return routed, []string{fmt.Sprintf("↪️ The implementer runs on `%s/%s` (%s) instead of `%s/%s`: the companion repository `%s` needs claude.",
+		routed.Engine, routed.Model, from, role.Engine, role.Model, c.spec.Project)}, nil
 }

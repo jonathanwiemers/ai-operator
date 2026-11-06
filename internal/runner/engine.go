@@ -25,6 +25,14 @@ type Invocation struct {
 	// Dir is the working directory (the repository checkout). It is set by
 	// the agent side, never by the runner.
 	Dir string
+	// Companion is the project slug of the companion checkout the call may
+	// work on too (implement runs with a companion). The runner sends only
+	// the slug; the agent side validates it and turns it into AddDirs.
+	Companion string `json:"companion,omitempty"`
+	// AddDirs are more directories the engine may work in, claude's
+	// --add-dir (claude only). Set by the agent side, like Dir; it never
+	// crosses the socket.
+	AddDirs []string `json:"-"`
 	// Prompt is the task for this turn. It may be large (diffs, threads).
 	Prompt string
 	// SystemPrompt carries the role instructions. Keep it stable between
@@ -212,6 +220,9 @@ func (c *ClaudeCLI) Args(inv Invocation) []string {
 	}
 	if inv.Settings != "" {
 		args = append(args, "--settings", inv.Settings)
+	}
+	for _, dir := range inv.AddDirs {
+		args = append(args, "--add-dir", dir)
 	}
 	if inv.Resume != "" {
 		args = append(args, "--resume", inv.Resume)

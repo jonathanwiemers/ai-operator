@@ -278,8 +278,16 @@ func (run *implementRun) buildPrompt(ctx context.Context) error {
 	// The model and effort labels ("/agent use", "/agent effort", which the
 	// operator turns into labels) override the profile.
 	role, profile, roleNotes := run.spec.IssueRole(issue.Labels)
+	role, routeNotes, err := run.routeForCompanion(ctx, role)
+	if err != nil {
+		return err
+	}
+	roleNotes = append(routeNotes, roleNotes...)
 	inv := roleInvocation(role, implementSystemPrompt, implementTools, implementSchema, false)
 	inv.Role, inv.Kind = "implement", aiv1.CallKindImplement
+	if run.companion != nil {
+		inv.Companion = run.companion.slug
+	}
 	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs) + toolchainsNote(run.base, r.Mirror.PinFiles(ctx, run.base), r.changedPins)
 	// While the MR is a draft, the work is pushed step by step so a human can
 	// follow it and steer with comments (not while concluding a merge, whose
@@ -448,6 +456,7 @@ func (run *implementRun) mergeBase(ctx context.Context) error {
 // unless only the merge or the review is due.
 func (run *implementRun) implement(ctx context.Context) error {
 	r, st, out, inv, answer, role, botID := run.r, run.state, run.out, &run.inv, &run.answer, run.role, run.botID
+	run.withCompanionPrompt()
 	if !run.stepwise && inv.Resume != "" {
 		inv.Prompt = noStepsNote + "\n\n" + inv.Prompt
 	}

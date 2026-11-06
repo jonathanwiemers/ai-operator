@@ -673,6 +673,17 @@ model, not its fallback. The condition `FallbacksValid` on the AgentProject
 is `False` (reason `InvalidFallback`) and names the roles whose fallback is
 broken, so a mistake shows before a limit needs it.
 
+An issue with a [companion repository](usage.md#companion-repository)
+needs a claude implementer: only claude works on the second checkout
+(`--add-dir`). When the implementer's engine (after the profile, the model
+label and `/agent use`) is cursor, it runs on the role's fallback if that
+is claude, else on `agents.implement` if that is claude, and the run report
+says so (`↪️ The implementer runs on claude/<model> … instead of
+cursor/<model>: the companion repository … needs claude.`). Without either,
+the run fails before any agent call. On a companion run, a fallback to
+cursor is not used: at a claude usage limit the run waits for the reset.
+Reviewers and the describer keep their engines.
+
 ### Engines
 
 | | `claude` | `cursor` |

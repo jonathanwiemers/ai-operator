@@ -83,7 +83,7 @@ func (a *LocalAgent) Run(ctx context.Context, engine aiv1.Engine, inv Invocation
 	if !ok {
 		return nil, fmt.Errorf("engine %q is not available in the agent image", engine)
 	}
-	if err := a.prepareInvocation(ctx, &inv); err != nil {
+	if err := a.prepareInvocation(ctx, engine, &inv); err != nil {
 		return nil, err
 	}
 	if !inv.ReadOnly && a.Workspace.exists() {
@@ -138,8 +138,21 @@ func statusSink(ctx context.Context) func(string) {
 	return fn
 }
 
-// prepareInvocation sets Dir and Env like Run, for one-shot calls and sessions.
-func (a *LocalAgent) prepareInvocation(ctx context.Context, inv *Invocation) error {
+// prepareInvocation sets Dir, AddDirs and Env like Run, for one-shot calls
+// and sessions. The companion slug resolves to its checkout like the repo
+// of a tree call; only claude can work on a second checkout.
+func (a *LocalAgent) prepareInvocation(ctx context.Context, engine aiv1.Engine, inv *Invocation) error {
+	inv.AddDirs = nil
+	if inv.Companion != "" {
+		if engine != aiv1.EngineClaude {
+			return fmt.Errorf("engine %q cannot work on the companion checkout %q: only claude can (--add-dir)", engine, inv.Companion)
+		}
+		w, err := a.tree(inv.Companion)
+		if err != nil {
+			return fmt.Errorf("companion: %w", err)
+		}
+		inv.AddDirs = []string{w.Dir}
+	}
 	if err := os.MkdirAll(a.Workspace.Dir, 0o755); err != nil {
 		return err
 	}
@@ -163,7 +176,7 @@ func (a *LocalAgent) OpenSession(ctx context.Context, engine aiv1.Engine, inv In
 	if !ok {
 		return "", fmt.Errorf("engine %q has no sessions", engine)
 	}
-	if err := a.prepareInvocation(ctx, &inv); err != nil {
+	if err := a.prepareInvocation(ctx, engine, &inv); err != nil {
 		return "", err
 	}
 
@@ -536,7 +549,7 @@ func (s *AgentServer) Handler() http.Handler {
 		inv := req.Invocation
 		log := logr.FromContextOrDiscard(ctx)
 		log.Info("agent CLI started", "role", inv.Role, "engine", req.Engine, "model", inv.Model,
-			"readOnly", inv.ReadOnly, "resume", inv.Resume != "", "promptBytes", len(inv.Prompt), "perRunToolchains", inv.PerRunToolchains)
+			"readOnly", inv.ReadOnly, "resume", inv.Resume != "", "promptBytes", len(inv.Prompt), "perRunToolchains", inv.PerRunToolchains, "companion", inv.Companion)
 		if inv.LogPrompt {
 			// agents.logPrompts: what the agent is told, for the web UI.
 			log.Info("agent prompt", "role", inv.Role, "engine", req.Engine, "model", inv.Model,
