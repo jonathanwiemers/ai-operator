@@ -745,7 +745,7 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 // invokeOn runs a role on its own engine (see invoke). The result says
 // which engine and model ran.
 func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocation, fullPrompt string) (*Result, error) {
-	inv = r.withSubagents(role, inv)
+	inv = r.withReadGate(role, r.withSubagents(role, inv))
 	inv.LogPrompt = r.logPrompts
 	if len(r.changedPins) > 0 && r.run != nil {
 		inv.PerRunToolchains = toolchainsRunName(r.run.id)
@@ -834,7 +834,8 @@ func toolchainsRunName(id string) string {
 // withSubagents gives a claude call the role's subagents (--agents) and the
 // line telling it to delegate to them. role is what the call runs on, so a
 // fallback's engine counts, not the configured one. Cursor has no subagents:
-// the call runs without them, with a warning once per run and role.
+// the call runs without them, with a warning once per run and role. The line
+// ends the system prompt; withReadGate appends its sentence to it.
 func (r *Runner) withSubagents(role aiv1.RoleSpec, inv Invocation) Invocation {
 	if len(role.Subagents) == 0 {
 		return inv

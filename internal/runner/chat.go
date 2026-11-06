@@ -177,7 +177,7 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 	inv.Role, inv.Kind = roleName, aiv1.CallKindChat
 	inv.Resume = resume
 	inv.LogPrompt = r.logPrompts
-	inv = r.withSubagents(role, inv)
+	inv = r.withReadGate(role, r.withSubagents(role, inv))
 
 	start := r.now()
 	if r.chatSessionKey != key {

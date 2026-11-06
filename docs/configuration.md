@@ -510,8 +510,56 @@ would have.
 
 ### Read gate
 
-`readGate: {}` on a claude role blocks its whole-file reads of files over
-`minLines` lines (default 350). Details follow with the runner support.
+The subagents line is a hint, and models often ignore it: they read big files
+whole into their own context anyway. A role's `readGate` turns it into a
+rule. It is a `PreToolUse` hook (`ai-runner read-gate`, on the agent image)
+that claude runs before every `Read` and `Bash` call of the role:
+
+- **Read** of a file with more than `minLines` lines is denied, unless it
+  sets `offset` or `limit` (a section) or `pages`. Images, PDFs and
+  notebooks, missing paths and anything that is not a regular file go
+  through.
+- **Bash** commands that dump such a file whole are denied: `cat`, `head`,
+  `tail`, `less` or `more` as the first word (after an optional `cd … &&`),
+  unless `head`/`tail` read at most `minLines` lines (`-n K`). Pipes,
+  redirects, `sed -n 'A,Bp'` and anything the gate does not understand go
+  through; it catches the common dump, it is not a shell parser.
+- **Subagents are exempt**: every call from a subagent goes through, reading
+  big files is the scout's job.
+
+A denied call gets *File … is over 350 lines (…; read gate: 350). Ask a
+subagent (scout) for what you need from it, or read only the section you
+edit with offset/limit.* as its tool result, and the agent goes on. Without
+`subagents` the message names claude's built-in ones (*a subagent such as
+Explore*). The gate **fails open**: bad hook input, an unreadable file or
+any other error lets the call through and logs one line, and the hook has a
+5 s timeout. A gate bug never fails a run.
+
+`minLines` defaults to 350 when `readGate: {}` is set; the minimum is 100.
+Unset, there is no gate, no `--settings` and no prompt sentence, as before.
+The runner passes the hooks to claude as `--settings` JSON, and the role's
+system prompt gets one more sentence, on the subagents line when the role
+has subagents: *Reads of files over 350 lines are blocked; ask a subagent or
+read a section with offset/limit.* Without subagents it is its own paragraph
+and says *ask a subagent such as Explore*.
+
+The read gate is claude only (cursor-agent has no hooks). A call that runs
+on cursor, because the role's engine is cursor or because a claude role
+runs on its cursor [fallback](#fallback-engine), goes without it; the runner
+logs *read gate is claude only; ignored for role implement on cursor* once
+per run and role.
+
+The scout from above, with the gate:
+
+```yaml
+spec:
+  agents:
+    implement:
+      readGate: {}            # or {minLines: 500}
+      subagents:
+        - name: scout
+          # … as above
+```
 
 ### Per-issue model and effort
 
