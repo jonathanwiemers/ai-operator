@@ -47,6 +47,7 @@ type API interface {
 	RebaseMergeRequest(ctx context.Context, project string, iid int64) error
 	ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error)
 	ListIssueStateEvents(ctx context.Context, project string, iid int64) ([]StateEvent, error)
+	ListIssueLabelEvents(ctx context.Context, project string, iid int64) ([]LabelEvent, error)
 	ListIssueLinks(ctx context.Context, project string, iid int64) ([]LinkedIssue, error)
 	CreateIssueLink(ctx context.Context, project string, iid, targetIID int64, linkType string) error
 	DeleteIssueLink(ctx context.Context, project string, iid, linkID int64) error
@@ -235,6 +236,28 @@ type StateEvent struct {
 	State string `json:"state"`
 	// SourceMergeRequest is the MR whose merge closed the issue.
 	SourceMergeRequest *MergeRequestRef `json:"source_merge_request"`
+}
+
+// LabelEvent is a label added to or removed from an issue, and by whom.
+type LabelEvent struct {
+	ID   int64 `json:"id"`
+	User User  `json:"user"`
+	// Label is nil for a label deleted since.
+	Label *struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	} `json:"label"`
+	// Action is "add" or "remove".
+	Action    string     `json:"action"`
+	CreatedAt *time.Time `json:"created_at"`
+}
+
+// LabelName is the event's label, "" for a deleted label.
+func (e LabelEvent) LabelName() string {
+	if e.Label == nil {
+		return ""
+	}
+	return e.Label.Name
 }
 
 // MergeRequestRef identifies a merge request, possibly of another project.
@@ -828,6 +851,11 @@ func (c *Client) DeleteIssueLink(ctx context.Context, project string, iid, linkI
 // ListIssueStateEvents lists the state changes of an issue, oldest first.
 func (c *Client) ListIssueStateEvents(ctx context.Context, project string, iid int64) ([]StateEvent, error) {
 	return list[StateEvent](ctx, c, fmt.Sprintf("%s/issues/%d/resource_state_events", projectPath(project), iid), nil)
+}
+
+// ListIssueLabelEvents lists the label changes of an issue, oldest first.
+func (c *Client) ListIssueLabelEvents(ctx context.Context, project string, iid int64) ([]LabelEvent, error) {
+	return list[LabelEvent](ctx, c, fmt.Sprintf("%s/issues/%d/resource_label_events", projectPath(project), iid), nil)
 }
 
 func (c *Client) FindOpenMergeRequest(ctx context.Context, project, sourceBranch string) (*MergeRequest, error) {

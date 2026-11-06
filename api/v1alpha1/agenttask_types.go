@@ -92,6 +92,20 @@ type AgentTaskSpec struct {
 	// +optional
 	BudgetStop bool `json:"budgetStop,omitempty"`
 
+	// Repos are the milestone's "/agent repo <project> [merge]" lines (spec
+	// tasks), each with the problem that makes the operator ignore it: a
+	// malformed or repeated line, or a project that is no valid companion
+	// target. Only lines without a problem count.
+	// +optional
+	Repos []MilestoneRepo `json:"repos,omitempty"`
+
+	// Companion is the companion repository the issue changes too
+	// (Implement tasks), written by the operator from the issue's
+	// agent-repo label once it counts; unset without one. The runner only
+	// reads it. Changing it requests no run.
+	// +optional
+	Companion *CompanionSpec `json:"companion,omitempty"`
+
 	// QueueLane is set by the operator while the task carries the fix of a
 	// red default branch (urgent). Empty: the task queues by its milestone.
 	// +optional
@@ -101,6 +115,43 @@ type AgentTaskSpec struct {
 	// run requests, so that every change triggers exactly one run.
 	// +optional
 	Source SourceState `json:"source,omitempty"`
+}
+
+// MilestoneRepo is one "/agent repo" line of a milestone.
+type MilestoneRepo struct {
+	// Project is the companion's full path, normalized; empty for a
+	// malformed line.
+	// +optional
+	Project string `json:"project,omitempty"`
+	// Merge: the line ends in "merge". Autopilot merges the companion's
+	// merge request only with it, on an autopilot milestone, and when the
+	// target has autoMerge.
+	// +optional
+	Merge bool `json:"merge,omitempty"`
+	// Problem says why the line is ignored; empty for a line that counts.
+	// +optional
+	Problem string `json:"problem,omitempty"`
+	// Line is the line as written, for a line with a problem.
+	// +optional
+	Line string `json:"line,omitempty"`
+}
+
+// CompanionSpec is the companion repository an implement task changes in
+// the same run as its home project (docs/specs/cross-repo-changes.spec.md).
+type CompanionSpec struct {
+	// Project is the companion's full path, as spec.crossRepo.targets
+	// names it.
+	Project string `json:"project"`
+	// Paths is the target's allow-list of the paths the change may touch.
+	Paths []string `json:"paths"`
+	// Branch is the work branch in the companion project,
+	// "agent/<home-slug>-<iid>-<slug>".
+	Branch string `json:"branch"`
+	// AutoMerge: autopilot may merge the companion's merge request. Only
+	// when the milestone line has "merge", the milestone is on autopilot
+	// and the target has autoMerge.
+	// +optional
+	AutoMerge bool `json:"autoMerge,omitempty"`
 }
 
 // MilestoneRef identifies a GitLab milestone.
@@ -177,6 +228,12 @@ type SourceState struct {
 	// during the pause knows it. Empty when it is not paused over it.
 	// +optional
 	AutopilotPause string `json:"autopilotPause,omitempty"`
+
+	// CompanionNotice is the agent-repo label the operator told the issue
+	// it ignores (Implement tasks), so it is told once per label. Cleared
+	// when the label goes or counts.
+	// +optional
+	CompanionNotice string `json:"companionNotice,omitempty"`
 
 	// LastPilotNoteID is the newest comment on the issue or its merge
 	// request handed to the pilot (Implement tasks).
@@ -1516,6 +1573,12 @@ type AutopilotStatus struct {
 	// ResumedBy is who ended the last pause; cleared by the next pause.
 	// +optional
 	ResumedBy PauseResolver `json:"resumedBy,omitempty"`
+
+	// RepoNotices are the milestone's "/agent repo" lines (as written) the
+	// operator has named on the tracking issue as ignored, so each is named
+	// once. A line that is fixed or removed leaves the list.
+	// +optional
+	RepoNotices []string `json:"repoNotices,omitempty"`
 }
 
 // BudgetStatus is the budget of an autopilot milestone and what it spent,

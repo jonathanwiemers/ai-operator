@@ -128,6 +128,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.ensureTracking(ctx); err != nil {
 		return err
 	}
+	if err := a.repoNotices(ctx); err != nil {
+		return err
+	}
 	if err := a.commands(ctx); err != nil {
 		return err
 	}

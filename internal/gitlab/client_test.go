@@ -539,3 +539,21 @@ func TestProjectHooks(t *testing.T) {
 		t.Fatalf("delete: %s %s", method, path)
 	}
 }
+
+func TestListIssueLabelEvents(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.EscapedPath())
+		_, _ = w.Write([]byte(`[{"id":5,"user":{"id":7,"username":"alice"},"label":{"id":2,"name":"agent-repo::group/infra"},"action":"add"},` +
+			`{"id":6,"user":{"id":8,"username":"bob"},"label":null,"action":"remove"}]`))
+	}))
+	defer srv.Close()
+	evs, err := New(srv.URL, "tok").ListIssueLabelEvents(context.Background(), "group/app", 4)
+	if err != nil || len(evs) != 2 || evs[0].User.Username != "alice" || evs[0].LabelName() != "agent-repo::group/infra" || evs[0].Action != "add" ||
+		evs[1].LabelName() != "" {
+		t.Fatalf("label events %+v %v", evs, err)
+	}
+	if !slices.Equal(paths, []string{"/api/v4/projects/group%2Fapp/issues/4/resource_label_events"}) {
+		t.Fatalf("paths %v", paths)
+	}
+}

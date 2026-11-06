@@ -117,3 +117,24 @@ func TestProjectsAddTwiceReturnsSameFake(t *testing.T) {
 		t.Fatal("second Add of the same path must return the registered Fake")
 	}
 }
+
+func TestLabelEvents(t *testing.T) {
+	ctx := context.Background()
+	p := NewProjects(New())
+	b := p.Add("group/b")
+	b.AddIssue(1, "x")
+	p.Default.AddIssue(1, "y")
+	human := gitlab.User{ID: 7, Username: "alice"}
+	b.LabelBy(1, human, "agent-repo::group/c")
+	if _, err := p.UpdateIssue(ctx, "group/b", 1, gitlab.UpdateIssueOptions{AddLabels: []string{"agent::ready"}, RemoveLabels: []string{"agent-repo::group/c"}}); err != nil {
+		t.Fatal(err)
+	}
+	evs, err := p.ListIssueLabelEvents(ctx, "group/b", 1)
+	if err != nil || len(evs) != 3 || evs[0].User != human || evs[0].Action != "add" || evs[1].User.ID != b.Bot.ID || evs[1].Action != "remove" ||
+		evs[2].LabelName() != "agent::ready" {
+		t.Fatalf("label events: %+v %v", evs, err)
+	}
+	if evs, _ := p.ListIssueLabelEvents(ctx, "group/app", 1); len(evs) != 0 {
+		t.Errorf("label events of b visible in a: %+v", evs)
+	}
+}

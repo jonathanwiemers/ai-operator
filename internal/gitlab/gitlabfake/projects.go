@@ -267,6 +267,14 @@ func (p *Projects) ListIssueStateEvents(ctx context.Context, project string, iid
 	return f.ListIssueStateEvents(ctx, project, iid)
 }
 
+func (p *Projects) ListIssueLabelEvents(ctx context.Context, project string, iid int64) ([]gitlab.LabelEvent, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.ListIssueLabelEvents(ctx, project, iid)
+}
+
 func (p *Projects) ListIssueLinks(ctx context.Context, project string, iid int64) ([]gitlab.LinkedIssue, error) {
 	f, err := p.route(project)
 	if err != nil {

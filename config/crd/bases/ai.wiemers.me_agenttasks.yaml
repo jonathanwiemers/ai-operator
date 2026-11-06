@@ -102,6 +102,40 @@ spec:
                   tasks the issue's budget, from an "/agent budget <usd>" comment on it,
                   in place of the project's budget.perIssueUSD.
                 type: string
+              companion:
+                description: |-
+                  Companion is the companion repository the issue changes too
+                  (Implement tasks), written by the operator from the issue's
+                  agent-repo label once it counts; unset without one. The runner only
+                  reads it. Changing it requests no run.
+                properties:
+                  autoMerge:
+                    description: |-
+                      AutoMerge: autopilot may merge the companion's merge request. Only
+                      when the milestone line has "merge", the milestone is on autopilot
+                      and the target has autoMerge.
+                    type: boolean
+                  branch:
+                    description: |-
+                      Branch is the work branch in the companion project,
+                      "agent/<home-slug>-<iid>-<slug>".
+                    type: string
+                  paths:
+                    description: Paths is the target's allow-list of the paths the
+                      change may touch.
+                    items:
+                      type: string
+                    type: array
+                  project:
+                    description: |-
+                      Project is the companion's full path, as spec.crossRepo.targets
+                      names it.
+                    type: string
+                required:
+                - branch
+                - paths
+                - project
+                type: object
               issue:
                 description: |-
                   Issue implemented by this task (Implement tasks), or the tracking
@@ -165,6 +199,36 @@ spec:
                 enum:
                 - urgent
                 type: string
+              repos:
+                description: |-
+                  Repos are the milestone's "/agent repo <project> [merge]" lines (spec
+                  tasks), each with the problem that makes the operator ignore it: a
+                  malformed or repeated line, or a project that is no valid companion
+                  target. Only lines without a problem count.
+                items:
+                  description: MilestoneRepo is one "/agent repo" line of a milestone.
+                  properties:
+                    line:
+                      description: Line is the line as written, for a line with a
+                        problem.
+                      type: string
+                    merge:
+                      description: |-
+                        Merge: the line ends in "merge". Autopilot merges the companion's
+                        merge request only with it, on an autopilot milestone, and when the
+                        target has autoMerge.
+                      type: boolean
+                    problem:
+                      description: Problem says why the line is ignored; empty for
+                        a line that counts.
+                      type: string
+                    project:
+                      description: |-
+                        Project is the companion's full path, normalized; empty for a
+                        malformed line.
+                      type: string
+                  type: object
+                type: array
               rules:
                 description: |-
                   Rules are the standing rules of the milestone: its description's
@@ -340,6 +404,12 @@ spec:
                       fix with the latest run request.
                     format: int64
                     type: integer
+                  companionNotice:
+                    description: |-
+                      CompanionNotice is the agent-repo label the operator told the issue
+                      it ignores (Implement tasks), so it is told once per label. Cleared
+                      when the label goes or counts.
+                    type: string
                   descriptionHash:
                     description: DescriptionHash of the milestone description (Spec
                       tasks).
@@ -1202,6 +1272,14 @@ spec:
                     - Done
                     - "Off"
                     type: string
+                  repoNotices:
+                    description: |-
+                      RepoNotices are the milestone's "/agent repo" lines (as written) the
+                      operator has named on the tracking issue as ignored, so each is named
+                      once. A line that is fixed or removed leaves the list.
+                    items:
+                      type: string
+                    type: array
                   resumeWhenReady:
                     description: 'ResumeWhenReady: the pause is over PausedFor''s
                       run, review or CI.'

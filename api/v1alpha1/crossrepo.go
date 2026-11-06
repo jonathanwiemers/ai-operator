@@ -150,3 +150,21 @@ func crossRepoPathProblems(paths []string) []string {
 	}
 	return out
 }
+
+// RepoLabelPrefix is the scoped label that gives an issue its companion
+// repository: "agent-repo::<project>", e.g.
+// "agent-repo::my-group/infra/cluster". Being scoped, an issue has at most
+// one.
+const RepoLabelPrefix = "agent-repo::"
+
+// FindCrossRepoTarget returns the target of project among targets,
+// compared as NormalizeProject does.
+func FindCrossRepoTarget(targets []CrossRepoTarget, project string) (CrossRepoTarget, bool) {
+	p := NormalizeProject(project)
+	for _, t := range targets {
+		if p != "" && NormalizeProject(t.Project) == p {
+			return t, true
+		}
+	}
+	return CrossRepoTarget{}, false
+}

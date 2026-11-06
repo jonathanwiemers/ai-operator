@@ -116,3 +116,67 @@ func ResearchPod(research, runID string) string {
 func LabelValue(name string) string {
 	return truncate(name)
 }
+
+// ProjectSlug names a GitLab project's directories in the runner (its
+// mirror "/runner/mirrors/<slug>.git", its checkout
+// "/workspace/repos/<slug>"): the full path lowercased, "/" as "-", other
+// characters outside [a-z0-9._-] dropped, e.g. "jo.wiemers-infra-cluster".
+// Characters a slug may not start with are trimmed, so a slug is either
+// valid (ValidProjectSlug) or "".
+func ProjectSlug(path string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.Trim(path, "/")) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		case r == '/':
+			b.WriteByte('-')
+		}
+	}
+	s := strings.TrimLeft(b.String(), "._-")
+	if len(s) > maxProjectSlug {
+		s = s[:maxProjectSlug]
+	}
+	return s
+}
+
+// maxProjectSlug bounds a slug, well below a file name's 255 bytes.
+const maxProjectSlug = 200
+
+// ValidProjectSlug reports whether s can be a ProjectSlug: 1 to 200
+// characters of [a-z0-9._-], starting with a letter or digit. It is safe as
+// one path segment: never "", "." or "..", and without "/".
+func ValidProjectSlug(s string) bool {
+	if s == "" || len(s) > maxProjectSlug || !(s[0] >= 'a' && s[0] <= 'z' || s[0] >= '0' && s[0] <= '9') {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// CompanionBranch names the branch of an issue's change in its companion
+// repository: "agent/<home-slug>-<iid>-<title slug>", where home-slug is the
+// last segment of the home project's path, e.g.
+// "agent/ai-operator-42-add-paypal-button".
+func CompanionBranch(homeProject string, issueIID int64, issueTitle string) string {
+	home := strings.Trim(homeProject, "/")
+	if i := strings.LastIndexByte(home, '/'); i >= 0 {
+		home = home[i+1:]
+	}
+	prefix := fmt.Sprintf("agent/%d", issueIID)
+	if h := Slug(home); h != "" {
+		prefix = fmt.Sprintf("agent/%s-%d", h, issueIID)
+	}
+	slug := Slug(issueTitle)
+	if len(slug) > 40 {
+		slug = strings.TrimRight(slug[:40], "-")
+	}
+	if slug == "" {
+		return prefix
+	}
+	return prefix + "-" + slug
+}

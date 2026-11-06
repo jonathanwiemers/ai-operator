@@ -52,11 +52,11 @@ func TestParseRoutingTruncatesLongArguments(t *testing.T) {
 }
 
 func TestApplyEffortOnCursor(t *testing.T) {
-	ch := Apply(testSpec(), []string{"agent-profile::fast"}, []Routing{{Verb: "effort", Args: []string{"high"}}})
+	ch := Apply(testSpec(), nil, []string{"agent-profile::fast"}, []Routing{{Verb: "effort", Args: []string{"high"}}})
 	if !slices.Equal(ch.Add, []string{"agent-effort::high"}) || !strings.Contains(ch.Lines[0], "no effort setting") {
 		t.Fatalf("the label is set, but the answer says it does not count on cursor: %+v", ch)
 	}
-	if ch := Apply(testSpec(), nil, []Routing{use("Claude", "OPUS")}); !slices.Equal(ch.Add, []string{"agent-model::claude/opus"}) {
+	if ch := Apply(testSpec(), nil, nil, []Routing{use("Claude", "OPUS")}); !slices.Equal(ch.Add, []string{"agent-model::claude/opus"}) {
 		t.Fatalf("names match in any case: %+v", ch)
 	}
 	if r := (Change{Lines: []string{"x"}}).Reply(); !strings.HasSuffix(r, marker.RoutingReply) {
@@ -74,7 +74,7 @@ func use(args ...string) Routing { return Routing{Verb: "use", Args: args, Only:
 
 func TestApplyUse(t *testing.T) {
 	spec := testSpec()
-	ch := Apply(spec, []string{"agent::working", "agent-model::cursor/auto", "agent-effort::low"}, []Routing{use("claude", "opus", "high")})
+	ch := Apply(spec, nil, []string{"agent::working", "agent-model::cursor/auto", "agent-effort::low"}, []Routing{use("claude", "opus", "high")})
 	if !slices.Equal(ch.Add, []string{"agent-model::claude/opus", "agent-effort::high"}) ||
 		!slices.Equal(ch.Remove, []string{"agent-model::cursor/auto", "agent-effort::low"}) {
 		t.Fatalf("labels: %+v", ch)
@@ -83,31 +83,31 @@ func TestApplyUse(t *testing.T) {
 		t.Fatalf("lines: %v", ch.Lines)
 	}
 	// The full model name works too, and a profile's model is allowed.
-	if ch := Apply(spec, nil, []Routing{use("claude", "claude-sonnet-5-5")}); !slices.Equal(ch.Add, []string{"agent-model::claude/sonnet"}) {
+	if ch := Apply(spec, nil, nil, []Routing{use("claude", "claude-sonnet-5-5")}); !slices.Equal(ch.Add, []string{"agent-model::claude/sonnet"}) {
 		t.Fatalf("model name: %+v", ch)
 	}
-	if ch := Apply(spec, nil, []Routing{use("cursor", "auto")}); !slices.Equal(ch.Add, []string{"agent-model::cursor/auto"}) {
+	if ch := Apply(spec, nil, nil, []Routing{use("cursor", "auto")}); !slices.Equal(ch.Add, []string{"agent-model::cursor/auto"}) {
 		t.Fatalf("profile model: %+v", ch)
 	}
 	// Already set: nothing to change, still answered.
-	if ch := Apply(spec, []string{"agent-model::claude/opus"}, []Routing{use("claude", "opus")}); len(ch.Add)+len(ch.Remove) != 0 || len(ch.Lines) != 1 {
+	if ch := Apply(spec, nil, []string{"agent-model::claude/opus"}, []Routing{use("claude", "opus")}); len(ch.Add)+len(ch.Remove) != 0 || len(ch.Lines) != 1 {
 		t.Fatalf("unchanged: %+v", ch)
 	}
 }
 
 func TestApplyDefaultsAndEffort(t *testing.T) {
 	spec := testSpec()
-	ch := Apply(spec, []string{"agent-model::claude/opus", "agent-effort::high"}, []Routing{use("default"), {Verb: "effort", Args: []string{"default"}}})
+	ch := Apply(spec, nil, []string{"agent-model::claude/opus", "agent-effort::high"}, []Routing{use("default"), {Verb: "effort", Args: []string{"default"}}})
 	if len(ch.Add) != 0 || !slices.Equal(ch.Remove, []string{"agent-model::claude/opus", "agent-effort::high"}) {
 		t.Fatalf("defaults remove the labels: %+v", ch)
 	}
 	// Above the cap (default high): lowered and said so.
-	ch = Apply(spec, nil, []Routing{{Verb: "effort", Args: []string{"MAX"}}})
+	ch = Apply(spec, nil, nil, []Routing{{Verb: "effort", Args: []string{"MAX"}}})
 	if !slices.Equal(ch.Add, []string{"agent-effort::high"}) || !strings.Contains(strings.Join(ch.Lines, " "), "above the project's maximum") {
 		t.Fatalf("capped: %+v", ch)
 	}
 	// The last command per setting wins.
-	ch = Apply(spec, nil, []Routing{{Verb: "effort", Args: []string{"low"}}, use("claude", "sonnet", "medium")})
+	ch = Apply(spec, nil, nil, []Routing{{Verb: "effort", Args: []string{"low"}}, use("claude", "sonnet", "medium")})
 	if !slices.Equal(ch.Add, []string{"agent-model::claude/sonnet", "agent-effort::medium"}) {
 		t.Fatalf("last wins: %+v", ch)
 	}
@@ -116,12 +116,12 @@ func TestApplyDefaultsAndEffort(t *testing.T) {
 func TestApplyRejects(t *testing.T) {
 	spec := testSpec()
 	for _, c := range []Routing{use("claude", "gpt-9"), use("openai", "opus"), use("claude", "opus", "huge"), use("claude"), {Verb: "effort", Args: []string{"lots"}}} {
-		ch := Apply(spec, []string{"agent-model::claude/opus"}, []Routing{c})
+		ch := Apply(spec, nil, []string{"agent-model::claude/opus"}, []Routing{c})
 		if len(ch.Add)+len(ch.Remove) != 0 || len(ch.Lines) != 1 {
 			t.Errorf("%+v must change nothing and say why: %+v", c, ch)
 		}
 	}
-	ch := Apply(spec, nil, []Routing{use("claude", "gpt-9")})
+	ch := Apply(spec, nil, nil, []Routing{use("claude", "gpt-9")})
 	if !strings.Contains(ch.Lines[0], "`claude opus`") || !strings.Contains(ch.Lines[0], "`cursor auto`") {
 		t.Fatalf("the answer lists the allowed models: %s", ch.Lines[0])
 	}
@@ -143,22 +143,79 @@ func TestIsReview(t *testing.T) {
 
 func TestApplyBudget(t *testing.T) {
 	budget := func(usd string) Routing { return Routing{Verb: "budget", Args: []string{usd}, Only: true} }
-	ch := Apply(testSpec(), []string{"agent::working"}, []Routing{budget("40")})
+	ch := Apply(testSpec(), nil, []string{"agent::working"}, []Routing{budget("40")})
 	if ch.Budget == nil || *ch.Budget != "40.0000" || len(ch.Add)+len(ch.Remove) != 0 || len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "$40.00") {
 		t.Fatalf("a budget sets the issue's budget and no label: %+v", ch)
 	}
-	ch = Apply(testSpec(), nil, []Routing{budget("40"), budget("DEFAULT")})
+	ch = Apply(testSpec(), nil, nil, []Routing{budget("40"), budget("DEFAULT")})
 	if ch.Budget == nil || *ch.Budget != "" || !strings.Contains(ch.Lines[0], "back to the project's") {
 		t.Fatalf("the last budget wins, default is the project's: %+v", ch)
 	}
 	for _, bad := range []string{"0", "five", "-3", "$"} {
-		ch := Apply(testSpec(), nil, []Routing{budget(bad)})
+		ch := Apply(testSpec(), nil, nil, []Routing{budget(bad)})
 		if ch.Budget != nil || len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "`/agent budget "+bad+"`") {
 			t.Errorf("%q must change nothing and say why: %+v", bad, ch)
 		}
 	}
-	ch = Apply(testSpec(), nil, []Routing{budget("40"), budget("five")})
+	ch = Apply(testSpec(), nil, nil, []Routing{budget("40"), budget("five")})
 	if ch.Budget == nil || *ch.Budget != "40.0000" || len(ch.Lines) != 2 {
 		t.Fatalf("an invalid budget keeps the valid one before it: %+v", ch)
+	}
+}
+
+func TestParseRoutingRepo(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		ok   bool
+		want []string
+	}{
+		{"/agent repo jo.wiemers/infra/cluster", true, []string{"jo.wiemers/infra/cluster"}},
+		{"/agent repo https://gitlab.com/Jo.Wiemers/Infra/Cluster/-/tree/main", true, []string{"jo.wiemers/infra/cluster"}},
+		{"/agent repo https://gitlab.com/jo.wiemers/infra/cluster.git\nplease", true, []string{"jo.wiemers/infra/cluster"}},
+		{"/agent repo NONE", true, []string{"none"}},
+		{"/agent repo `a/b`", true, []string{"a/b"}},
+		{"/agent repo jo.wiemers/infra/cluster merge", false, nil}, // merge is the milestone's
+		{"/agent repo a/b c/d", false, nil},
+		{"/agent repo cleanup", false, nil}, // an instruction for the agent
+		{"/agent repo", false, nil},
+		{"/agent repo " + strings.Repeat("a/", 200) + "b", false, nil},
+	} {
+		got, ok := ParseRouting(tc.body, "/agent")
+		if ok != tc.ok || (ok && (got.Verb != "repo" || !slices.Equal(got.Args, tc.want))) {
+			t.Errorf("%q: got %+v %v, want %v %v", tc.body, got, ok, tc.want, tc.ok)
+		}
+	}
+	long := "a/" + strings.Repeat("b", 100)
+	if r, ok := ParseRouting("/agent repo "+long, "/agent"); !ok || r.Args[0] != long {
+		t.Errorf("a project path is not cut: %+v", r)
+	}
+}
+
+func TestApplyRepo(t *testing.T) {
+	repo := func(arg string) Routing { return Routing{Verb: "repo", Args: []string{arg}, Only: true} }
+	targets := []aiv1.CrossRepoTarget{{Project: "jo.wiemers/infra/cluster", Paths: []string{"clusters/"}}, {Project: "jo.wiemers/bloop", Paths: []string{"x/"}}}
+	ch := Apply(testSpec(), targets, []string{"agent::ready", "agent-repo::jo.wiemers/bloop"}, []Routing{repo("jo.wiemers/infra/cluster")})
+	if !slices.Equal(ch.Add, []string{"agent-repo::jo.wiemers/infra/cluster"}) || !slices.Equal(ch.Remove, []string{"agent-repo::jo.wiemers/bloop"}) ||
+		len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "`jo.wiemers/infra/cluster`") {
+		t.Fatalf("the label replaces the other agent-repo label: %+v", ch)
+	}
+	if ch := Apply(testSpec(), targets, []string{"agent-repo::jo.wiemers/infra/cluster"}, []Routing{repo("jo.wiemers/infra/cluster")}); len(ch.Add)+len(ch.Remove) != 0 {
+		t.Fatalf("a set label stays: %+v", ch)
+	}
+	ch = Apply(testSpec(), targets, []string{"agent-repo::jo.wiemers/infra/cluster", "agent::ready"}, []Routing{repo("none")})
+	if len(ch.Add) != 0 || !slices.Equal(ch.Remove, []string{"agent-repo::jo.wiemers/infra/cluster"}) || !strings.Contains(ch.Lines[0], "no companion") {
+		t.Fatalf("none removes the label: %+v", ch)
+	}
+	ch = Apply(testSpec(), targets, []string{"agent-repo::jo.wiemers/bloop"}, []Routing{repo("jo.wiemers/personal/kubernetes")})
+	if len(ch.Add)+len(ch.Remove) != 0 || len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "`jo.wiemers/infra/cluster`, `jo.wiemers/bloop`") ||
+		!strings.Contains(ch.Lines[0], "`/agent repo none`") {
+		t.Fatalf("an unknown target changes nothing and lists the allowed ones: %+v", ch)
+	}
+	if ch := Apply(testSpec(), nil, nil, []Routing{repo("a/b")}); len(ch.Add) != 0 || !strings.Contains(ch.Lines[0], "has none") {
+		t.Fatalf("without targets the answer says there are none: %+v", ch)
+	}
+	ch = Apply(testSpec(), targets, nil, []Routing{repo("jo.wiemers/bloop"), repo("unknown/x"), repo("JO.WIEMERS/infra/cluster")})
+	if !slices.Equal(ch.Add, []string{"agent-repo::jo.wiemers/infra/cluster"}) || len(ch.Lines) != 2 {
+		t.Fatalf("the last valid command wins: %+v", ch)
 	}
 }

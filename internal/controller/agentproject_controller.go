@@ -229,7 +229,7 @@ func (r *AgentProjectReconciler) milestonesChanged(ctx context.Context, project 
 		task := planned[m.IID]
 		owners := notify.Resolve(m.Description, spec.Workflow.CommandPrefix, spec.Notify.Users, r.DefaultOwners)
 		subjects := notify.MilestoneOwnerSubjects(m.Description, spec.Workflow.CommandPrefix)
-		if task == nil || !specTaskCurrent(spec, m, task, autopilot, owners, subjects) || r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration) {
+		if task == nil || !specTaskCurrent(spec, m, task, autopilot, owners, subjects, r.milestoneRepos(spec, m.Description)) || r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration) {
 			return true, nil
 		}
 		selected[m.IID] = true
@@ -419,8 +419,10 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	var errs []error
 	for _, is := range issues {
 		autopilot, pause, budgetStop := false, "", false
+		var ms issueMilestone
 		if is.Milestone != nil {
 			if st := autopilots[is.Milestone.IID]; st != nil {
+				ms.autopilot = st.Spec.Autopilot
 				// Only issues of the queue are merged by autopilot; others
 				// in the milestone follow the normal flow.
 				autopilot = st.Spec.Autopilot && onAutopilot(st, is.IID)
@@ -442,8 +444,9 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			if description, ok = descriptions[is.Milestone.ID]; !ok {
 				description = is.Milestone.Description
 			}
+			ms.description = description
 		}
-		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], autopilot, pause, budgetStop, is.IID == urgentIssue, owners(description), ownerSubjects(description))
+		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], autopilot, pause, budgetStop, is.IID == urgentIssue, ms, owners(description), ownerSubjects(description))
 		if err != nil {
 			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
 			// Keep the existing task, so the cleanup below does not delete
@@ -713,6 +716,9 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 	if err != nil {
 		log.FromContext(ctx).Info("ignoring the milestone's budget line: no budget", "milestone", m.Title, "error", err.Error())
 	}
+	// The repo lines are part of the spec (and its hash); which of them
+	// name a valid target is the project's config.
+	repos := r.milestoneRepos(spec, m.Description)
 	ref := &aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title}
 	if task == nil {
 		task, err = r.newTask(project, naming.SpecTask(project.Name, m.IID, m.Title), aiv1.TaskTypeSpec)
@@ -725,16 +731,22 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		task.Spec.Source.DescriptionHash = hash
 		task.Spec.Autopilot = autopilot
 		task.Spec.Owners, task.Spec.OwnerSubjects, task.Spec.Rules = owners, ownerSubjects, ruleLines
+		task.Spec.Repos = repos
+		logRepoProblems(ctx, m.Title, repos)
 		task.Spec.BudgetUSD = budget
 		log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name, "autopilot", autopilot)
 		return task, r.Create(ctx, task)
 	}
 	retry := r.specRetryDue(task, spec.Lifecycle.InfraRetryAfter.Duration)
-	if specTaskCurrent(spec, m, task, autopilot, owners, ownerSubjects) && !retry {
+	if specTaskCurrent(spec, m, task, autopilot, owners, ownerSubjects, repos) && !retry {
 		return task, nil
 	}
 	task.Spec.Autopilot = autopilot
 	task.Spec.Owners, task.Spec.OwnerSubjects, task.Spec.Rules = owners, ownerSubjects, ruleLines
+	if !slices.Equal(task.Spec.Repos, repos) {
+		logRepoProblems(ctx, m.Title, repos)
+	}
+	task.Spec.Repos = repos
 	task.Spec.BudgetUSD = budget
 	if task.Spec.Source.DescriptionHash != hash {
 		log.FromContext(ctx).Info("milestone spec changed, re-planning", "milestone", m.Title, "task", task.Name)
@@ -750,15 +762,16 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 }
 
 // specTaskCurrent reports whether a milestone's spec task matches it: the
-// spec's hash, the milestone, autopilot, owners, owner-subjects, rules and
-// budget.
-func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners, ownerSubjects []string) bool {
+// spec's hash, the milestone, autopilot, owners, owner-subjects, rules,
+// budget and repo lines.
+func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners, ownerSubjects []string, repos []aiv1.MilestoneRepo) bool {
 	prefix := spec.Workflow.CommandPrefix
 	budget, _ := rules.Budget(m.Description, prefix)
 	return task.Spec.Source.DescriptionHash == hashString(rules.Spec(m.Description, prefix)) &&
 		*task.Spec.Milestone == aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title} && task.Spec.Autopilot == autopilot &&
 		slices.Equal(task.Spec.Owners, owners) && slices.Equal(task.Spec.OwnerSubjects, ownerSubjects) &&
-		slices.Equal(task.Spec.Rules, rules.Lines(m.Description, prefix)) && task.Spec.BudgetUSD == budget
+		slices.Equal(task.Spec.Rules, rules.Lines(m.Description, prefix)) && task.Spec.BudgetUSD == budget &&
+		slices.Equal(task.Spec.Repos, repos)
 }
 
 // specRetryDue reports whether a planning run that failed for an outside
@@ -775,7 +788,7 @@ func (r *AgentProjectReconciler) specRetryDue(task *aiv1.AgentTask, after time.D
 // turns "moved to ready" and "/agent" comments into run requests. It returns
 // the task's merge request too, if it has one.
 func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, pause string, budgetStop, urgent bool, owners, ownerSubjects []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
+	is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, pause string, budgetStop, urgent bool, ms issueMilestone, owners, ownerSubjects []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -882,6 +895,13 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		return nil, nil, err
 	}
 
+	// The companion repository, from the labels as the commands left them.
+	// It requests no run by itself.
+	companionNotice, err := r.syncCompanion(ctx, gl, gate, spec, is, task, ms, owners)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	requested := ready || command || conflict || chatRun
 	if requested {
 		task.Spec.RunRequest++
@@ -910,6 +930,12 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		}
 		if err != nil {
 			log.FromContext(ctx).Info("could not answer the model and effort commands", "issue", is.IID, "error", err.Error())
+		}
+	}
+	if companionNotice != "" {
+		// Not tried again: the notice is recorded (source.companionNotice).
+		if _, err := gl.CreateIssueNote(ctx, glProject, is.IID, companionNotice); err != nil {
+			log.FromContext(ctx).Info("could not tell the issue its companion label is ignored", "issue", is.IID, "error", err.Error())
 		}
 	}
 	link := ""
@@ -1091,7 +1117,7 @@ func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitla
 				answer(m.ID, "not a routing command")
 				continue
 			}
-			ch := command.Apply(spec, is.Labels, []command.Routing{rt})
+			ch := command.Apply(spec, r.crossRepoTargets(spec), is.Labels, []command.Routing{rt})
 			if len(ch.Add)+len(ch.Remove) > 0 {
 				if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{AddLabels: ch.Add, RemoveLabels: ch.Remove}); err != nil {
 					return false, fmt.Errorf("setting the model and effort labels of issue #%d: %w", is.IID, err)
@@ -1110,11 +1136,11 @@ func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitla
 	return run, nil
 }
 
-// applyRouting turns the "/agent use", "/agent effort" and "/agent budget"
-// comments of humans that are newer than the last applied one into the
-// issue's model and effort labels and the task's budget (ts). It returns
-// the answer, to be posted once the task is saved, where the last command
-// was written.
+// applyRouting turns the "/agent use", "/agent effort", "/agent budget" and
+// "/agent repo" comments of humans that are newer than the last applied one
+// into the issue's model, effort and companion labels and the task's budget
+// (ts). It returns the answer, to be posted once the task is saved, where
+// the last command was written.
 func (r *AgentProjectReconciler) applyRouting(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is *gitlab.Issue,
 	issueNotes, mrNotes []gitlab.Note, ts *aiv1.AgentTaskSpec, botID int64) (*routingReply, error) {
 	prefix := spec.Workflow.CommandPrefix
@@ -1153,7 +1179,7 @@ func (r *AgentProjectReconciler) applyRouting(ctx context.Context, gl gitlab.API
 	for i, n := range found {
 		cmds[i], _ = command.ParseRouting(n.Body, prefix)
 	}
-	ch := command.Apply(spec, is.Labels, cmds)
+	ch := command.Apply(spec, r.crossRepoTargets(spec), is.Labels, cmds)
 	if len(ch.Add)+len(ch.Remove) > 0 {
 		if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{AddLabels: ch.Add, RemoveLabels: ch.Remove}); err != nil {
 			return nil, fmt.Errorf("setting the model and effort labels of issue #%d: %w", is.IID, err)
@@ -1163,7 +1189,7 @@ func (r *AgentProjectReconciler) applyRouting(ctx context.Context, gl gitlab.API
 	if ch.Budget != nil {
 		ts.BudgetUSD = *ch.Budget
 	}
-	log.FromContext(ctx).Info("model, effort and budget commands applied", "issue", is.IID, "add", ch.Add, "remove", ch.Remove, "budgetUSD", ts.BudgetUSD)
+	log.FromContext(ctx).Info("model, effort, budget and repo commands applied", "issue", is.IID, "add", ch.Add, "remove", ch.Remove, "budgetUSD", ts.BudgetUSD)
 	last := found[len(found)-1]
 	src.LastRoutingNoteID = last.ID
 	return &routingReply{body: ch.Reply(), onMR: last.onMR}, nil

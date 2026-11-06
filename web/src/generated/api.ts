@@ -2075,6 +2075,22 @@ export interface AgentTaskSpec {
    */
   budgetStop?: boolean;
   /**
+   * Repos are the milestone's "/agent repo <project> [merge]" lines (spec
+   * tasks), each with the problem that makes the operator ignore it: a
+   * malformed or repeated line, or a project that is no valid companion
+   * target. Only lines without a problem count.
+   * +optional
+   */
+  repos?: MilestoneRepo[];
+  /**
+   * Companion is the companion repository the issue changes too
+   * (Implement tasks), written by the operator from the issue's
+   * agent-repo label once it counts; unset without one. The runner only
+   * reads it. Changing it requests no run.
+   * +optional
+   */
+  companion?: CompanionSpec;
+  /**
    * QueueLane is set by the operator while the task carries the fix of a
    * red default branch (urgent). Empty: the task queues by its milestone.
    * +optional
@@ -2086,6 +2102,61 @@ export interface AgentTaskSpec {
    * +optional
    */
   source?: SourceState;
+}
+/**
+ * MilestoneRepo is one "/agent repo" line of a milestone.
+ */
+export interface MilestoneRepo {
+  /**
+   * Project is the companion's full path, normalized; empty for a
+   * malformed line.
+   * +optional
+   */
+  project?: string;
+  /**
+   * Merge: the line ends in "merge". Autopilot merges the companion's
+   * merge request only with it, on an autopilot milestone, and when the
+   * target has autoMerge.
+   * +optional
+   */
+  merge?: boolean;
+  /**
+   * Problem says why the line is ignored; empty for a line that counts.
+   * +optional
+   */
+  problem?: string;
+  /**
+   * Line is the line as written, for a line with a problem.
+   * +optional
+   */
+  line?: string;
+}
+/**
+ * CompanionSpec is the companion repository an implement task changes in
+ * the same run as its home project (docs/specs/cross-repo-changes.spec.md).
+ */
+export interface CompanionSpec {
+  /**
+   * Project is the companion's full path, as spec.crossRepo.targets
+   * names it.
+   */
+  project: string;
+  /**
+   * Paths is the target's allow-list of the paths the change may touch.
+   */
+  paths: string[];
+  /**
+   * Branch is the work branch in the companion project,
+   * "agent/<home-slug>-<iid>-<slug>".
+   */
+  branch: string;
+  /**
+   * AutoMerge: autopilot may merge the companion's merge request. Only
+   * when the milestone line has "merge", the milestone is on autopilot
+   * and the target has autoMerge.
+   * +optional
+   */
+  autoMerge?: boolean;
 }
 /**
  * MilestoneRef identifies a GitLab milestone.
@@ -2180,6 +2251,13 @@ export interface SourceState {
    * +optional
    */
   autopilotPause?: string;
+  /**
+   * CompanionNotice is the agent-repo label the operator told the issue
+   * it ignores (Implement tasks), so it is told once per label. Cleared
+   * when the label goes or counts.
+   * +optional
+   */
+  companionNotice?: string;
   /**
    * LastPilotNoteID is the newest comment on the issue or its merge
    * request handed to the pilot (Implement tasks).
@@ -3899,6 +3977,13 @@ export interface AutopilotStatus {
    * +optional
    */
   resumedBy?: PauseResolver;
+  /**
+   * RepoNotices are the milestone's "/agent repo" lines (as written) the
+   * operator has named on the tracking issue as ignored, so each is named
+   * once. A line that is fixed or removed leaves the list.
+   * +optional
+   */
+  repoNotices?: string[];
 }
 /**
  * BudgetStatus is the budget of an autopilot milestone and what it spent,
@@ -4154,6 +4239,13 @@ export interface CrossRepoTarget {
  * without spec.crossRepo.
  */
 export const ConditionCrossRepoReady = "CrossRepoReady";
+/**
+ * RepoLabelPrefix is the scoped label that gives an issue its companion
+ * repository: "agent-repo::<project>", e.g.
+ * "agent-repo::my-group/infra/cluster". Being scoped, an issue has at most
+ * one.
+ */
+export const RepoLabelPrefix = "agent-repo::";
 
 //////////
 // source: pause.go

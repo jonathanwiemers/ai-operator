@@ -82,6 +82,11 @@ type Fake struct {
 	NoPipelines     bool
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
+	// LabelEvents of issues, oldest first: UpdateIssue records the bot's,
+	// LabelBy a human's. LabelEventLists counts ListIssueLabelEvents calls.
+	LabelEvents     map[int64][]gitlab.LabelEvent
+	LabelEventLists int
+	labelEventID    int64
 	// Users FindUser knows, besides the bot; FindUserError makes it fail.
 	Users         []gitlab.User
 	FindUserError error
@@ -346,11 +351,14 @@ func (f *Fake) UpdateIssue(_ context.Context, _ string, iid int64, opts gitlab.U
 	for _, l := range is.Labels {
 		if !slices.Contains(opts.RemoveLabels, l) {
 			labels = append(labels, l)
+		} else {
+			f.labelEvent(iid, f.Bot, l, "remove")
 		}
 	}
 	for _, l := range opts.AddLabels {
 		if !slices.Contains(labels, l) {
 			labels = append(labels, l)
+			f.labelEvent(iid, f.Bot, l, "add")
 		}
 	}
 	is.Labels = labels
@@ -945,4 +953,44 @@ func (f *Fake) DeleteProjectHook(_ context.Context, _ string, id int64) error {
 		}
 	}
 	return &gitlab.Error{StatusCode: 404, Method: "DELETE", Path: "hooks"}
+}
+
+// labelEvent records a label change by a user; f.mu is held.
+func (f *Fake) labelEvent(iid int64, by gitlab.User, label, action string) {
+	if f.LabelEvents == nil {
+		f.LabelEvents = map[int64][]gitlab.LabelEvent{}
+	}
+	// Own IDs and no tick: label events do not shift the IDs and times
+	// other tests expect.
+	f.labelEventID++
+	at := f.Clock
+	ev := gitlab.LabelEvent{ID: f.labelEventID, User: by, Action: action, CreatedAt: &at}
+	ev.Label = &struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	}{Name: label}
+	f.LabelEvents[iid] = append(f.LabelEvents[iid], ev)
+}
+
+// LabelBy adds a label to an issue by hand, as user by: the label, its
+// label event and a new updated_at.
+func (f *Fake) LabelBy(iid int64, by gitlab.User, label string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	is := f.Issues[iid]
+	if !slices.Contains(is.Labels, label) {
+		is.Labels = append(is.Labels, label)
+	}
+	f.labelEvent(iid, by, label, "add")
+	is.UpdatedAt = f.tick()
+}
+
+func (f *Fake) ListIssueLabelEvents(_ context.Context, _ string, iid int64) ([]gitlab.LabelEvent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.LabelEventLists++
+	if _, ok := f.Issues[iid]; !ok {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "resource_label_events"}
+	}
+	return slices.Clone(f.LabelEvents[iid]), nil
 }

@@ -44,19 +44,24 @@ func (g *commandGate) counts(ctx context.Context, n gitlab.Note, owners []string
 // byOwner reports whether n was written by one of the owners, whoever may
 // give commands otherwise.
 func (g *commandGate) byOwner(ctx context.Context, n gitlab.Note, owners []string) (bool, error) {
+	return g.isOwner(ctx, n.Author.ID, owners)
+}
+
+// isOwner reports whether the user with ID id is one of the owners.
+func (g *commandGate) isOwner(ctx context.Context, id int64, owners []string) (bool, error) {
 	for _, o := range owners {
-		id, ok := g.ids[o]
+		oid, ok := g.ids[o]
 		if !ok {
 			u, err := g.gl.FindUser(ctx, o)
 			if err != nil {
 				return false, fmt.Errorf("looking up owner %q: %w", o, err)
 			}
 			if u != nil {
-				id = u.ID
+				oid = u.ID
 			}
-			g.ids[o] = id
+			g.ids[o] = oid
 		}
-		if id != 0 && id == n.Author.ID {
+		if oid != 0 && oid == id {
 			return true, nil
 		}
 	}

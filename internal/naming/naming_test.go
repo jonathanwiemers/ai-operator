@@ -66,3 +66,69 @@ func TestResearchPod(t *testing.T) {
 		t.Errorf("label value %q", v)
 	}
 }
+
+func TestProjectSlug(t *testing.T) {
+	for in, want := range map[string]string{
+		"jo.wiemers/infra/cluster": "jo.wiemers-infra-cluster",
+		"/Group/Sub_Group/App/":    "group-sub_group-app",
+		"group/ä-app":              "group--app",
+		"../etc/passwd":            "etc-passwd", // leading "." and "-" are trimmed
+		"":                         "",
+		"..":                       "",
+	} {
+		got := ProjectSlug(in)
+		if got != want {
+			t.Errorf("ProjectSlug(%q) = %q, want %q", in, got, want)
+		}
+		if got != "" && !ValidProjectSlug(got) {
+			t.Errorf("ProjectSlug(%q) = %q is not valid", in, got)
+		}
+	}
+	if got := ProjectSlug(strings.Repeat("a/", 300)); len(got) != 200 || !ValidProjectSlug(got) {
+		t.Errorf("a long slug is cut to 200: %d", len(got))
+	}
+}
+
+func TestValidProjectSlug(t *testing.T) {
+	for s, want := range map[string]bool{
+		"jo.wiemers-infra-cluster": true,
+		"a":                        true,
+		"0a._-":                    true,
+		"":                         false,
+		".":                        false,
+		"..":                       false,
+		".git":                     false,
+		"-a":                       false,
+		"_a":                       false,
+		"a/b":                      false,
+		"A":                        false,
+		"a b":                      false,
+		"a\x00":                    false,
+		strings.Repeat("a", 201):   false,
+	} {
+		if got := ValidProjectSlug(s); got != want {
+			t.Errorf("ValidProjectSlug(%q) = %v, want %v", s, got, want)
+		}
+	}
+}
+
+func TestCompanionBranch(t *testing.T) {
+	for _, c := range []struct {
+		home  string
+		iid   int64
+		title string
+		want  string
+	}{
+		{"jo.wiemers/ai-operator", 42, "Add PayPal button", "agent/ai-operator-42-add-paypal-button"},
+		{"Group/Shop.App", 7, "", "agent/shop-app-7"},
+		{"app", 3, "Fix it", "agent/app-3-fix-it"},
+		{"group/app", 9, strings.Repeat("word ", 20), "agent/app-9-word-word-word-word-word-word-word-word"},
+	} {
+		if got := CompanionBranch(c.home, c.iid, c.title); got != c.want {
+			t.Errorf("CompanionBranch(%q, %d, %q) = %q, want %q", c.home, c.iid, c.title, got, c.want)
+		}
+		if IsIssueBranch(CompanionBranch(c.home, c.iid, c.title), c.iid) {
+			t.Errorf("a companion branch is no issue branch of the home project")
+		}
+	}
+}

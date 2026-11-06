@@ -1,7 +1,8 @@
 // Package command reads the "/agent use" and "/agent effort" comments that
 // pick the engine, model and effort of an issue's implementer, and turns
 // them into the issue's model and effort labels, and the "/agent budget"
-// comments that set the issue's budget.
+// comments that set the issue's budget, and the "/agent repo" comments that
+// give the issue a companion repository (its agent-repo label).
 package command
 
 import (
@@ -12,11 +13,15 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/rules"
 )
 
-// Routing is "/agent use …", "/agent effort …" or "/agent budget …".
+// Routing is "/agent use …", "/agent effort …", "/agent budget …" or
+// "/agent repo …".
 type Routing struct {
-	Verb string // "use", "effort" or "budget"
+	Verb string // "use", "effort", "budget" or "repo"
+	// Args are the arguments; for "repo" the project's normalized path or
+	// "none".
 	Args []string
 	// Only: the comment is nothing but the command. It starts no run and is
 	// no input for the agent.
@@ -47,19 +52,33 @@ func ParseRouting(body, prefix string) (Routing, bool) {
 	case verb == "use" && (len(args) == 2 || len(args) == 3) && knownEngine(args[0]):
 	case verb == "effort" && len(args) == 1 && (strings.EqualFold(args[0], "default") || aiv1.ValidEffort(strings.ToLower(args[0]))):
 	case verb == "budget" && len(args) == 1:
+	case verb == "repo" && len(args) == 1 && strings.EqualFold(args[0], "none"):
+		args[0] = "none"
+	case verb == "repo" && len(args) == 1:
+		// A path or a GitLab URL, kept as the path: a URL may be longer than
+		// an echoed argument.
+		p, ok := rules.ProjectPath(args[0])
+		if !ok || len(p) > maxProject {
+			return Routing{}, false // "/agent repo cleanup" is an instruction
+		}
+		args[0] = p
 	default:
 		return Routing{}, false
 	}
 	for i, a := range args {
-		if len(a) > maxArg {
+		if len(a) > maxArg && verb != "repo" {
 			args[i] = a[:maxArg] + "…"
 		}
 	}
 	return Routing{Verb: verb, Args: args, Only: strings.TrimSpace(more) == ""}, true
 }
 
-// maxArg bounds an argument echoed in the answer.
-const maxArg = 64
+// maxArg bounds an argument echoed in the answer; maxProject a project
+// path, which is not cut.
+const (
+	maxArg     = 64
+	maxProject = 255
+)
 
 func knownEngine(s string) bool {
 	e := aiv1.Engine(strings.ToLower(s))
@@ -98,13 +117,14 @@ type Change struct {
 
 // Apply works out the label change of routing commands, oldest first, on an
 // issue with the given labels. The last valid command per setting wins;
-// invalid ones change nothing and say why.
-func Apply(spec aiv1.AgentProjectSpec, labels []string, cmds []Routing) Change {
+// invalid ones change nothing and say why. targets are the project's valid
+// companion targets "/agent repo" may name.
+func Apply(spec aiv1.AgentProjectSpec, targets []aiv1.CrossRepoTarget, labels []string, cmds []Routing) Change {
 	prefix := spec.Workflow.CommandPrefix
 	efforts := strings.Join(aiv1.Efforts, "|")
 	usage := fmt.Sprintf("`%s use <engine> <model> [effort]`, `%s use default` or `%s effort <%s|default>`", prefix, prefix, prefix, efforts)
 	// nil: unchanged, "": back to the profile.
-	var model, effort *string
+	var model, effort, repo *string
 	var ch Change
 	for _, c := range cmds {
 		text := strings.TrimSpace(fmt.Sprintf("%s %s %s", prefix, c.Verb, strings.Join(c.Args, " ")))
@@ -145,6 +165,17 @@ func Apply(spec aiv1.AgentProjectSpec, labels []string, cmds []Routing) Change {
 				b = usd
 			}
 			ch.Budget = &b
+		case c.Verb == "repo" && len(c.Args) == 1 && c.Args[0] == "none":
+			v := ""
+			repo = &v
+		case c.Verb == "repo" && len(c.Args) == 1:
+			t, ok := aiv1.FindCrossRepoTarget(targets, c.Args[0])
+			if !ok {
+				ch.Lines = append(ch.Lines, fmt.Sprintf("`%s` names no companion target of this project; %s.", text, allowedTargets(targets, prefix)))
+				continue
+			}
+			v := t.Project
+			repo = &v
 		default:
 			ch.Lines = append(ch.Lines, fmt.Sprintf("`%s` is not understood; use %s.", text, usage))
 		}
@@ -194,6 +225,16 @@ func Apply(spec aiv1.AgentProjectSpec, labels []string, cmds []Routing) Change {
 	default:
 		ch.Lines = append(ch.Lines, fmt.Sprintf("The issue's budget is $%s; on an autopilot milestone, autopilot pauses once its calls cost that much.", aiv1.ShowCost(aiv1.CostOf(*ch.Budget))))
 	}
+	switch {
+	case repo == nil:
+	case *repo == "":
+		swap(aiv1.RepoLabelPrefix, "")
+		ch.Lines = append(ch.Lines, "The issue has no companion repository from the next run on.")
+	default:
+		swap(aiv1.RepoLabelPrefix, *repo)
+		ch.Lines = append(ch.Lines, fmt.Sprintf("The issue changes the companion repository `%s` too, from the next run on. "+
+			"Autopilot merges its merge request only under a milestone line `%s repo %s merge`; otherwise the owners are asked to.", *repo, prefix, *repo))
+	}
 	return ch
 }
 
@@ -214,4 +255,16 @@ func allowed(spec aiv1.AgentProjectSpec) string {
 		names = append(names, "`"+string(o.Engine)+" "+o.Name()+"`")
 	}
 	return strings.Join(names, ", ")
+}
+
+// allowedTargets names the companion targets "/agent repo" may name.
+func allowedTargets(targets []aiv1.CrossRepoTarget, prefix string) string {
+	if len(targets) == 0 {
+		return "this project has none (`spec.crossRepo.targets`, allowed by the cluster)"
+	}
+	names := make([]string, len(targets))
+	for i, t := range targets {
+		names[i] = "`" + t.Project + "`"
+	}
+	return fmt.Sprintf("allowed: %s, or `%s repo none`", strings.Join(names, ", "), prefix)
 }

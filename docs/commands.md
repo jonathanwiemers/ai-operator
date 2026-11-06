@@ -50,6 +50,8 @@ also write these as GitLab comments in your name.
 | `/agent effort default` | Back to the effort of the issue's profile. |
 | `/agent budget <usd>` | The issue's budget in USD on an autopilot milestone, e.g. `/agent budget 40`, in place of the project's `budget.perIssueUSD`. Once the issue's calls cost that much, the autopilot pauses; raising it above the spend resumes it on the next poll. Like `use`, it starts no run and is answered on the issue; an invalid value changes nothing. See [Budget](usage.md#budget). |
 | `/agent budget default` | Back to the project's `budget.perIssueUSD`. |
+| `/agent repo <project>` | The issue changes a companion repository too, e.g. `/agent repo my-group/infra/cluster` (a full path or a GitLab URL): sets the label `agent-repo::<project>`, replacing another one. The project must be one of the AgentProject's valid `spec.crossRepo.targets`; otherwise nothing changes and the answer lists them. Like `use`, it starts no run. A companion set this way is never merged by autopilot unless the milestone has a line `/agent repo <project> merge`. See [Companion repository](usage.md#companion-repository). |
+| `/agent repo none` | The issue has no companion repository (removes the `agent-repo::` label). |
 
 Moving the issue back to `agent::ready` also starts a run, e.g. after you
 answered the agent's questions.
@@ -217,6 +219,7 @@ poll.
 | `/agent owner-subjects alice@example.com bob` | Desk identities (the UI's username claim) that may accept or reject pilot proposals and answer the milestone's prompts on the Desk. No project-level fallback. Changing this line does not re-plan. |
 | `/agent rule R1: switch ci.maxFixRounds=3` | A standing rule of the milestone: `switch <setting>=<value>` (`ci.maxFixRounds`, `ci.retryFailedJobs`, `review.retries`, `review.maxIterations`), `pilot <text>` for the pilot, or `prompt <text>` for the implementers and reviewers. The pilot writes them after an owner's `yes`; you may edit them by hand. Changing them does not re-plan. See [Talking to the pilot](usage.md#talking-to-the-pilot). |
 | `/agent budget 5` | The milestone's budget in USD (decimals allowed, above 0). Once its calls (`agent_calls`, needs the research database) cost that much, the autopilot pauses (`pauseKind: budget`); a running call finishes. Raising the value above the spend, or removing the line, resumes it on the next poll; `/agent resume` alone pauses again at once. An invalid value is ignored (logged): no budget. Without the database the budget is not enforced. Changing this line does not re-plan. At 80 % and at the pause the owners get a budget prompt in the Desk whose raise options rewrite this line ([Budget prompts](usage.md#budget-prompts)). See [Budget](usage.md#budget). |
+| `/agent repo my-group/infra/cluster [merge]` | The milestone's issues may change this companion repository (a full path or a GitLab URL, one line per companion). With `merge`, autopilot may merge the companion's merge request, if the milestone is on autopilot and the target has `autoMerge: true`. The line is part of the spec: changing it re-plans. A malformed line or a project that is no valid target is ignored and named once on the tracking issue. See [Companion repository](usage.md#companion-repository). |
 
 ## Labels you may set yourself
 
@@ -230,6 +233,7 @@ the place to see them:
 | `agent-profile::<name>` | implement with that profile |
 | `agent-model::<engine>/<model>` | implement with that engine and model (must be allowed) |
 | `agent-effort::<level>` | implement with that effort (at most `agents.maxEffort`) |
+| `agent-repo::<project>` | change that companion repository too; counts only under a milestone line `/agent repo <project>` or when an owner (or the bot) set it, otherwise it is ignored with one notice |
 
 The planner never changes a profile or effort label that is already on an
 issue: change them as you like. It adds its own only where none is (also

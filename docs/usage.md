@@ -657,6 +657,7 @@ Set `workflow.resolveConflicts: false` to leave conflicts to humans.
 | change the profile label | the next run uses that profile |
 | comment `/agent use claude opus` (or set `agent-model::claude/opus`) | the next runs use that engine and model; the comment alone starts no run |
 | comment `/agent effort high` (or set `agent-effort::high`) | the next runs think that hard (claude, at most `agents.maxEffort`) |
+| comment `/agent repo my-group/infra/cluster` (or, as an owner, set `agent-repo::my-group/infra/cluster`) | the issue changes that [companion repository](#companion-repository) too; the comment alone starts no run |
 
 `/agent` must be the first word of the comment. `/agents are great` does not
 trigger a run. All commands are listed in [commands.md](commands.md).
@@ -1106,6 +1107,36 @@ started. The milestone's budget goes first; then the issues in queue order.
 Raising the issue's budget above its spend, `/agent budget default` (when
 the default is above it), or skipping the issue ends the pause on the next
 poll. Merged and skipped issues have no budget any more.
+
+### Companion repository
+
+An issue can change one **companion repository** besides its own project
+(the design: [specs/cross-repo-changes.spec.md](specs/cross-repo-changes.spec.md)).
+The project must be one of the AgentProject's valid `spec.crossRepo.targets`
+(see [configuration.md](configuration.md), allowed by the cluster's
+`crossRepo.allowedProjects`). Which issue gets one is decided per issue:
+
+- **The milestone line** `/agent repo <project> [merge]` (a full path such as
+  `my-group/infra/cluster`, or a GitLab URL of it) lets the milestone's
+  issues change that project. It is part of the spec, so changing it
+  re-plans. A malformed line, or one whose project is no valid target, is
+  ignored; on an autopilot milestone the tracking issue names it once
+  (`status.autopilot.repoNotices`), otherwise only the operator log and the
+  spec task's `spec.repos[].problem` do.
+- **The label** `agent-repo::<project>` on the issue gives it the companion.
+  It counts under a milestone line for that project, or when an owner or
+  the bot added it (the issue's label events). An owner sets it with
+  `/agent repo <project>` and removes it with `/agent repo none` (with
+  `workflow.commandsFrom: owners` nobody else may), or by hand. A label that
+  does not count is ignored, and the issue is told once.
+
+When the label counts, the operator writes the issue's task
+`spec.companion`: the project, the target's `paths`, the companion branch
+`agent/<home project>-<iid>-<title>`, and `autoMerge`. Autopilot may merge
+the companion's merge request only when all three agree: the milestone line
+ends in `merge`, the milestone is on autopilot, and the target has
+`autoMerge: true`. A companion an owner gave an issue outside such a line
+is never merged by autopilot. Changing the companion starts no run.
 
 ### Commands on the tracking issue
 
