@@ -925,6 +925,16 @@ planned) keeps going, and a milestone with `/agent spec` but no
 to wait comments `/agent start` on the tracking issue: the next poll asks for
 the planning run with the description of that moment.
 
+A waiting milestone can be paused (`/agent pause` by an owner) like a running
+one, and the pause holds its planning too: when its turn comes it stays paused
+and unplanned, the pause is never lifted by the turn. `/agent resume` lifts the
+pause, and planning starts on the next poll if its turn has come (otherwise it
+waits on). `/agent start` plans it at once and leaves the pause as it is: the
+issues are written, nothing starts until `/agent resume`. Until its planning
+has run, a waiting milestone has nothing to retry or assess: no retry of a
+planning run, and its pause neither wakes the pilot nor counts as stalled. The
+owners can still talk to the pilot on the tracking issue.
+
 ### The merge gate
 
 An MR is merged only when all of these hold:
@@ -1687,7 +1697,7 @@ whether autopilot or a human merged them.
 | Comment | Effect |
 |---------|--------|
 | `/agent start` | owners only, while the milestone waits for its turn: plan it now (`status.autopilot.startRequestedBy`); on a planned or planning milestone it answers so and does nothing |
-| `/agent pause` | stop starting and merging |
+| `/agent pause` | stop starting and merging; on a milestone that waits for its turn it also holds the planning when the turn comes, until `resume` (or `start`, which plans and keeps the pause) |
 | `/agent resume` | continue; the active issue is checked again |
 | `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |
 | `/agent unskip #12` | a skipped issue that is still open goes back to pending |

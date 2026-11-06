@@ -208,7 +208,7 @@ func TestPilotEventsFoldAPauseAndItsNeedsInputLabel(t *testing.T) {
 	spec := testProject().Spec.WithDefaults()
 	m := &gitlab.Milestone{IID: 3}
 	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &aiv1.MilestoneRef{IID: 3}},
-		Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedFor: 1, PausedReason: "#1 needs input"}}}
+		Status: aiv1.AgentTaskStatus{Plan: []aiv1.PlannedIssue{{IID: 1}}, Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedFor: 1, PausedReason: "#1 needs input"}}}
 	task := &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha3"},
 		CI: &aiv1.CIStatus{SHA: "sha3", State: aiv1.CIStateFailed, PipelineID: 77}}}
 	issues := map[int64]gitlab.Issue{1: {IID: 1, Milestone: m, Labels: []string{"agent::needs-input"}}}

@@ -35,8 +35,10 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 		out = append(out, ev)
 	}
 	// A pause over an issue and its needs-input label are one event, with
-	// the pause's text.
-	if ap := st.Status.Autopilot; ap != nil && ap.Phase == aiv1.AutopilotPaused {
+	// the pause's text. A milestone whose planning never ran (it waits for
+	// its turn) has nothing to assess and does not stall: its pause wakes
+	// nobody, and the owners can still talk to the pilot.
+	if ap := st.Status.Autopilot; ap != nil && ap.Phase == aiv1.AutopilotPaused && !specNeverRan(st) {
 		kind := "stuck"
 		if ap.PausedFor == 0 {
 			kind = "pause-" + hashString(ap.PausedReason)
@@ -73,6 +75,12 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 	}
 	slices.SortStableFunc(out, func(a, b aiv1.PilotEvent) int { return strings.Compare(a.Key, b.Key) })
 	return slices.CompactFunc(out, func(a, b aiv1.PilotEvent) bool { return a.Key == b.Key })
+}
+
+// specNeverRan reports whether spec task st has never finished a planning
+// run and has no plan: it waits for its turn, or its first run is pending.
+func specNeverRan(st *aiv1.AgentTask) bool {
+	return st.Status.Run.ObservedRunRequest == 0 && len(st.Status.Plan) == 0
 }
 
 // stalledEvent is the event of a pause (ap) whose state hash has not

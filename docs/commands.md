@@ -140,7 +140,7 @@ implementer of every following run reads them:
 | Command | Effect |
 |---------|--------|
 | `/agent start` | Owners only (also with `commandsFrom: all`), tracking issue only: plan a milestone that waits for its turn now, ahead of the older ones (`status.autopilot.startRequestedBy`). Said on the tracking issue ("▶️ Planning starts now, ahead of its turn (by @you)"); the planning run is asked for on the next poll. On a milestone that is planned or being planned it answers so and does nothing. |
-| `/agent pause` | Stop starting and merging. Runs already requested still finish. |
+| `/agent pause` | Stop starting and merging. Runs already requested still finish. On a milestone that waits for its turn it is an owner's pause as well, and it holds the planning: the turn does not lift it, `resume` does, and planning then starts on the next poll if the turn has come. `start` plans it while the pause stays. |
 | `/agent resume` | Continue; the active issue is checked again. |
 | `/agent skip #12` | Skip a planned issue. Issues that depend on it stay blocked until it is merged by hand, they are skipped too, or they may `startAnyway`. |
 | `/agent unskip #12` | A skipped issue that is still open goes back to pending; autopilot picks it once its dependencies are merged. A pause because nothing could start ends by itself once it can. |

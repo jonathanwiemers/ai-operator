@@ -831,10 +831,15 @@ func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.
 }
 
 // specTurn reports whether a spec task that has never asked for a run (or a
-// new one) may ask for its first: nothing is ahead of it, or an owner asked
-// to start it now (`start`, AutopilotStatus.StartRequestedBy).
+// new one) may ask for its first: nothing is ahead of it and no owner paused
+// it (their `resume` lets it plan), or an owner asked to start it now
+// (`start`, AutopilotStatus.StartRequestedBy), which leaves a pause as it is.
 func specTurn(task *aiv1.AgentTask, ahead []int64) bool {
-	return len(ahead) == 0 || task.Status.Autopilot != nil && task.Status.Autopilot.StartRequestedBy != ""
+	ap := task.Status.Autopilot
+	if ap == nil {
+		return len(ahead) == 0
+	}
+	return ap.StartRequestedBy != "" || len(ahead) == 0 && (ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseOwner)
 }
 
 // queuedAhead returns, for every selected autopilot milestone, the iids of
@@ -863,10 +868,11 @@ func queuedAhead(spec aiv1.AgentProjectSpec, titleRE *regexp.Regexp, milestones 
 // specRetryDue reports whether a planning run that failed for an outside
 // reason (run.blockReason infra) is due for its automatic retry: once per run
 // request, lifecycle.infraRetryAfter after it ended, like an implement run's
-// (syncRunBlock).
+// (syncRunBlock). A spec task that has never run (it waits for its turn) has
+// nothing to retry.
 func (r *AgentProjectReconciler) specRetryDue(task *aiv1.AgentTask, after time.Duration) bool {
 	run := task.Status.Run
-	return !task.RunPending() && run.LastResult == aiv1.RunResultFailed && run.BlockReason == aiv1.BlockInfra &&
+	return run.ObservedRunRequest > 0 && !task.RunPending() && run.LastResult == aiv1.RunResultFailed && run.BlockReason == aiv1.BlockInfra &&
 		task.Spec.Source.InfraRetry != run.ObservedRunRequest && run.LastActivityTime != nil && !r.now().Before(run.LastActivityTime.Add(after))
 }
 
