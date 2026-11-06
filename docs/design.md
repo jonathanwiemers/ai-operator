@@ -1034,7 +1034,7 @@ stateDiagram-v2
     direction LR
     [*] --> Pending: planned
     Pending --> Active: dependencies merged,<br/>moved to agent::ready
-    Active --> Active: implement, review, CI,<br/>rebase once if needed
+    Active --> Active: implement, review, CI,<br/>rebase if needed
     Active --> Merged: gate passed, merged
     Active --> Skipped: closed without merge,<br/>/agent skip
     Pending --> Skipped: /agent skip
@@ -1089,7 +1089,7 @@ stateDiagram-v2
   (and, if its head had no pipeline, gets a merge request pipeline first),
   and `PUT …/merge` passes the checked `sha`.
 * **Rebase.** On `need_rebase` the operator hashes the MR's change (files,
-  added and removed lines, no positions) and asks GitLab to rebase once. The
+  added and removed lines, no positions) and asks GitLab to rebase. The
   rebased head is handed to the CI loop like a push (`pushedSHA`, reset CI,
   back to working) only if its change hashes the same; then the review still
   holds. A commit pushed meanwhile, or a rebase that had to change lines,

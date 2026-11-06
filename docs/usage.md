@@ -947,7 +947,8 @@ An MR is merged only when all of these hold:
   goes on without CI;
 - GitLab reports the MR as mergeable. A draft MR is marked ready once. If it
   needs a rebase (fast-forward or semi-linear projects), the operator asks
-  GitLab to rebase once and waits for CI on the new head. The review carries
+  GitLab to rebase and waits for CI on the new head, again each time the
+  default branch moves. The review carries
   over to the rebased head only if the change is the same: same files, same
   added and removed lines. Otherwise it pauses.
 - If the MR has [merge conflicts](#merge-conflicts), or GitLab cannot rebase

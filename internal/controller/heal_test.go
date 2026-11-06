@@ -128,13 +128,13 @@ func TestAutopilotHealRebaseConflictGoesToTheAgent(t *testing.T) {
 	}
 }
 
-func TestAutopilotHealRebaseAfterARebaseGoesToTheAgent(t *testing.T) {
-	e, name := baseFailingEnv(t)
+func TestAutopilotHealRebasesAnMRRebasedBefore(t *testing.T) {
+	e, _ := baseFailingEnv(t)
 	e.patchAutopilot(func(ap *aiv1.AutopilotStatus) { ap.Items[0].Rebases = 1 })
 	e.mainGreenAt("main-y")
 	e.reconcile()
-	if !mergeBaseRequested(e, name, "sha-api") || len(e.gl.Rebased) != 0 || e.autopilot().Phase != aiv1.AutopilotRunning {
-		t.Fatalf("an MR rebased before must merge the default branch instead: rebased %v, %+v", e.gl.Rebased, e.autopilot())
+	if !slices.Equal(e.gl.Rebased, []int64{1}) || e.autopilot().Phase != aiv1.AutopilotRunning {
+		t.Fatalf("the default branch moved, so another rebase is due: rebased %v, %+v", e.gl.Rebased, e.autopilot())
 	}
 }
 

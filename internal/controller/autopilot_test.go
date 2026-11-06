@@ -573,6 +573,31 @@ func TestAutopilotRebaseKeepsTheReviewOnlyForTheSameChange(t *testing.T) {
 	}
 }
 
+// The !229 case: the default branch moved again after a rebase that worked, on
+// a head a mergeBase run already found nothing to do for.
+func TestAutopilotRebasesAgainWhenTheDefaultBranchMovesAgain(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "need_rebase"
+	e.reconcile() // rebase requested
+	e.reconcile() // the rebased head goes to the CI loop
+	head := e.gl.MRs[1].SHA
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.CI = &aiv1.CIStatus{SHA: head, State: aiv1.CIStateSuccess} })
+	e.gl.SetLabels(1, "ai-generated", "agent::review")
+	task := e.tasks()[name]
+	task.Spec.Source.MergeBaseFor = head
+	if err := e.c.Update(e.ctx, &task); err != nil {
+		t.Fatal(err)
+	}
+	e.gl.MRs[1].DetailedMergeStatus = "need_rebase"
+	e.reconcile()
+	if ap := e.autopilot(); !slices.Equal(e.gl.Rebased, []int64{1, 1}) || ap.Phase != aiv1.AutopilotRunning {
+		t.Fatalf("a second rebase is due, no pause: rebased %v, %+v", e.gl.Rebased, ap)
+	}
+}
+
 func TestAutopilotRebasePauseEndsOnceTheNewHeadIsReviewedAndGreen(t *testing.T) {
 	e := newAutopilotEnv(t)
 	e.reconcile()

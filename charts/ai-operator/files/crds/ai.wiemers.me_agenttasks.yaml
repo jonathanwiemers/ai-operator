@@ -1085,8 +1085,9 @@ spec:
                             while the rebase is in progress.
                           type: string
                         rebases:
-                          description: Rebases counts the rebases of this item; only
-                            one is attempted.
+                          description: |-
+                            Rebases counts the rebases of this item. There is no limit: GitLab only
+                            asks for another one after the default branch moved.
                           format: int32
                           type: integer
                         revisitOf:
@@ -1222,8 +1223,9 @@ spec:
                           while the rebase is in progress.
                         type: string
                       rebases:
-                        description: Rebases counts the rebases of this item; only
-                          one is attempted.
+                        description: |-
+                          Rebases counts the rebases of this item. There is no limit: GitLab only
+                          asks for another one after the default branch moved.
                         format: int32
                         type: integer
                       revisitOf:

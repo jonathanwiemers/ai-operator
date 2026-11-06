@@ -28,7 +28,7 @@ import (
 //
 //	no active issue         -> move the next issue whose dependencies are merged to ready
 //	active issue in review  -> merge gate: pipeline green, review clean, MR mergeable -> merge
-//	MR needs a rebase       -> ask GitLab to rebase once, then treat the new head as a push
+//	MR needs a rebase       -> ask GitLab to rebase, then treat the new head as a push
 //	merged                  -> record it, close the issue if needed, next issue
 //	needs a human           -> pause with a comment on the tracking issue
 //
@@ -1351,9 +1351,6 @@ func (a *autopilot) mergeBase(ctx context.Context, it *aiv1.AutopilotItem, mr *g
 // hashed first, so the rebased head can be checked against it. If a rebase
 // cannot help, the agent merges the default branch instead.
 func (a *autopilot) rebase(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask) error {
-	if it.Rebases > 0 {
-		return a.mergeBase(ctx, it, mr, task, fmt.Sprintf("!%d still cannot be merged after a rebase", mr.IID))
-	}
 	diff, err := a.diffHash(ctx, a.spec.GitLab.Project, mr.IID)
 	if err != nil {
 		return err

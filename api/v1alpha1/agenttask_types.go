@@ -1739,7 +1739,8 @@ type AutopilotItem struct {
 	// +optional
 	RebasedFrom string `json:"rebasedFrom,omitempty"`
 
-	// Rebases counts the rebases of this item; only one is attempted.
+	// Rebases counts the rebases of this item. There is no limit: GitLab only
+	// asks for another one after the default branch moved.
 	// +optional
 	Rebases int32 `json:"rebases,omitempty"`
 

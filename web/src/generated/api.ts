@@ -4219,7 +4219,8 @@ export interface AutopilotItem {
    */
   rebasedFrom?: string;
   /**
-   * Rebases counts the rebases of this item; only one is attempted.
+   * Rebases counts the rebases of this item. There is no limit: GitLab only
+   * asks for another one after the default branch moved.
    * +optional
    */
   rebases?: number /* int32 */;
