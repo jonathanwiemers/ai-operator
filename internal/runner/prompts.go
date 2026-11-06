@@ -238,6 +238,18 @@ func autopilotPauseNote(reason string) string {
 		"Comments from humans follow and take precedence."
 }
 
+// checkpointResumeNote tells a run that continues from a checkpoint commit
+// why the previous attempt ended and after which step. The reason is in the
+// words of the run report; an unknown one is kept on one line.
+func checkpointResumeNote(reason string, step int32) string {
+	why := cutWords[reason]
+	if why == "" {
+		why = strings.Join(strings.Fields(reason), " ")
+	}
+	return fmt.Sprintf("The previous attempt was cut off (%s) after step %d; its uncommitted work was saved as a checkpoint commit. "+
+		"Check `git show --stat HEAD` before you continue.", why, step)
+}
+
 // JSON schemas for the structured answers.
 
 const specSchemaTemplate = `{

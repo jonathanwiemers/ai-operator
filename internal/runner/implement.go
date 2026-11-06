@@ -321,6 +321,15 @@ func (run *implementRun) buildPrompt(ctx context.Context) error {
 		fullPrompt = autopilotPauseNote(reason) + "\n\n" + fullPrompt
 		inv.Prompt = autopilotPauseNote(reason) + "\n\n" + inv.Prompt
 	}
+	// The branch still ends in the checkpoint: the files are what the cut-off
+	// call left. A head that moved on (a human push, a later step) is not.
+	if cp := task.Status.Run.Checkpoint; cp != nil {
+		if head, _ := r.Mirror.resolve(ctx, "refs/remotes/origin/"+run.branch); head != "" && head == cp.SHA {
+			note := checkpointResumeNote(cp.Reason, cp.Step)
+			fullPrompt = note + "\n\n" + fullPrompt
+			inv.Prompt = note + "\n\n" + inv.Prompt
+		}
+	}
 	// The notices of prepare (a companion left out) come first.
 	notices := append(run.notices, roleNotes...)
 	var active, ignored []revisit
