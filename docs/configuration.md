@@ -419,6 +419,7 @@ killed together with the run.
 | `instructions` | both | appended to the role prompt (house rules, test commands) |
 | `fallback` | both | `{engine, model, effort}` the role runs on while its own engine is at a usage limit, see [Fallback engine](#fallback-engine) |
 | `subagents` | claude | up to 8 custom subagents `{name, description, model, tools, prompt}`; default none (claude keeps its built-in ones). `name` is lowercase `[a-z][a-z0-9-]`, at most 40 characters; `tools` from `Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, `Bash`, `Edit`, `Write`, `NotebookEdit`, `TodoWrite` (empty: claude's default); `model` empty inherits the role's. See [Subagents](#subagents) |
+| `readGate` | claude | `{minLines}`: blocks whole reads of files over `minLines` lines (default 350, minimum 100) and tells the role to ask a subagent or read a section; default no gate. See [Read gate](#read-gate) |
 
 `review` additionally has `reviewers` (`bugbot`, `security`),
 `maxIterations`, `retries` (calls again a reviewer that failed
@@ -506,6 +507,11 @@ subagent actually ran, not when one was configured, so claude's built-in
 subagents count too. A lower cost per call *with* means delegation pays; a
 high subagent share with no saving means the scout reads more than the role
 would have.
+
+### Read gate
+
+`readGate: {}` on a claude role blocks its whole-file reads of files over
+`minLines` lines (default 350). Details follow with the runner support.
 
 ### Per-issue model and effort
 

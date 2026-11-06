@@ -567,6 +567,33 @@ type RoleSpec struct {
 	// +kubebuilder:validation:MaxItems=8
 	// +optional
 	Subagents []Subagent `json:"subagents,omitempty"`
+
+	// ReadGate blocks the role's reads of big files whole and tells it to ask
+	// a subagent or read a section instead (claude engine only; cursor roles
+	// and cursor fallbacks ignore it with a warning). Unset, no gate.
+	// +optional
+	ReadGate *ReadGate `json:"readGate,omitempty"`
+}
+
+// DefaultReadGateLines is the ReadGate.MinLines default.
+const DefaultReadGateLines = 350
+
+// ReadGate configures the read gate of a role, see docs/configuration.md.
+type ReadGate struct {
+	// MinLines: reads of files with more lines are blocked.
+	// +kubebuilder:default=350
+	// +kubebuilder:validation:Minimum=100
+	// +optional
+	MinLines int32 `json:"minLines,omitempty"`
+}
+
+// Lines is the effective threshold: MinLines, or 350 when it is 0 (objects
+// stored before the CRD default existed, specs built by hand).
+func (g *ReadGate) Lines() int {
+	if g == nil || g.MinLines == 0 {
+		return DefaultReadGateLines
+	}
+	return int(g.MinLines)
 }
 
 // Subagent is a custom claude subagent of a role, e.g. a read-only scout on
