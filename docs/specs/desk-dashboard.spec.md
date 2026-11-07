@@ -345,3 +345,12 @@ about how many production lines, and deviations from this spec.
   repeated in the tab; a row without a task is not linked (D226-P2); the
   context panel stays on milestone pages until R13; screenshots were not
   possible in the agent's container (no cluster, no browser).
+- 2026-11-07, `issue-api` (R10 API, R6 issue half, #227): `IssueView` and
+  `GET …/milestones/{iid}/issues/{issue}` in `internal/ui/issue.go` (the
+  issue's row of the milestone view: live from the spec task's snapshot
+  with its implement task and `IssueFigures`, else `stored: true` from the
+  snapshot; 404 for an issue not in the milestone, D227-P2), and the
+  stream's `issue=` filter (with project and milestone, D227-P1). Deviation:
+  the filter is a new `StreamQuery.Issue` (`issue_iid` and a milestone that
+  is this one or none), not `Issues = [iid]`, which would keep all of the
+  milestone's events; its chat rows are those of the issue's tasks.

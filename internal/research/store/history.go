@@ -87,7 +87,10 @@ type StreamQuery struct {
 	// it, and those of its Issues (its issues and its tracking issue).
 	Milestone int64
 	Issues    []int64
-	Kinds     []string
+	// Issue, with Milestone, limits the events to the issue's instead:
+	// those recorded with it, in the milestone or without one.
+	Issue int64
+	Kinds []string
 	// Text is a full-text search (all words). Comments of the projects in
 	// TextWithoutNotes are left out of it: their bodies may not be read.
 	Text             string
@@ -114,7 +117,11 @@ func (s *Store) Stream(ctx context.Context, q StreamQuery) ([]Event, error) {
 		return "$" + strconv.Itoa(len(args))
 	}
 	where := `(namespace, project) IN (SELECT * FROM unnest($1::text[], $2::text[]))`
-	if q.Milestone != 0 {
+	switch {
+	case q.Milestone != 0 && q.Issue != 0:
+		m := arg(q.Milestone)
+		where += " AND issue_iid = " + arg(q.Issue) + " AND coalesce(milestone_iid, " + m + ") = " + m
+	case q.Milestone != 0:
 		where += " AND (milestone_iid = " + arg(q.Milestone) + " OR issue_iid = ANY(" + arg(q.Issues) + "::bigint[]))"
 	}
 	if len(q.Kinds) > 0 {

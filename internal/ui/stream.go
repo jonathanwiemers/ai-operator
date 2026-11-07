@@ -95,6 +95,17 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			}
 			query.Milestone, query.Issues = iid, issues
 		}
+		if is := q.Get("issue"); is != "" {
+			iid, err := strconv.ParseInt(is, 10, 64)
+			if err != nil || iid <= 0 || query.Milestone == 0 {
+				badRequest(w, "issue must be a number, with a milestone")
+				return
+			}
+			query.Issue = iid
+		}
+	} else if q.Get("issue") != "" {
+		badRequest(w, "issue needs a project and a milestone")
+		return
 	} else {
 		var projects aiv1.AgentProjectList
 		if err := s.reader.List(r.Context(), &projects); err != nil {
@@ -180,7 +191,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	if wantChat && query.Text == "" {
 		var taskNames []string
 		if query.Milestone != 0 {
-			if taskNames, err = s.milestoneTaskNames(r, query.Projects[0].Namespace, query.Projects[0].Name, query.Milestone); err != nil {
+			if taskNames, err = s.milestoneTaskNames(r, query.Projects[0].Namespace, query.Projects[0].Name, query.Milestone, query.Issue); err != nil {
 				s.internalError(w, err)
 				return
 			}
@@ -207,17 +218,22 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, page)
 }
 
-// milestoneTaskNames are the task names of the project's milestone iid.
-func (s *Server) milestoneTaskNames(r *http.Request, namespace, name string, iid int64) ([]string, error) {
+// milestoneTaskNames are the task names of the project's milestone iid,
+// with issue those of the issue in it only.
+func (s *Server) milestoneTaskNames(r *http.Request, namespace, name string, iid, issue int64) ([]string, error) {
 	var list aiv1.AgentTaskList
 	if err := s.reader.List(r.Context(), &list, client.InNamespace(namespace)); err != nil {
 		return nil, err
 	}
 	var names []string
 	for _, t := range list.Items {
-		if t.Namespace == namespace && t.Spec.ProjectRef == name && t.Spec.Milestone != nil && t.Spec.Milestone.IID == iid {
+		if t.Namespace == namespace && t.Spec.ProjectRef == name && t.Spec.Milestone != nil && t.Spec.Milestone.IID == iid &&
+			(issue == 0 || t.Spec.Issue != nil && t.Spec.Issue.IID == issue) {
 			names = append(names, t.Name)
 		}
+	}
+	if issue != 0 {
+		return names, nil
 	}
 	if st, _ := milestoneTasks(list.Items, iid); st != nil && st.Namespace == namespace && st.Spec.ProjectRef == name {
 		names = append(names, st.Name)

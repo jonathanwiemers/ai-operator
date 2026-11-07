@@ -610,6 +610,19 @@ func (f *fakeMilestoneDetails) Milestone(_ context.Context, p store.ProjectKey, 
 	return d, nil
 }
 
+func (f *fakeMilestoneDetails) IssueFigures(ctx context.Context, p store.ProjectKey, milestone, issue int64, now time.Time) (store.IssueFigures, error) {
+	d, err := f.Milestone(ctx, p, milestone, now)
+	if err != nil {
+		return store.IssueFigures{}, err
+	}
+	for _, is := range d.Issues {
+		if is.IID == issue {
+			return is, nil
+		}
+	}
+	return store.IssueFigures{}, store.ErrNotFound
+}
+
 // paypalFigures are the figures of issue 42 in the snapshot.
 func paypalFigures() store.IssueFigures {
 	return store.IssueFigures{IID: 42, Title: "Add PayPal", State: "merged", MRIID: 5, MRURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5",

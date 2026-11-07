@@ -82,6 +82,7 @@ packages:
       - cost.go
       - features.go
       - gitlab.go
+      - issue.go
       - milestone.go
       - milestones.go
       - oneoff.go

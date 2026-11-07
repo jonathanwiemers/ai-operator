@@ -198,6 +198,25 @@ export interface ThreadPart {
 }
 
 //////////
+// source: issue.go
+
+/**
+ * IssueView is an issue of a milestone, its row of the milestone's view:
+ * from the milestone's live tasks, with the name of its implement task if
+ * there is one (whose view is the task's), or Stored, from the snapshot
+ * once the tasks are gone. Its stream is GET /api/v1/stream with project,
+ * milestone and issue. Titles are untrusted text.
+ */
+export interface IssueView extends MilestoneIssueRow {
+  namespace: string;
+  project: string;
+  milestoneIID: number /* int64 */;
+  milestoneTitle: string;
+  stored?: boolean;
+  webURL: string;
+}
+
+//////////
 // source: milestone.go
 
 /**

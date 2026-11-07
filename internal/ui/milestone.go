@@ -89,9 +89,11 @@ func issueFiguresView(f store.IssueFigures) *IssueFiguresView {
 	return &IssueFiguresView{WallSec: f.WallSec, AgentSec: f.AgentMS / 1000, PausedSec: f.PausedSec, Cost: c}
 }
 
-// milestoneDetailReader reads a milestone's snapshot (the history store).
+// milestoneDetailReader reads a milestone's snapshot and its issues' figures
+// (the history store).
 type milestoneDetailReader interface {
 	Milestone(ctx context.Context, project store.ProjectKey, iid int64, now time.Time) (store.MilestoneDetail, error)
+	IssueFigures(ctx context.Context, project store.ProjectKey, milestone, issue int64, now time.Time) (store.IssueFigures, error)
 }
 
 // milestoneDetailStore is the reader of milestone snapshots, nil without

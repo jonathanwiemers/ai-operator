@@ -67,6 +67,8 @@ func TestHistoryEvents(t *testing.T) {
 	check("after", store.StreamQuery{Projects: bloop, After: &store.Cursor{At: all[3].At, ID: all[3].ID}}, "other", "merged-1", "run-2")
 	check("after, oldest first page", store.StreamQuery{Projects: bloop, After: &store.Cursor{At: all[4].At, ID: all[4].ID}, Limit: 2}, "run-2", "run-1")
 	check("milestone", store.StreamQuery{Projects: bloop, Milestone: 20, Issues: []int64{142}}, "merged-1", "run-2", "run-1", "note-1")
+	check("issue of the milestone", store.StreamQuery{Projects: bloop, Milestone: 20, Issue: 142}, "merged-1", "run-1", "note-1")
+	check("issue in another milestone", store.StreamQuery{Projects: bloop, Milestone: 21, Issue: 142}, "note-1")
 	check("kinds", store.StreamQuery{Projects: bloop, Kinds: []string{"note"}}, "other", "note-1")
 	check("search", store.StreamQuery{Projects: bloop, Text: "merges"}, "note-1")
 	check("search without comments", store.StreamQuery{Projects: bloop, Text: "merges", TextWithoutNotes: bloop})

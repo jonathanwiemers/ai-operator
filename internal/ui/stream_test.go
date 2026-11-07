@@ -74,6 +74,9 @@ func TestStream(t *testing.T) {
 	if !note.Redacted || note.Data["body"] != nil {
 		t.Errorf("note without conversation = %+v, want redacted", note)
 	}
+	if code := dev.get(t, "/api/v1/stream?issue=42", nil); code != http.StatusBadRequest {
+		t.Errorf("issue without a project: status %d, want 400", code)
+	}
 	if code := dev.get(t, "/api/v1/stream?project=team-b/billing", nil); code != http.StatusNotFound {
 		t.Errorf("other project: status %d, want 404", code)
 	}
@@ -88,6 +91,11 @@ func TestStream(t *testing.T) {
 		t.Errorf("milestone 3 = %v, want the events of #42", got)
 	}
 	page = StreamPage{}
+	dev.get(t, "/api/v1/stream?project=team-a/shop&milestone=3&issue=99", &page)
+	if got := keys(page); !slices.Equal(got, []string{"shop-other"}) {
+		t.Errorf("issue 99 of milestone 3 = %v, want its events only", got)
+	}
+	page = StreamPage{}
 	dev.get(t, "/api/v1/stream?project=team-a/shop&limit=2", &page)
 	if page.Older == "" || len(page.Events) != 2 {
 		t.Fatalf("first page = %+v", page)
@@ -97,7 +105,7 @@ func TestStream(t *testing.T) {
 	if got := keys(older); !slices.Equal(got, []string{"shop-note"}) || older.Older != "" {
 		t.Errorf("older page = %v (older %q)", got, older.Older)
 	}
-	for _, bad := range []string{"kinds=nope", "before=x", "limit=0", "milestone=a"} {
+	for _, bad := range []string{"kinds=nope", "before=x", "limit=0", "milestone=a", "issue=42", "milestone=3&issue=a"} {
 		if code := dev.get(t, "/api/v1/stream?project=team-a/shop&"+bad, nil); code != http.StatusBadRequest {
 			t.Errorf("%s: status %d, want 400", bad, code)
 		}
