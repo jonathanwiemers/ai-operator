@@ -27,7 +27,10 @@ type Pause struct {
 	Since      time.Time
 	Until      *time.Time
 	ResolvedBy string
-	Seconds    int64
+	// Via is how it ended (aiv1.PauseResumeVia), "" for an open pause and
+	// for one that ended before it was recorded.
+	Via     string
+	Seconds int64
 }
 
 // PauseKindTotal sums the pauses of one kind.
@@ -38,13 +41,14 @@ type PauseKindTotal struct {
 
 // PauseTotals sum pauses: PausedSec all of their time (open ones up to
 // now), MeanResumeSec the mean time to resume of the ended ones and
-// ByResolver who ended them.
+// ByResolver who ended them, ByVia how ("unknown" when not recorded).
 type PauseTotals struct {
 	Count         int
 	PausedSec     int64
 	ByKind        map[string]PauseKindTotal
 	MeanResumeSec int64
 	ByResolver    map[string]int
+	ByVia         map[string]int
 }
 
 // PauseHistory is a milestone's pauses, oldest first, and their totals.
@@ -83,7 +87,7 @@ func (s *Store) Pauses(ctx context.Context, project ProjectKey, milestone int64,
 // still open when its task pauses again ended then, resolver unknown.
 // Pauses are ordered by their start.
 func pairPauses(events []Event, now time.Time) PauseHistory {
-	h := PauseHistory{Pauses: []Pause{}, Totals: PauseTotals{ByKind: map[string]PauseKindTotal{}, ByResolver: map[string]int{}}}
+	h := PauseHistory{Pauses: []Pause{}, Totals: PauseTotals{ByKind: map[string]PauseKindTotal{}, ByResolver: map[string]int{}, ByVia: map[string]int{}}}
 	type open struct {
 		id string
 		i  int
@@ -114,7 +118,7 @@ func pairPauses(events []Event, now time.Time) PauseHistory {
 			if j, ok := byID[id]; ok && (!isOpen || cur.i != j) {
 				// Its pause was ended by the next one: only the resolver is new.
 				if h.Pauses[j].ResolvedBy == "" {
-					h.Pauses[j].ResolvedBy = dataString(e.Data, "resolvedBy")
+					h.Pauses[j].ResolvedBy, h.Pauses[j].Via = dataString(e.Data, "resolvedBy"), dataString(e.Data, "via")
 				}
 				continue
 			}
@@ -126,7 +130,7 @@ func pairPauses(events []Event, now time.Time) PauseHistory {
 				p.Since = at.Add(-time.Duration(dataInt(e.Data, "pausedSec")) * time.Second)
 				h.Pauses = append(h.Pauses, p)
 			}
-			h.Pauses[i].Until, h.Pauses[i].ResolvedBy = &at, dataString(e.Data, "resolvedBy")
+			h.Pauses[i].Until, h.Pauses[i].ResolvedBy, h.Pauses[i].Via = &at, dataString(e.Data, "resolvedBy"), dataString(e.Data, "via")
 		}
 	}
 	sort.SliceStable(h.Pauses, func(i, j int) bool { return h.Pauses[i].Since.Before(h.Pauses[j].Since) })
@@ -156,6 +160,11 @@ func pairPauses(events []Event, now time.Time) PauseHistory {
 				by = "unknown"
 			}
 			t.ByResolver[by]++
+			via := p.Via
+			if via == "" {
+				via = "unknown"
+			}
+			t.ByVia[via]++
 		}
 	}
 	if resolved > 0 {

@@ -61,7 +61,7 @@ func TestEmptyPlanPauses(t *testing.T) {
 	if !e.task(specTaskName).RunPending() {
 		t.Fatal("the edit plans the milestone again")
 	}
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.PauseKind != "" || ap.ResumedBy != aiv1.ResolvedByOperator {
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.PauseKind != "" || ap.ResumedBy != aiv1.ResolvedByOperator || ap.ResumedVia != aiv1.ResumedViaCauseGone {
 		t.Fatalf("a pending re-plan lifts the pause: %+v", ap)
 	}
 	if n := countComments(e, tracking, "▶️ Autopilot continues: the milestone is being planned again (ended by the operator: the cause went away)."); n != 1 {

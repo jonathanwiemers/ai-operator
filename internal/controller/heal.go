@@ -47,17 +47,17 @@ func (a *autopilot) healBaseFailing(ctx context.Context) error {
 		return err
 	}
 	why := fmt.Sprintf("`%s` is green at %s: rebasing !%d, whose CI failed on jobs that also failed on `%s`", base, short(mh.SHA), mr.IID, base)
-	return a.rebaseActive(ctx, it, mr, task, why, aiv1.ResolvedBySelfHealed, "", func() { it.HealedOn = mh.SHA })
+	return a.rebaseActive(ctx, it, mr, task, why, resumption{by: aiv1.ResolvedBySelfHealed, via: aiv1.ResumedViaSelfHealed}, func() { it.HealedOn = mh.SHA })
 }
 
 // rebaseActive rebases the active issue's MR (or, if a rebase cannot help,
 // mergeBase hands it to the agent) and says so on the tracking issue with
-// why; a pause it ends was resolved by 'by' (who, see resumeLine). The rebase goes first: if it fails,
+// why; a pause it ends was resolved as res says (see resumeLine). The rebase goes first: if it fails,
 // nothing is said and the next poll tries again. Once it was requested,
 // requested runs (which records it).
-func (a *autopilot) rebaseActive(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask, why string, by aiv1.PauseResolver, who string, requested func()) error {
+func (a *autopilot) rebaseActive(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask, why string, res resumption, requested func()) error {
 	a.log.Info("autopilot rebases the active merge request", "issue", it.IID, "mr", mr.IID, "why", why)
-	return a.remedyActive(ctx, it, "rebase", why, by, who, func() error {
+	return a.remedyActive(ctx, it, "rebase", why, res, func() error {
 		if err := a.rebase(ctx, it, mr, task); err != nil {
 			return err
 		}
@@ -69,10 +69,10 @@ func (a *autopilot) rebaseActive(ctx context.Context, it *aiv1.AutopilotItem, mr
 // remedyActive runs act, the remedy exit (aiv1.PauseExits) on the active
 // issue, and says so on the tracking issue with why. A pause about the
 // issue of a kind the remedy is an exit of ends, unless act paused anew,
-// so drive follows the new head, resolved by 'by'. The pause ends before the
+// so drive follows the new head, resolved as res says. The pause ends before the
 // comment, so a failed comment can neither repeat act nor leave the pause in
 // place.
-func (a *autopilot) remedyActive(ctx context.Context, it *aiv1.AutopilotItem, remedy, why string, by aiv1.PauseResolver, who string, act func() error) error {
+func (a *autopilot) remedyActive(ctx context.Context, it *aiv1.AutopilotItem, remedy, why string, res resumption, act func() error) error {
 	paused := a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedFor == it.IID &&
 		slices.ContainsFunc(aiv1.PauseExits(a.ap.PauseKind), func(e aiv1.PauseExit) bool { return e.ID == remedy })
 	reason := a.ap.PausedReason
@@ -81,8 +81,8 @@ func (a *autopilot) remedyActive(ctx context.Context, it *aiv1.AutopilotItem, re
 	}
 	line := "🔄 " + why + "."
 	if paused && a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedReason == reason {
-		a.lift(by)
-		line = resumeLine(by, who, why)
+		a.lift(res.by, res.via)
+		line = resumeLine(res, why, a.spec.Workflow.CommandPrefix)
 	}
 	return a.comment(ctx, line)
 }
@@ -127,10 +127,15 @@ func (a *autopilot) mrCommand(ctx context.Context, word, arg, by string) (string
 	case word == "mergeBase" && task.Spec.Source.MergeBaseFor == mr.SHA:
 		return refuse("the agent merged `%s` into this head of !%d before", base, mr.IID)
 	case word == "rebase":
-		return fmt.Sprintf("Rebasing !%d.", mr.IID), true, a.rebaseActive(ctx, it, mr, task, fmt.Sprintf("%s asked to rebase !%d onto `%s`", by, mr.IID, base), resolverOf(by), by, func() {})
+		return fmt.Sprintf("Rebasing !%d.", mr.IID), true, a.rebaseActive(ctx, it, mr, task, fmt.Sprintf("%s asked to rebase !%d onto `%s`", by, mr.IID, base), byCommand(by), func() {})
 	}
 	a.log.Info("autopilot asks the agent to merge the default branch", "issue", it.IID, "mr", mr.IID, "by", by)
-	return fmt.Sprintf("The agent merges `%s` into !%d.", base, mr.IID), true, a.remedyActive(ctx, it, "mergeBase", fmt.Sprintf("%s asked the agent to merge `%s` into !%d", by, base, mr.IID), resolverOf(by), by, func() error {
-		return a.mergeBase(ctx, it, mr, task, "asked by "+by)
+	return fmt.Sprintf("The agent merges `%s` into !%d.", base, mr.IID), true, a.remedyActive(ctx, it, "mergeBase", fmt.Sprintf("%s asked the agent to merge `%s` into !%d", by, base, mr.IID), byCommand(by), func() error {
+		if err := a.mergeBase(ctx, it, mr, task, "asked by "+by); err != nil {
+			return err
+		}
+		// A pause the remedy is no exit of holds: the run is by's takeover.
+		notePauseRun(a.ap, it.IID, by, mr.SHA)
+		return nil
 	})
 }

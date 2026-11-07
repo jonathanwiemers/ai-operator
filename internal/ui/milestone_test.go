@@ -547,12 +547,15 @@ func TestMilestonePauses(t *testing.T) {
 	since := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
 	until := since.Add(10 * time.Minute)
 	h := store.PauseHistory{Totals: store.PauseTotals{Count: 25, PausedSec: 9000, MeanResumeSec: 300,
-		ByKind: map[string]store.PauseKindTotal{"ciRed": {Count: 25, Sec: 9000}}, ByResolver: map[string]int{"selfHealed": 24}}}
+		ByKind: map[string]store.PauseKindTotal{"ciRed": {Count: 25, Sec: 9000}}, ByResolver: map[string]int{"selfHealed": 24}, ByVia: map[string]int{"selfHealed": 23, "unknown": 1}}}
 	for i := range 25 {
 		p := store.Pause{Kind: "ciRed", Reason: fmt.Sprint(i), Item: 42, Since: since.Add(time.Duration(i) * time.Hour), Seconds: 600}
 		if i < 24 {
 			u := until.Add(time.Duration(i) * time.Hour)
 			p.Until, p.ResolvedBy = &u, "selfHealed"
+			if i > 0 {
+				p.Via = "selfHealed" // the oldest is from before via
+			}
 		}
 		h.Pauses = append(h.Pauses, p)
 	}
@@ -572,11 +575,12 @@ func TestMilestonePauses(t *testing.T) {
 	if p := ph.Pauses[0]; p.Reason != "24" || p.Until != nil || p.Kind != aiv1.PauseCIRed || p.Seconds != 600 || p.Item != 42 {
 		t.Errorf("the newest pause first, open: %+v", p)
 	}
-	if p := ph.Pauses[1]; p.Reason != "23" || p.Until == nil || p.ResolvedBy != aiv1.ResolvedBySelfHealed {
+	if p := ph.Pauses[1]; p.Reason != "23" || p.Until == nil || p.ResolvedBy != aiv1.ResolvedBySelfHealed || p.Via != aiv1.ResumedViaSelfHealed {
 		t.Errorf("second pause: %+v", p)
 	}
 	if tot := ph.Totals; tot.Count != 25 || tot.PausedSec != 9000 || tot.MeanResumeSec != 300 ||
-		tot.ByKind["ciRed"] != (PauseKindTotalView{Count: 25, Sec: 9000}) || tot.ByResolver["selfHealed"] != 24 {
+		tot.ByKind["ciRed"] != (PauseKindTotalView{Count: 25, Sec: 9000}) || tot.ByResolver["selfHealed"] != 24 ||
+		tot.ByVia["selfHealed"] != 23 || tot.ByVia["unknown"] != 1 {
 		t.Errorf("totals = %+v", tot)
 	}
 

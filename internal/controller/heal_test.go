@@ -63,7 +63,7 @@ func TestAutopilotRebasesABaseFailingMROnceMainIsGreen(t *testing.T) {
 		t.Fatalf("main green on a new commit must rebase !1 once and say so: rebased %v\n%s", e.gl.Rebased, c)
 	}
 	ap := e.autopilot()
-	if ap.ResumedBy != aiv1.ResolvedBySelfHealed {
+	if ap.ResumedBy != aiv1.ResolvedBySelfHealed || ap.ResumedVia != aiv1.ResumedViaSelfHealed {
 		t.Fatalf("the heal is resolved as selfHealed, got %q", ap.ResumedBy)
 	}
 	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].HealedOn != "main-y" {
@@ -238,7 +238,7 @@ func TestAutopilotRebaseCommand(t *testing.T) {
 	if c := trackingComments(e); !slices.Equal(e.gl.Rebased, []int64{1}) || !strings.Contains(c, "▶️ Autopilot continues: @jonathan asked to rebase !1 onto `main` (ended by @\u200bjonathan).") {
 		t.Fatalf("the active MR is rebased and the pause ends: rebased %v\n%s", e.gl.Rebased, c)
 	}
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.Items[0].RebasedFrom != "sha-api" || ap.ResumedBy != aiv1.ResolvedByOwner {
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.Items[0].RebasedFrom != "sha-api" || ap.ResumedBy != aiv1.ResolvedByOwner || ap.ResumedVia != aiv1.ResumedViaCommand {
 		t.Fatalf("the rebase is in flight, autopilot runs: %+v", ap)
 	}
 	e.gl.AddNote(tracking, jonathan, "/agent mergebase #1")
@@ -283,7 +283,7 @@ func TestAutopilotNewPauseKindRestartsTheClock(t *testing.T) {
 	}
 	e.gl.AddNote(e.autopilot().TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent pause")
 	e.reconcile()
-	if ap := e.autopilot(); ap.PauseKind != aiv1.PauseOwner || ap.PausedAt == nil || !ap.PausedAt.After(start.Time) || ap.ResumedBy != "" {
+	if ap := e.autopilot(); ap.PauseKind != aiv1.PauseOwner || ap.PausedAt == nil || !ap.PausedAt.After(start.Time) || ap.ResumedBy != "" || ap.ResumedVia != "" {
 		t.Fatalf("an owner's pause over ciRed starts a new clock: %+v (ciRed started %v)", ap, start)
 	}
 }

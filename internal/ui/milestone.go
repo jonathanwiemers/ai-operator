@@ -249,7 +249,10 @@ type PauseView struct {
 	Since      time.Time          `json:"since"`
 	Until      *time.Time         `json:"until,omitempty"`
 	ResolvedBy aiv1.PauseResolver `json:"resolvedBy,omitempty"`
-	Seconds    int64              `json:"seconds"`
+	// Via is how it ended, absent while open and for a pause that ended
+	// before it was recorded.
+	Via     aiv1.PauseResumeVia `json:"via,omitempty"`
+	Seconds int64               `json:"seconds"`
 }
 
 // PauseKindTotalView sums the pauses of one kind.
@@ -260,13 +263,14 @@ type PauseKindTotalView struct {
 
 // PauseTotalsView sums all pauses: pausedSec their time (open ones up to
 // now), meanResumeSec the mean time to resume of the ended ones, byResolver
-// who ended them ("unknown" when not recorded).
+// who ended them and byVia how ("unknown" when not recorded).
 type PauseTotalsView struct {
 	Count         int                           `json:"count"`
 	PausedSec     int64                         `json:"pausedSec"`
 	ByKind        map[string]PauseKindTotalView `json:"byKind" tstype:"{ [kind: string]: PauseKindTotalView }"`
 	MeanResumeSec int64                         `json:"meanResumeSec"`
 	ByResolver    map[string]int                `json:"byResolver" tstype:"{ [resolver: string]: number }"`
+	ByVia         map[string]int                `json:"byVia" tstype:"{ [via: string]: number }"`
 }
 
 // pauseReader reads a milestone's pauses (the history store).
@@ -303,15 +307,16 @@ func (s *Server) milestonePauses(ctx context.Context, ap *aiv1.AgentProject, iid
 func pauseHistoryView(h store.PauseHistory) *PauseHistoryView {
 	t := h.Totals
 	v := &PauseHistoryView{Pauses: []PauseView{}, Totals: PauseTotalsView{Count: t.Count, PausedSec: t.PausedSec,
-		ByKind: map[string]PauseKindTotalView{}, MeanResumeSec: t.MeanResumeSec, ByResolver: map[string]int{}}}
+		ByKind: map[string]PauseKindTotalView{}, MeanResumeSec: t.MeanResumeSec, ByResolver: map[string]int{}, ByVia: map[string]int{}}}
 	for k, kt := range t.ByKind {
 		v.Totals.ByKind[k] = PauseKindTotalView{Count: kt.Count, Sec: kt.Sec}
 	}
 	maps.Copy(v.Totals.ByResolver, t.ByResolver)
+	maps.Copy(v.Totals.ByVia, t.ByVia)
 	for i := len(h.Pauses) - 1; i >= 0 && len(v.Pauses) < maxPauseViews; i-- {
 		p := h.Pauses[i]
 		v.Pauses = append(v.Pauses, PauseView{Kind: aiv1.PauseKind(p.Kind), Reason: p.Reason, Item: p.Item, Since: p.Since,
-			Until: p.Until, ResolvedBy: aiv1.PauseResolver(p.ResolvedBy), Seconds: p.Seconds})
+			Until: p.Until, ResolvedBy: aiv1.PauseResolver(p.ResolvedBy), Via: aiv1.PauseResumeVia(p.Via), Seconds: p.Seconds})
 	}
 	return v
 }

@@ -451,6 +451,29 @@ func TestAutopilotResumedByAdmitted(t *testing.T) {
 	}
 }
 
+// How the last pause ended (resumedVia) and who asked for a run during it
+// (pauseRunBy, pauseRunHead) are stored; resumedVia is one of the ways only.
+func TestAutopilotResumedViaAdmitted(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	for _, via := range []PauseResumeVia{ResumedViaReReview, ResumedViaTakeover, ResumedViaPush, ResumedViaMergedByHand,
+		ResumedViaClosedByHand, ResumedViaCommand, ResumedViaCauseGone, ResumedViaSelfHealed} {
+		ap := map[string]any{"phase": "Paused", "resumedVia": string(via), "pauseRunBy": "@alice", "pauseRunHead": "abc123"}
+		obj, errs := crd.admit(map[string]any{"status": map[string]any{"autopilot": ap}})
+		if len(errs) > 0 {
+			t.Fatalf("resumedVia %s rejected: %v", via, errs)
+		}
+		got := obj["status"].(map[string]any)["autopilot"].(map[string]any)
+		for _, k := range []string{"resumedVia", "pauseRunBy", "pauseRunHead"} {
+			if got[k] != ap[k] {
+				t.Errorf("%s not stored: %v", k, got)
+			}
+		}
+	}
+	if _, errs := crd.admit(map[string]any{"status": map[string]any{"autopilot": map[string]any{"phase": "Running", "resumedVia": "magic"}}}); len(errs) == 0 {
+		t.Error("an unknown way to resume admitted")
+	}
+}
+
 func TestProjectCrossRepoSchema(t *testing.T) {
 	crd := loadCRD(t, "agentprojects")
 	withCrossRepo := func(crossRepo any) map[string]any {

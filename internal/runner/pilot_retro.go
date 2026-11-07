@@ -440,7 +440,9 @@ every call of the milestone, with spend naming its tokens and the three
 biggest issues, kinds and models (subagent models as their own); "live
 tasks" misses deleted tasks. Ground every statement in them and say where
 they do not tell. Cover what was merged, the decisions and revisits, every
-pause with its cause and how it ended, cost and time with the biggest cost
+pause with its cause and how it ended (each "▶️ Autopilot continues" comment
+names who ended it and how: by hand, a command, a re-review the autopilot
+started, an owner's takeover or someone's push), cost and time with the biggest cost
 drivers and their tokens when spend is there, and what to learn from it.
 
 Then list follow-ups: issues worth opening after this milestone, e.g. a

@@ -476,7 +476,11 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			}
 			ms.description = description
 		}
-		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], autopilot, pause, budgetStop, is.IID == urgentIssue, ms, owners(description), ownerSubjects(description))
+		var ap *aiv1.AgentTask // the autopilot whose queue has the issue
+		if autopilot && is.Milestone != nil {
+			ap = autopilots[is.Milestone.IID]
+		}
+		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], autopilot, pause, budgetStop, is.IID == urgentIssue, ms, owners(description), ownerSubjects(description), ap)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
 			// Keep the existing task, so the cleanup below does not delete
@@ -902,9 +906,11 @@ func (r *AgentProjectReconciler) specRetryDue(task *aiv1.AgentTask, after time.D
 
 // syncImplementTask makes sure an issue handed to the agent has a task and
 // turns "moved to ready" and "/agent" comments into run requests. It returns
-// the task's merge request too, if it has one.
+// the task's merge request too, if it has one. st is the spec task of the
+// autopilot whose queue has the issue (nil: none): a command's run of the
+// issue it is paused for is recorded there (commandRun).
 func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, pause string, budgetStop, urgent bool, ms issueMilestone, owners, ownerSubjects []string) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
+	is gitlab.Issue, task *aiv1.AgentTask, autopilot bool, pause string, budgetStop, urgent bool, ms issueMilestone, owners, ownerSubjects []string, st *aiv1.AgentTask) (*aiv1.AgentTask, *gitlab.MergeRequest, error) {
 	wf := spec.Workflow
 	glProject := spec.GitLab.Project
 	created := false
@@ -948,6 +954,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	mrChanged := mr != nil && (mr.UpdatedAt == nil || src.MergeRequestUpdatedAt == nil || mr.UpdatedAt.After(src.MergeRequestUpdatedAt.Time))
 
 	command, review := false, false
+	commandBy := "" // the author of the newest command, "@name"
 	var reply *routingReply
 	var denied []pilotNote
 	if ready || issueChanged || mrChanged {
@@ -975,6 +982,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 			src.LastCommandNoteID = latest
 		} else if latest > src.LastCommandNoteID {
 			review = reviewOnly(slices.Concat(cmdIssue, cmdMR), src.LastCommandNoteID, project.Status.BotUserID, wf.CommandPrefix)
+			commandBy = commandAuthor(slices.Concat(cmdIssue, cmdMR), latest)
 			src.LastCommandNoteID = latest
 			command = true
 		}
@@ -1034,6 +1042,11 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		if err := r.Update(ctx, task); err != nil {
 			return nil, nil, err
 		}
+	}
+
+	if requested && command && commandBy != "" {
+		// An owner's comment took the paused issue over (status.autopilot.pauseRunBy).
+		r.commandRun(ctx, st, task, commandBy)
 	}
 
 	if reply != nil {
@@ -1136,6 +1149,17 @@ func withoutNotes(notes []gitlab.Note, drop []pilotNote) []gitlab.Note {
 	return slices.DeleteFunc(slices.Clone(notes), func(n gitlab.Note) bool {
 		return slices.ContainsFunc(drop, func(d pilotNote) bool { return d.ID == n.ID })
 	})
+}
+
+// commandAuthor is the author of the note id among notes, "@name", "" if it
+// is not there.
+func commandAuthor(notes []gitlab.Note, id int64) string {
+	for _, n := range notes {
+		if n.ID == id && n.Author.Username != "" {
+			return "@" + n.Author.Username
+		}
+	}
+	return ""
 }
 
 // reviewOnly reports whether all commands newer than since are "/agent

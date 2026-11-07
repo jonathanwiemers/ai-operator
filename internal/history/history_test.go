@@ -497,6 +497,32 @@ func TestDifferPauseAndResume(t *testing.T) {
 	}
 }
 
+// The resumed event says how the pause ended (status.autopilot.resumedVia);
+// without one it ended by itself, turning autopilot off is a command.
+func TestDifferPauseResumedVia(t *testing.T) {
+	start := now.Add(-10 * time.Minute)
+	paused := pausedTask("2", aiv1.AutopilotPaused, aiv1.PauseMergeRequest, "after the rebase, the change of !1 is not the one that was reviewed", start, "")
+	for _, c := range []struct {
+		phase aiv1.AutopilotPhase
+		by    aiv1.PauseResolver
+		via   aiv1.PauseResumeVia
+		want  string
+	}{
+		{aiv1.AutopilotRunning, aiv1.ResolvedByLaterRun, aiv1.ResumedViaReReview, "reReview"},
+		{aiv1.AutopilotRunning, aiv1.ResolvedByLaterRun, aiv1.ResumedViaTakeover, "takeover"},
+		{aiv1.AutopilotRunning, aiv1.ResolvedByOperator, aiv1.ResumedViaMergedByHand, "mergedByHand"},
+		{aiv1.AutopilotRunning, aiv1.ResolvedByOperator, "", "causeGone"}, // from before resumedVia
+		{aiv1.AutopilotOff, "", "", "command"},
+	} {
+		cur := pausedTask("3", c.phase, "", "", time.Time{}, c.by)
+		cur.Status.Autopilot.ResumedVia = c.via
+		es := pauseEvents(NewDiffer().Update(paused, cur, now))
+		if len(es) != 1 || es[0].Kind != KindAutopilotResumed || es[0].Data["via"] != c.want {
+			t.Errorf("%s by %q via %q: %v %+v", c.phase, c.by, c.via, kinds(es), es)
+		}
+	}
+}
+
 func TestDifferPauseKindChange(t *testing.T) {
 	start, later := now.Add(-10*time.Minute), now.Add(-time.Minute)
 	ci := pausedTask("2", aiv1.AutopilotPaused, aiv1.PauseCIRed, "CI is red", start, "")
@@ -517,7 +543,7 @@ func TestDifferPauseKindChange(t *testing.T) {
 	if got := kinds(es); !slices.Equal(got, want) {
 		t.Fatalf("kind change: %v", got)
 	}
-	if es[0].Data["resolvedBy"] != "operator" || es[1].Data["kind"] != "mergeRequest" {
+	if es[0].Data["resolvedBy"] != "operator" || es[0].Data["via"] != "causeGone" || es[1].Data["kind"] != "mergeRequest" {
 		t.Errorf("kind change: %+v", es)
 	}
 

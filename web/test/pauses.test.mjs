@@ -1,7 +1,7 @@
 // Tests of src/pauses.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { pauseDuration, pausesLine, pausesSummary, resolverLabel } from '../src/pauses.ts'
+import { pauseDuration, pausesLine, pausesSummary, resolverLabel, viaLabel } from '../src/pauses.ts'
 
 const t0 = Date.parse('2026-11-05T10:00:00Z')
 const at = (min) => new Date(t0 + min * 60000).toISOString()
@@ -11,8 +11,8 @@ const at = (min) => new Date(t0 + min * 60000).toISOString()
 const history = {
   pauses: [
     { kind: 'ciRed', reason: 'CI of !735\n is red', item: 88, since: at(30), seconds: 1800 },
-    { kind: 'stuck', reason: '#88 waits for the skipped #83', item: 88, since: at(-200), until: at(-100), resolvedBy: 'owner', seconds: 6000 },
-    { kind: 'ciRed', since: at(-300), until: at(-280), resolvedBy: 'selfHealed', seconds: 1200 },
+    { kind: 'stuck', reason: '#88 waits for the skipped #83', item: 88, since: at(-200), until: at(-100), resolvedBy: 'owner', via: 'command', seconds: 6000 },
+    { kind: 'ciRed', since: at(-300), until: at(-280), resolvedBy: 'selfHealed', via: 'selfHealed', seconds: 1200 },
     { kind: 'unknown', reason: 'old', since: at(-400), until: at(-390), seconds: 600 },
   ],
   totals: {
@@ -21,6 +21,7 @@ const history = {
     byKind: { ciRed: { count: 2, sec: 3000 }, stuck: { count: 1, sec: 6000 }, unknown: { count: 1, sec: 600 } },
     meanResumeSec: 2600,
     byResolver: { owner: 1, selfHealed: 1, unknown: 1 },
+    byVia: { command: 1, selfHealed: 1, unknown: 1 },
   },
 }
 
@@ -115,4 +116,41 @@ test('pause durations', () => {
   assert.equal(pauseDuration(3 * 3600 + 600), '3h 10m')
   assert.equal(pauseDuration(2 * 86400 + 4 * 3600 + 59), '2d 4h')
   assert.equal(pauseDuration(86400), '1d')
+})
+
+test('rows show how a pause ended next to the resolver', () => {
+  const s = pausesSummary(history, t0 + 60 * 60000)
+  assert.deepEqual(
+    s.rows.map((r) => [r.resolver, r.via]),
+    [
+      ['open', ''],
+      ['owner', 'command'],
+      ['self-healed', 'self-healed'],
+      ['unknown', ''],
+    ],
+  )
+  assert.deepEqual(
+    s.vias.map((v) => [v.label, v.count]),
+    [
+      ['command', 1],
+      ['self-healed', 1],
+      ['unknown', 1],
+    ],
+  )
+  assert.equal(viaLabel('reReview'), 're-review')
+  assert.equal(viaLabel('takeover'), 'takeover')
+  assert.equal(viaLabel('mergedByHand'), 'merged by hand')
+  assert.equal(viaLabel(undefined), '')
+})
+
+test('a later run ended by a takeover', () => {
+  const s = pausesSummary(
+    {
+      pauses: [{ kind: 'mergeRequest', item: 179, since: at(0), until: at(30), resolvedBy: 'laterRun', via: 'takeover', seconds: 1800 }],
+      totals: { count: 1, pausedSec: 1800, byKind: { mergeRequest: { count: 1, sec: 1800 } }, meanResumeSec: 1800, byResolver: { laterRun: 1 }, byVia: { takeover: 1 } },
+    },
+    t0 + 60 * 60000,
+  )
+  assert.deepEqual([s.rows[0].resolver, s.rows[0].via], ['later run', 'takeover'])
+  assert.deepEqual(s.vias, [{ via: 'takeover', label: 'takeover', count: 1 }])
 })

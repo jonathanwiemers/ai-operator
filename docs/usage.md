@@ -1119,8 +1119,17 @@ The tracking issue gets "▶️ Autopilot continues: …", which ends with who
 ended the pause: "(ended by @alice)" or "(ended by Ada via the Desk)" for an
 owner, "(ended by the pilot)", "(ended by a later run of #N)" when a new run
 made the issue pass the gate, "(ended by the operator: it rebased the merge
-request)" for the rebase onto a green default branch, or "(ended by the
-operator: the cause went away)" for every other end by itself. An owner's `/agent resume`, also from
+request)" for the rebase onto a green default branch, "(ended by hand: the
+merge request was merged)" or "(ended by hand: the issue was closed)", or
+"(ended by the operator: the cause went away)" for every other end by
+itself. A later run also says how it came about: "(ended by a later run of
+#N, a review-only run the autopilot started)" for the reviewers' run the
+autopilot asked for (after a rebase, or a reviewer outage), "(ended by a
+later run of #N, which @alice's `/agent` comment started)" when an owner's
+comment on the issue took it over (or "which the pilot started" for a
+pilot action), and "(ended by a later run of #N, which reviewed a head
+someone else pushed)" when it passed on a head nobody asked a run for.
+The retrospective reads these comments. An owner's `/agent resume`, also from
 the Desk or through the pilot, posts it with "resumed", so every resume is
 visible on GitLab. Every other pause (an
 approval, unresolved discussions, someone else's push, a dependency cycle,
@@ -1139,6 +1148,27 @@ removing the autopilot marker), `pilot` for a rebase or mergeBase the
 kind is the same pause; a pause of another kind ends the old one (as
 `operator`) and starts a new one. The operator keeps the last resolver in
 `status.autopilot.resumedBy` until the next pause.
+
+The end also says how (`via`, kept in `status.autopilot.resumedVia` next
+to `resumedBy`):
+
+| `via` | How the pause ended |
+|---|---|
+| `reReview` | a review-only run the autopilot asked for (after a rebase, a reviewer outage) passed on the head it was asked for |
+| `takeover` | a run an owner's `/agent …` comment on the issue, or a pilot action, started |
+| `push` | a later run passed on a head nobody asked a run for: someone pushed |
+| `mergedByHand` | the merge request was merged by hand |
+| `closedByHand` | the issue was closed by hand |
+| `command` | `/agent resume` or another owner or pilot command (`merge`, `rebase`, `mergeBase`, ending the milestone, removing the autopilot marker) |
+| `causeGone` | another end by itself (a green default branch, a budget raise, a companion that can go on, a pause replaced by one of another kind) |
+| `selfHealed` | the rebase onto a green default branch above |
+
+Events from before `via` was recorded have none. To tell `reReview`,
+`takeover` and `push` apart, the operator records who asked for a run of
+the paused issue while it is paused (`status.autopilot.pauseRunBy`:
+`autopilot`, `@alice` or the pilot) and the head that run was asked for
+(`pauseRunHead`); both are cleared when the pause ends. A run started from
+the Desk chat is not recorded, so a pause it ends counts as `push`.
 
 On the Desk ([ui.md](ui.md#what-it-shows)), the milestone's *Pilot* tab
 shows a paused autopilot as a card (its *Issues* and *Stream* tabs, the

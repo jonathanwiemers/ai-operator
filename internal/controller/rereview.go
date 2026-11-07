@@ -68,7 +68,11 @@ func (a *autopilot) reReview(ctx context.Context, it *aiv1.AutopilotItem, task *
 	}
 	a.log.Info("autopilot asks for a re-review, the reviewers failed transiently", "issue", it.IID, "sha", run.PushedSHA)
 	task.Spec.Source.ReviewFor = run.ReviewKey()
-	return a.r.requestRun(ctx, a.gl, a.spec, task, it.IID)
+	if err := a.r.requestRun(ctx, a.gl, a.spec, task, it.IID); err != nil {
+		return err
+	}
+	a.askedRun(it, run.PushedSHA)
+	return nil
 }
 
 // failGate pauses for a failed merge gate; a pause that is no human's to fix

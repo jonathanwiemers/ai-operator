@@ -1392,6 +1392,21 @@ spec:
                     - companion
                     - emptyPlan
                     type: string
+                  pauseRunBy:
+                    description: |-
+                      PauseRunBy is who asked for the newest run of PausedFor during the
+                      pause: PauseRunByAutopilot for the autopilot's own (a review-only run
+                      after a rebase, a re-review), else the person ("@alice") or the pilot
+                      whose command started it. A later run that ends the pause tells
+                      resumedVia from it. Cleared when the pause ends or moves to another
+                      issue.
+                    type: string
+                  pauseRunHead:
+                    description: |-
+                      PauseRunHead is the pushed head of PausedFor when the pause started,
+                      then the head the newest run during the pause was asked for: a later
+                      run passing on another head took over someone's push.
+                    type: string
                   pausedAt:
                     description: PausedAt is when the current pause started; unset
                       while running.
@@ -1437,6 +1452,20 @@ spec:
                     - owner
                     - selfHealed
                     - laterRun
+                    type: string
+                  resumedVia:
+                    description: |-
+                      ResumedVia is how the last pause ended; set and cleared with
+                      ResumedBy. Empty for a pause that ended before it was recorded.
+                    enum:
+                    - reReview
+                    - takeover
+                    - push
+                    - mergedByHand
+                    - closedByHand
+                    - command
+                    - causeGone
+                    - selfHealed
                     type: string
                   startRequestedBy:
                     description: |-

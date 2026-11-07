@@ -435,6 +435,11 @@ export interface PauseView {
   since: string;
   until?: string;
   resolvedBy?: aiv1.PauseResolver;
+  /**
+   * Via is how it ended, absent while open and for a pause that ended
+   * before it was recorded.
+   */
+  via?: aiv1.PauseResumeVia;
   seconds: number /* int64 */;
 }
 /**
@@ -447,7 +452,7 @@ export interface PauseKindTotalView {
 /**
  * PauseTotalsView sums all pauses: pausedSec their time (open ones up to
  * now), meanResumeSec the mean time to resume of the ended ones, byResolver
- * who ended them ("unknown" when not recorded).
+ * who ended them and byVia how ("unknown" when not recorded).
  */
 export interface PauseTotalsView {
   count: number /* int */;
@@ -455,6 +460,7 @@ export interface PauseTotalsView {
   byKind: { [kind: string]: PauseKindTotalView };
   meanResumeSec: number /* int64 */;
   byResolver: { [resolver: string]: number };
+  byVia: { [via: string]: number };
 }
 
 //////////

@@ -115,6 +115,7 @@ packages:
       aiv1.PauseKind: aiv1.PauseKind
       aiv1.PauseExit: aiv1.PauseExit
       aiv1.PauseResolver: aiv1.PauseResolver
+      aiv1.PauseResumeVia: aiv1.PauseResumeVia
       aiv1.PilotAutonomy: aiv1.PilotAutonomy
       aiv1.PromptKind: aiv1.PromptKind
       aiv1.PromptState: aiv1.PromptState

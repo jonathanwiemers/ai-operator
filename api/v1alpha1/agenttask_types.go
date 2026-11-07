@@ -1752,6 +1752,41 @@ const (
 	ResolvedByLaterRun PauseResolver = "laterRun"
 )
 
+// PauseResumeVia is how a pause ended (status.autopilot.resumedVia, the
+// autopilot.resumed history event), next to who ended it (PauseResolver).
+// +kubebuilder:validation:Enum=reReview;takeover;push;mergedByHand;closedByHand;command;causeGone;selfHealed
+type PauseResumeVia string
+
+const (
+	// ResumedViaReReview: a review-only run the autopilot asked for (e.g.
+	// after a rebase) passed the merge gate on the head it was asked for.
+	ResumedViaReReview PauseResumeVia = "reReview"
+	// ResumedViaTakeover: a run an owner's (or the pilot's) command started
+	// made the issue pass the merge gate.
+	ResumedViaTakeover PauseResumeVia = "takeover"
+	// ResumedViaPush: a human pushed, and a later run reviewed that head.
+	ResumedViaPush PauseResumeVia = "push"
+	// ResumedViaMergedByHand: the merge request was merged by hand.
+	ResumedViaMergedByHand PauseResumeVia = "mergedByHand"
+	// ResumedViaClosedByHand: the issue was closed by hand.
+	ResumedViaClosedByHand PauseResumeVia = "closedByHand"
+	// ResumedViaCommand: `resume` or another owner or pilot command
+	// (`merge`, `rebase`, `mergeBase`, `endMilestone`, turning autopilot
+	// off).
+	ResumedViaCommand PauseResumeVia = "command"
+	// ResumedViaCauseGone: another automatic exit, the cause went away
+	// (green default branch, raised budget, a companion that can go on).
+	ResumedViaCauseGone PauseResumeVia = "causeGone"
+	// ResumedViaSelfHealed: the operator rebased a BaseFailing MR onto a
+	// green default branch.
+	ResumedViaSelfHealed PauseResumeVia = "selfHealed"
+)
+
+// PauseRunByAutopilot is status.autopilot.pauseRunBy for a run the
+// autopilot itself asked for. A person's command records "@name", the
+// pilot "the pilot", so it cannot be mistaken for one.
+const PauseRunByAutopilot = "autopilot"
+
 // AutopilotItemState is the state of one issue in the queue.
 // +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped
 type AutopilotItemState string
@@ -1857,6 +1892,26 @@ type AutopilotStatus struct {
 	// ResumedBy is who ended the last pause; cleared by the next pause.
 	// +optional
 	ResumedBy PauseResolver `json:"resumedBy,omitempty"`
+
+	// ResumedVia is how the last pause ended; set and cleared with
+	// ResumedBy. Empty for a pause that ended before it was recorded.
+	// +optional
+	ResumedVia PauseResumeVia `json:"resumedVia,omitempty"`
+
+	// PauseRunBy is who asked for the newest run of PausedFor during the
+	// pause: PauseRunByAutopilot for the autopilot's own (a review-only run
+	// after a rebase, a re-review), else the person ("@alice") or the pilot
+	// whose command started it. A later run that ends the pause tells
+	// resumedVia from it. Cleared when the pause ends or moves to another
+	// issue.
+	// +optional
+	PauseRunBy string `json:"pauseRunBy,omitempty"`
+
+	// PauseRunHead is the pushed head of PausedFor when the pause started,
+	// then the head the newest run during the pause was asked for: a later
+	// run passing on another head took over someone's push.
+	// +optional
+	PauseRunHead string `json:"pauseRunHead,omitempty"`
 
 	// RepoNotices are the milestone's "/agent repo" lines (as written) the
 	// operator has named on the tracking issue as ignored, so each is named

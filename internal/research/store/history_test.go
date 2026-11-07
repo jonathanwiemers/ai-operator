@@ -129,6 +129,8 @@ func TestPauses(t *testing.T) {
 	// Keys must differ across projects and milestones.
 	events[7].Key += "/m25"
 	events[8].Key += "/shop"
+	// The stuck pause says how it ended; the ciRed one is from before "via".
+	events[3].Data["via"] = "takeover"
 	if _, err := s.InsertEvents(ctx, events); err != nil {
 		t.Fatal(err)
 	}
@@ -149,8 +151,12 @@ func TestPauses(t *testing.T) {
 	tot := h.Totals
 	if tot.Count != 3 || tot.PausedSec != 600+1800+600 || tot.MeanResumeSec != 1200 ||
 		tot.ByKind["stuck"] != (store.PauseKindTotal{Count: 1, Sec: 1800}) || len(tot.ByKind) != 3 ||
-		tot.ByResolver["owner"] != 1 || tot.ByResolver["selfHealed"] != 1 || len(tot.ByResolver) != 2 {
+		tot.ByResolver["owner"] != 1 || tot.ByResolver["selfHealed"] != 1 || len(tot.ByResolver) != 2 ||
+		tot.ByVia["takeover"] != 1 || tot.ByVia["unknown"] != 1 || len(tot.ByVia) != 2 {
 		t.Errorf("totals = %+v", tot)
+	}
+	if h.Pauses[0].Via != "" || h.Pauses[1].Via != "takeover" || h.Pauses[2].Via != "" {
+		t.Errorf("via = %q, %q, %q", h.Pauses[0].Via, h.Pauses[1].Via, h.Pauses[2].Via)
 	}
 
 	if h, err := s.Pauses(ctx, store.ProjectKey{Namespace: "agents", Name: "bloop"}, 99, now); err != nil || len(h.Pauses) != 0 || h.Totals.Count != 0 {

@@ -205,15 +205,18 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   The milestone API also carries the autopilot's **pause
   history** (`pauses`, from the `autopilot.paused`/`autopilot.resumed`
   events within the history retention: the newest 20 pauses with kind,
-  reason, start, end and who resolved each, an open one counting up to
-  now, plus totals of all: time paused, per kind, mean time to resume, per
-  resolver); it is absent without the history database. Below the
+  reason, start, end, who resolved each and how (`via`, see
+  [usage.md](usage.md#autopilot-a-milestone-end-to-end)), an open one counting up to now, plus
+  totals of all: time paused, per kind, mean time to resume, per resolver
+  and per way it ended); it is absent without the history database. Below the
   questions, the **Pauses** card shows it: the totals line (*paused 3h 10m
   in 4 pauses · mean 47m to resume*; the mean once a pause has ended), a
   chip per kind with its count and time, longest first, who resolved them
-  (operator, later run, pilot, owner, self-healed), and the newest pauses (five, the
+  (operator, later run, pilot, owner, self-healed) and how they ended
+  (*ended via* re-review, takeover, push, merged by hand, closed by hand,
+  command, cause gone, self-healed), and the newest pauses (five, the
   rest of the 20 behind *Earlier pauses*) with kind, issue, duration, who
-  resolved it or *open*, and the reason as text. An open pause keeps
+  resolved it or *open* and how (*later run · takeover*), and the reason as text. An open pause keeps
   counting on the Desk between reloads. Without pause history (no history
   database, no pauses yet) there is no card. A milestone whose issues have
   companion merge requests (cross-repo changes) lists them under

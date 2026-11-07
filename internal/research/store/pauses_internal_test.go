@@ -75,6 +75,40 @@ func TestPairPauses(t *testing.T) {
 	}
 }
 
+// A resumed event's via is the pause's Via and counted in ByVia; an event
+// from before via was recorded reads "" and counts as unknown, an open
+// pause not at all.
+func TestPairPausesVia(t *testing.T) {
+	now := pauseBase.Add(100 * time.Minute)
+	h := pairPauses([]Event{
+		pauseEvent(pausedKind, 0, 0, "mergeRequest", "", nil),
+		pauseEvent(resumedKind, 10, 0, "mergeRequest", "laterRun", map[string]any{"via": "reReview"}),
+		pauseEvent(pausedKind, 20, 20, "findings", "", nil),
+		pauseEvent(resumedKind, 30, 20, "findings", "laterRun", map[string]any{"via": "takeover"}),
+		pauseEvent(pausedKind, 40, 40, "ciRed", "", nil),
+		pauseEvent(resumedKind, 50, 40, "ciRed", "operator", nil),
+		pauseEvent(pausedKind, 60, 60, "mergeRequest", "", nil),
+		pauseEvent(resumedKind, 70, 60, "mergeRequest", "laterRun", map[string]any{"via": "reReview"}),
+		// Ended by the next pause: its late resumed event still names via.
+		pauseEvent(pausedKind, 80, 80, "stuck", "", nil),
+		pauseEvent(pausedKind, 90, 90, "budget", "", nil),
+		pauseEvent(resumedKind, 90, 80, "stuck", "operator", map[string]any{"via": "causeGone"}),
+	}, now)
+	var got []string
+	for _, p := range h.Pauses {
+		got = append(got, p.Via)
+	}
+	if want := []string{"reReview", "takeover", "", "reReview", "causeGone", ""}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("via = %q, want %q", got, want)
+	}
+	if v := h.Totals.ByVia; len(v) != 4 || v["reReview"] != 2 || v["takeover"] != 1 || v["unknown"] != 1 || v["causeGone"] != 1 {
+		t.Errorf("by via = %v", v)
+	}
+	if h := pairPauses(nil, now); h.Totals.ByVia == nil {
+		t.Errorf("no events: %+v", h)
+	}
+}
+
 func TestPairPausesWithoutTheirPartner(t *testing.T) {
 	now := pauseBase.Add(100 * time.Minute)
 	h := pairPauses([]Event{

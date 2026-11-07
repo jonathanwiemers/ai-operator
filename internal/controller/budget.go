@@ -172,7 +172,7 @@ func showBudget(usd string) string { return aiv1.ShowCost(aiv1.CostOf(usd)) }
 // resumeBudget ends a budget pause and says why.
 func (a *autopilot) resumeBudget(ctx context.Context, why string) error {
 	a.log.Info("autopilot continues by itself", "why", why)
-	return a.resumed(ctx, aiv1.ResolvedByOperator, "", why)
+	return a.resumed(ctx, byOperator, why)
 }
 
 // warnAt is the share of the milestone's budget spent that posts the 80 %

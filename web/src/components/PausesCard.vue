@@ -7,8 +7,8 @@ import type { PauseHistoryView } from '../types'
 import RelTime from './RelTime.vue'
 
 // PausesCard is the milestone's pause history in the context panel: the
-// totals, the kinds by time paused, who resolved them and the newest
-// pauses. An open pause counts on up to now. Reasons are untrusted text.
+// totals, the kinds by time paused, who resolved them and how, and the
+// newest pauses. An open pause counts on up to now. Reasons are untrusted text.
 const props = defineProps<{ pauses?: PauseHistoryView | null }>()
 const now = useNow()
 const s = computed(() => pausesSummary(props.pauses, now.value))
@@ -34,6 +34,10 @@ const rows = computed(() => (all.value ? s.value?.rows : s.value?.rows.slice(0, 
       resolved by
       <template v-for="(r, i) in s.resolvers" :key="r.resolver">{{ i ? ', ' : ' ' }}{{ r.label }} {{ r.count }}</template>
     </div>
+    <div v-if="s.vias.length" class="faint by">
+      ended via
+      <template v-for="(v, i) in s.vias" :key="v.via">{{ i ? ', ' : ' ' }}{{ v.label }} {{ v.count }}</template>
+    </div>
     <ul class="list">
       <li v-for="(p, i) in rows" :key="i" :class="{ open: p.open }">
         <div class="row">
@@ -41,7 +45,7 @@ const rows = computed(() => (all.value ? s.value?.rows : s.value?.rows.slice(0, 
           <span v-if="p.item">{{ p.item }}</span>
           <span class="spacer" />
           <span>{{ p.duration }}</span>
-          <span class="who">{{ p.resolver }}</span>
+          <span class="who">{{ p.resolver }}<template v-if="p.via"> · {{ p.via }}</template></span>
         </div>
         <div v-if="p.reason" class="reason" :title="p.reason">{{ p.reason }}</div>
         <small class="faint"><RelTime :time="p.since" /></small>

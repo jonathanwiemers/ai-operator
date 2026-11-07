@@ -799,6 +799,8 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 	}); err != nil {
 		return err
 	}
+	// A run of the paused issue the pilot (or an owner through it) started.
+	r.commandRun(ctx, st, t, pilotBy(by))
 	if a.Tool == "instruct" {
 		// Shown where the implementer works; its prompt has it from the
 		// task, not from this comment.

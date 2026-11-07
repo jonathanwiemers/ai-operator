@@ -316,14 +316,20 @@ func pauses(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, now time.Time) []
 	}
 	if was && (!is || fresh) {
 		by := aiv1.ResolvedByOperator
+		// A pause replaced by a new one ended by itself (causeGone).
+		via := aiv1.ResumedViaCauseGone
 		switch {
 		case !is && cur.ResumedBy != "":
 			by = cur.ResumedBy
+			if cur.ResumedVia != "" {
+				via = cur.ResumedVia
+			}
 		case cur.Phase == aiv1.AutopilotOff:
-			by = aiv1.ResolvedByOwner
+			by, via = aiv1.ResolvedByOwner, aiv1.ResumedViaCommand
 		}
 		e := emit(KindAutopilotResumed, old, fmt.Sprintf("Autopilot resumed (%s) by %s", pauseWord(old), by))
 		e.Data["resolvedBy"] = string(by)
+		e.Data["via"] = string(via)
 		if old.PausedAt != nil {
 			e.Data["pausedSec"] = int64(now.Sub(old.PausedAt.Time).Seconds())
 		}

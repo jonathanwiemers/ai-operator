@@ -301,8 +301,8 @@ func TestAutopilotPausesAndResumes(t *testing.T) {
 	if !slices.Equal(e.gl.Merged, []int64{1}) || e.autopilot().Phase != aiv1.AutopilotRunning || e.autopilot().PauseKind != "" {
 		t.Fatalf("resume should continue with the merge and clear the pause: merged %v, %+v", e.gl.Merged, e.autopilot())
 	}
-	if by := e.autopilot().ResumedBy; by != aiv1.ResolvedByOwner {
-		t.Fatalf("an owner's resume is resolved by the owner, got %q", by)
+	if ap := e.autopilot(); ap.ResumedBy != aiv1.ResolvedByOwner || ap.ResumedVia != aiv1.ResumedViaCommand {
+		t.Fatalf("an owner's resume is resolved by the owner via a command, got %q, %q", ap.ResumedBy, ap.ResumedVia)
 	}
 	if c := trackingComments(e); strings.Count(c, "Autopilot continues") != 1 || !strings.Contains(c, "▶️ Autopilot continues: resumed (ended by @\u200bjonathan).") {
 		t.Fatalf("the resume command, not the automatic one, continues here, and names the owner:\n%s", c)
@@ -315,8 +315,8 @@ func TestAutopilotPausesAndResumes(t *testing.T) {
 	if e.autopilot().Phase != aiv1.AutopilotPaused || e.gl.Issues[2].HasLabel("agent::ready") {
 		t.Fatalf("pause must stop the queue: %+v %v", e.autopilot(), e.gl.Labels(2))
 	}
-	if by := e.autopilot().ResumedBy; by != "" {
-		t.Fatalf("a pause clears who ended the last one, got %q", by)
+	if ap := e.autopilot(); ap.ResumedBy != "" || ap.ResumedVia != "" {
+		t.Fatalf("a pause clears who ended the last one and how, got %q, %q", ap.ResumedBy, ap.ResumedVia)
 	}
 	e.gl.AddNote(ap.TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent skip #2")
 	e.gl.AddNote(ap.TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent resume")
@@ -643,6 +643,60 @@ func TestAutopilotRebasePauseEndsOnceTheNewHeadIsReviewedAndGreen(t *testing.T) 
 	e.reconcile()
 	if !slices.Equal(e.gl.Merged, []int64{1}) {
 		t.Fatalf("reviewed and green, it goes on by itself: %v, %+v", e.gl.Merged, e.autopilot())
+	}
+	// The review-only run the autopilot asked for ended it.
+	if ap := e.autopilot(); ap.ResumedBy != aiv1.ResolvedByLaterRun || ap.ResumedVia != aiv1.ResumedViaReReview || ap.PauseRunBy != "" {
+		t.Fatalf("expected resumedBy laterRun via reReview: %+v", ap)
+	}
+	if c := trackingComments(e); !strings.Contains(c, "(ended by a later run of #1, a review-only run the autopilot started).") {
+		t.Fatalf("the resume comment must say how the pause ended:\n%s", c)
+	}
+}
+
+// An owner's "/agent …" on the issue takes the rebase pause over: the run it
+// starts ends the pause as a takeover that names the owner, defused.
+func TestAutopilotRebasePauseEndedByATakeover(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	name := e.finishRun(1, "sha-api", nil)
+	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "need_rebase"
+	e.reconcile() // rebase requested
+	e.gl.MRDiffs = map[int64][]gitlab.Diff{1: {{OldPath: "app.go", NewPath: "app.go", Diff: "@@ -1 +1 @@\n-old\n+adapted by hand\n"}}}
+	e.gl.MRCommits = map[int64][]gitlab.Commit{1: {{ID: "h1", Title: "Adapt", AuthorEmail: "human@example.com"}}}
+	e.gl.SetHead(1, "sha-pushed")
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || ap.PauseRunBy != aiv1.PauseRunByAutopilot || ap.PauseRunHead != "sha-pushed" {
+		t.Fatalf("the autopilot's review-only run must be recorded: %+v", ap)
+	}
+	// The review-only run found the rebased head wanting; the owner takes over.
+	task := e.tasks()[name]
+	e.gl.SetLabels(1, "ai-generated", "agent::review")
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.Run.ObservedRunRequest = task.Spec.RunRequest })
+	e.gl.AddNote(1, gitlab.User{ID: 1, Username: "jonathan"}, "/agent fix it")
+	e.reconcile()
+	task = e.tasks()[name]
+	if ap := e.autopilot(); ap.PauseRunBy != "@jonathan" || !task.RunPending() {
+		t.Fatalf("the owner's command must start a run and be recorded: %+v, %+v", ap, task.Spec)
+	}
+	// That run pushed a fix, reviewed and green.
+	e.gl.SetHead(1, "sha-fixed")
+	e.gl.SetLabels(1, "ai-generated", "agent::review")
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ObservedRunRequest = task.Spec.RunRequest
+		s.Run.PushedSHA, s.Run.ReviewedSHA = "sha-fixed", "sha-fixed"
+		s.CI = &aiv1.CIStatus{SHA: "sha-fixed", State: aiv1.CIStateSuccess}
+	})
+	e.gl.MRs[1].DetailedMergeStatus = "mergeable"
+	e.reconcile()
+	if !slices.Equal(e.gl.Merged, []int64{1}) {
+		t.Fatalf("reviewed and green, it goes on by itself: %v, %+v", e.gl.Merged, e.autopilot())
+	}
+	if ap := e.autopilot(); ap.ResumedBy != aiv1.ResolvedByLaterRun || ap.ResumedVia != aiv1.ResumedViaTakeover {
+		t.Fatalf("expected resumedBy laterRun via takeover: %+v", ap)
+	}
+	if c := trackingComments(e); !strings.Contains(c, "(ended by a later run of #1, which @\u200bjonathan's `/agent` comment started).") {
+		t.Fatalf("the resume comment must name the owner, defused:\n%s", c)
 	}
 }
 
@@ -1220,8 +1274,27 @@ func TestAutopilotContinuesWhenTheIssueIsMergedByHand(t *testing.T) {
 	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].State != aiv1.AutopilotItemMerged || !e.gl.Issues[2].HasLabel("agent::ready") {
 		t.Fatalf("a hand merge must count and the next issue start: %+v %v", ap, e.gl.Labels(2))
 	}
-	if !strings.Contains(trackingComments(e), fmt.Sprintf("Autopilot continues: !%d was merged (ended by the operator: the cause went away).", mr)) || ap.ResumedBy != aiv1.ResolvedByOperator {
-		t.Fatalf("expected the continue note, resolved by the operator (%q):\n%s", ap.ResumedBy, trackingComments(e))
+	if !strings.Contains(trackingComments(e), fmt.Sprintf("Autopilot continues: !%d was merged (ended by hand: the merge request was merged).", mr)) ||
+		ap.ResumedBy != aiv1.ResolvedByOperator || ap.ResumedVia != aiv1.ResumedViaMergedByHand {
+		t.Fatalf("expected the continue note, resolved by the operator (%q) via mergedByHand (%q):\n%s", ap.ResumedBy, ap.ResumedVia, trackingComments(e))
+	}
+}
+
+// A pause over an issue closed by hand ends as closedByHand.
+func TestAutopilotPauseEndsWhenTheIssueIsClosedByHand(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	e.reconcile()
+	e.finishRun(1, "sha-api", nil)
+	e.gl.SetLabels(1, "ai-generated", "agent::needs-input")
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || ap.PausedFor != 1 {
+		t.Fatalf("expected a pause over #1: %+v", ap)
+	}
+	e.gl.Issues[1].State = "closed"
+	e.reconcile()
+	if c := trackingComments(e); !strings.Contains(c, "Autopilot continues: #1 was closed (ended by hand: the issue was closed).") {
+		t.Fatalf("expected the continue note, ended by hand:\n%s", c)
 	}
 }
 

@@ -74,7 +74,7 @@ func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
 		why = "the merge freeze is switched off (`mainHealth.freezeAutopilot`)"
 	}
 	a.log.Info("autopilot continues by itself", "issue", it.IID, "why", why)
-	return a.resumed(ctx, aiv1.ResolvedByOperator, "", why)
+	return a.resumed(ctx, byOperator, why)
 }
 
 // loadMainRedFix keeps the main-red issue as the lane's item while the

@@ -484,7 +484,7 @@ func (a *autopilot) companionLanding(ctx context.Context) error {
 	switch {
 	case e == nil && a.landingPause():
 		a.log.Info("autopilot continues: no companion of the milestone is blocked any more")
-		return a.resumed(ctx, aiv1.ResolvedByOperator, "", "the companions of the milestone can land again (or were merged or closed by hand)")
+		return a.resumed(ctx, byOperator, "the companions of the milestone can land again (or were merged or closed by hand)")
 	case e != nil && (a.ap.Phase == aiv1.AutopilotRunning || a.landingPause()):
 		return a.pause(ctx, aiv1.PauseCompanion, 0, landingPauseReason(e))
 	}
