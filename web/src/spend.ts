@@ -538,3 +538,26 @@ export function companionNote(c: Pick<SpendChild, 'level' | 'companion'>): strin
   if (c.level !== 'issue' || !project) return ''
   return `Also changes ${project}: its calls count to this issue`
 }
+
+// perMillion is a total's cost per 1M tokens (all token types), "n/a" when
+// the cost is unknown or there are no tokens, never $0.
+export function perMillion(t: SpendTotals): string {
+  const tokens = spendTokens(t)
+  if (!t.costKnown || tokens <= 0) return 'n/a'
+  return cost(String((usd(t) / tokens) * 1_000_000))
+}
+
+// kindModel splits a byKindModel key "<kind>/<model>" at the first slash.
+export function kindModel(key: string): { kind: string; model: string } {
+  const i = key.indexOf('/')
+  return i < 0 ? { kind: key, model: '' } : { kind: key.slice(0, i), model: key.slice(i + 1) }
+}
+
+// conflictRunLabel names a conflictRuns key "<issue>/<task>/<run>": "#601 ·
+// kmx-601 run 1", without the issue "kmx-spec run 1" (the milestone's own).
+export function conflictRunLabel(key: string): string {
+  const [issue = '', ...rest] = key.split('/')
+  const run = rest.pop() ?? ''
+  const task = rest.join('/')
+  return `${issue ? `#${issue} · ` : ''}${task} run ${run}`
+}

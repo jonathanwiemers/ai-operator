@@ -4,6 +4,9 @@ import { test } from 'node:test'
 import {
   avgCost,
   avgTokens,
+  conflictRunLabel,
+  kindModel,
+  perMillion,
   callCost,
   callLines,
   callNudges,
@@ -513,4 +516,21 @@ test('modelLabel (#255): cursor auto is labelled, it reports neither its model n
   assert.equal(modelLabel('auto', false), 'cursor auto')
   assert.equal(modelLabel('claude-opus-5-5', false), 'claude-opus-5-5')
   assert.equal(modelLabel('gpt-5', true), 'gpt-5')
+})
+
+test('perMillion: cost per 1M tokens of all token types, n/a without a cost or tokens', () => {
+  // $33.59 over 5.8M tokens: about $5.79 per 1M.
+  assert.equal(perMillion(usd('33.59', { outputTokens: 800_000, cacheReadTokens: 4_000_000, cacheWriteTokens: 1_000_000 })), '$5.79')
+  assert.equal(perMillion(usd('48.82', { inputTokens: 70_800_000 })), '$0.69')
+  assert.equal(perMillion(usd('0.0001', { inputTokens: 5_000_000 })), '<$0.01')
+  assert.equal(perMillion(totals({ calls: 2, unknownCalls: 2, inputTokens: 100 })), 'n/a')
+  assert.equal(perMillion(usd('1.00')), 'n/a')
+})
+
+test('kindModel splits at the first slash, conflictRunLabel names issue, task and run', () => {
+  assert.deepEqual(kindModel('conflict/claude-opus-5-5'), { kind: 'conflict', model: 'claude-opus-5-5' })
+  assert.deepEqual(kindModel('review/openrouter/x'), { kind: 'review', model: 'openrouter/x' })
+  assert.deepEqual(kindModel('chat'), { kind: 'chat', model: '' })
+  assert.equal(conflictRunLabel('179/ai-179/2'), '#179 · ai-179 run 2')
+  assert.equal(conflictRunLabel('/spec-m4/1'), 'spec-m4 run 1')
 })

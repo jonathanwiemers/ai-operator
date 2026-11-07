@@ -123,11 +123,19 @@ type Spend struct {
 	Totals                  SpendTotals
 	Children                []SpendChild
 	ByKind, ByRole, ByModel []SpendBreakdown
-	ByReviewRound           []SpendBreakdown
-	BySession               []SpendBreakdown
-	ByCheckpoint            []SpendBreakdown
-	BySubagents             []SubagentBreakdown
-	CacheReadShare          float64
+	// ByKindModel crosses kind and model, key "<kind>/<model>", from split
+	// (the main model of a kind and its subagent models as their own rows).
+	ByKindModel []SpendBreakdown
+	// ConflictRuns are the conflict calls per run, key "<issue>/<task>/<run>"
+	// (issue empty for the milestone's own), the 20 most expensive; Calls
+	// above 1 means the run resolved conflicts repeatedly. Only at milestone
+	// and issue scope.
+	ConflictRuns   []SpendBreakdown
+	ByReviewRound  []SpendBreakdown
+	BySession      []SpendBreakdown
+	ByCheckpoint   []SpendBreakdown
+	BySubagents    []SubagentBreakdown
+	CacheReadShare float64
 	// StepLines is the size of the scope's step commits.
 	StepLines StepLines
 }
@@ -185,7 +193,7 @@ func spendWith(where string) string {
 			CASE WHEN reason = '' THEN 'unknown' ELSE reason END, 1
 		FROM cpevents
 	), split AS (
-		SELECT false AS legacy, c.id, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, m.model, m.main,
+		SELECT false AS legacy, c.id, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, c.kind, m.model, m.main,
 			m.cost_usd, m.input_tokens, m.output_tokens, m.cache_read_tokens, m.cache_write_tokens,
 			CASE WHEN m.main THEN c.subagent_calls ELSE 0 END AS subagent_calls,
 			CASE WHEN m.main THEN c.duration_ms ELSE 0 END AS duration_ms,
@@ -357,18 +365,23 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 	}
 	const byCost = `sum(cost_usd) DESC NULLS LAST, 1`
 	for _, b := range []struct {
-		out              *[]SpendBreakdown
-		key, from, order string
+		out                     *[]SpendBreakdown
+		key, from, order, limit string
 	}{
-		{&sp.ByKind, "kind", "spend WHERE NOT legacy", byCost},
-		{&sp.ByRole, "role", "spend WHERE NOT legacy", byCost},
-		{&sp.ByModel, "model", "split", byCost},
-		{&sp.ByReviewRound, "round::text", reviewRounds, "min(round)"},
-		{&sp.BySession, "CASE WHEN resumed THEN 'resumed' ELSE 'fresh' END", "spend WHERE NOT legacy AND kind = 'implement'", "1"},
-		{&sp.ByCheckpoint, "checkpoint", "spend WHERE checkpoint <> ''", "sum(checkpoints) DESC, 1"},
+		{&sp.ByKind, "kind", "spend WHERE NOT legacy", byCost, ""},
+		{&sp.ByRole, "role", "spend WHERE NOT legacy", byCost, ""},
+		{&sp.ByModel, "model", "split", byCost, ""},
+		{&sp.ByKindModel, "kind || '/' || model", "split", byCost, ""},
+		{&sp.ConflictRuns, "coalesce(issue_iid::text, '') || '/' || task || '/' || run", "spend WHERE NOT legacy AND kind = 'conflict'", byCost, " LIMIT 20"},
+		{&sp.ByReviewRound, "round::text", reviewRounds, "min(round)", ""},
+		{&sp.BySession, "CASE WHEN resumed THEN 'resumed' ELSE 'fresh' END", "spend WHERE NOT legacy AND kind = 'implement'", "1", ""},
+		{&sp.ByCheckpoint, "checkpoint", "spend WHERE checkpoint <> ''", "sum(checkpoints) DESC, 1", ""},
 	} {
+		if b.out == &sp.ConflictRuns && (sc.MilestoneIID == 0 && sc.IssueIID == 0 || sc.Task != "") {
+			continue
+		}
 		rows, _ := s.pool.Query(ctx, with+`SELECT `+b.key+`, `+spendTotals+` FROM `+b.from+
-			` GROUP BY 1 ORDER BY `+b.order, args...)
+			` GROUP BY 1 ORDER BY `+b.order+b.limit, args...)
 		if *b.out, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (SpendBreakdown, error) {
 			var br SpendBreakdown
 			br.Totals, err = scanTotals(row, &br.Key)

@@ -1487,6 +1487,33 @@ numbers: one row per agent call in `agent_calls`.
   *N calls not metered* next to the total, add nothing to the token sums,
   and count $0 towards a budget. No model or price is guessed for them.
 
+#### Spend report script
+
+`hack/spend-report.sql` answers "where did this issue's cost come from" and
+"what do conflict rounds cost" from `agent_calls` alone, with psql on the
+research database (it only reads). Variables: `project` (required),
+`milestone` and `issue` (0 or unset: all). It prints three tables:
+
+1. per issue: kinds, models, runs, review rounds (as in the Spend tab's
+   *Review rounds*), calls, input, output, cache read and cache write
+   tokens, cost and cost per 1M tokens;
+2. conflict calls per issue and model, with the most calls one run made
+   (above 1: the run resolved conflicts repeatedly) and the output and
+   cache tokens, to see conflict rounds on Opus with large outputs;
+3. the calls of one issue (`issue` ≠ 0): task, run, seq, kind, role, model,
+   resumed, tokens, cost and duration.
+
+```sh
+# Why did #179 cost $53.88: every call of the issue, in order.
+psql "$DATABASE_URL" -v project=ai-operator -v issue=179 -f hack/spend-report.sql
+# The milestone's issues and its conflict spend by model.
+psql "$DATABASE_URL" -v project=ai-operator -v milestone=12 -f hack/spend-report.sql
+```
+
+Models are the calls' own models; the Spend tab's *By kind and model*
+(and *Conflict calls per run* at milestone and issue scope) also splits out
+the subagent models. Expired calls are left out, as in the tab.
+
 #### Budget prompts
 
 The owners get the milestone's budget as a `budget` prompt in the Desk,

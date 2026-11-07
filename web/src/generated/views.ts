@@ -1006,6 +1006,12 @@ export interface SpendView {
   byKind: SpendBreakdownView[];
   byRole: SpendBreakdownView[];
   byModel: SpendBreakdownView[];
+  /**
+   * ByKindModel is keyed "<kind>/<model>"; ConflictRuns "<issue>/<task>/<run>"
+   * (milestone and issue scope only, else empty), calls above 1 are repeats.
+   */
+  byKindModel: SpendBreakdownView[];
+  conflictRuns: SpendBreakdownView[];
   byReviewRound: SpendBreakdownView[];
   bySession: SpendBreakdownView[];
   byCheckpoint: SpendBreakdownView[];

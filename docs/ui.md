@@ -362,6 +362,14 @@ the tab says it needs the database):
   model is marked *(not metered)*. Cursor's model `auto` reads *cursor
   auto (unmetered)* in both: cursor reports neither the model it picked
   nor the usage.
+* **By kind and model:** the calls crossed by kind and model (subagent
+  models as their own rows), highest cost first: kind, model, calls,
+  output tokens, cache write tokens, cost and cost per 1M tokens, so
+  "Opus with large outputs" can be read off. At milestone and issue scope
+  *Conflict calls per run* lists the conflict calls of each run (the 20
+  most expensive, `conflictRuns` of the API, key `<issue>/<task>/<run>`);
+  more than one call marks a repeat. The same questions per issue can be
+  asked of the database with [`hack/spend-report.sql`](usage.md#spend-report-script).
 * **Tuning tables**, each with the average cost per call (of the calls
   with a known cost; *n/a* when none has one), to set the levers in
   [configuration.md](configuration.md#roles) by:

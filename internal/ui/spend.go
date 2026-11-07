@@ -117,11 +117,15 @@ type SubagentBreakdownView struct {
 // "2", …), bySession by "fresh" or "resumed" (implement calls only),
 // byCheckpoint by the reason of the checkpoints, with or without a call.
 type SpendView struct {
-	Totals         SpendTotalsView         `json:"totals"`
-	Children       []SpendChildView        `json:"children"`
-	ByKind         []SpendBreakdownView    `json:"byKind"`
-	ByRole         []SpendBreakdownView    `json:"byRole"`
-	ByModel        []SpendBreakdownView    `json:"byModel"`
+	Totals   SpendTotalsView      `json:"totals"`
+	Children []SpendChildView     `json:"children"`
+	ByKind   []SpendBreakdownView `json:"byKind"`
+	ByRole   []SpendBreakdownView `json:"byRole"`
+	ByModel  []SpendBreakdownView `json:"byModel"`
+	// ByKindModel is keyed "<kind>/<model>"; ConflictRuns "<issue>/<task>/<run>"
+	// (milestone and issue scope only, else empty), calls above 1 are repeats.
+	ByKindModel    []SpendBreakdownView    `json:"byKindModel"`
+	ConflictRuns   []SpendBreakdownView    `json:"conflictRuns"`
 	ByReviewRound  []SpendBreakdownView    `json:"byReviewRound"`
 	BySession      []SpendBreakdownView    `json:"bySession"`
 	ByCheckpoint   []SpendBreakdownView    `json:"byCheckpoint"`
@@ -240,6 +244,7 @@ func projectTasks(tasks []aiv1.AgentTask, ap *aiv1.AgentProject) []aiv1.AgentTas
 func spendView(sp store.Spend) SpendView {
 	v := SpendView{Totals: spendTotalsView(sp.Totals), Children: make([]SpendChildView, 0, len(sp.Children)),
 		ByKind: breakdownViews(sp.ByKind), ByRole: breakdownViews(sp.ByRole), ByModel: breakdownViews(sp.ByModel),
+		ByKindModel: breakdownViews(sp.ByKindModel), ConflictRuns: breakdownViews(sp.ConflictRuns),
 		ByReviewRound: breakdownViews(sp.ByReviewRound), BySession: breakdownViews(sp.BySession), ByCheckpoint: breakdownViews(sp.ByCheckpoint),
 		BySubagents: make([]SubagentBreakdownView, 0, len(sp.BySubagents)), CacheReadShare: sp.CacheReadShare,
 		StepLines: StepLinesView(sp.StepLines)}

@@ -15,13 +15,16 @@ import {
   childScope,
   checkpointsLine,
   checkpointsNote,
+  conflictRunLabel,
   costSourceLabel,
+  kindModel,
   legacyNote,
   modelBars,
   modelSlots,
   modelLabel,
   modelsLine,
   pctLabel,
+  perMillion,
   reviewRounds,
   scopeFromQuery,
   sessionRows,
@@ -139,6 +142,8 @@ const sessions = computed(() => sessionRows(data.value?.bySession ?? []))
 const stepLines = computed(() => stepLinesLine(data.value?.stepLines))
 const checkpoints = computed(() => checkpointsLine(data.value?.byCheckpoint ?? []))
 const subagentRows = computed(() => subagentRoles(data.value?.bySubagents ?? []))
+const kindModels = computed(() => sortByCost(data.value?.byKindModel ?? []))
+const conflictRuns = computed(() => sortByCost(data.value?.conflictRuns ?? []))
 
 // level: what the children are, as the API groups them.
 const level = computed(() => {
@@ -361,6 +366,67 @@ function rowKey(b: SpendBreakdown): string {
               </tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      <section v-if="totals.calls" class="section">
+        <h3>By kind and model</h3>
+        <div class="card table">
+          <table class="list">
+            <thead>
+              <tr>
+                <th>Kind</th>
+                <th>Model</th>
+                <th class="num">Calls</th>
+                <th class="num">Output</th>
+                <th class="num">Cache write</th>
+                <th class="num">Cost</th>
+                <th class="num" title="Cost per 1M tokens of all types (input, output, cache read and write)">$ per 1M tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in kindModels" :key="r.key">
+                <td>{{ kindModel(r.key).kind || '—' }}</td>
+                <td>{{ modelLabel(kindModel(r.key).model || '—', unmetered(r.totals)) }}</td>
+                <td class="num">{{ r.totals.calls }}</td>
+                <td class="num" :title="tokenTitle(r.totals)">{{ tokenCount(r.totals.outputTokens) }}</td>
+                <td class="num">{{ tokenCount(r.totals.cacheWriteTokens) }}</td>
+                <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ spendUSD(r.totals) }}</td>
+                <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ perMillion(r.totals) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section v-if="conflictRuns.length" class="section">
+        <h3>Conflict calls per run</h3>
+        <div class="card table">
+          <table class="list">
+            <thead>
+              <tr>
+                <th>Run</th>
+                <th class="num" title="More than one: the run resolved conflicts repeatedly">Calls</th>
+                <th class="num">Output</th>
+                <th class="num">Cache write</th>
+                <th class="num">Cost</th>
+                <th class="num">$ per 1M tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in conflictRuns" :key="r.key">
+                <td>{{ conflictRunLabel(r.key) }}</td>
+                <td class="num">
+                  {{ r.totals.calls }}
+                  <span v-if="r.totals.calls > 1" class="faint" title="Repeated conflict resolution in one run">repeat</span>
+                </td>
+                <td class="num" :title="tokenTitle(r.totals)">{{ tokenCount(r.totals.outputTokens) }}</td>
+                <td class="num">{{ tokenCount(r.totals.cacheWriteTokens) }}</td>
+                <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ spendUSD(r.totals) }}</td>
+                <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ perMillion(r.totals) }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 

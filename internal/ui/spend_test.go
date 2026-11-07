@@ -57,7 +57,7 @@ func TestSpendViewUnknownCost(t *testing.T) {
 	}
 	c := v.Children[0]
 	if c.Totals.CostUSD != "" || c.Models[0].CostUSD != "" || c.SpendCallView == nil || c.ContextSeries == nil ||
-		c.SubagentTurns == nil || v.ByKind == nil || v.ByReviewRound == nil || v.BySession == nil || v.ByCheckpoint == nil || v.BySubagents == nil {
+		c.SubagentTurns == nil || v.ByKind == nil || v.ByKindModel == nil || v.ConflictRuns == nil || v.ByReviewRound == nil || v.BySession == nil || v.ByCheckpoint == nil || v.BySubagents == nil {
 		t.Errorf("child = %+v, want unknown costs and empty lists", c)
 	}
 }
@@ -150,6 +150,9 @@ func TestSpend(t *testing.T) {
 	}
 	if ms.Children[0].SpendCallView != nil || len(ms.ByKind) != 2 || len(ms.ByModel) != 3 {
 		t.Errorf("milestone = %+v", ms)
+	}
+	if len(ms.ByKindModel) < 2 || ms.ByKindModel[0].Key == "" || ms.ConflictRuns == nil || len(ms.ConflictRuns) != 0 {
+		t.Errorf("milestone by kind and model = %+v, conflict runs %+v (no conflict calls)", ms.ByKindModel, ms.ConflictRuns)
 	}
 	if s := ms.BySession; len(s) != 1 || s[0].Key != "fresh" || s[0].Totals.Calls != 2 || s[0].Totals.CostUSD != "1.75" {
 		t.Errorf("milestone by session = %+v, want two fresh implement calls", s)

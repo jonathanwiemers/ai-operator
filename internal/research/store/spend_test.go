@@ -2,8 +2,11 @@ package store_test
 
 import (
 	"math"
+	"os"
+	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -869,5 +872,114 @@ func TestSpendAddsUpAtEveryScope(t *testing.T) {
 	}
 	if sp.Totals.UnmeteredCalls != 1 || sp.Totals.LegacyCostUSD != 2 || math.Abs(sp.Totals.CostUSD-4.7) > 1e-9 {
 		t.Errorf("totals %+v, want 1 unmetered call, $2 legacy of $4.70", sp.Totals)
+	}
+}
+
+// TestSpendKindModel: a milestone with implement, review, fix and two
+// conflict calls of one run (Opus) and one of another run (Sonnet). The kind
+// × model rows keep the conflict calls apart per model, ConflictRuns shows the
+// run that resolved conflicts twice, and both add up to the totals. Then
+// hack/spend-report.sql runs on the same data.
+func TestSpendKindModel(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	at, exp := time.Now().Add(-time.Hour).Truncate(time.Second), time.Now().Add(24*time.Hour)
+	opus, sonnet := "claude-opus-5-5", "claude-sonnet-5-5"
+	n := 0
+	call := func(issue int64, task string, run, seq int64, kind, model string, in, out, cr, cw int64, cost float64) store.Call {
+		n++
+		return store.Call{Key: "k" + strconv.Itoa(n), At: at.Add(time.Duration(n) * time.Minute), Namespace: "agents", Project: "kmx",
+			MilestoneIID: 50, IssueIID: issue, Task: task, Run: run, Seq: seq, Kind: kind, Role: kind, Engine: "claude", Model: model,
+			InputTokens: in, OutputTokens: out, CacheReadTokens: cr, CacheWriteTokens: cw, CostUSD: &cost, CostSource: "reported",
+			DurationMS: 1000, Models: []store.CallModel{{Model: model, InputTokens: in, OutputTokens: out, CacheReadTokens: cr,
+				CacheWriteTokens: cw, CostUSD: &cost}}, ExpiresAt: exp}
+	}
+	impl := call(601, "kmx-601", 1, 1, "implement", opus, 10, 500, 20000, 3000, 1.0)
+	// A subagent: a Sonnet share of the implement call.
+	impl.Models = append(impl.Models, store.CallModel{Model: sonnet, InputTokens: 5, OutputTokens: 50, CacheReadTokens: 1000, CacheWriteTokens: 100})
+	impl.InputTokens, impl.OutputTokens, impl.CacheReadTokens, impl.CacheWriteTokens = 15, 550, 21000, 3100
+	if _, err := owner.InsertCalls(ctx, []store.Call{
+		impl,
+		call(601, "kmx-601", 1, 2, "review", opus, 4, 300, 9000, 100, 0.4),
+		call(601, "kmx-601", 1, 3, "fix", opus, 3, 200, 8000, 50, 0.3),
+		call(601, "kmx-601", 1, 4, "conflict", opus, 2, 4000, 30000, 7000, 2.0),
+		call(601, "kmx-601", 1, 5, "conflict", opus, 2, 3000, 31000, 1000, 1.5),
+		call(602, "kmx-602", 1, 1, "conflict", sonnet, 1, 800, 9000, 2000, 0.2),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sp, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "kmx", MilestoneIID: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKey := map[string]store.SpendBreakdown{}
+	var sum int64
+	for _, b := range sp.ByKindModel {
+		byKey[b.Key] = b
+		sum += b.Totals.Tokens()
+	}
+	if sum != sp.Totals.Tokens() {
+		t.Errorf("by kind and model: %d tokens, want the total %d", sum, sp.Totals.Tokens())
+	}
+	co, cs := byKey["conflict/"+opus], byKey["conflict/"+sonnet]
+	if co.Totals.Calls != 2 || co.Totals.OutputTokens != 7000 || co.Totals.CacheWriteTokens != 8000 || math.Abs(co.Totals.CostUSD-3.5) > 1e-9 ||
+		cs.Totals.Calls != 1 || cs.Totals.OutputTokens != 800 || cs.Totals.CacheWriteTokens != 2000 {
+		t.Errorf("conflict rows: opus %+v, sonnet %+v", co.Totals, cs.Totals)
+	}
+	if sub := byKey["implement/"+sonnet]; sub.Totals.OutputTokens != 50 || byKey["implement/"+opus].Totals.OutputTokens != 500 {
+		t.Errorf("implement rows split by model: %+v", byKey)
+	}
+	if len(sp.ByKindModel) == 0 || sp.ByKindModel[0].Key != "conflict/"+opus {
+		t.Errorf("by kind and model is not sorted by cost: %+v", sp.ByKindModel)
+	}
+	var runs []string
+	for _, r := range sp.ConflictRuns {
+		runs = append(runs, r.Key+"="+strconv.FormatInt(r.Totals.Calls, 10))
+	}
+	if want := []string{"601/kmx-601/1=2", "602/kmx-602/1=1"}; !slices.Equal(runs, want) {
+		t.Errorf("conflict runs %v, want %v", runs, want)
+	}
+	// Only milestone and issue scope have them.
+	for _, sc := range []store.SpendScope{{}, {Task: "kmx-601"}, {Task: "kmx-601", Run: 1}} {
+		sc.Namespace, sc.Project = "agents", "kmx"
+		if o, err := s.Spend(ctx, sc); err != nil || len(o.ConflictRuns) != 0 || len(o.ByKindModel) == 0 {
+			t.Errorf("%+v: %d conflict runs, %d kind/model rows, %v", sc, len(o.ConflictRuns), len(o.ByKindModel), err)
+		}
+	}
+	if o, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "kmx", IssueIID: 602}); err != nil || len(o.ConflictRuns) != 1 {
+		t.Errorf("issue scope: %+v, %v", o.ConflictRuns, err)
+	}
+
+	// hack/spend-report.sql: substitute psql's :'var' and drop its meta
+	// commands, then run each statement.
+	raw, err := os.ReadFile("../../../hack/spend-report.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	vars := map[string]string{"project": "kmx", "milestone": "50", "issue": "601"}
+	var script []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if l := strings.TrimSpace(line); !strings.HasPrefix(l, `\`) && !strings.HasPrefix(l, "--") {
+			script = append(script, line)
+		}
+	}
+	text := regexp.MustCompile(`:'(\w+)'`).ReplaceAllStringFunc(strings.Join(script, "\n"), func(m string) string {
+		v, ok := vars[m[2:len(m)-1]]
+		if !ok {
+			t.Fatalf("spend-report.sql uses the unknown variable %s", m)
+		}
+		return "'" + v + "'"
+	})
+	stmts := 0
+	for _, stmt := range strings.Split(text, ";") {
+		if strings.TrimSpace(stmt) != "" {
+			storetest.Exec(t, stmt)
+			stmts++
+		}
+	}
+	if stmts != 3 {
+		t.Errorf("spend-report.sql has %d statements, want 3", stmts)
 	}
 }
