@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"embed"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -33,14 +35,25 @@ type Grants struct {
 	ChatWriter string
 }
 
+// A migration's version is the prefix of its file name: a legacy version
+// 0001 to 9999 (the migrations up to 0009) or, for every new migration, the
+// UTC time it was created as YYYYMMDDHHMMSS (date -u +%Y%m%d%H%M%S). Two
+// branches then only pick the same version when they create a migration in
+// the same second, so a rebase never has to renumber one.
 type migration struct {
-	version int
+	version int64
 	name    string
 }
 
-// Migrate applies the embedded migrations in order, each in its own
-// transaction, and then grants g on every call, so changed role lists apply.
-// It refuses a database that has a migration this binary does not know.
+// timestampLayout is the time layout of a timestamp version.
+const timestampLayout = "20060102150405"
+
+// Migrate applies the embedded migrations in order of their versions (every
+// legacy version before every timestamp), each in its own transaction, and
+// then grants g on every call, so changed role lists apply. A migration that
+// is not applied yet is applied even when a later version already is: the
+// migrations of two branches can land on main in either order. It refuses a
+// database that has a migration this binary does not know.
 func (s *Store) Migrate(ctx context.Context, g Grants) error {
 	return s.migrate(ctx, migrations, g)
 }
@@ -65,11 +78,14 @@ func (s *Store) migrate(ctx context.Context, fsys fs.FS, g Grants) error {
 		}
 	}()
 	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
-		version int PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`); err != nil {
+		version bigint PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`); err != nil {
+		return err
+	}
+	if err := widenVersion(ctx, conn.Conn()); err != nil {
 		return err
 	}
 	rows, _ := conn.Query(ctx, "SELECT version FROM schema_migrations")
-	applied, err := pgx.CollectRows(rows, pgx.RowTo[int])
+	applied, err := pgx.CollectRows(rows, pgx.RowTo[int64])
 	if err != nil {
 		return err
 	}
@@ -99,7 +115,25 @@ func (s *Store) migrate(ctx context.Context, fsys fs.FS, g Grants) error {
 	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error { return grant(ctx, tx, g) })
 }
 
-// readMigrations returns migrations/NNNN_name.sql ordered by version.
+// widenVersion makes schema_migrations.version a bigint, which a timestamp
+// version needs: databases from before timestamp versions created it as
+// int. It runs under the migration lock and alters only an int column.
+func widenVersion(ctx context.Context, conn *pgx.Conn) error {
+	var typ string
+	if err := conn.QueryRow(ctx, `SELECT data_type FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = 'schema_migrations' AND column_name = 'version'`).Scan(&typ); err != nil {
+		return fmt.Errorf("type of schema_migrations.version: %w", err)
+	}
+	if typ != "integer" {
+		return nil
+	}
+	if _, err := conn.Exec(ctx, "ALTER TABLE schema_migrations ALTER COLUMN version TYPE bigint"); err != nil {
+		return fmt.Errorf("widen schema_migrations.version to bigint: %w", err)
+	}
+	return nil
+}
+
+// readMigrations returns migrations/<version>_name.sql ordered by version.
 func readMigrations(fsys fs.FS) ([]migration, error) {
 	names, err := fs.Glob(fsys, "migrations/*.sql")
 	if err != nil {
@@ -107,18 +141,42 @@ func readMigrations(fsys fs.FS) ([]migration, error) {
 	}
 	var ms []migration
 	for _, name := range names {
-		prefix, _, _ := strings.Cut(path.Base(name), "_")
-		v, err := strconv.Atoi(prefix)
-		if err != nil || v <= 0 {
-			return nil, fmt.Errorf("migration %s: name must start with a version, e.g. 0001_", name)
+		v, err := parseVersion(path.Base(name))
+		if err != nil {
+			return nil, fmt.Errorf("migration %s: %w; name new migrations by the UTC time, $(date -u +%%Y%%m%%d%%H%%M%%S)_name.sql", name, err)
 		}
-		if slices.ContainsFunc(ms, func(m migration) bool { return m.version == v }) {
-			return nil, fmt.Errorf("migration %s: version %d is used twice", name, v)
+		if i := slices.IndexFunc(ms, func(m migration) bool { return m.version == v }); i >= 0 {
+			return nil, fmt.Errorf("migration %s: version %d is used twice (also by %s)", name, v, ms[i].name)
 		}
 		ms = append(ms, migration{version: v, name: name})
 	}
-	slices.SortFunc(ms, func(a, b migration) int { return a.version - b.version })
+	slices.SortFunc(ms, func(a, b migration) int { return cmp.Compare(a.version, b.version) })
 	return ms, nil
+}
+
+// parseVersion returns the version of a migration file name: a legacy
+// version (4 digits, 0001 to 9999) or a timestamp version (14 digits, a
+// valid UTC time YYYYMMDDHHMMSS), followed by "_".
+func parseVersion(base string) (int64, error) {
+	prefix, _, found := strings.Cut(base, "_")
+	if !found || prefix == "" || strings.ContainsFunc(prefix, func(r rune) bool { return r < '0' || r > '9' }) {
+		return 0, fmt.Errorf("name must start with a version and _, e.g. 20261107143000_name.sql")
+	}
+	switch len(prefix) {
+	case 4:
+		v, _ := strconv.ParseInt(prefix, 10, 64)
+		if v == 0 {
+			return 0, fmt.Errorf("legacy version 0000 is not valid")
+		}
+		return v, nil
+	case len(timestampLayout):
+		if _, err := time.ParseInLocation(timestampLayout, prefix, time.UTC); err != nil {
+			return 0, fmt.Errorf("version %s is not a valid UTC time YYYYMMDDHHMMSS", prefix)
+		}
+		return strconv.ParseInt(prefix, 10, 64)
+	default:
+		return 0, fmt.Errorf("version %s must be a legacy 4-digit version or a 14-digit UTC time YYYYMMDDHHMMSS", prefix)
+	}
 }
 
 // grant gives the reader and the writers their rights in the current schema,

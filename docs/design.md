@@ -756,6 +756,37 @@ their own model in the breakdown. Runs from before `agent_calls`: a
 adds that cost as `LegacyCostUSD`, without tokens, and shows up as a run of
 its issue.
 
+### Research store migrations
+
+The operator applies the embedded SQL migrations
+(`internal/research/store/migrations/`) at every start, under an advisory
+lock, and records each version in `schema_migrations`. A file's version is
+its name's prefix in one of two forms:
+
+* **Legacy:** four digits, `0001` to `9999`. Only `0001` to `0009` use it,
+  and they keep their names and versions.
+* **Timestamp:** the UTC time the migration was created,
+  `YYYYMMDDHHMMSS` (`$(date -u +%Y%m%d%H%M%S)_name.sql`). Every new
+  migration uses it.
+
+With the next free number, two parallel merge requests both picked `0010`.
+The clash only showed after one was rebased onto the other, and the
+renumber then changed a reviewed diff (#179, which paused the autopilot). A
+timestamp only collides when two branches create a migration in the same
+second. Anything else (a 5-digit prefix, a 14-digit prefix that is no valid
+time, a version used twice) fails `readMigrations`, and
+`TestEmbeddedMigrations` fails without Postgres: the legacy versions must
+be exactly 1 to 9 and every other one a valid timestamp.
+
+Migrations run in version order, so every legacy one before every
+timestamp. A migration that is not applied yet is applied even when a later
+version already is, because two branches' migrations can land on `main` in
+either order. A database with a version the binary does not know is
+refused (a downgrade). `schema_migrations.version` was an `int`, too small
+for a timestamp: `Migrate` widens it to `bigint` before reading it, once,
+under the lock. A migration file could not do it, since recording that
+migration's own version already needs the wider column.
+
 ### Desk snapshot
 
 A closed milestone loses its tasks, and with them its title, issue list,

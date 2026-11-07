@@ -12,6 +12,10 @@
   generated files (deepcopy, CRDs, RBAC, the chart's `files/`) are out of date.
 - Before pushing: `gofmt`, `go vet ./...`, `make test`, `make helm-lint`.
   After changing the web UI (`web/`): `make ui` (type-check and build).
+- New research-store migrations (`internal/research/store/migrations/`) are
+  named by the UTC time they were created,
+  `$(date -u +%Y%m%d%H%M%S)_name.sql`, never by the next number: parallel
+  branches would pick the same number. `0001`–`0009` keep their names.
 - The web UI's view types (`web/src/generated/`) are generated from Go by
   tygo (`tygo.yaml`). After changing view structs in `internal/ui` or the CRD
   types the views embed, run `make ts-types` (`make ui` does it when Go is

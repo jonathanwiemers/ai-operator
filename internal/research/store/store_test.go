@@ -110,6 +110,91 @@ func TestMigrateRefusesUnknownVersion(t *testing.T) {
 	}
 }
 
+// A database from before timestamp versions has an int version column:
+// Migrate widens it to bigint and records timestamp versions, also one older
+// than a timestamp already applied (two branches landing in either order).
+func TestMigrateTimestampVersions(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	exec(t, s.Pool(), "ALTER TABLE schema_migrations ALTER COLUMN version TYPE int")
+	versionType := func() string {
+		t.Helper()
+		var typ string
+		if err := s.Pool().QueryRow(ctx, `SELECT data_type FROM information_schema.columns
+			WHERE table_schema = current_schema() AND table_name = 'schema_migrations' AND column_name = 'version'`).Scan(&typ); err != nil {
+			t.Fatal(err)
+		}
+		return typ
+	}
+	if typ := versionType(); typ != "integer" {
+		t.Fatalf("version column is %s before Migrate, want integer", typ)
+	}
+
+	fsys := embeddedPlus(t, map[string]string{
+		"migrations/20261107143000_later.sql": "CREATE TABLE later (x int); INSERT INTO later VALUES (1);",
+	})
+	if err := s.MigrateFS(ctx, fsys, store.Grants{}); err != nil {
+		t.Fatal(err)
+	}
+	if typ := versionType(); typ != "bigint" {
+		t.Errorf("version column is %s after Migrate, want bigint", typ)
+	}
+	var recorded bool
+	if err := s.Pool().QueryRow(ctx, "SELECT EXISTS (SELECT FROM schema_migrations WHERE version = 20261107143000)").Scan(&recorded); err != nil || !recorded {
+		t.Errorf("timestamp version not recorded (%v)", err)
+	}
+	if n := count(t, s.Pool(), "schema_migrations"); n != 10 {
+		t.Errorf("schema_migrations has %d rows, want 10", n)
+	}
+	if n := count(t, s.Pool(), "later"); n != 1 {
+		t.Errorf("later has %d rows, want 1", n)
+	}
+
+	// A second run is a no-op.
+	if err := s.MigrateFS(ctx, fsys, store.Grants{}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, s.Pool(), "later"); n != 1 {
+		t.Errorf("after a second Migrate later has %d rows, want 1", n)
+	}
+
+	// Another branch's older migration lands after it and still applies.
+	fsys["migrations/20261106090000_earlier.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE earlier (x int);")}
+	if err := s.MigrateFS(ctx, fsys, store.Grants{}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, s.Pool(), "schema_migrations"); n != 11 {
+		t.Errorf("schema_migrations has %d rows, want 11", n)
+	}
+	exec(t, s.Pool(), "SELECT * FROM earlier")
+
+	// This binary does not know the timestamp versions.
+	if err := s.Migrate(ctx, store.Grants{}); err == nil || !strings.Contains(err.Error(), "2026110") {
+		t.Errorf("Migrate after timestamp migrations = %v, want an error naming one", err)
+	}
+}
+
+// embeddedPlus returns the embedded migrations plus extra (name to SQL).
+func embeddedPlus(t *testing.T, extra map[string]string) fstest.MapFS {
+	t.Helper()
+	fsys := fstest.MapFS{}
+	files, err := fs.Glob(store.Migrations, "migrations/*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		data, err := fs.ReadFile(store.Migrations, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fsys[f] = &fstest.MapFile{Data: data}
+	}
+	for name, sql := range extra {
+		fsys[name] = &fstest.MapFile{Data: []byte(sql)}
+	}
+	return fsys
+}
+
 func TestGrants(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
@@ -172,18 +257,7 @@ func TestGrants(t *testing.T) {
 
 	// A table of a later migration follows by default privileges for the
 	// reader, without a grant in that run; writers get tables by name only.
-	later := fstest.MapFS{"migrations/9999_later.sql": {Data: []byte("CREATE TABLE later (x int); INSERT INTO later VALUES (1);")}}
-	files, err := fs.Glob(store.Migrations, "migrations/*.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range files {
-		data, err := fs.ReadFile(store.Migrations, f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		later[f] = &fstest.MapFile{Data: data}
-	}
+	later := embeddedPlus(t, map[string]string{"migrations/9999_later.sql": "CREATE TABLE later (x int); INSERT INTO later VALUES (1);"})
 	if err := s.MigrateFS(ctx, later, store.Grants{}); err != nil {
 		t.Fatal(err)
 	}
