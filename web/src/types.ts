@@ -63,6 +63,8 @@ export type {
   MilestoneProgress,
   RetrospectiveView,
   FollowUpView,
+  FollowUpDraftView,
+  FollowUpMilestoneView,
   CostDriverView,
 } from './generated/views'
 

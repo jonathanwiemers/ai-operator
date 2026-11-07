@@ -536,7 +536,12 @@ function showDay(i: number): string | null {
         <div v-else class="empty">Loading…</div>
       </div>
       <div v-else-if="tab === 'retrospective'" class="scroll board">
-        <MilestoneRetro v-if="milestone && milestone.iid === milestoneIID" :retrospective="milestone.retrospective" />
+        <MilestoneRetro
+          v-if="namespace && name && milestone && milestone.iid === milestoneIID"
+          :namespace="namespace"
+          :name="name"
+          :milestone="milestone"
+        />
         <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
         <div v-else class="empty">Loading…</div>
       </div>

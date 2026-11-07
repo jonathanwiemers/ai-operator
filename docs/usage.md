@@ -2149,8 +2149,9 @@ The Desk shows the retrospective on the milestone's *Retrospective* tab
 the text as posted, the cost drivers and each follow-up with what came of
 it (*open*, *opened as #N*, *taken by %N* or *dismissed*), linked to the
 issue or milestone. It stays there after the milestone is closed and its
-tasks are deleted. The tab is read-only for now: while the milestone is
-open, reply `create` in the thread to open follow-ups.
+tasks are deleted. Owners turn leftovers into a follow-up milestone there
+(below); to open them as plain issues while the milestone is open, reply
+`create` in the thread.
 
 While follow-ups are open, the pilot stays after the retrospective so an
 owner can ask it for a **draft of a follow-up milestone** from some of them:
@@ -2204,6 +2205,22 @@ milestone, and only for follow-ups still open; owners, owner-subjects and
 followup-of lines in the edited text are dropped, the source's count. Two
 attempts before the operator's next poll both create a milestone; the
 first one named keeps the follow-ups and the other gets the notice above.
+
+**In the Desk**, step by step, on the source milestone's *Retrospective*
+tab (owners only; everyone else sees it read-only):
+
+1. Tick the open leftovers the new milestone takes over.
+2. *Draft follow-up milestone*. While the milestone has its pilot, the
+   pilot writes the draft (*The pilot is drafting…* until it shows; a
+   refusal says why). A closed milestone has no pilot: the draft starts
+   from the leftovers' titles and bodies, titled *Follow-ups of <title>*.
+3. Edit the title and the description; the preview beside them renders
+   the markdown without HTML.
+4. *Create milestone and start autopilot*. The tab links to the new
+   milestone; after the operator's next poll the leftovers show as
+   *taken by %N* (until then this tab no longer offers them, another
+   page still does). Leftovers already opened, taken or dismissed are
+   refused (409), and the tab names them.
 
 ## When a run is cut off
 

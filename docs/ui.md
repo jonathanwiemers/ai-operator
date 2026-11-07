@@ -141,7 +141,7 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   *Stream* kinds, so the two tabs share no event. A milestone page has no
   context panel (project pages only). A stored milestone's *Pilot* tab shows its history
   only: the events and the pauses, no cards and no message box.
-* **Retrospective tab** (`…/milestones/<iid>?tab=retrospective`, read-only):
+* **Retrospective tab** (`…/milestones/<iid>?tab=retrospective`):
   when the retrospective was posted and a link to its comment on the
   tracking issue; its text, rendered like GitLab renders it but without
   HTML (HTML in it shows as text); the cost drivers (the top issues and
@@ -154,6 +154,24 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   the autopilot is done.* A stored milestone shows its stored text and
   leftovers; one posted before the text was stored shows *The text of this
   retrospective is not stored.*
+  An owner (`permissions.followUp`) turns leftovers into a **follow-up
+  milestone** here: a checkbox on each open leftover, then *Draft follow-up
+  milestone*. While the milestone has a pilot (`permissions.draft`) it
+  sends the `draft` command to it and shows *The pilot is drafting…* until
+  `retrospective.draft` arrives with the live reload (a refusal in the
+  pilot's answer or the draft's `error` shows instead); without one (a
+  closed milestone) the draft starts from the ticked leftovers' titles and
+  bodies (*Follow-ups of <title>*, a section per leftover). A draft the
+  pilot wrote earlier is offered as *Edit the pilot's draft*. The editor
+  has the title (one line, at most 255 characters) and the description as
+  plain text, with a preview by the same markdown renderer: the draft is
+  untrusted and never rendered as HTML. *Create milestone and start
+  autopilot* (`POST …/followup`) says that autopilot starts at once; on
+  success the tab links to the new milestone in the Desk and on GitLab,
+  and the leftovers show as *taken by %N* after the operator's next poll
+  (until then they cannot be ticked again). A 409 names the leftovers
+  already opened, taken or dismissed. Everyone else sees the tab
+  read-only.
 * **Cost chips** on the stream header (the project or milestone), on each
   milestone scope tab and on the Task page header: `$12.34 · 1.2M tok`, the
   tooltip breaking it down into input, output and cache tokens, calls,
@@ -993,7 +1011,8 @@ as an error, not as a reconnect.
   commands in GitLab). Whether it counts as an owner's instruction is the
   operator's decision, as for any comment in GitLab.
 - **Follow-up milestone:** an owner (one of the source milestone's
-  `owner-subjects`) with the `steer` grant creates it with your token from
+  `owner-subjects`) with the `steer` grant creates it with your token on the
+  *Retrospective* tab (*Create milestone and start autopilot*) from
   the leftovers still open, an open or a closed milestone alike: your title
   (one line, at most 255 characters) and description (at most 64 KiB), a
   blank line, then the project's spec and autopilot markers and the

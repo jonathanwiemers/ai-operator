@@ -175,3 +175,8 @@ test('commandLabel falls back to raw text', () => {
   assert.equal(commandLabel(''), '')
   assert.equal(commandLabel(undefined), '')
 })
+
+test('commandLabel: draft names the follow-ups', () => {
+  assert.equal(commandLabel('{"cmd":"draft","followUps":[1,3]}'), 'draft follow-ups 1, 3')
+  assert.equal(commandLabel('{"cmd":"draft","followUps":[]}'), '{"cmd":"draft","followUps":[]}')
+})

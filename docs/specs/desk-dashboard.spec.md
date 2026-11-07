@@ -494,3 +494,20 @@ about how many production lines, and deviations from this spec.
   description in one slice. Deviations: an `owner-subjects` line is
   carried too, so the owners can steer the new milestone on the Desk; a
   blank description is refused; the tab's button follows.
+- 2026-11-07, `followup-desk-ui` (R14, R15 UI, #240): the Retrospective
+  tab (`MilestoneRetro.vue`) for owners (`permissions.followUp`): a
+  checkbox on open leftovers, *Draft follow-up milestone* sending
+  `{"cmd":"draft"}` to the pilot with `permissions.draft` (*The pilot is
+  drafting…* until a new `retrospective.draft` lands through the live
+  reload; a refusing answer or the draft's `error` ends the wait), else
+  the template of `web/src/followUpDraft.ts` (`templateDraft`: *Follow-ups
+  of <title>*, a `##` section per leftover with its body; `selectable`:
+  the open ones); an editor with the title input and a plain textarea
+  beside a preview by `markdown.ts`; *Create milestone and start
+  autopilot* with a line that autopilot starts at once, then links to the
+  new milestone in the Desk and on GitLab; a 409 names the taken
+  leftovers (`ApiError.data`). Deviations: an earlier written draft of the
+  pilot is offered as *Edit the pilot's draft*; leftovers created from
+  the tab are not offered again until the operator's poll marks them
+  taken; the draft command gets a chat label. No screenshots: the run
+  had no cluster, database or browser.

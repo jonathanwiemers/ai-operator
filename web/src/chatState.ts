@@ -81,6 +81,7 @@ export type ChatCommand =
   | { cmd: 'answer'; prompt: string; text: string }
   | { cmd: 'revisit'; decision: string }
   | { cmd: 'revisit'; decision: string; text: string }
+  | { cmd: 'draft'; followUps: number[] }
 
 // commandLabel turns a command row's body into a short chip; unparsable
 // bodies fall back to the raw text.
@@ -133,6 +134,10 @@ export function commandLabel(body: string | undefined): string {
       if (!text) return body
       return `answer ${prompt}: "${text.length > 40 ? text.slice(0, 39) + '…' : text}"`
     }
+    case 'draft':
+      return Array.isArray(o.followUps) && o.followUps.length && o.followUps.every((n) => typeof n === 'number')
+        ? `draft follow-ups ${o.followUps.join(', ')}`
+        : body
     case 'revisit': {
       const decision = typeof o.decision === 'string' ? o.decision.trim().toUpperCase() : ''
       if (!decision) return body

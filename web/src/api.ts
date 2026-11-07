@@ -62,6 +62,8 @@ export class ApiError extends Error {
     public status: number,
     // field: the request field the error is about, if the server names one.
     public field?: string,
+    // data: the whole error body, for endpoints that add details.
+    public data: Record<string, unknown> = {},
   ) {
     super(message)
   }
@@ -79,7 +81,7 @@ export async function post<T>(path: string, body: unknown): Promise<T> {
     throw new LoginRequiredError('login required')
   }
   const data = (await resp.json().catch(() => ({}))) as { error?: string; field?: string }
-  if (!resp.ok) throw new ApiError(data.error ?? `The server answered ${resp.status}.`, resp.status, data.field)
+  if (!resp.ok) throw new ApiError(data.error ?? `The server answered ${resp.status}.`, resp.status, data.field, data)
   return data as T
 }
 
