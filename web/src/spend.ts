@@ -229,14 +229,28 @@ export function shareLabel(v: number): string {
   return pctLabel(Number.isFinite(v) ? clampPct(v * 100) : 0)
 }
 
+// cursorAutoLabel names cursor's model auto when its calls report nothing:
+// cursor's ACP tells neither the model it picked nor the usage
+// (docs/usage.md). As aiv1.ModelLabel in Go.
+export const cursorAutoLabel = 'cursor auto (unmetered)'
+
+// modelLabel names a model in the Spend tab: cursor's auto as "cursor auto
+// (unmetered)" when unmetered, "cursor auto" otherwise, any other by name.
+export function modelLabel(model: string, unmetered: boolean): string {
+  if (model !== 'auto') return model
+  return unmetered ? cursorAutoLabel : 'cursor auto'
+}
+
 // modelsLine names a child's models, the main ones first, subagent models
 // marked: "claude-opus-5-5, claude-haiku-5-5 (subagent)"; a model without
-// cost or tokens as "auto (not metered)".
+// cost or tokens as "gpt-5 (not metered)", cursor's auto as "cursor auto
+// (unmetered)".
 export function modelsLine(models: SpendChild['models']): string {
   return modelOrder(models)
     .map((m) => {
-      const marks = [m.main ? '' : 'subagent', m.unmetered ? 'not metered' : ''].filter(Boolean)
-      return marks.length ? `${m.model} (${marks.join(', ')})` : m.model
+      const name = modelLabel(m.model, m.unmetered)
+      const marks = [m.main ? '' : 'subagent', m.unmetered && name !== cursorAutoLabel ? 'not metered' : ''].filter(Boolean)
+      return marks.length ? `${name} (${marks.join(', ')})` : name
     })
     .join(', ')
 }

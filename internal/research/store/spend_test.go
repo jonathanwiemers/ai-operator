@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"math"
 	"slices"
 	"strconv"
 	"testing"
@@ -735,5 +736,138 @@ func TestSpendCallLessCheckpoints(t *testing.T) {
 	}
 	if byIssue, err := s.SpendChildTotals(ctx, store.SpendScope{Namespace: "agents", Project: "cps", MilestoneIID: 40}); err != nil || byIssue["401"].Checkpoints != 2 {
 		t.Errorf("SpendChildTotals = %+v, %v", byIssue, err)
+	}
+}
+
+// TestSpendAddsUpAtEveryScope (#255): the per-model split uses the row
+// tokens' definition, so at every scope the token sums of ByModel, ByKind,
+// ByRole, the children and each child's models equal the total, and
+// ByModel's cost is the total without the legacy runs. The mix: a claude
+// call with an Opus main model and a Sonnet subagent, a resumed call, a row
+// from before the fix whose models (carried over by --resume) exceed its
+// tokens, a cursor auto call without usage and a legacy run without calls.
+func TestSpendAddsUpAtEveryScope(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	at, exp := time.Now().Add(-time.Hour).Truncate(time.Second), time.Now().Add(24*time.Hour)
+	usd := func(v float64) *float64 { return &v }
+	n := 0
+	call := func(issue int64, task string, run, seq int64, kind, role, engine, model string, cost *float64, models ...store.CallModel) store.Call {
+		n++
+		c := store.Call{Key: "a" + strconv.Itoa(n), At: at.Add(time.Duration(n) * time.Minute), Namespace: "agents", Project: "addsup",
+			MilestoneIID: 40, IssueIID: issue, Task: task, Run: run, Seq: seq, Kind: kind, Role: role, Engine: engine, Model: model,
+			CostUSD: cost, CostSource: "reported", DurationMS: 1000, Models: models, ExpiresAt: exp}
+		if cost == nil {
+			c.CostSource = "unknown"
+		}
+		for _, m := range models {
+			c.InputTokens, c.OutputTokens = c.InputTokens+m.InputTokens, c.OutputTokens+m.OutputTokens
+			c.CacheReadTokens, c.CacheWriteTokens = c.CacheReadTokens+m.CacheReadTokens, c.CacheWriteTokens+m.CacheWriteTokens
+		}
+		return c
+	}
+	opus, sonnet := "claude-opus-5-5", "claude-sonnet-5-5"
+	// #501 run 1: an implement step with a Sonnet subagent, then a resumed
+	// step that records its own delta (since #255).
+	impl := call(501, "addsup-501", 1, 1, "implement", "implement", "claude", opus, usd(0.9),
+		store.CallModel{Model: opus, InputTokens: 10, OutputTokens: 500, CacheReadTokens: 20000, CacheWriteTokens: 3000, CostUSD: usd(0.8)},
+		store.CallModel{Model: sonnet, InputTokens: 5, OutputTokens: 100, CacheReadTokens: 2000, CacheWriteTokens: 500, CostUSD: usd(0.1)})
+	impl.SubagentCalls = 1
+	resumed := call(501, "addsup-501", 1, 2, "implement", "implement", "claude", opus, usd(0.3),
+		store.CallModel{Model: opus, InputTokens: 2, OutputTokens: 200, CacheReadTokens: 25000, CacheWriteTokens: 400, CostUSD: usd(0.3)})
+	resumed.Resumed = true
+	// #501 run 2: a fix from before the fix. Its row holds usage (the main
+	// thread of this call), its models the session's carried-over totals,
+	// with a haiku that ran in an earlier call.
+	prefix := call(501, "addsup-501", 2, 1, "fix", "fix", "claude", opus, usd(1.5))
+	prefix.Resumed = true
+	prefix.InputTokens, prefix.OutputTokens, prefix.CacheReadTokens, prefix.CacheWriteTokens = 0, 50, 4000, 100
+	prefix.Models = []store.CallModel{
+		{Model: opus, InputTokens: 100, OutputTokens: 2000, CacheReadTokens: 300000, CacheWriteTokens: 40000, CostUSD: usd(1.4)},
+		{Model: "claude-haiku-5-5", InputTokens: 50, OutputTokens: 500, CacheReadTokens: 10000, CacheWriteTokens: 5000, CostUSD: usd(0.1)},
+	}
+	// #502: a cursor auto review that reports neither cost nor tokens.
+	auto := call(502, "addsup-502", 1, 1, "review", "bugbot", "cursor", "auto", nil)
+	if _, err := owner.InsertCalls(ctx, []store.Call{impl, resumed, prefix, auto}); err != nil {
+		t.Fatal(err)
+	}
+	// #502 run 7 is from before agent_calls: a cost without tokens.
+	if _, err := owner.InsertEvents(ctx, []store.Event{{Key: "legacy", At: at, Namespace: "agents", Project: "addsup",
+		MilestoneIID: 40, IssueIID: 502, Task: "addsup-502", Kind: "run.finished",
+		Data: map[string]any{"costUSD": "2.0000", "runCount": 7}, ExpiresAt: exp}}); err != nil {
+		t.Fatal(err)
+	}
+
+	const wantTokens = 26115 + 25602 + 4150
+	for _, sc := range []store.SpendScope{{}, {MilestoneIID: 40}, {MilestoneIID: 40, IssueIID: 501}, {IssueIID: 502},
+		{Task: "addsup-501"}, {Task: "addsup-501", Run: 2}} {
+		sc.Namespace, sc.Project = "agents", "addsup"
+		sp, err := s.Spend(ctx, sc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		total := sp.Totals.Tokens()
+		if sc.IssueIID == 0 && sc.Task == "" && total != wantTokens {
+			t.Errorf("%+v: %d tokens, want %d", sc, total, wantTokens)
+		}
+		sum := func(what string, bs []store.SpendBreakdown) {
+			t.Helper()
+			var got int64
+			for _, b := range bs {
+				got += b.Totals.Tokens()
+			}
+			if got != total {
+				t.Errorf("%+v %s: %d tokens, want the total %d", sc, what, got, total)
+			}
+		}
+		sum("by model", sp.ByModel)
+		sum("by kind", sp.ByKind)
+		sum("by role", sp.ByRole)
+		var children int64
+		for _, c := range sp.Children {
+			children += c.Totals.Tokens()
+			var models int64
+			for _, m := range c.Models {
+				models += m.Tokens
+			}
+			if models != c.Totals.Tokens() {
+				t.Errorf("%+v child %s: models %d tokens, want its total %d (%+v)", sc, c.Label, models, c.Totals.Tokens(), c.Models)
+			}
+		}
+		if children != total {
+			t.Errorf("%+v children: %d tokens, want the total %d", sc, children, total)
+		}
+		var cost float64
+		for _, b := range sp.ByModel {
+			cost += b.Totals.CostUSD
+		}
+		if want := sp.Totals.CostUSD - sp.Totals.LegacyCostUSD; math.Abs(cost-want) > 1e-9 {
+			t.Errorf("%+v by model: $%v, want the total without legacy runs $%v", sc, cost, want)
+		}
+	}
+
+	// The milestone by model: the pre-fix row goes to Opus whole, its
+	// carried-over haiku is gone; auto stays a row, unmetered.
+	sp, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "addsup", MilestoneIID: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type model struct {
+		key       string
+		tokens    int64
+		cost      float64
+		unmetered int64
+	}
+	var got []model
+	for _, b := range sp.ByModel {
+		got = append(got, model{b.Key, b.Totals.Tokens(), math.Round(b.Totals.CostUSD*1e4) / 1e4, b.Totals.UnmeteredCalls})
+	}
+	want := []model{{opus, 23510 + 25602 + 4150, 2.6, 0}, {sonnet, 2605, 0.1, 0}, {"auto", 0, 0, 1}}
+	if !slices.Equal(got, want) {
+		t.Errorf("by model:\n got %+v\nwant %+v", got, want)
+	}
+	if sp.Totals.UnmeteredCalls != 1 || sp.Totals.LegacyCostUSD != 2 || math.Abs(sp.Totals.CostUSD-4.7) > 1e-9 {
+		t.Errorf("totals %+v, want 1 unmetered call, $2 legacy of $4.70", sp.Totals)
 	}
 }

@@ -209,10 +209,14 @@ func TestBasisChatRunningTotals(t *testing.T) {
 // transcript holds a cost-state starts its modelUsage and total_cost_usd at
 // the saved totals. usage and subagent_stats start at zero, and
 // model_usage_since_last_result holds only what this process counted.
+// ClaudeCLI.Run records the latter (TestResumedCallRecordsItsOwnUsage).
 func TestBasisResumeCarriesTotals(t *testing.T) {
 	path, lines := basisFixture(t, "claude-resume-carryover.jsonl", "recorded")
-	res := runFixture(t, path)
-	checkCarried(t, lines[1], res, lines[len(lines)-1])
+	results := rawResults(t, path)
+	if len(results) != 1 {
+		t.Fatalf("%d results, want 1", len(results))
+	}
+	checkCarried(t, lines[1], results[0], lines[len(lines)-1])
 }
 
 // TestBasisResumedChatKeepsTotals (recorded): a resumed stream-json session

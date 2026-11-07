@@ -147,6 +147,12 @@ type Spend struct {
 //     The main model is the row's; when models lacks it (the row has an
 //     alias, say), the one with the most output tokens, as the runner picks
 //     it. Subagent calls, duration and the checkpoint go to the main model.
+//     A row whose models do not sum to its tokens goes to its main model
+//     whole, with the row's tokens and cost, and its split is dropped: the
+//     fallback for rows written before #255, whose models after --resume
+//     also held the session's earlier calls (before R6 the row held usage,
+//     this call's main thread). So every split adds up to the row tokens
+//     the totals sum.
 func spendWith(where string) string {
 	return `WITH scoped AS (
 		SELECT * FROM agent_calls WHERE expires_at > now() AND ` + where + `
@@ -185,19 +191,30 @@ func spendWith(where string) string {
 			CASE WHEN m.main THEN c.duration_ms ELSE 0 END AS duration_ms,
 			CASE WHEN m.main AND c.checkpoint <> '' THEN 1 ELSE 0 END AS checkpoints
 		FROM scoped c CROSS JOIN LATERAL (
-			SELECT e.m->>'model' AS model,
-				CASE WHEN bool_or(e.m->>'model' = c.model) OVER () THEN e.m->>'model' = c.model
-					ELSE row_number() OVER (ORDER BY coalesce((e.m->>'outputTokens')::bigint, 0) DESC, e.ord) = 1
-				END AS main,
+			-- The models' token sum and the main model (the row's model when
+			-- c.models is empty).
+			SELECT coalesce(sum(coalesce((e.m->>'inputTokens')::bigint, 0) + coalesce((e.m->>'outputTokens')::bigint, 0)
+					+ coalesce((e.m->>'cacheReadTokens')::bigint, 0) + coalesce((e.m->>'cacheWriteTokens')::bigint, 0)), 0) AS tokens,
+				coalesce(max(e.m->>'model') FILTER (WHERE e.m->>'model' = c.model),
+					(array_agg(e.m->>'model' ORDER BY coalesce((e.m->>'outputTokens')::bigint, 0) DESC, e.ord))[1],
+					c.model) AS main_model
+			FROM jsonb_array_elements(c.models) WITH ORDINALITY AS e(m, ord)
+		) ms CROSS JOIN LATERAL (
+			SELECT ms.tokens = c.input_tokens + c.output_tokens + c.cache_read_tokens + c.cache_write_tokens
+				AND jsonb_array_length(c.models) > 0 AS ok
+		) agrees CROSS JOIN LATERAL (
+			SELECT e.m->>'model' AS model, e.m->>'model' = ms.main_model AS main,
 				(e.m->>'costUSD')::numeric AS cost_usd,
 				coalesce((e.m->>'inputTokens')::bigint, 0) AS input_tokens,
 				coalesce((e.m->>'outputTokens')::bigint, 0) AS output_tokens,
 				coalesce((e.m->>'cacheReadTokens')::bigint, 0) AS cache_read_tokens,
 				coalesce((e.m->>'cacheWriteTokens')::bigint, 0) AS cache_write_tokens
-			FROM jsonb_array_elements(c.models) WITH ORDINALITY AS e(m, ord)
+			FROM jsonb_array_elements(c.models) AS e(m)
+			WHERE agrees.ok
 			UNION ALL
-			SELECT c.model, true, c.cost_usd, c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens
-			WHERE jsonb_array_length(c.models) = 0
+			-- No models, or models that do not sum to the row (see above).
+			SELECT ms.main_model, true, c.cost_usd, c.input_tokens, c.output_tokens, c.cache_read_tokens, c.cache_write_tokens
+			WHERE NOT agrees.ok
 		) m
 	) `
 }

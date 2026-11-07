@@ -50,13 +50,20 @@ func spendSummary(sp store.Spend) *aiv1.SpendSummary {
 	}
 	s.TopIssues = topDrivers(issues)
 	for _, b := range []struct {
-		out *[]aiv1.SpendDriver
-		in  []store.SpendBreakdown
-	}{{&s.TopKinds, sp.ByKind}, {&s.TopModels, sp.ByModel}} {
+		out   *[]aiv1.SpendDriver
+		in    []store.SpendBreakdown
+		label func(key string, unmetered bool) string
+	}{
+		{&s.TopKinds, sp.ByKind, func(key string, _ bool) string { return key }},
+		// cursor's auto as "cursor auto (unmetered)".
+		{&s.TopModels, sp.ByModel, aiv1.ModelLabel},
+	} {
 		var ds []aiv1.SpendDriver
 		for _, br := range b.in {
 			if br.Key != "" {
-				ds = append(ds, spendDriver(br.Key, br.Key, br.Totals))
+				d := spendDriver(br.Key, br.Key, br.Totals)
+				d.Label = b.label(br.Key, d.Unmetered)
+				ds = append(ds, d)
 			}
 		}
 		*b.out = topDrivers(ds)

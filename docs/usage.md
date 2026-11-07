@@ -1459,6 +1459,34 @@ the milestone has no budget then. Without the research database, or while
 the spend cannot be read, the budget is not enforced (logged on every
 poll): autopilot never pauses for lack of data.
 
+#### What the spend counts
+
+Budgets, the [Spend tab](ui.md#spend) and the retrospective read the same
+numbers: one row per agent call in `agent_calls`.
+
+- **A call counts only itself.** Its tokens are input, output, cache read
+  and cache write of everything the call ran: the main thread, subagents
+  and compaction (claude's `modelUsage`). A call that resumes a session
+  (implementer steps, fix rounds, re-runs) counts only what it spent
+  itself, not the session's earlier calls: claude's `--resume` restores
+  the session's totals into `modelUsage` and `total_cost_usd`, so the
+  operator takes `model_usage_since_last_result` instead. Desk chat turns
+  count their own turn the same way.
+- **Per-model tokens are the same tokens, split.** A call's models (its
+  main model and the subagents' models) add up to the call's tokens, so
+  *by model*, *by kind*, *by role* and the drill-down all add up to the
+  total. Calls recorded by older releases could hold a
+  resumed session's carried-over totals in their models: such a call
+  counts whole on its main model, with its own tokens and cost, and is
+  not split.
+- **Cursor's `auto` is not metered.** Cursor calls with model `auto` (the
+  `fast` profile, the bugbot and security reviewers) let cursor pick the
+  model, and its ACP session reports neither which model it picked
+  (`currentModelId: "default[]"`) nor any usage. So these calls have no
+  tokens and no cost: they appear as *cursor auto (unmetered)*, count as
+  *N calls not metered* next to the total, add nothing to the token sums,
+  and count $0 towards a budget. No model or price is guessed for them.
+
 #### Budget prompts
 
 The owners get the milestone's budget as a `budget` prompt in the Desk,
@@ -2180,7 +2208,8 @@ merged, the decisions and revisits, the pauses, cost and time, the **cost
 drivers** (total USD and tokens, the biggest issues, kinds of call and models,
 with their tokens, the subagent calls, and the calls that were not metered,
 e.g. cursor's `auto`, which reports no usage: the total says "N calls not
-metered" and such a model reads "auto (not metered)", never "$0"; from the history database, so
+metered" and that model reads "cursor auto (unmetered)", never "$0", see
+[What the spend counts](#what-the-spend-counts); from the history database, so
 deleted tasks count too, otherwise the sum over the live tasks), and up to 9
 numbered follow-ups. Reply `create 1 2` (or `create 1, 3`, `create all`) in
 its thread to open follow-ups as plain issues, or `create none` to dismiss the

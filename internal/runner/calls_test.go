@@ -3,6 +3,8 @@ package runner
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -238,5 +240,66 @@ func TestCallsStayPendingWhenThePatchFails(t *testing.T) {
 	if len(run.Calls) != 2 || run.Calls[0].Kind != aiv1.CallKindSpec || run.Calls[0].Seq != 5 || run.Calls[1].Seq != 6 ||
 		run.LastCallSeq != 6 || len(r.pendingCalls) != 0 {
 		t.Fatalf("calls %+v, lastCallSeq %d, pending %d", run.Calls, run.LastCallSeq, len(r.pendingCalls))
+	}
+}
+
+// rowTokens and modelSum are a call's row tokens and the sum of its models.
+func rowTokens(c aiv1.AgentCall) tokens {
+	return tokens{c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheWriteTokens}
+}
+
+func modelSum(c aiv1.AgentCall) tokens {
+	var t tokens
+	for _, m := range c.Models {
+		t = t.plus(tokens{m.InputTokens, m.OutputTokens, m.CacheReadTokens, m.CacheWriteTokens})
+	}
+	return t
+}
+
+// TestResumedCallRecordsItsOwnUsage (#255): after -p --resume, modelUsage
+// and total_cost_usd carry the session's earlier calls. The call records
+// model_usage_since_last_result instead, so its models, its row tokens and
+// its cost hold this call only, and the row is the sum of its models.
+func TestResumedCallRecordsItsOwnUsage(t *testing.T) {
+	start := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
+	inv := Invocation{Kind: aiv1.CallKindImplement, Role: "implement", Resume: "47e58b3b-6aec-46e2-aee6-6c50ec462c36"}
+
+	// Recorded: the resumed process spent nothing, modelUsage holds the
+	// saved $1.50.
+	path, _ := basisFixture(t, "claude-resume-carryover.jsonl", "recorded")
+	res := runFixture(t, path)
+	c := agentCall(aiv1.EngineClaude, inv, res, start, start.Add(time.Second))
+	if got := rowTokens(c); got != modelSum(c) || got != (tokens{}) {
+		t.Errorf("carryover: row tokens %v, models %+v; want both zero (nothing spent in this call)", got, c.Models)
+	}
+	if c.CostUSD != "0.0000" || c.CostSource != aiv1.CostReported || !c.Resumed {
+		t.Errorf("carryover: cost %q (%s), resumed %v; want 0.0000 reported, resumed", c.CostUSD, c.CostSource, c.Resumed)
+	}
+
+	// A resumed call that spends: modelUsage = carried + this call.
+	line := `{"type":"result","subtype":"success","is_error":false,"session_id":"s1","result":"done","num_turns":3,` +
+		`"total_cost_usd":1.75,` +
+		`"usage":{"input_tokens":5,"output_tokens":400,"cache_read_input_tokens":20000,"cache_creation_input_tokens":1000},` +
+		`"modelUsage":{` +
+		`"claude-opus-5-5":{"inputTokens":105,"outputTokens":2400,"cacheReadInputTokens":320000,"cacheCreationInputTokens":41000,"costUSD":1.6},` +
+		`"claude-haiku-5-5":{"inputTokens":51,"outputTokens":600,"cacheReadInputTokens":12000,"cacheCreationInputTokens":5200,"costUSD":0.15}},` +
+		`"model_usage_since_last_result":{` +
+		`"claude-opus-5-5":{"inputTokens":5,"outputTokens":400,"cacheReadInputTokens":20000,"cacheCreationInputTokens":1000,"costUSD":0.2},` +
+		`"claude-haiku-5-5":{"inputTokens":1,"outputTokens":100,"cacheReadInputTokens":2000,"cacheCreationInputTokens":200,"costUSD":0.05}}}`
+	path = filepath.Join(t.TempDir(), "resumed.jsonl")
+	if err := os.WriteFile(path, []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res = runFixture(t, path)
+	c = agentCall(aiv1.EngineClaude, inv, res, start, start.Add(time.Second))
+	want := tokens{5 + 1, 400 + 100, 20000 + 2000, 1000 + 200}
+	if got := rowTokens(c); got != want || modelSum(c) != got {
+		t.Errorf("resumed: row tokens %v, models %v; want this call's %v for both", got, modelSum(c), want)
+	}
+	if len(c.Models) != 2 || c.Models[0].Model != "claude-haiku-5-5" || c.Models[0].CostUSD != "0.0500" || c.Models[1].CostUSD != "0.2000" {
+		t.Errorf("resumed: models %+v, want haiku $0.05 and opus $0.20", c.Models)
+	}
+	if c.CostUSD != "0.2500" || c.Model != "claude-opus-5-5" {
+		t.Errorf("resumed: cost %q, model %q; want 0.2500 (not total_cost_usd 1.75) on claude-opus-5-5", c.CostUSD, c.Model)
 	}
 }

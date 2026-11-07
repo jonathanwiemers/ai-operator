@@ -16,6 +16,7 @@ import {
   modelBars,
   modelOrder,
   modelSlots,
+  modelLabel,
   modelsLine,
   pctLabel,
   reviewRounds,
@@ -502,6 +503,14 @@ test('unmetered (R8): calls without cost or tokens are counted and marked, costK
   assert.equal(unmeteredNote(totals({ unmeteredCalls: 3 })), '3 calls not metered')
   assert.equal(unmeteredNote(totals()), '')
   const m = (model, main, unmetered) => ({ model, main, tokens: unmetered ? 0 : 100, costUSD: '', costKnown: false, unmetered })
-  assert.equal(modelsLine([m('opus', true, false), m('auto', true, true)]), 'opus, auto (not metered)')
-  assert.equal(modelsLine([m('opus', true, false), m('auto', false, true)]), 'opus, auto (subagent, not metered)')
+  assert.equal(modelsLine([m('opus', true, false), m('auto', true, true)]), 'opus, cursor auto (unmetered)')
+  assert.equal(modelsLine([m('opus', true, false), m('auto', false, true)]), 'opus, cursor auto (unmetered) (subagent)')
+  assert.equal(modelsLine([m('gpt-5', true, true)]), 'gpt-5 (not metered)')
+})
+
+test('modelLabel (#255): cursor auto is labelled, it reports neither its model nor usage', () => {
+  assert.equal(modelLabel('auto', true), 'cursor auto (unmetered)')
+  assert.equal(modelLabel('auto', false), 'cursor auto')
+  assert.equal(modelLabel('claude-opus-5-5', false), 'claude-opus-5-5')
+  assert.equal(modelLabel('gpt-5', true), 'gpt-5')
 })

@@ -509,11 +509,19 @@ func renderSpend(s *aiv1.SpendSummary) string {
 		}
 		parts := make([]string, len(dim.ds))
 		for i, d := range dim.ds {
-			if d.Unmetered {
-				parts[i] = prose(cmp.Or(d.Label, d.Key)) + " (not metered)"
-				continue
+			name := cmp.Or(d.Label, d.Key)
+			if dim.name == "Model" {
+				// Also for summaries from before the label was set.
+				name = aiv1.ModelLabel(d.Key, d.Unmetered)
 			}
-			parts[i] = fmt.Sprintf("%s %s (%s tokens)", prose(cmp.Or(d.Label, d.Key)), spendUSD(d.CostUSD, d.CostUSD != ""), showTokens(d.Tokens))
+			switch {
+			case name == aiv1.CursorAutoLabel:
+				parts[i] = prose(name)
+			case d.Unmetered:
+				parts[i] = prose(name) + " (not metered)"
+			default:
+				parts[i] = fmt.Sprintf("%s %s (%s tokens)", prose(name), spendUSD(d.CostUSD, d.CostUSD != ""), showTokens(d.Tokens))
+			}
 		}
 		fmt.Fprintf(&b, "- %s: %s", dim.name, parts[0])
 		if len(parts) > 1 {

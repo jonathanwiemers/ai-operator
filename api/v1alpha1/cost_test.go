@@ -76,3 +76,20 @@ func TestParseBudget(t *testing.T) {
 		}
 	}
 }
+
+func TestModelLabel(t *testing.T) {
+	for _, tc := range []struct {
+		model     string
+		unmetered bool
+		want      string
+	}{
+		{"auto", true, "cursor auto (unmetered)"},
+		{"auto", false, "cursor auto"},
+		{"claude-opus-5-5", false, "claude-opus-5-5"},
+		{"gpt-5", true, "gpt-5"},
+	} {
+		if got := ModelLabel(tc.model, tc.unmetered); got != tc.want {
+			t.Errorf("ModelLabel(%q, %v) = %q, want %q", tc.model, tc.unmetered, got, tc.want)
+		}
+	}
+}

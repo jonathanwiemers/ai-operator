@@ -387,7 +387,10 @@ stored across processes and nothing is backfilled.
 
 **Not changed:** one-shot calls (`runCLI`), `--resume` ones included, still
 record the result as is. Their over-count (R6) stays until they take
-`model_usage_since_last_result` too.
+`model_usage_since_last_result` too. *(#255: they do now, see
+`ClaudeCLI.Run`; this over-count, with the rows before R6 whose row held
+`usage` and whose models the carried-over totals, is why per-model tokens
+exceeded the total.)*
 
 What changes for spend and budgets, on new rows only (decision 6): Desk chat
 spend goes **down**, tokens and USD alike, because a turn no longer counts

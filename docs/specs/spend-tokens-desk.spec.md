@@ -114,8 +114,9 @@ Architecture review findings this milestone takes up (file refs at main
    context. The milestone ships the option and a Spend comparison;
    flipping the default on netcup01 is the owner's call after the data.
 9. **Subagents: measure, then opt in.** `agent_calls` also stores
-   `models` (jsonb: per model input/output/cache tokens and cost, from
-   `modelUsage`), `subagent_calls` (from `subagent_stats`) and
+   `models` (jsonb: per model input/output/cache tokens and cost of this
+   call, from `model_usage_since_last_result`, else `modelUsage`; they add up
+   to the row tokens), `subagent_calls` (from `subagent_stats`) and
    `context_series` (jsonb int array: input + cache tokens of each
    assistant turn, capped at 500 points, evenly thinned beyond).
    A new optional `subagents:` list per role and profile (claude only) is
@@ -322,8 +323,13 @@ the time (stream-json schema in the CLI bundle; no billed live run).
   starts it at zero. `model_usage_since_last_result` (stream-json only)
   holds what the process counted since its previous result. `num_turns`
   and `duration_ms` are per result. Since R7 of the honest-reporting spec
-  a Desk chat turn records only itself (`ClaudeSession.perTurn`); one-shot
-  calls, `--resume` ones included, still record the result as is.
+  a Desk chat turn records only itself (`ClaudeSession.perTurn`). Since #255
+  one-shot calls do too (`ClaudeCLI.Run`, `sinceLastResult`): a `--resume`
+  call records `model_usage_since_last_result` as its models and the sum of
+  its `costUSD` as its cost, and its row tokens are the sum of those models.
+  Rows from before whose `models` do not add up to their tokens go whole to
+  their main model in the spend queries (`split` in
+  `internal/research/store/spend.go`).
 
 Example (shortened, `internal/runner/testdata/claude-stream-subagent.jsonl`):
 

@@ -218,13 +218,7 @@ func (s *ClaudeSession) perTurn(log logr.Logger, res *Result) {
 		}
 	}
 	s.prev = cur
-	since := u != nil && u.sinceLast != nil
-	if since {
-		u.Models, res.CostUSD = u.sinceLast, 0
-		for _, m := range u.Models {
-			res.CostUSD += m.CostUSD
-		}
-	}
+	since := sinceLastResult(res)
 	if prev == nil {
 		return
 	}

@@ -334,7 +334,7 @@ func TestRetrospectiveRequestCarriesTheSpend(t *testing.T) {
 		Tokens:    aiv1.SpendTokens{Input: 100, Output: 20, CacheRead: 3000, CacheWrite: 400},
 		TopIssues: []aiv1.SpendDriver{{Key: "2", Label: "#2", CostUSD: "5.0000", Tokens: 20}, {Key: "1", Label: "#1", CostUSD: "2.0000", Tokens: 10}, {Key: "5", Label: "#5", CostUSD: "1.0000", Tokens: 5}},
 		TopKinds:  []aiv1.SpendDriver{{Key: "implement", Label: "implement", CostUSD: "8.0000", Tokens: 50}, {Key: "review", Label: "review", CostUSD: "3.0000", Tokens: 40}, {Key: "spec", Label: "spec", CostUSD: "1.0000", Tokens: 1}},
-		TopModels: []aiv1.SpendDriver{{Key: "claude-opus", Label: "claude-opus", CostUSD: "10.0000", Tokens: 70}, {Key: "claude-haiku", Label: "claude-haiku", CostUSD: "0.5000", Tokens: 30}, {Key: "auto", Label: "auto", Unmetered: true}},
+		TopModels: []aiv1.SpendDriver{{Key: "claude-opus", Label: "claude-opus", CostUSD: "10.0000", Tokens: 70}, {Key: "claude-haiku", Label: "claude-haiku", CostUSD: "0.5000", Tokens: 30}, {Key: "auto", Label: "cursor auto (unmetered)", Unmetered: true}},
 	}
 	if got := pilot.Spec.Source.RetroSpend; !reflect.DeepEqual(got, want) {
 		t.Fatalf("the request carries the milestone's spend with its top 3 drivers:\n got %+v\nwant %+v", got, want)

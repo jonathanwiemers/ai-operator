@@ -320,7 +320,11 @@ the tab says it needs the database):
   totals, the drill-down and the breakdowns add up to the same tokens.
   Calls recorded before that count the main thread only. A Desk chat turn
   counts only that turn's tokens, models and cost; turns recorded before
-  that counted all earlier turns of their chat session again.
+  that counted all earlier turns of their chat session again. A resumed
+  call (implementer step, fix round) counts only itself too; a call
+  recorded before whose models do not add up to its tokens counts whole
+  on its main model, unsplit
+  ([What the spend counts](usage.md#what-the-spend-counts)).
 * **Drill-down:** a table one level down, with calls, tokens, cost and a
   share bar per row: a project's milestones, a milestone's issues (and
   its own spec, pilot and retro calls), an issue's runs, a run's calls.
@@ -353,9 +357,11 @@ the tab says it needs the database):
   before token tracking have no bar.
 * **Breakdowns** by kind, role and model (subagent models as their own),
   highest cost first, each row with its share bar. A row whose calls all
-  report neither a cost nor tokens (cursor's model `auto`) stays a row and
-  shows *not metered* instead of *n/a* and 0 tokens; in the drill-down's
-  model list such a model is marked *(not metered)*.
+  report neither a cost nor tokens stays a row and shows *not metered*
+  instead of *n/a* and 0 tokens; in the drill-down's model list such a
+  model is marked *(not metered)*. Cursor's model `auto` reads *cursor
+  auto (unmetered)* in both: cursor reports neither the model it picked
+  nor the usage.
 * **Tuning tables**, each with the average cost per call (of the calls
   with a known cost; *n/a* when none has one), to set the levers in
   [configuration.md](configuration.md#roles) by:

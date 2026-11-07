@@ -19,6 +19,7 @@ import {
   legacyNote,
   modelBars,
   modelSlots,
+  modelLabel,
   modelsLine,
   pctLabel,
   reviewRounds,
@@ -39,6 +40,7 @@ import {
   unitFromQuery,
   unitQuery,
   unknownNote,
+  unmetered,
   unmeteredNote,
   type SpendScope,
   type SpendUnit,
@@ -120,9 +122,10 @@ const breakdowns = computed(() => {
   const d = data.value
   if (!d) return []
   return [
-    { title: 'By kind', rows: d.byKind },
-    { title: 'By role', rows: d.byRole },
-    { title: 'By model', rows: d.byModel },
+    { title: 'By kind', rows: d.byKind, label: rowKey },
+    { title: 'By role', rows: d.byRole, label: rowKey },
+    // cursor's auto as "cursor auto (unmetered)".
+    { title: 'By model', rows: d.byModel, label: (b: SpendBreakdown) => modelLabel(rowKey(b), unmetered(b.totals)) },
   ].map((b) => {
     const rows = sortByCost(b.rows)
     return { ...b, rows, shares: shares(rows.map((r) => r.totals)) }
@@ -344,7 +347,7 @@ function rowKey(b: SpendBreakdown): string {
               </thead>
               <tbody>
                 <tr v-for="(r, i) in b.rows" :key="r.key">
-                  <td>{{ rowKey(r) }}</td>
+                  <td>{{ b.label(r) }}</td>
                   <td class="num">{{ r.totals.calls }}</td>
                   <td class="num" :title="tokenTitle(r.totals)">{{ spendTokenLabel(r.totals) }}</td>
                   <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ spendUSD(r.totals) }}</td>

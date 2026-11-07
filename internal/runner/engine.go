@@ -273,9 +273,34 @@ func (c *ClaudeCLI) Args(inv Invocation) []string {
 }
 
 // Run executes the invocation. The prompt goes through stdin, so it is not
-// subject to command line length limits.
+// subject to command line length limits. The result holds this call only
+// (sinceLastResult): after --resume, modelUsage and total_cost_usd also
+// carry the session's earlier calls.
 func (c *ClaudeCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
-	return runCLI(ctx, orDefault(c.Binary, "claude"), c.Args(inv), inv.Dir, append(slices.Clip(c.Env), inv.Env...), inv.Prompt, true)
+	res, err := runCLI(ctx, orDefault(c.Binary, "claude"), c.Args(inv), inv.Dir, append(slices.Clip(c.Env), inv.Env...), inv.Prompt, true)
+	if res != nil {
+		sinceLastResult(res)
+	}
+	return res, err
+}
+
+// sinceLastResult makes res's models and cost what its process counted
+// since its previous result (model_usage_since_last_result, cost the sum of
+// its costUSD) and reports whether the result carried that field. Without
+// it res stays as reported: modelUsage and total_cost_usd, which after
+// --resume include the session's earlier calls (R5 of
+// docs/specs/honest-reporting.spec.md). The row's tokens are the sum of
+// these models (CallUsage.tokens), so both hold the same call.
+func sinceLastResult(res *Result) bool {
+	u := res.CallUsage
+	if u == nil || u.sinceLast == nil {
+		return false
+	}
+	u.Models, res.CostUSD = u.sinceLast, 0
+	for _, m := range u.Models {
+		res.CostUSD += m.CostUSD
+	}
+	return true
 }
 
 // CursorCLI runs the Cursor CLI (cursor-agent). Authentication comes from

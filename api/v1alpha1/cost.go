@@ -59,3 +59,26 @@ func ParseBudget(s string) (string, error) {
 	}
 	return FormatCost(usd), nil
 }
+
+// CursorAutoModel is the model of cursor calls that leave the choice to
+// cursor (the fast profile, the bugbot and security reviewers).
+const CursorAutoModel = "auto"
+
+// CursorAutoLabel names CursorAutoModel in spend reports when its calls
+// report nothing: cursor's ACP tells neither the model it picked
+// (currentModelId "default[]") nor the usage, so they are unmetered
+// (docs/usage.md).
+const CursorAutoLabel = "cursor auto (unmetered)"
+
+// ModelLabel names a model in spend reports: CursorAutoModel as
+// CursorAutoLabel when unmetered, as "cursor auto" otherwise, any other
+// model by its name.
+func ModelLabel(model string, unmetered bool) string {
+	switch {
+	case model != CursorAutoModel:
+		return model
+	case unmetered:
+		return CursorAutoLabel
+	}
+	return "cursor auto"
+}

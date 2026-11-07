@@ -191,7 +191,7 @@ func TestRetrospectiveReportsTheSpendFromTheDatabase(t *testing.T) {
 		"**Cost drivers**\n\n- Total: $42.12, 2.59M tokens (input 1.2k, output 34.0k, cache read 2.50M, cache write 50.0k), 3 subagent calls, 2 calls not metered\n",
 		"- Issue: #1 $30.00 (2.00M tokens); then #2 $9.00 (500.0k tokens)\n",
 		"- Kind: implement $35.00 (2.10M tokens)\n",
-		"- Model: claude-opus $40.00 (2.40M tokens); then auto (not metered)\n",
+		"- Model: claude-opus $40.00 (2.40M tokens); then cursor auto (unmetered)\n",
 	} {
 		if !strings.Contains(c, want) {
 			t.Errorf("the retrospective misses %q:\n%s", want, c)
