@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -479,30 +478,10 @@ func renderRetro(summary string, followUps []aiv1.PilotFollowUp, spend *aiv1.Spe
 	return b.String()
 }
 
-// retroHTML matches a code span or fenced block, kept as text, or HTML: a
-// comment (unclosed to the end) or a tag. Autolinks (<https://…>) are no tags.
-var retroHTML = regexp.MustCompile("(?s)```.*?```|`[^`\n]*`|<!--.*?(?:-->|$)|</?[A-Za-z][A-Za-z0-9-]*(?:[\\s/][^<>]*)?>")
-
 // retroText is the posted retrospective body for status: markdown without
 // HTML, at most aiv1.MaxRetroText bytes with an ellipsis beyond.
 func retroText(body string) string {
-	return untrustedMarkdown(body, aiv1.MaxRetroText)
-}
-
-// untrustedMarkdown is agent text for status and the Desk: markdown without
-// HTML (code spans and blocks stay as text), at most limit bytes with an
-// ellipsis beyond.
-func untrustedMarkdown(text string, limit int) string {
-	s := retroHTML.ReplaceAllStringFunc(text, func(m string) string {
-		if strings.HasPrefix(m, "`") {
-			return m
-		}
-		return ""
-	})
-	if s = strings.TrimSpace(s); len(s) > limit {
-		s = textutil.Truncate(s, limit-len("…"))
-	}
-	return s
+	return textutil.UntrustedMarkdown(body, aiv1.MaxRetroText)
 }
 
 // renderSpend renders the milestone's spend from the history database and

@@ -27,6 +27,7 @@ type API interface {
 	FindUser(ctx context.Context, username string) (*User, error)
 	GetProject(ctx context.Context, project string) (*Project, error)
 	ListMilestones(ctx context.Context, project string) ([]Milestone, error)
+	ListClosedMilestones(ctx context.Context, project string, maxPages int) ([]Milestone, error)
 	GetMilestone(ctx context.Context, project string, id int64) (*Milestone, error)
 	UpdateMilestoneDescription(ctx context.Context, project string, id int64, description string) (*Milestone, error)
 	CloseMilestone(ctx context.Context, project string, id int64) error
@@ -36,6 +37,7 @@ type API interface {
 	CreateIssue(ctx context.Context, project string, opts CreateIssueOptions) (*Issue, error)
 	UpdateIssue(ctx context.Context, project string, iid int64, opts UpdateIssueOptions) (*Issue, error)
 	ListIssueNotes(ctx context.Context, project string, iid int64) ([]Note, error)
+	ListIssueNotesNewest(ctx context.Context, project string, iid int64, n int) ([]Note, error)
 	ListIssueDiscussions(ctx context.Context, project string, iid int64) ([]Discussion, error)
 	CreateIssueNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
 	ReplyIssueDiscussion(ctx context.Context, project string, iid int64, discussion, body string) (*Note, error)
@@ -126,6 +128,8 @@ type Milestone struct {
 	State       string     `json:"state"`
 	WebURL      string     `json:"web_url"`
 	UpdatedAt   *time.Time `json:"updated_at"`
+	// DueDate is YYYY-MM-DD, empty without one.
+	DueDate string `json:"due_date"`
 }
 
 // Issue is a GitLab issue.
@@ -331,6 +335,9 @@ type ListIssuesOptions struct {
 	Milestone string
 	// UpdatedAfter only returns issues updated after this time.
 	UpdatedAfter *time.Time
+	// MaxPages caps the pages of 100 issues read, so the requests; 0 reads
+	// up to the client's limit.
+	MaxPages int
 }
 
 // CreateIssueOptions creates an issue.
@@ -710,13 +717,21 @@ const maxPages = 20
 
 // list follows GitLab's X-Next-Page pagination.
 func list[T any](ctx context.Context, c *Client, path string, query url.Values) ([]T, error) {
+	return listPages[T](ctx, c, path, query, maxPages)
+}
+
+// listPages is list reading at most pages pages, maxPages for 0.
+func listPages[T any](ctx context.Context, c *Client, path string, query url.Values, pages int) ([]T, error) {
+	if pages <= 0 || pages > maxPages {
+		pages = maxPages
+	}
 	if query == nil {
 		query = url.Values{}
 	}
 	query.Set("per_page", "100")
 	var all []T
 	page := "1"
-	for i := 0; i < maxPages && page != ""; i++ {
+	for i := 0; i < pages && page != ""; i++ {
 		query.Set("page", page)
 		var items []T
 		resp, err := c.do(ctx, http.MethodGet, path, query, nil, &items)
@@ -755,6 +770,12 @@ func (c *Client) GetProject(ctx context.Context, project string) (*Project, erro
 
 func (c *Client) ListMilestones(ctx context.Context, project string) ([]Milestone, error) {
 	return list[Milestone](ctx, c, projectPath(project)+"/milestones", url.Values{"state": {"active"}})
+}
+
+// ListClosedMilestones lists the closed milestones, reading at most
+// maxPages pages of 100 (0: up to the client's limit).
+func (c *Client) ListClosedMilestones(ctx context.Context, project string, maxPages int) ([]Milestone, error) {
+	return listPages[Milestone](ctx, c, projectPath(project)+"/milestones", url.Values{"state": {"closed"}}, maxPages)
 }
 
 func (c *Client) GetMilestone(ctx context.Context, project string, id int64) (*Milestone, error) {
@@ -796,7 +817,7 @@ func (c *Client) ListIssues(ctx context.Context, project string, opts ListIssues
 	if opts.UpdatedAfter != nil {
 		q.Set("updated_after", opts.UpdatedAfter.UTC().Format(time.RFC3339))
 	}
-	return list[Issue](ctx, c, projectPath(project)+"/issues", q)
+	return listPages[Issue](ctx, c, projectPath(project)+"/issues", q, opts.MaxPages)
 }
 
 func (c *Client) GetIssue(ctx context.Context, project string, iid int64) (*Issue, error) {
@@ -842,6 +863,15 @@ func (c *Client) UpdateIssue(ctx context.Context, project string, iid int64, opt
 func (c *Client) ListIssueNotes(ctx context.Context, project string, iid int64) ([]Note, error) {
 	q := url.Values{"sort": {"asc"}, "order_by": {"created_at"}}
 	return list[Note](ctx, c, fmt.Sprintf("%s/issues/%d/notes", projectPath(project), iid), q)
+}
+
+// ListIssueNotesNewest lists the issue's newest n notes (1 to 100), newest
+// first, in one request.
+func (c *Client) ListIssueNotesNewest(ctx context.Context, project string, iid int64, n int) ([]Note, error) {
+	q := url.Values{"sort": {"desc"}, "order_by": {"created_at"}, "per_page": {strconv.Itoa(min(max(n, 1), 100))}}
+	var notes []Note
+	_, err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/issues/%d/notes", projectPath(project), iid), q, nil, &notes)
+	return notes, err
 }
 
 func (c *Client) ListIssueDiscussions(ctx context.Context, project string, iid int64) ([]Discussion, error) {

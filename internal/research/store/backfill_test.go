@@ -249,3 +249,36 @@ func TestDeleteExpiredSnapshotBackfill(t *testing.T) {
 	backfillOf(t, s, 3)
 	pending(t, s, []int64{1, 2, 3}, 1, 3)
 }
+
+// MergedIssues takes each issue's newest unexpired merge of the project,
+// and leaves out issues without one.
+func TestMergedIssues(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	now := time.Now()
+	exp := now.Add(time.Hour)
+	merged := func(key, project string, issue, mr int64, at, expires time.Time) store.Event {
+		return store.Event{Key: key, At: at, Namespace: "agents", Project: project, IssueIID: issue, MergeRequestIID: mr,
+			Kind: "merged", Data: map[string]any{"mergeRequestURL": "https://gitlab.example/mr/" + key}, ExpiresAt: expires}
+	}
+	if _, err := s.InsertEvents(ctx, []store.Event{
+		merged("m1", "bloop", 11, 50, now.Add(-2*time.Hour), exp),
+		merged("m2", "bloop", 11, 51, now.Add(-time.Hour), exp), // merged again: the newest counts
+		merged("m3", "bloop", 12, 52, now.Add(-time.Hour), now.Add(-time.Minute)),
+		merged("m4", "other", 13, 53, now.Add(-time.Hour), exp),
+		{Key: "r1", At: now, Namespace: "agents", Project: "bloop", IssueIID: 13, MergeRequestIID: 54, Kind: "run.started", ExpiresAt: exp},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.MergedIssues(ctx, bloop, []int64{11, 12, 13, 14}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int64]store.MergedMR{11: {IID: 51, URL: "https://gitlab.example/mr/m2"}}
+	if len(got) != len(want) || got[11] != want[11] {
+		t.Errorf("MergedIssues = %+v, want %+v", got, want)
+	}
+	if got, err := s.MergedIssues(ctx, bloop, nil, now); err != nil || len(got) != 0 {
+		t.Errorf("MergedIssues(nil) = %v, %v; want none", got, err)
+	}
+}

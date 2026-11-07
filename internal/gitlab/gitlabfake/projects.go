@@ -107,6 +107,14 @@ func (p *Projects) ListMilestones(ctx context.Context, project string) ([]gitlab
 	return f.ListMilestones(ctx, project)
 }
 
+func (p *Projects) ListClosedMilestones(ctx context.Context, project string, maxPages int) ([]gitlab.Milestone, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.ListClosedMilestones(ctx, project, maxPages)
+}
+
 func (p *Projects) GetMilestone(ctx context.Context, project string, id int64) (*gitlab.Milestone, error) {
 	f, err := p.route(project)
 	if err != nil {
@@ -177,6 +185,14 @@ func (p *Projects) ListIssueNotes(ctx context.Context, project string, iid int64
 		return nil, err
 	}
 	return f.ListIssueNotes(ctx, project, iid)
+}
+
+func (p *Projects) ListIssueNotesNewest(ctx context.Context, project string, iid int64, n int) ([]gitlab.Note, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.ListIssueNotesNewest(ctx, project, iid, n)
 }
 
 func (p *Projects) ListIssueDiscussions(ctx context.Context, project string, iid int64) ([]gitlab.Discussion, error) {

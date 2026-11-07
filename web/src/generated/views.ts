@@ -286,14 +286,15 @@ export interface MilestoneView extends Cost {
 }
 /**
  * MilestoneIssueRow is an issue of a milestone. State is the autopilot
- * item's in lower case, planned before autopilot queued it. Task is its live
+ * item's in lower case, planned before autopilot queued it, closed for an
+ * issue the backfill found closed without a merge on record. Task is its live
  * implement task, if any. Figures are absent without the history database
  * or while the snapshot lacks the issue. Titles are untrusted text.
  */
 export interface MilestoneIssueRow {
   iid: number /* int64 */;
   title: string;
-  state: 'planned' | 'pending' | 'active' | 'merged' | 'skipped';
+  state: 'planned' | 'pending' | 'active' | 'merged' | 'skipped' | 'closed';
   mergeRequestIID?: number /* int64 */;
   mergeRequestURL?: string;
   task?: string;

@@ -147,3 +147,34 @@ func (s *Store) deleteOrphanBackfill(ctx context.Context) error {
 			AND m.iid = b.milestone_iid)`)
 	return err
 }
+
+// MergedMR is the merge request an issue was merged with, from the history.
+type MergedMR struct {
+	IID int64
+	URL string
+}
+
+// MergedIssues returns, of project's issues, those the history records as
+// merged, with the merge request of the newest merge: the backfill takes
+// merge requests from the history instead of asking GitLab per issue. An
+// issue merged before the history began, or whose merge expired by now, is
+// missing.
+func (s *Store) MergedIssues(ctx context.Context, p ProjectKey, issues []int64, now time.Time) (map[int64]MergedMR, error) {
+	out := map[int64]MergedMR{}
+	if len(issues) == 0 {
+		return out, nil
+	}
+	rows, _ := s.pool.Query(ctx, `SELECT DISTINCT ON (issue_iid) issue_iid, coalesce(mr_iid, 0),
+			coalesce(data->>'mergeRequestURL', '')
+		FROM history_events
+		WHERE namespace = $1 AND project = $2 AND issue_iid = ANY($3::bigint[]) AND kind = 'merged'
+			AND expires_at > $4
+		ORDER BY issue_iid, at DESC, id DESC`, p.Namespace, p.Name, issues, now)
+	var iid int64
+	var mr MergedMR
+	_, err := pgx.ForEachRow(rows, []any{&iid, &mr.IID, &mr.URL}, func() error {
+		out[iid] = mr
+		return nil
+	})
+	return out, err
+}

@@ -58,10 +58,10 @@ func (r *Runner) runFollowUpDraft(ctx context.Context, task *aiv1.AgentTask, spe
 		return out, s.fail(err) // the run is deferred and writes it then
 	}
 	if err == nil {
-		draft.Title = textutil.Truncate(strings.Join(strings.Fields(untrustedMarkdown(a.Title, aiv1.MaxDraftTitle)), " "), aiv1.MaxDraftTitle)
+		draft.Title = textutil.Truncate(strings.Join(strings.Fields(textutil.UntrustedMarkdown(a.Title, aiv1.MaxDraftTitle)), " "), aiv1.MaxDraftTitle)
 		// The operator's lines (owners, rules, budget, followup-of) are the
 		// confirming owner's to add, never the draft's.
-		draft.Description = untrustedMarkdown(rules.Spec(a.Description, spec.Workflow.CommandPrefix), aiv1.MaxDraftDescription)
+		draft.Description = textutil.UntrustedMarkdown(rules.Spec(a.Description, spec.Workflow.CommandPrefix), aiv1.MaxDraftDescription)
 		if draft.Title == "" || draft.Description == "" {
 			err = fmt.Errorf("the draft has no title or no description")
 		}

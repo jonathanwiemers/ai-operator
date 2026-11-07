@@ -61,13 +61,14 @@ type MilestoneView struct {
 }
 
 // MilestoneIssueRow is an issue of a milestone. State is the autopilot
-// item's in lower case, planned before autopilot queued it. Task is its live
+// item's in lower case, planned before autopilot queued it, closed for an
+// issue the backfill found closed without a merge on record. Task is its live
 // implement task, if any. Figures are absent without the history database
 // or while the snapshot lacks the issue. Titles are untrusted text.
 type MilestoneIssueRow struct {
 	IID             int64             `json:"iid"`
 	Title           string            `json:"title"`
-	State           string            `json:"state" tstype:"'planned' | 'pending' | 'active' | 'merged' | 'skipped'"`
+	State           string            `json:"state" tstype:"'planned' | 'pending' | 'active' | 'merged' | 'skipped' | 'closed'"`
 	MergeRequestIID int64             `json:"mergeRequestIID,omitempty"`
 	MergeRequestURL string            `json:"mergeRequestURL,omitempty"`
 	Task            string            `json:"task,omitempty"`

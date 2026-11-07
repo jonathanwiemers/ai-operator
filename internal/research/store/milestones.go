@@ -23,7 +23,8 @@ type MilestoneQuery struct {
 const MaxMilestones = 200
 
 // MilestoneRow is one milestone of the list with its progress and spend.
-// Merged counts the issues merged or skipped, Open the others.
+// Merged counts the issues merged, skipped or (backfilled) closed, Open the
+// others.
 // FollowUpsOpen are the leftovers still open. Spend sums the milestone's
 // calls as SpendTotals does: without calls, CostKnown is false and every
 // sum is 0, never a cost of $0.
@@ -55,7 +56,7 @@ func milestoneSelect(extra, filter string) string {
 		FROM desk_milestones m
 		LEFT JOIN (
 			SELECT namespace, project, milestone_iid, count(*) AS total,
-				count(*) FILTER (WHERE state IN ('merged', 'skipped')) AS merged
+				count(*) FILTER (WHERE state IN ('merged', 'skipped', 'closed')) AS merged
 			FROM desk_milestone_issues WHERE ` + inProjects + ` GROUP BY 1, 2, 3
 		) i ON i.namespace = m.namespace AND i.project = m.project AND i.milestone_iid = m.iid
 		LEFT JOIN (

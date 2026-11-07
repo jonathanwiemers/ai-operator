@@ -191,6 +191,13 @@ with their results and items at once and then every hour, and with
 `--history-retention` also expired history events, agent calls, chat
 messages and milestone snapshots.
 
+With the database ready, the operator also fills the Desk's milestone
+snapshot once from GitLab with the closed milestones it planned before the
+snapshot existed (the backfill, see
+[design.md](design.md#desk-snapshot)): one milestone per poll, at most 4
+GitLab requests a step and 16 a minute. It has no setting: it stops by
+itself once every closed milestone is in, and lists them again once a day.
+
 The runner of a research run logs in as a writer: name its Secret per
 project in `spec.research.writerSecret` (see
 [research.md](research.md#specresearch-on-agentproject)).

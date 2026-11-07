@@ -237,6 +237,21 @@ func (f *Fake) ListMilestones(context.Context, string) ([]gitlab.Milestone, erro
 	return active, nil
 }
 
+func (f *Fake) ListClosedMilestones(context.Context, string, int) ([]gitlab.Milestone, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ListMilestonesError != nil {
+		return nil, f.ListMilestonesError
+	}
+	var closed []gitlab.Milestone
+	for _, m := range f.Milestones {
+		if m.State == "closed" {
+			closed = append(closed, m)
+		}
+	}
+	return closed, nil
+}
+
 func (f *Fake) GetMilestone(_ context.Context, _ string, id int64) (*gitlab.Milestone, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -488,6 +503,17 @@ func (f *Fake) ListIssueNotes(_ context.Context, _ string, iid int64) ([]gitlab.
 		return nil, err
 	}
 	return slices.Clone(f.IssueNotes[iid]), nil
+}
+
+func (f *Fake) ListIssueNotesNewest(_ context.Context, _ string, iid int64, n int) ([]gitlab.Note, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.ListNoteErrors[iid]; err != nil {
+		return nil, err
+	}
+	notes := slices.Clone(f.IssueNotes[iid])
+	slices.Reverse(notes)
+	return notes[:min(len(notes), min(max(n, 1), 100))], nil
 }
 
 func (f *Fake) CreateIssueNote(_ context.Context, _ string, iid int64, body string) (*gitlab.Note, error) {

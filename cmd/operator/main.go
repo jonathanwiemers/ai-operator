@@ -166,6 +166,7 @@ func main() {
 		projects.Spend = researchSetup
 		projects.FollowUps = researchSetup
 		projects.ChatContext = researchSetup
+		projects.Backfill = history.NewBackfill(researchSetup, historyRetention, clock.RealClock{}, ctrl.Log.WithName("backfill"))
 		researchSetup.SetHistoryRetention(historyRetention)
 	}
 	// Desk chat commands and GitLab webhooks both wake the project

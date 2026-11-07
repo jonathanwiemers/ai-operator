@@ -652,3 +652,61 @@ func TestCreateMilestone(t *testing.T) {
 		t.Fatalf("unexpected milestone %+v", m)
 	}
 }
+
+// The backfill's listings stay within their requests: closed milestones and
+// a milestone's issues stop after their page caps, the newest notes are one
+// request.
+func TestBackfillListingsCapPages(t *testing.T) {
+	var requests []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path+"?"+r.URL.RawQuery)
+		w.Header().Set("X-Next-Page", "99") // always more
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/milestones"):
+			_ = json.NewEncoder(w).Encode([]Milestone{{IID: 1, State: "closed", DueDate: "2026-01-31"}})
+		case strings.HasSuffix(r.URL.Path, "/notes"):
+			_ = json.NewEncoder(w).Encode([]Note{{ID: 9}, {ID: 8}})
+		default:
+			_ = json.NewEncoder(w).Encode([]Issue{{IID: 1}})
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	ctx := context.Background()
+
+	ms, err := c.ListClosedMilestones(ctx, "group/app", 2)
+	if err != nil || len(ms) != 2 || ms[0].DueDate != "2026-01-31" {
+		t.Fatalf("ListClosedMilestones = %+v, %v", ms, err)
+	}
+	if len(requests) != 2 || !strings.Contains(requests[0], "state=closed") {
+		t.Errorf("closed milestones: requests %v, want 2 with state=closed", requests)
+	}
+
+	requests = nil
+	if is, err := c.ListIssues(ctx, "group/app", ListIssuesOptions{State: "all", Milestone: "M1", MaxPages: 3}); err != nil || len(is) != 3 {
+		t.Fatalf("ListIssues = %d issues, %v", len(is), err)
+	}
+	if len(requests) != 3 || !strings.Contains(requests[0], "milestone=M1") || !strings.Contains(requests[0], "state=all") {
+		t.Errorf("issues: requests %v, want 3 of milestone M1, state all", requests)
+	}
+
+	requests = nil
+	notes, err := c.ListIssueNotesNewest(ctx, "group/app", 7, 500)
+	if err != nil || len(notes) != 2 || notes[0].ID != 9 {
+		t.Fatalf("ListIssueNotesNewest = %+v, %v", notes, err)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("notes: requests %v, want 1", requests)
+	}
+	for _, want := range []string{"/issues/7/notes", "sort=desc", "order_by=created_at", "per_page=100"} {
+		if !strings.Contains(requests[0], want) {
+			t.Errorf("notes request %q misses %q", requests[0], want)
+		}
+	}
+
+	// Without a cap, the client's limit holds.
+	requests = nil
+	if _, err := c.ListIssues(ctx, "group/app", ListIssuesOptions{}); err != nil || len(requests) != maxPages {
+		t.Errorf("uncapped ListIssues: %d requests, %v; want %d", len(requests), err, maxPages)
+	}
+}

@@ -44,3 +44,13 @@ func TestTruncateCharacterLimit(t *testing.T) {
 		t.Errorf("%d characters", utf8.RuneCountInString(got))
 	}
 }
+
+func TestUntrustedMarkdown(t *testing.T) {
+	in := "## Retro <img src=x onerror=alert(1)>\n\n`<b>` stays<!-- ai-operator:retrospective -->"
+	if got, want := UntrustedMarkdown(in, 1000), "## Retro \n\n`<b>` stays"; got != want {
+		t.Errorf("UntrustedMarkdown = %q, want %q", got, want)
+	}
+	if got := UntrustedMarkdown(strings.Repeat("a", 20), 10); len(got) > 10 || !strings.HasSuffix(got, "…") {
+		t.Errorf("UntrustedMarkdown cut = %q, want at most 10 bytes with an ellipsis", got)
+	}
+}

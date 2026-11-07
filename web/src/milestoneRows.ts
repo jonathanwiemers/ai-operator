@@ -78,9 +78,9 @@ export function milestoneRowKey(r: Pick<MilestoneRow, 'namespace' | 'project' | 
 }
 
 // issueProgress counts a milestone page's issues as the rows do: merged
-// (or skipped) of total, and the open rest.
+// (or skipped, or closed) of total, and the open rest.
 export function issueProgress(issues: readonly Pick<MilestoneIssueRow, 'state'>[]): MilestoneProgress {
-  const merged = issues.filter((i) => i.state === 'merged' || i.state === 'skipped').length
+  const merged = issues.filter((i) => i.state === 'merged' || i.state === 'skipped' || i.state === 'closed').length
   return { merged, total: issues.length, open: issues.length - merged }
 }
 
@@ -92,6 +92,7 @@ export function issueStateTone(s: MilestoneIssueRow['state']): Tone {
     case 'merged':
       return 'success'
     case 'skipped':
+    case 'closed':
       return 'muted'
     default:
       return 'neutral'

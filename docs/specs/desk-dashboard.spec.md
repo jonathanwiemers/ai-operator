@@ -546,3 +546,16 @@ about how many production lines, and deviations from this spec.
   `0009`, as `0007` and `0008` were taken; failed records stay, so a
   milestone skipped after three failures is not retried after retention.
   The operator side follows.
+- 2026-11-07, `backfill-operator` (R4 part 2, #244): `history.Backfill`
+  (`internal/history/backfill.go`), one step after each AgentProject poll
+  with the project's GitLab client: the listing of the closed milestones
+  the poll would have planned (`ListClosedMilestones`, at most 4 pages,
+  again after a day), or the oldest pending milestone (`ListIssues` with
+  `MaxPages` 3, the bot's newest retrospective via `ListIssueNotesNewest`,
+  MRs from `merged` events via `MergedIssues`). At most 4 requests a step,
+  steps 15 s apart across projects; transient errors count no attempt. The
+  retrospective's sanitizer moved to `textutil.UntrustedMarkdown`, shared
+  with the runner. About 200 production lines. Deviations: an issue closed
+  without a merge on record gets the new state `closed`, counted done; no
+  follow-ups are parsed from the rendered note, so backfilled milestones
+  show no leftovers; there is no opt-out setting.

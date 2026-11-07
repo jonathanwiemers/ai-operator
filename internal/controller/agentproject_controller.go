@@ -92,6 +92,10 @@ type AgentProjectReconciler struct {
 	// ChatContext, set with a research database, is the Desk chat a run
 	// request hands a fresh session on a project without GitLab input.
 	ChatContext ChatContextSource
+	// Backfill, set with a research database, fills the Desk's snapshot
+	// with the closed milestones the recorder never saw, one step after
+	// each poll.
+	Backfill *history.Backfill
 
 	mu sync.Mutex
 	// synced is the last delivery each project's last full sync covered.
@@ -148,6 +152,10 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		syncErr = r.sync(sctx, &project, spec)
 	}
 	cancel()
+	// While GitLab gives out, the backfill waits too.
+	if syncErr == nil || !gitlab.IsTransient(syncErr) {
+		r.backfill(ctx, &project, spec)
+	}
 	switch {
 	case syncErr != nil && gitlab.IsTransient(syncErr):
 		// Rate limits, server errors and timeouts pass; the client already

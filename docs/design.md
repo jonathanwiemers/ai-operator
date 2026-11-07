@@ -838,6 +838,40 @@ record is deleted with its milestone by `DeleteExpiredSnapshot`; failed
 records have no milestone and stay, so a broken milestone stays skipped. The
 backfill writes no spend: a milestone without `agent_calls` shows none.
 
+The operator runs it (`internal/history/backfill.go`, `Backfill.Step`), with
+the research database only: one step after each poll of an AgentProject
+(light or full, not while GitLab gives out), with the project's GitLab
+client. A step is either the listing or one milestone:
+
+* **Listing**, when the project has none in memory (first poll, after a
+  restart) or it is a day old, unless the store says the project was found
+  complete less than a day ago: the closed milestones
+  (`ListClosedMilestones`, at most 4 pages of 100), kept are those the poll
+  would have planned while open (title pattern and marker, as
+  `milestoneSelection`), oldest IID first. A failed listing is tried again
+  an hour later. Milestones closed later are the recorder's anyway.
+* **Milestone**, the oldest one `BackfillPending` returns: its issues
+  (`ListIssues`, milestone title, state all, at most 3 pages; issues of
+  another milestone with the same title are dropped), the tracking issue
+  among them (the bot's, with the tracking marker; its creation is the
+  start), and on it the bot's newest note with `marker.Retrospective`
+  among the newest 100 (`ListIssueNotesNewest`, one request). Its text is
+  stored as the runner stores it (`textutil.UntrustedMarkdown`, at most
+  `MaxRetroText`). Merge requests come from the history (`MergedIssues`:
+  the newest unexpired `merged` event per issue), never one GitLab call per
+  issue. An issue merged on record is `merged` with its MR, else GitLab's
+  closed is `closed` (counted done like `merged` and `skipped`) and opened
+  is `pending`. Done is the milestone's `updated_at`, else its due date.
+  There is no phase, no owners and no follow-ups: the rendered list is lossy
+  and does not tell which were opened. `SaveBackfilled` writes it.
+
+A failed milestone counts an attempt (`BackfillFailed`) unless the error is
+transient (429, 5xx, a timeout) or the poll's deadline passed. So a step
+makes at most 4 GitLab requests and none when nothing is pending. Steps
+of all projects are at least 15 s apart, and a step skips while another
+project's runs, so the backfill makes at most 16 requests a minute however
+often webhooks wake the polls, well below GitLab's 100 per user.
+
 ## GitLab webhooks
 
 GitLab project hooks (GitLab Free; group hooks need Premium) wake the
