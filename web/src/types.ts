@@ -52,6 +52,9 @@ export type {
   PauseView,
   CompanionView,
   CompanionChip,
+  OverviewView,
+  WorkingNow,
+  WorkingNext,
 } from './generated/views'
 
 export type {

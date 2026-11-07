@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import App from './App.vue'
 import { canStartResearch, featuresLoaded, hasFeature, isResearchPath } from './api'
+import Dashboard from './views/Dashboard.vue'
 import Stream from './views/Stream.vue'
 import Inbox from './views/Inbox.vue'
 import TaskView from './views/Task.vue'
@@ -17,7 +18,7 @@ import './style.css'
 // Every route is named, with a name from routeNames: crumbsFor and its test
 // cover each one.
 const routes: (RouteRecordRaw & { name: RouteName })[] = [
-  { path: '/', name: 'everything', component: Stream },
+  { path: '/', name: 'overview', component: Dashboard },
   { path: '/inbox', name: 'inbox', component: Inbox },
   { path: '/projects/:namespace/:name', name: 'stream-project', component: Stream, props: true },
   {
@@ -28,6 +29,12 @@ const routes: (RouteRecordRaw & { name: RouteName })[] = [
   },
   { path: '/projects/:namespace/:name/tasks/:task', name: 'task', component: TaskView, props: true },
   // Old pages, kept as redirects (with their names) so links and bookmarks work.
+  // The Everything stream is the dashboard's Stream tab.
+  {
+    path: '/everything',
+    name: 'everything',
+    redirect: (to) => ({ name: 'overview', query: { ...to.query, tab: 'stream' }, hash: to.hash }),
+  },
   {
     path: '/projects/:namespace/:name/board',
     name: 'project-board',

@@ -187,7 +187,7 @@ watch(
         </RouterLink>
         <RouterLink to="/" class="item" active-class="active" @click="closeRail">
           <span class="dot" />
-          <span class="name">Everything<span class="sub">all streams, newest first</span></span>
+          <span class="name">Overview<span class="sub">what runs, across projects</span></span>
         </RouterLink>
 
         <div class="sect"><span>Projects</span></div>

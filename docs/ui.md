@@ -33,12 +33,27 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   paused, the Inbox opens with a strip *N autopilots paused, longest
   &lt;duration&gt;* across projects, with a link to each milestone and how long
   it has been paused (longest first; from `status.autopilot.pausedAt`, a
-  pause without a start counts but shows no time). *Everything*
-  (all your projects' streams in one), your projects with a status dot
+  pause without a start counts but shows no time). *Overview*
+  (the dashboard, see below), your projects with a status dot
   (running, needs you, idle), a one-line state and a needs-you count, the
   researches (with the research section) and the engine usage. On narrow
   screens the rail is a drawer behind the menu button.
-* **Stream** (`/` for everything, `/projects/<namespace>/<name>` for a
+* **Dashboard** (`/`): the tabs *Overview* (the default) and *Stream*
+  (`/?tab=stream`, the *Everything* stream of all your projects, as
+  before; the old name `everything` redirects there, at `/everything`).
+  *Overview* shows, top to bottom, the **summary strip**: the milestones
+  running, paused and waiting, the needs-you count (linking to the Inbox)
+  and, with the research database, the spend of today (the UTC day) and of
+  the last 7 days; **Working now**: one card per project with work, the
+  issue that holds its run slot (linking to its task page) and for how long,
+  what is next, active usage limits and the engine usage; a project with an
+  autopilot or queued work and no run says so. The *In progress* and
+  *Recently done* milestone lists follow in the next slice. Without the
+  research database a note says that done milestones and spend need it.
+  It updates live; on narrow screens the strip wraps and the cards stack.
+  Counts cover only the projects you may see. A user with research alone
+  starts at `/research`.
+* **Stream** (the dashboard's *Stream* tab for everything, `/projects/<namespace>/<name>` for a
   project, `…/milestones/<iid>` for a milestone: its issues, its tracking
   issue and what was recorded for it): a header with the view tabs *Stream*,
   *Board* and *Spend* (project and milestone streams; the tab is kept in

@@ -315,3 +315,12 @@ about how many production lines, and deviations from this spec.
   without the database; `spec` stays a zero task, so `web/` is unchanged; a
   stored milestone still open is `planned`; a failing snapshot query answers
   500, not 404. The issue view's snapshot fallback follows with R10.
+- 2026-11-07, `dashboard` (R8 first part, #224): `Dashboard.vue` on `/`
+  (route `overview`; `everything` redirects to `/?tab=stream` from
+  `/everything`), tabs from `dashboardTabs`, the Stream tab is
+  `Stream.vue` unchanged; `DashboardOverview.vue` with the strip
+  (`overviewStrip`) and *Working now*, placeholders for the lists; the
+  rail's *Everything* is now *Overview*; about 230 production lines (styles
+  included). Deviations: no spend chips without the database (unknown, not
+  $0); active usage limits show as *limited until*; screenshots were not
+  possible in the agent's container (no cluster, no browser).

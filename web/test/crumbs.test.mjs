@@ -8,7 +8,7 @@ import { isRouteName, routeNames } from '../src/routeNames.ts'
 const params = { namespace: 'ns', name: 'p', iid: '3', task: 'issue-12', id: 'abcdef0123456789', rest: ['x', 'y'] }
 const at = { namespace: 'ns', name: 'p' }
 
-const overview = { label: 'Overview', to: { name: 'everything', params: {} } }
+const overview = { label: 'Overview', to: { name: 'overview', params: {} } }
 const project = { label: 'p', to: { name: 'stream-project', params: at } }
 const milestone3 = (label) => ({ label, to: { name: 'stream-milestone', params: { ...at, iid: '3' } } })
 const research = { label: 'Research', to: { name: 'researches', params: {} } }
@@ -31,6 +31,7 @@ test('every route has crumbs: links but the last, which names the view', () => {
 })
 
 test('top-level views show one crumb', () => {
+  assert.deepEqual(crumbsFor({ name: 'overview', params: {}, query: { tab: 'stream' } }), [{ label: 'Overview' }])
   assert.deepEqual(crumbsFor({ name: 'everything', params: {} }), [{ label: 'Overview' }])
   assert.deepEqual(crumbsFor({ name: 'inbox', params: {} }), [{ label: 'Inbox' }])
   assert.deepEqual(crumbsFor({ name: 'researches', params: {} }), [{ label: 'Research' }])

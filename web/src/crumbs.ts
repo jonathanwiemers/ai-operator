@@ -73,7 +73,7 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
   const p = route.params
   const namespace = param(p, 'namespace')
   const name = param(p, 'name')
-  const overview: Crumb = { label: overviewLabel, to: { name: 'everything', params: {} } }
+  const overview: Crumb = { label: overviewLabel, to: { name: 'overview', params: {} } }
   const project: Crumb = { label: name, to: { name: 'stream-project', params: { namespace, name } } }
   const milestone = (iid: number): Crumb => ({
     label: milestoneLabel(iid, titleOf(names.milestone, namespace, name, iid)),
@@ -85,6 +85,7 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
 
   let trail: Crumb[]
   switch (route.name) {
+    case 'overview':
     case 'everything':
       trail = [overview]
       break

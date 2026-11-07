@@ -3,6 +3,7 @@
 // compile). Kept free of Vue imports so node --test can iterate it:
 // crumbs.test.mjs fails for a route without breadcrumbs.
 export const routeNames = [
+  'overview',
   'everything',
   'inbox',
   'stream-project',
