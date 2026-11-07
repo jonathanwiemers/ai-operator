@@ -2181,6 +2181,30 @@ another milestone) is ignored, with one comment on this milestone's
 tracking issue (on %12's while this one has none yet) naming what and why;
 a malformed line is ignored too, with one comment on how to write it.
 
+The Desk writes that line for you when an owner **creates the follow-up
+milestone** from the draft (`POST …/milestones/<iid>/followup`, see
+[ui.md](ui.md#steering)): it is created in GitLab with the owner's own
+token, the edited title and description, and below them, each on its own
+line, the project's spec and autopilot markers, the source's owners and
+owner subjects and `followup-of`:
+
+```
+Finish the checkout: partial refunds and receipts.
+
+/agent spec
+/agent autopilot
+/agent owners @alice @bob
+/agent owner-subjects ada@example.com
+/agent followup-of 12 1 3
+```
+
+So creating it **starts autopilot** on the new milestone. Only the source's
+owner subjects with the `steer` grant may, for an open or a closed source
+milestone, and only for follow-ups still open; owners, owner-subjects and
+followup-of lines in the edited text are dropped, the source's count. Two
+attempts before the operator's next poll both create a milestone; the
+first one named keeps the follow-ups and the other gets the notice above.
+
 ## When a run is cut off
 
 Work that is not pushed yet is not thrown away. When a run is cut off, the

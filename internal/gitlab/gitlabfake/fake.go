@@ -67,6 +67,8 @@ type Fake struct {
 	DiffErrors map[int64]error
 	// CreateIssueError makes CreateIssue fail.
 	CreateIssueError error
+	// CreateMilestoneError makes CreateMilestone fail.
+	CreateMilestoneError error
 	// CreateErrorsAfterWrite makes the next CreateIssue calls create the
 	// issue and then fail with these errors, one per call, oldest first.
 	CreateErrorsAfterWrite []error
@@ -274,6 +276,9 @@ func (f *Fake) CloseMilestone(_ context.Context, _ string, id int64) error {
 func (f *Fake) CreateMilestone(_ context.Context, _ string, opts gitlab.CreateMilestoneOptions) (*gitlab.Milestone, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.CreateMilestoneError != nil {
+		return nil, f.CreateMilestoneError
+	}
 	// IIDs of closed milestones are not used again either.
 	iid := int64(1)
 	for _, m := range f.Milestones {

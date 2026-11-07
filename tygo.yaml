@@ -81,6 +81,7 @@ packages:
       - companion.go
       - cost.go
       - features.go
+      - followup.go
       - gitlab.go
       - issue.go
       - milestone.go

@@ -157,6 +157,17 @@ export const FeatureNameChat = "chat";
 export type FeatureName = typeof FeatureNameFactory | typeof FeatureNameResearch | typeof FeatureNameHistory | typeof FeatureNameChat;
 
 //////////
+// source: followup.go
+
+/**
+ * FollowUpMilestoneView is the follow-up milestone created from the Desk.
+ */
+export interface FollowUpMilestoneView {
+  iid: number /* int64 */;
+  webURL: string;
+}
+
+//////////
 // source: gitlab.go
 
 /**
@@ -306,7 +317,10 @@ export interface IssueFiguresView extends Cost {
  * user may send merge anyway: chat and one of the milestone's owner subjects
  * (the operator checks again); draft, the user may ask the pilot for a draft
  * of a follow-up milestone (the Coordinate task's "draft" command): as merge,
- * while the pilot exists and a follow-up of the retrospective is open.
+ * while the pilot exists and a follow-up of the retrospective is open;
+ * followUp, the user may create a follow-up milestone from the Desk (POST
+ * …/followup): steer, one of the milestone's owner subjects, and a
+ * follow-up of the retrospective is open, also once its tasks are gone.
  */
 export interface MilestonePermissions {
   gitlab: boolean;
@@ -315,6 +329,7 @@ export interface MilestonePermissions {
   transcript: boolean;
   merge: boolean;
   draft: boolean;
+  followUp: boolean;
 }
 /**
  * MilestoneAutopilot is the autopilot of a milestone and its queue.

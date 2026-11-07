@@ -134,14 +134,18 @@ func TestDraftCommandRefusals(t *testing.T) {
 	e := newDraftEnv(t)
 	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot.Retrospective.Created = map[string]int64{"2": 20} })
 	before := e.pilot().Spec.RunRequest
-	for id, tc := range map[int64]struct{ body, want string }{
-		401: {`{"cmd":"draft","followUps":[1,4]}`, "No draft: follow-up 4 is unknown, the retrospective has 3."},
-		402: {`{"cmd":"draft","followUps":[2]}`, "No draft: follow-up 2 was opened as #20."},
-		403: {`{"cmd":"accept","proposal":1}`, "The autopilot of this milestone is done: its pilot only writes drafts of a follow-up milestone now."},
-		404: {`{"cmd":"draft","followUps":[]}`, "draft needs followUps"},
+	// In ID order: the pilot reads chat commands after the last one it read.
+	for _, tc := range []struct {
+		id         int64
+		body, want string
+	}{
+		{401, `{"cmd":"draft","followUps":[1,4]}`, "No draft: follow-up 4 is unknown, the retrospective has 3."},
+		{402, `{"cmd":"draft","followUps":[2]}`, "No draft: follow-up 2 was opened as #20."},
+		{403, `{"cmd":"accept","proposal":1}`, "The autopilot of this milestone is done: its pilot only writes drafts of a follow-up milestone now."},
+		{404, `{"cmd":"draft","followUps":[]}`, "draft needs followUps"},
 	} {
-		e.chatCommand(id, "alice@example.com", tc.body)
-		if got := chatAnswer(e.pilot(), id); !strings.HasPrefix(got, tc.want) {
+		e.chatCommand(tc.id, "alice@example.com", tc.body)
+		if got := chatAnswer(e.pilot(), tc.id); !strings.HasPrefix(got, tc.want) {
 			t.Errorf("%s: answer %q, want %q", tc.body, got, tc.want)
 		}
 	}

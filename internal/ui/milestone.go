@@ -147,7 +147,10 @@ func storedMilestoneView(p *aiv1.AgentProject, d store.MilestoneDetail) Mileston
 // user may send merge anyway: chat and one of the milestone's owner subjects
 // (the operator checks again); draft, the user may ask the pilot for a draft
 // of a follow-up milestone (the Coordinate task's "draft" command): as merge,
-// while the pilot exists and a follow-up of the retrospective is open.
+// while the pilot exists and a follow-up of the retrospective is open;
+// followUp, the user may create a follow-up milestone from the Desk (POST
+// …/followup): steer, one of the milestone's owner subjects, and a
+// follow-up of the retrospective is open, also once its tasks are gone.
 type MilestonePermissions struct {
 	GitLab     bool `json:"gitlab"`
 	Steer      bool `json:"steer"`
@@ -155,6 +158,7 @@ type MilestonePermissions struct {
 	Transcript bool `json:"transcript"`
 	Merge      bool `json:"merge"`
 	Draft      bool `json:"draft"`
+	FollowUp   bool `json:"followUp"`
 }
 
 // MilestoneAutopilot is the autopilot of a milestone and its queue.
@@ -472,6 +476,7 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 		Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name),
 		Merge:      chat && slices.Contains(st.Spec.OwnerSubjects, p.Username)}
 	v.Permissions.Draft = v.Permissions.Merge && coord != nil && openFollowUps(v.Retrospective)
+	v.Permissions.FollowUp = v.Permissions.Steer && slices.Contains(st.Spec.OwnerSubjects, p.Username) && openFollowUps(v.Retrospective)
 	if v.Autopilot != nil {
 		v.Autopilot.Exits = exitViews(st.Status.Autopilot, tasks, ap, *v.Permissions)
 	}
@@ -513,9 +518,8 @@ func (s *Server) issueFigures(ctx context.Context, ap *aiv1.AgentProject, v *Mil
 
 // storedMilestone answers with the snapshot of the project's milestone iid
 // that has no live tasks: not found without the history database or the
-// snapshot. GitLab and steer are as for a live milestone (later slices act
-// with the user's token); without a pilot there is no chat, transcript or
-// merge.
+// snapshot. GitLab, steer and followUp are as for a live milestone;
+// without a pilot there is no chat, transcript, merge or draft.
 func (s *Server) storedMilestone(w http.ResponseWriter, r *http.Request, ap *aiv1.AgentProject, iid int64) {
 	st := s.milestoneDetailStore()
 	if st == nil {
@@ -536,7 +540,9 @@ func (s *Server) storedMilestone(w http.ResponseWriter, r *http.Request, ap *aiv
 	v.Pauses = s.milestonePauses(r.Context(), ap, iid, now)
 	s.addCostDrivers(r.Context(), ap, iid, v.Retrospective)
 	gl := s.gitlab != nil && s.gitlab.serves(ap)
-	v.Permissions = &MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(principalOf(r), ap.Namespace, ap.Name)}
+	p := principalOf(r)
+	v.Permissions = &MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(p, ap.Namespace, ap.Name)}
+	v.Permissions.FollowUp = v.Permissions.Steer && slices.Contains(d.OwnerSubjects, p.Username) && openFollowUps(v.Retrospective)
 	writeJSON(w, http.StatusOK, v)
 }
 

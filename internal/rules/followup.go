@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // The line "<prefix> followup-of <iid> <numbers>" of a milestone names the
@@ -65,4 +66,10 @@ func FollowUpOfLine(prefix string, iid int64, numbers []int) string {
 		fmt.Fprintf(&b, " %d", n)
 	}
 	return b.String()
+}
+
+// WithoutFollowUpOf removes the followup-of lines from a description,
+// spaced like notify.WithoutOwners.
+func WithoutFollowUpOf(description, prefix string) string {
+	return notify.WithoutLines(description, followUpLine(prefix))
 }

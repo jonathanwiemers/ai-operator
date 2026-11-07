@@ -65,3 +65,10 @@ func TestFollowUpOfLineIsNoPartOfTheSpec(t *testing.T) {
 		}
 	}
 }
+
+func TestWithoutFollowUpOf(t *testing.T) {
+	desc := spec + "\n\n/agent followup-of 12 1\n\n/agent owners @alice"
+	if got := WithoutFollowUpOf(desc, "/agent"); got != spec+"\n\n/agent owners @alice" {
+		t.Errorf("WithoutFollowUpOf = %q", got)
+	}
+}

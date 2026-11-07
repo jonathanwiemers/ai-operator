@@ -474,3 +474,23 @@ about how many production lines, and deviations from this spec.
   budget, followup-of), which the confirm step (R15) adds;
   `permissions.draft` also needs an open follow-up; the tab's UI for it
   follows.
+- 2026-11-07, `followup-create-endpoint` (R15 part 2, #239):
+  `POST …/milestones/{iid}/followup` (`internal/ui/followup.go`) with
+  `followUps`, `title` (1..255 runes, one line) and `description` (1 byte
+  to 64 KiB); the source's owners, owner subjects and follow-up states come
+  from the live tasks, else the snapshot, and a live milestone's snapshot
+  counts too (a follow-up is open only while both say so); owner subjects
+  with `steer` only (403), unknown numbers 400, numbers not open 409 with
+  `taken`; the description is the owner's text without its owners,
+  owner-subjects and followup-of lines, a blank line, then the project's
+  spec and autopilot markers (`milestones.specMarker` /
+  `autopilotMarker`, not `<prefix> spec`), `owners`, `owner-subjects` and
+  `rules.FollowUpOfLine`; created with the user's client
+  (`gitlab.API.CreateMilestone`, a 401 through `gitlabRejected`), 201
+  `{"iid","webURL"}`, the comment rate limit, an audit line without the
+  text; `permissions.followUp` (steer, owner subject, an open follow-up)
+  on live and stored milestones; about 190 production lines, over the
+  budget because the issue asked for both sources, the checks and the
+  description in one slice. Deviations: an `owner-subjects` line is
+  carried too, so the owners can steer the new milestone on the Desk; a
+  blank description is refused; the tab's button follows.
