@@ -127,6 +127,13 @@ type Fake struct {
 	// its head. Compares are the results of CompareCommits, keyed "from..to".
 	MRCommits map[int64][]gitlab.Commit
 	Compares  map[string]*gitlab.Compare
+	// RebaseDiffs and RebaseCommits, when set for an MR, become its MRDiffs
+	// and MRCommits at its next successful rebase (a rebase that adapted
+	// lines, or a branch someone pushed to), then are cleared.
+	RebaseDiffs   map[int64][]gitlab.Diff
+	RebaseCommits map[int64][]gitlab.Commit
+	// VersionLists counts ListMergeRequestVersions calls.
+	VersionLists int
 	// versions of each MR, oldest first: recorded when an MR is created and
 	// whenever its SHA differs from the last version's head the next time the
 	// fake looks (a rebase or a version read).
@@ -716,6 +723,20 @@ func (f *Fake) RebaseMergeRequest(_ context.Context, _ string, iid int64) error 
 	} else {
 		mr.SHA += "-rebased"
 		mr.DetailedMergeStatus = "mergeable"
+		if ds, ok := f.RebaseDiffs[iid]; ok {
+			if f.MRDiffs == nil {
+				f.MRDiffs = map[int64][]gitlab.Diff{}
+			}
+			f.MRDiffs[iid] = ds
+			delete(f.RebaseDiffs, iid)
+		}
+		if cs, ok := f.RebaseCommits[iid]; ok {
+			if f.MRCommits == nil {
+				f.MRCommits = map[int64][]gitlab.Commit{}
+			}
+			f.MRCommits[iid] = cs
+			delete(f.RebaseCommits, iid)
+		}
 		if f.MainSHA != "" {
 			mr.DiffRefs = &gitlab.DiffRefs{BaseSHA: f.MainSHA, StartSHA: f.MainSHA, HeadSHA: mr.SHA}
 		}
@@ -760,6 +781,7 @@ func (f *Fake) diffsOf(iid int64) []gitlab.Diff {
 func (f *Fake) ListMergeRequestVersions(_ context.Context, _ string, iid int64) ([]gitlab.MergeRequestVersion, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.VersionLists++
 	if _, ok := f.MRs[iid]; !ok {
 		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "versions"}
 	}

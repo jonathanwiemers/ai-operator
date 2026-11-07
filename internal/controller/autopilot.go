@@ -1405,14 +1405,42 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 		return err
 	}
 	if diff == "" || diff != it.RebasedDiff {
-		if err := unrebased(fmt.Sprintf("after the rebase, the change of !%d is not the one that was reviewed (someone pushed, or the rebase changed lines). "+
-			"The reviewers take the new head over and autopilot goes on once it is reviewed and green; "+
-			"or comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, a.spec.Workflow.CommandPrefix, it.IID)); err != nil {
-			return err
+		// The interdiff tells a mechanical change (the reviewers check the
+		// new head again, no pause) from a push or a real one (a pause).
+		var check rebaseCheck
+		if diff != "" {
+			if check, err = a.checkRebase(ctx, it, mr); err != nil {
+				return err
+			}
+		}
+		reReview := check.mechanical && it.AutoReReviews < maxAutoReReviews
+		if check.mechanical && !reReview {
+			check.why += fmt.Sprintf(", but #%d was re-reviewed after %d rebases without a pause already (at most %d)", it.IID, it.AutoReReviews, maxAutoReReviews)
+		}
+		note := rebaseNote(mr.IID, a.baseName(ctx), check, reReview)
+		if note != "" {
+			if _, err := a.gl.CreateMergeRequestNote(ctx, a.spec.GitLab.Project, mr.IID, note); err != nil {
+				return fmt.Errorf("posting the interdiff on !%d: %w", mr.IID, err)
+			}
 		}
 		var companion string
 		if c := task.Status.Run.Companion; c != nil {
 			companion = c.PushedSHA
+		}
+		if reReview {
+			return a.reReviewRebased(ctx, it, mr, task, check, companion)
+		}
+		why := ""
+		switch {
+		case note != "":
+			why = fmt.Sprintf(" It pauses because %s; the interdiff (reviewed → rebased) is on !%d.", check.why, mr.IID)
+		case check.why != "":
+			why = fmt.Sprintf(" It pauses because %s.", check.why)
+		}
+		if err := unrebased(fmt.Sprintf("after the rebase, the change of !%d is not the one that was reviewed (someone pushed, or the rebase changed lines).%s "+
+			"The reviewers take the new head over and autopilot goes on once it is reviewed and green; "+
+			"or comment `%s …` on #%d so the agent takes it over, or merge by hand", mr.IID, why, a.spec.Workflow.CommandPrefix, it.IID)); err != nil {
+			return err
 		}
 		if err := a.r.askReview(ctx, task, aiv1.ReviewHeads(mr.SHA, companion)); err != nil {
 			return err

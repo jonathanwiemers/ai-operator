@@ -1061,6 +1061,20 @@ spec:
                       description: AutopilotItem is one issue in the queue of an autopilot
                         milestone.
                       properties:
+                        autoReReviewHead:
+                          description: |-
+                            AutoReReviewHead is the rebased head the last automatic re-review was
+                            asked for.
+                          type: string
+                        autoReReviews:
+                          description: |-
+                            AutoReReviews counts the rebases of this item that changed the
+                            reviewed change mechanically (the same commits, a small interdiff or
+                            one in files the default branch changed too), after which the
+                            reviewers checked the rebased head again without a pause. At most 2;
+                            the next such rebase pauses.
+                          format: int32
+                          type: integer
                         budget:
                           description: |-
                             Budget is the issue's budget (its implement task's spec.budgetUSD,
@@ -1199,6 +1213,20 @@ spec:
                       MainRedFix is the main-red issue (mainHealth.autoFix) this milestone
                       drives through the merge gate while the default branch is red.
                     properties:
+                      autoReReviewHead:
+                        description: |-
+                          AutoReReviewHead is the rebased head the last automatic re-review was
+                          asked for.
+                        type: string
+                      autoReReviews:
+                        description: |-
+                          AutoReReviews counts the rebases of this item that changed the
+                          reviewed change mechanically (the same commits, a small interdiff or
+                          one in files the default branch changed too), after which the
+                          reviewers checked the rebased head again without a pause. At most 2;
+                          the next such rebase pauses.
+                        format: int32
+                        type: integer
                       budget:
                         description: |-
                           Budget is the issue's budget (its implement task's spec.budgetUSD,

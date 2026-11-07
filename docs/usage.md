@@ -967,7 +967,22 @@ An MR is merged only when all of these hold:
   GitLab to rebase and waits for CI on the new head, again each time the
   default branch moves. The review carries
   over to the rebased head only if the change is the same: same files, same
-  added and removed lines. Otherwise it pauses.
+  added and removed lines. Otherwise the operator compares the reviewed
+  version of the MR with the rebased one (GitLab's MR versions) and posts
+  the **interdiff** (reviewed → rebased, the added and removed lines per
+  file, cut at 200 lines) as a 🔁 note on the MR. The rebase counts as
+  *mechanical* if the commits are the reviewed ones (same number, titles
+  and author emails, in order) and either the interdiff has at most 40
+  changed lines, or every file of it also changed on the default branch
+  between the two bases. A file that only moved (the same lines under a new
+  path, such as a renumbered migration) counts as one line. A mechanical
+  rebase does not pause: the reviewers check the rebased head again (a
+  review-only run), and the gate goes on as for any push: findings go to the
+  fix loop, a clean review and green CI merge. This happens at most twice
+  per issue (`autoReReviews` on the queue item). A third rebase that changes
+  lines pauses, as do other commits (someone pushed during the rebase), a
+  larger interdiff in files the default branch did not change, or a change
+  GitLab does not return in full. The 40 lines and the cap of 2 are fixed.
 - If the MR has [merge conflicts](#merge-conflicts), or GitLab cannot rebase
   it (conflicts during the rebase, a failed rebase, or a change too large to
   check), the agent merges the default branch and resolves the conflicts. That
@@ -1012,7 +1027,8 @@ comment and in the tracking issue's description. It pauses for:
 - the MR still has conflicts after the agent merged the default branch for
   this head (or `workflow.resolveConflicts` is off);
 - the merge was refused (for example: the bot may not merge), or the rebased
-  change differs from the reviewed one;
+  change differs from the reviewed one and the rebase was not mechanical
+  (see [the merge gate](#the-merge-gate); the interdiff is on the MR);
 - the active issue lost its workflow label while open;
 - the default branch is red ([merge freeze](#main-health)): the active issue
   is blocked (`agent-blocked::main-red`) until it is green;
@@ -1295,7 +1311,8 @@ The MR's pipeline was canceled. Ends by itself like `needsInput`.
 The MR cannot be merged: someone pushed to the branch, it was closed or
 retargeted, needs an approval, has unresolved discussions or conflicts, is a
 draft again, the merge was refused, or the rebased change differs from the
-reviewed one. Ends by itself when the MR is merged by hand or the issue is
+reviewed one beyond a mechanical rebase (the pause reason says why, and the
+interdiff is in a 🔁 note on the MR). Ends by itself when the MR is merged by hand or the issue is
 closed.
 
 - Fix the merge request in GitLab (approve it, resolve its discussions or

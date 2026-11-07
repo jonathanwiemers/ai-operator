@@ -1915,6 +1915,19 @@ type AutopilotItem struct {
 	// +optional
 	RebasedAt *metav1.Time `json:"rebasedAt,omitempty"`
 
+	// AutoReReviews counts the rebases of this item that changed the
+	// reviewed change mechanically (the same commits, a small interdiff or
+	// one in files the default branch changed too), after which the
+	// reviewers checked the rebased head again without a pause. At most 2;
+	// the next such rebase pauses.
+	// +optional
+	AutoReReviews int32 `json:"autoReReviews,omitempty"`
+
+	// AutoReReviewHead is the rebased head the last automatic re-review was
+	// asked for.
+	// +optional
+	AutoReReviewHead string `json:"autoReReviewHead,omitempty"`
+
 	// HealedOn is the commit of the green default branch the operator last
 	// rebased the MR onto because its CI failed with the default branch
 	// (BaseFailing); once per such commit.

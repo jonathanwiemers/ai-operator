@@ -563,6 +563,8 @@ func TestAutopilotRebaseKeepsTheReviewOnlyForTheSameChange(t *testing.T) {
 	e.reconcile() // rebase requested
 	// Someone pushes before the operator sees the rebased head.
 	e.gl.MRDiffs = map[int64][]gitlab.Diff{1: {{OldPath: "app.go", NewPath: "app.go", Diff: "@@ -1 +1 @@\n-old\n+change of !1\n+and more\n"}}}
+	e.gl.MRCommits = map[int64][]gitlab.Commit{1: {{ID: "h1", Title: "And more", AuthorEmail: "human@example.com"}}}
+	e.gl.SetHead(1, "sha-pushed")
 	e.reconcile()
 	ap := e.autopilot()
 	if ap.Phase != aiv1.AutopilotPaused || !strings.Contains(ap.PausedReason, "not the one that was reviewed") || ap.Items[0].RebasedFrom != "" {
@@ -611,7 +613,11 @@ func TestAutopilotRebasePauseEndsOnceTheNewHeadIsReviewedAndGreen(t *testing.T) 
 	name := e.finishRun(1, "sha-api", nil)
 	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "need_rebase"
 	e.reconcile() // rebase requested
-	e.gl.MRDiffs = map[int64][]gitlab.Diff{1: {{OldPath: "app.go", NewPath: "app.go", Diff: "@@ -1 +1 @@\n-old\n+adapted by the rebase\n"}}}
+	// Someone pushed to the rebased branch (a mechanical rebase would not
+	// pause, see rebase_rereview_test.go).
+	e.gl.MRDiffs = map[int64][]gitlab.Diff{1: {{OldPath: "app.go", NewPath: "app.go", Diff: "@@ -1 +1 @@\n-old\n+adapted by hand\n"}}}
+	e.gl.MRCommits = map[int64][]gitlab.Commit{1: {{ID: "h1", Title: "Adapt", AuthorEmail: "human@example.com"}}}
+	e.gl.SetHead(1, "sha-pushed")
 	e.reconcile()
 	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseMergeRequest || !ap.ResumeWhenReady {
 		t.Fatalf("a changed diff pauses until a run settles it: %+v", ap)

@@ -48,6 +48,19 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 			out = append(out, ev)
 		}
 	}
+	// A rebase the reviewers check again instead of a pause: the pilot hears
+	// of it once per rebased head, while that head waits for its review.
+	if ap := st.Status.Autopilot; ap != nil {
+		for _, it := range ap.Items {
+			t := tasks[it.IID]
+			if it.State != aiv1.AutopilotItemActive || it.AutoReReviewHead == "" || t == nil ||
+				t.Status.Run.PushedSHA != it.AutoReReviewHead || t.Status.Run.ReviewedSHA == it.AutoReReviewHead {
+				continue
+			}
+			add("rereview", it.IID, fmt.Sprintf("Autopilot re-reviews the rebased head %s of !%d (#%d) instead of pausing: the rebase changed the reviewed change mechanically "+
+				"(automatic re-review %d of at most %d); the interdiff is on the merge request.", short(it.AutoReReviewHead), it.MergeRequestIID, it.IID, it.AutoReReviews, maxAutoReReviews))
+		}
+	}
 	for iid, t := range tasks {
 		is, ok := issues[iid]
 		if !ok || is.Milestone == nil || is.Milestone.IID != st.Spec.Milestone.IID {

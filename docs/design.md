@@ -1292,9 +1292,24 @@ stateDiagram-v2
   added and removed lines, no positions) and asks GitLab to rebase. The
   rebased head is handed to the CI loop like a push (`pushedSHA`, reset CI,
   back to working) only if its change hashes the same; then the review still
-  holds. A commit pushed meanwhile, or a rebase that had to change lines,
-  pauses; so does a change too large for GitLab to return in full, before
-  any rebase. GitLab may refresh the MR a little after the rebase, so an
+  holds. If the hash differs, `interdiff.go` judges the rebase by the MR's
+  versions: the reviewed one (head `rebasedFrom`) and the rebased one (the
+  MR's head). Other commits than the reviewed ones (number, titles and
+  author emails, in order; a GitLab rebase keeps them), or a missing
+  version, are someone's push. Otherwise the interdiff compares the
+  `+`/`-` lines per path pair, without positions, like the hash. It is
+  *mechanical* with at most `autoReReviewMaxLines` = 40 changed lines, or
+  if every file whose lines changed also changed on the default branch
+  between the two bases (`repository/compare`). A file that kept its lines
+  under a new path counts as one moved line. A mechanical rebase takes the
+  head over like the hold path (`pushedSHA`, reset CI), but `reviewedSHA`
+  stays at the old head. It asks for a review-only run (`reviewFor`) and
+  does not pause, at most `maxAutoReReviews` = 2 times per item
+  (`autoReReviews`; the pilot hears of each one as a `rereview` event).
+  Then the gate judges the new review like any. Anything else pauses as
+  before (`pauseHead`, the reviewers are asked for the new head). Both paths
+  post the interdiff as a defused 🔁 MR note, cut at 200 lines. A change too
+  large for GitLab to return in full pauses, here or before any rebase. GitLab may refresh the MR a little after the rebase, so an
   unchanged head only counts as a failed rebase after five minutes.
   Conflicts and failed rebases pause: resolving them is not automated yet.
 * **No silent waits.** An issue in review whose pushed commit the CI loop
@@ -1557,12 +1572,14 @@ counted interventions; more tools are later steps of
 * **Events** (`internal/controller/pilot_events.go`). On every poll the
   operator derives the milestone's events from state it already has: an
   autopilot pause (`status.autopilot`), an issue with `agent::needs-input`,
-  an issue blocked by `infra` or `quota` (`status.blocked` of its task),
+  an issue blocked by `infra` or `quota` (`status.blocked` of its task), an
+  automatic re-review of a rebased head (`autoReReviewHead`, while it waits
+  for its review),
   and on the main-red lane only (the autopilot milestone that drives the
   main-red issue, so the owners get one prompt) a red default branch with
   its issue or a flaky one (`status.mainHealth`). Each has a key: `stuck/<issue>/<head>`
   (a pause over the issue and its needs-input label are one event),
-  `infra|quota/<issue>/<head>`, `pause-<reason hash>/0/` for a pause over no
+  `infra|quota/<issue>/<head>`, `rereview/<issue>/<head>`, `pause-<reason hash>/0/` for a pause over no
   issue, `main-red/<issue>`, `flaky/<pipeline>/<flaky issue>` (its text
   names the failing tests and ends with the failed attempt's log tail, cut
   from the front to fit, both after its first paragraph, which is the
@@ -2566,6 +2583,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/runner/handoff.go` | agent notes: the bot's handoff comment on the issue |
 | `internal/runner/decisions.go` | decisions: IDs, decision comments, revisits, superseding |
 | `internal/controller/autopilot.go` | autopilot: queue, merge gate, rebase, pause / resume / skip, tracking issue |
+| `internal/controller/interdiff.go` | autopilot: the interdiff of a rebase that changed the reviewed change, re-review instead of a pause |
 | `internal/controller/override.go` | autopilot: an owner's `merge` without a full review |
 | `internal/controller/revisit.go` | revisits of merged issues: follow-up issues, replies |
 | `internal/marker` | hidden markers in GitLab text shared by operator and runner (tracking issue, decisions) |
