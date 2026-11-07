@@ -2144,6 +2144,14 @@ milestone is no longer planned, so its tasks are deleted and `create` no
 longer works; open a late follow-up by hand from the retrospective, or
 reopen the milestone, which brings autopilot back.
 
+The Desk shows the retrospective on the milestone's *Retrospective* tab
+(`…/milestones/<iid>?tab=retrospective`, see [ui.md](ui.md#desk-and-history)):
+the text as posted, the cost drivers and each follow-up with what came of
+it (*open*, *opened as #N*, *taken by %N* or *dismissed*), linked to the
+issue or milestone. It stays there after the milestone is closed and its
+tasks are deleted. The tab is read-only for now: while the milestone is
+open, reply `create` in the thread to open follow-ups.
+
 ## When a run is cut off
 
 Work that is not pushed yet is not thrown away. When a run is cut off, the

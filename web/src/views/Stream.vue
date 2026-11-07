@@ -13,6 +13,7 @@ import StreamComposer from '../components/StreamComposer.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestonePilot from '../components/MilestonePilot.vue'
+import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import { live, useResource } from '../live'
 import { pausePrompt } from '../pauseCard'
@@ -51,7 +52,7 @@ const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
 // tab: Stream, Board or Spend on project streams, Issues (the default),
-// Pilot, Stream, Board or Spend on milestones, kept in ?tab= so it can be
+// Pilot, Retrospective, Stream, Board or Spend on milestones, kept in ?tab= so it can be
 // linked to (a #prompt-Q<n> link without it opens Pilot); Everything has no
 // tabs. A stored milestone has no tasks, so no Board.
 const route = useRoute()
@@ -531,6 +532,11 @@ function showDay(i: number): string | null {
           :milestone="milestone"
           :project="project"
         />
+        <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
+        <div v-else class="empty">Loading…</div>
+      </div>
+      <div v-else-if="tab === 'retrospective'" class="scroll board">
+        <MilestoneRetro v-if="milestone && milestone.iid === milestoneIID" :retrospective="milestone.retrospective" />
         <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
         <div v-else class="empty">Loading…</div>
       </div>

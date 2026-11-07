@@ -3,11 +3,11 @@
 // default and is left out.
 //
 // Project pages: Stream | Board | Spend. Milestone pages: Issues | Pilot |
-// Stream | Board | Spend (decision 7; Retrospective follows), so an old
+// Retrospective | Stream | Board | Spend (decision 7), so an old
 // milestone link with ?tab=stream still opens the stream. The dashboard
 // at /: Overview | Stream (decision 3).
 export type StreamTab = 'stream' | 'board' | 'spend'
-export type MilestoneTab = 'issues' | 'pilot' | StreamTab
+export type MilestoneTab = 'issues' | 'pilot' | 'retrospective' | StreamTab
 export type DashboardTab = 'overview' | 'stream'
 
 export interface Tab<T extends string> {
@@ -24,6 +24,7 @@ export const projectTabs: Tab<StreamTab>[] = [
 export const milestoneTabs: Tab<MilestoneTab>[] = [
   { id: 'issues', label: 'Issues' },
   { id: 'pilot', label: 'Pilot' },
+  { id: 'retrospective', label: 'Retrospective' },
   ...projectTabs,
 ]
 

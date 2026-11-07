@@ -415,3 +415,15 @@ about how many production lines, and deviations from this spec.
   Deviations: issues and roles overlap (a role spans issues), D233-P1
   names both; the milestone's own calls are left out as an issue, they
   show in their roles.
+- 2026-11-07, `retrospective-tab` (R12 view, #234): the milestone tabs
+  *Issues*, *Pilot*, *Retrospective*, *Stream*, *Board*, *Spend*
+  (`?tab=retrospective`, stored milestones too); `MilestoneRetro.vue`
+  shows the posted time and comment link, the text through the notes'
+  `MarkdownBlock` (no HTML), the cost drivers with `shares`/`pctLabel`,
+  and the leftovers with the body folded (D234-P1) and a badge from
+  `followUpStateLabel` linking to the target; the `retrospective` event
+  card links to the tab; about 110 production lines (styles included),
+  over the budget because the issue asked for the whole tab. Deviations:
+  a retrospective without stored text (posted before #232, until the
+  backfill) says so; screenshots were not possible in the agent's
+  container (no cluster, no database, no browser).

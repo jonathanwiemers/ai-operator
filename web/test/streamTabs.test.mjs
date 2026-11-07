@@ -59,7 +59,7 @@ test('dashboard tabQuery: overview drops the parameter, stream sets it', () => {
 })
 
 test('milestone tabs: Issues is the default', () => {
-  assert.deepEqual(milestoneTabs.map((t) => t.id), ['issues', 'pilot', 'stream', 'board', 'spend'])
+  assert.deepEqual(milestoneTabs.map((t) => t.id), ['issues', 'pilot', 'retrospective', 'stream', 'board', 'spend'])
   assert.equal(tabFromQuery(undefined, milestoneTabs), 'issues')
   assert.equal(tabFromQuery('', milestoneTabs), 'issues')
   assert.equal(tabFromQuery('issues', milestoneTabs), 'issues')
@@ -87,7 +87,7 @@ test('milestone tabQuery: Issues drops the parameter, Stream sets it', () => {
 })
 
 test('stored milestone tabs: no Board, a board link falls back to Issues', () => {
-  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'pilot', 'stream', 'spend'])
+  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'pilot', 'retrospective', 'stream', 'spend'])
   assert.equal(tabFromQuery('board', storedMilestoneTabs), 'issues')
 })
 

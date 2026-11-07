@@ -61,6 +61,9 @@ export type {
   MilestoneIssueRow,
   IssueView,
   MilestoneProgress,
+  RetrospectiveView,
+  FollowUpView,
+  CostDriverView,
 } from './generated/views'
 
 export type {

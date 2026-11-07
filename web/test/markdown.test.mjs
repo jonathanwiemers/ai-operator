@@ -80,3 +80,25 @@ test('64 KiB of hostile brackets and delimiters renders quickly', async () => {
   await md('| a | b |\n|---|---|\n' + '| x |\n'.repeat(16 * 1024))
   assert.ok(Date.now() - start < 5000, `took ${Date.now() - start} ms`)
 })
+
+test('a retrospective reads as on GitLab, its HTML as text', async () => {
+  const src = [
+    '🧭 **Retrospective**',
+    '',
+    '### Merged',
+    '- #12 Add the `store` (!40)',
+    '',
+    '| Cost driver | USD | Tokens |',
+    '|---|--:|--:|',
+    '| #12 | $1.20 | 1.2M |',
+    '',
+    '1. Follow-up <img src=x onerror=alert(1)>',
+  ].join('\n')
+  assert.equal(
+    await md(src),
+    '<p>🧭 <strong>Retrospective</strong></p><h5>Merged</h5><ul><li><p>#12 Add the <code>store</code> (!40)</p></li></ul>' +
+      '<div class="table"><table><thead><tr><th>Cost driver</th><th style="text-align:right;">USD</th><th style="text-align:right;">Tokens</th></tr></thead>' +
+      '<tbody><tr><td>#12</td><td style="text-align:right;">$1.20</td><td style="text-align:right;">1.2M</td></tr></tbody></table></div>' +
+      '<ol><li><p>Follow-up &lt;img src=x onerror=alert(1)&gt;</p></li></ol>',
+  )
+})

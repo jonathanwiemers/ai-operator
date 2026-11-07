@@ -35,6 +35,14 @@ function promptTo(ev: StreamEvent) {
     ? { name: 'stream-milestone' as const, params: { ...params, iid: ev.milestoneIID }, hash }
     : { name: 'stream-project' as const, params, hash }
 }
+// retroTo: the Retrospective tab of the event's milestone.
+function retroTo(ev: StreamEvent) {
+  return {
+    name: 'stream-milestone' as const,
+    params: { namespace: ev.namespace, name: ev.project, iid: ev.milestoneIID },
+    query: { tab: 'retrospective' },
+  }
+}
 const taskRunning = computed(() => {
   const ev = e.value
   if (!ev || ev.kind !== 'run.started' || !ev.task || !props.project) return false
@@ -201,9 +209,10 @@ function taskLink(ev: StreamEvent) {
         <p v-if="sendError" class="err">{{ sendError }}</p>
       </div>
 
-      <!-- retrospective: links to the Retrospective tab once it exists -->
+      <!-- retrospective: links to the milestone's Retrospective tab -->
       <div v-else-if="e.kind === 'retrospective'" class="compact">
         <Badge tone="info">retrospective</Badge>
+        <RouterLink v-if="e.milestoneIID" :to="retroTo(e)">Open the retrospective</RouterLink>
         <span v-if="e.data.followUps" class="muted">
           {{ e.data.followUps }} follow-up{{ e.data.followUps === 1 ? '' : 's' }}
         </span>

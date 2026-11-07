@@ -64,8 +64,8 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
 * **Stream** (the dashboard's *Stream* tab for everything, `/projects/<namespace>/<name>` for a
   project, `…/milestones/<iid>` for a milestone: its issues, its tracking
   issue and what was recorded for it): a header with the view tabs: *Stream*,
-  *Board* and *Spend* on a project, *Issues*, *Pilot*, *Stream*, *Board* and
-  *Spend* on a milestone (the tab is kept in `?tab=`, e.g. `…/milestones/3?tab=board`,
+  *Board* and *Spend* on a project, *Issues*, *Pilot*, *Retrospective*, *Stream*,
+  *Board* and *Spend* on a milestone (the tab is kept in `?tab=`, e.g. `…/milestones/3?tab=board`,
   so it can be linked to and reloaded; the default, *Stream* on a project and
   *Issues* on a milestone, is left out, and old `…/milestones/3?tab=stream`
   links still open the stream; a milestone link with a `#prompt-Q<n>` hash
@@ -121,7 +121,8 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   `autopilot.paused`, `autopilot.resumed`), what the pilot did
   (`proposal`, `pilot.writeFailed`), comments (`note`), the Desk chat
   (`chat.user`, `chat.agent`) and the `retrospective` (*Retrospective
-  posted*, once per milestone, with its number of follow-ups). *Stream*:
+  posted*, once per milestone, with its number of follow-ups and a link to
+  the milestone's *Retrospective* tab). *Stream*:
   runs (`run.started`, `run.finished`), pushes (`push`), CI (`ci`),
   reviews (`review`) and merges (`merged`, `closed`). A project's *Stream*
   tab and the dashboard's still show all of them, and every kind can be
@@ -140,6 +141,19 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   *Stream* kinds, so the two tabs share no event. A milestone page has no
   context panel (project pages only). A stored milestone's *Pilot* tab shows its history
   only: the events and the pauses, no cards and no message box.
+* **Retrospective tab** (`…/milestones/<iid>?tab=retrospective`, read-only):
+  when the retrospective was posted and a link to its comment on the
+  tracking issue; its text, rendered like GitLab renders it but without
+  HTML (HTML in it shows as text); the cost drivers (the top issues and
+  roles with cost, tokens and their share of the listed ones, by cost, else
+  by tokens; issues and roles overlap; only with the research database);
+  and the leftovers: number, title, the body folded under *Details*, and a
+  state badge (*open*, *opened as #N*, *taken by %N*, *dismissed*) linking
+  to the issue or milestone it became. When the pilot could not write one,
+  it says why. Without a retrospective: *The retrospective is written when
+  the autopilot is done.* A stored milestone shows its stored text and
+  leftovers; one posted before the text was stored shows *The text of this
+  retrospective is not stored.*
 * **Cost chips** on the stream header (the project or milestone), on each
   milestone scope tab and on the Task page header: `$12.34 · 1.2M tok`, the
   tooltip breaking it down into input, output and cache tokens, calls,
