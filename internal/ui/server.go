@@ -54,6 +54,9 @@ type Server struct {
 	// milestoneRows reads the milestones' snapshot instead of research
 	// (tests).
 	milestoneRows milestoneLister
+	// milestoneDetails reads a milestone's snapshot instead of research
+	// (tests).
+	milestoneDetails milestoneDetailReader
 	// overviewSpend sums the overview's spend instead of research (tests).
 	overviewSpend spendSincer
 	// chat is the chat writer's store, nil until connected or without

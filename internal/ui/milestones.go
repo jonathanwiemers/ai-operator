@@ -214,7 +214,7 @@ func liveMilestoneRows(projects map[string]*aiv1.AgentProject, tasks []aiv1.Agen
 func liveMilestoneRow(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st *aiv1.AgentTask) MilestoneRow {
 	ms := st.Spec.Milestone
 	row := MilestoneRow{Namespace: p.Namespace, Project: p.Name, IID: ms.IID, Title: ms.Title,
-		WebURL: fmt.Sprintf("%s/-/milestones/%d", gitLabRef(p).WebURL, ms.IID), State: MilestoneStatePlanned,
+		WebURL: fmt.Sprintf("%s/-/milestones/%d", gitLabRef(p).WebURL, ms.IID), State: liveMilestoneState(st),
 		StartedAt: optTime(st.CreationTimestamp.Time)}
 	issues := map[int64]bool{}
 	for _, pi := range st.Status.Plan {
@@ -224,16 +224,6 @@ func liveMilestoneRow(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st *aiv1.Age
 	}
 	if ap := st.Status.Autopilot; ap != nil {
 		row.Phase = strings.ToLower(string(ap.Phase))
-		switch {
-		case ap.Phase == aiv1.AutopilotPaused:
-			row.State = MilestoneStatePaused
-		case ap.Phase == aiv1.AutopilotDone:
-			row.State = MilestoneStateDone
-		case ap.Phase == aiv1.AutopilotRunning && len(queuedBehind(st)) > 0:
-			row.State = MilestoneStateWaiting
-		case ap.Phase == aiv1.AutopilotRunning:
-			row.State = MilestoneStateRunning
-		}
 		for _, it := range ap.Items {
 			if it.IID != 0 {
 				issues[it.IID] = it.State == aiv1.AutopilotItemMerged || it.State == aiv1.AutopilotItemSkipped
@@ -262,6 +252,33 @@ func liveMilestoneRow(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st *aiv1.Age
 	}
 	row.Cost = tasksCost(cost)
 	return row
+}
+
+// liveMilestoneState is where the milestone of the spec task st stands.
+func liveMilestoneState(st *aiv1.AgentTask) MilestoneState {
+	ap := st.Status.Autopilot
+	switch {
+	case ap == nil:
+		return MilestoneStatePlanned
+	case ap.Phase == aiv1.AutopilotPaused:
+		return MilestoneStatePaused
+	case ap.Phase == aiv1.AutopilotDone:
+		return MilestoneStateDone
+	case ap.Phase == aiv1.AutopilotRunning && len(queuedBehind(st)) > 0:
+		return MilestoneStateWaiting
+	case ap.Phase == aiv1.AutopilotRunning:
+		return MilestoneStateRunning
+	}
+	return MilestoneStatePlanned
+}
+
+// storedMilestoneState is where a snapshot milestone without live tasks
+// stands: done once closed or done, else planned (in no work).
+func storedMilestoneState(m store.MilestoneRow) MilestoneState {
+	if m.State == "closed" || m.Phase == "done" {
+		return MilestoneStateDone
+	}
+	return MilestoneStatePlanned
 }
 
 // mergeMilestoneRows merges the live rows with the snapshot's: a live row

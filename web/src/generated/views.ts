@@ -203,14 +203,24 @@ export interface ThreadPart {
 /**
  * MilestoneView is one planned milestone: its spec task, autopilot queue,
  * tracking issue, pilot and implement tasks. Pause reasons and proposal
- * summaries are raw agent and CI text: the app shows them as text.
+ * summaries are raw agent and CI text: the app shows them as text. Stored:
+ * its tasks are gone and the view is the snapshot's (history database):
+ * spec is empty (no name), ID 0, and there is no autopilot, pilot, prompt or
+ * task.
  */
 export interface MilestoneView extends Cost {
   id: number /* int64 */;
   iid: number /* int64 */;
   title: string;
   webURL: string;
+  state: MilestoneState;
+  stored?: boolean;
   spec: Task;
+  /**
+   * Issues are the milestone's issues in plan order, then the autopilot's
+   * items the plan lacks, as the snapshot holds them.
+   */
+  issues: MilestoneIssueRow[];
   autopilot?: MilestoneAutopilot;
   tracking?: TrackingIssueRef;
   pilot?: MilestonePilot;
@@ -238,6 +248,32 @@ export interface MilestoneView extends Cost {
    * Permissions is what the app may offer; the endpoints check again.
    */
   permissions?: MilestonePermissions;
+}
+/**
+ * MilestoneIssueRow is an issue of a milestone. State is the autopilot
+ * item's in lower case, planned before autopilot queued it. Task is its live
+ * implement task, if any. Figures are absent without the history database
+ * or while the snapshot lacks the issue. Titles are untrusted text.
+ */
+export interface MilestoneIssueRow {
+  iid: number /* int64 */;
+  title: string;
+  state: 'planned' | 'pending' | 'active' | 'merged' | 'skipped';
+  mergeRequestIID?: number /* int64 */;
+  mergeRequestURL?: string;
+  task?: string;
+  figures?: IssueFiguresView;
+}
+/**
+ * IssueFiguresView is an issue's time and spend: wallSec from its first run
+ * to its merge (or now), 0 if it never ran; agentSec its calls' durations;
+ * pausedSec the milestone's pauses over it (open ones up to now). Its cost
+ * is unknown without calls, never $0.
+ */
+export interface IssueFiguresView extends Cost {
+  wallSec: number /* int64 */;
+  agentSec: number /* int64 */;
+  pausedSec: number /* int64 */;
 }
 /**
  * MilestonePermissions: gitlab, the chat can be shown (after connecting);

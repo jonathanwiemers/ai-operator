@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -14,18 +16,27 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 // MilestoneView is one planned milestone: its spec task, autopilot queue,
 // tracking issue, pilot and implement tasks. Pause reasons and proposal
-// summaries are raw agent and CI text: the app shows them as text.
+// summaries are raw agent and CI text: the app shows them as text. Stored:
+// its tasks are gone and the view is the snapshot's (history database):
+// spec is empty (no name), ID 0, and there is no autopilot, pilot, prompt or
+// task.
 type MilestoneView struct {
-	ID        int64               `json:"id"`
-	IID       int64               `json:"iid"`
-	Title     string              `json:"title"`
-	WebURL    string              `json:"webURL"`
-	Spec      Task                `json:"spec"`
+	ID     int64          `json:"id"`
+	IID    int64          `json:"iid"`
+	Title  string         `json:"title"`
+	WebURL string         `json:"webURL"`
+	State  MilestoneState `json:"state"`
+	Stored bool           `json:"stored,omitempty"`
+	Spec   Task           `json:"spec"`
+	// Issues are the milestone's issues in plan order, then the autopilot's
+	// items the plan lacks, as the snapshot holds them.
+	Issues    []MilestoneIssueRow `json:"issues"`
 	Autopilot *MilestoneAutopilot `json:"autopilot,omitempty"`
 	Tracking  *TrackingIssueRef   `json:"tracking,omitempty"`
 	Pilot     *MilestonePilot     `json:"pilot,omitempty"`
@@ -44,6 +55,84 @@ type MilestoneView struct {
 	Cost   `tstype:",extends"`
 	// Permissions is what the app may offer; the endpoints check again.
 	Permissions *MilestonePermissions `json:"permissions,omitempty"`
+}
+
+// MilestoneIssueRow is an issue of a milestone. State is the autopilot
+// item's in lower case, planned before autopilot queued it. Task is its live
+// implement task, if any. Figures are absent without the history database
+// or while the snapshot lacks the issue. Titles are untrusted text.
+type MilestoneIssueRow struct {
+	IID             int64             `json:"iid"`
+	Title           string            `json:"title"`
+	State           string            `json:"state" tstype:"'planned' | 'pending' | 'active' | 'merged' | 'skipped'"`
+	MergeRequestIID int64             `json:"mergeRequestIID,omitempty"`
+	MergeRequestURL string            `json:"mergeRequestURL,omitempty"`
+	Task            string            `json:"task,omitempty"`
+	Figures         *IssueFiguresView `json:"figures,omitempty"`
+}
+
+// IssueFiguresView is an issue's time and spend: wallSec from its first run
+// to its merge (or now), 0 if it never ran; agentSec its calls' durations;
+// pausedSec the milestone's pauses over it (open ones up to now). Its cost
+// is unknown without calls, never $0.
+type IssueFiguresView struct {
+	WallSec   int64 `json:"wallSec"`
+	AgentSec  int64 `json:"agentSec"`
+	PausedSec int64 `json:"pausedSec"`
+	Cost      `tstype:",extends"`
+}
+
+func issueFiguresView(f store.IssueFigures) *IssueFiguresView {
+	c := callsCost(f.Spend)
+	// The row has no room for the breakdown; the issue's view will.
+	c.Spend = nil
+	return &IssueFiguresView{WallSec: f.WallSec, AgentSec: f.AgentMS / 1000, PausedSec: f.PausedSec, Cost: c}
+}
+
+// milestoneDetailReader reads a milestone's snapshot (the history store).
+type milestoneDetailReader interface {
+	Milestone(ctx context.Context, project store.ProjectKey, iid int64, now time.Time) (store.MilestoneDetail, error)
+}
+
+// milestoneDetailStore is the reader of milestone snapshots, nil without
+// the history database.
+func (s *Server) milestoneDetailStore() milestoneDetailReader {
+	if s.milestoneDetails != nil {
+		return s.milestoneDetails
+	}
+	if st := s.spendStore(); st != nil {
+		return st
+	}
+	return nil
+}
+
+// issueRows are the issues of the snapshot of the spec task st, with their
+// implement tasks from byIssue.
+func issueRows(st *aiv1.AgentTask, byIssue map[int64]string, now time.Time) []MilestoneIssueRow {
+	rows := []MilestoneIssueRow{}
+	snap, _ := history.Snapshot(st, "", now)
+	for _, is := range snap.Issues {
+		rows = append(rows, MilestoneIssueRow{IID: is.IID, Title: is.Title, State: is.State,
+			MergeRequestIID: is.MergeRequestIID, MergeRequestURL: is.MergeRequestURL, Task: byIssue[is.IID]})
+	}
+	return rows
+}
+
+// storedMilestoneView is the view of a milestone whose tasks are gone, from
+// its snapshot d.
+func storedMilestoneView(p *aiv1.AgentProject, d store.MilestoneDetail) MilestoneView {
+	web := gitLabRef(p).WebURL
+	v := MilestoneView{IID: d.IID, Title: d.Title, WebURL: cmp.Or(d.WebURL, fmt.Sprintf("%s/-/milestones/%d", web, d.IID)),
+		State: storedMilestoneState(d.MilestoneRow), Stored: true, Issues: []MilestoneIssueRow{}, Prompts: []PromptView{},
+		Tasks: []Task{}, Companions: []CompanionView{}, Cost: callsCost(d.Spend)}
+	for _, f := range d.Issues {
+		v.Issues = append(v.Issues, MilestoneIssueRow{IID: f.IID, Title: f.Title, State: f.State,
+			MergeRequestIID: f.MRIID, MergeRequestURL: f.MRURL, Figures: issueFiguresView(f)})
+	}
+	if d.TrackingIID != 0 {
+		v.Tracking = &TrackingIssueRef{IID: d.TrackingIID, WebURL: fmt.Sprintf("%s/-/issues/%d", web, d.TrackingIID)}
+	}
+	return v
 }
 
 // MilestonePermissions: gitlab, the chat can be shown (after connecting);
@@ -258,7 +347,7 @@ func queuedBehind(st *aiv1.AgentTask) []int64 {
 func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1.AgentTask, now time.Time) MilestoneView {
 	ms, web := st.Spec.Milestone, gitLabRef(p).WebURL
 	v := MilestoneView{ID: ms.ID, IID: ms.IID, Title: ms.Title, WebURL: fmt.Sprintf("%s/-/milestones/%d", web, ms.IID),
-		Spec: taskView(st, p, now), Tasks: []Task{}}
+		State: liveMilestoneState(st), Spec: taskView(st, p, now), Tasks: []Task{}}
 	var cost float64
 	byIssue := map[int64]string{}
 	for i := range tasks {
@@ -275,6 +364,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 	}
 	sortTasks(v.Tasks)
+	v.Issues = issueRows(st, byIssue, now)
 	v.Companions = milestoneCompanions(p, tasks, ms.IID)
 	v.Cost = tasksCost(cost)
 	if ap := st.Status.Autopilot; ap != nil {
@@ -315,13 +405,8 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 // milestone of the request path. A milestone without a spec task is not
 // found.
 func (s *Server) loadMilestone(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentTask, *aiv1.AgentTask, *aiv1.AgentTask, bool) {
-	ap, tasks, ok := s.loadProject(w, r)
+	ap, tasks, iid, ok := s.loadMilestoneIID(w, r)
 	if !ok {
-		return nil, nil, nil, nil, false
-	}
-	iid, err := strconv.ParseInt(r.PathValue("iid"), 10, 64)
-	if err != nil {
-		notFound(w)
 		return nil, nil, nil, nil, false
 	}
 	st, coord := milestoneTasks(tasks, iid)
@@ -332,16 +417,38 @@ func (s *Server) loadMilestone(w http.ResponseWriter, r *http.Request) (*aiv1.Ag
 	return ap, tasks, st, coord, true
 }
 
-// milestone returns one milestone of a project.
-func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
-	ap, tasks, st, coord, ok := s.loadMilestone(w, r)
+// loadMilestoneIID reads the project and its tasks and the milestone IID
+// of the request path.
+func (s *Server) loadMilestoneIID(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentTask, int64, bool) {
+	ap, tasks, ok := s.loadProject(w, r)
 	if !ok {
+		return nil, nil, 0, false
+	}
+	iid, err := strconv.ParseInt(r.PathValue("iid"), 10, 64)
+	if err != nil {
+		notFound(w)
+		return nil, nil, 0, false
+	}
+	return ap, tasks, iid, true
+}
+
+// milestone returns one milestone of a project: from its live tasks, else
+// from the snapshot of the history database.
+func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
+	ap, tasks, iid, ok := s.loadMilestoneIID(w, r)
+	if !ok {
+		return
+	}
+	st, coord := milestoneTasks(tasks, iid)
+	if st == nil {
+		s.storedMilestone(w, r, ap, iid)
 		return
 	}
 	now := time.Now()
 	v := milestoneView(ap, tasks, st, coord, now)
 	v.Cost = s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, MilestoneIID: v.IID}, v.Cost)
 	v.Pauses = s.milestonePauses(r.Context(), ap, v.IID, now)
+	s.issueFigures(r.Context(), ap, &v, now)
 	gl := s.gitlab != nil && s.gitlab.serves(ap)
 	p := principalOf(r)
 	chat := s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name)
@@ -357,6 +464,60 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 		target = coord.Name
 	}
 	v.Prompts = promptViews(st, target, p.Username, chat)
+	writeJSON(w, http.StatusOK, v)
+}
+
+// issueFigures adds the snapshot's figures to the issues of the live view
+// v, in one call. Without the history database, without a snapshot or when
+// it fails (logged), they stay absent.
+func (s *Server) issueFigures(ctx context.Context, ap *aiv1.AgentProject, v *MilestoneView, now time.Time) {
+	st := s.milestoneDetailStore()
+	if st == nil || len(v.Issues) == 0 {
+		return
+	}
+	d, err := st.Milestone(ctx, store.ProjectKey{Namespace: ap.Namespace, Name: ap.Name}, v.IID, now)
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			s.log.Error(err, "cannot read the milestone's figures", "namespace", ap.Namespace, "project", ap.Name, "milestone", v.IID)
+		}
+		return
+	}
+	byIID := map[int64]store.IssueFigures{}
+	for _, f := range d.Issues {
+		byIID[f.IID] = f
+	}
+	for i := range v.Issues {
+		if f, ok := byIID[v.Issues[i].IID]; ok {
+			v.Issues[i].Figures = issueFiguresView(f)
+		}
+	}
+}
+
+// storedMilestone answers with the snapshot of the project's milestone iid
+// that has no live tasks: not found without the history database or the
+// snapshot. GitLab and steer are as for a live milestone (later slices act
+// with the user's token); without a pilot there is no chat, transcript or
+// merge.
+func (s *Server) storedMilestone(w http.ResponseWriter, r *http.Request, ap *aiv1.AgentProject, iid int64) {
+	st := s.milestoneDetailStore()
+	if st == nil {
+		notFound(w)
+		return
+	}
+	now := time.Now()
+	d, err := st.Milestone(r.Context(), store.ProjectKey{Namespace: ap.Namespace, Name: ap.Name}, iid, now)
+	if errors.Is(err, store.ErrNotFound) {
+		notFound(w)
+		return
+	}
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	v := storedMilestoneView(ap, d)
+	v.Pauses = s.milestonePauses(r.Context(), ap, iid, now)
+	gl := s.gitlab != nil && s.gitlab.serves(ap)
+	v.Permissions = &MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(principalOf(r), ap.Namespace, ap.Name)}
 	writeJSON(w, http.StatusOK, v)
 }
 

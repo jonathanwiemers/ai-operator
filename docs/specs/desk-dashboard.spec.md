@@ -306,3 +306,12 @@ about how many production lines, and deviations from this spec.
   the Inbox's count, items without a milestone included; *next* is the first
   queued implement task in queue order, else the first pending issue of the
   oldest running autopilot.
+- 2026-11-07, `milestone-api` (R6 milestone, #223): `GET …/milestones/{iid}`
+  carries `state` and `issues` (live: the plan's and the autopilot's items as
+  the snapshot orders them, figures from `Store.Milestone` in one call) and,
+  without a spec task, answers from the snapshot with `stored: true`; about
+  180 production lines, over the budget because the issue asked for both
+  parts. Deviations: the figures are a nested `figures` object, absent
+  without the database; `spec` stays a zero task, so `web/` is unchanged; a
+  stored milestone still open is `planned`; a failing snapshot query answers
+  500, not 404. The issue view's snapshot fallback follows with R10.

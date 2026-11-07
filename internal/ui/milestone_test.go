@@ -586,3 +586,186 @@ func TestMilestonePauses(t *testing.T) {
 		t.Errorf("a failing query: status %d, pauses %+v", code, m.Pauses)
 	}
 }
+
+// fakeMilestoneDetails is a snapshot store that answers the milestones it
+// holds, else ErrNotFound, or err.
+type fakeMilestoneDetails struct {
+	d   map[int64]store.MilestoneDetail
+	err error
+	got []int64
+}
+
+func (f *fakeMilestoneDetails) Milestone(_ context.Context, p store.ProjectKey, iid int64, _ time.Time) (store.MilestoneDetail, error) {
+	if p != (store.ProjectKey{Namespace: "team-a", Name: "shop"}) {
+		return store.MilestoneDetail{}, fmt.Errorf("unexpected project %v", p)
+	}
+	f.got = append(f.got, iid)
+	if f.err != nil {
+		return store.MilestoneDetail{}, f.err
+	}
+	d, ok := f.d[iid]
+	if !ok {
+		return store.MilestoneDetail{}, store.ErrNotFound
+	}
+	return d, nil
+}
+
+// paypalFigures are the figures of issue 42 in the snapshot.
+func paypalFigures() store.IssueFigures {
+	return store.IssueFigures{IID: 42, Title: "Add PayPal", State: "merged", MRIID: 5, MRURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5",
+		WallSec: 3600, AgentMS: 1_500_000, PausedSec: 600,
+		Spend: store.SpendTotals{CostUSD: 1.5, CostKnown: true, InputTokens: 1000, OutputTokens: 200, Calls: 3}}
+}
+
+// storedCheckout is the snapshot of the closed milestone 4 of the shop,
+// its tasks gone.
+func storedCheckout() store.MilestoneDetail {
+	return store.MilestoneDetail{
+		MilestoneRow: store.MilestoneRow{Project: store.ProjectKey{Namespace: "team-a", Name: "shop"}, IID: 4, Title: "Refunds",
+			WebURL: "https://gitlab.example.com/acme/shop/-/milestones/4", State: "closed", Phase: "done", TrackingIID: 80,
+			Spend: store.SpendTotals{CostUSD: 2.5, CostKnown: true, InputTokens: 2000, OutputTokens: 300, Calls: 5}},
+		Issues: []store.IssueFigures{
+			{IID: 50, Title: "Refund API", State: "merged", MRIID: 9, WallSec: 7200, AgentMS: 900_000,
+				Spend: store.SpendTotals{CostUSD: 2.5, CostKnown: true, InputTokens: 2000, OutputTokens: 300, Calls: 5}},
+			{IID: 51, Title: "Refund mail", State: "skipped"},
+		},
+	}
+}
+
+func TestMilestoneIssues(t *testing.T) {
+	env, gl := newSteeringEnv(t, Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}})
+	withAutopilot(t, env, gl)
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}}}
+	env.login(t, "/")
+
+	var m MilestoneView
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK {
+		t.Fatalf("milestone: status %d", code)
+	}
+	want := []MilestoneIssueRow{
+		{IID: 42, Title: "Add PayPal", State: "active", MergeRequestIID: 5, MergeRequestURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5", Task: "shop-42-add-paypal"},
+		{IID: 43, Title: "Add Klarna", State: "pending"},
+	}
+	if !slices.Equal(m.Issues, want) || m.State != MilestoneStatePaused || m.Stored {
+		t.Errorf("without a database the issues have no figures: %s %v %+v", m.State, m.Stored, m.Issues)
+	}
+
+	fake := &fakeMilestoneDetails{d: map[int64]store.MilestoneDetail{3: {Issues: []store.IssueFigures{paypalFigures()}}}}
+	env.server.milestoneDetails = fake
+	m = MilestoneView{}
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || len(m.Issues) != 2 {
+		t.Fatalf("milestone: status %d, issues %+v", code, m.Issues)
+	}
+	if !slices.Equal(fake.got, []int64{3}) {
+		t.Errorf("one call for all issues: %v", fake.got)
+	}
+	is := m.Issues[0]
+	if is.State != "active" || is.Task != "shop-42-add-paypal" {
+		t.Errorf("states and tasks stay the live ones: %+v", is)
+	}
+	if f := is.Figures; f == nil || f.WallSec != 3600 || f.AgentSec != 1500 || f.PausedSec != 600 || f.CostUSD != "1.50" ||
+		!f.CostKnown || f.Tokens != 1200 || f.CostFrom != CostFromCalls || f.Spend != nil {
+		t.Errorf("figures of #42 = %+v", is.Figures)
+	}
+	if m.Issues[1].Figures != nil {
+		t.Errorf("an issue the snapshot lacks has no figures: %+v", m.Issues[1].Figures)
+	}
+
+	fake.err = errors.New("connection refused")
+	m = MilestoneView{}
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || len(m.Issues) != 2 || m.Issues[0].Figures != nil {
+		t.Errorf("a failing query: status %d, issues %+v", code, m.Issues)
+	}
+}
+
+func TestStoredMilestone(t *testing.T) {
+	env, gl := newSteeringEnv(t,
+		Rule{Roles: []string{"leads"}, Projects: []string{"team-a/*"}, Steer: true},
+		Rule{Roles: []string{"chatters"}, Projects: []string{"team-a/shop"}, Chat: true})
+	withChat(env.server.cfg)
+	withAutopilot(t, env, gl)
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"leads": map[string]any{}, "chatters": map[string]any{}}}
+	env.login(t, "/")
+	env.connectGitLab(t, "good-code")
+	const stored = "/api/v1/projects/team-a/shop/milestones/4"
+
+	// Without the database a milestone without tasks is not found.
+	if code := env.get(t, stored, nil); code != http.StatusNotFound {
+		t.Errorf("without a database: status %d, want 404", code)
+	}
+
+	fake := &fakeMilestoneDetails{d: map[int64]store.MilestoneDetail{4: storedCheckout()}}
+	env.server.milestoneDetails = fake
+	env.server.pauses = &fakePauses{h: store.PauseHistory{Totals: store.PauseTotals{Count: 1, PausedSec: 600},
+		Pauses: []store.Pause{{Kind: "ciRed", Item: 50, Seconds: 600}}}}
+	var m MilestoneView
+	if code := env.get(t, stored, &m); code != http.StatusOK {
+		t.Fatalf("stored milestone: status %d", code)
+	}
+	if !m.Stored || m.IID != 4 || m.Title != "Refunds" || m.State != MilestoneStateDone || m.WebURL != "https://gitlab.example.com/acme/shop/-/milestones/4" {
+		t.Errorf("milestone = %+v", m)
+	}
+	if m.Spec.Name != "" || m.Autopilot != nil || m.Pilot != nil || len(m.Prompts) != 0 || len(m.Tasks) != 0 {
+		t.Errorf("a stored milestone has no live parts: %+v", m)
+	}
+	if m.Tracking == nil || m.Tracking.IID != 80 || m.Tracking.WebURL != gl.srv.URL+"/acme/shop/-/issues/80" {
+		t.Errorf("tracking = %+v", m.Tracking)
+	}
+	if m.CostUSD != "2.50" || !m.CostKnown || m.Tokens != 2300 || m.CostFrom != CostFromCalls {
+		t.Errorf("cost = %+v", m.Cost)
+	}
+	if m.Pauses == nil || m.Pauses.Totals.PausedSec != 600 || len(m.Pauses.Pauses) != 1 {
+		t.Errorf("pauses = %+v", m.Pauses)
+	}
+	if len(m.Issues) != 2 || m.Issues[0].IID != 50 || m.Issues[0].State != "merged" || m.Issues[0].MergeRequestIID != 9 || m.Issues[0].Task != "" ||
+		m.Issues[0].Figures == nil || m.Issues[0].Figures.WallSec != 7200 || m.Issues[0].Figures.AgentSec != 900 || m.Issues[0].Figures.CostUSD != "2.50" {
+		t.Errorf("issues = %+v", m.Issues)
+	}
+	if f := m.Issues[1].Figures; m.Issues[1].State != "skipped" || f == nil || f.CostKnown || f.CostUSD != "" {
+		t.Errorf("an issue without calls has an unknown cost, never $0: %+v", m.Issues[1])
+	}
+	if p := m.Permissions; p == nil || !p.GitLab || !p.Steer || p.Chat || p.Transcript || p.Merge {
+		t.Errorf("steer as live, no chat, transcript or merge: %+v", m.Permissions)
+	}
+
+	// A live milestone keeps its view; unknown milestones are not found;
+	// the thread and notes need live tasks.
+	m = MilestoneView{}
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Stored || m.Spec.Name != "shop-spec-m3-checkout" {
+		t.Errorf("live milestone: status %d, %+v", code, m)
+	}
+	for _, path := range []string{"/api/v1/projects/team-a/shop/milestones/5", stored + "/thread"} {
+		if code := env.get(t, path, nil); code != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", path, code)
+		}
+	}
+	if code, _ := env.postJSON(t, stored+"/notes", map[string]string{"body": "go"}); code != http.StatusNotFound {
+		t.Errorf("notes on a stored milestone: status %d, want 404", code)
+	}
+	if len(gl.posted) != 0 {
+		t.Errorf("nothing may be posted: %q", gl.posted)
+	}
+
+	fake.err = errors.New("connection refused")
+	if code := env.get(t, stored, nil); code != http.StatusInternalServerError {
+		t.Errorf("a failing query: status %d, want 500", code)
+	}
+}
+
+func TestStoredMilestoneNeedsTheViewRole(t *testing.T) {
+	env, gl := newSteeringEnv(t, Rule{Roles: []string{"devs"}, Projects: []string{"team-b/*"}})
+	withAutopilot(t, env, gl)
+	fake := &fakeMilestoneDetails{d: map[int64]store.MilestoneDetail{4: storedCheckout()}}
+	env.server.milestoneDetails = fake
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}}}
+	env.login(t, "/")
+	if code := env.get(t, "/api/v1/projects/team-a/shop/milestones/4", nil); code != http.StatusNotFound {
+		t.Errorf("status %d, want 404", code)
+	}
+	if len(fake.got) != 0 {
+		t.Errorf("the snapshot may not be read: %v", fake.got)
+	}
+}
