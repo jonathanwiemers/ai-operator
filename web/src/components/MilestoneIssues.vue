@@ -2,8 +2,8 @@
 import { computed } from 'vue'
 import Badge from './Badge.vue'
 import ExtLink from './ExtLink.vue'
-import { costTooltip, durationShort } from '../format'
-import { issueProgress, issueStateTone, progressPct, rowCost, rowTokens, stateTone } from '../milestoneRows'
+import { costTooltip } from '../format'
+import { issueProgress, issueStateTone, issueTime, progressPct, rowCost, rowTokens, stateTone } from '../milestoneRows'
 import type { MilestoneIssueRow, MilestoneView } from '../types'
 
 // A milestone's Issues tab (R9, decision 8): its state, progress and cost,
@@ -15,17 +15,10 @@ const props = defineProps<{ milestone: MilestoneView; namespace: string; name: s
 const progress = computed(() => issueProgress(props.milestone.issues ?? []))
 const pct = computed(() => progressPct({ progress: progress.value }))
 
-// An issue links to its live task until the issue page exists (D226-P2).
+// Every issue links to its issue page, also once its task is gone.
 function issueTo(i: MilestoneIssueRow) {
-  return i.task ? { name: 'task' as const, params: { namespace: props.namespace, name: props.name, task: i.task } } : null
-}
-
-// A time without figures, or a wall time of an issue that never ran, is a
-// dash.
-function time(i: MilestoneIssueRow, k: 'wallSec' | 'agentSec' | 'pausedSec'): string {
-  const f = i.figures
-  if (!f || (k === 'wallSec' && f.wallSec <= 0)) return '—'
-  return durationShort(f[k])
+  const { namespace, name } = props
+  return { name: 'issue' as const, params: { namespace, name, iid: String(props.milestone.iid), issue: String(i.iid) } }
 }
 </script>
 
@@ -66,17 +59,16 @@ function time(i: MilestoneIssueRow, k: 'wallSec' | 'agentSec' | 'pausedSec'): st
       <div v-for="i in milestone.issues" :key="i.iid" class="row" role="row">
         <span class="title" role="cell">
           <span class="iid">#{{ i.iid }}</span>
-          <RouterLink v-if="issueTo(i)" :to="issueTo(i)!">{{ i.title || `#${i.iid}` }}</RouterLink>
-          <span v-else>{{ i.title || `#${i.iid}` }}</span>
+          <RouterLink :to="issueTo(i)">{{ i.title || `#${i.iid}` }}</RouterLink>
         </span>
         <span class="state" role="cell"><Badge :tone="issueStateTone(i.state)">{{ i.state }}</Badge></span>
         <span class="mr" role="cell">
           <ExtLink v-if="i.mergeRequestIID" :href="i.mergeRequestURL">!{{ i.mergeRequestIID }}</ExtLink>
           <span v-else class="dash">—</span>
         </span>
-        <span class="num wall" role="cell"><span class="lbl">wall </span>{{ time(i, 'wallSec') }}</span>
-        <span class="num agent" role="cell"><span class="lbl">agent </span>{{ time(i, 'agentSec') }}</span>
-        <span class="num paused" role="cell"><span class="lbl">paused </span>{{ time(i, 'pausedSec') }}</span>
+        <span class="num wall" role="cell"><span class="lbl">wall </span>{{ issueTime(i, 'wallSec') }}</span>
+        <span class="num agent" role="cell"><span class="lbl">agent </span>{{ issueTime(i, 'agentSec') }}</span>
+        <span class="num paused" role="cell"><span class="lbl">paused </span>{{ issueTime(i, 'pausedSec') }}</span>
         <span class="num cost" role="cell" :title="i.figures ? costTooltip(i.figures) : undefined">
           {{ i.figures ? rowCost(i.figures) : '—' }}
         </span>

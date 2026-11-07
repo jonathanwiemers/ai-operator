@@ -5,7 +5,7 @@ import { crumbsFor, issueLabel, milestoneLabel } from '../src/crumbs.ts'
 import { isRouteName, routeNames } from '../src/routeNames.ts'
 
 // Params every route can take: a route ignores the ones it has none of.
-const params = { namespace: 'ns', name: 'p', iid: '3', task: 'issue-12', id: 'abcdef0123456789', rest: ['x', 'y'] }
+const params = { namespace: 'ns', name: 'p', iid: '3', issue: '12', task: 'issue-12', id: 'abcdef0123456789', rest: ['x', 'y'] }
 const at = { namespace: 'ns', name: 'p' }
 
 const overview = { label: 'Overview', to: { name: 'overview', params: {} } }
@@ -74,16 +74,41 @@ test('task: under the project until the names give its issue', () => {
   assert.deepEqual(crumbsFor(route, other), [overview, project, { label: 'issue-12' }])
 })
 
-test('task with an issue: under its milestone, the issue names the view', () => {
+test('issue: under its milestone, the IID until the titles are known', () => {
+  const route = { name: 'issue', params: { ...at, iid: '3', issue: '12' }, query: { tab: 'stream' } }
+  assert.deepEqual(crumbsFor(route), [overview, project, milestone3('%3'), { label: '#12' }])
+  const names = { milestone: { ...at, iid: 3, title: 'Desk' }, issue: { ...at, iid: 12, title: 'Breadcrumbs' } }
+  assert.deepEqual(crumbsFor(route, names), [overview, project, milestone3('Desk'), { label: 'Breadcrumbs' }])
+  const other = { issue: { ...at, iid: 13, title: 'Other' } }
+  assert.equal(crumbsFor(route, other).at(-1).label, '#12')
+  // A malformed IID is no link to a milestone.
+  const bad = { name: 'issue', params: { ...at, iid: 'x', issue: '12' } }
+  assert.deepEqual(crumbsFor(bad), [overview, project, { label: '12' }])
+})
+
+test('task with an issue: under its issue page', () => {
   const route = { name: 'task', params: { ...at, task: 'issue-12' } }
   const task = { ...at, task: 'issue-12', milestone: 3, issue: 12 }
-  assert.deepEqual(crumbsFor(route, { task }), [overview, project, milestone3('%3'), { label: '#12' }])
+  const issue12 = (label) => ({ label, to: { name: 'issue', params: { ...at, iid: '3', issue: '12' } } })
+  assert.deepEqual(crumbsFor(route, { task }), [
+    overview,
+    project,
+    milestone3('%3'),
+    issue12('#12'),
+    { label: 'issue-12' },
+  ])
   const names = {
     task,
     milestone: { ...at, iid: 3, title: 'Desk' },
     issue: { ...at, iid: 12, title: 'Breadcrumbs' },
   }
-  assert.deepEqual(crumbsFor(route, names), [overview, project, milestone3('Desk'), { label: 'Breadcrumbs' }])
+  assert.deepEqual(crumbsFor(route, names), [
+    overview,
+    project,
+    milestone3('Desk'),
+    issue12('Breadcrumbs'),
+    { label: 'issue-12' },
+  ])
 })
 
 test('research trail: research, runs, run', () => {

@@ -69,7 +69,7 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   *Issues* on a milestone, is left out, and old `…/milestones/3?tab=stream`
   links still open the stream). A milestone's **Issues** tab shows its state,
   progress (merged of total) and cost, then one row per issue: title (linking
-  to its task while it has one), state, merge request, wall time (first run
+  to its issue page), state, merge request, wall time (first run
   to merge, or now), agent time (its calls' durations), paused time (the
   autopilot's pauses over it), cost and tokens; a dash where a figure is
   unknown (no history database, no calls recorded), never $0. On narrow
@@ -95,6 +95,20 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   and one card per event. Comments on the same issue or merge request
   among the loaded events are one card at the newest comment, read top
   down inside. *Load older* pages back; new events come in live.
+* **Issue page** (`…/milestones/<iid>/issues/<issue>`, from a row of the
+  *Issues* tab): the issue's number, title, state, links to the GitLab
+  issue and its merge request, and its figures as on its row (wall, agent
+  and paused time, cost, tokens; a dash where unknown). While a task works
+  on the issue, a *Task* section holds what its task page holds (stage,
+  banners, facts, questions, chat, conversation, the **Live** panel, agent
+  calls, review, CI, autopilot, pod) and *Task page* links to the task's
+  URL, which keeps working. Without one a note says why there is no live
+  transcript: no task yet, or the task is gone with its pod. Below comes
+  the issue's **Stream**, the events recorded for it (`GET /api/v1/stream`
+  with `issue=`), as cards with day dividers, *Load older* paging back and
+  new events live. It reads the snapshot and history, so a closed
+  milestone's issue still opens with its figures and stream after its
+  tasks are gone.
 * **Cost chips** on the stream header (the project or milestone), on each
   milestone scope tab and on the Task page header: `$12.34 · 1.2M tok`, the
   tooltip breaking it down into input, output and cache tokens, calls,
@@ -192,8 +206,8 @@ no message box.
 
 Every view has breadcrumbs at the top, built from its URL: *Overview* ›
 project › milestone › issue, and *Research* › research › *Runs* › run. A
-task page sits under its issue (milestone and issue from the task), a task
-without an issue under the project. The Inbox, the research list and
+task page sits under its issue page (milestone and issue from the task) and
+ends in the task's name, a task without an issue under the project. The Inbox, the research list and
 *Not found* show one crumb. Every crumb but the last is a link to that
 level's default tab (the `?tab=` stays out); the last one names the
 current view. Crumbs show titles once the view has loaded them, before

@@ -354,3 +354,19 @@ about how many production lines, and deviations from this spec.
   the filter is a new `StreamQuery.Issue` (`issue_iid` and a milestone that
   is this one or none), not `Issues = [iid]`, which would keep all of the
   milestone's events; its chat rows are those of the issue's tasks.
+- 2026-11-07, `issue-page` (R10 view, #228): route `issue`
+  (`…/milestones/<iid>/issues/<issue>`) and `views/Issue.vue`: the header
+  with state, links and the row's figures (`issueTime` in
+  `milestoneRows.ts`, shared with `MilestoneIssues.vue`), with a live task
+  the Task page's body (`TaskBody.vue`, extracted from `Task.vue`, which is
+  now a thin wrapper), then the issue's stream (`IssueStream.vue`, `issue=`
+  paging and live events); the Issues tab links every row to it; the task
+  page's crumbs nest under the issue page and end in the task's name;
+  `useResource` loads nothing for an empty path; about 400 production lines
+  (styles included; the extraction moved about 300 more), over the budget
+  because the issue asked for the whole page. Deviations: the stream shows
+  with a live task too (decision 9: figures, then the stream); every row
+  links, not only those with a task (D226-P2 held until this page); with a
+  live task the issue and merge request links sit in the task's row, not
+  twice; screenshots were not possible in the agent's container (no
+  cluster, no browser).

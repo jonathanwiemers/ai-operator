@@ -79,6 +79,10 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
     label: milestoneLabel(iid, titleOf(names.milestone, namespace, name, iid)),
     to: { name: 'stream-milestone', params: { namespace, name, iid: String(iid) } },
   })
+  const issueCrumb = (iid: number, issue: number): Crumb => ({
+    label: issueLabel(issue, titleOf(names.issue, namespace, name, issue)),
+    to: { name: 'issue', params: { namespace, name, iid: String(iid), issue: String(issue) } },
+  })
   const research: Crumb = { label: researchLabel, to: { name: 'researches', params: {} } }
   const study: Crumb = { label: name, to: { name: 'research', params: { namespace, name } } }
   const runs: Crumb = { label: 'Runs', to: { name: 'research-runs', params: { namespace, name } } }
@@ -102,20 +106,23 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
       trail = iid ? [overview, project, milestone(iid)] : [overview, project, { label: param(p, 'iid') || 'Milestone' }]
       break
     }
+    case 'issue': {
+      const iid = iidOf(param(p, 'iid'))
+      const issue = iidOf(param(p, 'issue'))
+      trail =
+        iid && issue
+          ? [overview, project, milestone(iid), issueCrumb(iid, issue)]
+          : [overview, project, { label: param(p, 'issue') || 'Issue' }]
+      break
+    }
     case 'task': {
       const task = param(p, 'task')
       const t = names.task
       const known = t && t.namespace === namespace && t.name === name && t.task === task ? t : undefined
-      // Until R10 adds the issue page, the task page is its issue's page:
-      // the issue is the last crumb.
+      // A task with a milestone and an issue sits under its issue page.
       trail =
         known?.milestone && known.issue
-          ? [
-              overview,
-              project,
-              milestone(known.milestone),
-              { label: issueLabel(known.issue, titleOf(names.issue, namespace, name, known.issue)) },
-            ]
+          ? [overview, project, milestone(known.milestone), issueCrumb(known.milestone, known.issue), { label: task }]
           : [overview, project, { label: task || 'Task' }]
       break
     }

@@ -6,6 +6,7 @@ import Dashboard from './views/Dashboard.vue'
 import Stream from './views/Stream.vue'
 import Inbox from './views/Inbox.vue'
 import TaskView from './views/Task.vue'
+import IssueView from './views/Issue.vue'
 import Researches from './views/Researches.vue'
 import ResearchNew from './views/ResearchNew.vue'
 import ResearchView from './views/Research.vue'
@@ -25,6 +26,12 @@ const routes: (RouteRecordRaw & { name: RouteName })[] = [
     path: '/projects/:namespace/:name/milestones/:iid',
     name: 'stream-milestone',
     component: Stream,
+    props: true,
+  },
+  {
+    path: '/projects/:namespace/:name/milestones/:iid/issues/:issue',
+    name: 'issue',
+    component: IssueView,
     props: true,
   },
   { path: '/projects/:namespace/:name/tasks/:task', name: 'task', component: TaskView, props: true },

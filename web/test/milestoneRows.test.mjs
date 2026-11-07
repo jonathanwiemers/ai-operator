@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import {
   issueProgress,
   issueStateTone,
+  issueTime,
   leftoversLabel,
   milestoneRowKey,
   progressPct,
@@ -81,4 +82,13 @@ test('issueStateTone: active runs, merged succeeded', () => {
   assert.equal(issueStateTone('merged'), 'success')
   assert.equal(issueStateTone('skipped'), 'muted')
   assert.equal(issueStateTone('planned'), 'neutral')
+})
+
+test('issueTime: a dash without figures or a run', () => {
+  const figures = { wallSec: 3900, agentSec: 600, pausedSec: 0, costUSD: '', costKnown: false, tokens: 0 }
+  assert.equal(issueTime({ figures }, 'wallSec'), '1h 5m')
+  assert.equal(issueTime({ figures }, 'agentSec'), '10m')
+  assert.equal(issueTime({ figures }, 'pausedSec'), '0m')
+  assert.equal(issueTime({ figures: { ...figures, wallSec: 0 } }, 'wallSec'), '—')
+  assert.equal(issueTime({}, 'agentSec'), '—')
 })

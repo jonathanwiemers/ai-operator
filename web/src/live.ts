@@ -76,7 +76,8 @@ function bump(kind: string | null): void {
 }
 
 // useResource loads path now, when it changes, and on every change event,
-// or with kinds only on events of those kinds.
+// or with kinds only on events of those kinds; an empty path leaves data
+// null.
 export function useResource<T>(path: () => string, kinds?: string[]) {
   const data = ref<T | null>(null) as Ref<T | null>
   const error = ref<string | null>(null)
@@ -86,8 +87,17 @@ export function useResource<T>(path: () => string, kinds?: string[]) {
 
   async function load() {
     const mine = ++seq
+    const p = path()
+    // An empty path loads nothing (a resource that does not exist yet).
+    if (!p) {
+      data.value = null
+      error.value = null
+      notFound.value = false
+      loading.value = false
+      return
+    }
     try {
-      const v = await get<T>(path())
+      const v = await get<T>(p)
       if (mine !== seq) return
       data.value = v
       error.value = null

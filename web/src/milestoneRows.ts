@@ -1,4 +1,4 @@
-import { cost, tokenCount, type Tone } from './format.ts'
+import { cost, durationShort, tokenCount, type Tone } from './format.ts'
 import type { MilestoneIssueRow, MilestoneProgress, MilestoneRow, MilestoneState } from './types'
 
 // The dashboard's and the project page's milestone rows (decision 5).
@@ -96,4 +96,15 @@ export function issueStateTone(s: MilestoneIssueRow['state']): Tone {
     default:
       return 'neutral'
   }
+}
+
+// issueTime is an issue row's wall, agent or paused time: a dash without
+// figures, and a wall time of an issue that never ran is one too.
+export function issueTime(
+  row: Pick<MilestoneIssueRow, 'figures'>,
+  k: 'wallSec' | 'agentSec' | 'pausedSec',
+): string {
+  const f = row.figures
+  if (!f || (k === 'wallSec' && f.wallSec <= 0)) return '—'
+  return durationShort(f[k])
 }
