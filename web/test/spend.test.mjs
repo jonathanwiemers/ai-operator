@@ -32,6 +32,7 @@ import {
   spendCrumbs,
   spendLocation,
   spendQuery,
+  spendTokenLabel,
   spendUSD,
   stepLinesLine,
   subagentRoles,
@@ -40,6 +41,7 @@ import {
   unitFromQuery,
   unitQuery,
   unknownNote,
+  unmeteredNote,
 } from '../src/spend.ts'
 
 function totals(over = {}) {
@@ -47,6 +49,7 @@ function totals(over = {}) {
     costUSD: '',
     costKnown: false,
     unknownCalls: 0,
+    unmeteredCalls: 0,
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
@@ -475,4 +478,24 @@ test('stepLinesLine sums the step commits and nudges, empty without step data', 
     '1 step commit: median 40, p90 40, max 40 lines · 0 step-gate nudges',
   )
   assert.equal(stepLinesLine(s({ nudges: 1 })), '1 step-gate nudge')
+})
+
+test('unmetered (R8): calls without cost or tokens are counted and marked, costKnown stays', () => {
+  const auto = totals({ calls: 1, unknownCalls: 1, unmeteredCalls: 1 })
+  assert.equal(spendUSD(auto), 'not metered')
+  assert.equal(spendTokenLabel(auto), '—')
+  assert.equal(callCost({ totals: auto, costSource: 'unknown' }), 'not metered')
+  // A cursor call with tokens but no price is unknown, not unmetered.
+  const priced = totals({ calls: 1, unknownCalls: 1, inputTokens: 1200 })
+  assert.equal(spendUSD(priced), 'n/a')
+  assert.equal(spendTokenLabel(priced), '1.2k')
+  // A milestone with a claude and a cursor call keeps its known cost.
+  const mixed = usd('0.50', { calls: 2, unknownCalls: 1, unmeteredCalls: 1, inputTokens: 30 })
+  assert.equal(spendUSD(mixed), '$0.50')
+  assert.equal(unmeteredNote(mixed), '1 call not metered')
+  assert.equal(unmeteredNote(totals({ unmeteredCalls: 3 })), '3 calls not metered')
+  assert.equal(unmeteredNote(totals()), '')
+  const m = (model, main, unmetered) => ({ model, main, tokens: unmetered ? 0 : 100, costUSD: '', costKnown: false, unmetered })
+  assert.equal(modelsLine([m('opus', true, false), m('auto', true, true)]), 'opus, auto (not metered)')
+  assert.equal(modelsLine([m('opus', true, false), m('auto', false, true)]), 'opus, auto (subagent, not metered)')
 })

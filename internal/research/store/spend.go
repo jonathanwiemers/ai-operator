@@ -29,11 +29,14 @@ type SpendScope struct {
 // SpendTotals sums calls. CostUSD sums the known costs, LegacyCostUSD (the
 // part of CostUSD from runs without calls) included; UnknownCalls are the
 // calls without a cost, which never add $0. CostKnown is false only when
-// every call is unknown and there is no legacy cost.
+// every call is unknown and there is no legacy cost. UnmeteredCalls are
+// the calls with neither a cost nor tokens (cursor's ACP reports no
+// usage), a part of UnknownCalls.
 type SpendTotals struct {
 	CostUSD                                                      float64
 	CostKnown                                                    bool
 	UnknownCalls                                                 int64
+	UnmeteredCalls                                               int64
 	InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens int64
 	Calls                                                        int64
 	SubagentCalls                                                int64
@@ -49,12 +52,14 @@ func (t SpendTotals) Tokens() int64 {
 // ModelSplit is one model's share of a child. Main is true for the calls'
 // own model; the other models ran as subagents. CostKnown is false when the
 // calls report no cost for the model (cursor splits tokens only).
+// Unmetered is true when none of its calls reports a cost or tokens.
 type ModelSplit struct {
 	Model     string
 	Main      bool
 	Tokens    int64
 	CostUSD   float64
 	CostKnown bool
+	Unmetered bool
 }
 
 // The levels of spend children.
@@ -180,14 +185,17 @@ const spendTotals = `coalesce(sum(cost_usd), 0)::float8,
 	coalesce(sum(input_tokens), 0)::bigint, coalesce(sum(output_tokens), 0)::bigint,
 	coalesce(sum(cache_read_tokens), 0)::bigint, coalesce(sum(cache_write_tokens), 0)::bigint,
 	count(*) FILTER (WHERE NOT legacy), coalesce(sum(subagent_calls), 0)::bigint,
-	coalesce(sum(duration_ms), 0)::bigint, coalesce(sum(cost_usd) FILTER (WHERE legacy), 0)::float8`
+	coalesce(sum(duration_ms), 0)::bigint, coalesce(sum(cost_usd) FILTER (WHERE legacy), 0)::float8,
+	count(*) FILTER (WHERE NOT legacy AND cost_usd IS NULL
+		AND input_tokens + output_tokens + cache_read_tokens + cache_write_tokens = 0)`
 
 // scanTotals scans the spendTotals columns after the dest columns before
 // them.
 func scanTotals(row pgx.Row, dest ...any) (SpendTotals, error) {
 	var t SpendTotals
 	err := row.Scan(append(dest, &t.CostUSD, &t.UnknownCalls, &t.InputTokens, &t.OutputTokens,
-		&t.CacheReadTokens, &t.CacheWriteTokens, &t.Calls, &t.SubagentCalls, &t.DurationMS, &t.LegacyCostUSD)...)
+		&t.CacheReadTokens, &t.CacheWriteTokens, &t.Calls, &t.SubagentCalls, &t.DurationMS, &t.LegacyCostUSD,
+		&t.UnmeteredCalls)...)
 	t.CostKnown = t.UnknownCalls < t.Calls || t.Calls == 0 || t.LegacyCostUSD > 0
 	return t, err
 }
@@ -367,6 +375,7 @@ func (s *Store) spendChildren(ctx context.Context, sc SpendScope, with string, a
 		var m modelRow
 		t, err := scanTotals(row, &m.key, &m.Model, &m.Main)
 		m.Tokens, m.CostUSD, m.CostKnown = t.Tokens(), t.CostUSD, t.UnknownCalls < t.Calls
+		m.Unmetered = t.Calls > 0 && t.UnmeteredCalls == t.Calls
 		return m, err
 	})
 	if err != nil {

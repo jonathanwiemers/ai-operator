@@ -51,7 +51,7 @@ func milestoneSelect(extra, filter string) string {
 			coalesce(i.total, 0), coalesce(i.merged, 0), coalesce(f.open, 0),
 			` + extra + `coalesce(sp.cost, 0), coalesce(sp.unknown, 0), coalesce(sp.input, 0), coalesce(sp.output, 0),
 			coalesce(sp.cache_read, 0), coalesce(sp.cache_write, 0), coalesce(sp.calls, 0),
-			coalesce(sp.subagent_calls, 0), coalesce(sp.duration, 0), coalesce(sp.legacy, 0)
+			coalesce(sp.subagent_calls, 0), coalesce(sp.duration, 0), coalesce(sp.legacy, 0), coalesce(sp.unmetered, 0)
 		FROM desk_milestones m
 		LEFT JOIN (
 			SELECT namespace, project, milestone_iid, count(*) AS total,
@@ -65,7 +65,7 @@ func milestoneSelect(extra, filter string) string {
 		LEFT JOIN (
 			SELECT namespace, project, milestone_iid, ` + spendTotals + ` FROM spend GROUP BY 1, 2, 3
 		) sp (namespace, project, milestone_iid, cost, unknown, input, output, cache_read, cache_write,
-			calls, subagent_calls, duration, legacy)
+			calls, subagent_calls, duration, legacy, unmetered)
 			ON sp.namespace = m.namespace AND sp.project = m.project AND sp.milestone_iid = m.iid
 		WHERE (m.namespace, m.project) IN (SELECT * FROM unnest($1::text[], $2::text[]))
 			AND ($3 = '' OR m.state = $3)` + filter
@@ -218,11 +218,11 @@ func (s *Store) issueFigures(ctx context.Context, project ProjectKey, milestone,
 		SELECT i.iid, i.title, i.state, coalesce(i.mr_iid, 0), i.mr_url, i.position,
 			coalesce(sp.cost, 0), coalesce(sp.unknown, 0), coalesce(sp.input, 0), coalesce(sp.output, 0),
 			coalesce(sp.cache_read, 0), coalesce(sp.cache_write, 0), coalesce(sp.calls, 0),
-			coalesce(sp.subagent_calls, 0), coalesce(sp.duration, 0), coalesce(sp.legacy, 0)
+			coalesce(sp.subagent_calls, 0), coalesce(sp.duration, 0), coalesce(sp.legacy, 0), coalesce(sp.unmetered, 0)
 		FROM desk_milestone_issues i
 		LEFT JOIN (
 			SELECT issue_iid, `+spendTotals+` FROM spend WHERE issue_iid IS NOT NULL GROUP BY 1
-		) sp (issue_iid, cost, unknown, input, output, cache_read, cache_write, calls, subagent_calls, duration, legacy)
+		) sp (issue_iid, cost, unknown, input, output, cache_read, cache_write, calls, subagent_calls, duration, legacy, unmetered)
 			ON sp.issue_iid = i.iid
 		WHERE i.namespace = $1 AND i.project = $2 AND i.milestone_iid = $3 AND ($4::bigint = 0 OR i.iid = $4)
 		ORDER BY i.position, i.iid`, project.Namespace, project.Name, milestone, issue)

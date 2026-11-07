@@ -17,28 +17,33 @@ import (
 // SpendTotalsView sums calls. CostUSD is "" when no cost is known (cursor
 // calls without pricing), never "0.00"; UnknownCalls are left out of it.
 type SpendTotalsView struct {
-	CostUSD          string `json:"costUSD"`
-	CostKnown        bool   `json:"costKnown"`
-	UnknownCalls     int64  `json:"unknownCalls"`
-	InputTokens      int64  `json:"inputTokens"`
-	OutputTokens     int64  `json:"outputTokens"`
-	CacheReadTokens  int64  `json:"cacheReadTokens"`
-	CacheWriteTokens int64  `json:"cacheWriteTokens"`
-	Calls            int64  `json:"calls"`
-	SubagentCalls    int64  `json:"subagentCalls"`
-	DurationMS       int64  `json:"durationMS"`
+	CostUSD      string `json:"costUSD"`
+	CostKnown    bool   `json:"costKnown"`
+	UnknownCalls int64  `json:"unknownCalls"`
+	// UnmeteredCalls are the calls with neither a cost nor tokens, a part
+	// of UnknownCalls.
+	UnmeteredCalls   int64 `json:"unmeteredCalls"`
+	InputTokens      int64 `json:"inputTokens"`
+	OutputTokens     int64 `json:"outputTokens"`
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
+	Calls            int64 `json:"calls"`
+	SubagentCalls    int64 `json:"subagentCalls"`
+	DurationMS       int64 `json:"durationMS"`
 	// LegacyCostUSD is the part of CostUSD from runs before agent_calls.
 	LegacyCostUSD string `json:"legacyCostUSD,omitempty"`
 }
 
 // ModelSplitView is one model's share of a child; Main is the calls' own
-// model, the others ran as subagents.
+// model, the others ran as subagents. Unmetered: none of its calls reports
+// a cost or tokens (cursor's model auto).
 type ModelSplitView struct {
 	Model     string `json:"model"`
 	Main      bool   `json:"main"`
 	Tokens    int64  `json:"tokens"`
 	CostUSD   string `json:"costUSD"`
 	CostKnown bool   `json:"costKnown"`
+	Unmetered bool   `json:"unmetered"`
 }
 
 // SpendCallView is what a call-level child carries besides its totals.
@@ -241,7 +246,7 @@ func spendView(sp store.Spend) SpendView {
 			Models: make([]ModelSplitView, 0, len(c.Models))}
 		for _, m := range c.Models {
 			cv.Models = append(cv.Models, ModelSplitView{Model: m.Model, Main: m.Main, Tokens: m.Tokens,
-				CostUSD: showKnownCost(m.CostUSD, m.CostKnown), CostKnown: m.CostKnown})
+				CostUSD: showKnownCost(m.CostUSD, m.CostKnown), CostKnown: m.CostKnown, Unmetered: m.Unmetered})
 		}
 		if call := c.Call; call != nil {
 			cv.SpendCallView = &SpendCallView{Kind: call.Kind, Role: call.Role, Engine: call.Engine, Model: call.Model,
@@ -271,7 +276,7 @@ func breakdownViews(bs []store.SpendBreakdown) []SpendBreakdownView {
 
 func spendTotalsView(t store.SpendTotals) SpendTotalsView {
 	v := SpendTotalsView{CostUSD: showKnownCost(t.CostUSD, t.CostKnown), CostKnown: t.CostKnown,
-		UnknownCalls: t.UnknownCalls, InputTokens: t.InputTokens, OutputTokens: t.OutputTokens,
+		UnknownCalls: t.UnknownCalls, UnmeteredCalls: t.UnmeteredCalls, InputTokens: t.InputTokens, OutputTokens: t.OutputTokens,
 		CacheReadTokens: t.CacheReadTokens, CacheWriteTokens: t.CacheWriteTokens, Calls: t.Calls,
 		SubagentCalls: t.SubagentCalls, DurationMS: t.DurationMS}
 	if t.LegacyCostUSD > 0 {

@@ -173,15 +173,29 @@ export function sortByCost<T extends { key: string; totals: SpendTotals }>(rows:
   )
 }
 
-// spendUSD is a total's cost: "n/a" when no call reports one, never $0.
+// unmetered: every call of a total reports neither a cost nor tokens
+// (cursor's model auto).
+export function unmetered(t: SpendTotals): boolean {
+  return t.calls > 0 && t.unmeteredCalls === t.calls
+}
+
+// spendUSD is a total's cost: "n/a" when no call reports one, never $0,
+// "not metered" when no call reports tokens either.
 export function spendUSD(t: SpendTotals): string {
-  return t.costKnown ? cost(t.costUSD) : 'n/a'
+  if (t.costKnown) return cost(t.costUSD)
+  return unmetered(t) ? 'not metered' : 'n/a'
+}
+
+// spendTokenLabel is a total's token count, "—" when not metered.
+export function spendTokenLabel(t: SpendTotals): string {
+  return unmetered(t) ? '—' : tokenCount(spendTokens(t))
 }
 
 // callCost is a call's cost by its source: "$1.23" reported, "~$1.23"
-// estimated from tokens and pricing, "n/a" unknown.
+// estimated from tokens and pricing, "n/a" unknown, "not metered" without
+// tokens either.
 export function callCost(c: Pick<SpendChild, 'totals' | 'costSource'>): string {
-  if (c.costSource === 'unknown' || !c.totals.costKnown) return 'n/a'
+  if (c.costSource === 'unknown' || !c.totals.costKnown) return unmetered(c.totals) ? 'not metered' : 'n/a'
   return c.costSource === 'estimated' ? `~${cost(c.totals.costUSD)}` : cost(c.totals.costUSD)
 }
 
@@ -196,6 +210,13 @@ export function unknownNote(t: SpendTotals): string {
   return `+${t.unknownCalls} ${t.unknownCalls === 1 ? 'call' : 'calls'} without cost`
 }
 
+// unmeteredNote: "2 calls not metered", the calls with neither a cost nor
+// tokens; empty when there is none.
+export function unmeteredNote(t: SpendTotals): string {
+  if (!(t.unmeteredCalls > 0)) return ''
+  return `${t.unmeteredCalls} ${t.unmeteredCalls === 1 ? 'call' : 'calls'} not metered`
+}
+
 // legacyNote: the part of the cost from runs before agent calls were
 // recorded, which have no tokens.
 export function legacyNote(t: SpendTotals): string {
@@ -208,10 +229,14 @@ export function shareLabel(v: number): string {
 }
 
 // modelsLine names a child's models, the main ones first, subagent models
-// marked: "claude-opus-5-5, claude-haiku-5-5 (subagent)".
+// marked: "claude-opus-5-5, claude-haiku-5-5 (subagent)"; a model without
+// cost or tokens as "auto (not metered)".
 export function modelsLine(models: SpendChild['models']): string {
   return modelOrder(models)
-    .map((m) => (m.main ? m.model : `${m.model} (subagent)`))
+    .map((m) => {
+      const marks = [m.main ? '' : 'subagent', m.unmetered ? 'not metered' : ''].filter(Boolean)
+      return marks.length ? `${m.model} (${marks.join(', ')})` : m.model
+    })
     .join(', ')
 }
 

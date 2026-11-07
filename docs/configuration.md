@@ -222,7 +222,10 @@ and its source:
   writes the row: `cost_source = estimated`.
 - Otherwise (no tokens, or no price) the cost is NULL and
   `cost_source = unknown`: the call counts with its duration, and the Desk
-  shows "n/a", never $0.
+  shows "n/a", never $0. A call with neither a cost nor tokens (cursor
+  with model `auto`: ACP reports no usage) is counted as *not metered*
+  besides that (`unmeteredCalls`); it does not change whether the cost is
+  known.
 
 The chart value `pricing` holds the prices in USD per million tokens:
 

@@ -62,6 +62,23 @@ func TestSpendViewUnknownCost(t *testing.T) {
 	}
 }
 
+// TestSpendViewUnmetered (R8): the unmetered count and a model split
+// without cost or tokens reach the views next to a known cost.
+func TestSpendViewUnmetered(t *testing.T) {
+	v := spendView(store.Spend{
+		Totals: store.SpendTotals{CostUSD: 0.5, CostKnown: true, UnknownCalls: 1, UnmeteredCalls: 1, Calls: 2},
+		Children: []store.SpendChild{{Level: store.SpendIssue, Key: "402",
+			Totals: store.SpendTotals{Calls: 1, UnknownCalls: 1, UnmeteredCalls: 1},
+			Models: []store.ModelSplit{{Model: "auto", Main: true, Unmetered: true}}}},
+	})
+	if v.Totals.UnmeteredCalls != 1 || !v.Totals.CostKnown || v.Totals.CostUSD != "0.50" {
+		t.Errorf("totals = %+v, want $0.50 known and 1 unmetered call", v.Totals)
+	}
+	if m := v.Children[0].Models[0]; !m.Unmetered || m.CostUSD != "" || v.Children[0].Totals.UnmeteredCalls != 1 {
+		t.Errorf("child = %+v, want an unmetered auto split", v.Children[0])
+	}
+}
+
 func TestSpend(t *testing.T) {
 	owner, reader := readerStore(t)
 	base := time.Now().Add(-48 * time.Hour).Truncate(time.Second)

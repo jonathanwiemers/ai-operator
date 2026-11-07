@@ -355,6 +355,55 @@ func TestSpendOneTokenBasis(t *testing.T) {
 	}
 }
 
+// TestSpendUnmetered (R8): a cursor call with model auto reports neither a
+// cost nor tokens. It is counted as unmetered, its model split is marked so,
+// and costKnown keeps its meaning.
+func TestSpendUnmetered(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	at, exp := time.Now().Add(-time.Hour).Truncate(time.Second), time.Now().Add(24*time.Hour)
+	cost := 0.5
+	claude := store.Call{Key: "u1", At: at, Namespace: "agents", Project: "unmetered", MilestoneIID: 6, IssueIID: 401,
+		Task: "unmetered-u1", Run: 1, Seq: 1, Kind: "implement", Role: "implement", Engine: "claude",
+		Model: "claude-opus-5-5", InputTokens: 10, OutputTokens: 20, CacheReadTokens: 300, CostUSD: &cost,
+		CostSource: "reported", ExpiresAt: exp}
+	cursor := store.Call{Key: "u2", At: at.Add(time.Minute), Namespace: "agents", Project: "unmetered", MilestoneIID: 6,
+		IssueIID: 402, Task: "unmetered-u2", Run: 1, Seq: 1, Kind: "review", Role: "bugbot", Engine: "cursor",
+		Model: "auto", CostSource: "unknown", ExpiresAt: exp}
+	if _, err := owner.InsertCalls(ctx, []store.Call{claude, cursor}); err != nil {
+		t.Fatal(err)
+	}
+	sp, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "unmetered", MilestoneIID: 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sp.Totals; got.UnmeteredCalls != 1 || got.UnknownCalls != 1 || got.Calls != 2 || !got.CostKnown || got.CostUSD != 0.5 {
+		t.Errorf("totals = %+v, want 2 calls, 1 unknown, 1 unmetered, $0.50 known", got)
+	}
+	splits := map[string]store.ModelSplit{}
+	for _, c := range sp.Children {
+		for _, m := range c.Models {
+			splits[m.Model] = m
+		}
+	}
+	if m := splits["auto"]; !m.Unmetered || m.Tokens != 0 || m.CostKnown {
+		t.Errorf("auto split = %+v, want unmetered without tokens or cost", m)
+	}
+	if m := splits["claude-opus-5-5"]; m.Unmetered || !m.CostKnown {
+		t.Errorf("opus split = %+v, want metered", m)
+	}
+	for _, b := range sp.ByModel {
+		want := int64(0)
+		if b.Key == "auto" {
+			want = 1
+		}
+		if b.Totals.UnmeteredCalls != want {
+			t.Errorf("by model %s: %d unmetered, want %d", b.Key, b.Totals.UnmeteredCalls, want)
+		}
+	}
+}
+
 func TestSpendTuning(t *testing.T) {
 	owner := storetest.New(t)
 	s := asReader(t, owner)

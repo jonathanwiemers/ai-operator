@@ -27,7 +27,7 @@ import {
   sortByCost,
   spendCrumbs,
   spendLocation,
-  spendTokens,
+  spendTokenLabel,
   stepLinesLine,
   tokenBreakdown as tokenTitle,
   spendUSD,
@@ -37,6 +37,7 @@ import {
   unitFromQuery,
   unitQuery,
   unknownNote,
+  unmeteredNote,
   type SpendScope,
   type SpendUnit,
 } from '../spend'
@@ -166,6 +167,9 @@ function rowKey(b: SpendBreakdown): string {
           <span v-if="unknownNote(totals)" class="faint" title="Calls without a reported or estimated cost are not in the sum">
             {{ unknownNote(totals) }}
           </span>
+          <span v-if="unmeteredNote(totals)" class="faint" title="Calls that report neither a cost nor tokens (cursor's model auto)">
+            · {{ unmeteredNote(totals) }}
+          </span>
         </div>
         <dl>
           <div>
@@ -253,7 +257,7 @@ function rowKey(b: SpendBreakdown): string {
                 </td>
                 <td>{{ c.resumed ? 'resumed' : '—' }}</td>
                 <td>{{ c.fallbackFrom || '—' }}</td>
-                <td class="num" :title="tokenTitle(c.totals)">{{ tokenCount(spendTokens(c.totals)) }}</td>
+                <td class="num" :title="tokenTitle(c.totals)">{{ spendTokenLabel(c.totals) }}</td>
                 <td
                   class="num"
                   :class="{ unknown: c.costSource !== 'reported' }"
@@ -297,7 +301,7 @@ function rowKey(b: SpendBreakdown): string {
                     ({{ c.totals.unknownCalls }} n/a)
                   </span>
                 </td>
-                <td class="num" :title="tokenTitle(c.totals)">{{ tokenCount(spendTokens(c.totals)) }}</td>
+                <td class="num" :title="tokenTitle(c.totals)">{{ spendTokenLabel(c.totals) }}</td>
                 <td class="num" :class="{ unknown: !c.totals.costKnown }" :title="legacyNote(c.totals) || undefined">
                   {{ spendUSD(c.totals) }}
                 </td>
@@ -335,7 +339,7 @@ function rowKey(b: SpendBreakdown): string {
                 <tr v-for="(r, i) in b.rows" :key="r.key">
                   <td>{{ rowKey(r) }}</td>
                   <td class="num">{{ r.totals.calls }}</td>
-                  <td class="num" :title="tokenTitle(r.totals)">{{ tokenCount(spendTokens(r.totals)) }}</td>
+                  <td class="num" :title="tokenTitle(r.totals)">{{ spendTokenLabel(r.totals) }}</td>
                   <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ spendUSD(r.totals) }}</td>
                   <td class="share-col" :title="`Share of ${b.shares.basis}`">
                     <div class="share">
@@ -368,7 +372,7 @@ function rowKey(b: SpendBreakdown): string {
                 <tr v-for="r in rounds" :key="r.key">
                   <td>{{ r.key }}</td>
                   <td class="num">{{ r.totals.calls }}</td>
-                  <td class="num" :title="tokenTitle(r.totals)">{{ tokenCount(spendTokens(r.totals)) }}</td>
+                  <td class="num" :title="tokenTitle(r.totals)">{{ spendTokenLabel(r.totals) }}</td>
                   <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ spendUSD(r.totals) }}</td>
                   <td class="num" :class="{ unknown: !r.totals.costKnown }">{{ avgCost(r.totals) }}</td>
                 </tr>

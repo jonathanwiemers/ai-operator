@@ -612,6 +612,11 @@ export interface SpendTotalsView {
   costUSD: string;
   costKnown: boolean;
   unknownCalls: number /* int64 */;
+  /**
+   * UnmeteredCalls are the calls with neither a cost nor tokens, a part
+   * of UnknownCalls.
+   */
+  unmeteredCalls: number /* int64 */;
   inputTokens: number /* int64 */;
   outputTokens: number /* int64 */;
   cacheReadTokens: number /* int64 */;
@@ -626,7 +631,8 @@ export interface SpendTotalsView {
 }
 /**
  * ModelSplitView is one model's share of a child; Main is the calls' own
- * model, the others ran as subagents.
+ * model, the others ran as subagents. Unmetered: none of its calls reports
+ * a cost or tokens (cursor's model auto).
  */
 export interface ModelSplitView {
   model: string;
@@ -634,6 +640,7 @@ export interface ModelSplitView {
   tokens: number /* int64 */;
   costUSD: string;
   costKnown: boolean;
+  unmetered: boolean;
 }
 /**
  * SpendCallView is what a call-level child carries besides its totals.
