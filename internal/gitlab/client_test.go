@@ -627,3 +627,28 @@ func TestListCommitRefs(t *testing.T) {
 		t.Fatalf("paths %v", paths)
 	}
 }
+
+func TestCreateMilestone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.EscapedPath() != "/api/v4/projects/group%2Fapp/milestones" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.EscapedPath())
+		}
+		var got map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		want := map[string]string{"title": "Next", "description": "d", "due_date": "2026-12-01"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("body = %v, want %v", got, want)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":77,"iid":5,"title":"Next","state":"active","web_url":"https://gl/m/5"}`))
+	}))
+	defer srv.Close()
+
+	m, err := New(srv.URL, "tok").CreateMilestone(context.Background(), "group/app", CreateMilestoneOptions{Title: "Next", Description: "d", DueDate: "2026-12-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ID != 77 || m.IID != 5 || m.WebURL != "https://gl/m/5" {
+		t.Fatalf("unexpected milestone %+v", m)
+	}
+}

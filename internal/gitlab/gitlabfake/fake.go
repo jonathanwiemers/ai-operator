@@ -271,6 +271,21 @@ func (f *Fake) CloseMilestone(_ context.Context, _ string, id int64) error {
 	return &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "milestone"}
 }
 
+func (f *Fake) CreateMilestone(_ context.Context, _ string, opts gitlab.CreateMilestoneOptions) (*gitlab.Milestone, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// IIDs of closed milestones are not used again either.
+	iid := int64(1)
+	for _, m := range f.Milestones {
+		if m.IID >= iid {
+			iid = m.IID + 1
+		}
+	}
+	m := gitlab.Milestone{ID: f.id(), IID: iid, Title: opts.Title, Description: opts.Description, State: "active"}
+	f.Milestones = append(f.Milestones, m)
+	return &m, nil
+}
+
 func (f *Fake) ListIssues(_ context.Context, _ string, opts gitlab.ListIssuesOptions) ([]gitlab.Issue, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

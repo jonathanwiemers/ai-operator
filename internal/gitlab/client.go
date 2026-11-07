@@ -30,6 +30,7 @@ type API interface {
 	GetMilestone(ctx context.Context, project string, id int64) (*Milestone, error)
 	UpdateMilestoneDescription(ctx context.Context, project string, id int64, description string) (*Milestone, error)
 	CloseMilestone(ctx context.Context, project string, id int64) error
+	CreateMilestone(ctx context.Context, project string, opts CreateMilestoneOptions) (*Milestone, error)
 	ListIssues(ctx context.Context, project string, opts ListIssuesOptions) ([]Issue, error)
 	GetIssue(ctx context.Context, project string, iid int64) (*Issue, error)
 	CreateIssue(ctx context.Context, project string, opts CreateIssueOptions) (*Issue, error)
@@ -339,6 +340,15 @@ type CreateIssueOptions struct {
 	// Labels is a comma separated list.
 	Labels      string `json:"labels,omitempty"`
 	MilestoneID int64  `json:"milestone_id,omitempty"`
+}
+
+// CreateMilestoneOptions creates a milestone. Dates are YYYY-MM-DD and
+// optional.
+type CreateMilestoneOptions struct {
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	StartDate   string `json:"start_date,omitempty"`
+	DueDate     string `json:"due_date,omitempty"`
 }
 
 // UpdateIssueOptions updates an issue. Empty fields are left untouched.
@@ -762,6 +772,12 @@ func (c *Client) UpdateMilestoneDescription(ctx context.Context, project string,
 func (c *Client) CloseMilestone(ctx context.Context, project string, id int64) error {
 	_, err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/milestones/%d", projectPath(project), id), nil, map[string]string{"state_event": "close"}, nil)
 	return err
+}
+
+func (c *Client) CreateMilestone(ctx context.Context, project string, opts CreateMilestoneOptions) (*Milestone, error) {
+	var m Milestone
+	_, err := c.do(ctx, http.MethodPost, projectPath(project)+"/milestones", nil, opts, &m)
+	return &m, err
 }
 
 func (c *Client) ListIssues(ctx context.Context, project string, opts ListIssuesOptions) ([]Issue, error) {

@@ -189,3 +189,21 @@ func TestTagsAndCommitRefs(t *testing.T) {
 		t.Fatalf("calls recorded: %v %d", b.RefLists, b.TagLists)
 	}
 }
+
+func TestCreateMilestoneRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	f := New()
+	f.Milestones = []gitlab.Milestone{{ID: 5, IID: 3, Title: "old", State: "closed"}}
+	m, err := f.CreateMilestone(ctx, "group/app", gitlab.CreateMilestoneOptions{Title: "new"})
+	if err != nil || m.IID != 4 || m.ID == 5 {
+		t.Fatalf("CreateMilestone = %+v, %v", m, err)
+	}
+	list, _ := f.ListMilestones(ctx, "group/app")
+	if len(list) != 1 || list[0].Title != "new" {
+		t.Fatalf("list = %+v", list)
+	}
+	got, err := f.GetMilestone(ctx, "group/app", m.ID)
+	if err != nil || got.Title != "new" {
+		t.Fatalf("get = %+v, %v", got, err)
+	}
+}

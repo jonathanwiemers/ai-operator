@@ -131,6 +131,14 @@ func (p *Projects) CloseMilestone(ctx context.Context, project string, id int64)
 	return f.CloseMilestone(ctx, project, id)
 }
 
+func (p *Projects) CreateMilestone(ctx context.Context, project string, opts gitlab.CreateMilestoneOptions) (*gitlab.Milestone, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.CreateMilestone(ctx, project, opts)
+}
+
 func (p *Projects) ListIssues(ctx context.Context, project string, opts gitlab.ListIssuesOptions) ([]gitlab.Issue, error) {
 	f, err := p.route(project)
 	if err != nil {
