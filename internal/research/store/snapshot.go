@@ -211,7 +211,8 @@ func (s *Store) followUps(ctx context.Context, p ProjectKey, iid int64) ([]Follo
 
 // DeleteExpiredSnapshot deletes the milestones whose rows all expired before
 // now, with their issues and follow-ups, and returns how many milestones. A
-// milestone with an unexpired row stays whole. It runs as the owner.
+// milestone with an unexpired row stays whole. The backfill's record of a
+// deleted milestone goes with it. It runs as the owner.
 func (s *Store) DeleteExpiredSnapshot(ctx context.Context, now time.Time) (int64, error) {
 	var total int64
 	for {
@@ -228,7 +229,7 @@ func (s *Store) DeleteExpiredSnapshot(ctx context.Context, now time.Time) (int64
 		}
 		total += tag.RowsAffected()
 		if tag.RowsAffected() < deleteBatch {
-			return total, nil
+			return total, s.deleteOrphanBackfill(ctx)
 		}
 	}
 }

@@ -821,6 +821,23 @@ Pauses without an item count for no issue. `IssueFigures` gives one issue's
 figures from the same statements for the issue page. Both return the store's
 not-found error without a snapshot row.
 
+The backfill fills the snapshot once from GitLab for closed milestones the
+recorder never saw (`internal/research/store/backfill.go`, migration `0009`).
+`desk_backfill` records each milestone it tried (`done` or `failed`, the
+attempts, the last error, when), `desk_backfill_projects` when a project's
+closed milestones were listed and whether all of them were backfilled then
+(`ProjectListed`, `SetProjectListed`). `BackfillPending` keeps of a list of
+GitLab milestone IIDs, in order, those neither done, nor stored with issues
+(by the recorder), nor failed three times. `SaveBackfilled` only inserts:
+the milestone with `ON CONFLICT DO NOTHING`, its issues and follow-ups only
+when the milestone row is new, so a row of the recorder is never changed,
+and marks the milestone done in the same transaction. `BackfillFailed`
+counts an attempt and keeps the error (at most 1000 bytes); a done milestone
+stays done. So a run stopped at any point restarts where it stopped. A done
+record is deleted with its milestone by `DeleteExpiredSnapshot`; failed
+records have no milestone and stay, so a broken milestone stays skipped. The
+backfill writes no spend: a milestone without `agent_calls` shows none.
+
 ## GitLab webhooks
 
 GitLab project hooks (GitLab Free; group hooks need Premium) wake the

@@ -534,3 +534,15 @@ about how many production lines, and deviations from this spec.
   (`ownerIDs`), whose reply it would ignore, and needs autopilot on the
   milestone, since only autopilot reads the thread. No screenshots: the
   run had no cluster, database or browser.
+- 2026-11-07, `backfill` (R4 part 1, #243): migration `0009_desk_backfill.sql`
+  with `desk_backfill` (per milestone `done` or `failed`, attempts, last
+  error, time) and `desk_backfill_projects` (listed at, complete), revoked
+  from writers; `BackfillPending`, `SaveBackfilled` (insert only, the
+  recorder's rows win, done in the same transaction), `BackfillFailed`
+  (skipped after `BackfillAttempts`, 3), `ProjectListed` and
+  `SetProjectListed` in `internal/research/store/backfill.go`;
+  `DeleteExpiredSnapshot` deletes done records whose milestone is gone;
+  about 110 production lines, store only. Deviations: the migration is
+  `0009`, as `0007` and `0008` were taken; failed records stay, so a
+  milestone skipped after three failures is not retried after retention.
+  The operator side follows.
