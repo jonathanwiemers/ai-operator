@@ -90,6 +90,7 @@ packages:
       - pause_exits.go
       - prompt.go
       - research.go
+      - retrospective.go
       - spend.go
       - stream.go
       - transcript.go

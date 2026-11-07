@@ -52,7 +52,10 @@ type MilestoneView struct {
 	// Pauses is the autopilot's pause history, absent without the history
 	// database or when it cannot be read.
 	Pauses *PauseHistoryView `json:"pauses,omitempty"`
-	Cost   `tstype:",extends"`
+	// Retrospective is live from task status, else the snapshot's; absent
+	// while there is none.
+	Retrospective *RetrospectiveView `json:"retrospective,omitempty"`
+	Cost          `tstype:",extends"`
 	// Permissions is what the app may offer; the endpoints check again.
 	Permissions *MilestonePermissions `json:"permissions,omitempty"`
 }
@@ -134,6 +137,7 @@ func storedMilestoneView(p *aiv1.AgentProject, d store.MilestoneDetail) Mileston
 	if d.TrackingIID != 0 {
 		v.Tracking = &TrackingIssueRef{IID: d.TrackingIID, WebURL: fmt.Sprintf("%s/-/issues/%d", web, d.TrackingIID)}
 	}
+	v.Retrospective = storedRetrospective(web, v.Tracking, d)
 	return v
 }
 
@@ -400,6 +404,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 		v.Pilot = pv
 	}
+	v.Retrospective = liveRetrospective(web, v.Tracking, st, coord)
 	return v
 }
 
@@ -450,7 +455,10 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 	v := milestoneView(ap, tasks, st, coord, now)
 	v.Cost = s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, MilestoneIID: v.IID}, v.Cost)
 	v.Pauses = s.milestonePauses(r.Context(), ap, v.IID, now)
-	s.issueFigures(r.Context(), ap, &v, now)
+	if d := s.issueFigures(r.Context(), ap, &v, now); v.Retrospective == nil && d != nil {
+		v.Retrospective = storedRetrospective(gitLabRef(ap).WebURL, v.Tracking, *d)
+	}
+	s.addCostDrivers(r.Context(), ap, v.IID, v.Retrospective)
 	gl := s.gitlab != nil && s.gitlab.serves(ap)
 	p := principalOf(r)
 	chat := s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name)
@@ -470,19 +478,20 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 }
 
 // issueFigures adds the snapshot's figures to the issues of the live view
-// v, in one call. Without the history database, without a snapshot or when
-// it fails (logged), they stay absent.
-func (s *Server) issueFigures(ctx context.Context, ap *aiv1.AgentProject, v *MilestoneView, now time.Time) {
+// v, in one call, and returns the snapshot. Without the history database,
+// without a snapshot or when it fails (logged), they stay absent and it
+// returns nil.
+func (s *Server) issueFigures(ctx context.Context, ap *aiv1.AgentProject, v *MilestoneView, now time.Time) *store.MilestoneDetail {
 	st := s.milestoneDetailStore()
 	if st == nil || len(v.Issues) == 0 {
-		return
+		return nil
 	}
 	d, err := st.Milestone(ctx, store.ProjectKey{Namespace: ap.Namespace, Name: ap.Name}, v.IID, now)
 	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
 			s.log.Error(err, "cannot read the milestone's figures", "namespace", ap.Namespace, "project", ap.Name, "milestone", v.IID)
 		}
-		return
+		return nil
 	}
 	byIID := map[int64]store.IssueFigures{}
 	for _, f := range d.Issues {
@@ -493,6 +502,7 @@ func (s *Server) issueFigures(ctx context.Context, ap *aiv1.AgentProject, v *Mil
 			v.Issues[i].Figures = issueFiguresView(f)
 		}
 	}
+	return &d
 }
 
 // storedMilestone answers with the snapshot of the project's milestone iid
@@ -518,6 +528,7 @@ func (s *Server) storedMilestone(w http.ResponseWriter, r *http.Request, ap *aiv
 	}
 	v := storedMilestoneView(ap, d)
 	v.Pauses = s.milestonePauses(r.Context(), ap, iid, now)
+	s.addCostDrivers(r.Context(), ap, iid, v.Retrospective)
 	gl := s.gitlab != nil && s.gitlab.serves(ap)
 	v.Permissions = &MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(principalOf(r), ap.Namespace, ap.Name)}
 	writeJSON(w, http.StatusOK, v)

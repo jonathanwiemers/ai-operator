@@ -404,3 +404,14 @@ about how many production lines, and deviations from this spec.
   lines. Deviations: none; the follow-up states `issue` and `open` were
   there from the `store` slice. Retrospectives posted before this have no
   text until the backfill.
+- 2026-11-07, `retrospective-api` (R12 API, #233): `MilestoneView.retrospective`
+  (`RetrospectiveView`): `text`, `postedAt`, `noteURL` (tracking issue
+  `#note_<id>`), `failed`, `followUps` with `state` and the `targetURL` of
+  an issue or milestone, and `costDrivers`, the top 5 issues and roles by
+  cost (unknown cost after, by tokens) from one `Spend` call, made only
+  when there is a retrospective; live from the spec task's (else the
+  pilot's) status, else the snapshot; about 150 production lines (a new
+  file), over the budget because the issue asked for the whole view.
+  Deviations: issues and roles overlap (a role spans issues), D233-P1
+  names both; the milestone's own calls are left out as an issue, they
+  show in their roles.

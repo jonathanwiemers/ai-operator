@@ -782,3 +782,146 @@ func TestStoredMilestoneNeedsTheViewRole(t *testing.T) {
 		t.Errorf("the snapshot may not be read: %v", fake.got)
 	}
 }
+
+// fakeSpend answers Spend with sp and records the scopes asked.
+type fakeSpend struct {
+	sp  store.Spend
+	err error
+	got []store.SpendScope
+}
+
+func (f *fakeSpend) Spend(_ context.Context, sc store.SpendScope) (store.Spend, error) {
+	f.got = append(f.got, sc)
+	return f.sp, f.err
+}
+
+const retroText = "## Retrospective\n\nCI was red twice."
+
+// withRetrospective sets the retrospective r on the spec task of
+// milestone 3.
+func withRetrospective(t *testing.T, env *testEnv, r *aiv1.PilotRetrospective) {
+	t.Helper()
+	ctx := context.Background()
+	var st aiv1.AgentTask
+	if err := env.reader.Get(ctx, client.ObjectKey{Namespace: "team-a", Name: "shop-spec-m3-checkout"}, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.Status.Pilot = &aiv1.PilotStatus{Retrospective: r}
+	if err := env.reader.Update(ctx, &st); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMilestoneRetrospective(t *testing.T) {
+	env, gl := newSteeringEnv(t, Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}})
+	withAutopilot(t, env, gl)
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}}}
+	env.login(t, "/")
+	web := gl.srv.URL + "/acme/shop"
+	spend := &fakeSpend{sp: store.Spend{Children: []store.SpendChild{
+		{Level: store.SpendMilestone, Key: "3", Label: "Milestone %3", Totals: store.SpendTotals{CostUSD: 9, CostKnown: true}},
+		{Level: store.SpendIssue, Key: "42", Label: "#42", Totals: store.SpendTotals{CostUSD: 1.5, CostKnown: true, InputTokens: 100}},
+	}, ByRole: []store.SpendBreakdown{{Key: "implementer", Totals: store.SpendTotals{CostUSD: 2, CostKnown: true}}}}}
+	env.server.retroSpend = spend
+
+	// None: absent, and no spend is read for it.
+	var m MilestoneView
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Retrospective != nil || len(spend.got) != 0 {
+		t.Fatalf("no retrospective: status %d, %+v, spend calls %v", code, m.Retrospective, spend.got)
+	}
+
+	posted := metav1.NewTime(time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC))
+	withRetrospective(t, env, &aiv1.PilotRetrospective{NoteID: 900, PostedAt: &posted, Text: retroText,
+		FollowUps: []aiv1.PilotFollowUp{{Title: "Retry CI", Body: "flaky lint"}, {Title: "Docs"}},
+		Created:   map[string]int64{"1": 60}})
+	m = MilestoneView{}
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK {
+		t.Fatalf("live: status %d", code)
+	}
+	r := m.Retrospective
+	if r == nil || r.Text != retroText || r.NoteURL != web+"/-/issues/77#note_900" || r.PostedAt == nil || !r.PostedAt.Equal(&posted) || r.Failed != "" {
+		t.Fatalf("live retrospective = %+v", r)
+	}
+	wantFollowUps := []FollowUpView{
+		{Number: 1, Title: "Retry CI", Body: "flaky lint", State: "issue", TargetIID: 60, TargetURL: web + "/-/issues/60"},
+		{Number: 2, Title: "Docs", State: "open"},
+	}
+	if !slices.Equal(r.FollowUps, wantFollowUps) {
+		t.Errorf("follow-ups = %+v", r.FollowUps)
+	}
+	wantDrivers := []CostDriverView{
+		{Label: "implementer", Kind: "role", CostUSD: "2.00", CostKnown: true},
+		{Label: "#42", Kind: "issue", CostUSD: "1.50", CostKnown: true, Tokens: 100},
+	}
+	if !slices.Equal(r.CostDrivers, wantDrivers) {
+		t.Errorf("cost drivers = %+v", r.CostDrivers)
+	}
+	if want := (store.SpendScope{Namespace: "team-a", Project: "shop", MilestoneIID: 3}); !slices.Equal(spend.got, []store.SpendScope{want}) {
+		t.Errorf("one spend call for the milestone: %v", spend.got)
+	}
+
+	// Stored: the same text after the tasks are gone; later states link.
+	d := storedCheckout()
+	d.RetroText, d.RetroNoteID, d.RetroPostedAt = retroText, 900, posted.Time
+	d.FollowUps = []store.FollowUpRow{{Number: 1, Title: "Retry CI", State: "issue", TargetIID: 60},
+		{Number: 2, Title: "Docs", State: "milestone", TargetIID: 7}, {Number: 3, Title: "Old", State: "dismissed"}}
+	env.server.milestoneDetails = &fakeMilestoneDetails{d: map[int64]store.MilestoneDetail{4: d}}
+	m = MilestoneView{}
+	if code := env.get(t, "/api/v1/projects/team-a/shop/milestones/4", &m); code != http.StatusOK || !m.Stored {
+		t.Fatalf("stored: status %d", code)
+	}
+	if r := m.Retrospective; r == nil || r.Text != retroText || r.NoteURL != web+"/-/issues/80#note_900" || r.PostedAt == nil ||
+		!r.PostedAt.Time.Equal(posted.Time) || !slices.Equal(r.CostDrivers, wantDrivers) {
+		t.Fatalf("stored retrospective = %+v", r)
+	}
+	wantStored := []FollowUpView{
+		{Number: 1, Title: "Retry CI", State: "issue", TargetIID: 60, TargetURL: web + "/-/issues/60"},
+		{Number: 2, Title: "Docs", State: "milestone", TargetIID: 7, TargetURL: web + "/-/milestones/7"},
+		{Number: 3, Title: "Old", State: "dismissed"},
+	}
+	if !slices.Equal(m.Retrospective.FollowUps, wantStored) {
+		t.Errorf("stored follow-ups = %+v", m.Retrospective.FollowUps)
+	}
+
+	// Failed, and a failing spend read leaves the drivers out.
+	withRetrospective(t, env, &aiv1.PilotRetrospective{Failed: "the pilot gave no answer"})
+	spend.err = errors.New("connection refused")
+	m = MilestoneView{}
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK {
+		t.Fatalf("failed: status %d", code)
+	}
+	if r := m.Retrospective; r == nil || r.Failed != "the pilot gave no answer" || r.Text != "" || r.NoteURL != "" ||
+		r.PostedAt != nil || len(r.FollowUps) != 0 || r.CostDrivers != nil {
+		t.Errorf("failed retrospective = %+v", r)
+	}
+	if len(gl.posted) != 0 || len(gl.read) != 0 {
+		t.Errorf("no GitLab calls: posted %q, read %q", gl.posted, gl.read)
+	}
+}
+
+func TestCostDrivers(t *testing.T) {
+	known := func(usd float64, tokens int64) store.SpendTotals {
+		return store.SpendTotals{CostUSD: usd, CostKnown: true, InputTokens: tokens}
+	}
+	unknown := func(tokens int64) store.SpendTotals { return store.SpendTotals{OutputTokens: tokens} }
+	sp := store.Spend{
+		Children: []store.SpendChild{
+			{Level: store.SpendIssue, Label: "#1", Totals: known(1, 10)},
+			{Level: store.SpendIssue, Label: "#2", Totals: unknown(500)},
+			{Level: store.SpendIssue, Label: "#3", Totals: known(3, 10)},
+			{Level: store.SpendIssue, Label: "#4", Totals: unknown(900)},
+		},
+		ByRole: []store.SpendBreakdown{{Key: "reviewer", Totals: known(2, 10)}, {Key: "pilot", Totals: known(0.5, 10)}},
+	}
+	var got []string
+	for _, d := range costDrivers(sp) {
+		got = append(got, d.Label+"="+d.CostUSD)
+	}
+	if want := []string{"#3=3.00", "reviewer=2.00", "#1=1.00", "pilot=0.50", "#4="}; !slices.Equal(got, want) {
+		t.Errorf("drivers = %v, want %v", got, want)
+	}
+	if got := costDrivers(store.Spend{}); got == nil || len(got) != 0 {
+		t.Errorf("no spend: %v", got)
+	}
+}

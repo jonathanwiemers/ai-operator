@@ -264,6 +264,11 @@ export interface MilestoneView extends Cost {
    */
   pauses?: PauseHistoryView;
   /**
+   * Retrospective is live from task status, else the snapshot's; absent
+   * while there is none.
+   */
+  retrospective?: RetrospectiveView;
+  /**
    * Permissions is what the app may offer; the endpoints check again.
    */
   permissions?: MilestonePermissions;
@@ -771,6 +776,51 @@ export interface SearchHit {
   title: string;
   summary: string;
   createdAt: string;
+}
+
+//////////
+// source: retrospective.go
+
+/**
+ * RetrospectiveView is a milestone's retrospective, live from task status
+ * or stored. Text, follow-up titles and bodies are untrusted markdown
+ * without HTML. NoteURL is its comment on the tracking issue; Failed says
+ * why there is none (live only).
+ */
+export interface RetrospectiveView {
+  text: string;
+  postedAt?: string;
+  noteURL?: string;
+  failed?: string;
+  followUps: FollowUpView[];
+  /**
+   * CostDrivers are the milestone's top issues and roles by cost, absent
+   * without the history database.
+   */
+  costDrivers?: CostDriverView[];
+}
+/**
+ * FollowUpView is a leftover of a retrospective and what came of it:
+ * TargetURL is the issue or milestone it became.
+ */
+export interface FollowUpView {
+  number: number /* int */;
+  title: string;
+  body?: string;
+  state: 'open' | 'issue' | 'milestone' | 'dismissed';
+  targetIID?: number /* int64 */;
+  targetURL?: string;
+}
+/**
+ * CostDriverView is an issue (label "#42") or a role of the milestone's
+ * calls, with its cost ("" when unknown) and tokens.
+ */
+export interface CostDriverView {
+  label: string;
+  kind: 'issue' | 'role';
+  costUSD: string;
+  costKnown: boolean;
+  tokens: number /* int64 */;
 }
 
 //////////
