@@ -281,3 +281,11 @@ about how many production lines, and deviations from this spec.
   statement shared with the detail. Deviations: `IssueFigures` carries
   `WallSec` too; spend and events count for an issue only within its
   milestone; an issue missing from the snapshot is not found.
+- 2026-11-07, `crumbs` (R19, #220): `routeNames` (the routes are typed
+  against it), the pure `crumbsFor`, the `crumbNames` store and
+  `Breadcrumbs.vue` in the app's header on every view; the per-view crumb
+  lines of the task and research pages are gone, `spendCrumbs` reuses the
+  milestone and issue labels; about 200 production lines. Deviations: with no
+  issue page yet, a task with an issue ends in the issue's crumb (the issue
+  names the view); a plan task stays under the project; a research run is
+  labelled by its start once loaded.

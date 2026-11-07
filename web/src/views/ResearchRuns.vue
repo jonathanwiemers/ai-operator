@@ -95,13 +95,6 @@ watch(
 <template>
   <NotFound v-if="notFound" />
   <div v-else class="page">
-    <nav class="crumbs muted">
-      <RouterLink to="/research">Research</RouterLink>
-      <span>/</span>
-      <RouterLink :to="base">{{ name }}</RouterLink>
-      <span>/</span>
-      <span>Runs</span>
-    </nav>
 
     <div class="row head">
       <h1>Run history</h1>
@@ -162,13 +155,6 @@ watch(
 </template>
 
 <style scoped>
-.crumbs {
-  display: flex;
-  gap: 8px;
-  font-size: 13px;
-  margin-bottom: 14px;
-}
-
 .head {
   margin-bottom: 14px;
 }

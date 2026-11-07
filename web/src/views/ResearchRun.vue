@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
+import { setCrumbNames } from '../crumbNames'
 import { useResource } from '../live'
 import { absTime, cost, runLine, type Tone } from '../format'
 import Badge from '../components/Badge.vue'
@@ -9,12 +10,17 @@ import NotFound from './NotFound.vue'
 import type { ResearchResponse, ResearchRun } from '../types'
 
 const props = defineProps<{ namespace: string; name: string; id: string }>()
-const base = computed(() => `/research/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}`)
 const { data, error, notFound, loading } = useResource<ResearchResponse>(
   () => `/researches/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/runs/${encodeURIComponent(props.id)}`,
   ['research'],
 )
 const run = computed(() => data.value?.run ?? null)
+watchEffect(() => {
+  const r = run.value
+  if (r?.id === props.id) {
+    setCrumbNames({ run: { namespace: props.namespace, name: props.name, id: r.id, title: `Run of ${absTime(r.startedAt)}` } })
+  }
+})
 
 const statusTone: Record<ResearchRun['status'], Tone> = {
   running: 'progress',
@@ -34,13 +40,6 @@ const duration = computed(() => {
 <template>
   <NotFound v-if="notFound" />
   <div v-else class="page">
-    <nav class="crumbs muted">
-      <RouterLink to="/research">Research</RouterLink>
-      <span>/</span>
-      <RouterLink :to="base">{{ name }}</RouterLink>
-      <span>/</span>
-      <span class="mono">{{ id.slice(0, 8) }}</span>
-    </nav>
 
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !run" class="card empty">Loading…</div>
@@ -99,13 +98,6 @@ const duration = computed(() => {
 </template>
 
 <style scoped>
-.crumbs {
-  display: flex;
-  gap: 8px;
-  font-size: 13px;
-  margin-bottom: 14px;
-}
-
 .warnings {
   margin: 0;
   padding-left: 18px;

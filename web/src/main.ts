@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import App from './App.vue'
 import { canStartResearch, featuresLoaded, hasFeature, isResearchPath } from './api'
 import Stream from './views/Stream.vue'
@@ -11,39 +11,44 @@ import ResearchView from './views/Research.vue'
 import ResearchRunsView from './views/ResearchRuns.vue'
 import ResearchRunView from './views/ResearchRun.vue'
 import NotFound from './views/NotFound.vue'
+import type { RouteName } from './routeNames'
 import './style.css'
+
+// Every route is named, with a name from routeNames: crumbsFor and its test
+// cover each one.
+const routes: (RouteRecordRaw & { name: RouteName })[] = [
+  { path: '/', name: 'everything', component: Stream },
+  { path: '/inbox', name: 'inbox', component: Inbox },
+  { path: '/projects/:namespace/:name', name: 'stream-project', component: Stream, props: true },
+  {
+    path: '/projects/:namespace/:name/milestones/:iid',
+    name: 'stream-milestone',
+    component: Stream,
+    props: true,
+  },
+  { path: '/projects/:namespace/:name/tasks/:task', name: 'task', component: TaskView, props: true },
+  // Old pages, kept as redirects (with their names) so links and bookmarks work.
+  {
+    path: '/projects/:namespace/:name/board',
+    name: 'project-board',
+    redirect: (to) => ({ name: 'stream-project', params: to.params, query: { tab: 'board' } }),
+  },
+  {
+    path: '/projects/:namespace/:name/milestones/:iid/detail',
+    name: 'milestone',
+    redirect: (to) => ({ name: 'stream-milestone', params: to.params, query: { tab: 'stream' } }),
+  },
+  { path: '/research', name: 'researches', component: Researches },
+  { path: '/research/new', name: 'research-new', component: ResearchNew },
+  { path: '/research/:namespace/:name', name: 'research', component: ResearchView, props: true },
+  { path: '/research/:namespace/:name/runs', name: 'research-runs', component: ResearchRunsView, props: true },
+  { path: '/research/:namespace/:name/runs/:id', name: 'research-run', component: ResearchRunView, props: true },
+  { path: '/:rest(.*)*', name: 'not-found', component: NotFound },
+]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes: [
-    { path: '/', name: 'everything', component: Stream },
-    { path: '/inbox', name: 'inbox', component: Inbox },
-    { path: '/projects/:namespace/:name', name: 'stream-project', component: Stream, props: true },
-    {
-      path: '/projects/:namespace/:name/milestones/:iid',
-      name: 'stream-milestone',
-      component: Stream,
-      props: true,
-    },
-    { path: '/projects/:namespace/:name/tasks/:task', name: 'task', component: TaskView, props: true },
-    // Old pages, kept as redirects (with their names) so links and bookmarks work.
-    {
-      path: '/projects/:namespace/:name/board',
-      name: 'project-board',
-      redirect: (to) => ({ name: 'stream-project', params: to.params, query: { tab: 'board' } }),
-    },
-    {
-      path: '/projects/:namespace/:name/milestones/:iid/detail',
-      name: 'milestone',
-      redirect: (to) => ({ name: 'stream-milestone', params: to.params, query: { tab: 'stream' } }),
-    },
-    { path: '/research', name: 'researches', component: Researches },
-    { path: '/research/new', name: 'research-new', component: ResearchNew },
-    { path: '/research/:namespace/:name', name: 'research', component: ResearchView, props: true },
-    { path: '/research/:namespace/:name/runs', name: 'research-runs', component: ResearchRunsView, props: true },
-    { path: '/research/:namespace/:name/runs/:id', name: 'research-run', component: ResearchRunView, props: true },
-    { path: '/:rest(.*)*', name: 'not-found', component: NotFound },
-  ],
+  routes,
   scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
 })
 

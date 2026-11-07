@@ -150,6 +150,20 @@ The Desk has no projects list or separate board and milestone pages. The former 
 (`…/milestones/<iid>/detail`) redirect to the project stream's Board tab and
 the milestone stream; task and research pages keep their URLs.
 
+### Navigation
+
+Every view has breadcrumbs at the top, built from its URL: *Overview* ›
+project › milestone › issue, and *Research* › research › *Runs* › run. A
+task page sits under its issue (milestone and issue from the task), a task
+without an issue under the project. The Inbox, the research list and
+*Not found* show one crumb. Every crumb but the last is a link to that
+level's default tab (the `?tab=` stays out); the last one names the
+current view. Crumbs show titles once the view has loaded them, before
+that the milestone's `%<iid>`, the issue's `#<iid>` or the task's name;
+they cost no extra request. On narrow screens the middle crumbs fold
+behind `…`, the first and last stay. The Spend tab keeps its own
+drill-down crumbs below the header.
+
 ### Spend
 
 The *Spend* tab of a project or milestone stream shows what its agent

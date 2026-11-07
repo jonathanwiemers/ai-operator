@@ -81,11 +81,6 @@ async function submit() {
 
 <template>
   <div class="page">
-    <nav class="crumbs muted">
-      <RouterLink to="/research">Research</RouterLink>
-      <span>/</span>
-      <span>New research</span>
-    </nav>
     <h1>New research</h1>
 
     <div v-if="loadError" class="banner danger">{{ loadError }}</div>
@@ -181,13 +176,6 @@ async function submit() {
 </template>
 
 <style scoped>
-.crumbs {
-  display: flex;
-  gap: 8px;
-  font-size: 13px;
-  margin-bottom: 14px;
-}
-
 .form {
   display: flex;
   flex-direction: column;

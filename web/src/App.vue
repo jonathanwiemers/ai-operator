@@ -9,6 +9,7 @@ import { connectEvents, disconnectEvents, live } from './live'
 import { notifyActive, refreshPermission } from './notify'
 import { projectDot, projectNeedsYou, projectStateLine } from './stream'
 import SignIn from './views/SignIn.vue'
+import Breadcrumbs from './components/Breadcrumbs.vue'
 import type { EngineUsage, Feature, InboxItem, InboxResponse, Me, ProjectSummary, ResearchSummary } from './types'
 
 async function loadMe(delay = 2000): Promise<void> {
@@ -258,6 +259,7 @@ watch(
     </aside>
 
     <main class="main">
+      <header class="crumbbar"><Breadcrumbs /></header>
       <RouterView />
     </main>
   </div>
@@ -463,6 +465,10 @@ nav {
   flex: 1;
   min-height: 0;
 }
+.main > .crumbbar {
+  flex: none;
+  padding: 10px 24px 0;
+}
 .mobilebar,
 .scrim {
   display: none;
@@ -522,6 +528,9 @@ nav {
   }
   .mobilebar .count {
     margin-left: auto;
+  }
+  .main > .crumbbar {
+    padding: 8px 16px 0;
   }
 }
 </style>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import { get, hasFeature, LoginRequiredError, NotFoundError } from '../api'
+import { setCrumbNames } from '../crumbNames'
 import Board from '../components/Board.vue'
 import ContextPanel from '../components/ContextPanel.vue'
 import CostChip from '../components/CostChip.vue'
@@ -284,9 +285,14 @@ const headerCost = computed((): Cost | null => {
   return project.value?.milestones.find((m) => m.iid === iid) ?? null
 })
 
-const crumbs = computed(() => {
-  if (everything.value) return 'All projects'
-  return `${props.namespace} / ${props.name}`
+// The breadcrumbs name the milestone by the project's list, or the
+// milestone once loaded (R19).
+watchEffect(() => {
+  const iid = milestoneIID.value
+  const p = project.value
+  if (!iid || !props.namespace || !props.name || p?.namespace !== props.namespace || p.name !== props.name) return
+  const m = milestone.value?.iid === iid ? milestone.value : p.milestones.find((x) => x.iid === iid)
+  if (m) setCrumbNames({ milestone: { namespace: props.namespace, name: props.name, iid, title: m.title } })
 })
 
 watch(
@@ -333,12 +339,8 @@ function showDay(i: number): string | null {
   <div v-else class="desk" :class="{ wide: milestoneIID }">
     <div class="stream">
       <div class="head">
-        <div class="crumbs">
-          {{ crumbs }}
-          <template v-if="milestone?.autopilot">
-            <span>·</span>
-            <span class="ap">Autopilot {{ milestone.autopilot.phase.toLowerCase() }}</span>
-          </template>
+        <div v-if="milestone?.autopilot" class="apline">
+          <span class="ap">Autopilot {{ milestone.autopilot.phase.toLowerCase() }}</span>
         </div>
         <div class="title-row">
           <h1>{{ title }}</h1>
@@ -523,7 +525,7 @@ function showDay(i: number): string | null {
   padding: 14px 28px 0;
   background: var(--bg);
 }
-.crumbs {
+.apline {
   font-size: 12.5px;
   color: var(--text-3);
   display: flex;

@@ -75,11 +75,6 @@ async function remove() {
 <template>
   <NotFound v-if="notFound" />
   <div v-else class="page">
-    <nav class="crumbs muted">
-      <RouterLink to="/research">Research</RouterLink>
-      <span>/</span>
-      <span>{{ name }}</span>
-    </nav>
 
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !r" class="card empty">Loading…</div>
@@ -169,13 +164,6 @@ async function remove() {
 </template>
 
 <style scoped>
-.crumbs {
-  display: flex;
-  gap: 8px;
-  font-size: 13px;
-  margin-bottom: 14px;
-}
-
 .head {
   display: flex;
   flex-direction: column;

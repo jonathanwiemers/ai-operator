@@ -1,4 +1,5 @@
 import { cost, tokenCount } from './format.ts'
+import { issueLabel, milestoneLabel } from './crumbs.ts'
 import type { SpendBreakdown, SpendChild, SpendTotals, StepLines, SubagentBreakdown } from './types'
 
 // The Spend tab's drill-down (decision 5): project → milestone → issue →
@@ -112,11 +113,11 @@ export function spendCrumbs(scope: SpendScope, names: { project: string; milesto
   const base: SpendScope = {}
   if (scope.milestone) {
     base.milestone = scope.milestone
-    crumbs.push({ label: names.milestone || `%${scope.milestone}`, scope: { ...base } })
+    crumbs.push({ label: milestoneLabel(scope.milestone, names.milestone), scope: { ...base } })
   }
   if (scope.issue) {
     base.issue = scope.issue
-    crumbs.push({ label: `#${scope.issue}`, scope: { ...base } })
+    crumbs.push({ label: issueLabel(scope.issue), scope: { ...base } })
   }
   if (scope.task) {
     base.task = scope.task

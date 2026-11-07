@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
 import { hasFeature } from '../api'
+import { setCrumbNames } from '../crumbNames'
 import { useResource } from '../live'
 import { ciLabel, ciTone, cost, limitedEngine, phaseTone, shortSHA } from '../format'
 import { queueDone } from '../milestoneQueue'
@@ -29,6 +30,18 @@ const t = computed(() => data.value?.task)
 const project = computed(() => data.value?.project)
 const run = computed(() => t.value?.status.run ?? {})
 const issueURL = (iid: number) => `${project.value?.gitlab.webURL}/-/issues/${iid}`
+
+// The breadcrumbs put the task under its issue (R19).
+watchEffect(() => {
+  const v = t.value
+  if (!v || v.name !== props.task) return
+  const at = { namespace: props.namespace, name: props.name }
+  setCrumbNames({
+    task: { ...at, task: v.name, milestone: v.milestone?.iid, issue: v.issue?.iid },
+    milestone: v.milestone && { ...at, iid: v.milestone.iid, title: v.milestone.title },
+    issue: v.issue && { ...at, iid: v.issue.iid, title: v.issue.title },
+  })
+})
 
 const heading = computed(() => {
   const v = t.value
@@ -61,14 +74,6 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
 <template>
   <NotFound v-if="notFound" />
   <div v-else class="page">
-    <nav class="crumbs muted">
-      <RouterLink :to="{ name: 'stream-project', params: { namespace, name } }">{{ name }}</RouterLink>
-      <span>/</span>
-      <RouterLink :to="{ name: 'stream-project', params: { namespace, name }, query: { tab: 'board' } }">Board</RouterLink>
-      <span>/</span>
-      <span class="mono">{{ task }}</span>
-    </nav>
-
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !t" class="card empty">Loading…</div>
 
@@ -358,13 +363,6 @@ const showChat = computed(() => !!data.value?.permissions?.chat || hasFeature('c
   display: grid;
   gap: 10px;
   margin-bottom: 12px;
-}
-.crumbs {
-  display: flex;
-  gap: 8px;
-  font-size: 13px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
 }
 
 .head h1 {
