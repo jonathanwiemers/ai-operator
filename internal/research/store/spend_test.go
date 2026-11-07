@@ -584,3 +584,61 @@ func TestStepLines(t *testing.T) {
 		t.Errorf("call 1 row = %+v; want no nudges", c)
 	}
 }
+
+// TestSpendSince sums the calls and legacy runs of several projects from a
+// time on, in one query: the overview's spend today and this week.
+func TestSpendSince(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	now := time.Now().Truncate(time.Second)
+	exp, expired := now.Add(24*time.Hour), now.Add(-time.Hour)
+	usd := func(v float64) *float64 { return &v }
+	call := func(key, project string, ago time.Duration, cost *float64, in int64) store.Call {
+		source := "reported"
+		if cost == nil {
+			source = "unknown"
+		}
+		return store.Call{Key: key, At: now.Add(-ago), Namespace: "agents", Project: project, MilestoneIID: 1, IssueIID: 2,
+			Task: project + "-2", Run: 1, Seq: 1, Kind: "implement", Role: "implement", Engine: "claude", Model: "claude-opus-5-5",
+			InputTokens: in, CostUSD: cost, CostSource: source, ExpiresAt: exp}
+	}
+	old := call("s5", "shop", time.Hour, usd(100), 1)
+	old.ExpiresAt = expired
+	if _, err := owner.InsertCalls(ctx, []store.Call{
+		call("s1", "shop", time.Hour, usd(1), 10),
+		call("s2", "shop", 3*24*time.Hour, usd(2), 20),
+		call("s3", "billing", 2*time.Hour, nil, 30),
+		call("s4", "billing", 10*24*time.Hour, usd(4), 40),
+		old,
+		call("s6", "other", time.Hour, usd(8), 80),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A run from before agent_calls: its cost without tokens.
+	if _, err := owner.InsertEvents(ctx, []store.Event{{Key: "se1", At: now.Add(-30 * time.Minute), Namespace: "agents",
+		Project: "billing", MilestoneIID: 1, IssueIID: 3, Task: "billing-3", Kind: "run.finished",
+		Data: map[string]any{"costUSD": "0.5000", "runCount": 1}, ExpiresAt: exp}}); err != nil {
+		t.Fatal(err)
+	}
+	both := []store.ProjectKey{{Namespace: "agents", Name: "shop"}, {Namespace: "agents", Name: "billing"}}
+	for _, c := range []struct {
+		what     string
+		projects []store.ProjectKey
+		since    time.Duration
+		want     store.SpendTotals
+	}{
+		{"today", both, 12 * time.Hour, store.SpendTotals{CostUSD: 1.5, CostKnown: true, UnknownCalls: 1, UnmeteredCalls: 0,
+			InputTokens: 40, Calls: 2, LegacyCostUSD: 0.5}},
+		{"7 days", both, 7 * 24 * time.Hour, store.SpendTotals{CostUSD: 3.5, CostKnown: true, UnknownCalls: 1,
+			InputTokens: 60, Calls: 3, LegacyCostUSD: 0.5}},
+		{"one project", both[:1], 30 * 24 * time.Hour, store.SpendTotals{CostUSD: 3, CostKnown: true, InputTokens: 30, Calls: 2}},
+		{"none", nil, time.Hour, store.SpendTotals{CostKnown: true}},
+		{"nothing since", both, time.Minute, store.SpendTotals{CostKnown: true}},
+	} {
+		got, err := s.SpendSince(ctx, c.projects, now.Add(-c.since))
+		if err != nil || got != c.want {
+			t.Errorf("%s: SpendSince = %+v, %v\nwant %+v", c.what, got, err, c.want)
+		}
+	}
+}

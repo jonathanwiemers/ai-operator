@@ -298,3 +298,11 @@ about how many production lines, and deviations from this spec.
   (`queuedBehind`, the dependency's turn); a snapshot row still open whose
   tasks are gone is in no list; follow-ups count from the snapshot when there
   is one; a live milestone without a snapshot row keeps the tasks' cost.
+- 2026-11-07, `overview-api` (R5 overview, R7, #222): `GET /api/v1/overview`
+  (`internal/ui/overview.go`) and `Store.SpendSince` (one query for many
+  projects); about 190 production lines, over the budget because the issue
+  asked for the whole endpoint. Deviations: the Spend API takes no `tz`, so
+  today is the UTC day; the 7 days are today and the 6 before; needs-you is
+  the Inbox's count, items without a milestone included; *next* is the first
+  queued implement task in queue order, else the first pending issue of the
+  oldest running autopilot.

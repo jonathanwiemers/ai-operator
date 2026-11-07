@@ -476,6 +476,54 @@ export interface ModelChoice {
 }
 
 //////////
+// source: overview.go
+
+/**
+ * OverviewView is the answer of GET /api/v1/overview: the dashboard's
+ * summary strip and Working now. Running, paused and waiting count the
+ * visible milestones by state; NeedsYou is the Inbox's count. SpendToday
+ * (the UTC day) and Spend7d (it and the 6 days before) are absent without
+ * the history database: unknown, not $0. History: the database answered.
+ */
+export interface OverviewView {
+  running: number /* int */;
+  paused: number /* int */;
+  waiting: number /* int */;
+  needsYou: number /* int */;
+  spendToday?: Cost;
+  spend7d?: Cost;
+  working: WorkingNow[];
+  history: boolean;
+}
+/**
+ * WorkingNext is the item a project runs next: the first queued task, else
+ * the next pending issue of its oldest running autopilot.
+ */
+export interface WorkingNext {
+  issueIID: number /* int64 */;
+  title: string;
+  milestoneIID?: number /* int64 */;
+}
+/**
+ * WorkingNow is one running implement task of a project, which holds a run
+ * slot since Since, or a project with an autopilot or queued work and no
+ * running task (no issue then). Next and the engine limits are the
+ * project's.
+ */
+export interface WorkingNow {
+  namespace: string;
+  project: string;
+  issueIID?: number /* int64 */;
+  title?: string;
+  milestoneIID?: number /* int64 */;
+  task?: string;
+  since?: string;
+  next?: WorkingNext;
+  usageLimits?: aiv1.UsageLimit[];
+  engineUsage?: aiv1.EngineUsage[];
+}
+
+//////////
 // source: pause_exits.go
 
 /**

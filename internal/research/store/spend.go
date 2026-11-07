@@ -264,6 +264,17 @@ func (s *Store) SpendTotals(ctx context.Context, sc SpendScope) (SpendTotals, er
 	return scanTotals(s.pool.QueryRow(ctx, with+`SELECT `+spendTotals+` FROM spend`, args...))
 }
 
+// SpendSince returns the totals of the projects' calls (and legacy runs) at
+// or after since, in one query: the overview's spend today and this week.
+func (s *Store) SpendSince(ctx context.Context, projects []ProjectKey, since time.Time) (SpendTotals, error) {
+	if len(projects) == 0 {
+		return SpendTotals{CostKnown: true}, nil
+	}
+	nss, names := split(projects)
+	with := spendWith(`(namespace, project) IN (SELECT * FROM unnest($1::text[], $2::text[])) AND at >= $3`)
+	return scanTotals(s.pool.QueryRow(ctx, with+`SELECT `+spendTotals+` FROM spend`, nss, names, since))
+}
+
 // SpendChildTotals returns the totals of the scope's children at the next
 // level in one query, without their model split and calls, by grouping
 // key: a project's milestones by IID ("" for the calls of no milestone), a

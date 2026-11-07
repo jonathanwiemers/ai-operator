@@ -54,6 +54,8 @@ type Server struct {
 	// milestoneRows reads the milestones' snapshot instead of research
 	// (tests).
 	milestoneRows milestoneLister
+	// overviewSpend sums the overview's spend instead of research (tests).
+	overviewSpend spendSincer
 	// chat is the chat writer's store, nil until connected or without
 	// the writer login.
 	chat atomic.Pointer[store.Store]
@@ -122,6 +124,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}", s.authed(s.project))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}", s.authed(s.task))
 	mux.Handle("GET /api/v1/milestones", s.authed(s.milestones))
+	mux.Handle("GET /api/v1/overview", s.authed(s.overview))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/milestones/{iid}", s.authed(s.milestone))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread", s.authed(s.milestoneThread))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes", s.authed(s.postMilestoneNote))
