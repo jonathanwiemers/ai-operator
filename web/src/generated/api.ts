@@ -2119,6 +2119,13 @@ export interface AgentTaskSpec {
    */
   budgetUSD?: string;
   /**
+   * FollowUpOf names what this milestone took over from another one, from
+   * its description's line "/agent followup-of <iid> <numbers>" (spec
+   * tasks). Nil without the line or for a malformed one.
+   * +optional
+   */
+  followUpOf?: FollowUpOf;
+  /**
    * BudgetStop is set by the operator on implement tasks while autopilot
    * is paused for their budget (the issue's, or the milestone's for all
    * of its implement tasks). The runner starts no further agent call: a
@@ -2239,6 +2246,20 @@ export interface MilestoneRef {
   id: number /* int64 */;
   iid: number /* int64 */;
   title: string;
+}
+/**
+ * FollowUpOf names follow-ups of a milestone's retrospective that another
+ * milestone took over.
+ */
+export interface FollowUpOf {
+  /**
+   * MilestoneIID is the milestone whose retrospective proposed them.
+   */
+  milestoneIID: number /* int64 */;
+  /**
+   * Numbers are the follow-ups' numbers (1..9), deduplicated and sorted.
+   */
+  numbers: number /* int */[];
 }
 /**
  * IssueRef identifies a GitLab issue.

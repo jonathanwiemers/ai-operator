@@ -2152,6 +2152,15 @@ issue or milestone. It stays there after the milestone is closed and its
 tasks are deleted. The tab is read-only for now: while the milestone is
 open, reply `create` in the thread to open follow-ups.
 
+A milestone that takes over follow-ups of another names them with a line
+`/agent followup-of <iid> <numbers>` in its description, e.g.
+`/agent followup-of 12 1 3`: follow-ups 1 and 3 of milestone %12's
+retrospective (numbers 1 to 9, space- or comma-separated; only the first
+such line counts). Like the owners line, it is no part of the spec:
+adding, changing or removing it does not re-plan. The operator reads it on
+every poll; a malformed line is ignored. Marking those follow-ups as taken
+comes in a later release.
+
 ## When a run is cut off
 
 Work that is not pushed yet is not thrown away. When a run is cut off, the

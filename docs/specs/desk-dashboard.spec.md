@@ -427,3 +427,13 @@ about how many production lines, and deviations from this spec.
   a retrospective without stored text (posted before #232, until the
   backfill) says so; screenshots were not possible in the agent's
   container (no cluster, no database, no browser).
+- 2026-11-07, `followup-of-line` (R16 part 1, #236): `rules.FollowUpOf`
+  reads the first `<prefix> followup-of <iid> <numbers>` line (`%` before
+  the IID allowed, numbers 1..9 space- or comma-separated, deduplicated
+  and sorted; a malformed line is an error and no value),
+  `rules.FollowUpOfLine` renders one for the Desk, `rules.Spec` strips the
+  lines, and `syncSpecTask` sets `AgentTaskSpec.followUpOf`
+  (`milestoneIID`, `numbers`) without touching the hash; about 50
+  production lines. Deviations: the parsed type is `aiv1.FollowUpOf` (a
+  type and a function cannot share the name in `rules`); a malformed line
+  is only logged until the notice of part 2.

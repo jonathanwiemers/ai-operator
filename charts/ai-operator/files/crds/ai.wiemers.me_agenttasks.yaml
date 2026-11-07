@@ -136,6 +136,27 @@ spec:
                 - paths
                 - project
                 type: object
+              followUpOf:
+                description: |-
+                  FollowUpOf names what this milestone took over from another one, from
+                  its description's line "/agent followup-of <iid> <numbers>" (spec
+                  tasks). Nil without the line or for a malformed one.
+                properties:
+                  milestoneIID:
+                    description: MilestoneIID is the milestone whose retrospective
+                      proposed them.
+                    format: int64
+                    type: integer
+                  numbers:
+                    description: Numbers are the follow-ups' numbers (1..9), deduplicated
+                      and sorted.
+                    items:
+                      type: integer
+                    type: array
+                required:
+                - milestoneIID
+                - numbers
+                type: object
               issue:
                 description: |-
                   Issue implemented by this task (Implement tasks), or the tracking

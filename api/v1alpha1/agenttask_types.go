@@ -91,6 +91,12 @@ type AgentTaskSpec struct {
 	// +optional
 	BudgetUSD string `json:"budgetUSD,omitempty"`
 
+	// FollowUpOf names what this milestone took over from another one, from
+	// its description's line "/agent followup-of <iid> <numbers>" (spec
+	// tasks). Nil without the line or for a malformed one.
+	// +optional
+	FollowUpOf *FollowUpOf `json:"followUpOf,omitempty"`
+
 	// BudgetStop is set by the operator on implement tasks while autopilot
 	// is paused for their budget (the issue's, or the milestone's for all
 	// of its implement tasks). The runner starts no further agent call: a
@@ -180,6 +186,15 @@ type MilestoneRef struct {
 	ID    int64  `json:"id"`
 	IID   int64  `json:"iid"`
 	Title string `json:"title"`
+}
+
+// FollowUpOf names follow-ups of a milestone's retrospective that another
+// milestone took over.
+type FollowUpOf struct {
+	// MilestoneIID is the milestone whose retrospective proposed them.
+	MilestoneIID int64 `json:"milestoneIID"`
+	// Numbers are the follow-ups' numbers (1..9), deduplicated and sorted.
+	Numbers []int `json:"numbers"`
 }
 
 // IssueRef identifies a GitLab issue.
