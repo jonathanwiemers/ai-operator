@@ -139,7 +139,8 @@ What happens today (file refs at origin/main, 2026-11-05):
    release, by the owner): `workflow.conventionalCommits: true` on both
    projects, `implement.maxStepLines: 400` on Bloop, and
    `fallbackAtPercent: 90` with a sonnet fallback on `implement` and
-   `strong`.
+   `strong`. The infra change and the checks to run one week after it are in
+   [the rollout acceptance checklist](../process/rollout-checkpoints-acceptance.md).
 
 ## Requirements
 
