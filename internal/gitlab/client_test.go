@@ -710,3 +710,48 @@ func TestBackfillListingsCapPages(t *testing.T) {
 		t.Errorf("uncapped ListIssues: %d requests, %v; want %d", len(requests), err, maxPages)
 	}
 }
+
+func TestMergeRequestVersionsAndCompare(t *testing.T) {
+	var reqs []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqs = append(reqs, r.URL.EscapedPath()+"?"+r.URL.RawQuery)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/versions") && r.URL.Query().Get("page") == "1":
+			w.Header().Set("X-Next-Page", "2")
+			_, _ = w.Write([]byte(`[{"id":9,"head_commit_sha":"h2","base_commit_sha":"b2","start_commit_sha":"s2","created_at":"2026-11-02T09:00:00Z","state":"collected"}]`))
+		case strings.HasSuffix(r.URL.Path, "/versions"):
+			_, _ = w.Write([]byte(`[{"id":8,"head_commit_sha":"h1","base_commit_sha":"b1","start_commit_sha":"s1","created_at":"2026-11-01T09:00:00Z","state":"collected"}]`))
+		case strings.HasSuffix(r.URL.Path, "/versions/8"):
+			_, _ = w.Write([]byte(`{"id":8,"head_commit_sha":"h1","commits":[{"id":"c1","title":"t","author_name":"A","author_email":"a@x","committer_email":"c@x"}],
+				"diffs":[{"old_path":"a.go","new_path":"a.go","diff":"+x\n","too_large":true,"collapsed":true}]}`))
+		default:
+			_, _ = w.Write([]byte(`{"commits":[{"id":"c2","title":"u"}],"diffs":[{"new_path":"b.go","new_file":true}]}`))
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	ctx := context.Background()
+	vs, err := c.ListMergeRequestVersions(ctx, "group/app", 3)
+	if err != nil || len(vs) != 2 || vs[0].ID != 9 || vs[1].HeadCommitSHA != "h1" || vs[0].BaseCommitSHA != "b2" || vs[0].StartCommitSHA != "s2" ||
+		vs[0].State != "collected" || vs[0].CreatedAt.IsZero() {
+		t.Fatalf("versions %+v %v", vs, err)
+	}
+	d, err := c.GetMergeRequestVersion(ctx, "group/app", 3, 8)
+	if err != nil || d.ID != 8 || len(d.Commits) != 1 || d.Commits[0].AuthorEmail != "a@x" || d.Commits[0].CommitterEmail != "c@x" ||
+		d.Commits[0].AuthorName != "A" || len(d.Diffs) != 1 || !d.Diffs[0].TooLarge || !d.Diffs[0].Collapsed {
+		t.Fatalf("detail %+v %v", d, err)
+	}
+	cmp, err := c.CompareCommits(ctx, "group/app", "base1", "base2")
+	if err != nil || len(cmp.Commits) != 1 || cmp.Commits[0].Title != "u" || len(cmp.Diffs) != 1 || !cmp.Diffs[0].NewFile {
+		t.Fatalf("compare %+v %v", cmp, err)
+	}
+	want := []string{
+		"/api/v4/projects/group%2Fapp/merge_requests/3/versions?page=1&per_page=100",
+		"/api/v4/projects/group%2Fapp/merge_requests/3/versions?page=2&per_page=100",
+		"/api/v4/projects/group%2Fapp/merge_requests/3/versions/8?",
+		"/api/v4/projects/group%2Fapp/repository/compare?from=base1&straight=false&to=base2",
+	}
+	if !slices.Equal(reqs, want) {
+		t.Fatalf("requests %q", reqs)
+	}
+}

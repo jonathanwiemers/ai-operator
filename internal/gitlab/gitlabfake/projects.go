@@ -291,6 +291,30 @@ func (p *Projects) ListMergeRequestDiffs(ctx context.Context, project string, ii
 	return f.ListMergeRequestDiffs(ctx, project, iid)
 }
 
+func (p *Projects) ListMergeRequestVersions(ctx context.Context, project string, iid int64) ([]gitlab.MergeRequestVersion, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.ListMergeRequestVersions(ctx, project, iid)
+}
+
+func (p *Projects) GetMergeRequestVersion(ctx context.Context, project string, iid, versionID int64) (*gitlab.MergeRequestVersionDetail, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.GetMergeRequestVersion(ctx, project, iid, versionID)
+}
+
+func (p *Projects) CompareCommits(ctx context.Context, project, from, to string) (*gitlab.Compare, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.CompareCommits(ctx, project, from, to)
+}
+
 func (p *Projects) ListIssueStateEvents(ctx context.Context, project string, iid int64) ([]gitlab.StateEvent, error) {
 	f, err := p.route(project)
 	if err != nil {

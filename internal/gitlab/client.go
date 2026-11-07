@@ -50,6 +50,11 @@ type API interface {
 	RebaseMergeRequest(ctx context.Context, project string, iid int64) error
 	DeleteBranch(ctx context.Context, project, branch string) error
 	ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error)
+	// ListMergeRequestVersions lists the versions of an MR, newest first.
+	ListMergeRequestVersions(ctx context.Context, project string, iid int64) ([]MergeRequestVersion, error)
+	GetMergeRequestVersion(ctx context.Context, project string, iid, versionID int64) (*MergeRequestVersionDetail, error)
+	// CompareCommits compares two refs of the repository (straight=false).
+	CompareCommits(ctx context.Context, project, from, to string) (*Compare, error)
 	ListIssueStateEvents(ctx context.Context, project string, iid int64) ([]StateEvent, error)
 	ListIssueLabelEvents(ctx context.Context, project string, iid int64) ([]LabelEvent, error)
 	ListRepositoryTree(ctx context.Context, project, path, ref string, recursive bool) ([]TreeEntry, error)
@@ -296,6 +301,39 @@ type Diff struct {
 	// Collapsed and TooLarge diffs come without their content.
 	Collapsed bool `json:"collapsed"`
 	TooLarge  bool `json:"too_large"`
+}
+
+// Commit is a commit of a merge request version or a repository compare.
+type Commit struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	AuthorName     string `json:"author_name"`
+	AuthorEmail    string `json:"author_email"`
+	CommitterEmail string `json:"committer_email"`
+}
+
+// MergeRequestVersion is one pushed head of a merge request; GitLab keeps
+// the diffs and commits of every version.
+type MergeRequestVersion struct {
+	ID             int64     `json:"id"`
+	HeadCommitSHA  string    `json:"head_commit_sha"`
+	BaseCommitSHA  string    `json:"base_commit_sha"`
+	StartCommitSHA string    `json:"start_commit_sha"`
+	CreatedAt      time.Time `json:"created_at"`
+	State          string    `json:"state"`
+}
+
+// MergeRequestVersionDetail is a version with its commits and diffs.
+type MergeRequestVersionDetail struct {
+	MergeRequestVersion
+	Commits []Commit `json:"commits"`
+	Diffs   []Diff   `json:"diffs"`
+}
+
+// Compare is the result of comparing two refs of a repository.
+type Compare struct {
+	Commits []Commit `json:"commits"`
+	Diffs   []Diff   `json:"diffs"`
 }
 
 // Tag is a tag of a project's repository with the commit it points to.
@@ -929,6 +967,34 @@ func (c *Client) DeleteBranch(ctx context.Context, project, branch string) error
 
 func (c *Client) ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error) {
 	return list[Diff](ctx, c, fmt.Sprintf("%s/merge_requests/%d/diffs", projectPath(project), iid), nil)
+}
+
+// ListMergeRequestVersions lists the versions of a merge request, newest
+// first.
+func (c *Client) ListMergeRequestVersions(ctx context.Context, project string, iid int64) ([]MergeRequestVersion, error) {
+	return list[MergeRequestVersion](ctx, c, fmt.Sprintf("%s/merge_requests/%d/versions", projectPath(project), iid), nil)
+}
+
+// GetMergeRequestVersion returns one version with its commits and diffs.
+func (c *Client) GetMergeRequestVersion(ctx context.Context, project string, iid, versionID int64) (*MergeRequestVersionDetail, error) {
+	var v MergeRequestVersionDetail
+	_, err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/merge_requests/%d/versions/%d", projectPath(project), iid, versionID), nil, nil, &v)
+	if err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+// CompareCommits compares two refs (not straight: from the merge base of
+// from and to).
+func (c *Client) CompareCommits(ctx context.Context, project, from, to string) (*Compare, error) {
+	var cmp Compare
+	q := url.Values{"from": {from}, "to": {to}, "straight": {"false"}}
+	_, err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/repository/compare", projectPath(project)), q, nil, &cmp)
+	if err != nil {
+		return nil, err
+	}
+	return &cmp, nil
 }
 
 func (c *Client) ListIssueLinks(ctx context.Context, project string, iid int64) ([]LinkedIssue, error) {

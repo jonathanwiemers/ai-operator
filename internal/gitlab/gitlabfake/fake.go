@@ -123,6 +123,21 @@ type Fake struct {
 	CommitRefs map[string][]gitlab.CommitRef
 	RefLists   []string
 	TagLists   int
+	// MRCommits are the commits of an MR; each version records the commits at
+	// its head. Compares are the results of CompareCommits, keyed "from..to".
+	MRCommits map[int64][]gitlab.Commit
+	Compares  map[string]*gitlab.Compare
+	// versions of each MR, oldest first: recorded when an MR is created and
+	// whenever its SHA differs from the last version's head the next time the
+	// fake looks (a rebase or a version read).
+	versions      map[int64][]mrVersion
+	nextVersionID int64
+}
+
+type mrVersion struct {
+	gitlab.MergeRequestVersion
+	commits []gitlab.Commit
+	diffs   []gitlab.Diff
 }
 
 var _ gitlab.API = (*Fake)(nil)
@@ -609,6 +624,7 @@ func (f *Fake) CreateMergeRequest(_ context.Context, _ string, opts gitlab.Creat
 		}
 	}
 	f.MRs[iid] = mr
+	f.syncVersions(iid)
 	c := *mr
 	return &c, nil
 }
@@ -694,6 +710,7 @@ func (f *Fake) RebaseMergeRequest(_ context.Context, _ string, iid int64) error 
 		return &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "rebase"}
 	}
 	f.Rebased = append(f.Rebased, iid)
+	f.syncVersions(iid) // a head a test set before the rebase
 	if f.RebaseConflict {
 		mr.DetailedMergeStatus = "conflict"
 	} else {
@@ -703,8 +720,85 @@ func (f *Fake) RebaseMergeRequest(_ context.Context, _ string, iid int64) error 
 			mr.DiffRefs = &gitlab.DiffRefs{BaseSHA: f.MainSHA, StartSHA: f.MainSHA, HeadSHA: mr.SHA}
 		}
 	}
+	f.syncVersions(iid)
 	mr.UpdatedAt = f.tick()
 	return nil
+}
+
+// syncVersions records a version of the MR if its head SHA is not the head
+// of the newest version. The caller holds f.mu.
+func (f *Fake) syncVersions(iid int64) {
+	mr, ok := f.MRs[iid]
+	if !ok {
+		return
+	}
+	vs := f.versions[iid]
+	if len(vs) > 0 && vs[len(vs)-1].HeadCommitSHA == mr.SHA {
+		return
+	}
+	if f.versions == nil {
+		f.versions = map[int64][]mrVersion{}
+	}
+	f.nextVersionID++
+	v := mrVersion{commits: slices.Clone(f.MRCommits[iid]), diffs: f.diffsOf(iid)}
+	v.ID, v.HeadCommitSHA, v.State, v.CreatedAt = f.nextVersionID, mr.SHA, "collected", *f.tick()
+	v.BaseCommitSHA, v.StartCommitSHA = f.MainSHA, f.MainSHA
+	if mr.DiffRefs != nil {
+		v.BaseCommitSHA, v.StartCommitSHA = mr.DiffRefs.BaseSHA, mr.DiffRefs.StartSHA
+	}
+	f.versions[iid] = append(vs, v)
+}
+
+func (f *Fake) diffsOf(iid int64) []gitlab.Diff {
+	if ds, ok := f.MRDiffs[iid]; ok {
+		return slices.Clone(ds)
+	}
+	return []gitlab.Diff{{OldPath: "app.go", NewPath: "app.go", Diff: fmt.Sprintf("@@ -1 +1 @@\n-old\n+change of !%d\n", iid)}}
+}
+
+// ListMergeRequestVersions lists the versions of the MR, newest first.
+func (f *Fake) ListMergeRequestVersions(_ context.Context, _ string, iid int64) ([]gitlab.MergeRequestVersion, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.MRs[iid]; !ok {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "versions"}
+	}
+	f.syncVersions(iid)
+	vs := f.versions[iid]
+	out := make([]gitlab.MergeRequestVersion, 0, len(vs))
+	for i := len(vs) - 1; i >= 0; i-- {
+		out = append(out, vs[i].MergeRequestVersion)
+	}
+	return out, nil
+}
+
+// GetMergeRequestVersion returns a version with the commits and diffs it
+// had at its head.
+func (f *Fake) GetMergeRequestVersion(_ context.Context, _ string, iid, versionID int64) (*gitlab.MergeRequestVersionDetail, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.MRs[iid]; !ok {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "versions"}
+	}
+	f.syncVersions(iid)
+	for _, v := range f.versions[iid] {
+		if v.ID == versionID {
+			return &gitlab.MergeRequestVersionDetail{MergeRequestVersion: v.MergeRequestVersion,
+				Commits: slices.Clone(v.commits), Diffs: slices.Clone(v.diffs)}, nil
+		}
+	}
+	return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "versions"}
+}
+
+// CompareCommits returns Compares["from..to"], or 404.
+func (f *Fake) CompareCommits(_ context.Context, _ string, from, to string) (*gitlab.Compare, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.Compares[from+".."+to]
+	if !ok {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "compare"}
+	}
+	return &gitlab.Compare{Commits: slices.Clone(c.Commits), Diffs: slices.Clone(c.Diffs)}, nil
 }
 
 // DeleteBranch records the branch in DeletedBranches; the fake keeps no
@@ -725,10 +819,7 @@ func (f *Fake) ListMergeRequestDiffs(_ context.Context, _ string, iid int64) ([]
 	if _, ok := f.MRs[iid]; !ok {
 		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "diffs"}
 	}
-	if ds, ok := f.MRDiffs[iid]; ok {
-		return slices.Clone(ds), nil
-	}
-	return []gitlab.Diff{{OldPath: "app.go", NewPath: "app.go", Diff: fmt.Sprintf("@@ -1 +1 @@\n-old\n+change of !%d\n", iid)}}, nil
+	return f.diffsOf(iid), nil
 }
 
 // Link is a link between two issues; Type is seen from From.
@@ -1172,4 +1263,15 @@ func (f *Fake) ListCommitRefs(_ context.Context, _ string, sha, refType string) 
 		}
 	}
 	return out, nil
+}
+
+// SetHead moves the head of an MR to sha and records a version. Setting
+// MRs[iid].SHA directly records a version at the next rebase or version read.
+func (f *Fake) SetHead(iid int64, sha string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if mr, ok := f.MRs[iid]; ok {
+		mr.SHA = sha
+		f.syncVersions(iid)
+	}
 }
