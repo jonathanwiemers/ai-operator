@@ -59,6 +59,17 @@ export const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKin
   { id: 'merged', label: 'Merged', kinds: ['merged', 'closed'] },
 ]
 
+// A milestone's Stream tab shows only runtime kinds, the Pilot tab the rest:
+// its chips are the ones of runtime kinds (Runs, CI & review, Merged) and
+// All names the runtime kinds (D230-P2).
+const isRuntimeKind = (k: StreamKind) => (runtimeStreamKinds as readonly StreamKind[]).includes(k)
+export const runtimeStreamFilters = streamFilters.filter((f) => !f.kinds || f.kinds.every(isRuntimeKind))
+
+export function runtimeKindsForFilter(id: StreamFilter): StreamKind[] {
+  const kinds = streamFilters.find((f) => f.id === id)?.kinds?.filter(isRuntimeKind)
+  return kinds?.length ? kinds : [...runtimeStreamKinds]
+}
+
 // kindsForFilter: with includeChat, "all" must name every kind (including
 // chat.user/chat.agent); other chips stay as they are.
 export function kindsForFilter(id: StreamFilter, includeChat = false): StreamKind[] | undefined {

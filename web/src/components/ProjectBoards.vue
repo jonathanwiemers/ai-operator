@@ -53,7 +53,7 @@ function apTone(phase: string | undefined) {
       :reason="m.spec.status.autopilot.pausedReason"
       :issue="m.spec.status.autopilot.pausedFor"
       :waiting="autopilotWaitingFor(m.spec.status.autopilot, m.tasks)"
-      :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) } }"
+      :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: { tab: 'pilot' } }"
     />
 
     <RouterLink

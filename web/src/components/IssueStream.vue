@@ -2,14 +2,23 @@
 import { computed, ref, watch } from 'vue'
 import { get, hasFeature, LoginRequiredError } from '../api'
 import { live } from '../live'
-import { dayLabel, groupThreads, kindsForFilter, sameLocalDay, streamEventKey } from '../stream'
+import { chatStreamKinds, dayLabel, groupThreads, kindsForFilter, sameLocalDay, streamEventKey } from '../stream'
 import EventCard from './stream/EventCard.vue'
-import type { StreamEvent, StreamPage } from '../types'
+import type { StreamEvent, StreamKind, StreamPage } from '../types'
 
 // An issue's stream (R10): GET /api/v1/stream with project, milestone and
 // issue, newest first, *Load older* pages back, live events come in on
-// top. It reads history, so it outlives the issue's tasks.
-const props = defineProps<{ namespace: string; name: string; milestone: number; issue: number; canSteer?: boolean }>()
+// top. It reads history, so it outlives the issue's tasks. Without an issue
+// it is the milestone's stream, and kinds fixes its kinds (the Pilot tab,
+// R11); chat kinds are asked for only with the chat feature.
+const props = defineProps<{
+  namespace: string
+  name: string
+  milestone: number
+  issue?: number
+  kinds?: readonly StreamKind[]
+  canSteer?: boolean
+}>()
 
 const events = ref<StreamEvent[]>([])
 const older = ref<string | undefined>()
@@ -26,12 +35,14 @@ function streamQuery(extra: Record<string, string> = {}): string {
   const params = new URLSearchParams({
     project: `${props.namespace}/${props.name}`,
     milestone: String(props.milestone),
-    issue: String(props.issue),
+    ...(props.issue ? { issue: String(props.issue) } : {}),
     ...extra,
     limit: '50',
   })
   // Chat rows come only when the kinds name them (as on the Stream tab).
-  const kinds = kindsForFilter('all', hasFeature('chat'))
+  const kinds = props.kinds
+    ? props.kinds.filter((k) => hasFeature('chat') || !chatStreamKinds.includes(k))
+    : kindsForFilter('all', hasFeature('chat'))
   if (kinds) params.set('kinds', kinds.join(','))
   return `/stream?${params}`
 }
@@ -95,7 +106,7 @@ async function loadLive() {
 }
 
 watch(
-  () => [props.namespace, props.name, props.milestone, props.issue] as const,
+  () => [props.namespace, props.name, props.milestone, props.issue, props.kinds?.join(',')] as const,
   () => {
     events.value = []
     older.value = newest.value = undefined

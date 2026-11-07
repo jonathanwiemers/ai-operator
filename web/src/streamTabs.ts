@@ -2,12 +2,12 @@
 // so it can be linked to and reloaded; the first tab of a list is the
 // default and is left out.
 //
-// Project pages: Stream | Board | Spend. Milestone pages: Issues | Stream |
-// Board | Spend (decision 7; Pilot and Retrospective follow), so an old
+// Project pages: Stream | Board | Spend. Milestone pages: Issues | Pilot |
+// Stream | Board | Spend (decision 7; Retrospective follows), so an old
 // milestone link with ?tab=stream still opens the stream. The dashboard
 // at /: Overview | Stream (decision 3).
 export type StreamTab = 'stream' | 'board' | 'spend'
-export type MilestoneTab = 'issues' | StreamTab
+export type MilestoneTab = 'issues' | 'pilot' | StreamTab
 export type DashboardTab = 'overview' | 'stream'
 
 export interface Tab<T extends string> {
@@ -21,7 +21,11 @@ export const projectTabs: Tab<StreamTab>[] = [
   { id: 'spend', label: 'Spend' },
 ]
 
-export const milestoneTabs: Tab<MilestoneTab>[] = [{ id: 'issues', label: 'Issues' }, ...projectTabs]
+export const milestoneTabs: Tab<MilestoneTab>[] = [
+  { id: 'issues', label: 'Issues' },
+  { id: 'pilot', label: 'Pilot' },
+  ...projectTabs,
+]
 
 // storedMilestoneTabs are a milestone's tabs once its tasks are gone: the
 // Board needs them.
@@ -46,6 +50,15 @@ export function tabFromQuery(v: QueryValue, tabs: readonly Tab<string>[] = proje
     if (t) return t.id
   }
   return tabs[0]!.id
+}
+
+// milestoneTabFromRoute is a milestone page's tab: ?tab= as tabFromQuery
+// reads it, but a prompt link (#prompt-Q<n>) without ?tab= opens the Pilot
+// tab, where the prompt's card is (D230-P1).
+export function milestoneTabFromRoute(v: QueryValue, hash: string, tabs: readonly Tab<string>[] = milestoneTabs): string {
+  const none = v == null || v === '' || (Array.isArray(v) && !v.length)
+  if (none && hash.startsWith('#prompt-') && tabs.some((t) => t.id === 'pilot')) return 'pilot'
+  return tabFromQuery(v, tabs)
 }
 
 // tabQuery is the query for a tab, keeping the other parameters; the

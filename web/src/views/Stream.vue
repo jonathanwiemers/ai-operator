@@ -12,6 +12,7 @@ import SpendPanel from '../components/SpendPanel.vue'
 import StreamComposer from '../components/StreamComposer.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
+import MilestonePilot from '../components/MilestonePilot.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import { live, useResource } from '../live'
 import { pausePrompt } from '../pauseCard'
@@ -21,6 +22,8 @@ import {
   groupThreads,
   heatLevel,
   kindsForFilter,
+  runtimeKindsForFilter,
+  runtimeStreamFilters,
   sameLocalDay,
   streamEventKey,
   streamFilters,
@@ -35,7 +38,7 @@ import type {
   StreamEvent,
   StreamPage,
 } from '../types'
-import { carryTab, milestoneTabs, projectTabs, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
+import { carryTab, milestoneTabFromRoute, milestoneTabs, projectTabs, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
 
 const props = defineProps<{
@@ -48,16 +51,20 @@ const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
 // tab: Stream, Board or Spend on project streams, Issues (the default),
-// Stream, Board or Spend on milestones, kept in ?tab= so it can be linked
-// to; Everything has no tabs. A stored milestone has no tasks, so no
-// Board.
+// Pilot, Stream, Board or Spend on milestones, kept in ?tab= so it can be
+// linked to (a #prompt-Q<n> link without it opens Pilot); Everything has no
+// tabs. A stored milestone has no tasks, so no Board.
 const route = useRoute()
 const tabs = computed(() => {
   if (everything.value) return []
   if (!milestoneIID.value) return projectTabs
   return milestone.value?.iid === milestoneIID.value && milestone.value.stored ? storedMilestoneTabs : milestoneTabs
 })
-const tab = computed((): string => (everything.value ? 'stream' : tabFromQuery(route.query.tab, tabs.value)))
+const tab = computed((): string => {
+  if (everything.value) return 'stream'
+  if (milestoneIID.value) return milestoneTabFromRoute(route.query.tab, route.hash, tabs.value)
+  return tabFromQuery(route.query.tab, tabs.value)
+})
 // scopeQuery is a scope link's query: it keeps a chosen tab where the
 // target has it, else opens the target's default.
 function scopeQuery(milestone: boolean) {
@@ -66,6 +73,8 @@ function scopeQuery(milestone: boolean) {
 }
 
 const filter = ref<StreamFilter>('all')
+// A milestone's Stream tab has the runtime kinds only; the Pilot tab the rest.
+const filters = computed(() => (milestoneIID.value ? runtimeStreamFilters : streamFilters))
 const q = ref('')
 const qDraft = ref('')
 const beforeJump = ref<string | undefined>()
@@ -161,7 +170,7 @@ function streamQuery(extra: Record<string, string | undefined> = {}): string {
   if (milestoneIID.value) params.set('milestone', String(milestoneIID.value))
   // Chat kinds collide with history ids: only with the chat feature, and
   // only when "all" names them explicitly (other chips unchanged).
-  const kinds = kindsForFilter(filter.value, hasFeature('chat'))
+  const kinds = milestoneIID.value ? runtimeKindsForFilter(filter.value) : kindsForFilter(filter.value, hasFeature('chat'))
   if (kinds) params.set('kinds', kinds.join(','))
   if (q.value.trim()) params.set('q', q.value.trim())
   for (const [k, v] of Object.entries(extra)) {
@@ -319,6 +328,7 @@ watch(
   () => [props.namespace, props.name, props.iid] as const,
   () => {
     beforeJump.value = undefined
+    if (!filters.value.some((f) => f.id === filter.value)) filter.value = 'all'
     void loadProject()
     void loadInitial()
     void loadHistory()
@@ -435,11 +445,11 @@ function showDay(i: number): string | null {
             :prompt="pausePrompt(paused.autopilot?.pauseKind, paused.prompts)"
             :namespace="namespace"
             :project-name="name"
-            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(paused.iid) } }"
+            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(paused.iid) }, query: { tab: 'pilot' } }"
           />
-          <!-- A stored milestone has no tasks and no pilot to message. -->
+          <!-- A milestone's composer is on its Pilot tab. -->
           <StreamComposer
-            v-if="!milestone?.stored"
+            v-if="!milestoneIID"
             :namespace="namespace"
             :name="name"
             :project="project"
@@ -452,7 +462,7 @@ function showDay(i: number): string | null {
 
         <div class="filters">
           <button
-            v-for="f in streamFilters"
+            v-for="f in filters"
             :key="f.id"
             type="button"
             class="chip"
@@ -506,6 +516,17 @@ function showDay(i: number): string | null {
         <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
         <div v-else class="empty">Loading…</div>
       </div>
+      <div v-else-if="tab === 'pilot'" class="scroll board">
+        <MilestonePilot
+          v-if="namespace && name && milestone && milestone.iid === milestoneIID"
+          :namespace="namespace"
+          :name="name"
+          :milestone="milestone"
+          :project="project"
+        />
+        <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
+        <div v-else class="empty">Loading…</div>
+      </div>
       <div v-else-if="tab === 'spend'" class="scroll board">
         <SpendPanel
           v-if="namespace && name"
@@ -530,7 +551,7 @@ function showDay(i: number): string | null {
       class="ctx-wrap"
       :namespace="namespace"
       :name="name"
-      :full="!!milestoneIID"
+      :full="!!milestoneIID && tab !== 'pilot'"
       :inbox="projectInbox"
       :milestone="milestone"
       :history="history"

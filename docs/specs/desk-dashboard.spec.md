@@ -379,3 +379,19 @@ about how many production lines, and deviations from this spec.
   `web/src/stream.ts` (a type check fails for a `StreamKind` in neither),
   EventCard's plain retrospective card; about 60 production lines.
   Deviations: none; the tabs use the lists with the Pilot tab.
+- 2026-11-07, `pilot-tab` (R11 view, #230): the *Pilot* tab in
+  `milestoneTabs` (Issues, Pilot, Stream, Board, Spend; stored milestones
+  keep it), `milestoneTabFromRoute` (a `#prompt-Q<n>` hash without `?tab=`
+  opens Pilot, D230-P1), `MilestonePilot.vue` (full pause card, prompt
+  cards, the composer, the pilot-kind events through `IssueStream.vue`,
+  which takes `kinds` and an optional issue now, and `PausesCard`), the
+  milestone *Stream* tab on `runtimeStreamFilters` and
+  `runtimeKindsForFilter` (D230-P2), and `inboxRoute` plus the paused-strip
+  and pause-card links opening `?tab=pilot`; about 190 production lines
+  (styles included), over the budget because the issue asked for the whole
+  tab. Deviations: the milestone *Stream* tab no longer has the message box
+  (what it posts shows on *Pilot*); on the *Pilot* tab the context panel
+  leaves out the pause card, the questions and *Ask the pilot* so a prompt's
+  anchor is not on the page twice; the rest of R13 stays for its slice;
+  screenshots were not possible in the agent's container (no cluster, no
+  browser).

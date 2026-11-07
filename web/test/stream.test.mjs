@@ -161,3 +161,16 @@ test('pilot and runtime kinds partition every StreamKind', () => {
   assert.deepEqual([...union].sort(), [...all].sort())
   assert.ok(!historyStreamKinds.includes('chat.user') && historyStreamKinds.includes('retrospective'))
 })
+
+test('the milestone Stream tab has runtime chips and kinds only', async () => {
+  const { runtimeStreamFilters, runtimeKindsForFilter } = await import('../src/stream.ts')
+  assert.deepEqual(runtimeStreamFilters.map((f) => f.id), ['all', 'runs', 'ci', 'merged'])
+  assert.deepEqual(runtimeKindsForFilter('all'), [...runtimeStreamKinds])
+  assert.deepEqual(runtimeKindsForFilter('runs'), ['run.started', 'run.finished', 'push'])
+  assert.deepEqual(runtimeKindsForFilter('merged'), ['merged', 'closed'])
+  // A pilot chip carried over from a project stream falls back to all.
+  assert.deepEqual(runtimeKindsForFilter('chat'), [...runtimeStreamKinds])
+  for (const f of ['all', 'runs', 'ci', 'merged', 'chat', 'needs']) {
+    for (const k of runtimeKindsForFilter(f)) assert.ok(!pilotStreamKinds.includes(k), `${k} is a pilot kind`)
+  }
+})

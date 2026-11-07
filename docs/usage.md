@@ -1781,7 +1781,11 @@ Every question the operator, the pilot or an agent puts to the owners is a
 **prompt**: a question, two to four options (exactly one recommended, and a
 "do nothing" one on every prompt with actions), and a text box where free
 text is allowed. Owners answer in the Desk
-(see [ui.md](ui.md#desk-and-history)) with one click or one sentence. The
+(see [ui.md](ui.md#desk-and-history)) with one click or one sentence: a
+milestone's prompts on its *Pilot* tab (`…/milestones/<iid>?tab=pilot`,
+with the pause card and the message box to the pilot; the Inbox and the
+Desk link in the prompt's GitLab comment open it), an agent's question on
+its task page. The
 question's kind is one of: `assessment` (the pilot looked at something),
 `mainHealth` ([red or flaky `main`](#talking-to-the-pilot)), `proposal`,
 `needsInput` ([the agent's questions](#2-answer-questions-and-hand-the-issue-over)),

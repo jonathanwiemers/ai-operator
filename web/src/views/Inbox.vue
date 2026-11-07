@@ -52,7 +52,7 @@ onMounted(refreshPermission)
         <RouterLink
           v-for="m in strip.milestones"
           :key="`${m.namespace}/${m.project}/${m.milestoneIID}`"
-          :to="{ name: 'stream-milestone', params: { namespace: m.namespace, name: m.project, iid: String(m.milestoneIID) } }"
+          :to="{ name: 'stream-milestone', params: { namespace: m.namespace, name: m.project, iid: String(m.milestoneIID) }, query: { tab: 'pilot' } }"
         >
           {{ m.project }} · {{ m.title || `%${m.milestoneIID}` }}<template v-if="m.sinceMs != null"> ({{ duration(m.sinceMs) }})</template>
         </RouterLink>
