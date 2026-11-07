@@ -169,6 +169,17 @@ export interface BudgetSpec {
    * +optional
    */
   perIssueUSD?: string;
+  /**
+   * PerIssueAlertUSD is the spend of an issue of an autopilot milestone,
+   * as a decimal string, e.g. "15", at which autopilot posts one heads-up
+   * on the tracking issue (and wakes the pilot) without pausing: the
+   * issue's spend and its top kinds and models. Once per issue and value;
+   * another value re-arms it. The same heads-up comes at 80 % of an
+   * issue's own budget. Unset or 0: no alert.
+   * +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
+   * +optional
+   */
+  perIssueAlertUSD?: string;
 }
 /**
  * MilestoneSelector selects milestones that should be planned by the spec agent.
@@ -4690,6 +4701,18 @@ export interface AutopilotItem {
    * +optional
    */
   budget?: BudgetStatus;
+  /**
+   * BudgetAlertedAt is when autopilot posted the spend heads-up of this
+   * issue for the threshold BudgetAlertedUSD (the project's
+   * budget.perIssueAlertUSD, or 80 % of the issue's budget). Another
+   * threshold re-arms it.
+   * +optional
+   */
+  budgetAlertedAt?: string;
+  /**
+   * +optional
+   */
+  budgetAlertedUSD?: string;
 }
 /**
  * RevisitStatus is the watermark of handled revisit comments.

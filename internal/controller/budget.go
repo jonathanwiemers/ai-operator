@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -25,8 +26,10 @@ import (
 // call finishes, nothing new starts or merges), PausedFor the issue or 0
 // for the milestone. A budget pause ends by itself once the owner raised
 // that budget above the spend or removed it. The spend is one query of the
-// milestone, its issues as children. Without it (no database, or the query
-// failed) the budgets are not enforced.
+// milestone, its issues as children; from it the issues also get their
+// spend heads-up (budgetAlerts), which pauses nothing. Without it (no
+// database, or the query failed) the budgets are not enforced and nothing
+// is alerted.
 func (a *autopilot) budget(ctx context.Context) error {
 	limit := a.st.Spec.BudgetUSD
 	if limit == "" {
@@ -60,11 +63,12 @@ func (a *autopilot) budget(ctx context.Context) error {
 			}
 		}
 	}
-	if a.ap.Budget == nil && len(issues) == 0 {
+	alerts := a.rearmAlerts()
+	if a.ap.Budget == nil && len(issues) == 0 && alerts == 0 {
 		return nil
 	}
 	if a.r.Spend == nil {
-		a.log.Info("no history database: the budgets are not enforced", "budgetUSD", limit, "issueBudgets", len(issues))
+		a.log.Info("no history database: the budgets are not enforced", "budgetUSD", limit, "issueBudgets", len(issues), "issueAlerts", alerts)
 		return nil
 	}
 	sp, err := a.r.Spend.Spend(ctx, store.SpendScope{Namespace: a.st.Namespace, Project: a.st.Spec.ProjectRef, MilestoneIID: a.st.Spec.Milestone.IID})
@@ -75,14 +79,21 @@ func (a *autopilot) budget(ctx context.Context) error {
 	if a.ap.Budget != nil {
 		a.ap.Budget.SpentUSD = aiv1.FormatCost(sp.Totals.CostUSD)
 	}
-	spent := map[string]float64{}
-	for _, c := range sp.Children {
+	children := map[string]*store.SpendChild{}
+	for i, c := range sp.Children {
 		if c.Level == store.SpendIssue {
-			spent[c.Key] = c.Totals.CostUSD
+			children[c.Key] = &sp.Children[i]
 		}
 	}
 	for _, it := range issues {
-		it.Budget.SpentUSD = aiv1.FormatCost(spent[strconv.FormatInt(it.IID, 10)])
+		spent := 0.0
+		if c := children[strconv.FormatInt(it.IID, 10)]; c != nil {
+			spent = c.Totals.CostUSD
+		}
+		it.Budget.SpentUSD = aiv1.FormatCost(spent)
+	}
+	if err := a.budgetAlerts(ctx, children); err != nil {
+		return err
 	}
 
 	// The spent budget that pauses: the milestone's first, then the
@@ -130,6 +141,126 @@ func (a *autopilot) issueBudget(it *aiv1.AutopilotItem) string {
 		return aiv1.FormatCost(aiv1.CostOf(b.PerIssueUSD))
 	}
 	return ""
+}
+
+// alertThresholds are the spends of item it that post its heads-up, as
+// stored: the project's budget.perIssueAlertUSD and 80 % of the issue's
+// budget (it.Budget, set by budget before), "" for none. Only items that
+// can still spend have them.
+func (a *autopilot) alertThresholds(it *aiv1.AutopilotItem) (alert, warn string) {
+	if it.State != aiv1.AutopilotItemPending && it.State != aiv1.AutopilotItemActive {
+		return "", ""
+	}
+	if b := a.spec.Budget; b != nil && aiv1.CostOf(b.PerIssueAlertUSD) > 0 {
+		alert = aiv1.FormatCost(aiv1.CostOf(b.PerIssueAlertUSD))
+	}
+	if it.Budget != nil {
+		warn = aiv1.FormatCost(warnAt * aiv1.CostOf(it.Budget.LimitUSD))
+	}
+	return alert, warn
+}
+
+// rearmAlerts forgets the heads-up of the items whose threshold changed
+// (another alert value or budget, or none any more), so the new one is
+// alerted again, and counts the items that have a threshold. Items that
+// cannot spend any more keep theirs.
+func (a *autopilot) rearmAlerts() int {
+	n := 0
+	for i := range a.ap.Items {
+		it := &a.ap.Items[i]
+		if it.State != aiv1.AutopilotItemPending && it.State != aiv1.AutopilotItemActive {
+			continue
+		}
+		alert, warn := a.alertThresholds(it)
+		if alert != "" || warn != "" {
+			n++
+		}
+		if it.BudgetAlertedUSD != "" && it.BudgetAlertedUSD != alert && it.BudgetAlertedUSD != warn {
+			it.BudgetAlertedAt, it.BudgetAlertedUSD = nil, ""
+		}
+	}
+	return n
+}
+
+// topSpend is how many kinds and models a heads-up names.
+const topSpend = 3
+
+// budgetAlerts posts the spend heads-up of every issue that can still spend
+// and passed a threshold of it (alertThresholds) not alerted yet: the
+// highest one passed, once (it.BudgetAlertedAt); 80 % of the budget only
+// while the issue is under it, at the budget the pause says it. It names
+// the issue's spend and its top kinds and models (children: the issues'
+// spend by IID), and pauses nothing. Not on a done milestone.
+func (a *autopilot) budgetAlerts(ctx context.Context, children map[string]*store.SpendChild) error {
+	if a.ap.Phase == aiv1.AutopilotDone {
+		return nil
+	}
+	for i := range a.ap.Items {
+		it := &a.ap.Items[i]
+		alert, warn := a.alertThresholds(it)
+		c := children[strconv.FormatInt(it.IID, 10)]
+		if c == nil || alert == "" && warn == "" {
+			continue
+		}
+		spent := c.Totals.CostUSD
+		if warn != "" && spent >= aiv1.CostOf(it.Budget.LimitUSD) {
+			warn = ""
+		}
+		at := ""
+		for _, t := range []string{alert, warn} {
+			if t != "" && spent >= aiv1.CostOf(t) && (at == "" || aiv1.CostOf(t) > aiv1.CostOf(at)) {
+				at = t
+			}
+		}
+		if at == "" || it.BudgetAlertedUSD == at {
+			continue
+		}
+		if err := a.comment(ctx, a.alertText(it, c, at == warn)); err != nil {
+			return err
+		}
+		a.log.Info("issue spend heads-up posted", "issue", it.IID, "thresholdUSD", at, "spentUSD", aiv1.FormatCost(spent))
+		now := metav1.NewTime(a.r.now())
+		it.BudgetAlertedAt, it.BudgetAlertedUSD = &now, at
+	}
+	return nil
+}
+
+// alertText is the heads-up of item it with spend c; ofBudget: for 80 % of
+// its budget, else for budget.perIssueAlertUSD.
+func (a *autopilot) alertText(it *aiv1.AutopilotItem, c *store.SpendChild, ofBudget bool) string {
+	var b strings.Builder
+	spent := aiv1.ShowCost(c.Totals.CostUSD)
+	if ofBudget {
+		lim := showBudget(it.Budget.LimitUSD)
+		fmt.Fprintf(&b, "💸 Heads-up: #%d spent $%s, %.0f %% of its budget of $%s. Autopilot keeps going and pauses for it at $%s.",
+			it.IID, spent, math.Floor(100*c.Totals.CostUSD/aiv1.CostOf(it.Budget.LimitUSD)), lim, lim)
+	} else {
+		fmt.Fprintf(&b, "💸 Heads-up: #%d spent $%s, past the spend alert of $%s per issue (`budget.perIssueAlertUSD`). Autopilot keeps going.",
+			it.IID, spent, showBudget(a.spec.Budget.PerIssueAlertUSD))
+	}
+	cost := func(usd float64, known bool) string {
+		if !known {
+			return "cost unknown"
+		}
+		return "$" + aiv1.ShowCost(usd)
+	}
+	var kinds, models []string
+	for _, k := range c.Kinds[:min(len(c.Kinds), topSpend)] {
+		kinds = append(kinds, fmt.Sprintf("%s %s (%d calls)", k.Key, cost(k.Totals.CostUSD, k.Totals.CostKnown), k.Totals.Calls))
+	}
+	// The most expensive models: Models is in token order.
+	ms := slices.Clone(c.Models)
+	slices.SortStableFunc(ms, func(x, y store.ModelSplit) int { return cmp.Compare(y.CostUSD, x.CostUSD) })
+	for _, m := range ms[:min(len(ms), topSpend)] {
+		models = append(models, fmt.Sprintf("%s %s", m.Model, cost(m.CostUSD, m.CostKnown)))
+	}
+	if len(kinds) > 0 {
+		b.WriteString("\n\n- Top kinds: " + strings.Join(kinds, ", "))
+	}
+	if len(models) > 0 {
+		b.WriteString("\n- Top models: " + strings.Join(models, ", "))
+	}
+	return b.String()
 }
 
 // budgetPaused reports whether autopilot is paused for a budget.

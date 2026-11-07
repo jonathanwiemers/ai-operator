@@ -2062,6 +2062,15 @@ type AutopilotItem struct {
 	// poll while the issue has one; warnedAt is unused.
 	// +optional
 	Budget *BudgetStatus `json:"budget,omitempty"`
+
+	// BudgetAlertedAt is when autopilot posted the spend heads-up of this
+	// issue for the threshold BudgetAlertedUSD (the project's
+	// budget.perIssueAlertUSD, or 80 % of the issue's budget). Another
+	// threshold re-arms it.
+	// +optional
+	BudgetAlertedAt *metav1.Time `json:"budgetAlertedAt,omitempty"`
+	// +optional
+	BudgetAlertedUSD string `json:"budgetAlertedUSD,omitempty"`
 }
 
 // RevisitStatus is the watermark of handled revisit comments.

@@ -1098,6 +1098,16 @@ spec:
                           required:
                           - limitUSD
                           type: object
+                        budgetAlertedAt:
+                          description: |-
+                            BudgetAlertedAt is when autopilot posted the spend heads-up of this
+                            issue for the threshold BudgetAlertedUSD (the project's
+                            budget.perIssueAlertUSD, or 80 % of the issue's budget). Another
+                            threshold re-arms it.
+                          format: date-time
+                          type: string
+                        budgetAlertedUSD:
+                          type: string
                         decisions:
                           description: |-
                             Decisions recorded on the issue, collected when it was merged: the
@@ -1250,6 +1260,16 @@ spec:
                         required:
                         - limitUSD
                         type: object
+                      budgetAlertedAt:
+                        description: |-
+                          BudgetAlertedAt is when autopilot posted the spend heads-up of this
+                          issue for the threshold BudgetAlertedUSD (the project's
+                          budget.perIssueAlertUSD, or 80 % of the issue's budget). Another
+                          threshold re-arms it.
+                        format: date-time
+                        type: string
+                      budgetAlertedUSD:
+                        type: string
                       decisions:
                         description: |-
                           Decisions recorded on the issue, collected when it was merged: the

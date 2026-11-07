@@ -61,6 +61,18 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 				"(automatic re-review %d of at most %d); the interdiff is on the merge request.", short(it.AutoReReviewHead), it.MergeRequestIID, it.IID, it.AutoReReviews, maxAutoReReviews))
 		}
 	}
+	// An issue's spend heads-up, once per issue and threshold, while it can
+	// still spend.
+	if ap := st.Status.Autopilot; ap != nil {
+		for _, it := range ap.Items {
+			if it.BudgetAlertedAt == nil || it.State != aiv1.AutopilotItemPending && it.State != aiv1.AutopilotItemActive {
+				continue
+			}
+			out = append(out, aiv1.PilotEvent{Key: fmt.Sprintf("budget-alert/%d/%s", it.IID, it.BudgetAlertedUSD), IssueIID: it.IID,
+				Text: fmt.Sprintf("#%d spent $%s or more (a spend heads-up, autopilot keeps going); the heads-up on the tracking issue names its top kinds and models.",
+					it.IID, showBudget(it.BudgetAlertedUSD))})
+		}
+	}
 	for iid, t := range tasks {
 		is, ok := issues[iid]
 		if !ok || is.Milestone == nil || is.Milestone.IID != st.Spec.Milestone.IID {

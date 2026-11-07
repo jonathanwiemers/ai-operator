@@ -27,6 +27,11 @@ How to plan:
   spec touches so sub-specs name real files, packages and functions.
 - Size sub-issues so each merge request is reviewable on its own (roughly a few
   hundred changed lines at most) and leaves the main branch working.
+- Split a change that spans several layers (database migration, store, runner
+  or controller, API types, web UI) into slices of at most two layers each
+  when together they would exceed a few hundred lines; measurement and UI
+  work in particular goes into its own slice after the data it shows. Give a
+  slice that adds a database migration nothing else that is large.
 - Order sub-issues so dependencies come first and reference them in dependsOn.
 - Each description is a self-contained sub-spec for an engineer who only sees
   this issue: the part of the milestone spec it implements, context,

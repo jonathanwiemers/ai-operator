@@ -189,6 +189,10 @@ func TestSpend(t *testing.T) {
 		{"issue", "150", "#150", 0, 0, false, 1, 1},
 		{"milestone", "20", "Milestone %20", 0.25, 0, true, 1, 0},
 	})
+	// Each issue's calls by kind, the most expensive first (the budget
+	// alert names them).
+	checkBreakdown("#148 kinds", sp.Children[0].Kinds, []breakdown{{"implement", 1.23, true, 1}, {"review", 0.5, true, 1}})
+	checkBreakdown("#150 kinds", sp.Children[1].Kinds, []breakdown{{"fix", 0, false, 1}})
 	checkBreakdown("%20 by kind", sp.ByKind, []breakdown{
 		{"implement", 1.23, true, 1}, {"review", 0.5, true, 1}, {"spec", 0.25, true, 1}, {"fix", 0, false, 1}})
 	checkBreakdown("%20 by role", sp.ByRole, []breakdown{

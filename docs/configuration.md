@@ -953,11 +953,13 @@ further call once its budget is used (`spec.budgetStop`, see
 | Field | Default | Description |
 |-------|---------|-------------|
 | `perIssueUSD` | – | budget of every open issue of an autopilot milestone, as a decimal string, e.g. `"20"`. Once an issue's calls cost that much, autopilot pauses (`pauseKind: budget`, `pausedFor` the issue). An `/agent budget <usd>` comment on the issue overrides it for that issue ([commands.md](commands.md#on-an-issue-or-its-merge-request)). Unset or `0`: no per-issue budget |
+| `perIssueAlertUSD` | – | spend of an open issue of an autopilot milestone, as a decimal string, e.g. `"15"`, at which autopilot posts one heads-up on the tracking issue (and a pilot event) with the issue's spend and its top kinds and models, and does **not** pause. Once per issue and value (`status.autopilot.items[].budgetAlertedAt`); another value re-arms it. The same heads-up comes at 80 % of an issue's own budget (`perIssueUSD` or its `/agent budget`). Unset or `0`: no alert ([usage.md](usage.md#spend-heads-up-per-issue)) |
 
 ```yaml
 spec:
   budget:
     perIssueUSD: "20"
+    perIssueAlertUSD: "15"
 ```
 
 A milestone's own budget is its description's `/agent budget <usd>` line.

@@ -661,6 +661,16 @@ nothing is lost.
   `maxBudgetUSD` (claude), `maxRunsPerTask`.
 * **Structured output** (JSON schema) instead of free text that would need a
   second model call to parse.
+* **Slicing for cost.** The planner splits a change that spans several
+  layers (migration, store, runner or controller, API types, web UI) into
+  slices of at most two layers once it would exceed a few hundred lines,
+  measurement and UI after the data they show, and gives a migration slice
+  nothing else large (a bullet of `specSystemPrompt`). #179 put all five
+  layers into one 600-line slice and cost $53.88, four times the next
+  issue, mostly from that scope (a migration renumber and a pause came on
+  top). `budget.perIssueAlertUSD`
+  (and 80 % of an issue's budget) posts a heads-up with the issue's top
+  kinds and models while such an issue is still running, without pausing.
 * Spend is visible per task: `kubectl get agenttasks` shows the accumulated
   cost the CLIs report.
 
@@ -1368,7 +1378,13 @@ stateDiagram-v2
   budget <usd>` comment, else `spec.budget.perIssueUSD`) pauses it the same
   way with `pausedFor` the issue, from the same query (the milestone's
   issues as children; `items[].budget`); without the database neither is
-  enforced. While paused for a budget, the operator sets `spec.budgetStop`
+  enforced. The same query gives each pending or active issue its spend
+  heads-up (`budgetAlerts`): at `spec.budget.perIssueAlertUSD` and at 80 %
+  of its budget (only while under it), the highest threshold passed, once
+  per issue and threshold (`items[].budgetAlertedAt`, `budgetAlertedUSD`;
+  another threshold re-arms it). It is a tracking-issue comment with the
+  issue's top kinds and models (`SpendChild.Kinds` and `Models`) and a
+  pilot event `budget-alert/<iid>/<usd>`, and pauses nothing. While paused for a budget, the operator sets `spec.budgetStop`
   on the affected Implement tasks; the runner re-reads its task before every
   agent call and ends the run `Deferred` instead of starting one (the
   request stays pending, without a pod, until the flag is cleared; chat

@@ -1705,6 +1705,16 @@ spec:
                   Budget limits what autopilot work may spend (agent_calls, needs the
                   research database).
                 properties:
+                  perIssueAlertUSD:
+                    description: |-
+                      PerIssueAlertUSD is the spend of an issue of an autopilot milestone,
+                      as a decimal string, e.g. "15", at which autopilot posts one heads-up
+                      on the tracking issue (and wakes the pilot) without pausing: the
+                      issue's spend and its top kinds and models. Once per issue and value;
+                      another value re-arms it. The same heads-up comes at 80 % of an
+                      issue's own budget. Unset or 0: no alert.
+                    pattern: ^[0-9]+(\.[0-9]+)?$
+                    type: string
                   perIssueUSD:
                     description: |-
                       PerIssueUSD is the budget of every issue of an autopilot milestone, as

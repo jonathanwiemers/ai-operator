@@ -116,6 +116,16 @@ type BudgetSpec struct {
 	// +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
 	// +optional
 	PerIssueUSD string `json:"perIssueUSD,omitempty"`
+
+	// PerIssueAlertUSD is the spend of an issue of an autopilot milestone,
+	// as a decimal string, e.g. "15", at which autopilot posts one heads-up
+	// on the tracking issue (and wakes the pilot) without pausing: the
+	// issue's spend and its top kinds and models. Once per issue and value;
+	// another value re-arms it. The same heads-up comes at 80 % of an
+	// issue's own budget. Unset or 0: no alert.
+	// +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
+	// +optional
+	PerIssueAlertUSD string `json:"perIssueAlertUSD,omitempty"`
 }
 
 // MilestoneSelector selects milestones that should be planned by the spec agent.

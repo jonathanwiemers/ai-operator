@@ -1580,6 +1580,29 @@ Raising the issue's budget above its spend, `/agent budget default` (when
 the default is above it), or skipping the issue ends the pause on the next
 poll. Merged and skipped issues have no budget any more.
 
+#### Spend heads-up per issue
+
+`spec.budget.perIssueAlertUSD` (e.g. `"15"`) is an early signal that pauses
+nothing: once an issue's calls cost that much, autopilot posts one heads-up
+on the tracking issue and wakes the pilot (event `budget-alert/<iid>/<usd>`),
+and keeps going. The heads-up names the issue, its spend, and its top three
+kinds (implement, review, fix, conflict …) and models:
+
+```
+💸 Heads-up: #12 spent $15.50, past the spend alert of $15.00 per issue (`budget.perIssueAlertUSD`). Autopilot keeps going.
+
+- Top kinds: implement $7.75 (4 calls), conflict $4.65 (2 calls), review $2.32 (3 calls)
+- Top models: claude-opus-5-5 $13.95, claude-sonnet-5-5 $1.55
+```
+
+An issue with a budget gets the same heads-up at 80 % of it (with
+`perIssueUSD: "20"`: the heads-up at $16, the pause at $20). Each heads-up
+comes once per issue and threshold (`status.autopilot.items[].budgetAlertedAt`
+and `budgetAlertedUSD`); another alert value or budget re-arms it. With both
+set, each threshold the issue passes gets its own heads-up. An issue that
+jumps past its budget in one poll gets only the pause. Like the budgets, the
+heads-up comes from the poll's one spend query and needs the database.
+
 ### Companion repository
 
 An issue can change one **companion repository** besides its own project

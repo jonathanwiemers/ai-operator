@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -343,5 +344,164 @@ func TestBudgetStopped(t *testing.T) {
 		if got := budgetStopped(c.st, 7); got != c.want {
 			t.Errorf("%s: budgetStopped = %v, want %v", name, got, c.want)
 		}
+	}
+}
+
+func (e *projectEnv) setBudgetSpec(b aiv1.BudgetSpec) {
+	e.t.Helper()
+	var p aiv1.AgentProject
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &p); err != nil {
+		e.t.Fatal(err)
+	}
+	p.Spec.Budget = &b
+	if err := e.c.Update(e.ctx, &p); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// withBreakdown gives issue iid of sp its kinds and models.
+func withBreakdown(sp store.Spend, iid int64) store.Spend {
+	for i := range sp.Children {
+		c := &sp.Children[i]
+		if c.Level != store.SpendIssue || c.Key != strconv.FormatInt(iid, 10) {
+			continue
+		}
+		usd := c.Totals.CostUSD
+		c.Kinds = []store.SpendBreakdown{
+			{Key: "implement", Totals: store.SpendTotals{CostUSD: usd * 0.5, CostKnown: true, Calls: 4}},
+			{Key: "conflict", Totals: store.SpendTotals{CostUSD: usd * 0.3, CostKnown: true, Calls: 2}},
+			{Key: "review", Totals: store.SpendTotals{CostUSD: usd * 0.15, CostKnown: true, Calls: 3}},
+			{Key: "fix", Totals: store.SpendTotals{CostUSD: usd * 0.05, CostKnown: true, Calls: 1}},
+		}
+		// In token order, as the store has them.
+		c.Models = []store.ModelSplit{
+			{Model: "claude-sonnet-5-5", Main: true, Tokens: 900, CostUSD: usd * 0.1, CostKnown: true},
+			{Model: "claude-opus-5-5", Main: true, Tokens: 500, CostUSD: usd * 0.9, CostKnown: true},
+		}
+	}
+	return sp
+}
+
+func headsUps(e *projectEnv) int { return strings.Count(trackingComments(e), "Heads-up: #") }
+
+func TestIssueSpendAlertOnceAndRearmed(t *testing.T) {
+	e := newAutopilotEnv(t)
+	src := &fakeSpend{spend: issueSpend(map[int64]float64{1: 10})}
+	e.r.Spend = src
+	e.setBudgetSpec(aiv1.BudgetSpec{PerIssueAlertUSD: "15"})
+	e.reconcile()
+	e.reconcile()
+	if n := headsUps(e); n != 0 || len(src.scopes) == 0 {
+		t.Fatalf("below the alert nothing is posted, but the spend is read: %d heads-ups, %d queries", n, len(src.scopes))
+	}
+
+	src.spend = withBreakdown(issueSpend(map[int64]float64{1: 15.5}), 1)
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotRunning || ap.PauseKind != "" {
+		t.Fatalf("the alert pauses nothing: %+v", ap)
+	}
+	if it := ap.Items[0]; it.BudgetAlertedAt == nil || it.BudgetAlertedUSD != "15.0000" || it.Budget != nil {
+		t.Fatalf("the item records the alert, and has no budget: %+v", it)
+	}
+	want := "💸 Heads-up: #1 spent $15.50, past the spend alert of $15.00 per issue (`budget.perIssueAlertUSD`). Autopilot keeps going.\n\n" +
+		"- Top kinds: implement $7.75 (4 calls), conflict $4.65 (2 calls), review $2.32 (3 calls)\n" +
+		"- Top models: claude-opus-5-5 $13.95, claude-sonnet-5-5 $1.55"
+	if !strings.Contains(trackingComments(e), want) {
+		t.Fatalf("the heads-up names the issue, its spend and its top kinds and models:\n%s", trackingComments(e))
+	}
+	st := e.tasks()[specTaskName]
+	evs := pilotEvents(e.project().Spec, nil, &st, nil, nil, false, e.r.now())
+	if !slices.ContainsFunc(evs, func(ev aiv1.PilotEvent) bool { return ev.Key == "budget-alert/1/15.0000" && ev.IssueIID == 1 }) {
+		t.Fatalf("the alert is a pilot event: %+v", evs)
+	}
+
+	src.spend = withBreakdown(issueSpend(map[int64]float64{1: 18}), 1)
+	e.reconcile()
+	e.reconcile()
+	if n := headsUps(e); n != 1 {
+		t.Fatalf("the heads-up is posted once per issue and value: %d\n%s", n, trackingComments(e))
+	}
+
+	// Another value re-arms it.
+	e.setBudgetSpec(aiv1.BudgetSpec{PerIssueAlertUSD: "30"})
+	e.reconcile()
+	if it := e.autopilot().Items[0]; it.BudgetAlertedAt != nil || it.BudgetAlertedUSD != "" || headsUps(e) != 1 {
+		t.Fatalf("a new value re-arms the alert, below it nothing is posted: %+v, %d", it, headsUps(e))
+	}
+	src.spend = withBreakdown(issueSpend(map[int64]float64{1: 31}), 1)
+	e.reconcile()
+	e.reconcile()
+	if n := headsUps(e); n != 2 || !strings.Contains(trackingComments(e), "#1 spent $31.00, past the spend alert of $30.00") {
+		t.Fatalf("the new value is alerted once: %d\n%s", n, trackingComments(e))
+	}
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning {
+		t.Fatalf("autopilot keeps running: %+v", ap)
+	}
+}
+
+func TestIssueBudgetHeadsUpAt80Percent(t *testing.T) {
+	e := newAutopilotEnv(t)
+	src := &fakeSpend{spend: issueSpend(map[int64]float64{1: 15.9})}
+	e.r.Spend = src
+	e.setPerIssueBudget("20")
+	e.reconcile()
+	e.reconcile()
+	if n := headsUps(e); n != 0 {
+		t.Fatalf("below 80 %% nothing is posted: %d", n)
+	}
+
+	src.spend = withBreakdown(issueSpend(map[int64]float64{1: 16}), 1)
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].BudgetAlertedUSD != "16.0000" {
+		t.Fatalf("at 80 %% the issue gets a heads-up and runs on: %+v %+v", ap, ap.Items[0])
+	}
+	if !strings.Contains(trackingComments(e), "💸 Heads-up: #1 spent $16.00, 80 % of its budget of $20.00. Autopilot keeps going and pauses for it at $20.00.") {
+		t.Fatalf("the heads-up names the budget:\n%s", trackingComments(e))
+	}
+
+	src.spend = withBreakdown(issueSpend(map[int64]float64{1: 20}), 1)
+	e.reconcile()
+	e.reconcile()
+	if ap := e.autopilot(); ap.PauseKind != aiv1.PauseBudget || ap.PausedFor != 1 {
+		t.Fatalf("at the budget autopilot pauses, as before: %+v", ap)
+	}
+	if n := headsUps(e); n != 1 {
+		t.Fatalf("one heads-up, then the pause: %d\n%s", n, trackingComments(e))
+	}
+
+	// A raised budget re-arms it: its 80 % is another threshold.
+	e.gl.AddNote(1, gitlab.User{ID: 1, Username: "jonathan"}, "/agent budget 40")
+	e.reconcile()
+	if it := e.autopilot().Items[0]; it.BudgetAlertedAt != nil || headsUps(e) != 1 {
+		t.Fatalf("a raised budget re-arms the heads-up: %+v", it)
+	}
+}
+
+func TestIssueBudgetJumpPastTheBudgetOnlyPauses(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.r.Spend = &fakeSpend{spend: issueSpend(map[int64]float64{2: 25})}
+	e.setPerIssueBudget("20")
+	e.reconcile()
+	e.reconcile()
+	if ap := e.autopilot(); ap.PausedFor != 2 || headsUps(e) != 0 {
+		t.Fatalf("over its budget the pause says it, no heads-up: %+v, %d", ap, headsUps(e))
+	}
+}
+
+func TestIssueSpendAlertNeedsTheSpend(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.setBudgetSpec(aiv1.BudgetSpec{PerIssueAlertUSD: "15"})
+	e.reconcile()
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || headsUps(e) != 0 || ap.Items[0].BudgetAlertedAt != nil {
+		t.Fatalf("without a database nothing is alerted: %+v", ap)
+	}
+	src := &fakeSpend{spend: issueSpend(map[int64]float64{1: 50}), err: errors.New("database down")}
+	e.r.Spend = src
+	e.reconcile()
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || headsUps(e) != 0 {
+		t.Fatalf("a failed query alerts nothing: %+v", ap)
 	}
 }

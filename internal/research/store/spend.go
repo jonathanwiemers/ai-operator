@@ -76,13 +76,15 @@ const (
 // SpendChild is one part of a scope at the next level. Key is the
 // milestone or issue IID ("" for the calls of no milestone), task/run of a
 // run, or the seq of a call. At is its first call (a legacy run's end).
-// Call is set for calls only.
+// Call is set for calls only. Kinds splits a child's calls by kind, the
+// most expensive first (not for calls).
 type SpendChild struct {
 	Level  string
 	Key    string
 	Label  string
 	Totals SpendTotals
 	Models []ModelSplit
+	Kinds  []SpendBreakdown
 	At     time.Time
 	Call   *Call
 }
@@ -421,8 +423,8 @@ const reviewRounds = `(
 	FROM spend WHERE NOT legacy AND kind IN ('review', 'fix')
 ) r WHERE kind = 'review'`
 
-// spendChildren returns the scope's children with their model split and,
-// for calls, their rows.
+// spendChildren returns the scope's children with their model split, their
+// kinds (not for calls) and, for calls, their rows.
 func (s *Store) spendChildren(ctx context.Context, sc SpendScope, with string, args []any) ([]SpendChild, error) {
 	lv := sc.level()
 	children, err := s.childTotals(ctx, sc, with, args)
@@ -453,6 +455,29 @@ func (s *Store) spendChildren(ctx context.Context, sc SpendScope, with string, a
 	for _, m := range models {
 		if c := byKey[m.key]; c != nil {
 			c.Models = append(c.Models, m.ModelSplit)
+		}
+	}
+
+	if lv.name != SpendCall {
+		rows, _ := s.pool.Query(ctx, with+`SELECT `+lv.key+` AS ck, kind, `+spendTotals+` FROM spend WHERE NOT legacy
+			GROUP BY ck, kind ORDER BY ck, sum(cost_usd) DESC NULLS LAST, kind`, args...)
+		type kindRow struct {
+			key string
+			SpendBreakdown
+		}
+		kinds, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (kindRow, error) {
+			var k kindRow
+			var err error
+			k.Totals, err = scanTotals(row, &k.key, &k.Key)
+			return k, err
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range kinds {
+			if c := byKey[k.key]; c != nil {
+				c.Kinds = append(c.Kinds, k.SpendBreakdown)
+			}
 		}
 	}
 
