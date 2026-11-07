@@ -58,6 +58,8 @@ export type {
   MilestoneRow,
   MilestoneList,
   MilestoneState,
+  MilestoneIssueRow,
+  MilestoneProgress,
 } from './generated/views'
 
 export type {

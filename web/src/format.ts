@@ -256,3 +256,17 @@ export function runLine(
 export function deskTitle(n: number, base: string): string {
   return n > 0 ? `(${n}) Desk` : base
 }
+
+// durationShort is a span of seconds in at most two units: "<1m", "45m",
+// "3h 5m", "2d 4h". Zero is "0m"; a negative or invalid span is a dash.
+export function durationShort(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '—'
+  if (sec === 0) return '0m'
+  if (sec < 60) return '<1m'
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}m`
+  const h = Math.floor(min / 60)
+  if (h < 24) return min % 60 ? `${h}h ${min % 60}m` : `${h}h`
+  const d = Math.floor(h / 24)
+  return h % 24 ? `${d}d ${h % 24}h` : `${d}d`
+}

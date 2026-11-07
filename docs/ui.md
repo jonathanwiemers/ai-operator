@@ -62,11 +62,20 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   starts at `/research`.
 * **Stream** (the dashboard's *Stream* tab for everything, `/projects/<namespace>/<name>` for a
   project, `…/milestones/<iid>` for a milestone: its issues, its tracking
-  issue and what was recorded for it): a header with the view tabs *Stream*,
-  *Board* and *Spend* (project and milestone streams; the tab is kept in
-  `?tab=`, e.g. `…/milestones/3?tab=board`, so it can be linked to and
-  reloaded), the scope tabs (the project, its milestones; they keep the
-  view tab), a search box, and a strip of the last 30 days' activity, where
+  issue and what was recorded for it): a header with the view tabs: *Stream*,
+  *Board* and *Spend* on a project, *Issues*, *Stream*, *Board* and *Spend*
+  on a milestone (the tab is kept in `?tab=`, e.g. `…/milestones/3?tab=board`,
+  so it can be linked to and reloaded; the default, *Stream* on a project and
+  *Issues* on a milestone, is left out, and old `…/milestones/3?tab=stream`
+  links still open the stream). A milestone's **Issues** tab shows its state,
+  progress (merged of total) and cost, then one row per issue: title (linking
+  to its task while it has one), state, merge request, wall time (first run
+  to merge, or now), agent time (its calls' durations), paused time (the
+  autopilot's pauses over it), cost and tokens; a dash where a figure is
+  unknown (no history database, no calls recorded), never $0. On narrow
+  screens the rows become cards. Below the view tabs come the scope tabs (the
+  project, its milestones; they keep a chosen view tab where the target has
+  it and open its default otherwise), a search box, and a strip of the last 30 days' activity, where
   a day jumps the stream to that day. The *Board* tab shows the project's
   boards (one per milestone and the issues without a milestone)
   or the milestone's board; the *Spend* tab what the project or milestone
@@ -172,10 +181,12 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
 
 The Desk has no projects list or separate board and milestone pages. The former board page (`/projects/<namespace>/<name>/board`) and milestone page
 (`…/milestones/<iid>/detail`) redirect to the project stream's Board tab and
-the milestone stream; task and research pages keep their URLs. With the
-research database, a closed milestone whose tasks are gone still opens from
-history: the milestone API answers from the snapshot (`stored`), with its
-issues and their figures.
+the milestone stream's *Stream* tab; task and research pages keep their URLs.
+With the research database, a closed milestone whose tasks are gone still
+opens from history: the milestone API answers from the snapshot (`stored`),
+with its issues and their figures, and the *Issues* tab says *From history:
+the tasks of this milestone are gone*. Such a milestone has no *Board* tab and
+no message box.
 
 ### Navigation
 

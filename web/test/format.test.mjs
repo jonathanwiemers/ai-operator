@@ -1,7 +1,7 @@
 // Tests of src/format.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { costChip, costTooltip, deskTitle, fullTime, limitedEngine, tokenCount } from '../src/format.ts'
+import { costChip, costTooltip, deskTitle, durationShort, fullTime, limitedEngine, tokenCount } from '../src/format.ts'
 
 test('fullTime shows the date, time and time zone', () => {
   const s = fullTime('2026-11-02T13:59:00Z')
@@ -81,4 +81,21 @@ test('limitedEngine reads the deferred usage limit, else the legacy limitedEngin
   assert.equal(limitedEngine({ limitedEngine: 'claude' }), 'claude', 'a task an older release deferred')
   assert.equal(limitedEngine({ usageLimits: [routed] }), undefined, 'a routed limit defers nothing')
   assert.equal(limitedEngine({ limitedEngine: '' }), undefined)
+})
+
+test('durationShort: minutes, hours and days in at most two units', () => {
+  assert.equal(durationShort(0), '0m')
+  assert.equal(durationShort(59), '<1m')
+  assert.equal(durationShort(60), '1m')
+  assert.equal(durationShort(45 * 60 + 59), '45m')
+  assert.equal(durationShort(3600), '1h')
+  assert.equal(durationShort(3 * 3600 + 5 * 60), '3h 5m')
+  assert.equal(durationShort(86400), '1d')
+  assert.equal(durationShort(2 * 86400 + 4 * 3600 + 59 * 60), '2d 4h')
+})
+
+test('durationShort: a negative or invalid span is a dash', () => {
+  assert.equal(durationShort(-1), '—')
+  assert.equal(durationShort(Number.NaN), '—')
+  assert.equal(durationShort(Number.POSITIVE_INFINITY), '—')
 })

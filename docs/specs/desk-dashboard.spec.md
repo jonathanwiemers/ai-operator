@@ -335,3 +335,13 @@ about how many production lines, and deviations from this spec.
   note instead of the live done rows, so done milestones show only with
   it; *Show all* reloads the section with `limit=200`; screenshots were
   not possible in the agent's container (no cluster, no browser).
+- 2026-11-07, `milestone-issues-tab` (R9 milestone, #226): `projectTabs`,
+  `milestoneTabs` (Issues default) and `storedMilestoneTabs` (no Board) in
+  `streamTabs.ts`, `carryTab` for the scope links; `MilestoneIssues.vue`
+  (state, progress, cost, the stored note, one row per issue, cards on
+  narrow screens), `durationShort` in `format.ts`, `issueProgress` and
+  `issueStateTone` in `milestoneRows.ts`. A stored milestone hides Board and
+  the message box. Deviations: the title stays in the page header, not
+  repeated in the tab; a row without a task is not linked (D226-P2); the
+  context panel stays on milestone pages until R13; screenshots were not
+  possible in the agent's container (no cluster, no browser).

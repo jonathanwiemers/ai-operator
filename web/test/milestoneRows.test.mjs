@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  issueProgress,
+  issueStateTone,
   leftoversLabel,
   milestoneRowKey,
   progressPct,
@@ -66,4 +68,17 @@ test('stateTone and milestoneRowKey', () => {
     ['progress', 'warning', 'neutral', 'success', 'neutral'],
   )
   assert.equal(milestoneRowKey(row(3, 'running')), 'ns/p/3')
+})
+
+test('issueProgress: merged and skipped count as done', () => {
+  const issues = [{ state: 'merged' }, { state: 'skipped' }, { state: 'active' }, { state: 'planned' }]
+  assert.deepEqual(issueProgress(issues), { merged: 2, total: 4, open: 2 })
+  assert.deepEqual(issueProgress([]), { merged: 0, total: 0, open: 0 })
+})
+
+test('issueStateTone: active runs, merged succeeded', () => {
+  assert.equal(issueStateTone('active'), 'progress')
+  assert.equal(issueStateTone('merged'), 'success')
+  assert.equal(issueStateTone('skipped'), 'muted')
+  assert.equal(issueStateTone('planned'), 'neutral')
 })

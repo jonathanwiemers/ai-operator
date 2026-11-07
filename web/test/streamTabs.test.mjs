@@ -1,7 +1,7 @@
 // Tests of src/streamTabs.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { dashboardTabs, streamTabs, tabFromQuery, tabQuery } from '../src/streamTabs.ts'
+import { carryTab, dashboardTabs, milestoneTabs, projectTabs, storedMilestoneTabs, tabFromQuery, tabQuery } from '../src/streamTabs.ts'
 
 test('tabFromQuery: stream is the default', () => {
   assert.equal(tabFromQuery(undefined), 'stream')
@@ -31,8 +31,8 @@ test('tabQuery: stream drops the parameter, other tabs set it', () => {
   assert.deepEqual(tabQuery({}, 'stream'), {})
 })
 
-test('streamTabs: Stream comes first', () => {
-  assert.equal(streamTabs[0].id, 'stream')
+test('projectTabs: Stream comes first', () => {
+  assert.equal(projectTabs[0].id, 'stream')
 })
 
 test('dashboard tabs: Overview is the default, Stream by ?tab=stream', () => {
@@ -47,4 +47,46 @@ test('dashboard tabs: Overview is the default, Stream by ?tab=stream', () => {
 test('dashboard tabQuery: overview drops the parameter, stream sets it', () => {
   assert.deepEqual(tabQuery({ tab: 'stream', q: 'x' }, 'overview', dashboardTabs), { q: 'x' })
   assert.deepEqual(tabQuery({}, 'stream', dashboardTabs), { tab: 'stream' })
+})
+
+test('milestone tabs: Issues is the default', () => {
+  assert.deepEqual(milestoneTabs.map((t) => t.id), ['issues', 'stream', 'board', 'spend'])
+  assert.equal(tabFromQuery(undefined, milestoneTabs), 'issues')
+  assert.equal(tabFromQuery('', milestoneTabs), 'issues')
+  assert.equal(tabFromQuery('issues', milestoneTabs), 'issues')
+})
+
+test('milestone tabs: old ?tab=stream links open the stream', () => {
+  assert.equal(tabFromQuery('stream', milestoneTabs), 'stream')
+  assert.equal(tabFromQuery('board', milestoneTabs), 'board')
+  assert.equal(tabFromQuery('spend', milestoneTabs), 'spend')
+})
+
+test('milestone tabs: unknown values fall back to Issues', () => {
+  assert.equal(tabFromQuery('pilot', milestoneTabs), 'issues')
+  assert.equal(tabFromQuery('Stream', milestoneTabs), 'issues')
+  assert.equal(tabFromQuery(['x', 'spend'], milestoneTabs), 'spend')
+})
+
+test('project tabs: issues is unknown there', () => {
+  assert.equal(tabFromQuery('issues', projectTabs), 'stream')
+})
+
+test('milestone tabQuery: Issues drops the parameter, Stream sets it', () => {
+  assert.deepEqual(tabQuery({ tab: 'board', q: 'x' }, 'issues', milestoneTabs), { q: 'x' })
+  assert.deepEqual(tabQuery({}, 'stream', milestoneTabs), { tab: 'stream' })
+})
+
+test('stored milestone tabs: no Board, a board link falls back to Issues', () => {
+  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'stream', 'spend'])
+  assert.equal(tabFromQuery('board', storedMilestoneTabs), 'issues')
+})
+
+test('carryTab: defaults stay defaults, chosen tabs are kept where they exist', () => {
+  assert.equal(carryTab('stream', projectTabs, milestoneTabs), 'issues')
+  assert.equal(carryTab('board', projectTabs, milestoneTabs), 'board')
+  assert.equal(carryTab('issues', milestoneTabs, projectTabs), 'stream')
+  assert.equal(carryTab('stream', milestoneTabs, projectTabs), 'stream')
+  assert.equal(carryTab('stream', milestoneTabs, milestoneTabs), 'stream')
+  assert.equal(carryTab('spend', milestoneTabs, milestoneTabs), 'spend')
 })

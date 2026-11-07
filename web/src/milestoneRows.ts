@@ -1,5 +1,5 @@
 import { cost, tokenCount, type Tone } from './format.ts'
-import type { MilestoneRow, MilestoneState } from './types'
+import type { MilestoneIssueRow, MilestoneProgress, MilestoneRow, MilestoneState } from './types'
 
 // The dashboard's and the project page's milestone rows (decision 5).
 
@@ -75,4 +75,25 @@ export function sortInProgress<T extends Pick<MilestoneRow, 'needsYou' | 'state'
 // milestoneRowKey identifies a row across projects.
 export function milestoneRowKey(r: Pick<MilestoneRow, 'namespace' | 'project' | 'iid'>): string {
   return `${r.namespace}/${r.project}/${r.iid}`
+}
+
+// issueProgress counts a milestone page's issues as the rows do: merged
+// (or skipped) of total, and the open rest.
+export function issueProgress(issues: readonly Pick<MilestoneIssueRow, 'state'>[]): MilestoneProgress {
+  const merged = issues.filter((i) => i.state === 'merged' || i.state === 'skipped').length
+  return { merged, total: issues.length, open: issues.length - merged }
+}
+
+// issueStateTone is an issue row's state badge tone.
+export function issueStateTone(s: MilestoneIssueRow['state']): Tone {
+  switch (s) {
+    case 'active':
+      return 'progress'
+    case 'merged':
+      return 'success'
+    case 'skipped':
+      return 'muted'
+    default:
+      return 'neutral'
+  }
 }

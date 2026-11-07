@@ -11,6 +11,7 @@ import ProjectBoards from '../components/ProjectBoards.vue'
 import SpendPanel from '../components/SpendPanel.vue'
 import StreamComposer from '../components/StreamComposer.vue'
 import EventCard from '../components/stream/EventCard.vue'
+import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import { live, useResource } from '../live'
 import { pausePrompt } from '../pauseCard'
@@ -34,7 +35,7 @@ import type {
   StreamEvent,
   StreamPage,
 } from '../types'
-import { streamTabs, tabFromQuery, tabQuery } from '../streamTabs'
+import { carryTab, milestoneTabs, projectTabs, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
 
 const props = defineProps<{
@@ -46,10 +47,23 @@ const props = defineProps<{
 const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
-// tab: Stream, Board or Spend on project and milestone streams, kept in
-// ?tab= so it can be linked to; Everything has no tabs.
+// tab: Stream, Board or Spend on project streams, Issues (the default),
+// Stream, Board or Spend on milestones, kept in ?tab= so it can be linked
+// to; Everything has no tabs. A stored milestone has no tasks, so no
+// Board.
 const route = useRoute()
-const tab = computed(() => (everything.value ? 'stream' : tabFromQuery(route.query.tab)))
+const tabs = computed(() => {
+  if (everything.value) return []
+  if (!milestoneIID.value) return projectTabs
+  return milestone.value?.iid === milestoneIID.value && milestone.value.stored ? storedMilestoneTabs : milestoneTabs
+})
+const tab = computed((): string => (everything.value ? 'stream' : tabFromQuery(route.query.tab, tabs.value)))
+// scopeQuery is a scope link's query: it keeps a chosen tab where the
+// target has it, else opens the target's default.
+function scopeQuery(milestone: boolean) {
+  const to = milestone ? milestoneTabs : projectTabs
+  return tabQuery({}, carryTab(tab.value, tabs.value, to), to)
+}
 
 const filter = ref<StreamFilter>('all')
 const q = ref('')
@@ -94,6 +108,9 @@ const { data: inbox } = useResource<InboxResponse>(() => '/inbox', ['project', '
 
 const history = ref<HistoryResponse | null>(null)
 const milestone = ref<MilestoneView | null>(null)
+// milestoneFailed: the scoped milestone could not be loaded (the Issues tab
+// says so instead of loading forever).
+const milestoneFailed = ref(false)
 
 const projectInbox = computed(() => {
   const items = inbox.value?.items ?? []
@@ -243,8 +260,10 @@ async function loadMilestone() {
     milestone.value = await get<MilestoneView>(
       `${projectPath.value}/milestones/${pick}`,
     )
+    milestoneFailed.value = false
   } catch {
     milestone.value = null
+    milestoneFailed.value = !!iid
   }
 }
 
@@ -348,9 +367,9 @@ function showDay(i: number): string | null {
           <CostChip :cost="headerCost" />
           <nav v-if="!everything" class="tabs" aria-label="View">
             <RouterLink
-              v-for="t in streamTabs"
+              v-for="t in tabs"
               :key="t.id"
-              :to="{ query: tabQuery(route.query, t.id) }"
+              :to="{ query: tabQuery(route.query, t.id, tabs) }"
               :class="{ on: tab === t.id }"
               :aria-current="tab === t.id ? 'page' : undefined"
             >
@@ -364,7 +383,7 @@ function showDay(i: number): string | null {
         </div>
         <div v-if="!everything" class="scope">
           <RouterLink
-            :to="{ name: 'stream-project', params: { namespace, name }, query: tabQuery({}, tab) }"
+            :to="{ name: 'stream-project', params: { namespace, name }, query: scopeQuery(false) }"
             :class="{ on: !milestoneIID }"
           >
             Everything
@@ -372,7 +391,7 @@ function showDay(i: number): string | null {
           <RouterLink
             v-for="m in project?.milestones ?? []"
             :key="m.iid"
-            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: tabQuery({}, tab) }"
+            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: scopeQuery(true) }"
             :class="{ on: milestoneIID === m.iid }"
           >
             {{ m.title }}
@@ -418,7 +437,9 @@ function showDay(i: number): string | null {
             :project-name="name"
             :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(paused.iid) } }"
           />
+          <!-- A stored milestone has no tasks and no pilot to message. -->
           <StreamComposer
+            v-if="!milestone?.stored"
             :namespace="namespace"
             :name="name"
             :project="project"
@@ -474,6 +495,16 @@ function showDay(i: number): string | null {
             {{ loadingOlder ? 'Loading…' : 'Load older' }}
           </button>
         </div>
+      </div>
+      <div v-else-if="tab === 'issues'" class="scroll board">
+        <MilestoneIssues
+          v-if="namespace && name && milestone && milestone.iid === milestoneIID"
+          :milestone="milestone"
+          :namespace="namespace"
+          :name="name"
+        />
+        <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
+        <div v-else class="empty">Loading…</div>
       </div>
       <div v-else-if="tab === 'spend'" class="scroll board">
         <SpendPanel
