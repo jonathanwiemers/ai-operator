@@ -696,7 +696,13 @@ run, seq), and what it consumed (input, output, cache read and write tokens,
 `cost_usd`, `cost_source`, turns, duration). A call with a per-model split
 (claude's `modelUsage`) records the sum of its models as its tokens, so the
 totals, by issue, by kind and by model share one basis: claude's `usage`
-holds the main thread only, without subagents. Rows written before this
+holds the main thread only, without subagents. claude's `modelUsage`,
+`total_cost_usd` and `subagent_stats` are running totals of a session or
+process, so a Desk chat turn (the one long-lived process,
+`ClaudeSession.perTurn`) records only its own delta: the result's
+`model_usage_since_last_result` when present, else the totals minus the
+previous result's (a first turn is recorded as is). One-shot calls record the
+result as is. Rows written before this
 was introduced keep `usage` and are not rewritten. A call without a split
 (cursor) records its own usage.
 `cost_usd` is NULL when

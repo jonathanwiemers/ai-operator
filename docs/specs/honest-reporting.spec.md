@@ -41,6 +41,7 @@ Most of this came up in the retrospectives of Bloop %20–%24 and ai-operator
 - Resume comments ("▶️ Autopilot continues: …") do not say whether a person
   or a later run ended the pause.
 
+Each requirement below names the commit that implemented it (the MR iids are not in the history).
 ### Spend
 
 - Bloop %24: per-model tokens sum to 671M (Opus alone 642.8M), the
@@ -128,64 +129,64 @@ Most of this came up in the retrospectives of Bloop %20–%24 and ai-operator
 
 ### Pauses
 
-- R1 `status.run.needsInputCause` (decision 1), set in `finishCI` and by the
+- R1 *(b5c2121)* `status.run.needsInputCause` (decision 1), set in `finishCI` and by the
   runner next to the label.
-- R2 `gateCheck` builds the reason from it:
+- R2 *(18100a4)* `gateCheck` builds the reason from it:
   - `ciRed`: "CI is red after the fix rounds: failing jobs a, b (pipeline URL)"
   - `runFailed`: "the run failed: <error>"; a usage limit names the engine and
     the reset time
   - `agentQuestion`: "the agent asks: <question>" with a link to the comment
 
   `pilot_events.go:58` uses the same text.
-- R3 `reviewErrors` names each reviewer and kind from `reviewErrorKinds`, for
+- R3 *(974a5c3)* `reviewErrors` names each reviewer and kind from `reviewErrorKinds`, for
   example "bugbot failed (usageLimit, resets 16:00 UTC)". A `resetAt` is part
   of the reason only if it stays the same across polls.
-- R4 The resume comment says who ended the pause: an owner, the operator or a
+- R4 *(92735b3)* The resume comment says who ended the pause: an owner, the operator or a
   later run (`ResumedBy`).
 
 ### Spend
 
-- R5 Establish the basis on recorded lines: extend
+- R5 *(95170fb)* Establish the basis on recorded lines: extend
   `internal/runner/testdata/` with a call with a subagent on the main model
   and a two-turn chat, built from the CLI in the agent image. Write down in the
   spec whether `usage` holds subagent threads, whether `--resume` carries
   totals over, and which of the two explains %24. Say plainly if a fixture is
   reconstructed and not recorded.
-- R6 Apply decision 4 in `CallUsage` and `agentCall` (`calls.go`).
-- R7 Apply decision 5 to chat turns, or record in the spec why they are not
+- R6 *(be16cca)* Apply decision 4 in `CallUsage` and `agentCall` (`calls.go`).
+- R7 *(211b32f)* Apply decision 5 to chat turns, or record in the spec why they are not
   affected. Chat turns are affected and record deltas; see "R7: chat turns
   record deltas" below.
-- R8 `SpendSummary`, the Spend tab and the retrospective's cost drivers show
+- R8 *(5960b0b, 7e05c80)* `SpendSummary`, the Spend tab and the retrospective's cost drivers show
   unmetered calls (decision 7).
 
 ### Empty queue
 
-- R9 Trace how %20 reached `done` with no items and record it in the spec.
+- R9 *(8115db9)* Trace how %20 reached `done` with no items and record it in the spec.
   Add a test that replays it: a planned milestone whose description changes.
-- R10 `done` cannot run with zero items: autopilot does not close the tracking
+- R10 *(8115db9)* `done` cannot run with zero items: autopilot does not close the tracking
   issue or the milestone and asks for no retrospective.
-- R11 A planning run that succeeds with no issues pauses with `emptyPlan`
+- R11 *(6aef2a6)* A planning run that succeeds with no issues pauses with `emptyPlan`
   (decision 8). While a planning run is pending, or the milestone waits for
   its turn, there is no pause.
 
 ### Planning
 
-- R12 `syncSpecTask` creates an autopilot milestone's spec task with
+- R12 *(2c243e2)* `syncSpecTask` creates an autopilot milestone's spec task with
   `RunRequest = 0` while an older milestone is open (decision 9), and asks for
   the first run when its turn comes. The description hash used for that run is
   the one at that moment: an edit while waiting neither plans nor re-plans.
-- R13 The tracking issue exists from the start and says "⏳ waiting for its
+- R13 *(663bfce)* The tracking issue exists from the start and says "⏳ waiting for its
   turn: %7, %9 go first", with `/agent start` as the way out. The Desk shows
   the same state. No Inbox item: nothing is asked of anyone.
-- R14 `/agent start` (decision 10). On a milestone that is already planned or
+- R14 *(cfd873a)* `/agent start` (decision 10). On a milestone that is already planned or
   planning it answers so and does nothing.
-- R15 `specRetryDue`, the pilot and `/agent pause` handle a spec task that has
+- R15 *(fd822ca)* `specRetryDue`, the pilot and `/agent pause` handle a spec task that has
   never run: no retry, no assessment, and a paused waiting milestone stays
   paused when its turn comes.
 
 ### Docs
 
-- R16 `docs/usage.md`, `docs/commands.md`, `docs/ui.md`, `docs/configuration.md`, `docs/design.md`
+- R16 *(this MR)* `docs/usage.md`, `docs/commands.md`, `docs/ui.md`, `docs/configuration.md`, `docs/design.md`
   and the spec copy `docs/specs/honest-reporting.spec.md`, including the
   corrected running-totals note.
 

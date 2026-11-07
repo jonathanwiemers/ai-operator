@@ -286,6 +286,13 @@ kubectl -n agents create secret generic agent-credentials \
 | `autopilotMarker` | `/agent autopilot` | text that plans a milestone and runs it end to end: agents take their defaults, issues are worked one at a time and each MR is merged when CI is green and the review is clean (see [Autopilot](usage.md#autopilot-a-milestone-end-to-end)); `""` disables autopilot. The bot must be allowed to merge into the default branch |
 | `titlePattern` | – | optional regex for milestone titles; if set, issues are also only picked up from matching milestones |
 
+Neither marker has a setting for *when* planning happens. A milestone with the
+`specMarker` only (no autopilot) is planned when it is created, and an owner
+reviews the issues. An autopilot milestone is planned when its turn comes,
+that is when no older autopilot milestone of the project is still open (or
+when an owner comments `/agent start`); until then it only has a tracking
+issue. See [Autopilot](usage.md#autopilot-a-milestone-end-to-end).
+
 ## `spec.workflow`
 
 All labels can be renamed. Defaults:
