@@ -820,7 +820,7 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 		if r.cutsOff(inv) {
 			// No call ran, so none is retried; usually a clean tree, the
 			// call before ended normally.
-			r.checkpoint(ctx, cutBudgetStop, nil) // no call to note it on
+			r.checkpoint(ctx, cutBudgetStop, nil, true) // no call to note it on
 		}
 		return nil, err
 	}
@@ -876,7 +876,8 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 				if lost != nil {
 					cpRes = nil
 				}
-				_, cpSHA = r.checkpoint(ctx, cpReason, cpRes)
+				// A call that was never sent is not recorded below.
+				_, cpSHA = r.checkpoint(ctx, cpReason, cpRes, lost != nil && lost.notSent)
 			}
 			if lost == nil || !lost.notSent {
 				c := r.newCall(role.Engine, inv, res, start)

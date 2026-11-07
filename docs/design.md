@@ -756,6 +756,22 @@ their own model in the breakdown. Runs from before `agent_calls`: a
 adds that cost as `LegacyCostUSD`, without tokens, and shows up as a run of
 its issue.
 
+**Checkpoints in measurement.** A checkpoint that ends an agent call is a
+column of that call (`checkpoint`, `checkpoint_sha`). A checkpoint without a
+call (a budget stop, or what the next pod saves after a lost pod or an OOM
+kill) is appended by the runner to `status.run.runCheckpoints`. That is the
+newest 20, which unlike `status.run.checkpoint` stay after a fold. The
+differ writes each new entry as a `checkpoint` event keyed
+`task/<task UID>/checkpoint/<run>/<sha>`, with its reason, commit, run, step
+and diff stat. Like calls, these events are also written on informer adds
+and at the recorder's start, so the key makes repeats one row. `spendWith`
+reads these events in scope and retention (`cpevents`), leaving out one
+whose commit a call carries, and adds them to `spend` as rows that are no
+call: no cost, no tokens, not in `Calls`. `SpendTotals.Checkpoints` counts
+the calls with a checkpoint plus these events at every scope and child.
+`ByCheckpoint` groups both by reason, with the number in `Count`; its
+totals stay the calls'.
+
 ### Research store migrations
 
 The operator applies the embedded SQL migrations

@@ -13,6 +13,8 @@ import {
   childLabel,
   companionNote,
   childScope,
+  checkpointsLine,
+  checkpointsNote,
   costSourceLabel,
   legacyNote,
   modelBars,
@@ -132,6 +134,7 @@ const breakdowns = computed(() => {
 const rounds = computed(() => reviewRounds(data.value?.byReviewRound ?? []))
 const sessions = computed(() => sessionRows(data.value?.bySession ?? []))
 const stepLines = computed(() => stepLinesLine(data.value?.stepLines))
+const checkpoints = computed(() => checkpointsLine(data.value?.byCheckpoint ?? []))
 const subagentRows = computed(() => subagentRoles(data.value?.bySubagents ?? []))
 
 // level: what the children are, as the API groups them.
@@ -194,6 +197,10 @@ function rowKey(b: SpendBreakdown): string {
               {{ totals.calls }}
               <span v-if="totals.subagentCalls" class="faint">· {{ totals.subagentCalls }} subagent</span>
             </dd>
+          </div>
+          <div :title="[checkpoints, checkpointsNote].filter(Boolean).join(' · ')">
+            <dt>Checkpoints</dt>
+            <dd>{{ totals.checkpoints }}</dd>
           </div>
           <div>
             <dt>Duration</dt>

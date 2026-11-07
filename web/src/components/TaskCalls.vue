@@ -8,6 +8,7 @@ import {
   callLines,
   callNudges,
   checkpointsLine,
+  checkpointsNote,
   costSourceLabel,
   legacyNote,
   runNumber,
@@ -81,14 +82,14 @@ async function toggle(r: SpendChild) {
     <h3>Agent calls</h3>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <template v-if="data">
-      <div v-if="data.totals.calls" class="card totals">
+      <div v-if="data.totals.calls || data.totals.checkpoints" class="card totals">
         <span><strong>{{ spendUSD(data.totals) }}</strong></span>
         <span :title="tokenBreakdown(data.totals)">{{ tokenCount(spendTokens(data.totals)) }} tokens</span>
         <span>{{ data.totals.calls }} calls</span>
         <span v-if="data.totals.durationMS">{{ duration(data.totals.durationMS) }}</span>
         <span v-if="unknownNote(data.totals)" class="faint">{{ unknownNote(data.totals) }}</span>
         <span v-if="legacyNote(data.totals)" class="faint">{{ legacyNote(data.totals) }}</span>
-        <span v-if="checkpoints" title="Calls whose end saved a checkpoint commit of the work tree">💾 {{ checkpoints }}</span>
+        <span v-if="checkpoints" :title="checkpointsNote">💾 {{ checkpoints }}</span>
       </div>
       <div v-if="!runs.length" class="card empty">No agent calls recorded for this task.</div>
       <div v-else class="card">

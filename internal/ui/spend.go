@@ -32,6 +32,10 @@ type SpendTotalsView struct {
 	DurationMS       int64 `json:"durationMS"`
 	// LegacyCostUSD is the part of CostUSD from runs before agent_calls.
 	LegacyCostUSD string `json:"legacyCostUSD,omitempty"`
+	// Checkpoints are the calls that saved a checkpoint plus the
+	// checkpoints saved without a call (budget stop, lost pod, OOM kill);
+	// those add nothing to Calls.
+	Checkpoints int64 `json:"checkpoints"`
 }
 
 // ModelSplitView is one model's share of a child; Main is the calls' own
@@ -90,10 +94,13 @@ type SpendChildView struct {
 	*SpendCallView `tstype:",extends"`
 }
 
-// SpendBreakdownView sums the calls of one kind, role or model.
+// SpendBreakdownView sums the calls of one kind, role or model. Count is
+// set in byCheckpoint only: the checkpoints with the reason, with or
+// without a call (totals sum the calls).
 type SpendBreakdownView struct {
 	Key    string          `json:"key"`
 	Totals SpendTotalsView `json:"totals"`
+	Count  int64           `json:"count"`
 }
 
 // SubagentBreakdownView sums a role's calls that ran subagents or none;
@@ -108,7 +115,7 @@ type SubagentBreakdownView struct {
 
 // SpendView is what a scope cost. byReviewRound is keyed by round ("1",
 // "2", …), bySession by "fresh" or "resumed" (implement calls only),
-// byCheckpoint by the reason of the calls that saved a checkpoint.
+// byCheckpoint by the reason of the checkpoints, with or without a call.
 type SpendView struct {
 	Totals         SpendTotalsView         `json:"totals"`
 	Children       []SpendChildView        `json:"children"`
@@ -269,7 +276,7 @@ func spendView(sp store.Spend) SpendView {
 func breakdownViews(bs []store.SpendBreakdown) []SpendBreakdownView {
 	out := make([]SpendBreakdownView, 0, len(bs))
 	for _, b := range bs {
-		out = append(out, SpendBreakdownView{Key: b.Key, Totals: spendTotalsView(b.Totals)})
+		out = append(out, SpendBreakdownView{Key: b.Key, Totals: spendTotalsView(b.Totals), Count: b.Count})
 	}
 	return out
 }
@@ -278,7 +285,7 @@ func spendTotalsView(t store.SpendTotals) SpendTotalsView {
 	v := SpendTotalsView{CostUSD: showKnownCost(t.CostUSD, t.CostKnown), CostKnown: t.CostKnown,
 		UnknownCalls: t.UnknownCalls, UnmeteredCalls: t.UnmeteredCalls, InputTokens: t.InputTokens, OutputTokens: t.OutputTokens,
 		CacheReadTokens: t.CacheReadTokens, CacheWriteTokens: t.CacheWriteTokens, Calls: t.Calls,
-		SubagentCalls: t.SubagentCalls, DurationMS: t.DurationMS}
+		SubagentCalls: t.SubagentCalls, DurationMS: t.DurationMS, Checkpoints: t.Checkpoints}
 	if t.LegacyCostUSD > 0 {
 		v.LegacyCostUSD = aiv1.ShowCost(t.LegacyCostUSD)
 	}

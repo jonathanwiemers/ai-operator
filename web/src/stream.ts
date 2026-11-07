@@ -30,6 +30,7 @@ export const runtimeStreamKinds = [
   'review',
   'merged',
   'closed',
+  'checkpoint',
 ] as const satisfies readonly StreamKind[]
 
 // A StreamKind in neither list fails the type check here.
@@ -54,7 +55,7 @@ export const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKin
   { id: 'all', label: 'All' },
   { id: 'chat', label: 'Chat', kinds: ['note', 'proposal', ...promptStreamKinds] },
   { id: 'needs', label: 'Needs you', kinds: ['needs'] },
-  { id: 'runs', label: 'Runs', kinds: ['run.started', 'run.finished', 'push'] },
+  { id: 'runs', label: 'Runs', kinds: ['run.started', 'run.finished', 'push', 'checkpoint'] },
   { id: 'ci', label: 'CI & review', kinds: ['ci', 'review'] },
   { id: 'merged', label: 'Merged', kinds: ['merged', 'closed'] },
 ]

@@ -1332,6 +1332,17 @@ type RunStatus struct {
 	// +optional
 	Checkpoint *CheckpointStatus `json:"checkpoint,omitempty"`
 
+	// RunCheckpoints are the task's pushed checkpoints that no agent call
+	// carries (a budget stop, or a lost pod or OOM kill the next pod saved
+	// the work of), newest last; AppendRunCheckpoint keeps the last
+	// MaxRunCheckpoints. Unlike Checkpoint they stay after a fold: the
+	// operator writes each one it has not seen to its history, for the
+	// checkpoint counts of the Spend tab and the Task page.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=20
+	RunCheckpoints []RunCheckpoint `json:"runCheckpoints,omitempty"`
+
 	// Companion is the companion repository's side of the run
 	// (spec.companion): its branch, last push and draft merge request. Set
 	// by the run that first pushes a companion change, cleared (and the
@@ -1407,6 +1418,35 @@ type CheckpointStatus struct {
 	// +optional
 	// +listType=atomic
 	Skipped []string `json:"skipped,omitempty"`
+
+	// At is when the checkpoint was pushed.
+	At metav1.Time `json:"at"`
+}
+
+// RunCheckpoint is a pushed checkpoint no agent call carries
+// (RunStatus.RunCheckpoints).
+type RunCheckpoint struct {
+	// Reason the work was cut off: budget-stop, pod-lost, oom-kill or
+	// container-restart.
+	Reason string `json:"reason"`
+
+	// SHA is the checkpoint commit.
+	SHA string `json:"sha"`
+
+	// Run is the run whose work it saved and Step its implementer call,
+	// from 1.
+	// +optional
+	Run int64 `json:"run,omitempty"`
+	// +optional
+	Step int32 `json:"step,omitempty"`
+
+	// Files, Added and Deleted are the checkpoint's diff stat.
+	// +optional
+	Files int32 `json:"files,omitempty"`
+	// +optional
+	Added int64 `json:"added,omitempty"`
+	// +optional
+	Deleted int64 `json:"deleted,omitempty"`
 
 	// At is when the checkpoint was pushed.
 	At metav1.Time `json:"at"`

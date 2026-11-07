@@ -899,6 +899,12 @@ export interface SpendTotalsView {
    * LegacyCostUSD is the part of CostUSD from runs before agent_calls.
    */
   legacyCostUSD?: string;
+  /**
+   * Checkpoints are the calls that saved a checkpoint plus the
+   * checkpoints saved without a call (budget stop, lost pod, OOM kill);
+   * those add nothing to Calls.
+   */
+  checkpoints: number /* int64 */;
 }
 /**
  * ModelSplitView is one model's share of a child; Main is the calls' own
@@ -969,11 +975,14 @@ export interface SpendChildView extends Partial<SpendCallView> {
   companion?: string;
 }
 /**
- * SpendBreakdownView sums the calls of one kind, role or model.
+ * SpendBreakdownView sums the calls of one kind, role or model. Count is
+ * set in byCheckpoint only: the checkpoints with the reason, with or
+ * without a call (totals sum the calls).
  */
 export interface SpendBreakdownView {
   key: string;
   totals: SpendTotalsView;
+  count: number /* int64 */;
 }
 /**
  * SubagentBreakdownView sums a role's calls that ran subagents or none;
@@ -989,7 +998,7 @@ export interface SubagentBreakdownView {
 /**
  * SpendView is what a scope cost. byReviewRound is keyed by round ("1",
  * "2", …), bySession by "fresh" or "resumed" (implement calls only),
- * byCheckpoint by the reason of the calls that saved a checkpoint.
+ * byCheckpoint by the reason of the checkpoints, with or without a call.
  */
 export interface SpendView {
   totals: SpendTotalsView;

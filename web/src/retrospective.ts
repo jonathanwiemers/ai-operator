@@ -41,6 +41,7 @@ export function driverShares(drivers: CostDriverView[]): string[] {
       calls: 0,
       subagentCalls: 0,
       durationMS: 0,
+      checkpoints: 0,
     })),
   )
   return pct.map(pctLabel)

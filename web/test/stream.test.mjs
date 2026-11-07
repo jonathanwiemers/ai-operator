@@ -20,7 +20,7 @@ test('kindsForFilter maps chips to API kinds', () => {
   assert.equal(kindsForFilter('all'), undefined)
   assert.deepEqual(kindsForFilter('all', true), [...historyStreamKinds, 'chat.user', 'chat.agent'])
   assert.deepEqual(kindsForFilter('chat'), ['note', 'proposal', 'prompt.posted', 'prompt.answered', 'prompt.closed'])
-  assert.deepEqual(kindsForFilter('runs'), ['run.started', 'run.finished', 'push'])
+  assert.deepEqual(kindsForFilter('runs'), ['run.started', 'run.finished', 'push', 'checkpoint'])
   assert.deepEqual(kindsForFilter('ci'), ['ci', 'review'])
   assert.deepEqual(kindsForFilter('merged'), ['merged', 'closed'])
   assert.deepEqual(kindsForFilter('needs'), ['needs'])
@@ -153,7 +153,7 @@ test('pilot and runtime kinds partition every StreamKind', () => {
   const all = [
     'note', 'run.started', 'run.finished', 'push', 'ci', 'review', 'needs', 'merged', 'closed',
     'autopilot', 'proposal', 'autopilot.paused', 'autopilot.resumed', 'pilot.writeFailed',
-    'retrospective', 'prompt.posted', 'prompt.answered', 'prompt.closed', 'chat.user', 'chat.agent',
+    'retrospective', 'prompt.posted', 'prompt.answered', 'prompt.closed', 'chat.user', 'chat.agent', 'checkpoint',
   ]
   for (const k of pilotStreamKinds) assert.ok(!runtimeStreamKinds.includes(k), `${k} is in both lists`)
   const union = [...pilotStreamKinds, ...runtimeStreamKinds]
@@ -166,7 +166,7 @@ test('the milestone Stream tab has runtime chips and kinds only', async () => {
   const { runtimeStreamFilters, runtimeKindsForFilter } = await import('../src/stream.ts')
   assert.deepEqual(runtimeStreamFilters.map((f) => f.id), ['all', 'runs', 'ci', 'merged'])
   assert.deepEqual(runtimeKindsForFilter('all'), [...runtimeStreamKinds])
-  assert.deepEqual(runtimeKindsForFilter('runs'), ['run.started', 'run.finished', 'push'])
+  assert.deepEqual(runtimeKindsForFilter('runs'), ['run.started', 'run.finished', 'push', 'checkpoint'])
   assert.deepEqual(runtimeKindsForFilter('merged'), ['merged', 'closed'])
   // A pilot chip carried over from a project stream falls back to all.
   assert.deepEqual(runtimeKindsForFilter('chat'), [...runtimeStreamKinds])

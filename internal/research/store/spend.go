@@ -31,7 +31,9 @@ type SpendScope struct {
 // calls without a cost, which never add $0. CostKnown is false only when
 // every call is unknown and there is no legacy cost. UnmeteredCalls are
 // the calls with neither a cost nor tokens (cursor's ACP reports no
-// usage), a part of UnknownCalls.
+// usage), a part of UnknownCalls. Checkpoints are the calls that saved a
+// checkpoint plus the checkpoints no call carries (checkpoint events: budget
+// stop, lost pod, OOM kill); those add no call to Calls.
 type SpendTotals struct {
 	CostUSD                                                      float64
 	CostKnown                                                    bool
@@ -42,6 +44,7 @@ type SpendTotals struct {
 	SubagentCalls                                                int64
 	DurationMS                                                   int64
 	LegacyCostUSD                                                float64
+	Checkpoints                                                  int64
 }
 
 // Tokens is the sum of all tokens: input, output and cache.
@@ -84,10 +87,13 @@ type SpendChild struct {
 	Call   *Call
 }
 
-// SpendBreakdown sums the calls with one kind, role or model.
+// SpendBreakdown sums the calls with one kind, role or model. Count is set
+// in ByCheckpoint only: the checkpoints with the reason, with or without a
+// call (Totals.Checkpoints).
 type SpendBreakdown struct {
 	Key    string
 	Totals SpendTotals
+	Count  int64
 }
 
 // SubagentBreakdown sums a role's calls that ran subagents
@@ -110,8 +116,9 @@ type SubagentBreakdown struct {
 // "1", "2", …): within a run, round n is the review calls after its
 // (n-1)th fix call by seq. BySession splits implement calls by session,
 // key "fresh" or "resumed". BySubagents splits each role's calls by
-// whether subagents ran. ByCheckpoint sums the calls that saved a
-// checkpoint by its reason, the most frequent first.
+// whether subagents ran. ByCheckpoint counts the checkpoints by reason, the
+// most frequent first: the calls that saved one (their totals) and the
+// checkpoints no call carries (only in Count).
 type Spend struct {
 	Totals                  SpendTotals
 	Children                []SpendChild
@@ -130,12 +137,16 @@ type Spend struct {
 //   - scoped: the calls in scope;
 //   - legacy: the run.finished events in scope with a cost whose run has no
 //     call;
-//   - spend: both as one shape with their project, legacy rows without
-//     tokens;
+//   - cpevents: the checkpoint events in scope, the checkpoints no call
+//     carries (budget stop, lost pod), unless a call carries the commit;
+//   - spend: all three as one shape with their project. Rows that are no
+//     call (legacy runs and checkpoint events) have legacy set and no
+//     tokens; checkpoints is 1 for a call that saved a checkpoint and for a
+//     checkpoint event, checkpoint its reason;
 //   - split: the calls split by model, from models or else the row's model.
 //     The main model is the row's; when models lacks it (the row has an
 //     alias, say), the one with the most output tokens, as the runner picks
-//     it. Subagent calls and duration go to the main model.
+//     it. Subagent calls, duration and the checkpoint go to the main model.
 func spendWith(where string) string {
 	return `WITH scoped AS (
 		SELECT * FROM agent_calls WHERE expires_at > now() AND ` + where + `
@@ -147,19 +158,32 @@ func spendWith(where string) string {
 		) e WHERE ` + where + ` AND NOT EXISTS (
 			SELECT 1 FROM agent_calls a WHERE a.namespace = e.namespace AND a.project = e.project
 				AND a.task = e.task AND a.run = e.run AND a.expires_at > now())
+	), cpevents AS (
+		SELECT * FROM (
+			SELECT namespace, project, milestone_iid, issue_iid, task, at,
+				coalesce((data->>'run')::bigint, 0) AS run, coalesce(data->>'reason', '') AS reason, coalesce(data->>'sha', '') AS sha
+			FROM history_events WHERE kind = 'checkpoint' AND expires_at > now()
+		) e WHERE ` + where + ` AND NOT EXISTS (
+			SELECT 1 FROM agent_calls a WHERE a.namespace = e.namespace AND a.project = e.project
+				AND a.task = e.task AND a.checkpoint_sha = e.sha AND a.checkpoint_sha <> '' AND a.expires_at > now())
 	), spend AS (
 		SELECT false AS legacy, id, namespace, project, milestone_iid, issue_iid, task, run, seq, at, kind, role, resumed,
 			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms, read_gate_blocks,
-			checkpoint
+			checkpoint, (checkpoint <> '')::int AS checkpoints
 		FROM scoped
 		UNION ALL
-		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0, ''
+		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0, '', 0
 		FROM legacy
+		UNION ALL
+		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, NULL, 0, 0, 0, 0, 0, 0, 0,
+			CASE WHEN reason = '' THEN 'unknown' ELSE reason END, 1
+		FROM cpevents
 	), split AS (
 		SELECT false AS legacy, c.id, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, m.model, m.main,
 			m.cost_usd, m.input_tokens, m.output_tokens, m.cache_read_tokens, m.cache_write_tokens,
 			CASE WHEN m.main THEN c.subagent_calls ELSE 0 END AS subagent_calls,
-			CASE WHEN m.main THEN c.duration_ms ELSE 0 END AS duration_ms
+			CASE WHEN m.main THEN c.duration_ms ELSE 0 END AS duration_ms,
+			CASE WHEN m.main AND c.checkpoint <> '' THEN 1 ELSE 0 END AS checkpoints
 		FROM scoped c CROSS JOIN LATERAL (
 			SELECT e.m->>'model' AS model,
 				CASE WHEN bool_or(e.m->>'model' = c.model) OVER () THEN e.m->>'model' = c.model
@@ -187,7 +211,8 @@ const spendTotals = `coalesce(sum(cost_usd), 0)::float8,
 	count(*) FILTER (WHERE NOT legacy), coalesce(sum(subagent_calls), 0)::bigint,
 	coalesce(sum(duration_ms), 0)::bigint, coalesce(sum(cost_usd) FILTER (WHERE legacy), 0)::float8,
 	count(*) FILTER (WHERE NOT legacy AND cost_usd IS NULL
-		AND input_tokens + output_tokens + cache_read_tokens + cache_write_tokens = 0)`
+		AND input_tokens + output_tokens + cache_read_tokens + cache_write_tokens = 0),
+	coalesce(sum(checkpoints), 0)::bigint`
 
 // scanTotals scans the spendTotals columns after the dest columns before
 // them.
@@ -195,7 +220,7 @@ func scanTotals(row pgx.Row, dest ...any) (SpendTotals, error) {
 	var t SpendTotals
 	err := row.Scan(append(dest, &t.CostUSD, &t.UnknownCalls, &t.InputTokens, &t.OutputTokens,
 		&t.CacheReadTokens, &t.CacheWriteTokens, &t.Calls, &t.SubagentCalls, &t.DurationMS, &t.LegacyCostUSD,
-		&t.UnmeteredCalls)...)
+		&t.UnmeteredCalls, &t.Checkpoints)...)
 	t.CostKnown = t.UnknownCalls < t.Calls || t.Calls == 0 || t.LegacyCostUSD > 0
 	return t, err
 }
@@ -323,13 +348,16 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 		{&sp.ByModel, "model", "split", byCost},
 		{&sp.ByReviewRound, "round::text", reviewRounds, "min(round)"},
 		{&sp.BySession, "CASE WHEN resumed THEN 'resumed' ELSE 'fresh' END", "spend WHERE NOT legacy AND kind = 'implement'", "1"},
-		{&sp.ByCheckpoint, "checkpoint", "spend WHERE NOT legacy AND checkpoint <> ''", "count(*) DESC, 1"},
+		{&sp.ByCheckpoint, "checkpoint", "spend WHERE checkpoint <> ''", "sum(checkpoints) DESC, 1"},
 	} {
 		rows, _ := s.pool.Query(ctx, with+`SELECT `+b.key+`, `+spendTotals+` FROM `+b.from+
 			` GROUP BY 1 ORDER BY `+b.order, args...)
 		if *b.out, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (SpendBreakdown, error) {
 			var br SpendBreakdown
 			br.Totals, err = scanTotals(row, &br.Key)
+			if b.out == &sp.ByCheckpoint {
+				br.Count = br.Totals.Checkpoints
+			}
 			return br, err
 		}); err != nil {
 			return Spend{}, err

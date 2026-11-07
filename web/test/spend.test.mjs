@@ -442,12 +442,18 @@ test('callLines shows the uncommitted lines of implementer calls only', () => {
 })
 
 test('checkpointsLine counts the checkpoints with their reasons', () => {
-  const row = (key, calls) => ({ key, totals: { calls } })
+  const row = (key, count, calls = count) => ({ key, count, totals: { calls } })
   assert.equal(checkpointsLine([]), '')
   assert.equal(checkpointsLine([row('timeout', 1)]), '1 checkpoint: timeout')
   assert.equal(
     checkpointsLine([row('usage-limit', 2), row('engine-error', 1)]),
     '3 checkpoints: usage-limit ×2, engine-error',
+  )
+  // A lost pod's checkpoint has no call: it counts by count, not calls.
+  assert.equal(checkpointsLine([row('pod-lost', 1, 0)]), '1 checkpoint: pod-lost')
+  assert.equal(
+    checkpointsLine([row('budget-stop', 2, 0), row('usage-limit', 1)]),
+    '3 checkpoints: budget-stop ×2, usage-limit',
   )
 })
 

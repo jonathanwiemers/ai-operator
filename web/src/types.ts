@@ -158,6 +158,7 @@ export type StreamKind =
   | 'prompt.closed'
   | 'chat.user'
   | 'chat.agent'
+  | 'checkpoint'
 
 // StreamEventData is a stream event's data (Go: map[string]any): the keys
 // of all kinds.
@@ -187,6 +188,12 @@ export interface StreamEventData {
   phase?: string
   proposalID?: number
   proposalState?: string
+  // checkpoint: a checkpoint no call carries (also sha and reason).
+  run?: number
+  step?: number
+  files?: number
+  added?: number
+  deleted?: number
   // prompt.* events.
   promptID?: string
   promptKind?: string

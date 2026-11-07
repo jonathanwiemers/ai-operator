@@ -163,6 +163,10 @@ func TestCheckpointBeforeContainerRestartReset(t *testing.T) {
 	}
 	// The retry's commit folds the checkpoint this run pushed.
 	e.checkFolded(sha, "Nothing")
+	// The lost call was sent and recorded with it: no call-less checkpoint.
+	if cps := e.task().Status.Run.RunCheckpoints; len(cps) != 0 {
+		t.Fatalf("status.run.runCheckpoints = %+v, want none: a call carries it", cps)
+	}
 	if _, err := os.Stat(filepath.Join(e.tmp, "agent", "repo", ".git", lastStatusFile)); !os.IsNotExist(err) {
 		t.Fatalf("the status file goes with the checkpoint: %v", err)
 	}
@@ -247,6 +251,17 @@ func TestLostPodLeavesCheckpointBeforePrepare(t *testing.T) {
 	e.checkFolded(sha, "Nothing")
 	if st := e.savedState(); st.InFlight != nil {
 		t.Fatalf("the marker is used up: %+v", st.InFlight)
+	}
+	// No call carries it, so the run's checkpoints keep it past the fold.
+	run := e.task().Status.Run
+	if cps := run.RunCheckpoints; len(cps) != 1 || cps[0].Reason != cutPodLost || cps[0].SHA != sha ||
+		cps[0].Run != 2 || cps[0].Step != 3 || cps[0].Files != 1 || cps[0].Added != 3 || cps[0].At.IsZero() {
+		t.Fatalf("status.run.runCheckpoints = %+v, want the pod-lost checkpoint %s of run 2 step 3", cps, sha)
+	}
+	for _, c := range run.Calls {
+		if c.Checkpoint != "" || c.CheckpointSHA != "" {
+			t.Errorf("call %d carries a checkpoint: %+v", c.Seq, c)
+		}
 	}
 }
 
@@ -375,6 +390,9 @@ func TestOOMKillLeavesCheckpointInNewPod(t *testing.T) {
 	}
 	if run := e.task().Status.Run; run.LastResult != aiv1.RunResultSucceeded || run.OOMRetries != 0 {
 		t.Fatalf("the run finishes: %+v", run)
+	}
+	if cps := e.task().Status.Run.RunCheckpoints; len(cps) != 1 || cps[0].Reason != cutOOMKill || cps[0].SHA != sha {
+		t.Fatalf("status.run.runCheckpoints = %+v, want the oom-kill checkpoint %s", cps, sha)
 	}
 }
 

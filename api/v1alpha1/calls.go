@@ -29,3 +29,16 @@ func AppendCalls(st *RunStatus, calls ...AgentCall) {
 	}
 	st.Calls = out
 }
+
+// MaxRunCheckpoints is how many checkpoints status.run.runCheckpoints keeps.
+const MaxRunCheckpoints = 20
+
+// AppendRunCheckpoint appends cp to st.RunCheckpoints, keeping the newest
+// MaxRunCheckpoints.
+func AppendRunCheckpoint(st *RunStatus, cp RunCheckpoint) {
+	out := append(st.RunCheckpoints[:len(st.RunCheckpoints):len(st.RunCheckpoints)], cp)
+	if n := len(out) - MaxRunCheckpoints; n > 0 {
+		out = out[n:]
+	}
+	st.RunCheckpoints = out
+}

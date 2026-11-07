@@ -57,3 +57,16 @@ func TestAppendCallsDoesNotShareTheOldList(t *testing.T) {
 		t.Fatal("trimming the series changed the list the status had before")
 	}
 }
+
+func TestAppendRunCheckpointKeepsTheNewest(t *testing.T) {
+	var st RunStatus
+	for i := range MaxRunCheckpoints + 3 {
+		AppendRunCheckpoint(&st, RunCheckpoint{Reason: "pod-lost", Run: int64(i + 1)})
+	}
+	if n := len(st.RunCheckpoints); n != MaxRunCheckpoints {
+		t.Fatalf("%d checkpoints, want %d", n, MaxRunCheckpoints)
+	}
+	if first, last := st.RunCheckpoints[0].Run, st.RunCheckpoints[MaxRunCheckpoints-1].Run; first != 4 || last != MaxRunCheckpoints+3 {
+		t.Fatalf("runs %d…%d, want 4…%d (the oldest dropped)", first, last, MaxRunCheckpoints+3)
+	}
+}

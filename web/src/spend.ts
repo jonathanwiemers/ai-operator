@@ -500,15 +500,21 @@ export function stepLinesLine(s: StepLines | undefined): string {
   return `${commits}: median ${s.median}, p90 ${s.p90}, max ${s.max} lines · ${nudges}`
 }
 
-// checkpointsLine sums the calls that saved a checkpoint: "2 checkpoints:
-// usage-limit ×2" or "1 checkpoint: timeout"; "" without one. Rows come by
-// reason, the most frequent first.
+// checkpointsLine sums the checkpoints of the byCheckpoint rows by their
+// count, those saved without a call (budget stop, lost pod) included:
+// "2 checkpoints: usage-limit, pod-lost" or "1 checkpoint: timeout"; "" without
+// one. Rows come by reason, the most frequent first.
 export function checkpointsLine(rows: SpendBreakdown[]): string {
-  const n = rows.reduce((s, r) => s + r.totals.calls, 0)
+  const n = rows.reduce((s, r) => s + r.count, 0)
   if (n === 0) return ''
-  const reasons = rows.map((r) => (r.totals.calls > 1 ? `${r.key} ×${r.totals.calls}` : r.key))
+  const reasons = rows.filter((r) => r.count > 0).map((r) => (r.count > 1 ? `${r.key} ×${r.count}` : r.key))
   return `${n} ${n === 1 ? 'checkpoint' : 'checkpoints'}: ${reasons.join(', ')}`
 }
+
+// checkpointsNote is the title of a checkpoint count.
+export const checkpointsNote =
+  'Checkpoint commits of the work tree: saved when an agent call was cut off, ' +
+  'and saved without a call (budget stop, lost pod, OOM kill)'
 
 // companionNote is the tooltip of an issue row's companion marker: the
 // companion project whose changes its calls made too (they count to the

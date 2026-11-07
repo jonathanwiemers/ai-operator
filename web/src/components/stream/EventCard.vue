@@ -107,6 +107,7 @@ function taskLink(ev: StreamEvent) {
       <template v-else-if="e.kind === 'proposal'">P</template>
       <template v-else-if="e.kind === 'autopilot'">◇</template>
       <template v-else-if="e.kind === 'retrospective'">R</template>
+      <template v-else-if="e.kind === 'checkpoint'">💾</template>
       <template v-else-if="isPrompt">?</template>
       <template v-else-if="e.kind === 'chat.user' || e.kind === 'chat.agent'">C</template>
       <template v-else>·</template>
@@ -145,6 +146,18 @@ function taskLink(ev: StreamEvent) {
         <Badge tone="info">push</Badge>
         <code class="mono">{{ shortSHA(e.data.sha) }}</code>
         <span v-if="e.data.branch" class="muted">{{ e.data.branch }}</span>
+      </div>
+
+      <!-- checkpoint: one no call carries (budget stop, lost pod) -->
+      <div v-else-if="e.kind === 'checkpoint'" class="compact">
+        <Badge tone="warning">{{ e.data.reason || 'checkpoint' }}</Badge>
+        <code class="mono">{{ shortSHA(e.data.sha) }}</code>
+        <span class="muted">
+          <template v-if="e.data.run">run {{ e.data.run }}</template>
+          <template v-if="e.data.step"> step {{ e.data.step }}</template>
+          · +{{ e.data.added ?? 0 }}/−{{ e.data.deleted ?? 0 }}
+        </span>
+        <RouterLink v-if="taskLink(e)" class="t" :to="taskLink(e)!">task</RouterLink>
       </div>
 
       <!-- ci -->

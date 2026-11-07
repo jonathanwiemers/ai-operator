@@ -612,3 +612,77 @@ func TestDifferRetrospectiveOnce(t *testing.T) {
 		t.Errorf("pilot task: %v", kinds(es))
 	}
 }
+
+// TestDifferCheckpoints: one checkpoint event per new call-less checkpoint,
+// none for a re-diff, and the same keys for an add of the task.
+func TestDifferCheckpoints(t *testing.T) {
+	pushed := now.Add(-time.Minute)
+	withCps := func(rv string, cps ...aiv1.RunCheckpoint) *aiv1.AgentTask {
+		return task(rv, func(t *aiv1.AgentTask) {
+			t.Status.Run.MergeRequestIID = 702
+			t.Status.Run.RunCheckpoints = cps
+		})
+	}
+	lost := aiv1.RunCheckpoint{Reason: "pod-lost", SHA: "aaaaaaaaaa", Run: 2, Step: 3, Files: 1, Added: 3,
+		At: metav1.Time{Time: pushed}}
+	budget := aiv1.RunCheckpoint{Reason: "budget-stop", SHA: "bbbbbbbbbb", Run: 4, Step: 1, Added: 5, Deleted: 2}
+	cps := func(es []store.Event) []store.Event {
+		return slices.DeleteFunc(es, func(e store.Event) bool { return e.Kind != KindCheckpoint })
+	}
+	d := NewDiffer()
+	es := cps(d.Update(withCps("1"), withCps("2", lost), now))
+	if got := kinds(es); !slices.Equal(got, []string{"checkpoint task/u1/checkpoint/2/aaaaaaaaaa"}) {
+		t.Fatalf("first checkpoint: %v", got)
+	}
+	e := es[0]
+	if !e.At.Equal(pushed) || e.MilestoneIID != 20 || e.IssueIID != 148 || e.MergeRequestIID != 702 || e.Task != "bloop-148" ||
+		e.Summary != "Checkpoint aaaaaaaa (pod-lost) on #148" {
+		t.Errorf("event %+v", e)
+	}
+	if e.Data["reason"] != "pod-lost" || e.Data["sha"] != "aaaaaaaaaa" || e.Data["run"] != int64(2) || e.Data["step"] != int32(3) ||
+		e.Data["added"] != int64(3) || e.Data["deleted"] != int64(0) || e.Data["files"] != int32(1) {
+		t.Errorf("data %v", e.Data)
+	}
+	// Re-diffing the same change, or a change that keeps the list, is no event.
+	if es := cps(d.Update(withCps("2", lost), withCps("3", lost), now)); len(es) != 0 {
+		t.Errorf("unchanged list: %v", kinds(es))
+	}
+	es = cps(d.Update(withCps("3", lost), withCps("4", lost, budget), now))
+	if got := kinds(es); !slices.Equal(got, []string{"checkpoint task/u1/checkpoint/4/bbbbbbbbbb"}) {
+		t.Fatalf("second checkpoint: %v", got)
+	}
+	if !es[0].At.Equal(now) {
+		t.Errorf("a checkpoint without a time is at the update: %v", es[0].At)
+	}
+	// An add (start, resync) yields the same keys, so the store keeps one each.
+	if got := kinds(Checkpoints(nil, withCps("4", lost, budget), now)); !slices.Equal(got,
+		[]string{"checkpoint task/u1/checkpoint/2/aaaaaaaaaa", "checkpoint task/u1/checkpoint/4/bbbbbbbbbb"}) {
+		t.Errorf("add: %v", got)
+	}
+	// The oldest dropped from the list is no event either.
+	if es := cps(d.Update(withCps("4", lost, budget), withCps("5", budget), now)); len(es) != 0 {
+		t.Errorf("trimmed list: %v", kinds(es))
+	}
+}
+
+// TestCheckpointEventsAreWrittenOnce: the restarted operator's recorder
+// writes the call-less checkpoints of every task, keeping one row each.
+func TestCheckpointEventsAreWrittenOnce(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	cur := task("1", func(t *aiv1.AgentTask) {
+		t.Status.Run.RunCheckpoints = []aiv1.RunCheckpoint{{Reason: "pod-lost", SHA: "aaaaaaaaaa", Run: 2, At: metav1.Time{Time: now}}}
+	})
+	r := NewRecorder(readyDB{s}, time.Hour, clock.RealClock{}, testLogger(t))
+	r.existingEvents = func(context.Context) ([]store.Event, error) { return Checkpoints(nil, cur, now), nil }
+	r.writeExistingEvents(ctx)
+	r.writeExistingEvents(ctx)
+	es := Checkpoints(nil, cur, now)
+	r.prepareEvent(&es[0])
+	if !es[0].ExpiresAt.Equal(now.Add(time.Hour)) {
+		t.Errorf("expires at %v, want an hour after the push", es[0].ExpiresAt)
+	}
+	if n, err := s.InsertEvents(ctx, es); err != nil || n != 0 {
+		t.Errorf("the start wrote the checkpoint once: inserting it again wrote %d (%v), want 0", n, err)
+	}
+}

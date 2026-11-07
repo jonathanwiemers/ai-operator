@@ -3855,6 +3855,59 @@ spec:
                       (CI fix runs) can push commits after it, so a clean review only covers
                       PushedSHA when the two are equal.
                     type: string
+                  runCheckpoints:
+                    description: |-
+                      RunCheckpoints are the task's pushed checkpoints that no agent call
+                      carries (a budget stop, or a lost pod or OOM kill the next pod saved
+                      the work of), newest last; AppendRunCheckpoint keeps the last
+                      MaxRunCheckpoints. Unlike Checkpoint they stay after a fold: the
+                      operator writes each one it has not seen to its history, for the
+                      checkpoint counts of the Spend tab and the Task page.
+                    items:
+                      description: |-
+                        RunCheckpoint is a pushed checkpoint no agent call carries
+                        (RunStatus.RunCheckpoints).
+                      properties:
+                        added:
+                          format: int64
+                          type: integer
+                        at:
+                          description: At is when the checkpoint was pushed.
+                          format: date-time
+                          type: string
+                        deleted:
+                          format: int64
+                          type: integer
+                        files:
+                          description: Files, Added and Deleted are the checkpoint's
+                            diff stat.
+                          format: int32
+                          type: integer
+                        reason:
+                          description: |-
+                            Reason the work was cut off: budget-stop, pod-lost, oom-kill or
+                            container-restart.
+                          type: string
+                        run:
+                          description: |-
+                            Run is the run whose work it saved and Step its implementer call,
+                            from 1.
+                          format: int64
+                          type: integer
+                        sha:
+                          description: SHA is the checkpoint commit.
+                          type: string
+                        step:
+                          format: int32
+                          type: integer
+                      required:
+                      - at
+                      - reason
+                      - sha
+                      type: object
+                    maxItems: 20
+                    type: array
+                    x-kubernetes-list-type: atomic
                   runCount:
                     description: RunCount is the number of runs performed so far.
                     format: int32

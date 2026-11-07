@@ -832,7 +832,9 @@ starts from the checkpoint. A clean tree saves nothing; a merge in progress
 keeps its own path: the run publishes what is committed with the open
 findings. The checkpoint is recorded in the task's `status.run.checkpoint`
 (cleared by the next regular push) and the run log's `save checkpoint`
-step. It starts no pipeline and never counts as the pushed or reviewed
+step. A checkpoint no agent call ended in (a budget stop, a lost pod, an
+OOM kill) is also listed in `status.run.runCheckpoints` (the newest 20), for
+the checkpoint counts of the Task page and the Spend tab. It starts no pipeline and never counts as the pushed or reviewed
 commit.
 
 The same happens before the work tree is reset after an agent container

@@ -32,6 +32,10 @@ const (
 	KindAutopilot   = "autopilot"
 	KindProposal    = "proposal"
 
+	// KindCheckpoint is a pushed checkpoint no agent call carries (budget
+	// stop, lost pod, OOM kill): status.run.runCheckpoints.
+	KindCheckpoint = "checkpoint"
+
 	// KindAutopilotPaused is a new autopilot pause, KindAutopilotResumed
 	// its end with who resolved it (aiv1.PauseResolver).
 	KindAutopilotPaused  = "autopilot.paused"
@@ -65,9 +69,10 @@ func NewDiffer() *Differ { return &Differ{started: map[types.UID]time.Time{}} }
 // Watch records the events of every AgentTask update and deletion in the
 // cache, and the calls of every AgentTask the recorder has not seen. Adds
 // (start, resync) record no events, only real changes do; they record the
-// task's calls, idempotently, as does the recorder's start for every task
-// in the cache. Adds and updates of spec tasks record their milestone's
-// snapshot, as does the start; deleting one closes it.
+// task's calls and call-less checkpoints, idempotently, as does the
+// recorder's start for every task in the cache. Adds and updates of spec
+// tasks record their milestone's snapshot, as does the start; deleting one
+// closes it.
 func Watch(ctx context.Context, c cache.Cache, r *Recorder, clk func() time.Time) error {
 	inf, err := c.GetInformer(ctx, &aiv1.AgentTask{})
 	if err != nil {
@@ -83,6 +88,14 @@ func Watch(ctx context.Context, c cache.Cache, r *Recorder, clk func() time.Time
 		var out []store.Call
 		for i := range tasks {
 			out = append(out, Calls(nil, &tasks[i])...)
+		}
+		return out, err
+	}
+	r.existingEvents = func(ctx context.Context) ([]store.Event, error) {
+		tasks, err := list(ctx)
+		var out []store.Event
+		for i := range tasks {
+			out = append(out, Checkpoints(nil, &tasks[i], clk())...)
 		}
 		return out, err
 	}
@@ -102,6 +115,11 @@ func Watch(ctx context.Context, c cache.Cache, r *Recorder, clk func() time.Time
 			if t, ok := o.(*aiv1.AgentTask); ok {
 				for _, call := range Calls(nil, t) {
 					r.RecordCall(call)
+				}
+				// Idempotent like the calls: checkpoints pushed while the
+				// operator did not watch.
+				for _, e := range Checkpoints(nil, t, clk()) {
+					r.Record(e)
 				}
 				r.snapshotTask(t, clk())
 			}
@@ -224,6 +242,7 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 	out = append(out, writeFailures(cur, prev.WriteFailures, ns.WriteFailures, now)...)
 	out = append(out, d.prompts(cur, prev.Prompts, ns.Prompts, now)...)
 	out = append(out, retrospective(cur, prev.Pilot, ns.Pilot, now)...)
+	out = append(out, Checkpoints(old, cur, now)...)
 	return out
 }
 
@@ -671,4 +690,40 @@ func short(sha string) string {
 		return sha[:8]
 	}
 	return sha
+}
+
+// Checkpoints returns the events of cur's call-less checkpoints
+// (status.run.runCheckpoints) that old does not have (all of them when old
+// is nil), one per checkpoint, at its push (now if unknown). The key holds
+// the run and the commit, so a replayed update or an add of a task already
+// seen is no new event. The spend queries count these with the calls that
+// carry a checkpoint.
+func Checkpoints(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
+	type id struct {
+		run int64
+		sha string
+	}
+	seen := map[id]bool{}
+	if old != nil {
+		for _, c := range old.Status.Run.RunCheckpoints {
+			seen[id{c.Run, c.SHA}] = true
+		}
+	}
+	var out []store.Event
+	for _, c := range cur.Status.Run.RunCheckpoints {
+		if c.SHA == "" || seen[id{c.Run, c.SHA}] {
+			continue
+		}
+		e := base(cur, now)
+		if !c.At.IsZero() {
+			e.At = c.At.Time
+		}
+		e.Key = taskKey(cur, fmt.Sprintf("checkpoint/%d/%s", c.Run, c.SHA))
+		e.Kind = KindCheckpoint
+		e.Summary = fmt.Sprintf("Checkpoint %s (%s) on %s", short(c.SHA), c.Reason, issueRef(cur))
+		e.Data = map[string]any{"reason": c.Reason, "sha": c.SHA, "run": c.Run, "step": c.Step,
+			"files": c.Files, "added": c.Added, "deleted": c.Deleted}
+		out = append(out, e)
+	}
+	return out
 }

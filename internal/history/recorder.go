@@ -50,6 +50,10 @@ type Recorder struct {
 	// existing returns the calls of every task, written when the recorder
 	// starts: runners append calls while no leader records (Watch sets it).
 	existing func(context.Context) ([]store.Call, error)
+	// existingEvents returns the events every task's status holds as a
+	// list (its call-less checkpoints), written with the calls when the
+	// recorder starts (Watch sets it).
+	existingEvents func(context.Context) ([]store.Event, error)
 	// snaps is the snapshot queue: the newest snapshot (and close) per
 	// milestone, written with the events.
 	snapMu       sync.Mutex
@@ -78,10 +82,7 @@ func (r *Recorder) Record(e store.Event) {
 	if r == nil || !r.started.Load() {
 		return
 	}
-	if e.At.IsZero() {
-		e.At = r.clock.Now()
-	}
-	e.ExpiresAt = e.At.Add(r.retention)
+	r.prepareEvent(&e)
 	select {
 	case r.queue <- e:
 	default:
@@ -102,6 +103,14 @@ func (r *Recorder) RecordCall(c store.Call) {
 	}
 }
 
+// prepareEvent sets the event's time, if unset, and its expiry.
+func (r *Recorder) prepareEvent(e *store.Event) {
+	if e.At.IsZero() {
+		e.At = r.clock.Now()
+	}
+	e.ExpiresAt = e.At.Add(r.retention)
+}
+
 // prepare sets the call's expiry and estimates its cost when unknown.
 func (r *Recorder) prepare(c *store.Call) {
 	if c.At.IsZero() {
@@ -112,8 +121,8 @@ func (r *Recorder) prepare(c *store.Call) {
 }
 
 // Start writes the queued events, calls and snapshots until ctx ends, once the
-// database is ready. It first writes the calls of the existing tasks and
-// queues the snapshots of the existing spec tasks.
+// database is ready. It first writes the calls and call-less checkpoints of
+// the existing tasks and queues the snapshots of the existing spec tasks.
 func (r *Recorder) Start(ctx context.Context) error {
 	r.started.Store(true)
 	defer r.started.Store(false)
@@ -123,6 +132,7 @@ func (r *Recorder) Start(ctx context.Context) error {
 	case <-r.db.Ready():
 	}
 	r.writeExisting(ctx)
+	r.writeExistingEvents(ctx)
 	r.queueExisting(ctx)
 	tick := time.NewTicker(flushEvery)
 	defer tick.Stop()
@@ -197,5 +207,35 @@ func (r *Recorder) writeExisting(ctx context.Context) {
 	}
 	if written > 0 {
 		r.log.Info("wrote agent calls of existing tasks", "calls", written)
+	}
+}
+
+// writeExistingEvents writes the events existingEvents returns, in batches;
+// those already stored are skipped by their key.
+func (r *Recorder) writeExistingEvents(ctx context.Context) {
+	if r.existingEvents == nil {
+		return
+	}
+	events, err := r.existingEvents(ctx)
+	if err != nil {
+		r.log.Error(err, "listing the checkpoints of existing tasks")
+		return
+	}
+	var written int64
+	for chunk := range slices.Chunk(events, batchSize) {
+		for i := range chunk {
+			r.prepareEvent(&chunk[i])
+		}
+		n, err := r.db.Store().InsertEvents(ctx, chunk)
+		if err != nil {
+			if ctx.Err() == nil {
+				r.log.Error(err, "checkpoints of existing tasks lost", "events", len(events))
+			}
+			return
+		}
+		written += n
+	}
+	if written > 0 {
+		r.log.Info("wrote checkpoints of existing tasks", "events", written)
 	}
 }

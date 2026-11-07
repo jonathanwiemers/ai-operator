@@ -3754,6 +3754,18 @@ export interface RunStatus {
    */
   checkpoint?: CheckpointStatus;
   /**
+   * RunCheckpoints are the task's pushed checkpoints that no agent call
+   * carries (a budget stop, or a lost pod or OOM kill the next pod saved
+   * the work of), newest last; AppendRunCheckpoint keeps the last
+   * MaxRunCheckpoints. Unlike Checkpoint they stay after a fold: the
+   * operator writes each one it has not seen to its history, for the
+   * checkpoint counts of the Spend tab and the Task page.
+   * +optional
+   * +listType=atomic
+   * +kubebuilder:validation:MaxItems=20
+   */
+  runCheckpoints?: RunCheckpoint[];
+  /**
    * Companion is the companion repository's side of the run
    * (spec.companion): its branch, last push and draft merge request. Set
    * by the run that first pushes a companion change, cleared (and the
@@ -3859,6 +3871,48 @@ export interface CheckpointStatus {
    * +listType=atomic
    */
   skipped?: string[];
+  /**
+   * At is when the checkpoint was pushed.
+   */
+  at: string;
+}
+/**
+ * RunCheckpoint is a pushed checkpoint no agent call carries
+ * (RunStatus.RunCheckpoints).
+ */
+export interface RunCheckpoint {
+  /**
+   * Reason the work was cut off: budget-stop, pod-lost, oom-kill or
+   * container-restart.
+   */
+  reason: string;
+  /**
+   * SHA is the checkpoint commit.
+   */
+  sha: string;
+  /**
+   * Run is the run whose work it saved and Step its implementer call,
+   * from 1.
+   * +optional
+   */
+  run?: number /* int64 */;
+  /**
+   * +optional
+   */
+  step?: number /* int32 */;
+  /**
+   * Files, Added and Deleted are the checkpoint's diff stat.
+   * +optional
+   */
+  files?: number /* int32 */;
+  /**
+   * +optional
+   */
+  added?: number /* int64 */;
+  /**
+   * +optional
+   */
+  deleted?: number /* int64 */;
   /**
    * At is when the checkpoint was pushed.
    */

@@ -119,10 +119,12 @@ func isTimeout(ctx context.Context, err error) bool {
 // checkpoint commit on the work branch and pushes it without CI, the MR set
 // to draft first. res is the call's result, if any: its text is the agent's
 // last status. Failures are logged in the run log and never replace the
-// error that cut the call off. It returns nil when nothing was attempted,
-// and the checkpoint commit on the branch: "" unless it was pushed.
-func (r *Runner) checkpoint(ctx context.Context, reason string, res *Result) (*CheckpointResult, string) {
-	cp, pushed := r.saveCheckpoint(ctx, reason, res)
+// error that cut the call off. noCall says no agent call will carry the
+// checkpoint (a budget stop, a lost attempt): a pushed one then also goes to
+// status.run.runCheckpoints, for the counts. It returns nil when nothing was
+// attempted, and the checkpoint commit on the branch: "" unless it was pushed.
+func (r *Runner) checkpoint(ctx context.Context, reason string, res *Result, noCall bool) (*CheckpointResult, string) {
+	cp, pushed := r.saveCheckpoint(ctx, reason, res, noCall)
 	if cp == nil {
 		return nil, ""
 	}
@@ -134,7 +136,7 @@ func (r *Runner) checkpoint(ctx context.Context, reason string, res *Result) (*C
 	return cp, noted.SHA
 }
 
-func (r *Runner) saveCheckpoint(ctx context.Context, reason string, res *Result) (*CheckpointResult, bool) {
+func (r *Runner) saveCheckpoint(ctx context.Context, reason string, res *Result, noCall bool) (*CheckpointResult, bool) {
 	cut := r.cut
 	if cut == nil {
 		return nil, false
@@ -188,9 +190,14 @@ func (r *Runner) saveCheckpoint(ctx context.Context, reason string, res *Result)
 	for i, f := range cp.Skipped {
 		paths[i] = f.Path
 	}
+	at := metav1.Time{Time: r.now()}
 	if err := r.patchRun(ctx, func(st *aiv1.RunStatus) {
 		st.Checkpoint = &aiv1.CheckpointStatus{SHA: r.checkpointHead, Branch: cut.branch, Reason: reason, Run: runNo, Step: int32(cut.step),
-			Files: int32(cp.Files), Added: cp.Added, Deleted: cp.Deleted, Skipped: paths, At: metav1.Time{Time: r.now()}}
+			Files: int32(cp.Files), Added: cp.Added, Deleted: cp.Deleted, Skipped: paths, At: at}
+		if noCall {
+			aiv1.AppendRunCheckpoint(st, aiv1.RunCheckpoint{Reason: reason, SHA: r.checkpointHead, Run: runNo, Step: int32(cut.step),
+				Files: int32(cp.Files), Added: cp.Added, Deleted: cp.Deleted, At: at})
+		}
 	}); err != nil {
 		r.log().Error(err, "recording the checkpoint")
 	}
@@ -332,7 +339,7 @@ func (run *implementRun) checkpointLostAttempt(ctx context.Context) {
 	}
 	r.cut = &cutTarget{gl: run.gl, glProject: run.glProject, branch: branch, base: run.base, issue: run.issue.IID,
 		mr: &gitlab.MergeRequest{IID: mrIID}, st: &st, step: lost.Step, run: lost.Run, expect: expect}
-	cp, _ := r.checkpoint(ctx, r.lostAttempt, nil)
+	cp, _ := r.checkpoint(ctx, r.lostAttempt, nil, true) // the lost call was never recorded
 	r.cut = nil
 	if cp == nil || cp.Refused != "" || cp.SHA != "" {
 		return

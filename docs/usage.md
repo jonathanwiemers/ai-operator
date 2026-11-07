@@ -2396,6 +2396,13 @@ CLI reports such a limit, the run is **paused, not failed**:
   ``The checkpoint `<sha>` was kept: …``. Runs in which the implementer
   does not run (a merge of the base branch only, a review again) fold
   nothing.
+- Every checkpoint is counted on the Task page (*Agent calls*) and in the
+  Spend tab's *Checkpoints* of its issue, milestone and project, by reason.
+  That includes the ones no agent call ended in: a budget stop, and what a
+  new pod saved after a lost pod or an OOM kill (`pod-lost`, `oom-kill`).
+  The runner lists those in `status.run.runCheckpoints` (the newest 20,
+  kept after a fold), and the operator records each one in its history.
+  They add nothing to the number of calls.
 - The run is retried at the reset time the CLI reports (claude's from its
   limit message or, when that names none, from its usage windows; cursor's
   monthly reset date). If it doesn't report one, the wait is 5 minutes, doubling with every further limit hit

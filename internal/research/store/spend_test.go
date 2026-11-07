@@ -134,7 +134,7 @@ func TestSpend(t *testing.T) {
 	sp := spend(store.SpendScope{})
 	want := store.SpendTotals{CostUSD: 7.08, CostKnown: true, UnknownCalls: 1,
 		InputTokens: 217, OutputTokens: 88, CacheReadTokens: 1133, CacheWriteTokens: 44,
-		Calls: 6, SubagentCalls: 3, DurationMS: 96500, LegacyCostUSD: 2}
+		Calls: 6, SubagentCalls: 3, DurationMS: 96500, LegacyCostUSD: 2, Checkpoints: 3}
 	if sp.Totals != want {
 		t.Errorf("project totals:\n got %+v\nwant %+v", sp.Totals, want)
 	}
@@ -196,7 +196,7 @@ func TestSpend(t *testing.T) {
 	// #148: its runs, the legacy one without tokens.
 	sp = spend(store.SpendScope{MilestoneIID: 20, IssueIID: 148})
 	if want := (store.SpendTotals{CostUSD: 3.73, CostKnown: true, InputTokens: 110, OutputTokens: 30,
-		CacheReadTokens: 1030, CacheWriteTokens: 40, Calls: 2, SubagentCalls: 1, DurationMS: 70000, LegacyCostUSD: 2}); sp.Totals != want {
+		CacheReadTokens: 1030, CacheWriteTokens: 40, Calls: 2, SubagentCalls: 1, DurationMS: 70000, LegacyCostUSD: 2, Checkpoints: 1}); sp.Totals != want {
 		t.Errorf("#148 totals:\n got %+v\nwant %+v", sp.Totals, want)
 	}
 	checkChildren("#148", sp.Children, []child{
@@ -640,5 +640,100 @@ func TestSpendSince(t *testing.T) {
 		if err != nil || got != c.want {
 			t.Errorf("%s: SpendSince = %+v, %v\nwant %+v", c.what, got, err, c.want)
 		}
+	}
+}
+
+// TestSpendCallLessCheckpoints: checkpoint events (budget stop, lost pod)
+// count as checkpoints at every scope, next to the calls that carry one,
+// without adding calls; one a call carries counts once.
+func TestSpendCallLessCheckpoints(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	at, exp := time.Now().Add(-time.Hour).Truncate(time.Second), time.Now().Add(24*time.Hour)
+	usd := func(v float64) *float64 { return &v }
+	call := func(key string, run, seq int64, kind string, cost float64) store.Call {
+		return store.Call{Key: key, At: at, Namespace: "agents", Project: "cps", MilestoneIID: 40, IssueIID: 401,
+			Task: "cps-401", Run: run, Seq: seq, Kind: kind, Role: kind, Engine: "claude", Model: "claude-opus-5-5",
+			InputTokens: 10, OutputTokens: 10, CostUSD: usd(cost), CostSource: "reported", ExpiresAt: exp}
+	}
+	// Run 1: the implementer call ends on the usage limit with a checkpoint,
+	// then a review. Run 2 starts after a lost pod: its call has none.
+	limited := call("k1", 1, 1, "implement", 1)
+	limited.Checkpoint, limited.CheckpointSHA = "usage-limit", "aaa111"
+	if _, err := owner.InsertCalls(ctx, []store.Call{limited, call("k2", 1, 2, "review", 0.5), call("k3", 2, 3, "implement", 2)}); err != nil {
+		t.Fatal(err)
+	}
+	event := func(key string, run int64, reason, sha string, expires time.Time) store.Event {
+		return store.Event{Key: key, At: at.Add(time.Minute), Namespace: "agents", Project: "cps", MilestoneIID: 40, IssueIID: 401,
+			MergeRequestIID: 9, Task: "cps-401", Kind: "checkpoint", Summary: "Checkpoint",
+			Data: map[string]any{"reason": reason, "sha": sha, "run": run, "step": 2, "added": 3, "deleted": 0}, ExpiresAt: expires}
+	}
+	if _, err := owner.InsertEvents(ctx, []store.Event{
+		// The new pod saved the lost call's work of run 2.
+		event("task/u/checkpoint/2/bbb222", 2, "pod-lost", "bbb222", exp),
+		// Expired, and one a call carries (counted with the call): neither counts.
+		event("task/u/checkpoint/1/ccc333", 1, "budget-stop", "ccc333", time.Now().Add(-time.Minute)),
+		event("task/u/checkpoint/1/aaa111", 1, "usage-limit", "aaa111", exp),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	spend := func(sc store.SpendScope) store.Spend {
+		t.Helper()
+		sc.Namespace, sc.Project = "agents", "cps"
+		sp, err := s.Spend(ctx, sc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sp
+	}
+	type count struct {
+		key          string
+		count, calls int64
+	}
+	for _, sc := range []store.SpendScope{{}, {MilestoneIID: 40}, {MilestoneIID: 40, IssueIID: 401}, {Task: "cps-401"}} {
+		sp := spend(sc)
+		if sp.Totals.Checkpoints != 2 || sp.Totals.Calls != 3 || sp.Totals.CostUSD != 3.5 || sp.Totals.UnknownCalls != 0 ||
+			!sp.Totals.CostKnown || sp.Totals.LegacyCostUSD != 0 {
+			t.Errorf("%+v totals = %+v; want 2 checkpoints, 3 calls, $3.50", sc, sp.Totals)
+		}
+		var got []count
+		for _, b := range sp.ByCheckpoint {
+			got = append(got, count{b.Key, b.Count, b.Totals.Calls})
+		}
+		// Equal counts go by reason; only the usage limit has a call.
+		if want := []count{{"pod-lost", 1, 0}, {"usage-limit", 1, 1}}; !slices.Equal(got, want) {
+			t.Errorf("%+v by checkpoint = %+v, want %+v", sc, got, want)
+		}
+		var kinds []string
+		for _, b := range sp.ByKind {
+			kinds = append(kinds, b.Key)
+		}
+		if !slices.Equal(kinds, []string{"implement", "review"}) {
+			t.Errorf("%+v by kind = %v; the checkpoint event is no call", sc, kinds)
+		}
+	}
+	// The children have them too: the milestone, the issue, the run.
+	if c := spend(store.SpendScope{}).Children; len(c) != 1 || c[0].Totals.Checkpoints != 2 || c[0].Totals.Calls != 3 {
+		t.Errorf("project children = %+v", c)
+	}
+	runs := spend(store.SpendScope{IssueIID: 401}).Children
+	if len(runs) != 2 || runs[0].Key != "cps-401/1" || runs[0].Totals.Checkpoints != 1 || runs[0].Totals.Calls != 2 ||
+		runs[1].Key != "cps-401/2" || runs[1].Totals.Checkpoints != 1 || runs[1].Totals.Calls != 1 {
+		t.Errorf("#401 runs = %+v", runs)
+	}
+	// A run's children are its calls only; its totals count the event.
+	sp := spend(store.SpendScope{Task: "cps-401", Run: 2})
+	if sp.Totals.Checkpoints != 1 || sp.Totals.Calls != 1 || len(sp.Children) != 1 || sp.Children[0].Totals.Checkpoints != 0 {
+		t.Errorf("run 2 = %+v, children %+v", sp.Totals, sp.Children)
+	}
+	if got, err := s.SpendTotals(ctx, store.SpendScope{Namespace: "agents", Project: "cps", MilestoneIID: 40}); err != nil || got.Checkpoints != 2 || got.Calls != 3 {
+		t.Errorf("SpendTotals = %+v, %v", got, err)
+	}
+	if got, err := s.SpendSince(ctx, []store.ProjectKey{{Namespace: "agents", Name: "cps"}}, at.Add(-time.Minute)); err != nil || got.Checkpoints != 2 || got.Calls != 3 {
+		t.Errorf("SpendSince = %+v, %v", got, err)
+	}
+	if byIssue, err := s.SpendChildTotals(ctx, store.SpendScope{Namespace: "agents", Project: "cps", MilestoneIID: 40}); err != nil || byIssue["401"].Checkpoints != 2 {
+		t.Errorf("SpendChildTotals = %+v, %v", byIssue, err)
 	}
 }

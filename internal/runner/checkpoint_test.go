@@ -188,6 +188,9 @@ func TestCheckpointOnUsageLimit(t *testing.T) {
 		t.Fatalf("the usage limit must still defer the run: %+v", run)
 	}
 	head := e.checkCheckpoint(1, 1, cutUsageLimit)
+	if len(run.RunCheckpoints) != 0 {
+		t.Fatalf("a call carries the checkpoint, so runCheckpoints stays empty: %+v", run.RunCheckpoints)
+	}
 	// The cut-off call carries its checkpoint and the lines it left; the
 	// reviewers' calls carry neither.
 	for _, c := range run.Calls {
@@ -358,6 +361,10 @@ func TestCheckpointOnBudgetStop(t *testing.T) {
 	}
 	if cp := e.task().Status.Run.Checkpoint; cp == nil || cp.SHA != head || cp.Reason != cutBudgetStop || cp.Step != 2 {
 		t.Fatalf("status.run.checkpoint %+v", cp)
+	}
+	// No call ran to carry it: the run's checkpoints count it.
+	if cps := e.task().Status.Run.RunCheckpoints; len(cps) != 1 || cps[0].Reason != cutBudgetStop || cps[0].SHA != head || cps[0].Step != 2 {
+		t.Fatalf("status.run.runCheckpoints = %+v, want the budget-stop checkpoint %s", cps, head)
 	}
 	if !e.gl.MRs[1].Draft {
 		t.Fatal("the ready MR must be set to draft")

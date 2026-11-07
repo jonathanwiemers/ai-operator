@@ -106,13 +106,19 @@ func TestSpend(t *testing.T) {
 	if _, err := owner.InsertCalls(t.Context(), []store.Call{impl, fix, other}); err != nil {
 		t.Fatal(err)
 	}
+	// The new pod after a lost one saved run 2's work without a call.
+	if _, err := owner.InsertEvents(t.Context(), []store.Event{{Key: "task/u42/checkpoint/2/def456", At: base.Add(3 * time.Minute),
+		Namespace: "team-a", Project: "shop", MilestoneIID: 3, IssueIID: 42, Task: "shop-42", Kind: "checkpoint",
+		Data: map[string]any{"reason": "pod-lost", "sha": "def456", "run": 2}, ExpiresAt: base.Add(720 * time.Hour)}}); err != nil {
+		t.Fatal(err)
+	}
 	env := spendEnv(t, reader)
 
 	var ms SpendView
 	if code := env.get(t, "/api/v1/spend?namespace=team-a&project=shop&milestone=3", &ms); code != http.StatusOK {
 		t.Fatalf("milestone: status %d", code)
 	}
-	if ms.Totals.CostUSD != "1.75" || ms.Totals.Calls != 3 || ms.Totals.UnknownCalls != 1 {
+	if ms.Totals.CostUSD != "1.75" || ms.Totals.Calls != 3 || ms.Totals.UnknownCalls != 1 || ms.Totals.Checkpoints != 2 {
 		t.Errorf("milestone totals = %+v", ms.Totals)
 	}
 	var keys []string
@@ -138,6 +144,9 @@ func TestSpend(t *testing.T) {
 		if models[k] != w {
 			t.Errorf("#42 %s = %+v, want %+v", k, models[k], w)
 		}
+	}
+	if ms.Children[0].Totals.Checkpoints != 2 || ms.Children[1].Totals.Checkpoints != 0 {
+		t.Errorf("issue checkpoints = %d, %d; want 2 and 0", ms.Children[0].Totals.Checkpoints, ms.Children[1].Totals.Checkpoints)
 	}
 	if ms.Children[0].SpendCallView != nil || len(ms.ByKind) != 2 || len(ms.ByModel) != 3 {
 		t.Errorf("milestone = %+v", ms)
@@ -171,8 +180,9 @@ func TestSpend(t *testing.T) {
 	if f := run.Children[1]; f.Checkpoint != "" || f.LinesAdded != 0 {
 		t.Errorf("fix call = %+v, want no checkpoint or lines", f)
 	}
-	if b := run.ByCheckpoint; len(b) != 1 || b[0].Key != "usage-limit" || b[0].Totals.Calls != 1 {
-		t.Errorf("run by checkpoint = %+v, want one usage-limit call", b)
+	if b := run.ByCheckpoint; len(b) != 2 || b[0].Key != "pod-lost" || b[0].Count != 1 || b[0].Totals.Calls != 0 ||
+		b[1].Key != "usage-limit" || b[1].Count != 1 || b[1].Totals.Calls != 1 || run.Totals.Checkpoints != 2 || run.Totals.Calls != 2 {
+		t.Errorf("run by checkpoint = %+v (totals %+v), want pod-lost without a call and one usage-limit call", b, run.Totals)
 	}
 	if f := run.Children[1]; f.Totals.CostUSD != "" || f.Totals.CostKnown || f.CostSource != "unknown" {
 		t.Errorf("cursor call = %+v, want an unknown cost", f)
@@ -188,9 +198,12 @@ func TestSpendViewCheckpoints(t *testing.T) {
 				Checkpoint: "usage-limit", CheckpointSHA: "abc123", LinesAdded: 412, LinesDeleted: 38}},
 			{Level: store.SpendCall, Key: "2", Call: &store.Call{Kind: "review", Engine: "claude", CostSource: "reported"}},
 		},
+		Totals: store.SpendTotals{Calls: 3, Checkpoints: 4, CostKnown: true},
+		// pod-lost was saved without a call: a count, no calls.
 		ByCheckpoint: []store.SpendBreakdown{
-			{Key: "usage-limit", Totals: store.SpendTotals{Calls: 2, CostKnown: true}},
-			{Key: "engine-error", Totals: store.SpendTotals{Calls: 1, CostKnown: true}},
+			{Key: "usage-limit", Totals: store.SpendTotals{Calls: 2, Checkpoints: 2, CostKnown: true}, Count: 2},
+			{Key: "engine-error", Totals: store.SpendTotals{Calls: 1, Checkpoints: 1, CostKnown: true}, Count: 1},
+			{Key: "pod-lost", Totals: store.SpendTotals{Checkpoints: 1, CostKnown: true}, Count: 1},
 		},
 	})
 	if c := v.Children[0]; c.Checkpoint != "usage-limit" || c.CheckpointSHA != "abc123" || c.LinesAdded != 412 || c.LinesDeleted != 38 {
@@ -199,8 +212,12 @@ func TestSpendViewCheckpoints(t *testing.T) {
 	if c := v.Children[1]; c.Checkpoint != "" || c.CheckpointSHA != "" || c.LinesAdded != 0 || c.LinesDeleted != 0 {
 		t.Errorf("review call = %+v, want no checkpoint or lines", c.SpendCallView)
 	}
-	if b := v.ByCheckpoint; len(b) != 2 || b[0].Key != "usage-limit" || b[0].Totals.Calls != 2 || b[1].Key != "engine-error" {
+	if b := v.ByCheckpoint; len(b) != 3 || b[0].Key != "usage-limit" || b[0].Totals.Calls != 2 || b[0].Count != 2 || b[1].Key != "engine-error" ||
+		b[2].Key != "pod-lost" || b[2].Count != 1 || b[2].Totals.Calls != 0 || b[2].Totals.Checkpoints != 1 {
 		t.Errorf("by checkpoint = %+v", b)
+	}
+	if v.Totals.Checkpoints != 4 || v.Totals.Calls != 3 {
+		t.Errorf("totals = %+v, want 4 checkpoints and 3 calls", v.Totals)
 	}
 }
 
