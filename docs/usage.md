@@ -1878,6 +1878,8 @@ list out.
   the links, links the ones opened before again and names unknown numbers.
   `create none` there dismisses the remaining ones, so the milestone can
   close without waiting 7 days; `create 2` afterwards still opens one.
+  An owner can do the same with *Dismiss remaining* on the Desk's
+  Retrospective tab, which posts that reply in their GitLab name.
   When a
   re-plan continues a done queue, or autopilot is switched on again, the
   pilot comes back on the autopilot's tracking issue. After a closed "🧭
@@ -2224,6 +2226,15 @@ tab (owners only; everyone else sees it read-only):
    *taken by %N* (until then this tab no longer offers them, another
    page still does). Leftovers already opened, taken or dismissed are
    refused (409), and the tab names them.
+
+To **dismiss** the rest instead, while the milestone is open: *Dismiss
+remaining* on the same tab, then *Dismiss them*. The Desk replies `create
+none` in the retrospective's thread with the owner's GitLab token (`POST
+…/milestones/<iid>/followups/dismiss`), so the reply is in their name and
+only an owner the operator pinned counts. The tab says *Dismissing… the
+operator settles them on its next poll* until the leftovers show as
+*dismissed*; then autopilot closes the milestone without waiting 7 days.
+Non-owners and closed milestones get no button.
 
 ## When a run is cut off
 

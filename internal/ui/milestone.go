@@ -150,7 +150,11 @@ func storedMilestoneView(p *aiv1.AgentProject, d store.MilestoneDetail) Mileston
 // while the pilot exists and a follow-up of the retrospective is open;
 // followUp, the user may create a follow-up milestone from the Desk (POST
 // …/followup): steer, one of the milestone's owner subjects, and a
-// follow-up of the retrospective is open, also once its tasks are gone.
+// follow-up of the retrospective is open, also once its tasks are gone;
+// dismiss, the user may dismiss the remaining follow-ups (POST
+// …/followups/dismiss): steer, one of the owner subjects, on an open
+// autopilot milestone whose posted retrospective has open follow-ups none
+// dismissed yet.
 type MilestonePermissions struct {
 	GitLab     bool `json:"gitlab"`
 	Steer      bool `json:"steer"`
@@ -159,6 +163,7 @@ type MilestonePermissions struct {
 	Merge      bool `json:"merge"`
 	Draft      bool `json:"draft"`
 	FollowUp   bool `json:"followUp"`
+	Dismiss    bool `json:"dismiss"`
 }
 
 // MilestoneAutopilot is the autopilot of a milestone and its queue.
@@ -477,6 +482,7 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 		Merge:      chat && slices.Contains(st.Spec.OwnerSubjects, p.Username)}
 	v.Permissions.Draft = v.Permissions.Merge && coord != nil && openFollowUps(v.Retrospective)
 	v.Permissions.FollowUp = v.Permissions.Steer && slices.Contains(st.Spec.OwnerSubjects, p.Username) && openFollowUps(v.Retrospective)
+	v.Permissions.Dismiss = v.Permissions.Steer && slices.Contains(st.Spec.OwnerSubjects, p.Username) && dismissable(st)
 	if v.Autopilot != nil {
 		v.Autopilot.Exits = exitViews(st.Status.Autopilot, tasks, ap, *v.Permissions)
 	}

@@ -522,3 +522,15 @@ about how many production lines, and deviations from this spec.
   `followup-of` line refuse a dismissed one; a follow-up draft is refused
   once dismissed, as for any settled retrospective. The tab's *Dismiss*
   button follows.
+- 2026-11-07, `dismiss-desk` (R17 part 2, #242): `POST
+  …/milestones/{iid}/followups/dismiss` (`internal/ui/dismiss.go`) replies
+  `create none` in the retrospective's thread (found by its note in one
+  `ListIssueDiscussions` call) on the confirmed tracking issue with the
+  user's token and answers 202; `permissions.dismiss`; *Dismiss remaining*
+  with a confirm step on the Retrospective tab, then *Dismissing… the
+  operator settles them on its next poll* until the live reload drops the
+  permission; about 60 production lines. Deviations: the endpoint also
+  refuses (403) a GitLab account the operator did not pin as an owner
+  (`ownerIDs`), whose reply it would ignore, and needs autopilot on the
+  milestone, since only autopilot reads the thread. No screenshots: the
+  run had no cluster, database or browser.

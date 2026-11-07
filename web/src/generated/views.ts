@@ -320,7 +320,11 @@ export interface IssueFiguresView extends Cost {
  * while the pilot exists and a follow-up of the retrospective is open;
  * followUp, the user may create a follow-up milestone from the Desk (POST
  * …/followup): steer, one of the milestone's owner subjects, and a
- * follow-up of the retrospective is open, also once its tasks are gone.
+ * follow-up of the retrospective is open, also once its tasks are gone;
+ * dismiss, the user may dismiss the remaining follow-ups (POST
+ * …/followups/dismiss): steer, one of the owner subjects, on an open
+ * autopilot milestone whose posted retrospective has open follow-ups none
+ * dismissed yet.
  */
 export interface MilestonePermissions {
   gitlab: boolean;
@@ -330,6 +334,7 @@ export interface MilestonePermissions {
   merge: boolean;
   draft: boolean;
   followUp: boolean;
+  dismiss: boolean;
 }
 /**
  * MilestoneAutopilot is the autopilot of a milestone and its queue.

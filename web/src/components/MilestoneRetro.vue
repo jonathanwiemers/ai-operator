@@ -179,6 +179,31 @@ async function create() {
   }
 }
 
+// Dismiss (R17): owners (permissions.dismiss) reply "create none" in the
+// retrospective's thread through the Desk; the operator settles the
+// leftovers on its next poll, which the live reload shows.
+const mayDismiss = computed(() => !!perms.value?.dismiss)
+const dismissStep = ref<'idle' | 'confirm' | 'sent'>('idle')
+watch(mayDismiss, (ok) => {
+  if (!ok) dismissStep.value = 'idle'
+})
+
+async function dismiss() {
+  if (busy.value) return
+  busy.value = true
+  error.value = ''
+  const path = `/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/milestones/${props.milestone.iid}/followups/dismiss`
+  try {
+    await post(path, {})
+    dismissStep.value = 'sent'
+  } catch (e) {
+    dismissStep.value = 'idle'
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = false
+  }
+}
+
 const draftHint = computed(() =>
   pilotTask.value
     ? 'The pilot writes a title and a description from the ticked leftovers.'
@@ -267,6 +292,21 @@ const draftHint = computed(() =>
         <div v-if="step === 'drafting' || othersDrafting" class="actions">
           <span class="drafting">The pilot is drafting…</span>
           <button v-if="step === 'drafting'" type="button" class="btn" @click="discard">Stop waiting</button>
+        </div>
+        <div v-if="mayDismiss && step === 'pick'" class="actions">
+          <template v-if="dismissStep === 'idle'">
+            <button type="button" class="btn" :disabled="busy" @click="dismissStep = 'confirm'">Dismiss remaining</button>
+            <span class="hint">Lets the milestone close without waiting for them.</span>
+          </template>
+          <template v-else-if="dismissStep === 'confirm'">
+            <span class="hint confirm">
+              Dismiss the open leftovers? This replies <code>create none</code> in the retrospective's thread in your GitLab name;
+              each can still be opened later.
+            </span>
+            <button type="button" class="btn danger" :disabled="busy" @click="dismiss">Dismiss them</button>
+            <button type="button" class="btn" :disabled="busy" @click="dismissStep = 'idle'">Cancel</button>
+          </template>
+          <span v-else class="drafting">Dismissing… the operator settles them on its next poll.</span>
         </div>
         <div v-if="error" class="banner danger">{{ error }}</div>
 
@@ -413,6 +453,12 @@ details[open] summary {
 .drafting {
   margin: 12px 0 0;
   font-style: italic;
+}
+.confirm {
+  flex-basis: 100%;
+}
+.btn.danger {
+  color: var(--tone-danger-fg);
 }
 .created {
   display: block;
