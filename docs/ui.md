@@ -1083,6 +1083,13 @@ The seed (namespace `research-dev`) has:
   before token tracking, and a chat turn without a milestone. The tab is on
   the stream of an AgentProject `dev` in `research-dev`
   (`…/projects/research-dev/dev?tab=spend`).
+* Desk milestones for the dashboard and the milestone pages: in project
+  `dev` two done ones (an old one without agent calls, so it shows no spend,
+  and `%4` with a retrospective and three follow-ups: open, opened as an
+  issue, dismissed) and one that waits (running, no active issue, as the
+  autopilot has no waiting phase yet); in project `web` one running (5
+  issues, 2 merged) and one paused for #41, with run, merge and pause
+  events and agent calls, so wall, agent and paused time and cost show.
 
 The data is dated to the latest 08:00 UTC, so the pages look fresh, and
 `make research-seed` replaces it when run again. Apply

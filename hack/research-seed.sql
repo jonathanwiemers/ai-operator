@@ -100,7 +100,7 @@ CREATE TEMP TABLE shift ON COMMIT DROP AS
     SELECT date_trunc('day', now() - interval '8 hours') - timestamptz '2026-10-29 00:00Z' AS delta;
 
 -- shifted moves the publishedAt of every item in blocks by delta.
-CREATE FUNCTION pg_temp.shifted(blocks jsonb, delta interval) RETURNS jsonb LANGUAGE sql AS $$
+CREATE OR REPLACE FUNCTION pg_temp.shifted(blocks jsonb, delta interval) RETURNS jsonb LANGUAGE sql AS $$
     SELECT coalesce(jsonb_agg(CASE WHEN b ? 'items' THEN jsonb_set(b, '{items}', (
         SELECT jsonb_agg(CASE WHEN it ? 'publishedAt'
             THEN jsonb_set(it, '{publishedAt}', to_jsonb(to_char(
@@ -198,5 +198,126 @@ FROM (VALUES
     ('seed/dev-issue-77/run/1', timestamptz '2026-10-27 10:10Z', 77, 'dev-issue-77', 'Run 1 finished: succeeded',
      '{"result": "Succeeded", "runCount": 1, "costUSD": "5.97"}'::jsonb)
 ) AS e(key, at, issue, task, summary, data), shift;
+
+
+-- The Desk's milestones (desk_milestones with their issues and follow-ups),
+-- with history events and agent calls, so the dashboard, the milestone pages
+-- and the retrospective show in dev. Running the file again replaces them
+-- (the cascade removes issues and follow-ups).
+--
+--   research-dev/dev  %3 done long ago, without agent calls ("no spend");
+--                     %4 done with a retrospective and 3 follow-ups (open,
+--                     issue, dismissed; its calls are the Spend ones above);
+--                     %5 waiting: the autopilot has no "waiting" phase on
+--                     main yet, so it is Running with no active item
+--   research-dev/web  %2 running (5 issues, 2 merged, #32 active);
+--                     %3 paused (on the owner, for #41)
+-- The running and paused milestones are in web, so dev's Spend sums above
+-- stay as TestSeedSpend checks them.
+DELETE FROM desk_milestones WHERE namespace = 'research-dev';
+
+INSERT INTO desk_milestones (namespace, project, iid, milestone_id, title, web_url, state, phase, started_at, done_at,
+    tracking_iid, owners, owner_subjects, retro_note_id, retro_text, retro_posted_at, updated_at, expires_at)
+SELECT 'research-dev', project, iid, milestone_id, title, web_url, state, phase, started + delta, done + delta,
+    tracking, '{alice}'::text[], '{alice-subject}'::text[], retro_note, retro, retro_at + delta,
+    coalesce(done, started) + delta, coalesce(done, started) + delta + interval '365 days'
+FROM (VALUES
+    ('dev', 3, 903, 'Logging cleanup', 'https://gitlab.example.com/research-dev/dev/-/milestones/3', 'closed', 'done',
+     timestamptz '2026-09-14 08:00Z', timestamptz '2026-09-18 16:00Z', 60, NULL::bigint, '', NULL::timestamptz),
+    ('dev', 4, 904, 'Spend tracking', 'https://gitlab.example.com/research-dev/dev/-/milestones/4', 'closed', 'done',
+     timestamptz '2026-10-26 08:00Z', timestamptz '2026-10-28 12:00Z', 70, 5004,
+$md$# Retrospective: Spend tracking
+
+## What went well
+
+- Both issues merged on the first review round.
+- The cost per call showed up in the Spend tab from the start.
+
+## What went wrong
+
+- #77 needed a second run after a cursor fallback without a cost.
+- The context series of the first run grew to 126k tokens.
+
+## Leftovers
+
+1. Show the unmetered calls apart in the Spend tab.
+2. Record the cost of a cursor fix after a fallback.
+3. Chart the context series per run.
+$md$, timestamptz '2026-10-28 12:05Z'),
+    ('dev', 5, 905, 'Search index', 'https://gitlab.example.com/research-dev/dev/-/milestones/5', 'open', 'running',
+     timestamptz '2026-10-29 07:00Z', NULL, 80, NULL, '', NULL),
+    ('web', 2, 912, 'Dark mode', 'https://gitlab.example.com/research-dev/web/-/milestones/2', 'open', 'running',
+     timestamptz '2026-10-28 09:00Z', NULL, 90, NULL, '', NULL),
+    ('web', 3, 913, 'Checkout redesign', 'https://gitlab.example.com/research-dev/web/-/milestones/3', 'open', 'paused',
+     timestamptz '2026-10-27 09:00Z', NULL, 91, NULL, '', NULL)
+) AS m(project, iid, milestone_id, title, web_url, state, phase, started, done, tracking, retro_note, retro, retro_at), shift;
+
+INSERT INTO desk_milestone_issues (namespace, project, milestone_iid, iid, title, state, mr_iid, mr_url, position, expires_at)
+SELECT 'research-dev', project, ms, iid, title, state, mr,
+    CASE WHEN mr IS NULL THEN '' ELSE 'https://gitlab.example.com/research-dev/' || project || '/-/merge_requests/' || mr END,
+    (row_number() OVER (PARTITION BY project, ms ORDER BY iid) - 1)::int, now() + interval '365 days'
+FROM (VALUES
+    ('dev', 3, 50, 'Use structured logs', 'merged', 110), ('dev', 3, 51, 'Drop the debug flag', 'merged', 111),
+    ('dev', 4, 77, 'Record the cost of every call', 'merged', 120), ('dev', 4, 78, 'Show spend per milestone', 'merged', 121),
+    ('dev', 5, 81, 'Index the issue titles', 'merged', 130), ('dev', 5, 82, 'Query the index', 'pending', NULL),
+    ('web', 2, 30, 'Colour tokens', 'merged', 200), ('web', 2, 31, 'Dark theme for the header', 'merged', 201),
+    ('web', 2, 32, 'Dark theme for tables', 'active', 202), ('web', 2, 33, 'Persist the choice', 'pending', NULL),
+    ('web', 2, 34, 'Follow the system setting', 'pending', NULL),
+    ('web', 3, 40, 'Cart summary', 'merged', 210), ('web', 3, 41, 'Payment step', 'active', 211),
+    ('web', 3, 42, 'Order confirmation', 'pending', NULL)
+) AS i(project, ms, iid, title, state, mr);
+
+INSERT INTO desk_follow_ups (namespace, project, milestone_iid, number, title, body, state, target_iid, expires_at)
+SELECT 'research-dev', 'dev', 4, number, title, body, state, target, now() + interval '365 days'
+FROM (VALUES
+    (1, 'Show unmetered calls apart', 'The Spend tab counts them in the total. List them under their own heading.', 'open', NULL::bigint),
+    (2, 'Record the cost of a cursor fix', 'After a claude fallback the call has no cost. Estimate it from tokens.', 'issue', 95),
+    (3, 'Chart the context series', 'Plot the context series per run.', 'dismissed', NULL)
+) AS f(number, title, body, state, target);
+
+-- Runs, merges and pauses. A pause event's key is <task>/<kind>/<start>/<pause
+-- kind>; the resumed event shares the tail with the paused one. #40 has a
+-- closed pause (1h30), #41 an open one.
+INSERT INTO history_events (key, at, namespace, project, milestone_iid, issue_iid, mr_iid, task, kind, summary, data, expires_at)
+SELECT key, at + delta, 'research-dev', project, ms, issue, mr, task, kind, summary, data, at + delta + interval '365 days'
+FROM (VALUES
+    ('seed/dev-issue-77/run/start', 'dev', 4, 77, NULL::bigint, 'dev-issue-77', 'run.started', 'Run started on #77', timestamptz '2026-10-27 08:55Z', '{}'::jsonb),
+    ('seed/dev-issue-77/merged', 'dev', 4, 77, 120, 'dev-issue-77', 'merged', 'Merged !120', timestamptz '2026-10-27 14:30Z', '{"sha": "a1b2c3d"}'),
+    ('seed/dev-issue-78/run/start', 'dev', 4, 78, NULL, 'dev-issue-78', 'run.started', 'Run started on #78', timestamptz '2026-10-26 15:00Z', '{}'),
+    ('seed/dev-issue-78/merged', 'dev', 4, 78, 121, 'dev-issue-78', 'merged', 'Merged !121', timestamptz '2026-10-28 11:30Z', '{"sha": "d4e5f6a"}'),
+    ('seed/dev-issue-81/run/start', 'dev', 5, 81, NULL, 'dev-issue-81', 'run.started', 'Run started on #81', timestamptz '2026-10-29 07:05Z', '{}'),
+    ('seed/dev-issue-81/merged', 'dev', 5, 81, 130, 'dev-issue-81', 'merged', 'Merged !130', timestamptz '2026-10-29 07:50Z', '{"sha": "0a1b2c3"}'),
+    ('seed/web-issue-30/run/start', 'web', 2, 30, NULL, 'web-issue-30', 'run.started', 'Run started on #30', timestamptz '2026-10-28 09:05Z', '{}'),
+    ('seed/web-issue-30/merged', 'web', 2, 30, 200, 'web-issue-30', 'merged', 'Merged !200', timestamptz '2026-10-28 10:20Z', '{"sha": "1111111"}'),
+    ('seed/web-issue-31/run/start', 'web', 2, 31, NULL, 'web-issue-31', 'run.started', 'Run started on #31', timestamptz '2026-10-28 10:30Z', '{}'),
+    ('seed/web-issue-31/merged', 'web', 2, 31, 201, 'web-issue-31', 'merged', 'Merged !201', timestamptz '2026-10-28 13:00Z', '{"sha": "2222222"}'),
+    ('seed/web-issue-32/run/start', 'web', 2, 32, NULL, 'web-issue-32', 'run.started', 'Run started on #32', timestamptz '2026-10-29 06:00Z', '{}'),
+    ('seed/web-issue-40/run/start', 'web', 3, 40, NULL, 'web-issue-40', 'run.started', 'Run started on #40', timestamptz '2026-10-27 09:10Z', '{}'),
+    ('seed/web-issue-40/merged', 'web', 3, 40, 210, 'web-issue-40', 'merged', 'Merged !210', timestamptz '2026-10-27 14:00Z', '{"sha": "3333333"}'),
+    ('seed/web-issue-41/run/start', 'web', 3, 41, NULL, 'web-issue-41', 'run.started', 'Run started on #41', timestamptz '2026-10-27 14:10Z', '{}'),
+    ('seed/web-ms3/autopilot.paused/1/needsInput', 'web', 3, 40, NULL, 'web-ms3', 'autopilot.paused',
+     'Autopilot paused (needsInput): the agent asks a question', timestamptz '2026-10-27 12:00Z',
+     '{"kind": "needsInput", "reason": "The agent asks a question", "item": 40}'),
+    ('seed/web-ms3/autopilot.resumed/1/needsInput', 'web', 3, 40, NULL, 'web-ms3', 'autopilot.resumed',
+     'Autopilot resumed (needsInput) by owner', timestamptz '2026-10-27 13:30Z',
+     '{"kind": "needsInput", "reason": "The agent asks a question", "item": 40, "resolvedBy": "owner", "pausedSec": 5400}'),
+    ('seed/web-ms3/autopilot.paused/2/ciRed', 'web', 3, 41, NULL, 'web-ms3', 'autopilot.paused',
+     'Autopilot paused (ciRed): CI of !211 is red', timestamptz '2026-10-29 05:00Z',
+     '{"kind": "ciRed", "reason": "CI of !211 is red", "item": 41}')
+) AS e(key, project, ms, issue, mr, task, kind, summary, at, data), shift;
+
+INSERT INTO agent_calls (key, at, namespace, project, milestone_iid, issue_iid, mr_iid, task, run, seq, kind, role,
+    engine, model, effort, resumed, fallback_from, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+    cost_usd, cost_source, turns, duration_ms, models, subagent_calls, context_series, subagent_turns, expires_at)
+SELECT 'call/seed-' || task || '/1', at + delta, 'research-dev', project, ms, issue, mr, task, 1, 1, 'implement', 'implement',
+    'claude', 'claude-sonnet-5-5', 'medium', false, '', input, output, input * 6, input / 4,
+    cost, 'reported', 10, dur, '[]', 0, '[]', '[]', at + delta + interval '365 days'
+FROM (VALUES
+    ('web', 2, 30, 200, 'web-issue-30', timestamptz '2026-10-28 09:10Z', 21000, 11000, 0.7400, 2400000),
+    ('web', 2, 31, 201, 'web-issue-31', timestamptz '2026-10-28 10:40Z', 30000, 15000, 1.1200, 3100000),
+    ('web', 2, 32, 202, 'web-issue-32', timestamptz '2026-10-29 06:10Z', 12000, 6000, 0.4300, 1200000),
+    ('web', 3, 40, 210, 'web-issue-40', timestamptz '2026-10-27 09:20Z', 25000, 12000, 0.9100, 2700000),
+    ('web', 3, 41, 211, 'web-issue-41', timestamptz '2026-10-27 14:20Z', 40000, 20000, 1.6500, 4200000)
+) AS c(project, ms, issue, mr, task, at, input, output, cost, dur), shift;
 
 COMMIT;

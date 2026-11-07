@@ -13,7 +13,9 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"sigs.k8s.io/yaml"
 
@@ -128,6 +130,76 @@ func TestSeedSpend(t *testing.T) {
 	}
 	if fix := r.Children[0].Call; fix == nil || fix.CostSource != "unknown" || fix.CostUSD != nil || fix.FallbackFrom != "claude" {
 		t.Errorf("#77 run 2 call 4: %+v", fix)
+	}
+}
+
+// The seed's Desk milestones: a running, a paused, a waiting (running without
+// an active issue) and two done ones, one with a retrospective and its three
+// follow-ups, the older one without spend. The paused one shows paused time.
+func TestSeedDeskMilestones(t *testing.T) {
+	st := storetest.New(t)
+	sql, err := os.ReadFile("../research-seed.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Twice in a row: the second run replaces the rows.
+	storetest.Exec(t, string(sql))
+	storetest.Exec(t, string(sql))
+	ctx := t.Context()
+	dev := store.ProjectKey{Namespace: "research-dev", Name: "dev"}
+	web := store.ProjectKey{Namespace: "research-dev", Name: "web"}
+	rows, err := st.Milestones(ctx, store.MilestoneQuery{Projects: []store.ProjectKey{dev, web}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type key struct {
+		p   string
+		iid int64
+	}
+	got := map[key]store.MilestoneRow{}
+	for _, r := range rows {
+		got[key{r.Project.Name, r.IID}] = r
+	}
+	if len(rows) != 5 {
+		t.Fatalf("%d milestones, want 5", len(rows))
+	}
+	if r := got[key{"web", 2}]; r.Phase != "running" || r.Issues != 5 || r.Merged != 2 || !r.Spend.CostKnown {
+		t.Errorf("running: %+v", r)
+	}
+	if r := got[key{"web", 3}]; r.Phase != "paused" || r.State != "open" {
+		t.Errorf("paused: %+v", r)
+	}
+	if r := got[key{"dev", 5}]; r.Phase != "running" || r.Merged != 1 {
+		t.Errorf("waiting: %+v", r)
+	}
+	if r := got[key{"dev", 3}]; r.State != "closed" || r.Spend.CostKnown {
+		t.Errorf("old done milestone has spend: %+v", r)
+	}
+	if r := got[key{"dev", 4}]; r.State != "closed" || !r.Spend.CostKnown || r.FollowUpsOpen != 1 {
+		t.Errorf("done: %+v", r)
+	}
+
+	d, err := st.Milestone(ctx, dev, 4, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(d.RetroText, "## Leftovers") || strings.Contains(d.RetroText, "<") || d.RetroPostedAt.IsZero() {
+		t.Errorf("retrospective: %q posted %v", d.RetroText, d.RetroPostedAt)
+	}
+	var states []string
+	for _, f := range d.FollowUps {
+		states = append(states, f.State)
+	}
+	if want := []string{"open", "issue", "dismissed"}; !slices.Equal(states, want) || d.FollowUps[1].TargetIID == 0 {
+		t.Errorf("follow-ups %v: %+v", states, d.FollowUps)
+	}
+
+	p, err := st.Milestone(ctx, web, 3, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Issues) != 3 || p.Issues[0].PausedSec < 5400 || p.Issues[0].WallSec == 0 || p.Issues[0].AgentMS == 0 {
+		t.Errorf("paused milestone issues: %+v", p.Issues)
 	}
 }
 
