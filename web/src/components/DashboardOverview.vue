@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import EngineUsage from './EngineUsage.vue'
+import MilestoneSections from './MilestoneSections.vue'
 import { clockTime, duration } from '../format'
 import { useNow, useResource } from '../live'
 import { activeLimits, overviewStrip } from '../overview'
 import type { OverviewView, WorkingNow } from '../types'
 
 // The dashboard's Overview tab (decision 4): the summary strip, Working
-// now, and the milestone lists (next slice). It reloads on project and
-// task changes.
+// now, and the milestone lists (In progress, Recently done). It reloads on
+// project and task changes.
 const now = useNow()
 const { data: overview, error, loading } = useResource<OverviewView>(() => '/overview', ['project', 'task'])
 const strip = computed(() => (overview.value ? overviewStrip(overview.value) : []))
@@ -40,7 +41,7 @@ function runningFor(w: WorkingNow): string {
       <div v-if="!overview.history" class="banner info">
         Done milestones and spend need the research database.
       </div>
-  
+
       <section class="section">
         <h2>Working now</h2>
         <p v-if="!overview.working.length" class="muted">Nothing runs right now.</p>
@@ -83,15 +84,8 @@ function runningFor(w: WorkingNow): string {
           </article>
         </div>
       </section>
-  
-      <section class="section">
-        <h2>In progress</h2>
-        <p class="muted">The milestones in work, across projects, come here next.</p>
-      </section>
-      <section class="section">
-        <h2>Recently done</h2>
-        <p class="muted">The milestones done lately come here next.</p>
-      </section>
+
+      <MilestoneSections />
     </template>
   </div>
 </template>

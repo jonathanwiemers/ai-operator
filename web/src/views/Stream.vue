@@ -11,6 +11,7 @@ import ProjectBoards from '../components/ProjectBoards.vue'
 import SpendPanel from '../components/SpendPanel.vue'
 import StreamComposer from '../components/StreamComposer.vue'
 import EventCard from '../components/stream/EventCard.vue'
+import MilestoneSections from '../components/MilestoneSections.vue'
 import { live, useResource } from '../live'
 import { pausePrompt } from '../pauseCard'
 import {
@@ -398,6 +399,10 @@ function showDay(i: number): string | null {
       </div>
 
       <div v-if="tab === 'stream'" class="scroll">
+        <!-- A project's milestones (R9), in the dashboard's lists. -->
+        <div v-if="!everything && !milestoneIID && namespace && name" class="milestones">
+          <MilestoneSections :namespace="namespace" :name="name" />
+        </div>
         <div v-if="!everything && namespace && name" class="pinned">
           <PauseCardCompact
             v-if="paused"
@@ -668,6 +673,9 @@ function showDay(i: number): string | null {
   top: 0;
   z-index: 4;
   background: var(--bg);
+}
+.milestones {
+  padding-top: 4px;
 }
 .pinned .pause {
   margin-top: 14px;

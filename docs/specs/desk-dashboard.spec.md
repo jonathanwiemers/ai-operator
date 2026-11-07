@@ -324,3 +324,14 @@ about how many production lines, and deviations from this spec.
   included). Deviations: no spend chips without the database (unknown, not
   $0); active usage limits show as *limited until*; screenshots were not
   possible in the agent's container (no cluster, no browser).
+- 2026-11-07, `milestone-list-views` (R8 lists, R9 project page, #225):
+  `milestoneRows.ts` (`progressPct`, `rowCost`, `leftoversLabel`,
+  `sortInProgress`), `MilestoneList.vue` and `MilestoneRow.vue`, both
+  sections in `MilestoneSections.vue`, used by the Overview and, with the
+  new `?project=ns/name` filter of `GET /api/v1/milestones` (404 for a
+  project the user may not see), on the project's *Stream* tab above the
+  composer, the context panel kept; about 250 production lines (styles
+  included). Deviations: without the database *Recently done* shows a
+  note instead of the live done rows, so done milestones show only with
+  it; *Show all* reloads the section with `limit=200`; screenshots were
+  not possible in the agent's container (no cluster, no browser).

@@ -55,6 +55,9 @@ export type {
   OverviewView,
   WorkingNow,
   WorkingNext,
+  MilestoneRow,
+  MilestoneList,
+  MilestoneState,
 } from './generated/views'
 
 export type {

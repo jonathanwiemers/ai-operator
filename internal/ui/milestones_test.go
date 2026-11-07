@@ -9,6 +9,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
@@ -250,5 +251,57 @@ func TestMilestonesLimitCapped(t *testing.T) {
 	env.get(t, "/api/v1/milestones?state=done", &l)
 	if len(l.Milestones) != defaultMilestoneRows || l.Milestones[0].IID != int64(100+maxMilestoneRows+9) {
 		t.Errorf("default: %d rows, first %d", len(l.Milestones), l.Milestones[0].IID)
+	}
+}
+
+func TestMilestonesProjectFilter(t *testing.T) {
+	env := milestonesEnv(t)
+	blog := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "blog"},
+		Spec: aiv1.AgentProjectSpec{GitLab: aiv1.GitLabSpec{URL: "https://gitlab.example.com", Project: "acme/blog"}}}
+	for _, o := range []client.Object{blog, specTask("team-a", "blog", 2, 0, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning})} {
+		if err := env.reader.Create(context.Background(), o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shop, blogKey := store.ProjectKey{Namespace: "team-a", Name: "shop"}, store.ProjectKey{Namespace: "team-a", Name: "blog"}
+	fake := &fakeMilestones{rows: []store.MilestoneRow{
+		{Project: shop, IID: 1, State: "closed", DoneAt: t0},
+		{Project: blogKey, IID: 1, State: "closed", DoneAt: t0},
+	}}
+	env.server.milestoneRows = fake
+
+	var l MilestoneList
+	if code := env.get(t, "/api/v1/milestones?state=all&project=team-a/blog", &l); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	for _, m := range l.Milestones {
+		if m.Namespace != "team-a" || m.Project != "blog" {
+			t.Errorf("row of another project: %+v", m)
+		}
+	}
+	if got := rowIIDs(l.Milestones); !slices.Equal(got, []int64{2, 1}) {
+		t.Errorf("blog rows = %v", got)
+	}
+	if q := fake.got[len(fake.got)-1]; !slices.Equal(q.Projects, []store.ProjectKey{blogKey}) {
+		t.Errorf("snapshot queried for %v", q.Projects)
+	}
+
+	// Without the filter both projects are in.
+	l = MilestoneList{}
+	env.get(t, "/api/v1/milestones?state=all", &l)
+	projects := map[string]bool{}
+	for _, m := range l.Milestones {
+		projects[m.Project] = true
+	}
+	if !projects["shop"] || !projects["blog"] {
+		t.Errorf("unfiltered projects = %v", projects)
+	}
+
+	// A project the user may not see, an unknown one or a malformed ref:
+	// 404, as for any project.
+	for _, ref := range []string{"team-b/billing", "team-a/nope", "shop"} {
+		if code := env.get(t, "/api/v1/milestones?project="+ref, nil); code != http.StatusNotFound {
+			t.Errorf("%s: status %d", ref, code)
+		}
 	}
 }

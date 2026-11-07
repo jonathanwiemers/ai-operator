@@ -94,7 +94,9 @@ func (s *Server) milestoneStore() milestoneLister {
 
 // milestones lists the milestones of the projects the user may see: those
 // with live spec tasks and, with the history database, the done ones whose
-// tasks are gone. state is open (default), done or all; limit caps the rows.
+// tasks are gone. state is open (default), done or all; limit caps the rows;
+// project (namespace/name) narrows them to one project, 404 when the user
+// may not see it.
 func (s *Server) milestones(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	state := cmp.Or(q.Get("state"), "open")
@@ -114,6 +116,14 @@ func (s *Server) milestones(w http.ResponseWriter, r *http.Request) {
 	visible, tasks, ok := s.visibleProjects(w, r)
 	if !ok {
 		return
+	}
+	if ref := q.Get("project"); ref != "" {
+		ap := visible[ref]
+		if ap == nil {
+			notFound(w)
+			return
+		}
+		visible = map[string]*aiv1.AgentProject{ref: ap}
 	}
 	now := time.Now()
 	live := liveMilestoneRows(visible, tasks, now)
