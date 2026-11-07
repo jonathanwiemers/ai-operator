@@ -821,12 +821,25 @@ Pauses without an item count for no issue. `IssueFigures` gives one issue's
 figures from the same statements for the issue page. Both return the store's
 not-found error without a snapshot row.
 
+The UI reads, never writes (`internal/ui/milestones.go`, `overview.go`,
+`milestone.go`, `issue.go`, `retrospective.go`): the dashboard's rows are
+the live rows of the visible projects' spec tasks merged with one
+`Milestones` call. A live row keeps its state, title and progress from the
+tasks and takes spend, times and follow-ups from the snapshot; a done
+snapshot row without tasks is a `stored` row; an open one without tasks is
+in no work and stays out. The milestone and issue views do the same with
+`Milestone` and `IssueFigures`. What an owner changes goes to GitLab with
+their own token: the follow-up milestone (`followup.go`, with the
+`followup-of` line) and the dismiss reply (`dismiss.go`, `create none`).
+The operator reads both on its next poll and the recorder writes the
+outcome, so the UI's database role stays a reader.
+
 The backfill fills the snapshot once from GitLab for closed milestones the
 recorder never saw (`internal/research/store/backfill.go`, migration `0009`).
 `desk_backfill` records each milestone it tried (`done` or `failed`, the
 attempts, the last error, when), `desk_backfill_projects` when a project's
 closed milestones were listed and whether all of them were backfilled then
-(`ProjectListed`, `SetProjectListed`). `BackfillPending` keeps of a list of
+(`ProjectListed`, `SetProjectListed`). `BackfillPending` keeps, of a list of
 GitLab milestone IIDs, in order, those neither done, nor stored with issues
 (by the recorder), nor failed three times. `SaveBackfilled` only inserts:
 the milestone with `ON CONFLICT DO NOTHING`, its issues and follow-ups only
@@ -2550,6 +2563,8 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/research/store` | Postgres store (pgx): embedded migrations, grants, runs, results and items, retention delete, the UI's queries and search |
 | `internal/research/storetest` | test helper: a schema and roles per test on the Postgres of `make test-db` (no SQL mocks) |
 | `internal/ui/research.go`, `oneoff.go`, `features.go` | the UI's research API: features, read endpoints and search, one-off create and delete |
+| `internal/history/snapshot.go`, `backfill.go`, `internal/research/store/snapshot.go`, `milestones.go`, `backfill.go` | the Desk snapshot: the recorder's upserts, the backfill from GitLab, the store's writes and queries |
+| `internal/ui/milestones.go`, `overview.go`, `milestone.go`, `issue.go`, `retrospective.go`, `followup.go`, `dismiss.go` | the Desk's milestone API: the dashboard's rows and strip, the milestone and issue views, the retrospective, the follow-up milestone and dismiss |
 | `hack/research-migrate`, `hack/research-seed.sql` | `make research-seed`: a local database with seeded results for the UI's research pages |
 | `internal/gitlab` | minimal REST client with retries; `gitlabfake` for tests |
 | `internal/gitlab/guard.go` | the merge/push guard around the GitLab client |

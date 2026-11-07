@@ -212,23 +212,41 @@ Navigation
 
 ## Acceptance
 
-- `/` shows all milestones in work across projects, sorted as in decision 4, and
-  a user sees only their projects' numbers.
-- A closed milestone opens with its issues and figures after its tasks are gone,
-  and its issue page shows the stream.
-- A stored row survives the task's deletion; a repeated write changes nothing.
-- The Pilot tab and the Stream tab share no event, and a `#prompt-Q<n>` link
-  lands on the prompt.
-- The retrospective reads the same in the Desk and on GitLab.
-- Every route shows breadcrumbs, each ancestor is one click away, and they fold
-  on a phone.
-- From a done milestone, ticked leftovers become a milestone with the owners and
-  autopilot lines, and they show as taken. A second attempt is refused.
-- Dismissing on an open milestone lets it close without waiting 7 days.
-- A non-owner sees all of this read-only.
-- The backfill can stop and restart, and shows old milestones without inventing
-  spend.
-- The Desk works without the database, without done milestones.
+Each item names the slices that met it (changelog below). They were met by
+tests and review; no slice could take screenshots or run the Desk against a
+cluster, so the visual checks remain for a human on `make run-ui`.
+
+- [x] `/` shows all milestones in work across projects, sorted as in decision 4, and
+  a user sees only their projects' numbers. Met by `milestone-api` (#221),
+  `overview-api` (#222) and `milestone-list-views` (#225).
+- [x] A closed milestone opens with its issues and figures after its tasks are gone,
+  and its issue page shows the stream. Met by `milestone-api` (#223),
+  `milestone-issues-tab` (#226), `issue-api` (#227) and `issue-page` (#228).
+- [x] A stored row survives the task's deletion; a repeated write changes nothing.
+  Met by `store` (#215, #216).
+- [x] The Pilot tab and the Stream tab share no event, and a `#prompt-Q<n>` link
+  lands on the prompt. Met by `pilot-tab` (#229, #230).
+- [x] The retrospective reads the same in the Desk and on GitLab. Met by
+  `retrospective` (#232) and `retrospective-tab` (#234); retrospectives
+  posted before #232 by `backfill-operator` (#244).
+- [x] Every route shows breadcrumbs, each ancestor is one click away, and they fold
+  on a phone. Met by `crumbs` (#220), the issue level by `issue-page` (#228).
+- [x] From a done milestone, ticked leftovers become a milestone with the owners and
+  autopilot lines, and they show as taken. A second attempt is refused. Met
+  by `followup-of-line` (#236), `followup-of-settle` (#237), `followups`
+  (#238), `followup-create-endpoint` (#239) and `followup-desk-ui` (#240).
+  Deviation: the refusal (409) comes once the operator's poll marked them
+  taken; two attempts before it both create a milestone, the first one
+  named keeps the leftovers and the other gets the notice.
+- [x] Dismissing on an open milestone lets it close without waiting 7 days. Met
+  by `dismiss-operator` (#241) and `dismiss-desk` (#242).
+- [x] A non-owner sees all of this read-only. Met by the `permissions` of
+  #238, #239 and #242 and the tabs of #230, #234 and #240.
+- [x] The backfill can stop and restart, and shows old milestones without inventing
+  spend. Met by `backfill` (#243) and `backfill-operator` (#244).
+- [x] The Desk works without the database, without done milestones. Met by
+  `dashboard` (#224), `milestone-list-views` (#225) and `milestone-api`
+  (#221, #223).
 
 ## Slices
 
@@ -281,6 +299,15 @@ about how many production lines, and deviations from this spec.
   statement shared with the detail. Deviations: `IssueFigures` carries
   `WallSec` too; spend and events count for an issue only within its
   milestone; an issue missing from the snapshot is not found.
+- 2026-11-07, `docs-seed` (R18 seed, #219): `hack/research-seed.sql` with
+  Desk snapshot rows in `research-dev`: `dev` %3 and %4 done (%4 with a
+  retrospective and three follow-ups: open, issue, dismissed), %5 running
+  without an active issue, `web` %2 running and %3 paused, with run, merge
+  and pause events and agent calls; `seed_test.go` checks them; SQL only.
+  Deviations: the `waiting` milestone is a running one without an active
+  issue (`waiting` needs `queuedBehind` on live tasks); without spec tasks
+  in the cluster the open ones are in no list and open by URL only (see
+  the `docs-seed` line at the end).
 - 2026-11-07, `crumbs` (R19, #220): `routeNames` (the routes are typed
   against it), the pure `crumbsFor`, the `crumbNames` store and
   `Breadcrumbs.vue` in the app's header on every view; the per-view crumb
@@ -395,6 +422,13 @@ about how many production lines, and deviations from this spec.
   anchor is not on the page twice; the rest of R13 stays for its slice;
   screenshots were not possible in the agent's container (no cluster, no
   browser).
+- 2026-11-07, `pilot-tab` (R13, #231): the context panel only on project
+  pages; a milestone page uses the full width for its tabs. The queue
+  (with the *Waiting for its turn* hint) and the companions
+  (`CompanionsList.vue`, shared with the panel) moved to *Issues*, with a
+  compact pause card linking to *Pilot*; the milestone's *Stream* tab pins
+  the compact card too. About 100 production lines (styles included).
+  Deviations: none.
 - 2026-11-07, `retrospective` (R12 storage, #232): `status.pilot.retrospective.text`,
   the posted comment without HTML (comments, the marker and tags removed,
   code spans and fenced blocks kept) and truncated with an ellipsis at
@@ -427,6 +461,9 @@ about how many production lines, and deviations from this spec.
   a retrospective without stored text (posted before #232, until the
   backfill) says so; screenshots were not possible in the agent's
   container (no cluster, no database, no browser).
+- 2026-11-07, `followups` (R15 part 1, #235): `gitlab.API.CreateMilestone`
+  (title, description and optional dates, `POST /projects/:id/milestones`) in the client
+  and in `gitlabfake`; about 30 production lines. Deviations: none.
 - 2026-11-07, `followup-of-line` (R16 part 1, #236): `rules.FollowUpOf`
   reads the first `<prefix> followup-of <iid> <numbers>` line (`%` before
   the IID allowed, numbers 1..9 space- or comma-separated, deduplicated
@@ -559,3 +596,23 @@ about how many production lines, and deviations from this spec.
   without a merge on record gets the new state `closed`, counted done; no
   follow-ups are parsed from the rendered note, so backfilled milestones
   show no leftovers; there is no opt-out setting.
+- 2026-11-07, `docs-seed` (R18 final pass, #245): `docs/ui.md`, `usage.md`,
+  `commands.md`, `design.md` and `configuration.md` checked against main.
+  Fixed: a sentence fragment left by #231 in the context panel's text; the
+  stream API's kind list (the pause, `pilot.writeFailed` and
+  `retrospective` kinds); notifications and the compact pause card open
+  *Pilot*, not the milestone stream; the backfilled and no-database cases
+  of the milestone pages; the seed's notes (the lists need AgentProjects
+  `dev` and `web`, and the open milestones stay out of *In progress*
+  without live tasks); a Desk walk-through in `usage.md`; the follow-up
+  milestone and dismiss in `commands.md`; the UI's read-only merge of live
+  and stored rows and a file map row in `design.md`. `configuration.md`
+  was up to date (`research.historyRetention` covers the snapshot; the
+  backfill has no setting). Docs only, no release. Deviations: the
+  chart README's `research.historyRetention` row still names only the
+  history and Desk chat, since a change under `charts/` releases the
+  chart; it follows with the next chart change. The UI's RBAC and
+  database roles are unchanged, so nothing else there changed. The
+  acceptance items above are marked met with their slices; nobody could
+  run `make run-ui` against the seed in the agent's container (no
+  cluster, no browser).

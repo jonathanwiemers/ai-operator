@@ -1124,8 +1124,9 @@ kind is the same pause; a pause of another kind ends the old one (as
 `operator`) and starts a new one. The operator keeps the last resolver in
 `status.autopilot.resumedBy` until the next pause.
 
-On the Desk ([ui.md](ui.md#what-it-shows)), the milestone page shows a paused
-autopilot as a card: the cause, the paused issue and its MR, what ends the
+On the Desk ([ui.md](ui.md#what-it-shows)), the milestone's *Pilot* tab
+shows a paused autopilot as a card (its *Issues* and *Stream* tabs, the
+Board and the Inbox show a compact one that links there): the cause, the paused issue and its MR, what ends the
 pause by itself, and the actions that fix it (Retry, Review again, Resume,
 Skip, links to the issue's chat, the pipeline, the MR or the plan, and for
 an owner Merge anyway). The buttons send the same commands as the Desk chat
@@ -2466,6 +2467,29 @@ show up in the milestone's **Merge requests** tab. Issues without a milestone
 get merge requests without one. Issues the operator picked up before this
 behaviour existed get the assignee on their next run request; merge requests
 that already exist keep no milestone.
+
+**On the Desk** ([ui.md](ui.md#desk-and-history)), step by step:
+
+1. `/` (*Overview*) shows what runs now per project (*Working now*), every
+   milestone in work across your projects (*In progress*: those that need
+   you first, then running, then waiting) and the newest done ones
+   (*Recently done*), each with its progress, open issues, cost and tokens.
+   The *Stream* tab next to it is every event of your projects.
+2. A milestone opens on its *Issues* tab: one row per issue with its state,
+   merge request, wall, agent and paused time, cost and tokens. *Pilot* holds
+   the pause card, the prompts and the chat with the pilot; *Retrospective*
+   the retrospective and its leftovers (see [The
+   retrospective](#the-retrospective)); *Stream* the runs, pushes, CI,
+   reviews and merges.
+3. An issue's row opens its issue page: the same figures, the live task
+   while one works on it, then the issue's events.
+4. The breadcrumbs at the top lead back up, one click per level.
+
+With the [research database](configuration.md#research-database), done
+milestones stay on the Desk after their tasks are deleted, with their
+issues, figures, retrospective and streams; the operator fills in those
+closed before the Desk kept them, once, from GitLab. Without it the Desk
+shows only milestones with live tasks, with the cost of those tasks.
 
 ## Watching from Kubernetes
 

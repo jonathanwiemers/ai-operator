@@ -1,6 +1,7 @@
 # Web UI
 
-A web UI shows what the agents are doing as a **Desk**: one stream per
+A web UI shows what the agents are doing as a **Desk**: a dashboard of
+the milestones in work and done across your projects, and one stream per
 project, newest at the top, that mixes the conversation (comments, the
 pilot's replies and proposals) with what the agents did (runs, pushes, CI,
 reviews, merges, autopilot changes), with the message box pinned above it.
@@ -201,7 +202,7 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   *Issues* (with a compact pause line linking to *Pilot* while paused), the
   full **pause card**, the pilot's autonomy and cost, the **questions**
   (prompt cards), **Ask the pilot** and the **pause history** in *Pilot*.
-  prompts). The milestone API also carries the autopilot's **pause
+  The milestone API also carries the autopilot's **pause
   history** (`pauses`, from the `autopilot.paused`/`autopilot.resumed`
   events within the history retention: the newest 20 pauses with kind,
   reason, start, end and who resolved each, an open one counting up to
@@ -270,7 +271,14 @@ With the research database, a closed milestone whose tasks are gone still
 opens from history: the milestone API answers from the snapshot (`stored`),
 with its issues and their figures, and the *Issues* tab says *From history:
 the tasks of this milestone are gone*. Such a milestone has no *Board* tab and
-no message box.
+no message box. Milestones closed before the snapshot existed are filled in
+once by the operator's backfill (see
+[configuration](configuration.md#research-database)): their issues with
+states and merge requests and the retrospective's text, but no leftovers
+and only the spend `agent_calls` still holds, so the oldest show a dash,
+never $0. Without the research database the dashboard, the lists and the
+milestone pages show only what the live tasks give: no done milestones once
+their tasks are gone, no spend in the strip and no per-issue figures.
 
 ### Navigation
 
@@ -426,8 +434,8 @@ request, the home issue and the release). Failed and blocked tasks only count in
 Inbox. Items already there when the tab opens or when you turn notifications
 on don't notify; each item notifies once, also across reloads and live
 updates, and an autopilot that pauses again for another cause or issue is a
-new item. Clicking a notification opens the milestone stream (pause, proposal)
-or the task page (a ready companion: its home issue's task). Notifications work only while a Desk tab is open: there is
+new item. Clicking a notification opens the milestone's *Pilot* tab (pause,
+proposal, a milestone's prompt) or the task page (a ready companion: its home issue's task). Notifications work only while a Desk tab is open: there is
 no service worker, no Web Push and no e-mail. When the browser blocks them,
 the header says *Notifications are blocked in this browser* (allow them in
 the site settings); a browser without the Notification API shows no button.
@@ -611,9 +619,10 @@ once the issue is reviewed and green. A pause that needs a human shows as
 with the **compact pause card**: the heading for the `pauseKind`, the pause
 reason on one line (the free text for a pause without a kind), the paused
 issue, *A run is working on #N now* while one is, what ends the pause by
-itself, and *Open* to the milestone stream. It has no buttons; the actions are
-on the full card there. The Inbox and the stream show the same compact card.
-In the milestone stream, where the card has the pause's exits, the line on
+itself, and *Open* to the milestone's *Pilot* tab. It has no buttons; the
+actions are on the full card there. The Inbox, the stream and a milestone's
+*Issues* tab show the same compact card. In the stream and on the *Issues*
+tab, where the card has the pause's exits, the line on
 what ends the pause becomes the short **Way out**: the first automatic exit
 with its status and the number of remedies, e.g. *Way out: A later run makes
 the issue pass the merge gate (reviewed and green) — waiting · 5 remedies*.
@@ -1141,7 +1150,7 @@ with the same session cookie:
 | `GET /api/v1/gitlab` | whether GitLab is configured and your account connected (`enabled`, `connected`, `username`) |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread` | the comments of the task's issue, MR and tracking issue (`parts`), read with your GitLab token; 409 when not connected |
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes` | posts `{"target": "issue"\|"mr"\|"tracking", "body": "…"}` in your GitLab name; needs the `steer` grant |
-| `GET /api/v1/stream` | `{"events": […], "older", "newest", "history"}`: events of the projects you may see, newest first: `id`, `at`, `namespace`, `project`, `milestoneIID`, `issueIID`, `mergeRequestIID`, `task`, `kind` (`note`, `run.started`, `run.finished`, `push`, `ci`, `review`, `needs`, `merged`, `closed`, `autopilot`, `proposal`, `prompt.posted`, `prompt.answered`, `prompt.closed`, `chat.user`, `chat.agent`), `actor`, `summary`, `data` (per kind, e.g. a comment's `body`, `url`, `bot`; a run's `result`, `costUSD`, `durationSec`; chat's `body`, `role`, `kind`, `state`), `redacted` (a comment's or chat message's body withheld without `conversation`). Chat rows come only when `?kinds=` names `chat.user` or `chat.agent` (their ids are not unique against history events), merged with history by time; with `&milestone=` only the chat of that milestone's tasks, with `&issue=` of that issue's. `?project=namespace/name` (404 if you may not see it), `&milestone=<iid>`, `&issue=<iid>` with a milestone (the issue's events: recorded with it, in that milestone or without one; 400 without a project and milestone), `?kinds=` comma separated, `?q=` full text (1–200 characters; comments only where you have `conversation`; chat is left out of text search), `?before=` the `older` cursor or `t:<RFC 3339 time>`, `?after=` the `newest` cursor (what is newer, for live updates), `?limit=` 1–100 (default 50); 400 for other values. `history` is false without a research database (no events), 503 until the UI is connected to it |
+| `GET /api/v1/stream` | `{"events": […], "older", "newest", "history"}`: events of the projects you may see, newest first: `id`, `at`, `namespace`, `project`, `milestoneIID`, `issueIID`, `mergeRequestIID`, `task`, `kind` (`note`, `run.started`, `run.finished`, `push`, `ci`, `review`, `needs`, `merged`, `closed`, `autopilot`, `autopilot.paused`, `autopilot.resumed`, `proposal`, `pilot.writeFailed`, `prompt.posted`, `prompt.answered`, `prompt.closed`, `retrospective`, `chat.user`, `chat.agent`; which tab shows which is under *Which events show where* above), `actor`, `summary`, `data` (per kind, e.g. a comment's `body`, `url`, `bot`; a run's `result`, `costUSD`, `durationSec`; chat's `body`, `role`, `kind`, `state`), `redacted` (a comment's or chat message's body withheld without `conversation`). Chat rows come only when `?kinds=` names `chat.user` or `chat.agent` (their ids are not unique against history events), merged with history by time; with `&milestone=` only the chat of that milestone's tasks, with `&issue=` of that issue's. `?project=namespace/name` (404 if you may not see it), `&milestone=<iid>`, `&issue=<iid>` with a milestone (the issue's events: recorded with it, in that milestone or without one; 400 without a project and milestone), `?kinds=` comma separated, `?q=` full text (1–200 characters; comments only where you have `conversation`; chat is left out of text search), `?before=` the `older` cursor or `t:<RFC 3339 time>`, `?after=` the `newest` cursor (what is newer, for live updates), `?limit=` 1–100 (default 50); 400 for other values. `history` is false without a research database (no events), 503 until the UI is connected to it |
 | `GET /api/v1/projects/{namespace}/{name}/history` | `{"days": [{"day", "runs", "merged", "costUSD", "events"}], "totals": …, "previous": …}`: activity per day of the last `?days=` (1–90, default 30) in `?tz=` (an IANA time zone, default UTC), every day oldest first, with the totals and those of the days before; 404 without a research database |
 | `GET /api/v1/spend` | what a scope cost, summed from the recorded agent calls: `?namespace=&project=` (required) narrowed by `&milestone=`, `&issue=`, `&task=` and `&run=` (needs `task`); `{"totals", "children", "byKind", "byRole", "byModel", "byReviewRound", "bySession", "byCheckpoint", "bySubagents", "cacheReadShare", "stepLines"}`. `totals` (also per child and breakdown): `costUSD` (2 decimals; `""` with `costKnown: false` when no call reports or estimates a cost, never `"0.00"`), `unknownCalls` (calls without a cost, not in `costUSD`), `unmeteredCalls` (the part of them that reports no tokens either: not metered), `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens`, `calls`, `subagentCalls`, `durationMS`, `legacyCostUSD` (the part of `costUSD` from runs recorded before agent calls, without tokens). `children` are the next level, oldest or lowest first: a project's milestones (`key` the IID, `""` for none), a milestone's issues (and the milestone's own calls with `level: "milestone"`), an issue's runs (`key` `task/run`), a task's or run's calls (`key` the seq), each with `level`, `key`, `label`, `at` (its first call), `companion` (issue rows of an issue with a companion repository: its project; the companion's calls count to the home issue), `totals` and `models` (`model`, `main` (false for subagent models), `tokens`, `costUSD`, `costKnown`, `unmetered` (none of its calls reports a cost or tokens)); calls also carry `kind`, `role`, `engine`, `model`, `effort`, `resumed`, `fallbackFrom`, `costSource` (`reported`, `estimated`, `unknown`), `turns`, `contextSeries` (context tokens per main-thread turn) and `subagentTurns` (indexes into it after which a subagent ran) and `readGateBlocks` (reads the read gate denied), `checkpoint` and `checkpointSHA` (the reason and commit when the call's end saved a checkpoint, left out otherwise) and `linesAdded`, `linesDeleted` (the uncommitted lines an implementer call left, 0 for other calls) and `stepGateNudges` (how often the step-size gate nudged the call, 0 without). The breakdowns sum the calls by kind, role and model (subagent models as their own); `byReviewRound` the review calls by round (`key` `"1"`, `"2"`, …: within a run, the reviews before the first, second, … fix call by seq, summed across runs); `bySession` the implement calls by session (`key` `fresh` or `resumed`); `byCheckpoint` the calls that saved a checkpoint by reason (`key`, e.g. `usage-limit`), the most frequent first; `bySubagents` the calls per `role` with `withSubagents` (a subagent ran) true or false, with `totals` and `subagentTokens` (the tokens of the subagent models) and `readGateBlocks` (the read gate's denials); `cacheReadShare` is cache reads over all input tokens; `stepLines` the size of the scope's step commits: `count` (implement calls with lines added plus deleted above 0), `median`, `p90` (interpolated, rounded) and `max` of their lines, and `nudges` (the step-size gate's nudges of all calls), all 0 without step data. 400 without namespace or project, for a number that is not positive or a run without task; 404 without a research database or when you may not see the project; 503 until the UI is connected to the database |
 | `GET /api/v1/inbox` | `{"items": […]}`: what needs you now across your projects, newest first: `kind` (`task` with `reason` `needs-input`, `failed` or `blocked`; `proposal` with `proposalID`; `prompt` for each open prompt, with `promptID`, the question cut as `title` and the prompt kind as `reason`; a task with an open needsInput prompt has no `task` item; `pause` for a paused autopilot, with the milestone's `title`, `reason` (the pause reason), `pauseKind` and the paused issue as `issueIID`, listed after the dated items; `companionReady` for a companion merge request that is ready and waits for the owners to merge it (autopilot does not, and the owners were told), with the companion `project!iid` as `title`, the release that made the home change live in `reason`, the merge request as `url`, the home issue as `issueIID` and `at` when the owners were told; it leaves once merged or closed), `namespace`, `project`, `task`, `issueIID`, `milestoneIID`, `title`, `at`, `url` |
@@ -1237,13 +1246,21 @@ The seed (namespace `research-dev`) has:
   before token tracking, and a chat turn without a milestone. The tab is on
   the stream of an AgentProject `dev` in `research-dev`
   (`…/projects/research-dev/dev?tab=spend`).
-* Desk milestones for the dashboard and the milestone pages: in project
-  `dev` two done ones (an old one without agent calls, so it shows no spend,
-  and `%4` with a retrospective and three follow-ups: open, opened as an
-  issue, dismissed) and one that waits (running, no active issue, as the
-  autopilot has no waiting phase yet); in project `web` one running (5
-  issues, 2 merged) and one paused for #41, with run, merge and pause
-  events and agent calls, so wall, agent and paused time and cost show.
+* Desk milestones for the dashboard and the milestone pages (snapshot rows
+  in `desk_milestones`): in project `dev` two done ones (`%3`, old and
+  without agent calls, so it shows no spend, and `%4` with a retrospective
+  and three follow-ups: open, opened as an issue, dismissed) and `%5`
+  (running, no active issue); in project `web` `%2` running (5 issues, 2
+  merged) and `%3` paused for #41, with run, merge and pause events and
+  agent calls, so wall, agent and paused time and cost show. The lists
+  need AgentProjects `dev` and `web` in `research-dev` (the operator need
+  not run). A milestone's state in work comes from its live tasks, and the
+  seed has none: *Recently done* lists `%3` and `%4`, while the open ones
+  stay out of *In progress* (a snapshot row without tasks is in no work)
+  and open by URL from the snapshot as `planned`
+  (`…/projects/research-dev/web/milestones/2`). Running, paused and
+  waiting rows, the strip's counts and *Working now* need spec tasks with
+  autopilot status, e.g. an operator on a kind cluster.
 
 The data is dated to the latest 08:00 UTC, so the pages look fresh, and
 `make research-seed` replaces it when run again. Apply

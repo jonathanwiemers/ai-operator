@@ -153,16 +153,24 @@ implementer of every following run reads them:
 | `create 1 2`, `create 1, 3`, `create all` | As a reply in the thread of the [retrospective](usage.md#the-retrospective), once autopilot is done (the whole comment, no prefix): opens those follow-ups as plain issues (generated label, no milestone, not handed to the agent), each once, and answers in the thread with the links. Only from the owners pinned when the retrospective was posted; anything else is ignored silently. |
 | `create none` | The same place and owners: dismisses the remaining follow-ups, so they no longer hold the milestone open and it closes on the next poll without waiting 7 days (once its issues are closed). Answered once in the thread; follow-ups opened or taken over before stay as they are, and `create 2` afterwards still opens one. |
 
-The leftovers can also become a **follow-up milestone**, from the Desk only:
-the chat command `{"cmd":"draft","followUps":[1,3]}` on the milestone's
-pilot asks it for a draft (title and description) from those follow-ups
-(1 to 9, at least one). Only the milestone's `owner-subjects`, while the
-pilot is there: it stays after the retrospective until the follow-ups are
-settled (opened, taken over, or 7 days after the retrospective), and it
-takes nothing else then. One draft at a time; numbers that are unknown,
-opened or taken are refused with the reason. The draft costs one model
+The leftovers can also become a **follow-up milestone**: any milestone
+with the line `/agent followup-of <iid> <numbers>` (below) takes them over.
+The Desk writes one for you from its *Retrospective* tab: the chat command
+`{"cmd":"draft","followUps":[1,3]}` on the milestone's pilot asks it for a
+draft (title and description) from those follow-ups (1 to 9, at least
+one). Only the milestone's `owner-subjects`, while the pilot is there: it
+stays after the retrospective until the follow-ups are settled (opened,
+taken over, dismissed, or 7 days after the retrospective), and it takes
+nothing else then. One draft at a time; numbers that are unknown, opened
+or taken are refused with the reason. The draft costs one model
 call from the pilot's budget and lands in the milestone's retrospective
-(`retrospective.draft` of the milestone API), untrusted until an owner confirms it. See [the Desk's
+(`retrospective.draft` of the milestone API), untrusted until an owner
+confirms it: the owner edits it (a closed milestone, without a pilot,
+starts from the follow-ups' titles and bodies) and creates the milestone
+with their own GitLab token, with the spec, autopilot, owners,
+owner-subjects and `followup-of` lines added, so autopilot starts on it.
+*Dismiss remaining* on the same tab replies `create none` in the owner's name. See [the
+retrospective](usage.md#the-retrospective) and [the Desk's
 commands](ui.md#what-it-shows).
 
 See [Autopilot](usage.md#autopilot-a-milestone-end-to-end).
