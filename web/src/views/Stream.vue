@@ -136,6 +136,24 @@ const paused = computed(() => {
   return !everything.value && m?.autopilot?.phase === 'Paused' ? m : null
 })
 
+// pauseProps: the compact pause card's props (stream and Issues tabs).
+const pauseProps = computed(() => {
+  const m = paused.value
+  if (!m || !props.namespace || !props.name) return null
+  return {
+    kind: m.autopilot?.pauseKind,
+    reason: m.autopilot?.pausedReason,
+    issue: m.autopilot?.pausedFor,
+    milestoneTitle: m.title,
+    waiting: m.autopilot?.waitingFor,
+    exits: m.autopilot?.exits,
+    prompt: pausePrompt(m.autopilot?.pauseKind, m.prompts),
+    namespace: props.namespace,
+    projectName: props.name,
+    to: { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) }, query: { tab: 'pilot' } },
+  }
+})
+
 // milestoneTasks: the Board of a milestone stream, as the milestone page
 // shows it (the project's copy until the milestone loaded).
 const milestoneTasks = computed(() => {
@@ -366,7 +384,7 @@ function showDay(i: number): string | null {
 
 <template>
   <NotFound v-if="notFound" />
-  <div v-else class="desk" :class="{ wide: milestoneIID }">
+  <div v-else class="desk" :class="{ solo: milestoneIID }">
     <div class="stream">
       <div class="head">
         <div v-if="milestone?.autopilot" class="apline">
@@ -433,20 +451,7 @@ function showDay(i: number): string | null {
           <MilestoneSections :namespace="namespace" :name="name" />
         </div>
         <div v-if="!everything && namespace && name" class="pinned">
-          <PauseCardCompact
-            v-if="paused"
-            class="pause"
-            :kind="paused.autopilot?.pauseKind"
-            :reason="paused.autopilot?.pausedReason"
-            :issue="paused.autopilot?.pausedFor"
-            :milestone-title="paused.title"
-            :waiting="paused.autopilot?.waitingFor"
-            :exits="paused.autopilot?.exits"
-            :prompt="pausePrompt(paused.autopilot?.pauseKind, paused.prompts)"
-            :namespace="namespace"
-            :project-name="name"
-            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(paused.iid) }, query: { tab: 'pilot' } }"
-          />
+          <PauseCardCompact v-if="pauseProps" class="pause" v-bind="pauseProps" />
           <!-- A milestone's composer is on its Pilot tab. -->
           <StreamComposer
             v-if="!milestoneIID"
@@ -507,6 +512,8 @@ function showDay(i: number): string | null {
         </div>
       </div>
       <div v-else-if="tab === 'issues'" class="scroll board">
+        <!-- The full pause card is on the Pilot tab. -->
+        <PauseCardCompact v-if="pauseProps" class="pause" v-bind="pauseProps" />
         <MilestoneIssues
           v-if="namespace && name && milestone && milestone.iid === milestoneIID"
           :milestone="milestone"
@@ -547,11 +554,10 @@ function showDay(i: number): string | null {
     </div>
 
     <ContextPanel
-      v-if="!everything && namespace && name"
+      v-if="!everything && !milestoneIID && namespace && name"
       class="ctx-wrap"
       :namespace="namespace"
       :name="name"
-      :full="!!milestoneIID && tab !== 'pilot'"
       :inbox="projectInbox"
       :milestone="milestone"
       :history="history"
@@ -567,9 +573,9 @@ function showDay(i: number): string | null {
   height: 100%;
   min-width: 0;
 }
-/* A milestone's panel holds the pause card and the pilot chat. */
-.desk.wide {
-  grid-template-columns: minmax(0, 1fr) 380px;
+/* A milestone page has no context panel: the tabs use the full width. */
+.desk.solo {
+  grid-template-columns: minmax(0, 1fr);
 }
 .stream {
   display: flex;
@@ -796,8 +802,7 @@ function showDay(i: number): string | null {
   color: var(--text-3);
 }
 @media (max-width: 1180px) {
-  .desk,
-  .desk.wide {
+  .desk {
     grid-template-columns: minmax(0, 1fr);
   }
   .ctx-wrap {

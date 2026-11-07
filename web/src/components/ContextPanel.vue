@@ -1,61 +1,28 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { hasFeature } from '../api'
-import { companionRef } from '../companion'
 import { cost } from '../format'
 import { queueDone, waitingForTurn } from '../milestoneQueue'
-import { pausePrompt } from '../pauseCard'
-import { promptAnchor, splitPrompts } from '../promptCard'
 import type { HistoryResponse, InboxItem, MilestoneView, QueueItem } from '../types'
-import AskPilot from './AskPilot.vue'
-import Badge from './Badge.vue'
-import CompanionChip from './CompanionChip.vue'
-import ExtLink from './ExtLink.vue'
-import PauseCard from './PauseCard.vue'
-import PausesCard from './PausesCard.vue'
-import PromptCard from './PromptCard.vue'
+import CompanionsList from './CompanionsList.vue'
 import QueueList from './QueueList.vue'
 import RelTime from './RelTime.vue'
 
-// ContextPanel sits beside a project or milestone stream. On a milestone
-// stream (full) it also holds the full pause card, the milestone's prompts
-// (open first, the closed ones folded) and Ask the pilot; the stream keeps
-// the compact pause card. Below the prompts, the Pauses card shows the
-// milestone's pause history.
+// ContextPanel sits beside a project stream: what needs you, the active
+// milestone's queue and companions, and the last 30 days. A milestone page has
+// no panel: its parts live in the Issues and Pilot tabs.
 const props = defineProps<{
   namespace: string
   name: string
   inbox: InboxItem[]
   milestone?: MilestoneView | null
   history?: HistoryResponse | null
-  full?: boolean
 }>()
 
 const queue = computed((): QueueItem[] => props.milestone?.autopilot?.items ?? [])
-// Companions: the home issue links its implement task, else the GitLab issue.
-const homeTask = (iid: number) =>
-  props.milestone?.tasks.find((t) => t.type === 'Implement' && t.issue?.iid === iid)?.name
-const issueURL = (iid: number) => props.milestone?.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
 const done = computed(() => queueDone(queue.value))
 const total = computed(() => queue.value.length)
 // Waiting for its turn to be planned: running, so no Inbox item and no pause card.
 const waiting = computed(() => waitingForTurn(props.milestone?.autopilot?.queuedBehind))
-const paused = computed(() => props.full && props.milestone?.autopilot?.phase === 'Paused')
-const showPilotChat = computed(() => !!props.milestone?.permissions?.chat || hasFeature('chat'))
-// The pause card shows its own prompt (mainRed, budget): the list leaves it out
-// so one prompt is not two answer widgets with the same anchor.
-const pauseOwn = computed(() =>
-  paused.value ? pausePrompt(props.milestone?.autopilot?.pauseKind, props.milestone?.prompts) : undefined,
-)
-const prompts = computed(() => {
-  const s = splitPrompts(props.milestone?.prompts)
-  const own = pauseOwn.value
-  return own ? { open: s.open.filter((p) => p.id !== own.id), closed: s.closed } : s
-})
-// A Desk link to a closed prompt unfolds the closed ones.
-const route = useRoute()
-const closedLinked = computed(() => prompts.value.closed.some((p) => route.hash === `#${promptAnchor(p.id)}`))
 
 const chart = computed(() => {
   const days = props.history?.days ?? []
@@ -110,15 +77,6 @@ function inboxTo(item: InboxItem) {
 
 <template>
   <aside class="ctxp">
-    <PauseCard
-      v-if="paused && milestone"
-      :key="milestone.iid"
-      class="full-pause"
-      :namespace="namespace"
-      :name="name"
-      :milestone="milestone"
-    />
-
     <div class="panel">
       <h3>
         <span>Needs you</span>
@@ -151,50 +109,8 @@ function inboxTo(item: InboxItem) {
         <span>Companions</span>
         <span>{{ milestone.companions.length }}</span>
       </h3>
-      <ul class="companions">
-        <li v-for="c in milestone.companions" :key="`${c.homeIssueIID}/${companionRef(c)}`">
-          <div class="row">
-            <ExtLink :href="c.mrURL" class="mono ref">{{ companionRef(c) }}</ExtLink>
-            <span class="spacer" />
-            <CompanionChip :companion="c" plain />
-          </div>
-          <div class="row faint">
-            <RouterLink v-if="homeTask(c.homeIssueIID)" :to="{ name: 'task', params: { namespace, name, task: homeTask(c.homeIssueIID)! } }">
-              #{{ c.homeIssueIID }}
-            </RouterLink>
-            <ExtLink v-else :href="issueURL(c.homeIssueIID)">#{{ c.homeIssueIID }}</ExtLink>
-            <span v-if="c.release">release {{ c.release }}</span>
-            <span v-if="c.reason" class="reason" :title="c.reason">{{ c.reason }}</span>
-          </div>
-        </li>
-      </ul>
+      <CompanionsList :namespace="namespace" :name="name" :milestone="milestone" />
     </div>
-
-    <div v-if="full && milestone && (milestone.pilot || prompts.open.length || prompts.closed.length)" class="panel">
-      <h3>
-        <span>Questions</span>
-        <span v-if="prompts.open.length">{{ prompts.open.length }} open</span>
-      </h3>
-      <div v-if="milestone.pilot" class="row pilot">
-        <span class="faint">Pilot</span>
-        <Badge :tone="milestone.pilot.autonomy === 'managed' ? 'progress' : 'neutral'">{{ milestone.pilot.autonomy }}</Badge>
-        <span class="faint">{{ cost(milestone.pilot.costUSD) }}</span>
-        <span class="spacer" />
-        <RouterLink :to="{ name: 'task', params: { namespace, name, task: milestone.pilot.task } }">Pilot task</RouterLink>
-      </div>
-      <div class="prompts">
-        <div v-if="!prompts.open.length" class="empty-sm">No open questions.</div>
-        <PromptCard v-for="p in prompts.open" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
-        <details v-if="prompts.closed.length" class="earlier" :open="closedLinked">
-          <summary>Earlier questions ({{ prompts.closed.length }})</summary>
-          <div class="prompts">
-            <PromptCard v-for="p in prompts.closed" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
-          </div>
-        </details>
-      </div>
-    </div>
-
-    <PausesCard v-if="full && milestone?.pauses" :pauses="milestone.pauses" />
 
     <div v-if="history" class="panel">
       <h3><span>Last 30 days</span></h3>
@@ -237,11 +153,6 @@ function inboxTo(item: InboxItem) {
         </div>
       </div>
     </div>
-
-    <div v-if="full && milestone && showPilotChat" class="panel">
-      <h3><span>Ask the pilot</span></h3>
-      <AskPilot :namespace="namespace" :name="name" :milestone="milestone" />
-    </div>
   </aside>
 </template>
 
@@ -255,10 +166,6 @@ function inboxTo(item: InboxItem) {
   gap: 14px;
   align-content: start;
   min-height: 0;
-}
-/* The full pause card sits on top, without the page's spacing. */
-.ctxp .full-pause {
-  margin-top: 0;
 }
 .panel h3 {
   font-size: 11.5px;
@@ -366,42 +273,8 @@ function inboxTo(item: InboxItem) {
 .legend i.spend {
   background: var(--accent-2);
 }
-.pilot {
-  font-size: 13px;
-  margin-bottom: 10px;
-}
-.prompts {
-  display: grid;
-  gap: 10px;
-}
-.earlier summary {
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text-2);
-}
-.earlier[open] summary {
-  margin-bottom: 10px;
-}
 .empty-sm {
   font-size: 13px;
   color: var(--text-3);
-}
-.companions {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 10px;
-  font-size: 13px;
-}
-.companions .ref {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.companions .reason {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>

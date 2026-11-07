@@ -23,7 +23,7 @@ chat included, with your own GitLab token.
 
 ## Desk and history
 
-The app is a **Desk**: a left rail, the stream, and a context panel.
+The app is a **Desk**: a left rail, the stream, and, on project pages, a context panel.
 
 * **Rail:** *Inbox* (what needs you now across your projects: tasks with
   questions, failed or blocked, the open prompts (and proposals from before prompts), rejected pilot status writes (*Pilot write rejected*, with the API error, for 24 hours), companion merge requests ready for the owners to merge (*Companion ready · #N* with the companion `project!iid` linking the merge request in GitLab and the release in the reason; the row opens the home issue's task page), and paused
@@ -91,7 +91,7 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   connected and the `steer` grant (see [Steering](#steering)), and the
   operator handles what you write like any GitLab comment. While the
   stream's milestone (the scoped one, or on a project stream the one the
-  context panel shows) is paused, the compact pause card is pinned above
+  context panel shows; a milestone page pins it on its Stream tab and shows a compact line on Issues) is paused, the compact pause card is pinned above
   the message box, and *Open* leads to the milestone's *Pilot* tab; it goes
   when the autopilot runs again. The *Everything* stream pins nothing.
   Filter chips (*Chat*, *Needs you*, *Runs*, *CI & review*, *Merged*; on a
@@ -137,9 +137,8 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   shown when the `chat` feature is on); the milestone's events of the
   *Pilot* kinds above, newest first, without filter chips; and the pause
   history (*Pauses*). The milestone's *Stream* tab asks only for the
-  *Stream* kinds, so the two tabs share no event. On the *Pilot* tab the
-  context panel leaves out what the tab shows (pause card, questions,
-  *Ask the pilot*). A stored milestone's *Pilot* tab shows its history
+  *Stream* kinds, so the two tabs share no event. A milestone page has no
+  context panel (project pages only). A stored milestone's *Pilot* tab shows its history
   only: the events and the pauses, no cards and no message box.
 * **Cost chips** on the stream header (the project or milestone), on each
   milestone scope tab and on the Task page header: `$12.34 · 1.2M tok`, the
@@ -157,13 +156,13 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   from `autopilot.queuedBehind`. It is running, not paused, so it has no
   pause card and no Inbox item: nothing is asked of anyone), and the last
   30 days: runs per day with the spend,
-  merges, spend and events against the 30 days before. On a milestone
-  stream it also holds the full **pause card** with its actions while the
-  autopilot is paused (see below; the stream keeps the compact card), the
-  pilot's autonomy and cost, the milestone's **questions** (prompt cards:
-  the open ones first, the newest closed ones folded under *Earlier
-  questions*), and **Ask the pilot** (the Desk chat with the pilot; its
-  accept and reject buttons remain for any proposal "P<n>" posted before
+  merges, spend and events against the 30 days before. The panel is for
+  project pages only: a milestone page has none and uses the full width for
+  its tabs. What the panel once showed there lives in the tabs: the queue
+  (with the *⏳ Waiting for its turn* hint) and the **Companions** in
+  *Issues* (with a compact pause line linking to *Pilot* while paused), the
+  full **pause card**, the pilot's autonomy and cost, the **questions**
+  (prompt cards), **Ask the pilot** and the **pause history** in *Pilot*.
   prompts). The milestone API also carries the autopilot's **pause
   history** (`pauses`, from the `autopilot.paused`/`autopilot.resumed`
   events within the history retention: the newest 20 pauses with kind,
@@ -209,7 +208,7 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   question and the recommended option.
 * **Where prompts appear:** the Inbox (kind `prompt`, counted like the rest,
   with the tab title and the browser notification), the milestone's *Pilot*
-  tab and context panel (full cards, replacing the old proposals list), the
+  tab (full cards, replacing the old proposals list), the
   stream (compact cards), the Task page (an agent's questions above the chat) and the
   pause cards of `mainRed` and `budget` pauses.
 * **Revisit:** each decision row in the queue has a **Revisit** button. It
@@ -501,7 +500,7 @@ nofollow"`, and other links show as their text. Images are never loaded.
 
 | Page | Content |
 |------|---------|
-| **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot's phase, pause reason and a link to the milestone stream, whose context panel shows the queue |
+| **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot's phase, pause reason and a link to the milestone stream, whose *Issues* tab shows the queue |
 
 **Engine usage.** claude reports how much of its usage windows is used with
 every agent call; the project keeps the freshest reading per engine
@@ -555,7 +554,7 @@ With GitLab connected (see [Steering](#steering)), a task page has a
 tracking issue, and, with the `steer` permission, a box to write comments in
 your own GitLab name.
 
-A milestone's *Pilot* tab and context panel have the same panel as its **Chat**: the comments of the
+A milestone's *Pilot* tab has the same panel as its **Chat**: the comments of the
 milestone's tracking issue and, with `steer`, a box whose messages go to the
 pilot as `/pilot …` (the UI adds the prefix). Only the milestone owners'
 instructions count, as in GitLab; answer a proposal "P<n>" from before
@@ -582,8 +581,8 @@ the issue pass the merge gate (reviewed and green) — waiting · 5 remedies*.
 While a run works on a task, its card marks the CI result as the last
 push's.
 
-On the milestone's *Pilot* tab (and in the context panel of its other
-tabs), a paused autopilot (waiting or not) shows as the **pause card**: a heading for
+On the milestone's *Pilot* tab (and as a compact line on its *Issues* tab,
+which links to Pilot), a paused autopilot (waiting or not) shows as the **pause card**: a heading for
 the `pauseKind`, the pause reason as text, the
 paused issue with its title, MR and pushed head, what ends the pause by
 itself, for failed reviewers which engine is usage-limited until when
