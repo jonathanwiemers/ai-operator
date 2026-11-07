@@ -356,3 +356,51 @@ func TestCompanionGateMergeOverrideKeepsCompanionCI(t *testing.T) {
 		t.Fatalf("the override merges once the companion is green: %v, %+v", e.gl.Merged, e.autopilot())
 	}
 }
+
+// The home merge waits for the review of the companion head, whatever
+// conventionalCommits says (the merge call then also builds the squash
+// message): nothing is merged, no merge options are sent, and the merge goes
+// through once the companion head is reviewed.
+func TestAutopilotCompanionReviewGate(t *testing.T) {
+	on, off := true, false
+	for _, c := range []struct {
+		name string
+		opt  *bool
+		want string
+	}{
+		{"on", &on, "feat(ui): add x\n\nRefs #1"},
+		{"off", &off, ""},
+		{"unset", nil, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e, infra := newCompanionGateEnv(t)
+			e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Workflow.ConventionalCommits = c.opt })
+			name, cmr := e.finishCompanionRun(infra, 1, "sha-api", "sha-infra-2", aiv1.CIStateSuccess, func(r *aiv1.RunStatus) {
+				r.Companion.ReviewedSHA = "sha-infra-1"
+			})
+			cmr.DetailedMergeStatus = "draft_status"
+			e.gl.MRs[1].Title = "Draft: feat(ui): add x"
+			for range 4 {
+				e.reconcile()
+			}
+			if _, ok := e.gl.MergeOpts[1]; ok {
+				t.Fatalf("merge was called for an unreviewed companion: %+v", e.gl.MergeOpts[1])
+			}
+			expectPause(t, e, aiv1.PauseNotReviewed, "the companion head of #1 (group/infra, sha-infr) was not reviewed")
+			if len(infra.Merged) != 0 {
+				t.Fatalf("the companion was merged: %v", infra.Merged)
+			}
+
+			e.patchStatus(name, func(s *aiv1.AgentTaskStatus) { s.Run.Companion.ReviewedSHA = "sha-infra-2" })
+			for range 4 {
+				e.reconcile()
+			}
+			if !slices.Equal(e.gl.Merged, []int64{1}) {
+				t.Fatalf("the home MR merges once the companion is reviewed: merged %v, %+v", e.gl.Merged, e.autopilot())
+			}
+			if got := e.gl.MergeOpts[1].SquashCommitMessage; got != c.want {
+				t.Fatalf("squash message = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
