@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -44,6 +45,11 @@ type MilestoneSnapshot struct {
 	Issues []IssueSnapshot
 	// FollowUps are written, never removed.
 	FollowUps []FollowUpSnapshot
+	// Takes are the follow-ups of milestone TakesFrom this one took over
+	// (its line "followup-of"), for TakeFollowUps; SaveMilestone ignores
+	// them.
+	TakesFrom int64
+	Takes     []int
 }
 
 // IssueSnapshot is one issue of a milestone. State is the issue's state as
@@ -153,6 +159,54 @@ func (s *Store) CloseMilestone(ctx context.Context, p ProjectKey, iid int64, at,
 		WHERE namespace = $1 AND project = $2 AND iid = $3 AND (state <> 'closed' OR done_at IS NULL)`,
 		p.Namespace, p.Name, iid, at, expiresAt)
 	return tag.RowsAffected() > 0, err
+}
+
+// TakeFollowUps marks the open follow-ups numbers of project's milestone
+// source as taken over by the milestone target and reports whether a row
+// changed. A follow-up opened as an issue, dismissed or taken by another
+// milestone stays as it is, so a repeat changes nothing.
+func (s *Store) TakeFollowUps(ctx context.Context, p ProjectKey, source int64, numbers []int, target int64, expiresAt time.Time) (bool, error) {
+	nums := make([]int32, 0, len(numbers))
+	for _, n := range numbers {
+		nums = append(nums, int32(n))
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE desk_follow_ups
+		SET state = 'milestone', target_iid = $5, expires_at = $6
+		WHERE namespace = $1 AND project = $2 AND milestone_iid = $3 AND number = ANY($4::int[]) AND state = 'open'`,
+		p.Namespace, p.Name, source, nums, target, expiresAt)
+	return tag.RowsAffected() > 0, err
+}
+
+// MilestoneFollowUps is a stored milestone's tracking issue (0 without one)
+// and its follow-ups by number.
+type MilestoneFollowUps struct {
+	TrackingIID int64
+	FollowUps   []FollowUpRow
+}
+
+// FollowUpsOf returns the stored follow-ups of project's milestone iid,
+// ErrNotFound if it has no snapshot.
+func (s *Store) FollowUpsOf(ctx context.Context, p ProjectKey, iid int64) (MilestoneFollowUps, error) {
+	var out MilestoneFollowUps
+	err := s.pool.QueryRow(ctx, `SELECT coalesce(tracking_iid, 0) FROM desk_milestones
+		WHERE namespace = $1 AND project = $2 AND iid = $3`, p.Namespace, p.Name, iid).Scan(&out.TrackingIID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return MilestoneFollowUps{}, ErrNotFound
+	}
+	if err != nil {
+		return MilestoneFollowUps{}, err
+	}
+	if out.FollowUps, err = s.followUps(ctx, p, iid); err != nil {
+		return MilestoneFollowUps{}, err
+	}
+	return out, nil
+}
+
+// followUps are the stored follow-ups of project's milestone iid by number.
+func (s *Store) followUps(ctx context.Context, p ProjectKey, iid int64) ([]FollowUpRow, error) {
+	rows, _ := s.pool.Query(ctx, `SELECT number, title, body, state, coalesce(target_iid, 0) FROM desk_follow_ups
+		WHERE namespace = $1 AND project = $2 AND milestone_iid = $3 ORDER BY number`, p.Namespace, p.Name, iid)
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[FollowUpRow])
 }
 
 // DeleteExpiredSnapshot deletes the milestones whose rows all expired before

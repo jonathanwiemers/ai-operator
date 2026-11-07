@@ -87,6 +87,8 @@ func liveRetrospective(web string, tr *TrackingIssueRef, tasks ...*aiv1.AgentTas
 			row := store.FollowUpRow{Number: i + 1, Title: f.Title, Body: f.Body, State: store.FollowUpOpen}
 			if iid := r.Created[strconv.Itoa(i+1)]; iid != 0 {
 				row.State, row.TargetIID = store.FollowUpIssue, iid
+			} else if iid := r.Taken[strconv.Itoa(i+1)]; iid != 0 {
+				row.State, row.TargetIID = store.FollowUpMilestone, iid
 			}
 			v.FollowUps = append(v.FollowUps, followUpView(web, row))
 		}

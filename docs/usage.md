@@ -2158,8 +2158,18 @@ A milestone that takes over follow-ups of another names them with a line
 retrospective (numbers 1 to 9, space- or comma-separated; only the first
 such line counts). Like the owners line, it is no part of the spec:
 adding, changing or removing it does not re-plan. The operator reads it on
-every poll; a malformed line is ignored. Marking those follow-ups as taken
-comes in a later release.
+every poll and marks the named follow-ups as taken by this milestone, for
+an open milestone %12 and a closed one alike (a closed one needs the
+[research database](configuration.md#research-database), which keeps its follow-ups after its
+tasks are gone). The Retrospective tab of %12 then shows them as
+*taken by %N*, `create` no longer opens them, and an open %12 can close
+without waiting the 7 days for them. A follow-up is taken once: the first
+milestone that names it keeps it, also when the line is changed or
+removed later. What the line names but cannot take (an unknown milestone or
+number, a follow-up already opened as an issue, dismissed or taken by
+another milestone) is ignored, with one comment on this milestone's
+tracking issue (on %12's while this one has none yet) naming what and why;
+a malformed line is ignored too, with one comment on how to write it.
 
 ## When a run is cut off
 

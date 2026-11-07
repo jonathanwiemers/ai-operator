@@ -197,6 +197,27 @@ type FollowUpOf struct {
 	Numbers []int `json:"numbers"`
 }
 
+// FollowUpOfStatus is what a milestone's line "/agent followup-of" took
+// over.
+type FollowUpOfStatus struct {
+	// MilestoneIID is the milestone the line named.
+	MilestoneIID int64 `json:"milestoneIID"`
+	// Numbers are the follow-ups taken over, sorted: each was in the
+	// retrospective and not opened, dismissed or taken by another
+	// milestone.
+	// +optional
+	Numbers []int `json:"numbers,omitempty"`
+	// Problem says what the line named that was not taken over: an unknown
+	// milestone or number, or a follow-up settled otherwise. Empty when
+	// all was.
+	// +optional
+	Problem string `json:"problem,omitempty"`
+	// Noticed is set once Problem was posted on a tracking issue; another
+	// problem is posted again.
+	// +optional
+	Noticed bool `json:"noticed,omitempty"`
+}
+
 // IssueRef identifies a GitLab issue.
 type IssueRef struct {
 	ID    int64  `json:"id"`
@@ -708,6 +729,11 @@ type PilotRetrospective struct {
 	// Created are the issues opened from the follow-ups, by number ("1").
 	// +optional
 	Created map[string]int64 `json:"created,omitempty"`
+	// Taken are the follow-ups other milestones of the project took over
+	// with their line "/agent followup-of", by number ("1"): the taking
+	// milestone's IID. The first to take one keeps it.
+	// +optional
+	Taken map[string]int64 `json:"taken,omitempty"`
 	// LastNoteID is the newest comment on the tracking issue read for
 	// "create 1 2" (spec tasks).
 	// +optional
@@ -958,6 +984,11 @@ type AgentTaskStatus struct {
 	// Plan is the spec agent's last plan, in plan order (spec tasks).
 	// +optional
 	Plan []PlannedIssue `json:"plan,omitempty"`
+
+	// FollowUpOf is what the operator made of Spec.FollowUpOf (spec
+	// tasks): the follow-ups this milestone took over.
+	// +optional
+	FollowUpOf *FollowUpOfStatus `json:"followUpOf,omitempty"`
 
 	// Autopilot is the operator's queue of an autopilot milestone (spec
 	// tasks).

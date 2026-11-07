@@ -75,6 +75,10 @@ func (a *autopilot) createFollowUps(ctx context.Context, thread string, n gitlab
 			lines = append(lines, fmt.Sprintf("- %d: #%d (opened before)", k, iid))
 			continue
 		}
+		if iid, ok := retro.Taken[key]; ok {
+			lines = append(lines, fmt.Sprintf("- %d: taken over by the milestone %%%d", k, iid))
+			continue
+		}
 		if k < 1 || k > count {
 			lines = append(lines, fmt.Sprintf("- %d: unknown, the retrospective has %d follow-ups", k, count))
 			continue

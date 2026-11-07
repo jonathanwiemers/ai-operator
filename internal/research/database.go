@@ -196,3 +196,13 @@ func (d *Database) Spend(ctx context.Context, sc store.SpendScope) (store.Spend,
 	}
 	return s.Spend(ctx, sc)
 }
+
+// FollowUpsOf reads a stored milestone's follow-ups, see
+// store.Store.FollowUpsOf. It fails before Ready.
+func (d *Database) FollowUpsOf(ctx context.Context, p store.ProjectKey, iid int64) (store.MilestoneFollowUps, error) {
+	s := d.Store()
+	if s == nil {
+		return store.MilestoneFollowUps{}, errors.New("research database is not ready")
+	}
+	return s.FollowUpsOf(ctx, p, iid)
+}

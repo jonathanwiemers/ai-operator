@@ -75,9 +75,14 @@ func Snapshot(t *aiv1.AgentTask, web string, now time.Time) (store.MilestoneSnap
 			fu := store.FollowUpSnapshot{Number: n, Title: f.Title, Body: f.Body, State: store.FollowUpOpen}
 			if iid := r.Created[strconv.Itoa(n)]; iid != 0 {
 				fu.State, fu.TargetIID = store.FollowUpIssue, iid
+			} else if iid := r.Taken[strconv.Itoa(n)]; iid != 0 {
+				fu.State, fu.TargetIID = store.FollowUpMilestone, iid
 			}
 			m.FollowUps = append(m.FollowUps, fu)
 		}
+	}
+	if f := t.Status.FollowUpOf; f != nil && len(f.Numbers) > 0 {
+		m.TakesFrom, m.Takes = f.MilestoneIID, f.Numbers
 	}
 	return m, true
 }
@@ -144,6 +149,9 @@ func (r *Recorder) writeSnapshots(ctx context.Context) {
 		var err error
 		if op.save != nil {
 			_, err = r.db.Store().SaveMilestone(ctx, *op.save, expires)
+		}
+		if s := op.save; err == nil && s != nil && len(s.Takes) > 0 {
+			_, err = r.db.Store().TakeFollowUps(ctx, k.p, s.TakesFrom, s.Takes, k.iid, expires)
 		}
 		if err == nil && !op.closed.IsZero() {
 			_, err = r.db.Store().CloseMilestone(ctx, k.p, k.iid, op.closed, expires)

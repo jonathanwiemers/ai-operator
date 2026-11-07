@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"errors"
 	"maps"
 	"slices"
 	"testing"
@@ -313,5 +314,53 @@ func TestDeleteExpiredSnapshot(t *testing.T) {
 	}
 	if n := count(t, s.Pool(), "desk_follow_ups"); n != 2 {
 		t.Errorf("%d follow-ups left, want 2", n)
+	}
+}
+
+// TakeFollowUps marks only open follow-ups: a repeat changes nothing, and
+// one opened as an issue, dismissed or taken by another milestone stays.
+func TestTakeFollowUps(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	started := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
+	exp := started.Add(24 * time.Hour)
+	if _, err := s.FollowUpsOf(ctx, bloop, 21); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("FollowUpsOf without a snapshot = %v, want ErrNotFound", err)
+	}
+	m := snapshot(started)
+	m.FollowUps = []store.FollowUpSnapshot{
+		{Number: 1, Title: "Backfill", State: store.FollowUpOpen},
+		{Number: 2, Title: "Docs", State: store.FollowUpIssue, TargetIID: 410},
+		{Number: 3, Title: "Flaky", State: store.FollowUpDismissed},
+		{Number: 4, Title: "Cleanup", State: store.FollowUpMilestone, TargetIID: 24},
+		{Number: 5, Title: "Later", State: store.FollowUpOpen},
+	}
+	save(t, s, m, exp, true)
+	take := func(numbers []int, want bool) {
+		t.Helper()
+		changed, err := s.TakeFollowUps(ctx, bloop, 21, numbers, 25, exp)
+		if err != nil || changed != want {
+			t.Fatalf("TakeFollowUps(%v) = %v, %v; want %v", numbers, changed, err, want)
+		}
+	}
+	take([]int{1, 2, 3, 4, 9}, true)
+	before := versions(t, s)
+	take([]int{1, 2, 3, 4, 9}, false)
+	if c := changedRows(before, versions(t, s)); len(c) > 0 {
+		t.Fatalf("a repeat wrote %v", c)
+	}
+	got, err := s.FollowUpsOf(ctx, bloop, 21)
+	if err != nil || got.TrackingIID != 300 {
+		t.Fatalf("FollowUpsOf = %+v, %v", got, err)
+	}
+	want := []store.FollowUpRow{
+		{Number: 1, Title: "Backfill", State: store.FollowUpMilestone, TargetIID: 25},
+		{Number: 2, Title: "Docs", State: store.FollowUpIssue, TargetIID: 410},
+		{Number: 3, Title: "Flaky", State: store.FollowUpDismissed},
+		{Number: 4, Title: "Cleanup", State: store.FollowUpMilestone, TargetIID: 24},
+		{Number: 5, Title: "Later", State: store.FollowUpOpen},
+	}
+	if !slices.Equal(got.FollowUps, want) {
+		t.Fatalf("follow-ups =\n%+v\nwant\n%+v", got.FollowUps, want)
 	}
 }

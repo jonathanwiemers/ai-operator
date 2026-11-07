@@ -833,8 +833,8 @@ func TestMilestoneRetrospective(t *testing.T) {
 
 	posted := metav1.NewTime(time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC))
 	withRetrospective(t, env, &aiv1.PilotRetrospective{NoteID: 900, PostedAt: &posted, Text: retroText,
-		FollowUps: []aiv1.PilotFollowUp{{Title: "Retry CI", Body: "flaky lint"}, {Title: "Docs"}},
-		Created:   map[string]int64{"1": 60}})
+		FollowUps: []aiv1.PilotFollowUp{{Title: "Retry CI", Body: "flaky lint"}, {Title: "Docs"}, {Title: "Backfill"}},
+		Created:   map[string]int64{"1": 60}, Taken: map[string]int64{"3": 14}})
 	m = MilestoneView{}
 	if code := env.get(t, shopMilestone, &m); code != http.StatusOK {
 		t.Fatalf("live: status %d", code)
@@ -846,6 +846,7 @@ func TestMilestoneRetrospective(t *testing.T) {
 	wantFollowUps := []FollowUpView{
 		{Number: 1, Title: "Retry CI", Body: "flaky lint", State: "issue", TargetIID: 60, TargetURL: web + "/-/issues/60"},
 		{Number: 2, Title: "Docs", State: "open"},
+		{Number: 3, Title: "Backfill", State: "milestone", TargetIID: 14, TargetURL: web + "/-/milestones/14"},
 	}
 	if !slices.Equal(r.FollowUps, wantFollowUps) {
 		t.Errorf("follow-ups = %+v", r.FollowUps)

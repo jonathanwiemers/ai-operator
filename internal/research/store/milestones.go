@@ -183,9 +183,7 @@ func (s *Store) Milestone(ctx context.Context, project ProjectKey, iid int64, no
 	if posted != nil {
 		d.RetroPostedAt = *posted
 	}
-	rows, _ := s.pool.Query(ctx, `SELECT number, title, body, state, coalesce(target_iid, 0) FROM desk_follow_ups
-		WHERE namespace = $1 AND project = $2 AND milestone_iid = $3 ORDER BY number`, project.Namespace, project.Name, iid)
-	if d.FollowUps, err = pgx.CollectRows(rows, pgx.RowToStructByPos[FollowUpRow]); err != nil {
+	if d.FollowUps, err = s.followUps(ctx, project, iid); err != nil {
 		return MilestoneDetail{}, err
 	}
 	if d.Issues, err = s.issueFigures(ctx, project, iid, 0, now); err != nil {

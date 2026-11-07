@@ -79,6 +79,23 @@ func TestSnapshot(t *testing.T) {
 				{Number: 2, Title: "Docs", State: store.FollowUpIssue, TargetIID: 410},
 			}
 		})},
+		{name: "follow-ups taken over by another milestone", task: specTask("1", func(t *aiv1.AgentTask) {
+			t.Status.Pilot = &aiv1.PilotStatus{Retrospective: &aiv1.PilotRetrospective{NoteID: 77,
+				FollowUps: []aiv1.PilotFollowUp{{Title: "Backfill"}, {Title: "Docs"}},
+				Created:   map[string]int64{"2": 410}, Taken: map[string]int64{"1": 25, "2": 25}}}
+		}), want: base(func(m *store.MilestoneSnapshot) {
+			m.RetroNoteID = 77
+			m.FollowUps = []store.FollowUpSnapshot{
+				{Number: 1, Title: "Backfill", State: store.FollowUpMilestone, TargetIID: 25},
+				{Number: 2, Title: "Docs", State: store.FollowUpIssue, TargetIID: 410}, // opened first
+			}
+		})},
+		{name: "a follow-up milestone takes over", task: specTask("1", func(t *aiv1.AgentTask) {
+			t.Status.FollowUpOf = &aiv1.FollowUpOfStatus{MilestoneIID: 12, Numbers: []int{1, 3}, Problem: "x"}
+		}), want: base(func(m *store.MilestoneSnapshot) { m.TakesFrom, m.Takes = 12, []int{1, 3} })},
+		{name: "a line that took nothing", task: specTask("1", func(t *aiv1.AgentTask) {
+			t.Status.FollowUpOf = &aiv1.FollowUpOfStatus{MilestoneIID: 12, Problem: "%12 is unknown"}
+		}), want: base(nil)},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -207,5 +224,31 @@ func TestRecorderWritesSnapshots(t *testing.T) {
 	}
 	if got := issues(); !slices.Equal(got, []string{"148 merged 900", "149 active -"}) {
 		t.Errorf("issues after the delete = %v", got)
+	}
+}
+
+// A follow-up milestone's snapshot marks the follow-ups it took over of a
+// closed milestone, which has no task any more, and leaves an opened one.
+func TestRecorderTakesFollowUps(t *testing.T) {
+	s := storetest.New(t)
+	clk := clocktesting.NewFakeClock(now)
+	r := NewRecorder(readyDB{s}, time.Hour, clk, testLogger(t))
+	r.started.Store(true)
+	ctx := t.Context()
+	bloop := store.ProjectKey{Namespace: "agents", Name: "bloop"}
+	if _, err := s.SaveMilestone(ctx, store.MilestoneSnapshot{Project: bloop, IID: 12, Title: "Old", State: "closed",
+		FollowUps: []store.FollowUpSnapshot{{Number: 1, Title: "Backfill", State: store.FollowUpOpen},
+			{Number: 2, Title: "Docs", State: store.FollowUpIssue, TargetIID: 410}}}, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	r.snapshotTask(specTask("1", func(t *aiv1.AgentTask) {
+		t.Status.FollowUpOf = &aiv1.FollowUpOfStatus{MilestoneIID: 12, Numbers: []int{1, 2}}
+	}), clk.Now())
+	r.writeSnapshots(ctx)
+	got := storetest.Rows(t, `SELECT number::text, state, coalesce(target_iid::text, '-') FROM desk_follow_ups
+		WHERE milestone_iid = 12 ORDER BY number`)
+	want := [][]string{{"1", "milestone", "20"}, {"2", "issue", "410"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("follow-ups of %%12 = %v, want %v", got, want)
 	}
 }

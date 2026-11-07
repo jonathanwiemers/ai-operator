@@ -85,6 +85,10 @@ type AgentProjectReconciler struct {
 	// Spend, set with a research database, is the milestone spend the
 	// pilot's retrospective reports. Nil: it sums the live tasks.
 	Spend SpendSource
+	// FollowUps, set with a research database, reads the follow-ups of
+	// milestones without a spec task (closed ones) that a line
+	// "/agent followup-of" names. Nil: such milestones are unknown.
+	FollowUps FollowUpSource
 	// ChatContext, set with a research database, is the Desk chat a run
 	// request hands a fresh session on a project without GitLab input.
 	ChatContext ChatContextSource
@@ -514,6 +518,11 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			errs = append(errs, fmt.Errorf("revisits of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
+	// Follow-ups taken over by a milestone's followup-of line, before
+	// their milestone's autopilot decides whether it can close.
+	if err := r.syncFollowUpOf(ctx, gl, project, spec, specTasks, pilots, descriptions); err != nil {
+		errs = append(errs, err)
+	}
 	// Companions whose home merge request was merged (also of tasks deleted
 	// below), before the autopilots pause or go on over them.
 	if err := r.syncCompanions(ctx, gl, project, spec, tasks.Items, homeMRs, autopilots, byMilestone, keep); err != nil {
@@ -748,7 +757,7 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 	if err != nil {
 		log.FromContext(ctx).Info("ignoring the milestone's budget line: no budget", "milestone", m.Title, "error", err.Error())
 	}
-	// A malformed followup-of line has no value; its notice is R16 part 2.
+	// A malformed followup-of line has no value; syncFollowUpOf notices it.
 	followUpOf, err := rules.FollowUpOf(m.Description, prefix)
 	if err != nil {
 		log.FromContext(ctx).Info("ignoring the milestone's followup-of line", "milestone", m.Title, "error", err.Error())

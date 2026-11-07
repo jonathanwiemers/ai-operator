@@ -437,3 +437,19 @@ about how many production lines, and deviations from this spec.
   production lines. Deviations: the parsed type is `aiv1.FollowUpOf` (a
   type and a function cannot share the name in `rules`); a malformed line
   is only logged until the notice of part 2.
+- 2026-11-07, `followup-of-settle` (R16 part 2, #237): `syncFollowUpOf`
+  (`internal/controller/followup_of.go`) checks each spec task's
+  `spec.followUpOf` before the autopilots, lowest IID first, against the
+  source's spec task (open) or `store.FollowUpsOf` (closed, the research
+  database; without it unknown) and records `status.followUpOf`
+  (`milestoneIID`, accepted `numbers`, `problem`, `noticed`); an open
+  source gets `status.pilot.retrospective.taken`, which `followUpsSettled`
+  counts like `created` and `create` refuses; the recorder maps `taken` to
+  `milestone` and calls `store.TakeFollowUps` (only from `open`) for a
+  closed source. First come wins, also across the recorder's lag (other
+  spec tasks' status counts); accepted numbers stay accepted. One notice
+  per problem on the new milestone's tracking issue, else the source's,
+  else later. Deviations: the malformed line's notice (left over from part
+  1) is here too; taking is not undone when the line changes; about 190
+  production lines, over the budget because the issue asked for both
+  sources, the recorder and the notice in one slice.

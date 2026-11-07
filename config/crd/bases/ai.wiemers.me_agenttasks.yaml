@@ -1642,6 +1642,37 @@ spec:
                   - type
                   type: object
                 type: array
+              followUpOf:
+                description: |-
+                  FollowUpOf is what the operator made of Spec.FollowUpOf (spec
+                  tasks): the follow-ups this milestone took over.
+                properties:
+                  milestoneIID:
+                    description: MilestoneIID is the milestone the line named.
+                    format: int64
+                    type: integer
+                  noticed:
+                    description: |-
+                      Noticed is set once Problem was posted on a tracking issue; another
+                      problem is posted again.
+                    type: boolean
+                  numbers:
+                    description: |-
+                      Numbers are the follow-ups taken over, sorted: each was in the
+                      retrospective and not opened, dismissed or taken by another
+                      milestone.
+                    items:
+                      type: integer
+                    type: array
+                  problem:
+                    description: |-
+                      Problem says what the line named that was not taken over: an unknown
+                      milestone or number, or a follow-up settled otherwise. Empty when
+                      all was.
+                    type: string
+                required:
+                - milestoneIID
+                type: object
               lastPrompt:
                 description: LastPrompt is n of the newest "Q<n>" given out.
                 format: int64
@@ -2746,6 +2777,15 @@ spec:
                       postedAt:
                         format: date-time
                         type: string
+                      taken:
+                        additionalProperties:
+                          format: int64
+                          type: integer
+                        description: |-
+                          Taken are the follow-ups other milestones of the project took over
+                          with their line "/agent followup-of", by number ("1"): the taking
+                          milestone's IID. The first to take one keeps it.
+                        type: object
                       text:
                         description: |-
                           Text is the comment as posted, for the Desk: untrusted markdown

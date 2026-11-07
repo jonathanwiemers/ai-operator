@@ -786,7 +786,13 @@ item's state in lower case (else `planned`) and MR, then queue items the
 plan lacks (flaky fixes); the autopilot phase in lower case and its tracking
 issue; start time at the first write, done time once the phase is `Done`;
 the retrospective's note, text and posted time, and follow-ups `issue` with their
-iid for the numbers in `created`, else `open`. The queue holds the newest
+iid for the numbers in `created`, `milestone` with the taking milestone's iid
+for those in `taken`, else `open`. A spec task whose `status.followUpOf`
+holds accepted numbers also queues `TakeFollowUps` for its source milestone:
+those rows become `milestone` with this milestone as target, but only from
+`open`, so a repeat writes nothing and a row opened as an issue, dismissed
+or taken by another milestone stays (the closed source has no task left to
+snapshot). The queue holds the newest
 snapshot per milestone and is written with the events every second, so a
 busy autopilot is one write per second at most, and an unchanged status is
 no write at all. Deleting a spec task queues `CloseMilestone`: state
@@ -1278,7 +1284,8 @@ stateDiagram-v2
   closes its milestone (`closeMilestone`, `gitlab.API.CloseMilestone`) once
   the retrospective is
   on the spec task (or the milestone has no pilot to write one), its
-  follow-ups are settled (none, all opened, failed, or posted at least
+  follow-ups are settled (none, each opened or taken over by another
+  milestone's `followup-of` line, failed, or posted at least
   `followUpWindow` = 7 days ago), no issue besides the tracking issue is
   open and every companion of the milestone has landed. Open issues are
   named once on the tracking issue (`status.autopilot.closeWaitsFor`, again
@@ -1369,9 +1376,36 @@ counted interventions; more tools are later steps of
   reply to the retrospective's note. It opens each named follow-up once
   (inert title and body, `<!-- ai-operator:follow-up=<milestone IID>-<n> -->`,
   the generated label, no milestone), records it in `created` right after,
-  and replies in the thread (`ReplyIssueDiscussion`). A milestone gets one; those done before this existed get none.
+  and replies in the thread (`ReplyIssueDiscussion`); one in `taken` is
+  answered with the milestone that took it and not opened.
+  A milestone gets one; those done before this existed get none.
   It is not bound by
   `maxRunsPerTask`, only by its budget.
+* **Taken by a follow-up milestone** (`internal/controller/followup_of.go`).
+  Each poll, before the autopilots, `syncFollowUpOf` checks the spec tasks
+  whose `spec.followUpOf` (the line `/agent followup-of <iid> <numbers>`,
+  `rules.FollowUpOf`) is set, lowest milestone IID first, and records the
+  outcome in `status.followUpOf` (`milestoneIID`, the accepted `numbers`,
+  `problem`, `noticed`). The source is the spec task of an open milestone
+  of the project, else the snapshot through `FollowUpSource.FollowUpsOf`
+  (`store.FollowUpsOf` on `desk_follow_ups`; without the research database
+  such a milestone is unknown, a failed read is tried again next poll). A
+  number is accepted when the retrospective has it and it was not opened
+  (`created`, state `issue`), dismissed, or taken by another milestone
+  (the source's `taken`, a `milestone` row with another target, or another
+  spec task's `status.followUpOf`, which covers a closed source before the
+  recorder wrote it): the first to take a follow-up keeps it, and in one
+  poll the lower IID comes first. Accepted numbers stay accepted, also
+  once the source closed and its task is gone. For an open source the
+  operator adds them to its `status.pilot.retrospective.taken`
+  (`patchPilot`), which `followUpsSettled` counts like `created`, so the
+  source can close without the 7 days; for a closed one the recorder's
+  `TakeFollowUps` marks the rows. Anything else the line names is the
+  problem, posted once (`noticed`, again only for another problem) on this
+  milestone's tracking issue, else the source's, else not yet. The UI
+  writes nothing: it shows `taken` and the rows as *taken by %N*. Taking
+  is not undone when the line changes. A malformed line (the parse error of
+  `rules.FollowUpOf`) is noticed the same way and keeps what was taken.
 * **Routing** (`internal/controller/pilot.go`). Comments are read where the
   operator reads them anyway: the tracking issue's notes (autopilot lists
   them for its commands; a `/pilot coordinate` issue is listed by the
@@ -2420,7 +2454,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/controller/webhook.go` | self-registration of the project hook, the `WebhookRegistered` and `WebhookDeliveries` conditions |
 | `internal/webhook` | webhook receiver (`POST /hooks/gitlab`, token check), server, waker (debounce), deliveries |
 | `internal/history` | the factory's history: AgentTask status diffs and mirrored GitLab comments, written to the research database in batches |
-| `internal/controller/pilot_spec.go`, `pilot_followups.go`, `internal/runner/pilot_retro.go` | the pilot's spec edits (`editSpec`), the retrospective's `create 1 2`, the retrospective run |
+| `internal/controller/pilot_spec.go`, `pilot_followups.go`, `followup_of.go`, `internal/runner/pilot_retro.go` | the pilot's spec edits (`editSpec`), the retrospective's `create 1 2`, the `followup-of` line's settling, the retrospective run |
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/readgate` | the read gate (`ai-runner read-gate`): claude `PreToolUse` hook for `Read` and `Bash`, no Kubernetes imports |

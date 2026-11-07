@@ -2262,6 +2262,36 @@ export interface FollowUpOf {
   numbers: number /* int */[];
 }
 /**
+ * FollowUpOfStatus is what a milestone's line "/agent followup-of" took
+ * over.
+ */
+export interface FollowUpOfStatus {
+  /**
+   * MilestoneIID is the milestone the line named.
+   */
+  milestoneIID: number /* int64 */;
+  /**
+   * Numbers are the follow-ups taken over, sorted: each was in the
+   * retrospective and not opened, dismissed or taken by another
+   * milestone.
+   * +optional
+   */
+  numbers?: number /* int */[];
+  /**
+   * Problem says what the line named that was not taken over: an unknown
+   * milestone or number, or a follow-up settled otherwise. Empty when
+   * all was.
+   * +optional
+   */
+  problem?: string;
+  /**
+   * Noticed is set once Problem was posted on a tracking issue; another
+   * problem is posted again.
+   * +optional
+   */
+  noticed?: boolean;
+}
+/**
  * IssueRef identifies a GitLab issue.
  */
 export interface IssueRef {
@@ -2969,6 +2999,13 @@ export interface PilotRetrospective {
    */
   created?: { [key: string]: number /* int64 */};
   /**
+   * Taken are the follow-ups other milestones of the project took over
+   * with their line "/agent followup-of", by number ("1"): the taking
+   * milestone's IID. The first to take one keeps it.
+   * +optional
+   */
+  taken?: { [key: string]: number /* int64 */};
+  /**
    * LastNoteID is the newest comment on the tracking issue read for
    * "create 1 2" (spec tasks).
    * +optional
@@ -3281,6 +3318,12 @@ export interface AgentTaskStatus {
    * +optional
    */
   plan?: PlannedIssue[];
+  /**
+   * FollowUpOf is what the operator made of Spec.FollowUpOf (spec
+   * tasks): the follow-ups this milestone took over.
+   * +optional
+   */
+  followUpOf?: FollowUpOfStatus;
   /**
    * Autopilot is the operator's queue of an autopilot milestone (spec
    * tasks).

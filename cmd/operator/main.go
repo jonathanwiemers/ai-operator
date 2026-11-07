@@ -164,6 +164,7 @@ func main() {
 		}
 		projects.History = recorder
 		projects.Spend = researchSetup
+		projects.FollowUps = researchSetup
 		projects.ChatContext = researchSetup
 		researchSetup.SetHistoryRetention(historyRetention)
 	}

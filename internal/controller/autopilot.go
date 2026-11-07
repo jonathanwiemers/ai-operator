@@ -734,14 +734,16 @@ func (a *autopilot) closeMilestone(ctx context.Context) error {
 }
 
 // followUpsSettled reports whether the retrospective's follow-ups no longer
-// need the milestone: there are none, all were opened, or the window to
-// open them is over.
+// need the milestone: there are none, all were opened or taken over by
+// another milestone, or the window to open them is over.
 func followUpsSettled(retro *aiv1.PilotRetrospective, now time.Time) bool {
 	if retro.Failed != "" || len(retro.FollowUps) == 0 || retro.PostedAt == nil || !now.Before(retro.PostedAt.Add(followUpWindow)) {
 		return true
 	}
 	for k := range retro.FollowUps {
-		if _, ok := retro.Created[strconv.Itoa(k+1)]; !ok {
+		key := strconv.Itoa(k + 1)
+		_, created := retro.Created[key]
+		if _, taken := retro.Taken[key]; !created && !taken {
 			return false
 		}
 	}
