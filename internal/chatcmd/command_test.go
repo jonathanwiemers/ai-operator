@@ -1,6 +1,7 @@
 package chatcmd
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -96,6 +97,19 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"revisit","decision":"D12-3","usd":"4"}`, Command{}, "revisit takes no usd"},
 		{`{"cmd":"answer","prompt":"Q3","option":"A","decision":"D12-3"}`, Command{}, "answer takes no decision"},
 		{`{"cmd":"retry","decision":"D12-3"}`, Command{}, "retry takes no decision"},
+		{`{"cmd":"draft","followUps":[3,1,3]}`, Command{Cmd: "draft", FollowUps: []int{1, 3}}, ""},
+		{`{"cmd":"Draft","followUps":[9]}`, Command{Cmd: "draft", FollowUps: []int{9}}, ""},
+		{`{"cmd":"draft"}`, Command{}, "draft needs followUps"},
+		{`{"cmd":"draft","followUps":[]}`, Command{}, "draft needs followUps"},
+		{`{"cmd":"draft","followUps":[0]}`, Command{}, "follow-up 0 is not 1 to 9"},
+		{`{"cmd":"draft","followUps":[1,10]}`, Command{}, "follow-up 10 is not 1 to 9"},
+		{`{"cmd":"draft","followUps":[-1]}`, Command{}, "is not 1 to 9"},
+		{`{"cmd":"draft","followUps":["1"]}`, Command{}, "invalid command"},
+		{`{"cmd":"draft","followUps":[1],"issue":3}`, Command{}, "draft takes only followUps"},
+		{`{"cmd":"draft","followUps":[1],"text":"x"}`, Command{}, "draft takes no prompt, option or text"},
+		{`{"cmd":"draft","followUps":[1],"usd":"4"}`, Command{}, "draft takes no usd"},
+		{`{"cmd":"retry","followUps":[1]}`, Command{}, "retry takes no followUps"},
+		{`{"cmd":"retry","followUps":[]}`, Command{}, "retry takes no followUps"},
 	} {
 		got, err := Parse(tc.body)
 		if tc.wantErr != "" {
@@ -108,7 +122,7 @@ func TestParse(t *testing.T) {
 			t.Errorf("%s: %v", tc.body, err)
 			continue
 		}
-		if got != tc.want {
+		if !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s: got %+v, want %+v", tc.body, got, tc.want)
 		}
 	}
@@ -161,6 +175,15 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 	for _, cmd := range []string{"answer", "retry", "skip", "accept"} {
 		if (Command{Cmd: cmd}).RevisitCmd() {
 			t.Errorf("%s should not be RevisitCmd", cmd)
+		}
+	}
+
+	if c := (Command{Cmd: "draft"}); !c.DraftCmd() || c.ImplementOnly() || c.Autopilot() || c.ProposalOnly() || c.PromptCmd() || c.RevisitCmd() {
+		t.Error("draft should be DraftCmd only")
+	}
+	for _, cmd := range []string{"answer", "revisit", "accept", "retry"} {
+		if (Command{Cmd: cmd}).DraftCmd() {
+			t.Errorf("%s should not be DraftCmd", cmd)
 		}
 	}
 

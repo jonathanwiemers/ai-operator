@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -37,7 +38,13 @@ type Command struct {
 	// USD is the budget of the issue ("40", or "default" for the
 	// project's), for budget.
 	USD string `json:"usd,omitempty"`
+	// FollowUps are the retrospective's follow-ups (1..9) a draft is for,
+	// deduplicated and sorted by Parse.
+	FollowUps []int `json:"followUps,omitempty"`
 }
+
+// maxFollowUp is the highest follow-up number of a retrospective.
+const maxFollowUp = 9
 
 // shaRE is an abbreviated or full commit SHA.
 var shaRE = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
@@ -85,6 +92,9 @@ func Parse(body string) (Command, error) {
 	if c.USD != "" && c.Cmd != "budget" {
 		return Command{}, fmt.Errorf("%s takes no usd", c.Cmd)
 	}
+	if c.FollowUps != nil && c.Cmd != "draft" {
+		return Command{}, fmt.Errorf("%s takes no followUps", c.Cmd)
+	}
 	switch c.Cmd {
 	case "retry", "review", "pause", "resume":
 		if err := c.noArgs(); err != nil {
@@ -131,6 +141,10 @@ func Parse(body string) (Command, error) {
 		if err := c.parseRevisit(); err != nil {
 			return Command{}, err
 		}
+	case "draft":
+		if err := c.parseDraft(); err != nil {
+			return Command{}, err
+		}
 	default:
 		return Command{}, fmt.Errorf("unknown cmd %q", c.Cmd)
 	}
@@ -171,6 +185,25 @@ func (c *Command) parseRevisit() error {
 	case c.Prompt != "" || c.Option != "" || c.Engine != "" || c.Model != "" || c.Effort != "" || c.Default || c.Issue != 0 || c.Proposal != 0:
 		return fmt.Errorf("revisit takes only decision and text")
 	}
+	return nil
+}
+
+// parseDraft checks a draft command: the follow-ups' numbers, each 1..9,
+// at least one.
+func (c *Command) parseDraft() error {
+	if c.noArgs() != nil {
+		return fmt.Errorf("draft takes only followUps")
+	}
+	if len(c.FollowUps) == 0 {
+		return fmt.Errorf("draft needs followUps, e.g. [1, 3]")
+	}
+	for _, n := range c.FollowUps {
+		if n < 1 || n > maxFollowUp {
+			return fmt.Errorf("follow-up %d is not 1 to %d", n, maxFollowUp)
+		}
+	}
+	slices.Sort(c.FollowUps)
+	c.FollowUps = slices.Compact(c.FollowUps)
 	return nil
 }
 
@@ -257,6 +290,12 @@ func (c Command) PromptCmd() bool {
 // milestone (revisit); the Coordinate task takes it.
 func (c Command) RevisitCmd() bool {
 	return c.Cmd == "revisit"
+}
+
+// DraftCmd reports whether the command asks the milestone's pilot for a
+// draft of a follow-up milestone (draft); the Coordinate task takes it.
+func (c Command) DraftCmd() bool {
+	return c.Cmd == "draft"
 }
 
 // Routing turns a use, effort or budget command into the GitLab routing

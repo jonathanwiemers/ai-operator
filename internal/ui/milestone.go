@@ -145,13 +145,16 @@ func storedMilestoneView(p *aiv1.AgentProject, d store.MilestoneDetail) Mileston
 // steer, the user may post to the pilot; chat, the user may ask the pilot
 // on the Desk; transcript, the user may see its live transcript; merge, the
 // user may send merge anyway: chat and one of the milestone's owner subjects
-// (the operator checks again).
+// (the operator checks again); draft, the user may ask the pilot for a draft
+// of a follow-up milestone (the Coordinate task's "draft" command): as merge,
+// while the pilot exists and a follow-up of the retrospective is open.
 type MilestonePermissions struct {
 	GitLab     bool `json:"gitlab"`
 	Steer      bool `json:"steer"`
 	Chat       bool `json:"chat"`
 	Transcript bool `json:"transcript"`
 	Merge      bool `json:"merge"`
+	Draft      bool `json:"draft"`
 }
 
 // MilestoneAutopilot is the autopilot of a milestone and its queue.
@@ -404,7 +407,9 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 		v.Pilot = pv
 	}
-	v.Retrospective = liveRetrospective(web, v.Tracking, st, coord)
+	if v.Retrospective = liveRetrospective(web, v.Tracking, st, coord); v.Retrospective != nil {
+		v.Retrospective.Draft = followUpDraftView(coord)
+	}
 	return v
 }
 
@@ -466,6 +471,7 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 		Chat:       chat,
 		Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name),
 		Merge:      chat && slices.Contains(st.Spec.OwnerSubjects, p.Username)}
+	v.Permissions.Draft = v.Permissions.Merge && coord != nil && openFollowUps(v.Retrospective)
 	if v.Autopilot != nil {
 		v.Autopilot.Exits = exitViews(st.Status.Autopilot, tasks, ap, *v.Permissions)
 	}

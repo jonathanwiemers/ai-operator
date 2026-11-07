@@ -446,9 +446,11 @@ func (r *AgentProjectReconciler) patchProposals(ctx context.Context, coord *aiv1
 }
 
 // applyPilotChatCommands applies Desk accept/reject, answers to the
-// milestone's prompts (answerPrompt) and revisits (revisitCommand) on the
-// Coordinate task newer than LastChatCommandID. Authority is
-// ownerSubjects; answers and the mark are saved on the Coordinate task.
+// milestone's prompts (answerPrompt), revisits (revisitCommand) and drafts
+// of a follow-up milestone (draftRequest) on the Coordinate task newer than
+// LastChatCommandID. Once the autopilot is done only drafts are taken.
+// Authority is ownerSubjects; answers, a draft request and the mark are
+// saved on the Coordinate task.
 func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st, coord *aiv1.AgentTask) error {
 	src := &coord.Spec.Source
@@ -467,6 +469,8 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, gl 
 	// Kept apart until the end: answerProposal's status patch replaces
 	// coord with the server's copy, spec included.
 	var answers []aiv1.ChatReply
+	// A draft asked for, set with the answers.
+	var draft *aiv1.FollowUpDraftRequest
 	mark := src.LastChatCommandID
 	// No text: the message is answered later (consumeRefined).
 	answer := func(id int64, text string) {
@@ -482,12 +486,19 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, gl 
 			logger.Info("chat command skipped", "id", m.ID, "author", m.Author, "error", err.Error())
 			continue
 		}
-		if !cmd.ProposalOnly() && !cmd.PromptCmd() && !cmd.RevisitCmd() {
+		if !cmd.ProposalOnly() && !cmd.PromptCmd() && !cmd.RevisitCmd() && !cmd.DraftCmd() {
 			answer(m.ID, "not supported on this task yet")
 			continue
 		}
+		if autopilotDone(st) && !cmd.DraftCmd() {
+			// The pilot stays for the leftovers only.
+			answer(m.ID, "The autopilot of this milestone is done: its pilot only writes drafts of a follow-up milestone now.")
+			continue
+		}
 		if !slices.Contains(coord.Spec.OwnerSubjects, m.Author) {
-			if cmd.PromptCmd() {
+			if cmd.DraftCmd() {
+				answer(m.ID, "Only the milestone's owners can ask for a draft of a follow-up milestone.")
+			} else if cmd.PromptCmd() {
 				answer(m.ID, "Only the milestone's owners can answer prompts.")
 			} else if cmd.RevisitCmd() {
 				answer(m.ID, "Only the milestone's owners can revisit decisions.")
@@ -506,6 +517,15 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, gl 
 			reply, _, err := r.answerPrompt(ctx, project, spec, st, coord, who, m.ID, cmd, "desk")
 			if err != nil {
 				return err
+			}
+			answer(m.ID, reply)
+			continue
+		}
+		if cmd.DraftCmd() {
+			logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "followUps", cmd.FollowUps)
+			reply, req := draftRequest(st, coord, draft, who, cmd.FollowUps, r.now())
+			if req != nil {
+				draft = req
 			}
 			answer(m.ID, reply)
 			continue
@@ -531,6 +551,12 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, gl 
 		answer(m.ID, reply)
 	}
 	src = &coord.Spec.Source
+	if draft != nil {
+		// The run of this request writes the draft.
+		coord.Spec.RunRequest++
+		draft.Request = coord.Spec.RunRequest
+		src.FollowUpDraft = draft
+	}
 	src.ChatAnswers = append(src.ChatAnswers, answers...)
 	src.LastChatCommandID = mark
 	if n := len(src.ChatAnswers); n > maxChatAnswers {

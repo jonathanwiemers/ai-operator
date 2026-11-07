@@ -926,3 +926,90 @@ func TestCostDrivers(t *testing.T) {
 		t.Errorf("no spend: %v", got)
 	}
 }
+
+// withDraft sets the pilot's draft request and its status draft.
+func withDraft(t *testing.T, env *testEnv, req *aiv1.FollowUpDraftRequest, d *aiv1.PilotFollowUpDraft) {
+	t.Helper()
+	ctx := context.Background()
+	var coord aiv1.AgentTask
+	if err := env.reader.Get(ctx, client.ObjectKey{Namespace: "team-a", Name: "shop-pilot-m3-checkout"}, &coord); err != nil {
+		t.Fatal(err)
+	}
+	coord.Spec.Source.FollowUpDraft, coord.Status.Pilot.FollowUpDraft = req, d
+	if err := env.reader.Update(ctx, &coord); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMilestoneFollowUpDraft(t *testing.T) {
+	env, gl := newSteeringEnv(t,
+		Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}},
+		Rule{Roles: []string{"chatters"}, Projects: []string{"team-a/shop"}, Chat: true})
+	withChat(env.server.cfg)
+	withAutopilot(t, env, gl)
+	setOwners(t, env, "ada@example.com")
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}, "chatters": map[string]any{}}}
+	env.login(t, "/")
+	get := func() MilestoneView {
+		t.Helper()
+		var m MilestoneView
+		if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Permissions == nil {
+			t.Fatalf("status %d, %+v", code, m.Permissions)
+		}
+		return m
+	}
+
+	if m := get(); m.Permissions.Draft {
+		t.Fatalf("no retrospective, no draft: %+v", m.Permissions)
+	}
+	posted := metav1.NewTime(time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC))
+	withRetrospective(t, env, &aiv1.PilotRetrospective{NoteID: 900, PostedAt: &posted, Text: retroText,
+		FollowUps: []aiv1.PilotFollowUp{{Title: "Retry CI"}, {Title: "Docs"}}, Created: map[string]int64{"1": 60}})
+	m := get()
+	if !m.Permissions.Draft || m.Retrospective == nil || m.Retrospective.Draft != nil {
+		t.Fatalf("an owner may ask for a draft while a follow-up is open: %+v %+v", m.Permissions, m.Retrospective)
+	}
+
+	withDraft(t, env, &aiv1.FollowUpDraftRequest{Request: 4, Numbers: []int{2}, By: "Ada"}, nil)
+	if d := get().Retrospective.Draft; d == nil || !d.Pending || !slices.Equal(d.Numbers, []int{2}) || d.Title != "" {
+		t.Fatalf("a draft being written: %+v", d)
+	}
+	at := metav1.NewTime(time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC))
+	withDraft(t, env, &aiv1.FollowUpDraftRequest{Request: 4, Numbers: []int{2}, By: "Ada"},
+		&aiv1.PilotFollowUpDraft{Request: 4, Numbers: []int{2}, Title: "Docs v2", Description: "## Goal\n\nDocs.", At: at})
+	if d := get().Retrospective.Draft; d == nil || d.Pending || d.Title != "Docs v2" || d.Description != "## Goal\n\nDocs." || d.At == nil || !d.At.Equal(&at) {
+		t.Fatalf("the written draft: %+v", d)
+	}
+	// A newer request hides the old draft until it is written.
+	withDraft(t, env, &aiv1.FollowUpDraftRequest{Request: 5, Numbers: []int{2}, By: "Ada"},
+		&aiv1.PilotFollowUpDraft{Request: 4, Numbers: []int{2}, Title: "Docs v2", At: at})
+	if d := get().Retrospective.Draft; d == nil || !d.Pending || d.Title != "" {
+		t.Fatalf("the new request is pending: %+v", d)
+	}
+
+	// Not an owner, or nothing open: read-only.
+	setOwners(t, env, "bob@example.com")
+	if m := get(); m.Permissions.Draft || m.Retrospective.Draft == nil {
+		t.Fatalf("a non-owner sees the draft, read-only: %+v", m.Permissions)
+	}
+	setOwners(t, env, "ada@example.com")
+	withRetrospective(t, env, &aiv1.PilotRetrospective{NoteID: 900, PostedAt: &posted, FollowUps: []aiv1.PilotFollowUp{{Title: "Retry CI"}},
+		Created: map[string]int64{"1": 60}})
+	if m := get(); m.Permissions.Draft {
+		t.Fatalf("nothing open, no draft: %+v", m.Permissions)
+	}
+}
+
+// setOwners sets the owner subjects of milestone 3.
+func setOwners(t *testing.T, env *testEnv, subjects ...string) {
+	t.Helper()
+	var st aiv1.AgentTask
+	if err := env.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: "shop-spec-m3-checkout"}, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.Spec.OwnerSubjects = subjects
+	if err := env.reader.Update(context.Background(), &st); err != nil {
+		t.Fatal(err)
+	}
+}

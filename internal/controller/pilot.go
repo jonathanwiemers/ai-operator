@@ -364,11 +364,16 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 		tracking := trackingIssue(st, coord)
 		if tracking == 0 {
 			// No pilot, or its autopilot is done: a pilot left is deleted
-			// below, after its retrospective.
+			// below, after its retrospective and once its follow-ups are
+			// settled. Until then it takes the Desk's drafts only; nothing
+			// wakes it for events or comments.
 			if coord != nil && coord.Spec.Autopilot && autopilotDone(st) {
 				wait, err := r.retrospective(ctx, st, coord)
 				if wait {
 					keep[coord.Name] = true
+					if err == nil {
+						err = r.applyPilotChatCommands(ctx, gl, project, spec, st, coord)
+					}
 				}
 				if err != nil {
 					errs = append(errs, fmt.Errorf("retrospective of milestone %q: %w", st.Spec.Milestone.Title, err))
@@ -433,11 +438,13 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 // retrospective has the pilot of a finished autopilot milestone write the
 // milestone's retrospective, once, and reports whether to keep the pilot:
 // until its run for it is over and the result is on the spec task, where it
-// outlives the pilot. A run that ended without one counts as failed and is
-// not tried again.
+// outlives the pilot, and then while the follow-ups are not settled, for
+// drafts of a follow-up milestone (the milestone is open: its spec task is
+// planned). A run that ended without one counts as failed and is not tried
+// again.
 func (r *AgentProjectReconciler) retrospective(ctx context.Context, st, coord *aiv1.AgentTask) (bool, error) {
 	if st.Status.Pilot != nil && st.Status.Pilot.Retrospective != nil {
-		return false, nil
+		return !followUpsSettled(st.Status.Pilot.Retrospective, r.now()), nil
 	}
 	request := coord.Spec.Source.Retrospective
 	if request == 0 {
@@ -461,7 +468,7 @@ func (r *AgentProjectReconciler) retrospective(ctx context.Context, st, coord *a
 	if err := r.patchPilot(ctx, st, func(ps *aiv1.PilotStatus) { ps.Retrospective = retro }); err != nil {
 		return true, err
 	}
-	return false, nil
+	return !followUpsSettled(retro, r.now()), nil
 }
 
 // closePilotIssue closes the tracking issue "/pilot coordinate" opened,

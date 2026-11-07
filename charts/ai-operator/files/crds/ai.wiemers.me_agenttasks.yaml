@@ -470,6 +470,34 @@ spec:
                     description: DescriptionHash of the milestone description (Spec
                       tasks).
                     type: string
+                  followUpDraft:
+                    description: |-
+                      FollowUpDraft is an owner's request for a draft of a follow-up
+                      milestone from the retrospective's follow-ups (Coordinate tasks, from
+                      the Desk command "draft"). The run of its request writes
+                      status.pilot.followUpDraft.
+                    properties:
+                      by:
+                        description: By is the owner who asked.
+                        type: string
+                      numbers:
+                        description: |-
+                          Numbers are the retrospective's follow-ups to draft from (1..9),
+                          deduplicated and sorted.
+                        items:
+                          type: integer
+                        maxItems: 9
+                        minItems: 1
+                        type: array
+                      request:
+                        description: Request is the run request that writes the draft.
+                        format: int64
+                        type: integer
+                    required:
+                    - by
+                    - numbers
+                    - request
+                    type: object
                   infraRetry:
                     description: |-
                       InfraRetry is the run request the operator made to retry a run that
@@ -2064,6 +2092,41 @@ spec:
                     items:
                       type: string
                     type: array
+                  followUpDraft:
+                    description: |-
+                      FollowUpDraft is the pilot's draft of a follow-up milestone for
+                      spec.source.followUpDraft (Coordinate tasks), the newest only.
+                      Untrusted until an owner confirms it.
+                    properties:
+                      at:
+                        format: date-time
+                        type: string
+                      description:
+                        description: |-
+                          Description is the milestone's description: untrusted markdown
+                          without HTML, at most MaxDraftDescription bytes.
+                        type: string
+                      error:
+                        description: Error says why there is no draft.
+                        type: string
+                      numbers:
+                        description: Numbers are the follow-ups it drafts from.
+                        items:
+                          type: integer
+                        type: array
+                      request:
+                        description: Request is the run request it answers (spec.source.followUpDraft).
+                        format: int64
+                        type: integer
+                      title:
+                        description: |-
+                          Title is the milestone's title, one line of at most MaxDraftTitle
+                          bytes. Untrusted.
+                        type: string
+                    required:
+                    - at
+                    - request
+                    type: object
                   interventions:
                     additionalProperties:
                       description: PilotIntervention counts the pilot's own actions
@@ -3197,7 +3260,7 @@ spec:
                         kind:
                           description: |-
                             Kind is what the call was for: spec, implement, review, fix, ci,
-                            conflict, describe, pilot, retro, chat or research.
+                            conflict, describe, pilot, retro, followUpDraft, chat or research.
                           type: string
                         linesAdded:
                           description: |-

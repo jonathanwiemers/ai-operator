@@ -304,7 +304,9 @@ export interface IssueFiguresView extends Cost {
  * steer, the user may post to the pilot; chat, the user may ask the pilot
  * on the Desk; transcript, the user may see its live transcript; merge, the
  * user may send merge anyway: chat and one of the milestone's owner subjects
- * (the operator checks again).
+ * (the operator checks again); draft, the user may ask the pilot for a draft
+ * of a follow-up milestone (the Coordinate task's "draft" command): as merge,
+ * while the pilot exists and a follow-up of the retrospective is open.
  */
 export interface MilestonePermissions {
   gitlab: boolean;
@@ -312,6 +314,7 @@ export interface MilestonePermissions {
   chat: boolean;
   transcript: boolean;
   merge: boolean;
+  draft: boolean;
 }
 /**
  * MilestoneAutopilot is the autopilot of a milestone and its queue.
@@ -798,6 +801,25 @@ export interface RetrospectiveView {
    * without the history database.
    */
   costDrivers?: CostDriverView[];
+  /**
+   * Draft is the pilot's draft of a follow-up milestone, absent while
+   * none was asked for or the pilot is gone.
+   */
+  draft?: FollowUpDraftView;
+}
+/**
+ * FollowUpDraftView is the pilot's draft of a follow-up milestone from the
+ * follow-ups Numbers. Title and Description are untrusted markdown without
+ * HTML until an owner confirms them. Pending: the pilot is writing it, with
+ * no title or description yet. Error says why there is none.
+ */
+export interface FollowUpDraftView {
+  numbers: number /* int */[];
+  pending?: boolean;
+  title?: string;
+  description?: string;
+  at?: string;
+  error?: string;
 }
 /**
  * FollowUpView is a leftover of a retrospective and what came of it:

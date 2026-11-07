@@ -453,3 +453,24 @@ about how many production lines, and deviations from this spec.
   1) is here too; taking is not undone when the line changes; about 190
   production lines, over the budget because the issue asked for both
   sources, the recorder and the notice in one slice.
+- 2026-11-07, `followups` (R14 part 1, #238): the Desk command
+  `{"cmd":"draft","followUps":[…]}` (`chatcmd`, 1..9, deduplicated and
+  sorted) on the Coordinate task, owner subjects only, sets
+  `spec.source.followUpDraft` (`request`, `numbers`, `by`) and bumps the run
+  request once; the pilot of a done milestone stays while
+  `followUpsSettled` is false and takes only `draft` then (nothing wakes
+  it); the runner's draft turn (`internal/runner/pilot_draft.go`) makes one
+  read-only call on the pilot role with its own `draftSystemPrompt` and
+  schema, the pilot's remaining budget and the call kind `followUpDraft`,
+  and writes `status.pilot.followUpDraft` (title of at most 200 bytes,
+  description without HTML of at most 16 KiB, `at`, `error`); the
+  milestone view's `retrospective.draft` (`pending` while it is written)
+  and `permissions.draft`; a golden test pins the other system prompts'
+  hashes; about 420 production lines (comments, the prompt and the schema
+  included), over the budget because the issue
+  asked for the command, the pilot's lifetime, the run and the view at
+  once. Deviations: one draft at a time, and numbers already opened or
+  taken are refused; the draft drops the operator's lines (owners, rules,
+  budget, followup-of), which the confirm step (R15) adds;
+  `permissions.draft` also needs an open follow-up; the tab's UI for it
+  follows.

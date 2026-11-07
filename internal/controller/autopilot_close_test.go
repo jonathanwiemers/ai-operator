@@ -40,13 +40,15 @@ func countComments(e *projectEnv, iid int64, part string) int {
 }
 
 // retroDone puts the pilot's retrospective on the pilot and lets the next
-// poll copy it to the spec task and delete the pilot.
+// poll copy it to the spec task and delete the pilot, which stays while its
+// follow-ups are open.
 func retroDone(e *projectEnv, retro aiv1.PilotRetrospective) {
 	e.t.Helper()
 	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot = &aiv1.PilotStatus{Retrospective: retro.DeepCopy()} })
 	e.reconcile()
-	if _, ok := e.tasks()[pilotTaskName]; ok {
-		e.t.Fatalf("the pilot goes after its retrospective: %v", keys(e.tasks()))
+	open := !followUpsSettled(&retro, e.r.Now())
+	if _, ok := e.tasks()[pilotTaskName]; ok != open {
+		e.t.Fatalf("the pilot goes after its retrospective, once its follow-ups are settled (open %v): %v", open, keys(e.tasks()))
 	}
 }
 

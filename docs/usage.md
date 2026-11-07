@@ -2152,6 +2152,16 @@ issue or milestone. It stays there after the milestone is closed and its
 tasks are deleted. The tab is read-only for now: while the milestone is
 open, reply `create` in the thread to open follow-ups.
 
+While follow-ups are open, the pilot stays after the retrospective so an
+owner can ask it for a **draft of a follow-up milestone** from some of them:
+the Desk command `{"cmd":"draft","followUps":[1,3]}` on the pilot (owner
+subjects only, see [commands](commands.md#on-the-tracking-issue-autopilot)).
+The pilot writes a title and a description in one model call from its
+budget, from the milestone's title, the retrospective and those follow-ups,
+and the milestone view carries it (`retrospective.draft`). It is untrusted
+text until an owner confirms it. Once the follow-ups are settled the pilot
+is deleted as before.
+
 A milestone that takes over follow-ups of another names them with a line
 `/agent followup-of <iid> <numbers>` in its description, e.g.
 `/agent followup-of 12 1 3`: follow-ups 1 and 3 of milestone %12's

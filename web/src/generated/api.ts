@@ -2479,11 +2479,39 @@ export interface SourceState {
    */
   retroSpend?: SpendSummary;
   /**
+   * FollowUpDraft is an owner's request for a draft of a follow-up
+   * milestone from the retrospective's follow-ups (Coordinate tasks, from
+   * the Desk command "draft"). The run of its request writes
+   * status.pilot.followUpDraft.
+   * +optional
+   */
+  followUpDraft?: FollowUpDraftRequest;
+  /**
    * PilotInstruction is an instruction an owner accepted from the pilot
    * (Implement tasks), for the run of its request.
    * +optional
    */
   pilotInstruction?: PilotInstruction;
+}
+/**
+ * FollowUpDraftRequest asks the pilot for a draft of a follow-up milestone.
+ */
+export interface FollowUpDraftRequest {
+  /**
+   * Request is the run request that writes the draft.
+   */
+  request: number /* int64 */;
+  /**
+   * Numbers are the retrospective's follow-ups to draft from (1..9),
+   * deduplicated and sorted.
+   * +kubebuilder:validation:MinItems=1
+   * +kubebuilder:validation:MaxItems=9
+   */
+  numbers: number /* int */[];
+  /**
+   * By is the owner who asked.
+   */
+  by: string;
 }
 /**
  * SpendSummary is a scope's spend with its biggest cost drivers, each list
@@ -2954,7 +2982,53 @@ export interface PilotStatus {
    * +optional
    */
   retrospective?: PilotRetrospective;
+  /**
+   * FollowUpDraft is the pilot's draft of a follow-up milestone for
+   * spec.source.followUpDraft (Coordinate tasks), the newest only.
+   * Untrusted until an owner confirms it.
+   * +optional
+   */
+  followUpDraft?: PilotFollowUpDraft;
 }
+/**
+ * PilotFollowUpDraft is the pilot's draft of a follow-up milestone, or why
+ * there is none.
+ */
+export interface PilotFollowUpDraft {
+  /**
+   * Request is the run request it answers (spec.source.followUpDraft).
+   */
+  request: number /* int64 */;
+  /**
+   * Numbers are the follow-ups it drafts from.
+   * +optional
+   */
+  numbers?: number /* int */[];
+  /**
+   * Title is the milestone's title, one line of at most MaxDraftTitle
+   * bytes. Untrusted.
+   * +optional
+   */
+  title?: string;
+  /**
+   * Description is the milestone's description: untrusted markdown
+   * without HTML, at most MaxDraftDescription bytes.
+   * +optional
+   */
+  description?: string;
+  at: string;
+  /**
+   * Error says why there is no draft.
+   * +optional
+   */
+  error?: string;
+}
+export const MaxDraftTitle = 200;
+export const MaxDraftDescription = 16 << 10;
+/**
+ * MaxDraftTitle and MaxDraftDescription bound PilotFollowUpDraft, in bytes.
+ */
+export type MaxDraft = typeof MaxDraftTitle | typeof MaxDraftDescription;
 /**
  * PilotRetrospective is the last comment of a finished autopilot milestone's
  * pilot on its tracking issue.
@@ -3788,12 +3862,16 @@ export const CallKindConflict = "conflict";
 export const CallKindDescribe = "describe";
 export const CallKindPilot = "pilot";
 export const CallKindRetro = "retro";
+/**
+ * CallKindFollowUpDraft is the pilot's draft of a follow-up milestone.
+ */
+export const CallKindFollowUpDraft = "followUpDraft";
 export const CallKindChat = "chat";
 export const CallKindResearch = "research";
 /**
  * Kinds of agent calls (AgentCall.Kind).
  */
-export type CallKind = typeof CallKindSpec | typeof CallKindImplement | typeof CallKindReview | typeof CallKindFix | typeof CallKindCI | typeof CallKindConflict | typeof CallKindDescribe | typeof CallKindPilot | typeof CallKindRetro | typeof CallKindChat | typeof CallKindResearch;
+export type CallKind = typeof CallKindSpec | typeof CallKindImplement | typeof CallKindReview | typeof CallKindFix | typeof CallKindCI | typeof CallKindConflict | typeof CallKindDescribe | typeof CallKindPilot | typeof CallKindRetro | typeof CallKindFollowUpDraft | typeof CallKindChat | typeof CallKindResearch;
 export const CostReported = "reported";
 export const CostEstimated = "estimated";
 export const CostUnknown = "unknown";
@@ -3815,7 +3893,7 @@ export interface AgentCall {
   at: string;
   /**
    * Kind is what the call was for: spec, implement, review, fix, ci,
-   * conflict, describe, pilot, retro, chat or research.
+   * conflict, describe, pilot, retro, followUpDraft, chat or research.
    */
   kind: string;
   /**

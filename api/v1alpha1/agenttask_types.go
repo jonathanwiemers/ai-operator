@@ -374,10 +374,30 @@ type SourceState struct {
 	// +optional
 	RetroSpend *SpendSummary `json:"retroSpend,omitempty"`
 
+	// FollowUpDraft is an owner's request for a draft of a follow-up
+	// milestone from the retrospective's follow-ups (Coordinate tasks, from
+	// the Desk command "draft"). The run of its request writes
+	// status.pilot.followUpDraft.
+	// +optional
+	FollowUpDraft *FollowUpDraftRequest `json:"followUpDraft,omitempty"`
+
 	// PilotInstruction is an instruction an owner accepted from the pilot
 	// (Implement tasks), for the run of its request.
 	// +optional
 	PilotInstruction *PilotInstruction `json:"pilotInstruction,omitempty"`
+}
+
+// FollowUpDraftRequest asks the pilot for a draft of a follow-up milestone.
+type FollowUpDraftRequest struct {
+	// Request is the run request that writes the draft.
+	Request int64 `json:"request"`
+	// Numbers are the retrospective's follow-ups to draft from (1..9),
+	// deduplicated and sorted.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=9
+	Numbers []int `json:"numbers"`
+	// By is the owner who asked.
+	By string `json:"by"`
 }
 
 // SpendSummary is a scope's spend with its biggest cost drivers, each list
@@ -700,7 +720,41 @@ type PilotStatus struct {
 	// the spec task before the pilot is deleted. A milestone gets one.
 	// +optional
 	Retrospective *PilotRetrospective `json:"retrospective,omitempty"`
+
+	// FollowUpDraft is the pilot's draft of a follow-up milestone for
+	// spec.source.followUpDraft (Coordinate tasks), the newest only.
+	// Untrusted until an owner confirms it.
+	// +optional
+	FollowUpDraft *PilotFollowUpDraft `json:"followUpDraft,omitempty"`
 }
+
+// PilotFollowUpDraft is the pilot's draft of a follow-up milestone, or why
+// there is none.
+type PilotFollowUpDraft struct {
+	// Request is the run request it answers (spec.source.followUpDraft).
+	Request int64 `json:"request"`
+	// Numbers are the follow-ups it drafts from.
+	// +optional
+	Numbers []int `json:"numbers,omitempty"`
+	// Title is the milestone's title, one line of at most MaxDraftTitle
+	// bytes. Untrusted.
+	// +optional
+	Title string `json:"title,omitempty"`
+	// Description is the milestone's description: untrusted markdown
+	// without HTML, at most MaxDraftDescription bytes.
+	// +optional
+	Description string      `json:"description,omitempty"`
+	At          metav1.Time `json:"at"`
+	// Error says why there is no draft.
+	// +optional
+	Error string `json:"error,omitempty"`
+}
+
+// MaxDraftTitle and MaxDraftDescription bound PilotFollowUpDraft, in bytes.
+const (
+	MaxDraftTitle       = 200
+	MaxDraftDescription = 16 << 10
+)
 
 // PilotRetrospective is the last comment of a finished autopilot milestone's
 // pilot on its tracking issue.
@@ -1362,8 +1416,10 @@ const (
 	CallKindDescribe  = "describe"
 	CallKindPilot     = "pilot"
 	CallKindRetro     = "retro"
-	CallKindChat      = "chat"
-	CallKindResearch  = "research"
+	// CallKindFollowUpDraft is the pilot's draft of a follow-up milestone.
+	CallKindFollowUpDraft = "followUpDraft"
+	CallKindChat          = "chat"
+	CallKindResearch      = "research"
 )
 
 // Sources of an agent call's cost (AgentCall.CostSource).
@@ -1382,7 +1438,7 @@ type AgentCall struct {
 	At metav1.Time `json:"at"`
 
 	// Kind is what the call was for: spec, implement, review, fix, ci,
-	// conflict, describe, pilot, retro, chat or research.
+	// conflict, describe, pilot, retro, followUpDraft, chat or research.
 	Kind string `json:"kind"`
 
 	// Role is the agent's role, e.g. implement, bugbot or pilot.

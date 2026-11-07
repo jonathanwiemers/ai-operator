@@ -486,14 +486,21 @@ var retroHTML = regexp.MustCompile("(?s)```.*?```|`[^`\n]*`|<!--.*?(?:-->|$)|</?
 // retroText is the posted retrospective body for status: markdown without
 // HTML, at most aiv1.MaxRetroText bytes with an ellipsis beyond.
 func retroText(body string) string {
-	s := retroHTML.ReplaceAllStringFunc(body, func(m string) string {
+	return untrustedMarkdown(body, aiv1.MaxRetroText)
+}
+
+// untrustedMarkdown is agent text for status and the Desk: markdown without
+// HTML (code spans and blocks stay as text), at most limit bytes with an
+// ellipsis beyond.
+func untrustedMarkdown(text string, limit int) string {
+	s := retroHTML.ReplaceAllStringFunc(text, func(m string) string {
 		if strings.HasPrefix(m, "`") {
 			return m
 		}
 		return ""
 	})
-	if s = strings.TrimSpace(s); len(s) > aiv1.MaxRetroText {
-		s = textutil.Truncate(s, aiv1.MaxRetroText-len("…"))
+	if s = strings.TrimSpace(s); len(s) > limit {
+		s = textutil.Truncate(s, limit-len("…"))
 	}
 	return s
 }

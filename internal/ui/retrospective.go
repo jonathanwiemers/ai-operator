@@ -26,6 +26,48 @@ type RetrospectiveView struct {
 	// CostDrivers are the milestone's top issues and roles by cost, absent
 	// without the history database.
 	CostDrivers []CostDriverView `json:"costDrivers,omitempty"`
+	// Draft is the pilot's draft of a follow-up milestone, absent while
+	// none was asked for or the pilot is gone.
+	Draft *FollowUpDraftView `json:"draft,omitempty"`
+}
+
+// FollowUpDraftView is the pilot's draft of a follow-up milestone from the
+// follow-ups Numbers. Title and Description are untrusted markdown without
+// HTML until an owner confirms them. Pending: the pilot is writing it, with
+// no title or description yet. Error says why there is none.
+type FollowUpDraftView struct {
+	Numbers     []int        `json:"numbers"`
+	Pending     bool         `json:"pending,omitempty"`
+	Title       string       `json:"title,omitempty"`
+	Description string       `json:"description,omitempty"`
+	At          *metav1.Time `json:"at,omitempty"`
+	Error       string       `json:"error,omitempty"`
+}
+
+// followUpDraftView is the draft of the pilot coord: the one asked for while
+// it is written, else the last one written; nil without either.
+func followUpDraftView(coord *aiv1.AgentTask) *FollowUpDraftView {
+	if coord == nil {
+		return nil
+	}
+	req := coord.Spec.Source.FollowUpDraft
+	var d *aiv1.PilotFollowUpDraft
+	if ps := coord.Status.Pilot; ps != nil {
+		d = ps.FollowUpDraft
+	}
+	switch {
+	case req != nil && (d == nil || d.Request < req.Request):
+		return &FollowUpDraftView{Numbers: slices.Clone(req.Numbers), Pending: true}
+	case d != nil:
+		at := d.At
+		return &FollowUpDraftView{Numbers: slices.Clone(d.Numbers), Title: d.Title, Description: d.Description, At: &at, Error: d.Error}
+	}
+	return nil
+}
+
+// openFollowUps reports whether a follow-up of r is still open.
+func openFollowUps(r *RetrospectiveView) bool {
+	return r != nil && slices.ContainsFunc(r.FollowUps, func(f FollowUpView) bool { return f.State == store.FollowUpOpen })
 }
 
 // FollowUpView is a leftover of a retrospective and what came of it:

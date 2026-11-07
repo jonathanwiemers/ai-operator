@@ -1354,7 +1354,12 @@ counted interventions; more tools are later steps of
   unset without the history database or when the query fails),
   keeps the pilot until that run is over, copies its
   `status.pilot.retrospective` (note, text, follow-ups, pinned owner IDs, or why
-  it failed) to the spec task and only then deletes the pilot. The run
+  it failed) to the spec task and deletes the pilot once the follow-ups are
+  settled (`followUpsSettled` on the spec task's copy: none, all opened or
+  taken, or the 7 days are over). Until then the pilot stays for drafts of
+  a follow-up milestone only (below): nothing wakes it for events or
+  comments, so it starts no run by itself, and its Desk commands other than
+  `draft` are answered that the autopilot is done. The run
   (`internal/runner/pilot_retro.go`) makes one read-only call with the
   `agents.implement` role's engine and model, capped by the rest of
   `pilot.maxBudgetUSD`, over the operator's facts (queue, merge requests,
@@ -1381,6 +1386,26 @@ counted interventions; more tools are later steps of
   A milestone gets one; those done before this existed get none.
   It is not bound by
   `maxRunsPerTask`, only by its budget.
+* **Follow-up draft** (`internal/controller/pilot_draft.go`,
+  `internal/runner/pilot_draft.go`, R14). An owner subject's Desk command
+  `{"cmd":"draft","followUps":[1,3]}` on the kept pilot of a done
+  milestone sets `spec.source.followUpDraft` (`request`, `numbers`, `by`)
+  and bumps the run request once. It is refused, without a run, while there
+  is no retrospective with follow-ups, they are settled, a draft is still
+  being written, or a number is unknown, opened or taken. The run makes one
+  read-only call on the `agents.pilot` role's engine, model and effort, in
+  a session of its own, with its own system prompt (`draftSystemPrompt`,
+  neither the role's tools nor its instructions, so the pilot's other
+  prompts and their cache are unchanged) and a schema with `title` and
+  `description`, capped by the rest of `pilot.maxBudgetUSD`, recorded as
+  the call kind `followUpDraft`. Its input is the milestone's title, the
+  retrospective's text and the chosen follow-ups' titles and bodies, from
+  the pilot's own status, fenced as untrusted data; it reads nothing from
+  GitLab and posts nothing. The result is `status.pilot.followUpDraft`
+  (`request`, `numbers`, `title` on one line of at most 200 bytes,
+  `description` as markdown without HTML and without the operator's lines,
+  at most 16 KiB, `at`, or `error`), the newest only. It stays untrusted
+  until an owner confirms it in the Desk.
 * **Taken by a follow-up milestone** (`internal/controller/followup_of.go`).
   Each poll, before the autopilots, `syncFollowUpOf` checks the spec tasks
   whose `spec.followUpOf` (the line `/agent followup-of <iid> <numbers>`,
@@ -2454,7 +2479,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | `internal/controller/webhook.go` | self-registration of the project hook, the `WebhookRegistered` and `WebhookDeliveries` conditions |
 | `internal/webhook` | webhook receiver (`POST /hooks/gitlab`, token check), server, waker (debounce), deliveries |
 | `internal/history` | the factory's history: AgentTask status diffs and mirrored GitLab comments, written to the research database in batches |
-| `internal/controller/pilot_spec.go`, `pilot_followups.go`, `followup_of.go`, `internal/runner/pilot_retro.go` | the pilot's spec edits (`editSpec`), the retrospective's `create 1 2`, the `followup-of` line's settling, the retrospective run |
+| `internal/controller/pilot_spec.go`, `pilot_followups.go`, `followup_of.go`, `pilot_draft.go`, `internal/runner/pilot_retro.go`, `pilot_draft.go` | the pilot's spec edits (`editSpec`), the retrospective's `create 1 2`, the `followup-of` line's settling, the retrospective run, the follow-up draft |
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/readgate` | the read gate (`ai-runner read-gate`): claude `PreToolUse` hook for `Read` and `Bash`, no Kubernetes imports |

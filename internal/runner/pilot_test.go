@@ -29,6 +29,7 @@ type pilotEngine struct {
 	fail       string
 	assessment *PilotAssessment
 	retro      *RetroAnswer
+	draft      *DraftAnswer
 	proposal   *ProposalAnswer
 	refine     *RefineAnswer
 	// raw, when set, is the structured answer of every turn as is (valid
@@ -49,6 +50,8 @@ func (p *pilotEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
 	switch inv.JSONSchema {
 	case assessSchema:
 		b, _ = json.Marshal(p.assessment)
+	case draftSchema:
+		b, _ = json.Marshal(p.draft)
 	case retroSchema:
 		b, _ = json.Marshal(p.retro)
 	case refineSchema:
