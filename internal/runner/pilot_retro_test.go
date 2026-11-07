@@ -153,11 +153,11 @@ func TestRetrospectiveAnswersWaitingMessages(t *testing.T) {
 func TestRetrospectiveReportsTheSpendFromTheDatabase(t *testing.T) {
 	e := newRetroEnv(t, "")
 	task := e.task(t)
-	task.Spec.Source.RetroSpend = &aiv1.SpendSummary{CostUSD: "42.1234", CostKnown: true, SubagentCalls: 3,
+	task.Spec.Source.RetroSpend = &aiv1.SpendSummary{CostUSD: "42.1234", CostKnown: true, SubagentCalls: 3, UnmeteredCalls: 2,
 		Tokens:    aiv1.SpendTokens{Input: 1200, Output: 34000, CacheRead: 2_500_000, CacheWrite: 50000},
 		TopIssues: []aiv1.SpendDriver{{Key: "1", Label: "#1", CostUSD: "30.0000", Tokens: 2_000_000}, {Key: "2", Label: "#2", CostUSD: "9.0000", Tokens: 500_000}},
 		TopKinds:  []aiv1.SpendDriver{{Key: "implement", Label: "implement", CostUSD: "35.0000", Tokens: 2_100_000}},
-		TopModels: []aiv1.SpendDriver{{Key: "claude-opus", Label: "claude-opus", CostUSD: "40.0000", Tokens: 2_400_000}, {Key: "cursor-auto", Label: "cursor-auto", Tokens: 900}},
+		TopModels: []aiv1.SpendDriver{{Key: "claude-opus", Label: "claude-opus", CostUSD: "40.0000", Tokens: 2_400_000}, {Key: "auto", Label: "auto", Unmetered: true}},
 	}
 	if err := e.k8s.Update(context.Background(), &task); err != nil {
 		t.Fatal(err)
@@ -175,10 +175,10 @@ func TestRetrospectiveReportsTheSpendFromTheDatabase(t *testing.T) {
 	notes := botNotes(e.gl, 5)
 	c := notes[len(notes)-1]
 	for _, want := range []string{
-		"**Cost drivers**\n\n- Total: $42.12, 2.59M tokens (input 1.2k, output 34.0k, cache read 2.50M, cache write 50.0k), 3 subagent calls\n",
+		"**Cost drivers**\n\n- Total: $42.12, 2.59M tokens (input 1.2k, output 34.0k, cache read 2.50M, cache write 50.0k), 3 subagent calls, 2 calls not metered\n",
 		"- Issue: #1 $30.00 (2.00M tokens); then #2 $9.00 (500.0k tokens)\n",
 		"- Kind: implement $35.00 (2.10M tokens)\n",
-		"- Model: claude-opus $40.00 (2.40M tokens); then cursor-auto n/a (900 tokens)\n",
+		"- Model: claude-opus $40.00 (2.40M tokens); then auto (not metered)\n",
 	} {
 		if !strings.Contains(c, want) {
 			t.Errorf("the retrospective misses %q:\n%s", want, c)

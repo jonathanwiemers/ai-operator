@@ -487,6 +487,9 @@ func renderSpend(s *aiv1.SpendSummary) string {
 	if s.SubagentCalls > 0 {
 		fmt.Fprintf(&b, ", %d subagent calls", s.SubagentCalls)
 	}
+	if s.UnmeteredCalls > 0 {
+		fmt.Fprintf(&b, ", %d calls not metered", s.UnmeteredCalls)
+	}
 	b.WriteString("\n")
 	for _, dim := range []struct {
 		name string
@@ -497,6 +500,10 @@ func renderSpend(s *aiv1.SpendSummary) string {
 		}
 		parts := make([]string, len(dim.ds))
 		for i, d := range dim.ds {
+			if d.Unmetered {
+				parts[i] = prose(cmp.Or(d.Label, d.Key)) + " (not metered)"
+				continue
+			}
 			parts[i] = fmt.Sprintf("%s %s (%s tokens)", prose(cmp.Or(d.Label, d.Key)), spendUSD(d.CostUSD, d.CostUSD != ""), showTokens(d.Tokens))
 		}
 		fmt.Fprintf(&b, "- %s: %s", dim.name, parts[0])

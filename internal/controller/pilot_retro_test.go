@@ -253,7 +253,7 @@ func TestRetrospectiveRequestCarriesTheSpend(t *testing.T) {
 		return store.SpendTotals{CostUSD: usd, CostKnown: true, Calls: 1, InputTokens: tokens}
 	}
 	src := &fakeSpend{spend: store.Spend{
-		Totals: store.SpendTotals{CostUSD: 12.5, CostKnown: true, Calls: 9, InputTokens: 100, OutputTokens: 20, CacheReadTokens: 3000, CacheWriteTokens: 400, SubagentCalls: 4},
+		Totals: store.SpendTotals{CostUSD: 12.5, CostKnown: true, Calls: 9, InputTokens: 100, OutputTokens: 20, CacheReadTokens: 3000, CacheWriteTokens: 400, SubagentCalls: 4, UnmeteredCalls: 2},
 		Children: []store.SpendChild{
 			{Level: store.SpendIssue, Key: "1", Label: "#1", Totals: known(2, 10)},
 			{Level: store.SpendMilestone, Key: "3", Label: "Milestone %3", Totals: known(9, 10)},
@@ -262,7 +262,7 @@ func TestRetrospectiveRequestCarriesTheSpend(t *testing.T) {
 			{Level: store.SpendIssue, Key: "5", Label: "#5", Totals: known(1, 5)},
 		},
 		ByKind:  []store.SpendBreakdown{{Key: "implement", Totals: known(8, 50)}, {Key: "review", Totals: known(3, 40)}, {Key: "spec", Totals: known(1, 1)}, {Key: "retro", Totals: known(0.5, 1)}},
-		ByModel: []store.SpendBreakdown{{Key: "claude-opus", Totals: known(10, 70)}, {Key: "claude-haiku", Totals: known(0.5, 30)}},
+		ByModel: []store.SpendBreakdown{{Key: "claude-opus", Totals: known(10, 70)}, {Key: "claude-haiku", Totals: known(0.5, 30)}, {Key: "auto", Totals: store.SpendTotals{Calls: 2, UnknownCalls: 2, UnmeteredCalls: 2}}},
 	}}
 	e.r.Spend = src
 	finishAutopilot(e)
@@ -275,11 +275,11 @@ func TestRetrospectiveRequestCarriesTheSpend(t *testing.T) {
 	if len(src.scopes) != 1 || src.scopes[0] != (store.SpendScope{Namespace: pilot.Namespace, Project: pilot.Spec.ProjectRef, MilestoneIID: pilot.Spec.Milestone.IID}) {
 		t.Fatalf("the milestone's spend is read once with the request: %+v", src.scopes)
 	}
-	want := &aiv1.SpendSummary{CostUSD: "12.5000", CostKnown: true, SubagentCalls: 4,
+	want := &aiv1.SpendSummary{CostUSD: "12.5000", CostKnown: true, SubagentCalls: 4, UnmeteredCalls: 2,
 		Tokens:    aiv1.SpendTokens{Input: 100, Output: 20, CacheRead: 3000, CacheWrite: 400},
 		TopIssues: []aiv1.SpendDriver{{Key: "2", Label: "#2", CostUSD: "5.0000", Tokens: 20}, {Key: "1", Label: "#1", CostUSD: "2.0000", Tokens: 10}, {Key: "5", Label: "#5", CostUSD: "1.0000", Tokens: 5}},
 		TopKinds:  []aiv1.SpendDriver{{Key: "implement", Label: "implement", CostUSD: "8.0000", Tokens: 50}, {Key: "review", Label: "review", CostUSD: "3.0000", Tokens: 40}, {Key: "spec", Label: "spec", CostUSD: "1.0000", Tokens: 1}},
-		TopModels: []aiv1.SpendDriver{{Key: "claude-opus", Label: "claude-opus", CostUSD: "10.0000", Tokens: 70}, {Key: "claude-haiku", Label: "claude-haiku", CostUSD: "0.5000", Tokens: 30}},
+		TopModels: []aiv1.SpendDriver{{Key: "claude-opus", Label: "claude-opus", CostUSD: "10.0000", Tokens: 70}, {Key: "claude-haiku", Label: "claude-haiku", CostUSD: "0.5000", Tokens: 30}, {Key: "auto", Label: "auto", Unmetered: true}},
 	}
 	if got := pilot.Spec.Source.RetroSpend; !reflect.DeepEqual(got, want) {
 		t.Fatalf("the request carries the milestone's spend with its top 3 drivers:\n got %+v\nwant %+v", got, want)

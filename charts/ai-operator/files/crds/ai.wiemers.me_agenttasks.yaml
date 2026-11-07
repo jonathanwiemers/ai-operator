@@ -826,6 +826,10 @@ spec:
                             tokens:
                               format: int64
                               type: integer
+                            unmetered:
+                              description: Unmetered is set when all its calls reported
+                                neither cost nor tokens.
+                              type: boolean
                           required:
                           - key
                           type: object
@@ -848,6 +852,10 @@ spec:
                             tokens:
                               format: int64
                               type: integer
+                            unmetered:
+                              description: Unmetered is set when all its calls reported
+                                neither cost nor tokens.
+                              type: boolean
                           required:
                           - key
                           type: object
@@ -872,11 +880,21 @@ spec:
                             tokens:
                               format: int64
                               type: integer
+                            unmetered:
+                              description: Unmetered is set when all its calls reported
+                                neither cost nor tokens.
+                              type: boolean
                           required:
                           - key
                           type: object
                         maxItems: 3
                         type: array
+                      unmeteredCalls:
+                        description: |-
+                          UnmeteredCalls are the calls with neither a cost nor tokens (cursor
+                          reports no usage), a part of the total that costKnown does not cover.
+                        format: int64
+                        type: integer
                     type: object
                   retrospective:
                     description: |-

@@ -2459,6 +2459,12 @@ export interface SpendSummary {
    */
   subagentCalls?: number /* int64 */;
   /**
+   * UnmeteredCalls are the calls with neither a cost nor tokens (cursor
+   * reports no usage), a part of the total that costKnown does not cover.
+   * +optional
+   */
+  unmeteredCalls?: number /* int64 */;
+  /**
    * +optional
    * +kubebuilder:validation:MaxItems=3
    */
@@ -2515,6 +2521,11 @@ export interface SpendDriver {
    * +optional
    */
   tokens?: number /* int64 */;
+  /**
+   * Unmetered is set when all its calls reported neither cost nor tokens.
+   * +optional
+   */
+  unmetered?: boolean;
 }
 /**
  * ChatMessage is one Desk chat turn handed to the runner.

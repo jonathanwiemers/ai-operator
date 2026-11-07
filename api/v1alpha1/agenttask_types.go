@@ -358,6 +358,10 @@ type SpendSummary struct {
 	// SubagentCalls is how often the calls delegated to a subagent.
 	// +optional
 	SubagentCalls int64 `json:"subagentCalls,omitempty"`
+	// UnmeteredCalls are the calls with neither a cost nor tokens (cursor
+	// reports no usage), a part of the total that costKnown does not cover.
+	// +optional
+	UnmeteredCalls int64 `json:"unmeteredCalls,omitempty"`
 	// +optional
 	// +kubebuilder:validation:MaxItems=3
 	TopIssues []SpendDriver `json:"topIssues,omitempty"`
@@ -396,6 +400,9 @@ type SpendDriver struct {
 	CostUSD string `json:"costUSD,omitempty"`
 	// +optional
 	Tokens int64 `json:"tokens,omitempty"`
+	// Unmetered is set when all its calls reported neither cost nor tokens.
+	// +optional
+	Unmetered bool `json:"unmetered,omitempty"`
 }
 
 // ChatMessage is one Desk chat turn handed to the runner.
