@@ -94,6 +94,9 @@ type implementRun struct {
 	profile     string
 	inv         Invocation
 	plainSystem string
+	// systemNotes follow the role's system prompt (resources, toolchains,
+	// Conventional Commits): a conflict call on its own role gets them too.
+	systemNotes string
 	fullPrompt  string
 	stepwise    bool
 	ciFix       bool
@@ -102,10 +105,14 @@ type implementRun struct {
 	answers      []aiv1.PromptAnswerDelivery
 	merge        MergeResult
 	mergeMessage string
-	reviewFor    string
-	reviewAsked  bool
-	reReview     bool
-	runAgent     bool
+	// conflictPrompt asks to resolve the merge's conflicts; conflictOnly is
+	// set when that is all the implementer is asked to do in this run.
+	conflictPrompt string
+	conflictOnly   bool
+	reviewFor      string
+	reviewAsked    bool
+	reReview       bool
+	runAgent       bool
 	// types are the Conventional Commits types, nil while the option is off.
 	types []string
 
@@ -301,14 +308,17 @@ func (run *implementRun) buildPrompt(ctx context.Context) error {
 	if run.companion != nil {
 		inv.Companion = run.companion.slug
 	}
-	inv.SystemPrompt += resourcesNote(r.AgentMemoryLimit, r.AgentCPUs) + toolchainsNote(run.base, r.Mirror.PinFiles(ctx, run.base), r.changedPins)
+	// The notes after the role's system prompt, which a conflict call on its
+	// own role gets as well.
+	systemNotes := resourcesNote(r.AgentMemoryLimit, r.AgentCPUs) + toolchainsNote(run.base, r.Mirror.PinFiles(ctx, run.base), r.changedPins)
+	if run.types != nil {
+		systemNotes += conventionalNote(run.types)
+	}
+	inv.SystemPrompt += systemNotes
 	// While the MR is a draft, the work is pushed step by step so a human can
 	// follow it and steer with comments (not while concluding a merge, whose
 	// conflicts must be resolved before anything is committed).
 	stepwise := *wf.StepCommits && run.mr.Draft && task.Spec.Source.MergeBaseFor == task.Status.Run.MergedBaseFor
-	if run.types != nil {
-		inv.SystemPrompt += conventionalNote(run.types)
-	}
 	plainSystem := inv.SystemPrompt
 	if stepwise {
 		// The step-size gate tells the implementer to close a step that
@@ -380,6 +390,7 @@ func (run *implementRun) buildPrompt(ctx context.Context) error {
 		r.log().Info("revisiting decisions", "decisions", len(revisits), "notices", len(notices))
 	}
 	run.role, run.profile, run.inv, run.stepwise, run.plainSystem, run.fullPrompt = role, profile, inv, stepwise, plainSystem, fullPrompt
+	run.systemNotes = systemNotes
 	run.notices, run.revisits, run.ignored = notices, revisits, ignored
 	return nil
 }
@@ -470,6 +481,8 @@ func (run *implementRun) mergeBase(ctx context.Context) error {
 			} else {
 				inv.Prompt = conflictPrompt + "\n\n" + inv.Prompt
 			}
+			run.conflictPrompt = conflictPrompt
+			run.conflictOnly = run.humanInput == 0 && !run.ciFix && len(run.revisits) == 0 && len(run.ignored) == 0
 		}
 		run.runAgent = len(merge.Conflicts) > 0 || run.humanInput > 0 || run.ciFix || len(run.revisits) > 0 || len(run.ignored) > 0
 	}
@@ -507,15 +520,22 @@ func (run *implementRun) implement(ctx context.Context) error {
 	}
 	if run.runAgent {
 		r.cutStep(false)
-		s := r.step(ctx, "run implementer", "profile", run.profile, "engine", role.Engine, "model", role.Model, "effort", role.Effort,
-			"resume", inv.Resume != "", "ciFix", run.ciFix, "conflicts", len(run.merge.Conflicts))
 		switch {
 		case len(run.merge.Conflicts) > 0:
 			inv.Kind = aiv1.CallKindConflict
 		case run.ciFix:
 			inv.Kind = aiv1.CallKindCI
 		}
-		res, err := r.invoke(ctx, role, *inv, run.fullPrompt)
+		// A conflict role (agents.implement.conflict) may resolve the
+		// conflicts instead; a fresh call keeps the implementer's session.
+		callRole, call, callFull := role, *inv, run.fullPrompt
+		conflictRole, conflictCall, conflictFull, fresh, ok := run.conflictCall(ctx)
+		if ok {
+			callRole, call, callFull = conflictRole, conflictCall, conflictFull
+		}
+		s := r.step(ctx, "run implementer", "profile", run.profile, "engine", callRole.Engine, "model", callRole.Model, "effort", callRole.Effort,
+			"resume", call.Resume != "", "ciFix", run.ciFix, "conflicts", len(run.merge.Conflicts), "conflictRole", ok)
+		res, err := r.invoke(ctx, callRole, call, callFull)
 		run.res = res
 		if res != nil {
 			out.CostUSD += res.CostUSD
@@ -523,8 +543,16 @@ func (run *implementRun) implement(ctx context.Context) error {
 		if err != nil {
 			return s.fail(err)
 		}
-		st.setSession("implement", ranOn(role, res), res.SessionID)
-		st.ImplementEngine = ranOn(role, res)
+		if fresh {
+			// Fix rounds go on in the implementer's session, not in the
+			// conflict call's.
+			kept := *res
+			kept.SessionID = inv.Resume
+			run.res = &kept
+		} else {
+			st.setSession("implement", ranOn(callRole, res), res.SessionID)
+			st.ImplementEngine = ranOn(callRole, res)
+		}
 		st.deliveredPrompts(run.answers)
 		st.LastIssueNoteID = maxNoteID(run.issueNotes, st.LastIssueNoteID)
 		st.LastMRNoteID = maxNoteID(run.mrNotes, st.LastMRNoteID)
@@ -534,7 +562,7 @@ func (run *implementRun) implement(ctx context.Context) error {
 		if err := res.Decode(answer); err != nil {
 			return s.fail(fmt.Errorf("decoding implementer answer: %w", err))
 		}
-		s.done(agentResult(role, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD,
+		s.done(agentResult(callRole, res, answer.Status), "session", res.SessionID, "costUSD", res.CostUSD,
 			"status", answer.Status, "questions", len(answer.Questions), "prompts", len(answer.Prompts), "decisions", len(answer.Decisions))
 	} else {
 		// Only the merge or the review: nothing for the agent to do; review
@@ -573,6 +601,55 @@ func (run *implementRun) implement(ctx context.Context) error {
 	// Fix rounds and later calls finish their work in one go.
 	inv.SystemPrompt, inv.JSONSchema, inv.StepGateMaxLines = run.plainSystem, implementSchemaFor(run.types), 0
 	return nil
+}
+
+// conflictCall returns the call that resolves the conflicts of a run on the
+// conflict role (agents.implement.conflict, see ConflictRole); ok is false
+// without one, or when the run asks more of the implementer than the
+// conflicts (comments, a CI fix, revisits): the implementer resolves them in
+// its session as before. A fresh call (freshSession, or the conflict role on
+// another engine) starts a new session with a self-contained prompt and
+// leaves the implementer's session alone; otherwise it resumes the
+// implementer's session with its prompt. With a companion only a claude
+// conflict role is used, the only engine that works on a second checkout.
+func (run *implementRun) conflictCall(ctx context.Context) (role aiv1.RoleSpec, inv Invocation, fullPrompt string, fresh, ok bool) {
+	if len(run.merge.Conflicts) == 0 || !run.conflictOnly {
+		return aiv1.RoleSpec{}, Invocation{}, "", false, false
+	}
+	role, fresh, ok = run.spec.ConflictRole(run.role)
+	if !ok {
+		return aiv1.RoleSpec{}, Invocation{}, "", false, false
+	}
+	if run.companion != nil {
+		if role.Engine != aiv1.EngineClaude {
+			run.r.log().Info("conflict role ignored: the companion needs claude", "engine", role.Engine, "model", role.Model)
+			return aiv1.RoleSpec{}, Invocation{}, "", false, false
+		}
+		if role.Fallback != nil && role.Fallback.Engine != aiv1.EngineClaude {
+			role.Fallback = nil
+		}
+	}
+	// The implementer's call with the conflict role's model, effort, budget,
+	// tools and instructions.
+	own := roleInvocation(role, implementSystemPrompt, implementTools, run.inv.JSONSchema, false)
+	inv = run.inv
+	inv.SystemPrompt = own.SystemPrompt + run.systemNotes
+	inv.Model, inv.Effort, inv.MaxBudgetUSD, inv.AllowedTools = own.Model, own.Effort, own.MaxBudgetUSD, own.AllowedTools
+	inv.Kind = aiv1.CallKindConflict
+	if fresh = fresh || role.Engine != run.role.Engine; !fresh {
+		return role, inv, run.fullPrompt, false, true
+	}
+	// During the merge HEAD is still the branch: the stat is the MR's.
+	_, stat, err := run.r.Agent.Diff(ctx, homeTree, run.base)
+	if err != nil {
+		run.r.log().Info("conflict prompt without the diff stat", "error", err.Error())
+	}
+	prompt := buildConflictFreshPrompt(run.issue, run.prior.Text, stat, run.conflictPrompt)
+	if run.companion != nil {
+		prompt = companionPrompt(run.companion) + "\n\n" + prompt
+	}
+	inv.Resume, inv.Prompt = "", prompt
+	return role, inv, prompt, true, true
 }
 
 // concludeMerge concludes the merge of a conflict run, or undoes it when the

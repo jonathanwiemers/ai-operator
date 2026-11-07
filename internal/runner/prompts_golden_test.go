@@ -3,7 +3,10 @@ package runner
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"testing"
+
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
 // The system prompts are cached by the engines: a change, also of one byte,
@@ -26,5 +29,29 @@ func TestSystemPromptsAreUnchanged(t *testing.T) {
 		if got := hex.EncodeToString(sum[:]); got != tc.sha {
 			t.Errorf("the %s system prompt changed: sha256 %s, want %s", name, got, tc.sha)
 		}
+	}
+}
+
+// TestConflictFreshPrompt pins the prompt of a fresh conflict call byte
+// for byte (golden).
+func TestConflictFreshPrompt(t *testing.T) {
+	issue := &gitlab.Issue{IID: 42, Title: "Add PayPal button", Description: "As a shopper I want to pay with PayPal."}
+	got := buildConflictFreshPrompt(issue, "Did the button.", " a.go | 2 +-\n 1 file changed\n", "## Merge conflicts\n\nResolve.\n")
+	want := "Resolve the merge conflicts of the merge request for issue #42. You start in a new session: " +
+		"the work for the issue was done in another one and is committed on this branch (see `git log` and the diff " +
+		"against the default branch). Resolve the conflicts only; do not continue or change the work for the issue " +
+		"beyond what the merge needs.\n\n" +
+		"## Add PayPal button\n\nAs a shopper I want to pay with PayPal.\n\n" +
+		"## The implementer's notes\n\nCheck them against the code before relying on them. Your handoff " +
+		"replaces them: keep them and add what the merge changed.\n\nDid the button.\n\n" +
+		"## Changes of the merge request\n\n```\n a.go | 2 +-\n 1 file changed\n```\n\n" +
+		"## Merge conflicts\n\nResolve.\n"
+	if got != want {
+		t.Fatalf("fresh conflict prompt changed:\n%q\nwant\n%q", got, want)
+	}
+	// Without notes and stat, those sections are left out.
+	bare := buildConflictFreshPrompt(issue, " ", "\n", "C")
+	if strings.Contains(bare, "notes") || strings.Contains(bare, "## Changes") || !strings.HasSuffix(bare, "pay with PayPal.\n\nC") {
+		t.Fatalf("bare prompt: %q", bare)
 	}
 }

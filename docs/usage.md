@@ -702,6 +702,19 @@ pushed, and the issue goes to `agent::needs-input` with the files. The
 operator asks once per MR head: if the new head conflicts again, because the
 default branch moved again, it asks again.
 
+By default the implementer resolves the conflicts in its own session, on its
+own model. Such a round costs much more per token than an implement run: it
+resumes the implementer's long session, usually after a queue wait, so the
+cache is cold and the whole session is written to the cache again on the
+implementer's model (Opus for `strong`). With
+[`agents.implement.conflict`](configuration.md#conflict-role), e.g.
+`{model: claude-sonnet-5-5}`, the conflict call runs on that role instead.
+It starts in a fresh session that gets the issue, the agent notes, the MR's
+diff stat and the conflicting files. The implementer's session is kept for
+the review fixes and the next run. A run that also carries new comments, a
+CI fix or revisits still goes to the implementer. The *By kind and model* table
+of the [Spend tab](ui.md#spend) shows what the conflict calls cost.
+
 Set `workflow.resolveConflicts: false` to leave conflicts to humans.
 
 ## 4. Iterate

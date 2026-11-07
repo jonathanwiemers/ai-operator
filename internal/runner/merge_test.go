@@ -143,6 +143,14 @@ func (c *conflictEngine) Run(_ context.Context, inv Invocation) (*Result, error)
 // another file, and runs again with a merge request for the MR head.
 func conflictRun(t *testing.T, engine *conflictEngine, conflict bool) (*implementEnv, aiv1.AgentTask) {
 	t.Helper()
+	e, task, _ := conflictRunWith(t, engine, conflict, func(*aiv1.AgentProject) { engine.prompts = nil })
+	return e, task
+}
+
+// conflictRunWith is conflictRun with any engine; between changes the
+// project before the second run.
+func conflictRunWith(t *testing.T, engine Engine, conflict bool, between func(*aiv1.AgentProject)) (*implementEnv, aiv1.AgentTask, *Runner) {
+	t.Helper()
 	e := newImplementEnv(t)
 	r := newTestRunner(t, e.tmp, e.k8s, e.gl, engine, e.task.Name)
 	ctx := context.Background()
@@ -158,6 +166,14 @@ func conflictRun(t *testing.T, engine *conflictEngine, conflict bool) (*implemen
 	gitCmd(t, e.seed, "commit", "-m", "main moves on")
 	gitCmd(t, e.seed, "push", "origin", "HEAD:main")
 
+	var project aiv1.AgentProject
+	if err := e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop"}, &project); err != nil {
+		t.Fatal(err)
+	}
+	between(&project)
+	if err := e.k8s.Update(ctx, &project); err != nil {
+		t.Fatal(err)
+	}
 	var got aiv1.AgentTask
 	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &got)
 	orig := got.DeepCopy()
@@ -166,12 +182,11 @@ func conflictRun(t *testing.T, engine *conflictEngine, conflict bool) (*implemen
 	if err := e.k8s.Patch(ctx, &got, client.MergeFrom(orig)); err != nil {
 		t.Fatal(err)
 	}
-	engine.prompts = nil
 	if _, err := r.Step(ctx); err != nil {
 		t.Fatal(err)
 	}
 	_ = e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: e.task.Name}, &got)
-	return e, got
+	return e, got, r
 }
 
 func lastMRNote(e *implementEnv) string {

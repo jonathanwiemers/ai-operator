@@ -552,3 +552,36 @@ func TestProjectMaxStepLinesSchema(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectConflictRoleSchema(t *testing.T) {
+	crd := loadCRD(t, "agentprojects")
+	withConflict := func(conflict any) map[string]any {
+		obj := readSample(t, "agentproject.yaml", func(s string) string { return s })
+		spec(obj)["agents"].(map[string]any)["implement"].(map[string]any)["conflict"] = conflict
+		return obj
+	}
+	obj, errs := crd.admit(withConflict(map[string]any{"model": "claude-sonnet-5-5"}))
+	if len(errs) > 0 {
+		t.Fatalf("conflict role rejected: %v", errs)
+	}
+	c := spec(obj)["agents"].(map[string]any)["implement"].(map[string]any)["conflict"].(map[string]any)
+	if c["freshSession"] != true || c["engine"] != "claude" || c["model"] != "claude-sonnet-5-5" {
+		t.Fatalf("expected freshSession and engine defaulted: %v", c)
+	}
+	if _, errs := crd.admit(withConflict(map[string]any{"model": "claude-sonnet-5-5", "freshSession": false,
+		"fallback": map[string]any{"engine": "cursor", "model": "auto"}})); len(errs) > 0 {
+		t.Fatalf("freshSession false and a fallback rejected: %v", errs)
+	}
+	for name, tc := range map[string]struct {
+		conflict any
+		want     string
+	}{
+		"bad effort":    {map[string]any{"effort": "huge"}, "spec.agents.implement.conflict.effort"},
+		"bad engine":    {map[string]any{"engine": "gpt"}, "spec.agents.implement.conflict.engine"},
+		"unknown field": {map[string]any{"session": "fresh"}, "spec.agents.implement.conflict.session"},
+	} {
+		if _, errs := crd.admit(withConflict(tc.conflict)); !strings.Contains(strings.Join(errs, "\n"), tc.want) {
+			t.Errorf("%s: errors %v, want one on %s", name, errs, tc.want)
+		}
+	}
+}

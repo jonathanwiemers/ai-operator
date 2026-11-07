@@ -685,6 +685,35 @@ type ImplementSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	MaxStepLines *int32 `json:"maxStepLines,omitempty"`
+
+	// Conflict is the role of the calls that resolve the merge conflicts of
+	// a conflict run, e.g. a cheaper model for mostly mechanical merges. Its
+	// fields override the issue's implementer (agents.implement or the
+	// profile, with the model and effort labels); unset fields are the
+	// implementer's. Unset, the implementer resolves the conflicts in its
+	// own session. Applies to the profiles too.
+	// +optional
+	Conflict *ConflictRoleSpec `json:"conflict,omitempty"`
+}
+
+// ConflictRoleSpec configures the calls that resolve merge conflicts.
+type ConflictRoleSpec struct {
+	RoleSpec `json:",inline" tstype:",extends"`
+
+	// FreshSession starts each conflict call in a new session with a
+	// self-contained prompt (the issue, the agent notes, the conflicting
+	// files and the MR's diff stat) instead of resuming the implementer's
+	// long session; the implementer's session stays for its later calls.
+	// false resumes the implementer's session when the engine is the same.
+	// +kubebuilder:default=true
+	// +optional
+	FreshSession *bool `json:"freshSession,omitempty"`
+}
+
+// Fresh reports whether a conflict call starts a new session: freshSession,
+// true when unset.
+func (c *ConflictRoleSpec) Fresh() bool {
+	return c != nil && (c.FreshSession == nil || *c.FreshSession)
 }
 
 // StepSessionMode is how an implementer goes on after a step.

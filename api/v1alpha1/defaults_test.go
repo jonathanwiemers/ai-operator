@@ -220,3 +220,22 @@ func TestMaxStepLines(t *testing.T) {
 		t.Fatal("a profile's value applies to that profile only")
 	}
 }
+
+func TestConflictDefaults(t *testing.T) {
+	if spec := (AgentProjectSpec{}).WithDefaults(); spec.Agents.Implement.Conflict != nil {
+		t.Fatalf("no conflict role unless set: %+v", spec.Agents.Implement.Conflict)
+	}
+	in := AgentProjectSpec{}
+	in.Agents.Implement.Conflict = &ConflictRoleSpec{RoleSpec: RoleSpec{Model: "claude-sonnet-5-5"}}
+	spec := in.WithDefaults()
+	if c := spec.Agents.Implement.Conflict; c.FreshSession == nil || !*c.FreshSession || !c.Fresh() {
+		t.Fatalf("freshSession defaults to true: %+v", c)
+	}
+	if in.Agents.Implement.Conflict.FreshSession != nil {
+		t.Fatal("WithDefaults must not change its input")
+	}
+	no := false
+	if (&ConflictRoleSpec{FreshSession: &no}).Fresh() || (*ConflictRoleSpec)(nil).Fresh() {
+		t.Fatal("freshSession false, or no conflict role, resumes")
+	}
+}

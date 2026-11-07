@@ -865,6 +865,12 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 				err = classifyLimit(role.Engine, err, res)
 				// The agent is up: save the work of an implementer call cut off.
 				cpReason = r.cutReason(ctx, inv, res, err)
+				// A checkpoint saves nothing of a merge in progress but
+				// aborts it: a fallback that goes on with the conflicts
+				// needs it, and checkpoints itself when it is cut off.
+				if cpReason == cutUsageLimit && inv.Kind == aiv1.CallKindConflict && r.fallsBack(role) {
+					cpReason = ""
+				}
 			} else if retriesRestart(lost, redialed, retried) && r.cutsOff(inv) {
 				// Saved before the reset below throws the edits away; the
 				// retried call continues from the checkpoint.

@@ -109,6 +109,20 @@ func (r *Runner) routeAround(ctx context.Context, lim *UsageLimitError, role str
 	}
 }
 
+// fallsBack reports whether invoke runs role on its fallback after a usage
+// limit: one FallbackRole accepts, whose engine is not limited.
+func (r *Runner) fallsBack(role aiv1.RoleSpec) bool {
+	if role.Fallback == nil {
+		return false
+	}
+	fb, err := r.projectSpec.FallbackRole(role)
+	if err != nil {
+		return false
+	}
+	_, limited := r.activeLimit(fb.Engine)
+	return !limited
+}
+
 // rememberSession notes the engine of a session the run started or resumed.
 func (r *Runner) rememberSession(res *Result) {
 	if res == nil || res.SessionID == "" {

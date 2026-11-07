@@ -722,6 +722,33 @@ func buildConflictPrompt(base string, files []string) string {
 	return b.String()
 }
 
+// maxConflictStat caps the diff stat in a fresh conflict prompt.
+const maxConflictStat = 6000
+
+// buildConflictFreshPrompt is the prompt of a conflict call in a new
+// session (agents.implement.conflict): self-contained, since the session
+// has not seen the implementer's work. It has the issue, the implementer's
+// notes, the merge request's diff stat and buildConflictPrompt's files and
+// rules (conflict, with the Conventional Commits pointer).
+func buildConflictFreshPrompt(issue *gitlab.Issue, notes, stat, conflict string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Resolve the merge conflicts of the merge request for issue #%d. You start in a new session: "+
+		"the work for the issue was done in another one and is committed on this branch (see `git log` and the diff "+
+		"against the default branch). Resolve the conflicts only; do not continue or change the work for the issue "+
+		"beyond what the merge needs.\n\n", issue.IID)
+	fmt.Fprintf(&b, "## %s\n\n%s\n\n", issue.Title, untrustedData(issue.Description))
+	if notes = strings.TrimSpace(notes); notes != "" {
+		b.WriteString("## The implementer's notes\n\nCheck them against the code before relying on them. Your handoff " +
+			"replaces them: keep them and add what the merge changed.\n\n")
+		b.WriteString(textutil.Truncate(notes, maxHandoff) + "\n\n")
+	}
+	if stat = strings.TrimRight(stat, "\n"); strings.TrimSpace(stat) != "" {
+		fmt.Fprintf(&b, "## Changes of the merge request\n\n```\n%s\n```\n\n", textutil.Truncate(stat, maxConflictStat))
+	}
+	b.WriteString(conflict)
+	return b.String()
+}
+
 const pilotSystemPrompt = `You are the pilot of a GitLab milestone that AI agents implement, one merge
 request per issue, either on autopilot (the operator works through the queue
 and merges) or by hand. The milestone's owners talk to you in comments.

@@ -548,6 +548,36 @@ agents:
       maxStepLines: 200   # overrides implement's 400
 ```
 
+#### Conflict role
+
+`implement.conflict` is the role of the call that resolves the conflicts of
+a [conflict run](usage.md#merge-conflicts), for the issues of every profile.
+Unset, the implementer resolves them in its own session, as before. Set, the
+conflict call of a run that asks nothing else of the implementer (no new
+comments, CI fix or revisits) runs on it:
+
+| Field | Description |
+|-------|-------------|
+| `engine`, `model`, `effort`, `maxBudgetUSD`, `allowedTools`, `instructions`, `fallback`, `subagents`, `readGate` | as for every [role](#roles). Each field set overrides the issue's implementer (profile or `implement`, with the [model and effort labels](#per-issue-model-and-effort)); an unset field is the implementer's. `engine` defaults to `claude`. A role on another engine than the implementer's does not take its model and effort, nor a fallback on its own engine |
+| `freshSession` | default `true`: the call starts a new session with a self-contained prompt (the issue's title and description, the agent notes, the MR's diff stat and the conflicting files) and the implementer's session stays for its later calls (review fixes, the next run). `false` resumes the implementer's session on the conflict role's model, if the engine is the same |
+
+A resumed conflict call reads the implementer's whole session again; after
+a queue wait its prompt cache is cold, so the call pays a full cache write
+on the implementer's model for a mostly mechanical merge. A fresh call on a
+lighter model avoids both. The call is still of kind `conflict` in the
+[Spend tab](ui.md#spend), cut off with [checkpoints](#speccheckpoint) like
+the implementer's (a merge in progress is aborted, nothing is committed),
+and goes to its `fallback` while its engine is at a usage limit. With a
+[companion repository](#speccrossrepo) only a claude conflict role is used.
+
+```yaml
+agents:
+  implement:
+    conflict:
+      model: claude-sonnet-5-5
+      effort: medium
+```
+
 ### Subagents
 
 A role's `subagents` are passed to claude as `--agents` JSON, and the role's

@@ -152,6 +152,12 @@ func (i ImplementSpec) WithDefaults() ImplementSpec {
 	if i.StepSession == "" {
 		i.StepSession = StepSessionResume
 	}
+	if i.Conflict != nil && i.Conflict.FreshSession == nil {
+		c := *i.Conflict
+		fresh := true
+		c.FreshSession = &fresh
+		i.Conflict = &c
+	}
 	return i
 }
 

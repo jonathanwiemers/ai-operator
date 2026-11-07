@@ -135,3 +135,53 @@ func TestCompanionRole(t *testing.T) {
 		t.Fatalf("expected an error naming cursor/gpt-5 and claude, got %v", err)
 	}
 }
+
+func TestConflictRole(t *testing.T) {
+	s := routingSpec()
+	impl := RoleSpec{Engine: EngineClaude, Model: "claude-opus-5-5", Effort: "high", Instructions: "house rules",
+		Fallback: &RoleFallback{Engine: EngineCursor, Model: "auto"}}
+
+	// Unset: the implementer, in its own session.
+	if got, fresh, ok := s.ConflictRole(impl); ok || fresh || got.Model != "claude-opus-5-5" || got.Effort != "high" {
+		t.Fatalf("without a conflict role the implementer resolves: %+v fresh=%v ok=%v", got, fresh, ok)
+	}
+
+	// The model alone: the rest is the implementer's, in a fresh session.
+	s.Agents.Implement.Conflict = &ConflictRoleSpec{RoleSpec: RoleSpec{Model: "claude-sonnet-5-5"}}
+	s = s.WithDefaults()
+	got, fresh, ok := s.ConflictRole(impl)
+	if !ok || !fresh || got.Engine != EngineClaude || got.Model != "claude-sonnet-5-5" || got.Effort != "high" ||
+		got.Instructions != "house rules" || got.Fallback == nil || got.Fallback.Engine != EngineCursor {
+		t.Fatalf("expected sonnet over the implementer, fresh: %+v fresh=%v ok=%v", got, fresh, ok)
+	}
+
+	// Set fields win; freshSession false resumes.
+	no := false
+	s.Agents.Implement.Conflict = &ConflictRoleSpec{FreshSession: &no, RoleSpec: RoleSpec{Engine: EngineClaude, Model: "claude-haiku-5-5",
+		Effort: "low", MaxBudgetUSD: "1", Instructions: "merge only", Fallback: &RoleFallback{Engine: EngineCursor, Model: "gpt-5"}}}
+	got, fresh, _ = s.ConflictRole(impl)
+	if fresh || got.Model != "claude-haiku-5-5" || got.Effort != "low" || got.MaxBudgetUSD != "1" || got.Instructions != "merge only" || got.Fallback.Model != "gpt-5" {
+		t.Fatalf("the conflict role's fields win: %+v fresh=%v", got, fresh)
+	}
+
+	// Another engine: the implementer's model, effort and same-engine
+	// fallback are not inherited; claude gets the default model.
+	cursorImpl := RoleSpec{Engine: EngineCursor, Model: "auto", Fallback: &RoleFallback{Engine: EngineClaude, Model: "sonnet"}}
+	s.Agents.Implement.Conflict = &ConflictRoleSpec{RoleSpec: RoleSpec{Engine: EngineClaude, Effort: "low"}}
+	if got, _, _ := s.ConflictRole(cursorImpl); got.Engine != EngineClaude || got.Model != DefaultModel || got.Effort != "low" || got.Fallback != nil {
+		t.Fatalf("expected claude with the default model and no claude fallback: %+v", got)
+	}
+	s.Agents.Implement.Conflict = &ConflictRoleSpec{RoleSpec: RoleSpec{Engine: EngineCursor}}
+	if got, _, _ := s.ConflictRole(impl); got.Engine != EngineCursor || got.Model != "" || got.Effort != "" || got.Fallback != nil {
+		t.Fatalf("expected cursor with its own default model, no effort, no cursor fallback: %+v", got)
+	}
+}
+
+func TestConflictFallbackErrors(t *testing.T) {
+	s := routingSpec()
+	s.Agents.Implement.Conflict = &ConflictRoleSpec{RoleSpec: RoleSpec{Engine: EngineClaude, Model: "claude-sonnet-5-5",
+		Fallback: &RoleFallback{Engine: EngineClaude, Model: "haiku"}}}
+	if errs := s.FallbackErrors(); len(errs) != 1 || !strings.HasPrefix(errs[0], "implement.conflict: ") {
+		t.Fatalf("expected the conflict role's fallback on its own engine, got %v", errs)
+	}
+}

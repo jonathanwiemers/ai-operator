@@ -431,6 +431,167 @@ spec:
                         items:
                           type: string
                         type: array
+                      conflict:
+                        description: |-
+                          Conflict is the role of the calls that resolve the merge conflicts of
+                          a conflict run, e.g. a cheaper model for mostly mechanical merges. Its
+                          fields override the issue's implementer (agents.implement or the
+                          profile, with the model and effort labels); unset fields are the
+                          implementer's. Unset, the implementer resolves the conflicts in its
+                          own session. Applies to the profiles too.
+                        properties:
+                          allowedTools:
+                            description: |-
+                              AllowedTools overrides the tools the role may use (claude engine only;
+                              cursor reads its permissions from .cursor/cli.json).
+                            items:
+                              type: string
+                            type: array
+                          effort:
+                            description: Effort level (claude engine only).
+                            enum:
+                            - low
+                            - medium
+                            - high
+                            - xhigh
+                            - max
+                            type: string
+                          engine:
+                            default: claude
+                            description: |-
+                              Engine is the agent CLI used for this role. Roles can mix engines, e.g.
+                              implement with claude and review with cursor.
+                            enum:
+                            - claude
+                            - cursor
+                            type: string
+                          fallback:
+                            description: |-
+                              Fallback is the engine and model the role runs on while its own
+                              engine is at a usage limit, instead of waiting for the reset. Without
+                              one, or while the fallback's engine is limited too, runs wait.
+                            properties:
+                              effort:
+                                description: Effort level (claude engine only).
+                                enum:
+                                - low
+                                - medium
+                                - high
+                                - xhigh
+                                - max
+                                type: string
+                              engine:
+                                description: Engine is the coding agent CLI that runs
+                                  a role.
+                                enum:
+                                - claude
+                                - cursor
+                                type: string
+                              model:
+                                description: Model passed to the fallback engine,
+                                  or its alias, e.g. sonnet.
+                                minLength: 1
+                                type: string
+                            required:
+                            - engine
+                            - model
+                            type: object
+                          freshSession:
+                            default: true
+                            description: |-
+                              FreshSession starts each conflict call in a new session with a
+                              self-contained prompt (the issue, the agent notes, the conflicting
+                              files and the MR's diff stat) instead of resuming the implementer's
+                              long session; the implementer's session stays for its later calls.
+                              false resumes the implementer's session when the engine is the same.
+                            type: boolean
+                          instructions:
+                            description: Instructions are appended to the role's system
+                              prompt, e.g. house rules.
+                            type: string
+                          maxBudgetUSD:
+                            description: |-
+                              MaxBudgetUSD caps the spend of a single invocation of this role,
+                              as a decimal string, e.g. "5" or "2.50" (claude engine only).
+                            pattern: ^[0-9]+(\.[0-9]+)?$
+                            type: string
+                          model:
+                            description: |-
+                              Model passed to the engine, e.g. claude-opus-5-5 or claude-sonnet-5-5
+                              for claude, "auto" for cursor. For the claude engine it defaults to
+                              claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
+                              default.
+                            type: string
+                          readGate:
+                            description: |-
+                              ReadGate blocks the role's reads of big files whole and tells it to ask
+                              a subagent or read a section instead (claude engine only; cursor roles
+                              and cursor fallbacks ignore it with a warning). Unset, no gate.
+                            properties:
+                              minLines:
+                                default: 350
+                                description: 'MinLines: reads of files with more lines
+                                  are blocked.'
+                                format: int32
+                                minimum: 100
+                                type: integer
+                            type: object
+                          subagents:
+                            description: |-
+                              Subagents the role may delegate to, passed to claude as --agents
+                              (claude engine only; cursor roles ignore them with a warning). The
+                              default is none: claude keeps its built-in subagents.
+                            items:
+                              description: |-
+                                Subagent is a custom claude subagent of a role, e.g. a read-only scout on
+                                a cheaper model for searches, lookups and log reading.
+                              properties:
+                                description:
+                                  description: Description tells the role when to
+                                    use the subagent.
+                                  minLength: 1
+                                  type: string
+                                model:
+                                  description: |-
+                                    Model of the subagent, e.g. haiku or claude-haiku-5-5. Empty, it
+                                    inherits the role's model.
+                                  type: string
+                                name:
+                                  description: Name the role delegates to.
+                                  pattern: ^[a-z][a-z0-9-]{0,39}$
+                                  type: string
+                                prompt:
+                                  description: Prompt is the subagent's system prompt.
+                                  minLength: 1
+                                  type: string
+                                tools:
+                                  description: Tools the subagent may use. Empty,
+                                    claude's default for subagents.
+                                  items:
+                                    enum:
+                                    - Read
+                                    - Grep
+                                    - Glob
+                                    - WebFetch
+                                    - WebSearch
+                                    - Bash
+                                    - Edit
+                                    - Write
+                                    - NotebookEdit
+                                    - TodoWrite
+                                    type: string
+                                  type: array
+                              required:
+                              - description
+                              - name
+                              - prompt
+                              type: object
+                            maxItems: 8
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                        type: object
                       effort:
                         description: Effort level (claude engine only).
                         enum:

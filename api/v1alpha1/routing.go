@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -96,6 +97,9 @@ func (s AgentProjectSpec) FallbackErrors() []string {
 	for _, p := range a.Profiles {
 		roles["profile "+p.Name] = p.RoleSpec
 	}
+	if c := a.Implement.Conflict; c != nil {
+		roles["implement.conflict"] = c.RoleSpec
+	}
 	var errs []string
 	for name, r := range roles {
 		if r.Fallback == nil {
@@ -167,6 +171,45 @@ func (s AgentProjectSpec) IssueRole(labels []string) (role RoleSpec, profile str
 		}
 	}
 	return role, profile, notes
+}
+
+// ConflictRole returns the role of the calls that resolve merge conflicts
+// for an issue whose implementer runs on impl (IssueRole): the fields set in
+// agents.implement.conflict over impl, and whether the call starts a fresh
+// session. ok is false without a conflict role: impl resolves the conflicts
+// in its own session. A model and effort of another engine than the
+// conflict role's are not inherited, nor a fallback on the conflict role's
+// own engine; a claude role without a model gets the default model.
+func (s AgentProjectSpec) ConflictRole(impl RoleSpec) (role RoleSpec, fresh, ok bool) {
+	c := s.Agents.Implement.Conflict
+	if c == nil {
+		return impl, false, false
+	}
+	o := c.RoleSpec
+	role = impl
+	if o.Engine != "" && o.Engine != impl.Engine {
+		role.Engine, role.Model, role.Effort = o.Engine, "", ""
+	}
+	if role.Fallback != nil && role.Fallback.Engine == role.Engine {
+		role.Fallback = nil
+	}
+	role.Model = cmp.Or(o.Model, role.Model)
+	role.Effort = cmp.Or(o.Effort, role.Effort)
+	role.MaxBudgetUSD = cmp.Or(o.MaxBudgetUSD, role.MaxBudgetUSD)
+	role.Instructions = cmp.Or(o.Instructions, role.Instructions)
+	if o.AllowedTools != nil {
+		role.AllowedTools = o.AllowedTools
+	}
+	if o.Fallback != nil {
+		role.Fallback = o.Fallback
+	}
+	if o.Subagents != nil {
+		role.Subagents = o.Subagents
+	}
+	if o.ReadGate != nil {
+		role.ReadGate = o.ReadGate
+	}
+	return role.WithDefaults(), c.Fresh(), true
 }
 
 // Where CompanionRole found the claude role of a run with a companion.
