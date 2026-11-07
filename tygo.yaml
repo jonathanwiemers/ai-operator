@@ -83,6 +83,7 @@ packages:
       - features.go
       - gitlab.go
       - milestone.go
+      - milestones.go
       - oneoff.go
       - pause_exits.go
       - prompt.go

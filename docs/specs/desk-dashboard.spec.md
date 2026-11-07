@@ -289,3 +289,12 @@ about how many production lines, and deviations from this spec.
   issue page yet, a task with an issue ends in the issue's crumb (the issue
   names the view); a plan task stays under the project; a research run is
   labelled by its start once loaded.
+- 2026-11-07, `milestone-api` (R5 list, R7, #221): `GET /api/v1/milestones`
+  (`internal/ui/milestones.go`): live rows from the visible projects' spec
+  tasks merged with `Store.Milestones` in one call, `needsYou` from the
+  Inbox, `state` and `limit` filters; about 280 production lines, over the
+  budget because the issue asked for the whole list endpoint. Deviations:
+  `waiting` is a running autopilot queued behind older milestones
+  (`queuedBehind`, the dependency's turn); a snapshot row still open whose
+  tasks are gone is in no list; follow-ups count from the snapshot when there
+  is one; a live milestone without a snapshot row keeps the tasks' cost.

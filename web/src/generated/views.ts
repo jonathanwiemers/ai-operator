@@ -374,6 +374,75 @@ export interface PauseTotalsView {
 }
 
 //////////
+// source: milestones.go
+
+/**
+ * MilestoneState is where a milestone row stands.
+ */
+/**
+ * MilestoneStateRunning: autopilot works on it.
+ */
+export const MilestoneStateRunning = "running";
+/**
+ * MilestoneStatePaused: autopilot paused.
+ */
+export const MilestoneStatePaused = "paused";
+/**
+ * MilestoneStateWaiting: autopilot waits for its turn to be planned.
+ */
+export const MilestoneStateWaiting = "waiting";
+/**
+ * MilestoneStateDone: autopilot is done or the milestone is closed.
+ */
+export const MilestoneStateDone = "done";
+/**
+ * MilestoneStatePlanned: a spec milestone without autopilot.
+ */
+export const MilestoneStatePlanned = "planned";
+export type MilestoneState = typeof MilestoneStateRunning | typeof MilestoneStatePaused | typeof MilestoneStateWaiting | typeof MilestoneStateDone | typeof MilestoneStatePlanned;
+/**
+ * MilestoneProgress counts a milestone's issues: merged (or skipped) of
+ * total, open the others.
+ */
+export interface MilestoneProgress {
+  merged: number /* int */;
+  total: number /* int */;
+  open: number /* int */;
+}
+/**
+ * MilestoneRow is one milestone of the dashboard's lists. State and
+ * progress come from the live tasks, spend from agent_calls (the tasks'
+ * costs without the history database). Phase is the autopilot's, in lower
+ * case, empty without autopilot. FollowUpsOpen are the retrospective's
+ * leftovers still open. NeedsYou: the milestone has an Inbox item. Stored:
+ * its tasks are gone, the row is the snapshot's.
+ */
+export interface MilestoneRow extends Cost {
+  namespace: string;
+  project: string;
+  iid: number /* int64 */;
+  title: string;
+  webURL: string;
+  state: MilestoneState;
+  phase?: string;
+  progress: MilestoneProgress;
+  followUpsOpen: number /* int */;
+  startedAt?: string;
+  doneAt?: string;
+  needsYou: boolean;
+  stored: boolean;
+}
+/**
+ * MilestoneList is the answer of GET /api/v1/milestones. History: the
+ * history database answered, so done milestones whose tasks are gone are
+ * in it.
+ */
+export interface MilestoneList {
+  milestones: MilestoneRow[];
+  history: boolean;
+}
+
+//////////
 // source: oneoff.go
 
 /**

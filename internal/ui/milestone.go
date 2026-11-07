@@ -243,6 +243,16 @@ func trackingIssueIID(st, coord *aiv1.AgentTask) int64 {
 	return 0
 }
 
+// queuedBehind are the older autopilot milestones the spec task st waits
+// for, ascending, while it waits for its turn to be planned; nil otherwise.
+func queuedBehind(st *aiv1.AgentTask) []int64 {
+	ap := st.Status.Autopilot
+	if ap == nil || st.Spec.RunRequest != 0 || len(st.Status.Plan) != 0 || ap.StartRequestedBy != "" || len(st.Spec.QueuedBehind) == 0 {
+		return nil
+	}
+	return slices.Sorted(slices.Values(st.Spec.QueuedBehind))
+}
+
 // milestoneView builds the view of the milestone of st from the project's
 // tasks.
 func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1.AgentTask, now time.Time) MilestoneView {
@@ -279,9 +289,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 				a.Head, a.ReviewErrors = t.Status.Run.PushedSHA, t.Status.Run.ReviewErrorKinds
 			}
 		}
-		if st.Spec.RunRequest == 0 && len(st.Status.Plan) == 0 && ap.StartRequestedBy == "" {
-			a.QueuedBehind = slices.Sorted(slices.Values(st.Spec.QueuedBehind))
-		}
+		a.QueuedBehind = queuedBehind(st)
 		for _, it := range ap.Items {
 			a.Items = append(a.Items, QueueItem{IID: it.IID, Title: titles[it.IID], State: it.State, MergeRequestIID: it.MergeRequestIID, MergeRequestURL: it.MergeRequestURL, Task: byIssue[it.IID]})
 		}
