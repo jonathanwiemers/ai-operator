@@ -125,6 +125,19 @@ func TestFollowUpOfOpenSourceSettlesItsFollowUps(t *testing.T) {
 	}
 }
 
+// A dismissed follow-up of an open source is not taken over, as of a closed
+// one in the snapshot.
+func TestFollowUpOfOpenSourceDismissed(t *testing.T) {
+	e, retro := newRetroEnv(t)
+	e.gl.AddReply(e.autopilot().TrackingIssueIID, retro.ID, alice, "create none")
+	e.reconcile()
+	addMilestone(e, 5, "/agent autopilot\nThe rest.\n/agent followup-of 3 1")
+	e.reconcile()
+	if got := specOf(e, 5).Status.FollowUpOf; got == nil || len(got.Numbers) != 0 || got.Problem != "follow-up 1 was dismissed" || len(takenOf(e)) != 0 {
+		t.Fatalf("a dismissed follow-up is not taken: %+v %v", got, takenOf(e))
+	}
+}
+
 func TestFollowUpOfFirstComeWins(t *testing.T) {
 	e, retro := newRetroEnv(t)
 	// In one poll the lower milestone wins.
@@ -277,6 +290,7 @@ func TestFollowUpsSettled(t *testing.T) {
 		{"created and taken", aiv1.PilotRetrospective{PostedAt: &posted, FollowUps: two, Created: map[string]int64{"1": 9}, Taken: map[string]int64{"2": 5}}, true},
 		{"all taken", aiv1.PilotRetrospective{PostedAt: &posted, FollowUps: two, Taken: map[string]int64{"1": 5, "2": 5}}, true},
 		{"a week later", aiv1.PilotRetrospective{PostedAt: &metav1.Time{Time: now.Add(-followUpWindow)}, FollowUps: two}, true},
+		{"dismissed", aiv1.PilotRetrospective{PostedAt: &posted, FollowUps: two, Created: map[string]int64{"1": 9}, DismissedAt: &posted}, true},
 	} {
 		if got := followUpsSettled(&c.retro, now); got != c.want {
 			t.Errorf("%s: followUpsSettled = %v, want %v", c.name, got, c.want)

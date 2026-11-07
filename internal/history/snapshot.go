@@ -77,6 +77,8 @@ func Snapshot(t *aiv1.AgentTask, web string, now time.Time) (store.MilestoneSnap
 				fu.State, fu.TargetIID = store.FollowUpIssue, iid
 			} else if iid := r.Taken[strconv.Itoa(n)]; iid != 0 {
 				fu.State, fu.TargetIID = store.FollowUpMilestone, iid
+			} else if r.DismissedAt != nil {
+				fu.State = store.FollowUpDismissed
 			}
 			m.FollowUps = append(m.FollowUps, fu)
 		}

@@ -240,6 +240,8 @@ func liveFollowUps(retro *aiv1.PilotRetrospective) map[int]store.FollowUpRow {
 			row.State, row.TargetIID = store.FollowUpIssue, iid
 		} else if iid := retro.Taken[strconv.Itoa(n)]; iid != 0 {
 			row.State, row.TargetIID = store.FollowUpMilestone, iid
+		} else if retro.DismissedAt != nil {
+			row.State = store.FollowUpDismissed
 		}
 		out[n] = row
 	}

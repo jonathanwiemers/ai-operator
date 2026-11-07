@@ -90,6 +90,19 @@ func TestSnapshot(t *testing.T) {
 				{Number: 2, Title: "Docs", State: store.FollowUpIssue, TargetIID: 410}, // opened first
 			}
 		})},
+		{name: "the open follow-ups of a dismissed retrospective", task: specTask("1", func(t *aiv1.AgentTask) {
+			t.Status.Pilot = &aiv1.PilotStatus{Retrospective: &aiv1.PilotRetrospective{NoteID: 77,
+				FollowUps: []aiv1.PilotFollowUp{{Title: "Backfill"}, {Title: "Docs"}, {Title: "Flaky"}},
+				Created:   map[string]int64{"2": 410}, Taken: map[string]int64{"3": 25},
+				DismissedBy: "jo", DismissedAt: &posted}}
+		}), want: base(func(m *store.MilestoneSnapshot) {
+			m.RetroNoteID = 77
+			m.FollowUps = []store.FollowUpSnapshot{
+				{Number: 1, Title: "Backfill", State: store.FollowUpDismissed},
+				{Number: 2, Title: "Docs", State: store.FollowUpIssue, TargetIID: 410},
+				{Number: 3, Title: "Flaky", State: store.FollowUpMilestone, TargetIID: 25},
+			}
+		})},
 		{name: "a follow-up milestone takes over", task: specTask("1", func(t *aiv1.AgentTask) {
 			t.Status.FollowUpOf = &aiv1.FollowUpOfStatus{MilestoneIID: 12, Numbers: []int{1, 3}, Problem: "x"}
 		}), want: base(func(m *store.MilestoneSnapshot) { m.TakesFrom, m.Takes = 12, []int{1, 3} })},

@@ -151,6 +151,7 @@ implementer of every following run reads them:
 | `/agent revisit D42-3 …` | Change a decision of a merged issue: a follow-up issue joins the queue. |
 | anything else | Answered once with this list, a pointer to `/pilot …` and the active issue. Instructions for the agent go on the active issue or its MR, not here. |
 | `create 1 2`, `create 1, 3`, `create all` | As a reply in the thread of the [retrospective](usage.md#the-retrospective), once autopilot is done (the whole comment, no prefix): opens those follow-ups as plain issues (generated label, no milestone, not handed to the agent), each once, and answers in the thread with the links. Only from the owners pinned when the retrospective was posted; anything else is ignored silently. |
+| `create none` | The same place and owners: dismisses the remaining follow-ups, so they no longer hold the milestone open and it closes on the next poll without waiting 7 days (once its issues are closed). Answered once in the thread; follow-ups opened or taken over before stay as they are, and `create 2` afterwards still opens one. |
 
 The leftovers can also become a **follow-up milestone**, from the Desk only:
 the chat command `{"cmd":"draft","followUps":[1,3]}` on the milestone's

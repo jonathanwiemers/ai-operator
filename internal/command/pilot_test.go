@@ -96,10 +96,31 @@ func TestRetroCreateIsTheWholeComment(t *testing.T) {
 		{"create 12345", nil, false},
 		{"/pilot create 1", nil, false},
 		{"created 1", nil, false},
+		{"create none", nil, false},
 	} {
 		nums, ok := RetroCreate(tc.s)
 		if ok != tc.ok || !slices.Equal(nums, tc.nums) || (tc.ok && tc.nums == nil) != (ok && nums == nil) {
 			t.Errorf("%q: got %v %v", tc.s, nums, ok)
+		}
+	}
+}
+
+func TestRetroNoneIsTheWholeComment(t *testing.T) {
+	for s, want := range map[string]bool{
+		"create none":         true,
+		" Create NONE. ":      true,
+		"create  none!":       true,
+		"create none 1":       false,
+		"create nothing":      false,
+		"please create none":  false,
+		"> create none":       false,
+		"create none\nthanks": false,
+		"/pilot create none":  false,
+		"none":                false,
+		"create all":          false,
+	} {
+		if got := RetroNone(s); got != want {
+			t.Errorf("%q: got %v", s, got)
 		}
 	}
 }

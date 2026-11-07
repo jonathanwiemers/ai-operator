@@ -511,3 +511,14 @@ about how many production lines, and deviations from this spec.
   the tab are not offered again until the operator's poll marks them
   taken; the draft command gets a chat label. No screenshots: the run
   had no cluster, database or browser.
+- 2026-11-07, `dismiss-operator` (R17 part 1, #241): an owner's `create
+  none` in the retrospective's thread (`command.RetroNone`) sets
+  `status.pilot.retrospective.dismissedBy` and `dismissedAt` once and is
+  answered once; `followUpsSettled` is true from then on, so the milestone
+  closes on the next poll. The recorder, the Desk's live view and the
+  `followup-of` check read the still open follow-ups as `dismissed`; about
+  35 production lines. Deviations: `create 2` after `create none` still
+  opens it (D241-P1), but the Desk's follow-up milestone and a
+  `followup-of` line refuse a dismissed one; a follow-up draft is refused
+  once dismissed, as for any settled retrospective. The tab's *Dismiss*
+  button follows.

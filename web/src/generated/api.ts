@@ -3080,8 +3080,19 @@ export interface PilotRetrospective {
    */
   taken?: { [key: string]: number /* int64 */};
   /**
+   * DismissedBy is the owner who dismissed the remaining follow-ups with
+   * "create none", DismissedAt when: they are settled, so the milestone
+   * closes. Each can still be opened.
+   * +optional
+   */
+  dismissedBy?: string;
+  /**
+   * +optional
+   */
+  dismissedAt?: string;
+  /**
    * LastNoteID is the newest comment on the tracking issue read for
-   * "create 1 2" (spec tasks).
+   * "create 1 2" and "create none" (spec tasks).
    * +optional
    */
   lastNoteID?: number /* int64 */;

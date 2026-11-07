@@ -2799,6 +2799,15 @@ spec:
                         description: Created are the issues opened from the follow-ups,
                           by number ("1").
                         type: object
+                      dismissedAt:
+                        format: date-time
+                        type: string
+                      dismissedBy:
+                        description: |-
+                          DismissedBy is the owner who dismissed the remaining follow-ups with
+                          "create none", DismissedAt when: they are settled, so the milestone
+                          closes. Each can still be opened.
+                        type: string
                       failed:
                         description: Failed says why there is no retrospective; it
                           is not tried again.
@@ -2822,7 +2831,7 @@ spec:
                       lastNoteID:
                         description: |-
                           LastNoteID is the newest comment on the tracking issue read for
-                          "create 1 2" (spec tasks).
+                          "create 1 2" and "create none" (spec tasks).
                         format: int64
                         type: integer
                       noteID:

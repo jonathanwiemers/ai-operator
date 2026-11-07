@@ -235,6 +235,61 @@ func TestRetrospectiveCreateOnlyFromAPinnedOwnerInTheThread(t *testing.T) {
 	}
 }
 
+func TestRetrospectiveCreateNoneDismissesTheRestOnce(t *testing.T) {
+	e, retro := newRetroEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.AddReply(tracking, retro.ID, alice, "create 1")
+	e.reconcile()
+	docs := followUpIssues(e)["Docs for @\u200bmallory"]
+	if docs == nil {
+		t.Fatal("follow-up 1 is opened")
+	}
+
+	e.gl.AddReply(tracking, retro.ID, alice, "Create none.")
+	e.reconcile()
+	got := e.tasks()[specTaskName].Status.Pilot.Retrospective
+	if got.DismissedBy != alice.Username || got.DismissedAt == nil || !maps.Equal(got.Created, map[string]int64{"1": docs.IID}) {
+		t.Fatalf("an owner's create none dismisses the rest, what was opened stays: %+v", got)
+	}
+	if !followUpsSettled(got, e.r.Now()) {
+		t.Fatal("dismissed follow-ups are settled")
+	}
+	want := "🧭 The remaining follow-ups are dismissed; the milestone can close. `create 1` still opens one."
+	if r := threadReplies(e, retro.ID); len(r) != 2 || r[1] != want {
+		t.Fatalf("the dismissal is answered in the thread: %q", r)
+	}
+	at := got.DismissedAt
+
+	// Again: recorded and answered once.
+	e.gl.AddReply(tracking, retro.ID, alice, "create none")
+	e.reconcile()
+	if got := e.tasks()[specTaskName].Status.Pilot.Retrospective; !got.DismissedAt.Equal(at) || len(threadReplies(e, retro.ID)) != 2 {
+		t.Fatalf("a repeat changes nothing: %+v %q", got, threadReplies(e, retro.ID))
+	}
+
+	// Dismissal settles; it does not forbid.
+	e.gl.AddReply(tracking, retro.ID, alice, "create 2")
+	e.reconcile()
+	flaky := followUpIssues(e)["Flaky test"]
+	if flaky == nil || e.tasks()[specTaskName].Status.Pilot.Retrospective.Created["2"] != flaky.IID {
+		t.Fatalf("create 2 after create none opens it: %v", slices.Collect(maps.Keys(followUpIssues(e))))
+	}
+}
+
+func TestRetrospectiveCreateNoneOnlyFromAPinnedOwnerInTheThread(t *testing.T) {
+	e, retro := newRetroEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	other := e.gl.AddNote(tracking, e.gl.Bot, "🤖 Autopilot is done.")
+	e.gl.AddReply(tracking, retro.ID, mallory, "create none")
+	e.gl.AddNote(tracking, alice, "create none")
+	e.gl.AddReply(tracking, other.ID, alice, "create none")
+	e.reconcile()
+	e.reconcile()
+	if got := e.tasks()[specTaskName].Status.Pilot.Retrospective; got.DismissedAt != nil || got.DismissedBy != "" || len(threadReplies(e, retro.ID)) != 0 {
+		t.Fatalf("a create none from no owner or outside the thread does nothing: %+v %q", got, threadReplies(e, retro.ID))
+	}
+}
+
 // fakeSpend is a spend source with one answer, recording the scopes asked.
 type fakeSpend struct {
 	spend  store.Spend

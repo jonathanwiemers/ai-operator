@@ -97,3 +97,12 @@ func RetroCreate(body string) ([]int, bool) {
 	}
 	return nums, true
 }
+
+var retroNoneRE = regexp.MustCompile(`(?i)^create\s+none\s*[.!]?$`)
+
+// RetroNone reads an owner's "create none" in the thread of a
+// retrospective: the remaining follow-ups are dismissed. The whole comment
+// must be it.
+func RetroNone(body string) bool {
+	return retroNoneRE.MatchString(strings.TrimSpace(body))
+}

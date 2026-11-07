@@ -78,24 +78,29 @@ func TestDoneAutopilotClosesItsMilestoneAfterTheRetrospective(t *testing.T) {
 func TestDoneAutopilotWaitsForTheFollowUps(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		after func(e *projectEnv)
+		after func(e *projectEnv, retro int64)
 	}{
-		{"all created", func(e *projectEnv) {
+		{"all created", func(e *projectEnv, _ int64) {
 			e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot.Retrospective.Created = map[string]int64{"1": 20} })
 		}},
-		{"a week later", func(e *projectEnv) { e.gl.Clock = e.gl.Clock.Add(followUpWindow) }},
+		{"a week later", func(e *projectEnv, _ int64) { e.gl.Clock = e.gl.Clock.Add(followUpWindow) }},
+		{"dismissed by an owner", func(e *projectEnv, retro int64) {
+			e.gl.AddReply(e.autopilot().TrackingIssueIID, retro, alice, "create none")
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newPilotEnv(t)
 			doneAndClosed(e)
 			posted := metav1.NewTime(e.gl.Clock)
-			retroDone(e, aiv1.PilotRetrospective{NoteID: 42, PostedAt: &posted, FollowUps: []aiv1.PilotFollowUp{{Title: "Docs", Body: "Write them."}}})
+			note := e.gl.AddNote(e.autopilot().TrackingIssueIID, e.gl.Bot, "🧭 **Retrospective**\n\n1. Docs")
+			retroDone(e, aiv1.PilotRetrospective{NoteID: note.ID, PostedAt: &posted, OwnerIDs: []int64{alice.ID},
+				FollowUps: []aiv1.PilotFollowUp{{Title: "Docs", Body: "Write them."}}})
 			e.gl.Clock = e.gl.Clock.Add(time.Hour)
 			e.reconcile()
 			if e.gl.Milestones[0].State == "closed" {
 				t.Fatal("the owners can still open the follow-ups")
 			}
-			tc.after(e)
+			tc.after(e, note.ID)
 			e.reconcile()
 			if e.gl.Milestones[0].State != "closed" {
 				t.Fatalf("the follow-ups are settled: milestone %s", e.gl.Milestones[0].State)

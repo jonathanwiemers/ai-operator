@@ -788,8 +788,15 @@ type PilotRetrospective struct {
 	// milestone's IID. The first to take one keeps it.
 	// +optional
 	Taken map[string]int64 `json:"taken,omitempty"`
+	// DismissedBy is the owner who dismissed the remaining follow-ups with
+	// "create none", DismissedAt when: they are settled, so the milestone
+	// closes. Each can still be opened.
+	// +optional
+	DismissedBy string `json:"dismissedBy,omitempty"`
+	// +optional
+	DismissedAt *metav1.Time `json:"dismissedAt,omitempty"`
 	// LastNoteID is the newest comment on the tracking issue read for
-	// "create 1 2" (spec tasks).
+	// "create 1 2" and "create none" (spec tasks).
 	// +optional
 	LastNoteID int64 `json:"lastNoteID,omitempty"`
 }

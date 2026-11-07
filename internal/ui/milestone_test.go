@@ -851,6 +851,13 @@ func TestMilestoneRetrospective(t *testing.T) {
 	if !slices.Equal(r.FollowUps, wantFollowUps) {
 		t.Errorf("follow-ups = %+v", r.FollowUps)
 	}
+	// Dismissed: what was open is, the rest stays.
+	dismissed := liveRetrospective(web, nil, &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Pilot: &aiv1.PilotStatus{
+		Retrospective: &aiv1.PilotRetrospective{FollowUps: []aiv1.PilotFollowUp{{Title: "Retry CI"}, {Title: "Docs"}},
+			Created: map[string]int64{"1": 60}, DismissedBy: "alice", DismissedAt: &posted}}}})
+	if f := dismissed.FollowUps; len(f) != 2 || f[0].State != "issue" || f[1].State != "dismissed" {
+		t.Errorf("dismissed follow-ups = %+v", f)
+	}
 	wantDrivers := []CostDriverView{
 		{Label: "implementer", Kind: "role", CostUSD: "2.00", CostKnown: true},
 		{Label: "#42", Kind: "issue", CostUSD: "1.50", CostKnown: true, Tokens: 100},

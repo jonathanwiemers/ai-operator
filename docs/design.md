@@ -1285,7 +1285,8 @@ stateDiagram-v2
   the retrospective is
   on the spec task (or the milestone has no pilot to write one), its
   follow-ups are settled (none, each opened or taken over by another
-  milestone's `followup-of` line, failed, or posted at least
+  milestone's `followup-of` line, dismissed by an owner's `create none`,
+  failed, or posted at least
   `followUpWindow` = 7 days ago), no issue besides the tracking issue is
   open and every companion of the milestone has landed. Open issues are
   named once on the tracking issue (`status.autopilot.closeWaitsFor`, again
@@ -1356,7 +1357,7 @@ counted interventions; more tools are later steps of
   `status.pilot.retrospective` (note, text, follow-ups, pinned owner IDs, or why
   it failed) to the spec task and deletes the pilot once the follow-ups are
   settled (`followUpsSettled` on the spec task's copy: none, all opened or
-  taken, or the 7 days are over). Until then the pilot stays for drafts of
+  taken, dismissed (`dismissedAt`), or the 7 days are over). Until then the pilot stays for drafts of
   a follow-up milestone only (below): nothing wakes it for events or
   comments, so it starts no run by itself, and its Desk commands other than
   `draft` are answered that the autopilot is done. The run
@@ -1382,7 +1383,12 @@ counted interventions; more tools are later steps of
   (inert title and body, `<!-- ai-operator:follow-up=<milestone IID>-<n> -->`,
   the generated label, no milestone), records it in `created` right after,
   and replies in the thread (`ReplyIssueDiscussion`); one in `taken` is
-  answered with the milestone that took it and not opened.
+  answered with the milestone that took it and not opened. An owner's
+  `create none` (`command.RetroNone`, same checks) sets `dismissedBy` and
+  `dismissedAt` once and is answered once: the follow-ups are settled, the
+  ones still open read `dismissed` in the Desk and the snapshot, and a
+  `followup-of` line no longer takes them. A later `create 2` still opens
+  one.
   A milestone gets one; those done before this existed get none.
   It is not bound by
   `maxRunsPerTask`, only by its budget.

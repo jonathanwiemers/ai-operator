@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -14,9 +16,9 @@ import (
 
 // followUps opens the follow-ups of the milestone's retrospective that an
 // owner pinned in it names with "create 1 2" as a reply in its thread on
-// the tracking issue, and answers there. Anyone else's "create", and one
-// outside the thread, does nothing. The threads are read only when there is
-// such a comment.
+// the tracking issue, or dismisses the rest with "create none", and answers
+// there. Anyone else's "create", and one outside the thread, does
+// nothing. The threads are read only when there is such a comment.
 func (a *autopilot) followUps(ctx context.Context, notes []gitlab.Note) error {
 	var retro *aiv1.PilotRetrospective
 	if ps := a.st.Status.Pilot; ps != nil {
@@ -28,7 +30,7 @@ func (a *autopilot) followUps(ctx context.Context, notes []gitlab.Note) error {
 	since := max(retro.LastNoteID, retro.NoteID)
 	var asks []gitlab.Note
 	for _, n := range notes {
-		if _, ok := command.RetroCreate(n.Body); ok && n.ID > since && !n.System && n.Author.ID != a.project.Status.BotUserID &&
+		if _, ok := command.RetroCreate(n.Body); (ok || command.RetroNone(n.Body)) && n.ID > since && !n.System && n.Author.ID != a.project.Status.BotUserID &&
 			slices.Contains(retro.OwnerIDs, n.Author.ID) {
 			asks = append(asks, n)
 		}
@@ -43,13 +45,38 @@ func (a *autopilot) followUps(ctx context.Context, notes []gitlab.Note) error {
 			if i < 0 || !slices.ContainsFunc(threads[i].Notes[1:], func(r gitlab.Note) bool { return r.ID == n.ID }) {
 				continue
 			}
-			if err := a.createFollowUps(ctx, threads[i].ID, n); err != nil {
+			act := a.createFollowUps
+			if command.RetroNone(n.Body) {
+				act = a.dismissFollowUps
+			}
+			if err := act(ctx, threads[i].ID, n); err != nil {
 				return err
 			}
 		}
 	}
 	if latest := max(since, newestNote(notes)); latest != a.st.Status.Pilot.Retrospective.LastNoteID {
 		return a.r.patchPilot(ctx, a.st, func(ps *aiv1.PilotStatus) { ps.Retrospective.LastNoteID = latest })
+	}
+	return nil
+}
+
+// dismissFollowUps records an owner's "create none", once: the remaining
+// follow-ups are settled and the milestone can close. What was opened or
+// taken over stays, and each can still be opened. It answers in the
+// retrospective's thread only the first time.
+func (a *autopilot) dismissFollowUps(ctx context.Context, thread string, n gitlab.Note) error {
+	if a.st.Status.Pilot.Retrospective.DismissedAt != nil {
+		return nil
+	}
+	if err := a.r.patchPilot(ctx, a.st, func(ps *aiv1.PilotStatus) {
+		ps.Retrospective.DismissedBy, ps.Retrospective.DismissedAt = n.Author.Username, &metav1.Time{Time: a.r.now()}
+	}); err != nil {
+		return err
+	}
+	a.log.Info("follow-ups of the retrospective dismissed", "by", n.Author.Username)
+	body := "🧭 The remaining follow-ups are dismissed; the milestone can close. `create 1` still opens one."
+	if _, err := a.gl.ReplyIssueDiscussion(ctx, a.spec.GitLab.Project, a.ap.TrackingIssueIID, thread, body); err != nil {
+		a.log.Info("could not answer a create none", "note", n.ID, "error", err.Error())
 	}
 	return nil
 }

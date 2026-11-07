@@ -1876,6 +1876,8 @@ list out.
   is opened once, as a plain issue with the generated label and no
   milestone, not handed to the agent; the bot answers in the thread with
   the links, links the ones opened before again and names unknown numbers.
+  `create none` there dismisses the remaining ones, so the milestone can
+  close without waiting 7 days; `create 2` afterwards still opens one.
   When a
   re-plan continues a done queue, or autopilot is switched on again, the
   pilot comes back on the autopilot's tracking issue. After a closed "🧭
@@ -2131,12 +2133,13 @@ e.g. cursor's `auto`, which reports no usage: the total says "N calls not
 metered" and such a model reads "auto (not metered)", never "$0"; from the history database, so
 deleted tasks count too, otherwise the sum over the live tasks), and up to 9
 numbered follow-ups. Reply `create 1 2` (or `create 1, 3`, `create all`) in
-its thread to open follow-ups as plain issues; only the owners pinned when it
-was posted count.
+its thread to open follow-ups as plain issues, or `create none` to dismiss the
+remaining ones; only the owners pinned when it was posted count.
 
 Then autopilot **closes the milestone**, once the retrospective is in (or
-there is no pilot to write one), every follow-up was opened or 7 days have
-passed since it was posted, and no issue in the milestone is open. While
+there is no pilot to write one), every follow-up was opened, taken over or
+dismissed (or 7 days have passed since it was posted), and no issue in the
+milestone is open. While
 issues are open (a skipped one, say), it comments once on the tracking issue
 which ones keep the milestone open, again only when that list changes, and
 closes it once they are closed: "🏁 The milestone is closed." A closed
