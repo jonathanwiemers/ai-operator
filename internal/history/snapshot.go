@@ -66,7 +66,7 @@ func Snapshot(t *aiv1.AgentTask, web string, now time.Time) (store.MilestoneSnap
 	}
 	if ps := t.Status.Pilot; ps != nil && ps.Retrospective != nil {
 		r := ps.Retrospective
-		m.RetroNoteID = r.NoteID
+		m.RetroNoteID, m.RetroText = r.NoteID, r.Text
 		if r.PostedAt != nil {
 			m.RetroPostedAt = r.PostedAt.Time
 		}

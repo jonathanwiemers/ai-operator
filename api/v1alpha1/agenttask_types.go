@@ -674,6 +674,11 @@ type PilotRetrospective struct {
 	NoteID int64 `json:"noteID,omitempty"`
 	// +optional
 	PostedAt *metav1.Time `json:"postedAt,omitempty"`
+	// Text is the comment as posted, for the Desk: untrusted markdown
+	// without HTML (comments and tags removed), at most MaxRetroText bytes,
+	// truncated beyond.
+	// +optional
+	Text string `json:"text,omitempty"`
 	// FollowUps are the numbered follow-up proposals, which an owner opens
 	// as issues. Untrusted.
 	// +optional
@@ -693,6 +698,9 @@ type PilotRetrospective struct {
 	// +optional
 	LastNoteID int64 `json:"lastNoteID,omitempty"`
 }
+
+// MaxRetroText bounds PilotRetrospective.Text, in bytes.
+const MaxRetroText = 16 << 10
 
 // PilotFollowUp is a follow-up proposal of a retrospective.
 type PilotFollowUp struct {

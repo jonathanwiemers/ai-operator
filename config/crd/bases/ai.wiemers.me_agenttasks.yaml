@@ -2725,6 +2725,12 @@ spec:
                       postedAt:
                         format: date-time
                         type: string
+                      text:
+                        description: |-
+                          Text is the comment as posted, for the Desk: untrusted markdown
+                          without HTML (comments and tags removed), at most MaxRetroText bytes,
+                          truncated beyond.
+                        type: string
                     type: object
                 type: object
               plan:

@@ -68,11 +68,12 @@ func TestSnapshot(t *testing.T) {
 		{name: "done with a retrospective and created follow-ups", task: specTask("1", func(t *aiv1.AgentTask) {
 			withAutopilot(aiv1.AutopilotDone)(t)
 			t.Status.Pilot = &aiv1.PilotStatus{Retrospective: &aiv1.PilotRetrospective{NoteID: 77, PostedAt: &posted,
+				Text:      "🧭 **Retrospective**\n\nMerged #148.",
 				FollowUps: []aiv1.PilotFollowUp{{Title: "Backfill", Body: "later"}, {Title: "Docs"}},
 				Created:   map[string]int64{"2": 410}}}
 		}), want: base(func(m *store.MilestoneSnapshot) {
 			m.Phase, m.TrackingIID, m.DoneAt = "done", 300, now
-			m.RetroNoteID, m.RetroPostedAt = 77, posted.Time
+			m.RetroNoteID, m.RetroPostedAt, m.RetroText = 77, posted.Time, "🧭 **Retrospective**\n\nMerged #148."
 			m.FollowUps = []store.FollowUpSnapshot{
 				{Number: 1, Title: "Backfill", Body: "later", State: store.FollowUpOpen},
 				{Number: 2, Title: "Docs", State: store.FollowUpIssue, TargetIID: 410},

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/jonathanwiemers/ai-operator/internal/textutil"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,6 +19,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/rules"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
 // runRetrospective writes the retrospective of a milestone whose autopilot
@@ -55,7 +56,7 @@ func (r *Runner) runRetrospective(ctx context.Context, gl gitlab.API, task *aiv1
 		// Posted before the run was cut off: not twice.
 		for _, n := range notes {
 			if n.Author.ID == project.Status.BotUserID && strings.Contains(n.Body, marker.Retrospective) {
-				return out, r.recordRetro(ctx, task, &aiv1.PilotRetrospective{NoteID: n.ID, PostedAt: metaTime(n.CreatedAt),
+				return out, r.recordRetro(ctx, task, &aiv1.PilotRetrospective{NoteID: n.ID, PostedAt: metaTime(n.CreatedAt), Text: retroText(n.Body),
 					Failed: "posted, but the run was cut off before it recorded the follow-ups"})
 			}
 		}
@@ -100,11 +101,12 @@ func (r *Runner) runRetrospective(ctx context.Context, gl gitlab.API, task *aiv1
 			retro.FollowUps = append(retro.FollowUps, aiv1.PilotFollowUp{Title: textutil.Truncate(t, 200), Body: textutil.Truncate(strings.TrimSpace(f.Body), 4000)})
 		}
 	}
-	n, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, tracking, renderRetro(a.Summary, retro.FollowUps, task.Spec.Source.RetroSpend))
+	body := renderRetro(a.Summary, retro.FollowUps, task.Spec.Source.RetroSpend)
+	n, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, tracking, body)
 	if err != nil {
 		return out, r.retroFailed(ctx, task, fmt.Errorf("posting the retrospective on #%d: %w", tracking, err))
 	}
-	retro.NoteID, retro.PostedAt = n.ID, &metav1.Time{Time: r.now()}
+	retro.NoteID, retro.PostedAt, retro.Text = n.ID, &metav1.Time{Time: r.now()}, retroText(body)
 	out.Summary = fmt.Sprintf("posted the retrospective with %d follow-ups", len(retro.FollowUps))
 	return out, r.recordRetro(ctx, task, retro)
 }
@@ -475,6 +477,25 @@ func renderRetro(summary string, followUps []aiv1.PilotFollowUp, spend *aiv1.Spe
 	}
 	b.WriteString(marker.Retrospective)
 	return b.String()
+}
+
+// retroHTML matches a code span or fenced block, kept as text, or HTML: a
+// comment (unclosed to the end) or a tag. Autolinks (<https://…>) are no tags.
+var retroHTML = regexp.MustCompile("(?s)```.*?```|`[^`\n]*`|<!--.*?(?:-->|$)|</?[A-Za-z][A-Za-z0-9-]*(?:[\\s/][^<>]*)?>")
+
+// retroText is the posted retrospective body for status: markdown without
+// HTML, at most aiv1.MaxRetroText bytes with an ellipsis beyond.
+func retroText(body string) string {
+	s := retroHTML.ReplaceAllStringFunc(body, func(m string) string {
+		if strings.HasPrefix(m, "`") {
+			return m
+		}
+		return ""
+	})
+	if s = strings.TrimSpace(s); len(s) > aiv1.MaxRetroText {
+		s = textutil.Truncate(s, aiv1.MaxRetroText-len("…"))
+	}
+	return s
 }
 
 // renderSpend renders the milestone's spend from the history database and

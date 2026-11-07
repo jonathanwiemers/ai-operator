@@ -395,3 +395,12 @@ about how many production lines, and deviations from this spec.
   anchor is not on the page twice; the rest of R13 stays for its slice;
   screenshots were not possible in the agent's container (no cluster, no
   browser).
+- 2026-11-07, `retrospective` (R12 storage, #232): `status.pilot.retrospective.text`,
+  the posted comment without HTML (comments, the marker and tags removed,
+  code spans and fenced blocks kept) and truncated with an ellipsis at
+  `MaxRetroText` (16 KiB), set by the runner when it posts and from the
+  found comment when a run was cut off after posting; the recorder's
+  `Snapshot` copies it to `desk_milestones.retro_text`; about 20 production
+  lines. Deviations: none; the follow-up states `issue` and `open` were
+  there from the `store` slice. Retrospectives posted before this have no
+  text until the backfill.

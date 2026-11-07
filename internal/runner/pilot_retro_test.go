@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -69,6 +70,7 @@ func TestRetrospectiveIsPostedOnce(t *testing.T) {
 	e.patchProject(t, func(p *aiv1.AgentProject) {
 		p.Spec.Agents.Implement.RoleSpec = aiv1.RoleSpec{Model: "claude-strong", AllowedTools: []string{"Bash", "Edit"}, Instructions: "Write code."}
 	})
+	e.engine.retro.Summary += ` <img src=x onerror="alert(1)">Fixed <b>it</b> in ` + "`<b>`."
 	e.step(t)
 	if len(e.engine.calls) != 1 {
 		t.Fatalf("expected one retrospective call, got %d", len(e.engine.calls))
@@ -100,6 +102,12 @@ func TestRetrospectiveIsPostedOnce(t *testing.T) {
 		retro.FollowUps[0].Title != "Follow-up 1 for @bob" || retro.FollowUps[0].Body != "Because.\n/close" || !slices.Equal(retro.OwnerIDs, []int64{21}) || retro.Failed != "" {
 		t.Fatalf("the retrospective is recorded for the operator: %+v", retro)
 	}
+	// The Desk's copy is the comment without HTML; code spans stay.
+	if !strings.Contains(c, "<img src=x") || retro.Text != retroText(c) || !strings.HasPrefix(retro.Text, "🧭 **Retrospective**\n\nMerged #1 after a review outage.") ||
+		!strings.Contains(retro.Text, "Fixed it in `<b>`.") || strings.Contains(retro.Text, "<img") || strings.Contains(retro.Text, "<!--") ||
+		!strings.HasSuffix(retro.Text, "as a reply in this thread.") {
+		t.Fatalf("the retrospective's text:\n%s", retro.Text)
+	}
 	if r := task.Status.Run; r.ObservedRunRequest != 2 || r.LastResult != aiv1.RunResultSucceeded || len(task.Status.Pilot.Proposed) != 0 {
 		t.Fatalf("run status %+v, proposed %+v", r, task.Status.Pilot.Proposed)
 	}
@@ -107,8 +115,13 @@ func TestRetrospectiveIsPostedOnce(t *testing.T) {
 	// A run started again after posting (pod lost) does not post twice.
 	e.patchStatus(t, func(s *aiv1.AgentTaskStatus) { s.Run.ObservedRunRequest, s.Pilot.Retrospective = 1, nil })
 	e.step(t)
-	if len(e.engine.calls) != 1 || len(botNotes(e.gl, 5)) != 4 || e.task(t).Status.Pilot.Retrospective.NoteID != retro.NoteID {
-		t.Fatalf("one retrospective: %d calls, %d comments, %+v", len(e.engine.calls), len(botNotes(e.gl, 5)), e.task(t).Status.Pilot.Retrospective)
+	cut := e.task(t).Status.Pilot.Retrospective
+	if len(e.engine.calls) != 1 || len(botNotes(e.gl, 5)) != 4 || cut.NoteID != retro.NoteID {
+		t.Fatalf("one retrospective: %d calls, %d comments, %+v", len(e.engine.calls), len(botNotes(e.gl, 5)), cut)
+	}
+	// The found comment gives the text.
+	if cut.Text != retro.Text || !strings.Contains(cut.Failed, "cut off") {
+		t.Fatalf("the cut-off retrospective's text:\n%s", cut.Text)
 	}
 }
 
@@ -245,5 +258,27 @@ func TestRetrospectiveListsTheCompanions(t *testing.T) {
 				t.Error("a companion of another milestone is not listed")
 			}
 		})
+	}
+}
+
+func TestRetroText(t *testing.T) {
+	for _, c := range []struct{ name, in, want string }{
+		{"marker and comments", "**Retro** <!-- hidden -->done\n\n" + marker.Retrospective, "**Retro** done"},
+		{"unclosed comment", "kept <!-- to the end\nall", "kept"},
+		{"tags", `<p align="center">a <img src=x onerror="alert(1)"/> <br/>b</p></details>`, "a  b"},
+		{"code kept", "use `<b>` and\n```\n<div>x</div>\n```\nnot <i>this</i>", "use `<b>` and\n```\n<div>x</div>\n```\nnot this"},
+		{"no tags", "a < b, c > d, <https://example.com>, 1<2", "a < b, c > d, <https://example.com>, 1<2"},
+	} {
+		if got := retroText(c.in); got != c.want {
+			t.Errorf("%s: retroText(%q) = %q, want %q", c.name, c.in, got, c.want)
+		}
+	}
+	long := strings.Repeat("ä", aiv1.MaxRetroText) // two bytes each
+	got := retroText("<b>" + long + "</b>")
+	if len(got) > aiv1.MaxRetroText || !strings.HasSuffix(got, "…") || !utf8.ValidString(got) || !strings.HasPrefix(got, "ää") {
+		t.Errorf("long text: %d bytes, valid %v, ends %q", len(got), utf8.ValidString(got), got[len(got)-6:])
+	}
+	if s := strings.Repeat("a", aiv1.MaxRetroText); retroText(s) != s {
+		t.Error("text at the limit is cut")
 	}
 }

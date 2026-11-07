@@ -2919,6 +2919,13 @@ export interface PilotRetrospective {
    */
   postedAt?: string;
   /**
+   * Text is the comment as posted, for the Desk: untrusted markdown
+   * without HTML (comments and tags removed), at most MaxRetroText bytes,
+   * truncated beyond.
+   * +optional
+   */
+  text?: string;
+  /**
    * FollowUps are the numbered follow-up proposals, which an owner opens
    * as issues. Untrusted.
    * +optional
@@ -2947,6 +2954,10 @@ export interface PilotRetrospective {
    */
   lastNoteID?: number /* int64 */;
 }
+/**
+ * MaxRetroText bounds PilotRetrospective.Text, in bytes.
+ */
+export const MaxRetroText = 16 << 10;
 /**
  * PilotFollowUp is a follow-up proposal of a retrospective.
  */

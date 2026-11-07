@@ -785,7 +785,7 @@ title and owners from the spec, issues in plan order with their autopilot
 item's state in lower case (else `planned`) and MR, then queue items the
 plan lacks (flaky fixes); the autopilot phase in lower case and its tracking
 issue; start time at the first write, done time once the phase is `Done`;
-the retrospective's note and posted time, and follow-ups `issue` with their
+the retrospective's note, text and posted time, and follow-ups `issue` with their
 iid for the numbers in `created`, else `open`. The queue holds the newest
 snapshot per milestone and is written with the events every second, so a
 busy autopilot is one write per second at most, and an unchanged status is
@@ -1346,7 +1346,7 @@ counted interventions; more tools are later steps of
   with its top 3 issues, kinds and models, subagent models as their own;
   unset without the history database or when the query fails),
   keeps the pilot until that run is over, copies its
-  `status.pilot.retrospective` (note, follow-ups, pinned owner IDs, or why
+  `status.pilot.retrospective` (note, text, follow-ups, pinned owner IDs, or why
   it failed) to the spec task and only then deletes the pilot. The run
   (`internal/runner/pilot_retro.go`) makes one read-only call with the
   `agents.implement` role's engine and model, capped by the rest of
@@ -1354,7 +1354,13 @@ counted interventions; more tools are later steps of
   decisions, revisits, the autopilot's comments, cost, time), and posts the
   defused comment with the marker `<!-- ai-operator:retrospective -->`, with
   a "Cost drivers" part from `retroSpend` (without it, the cost is the sum
-  over the live tasks, "(from live tasks)").
+  over the live tasks, "(from live tasks)"). The comment stays on GitLab;
+  `status.pilot.retrospective.text` keeps it for the Desk as untrusted
+  markdown without HTML (comments, the marker and tags removed, code spans
+  and fenced blocks kept), truncated with an ellipsis at 16 KiB
+  (`MaxRetroText`). A run cut off after posting takes the text from the
+  comment it finds. The operator copies it with the rest, and the recorder
+  writes it to `desk_milestones.retro_text`.
   Without budget it posts the facts only; a failure is recorded, not
   retried. Autopilot (`followUps` in `pilot_followups.go`) reads the
   tracking issue's comments after `status.pilot.retrospective.lastNoteID`
