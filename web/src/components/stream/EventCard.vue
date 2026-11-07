@@ -98,6 +98,7 @@ function taskLink(ev: StreamEvent) {
       <template v-else-if="e.kind === 'needs'">!</template>
       <template v-else-if="e.kind === 'proposal'">P</template>
       <template v-else-if="e.kind === 'autopilot'">◇</template>
+      <template v-else-if="e.kind === 'retrospective'">R</template>
       <template v-else-if="isPrompt">?</template>
       <template v-else-if="e.kind === 'chat.user' || e.kind === 'chat.agent'">C</template>
       <template v-else>·</template>
@@ -198,6 +199,14 @@ function taskLink(ev: StreamEvent) {
           </button>
         </div>
         <p v-if="sendError" class="err">{{ sendError }}</p>
+      </div>
+
+      <!-- retrospective: links to the Retrospective tab once it exists -->
+      <div v-else-if="e.kind === 'retrospective'" class="compact">
+        <Badge tone="info">retrospective</Badge>
+        <span v-if="e.data.followUps" class="muted">
+          {{ e.data.followUps }} follow-up{{ e.data.followUps === 1 ? '' : 's' }}
+        </span>
       </div>
 
       <!-- prompt.posted: the compact card while status still has the prompt -->

@@ -43,6 +43,10 @@ const (
 	KindPromptPosted   = "prompt.posted"
 	KindPromptAnswered = "prompt.answered"
 	KindPromptClosed   = "prompt.closed"
+
+	// KindRetrospective is a milestone's retrospective, posted on its
+	// tracking issue: once per milestone, when the spec task gets its note.
+	KindRetrospective = "retrospective"
 )
 
 // maxText bounds the texts copied from the status into an event.
@@ -219,7 +223,31 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 	out = append(out, d.proposals(cur, prev.Pilot, ns.Pilot, now)...)
 	out = append(out, writeFailures(cur, prev.WriteFailures, ns.WriteFailures, now)...)
 	out = append(out, d.prompts(cur, prev.Prompts, ns.Prompts, now)...)
+	out = append(out, retrospective(cur, prev.Pilot, ns.Pilot, now)...)
 	return out
+}
+
+// retrospective emits the event of a spec task's retrospective when its
+// note ID first appears. The key holds only the note, so a milestone gets
+// one event even when its spec task is recreated.
+func retrospective(t *aiv1.AgentTask, old, cur *aiv1.PilotStatus, now time.Time) []store.Event {
+	if t.Spec.Type != aiv1.TaskTypeSpec || cur == nil || cur.Retrospective == nil || cur.Retrospective.NoteID == 0 {
+		return nil
+	}
+	if old != nil && old.Retrospective != nil && old.Retrospective.NoteID != 0 {
+		return nil
+	}
+	r := cur.Retrospective
+	e := base(t, now)
+	e.Key, e.Kind, e.Summary = fmt.Sprintf("retro/%d", r.NoteID), KindRetrospective, "Retrospective posted"
+	if ap := t.Status.Autopilot; ap != nil && ap.TrackingIssueIID != 0 {
+		e.IssueIID = ap.TrackingIssueIID
+	}
+	e.Data = map[string]any{"noteID": r.NoteID, "followUps": len(r.FollowUps)}
+	if r.PostedAt != nil {
+		e.At = r.PostedAt.Time
+	}
+	return []store.Event{e}
 }
 
 func (d *Differ) autopilot(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, now time.Time) []store.Event {

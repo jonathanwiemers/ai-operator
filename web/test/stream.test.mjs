@@ -7,6 +7,8 @@ import {
   groupThreads,
   heatLevel,
   historyStreamKinds,
+  pilotStreamKinds,
+  runtimeStreamKinds,
   kindsForFilter,
   projectDot,
   projectNeedsYou,
@@ -143,4 +145,19 @@ test('promptForEvent finds the prompt by id, else falls back to the summary', as
   assert.equal(promptForEvent(posted('Q9'), prompts), undefined)
   assert.equal(promptForEvent(posted('Q1'), undefined), undefined)
   assert.equal(promptForEvent({ kind: 'prompt.answered', data: { promptID: 'Q1' } }, prompts), undefined)
+})
+
+test('pilot and runtime kinds partition every StreamKind', () => {
+  // Every StreamKind (web/src/types.ts). Add new ones here, and to
+  // pilotStreamKinds or runtimeStreamKinds.
+  const all = [
+    'note', 'run.started', 'run.finished', 'push', 'ci', 'review', 'needs', 'merged', 'closed',
+    'autopilot', 'proposal', 'autopilot.paused', 'autopilot.resumed', 'pilot.writeFailed',
+    'retrospective', 'prompt.posted', 'prompt.answered', 'prompt.closed', 'chat.user', 'chat.agent',
+  ]
+  for (const k of pilotStreamKinds) assert.ok(!runtimeStreamKinds.includes(k), `${k} is in both lists`)
+  const union = [...pilotStreamKinds, ...runtimeStreamKinds]
+  assert.equal(new Set(union).size, union.length)
+  assert.deepEqual([...union].sort(), [...all].sort())
+  assert.ok(!historyStreamKinds.includes('chat.user') && historyStreamKinds.includes('retrospective'))
 })

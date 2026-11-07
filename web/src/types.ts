@@ -144,6 +144,10 @@ export type StreamKind =
   | 'closed'
   | 'autopilot'
   | 'proposal'
+  | 'autopilot.paused'
+  | 'autopilot.resumed'
+  | 'pilot.writeFailed'
+  | 'retrospective'
   | 'prompt.posted'
   | 'prompt.answered'
   | 'prompt.closed'
@@ -188,6 +192,9 @@ export interface StreamEventData {
   kind?: ChatKind
   authorName?: string
   replyTo?: number
+  // retrospective: the GitLab note and the number of follow-ups.
+  noteID?: number
+  followUps?: number
 }
 
 export type SpendLevel = 'milestone' | 'issue' | 'run' | 'call'

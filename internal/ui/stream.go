@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -45,15 +46,28 @@ type StreamPage struct {
 	History bool `json:"history"`
 }
 
-// streamKinds are the event kinds a stream may be filtered by.
-var streamKinds = []string{"note", "run.started", "run.finished", "push", "ci", "review",
-	"needs", "merged", "closed", "autopilot", "proposal", "prompt.posted", "prompt.answered", "prompt.closed",
-	"chat.user", "chat.agent"}
+// Every event kind belongs to one tab of a milestone: pilotKinds to Pilot
+// (questions, pauses, what the pilot did, the owners' messages, decisions,
+// the retrospective), runtimeKinds to Stream (runs, pushes, CI, reviews,
+// merges). web/src/stream.ts mirrors both lists.
+var (
+	pilotKinds = []string{history.KindPromptPosted, history.KindPromptAnswered, history.KindPromptClosed,
+		history.KindNeeds, history.KindAutopilot, history.KindAutopilotPaused, history.KindAutopilotResumed,
+		history.KindProposal, history.KindPilotWriteFailed, history.KindNote, "chat.user", "chat.agent",
+		history.KindRetrospective}
+	runtimeKinds = []string{history.KindRunStarted, history.KindRunFinished, history.KindPush, history.KindCI,
+		history.KindReview, history.KindMerged, history.KindClosed}
+)
 
-var historyStreamKinds = []string{"note", "run.started", "run.finished", "push", "ci", "review",
-	"needs", "merged", "closed", "autopilot", "proposal", "prompt.posted", "prompt.answered", "prompt.closed"}
+// streamKinds are the event kinds a stream may be filtered by.
+var streamKinds = slices.Concat(pilotKinds, runtimeKinds)
 
 var chatStreamKinds = []string{"chat.user", "chat.agent"}
+
+// historyStreamKinds are the kinds of history_events.
+var historyStreamKinds = slices.DeleteFunc(slices.Clone(streamKinds), func(k string) bool {
+	return slices.Contains(chatStreamKinds, k)
+})
 
 const (
 	maxStreamLimit = 100

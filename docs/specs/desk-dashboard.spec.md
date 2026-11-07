@@ -370,3 +370,12 @@ about how many production lines, and deviations from this spec.
   live task the issue and merge request links sit in the task's row, not
   twice; screenshots were not possible in the agent's container (no
   cluster, no browser).
+- 2026-11-07, `pilot-tab` (R11 data, #229): the `retrospective` history
+  kind (once per milestone, key `retro/<noteID>`, when the spec task's
+  retrospective first has a note), `pilotKinds` and `runtimeKinds` in
+  `internal/ui/stream.go` (their union is `streamKinds`, so
+  `autopilot.paused`, `autopilot.resumed` and `pilot.writeFailed` can be
+  filtered now), `pilotStreamKinds` and `runtimeStreamKinds` in
+  `web/src/stream.ts` (a type check fails for a `StreamKind` in neither),
+  EventCard's plain retrospective card; about 60 production lines.
+  Deviations: none; the tabs use the lists with the Pilot tab.

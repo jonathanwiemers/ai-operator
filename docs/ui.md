@@ -109,6 +109,19 @@ The app is a **Desk**: a left rail, the stream, and a context panel.
   new events live. It reads the snapshot and history, so a closed
   milestone's issue still opens with its figures and stream after its
   tasks are gone.
+* **Which events show where:** every event kind belongs to one of a
+  milestone's two event tabs, never both (`pilotKinds` and `runtimeKinds`
+  in `internal/ui/stream.go`, mirrored in `web/src/stream.ts`). *Pilot*:
+  questions and their answers (`prompt.posted`, `prompt.answered`,
+  `prompt.closed`, `needs`), the autopilot and its pauses (`autopilot`,
+  `autopilot.paused`, `autopilot.resumed`), what the pilot did
+  (`proposal`, `pilot.writeFailed`), comments (`note`), the Desk chat
+  (`chat.user`, `chat.agent`) and the `retrospective` (*Retrospective
+  posted*, once per milestone, with its number of follow-ups). *Stream*:
+  runs (`run.started`, `run.finished`), pushes (`push`), CI (`ci`),
+  reviews (`review`) and merges (`merged`, `closed`). Until the Pilot tab
+  lands, the *Stream* tab still shows all of them, and every kind can be
+  asked for with `kinds=`.
 * **Cost chips** on the stream header (the project or milestone), on each
   milestone scope tab and on the Task page header: `$12.34 · 1.2M tok`, the
   tooltip breaking it down into input, output and cache tokens, calls,

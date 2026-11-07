@@ -3,27 +3,52 @@ import type { PromptView, Stage, StreamEvent, StreamKind } from './types'
 // Filter chips map to kinds sent as kinds= on GET /stream.
 export type StreamFilter = 'all' | 'chat' | 'needs' | 'runs' | 'ci' | 'merged'
 
-// History kinds only: chat rows collide on id, so they need an explicit kinds=.
-export const historyStreamKinds: StreamKind[] = [
+// Every kind belongs to one tab of a milestone: Pilot (questions, pauses,
+// what the pilot did, the owners' messages, decisions, the retrospective)
+// or Stream (runs, pushes, CI, reviews, merges). Mirrors internal/ui/stream.go.
+export const pilotStreamKinds = [
+  'prompt.posted',
+  'prompt.answered',
+  'prompt.closed',
+  'needs',
+  'autopilot',
+  'autopilot.paused',
+  'autopilot.resumed',
+  'proposal',
+  'pilot.writeFailed',
   'note',
+  'chat.user',
+  'chat.agent',
+  'retrospective',
+] as const satisfies readonly StreamKind[]
+
+export const runtimeStreamKinds = [
   'run.started',
   'run.finished',
   'push',
   'ci',
   'review',
-  'needs',
   'merged',
   'closed',
-  'autopilot',
-  'proposal',
-  'prompt.posted',
-  'prompt.answered',
-  'prompt.closed',
-]
+] as const satisfies readonly StreamKind[]
 
-export const promptStreamKinds: StreamKind[] = ['prompt.posted', 'prompt.answered', 'prompt.closed']
+// A StreamKind in neither list fails the type check here.
+const coversStreamKind: Exclude<
+  StreamKind,
+  (typeof pilotStreamKinds)[number] | (typeof runtimeStreamKinds)[number]
+> extends never
+  ? true
+  : false = true
+void coversStreamKind
 
 export const chatStreamKinds: StreamKind[] = ['chat.user', 'chat.agent']
+
+// History kinds only: chat rows collide on id, so they need an explicit kinds=.
+export const historyStreamKinds: StreamKind[] = [...pilotStreamKinds, ...runtimeStreamKinds].filter(
+  (k) => !chatStreamKinds.includes(k),
+)
+
+export const promptStreamKinds: StreamKind[] = ['prompt.posted', 'prompt.answered', 'prompt.closed']
 
 export const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKind[] }[] = [
   { id: 'all', label: 'All' },

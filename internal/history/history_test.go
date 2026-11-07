@@ -551,3 +551,38 @@ func TestDifferPauseEndsWithThePhase(t *testing.T) {
 		t.Errorf("running: %v", kinds(es))
 	}
 }
+
+func TestDifferRetrospectiveOnce(t *testing.T) {
+	spec := func(rv string, noteID int64) *aiv1.AgentTask {
+		return task(rv, func(t *aiv1.AgentTask) {
+			t.Spec.Type, t.Spec.Issue = aiv1.TaskTypeSpec, nil
+			t.Status.Autopilot = &aiv1.AutopilotStatus{TrackingIssueIID: 9}
+			t.Status.Pilot = &aiv1.PilotStatus{Retrospective: &aiv1.PilotRetrospective{NoteID: noteID,
+				FollowUps: []aiv1.PilotFollowUp{{Title: "a"}, {Title: "b"}}}}
+		})
+	}
+	retros := func(es []store.Event) []store.Event {
+		return slices.DeleteFunc(es, func(e store.Event) bool { return e.Kind != KindRetrospective })
+	}
+	d := NewDiffer()
+	es := retros(d.Update(spec("1", 0), spec("2", 77), now))
+	if got := kinds(es); !slices.Equal(got, []string{"retrospective retro/77"}) {
+		t.Fatalf("posted: %v", got)
+	}
+	if e := es[0]; e.Summary != "Retrospective posted" || e.Data["noteID"] != int64(77) || e.Data["followUps"] != 2 ||
+		e.MilestoneIID != 20 || e.IssueIID != 9 {
+		t.Errorf("event %+v", e)
+	}
+	if es := retros(d.Update(spec("2", 77), spec("3", 77), now)); len(es) != 0 {
+		t.Errorf("repeated: %v", kinds(es))
+	}
+	// A recreated spec task gets the same key, so the store keeps one event.
+	if es := retros(NewDiffer().Update(spec("1", 0), spec("2", 77), now)); es[0].Key != "retro/77" {
+		t.Errorf("key %q", es[0].Key)
+	}
+	pilot := spec("2", 78)
+	pilot.Spec.Type = aiv1.TaskTypeCoordinate
+	if es := retros(d.Update(spec("1", 0), pilot, now)); len(es) != 0 {
+		t.Errorf("pilot task: %v", kinds(es))
+	}
+}
