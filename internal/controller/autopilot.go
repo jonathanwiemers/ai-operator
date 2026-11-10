@@ -190,6 +190,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 		}
 	}
 	// Every poll, also while paused: the queue does not wait for releases.
+	if err := a.companionReleases(ctx); err != nil {
+		return err
+	}
 	if err := a.releases(ctx); err != nil {
 		return err
 	}

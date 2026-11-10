@@ -605,7 +605,9 @@ func TestFailedFinalReleaseReleasedByHand(t *testing.T) {
 	}
 }
 
-// The companions are waited for only once the final release has ended.
+// The companions are waited for only once the final release has ended. The
+// companion waiting for #1's release started one by itself (decision 12);
+// the final release waits for it and is released by its tag.
 func TestFinalReleaseBeforeTheCompanions(t *testing.T) {
 	e, infra := newCompanionQueueEnv(t, "")
 	taggedMain(e)
@@ -618,15 +620,20 @@ func TestFinalReleaseBeforeTheCompanions(t *testing.T) {
 	e.reconcile()
 	tracking := e.autopilot().TrackingIssueIID
 	const waits = "Autopilot is done once the companions group/infra!1 have landed"
-	if rec := finalRec(e); rec.State != aiv1.ReleaseRunning || countComments(e, tracking, waits) != 0 || len(e.autopilot().CloseWaitsForCompanions) != 0 {
+	companion := e.autopilot().Releases[0]
+	if companion.By != aiv1.ReleaseByCompanion || companion.State != aiv1.ReleaseRunning || len(e.gl.CreatedPipelines) != 1 {
+		t.Fatalf("the companion's release runs: %+v", e.autopilot().Releases)
+	}
+	if rec := finalRec(e); rec.State != aiv1.ReleaseWaiting || countComments(e, tracking, waits) != 0 || len(e.autopilot().CloseWaitsForCompanions) != 0 {
 		t.Fatalf("the final release first: %+v, %+v\n%v", rec, e.autopilot(), botComments(e, tracking))
 	}
 
-	e.gl.SetPipelineStatus(finalRec(e).PipelineID, "success")
+	e.gl.SetPipelineStatus(companion.PipelineID, "success")
 	created := e.gl.Clock
 	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "merge-sha-api", "merge-sha-ui")
 	e.reconcile()
-	if rec := finalRec(e); rec.State != aiv1.ReleaseReleased || e.autopilot().Phase != aiv1.AutopilotRunning || countComments(e, tracking, waits) != 1 {
+	if rec := finalRec(e); rec.State != aiv1.ReleaseReleased || rec.Version != "2026.11.2" || len(e.gl.CreatedPipelines) != 1 ||
+		e.autopilot().Phase != aiv1.AutopilotRunning || countComments(e, tracking, waits) != 1 {
 		t.Fatalf("released, now the companions: %+v, %+v\n%v", rec, e.autopilot(), botComments(e, tracking))
 	}
 	cmr.State, cmr.MergeCommitSHA = "merged", "merge-sha-infra"
@@ -706,5 +713,63 @@ func TestFinalReleaseModeOff(t *testing.T) {
 	e.reconcile()
 	if rec := finalRec(e); rec.State != aiv1.ReleaseNotApplicable || rec.Reason != "release.mode is Off" || e.autopilot().Phase != aiv1.AutopilotDone {
 		t.Fatalf("not applicable, done: %+v, %+v", rec, e.autopilot())
+	}
+}
+
+// A companion whose home change is merged but in no tag yet adds one
+// release by itself; once released it lands on as before (waitingCI).
+func TestAWaitingCompanionIsReleased(t *testing.T) {
+	e := newPilotEnv(t)
+	infra := withCompanion(e)
+	taggedMain(e)
+	e.gl.Compares["h1..m1"] = &gitlab.Compare{}
+	tracking := e.autopilot().TrackingIssueIID
+	cmr, err := infra.CreateMergeRequest(e.ctx, "group/infra", gitlab.CreateMergeRequestOptions{SourceBranch: "agent/app-1-api", TargetBranch: "main", Title: "Draft: API"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	infra.MRs[cmr.IID].SHA, infra.MRs[cmr.IID].DetailedMergeStatus = "c1", "draft_status"
+	var p aiv1.AgentProject
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &p); err != nil {
+		t.Fatal(err)
+	}
+	p.Status.Companions = []aiv1.CompanionStatus{{HomeIssueIID: 1, MilestoneIID: 3, HomeMRIID: 7, HomeMergeSHA: "m1",
+		Project: "group/infra", MRIID: cmr.IID, HeadSHA: "c1", State: aiv1.LandingWaitingRelease}}
+	if err := e.c.Status().Update(e.ctx, &p); err != nil {
+		t.Fatal(err)
+	}
+	companionRecs := func() []aiv1.ReleaseRecord {
+		var out []aiv1.ReleaseRecord
+		for _, r := range e.autopilot().Releases {
+			if r.By == aiv1.ReleaseByCompanion {
+				out = append(out, r)
+			}
+		}
+		return out
+	}
+	e.reconcile()
+	e.reconcile()
+	recs := companionRecs()
+	if len(recs) != 1 || recs[0].AfterIssue != 1 || recs[0].SHA != "m1" || recs[0].State != aiv1.ReleaseRunning ||
+		recs[0].Why != "group/infra!1 waits for #1 to be live" || len(e.gl.CreatedPipelines) != 1 {
+		t.Fatalf("one companion release, running: %+v, pipelines %+v", e.autopilot().Releases, e.gl.CreatedPipelines)
+	}
+	if cs := e.project().Status.Companions; cs[0].State != aiv1.LandingWaitingRelease {
+		t.Fatalf("the companion waits for the release: %+v", cs[0])
+	}
+	if countComments(e, tracking, `🚀 Release started (companion): group/infra\!1 waits for #1 to be live.`) != 1 {
+		t.Fatalf("the start is commented once:\n%v", botComments(e, tracking))
+	}
+
+	e.gl.SetPipelineStatus(recs[0].PipelineID, "success")
+	created := e.gl.Clock
+	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "m1")
+	e.reconcile()
+	e.reconcile()
+	if recs := companionRecs(); len(recs) != 1 || recs[0].State != aiv1.ReleaseReleased || recs[0].Version != "2026.11.2" {
+		t.Fatalf("released once: %+v", e.autopilot().Releases)
+	}
+	if cs := e.project().Status.Companions; cs[0].State != aiv1.LandingWaitingCI || cs[0].Release != "2026.11.2" {
+		t.Fatalf("the companion lands on once released: %+v", cs[0])
 	}
 }

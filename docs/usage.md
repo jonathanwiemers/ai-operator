@@ -1829,7 +1829,9 @@ each entry once per poll. No model decides any of it:
      the merge commit;
    - any other project: merged is enough.
 
-   `release` records the tag that made it live.
+   `release` records the tag that made it live. A companion of a milestone
+   on autopilot that waits here triggers a release of its home change by
+   itself, see [releases](#releases).
 2. **`rebasing`**: on `need_rebase` or a conflict, the operator asks GitLab
    to rebase the companion's merge request, **once per entry**
    (`rebasedSHA`). A head that changes after the home merge is taken over
@@ -1996,6 +1998,19 @@ for the newest commit of the default branch (the SHA of its newest pipeline);
 `/agent no-release #N [reason]` drops the `Planned` and `Waiting` records
 after N that are not the final release ("dropped by @you: <reason>"). The
 reason is optional and folded to one line of 200 characters.
+
+**A waiting companion decides by itself.** A [companion](#landing) of the
+milestone in `waitingRelease` whose home merge is not docs-only adds a
+record `by: companion`, `afterIssue` its home issue, `Waiting` for the home
+merge commit, with the why "<project>!<mr> waits for #N to be live". No
+record is added while another one covers the home merge: a companion record
+after that issue in any state (a `Failed` or `Dropped` one is not tried
+again; the final release covers it), any record after that issue that has
+not ended or has released, or a record that has not ended or has released
+whose commit (`releasedSHA` once it runs) contains the home merge. Once a
+tag contains the home merge, the companion lands on by itself. A companion
+outside a milestone on autopilot adds no record here; the release sweep for
+work outside milestones covers it (a later change).
 
 **The contract with the project's CI:** the operator starts a pipeline on the
 default branch with the variables `AGENT_RELEASE=true` and

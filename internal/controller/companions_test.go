@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -865,5 +866,67 @@ func TestCompanionMergePipelineRateLimited(t *testing.T) {
 	l.poll()
 	if len(l.infra.MRPipelines) != 1 || l.e.PipelineStartedAt == nil || len(l.infra.Merged) != 0 {
 		t.Fatalf("started once GitLab allows it, not merged yet: %v %+v", l.infra.MRPipelines, l.e)
+	}
+}
+
+// A companion of the milestone that waits for a release adds one companion
+// record, unless one covers its home merge; a docs-only home merge, another
+// milestone's companion and one past waitingRelease add none.
+func TestCompanionReleases(t *testing.T) {
+	rec := func(id, after int64, by aiv1.ReleaseBy, state aiv1.ReleaseState, sha string) aiv1.ReleaseRecord {
+		return aiv1.ReleaseRecord{ID: id, By: by, AfterIssue: after, Why: "planned", SHA: sha, State: state}
+	}
+	waiting := aiv1.CompanionStatus{HomeIssueIID: 1, MilestoneIID: 3, HomeMRIID: 11, HomeMergeSHA: "m1",
+		Project: "group/infra", MRIID: 8, State: aiv1.LandingWaitingRelease}
+	for _, tc := range []struct {
+		name string
+		recs []aiv1.ReleaseRecord
+		edit func(*aiv1.CompanionStatus)
+		add  bool
+	}{
+		{name: "waiting for a release", add: true},
+		{name: "a planner record after the issue", recs: []aiv1.ReleaseRecord{rec(1, 1, aiv1.ReleaseByPlanner, aiv1.ReleasePlanned, "")}},
+		{name: "a waiting owner record after the issue", recs: []aiv1.ReleaseRecord{rec(1, 1, aiv1.ReleaseByOwner, aiv1.ReleaseWaiting, "m1")}},
+		{name: "a released record after the issue", recs: []aiv1.ReleaseRecord{rec(1, 1, aiv1.ReleaseByPlanner, aiv1.ReleaseReleased, "m1")}},
+		{name: "a failed planner record after the issue", recs: []aiv1.ReleaseRecord{rec(1, 1, aiv1.ReleaseByPlanner, aiv1.ReleaseFailed, "m1")}, add: true},
+		{name: "a failed companion record", recs: []aiv1.ReleaseRecord{rec(1, 1, aiv1.ReleaseByCompanion, aiv1.ReleaseFailed, "m1")}},
+		{name: "a later record that contains the merge", recs: []aiv1.ReleaseRecord{rec(1, 2, aiv1.ReleaseByPilot, aiv1.ReleaseWaiting, "m2")}},
+		{name: "a running record whose release contains the merge", recs: []aiv1.ReleaseRecord{
+			{ID: 1, By: aiv1.ReleaseByOwner, SHA: "x0", ReleasedSHA: "h1", State: aiv1.ReleaseRunning}}},
+		{name: "a dropped record that contains the merge", recs: []aiv1.ReleaseRecord{rec(1, 2, aiv1.ReleaseByPilot, aiv1.ReleaseDropped, "m2")}, add: true},
+		{name: "a record that does not contain the merge", recs: []aiv1.ReleaseRecord{rec(1, 2, aiv1.ReleaseByPilot, aiv1.ReleaseWaiting, "x9")}, add: true},
+		{name: "docs only", edit: func(c *aiv1.CompanionStatus) { c.DocsOnly = true }},
+		{name: "another milestone", edit: func(c *aiv1.CompanionStatus) { c.MilestoneIID = 4 }},
+		{name: "live already", edit: func(c *aiv1.CompanionStatus) { c.State = aiv1.LandingWaitingCI }},
+		{name: "no merge commit", edit: func(c *aiv1.CompanionStatus) { c.HomeMergeSHA = "" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newReleaseEnv(t)
+			e.contains("m2", "m1") // h1 contains m1 from newReleaseEnv
+			e.recs = slices.Clone(tc.recs)
+			a := e.releaseAutopilot()
+			c := waiting
+			if tc.edit != nil {
+				tc.edit(&c)
+			}
+			a.project = &aiv1.AgentProject{Status: aiv1.AgentProjectStatus{Companions: []aiv1.CompanionStatus{c}}}
+			for range 2 { // a second poll adds nothing
+				if err := a.companionReleases(e.ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			added := a.ap.Releases[len(tc.recs):]
+			if !tc.add {
+				if len(added) != 0 {
+					t.Fatalf("want no record, got %+v", added)
+				}
+				return
+			}
+			want := aiv1.ReleaseRecord{ID: int64(len(tc.recs)) + 1, By: aiv1.ReleaseByCompanion, AfterIssue: 1, SHA: "m1",
+				State: aiv1.ReleaseWaiting, Why: "group/infra!8 waits for #1 to be live", DecidedAt: metav1.NewTime(e.now)}
+			if len(added) != 1 || !reflect.DeepEqual(added[0], want) {
+				t.Fatalf("want one record %+v, got %+v", want, added)
+			}
+		})
 	}
 }
