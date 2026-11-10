@@ -317,206 +317,23 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			log.FromContext(ctx).V(lvl).Info("GitLab poll done", "requests", st.Requests, "retries", st.Retries)
 		}()
 	}
-	// The username on every poll, for mentions of a renamed bot.
-	if project.Status.BotUserID == 0 || *spec.Pilot.Mention {
-		u, err := gl.CurrentUser(ctx)
-		if err != nil {
-			return fmt.Errorf("resolving bot user: %w", err)
-		}
-		if project.Status.BotUserID == 0 {
-			project.Status.BotUserID = u.ID
-		}
-		project.Status.BotUsername = u.Username
-	}
-	r.syncWebhook(ctx, gl, project, spec)
-
-	gate := r.commandGate(gl, project, spec)
-
-	titleRE, err := titlePattern(spec)
+	poll, err := r.newProjectPoll(ctx, gl, project, spec, started)
 	if err != nil {
 		return err
 	}
-
-	var tasks aiv1.AgentTaskList
-	if err := r.List(ctx, &tasks, client.InNamespace(project.Namespace), client.MatchingLabels{LabelProject: project.Name}); err != nil {
+	if err := poll.syncMilestones(ctx); err != nil {
 		return err
 	}
-	byMilestone := map[int64]*aiv1.AgentTask{}
-	byIssue := map[int64]*aiv1.AgentTask{}
-	pilots := map[int64]*aiv1.AgentTask{}
-	for i := range tasks.Items {
-		t := &tasks.Items[i]
-		switch t.Spec.Type {
-		case aiv1.TaskTypeSpec:
-			if t.Spec.Milestone != nil {
-				byMilestone[t.Spec.Milestone.IID] = t
-			}
-		case aiv1.TaskTypeImplement:
-			if t.Spec.Issue != nil {
-				byIssue[t.Spec.Issue.IID] = t
-			}
-		case aiv1.TaskTypeCoordinate:
-			if t.Spec.Milestone != nil {
-				pilots[t.Spec.Milestone.IID] = t
-			}
-		}
+	if err := poll.listIssues(ctx); err != nil {
+		return err
 	}
-	keep := map[string]bool{}
+	issuePhases{poll}.run(ctx)
 
-	// Milestones -> spec tasks.
-	milestones, err := gl.ListMilestones(ctx, spec.GitLab.Project)
-	if err != nil {
-		return fmt.Errorf("listing milestones: %w", err)
-	}
-	var active int32
-	// Autopilot milestones by IID, with their spec task.
-	autopilots := map[int64]*aiv1.AgentTask{}
-	var specTasks []*aiv1.AgentTask
-	// The owners of a milestone and its issues.
-	prefix := spec.Workflow.CommandPrefix
-	owners := func(description string) []string {
-		return notify.Resolve(description, prefix, spec.Notify.Users, r.DefaultOwners)
-	}
-	ownerSubjects := func(description string) []string {
-		return notify.MilestoneOwnerSubjects(description, prefix)
-	}
-	descriptions := map[int64]string{}
-	for _, m := range milestones {
-		descriptions[m.ID] = m.Description
-	}
-	// Before any spec task changes: the older milestones still open.
-	ahead := queuedAhead(spec, titleRE, milestones, byMilestone)
-	for _, m := range milestones {
-		selected, autopilot := milestoneSelection(spec, titleRE, m)
-		if !selected {
-			continue
-		}
-		active++
-		task, err := r.syncSpecTask(ctx, project, spec, m, byMilestone[m.IID], autopilot, ahead[m.IID], owners(m.Description), ownerSubjects(m.Description))
-		if err != nil {
-			return err
-		}
-		keep[task.Name] = true
-		byMilestone[m.IID] = task
-		specTasks = append(specTasks, task)
-		if autopilot || task.Status.Autopilot != nil {
-			autopilots[m.IID] = task
-		}
-	}
-	project.Status.ActiveMilestones = active
-	// One autopilot drives the main-red issue (the main-red lane): the
-	// oldest milestone that is not done.
-	var lane *aiv1.AgentTask
-	for _, st := range autopilots {
-		if st.Spec.Autopilot && (st.Status.Autopilot == nil || st.Status.Autopilot.Phase != aiv1.AutopilotDone) && (lane == nil || st.Spec.Milestone.IID < lane.Spec.Milestone.IID) {
-			lane = st
-		}
-	}
-	mainRed, urgentIssue := int64(0), int64(0)
-	// Handed over by autoFix or by an owner: only agent-labelled issues are
-	// listed below. The fix goes first in the run queue with or without a
-	// lane.
-	if mh := r.freshMainHealth(spec, project.Status.MainHealth, mainHealthStale); mh != nil {
-		urgentIssue = mh.IssueIID
-		if lane != nil && *spec.MainHealth.FreezeAutopilot {
-			mainRed = mh.IssueIID
-		}
-	}
-
-	// Issues with an agent label -> implement tasks.
-	issues := map[int64]gitlab.Issue{}
-	for _, label := range spec.Workflow.ActiveLabels() {
-		list, err := gl.ListIssues(ctx, spec.GitLab.Project, gitlab.ListIssuesOptions{Labels: []string{label}})
-		if err != nil {
-			return fmt.Errorf("listing issues with label %q: %w", label, err)
-		}
-		for _, is := range list {
-			// The main-red issue handed to the agent (by autoFix or an
-			// owner) has no milestone, nor may a flaky one.
-			mh := project.Status.MainHealth
-			autoFix := mh != nil && (mh.AutoFixIssueIID == is.IID || mh.IssueIID == is.IID) || flakyLatch(mh, is.IID) != nil
-			if titleRE != nil && !autoFix && (is.Milestone == nil || !titleRE.MatchString(is.Milestone.Title)) {
-				continue
-			}
-			issues[is.IID] = is
-		}
-	}
-	implTasks := map[int64]*aiv1.AgentTask{}
-	// The home merge requests the issue sync read, by task name.
-	homeMRs := map[string]*gitlab.MergeRequest{}
-	// One failing issue does not hold up the other issues or the steps
-	// below: its error is collected and returned at the end.
-	var errs []error
-	for _, is := range issues {
-		autopilot, pause, budgetStop := false, "", false
-		var ms issueMilestone
-		if is.Milestone != nil {
-			if st := autopilots[is.Milestone.IID]; st != nil {
-				ms.autopilot = st.Spec.Autopilot
-				// Only issues of the queue are merged by autopilot; others
-				// in the milestone follow the normal flow.
-				autopilot = st.Spec.Autopilot && onAutopilot(st, is.IID)
-				// The pause reason goes in the same update as a run request,
-				// so the run sees it; a pause from this poll is copied next poll.
-				if ap := st.Status.Autopilot; autopilot && ap != nil && ap.Phase == aiv1.AutopilotPaused && ap.PausedFor == is.IID {
-					pause = ap.PausedReason
-				}
-				budgetStop = budgetStopped(st, is.IID)
-			}
-		}
-		if is.IID == mainRed {
-			autopilot = true // merged by the lane
-		}
-		description := ""
-		if is.Milestone != nil {
-			// Closed milestones are not listed; the issue carries its own.
-			var ok bool
-			if description, ok = descriptions[is.Milestone.ID]; !ok {
-				description = is.Milestone.Description
-			}
-			ms.description = description
-		}
-		var ap *aiv1.AgentTask // the autopilot whose queue has the issue
-		if autopilot && is.Milestone != nil {
-			ap = autopilots[is.Milestone.IID]
-		}
-		task, mr, err := r.syncImplementTask(ctx, gl, gate, project, spec, is, byIssue[is.IID], autopilot, pause, budgetStop, is.IID == urgentIssue, ms, owners(description), ownerSubjects(description), ap)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
-			// Keep the existing task, so the cleanup below does not delete
-			// it and the autopilot still sees it.
-			if t := byIssue[is.IID]; t != nil {
-				keep[t.Name] = true
-				implTasks[is.IID] = t
-			}
-			continue
-		}
-		keep[task.Name] = true
-		implTasks[is.IID] = task
-		homeMRs[task.Name] = mr
-		var st *aiv1.AgentTask
-		if is.Milestone != nil {
-			st = byMilestone[is.Milestone.IID]
-		}
-		if err := r.syncQuestions(ctx, gl, spec, st, task); err != nil {
-			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
-		}
-		if err := r.syncRunBlock(ctx, gl, spec, is, task); err != nil {
-			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
-			continue
-		}
-		if err := r.syncBlocked(ctx, gl, spec, is, task); err != nil {
-			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
-			continue
-		}
-		if task.Status.Blocked != nil {
-			continue // its CI is followed again once the block is lifted
-		}
-		// With the milestone's switches (standing rules).
-		if err := r.syncCI(ctx, gl, rules.For(spec, description, prefix), project.Status.MainHealth, is, task, mr); err != nil {
-			errs = append(errs, fmt.Errorf("issue #%d: %w", is.IID, err))
-		}
-	}
+	// The poll's state for the project steps below.
+	gate, tasks, keep := poll.gate, poll.tasks, poll.keep
+	byMilestone, pilots, descriptions, ahead := poll.byMilestone, poll.pilots, poll.descriptions, poll.ahead
+	autopilots, specTasks, lane := poll.autopilots, poll.specTasks, poll.lane
+	issues, implTasks, homeMRs, errs := poll.issues, poll.implTasks, poll.homeMRs, poll.errs
 
 	// The default branch's health, revisits of decisions whose issues are
 	// merged, then the autopilot milestones: queue, merge gate, tracking

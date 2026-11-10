@@ -2607,6 +2607,7 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 |------|------|
 | `api/v1alpha1` | CRD types, defaults, profile routing (`ImplementRole`) |
 | `internal/controller/agentproject_controller.go` | GitLab poll → AgentTasks, run requests, label acknowledgement, cleanup |
+| `internal/controller/project_sync.go` | the poll's state (`projectPoll`: tasks, milestones → spec tasks, lane, labelled issues) and the per-issue phases (`issuePhases`: implement, questions, run block, blocked, CI) |
 | `internal/controller/agenttask_controller.go` | pod / PVC lifecycle, queueing, limits |
 | `internal/controller/chat.go` | Desk live chat: LISTEN/poll dispatch of `chat_messages` into `spec.source.chatMessages`, replies and command answers back into the table |
 | `internal/chatcmd` | Desk chat command JSON (`retry` / `review` / `use` / `effort` / `budget` / …) |
