@@ -1906,6 +1906,64 @@ closed while one of its companions is open either. The retrospective lists
 the milestone's companions with their merge request, state, release and
 whether autopilot or a human merged them.
 
+### Releases
+
+A release is a decision with a reason, recorded in
+`status.autopilot.releases` (newest 50, ended ones are dropped first). The
+operator carries the decisions out on every poll, also while the milestone is
+paused; the queue does not wait for them. (What creates the decisions, the
+comments and the release notes come in later changes of this milestone.)
+
+**The contract with the project's CI:** the operator starts a pipeline on the
+default branch with the variables `AGENT_RELEASE=true` and
+`AGENT_RELEASE_NOTES=<text>`, and that pipeline runs the release job, which
+tags the default branch with a calendar version (`YEAR.MONTH.N`). Nothing
+else is needed: a human keeps the `web` pipeline.
+
+A decision is `Planned` until its commit is merged, then `Waiting`. Each
+poll checks the oldest decisions first, in this order:
+
+1. **Mode Off:** with `spec.workflow.release.mode: Off` the decision is
+   `NotApplicable` ("release.mode is Off").
+2. **Already released:** before anything is started, the operator asks
+   whether a calendar-version tag contains the commit. If one does, the
+   decision is `AlreadyReleased` with that version: a project that still
+   releases on push works and is reported. If the tag is the version of a
+   release the operator ran for this milestone, the decision is `Released`
+   instead ("contained in 2026.11.3").
+3. **Not applicable:** a project that does not tag its default branch
+   ([landing's rule](#landing): none of its 20 newest tags is on a merge
+   commit of the last 30 days) gets `NotApplicable`: no pipeline, no pause.
+4. **One at a time:** while one release of the milestone is `Running`, the
+   others wait ("after the running release"). A decision whose commit the
+   new tag contains is `Released` with that version, without a pipeline of
+   its own.
+5. **Minimum interval:** a release starts at most once per
+   `spec.workflow.release.minInterval` (default 15 m) after the last start,
+   failed attempts included; the reason says until when. The milestone's
+   final release is exempt.
+6. **Green head:** a pipeline cannot be pinned to a commit, so a release is
+   the head of the default branch. The newest pipeline of the default branch
+   (release pipelines skipped) must be `success`, and its commit must contain
+   the decision's commit (the same commit, or a descendant). Until then the
+   decision waits, with the reason.
+7. **Started:** the decision is `Running`, with the pipeline, the head it
+   runs on (`releasedSHA`), and the milestone's merged issues and merge
+   requests that no earlier release lists.
+
+A `Running` decision follows its pipeline. Once it succeeded and a tag
+contains the commit, the decision is `Released` with its version and the
+link to the GitLab release. A pipeline that passed without such a tag ("does
+its CI know AGENT_RELEASE?"), that failed or was canceled is a failed
+attempt.
+
+**Retry once:** after a failed attempt the decision waits again and is
+started once more, with the same checks; the reason keeps the failure. After
+the second failed attempt it is `Failed` with the reason, and the queue goes
+on.
+
+A GitLab error ends the poll; the next poll tries again.
+
 ### Commands on the tracking issue
 
 (All commands: [commands.md](commands.md).)

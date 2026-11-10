@@ -344,7 +344,7 @@ All labels can be renamed. Defaults:
 ### `spec.workflow.release`
 
 Releasing by decision (see [usage](usage.md#releases), which later changes of
-this milestone fill in). Nothing reads these fields yet.
+this milestone fill in). `maxUnreleasedAge` is not read yet.
 
 - `mode`: `Auto` (default, also when empty) or `Off`. Any other value is
   rejected. `Off` means the operator never starts a release pipeline.
