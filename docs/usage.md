@@ -2302,6 +2302,23 @@ numbered follow-ups. Reply `create 1 2` (or `create 1, 3`, `create all`) in
 its thread to open follow-ups as plain issues, or `create none` to dismiss the
 remaining ones; only the owners pinned when it was posted count.
 
+The model writes it from the operator's facts, about 60 000 bytes of JSON at
+most: the cost (from the history database's agent calls whenever it is
+connected, otherwise the live tasks' sum), the start, end and duration, the
+autopilot's comments on the tracking issue with their times (every pause,
+resume, skip and end comment, plus the newest other ones, 60 comments in
+all unless more are pauses, resumes, skips and ends), then every issue of
+the queue with its title, state, merge request, revisit and decision IDs
+(at most 20, superseded ones apart, with a count of the rest; the titles are
+in the issues), its cost and its last run's summary, and the companions.
+When a long milestone does not fit, the facts are shortened rather than cut
+off, in this order: run summaries (to 200 characters, then left out), the
+milestone's spec (to 4000, then left out), every comment (to 300), comments
+other than pauses, resumes, skips and ends (oldest first), issue titles (to
+80) and the companions' reasons and links. `trimmed` in the facts names what
+was shortened, so the retrospective can say so. The cost, the times, those
+comments and the queue entries are always there.
+
 Then autopilot **closes the milestone**, once the retrospective is in (or
 there is no pilot to write one), every follow-up was opened, taken over or
 dismissed (or 7 days have passed since it was posted), and no issue in the

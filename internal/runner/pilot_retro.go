@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
@@ -176,14 +177,34 @@ func metaTime(t *time.Time) *metav1.Time {
 
 // retroIssue is what the retrospective sees of an issue of the queue.
 type retroIssue struct {
-	IID          int64              `json:"iid"`
-	Title        string             `json:"title,omitempty"`
-	State        string             `json:"state"`
-	MergeRequest int64              `json:"mergeRequestIID,omitempty"`
-	Decisions    []aiv1.DecisionRef `json:"decisions,omitempty"`
-	RevisitOf    string             `json:"revisitOf,omitempty"`
-	CostUSD      string             `json:"costUSD,omitempty"`
-	Summary      string             `json:"lastRunSummary,omitempty"`
+	IID          int64  `json:"iid"`
+	Title        string `json:"title,omitempty"`
+	State        string `json:"state"`
+	MergeRequest int64  `json:"mergeRequestIID,omitempty"`
+	// Decisions and SupersededDecisions are the IDs of the issue's
+	// decisions, at most maxRetroDecisions together, in their order;
+	// MoreDecisions counts the rest.
+	Decisions           []string `json:"decisions,omitempty"`
+	SupersededDecisions []string `json:"supersededDecisions,omitempty"`
+	MoreDecisions       int      `json:"moreDecisions,omitempty"`
+	RevisitOf           string   `json:"revisitOf,omitempty"`
+	CostUSD             string   `json:"costUSD,omitempty"`
+	Summary             string   `json:"lastRunSummary,omitempty"`
+}
+
+// setDecisions sets the IDs of ds on ri.
+func (ri *retroIssue) setDecisions(ds []aiv1.DecisionRef) {
+	for i, d := range ds {
+		if i == maxRetroDecisions {
+			ri.MoreDecisions = len(ds) - i
+			return
+		}
+		if d.Superseded {
+			ri.SupersededDecisions = append(ri.SupersededDecisions, d.ID)
+		} else {
+			ri.Decisions = append(ri.Decisions, d.ID)
+		}
+	}
 }
 
 // retroCompanion is what the retrospective sees of a companion merge
@@ -260,13 +281,81 @@ func retroCompanions(entries []aiv1.CompanionStatus, mIID int64, items []aiv1.Au
 	return out
 }
 
+// retroFactsDoc is the facts the retrospective reads. Cost, time and the
+// autopilot's comments come before the queue, which can be long.
+type retroFactsDoc struct {
+	Milestone string `json:"milestone"`
+	Spec      string `json:"spec"`
+	// Trimmed names what was shortened or left out to fit maxRetroFacts.
+	Trimmed  []string           `json:"trimmed,omitempty"`
+	CostUSD  string             `json:"costUSD"`
+	CostFrom string             `json:"costFrom"`
+	Spend    *aiv1.SpendSummary `json:"spend,omitempty"`
+	Started  time.Time          `json:"started"`
+	Done     time.Time          `json:"done"`
+	Duration string             `json:"duration"`
+	// Autopilot are the operator's comments on the tracking issue, each
+	// "<RFC3339 time> <body>".
+	Autopilot  []string         `json:"autopilotComments,omitempty"`
+	Queue      []retroIssue     `json:"queue"`
+	Companions []retroCompanion `json:"companions,omitempty"`
+}
+
+// retroComment is a comment of the operator on the tracking issue;
+// essential ones (retroEssential) are never left out.
+type retroComment struct {
+	at, body  string
+	essential bool
+}
+
+// retroEssential are the beginnings, after "🤖 ", of the autopilot's
+// comments the retrospective always sees: the pauses, how each ended, the
+// skips and the end (internal/controller/autopilot.go, pause_resume.go).
+var retroEssential = []string{"⏸️", "▶️ Autopilot continues", "⏭️", "⏹️", "✅ Autopilot is done", "🏁"}
+
+// retroComments are the operator's comments among notes, oldest first: the
+// essential ones and the newest others, maxRetroComments in all unless
+// there are more essential ones.
+func retroComments(notes []gitlab.Note, botID int64) []retroComment {
+	var all []retroComment
+	others := 0
+	for _, n := range notes {
+		body, ok := strings.CutPrefix(n.Body, "🤖 ")
+		if n.Author.ID != botID || !ok {
+			continue
+		}
+		c := retroComment{body: n.Body}
+		if n.CreatedAt != nil {
+			c.at = n.CreatedAt.UTC().Format(time.RFC3339)
+		}
+		for _, p := range retroEssential {
+			c.essential = c.essential || strings.HasPrefix(body, p)
+		}
+		if !c.essential {
+			others++
+		}
+		all = append(all, c)
+	}
+	drop := min(others, max(0, len(all)-maxRetroComments))
+	out := all[:0]
+	for _, c := range all {
+		if !c.essential && drop > 0 {
+			drop--
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 // retroFacts gathers what the operator knows of the finished milestone: the
-// queue with states, merge requests, decisions and revisits, the
-// companions with how each landed, the autopilot's comments on the tracking issue (pauses with how they ended,
-// skips), the cost over the milestone's tasks and the time from the
+// queue with states, merge requests, decision IDs and revisits, the
+// companions with how each landed, the autopilot's comments on the tracking
+// issue (pauses with how they ended, skips, the end), the cost over the
+// milestone's agent calls (or its live tasks) and the time from the
 // tracking issue's creation to done. It returns them as JSON for the model,
-// as a few plain lines for the comment without one, and the tracking
-// issue's comments.
+// fitted to maxRetroFacts (fitRetroFacts), as a few plain lines for the
+// comment without one, and the tracking issue's comments.
 func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (string, string, []gitlab.Note, error) {
 	glProject, tracking := spec.GitLab.Project, task.Spec.Issue.IID
 	m, err := gl.GetMilestone(ctx, glProject, task.Spec.Milestone.ID)
@@ -289,19 +378,7 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 	if err := r.K8s.List(ctx, &tasks, client.InNamespace(r.Namespace), client.MatchingLabels{labelProject: project.Name}); err != nil {
 		return "", "", nil, fmt.Errorf("listing tasks: %w", err)
 	}
-	var v struct {
-		Milestone  string             `json:"milestone"`
-		Spec       string             `json:"spec"`
-		Queue      []retroIssue       `json:"queue"`
-		Companions []retroCompanion   `json:"companions,omitempty"`
-		Autopilot  []string           `json:"autopilotComments,omitempty"`
-		CostUSD    string             `json:"costUSD"`
-		CostFrom   string             `json:"costFrom"`
-		Spend      *aiv1.SpendSummary `json:"spend,omitempty"`
-		Started    time.Time          `json:"started"`
-		Done       time.Time          `json:"done"`
-		Duration   string             `json:"duration"`
-	}
+	var v retroFactsDoc
 	v.Milestone, v.Spec = m.Title, rules.Spec(m.Description, spec.Workflow.CommandPrefix)
 	var cost float64
 	var ap *aiv1.AutopilotStatus
@@ -333,7 +410,8 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		}
 	}
 	for _, it := range items {
-		ri := retroIssue{IID: it.IID, Title: titles[it.IID], State: string(it.State), MergeRequest: it.MergeRequestIID, Decisions: it.Decisions, RevisitOf: it.RevisitOf}
+		ri := retroIssue{IID: it.IID, Title: titles[it.IID], State: string(it.State), MergeRequest: it.MergeRequestIID, RevisitOf: it.RevisitOf}
+		ri.setDecisions(it.Decisions)
 		if t := byIID[it.IID]; t != nil {
 			ri.CostUSD, ri.Summary = t.Status.Run.CostUSD, textutil.Truncate(t.Status.Run.Summary, 500)
 		}
@@ -343,22 +421,15 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		v.Queue = append(v.Queue, ri)
 	}
 	v.Companions = retroCompanions(project.Status.Companions, m.IID, items, byIID)
+	comments := retroComments(notes, project.Status.BotUserID)
 	pauses := 0
 	for _, n := range notes {
-		if n.Author.ID != project.Status.BotUserID || !strings.HasPrefix(n.Body, "🤖 ") {
-			continue
-		}
-		if strings.HasPrefix(n.Body, "🤖 ⏸️") {
+		if n.Author.ID == project.Status.BotUserID && strings.HasPrefix(n.Body, "🤖 ⏸️") {
 			pauses++
 		}
-		at := ""
-		if n.CreatedAt != nil {
-			at = n.CreatedAt.UTC().Format(time.RFC3339) + " "
-		}
-		v.Autopilot = append(v.Autopilot, at+textutil.Truncate(n.Body, 600))
 	}
-	v.Autopilot = v.Autopilot[max(0, len(v.Autopilot)-maxRetroComments):]
-	// The operator's sum over agent_calls counts deleted tasks too.
+	// The operator's sum over agent_calls counts deleted tasks too; the
+	// controller passes it whenever the history database is connected.
 	v.CostUSD, v.CostFrom = aiv1.ShowCost(cost), "live tasks"
 	spent := "$" + v.CostUSD + " over the milestone's runs (from live tasks)"
 	if s := task.Spec.Source.RetroSpend; s != nil {
@@ -377,7 +448,7 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 	if !v.Started.IsZero() && v.Done.After(v.Started) {
 		v.Duration = v.Done.Sub(v.Started).Round(time.Minute).String()
 	}
-	b, err := json.MarshalIndent(v, "", "  ")
+	b, err := fitRetroFacts(v, comments, maxRetroFacts)
 	plain := fmt.Sprintf("Autopilot merged %d of %d issues in %s (from the tracking issue's creation to done), for %s, with %d pauses.",
 		merged, len(v.Queue), v.Duration, spent, pauses)
 	if len(v.Companions) > 0 {
@@ -387,14 +458,127 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		}
 		plain += " Companions: " + strings.Join(parts, "; ") + "."
 	}
-	return textutil.Truncate(string(b), maxRetroFacts), plain, notes, err
+	return string(b), plain, notes, err
+}
+
+// fitRetroFacts marshals v with comments as its autopilotComments. Over
+// limit bytes, it shortens step by step and marshals again: without
+// indentation (not named in trimmed, nothing is lost), then the run
+// summaries to 200 runes, then without them, the spec to 4000 runes, then
+// without it, every comment to 300 runes, then it leaves out the
+// non-essential comments, oldest first, shortens titles to 80 runes and
+// leaves out the companions' reasons and URLs. Each step names itself in
+// v.Trimmed. Cost, time, the essential comments and every queue entry stay:
+// it is always valid JSON, over limit only when they alone are.
+func fitRetroFacts(v retroFactsDoc, comments []retroComment, limit int) ([]byte, error) {
+	comments = slices.Clone(comments)
+	v.Queue, v.Companions = slices.Clone(v.Queue), slices.Clone(v.Companions)
+	commentRunes, indent := 600, true
+	// Each step shortens v and reports whether anything changed; it runs
+	// again while it changes something and v does not fit.
+	shorten := func(s *string, n int) bool {
+		t := truncateRunes(*s, n)
+		changed := t != *s
+		*s = t
+		return changed
+	}
+	steps := []struct {
+		name string
+		do   func() bool
+	}{
+		// Without indentation first: that loses nothing.
+		{"", func() bool {
+			changed := indent
+			indent = false
+			return changed
+		}},
+		{"summaries", func() bool {
+			changed := false
+			for i := range v.Queue {
+				changed = shorten(&v.Queue[i].Summary, 200) || changed
+			}
+			return changed
+		}},
+		{"summaries", func() bool {
+			changed := false
+			for i := range v.Queue {
+				changed = shorten(&v.Queue[i].Summary, 0) || changed
+			}
+			return changed
+		}},
+		{"spec", func() bool { return shorten(&v.Spec, 4000) }},
+		{"spec", func() bool { return shorten(&v.Spec, 0) }},
+		{"comments", func() bool {
+			changed := commentRunes > 300 && slices.ContainsFunc(comments, func(c retroComment) bool { return utf8.RuneCountInString(c.body) > 300 })
+			commentRunes = 300
+			return changed
+		}},
+		{"otherComments", func() bool {
+			i := slices.IndexFunc(comments, func(c retroComment) bool { return !c.essential })
+			if i < 0 {
+				return false
+			}
+			comments = slices.Delete(comments, i, i+1)
+			return true
+		}},
+		{"titles", func() bool {
+			changed := false
+			for i := range v.Queue {
+				changed = shorten(&v.Queue[i].Title, 80) || changed
+			}
+			return changed
+		}},
+		{"companions", func() bool {
+			changed := false
+			for i := range v.Companions {
+				c := &v.Companions[i]
+				changed = changed || c.Reason != "" || c.URL != ""
+				c.Reason, c.URL = "", ""
+			}
+			return changed
+		}},
+	}
+	marshal := func() ([]byte, error) {
+		v.Autopilot = nil
+		for _, c := range comments {
+			v.Autopilot = append(v.Autopilot, strings.TrimSpace(c.at+" "+truncateRunes(c.body, commentRunes)))
+		}
+		if indent {
+			return json.MarshalIndent(v, "", "  ")
+		}
+		return json.Marshal(v)
+	}
+	b, err := marshal()
+	for _, s := range steps {
+		for err == nil && len(b) > limit && s.do() {
+			if s.name != "" && !slices.Contains(v.Trimmed, s.name) {
+				v.Trimmed = append(v.Trimmed, s.name)
+			}
+			b, err = marshal()
+		}
+	}
+	return b, err
+}
+
+// truncateRunes shortens s to n runes with an ellipsis, "" for n 0.
+func truncateRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	if n == 0 {
+		return ""
+	}
+	return string([]rune(s)[:n]) + "…"
 }
 
 // maxRetroComments is how many of the autopilot's comments the
-// retrospective sees, maxRetroFacts how many bytes of facts.
+// retrospective sees (more when more are essential), maxRetroDecisions how
+// many decision IDs per issue, maxRetroFacts how many bytes of facts it
+// aims at.
 const (
-	maxRetroComments = 60
-	maxRetroFacts    = 60000
+	maxRetroComments  = 60
+	maxRetroDecisions = 20
+	maxRetroFacts     = 60000
 )
 
 const retroSchema = `{
@@ -432,10 +616,16 @@ implemented on autopilot: the operator worked through a queue of issues, one
 merge request each, merged them once CI and the review were clean, and
 paused when something needed a human. The autopilot is done.
 
-You get the facts the operator recorded: the queue with each issue's state,
-merge request, decisions and revisits, the autopilot's comments on the
-tracking issue (pauses, resumes, skips, the end) with their times, the cost
-and the time. costFrom says where the cost comes from: "agent calls" is
+You get the facts the operator recorded: the cost and the time, the
+autopilot's comments on the tracking issue (pauses, resumes, skips, the end)
+with their times, and the queue with each issue's state, merge request,
+decision IDs (superseded ones in supersededDecisions, moreDecisions counts
+those not listed; the IDs are enough to name them) and
+revisits. trimmed names what was shortened or left out so the facts fit:
+"summaries" (run summaries), "spec", "comments" (shortened),
+"otherComments" (comments other than pauses, resumes, skips and the end left
+out), "titles", "companions" (their reasons and links); say so where it
+matters. costFrom says where the cost comes from: "agent calls" is
 every call of the milestone, with spend naming its tokens and the three
 biggest issues, kinds and models (subagent models as their own); "live
 tasks" misses deleted tasks. Ground every statement in them and say where

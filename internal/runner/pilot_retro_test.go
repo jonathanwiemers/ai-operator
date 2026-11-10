@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -80,11 +81,17 @@ func TestRetrospectiveIsPostedOnce(t *testing.T) {
 		strings.Contains(inv.SystemPrompt, "Write code.") || inv.MaxBudgetUSD != "20.00" {
 		t.Fatalf("a read-only call on the implement role's model, without its tools or instructions: %+v", inv)
 	}
-	for _, want := range []string{`"state": "Merged"`, `"mergeRequestIID": 9`, `"id": "D1-P1"`, `"revisitOf": "D1-P1"`, "Autopilot paused: both reviewers",
+	for _, want := range []string{`"state": "Merged"`, `"mergeRequestIID": 9`, "\"decisions\": [\n        \"D1-P1\"\n      ]", `"revisitOf": "D1-P1"`, "Autopilot paused: both reviewers",
 		`"costUSD": "1.50"`, `"duration": "3h0m0s"`, "Build it."} {
 		if !strings.Contains(inv.Prompt, want) {
 			t.Errorf("the facts miss %s", want)
 		}
+	}
+	// Small facts: nothing trimmed, decisions as IDs, cost and time before
+	// the queue.
+	if p := inv.Prompt; strings.Contains(p, "Use REST") || strings.Contains(p, `"trimmed"`) ||
+		strings.Index(p, `"duration"`) > strings.Index(p, `"queue"`) || strings.Index(p, `"autopilotComments"`) > strings.Index(p, `"queue"`) {
+		t.Errorf("the facts' shape:\n%s", p)
 	}
 	notes := botNotes(e.gl, 5)
 	c := notes[len(notes)-1]
@@ -280,5 +287,211 @@ func TestRetroText(t *testing.T) {
 	}
 	if s := strings.Repeat("a", aiv1.MaxRetroText); retroText(s) != s {
 		t.Error("text at the limit is cut")
+	}
+}
+
+// retroFactsOf returns the facts in the retrospective's prompt.
+func retroFactsOf(t *testing.T, prompt string) string {
+	t.Helper()
+	_, rest, ok := strings.Cut(prompt, "```json\n")
+	facts, _, ok2 := strings.Cut(rest, "\n```\n</untrusted-data>")
+	if !ok || !ok2 {
+		t.Fatalf("no facts in the prompt:\n%s", prompt)
+	}
+	return facts
+}
+
+// A 40-issue milestone with 20 decisions each, long titles, 500-rune
+// summaries, a long spec and 60 more comments fits: valid JSON under
+// maxRetroFacts with every queue entry, every pause, resume, skip and end
+// comment with its time, the cost and the duration.
+func TestRetroFactsOfALongMilestoneFit(t *testing.T) {
+	e := newRetroEnv(t, "")
+	ctx := context.Background()
+	e.gl.Milestones[0].Description += "\n" + strings.Repeat("The spec goes on and on. ", 600)
+	long := strings.Repeat("ä", 230)
+	var items []aiv1.AutopilotItem
+	for i := range int64(40) {
+		iid := 100 + i
+		e.gl.AddIssue(iid, fmt.Sprintf("#%d %s", iid, long)).Milestone = &e.gl.Milestones[0]
+		it := aiv1.AutopilotItem{IID: iid, State: aiv1.AutopilotItemMerged, MergeRequestIID: 1000 + iid}
+		for d := range 20 {
+			it.Decisions = append(it.Decisions, aiv1.DecisionRef{ID: fmt.Sprintf("D%d-%d", iid, d+1), Title: "A decision with a long title " + long,
+				URL: fmt.Sprintf("https://gitlab.example/group/app/-/issues/%d#note_%d", iid, 4_000_000_000+d), Superseded: d == 3})
+		}
+		if i == 0 {
+			it.Decisions = append(it.Decisions, it.Decisions[:5]...) // 25: 5 more
+		}
+		items = append(items, it)
+		impl := &aiv1.AgentTask{
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("shop-%d-x", iid), Namespace: "agents", Labels: map[string]string{labelProject: "shop"}},
+			Spec: aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeImplement, Milestone: &aiv1.MilestoneRef{ID: 11, IID: 3},
+				Issue: &aiv1.IssueRef{IID: iid}},
+		}
+		if err := e.k8s.Create(ctx, impl); err != nil {
+			t.Fatal(err)
+		}
+		impl.Status.Run.CostUSD, impl.Status.Run.Summary = "0.5000", strings.Repeat("ö", 600)
+		if err := e.k8s.Status().Update(ctx, impl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var st aiv1.AgentTask
+	if err := e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop-spec-m3-checkout-v2"}, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.Status.Autopilot.Items = items
+	if err := e.k8s.Status().Update(ctx, &st); err != nil {
+		t.Fatal(err)
+	}
+	// 60 more comments of the bot: 24 essential among other ones, all long.
+	essential := []string{"⏸️ Autopilot paused: CI is red on #%d.", "▶️ Autopilot continues: #%d is merged (ended by @alice).", "⏭️ #%d was closed without a merge, so it is skipped."}
+	for i := range 60 {
+		body := fmt.Sprintf("📌 Other news about #%d.", 100+i)
+		if i%5 < 2 || i%5 == 4 && i < 40 {
+			body = fmt.Sprintf(essential[i%3], 100+i)
+		}
+		e.gl.AddNote(5, e.gl.Bot, "🤖 "+body+" "+strings.Repeat("ü", 600))
+	}
+	e.gl.AddNote(5, e.gl.Bot, "🤖 ⏹️ The milestone ends here (by @alice): nothing left.")
+	e.gl.AddNote(5, e.gl.Bot, "🤖 🏁 The milestone is closed.")
+	e.gl.AddNote(5, e.gl.Bot, "🤖 ✅ Autopilot is done: 40 of 40 issues merged.")
+	task := e.task(t)
+	task.Spec.Source.RetroSpend = &aiv1.SpendSummary{CostUSD: "123.4567", CostKnown: true}
+	if err := e.k8s.Update(ctx, &task); err != nil {
+		t.Fatal(err)
+	}
+	e.step(t)
+	if len(e.engine.calls) != 1 {
+		t.Fatalf("expected one retrospective call, got %d", len(e.engine.calls))
+	}
+	facts := retroFactsOf(t, e.engine.calls[0].Prompt)
+	if !json.Valid([]byte(facts)) || len(facts) > maxRetroFacts {
+		t.Fatalf("facts of %d bytes, valid %v", len(facts), json.Valid([]byte(facts)))
+	}
+	var v struct {
+		Trimmed   []string `json:"trimmed"`
+		CostUSD   string   `json:"costUSD"`
+		CostFrom  string   `json:"costFrom"`
+		Duration  string   `json:"duration"`
+		Autopilot []string `json:"autopilotComments"`
+		Queue     []struct {
+			IID          int64    `json:"iid"`
+			Title        string   `json:"title"`
+			State        string   `json:"state"`
+			MergeRequest int64    `json:"mergeRequestIID"`
+			Decisions    []string `json:"decisions"`
+			Superseded   []string `json:"supersededDecisions"`
+			More         int      `json:"moreDecisions"`
+		} `json:"queue"`
+	}
+	if err := json.Unmarshal([]byte(facts), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.CostUSD != "123.46" || v.CostFrom != "agent calls" || v.Duration != "3h0m0s" || !slices.Contains(v.Trimmed, "summaries") {
+		t.Fatalf("cost %q from %q, duration %q, trimmed %q", v.CostUSD, v.CostFrom, v.Duration, v.Trimmed)
+	}
+	if len(v.Queue) != 40 {
+		t.Fatalf("expected 40 queue entries, got %d", len(v.Queue))
+	}
+	for i, q := range v.Queue {
+		iid := int64(100 + i)
+		if q.IID != iid || !strings.HasPrefix(q.Title, fmt.Sprintf("#%d ää", iid)) || q.State != "Merged" || q.MergeRequest != 1000+iid ||
+			len(q.Decisions) != 19 || q.Decisions[0] != fmt.Sprintf("D%d-1", iid) || !slices.Equal(q.Superseded, []string{fmt.Sprintf("D%d-4", iid)}) {
+			t.Fatalf("queue entry %d: %+v", i, q)
+		}
+		if want := map[bool]int{true: 5}[i == 0]; q.More != want {
+			t.Errorf("#%d: %d more decisions, want %d", iid, q.More, want)
+		}
+	}
+	if strings.Contains(facts, "A decision with a long title") || strings.Contains(facts, "#note_") {
+		t.Error("decisions are IDs only")
+	}
+	for _, n := range e.gl.IssueNotes[5] {
+		body := strings.TrimPrefix(n.Body, "🤖 ")
+		if n.Author.ID != e.gl.Bot.ID || !slices.ContainsFunc(retroEssential, func(p string) bool { return strings.HasPrefix(body, p) }) {
+			continue
+		}
+		head := n.CreatedAt.UTC().Format(time.RFC3339) + " " + textPrefix(n.Body, 40)
+		if !slices.ContainsFunc(v.Autopilot, func(c string) bool { return strings.HasPrefix(c, head) }) {
+			t.Errorf("the facts miss the comment %q", head)
+		}
+	}
+}
+
+func textPrefix(s string, runes int) string {
+	return string([]rune(s)[:min(runes, utf8.RuneCountInString(s))])
+}
+
+// Shortening the summaries is enough here: the rest stays, and trimmed
+// says so.
+func TestFitRetroFactsShortensSummariesFirst(t *testing.T) {
+	v := retroFactsDoc{Milestone: "M", Spec: "spec", CostUSD: "1.00", CostFrom: "live tasks", Duration: "1h0m0s"}
+	for i := range 10 {
+		v.Queue = append(v.Queue, retroIssue{IID: int64(i), Title: "t", State: "Merged", Summary: strings.Repeat("x", 500)})
+	}
+	comments := []retroComment{{at: "2026-11-01T10:00:00Z", body: "🤖 📌 other " + strings.Repeat("y", 500)}, {at: "2026-11-01T11:00:00Z", body: "🤖 ⏸️ paused", essential: true}}
+	full, err := fitRetroFacts(v, comments, 1<<20)
+	if err != nil || strings.Contains(string(full), "trimmed") || !strings.Contains(string(full), "\n  \"spec\": \"spec\",\n") {
+		t.Fatalf("under the limit nothing is trimmed: %v\n%s", err, full)
+	}
+	// Just over: without indentation, nothing is lost.
+	compact, err := fitRetroFacts(v, comments, len(full)-1)
+	if err != nil || strings.Contains(string(compact), "trimmed") || strings.Contains(string(compact), "\n") {
+		t.Fatalf("without indentation: %v\n%s", err, compact)
+	}
+	b, err := fitRetroFacts(v, comments, len(compact)-500)
+	if err != nil || !json.Valid(b) || len(b) > len(compact)-500 {
+		t.Fatalf("%d bytes, %v", len(b), err)
+	}
+	var got retroFactsDoc
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got.Trimmed, []string{"summaries"}) || utf8.RuneCountInString(got.Queue[0].Summary) != 201 || got.Spec != "spec" || len(got.Autopilot) != 2 {
+		t.Fatalf("only the summaries are shortened: %+v", got)
+	}
+	if v.Queue[0].Summary != strings.Repeat("x", 500) {
+		t.Fatal("the caller's facts are not changed")
+	}
+
+	// Far too small: everything but the essentials goes, still valid JSON.
+	b, err = fitRetroFacts(v, comments, 10)
+	if err != nil || !json.Valid(b) {
+		t.Fatalf("%v\n%s", err, b)
+	}
+	got = retroFactsDoc{}
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got.Trimmed, []string{"summaries", "spec", "comments", "otherComments"}) || len(got.Queue) != 10 || got.Queue[0].Summary != "" ||
+		got.Spec != "" || !slices.Equal(got.Autopilot, []string{"2026-11-01T11:00:00Z 🤖 ⏸️ paused"}) || got.CostUSD != "1.00" || got.Duration != "1h0m0s" {
+		t.Fatalf("the essentials stay: %+v", got)
+	}
+}
+
+// The essential comments are kept also beyond maxRetroComments; the others
+// are the newest.
+func TestRetroCommentsKeepTheEssentialOnes(t *testing.T) {
+	bot := gitlab.User{ID: 9}
+	var notes []gitlab.Note
+	for i := range 100 {
+		body := fmt.Sprintf("🤖 📌 note %d", i)
+		if i < 70 && i%2 == 0 {
+			body = fmt.Sprintf("🤖 ⏸️ Autopilot paused %d", i)
+		}
+		notes = append(notes, gitlab.Note{Author: bot, Body: body})
+	}
+	notes = append(notes, gitlab.Note{Author: gitlab.User{ID: 7}, Body: "🤖 ⏸️ fake"}, gitlab.Note{Author: bot, Body: "no prefix"})
+	cs := retroComments(notes, 9)
+	essential := 0
+	for _, c := range cs {
+		if c.essential {
+			essential++
+		}
+	}
+	if essential != 35 || len(cs) != 60 || cs[0].body != "🤖 ⏸️ Autopilot paused 0" || cs[len(cs)-1].body != "🤖 📌 note 99" ||
+		slices.ContainsFunc(cs, func(c retroComment) bool { return c.body == "🤖 📌 note 69" }) {
+		t.Fatalf("%d essential of %d: first %q, last %q", essential, len(cs), cs[0].body, cs[len(cs)-1].body)
 	}
 }
