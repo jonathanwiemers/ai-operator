@@ -1,7 +1,7 @@
 // Tests of src/format.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { costChip, costTooltip, deskTitle, durationShort, fullTime, limitedEngine, tokenCount } from '../src/format.ts'
+import { costChip, costTooltip, deferringEngine, deskTitle, durationShort, fullTime, tokenCount } from '../src/format.ts'
 
 test('fullTime shows the date, time and time zone', () => {
   const s = fullTime('2026-11-02T13:59:00Z')
@@ -74,13 +74,12 @@ test('costTooltip breaks down what is known', () => {
   assert.match(costTooltip({ costUSD: '1.75', costKnown: true, tokens: 0, costFrom: 'tasks' }), /current tasks/)
 })
 
-test('limitedEngine reads the deferred usage limit, else the legacy limitedEngine', () => {
+test('deferringEngine reads the usage limit marked deferred', () => {
   const until = '2026-11-05T15:00:00Z'
   const routed = { engine: 'claude', until }
-  assert.equal(limitedEngine({ usageLimits: [routed, { engine: 'cursor', until, deferred: true }], limitedEngine: 'cursor' }), 'cursor')
-  assert.equal(limitedEngine({ limitedEngine: 'claude' }), 'claude', 'a task an older release deferred')
-  assert.equal(limitedEngine({ usageLimits: [routed] }), undefined, 'a routed limit defers nothing')
-  assert.equal(limitedEngine({ limitedEngine: '' }), undefined)
+  assert.equal(deferringEngine({ usageLimits: [routed, { engine: 'cursor', until, deferred: true }] }), 'cursor')
+  assert.equal(deferringEngine({ usageLimits: [routed] }), undefined, 'a routed limit defers nothing')
+  assert.equal(deferringEngine({}), undefined, 'a task an older release deferred names no engine')
 })
 
 test('durationShort: minutes, hours and days in at most two units', () => {

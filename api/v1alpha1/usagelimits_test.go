@@ -61,8 +61,8 @@ func TestDeferringLimit(t *testing.T) {
 	run.DeferredUntil = &metav1.Time{Time: now.Add(time.Hour)}
 	run.SetDeferringLimit(limitAt(EngineClaude, now.Add(time.Hour), "five-hour"))
 	l, ok := run.DeferringLimit()
-	if !ok || l.Engine != EngineClaude || l.Message != "five-hour" || !l.Deferred || run.LimitedEngine != EngineClaude {
-		t.Fatalf("the new entry defers the run (and LimitedEngine is still written): %+v, %+v", l, run)
+	if !ok || l.Engine != EngineClaude || l.Message != "five-hour" || !l.Deferred {
+		t.Fatalf("the new entry defers the run: %+v, %+v", l, run)
 	}
 	if len(run.UsageLimits) != 2 || run.UsageLimits[1].Deferred {
 		t.Fatalf("the routed limit stays unmarked: %+v", run.UsageLimits)
@@ -75,44 +75,37 @@ func TestDeferringLimit(t *testing.T) {
 
 	marked := run.UsageLimits
 	run.ClearDeferringLimit()
-	if _, ok := run.DeferringLimit(); ok || run.LimitedEngine != "" || len(run.UsageLimits) != 2 {
+	if _, ok := run.DeferringLimit(); ok || len(run.UsageLimits) != 2 {
 		t.Fatalf("cleared: no deferring limit, the limits stay until they expire: %+v", run)
 	}
 	if !marked[1].Deferred {
 		t.Fatal("clearing must not change a slice shared with the caller")
 	}
 
-	// A task deferred by the previous release has LimitedEngine only.
-	legacy := RunStatus{LimitedEngine: EngineClaude, DeferredUntil: &metav1.Time{Time: now.Add(time.Hour)}, Summary: "claude usage limit"}
-	l, ok = legacy.DeferringLimit()
-	if !ok || l.Engine != EngineClaude || !l.Until.Time.Equal(now.Add(time.Hour)) || l.Message != "claude usage limit" {
-		t.Fatalf("LimitedEngine until DeferredUntil defers the run: %+v", l)
+	// A task an older release deferred without a marked entry (its engine
+	// was in a field that is gone) keeps only DeferredUntil: it is retried
+	// then, but no limit defers it or holds for the project.
+	legacy := RunStatus{DeferredUntil: &metav1.Time{Time: now.Add(time.Hour)}, Summary: "claude usage limit"}
+	if l, ok := legacy.DeferringLimit(); ok {
+		t.Fatalf("DeferredUntil alone defers nothing: %+v", l)
 	}
-	if got := legacy.ActiveUsageLimits(now); len(got) != 1 || got[0].Engine != EngineClaude {
-		t.Fatalf("the legacy deferral is an active limit: %+v", got)
-	}
-	if got := legacy.ActiveUsageLimits(now.Add(time.Hour)); len(got) != 0 {
-		t.Fatalf("and expires with DeferredUntil: %+v", got)
-	}
-	legacy.DeferredUntil = nil
-	if _, ok := legacy.DeferringLimit(); ok {
-		t.Fatal("LimitedEngine without DeferredUntil defers nothing")
+	if got := legacy.ActiveUsageLimits(now); len(got) != 0 {
+		t.Fatalf("DeferredUntil alone is no active limit: %+v", got)
 	}
 }
 
 func TestProjectUsageLimits(t *testing.T) {
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
-	legacy := func(engine Engine, until time.Time) AgentTask {
+	deferredBy := func(engine Engine, until time.Time) AgentTask {
 		var task AgentTask
-		task.Status.Run.LimitedEngine = engine
 		task.Status.Run.DeferredUntil = &metav1.Time{Time: until}
-		task.Status.Run.Summary = string(engine) + " limit"
+		task.Status.Run.SetDeferringLimit(limitAt(engine, until, string(engine)+" limit"))
 		return task
 	}
 	limits := ProjectUsageLimits([]AgentTask{
-		legacy(EngineClaude, now.Add(time.Hour)),
-		legacy(EngineClaude, now.Add(2*time.Hour)),
-		legacy(EngineCursor, now.Add(-time.Minute)), // expired
+		deferredBy(EngineClaude, now.Add(time.Hour)),
+		deferredBy(EngineClaude, now.Add(2*time.Hour)),
+		deferredBy(EngineCursor, now.Add(-time.Minute)), // expired
 		{},
 	}, nil, "p", now)
 	if len(limits) != 1 || limits[0].Engine != EngineClaude || !limits[0].Until.Time.Equal(now.Add(2*time.Hour)) {
@@ -127,7 +120,7 @@ func TestProjectUsageLimits(t *testing.T) {
 	}
 	var deferred AgentTask
 	deferred.Status.Run.SetDeferringLimit(limitAt(EngineClaude, now.Add(30*time.Minute), "five-hour"))
-	limits = ProjectUsageLimits([]AgentTask{legacy(EngineClaude, now.Add(time.Hour)), routed, deferred}, nil, "p", now)
+	limits = ProjectUsageLimits([]AgentTask{deferredBy(EngineClaude, now.Add(time.Hour)), routed, deferred}, nil, "p", now)
 	if len(limits) != 2 || limits[0].Engine != EngineClaude || !limits[0].Until.Time.Equal(now.Add(time.Hour)) ||
 		limits[1].Engine != EngineCursor || limits[1].Message != "monthly" {
 		t.Fatalf("expected claude's deferral and cursor's routed limit, got %+v", limits)

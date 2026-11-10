@@ -34,44 +34,33 @@ func activeUsageLimits(limits []UsageLimit, now time.Time) []UsageLimit {
 }
 
 // DeferringLimit returns the limit that deferred the run: the usage limit
-// marked deferred, or, for a task an older release deferred, LimitedEngine
-// until DeferredUntil.
+// marked deferred.
 func (s RunStatus) DeferringLimit() (UsageLimit, bool) {
 	if i := slices.IndexFunc(s.UsageLimits, func(l UsageLimit) bool { return l.Deferred }); i >= 0 {
 		return s.UsageLimits[i], true
 	}
-	if s.LimitedEngine == "" || s.DeferredUntil == nil {
-		return UsageLimit{}, false
-	}
-	return UsageLimit{Engine: s.LimitedEngine, Until: *s.DeferredUntil, Message: s.Summary, Deferred: true}, true
+	return UsageLimit{}, false
 }
 
 // ActiveUsageLimits returns the run's limits still in effect at now, the
 // deferring one included, one per engine.
 func (s RunStatus) ActiveUsageLimits(now time.Time) []UsageLimit {
-	limits := s.UsageLimits
-	if l, ok := s.DeferringLimit(); ok && !slices.ContainsFunc(limits, func(l UsageLimit) bool { return l.Deferred }) {
-		limits = append(slices.Clone(limits), l)
-	}
-	return activeUsageLimits(limits, now)
+	return activeUsageLimits(s.UsageLimits, now)
 }
 
 // SetDeferringLimit merges l into the run's limits and marks its engine's
-// limit as the one that deferred the run, in place of an earlier one. It
-// also sets the deprecated LimitedEngine.
+// limit as the one that deferred the run, in place of an earlier one.
 func (s *RunStatus) SetDeferringLimit(l UsageLimit) {
 	s.ClearDeferringLimit()
 	s.UsageLimits = MergeUsageLimit(s.UsageLimits, l)
 	for i := range s.UsageLimits {
 		s.UsageLimits[i].Deferred = s.UsageLimits[i].Engine == l.Engine
 	}
-	s.LimitedEngine = l.Engine
 }
 
 // ClearDeferringLimit unmarks the limit that deferred the run. The limit
 // itself stays until it expires, like one the run went around.
 func (s *RunStatus) ClearDeferringLimit() {
-	s.LimitedEngine = ""
 	if !slices.ContainsFunc(s.UsageLimits, func(l UsageLimit) bool { return l.Deferred }) {
 		return
 	}

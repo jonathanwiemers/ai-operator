@@ -96,9 +96,9 @@ func TestClassifyLimit(t *testing.T) {
 	}
 }
 
-// limitedEngine fails with a usage limit for selected invocations and
+// limitingEngine fails with a usage limit for selected invocations and
 // delegates everything else to the scripted engine.
-type limitedEngine struct {
+type limitingEngine struct {
 	mu      sync.Mutex
 	next    Engine
 	limitIf func(inv Invocation) bool
@@ -107,7 +107,7 @@ type limitedEngine struct {
 	limited int
 }
 
-func (l *limitedEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
+func (l *limitingEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
 	l.mu.Lock()
 	l.calls++
 	hit := l.limitIf(inv)
@@ -119,6 +119,13 @@ func (l *limitedEngine) Run(ctx context.Context, inv Invocation) (*Result, error
 		return &Result{IsError: true, Text: l.message}, errors.New("claude reported an error: " + l.message)
 	}
 	return l.next.Run(ctx, inv)
+}
+
+// deferringEngine is the engine whose usage limit deferred the run, empty
+// without one.
+func deferringEngine(run aiv1.RunStatus) aiv1.Engine {
+	l, _ := run.DeferringLimit()
+	return l.Engine
 }
 
 type limitEnv struct {
@@ -234,7 +241,7 @@ func TestRunRecordsEngineUsage(t *testing.T) {
 
 func TestUsageLimitDefersRun(t *testing.T) {
 	reset := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
-	engine := &limitedEngine{
+	engine := &limitingEngine{
 		next:    &scriptedEngine{},
 		message: "Claude AI usage limit reached|" + strconv.FormatInt(reset.Unix(), 10),
 	}
@@ -246,7 +253,7 @@ func TestUsageLimitDefersRun(t *testing.T) {
 	}
 	run := e.task().Status.Run
 	if run.LastResult != aiv1.RunResultDeferred || run.DeferredUntil == nil || !run.DeferredUntil.Time.Equal(reset) ||
-		run.LimitedEngine != aiv1.EngineClaude || run.Deferrals != 1 || run.BlockReason != aiv1.BlockQuota {
+		deferringEngine(run) != aiv1.EngineClaude || run.Deferrals != 1 || run.BlockReason != aiv1.BlockQuota {
 		t.Fatalf("unexpected run status %+v", run)
 	}
 	if l, ok := run.DeferringLimit(); !ok || l.Engine != aiv1.EngineClaude || !l.Until.Time.Equal(reset) || len(run.UsageLimits) != 1 || !run.UsageLimits[0].Deferred {
@@ -284,7 +291,7 @@ func TestUsageLimitDefersRun(t *testing.T) {
 		t.Fatal("the run should happen after the reset")
 	}
 	run = e.task().Status.Run
-	if run.LastResult != aiv1.RunResultSucceeded || run.DeferredUntil != nil || run.Deferrals != 0 || run.LimitedEngine != "" || run.RunCount != 1 ||
+	if run.LastResult != aiv1.RunResultSucceeded || run.DeferredUntil != nil || run.Deferrals != 0 || deferringEngine(run) != "" || run.RunCount != 1 ||
 		run.BlockReason != "" || slices.ContainsFunc(run.UsageLimits, func(l aiv1.UsageLimit) bool { return l.Deferred }) {
 		t.Fatalf("deferral not cleared after a successful run: %+v", run)
 	}
@@ -294,7 +301,7 @@ func TestUsageLimitDefersRun(t *testing.T) {
 }
 
 func TestUsageLimitBackoffWithoutResetTime(t *testing.T) {
-	engine := &limitedEngine{next: &scriptedEngine{}, message: `API Error: 429 {"error":{"type":"rate_limit_error"}}`}
+	engine := &limitingEngine{next: &scriptedEngine{}, message: `API Error: 429 {"error":{"type":"rate_limit_error"}}`}
 	engine.limitIf = func(Invocation) bool { return true }
 	e := newLimitEnv(t, engine)
 
@@ -315,7 +322,7 @@ func TestUsageLimitBackoffWithoutResetTime(t *testing.T) {
 }
 
 func TestProjectWideLimitSkipsEngine(t *testing.T) {
-	engine := &limitedEngine{next: &scriptedEngine{}, limitIf: func(Invocation) bool { return false }}
+	engine := &limitingEngine{next: &scriptedEngine{}, limitIf: func(Invocation) bool { return false }}
 	e := newLimitEnv(t, engine)
 	var project aiv1.AgentProject
 	_ = e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: "shop"}, &project)
@@ -336,7 +343,7 @@ func TestProjectWideLimitSkipsEngine(t *testing.T) {
 }
 
 func TestUsageLimitDuringFixPublishesWork(t *testing.T) {
-	engine := &limitedEngine{next: &scriptedEngine{}, message: "Claude AI usage limit reached"}
+	engine := &limitingEngine{next: &scriptedEngine{}, message: "Claude AI usage limit reached"}
 	engine.limitIf = func(inv Invocation) bool { return strings.Contains(inv.Prompt, "Automated reviewers found") }
 	e := newLimitEnv(t, engine)
 
@@ -365,7 +372,7 @@ func TestUsageLimitDuringFixPublishesWork(t *testing.T) {
 }
 
 func TestTooManyDeferralsFail(t *testing.T) {
-	engine := &limitedEngine{next: &scriptedEngine{}, message: "Claude AI usage limit reached"}
+	engine := &limitingEngine{next: &scriptedEngine{}, message: "Claude AI usage limit reached"}
 	engine.limitIf = func(Invocation) bool { return true }
 	e := newLimitEnv(t, engine)
 	task := e.task()

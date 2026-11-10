@@ -522,7 +522,8 @@ func TestRaisingRunLimitUnblocks(t *testing.T) {
 func deferredTask(name string, until time.Time) *aiv1.AgentTask {
 	task := newImplTask(name, 1)
 	task.Status.Run.DeferredUntil = &metav1.Time{Time: until}
-	task.Status.Run.LimitedEngine = aiv1.EngineClaude
+	task.Status.Run.SetDeferringLimit(aiv1.UsageLimit{Engine: aiv1.EngineClaude, Until: metav1.Time{Time: until}})
+	task.Status.Run.BlockReason = aiv1.BlockQuota
 	task.Status.Run.Deferrals = 1
 	task.Status.Run.LastActivityTime = &metav1.Time{Time: t0}
 	return task
@@ -534,8 +535,8 @@ func TestDeferredTaskWaits(t *testing.T) {
 
 	res := e.reconcile("x")
 	var pod corev1.Pod
-	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseWaiting {
-		t.Fatalf("phase %s", got)
+	if got := e.task("x").Status; got.Phase != aiv1.TaskPhaseWaiting || !strings.HasPrefix(got.Message, "claude usage limit; retrying at ") {
+		t.Fatalf("phase %s, %q", got.Phase, got.Message)
 	}
 	if e.exists(&pod, "x") {
 		t.Fatal("a waiting task must not start a pod")
@@ -561,6 +562,26 @@ func TestDeferredTaskWaits(t *testing.T) {
 	e.reconcile("x")
 	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseRunning || !e.exists(&pod, "x") {
 		t.Fatalf("task should run after the retry time, phase %s", got)
+	}
+}
+
+// A task an older release deferred has no marked usage limit (it kept the
+// engine in a field that is gone): it still waits for DeferredUntil.
+func TestOldDeferralWaitsWithoutItsEngine(t *testing.T) {
+	until := t0.Add(30 * time.Minute)
+	task := deferredTask("x", until)
+	task.Status.Run.UsageLimits = nil
+	e := newTaskEnv(t, task)
+
+	e.reconcile("x")
+	var pod corev1.Pod
+	if got := e.task("x").Status; got.Phase != aiv1.TaskPhaseWaiting || !strings.HasPrefix(got.Message, "usage limit; retrying at ") || e.exists(&pod, "x") {
+		t.Fatalf("the task waits without a pod: phase %s, %q", got.Phase, got.Message)
+	}
+	e.now = until.Add(time.Second)
+	e.reconcile("x")
+	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseRunning || !e.exists(&pod, "x") {
+		t.Fatalf("the task runs after DeferredUntil, phase %s", got)
 	}
 }
 

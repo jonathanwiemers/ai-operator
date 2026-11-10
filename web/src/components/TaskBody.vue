@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { hasFeature } from '../api'
-import { ciLabel, ciTone, cost, limitedEngine, phaseTone, shortSHA } from '../format'
+import { ciLabel, ciTone, cost, deferringEngine, phaseTone, shortSHA } from '../format'
 import { queueDone } from '../milestoneQueue'
 import { taskPrompts } from '../promptCard'
 import Badge from './Badge.vue'
@@ -65,7 +65,7 @@ const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('ch
   <div v-if="t.runPending && run.deferredUntil" class="banner warning">
     <strong>Waiting for a usage limit</strong>
     <span>
-      {{ limitedEngine(run) ?? 'The engine' }} hit its limit; the run starts again
+      {{ deferringEngine(run) ?? 'The engine' }} hit its limit; the run starts again
       <RelTime :time="run.deferredUntil" /> (deferred {{ run.deferrals ?? 1 }}×).
     </span>
   </div>

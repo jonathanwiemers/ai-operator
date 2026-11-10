@@ -99,7 +99,7 @@ func TestBudgetStopEndsTheRunBetweenSteps(t *testing.T) {
 	// The same branch and session a usage limit in the middle of the steps
 	// leaves for the next run.
 	le, lr, _ := stoppedAfterStep(t, true)
-	if lrun := le.run(ctx); lrun.LastResult != aiv1.RunResultDeferred || lrun.LimitedEngine == "" {
+	if lrun := le.run(ctx); lrun.LastResult != aiv1.RunResultDeferred || deferringEngine(lrun) == "" {
 		t.Fatalf("the usage limit must defer the run: %+v", lrun)
 	}
 	if got, want := e.originLog(t, run.Branch), le.originLog(t, run.Branch); !slices.Equal(got, want) || got[0] != "Add the payment model" {

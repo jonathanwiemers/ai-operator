@@ -60,10 +60,10 @@ func (r *recordedEngine) resumes(role string) []string {
 
 // cursorLimitedEnv is a limit env whose engine refuses every cursor call
 // (model "auto") with cursor's monthly limit.
-func cursorLimitedEnv(t *testing.T, agents func(*aiv1.AgentsSpec), status func(*aiv1.AgentProjectStatus)) (*limitEnv, *limitedEngine, *recordedEngine) {
+func cursorLimitedEnv(t *testing.T, agents func(*aiv1.AgentsSpec), status func(*aiv1.AgentProjectStatus)) (*limitEnv, *limitingEngine, *recordedEngine) {
 	t.Helper()
 	rec := &recordedEngine{next: &scriptedEngine{}}
-	engine := &limitedEngine{next: rec, message: cursorLimit, limitIf: func(inv Invocation) bool { return inv.Model == "auto" }}
+	engine := &limitingEngine{next: rec, message: cursorLimit, limitIf: func(inv Invocation) bool { return inv.Model == "auto" }}
 	e := newLimitEnv(t, engine)
 	var project aiv1.AgentProject
 	ctx := context.Background()
@@ -182,7 +182,7 @@ func TestFallbackWhoseEngineIsLimitedDefers(t *testing.T) {
 		t.Fatal("with both engines limited the run is deferred")
 	}
 	run := e.task().Status.Run
-	if run.LastResult != aiv1.RunResultDeferred || run.LimitedEngine != aiv1.EngineCursor || run.DeferredUntil == nil {
+	if run.LastResult != aiv1.RunResultDeferred || deferringEngine(run) != aiv1.EngineCursor || run.DeferredUntil == nil {
 		t.Fatalf("expected a deferral on cursor's limit, got %+v", run)
 	}
 	if models := rec.models("implement"); len(models) != 0 {
@@ -214,7 +214,7 @@ func TestInvalidFallbackIsIgnored(t *testing.T) {
 	if e.step() {
 		t.Fatal("a fallback that names no allowed model is ignored: the run is deferred")
 	}
-	if run := e.task().Status.Run; run.LimitedEngine != aiv1.EngineCursor {
+	if run := e.task().Status.Run; deferringEngine(run) != aiv1.EngineCursor {
 		t.Fatalf("expected a deferral on cursor's limit, got %+v", run)
 	}
 }
@@ -325,14 +325,14 @@ func TestFallbackLimitedOnItsOwnCallDefersWithBoth(t *testing.T) {
 	}, nil)
 	claudeReset := time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)
 	// claude is out as well, until earlier than cursor.
-	claude := &limitedEngine{next: engine.next, message: "Claude AI usage limit reached|" + strconv.FormatInt(claudeReset.Unix(), 10),
+	claude := &limitingEngine{next: engine.next, message: "Claude AI usage limit reached|" + strconv.FormatInt(claudeReset.Unix(), 10),
 		limitIf: func(inv Invocation) bool { return inv.Model == "claude-sonnet-5-5" }}
 	engine.next = claude
 	if e.step() {
 		t.Fatal("expected a deferral")
 	}
 	run := e.task().Status.Run
-	if run.LimitedEngine != aiv1.EngineCursor || run.DeferredUntil == nil || !run.DeferredUntil.Time.Equal(claudeReset) {
+	if deferringEngine(run) != aiv1.EngineCursor || run.DeferredUntil == nil || !run.DeferredUntil.Time.Equal(claudeReset) {
 		t.Fatalf("expected a deferral until claude's reset, got %+v", run)
 	}
 	if l, ok := run.DeferringLimit(); !ok || l.Engine != aiv1.EngineCursor || len(run.UsageLimits) != 2 {

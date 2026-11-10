@@ -352,9 +352,6 @@ kubectl -n agents patch agenttask <task> --subresource=status --type merge \
   -p "{\"status\":{\"run\":{\"deferredUntil\":\"$UNTIL\",\"deferrals\":1,\"usageLimits\":[{\"engine\":\"claude\",\"until\":\"$UNTIL\",\"deferred\":true}]}}}"
 ```
 
-(A task an older release deferred has `"limitedEngine":"claude"` instead of
-the `usageLimits` entry; that is still understood for one release.)
-
 Then comment `/agent add a code comment to the store`.
 
 **Expected:**

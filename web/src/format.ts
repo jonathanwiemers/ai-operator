@@ -136,11 +136,10 @@ export function costTooltip(c: Cost | undefined | null): string {
   return lines.join('\n')
 }
 
-// limitedEngine is the engine whose usage limit deferred the run: the
-// usageLimits entry marked deferred, or limitedEngine on a task an older
-// release deferred.
-export function limitedEngine(run: Pick<RunStatus, 'usageLimits' | 'limitedEngine'>): string | undefined {
-  return run.usageLimits?.find((l) => l.deferred)?.engine ?? (run.limitedEngine || undefined)
+// deferringEngine is the engine whose usage limit deferred the run: the
+// usageLimits entry marked deferred.
+export function deferringEngine(run: Pick<RunStatus, 'usageLimits'>): string | undefined {
+  return run.usageLimits?.find((l) => l.deferred)?.engine || undefined
 }
 
 export function shortSHA(sha: string | undefined | null): string {

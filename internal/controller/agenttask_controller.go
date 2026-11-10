@@ -307,6 +307,10 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		reason := "agent ran out of memory, more memory"
 		if l, limited := task.Status.Run.DeferringLimit(); limited {
 			reason = fmt.Sprintf("%s usage limit", l.Engine)
+		} else if task.Status.Run.BlockReason == aiv1.BlockQuota {
+			// Deferred by a release that kept the engine in a field that is
+			// gone: still a usage limit, only its engine is unknown.
+			reason = "usage limit"
 		}
 		task.Status.Message = fmt.Sprintf("%s; retrying at %s", reason, task.Status.Run.DeferredUntil.UTC().Format(time.RFC3339))
 		if retry := waitFor + time.Second; result.RequeueAfter == 0 || retry < result.RequeueAfter {

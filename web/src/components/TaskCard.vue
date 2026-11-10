@@ -4,7 +4,7 @@ import Badge from './Badge.vue'
 import CompanionChip from './CompanionChip.vue'
 import StageBadge from './StageBadge.vue'
 import RelTime from './RelTime.vue'
-import { ciLabel, ciTone, cost, limitedEngine } from '../format'
+import { ciLabel, ciTone, cost, deferringEngine } from '../format'
 import type { Task } from '../types'
 
 const props = defineProps<{ task: Task }>()
@@ -39,7 +39,7 @@ const to = computed(() => ({
       <!-- The card is a link itself: the task page and the milestone panel link the companion MR. -->
       <CompanionChip v-if="task.companion" :companion="task.companion" plain />
       <Badge v-if="(run.blockingFindings ?? 0) > 0" tone="danger">{{ run.blockingFindings }} findings</Badge>
-      <Badge v-if="task.status.phase === 'Waiting' && limitedEngine(run)" tone="warning">{{ limitedEngine(run) }} limit</Badge>
+      <Badge v-if="task.status.phase === 'Waiting' && deferringEngine(run)" tone="warning">{{ deferringEngine(run) }} limit</Badge>
       <span class="spacer" />
       <span class="meta">{{ cost(run.costUSD) }} · <RelTime :time="run.lastActivityTime ?? task.createdAt" /></span>
     </div>

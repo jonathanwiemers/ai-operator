@@ -3671,14 +3671,6 @@ export interface RunStatus {
    */
   deferredUntil?: string;
   /**
-   * LimitedEngine is the engine whose limit deferred the run.
-   * Deprecated: the deferring limit is the usageLimits entry with
-   * deferred set. Still written for one release; read only when no entry
-   * is marked (tasks of an older release).
-   * +optional
-   */
-  limitedEngine?: Engine;
-  /**
    * BlockReason is why the issue waits for something outside it: quota
    * while the run is deferred by a usage limit or after it gave up on
    * one; infra after it failed because the agent pod or container was

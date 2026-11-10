@@ -156,7 +156,7 @@ func TestConflictRoleResumesWithoutFreshSession(t *testing.T) {
 
 func TestConflictRoleFallsBackWhileItsEngineIsLimited(t *testing.T) {
 	sessions := &sessionsEngine{next: &conflictEngine{resolution: "package app // both\n"}}
-	engine := &limitedEngine{next: sessions, message: cursorLimit, limitIf: func(inv Invocation) bool { return inv.Model == "auto" }}
+	engine := &limitingEngine{next: sessions, message: cursorLimit, limitIf: func(inv Invocation) bool { return inv.Model == "auto" }}
 	_, task, r := conflictRunWith(t, engine, true, withConflictRole(&aiv1.ConflictRoleSpec{RoleSpec: aiv1.RoleSpec{
 		Engine: aiv1.EngineCursor, Model: "auto", Fallback: sonnetFallback()}}))
 	if got := task.Status.Run.LastResult; got != aiv1.RunResultSucceeded {

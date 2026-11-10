@@ -49,7 +49,8 @@ func (e *projectEnv) deferred(iid int64, at time.Time) {
 	e.patchStatus(e.taskOf(iid), func(s *aiv1.AgentTaskStatus) {
 		s.Run.ActiveRunRequest = s.Run.ObservedRunRequest
 		s.Run.DeferredUntil = &metav1.Time{Time: at.Add(time.Hour)}
-		s.Run.LimitedEngine, s.Run.BlockReason = aiv1.EngineClaude, aiv1.BlockQuota
+		s.Run.SetDeferringLimit(aiv1.UsageLimit{Engine: aiv1.EngineClaude, Until: metav1.Time{Time: at.Add(time.Hour)}})
+		s.Run.BlockReason = aiv1.BlockQuota
 		s.Run.LastResult, s.Run.LastActivityTime = aiv1.RunResultDeferred, &metav1.Time{Time: at}
 	})
 }
@@ -68,7 +69,8 @@ func (e *projectEnv) ended(iid int64, at time.Time, result aiv1.RunResult, block
 	request := e.tasks()[e.taskOf(iid)].Spec.RunRequest
 	e.patchStatus(e.taskOf(iid), func(s *aiv1.AgentTaskStatus) {
 		s.Run.ActiveRunRequest, s.Run.ObservedRunRequest = request, request
-		s.Run.DeferredUntil, s.Run.LimitedEngine, s.Run.Deferrals = nil, "", 0
+		s.Run.DeferredUntil, s.Run.Deferrals = nil, 0
+		s.Run.ClearDeferringLimit()
 		s.Run.LastResult, s.Run.BlockReason, s.Run.LastActivityTime = result, block, &metav1.Time{Time: at}
 	})
 }
