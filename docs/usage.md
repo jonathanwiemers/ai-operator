@@ -1920,8 +1920,10 @@ whether autopilot or a human merged them.
 A release is a decision with a reason, recorded in
 `status.autopilot.releases` (newest 50, ended ones are dropped first). The
 operator carries the decisions out on every poll, also while the milestone is
-paused; the queue does not wait for them. (The other deciders, the
-comments and the release notes come in later changes of this milestone.)
+paused; the queue does not wait for them. Each release that runs is
+commented on the tracking issue and carries release notes, see
+[what is posted](#what-a-release-posts). (The other deciders come in later
+changes of this milestone.)
 
 Each decision is recorded in the history: `release.decided` when it is
 made (who, why, after which issue), `release.started` when its pipeline
@@ -2049,6 +2051,60 @@ contains the milestone's last merge. The order is: final release, then the
 A release pipeline that failed on a head does not hold a later attempt back:
 the green-head check skips the pipelines that did not succeed on a head a
 release ran on.
+
+#### What a release posts
+
+**On the tracking issue**, one comment when a release starts to run and one
+when that run ends. The retry after a failed attempt is the same run; a
+final release started over with `/agent resume` is a new one.
+
+- Started: "🚀 Release started (planner): <why>. Contains #1, #2. Pipeline
+  <link>". An owner's release names the owner.
+- Released: "📦 Released 2026.11.3: <link to the GitLab release>".
+- Failed after the retry: "❌ The release failed twice: <reason>. The queue
+  goes on." The final release says "the milestone is not done without it"
+  instead, and the [release pause](#release) follows.
+- The final release's end is commented also when nothing ran, since it
+  decides when the milestone is done: "📦 Already released in 2026.11.3
+  (…)", "📦 No release needed: nothing release-relevant since 2026.11.2",
+  "📦 No release: group/app does not tag its default branch". A final
+  release released by hand while paused is said by the resume comment
+  only. A dropped decision and one that waits are not commented; a
+  decision that a release of another one contains says so in its record.
+
+The record's `announced` is the state last commented on: a comment that
+fails is posted on the next poll, and none is posted twice.
+
+**The release notes** (`AGENT_RELEASE_NOTES`, for the release job to put
+into the GitLab release) are markdown:
+
+```markdown
+## Why
+
+The planner released after #2. Reason given by the planner: users see the new API.
+
+## Contains
+
+- #1 API for checkout (!11)
+- #2 Checkout page (!12)
+
+Milestone: [Checkout v2](https://gitlab.example/group/app/-/milestones/3)
+```
+
+The final release says "The operator released after #2: the end of
+milestone Checkout v2.", an owner's "@alice released: <why>". The list
+holds the issues and merge requests the release contains (`issues` and
+`mergeRequests` of the record).
+
+The planner's and the pilot's reasons and the issue titles are agent text
+and stay untrusted: each is folded to one line and cut to 200 characters,
+mentions and quick actions are defused (a zero-width space after `@` and
+before `/`), the characters of links, images, HTML and code
+(`` \ [ ] ( ) < > ! ` ``) are escaped with a backslash, and URLs are broken
+(a zero-width space after `://` and in `www.`), so `@all`,
+`[x](http://evil)` or `<img>` render as plain text. The reason is labelled
+as the planner's or the pilot's. The notes are at most 4000 bytes, valid
+UTF-8: the list is cut at whole lines and ends with "… and N more issues".
 
 ### Commands on the tracking issue
 

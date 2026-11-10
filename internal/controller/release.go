@@ -13,7 +13,6 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
-	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // maxReleaseAttempts is how often a release pipeline runs for one decision:
@@ -34,9 +33,12 @@ type releaser struct {
 	spec aiv1.AgentProjectSpec
 	// project reads the GitLab project (default branch, web URL).
 	project func(context.Context) (*gitlab.Project, error)
-	// issues and mrs are the merged items of the milestone, in queue order.
-	issues, mrs []int64
-	log         logr.Logger
+	// items are the merged issues of the milestone, in queue order.
+	items []releaseItem
+	// milestone is the milestone the release notes name; zero outside
+	// milestones.
+	milestone aiv1.MilestoneRef
+	log       logr.Logger
 
 	// tagging caches tagsDefaultBranch for one step.
 	tagging *bool
@@ -45,13 +47,16 @@ type releaser struct {
 // newReleaser is the releaser of the milestone's records.
 func (a *autopilot) newReleaser() *releaser {
 	x := &releaser{r: a.r, gl: a.gl, spec: a.spec, project: a.glProject, log: a.log}
+	if ms := a.st.Spec.Milestone; ms != nil {
+		x.milestone = *ms
+	}
+	titles := map[int64]string{}
+	for _, p := range a.st.Status.Plan {
+		titles[p.IID] = p.Title
+	}
 	for _, it := range a.ap.Items {
-		if it.State != aiv1.AutopilotItemMerged {
-			continue
-		}
-		x.issues = append(x.issues, it.IID)
-		if it.MergeRequestIID != 0 {
-			x.mrs = append(x.mrs, it.MergeRequestIID)
+		if it.State == aiv1.AutopilotItemMerged {
+			x.items = append(x.items, releaseItem{IID: it.IID, MR: it.MergeRequestIID, Title: titles[it.IID]})
 		}
 	}
 	return x
@@ -64,6 +69,10 @@ func (a *autopilot) releases(ctx context.Context) error {
 		return nil
 	}
 	err := a.newReleaser().step(ctx, a.ap.Releases)
+	// Also after an error: what step changed before it is commented.
+	if cerr := a.announceReleases(ctx); err == nil {
+		err = cerr
+	}
 	a.ap.Releases = aiv1.TrimReleases(a.ap.Releases, aiv1.MaxMilestoneReleases)
 	return err
 }
@@ -188,6 +197,9 @@ func (a *autopilot) finalRelease(ctx context.Context) (bool, error) {
 			// A later merge: the same decision for the newer commit, from
 			// the start (its pipeline ID kept, see greenHead).
 			next.ID, next.DecidedAt, next.PipelineID = rec.ID, rec.DecidedAt, rec.PipelineID
+			if !rec.State.Ended() {
+				next.Announced = rec.Announced // a run waiting for its retry goes on
+			}
 			*rec = next
 		}
 		a.log.Info("final release", "release", rec.ID, "sha", rec.SHA, "state", rec.State, "why", rec.Reason)
@@ -196,6 +208,10 @@ func (a *autopilot) finalRelease(ctx context.Context) (bool, error) {
 		if err := a.newReleaser().step(ctx, a.ap.Releases); err != nil {
 			return false, err
 		}
+	}
+	// Before the pause or done, so their comments follow the release's.
+	if err := a.announceReleases(ctx); err != nil {
+		return false, err
 	}
 	switch rec.State {
 	case aiv1.ReleaseFailed:
@@ -302,6 +318,7 @@ func (a *autopilot) releasedByHand(ctx context.Context) error {
 	now := metav1.NewTime(a.r.now())
 	rec.State, rec.Reason, rec.EndedAt = aiv1.ReleaseAlreadyReleased, fmt.Sprintf("the tag %s already contains %s", v, short(rec.SHA)), &now
 	rec.Version, rec.ReleaseURL = v, releaseURL(proj, v)
+	rec.Announced = rec.State // the resume comment says so
 	return nil
 }
 
@@ -475,9 +492,11 @@ func (x *releaser) waiting(ctx context.Context, recs []aiv1.ReleaseRecord, rec *
 		waitRelease(rec, why)
 		return nil
 	}
+	issues, mrs := x.contents(recs)
+	notes := releaseNotes(*rec, issues, mrs, x.items, x.milestone.Title, x.milestoneURL(proj))
 	p, err := x.gl.CreatePipeline(ctx, x.spec.GitLab.Project, base,
 		gitlab.PipelineVariable{Key: "AGENT_RELEASE", Value: "true"},
-		gitlab.PipelineVariable{Key: "AGENT_RELEASE_NOTES", Value: releaseNotes(*rec)})
+		gitlab.PipelineVariable{Key: "AGENT_RELEASE_NOTES", Value: notes})
 	if err != nil {
 		return fmt.Errorf("starting the release pipeline on %s: %w", base, err)
 	}
@@ -487,7 +506,7 @@ func (x *releaser) waiting(ctx context.Context, recs []aiv1.ReleaseRecord, rec *
 	rec.StartedAt = &started
 	rec.PipelineID, rec.PipelineURL = p.ID, p.WebURL
 	rec.ReleasedSHA = firstNonEmpty(p.SHA, head)
-	rec.Issues, rec.MergeRequests = x.contents(recs)
+	rec.Issues, rec.MergeRequests = issues, mrs
 	x.log.Info("release pipeline started", "release", rec.ID, "pipeline", p.ID, "attempt", rec.Attempts)
 	return nil
 }
@@ -573,14 +592,12 @@ func (x *releaser) contents(recs []aiv1.ReleaseRecord) (issues, mrs []int64) {
 			doneMRs = append(doneMRs, o.MergeRequests...)
 		}
 	}
-	for _, iid := range x.issues {
-		if !slices.Contains(doneIssues, iid) {
-			issues = append(issues, iid)
+	for _, it := range x.items {
+		if !slices.Contains(doneIssues, it.IID) {
+			issues = append(issues, it.IID)
 		}
-	}
-	for _, iid := range x.mrs {
-		if !slices.Contains(doneMRs, iid) {
-			mrs = append(mrs, iid)
+		if it.MR != 0 && !slices.Contains(doneMRs, it.MR) {
+			mrs = append(mrs, it.MR)
 		}
 	}
 	return issues, mrs
@@ -589,16 +606,6 @@ func (x *releaser) contents(recs []aiv1.ReleaseRecord) (issues, mrs []int64) {
 func (x *releaser) ended(rec *aiv1.ReleaseRecord, state aiv1.ReleaseState, reason string) {
 	now := metav1.NewTime(x.r.now())
 	rec.State, rec.Reason, rec.EndedAt = state, reason, &now
-}
-
-// releaseNotes is the text of AGENT_RELEASE_NOTES: one line "<by>: <why>",
-// defused. A placeholder until the release notes list the milestone.
-func releaseNotes(rec aiv1.ReleaseRecord) string {
-	line := string(rec.By)
-	if why := strings.Join(strings.Fields(rec.Why), " "); why != "" {
-		line += ": " + why
-	}
-	return notify.Defuse(line)
 }
 
 // releaseURL is the GitLab release page of version v.

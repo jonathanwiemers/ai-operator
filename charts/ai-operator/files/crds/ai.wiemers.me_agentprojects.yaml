@@ -2981,6 +2981,21 @@ spec:
                       description: AfterIssue is the issue the release follows.
                       format: int64
                       type: integer
+                    announced:
+                      description: |-
+                        Announced is the state last commented on the tracking issue: its
+                        start (Running) and its end are commented once each.
+                      enum:
+                      - Planned
+                      - Waiting
+                      - Running
+                      - Released
+                      - AlreadyReleased
+                      - NotNeeded
+                      - NotApplicable
+                      - Dropped
+                      - Failed
+                      type: string
                     attempts:
                       description: Attempts of the release pipeline.
                       format: int32

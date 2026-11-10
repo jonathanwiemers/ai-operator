@@ -5848,4 +5848,10 @@ export interface ReleaseRecord {
    * +optional
    */
   endedAt?: string;
+  /**
+   * Announced is the state last commented on the tracking issue: its
+   * start (Running) and its end are commented once each.
+   * +optional
+   */
+  announced?: ReleaseState;
 }

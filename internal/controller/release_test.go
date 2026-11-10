@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -35,8 +36,9 @@ func newReleaseEnv(t *testing.T) *releaseEnv {
 	e := &releaseEnv{t: t, ctx: context.Background(), gl: gl, now: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)}
 	r := &AgentProjectReconciler{Now: func() time.Time { return e.now }}
 	e.x = &releaser{r: r, gl: gl, spec: testProject().Spec.WithDefaults(),
-		project: func(ctx context.Context) (*gitlab.Project, error) { return gl.GetProject(ctx, "group/app") },
-		issues:  []int64{1, 2}, mrs: []int64{11, 12}, log: logr.Discard()}
+		project:   func(ctx context.Context) (*gitlab.Project, error) { return gl.GetProject(ctx, "group/app") },
+		items:     []releaseItem{{IID: 1, MR: 11, Title: "API"}, {IID: 2, MR: 12, Title: "UI"}},
+		milestone: aiv1.MilestoneRef{ID: 11, IID: 3, Title: "Checkout v2"}, log: logr.Discard()}
 	e.tag("2026.11.1", "t1")
 	e.green("h1")
 	e.contains("h1", "m1", "m2")
@@ -265,13 +267,156 @@ func TestReleaseTrigger(t *testing.T) {
 		t.Fatalf("want #2 and !12 (#1 was released before), got %v %v", got.Issues, got.MergeRequests)
 	}
 	created := e.gl.CreatedPipelines[0]
-	notes := notify.Defuse("planner: cc @alice /close the API is live")
+	notes := "## Why\n\nThe planner released after #2. Reason given by the planner: " + notify.Defuse("cc @alice") + " /close the API is live.\n" +
+		"\n## Contains\n\n- #2 UI (!12)\n" +
+		"\nMilestone: [Checkout v2](https://gitlab.example/group/app/-/milestones/3)\n"
 	want := []gitlab.PipelineVariable{{Key: "AGENT_RELEASE", Value: "true"}, {Key: "AGENT_RELEASE_NOTES", Value: notes}}
 	if created.Ref != "main" || !slices.Equal(created.Variables, want) {
 		t.Fatalf("want a pipeline on main with %+v, got %+v", want, created)
 	}
-	if strings.Contains(notes, "@alice") {
-		t.Fatalf("the notes must be defused: %q", notes)
+}
+
+// releaseAutopilot is the milestone of e with its tracking issue #100 and
+// e.recs as its releases.
+func (e *releaseEnv) releaseAutopilot() *autopilot {
+	ms := e.x.milestone
+	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &ms}}
+	st.Status.Plan = []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API"}, {Key: "ui", IID: 2, Title: "UI"}}
+	ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, TrackingIssueIID: 100, Releases: e.recs,
+		Items: []aiv1.AutopilotItem{{IID: 1, State: aiv1.AutopilotItemMerged, MergeRequestIID: 11, MergedSHA: "m1"},
+			{IID: 2, State: aiv1.AutopilotItemMerged, MergeRequestIID: 12, MergedSHA: "m2"}}}
+	return &autopilot{r: e.x.r, gl: e.gl, spec: e.x.spec, st: st, ap: ap, log: logr.Discard()}
+}
+
+// notes are the bodies of the comments on the tracking issue.
+func (e *releaseEnv) notes() []string {
+	var bodies []string
+	for _, n := range e.gl.IssueNotes[100] {
+		bodies = append(bodies, n.Body)
+	}
+	return bodies
+}
+
+// A release that runs gets one comment when it starts and one when it ends,
+// across polls and its retried attempt; a non-final one that failed says
+// the queue goes on.
+func TestReleaseComments(t *testing.T) {
+	start := "🤖 🚀 Release started (planner): users see the API. Contains #1, #2. Pipeline https://gitlab.example/group/app/-/pipelines/"
+	for _, tc := range []struct {
+		name string
+		end  func(e *releaseEnv)
+		want string
+	}{
+		{name: "released", end: func(e *releaseEnv) {
+			e.gl.SetPipelineStatus(e.pipeline(2), "success")
+			e.tag("2026.11.2", "h1", "m1", "m2")
+		}, want: "🤖 📦 Released 2026.11.2: https://gitlab.example/group/app/-/releases/2026.11.2"},
+		{name: "failed", end: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(2), "failed") },
+			want: "🤖 ❌ The release failed twice: the release pipeline https://gitlab.example/group/app/-/pipelines/"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newReleaseEnv(t)
+			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1")}
+			a := e.releaseAutopilot()
+			polls := []func(){
+				func() {},
+				func() {},
+				func() { e.gl.SetPipelineStatus(e.pipeline(1), "failed") },
+				func() { e.now = e.now.Add(15 * time.Minute) }, // the retry: the same run
+				func() { tc.end(e) },
+				func() { e.now = e.now.Add(time.Hour) },
+			}
+			for i, do := range polls {
+				do()
+				if err := a.releases(e.ctx); err != nil {
+					t.Fatalf("poll %d: %v", i+1, err)
+				}
+			}
+			got := e.notes()
+			if len(got) != 2 || !strings.HasPrefix(got[0], start) || !strings.HasPrefix(got[1], tc.want) {
+				t.Fatalf("want a start comment %q and an end comment %q, got %q", start, tc.want, got)
+			}
+			if tc.name == "failed" && !strings.HasSuffix(got[1], "The queue goes on.") {
+				t.Fatalf("a failed non-final release goes on: %q", got[1])
+			}
+			if rec := a.ap.Releases[0]; rec.Announced != rec.State {
+				t.Fatalf("want the end announced, got %+v", rec)
+			}
+		})
+	}
+}
+
+// A comment that fails is posted on the next poll, once.
+func TestReleaseCommentRetried(t *testing.T) {
+	e := newReleaseEnv(t)
+	e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1")}
+	a := e.releaseAutopilot()
+	e.gl.NoteErrors = map[int64]error{100: errors.New("gitlab is down")}
+	if err := a.releases(e.ctx); err == nil {
+		t.Fatal("want the failing comment's error")
+	}
+	if rec := a.ap.Releases[0]; rec.State != aiv1.ReleaseRunning || rec.Announced != "" || len(e.notes()) != 0 {
+		t.Fatalf("want a running release not announced yet, got %+v %q", rec, e.notes())
+	}
+	e.gl.NoteErrors = nil
+	for range 2 {
+		if err := a.releases(e.ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := len(e.notes()); n != 1 || len(e.gl.CreatedPipelines) != 1 {
+		t.Fatalf("want one start comment and one pipeline, got %q %+v", e.notes(), e.gl.CreatedPipelines)
+	}
+}
+
+// The final record's end is commented also without a run; other records
+// that never ran, and dropped ones, are not.
+func TestReleaseAnnouncement(t *testing.T) {
+	final := func(state aiv1.ReleaseState, reason string) aiv1.ReleaseRecord {
+		return aiv1.ReleaseRecord{By: aiv1.ReleaseByFinal, Final: true, Why: finalWhy, State: state, Reason: reason,
+			Version: "2026.11.2", ReleaseURL: "https://gitlab.example/group/app/-/releases/2026.11.2"}
+	}
+	planner := func(state, announced aiv1.ReleaseState) aiv1.ReleaseRecord {
+		return aiv1.ReleaseRecord{By: aiv1.ReleaseByPlanner, State: state, Announced: announced, Reason: "contained in 2026.11.2", Version: "2026.11.2"}
+	}
+	for _, tc := range []struct {
+		name string
+		rec  aiv1.ReleaseRecord
+		want string
+	}{
+		{name: "final already released", rec: final(aiv1.ReleaseAlreadyReleased, "the tag 2026.11.2 already contains m1"),
+			want: "📦 Already released in 2026.11.2 (the tag 2026.11.2 already contains m1): https://gitlab.example/group/app/-/releases/2026.11.2"},
+		{name: "final not needed", rec: final(aiv1.ReleaseNotNeeded, "nothing release-relevant since 2026.11.1"),
+			want: "📦 No release needed: nothing release-relevant since 2026.11.1."},
+		{name: "final not applicable", rec: final(aiv1.ReleaseNotApplicable, "group/app does not tag its default branch"),
+			want: "📦 No release: group/app does not tag its default branch."},
+		{name: "final failed", rec: final(aiv1.ReleaseFailed, "the release pipeline https://gitlab.example/p/2 is failed"),
+			want: "❌ The final release failed twice: the release pipeline https://gitlab.example/p/2 is failed. The milestone is not done without it."},
+		{name: "final released without a run of its own", rec: final(aiv1.ReleaseReleased, "contained in 2026.11.2"),
+			want: "📦 Released 2026.11.2: https://gitlab.example/group/app/-/releases/2026.11.2"},
+		{name: "final dropped", rec: final(aiv1.ReleaseDropped, "ended without a release by @alice")},
+		{name: "final announced", rec: func() aiv1.ReleaseRecord {
+			r := final(aiv1.ReleaseNotNeeded, "no change since 2026.11.1")
+			r.Announced = r.State
+			return r
+		}()},
+		{name: "final retried after it failed", rec: func() aiv1.ReleaseRecord {
+			r := final(aiv1.ReleaseRunning, "")
+			r.Announced, r.Issues = aiv1.ReleaseFailed, []int64{2}
+			return r
+		}(), want: "🚀 Release started (final): the milestone's last merge. Contains #2."},
+		{name: "contained in another release, never ran", rec: planner(aiv1.ReleaseReleased, "")},
+		{name: "contained in another release after a failed attempt", rec: planner(aiv1.ReleaseReleased, aiv1.ReleaseRunning),
+			want: "📦 Released 2026.11.2."},
+		{name: "waiting for its retry", rec: planner(aiv1.ReleaseWaiting, aiv1.ReleaseRunning)},
+		{name: "an owner's release", rec: aiv1.ReleaseRecord{By: aiv1.ReleaseByOwner, Actor: "@alice", Why: "[x](http://evil) <img>", State: aiv1.ReleaseRunning},
+			want: "🚀 Release started (" + notify.Defuse("@alice") + "): \\[x\\]\\(http:\u200b//evil\\) \\<img\\>. Contains no new issue of the milestone."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := releaseAnnouncement(tc.rec); got != tc.want {
+				t.Fatalf("want %q, got %q", tc.want, got)
+			}
+		})
 	}
 }
 

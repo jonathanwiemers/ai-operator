@@ -378,6 +378,14 @@ func queueMerged(e *projectEnv, skipped bool) {
 	e.gl.Issues[1].State, e.gl.Issues[2].State = "closed", "closed"
 }
 
+// commentedBefore reports whether the first bot comment with first comes
+// before the first one with then, both posted.
+func commentedBefore(e *projectEnv, iid int64, first, then string) bool {
+	i := slices.IndexFunc(botComments(e, iid), func(c string) bool { return strings.Contains(c, first) })
+	j := slices.IndexFunc(botComments(e, iid), func(c string) bool { return strings.Contains(c, then) })
+	return i >= 0 && j > i
+}
+
 // finalRec is the autopilot's final release record.
 func finalRec(e *projectEnv) aiv1.ReleaseRecord {
 	e.t.Helper()
@@ -421,6 +429,9 @@ func TestDoneWaitsForTheFinalRelease(t *testing.T) {
 	if e.autopilot().Phase != aiv1.AutopilotRunning || len(e.gl.CreatedPipelines) != 1 || len(e.autopilot().Releases) != 1 {
 		t.Fatalf("still waiting, nothing doubled: %+v", e.autopilot())
 	}
+	if countComments(e, tracking, "🚀 Release started (final): the milestone's last merge. Contains #1, #2. Pipeline https://") != 1 {
+		t.Fatalf("the start is commented once:\n%v", botComments(e, tracking))
+	}
 
 	e.gl.SetPipelineStatus(rec.PipelineID, "success")
 	created := e.gl.Clock
@@ -432,6 +443,11 @@ func TestDoneWaitsForTheFinalRelease(t *testing.T) {
 	}
 	if e.autopilot().Phase != aiv1.AutopilotDone || countComments(e, tracking, "Autopilot is done: 2 of 2 issues merged") != 1 {
 		t.Fatalf("done once released: %+v\n%v", e.autopilot(), botComments(e, tracking))
+	}
+	e.reconcile()
+	if countComments(e, tracking, "📦 Released 2026.11.2") != 1 || countComments(e, tracking, "🚀 Release started") != 1 ||
+		!commentedBefore(e, tracking, "📦 Released", "Autopilot is done") {
+		t.Fatalf("the end is commented once, before done:\n%v", botComments(e, tracking))
 	}
 }
 
@@ -462,6 +478,10 @@ func TestFinalReleaseNotNeeded(t *testing.T) {
 			if e.autopilot().Phase != aiv1.AutopilotDone || len(e.gl.CreatedPipelines) != 0 {
 				t.Fatalf("done without a pipeline: %+v %+v", e.autopilot(), e.gl.CreatedPipelines)
 			}
+			tracking := e.autopilot().TrackingIssueIID
+			if countComments(e, tracking, "📦 No release needed: "+tc.why+".") != 1 || !commentedBefore(e, tracking, "No release needed", "Autopilot is done") {
+				t.Fatalf("the final decision is commented before done:\n%v", botComments(e, tracking))
+			}
 		})
 	}
 }
@@ -483,6 +503,10 @@ func TestFinalReleaseWithoutTags(t *testing.T) {
 	}
 	if ap.Phase != aiv1.AutopilotDone || ap.PauseKind != "" || len(e.gl.CreatedPipelines) != 0 {
 		t.Fatalf("done, no pause, no pipeline: %+v %+v", ap, e.gl.CreatedPipelines)
+	}
+	if countComments(e, ap.TrackingIssueIID, "📦 No release: group/app does not tag its default branch.") != 1 ||
+		countComments(e, ap.TrackingIssueIID, "Release started") != 0 {
+		t.Fatalf("one line for the final decision, the dropped one silent:\n%v", botComments(e, ap.TrackingIssueIID))
 	}
 }
 
@@ -510,6 +534,10 @@ func failFinal(e *projectEnv) {
 	if len(e.gl.CreatedPipelines) != 2 || countComments(e, ap.TrackingIssueIID, "Autopilot paused: the final release failed") != 1 {
 		e.t.Fatalf("no third attempt, the pause said once: %+v\n%v", e.gl.CreatedPipelines, botComments(e, ap.TrackingIssueIID))
 	}
+	if countComments(e, ap.TrackingIssueIID, "🚀 Release started (final)") != 1 || countComments(e, ap.TrackingIssueIID, "❌ The final release failed twice: the release pipeline") != 1 ||
+		!commentedBefore(e, ap.TrackingIssueIID, "❌ The final release failed", "Autopilot paused") {
+		e.t.Fatalf("one start for both attempts, the failure once before the pause:\n%v", botComments(e, ap.TrackingIssueIID))
+	}
 }
 
 func TestFailedFinalReleaseResumeRetries(t *testing.T) {
@@ -529,6 +557,9 @@ func TestFailedFinalReleaseResumeRetries(t *testing.T) {
 	e.reconcile()
 	if rec := finalRec(e); rec.State != aiv1.ReleaseReleased || e.autopilot().Phase != aiv1.AutopilotDone {
 		t.Fatalf("released and done: %+v, %+v", rec, e.autopilot())
+	}
+	if countComments(e, tracking, "🚀 Release started (final)") != 2 || countComments(e, tracking, "📦 Released 2026.11.2") != 1 {
+		t.Fatalf("the retried release is a run of its own:\n%v", botComments(e, tracking))
 	}
 }
 
@@ -568,6 +599,9 @@ func TestFailedFinalReleaseReleasedByHand(t *testing.T) {
 	if ap.Phase != aiv1.AutopilotDone || ap.ResumedVia != aiv1.ResumedViaCauseGone || len(e.gl.CreatedPipelines) != 2 ||
 		countComments(e, ap.TrackingIssueIID, "the tag 2026.11.2 contains the milestone's last merge") != 1 {
 		t.Fatalf("the pause ends by itself and autopilot is done: %+v\n%v", ap, botComments(e, ap.TrackingIssueIID))
+	}
+	if countComments(e, ap.TrackingIssueIID, "📦") != 0 {
+		t.Fatalf("the resume comment says it, no second line:\n%v", botComments(e, ap.TrackingIssueIID))
 	}
 }
 

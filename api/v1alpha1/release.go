@@ -116,6 +116,10 @@ type ReleaseRecord struct {
 	StartedAt *metav1.Time `json:"startedAt,omitempty"`
 	// +optional
 	EndedAt *metav1.Time `json:"endedAt,omitempty"`
+	// Announced is the state last commented on the tracking issue: its
+	// start (Running) and its end are commented once each.
+	// +optional
+	Announced ReleaseState `json:"announced,omitempty"`
 }
 
 // TrimReleases keeps at most max records: it drops the oldest ended records
