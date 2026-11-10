@@ -1310,6 +1310,30 @@ export interface Milestone extends Cost {
   tasks: Task[];
 }
 /**
+ * TaskResponse is GET .../tasks/{task}. prompts: the agent's questions
+ * (Implement tasks), newest first; always an array.
+ */
+export interface TaskResponse {
+  project: ProjectSummary;
+  task: Task;
+  prompts: PromptView[];
+  cost: Cost;
+  permissions?: TaskPermissions;
+}
+/**
+ * TaskPermissions is what the task page may offer; the endpoints check
+ * again. transcript: the live transcript (and prompts) of the task's runs.
+ * gitlab: the project's GitLab is connected to the UI (thread after
+ * connecting your account); steer: you may post comments. chat: Desk chat
+ * with the task's agent (no GitLab token).
+ */
+export interface TaskPermissions {
+  transcript: boolean;
+  gitlab: boolean;
+  steer: boolean;
+  chat: boolean;
+}
+/**
  * Task is an AgentTask.
  */
 export interface Task {

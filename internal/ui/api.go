@@ -99,19 +99,19 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 			}
 			project := summarize(ap, tasks, now)
 			project.Cost = s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name}, project.Cost)
-			writeJSON(w, http.StatusOK, map[string]any{
-				"project": project,
-				"task":    taskView(t, ap, now),
-				"prompts": prompts,
-				"cost": s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, Task: name},
+			writeJSON(w, http.StatusOK, TaskResponse{
+				Project: project,
+				Task:    taskView(t, ap, now),
+				Prompts: prompts,
+				Cost: s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, Task: name},
 					tasksCost(aiv1.CostOf(tasks[i].Status.Run.CostUSD))),
 				// What the app may offer; the endpoints check again.
-				"permissions": map[string]bool{
-					"transcript": s.logs != nil && s.authz.CanSeeTranscript(principalOf(r), ap.Namespace, ap.Name),
-					// gitlab: the thread can be shown (after connecting).
-					"gitlab": s.gitlab != nil && s.gitlab.serves(ap),
-					"steer":  s.gitlab != nil && s.gitlab.serves(ap) && s.authz.CanSteer(principalOf(r), ap.Namespace, ap.Name),
-					"chat":   chat,
+				Permissions: &TaskPermissions{
+					Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name),
+					// GitLab: the thread can be shown (after connecting).
+					GitLab: s.gitlab != nil && s.gitlab.serves(ap),
+					Steer:  s.gitlab != nil && s.gitlab.serves(ap) && s.authz.CanSteer(p, ap.Namespace, ap.Name),
+					Chat:   chat,
 				},
 			})
 			return

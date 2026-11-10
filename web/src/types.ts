@@ -66,6 +66,8 @@ export type {
   FollowUpDraftView,
   FollowUpMilestoneView,
   CostDriverView,
+  TaskResponse,
+  TaskPermissions as Permissions,
 } from './generated/views'
 
 export type {
@@ -104,28 +106,6 @@ export interface Me {
   username: string
   roles: string[] | null
   authMode: 'oidc' | 'none'
-}
-
-// Permissions is what the task page may offer (GET .../tasks/{task}).
-export interface Permissions {
-  // transcript: the live transcript (and prompts) of the task's runs.
-  transcript: boolean
-  // gitlab: the project's GitLab is connected to the UI (thread after
-  // connecting your account); steer: you may post comments.
-  gitlab?: boolean
-  steer?: boolean
-  // chat: Desk chat with the task's agent (no GitLab token).
-  chat?: boolean
-}
-
-// TaskResponse is GET .../tasks/{task}.
-export interface TaskResponse {
-  project: views.ProjectSummary
-  task: views.Task
-  // prompts: the agent's questions (Implement tasks), newest first.
-  prompts: views.PromptView[]
-  cost: views.Cost
-  permissions?: Permissions
 }
 
 export type ChatRole = 'user' | 'agent' | 'system'

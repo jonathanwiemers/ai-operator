@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -142,5 +143,32 @@ func TestPromptsOnTheMilestoneAndTask(t *testing.T) {
 	tv.Prompts = nil
 	if code := env.get(t, "/api/v1/projects/team-a/shop/tasks/shop-spec-m3-checkout", &tv); code != http.StatusOK || tv.Prompts == nil || len(tv.Prompts) != 0 {
 		t.Errorf("the spec task's prompts are the milestone's: status %d, %+v", code, tv.Prompts)
+	}
+}
+
+func TestTaskResponseShape(t *testing.T) {
+	env, _ := newSteeringEnv(t, Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}, Chat: true})
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}}}
+	env.login(t, "/")
+	var raw map[string]json.RawMessage
+	if code := env.get(t, "/api/v1/projects/team-a/shop/tasks/shop-spec-m3-checkout", &raw); code != http.StatusOK {
+		t.Fatalf("task: status %d", code)
+	}
+	if string(raw["prompts"]) != "[]" {
+		t.Errorf("prompts = %s, want []", raw["prompts"])
+	}
+	var perms map[string]bool
+	if err := json.Unmarshal(raw["permissions"], &perms); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"transcript", "gitlab", "steer", "chat"} {
+		if _, ok := perms[k]; !ok {
+			t.Errorf("permissions lacks %q: %v", k, perms)
+		}
+	}
+	var tr TaskResponse
+	if code := env.get(t, "/api/v1/projects/team-a/shop/tasks/shop-spec-m3-checkout", &tr); code != http.StatusOK || tr.Permissions == nil || tr.Task.Name == "" {
+		t.Errorf("TaskResponse = %+v", tr)
 	}
 }

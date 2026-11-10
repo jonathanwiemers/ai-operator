@@ -158,6 +158,28 @@ type Milestone struct {
 	Cost  `tstype:",extends"`
 }
 
+// TaskResponse is GET .../tasks/{task}. prompts: the agent's questions
+// (Implement tasks), newest first; always an array.
+type TaskResponse struct {
+	Project     ProjectSummary   `json:"project"`
+	Task        Task             `json:"task"`
+	Prompts     []PromptView     `json:"prompts"`
+	Cost        Cost             `json:"cost"`
+	Permissions *TaskPermissions `json:"permissions,omitempty"`
+}
+
+// TaskPermissions is what the task page may offer; the endpoints check
+// again. transcript: the live transcript (and prompts) of the task's runs.
+// gitlab: the project's GitLab is connected to the UI (thread after
+// connecting your account); steer: you may post comments. chat: Desk chat
+// with the task's agent (no GitLab token).
+type TaskPermissions struct {
+	Transcript bool `json:"transcript"`
+	GitLab     bool `json:"gitlab"`
+	Steer      bool `json:"steer"`
+	Chat       bool `json:"chat"`
+}
+
 // Task is an AgentTask.
 type Task struct {
 	Namespace  string               `json:"namespace"`
