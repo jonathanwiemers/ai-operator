@@ -1976,7 +1976,9 @@ question's kind is one of: `assessment` (the pilot looked at something),
   source (the tracking issue, the issue or the merge request): the
   question, the options as a list and "Answer in the Desk: <link>" (the link
   needs `--desk-url`, chart `ui.externalURL`). The comment has no command
-  syntax to copy. When the prompt is answered, superseded or expired the
+  syntax to copy. When an option from your answer is added to an open
+  prompt, the operator edits the comment to list it, without mentioning
+  anyone again. When the prompt is answered, superseded or expired the
   operator edits it ("✅ Answered by `@owner` in the Desk: <option>", "⏹️
   Superseded: …", "⌛ Expired …") and replies with the chosen option and the
   free text, quoted as untrusted. With `workflow.inputs` containing `gitlab`
@@ -2182,8 +2184,9 @@ list out.
   message in the chat. The option goes through the same checks as the
   pilot's own (an option with an action the operator would not run is not
   added, and the reply says why), replaces one from an earlier answer, and
-  leaves the recommendation as it was. GitLab sees it only once you choose
-  it. Five answers can wait for the pilot at a time.
+  leaves the recommendation as it was. The prompt's GitLab comment shows it
+  from the next poll on, marked "(from an owner's answer)"; the edit
+  mentions nobody. Five answers can wait for the pilot at a time.
 
   Proposals posted before prompts ("🧭 **Proposal P3:** …") stay open
   until they expire: an owner accepts one with `yes` as a reply in its

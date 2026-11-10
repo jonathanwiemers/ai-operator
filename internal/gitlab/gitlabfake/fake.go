@@ -99,9 +99,11 @@ type Fake struct {
 	Users         []gitlab.User
 	FindUserError error
 	// Replies maps a reply in a thread to the note that started it;
-	// DiscussionLists counts ListIssueDiscussions calls.
+	// DiscussionLists counts ListIssueDiscussions calls; NoteEdits counts
+	// UpdateIssueNote and UpdateMergeRequestNote calls.
 	Replies         map[int64]int64
 	DiscussionLists int
+	NoteEdits       int
 	// Files are the paths of the default branch's files, for
 	// ListRepositoryTree; TreeError makes it fail, TreeLists records the
 	// paths it was called for.
@@ -559,6 +561,7 @@ func (f *Fake) CreateIssueNote(_ context.Context, _ string, iid int64, body stri
 func (f *Fake) UpdateIssueNote(_ context.Context, _ string, iid, noteID int64, body string) (*gitlab.Note, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.NoteEdits++
 	for i := range f.IssueNotes[iid] {
 		if n := &f.IssueNotes[iid][i]; n.ID == noteID {
 			n.Body = body
@@ -942,6 +945,7 @@ func (f *Fake) ListMergeRequestNotes(_ context.Context, _ string, iid int64) ([]
 func (f *Fake) UpdateMergeRequestNote(_ context.Context, _ string, iid, noteID int64, body string) (*gitlab.Note, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.NoteEdits++
 	for i := range f.MRNotes[iid] {
 		if n := &f.MRNotes[iid][i]; n.ID == noteID {
 			n.Body = body

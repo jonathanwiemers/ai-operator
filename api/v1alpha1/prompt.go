@@ -1,6 +1,9 @@
 package v1alpha1
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -165,6 +168,10 @@ type Prompt struct {
 	PostedNoteURL string `json:"postedNoteURL,omitempty"`
 	// +optional
 	MirroredState PromptState `json:"mirroredState,omitempty"`
+	// MirroredOptions is the OptionsDigest of the options the comment last
+	// showed: an open prompt whose options changed since is edited.
+	// +optional
+	MirroredOptions string `json:"mirroredOptions,omitempty"`
 	// PilotState is PilotState of the milestone and the options' actions
 	// when a proposal prompt was made: once it changes, the proposal is
 	// superseded.
@@ -355,6 +362,23 @@ func (p Prompt) Option(id string) *PromptOption {
 		}
 	}
 	return nil
+}
+
+// OptionsDigest is a short digest of what the GitLab comment shows of the
+// options: id, label, detail, recommended and fromAnswer of each, in
+// order. Actions are not shown, so they are left out.
+func (p Prompt) OptionsDigest() string {
+	type shown struct {
+		ID, Label, Detail       string
+		Recommended, FromAnswer bool
+	}
+	list := make([]shown, len(p.Options))
+	for i, o := range p.Options {
+		list[i] = shown{o.ID, o.Label, o.Detail, o.Recommended, o.FromAnswer}
+	}
+	b, _ := json.Marshal(list) // strings and bools: it cannot fail
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:6])
 }
 
 // DoNothing is the first option without actions, nil if there is none.

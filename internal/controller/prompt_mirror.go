@@ -18,8 +18,10 @@ import (
 
 // The GitLab mirror of the prompts: every prompt is one comment of the bot
 // on its source (its merge request, its issue, else the milestone's
-// tracking issue), edited when the prompt closes; an answer gets one reply
-// too. mirrorPrompts compares each prompt's State with MirroredState, so
+// tracking issue), edited when the prompt closes and when the options of
+// an open one change (the pilot's "From your answer" option); an answer
+// gets one reply too. mirrorPrompts compares each prompt's State with
+// MirroredState and the digest of its options with MirroredOptions, so
 // every producer and every answer path is mirrored without code of its
 // own. GitLab errors are logged and tried again next poll.
 
@@ -38,7 +40,7 @@ func (r *AgentProjectReconciler) mirrorPrompts(ctx context.Context, gl gitlab.AP
 	holder *aiv1.AgentTask, tracking int64) error {
 	var errs []error
 	for _, p := range slices.Clone(holder.Status.Prompts) {
-		if p.State == "" || p.State == p.MirroredState {
+		if p.State == "" || p.State == p.MirroredState && !optionsChanged(p) {
 			continue
 		}
 		if err := r.mirrorPrompt(ctx, gl, project, spec, holder, tracking, p); err != nil {
@@ -48,9 +50,18 @@ func (r *AgentProjectReconciler) mirrorPrompts(ctx context.Context, gl gitlab.AP
 	return errors.Join(errs...)
 }
 
+// optionsChanged reports whether p is open and its comment shows other
+// options than p has. A prompt mirrored before MirroredOptions existed
+// gets one edit with the same options.
+func optionsChanged(p aiv1.Prompt) bool {
+	return p.State == aiv1.PromptOpen && p.PostedNoteID != 0 && p.MirroredOptions != p.OptionsDigest()
+}
+
 // mirrorPrompt posts p or edits its comment, and replies to an answer. A
 // comment is recorded after it is posted; before posting, the comments are
 // searched for its marker, so a crash in between does not post it twice.
+// The recorded comment of an open prompt is edited with the options as
+// they are now, keeping the letter hint but not the mention.
 // An answer whose option has actions waits for their outcome, two polls
 // at most.
 func (r *AgentProjectReconciler) mirrorPrompt(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
@@ -67,6 +78,7 @@ func (r *AgentProjectReconciler) mirrorPrompt(ctx context.Context, gl gitlab.API
 	bot := project.Status.BotUserID
 	link := desklink.Prompt(r.DeskURL, holder, p.ID)
 	body := promptBody(p, link, supersededBy(holder.Status.Prompts, p), "", noteBodyBytes)
+	digest := p.OptionsDigest()
 	id, url, posted := p.PostedNoteID, p.PostedNoteURL, false
 	if id == 0 {
 		notes, err := n.list(ctx)
@@ -78,12 +90,9 @@ func (r *AgentProjectReconciler) mirrorPrompt(ctx context.Context, gl gitlab.API
 		switch {
 		case id == 0 && (p.State == aiv1.PromptSuperseded || p.State == aiv1.PromptExpired):
 			// Closed before anyone saw it: nothing to show.
-			return r.recordMirror(ctx, holder, p.ID, 0, "", p.State)
+			return r.recordMirror(ctx, holder, p.ID, 0, "", p.State, digest)
 		case id == 0:
-			extra := ""
-			if p.State == aiv1.PromptOpen && letterAnswers(spec, holder, p, n) {
-				extra = "\n\nOwners can also reply here with the option's letter."
-			}
+			extra := letterLine(spec, holder, p, n)
 			if p.State == aiv1.PromptOpen && !p.Quiet {
 				extra += notify.Mention(holder.Spec.Owners)
 			}
@@ -95,6 +104,12 @@ func (r *AgentProjectReconciler) mirrorPrompt(ctx context.Context, gl gitlab.API
 			id, posted = note.ID, true
 		}
 		url = n.url(spec, id)
+	} else if p.State == aiv1.PromptOpen {
+		// An edit carries no mention: GitLab would notify again.
+		if err := n.update(ctx, id, promptBody(p, link, "", letterLine(spec, holder, p, n), noteBodyBytes)); err != nil {
+			logger.Info("could not edit the comment of a prompt", "note", id, "error", err.Error())
+			return nil
+		}
 	}
 	if p.State != aiv1.PromptOpen {
 		// An edit carries no mention: GitLab would notify again.
@@ -112,7 +127,16 @@ func (r *AgentProjectReconciler) mirrorPrompt(ctx context.Context, gl gitlab.API
 		}
 	}
 	logger.Info("prompt mirrored", "state", p.State, "note", id)
-	return r.recordMirror(ctx, holder, p.ID, id, url, p.State)
+	return r.recordMirror(ctx, holder, p.ID, id, url, p.State, digest)
+}
+
+// letterLine tells the owners of an open prompt that takes letter replies
+// how to answer in GitLab, "" for any other prompt.
+func letterLine(spec aiv1.AgentProjectSpec, holder *aiv1.AgentTask, p aiv1.Prompt, n promptNote) string {
+	if p.State != aiv1.PromptOpen || !letterAnswers(spec, holder, p, n) {
+		return ""
+	}
+	return "\n\nOwners can also reply here with the option's letter."
 }
 
 // outcomeDue reports whether the answer to p can be mirrored: its option
@@ -129,15 +153,18 @@ func (r *AgentProjectReconciler) outcomeDue(spec aiv1.AgentProjectSpec, p aiv1.P
 }
 
 // recordMirror records the comment of prompt id on holder (kept when it
-// has one) and the state it shows.
-func (r *AgentProjectReconciler) recordMirror(ctx context.Context, holder *aiv1.AgentTask, id string, noteID int64, url string, state aiv1.PromptState) error {
+// has one), the state it shows and options, the digest of the options it
+// shows: those of the prompt that was rendered, not of the server's copy,
+// so options changed meanwhile are mirrored next poll.
+func (r *AgentProjectReconciler) recordMirror(ctx context.Context, holder *aiv1.AgentTask, id string, noteID int64, url string,
+	state aiv1.PromptState, options string) error {
 	return r.patchPrompts(ctx, holder, func(list []aiv1.Prompt) []aiv1.Prompt {
 		for i := range list {
 			if q := &list[i]; q.ID == id {
 				if q.PostedNoteID == 0 && noteID != 0 {
 					q.PostedNoteID, q.PostedNoteURL = noteID, url
 				}
-				q.MirroredState = state
+				q.MirroredState, q.MirroredOptions = state, options
 			}
 		}
 		return list
@@ -191,9 +218,9 @@ func supersededBy(list []aiv1.Prompt, p aiv1.Prompt) string {
 
 // promptBody is the comment of p: its state once it is closed, the
 // question, the inert context, the options and the Desk link, then
-// extra (the letter hint and the mention, only in a new comment) and the
-// marker. A body over limit loses the end of the context and options,
-// never the link or the marker.
+// extra (the letter hint while open, the mention only in a new comment)
+// and the marker. A body over limit loses the end of the context and
+// options, never the link or the marker.
 func promptBody(p aiv1.Prompt, link, newer, extra string, limit int) string {
 	var b strings.Builder
 	if s := stateLine(p, newer); s != "" {

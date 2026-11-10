@@ -322,3 +322,201 @@ func TestPromptBodyIsCutKeepingTheDeskLink(t *testing.T) {
 		t.Errorf("the marker stays last:\n%s", cut)
 	}
 }
+
+// fromAnswer adds the pilot's option label, made from an owner's answer, to
+// the open prompt id of the milestone, as consumeRefined does.
+func (e *projectEnv) fromAnswer(id, label string) {
+	e.t.Helper()
+	o := pilotOption(label, aiv1.PilotAction{Tool: "retry", IssueIID: 1})
+	if reply, err := e.r.addFromAnswer(e.ctx, e.task(specTaskName), id, *o, "the pilot's option"); err != nil || !strings.Contains(reply, "from your answer") {
+		e.t.Fatalf("the option is added: %q %v", reply, err)
+	}
+}
+
+// promptNoteBody is the comment of prompt id on issue iid.
+func promptNoteBody(e *projectEnv, iid int64, id string) string {
+	e.t.Helper()
+	p := e.prompt(specTaskName, id)
+	for _, n := range promptNotes(e, iid) {
+		if n.ID == p.PostedNoteID {
+			return n.Body
+		}
+	}
+	e.t.Fatalf("no comment of %s on #%d", id, iid)
+	return ""
+}
+
+func TestOpenPromptCommentShowsTheOptionFromAnAnswer(t *testing.T) {
+	e := newAnswerEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	root := e.postedPrompt(freeTextPrompt())
+	if !strings.Contains(root.Body, "cc @alice") || e.prompt(specTaskName, "Q1").MirroredOptions != e.prompt(specTaskName, "Q1").OptionsDigest() {
+		t.Fatalf("the first post mentions the owners and records its options:\n%s", root.Body)
+	}
+
+	e.fromAnswer("Q1", "re-review #1, then retry")
+	edits := e.gl.NoteEdits
+	e.reconcile()
+	if e.gl.NoteEdits != edits+1 {
+		t.Fatalf("the next poll edits the comment once: %d edits", e.gl.NoteEdits-edits)
+	}
+	body := promptNoteBody(e, tracking, "Q1")
+	for _, want := range []string{
+		"- **D** Do nothing — \u200b/merge\n- **E** From your answer: re-review #1, then retry (from an owner's answer) — d\n",
+		"Answer in the Desk.",
+		"\n\n" + letterHint,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the edit lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "@alice") {
+		t.Errorf("an edit mentions nobody: GitLab would notify again:\n%s", body)
+	}
+	assertInert(t, body)
+	if p := e.prompt(specTaskName, "Q1"); p.MirroredOptions != p.OptionsDigest() || p.MirroredState != aiv1.PromptOpen || len(promptNotes(e, tracking)) != 1 {
+		t.Fatalf("the options are recorded as mirrored, nothing posted: %+v", p)
+	}
+
+	edits = e.gl.NoteEdits
+	e.reconcile()
+	e.reconcile()
+	if e.gl.NoteEdits != edits || promptNoteBody(e, tracking, "Q1") != body {
+		t.Fatalf("an unchanged prompt is not edited again: %d edits", e.gl.NoteEdits-edits)
+	}
+
+	// A newer answer's option takes its place.
+	e.fromAnswer("Q1", "pause instead")
+	e.reconcile()
+	body = promptNoteBody(e, tracking, "Q1")
+	if !strings.Contains(body, "- **E** From your answer: pause instead (from an owner's answer) — d\n") || strings.Contains(body, "re-review #1, then retry") {
+		t.Fatalf("the replaced option is shown, the old one gone:\n%s", body)
+	}
+
+	// Answered: the option from the answer is struck through like the others.
+	e.answer(specTaskName, "Q1", aiv1.PromptAnswer{OptionID: "D", By: "alice", Via: "desk"})
+	e.reconcile()
+	body = promptNoteBody(e, tracking, "Q1")
+	for _, want := range []string{
+		"✅ Answered by `@alice` in the Desk: Do nothing\n\n",
+		"- ~~**C** Pause~~\n- **D** Do nothing — \u200b/merge ✅\n- ~~**E** From your answer: pause instead (from an owner's answer) — d~~\n",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the close edit lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, letterHint) {
+		t.Errorf("an answered prompt has no letter hint:\n%s", body)
+	}
+	if p := e.prompt(specTaskName, "Q1"); p.MirroredState != aiv1.PromptAnswered || p.MirroredOptions != p.OptionsDigest() {
+		t.Fatalf("the close edit records its options: %+v", p)
+	}
+}
+
+func TestPromptsMirroredBeforeTheOptionsDigest(t *testing.T) {
+	e := newManagedEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	st := e.task(specTaskName)
+	e.addPrompt(st, st, trackingPrompt())
+	mr := issuePrompt(aiv1.PromptAssessment, 1)
+	mr.Source.MRIID = 5
+	e.addPrompt(st, st, mr)
+	e.addPrompt(st, st, issuePrompt(aiv1.PromptAssessment, 1))
+	e.reconcile()
+	e.answer(specTaskName, "Q3", aiv1.PromptAnswer{OptionID: "B", By: "alice", Via: "desk"})
+	e.reconcile()
+	e.reconcile()
+	before := promptNoteBody(e, tracking, "Q1")
+	closed := promptNoteBody(e, 1, "Q3")
+
+	// As an operator before mirroredOptions left them.
+	if err := e.r.patchPrompts(e.ctx, e.task(specTaskName), func(list []aiv1.Prompt) []aiv1.Prompt {
+		for i := range list {
+			list[i].MirroredOptions = ""
+		}
+		return list
+	}); err != nil {
+		t.Fatal(err)
+	}
+	edits := e.gl.NoteEdits
+	e.reconcile()
+	if e.gl.NoteEdits != edits+2 {
+		t.Fatalf("each open prompt gets one edit, the closed one none: %d edits", e.gl.NoteEdits-edits)
+	}
+	if after := promptNoteBody(e, tracking, "Q1"); after != strings.Replace(before, "\n\ncc @alice", "", 1) {
+		t.Fatalf("the edit shows the same, without the mention:\n%s\n---\n%s", before, after)
+	}
+	if m := e.gl.MRNotes[5]; len(m) != 1 || strings.Contains(m[0].Body, "cc @") || !strings.Contains(m[0].Body, "- **A** Retry it (recommended)\n- **B** Do nothing\n") {
+		t.Fatalf("the merge request's comment is edited too: %+v", m)
+	}
+	if promptNoteBody(e, 1, "Q3") != closed {
+		t.Fatal("a closed prompt's comment is left alone")
+	}
+	for _, id := range []string{"Q1", "Q2"} {
+		if p := e.prompt(specTaskName, id); p.MirroredOptions != p.OptionsDigest() {
+			t.Fatalf("%s records its options: %+v", id, p)
+		}
+	}
+	edits = e.gl.NoteEdits
+	e.reconcile()
+	if e.gl.NoteEdits != edits {
+		t.Fatalf("once: %d more edits", e.gl.NoteEdits-edits)
+	}
+}
+
+func TestOptionsDigest(t *testing.T) {
+	p := trackingPrompt()
+	d := p.OptionsDigest()
+	if len(d) != 12 || d != trackingPrompt().OptionsDigest() {
+		t.Fatalf("12 hex characters, stable: %q", d)
+	}
+	q := trackingPrompt()
+	q.Options[0].Actions = append(q.Options[0].Actions, aiv1.PilotAction{Tool: "pause"})
+	q.Context = "other"
+	if q.OptionsDigest() != d {
+		t.Fatal("actions and context are not shown in the options")
+	}
+	for name, change := range map[string]func(*aiv1.PromptOption){
+		"label":       func(o *aiv1.PromptOption) { o.Label += "!" },
+		"detail":      func(o *aiv1.PromptOption) { o.Detail += "!" },
+		"recommended": func(o *aiv1.PromptOption) { o.Recommended = !o.Recommended },
+		"fromAnswer":  func(o *aiv1.PromptOption) { o.FromAnswer = !o.FromAnswer },
+		"id":          func(o *aiv1.PromptOption) { o.ID = "Z" },
+	} {
+		q := trackingPrompt()
+		change(&q.Options[3])
+		if q.OptionsDigest() == d {
+			t.Errorf("a changed %s changes the digest", name)
+		}
+	}
+	q = trackingPrompt()
+	q.Options = q.Options[:3]
+	if q.OptionsDigest() == d {
+		t.Error("a removed option changes the digest")
+	}
+}
+
+func TestOpenEditIsCutKeepingTheDeskLink(t *testing.T) {
+	p := trackingPrompt()
+	p.ID, p.State, p.PostedAt = "Q4", aiv1.PromptOpen, &metav1.Time{Time: time.Unix(1_700_000_000, 0)}
+	p.Context = strings.Repeat("evidence ", 2000)
+	p.Options = append(p.Options, *pilotOption("re-review #1", aiv1.PilotAction{Tool: "reReview", IssueIID: 1}))
+	p.Options[4].ID = "E"
+	link := "https://desk.example/projects/ns/shop/milestones/3#prompt-Q4"
+	hint := "\n\n" + letterHint
+	if full := promptBody(p, link, "", hint, noteBodyBytes); !strings.Contains(full, "- **E** From your answer: re-review #1 (from an owner's answer) — d\n") {
+		t.Fatalf("a body within the limit has the option from the answer:\n%s", full)
+	}
+	cut := promptBody(p, link, "", hint, 2000)
+	if len(cut) > 2000 {
+		t.Fatalf("cut to the limit: %d bytes", len(cut))
+	}
+	for _, want := range []string{"_Cut here: [the full text is in the Desk](" + link + ")._", "Answer in the Desk: " + link + hint, promptMarker(p)} {
+		if !strings.Contains(cut, want) {
+			t.Errorf("the cut edit keeps %q:\n%s", want, cut)
+		}
+	}
+	if !strings.HasSuffix(cut, promptMarker(p)) || strings.Contains(cut, "@alice") {
+		t.Errorf("the marker stays last, no mention:\n%s", cut)
+	}
+}

@@ -1924,7 +1924,9 @@ Implement task) is mirrored as one bot comment on its source: its merge
 request, else its issue, else the milestone's tracking issue
 (`internal/controller/prompt_mirror.go`). One step at the end of the poll,
 after the pilots' accepted actions ran, compares each prompt's `state` with
-`mirroredState`, so every producer and answer path is mirrored the same way.
+`mirroredState` and, for an open prompt, the digest of its options with
+`mirroredOptions`, so every producer and answer path is mirrored the same
+way.
 
 * **Posted** (open): the question, the context and option labels made
   inert (no mentions, quick actions or `<!--`), the options as a list with
@@ -1936,6 +1938,15 @@ after the pilots' accepted actions ran, compares each prompt's `state` with
   no command syntax. The comment is recorded (`postedNoteID`,
   `postedNoteURL`) after it is posted; before posting, the bot's comments
   are searched for the marker, so a crash in between does not post twice.
+* **Options changed** (open): every mirror records `mirroredOptions`, the
+  first 12 hex characters of the SHA-256 of what the comment shows of the
+  options (id, label, detail, recommended, fromAnswer, in order; not their
+  actions) of the prompt it rendered. When an open prompt's options no
+  longer match, e.g. the pilot added or replaced the option "From your
+  answer: …", the next poll edits the comment with the same body as the
+  post, the letter hint included, without the mention. An unchanged prompt
+  is not edited; GitLab is not read for it. Prompts mirrored before the
+  field existed get one such edit while open; closed ones are left alone.
 * **Answered:** the comment's first line becomes "✅ Answered by `@owner`
   in the Desk (or in GitLab): <option>", the other options struck through,
   and one reply in its thread (on a merge request a comment) has the
@@ -2020,7 +2031,8 @@ An owner answers a milestone prompt from the Desk with the chat command
   or the pilot's error, made inert; a refine whose run ended without a
   refinement is answered so. The refines leave the spec with the answers,
   then their refinements the status. Confirming the option is an answer
-  like any other. The prompt's GitLab comment is not edited for it, and
+  like any other. The prompt's GitLab comment shows the option from the
+  next poll on (*Options changed* in *Prompts in GitLab*), and
   `proposalState` leaves it out, so it does not supersede a proposal.
 * **In GitLab** (`prompt_thread.go`), while `workflow.inputs` has
   `gitlab`: a reply that starts with an option's letter (alone, or before

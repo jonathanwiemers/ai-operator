@@ -3032,6 +3032,11 @@ spec:
                     id:
                       description: ID is "Q<n>", counted per milestone (or task).
                       type: string
+                    mirroredOptions:
+                      description: |-
+                        MirroredOptions is the OptionsDigest of the options the comment last
+                        showed: an open prompt whose options changed since is edited.
+                      type: string
                     mirroredState:
                       description: PromptState is where a prompt is in its life.
                       enum:

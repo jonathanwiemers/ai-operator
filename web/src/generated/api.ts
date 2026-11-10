@@ -5396,6 +5396,12 @@ export interface Prompt {
    */
   mirroredState?: PromptState;
   /**
+   * MirroredOptions is the OptionsDigest of the options the comment last
+   * showed: an open prompt whose options changed since is edited.
+   * +optional
+   */
+  mirroredOptions?: string;
+  /**
    * PilotState is PilotState of the milestone and the options' actions
    * when a proposal prompt was made: once it changes, the proposal is
    * superseded.
