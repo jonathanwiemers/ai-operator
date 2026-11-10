@@ -1499,6 +1499,18 @@ numbers: one row per agent call in `agent_calls`.
   tokens and no cost: they appear as *cursor auto (unmetered)*, count as
   *N calls not metered* next to the total, add nothing to the token sums,
   and count $0 towards a budget. No model or price is guessed for them.
+- **Cursor's cost: reported, estimated or n/a.** Cursor sends usage over
+  ACP only optionally, and the cursor-agent in the agent image sends none
+  yet. When an ACP `usage_update` carries a cost in USD, that is the
+  call's reported cost (ACP's cost is the session's running total, so a
+  call counts the increase since the previous call of its session; other
+  currencies and credits are ignored). Otherwise a call with tokens (from
+  the ACP prompt response) is estimated from the
+  [`pricing:` table](configuration.md#pricing), and without tokens or a
+  price its cost is n/a, never $0. The context size a `usage_update`
+  reports becomes the call's context series, never its tokens. Calls
+  recorded before a price was configured, or before this release, are not
+  re-priced.
 
 #### Spend report script
 

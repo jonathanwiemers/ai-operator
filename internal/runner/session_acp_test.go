@@ -7,14 +7,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-logr/logr"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
 func TestMain(m *testing.M) {
@@ -127,6 +131,122 @@ func TestCursorSessionPromptUsage(t *testing.T) {
 	}
 	if u.DurationMS < 0 || u.Turns != 0 || u.Models != nil {
 		t.Fatalf("duration/turns/models %+v", u)
+	}
+}
+
+// TestCursorSessionUsageUpdate replays cursor-acp-usage-update.jsonl: the
+// usage_update context sizes become the context series, the cumulative USD
+// cost a per-turn reported cost, tokens come only from PromptResponse.usage,
+// and a non-USD cost is ignored.
+func TestCursorSessionUsageUpdate(t *testing.T) {
+	fixture, err := filepath.Abs(filepath.Join("testdata", "cursor-acp-usage-update.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := acpCLI(t, "fixture", "AIO_TEST_ACP_FIXTURE="+fixture).Start(context.Background(), Invocation{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	turn := func(text string) *Result {
+		t.Helper()
+		var kinds []string
+		res, err := s.Prompt(context.Background(), "go", func(e Event) { kinds = append(kinds, e.Subtype) })
+		if err != nil || res.Text != text {
+			t.Fatalf("text=%q err=%v", res.Text, err)
+		}
+		if !slices.Contains(kinds, "usage_update") {
+			t.Fatalf("usage_update must reach the turn's events too: %v", kinds)
+		}
+		if res.CallUsage == nil {
+			t.Fatal("CallUsage is nil")
+		}
+		return res
+	}
+	near := func(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
+
+	// Turn 1: tokens from the response, series and cost from usage_update.
+	res := turn("read")
+	u := res.CallUsage
+	if u.InputTokens != 2100 || u.OutputTokens != 640 || u.CacheReadTokens != 21000 || u.CacheWriteTokens != 1300 {
+		t.Errorf("turn 1 tokens %+v, want PromptResponse.usage", u)
+	}
+	if !slices.Equal(u.ContextSeries, []int64{9800, 14250}) {
+		t.Errorf("turn 1 context series %v", u.ContextSeries)
+	}
+	if !res.CostReported || !near(res.CostUSD, 0.0897) {
+		t.Errorf("turn 1 cost %v reported %v, want 0.0897 reported", res.CostUSD, res.CostReported)
+	}
+
+	// Turn 2: no usage in the response: no tokens (none derived from used),
+	// the cost is the cumulative figure minus turn 1's.
+	res = turn("again")
+	u = res.CallUsage
+	if u.InputTokens != 0 || u.OutputTokens != 0 || u.CacheReadTokens != 0 || u.CacheWriteTokens != 0 {
+		t.Errorf("turn 2 tokens %+v, want none", u)
+	}
+	if !slices.Equal(u.ContextSeries, []int64{15100, 15900}) || u.DurationMS < 0 {
+		t.Errorf("turn 2 usage %+v", u)
+	}
+	if !res.CostReported || !near(res.CostUSD, 0.1043-0.0897) {
+		t.Errorf("turn 2 cost %v reported %v, want 0.0146 reported", res.CostUSD, res.CostReported)
+	}
+
+	// Turn 3: no cost, then one in EUR: only a context series, cost unknown.
+	res = turn("third")
+	if !slices.Equal(res.CallUsage.ContextSeries, []int64{16400, 16800}) {
+		t.Errorf("turn 3 context series %v", res.CallUsage.ContextSeries)
+	}
+	if res.CostReported || res.CostUSD != 0 {
+		t.Errorf("turn 3 cost %v reported %v, want unknown (EUR ignored)", res.CostUSD, res.CostReported)
+	}
+	c := agentCall(aiv1.EngineCursor, Invocation{Model: "gpt-5"}, res, time.Now(), time.Now())
+	if c.CostSource != aiv1.CostUnknown || c.CostUSD != "" || c.InputTokens != 0 || len(c.ContextSeries) != 2 {
+		t.Errorf("turn 3 call %+v, want a context series without tokens or cost", c)
+	}
+}
+
+// TestCursorSessionLoadCostBase: after session/load, the first turn's cost
+// counts from the cumulative cost the replay showed, and the replay's
+// context size is not the turn's.
+func TestCursorSessionLoadCostBase(t *testing.T) {
+	s, err := acpCLI(t, "resume_usage").Start(context.Background(), Invocation{Dir: t.TempDir(), Resume: "sid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	res, err := s.Prompt(context.Background(), "hi", nil)
+	if err != nil || res.Text != "resumed" {
+		t.Fatalf("got %+v %v", res, err)
+	}
+	if !res.CostReported || math.Abs(res.CostUSD-0.25) > 1e-9 {
+		t.Errorf("cost %v reported %v, want 0.25 (1.25 minus the replayed 1.00)", res.CostUSD, res.CostReported)
+	}
+	if res.CallUsage == nil || !slices.Equal(res.CallUsage.ContextSeries, []int64{54000}) {
+		t.Errorf("usage %+v, want the turn's context only", res.CallUsage)
+	}
+}
+
+func TestAcpUsageUpdate(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		used int64
+		usd  float64
+		ok   bool
+	}{
+		{`{"used":10,"size":100,"cost":{"amount":0.5,"currency":"USD"}}`, 10, 0.5, true},
+		{`{"used":10,"size":100,"cost":{"amount":0.5,"currency":"usd"}}`, 10, 0.5, true},
+		{`{"used":10,"size":100,"cost":{"amount":0.5,"currency":"EUR"}}`, 10, 0, false},
+		{`{"used":10,"size":100,"cost":{"amount":3,"currency":"credits"}}`, 10, 0, false},
+		{`{"used":10,"size":100,"cost":{"currency":"USD"}}`, 10, 0, false},
+		{`{"used":10,"size":100,"cost":null}`, 10, 0, false},
+		{`{"size":100}`, -1, 0, false},
+		{`not json`, -1, 0, false},
+	} {
+		used, usd, ok := acpUsageUpdate(json.RawMessage(tc.in))
+		if used != tc.used || usd != tc.usd || ok != tc.ok {
+			t.Errorf("%s: %d %v %v, want %d %v %v", tc.in, used, usd, ok, tc.used, tc.usd, tc.ok)
+		}
 	}
 }
 
@@ -417,6 +537,17 @@ func runACPFake() {
 	}
 	sessionID := "test-session-1"
 	promptN := 0
+	// fixture mode replays AIO_TEST_ACP_FIXTURE: per prompt its lines up to
+	// the next response, which gets the request's id.
+	var fixture [][]byte
+	if mode == "fixture" {
+		b, _ := os.ReadFile(os.Getenv("AIO_TEST_ACP_FIXTURE"))
+		for _, l := range bytes.Split(b, []byte("\n")) {
+			if l = bytes.TrimSpace(l); len(l) > 0 && !bytes.HasPrefix(l, []byte(`{"type":"fixture"`)) {
+				fixture = append(fixture, l)
+			}
+		}
+	}
 	write := func(v any) {
 		b, _ := json.Marshal(v)
 		logLine("agent", b)
@@ -476,6 +607,9 @@ func runACPFake() {
 				// Replay history; client must drop these.
 				update("agent_message_chunk", map[string]any{"content": map[string]any{"type": "text", "text": "old"}})
 				update("agent_thought_chunk", map[string]any{"content": map[string]any{"type": "text", "text": "replay"}})
+				if mode == "resume_usage" {
+					update("usage_update", map[string]any{"used": 52000, "size": 200000, "cost": map[string]any{"amount": 1.0, "currency": "USD"}})
+				}
 				result := map[string]any{"sessionId": sessionID}
 				if mode != "resume_nomodels" {
 					result["models"] = modelsObj
@@ -576,6 +710,25 @@ func runACPFake() {
 				case "resume", "resume_nomodels":
 					thoughtThen("r", "resumed")
 					reply(msg.ID, map[string]any{"stopReason": "end_turn"})
+				case "resume_usage":
+					update("usage_update", map[string]any{"used": 54000, "size": 200000, "cost": map[string]any{"amount": 1.25, "currency": "USD"}})
+					thoughtThen("r", "resumed")
+					reply(msg.ID, map[string]any{"stopReason": "end_turn"})
+				case "fixture":
+					for len(fixture) > 0 {
+						l := fixture[0]
+						fixture = fixture[1:]
+						var m map[string]any
+						_ = json.Unmarshal(l, &m)
+						if _, ok := m["result"]; !ok {
+							logLine("agent", l)
+							_, _ = os.Stdout.Write(append(l, '\n'))
+							continue
+						}
+						m["id"] = msg.ID
+						write(m)
+						break
+					}
 				case "usage":
 					// PromptResponse.usage as in the ACP schema; cursor-agent
 					// 2026.10.22 does not send it yet.

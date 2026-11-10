@@ -340,8 +340,12 @@ the tab says it needs the database):
   effort), whether the session was resumed, the engine it fell back from,
   tokens, cost and its source: *reported* by the engine, *estimated*
   from tokens and the `pricing:` table (shown as `~$0.42`), or *n/a*
-  (cursor without pricing). A call with neither a cost nor tokens shows
-  *not metered* as its cost and *—* as its tokens.
+  (cursor without pricing). A cursor call is *reported* when its ACP
+  `usage_update` carries a cost in USD, *estimated* when it has tokens and
+  a price, *n/a* otherwise, never $0; the cursor-agent in the agent image
+  sends no usage yet. Calls recorded earlier are not re-priced. A call
+  with neither a cost nor tokens shows *not metered* as its cost and *—*
+  as its tokens.
 * **Model bars:** every row of the drill-down (milestones, issues, runs
   and calls) has a stacked bar split by model: the main model first (in
   the progress color), the subagent models after it, each in its own color
@@ -440,8 +444,10 @@ kind (*#3 implement*). An orange dot marks each turn after which a
 subagent ran. Hovering a dot or a line's end shows the turn, the tokens
 and the step. A series is at most 500 points; a thinned one is spread
 over the call's real turn count, so long sessions keep their length on
-the axis. Runs recorded before context series were tracked (and cursor
-calls) show no chart.
+the axis. A cursor call's points are its ACP `usage_update` context
+sizes, one per update; cursor calls without them (the cursor-agent in the
+agent image sends none yet) and runs recorded before context series were
+tracked show no chart.
 
 ### Notifications
 

@@ -224,9 +224,13 @@ and its source:
 - **claude** reports `total_cost_usd` (the notional API price on a
   subscription): `cost_source = reported`. A `pricing` entry for the model
   does not change it.
-- **cursor** reports no USD. When it reports tokens and `pricing` has a
-  price for the model, the operator estimates the cost from them when it
-  writes the row: `cost_source = estimated`.
+- **cursor** reports a USD cost only when an ACP `usage_update` carries
+  one (`cost_source = reported`, the increase of the session's running
+  total during the call; other currencies are ignored). The cursor-agent
+  in the agent image sends none yet. Without one, when it reports tokens
+  (ACP's prompt response) and `pricing` has a price for the model, the
+  operator estimates the cost from them when it writes the row:
+  `cost_source = estimated`.
 - Otherwise (no tokens, or no price) the cost is NULL and
   `cost_source = unknown`: the call counts with its duration, and the Desk
   shows "n/a", never $0. A call with neither a cost nor tokens (cursor

@@ -1,0 +1,16 @@
+{"type":"fixture","source":"reconstructed 2026-11-10 from the ACP v1 schema (UsageUpdate, Cost, PromptResponse.usage) bundled in cursor-agent 2026.11.05-86047df, which emits neither; three session/prompt turns, each ending in its response (id replaced by the request's)"}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"usage_update","used":9800,"size":200000,"cost":{"amount":0.0412,"currency":"USD"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Reading the file."}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"tool_call","toolCallId":"tool-1","title":"Read README.md","kind":"read","status":"pending","rawInput":{"path":"README.md"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"tool_call_update","toolCallId":"tool-1","status":"completed"}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"usage_update","used":14250,"size":200000,"cost":{"amount":0.0897,"currency":"USD"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"read"}}}}
+{"jsonrpc":"2.0","id":0,"result":{"stopReason":"end_turn","usage":{"inputTokens":2100,"outputTokens":640,"cachedReadTokens":21000,"cachedWriteTokens":1300,"thoughtTokens":120,"totalTokens":25160}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"usage_update","used":15100,"size":200000,"cost":{"amount":0.1043,"currency":"USD"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"again"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"usage_update","used":15900,"size":200000}}}
+{"jsonrpc":"2.0","id":0,"result":{"stopReason":"end_turn"}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"usage_update","used":16400,"size":200000}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"usage_update","used":16800,"size":200000,"cost":{"amount":0.12,"currency":"EUR"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"third"}}}}
+{"jsonrpc":"2.0","id":0,"result":{"stopReason":"end_turn"}}

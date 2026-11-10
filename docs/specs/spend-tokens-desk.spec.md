@@ -290,6 +290,40 @@ as `cost_source: unknown` (decision 4) until a later version sends usage.
 `usage_update` is not parsed. Unverified live; re-check when cursor-agent
 is updated.
 
+**Update 2026-11-10 (#262)**, against cursor-agent `2026.11.05-86047df`,
+the version in the agent image (`Dockerfile.agent`'s unpinned install):
+
+- **Live:** same as before. An `acp` session with `CURSOR_API_KEY` started,
+  two prompts were answered with "Upgrade your plan to continue" and
+  `{"stopReason":"end_turn"}`, without `usage` and without a
+  `usage_update`. A billed turn could still not be observed.
+- **Code:** the `session/prompt` handler still returns only `stopReason`
+  (`end_turn` or `cancelled`). The session updates the agent emits are
+  the message, thought, tool, plan, mode, command, session-info and
+  subagent kinds; `usage_update` appears only in the bundled ACP SDK's
+  schema. So this version still sends **no usage** over ACP.
+- **Schema (ACP v1, `schema/v1/schema.json`):** `usage_update.used` is
+  "tokens currently in context", `size` the context window, and the
+  optional `cost` (`{amount, currency}`) the **cumulative session cost**;
+  `currency` is an ISO 4217 code or another unit such as `credits`.
+
+The runner now parses both, ready for a version that sends them
+(fixture `internal/runner/testdata/cursor-acp-usage-update.jsonl`,
+reconstructed from the schema):
+
+- Tokens come only from `PromptResponse.usage`. `used` is no token count
+  of the call and is never turned into one (D262-P1).
+- Every `usage_update.used` of a turn is a point of the call's context
+  series (thinned to 500 points, like claude's).
+- A `cost` in USD is the engine's reported cost (D262-P2). Since it is
+  cumulative, a call's cost is the turn's last figure minus the one before
+  (the previous turn's, or the one the `session/load` replay showed), as
+  for claude's `total_cost_usd`. Other currencies and credits are ignored.
+- Without a USD cost the call stays `cost_source: unknown`, and the
+  operator estimates it from its tokens with `pricing:` (decision 4), or
+  shows n/a. A call with only a context series has no tokens and stays
+  unknown. Rows recorded before are not re-priced (D69-4, D262-P3).
+
 ## Finding: claude subagent stream
 
 Checked on 2026-11-04 against claude `2.1.314`, the version the unpinned

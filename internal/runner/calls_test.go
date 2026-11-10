@@ -171,6 +171,20 @@ func TestNewCall(t *testing.T) {
 		t.Errorf("cursor call: %+v", c)
 	}
 
+	// Cursor with a USD cost from usage_update: reported, with its context
+	// series and no tokens.
+	c = r.newCall(aiv1.EngineCursor, inv, &Result{CostUSD: 0.01456, CostReported: true,
+		CallUsage: &CallUsage{ContextSeries: []int64{15100, 15900}, DurationMS: 4000}}, start)
+	if c.CostUSD != "0.0146" || c.CostSource != aiv1.CostReported || c.InputTokens != 0 || !slices.Equal(c.ContextSeries, []int64{15100, 15900}) {
+		t.Errorf("cursor call with a reported cost: %+v", c)
+	}
+
+	// Cursor with tokens and no cost: unknown, for Estimate to price.
+	c = r.newCall(aiv1.EngineCursor, inv, &Result{CallUsage: &CallUsage{InputTokens: 2100, OutputTokens: 640, CacheReadTokens: 21000}}, start)
+	if c.CostUSD != "" || c.CostSource != aiv1.CostUnknown || c.InputTokens != 2100 || c.OutputTokens != 640 || c.CacheReadTokens != 21000 {
+		t.Errorf("cursor call with tokens: %+v", c)
+	}
+
 	// A call that failed without a result still counts its time.
 	c = r.newCall(aiv1.EngineClaude, inv, nil, start)
 	if c.CostSource != aiv1.CostUnknown || c.CostUSD != "" || c.DurationMS != 90000 {

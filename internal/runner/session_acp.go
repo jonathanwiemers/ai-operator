@@ -43,6 +43,10 @@ type CursorSession struct {
 	inTurnUpdates bool
 	updates       []acpUpdate
 	updSignal     chan struct{}
+	// costBase is the session's cumulative USD cost (usage_update.cost) as
+	// of the last turn that reported one, or of the session/load replay; a
+	// turn's cost is its last figure minus this.
+	costBase float64
 	sessionProc
 }
 
@@ -300,6 +304,13 @@ func (s *CursorSession) routeUpdate(line, params json.RawMessage) {
 	upd := acpUpdate{Line: json.RawMessage(append([]byte(nil), line...)), Update: p.Update, Kind: u.Kind}
 
 	s.mu.Lock()
+	if s.loading && u.Kind == "usage_update" {
+		// The replay's cost is what the session spent before this process:
+		// the first turn counts from it, not from zero.
+		if _, usd, ok := acpUsageUpdate(p.Update); ok {
+			s.costBase = usd
+		}
+	}
 	if s.loading || !s.inTurnUpdates {
 		s.mu.Unlock()
 		return
@@ -505,11 +516,13 @@ func (s *CursorSession) Prompt(ctx context.Context, text string, fn func(Event))
 		// holds the rest of the answer.
 		handle()
 		tr.flushEnd()
+		took := time.Since(start)
 		res := &Result{SessionID: sessionID, Text: tr.answer}
+		s.turnUsage(log, res, tr, took)
 		if resp.Error != nil {
 			return res, fmt.Errorf("%s", resp.Error.Error())
 		}
-		return s.finishPrompt(res, resp.Result, time.Since(start))
+		return s.finishPrompt(res, resp.Result, took)
 	}
 	ctxCh := ctx.Done()
 	var cancelTimer <-chan time.Time
@@ -550,10 +563,36 @@ func (s *CursorSession) Prompt(ctx context.Context, text string, fn func(Event))
 	}
 }
 
+// turnUsage adds what the turn's usage_update notifications showed to res:
+// their context sizes (used) as CallUsage.ContextSeries, and the turn's
+// cost when one carried a USD cost. ACP's cost is the session's cumulative
+// cost, so the turn's is its last figure minus costBase (clamped to zero).
+// used is the context window's occupancy, not billed tokens: no tokens
+// come from it.
+func (s *CursorSession) turnUsage(log logr.Logger, res *Result, tr *acpTurnLog, took time.Duration) {
+	if len(tr.context) > 0 {
+		series, _ := thinSeries(tr.context, nil, maxContextPoints)
+		res.CallUsage = &CallUsage{ContextSeries: series, DurationMS: took.Milliseconds()}
+	}
+	if !tr.costSeen {
+		return
+	}
+	s.mu.Lock()
+	base := s.costBase
+	s.costBase = tr.cost
+	s.mu.Unlock()
+	res.CostUSD, res.CostReported = tr.cost-base, true
+	if res.CostUSD < 0 {
+		log.Info("cursor's cumulative session cost went down, counting the turn as $0", "costUSD", tr.cost, "before", base)
+		res.CostUSD = 0
+	}
+}
+
 // finishPrompt reads the PromptResponse. Its optional usage (ACP schema:
 // inputTokens, outputTokens, cachedReadTokens, cachedWriteTokens) becomes
-// CallUsage with the duration the runner measured (ACP reports no
-// duration). cursor-agent 2026.10.22 sends no usage, see the spend spec.
+// the CallUsage tokens with the duration the runner measured (ACP reports
+// no duration). cursor-agent 2026.11.05 sends neither usage nor
+// usage_update, see the spend spec.
 func (s *CursorSession) finishPrompt(res *Result, result json.RawMessage, took time.Duration) (*Result, error) {
 	var out struct {
 		StopReason string `json:"stopReason"`
@@ -566,11 +605,13 @@ func (s *CursorSession) finishPrompt(res *Result, result json.RawMessage, took t
 	}
 	_ = json.Unmarshal(result, &out)
 	if u := out.Usage; u != nil {
-		res.CallUsage = &CallUsage{
-			InputTokens: u.InputTokens, OutputTokens: u.OutputTokens,
-			CacheReadTokens: u.CachedReadTokens, CacheWriteTokens: u.CachedWriteTokens,
-			DurationMS: took.Milliseconds(),
+		if res.CallUsage == nil {
+			res.CallUsage = &CallUsage{}
 		}
+		c := res.CallUsage
+		c.InputTokens, c.OutputTokens = u.InputTokens, u.OutputTokens
+		c.CacheReadTokens, c.CacheWriteTokens = u.CachedReadTokens, u.CachedWriteTokens
+		c.DurationMS = took.Milliseconds()
 	}
 	switch out.StopReason {
 	case "end_turn", "":
@@ -628,12 +669,18 @@ func (s *CursorSession) Close() error {
 
 func (s *CursorSession) markDead() { s.mu.Lock(); s.dead = true; s.mu.Unlock() }
 
-// acpTurnLog aggregates thinking/message chunks for transcript-style logs.
+// acpTurnLog aggregates thinking/message chunks for transcript-style logs,
+// and the turn's usage_update notifications.
 type acpTurnLog struct {
 	log     logr.Logger
 	thought strings.Builder
 	message strings.Builder
 	answer  string
+	// context is used of every usage_update; cost the last USD cost of one
+	// (the session's cumulative cost), costSeen whether there was one.
+	context  []int64
+	cost     float64
+	costSeen bool
 }
 
 func (t *acpTurnLog) consume(upd acpUpdate) {
@@ -660,6 +707,14 @@ func (t *acpTurnLog) consume(upd acpUpdate) {
 			}
 		}
 		t.log.Info("agent uses a tool", "tool", tool, "input", input)
+	case "usage_update":
+		used, usd, ok := acpUsageUpdate(upd.Update)
+		if used >= 0 {
+			t.context = append(t.context, used)
+		}
+		if ok {
+			t.cost, t.costSeen = usd, true
+		}
 	case "available_commands_update", "session_info_update", "tool_call_update":
 		// ignored
 	}
@@ -703,6 +758,30 @@ func acpChunkText(update json.RawMessage) string {
 	}
 	_ = json.Unmarshal(update, &u)
 	return u.Content.Text
+}
+
+// acpUsageUpdate reads a usage_update: used (tokens in the context window,
+// -1 when missing) and the session's cumulative cost when its currency is
+// USD (ok false otherwise: other currencies and credits are ignored).
+func acpUsageUpdate(update json.RawMessage) (used int64, usd float64, ok bool) {
+	var u struct {
+		Used *int64 `json:"used"`
+		Cost *struct {
+			Amount   *float64 `json:"amount"`
+			Currency string   `json:"currency"`
+		} `json:"cost"`
+	}
+	if json.Unmarshal(update, &u) != nil {
+		return -1, 0, false
+	}
+	used = -1
+	if u.Used != nil {
+		used = *u.Used
+	}
+	if c := u.Cost; c != nil && c.Amount != nil && strings.EqualFold(c.Currency, "USD") {
+		return used, *c.Amount, true
+	}
+	return used, 0, false
 }
 
 func acpToolFields(update json.RawMessage) (title, kind string, rawInput json.RawMessage) {

@@ -319,6 +319,48 @@ func TestRecorderEstimatesUnknownCosts(t *testing.T) {
 	}
 }
 
+// TestEstimateCursorCalls: the rows the Spend tab reads for cursor calls as
+// the runner records them from ACP (#262). Tokens from PromptResponse.usage
+// with a price are estimated; a cost from usage_update stays reported; a
+// call with only a context series (usage_update without a USD cost) stays
+// unknown, with or without a price, never $0.
+func TestEstimateCursorCalls(t *testing.T) {
+	prices, err := pricing.Parse([]byte(`models: {"cursor/gpt-5": {input: 1.25, output: 10, cacheRead: 0.1}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	series := []int64{9800, 14250}
+	tokens := aiv1.AgentCall{Engine: aiv1.EngineCursor, Model: "gpt-5", CostSource: aiv1.CostUnknown,
+		InputTokens: 2100, OutputTokens: 640, CacheReadTokens: 21000, ContextSeries: series}
+	reported := tokens
+	reported.CostUSD, reported.CostSource = "0.0897", aiv1.CostReported
+	seriesOnly := aiv1.AgentCall{Engine: aiv1.EngineCursor, Model: "gpt-5", CostSource: aiv1.CostUnknown, ContextSeries: series}
+
+	c := StoreCall(tokens)
+	Estimate(&c, prices)
+	// (2100*1.25 + 640*10 + 21000*0.1) / 1e6 = 0.011125
+	if c.CostSource != aiv1.CostEstimated || c.CostUSD == nil || *c.CostUSD != 0.0111 || !slices.Equal(c.ContextSeries, series) {
+		t.Errorf("cursor call with tokens = %v %v, want estimated 0.0111", c.CostSource, c.CostUSD)
+	}
+	c = StoreCall(tokens)
+	Estimate(&c, nil)
+	if c.CostSource != aiv1.CostUnknown || c.CostUSD != nil {
+		t.Errorf("cursor call with tokens, no pricing = %v %v, want unknown", c.CostSource, c.CostUSD)
+	}
+	c = StoreCall(reported)
+	Estimate(&c, prices)
+	if c.CostSource != aiv1.CostReported || c.CostUSD == nil || *c.CostUSD != 0.0897 {
+		t.Errorf("cursor call with a reported cost = %v %v, want reported 0.0897", c.CostSource, c.CostUSD)
+	}
+	for _, table := range []*pricing.Table{prices, nil} {
+		c = StoreCall(seriesOnly)
+		Estimate(&c, table)
+		if c.CostSource != aiv1.CostUnknown || c.CostUSD != nil || !slices.Equal(c.ContextSeries, series) {
+			t.Errorf("cursor call with a context series only = %v %v, want unknown with its series", c.CostSource, c.CostUSD)
+		}
+	}
+}
+
 // Each call is one row: the same update twice, and the calls of the
 // existing tasks the recorder writes at its start (after an operator
 // restart), add nothing.

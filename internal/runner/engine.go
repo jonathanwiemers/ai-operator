@@ -97,10 +97,13 @@ type Result struct {
 	SessionID string
 	// CostUSD as reported by the engine (0 if unknown). With a subscription
 	// this is the notional API price, useful to compare roles and tasks.
-	CostUSD    float64
-	IsError    bool
-	Text       string
-	Structured json.RawMessage
+	CostUSD float64
+	// CostReported is whether a cursor call's CostUSD is the engine's own
+	// figure (an ACP usage_update cost in USD); claude always reports one.
+	CostReported bool
+	IsError      bool
+	Text         string
+	Structured   json.RawMessage
 	// Usage is the engine's last report on its usage windows during the
 	// call (claude's rate_limit_event); nil if it sent none.
 	Usage *aiv1.EngineUsage

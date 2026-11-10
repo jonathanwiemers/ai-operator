@@ -28,8 +28,10 @@ func agentCall(engine aiv1.Engine, inv Invocation, res *Result, start, end time.
 	if res == nil {
 		return c
 	}
-	if engine == aiv1.EngineClaude {
-		// Cursor reports no cost; the operator estimates it from tokens.
+	if engine == aiv1.EngineClaude || res.CostReported {
+		// Cursor reports a cost only in an ACP usage_update in USD; without
+		// one the cost stays unknown, for the operator to estimate from
+		// tokens.
 		c.CostUSD, c.CostSource = aiv1.FormatCost(res.CostUSD), aiv1.CostReported
 	}
 	u := res.CallUsage
