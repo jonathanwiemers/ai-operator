@@ -149,9 +149,9 @@ type FollowUpRow struct {
 }
 
 // MilestoneDetail is one milestone with its retrospective, owners, issues
-// in order and follow-ups by number. RetroPostedAt is zero and RetroNoteID
-// 0 while no retrospective is stored. Issues shadows the row's issue count,
-// MilestoneRow.Issues.
+// in order, follow-ups by number and release decisions by ID. RetroPostedAt
+// is zero and RetroNoteID 0 while no retrospective is stored. Issues shadows
+// the row's issue count, MilestoneRow.Issues.
 type MilestoneDetail struct {
 	MilestoneRow
 	RetroText     string
@@ -161,11 +161,12 @@ type MilestoneDetail struct {
 	OwnerSubjects []string
 	Issues        []IssueFigures
 	FollowUps     []FollowUpRow
+	Releases      []ReleaseSnapshot
 }
 
 // Milestone returns project's milestone iid with its issues' figures in a
 // fixed number of queries, however many issues it has: the milestone row,
-// its follow-ups, its issues with their calls, their run and merge events
+// its follow-ups, its releases, its issues with their calls, their run and merge events
 // and the milestone's pauses. ErrNotFound if it has no snapshot.
 func (s *Store) Milestone(ctx context.Context, project ProjectKey, iid int64, now time.Time) (MilestoneDetail, error) {
 	var d MilestoneDetail
@@ -188,10 +189,35 @@ func (s *Store) Milestone(ctx context.Context, project ProjectKey, iid int64, no
 	if d.FollowUps, err = s.followUps(ctx, project, iid); err != nil {
 		return MilestoneDetail{}, err
 	}
+	if d.Releases, err = s.releases(ctx, project, iid); err != nil {
+		return MilestoneDetail{}, err
+	}
 	if d.Issues, err = s.issueFigures(ctx, project, iid, 0, now); err != nil {
 		return MilestoneDetail{}, err
 	}
 	return d, nil
+}
+
+// releases are the stored release decisions of project's milestone iid by
+// ID.
+func (s *Store) releases(ctx context.Context, p ProjectKey, iid int64) ([]ReleaseSnapshot, error) {
+	rows, _ := s.pool.Query(ctx, `SELECT release_id, r.by, actor, why, coalesce(after_iid, 0), sha, released_sha,
+			state, reason, issues, mr_iids, version, pipeline_url, release_url, decided_at, started_at, ended_at
+		FROM desk_milestone_releases r
+		WHERE namespace = $1 AND project = $2 AND milestone_iid = $3 ORDER BY release_id`, p.Namespace, p.Name, iid)
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (ReleaseSnapshot, error) {
+		var r ReleaseSnapshot
+		var started, ended *time.Time
+		err := row.Scan(&r.ID, &r.By, &r.Actor, &r.Why, &r.AfterIID, &r.SHA, &r.ReleasedSHA, &r.State, &r.Reason,
+			&r.Issues, &r.MergeRequests, &r.Version, &r.PipelineURL, &r.ReleaseURL, &r.DecidedAt, &started, &ended)
+		if started != nil {
+			r.StartedAt = *started
+		}
+		if ended != nil {
+			r.EndedAt = *ended
+		}
+		return r, err
+	})
 }
 
 // IssueFigures returns the figures of issue in project's milestone as

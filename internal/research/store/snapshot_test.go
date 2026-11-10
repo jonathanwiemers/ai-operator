@@ -39,7 +39,8 @@ func versions(t *testing.T, s *store.Store) map[string]string {
 	rows, _ := s.Pool().Query(t.Context(), `
 		SELECT 'm/' || iid, xmin::text FROM desk_milestones
 		UNION ALL SELECT 'i/' || milestone_iid || '/' || iid, xmin::text FROM desk_milestone_issues
-		UNION ALL SELECT 'f/' || milestone_iid || '/' || number, xmin::text FROM desk_follow_ups`)
+		UNION ALL SELECT 'f/' || milestone_iid || '/' || number, xmin::text FROM desk_follow_ups
+		UNION ALL SELECT 'r/' || milestone_iid || '/' || release_id, xmin::text FROM desk_milestone_releases`)
 	var k, v string
 	if _, err := pgx.ForEachRow(rows, []any{&k, &v}, func() error { m[k] = v; return nil }); err != nil {
 		t.Fatal(err)
@@ -288,7 +289,15 @@ func TestDeleteExpiredSnapshot(t *testing.T) {
 	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 	old, keep := snapshot(time.Time{}), snapshot(time.Time{})
 	old.IID, keep.IID = 10, 11
+	old.Releases = []store.ReleaseSnapshot{{ID: 1, By: "final", State: "Released", DecidedAt: now.Add(-2 * time.Hour)}}
 	save(t, s, old, now.Add(-time.Hour), true)
+	// A milestone whose rows expired but whose release changed later.
+	released := snapshot(time.Time{})
+	released.IID = 13
+	released.Releases = []store.ReleaseSnapshot{{ID: 1, By: "final", State: "Running", DecidedAt: now.Add(-2 * time.Hour)}}
+	save(t, s, released, now.Add(-time.Hour), true)
+	released.Releases[0].State = "Released"
+	save(t, s, released, now.Add(time.Hour), true)
 	save(t, s, keep, now.Add(time.Hour), true)
 	// A milestone whose row expired but one of whose issues changed later.
 	recent := snapshot(time.Time{})
@@ -306,14 +315,19 @@ func TestDeleteExpiredSnapshot(t *testing.T) {
 	}
 	rows, _ := s.Pool().Query(ctx, "SELECT DISTINCT milestone_iid FROM desk_milestone_issues ORDER BY 1")
 	left, err := pgx.CollectRows(rows, pgx.RowTo[int64])
-	if err != nil || !slices.Equal(left, []int64{11, 12}) {
-		t.Errorf("issues left of milestones %v, %v; want 11, 12", left, err)
+	if err != nil || !slices.Equal(left, []int64{11, 12, 13}) {
+		t.Errorf("issues left of milestones %v, %v; want 11, 12, 13", left, err)
 	}
-	if n := count(t, s.Pool(), "desk_milestones"); n != 2 {
-		t.Errorf("%d milestones left, want 2", n)
+	if n := count(t, s.Pool(), "desk_milestones"); n != 3 {
+		t.Errorf("%d milestones left, want 3", n)
 	}
-	if n := count(t, s.Pool(), "desk_follow_ups"); n != 2 {
-		t.Errorf("%d follow-ups left, want 2", n)
+	if n := count(t, s.Pool(), "desk_follow_ups"); n != 3 {
+		t.Errorf("%d follow-ups left, want 3", n)
+	}
+	rows, _ = s.Pool().Query(ctx, "SELECT milestone_iid FROM desk_milestone_releases ORDER BY 1")
+	left, err = pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil || !slices.Equal(left, []int64{13}) {
+		t.Errorf("releases left of milestones %v, %v; want 13", left, err)
 	}
 }
 
@@ -362,5 +376,81 @@ func TestTakeFollowUps(t *testing.T) {
 	}
 	if !slices.Equal(got.FollowUps, want) {
 		t.Fatalf("follow-ups =\n%+v\nwant\n%+v", got.FollowUps, want)
+	}
+}
+
+// equalRelease compares release snapshots, times by instant.
+func equalRelease(a, b store.ReleaseSnapshot) bool {
+	return a.ID == b.ID && a.By == b.By && a.Actor == b.Actor && a.Why == b.Why && a.AfterIID == b.AfterIID &&
+		a.SHA == b.SHA && a.ReleasedSHA == b.ReleasedSHA && a.State == b.State && a.Reason == b.Reason &&
+		slices.Equal(a.Issues, b.Issues) && slices.Equal(a.MergeRequests, b.MergeRequests) &&
+		a.Version == b.Version && a.PipelineURL == b.PipelineURL && a.ReleaseURL == b.ReleaseURL &&
+		a.DecidedAt.Equal(b.DecidedAt) && a.StartedAt.Equal(b.StartedAt) && a.EndedAt.Equal(b.EndedAt)
+}
+
+// Releases are written only when they differ and never deleted: a release
+// missing from a later snapshot (trimmed from status) is kept.
+func TestSaveMilestoneReleases(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	decided := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
+	exp := decided.Add(24 * time.Hour)
+	m := snapshot(decided)
+	m.Releases = []store.ReleaseSnapshot{
+		{ID: 1, By: "planner", Why: "Users see the Desk", AfterIID: 301, SHA: "a1", ReleasedSHA: "b1", State: "Released",
+			Issues: []int64{301}, MergeRequests: []int64{900}, Version: "2026.11.3",
+			PipelineURL: "https://gitlab.example/p/1", ReleaseURL: "https://gitlab.example/r/1",
+			DecidedAt: decided, StartedAt: decided.Add(time.Hour), EndedAt: decided.Add(2 * time.Hour)},
+		{ID: 2, By: "owner", Actor: "@jo", State: "Planned", DecidedAt: decided.Add(3 * time.Hour)},
+	}
+	save(t, s, m, exp, true)
+
+	var after *int64
+	var started, ended *time.Time
+	if err := s.Pool().QueryRow(ctx, `SELECT after_iid, started_at, ended_at FROM desk_milestone_releases
+		WHERE milestone_iid = 21 AND release_id = 2`).Scan(&after, &started, &ended); err != nil {
+		t.Fatal(err)
+	}
+	if after != nil || started != nil || ended != nil {
+		t.Errorf("release 2 after %v, started %v, ended %v; want NULLs", after, started, ended)
+	}
+
+	// The same snapshot writes nothing.
+	before := versions(t, s)
+	save(t, s, m, exp.Add(time.Hour), false)
+	if c := changedRows(before, versions(t, s)); len(c) != 0 {
+		t.Errorf("repeated save changed %v", c)
+	}
+
+	// A changed state and version write that release only.
+	m.Releases[1].State, m.Releases[1].Version = "Released", "2026.11.4"
+	save(t, s, m, exp.Add(time.Hour), true)
+	if c := changedRows(before, versions(t, s)); !slices.Equal(c, []string{"r/21/2"}) {
+		t.Errorf("changed rows %v, want only r/21/2", c)
+	}
+	var state, version string
+	var expires time.Time
+	if err := s.Pool().QueryRow(ctx, `SELECT state, version, expires_at FROM desk_milestone_releases
+		WHERE release_id = 2`).Scan(&state, &version, &expires); err != nil {
+		t.Fatal(err)
+	}
+	if state != "Released" || version != "2026.11.4" || !expires.Equal(exp.Add(time.Hour)) {
+		t.Errorf("release 2 = %q %q, expires %v", state, version, expires)
+	}
+
+	// Status trimmed release 1: the snapshot keeps it, unchanged.
+	before = versions(t, s)
+	want := m.Releases
+	m.Releases = m.Releases[1:]
+	save(t, s, m, exp, false)
+	if c := changedRows(before, versions(t, s)); len(c) != 0 {
+		t.Errorf("a shorter list changed %v", c)
+	}
+	d, err := s.Milestone(ctx, bloop, 21, decided)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Releases) != 2 || !equalRelease(d.Releases[0], want[0]) || !equalRelease(d.Releases[1], want[1]) {
+		t.Errorf("releases = %+v\nwant %+v", d.Releases, want)
 	}
 }

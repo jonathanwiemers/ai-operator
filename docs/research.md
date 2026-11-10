@@ -454,8 +454,8 @@ Research stores its runs in a Postgres database you provide; the operator
 owns the schema. The same database holds the factory's tables, which only the
 operator writes and the UI reads: `history_events` and `agent_calls` (see
 [design.md](design.md#history)), `chat_messages`, and the Desk's milestone
-snapshot `desk_milestones`, `desk_milestone_issues` and `desk_follow_ups`
-with its backfill records `desk_backfill` and `desk_backfill_projects`
+snapshot `desk_milestones`, `desk_milestone_issues`, `desk_follow_ups` and
+`desk_milestone_releases` with its backfill records `desk_backfill` and `desk_backfill_projects`
 (see [design.md](design.md#desk-snapshot)). They expire with
 `research.historyRetention`; a backfill record goes with its milestone. The
 chart is set up for the way the Zalando postgres-operator provides a
@@ -490,7 +490,8 @@ database's schema:
   `UPDATE` on `research_runs`, `research_results` and `research_items`
   (and `REVOKE` on `history_events`, `chat_messages`, `agent_calls` and the
   Desk snapshot tables `desk_milestones`, `desk_milestone_issues`,
-  `desk_follow_ups`, `desk_backfill` and `desk_backfill_projects`);
+  `desk_follow_ups`, `desk_milestone_releases`, `desk_backfill` and
+  `desk_backfill_projects`);
 * `chatWriterRole`: `USAGE` on the schema and `SELECT`, `INSERT` on
   `chat_messages` (row-level policy: user rows in state `queued` only);
 * `ALTER DEFAULT PRIVILEGES` for the reader, so tables of later migrations

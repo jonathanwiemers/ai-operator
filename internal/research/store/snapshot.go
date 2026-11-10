@@ -45,6 +45,9 @@ type MilestoneSnapshot struct {
 	Issues []IssueSnapshot
 	// FollowUps are written, never removed.
 	FollowUps []FollowUpSnapshot
+	// Releases are written, never removed: status trims old ended
+	// decisions, the snapshot keeps them.
+	Releases []ReleaseSnapshot
 	// Takes are the follow-ups of milestone TakesFrom this one took over
 	// (its line "followup-of"), for TakeFollowUps; SaveMilestone ignores
 	// them.
@@ -72,12 +75,40 @@ type FollowUpSnapshot struct {
 	TargetIID int64
 }
 
-// SaveMilestone writes m with its issues and follow-ups in one transaction
-// and reports whether a row changed. Only rows whose values differ are
-// written, so a repeated snapshot changes nothing and keeps updated_at and
-// expires_at; a changed row gets expiresAt. Start and done times, once set,
-// stay, and so does a stored retrospective. Issues missing from m are
-// deleted (a re-plan dropped them); follow-ups are never deleted.
+// ReleaseSnapshot is one release decision of a milestone, keyed by its ID
+// in the task's status. By is who decided (planner, pilot, owner, final,
+// companion, sweep), Actor the owner ("@alice") or empty, AfterIID the
+// issue it follows, SHA the commit it must contain, ReleasedSHA the head the
+// release ran on, State the decision's state (Planned, Released, ...) and
+// Reason the operator's words on it. Issues and MergeRequests are what the
+// release contains. A zero AfterIID, StartedAt or EndedAt is stored as NULL.
+type ReleaseSnapshot struct {
+	ID            int64
+	By            string
+	Actor         string
+	Why           string
+	AfterIID      int64
+	SHA           string
+	ReleasedSHA   string
+	State         string
+	Reason        string
+	Issues        []int64
+	MergeRequests []int64
+	Version       string
+	PipelineURL   string
+	ReleaseURL    string
+	DecidedAt     time.Time
+	StartedAt     time.Time
+	EndedAt       time.Time
+}
+
+// SaveMilestone writes m with its issues, follow-ups and releases in one
+// transaction and reports whether a row changed. Only rows whose values
+// differ are written, so a repeated snapshot changes nothing and keeps
+// updated_at and expires_at; a changed row gets expiresAt. Start and done
+// times, once set, stay, and so does a stored retrospective. Issues missing
+// from m are deleted (a re-plan dropped them); follow-ups and releases are
+// never deleted.
 func (s *Store) SaveMilestone(ctx context.Context, m MilestoneSnapshot, expiresAt time.Time) (bool, error) {
 	p := m.Project
 	b := &pgx.Batch{}
@@ -133,6 +164,29 @@ func (s *Store) SaveMilestone(ctx context.Context, m MilestoneSnapshot, expiresA
 			WHERE (f.title, f.body, f.state, f.target_iid)
 				IS DISTINCT FROM (EXCLUDED.title, EXCLUDED.body, EXCLUDED.state, EXCLUDED.target_iid)`,
 			p.Namespace, p.Name, m.IID, f.Number, f.Title, f.Body, f.State, f.TargetIID, expiresAt)
+	}
+	for _, r := range m.Releases {
+		b.Queue(`INSERT INTO desk_milestone_releases AS r (namespace, project, milestone_iid, release_id, by, actor,
+				why, after_iid, sha, released_sha, state, reason, issues, mr_iids, version, pipeline_url, release_url,
+				decided_at, started_at, ended_at, expires_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, nullif($8::bigint, 0), $9, $10, $11, $12, $13, $14, $15, $16, $17,
+				$18, $19, $20, $21)
+			ON CONFLICT (namespace, project, milestone_iid, release_id) DO UPDATE SET
+				by = EXCLUDED.by, actor = EXCLUDED.actor, why = EXCLUDED.why, after_iid = EXCLUDED.after_iid,
+				sha = EXCLUDED.sha, released_sha = EXCLUDED.released_sha, state = EXCLUDED.state,
+				reason = EXCLUDED.reason, issues = EXCLUDED.issues, mr_iids = EXCLUDED.mr_iids,
+				version = EXCLUDED.version, pipeline_url = EXCLUDED.pipeline_url, release_url = EXCLUDED.release_url,
+				decided_at = EXCLUDED.decided_at, started_at = EXCLUDED.started_at, ended_at = EXCLUDED.ended_at,
+				expires_at = EXCLUDED.expires_at
+			WHERE (r.by, r.actor, r.why, r.after_iid, r.sha, r.released_sha, r.state, r.reason, r.issues, r.mr_iids,
+					r.version, r.pipeline_url, r.release_url, r.decided_at, r.started_at, r.ended_at)
+				IS DISTINCT FROM (EXCLUDED.by, EXCLUDED.actor, EXCLUDED.why, EXCLUDED.after_iid, EXCLUDED.sha,
+					EXCLUDED.released_sha, EXCLUDED.state, EXCLUDED.reason, EXCLUDED.issues, EXCLUDED.mr_iids,
+					EXCLUDED.version, EXCLUDED.pipeline_url, EXCLUDED.release_url, EXCLUDED.decided_at,
+					EXCLUDED.started_at, EXCLUDED.ended_at)`,
+			p.Namespace, p.Name, m.IID, r.ID, r.By, r.Actor, r.Why, r.AfterIID, r.SHA, r.ReleasedSHA, r.State,
+			r.Reason, nonNil(r.Issues), nonNil(r.MergeRequests), r.Version, r.PipelineURL, r.ReleaseURL,
+			r.DecidedAt, nullTime(r.StartedAt), nullTime(r.EndedAt), expiresAt)
 	}
 	changed := false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -210,7 +264,8 @@ func (s *Store) followUps(ctx context.Context, p ProjectKey, iid int64) ([]Follo
 }
 
 // DeleteExpiredSnapshot deletes the milestones whose rows all expired before
-// now, with their issues and follow-ups, and returns how many milestones. A
+// now, with their issues, follow-ups and releases, and returns how many
+// milestones. A
 // milestone with an unexpired row stays whole. The backfill's record of a
 // deleted milestone goes with it. It runs as the owner.
 func (s *Store) DeleteExpiredSnapshot(ctx context.Context, now time.Time) (int64, error) {
@@ -223,6 +278,8 @@ func (s *Store) DeleteExpiredSnapshot(ctx context.Context, now time.Time) (int64
 					AND i.project = m.project AND i.milestone_iid = m.iid AND i.expires_at >= $1)
 				AND NOT EXISTS (SELECT 1 FROM desk_follow_ups f WHERE f.namespace = m.namespace
 					AND f.project = m.project AND f.milestone_iid = m.iid AND f.expires_at >= $1)
+				AND NOT EXISTS (SELECT 1 FROM desk_milestone_releases r WHERE r.namespace = m.namespace
+					AND r.project = m.project AND r.milestone_iid = m.iid AND r.expires_at >= $1)
 			ORDER BY m.expires_at LIMIT $2)`, now, deleteBatch)
 		if err != nil {
 			return total, err
@@ -242,10 +299,10 @@ func nullTime(t time.Time) *time.Time {
 	return &t
 }
 
-// nonNil is s, or an empty slice for nil (text[] NOT NULL).
-func nonNil(s []string) []string {
+// nonNil is s, or an empty slice for nil (arrays NOT NULL).
+func nonNil[T any](s []T) []T {
 	if s == nil {
-		return []string{}
+		return []T{}
 	}
 	return s
 }

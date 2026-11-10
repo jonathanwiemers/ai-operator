@@ -207,7 +207,7 @@ func TestTokenBasis(t *testing.T) {
 
 	// A row from before the column reads 0 after the migration.
 	exec(t, s.Pool(), "ALTER TABLE agent_calls DROP COLUMN token_basis")
-	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version = (SELECT max(version) FROM schema_migrations)")
+	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version = 20261110114727")
 	if err := s.Migrate(ctx, store.Grants{}); err != nil {
 		t.Fatal(err)
 	}

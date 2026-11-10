@@ -820,22 +820,26 @@ migration's own version already needs the wider column.
 ### Desk snapshot
 
 A closed milestone loses its tasks, and with them its title, issue list,
-states, MRs and retrospective. The Desk keeps them in three tables of the
+states, MRs and retrospective. The Desk keeps them in four tables of the
 research database, written by the operator as the owner
 (`internal/research/store/snapshot.go`, migration `0006`): `desk_milestones`
 (project, iid, GitLab milestone ID, title, URL, `open` or `closed`, autopilot
 phase, start and done times, tracking issue, owners and their Desk subjects,
 the retrospective's note ID, text and posted time), `desk_milestone_issues`
 (iid, title, state, MR, position) and `desk_follow_ups` (number, title, body,
-state `open`, `issue`, `milestone` or `dismissed`, and the target's iid).
-`SaveMilestone` writes a milestone with its issues and follow-ups in one
+state `open`, `issue`, `milestone` or `dismissed`, and the target's iid),
+plus `desk_milestone_releases` (migration `20261110173852`: one row per
+release decision, keyed by its ID in status, with who, why, after which
+issue, the commits, state, reason, issues, MRs, version, links and times).
+`SaveMilestone` writes a milestone with its issues, follow-ups and releases in one
 transaction and writes only rows whose values changed (`ON CONFLICT … DO
 UPDATE … WHERE … IS DISTINCT FROM …`), so a repeated snapshot changes no row
 and keeps `updated_at`. Start and done times, once set, stay, and so does a
 stored retrospective. Issues missing from a snapshot are deleted (a re-plan
-dropped them); follow-ups never are. Each row expires at its last change
-plus the history retention; retention deletes a milestone with its issues
-and follow-ups once all of them expired, so an active milestone stays whole.
+dropped them); follow-ups and releases never are (status trims old ended
+release decisions, the snapshot keeps them). Each row expires at its last change
+plus the history retention; retention deletes a milestone with its issues,
+follow-ups and releases once all of them expired, so an active milestone stays whole.
 Research run pods have no rights on these tables.
 
 The recorder fills them from the spec tasks' status

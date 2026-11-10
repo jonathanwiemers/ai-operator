@@ -229,7 +229,8 @@ func grant(ctx context.Context, tx pgx.Tx, g Grants) error {
 			"REVOKE ALL ON " + sc + ".history_events FROM " + id,
 			"REVOKE ALL ON " + sc + ".chat_messages FROM " + id,
 			"REVOKE ALL ON " + sc + ".agent_calls FROM " + id,
-			"REVOKE ALL ON " + sc + ".desk_milestones, " + sc + ".desk_milestone_issues, " + sc + ".desk_follow_ups FROM " + id,
+			"REVOKE ALL ON " + sc + ".desk_milestones, " + sc + ".desk_milestone_issues, " + sc + ".desk_follow_ups, " +
+				sc + ".desk_milestone_releases FROM " + id,
 			"REVOKE ALL ON " + sc + ".desk_backfill, " + sc + ".desk_backfill_projects FROM " + id,
 		} {
 			if _, err := tx.Exec(ctx, stmt); err != nil {

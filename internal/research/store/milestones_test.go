@@ -207,6 +207,12 @@ func TestMilestoneDetail(t *testing.T) {
 		FollowUps: []store.FollowUpSnapshot{
 			{Number: 2, Title: "Docs", Body: "Write them", State: store.FollowUpOpen},
 			{Number: 1, Title: "Seed", State: store.FollowUpIssue, TargetIID: 410},
+		},
+		Releases: []store.ReleaseSnapshot{
+			{ID: 2, By: "final", State: "Planned", DecidedAt: base.Add(4 * time.Hour)},
+			{ID: 1, By: "planner", Why: "Users see it", AfterIID: 160, SHA: "abc", State: "Released", Issues: []int64{160},
+				MergeRequests: []int64{901}, Version: "2026.11.3", DecidedAt: base, StartedAt: base.Add(3 * time.Hour),
+				EndedAt: base.Add(4 * time.Hour)},
 		}}
 	if _, err := owner.SaveMilestone(ctx, m, exp); err != nil {
 		t.Fatal(err)
@@ -297,6 +303,9 @@ func TestMilestoneDetail(t *testing.T) {
 	if !slices.Equal(d.FollowUps, wantFollowUps) {
 		t.Errorf("follow-ups = %+v", d.FollowUps)
 	}
+	if len(d.Releases) != 2 || !equalRelease(d.Releases[0], m.Releases[1]) || !equalRelease(d.Releases[1], m.Releases[0]) {
+		t.Errorf("releases = %+v, want IDs 1, 2 as saved", d.Releases)
+	}
 
 	var got []int64
 	for _, is := range d.Issues {
@@ -347,7 +356,7 @@ func TestMilestoneDetail(t *testing.T) {
 	}
 
 	empty, err := s.Milestone(ctx, bloop, 31, now)
-	if err != nil || empty.IID != 31 || len(empty.Issues) != 0 || len(empty.FollowUps) != 0 || empty.Spend.CostUSD != 7 {
+	if err != nil || empty.IID != 31 || len(empty.Issues) != 0 || len(empty.FollowUps) != 0 || len(empty.Releases) != 0 || empty.Spend.CostUSD != 7 {
 		t.Errorf("milestone 31 = %+v, %v", empty, err)
 	}
 
@@ -383,7 +392,7 @@ func TestMilestoneDetail(t *testing.T) {
 	if _, err := owner.SaveMilestone(ctx, m, exp); err != nil {
 		t.Fatal(err)
 	}
-	if many := queries(); many != few || few != 5 {
-		t.Errorf("queries: %d for 4 issues, %d for 24; want 5 each", few, many)
+	if many := queries(); many != few || few != 6 {
+		t.Errorf("queries: %d for 4 issues, %d for 24; want 6 each", few, many)
 	}
 }
