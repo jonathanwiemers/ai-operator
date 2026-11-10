@@ -65,6 +65,7 @@ func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
 		}
 		return out[i].Name < out[j].Name
 	})
+	s.projectListCosts(r.Context(), out)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -96,8 +97,10 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 			if t.Spec.Type == aiv1.TaskTypeImplement {
 				prompts = promptViews(t, t.Name, p.Username, chat)
 			}
+			project := summarize(ap, tasks, now)
+			project.Cost = s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name}, project.Cost)
 			writeJSON(w, http.StatusOK, map[string]any{
-				"project": summarize(ap, tasks, now),
+				"project": project,
 				"task":    taskView(t, ap, now),
 				"prompts": prompts,
 				"cost": s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, Task: name},

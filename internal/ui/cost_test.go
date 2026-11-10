@@ -109,3 +109,50 @@ func TestCallsCostUnknown(t *testing.T) {
 		t.Errorf("cost = %+v, want an unknown cost with 150 tokens", c)
 	}
 }
+
+// The projects list sums agent_calls in one query: a deleted task still
+// counts. Without the database it sums the live tasks.
+func TestProjectsListCost(t *testing.T) {
+	owner, reader := readerStore(t)
+	base := time.Now().Add(-48 * time.Hour).Truncate(time.Second)
+	exp := base.Add(720 * time.Hour)
+	usd := 2.0
+	if _, err := owner.InsertCalls(t.Context(), []store.Call{
+		// The task of this call no longer exists as a CRD.
+		{Key: "l1", At: base, Namespace: "team-a", Project: "shop", MilestoneIID: 3, IssueIID: 41, Task: "shop-41-gone", Run: 1, Seq: 1,
+			Kind: "implement", Role: "implement", Engine: "claude", Model: "claude-opus-5-5", InputTokens: 10, CostUSD: &usd,
+			CostSource: "reported", ExpiresAt: exp},
+		// Same project name in another namespace.
+		{Key: "l2", At: base, Namespace: "team-b", Project: "shop", Task: "x", Run: 1, Seq: 1, Kind: "implement",
+			Engine: "claude", CostUSD: &usd, CostSource: "reported", ExpiresAt: exp},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var list []ProjectSummary
+	if code := spendEnv(t, reader).get(t, "/api/v1/projects", &list); code != http.StatusOK || len(list) == 0 {
+		t.Fatalf("status %d, %+v", code, list)
+	}
+	for _, p := range list {
+		if p.Namespace == "team-a" && p.Name == "shop" {
+			if p.Cost.CostFrom != CostFromCalls || p.Cost.CostUSD != "2.00" || p.Cost.Tokens != 10 {
+				t.Errorf("shop cost = %+v, want 2.00 from calls", p.Cost)
+			}
+		} else if p.Cost.CostFrom != CostFromCalls || p.Cost.CostUSD != "0.00" || !p.Cost.CostKnown {
+			t.Errorf("%s/%s cost = %+v, want known $0 from calls", p.Namespace, p.Name, p.Cost)
+		}
+	}
+	for name, env := range map[string]*testEnv{
+		"database off":           newTestEnv(t, &Config{Auth: AuthConfig{Mode: AuthNone}}),
+		"database not connected": spendEnv(t, nil),
+	} {
+		var l []ProjectSummary
+		if code := env.get(t, "/api/v1/projects", &l); code != http.StatusOK || len(l) == 0 {
+			t.Fatalf("%s: status %d", name, code)
+		}
+		for _, p := range l {
+			if p.Cost.CostFrom != CostFromTasks {
+				t.Errorf("%s: %s cost = %+v, want tasks", name, p.Name, p.Cost)
+			}
+		}
+	}
+}

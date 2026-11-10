@@ -987,3 +987,49 @@ func TestSpendKindModel(t *testing.T) {
 		t.Errorf("spend-report.sql has %d statements, want 3", stmts)
 	}
 }
+
+// TestSpendByProject sums each project's calls and legacy runs in one query;
+// a project without calls is missing, another namespace's same name stays out.
+func TestSpendByProject(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	now := time.Now().Truncate(time.Second)
+	exp := now.Add(24 * time.Hour)
+	usd := func(v float64) *float64 { return &v }
+	call := func(key, ns, project string, cost *float64, in int64) store.Call {
+		source := "reported"
+		if cost == nil {
+			source = "unknown"
+		}
+		return store.Call{Key: key, At: now, Namespace: ns, Project: project, MilestoneIID: 1, IssueIID: 2,
+			Task: project + "-2", Run: 1, Seq: 1, Kind: "implement", Role: "implement", Engine: "claude", Model: "claude-opus-5-5",
+			InputTokens: in, CostUSD: cost, CostSource: source, ExpiresAt: exp}
+	}
+	if _, err := owner.InsertCalls(ctx, []store.Call{
+		call("b1", "agents", "shop", usd(1), 10),
+		call("b2", "agents", "shop", usd(2), 20),
+		call("b3", "agents", "billing", nil, 30),
+		call("b4", "other", "shop", usd(100), 1),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := owner.InsertEvents(ctx, []store.Event{{Key: "bp1", At: now, Namespace: "agents", Project: "billing",
+		MilestoneIID: 1, IssueIID: 3, Task: "billing-3", Kind: "run.finished",
+		Data: map[string]any{"costUSD": "0.5000", "runCount": 1}, ExpiresAt: exp}}); err != nil {
+		t.Fatal(err)
+	}
+	shop, billing, idle := store.ProjectKey{Namespace: "agents", Name: "shop"}, store.ProjectKey{Namespace: "agents", Name: "billing"},
+		store.ProjectKey{Namespace: "agents", Name: "idle"}
+	got, err := s.SpendByProject(ctx, []store.ProjectKey{shop, billing, idle})
+	want := map[store.ProjectKey]store.SpendTotals{
+		shop:    {CostUSD: 3, CostKnown: true, InputTokens: 30, Calls: 2},
+		billing: {CostUSD: 0.5, CostKnown: true, UnknownCalls: 1, InputTokens: 30, Calls: 1, LegacyCostUSD: 0.5},
+	}
+	if err != nil || len(got) != len(want) || got[shop] != want[shop] || got[billing] != want[billing] {
+		t.Errorf("SpendByProject = %+v, %v\nwant %+v", got, err, want)
+	}
+	if got, err := s.SpendByProject(ctx, nil); err != nil || len(got) != 0 {
+		t.Errorf("none: %+v, %v", got, err)
+	}
+}

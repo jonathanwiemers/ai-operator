@@ -82,6 +82,35 @@ func (s *Server) projectCosts(ctx context.Context, d *ProjectDetail) {
 	}
 }
 
+// projectListCosts sets the cost of each listed project from agent_calls in
+// one query, without the breakdown. Without the history database, or when it
+// fails (logged once), they stay the sums over the live tasks.
+func (s *Server) projectListCosts(ctx context.Context, list []ProjectSummary) {
+	st := s.spendStore()
+	if st == nil || len(list) == 0 {
+		return
+	}
+	keys := make([]store.ProjectKey, len(list))
+	for i := range list {
+		keys[i] = store.ProjectKey{Namespace: list[i].Namespace, Name: list[i].Name}
+	}
+	totals, err := st.SpendByProject(ctx, keys)
+	if err != nil {
+		s.log.Error(err, "cannot read the projects' spend")
+		return
+	}
+	for i := range list {
+		t, ok := totals[keys[i]]
+		if !ok {
+			// No calls and no runs: nothing spent, which is known.
+			t.CostKnown = true
+		}
+		list[i].Cost = callsCost(t)
+		// The list has no room for the breakdown; the project's view has it.
+		list[i].Cost.Spend = nil
+	}
+}
+
 // scopeCost returns the cost of sc from agent_calls, or fallback without
 // the history database or when it fails.
 func (s *Server) scopeCost(ctx context.Context, sc store.SpendScope, fallback Cost) Cost {

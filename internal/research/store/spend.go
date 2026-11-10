@@ -327,6 +327,31 @@ func (s *Store) SpendSince(ctx context.Context, projects []ProjectKey, since tim
 	return scanTotals(s.pool.QueryRow(ctx, with+`SELECT `+spendTotals+` FROM spend`, nss, names, since))
 }
 
+// SpendByProject returns the totals of each project's calls (and legacy
+// runs) in one query: the projects list's cost. A project without calls is
+// missing from the map.
+func (s *Store) SpendByProject(ctx context.Context, projects []ProjectKey) (map[ProjectKey]SpendTotals, error) {
+	out := map[ProjectKey]SpendTotals{}
+	if len(projects) == 0 {
+		return out, nil
+	}
+	nss, names := split(projects)
+	with := spendWith(`(namespace, project) IN (SELECT * FROM unnest($1::text[], $2::text[]))`)
+	rows, _ := s.pool.Query(ctx, with+`SELECT namespace, project, `+spendTotals+` FROM spend GROUP BY namespace, project`, nss, names)
+	_, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (struct{}, error) {
+		var k ProjectKey
+		t, err := scanTotals(row, &k.Namespace, &k.Name)
+		if err == nil {
+			out[k] = t
+		}
+		return struct{}{}, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SpendChildTotals returns the totals of the scope's children at the next
 // level in one query, without their model split and calls, by grouping
 // key: a project's milestones by IID ("" for the calls of no milestone), a
