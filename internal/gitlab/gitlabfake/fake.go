@@ -478,6 +478,61 @@ func (f *Fake) AddReply(iid, root int64, author gitlab.User, body string) gitlab
 	return n
 }
 
+// AddMRReply adds a comment by author to a merge request as a reply in the
+// thread of the note root.
+func (f *Fake) AddMRReply(iid, root int64, author gitlab.User, body string) gitlab.Note {
+	n := f.AddMRNote(iid, author, body)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Replies == nil {
+		f.Replies = map[int64]int64{}
+	}
+	f.Replies[n.ID] = root
+	return n
+}
+
+// ListMergeRequestDiscussions groups a merge request's notes into threads: a
+// reply goes with its root, every other note is a thread of its own.
+func (f *Fake) ListMergeRequestDiscussions(_ context.Context, _ string, iid int64) ([]gitlab.Discussion, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.DiscussionLists++
+	var out []gitlab.Discussion
+	at := map[int64]int{}
+	for _, n := range f.MRNotes[iid] {
+		if i, ok := at[f.Replies[n.ID]]; ok {
+			out[i].Notes = append(out[i].Notes, n)
+			continue
+		}
+		at[n.ID] = len(out)
+		out = append(out, gitlab.Discussion{ID: fmt.Sprint(n.ID), Notes: []gitlab.Note{n}})
+	}
+	return out, nil
+}
+
+// ReplyMergeRequestDiscussion adds the bot's reply to the thread
+// ListMergeRequestDiscussions named discussion (its root note's ID).
+func (f *Fake) ReplyMergeRequestDiscussion(ctx context.Context, project string, iid int64, discussion, body string) (*gitlab.Note, error) {
+	root, err := strconv.ParseInt(discussion, 10, 64)
+	f.mu.Lock()
+	known := err == nil && slices.ContainsFunc(f.MRNotes[iid], func(n gitlab.Note) bool { return n.ID == root && f.Replies[root] == 0 })
+	f.mu.Unlock()
+	if !known {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "POST", Path: "discussion"}
+	}
+	n, err := f.CreateMergeRequestNote(ctx, project, iid, body)
+	if err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.Replies == nil {
+		f.Replies = map[int64]int64{}
+	}
+	f.Replies[n.ID] = root
+	return n, nil
+}
+
 // ListIssueDiscussions groups an issue's notes into threads: a reply goes
 // with its root, every other note is a thread of its own.
 func (f *Fake) ListIssueDiscussions(_ context.Context, _ string, iid int64) ([]gitlab.Discussion, error) {

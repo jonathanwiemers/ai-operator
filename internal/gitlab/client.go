@@ -65,6 +65,8 @@ type API interface {
 	DeleteIssueLink(ctx context.Context, project string, iid, linkID int64) error
 	ListMergeRequestNotes(ctx context.Context, project string, iid int64) ([]Note, error)
 	CreateMergeRequestNote(ctx context.Context, project string, iid int64, body string) (*Note, error)
+	ListMergeRequestDiscussions(ctx context.Context, project string, iid int64) ([]Discussion, error)
+	ReplyMergeRequestDiscussion(ctx context.Context, project string, iid int64, discussion, body string) (*Note, error)
 	UpdateMergeRequestNote(ctx context.Context, project string, iid, noteID int64, body string) (*Note, error)
 	DeleteMergeRequestNote(ctx context.Context, project string, iid, noteID int64) error
 	CreateMergeRequestPipeline(ctx context.Context, project string, iid int64) error
@@ -1112,6 +1114,17 @@ func (c *Client) DeleteMergeRequestNote(ctx context.Context, project string, iid
 func (c *Client) CreateMergeRequestNote(ctx context.Context, project string, iid int64, body string) (*Note, error) {
 	var n Note
 	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/merge_requests/%d/notes", projectPath(project), iid), nil, map[string]string{"body": body}, &n)
+	return &n, err
+}
+
+func (c *Client) ListMergeRequestDiscussions(ctx context.Context, project string, iid int64) ([]Discussion, error) {
+	return list[Discussion](ctx, c, fmt.Sprintf("%s/merge_requests/%d/discussions", projectPath(project), iid), nil)
+}
+
+// ReplyMergeRequestDiscussion adds a comment to a merge request's thread.
+func (c *Client) ReplyMergeRequestDiscussion(ctx context.Context, project string, iid int64, discussion, body string) (*Note, error) {
+	var n Note
+	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/merge_requests/%d/discussions/%s/notes", projectPath(project), iid, url.PathEscape(discussion)), nil, map[string]string{"body": body}, &n)
 	return &n, err
 }
 

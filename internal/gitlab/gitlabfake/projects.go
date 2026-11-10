@@ -219,6 +219,22 @@ func (p *Projects) ReplyIssueDiscussion(ctx context.Context, project string, iid
 	return f.ReplyIssueDiscussion(ctx, project, iid, discussion, body)
 }
 
+func (p *Projects) ListMergeRequestDiscussions(ctx context.Context, project string, iid int64) ([]gitlab.Discussion, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.ListMergeRequestDiscussions(ctx, project, iid)
+}
+
+func (p *Projects) ReplyMergeRequestDiscussion(ctx context.Context, project string, iid int64, discussion, body string) (*gitlab.Note, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.ReplyMergeRequestDiscussion(ctx, project, iid, discussion, body)
+}
+
 func (p *Projects) UpdateIssueNote(ctx context.Context, project string, iid, noteID int64, body string) (*gitlab.Note, error) {
 	f, err := p.route(project)
 	if err != nil {

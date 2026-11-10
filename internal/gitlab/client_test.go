@@ -755,3 +755,47 @@ func TestMergeRequestVersionsAndCompare(t *testing.T) {
 		t.Fatalf("requests %q", reqs)
 	}
 }
+
+func TestReplyMergeRequestDiscussion(t *testing.T) {
+	var method, path string
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.EscapedPath()
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewEncoder(w).Encode(Note{ID: 57, Body: "hi"})
+	}))
+	defer srv.Close()
+
+	n, err := New(srv.URL, "tok").ReplyMergeRequestDiscussion(context.Background(), "g/p", 7, "ab/c 1", "hi")
+	if err != nil || n.ID != 57 {
+		t.Fatalf("note %+v err %v", n, err)
+	}
+	if method != http.MethodPost || !strings.HasSuffix(path, "/projects/g%2Fp/merge_requests/7/discussions/ab%2Fc%201/notes") || body["body"] != "hi" {
+		t.Fatalf("unexpected request %s %s %v", method, path, body)
+	}
+}
+
+func TestListMergeRequestDiscussionsPaginates(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method %s", r.Method)
+		}
+		paths = append(paths, r.URL.EscapedPath()+"?"+r.URL.RawQuery)
+		if r.URL.Query().Get("page") == "1" {
+			w.Header().Set("X-Next-Page", "2")
+			_ = json.NewEncoder(w).Encode([]Discussion{{ID: "a", Notes: []Note{{ID: 1}}}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]Discussion{{ID: "b", Notes: []Note{{ID: 2}}}})
+	}))
+	defer srv.Close()
+
+	ds, err := New(srv.URL, "tok").ListMergeRequestDiscussions(context.Background(), "g/p", 7)
+	if err != nil || len(ds) != 2 || ds[0].ID != "a" || ds[1].ID != "b" {
+		t.Fatalf("discussions %+v err %v", ds, err)
+	}
+	if len(paths) != 2 || !strings.Contains(paths[0], "/projects/g%2Fp/merge_requests/7/discussions?") {
+		t.Fatalf("unexpected requests %v", paths)
+	}
+}
