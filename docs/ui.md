@@ -75,8 +75,19 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   to its issue page), state, merge request, wall time (first run
   to merge, or now), agent time (its calls' durations), paused time (the
   autopilot's pauses over it), cost and tokens; a dash where a figure is
-  unknown (no history database, no calls recorded), never $0. On narrow
-  screens the rows become cards. Below the view tabs come the scope tabs (the
+  unknown (no history database, no calls recorded), never $0. An issue that
+  shipped shows its version as a chip next to its title. Each release
+  decision of the milestone is a row between the issues, after the issue it
+  was decided after (one without, from an owner, the final release or the
+  sweep, after the last issue it contains; one with no contents yet at the
+  end): a planned or waiting one reads *Release after #N*, a running one
+  *Releasing…* with a link to its pipeline, a released one (or one a tag
+  already contained) its version, linked to the GitLab release; each with
+  who decided it and when, and the why and the operator's reason as a
+  muted line. Not needed, not applicable and dropped releases are muted
+  rows, a failed one is a warning. A closed milestone shows them from its
+  snapshot. On narrow screens the rows become cards, and release rows wrap
+  with their state and version first. Below the view tabs come the scope tabs (the
   project, its milestones; they keep a chosen view tab where the target has
   it and open its default otherwise), a search box, and a strip of the last 30 days' activity, where
   a day jumps the stream to that day. The *Board* tab shows the project's

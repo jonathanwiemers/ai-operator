@@ -59,6 +59,7 @@ export type {
   MilestoneList,
   MilestoneState,
   MilestoneIssueRow,
+  ReleaseView,
   IssueView,
   MilestoneProgress,
   RetrospectiveView,

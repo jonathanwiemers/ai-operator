@@ -4,17 +4,32 @@ import Badge from './Badge.vue'
 import CompanionsList from './CompanionsList.vue'
 import ExtLink from './ExtLink.vue'
 import QueueList from './QueueList.vue'
+import RelTime from './RelTime.vue'
 import { costTooltip } from '../format'
 import { queueDone, waitingForTurn } from '../milestoneQueue'
 import { issueProgress, issueStateTone, issueTime, progressPct, rowCost, rowTokens, stateTone } from '../milestoneRows'
+import {
+  interleaveReleases,
+  releaseBy,
+  releaseDone,
+  releaseHeadline,
+  releaseMuted,
+  releaseNote,
+  releaseStateLabel,
+  releaseTime,
+  releaseTone,
+} from '../releaseRows'
 import type { MilestoneIssueRow, MilestoneView } from '../types'
 
 // A milestone's Issues tab (R9, decision 8): its state, progress and cost,
 // then one row per issue with its state, merge request, wall, agent and
-// paused time, cost and tokens. The page header holds the title. Titles
-// are untrusted text and render as text.
+// paused time, cost and tokens, and the version it shipped in. Releases are
+// rows between the issues (R12, decision 15). The page header holds the
+// title. Titles, a release's why and reason are untrusted text and render
+// as text.
 const props = defineProps<{ milestone: MilestoneView; namespace: string; name: string }>()
 
+const rows = computed(() => interleaveReleases(props.milestone.issues ?? [], props.milestone.releases))
 const progress = computed(() => issueProgress(props.milestone.issues ?? []))
 const pct = computed(() => progressPct({ progress: progress.value }))
 const waiting = computed(() => waitingForTurn(props.milestone.autopilot?.queuedBehind))
@@ -60,26 +75,71 @@ function issueTo(i: MilestoneIssueRow) {
         <span role="columnheader" class="r">Cost</span>
         <span role="columnheader" class="r">Tokens</span>
       </div>
-      <div v-for="i in milestone.issues" :key="i.iid" class="row" role="row">
-        <span class="title" role="cell">
-          <span class="iid">#{{ i.iid }}</span>
-          <RouterLink :to="issueTo(i)">{{ i.title || `#${i.iid}` }}</RouterLink>
-        </span>
-        <span class="state" role="cell"><Badge :tone="issueStateTone(i.state)">{{ i.state }}</Badge></span>
-        <span class="mr" role="cell">
-          <ExtLink v-if="i.mergeRequestIID" :href="i.mergeRequestURL">!{{ i.mergeRequestIID }}</ExtLink>
-          <span v-else class="dash">—</span>
-        </span>
-        <span class="num wall" role="cell"><span class="lbl">wall </span>{{ issueTime(i, 'wallSec') }}</span>
-        <span class="num agent" role="cell"><span class="lbl">agent </span>{{ issueTime(i, 'agentSec') }}</span>
-        <span class="num paused" role="cell"><span class="lbl">paused </span>{{ issueTime(i, 'pausedSec') }}</span>
-        <span class="num cost" role="cell" :title="i.figures ? costTooltip(i.figures) : undefined">
-          {{ i.figures ? rowCost(i.figures) : '—' }}
-        </span>
-        <span class="num tokens" role="cell">
-          <span class="lbl">tok </span>{{ i.figures ? rowTokens(i.figures) : '—' }}
-        </span>
-      </div>
+      <template v-for="row in rows" :key="row.key">
+        <div
+          v-if="row.kind === 'release'"
+          class="row rel"
+          :class="{ muted: releaseMuted(row.release.state), failed: row.release.state === 'Failed' }"
+          role="row"
+        >
+          <span class="relmain" role="cell">
+            <Badge
+              :tone="releaseTone(row.release.state)"
+              :dot="row.release.state === 'Running'"
+              :pulse="row.release.state === 'Running'"
+            >
+              {{ releaseStateLabel(row.release.state) }}
+            </Badge>
+            <span class="relhead">
+              <ExtLink v-if="releaseDone(row.release) && row.release.releaseURL" :href="row.release.releaseURL">
+                {{ releaseHeadline(row.release) }}
+              </ExtLink>
+              <template v-else>{{ releaseHeadline(row.release) }}</template>
+            </span>
+            <ExtLink v-if="row.release.state === 'Running' && row.release.pipelineURL" :href="row.release.pipelineURL">
+              pipeline
+            </ExtLink>
+            <span class="relby">by {{ releaseBy(row.release) }}</span>
+            <span v-if="releaseTime(row.release)" class="reltime"><RelTime :time="releaseTime(row.release)" /></span>
+            <span v-if="releaseNote(row.release)" class="relwhy">{{ releaseNote(row.release) }}</span>
+          </span>
+        </div>
+        <div v-else class="row" role="row">
+          <span class="title" role="cell">
+            <span class="iid">#{{ row.issue.iid }}</span>
+            <RouterLink :to="issueTo(row.issue)">{{ row.issue.title || `#${row.issue.iid}` }}</RouterLink>
+            <Badge v-if="row.issue.version" tone="info" class="ver" :title="`Shipped in ${row.issue.version}`">
+              {{ row.issue.version }}
+            </Badge>
+          </span>
+          <span class="state" role="cell">
+            <Badge :tone="issueStateTone(row.issue.state)">{{ row.issue.state }}</Badge>
+          </span>
+          <span class="mr" role="cell">
+            <ExtLink v-if="row.issue.mergeRequestIID" :href="row.issue.mergeRequestURL">
+              !{{ row.issue.mergeRequestIID }}
+            </ExtLink>
+            <span v-else class="dash">—</span>
+          </span>
+          <span class="num wall" role="cell"><span class="lbl">wall </span>{{ issueTime(row.issue, 'wallSec') }}</span>
+          <span class="num agent" role="cell">
+            <span class="lbl">agent </span>{{ issueTime(row.issue, 'agentSec') }}
+          </span>
+          <span class="num paused" role="cell">
+            <span class="lbl">paused </span>{{ issueTime(row.issue, 'pausedSec') }}
+          </span>
+          <span
+            class="num cost"
+            role="cell"
+            :title="row.issue.figures ? costTooltip(row.issue.figures) : undefined"
+          >
+            {{ row.issue.figures ? rowCost(row.issue.figures) : '—' }}
+          </span>
+          <span class="num tokens" role="cell">
+            <span class="lbl">tok </span>{{ row.issue.figures ? rowTokens(row.issue.figures) : '—' }}
+          </span>
+        </div>
+      </template>
     </div>
 
     <template v-if="!milestone.stored">
@@ -183,6 +243,46 @@ function issueTo(i: MilestoneIssueRow) {
 .lbl {
   display: none;
   color: var(--text-3);
+}
+.ver {
+  align-self: center;
+  font-variant-numeric: tabular-nums;
+}
+/* A release row spans the table: state, version or what is planned, who
+   and when, then the why and the operator's reason as a muted line. It
+   wraps on narrow screens and keeps state and version first. */
+.row.rel {
+  display: block;
+  background: var(--surface-2);
+}
+.relmain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.relhead {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.relby,
+.reltime {
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.relwhy {
+  flex-basis: 100%;
+  color: var(--text-3);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.row.rel.muted .relhead {
+  color: var(--text-3);
+  font-weight: 500;
+}
+.row.rel.failed .relhead {
+  color: var(--tone-warning-fg);
 }
 .empty {
   padding: 32px;
