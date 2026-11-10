@@ -45,6 +45,7 @@ func TestSnapshot(t *testing.T) {
 		return m
 	}
 	posted := metav1.NewTime(now.Add(-time.Hour))
+	started, ended := metav1.NewTime(now.Add(-30*time.Minute)), metav1.NewTime(now.Add(-time.Minute))
 	cases := []struct {
 		name string
 		task *aiv1.AgentTask
@@ -101,6 +102,25 @@ func TestSnapshot(t *testing.T) {
 				{Number: 1, Title: "Backfill", State: store.FollowUpDismissed},
 				{Number: 2, Title: "Docs", State: store.FollowUpIssue, TargetIID: 410},
 				{Number: 3, Title: "Flaky", State: store.FollowUpMilestone, TargetIID: 25},
+			}
+		})},
+		{name: "releases", task: specTask("1", func(t *aiv1.AgentTask) {
+			withAutopilot(aiv1.AutopilotRunning)(t)
+			t.Status.Autopilot.Releases = []aiv1.ReleaseRecord{
+				{ID: 1, By: aiv1.ReleaseByOwner, Actor: "@alice", Why: "Users see the Desk", AfterIssue: 148, SHA: "a1",
+					ReleasedSHA: "b1", State: aiv1.ReleaseReleased, Reason: "after the retry", Issues: []int64{148},
+					MergeRequests: []int64{900}, Version: "2026.11.4", PipelineID: 77, PipelineURL: "https://gitlab.example/p/77",
+					ReleaseURL: "https://gitlab.example/r/1", Attempts: 2, DecidedAt: posted, StartedAt: &started, EndedAt: &ended},
+				{ID: 2, By: aiv1.ReleaseByFinal, Final: true, State: aiv1.ReleasePlanned, DecidedAt: posted},
+			}
+		}), want: base(func(m *store.MilestoneSnapshot) {
+			m.Phase, m.TrackingIID = "running", 300
+			m.Releases = []store.ReleaseSnapshot{
+				{ID: 1, By: "owner", Actor: "@alice", Why: "Users see the Desk", AfterIID: 148, SHA: "a1", ReleasedSHA: "b1",
+					State: "Released", Reason: "after the retry", Issues: []int64{148}, MergeRequests: []int64{900},
+					Version: "2026.11.4", PipelineURL: "https://gitlab.example/p/77", ReleaseURL: "https://gitlab.example/r/1",
+					DecidedAt: posted.Time, StartedAt: started.Time, EndedAt: ended.Time},
+				{ID: 2, By: "final", State: "Planned", DecidedAt: posted.Time},
 			}
 		})},
 		{name: "a follow-up milestone takes over", task: specTask("1", func(t *aiv1.AgentTask) {

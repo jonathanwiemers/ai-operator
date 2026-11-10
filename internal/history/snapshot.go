@@ -19,7 +19,8 @@ const IssuePlanned = "planned"
 // when unknown (the UI builds the URL then). Issues are the plan's, in plan
 // order, then the autopilot's items the plan lacks; states are the items'
 // in lower case, else planned. StartedAt is now (the store keeps the first),
-// DoneAt now once autopilot is done.
+// DoneAt now once autopilot is done. Releases are status.autopilot.releases,
+// so a closed milestone keeps them.
 func Snapshot(t *aiv1.AgentTask, web string, now time.Time) (store.MilestoneSnapshot, bool) {
 	ms := t.Spec.Milestone
 	if t.Spec.Type != aiv1.TaskTypeSpec || ms == nil || ms.IID == 0 {
@@ -41,6 +42,9 @@ func Snapshot(t *aiv1.AgentTask, web string, now time.Time) (store.MilestoneSnap
 		}
 		for _, it := range ap.Items {
 			items[it.IID] = it
+		}
+		for _, r := range ap.Releases {
+			m.Releases = append(m.Releases, releaseSnapshot(r))
 		}
 	}
 	seen := map[int64]bool{}
@@ -87,6 +91,22 @@ func Snapshot(t *aiv1.AgentTask, web string, now time.Time) (store.MilestoneSnap
 		m.TakesFrom, m.Takes = f.MilestoneIID, f.Numbers
 	}
 	return m, true
+}
+
+// releaseSnapshot is the snapshot of the release record r; unset times are
+// zero.
+func releaseSnapshot(r aiv1.ReleaseRecord) store.ReleaseSnapshot {
+	s := store.ReleaseSnapshot{ID: r.ID, By: string(r.By), Actor: r.Actor, Why: r.Why, AfterIID: r.AfterIssue,
+		SHA: r.SHA, ReleasedSHA: r.ReleasedSHA, State: string(r.State), Reason: r.Reason, Issues: r.Issues,
+		MergeRequests: r.MergeRequests, Version: r.Version, PipelineURL: r.PipelineURL, ReleaseURL: r.ReleaseURL,
+		DecidedAt: r.DecidedAt.Time}
+	if r.StartedAt != nil {
+		s.StartedAt = r.StartedAt.Time
+	}
+	if r.EndedAt != nil {
+		s.EndedAt = r.EndedAt.Time
+	}
+	return s
 }
 
 // snapKey is a milestone in the snapshot queue.

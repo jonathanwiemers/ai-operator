@@ -850,7 +850,9 @@ title and owners from the spec, issues in plan order with their autopilot
 item's state in lower case (else `planned`) and MR, then queue items the
 plan lacks (flaky fixes); the autopilot phase in lower case and its tracking
 issue; start time at the first write, done time once the phase is `Done`;
-the retrospective's note, text and posted time, and follow-ups `issue` with their
+the release decisions of `status.autopilot.releases`, field by field (so a
+closed milestone keeps them, also those status trimmed earlier); the
+retrospective's note, text and posted time, and follow-ups `issue` with their
 iid for the numbers in `created`, `milestone` with the taking milestone's iid
 for those in `taken`, else `open`. A spec task whose `status.followUpOf`
 holds accepted numbers also queues `TakeFollowUps` for its source milestone:

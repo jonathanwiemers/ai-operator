@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	toolscache "k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -51,6 +52,13 @@ const (
 	// KindRetrospective is a milestone's retrospective, posted on its
 	// tracking issue: once per milestone, when the spec task gets its note.
 	KindRetrospective = "retrospective"
+
+	// KindReleaseDecided is a new release decision of a milestone
+	// (status.autopilot.releases), KindReleaseStarted the start of its
+	// pipeline and KindReleaseEnded its end, with the final state.
+	KindReleaseDecided = "release.decided"
+	KindReleaseStarted = "release.started"
+	KindReleaseEnded   = "release.ended"
 )
 
 // maxText bounds the texts copied from the status into an event.
@@ -238,6 +246,7 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 	}
 	out = append(out, d.autopilot(cur, prev.Autopilot, ns.Autopilot, now)...)
 	out = append(out, pauses(cur, prev.Autopilot, ns.Autopilot, now)...)
+	out = append(out, releases(cur, prev.Autopilot, ns.Autopilot, now)...)
 	out = append(out, d.proposals(cur, prev.Pilot, ns.Pilot, now)...)
 	out = append(out, writeFailures(cur, prev.WriteFailures, ns.WriteFailures, now)...)
 	out = append(out, d.prompts(cur, prev.Prompts, ns.Prompts, now)...)
@@ -360,6 +369,103 @@ func pauses(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, now time.Time) []
 		}
 	}
 	return out
+}
+
+// releases returns the release events of the change from old to cur,
+// compared by record ID: release.decided for a new ID, release.started for
+// a move to Running or a new start while running (startedAt), and
+// release.ended for a move to an ended state or a new end (endedAt: a Failed
+// final release that is dropped, or a final one moved to a newer merge,
+// ends again); a new record that is already running or ended gets both.
+// Keys hold the ID, and for a start or an end its time, so a replayed update
+// is no new event and a retried pipeline (attempts start at 0 again after a
+// resume) is a new start and end. The AgentProject's records (sweep,
+// outside milestones) are on no task and get none.
+func releases(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, now time.Time) []store.Event {
+	if cur == nil {
+		return nil
+	}
+	was := map[int64]aiv1.ReleaseRecord{}
+	if old != nil {
+		for _, r := range old.Releases {
+			was[r.ID] = r
+		}
+	}
+	var out []store.Event
+	emit := func(r aiv1.ReleaseRecord, kind, key, summary string, at *metav1.Time, data map[string]any) {
+		e := base(t, now)
+		e.Key, e.Kind, e.IssueIID = taskKey(t, key), kind, cur.TrackingIssueIID
+		e.Summary, e.Actor = textutil.Truncate(summary, maxText), r.Actor
+		if at != nil && !at.IsZero() {
+			e.At = at.Time
+		}
+		data["releaseID"], data["by"], data["afterIssue"], data["final"] = r.ID, string(r.By), r.AfterIssue, r.Final
+		e.Data = data
+		out = append(out, e)
+	}
+	for _, r := range cur.Releases {
+		prev, seen := was[r.ID]
+		what := releaseWhat(r)
+		if !seen {
+			emit(r, KindReleaseDecided, fmt.Sprintf("release/%d/decided", r.ID),
+				fmt.Sprintf("Release %s decided by %s: %s", what, r.By, r.Why), &r.DecidedAt,
+				map[string]any{"why": textutil.Truncate(r.Why, maxText), "state": string(r.State)})
+		}
+		if r.State == aiv1.ReleaseRunning && (prev.State != aiv1.ReleaseRunning || !sameTime(prev.StartedAt, r.StartedAt)) {
+			data := map[string]any{"pipelineID": r.PipelineID, "releasedSHA": r.ReleasedSHA, "issues": r.Issues,
+				"mergeRequests": r.MergeRequests, "attempt": r.Attempts}
+			if r.PipelineURL != "" {
+				data["pipelineURL"] = r.PipelineURL
+			}
+			emit(r, KindReleaseStarted, fmt.Sprintf("release/%d/started/%s", r.ID, stamp(t, r.StartedAt)),
+				fmt.Sprintf("Release %s started on %s", what, short(r.ReleasedSHA)), r.StartedAt, data)
+		}
+		if r.State.Ended() && (prev.State != r.State || !sameTime(prev.EndedAt, r.EndedAt)) {
+			data := map[string]any{"state": string(r.State), "version": r.Version,
+				"reason": textutil.Truncate(r.Reason, maxText), "attempt": r.Attempts}
+			if r.ReleaseURL != "" {
+				data["releaseURL"] = r.ReleaseURL
+			}
+			summary := fmt.Sprintf("Release %s: %s", what, r.State)
+			if r.Version != "" {
+				summary += " " + r.Version
+			}
+			if r.Reason != "" {
+				summary += ", " + r.Reason
+			}
+			emit(r, KindReleaseEnded, fmt.Sprintf("release/%d/ended/%s/%s", r.ID, stamp(t, r.EndedAt), r.State),
+				summary, r.EndedAt, data)
+		}
+	}
+	return out
+}
+
+// sameTime reports whether a and b are both unset or the same instant.
+func sameTime(a, b *metav1.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(b)
+}
+
+// stamp is the time at for an event key, in seconds, or the task's resource
+// version when unset (like pauseStart).
+func stamp(t *aiv1.AgentTask, at *metav1.Time) string {
+	if at == nil || at.IsZero() {
+		return "rv" + t.ResourceVersion
+	}
+	return strconv.FormatInt(at.Unix(), 10)
+}
+
+// releaseWhat names the release r in a summary.
+func releaseWhat(r aiv1.ReleaseRecord) string {
+	switch {
+	case r.Final:
+		return "of the milestone"
+	case r.AfterIssue != 0:
+		return fmt.Sprintf("after #%d", r.AfterIssue)
+	}
+	return fmt.Sprintf("R%d", r.ID)
 }
 
 // pauseStart is the start of the pause in p for its event keys: PausedAt,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -735,5 +736,119 @@ func TestStoreCallCarriesTokenBasis(t *testing.T) {
 	}
 	if c := StoreCall(aiv1.AgentCall{}); c.TokenBasis != 0 {
 		t.Errorf("TokenBasis %d, want 0", c.TokenBasis)
+	}
+}
+
+// releaseTask is a spec task with the release records recs.
+func releaseTask(rv string, recs ...aiv1.ReleaseRecord) *aiv1.AgentTask {
+	return task(rv, func(t *aiv1.AgentTask) {
+		t.Spec.Type, t.Spec.Issue = aiv1.TaskTypeSpec, nil
+		t.Status.Autopilot = &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, TrackingIssueIID: 9, Releases: recs}
+	})
+}
+
+func releaseEvents(es []store.Event) []store.Event {
+	return slices.DeleteFunc(es, func(e store.Event) bool {
+		return e.Kind != KindReleaseDecided && e.Kind != KindReleaseStarted && e.Kind != KindReleaseEnded
+	})
+}
+
+// TestDifferReleases: a decision, its start and its end are one event each,
+// by record ID; an unchanged list or a replayed update is none.
+func TestDifferReleases(t *testing.T) {
+	decided, started, restarted := metav1.NewTime(now.Add(-time.Hour)), metav1.NewTime(now.Add(-30*time.Minute)), metav1.NewTime(now.Add(-20*time.Minute))
+	ended, dropAt := metav1.NewTime(now.Add(-2*time.Minute)), metav1.NewTime(now.Add(-time.Minute))
+	planned := aiv1.ReleaseRecord{ID: 1, By: aiv1.ReleaseByPlanner, Why: "Users see the Desk", AfterIssue: 148,
+		State: aiv1.ReleasePlanned, DecidedAt: decided}
+	waiting := planned
+	waiting.State, waiting.SHA, waiting.Reason = aiv1.ReleaseWaiting, "abc123", "main is not green yet"
+	running := waiting
+	running.State, running.ReleasedSHA, running.PipelineID, running.PipelineURL = aiv1.ReleaseRunning, "def4567890", 77, "https://gitlab.example/p/77"
+	running.Issues, running.MergeRequests, running.Attempts, running.StartedAt = []int64{148}, []int64{900}, 1, &started
+	released := running
+	released.State, released.Version, released.ReleaseURL, released.Reason, released.EndedAt = aiv1.ReleaseReleased, "2026.11.4", "https://gitlab.example/r/1", "", &ended
+	retry := running
+	retry.State, retry.Attempts, retry.StartedAt = aiv1.ReleaseRunning, 2, &restarted
+	failed := retry
+	failed.State, failed.Reason, failed.EndedAt = aiv1.ReleaseFailed, "the release job failed", &ended
+	dropped := failed
+	dropped.State, dropped.EndedAt = aiv1.ReleaseDropped, &dropAt
+	resumed := failed // /agent resume: attempts back to 0, a new start
+	resumed.State, resumed.Attempts, resumed.StartedAt, resumed.EndedAt = aiv1.ReleaseRunning, 1, &dropAt, nil
+	owner := aiv1.ReleaseRecord{ID: 2, By: aiv1.ReleaseByOwner, Actor: "@alice", Why: "hotfix", State: aiv1.ReleaseAlreadyReleased,
+		Version: "2026.11.3", DecidedAt: decided, EndedAt: &ended}
+	notNeeded := aiv1.ReleaseRecord{ID: 3, By: aiv1.ReleaseByFinal, Final: true, State: aiv1.ReleaseNotNeeded, DecidedAt: decided, EndedAt: &ended}
+	moved := notNeeded // the final release moved to a newer merge, not needed again
+	moved.EndedAt = &dropAt
+	s := func(at metav1.Time) int64 { return at.Unix() }
+
+	for _, c := range []struct {
+		name     string
+		old, cur []aiv1.ReleaseRecord
+		want     []string
+	}{
+		{"decided", nil, []aiv1.ReleaseRecord{planned}, []string{"release.decided task/u1/release/1/decided"}},
+		{"waiting", []aiv1.ReleaseRecord{planned}, []aiv1.ReleaseRecord{waiting}, nil},
+		{"started", []aiv1.ReleaseRecord{waiting}, []aiv1.ReleaseRecord{running},
+			[]string{fmt.Sprintf("release.started task/u1/release/1/started/%d", s(started))}},
+		{"released", []aiv1.ReleaseRecord{running}, []aiv1.ReleaseRecord{released},
+			[]string{fmt.Sprintf("release.ended task/u1/release/1/ended/%d/Released", s(ended))}},
+		{"retried", []aiv1.ReleaseRecord{running}, []aiv1.ReleaseRecord{retry},
+			[]string{fmt.Sprintf("release.started task/u1/release/1/started/%d", s(restarted))}},
+		{"retry after waiting", []aiv1.ReleaseRecord{waiting}, []aiv1.ReleaseRecord{retry},
+			[]string{fmt.Sprintf("release.started task/u1/release/1/started/%d", s(restarted))}},
+		{"failed", []aiv1.ReleaseRecord{retry}, []aiv1.ReleaseRecord{failed},
+			[]string{fmt.Sprintf("release.ended task/u1/release/1/ended/%d/Failed", s(ended))}},
+		{"failed then dropped", []aiv1.ReleaseRecord{failed}, []aiv1.ReleaseRecord{dropped},
+			[]string{fmt.Sprintf("release.ended task/u1/release/1/ended/%d/Dropped", s(dropAt))}},
+		{"resumed after failing", []aiv1.ReleaseRecord{failed}, []aiv1.ReleaseRecord{resumed},
+			[]string{fmt.Sprintf("release.started task/u1/release/1/started/%d", s(dropAt))}},
+		{"a new record already ended", []aiv1.ReleaseRecord{released}, []aiv1.ReleaseRecord{released, owner},
+			[]string{"release.decided task/u1/release/2/decided", fmt.Sprintf("release.ended task/u1/release/2/ended/%d/AlreadyReleased", s(ended))}},
+		{"final moved, not needed again", []aiv1.ReleaseRecord{notNeeded}, []aiv1.ReleaseRecord{moved},
+			[]string{fmt.Sprintf("release.ended task/u1/release/3/ended/%d/NotNeeded", s(dropAt))}},
+		{"unchanged", []aiv1.ReleaseRecord{released, owner}, []aiv1.ReleaseRecord{released, owner}, nil},
+		{"trimmed", []aiv1.ReleaseRecord{released, owner}, []aiv1.ReleaseRecord{owner}, nil},
+	} {
+		es := releaseEvents(NewDiffer().Update(releaseTask("1", c.old...), releaseTask("2", c.cur...), now))
+		if got := kinds(es); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+		// A replayed update (another resource version) is no new event.
+		if es := releaseEvents(NewDiffer().Update(releaseTask("2", c.cur...), releaseTask("3", c.cur...), now)); len(es) != 0 {
+			t.Errorf("%s replayed: %v", c.name, kinds(es))
+		}
+	}
+
+	es := releaseEvents(NewDiffer().Update(releaseTask("1"), releaseTask("2", planned), now))
+	if e := es[0]; e.Data["why"] != "Users see the Desk" || e.Data["by"] != "planner" || e.Data["afterIssue"] != int64(148) ||
+		e.Data["state"] != "Planned" || e.IssueIID != 9 || e.MilestoneIID != 20 || !e.At.Equal(decided.Time) ||
+		e.Summary != "Release after #148 decided by planner: Users see the Desk" {
+		t.Errorf("decided %+v", e)
+	}
+	es = releaseEvents(NewDiffer().Update(releaseTask("1", waiting), releaseTask("2", running), now))
+	if e := es[0]; e.Data["pipelineID"] != int64(77) || e.Data["releasedSHA"] != "def4567890" ||
+		!slices.Equal(e.Data["issues"].([]int64), []int64{148}) || e.Data["pipelineURL"] != "https://gitlab.example/p/77" ||
+		!e.At.Equal(started.Time) || e.Summary != "Release after #148 started on def45678" {
+		t.Errorf("started %+v", e)
+	}
+	es = releaseEvents(NewDiffer().Update(releaseTask("1", running), releaseTask("2", released), now))
+	if e := es[0]; e.Data["state"] != "Released" || e.Data["version"] != "2026.11.4" || e.Data["releaseURL"] != "https://gitlab.example/r/1" ||
+		!e.At.Equal(ended.Time) || e.Summary != "Release after #148: Released 2026.11.4" {
+		t.Errorf("ended %+v", e)
+	}
+	es = releaseEvents(NewDiffer().Update(releaseTask("1", retry), releaseTask("2", failed), now))
+	if e := es[0]; e.Data["reason"] != "the release job failed" || e.Summary != "Release after #148: Failed, the release job failed" {
+		t.Errorf("failed %+v", e)
+	}
+	final := aiv1.ReleaseRecord{ID: 3, By: aiv1.ReleaseByFinal, Final: true, Why: strings.Repeat("x", 5000), State: aiv1.ReleaseWaiting, DecidedAt: decided}
+	es = releaseEvents(NewDiffer().Update(releaseTask("1"), releaseTask("2", final), now))
+	if e := es[0]; e.Data["final"] != true || len(e.Data["why"].(string)) > maxText+4 || len(e.Summary) > maxText+4 ||
+		!strings.HasPrefix(e.Summary, "Release of the milestone decided by final: ") {
+		t.Errorf("final %+v", e)
+	}
+	es = releaseEvents(NewDiffer().Update(releaseTask("1"), releaseTask("2", owner), now))
+	if es[0].Actor != "@alice" {
+		t.Errorf("owner actor %+v", es[0])
 	}
 }

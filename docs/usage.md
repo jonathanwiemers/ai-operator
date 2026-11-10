@@ -1923,6 +1923,16 @@ operator carries the decisions out on every poll, also while the milestone is
 paused; the queue does not wait for them. (The other deciders, the
 comments and the release notes come in later changes of this milestone.)
 
+Each decision is recorded in the history: `release.decided` when it is
+made (who, why, after which issue), `release.started` when its pipeline
+starts (pipeline, the head it runs on, issues and merge requests) and
+`release.ended` when it ends (state, version, reason, release link). A
+retried or resumed pipeline starts again, and a decision that ends again (a
+failed final release ended without a release) ends again. The milestone's
+snapshot in the research database keeps the decisions, so a closed
+milestone still has them. Decisions outside milestones (AgentProject
+`status.releases`) get no history events.
+
 **The planner decides first.** The planning run decides per issue whether to
 release after it (`release` and `releaseWhy` in `status.plan`), and writes
 the decision into the issue's description as a `**Release:**` line (see
