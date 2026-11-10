@@ -1237,6 +1237,13 @@ spec:
                       (status.pilot.commands).
                     format: int64
                     type: integer
+                  lastPilotRelease:
+                    description: |-
+                      LastPilotRelease is the Seq of the newest release decision of the
+                      pilot handled (the Coordinate task's status.pilot.releaseDecisions),
+                      applied or refused.
+                    format: int64
+                    type: integer
                   mainRedFix:
                     description: |-
                       MainRedFix is the main-red issue (mainHealth.autoFix) this milestone

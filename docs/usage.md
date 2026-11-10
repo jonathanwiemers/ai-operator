@@ -1959,6 +1959,36 @@ operator syncs the plan into the records:
   after all, its release follows; otherwise the milestone's final release
   covers it.
 
+**The pilot decides next.** An answer or an assessment of the
+[pilot](#talking-to-the-pilot) may carry a release decision: after issue N,
+add a release (`release: true`) or drop a planned one (`false`), with a
+reason. The runner records it in the pilot task's
+`status.pilot.releaseDecisions`; on every poll, with the commands of the
+tracking issue, the operator handles those newer than
+`status.autopilot.lastPilotRelease`, each once, in order. It validates each:
+
+- N is an issue of this milestone's queue;
+- the reason is not empty (it is folded to one line of 200 characters);
+- it never touches the final release.
+
+A valid decision is carried out:
+
+- **Add** creates a record `by: pilot`, `afterIssue: N` and the reason as
+  `why`: `Planned` while N is not merged, `Waiting` with N's merge commit as
+  `sha` once it is. Nothing is added while a record after N has not ended or
+  has released it ("already decided"); after a `Dropped`, `Failed` or
+  `NotNeeded` one a new record is added.
+- **Drop** makes the `Planned` and `Waiting` records after N that are not
+  the final release `Dropped` ("dropped by the pilot: <reason>"), whoever
+  decided them. A `Running` release is never stopped.
+
+A refused decision changes nothing, and one comment on the tracking issue
+says what was refused and why ("🛑 Refused the pilot's release after #42:
+#42 is not an issue of this milestone"); a decision with nothing to do
+(already decided, nothing to drop, the release already runs) is answered the
+same way with "ℹ️". Either way it is handled: the watermark moves past it,
+and the pilot sees the records in its next state.
+
 **The contract with the project's CI:** the operator starts a pipeline on the
 default branch with the variables `AGENT_RELEASE=true` and
 `AGENT_RELEASE_NOTES=<text>`, and that pipeline runs the release job, which
@@ -2446,6 +2476,13 @@ list out.
   when) in the pilot's status, over restarts. `go` never raises a
   milestone above the project's value, and neither the milestone
   description nor a rule changes the autonomy.
+- **Release decisions.** In an answer or an assessment it gives anyway (no
+  extra run), the pilot may add a release after an issue of the milestone or
+  drop a planned one, with a one-line reason. That is no proposal and needs
+  no `yes`: the operator validates it and carries it out, the model executes
+  nothing. A decision on an issue outside the milestone's queue, without a
+  reason, or on the final release is refused with a comment. See
+  [the pilot decides next](#releases).
 - **Your own words.** `/pilot tell #12: use the v2 API` puts a proposal prompt to pass
   your words on to #12's implementer verbatim (the reply names it, "Q3 on #N"); after "Do it" it gets them
   as "instruction from @you via pilot" with its next run, and the issue

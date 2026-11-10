@@ -116,8 +116,9 @@ func (r *AgentProjectReconciler) pilotIssueNotes(ctx context.Context, gl gitlab.
 }
 
 // pilot hands the comments on the tracking issue of an autopilot milestone
-// to its pilot.
-func (a *autopilot) pilot(ctx context.Context, notes []gitlab.Note) {
+// to its pilot, and returns the pilot's task (nil without one, or when it
+// cannot be read).
+func (a *autopilot) pilot(ctx context.Context, notes []gitlab.Note) *aiv1.AgentTask {
 	_, coord, err := a.r.milestoneTasks(ctx, a.project, &gitlab.Milestone{IID: a.st.Spec.Milestone.IID})
 	if err == nil {
 		err = a.r.pilotTracking(ctx, a.gl, a.project, a.spec, a.st, coord, a.ap.TrackingIssueIID, notes)
@@ -125,6 +126,7 @@ func (a *autopilot) pilot(ctx context.Context, notes []gitlab.Note) {
 	if err != nil {
 		a.log.Info("could not hand comments to the pilot", "error", err.Error())
 	}
+	return coord
 }
 
 // pilotTracking hands the comments on a milestone's tracking issue to its

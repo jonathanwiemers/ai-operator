@@ -1945,6 +1945,12 @@ type AutopilotStatus struct {
 	// +optional
 	LastPilotCommand int64 `json:"lastPilotCommand,omitempty"`
 
+	// LastPilotRelease is the Seq of the newest release decision of the
+	// pilot handled (the Coordinate task's status.pilot.releaseDecisions),
+	// applied or refused.
+	// +optional
+	LastPilotRelease int64 `json:"lastPilotRelease,omitempty"`
+
 	// TrackingHash is the hash of the tracking issue's last rendered
 	// description, so it is only edited when it changes.
 	// +optional

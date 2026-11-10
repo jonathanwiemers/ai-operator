@@ -1692,9 +1692,15 @@ counted interventions; more tools are later steps of
   no owner: the runner appends it to `status.pilot.releaseDecisions` under
   an optimistic lock, with the next `seq`, the reason cut to its first line
   of 200 characters, `source` (`note/<id>` or `event/<key>@<request>`,
-  recorded once) and `at`, and keeps the newest 20. The operator is to
-  validate and apply them by `seq` (an issue of the milestone, a reason,
-  never the final release); until it does, they are only recorded. The state the pilot reads has `releases`, the milestone's
+  recorded once) and `at`, and keeps the newest 20. The operator
+  (`autopilot.pilotReleases`, after the pilot's queue commands) validates
+  and applies those past `status.autopilot.lastPilotRelease` by `seq`: an
+  issue of the queue (`a.item`), a reason, never a `final` record. Add
+  appends a `pilot` record (`Planned`, or `Waiting` for a merged issue's
+  merge commit) unless one after the issue has not ended or released it;
+  drop makes the `Planned` and `Waiting` non-final records after it
+  `Dropped`. A refused or no-op decision gets one comment on the tracking
+  issue; the watermark advances either way. The state the pilot reads has `releases`, the milestone's
   records of `status.autopilot.releases` as `by`, `why`, `afterIssue`,
   `state`, `version` and `final` (and not again under `autopilot`).
   Retrospective, draft and refine runs have no such field.

@@ -4619,6 +4619,13 @@ export interface AutopilotStatus {
    */
   lastPilotCommand?: number /* int64 */;
   /**
+   * LastPilotRelease is the Seq of the newest release decision of the
+   * pilot handled (the Coordinate task's status.pilot.releaseDecisions),
+   * applied or refused.
+   * +optional
+   */
+  lastPilotRelease?: number /* int64 */;
+  /**
    * TrackingHash is the hash of the tracking issue's last rendered
    * description, so it is only edited when it changes.
    * +optional

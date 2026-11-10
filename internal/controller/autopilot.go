@@ -1762,7 +1762,8 @@ func (a *autopilot) stateHash() string {
 }
 
 // commands handles "/agent pause|resume|skip #N" on the tracking issue and
-// answers any other command once, in its thread.
+// answers any other command once, in its thread; then the pilot's accepted
+// queue commands and its release decisions.
 func (a *autopilot) commands(ctx context.Context) error {
 	if a.ap.TrackingIssueIID == 0 {
 		return nil
@@ -1774,7 +1775,7 @@ func (a *autopilot) commands(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listing notes of the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
 	}
-	a.pilot(ctx, notes)
+	coord := a.pilot(ctx, notes)
 	if err := a.followUps(ctx, notes); err != nil {
 		return err
 	}
@@ -1870,7 +1871,7 @@ func (a *autopilot) commands(ctx context.Context) error {
 			a.ap.LastPilotCommand = c.Seq
 		}
 	}
-	return nil
+	return a.pilotReleases(ctx, coord)
 }
 
 // chatCommands applies Desk pause/resume/skip on the Spec task newer than
