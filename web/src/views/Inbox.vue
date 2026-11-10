@@ -38,7 +38,7 @@ onMounted(refreshPermission)
         v-else-if="notify.permission !== 'unsupported'"
         type="button"
         class="btn notify"
-        title="Get a browser notification for new pauses, proposals, questions and ready companions while a Desk tab is open"
+        title="Get a browser notification for new pauses, proposals, questions, budget warnings and ready companions while a Desk tab is open"
         @click="enableNotify"
       >
         Notify me

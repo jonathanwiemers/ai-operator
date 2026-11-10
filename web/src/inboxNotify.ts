@@ -24,15 +24,28 @@ export function inboxKey(item: InboxItem): string {
     case 'companionReady':
       parts.push(item.issueIID, item.title)
       break
+    case 'budgetWarning':
+      // The reason names the budget: a raised one that is crossed again is
+      // a new item.
+      parts.push(item.milestoneIID, item.issueIID, item.reason)
+      break
   }
   return parts.map((p) => (p == null ? '' : String(p))).join('/')
 }
 
 // notifiable says whether an item raises a browser notification: pauses,
-// proposals, prompts, companions ready for the owners to merge
-// and tasks that need input. Failed and blocked tasks only count.
+// proposals, prompts, companions ready for the owners to merge, issues at
+// 80 % of their budget and tasks that need input. Failed and blocked tasks
+// only count.
 export function notifiable(item: InboxItem): boolean {
-  return item.kind === 'pause' || item.kind === 'proposal' || item.kind === 'prompt' || item.kind === 'companionReady' || (item.kind === 'task' && item.reason === 'needs-input')
+  return (
+    item.kind === 'pause' ||
+    item.kind === 'proposal' ||
+    item.kind === 'prompt' ||
+    item.kind === 'companionReady' ||
+    item.kind === 'budgetWarning' ||
+    (item.kind === 'task' && item.reason === 'needs-input')
+  )
 }
 
 // newNotifications returns the notifiable items whose key isn't in seen,
@@ -82,6 +95,11 @@ export function notificationText(item: InboxItem): NotificationText {
         body: [[item.title, item.issueIID ? `companion of #${item.issueIID}` : ''].filter(Boolean).join(' · '), item.reason]
           .filter(Boolean)
           .join('\n'),
+      }
+    case 'budgetWarning':
+      return {
+        title: `Budget at 80 % · #${item.issueIID} · ${item.project}`,
+        body: [item.title, item.reason].filter(Boolean).join('\n'),
       }
     default:
       return {

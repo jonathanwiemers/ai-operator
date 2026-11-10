@@ -1109,7 +1109,7 @@ export interface HistoryResponse {
 export interface InboxItem {
   namespace: string;
   project: string;
-  kind: 'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady';
+  kind: 'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady' | 'budgetWarning';
   task?: string;
   issueIID?: number /* int64 */;
   milestoneIID?: number /* int64 */;

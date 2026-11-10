@@ -235,3 +235,81 @@ func TestInboxPrompts(t *testing.T) {
 		}
 	}
 }
+
+func TestInboxBudgetWarning(t *testing.T) {
+	alerted := metav1.NewTime(time.Now().Add(-time.Hour).Truncate(time.Second))
+	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "bloop"}}
+	// Issue 7 spent $16 of its budget of $20: the 80 % heads-up is recorded.
+	item := func() aiv1.AutopilotItem {
+		return aiv1.AutopilotItem{IID: 7, State: aiv1.AutopilotItemActive,
+			Budget:          &aiv1.BudgetStatus{LimitUSD: "20.0000", SpentUSD: "16.5000"},
+			BudgetAlertedAt: &alerted, BudgetAlertedUSD: aiv1.BudgetWarnUSD("20.0000")}
+	}
+	tasks := func(it aiv1.AutopilotItem, phase aiv1.AutopilotPhase) []aiv1.AgentTask {
+		return []aiv1.AgentTask{
+			{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "spec"},
+				Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Autopilot: true, Milestone: &aiv1.MilestoneRef{IID: 5, Title: "Poker"}},
+				Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: phase, Items: []aiv1.AutopilotItem{
+					it, {IID: 8, State: aiv1.AutopilotItemPending}}}}},
+			{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "impl-7"},
+				Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeImplement, Milestone: &aiv1.MilestoneRef{IID: 5},
+					Issue: &aiv1.IssueRef{IID: 7, Title: "Lobby chat", WebURL: "https://gitlab.example/i/7"}}},
+		}
+	}
+	projects := map[string]*aiv1.AgentProject{"agents/bloop": ap}
+	warnings := func(ts []aiv1.AgentTask) []InboxItem {
+		var out []InboxItem
+		for _, it := range inboxOf(projects, ts, time.Now()) {
+			if it.Kind == "budgetWarning" {
+				out = append(out, it)
+			}
+		}
+		return out
+	}
+
+	got := warnings(tasks(item(), aiv1.AutopilotRunning))
+	if len(got) != 1 {
+		t.Fatalf("80 %% of the issue's budget is one item: %+v", got)
+	}
+	want := InboxItem{Namespace: "agents", Project: "bloop", Kind: "budgetWarning", Task: "impl-7", IssueIID: 7, MilestoneIID: 5,
+		Title: "Lobby chat", Reason: "80 % of the issue's budget of $20.00 spent", URL: "https://gitlab.example/i/7"}
+	w := got[0]
+	if w.At == nil || !w.At.Equal(alerted.Time) {
+		t.Errorf("the item is from the heads-up: at = %v, want %v", w.At, alerted.Time)
+	}
+	w.At = nil
+	if w != want {
+		t.Errorf("item =\n%+v\nwant\n%+v", w, want)
+	}
+
+	merged := item()
+	merged.State, merged.Budget = aiv1.AutopilotItemMerged, nil // the controller drops the budget of a merged issue
+	skipped := item()
+	skipped.State = aiv1.AutopilotItemSkipped
+	raised := item()
+	raised.Budget.LimitUSD = "40.0000" // the heads-up was for $20
+	over := item()
+	over.Budget.SpentUSD = "20.0000"
+	unknown := item()
+	unknown.Budget.SpentUSD = ""
+	other := item()
+	other.BudgetAlertedUSD = "15.0000" // the budget.perIssueAlertUSD heads-up
+	for name, it := range map[string]aiv1.AutopilotItem{"merged": merged, "skipped": skipped, "raised": raised,
+		"at the budget": over, "spend unknown": unknown, "other alert": other} {
+		if got := warnings(tasks(it, aiv1.AutopilotRunning)); len(got) != 0 {
+			t.Errorf("%s: no item: %+v", name, got)
+		}
+	}
+	if got := warnings(tasks(over, aiv1.AutopilotPaused)); len(got) != 0 {
+		t.Errorf("the budget pause takes over: %+v", got)
+	}
+
+	// Without its implement task the item opens the milestone.
+	if got := warnings(tasks(item(), aiv1.AutopilotRunning)[:1]); len(got) != 1 || got[0].Task != "" || got[0].Title != "" || got[0].MilestoneIID != 5 {
+		t.Errorf("without a task: %+v", got)
+	}
+	// Other projects' milestones are not shown.
+	if got := inboxOf(map[string]*aiv1.AgentProject{}, tasks(item(), aiv1.AutopilotRunning), time.Now()); len(got) != 0 {
+		t.Errorf("a hidden project's warning shows: %+v", got)
+	}
+}

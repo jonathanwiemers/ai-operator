@@ -337,3 +337,45 @@ func TestBudgetResolved(t *testing.T) {
 		}
 	}
 }
+
+// D83-P1: the 80 % prompt is posted once per budget value. Falling back
+// under 80 % supersedes it, and crossing 80 % again with the same budget
+// posts nothing: WarnedAt holds until the budget changes.
+func TestBudgetPromptHysteresisAtTheSameBudget(t *testing.T) {
+	e, src := newBudgetPromptEnv(t, "40", 33)
+	ps := e.budgetPrompts()
+	if len(ps) != 1 || ps[0].State != aiv1.PromptOpen || e.autopilot().Budget.WarnedAt == nil {
+		t.Fatalf("80 %% spent posts one prompt: %s", promptStates(e.task(specTaskName)))
+	}
+	comments := strings.Count(trackingComments(e), "of its budget of $40.00")
+
+	src.spend.Totals.CostUSD = 31 // under 80 % again
+	e.reconcile()
+	e.reconcile()
+	if ps := e.budgetPrompts(); len(ps) != 1 || ps[0].State != aiv1.PromptSuperseded {
+		t.Fatalf("under 80 %% the prompt closes: %s", promptStates(e.task(specTaskName)))
+	}
+	if e.autopilot().Budget.WarnedAt == nil {
+		t.Fatalf("the budget stays warned about")
+	}
+
+	src.spend.Totals.CostUSD = 34 // over 80 % again, same budget
+	e.reconcile()
+	e.reconcile()
+	if ps := e.budgetPrompts(); len(ps) != 1 || ps[0].State != aiv1.PromptSuperseded {
+		t.Fatalf("the same budget is not warned about again: %s", promptStates(e.task(specTaskName)))
+	}
+	if n := strings.Count(trackingComments(e), "of its budget of $40.00"); n != comments {
+		t.Fatalf("no second comment: %d, was %d\n%s", n, comments, trackingComments(e))
+	}
+
+	// A new budget re-arms it.
+	e.setBudget("42")
+	e.reconcile()
+	src.spend.Totals.CostUSD = 34.5
+	e.reconcile()
+	e.reconcile()
+	if ps := e.budgetPrompts(); len(ps) != 2 || ps[1].Source.Key != "budget/80/42.0000" || ps[1].State != aiv1.PromptOpen {
+		t.Fatalf("a new budget warns again, once: %s", promptStates(e.task(specTaskName)))
+	}
+}

@@ -82,3 +82,27 @@ func ModelLabel(model string, unmetered bool) string {
 	}
 	return "cursor auto"
 }
+
+// BudgetWarnShare is the share of a budget spent that warns the owners:
+// the milestone's 80 % prompt and an issue's 80 % heads-up.
+const BudgetWarnShare = 0.8
+
+// BudgetWarnUSD is the 80 % threshold of the budget limitUSD, formatted for
+// storage as AutopilotItem.BudgetAlertedUSD records it.
+func BudgetWarnUSD(limitUSD string) string {
+	return FormatCost(BudgetWarnShare * CostOf(limitUSD))
+}
+
+// BudgetWarned reports whether the issue of item it is warned about 80 % of
+// its budget now: it can still spend (pending or active), its heads-up was
+// for 80 % of its current budget (a raised budget re-arms it), and its
+// spend is known and under the budget (at it, the budget pause takes over).
+func (it *AutopilotItem) BudgetWarned() bool {
+	b := it.Budget
+	switch {
+	case it.State != AutopilotItemPending && it.State != AutopilotItemActive,
+		b == nil || b.SpentUSD == "" || CostOf(b.LimitUSD) <= 0:
+		return false
+	}
+	return it.BudgetAlertedUSD == BudgetWarnUSD(b.LimitUSD) && BudgetLeft(b.LimitUSD, b.SpentUSD, 0) > 0
+}

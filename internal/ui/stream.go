@@ -514,7 +514,7 @@ func (t *HistoryTotals) add(d store.Day) {
 type InboxItem struct {
 	Namespace    string `json:"namespace"`
 	Project      string `json:"project"`
-	Kind         string `json:"kind" tstype:"'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady'"`
+	Kind         string `json:"kind" tstype:"'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady' | 'budgetWarning'"`
 	Task         string `json:"task,omitempty"`
 	IssueIID     int64  `json:"issueIID,omitempty"`
 	MilestoneIID int64  `json:"milestoneIID,omitempty"`
@@ -653,6 +653,7 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 		}
 	}
 	items = append(items, companionReadyItems(projects, tasks)...)
+	items = append(items, budgetWarningItems(projects, tasks)...)
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i].At, items[j].At
 		switch {
@@ -663,6 +664,49 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 		}
 		return a.After(*b)
 	})
+	return items
+}
+
+// budgetWarningItems are the issues of autopilot milestones that spent 80 %
+// of their own budget (AutopilotItem.BudgetWarned): the operator posted the
+// heads-up comment for it and records the threshold, so there is one item
+// per crossing. It leaves the Inbox when the issue merges or is skipped,
+// its budget is raised (that re-arms the heads-up) or the budget pause for
+// it takes over. The milestone's own 80 % is a budget prompt.
+func budgetWarningItems(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask) []InboxItem {
+	// The implement task of each issue, by project and issue.
+	implTask := map[string]*aiv1.AgentTask{}
+	for i := range tasks {
+		if t := &tasks[i]; t.Spec.Type == aiv1.TaskTypeImplement && t.Spec.Issue != nil {
+			implTask[fmt.Sprintf("%s/%s#%d", t.Namespace, t.Spec.ProjectRef, t.Spec.Issue.IID)] = t
+		}
+	}
+	var items []InboxItem
+	for i := range tasks {
+		st := &tasks[i]
+		ap := projects[st.Namespace+"/"+st.Spec.ProjectRef]
+		if ap == nil || st.Spec.Milestone == nil || st.Status.Autopilot == nil {
+			continue
+		}
+		for j := range st.Status.Autopilot.Items {
+			it := &st.Status.Autopilot.Items[j]
+			if !it.BudgetWarned() {
+				continue
+			}
+			w := InboxItem{Namespace: st.Namespace, Project: ap.Name, Kind: "budgetWarning", IssueIID: it.IID,
+				MilestoneIID: st.Spec.Milestone.IID,
+				Reason:       fmt.Sprintf("80 %% of the issue's budget of $%s spent", aiv1.ShowCost(aiv1.CostOf(it.Budget.LimitUSD)))}
+			// Without its task (not created yet) the item opens the milestone.
+			if t := implTask[fmt.Sprintf("%s/%s#%d", st.Namespace, st.Spec.ProjectRef, it.IID)]; t != nil {
+				w.Task, w.Title, w.URL = t.Name, t.Spec.Issue.Title, t.Spec.Issue.WebURL
+			}
+			if it.BudgetAlertedAt != nil {
+				at := it.BudgetAlertedAt.Time
+				w.At = &at
+			}
+			items = append(items, w)
+		}
+	}
 	return items
 }
 

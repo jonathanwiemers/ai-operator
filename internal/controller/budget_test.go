@@ -457,6 +457,9 @@ func TestIssueBudgetHeadsUpAt80Percent(t *testing.T) {
 	if ap.Phase != aiv1.AutopilotRunning || ap.Items[0].BudgetAlertedUSD != "16.0000" {
 		t.Fatalf("at 80 %% the issue gets a heads-up and runs on: %+v %+v", ap, ap.Items[0])
 	}
+	if !ap.Items[0].BudgetWarned() {
+		t.Fatalf("the heads-up is the Desk's budget warning: %+v", ap.Items[0])
+	}
 	if !strings.Contains(trackingComments(e), "💸 Heads-up: #1 spent $16.00, 80 % of its budget of $20.00. Autopilot keeps going and pauses for it at $20.00.") {
 		t.Fatalf("the heads-up names the budget:\n%s", trackingComments(e))
 	}
@@ -466,6 +469,8 @@ func TestIssueBudgetHeadsUpAt80Percent(t *testing.T) {
 	e.reconcile()
 	if ap := e.autopilot(); ap.PauseKind != aiv1.PauseBudget || ap.PausedFor != 1 {
 		t.Fatalf("at the budget autopilot pauses, as before: %+v", ap)
+	} else if ap.Items[0].BudgetWarned() {
+		t.Fatalf("the pause takes over from the budget warning: %+v", ap.Items[0])
 	}
 	if n := headsUps(e); n != 1 {
 		t.Fatalf("one heads-up, then the pause: %d\n%s", n, trackingComments(e))
@@ -474,7 +479,7 @@ func TestIssueBudgetHeadsUpAt80Percent(t *testing.T) {
 	// A raised budget re-arms it: its 80 % is another threshold.
 	e.gl.AddNote(1, gitlab.User{ID: 1, Username: "jonathan"}, "/agent budget 40")
 	e.reconcile()
-	if it := e.autopilot().Items[0]; it.BudgetAlertedAt != nil || headsUps(e) != 1 {
+	if it := e.autopilot().Items[0]; it.BudgetAlertedAt != nil || headsUps(e) != 1 || it.BudgetWarned() {
 		t.Fatalf("a raised budget re-arms the heads-up: %+v", it)
 	}
 }

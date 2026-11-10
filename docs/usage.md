@@ -1555,7 +1555,10 @@ remove `/agent autopilot` to stop it. While a done milestone's budget is used
 its issues' runs stay stopped (`spec.budgetStop`); raising the line lets
 them go on. A prompt closes (superseded) once its budget is another or the
 spend is under its threshold again; the 80 % prompt also closes when the
-100 % one follows. Issue budgets get no prompt. Raising the budget and
+100 % one follows. Falling under 80 % and crossing it again with the same
+budget posts nothing new; only another budget value is warned about again.
+Each open prompt is one Desk Inbox item and one browser notification.
+Issue budgets get no prompt, see below. Raising the budget and
 ending the milestone are the operator's options only: the pilot cannot
 propose them, and options of the model that use them are dropped.
 
@@ -1602,6 +1605,15 @@ and `budgetAlertedUSD`); another alert value or budget re-arms it. With both
 set, each threshold the issue passes gets its own heads-up. An issue that
 jumps past its budget in one poll gets only the pause. Like the budgets, the
 heads-up comes from the poll's one spend query and needs the database.
+
+The 80 % heads-up of an issue's budget is also a Desk Inbox item
+(`budgetWarning`, "80 % of the issue's budget of $20.00 spent") and one
+browser notification; both open the issue's Implement task, where the
+task chat's `budget <usd>` raises it. There is no second comment and no
+prompt: the item is derived from `budgetAlertedUSD`, so there is one per
+crossing of a budget. It leaves the Inbox when the issue merges or is
+skipped, its budget is raised (which re-arms the heads-up) or the budget
+pause for it takes over. The `perIssueAlertUSD` heads-up is no Inbox item.
 
 ### Companion repository
 

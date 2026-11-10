@@ -187,3 +187,43 @@ test('companionReady: notifies once per companion merge request, with its text',
     body: 'group/infra!7',
   })
 })
+
+const warning = (over = {}) => ({
+  namespace: 'team',
+  project: 'shop',
+  kind: 'budgetWarning',
+  task: 'shop-impl-12',
+  milestoneIID: 3,
+  issueIID: 12,
+  title: 'Cart totals',
+  reason: "80 % of the issue's budget of $20.00 spent",
+  at: '2026-11-06T10:00:00Z',
+  ...over,
+})
+
+test('budgetWarning: notifies once per issue and budget, with its text', () => {
+  assert.equal(notifiable(warning()), true)
+  assert.equal(inboxKey(warning()), "team/shop/budgetWarning/3/12/80 % of the issue's budget of $20.00 spent")
+  assert.equal(inboxKey(warning({ title: 'Renamed', at: '2026-11-07T10:00:00Z' })), inboxKey(warning()))
+  assert.notEqual(inboxKey(warning({ issueIID: 13 })), inboxKey(warning()))
+
+  const seen = new Set()
+  assert.deepEqual(keys(newNotifications(seen, [warning(), warning()])), [inboxKey(warning())])
+  seen.add(inboxKey(warning()))
+  assert.deepEqual(newNotifications(seen, [warning()]), [])
+  // Gone (merged, raised, paused) and back for the same budget: seen.
+  assert.deepEqual(newNotifications(seen, []), [])
+  assert.deepEqual(newNotifications(seen, [warning()]), [])
+  // A raised budget crossed again is a new item.
+  const raised = warning({ reason: "80 % of the issue's budget of $40.00 spent" })
+  assert.deepEqual(keys(newNotifications(seen, [raised])), [inboxKey(raised)])
+
+  assert.deepEqual(notificationText(warning()), {
+    title: 'Budget at 80 % · #12 · shop',
+    body: "Cart totals\n80 % of the issue's budget of $20.00 spent",
+  })
+  assert.deepEqual(notificationText(warning({ title: '' })), {
+    title: 'Budget at 80 % · #12 · shop',
+    body: "80 % of the issue's budget of $20.00 spent",
+  })
+})

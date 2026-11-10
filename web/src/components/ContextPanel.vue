@@ -56,7 +56,7 @@ function spendDelta(cur: number, prev: number) {
 }
 
 function inboxTo(item: InboxItem) {
-  if ((item.kind === 'task' || item.kind === 'companionReady') && item.task) {
+  if ((item.kind === 'task' || item.kind === 'companionReady' || item.kind === 'budgetWarning') && item.task) {
     return {
       name: 'task' as const,
       params: { namespace: item.namespace, name: item.project, task: item.task },

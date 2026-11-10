@@ -155,7 +155,7 @@ func (a *autopilot) alertThresholds(it *aiv1.AutopilotItem) (alert, warn string)
 		alert = aiv1.FormatCost(aiv1.CostOf(b.PerIssueAlertUSD))
 	}
 	if it.Budget != nil {
-		warn = aiv1.FormatCost(warnAt * aiv1.CostOf(it.Budget.LimitUSD))
+		warn = aiv1.BudgetWarnUSD(it.Budget.LimitUSD)
 	}
 	return alert, warn
 }
@@ -308,7 +308,7 @@ func (a *autopilot) resumeBudget(ctx context.Context, why string) error {
 
 // warnAt is the share of the milestone's budget spent that posts the 80 %
 // prompt.
-const warnAt = 0.8
+const warnAt = aiv1.BudgetWarnShare
 
 // Keys of the budget prompts: "budget/80/<limitUSD>" and
 // "budget/100/<limitUSD>", once per budget value.
@@ -321,7 +321,9 @@ const (
 // spent (once per budget value, b.WarnedAt) a heads-up that offers two
 // raises, keeping going and pausing now; during a pause for it (100 %)
 // two raises, ending the milestone here and staying paused. A prompt of its
-// key in the status is not posted again. Issue budgets get no prompt.
+// key in the status is not posted again. Issue budgets get no prompt: while
+// their 80 % heads-up holds (AutopilotItem.BudgetWarned), the Desk derives
+// an Inbox item from it (budgetWarning).
 func (a *autopilot) budgetPrompts(ctx context.Context) error {
 	b := a.ap.Budget
 	if b == nil || b.SpentUSD == "" || a.ap.Phase == aiv1.AutopilotDone {
