@@ -121,6 +121,8 @@ packages:
       aiv1.PilotAutonomy: aiv1.PilotAutonomy
       aiv1.PromptKind: aiv1.PromptKind
       aiv1.PromptState: aiv1.PromptState
+      aiv1.ReleaseBy: aiv1.ReleaseBy
+      aiv1.ReleaseState: aiv1.ReleaseState
       aiv1.ResearchAgent: aiv1.ResearchAgent
       aiv1.ResearchDepth: aiv1.ResearchDepth
       aiv1.ResearchPhase: aiv1.ResearchPhase

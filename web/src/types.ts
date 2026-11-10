@@ -139,6 +139,9 @@ export type StreamKind =
   | 'chat.user'
   | 'chat.agent'
   | 'checkpoint'
+  | 'release.decided'
+  | 'release.started'
+  | 'release.ended'
 
 // StreamEventData is a stream event's data (Go: map[string]any): the keys
 // of all kinds.

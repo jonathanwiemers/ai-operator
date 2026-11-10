@@ -20,6 +20,9 @@ export const pilotStreamKinds = [
   'chat.user',
   'chat.agent',
   'retrospective',
+  'release.decided',
+  'release.started',
+  'release.ended',
 ] as const satisfies readonly StreamKind[]
 
 export const runtimeStreamKinds = [

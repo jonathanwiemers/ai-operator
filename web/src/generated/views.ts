@@ -251,6 +251,11 @@ export interface MilestoneView extends Cost {
    * items the plan lacks, as the snapshot holds them.
    */
   issues: MilestoneIssueRow[];
+  /**
+   * Releases are the milestone's release decisions by ID: live from
+   * status.autopilot.releases, else the snapshot's.
+   */
+  releases: ReleaseView[];
   autopilot?: MilestoneAutopilot;
   tracking?: TrackingIssueRef;
   pilot?: MilestonePilot;
@@ -299,6 +304,11 @@ export interface MilestoneIssueRow {
   mergeRequestURL?: string;
   task?: string;
   figures?: IssueFiguresView;
+  /**
+   * Version is the one the issue shipped in: that of the first Released
+   * or AlreadyReleased decision that contains it.
+   */
+  version?: string;
 }
 /**
  * IssueFiguresView is an issue's time and spend: wallSec from its first run
@@ -310,6 +320,30 @@ export interface IssueFiguresView extends Cost {
   wallSec: number /* int64 */;
   agentSec: number /* int64 */;
   pausedSec: number /* int64 */;
+}
+/**
+ * ReleaseView is one release decision of a milestone (aiv1.ReleaseRecord).
+ * Why and Reason are untrusted text: the app shows them as text. Unset
+ * times are absent.
+ */
+export interface ReleaseView {
+  id: number /* int64 */;
+  by: aiv1.ReleaseBy;
+  actor?: string;
+  why?: string;
+  afterIssue?: number /* int64 */;
+  sha?: string;
+  releasedSHA?: string;
+  state: aiv1.ReleaseState;
+  reason?: string;
+  issues: number /* int64 */[];
+  mergeRequests: number /* int64 */[];
+  version?: string;
+  pipelineURL?: string;
+  releaseURL?: string;
+  decidedAt?: string;
+  startedAt?: string;
+  endedAt?: string;
 }
 /**
  * MilestonePermissions: gitlab, the chat can be shown (after connecting);

@@ -36,7 +36,10 @@ type MilestoneView struct {
 	Spec   Task           `json:"spec"`
 	// Issues are the milestone's issues in plan order, then the autopilot's
 	// items the plan lacks, as the snapshot holds them.
-	Issues    []MilestoneIssueRow `json:"issues"`
+	Issues []MilestoneIssueRow `json:"issues"`
+	// Releases are the milestone's release decisions by ID: live from
+	// status.autopilot.releases, else the snapshot's.
+	Releases  []ReleaseView       `json:"releases"`
 	Autopilot *MilestoneAutopilot `json:"autopilot,omitempty"`
 	Tracking  *TrackingIssueRef   `json:"tracking,omitempty"`
 	Pilot     *MilestonePilot     `json:"pilot,omitempty"`
@@ -73,6 +76,9 @@ type MilestoneIssueRow struct {
 	MergeRequestURL string            `json:"mergeRequestURL,omitempty"`
 	Task            string            `json:"task,omitempty"`
 	Figures         *IssueFiguresView `json:"figures,omitempty"`
+	// Version is the one the issue shipped in: that of the first Released
+	// or AlreadyReleased decision that contains it.
+	Version string `json:"version,omitempty"`
 }
 
 // IssueFiguresView is an issue's time and spend: wallSec from its first run
@@ -113,7 +119,7 @@ func (s *Server) milestoneDetailStore() milestoneDetailReader {
 }
 
 // issueRows are the issues of the snapshot of the spec task st, with their
-// implement tasks from byIssue.
+// implement tasks from byIssue and the versions of its release decisions.
 func issueRows(st *aiv1.AgentTask, byIssue map[int64]string, now time.Time) []MilestoneIssueRow {
 	rows := []MilestoneIssueRow{}
 	snap, _ := history.Snapshot(st, "", now)
@@ -121,7 +127,102 @@ func issueRows(st *aiv1.AgentTask, byIssue map[int64]string, now time.Time) []Mi
 		rows = append(rows, MilestoneIssueRow{IID: is.IID, Title: is.Title, State: is.State,
 			MergeRequestIID: is.MergeRequestIID, MergeRequestURL: is.MergeRequestURL, Task: byIssue[is.IID]})
 	}
+	setIssueVersions(rows, liveReleases(st))
 	return rows
+}
+
+// ReleaseView is one release decision of a milestone (aiv1.ReleaseRecord).
+// Why and Reason are untrusted text: the app shows them as text. Unset
+// times are absent.
+type ReleaseView struct {
+	ID            int64             `json:"id"`
+	By            aiv1.ReleaseBy    `json:"by"`
+	Actor         string            `json:"actor,omitempty"`
+	Why           string            `json:"why,omitempty"`
+	AfterIssue    int64             `json:"afterIssue,omitempty"`
+	SHA           string            `json:"sha,omitempty"`
+	ReleasedSHA   string            `json:"releasedSHA,omitempty"`
+	State         aiv1.ReleaseState `json:"state"`
+	Reason        string            `json:"reason,omitempty"`
+	Issues        []int64           `json:"issues"`
+	MergeRequests []int64           `json:"mergeRequests"`
+	Version       string            `json:"version,omitempty"`
+	PipelineURL   string            `json:"pipelineURL,omitempty"`
+	ReleaseURL    string            `json:"releaseURL,omitempty"`
+	DecidedAt     *time.Time        `json:"decidedAt,omitempty"`
+	StartedAt     *time.Time        `json:"startedAt,omitempty"`
+	EndedAt       *time.Time        `json:"endedAt,omitempty"`
+}
+
+// liveReleases are the views of the spec task st's release decisions
+// (status.autopilot.releases), by ID; never nil.
+func liveReleases(st *aiv1.AgentTask) []ReleaseView {
+	out := []ReleaseView{}
+	if st.Status.Autopilot == nil {
+		return out
+	}
+	for _, r := range st.Status.Autopilot.Releases {
+		v := ReleaseView{ID: r.ID, By: r.By, Actor: r.Actor, Why: r.Why, AfterIssue: r.AfterIssue, SHA: r.SHA,
+			ReleasedSHA: r.ReleasedSHA, State: r.State, Reason: r.Reason, Issues: nonNilIDs(r.Issues),
+			MergeRequests: nonNilIDs(r.MergeRequests), Version: r.Version, PipelineURL: r.PipelineURL,
+			ReleaseURL: r.ReleaseURL, DecidedAt: timeOrNil(r.DecidedAt.Time)}
+		if r.StartedAt != nil {
+			v.StartedAt = timeOrNil(r.StartedAt.Time)
+		}
+		if r.EndedAt != nil {
+			v.EndedAt = timeOrNil(r.EndedAt.Time)
+		}
+		out = append(out, v)
+	}
+	return byReleaseID(out)
+}
+
+// storedReleases are the views of a snapshot's release decisions, by ID;
+// never nil.
+func storedReleases(recs []store.ReleaseSnapshot) []ReleaseView {
+	out := []ReleaseView{}
+	for _, r := range recs {
+		out = append(out, ReleaseView{ID: r.ID, By: aiv1.ReleaseBy(r.By), Actor: r.Actor, Why: r.Why,
+			AfterIssue: r.AfterIID, SHA: r.SHA, ReleasedSHA: r.ReleasedSHA, State: aiv1.ReleaseState(r.State),
+			Reason: r.Reason, Issues: nonNilIDs(r.Issues), MergeRequests: nonNilIDs(r.MergeRequests),
+			Version: r.Version, PipelineURL: r.PipelineURL, ReleaseURL: r.ReleaseURL, DecidedAt: timeOrNil(r.DecidedAt),
+			StartedAt: timeOrNil(r.StartedAt), EndedAt: timeOrNil(r.EndedAt)})
+	}
+	return byReleaseID(out)
+}
+
+func byReleaseID(rs []ReleaseView) []ReleaseView {
+	slices.SortStableFunc(rs, func(a, b ReleaseView) int { return cmp.Compare(a.ID, b.ID) })
+	return rs
+}
+
+// setIssueVersions gives each row the version of the first Released or
+// AlreadyReleased decision of rs (by ID) that contains its issue.
+func setIssueVersions(rows []MilestoneIssueRow, rs []ReleaseView) {
+	for i := range rows {
+		for _, r := range rs {
+			if (r.State == aiv1.ReleaseReleased || r.State == aiv1.ReleaseAlreadyReleased) && slices.Contains(r.Issues, rows[i].IID) {
+				rows[i].Version = r.Version
+				break
+			}
+		}
+	}
+}
+
+// nonNilIDs is s, or an empty slice for nil.
+func nonNilIDs(s []int64) []int64 {
+	if s == nil {
+		return []int64{}
+	}
+	return s
+}
+
+// timeOrNil is t, nil when zero.
+func timeOrNil(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }
 
 // storedMilestoneView is the view of a milestone whose tasks are gone, from
@@ -130,11 +231,12 @@ func storedMilestoneView(p *aiv1.AgentProject, d store.MilestoneDetail) Mileston
 	web := gitLabRef(p).WebURL
 	v := MilestoneView{IID: d.IID, Title: d.Title, WebURL: cmp.Or(d.WebURL, fmt.Sprintf("%s/-/milestones/%d", web, d.IID)),
 		State: storedMilestoneState(d.MilestoneRow), Stored: true, Issues: []MilestoneIssueRow{}, Prompts: []PromptView{},
-		Tasks: []Task{}, Companions: []CompanionView{}, Cost: callsCost(d.Spend)}
+		Tasks: []Task{}, Companions: []CompanionView{}, Cost: callsCost(d.Spend), Releases: storedReleases(d.Releases)}
 	for _, f := range d.Issues {
 		v.Issues = append(v.Issues, MilestoneIssueRow{IID: f.IID, Title: f.Title, State: f.State,
 			MergeRequestIID: f.MRIID, MergeRequestURL: f.MRURL, Figures: issueFiguresView(f)})
 	}
+	setIssueVersions(v.Issues, v.Releases)
 	if d.TrackingIID != 0 {
 		v.Tracking = &TrackingIssueRef{IID: d.TrackingIID, WebURL: fmt.Sprintf("%s/-/issues/%d", web, d.TrackingIID)}
 	}
@@ -388,7 +490,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 	}
 	sortTasks(v.Tasks)
-	v.Issues = issueRows(st, byIssue, now)
+	v.Issues, v.Releases = issueRows(st, byIssue, now), liveReleases(st)
 	v.Companions = milestoneCompanions(p, tasks, ms.IID)
 	v.Cost = tasksCost(cost)
 	if ap := st.Status.Autopilot; ap != nil {

@@ -1930,7 +1930,9 @@ starts (pipeline, the head it runs on, issues and merge requests) and
 retried or resumed pipeline starts again, and a decision that ends again (a
 failed final release ended without a release) ends again. The milestone's
 snapshot in the research database keeps the decisions, so a closed
-milestone still has them. Decisions outside milestones (AgentProject
+milestone still has them, and the Desk's milestone view (`releases`, and the
+`version` of each issue) reads them from there once its tasks are gone; the
+Pilot tab shows the three events. Decisions outside milestones (AgentProject
 `status.releases`) get no history events.
 
 **The planner decides first.** The planning run decides per issue whether to

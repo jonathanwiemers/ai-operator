@@ -54,7 +54,7 @@ var (
 	pilotKinds = []string{history.KindPromptPosted, history.KindPromptAnswered, history.KindPromptClosed,
 		history.KindNeeds, history.KindAutopilot, history.KindAutopilotPaused, history.KindAutopilotResumed,
 		history.KindProposal, history.KindPilotWriteFailed, history.KindNote, "chat.user", "chat.agent",
-		history.KindRetrospective}
+		history.KindRetrospective, history.KindReleaseDecided, history.KindReleaseStarted, history.KindReleaseEnded}
 	runtimeKinds = []string{history.KindRunStarted, history.KindRunFinished, history.KindPush, history.KindCI,
 		history.KindReview, history.KindMerged, history.KindClosed, history.KindCheckpoint}
 )

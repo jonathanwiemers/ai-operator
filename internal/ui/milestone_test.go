@@ -1024,3 +1024,108 @@ func setOwners(t *testing.T, env *testEnv, subjects ...string) {
 		t.Fatal(err)
 	}
 }
+
+// checkoutReleases are milestone 3's release decisions, out of ID order:
+// one planned after #43, one released with #42 and a failed one that also
+// lists #43.
+func checkoutReleases(at time.Time) []aiv1.ReleaseRecord {
+	started, ended := metav1.NewTime(at.Add(time.Minute)), metav1.NewTime(at.Add(5*time.Minute))
+	return []aiv1.ReleaseRecord{
+		{ID: 3, By: aiv1.ReleaseByPlanner, Why: "Klarna is visible", AfterIssue: 43, State: aiv1.ReleasePlanned,
+			DecidedAt: metav1.NewTime(at)},
+		{ID: 1, By: aiv1.ReleaseByOwner, Actor: "@ada", Why: "PayPal <b>now</b>", AfterIssue: 42, SHA: "abc", ReleasedSHA: "abd",
+			State: aiv1.ReleaseReleased, Issues: []int64{42}, MergeRequests: []int64{5}, Version: "2026.11.3",
+			PipelineURL: "https://gitlab.example.com/p/1", ReleaseURL: "https://gitlab.example.com/r/1",
+			DecidedAt: metav1.NewTime(at), StartedAt: &started, EndedAt: &ended},
+		{ID: 2, By: aiv1.ReleaseByPilot, Why: "hotfix", State: aiv1.ReleaseFailed, Reason: "job release failed",
+			Issues: []int64{42, 43}, Version: "2026.11.4", DecidedAt: metav1.NewTime(at), EndedAt: &ended},
+	}
+}
+
+// checkReleaseViews checks the views of checkoutReleases.
+func checkReleaseViews(t *testing.T, got []ReleaseView, at time.Time) {
+	t.Helper()
+	if len(got) != 3 || got[0].ID != 1 || got[1].ID != 2 || got[2].ID != 3 {
+		t.Fatalf("releases by ID: %+v", got)
+	}
+	r := got[0]
+	if r.By != aiv1.ReleaseByOwner || r.Actor != "@ada" || r.Why != "PayPal <b>now</b>" || r.AfterIssue != 42 || r.SHA != "abc" ||
+		r.ReleasedSHA != "abd" || r.State != aiv1.ReleaseReleased || !slices.Equal(r.Issues, []int64{42}) ||
+		!slices.Equal(r.MergeRequests, []int64{5}) || r.Version != "2026.11.3" || r.PipelineURL != "https://gitlab.example.com/p/1" ||
+		r.ReleaseURL != "https://gitlab.example.com/r/1" || r.DecidedAt == nil || !r.DecidedAt.Equal(at) ||
+		r.StartedAt == nil || !r.StartedAt.Equal(at.Add(time.Minute)) || r.EndedAt == nil || !r.EndedAt.Equal(at.Add(5*time.Minute)) {
+		t.Errorf("released = %+v", r)
+	}
+	if f := got[1]; f.State != aiv1.ReleaseFailed || f.Reason != "job release failed" || f.StartedAt != nil || f.EndedAt == nil {
+		t.Errorf("failed = %+v", f)
+	}
+	if p := got[2]; p.State != aiv1.ReleasePlanned || p.AfterIssue != 43 || p.Issues == nil || len(p.Issues) != 0 ||
+		p.MergeRequests == nil || p.StartedAt != nil || p.EndedAt != nil || p.Version != "" {
+		t.Errorf("planned = %+v", p)
+	}
+}
+
+func TestMilestoneReleases(t *testing.T) {
+	env, gl := newSteeringEnv(t, Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}})
+	withAutopilot(t, env, gl)
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"devs": map[string]any{}}}
+	env.login(t, "/")
+
+	var raw map[string]any
+	if code := env.get(t, shopMilestone, &raw); code != http.StatusOK {
+		t.Fatalf("milestone: status %d", code)
+	}
+	if rs, ok := raw["releases"].([]any); !ok || len(rs) != 0 {
+		t.Errorf("no decisions yet: releases %#v, want []", raw["releases"])
+	}
+
+	at := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	ctx := context.Background()
+	var st aiv1.AgentTask
+	if err := env.reader.Get(ctx, client.ObjectKey{Namespace: "team-a", Name: "shop-spec-m3-checkout"}, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.Status.Autopilot.Releases = checkoutReleases(at)
+	if err := env.reader.Update(ctx, &st); err != nil {
+		t.Fatal(err)
+	}
+	var m MilestoneView
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK {
+		t.Fatalf("milestone: status %d", code)
+	}
+	checkReleaseViews(t, m.Releases, at)
+	if len(m.Issues) != 2 || m.Issues[0].IID != 42 || m.Issues[0].Version != "2026.11.3" || m.Issues[1].Version != "" {
+		t.Errorf("only released issues have a version: %+v", m.Issues)
+	}
+	var iv IssueView
+	if code := env.get(t, shopMilestone+"/issues/42", &iv); code != http.StatusOK || iv.Version != "2026.11.3" {
+		t.Errorf("the issue view: status %d, version %q", code, iv.Version)
+	}
+
+	// The same decisions from a closed milestone's snapshot.
+	d := storedCheckout()
+	for _, r := range checkoutReleases(at) {
+		s := store.ReleaseSnapshot{ID: r.ID, By: string(r.By), Actor: r.Actor, Why: r.Why, AfterIID: r.AfterIssue, SHA: r.SHA,
+			ReleasedSHA: r.ReleasedSHA, State: string(r.State), Reason: r.Reason, Issues: r.Issues, MergeRequests: r.MergeRequests,
+			Version: r.Version, PipelineURL: r.PipelineURL, ReleaseURL: r.ReleaseURL, DecidedAt: r.DecidedAt.Time}
+		if r.StartedAt != nil {
+			s.StartedAt = r.StartedAt.Time
+		}
+		if r.EndedAt != nil {
+			s.EndedAt = r.EndedAt.Time
+		}
+		d.Releases = append(d.Releases, s)
+	}
+	// The snapshot holds the same issues.
+	d.Issues[0].IID, d.Issues[1].IID = 42, 43
+	env.server.milestoneDetails = &fakeMilestoneDetails{d: map[int64]store.MilestoneDetail{4: d}}
+	m = MilestoneView{}
+	if code := env.get(t, "/api/v1/projects/team-a/shop/milestones/4", &m); code != http.StatusOK || !m.Stored {
+		t.Fatalf("stored milestone: status %d, stored %v", code, m.Stored)
+	}
+	checkReleaseViews(t, m.Releases, at)
+	if len(m.Issues) != 2 || m.Issues[0].Version != "2026.11.3" || m.Issues[1].Version != "" {
+		t.Errorf("stored issue versions: %+v", m.Issues)
+	}
+}
