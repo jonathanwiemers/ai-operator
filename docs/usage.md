@@ -1449,8 +1449,12 @@ The milestone's final release failed twice. Ends by itself once a tag
 contains the milestone's last merge (released by hand): autopilot is then
 done.
 
-- `/agent resume`: the operator runs the final release once more.
-- `/agent endMilestone`: the final release is dropped and autopilot is done.
+- `/agent resume`: the operator runs the final release once more, from its
+  first attempt.
+- `/agent endMilestone` (owners only): the final release is dropped
+  ("ended without a release by @you") and autopilot is done.
+
+See [the final release](#the-final-release).
 
 ### Budget
 
@@ -1991,6 +1995,49 @@ on.
 
 A GitLab error ends the poll; the next poll tries again.
 
+#### The final release
+
+The milestone's last release is the operator's, with no model involved. Once
+every issue of the queue is through, autopilot is not done before a release
+contains the milestone's last merge. The order is: final release, then the
+[companions](#companion-repository), then done, then the
+[retrospective](#the-retrospective).
+
+- A milestone that merged nothing (or only issues closed as done by hand,
+  without a merge commit) has no final release.
+- Otherwise there is one record `by: final`, `final: true`, `why: "the
+  milestone's last merge"`, `afterIssue` and `sha` of the issue merged last
+  (`mergedAt` of its queue item). It is created once; planning again does not
+  add a second one. If another issue merges after it was created (a re-plan
+  added one, a revisit follow-up), it moves to that newer merge, as a fresh
+  decision, unless its pipeline is running.
+- **Not needed:** when the record is created and no tag contains the commit
+  yet, the operator compares the newest calendar-version tag (the highest
+  version) with the commit. An empty change gives `NotNeeded` ("no change
+  since 2026.11.3"), a change of only `docs/**` and `*.md` files
+  ([landing's rule](#landing)) gives `NotNeeded` ("nothing release-relevant
+  since 2026.11.3"): no pipeline. A project without calendar-version tags is
+  left to the steps above, which then record `NotApplicable` or release.
+- While the record has not ended, the milestone keeps running, and the
+  tracking issue says "every issue is through; done once a release contains
+  the last merge". The final release does not wait for the minimum interval.
+- Once it is `Released`, `AlreadyReleased`, `NotNeeded`, `NotApplicable` or
+  `Dropped`, the records still `Planned` (their issue was never merged) are
+  `Dropped` ("its issue was not merged"), and autopilot goes on to the
+  companions and done.
+- A final release that failed twice pauses the milestone with
+  [`pauseKind: release`](#release), with the reason. Its ways out:
+  - By itself, once a tag contains the commit (released by hand): the record
+    is `AlreadyReleased` with that version and autopilot is done.
+  - `/agent resume`: the final release starts over (`Waiting`, attempts
+    back to 0, the same checks and one retry again).
+  - `/agent endMilestone` (owners only): the record is `Dropped` ("ended
+    without a release by @you") and autopilot is done.
+
+A release pipeline that failed on a head does not hold a later attempt back:
+the green-head check skips the pipelines that did not succeed on a head a
+release ran on.
+
 ### Commands on the tracking issue
 
 (All commands: [commands.md](commands.md).)
@@ -2007,6 +2054,7 @@ A GitLab error ends the poll; the next poll tries again.
 | `/agent mergeBase #12` | the agent merges the default branch into the active issue's MR and resolves conflicts; a pause about it ends |
 | `/agent merge #12 <sha>` | owners only: merge the active issue's head `sha` without a full review (when the reviewers cannot run); CI, MR state and approvals still apply, a new push or a later review voids it (`status.autopilot.mergeOverride`) |
 | `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](#revisiting-after-the-merge) joins the queue |
+| `/agent endMilestone` | owners only: the milestone ends here; the pending issues are skipped and autopilot is done after the active one. During a [release pause](#release) the final release is dropped and autopilot is done |
 
 Any other `/agent …` comment on the tracking issue (also a bare `/agent` or a
 `revisit` without a decision ID) gets one answer: the commands above, that

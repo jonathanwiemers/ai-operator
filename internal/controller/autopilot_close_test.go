@@ -346,3 +346,331 @@ func TestDoneAutopilotKeepsAMilestoneWithOpenCompanions(t *testing.T) {
 		t.Fatalf("closed once the companion has landed, the list cleared: %s, %+v", e.gl.Milestones[0].State, e.autopilot())
 	}
 }
+
+// taggedMain makes the env's project tag its default branch: 2026.11.1 is a
+// merge commit of an hour ago, main's head h1 is green and contains both
+// merges, and the change since the tag is code.
+func taggedMain(e *projectEnv) {
+	e.t.Helper()
+	created := e.gl.Clock.Add(-time.Hour)
+	e.gl.AddTag("2026.11.1", gitlab.TagCommit{ID: "t1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created})
+	e.gl.BranchHeads = map[string]string{"main": "h1"}
+	e.gl.AddPipeline("h1", "main", "success")
+	e.gl.Compares = map[string]*gitlab.Compare{"h1..merge-sha-api": {}, "h1..merge-sha-ui": {},
+		"2026.11.1..merge-sha-ui": {Diffs: []gitlab.Diff{{OldPath: "docs/usage.md", NewPath: "docs/usage.md"}, {OldPath: "main.go", NewPath: "main.go"}}}}
+}
+
+// queueMerged records #1 and then #2 as merged (merge-sha-api,
+// merge-sha-ui) and closes both: the next poll is through the queue. A
+// skipped #1 is skipped instead.
+func queueMerged(e *projectEnv, skipped bool) {
+	e.t.Helper()
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		for i := range s.Autopilot.Items {
+			it := &s.Autopilot.Items[i]
+			at := metav1.NewTime(e.gl.Clock.Add(time.Duration(it.IID) * time.Minute))
+			it.State, it.MergedSHA, it.MergedAt = aiv1.AutopilotItemMerged, map[int64]string{1: "merge-sha-api", 2: "merge-sha-ui"}[it.IID], &at
+			if skipped && it.IID == 1 {
+				it.State, it.MergedSHA, it.MergedAt = aiv1.AutopilotItemSkipped, "", nil
+			}
+		}
+	})
+	e.gl.Issues[1].State, e.gl.Issues[2].State = "closed", "closed"
+}
+
+// finalRec is the autopilot's final release record.
+func finalRec(e *projectEnv) aiv1.ReleaseRecord {
+	e.t.Helper()
+	for _, r := range e.autopilot().Releases {
+		if r.Final {
+			return r
+		}
+	}
+	e.t.Fatalf("no final release: %+v", e.autopilot().Releases)
+	return aiv1.ReleaseRecord{}
+}
+
+// The queue through, done waits until the final release, run by the
+// operator, contains the last merge.
+func TestDoneWaitsForTheFinalRelease(t *testing.T) {
+	e := newPilotEnv(t)
+	taggedMain(e)
+	tracking := e.autopilot().TrackingIssueIID
+	e.finishRun(1, "sha-api", nil)
+	e.reconcile() // marked ready
+	e.reconcile() // merged
+	e.reconcile() // #2 starts
+	e.reconcile()
+	e.finishRun(2, "sha-ui", nil)
+	e.reconcile()
+	e.reconcile()
+	e.reconcile()
+	ap := e.autopilot()
+	if !slices.Equal(e.gl.Merged, []int64{1, 2}) || ap.Phase != aiv1.AutopilotRunning || countComments(e, tracking, "Autopilot is done") != 0 {
+		t.Fatalf("both merged, not done before the release: merged %v, %+v\n%v", e.gl.Merged, ap, botComments(e, tracking))
+	}
+	rec := finalRec(e)
+	if rec.By != aiv1.ReleaseByFinal || rec.SHA != "merge-sha-ui" || rec.AfterIssue != 2 || rec.Why != "the milestone's last merge" ||
+		rec.State != aiv1.ReleaseRunning || len(e.gl.CreatedPipelines) != 1 || len(ap.Releases) != 1 {
+		t.Fatalf("one final release, running for #2's merge: %+v, pipelines %+v", ap.Releases, e.gl.CreatedPipelines)
+	}
+	if body := e.gl.Issues[tracking].Description; !strings.Contains(body, "every issue is through; done once a release contains the last merge merge-sh") {
+		t.Fatalf("the tracking issue says what done waits for:\n%s", body)
+	}
+	e.reconcile()
+	if e.autopilot().Phase != aiv1.AutopilotRunning || len(e.gl.CreatedPipelines) != 1 || len(e.autopilot().Releases) != 1 {
+		t.Fatalf("still waiting, nothing doubled: %+v", e.autopilot())
+	}
+
+	e.gl.SetPipelineStatus(rec.PipelineID, "success")
+	created := e.gl.Clock
+	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "merge-sha-api", "merge-sha-ui")
+	e.reconcile()
+	rec = finalRec(e)
+	if rec.State != aiv1.ReleaseReleased || rec.Version != "2026.11.2" || !slices.Equal(rec.Issues, []int64{1, 2}) {
+		t.Fatalf("released with both issues: %+v", rec)
+	}
+	if e.autopilot().Phase != aiv1.AutopilotDone || countComments(e, tracking, "Autopilot is done: 2 of 2 issues merged") != 1 {
+		t.Fatalf("done once released: %+v\n%v", e.autopilot(), botComments(e, tracking))
+	}
+}
+
+// Nothing release-relevant since the newest tag: NotNeeded, no pipeline.
+func TestFinalReleaseNotNeeded(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		diffs []gitlab.Diff
+		why   string
+	}{
+		{"docs only", []gitlab.Diff{{OldPath: "docs/usage.md", NewPath: "docs/usage.md"}, {OldPath: "README.md", NewPath: "README.md"}},
+			"nothing release-relevant since 2026.11.1"},
+		{"an empty diff", nil, "no change since 2026.11.1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newPilotEnv(t)
+			taggedMain(e)
+			// An older tag listed first: the highest version counts.
+			created := e.gl.Clock.Add(-48 * time.Hour)
+			e.gl.AddTag("2026.10.9", gitlab.TagCommit{ID: "t0", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created})
+			e.gl.Compares["2026.11.1..merge-sha-ui"] = &gitlab.Compare{Diffs: tc.diffs}
+			queueMerged(e, false)
+			e.reconcile()
+			rec := finalRec(e)
+			if rec.State != aiv1.ReleaseNotNeeded || rec.Reason != tc.why || rec.EndedAt == nil {
+				t.Fatalf("want NotNeeded (%s), got %+v", tc.why, rec)
+			}
+			if e.autopilot().Phase != aiv1.AutopilotDone || len(e.gl.CreatedPipelines) != 0 {
+				t.Fatalf("done without a pipeline: %+v %+v", e.autopilot(), e.gl.CreatedPipelines)
+			}
+		})
+	}
+}
+
+// A project without release tags: NotApplicable, done, no pause; the
+// Planned record after the skipped #1 is dropped.
+func TestFinalReleaseWithoutTags(t *testing.T) {
+	e := newPilotEnv(t)
+	e.planRelease(1)
+	e.reconcile()
+	queueMerged(e, true)
+	e.reconcile()
+	ap := e.autopilot()
+	if got := releaseStates(ap); !slices.Equal(got, []string{"1:Dropped", "2:NotApplicable"}) {
+		t.Fatalf("want #1's planned release dropped and the final one not applicable, got %v: %+v", got, ap.Releases)
+	}
+	if ap.Releases[0].Reason != "its issue was not merged" || finalRec(e).Reason != "group/app does not tag its default branch" {
+		t.Fatalf("the reasons: %+v", ap.Releases)
+	}
+	if ap.Phase != aiv1.AutopilotDone || ap.PauseKind != "" || len(e.gl.CreatedPipelines) != 0 {
+		t.Fatalf("done, no pause, no pipeline: %+v %+v", ap, e.gl.CreatedPipelines)
+	}
+}
+
+// failFinal lets the env's final release fail twice: the milestone pauses.
+func failFinal(e *projectEnv) {
+	e.t.Helper()
+	taggedMain(e)
+	queueMerged(e, false)
+	e.reconcile()
+	for n := 1; n <= 2; n++ {
+		if rec := finalRec(e); rec.State != aiv1.ReleaseRunning || rec.Attempts != int32(n) || len(e.gl.CreatedPipelines) != n {
+			e.t.Fatalf("attempt %d runs: %+v", n, rec)
+		}
+		e.gl.SetPipelineStatus(e.gl.CreatedPipelines[n-1].ID, "failed")
+		e.reconcile()
+	}
+	ap := e.autopilot()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseFailed || ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseRelease || ap.PausedFor != 0 {
+		e.t.Fatalf("failed twice, paused for the release: %+v, %+v", rec, ap)
+	}
+	if !strings.Contains(ap.PausedReason, "the final release failed: the release pipeline") {
+		e.t.Fatalf("the pause says why: %q", ap.PausedReason)
+	}
+	e.reconcile()
+	if len(e.gl.CreatedPipelines) != 2 || countComments(e, ap.TrackingIssueIID, "Autopilot paused: the final release failed") != 1 {
+		e.t.Fatalf("no third attempt, the pause said once: %+v\n%v", e.gl.CreatedPipelines, botComments(e, ap.TrackingIssueIID))
+	}
+}
+
+func TestFailedFinalReleaseResumeRetries(t *testing.T) {
+	e := newPilotEnv(t)
+	failFinal(e)
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.AddNote(tracking, alice, "/agent resume")
+	e.reconcile()
+	ap := e.autopilot()
+	rec := finalRec(e)
+	if ap.Phase != aiv1.AutopilotRunning || ap.ResumedVia != aiv1.ResumedViaCommand || rec.State != aiv1.ReleaseRunning || rec.Attempts != 1 || len(e.gl.CreatedPipelines) != 3 {
+		t.Fatalf("resume starts the final release over: %+v, %+v", ap, rec)
+	}
+	e.gl.SetPipelineStatus(rec.PipelineID, "success")
+	created := e.gl.Clock
+	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "merge-sha-ui")
+	e.reconcile()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseReleased || e.autopilot().Phase != aiv1.AutopilotDone {
+		t.Fatalf("released and done: %+v, %+v", rec, e.autopilot())
+	}
+}
+
+func TestFailedFinalReleaseEndMilestone(t *testing.T) {
+	e := newPilotEnv(t)
+	failFinal(e)
+	tracking := e.autopilot().TrackingIssueIID
+	e.gl.AddNote(tracking, mallory, "/agent endMilestone")
+	e.reconcile()
+	if e.autopilot().Phase != aiv1.AutopilotPaused || countComments(e, tracking, "Only the milestone's owners may end the milestone.") != 1 {
+		t.Fatalf("owners only: %+v\n%v", e.autopilot(), botComments(e, tracking))
+	}
+	e.gl.AddNote(tracking, alice, "/agent endMilestone")
+	e.reconcile()
+	ap := e.autopilot()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseDropped || rec.Reason != "ended without a release by @alice" {
+		t.Fatalf("the final release is dropped: %+v", rec)
+	}
+	if ap.Phase != aiv1.AutopilotDone || ap.ResumedVia != aiv1.ResumedViaCommand || len(e.gl.CreatedPipelines) != 2 ||
+		countComments(e, tracking, "Autopilot is done: 2 of 2 issues merged") != 1 {
+		t.Fatalf("done without a release: %+v\n%v", ap, botComments(e, tracking))
+	}
+}
+
+// A tag made by hand that contains the last merge lifts the pause.
+func TestFailedFinalReleaseReleasedByHand(t *testing.T) {
+	e := newPilotEnv(t)
+	failFinal(e)
+	e.reconcile()
+	created := e.gl.Clock
+	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h2", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "merge-sha-ui")
+	e.reconcile()
+	ap := e.autopilot()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseAlreadyReleased || rec.Version != "2026.11.2" {
+		t.Fatalf("already released by hand: %+v", rec)
+	}
+	if ap.Phase != aiv1.AutopilotDone || ap.ResumedVia != aiv1.ResumedViaCauseGone || len(e.gl.CreatedPipelines) != 2 ||
+		countComments(e, ap.TrackingIssueIID, "the tag 2026.11.2 contains the milestone's last merge") != 1 {
+		t.Fatalf("the pause ends by itself and autopilot is done: %+v\n%v", ap, botComments(e, ap.TrackingIssueIID))
+	}
+}
+
+// The companions are waited for only once the final release has ended.
+func TestFinalReleaseBeforeTheCompanions(t *testing.T) {
+	e, infra := newCompanionQueueEnv(t, "")
+	taggedMain(e)
+	cmr := mergeWithCompanion(e, infra)
+	e.reconcile()
+	e.finishRun(2, "sha-ui", nil)
+	e.reconcile()
+	e.reconcile()
+	e.reconcile()
+	e.reconcile()
+	tracking := e.autopilot().TrackingIssueIID
+	const waits = "Autopilot is done once the companions group/infra!1 have landed"
+	if rec := finalRec(e); rec.State != aiv1.ReleaseRunning || countComments(e, tracking, waits) != 0 || len(e.autopilot().CloseWaitsForCompanions) != 0 {
+		t.Fatalf("the final release first: %+v, %+v\n%v", rec, e.autopilot(), botComments(e, tracking))
+	}
+
+	e.gl.SetPipelineStatus(finalRec(e).PipelineID, "success")
+	created := e.gl.Clock
+	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "merge-sha-api", "merge-sha-ui")
+	e.reconcile()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseReleased || e.autopilot().Phase != aiv1.AutopilotRunning || countComments(e, tracking, waits) != 1 {
+		t.Fatalf("released, now the companions: %+v, %+v\n%v", rec, e.autopilot(), botComments(e, tracking))
+	}
+	cmr.State, cmr.MergeCommitSHA = "merged", "merge-sha-infra"
+	e.reconcile()
+	if e.autopilot().Phase != aiv1.AutopilotDone {
+		t.Fatalf("done once the companion has landed: %+v", e.autopilot())
+	}
+}
+
+// The last merge is the newest by MergedAt, not the last in queue order; a
+// merge recorded without a time counts as older.
+func TestLastMerge(t *testing.T) {
+	at := func(m int) *metav1.Time { return &metav1.Time{Time: time.Date(2026, 11, 10, 12, m, 0, 0, time.UTC)} }
+	a := &autopilot{ap: &aiv1.AutopilotStatus{Items: []aiv1.AutopilotItem{
+		{IID: 1, State: aiv1.AutopilotItemMerged, MergedSHA: "m1"},
+		{IID: 2, State: aiv1.AutopilotItemMerged, MergedSHA: "m2", MergedAt: at(5)},
+		{IID: 3, State: aiv1.AutopilotItemMerged, MergedSHA: "m3", MergedAt: at(1)},
+		{IID: 4, State: aiv1.AutopilotItemMerged},
+		{IID: 5, State: aiv1.AutopilotItemSkipped, MergedSHA: "m5", MergedAt: at(9)},
+	}}}
+	if got := a.lastMerge(); got == nil || got.IID != 2 {
+		t.Fatalf("want #2, got %+v", got)
+	}
+	a.ap.Items = a.ap.Items[:1]
+	if got := a.lastMerge(); got == nil || got.IID != 1 {
+		t.Fatalf("want #1, got %+v", got)
+	}
+}
+
+// A merge after the final record was created moves it to the newer commit
+// while it is not Running; there is still one record.
+func TestFinalReleaseFollowsALaterMerge(t *testing.T) {
+	e := newPilotEnv(t)
+	taggedMain(e)
+	e.gl.AddPipeline("h2", "main", "failed") // main is red: the release waits
+	queueMerged(e, false)
+	e.reconcile()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseWaiting || rec.SHA != "merge-sha-ui" {
+		t.Fatalf("waiting for a green main: %+v", rec)
+	}
+	later := func(iid int64, sha string) {
+		e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+			at := metav1.NewTime(e.gl.Clock.Add(time.Hour))
+			s.Autopilot.Items = append(s.Autopilot.Items, aiv1.AutopilotItem{IID: iid, State: aiv1.AutopilotItemMerged,
+				MergedSHA: sha, MergedAt: &at, RevisitOf: "D1-1"})
+		})
+	}
+	later(5, "merge-sha-5")
+	e.gl.Compares["2026.11.1..merge-sha-5"] = &gitlab.Compare{Diffs: []gitlab.Diff{{OldPath: "main.go", NewPath: "main.go"}}}
+	e.reconcile()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseWaiting || rec.SHA != "merge-sha-5" || rec.AfterIssue != 5 || len(e.autopilot().Releases) != 1 {
+		t.Fatalf("moved to the later merge: %+v", e.autopilot().Releases)
+	}
+
+	// Running, it keeps its commit.
+	e.gl.AddPipeline("h1", "main", "success")
+	e.gl.Compares["h1..merge-sha-5"] = &gitlab.Compare{}
+	e.reconcile()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseRunning {
+		t.Fatalf("the release runs: %+v", rec)
+	}
+	later(6, "merge-sha-6")
+	e.reconcile()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseRunning || rec.SHA != "merge-sha-5" {
+		t.Fatalf("a running release keeps its commit: %+v", rec)
+	}
+}
+
+// With release.mode Off the final release is NotApplicable, without a look
+// at the tags' diff.
+func TestFinalReleaseModeOff(t *testing.T) {
+	e := newPilotEnv(t)
+	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Workflow.Release.Mode = aiv1.ReleaseOff })
+	taggedMain(e)
+	e.gl.Compares["2026.11.1..merge-sha-ui"] = &gitlab.Compare{}
+	queueMerged(e, false)
+	e.reconcile()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseNotApplicable || rec.Reason != "release.mode is Off" || e.autopilot().Phase != aiv1.AutopilotDone {
+		t.Fatalf("not applicable, done: %+v, %+v", rec, e.autopilot())
+	}
+}

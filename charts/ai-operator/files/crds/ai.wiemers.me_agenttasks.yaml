@@ -1169,6 +1169,12 @@ spec:
                           type: integer
                         mergeRequestURL:
                           type: string
+                        mergedAt:
+                          description: |-
+                            MergedAt is when autopilot recorded the merge; the newest one is the
+                            milestone's last merge, which the final release must contain.
+                          format: date-time
+                          type: string
                         mergedSHA:
                           description: MergedSHA is the commit the merge request was
                             merged as.
@@ -1330,6 +1336,12 @@ spec:
                         format: int64
                         type: integer
                       mergeRequestURL:
+                        type: string
+                      mergedAt:
+                        description: |-
+                          MergedAt is when autopilot recorded the merge; the newest one is the
+                          milestone's last merge, which the final release must contain.
+                        format: date-time
                         type: string
                       mergedSHA:
                         description: MergedSHA is the commit the merge request was

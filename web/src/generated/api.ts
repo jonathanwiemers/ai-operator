@@ -4701,6 +4701,12 @@ export interface AutopilotItem {
    */
   mergedSHA?: string;
   /**
+   * MergedAt is when autopilot recorded the merge; the newest one is the
+   * milestone's last merge, which the final release must contain.
+   * +optional
+   */
+  mergedAt?: string;
+  /**
    * RebasedFrom is the head the operator asked GitLab to rebase; set
    * while the rebase is in progress.
    * +optional

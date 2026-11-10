@@ -118,6 +118,193 @@ func (a *autopilot) releaseDue(it *aiv1.AutopilotItem) {
 	}
 }
 
+// finalWhy is the Why of the final release record.
+const finalWhy = "the milestone's last merge"
+
+// notMergedDropped is the reason of a Planned record left over at done.
+const notMergedDropped = "its issue was not merged"
+
+// lastMerge is the merged item merged last (MergedAt; items merged before it
+// was recorded count as older, in queue order), nil without a merge commit.
+func (a *autopilot) lastMerge() *aiv1.AutopilotItem {
+	var last *aiv1.AutopilotItem
+	for i := range a.ap.Items {
+		it := &a.ap.Items[i]
+		if it.State != aiv1.AutopilotItemMerged || it.MergedSHA == "" {
+			continue
+		}
+		if last == nil || last.MergedAt == nil || it.MergedAt != nil && !it.MergedAt.Before(last.MergedAt) {
+			last = it
+		}
+	}
+	return last
+}
+
+// queueThrough reports whether no issue of the queue is pending or active.
+func (a *autopilot) queueThrough() bool {
+	return !slices.ContainsFunc(a.ap.Items, func(it aiv1.AutopilotItem) bool {
+		return it.State == aiv1.AutopilotItemPending || it.State == aiv1.AutopilotItemActive
+	})
+}
+
+// finalRecord is the milestone's final release record, nil before done.
+func (a *autopilot) finalRecord() *aiv1.ReleaseRecord {
+	for i := range a.ap.Releases {
+		if a.ap.Releases[i].Final {
+			return &a.ap.Releases[i]
+		}
+	}
+	return nil
+}
+
+// finalRelease holds done until a release contains the milestone's last
+// merge (decision 7) and reports whether done may go on. It creates the
+// final record once (NotNeeded when nothing release-relevant changed since
+// the newest tag), moves it to a newer last merge while it is not Running,
+// and runs the release records right away. A Failed final release pauses
+// (PauseRelease). Once it has ended, the Planned records left are Dropped.
+func (a *autopilot) finalRelease(ctx context.Context) (bool, error) {
+	last := a.lastMerge()
+	if last == nil {
+		return true, nil // nothing merged: no final release
+	}
+	rec := a.finalRecord()
+	if rec == nil || rec.SHA != last.MergedSHA && rec.State != aiv1.ReleaseRunning {
+		next := aiv1.ReleaseRecord{By: aiv1.ReleaseByFinal, Final: true, Why: finalWhy, AfterIssue: last.IID,
+			SHA: last.MergedSHA, State: aiv1.ReleaseWaiting, DecidedAt: metav1.NewTime(a.r.now())}
+		why, err := a.notNeeded(ctx, last.MergedSHA)
+		if err != nil {
+			return false, err
+		}
+		if why != "" {
+			now := metav1.NewTime(a.r.now())
+			next.State, next.Reason, next.EndedAt = aiv1.ReleaseNotNeeded, why, &now
+		}
+		if rec == nil {
+			next.ID = nextReleaseID(a.ap.Releases)
+			a.ap.Releases = append(a.ap.Releases, next)
+			rec = &a.ap.Releases[len(a.ap.Releases)-1]
+		} else {
+			// A later merge: the same decision for the newer commit, from
+			// the start (its pipeline ID kept, see greenHead).
+			next.ID, next.DecidedAt, next.PipelineID = rec.ID, rec.DecidedAt, rec.PipelineID
+			*rec = next
+		}
+		a.log.Info("final release", "release", rec.ID, "sha", rec.SHA, "state", rec.State, "why", rec.Reason)
+	}
+	if !rec.State.Ended() {
+		if err := a.newReleaser().step(ctx, a.ap.Releases); err != nil {
+			return false, err
+		}
+	}
+	switch rec.State {
+	case aiv1.ReleaseFailed:
+		return false, a.pause(ctx, aiv1.PauseRelease, 0, "the final release failed: "+rec.Reason)
+	case aiv1.ReleaseReleased, aiv1.ReleaseAlreadyReleased, aiv1.ReleaseNotNeeded, aiv1.ReleaseNotApplicable, aiv1.ReleaseDropped:
+	default:
+		a.ap.Phase = aiv1.AutopilotRunning
+		return false, nil
+	}
+	now := metav1.NewTime(a.r.now())
+	for i := range a.ap.Releases {
+		if o := &a.ap.Releases[i]; o.State == aiv1.ReleasePlanned {
+			o.State, o.Reason, o.EndedAt = aiv1.ReleaseDropped, notMergedDropped, &now
+		}
+	}
+	return true, nil
+}
+
+// notNeeded says why the final release of sha is not needed: the newest
+// CalVer tag does not contain sha, and the change since it is empty or only
+// docs (landing's rule). "" leaves it to the state machine: release.mode
+// Off, a tag contains sha (already released), the project has no CalVer
+// tag, or GitLab cannot compare them.
+func (a *autopilot) notNeeded(ctx context.Context, sha string) (string, error) {
+	project := a.spec.GitLab.Project
+	if !a.spec.Workflow.Release.Auto() {
+		return "", nil
+	}
+	if _, ok, err := a.newReleaser().containingRelease(ctx, sha); err != nil || ok {
+		return "", err
+	}
+	tags, err := a.gl.ListTags(ctx, project, gitlab.ListTagsOptions{Limit: 20})
+	if err != nil {
+		return "", fmt.Errorf("listing the tags of %s: %w", project, err)
+	}
+	var newest release
+	found := false
+	for _, t := range tags {
+		if v, ok := parseRelease(t.Name); ok && (!found || compareReleases(v, newest) > 0) {
+			newest, found = v, true
+		}
+	}
+	if !found {
+		return "", nil
+	}
+	tag := releaseName(newest)
+	c, err := a.gl.CompareCommits(ctx, project, tag, sha)
+	switch {
+	case gitlab.IsNotFound(err):
+		a.log.Info("final release: cannot compare with the newest tag", "tag", tag, "sha", sha)
+		return "", nil
+	case err != nil:
+		return "", fmt.Errorf("comparing %s with %s: %w", tag, short(sha), err)
+	case len(c.Diffs) == 0:
+		return "no change since " + tag, nil
+	case docsOnly(c.Diffs):
+		return "nothing release-relevant since " + tag, nil
+	}
+	return "", nil
+}
+
+// retryFinalRelease starts the Failed final release over (`resume` during
+// a release pause).
+func (a *autopilot) retryFinalRelease(by string) {
+	rec := a.finalRecord()
+	if rec == nil || rec.State != aiv1.ReleaseFailed {
+		return
+	}
+	a.log.Info("final release retried", "release", rec.ID, "by", by)
+	rec.State, rec.Attempts, rec.Reason, rec.EndedAt = aiv1.ReleaseWaiting, 0, "", nil
+}
+
+// dropFinalRelease ends a Failed final release without one (`endMilestone`,
+// the way out of a release pause). One that has not ended is left to run.
+func (a *autopilot) dropFinalRelease(by string) {
+	rec := a.finalRecord()
+	if rec == nil || rec.State != aiv1.ReleaseFailed {
+		return
+	}
+	now := metav1.NewTime(a.r.now())
+	rec.State, rec.Reason, rec.EndedAt = aiv1.ReleaseDropped, "ended without a release by "+by, &now
+	a.log.Info("final release dropped", "release", rec.ID, "by", by)
+}
+
+// releasedByHand lifts a release pause once a tag contains the final
+// release's commit: the record is AlreadyReleased and done goes on.
+func (a *autopilot) releasedByHand(ctx context.Context) error {
+	rec := a.finalRecord()
+	if a.ap.Phase != aiv1.AutopilotPaused || a.ap.PauseKind != aiv1.PauseRelease || rec == nil {
+		return nil
+	}
+	v, ok, err := a.newReleaser().containingRelease(ctx, rec.SHA)
+	if err != nil || !ok {
+		return err
+	}
+	proj, err := a.glProject(ctx)
+	if err != nil {
+		return err
+	}
+	why := fmt.Sprintf("the tag %s contains the milestone's last merge %s", v, short(rec.SHA))
+	if err := a.resumed(ctx, byOperator, why); err != nil {
+		return err
+	}
+	now := metav1.NewTime(a.r.now())
+	rec.State, rec.Reason, rec.EndedAt = aiv1.ReleaseAlreadyReleased, fmt.Sprintf("the tag %s already contains %s", v, short(rec.SHA)), &now
+	rec.Version, rec.ReleaseURL = v, releaseURL(proj, v)
+	return nil
+}
+
 // nextReleaseID is the largest ID of recs plus one.
 func nextReleaseID(recs []aiv1.ReleaseRecord) int64 {
 	var id int64
@@ -321,14 +508,18 @@ func (x *releaser) containingRelease(ctx context.Context, sha string) (string, b
 // greenHead is the SHA of the newest pipeline on base, or why it cannot be
 // released: that pipeline is not green, or its SHA does not contain sha.
 // The release pipelines of recs are skipped: they run on base too, and a
-// failed one must not keep its own retry waiting for a green main.
+// failed one must not keep its own retry waiting for a green main. A record
+// keeps only its last pipeline, so a pipeline that did not succeed on a
+// head a release ran on (an earlier attempt) is skipped as well.
 func (x *releaser) greenHead(ctx context.Context, recs []aiv1.ReleaseRecord, project, base, sha string) (head, why string, err error) {
 	ps, err := x.gl.ListPipelines(ctx, project, gitlab.ListPipelinesOptions{Ref: base, Limit: releaseHeadPipelines})
 	if err != nil {
 		return "", "", fmt.Errorf("listing the pipelines of %s: %w", base, err)
 	}
 	ps = slices.DeleteFunc(ps, func(p gitlab.Pipeline) bool {
-		return slices.ContainsFunc(recs, func(o aiv1.ReleaseRecord) bool { return o.PipelineID == p.ID })
+		return slices.ContainsFunc(recs, func(o aiv1.ReleaseRecord) bool {
+			return o.PipelineID == p.ID || p.Status != "success" && o.ReleasedSHA != "" && o.ReleasedSHA == p.SHA
+		})
 	})
 	if len(ps) == 0 {
 		return "", fmt.Sprintf("%s has no pipeline yet", base), nil

@@ -69,10 +69,10 @@ restart; comments from before the operator watched are not answered.
 
 An `/agent` or `/pilot` comment the operator does not act on gets one
 reply in its thread naming the reason: no `agent::` label (above), the
-commenter is not an owner (`commandsFrom: owners`, `/pilot`, `merge`, `start`), or a
+commenter is not an owner (`commandsFrom: owners`, `/pilot`, `merge`, `start`, `endMilestone`), or a
 command the tracking issue does not take (the reply lists `start` while the
 milestone waits for its turn, `pause`, `resume`,
-`skip #N`, `merge #N` and `revisit <id> …`). Each comment is answered once,
+`skip #N`, `merge #N`, `endMilestone` and `revisit <id> …`). Each comment is answered once,
 also when a poll is repeated. To bound the bot's comments, one author gets
 at most 10 such replies a day (`status.commandReplies.authors` of the
 AgentProject); the operator logs the comments beyond that instead of
@@ -149,6 +149,7 @@ implementer of every following run reads them:
 | `/agent mergeBase #12` | The active issue only, like `rebase`: the agent merges the default branch into the MR and resolves conflicts (see [Merge conflicts](usage.md#merge-conflicts)); its push is reviewed and checked by CI like any other, and a pause about the issue whose way out it is ends. Once per head, and not with `workflow.resolveConflicts: false`. |
 | `/agent merge #12 <sha>` | Owners only (also with `commandsFrom: all`): merge the active issue's head `sha` (at least 7 characters; without it the answer names the current head) without a full review. Skips failed or missing reviews and blocking findings; CI, the MR state and approvals still apply. Said on the tracking issue; a new push or a review that finishes later voids it. |
 | `/agent revisit D42-3 …` | Change a decision of a merged issue: a follow-up issue joins the queue. |
+| `/agent endMilestone` | Owners only (also with `commandsFrom: all`): the milestone ends here. The pending issues are skipped and autopilot is done after the active one, said on the tracking issue. During a pause for the final release (`pauseKind: release`) that release is dropped ("ended without a release by @you") and autopilot is done; see [the final release](usage.md#the-final-release). |
 | anything else | Answered once with this list, a pointer to `/pilot …` and the active issue. Instructions for the agent go on the active issue or its MR, not here. |
 | `create 1 2`, `create 1, 3`, `create all` | As a reply in the thread of the [retrospective](usage.md#the-retrospective), once autopilot is done (the whole comment, no prefix): opens those follow-ups as plain issues (generated label, no milestone, not handed to the agent), each once, and answers in the thread with the links. Only from the owners pinned when the retrospective was posted; anything else is ignored silently. |
 | `create none` | The same place and owners: dismisses the remaining follow-ups, so they no longer hold the milestone open and it closes on the next poll without waiting 7 days (once its issues are closed). Answered once in the thread; follow-ups opened or taken over before stay as they are, and `create 2` afterwards still opens one. |

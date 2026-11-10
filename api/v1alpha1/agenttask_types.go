@@ -2012,6 +2012,11 @@ type AutopilotItem struct {
 	// +optional
 	MergedSHA string `json:"mergedSHA,omitempty"`
 
+	// MergedAt is when autopilot recorded the merge; the newest one is the
+	// milestone's last merge, which the final release must contain.
+	// +optional
+	MergedAt *metav1.Time `json:"mergedAt,omitempty"`
+
 	// RebasedFrom is the head the operator asked GitLab to rebase; set
 	// while the rebase is in progress.
 	// +optional

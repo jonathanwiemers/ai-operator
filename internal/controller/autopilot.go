@@ -161,6 +161,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.unstick(ctx); err != nil {
 		return err
 	}
+	if err := a.releasedByHand(ctx); err != nil {
+		return err
+	}
 	if err := a.freezeOnMainRed(ctx); err != nil {
 		return err
 	}
@@ -585,12 +588,17 @@ func (a *autopilot) unstick(ctx context.Context) error {
 // done marks the milestone done, closes its tracking issue and says so.
 // With an empty queue it does nothing: a milestone whose plan is empty or
 // was dropped by a re-plan merged nothing and is not done (Bloop %20).
-// While companions of the milestone have not landed it keeps running and
-// says once per change which ones it waits for (CloseWaitsForCompanions).
+// It keeps running until a release contains the milestone's last merge
+// (finalRelease), and after that while companions of the milestone have not
+// landed; it says once per change which ones it waits for
+// (CloseWaitsForCompanions).
 func (a *autopilot) done(ctx context.Context) error {
 	if len(a.ap.Items) == 0 {
 		a.log.Info("autopilot is not done: its queue is empty")
 		return nil
+	}
+	if ok, err := a.finalRelease(ctx); err != nil || !ok {
+		return err
 	}
 	open, err := a.landingCompanions(ctx)
 	if err != nil {
@@ -667,9 +675,12 @@ func (a *autopilot) endMilestone(ctx context.Context, by string) error {
 	if prev.Phase == aiv1.AutopilotPaused {
 		a.ap.ResumedBy, a.ap.ResumedVia = resolverOf(by), aiv1.ResumedViaCommand // the pause ends with the milestone
 	}
+	releases := slices.Clone(a.ap.Releases)
+	a.dropFinalRelease(by) // a failed final release: ends without one
 	if err := a.done(ctx); err != nil {
 		a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = prev.PausedReason, prev.PauseKind, prev.PausedFor, prev.ResumeWhenReady
 		a.ap.ResumedBy, a.ap.ResumedVia = prev.ResumedBy, prev.ResumedVia
+		a.ap.Releases = releases
 		return err
 	}
 	return nil
@@ -1557,6 +1568,7 @@ func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 		orig.Decisions = collectDecisions(ois, onotes, a.project.Status.BotUserID)
 	}
 	it.State = aiv1.AutopilotItemMerged
+	it.MergedAt = &metav1.Time{Time: a.r.now()}
 	it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
 	it.Decisions = collectDecisions(is, notes, a.project.Status.BotUserID)
 	if mr != nil {
@@ -1795,19 +1807,24 @@ func (a *autopilot) commands(ctx context.Context) error {
 			word = ""
 		}
 		arg := fields[1]
-		if word == "merge" || word == "start" {
+		if word == "merge" || word == "start" || word == "endmilestone" {
 			// Owners only, also where anyone may give commands.
 			if ok, err := a.gate.byOwner(ctx, n, a.st.Spec.Owners); err != nil {
 				return err
 			} else if !ok {
-				reply := notOwnerMerge
-				if word == "start" {
-					reply = notOwnerStart
-				}
+				reply := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "endmilestone": notOwnerEnd}[word]
 				a.r.rejectNote(ctx, a.gl, a.project, a.spec, tn, "🤖 "+reply)
 				a.ap.LastCommandNoteID = n.ID
 				continue
 			}
+		}
+		if word == "endmilestone" {
+			// Says itself what it did, on the tracking issue.
+			if err := a.endMilestone(ctx, "@"+n.Author.Username); err != nil {
+				return err
+			}
+			a.ap.LastCommandNoteID = n.ID
+			continue
 		}
 		if word == "merge" {
 			arg += " " + fields[2]
@@ -1934,6 +1951,9 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 			if a.landingPause() {
 				a.retryLandings(by) // one more rebase for each
 			}
+			if a.ap.PauseKind == aiv1.PauseRelease {
+				a.retryFinalRelease(by)
+			}
 			if err := a.unblockActive(ctx); err != nil {
 				return "", false, err
 			}
@@ -2053,7 +2073,7 @@ func (a *autopilot) unknownCommand() string {
 	if a.waitingForTurn() {
 		start = fmt.Sprintf("`%s start`, ", prefix)
 	}
-	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N` and `%[1]s revisit <id> …`. "+
+	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
 		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix, start)
 }
 
@@ -2195,7 +2215,9 @@ func (a *autopilot) renderTracking() string {
 	case aiv1.AutopilotOff:
 		b.WriteString("⏹️ off (the marker was removed from the milestone).\n")
 	default:
-		switch {
+		switch rec := a.finalRecord(); {
+		case len(a.st.Status.Plan) > 0 && rec != nil && !rec.State.Ended() && a.queueThrough():
+			fmt.Fprintf(&b, "▶️ running, every issue is through; done once a release contains the last merge %s.\n", short(rec.SHA))
 		case len(a.st.Status.Plan) > 0 && len(a.ap.CloseWaitsForCompanions) > 0:
 			fmt.Fprintf(&b, "▶️ running, every issue is through; done once the companions %s have landed (merged or closed).\n",
 				strings.Join(a.ap.CloseWaitsForCompanions, ", "))
