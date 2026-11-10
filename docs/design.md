@@ -2606,8 +2606,8 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 | Path | What |
 |------|------|
 | `api/v1alpha1` | CRD types, defaults, profile routing (`ImplementRole`) |
-| `internal/controller/agentproject_controller.go` | GitLab poll → AgentTasks, run requests, label acknowledgement, cleanup |
-| `internal/controller/project_sync.go` | the poll's state (`projectPoll`: tasks, milestones → spec tasks, lane, labelled issues) and the per-issue phases (`issuePhases`: implement, questions, run block, blocked, CI) |
+| `internal/controller/agentproject_controller.go` | GitLab poll → AgentTasks: the sync runs the phases of `project_sync.go` in order, run requests, label acknowledgement |
+| `internal/controller/project_sync.go` | the poll's state (`projectPoll`: tasks, milestones → spec tasks, lane, labelled issues) and its phases, in order: `issuePhases` (per issue: implement, questions, run block, blocked, CI), `mainHealthPhase`, `autopilotPhase` (revisits, follow-ups, companions, then each autopilot milestone), `pilotPhase` (open prompts, pilots, prompt mirroring, command replies) and `cleanupPhase` (switch off unplanned autopilots, delete tasks not kept, task count, usage, usage limits). Each phase collects its errors in the poll, returned together at the end; a failed task delete returns at once |
 | `internal/controller/agenttask_controller.go` | pod / PVC lifecycle, queueing, limits |
 | `internal/controller/chat.go` | Desk live chat: LISTEN/poll dispatch of `chat_messages` into `spec.source.chatMessages`, replies and command answers back into the table |
 | `internal/chatcmd` | Desk chat command JSON (`retry` / `review` / `use` / `effort` / `budget` / …) |

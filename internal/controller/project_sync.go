@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -315,4 +316,141 @@ func (ph issuePhases) ci(ctx context.Context, is gitlab.Issue, task *aiv1.AgentT
 	}
 	// With the milestone's switches (standing rules).
 	return ph.r.syncCI(ctx, ph.gl, rules.For(ph.spec, ph.issueDescription(is), ph.prefix), ph.project.Status.MainHealth, is, task, mr)
+}
+
+// mainHealthPhase follows the default branch's health, with the lane that
+// drives the main-red issue.
+type mainHealthPhase struct {
+	*projectPoll
+}
+
+func (ph mainHealthPhase) run(ctx context.Context) {
+	r, gl, project, spec, lane := ph.r, ph.gl, ph.project, ph.spec, ph.lane
+	if err := r.syncMainHealth(ctx, gl, project, spec, lane); err != nil {
+		ph.errs = append(ph.errs, fmt.Errorf("main health: %w", err))
+	}
+}
+
+// autopilotPhase runs the revisits of decisions whose issues are merged,
+// the follow-ups and companions, then the autopilot milestones: queue,
+// merge gate, tracking issue.
+type autopilotPhase struct {
+	*projectPoll
+}
+
+func (ph autopilotPhase) run(ctx context.Context) {
+	r, gl, gate, project, spec := ph.r, ph.gl, ph.gate, ph.project, ph.spec
+	tasks, keep, byMilestone, pilots, descriptions, ahead := ph.tasks, ph.keep, ph.byMilestone, ph.pilots, ph.descriptions, ph.ahead
+	autopilots, specTasks, lane, implTasks, homeMRs := ph.autopilots, ph.specTasks, ph.lane, ph.implTasks, ph.homeMRs
+	for _, st := range specTasks {
+		if err := r.syncRevisits(ctx, gl, gate, project, spec, st); err != nil {
+			ph.errs = append(ph.errs, fmt.Errorf("revisits of milestone %q: %w", st.Spec.Milestone.Title, err))
+		}
+	}
+	// Follow-ups taken over by a milestone's followup-of line, before
+	// their milestone's autopilot decides whether it can close.
+	if err := r.syncFollowUpOf(ctx, gl, project, spec, specTasks, pilots, descriptions); err != nil {
+		ph.errs = append(ph.errs, err)
+	}
+	// Companions whose home merge request was merged (also of tasks deleted
+	// below), before the autopilots pause or go on over them.
+	if err := r.syncCompanions(ctx, gl, project, spec, tasks.Items, homeMRs, autopilots, byMilestone, keep); err != nil {
+		ph.errs = append(ph.errs, fmt.Errorf("companions: %w", err))
+	}
+	for _, st := range autopilots {
+		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, pilots[st.Spec.Milestone.IID], st == lane, ahead[st.Spec.Milestone.IID]); err != nil {
+			ph.errs = append(ph.errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
+		}
+	}
+}
+
+// pilotPhase closes the prompts whose source resolved, runs the pilots,
+// mirrors the prompts to GitLab and replies to the commands the operator
+// does not act on.
+type pilotPhase struct {
+	*projectPoll
+}
+
+func (ph pilotPhase) run(ctx context.Context) {
+	r, gl, project, spec, started := ph.r, ph.gl, ph.project, ph.spec, ph.started
+	keep, byMilestone, pilots, autopilots, specTasks, lane := ph.keep, ph.byMilestone, ph.pilots, ph.autopilots, ph.specTasks, ph.lane
+	issues, implTasks := ph.issues, ph.implTasks
+	// Prompts whose source resolved close, on the state the steps above
+	// left, before the pilots see them.
+	if err := r.syncOpenPrompts(ctx, gl, project, spec, specTasks, byMilestone, issues, implTasks); err != nil {
+		ph.errs = append(ph.errs, err)
+	}
+	if err := r.syncPilots(ctx, gl, project, spec, specTasks, lane, pilots, keep, issues, implTasks); err != nil {
+		ph.errs = append(ph.errs, err)
+	}
+	// The prompts' GitLab comments, once answers have their outcome.
+	for _, st := range specTasks {
+		tracking := trackingIssue(st, pilots[st.Spec.Milestone.IID])
+		if ap := st.Status.Autopilot; tracking == 0 && ap != nil {
+			tracking = ap.TrackingIssueIID
+		}
+		if err := r.mirrorPrompts(ctx, gl, project, spec, st, tracking); err != nil {
+			ph.errs = append(ph.errs, err)
+		}
+	}
+	for _, t := range implTasks {
+		if err := r.mirrorPrompts(ctx, gl, project, spec, t, 0); err != nil {
+			ph.errs = append(ph.errs, err)
+		}
+	}
+
+	// Commands on watched issues the operator does not act on get a reply.
+	r.syncCommandReplies(ctx, gl, project, spec, autopilots, started)
+}
+
+// cleanupPhase deletes the tasks not in keep, switching off the autopilots
+// of unplanned milestones first, and records the project's task count,
+// usage readings and usage limits.
+type cleanupPhase struct {
+	*projectPoll
+}
+
+// run collects its errors in errs, except a failed delete, which it
+// returns at once.
+func (ph cleanupPhase) run(ctx context.Context) error {
+	r, gl, gate, project, spec, tasks, keep := ph.r, ph.gl, ph.gate, ph.project, ph.spec, ph.tasks, ph.keep
+	// Everything else is done, closed, unlabeled or out of scope: delete the
+	// task, which garbage collects its pod and workspace. Tasks of issues
+	// that failed above are in keep too, so only tasks whose issue is gone
+	// are deleted, never one because it or a sibling failed.
+	for i := range tasks.Items {
+		t := &tasks.Items[i]
+		if keep[t.Name] || !t.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if t.Spec.Type == aiv1.TaskTypeSpec && t.Status.Autopilot != nil {
+			// The milestone is no longer planned (closed, or every marker
+			// removed): switch its autopilot off before the state is gone.
+			t.Spec.Autopilot = false
+			if err := r.syncAutopilot(ctx, gl, gate, project, spec, t, nil, nil, false, nil); err != nil {
+				ph.errs = append(ph.errs, fmt.Errorf("switching off the autopilot of task %s: %w", t.Name, err))
+				continue // tried again on the next poll
+			}
+		}
+		log.FromContext(ctx).Info("deleting finished task", "task", t.Name)
+		if err := r.Delete(ctx, t); client.IgnoreNotFound(err) != nil {
+			return err
+		}
+	}
+	project.Status.ActiveTasks = int32(len(keep))
+	project.Status.EngineUsage = engineUsage(project.Status.EngineUsage, tasks.Items)
+	var researches []aiv1.AgentResearch
+	if r.Research {
+		var list aiv1.AgentResearchList
+		if err := r.List(ctx, &list, client.InNamespace(project.Namespace)); err != nil {
+			ph.errs = append(ph.errs, fmt.Errorf("listing the researches: %w", err))
+		} else {
+			researches = list.Items
+			addResearchUsage(&project.Status, project.Name, researches)
+		}
+	}
+	// The runners read the limits from the project status, so a limit one
+	// run hit makes the others wait or fall back instead of hitting it again.
+	project.Status.UsageLimits = aiv1.ProjectUsageLimits(tasks.Items, researches, project.Name, r.now())
+	return nil
 }
