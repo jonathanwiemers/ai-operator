@@ -27,7 +27,13 @@ type crdSchema struct {
 
 func loadCRD(t *testing.T, name string) crdSchema {
 	t.Helper()
-	data, err := os.ReadFile("../../config/crd/bases/ai.wiemers.me_" + name + ".yaml")
+	return loadCRDFile(t, "../../config/crd/bases/ai.wiemers.me_"+name+".yaml")
+}
+
+// loadCRDFile is loadCRD of the CRD at path, e.g. the chart's copy.
+func loadCRDFile(t *testing.T, path string) crdSchema {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,6 +588,46 @@ func TestProjectConflictRoleSchema(t *testing.T) {
 	} {
 		if _, errs := crd.admit(withConflict(tc.conflict)); !strings.Contains(strings.Join(errs, "\n"), tc.want) {
 			t.Errorf("%s: errors %v, want one on %s", name, errs, tc.want)
+		}
+	}
+}
+
+// #274: the operator writes spec.source.retroSpend with Update, and the API
+// server prunes what the schema lacks. The unmetered count and the per-row
+// flag survive in both CRD copies (the chart's is what the cluster runs).
+func TestRetroSpendKeepsUnmetered(t *testing.T) {
+	s := SpendSummary{CostUSD: "0.5000", CostKnown: true, UnmeteredCalls: 1, Tokens: SpendTokens{Input: 10},
+		TopKinds:  []SpendDriver{{Key: "review", Label: "review", Unmetered: true}},
+		TopModels: []SpendDriver{{Key: "claude-opus-5-5", Label: "claude-opus-5-5", CostUSD: "0.5000", Tokens: 10}, {Key: "auto", Label: CursorAutoLabel, Unmetered: true}}}
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"../../config/crd/bases/ai.wiemers.me_agenttasks.yaml", "../../charts/ai-operator/files/crds/ai.wiemers.me_agenttasks.yaml"} {
+		crd := loadCRDFile(t, path)
+		var spend map[string]any
+		if err := json.Unmarshal(b, &spend); err != nil {
+			t.Fatal(err)
+		}
+		obj, errs := crd.admit(map[string]any{"spec": map[string]any{"source": map[string]any{"retroSpend": spend}}})
+		if obj == nil {
+			t.Fatalf("%s prunes %v", path, errs)
+		}
+		for _, e := range errs {
+			if strings.Contains(e, "retroSpend") {
+				t.Errorf("%s rejects the spend: %s", path, e)
+			}
+		}
+		got, err := json.Marshal(spec(obj)["source"].(map[string]any)["retroSpend"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var back SpendSummary
+		if err := json.Unmarshal(got, &back); err != nil {
+			t.Fatal(err)
+		}
+		if back.UnmeteredCalls != 1 || len(back.TopModels) != 2 || !back.TopModels[1].Unmetered || len(back.TopKinds) != 1 || !back.TopKinds[0].Unmetered {
+			t.Errorf("%s: stored %s", path, got)
 		}
 	}
 }

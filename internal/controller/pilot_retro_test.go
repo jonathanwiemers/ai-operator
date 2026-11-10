@@ -9,11 +9,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
+	"github.com/jonathanwiemers/ai-operator/internal/research/storetest"
 )
 
 // finishAutopilot skips both issues of the pilot env's queue: autopilot is
@@ -338,6 +340,56 @@ func TestRetrospectiveRequestCarriesTheSpend(t *testing.T) {
 	}
 	if got := pilot.Spec.Source.RetroSpend; !reflect.DeepEqual(got, want) {
 		t.Fatalf("the request carries the milestone's spend with its top 3 drivers:\n got %+v\nwant %+v", got, want)
+	}
+}
+
+// #274: the chain from the history database to the retrospective request.
+// A milestone with one claude call (cost and tokens) and one cursor auto
+// call that reported nothing, as a review cursor ran without usage (or that
+// failed on its usage limit without a result) leaves it. The real store's
+// spend becomes RetroSpend with the count and the auto row not metered.
+func TestRetroSpendOfACursorAutoCall(t *testing.T) {
+	s := storetest.New(t)
+	e := newPilotEnv(t)
+	pilot := e.pilot()
+	ctx := t.Context()
+	at, exp := time.Now().Add(-time.Hour).Truncate(time.Second), time.Now().Add(24*time.Hour)
+	cost := 0.5
+	opus := "claude-opus-5-5"
+	claude := store.Call{Key: "c1", At: at, Namespace: pilot.Namespace, Project: pilot.Spec.ProjectRef, MilestoneIID: pilot.Spec.Milestone.IID,
+		IssueIID: 1, Task: "shop-1", Run: 1, Seq: 1, Kind: "implement", Role: "implement", Engine: "claude", Model: opus,
+		InputTokens: 10, OutputTokens: 20, CacheReadTokens: 300, CostUSD: &cost, CostSource: "reported", ExpiresAt: exp,
+		Models: []store.CallModel{{Model: opus, InputTokens: 10, OutputTokens: 20, CacheReadTokens: 300, CostUSD: &cost}}}
+	cursor := store.Call{Key: "c2", At: at.Add(time.Minute), Namespace: pilot.Namespace, Project: pilot.Spec.ProjectRef, MilestoneIID: pilot.Spec.Milestone.IID,
+		IssueIID: 1, Task: "shop-1", Run: 1, Seq: 2, Kind: "review", Role: "bugbot", Engine: "cursor", Model: "auto",
+		CostSource: "unknown", ExpiresAt: exp}
+	if _, err := s.InsertCalls(ctx, []store.Call{claude, cursor}); err != nil {
+		t.Fatal(err)
+	}
+	e.r.Spend = s
+	finishAutopilot(e)
+	e.reconcile()
+	e.reconcile()
+	got := e.pilot().Spec.Source.RetroSpend
+	if got == nil {
+		t.Fatal("the retrospective request carries no spend")
+	}
+	if got.UnmeteredCalls != 1 || !got.CostKnown || got.CostUSD != "0.5000" {
+		t.Errorf("spend = %+v, want 1 unmetered call next to a known $0.50", got)
+	}
+	var auto *aiv1.SpendDriver
+	for i, d := range got.TopModels {
+		if d.Key == "auto" {
+			auto = &got.TopModels[i]
+		} else if d.Unmetered {
+			t.Errorf("%s is metered: %+v", d.Key, d)
+		}
+	}
+	if auto == nil || !auto.Unmetered || auto.Label != "cursor auto (unmetered)" || auto.CostUSD != "" || auto.Tokens != 0 {
+		t.Errorf("auto model = %+v, want unmetered, labelled, without cost or tokens (models %+v)", auto, got.TopModels)
+	}
+	if want := (aiv1.SpendDriver{Key: "review", Label: "review", Unmetered: true}); !slices.Contains(got.TopKinds, want) {
+		t.Errorf("kinds %+v, want %+v", got.TopKinds, want)
 	}
 }
 

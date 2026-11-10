@@ -1517,7 +1517,7 @@ numbers: one row per agent call in `agent_calls`.
 `hack/spend-report.sql` answers "where did this issue's cost come from" and
 "what do conflict rounds cost" from `agent_calls` alone, with psql on the
 research database (it only reads). Variables: `project` (required),
-`milestone` and `issue` (0 or unset: all). It prints three tables:
+`milestone` and `issue` (0 or unset: all). It prints four tables:
 
 1. per issue: kinds, models, runs, review rounds (as in the Spend tab's
    *Review rounds*), calls, input, output, cache read and cache write
@@ -1526,12 +1526,18 @@ research database (it only reads). Variables: `project` (required),
    (above 1: the run resolved conflicts repeatedly) and the output and
    cache tokens, to see conflict rounds on Opus with large outputs;
 3. the calls of one issue (`issue` ≠ 0): task, run, seq, kind, role, model,
-   resumed, tokens, cost and duration.
+   resumed, tokens, cost and duration;
+4. every cursor call and every call on model `auto`, oldest first: time,
+   kind, role, issue, task, run, seq, engine, model, `fallback_from`, cost
+   source, tokens, cost, duration and the engine and `fallback_from` of the
+   next call of its run. A cursor call that hit its usage limit is a row
+   without cost or tokens; when the role has a fallback, the next call is
+   the fallback's (`next_fallback_from` = `cursor`).
 
 ```sh
 # Why did #179 cost $53.88: every call of the issue, in order.
 psql "$DATABASE_URL" -v project=ai-operator -v issue=179 -f hack/spend-report.sql
-# The milestone's issues and its conflict spend by model.
+# The milestone's issues, its conflict spend by model and its cursor/auto calls.
 psql "$DATABASE_URL" -v project=ai-operator -v milestone=12 -f hack/spend-report.sql
 ```
 
@@ -2308,7 +2314,11 @@ remaining ones; only the owners pinned when it was posted count.
 
 The model writes it from the operator's facts, about 60 000 bytes of JSON at
 most: the cost (from the history database's agent calls whenever it is
-connected, otherwise the live tasks' sum), the start, end and duration, the
+connected, otherwise the live tasks' sum; from the agent calls, `spend` also
+has the tokens and the cost drivers, and `unmeteredCalls`: the number of
+calls with neither cost nor tokens, always present, 0 included. They do not
+change `costKnown`, and a driver made only of them has `unmetered: true`),
+the start, end and duration, the
 autopilot's comments on the tracking issue with their times (every pause,
 resume, skip and end comment, plus the newest other ones, 60 comments in
 all unless more are pauses, resumes, skips and ends), then every issue of

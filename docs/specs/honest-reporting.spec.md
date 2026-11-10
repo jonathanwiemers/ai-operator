@@ -461,3 +461,80 @@ comments nothing. `endMilestone` with no items answers "Nothing to end: …
 close the milestone in GitLab or remove `/agent autopilot`" and changes
 nothing. A pause stays a pause. R11 (`emptyPlan`) is what makes step 3
 visible to the owners.
+
+### Follow-up: unmetered in the retrospective facts
+
+The follow-up milestone found this milestone's retrospective facts with an
+`auto` row in `spend.topModels` that had no `costUSD` and no `tokens`, next
+to `costKnown: true` and without any unmetered count. Checked against main
+on 2026-11-10 (#274).
+
+**The chain carries the count.** Tests now cover each hand-over with the
+same milestone, one claude call with cost and tokens and one cursor call on
+`auto` that reported nothing:
+
+- `TestRetroSpendOfACursorAutoCall` (`internal/controller`, real store,
+  runs where the store tests run): `store.Spend` → `retroSpend` →
+  `spec.source.retroSpend` gives `unmeteredCalls: 1`, `costKnown: true`,
+  and an `auto` row with `unmetered: true`, label `cursor auto (unmetered)`,
+  no cost and no tokens (the `review` kind row is unmetered too).
+- `TestRetroSpendKeepsUnmetered` (`api/v1alpha1`): both CRD copies, the
+  chart's included, keep `unmeteredCalls` and `unmetered` when the API server
+  prunes `spec.source.retroSpend`.
+- `TestRetroFactsCarryTheUnmeteredCount` (`internal/runner`): the facts have
+  `"unmeteredCalls": 1` and the flagged `auto` row.
+
+No step drops the count. The one gap was the facts' shape: the CRD type
+omits a 0, so facts without the key could mean "none unmetered" or "built
+without the count". The facts now write `spend.unmeteredCalls` always, 0
+included (`retroSpendFacts` in `pilot_retro.go`). The CRD type is unchanged.
+
+**Why those facts lacked it.** Since 7e05c80 (R8 2/2), the shape seen is not
+possible. A model row with no cost and no tokens means every one of its calls
+had a NULL cost and 0 tokens, which is exactly an unmetered call, so
+`spendDriver` sets `unmetered` and the totals have `unmeteredCalls ≥ 1`. The
+`RetroSpend` those facts came from was therefore built by an operator older
+than 7e05c80, or written to an older CRD that pruned both fields. Either way
+the deployed release was older than R8 (2/2). The timing fits.
+`retrospective()` builds `RetroSpend` once, when it asks for the
+retrospective (`request == 0`), and no later run rebuilds it. That is right
+after the last merge. This milestone's last merge was R16 (9388cb9,
+2026-11-07 00:59 UTC), docs only and so not released, 17 minutes after
+7e05c80 was merged at 00:42. Its release then still had to pass the pipeline
+and reach the cluster. **Not verified:** this clone has no release tags, and
+the operator logs were not reachable. To confirm, compare the operator log
+line "asking the pilot for the retrospective" for this milestone, and the
+version the operator logged at its start before it, with the first release
+that contains 7e05c80.
+
+**The `auto` call.** Not found: neither the research database nor the cluster
+can be reached from the implementer's container, so no row is claimed here.
+The fourth report of `hack/spend-report.sql` lists them:
+
+```sh
+psql "$DATABASE_URL" -v project=ai-operator -v milestone=<this milestone's iid> -f hack/spend-report.sql
+```
+
+Each row shows time, kind, role, issue, task, run, seq, engine, model,
+`fallback_from`, cost source, tokens and the engine of the run's next call.
+The code paths that write a cursor/`auto` row in an autopilot milestone:
+
+- **A cursor call that hits its usage limit.** `invokeOn`
+  (`internal/runner/runner.go`) records every call that reached the agent,
+  also when it failed without a result (`res == nil`: `agentCall` returns
+  the bare row with the role's configured model, cost source `unknown`, 0
+  tokens). So a role on cursor with `model: auto`, typically a reviewer such
+  as bugbot, writes one unmetered row per attempt while cursor is out of
+  quota. (A cursor role without a model writes model `""`, which is no model
+  row.) Only a limit the project already knows (`activeLimit`) skips the
+  call, and then there is no row. In both cases a reviewer's failure is
+  `reviewErrors` `usageLimit` (`reviewErrorOf`) on that run. With a
+  fallback, the run's next call has `fallback_from = cursor`. This is the
+  likely shape of an `auto` call while cursor is out of quota (until
+  2026-11-13).
+- **A cursor call that ran.** Before 135e0c1 (2026-11-10, ACP
+  `usage_update`) cursor reported neither tokens nor cost, so every
+  successful cursor call was unmetered too.
+- **A fallback onto cursor.** `fallBack` (`internal/runner/usage.go`) runs a
+  limited role on its fallback. A fallback of `cursor`/`auto` writes the row
+  with `fallback_from` set to the limited engine.

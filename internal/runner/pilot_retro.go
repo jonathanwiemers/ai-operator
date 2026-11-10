@@ -287,18 +287,27 @@ type retroFactsDoc struct {
 	Milestone string `json:"milestone"`
 	Spec      string `json:"spec"`
 	// Trimmed names what was shortened or left out to fit maxRetroFacts.
-	Trimmed  []string           `json:"trimmed,omitempty"`
-	CostUSD  string             `json:"costUSD"`
-	CostFrom string             `json:"costFrom"`
-	Spend    *aiv1.SpendSummary `json:"spend,omitempty"`
-	Started  time.Time          `json:"started"`
-	Done     time.Time          `json:"done"`
-	Duration string             `json:"duration"`
+	Trimmed  []string         `json:"trimmed,omitempty"`
+	CostUSD  string           `json:"costUSD"`
+	CostFrom string           `json:"costFrom"`
+	Spend    *retroSpendFacts `json:"spend,omitempty"`
+	Started  time.Time        `json:"started"`
+	Done     time.Time        `json:"done"`
+	Duration string           `json:"duration"`
 	// Autopilot are the operator's comments on the tracking issue, each
 	// "<RFC3339 time> <body>".
 	Autopilot  []string         `json:"autopilotComments,omitempty"`
 	Queue      []retroIssue     `json:"queue"`
 	Companions []retroCompanion `json:"companions,omitempty"`
+}
+
+// retroSpendFacts is the milestone's spend from the history database in the
+// facts. UnmeteredCalls shadows the summary's and is written even when 0:
+// the CRD type leaves a 0 out, and then the facts could not tell "no call
+// unmetered" from a summary without the count.
+type retroSpendFacts struct {
+	*aiv1.SpendSummary
+	UnmeteredCalls int64 `json:"unmeteredCalls"`
 }
 
 // retroComment is a comment of the operator on the tracking issue;
@@ -433,7 +442,7 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 	v.CostUSD, v.CostFrom = aiv1.ShowCost(cost), "live tasks"
 	spent := "$" + v.CostUSD + " over the milestone's runs (from live tasks)"
 	if s := task.Spec.Source.RetroSpend; s != nil {
-		v.Spend, v.CostFrom = s, "agent calls"
+		v.Spend, v.CostFrom = &retroSpendFacts{SpendSummary: s, UnmeteredCalls: s.UnmeteredCalls}, "agent calls"
 		v.CostUSD = strings.TrimPrefix(spendUSD(s.CostUSD, s.CostKnown), "$")
 		spent = fmt.Sprintf("%s and %s tokens over the milestone's agent calls", spendUSD(s.CostUSD, s.CostKnown), showTokens(s.Tokens.Total()))
 	}

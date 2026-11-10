@@ -11,7 +11,9 @@
 -- calls' own models: a subagent's tokens are in its call's tokens, the Spend
 -- tab's "By kind and model" splits them. Rounds are the review rounds of
 -- "Review rounds" in the Spend tab: within a run, round n is the review
--- calls after its (n-1)th fix call by seq.
+-- calls after its (n-1)th fix call by seq. The fourth report lists the
+-- cursor and auto calls one by one ("which call ran on auto"), each with
+-- the engine of the call after it in its run.
 
 \if :{?milestone}
 \else
@@ -77,3 +79,23 @@ FROM agent_calls
 WHERE project = :'project' AND expires_at > now() AND issue_iid = :'issue'::bigint
 	AND (:'milestone'::bigint = 0 OR milestone_iid = :'milestone'::bigint)
 ORDER BY task, run, seq, id;
+
+\echo
+\echo '== Cursor and auto calls (engine cursor or model auto), with the next call of each run'
+
+-- A cursor call that hit its usage limit without a result is still a row,
+-- with neither cost nor tokens (unmetered); when the role has a fallback,
+-- the next call of the run is the fallback's (next_fallback_from = cursor).
+SELECT at, kind, role, coalesce(issue_iid::text, '(milestone)') AS issue, task, run, seq, engine, model,
+	fallback_from, cost_source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+	cost_usd, round(duration_ms / 1000.0, 1) AS duration_s, next_engine, next_fallback_from
+FROM (
+	SELECT *, lead(engine) OVER w AS next_engine, lead(fallback_from) OVER w AS next_fallback_from
+	FROM agent_calls
+	WHERE project = :'project' AND expires_at > now()
+		AND (:'milestone'::bigint = 0 OR milestone_iid = :'milestone'::bigint)
+		AND (:'issue'::bigint = 0 OR issue_iid = :'issue'::bigint)
+	WINDOW w AS (PARTITION BY namespace, task, run ORDER BY seq, id)
+) c
+WHERE engine = 'cursor' OR model = 'auto'
+ORDER BY at, id;

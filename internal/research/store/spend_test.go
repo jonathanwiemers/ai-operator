@@ -983,8 +983,8 @@ func TestSpendKindModel(t *testing.T) {
 			stmts++
 		}
 	}
-	if stmts != 3 {
-		t.Errorf("spend-report.sql has %d statements, want 3", stmts)
+	if stmts != 4 {
+		t.Errorf("spend-report.sql has %d statements, want 4", stmts)
 	}
 }
 

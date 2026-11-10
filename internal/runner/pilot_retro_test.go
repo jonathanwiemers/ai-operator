@@ -187,7 +187,7 @@ func TestRetrospectiveReportsTheSpendFromTheDatabase(t *testing.T) {
 		t.Fatalf("expected one retrospective call, got %d", len(e.engine.calls))
 	}
 	prompt := e.engine.calls[0].Prompt
-	for _, want := range []string{`"costUSD": "42.12"`, `"costFrom": "agent calls"`, `"subagentCalls": 3`, `"topIssues": [`, `"label": "claude-opus"`} {
+	for _, want := range []string{`"costUSD": "42.12"`, `"costFrom": "agent calls"`, `"subagentCalls": 3`, `"unmeteredCalls": 2`, `"unmetered": true`, `"topIssues": [`, `"label": "claude-opus"`} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("the facts miss %s", want)
 		}
@@ -203,6 +203,77 @@ func TestRetrospectiveReportsTheSpendFromTheDatabase(t *testing.T) {
 		if !strings.Contains(c, want) {
 			t.Errorf("the retrospective misses %q:\n%s", want, c)
 		}
+	}
+}
+
+// #274: a milestone with one cursor auto call. The facts carry the count
+// next to costKnown and the auto row flagged, without cost or tokens. With
+// no call unmetered, the count is still there as 0: a summary without the
+// field (omitempty in the CRD type) would read the same as one built before
+// the count existed.
+func TestRetroFactsCarryTheUnmeteredCount(t *testing.T) {
+	for _, unmetered := range []int64{1, 0} {
+		t.Run(fmt.Sprint(unmetered), func(t *testing.T) {
+			e := newRetroEnv(t, "")
+			task := e.task(t)
+			// As spendSummary builds it from the store
+			// (TestRetroSpendOfACursorAutoCall in internal/controller).
+			s := &aiv1.SpendSummary{CostUSD: "0.5000", CostKnown: true, UnmeteredCalls: unmetered,
+				Tokens:    aiv1.SpendTokens{Input: 10, Output: 20, CacheRead: 300},
+				TopModels: []aiv1.SpendDriver{{Key: "claude-opus-5-5", Label: "claude-opus-5-5", CostUSD: "0.5000", Tokens: 330}}}
+			if unmetered > 0 {
+				s.TopModels = append(s.TopModels, aiv1.SpendDriver{Key: "auto", Label: aiv1.CursorAutoLabel, Unmetered: true})
+			}
+			// Through JSON, as the API server stores it.
+			b, err := json.Marshal(s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			task.Spec.Source.RetroSpend = nil
+			if err := json.Unmarshal(b, &task.Spec.Source.RetroSpend); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.k8s.Update(context.Background(), &task); err != nil {
+				t.Fatal(err)
+			}
+			e.step(t)
+			if len(e.engine.calls) != 1 {
+				t.Fatalf("expected one retrospective call, got %d", len(e.engine.calls))
+			}
+			var facts struct {
+				Spend map[string]json.RawMessage `json:"spend"`
+			}
+			if err := json.Unmarshal([]byte(retroFactsOf(t, e.engine.calls[0].Prompt)), &facts); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(facts.Spend["unmeteredCalls"]); got != fmt.Sprint(unmetered) {
+				t.Errorf("spend.unmeteredCalls = %q, want %d", got, unmetered)
+			}
+			if got := string(facts.Spend["costKnown"]); got != "true" {
+				t.Errorf("spend.costKnown = %q, want true", got)
+			}
+			var models []map[string]any
+			if err := json.Unmarshal(facts.Spend["topModels"], &models); err != nil {
+				t.Fatal(err)
+			}
+			var auto map[string]any
+			for _, m := range models {
+				if m["key"] == "auto" {
+					auto = m
+				}
+			}
+			switch {
+			case unmetered == 0 && auto != nil:
+				t.Errorf("an auto row without auto calls: %v", models)
+			case unmetered == 0:
+			case auto == nil:
+				t.Errorf("no auto row in %v", models)
+			case auto["unmetered"] != true || auto["label"] != "cursor auto (unmetered)":
+				t.Errorf("auto row %v, want unmetered, labelled cursor auto (unmetered)", auto)
+			case auto["costUSD"] != nil || auto["tokens"] != nil:
+				t.Errorf("auto row %v has a cost or tokens", auto)
+			}
+		})
 	}
 }
 
@@ -426,7 +497,8 @@ func textPrefix(s string, runes int) string {
 // Shortening the summaries is enough here: the rest stays, and trimmed
 // says so.
 func TestFitRetroFactsShortensSummariesFirst(t *testing.T) {
-	v := retroFactsDoc{Milestone: "M", Spec: "spec", CostUSD: "1.00", CostFrom: "live tasks", Duration: "1h0m0s"}
+	v := retroFactsDoc{Milestone: "M", Spec: "spec", CostUSD: "1.00", CostFrom: "agent calls", Duration: "1h0m0s",
+		Spend: &retroSpendFacts{SpendSummary: &aiv1.SpendSummary{CostUSD: "1.0000", CostKnown: true}}}
 	for i := range 10 {
 		v.Queue = append(v.Queue, retroIssue{IID: int64(i), Title: "t", State: "Merged", Summary: strings.Repeat("x", 500)})
 	}
@@ -459,6 +531,9 @@ func TestFitRetroFactsShortensSummariesFirst(t *testing.T) {
 	b, err = fitRetroFacts(v, comments, 10)
 	if err != nil || !json.Valid(b) {
 		t.Fatalf("%v\n%s", err, b)
+	}
+	if !strings.Contains(string(b), `"spend":{"costUSD":"1.0000","costKnown":true,"tokens":{},"unmeteredCalls":0}`) {
+		t.Errorf("the spend stays whole, its unmetered count 0 included:\n%s", b)
 	}
 	got = retroFactsDoc{}
 	if err := json.Unmarshal(b, &got); err != nil {
