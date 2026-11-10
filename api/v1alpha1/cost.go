@@ -106,3 +106,10 @@ func (it *AutopilotItem) BudgetWarned() bool {
 	}
 	return it.BudgetAlertedUSD == BudgetWarnUSD(b.LimitUSD) && BudgetLeft(b.LimitUSD, b.SpentUSD, 0) > 0
 }
+
+// TokenBasisModels is the AgentCall.TokenBasis of a call whose tokens are the
+// sum of its per-model figures, each this call's or chat turn's own share
+// (R6, R7, #255). 0 is not recorded: calls from before the field or from an
+// older agent image, whose tokens may be the main thread's usage and whose
+// models may hold a resumed session's earlier totals.
+const TokenBasisModels int32 = 1

@@ -317,3 +317,19 @@ func TestResumedCallRecordsItsOwnUsage(t *testing.T) {
 		t.Errorf("resumed: cost %q, model %q; want 0.2500 (not total_cost_usd 1.75) on claude-opus-5-5", c.CostUSD, c.Model)
 	}
 }
+
+// The token basis describes the writer: every call agentCall builds has it,
+// with usage, without usage and without a result.
+func TestAgentCallSetsTokenBasis(t *testing.T) {
+	start := time.Now()
+	inv := Invocation{Kind: aiv1.CallKindImplement}
+	for name, res := range map[string]*Result{
+		"with usage": {CallUsage: &CallUsage{Models: []ModelUsage{{Model: "m", InputTokens: 1}}}},
+		"no usage":   {},
+		"no result":  nil,
+	} {
+		if c := agentCall(aiv1.EngineClaude, inv, res, start, start); c.TokenBasis != aiv1.TokenBasisModels {
+			t.Errorf("%s: TokenBasis %d, want %d", name, c.TokenBasis, aiv1.TokenBasisModels)
+		}
+	}
+}

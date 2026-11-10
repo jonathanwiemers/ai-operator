@@ -575,7 +575,7 @@ const callColumns = `id, key, at, namespace, project, coalesce(milestone_iid, 0)
 	coalesce(mr_iid, 0), task, run, seq, kind, role, engine, model, effort, resumed, fallback_from,
 	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd::float8, cost_source,
 	turns, duration_ms, models, subagent_calls, context_series, subagent_turns, expires_at, read_gate_blocks,
-	checkpoint, checkpoint_sha, lines_added, lines_deleted, step_gate_nudges`
+	checkpoint, checkpoint_sha, lines_added, lines_deleted, step_gate_nudges, token_basis`
 
 func scanCall(row pgx.Row) (Call, error) {
 	var c Call
@@ -583,7 +583,7 @@ func scanCall(row pgx.Row) (Call, error) {
 		&c.MergeRequestIID, &c.Task, &c.Run, &c.Seq, &c.Kind, &c.Role, &c.Engine, &c.Model, &c.Effort, &c.Resumed,
 		&c.FallbackFrom, &c.InputTokens, &c.OutputTokens, &c.CacheReadTokens, &c.CacheWriteTokens, &c.CostUSD,
 		&c.CostSource, &c.Turns, &c.DurationMS, &c.Models, &c.SubagentCalls, &c.ContextSeries, &c.SubagentTurns,
-		&c.ExpiresAt, &c.ReadGateBlocks, &c.Checkpoint, &c.CheckpointSHA, &c.LinesAdded, &c.LinesDeleted, &c.StepGateNudges)
+		&c.ExpiresAt, &c.ReadGateBlocks, &c.Checkpoint, &c.CheckpointSHA, &c.LinesAdded, &c.LinesDeleted, &c.StepGateNudges, &c.TokenBasis)
 	return c, err
 }
 

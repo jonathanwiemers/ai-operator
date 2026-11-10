@@ -1567,6 +1567,12 @@ type AgentCall struct {
 	// +optional
 	StepGateNudges int32 `json:"stepGateNudges,omitempty"`
 
+	// TokenBasis is how the runner computed the call's tokens and model
+	// split, see TokenBasisModels. 0 (omitted) is not recorded: an older
+	// agent image wrote the call.
+	// +optional
+	TokenBasis int32 `json:"tokenBasis,omitempty"`
+
 	// ContextSeries is the context size (input and cache tokens) of each
 	// main-thread assistant turn. Only the newest calls in status keep it.
 	// +optional

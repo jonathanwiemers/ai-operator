@@ -24,6 +24,8 @@ func agentCall(engine aiv1.Engine, inv Invocation, res *Result, start, end time.
 		At: metav1.Time{Time: start}, Kind: inv.Kind, Role: inv.Role, Engine: engine, Model: inv.Model, Effort: inv.Effort,
 		Resumed: inv.Resume != "", FallbackFrom: inv.FallbackFrom, CostSource: aiv1.CostUnknown,
 		DurationMS: end.Sub(start).Milliseconds(),
+		// The basis describes this code, not the data: calls without usage too.
+		TokenBasis: aiv1.TokenBasisModels,
 	}
 	if res == nil {
 		return c

@@ -728,3 +728,12 @@ func TestCheckpointEventsAreWrittenOnce(t *testing.T) {
 		t.Errorf("the start wrote the checkpoint once: inserting it again wrote %d (%v), want 0", n, err)
 	}
 }
+
+func TestStoreCallCarriesTokenBasis(t *testing.T) {
+	if c := StoreCall(aiv1.AgentCall{TokenBasis: aiv1.TokenBasisModels}); c.TokenBasis != 1 {
+		t.Errorf("TokenBasis %d, want 1", c.TokenBasis)
+	}
+	if c := StoreCall(aiv1.AgentCall{}); c.TokenBasis != 0 {
+		t.Errorf("TokenBasis %d, want 0", c.TokenBasis)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"io/fs"
+	"path"
 	"strings"
 	"sync"
 	"testing"
@@ -88,16 +89,16 @@ func TestMigrateEmptyAndConcurrent(t *testing.T) {
 			t.Errorf("table %s missing (%v)", table, err)
 		}
 	}
-	if n := count(t, s.Pool(), "schema_migrations"); n != 9 {
-		t.Errorf("schema_migrations has %d rows, want 9", n)
+	if n := count(t, s.Pool(), "schema_migrations"); n != len(migrationFiles(t)) {
+		t.Errorf("schema_migrations has %d rows, want %d", n, len(migrationFiles(t)))
 	}
 
 	// A second run is a no-op.
 	if err := s.Migrate(ctx, store.Grants{}); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, s.Pool(), "schema_migrations"); n != 9 {
-		t.Errorf("after a second Migrate schema_migrations has %d rows, want 9", n)
+	if n := count(t, s.Pool(), "schema_migrations"); n != len(migrationFiles(t)) {
+		t.Errorf("after a second Migrate schema_migrations has %d rows, want %d", n, len(migrationFiles(t)))
 	}
 }
 
@@ -116,6 +117,9 @@ func TestMigrateRefusesUnknownVersion(t *testing.T) {
 func TestMigrateTimestampVersions(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
+	// Model the old database: numbered migrations only, as timestamp versions
+	// do not fit an int column.
+	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version > 2147483647")
 	exec(t, s.Pool(), "ALTER TABLE schema_migrations ALTER COLUMN version TYPE int")
 	versionType := func() string {
 		t.Helper()
@@ -133,6 +137,12 @@ func TestMigrateTimestampVersions(t *testing.T) {
 	fsys := embeddedPlus(t, map[string]string{
 		"migrations/20261107143000_later.sql": "CREATE TABLE later (x int); INSERT INTO later VALUES (1);",
 	})
+	for name := range fsys {
+		if base := path.Base(name); len(base) > 4 && base[4] != '_' && base[0] == '2' {
+			delete(fsys, name) // embedded timestamp migrations: not in the old database
+		}
+	}
+	fsys["migrations/20261107143000_later.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE later (x int); INSERT INTO later VALUES (1);")}
 	if err := s.MigrateFS(ctx, fsys, store.Grants{}); err != nil {
 		t.Fatal(err)
 	}
@@ -437,4 +447,14 @@ func randomHex(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return hex.EncodeToString(b)
+}
+
+// migrationFiles lists the embedded migrations.
+func migrationFiles(t *testing.T) []string {
+	t.Helper()
+	files, err := fs.Glob(store.Migrations, "migrations/*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }

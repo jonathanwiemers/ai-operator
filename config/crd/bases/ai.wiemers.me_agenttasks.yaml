@@ -3446,6 +3446,13 @@ spec:
                           maxItems: 500
                           type: array
                           x-kubernetes-list-type: atomic
+                        tokenBasis:
+                          description: |-
+                            TokenBasis is how the runner computed the call's tokens and model
+                            split, see TokenBasisModels. 0 (omitted) is not recorded: an older
+                            agent image wrote the call.
+                          format: int32
+                          type: integer
                         turns:
                           format: int32
                           type: integer

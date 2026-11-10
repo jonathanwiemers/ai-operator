@@ -184,3 +184,35 @@ func TestStepGateNudgesMigration(t *testing.T) {
 		t.Errorf("old row step_gate_nudges = %d, %v; want 0", n, err)
 	}
 }
+
+// token_basis is stored as given and read back by scanCall; rows from before
+// the column read 0 and are not rewritten.
+func TestTokenBasis(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	at := time.Date(2026, 11, 10, 10, 0, 0, 0, time.UTC)
+	mk := func(key string, seq int64, basis int16) store.Call {
+		return store.Call{Key: key, At: at, Namespace: "agents", Project: "p", Task: "t", Seq: seq, Kind: "implement",
+			CostSource: "unknown", ExpiresAt: at.Add(time.Hour), TokenBasis: basis}
+	}
+	if _, err := s.InsertCalls(ctx, []store.Call{mk("a", 1, 1), mk("b", 2, 0)}); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]int16{"a": 1, "b": 0} {
+		var got int16
+		if err := s.Pool().QueryRow(ctx, "SELECT token_basis FROM agent_calls WHERE key = $1", key).Scan(&got); err != nil || got != want {
+			t.Errorf("%s: token_basis = %d, %v; want %d", key, got, err, want)
+		}
+	}
+
+	// A row from before the column reads 0 after the migration.
+	exec(t, s.Pool(), "ALTER TABLE agent_calls DROP COLUMN token_basis")
+	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version = (SELECT max(version) FROM schema_migrations)")
+	if err := s.Migrate(ctx, store.Grants{}); err != nil {
+		t.Fatal(err)
+	}
+	var n int16
+	if err := s.Pool().QueryRow(ctx, "SELECT token_basis FROM agent_calls WHERE key = 'a'").Scan(&n); err != nil || n != 0 {
+		t.Errorf("old row token_basis = %d, %v; want 0", n, err)
+	}
+}
