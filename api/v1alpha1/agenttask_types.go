@@ -1682,6 +1682,13 @@ type PlannedIssue struct {
 	// links; only these are unlinked when the plan drops them.
 	// +optional
 	Linked []int64 `json:"linked,omitempty"`
+	// Release is the planner's decision to release the default branch after
+	// this issue is merged.
+	// +optional
+	Release bool `json:"release,omitempty"`
+	// ReleaseWhy is the planner's one-line reason for Release.
+	// +optional
+	ReleaseWhy string `json:"releaseWhy,omitempty"`
 }
 
 // AutopilotPhase is the state of an autopilot milestone.

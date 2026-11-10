@@ -134,7 +134,8 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 		return out, s.fail(fmt.Errorf("listing milestone issues: %w", err))
 	}
 	out.Plan = planOrder(plan, after)
-	s.done(fmt.Sprintf("%d issues in plan order", len(out.Plan)), "issues", len(out.Plan))
+	kept := keepReleases(out.Plan, task.Status.Plan, after, spec.Workflow)
+	s.done(fmt.Sprintf("%d issues in plan order", len(out.Plan)), "issues", len(out.Plan), "keptReleaseDecisions", kept)
 	r.linkDependencies(ctx, gl, glProject, proj.ID, spec.Workflow, out.Plan, task.Status.Plan, after)
 	out.Result = aiv1.RunResultSucceeded
 	out.Summary = fmt.Sprintf("%s\n\nIssues: %d created, %d updated, %d left untouched.", strings.TrimSpace(plan.Summary), created, updated, skipped)
@@ -175,6 +176,7 @@ func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
 			continue
 		}
 		p := aiv1.PlannedIssue{Key: slugKey(item.Key, item.Title), IID: iid, Title: item.Title}
+		p.Release, p.ReleaseWhy = releaseDecision(item)
 		for _, dep := range item.DependsOn {
 			if d, ok := keyToIID[slugKey(dep, "")]; ok && d != iid {
 				p.DependsOn = append(p.DependsOn, d)
@@ -183,6 +185,46 @@ func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
 		out = append(out, p)
 	}
 	return out
+}
+
+// maxReleaseWhy is the longest reason of a release decision, in characters.
+const maxReleaseWhy = 200
+
+// releaseDecision is a plan item's release decision. A release needs a
+// reason: the first line of releaseWhy, cut to maxReleaseWhy characters.
+// Without one it is no release; the final release follows anyway.
+func releaseDecision(item PlannedItem) (bool, string) {
+	why, _, _ := strings.Cut(strings.TrimSpace(item.ReleaseWhy), "\n")
+	if r := []rune(why); len(r) > maxReleaseWhy {
+		why = string(r[:maxReleaseWhy])
+	}
+	why = strings.TrimSpace(why)
+	if !item.Release || why == "" {
+		return false, ""
+	}
+	return true, why
+}
+
+// keepReleases gives the issues of a re-plan that are no drafts any more the
+// release decision of the previous plan: applyPlan left them untouched, so
+// their descriptions still state that one. An issue the previous plan did not
+// have keeps the new answer. It returns how many decisions it kept.
+func keepReleases(plan, prev []aiv1.PlannedIssue, issues []gitlab.Issue, wf aiv1.WorkflowSpec) int {
+	byIID := map[int64]gitlab.Issue{}
+	for _, is := range issues {
+		byIID[is.IID] = is
+	}
+	kept := 0
+	for i := range plan {
+		p := &plan[i]
+		j := slices.IndexFunc(prev, func(o aiv1.PlannedIssue) bool { return o.IID == p.IID })
+		if is, ok := byIID[p.IID]; j < 0 || !ok || plannedDraft(is, wf) {
+			continue
+		}
+		p.Release, p.ReleaseWhy = prev[j].Release, prev[j].ReleaseWhy
+		kept++
+	}
+	return kept
 }
 
 // applyPlan creates and updates the planned issues. Issues that have left the
@@ -211,6 +253,11 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 	var unresolved []pending
 	for _, item := range plan.Issues {
 		item.Key = slugKey(item.Key, item.Title)
+		release, why := releaseDecision(item)
+		if item.Release && !release {
+			log.Info("release without a reason recorded as no release", "key", item.Key)
+		}
+		item.Release, item.ReleaseWhy = release, why
 		iid := item.ExistingIID
 		if byIID[iid] == nil {
 			// No IID, or one not in the milestone: the key decides.
@@ -403,13 +450,24 @@ func hasAnyLabel(is *gitlab.Issue, labels []string) bool {
 	return false
 }
 
+// releaseLine is a line of an issue description that states its release
+// decision.
+var releaseLine = regexp.MustCompile(`(?m)^[ \t]*\*\*Release:\*\*.*$`)
+
 // renderIssue renders the description of a planned issue. It reports whether
 // it must be rendered again once every issue has an IID: a dependency could
 // not be resolved.
 func renderIssue(item PlannedItem, keyToIID map[string]int64) (string, bool) {
 	var b strings.Builder
-	// The planner's text must not carry the operator's markers.
-	b.WriteString(strings.ReplaceAll(strings.TrimSpace(item.Description), "<!-- ai-operator:", "<!-- ai-operator :"))
+	// The planner's text must not carry the operator's markers, nor a
+	// release line of its own: the operator writes that one.
+	unmark := strings.NewReplacer("<!-- ai-operator:", "<!-- ai-operator :")
+	b.WriteString(unmark.Replace(strings.TrimSpace(releaseLine.ReplaceAllString(item.Description, ""))))
+	if item.Release {
+		fmt.Fprintf(&b, "\n\n**Release:** after this issue: %s", unmark.Replace(item.ReleaseWhy))
+	} else {
+		b.WriteString("\n\n**Release:** not after this issue")
+	}
 	missing := false
 	if len(item.DependsOn) > 0 {
 		b.WriteString("\n\n### Depends on\n\n")

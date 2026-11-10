@@ -33,6 +33,10 @@ How to plan:
   work in particular goes into its own slice after the data it shows. Give a
   slice that adds a database migration nothing else that is large.
 - Order sub-issues so dependencies come first and reference them in dependsOn.
+- Set release (with a one-line releaseWhy) on a sub-issue after which the
+  operator should release: a step a user can notice, or one that must be live
+  before the next step. Not after every issue; the operator always releases at
+  the end of the milestone anyway.
 - Each description is a self-contained sub-spec for an engineer who only sees
   this issue: the part of the milestone spec it implements, context,
   implementation plan (files and functions to change), acceptance criteria and
@@ -277,7 +281,7 @@ const specSchemaTemplate = `{
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["key", "title", "description", "profile", "questions", "decisions", "dependsOn"],
+        "required": ["key", "title", "description", "profile", "questions", "decisions", "dependsOn", "release"],
         "properties": {
           "key": {"type": "string", "description": "Stable kebab-case identifier, e.g. 'payment-api'."},
           "existingIid": {"type": "integer", "description": "IID of the existing issue this updates, 0 for a new issue."},
@@ -288,6 +292,8 @@ const specSchemaTemplate = `{
           "questions": {"type": "array", "items": {"type": "string"}},
           "decisions": __DECISIONS__,
           "dependsOn": {"type": "array", "items": {"type": "string"}, "description": "Keys of issues that must be merged first."},
+          "release": {"type": "boolean", "description": "Whether the operator releases the default branch after this issue is merged."},
+          "releaseWhy": {"type": "string", "description": "One line: why a release after this issue; empty when release is false."},
           "repo": {"type": "string", "description": "Companion repository the issue also changes, see the prompt; empty for none."}
         }
       }
@@ -408,6 +414,10 @@ type PlannedItem struct {
 	Questions   []string   `json:"questions"`
 	Decisions   []Decision `json:"decisions"`
 	DependsOn   []string   `json:"dependsOn"`
+	// Release asks for a release of the default branch after the issue is
+	// merged; ReleaseWhy is the one-line reason it needs.
+	Release    bool   `json:"release"`
+	ReleaseWhy string `json:"releaseWhy,omitempty"`
 	// Repo is the companion repository the issue changes too, one of the
 	// milestone's; empty for none.
 	Repo string `json:"repo,omitempty"`

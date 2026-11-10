@@ -3089,6 +3089,15 @@ spec:
                         format: int64
                         type: integer
                       type: array
+                    release:
+                      description: |-
+                        Release is the planner's decision to release the default branch after
+                        this issue is merged.
+                      type: boolean
+                    releaseWhy:
+                      description: ReleaseWhy is the planner's one-line reason for
+                        Release.
+                      type: string
                     title:
                       type: string
                   required:

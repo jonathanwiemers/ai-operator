@@ -1248,3 +1248,69 @@ func TestAutopilotPauseReasonInPrompt(t *testing.T) {
 		t.Fatalf("the pause reason must come as operator context, on one line, before the human comments:\n%s", p)
 	}
 }
+
+func TestPlanOrderCopiesTheReleaseDecision(t *testing.T) {
+	long := strings.Repeat("é", maxReleaseWhy+20)
+	plan := SpecPlan{Issues: []PlannedItem{
+		{Key: "a", Title: "A", Release: true, ReleaseWhy: "  The first step users see.\nMore text."},
+		{Key: "b", Title: "B", Release: true, ReleaseWhy: " \n "},
+		{Key: "c", Title: "C", Release: false, ReleaseWhy: "ignored"},
+		{Key: "d", Title: "D", Release: true, ReleaseWhy: long},
+	}}
+	var issues []gitlab.Issue
+	for i, k := range []string{"a", "b", "c", "d"} {
+		issues = append(issues, gitlab.Issue{IID: int64(i + 1), Description: "<!-- ai-operator:key=" + k + " -->"})
+	}
+	got := planOrder(plan, issues)
+	if len(got) != 4 {
+		t.Fatalf("unexpected plan %+v", got)
+	}
+	if !got[0].Release || got[0].ReleaseWhy != "The first step users see." {
+		t.Errorf("the first line of the reason is kept: %+v", got[0])
+	}
+	if got[1].Release || got[1].ReleaseWhy != "" {
+		t.Errorf("a release without a reason is none: %+v", got[1])
+	}
+	if got[2].Release || got[2].ReleaseWhy != "" {
+		t.Errorf("no release has no reason: %+v", got[2])
+	}
+	if !got[3].Release || got[3].ReleaseWhy != long[:2*maxReleaseWhy] {
+		t.Errorf("the reason is cut to %d characters: %d", maxReleaseWhy, len([]rune(got[3].ReleaseWhy)))
+	}
+}
+
+func TestKeepReleasesOfUntouchedIssues(t *testing.T) {
+	wf := aiv1.WorkflowSpec{}.WithDefaults()
+	prev := []aiv1.PlannedIssue{
+		{IID: 1, Release: true, ReleaseWhy: "old"},
+		{IID: 2, Release: true, ReleaseWhy: "old"},
+		{IID: 3},
+		{IID: 4, Release: true, ReleaseWhy: "old"},
+	}
+	plan := []aiv1.PlannedIssue{
+		{IID: 1, Release: false},                   // a draft: the new answer
+		{IID: 2, Release: false},                   // being worked on: the old one
+		{IID: 3, Release: true, ReleaseWhy: "new"}, // merged: the old one
+		{IID: 4, Release: false},                   // closed: the old one
+		{IID: 5, Release: true, ReleaseWhy: "new"}, // not in the old plan
+	}
+	issues := []gitlab.Issue{
+		{IID: 1, State: "opened", Labels: []string{wf.DraftLabel}},
+		{IID: 2, State: "opened", Labels: []string{wf.DraftLabel, wf.ActiveLabels()[0]}},
+		{IID: 3, State: "closed", Labels: []string{wf.DraftLabel}},
+		{IID: 4, State: "closed"},
+		{IID: 5, State: "opened"},
+	}
+	if kept := keepReleases(plan, prev, issues, wf); kept != 3 {
+		t.Errorf("kept %d decisions, want 3", kept)
+	}
+	want := []aiv1.PlannedIssue{
+		{IID: 1}, {IID: 2, Release: true, ReleaseWhy: "old"}, {IID: 3},
+		{IID: 4, Release: true, ReleaseWhy: "old"}, {IID: 5, Release: true, ReleaseWhy: "new"},
+	}
+	for i := range want {
+		if plan[i].Release != want[i].Release || plan[i].ReleaseWhy != want[i].ReleaseWhy {
+			t.Errorf("#%d: got %+v, want %+v", plan[i].IID, plan[i], want[i])
+		}
+	}
+}

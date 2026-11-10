@@ -206,6 +206,11 @@ holds a self-contained sub-spec:
   plan (files, functions)
 - acceptance criteria and a test plan
 - `Depends on #…` for ordering, also as [issue links](#dependencies-as-issue-links)
+- a `**Release:**` line with the planner's release decision: `after this issue: <why>`
+  (a step users notice, or one that must be live before the next) or `not
+  after this issue`. A release needs a one-line reason; without one it is
+  recorded as none. A re-plan keeps the decision of an issue that is no draft
+  any more
 - **Open questions**, each with the default the agent would pick
 - labels `ai-generated`, `agent::draft` and the chosen `agent-profile::…`
 
@@ -2796,7 +2801,8 @@ CI fix run can push commits after it). `reviewedFor` is the head the last
 re-review run was asked for (`spec.source.reviewFor`).
 
 The spec task of a milestone holds the plan in `status.plan` (issues in plan
-order with their dependencies, and the dependencies the operator linked) and, on autopilot, the queue in
+order with their dependencies, the dependencies the operator linked, and the
+planner's release decision `release` with its reason `releaseWhy`) and, on autopilot, the queue in
 `status.autopilot`: `phase`, `pausedReason`, `pauseKind` (the cause of a
 pause, e.g. `findings`, `reviewErrors`, `ciRed`, `mergeRequest`, `owner`),
 `trackingIssueIID` and one item

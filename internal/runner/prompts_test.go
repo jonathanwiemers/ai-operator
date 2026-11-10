@@ -289,3 +289,47 @@ func TestSubagentsNote(t *testing.T) {
 		})
 	}
 }
+
+// The plan schema requires the release decision of every issue; its reason
+// is optional (the runner turns a release without one into none).
+func TestSpecSchemaRequiresRelease(t *testing.T) {
+	var v struct {
+		Properties struct {
+			Issues struct {
+				Items struct {
+					Properties map[string]struct {
+						Type string `json:"type"`
+					} `json:"properties"`
+					Required []string `json:"required"`
+				} `json:"items"`
+			} `json:"issues"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(specSchema(aiv1.DefaultProfiles())), &v); err != nil {
+		t.Fatalf("the plan schema is no valid JSON: %v", err)
+	}
+	items := v.Properties.Issues.Items
+	if items.Properties["release"].Type != "boolean" || items.Properties["releaseWhy"].Type != "string" {
+		t.Fatalf("release is a boolean, releaseWhy a string: %+v", items.Properties)
+	}
+	if !slices.Contains(items.Required, "release") || slices.Contains(items.Required, "releaseWhy") {
+		t.Fatalf("release is required, releaseWhy is not: %v", items.Required)
+	}
+	// An answer without release misses a required property.
+	answer := map[string]any{"key": "k", "title": "T", "description": "D", "profile": "default",
+		"questions": []string{}, "decisions": []any{}, "dependsOn": []string{}}
+	var missing []string
+	for _, r := range items.Required {
+		if _, ok := answer[r]; !ok {
+			missing = append(missing, r)
+		}
+	}
+	if !slices.Equal(missing, []string{"release"}) {
+		t.Fatalf("an answer without release fails the schema on release only, missing %v", missing)
+	}
+	// The plan item always carries the decision, its reason only when given.
+	b, _ := json.Marshal(PlannedItem{Key: "k"})
+	if !strings.Contains(string(b), `"release":false`) || strings.Contains(string(b), "releaseWhy") {
+		t.Errorf("unexpected item %s", b)
+	}
+}

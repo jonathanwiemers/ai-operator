@@ -4254,6 +4254,17 @@ export interface PlannedIssue {
    * +optional
    */
   linked?: number /* int64 */[];
+  /**
+   * Release is the planner's decision to release the default branch after
+   * this issue is merged.
+   * +optional
+   */
+  release?: boolean;
+  /**
+   * ReleaseWhy is the planner's one-line reason for Release.
+   * +optional
+   */
+  releaseWhy?: string;
 }
 /**
  * AutopilotPhase is the state of an autopilot milestone.

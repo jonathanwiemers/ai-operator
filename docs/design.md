@@ -1273,9 +1273,11 @@ stateDiagram-v2
 ```
 
 * **State.** The spec runner records the plan in the spec task's
-  `status.plan` (IIDs and dependencies in plan order). The operator keeps the
-  queue in `status.autopilot` (phase, items, tracking issue, last handled
-  command) and does one step per poll (`internal/controller/autopilot.go`).
+  `status.plan` (IIDs, dependencies and release decisions in plan order; a
+  re-plan keeps the release decision of an issue that is no draft any more).
+  The operator keeps the queue in `status.autopilot` (phase, items, tracking
+  issue, last handled command) and does one step per poll
+  (`internal/controller/autopilot.go`).
 * **One at a time.** The queue is the plan in topological order, ties in plan
   order. The next issue starts only after the previous MR is merged, so every
   branch starts from the current default branch and every merge was tested

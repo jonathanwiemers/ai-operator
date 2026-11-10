@@ -253,3 +253,48 @@ func TestPlanApplyDropsAnUnknownRepo(t *testing.T) {
 		t.Fatalf("no companion without repo lines: %v %+v", gl.Issues[1].Labels, gl.IssueNotes[1])
 	}
 }
+
+// The release decision goes into the description as one line, written by the
+// operator: a re-plan replaces it, and the planner's own copy is dropped.
+func TestPlanApplyWritesTheReleaseLineOnce(t *testing.T) {
+	ctx := context.Background()
+	gl, m, spec, plan := planApplyEnv(t)
+	plan.Issues[1].Release, plan.Issues[1].ReleaseWhy = true, "The API must be live before the UI."
+	plan.Issues[0].Release = true // without a reason: no release
+	apply := func(run string) {
+		t.Helper()
+		issues, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
+		if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, issues, planComment{botID: gl.Bot.ID, runID: run}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lines := func(iid int64) []string {
+		var out []string
+		for l := range strings.SplitSeq(gl.Issues[iid].Description, "\n") {
+			if strings.HasPrefix(l, "**Release:**") {
+				out = append(out, l)
+			}
+		}
+		return out
+	}
+	check := func(iid int64, want string) {
+		t.Helper()
+		if got := lines(iid); len(got) != 1 || got[0] != want {
+			t.Fatalf("#%d: release lines %q, want one %q\n%s", iid, got, want, gl.Issues[iid].Description)
+		}
+	}
+	apply("s#1")
+	check(1, "**Release:** not after this issue")
+	check(2, "**Release:** after this issue: The API must be live before the UI.")
+
+	// The re-plan swaps the decisions; the planner copied a line of its own.
+	plan.Issues[0].Release, plan.Issues[0].ReleaseWhy = true, "Users see the new checkout."
+	plan.Issues[1].Release, plan.Issues[1].ReleaseWhy = false, ""
+	plan.Issues[1].Description = "Build the API.\n\n**Release:** after this issue: copied"
+	apply("s#2")
+	check(1, "**Release:** after this issue: Users see the new checkout.")
+	check(2, "**Release:** not after this issue")
+	if !strings.HasPrefix(gl.Issues[2].Description, "Build the API.\n\n**Release:**") {
+		t.Fatalf("the planner's line is dropped:\n%s", gl.Issues[2].Description)
+	}
+}
