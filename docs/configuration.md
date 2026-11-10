@@ -353,7 +353,8 @@ day per author.
 `inputs` lists where instructions may be given: `gitlab` (comment commands)
 and `desk`. At least one entry; unset means both. With `gitlab`, owners may
 also answer a prompt with its option's letter as a reply in the thread of its
-comment ([commands](commands.md)). With only `desk`:
+comment, on an issue, the tracking issue or a merge request
+([commands](commands.md)). With only `desk`:
 
 - `/agent` and `/pilot` comments on issues, merge requests, the tracking issue
   and closed issues (revisits) start and change nothing. Each gets one reply

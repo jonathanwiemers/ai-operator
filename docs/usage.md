@@ -1983,7 +1983,8 @@ question's kind is one of: `assessment` (the pilot looked at something),
   Superseded: …", "⌛ Expired …") and replies with the chosen option and the
   free text, quoted as untrusted. With `workflow.inputs` containing `gitlab`
   an owner may also answer with the option's letter as a reply in the
-  thread ([commands](commands.md)). Context, option text and free text are
+  thread, on an issue, the tracking issue or a merge request
+  ([commands](commands.md)). Context, option text and free text are
   untrusted: shown as markdown without HTML, and what an option does is
   always checked by the operator, never taken from text.
 - **Pause cards.** A pause that needs no choice keeps its card; `mainRed`

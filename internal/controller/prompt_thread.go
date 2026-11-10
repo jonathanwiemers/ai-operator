@@ -27,10 +27,9 @@ var promptLetter = regexp.MustCompile(`^\s*([A-Ea-e])[ \t\r]*(?:$|\n|[.,:;!)—�
 
 // letterAnswers reports whether p, with its comment at n, takes letter
 // replies: the project takes GitLab input, p is a milestone's prompt with
-// options, and its comment is on an issue (threads of merge requests are
-// not read).
+// options, and it has an issue or merge request for its comment.
 func letterAnswers(spec aiv1.AgentProjectSpec, holder *aiv1.AgentTask, p aiv1.Prompt, n promptNote) bool {
-	return spec.Workflow.Takes(aiv1.InputGitLab) && holder.Spec.Type == aiv1.TaskTypeSpec && len(p.Options) > 0 && n.iid != 0 && !n.mr
+	return spec.Workflow.Takes(aiv1.InputGitLab) && holder.Spec.Type == aiv1.TaskTypeSpec && len(p.Options) > 0 && n.iid != 0
 }
 
 // letterReplies are the option letters of the notes newer than since that
@@ -47,39 +46,51 @@ func letterReplies(notes []gitlab.Note, since, bot int64) map[int64]string {
 
 // promptThreadAnswers answers the prompts of the milestone's spec task st
 // with the letters the owners replied in the threads of their comments on
-// issue iid, newer than since; tracking is the milestone's tracking issue.
-// The threads are read only when there is such a reply and a prompt of st
-// was posted on iid. A refusal, also of a reply by someone who is no
-// owner, is replied in the thread; an answer is shown by the mirror.
+// issue iid, or merge request iid if mr, newer than since; tracking is the
+// milestone's tracking issue. The threads are read only when there is such
+// a reply and a prompt of st was posted there. Only a thread whose root is
+// the bot's comment of a prompt of st on this issue or merge request
+// counts: review threads, diff notes and comments outside a thread are
+// never answered. A refusal, also of a reply by someone who is no owner,
+// is replied in the thread; an answer is shown by the mirror.
 func (r *AgentProjectReconciler) promptThreadAnswers(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st, coord *aiv1.AgentTask, iid, tracking, since int64, notes []gitlab.Note) error {
+	st, coord *aiv1.AgentTask, iid int64, mr bool, tracking, since int64, notes []gitlab.Note) error {
 	if st == nil || coord == nil || !spec.Workflow.Takes(aiv1.InputGitLab) {
 		return nil
 	}
 	bot := project.Status.BotUserID
 	letters := letterReplies(notes, since, bot)
-	if len(letters) == 0 || !slices.ContainsFunc(st.Status.Prompts, func(p aiv1.Prompt) bool {
+	// here reports whether p takes letters and its recorded comment is note
+	// root of this issue or merge request (root 0: any note of it).
+	here := func(p aiv1.Prompt, root int64) bool {
 		n := promptNoteOf(gl, spec, st, p, tracking)
-		return p.PostedNoteID != 0 && n.iid == iid && letterAnswers(spec, st, p, n)
-	}) {
+		return p.PostedNoteID != 0 && (root == 0 || p.PostedNoteID == root) && n.iid == iid && n.mr == mr && letterAnswers(spec, st, p, n)
+	}
+	if len(letters) == 0 || !slices.ContainsFunc(st.Status.Prompts, func(p aiv1.Prompt) bool { return here(p, 0) }) {
 		return nil
 	}
-	threads, err := gl.ListIssueDiscussions(ctx, spec.GitLab.Project, iid)
+	at := promptNote{gl: gl, project: spec.GitLab.Project, iid: iid, mr: mr}
+	threads, err := at.discussions(ctx)
 	if err != nil {
-		return fmt.Errorf("listing the threads of #%d: %w", iid, err)
+		ref := fmt.Sprintf("#%d", iid)
+		if mr {
+			ref = fmt.Sprintf("!%d", iid)
+		}
+		return fmt.Errorf("listing the threads of %s: %w", ref, err)
 	}
 	var current map[int64]bool // the owners of now, for prompts without pinned ones
 	for _, d := range threads {
-		if len(d.Notes) < 2 || d.Notes[0].Author.ID != bot {
+		if len(d.Notes) < 2 || d.Notes[0].Author.ID != bot || d.Notes[0].System {
 			continue
 		}
 		m := marker.Prompt.FindStringSubmatch(d.Notes[0].Body)
 		if m == nil {
 			continue
 		}
-		// Not a prompt of a task before st, nor one that left its status.
+		// Not a prompt of a task before st, nor one that left its status,
+		// nor one whose comment is elsewhere.
 		i := slices.IndexFunc(st.Status.Prompts, func(p aiv1.Prompt) bool {
-			return p.ID == m[1] && strconv.FormatInt(postedUnix(p), 10) == m[2]
+			return p.ID == m[1] && strconv.FormatInt(postedUnix(p), 10) == m[2] && here(p, d.Notes[0].ID)
 		})
 		if i < 0 {
 			continue
@@ -110,7 +121,7 @@ func (r *AgentProjectReconciler) promptThreadAnswers(ctx context.Context, gl git
 					continue
 				}
 			}
-			if _, err := gl.ReplyIssueDiscussion(ctx, spec.GitLab.Project, iid, d.ID, "🧭 "+reply); err != nil {
+			if _, err := at.replyThread(ctx, d.ID, "🧭 "+reply); err != nil {
 				log.FromContext(ctx).Info("could not answer a reply to a prompt", "note", n.ID, "error", err.Error())
 			}
 		}

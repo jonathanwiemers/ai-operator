@@ -90,14 +90,20 @@ func (r *AgentProjectReconciler) pilotIssueNotes(ctx context.Context, gl gitlab.
 	if !spec.Workflow.Takes(aiv1.InputGitLab) {
 		return notes
 	}
-	// Option letters in the threads of prompts on the issue.
-	letters := len(letterReplies(issueNotes, since, project.Status.BotUserID)) > 0
-	if len(notes) == 0 && !letters {
+	// Option letters in the threads of prompts on the issue and its merge
+	// request.
+	bot := project.Status.BotUserID
+	letters := len(letterReplies(issueNotes, since, bot)) > 0
+	mrLetters := mr != nil && len(letterReplies(mrNotes, since, bot)) > 0
+	if len(notes) == 0 && !letters && !mrLetters {
 		return nil
 	}
 	st, coord, err := r.milestoneTasks(ctx, project, is.Milestone)
 	if err == nil && letters {
-		err = r.promptThreadAnswers(ctx, gl, project, spec, st, coord, is.IID, trackingIssue(st, coord), since, issueNotes)
+		err = r.promptThreadAnswers(ctx, gl, project, spec, st, coord, is.IID, false, trackingIssue(st, coord), since, issueNotes)
+	}
+	if err == nil && mrLetters {
+		err = r.promptThreadAnswers(ctx, gl, project, spec, st, coord, mr.IID, true, trackingIssue(st, coord), since, mrNotes)
 	}
 	if err == nil && len(notes) > 0 {
 		err = r.routePilot(ctx, gl, project, spec, st, coord, task.Spec.Owners, notes)
@@ -150,7 +156,7 @@ func (r *AgentProjectReconciler) pilotTracking(ctx context.Context, gl gitlab.AP
 		if err := r.threadAnswers(ctx, gl, project, spec, st, coord, tracking, since, notes); err != nil {
 			return err
 		}
-		if err := r.promptThreadAnswers(ctx, gl, project, spec, st, coord, tracking, tracking, since, notes); err != nil {
+		if err := r.promptThreadAnswers(ctx, gl, project, spec, st, coord, tracking, false, tracking, since, notes); err != nil {
 			return err
 		}
 	}

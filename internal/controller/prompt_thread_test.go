@@ -176,3 +176,149 @@ func TestPromptLettersAreNotReadWithDeskInputOnly(t *testing.T) {
 		t.Fatalf("with inputs [desk] no thread is read: %+v, %d lists", p, e.gl.DiscussionLists-lists)
 	}
 }
+
+// newMRAnswerEnv is newAnswerEnv with merge request !5 of #1's task.
+func newMRAnswerEnv(t *testing.T) *projectEnv {
+	t.Helper()
+	e := newAnswerEnv(t)
+	e.gl.MRs[5] = &gitlab.MergeRequest{IID: 5, State: "opened", SHA: "sha1", SourceBranch: "agent/1"}
+	e.patchStatus(e.taskOf(1), func(s *aiv1.AgentTaskStatus) { s.Run.MergeRequestIID = 5 })
+	e.reconcile()
+	return e
+}
+
+// mrPrompt is a prompt about #1 whose comment goes on its merge request !5.
+func mrPrompt() aiv1.Prompt {
+	p := issuePrompt(aiv1.PromptAssessment, 1)
+	p.Source.MRIID = 5
+	return p
+}
+
+// postedMRPrompt adds p to the milestone's prompts and returns its comment
+// on merge request !5.
+func (e *projectEnv) postedMRPrompt(p aiv1.Prompt) gitlab.Note {
+	e.t.Helper()
+	st := e.task(specTaskName)
+	q := e.addPrompt(st, st, p)
+	e.reconcile()
+	for _, n := range e.gl.MRNotes[5] {
+		if n.Author.ID == e.gl.Bot.ID && strings.Contains(n.Body, promptMarker(q)) {
+			return n
+		}
+	}
+	e.t.Fatalf("prompt %s is not posted on !5", q.ID)
+	return gitlab.Note{}
+}
+
+// botMRReplies are the bot's notes on merge request !5 in the thread of
+// root (0: outside any thread), answer replies included if answers.
+func botMRReplies(e *projectEnv, root int64, answers bool) []string {
+	var out []string
+	for _, n := range e.gl.MRNotes[5] {
+		if n.Author.ID == e.gl.Bot.ID && e.gl.Replies[n.ID] == root && (answers || !strings.Contains(n.Body, "<!-- ai-operator:prompt-answer=")) {
+			out = append(out, n.Body)
+		}
+	}
+	return out
+}
+
+func TestPromptOwnerAnswersWithALetterInTheMRThread(t *testing.T) {
+	e := newMRAnswerEnv(t)
+	root := e.postedMRPrompt(mrPrompt())
+	if !strings.Contains(root.Body, "\n\n"+letterHint) {
+		t.Fatalf("the merge request's comment says owners can reply with a letter:\n%s", root.Body)
+	}
+	e.gl.AddMRReply(5, root.ID, alice, "B: leave it")
+	e.reconcile()
+	e.reconcile()
+
+	p := e.prompt(specTaskName, "Q1")
+	if a := p.Answer; p.State != aiv1.PromptAnswered || a == nil || a.OptionID != "B" || a.By != "alice" || a.Via != "gitlab" || a.Text != "" {
+		t.Fatalf("the reply on the merge request answers Q1 via gitlab: %+v %+v", p, a)
+	}
+	edited := e.gl.MRNotes[5][slices.IndexFunc(e.gl.MRNotes[5], func(n gitlab.Note) bool { return n.ID == root.ID })]
+	if !strings.HasPrefix(edited.Body, "✅ Answered by `@alice` in GitLab: Do nothing") || strings.Contains(edited.Body, letterHint) {
+		t.Fatalf("the mirror edits the comment:\n%s", edited.Body)
+	}
+	if r := botMRReplies(e, root.ID, true); len(r) != 1 || !strings.Contains(r[0], answerMarker(p)) {
+		t.Fatalf("the mirror's answer reply is in the prompt's thread, and nothing else: %q", r)
+	}
+	if r := botMRReplies(e, 0, true); len(r) != 1 {
+		t.Fatalf("no comment outside the thread but the prompt's: %q", r)
+	}
+
+	// A second answer is refused in the thread, naming the first.
+	e.gl.AddMRReply(5, root.ID, alice, "a")
+	e.reconcile()
+	if r := botMRReplies(e, root.ID, false); len(r) != 1 || r[0] != "🧭 Q1 was answered already by @alice: Do nothing." {
+		t.Fatalf("a second answer is refused in the thread: %q", r)
+	}
+	if p := e.prompt(specTaskName, "Q1"); p.Answer.OptionID != "B" {
+		t.Fatalf("the first answer stays: %+v", p.Answer)
+	}
+}
+
+func TestPromptLetterFromSomeoneElseInTheMRThread(t *testing.T) {
+	e := newMRAnswerEnv(t)
+	root := e.postedMRPrompt(mrPrompt())
+	e.gl.AddMRReply(5, root.ID, mallory, "A")
+	e.gl.AddMRReply(5, root.ID, alice, "A lot of work, this") // discussion, not an answer
+	e.reconcile()
+	e.reconcile()
+	if p := e.prompt(specTaskName, "Q1"); p.State != aiv1.PromptOpen || p.Answer != nil {
+		t.Fatalf("no owner, no answer: %+v", p)
+	}
+	if r := botMRReplies(e, root.ID, false); len(r) != 1 || r[0] != "🧭 Only the milestone's owners can answer Q1; this reply changes nothing." {
+		t.Fatalf("one refusal, in the thread: %q", r)
+	}
+}
+
+func TestPromptLetterOutsideTheMRPromptsThreadChangesNothing(t *testing.T) {
+	e := newMRAnswerEnv(t)
+	root := e.postedMRPrompt(mrPrompt())
+	review := e.gl.AddMRNote(5, alice, "Please rename this function.") // a review thread, or a diff note's
+	own := e.gl.AddMRNote(5, e.gl.Bot, "🤖 Review: two findings.")      // the bot's, no prompt
+	old := e.gl.AddMRNote(5, e.gl.Bot, "🧭 **Q1:** Older\n\n<!-- ai-operator:prompt=Q1 posted=12345 -->")
+	e.reconcile()
+	before := len(e.gl.MRNotes[5])
+	lists := e.gl.DiscussionLists
+	e.gl.AddMRReply(5, review.ID, alice, "A")
+	e.gl.AddMRReply(5, review.ID, mallory, "B")
+	e.gl.AddMRReply(5, own.ID, alice, "A")
+	e.gl.AddMRReply(5, old.ID, alice, "A") // a prompt Q1 of an older task
+	e.gl.AddMRNote(5, alice, "B")          // no thread
+	e.reconcile()
+	e.reconcile()
+	if e.gl.DiscussionLists == lists {
+		t.Fatal("the letters have the threads read")
+	}
+	if p := e.prompt(specTaskName, "Q1"); p.State != aiv1.PromptOpen || p.Answer != nil {
+		t.Fatalf("no letter in the prompt's thread, no answer: %+v", p)
+	}
+	if got := len(e.gl.MRNotes[5]); got != before+5 {
+		t.Fatalf("and no reply anywhere: %q", botMRReplies(e, review.ID, true))
+	}
+	if r := botMRReplies(e, root.ID, true); len(r) != 0 {
+		t.Fatalf("nothing in the prompt's thread either: %q", r)
+	}
+}
+
+func TestPromptMRLettersAreNotReadWithDeskInputOnly(t *testing.T) {
+	e := newMRAnswerEnv(t)
+	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Workflow.Inputs = []aiv1.InputSource{aiv1.InputDesk} })
+	root := e.postedMRPrompt(mrPrompt())
+	if strings.Contains(root.Body, letterHint) {
+		t.Fatalf("no hint without gitlab input:\n%s", root.Body)
+	}
+	e.reconcile()
+	lists := e.gl.DiscussionLists
+	e.gl.AddMRReply(5, root.ID, alice, "A")
+	e.reconcile()
+	e.reconcile()
+	if p := e.prompt(specTaskName, "Q1"); p.State != aiv1.PromptOpen || e.gl.DiscussionLists != lists {
+		t.Fatalf("with inputs [desk] no thread is read: %+v, %d lists", p, e.gl.DiscussionLists-lists)
+	}
+	if r := botMRReplies(e, root.ID, true); len(r) != 0 {
+		t.Fatalf("and nothing is replied: %q", r)
+	}
+}

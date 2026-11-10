@@ -427,20 +427,27 @@ func (n promptNote) update(ctx context.Context, id int64, body string) error {
 	return err
 }
 
-// reply posts body in the thread of note root, unless the bot's note with
-// the marker is there already; posted says whether it was not. A merge
-// request, or an issue whose thread is not found, gets it as a comment of
-// its own.
-func (n promptNote) reply(ctx context.Context, bot, root int64, body, marker string) (posted bool, err error) {
+// discussions are the threads of the issue or merge request.
+func (n promptNote) discussions(ctx context.Context) ([]gitlab.Discussion, error) {
 	if n.mr {
-		notes, err := n.list(ctx)
-		if err != nil || botNote(notes, bot, marker) != 0 {
-			return false, err
-		}
-		_, err = n.create(ctx, body)
-		return err == nil, err
+		return n.gl.ListMergeRequestDiscussions(ctx, n.project, n.iid)
 	}
-	threads, err := n.gl.ListIssueDiscussions(ctx, n.project, n.iid)
+	return n.gl.ListIssueDiscussions(ctx, n.project, n.iid)
+}
+
+// replyThread adds body to the thread discussion.
+func (n promptNote) replyThread(ctx context.Context, discussion, body string) (*gitlab.Note, error) {
+	if n.mr {
+		return n.gl.ReplyMergeRequestDiscussion(ctx, n.project, n.iid, discussion, body)
+	}
+	return n.gl.ReplyIssueDiscussion(ctx, n.project, n.iid, discussion, body)
+}
+
+// reply posts body in the thread of note root, unless the bot's note with
+// the marker is there already; posted says whether it was not. An issue or
+// merge request whose thread is not found gets it as a comment of its own.
+func (n promptNote) reply(ctx context.Context, bot, root int64, body, marker string) (posted bool, err error) {
+	threads, err := n.discussions(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -456,7 +463,7 @@ func (n promptNote) reply(ctx context.Context, bot, root int64, body, marker str
 	if thread == "" {
 		_, err = n.create(ctx, body)
 	} else {
-		_, err = n.gl.ReplyIssueDiscussion(ctx, n.project, n.iid, thread, body)
+		_, err = n.replyThread(ctx, thread, body)
 	}
 	return err == nil, err
 }

@@ -107,6 +107,9 @@ func TestPromptIsPostedOnceOnItsSource(t *testing.T) {
 	if m := e.gl.MRNotes[5]; len(m) != 1 || !strings.HasPrefix(m[0].Body, "🧭 **Q3:**") || strings.Contains(m[0].Body, "cc @") {
 		t.Fatalf("the prompt of a merge request goes there, a quiet one without a mention: %+v", m)
 	}
+	if m := e.gl.MRNotes[5]; !strings.Contains(m[0].Body, "\n\n"+letterHint+"\n\n") {
+		t.Fatalf("with gitlab input the merge request's comment has the letter hint:\n%s", m[0].Body)
+	}
 
 	p := e.prompt(specTaskName, "Q1")
 	if p.PostedNoteID != notes[0].ID || p.MirroredState != aiv1.PromptOpen || !strings.HasSuffix(p.PostedNoteURL, fmt.Sprintf("/group/app/-/issues/%d#note_%d", tracking, notes[0].ID)) {

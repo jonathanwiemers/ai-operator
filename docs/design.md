@@ -1932,9 +1932,9 @@ way.
   inert (no mentions, quick actions or `<!--`), the options as a list with
   the recommended one marked, "Answer in the Desk" with the link (with the
   operator's `--desk-url`), "Owners can also reply here with the option's
-  letter." for a milestone prompt with options on an issue while the project
-  takes `gitlab` input, a mention of the owners unless the prompt is
-  `quiet`, and `<!-- ai-operator:prompt=Q<n> posted=<unix> -->`. It has
+  letter." for a milestone prompt with options on an issue or merge request
+  while the project takes `gitlab` input, a mention of the owners unless
+  the prompt is `quiet`, and `<!-- ai-operator:prompt=Q<n> posted=<unix> -->`. It has
   no command syntax. The comment is recorded (`postedNoteID`,
   `postedNoteURL`) after it is posted; before posting, the bot's comments
   are searched for the marker, so a crash in between does not post twice.
@@ -1949,9 +1949,9 @@ way.
   field existed get one such edit while open; closed ones are left alone.
 * **Answered:** the comment's first line becomes "✅ Answered by `@owner`
   in the Desk (or in GitLab): <option>", the other options struck through,
-  and one reply in its thread (on a merge request a comment) has the
-  chosen option, the owner's words quoted as untrusted (inert, 2000
-  bytes) and `answer.outcome`, marked `prompt-answer=Q<n>` so it is not
+  and one reply in its thread, on an issue or a merge request (a comment
+  of its own if the thread is not found), has the chosen option, the
+  owner's words quoted as untrusted (inert, 2000 bytes) and `answer.outcome`, marked `prompt-answer=Q<n>` so it is not
   posted twice. When the option has actions, it waits for the outcome, two
   poll intervals at most.
 * **Superseded / expired:** the first line becomes "⏹️ Superseded: …" or
@@ -2043,10 +2043,13 @@ An owner answers a milestone prompt from the Desk with the chat command
   whose user IDs `addPrompt` pinned in `ownerIDs` answer; anyone else and
   every refusal get one reply in the thread, an answer only the mirror's.
   Comments are read where the poll already reads them (the tracking
-  issue's watermark, an issue's `lastPilotNoteID`); the threads only when
-  a new letter reply exists and a prompt of the milestone was posted on
-  that issue. Prompts on merge requests and on Implement tasks are not
-  answered this way.
+  issue's watermark, an issue's `lastPilotNoteID`, which also covers the
+  merge request of its task); the threads only when a new letter reply
+  exists and a prompt of the milestone was posted on that issue or merge
+  request. Only a thread whose root is the bot's comment of that prompt
+  (`postedNoteID`) counts: on a merge request, review threads, diff notes
+  and top-level comments are never answered nor replied to.
+  Prompts on Implement tasks are not answered this way.
 
 ## Engines, profiles and subscriptions
 
