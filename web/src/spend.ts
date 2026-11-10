@@ -218,6 +218,26 @@ export function unmeteredNote(t: SpendTotals): string {
   return `${t.unmeteredCalls} ${t.unmeteredCalls === 1 ? 'call' : 'calls'} not metered`
 }
 
+// mixedBasis: some, not all, calls of a total are on the old token basis.
+export function mixedBasis(t: SpendTotals): boolean {
+  return t.oldBasisCalls > 0 && t.oldBasisCalls < t.calls
+}
+
+// oldBasis: every call of a total is on the old token basis.
+export function oldBasis(t: SpendTotals): boolean {
+  return t.calls > 0 && t.oldBasisCalls >= t.calls
+}
+
+// basisNote: "3 of 40 calls on the old token basis" when mixed, "old token
+// basis" when all are old, empty otherwise.
+export function basisNote(t: SpendTotals): string {
+  if (mixedBasis(t)) return `${t.oldBasisCalls} of ${t.calls} calls on the old token basis`
+  return oldBasis(t) ? 'old token basis' : ''
+}
+
+export const basisTitle =
+  'Recorded before the token basis was stored: tokens are not comparable with newer milestones (subagents and Desk chats counted differently)'
+
 // legacyNote: the part of the cost from runs before agent calls were
 // recorded, which have no tokens.
 export function legacyNote(t: SpendTotals): string {

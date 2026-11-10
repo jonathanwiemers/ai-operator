@@ -34,6 +34,7 @@ export function driverShares(drivers: CostDriverView[]): string[] {
       costKnown: d.costKnown,
       unknownCalls: 0,
       unmeteredCalls: 0,
+      oldBasisCalls: 0,
       inputTokens: d.tokens,
       outputTokens: 0,
       cacheReadTokens: 0,

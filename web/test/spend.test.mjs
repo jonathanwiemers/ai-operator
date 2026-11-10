@@ -46,6 +46,9 @@ import {
   unitQuery,
   unknownNote,
   unmeteredNote,
+  mixedBasis,
+  oldBasis,
+  basisNote,
 } from '../src/spend.ts'
 
 function totals(over = {}) {
@@ -54,6 +57,7 @@ function totals(over = {}) {
     costKnown: false,
     unknownCalls: 0,
     unmeteredCalls: 0,
+    oldBasisCalls: 0,
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
@@ -533,4 +537,20 @@ test('kindModel splits at the first slash, conflictRunLabel names issue, task an
   assert.deepEqual(kindModel('chat'), { kind: 'chat', model: '' })
   assert.equal(conflictRunLabel('179/ai-179/2'), '#179 · ai-179 run 2')
   assert.equal(conflictRunLabel('/spec-m4/1'), 'spec-m4 run 1')
+})
+
+test('token basis: mixed, all old, none, and no calls', () => {
+  const some = totals({ calls: 40, oldBasisCalls: 3 })
+  assert.equal(mixedBasis(some), true)
+  assert.equal(oldBasis(some), false)
+  assert.equal(basisNote(some), '3 of 40 calls on the old token basis')
+  const all = totals({ calls: 5, oldBasisCalls: 5 })
+  assert.equal(mixedBasis(all), false)
+  assert.equal(oldBasis(all), true)
+  assert.equal(basisNote(all), 'old token basis')
+  assert.equal(basisNote(totals({ calls: 5 })), '')
+  const none = totals({ calls: 0 })
+  assert.equal(mixedBasis(none), false)
+  assert.equal(oldBasis(none), false)
+  assert.equal(basisNote(none), '')
 })

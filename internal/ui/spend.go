@@ -22,7 +22,10 @@ type SpendTotalsView struct {
 	UnknownCalls int64  `json:"unknownCalls"`
 	// UnmeteredCalls are the calls with neither a cost nor tokens, a part
 	// of UnknownCalls.
-	UnmeteredCalls   int64 `json:"unmeteredCalls"`
+	UnmeteredCalls int64 `json:"unmeteredCalls"`
+	// OldBasisCalls are the calls recorded before the token basis was
+	// stored; their tokens do not compare with newer calls.
+	OldBasisCalls    int64 `json:"oldBasisCalls"`
 	InputTokens      int64 `json:"inputTokens"`
 	OutputTokens     int64 `json:"outputTokens"`
 	CacheReadTokens  int64 `json:"cacheReadTokens"`
@@ -288,7 +291,7 @@ func breakdownViews(bs []store.SpendBreakdown) []SpendBreakdownView {
 
 func spendTotalsView(t store.SpendTotals) SpendTotalsView {
 	v := SpendTotalsView{CostUSD: showKnownCost(t.CostUSD, t.CostKnown), CostKnown: t.CostKnown,
-		UnknownCalls: t.UnknownCalls, UnmeteredCalls: t.UnmeteredCalls, InputTokens: t.InputTokens, OutputTokens: t.OutputTokens,
+		UnknownCalls: t.UnknownCalls, UnmeteredCalls: t.UnmeteredCalls, OldBasisCalls: t.OldBasisCalls, InputTokens: t.InputTokens, OutputTokens: t.OutputTokens,
 		CacheReadTokens: t.CacheReadTokens, CacheWriteTokens: t.CacheWriteTokens, Calls: t.Calls,
 		SubagentCalls: t.SubagentCalls, DurationMS: t.DurationMS, Checkpoints: t.Checkpoints}
 	if t.LegacyCostUSD > 0 {

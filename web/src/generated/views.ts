@@ -888,6 +888,11 @@ export interface SpendTotalsView {
    * of UnknownCalls.
    */
   unmeteredCalls: number /* int64 */;
+  /**
+   * OldBasisCalls are the calls recorded before the token basis was
+   * stored; their tokens do not compare with newer calls.
+   */
+  oldBasisCalls: number /* int64 */;
   inputTokens: number /* int64 */;
   outputTokens: number /* int64 */;
   cacheReadTokens: number /* int64 */;

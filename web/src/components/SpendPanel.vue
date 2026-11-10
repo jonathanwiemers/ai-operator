@@ -45,6 +45,9 @@ import {
   unknownNote,
   unmetered,
   unmeteredNote,
+  basisNote,
+  basisTitle,
+  mixedBasis,
   type SpendScope,
   type SpendUnit,
 } from '../spend'
@@ -181,6 +184,7 @@ function rowKey(b: SpendBreakdown): string {
           <span v-if="unmeteredNote(totals)" class="faint" title="Calls that report neither a cost nor tokens (cursor's model auto)">
             · {{ unmeteredNote(totals) }}
           </span>
+          <span v-if="basisNote(totals)" class="faint" :title="basisTitle">· {{ basisNote(totals) }}</span>
         </div>
         <dl>
           <div>
@@ -308,6 +312,9 @@ function rowKey(b: SpendBreakdown): string {
                   </RouterLink>
                   <span v-else>{{ childLabel(c, scope, milestones) }}</span>
                   <span v-if="companionNote(c)" class="companion-mark" :title="companionNote(c)">companion</span>
+                  <span v-if="c.level === 'milestone' && basisNote(c.totals)" class="companion-mark basis-mark" :title="basisTitle">
+                    {{ mixedBasis(c.totals) ? 'mixed basis' : 'old basis' }}
+                  </span>
                 </td>
                 <td :title="fullTime(c.at)">{{ clockTime(c.at, now) }}</td>
                 <td class="num">
@@ -562,6 +569,10 @@ function rowKey(b: SpendBreakdown): string {
   font-weight: 600;
   background: var(--tone-info-bg);
   color: var(--tone-info-fg);
+}
+.basis-mark {
+  background: var(--tone-warn-bg, var(--tone-info-bg));
+  color: var(--tone-warn-fg, var(--tone-info-fg));
 }
 .unknown {
   font-style: italic;
