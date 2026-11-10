@@ -1608,6 +1608,12 @@ export interface AgentProjectStatus {
    */
   companions?: CompanionStatus[];
   /**
+   * Releases are release decisions outside milestones (sweep, companion),
+   * newest 20.
+   * +optional
+   */
+  releases?: ReleaseRecord[];
+  /**
    * +optional
    */
   conditions?: Condition[];
@@ -4323,7 +4329,7 @@ export interface ReviewError {
 }
 /**
  * PauseKind is why autopilot paused.
- * +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan
+ * +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan;release
  */
 export type PauseKind = string;
 /**
@@ -4395,6 +4401,10 @@ export const PauseCompanion: PauseKind = "companion";
  * PauseEmptyPlan: the planning run succeeded but planned no issues.
  */
 export const PauseEmptyPlan: PauseKind = "emptyPlan";
+/**
+ * PauseRelease: the final release failed twice.
+ */
+export const PauseRelease: PauseKind = "release";
 /**
  * PauseResolver is who ended a pause (status.autopilot.resumedBy, the
  * autopilot.resumed history event).
@@ -4630,6 +4640,12 @@ export interface AutopilotStatus {
    * +optional
    */
   repoNotices?: string[];
+  /**
+   * Releases are the milestone's release decisions, oldest first (at most
+   * MaxMilestoneReleases).
+   * +optional
+   */
+  releases?: ReleaseRecord[];
 }
 /**
  * BudgetStatus is the budget of an autopilot milestone and what it spent,
@@ -5635,4 +5651,184 @@ export interface QuestionDraft {
    * +optional
    */
   allowFreeText?: boolean;
+}
+
+//////////
+// source: release.go
+
+/**
+ * MaxMilestoneReleases bounds status.autopilot.releases.
+ */
+export const MaxMilestoneReleases = 50;
+/**
+ * MaxProjectReleases bounds AgentProject status.releases.
+ */
+export const MaxProjectReleases = 20;
+/**
+ * ReleaseBy is who decided a release.
+ * +kubebuilder:validation:Enum=planner;pilot;owner;final;companion;sweep
+ */
+/**
+ * ReleaseByPlanner: the planning run, with the issue.
+ */
+export const ReleaseByPlanner = "planner";
+/**
+ * ReleaseByPilot: the pilot, in a run it does anyway.
+ */
+export const ReleaseByPilot = "pilot";
+/**
+ * ReleaseByOwner: an owner's /agent release.
+ */
+export const ReleaseByOwner = "owner";
+/**
+ * ReleaseByFinal: the operator's release that ends a milestone.
+ */
+export const ReleaseByFinal = "final";
+/**
+ * ReleaseByCompanion: a companion waiting for a release.
+ */
+export const ReleaseByCompanion = "companion";
+/**
+ * ReleaseBySweep: the operator's release of unreleased merges outside
+ * milestones.
+ */
+export const ReleaseBySweep = "sweep";
+export type ReleaseBy = typeof ReleaseByPlanner | typeof ReleaseByPilot | typeof ReleaseByOwner | typeof ReleaseByFinal | typeof ReleaseByCompanion | typeof ReleaseBySweep;
+/**
+ * ReleaseState is where a release decision stands.
+ * +kubebuilder:validation:Enum=Planned;Waiting;Running;Released;AlreadyReleased;NotNeeded;NotApplicable;Dropped;Failed
+ */
+export type ReleaseState = string;
+/**
+ * ReleasePlanned: decided, its commit is not merged yet.
+ */
+export const ReleasePlanned: ReleaseState = "Planned";
+/**
+ * ReleaseWaiting: due, waiting (green main, interval, another release).
+ */
+export const ReleaseWaiting: ReleaseState = "Waiting";
+/**
+ * ReleaseRunning: the release pipeline runs.
+ */
+export const ReleaseRunning: ReleaseState = "Running";
+/**
+ * ReleaseReleased: the operator's pipeline released it.
+ */
+export const ReleaseReleased: ReleaseState = "Released";
+/**
+ * ReleaseAlreadyReleased: a tag already contained the commit.
+ */
+export const ReleaseAlreadyReleased: ReleaseState = "AlreadyReleased";
+/**
+ * ReleaseNotNeeded: nothing release-relevant since the last tag.
+ */
+export const ReleaseNotNeeded: ReleaseState = "NotNeeded";
+/**
+ * ReleaseNotApplicable: the project does not tag its default branch.
+ */
+export const ReleaseNotApplicable: ReleaseState = "NotApplicable";
+/**
+ * ReleaseDropped: withdrawn by the pilot or an owner.
+ */
+export const ReleaseDropped: ReleaseState = "Dropped";
+/**
+ * ReleaseFailed: the pipeline failed after its retry.
+ */
+export const ReleaseFailed: ReleaseState = "Failed";
+/**
+ * ReleaseRecord is one release decision.
+ */
+export interface ReleaseRecord {
+  /**
+   * ID ascends within its list (the largest plus one).
+   */
+  id: number /* int64 */;
+  /**
+   * By is who decided.
+   */
+  by: ReleaseBy;
+  /**
+   * Actor is "@alice" for an owner, empty otherwise.
+   * +optional
+   */
+  actor?: string;
+  /**
+   * Why is the decider's one-line reason; untrusted for planner and pilot.
+   * +optional
+   */
+  why?: string;
+  /**
+   * AfterIssue is the issue the release follows.
+   * +optional
+   */
+  afterIssue?: number /* int64 */;
+  /**
+   * SHA is the commit the release must contain; empty while Planned.
+   * +optional
+   */
+  sha?: string;
+  /**
+   * State of the decision.
+   */
+  state: ReleaseState;
+  /**
+   * Reason is the operator's words on why it waits, failed or was not
+   * needed.
+   * +optional
+   */
+  reason?: string;
+  /**
+   * Issues the release contains.
+   * +optional
+   */
+  issues?: number /* int64 */[];
+  /**
+   * MergeRequests the release contains.
+   * +optional
+   */
+  mergeRequests?: number /* int64 */[];
+  /**
+   * Version of the release.
+   * +optional
+   */
+  version?: string;
+  /**
+   * ReleasedSHA is the head the release pipeline ran on.
+   * +optional
+   */
+  releasedSHA?: string;
+  /**
+   * +optional
+   */
+  pipelineID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  pipelineURL?: string;
+  /**
+   * +optional
+   */
+  releaseURL?: string;
+  /**
+   * Attempts of the release pipeline.
+   * +optional
+   */
+  attempts?: number /* int32 */;
+  /**
+   * Final: the milestone's last release.
+   * +optional
+   */
+  final?: boolean;
+  /**
+   * DecidedAt is when the decision was made.
+   */
+  decidedAt: string;
+  /**
+   * +optional
+   */
+  startedAt?: string;
+  /**
+   * +optional
+   */
+  endedAt?: string;
 }

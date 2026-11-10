@@ -1424,6 +1424,7 @@ spec:
                     - budget
                     - companion
                     - emptyPlan
+                    - release
                     type: string
                   pauseRunBy:
                     description: |-
@@ -1464,6 +1465,111 @@ spec:
                     - Done
                     - "Off"
                     type: string
+                  releases:
+                    description: |-
+                      Releases are the milestone's release decisions, oldest first (at most
+                      MaxMilestoneReleases).
+                    items:
+                      description: ReleaseRecord is one release decision.
+                      properties:
+                        actor:
+                          description: Actor is "@alice" for an owner, empty otherwise.
+                          type: string
+                        afterIssue:
+                          description: AfterIssue is the issue the release follows.
+                          format: int64
+                          type: integer
+                        attempts:
+                          description: Attempts of the release pipeline.
+                          format: int32
+                          type: integer
+                        by:
+                          description: By is who decided.
+                          enum:
+                          - planner
+                          - pilot
+                          - owner
+                          - final
+                          - companion
+                          - sweep
+                          type: string
+                        decidedAt:
+                          description: DecidedAt is when the decision was made.
+                          format: date-time
+                          type: string
+                        endedAt:
+                          format: date-time
+                          type: string
+                        final:
+                          description: 'Final: the milestone''s last release.'
+                          type: boolean
+                        id:
+                          description: ID ascends within its list (the largest plus
+                            one).
+                          format: int64
+                          type: integer
+                        issues:
+                          description: Issues the release contains.
+                          items:
+                            format: int64
+                            type: integer
+                          type: array
+                        mergeRequests:
+                          description: MergeRequests the release contains.
+                          items:
+                            format: int64
+                            type: integer
+                          type: array
+                        pipelineID:
+                          format: int64
+                          type: integer
+                        pipelineURL:
+                          type: string
+                        reason:
+                          description: |-
+                            Reason is the operator's words on why it waits, failed or was not
+                            needed.
+                          type: string
+                        releaseURL:
+                          type: string
+                        releasedSHA:
+                          description: ReleasedSHA is the head the release pipeline
+                            ran on.
+                          type: string
+                        sha:
+                          description: SHA is the commit the release must contain;
+                            empty while Planned.
+                          type: string
+                        startedAt:
+                          format: date-time
+                          type: string
+                        state:
+                          description: State of the decision.
+                          enum:
+                          - Planned
+                          - Waiting
+                          - Running
+                          - Released
+                          - AlreadyReleased
+                          - NotNeeded
+                          - NotApplicable
+                          - Dropped
+                          - Failed
+                          type: string
+                        version:
+                          description: Version of the release.
+                          type: string
+                        why:
+                          description: Why is the decider's one-line reason; untrusted
+                            for planner and pilot.
+                          type: string
+                      required:
+                      - by
+                      - decidedAt
+                      - id
+                      - state
+                      type: object
+                    type: array
                   repoNotices:
                     description: |-
                       RepoNotices are the milestone's "/agent repo" lines (as written) the

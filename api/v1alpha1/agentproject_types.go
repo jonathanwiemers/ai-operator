@@ -1358,6 +1358,11 @@ type AgentProjectStatus struct {
 	// +listType=atomic
 	Companions []CompanionStatus `json:"companions,omitempty"`
 
+	// Releases are release decisions outside milestones (sweep, companion),
+	// newest 20.
+	// +optional
+	Releases []ReleaseRecord `json:"releases,omitempty"`
+
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }

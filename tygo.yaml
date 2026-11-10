@@ -22,6 +22,7 @@ packages:
       - crossrepo.go
       - pause.go
       - prompt.go
+      - release.go
     type_mappings:
       metav1.Condition: Condition
       metav1.ObjectMeta: ObjectMeta
@@ -90,6 +91,7 @@ packages:
       - overview.go
       - pause_exits.go
       - prompt.go
+      - release.go
       - research.go
       - retrospective.go
       - spend.go

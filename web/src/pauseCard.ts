@@ -66,6 +66,8 @@ const actionsByKind = {
   // Its way out is a milestone description change, a GitLab action: the
   // Way out links the milestone.
   emptyPlan: [],
+  // Retry is Resume; ending without a release has no card action yet.
+  release: [resume],
   // The companion merge request cannot go on: fixed in GitLab (rebase,
   // discussions, approval), then Resume; or the issue skipped.
   companion: [openCompanion, resume, skip],
@@ -288,6 +290,8 @@ export function pauseEndsBy(kind: PauseKind | undefined, issue?: number): string
         : "Continues by itself once the milestone's budget line is raised above the spend."
     case 'emptyPlan':
       return 'Continues once the milestone description is changed and planned again.'
+    case 'release':
+      return "Continues by itself once a tag contains the milestone's last merge."
     case 'companion':
       return 'Continues by itself once the companion MR can be merged again, or is merged by hand.'
     default:
@@ -312,6 +316,7 @@ const titles: Record<KnownPauseKind, string> = {
   budget: 'The budget is used',
   emptyPlan: 'Nothing was planned',
   companion: 'The companion MR cannot go on',
+  release: 'The final release failed',
 }
 
 // pauseTitle is the card's heading for a pause.

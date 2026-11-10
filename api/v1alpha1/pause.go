@@ -71,7 +71,7 @@ func (w WorkflowSpec) RoleLabel(role LabelRole) string {
 var PauseKinds = []PauseKind{
 	PauseOwner, PauseCycle, PauseStuck, PauseNeedsInput, PauseRunFailed, PauseFindings, PauseReviewErrors,
 	PauseNotReviewed, PauseCIRed, PauseCICanceled, PauseMergeRequest, PauseMainRed, PauseConfig, PauseBudget, PauseCompanion,
-	PauseEmptyPlan,
+	PauseEmptyPlan, PauseRelease,
 }
 
 // The exits several kinds share.
@@ -189,6 +189,15 @@ var pauseExits = map[PauseKind][]PauseExit{
 			Does: "autopilot starts with the new plan"},
 		{ID: "changeSpec", GitLab: true, When: "change the milestone description so the planning agent plans issues",
 			Does: "the milestone is planned again"},
+	},
+	// The final release failed twice.
+	PauseRelease: {
+		{ID: "releasedByHand", Auto: true, When: "a tag contains the milestone's last merge",
+			Does: "autopilot is done"},
+		{ID: "retryRelease", Command: "resume", Target: ExitTargetSpec, When: "the operator runs the final release once more",
+			Does: "the operator runs the final release once more"},
+		{ID: "endWithoutRelease", Command: "endMilestone", Target: ExitTargetSpec,
+			Does: "the final release is dropped and autopilot is done"},
 	},
 }
 

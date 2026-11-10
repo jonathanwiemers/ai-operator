@@ -1737,7 +1737,7 @@ type ReviewError struct {
 }
 
 // PauseKind is why autopilot paused.
-// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan
+// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan;release
 type PauseKind string
 
 const (
@@ -1778,6 +1778,8 @@ const (
 	PauseCompanion PauseKind = "companion"
 	// PauseEmptyPlan: the planning run succeeded but planned no issues.
 	PauseEmptyPlan PauseKind = "emptyPlan"
+	// PauseRelease: the final release failed twice.
+	PauseRelease PauseKind = "release"
 )
 
 // PauseResolver is who ended a pause (status.autopilot.resumedBy, the
@@ -1966,6 +1968,11 @@ type AutopilotStatus struct {
 	// once. A line that is fixed or removed leaves the list.
 	// +optional
 	RepoNotices []string `json:"repoNotices,omitempty"`
+
+	// Releases are the milestone's release decisions, oldest first (at most
+	// MaxMilestoneReleases).
+	// +optional
+	Releases []ReleaseRecord `json:"releases,omitempty"`
 }
 
 // BudgetStatus is the budget of an autopilot milestone and what it spent,

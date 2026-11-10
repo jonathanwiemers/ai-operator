@@ -1438,6 +1438,15 @@ as the re-plan is pending; if that plan comes back empty, it pauses again.
 - Change the milestone description so the planning agent plans issues: the
   milestone is planned again. `/agent resume` alone pauses again.
 
+#### `release`
+
+The milestone's final release failed twice. Ends by itself once a tag
+contains the milestone's last merge (released by hand): autopilot is then
+done.
+
+- `/agent resume`: the operator runs the final release once more.
+- `/agent endMilestone`: the final release is dropped and autopilot is done.
+
 ### Budget
 
 A line `/agent budget <usd>` in the milestone description (for example
