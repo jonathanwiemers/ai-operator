@@ -317,7 +317,49 @@ type WorkflowSpec struct {
 	// +kubebuilder:validation:items:Pattern=`^[a-z][a-z0-9]*$`
 	// +optional
 	CommitTypes []string `json:"commitTypes,omitempty"`
+
+	// Release configures when the operator releases the default branch by
+	// decision instead of on every merge, see docs/usage.md#releases.
+	// +optional
+	Release ReleaseSpec `json:"release,omitempty"`
 }
+
+// ReleaseMode is whether the operator starts release pipelines.
+// +kubebuilder:validation:Enum=Auto;Off
+type ReleaseMode string
+
+const (
+	// ReleaseAuto: the operator releases by decision. The default, also when
+	// the mode is empty.
+	ReleaseAuto ReleaseMode = "Auto"
+	// ReleaseOff: the operator never starts a release pipeline.
+	ReleaseOff ReleaseMode = "Off"
+)
+
+// ReleaseSpec configures releasing by decision, see docs/usage.md#releases.
+type ReleaseSpec struct {
+	// Mode: Auto (default, also when empty) or Off. Off means the operator
+	// never starts a release pipeline.
+	// +kubebuilder:default=Auto
+	// +optional
+	Mode ReleaseMode `json:"mode,omitempty"`
+
+	// MinInterval is the minimum time between two releases the operator
+	// starts. The final release of a milestone is exempt.
+	// +kubebuilder:default="15m"
+	// +optional
+	MinInterval *metav1.Duration `json:"minInterval,omitempty"`
+
+	// MaxUnreleasedAge: outside milestones, release-relevant commits on the
+	// default branch that are older than this are released.
+	// +kubebuilder:default="24h"
+	// +optional
+	MaxUnreleasedAge *metav1.Duration `json:"maxUnreleasedAge,omitempty"`
+}
+
+// Auto reports whether the operator releases by decision: true for Auto and
+// for an empty mode.
+func (s ReleaseSpec) Auto() bool { return s.Mode != ReleaseOff }
 
 // AgentsSpec configures the agent pods and the roles running inside them.
 type AgentsSpec struct {

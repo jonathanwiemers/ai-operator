@@ -401,6 +401,52 @@ export interface WorkflowSpec {
    * +optional
    */
   commitTypes?: string[];
+  /**
+   * Release configures when the operator releases the default branch by
+   * decision instead of on every merge, see docs/usage.md#releases.
+   * +optional
+   */
+  release?: ReleaseSpec;
+}
+/**
+ * ReleaseMode is whether the operator starts release pipelines.
+ * +kubebuilder:validation:Enum=Auto;Off
+ */
+export type ReleaseMode = string;
+/**
+ * ReleaseAuto: the operator releases by decision. The default, also when
+ * the mode is empty.
+ */
+export const ReleaseAuto: ReleaseMode = "Auto";
+/**
+ * ReleaseOff: the operator never starts a release pipeline.
+ */
+export const ReleaseOff: ReleaseMode = "Off";
+/**
+ * ReleaseSpec configures releasing by decision, see docs/usage.md#releases.
+ */
+export interface ReleaseSpec {
+  /**
+   * Mode: Auto (default, also when empty) or Off. Off means the operator
+   * never starts a release pipeline.
+   * +kubebuilder:default=Auto
+   * +optional
+   */
+  mode?: ReleaseMode;
+  /**
+   * MinInterval is the minimum time between two releases the operator
+   * starts. The final release of a milestone is exempt.
+   * +kubebuilder:default="15m"
+   * +optional
+   */
+  minInterval?: string;
+  /**
+   * MaxUnreleasedAge: outside milestones, release-relevant commits on the
+   * default branch that are older than this are released.
+   * +kubebuilder:default="24h"
+   * +optional
+   */
+  maxUnreleasedAge?: string;
 }
 /**
  * AgentsSpec configures the agent pods and the roles running inside them.

@@ -631,3 +631,31 @@ func TestRetroSpendKeepsUnmetered(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectReleaseSchema(t *testing.T) {
+	crd := loadCRD(t, "agentprojects")
+	withRelease := func(release any) map[string]any {
+		obj := readSample(t, "agentproject.yaml", func(s string) string { return s })
+		spec(obj)["workflow"] = map[string]any{"release": release}
+		return obj
+	}
+	obj, errs := crd.admit(withRelease(map[string]any{}))
+	if len(errs) > 0 {
+		t.Fatalf("empty release rejected: %v", errs)
+	}
+	r := spec(obj)["workflow"].(map[string]any)["release"].(map[string]any)
+	if r["mode"] != "Auto" || r["minInterval"] != "15m" || r["maxUnreleasedAge"] != "24h" {
+		t.Fatalf("defaults: %v", r)
+	}
+	obj, errs = crd.admit(withRelease(map[string]any{"mode": "Off", "minInterval": "1h"}))
+	if len(errs) > 0 {
+		t.Fatalf("Off rejected: %v", errs)
+	}
+	r = spec(obj)["workflow"].(map[string]any)["release"].(map[string]any)
+	if r["mode"] != "Off" || r["minInterval"] != "1h" {
+		t.Fatalf("explicit values: %v", r)
+	}
+	if _, errs := crd.admit(withRelease(map[string]any{"mode": "Sometimes"})); !strings.Contains(strings.Join(errs, "\n"), "spec.workflow.release.mode") {
+		t.Fatalf("bad mode admitted: %v", errs)
+	}
+}

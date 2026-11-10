@@ -2415,6 +2415,33 @@ spec:
                     description: ReadyLabel is set by a human to hand an issue to
                       the implementing agent.
                     type: string
+                  release:
+                    description: |-
+                      Release configures when the operator releases the default branch by
+                      decision instead of on every merge, see docs/usage.md#releases.
+                    properties:
+                      maxUnreleasedAge:
+                        default: 24h
+                        description: |-
+                          MaxUnreleasedAge: outside milestones, release-relevant commits on the
+                          default branch that are older than this are released.
+                        type: string
+                      minInterval:
+                        default: 15m
+                        description: |-
+                          MinInterval is the minimum time between two releases the operator
+                          starts. The final release of a milestone is exempt.
+                        type: string
+                      mode:
+                        default: Auto
+                        description: |-
+                          Mode: Auto (default, also when empty) or Off. Off means the operator
+                          never starts a release pipeline.
+                        enum:
+                        - Auto
+                        - "Off"
+                        type: string
+                    type: object
                   resolveConflicts:
                     default: true
                     description: |-

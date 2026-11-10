@@ -42,6 +42,8 @@ const (
 	DefaultPilotStuckAfter      = 30 * time.Minute
 	DefaultWebhookFallback      = 10 * time.Minute
 	DefaultWebhookSilence       = 30 * time.Minute
+	DefaultReleaseMinInterval   = 15 * time.Minute
+	DefaultMaxUnreleasedAge     = 24 * time.Hour
 )
 
 // DefaultCheckpointMaxFileBytes is checkpoint.maxFileBytes: 5 MiB.
@@ -91,6 +93,13 @@ func (w WorkflowSpec) WithDefaults() WorkflowSpec {
 		w.CommitTypes = []string{"feat", "fix", "refactor", "perf", "test", "docs", "build", "ci", "chore", "style", "revert"}
 	} else if !slices.Contains(w.CommitTypes, "chore") {
 		w.CommitTypes = append(slices.Clone(w.CommitTypes), "chore")
+	}
+	// An empty release mode stays empty: it means Auto.
+	if w.Release.MinInterval == nil {
+		w.Release.MinInterval = &metav1.Duration{Duration: DefaultReleaseMinInterval}
+	}
+	if w.Release.MaxUnreleasedAge == nil {
+		w.Release.MaxUnreleasedAge = &metav1.Duration{Duration: DefaultMaxUnreleasedAge}
 	}
 	return w
 }

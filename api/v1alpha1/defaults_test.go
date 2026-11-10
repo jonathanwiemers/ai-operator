@@ -239,3 +239,21 @@ func TestConflictDefaults(t *testing.T) {
 		t.Fatal("freshSession false, or no conflict role, resumes")
 	}
 }
+
+func TestReleaseDefaults(t *testing.T) {
+	r := AgentProjectSpec{}.WithDefaults().Workflow.Release
+	if r.Mode != "" || !r.Auto() {
+		t.Fatalf("empty mode stays empty and means Auto: %q", r.Mode)
+	}
+	if r.MinInterval.Duration != 15*time.Minute || r.MaxUnreleasedAge.Duration != 24*time.Hour {
+		t.Fatalf("defaults: %v %v", r.MinInterval, r.MaxUnreleasedAge)
+	}
+	min, age := metav1.Duration{Duration: time.Hour}, metav1.Duration{Duration: 2 * time.Hour}
+	got := WorkflowSpec{Release: ReleaseSpec{Mode: ReleaseOff, MinInterval: &min, MaxUnreleasedAge: &age}}.WithDefaults().Release
+	if got.Auto() || got.MinInterval.Duration != time.Hour || got.MaxUnreleasedAge.Duration != 2*time.Hour {
+		t.Fatalf("explicit values kept: %+v", got)
+	}
+	if !(ReleaseSpec{Mode: ReleaseAuto}).Auto() || (ReleaseSpec{Mode: ReleaseOff}).Auto() {
+		t.Fatal("Auto() for Auto and Off")
+	}
+}

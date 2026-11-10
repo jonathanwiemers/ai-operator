@@ -337,6 +337,21 @@ All labels can be renamed. Defaults:
 | `stepCommits` | `true` |
 | `conventionalCommits` | `false` (see [usage](usage.md#commit-messages)) |
 | `commitTypes` | `feat, fix, refactor, perf, test, docs, build, ci, chore, style, revert` |
+| `release.mode` | `Auto` (or `Off`; empty means `Auto`), see [below](#specworkflowrelease) |
+| `release.minInterval` | `15m` |
+| `release.maxUnreleasedAge` | `24h` |
+
+### `spec.workflow.release`
+
+Releasing by decision (see [usage](usage.md#releases), which later changes of
+this milestone fill in). Nothing reads these fields yet.
+
+- `mode`: `Auto` (default, also when empty) or `Off`. Any other value is
+  rejected. `Off` means the operator never starts a release pipeline.
+- `minInterval`: the minimum time between two releases the operator starts
+  (default `15m`); the final release of a milestone is exempt.
+- `maxUnreleasedAge`: outside milestones, release-relevant commits on the
+  default branch older than this are released (default `24h`).
 
 The checkpoint fields (`checkpoint.disabled`, default `false`, and
 `checkpoint.maxFileBytes`, default 5 MiB) are in
