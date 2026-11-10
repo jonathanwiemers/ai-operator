@@ -1808,12 +1808,22 @@ func (a *autopilot) commands(ctx context.Context) error {
 			word = ""
 		}
 		arg := fields[1]
-		if word == "merge" || word == "start" || word == "endmilestone" {
+		if word == "norelease" {
+			word = "no-release"
+		}
+		if word == "release" || word == "no-release" {
+			// The rest of the comment after the word: an optional reason
+			// (no-release: "#N reason").
+			body := strings.TrimLeft(rest, ": \t")
+			arg = strings.TrimSpace(strings.TrimPrefix(body, fields[0]))
+		}
+		if word == "merge" || word == "start" || word == "endmilestone" || word == "release" || word == "no-release" {
 			// Owners only, also where anyone may give commands.
 			if ok, err := a.gate.byOwner(ctx, n, a.st.Spec.Owners); err != nil {
 				return err
 			} else if !ok {
-				reply := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "endmilestone": notOwnerEnd}[word]
+				reply := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "endmilestone": notOwnerEnd,
+					"release": notOwnerRelease, "no-release": notOwnerRelease}[word]
 				a.r.rejectNote(ctx, a.gl, a.project, a.spec, tn, "🤖 "+reply)
 				a.ap.LastCommandNoteID = n.ID
 				continue
@@ -1935,7 +1945,7 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 }
 
 // command applies one command of the tracking issue: pause, resume,
-// skip, rebase, mergeBase or merge arg, by someone. It returns the answer and whether the command was
+// skip, rebase, mergeBase, merge, release or no-release arg, by someone. It returns the answer and whether the command was
 // applied; the tracking issue gets only the answers of commands that were
 // not (usage, unknown), the Desk gets every answer.
 func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer string, applied bool, err error) {
@@ -1986,6 +1996,10 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 		return a.mergeAnyway(ctx, arg, by)
 	case "start":
 		return a.startNow(ctx, by)
+	case "release":
+		return a.ownerRelease(ctx, arg, by)
+	case "no-release":
+		return a.ownerNoRelease(ctx, arg, by)
 	case "rebase", "mergeBase", "mergebase":
 		// The tracking issue's words are lower case, the pilot's tools not.
 		return a.mrCommand(ctx, strings.Replace(word, "mergebase", "mergeBase", 1), arg, by)
@@ -2074,7 +2088,7 @@ func (a *autopilot) unknownCommand() string {
 	if a.waitingForTurn() {
 		start = fmt.Sprintf("`%s start`, ", prefix)
 	}
-	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
+	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s release [reason]`, `%[1]s no-release #N [reason]`, `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
 		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix, start)
 }
 

@@ -1989,6 +1989,14 @@ says what was refused and why ("🛑 Refused the pilot's release after #42:
 same way with "ℹ️". Either way it is handled: the watermark moves past it,
 and the pilot sees the records in its next state.
 
+**Owners decide too**, with two commands on the tracking issue (owners only,
+also with `commandsFrom: all`, see [commands](commands.md#on-the-tracking-issue-autopilot)):
+`/agent release [reason]` adds a record `by: owner`, `actor: @you`, `Waiting`
+for the newest commit of the default branch (the SHA of its newest pipeline);
+`/agent no-release #N [reason]` drops the `Planned` and `Waiting` records
+after N that are not the final release ("dropped by @you: <reason>"). The
+reason is optional and folded to one line of 200 characters.
+
 **The contract with the project's CI:** the operator starts a pipeline on the
 default branch with the variables `AGENT_RELEASE=true` and
 `AGENT_RELEASE_NOTES=<text>`, and that pipeline runs the release job, which

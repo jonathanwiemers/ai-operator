@@ -69,10 +69,10 @@ restart; comments from before the operator watched are not answered.
 
 An `/agent` or `/pilot` comment the operator does not act on gets one
 reply in its thread naming the reason: no `agent::` label (above), the
-commenter is not an owner (`commandsFrom: owners`, `/pilot`, `merge`, `start`, `endMilestone`), or a
+commenter is not an owner (`commandsFrom: owners`, `/pilot`, `merge`, `start`, `endMilestone`, `release`, `no-release`), or a
 command the tracking issue does not take (the reply lists `start` while the
 milestone waits for its turn, `pause`, `resume`,
-`skip #N`, `merge #N`, `endMilestone` and `revisit <id> …`). Each comment is answered once,
+`skip #N`, `merge #N`, `release [reason]`, `no-release #N [reason]`, `endMilestone` and `revisit <id> …`). Each comment is answered once,
 also when a poll is repeated. To bound the bot's comments, one author gets
 at most 10 such replies a day (`status.commandReplies.authors` of the
 AgentProject); the operator logs the comments beyond that instead of
@@ -148,6 +148,8 @@ implementer of every following run reads them:
 | `/agent rebase #12` | The active issue only (not a pending one, not the main-red fix), once it has a pushed MR: GitLab rebases the MR onto the default branch. The review carries over if the change is the same (as for `need_rebase`, see [the merge gate](usage.md#the-merge-gate)); a pause about the issue whose way out it is (CI red, merge request) ends, and the rebased head goes through CI. Said on the tracking issue. If the MR was rebased before, or GitLab cannot rebase it, the agent merges the default branch instead. Refused with the reason while a run of the issue is pending, a rebase is in flight, or someone else pushed to the branch. |
 | `/agent mergeBase #12` | The active issue only, like `rebase`: the agent merges the default branch into the MR and resolves conflicts (see [Merge conflicts](usage.md#merge-conflicts)); its push is reviewed and checked by CI like any other, and a pause about the issue whose way out it is ends. Once per head, and not with `workflow.resolveConflicts: false`. |
 | `/agent merge #12 <sha>` | Owners only (also with `commandsFrom: all`): merge the active issue's head `sha` (at least 7 characters; without it the answer names the current head) without a full review. Skips failed or missing reviews and blocking findings; CI, the MR state and approvals still apply. Said on the tracking issue; a new push or a review that finishes later voids it. |
+| `/agent release [reason]` | Owners only (also with `commandsFrom: all`): release after the current state of the default branch. Adds a release record `by: owner` for the SHA of the newest pipeline on the default branch, with the reason as `why` (one line, at most 200 characters; without one "asked by @you"), and says so ("📦 Release decided after 1a2b3c4d by @you: …"). It runs like any other decision once that head is green, see [releases](usage.md#releases). Example: `/agent release the new checkout is ready for users`. Without a pipeline on the default branch it answers so and does nothing. |
+| `/agent no-release #12 [reason]` | Owners only (also with `commandsFrom: all`): drop the planned release after #12. Its `Planned` and `Waiting` records (not a `Running` one, never the final release) become `Dropped` ("dropped by @you: <reason>"), said on the tracking issue. Example: `/agent no-release #12 nothing users notice yet`. Without such a record it answers with the usage. `norelease` works too. |
 | `/agent revisit D42-3 …` | Change a decision of a merged issue: a follow-up issue joins the queue. |
 | `/agent endMilestone` | Owners only (also with `commandsFrom: all`): the milestone ends here. The pending issues are skipped and autopilot is done after the active one, said on the tracking issue. During a pause for the final release (`pauseKind: release`) that release is dropped ("ended without a release by @you") and autopilot is done; see [the final release](usage.md#the-final-release). |
 | anything else | Answered once with this list, a pointer to `/pilot …` and the active issue. Instructions for the agent go on the active issue or its MR, not here. |
