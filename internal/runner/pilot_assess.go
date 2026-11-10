@@ -83,6 +83,9 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 				if !recorded {
 					body = renderAssessment(a) + "\n\n_There is no prompt for it (the milestone has no owners, or it could not be recorded), so nothing of it runs._"
 				}
+				if rerr := r.recordReleaseDecision(ctx, task, a.Release, "event/"+id); rerr != nil {
+					failed = rerr
+				}
 			}
 		}
 		if body != "" {
@@ -166,7 +169,8 @@ const assessSchema = `{
           }
         }
       }
-    }
+    },
+    "release": ` + releaseSchema + `
   }
 }`
 
@@ -177,6 +181,7 @@ type PilotAssessment struct {
 	WouldDo        string         `json:"wouldDo"`
 	Question       string         `json:"question"`
 	Options        []AssessOption `json:"options"`
+	Release        *ReleaseAnswer `json:"release,omitempty"`
 }
 
 // AssessOption is one option of an assessment's prompt.

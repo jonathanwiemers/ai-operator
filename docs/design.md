@@ -1685,6 +1685,19 @@ counted interventions; more tools are later steps of
   says so. It executes nothing. The runner remembers the last 100 handled
   `key@request`, so a run started again does not assess twice; a comment
   that could not be posted fails the run.
+* **Release decisions** (`recordReleaseDecision`). An answer or an
+  assessment may carry one optional `release {issue, release, why}`
+  (`releaseSchema`): after issue N of the milestone, `true` adds a release
+  once N is merged, `false` drops a planned one. It is no proposal and needs
+  no owner: the runner appends it to `status.pilot.releaseDecisions` under
+  an optimistic lock, with the next `seq`, the reason cut to its first line
+  of 200 characters, `source` (`note/<id>` or `event/<key>@<request>`,
+  recorded once) and `at`, and keeps the newest 20. The operator is to
+  validate and apply them by `seq` (an issue of the milestone, a reason,
+  never the final release); until it does, they are only recorded. The state the pilot reads has `releases`, the milestone's
+  records of `status.autopilot.releases` as `by`, `why`, `afterIssue`,
+  `state`, `version` and `final` (and not again under `autopilot`).
+  Retrospective, draft and refine runs have no such field.
 * **Refines** (`internal/runner/pilot_refine.go`). An owner's free text on
   an action prompt reaches the pilot as a `spec.source.promptRefines` entry
   (at most 5: the prompt's id, question, context and options, the text, who

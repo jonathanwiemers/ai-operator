@@ -31,6 +31,7 @@ type pilotEngine struct {
 	retro      *RetroAnswer
 	draft      *DraftAnswer
 	proposal   *ProposalAnswer
+	release    *ReleaseAnswer
 	refine     *RefineAnswer
 	// raw, when set, is the structured answer of every turn as is (valid
 	// JSON: the agent server passes it on as such).
@@ -46,7 +47,7 @@ func (p *pilotEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
-	b, _ := json.Marshal(PilotAnswer{Reply: p.reply, Proposal: p.proposal})
+	b, _ := json.Marshal(PilotAnswer{Reply: p.reply, Proposal: p.proposal, Release: p.release})
 	switch inv.JSONSchema {
 	case assessSchema:
 		b, _ = json.Marshal(p.assessment)

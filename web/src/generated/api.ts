@@ -3065,6 +3065,15 @@ export interface PilotStatus {
    */
   commands?: PilotCommand[];
   /**
+   * ReleaseDecisions are the release decisions of the pilot's answers and
+   * assessments (Coordinate tasks), oldest first, the newest
+   * MaxPilotReleaseDecisions. The operator validates and applies each once,
+   * by Seq. Untrusted.
+   * +optional
+   * +kubebuilder:validation:MaxItems=20
+   */
+  releaseDecisions?: PilotReleaseDecision[];
+  /**
    * AutonomyOverride is the owners' last "/pilot stop" or "/pilot go"
    * (Coordinate tasks). It can only lower the project's pilot.autonomy.
    * +optional
@@ -3227,6 +3236,42 @@ export interface PilotCommand {
    */
   owner: string;
   onIssue: number /* int64 */;
+}
+/**
+ * MaxPilotReleaseDecisions bounds status.pilot.releaseDecisions.
+ */
+export const MaxPilotReleaseDecisions = 20;
+/**
+ * PilotReleaseDecision is the pilot's decision to add a release after an
+ * issue of its milestone, or to drop a planned one. It is no proposal: the
+ * operator validates it and carries it out.
+ */
+export interface PilotReleaseDecision {
+  /**
+   * Seq ascends; the operator remembers the last it applied.
+   */
+  seq: number /* int64 */;
+  /**
+   * IssueIID is the issue the release follows, as the model gave it.
+   */
+  issueIID: number /* int64 */;
+  /**
+   * Release true adds a release after the issue, false drops a planned
+   * one.
+   */
+  release: boolean;
+  /**
+   * Why is the pilot's one-line reason.
+   * +optional
+   */
+  why?: string;
+  /**
+   * Source is the message or event whose answer decided it ("note/2000",
+   * "event/<key>@<request>"): a run started again records it once.
+   * +optional
+   */
+  source?: string;
+  at: string;
 }
 /**
  * PilotAutonomyOverride is an owner's "/pilot stop" (propose) or "/pilot

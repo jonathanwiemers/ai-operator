@@ -827,6 +827,13 @@ Propose only what an owner asked for or what an event calls for, and say it
 in the answer. For anything else say what the owner can do, e.g. "/pilot
 tell #N: <words>" to pass their own words on to an implementer, or a label.
 
+With an answer or an assessment you may also decide a release, with one
+line why: after issue N of this milestone, add one (after a step a user
+notices, or one that must be live before the next; not after every issue)
+or drop a planned one. "releases" in the state are the decisions so far.
+The operator checks it and carries it out; it is not a proposal. Never
+decide the final release: the operator does it.
+
 The operator also wakes you on events of the milestone: an autopilot pause,
 an issue that needs input or is blocked, a red or flaky default branch. Then
 you assess the event: classify it (infra: an outside service or the runner
@@ -894,14 +901,37 @@ const pilotSchema = `{
   "required": ["reply"],
   "properties": {
     "reply": {"type": "string", "description": "The answer to the message, in markdown."},
-    "proposal": ` + proposalSchema + `
+    "proposal": ` + proposalSchema + `,
+    "release": ` + releaseSchema + `
   }
 }`
+
+// releaseSchema is the optional release decision of an answer or an
+// assessment.
+const releaseSchema = `{
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue", "release", "why"],
+      "description": "A release decision after issue N of this milestone: true adds a release once it is merged, false drops a planned one; never the final release.",
+      "properties": {
+        "issue": {"type": "integer", "description": "The issue of this milestone the release follows."},
+        "release": {"type": "boolean", "description": "true adds a release once the issue is merged, false drops a planned one."},
+        "why": {"type": "string", "description": "One line: why."}
+      }
+    }`
 
 // PilotAnswer is the pilot's answer.
 type PilotAnswer struct {
 	Reply    string          `json:"reply"`
 	Proposal *ProposalAnswer `json:"proposal,omitempty"`
+	Release  *ReleaseAnswer  `json:"release,omitempty"`
+}
+
+// ReleaseAnswer is the pilot's release decision (releaseSchema).
+type ReleaseAnswer struct {
+	Issue   int64  `json:"issue"`
+	Release bool   `json:"release"`
+	Why     string `json:"why"`
 }
 
 // ProposalAnswer is a proposal of the pilot.

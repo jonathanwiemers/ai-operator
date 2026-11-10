@@ -714,6 +714,14 @@ type PilotStatus struct {
 	// +optional
 	Commands []PilotCommand `json:"commands,omitempty"`
 
+	// ReleaseDecisions are the release decisions of the pilot's answers and
+	// assessments (Coordinate tasks), oldest first, the newest
+	// MaxPilotReleaseDecisions. The operator validates and applies each once,
+	// by Seq. Untrusted.
+	// +optional
+	// +kubebuilder:validation:MaxItems=20
+	ReleaseDecisions []PilotReleaseDecision `json:"releaseDecisions,omitempty"`
+
 	// AutonomyOverride is the owners' last "/pilot stop" or "/pilot go"
 	// (Coordinate tasks). It can only lower the project's pilot.autonomy.
 	// +optional
@@ -829,6 +837,30 @@ type PilotCommand struct {
 	// Owner is who accepted it, OnIssue where it is answered.
 	Owner   string `json:"owner"`
 	OnIssue int64  `json:"onIssue"`
+}
+
+// MaxPilotReleaseDecisions bounds status.pilot.releaseDecisions.
+const MaxPilotReleaseDecisions = 20
+
+// PilotReleaseDecision is the pilot's decision to add a release after an
+// issue of its milestone, or to drop a planned one. It is no proposal: the
+// operator validates it and carries it out.
+type PilotReleaseDecision struct {
+	// Seq ascends; the operator remembers the last it applied.
+	Seq int64 `json:"seq"`
+	// IssueIID is the issue the release follows, as the model gave it.
+	IssueIID int64 `json:"issueIID"`
+	// Release true adds a release after the issue, false drops a planned
+	// one.
+	Release bool `json:"release"`
+	// Why is the pilot's one-line reason.
+	// +optional
+	Why string `json:"why,omitempty"`
+	// Source is the message or event whose answer decided it ("note/2000",
+	// "event/<key>@<request>"): a run started again records it once.
+	// +optional
+	Source string      `json:"source,omitempty"`
+	At     metav1.Time `json:"at"`
 }
 
 // PilotAutonomyOverride is an owner's "/pilot stop" (propose) or "/pilot

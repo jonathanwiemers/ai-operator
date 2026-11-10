@@ -140,6 +140,10 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 				} else if a.Proposal != nil && len(a.Proposal.Actions) > 0 && task.Spec.Issue != nil {
 					reply += "\n\n" + followsOn(spec, task)
 				}
+				if err := r.recordReleaseDecision(ctx, task, a.Release, fmt.Sprintf("note/%d", m.NoteID)); err != nil {
+					failed = err
+					reply += "\n\n_The pilot's release decision could not be recorded._"
+				}
 			}
 		}
 		r.pilotReply(ctx, gl, spec, m, reply)
@@ -237,6 +241,25 @@ func pilotCompanions(project *aiv1.AgentProject, byIID map[int64]*aiv1.AgentTask
 	return out
 }
 
+// pilotRelease is what the pilot sees of a release record of its milestone
+// (status.autopilot.releases).
+type pilotRelease struct {
+	By         aiv1.ReleaseBy    `json:"by"`
+	Why        string            `json:"why,omitempty"`
+	AfterIssue int64             `json:"afterIssue,omitempty"`
+	State      aiv1.ReleaseState `json:"state"`
+	Version    string            `json:"version,omitempty"`
+	Final      bool              `json:"final,omitempty"`
+}
+
+func pilotReleases(recs []aiv1.ReleaseRecord) []pilotRelease {
+	var out []pilotRelease
+	for _, r := range recs {
+		out = append(out, pilotRelease{By: r.By, Why: r.Why, AfterIssue: r.AfterIssue, State: r.State, Version: r.Version, Final: r.Final})
+	}
+	return out
+}
+
 // pilotState renders the milestone's state as JSON: the spec, autopilot,
 // the issues with their tasks, the default branch's health and the last
 // comments of the tracking issue.
@@ -261,6 +284,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		Spec       string                 `json:"spec"`
 		Plan       []aiv1.PlannedIssue    `json:"plan,omitempty"`
 		Autopilot  *aiv1.AutopilotStatus  `json:"autopilot,omitempty"`
+		Releases   []pilotRelease         `json:"releases,omitempty"`
 		PauseExits []aiv1.PauseExit       `json:"pauseExits,omitempty"`
 		Issues     []pilotIssue           `json:"issues"`
 		Companions []pilotCompanion       `json:"companions,omitempty"`
@@ -285,8 +309,15 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 			byIID[t.Spec.Issue.IID] = t
 		}
 	}
-	if ap := v.Autopilot; ap != nil && ap.Phase == aiv1.AutopilotPaused {
-		v.PauseExits = aiv1.PauseExits(ap.PauseKind) // the ways out of the pause
+	if ap := v.Autopilot; ap != nil {
+		if ap.Phase == aiv1.AutopilotPaused {
+			v.PauseExits = aiv1.PauseExits(ap.PauseKind) // the ways out of the pause
+		}
+		// The release records once, in their short form.
+		v.Releases = pilotReleases(ap.Releases)
+		short := *ap
+		short.Releases = nil
+		v.Autopilot = &short
 	}
 	for _, is := range issues {
 		pi := pilotIssue{IID: is.IID, Title: is.Title, State: is.State, Labels: is.Labels}
@@ -459,6 +490,42 @@ func (r *Runner) recordProposal(ctx context.Context, task *aiv1.AgentTask, prop 
 			return fmt.Errorf("%d proposals wait for the operator already", maxProposed)
 		}
 		t.Status.Pilot.Proposed = append(t.Status.Pilot.Proposed, prop)
+		return r.K8s.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
+	}))
+}
+
+// recordReleaseDecision appends the pilot's release decision a to
+// status.pilot.releaseDecisions with the next Seq, once per source, and
+// keeps the newest MaxPilotReleaseDecisions. The operator validates and
+// applies it; the runner executes nothing. The reason is cut to its first
+// line (releaseDecision's rule).
+func (r *Runner) recordReleaseDecision(ctx context.Context, task *aiv1.AgentTask, a *ReleaseAnswer, source string) error {
+	if a == nil {
+		return nil
+	}
+	_, why := releaseDecision(PlannedItem{Release: true, ReleaseWhy: a.Why})
+	d := aiv1.PilotReleaseDecision{IssueIID: a.Issue, Release: a.Release, Why: why, Source: source, At: metav1.NewTime(r.now())}
+	return r.writeFailed(ctx, task, "recordReleaseDecision", retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var t aiv1.AgentTask
+		if err := r.K8s.Get(ctx, client.ObjectKeyFromObject(task), &t); err != nil {
+			return err
+		}
+		orig := t.DeepCopy()
+		if t.Status.Pilot == nil {
+			t.Status.Pilot = &aiv1.PilotStatus{}
+		}
+		ps := t.Status.Pilot
+		if slices.ContainsFunc(ps.ReleaseDecisions, func(q aiv1.PilotReleaseDecision) bool { return q.Source == source }) {
+			return nil
+		}
+		d.Seq = 1
+		if n := len(ps.ReleaseDecisions); n > 0 {
+			d.Seq = ps.ReleaseDecisions[n-1].Seq + 1
+		}
+		ps.ReleaseDecisions = append(ps.ReleaseDecisions, d)
+		if n := len(ps.ReleaseDecisions); n > aiv1.MaxPilotReleaseDecisions {
+			ps.ReleaseDecisions = ps.ReleaseDecisions[n-aiv1.MaxPilotReleaseDecisions:]
+		}
 		return r.K8s.Status().Patch(ctx, &t, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
 	}))
 }

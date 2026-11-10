@@ -3009,6 +3009,52 @@ spec:
                       user ID. No longer written: each comment gets its own reply, counted
                       in the project's status.commandReplies.authors.
                     type: object
+                  releaseDecisions:
+                    description: |-
+                      ReleaseDecisions are the release decisions of the pilot's answers and
+                      assessments (Coordinate tasks), oldest first, the newest
+                      MaxPilotReleaseDecisions. The operator validates and applies each once,
+                      by Seq. Untrusted.
+                    items:
+                      description: |-
+                        PilotReleaseDecision is the pilot's decision to add a release after an
+                        issue of its milestone, or to drop a planned one. It is no proposal: the
+                        operator validates it and carries it out.
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        issueIID:
+                          description: IssueIID is the issue the release follows,
+                            as the model gave it.
+                          format: int64
+                          type: integer
+                        release:
+                          description: |-
+                            Release true adds a release after the issue, false drops a planned
+                            one.
+                          type: boolean
+                        seq:
+                          description: Seq ascends; the operator remembers the last
+                            it applied.
+                          format: int64
+                          type: integer
+                        source:
+                          description: |-
+                            Source is the message or event whose answer decided it ("note/2000",
+                            "event/<key>@<request>"): a run started again records it once.
+                          type: string
+                        why:
+                          description: Why is the pilot's one-line reason.
+                          type: string
+                      required:
+                      - at
+                      - issueIID
+                      - release
+                      - seq
+                      type: object
+                    maxItems: 20
+                    type: array
                   retrospective:
                     description: |-
                       Retrospective is the retrospective of the milestone once its autopilot
