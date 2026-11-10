@@ -411,12 +411,20 @@ func (p *Projects) CreateMergeRequestPipeline(ctx context.Context, project strin
 	return f.CreateMergeRequestPipeline(ctx, project, iid)
 }
 
-func (p *Projects) CreatePipeline(ctx context.Context, project, ref string) error {
+func (p *Projects) CreatePipeline(ctx context.Context, project, ref string, vars ...gitlab.PipelineVariable) (*gitlab.Pipeline, error) {
 	f, err := p.route(project)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return f.CreatePipeline(ctx, project, ref)
+	return f.CreatePipeline(ctx, project, ref, vars...)
+}
+
+func (p *Projects) GetPipeline(ctx context.Context, project string, id int64) (*gitlab.Pipeline, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.GetPipeline(ctx, project, id)
 }
 
 func (p *Projects) ListPipelines(ctx context.Context, project string, opts gitlab.ListPipelinesOptions) ([]gitlab.Pipeline, error) {

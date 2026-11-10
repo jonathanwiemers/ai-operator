@@ -177,10 +177,12 @@ func TestGuard(t *testing.T) {
 			return api.RebaseMergeRequest(ctx, p, 1)
 		}, did: func(f *gitlabfake.Fake) bool { return len(f.Rebased) > 0 }},
 		{name: "pipeline in never-target", project: secrets, call: func(api gitlab.API, p string) error {
-			return api.CreatePipeline(ctx, p, "agent/1-x")
+			_, err := api.CreatePipeline(ctx, p, "agent/1-x", gitlab.PipelineVariable{Key: "AGENT_RELEASE", Value: "true"})
+			return err
 		}, did: func(f *gitlabfake.Fake) bool { return len(f.BranchPipelines) > 0 }},
 		{name: "pipeline at home", project: home, allowed: true, call: func(api gitlab.API, p string) error {
-			return api.CreatePipeline(ctx, p, "agent/1-x")
+			_, err := api.CreatePipeline(ctx, p, "agent/1-x", gitlab.PipelineVariable{Key: "AGENT_RELEASE", Value: "true"})
+			return err
 		}, did: func(f *gitlabfake.Fake) bool { return len(f.BranchPipelines) > 0 }},
 		{name: "MR pipeline in unknown project", project: unrelated, call: func(api gitlab.API, p string) error {
 			return api.CreateMergeRequestPipeline(ctx, p, 1)

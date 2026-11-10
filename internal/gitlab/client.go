@@ -70,7 +70,8 @@ type API interface {
 	UpdateMergeRequestNote(ctx context.Context, project string, iid, noteID int64, body string) (*Note, error)
 	DeleteMergeRequestNote(ctx context.Context, project string, iid, noteID int64) error
 	CreateMergeRequestPipeline(ctx context.Context, project string, iid int64) error
-	CreatePipeline(ctx context.Context, project, ref string) error
+	CreatePipeline(ctx context.Context, project, ref string, vars ...PipelineVariable) (*Pipeline, error)
+	GetPipeline(ctx context.Context, project string, id int64) (*Pipeline, error)
 	ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error)
 	ListPipelineJobs(ctx context.Context, project string, pipelineID int64, scope string) ([]Job, error)
 	JobTrace(ctx context.Context, project string, jobID int64) (string, error)
@@ -80,6 +81,9 @@ type API interface {
 	EditProjectHook(ctx context.Context, project string, id int64, opts ProjectHookOptions) (*ProjectHook, error)
 	DeleteProjectHook(ctx context.Context, project string, id int64) error
 }
+
+// PipelineVariable is a variable passed to a new pipeline.
+type PipelineVariable struct{ Key, Value string }
 
 // Pipeline is a CI pipeline.
 type Pipeline struct {
@@ -1101,9 +1105,34 @@ func (c *Client) CreateMergeRequestPipeline(ctx context.Context, project string,
 }
 
 // CreatePipeline runs a pipeline for the head of a branch.
-func (c *Client) CreatePipeline(ctx context.Context, project, ref string) error {
-	_, err := c.do(ctx, http.MethodPost, projectPath(project)+"/pipeline", url.Values{"ref": {ref}}, nil, nil)
-	return err
+// With variables they are set as environment variables of the pipeline.
+func (c *Client) CreatePipeline(ctx context.Context, project, ref string, vars ...PipelineVariable) (*Pipeline, error) {
+	type variable struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+		Type  string `json:"variable_type"`
+	}
+	body := struct {
+		Ref       string     `json:"ref"`
+		Variables []variable `json:"variables,omitempty"`
+	}{Ref: ref}
+	for _, v := range vars {
+		body.Variables = append(body.Variables, variable{Key: v.Key, Value: v.Value, Type: "env_var"})
+	}
+	var p Pipeline
+	if _, err := c.do(ctx, http.MethodPost, projectPath(project)+"/pipeline", nil, body, &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// GetPipeline reads one pipeline.
+func (c *Client) GetPipeline(ctx context.Context, project string, id int64) (*Pipeline, error) {
+	var p Pipeline
+	if _, err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/pipelines/%d", projectPath(project), id), nil, nil, &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
 func (c *Client) DeleteMergeRequestNote(ctx context.Context, project string, iid, noteID int64) error {

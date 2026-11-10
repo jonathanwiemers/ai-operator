@@ -183,11 +183,11 @@ func (g *guarded) RebaseMergeRequest(ctx context.Context, project string, iid in
 	return g.API.RebaseMergeRequest(ctx, project, iid)
 }
 
-func (g *guarded) CreatePipeline(ctx context.Context, project, ref string) error {
+func (g *guarded) CreatePipeline(ctx context.Context, project, ref string, vars ...PipelineVariable) (*Pipeline, error) {
 	if err := g.mrWrite(project, "create pipeline for "+ref); err != nil {
-		return err
+		return nil, err
 	}
-	return g.API.CreatePipeline(ctx, project, ref)
+	return g.API.CreatePipeline(ctx, project, ref, vars...)
 }
 
 func (g *guarded) CreateMergeRequestPipeline(ctx context.Context, project string, iid int64) error {

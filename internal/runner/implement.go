@@ -1107,7 +1107,7 @@ func (r *Runner) startPipeline(ctx context.Context, gl gitlab.API, glProject str
 	err := gl.CreateMergeRequestPipeline(ctx, glProject, mr.IID)
 	if code := gitlab.StatusCode(err); code >= 400 && code < 500 {
 		// No merge request pipelines in this project: a branch pipeline.
-		if berr := gl.CreatePipeline(ctx, glProject, mr.SourceBranch); berr == nil {
+		if _, berr := gl.CreatePipeline(ctx, glProject, mr.SourceBranch); berr == nil {
 			s.done("branch pipeline for " + mr.SourceBranch)
 			return
 		}

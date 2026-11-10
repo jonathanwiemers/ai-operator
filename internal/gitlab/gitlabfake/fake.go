@@ -13,6 +13,13 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
+// CreatedPipeline is a pipeline CreatePipeline made.
+type CreatedPipeline struct {
+	ID        int64
+	Ref       string
+	Variables []gitlab.PipelineVariable
+}
+
 // Fake is a minimal in-memory GitLab.
 type Fake struct {
 	mu         sync.Mutex
@@ -88,6 +95,10 @@ type Fake struct {
 	// NoPipelines refuses them.
 	BranchPipelines []string
 	NoPipelines     bool
+	// CreatedPipelines records every pipeline CreatePipeline made, with its
+	// variables; BranchHeads gives the SHA of those by ref, empty if unset.
+	CreatedPipelines []CreatedPipeline
+	BranchHeads      map[string]string
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
 	// LabelEvents of issues, oldest first: UpdateIssue records the bot's,
@@ -1011,16 +1022,34 @@ func (f *Fake) UpdateMergeRequestNote(_ context.Context, _ string, iid, noteID i
 	return nil, &gitlab.Error{StatusCode: 404, Method: "PUT", Path: "note"}
 }
 
-// CreatePipeline records the branch a pipeline was started for; with
+// CreatePipeline records the branch a pipeline was started for and adds a
+// pipeline with status created, whose SHA is BranchHeads[ref]; with
 // NoPipelines it is refused like a project without CI for it.
-func (f *Fake) CreatePipeline(_ context.Context, _ string, ref string) error {
+func (f *Fake) CreatePipeline(_ context.Context, _ string, ref string, vars ...gitlab.PipelineVariable) (*gitlab.Pipeline, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.NoPipelines {
-		return &gitlab.Error{StatusCode: 400, Method: "POST", Path: "pipeline", Body: `{"message":{"base":["Pipeline filtered out by workflow rules."]}}`}
+		return nil, &gitlab.Error{StatusCode: 400, Method: "POST", Path: "pipeline", Body: `{"message":{"base":["Pipeline filtered out by workflow rules."]}}`}
 	}
 	f.BranchPipelines = append(f.BranchPipelines, ref)
-	return nil
+	id := f.id()
+	p := gitlab.Pipeline{ID: id, SHA: f.BranchHeads[ref], Ref: ref, Status: "created",
+		WebURL: fmt.Sprintf("https://gitlab.example/group/app/-/pipelines/%d", id)}
+	f.Pipelines = append(f.Pipelines, p)
+	f.CreatedPipelines = append(f.CreatedPipelines, CreatedPipeline{ID: id, Ref: ref, Variables: slices.Clone(vars)})
+	return &p, nil
+}
+
+// GetPipeline returns a pipeline, 404 for an unknown ID.
+func (f *Fake) GetPipeline(_ context.Context, _ string, id int64) (*gitlab.Pipeline, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, p := range f.Pipelines {
+		if p.ID == id {
+			return &p, nil
+		}
+	}
+	return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "pipelines"}
 }
 
 func (f *Fake) CreateMergeRequestPipeline(_ context.Context, _ string, iid int64) error {

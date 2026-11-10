@@ -122,9 +122,9 @@ func (w *writes) DeleteBranch(ctx context.Context, project, branch string) error
 	return w.API.DeleteBranch(ctx, project, branch)
 }
 
-func (w *writes) CreatePipeline(ctx context.Context, project, ref string) error {
+func (w *writes) CreatePipeline(ctx context.Context, project, ref string, vars ...gitlab.PipelineVariable) (*gitlab.Pipeline, error) {
 	w.record(project, "pipeline", ref)
-	return w.API.CreatePipeline(ctx, project, ref)
+	return w.API.CreatePipeline(ctx, project, ref, vars...)
 }
 
 func (w *writes) CreateMergeRequestPipeline(ctx context.Context, project string, iid int64) error {

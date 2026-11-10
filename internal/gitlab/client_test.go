@@ -799,3 +799,53 @@ func TestListMergeRequestDiscussionsPaginates(t *testing.T) {
 		t.Fatalf("unexpected requests %v", paths)
 	}
 }
+
+func TestCreatePipelineBody(t *testing.T) {
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.EscapedPath() != "/api/v4/projects/group%2Fapp/pipeline" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.EscapedPath())
+		}
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		_ = json.NewEncoder(w).Encode(Pipeline{ID: 7, SHA: "abc", Ref: "main", Status: "created", WebURL: "https://x/7"})
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	p, err := c.CreatePipeline(context.Background(), "group/app", "main")
+	if err != nil || p.ID != 7 || p.SHA != "abc" || p.Status != "created" || p.WebURL != "https://x/7" {
+		t.Fatalf("pipeline = %+v, %v", p, err)
+	}
+	if _, err := c.CreatePipeline(context.Background(), "group/app", "main",
+		PipelineVariable{Key: "AGENT_RELEASE", Value: "true"}, PipelineVariable{Key: "AGENT_RELEASE_NOTES", Value: "a b"}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		`{"ref":"main"}`,
+		`{"ref":"main","variables":[{"key":"AGENT_RELEASE","value":"true","variable_type":"env_var"},{"key":"AGENT_RELEASE_NOTES","value":"a b","variable_type":"env_var"}]}`,
+	}
+	for i := range want {
+		if i >= len(bodies) || strings.TrimSpace(bodies[i]) != want[i] {
+			t.Errorf("body %d = %v, want %s", i, bodies, want[i])
+		}
+	}
+}
+
+func TestGetPipeline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.EscapedPath() != "/api/v4/projects/group%2Fapp/pipelines/7" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(Pipeline{ID: 7, SHA: "abc", Status: "success", WebURL: "https://x/7"})
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	p, err := c.GetPipeline(context.Background(), "group/app", 7)
+	if err != nil || p.ID != 7 || p.Status != "success" || p.SHA != "abc" {
+		t.Fatalf("pipeline = %+v, %v", p, err)
+	}
+	if _, err := c.GetPipeline(context.Background(), "group/app", 8); !IsNotFound(err) {
+		t.Fatalf("err = %v, want not found", err)
+	}
+}

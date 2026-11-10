@@ -43,7 +43,7 @@ func TestProjectsUnknownIs404(t *testing.T) {
 			t.Errorf("GetIssue(%q) err = %v, want 404", project, err)
 		}
 	}
-	if err := p.CreatePipeline(ctx, "other/repo", "main"); !gitlab.IsNotFound(err) {
+	if _, err := p.CreatePipeline(ctx, "other/repo", "main"); !gitlab.IsNotFound(err) {
 		t.Errorf("CreatePipeline err = %v, want 404", err)
 	}
 }
