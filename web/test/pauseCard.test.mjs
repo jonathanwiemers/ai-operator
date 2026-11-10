@@ -2,10 +2,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  agentCommand,
   pauseActions,
   pauseCommand,
   pauseEndsBy,
+  pauseExplain,
   pausePrompt,
+  pauseRelease,
   pauseTitle,
   reviewLimitLines,
   commandAnswer,
@@ -496,4 +499,49 @@ test('companion: its title, how it ends, the companion MR link and its way out',
   assert.deepEqual([fix.kind, fix.text, fix.link], ['gitlab', 'In GitLab: fix the companion merge request, then resume', 'companion'])
   assert.deepEqual(buttons(w), ['resume', 'skip'])
   assert.equal(wayOutLine(exits), 'Way out: CompanionMergeable holds — waiting · 3 remedies')
+})
+
+// The exits of a release pause as the operator sends them
+// (api/v1alpha1/pause.go, PauseRelease).
+const releaseExits = (allowed) => [
+  { id: 'releasedByHand', auto: true, when: "a tag contains the milestone's last merge", does: 'autopilot is done', status: 'waiting' },
+  { id: 'retryRelease', command: 'resume', target: 'spec', when: 'the operator runs the final release once more', does: 'the operator runs the final release once more', allowed },
+  { id: 'endWithoutRelease', command: 'endMilestone', target: 'spec', does: 'the final release is dropped and autopilot is done' },
+]
+
+test('release pause: title, explanation, pipeline link; retry and end without a release from the exits', () => {
+  assert.equal(pauseTitle('release'), 'The final release failed twice')
+  assert.match(pauseExplain('release'), /Retry it, or end the milestone without a release/)
+  assert.equal(pauseExplain('ciRed'), '')
+  assert.deepEqual(ids('release'), ['openPipeline', 'resume'])
+  assert.deepEqual(
+    pauseActions('release', undefined, releaseExits(true)).map((a) => a.id),
+    ['openPipeline'],
+  )
+  const w = wayOut(releaseExits(true))
+  assert.deepEqual(w.auto.map((e) => e.id), ['releasedByHand'])
+  const [retry, end] = w.remedies
+  assert.equal(retry.kind, 'button')
+  assert.equal(retry.action.label, 'Retry release')
+  assert.deepEqual(pauseCommand(retry.action, {}), { cmd: 'resume' })
+  assert.equal(end.kind, 'command')
+  assert.equal(agentCommand(end.command), '/agent endMilestone')
+  assert.equal(end.elsewhere, 'on the tracking issue')
+  // Without the chat grant retry is a command too.
+  const noChat = wayOut(releaseExits(false)).remedies[0]
+  assert.equal(noChat.kind, 'command')
+  assert.equal(agentCommand(noChat.command), '/agent resume')
+  assert.equal(agentCommand(''), '')
+})
+
+test('pauseRelease: the newest final record of a release pause', () => {
+  const rels = [
+    { id: 1, by: 'planner' },
+    { id: 3, by: 'final', state: 'Failed' },
+    { id: 2, by: 'final', state: 'Dropped' },
+  ]
+  assert.equal(pauseRelease('release', rels)?.id, 3)
+  assert.equal(pauseRelease('ciRed', rels), undefined)
+  assert.equal(pauseRelease('release', [{ id: 1, by: 'owner' }]), undefined)
+  assert.equal(pauseRelease('release', undefined), undefined)
 })

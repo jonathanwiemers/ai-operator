@@ -9,8 +9,11 @@ import {
   deskCommand,
   pauseActions,
   pauseCommand,
+  agentCommand,
   pauseEndsBy,
+  pauseExplain,
   pausePrompt,
+  pauseRelease,
   pauseTitle,
   reviewLimitLines,
   wayOut,
@@ -48,7 +51,16 @@ const issueTitle = computed(() => item.value?.title || implTask.value?.issue?.ti
 const issueURL = computed(() =>
   props.milestone.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${issue.value}`),
 )
-const pipelineURL = computed(() => implTask.value?.status.ci?.pipelineURL)
+// release: the final release record of a release pause.
+const release = computed(() => pauseRelease(kind.value, props.milestone.releases))
+// releaseReason: the record's reason, unless the pause reason says it.
+const releaseReason = computed(() => {
+  const r = (release.value?.reason || '').trim()
+  return r && !(ap.value?.pausedReason || '').includes(r) ? r : ''
+})
+const pipelineURL = computed(() =>
+  kind.value === 'release' ? release.value?.pipelineURL : implTask.value?.status.ci?.pipelineURL,
+)
 // companion: the paused issue's companion merge request (kind companion).
 const companion = computed(() => companionOf(props.milestone.companions, issue.value))
 
@@ -217,6 +229,18 @@ watch(
     <h2>{{ pauseTitle(kind) }}</h2>
     <p v-if="ap.pausedReason" class="text">{{ ap.pausedReason }}</p>
     <p v-else-if="!kind" class="muted">Waiting for a human.</p>
+    <p v-if="pauseExplain(kind)" class="muted">{{ pauseExplain(kind) }}</p>
+
+    <div v-if="release" class="row issue">
+      <span>Final release</span>
+      <code v-if="release.releasedSHA || release.sha" class="faint" :title="release.releasedSHA || release.sha">
+        {{ (release.releasedSHA || release.sha || '').slice(0, 7) }}
+      </code>
+      <span v-if="release.issues?.length" class="muted title">
+        contains {{ release.issues.map((n) => `#${n}`).join(', ') }}
+      </span>
+    </div>
+    <p v-if="releaseReason" class="text">{{ releaseReason }}</p>
 
     <div v-if="issue" class="row issue">
       <ExtLink :href="issueURL">#{{ issue }}</ExtLink>
@@ -270,7 +294,7 @@ watch(
             >
               {{ sending === r.shown.action.id ? '…' : r.shown.action.label }}
             </button>
-            <code v-else-if="r.elsewhere">{{ r.command }}</code>
+            <code v-else-if="r.elsewhere">{{ agentCommand(r.command) }}</code>
             <span v-if="r.shown || !r.elsewhere" class="when">{{ r.text }}</span>
             <span v-else class="when">{{ r.elsewhere }}</span>
             <ExtLink v-if="r.href" :href="r.href">open</ExtLink>

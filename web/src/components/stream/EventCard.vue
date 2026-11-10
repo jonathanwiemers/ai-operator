@@ -5,6 +5,13 @@ import { ciLabel, ciTone, clockTime, cost, fullTime, duration, shortSHA, type To
 import { useNow } from '../../live'
 import type { CIState, ProjectDetail, PromptView, StreamEvent } from '../../types'
 import { promptForEvent } from '../../stream'
+import {
+  isReleaseEvent,
+  releaseEventBadge,
+  releaseEventIssues,
+  releaseEventText,
+  releaseEventTitle,
+} from '../../releaseEvents'
 import Badge from '../Badge.vue'
 import ExtLink from '../ExtLink.vue'
 import MarkdownBody from './MarkdownBody.vue'
@@ -26,6 +33,8 @@ const sendError = ref('')
 const e = computed(() => props.event)
 const prompt = computed(() => (props.event ? promptForEvent(props.event, props.prompts) : undefined))
 const isPrompt = computed(() => !!e.value?.kind.startsWith('prompt.'))
+const isRelease = computed(() => !!e.value && isReleaseEvent(e.value))
+const releaseBadge = computed(() => (e.value ? releaseEventBadge(e.value) : undefined))
 
 // promptTo: the stream of the prompt's milestone (or project), at its card.
 function promptTo(ev: StreamEvent) {
@@ -108,13 +117,14 @@ function taskLink(ev: StreamEvent) {
       <template v-else-if="e.kind === 'autopilot'">◇</template>
       <template v-else-if="e.kind === 'retrospective'">R</template>
       <template v-else-if="e.kind === 'checkpoint'">💾</template>
+      <template v-else-if="isRelease">⚑</template>
       <template v-else-if="isPrompt">?</template>
       <template v-else-if="e.kind === 'chat.user' || e.kind === 'chat.agent'">C</template>
       <template v-else>·</template>
     </div>
     <div>
       <div class="meta">
-        <b>{{ e.summary || e.kind }}</b>
+        <b>{{ (isRelease && releaseEventTitle(e)) || e.summary || e.kind }}</b>
         <span v-if="e.issueIID" class="ctx">#{{ e.issueIID }}</span>
         <span v-else-if="e.mergeRequestIID" class="ctx">!{{ e.mergeRequestIID }}</span>
         <time :datetime="e.at" :title="fullTime(e.at)">{{ clockTime(e.at, now) }}</time>
@@ -231,6 +241,28 @@ function taskLink(ev: StreamEvent) {
         </span>
       </div>
 
+      <!-- release.decided / started / ended: why and reason are untrusted, as text -->
+      <div v-else-if="isRelease" class="compact">
+        <Badge v-if="e.kind === 'release.decided'" tone="neutral">decided</Badge>
+        <Badge v-else-if="e.kind === 'release.started'" tone="progress">
+          started{{ (e.data.attempt ?? 0) > 1 ? ` · attempt ${e.data.attempt}` : '' }}
+        </Badge>
+        <Badge v-else-if="releaseBadge" :tone="releaseBadge.tone">{{ releaseBadge.label }}</Badge>
+        <span v-if="releaseEventText(e)" class="why">{{ releaseEventText(e) }}</span>
+        <code v-if="e.kind === 'release.started' && e.data.releasedSHA" class="mono">
+          {{ shortSHA(e.data.releasedSHA) }}
+        </code>
+        <span v-if="e.kind === 'release.started' && releaseEventIssues(e)" class="muted">
+          contains {{ releaseEventIssues(e) }}
+        </span>
+        <ExtLink v-if="e.kind === 'release.started' && e.data.pipelineURL" :href="e.data.pipelineURL" class="t">
+          pipeline{{ e.data.pipelineID ? ` #${e.data.pipelineID}` : '' }}
+        </ExtLink>
+        <ExtLink v-if="e.kind === 'release.ended' && e.data.releaseURL" :href="e.data.releaseURL" class="t">
+          release{{ e.data.version ? ` ${e.data.version}` : '' }}
+        </ExtLink>
+      </div>
+
       <!-- prompt.posted: the compact card while status still has the prompt -->
       <PromptCardCompact
         v-else-if="prompt"
@@ -335,6 +367,11 @@ function taskLink(ev: StreamEvent) {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+.why {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 .jobs {
   display: inline-flex;

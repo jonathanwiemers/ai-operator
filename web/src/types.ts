@@ -191,6 +191,18 @@ export interface StreamEventData {
   // retrospective: the GitLab note and the number of follow-ups.
   noteID?: number
   followUps?: number
+  // release.decided / release.started / release.ended (also by, state,
+  // reason, pipelineID and pipelineURL); why and reason are untrusted.
+  releaseID?: number
+  afterIssue?: number
+  final?: boolean
+  why?: string
+  releasedSHA?: string
+  issues?: number[]
+  mergeRequests?: number[]
+  attempt?: number
+  version?: string
+  releaseURL?: string
 }
 
 export type SpendLevel = 'milestone' | 'issue' | 'run' | 'call'

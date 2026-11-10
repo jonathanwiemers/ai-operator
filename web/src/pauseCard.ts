@@ -66,8 +66,9 @@ const actionsByKind = {
   // Its way out is a milestone description change, a GitLab action: the
   // Way out links the milestone.
   emptyPlan: [],
-  // Retry is Resume; ending without a release has no card action yet.
-  release: [resume],
+  // Retry is Resume (the final release once more); ending without a
+  // release is /agent endMilestone on the tracking issue, a remedy.
+  release: [openPipeline, resume],
   // The companion merge request cannot go on: fixed in GitLab (rebase,
   // discussions, approval), then Resume; or the issue skipped.
   companion: [openCompanion, resume, skip],
@@ -95,6 +96,10 @@ export function pauseActions(kind: PauseKind | undefined, issue?: number, exits?
 // The Desk command each remedy command word sends (chatState's ChatCommand);
 // other words (rebase, mergeBase, unskip, startAnyway) are text.
 const remedyActions: Record<string, PauseAction> = { resume, skip, merge, retry, review }
+
+// Button labels of remedies whose command word says less than the exit:
+// retryRelease sends resume.
+const remedyLabels: Partial<Record<string, string>> = { retryRelease: 'Retry release' }
 
 // deskCommand: the card can send the remedy command word (with the grants).
 export function deskCommand(cmd: string | undefined): boolean {
@@ -180,7 +185,8 @@ function remedy(e: ExitView, used: Set<PauseActionID>): WayOutRemedy {
   const a = deskCommand(command) ? remedyActions[command] : undefined
   if (e.allowed && a && !used.has(a.id)) {
     used.add(a.id)
-    return { ...base, kind: 'button', text: capitalise(when), command, elsewhere, action: { ...a } }
+    const label = remedyLabels[e.id] ?? a.label
+    return { ...base, kind: 'button', text: capitalise(when), command, elsewhere, action: { ...a, label } }
   }
   return { ...base, kind: 'command', text: elsewhere, command, elsewhere }
 }
@@ -316,12 +322,40 @@ const titles: Record<KnownPauseKind, string> = {
   budget: 'The budget is used',
   emptyPlan: 'Nothing was planned',
   companion: 'The companion MR cannot go on',
-  release: 'The final release failed',
+  release: 'The final release failed twice',
 }
 
 // pauseTitle is the card's heading for a pause.
 export function pauseTitle(kind: PauseKind | undefined): string {
   return known(kind) ? titles[kind] : 'Autopilot paused'
+}
+
+// pauseExplain is the card's short explanation of a kind, '' for kinds the
+// title and reason explain.
+export function pauseExplain(kind: PauseKind | undefined): string {
+  return kind === 'release'
+    ? "The final release pipeline failed, and its retry too. Retry it, or end the milestone without a release; a tag that contains the milestone's last merge ends the pause by itself."
+    : ''
+}
+
+// agentCommand is how a remedy's command word is typed on GitLab:
+// "/agent endMilestone".
+export function agentCommand(word: string | undefined): string {
+  const w = (word || '').trim()
+  return w ? `/agent ${w}` : ''
+}
+
+// pauseRelease is the release record a release pause is about: the newest
+// one the operator decided as final (by id), undefined for other kinds or
+// without one.
+export function pauseRelease<R extends { id: number; by: string }>(
+  kind: PauseKind | undefined,
+  releases: readonly R[] | null | undefined,
+): R | undefined {
+  if (kind !== 'release') return undefined
+  let out: R | undefined
+  for (const r of releases ?? []) if (r.by === 'final' && (!out || r.id > out.id)) out = r
+  return out
 }
 
 const dayMonth = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' })

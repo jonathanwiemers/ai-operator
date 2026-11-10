@@ -132,8 +132,14 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   `prompt.closed`, `needs`), the autopilot and its pauses (`autopilot`,
   `autopilot.paused`, `autopilot.resumed`), what the pilot did
   (`proposal`, `pilot.writeFailed`), comments (`note`), the Desk chat
-  (`chat.user`, `chat.agent`), release decisions (`release.decided`,
-  `release.started`, `release.ended`) and the `retrospective` (*Retrospective
+  (`chat.user`, `chat.agent`), releases (`release.decided`: *Release
+  decided by planner after #N* with the why; `release.started`: *Release
+  after #N started* with the commit, the issues it contains and a link to
+  the pipeline; `release.ended` by state: *Released 2026.11.3* with a link
+  to the GitLab release, *Release failed*, *No release needed*, dropped or
+  not applicable, each with the operator's reason; why and reason are
+  shown as text; the final release and the sweep are decided by *the
+  operator*) and the `retrospective` (*Retrospective
   posted*, once per milestone, with its number of follow-ups and a link to
   the milestone's *Retrospective* tab). *Stream*:
   runs (`run.started`, `run.finished`), pushes (`push`), checkpoints
@@ -688,6 +694,17 @@ itself, for failed reviewers which engine is usage-limited until when
 (*Cursor is limited until 13 Nov*), *A run is working on #N now* while one
 is, and a merge anyway an owner already gave for this head.
 
+A **release pause** (`pauseKind: release`, the final release failed after
+its retry) is headed *The final release failed twice*, says that it can be
+retried or the milestone ended without a release, and shows the final
+release record: the commit, the issues it contains, the operator's reason
+as text and *Open pipeline* to the failed release pipeline. Its Way out
+comes from the exits: a tag that contains the milestone's last merge
+(`releasedByHand`) ends it by itself; *Retry release* (`retryRelease`, the
+Desk's `resume`, or `/agent resume` without the chat grant) runs the final
+release once more; `/agent endMilestone` on the tracking issue
+(`endWithoutRelease`, owners only) drops it and autopilot is done.
+
 Its **Way out** section lists every exit of the pause (`exits` of the
 milestone API, from the operator's `PauseExits` table). The automatic exits
 come first, each with its condition, what follows, a status chip and the
@@ -697,8 +714,9 @@ condition holds), *in progress* (a run pending, a rebase in flight),
 remedy the API marks `allowed` for you (`resume`, `skip`, `retry`, `review`
 with the chat grant, `merge` with `permissions.merge`) is a button that sends
 the same Desk chat command as the buttons below; other commands (`rebase`,
-`mergeBase`, `unskip`, `startAnyway`, or any without the grant) show as the
-word to send on the tracking issue or the issue; labels, GitLab actions and
+`mergeBase`, `unskip`, `startAnyway`, `endMilestone`, or any without the
+grant) show as the command to send on the tracking issue or the issue,
+e.g. `/agent endMilestone`; labels, GitLab actions and
 answers to the pilot's prompt show as text, with a link to the merge
 request, the companion merge request, the issue or the milestone where it
 applies. With the section the
@@ -719,6 +737,7 @@ Against an operator that sends no exits, the actions depend on the kind:
 | `owner`, `mainRed`, `config`, and a pause without a kind | Resume |
 | `budget` | none: raise the budget above the spend (the milestone's `/agent budget` line, or for a `pausedFor` issue an `/agent budget <usd>` comment on it), and it continues by itself |
 | `emptyPlan` | none: change the milestone description, which plans it again; it continues by itself once the plan has issues |
+| `release` | Open pipeline (the failed release pipeline), Resume (runs the final release once more); it continues by itself once a tag contains the milestone's last merge |
 
 Retry and Review again go to the paused issue's Implement task; Resume,
 Skip and Merge anyway to the milestone's Spec task, as Desk chat commands
