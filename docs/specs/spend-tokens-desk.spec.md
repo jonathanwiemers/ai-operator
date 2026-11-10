@@ -223,7 +223,9 @@ Cleanup
   This is noted for a later milestone.
 - A research search page (`/api/v1/research/search` stays as is).
 - Changing netcup01 config (`pricing:`, budgets, `stepSession`) in this
-  milestone. Those are infra/cluster follow-ups after the release.
+  milestone. Those are infra/cluster follow-ups after the release; the
+  owner's checklist is
+  [rollout-spend-options.md](../process/rollout-spend-options.md) (#267).
 - Backfilling tokens for runs before the cutover.
 - Killing a running agent call when a budget is hit.
 

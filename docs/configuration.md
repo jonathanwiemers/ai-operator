@@ -259,6 +259,10 @@ The file is parsed strictly: unknown keys, negative prices or an unreadable
 file stop the operator at start. Prices apply to calls written from then on;
 stored rows keep their cost.
 
+Rolling out pricing, budgets, `implement.stepSession` and a scout subagent
+on a cluster, in order and with the queries that compare the options, is
+the checklist [rollout-spend-options.md](process/rollout-spend-options.md).
+
 ## Secrets
 
 ```sh
