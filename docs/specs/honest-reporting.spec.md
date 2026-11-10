@@ -105,7 +105,11 @@ Each requirement below names the commit that implemented it (the MR iids are not
    the difference to that process's previous result, for tokens, per-model
    figures and cost. A first turn and a one-shot call record the result as is.
 6. **No backfill.** Old rows stay as they are. The Spend tab and retrospectives
-   compare new milestones only.
+   compare new milestones only. Since #275 each row records its basis
+   (`agent_calls.token_basis`, 0 for old rows), and since #276 the spend
+   totals count the old ones (`OldBasisCalls`): the retrospective's facts
+   say `spend.tokenBasis` `current`, `old` or `mixed`, and its total line
+   notes an old or mixed basis, so which milestones compare is visible.
 7. **Unmetered is its own number.** `costKnown` keeps its meaning. The count
    of calls without cost or tokens is shown next to it. `auto` stays a row,
    marked as not metered.

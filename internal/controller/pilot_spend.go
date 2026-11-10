@@ -41,6 +41,7 @@ func (r *AgentProjectReconciler) retroSpend(ctx context.Context, coord *aiv1.Age
 func spendSummary(sp store.Spend) *aiv1.SpendSummary {
 	t := sp.Totals
 	s := &aiv1.SpendSummary{CostUSD: aiv1.FormatCost(t.CostUSD), CostKnown: t.CostKnown, SubagentCalls: t.SubagentCalls, UnmeteredCalls: t.UnmeteredCalls,
+		Calls: t.Calls, OldBasisCalls: t.OldBasisCalls,
 		Tokens: aiv1.SpendTokens{Input: t.InputTokens, Output: t.OutputTokens, CacheRead: t.CacheReadTokens, CacheWrite: t.CacheWriteTokens}}
 	var issues []aiv1.SpendDriver
 	for _, c := range sp.Children {

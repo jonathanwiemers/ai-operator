@@ -830,6 +830,12 @@ spec:
                       tasks). Unset without the database or when its query failed: the
                       retrospective sums the live tasks then.
                     properties:
+                      calls:
+                        description: |-
+                          Calls is the number of agent calls (runs from before agent calls and
+                          checkpoint events are none).
+                        format: int64
+                        type: integer
                       costKnown:
                         description: CostKnown is false when no call reported or estimated
                           a cost.
@@ -837,6 +843,13 @@ spec:
                       costUSD:
                         description: CostUSD sums the known costs (4 decimals).
                         type: string
+                      oldBasisCalls:
+                        description: |-
+                          OldBasisCalls are the calls recorded before the token basis was
+                          stored (token_basis 0): their tokens are not comparable with newer
+                          calls.
+                        format: int64
+                        type: integer
                       subagentCalls:
                         description: SubagentCalls is how often the calls delegated
                           to a subagent.

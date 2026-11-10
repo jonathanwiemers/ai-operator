@@ -1499,6 +1499,14 @@ numbers: one row per agent call in `agent_calls`.
   tokens and no cost: they appear as *cursor auto (unmetered)*, count as
   *N calls not metered* next to the total, add nothing to the token sums,
   and count $0 towards a budget. No model or price is guessed for them.
+- **Old token basis.** Calls recorded before a call stored how its tokens
+  were computed (`token_basis` 0, older releases: before the sum of
+  `modelUsage` and per-turn deltas) are on the old basis, and their tokens
+  are not comparable with newer calls'. Every total, child and breakdown
+  counts them (runs without calls and checkpoint events are no calls and
+  never count). When a milestone holds such calls, the retrospective's
+  total says so: "N of M calls on the old token basis" when it mixes both,
+  "old token basis" when all are old. They are not recomputed.
 - **Cursor's cost: reported, estimated or n/a.** Cursor sends usage over
   ACP only optionally, and the cursor-agent in the agent image sends none
   yet. When an ACP `usage_update` carries a cost in USD, that is the
@@ -2305,8 +2313,11 @@ merged, the decisions and revisits, the pauses, cost and time, the **cost
 drivers** (total USD and tokens, the biggest issues, kinds of call and models,
 with their tokens, the subagent calls, and the calls that were not metered,
 e.g. cursor's `auto`, which reports no usage: the total says "N calls not
-metered" and that model reads "cursor auto (unmetered)", never "$0", see
-[What the spend counts](#what-the-spend-counts); from the history database, so
+metered" and that model reads "cursor auto (unmetered)", never "$0"; a
+milestone with calls from older releases adds "N of M calls on the old token
+basis: tokens not comparable with newer milestones", or "old token basis: …"
+when all are, see [What the spend counts](#what-the-spend-counts); from the
+history database, so
 deleted tasks count too, otherwise the sum over the live tasks), and up to 9
 numbered follow-ups. Reply `create 1 2` (or `create 1, 3`, `create all`) in
 its thread to open follow-ups as plain issues, or `create none` to dismiss the
@@ -2317,7 +2328,10 @@ most: the cost (from the history database's agent calls whenever it is
 connected, otherwise the live tasks' sum; from the agent calls, `spend` also
 has the tokens and the cost drivers, and `unmeteredCalls`: the number of
 calls with neither cost nor tokens, always present, 0 included. They do not
-change `costKnown`, and a driver made only of them has `unmetered: true`),
+change `costKnown`, and a driver made only of them has `unmetered: true`;
+`calls`, `oldBasisCalls`, the calls on the old token basis, always present,
+and `tokenBasis`: `current` when there are none, `old` when all are,
+`mixed` otherwise),
 the start, end and duration, the
 autopilot's comments on the tracking issue with their times (every pause,
 resume, skip and end comment, plus the newest other ones, 60 comments in

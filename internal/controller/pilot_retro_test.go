@@ -310,7 +310,7 @@ func TestRetrospectiveRequestCarriesTheSpend(t *testing.T) {
 		return store.SpendTotals{CostUSD: usd, CostKnown: true, Calls: 1, InputTokens: tokens}
 	}
 	src := &fakeSpend{spend: store.Spend{
-		Totals: store.SpendTotals{CostUSD: 12.5, CostKnown: true, Calls: 9, InputTokens: 100, OutputTokens: 20, CacheReadTokens: 3000, CacheWriteTokens: 400, SubagentCalls: 4, UnmeteredCalls: 2},
+		Totals: store.SpendTotals{CostUSD: 12.5, CostKnown: true, Calls: 9, InputTokens: 100, OutputTokens: 20, CacheReadTokens: 3000, CacheWriteTokens: 400, SubagentCalls: 4, UnmeteredCalls: 2, OldBasisCalls: 3},
 		Children: []store.SpendChild{
 			{Level: store.SpendIssue, Key: "1", Label: "#1", Totals: known(2, 10)},
 			{Level: store.SpendMilestone, Key: "3", Label: "Milestone %3", Totals: known(9, 10)},
@@ -332,7 +332,7 @@ func TestRetrospectiveRequestCarriesTheSpend(t *testing.T) {
 	if len(src.scopes) != 1 || src.scopes[0] != (store.SpendScope{Namespace: pilot.Namespace, Project: pilot.Spec.ProjectRef, MilestoneIID: pilot.Spec.Milestone.IID}) {
 		t.Fatalf("the milestone's spend is read once with the request: %+v", src.scopes)
 	}
-	want := &aiv1.SpendSummary{CostUSD: "12.5000", CostKnown: true, SubagentCalls: 4, UnmeteredCalls: 2,
+	want := &aiv1.SpendSummary{CostUSD: "12.5000", CostKnown: true, SubagentCalls: 4, UnmeteredCalls: 2, Calls: 9, OldBasisCalls: 3,
 		Tokens:    aiv1.SpendTokens{Input: 100, Output: 20, CacheRead: 3000, CacheWrite: 400},
 		TopIssues: []aiv1.SpendDriver{{Key: "2", Label: "#2", CostUSD: "5.0000", Tokens: 20}, {Key: "1", Label: "#1", CostUSD: "2.0000", Tokens: 10}, {Key: "5", Label: "#5", CostUSD: "1.0000", Tokens: 5}},
 		TopKinds:  []aiv1.SpendDriver{{Key: "implement", Label: "implement", CostUSD: "8.0000", Tokens: 50}, {Key: "review", Label: "review", CostUSD: "3.0000", Tokens: 40}, {Key: "spec", Label: "spec", CostUSD: "1.0000", Tokens: 1}},
@@ -376,6 +376,10 @@ func TestRetroSpendOfACursorAutoCall(t *testing.T) {
 	}
 	if got.UnmeteredCalls != 1 || !got.CostKnown || got.CostUSD != "0.5000" {
 		t.Errorf("spend = %+v, want 1 unmetered call next to a known $0.50", got)
+	}
+	// Neither call records a token basis: both are on the old one.
+	if got.Calls != 2 || got.OldBasisCalls != 2 {
+		t.Errorf("spend = %+v, want 2 calls, both on the old token basis", got)
 	}
 	var auto *aiv1.SpendDriver
 	for i, d := range got.TopModels {

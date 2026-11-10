@@ -236,7 +236,9 @@ and its source:
   shows "n/a", never $0. A call with neither a cost nor tokens (cursor
   with model `auto`: ACP reports no usage) is counted as *not metered*
   besides that (`unmeteredCalls`); it does not change whether the cost is
-  known.
+  known. Calls recorded before the token basis was stored
+  (`token_basis` 0) are counted as `oldBasisCalls` next to `calls`: their
+  tokens are not comparable with newer calls'.
 
 The chart value `pricing` holds the prices in USD per million tokens:
 

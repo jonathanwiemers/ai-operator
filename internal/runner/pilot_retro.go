@@ -304,10 +304,33 @@ type retroFactsDoc struct {
 // retroSpendFacts is the milestone's spend from the history database in the
 // facts. UnmeteredCalls shadows the summary's and is written even when 0:
 // the CRD type leaves a 0 out, and then the facts could not tell "no call
-// unmetered" from a summary without the count.
+// unmetered" from a summary without the count. OldBasisCalls shadows the
+// summary's the same way; TokenBasis names it: "current" (no call on the
+// old basis), "old" (every call) or "mixed".
 type retroSpendFacts struct {
 	*aiv1.SpendSummary
-	UnmeteredCalls int64 `json:"unmeteredCalls"`
+	UnmeteredCalls int64  `json:"unmeteredCalls"`
+	OldBasisCalls  int64  `json:"oldBasisCalls"`
+	TokenBasis     string `json:"tokenBasis"`
+}
+
+// The token bases of retroSpendFacts.TokenBasis.
+const (
+	tokenBasisCurrent = "current"
+	tokenBasisOld     = "old"
+	tokenBasisMixed   = "mixed"
+)
+
+// tokenBasis is whether s's calls are on the current token basis, the old
+// one (token_basis 0, recorded before the basis was) or both.
+func tokenBasis(s *aiv1.SpendSummary) string {
+	switch {
+	case s.OldBasisCalls == 0:
+		return tokenBasisCurrent
+	case s.OldBasisCalls >= s.Calls:
+		return tokenBasisOld
+	}
+	return tokenBasisMixed
 }
 
 // retroComment is a comment of the operator on the tracking issue;
@@ -442,7 +465,8 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 	v.CostUSD, v.CostFrom = aiv1.ShowCost(cost), "live tasks"
 	spent := "$" + v.CostUSD + " over the milestone's runs (from live tasks)"
 	if s := task.Spec.Source.RetroSpend; s != nil {
-		v.Spend, v.CostFrom = &retroSpendFacts{SpendSummary: s, UnmeteredCalls: s.UnmeteredCalls}, "agent calls"
+		v.Spend, v.CostFrom = &retroSpendFacts{SpendSummary: s, UnmeteredCalls: s.UnmeteredCalls,
+			OldBasisCalls: s.OldBasisCalls, TokenBasis: tokenBasis(s)}, "agent calls"
 		v.CostUSD = strings.TrimPrefix(spendUSD(s.CostUSD, s.CostKnown), "$")
 		spent = fmt.Sprintf("%s and %s tokens over the milestone's agent calls", spendUSD(s.CostUSD, s.CostKnown), showTokens(s.Tokens.Total()))
 	}
@@ -697,6 +721,12 @@ func renderSpend(s *aiv1.SpendSummary) string {
 	}
 	if s.UnmeteredCalls > 0 {
 		fmt.Fprintf(&b, ", %d calls not metered", s.UnmeteredCalls)
+	}
+	switch tokenBasis(s) {
+	case tokenBasisMixed:
+		fmt.Fprintf(&b, ", %d of %d calls on the old token basis: tokens not comparable with newer milestones", s.OldBasisCalls, s.Calls)
+	case tokenBasisOld:
+		b.WriteString(", old token basis: tokens not comparable with newer milestones")
 	}
 	b.WriteString("\n")
 	for _, dim := range []struct {

@@ -138,7 +138,7 @@ func TestSpend(t *testing.T) {
 	sp := spend(store.SpendScope{})
 	want := store.SpendTotals{CostUSD: 7.08, CostKnown: true, UnknownCalls: 1,
 		InputTokens: 217, OutputTokens: 88, CacheReadTokens: 1133, CacheWriteTokens: 44,
-		Calls: 6, SubagentCalls: 3, DurationMS: 96500, LegacyCostUSD: 2, Checkpoints: 3}
+		Calls: 6, OldBasisCalls: 6, SubagentCalls: 3, DurationMS: 96500, LegacyCostUSD: 2, Checkpoints: 3}
 	if sp.Totals != want {
 		t.Errorf("project totals:\n got %+v\nwant %+v", sp.Totals, want)
 	}
@@ -204,7 +204,7 @@ func TestSpend(t *testing.T) {
 	// #148: its runs, the legacy one without tokens.
 	sp = spend(store.SpendScope{MilestoneIID: 20, IssueIID: 148})
 	if want := (store.SpendTotals{CostUSD: 3.73, CostKnown: true, InputTokens: 110, OutputTokens: 30,
-		CacheReadTokens: 1030, CacheWriteTokens: 40, Calls: 2, SubagentCalls: 1, DurationMS: 70000, LegacyCostUSD: 2, Checkpoints: 1}); sp.Totals != want {
+		CacheReadTokens: 1030, CacheWriteTokens: 40, Calls: 2, OldBasisCalls: 2, SubagentCalls: 1, DurationMS: 70000, LegacyCostUSD: 2, Checkpoints: 1}); sp.Totals != want {
 		t.Errorf("#148 totals:\n got %+v\nwant %+v", sp.Totals, want)
 	}
 	checkChildren("#148", sp.Children, []child{
@@ -408,6 +408,82 @@ func TestSpendUnmetered(t *testing.T) {
 		}
 		if b.Totals.UnmeteredCalls != want {
 			t.Errorf("by model %s: %d unmetered, want %d", b.Key, b.Totals.UnmeteredCalls, want)
+		}
+	}
+}
+
+// TestSpendOldBasis (#276): calls with token_basis 0 are counted per scope,
+// child and breakdown, so a milestone that mixes bases says so; runs without
+// calls are no calls and never count.
+func TestSpendOldBasis(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	at, exp := time.Now().Add(-time.Hour).Truncate(time.Second), time.Now().Add(24*time.Hour)
+	call := func(key string, milestone, issue int64, model string, basis int16) store.Call {
+		return store.Call{Key: key, At: at, Namespace: "agents", Project: "bases", MilestoneIID: milestone, IssueIID: issue,
+			Task: "bases-" + key, Run: 1, Seq: 1, Kind: "implement", Role: "implement", Engine: "claude", Model: model,
+			InputTokens: 10, OutputTokens: 20, CostSource: "unknown", ExpiresAt: exp, TokenBasis: basis}
+	}
+	if _, err := owner.InsertCalls(ctx, []store.Call{
+		call("old", 7, 501, "claude-sonnet-5-5", 0),
+		call("new", 7, 502, "claude-opus-5-5", 1),
+		call("only", 8, 503, "claude-opus-5-5", 1),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A run from before agent_calls in milestone 8: no call, no basis.
+	if _, err := owner.InsertEvents(ctx, []store.Event{{Key: "legacy", At: at, Namespace: "agents", Project: "bases",
+		MilestoneIID: 8, IssueIID: 504, Task: "bases-504", Kind: "run.finished",
+		Data: map[string]any{"costUSD": "1.0000", "runCount": 1}, ExpiresAt: exp}}); err != nil {
+		t.Fatal(err)
+	}
+
+	mixed, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "bases", MilestoneIID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mixed.Totals; got.OldBasisCalls != 1 || got.Calls != 2 || !got.MixedBasis() || got.OldBasis() {
+		t.Errorf("milestone 7 totals = %+v, want 1 of 2 calls on the old basis, mixed", got)
+	}
+	for _, c := range mixed.Children {
+		want := map[string]int64{"501": 1, "502": 0}[c.Key]
+		if c.Totals.OldBasisCalls != want {
+			t.Errorf("issue %s: %d old basis calls, want %d", c.Key, c.Totals.OldBasisCalls, want)
+		}
+	}
+	for _, b := range mixed.ByModel {
+		want := map[string]int64{"claude-sonnet-5-5": 1, "claude-opus-5-5": 0}[b.Key]
+		if b.Totals.OldBasisCalls != want {
+			t.Errorf("by model %s: %d old basis calls, want %d", b.Key, b.Totals.OldBasisCalls, want)
+		}
+	}
+	if got := (store.SpendTotals{Calls: 1, OldBasisCalls: 1}); !got.OldBasis() || got.MixedBasis() {
+		t.Errorf("all old: OldBasis %v, MixedBasis %v; want true, false", got.OldBasis(), got.MixedBasis())
+	}
+
+	current, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "bases", MilestoneIID: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := current.Totals; got.OldBasisCalls != 0 || got.Calls != 1 || got.MixedBasis() || got.OldBasis() {
+		t.Errorf("milestone 8 totals = %+v, want no old basis call (the legacy run is none)", got)
+	}
+
+	project, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "bases"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := project.Totals; got.OldBasisCalls != 1 || got.Calls != 3 || !got.MixedBasis() {
+		t.Errorf("project totals = %+v, want 1 of 3 calls on the old basis", got)
+	}
+	if len(project.Children) != 2 {
+		t.Fatalf("project children = %+v, want milestones 7 and 8", project.Children)
+	}
+	for _, c := range project.Children {
+		want := map[string]int64{"7": 1, "8": 0}[c.Key]
+		if c.Level != store.SpendMilestone || c.Totals.OldBasisCalls != want {
+			t.Errorf("milestone %s (%s): %d old basis calls, want %d", c.Key, c.Level, c.Totals.OldBasisCalls, want)
 		}
 	}
 }
@@ -637,10 +713,10 @@ func TestSpendSince(t *testing.T) {
 		want     store.SpendTotals
 	}{
 		{"today", both, 12 * time.Hour, store.SpendTotals{CostUSD: 1.5, CostKnown: true, UnknownCalls: 1, UnmeteredCalls: 0,
-			InputTokens: 40, Calls: 2, LegacyCostUSD: 0.5}},
+			InputTokens: 40, Calls: 2, OldBasisCalls: 2, LegacyCostUSD: 0.5}},
 		{"7 days", both, 7 * 24 * time.Hour, store.SpendTotals{CostUSD: 3.5, CostKnown: true, UnknownCalls: 1,
-			InputTokens: 60, Calls: 3, LegacyCostUSD: 0.5}},
-		{"one project", both[:1], 30 * 24 * time.Hour, store.SpendTotals{CostUSD: 3, CostKnown: true, InputTokens: 30, Calls: 2}},
+			InputTokens: 60, Calls: 3, OldBasisCalls: 3, LegacyCostUSD: 0.5}},
+		{"one project", both[:1], 30 * 24 * time.Hour, store.SpendTotals{CostUSD: 3, CostKnown: true, InputTokens: 30, Calls: 2, OldBasisCalls: 2}},
 		{"none", nil, time.Hour, store.SpendTotals{CostKnown: true}},
 		{"nothing since", both, time.Minute, store.SpendTotals{CostKnown: true}},
 	} {
@@ -1023,8 +1099,8 @@ func TestSpendByProject(t *testing.T) {
 		store.ProjectKey{Namespace: "agents", Name: "idle"}
 	got, err := s.SpendByProject(ctx, []store.ProjectKey{shop, billing, idle})
 	want := map[store.ProjectKey]store.SpendTotals{
-		shop:    {CostUSD: 3, CostKnown: true, InputTokens: 30, Calls: 2},
-		billing: {CostUSD: 0.5, CostKnown: true, UnknownCalls: 1, InputTokens: 30, Calls: 1, LegacyCostUSD: 0.5},
+		shop:    {CostUSD: 3, CostKnown: true, InputTokens: 30, Calls: 2, OldBasisCalls: 2},
+		billing: {CostUSD: 0.5, CostKnown: true, UnknownCalls: 1, InputTokens: 30, Calls: 1, OldBasisCalls: 1, LegacyCostUSD: 0.5},
 	}
 	if err != nil || len(got) != len(want) || got[shop] != want[shop] || got[billing] != want[billing] {
 		t.Errorf("SpendByProject = %+v, %v\nwant %+v", got, err, want)

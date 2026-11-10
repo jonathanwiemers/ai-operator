@@ -277,6 +277,61 @@ func TestRetroFactsCarryTheUnmeteredCount(t *testing.T) {
 	}
 }
 
+// #276: the facts name the milestone's token basis and carry the old basis
+// count, 0 included; the cost drivers' total line notes an old or mixed
+// basis.
+func TestRetroFactsNameTheTokenBasis(t *testing.T) {
+	const total = "- Total: $0.50, 330 tokens (input 10, output 20, cache read 300, cache write 0)"
+	for _, tc := range []struct {
+		name       string
+		old, calls int64
+		line       string
+	}{
+		{"mixed", 1, 2, total + ", 1 of 2 calls on the old token basis: tokens not comparable with newer milestones\n"},
+		{"old", 2, 2, total + ", old token basis: tokens not comparable with newer milestones\n"},
+		{"current", 0, 2, total + "\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newRetroEnv(t, "")
+			task := e.task(t)
+			s := &aiv1.SpendSummary{CostUSD: "0.5000", CostKnown: true, Calls: tc.calls, OldBasisCalls: tc.old,
+				Tokens: aiv1.SpendTokens{Input: 10, Output: 20, CacheRead: 300}}
+			// Through JSON, as the API server stores it.
+			b, err := json.Marshal(s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			task.Spec.Source.RetroSpend = nil
+			if err := json.Unmarshal(b, &task.Spec.Source.RetroSpend); err != nil {
+				t.Fatal(err)
+			}
+			if err := e.k8s.Update(context.Background(), &task); err != nil {
+				t.Fatal(err)
+			}
+			e.step(t)
+			if len(e.engine.calls) != 1 {
+				t.Fatalf("expected one retrospective call, got %d", len(e.engine.calls))
+			}
+			var facts struct {
+				Spend map[string]json.RawMessage `json:"spend"`
+			}
+			if err := json.Unmarshal([]byte(retroFactsOf(t, e.engine.calls[0].Prompt)), &facts); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(facts.Spend["tokenBasis"]); got != `"`+tc.name+`"` {
+				t.Errorf("spend.tokenBasis = %s, want %q", got, tc.name)
+			}
+			if got := string(facts.Spend["oldBasisCalls"]); got != fmt.Sprint(tc.old) {
+				t.Errorf("spend.oldBasisCalls = %q, want %d", got, tc.old)
+			}
+			notes := botNotes(e.gl, 5)
+			if c := notes[len(notes)-1]; !strings.Contains(c, "**Cost drivers**\n\n"+tc.line) {
+				t.Errorf("the total line is not %q:\n%s", tc.line, c)
+			}
+		})
+	}
+}
+
 func TestRetrospectiveWithoutDatabaseSumsLiveTasks(t *testing.T) {
 	e := newRetroEnv(t, "20.0000")
 	e.step(t)
@@ -498,7 +553,7 @@ func textPrefix(s string, runes int) string {
 // says so.
 func TestFitRetroFactsShortensSummariesFirst(t *testing.T) {
 	v := retroFactsDoc{Milestone: "M", Spec: "spec", CostUSD: "1.00", CostFrom: "agent calls", Duration: "1h0m0s",
-		Spend: &retroSpendFacts{SpendSummary: &aiv1.SpendSummary{CostUSD: "1.0000", CostKnown: true}}}
+		Spend: &retroSpendFacts{SpendSummary: &aiv1.SpendSummary{CostUSD: "1.0000", CostKnown: true}, TokenBasis: tokenBasisCurrent}}
 	for i := range 10 {
 		v.Queue = append(v.Queue, retroIssue{IID: int64(i), Title: "t", State: "Merged", Summary: strings.Repeat("x", 500)})
 	}
@@ -532,8 +587,8 @@ func TestFitRetroFactsShortensSummariesFirst(t *testing.T) {
 	if err != nil || !json.Valid(b) {
 		t.Fatalf("%v\n%s", err, b)
 	}
-	if !strings.Contains(string(b), `"spend":{"costUSD":"1.0000","costKnown":true,"tokens":{},"unmeteredCalls":0}`) {
-		t.Errorf("the spend stays whole, its unmetered count 0 included:\n%s", b)
+	if !strings.Contains(string(b), `"spend":{"costUSD":"1.0000","costKnown":true,"tokens":{},"unmeteredCalls":0,"oldBasisCalls":0,"tokenBasis":"current"}`) {
+		t.Errorf("the spend stays whole, its unmetered and old basis counts 0 included:\n%s", b)
 	}
 	got = retroFactsDoc{}
 	if err := json.Unmarshal(b, &got); err != nil {

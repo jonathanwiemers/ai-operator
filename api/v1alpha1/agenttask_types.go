@@ -418,6 +418,15 @@ type SpendSummary struct {
 	// reports no usage), a part of the total that costKnown does not cover.
 	// +optional
 	UnmeteredCalls int64 `json:"unmeteredCalls,omitempty"`
+	// Calls is the number of agent calls (runs from before agent calls and
+	// checkpoint events are none).
+	// +optional
+	Calls int64 `json:"calls,omitempty"`
+	// OldBasisCalls are the calls recorded before the token basis was
+	// stored (token_basis 0): their tokens are not comparable with newer
+	// calls.
+	// +optional
+	OldBasisCalls int64 `json:"oldBasisCalls,omitempty"`
 	// +optional
 	// +kubebuilder:validation:MaxItems=3
 	TopIssues []SpendDriver `json:"topIssues,omitempty"`

@@ -31,14 +31,19 @@ type SpendScope struct {
 // calls without a cost, which never add $0. CostKnown is false only when
 // every call is unknown and there is no legacy cost. UnmeteredCalls are
 // the calls with neither a cost nor tokens (cursor's ACP reports no
-// usage), a part of UnknownCalls. Checkpoints are the calls that saved a
-// checkpoint plus the checkpoints no call carries (checkpoint events: budget
-// stop, lost pod, OOM kill); those add no call to Calls.
+// usage), a part of UnknownCalls. OldBasisCalls are the calls recorded
+// before the token basis was stored (token_basis 0): their tokens are not
+// comparable with newer calls', see MixedBasis and OldBasis; runs without
+// calls and checkpoint events are no calls and never count. Checkpoints
+// are the calls that saved a checkpoint plus the checkpoints no call
+// carries (checkpoint events: budget stop, lost pod, OOM kill); those add
+// no call to Calls.
 type SpendTotals struct {
 	CostUSD                                                      float64
 	CostKnown                                                    bool
 	UnknownCalls                                                 int64
 	UnmeteredCalls                                               int64
+	OldBasisCalls                                                int64
 	InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens int64
 	Calls                                                        int64
 	SubagentCalls                                                int64
@@ -46,6 +51,13 @@ type SpendTotals struct {
 	LegacyCostUSD                                                float64
 	Checkpoints                                                  int64
 }
+
+// MixedBasis is true when some but not all calls are on the old token
+// basis (OldBasisCalls).
+func (t SpendTotals) MixedBasis() bool { return t.OldBasisCalls > 0 && t.OldBasisCalls < t.Calls }
+
+// OldBasis is true when there are calls and all are on the old token basis.
+func (t SpendTotals) OldBasis() bool { return t.Calls > 0 && t.OldBasisCalls == t.Calls }
 
 // Tokens is the sum of all tokens: input, output and cache.
 func (t SpendTotals) Tokens() int64 {
@@ -152,7 +164,8 @@ type Spend struct {
 //   - spend: all three as one shape with their project. Rows that are no
 //     call (legacy runs and checkpoint events) have legacy set and no
 //     tokens; checkpoints is 1 for a call that saved a checkpoint and for a
-//     checkpoint event, checkpoint its reason;
+//     checkpoint event, checkpoint its reason; token_basis is the call's,
+//     0 for rows that are no call (not counted, see OldBasisCalls);
 //   - split: the calls split by model, from models or else the row's model.
 //     The main model is the row's; when models lacks it (the row has an
 //     alias, say), the one with the most output tokens, as the runner picks
@@ -185,21 +198,21 @@ func spendWith(where string) string {
 	), spend AS (
 		SELECT false AS legacy, id, namespace, project, milestone_iid, issue_iid, task, run, seq, at, kind, role, resumed,
 			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms, read_gate_blocks,
-			checkpoint, (checkpoint <> '')::int AS checkpoints
+			checkpoint, (checkpoint <> '')::int AS checkpoints, token_basis
 		FROM scoped
 		UNION ALL
-		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0, '', 0
+		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0, '', 0, 0::smallint
 		FROM legacy
 		UNION ALL
 		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, NULL, 0, 0, 0, 0, 0, 0, 0,
-			CASE WHEN reason = '' THEN 'unknown' ELSE reason END, 1
+			CASE WHEN reason = '' THEN 'unknown' ELSE reason END, 1, 0::smallint
 		FROM cpevents
 	), split AS (
 		SELECT false AS legacy, c.id, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, c.kind, m.model, m.main,
 			m.cost_usd, m.input_tokens, m.output_tokens, m.cache_read_tokens, m.cache_write_tokens,
 			CASE WHEN m.main THEN c.subagent_calls ELSE 0 END AS subagent_calls,
 			CASE WHEN m.main THEN c.duration_ms ELSE 0 END AS duration_ms,
-			CASE WHEN m.main AND c.checkpoint <> '' THEN 1 ELSE 0 END AS checkpoints
+			CASE WHEN m.main AND c.checkpoint <> '' THEN 1 ELSE 0 END AS checkpoints, c.token_basis
 		FROM scoped c CROSS JOIN LATERAL (
 			-- The models' token sum and the main model (the row's model when
 			-- c.models is empty).
@@ -239,7 +252,8 @@ const spendTotals = `coalesce(sum(cost_usd), 0)::float8,
 	coalesce(sum(duration_ms), 0)::bigint, coalesce(sum(cost_usd) FILTER (WHERE legacy), 0)::float8,
 	count(*) FILTER (WHERE NOT legacy AND cost_usd IS NULL
 		AND input_tokens + output_tokens + cache_read_tokens + cache_write_tokens = 0),
-	coalesce(sum(checkpoints), 0)::bigint`
+	coalesce(sum(checkpoints), 0)::bigint,
+	count(*) FILTER (WHERE NOT legacy AND token_basis = 0)`
 
 // scanTotals scans the spendTotals columns after the dest columns before
 // them.
@@ -247,7 +261,7 @@ func scanTotals(row pgx.Row, dest ...any) (SpendTotals, error) {
 	var t SpendTotals
 	err := row.Scan(append(dest, &t.CostUSD, &t.UnknownCalls, &t.InputTokens, &t.OutputTokens,
 		&t.CacheReadTokens, &t.CacheWriteTokens, &t.Calls, &t.SubagentCalls, &t.DurationMS, &t.LegacyCostUSD,
-		&t.UnmeteredCalls, &t.Checkpoints)...)
+		&t.UnmeteredCalls, &t.Checkpoints, &t.OldBasisCalls)...)
 	t.CostKnown = t.UnknownCalls < t.Calls || t.Calls == 0 || t.LegacyCostUSD > 0
 	return t, err
 }

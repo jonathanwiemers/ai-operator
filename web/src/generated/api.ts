@@ -2580,6 +2580,19 @@ export interface SpendSummary {
    */
   unmeteredCalls?: number /* int64 */;
   /**
+   * Calls is the number of agent calls (runs from before agent calls and
+   * checkpoint events are none).
+   * +optional
+   */
+  calls?: number /* int64 */;
+  /**
+   * OldBasisCalls are the calls recorded before the token basis was
+   * stored (token_basis 0): their tokens are not comparable with newer
+   * calls.
+   * +optional
+   */
+  oldBasisCalls?: number /* int64 */;
+  /**
    * +optional
    * +kubebuilder:validation:MaxItems=3
    */
