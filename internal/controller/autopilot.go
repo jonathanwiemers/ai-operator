@@ -126,6 +126,7 @@ func (a *autopilot) sync(ctx context.Context) error {
 	}
 	order, cycle := queueOrder(a.st.Status.Plan)
 	a.ap.Items = mergeQueue(a.ap.Items, order)
+	a.planReleases()
 	if err := a.ensureTracking(ctx); err != nil {
 		return err
 	}
@@ -1563,6 +1564,7 @@ func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 		it.MergeRequestIID, it.MergeRequestURL = mr.IID, firstNonEmpty(mr.WebURL, it.MergeRequestURL)
 	}
 	a.log.Info("autopilot merged", "issue", it.IID, "mr", it.MergeRequestIID, "sha", it.MergedSHA)
+	a.releaseDue(it)
 	return nil
 }
 

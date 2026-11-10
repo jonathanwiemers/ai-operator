@@ -68,6 +68,65 @@ func (a *autopilot) releases(ctx context.Context) error {
 	return err
 }
 
+// replanDropped is the reason of a planner record a re-plan withdrew.
+const replanDropped = "the re-plan dropped it"
+
+// planReleases syncs the planner's records with the plan, on every poll: a
+// planned issue with a release gets one Planned record, unless a planner
+// record after it exists in any state; a Planned planner record whose issue
+// the plan no longer releases after (or that left the plan) is Dropped.
+// Records past Planned are never changed by a re-plan.
+func (a *autopilot) planReleases() {
+	release := map[int64]bool{}
+	for _, p := range a.st.Status.Plan {
+		release[p.IID] = p.Release
+	}
+	for i := range a.ap.Releases {
+		rec := &a.ap.Releases[i]
+		if rec.By == aiv1.ReleaseByPlanner && rec.State == aiv1.ReleasePlanned && !release[rec.AfterIssue] {
+			now := metav1.NewTime(a.r.now())
+			rec.State, rec.Reason, rec.EndedAt = aiv1.ReleaseDropped, replanDropped, &now
+			a.log.Info("planned release dropped", "release", rec.ID, "issue", rec.AfterIssue)
+		}
+	}
+	for _, p := range a.st.Status.Plan {
+		if !p.Release || slices.ContainsFunc(a.ap.Releases, func(o aiv1.ReleaseRecord) bool {
+			return o.By == aiv1.ReleaseByPlanner && o.AfterIssue == p.IID
+		}) {
+			continue
+		}
+		rec := aiv1.ReleaseRecord{ID: nextReleaseID(a.ap.Releases), By: aiv1.ReleaseByPlanner, AfterIssue: p.IID,
+			Why: p.ReleaseWhy, State: aiv1.ReleasePlanned, DecidedAt: metav1.NewTime(a.r.now())}
+		a.ap.Releases = append(a.ap.Releases, rec)
+		a.log.Info("release planned", "release", rec.ID, "issue", p.IID)
+	}
+}
+
+// releaseDue makes the Planned records after the merged it Waiting, with its
+// merge commit. Without a known merge commit they stay Planned: the final
+// release covers them.
+func (a *autopilot) releaseDue(it *aiv1.AutopilotItem) {
+	if it.MergedSHA == "" {
+		return
+	}
+	for i := range a.ap.Releases {
+		rec := &a.ap.Releases[i]
+		if rec.State == aiv1.ReleasePlanned && rec.AfterIssue == it.IID {
+			rec.State, rec.SHA = aiv1.ReleaseWaiting, it.MergedSHA
+			a.log.Info("release due", "release", rec.ID, "issue", it.IID, "sha", it.MergedSHA)
+		}
+	}
+}
+
+// nextReleaseID is the largest ID of recs plus one.
+func nextReleaseID(recs []aiv1.ReleaseRecord) int64 {
+	var id int64
+	for _, r := range recs {
+		id = max(id, r.ID)
+	}
+	return id + 1
+}
+
 // step moves the records that have not ended and are not Planned on, a
 // Running one first, then the others in ID order:
 //

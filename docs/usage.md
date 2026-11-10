@@ -1916,8 +1916,30 @@ whether autopilot or a human merged them.
 A release is a decision with a reason, recorded in
 `status.autopilot.releases` (newest 50, ended ones are dropped first). The
 operator carries the decisions out on every poll, also while the milestone is
-paused; the queue does not wait for them. (What creates the decisions, the
+paused; the queue does not wait for them. (The other deciders, the
 comments and the release notes come in later changes of this milestone.)
+
+**The planner decides first.** The planning run decides per issue whether to
+release after it (`release` and `releaseWhy` in `status.plan`), and writes
+the decision into the issue's description as a `**Release:**` line (see
+[what an issue holds](#1-write-the-milestone-spec)). On every poll the
+operator syncs the plan into the records:
+
+- An issue the plan releases after gets one record `by: planner`,
+  `afterIssue`, `why` and `state: Planned`, unless a planner record after it
+  already exists, in any state. Polling again or planning again never adds a
+  second one.
+- A re-plan that no longer releases after the issue, or that dropped the
+  issue, makes a record that is still `Planned` `Dropped` ("the re-plan
+  dropped it"). A record past `Planned` is never changed by a re-plan: once
+  its issue is merged, only the pilot or an owner can drop it.
+- When the issue merges, its `Planned` records become `Waiting` with the
+  merge commit as `sha`, and the steps below carry them out. An issue merged
+  without a known merge commit (closed as done by hand) leaves its record
+  `Planned`.
+- A record after a skipped issue stays `Planned`: if the issue is merged
+  after all, its release follows; otherwise the milestone's final release
+  covers it.
 
 **The contract with the project's CI:** the operator starts a pipeline on the
 default branch with the variables `AGENT_RELEASE=true` and

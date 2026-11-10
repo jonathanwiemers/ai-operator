@@ -1578,3 +1578,133 @@ func TestAutopilotOpenCompanionOfASkippedIssueIsStuck(t *testing.T) {
 		t.Fatalf("closed, #2 starts: %+v, %v", ap, e.gl.Labels(2))
 	}
 }
+
+// planRelease gives the plan a release decision after each of iids, and
+// none after the others.
+func (e *projectEnv) planRelease(iids ...int64) {
+	e.t.Helper()
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		for i := range s.Plan {
+			p := &s.Plan[i]
+			p.Release, p.ReleaseWhy = slices.Contains(iids, p.IID), ""
+			if p.Release {
+				p.ReleaseWhy = fmt.Sprintf("users notice #%d", p.IID)
+			}
+		}
+	})
+}
+
+// releaseStates is "<afterIssue>:<state>" of each release record.
+func releaseStates(ap *aiv1.AutopilotStatus) []string {
+	var out []string
+	for _, r := range ap.Releases {
+		out = append(out, fmt.Sprintf("%d:%s", r.AfterIssue, r.State))
+	}
+	return out
+}
+
+// A planned release is one Planned record until its issue merges, then it
+// waits with the merge commit and the state machine starts its pipeline.
+func TestAutopilotPlannedReleaseWaitsFromTheMerge(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.planRelease(1)
+	for range 3 {
+		e.reconcile()
+	}
+	ap := e.autopilot()
+	if len(ap.Releases) != 1 {
+		t.Fatalf("want one record, got %+v", ap.Releases)
+	}
+	if got := ap.Releases[0]; got.ID != 1 || got.By != aiv1.ReleaseByPlanner || got.AfterIssue != 1 || got.Why != "users notice #1" ||
+		got.State != aiv1.ReleasePlanned || got.SHA != "" || got.DecidedAt.IsZero() {
+		t.Fatalf("want a Planned planner record after #1, got %+v", got)
+	}
+
+	// The project tags its default branch; main's head is green and
+	// contains #1's merge.
+	created := e.gl.Clock.Add(-time.Hour)
+	e.gl.AddTag("2026.11.1", gitlab.TagCommit{ID: "t1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created})
+	e.gl.BranchHeads = map[string]string{"main": "h1"}
+	e.gl.AddPipeline("h1", "main", "success")
+	e.gl.Compares = map[string]*gitlab.Compare{"h1..merge-sha-api": {}}
+	e.finishRun(1, "sha-api", nil)
+	e.reconcile() // marked ready
+	e.reconcile() // merged
+	ap = e.autopilot()
+	if ap.Items[0].State != aiv1.AutopilotItemMerged {
+		t.Fatalf("#1 should be merged: %+v", ap.Items)
+	}
+	got := ap.Releases[0]
+	if len(ap.Releases) != 1 || got.SHA != "merge-sha-api" || got.State != aiv1.ReleaseRunning || got.ReleasedSHA != "h1" {
+		t.Fatalf("want the record running with #1's merge commit, got %+v", ap.Releases)
+	}
+	if len(e.gl.CreatedPipelines) != 1 || !slices.Equal(got.Issues, []int64{1}) {
+		t.Fatalf("want one release pipeline containing #1, got %+v %+v", e.gl.CreatedPipelines, got)
+	}
+}
+
+// A re-plan drops a Planned record but not one that is running, and never
+// creates a second record after the same issue.
+func TestAutopilotReplanDropsOnlyPlannedReleases(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.planRelease(1, 2)
+	e.reconcile()
+	if got := releaseStates(e.autopilot()); !slices.Equal(got, []string{"2:Planned", "1:Planned"}) {
+		t.Fatalf("want a record after #2 and #1 in plan order, got %v", got)
+	}
+	// #1's release runs.
+	running := e.gl.AddPipeline("h1", "main", "running")
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		r := &s.Autopilot.Releases[1]
+		r.State, r.SHA, r.PipelineID, r.Attempts = aiv1.ReleaseRunning, "m1", running, 1
+	})
+
+	e.planRelease()
+	e.reconcile()
+	ap := e.autopilot()
+	if got := releaseStates(ap); !slices.Equal(got, []string{"2:Dropped", "1:Running"}) {
+		t.Fatalf("want #2's record dropped and #1's kept, got %v", got)
+	}
+	if r := ap.Releases[0]; r.Reason != "the re-plan dropped it" || r.EndedAt == nil {
+		t.Fatalf("want the re-plan's reason, got %+v", r)
+	}
+
+	// Planned again: the records stay as they are.
+	e.planRelease(1, 2)
+	e.reconcile()
+	e.reconcile()
+	if got := releaseStates(e.autopilot()); !slices.Equal(got, []string{"2:Dropped", "1:Running"}) {
+		t.Fatalf("want no new records, got %v", got)
+	}
+}
+
+// An issue that left the plan drops its Planned record.
+func TestAutopilotReleaseOfAnIssueThatLeftThePlan(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.planRelease(2)
+	e.reconcile()
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Plan = slices.DeleteFunc(s.Plan, func(p aiv1.PlannedIssue) bool { return p.IID == 2 })
+	})
+	e.reconcile()
+	if got := releaseStates(e.autopilot()); !slices.Equal(got, []string{"2:Dropped"}) {
+		t.Fatalf("want #2's record dropped, got %v", got)
+	}
+}
+
+// The record after a skipped issue stays Planned.
+func TestAutopilotSkippedIssueKeepsItsPlannedRelease(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.planRelease(1)
+	e.reconcile()
+	e.gl.AddNote(e.autopilot().TrackingIssueIID, gitlab.User{ID: 1, Username: "jonathan"}, "/agent: skip #1")
+	e.reconcile()
+	e.reconcile()
+	ap := e.autopilot()
+	if ap.Items[0].State != aiv1.AutopilotItemSkipped {
+		t.Fatalf("#1 should be skipped: %+v", ap.Items)
+	}
+	if got := releaseStates(ap); !slices.Equal(got, []string{"1:Planned"}) {
+		t.Fatalf("want the record still Planned, got %v", got)
+	}
+}
