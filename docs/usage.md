@@ -2009,8 +2009,8 @@ again; the final release covers it), any record after that issue that has
 not ended or has released, or a record that has not ended or has released
 whose commit (`releasedSHA` once it runs) contains the home merge. Once a
 tag contains the home merge, the companion lands on by itself. A companion
-outside a milestone on autopilot adds no record here; the release sweep for
-work outside milestones covers it (a later change).
+outside a milestone on autopilot adds its record to the project's list, see
+[outside milestones](#outside-milestones).
 
 **The contract with the project's CI:** the operator starts a pipeline on the
 default branch with the variables `AGENT_RELEASE=true` and
@@ -2104,6 +2104,44 @@ contains the milestone's last merge. The order is: final release, then the
 A release pipeline that failed on a head does not hold a later attempt back:
 the green-head check skips the pipelines that did not succeed on a head a
 release ran on.
+
+#### Outside milestones
+
+Merges outside milestones (Renovate, a human's merge request) are released
+by the operator too. Their decisions are kept in the AgentProject's
+`status.releases` (newest 20, ended ones are dropped first) and carried out
+with the same steps as above, after the companions and main's health on every
+full poll. Two deciders add records there, and only while **no autopilot of
+the project is `Running` or `Paused`**: the milestone's releases, its final
+one last, cover everything merged meanwhile. While one runs, a record that is
+already `Running` is followed to its end and every other one waits.
+
+- **A waiting companion:** a [companion](#landing) in `waitingRelease` whose
+  home merge is not docs-only adds a record `by: companion` at once,
+  `afterIssue` its home issue, `Waiting` for the home merge commit ("<project>!<mr>
+  waits for #N to be live"). Not while another record of the list has not
+  ended (the next poll adds it, if that release did not contain it), and only
+  once per home merge: a `Failed` one is not tried again, the sweep covers it.
+- **The sweep:** when the project tags its default branch
+  ([landing's rule](#landing)) and no record of the list has not ended, the
+  operator compares the newest calendar-version tag with the default branch.
+  If the change is release-relevant (not empty, not only `docs/**` and
+  `*.md`), its oldest commit landed more than
+  `spec.workflow.release.maxUnreleasedAge` ago (default 24 h), and
+  [main's health](#main-health) is green (or flaky) on the head, it adds a
+  record `by: sweep`, `Waiting` for the head: "3 commits since 2026.11.4 are
+  unreleased, the oldest since 2026-11-09 06:00 UTC (more than 24h)". A
+  commit lands when it reaches the default branch: the first parents from the
+  head count (merge commits, squashed or rebased commits), not the older
+  commits of a merged branch. A docs-only commit among code commits counts
+  too, so such a release may come earlier, never later. There is one sweep
+  decision per head: one that `Failed` is not tried again until another
+  merge moves the head. With
+  `mainHealth.disabled` the green-head step alone decides.
+
+So a Renovate merge outside a milestone is released within a day. These
+records are not commented anywhere (there is no tracking issue) and get no
+history events; their release notes say why, without a list of issues.
 
 #### What a release posts
 

@@ -332,6 +332,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	// error is collected in poll.errs.
 	mainHealthPhase{poll}.run(ctx)
 	autopilotPhase{poll}.run(ctx)
+	releasePhase{poll}.run(ctx)
 	pilotPhase{poll}.run(ctx)
 	if err := (cleanupPhase{poll}).run(ctx); err != nil {
 		return err

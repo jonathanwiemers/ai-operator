@@ -243,21 +243,10 @@ func (a *autopilot) notNeeded(ctx context.Context, sha string) (string, error) {
 	if _, ok, err := a.newReleaser().containingRelease(ctx, sha); err != nil || ok {
 		return "", err
 	}
-	tags, err := a.gl.ListTags(ctx, project, gitlab.ListTagsOptions{Limit: 20})
-	if err != nil {
-		return "", fmt.Errorf("listing the tags of %s: %w", project, err)
+	tag, found, err := newestReleaseTag(ctx, a.gl, project)
+	if err != nil || !found {
+		return "", err
 	}
-	var newest release
-	found := false
-	for _, t := range tags {
-		if v, ok := parseRelease(t.Name); ok && (!found || compareReleases(v, newest) > 0) {
-			newest, found = v, true
-		}
-	}
-	if !found {
-		return "", nil
-	}
-	tag := releaseName(newest)
 	c, err := a.gl.CompareCommits(ctx, project, tag, sha)
 	switch {
 	case gitlab.IsNotFound(err):
@@ -271,6 +260,26 @@ func (a *autopilot) notNeeded(ctx context.Context, sha string) (string, error) {
 		return "nothing release-relevant since " + tag, nil
 	}
 	return "", nil
+}
+
+// newestReleaseTag is the newest CalVer tag among the project's newest 20
+// tags; false when there is none.
+func newestReleaseTag(ctx context.Context, gl gitlab.API, project string) (string, bool, error) {
+	tags, err := gl.ListTags(ctx, project, gitlab.ListTagsOptions{Limit: 20})
+	if err != nil {
+		return "", false, fmt.Errorf("listing the tags of %s: %w", project, err)
+	}
+	var newest release
+	found := false
+	for _, t := range tags {
+		if v, ok := parseRelease(t.Name); ok && (!found || compareReleases(v, newest) > 0) {
+			newest, found = v, true
+		}
+	}
+	if !found {
+		return "", false, nil
+	}
+	return releaseName(newest), true, nil
 }
 
 // retryFinalRelease starts the Failed final release over (`resume` during

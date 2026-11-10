@@ -344,14 +344,17 @@ All labels can be renamed. Defaults:
 ### `spec.workflow.release`
 
 Releasing by decision (see [usage](usage.md#releases), which later changes of
-this milestone fill in). `maxUnreleasedAge` is not read yet.
+this milestone fill in).
 
 - `mode`: `Auto` (default, also when empty) or `Off`. Any other value is
   rejected. `Off` means the operator never starts a release pipeline.
 - `minInterval`: the minimum time between two releases the operator starts
   (default `15m`); the final release of a milestone is exempt.
-- `maxUnreleasedAge`: outside milestones, release-relevant commits on the
-  default branch older than this are released (default `24h`).
+- `maxUnreleasedAge`: outside milestones, with no autopilot running or
+  paused, the operator releases the default branch once its oldest
+  release-relevant commit since the newest calendar-version tag landed more
+  than this ago and main is green (default `24h`), see
+  [usage](usage.md#outside-milestones).
 
 The checkpoint fields (`checkpoint.disabled`, default `false`, and
 `checkpoint.maxFileBytes`, default 5 MiB) are in

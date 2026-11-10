@@ -316,6 +316,11 @@ type Commit struct {
 	AuthorName     string `json:"author_name"`
 	AuthorEmail    string `json:"author_email"`
 	CommitterEmail string `json:"committer_email"`
+	// ParentIDs, the first parent first.
+	ParentIDs []string `json:"parent_ids,omitempty"`
+	// CommittedDate is when the commit was made: for a merge commit, when
+	// it was merged.
+	CommittedDate *time.Time `json:"committed_date,omitempty"`
 }
 
 // MergeRequestVersion is one pushed head of a merge request; GitLab keeps
@@ -338,6 +343,7 @@ type MergeRequestVersionDetail struct {
 
 // Compare is the result of comparing two refs of a repository.
 type Compare struct {
+	// Commits are oldest first: the last one is the head of to.
 	Commits []Commit `json:"commits"`
 	Diffs   []Diff   `json:"diffs"`
 }
