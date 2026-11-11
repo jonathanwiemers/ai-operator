@@ -682,7 +682,7 @@ func TestMilestoneIssues(t *testing.T) {
 		t.Errorf("states and tasks stay the live ones: %+v", is)
 	}
 	if f := is.Figures; f == nil || f.WallSec != 3600 || f.AgentSec != 1500 || f.PausedSec != 600 || f.CostUSD != "1.50" ||
-		!f.CostKnown || f.Tokens != 1200 || f.CostFrom != CostFromCalls || f.Spend != nil {
+		!f.CostKnown || f.Tokens != 1200 || f.CostFrom != CostFromCalls || f.Cost.Spend != nil {
 		t.Errorf("figures of #42 = %+v", is.Figures)
 	}
 	if m.Issues[1].Figures != nil {
@@ -848,9 +848,9 @@ func TestMilestoneRetrospective(t *testing.T) {
 		t.Fatalf("live retrospective = %+v", r)
 	}
 	wantFollowUps := []FollowUpView{
-		{Number: 1, Title: "Retry CI", Body: "flaky lint", State: "issue", TargetIID: 60, TargetURL: web + "/-/issues/60"},
-		{Number: 2, Title: "Docs", State: "open"},
-		{Number: 3, Title: "Backfill", State: "milestone", TargetIID: 14, TargetURL: web + "/-/milestones/14"},
+		{FollowUpRow: store.FollowUpRow{Number: 1, Title: "Retry CI", Body: "flaky lint", State: "issue", TargetIID: 60}, TargetURL: web + "/-/issues/60"},
+		{FollowUpRow: store.FollowUpRow{Number: 2, Title: "Docs", State: "open"}},
+		{FollowUpRow: store.FollowUpRow{Number: 3, Title: "Backfill", State: "milestone", TargetIID: 14}, TargetURL: web + "/-/milestones/14"},
 	}
 	if !slices.Equal(r.FollowUps, wantFollowUps) {
 		t.Errorf("follow-ups = %+v", r.FollowUps)
@@ -888,9 +888,9 @@ func TestMilestoneRetrospective(t *testing.T) {
 		t.Fatalf("stored retrospective = %+v", r)
 	}
 	wantStored := []FollowUpView{
-		{Number: 1, Title: "Retry CI", State: "issue", TargetIID: 60, TargetURL: web + "/-/issues/60"},
-		{Number: 2, Title: "Docs", State: "milestone", TargetIID: 7, TargetURL: web + "/-/milestones/7"},
-		{Number: 3, Title: "Old", State: "dismissed"},
+		{FollowUpRow: store.FollowUpRow{Number: 1, Title: "Retry CI", State: "issue", TargetIID: 60}, TargetURL: web + "/-/issues/60"},
+		{FollowUpRow: store.FollowUpRow{Number: 2, Title: "Docs", State: "milestone", TargetIID: 7}, TargetURL: web + "/-/milestones/7"},
+		{FollowUpRow: store.FollowUpRow{Number: 3, Title: "Old", State: "dismissed"}},
 	}
 	if !slices.Equal(m.Retrospective.FollowUps, wantStored) {
 		t.Errorf("stored follow-ups = %+v", m.Retrospective.FollowUps)

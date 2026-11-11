@@ -22,24 +22,6 @@ type MilestoneQuery struct {
 // MaxMilestones caps a milestone list.
 const MaxMilestones = 200
 
-// MilestoneRow is one milestone of the list with its progress and spend.
-// Merged counts the issues merged, skipped or (backfilled) closed, Open the
-// others.
-// FollowUpsOpen are the leftovers still open. Spend sums the milestone's
-// calls as SpendTotals does: without calls, CostUSD is unknown and every
-// sum is 0, never a cost of $0.
-type MilestoneRow struct {
-	Project              ProjectKey
-	IID                  int64
-	Title, WebURL        string
-	State, Phase         string
-	StartedAt, DoneAt    time.Time
-	TrackingIID          int64
-	Issues, Merged, Open int
-	FollowUpsOpen        int
-	Spend                SpendTotals
-}
-
 // milestoneSelect is the list's statement without ORDER BY: $1 and $2 are
 // the projects' namespaces and names, $3 the state, empty for both. The
 // extra columns come after the list's, before the spend totals; filter is
@@ -115,37 +97,6 @@ func (s *Store) Milestones(ctx context.Context, q MilestoneQuery) ([]MilestoneRo
 			m.done_at DESC NULLS LAST, m.namespace, m.project, m.iid
 		LIMIT $4`, namespaces, names, q.State, q.Limit)
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (MilestoneRow, error) { return scanMilestone(row) })
-}
-
-// IssueFigures are one issue of a milestone with its figures. FirstRun is
-// its first run.started event, nil if it never ran; MergedAt its latest
-// merged event, nil if none. WallSec runs from FirstRun to MergedAt, or to
-// now while it is not merged, 0 if it never ran. AgentMS sums its calls'
-// durations, PausedSec the pauses of the milestone whose item is the issue
-// (open ones up to now). Spend sums its calls as MilestoneRow does: without
-// calls the cost is unknown.
-type IssueFigures struct {
-	IID          int64
-	Title, State string
-	MRIID        int64
-	MRURL        string
-	Position     int
-	FirstRun     *time.Time
-	MergedAt     *time.Time
-	WallSec      int64
-	AgentMS      int64
-	PausedSec    int64
-	Spend        SpendTotals
-}
-
-// FollowUpRow is a stored leftover of a milestone's retrospective, see
-// FollowUpSnapshot.
-type FollowUpRow struct {
-	Number    int
-	Title     string
-	Body      string
-	State     string
-	TargetIID int64
 }
 
 // MilestoneDetail is one milestone with its retrospective, owners, issues

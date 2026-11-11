@@ -624,3 +624,19 @@ follow-up issue), and requirements without an issue and why.
   `redacted`, which the task chat reads. The web gets `Pause` and
   `PauseHistory` from `generated/store.ts`. The JSON is unchanged (golden
   tests); no field dropped. Nothing narrowed.
+- 2026-11-11 #343 (R15 part 3): none of the three remaining pairs was field
+  for field, so each view stays and embeds its store type (D343-P1).
+  `FollowUpView` is `store.FollowUpRow` plus `targetURL` (the project's web
+  URL). `IssueFiguresView` is `store.IssueFigures` plus `agentSec` and the
+  cost chip; the issue's own fields, `AgentMS` and the spend are
+  `json:"-"`. The list's `MilestoneRow` is `store.MilestoneRow` (iid,
+  title, web URL, phase, times as `omitzero`, follow-ups) plus namespace,
+  project, live state, progress, cost, needs-you and stored; a live row
+  fills the snapshot fields from its tasks. The three store types moved to
+  `store/milestone_rows.go`, which tygo reads, because `milestones.go` also
+  holds `MilestoneQuery` and `MilestoneDetail`, which the web never gets
+  and tygo cannot skip. In TypeScript they are `store.MilestoneRow`, … and
+  the views `extends` them. The JSON is unchanged (golden tests for the
+  milestone list, a milestone's issues and its follow-ups); no field
+  dropped. No field-for-field view/store pair is left in `internal/ui`.
+  Nothing narrowed.

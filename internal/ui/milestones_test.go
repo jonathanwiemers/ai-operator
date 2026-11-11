@@ -136,7 +136,7 @@ func TestMilestonesWithoutDatabase(t *testing.T) {
 	if len(l.Milestones) != 1 {
 		t.Fatalf("done rows = %+v", l.Milestones)
 	}
-	if m7 := l.Milestones[0]; m7.IID != 7 || m7.State != MilestoneStateDone || m7.FollowUpsOpen != 1 || m7.Stored || m7.DoneAt != nil {
+	if m7 := l.Milestones[0]; m7.IID != 7 || m7.State != MilestoneStateDone || m7.FollowUpsOpen != 1 || m7.Stored || !m7.DoneAt.IsZero() {
 		t.Errorf("done row = %+v", m7)
 	}
 
@@ -192,8 +192,8 @@ func TestMilestonesWithSnapshot(t *testing.T) {
 	}
 	m3 := rowByIID(l.Milestones, 3)
 	if m3.Title != "Checkout" || m3.Progress != (MilestoneProgress{Total: 1, Open: 1}) || m3.FollowUpsOpen != 2 ||
-		m3.CostUSD != "4.50" || !m3.CostKnown || m3.Tokens != 1200 || m3.CostFrom != CostFromCalls || m3.Spend != nil ||
-		m3.StartedAt == nil || !m3.StartedAt.Equal(started) || m3.Stored {
+		m3.CostUSD != "4.50" || !m3.CostKnown || m3.Tokens != 1200 || m3.CostFrom != CostFromCalls || m3.Cost.Spend != nil ||
+		!m3.StartedAt.Equal(started) || m3.Stored {
 		t.Errorf("merged row = %+v", m3)
 	}
 	// A live row without a snapshot keeps the tasks' cost.
@@ -207,13 +207,13 @@ func TestMilestonesWithSnapshot(t *testing.T) {
 	if got := rowIIDs(l.Milestones); !slices.Equal(got, []int64{7, 2, 1}) {
 		t.Fatalf("done rows = %v", got)
 	}
-	if m7 := l.Milestones[0]; m7.Stored || m7.DoneAt == nil || !m7.DoneAt.Equal(done(1)) || m7.CostKnown {
+	if m7 := l.Milestones[0]; m7.Stored || !m7.DoneAt.Equal(done(1)) || m7.CostKnown {
 		t.Errorf("live done row = %+v", m7)
 	}
 	m1 := l.Milestones[2]
 	if !m1.Stored || m1.State != MilestoneStateDone || m1.Title != "First" || m1.Phase != "done" ||
 		m1.Progress != (MilestoneProgress{Merged: 2, Total: 3, Open: 1}) || m1.FollowUpsOpen != 1 || m1.CostKnown ||
-		m1.WebURL != "https://gitlab.example.com/acme/shop/-/milestones/1" || m1.DoneAt == nil || !m1.DoneAt.Equal(done(20)) {
+		m1.WebURL != "https://gitlab.example.com/acme/shop/-/milestones/1" || !m1.DoneAt.Equal(done(20)) {
 		t.Errorf("stored row = %+v", m1)
 	}
 

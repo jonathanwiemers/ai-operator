@@ -27,6 +27,53 @@ export interface ChatMessage {
 }
 
 //////////
+// source: milestone_rows.go
+
+/**
+ * MilestoneRow is one milestone of the list with its progress and spend.
+ * Merged counts the issues merged, skipped or (backfilled) closed, Open the
+ * others.
+ * FollowUpsOpen are the leftovers still open. Spend sums the milestone's
+ * calls as SpendTotals does: without calls, CostUSD is unknown and every
+ * sum is 0, never a cost of $0. The UI's row sends the project, state,
+ * progress and cost its own way.
+ */
+export interface MilestoneRow {
+  iid: number /* int64 */;
+  title: string;
+  webURL: string;
+  phase?: string;
+  startedAt?: string;
+  doneAt?: string;
+  followUpsOpen: number /* int */;
+}
+/**
+ * IssueFigures are one issue of a milestone with its figures. FirstRun is
+ * its first run.started event, nil if it never ran; MergedAt its latest
+ * merged event, nil if none. WallSec runs from FirstRun to MergedAt, or to
+ * now while it is not merged, 0 if it never ran. AgentMS sums its calls'
+ * durations, PausedSec the pauses of the milestone whose item is the issue
+ * (open ones up to now). Spend sums its calls as MilestoneRow does: without
+ * calls the cost is unknown. The UI sends the issue's fields in its issue
+ * row, the agent time in seconds and the spend as a cost chip.
+ */
+export interface IssueFigures {
+  wallSec: number /* int64 */;
+  pausedSec: number /* int64 */;
+}
+/**
+ * FollowUpRow is a stored leftover of a milestone's retrospective, see
+ * FollowUpSnapshot. Title and Body are untrusted markdown without HTML.
+ */
+export interface FollowUpRow {
+  number: number /* int */;
+  title: string;
+  body?: string;
+  state: 'open' | 'issue' | 'milestone' | 'dismissed';
+  targetIID?: number /* int64 */;
+}
+
+//////////
 // source: pauses.go
 
 /**

@@ -378,12 +378,12 @@ export interface MilestoneIssueRow {
  * IssueFiguresView is an issue's time and spend: wallSec from its first run
  * to its merge (or now), 0 if it never ran; agentSec its calls' durations;
  * pausedSec the milestone's pauses over it (open ones up to now). Its cost
- * is unknown without calls, never $0.
+ * is unknown without calls, never $0. It stays a view because it hides the
+ * store's issue fields (the issue row has them) and sends the agent time in
+ * seconds and the spend as a cost chip.
  */
-export interface IssueFiguresView extends Cost {
-  wallSec: number /* int64 */;
+export interface IssueFiguresView extends store.IssueFigures, Cost {
   agentSec: number /* int64 */;
-  pausedSec: number /* int64 */;
 }
 /**
  * ReleaseView is one release decision of a milestone (aiv1.ReleaseRecord).
@@ -558,19 +558,17 @@ export interface MilestoneProgress {
  * case, empty without autopilot. FollowUpsOpen are the retrospective's
  * leftovers still open. NeedsYou: the milestone has an Inbox item. Stored:
  * its tasks are gone, the row is the snapshot's.
+ * It stays a view because a live row is built from the tasks, not the
+ * snapshot, and the snapshot's state (open, closed), counts and spend
+ * take another shape here. The snapshot's row carries iid, title, web URL,
+ * phase, times and follow-ups; Namespace, Project and State shadow its
+ * fields of those names, which stay out of the JSON.
  */
-export interface MilestoneRow extends Cost {
+export interface MilestoneRow extends store.MilestoneRow, Cost {
   namespace: string;
   project: string;
-  iid: number /* int64 */;
-  title: string;
-  webURL: string;
   state: MilestoneState;
-  phase?: string;
   progress: MilestoneProgress;
-  followUpsOpen: number /* int */;
-  startedAt?: string;
-  doneAt?: string;
   needsYou: boolean;
   stored: boolean;
 }
@@ -941,14 +939,10 @@ export interface FollowUpDraftView {
 }
 /**
  * FollowUpView is a leftover of a retrospective and what came of it:
- * TargetURL is the issue or milestone it became.
+ * TargetURL is the issue or milestone it became. It stays a view because
+ * the link composes the project's web URL, which the store does not keep.
  */
-export interface FollowUpView {
-  number: number /* int */;
-  title: string;
-  body?: string;
-  state: 'open' | 'issue' | 'milestone' | 'dismissed';
-  targetIID?: number /* int64 */;
+export interface FollowUpView extends store.FollowUpRow {
   targetURL?: string;
 }
 /**

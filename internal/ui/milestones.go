@@ -44,21 +44,21 @@ type MilestoneProgress struct {
 // case, empty without autopilot. FollowUpsOpen are the retrospective's
 // leftovers still open. NeedsYou: the milestone has an Inbox item. Stored:
 // its tasks are gone, the row is the snapshot's.
+//
+// It stays a view because a live row is built from the tasks, not the
+// snapshot, and the snapshot's state (open, closed), counts and spend
+// take another shape here. The snapshot's row carries iid, title, web URL,
+// phase, times and follow-ups; Namespace, Project and State shadow its
+// fields of those names, which stay out of the JSON.
 type MilestoneRow struct {
-	Namespace     string            `json:"namespace"`
-	Project       string            `json:"project"`
-	IID           int64             `json:"iid"`
-	Title         string            `json:"title"`
-	WebURL        string            `json:"webURL"`
-	State         MilestoneState    `json:"state"`
-	Phase         string            `json:"phase,omitempty"`
-	Progress      MilestoneProgress `json:"progress"`
-	FollowUpsOpen int               `json:"followUpsOpen"`
-	Cost          `tstype:",extends"`
-	StartedAt     *time.Time `json:"startedAt,omitempty"`
-	DoneAt        *time.Time `json:"doneAt,omitempty"`
-	NeedsYou      bool       `json:"needsYou"`
-	Stored        bool       `json:"stored"`
+	store.MilestoneRow `tstype:",extends"`
+	Namespace          string            `json:"namespace"`
+	Project            string            `json:"project"`
+	State              MilestoneState    `json:"state"`
+	Progress           MilestoneProgress `json:"progress"`
+	Cost               `tstype:",extends"`
+	NeedsYou           bool `json:"needsYou"`
+	Stored             bool `json:"stored"`
 }
 
 // MilestoneList is the answer of GET /api/v1/milestones. History: the
@@ -223,9 +223,9 @@ func liveMilestoneRows(projects map[string]*aiv1.AgentProject, tasks []aiv1.Agen
 // as the snapshot counts them.
 func liveMilestoneRow(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st *aiv1.AgentTask) MilestoneRow {
 	ms := st.Spec.Milestone
-	row := MilestoneRow{Namespace: p.Namespace, Project: p.Name, IID: ms.IID, Title: ms.Title,
-		WebURL: fmt.Sprintf("%s/-/milestones/%d", gitLabRef(p).WebURL, ms.IID), State: liveMilestoneState(st),
-		StartedAt: optTime(st.CreationTimestamp.Time)}
+	row := MilestoneRow{MilestoneRow: store.MilestoneRow{IID: ms.IID, Title: ms.Title,
+		WebURL: fmt.Sprintf("%s/-/milestones/%d", gitLabRef(p).WebURL, ms.IID), StartedAt: st.CreationTimestamp.Time},
+		Namespace: p.Namespace, Project: p.Name, State: liveMilestoneState(st)}
 	issues := map[int64]bool{}
 	for _, pi := range st.Status.Plan {
 		if pi.IID != 0 {
@@ -309,19 +309,20 @@ func mergeMilestoneRows(live []MilestoneRow, stored []store.MilestoneRow) []Mile
 		if i, ok := byKey[milestoneKey{sm.Project.Namespace, sm.Project.Name, sm.IID}]; ok {
 			m := &out[i]
 			m.Cost, m.FollowUpsOpen = cost, sm.FollowUpsOpen
-			m.StartedAt = cmp.Or(optTime(sm.StartedAt), m.StartedAt)
+			if !sm.StartedAt.IsZero() {
+				m.StartedAt = sm.StartedAt
+			}
 			if m.State == MilestoneStateDone {
-				m.DoneAt = optTime(sm.DoneAt)
+				m.DoneAt = sm.DoneAt
 			}
 			continue
 		}
 		if sm.State != "closed" && sm.Phase != "done" {
 			continue
 		}
-		out = append(out, MilestoneRow{Namespace: sm.Project.Namespace, Project: sm.Project.Name, IID: sm.IID, Title: sm.Title,
-			WebURL: sm.WebURL, State: MilestoneStateDone, Phase: sm.Phase,
-			Progress:      MilestoneProgress{Merged: sm.Merged, Total: sm.Issues, Open: sm.Open},
-			FollowUpsOpen: sm.FollowUpsOpen, Cost: cost, StartedAt: optTime(sm.StartedAt), DoneAt: optTime(sm.DoneAt), Stored: true})
+		out = append(out, MilestoneRow{MilestoneRow: sm, Namespace: sm.Project.Namespace, Project: sm.Project.Name,
+			State: MilestoneStateDone, Progress: MilestoneProgress{Merged: sm.Merged, Total: sm.Issues, Open: sm.Open},
+			Cost: cost, Stored: true})
 	}
 	return out
 }
@@ -357,9 +358,9 @@ func sortMilestoneRows(rows []MilestoneRow) {
 		}
 		var c int
 		if a.State == MilestoneStateDone {
-			c = compareTimes(b.DoneAt, a.DoneAt, 1)
+			c = compareTimes(optTime(b.DoneAt), optTime(a.DoneAt), 1)
 		} else {
-			c = compareTimes(a.StartedAt, b.StartedAt, -1)
+			c = compareTimes(optTime(a.StartedAt), optTime(b.StartedAt), -1)
 		}
 		return cmp.Or(c, cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Project, b.Project), cmp.Compare(a.IID, b.IID))
 	})

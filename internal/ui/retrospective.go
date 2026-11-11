@@ -71,14 +71,11 @@ func openFollowUps(r *RetrospectiveView) bool {
 }
 
 // FollowUpView is a leftover of a retrospective and what came of it:
-// TargetURL is the issue or milestone it became.
+// TargetURL is the issue or milestone it became. It stays a view because
+// the link composes the project's web URL, which the store does not keep.
 type FollowUpView struct {
-	Number    int    `json:"number"`
-	Title     string `json:"title"`
-	Body      string `json:"body,omitempty"`
-	State     string `json:"state" tstype:"'open' | 'issue' | 'milestone' | 'dismissed'"`
-	TargetIID int64  `json:"targetIID,omitempty"`
-	TargetURL string `json:"targetURL,omitempty"`
+	store.FollowUpRow `tstype:",extends"`
+	TargetURL         string `json:"targetURL,omitempty"`
 }
 
 // CostDriverView is an issue (label "#42") or a role of the milestone's
@@ -97,7 +94,7 @@ const maxCostDrivers = 5
 // followUpView is follow-up n with its target's link under the project's
 // web URL.
 func followUpView(web string, f store.FollowUpRow) FollowUpView {
-	v := FollowUpView{Number: f.Number, Title: f.Title, Body: f.Body, State: f.State, TargetIID: f.TargetIID}
+	v := FollowUpView{FollowUpRow: f}
 	switch {
 	case f.TargetIID == 0:
 	case f.State == store.FollowUpIssue:

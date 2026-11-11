@@ -1330,13 +1330,21 @@ renderer). `web/src` uses no `v-html` and no `innerHTML`: keep it that way.
 the Go structs with [tygo](https://github.com/gzuidhof/tygo) (`go tool
 tygo`, pinned in `go.mod`): `internal/ui` into `web/src/generated/views.ts`,
 the CRD types the views embed (`api/v1alpha1`) into
-`web/src/generated/api.ts`, and the store types the views carry as they are
-(`internal/research/store`, so far `SpendTotals`, `PauseHistory` and
-`ChatMessage`) into `web/src/generated/store.ts`. A view struct exists only
-when it differs from the store type by composition or by what it hides
-(`ChatMessageView` is the store's message plus `redacted`); a store type
-the web gets has JSON tags, `json:"-"` on what the web never gets (a chat
-message's client key and expiry). The store keeps enums as plain strings,
+`web/src/generated/api.ts`, and the store types the views carry or embed
+(`internal/research/store`: `SpendTotals`, `PauseHistory`, `ChatMessage`,
+and from `milestone_rows.go` `MilestoneRow`, `IssueFigures` and
+`FollowUpRow`) into `web/src/generated/store.ts`. A view struct exists only
+when it differs from the store type by composition or by what it hides,
+and then it embeds the store type (`tstype:",extends"`) instead of copying
+its fields: `ChatMessageView` is the store's message plus `redacted`,
+`FollowUpView` the follow-up plus its target's link, `IssueFiguresView`
+the figures plus the agent time in seconds and the cost chip, and the
+milestone list's `MilestoneRow` the snapshot's row plus the live state,
+progress and cost (a live row fills only the snapshot fields it has). A
+store type the web gets has JSON tags, `json:"-"` on what the web never
+gets or gets in the view's shape (a chat message's client key and expiry,
+a milestone's spend). tygo has no per-type exclusion, so such types live
+in files of their own that `tygo.yaml` lists. The store keeps enums as plain strings,
 without importing `api/v1alpha1`: a `tstype` tag names the union
 (`aiv1.PauseKind | 'unknown'`). A cost that may be unknown is a `store.Money`: the
 amount with 2 decimals in the JSON, `""` when unknown, never `"0.00"`

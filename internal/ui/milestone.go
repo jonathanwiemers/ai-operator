@@ -85,19 +85,20 @@ type MilestoneIssueRow struct {
 // IssueFiguresView is an issue's time and spend: wallSec from its first run
 // to its merge (or now), 0 if it never ran; agentSec its calls' durations;
 // pausedSec the milestone's pauses over it (open ones up to now). Its cost
-// is unknown without calls, never $0.
+// is unknown without calls, never $0. It stays a view because it hides the
+// store's issue fields (the issue row has them) and sends the agent time in
+// seconds and the spend as a cost chip.
 type IssueFiguresView struct {
-	WallSec   int64 `json:"wallSec"`
-	AgentSec  int64 `json:"agentSec"`
-	PausedSec int64 `json:"pausedSec"`
-	Cost      `tstype:",extends"`
+	store.IssueFigures `tstype:",extends"`
+	AgentSec           int64 `json:"agentSec"`
+	Cost               `tstype:",extends"`
 }
 
 func issueFiguresView(f store.IssueFigures) *IssueFiguresView {
 	c := callsCost(f.Spend)
 	// The row has no room for the breakdown; the issue's view will.
 	c.Spend = nil
-	return &IssueFiguresView{WallSec: f.WallSec, AgentSec: f.AgentMS / 1000, PausedSec: f.PausedSec, Cost: c}
+	return &IssueFiguresView{IssueFigures: f, AgentSec: f.AgentMS / 1000, Cost: c}
 }
 
 // milestoneDetailReader reads a milestone's snapshot and its issues' figures
