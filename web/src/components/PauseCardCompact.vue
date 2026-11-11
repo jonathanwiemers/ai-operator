@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { pauseEndsBy, pauseTitle, wayOutLine } from '../pauseCard'
@@ -45,7 +46,7 @@ const way = computed(() => wayOutLine(props.exits))
       <span class="spacer" />
       <RouterLink :to="to" class="open">Open</RouterLink>
     </div>
-    <p v-if="reasonText" class="reason" :title="reasonText">{{ reasonText }}</p>
+    <p v-if="reasonText" class="reason" :title="reasonText"><Markdown mode="inline" :text="reasonText" /></p>
     <p v-else-if="!kind" class="reason muted">Waiting for a human.</p>
     <p v-if="waiting" class="waiting">A run is working on #{{ waiting }} now.</p>
     <p v-if="way" class="faint ends" :title="way">{{ way }}</p>

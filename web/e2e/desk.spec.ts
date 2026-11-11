@@ -834,3 +834,31 @@ test.describe('block markdown', () => {
     })
   }
 })
+
+// Inline markdown (R9, decision 7): one-line agent and human text keeps
+// strong and code, shows no literal asterisks, and nests no link in a link.
+test.describe('inline markdown', () => {
+  for (const { width, height } of [widths[0]!, widths[2]!]) {
+    for (const name of ['inbox', 'stream-milestone-stream', 'stream-milestone-pilot']) {
+      test(`${name} shows no literal ** and no nested links@${width}`, async ({ page, baseURL }, testInfo) => {
+        const route = routes.find((r) => r.name === name)!
+        const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+        await page.setViewportSize({ width, height })
+        await page.clock.setFixedTime(now)
+        await watch(page, new URL(baseURL ?? '').origin, problems)
+        await mockAPI(page, route, problems)
+        await page.goto(route.path)
+        await route.ready(page)
+
+        await expect(page.locator('main .md-inline strong').first()).toBeVisible()
+        await expect(page.locator('main')).not.toContainText('**')
+        expect(await page.evaluate(() => document.querySelectorAll('a a').length), 'nested links').toBe(0)
+
+        const shot = join(testInfo.project.outputDir, '..', 'screenshots', `inline-markdown-${name}@${width}.png`)
+        await page.screenshot({ path: shot, fullPage: true })
+        await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+        expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+      })
+    }
+  }
+})

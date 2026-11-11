@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { usePromptAnswer } from '../promptAnswer'
@@ -25,7 +26,7 @@ const { sending, error, sent, answer, busy, send } = usePromptAnswer(
   <section class="card prompt-compact" :class="{ closed: !open }">
     <div class="head">
       <code>{{ prompt.id }}</code>
-      <strong class="question" :title="prompt.question">{{ prompt.question }}</strong>
+      <strong class="question" :title="prompt.question"><Markdown mode="inline" :text="prompt.question" /></strong>
     </div>
     <div class="row">
       <button

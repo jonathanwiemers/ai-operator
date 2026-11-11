@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from '../components/Markdown.vue'
 import { computed, onMounted } from 'vue'
 import { duration } from '../format'
 import { pausedStrip } from '../inboxStrip'
@@ -80,7 +81,7 @@ onMounted(refreshPermission)
             <RouterLink :to="inboxRoute(item)"><b>Companion ready</b><template v-if="item.issueIID"> · #{{ item.issueIID }}</template></RouterLink>
             <ExtLink :href="item.url" class="mono">{{ item.title }}</ExtLink>
           </span>
-          <span class="reason muted">{{ item.reason }}</span>
+          <span class="reason muted"><Markdown mode="inline" :text="item.reason" /></span>
           <span class="when faint"><RelTime :time="item.at" /></span>
         </div>
         <RouterLink v-else :to="inboxRoute(item)" class="row">
@@ -91,7 +92,7 @@ onMounted(refreshPermission)
             <b v-else-if="item.issueIID">#{{ item.issueIID }}</b>
             {{ item.title }}
           </span>
-          <span class="reason muted">{{ item.reason }}</span>
+          <span class="reason muted"><Markdown mode="inline" :text="item.reason" /></span>
           <span class="when faint"><RelTime :time="item.at" /></span>
         </RouterLink>
       </li>

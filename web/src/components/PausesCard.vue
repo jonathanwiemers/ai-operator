@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from './Markdown.vue'
 import { computed, ref } from 'vue'
 import { useNow } from '../live'
 import { pauseTitle } from '../pauseCard'
@@ -47,7 +48,7 @@ const rows = computed(() => (all.value ? s.value?.rows : s.value?.rows.slice(0, 
           <span>{{ p.duration }}</span>
           <span class="who">{{ p.resolver }}<template v-if="p.via"> · {{ p.via }}</template></span>
         </div>
-        <div v-if="p.reason" class="reason" :title="p.reason">{{ p.reason }}</div>
+        <div v-if="p.reason" class="reason" :title="p.reason"><Markdown mode="inline" :text="p.reason" /></div>
         <small class="faint"><RelTime :time="p.since" /></small>
       </li>
     </ul>

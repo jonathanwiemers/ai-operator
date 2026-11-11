@@ -56,7 +56,7 @@ function ctx(e: StreamEvent) {
           </p>
         </template>
         <Markdown v-else-if="n.data.body" :text="n.data.body" />
-        <p v-else>{{ n.summary }}</p>
+        <p v-else><Markdown mode="inline" :text="n.summary" /></p>
       </div>
     </div>
   </div>

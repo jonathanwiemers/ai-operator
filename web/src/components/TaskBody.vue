@@ -73,9 +73,9 @@ const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('ch
   </div>
   <div v-if="t.status.phase === 'Blocked'" class="banner danger">
     <strong>Blocked</strong>
-    <span>{{ t.status.message || 'The task hit a safety limit and needs a human.' }}</span>
+    <span><Markdown mode="inline" :text="t.status.message || 'The task hit a safety limit and needs a human.'" /></span>
   </div>
-  <div v-else-if="t.status.message" class="banner info">{{ t.status.message }}</div>
+  <div v-else-if="t.status.message" class="banner info"><Markdown mode="inline" :text="t.status.message" /></div>
   <div v-if="t.status.agentTermination?.reason === 'OOMKilled'" class="banner warning">
     <strong>Out of memory</strong>
     <span>
@@ -271,7 +271,7 @@ const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('ch
     </div>
     <div v-if="t.status.autopilot.pausedReason" class="banner warning">
       <span>
-        {{ t.status.autopilot.pausedReason }}
+        <Markdown mode="inline" :text="t.status.autopilot.pausedReason" />
         <template v-if="t.status.autopilot.pausedFor">(issue #{{ t.status.autopilot.pausedFor }})</template>
         <template v-if="t.status.autopilot.resumeWhenReady">
           It continues by itself once a later run of #{{ t.status.autopilot.pausedFor }} is reviewed and green.

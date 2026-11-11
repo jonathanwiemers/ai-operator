@@ -134,7 +134,7 @@ function taskLink(ev: StreamEvent) {
       <!-- run.finished -->
       <div v-if="e.kind === 'run.finished'" class="compact">
         <Badge :tone="resultTone(e.data.result)">{{ e.data.result || 'done' }}</Badge>
-        <span v-if="e.data.runSummary">{{ e.data.runSummary }}</span>
+        <span v-if="e.data.runSummary"><Markdown mode="inline" :text="e.data.runSummary" /></span>
         <span class="muted">
           <template v-if="e.data.costUSD">{{ cost(e.data.costUSD) }}</template>
           <template v-if="e.data.durationSec != null">
@@ -196,7 +196,7 @@ function taskLink(ev: StreamEvent) {
 
       <!-- needs -->
       <div v-else-if="e.kind === 'needs'" class="card warn">
-        <p>{{ e.data.message || e.data.reason || e.summary }}</p>
+        <p><Markdown mode="inline" :text="e.data.message || e.data.reason || e.summary" /></p>
         <RouterLink v-if="taskLink(e)" class="btn" :to="taskLink(e)!">Open task</RouterLink>
       </div>
 
@@ -209,7 +209,7 @@ function taskLink(ev: StreamEvent) {
       <!-- autopilot -->
       <div v-else-if="e.kind === 'autopilot'" class="compact">
         <Badge tone="progress">{{ e.data.phase || 'autopilot' }}</Badge>
-        <span v-if="e.data.reason" class="muted">{{ e.data.reason }}</span>
+        <span v-if="e.data.reason" class="muted"><Markdown mode="inline" :text="e.data.reason" /></span>
       </div>
 
       <!-- proposal -->
@@ -248,7 +248,7 @@ function taskLink(ev: StreamEvent) {
           started{{ (e.data.attempt ?? 0) > 1 ? ` · attempt ${e.data.attempt}` : '' }}
         </Badge>
         <Badge v-else-if="releaseBadge" :tone="releaseBadge.tone">{{ releaseBadge.label }}</Badge>
-        <span v-if="releaseEventText(e)" class="why">{{ releaseEventText(e) }}</span>
+        <span v-if="releaseEventText(e)" class="why"><Markdown mode="inline" :text="releaseEventText(e)" /></span>
         <code v-if="e.kind === 'release.started' && e.data.releasedSHA" class="mono">
           {{ shortSHA(e.data.releasedSHA) }}
         </code>

@@ -71,7 +71,7 @@ export const inbox: InboxResponse = {
       kind: 'pause',
       milestoneIID: 14,
       title: 'Payment providers',
-      reason: 'Issue #281 needs an answer to its question before autopilot can continue with the next issue.',
+      reason: 'Issue #281 needs an answer to its question **before** autopilot can continue with the next issue.',
       at: ago(24),
       pauseKind: 'needsInput',
       pausedSince: ago(24),

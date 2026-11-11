@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import { cost } from '../format'
 import { queueDone, waitingForTurn } from '../milestoneQueue'
@@ -87,7 +88,7 @@ function inboxTo(item: InboxItem) {
         <RouterLink v-for="(item, i) in inbox" :key="i" class="n-item" :to="inboxTo(item)">
           <b>{{ item.kind === 'proposal' && item.proposalID != null ? `P${item.proposalID}` : item.issueIID ? `#${item.issueIID}` : item.project }}</b>
           {{ item.title }}
-          <small>{{ item.reason }}<template v-if="item.at"> · <RelTime :time="item.at" /></template></small>
+          <small><Markdown mode="inline" :text="item.reason" /><template v-if="item.at"> · <RelTime :time="item.at" /></template></small>
         </RouterLink>
       </div>
     </div>

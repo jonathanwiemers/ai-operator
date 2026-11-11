@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from './Markdown.vue'
 import { companionRef } from '../companion'
 import type { MilestoneView } from '../types'
 import CompanionChip from './CompanionChip.vue'
@@ -28,7 +29,7 @@ const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestone
         </RouterLink>
         <ExtLink v-else :href="issueURL(c.homeIssueIID)">#{{ c.homeIssueIID }}</ExtLink>
         <span v-if="c.release">release {{ c.release }}</span>
-        <span v-if="c.reason" class="reason" :title="c.reason">{{ c.reason }}</span>
+        <span v-if="c.reason" class="reason" :title="c.reason"><Markdown mode="inline" :text="c.reason" /></span>
       </div>
     </li>
   </ul>
