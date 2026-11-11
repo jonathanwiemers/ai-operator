@@ -1264,6 +1264,7 @@ If your Gateway cuts long requests, the app reconnects and catches up; set
 ```sh
 make ts-types  # web/src/generated/*.ts from the Go views (tygo.yaml)
 make ui        # ts-types (with Go) + npm ci + type-check + build into web/dist/app, embedded by go build
+make ui-e2e    # make ui, then the browser checks (see Checks)
 make run-ui    # UI without login on http://127.0.0.1:9080, against your kubeconfig
 cd web && npm run dev   # live reload on http://localhost:5173, API proxied to :9080
 ```
@@ -1361,6 +1362,61 @@ kubectl -n research-dev patch agentresearch q-… --subresource=status --type=me
 kubectl -n research-dev patch agentresearch q-… --subresource=status --type=merge \
   -p '{"status":{"phase":"Running","waiting":null,"run":{"startedAt":"2026-10-29T14:00:00Z","engine":"claude","model":"claude-opus-5-5","reason":"chosen: claude/claude-opus-5-5"}}}'
 ```
+
+## Checks
+
+Playwright checks the built Desk in Chromium (`web/e2e`). It runs every
+route at 375×812, 768×1024 and 1280×800 px.
+
+```sh
+make ui-e2e                  # make ui, install Chromium, npm run e2e
+cd web && npm run e2e        # against the current web/dist/app
+cd web && npx playwright test -g inbox   # one route
+```
+
+Chromium needs system libraries and fonts. Install them once with
+`npx playwright install-deps chromium` (as root). Without fonts, text has no
+width and every check fails as "hidden". `npm run e2e` type-checks
+`web/e2e` with `web/e2e/tsconfig.json` first.
+
+How it works:
+
+- **Server.** `web/e2e/serve.mjs` is a static server with no dependencies.
+  It serves `web/dist/app` like the Go server does: files as they are, any
+  other path as `index.html`. It sends the same security headers. The CSP
+  comes from `web/e2e/csp.txt`, and the Go test
+  `TestCSPMatchesBrowserChecks` fails when that file and
+  `contentSecurityPolicy` differ. Change both together.
+- **Fixtures.** The browser never reaches an API. `page.route` answers
+  `/api/v1/*` from `web/e2e/fixtures`, TypeScript values typed with
+  `web/src/types.ts` and the generated views, so a changed view breaks the
+  type-check. `fixtures/index.ts` maps each path to its answer, or to a
+  function of the query. A path without a fixture answers 404 and fails the
+  check, naming the path. `/api/v1/events` answers an empty event stream.
+  The browser's clock is fixed at 2026-11-10 12:00 UTC.
+- **Checks.** For each route and width (`web/e2e/desk.spec.ts`):
+  - the page and the content pane (`main` in `App.vue`) do not scroll
+    sideways (`scrollWidth` equals `clientWidth`)
+  - no CSP violation (`securitypolicyviolation` events and CSP console
+    errors)
+  - no request to another origin (such requests are also aborted)
+  - no uncaught error
+
+  To check a new route, add it to `routes` with a `ready` condition and add
+  the fixtures its requests need.
+- **Known overflow.** `web/e2e/known-overflow.ts` lists the
+  `route@width` cases that scroll sideways today, with the measured px.
+  They run as expected failures (`test.fail()`). A slice that fixes one
+  removes its entry: Playwright fails a listed case that passes, and an
+  unlisted case that overflows.
+- **Screenshots.** Each check takes a full-page screenshot to
+  `web/e2e-results/screenshots/<route>@<width>.png`, even when it fails.
+  The HTML report is in `web/e2e-results/report`, and traces of failed
+  checks are in `web/e2e-results/output`.
+
+  In CI the `ui-e2e` job keeps `web/e2e-results/` for two weeks, also when
+  it fails ("Desk screenshots" on the merge request). UI merge requests
+  link the 375 px and 1280 px screenshots.
 
 ## Roadmap
 

@@ -3,5 +3,6 @@
 *.out
 /dist/
 /web/node_modules/
+/web/e2e-results/
 /web/dist/*
 !/web/dist/.gitkeep

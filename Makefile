@@ -68,6 +68,12 @@ ui: ## Test, type-check and build the web UI into web/dist/app (embedded by go b
 	if command -v go >/dev/null; then $(MAKE) ts-types; fi
 	cd web && npm ci && npm test && npm run build
 
+.PHONY: ui-e2e
+# The browser's system libraries come with `npx playwright install-deps
+# chromium` (root), as in the CI ui-e2e job.
+ui-e2e: ui ## Check the built web UI in Chromium at phone, tablet and desktop width (docs/ui.md "Checks").
+	cd web && npx playwright install chromium && npm run e2e
+
 .PHONY: docker-build
 docker-build:
 	docker build -t $(IMG) .

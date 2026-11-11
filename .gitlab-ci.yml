@@ -117,6 +117,34 @@ ui:
   script:
     - make ui
 
+# Browser checks of the built Desk (docs/ui.md "Checks"): every route at
+# 375, 768 and 1280 px with the server's CSP and a mocked API. The
+# Playwright image is on mcr.microsoft.com, which the Dependency Proxy does
+# not serve, so the node image installs Chromium and its libraries.
+ui-e2e:
+  stage: check
+  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:22-bookworm
+  variables:
+    npm_config_cache: $CI_PROJECT_DIR/.cache/npm
+    PLAYWRIGHT_BROWSERS_PATH: $CI_PROJECT_DIR/.cache/ms-playwright
+  cache:
+    key:
+      files: [web/package-lock.json]
+      prefix: ui-e2e
+    paths: [.cache/npm, .cache/ms-playwright]
+  before_script:
+    - cd web
+  script:
+    - npm ci
+    - npx playwright install --with-deps chromium
+    - npm run build
+    - npm run e2e
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    expose_as: Desk screenshots
+    paths: [web/e2e-results/]
+
 helm-lint:
   stage: check
   image:

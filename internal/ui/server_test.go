@@ -13,6 +13,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -519,6 +520,18 @@ func TestApp(t *testing.T) {
 		if code := env.get(t, path, nil); code != http.StatusNotFound {
 			t.Errorf("%s: status %d", path, code)
 		}
+	}
+}
+
+// The Desk's browser checks (web/e2e) serve the app with the CSP of
+// web/e2e/csp.txt, so it must be the one the server sends.
+func TestCSPMatchesBrowserChecks(t *testing.T) {
+	b, err := os.ReadFile("../../web/e2e/csp.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(b)); got != contentSecurityPolicy {
+		t.Errorf("web/e2e/csp.txt differs from contentSecurityPolicy:\n got  %q\n want %q", got, contentSecurityPolicy)
 	}
 }
 
