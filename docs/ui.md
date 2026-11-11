@@ -1848,6 +1848,32 @@ tab, switch to the MR's thread and post a command through the route mock,
 and fold and unfold the milestone stream's thread of #281
 (`note-thread-task@<width>.png`, `note-thread-stream@<width>.png`).
 
+### Milestone rows
+
+`web/src/components/MilestoneList.vue` owns the one column grid of the
+milestone lists on the overview (*In progress*, *Recently done*, with a
+*Project* column) and on a project page (without it).
+
+```vue
+<MilestoneList :rows="inProgress" :show-project="!perProject" label="In progress" />
+```
+
+- From tablet width (760 px) the list is a grid with the column template.
+  The column heads and every `MilestoneRow.vue` are
+  `grid-template-columns: subgrid` of it, so the columns are defined once.
+  The edge tracks are 14 px wider than their content, because a subgrid's
+  padding comes out of its edge tracks.
+- On phones the heads are hidden and a row stacks: the project on top, title
+  and state on one line, the figures (progress, open, cost, tokens) as a
+  wrapping line below, *open* and *tok* labelled. Nothing scrolls sideways.
+- Both are Tailwind utilities, no scoped `<style>`. The rows' data comes
+  from `src/milestoneRows.ts` as before.
+
+The e2e cases `milestone rows …` at 375, 768 and 1280 px check on the
+overview and the project page that each row's cells start where the heads
+do, and that on a phone a row stacks inside its width
+(`milestone-rows-<page>@<width>.png`).
+
 ## Roadmap
 
 1. **Into a running step.** Messages that reach a running claude step at once

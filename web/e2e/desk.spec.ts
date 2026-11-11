@@ -1513,3 +1513,69 @@ test.describe('note thread', () => {
     })
   }
 })
+
+// Milestone rows (MilestoneList.vue, R11): from tablet width each row is a
+// subgrid of the list's one column grid, so its cells start where the
+// column heads do. On a phone the heads are hidden and the row stacks:
+// title and state on one line, the figures below.
+test.describe('milestone rows', () => {
+  const pages = [
+    { name: 'overview', project: true },
+    { name: 'stream-project-stream', project: false },
+  ]
+  for (const { name, project } of pages) {
+    for (const size of widths) {
+      const phone = size.width < 760
+
+      test(`${name} ${phone ? 'rows stack' : 'rows follow the heads'}@${size.width}`, async ({ page, baseURL }, testInfo) => {
+        const route = routes.find((r) => r.name === name)!
+        const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+        await page.setViewportSize(size)
+        await page.clock.setFixedTime(now)
+        await watch(page, new URL(baseURL ?? '').origin, problems)
+        await mockAPI(page, route, problems)
+        await page.goto(route.path)
+        await route.ready(page)
+
+        const list = page.locator('main ul[aria-label="In progress"]')
+        await expect(list.locator('li').first()).toBeVisible()
+        const heads = list.locator('xpath=preceding-sibling::*[@data-heads]')
+        const layout = await list.evaluate((ul) => {
+          const left = (e: Element) => Math.round(e.getBoundingClientRect().left)
+          // A row's cells, the figures' wrapper (display: contents from
+          // tablet width) unfolded.
+          const cells = (li: Element) =>
+            [...li.children].flatMap((c) => (getComputedStyle(c).display === 'contents' ? [...c.children] : [c]))
+          const head = ul.previousElementSibling!
+          return {
+            heads: [...head.children].map(left),
+            rows: [...ul.children].map((li) => cells(li).map(left)),
+            stacked: [...ul.children].map((li) => {
+              const box = (e: Element) => e.getBoundingClientRect()
+              const [title, state, figures] = [...li.children].slice(-3).map(box)
+              return {
+                titleStateOneLine: Math.abs(title!.top + title!.height / 2 - (state!.top + state!.height / 2)) < 12,
+                figuresBelow: figures!.top >= title!.bottom - 1,
+                inside: li.scrollWidth <= li.clientWidth,
+              }
+            }),
+          }
+        })
+
+        if (phone) {
+          await expect(heads).toBeHidden()
+          for (const s of layout.stacked) expect(s).toEqual({ titleStateOneLine: true, figuresBelow: true, inside: true })
+        } else {
+          await expect(heads).toBeVisible()
+          expect(layout.heads).toHaveLength(project ? 7 : 6)
+          for (const row of layout.rows) expect(row).toEqual(layout.heads)
+        }
+
+        const shot = join(testInfo.project.outputDir, '..', 'screenshots', `milestone-rows-${name}@${size.width}.png`)
+        await page.screenshot({ path: shot, fullPage: true })
+        await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+        expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+      })
+    }
+  }
+})

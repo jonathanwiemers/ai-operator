@@ -456,3 +456,10 @@ follow-up issue), and requirements without an issue and why.
   Reply and steer stay with the callers; `Conversation.vue` moved to
   utilities and `UButton`, no scoped `<style>`. GitLab notes carry no bot
   flag, so the conversation marks no pilot notes. Nothing narrowed.
+- 2026-11-11 #324 (R11 milestone row): `MilestoneList.vue` owns the one
+  column template, its heads and every `MilestoneRow.vue` are subgrids of it
+  from tablet width (D324-P1). The template's edge tracks grew by the rows'
+  14 px padding, which a subgrid takes from them, so the columns keep their
+  widths. On phones a row is a wrapping flex line: project, then title and
+  state, then the figures. Both moved to utilities, no scoped `<style>`.
+  Nothing narrowed.

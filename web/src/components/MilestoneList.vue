@@ -4,61 +4,38 @@ import { milestoneRowKey } from '../milestoneRows'
 import type { MilestoneRow } from '../types'
 
 // A list of milestone rows (decision 5), the dashboard's and the project
-// page's. showProject: the rows span projects, so each names its own. The
-// column heads match MilestoneRow's grid; narrow screens hide them, the
-// rows label their figures there.
-defineProps<{ rows: MilestoneRow[]; showProject?: boolean; label: string }>()
+// page's. showProject: the rows span projects, so each names its own.
+//
+// The list owns the one column grid (docs/ui.md, "Milestone rows"): from
+// tablet width the column heads and every MilestoneRow are subgrids of it.
+// The edge tracks are 14 px wider than their content, because a subgrid's
+// padding (px-3.5) is taken from its edge tracks. On phones the heads are
+// hidden and the rows stack, labelling their figures.
+const props = defineProps<{ rows: MilestoneRow[]; showProject?: boolean; label: string }>()
+
+const columns = () =>
+  props.showProject
+    ? 'tablet:grid-cols-[134px_minmax(0,1fr)_140px_160px_56px_72px_78px]'
+    : 'tablet:grid-cols-[minmax(0,1fr)_140px_160px_56px_72px_78px]'
 </script>
 
 <template>
-  <div class="mlist card">
-    <div class="heads" :class="{ 'with-project': showProject }" aria-hidden="true">
+  <div class="card overflow-hidden p-0 tablet:grid tablet:gap-x-3" :class="columns()">
+    <div
+      class="hidden border-b border-(--border) bg-(--surface-2) px-3.5 py-[7px] text-[11px] font-semibold tracking-[0.04em] text-(--text-3) uppercase tablet:col-span-full tablet:grid tablet:grid-cols-subgrid"
+      aria-hidden="true"
+      data-heads
+    >
       <span v-if="showProject">Project</span>
       <span>Milestone</span>
       <span>State</span>
       <span>Merged</span>
-      <span class="r">Open</span>
-      <span class="r">Cost</span>
-      <span class="r">Tokens</span>
+      <span class="text-right">Open</span>
+      <span class="text-right">Cost</span>
+      <span class="text-right">Tokens</span>
     </div>
-    <ul :aria-label="label">
+    <ul class="m-0 list-none p-0 tablet:col-span-full tablet:grid tablet:grid-cols-subgrid" :aria-label="label">
       <MilestoneRowItem v-for="r in rows" :key="milestoneRowKey(r)" :row="r" :show-project="showProject" />
     </ul>
   </div>
 </template>
-
-<style scoped>
-.mlist {
-  padding: 0;
-  overflow: hidden;
-}
-ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.heads {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 140px 160px 56px 72px 64px;
-  gap: 12px;
-  padding: 7px 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-2, var(--surface));
-  color: var(--text-3);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.heads.with-project {
-  grid-template-columns: 120px minmax(0, 1fr) 140px 160px 56px 72px 64px;
-}
-.r {
-  text-align: right;
-}
-@media (max-width: 759.98px) {
-  .heads {
-    display: none;
-  }
-}
-</style>
