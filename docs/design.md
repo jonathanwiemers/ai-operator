@@ -2689,6 +2689,36 @@ inheriting colour and font, block icons), after the element rules. `html`
 keeps the browser's 16 px, so `rem` (Tailwind's spacing, Nuxt UI's sizes)
 is 16 px; `body` sets the Desk's 14 px text. Scoped CSS uses `px`, not `rem`.
 
+**Phones.** A phone is under 760 px (`@media (max-width: 760px)`). The
+viewport meta of `web/index.html` is `width=device-width, initial-scale=1,
+viewport-fit=cover, interactive-widget=resizes-content`: the page draws
+under notches and rounded corners, and Chrome on Android shrinks the layout
+viewport when the keyboard opens (iOS ignores the key; the composer handles
+it there).
+
+- *Viewport height.* Full-height rules use `dvh`, after a `vh` line for
+  browsers without it (`height: 100vh; height: 100dvh`), so they follow the
+  browser's bars and the keyboard. No plain `100vh` on its own. Every
+  browser of Vite's default build target (baseline widely available)
+  supports `dvh`, so the minifier drops the `vh` line from the build; it
+  comes back by itself if the target ever goes lower.
+- *Safe areas.* `viewport-fit=cover` needs `env(safe-area-inset-*)`
+  padding at the edges, all of it in `App.vue`: the rail takes the top,
+  bottom and left insets, the content pane (`main`) the top, right and
+  bottom ones. On a phone the mobile bar takes the top and side insets and
+  the pane the sides and the bottom. Views add none. On screens without
+  insets `env()` is 0, so desktop is unchanged.
+- *Shell rows.* On a phone `.app` is one column with rows `auto 1fr`: the
+  mobile bar keeps its natural height and the pane takes the rest. With
+  two `auto` rows and `min-height: 100dvh`, a short page (Not found, an
+  empty list) would stretch the bar.
+- *Inputs at 16 px.* iOS zooms into a control under 16 px when it gets the
+  focus. The base layer sets `input`, `select` and `textarea` to
+  `font-size: 16px !important` on phones. An `!important` in a layer beats
+  every normal declaration, unlayered or not, so the composers' and views'
+  scoped sizes and Nuxt UI's text utilities give way without a phone rule
+  of their own. Do not set an input's size with `!important` elsewhere.
+
 **Nuxt UI tokens.** Nuxt UI reads its theme from `--ui-*` variables, which
 its colour plugin would inject as an inline `<style>` that the CSP refuses.
 `style.css` sets them instead, unlayered on `:root` (they beat the defaults

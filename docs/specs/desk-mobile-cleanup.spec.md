@@ -329,3 +329,12 @@ follow-up issue), and requirements without an issue and why.
   strip's. The tab bodies never widened the pane (`.scroll` scrolls on
   its own). The dashboard's *Overview | Stream* strip fits on a phone and
   stays as it is until R12 (Dashboard). Nothing narrowed.
+- 2026-11-11 #310 (R5 viewport): viewport meta with `viewport-fit=cover`
+  and `interactive-widget=resizes-content`, `dvh` after a `vh` fallback,
+  safe-area insets on the mobile bar, the rail and the content pane, and
+  rows `auto 1fr` for the phone shell, so the bar keeps its height on
+  short pages. Inputs are 16 px on phones through one `!important` rule in
+  the base layer instead of a phone rule per composer: it also covers the
+  stream search, the forms and Nuxt UI's inputs. Keeping the composer above
+  the iOS keyboard (visualViewport) stays with the composer slice (R11,
+  D310-P1). Nothing narrowed.

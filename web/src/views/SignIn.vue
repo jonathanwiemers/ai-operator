@@ -38,6 +38,7 @@ const href = loginURL()
 <style scoped>
 .signin {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 24px;

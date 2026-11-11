@@ -1417,6 +1417,13 @@ How it works:
   mode; `overview-dark` sets `colorScheme: 'dark'` for dark screenshots, and
   one more check switches the scheme on an open page and expects the dark
   tokens and back ([design.md](design.md#desk-styles)).
+
+  The phone shell ([design.md](design.md#desk-styles), *Phones*) has
+  checks of its own at 375 px: the mobile bar stays under 70 px high on Not
+  found and on an empty research list, and the inputs of the task page
+  (the chat composer's among them) and the stream search compute to at
+  least 16 px, while the composer and the search stay under 16 px at
+  1280 px.
 - **Known overflow.** `web/e2e/known-overflow.ts` lists the
   `route@width` cases that scroll sideways today, with the measured px.
   They run as expected failures (`test.fail()`). A slice that fixes one

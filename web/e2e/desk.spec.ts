@@ -335,6 +335,81 @@ test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, ba
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
+// The shell on a phone (App.vue, docs/design.md "Phones"): on a short page
+// the mobile bar keeps its natural height instead of stretching with the
+// grid's rows, on Not found and on an empty list.
+for (const { name, empty } of [
+  { name: 'not-found', empty: false },
+  { name: 'researches', empty: true },
+]) {
+  test(`shell mobile bar keeps its height on ${empty ? 'an empty list' : name}@375`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === name)!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    // Registered last, so it answers before the fixtures.
+    if (empty) await page.route('**/api/v1/researches', (r) => r.fulfill({ status: 200, json: [] }))
+    await page.goto(route.path)
+    if (empty) await expect(page.locator('main').getByRole('heading', { name: 'No researches' })).toBeVisible()
+    else await route.ready(page)
+
+    const bar = page.locator('header.mobilebar')
+    await expect(bar).toBeVisible()
+    const box = (await bar.boundingBox())!
+    expect(box.height, 'the bar is its natural height').toBeLessThan(70)
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
+// iOS zooms on focus into a control under 16 px (style.css, the phone rule
+// in the base layer): on a phone every visible input of the task page, the
+// chat composer's among them, and the stream search are 16 px; on a desktop
+// the composer keeps its own size.
+for (const { width, height, phone } of [
+  { width: 375, height: 812, phone: true },
+  { width: 1280, height: 800, phone: false },
+]) {
+  test(`inputs ${phone ? 'at 16 px' : 'keep their size'}@${width}`, async ({ page, baseURL }) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    const fontSize = (l: ReturnType<Page['locator']>) => l.evaluate((e) => parseFloat(getComputedStyle(e).fontSize))
+
+    const task = routes.find((r) => r.name === 'task')!
+    await mockAPI(page, task, problems)
+    await page.goto(task.path)
+    await task.ready(page)
+    const composer = page.getByPlaceholder('Message the agent…')
+    await expect(composer).toBeVisible()
+    if (phone) {
+      expect(await fontSize(composer), 'task composer').toBeGreaterThanOrEqual(16)
+      const sizes = await page.locator('main').evaluate((main) =>
+        [...main.querySelectorAll<HTMLElement>('input, select, textarea')]
+          .filter((e) => e.offsetParent !== null && !['checkbox', 'radio'].includes((e as HTMLInputElement).type))
+          .map((e) => `${e.tagName.toLowerCase()} ${e.getAttribute('aria-label') ?? e.getAttribute('placeholder') ?? ''}: ${getComputedStyle(e).fontSize}`),
+      )
+      expect(sizes.length, 'inputs on the task page').toBeGreaterThan(0)
+      expect(sizes.filter((s) => parseFloat(s.slice(s.lastIndexOf(':') + 1)) < 16), 'inputs under 16 px').toEqual([])
+    } else {
+      expect(await fontSize(composer), 'task composer on a desktop').toBeLessThan(16)
+    }
+
+    const stream = routes.find((r) => r.name === 'stream-project-stream')!
+    await page.goto(stream.path)
+    await stream.ready(page)
+    const search = page.getByRole('searchbox', { name: 'Search stream' })
+    await expect(search).toBeVisible()
+    if (phone) expect(await fontSize(search), 'stream search').toBeGreaterThanOrEqual(16)
+    else expect(await fontSize(search), 'stream search on a desktop').toBeLessThan(16)
+
+    problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
 // Truncated (src/ui/Truncated.vue): on a phone the long branch name of the
 // task page is clamped, a tap opens it in place and a second tap closes it.
 test.describe('touch', () => {

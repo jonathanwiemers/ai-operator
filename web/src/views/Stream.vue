@@ -576,7 +576,8 @@ function showDay(i: number): string | null {
 .desk {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
-  min-height: calc(100vh - 0px);
+  min-height: 100vh;
+  min-height: 100dvh;
   height: 100%;
   min-width: 0;
 }

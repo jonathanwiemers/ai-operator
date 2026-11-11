@@ -321,6 +321,17 @@
     display: block;
     vertical-align: middle;
   }
+
+  /* iOS zooms the page when a control under 16px gets the focus. On phones
+     every input is 16px: important in a layer beats every normal rule, the
+     composers' and views' scoped sizes and Nuxt UI's text utilities too. */
+  @media (max-width: 760px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
 }
 
 .mono {

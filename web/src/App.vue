@@ -272,10 +272,17 @@ watch(
 .app {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
+  /* dvh follows the browser's bars and, with interactive-widget=
+     resizes-content (index.html), the keyboard. 100vh for browsers without
+     it (docs/design.md, "Phones"). */
   height: 100vh;
+  height: 100dvh;
   min-height: 0;
 }
+/* Safe areas (viewport-fit=cover): env() is 0 but on notched screens, so
+   desktop is unchanged. The rail holds the left edge, the pane the rest. */
 .rail {
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
   border-right: 1px solid var(--border);
   background: var(--surface);
   display: flex;
@@ -463,6 +470,7 @@ nav {
   overflow: auto;
   display: flex;
   flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) 0;
 }
 .main > :deep(*) {
   flex: 1;
@@ -480,8 +488,16 @@ nav {
 @media (max-width: 760px) {
   .app {
     grid-template-columns: minmax(0, 1fr);
+    /* The bar keeps its height, the pane takes what is left: with two auto
+       rows a short page would stretch the bar. */
+    grid-template-rows: auto 1fr;
     height: auto;
     min-height: 100vh;
+    min-height: 100dvh;
+  }
+  /* The bar holds the top edge, so the pane's top inset goes. */
+  .main {
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   .rail {
     display: none;
@@ -504,7 +520,8 @@ nav {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 16px;
+    padding: calc(10px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px
+      max(16px, env(safe-area-inset-left));
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     font-weight: 700;
