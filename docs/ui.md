@@ -1263,7 +1263,7 @@ If your Gateway cuts long requests, the app reconnects and catches up; set
 
 ```sh
 make ts-types  # web/src/generated/*.ts from the Go views (tygo.yaml)
-make ui        # ts-types (with Go) + npm ci + type-check + build into web/dist/app, embedded by go build
+make ui        # ts-types (with Go) + npm ci + tests + type-check + build into web/dist/app (embedded by go build) + bundle budget
 make ui-e2e    # make ui, then the browser checks (see Checks)
 make run-ui    # UI without login on http://127.0.0.1:9080, against your kubeconfig
 cd web && npm run dev   # live reload on http://localhost:5173, API proxied to :9080
@@ -1425,6 +1425,26 @@ How it works:
   In CI the `ui-e2e` job keeps `web/e2e-results/` for two weeks, also when
   it fails ("Desk screenshots" on the merge request). UI merge requests
   link the 375 px and 1280 px screenshots.
+
+## Bundle budget
+
+The initial JS plus CSS of the Desk is at most 250 kB gzipped (zlib level 9).
+Initial is what a cold load fetches before the first route renders: the entry
+`<script type=module>`, its `modulepreload`s and the stylesheets linked from
+`web/dist/app/index.html`. Every routed view is lazy-loaded
+(`() => import('./views/X.vue')` in `web/src/main.ts`) and is its own chunk
+in `web/dist/app/assets`. Only `App.vue` (the shell) and `SignIn.vue` are in
+the initial bundle, with what they import.
+
+`make ui` runs `npm run budget` (`web/scripts/bundle-budget.mjs`) after the
+build, so the CI `ui` job enforces it. It prints
+`initial: X kB (JS a, CSS b), cap: C kB` and fails above `capKB` in
+`web/bundle-budget.json`.
+
+- 2026-11-11, before Nuxt UI: 51.9 kB (JS 48.7, CSS 3.2).
+- The cap only drops. The slice that sets up Nuxt UI records its figure in
+  `measuredKB` and sets `capKB` to min(250, figure × 1.3). A change that breaks
+  the cap is reported, not answered by raising it.
 
 ## Roadmap
 

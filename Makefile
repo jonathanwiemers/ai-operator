@@ -64,9 +64,9 @@ ts-types: ## Generate the web UI's view types (web/src/generated) from the Go vi
 .PHONY: ui
 # ts-types first where Go is installed (the CI ui job runs in a node image;
 # the drift job checks the generated types).
-ui: ## Test, type-check and build the web UI into web/dist/app (embedded by go build).
+ui: ## Test, type-check and build the web UI into web/dist/app (embedded by go build), check the bundle budget.
 	if command -v go >/dev/null; then $(MAKE) ts-types; fi
-	cd web && npm ci && npm test && npm run build
+	cd web && npm ci && npm test && npm run build && npm run budget
 
 .PHONY: ui-e2e
 # The browser's system libraries come with `npx playwright install-deps

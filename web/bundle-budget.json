@@ -1,0 +1,5 @@
+{
+  "capKB": 250,
+  "measuredKB": 51.9,
+  "note": "Initial JS plus CSS, gzip level 9, checked by npm run budget (docs/ui.md \"Bundle budget\"). measuredKB is from 2026-11-11, before Nuxt UI. The cap only drops: the Nuxt UI setup slice records its figure and sets capKB to min(250, figure x 1.3). If a change breaks the cap, report it instead of raising it."
+}

@@ -8,6 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "typecheck": "vue-tsc --noEmit",
     "test": "node --test",
+    "budget": "node scripts/bundle-budget.mjs",
     "e2e": "tsc -p e2e/tsconfig.json && playwright test"
   },
   "dependencies": {

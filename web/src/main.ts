@@ -2,19 +2,23 @@ import { createApp } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import App from './App.vue'
 import { canStartResearch, featuresLoaded, hasFeature, isResearchPath } from './api'
-import Dashboard from './views/Dashboard.vue'
-import Stream from './views/Stream.vue'
-import Inbox from './views/Inbox.vue'
-import TaskView from './views/Task.vue'
-import IssueView from './views/Issue.vue'
-import Researches from './views/Researches.vue'
-import ResearchNew from './views/ResearchNew.vue'
-import ResearchView from './views/Research.vue'
-import ResearchRunsView from './views/ResearchRuns.vue'
-import ResearchRunView from './views/ResearchRun.vue'
-import NotFound from './views/NotFound.vue'
 import type { RouteName } from './routeNames'
 import './style.css'
+
+// Views load with their route, each as its own chunk. Only App.vue (the shell,
+// with SignIn.vue) is in the initial bundle, which scripts/bundle-budget.mjs
+// keeps within bundle-budget.json (docs/ui.md "Bundle budget").
+const Dashboard = () => import('./views/Dashboard.vue')
+const Stream = () => import('./views/Stream.vue')
+const Inbox = () => import('./views/Inbox.vue')
+const TaskView = () => import('./views/Task.vue')
+const IssueView = () => import('./views/Issue.vue')
+const Researches = () => import('./views/Researches.vue')
+const ResearchNew = () => import('./views/ResearchNew.vue')
+const ResearchView = () => import('./views/Research.vue')
+const ResearchRunsView = () => import('./views/ResearchRuns.vue')
+const ResearchRunView = () => import('./views/ResearchRun.vue')
+const NotFound = () => import('./views/NotFound.vue')
 
 // Every route is named, with a name from routeNames: crumbsFor and its test
 // cover each one.
