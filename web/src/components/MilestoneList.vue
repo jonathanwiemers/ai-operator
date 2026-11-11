@@ -56,7 +56,7 @@ ul {
 .r {
   text-align: right;
 }
-@media (max-width: 760px) {
+@media (max-width: 759.98px) {
   .heads {
     display: none;
   }

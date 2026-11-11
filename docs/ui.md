@@ -1423,7 +1423,10 @@ How it works:
   found and on an empty research list, and the inputs of the task page
   (the chat composer's among them) and the stream search compute to at
   least 16 px, while the composer and the search stay under 16 px at
-  1280 px.
+  1280 px. On the overview, the Inbox and the task page no visible
+  `button`, `a.btn`, `[role=button]` or `input` is under 44 px high
+  (exceptions in the check's `hitAllowlist`, with a reason), and at
+  1280 px a `.btn` is still 34 px.
 - **Known overflow.** `web/e2e/known-overflow.ts` lists the
   `route@width` cases that scroll sideways today, with the measured px.
   They run as expected failures (`test.fail()`). A slice that fixes one
@@ -1525,8 +1528,8 @@ their utilities change nothing there.
 ### DataList
 
 `web/src/ui/DataList.vue` is the one table component Nuxt UI lacks: below
-760 px (the `tablet:` variant, `--breakpoint-tablet` in `style.css`, the only
-breakpoint views use) each row is a card and each cell a two-column grid of
+760 px (the `tablet:` variant, `--breakpoint-tablet` in `style.css`; the
+other is `desktop:`, 1180 px) each row is a card and each cell a two-column grid of
 a label and the value; from 760 px up it is a plain table with a header row.
 It renders one `<table>`, restyled by utilities, so there is one DOM for
 screen readers and find-in-page. The label is a real `<span data-label
@@ -1622,7 +1625,9 @@ table at its top; the matchers are in `web/test/conventions.mjs`:
   `hsla(`, `oklch(` outside `src/style.css`. Report-only.
 - `api-call-outside-client`: `get<`/`post<` and calls of the `get`/`post`
   helpers imported from `api.ts`, outside `src/client.ts`. Report-only.
-- `breakpoint`: `@media` widths other than 760 px and 1180 px. Report-only.
+- `breakpoint`: `@media` widths other than the three widths of
+  [design.md](design.md#desk-styles): `min-width` 760 or 1180 px,
+  `max-width` 759.98 or 1179.98 px, nothing else in px. **Enforced.**
 
 Report-only rules print each hit as `file:line rule` (as a test diagnostic)
 and a count, and pass. Comments are ignored. To enforce a rule, set

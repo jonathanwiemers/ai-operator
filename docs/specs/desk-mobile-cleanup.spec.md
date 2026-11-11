@@ -338,3 +338,15 @@ follow-up issue), and requirements without an issue and why.
   stream search, the forms and Nuxt UI's inputs. Keeping the composer above
   the iOS keyboard (visualViewport) stays with the composer slice (R11,
   D310-P1). Nothing narrowed.
+- 2026-11-11 #311 (R5 touch and widths): Tailwind's breakpoints replaced by
+  `tablet` (760 px) and `desktop` (1180 px); every scoped `@media` is
+  `max-width: 759.98px` or `1179.98px` (the board's 1100 and 640 px, the
+  Inbox's 720 px and the stream's 1180 px moved), and the conventions
+  check's `breakpoint` rule is enforced ahead of R17, since its hits are
+  gone. Hit areas of 44 px on phones through one `min-height`/`min-width`
+  rule in the base layer for buttons, `a.btn`, `[role=button]`, selects and
+  inputs, instead of a phone rule per scoped height; the rail items, the
+  mobile bar's menu and brand set it themselves. The avatars (30 px) and
+  the cost chip (22 px) among the "12 rules" are not controls and keep
+  their size. The e2e check counts controls under 44 px on the overview,
+  the Inbox and the task page; its allowlist is empty. Nothing narrowed.

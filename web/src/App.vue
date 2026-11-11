@@ -485,7 +485,7 @@ nav {
   display: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 759.98px) {
   .app {
     grid-template-columns: minmax(0, 1fr);
     /* The bar keeps its height, the pane takes what is left: with two auto
@@ -520,7 +520,7 @@ nav {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: calc(10px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px
+    padding: calc(6px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 6px
       max(16px, env(safe-area-inset-left));
     border-bottom: 1px solid var(--border);
     background: var(--surface);
@@ -533,9 +533,15 @@ nav {
     border: 1px solid var(--border);
     background: var(--surface-2);
     border-radius: 6px;
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
     cursor: pointer;
+  }
+  /* Rail items are links styled as controls: 44 px, like the buttons
+     (style.css, "Hit areas"). */
+  .item,
+  .brand-m {
+    min-height: 44px;
   }
   .brand-m {
     display: flex;

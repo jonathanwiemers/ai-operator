@@ -444,3 +444,82 @@ test.describe('touch', () => {
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 })
+
+// Hit areas on a phone (decision 13; style.css, the phone rule in the base
+// layer): every visible button, button-styled link, role=button and input of
+// these pages is at least 44 px high at 375 px. Not counted: what cannot be
+// tapped (hidden from assistive technology, transparent, or a disabled
+// checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
+const hitRoutes = ['overview', 'inbox', 'task']
+
+// "<route> <element as reported>" → why it may stay under 44 px. Empty: no
+// control needs an exception.
+const hitAllowlist: Record<string, string> = {}
+
+for (const name of hitRoutes) {
+  test(`${name} hit areas of at least 44 px@375`, async ({ page, baseURL }, testInfo) => {
+    const route = routes.find((r) => r.name === name)!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+    await page.waitForLoadState('networkidle')
+
+    const found = await page.evaluate(() => {
+      const small: string[] = []
+      let counted = 0
+      for (const e of document.querySelectorAll<HTMLElement>('button, a.btn, [role=button], input')) {
+        const input = e instanceof HTMLInputElement ? e : null
+        if (input?.type === 'hidden') continue
+        if (input && input.disabled && ['checkbox', 'radio'].includes(input.type)) continue
+        if (e.closest('[aria-hidden="true"], [inert]')) continue
+        const r = e.getBoundingClientRect()
+        const style = getComputedStyle(e)
+        if (r.width === 0 || r.height === 0 || style.visibility === 'hidden' || style.opacity === '0') continue
+        counted++
+        if (r.height >= 44) continue
+        const label = (e.getAttribute('aria-label') ?? e.getAttribute('placeholder') ?? e.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 40)
+        const classes = [...e.classList].map((c) => '.' + c).join('')
+        small.push(`${e.tagName.toLowerCase()}${input ? `[${input.type}]` : ''}${classes} "${label}" ${Math.round(r.height)}px`)
+      }
+      return { small, counted }
+    })
+    const shot = join(testInfo.project.outputDir, '..', 'screenshots', `hit-areas-${name}@375.png`)
+    await page.screenshot({ path: shot, fullPage: true })
+    await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+
+    expect(found.counted, 'controls on the page').toBeGreaterThan(0)
+    const unexplained = found.small.filter((s) => !(`${name} ${s.replace(/ \d+px$/, '')}` in hitAllowlist))
+    expect(unexplained, 'controls under 44 px high (fix them, or add them to hitAllowlist with a reason)').toEqual([])
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
+// Desktop is unchanged: the phone rule stops below 760 px, so the global
+// .btn keeps its 34 px on the overview at 1280 px.
+test('overview buttons keep their desktop height@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'overview')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+  const heights = await page.evaluate(() => {
+    const b = document.createElement('button')
+    b.className = 'btn'
+    b.textContent = 'probe'
+    // Out of the flow: main is a flex column that stretches its children.
+    b.style.position = 'absolute'
+    document.querySelector('main')!.append(b)
+    const h = b.getBoundingClientRect().height
+    b.remove()
+    return h
+  })
+  expect(heights, '.btn at desktop width').toBe(34)
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})

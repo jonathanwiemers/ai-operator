@@ -79,7 +79,7 @@ const tab = computed(() => tabFromQuery(route.query.tab, dashboardTabs))
   flex: 1;
   min-height: 0;
 }
-@media (max-width: 760px) {
+@media (max-width: 759.98px) {
   .head {
     padding-left: 16px;
     padding-right: 16px;

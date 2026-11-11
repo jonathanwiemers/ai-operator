@@ -137,7 +137,7 @@ const project = computed(() => ({
 }
 /* Narrow screens: the row stacks, project and title on top, the figures
    below, labelled. */
-@media (max-width: 760px) {
+@media (max-width: 759.98px) {
   .mrow,
   .mrow.with-project {
     grid-template-columns: minmax(0, 1fr) auto auto auto;

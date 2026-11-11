@@ -2689,7 +2689,25 @@ inheriting colour and font, block icons), after the element rules. `html`
 keeps the browser's 16 px, so `rem` (Tailwind's spacing, Nuxt UI's sizes)
 is 16 px; `body` sets the Desk's 14 px text. Scoped CSS uses `px`, not `rem`.
 
-**Phones.** A phone is under 760 px (`@media (max-width: 760px)`). The
+**Widths.** The Desk knows three widths and no other breakpoints:
+
+| Width | Viewport | Tailwind | Scoped CSS |
+|-------|----------|----------|------------|
+| phone | under 760 px | no prefix (utilities are phone-first) | `@media (max-width: 759.98px)` |
+| tablet | 760 px to under 1180 px | `tablet:` | `@media (max-width: 1179.98px)` for "below desktop" |
+| desktop | 1180 px and up | `desktop:` | `@media (min-width: 1180px)` |
+
+The `@theme` of `style.css` sets `--breakpoint-*: initial`, which removes
+Tailwind's `sm` to `2xl`, and defines `--breakpoint-tablet: 760px` and
+`--breakpoint-desktop: 1180px`. A `max-width` ends a hundredth of a pixel
+below a `min-width` breakpoint, so at exactly 760 or 1180 px a scoped rule and
+a `tablet:` or `desktop:` utility never both apply. The conventions check
+([ui.md](ui.md#conventions-check)) fails on any other `@media` width. What
+each component does at a width is its own choice: the board shows four
+columns on a desktop, two below it and one on a phone; the stream's context
+panel is hidden below desktop.
+
+**Phones.** A phone is under 760 px (`@media (max-width: 759.98px)`). The
 viewport meta of `web/index.html` is `width=device-width, initial-scale=1,
 viewport-fit=cover, interactive-widget=resizes-content`: the page draws
 under notches and rounded corners, and Chrome on Android shrinks the layout
@@ -2718,6 +2736,21 @@ it there).
   every normal declaration, unlayered or not, so the composers' and views'
   scoped sizes and Nuxt UI's text utilities give way without a phone rule
   of their own. Do not set an input's size with `!important` elsewhere.
+- *Hit areas.* Every control a thumb taps is at least 44 px high on a
+  phone. The same base-layer rule gives `button`, `a.btn`,
+  `[role=button]`, `select` and every `input` but checkboxes and radios
+  `min-height: 44px !important`, and buttons `min-width: 44px !important`.
+  `min-height` wins over a smaller `height` whatever the cascade, so the
+  scoped 26 to 34 px heights (the global `.btn`, the Inbox's notify button,
+  the stream search, the composers' buttons, the pause card's select) need
+  no phone rule of their own; a view must not set `min-height` on a control
+  with `!important`. Links styled as controls set it themselves: the rail
+  items, the mobile bar's menu button and brand (`App.vue`) and the tab
+  strip (`RouteTabs`, `min-h-11`). Desktop and tablet keep their sizes. The
+  e2e check `<route> hit areas of at least 44 px@375` counts the visible
+  `button`, `a.btn`, `[role=button]` and `input` elements under 44 px on the
+  overview, the Inbox and the task page; an exception goes into its
+  `hitAllowlist` with a reason.
 
 **Nuxt UI tokens.** Nuxt UI reads its theme from `--ui-*` variables, which
 its colour plugin would inject as an inline `<style>` that the CSP refuses.

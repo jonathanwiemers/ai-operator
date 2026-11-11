@@ -20,7 +20,7 @@ const RULES = [
   { name: 'html-injection', enforce: true, find: htmlInjection, skip: [] },
   { name: 'raw-colour', enforce: false, find: rawColours, skip: ['style.css'] },
   { name: 'api-call-outside-client', enforce: false, find: apiCalls, skip: ['client.ts'] },
-  { name: 'breakpoint', enforce: false, find: strayBreakpoints, skip: [] },
+  { name: 'breakpoint', enforce: true, find: strayBreakpoints, skip: [] },
 ]
 
 function files(dir) {
@@ -81,6 +81,15 @@ test('matchers: api calls', () => {
 })
 
 test('matchers: breakpoints', () => {
-  const css = '@media (max-width: 760px) {}\n@media (min-width: 1180px) {}\n@media (max-width: 640px) {}'
-  assert.deepEqual(strayBreakpoints(css), [3])
+  const css = [
+    '@media (max-width: 759.98px) {}',
+    '@media (min-width: 1180px) {}',
+    '@media (max-width: 640px) {}',
+    '@media (max-width: 760px) {}',
+    '@media (min-width: 759.98px) {}',
+    '@media (min-width: 760px) and (max-width: 1179.98px) {}',
+    '@media (width < 900px) {}',
+    '@media (prefers-reduced-motion: reduce) {}',
+  ].join('\n')
+  assert.deepEqual(strayBreakpoints(css), [3, 4, 5, 7])
 })

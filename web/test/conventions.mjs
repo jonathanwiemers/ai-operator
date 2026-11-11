@@ -14,7 +14,10 @@ export function stripComments(src, kind) {
 const COLOUR = /#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3,4}\b|\b(?:rgba?|hsla?|oklch)\(/g
 const HTML = /v-html|\binnerHTML\b|\bouterHTML\b|\binsertAdjacentHTML\b/g
 const MEDIA_WIDTH = /@media[^{]*/g
-const ALLOWED_WIDTHS = new Set(['760', '1180'])
+// The three widths (docs/design.md, "Widths"): a tablet or desktop rule
+// starts at 760 or 1180 px, a rule below one ends a hundredth under it, so the
+// two never match together (Tailwind's tablet: and desktop: are min-width).
+const ALLOWED_WIDTHS = { min: new Set(['760', '1180']), max: new Set(['759.98', '1179.98']) }
 
 // Names the file imports from api.ts, among get and post (maybe renamed).
 export function apiHelpers(src) {
@@ -68,9 +71,13 @@ export function apiCalls(src) {
 export function strayBreakpoints(src) {
   const hits = []
   for (const m of src.matchAll(MEDIA_WIDTH)) {
-    for (const w of m[0].matchAll(/(\d+(?:\.\d+)?)px/g)) {
-      if (!ALLOWED_WIDTHS.has(w[1])) hits.push(lineOf(src, m.index))
+    for (const w of m[0].matchAll(/(min|max)-width\s*:\s*(\d+(?:\.\d+)?)px/g)) {
+      if (!ALLOWED_WIDTHS[w[1]].has(w[2])) hits.push(lineOf(src, m.index))
     }
+    // A width in px that is not in a min-width or max-width feature.
+    const all = m[0].match(/\d+(?:\.\d+)?px/g) ?? []
+    const named = m[0].match(/(?:min|max)-width\s*:\s*\d+(?:\.\d+)?px/g) ?? []
+    if (all.length > named.length) hits.push(lineOf(src, m.index))
   }
-  return hits
+  return [...new Set(hits)]
 }

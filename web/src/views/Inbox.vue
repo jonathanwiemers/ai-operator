@@ -180,7 +180,7 @@ onMounted(refreshPermission)
 .when {
   font-size: 12px;
 }
-@media (max-width: 720px) {
+@media (max-width: 759.98px) {
   .row {
     grid-template-columns: 1fr;
     gap: 4px;

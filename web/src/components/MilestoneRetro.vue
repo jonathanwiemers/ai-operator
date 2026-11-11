@@ -530,7 +530,7 @@ details[open] summary {
   text-align: center;
   color: var(--text-3);
 }
-@media (max-width: 760px) {
+@media (max-width: 759.98px) {
   .drivers li {
     grid-template-columns: auto 1fr auto auto;
   }

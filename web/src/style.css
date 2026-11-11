@@ -7,9 +7,13 @@
 @import 'tailwindcss/utilities.css' layer(utilities);
 @import '@nuxt/ui';
 
-/* The narrow-screen breakpoint: phones are below it (docs/ui.md, "DataList"). */
+/* The three widths (docs/design.md, "Widths"): phone is the default, tablet
+   from 760 px, desktop from 1180 px. Tailwind's sm to 2xl are removed, so
+   utilities use tablet: and desktop: only. */
 @theme {
+  --breakpoint-*: initial;
   --breakpoint-tablet: 760px;
+  --breakpoint-desktop: 1180px;
 }
 
 :root {
@@ -325,11 +329,30 @@
   /* iOS zooms the page when a control under 16px gets the focus. On phones
      every input is 16px: important in a layer beats every normal rule, the
      composers' and views' scoped sizes and Nuxt UI's text utilities too. */
-  @media (max-width: 760px) {
+  @media (max-width: 759.98px) {
     input,
     select,
     textarea {
       font-size: 16px !important;
+    }
+
+    /* Hit areas: on phones every control is at least 44 px high and a
+       button at least 44 px wide (docs/design.md, "Phones"). min-height
+       beats a smaller height whatever the cascade, so the scoped heights of
+       34 px and less give way; !important keeps a rule or utility that sets
+       min-height from undoing it. Checkboxes and radios keep their size. */
+    button,
+    a.btn,
+    [role='button'],
+    select,
+    input:not([type='checkbox'], [type='radio'], [type='hidden']) {
+      min-height: 44px !important;
+    }
+
+    button,
+    a.btn,
+    [role='button'] {
+      min-width: 44px !important;
     }
   }
 }

@@ -85,7 +85,7 @@ li span[aria-current] {
   line-height: 18px;
   cursor: pointer;
 }
-@media (max-width: 760px) {
+@media (max-width: 759.98px) {
   .breadcrumbs:not(.open) .mid {
     display: none;
   }

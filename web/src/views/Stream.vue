@@ -793,7 +793,7 @@ function showDay(i: number): string | null {
   text-align: center;
   color: var(--text-3);
 }
-@media (max-width: 1180px) {
+@media (max-width: 1179.98px) {
   .desk {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -801,7 +801,7 @@ function showDay(i: number): string | null {
     display: none;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 759.98px) {
   .head,
   .scroll {
     padding-left: 16px;

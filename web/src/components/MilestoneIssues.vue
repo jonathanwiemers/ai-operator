@@ -291,7 +291,7 @@ function issueTo(i: MilestoneIssueRow) {
 }
 /* Narrow screens: each issue is a card, title and state on top, the
    figures below, labelled. */
-@media (max-width: 760px) {
+@media (max-width: 759.98px) {
   .row.head {
     display: none;
   }

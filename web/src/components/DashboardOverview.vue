@@ -162,7 +162,7 @@ function runningFor(w: WorkingNow): string {
   text-align: center;
   color: var(--text-3);
 }
-@media (max-width: 760px) {
+@media (max-width: 759.98px) {
   .overview {
     padding-left: 16px;
     padding-right: 16px;
