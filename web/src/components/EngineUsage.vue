@@ -20,48 +20,24 @@ function reset(w: UsageWindow) {
 </script>
 
 <template>
-  <div class="usage">
-    <span class="engine">{{ usage.engine }}:</span>
+  <div class="flex flex-wrap gap-x-1.5 gap-y-1 text-[13px] text-(--text-2)">
+    <span class="font-semibold text-(--text)">{{ usage.engine }}:</span>
     <span
       v-for="(w, i) in usage.windows"
       :key="w.name"
-      class="window"
-      :class="{ stale: stale(w), high: !stale(w) && w.percent >= 80 }"
+      :class="{ 'text-(--text-3)': stale(w), 'text-(--tone-warning-fg)': !stale(w) && w.percent >= 80 }"
       :title="w.resetsAt ? `resets ${absTime(w.resetsAt)}` : undefined"
     >
-      {{ windowLabel(w.name) }} <strong>{{ w.percent }} %</strong>{{ reset(w) }}{{ i < (usage.windows?.length ?? 0) - 1 ? ',' : '' }}
+      {{ windowLabel(w.name) }}
+      <strong
+        class="font-semibold"
+        :class="stale(w) ? 'text-(--text-3)' : w.percent >= 80 ? 'text-(--tone-warning-fg)' : 'text-(--text)'"
+        >{{ w.percent }} %</strong
+      >{{ reset(w) }}{{ i < (usage.windows?.length ?? 0) - 1 ? ',' : '' }}
     </span>
-    <span v-if="usage.status && usage.status !== 'allowed'" class="window high">{{ usage.status.replaceAll('_', ' ') }}</span>
+    <span v-if="usage.status && usage.status !== 'allowed'" class="text-(--tone-warning-fg)">{{
+      usage.status.replaceAll('_', ' ')
+    }}</span>
     <span class="faint" :title="absTime(usage.observedAt)">as of {{ clockTime(usage.observedAt, now) }}</span>
   </div>
 </template>
-
-<style scoped>
-.usage {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-  font-size: 13px;
-  color: var(--text-2);
-}
-
-.engine {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.window strong {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.high strong,
-.window.high {
-  color: var(--tone-warning-fg);
-}
-
-.stale,
-.stale strong {
-  color: var(--text-3);
-}
-</style>

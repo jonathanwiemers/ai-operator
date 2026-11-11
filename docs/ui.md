@@ -1925,6 +1925,27 @@ links' heights, that no `title` holds the list's text, that a clipped
 reason opens in place, and that a row and *Open* navigate
 (`inbox-rows@<width>.png`).
 
+### Dashboard
+
+The dashboard (`web/src/views/Dashboard.vue`) and its Overview tab
+(`components/DashboardOverview.vue`, with `MilestoneSections.vue` and
+`EngineUsage.vue`) are Tailwind utilities and Nuxt UI, without scoped CSS.
+
+- *Overview* and *Stream* are a [RouteTabs](#routetabs) strip beside the
+  heading; on a phone the strip's links are 44 px high.
+- The summary strip's chips wrap. The needs-you chip links to the Inbox and
+  is at least 44 px high on phones.
+- *Working now* has one column of cards on phones, two on tablets, and on
+  desktop as many columns of at least 300 px as fit, as before. Long titles
+  and project names break instead of widening a card.
+- The milestone lists use the shared milestone row grid
+  (`MilestoneList.vue`); *Show all* is a `UButton`.
+
+The e2e cases `overview cards › working now columns@<width>` at 375, 768
+and 1280 px check the columns and the Inbox chip's height
+(`overview-cards@<width>.png`); the route checks cover `overview` and
+`overview-stream` at the three widths.
+
 ## Roadmap
 
 1. **Into a running step.** Messages that reach a running claude step at once

@@ -480,3 +480,9 @@ follow-up issue), and requirements without an issue and why.
   exist in the Inbox and was not added (no new features). `RelTime`'s
   `title` (the absolute time) stays: every view shares it and the relative
   time is shown. Nothing narrowed.
+- 2026-11-11 #327 (R12 Dashboard): `Dashboard.vue`, `DashboardOverview.vue`,
+  `MilestoneSections.vue` and `EngineUsage.vue` moved to utilities, no
+  scoped `<style>`; the tabs are `RouteTabs`. *Working now* is one column on
+  phones, two on tablets and auto-fill of 300 px columns on desktop as
+  before. The needs-you chip is 44 px high on phones; *Show all* is a
+  `UButton`. `overview.ts` and its tests are unchanged. Nothing narrowed.

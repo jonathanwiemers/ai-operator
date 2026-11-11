@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
 import MilestoneList from './MilestoneList.vue'
 import { useResource } from '../live'
@@ -35,33 +36,23 @@ const more = computed(() => !showAll.value && doneRows.value.length >= RECENT)
 
 <template>
   <section class="section">
-    <h2>In progress</h2>
+    <h2 class="text-[15px]">In progress</h2>
     <div v-if="open.error.value" class="banner danger">{{ open.error.value }}</div>
     <p v-if="open.loading.value && !open.data.value" class="muted">Loading…</p>
     <p v-else-if="open.data.value && !inProgress.length" class="muted">No milestone is in work.</p>
     <MilestoneList v-else-if="inProgress.length" :rows="inProgress" :show-project="!perProject" label="In progress" />
   </section>
   <section class="section">
-    <h2>Recently done</h2>
+    <h2 class="text-[15px]">Recently done</h2>
     <div v-if="done.error.value" class="banner danger">{{ done.error.value }}</div>
     <p v-if="done.loading.value && !done.data.value" class="muted">Loading…</p>
     <p v-else-if="done.data.value && !history" class="muted">Done milestones need the research database.</p>
     <p v-else-if="done.data.value && !doneRows.length" class="muted">No milestone is done yet.</p>
     <template v-else-if="doneRows.length">
       <MilestoneList :rows="doneRows" :show-project="!perProject" label="Recently done" />
-      <div v-if="more" class="more">
-        <button type="button" class="btn" @click="showAll = true">Show all</button>
+      <div v-if="more" class="mt-2.5 text-center">
+        <UButton color="neutral" variant="outline" label="Show all" @click="showAll = true" />
       </div>
     </template>
   </section>
 </template>
-
-<style scoped>
-.section h2 {
-  font-size: 15px;
-}
-.more {
-  margin-top: 10px;
-  text-align: center;
-}
-</style>

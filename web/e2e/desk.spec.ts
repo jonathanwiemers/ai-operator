@@ -6,6 +6,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
 import { inbox } from './fixtures/rail'
 import { features } from './fixtures/session'
+import { overview } from './fixtures/overview'
 import { refundsPrompt, refundsResponse } from './fixtures/task'
 import { taskTabs, type TaskTab } from '../src/streamTabs'
 import type { Feature } from '../src/types'
@@ -1683,5 +1684,56 @@ test.describe('milestone rows', () => {
         expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
       })
     }
+  }
+})
+
+// The overview's Working now cards (DashboardOverview.vue, R12): one column
+// on a phone, two on a tablet, and on desktop as many columns of at least
+// 300 px as fit, as before. The Inbox chip of the summary strip is a link of
+// at least 44 px on a phone and keeps its chip height above.
+test.describe('overview cards', () => {
+  for (const size of widths) {
+    test(`working now columns@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const route = routes.find((r) => r.name === 'overview')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.goto(route.path)
+      await route.ready(page)
+
+      const cards = page.locator('main article')
+      await expect(cards).toHaveCount(overview.working.length)
+      const [a, b] = await cards.evaluateAll((els) =>
+        els.slice(0, 2).map((e) => {
+          const r = e.getBoundingClientRect()
+          return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width) }
+        }),
+      )
+      const grid = (await cards.first().locator('xpath=..').boundingBox())!
+      if (size.width < 760) {
+        expect(b!.left, 'one column').toBe(a!.left)
+        expect(b!.top, 'stacked').toBeGreaterThan(a!.top)
+        expect(a!.width, 'full width').toBeGreaterThan(grid.width - 2)
+      } else if (size.width < 1180) {
+        expect(b!.top, 'one row').toBe(a!.top)
+        expect(a!.width, 'half the width each').toBeGreaterThan(grid.width / 2 - 12)
+      } else {
+        expect(b!.top, 'one row').toBe(a!.top)
+        expect(a!.width, 'at least 300 px').toBeGreaterThanOrEqual(300)
+        expect(a!.width, 'room for more columns').toBeLessThan(grid.width / 2 - 12)
+      }
+
+      const chip = page.locator('main ul[aria-label="Summary"] a[href="/inbox"]')
+      const height = (await chip.boundingBox())!.height
+      if (size.width < 760) expect(height, 'Inbox chip on a phone').toBeGreaterThanOrEqual(44)
+      else expect(height, 'Inbox chip above').toBeLessThan(44)
+
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `overview-cards@${size.width}.png`)
+      await page.screenshot({ path: shot, fullPage: true })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
   }
 })
