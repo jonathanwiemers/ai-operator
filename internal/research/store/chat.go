@@ -13,23 +13,25 @@ import (
 // Chat of a task: messages written by the UI (chat writer) and by the
 // operator (owner), read by the UI (reader).
 
-// ChatMessage is one row of chat_messages.
+// ChatMessage is one row of chat_messages. It is also the UI API's JSON
+// (web/src/generated/store.ts): the task's path (namespace, project, task),
+// the composer's retry key and the expiry stay out of it.
 type ChatMessage struct {
-	ID         int64
-	Namespace  string
-	Project    string
-	Task       string
-	Author     string
-	AuthorName string
-	Role       string
-	Kind       string
-	Body       string
-	ReplyTo    int64 // 0 when unset
-	ClientKey  string
-	State      string
-	Reason     string
-	At         time.Time
-	ExpiresAt  time.Time
+	ID         int64     `json:"id"`
+	Namespace  string    `json:"-"`
+	Project    string    `json:"-"`
+	Task       string    `json:"-"`
+	Author     string    `json:"author,omitempty"`
+	AuthorName string    `json:"authorName,omitempty"`
+	Role       string    `json:"role" tstype:"ChatRole"`
+	Kind       string    `json:"kind" tstype:"ChatKind"`
+	Body       string    `json:"body,omitempty"`
+	ReplyTo    int64     `json:"replyTo,omitempty"` // 0 when unset
+	ClientKey  string    `json:"-"`
+	State      string    `json:"state,omitempty" tstype:"ChatState"`
+	Reason     string    `json:"reason,omitempty"`
+	At         time.Time `json:"at"`
+	ExpiresAt  time.Time `json:"-"`
 }
 
 const chatColumns = `id, namespace, project, task, author, author_name, role, kind, body,

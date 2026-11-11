@@ -1331,10 +1331,14 @@ the Go structs with [tygo](https://github.com/gzuidhof/tygo) (`go tool
 tygo`, pinned in `go.mod`): `internal/ui` into `web/src/generated/views.ts`,
 the CRD types the views embed (`api/v1alpha1`) into
 `web/src/generated/api.ts`, and the store types the views carry as they are
-(`internal/research/store`, so far `SpendTotals`) into
-`web/src/generated/store.ts`. A view struct exists only when it differs from
-the store type by composition or by what it hides; a store type the web
-gets has JSON tags. A cost that may be unknown is a `store.Money`: the
+(`internal/research/store`, so far `SpendTotals`, `PauseHistory` and
+`ChatMessage`) into `web/src/generated/store.ts`. A view struct exists only
+when it differs from the store type by composition or by what it hides
+(`ChatMessageView` is the store's message plus `redacted`); a store type
+the web gets has JSON tags, `json:"-"` on what the web never gets (a chat
+message's client key and expiry). The store keeps enums as plain strings,
+without importing `api/v1alpha1`: a `tstype` tag names the union
+(`aiv1.PauseKind | 'unknown'`). A cost that may be unknown is a `store.Money`: the
 amount with 2 decimals in the JSON, `""` when unknown, never `"0.00"`
 (`Money` in TypeScript is a string). All three files are committed. After
 changing a view struct, run `make ts-types`; the CI `drift` job runs it and fails when the

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 // TestResponsesKeepTheirShape checks that the named responses encode like
@@ -18,7 +20,7 @@ func TestResponsesKeepTheirShape(t *testing.T) {
 	result := &ResearchResult{Title: "t"}
 	detail := ResearchDetail{}
 	features := []Feature{{Name: FeatureNameResearch, Write: true, Namespace: "ns"}}
-	msgs := []ChatMessageView{{ID: 1, Role: "user", Body: "hi"}}
+	msgs := []ChatMessageView{{ChatMessage: store.ChatMessage{ID: 1, Role: "user", Body: "hi"}}}
 	parts := []ThreadPart{{Target: "issue", IID: 3, WebURL: "u", Notes: []NoteView{}}}
 	hits := []SearchHit{{RunID: "r1", CreatedAt: at}}
 	items := []InboxItem{{Namespace: "ns", Project: "p", Kind: "task", Title: "t", Reason: "r"}}

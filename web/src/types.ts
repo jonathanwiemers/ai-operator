@@ -6,7 +6,7 @@
 // open shapes the Go views leave untyped (tstype tags point here). Responses
 // are named Go structs and are not declared here.
 
-export type { SpendTotals } from './generated/store'
+export type { Pause, PauseHistory, SpendTotals } from './generated/store'
 
 export type {
   Me,
@@ -50,8 +50,6 @@ export type {
   ModelSplitView as ModelSplit,
   ExitView,
   ExitStatus,
-  PauseHistoryView,
-  PauseView,
   CompanionView,
   CompanionChip,
   OverviewView,

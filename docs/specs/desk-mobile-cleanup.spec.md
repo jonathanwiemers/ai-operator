@@ -612,3 +612,15 @@ follow-up issue), and requirements without an issue and why.
   the view's JSON tags and replaces `SpendTotalsView`; `costKnown` is
   written from `CostUSD.Known`, `legacyCostUSD` is `omitzero`. The JSON is
   byte for byte the view's (golden test). Nothing narrowed.
+- 2026-11-11 #342 (R15 part 2): `store.Pause`, `PauseKindTotal`,
+  `PauseTotals` and `PauseHistory` have the views' JSON tags and replace
+  `PauseView`, `PauseKindTotalView`, `PauseTotalsView` and
+  `PauseHistoryView`; the milestone sends the newest 20 pauses as a
+  `store.PauseHistory`. The store keeps plain strings (no `api/v1alpha1`
+  import) with `tstype` tags for the unions; the `"unknown"` kind was
+  already the store's. `store.ChatMessage` has the view's JSON tags,
+  `json:"-"` on namespace, project, task, client key and expiry;
+  `ChatMessageView` stays as composition, the store message plus
+  `redacted`, which the task chat reads. The web gets `Pause` and
+  `PauseHistory` from `generated/store.ts`. The JSON is unchanged (golden
+  tests); no field dropped. Nothing narrowed.

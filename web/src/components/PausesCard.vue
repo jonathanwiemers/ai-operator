@@ -3,7 +3,7 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
 import { useNow } from '../live'
 import { pauseDuration, pausesLine, pausesSummary } from '../pauses'
-import type { PauseHistoryView } from '../types'
+import type { PauseHistory } from '../types'
 import Truncated from '../ui/Truncated.vue'
 import Markdown from './Markdown.vue'
 import RelTime from './RelTime.vue'
@@ -16,7 +16,7 @@ import RelTime from './RelTime.vue'
 // text, inline markdown on one line that opens in full on tap (Truncated),
 // never a title. On phones a row's figures wrap below its kind and
 // *Earlier pauses* is 44 px high.
-const props = defineProps<{ pauses?: PauseHistoryView | null }>()
+const props = defineProps<{ pauses?: PauseHistory | null }>()
 const now = useNow()
 const s = computed(() => pausesSummary(props.pauses, now.value))
 // The newest pauses show; the earlier ones of the view unfold on a click.

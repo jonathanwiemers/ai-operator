@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -52,9 +51,11 @@ type MilestoneView struct {
 	// issues, by home issue: drafts before the home merge, then their
 	// landing.
 	Companions []CompanionView `json:"companions"`
-	// Pauses is the autopilot's pause history, absent without the history
-	// database or when it cannot be read.
-	Pauses *PauseHistoryView `json:"pauses,omitempty"`
+	// Pauses is the autopilot's pause history within the history's
+	// retention: the newest 20 pauses (maxPauseViews), newest first, and the
+	// totals of all. Absent without the history database or when it cannot
+	// be read.
+	Pauses *store.PauseHistory `json:"pauses,omitempty"`
 	// Retrospective is live from task status, else the snapshot's; absent
 	// while there is none.
 	Retrospective *RetrospectiveView `json:"retrospective,omitempty"`
@@ -335,46 +336,6 @@ type ProposalView struct {
 // cover all of them.
 const maxPauseViews = 20
 
-// PauseHistoryView is a milestone's autopilot pauses within the history's
-// retention: the newest ones, newest first, and the totals of all.
-type PauseHistoryView struct {
-	Pauses []PauseView     `json:"pauses"`
-	Totals PauseTotalsView `json:"totals"`
-}
-
-// PauseView is one pause. Until is absent while it is open; Seconds then
-// counts up to the view's time. Kind is "unknown" for a pause without one.
-type PauseView struct {
-	Kind       aiv1.PauseKind     `json:"kind" tstype:"aiv1.PauseKind | 'unknown'"`
-	Reason     string             `json:"reason,omitempty"`
-	Item       int64              `json:"item,omitempty"`
-	Since      time.Time          `json:"since"`
-	Until      *time.Time         `json:"until,omitempty"`
-	ResolvedBy aiv1.PauseResolver `json:"resolvedBy,omitempty"`
-	// Via is how it ended, absent while open and for a pause that ended
-	// before it was recorded.
-	Via     aiv1.PauseResumeVia `json:"via,omitempty"`
-	Seconds int64               `json:"seconds"`
-}
-
-// PauseKindTotalView sums the pauses of one kind.
-type PauseKindTotalView struct {
-	Count int   `json:"count"`
-	Sec   int64 `json:"sec"`
-}
-
-// PauseTotalsView sums all pauses: pausedSec their time (open ones up to
-// now), meanResumeSec the mean time to resume of the ended ones, byResolver
-// who ended them and byVia how ("unknown" when not recorded).
-type PauseTotalsView struct {
-	Count         int                           `json:"count"`
-	PausedSec     int64                         `json:"pausedSec"`
-	ByKind        map[string]PauseKindTotalView `json:"byKind" tstype:"{ [kind: string]: PauseKindTotalView }"`
-	MeanResumeSec int64                         `json:"meanResumeSec"`
-	ByResolver    map[string]int                `json:"byResolver" tstype:"{ [resolver: string]: number }"`
-	ByVia         map[string]int                `json:"byVia" tstype:"{ [via: string]: number }"`
-}
-
 // pauseReader reads a milestone's pauses (the history store).
 type pauseReader interface {
 	Pauses(ctx context.Context, project store.ProjectKey, milestone int64, now time.Time) (store.PauseHistory, error)
@@ -393,7 +354,7 @@ func (s *Server) pauseStore() pauseReader {
 
 // milestonePauses is the pause history of the milestone, nil without the
 // history database or when it fails (logged).
-func (s *Server) milestonePauses(ctx context.Context, ap *aiv1.AgentProject, iid int64, now time.Time) *PauseHistoryView {
+func (s *Server) milestonePauses(ctx context.Context, ap *aiv1.AgentProject, iid int64, now time.Time) *store.PauseHistory {
 	st := s.pauseStore()
 	if st == nil {
 		return nil
@@ -403,24 +364,17 @@ func (s *Server) milestonePauses(ctx context.Context, ap *aiv1.AgentProject, iid
 		s.log.Error(err, "cannot read the milestone's pauses", "namespace", ap.Namespace, "project", ap.Name, "milestone", iid)
 		return nil
 	}
-	return pauseHistoryView(h)
+	return newestPauses(h)
 }
 
-func pauseHistoryView(h store.PauseHistory) *PauseHistoryView {
-	t := h.Totals
-	v := &PauseHistoryView{Pauses: []PauseView{}, Totals: PauseTotalsView{Count: t.Count, PausedSec: t.PausedSec,
-		ByKind: map[string]PauseKindTotalView{}, MeanResumeSec: t.MeanResumeSec, ByResolver: map[string]int{}, ByVia: map[string]int{}}}
-	for k, kt := range t.ByKind {
-		v.Totals.ByKind[k] = PauseKindTotalView{Count: kt.Count, Sec: kt.Sec}
+// newestPauses keeps the newest maxPauseViews pauses of h, newest first,
+// and the totals of all.
+func newestPauses(h store.PauseHistory) *store.PauseHistory {
+	newest := make([]store.Pause, 0, min(len(h.Pauses), maxPauseViews))
+	for i := len(h.Pauses) - 1; i >= 0 && len(newest) < maxPauseViews; i-- {
+		newest = append(newest, h.Pauses[i])
 	}
-	maps.Copy(v.Totals.ByResolver, t.ByResolver)
-	maps.Copy(v.Totals.ByVia, t.ByVia)
-	for i := len(h.Pauses) - 1; i >= 0 && len(v.Pauses) < maxPauseViews; i-- {
-		p := h.Pauses[i]
-		v.Pauses = append(v.Pauses, PauseView{Kind: aiv1.PauseKind(p.Kind), Reason: p.Reason, Item: p.Item, Since: p.Since,
-			Until: p.Until, ResolvedBy: aiv1.PauseResolver(p.ResolvedBy), Via: aiv1.PauseResumeVia(p.Via), Seconds: p.Seconds})
-	}
-	return v
+	return &store.PauseHistory{Pauses: newest, Totals: h.Totals}
 }
 
 // milestoneTasks returns the spec task and the Coordinate task of the

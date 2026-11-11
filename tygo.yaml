@@ -105,7 +105,7 @@ packages:
       import type * as store from "./store";
       // String unions and open shapes (map[string]any, []any) the Go views
       // leave untyped, by hand in types.ts.
-      import type { Block, ChatKind, ChatRole, ChatState, SpendLevel, StreamEventData, StreamKind } from "../types";
+      import type { Block, SpendLevel, StreamEventData, StreamKind } from "../types";
     type_mappings:
       metav1.Condition: aiv1.Condition
       aiv1.AgentTaskStatus: aiv1.AgentTaskStatus
@@ -137,7 +137,9 @@ packages:
       aiv1.TaskPhase: aiv1.TaskPhase
       aiv1.TaskType: aiv1.TaskType
       aiv1.UsageLimit: aiv1.UsageLimit
+      store.ChatMessage: store.ChatMessage
       store.Money: store.Money
+      store.PauseHistory: store.PauseHistory
       store.SpendTotals: store.SpendTotals
 
   # The store types the views carry as they are (one definition per type):
@@ -147,7 +149,12 @@ packages:
     fallback_type: Unmapped
     enum_style: union
     include_files:
+      - chat.go
+      - pauses.go
       - spend_totals.go
     frontmatter: |
+      // The store keeps enums as plain strings: tstype tags name their unions.
+      import type * as aiv1 from "./api";
+      import type { ChatKind, ChatRole, ChatState } from "../types";
       // Money (money.go) is a cost in USD with 2 decimals, "" when unknown.
       export type Money = string;

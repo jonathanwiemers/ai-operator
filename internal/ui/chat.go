@@ -27,19 +27,12 @@ type chatRequest struct {
 	ClientKey string `json:"clientKey"`
 }
 
-// ChatMessageView is one chat row as the API returns it.
+// ChatMessageView is one chat row as the API returns it: the store's
+// message, its body left out and Redacted set without the conversation
+// grant.
 type ChatMessageView struct {
-	ID         int64     `json:"id"`
-	At         time.Time `json:"at"`
-	Author     string    `json:"author,omitempty"`
-	AuthorName string    `json:"authorName,omitempty"`
-	Role       string    `json:"role" tstype:"ChatRole"`
-	Kind       string    `json:"kind" tstype:"ChatKind"`
-	Body       string    `json:"body,omitempty"`
-	ReplyTo    int64     `json:"replyTo,omitempty"`
-	State      string    `json:"state,omitempty" tstype:"ChatState"`
-	Reason     string    `json:"reason,omitempty"`
-	Redacted   bool      `json:"redacted,omitempty"`
+	store.ChatMessage `tstype:",extends"`
+	Redacted          bool `json:"redacted,omitempty"`
 }
 
 // postChat inserts a user chat message for the task. Needs the chat grant
@@ -169,14 +162,9 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func chatView(m store.ChatMessage, conversation bool) ChatMessageView {
-	v := ChatMessageView{
-		ID: m.ID, At: m.At, Author: m.Author, AuthorName: m.AuthorName,
-		Role: m.Role, Kind: m.Kind, ReplyTo: m.ReplyTo, State: m.State, Reason: m.Reason,
-	}
-	if conversation {
-		v.Body = m.Body
-	} else {
-		v.Redacted = true
+	v := ChatMessageView{ChatMessage: m}
+	if !conversation {
+		v.Body, v.Redacted = "", true
 	}
 	return v
 }

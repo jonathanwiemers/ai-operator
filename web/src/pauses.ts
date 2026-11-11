@@ -1,4 +1,4 @@
-import type { PauseHistoryView, PauseView } from './types'
+import type { PauseHistory, Pause } from './types'
 
 // The Pauses card of the milestone context panel: the autopilot's pause
 // history (MilestoneView.pauses) with its totals. The server counts an open
@@ -88,7 +88,7 @@ export function pauseDuration(sec: number): string {
 
 // liveExtra is how much longer an open pause has lasted since the view was
 // made: its seconds count up to the view's time.
-function liveExtra(p: PauseView, now: number): number {
+function liveExtra(p: Pause, now: number): number {
   if (p.until) return 0
   const since = Date.parse(p.since)
   if (Number.isNaN(since)) return 0
@@ -105,7 +105,7 @@ function oneLine(s: string | undefined): string {
 // the totals (open pauses up to now), the kinds by time paused, the
 // resolvers and the ways they ended by count, and the newest pauses as list
 // rows.
-export function pausesSummary(h: PauseHistoryView | undefined | null, now: number): PausesSummary | undefined {
+export function pausesSummary(h: PauseHistory | undefined | null, now: number): PausesSummary | undefined {
   if (!h || !h.totals || !h.totals.count) return undefined
   const pauses = h.pauses ?? []
   const byKind = new Map<string, PauseKindRow>()

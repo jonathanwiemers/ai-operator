@@ -19,42 +19,47 @@ const (
 )
 
 // Pause is one autopilot pause of a milestone. Until is nil while it is
-// open; Seconds then counts up to now.
+// open; Seconds then counts up to now. Kind is an aiv1.PauseKind,
+// "unknown" for a pause without one. It is also the UI API's JSON
+// (web/src/generated/store.ts).
 type Pause struct {
-	Kind       string
-	Reason     string
-	Item       int64
-	Since      time.Time
-	Until      *time.Time
-	ResolvedBy string
+	Kind       string     `json:"kind" tstype:"aiv1.PauseKind | 'unknown'"`
+	Reason     string     `json:"reason,omitempty"`
+	Item       int64      `json:"item,omitempty"`
+	Since      time.Time  `json:"since"`
+	Until      *time.Time `json:"until,omitempty"`
+	ResolvedBy string     `json:"resolvedBy,omitempty" tstype:"aiv1.PauseResolver"`
 	// Via is how it ended (aiv1.PauseResumeVia), "" for an open pause and
 	// for one that ended before it was recorded.
-	Via     string
-	Seconds int64
+	Via     string `json:"via,omitempty" tstype:"aiv1.PauseResumeVia"`
+	Seconds int64  `json:"seconds"`
 }
 
 // PauseKindTotal sums the pauses of one kind.
 type PauseKindTotal struct {
-	Count int
-	Sec   int64
+	Count int   `json:"count"`
+	Sec   int64 `json:"sec"`
 }
 
 // PauseTotals sum pauses: PausedSec all of their time (open ones up to
 // now), MeanResumeSec the mean time to resume of the ended ones and
-// ByResolver who ended them, ByVia how ("unknown" when not recorded).
+// ByResolver who ended them, ByVia how ("unknown" when not recorded). The
+// maps are never nil.
 type PauseTotals struct {
-	Count         int
-	PausedSec     int64
-	ByKind        map[string]PauseKindTotal
-	MeanResumeSec int64
-	ByResolver    map[string]int
-	ByVia         map[string]int
+	Count         int                       `json:"count"`
+	PausedSec     int64                     `json:"pausedSec"`
+	ByKind        map[string]PauseKindTotal `json:"byKind" tstype:"{ [kind: string]: PauseKindTotal }"`
+	MeanResumeSec int64                     `json:"meanResumeSec"`
+	ByResolver    map[string]int            `json:"byResolver" tstype:"{ [resolver: string]: number }"`
+	ByVia         map[string]int            `json:"byVia" tstype:"{ [via: string]: number }"`
 }
 
 // PauseHistory is a milestone's pauses, oldest first, and their totals.
+// The UI API sends the newest of them, newest first, with the totals of
+// all.
 type PauseHistory struct {
-	Pauses []Pause
-	Totals PauseTotals
+	Pauses []Pause     `json:"pauses"`
+	Totals PauseTotals `json:"totals"`
 }
 
 // Pauses returns the autopilot pauses of project's milestone within the

@@ -3,7 +3,7 @@ import type * as aiv1 from "./api";
 import type * as store from "./store";
 // String unions and open shapes (map[string]any, []any) the Go views
 // leave untyped, by hand in types.ts.
-import type { Block, ChatKind, ChatRole, ChatState, SpendLevel, StreamEventData, StreamKind } from "../types";
+import type { Block, SpendLevel, StreamEventData, StreamKind } from "../types";
 
 //////////
 // source: api.go
@@ -46,19 +46,11 @@ export interface ErrorResponse {
 // source: chat.go
 
 /**
- * ChatMessageView is one chat row as the API returns it.
+ * ChatMessageView is one chat row as the API returns it: the store's
+ * message, its body left out and Redacted set without the conversation
+ * grant.
  */
-export interface ChatMessageView {
-  id: number /* int64 */;
-  at: string;
-  author?: string;
-  authorName?: string;
-  role: ChatRole;
-  kind: ChatKind;
-  body?: string;
-  replyTo?: number /* int64 */;
-  state?: ChatState;
-  reason?: string;
+export interface ChatMessageView extends store.ChatMessage {
   redacted?: boolean;
 }
 /**
@@ -345,10 +337,12 @@ export interface MilestoneView extends Cost {
    */
   companions: CompanionView[];
   /**
-   * Pauses is the autopilot's pause history, absent without the history
-   * database or when it cannot be read.
+   * Pauses is the autopilot's pause history within the history's
+   * retention: the newest 20 pauses (maxPauseViews), newest first, and the
+   * totals of all. Absent without the history database or when it cannot
+   * be read.
    */
-  pauses?: PauseHistoryView;
+  pauses?: store.PauseHistory;
   /**
    * Retrospective is live from task status, else the snapshot's; absent
    * while there is none.
@@ -519,52 +513,6 @@ export interface ProposalView {
   id: number /* int64 */;
   summary: string;
   postedAt?: string;
-}
-/**
- * PauseHistoryView is a milestone's autopilot pauses within the history's
- * retention: the newest ones, newest first, and the totals of all.
- */
-export interface PauseHistoryView {
-  pauses: PauseView[];
-  totals: PauseTotalsView;
-}
-/**
- * PauseView is one pause. Until is absent while it is open; Seconds then
- * counts up to the view's time. Kind is "unknown" for a pause without one.
- */
-export interface PauseView {
-  kind: aiv1.PauseKind | 'unknown';
-  reason?: string;
-  item?: number /* int64 */;
-  since: string;
-  until?: string;
-  resolvedBy?: aiv1.PauseResolver;
-  /**
-   * Via is how it ended, absent while open and for a pause that ended
-   * before it was recorded.
-   */
-  via?: aiv1.PauseResumeVia;
-  seconds: number /* int64 */;
-}
-/**
- * PauseKindTotalView sums the pauses of one kind.
- */
-export interface PauseKindTotalView {
-  count: number /* int */;
-  sec: number /* int64 */;
-}
-/**
- * PauseTotalsView sums all pauses: pausedSec their time (open ones up to
- * now), meanResumeSec the mean time to resume of the ended ones, byResolver
- * who ended them and byVia how ("unknown" when not recorded).
- */
-export interface PauseTotalsView {
-  count: number /* int */;
-  pausedSec: number /* int64 */;
-  byKind: { [kind: string]: PauseKindTotalView };
-  meanResumeSec: number /* int64 */;
-  byResolver: { [resolver: string]: number };
-  byVia: { [via: string]: number };
 }
 
 //////////

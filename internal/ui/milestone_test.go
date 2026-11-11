@@ -572,14 +572,14 @@ func TestMilestonePauses(t *testing.T) {
 	if ph == nil || len(ph.Pauses) != maxPauseViews {
 		t.Fatalf("pauses = %+v", ph)
 	}
-	if p := ph.Pauses[0]; p.Reason != "24" || p.Until != nil || p.Kind != aiv1.PauseCIRed || p.Seconds != 600 || p.Item != 42 {
+	if p := ph.Pauses[0]; p.Reason != "24" || p.Until != nil || p.Kind != string(aiv1.PauseCIRed) || p.Seconds != 600 || p.Item != 42 {
 		t.Errorf("the newest pause first, open: %+v", p)
 	}
-	if p := ph.Pauses[1]; p.Reason != "23" || p.Until == nil || p.ResolvedBy != aiv1.ResolvedBySelfHealed || p.Via != aiv1.ResumedViaSelfHealed {
+	if p := ph.Pauses[1]; p.Reason != "23" || p.Until == nil || p.ResolvedBy != string(aiv1.ResolvedBySelfHealed) || p.Via != string(aiv1.ResumedViaSelfHealed) {
 		t.Errorf("second pause: %+v", p)
 	}
 	if tot := ph.Totals; tot.Count != 25 || tot.PausedSec != 9000 || tot.MeanResumeSec != 300 ||
-		tot.ByKind["ciRed"] != (PauseKindTotalView{Count: 25, Sec: 9000}) || tot.ByResolver["selfHealed"] != 24 ||
+		tot.ByKind["ciRed"] != (store.PauseKindTotal{Count: 25, Sec: 9000}) || tot.ByResolver["selfHealed"] != 24 ||
 		tot.ByVia["selfHealed"] != 23 || tot.ByVia["unknown"] != 1 {
 		t.Errorf("totals = %+v", tot)
 	}
