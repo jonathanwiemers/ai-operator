@@ -1458,3 +1458,22 @@ build, so the CI `ui` job enforces it. It prints
    same provider (the UI then acts as an OAuth resource server and publishes
    `/.well-known/oauth-protected-resource`); the roles in those tokens go
    through the same claim mapping and rules.
+
+### Conventions check
+
+`web/test/conventions.test.mjs` (part of `npm test`, so `make ui`) walks
+`web/src` (not `generated/`) and checks four rules, listed in the `RULES`
+table at its top; the matchers are in `web/test/conventions.mjs`:
+
+- `html-injection`: `v-html`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`.
+  **Enforced**: any hit fails the test.
+- `raw-colour`: `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(`, `rgba(`, `hsl(`,
+  `hsla(`, `oklch(` outside `src/style.css`. Report-only.
+- `api-call-outside-client`: `get<`/`post<` and calls of the `get`/`post`
+  helpers imported from `api.ts`, outside `src/client.ts`. Report-only.
+- `breakpoint`: `@media` widths other than 760 px and 1180 px. Report-only.
+
+Report-only rules print each hit as `file:line rule` (as a test diagnostic)
+and a count, and pass. Comments are ignored. To enforce a rule, set
+`enforce: true` in its `RULES` entry once its hits are gone (the end of the
+Desk cleanup milestone).
