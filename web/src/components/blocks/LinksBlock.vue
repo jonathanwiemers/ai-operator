@@ -2,7 +2,8 @@
 import { safeURL } from '../../format'
 import ExtLink from '../ExtLink.vue'
 
-// A list of links, each with its host.
+// A list of links, each with its host. On a phone the host goes below its
+// link and each link is at least 44 px high.
 defineProps<{ links: { title: string; url: string }[] }>()
 
 const host = (u: string) => {
@@ -12,29 +13,10 @@ const host = (u: string) => {
 </script>
 
 <template>
-  <ul class="links">
-    <li v-for="(l, i) in links" :key="i">
-      <ExtLink :href="l.url" nofollow>{{ l.title }}</ExtLink>
-      <span class="host faint">{{ host(l.url) }}</span>
+  <ul class="m-0 flex flex-col gap-1 ps-5" data-block="links">
+    <li v-for="(l, i) in links" :key="i" class="[overflow-wrap:anywhere]">
+      <ExtLink :href="l.url" nofollow class="min-h-11 tablet:min-h-0">{{ l.title }}</ExtLink>
+      <span v-if="host(l.url)" class="block text-xs text-(--text-3) tablet:ms-2 tablet:inline">{{ host(l.url) }}</span>
     </li>
   </ul>
 </template>
-
-<style scoped>
-.links {
-  margin: 0;
-  padding-left: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.links li {
-  overflow-wrap: anywhere;
-}
-
-.host {
-  margin-left: 8px;
-  font-size: 12px;
-}
-</style>

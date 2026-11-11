@@ -546,3 +546,13 @@ follow-up issue), and requirements without an issue and why.
   `--tone-warn-*` token that does not exist). `CostChip` is not part of
   the panel and `EngineUsage` was already on utilities, so neither
   changed. `spend.ts` and its tests unchanged. Nothing narrowed.
+- 2026-11-11 #334 (R12 Research page and run): `Research.vue`,
+  `ResearchRun.vue`, `ResearchResult.vue` and `blocks/*` moved to
+  utilities, no scoped `<style>`. The header's rows stack on phones and its
+  controls (*Delete* as a `UButton`, *Show the whole prompt*, *Run history*,
+  feed links, the run line) are 44 px there. A table block is a hand-made
+  table, not a `DataList`: its cells are free text, so each column is at
+  least 8rem and wraps, and the card scrolls on phones. Run facts and
+  figures wrap instead of clipping, which drops their hover titles. The
+  e2e report fixture gains an items block and a level-3 heading, so one
+  result has every block type. Nothing narrowed.

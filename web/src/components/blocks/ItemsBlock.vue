@@ -5,7 +5,9 @@ import ExtLink from '../ExtLink.vue'
 import RelTime from '../RelTime.vue'
 import type { ResearchItem } from '../../types'
 
-// News or findings. hideTopic: the items are grouped by topic already.
+// News or findings, one under the other. hideTopic: the items are grouped by
+// topic already. The title wraps, its badges follow it; the title link is at
+// least 44 px high on a phone. The summary is block markdown.
 defineProps<{ items: ResearchItem[]; hideTopic?: boolean }>()
 
 const importance: Record<number, { label: string; tone: 'warning' | 'muted' } | undefined> = {
@@ -15,73 +17,26 @@ const importance: Record<number, { label: string; tone: 'warning' | 'muted' } | 
 </script>
 
 <template>
-  <ul class="items">
-    <li v-for="(it, i) in items" :key="i" class="item" :class="{ high: it.importance === 3 }">
-      <div class="row title-row">
-        <ExtLink :href="it.url" nofollow class="title">{{ it.title }}</ExtLink>
+  <ul class="m-0 flex list-none flex-col gap-px overflow-hidden rounded-(--radius) border border-(--border) bg-(--border) p-0" data-block="items">
+    <li
+      v-for="(it, i) in items"
+      :key="i"
+      class="min-w-0 border-s-3 bg-(--surface) px-4 py-3"
+      :class="it.importance === 3 ? 'border-s-(--accent)' : 'border-s-transparent'"
+    >
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 tablet:items-baseline">
+        <ExtLink :href="it.url" nofollow class="min-h-11 text-[15px] font-semibold [overflow-wrap:anywhere] tablet:min-h-0">{{ it.title }}</ExtLink>
         <Badge v-if="it.new" tone="info">new</Badge>
         <Badge v-if="importance[it.importance]" :tone="importance[it.importance]!.tone">
           {{ importance[it.importance]!.label }}
         </Badge>
       </div>
-      <Markdown v-if="it.summary" class="summary" :text="it.summary" />
-      <div class="meta faint">
-        <span v-if="it.source">{{ it.source }}</span>
+      <Markdown v-if="it.summary" class="mt-1 text-(--text-2)" :text="it.summary" />
+      <div v-if="it.source || it.publishedAt || (it.topic && !hideTopic)" class="mt-1 flex flex-wrap gap-x-3.5 gap-y-1 text-xs text-(--text-3)">
+        <span v-if="it.source" class="[overflow-wrap:anywhere]">{{ it.source }}</span>
         <RelTime v-if="it.publishedAt" :time="it.publishedAt" />
         <span v-if="it.topic && !hideTopic">{{ it.topic }}</span>
       </div>
     </li>
   </ul>
 </template>
-
-<style scoped>
-.items {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.item {
-  background: var(--surface);
-  padding: 12px 16px;
-  border-left: 3px solid transparent;
-}
-
-.item.high {
-  border-left-color: var(--accent);
-}
-
-.title-row {
-  align-items: baseline;
-}
-
-.title {
-  font-weight: 600;
-  font-size: 15px;
-  overflow-wrap: anywhere;
-}
-
-.summary {
-  margin: 4px 0 0;
-  color: var(--text-2);
-}
-
-.meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin-top: 4px;
-  font-size: 12px;
-}
-
-.meta:empty {
-  display: none;
-}
-</style>

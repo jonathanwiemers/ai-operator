@@ -9,6 +9,9 @@ import ResearchResult from '../components/ResearchResult.vue'
 import NotFound from './NotFound.vue'
 import type { ResearchResponse, ResearchRun } from '../types'
 
+// One stored run of a research: status, warnings, facts and its result.
+// Utilities only (docs/ui.md, "Research page"): the facts wrap rather than
+// clip, two to a row on phones.
 const props = defineProps<{ namespace: string; name: string; id: string }>()
 const { data, error, notFound, loading } = useResource<ResearchResponse>(
   () => `/researches/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/runs/${encodeURIComponent(props.id)}`,
@@ -41,12 +44,12 @@ const duration = computed(() => {
   <NotFound v-if="notFound" />
   <div v-else class="page">
 
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <div v-if="error" class="banner danger [overflow-wrap:anywhere]">{{ error }}</div>
     <div v-if="loading && !run" class="card empty">Loading…</div>
 
     <template v-if="run && data">
-      <div class="row">
-        <h1>Run of {{ absTime(run.startedAt) }}</h1>
+      <div class="flex flex-wrap items-center gap-2">
+        <h1 class="[overflow-wrap:anywhere]">Run of {{ absTime(run.startedAt) }}</h1>
         <Badge :tone="statusTone[run.status] ?? 'muted'" :dot="run.status === 'running'" :pulse="run.status === 'running'">
           {{ run.status }}
         </Badge>
@@ -55,39 +58,39 @@ const duration = computed(() => {
         <strong>Degraded</strong>
         <span>The agent's answer failed validation; it is shown as plain text.</span>
       </div>
-      <div v-if="run.error" class="banner danger">{{ run.error }}</div>
+      <div v-if="run.error" class="banner danger [overflow-wrap:anywhere]">{{ run.error }}</div>
       <div v-if="run.warnings?.length" class="banner warning">
         <strong>Warnings</strong>
-        <ul class="warnings">
+        <ul class="m-0 basis-full ps-[18px] [overflow-wrap:anywhere]">
           <li v-for="(w, i) in run.warnings" :key="i">{{ w }}</li>
         </ul>
       </div>
 
-      <div class="facts section">
+      <div class="facts section" data-run-facts>
         <div class="fact">
           <div class="label">Agent</div>
-          <div class="value mono" :title="run.engine ? `${run.engine}/${run.model}` : undefined">
+          <div class="mono font-[550] [overflow-wrap:anywhere]">
             {{ run.engine ? `${run.engine}/${run.model}` : '—' }}<template v-if="run.effort"> ({{ run.effort }})</template>
           </div>
         </div>
         <div class="fact">
           <div class="label">Started</div>
-          <div class="value"><RelTime :time="run.startedAt" /></div>
+          <div class="font-[550] [overflow-wrap:anywhere]"><RelTime :time="run.startedAt" /></div>
         </div>
         <div class="fact">
           <div class="label">Duration</div>
-          <div class="value">{{ duration }}</div>
+          <div class="font-[550] [overflow-wrap:anywhere]">{{ duration }}</div>
         </div>
         <div class="fact">
           <div class="label">Model spend</div>
-          <div class="value">{{ cost(run.costUSD) }}</div>
+          <div class="font-[550] [overflow-wrap:anywhere]">{{ cost(run.costUSD) }}</div>
         </div>
         <div class="fact">
           <div class="label">Kept until</div>
-          <div class="value" :title="absTime(run.expiresAt)"><RelTime :time="run.expiresAt" /></div>
+          <div class="font-[550] [overflow-wrap:anywhere]"><RelTime :time="run.expiresAt" /></div>
         </div>
       </div>
-      <p v-if="run.choiceReason" class="reason muted">{{ run.choiceReason }}</p>
+      <p v-if="run.choiceReason" class="mt-2.5 mb-0 text-[13px] text-(--text-2) [overflow-wrap:anywhere]">{{ run.choiceReason }}</p>
 
       <ResearchResult v-if="data.result" :research="data.research" :run="null" :result="data.result" class="section" />
       <div v-else class="card empty section">
@@ -96,16 +99,3 @@ const duration = computed(() => {
     </template>
   </div>
 </template>
-
-<style scoped>
-.warnings {
-  margin: 0;
-  padding-left: 18px;
-  flex-basis: 100%;
-}
-
-.reason {
-  margin: 10px 0 0;
-  font-size: 13px;
-}
-</style>

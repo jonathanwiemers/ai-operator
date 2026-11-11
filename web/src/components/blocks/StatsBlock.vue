@@ -1,39 +1,23 @@
 <script setup lang="ts">
-// Key figures; a delta is coloured by its sign.
+// Key figures; a delta is coloured by its sign. The figures fill the row,
+// at least 150 px each, so on a phone they stack two or one to a row. A long
+// value wraps; nothing is cut short.
 defineProps<{ stats: { label: string; value: string; delta?: string }[] }>()
 
-function sign(delta: string): 'up' | 'down' | '' {
+function sign(delta: string): string {
   const c = delta.trim()[0]
-  return c === '+' || c === '↑' ? 'up' : c === '-' || c === '−' || c === '↓' ? 'down' : ''
+  if (c === '+' || c === '↑') return 'text-(--tone-success-fg)'
+  if (c === '-' || c === '−' || c === '↓') return 'text-(--tone-danger-fg)'
+  return 'text-(--text-3)'
 }
 </script>
 
 <template>
-  <div class="facts">
+  <div class="facts" data-block="stats">
     <div v-for="(s, i) in stats" :key="i" class="fact">
       <div class="label">{{ s.label }}</div>
-      <div class="value" :title="s.value">{{ s.value }}</div>
-      <div v-if="s.delta" class="delta" :class="sign(s.delta)">{{ s.delta }}</div>
+      <div class="text-xl font-[550] [overflow-wrap:anywhere]">{{ s.value }}</div>
+      <div v-if="s.delta" class="text-xs font-semibold" :class="sign(s.delta)">{{ s.delta }}</div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.value {
-  font-size: 20px;
-}
-
-.delta {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-3);
-}
-
-.delta.up {
-  color: var(--tone-success-fg);
-}
-
-.delta.down {
-  color: var(--tone-danger-fg);
-}
-</style>

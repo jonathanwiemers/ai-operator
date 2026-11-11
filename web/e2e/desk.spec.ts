@@ -556,7 +556,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'task', 'task-chat', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend']
+const hitRoutes = ['overview', 'inbox', 'task', 'task-chat', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
 
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {
@@ -2201,6 +2201,118 @@ test.describe('spend', () => {
       const tab = shot(testInfo.project.outputDir, 'stream-milestone-spend-calls')
       await page.screenshot({ path: tab, fullPage: true })
       await testInfo.attach('screenshot', { path: tab, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+})
+
+// The research page and a research run (Research.vue, ResearchRun.vue,
+// ResearchResult.vue and blocks/*, R12), utilities only: no sideways scroll;
+// the report's fixture has every block type. Its table keeps its columns and
+// scrolls inside its own container on a phone; the figures, items and links
+// stack there; the header's links and buttons are 44 px high on phones.
+test.describe('research pages', () => {
+  async function sideways(page: Page) {
+    return page.evaluate(() => {
+      const doc = document.scrollingElement ?? document.documentElement
+      const main = document.querySelector('main')!
+      return { page: doc.scrollWidth - doc.clientWidth, pane: main.scrollWidth - main.clientWidth }
+    })
+  }
+
+  for (const size of widths) {
+    const phone = size.width < 760
+    const shot = (outputDir: string, name: string) => join(outputDir, '..', 'screenshots', `${name}@${size.width}.png`)
+
+    for (const name of ['research-report', 'research-run'] as const) {
+      test(`${name} blocks@${size.width}`, async ({ page, baseURL }, testInfo) => {
+        const route = routes.find((r) => r.name === name)!
+        const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+        await page.setViewportSize(size)
+        await page.clock.setFixedTime(now)
+        await watch(page, new URL(baseURL ?? '').origin, problems)
+        await mockAPI(page, route, problems)
+        await page.goto(route.path)
+        await route.ready(page)
+        const main = page.locator('main')
+
+        // Every block type renders: headings, markdown, figures, table,
+        // items and links.
+        await expect(main.getByRole('heading', { name: 'Findings' })).toBeVisible()
+        await expect(main.getByRole('heading', { name: 'Shops in detail' })).toBeVisible()
+        await expect(main.locator('.md strong').filter({ hasText: 'three steps' })).toBeVisible()
+        await expect(main.locator('[data-block=stats] .fact')).toHaveCount(3)
+        await expect(main.locator('[data-block=table] tbody tr')).toHaveCount(3)
+        await expect(main.locator('[data-block=items] > li')).toHaveCount(2)
+        await expect(main.locator('[data-block=items] .md strong')).toHaveText('guest')
+        await expect(main.locator('[data-block=links] a')).toHaveCount(2)
+        expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+
+        const layout = await main.evaluate((m) => {
+          const table = m.querySelector('[data-block=table]')!
+          const tops = new Set([...m.querySelectorAll('[data-block=stats] .fact')].map((e) => Math.round(e.getBoundingClientRect().top)))
+          const h = (e: Element) => e.getBoundingClientRect().height
+          return {
+            tableScroll: table.scrollWidth - table.clientWidth,
+            heads: table.querySelectorAll('thead th').length,
+            statRows: tops.size,
+            links: [...m.querySelectorAll('[data-block=links] a, [data-block=items] li > div:first-child a')].map(h),
+            head: [...m.querySelectorAll('[data-research-head] button, [data-research-head] a, [data-run-line] a')].map(h),
+          }
+        })
+        expect(layout.heads, 'table columns').toBe(4)
+        if (phone) {
+          expect(layout.tableScroll, 'the table scrolls inside its container').toBeGreaterThan(0)
+          expect(layout.statRows, 'figures stack').toBeGreaterThan(1)
+          for (const v of [...layout.links, ...layout.head]) expect(v, 'hit area on a phone').toBeGreaterThanOrEqual(44)
+        } else if (size.width >= 1180) {
+          // On a tablet the rail takes its share: the table may scroll in
+          // its container there, the page still does not (checked above).
+          expect(layout.tableScroll, 'the table fits').toBe(0)
+          expect(layout.statRows, 'figures in one row').toBe(1)
+        }
+        if (name === 'research-report') {
+          // The header's controls: Delete and Run history, and the run line.
+          expect(layout.head).toHaveLength(3)
+          await expect(main.getByRole('button', { name: 'Delete' })).toBeVisible()
+        } else {
+          await expect(main.locator('[data-run-facts] .fact')).toHaveCount(5)
+          await expect(main.locator('[data-run-facts]')).toContainText('claude/claude-opus-5-5 (high)')
+        }
+        const file = shot(testInfo.project.outputDir, name)
+        await page.screenshot({ path: file, fullPage: true })
+        await testInfo.attach('screenshot', { path: file, contentType: 'image/png' })
+        expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+      })
+    }
+
+    test(`research news flash@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const route = routes.find((r) => r.name === 'research')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.goto(route.path)
+      await route.ready(page)
+      const main = page.locator('main')
+      // Grouped by topic; the prompt is block markdown.
+      await expect(main.locator('[data-block=items]')).toHaveCount(3)
+      await expect(main.locator('[data-research-head] .md li')).toHaveCount(3)
+      await expect(main.locator('[data-research-facts] code').first()).toHaveText('0 7 * * *')
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      if (phone) {
+        const heights = await main.evaluate((m) =>
+          [...m.querySelectorAll('[data-research-facts] a, [data-research-feeds] a, [data-run-line] a, [data-block=items] li > div:first-child a')].map(
+            (e) => e.getBoundingClientRect().height,
+          ),
+        )
+        expect(heights).toHaveLength(1 + 2 + 1 + 3)
+        for (const v of heights) expect(v, 'hit area on a phone').toBeGreaterThanOrEqual(44)
+      }
+      const file = shot(testInfo.project.outputDir, 'research-news')
+      await page.screenshot({ path: file, fullPage: true })
+      await testInfo.attach('screenshot', { path: file, contentType: 'image/png' })
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }

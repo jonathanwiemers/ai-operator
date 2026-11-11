@@ -33,18 +33,9 @@ function fields(b: Block): Record<string, unknown> {
 </script>
 
 <template>
-  <div class="blocks">
+  <div class="flex min-w-0 flex-col gap-4">
     <template v-for="(b, i) in blocks" :key="i">
       <component :is="components[b.type]" v-if="Object.hasOwn(components, b.type)" v-bind="fields(b)" />
     </template>
   </div>
 </template>
-
-<style scoped>
-.blocks {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-</style>

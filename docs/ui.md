@@ -2113,6 +2113,40 @@ clientWidth`) and the drill-down links are 44 px high
 `stream-milestone-spend-calls@<width>.png`). The milestone's Spend tab is
 also among the hit-area routes.
 
+### Research page
+
+A research's page and a run's page (`web/src/views/Research.vue`,
+`ResearchRun.vue`), the result they share (`components/ResearchResult.vue`)
+and its blocks (`components/blocks/*`) are Tailwind utilities and tokens,
+without scoped CSS.
+
+- The header's rows stack on phones: the name, the view and depth badges,
+  *Delete* (a `UButton`), the prompt (block markdown, three lines until
+  *Show the whole prompt*), then the schedule, agent, last and next run and
+  *Run history* one per line, and the feeds. *Delete*, *Show the whole
+  prompt*, *Run history*, the feed links and the result's run line are
+  44 px high on phones.
+- A run's facts (agent, start, duration, spend, retention) and a stats
+  block's figures sit two to a row on phones and wrap instead of being cut
+  short, so no hover title is needed.
+- A table block keeps its columns at every width, each at least 8rem wide;
+  on a phone it scrolls sideways inside its own card, never the page. Long
+  cells wrap.
+- Items and links stack: an item's title wraps and its badges follow it;
+  a link's host goes below it on phones. Item titles and links are 44 px
+  high there. Markdown blocks and item summaries stay block markdown.
+
+The e2e cases `research pages › research-report blocks@<width>`,
+`research pages › research-run blocks@<width>` and `research pages ›
+research news flash@<width>` at 375, 768 and 1280 px render a report with
+every block type and the news flash, check that neither the page nor the
+content pane scrolls sideways, at 375 px that the table's card does, the
+figures stack and the header's and the blocks' links and buttons are 44 px
+high, and at 1280 px that the table fits and the figures are one row
+(`research-report@<width>.png`, `research-run@<width>.png`,
+`research-news@<width>.png`). The three pages are also among the hit-area
+routes.
+
 ## Roadmap
 
 1. **Into a running step.** Messages that reach a running claude step at once

@@ -30,80 +30,34 @@ const flash = computed(() =>
 </script>
 
 <template>
-  <article class="result">
-    <div v-if="result.warnings?.length" class="banner warning">
+  <article class="flex max-w-[920px] min-w-0 flex-col gap-[18px]">
+    <div v-if="result.warnings?.length" class="banner warning [overflow-wrap:anywhere]">
       <span v-for="(w, i) in result.warnings" :key="i">{{ w }}</span>
     </div>
-    <header class="head">
-      <h2 class="title">{{ result.title }}</h2>
-      <div v-if="line" class="run faint">
+    <header class="flex flex-col gap-1">
+      <h2 class="text-xl [overflow-wrap:anywhere]">{{ result.title }}</h2>
+      <div v-if="line" class="text-[13px] text-(--text-3)" data-run-line>
         <RouterLink
           v-if="runLink && run"
           :to="`/research/${encodeURIComponent(research.namespace)}/${encodeURIComponent(research.name)}/runs/${encodeURIComponent(run.id)}`"
+          class="inline-flex min-h-11 items-center text-inherit tablet:min-h-0"
           :title="run.choiceReason"
         >
           {{ line }}
         </RouterLink>
-        <span v-else :title="run?.choiceReason">{{ line }}</span>
+        <span v-else>{{ line }}</span>
         <span v-if="run && run.status !== 'succeeded'"> · {{ run.status }}</span>
       </div>
-      <Markdown v-if="result.summary" class="summary" :text="result.summary" />
+      <Markdown v-if="result.summary" class="mt-1.5 text-[15px] text-(--text-2)" :text="result.summary" />
     </header>
 
     <template v-if="flash">
-      <section v-for="g in flash.groups" :key="g.topic" class="topic">
-        <h3>{{ g.topic || 'Other' }} <span class="faint count">{{ g.items.length }}</span></h3>
+      <section v-for="g in flash.groups" :key="g.topic" class="min-w-0">
+        <h3 class="mb-2">{{ g.topic || 'Other' }} <span class="ms-1 font-medium text-(--text-3)">{{ g.items.length }}</span></h3>
         <ItemsBlock :items="g.items" hide-topic />
       </section>
-      <BlockList v-if="flash.rest.length" :blocks="flash.rest" class="rest" />
+      <BlockList v-if="flash.rest.length" :blocks="flash.rest" class="mt-2" />
     </template>
     <BlockList v-else :blocks="result.blocks" />
   </article>
 </template>
-
-<style scoped>
-.result {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  max-width: 920px;
-}
-
-.head {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.title {
-  font-size: 20px;
-  overflow-wrap: anywhere;
-}
-
-.run {
-  font-size: 13px;
-}
-
-.run a {
-  color: inherit;
-}
-
-.summary {
-  margin: 6px 0 0;
-  font-size: 15px;
-  color: var(--text-2);
-}
-
-.topic h3 {
-  margin-bottom: 8px;
-}
-
-.count {
-  margin-left: 4px;
-  font-weight: 500;
-}
-
-.rest {
-  margin-top: 8px;
-}
-</style>

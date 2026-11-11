@@ -3,9 +3,9 @@ import { ago } from './clock'
 import { researches } from './rail'
 
 // The research pages' API: GET /research/form, /researches/{ns}/{name},
-// …/runs and …/runs/{id}. payments-news is a scheduled news flash,
-// checkout-ux-study a one-off report. Results are untrusted agent text with
-// markdown (bold, lists, links).
+// …/runs and …/runs/{id}. payments-news is a scheduled news flash (items),
+// checkout-ux-study a one-off report with every block type. Results are
+// untrusted agent text with markdown (bold, lists, links).
 
 // GET /research/form: what the one-off form offers.
 export const researchForm: ResearchForm = {
@@ -176,6 +176,24 @@ Two shops ask for a phone number; see [the study notes](https://research.example
           ['shop-one.example', '3', '8', 'after payment'],
           ['shop-two.example', '4', '11', 'before payment'],
           ['a-shop-with-a-rather-long-domain-name.example', '3', '9', 'after payment, as a checkbox on the confirmation page'],
+        ],
+      },
+      { type: 'heading', text: 'Shops in detail', level: 3 },
+      {
+        type: 'items',
+        items: [
+          {
+            title: 'shop-two.example asks for an account before payment, with a skip link below the fold',
+            summary: 'The **guest** option is a text link under the sign-in form.',
+            url: 'https://research.example.com/checkout/shop-two',
+            source: 'Study notes',
+            importance: 3,
+          },
+          {
+            title: 'a-shop-with-a-rather-long-domain-name.example keeps nine required fields',
+            url: 'https://research.example.com/checkout/long-domain',
+            importance: 2,
+          },
         ],
       },
       {
