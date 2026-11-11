@@ -1998,6 +1998,27 @@ one-line numbers (`milestone-pilot@<width>.png`,
 `milestone-queue@<width>.png`); the route checks cover
 `stream-milestone-pilot` at the three widths.
 
+### Pause cards
+
+The full pause card (`web/src/components/PauseCard.vue`, on the Pilot
+tab), the pause history (`web/src/components/PausesCard.vue`) and the
+compact card (`web/src/components/PauseCardCompact.vue`, Inbox, board,
+stream) are Tailwind utilities and Nuxt UI tokens, without scoped CSS.
+
+- The full card's reason is block markdown. Its actions, the Way out's
+  buttons, *Confirm* and *Cancel* are `UButton`s, at least 44 px high on
+  phones, where the action row and each remedy stack into a column and the
+  skip select is 16 px. Commands post to the task chat as before
+  (`pauseCard.ts`).
+- The pause history's reasons and the compact card's reason are inline
+  markdown clamped in `Truncated` (one and two lines): a tap opens the
+  rest in place. No `title` holds their text.
+
+The e2e case `milestone pilot › pause cards: reason opens on tap, Skip
+posts@<width>` at 375 and 1280 px opens a clipped history reason on a
+phone, checks the button height and the sideways scroll, and asserts the
+`skip` command posted by *Skip* (`pause-cards@<width>.png`).
+
 ### Board
 
 The Board tab of a project (`web/src/components/ProjectBoards.vue`) and of

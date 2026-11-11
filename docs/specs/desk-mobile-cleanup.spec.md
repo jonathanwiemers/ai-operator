@@ -512,3 +512,15 @@ follow-up issue), and requirements without an issue and why.
   the *Plan* card 44 px on phones. Cards draw their own border instead of
   the unlayered `.card`, so the hover border and shadow utilities apply.
   Nothing narrowed.
+- 2026-11-11 #331 (R12 pause cards): `PauseCard.vue` and `PausesCard.vue`
+  moved to utilities, no scoped `<style>`; `PauseCardCompact.vue` already
+  clamped its reason in `Truncated`. The pause history's reasons are inline
+  markdown in `Truncated` (one line, open on tap), the kinds' `title`s are
+  gone. The full card keeps block markdown; its actions and Way out
+  buttons are `UButton`s, 44 px on phones, where action rows stack and the
+  skip select is 16 px; the exit chips are `Badge`. The short SHAs lost
+  their `title` (the full head is on the merge request).
+  `CompanionChip`'s `title` stays (shared, outside this slice).
+  `pauseCard.ts`, `pauses.ts` and their tests unchanged. The e2e fixture's
+  skip exit carries the command word (`skip`), as the operator sends it.
+  Nothing narrowed.

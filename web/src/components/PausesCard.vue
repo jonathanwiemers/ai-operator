@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import Markdown from './Markdown.vue'
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
 import { useNow } from '../live'
-import { pauseTitle } from '../pauseCard'
 import { pauseDuration, pausesLine, pausesSummary } from '../pauses'
 import type { PauseHistoryView } from '../types'
+import Truncated from '../ui/Truncated.vue'
+import Markdown from './Markdown.vue'
 import RelTime from './RelTime.vue'
 
-// PausesCard is the milestone's pause history in the context panel: the
-// totals, the kinds by time paused, who resolved them and how, and the
-// newest pauses. An open pause counts on up to now. Reasons are untrusted text.
+// PausesCard is the milestone's pause history on the Pilot tab: the totals,
+// the kinds by time paused, who resolved them and how, and the newest
+// pauses. An open pause counts on up to now.
+//
+// Utilities only (docs/ui.md, "Pause cards"): a pause's reason is untrusted
+// text, inline markdown on one line that opens in full on tap (Truncated),
+// never a title. On phones a row's figures wrap below its kind and
+// *Earlier pauses* is 44 px high.
 const props = defineProps<{ pauses?: PauseHistoryView | null }>()
 const now = useNow()
 const s = computed(() => pausesSummary(props.pauses, now.value))
@@ -20,114 +26,53 @@ const rows = computed(() => (all.value ? s.value?.rows : s.value?.rows.slice(0, 
 </script>
 
 <template>
-  <div v-if="s" class="panel">
-    <h3>
+  <section v-if="s" class="min-w-0 text-[13px]" data-pauses>
+    <h3 class="m-0 mb-2 flex justify-between text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase">
       <span>Pauses</span>
       <span>{{ s.count }}</span>
     </h3>
-    <div class="line">{{ pausesLine(s) }}</div>
-    <div class="chips">
-      <span v-for="k in s.kinds" :key="k.kind" class="chip" :title="pauseTitle(k.kind)">
+    <div>{{ pausesLine(s) }}</div>
+    <div class="mt-2 mb-1.5 flex flex-wrap gap-1.5">
+      <span v-for="k in s.kinds" :key="k.kind" class="rounded-full bg-(--surface-2) px-2 py-0.5 text-xs">
         {{ k.kind }} <b>{{ k.count }}</b> · {{ pauseDuration(k.sec) }}
       </span>
     </div>
-    <div v-if="s.resolvers.length" class="faint by">
+    <div v-if="s.resolvers.length" class="faint text-xs">
       resolved by
       <template v-for="(r, i) in s.resolvers" :key="r.resolver">{{ i ? ', ' : ' ' }}{{ r.label }} {{ r.count }}</template>
     </div>
-    <div v-if="s.vias.length" class="faint by">
+    <div v-if="s.vias.length" class="faint text-xs">
       ended via
       <template v-for="(v, i) in s.vias" :key="v.via">{{ i ? ', ' : ' ' }}{{ v.label }} {{ v.count }}</template>
     </div>
-    <ul class="list">
-      <li v-for="(p, i) in rows" :key="i" :class="{ open: p.open }">
-        <div class="row">
-          <b :title="pauseTitle(p.kind)">{{ p.kind }}</b>
+    <ul class="m-0 mt-2 grid list-none gap-1.5 p-0">
+      <li
+        v-for="(p, i) in rows"
+        :key="i"
+        class="min-w-0 rounded-lg px-2 py-1.5"
+        :class="p.open ? 'bg-(--tone-warning-bg)' : 'bg-(--surface-2)'"
+        data-pause
+      >
+        <div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <b>{{ p.kind }}</b>
           <span v-if="p.item">{{ p.item }}</span>
-          <span class="spacer" />
-          <span>{{ p.duration }}</span>
-          <span class="who">{{ p.resolver }}<template v-if="p.via"> · {{ p.via }}</template></span>
+          <span class="ms-auto">{{ p.duration }}</span>
+          <span class="text-(--text-2)">{{ p.resolver }}<template v-if="p.via"> · {{ p.via }}</template></span>
         </div>
-        <div v-if="p.reason" class="reason" :title="p.reason"><Markdown mode="inline" :text="p.reason" /></div>
+        <Truncated v-if="p.reason" class="text-xs text-(--text-2)">
+          <Markdown mode="inline" :text="p.reason" />
+        </Truncated>
         <small class="faint"><RelTime :time="p.since" /></small>
       </li>
     </ul>
-    <button v-if="!all && s.rows.length > newest" type="button" class="more" @click="all = true">
-      Earlier pauses ({{ s.rows.length - newest }})
-    </button>
-  </div>
+    <UButton
+      v-if="!all && s.rows.length > newest"
+      color="neutral"
+      variant="link"
+      size="sm"
+      class="mt-1.5 min-h-11 p-0 text-[12.5px] text-(--accent) tablet:min-h-0"
+      :label="`Earlier pauses (${s.rows.length - newest})`"
+      @click="all = true"
+    />
+  </section>
 </template>
-
-<style scoped>
-.panel h3 {
-  font-size: 11.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  margin: 0 0 8px;
-  display: flex;
-  justify-content: space-between;
-  font-weight: 600;
-}
-.line {
-  font-size: 13px;
-}
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 8px 0 6px;
-}
-.chip {
-  font-size: 12px;
-  background: var(--surface-2);
-  border-radius: 999px;
-  padding: 2px 8px;
-}
-.by {
-  font-size: 12px;
-}
-.more {
-  margin-top: 6px;
-  font-size: 12.5px;
-  background: none;
-  border: 0;
-  padding: 0;
-  color: var(--accent);
-  cursor: pointer;
-}
-.list {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-}
-.list li {
-  font-size: 13px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: var(--surface-2);
-}
-.list li.open {
-  background: var(--tone-warning-bg);
-}
-.row {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-}
-.spacer {
-  flex: 1;
-}
-.who {
-  color: var(--text-2);
-}
-.reason {
-  color: var(--text-2);
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-</style>

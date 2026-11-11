@@ -1902,6 +1902,73 @@ test.describe('milestone pilot', () => {
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }
+
+  // The pause cards (PauseCard.vue, PausesCard.vue, R12): on a phone a
+  // pause history reason clipped to one line opens in full on a tap, no
+  // title holds it, and the Way out's buttons and select are 44 px high.
+  // Skip posts its command to the spec task's chat, as before.
+  for (const size of [widths[0]!, widths[2]!]) {
+    const phone = size.width < 760
+
+    test(`pause cards: reason opens on tap, Skip posts@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const route = routes.find((r) => r.name === 'stream-milestone-pilot')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      const specChat = '/api/v1/projects/team-a/shop/tasks/shop-m14-spec/chat'
+      const posts: unknown[] = []
+      // Registered after mockAPI, so it answers the spec chat first: the
+      // POST, then the card's look for the reply.
+      await page.route(
+        (url) => url.pathname === specChat,
+        async (r) => {
+          if (r.request().method() === 'POST') {
+            posts.push(r.request().postDataJSON())
+            return r.fulfill({ status: 200, json: { id: 992 } })
+          }
+          return r.fulfill({ status: 200, json: { messages: [] } })
+        },
+      )
+      await page.goto(route.path)
+      await route.ready(page)
+      const card = page.locator('main [data-pause-card]')
+      const history = page.locator('main [data-pauses]')
+      await expect(card).toBeVisible()
+      await expect(history).toBeVisible()
+      await expect(card.locator('.md strong')).toHaveText('partial refunds')
+      // RelTime keeps its absolute time; the companion chip (CompanionChip,
+      // shared with the companions list) is not part of these cards.
+      const titles = await page.locator('main').evaluate((main) =>
+        [...main.querySelectorAll('[data-pause-card] [title], [data-pauses] [title]')]
+          .filter((e) => e.tagName !== 'TIME' && !e.closest('.companion-link') && !e.textContent!.includes('companion:'))
+          .map((e) => e.outerHTML.slice(0, 80)),
+      )
+      expect(titles, 'title attributes').toEqual([])
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+
+      const skip = card.locator('[data-way-out]').getByRole('button', { name: 'Skip', exact: true })
+      if (phone) {
+        expect((await skip.boundingBox())!.height, 'Skip height').toBeGreaterThanOrEqual(44)
+        // The ciRed pause's reason is clipped at one line: a tap opens it.
+        const reason = history.locator('[role=button][aria-expanded]', { hasText: 'test:integration-payments' })
+        await expect(reason).toHaveAttribute('aria-expanded', 'false')
+        await reason.click()
+        await expect(reason).toHaveAttribute('aria-expanded', 'true')
+        expect(await reason.evaluate((e) => e.scrollWidth <= e.clientWidth && e.scrollHeight <= e.clientHeight), 'reason shown in full').toBe(true)
+        await expect(reason.locator('code')).toHaveText('test:integration-payments')
+        await expect(page).toHaveURL(/\/milestones\/14(\?tab=pilot)?$/)
+      }
+      await shoot(page, testInfo, `pause-cards@${size.width}`)
+
+      await skip.click()
+      await expect(card.getByRole('status')).toContainText('Skip #281: sent…')
+      expect(posts).toEqual([{ body: JSON.stringify({ cmd: 'skip', issue: 281 }), clientKey: expect.any(String), kind: 'command' }])
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
 })
 
 // The Board tab (Board.vue, TaskCard.vue, ProjectBoards.vue, R12),

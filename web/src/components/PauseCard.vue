@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import Markdown from './Markdown.vue'
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
 import { chatPostError, getTaskChat, postTaskChat } from '../api'
 import type { ChatCommand } from '../chatState'
 import { companionOf } from '../companion'
+import { safeURL } from '../format'
 import { live } from '../live'
 import {
   commandAnswer,
@@ -23,15 +24,22 @@ import {
   type PauseActionID,
 } from '../pauseCard'
 import type { MilestoneView } from '../types'
+import Badge from './Badge.vue'
 import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
+import Markdown from './Markdown.vue'
 import PromptCard from './PromptCard.vue'
 import RelTime from './RelTime.vue'
 
 // PauseCard shows why a milestone's autopilot paused and the actions that
 // fix it (spec desk-pause-card, section 3). Commands go through the Desk
 // chat of the task that owns them; the operator's answer shows in the card.
-// The pause reason and issue titles are untrusted text: rendered as text.
+// The pause reason is untrusted text: block markdown (markdown.ts, no HTML);
+// issue titles are plain text.
+//
+// Utilities only (docs/ui.md, "Pause cards"): the actions are UButtons, at
+// least 44 px high on phones, where the action row and the Way out's rows
+// stack into columns and the skip select is 16 px.
 const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView }>()
 
 const ap = computed(() => props.milestone.autopilot)
@@ -223,82 +231,98 @@ watch(
   () => live.version,
   () => void loadAnswer(),
 )
+
+// act: an action button, 44 px high on phones.
+const act = { color: 'neutral', variant: 'outline', size: 'sm', class: 'min-h-11 justify-center tablet:min-h-0' } as const
+// select: the skip select, 16 px and 44 px high on phones.
+const select =
+  'min-h-11 max-w-full min-w-0 rounded-(--radius-sm) border border-(--border-strong) bg-(--surface) px-2 font-[inherit] text-base text-(--text) tablet:h-[34px] tablet:min-h-0 tablet:max-w-[28ch] tablet:text-[13px]'
+// stack: a row of controls, a column on phones.
+const stack = 'flex min-w-0 flex-col items-stretch gap-1.5 tablet:flex-row tablet:flex-wrap tablet:items-center tablet:gap-2'
+const wrap = '[overflow-wrap:anywhere]'
 </script>
 
 <template>
-  <section v-if="ap" class="card pause">
-    <h2>{{ pauseTitle(kind) }}</h2>
-    <Markdown v-if="ap.pausedReason" class="text" :text="ap.pausedReason" />
+  <section
+    v-if="ap"
+    class="mt-3 flex min-w-0 flex-col gap-2 rounded-(--radius) border border-l-3 border-(--border) border-l-(--tone-warning-fg) bg-(--surface) px-4 py-3.5 shadow-(--shadow) [&>p]:m-0"
+    data-pause-card
+  >
+    <h2 class="m-0">{{ pauseTitle(kind) }}</h2>
+    <Markdown v-if="ap.pausedReason" :class="wrap" :text="ap.pausedReason" />
     <p v-else-if="!kind" class="muted">Waiting for a human.</p>
     <p v-if="pauseExplain(kind)" class="muted">{{ pauseExplain(kind) }}</p>
 
-    <div v-if="release" class="row issue">
+    <div v-if="release" class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
       <span>Final release</span>
-      <code v-if="release.releasedSHA || release.sha" class="faint" :title="release.releasedSHA || release.sha">
+      <code v-if="release.releasedSHA || release.sha" class="faint">
         {{ (release.releasedSHA || release.sha || '').slice(0, 7) }}
       </code>
-      <span v-if="release.issues?.length" class="muted title">
+      <span v-if="release.issues?.length" class="muted" :class="wrap">
         contains {{ release.issues.map((n) => `#${n}`).join(', ') }}
       </span>
     </div>
-    <Markdown v-if="releaseReason" class="text" :text="releaseReason" />
+    <Markdown v-if="releaseReason" :class="wrap" :text="releaseReason" />
 
-    <div v-if="issue" class="row issue">
+    <div v-if="issue" class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
       <ExtLink :href="issueURL">#{{ issue }}</ExtLink>
-      <span v-if="issueTitle" class="title">{{ issueTitle }}</span>
+      <span v-if="issueTitle" :class="wrap">{{ issueTitle }}</span>
       <ExtLink v-if="item?.mergeRequestURL" :href="item.mergeRequestURL">
         {{ item.mergeRequestIID ? `!${item.mergeRequestIID}` : 'MR' }}
       </ExtLink>
-      <code v-if="head" class="faint" :title="head">{{ head.slice(0, 7) }}</code>
+      <code v-if="head" class="faint">{{ head.slice(0, 7) }}</code>
       <CompanionChip v-if="companion" :companion="companion" />
     </div>
 
-    <ul v-if="limitLines.length" class="limits">
+    <ul v-if="limitLines.length" class="m-0 pl-[18px]">
       <li v-for="l in limitLines" :key="l">{{ l }}</li>
     </ul>
     <p v-if="endsBy && !exits.length" class="faint">{{ endsBy }}</p>
-    <div v-if="ap.waitingFor" class="banner info">A run is working on #{{ ap.waitingFor }} now.</div>
+    <div v-if="ap.waitingFor" class="rounded-(--radius-sm) bg-(--tone-info-bg) px-3 py-2 text-(--tone-info-fg)">
+      A run is working on #{{ ap.waitingFor }} now.
+    </div>
     <p v-if="override" class="muted">
       Merge anyway was given by {{ override.by }} <RelTime :time="override.at" />.
     </p>
 
-    <div v-if="exits.length" class="way">
-      <h3>Way out</h3>
-      <ul v-if="way.auto.length" class="exits">
-        <li v-for="e in way.auto" :key="e.id">
-          <span class="row">
-            <span class="when">{{ e.when }}</span>
-            <span class="chip" :class="e.tone">{{ e.chip }}</span>
+    <div v-if="exits.length" data-way-out>
+      <h3 class="my-1 text-sm">Way out</h3>
+      <ul v-if="way.auto.length" class="m-0 mb-2 flex list-none flex-col gap-1.5 p-0">
+        <li v-for="e in way.auto" :key="e.id" class="flex min-w-0 flex-col gap-0.5">
+          <span class="flex min-w-0 flex-wrap items-center gap-2">
+            <span :class="wrap">{{ e.when }}</span>
+            <Badge :tone="e.tone">{{ e.chip }}</Badge>
           </span>
-          <span v-if="e.detail" class="muted detail">{{ e.detail }}</span>
+          <span v-if="e.detail" class="muted" :class="wrap">{{ e.detail }}</span>
           <span class="faint">→ {{ e.does }}</span>
         </li>
       </ul>
-      <ul v-if="way.remedies.length" class="exits">
-        <li v-for="r in remedies" :key="r.id">
-          <span class="row">
-            <span v-if="r.shown?.type === 'skipSelect'" class="row skip">
-              <select v-model="skipIssue" aria-label="Issue to skip" :disabled="!!sending">
+      <ul v-if="way.remedies.length" class="m-0 mb-2 flex list-none flex-col gap-2.5 p-0 tablet:gap-1.5">
+        <li v-for="r in remedies" :key="r.id" class="flex min-w-0 flex-col gap-0.5">
+          <span :class="stack">
+            <span v-if="r.shown?.type === 'skipSelect'" :class="stack">
+              <select v-model="skipIssue" :class="select" aria-label="Issue to skip" :disabled="!!sending">
                 <option value="">issue…</option>
                 <option v-for="it in skipOptions" :key="it.iid" :value="it.iid">#{{ it.iid }} {{ it.title }}</option>
               </select>
-              <button type="button" class="btn" :disabled="!!sending || !skipIssue" @click="skipPicked(r.shown.action)">
-                {{ sending === r.shown.action.id ? '…' : r.shown.action.label }}
-              </button>
+              <UButton
+                v-bind="act"
+                :disabled="!!sending || !skipIssue"
+                :label="sending === r.shown.action.id ? '…' : r.shown.action.label"
+                @click="skipPicked(r.shown.action)"
+              />
             </span>
-            <button
+            <UButton
               v-else-if="r.shown"
-              type="button"
-              class="btn"
+              v-bind="act"
               :disabled="!!sending || (r.shown.action.confirm && !!confirmHead)"
+              :label="sending === r.shown.action.id ? '…' : r.shown.action.label"
               @click="run(r.shown.action)"
-            >
-              {{ sending === r.shown.action.id ? '…' : r.shown.action.label }}
-            </button>
-            <code v-else-if="r.elsewhere">{{ agentCommand(r.command) }}</code>
-            <span v-if="r.shown || !r.elsewhere" class="when">{{ r.text }}</span>
-            <span v-else class="when">{{ r.elsewhere }}</span>
-            <ExtLink v-if="r.href" :href="r.href">open</ExtLink>
+            />
+            <code v-else-if="r.elsewhere" :class="wrap">{{ agentCommand(r.command) }}</code>
+            <span v-if="r.shown || !r.elsewhere" :class="wrap">{{ r.text }}</span>
+            <span v-else :class="wrap">{{ r.elsewhere }}</span>
+            <ExtLink v-if="r.href" class="min-h-11 tablet:min-h-0" :href="r.href">open</ExtLink>
           </span>
           <span class="faint">→ {{ r.does }}</span>
         </li>
@@ -307,53 +331,72 @@ watch(
 
     <PromptCard v-if="prompt" :namespace="namespace" :name="name" :prompt="prompt" />
 
-    <div v-else-if="shown.length" class="row actions">
+    <div v-else-if="shown.length" class="mt-1" :class="stack" data-pause-actions>
       <template v-for="s in shown" :key="s.action.id">
-        <RouterLink v-if="s.type === 'task'" class="btn" :to="{ name: 'task', params: { namespace, name, task: s.task } }">
-          {{ s.action.label }}
-        </RouterLink>
-        <ExtLink v-else-if="s.type === 'ext'" class="btn" :href="s.href">{{ s.action.label }}</ExtLink>
-        <span v-else-if="s.type === 'skipSelect'" class="row skip">
-          <select v-model="skipIssue" aria-label="Issue to skip" :disabled="!!sending">
+        <UButton
+          v-if="s.type === 'task'"
+          v-bind="act"
+          :to="{ name: 'task', params: { namespace, name, task: s.task } }"
+          :label="s.action.label"
+        />
+        <UButton
+          v-else-if="s.type === 'ext' && safeURL(s.href)"
+          v-bind="act"
+          :to="safeURL(s.href)"
+          target="_blank"
+          :label="s.action.label"
+        />
+        <span v-else-if="s.type === 'skipSelect'" :class="stack">
+          <select v-model="skipIssue" :class="select" aria-label="Issue to skip" :disabled="!!sending">
             <option value="">issue…</option>
             <option v-for="it in skipOptions" :key="it.iid" :value="it.iid">#{{ it.iid }} {{ it.title }}</option>
           </select>
-          <button type="button" class="btn" :disabled="!!sending || !skipIssue" @click="skipPicked(s.action)">
-            {{ sending === s.action.id ? '…' : s.action.label }}
-          </button>
+          <UButton
+            v-bind="act"
+            :disabled="!!sending || !skipIssue"
+            :label="sending === s.action.id ? '…' : s.action.label"
+            @click="skipPicked(s.action)"
+          />
         </span>
-        <button
-          v-else
-          type="button"
-          class="btn"
+        <UButton
+          v-else-if="s.type === 'command'"
+          v-bind="act"
           :disabled="!!sending || (s.action.confirm && !!confirmHead)"
+          :label="sending === s.action.id ? '…' : s.action.label"
           @click="run(s.action)"
-        >
-          {{ sending === s.action.id ? '…' : s.action.label }}
-        </button>
+        />
       </template>
     </div>
 
-    <div v-if="mergeAction && confirmHead" class="banner warning confirm">
-      <span>
+    <div
+      v-if="mergeAction && confirmHead"
+      class="flex flex-col gap-2 rounded-(--radius-sm) bg-(--tone-warning-bg) px-3 py-2 text-(--tone-warning-fg) tablet:flex-row tablet:flex-wrap tablet:items-center"
+      data-confirm
+    >
+      <span :class="wrap">
         Merge <code>{{ confirmHead.slice(0, 7) }}</code> without a full review? CI, MR state and approvals still apply.
       </span>
-      <span class="row">
-        <button type="button" class="btn primary" :disabled="!!sending" @click="confirmMerge(mergeAction)">
-          {{ sending === mergeAction.id ? '…' : 'Confirm' }}
-        </button>
-        <button type="button" class="btn" :disabled="!!sending" @click="confirmHead = ''">Cancel</button>
+      <span :class="stack">
+        <UButton
+          v-bind="act"
+          color="primary"
+          variant="solid"
+          :disabled="!!sending"
+          :label="sending === mergeAction.id ? '…' : 'Confirm'"
+          @click="confirmMerge(mergeAction)"
+        />
+        <UButton v-bind="act" :disabled="!!sending" label="Cancel" @click="confirmHead = ''" />
       </span>
     </div>
 
-    <p v-if="sent" class="answer">
+    <p v-if="sent" :class="wrap" role="status">
       <strong>{{ sent.label }}:</strong>
       <span v-if="answer.state === 'pending'" class="faint"> sent…</span>
-      <span v-else-if="answer.state === 'failed'" class="err"> {{ answer.reason }}</span>
+      <span v-else-if="answer.state === 'failed'" class="text-(--tone-danger-fg)"> {{ answer.reason }}</span>
       <span v-else-if="answer.redacted" class="muted"> answered</span>
-      <span v-else class="text"> {{ answer.text }}</span>
+      <span v-else class="whitespace-pre-wrap"> {{ answer.text }}</span>
     </p>
-    <p v-if="postError" class="err">{{ postError }}</p>
+    <p v-if="postError" class="text-(--tone-danger-fg)" role="alert">{{ postError }}</p>
     <p v-if="commandsHidden && !prompt" class="faint">
       Commands need Desk chat, or <code>/agent …</code> on the
       <ExtLink v-if="milestone.tracking" :href="milestone.tracking.webURL">tracking issue</ExtLink>
@@ -361,120 +404,3 @@ watch(
     </p>
   </section>
 </template>
-
-<style scoped>
-.pause {
-  margin-top: 12px;
-  padding: 14px 16px;
-  border-left: 3px solid var(--tone-warning-fg);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.pause p,
-.pause ul {
-  margin: 0;
-}
-
-.limits {
-  padding-left: 18px;
-}
-
-.title {
-  overflow-wrap: anywhere;
-}
-
-.banner {
-  margin-top: 0;
-}
-
-.actions {
-  margin-top: 4px;
-}
-
-.way h3 {
-  margin: 4px 0;
-  font-size: 14px;
-}
-
-.exits {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.exits li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.exits .row {
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.when,
-.detail {
-  overflow-wrap: anywhere;
-}
-
-.chip {
-  font-size: 12px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.chip.success {
-  background: var(--tone-success-bg);
-  color: var(--tone-success-fg);
-}
-
-.chip.progress {
-  background: var(--tone-progress-bg);
-  color: var(--tone-progress-fg);
-}
-
-.chip.muted {
-  background: var(--tone-muted-bg);
-  color: var(--tone-muted-fg);
-}
-
-.skip {
-  gap: 6px;
-}
-
-select {
-  font: inherit;
-  height: 34px;
-  padding: 0 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  max-width: 28ch;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.confirm {
-  align-items: center;
-}
-
-.text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.err {
-  color: var(--tone-danger-fg);
-}
-</style>

@@ -241,7 +241,7 @@ export const paymentsMilestone: MilestoneView = {
       },
       {
         id: 'skip',
-        command: 'skip 281',
+        command: 'skip',
         does: 'Skip #281 and continue with #282.',
         allowed: true,
       },
