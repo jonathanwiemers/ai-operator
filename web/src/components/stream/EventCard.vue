@@ -15,7 +15,7 @@ import {
 import Badge from '../Badge.vue'
 import ExtLink from '../ExtLink.vue'
 import Markdown from '../Markdown.vue'
-import PromptCardCompact from '../PromptCardCompact.vue'
+import PromptCard from '../PromptCard.vue'
 import NoteThread from './NoteThread.vue'
 
 const props = defineProps<{
@@ -264,8 +264,9 @@ function taskLink(ev: StreamEvent) {
       </div>
 
       <!-- prompt.posted: the compact card while status still has the prompt -->
-      <PromptCardCompact
+      <PromptCard
         v-else-if="prompt"
+        compact
         :namespace="e.namespace"
         :name="e.project"
         :prompt="prompt"

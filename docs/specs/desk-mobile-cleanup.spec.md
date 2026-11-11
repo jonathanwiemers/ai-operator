@@ -436,3 +436,14 @@ follow-up issue), and requirements without an issue and why.
   it. Send and Interrupt keep the focus in the text on a press: the e2e
   check found that the bottom bar's return moved Send between press and
   release. Nothing narrowed.
+- 2026-11-11 #322 (R11 prompt card): `PromptCardCompact.vue` is gone;
+  `PromptCard.vue` has `compact` (and `to` for *more…*), on `UButton`,
+  `UTextarea` and utilities, no scoped `<style>`. Options stay one-click
+  buttons, not a `URadioGroup`: one click answers, as before. The compact
+  question is clamped by `Truncated` instead of a `title`. Consumers:
+  `EventCard.vue` (stream rows) and `PauseCardCompact.vue` (Inbox, board,
+  stream); the Task page, *Pilot* tab and `PauseCard.vue` keep the full
+  card. The e2e answers on the stream's existing `prompt.posted` row. Seen on the way,
+  not changed: the stream event header shows `e.summary` as text, and a
+  real `prompt.posted` summary carries the question, `**` included (R9).
+  Nothing narrowed.

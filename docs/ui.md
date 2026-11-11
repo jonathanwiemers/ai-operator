@@ -1790,6 +1790,37 @@ the bottom bar and above a 300 px `--keyboard-inset`
 (`composer-chat@<width>.png`, `composer-note@<width>.png`,
 `composer-keyboard@375.png`).
 
+### Prompt card
+
+`web/src/components/PromptCard.vue` is the one prompt card (see *Prompt
+card* above for what it shows and sends): full on the Task page, the
+milestone's *Pilot* tab and the full pause card, `compact` in the stream's
+`prompt.posted` rows and the compact pause card.
+
+```vue
+<PromptCard :namespace="ns" :name="project" :prompt="p" />
+<PromptCard compact :namespace="ns" :name="project" :prompt="p" :to="cardRoute" />
+```
+
+- Full: block markdown for the question, the context, the options' detail,
+  the answer and its outcome. Options are `UButton`s (the recommended one
+  solid and first), the free text a `UTextarea` (16 px on phones) with Send.
+  It carries the anchor `#prompt-<id>` and scrolls to it when the URL has
+  that hash.
+- Compact: the id and the question in one line (inline markdown, clamped by
+  `Truncated`, so a tap opens it on a phone), the recommended option as a
+  button, or the status or read-only line, and *more…* to `to`.
+- Both answer through `usePromptAnswer` (`src/promptAnswer.ts`); the order,
+  status and command logic is `src/promptCard.ts`. Buttons are 44 px on
+  phones (the global rule). Both carry `data-prompt="<id>"`.
+
+The e2e cases `prompt card …` answer at 375 and 1280 px through the route
+mock and check the POST body to the target task's chat: an option on the
+Task page, free text on the *Pilot* tab and the compact card's recommended
+option on the milestone stream, with the touch sizes and no sideways scroll
+(`prompt-card-task@<width>.png`, `prompt-card-pilot@<width>.png`,
+`prompt-card-compact@<width>.png`).
+
 ## Roadmap
 
 1. **Into a running step.** Messages that reach a running claude step at once

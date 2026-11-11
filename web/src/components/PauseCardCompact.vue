@@ -4,7 +4,7 @@ import { computed } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { pauseEndsBy, pauseTitle, wayOutLine } from '../pauseCard'
 import type { ExitView, PauseKind, PromptView } from '../types'
-import PromptCardCompact from './PromptCardCompact.vue'
+import PromptCard from './PromptCard.vue'
 
 // PauseCardCompact is the pause card's short form for the Inbox, the project
 // board and the stream: why the autopilot paused, over which issue, what ends
@@ -51,8 +51,9 @@ const way = computed(() => wayOutLine(props.exits))
     <p v-if="waiting" class="waiting">A run is working on #{{ waiting }} now.</p>
     <p v-if="way" class="faint ends" :title="way">{{ way }}</p>
     <p v-else-if="endsBy" class="faint ends">{{ endsBy }}</p>
-    <PromptCardCompact
+    <PromptCard
       v-if="prompt && namespace && projectName"
+      compact
       :namespace="namespace"
       :name="projectName"
       :prompt="prompt"

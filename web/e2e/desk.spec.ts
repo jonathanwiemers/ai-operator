@@ -6,7 +6,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
 import { inbox } from './fixtures/rail'
 import { features } from './fixtures/session'
-import { refundsResponse } from './fixtures/task'
+import { refundsPrompt, refundsResponse } from './fixtures/task'
 import { taskTabs, type TaskTab } from '../src/streamTabs'
 import type { Feature } from '../src/types'
 import { knownOverflow } from './known-overflow'
@@ -1305,4 +1305,120 @@ test.describe('composer', () => {
     await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
+})
+
+// The prompt card (PromptCard.vue, R11): one component, full on the task
+// page and the milestone's Pilot tab, compact in the stream. An option, the
+// text box and the compact card's recommended option post an answer command
+// to the prompt's target task's chat; the card then waits for the reply. On
+// a phone the option buttons and Send are at least 44 px and the text 16 px.
+test.describe('prompt card', () => {
+  const chatPath = `/api/v1/projects/team-a/shop/tasks/${refundsPrompt.target.task}/chat`
+
+  async function open(page: Page, baseURL: string | undefined, name: string, size: { width: number; height: number }) {
+    const route = routes.find((r) => r.name === name)!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize(size)
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    // Registered after mockAPI, so it answers the POSTs first.
+    const posts: unknown[] = []
+    await page.route(
+      (url) => url.pathname === chatPath,
+      async (r) => {
+        if (r.request().method() !== 'POST') return r.fallback()
+        posts.push(r.request().postDataJSON())
+        return r.fulfill({ status: 200, json: { id: 991 } })
+      },
+    )
+    await page.goto(route.path)
+    await route.ready(page)
+    return { problems, posts }
+  }
+
+  async function shoot(page: Page, testInfo: { project: { outputDir: string }; attach: (n: string, o: { path: string; contentType: string }) => Promise<void> }, name: string) {
+    const shot = join(testInfo.project.outputDir, '..', 'screenshots', `${name}.png`)
+    await page.screenshot({ path: shot, fullPage: true })
+    await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+  }
+
+  async function noSidewaysScroll(page: Page) {
+    const overflow = await page.evaluate(() => {
+      const doc = document.scrollingElement ?? document.documentElement
+      const main = document.querySelector('main')!
+      return { page: doc.scrollWidth - doc.clientWidth, pane: main.scrollWidth - main.clientWidth }
+    })
+    expect(overflow, 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+  }
+
+  const command = (cmd: Record<string, string>) => ({ body: JSON.stringify(cmd), clientKey: expect.any(String), kind: 'command' })
+
+  for (const size of [widths[0]!, widths[2]!]) {
+    const phone = size.width < 760
+
+    test(`task page answers with an option@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const { problems, posts } = await open(page, baseURL, 'task', size)
+      const card = page.locator(`#prompt-${refundsPrompt.id}`)
+      const option = card.getByRole('button', { name: 'Split across captures', exact: true })
+      await expect(option).toBeVisible()
+      if (phone) {
+        expect((await option.boundingBox())!.height, 'option height').toBeGreaterThanOrEqual(44)
+        expect(await card.locator('textarea').evaluate((e) => parseFloat(getComputedStyle(e).fontSize)), 'text size').toBe(16)
+      }
+      await expect(card.locator('.md strong').first()).toHaveText('partial refund')
+      await noSidewaysScroll(page)
+      await shoot(page, testInfo, `prompt-card-task@${size.width}`)
+
+      await option.click()
+      await expect(card.getByText('sent…')).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Refuse above one capture', exact: true })).toBeDisabled()
+      expect(posts).toEqual([command({ cmd: 'answer', prompt: refundsPrompt.id, option: 'split' })])
+
+      // The answered card of the same task shows who answered, read-only.
+      const closed = page.locator('#prompt-p-281-0')
+      await expect(closed.getByText('Answered by jo in the Desk: The order currency')).toBeVisible()
+      await expect(closed.getByRole('button')).toHaveCount(0)
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`pilot tab answers in free text@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const { problems, posts } = await open(page, baseURL, 'stream-milestone-pilot', size)
+      const card = page.locator(`#prompt-${refundsPrompt.id}`)
+      const text = card.getByRole('textbox', { name: `Answer ${refundsPrompt.id} in your words` })
+      const send = card.getByRole('button', { name: 'Send', exact: true })
+      await expect(send).toBeDisabled()
+      if (phone) expect((await send.boundingBox())!.height, 'Send height').toBeGreaterThanOrEqual(44)
+      await text.fill('  Split, but never more than three captures.  ')
+      await noSidewaysScroll(page)
+      await shoot(page, testInfo, `prompt-card-pilot@${size.width}`)
+      await send.click()
+
+      await expect(text).toHaveValue('')
+      await expect(card.getByText('Your answer:')).toBeVisible()
+      expect(posts).toEqual([command({ cmd: 'answer', prompt: refundsPrompt.id, text: 'Split, but never more than three captures.' })])
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`stream compact card answers with the recommended option@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const { problems, posts } = await open(page, baseURL, 'stream-milestone-stream', size)
+      // The prompt.posted row of the stream (e2e/fixtures/overview.ts).
+      const card = page.locator(`.ev [data-prompt="${refundsPrompt.id}"]`)
+      await expect(card).toHaveCount(1)
+      await expect(card.locator('.md-inline strong')).toHaveText('partial refund')
+      await expect(card.getByRole('link', { name: 'more…' })).toHaveAttribute('href', `/projects/team-a/shop/milestones/14#prompt-${refundsPrompt.id}`)
+      // exact: a clipped question is a Truncated button whose name contains
+      // the option's words.
+      const recommended = card.getByRole('button', { name: 'Split across captures', exact: true })
+      if (phone) expect((await recommended.boundingBox())!.height, 'button height').toBeGreaterThanOrEqual(44)
+      await expect(card.getByRole('button', { name: 'Refuse above one capture', exact: true })).toHaveCount(0)
+      await noSidewaysScroll(page)
+      await shoot(page, testInfo, `prompt-card-compact@${size.width}`)
+
+      await recommended.click()
+      await expect(card.getByText('sent…')).toBeVisible()
+      expect(posts).toEqual([command({ cmd: 'answer', prompt: refundsPrompt.id, option: 'split' })])
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
 })

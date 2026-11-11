@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
+import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, type RouteLocationRaw } from 'vue-router'
 import { usePromptAnswer } from '../promptAnswer'
 import {
   canAnswerText,
@@ -9,24 +11,41 @@ import {
   promptOptions,
   promptStatus,
   readOnlyText,
+  recommendedOption,
   textBox,
 } from '../promptCard'
 import type { PromptView } from '../types'
+import Truncated from '../ui/Truncated.vue'
 import Badge from './Badge.vue'
-import RelTime from './RelTime.vue'
 import Markdown from './Markdown.vue'
+import RelTime from './RelTime.vue'
 
-// PromptCard is one question to the owners in full: the question, its
+// PromptCard is one question to the owners (docs/ui.md, "Prompt card").
+//
+// In full (the task page, the Pilot tab, pause cards): the question, its
 // context, the options (recommended first, a detail line each), a text box
 // when it takes free text, and who answered it. One click on an option, or
 // the text box, sends an answer command to the prompt's target task; the
-// operator's reply shows under the card. The question, context, options and
-// answers are untrusted: text, or markdown without HTML.
-const props = defineProps<{ namespace: string; name: string; prompt: PromptView }>()
+// operator's reply shows under the card.
+//
+// compact (stream rows, compact pause cards): the question on one line, the
+// recommended option as a button and "more…" to the full card (`to`).
+//
+// The question, context, options and answers are untrusted: text, or
+// markdown without HTML.
+const props = defineProps<{
+  namespace: string
+  name: string
+  prompt: PromptView
+  compact?: boolean
+  // to: where "more…" of the compact card leads.
+  to?: RouteLocationRaw
+}>()
 
 const anchor = computed(() => promptAnchor(props.prompt.id))
 const open = computed(() => promptOpen(props.prompt))
 const options = computed(() => promptOptions(props.prompt))
+const recommended = computed(() => recommendedOption(props.prompt))
 const status = computed(() => promptStatus(props.prompt))
 const readOnly = computed(() => readOnlyText(props.prompt))
 const withText = computed(() => canAnswerText(props.prompt))
@@ -43,214 +62,149 @@ async function sendText() {
   if (await send({ text: text.value })) text.value = ''
 }
 
-// A Desk link from GitLab ends in #prompt-<id>: scroll to the card once it
-// is there.
+// A Desk link from GitLab ends in #prompt-<id>: scroll to the full card
+// once it is there.
 const route = useRoute()
 const el = ref<HTMLElement | null>(null)
 function scrollIfLinked() {
-  if (route.hash === `#${anchor.value}`) void nextTick(() => el.value?.scrollIntoView({ block: 'start' }))
+  if (!props.compact && route.hash === `#${anchor.value}`) {
+    void nextTick(() => el.value?.scrollIntoView({ block: 'start' }))
+  }
 }
 onMounted(scrollIfLinked)
 watch(() => route.hash, scrollIfLinked)
+
+const small = 'text-[13px]'
+const err = 'm-0 text-[13px] text-(--tone-danger-fg)'
 </script>
 
 <template>
-  <section :id="anchor" ref="el" class="card prompt" :class="{ closed: !open }">
-    <div class="row head">
-      <code>{{ prompt.id }}</code>
-      <Badge :tone="status.tone">{{ prompt.state || 'open' }}</Badge>
-      <span v-if="prompt.issueIID" class="faint">#{{ prompt.issueIID }}</span>
-      <span v-if="prompt.mrIID" class="faint">!{{ prompt.mrIID }}</span>
-      <span class="spacer" />
-      <span class="faint"><RelTime :time="prompt.postedAt" /></span>
-    </div>
-    <Markdown class="question" :text="prompt.question" />
-    <Markdown v-if="prompt.context" class="context" :text="prompt.context" />
-
-    <ul class="options">
-      <li v-for="o in options" :key="o.id" :class="{ chosen: o.chosen, rec: o.recommended }">
-        <button
-          v-if="clickable"
-          type="button"
-          class="opt"
-          :class="{ primary: o.recommended }"
-          :disabled="busy"
-          @click="send({ option: o.id })"
-        >
-          <span class="label">{{ sending === o.id ? '…' : o.label }}</span>
-        </button>
-        <span v-else class="opt static">
-          <span v-if="o.chosen" aria-label="chosen">✓ </span><span class="label">{{ o.label }}</span>
-        </span>
-        <span v-for="t in o.tags" :key="t" class="tag">{{ t }}</span>
-        <Markdown v-if="o.detail" class="detail muted" :text="o.detail" />
-        <p v-for="(a, i) in o.actions" :key="i" class="action faint">→ {{ a }}</p>
-      </li>
-    </ul>
-
-    <form v-if="withText" class="box" @submit.prevent="sendText">
-      <textarea
-        v-model="text"
-        rows="2"
-        :placeholder="box.placeholder"
-        :aria-label="`Answer ${prompt.id} in your words`"
-        :disabled="busy"
-      />
-      <div class="row">
-        <span class="hint faint">{{ box.hint }}</span>
-        <span class="spacer" />
-        <button type="submit" class="btn" :disabled="busy || !text.trim()">
-          {{ sending === 'text' ? '…' : 'Send' }}
-        </button>
+  <section
+    :id="compact ? undefined : anchor"
+    ref="el"
+    :data-prompt="prompt.id"
+    class="card flex min-w-0 scroll-mt-3 flex-col border-l-3 [&>p]:m-0"
+    :class="[
+      open ? 'border-l-(--tone-warning-fg)' : 'border-l-(--border-strong)',
+      compact ? 'gap-1.5 px-3.5 py-2.5' : 'gap-2 px-3.5 py-3',
+    ]"
+  >
+    <template v-if="compact">
+      <div class="flex min-w-0 items-baseline gap-2">
+        <code>{{ prompt.id }}</code>
+        <Truncated class="min-w-0 flex-1 font-semibold">
+          <Markdown mode="inline" :text="prompt.question" />
+        </Truncated>
       </div>
-    </form>
+      <div class="flex min-w-0 items-center gap-2">
+        <UButton
+          v-if="clickable && recommended"
+          color="primary"
+          class="max-w-full min-w-0"
+          :ui="{ label: 'truncate' }"
+          :label="sending === recommended.id ? '…' : recommended.label"
+          :disabled="busy"
+          @click="send({ option: recommended.id })"
+        />
+        <span v-else-if="!open" class="min-w-0 flex-1 truncate text-(--text-2)" :class="small">{{ status.text }}</span>
+        <span v-else-if="readOnly" class="min-w-0 flex-1 truncate text-(--text-3)" :class="small">{{ readOnly }}</span>
+        <span class="flex-1" />
+        <RouterLink v-if="to" :to="to" class="whitespace-nowrap" :class="small">more…</RouterLink>
+      </div>
+      <p v-if="sent" class="wrap-anywhere" :class="small">
+        <strong>{{ sent.label }}:</strong>
+        <span v-if="answer.state === 'pending'" class="text-(--text-3)"> sent…</span>
+        <span v-else-if="answer.state === 'failed'" class="text-(--tone-danger-fg)"> {{ answer.reason }}</span>
+        <span v-else class="text-(--text-2)"> answered</span>
+      </p>
+    </template>
 
-    <p v-if="readOnly" class="faint">{{ readOnly }}</p>
-    <p class="status" :class="{ muted: open }">
-      {{ status.text }}<template v-if="!open && status.at"> · <RelTime :time="status.at" /></template>
-    </p>
-    <Markdown v-if="prompt.answer?.text && prompt.state === 'answered'" class="said" :text="prompt.answer.text" />
-    <Markdown v-if="prompt.answer?.outcome" class="outcome" :text="prompt.answer.outcome" />
+    <template v-else>
+      <div class="flex flex-wrap items-center gap-2 text-[12.5px]">
+        <code>{{ prompt.id }}</code>
+        <Badge :tone="status.tone">{{ prompt.state || 'open' }}</Badge>
+        <span v-if="prompt.issueIID" class="text-(--text-3)">#{{ prompt.issueIID }}</span>
+        <span v-if="prompt.mrIID" class="text-(--text-3)">!{{ prompt.mrIID }}</span>
+        <span class="flex-1" />
+        <span class="text-(--text-3)"><RelTime :time="prompt.postedAt" /></span>
+      </div>
+      <Markdown class="font-semibold wrap-anywhere" :text="prompt.question" />
+      <Markdown
+        v-if="prompt.context"
+        class="max-h-[220px] overflow-y-auto rounded-(--radius-sm) bg-(--surface-2) px-2 py-1.5"
+        :class="small"
+        :text="prompt.context"
+      />
 
-    <div v-if="sent" class="reply">
-      <strong>{{ sent.label }}:</strong>
-      <span v-if="answer.state === 'pending'" class="faint"> sent…</span>
-      <span v-else-if="answer.state === 'failed'" class="err"> {{ answer.reason }}</span>
-      <span v-else-if="answer.redacted" class="muted"> answered</span>
-      <Markdown v-else :text="answer.text" />
-    </div>
-    <p v-if="error" class="err">{{ error }}</p>
+      <ul class="m-0 grid list-none gap-2 p-0">
+        <li v-for="o in options" :key="o.id" class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+          <UButton
+            v-if="clickable"
+            :color="o.recommended ? 'primary' : 'neutral'"
+            :variant="o.recommended ? 'solid' : 'outline'"
+            class="max-w-full text-left font-[550] wrap-anywhere"
+            :disabled="busy"
+            @click="send({ option: o.id })"
+          >
+            {{ sending === o.id ? '…' : o.label }}
+          </UButton>
+          <span
+            v-else
+            class="max-w-full rounded-(--radius-sm) border px-2.5 py-1.5 wrap-anywhere"
+            :class="o.chosen ? 'border-(--tone-success-fg) font-[650]' : 'border-(--border-strong) font-medium'"
+          >
+            <span v-if="o.chosen" aria-label="chosen">✓ </span>{{ o.label }}
+          </span>
+          <span v-for="(t, i) in o.tags" :key="t" class="text-[11.5px] text-(--text-3)">{{ i ? `· ${t}` : t }}</span>
+          <Markdown
+            v-if="o.detail"
+            class="basis-full text-[12.5px] text-(--text-2) wrap-anywhere"
+            :text="o.detail"
+          />
+          <p v-for="(a, i) in o.actions" :key="i" class="m-0 basis-full text-[12.5px] text-(--text-3) wrap-anywhere">
+            → {{ a }}
+          </p>
+        </li>
+      </ul>
+
+      <form v-if="withText" class="grid gap-1.5" @submit.prevent="sendText">
+        <UTextarea
+          v-model="text"
+          :rows="2"
+          autoresize
+          :maxrows="10"
+          :placeholder="box.placeholder"
+          :aria-label="`Answer ${prompt.id} in your words`"
+          :disabled="busy"
+          :ui="{ root: 'w-full', base: 'text-base/5 tablet:text-sm/5' }"
+        />
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="min-w-0 flex-[1_1_160px] text-xs text-(--text-3)">{{ box.hint }}</span>
+          <UButton
+            type="submit"
+            color="primary"
+            class="justify-center"
+            :label="sending === 'text' ? '…' : 'Send'"
+            :disabled="busy || !text.trim()"
+          />
+        </div>
+      </form>
+
+      <p v-if="readOnly" class="text-(--text-3)">{{ readOnly }}</p>
+      <p :class="[small, open && 'text-(--text-2)']">
+        {{ status.text }}<template v-if="!open && status.at"> · <RelTime :time="status.at" /></template>
+      </p>
+      <Markdown v-if="prompt.answer?.text && prompt.state === 'answered'" :class="small" :text="prompt.answer.text" />
+      <Markdown v-if="prompt.answer?.outcome" :class="small" :text="prompt.answer.outcome" />
+
+      <div v-if="sent" class="wrap-anywhere" :class="small">
+        <strong>{{ sent.label }}:</strong>
+        <span v-if="answer.state === 'pending'" class="text-(--text-3)"> sent…</span>
+        <span v-else-if="answer.state === 'failed'" class="text-(--tone-danger-fg)"> {{ answer.reason }}</span>
+        <span v-else-if="answer.redacted" class="text-(--text-2)"> answered</span>
+        <Markdown v-else :text="answer.text" />
+      </div>
+    </template>
+    <p v-if="error" :class="err">{{ error }}</p>
   </section>
 </template>
-
-<style scoped>
-.prompt {
-  padding: 12px 14px;
-  border-left: 3px solid var(--tone-warning-fg);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  scroll-margin-top: 12px;
-}
-.prompt.closed {
-  border-left-color: var(--border-strong);
-}
-.prompt p {
-  margin: 0;
-}
-.head {
-  gap: 8px;
-  font-size: 12.5px;
-}
-.question {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.context {
-  max-height: 220px;
-  overflow-y: auto;
-  font-size: 13px;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-}
-.options {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-.options li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
-  min-width: 0;
-}
-.opt {
-  font: inherit;
-  font-weight: 550;
-  text-align: left;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-.opt:hover:not(:disabled) {
-  background: var(--surface-2);
-}
-.opt.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-.opt:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.opt.static {
-  cursor: default;
-  font-weight: 500;
-}
-.chosen .opt.static {
-  font-weight: 650;
-  border-color: var(--tone-success-fg);
-}
-.tag {
-  font-size: 11.5px;
-  color: var(--text-3);
-}
-.tag + .tag::before {
-  content: '· ';
-}
-.detail,
-.action {
-  flex-basis: 100%;
-  font-size: 12.5px;
-  overflow-wrap: anywhere;
-}
-.box {
-  display: grid;
-  gap: 6px;
-}
-textarea {
-  width: 100%;
-  box-sizing: border-box;
-  font: inherit;
-  padding: 6px 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  resize: vertical;
-}
-textarea:disabled,
-.btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.hint {
-  font-size: 12px;
-  flex: 1 1 160px;
-}
-.status {
-  font-size: 13px;
-}
-.said,
-.outcome {
-  font-size: 13px;
-}
-.reply {
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-.err {
-  color: var(--tone-danger-fg);
-}
-</style>
