@@ -334,3 +334,38 @@ test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, ba
   expect(widths, 'the strip scrolls, the page and the content pane do not').toEqual({ strip: true, page: 0, pane: 0 })
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
+
+// Truncated (src/ui/Truncated.vue): on a phone the long branch name of the
+// task page is clamped, a tap opens it in place and a second tap closes it.
+test.describe('touch', () => {
+  test.use({ hasTouch: true })
+
+  test('task Truncated branch fact opens on tap@375', async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'task')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const branch = 'agent/281-support-refunds-through-the-payment-provider'
+    const value = page.locator('main .fact').filter({ hasText: 'Branch' }).getByRole('button')
+    await expect(value).toHaveAttribute('aria-expanded', 'false')
+    await expect(value).not.toHaveAttribute('title', /.+/)
+    const before = (await value.boundingBox())!
+    expect(await value.evaluate((e) => e.scrollWidth > e.clientWidth), 'clamped').toBe(true)
+
+    await value.tap()
+    await expect(value).toHaveAttribute('aria-expanded', 'true')
+    await expect(value).toHaveText(branch)
+    const after = (await value.boundingBox())!
+    expect(after.height, 'taller once open').toBeGreaterThan(before.height)
+    expect(await value.evaluate((e) => e.scrollWidth <= e.clientWidth), 'fully shown').toBe(true)
+
+    await value.tap()
+    await expect(value).toHaveAttribute('aria-expanded', 'false')
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+})

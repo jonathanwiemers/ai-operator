@@ -10,6 +10,7 @@ import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
 import RelTime from './RelTime.vue'
 import StageBadge from './StageBadge.vue'
+import Truncated from '../ui/Truncated.vue'
 import LiveTranscript from './LiveTranscript.vue'
 import Conversation from './Conversation.vue'
 import PromptCard from './PromptCard.vue'
@@ -91,7 +92,7 @@ const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('ch
     </div>
     <div class="fact">
       <div class="label">Current step</div>
-      <div class="value" :title="run.currentStep">{{ run.currentStep || '—' }}</div>
+      <Truncated class="font-[550]" :text="run.currentStep || '—'" />
     </div>
     <div class="fact">
       <div class="label">Last result</div>
@@ -115,7 +116,7 @@ const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('ch
     </div>
     <div v-if="t.type === 'Implement'" class="fact">
       <div class="label">Branch</div>
-      <div class="value mono" :title="run.branch">{{ run.branch || '—' }}</div>
+      <Truncated class="mono font-[550]" :text="run.branch || '—'" />
     </div>
     <div v-if="t.type === 'Implement'" class="fact">
       <div class="label">Last push</div>

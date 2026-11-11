@@ -1568,6 +1568,28 @@ tab is at least 44 px high. A parent that is a flex row lets the strip wrap
 to a line of its own (`flex-wrap`), as the stream page's title row does, so
 it gets the full width before it scrolls. The stream page is the first user.
 
+### Truncated
+
+`web/src/ui/Truncated.vue` clamps text and opens it on tap, for what
+`title` cannot serve on touch.
+
+```vue
+<Truncated :text="run.branch" />
+<Truncated :lines="3"><Markdown :text="summary" /></Truncated>
+```
+
+- `text`: the text; the default slot takes rich content instead.
+- `lines`: lines to show, 1 by default (`truncate`; 2 to 6 use `line-clamp-N`).
+
+The clamp is measured (`scrollWidth`/`scrollHeight` against the client size,
+re-measured by a `ResizeObserver`). Only text that is really clipped becomes
+`role="button"` with `tabindex="0"` and `aria-expanded`; a tap, Enter or
+Space toggles the clamp in place, with no overlay to dismiss. Text that fits
+stays plain. It sets no `title`: use `title` only for what is readable
+elsewhere. It sets no colour or weight, the parent's classes do; do not give
+it `.fact .value`, whose global rules keep `nowrap`. The task page's facts
+(current step, branch) are the first users.
+
 ## Roadmap
 
 1. **Into a running step.** Messages that reach a running claude step at once
