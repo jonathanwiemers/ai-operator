@@ -39,7 +39,8 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   (the dashboard, see below), your projects with a status dot
   (running, needs you, idle), a one-line state and a needs-you count, the
   researches (with the research section) and the engine usage. On phones
-  (under 760 px) the rail is a [sheet](#sheets) behind the menu button.
+  (under 760 px) the rail is a [sheet](#sheets) behind the bottom bar's
+  *Projects* (see [Navigation](#navigation)).
 * **Dashboard** (`/`): the tabs *Overview* (the default) and *Stream*
   (`/?tab=stream`, the *Everything* stream of all your projects, as
   before; the old name `everything` redirects there, at `/everything`).
@@ -318,6 +319,26 @@ that the milestone's `%<iid>`, the issue's `#<iid>` or the task's name;
 they cost no extra request. On narrow screens the middle crumbs fold
 behind `…`, the first and last stay. The Spend tab keeps its own
 drill-down crumbs below the header.
+
+On phones (under 760 px) the top bar shows only the brand, a link to
+*Overview*, and a bottom bar (`App.vue`) holds the navigation. Its items,
+each an icon over a label, the bar's full height (56 px) to tap:
+
+* **Inbox** (`/inbox`), with the Inbox count on its icon. This is the only
+  count on a phone; the top bar has none.
+* **Overview** (`/`).
+* **Projects** opens the rail as a [sheet](#sheets): projects, researches,
+  engine usage and sign-out.
+* **Research** (`/research`), only with the research feature.
+
+The item of the section shown has `aria-current="page"` and the accent
+colour: *Research* for every research page, none on project, milestone,
+issue and task pages. The bar keeps clear of the bottom safe-area inset,
+and the content pane has as much bottom padding, so a page's end is never
+under it. While a text field has the focus (an input of a text kind, a
+textarea or an editable element, `src/textEntry.ts`) the keyboard is up:
+the bar and the pane's padding go until the focus leaves. Tablet and
+desktop have no bottom bar; the rail is the aside.
 
 ### Spend
 
@@ -1426,7 +1447,14 @@ How it works:
   1280 px. On the overview, the Inbox and the task page no visible
   `button`, `a.btn`, `[role=button]` or `input` is under 44 px high
   (exceptions in the check's `hitAllowlist`, with a reason), and at
-  1280 px a `.btn` is still 34 px.
+  1280 px a `.btn` is still 34 px. The `bottom bar …` cases check the
+  [bottom bar](#navigation): the count, each item's 44 px, that each link
+  navigates and gets `aria-current` and *Projects* opens the sheet; no
+  *Research* with a features answer without it; that the task page's end
+  is above the bar once scrolled down; and that the bar hides while the
+  task composer has the focus (`bottom-bar@375.png`,
+  `bottom-bar-end@375.png`, `bottom-bar-typing@375.png`). `rail sheet stays
+  the aside` checks there is no bar at 768 and 1280 px.
 - **Known overflow.** `web/e2e/known-overflow.ts` lists the
   `route@width` cases that scroll sideways today, with the measured px.
   They run as expected failures (`test.fail()`). A slice that fixes one
@@ -1612,7 +1640,7 @@ it `.fact .value`, whose global rules keep `nowrap`. The task page's facts
 A sheet is a `USlideover` (dialogs are `UModal`; `UDrawer` is not used,
 its `vaul-vue` is unmaintained). Every sheet closes by its scrim, its close
 button, Escape and the browser's back button. There are no swipe gestures.
-The rail on phones is the first sheet: the menu button opens it from the
+The rail on phones is the first sheet: the bottom bar's *Projects* opens it from the
 left with the rail's content (`components/RailNav.vue`, which the aside
 renders on tablet and desktop).
 
@@ -1639,7 +1667,7 @@ useBackClose(open) // <USlideover v-model:open="open">
   `useBackClose` throws without it.
 
 A sheet sets `z-40` on its `overlay` and `content` (`ui` prop): Nuxt UI
-sets no z-index, and the sticky mobile bar has 10. The e2e cases
+sets no z-index, and the sticky mobile bar and the fixed bottom bar have 10. The e2e cases
 `rail sheet …` cover each way to close, that the router did not navigate
 and the API was not asked again, and a link inside the sheet followed by
 back; `rail-sheet@375.png` shows the open sheet.

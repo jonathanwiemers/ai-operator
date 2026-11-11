@@ -4,6 +4,9 @@
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
+import { inbox } from './fixtures/rail'
+import { features } from './fixtures/session'
+import type { Feature } from '../src/types'
 import { knownOverflow } from './known-overflow'
 
 const widths = [
@@ -559,7 +562,7 @@ test.describe('rail sheet', () => {
     })
 
   async function openSheet(page: Page) {
-    await page.getByRole('button', { name: 'Open menu' }).click()
+    await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }).click()
     const sheet = page.getByRole('dialog')
     await expect(sheet).toBeVisible()
     // The slide-in has ended.
@@ -591,13 +594,15 @@ test.describe('rail sheet', () => {
       const length = await page.evaluate(() => history.length)
 
       const sheet = await openSheet(page)
-      // The sheet covers the mobile bar: the bar's menu button is under the
-      // scrim, and taps there close the sheet.
-      const menu = (await page.locator('header.mobilebar .menu').boundingBox())!
-      expect(
-        await page.evaluate(([x, y]) => !!document.elementFromPoint(x!, y!)?.closest('header.mobilebar'), [menu.x + menu.width / 2, menu.y + menu.height / 2]),
-        'the mobile bar is under the sheet',
-      ).toBe(false)
+      // The sheet covers the bars: the mobile bar's brand and the bottom
+      // bar's Projects are under it or its scrim.
+      for (const sel of ['header.mobilebar .brand-m', 'nav.bottombar button']) {
+        const box = (await page.locator(sel).boundingBox())!
+        expect(
+          await page.evaluate(([x, y, s]) => !!document.elementFromPoint(Number(x), Number(y))?.closest(String(s)), [box.x + box.width / 2, box.y + box.height / 2, sel]),
+          `${sel} is under the sheet`,
+        ).toBe(false)
+      }
       if (how === 'scrim') {
         const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'rail-sheet@375.png')
         await page.screenshot({ path: shot })
@@ -657,7 +662,7 @@ test.describe('rail sheet', () => {
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
-  // Tablet and desktop keep the rail in the aside: no menu, no sheet.
+  // Tablet and desktop keep the rail in the aside: no bottom bar, no sheet.
   for (const size of widths.filter((w) => w.width >= 760)) {
     test(`stays the aside@${size.width}`, async ({ page, baseURL }) => {
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -668,9 +673,133 @@ test.describe('rail sheet', () => {
       await page.goto(start.path)
       await start.ready(page)
       await expect(page.locator('aside.rail').getByRole('link', { name: /^shop/ })).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Open menu' })).toBeHidden()
+      await expect(page.locator('nav.bottombar')).toBeHidden()
       await expect(page.getByRole('dialog')).toHaveCount(0)
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }
+})
+
+// The bottom bar on a phone (App.vue, docs/ui.md "Navigation"): Inbox with
+// its count, Overview, Projects (the rail sheet) and Research with the
+// feature on; aria-current on the section shown. It hides while a text field
+// has the focus, and the pane's end stays above it. Tablet and desktop have
+// none (`rail sheet stays the aside@…`).
+test.describe('bottom bar', () => {
+  const task = routes.find((r) => r.name === 'task')!
+  const bar = (page: Page) => page.getByRole('navigation', { name: 'Sections' })
+
+  async function open(page: Page, baseURL: string | undefined, route: Route, problems: Problems, features?: { features: Feature[] }) {
+    await page.setViewportSize({ width: 375, height: 812 })
+    // No fixed clock: Vue skips a bubbling handler attached at the event's
+    // own Date.now(), which a frozen clock makes equal (rail sheet).
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    // Registered last, so it answers before the fixtures.
+    if (features) await page.route('**/api/v1/features', (r) => r.fulfill({ status: 200, json: features }))
+    await page.goto(route.path)
+    await route.ready(page)
+  }
+
+  test('items navigate and Projects opens the rail sheet@375', async ({ page, baseURL }, testInfo) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await open(page, baseURL, task, problems)
+    const nav = bar(page)
+    await expect(nav).toBeVisible()
+    const count = String(inbox.items?.length ?? 0)
+    expect(Number(count), 'the fixture has Inbox items').toBeGreaterThan(0)
+    await expect(nav.getByRole('link', { name: `Inbox (${count})`, exact: true })).toBeVisible()
+    // The task page is no section of the bar.
+    await expect(nav.locator('[aria-current]')).toHaveCount(0)
+    for (const item of await nav.locator('a, button').all()) {
+      expect((await item.boundingBox())!.height, 'hit area').toBeGreaterThanOrEqual(44)
+    }
+    const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'bottom-bar@375.png')
+    await page.screenshot({ path: shot })
+    await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+
+    for (const { name, url, route } of [
+      { name: /^Inbox/, url: /\/inbox$/, route: 'inbox' },
+      { name: 'Overview', url: /:\d+\/$/, route: 'overview' },
+      { name: 'Research', url: /\/research$/, route: 'researches' },
+    ]) {
+      const link = nav.getByRole('link', { name })
+      await link.click()
+      await expect(page).toHaveURL(url)
+      await routes.find((r) => r.name === route)!.ready(page)
+      await expect(link).toHaveAttribute('aria-current', 'page')
+      await expect(nav.locator('[aria-current]')).toHaveCount(1)
+    }
+    // A research's own page is in the Research section too.
+    await page.locator('main').getByRole('link', { name: 'payments-news' }).first().click()
+    await expect(page).toHaveURL(/\/research\/research\/payments-news$/)
+    await expect(nav.getByRole('link', { name: 'Research' })).toHaveAttribute('aria-current', 'page')
+
+    const projects = nav.getByRole('button', { name: 'Projects' })
+    await expect(projects).toHaveAttribute('aria-expanded', 'false')
+    await projects.click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet.getByRole('link', { name: /^shop/ })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(sheet).toBeHidden()
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  test('Research is absent without the feature@375', async ({ page, baseURL }) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    const overview = routes.find((r) => r.name === 'overview')!
+    await open(page, baseURL, overview, problems, { features: features.features.filter((f) => f.name !== 'research') })
+    const nav = bar(page)
+    await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
+    await expect(nav.getByRole('link')).toHaveText([/Inbox/, 'Overview'])
+    await expect(nav.getByRole('button')).toHaveText(['Projects'])
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  test('the end of a long page stays above the bar@375', async ({ page, baseURL }, testInfo) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await open(page, baseURL, task, problems)
+    await page.waitForLoadState('networkidle')
+    await page.evaluate(() => window.scrollTo(0, document.scrollingElement!.scrollHeight))
+    const seen = await page.evaluate(() => {
+      const top = document.querySelector('nav.bottombar')!.getBoundingClientRect().top
+      // The view's root, then down its last visible children to a leaf.
+      const view = document.querySelector('main')!.lastElementChild!
+      let last: Element = view
+      for (;;) {
+        const next = [...last.children].filter((c) => c.getBoundingClientRect().height > 0).at(-1)
+        if (!next) break
+        last = next
+      }
+      return {
+        long: document.scrollingElement!.scrollHeight > 2 * innerHeight,
+        view: view.getBoundingClientRect().bottom,
+        last: last.getBoundingClientRect().bottom,
+        top,
+      }
+    })
+    const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'bottom-bar-end@375.png')
+    await page.screenshot({ path: shot })
+    await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+    expect(seen.long, 'the page is long').toBe(true)
+    expect(seen.view, 'the view ends above the bar').toBeLessThanOrEqual(seen.top + 0.5)
+    expect(seen.last, 'its last element ends above the bar').toBeLessThanOrEqual(seen.top + 0.5)
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  test('hides while the task composer has the focus@375', async ({ page, baseURL }, testInfo) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await open(page, baseURL, task, problems)
+    const nav = bar(page)
+    await expect(nav).toBeVisible()
+    const composer = page.getByPlaceholder('Message the agent…')
+    await composer.focus()
+    await expect(nav).toBeHidden()
+    const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'bottom-bar-typing@375.png')
+    await page.screenshot({ path: shot })
+    await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+    await composer.blur()
+    await expect(nav).toBeVisible()
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
 })

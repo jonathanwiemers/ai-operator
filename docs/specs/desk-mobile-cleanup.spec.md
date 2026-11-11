@@ -359,3 +359,12 @@ follow-up issue), and requirements without an issue and why.
   (R6) too. The slideover loads on phones only: statically it broke the
   bundle cap (136.8 kB), lazily the initial bundle is 120.5 kB. Nothing
   narrowed.
+- 2026-11-11 #313 (R5 bottom bar): on phones a fixed bottom bar with
+  Inbox (and the only Inbox count), Overview, Projects (opens the rail
+  sheet) and Research (with the feature), lucide icons over labels, 56 px
+  items and `aria-current` on the section shown (Research for every
+  research page). The top bar keeps only the brand: its count and the ☰
+  button are gone (D313-P1). The bar and the pane's matching bottom
+  padding go while a text field has the focus (D313-P2,
+  `web/src/textEntry.ts`). Initial bundle 121.8 kB with `UIcon`. Nothing
+  narrowed.

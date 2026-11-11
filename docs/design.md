@@ -2723,13 +2723,17 @@ it there).
 - *Safe areas.* `viewport-fit=cover` needs `env(safe-area-inset-*)`
   padding at the edges, all of it in `App.vue`: the rail (and the rail
   sheet on phones) takes the top, bottom and left insets, the content pane (`main`) the top, right and
-  bottom ones. On a phone the mobile bar takes the top and side insets and
-  the pane the sides and the bottom. Views add none. On screens without
-  insets `env()` is 0, so desktop is unchanged.
+  bottom ones. On a phone the mobile bar takes the top and side insets,
+  the fixed bottom bar the bottom and side ones, and the pane the sides
+  and the bottom, plus the bottom bar's height (`--bottombar`, 56 px with
+  its border; 0 while a text field has the focus and the bar is hidden).
+  Views add none. On screens without insets `env()` is 0, so desktop is
+  unchanged.
 - *Shell rows.* On a phone `.app` is one column with rows `auto 1fr`: the
   mobile bar keeps its natural height and the pane takes the rest. With
   two `auto` rows and `min-height: 100dvh`, a short page (Not found, an
-  empty list) would stretch the bar.
+  empty list) would stretch the bar. The bottom bar is `position: fixed`,
+  outside the rows.
 - *Inputs at 16 px.* iOS zooms into a control under 16 px when it gets the
   focus. The base layer sets `input`, `select` and `textarea` to
   `font-size: 16px !important` on phones. An `!important` in a layer beats
@@ -2745,7 +2749,7 @@ it there).
   the stream search, the composers' buttons, the pause card's select) need
   no phone rule of their own; a view must not set `min-height` on a control
   with `!important`. Links styled as controls set it themselves: the rail
-  items (`RailNav.vue`), the mobile bar's menu button and brand (`App.vue`) and the tab
+  items (`RailNav.vue`), the mobile bar's brand and the bottom bar's items (`App.vue`) and the tab
   strip (`RouteTabs`, `min-h-11`). Desktop and tablet keep their sizes. The
   e2e check `<route> hit areas of at least 44 px@375` counts the visible
   `button`, `a.btn`, `[role=button]` and `input` elements under 44 px on the

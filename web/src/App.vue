@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { get, hasFeature, session, setFeatures, LoginRequiredError } from './api'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { get, hasFeature, isResearchPath, session, setFeatures, LoginRequiredError } from './api'
 import { deskTitle } from './format'
 import { inboxKey, newNotifications, notificationText } from './inboxNotify'
 import { inboxRoute } from './inboxRoute'
 import { connectEvents, disconnectEvents, live } from './live'
 import { notifyActive, refreshPermission } from './notify'
+import { textEntry } from './textEntry'
 import UApp from '@nuxt/ui/components/App.vue'
+import UIcon from '@nuxt/ui/components/Icon.vue'
 import { useBackClose } from './ui/useBackClose'
 import SignIn from './views/SignIn.vue'
 import Breadcrumbs from './components/Breadcrumbs.vue'
@@ -109,11 +111,38 @@ function onWidth() {
   if (!phone.matches) railOpen.value = false
 }
 
+// The phone's bottom bar (docs/ui.md, "Navigation") marks the section of the
+// current page with aria-current.
+const route = useRoute()
+const section = computed(() => {
+  if (route.name === 'inbox') return 'inbox'
+  if (route.name === 'overview') return 'overview'
+  if (isResearchPath(route.path)) return 'research'
+  return null
+})
+const current = (s: string) => (section.value === s ? 'page' : undefined)
+
+// While a text field has the focus the keyboard is up on a phone: the bottom
+// bar goes, so the composers get the room.
+const typing = ref(false)
+function onFocusIn(e: FocusEvent) {
+  typing.value = textEntry(e.target)
+}
+function onFocusOut(e: FocusEvent) {
+  typing.value = textEntry(e.relatedTarget)
+}
+
 onMounted(() => {
   void loadMe()
   phone.addEventListener('change', onWidth)
+  document.addEventListener('focusin', onFocusIn)
+  document.addEventListener('focusout', onFocusOut)
 })
-onBeforeUnmount(() => phone.removeEventListener('change', onWidth))
+onBeforeUnmount(() => {
+  phone.removeEventListener('change', onWidth)
+  document.removeEventListener('focusin', onFocusIn)
+  document.removeEventListener('focusout', onFocusOut)
+})
 
 watch(
   () => session.me !== null && !session.loginRequired,
@@ -154,24 +183,40 @@ watch(notifyActive, (on) => {
 <template>
   <UApp>
     <SignIn v-if="session.loginRequired" />
-    <div v-else class="app">
+    <div v-else class="app" :class="{ typing }">
+      <!-- Phones: the brand on top, the navigation in the bottom bar. -->
       <header class="mobilebar">
-        <button
-          type="button"
-          class="menu"
-          aria-label="Open menu"
-          aria-haspopup="dialog"
-          :aria-expanded="railOpen"
-          @click="railOpen = true"
-        >
-          ☰
-        </button>
         <RouterLink to="/" class="brand-m">
           <img src="/logo.svg" alt="" width="22" height="22" />
           ai-operator
         </RouterLink>
-        <span v-if="inboxCount" class="count">{{ inboxCount }}</span>
       </header>
+      <nav class="bottombar" aria-label="Sections">
+        <RouterLink
+          to="/inbox"
+          class="tab"
+          :aria-current="current('inbox')"
+          :aria-label="inboxCount ? `Inbox (${inboxCount})` : undefined"
+        >
+          <span class="tab-icon">
+            <UIcon name="i-lucide-inbox" class="size-5" />
+            <span v-if="inboxCount" class="count">{{ inboxCount }}</span>
+          </span>
+          Inbox
+        </RouterLink>
+        <RouterLink to="/" class="tab" :aria-current="current('overview')">
+          <UIcon name="i-lucide-layout-dashboard" class="size-5" />
+          Overview
+        </RouterLink>
+        <button type="button" class="tab" aria-haspopup="dialog" :aria-expanded="railOpen" @click="railOpen = true">
+          <UIcon name="i-lucide-folders" class="size-5" />
+          Projects
+        </button>
+        <RouterLink v-if="hasFeature('research')" to="/research" class="tab" :aria-current="current('research')">
+          <UIcon name="i-lucide-telescope" class="size-5" />
+          Research
+        </RouterLink>
+      </nav>
 
       <aside class="rail">
         <RouterLink to="/" class="brand">
@@ -278,12 +323,15 @@ watch(notifyActive, (on) => {
   flex: none;
   padding: 10px 24px 0;
 }
-.mobilebar {
+.mobilebar,
+.bottombar {
   display: none;
 }
 
 @media (max-width: 759.98px) {
   .app {
+    /* The bottom bar's height above the bottom inset, its border included. */
+    --bottombar: 56px;
     grid-template-columns: minmax(0, 1fr);
     /* The bar keeps its height, the pane takes what is left: with two auto
        rows a short page would stretch the bar. */
@@ -292,9 +340,19 @@ watch(notifyActive, (on) => {
     min-height: 100vh;
     min-height: 100dvh;
   }
-  /* The bar holds the top edge, so the pane's top inset goes. */
+  /* The mobile bar holds the top edge, so the pane's top inset goes; the
+     pane's end clears the bottom bar. */
   .main {
-    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    padding: 0 env(safe-area-inset-right) calc(var(--bottombar) + env(safe-area-inset-bottom))
+      env(safe-area-inset-left);
+  }
+  /* A text field has the focus, so the keyboard is up: the bottom bar goes
+     and the composer gets its room. */
+  .app.typing {
+    --bottombar: 0px;
+  }
+  .app.typing .bottombar {
+    display: none;
   }
   /* The rail is the sheet on phones. */
   .rail {
@@ -313,13 +371,48 @@ watch(notifyActive, (on) => {
     top: 0;
     z-index: 10;
   }
-  .menu {
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    border-radius: 6px;
-    width: 44px;
-    height: 44px;
+  .bottombar {
+    display: flex;
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 10;
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+  /* Each item fills its share of the bar, the whole height a hit area; the
+     bar's border takes the last pixel of --bottombar. */
+  .tab {
+    flex: 1;
+    min-width: 0;
+    height: calc(var(--bottombar) - 1px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-2);
     cursor: pointer;
+  }
+  .tab:hover {
+    text-decoration: none;
+  }
+  .tab[aria-current='page'] {
+    color: var(--accent);
+  }
+  .tab-icon {
+    position: relative;
+    display: flex;
+  }
+  .tab-icon .count {
+    position: absolute;
+    top: -6px;
+    left: 12px;
   }
   /* The brand is a link styled as a control: 44 px, like the buttons
      (style.css, "Hit areas"). */
@@ -332,9 +425,6 @@ watch(notifyActive, (on) => {
   }
   .brand-m:hover {
     text-decoration: none;
-  }
-  .mobilebar .count {
-    margin-left: auto;
   }
   .main > .crumbbar {
     padding: 8px 16px 0;
