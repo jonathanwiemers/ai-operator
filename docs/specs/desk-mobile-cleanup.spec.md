@@ -536,3 +536,13 @@ follow-up issue), and requirements without an issue and why.
   carries no releases (they are on the Issues tab), so the tab shows none.
   `retrospective.ts`, `followUpDraft.ts` and their tests unchanged.
   Nothing narrowed.
+- 2026-11-11 #333 (R12 Spend tab): `SpendPanel.vue` and `ModelBar.vue`
+  moved to utilities, no scoped `<style>`. All of Spend's tables compare
+  rows, so all are a `DataList` with `scroll` and scroll in their own card
+  on phones; the totals (the one key/value table) stack in two columns.
+  The crumbs, the bar unit and a row's drill-down link are 44 px on
+  phones. Column explanations that were header titles stand below their
+  table (decision 13). The basis mark uses the warning tokens (it named a
+  `--tone-warn-*` token that does not exist). `CostChip` is not part of
+  the panel and `EngineUsage` was already on utilities, so neither
+  changed. `spend.ts` and its tests unchanged. Nothing narrowed.

@@ -7,8 +7,14 @@ defineProps<{ bar: ModelBarData }>()
 </script>
 
 <template>
-  <div class="mbar" :class="{ fallback: bar.fallback }" :title="bar.title || undefined">
-    <svg class="chart" viewBox="0 0 100 10" preserveAspectRatio="none" role="img" :aria-label="`Tokens and cost by model: ${bar.label}`">
+  <div class="flex min-w-35 items-center gap-2" :title="bar.title || undefined">
+    <svg
+      class="block h-2.5 flex-1 rounded-[3px]"
+      viewBox="0 0 100 10"
+      preserveAspectRatio="none"
+      role="img"
+      :aria-label="`Tokens and cost by model: ${bar.label}`"
+    >
       <rect x="0" y="0" width="100" height="10" fill="var(--surface-3)" />
       <rect
         v-for="(s, i) in bar.segments"
@@ -26,32 +32,8 @@ defineProps<{ bar: ModelBarData }>()
         <title>{{ s.title }}</title>
       </rect>
     </svg>
-    <span class="lbl">{{ bar.label }}</span>
+    <span class="min-w-[3.5em] text-right text-xs whitespace-nowrap text-(--text-2) tabular-nums" :class="{ italic: bar.fallback }">{{
+      bar.label
+    }}</span>
   </div>
 </template>
-
-<style scoped>
-.mbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 140px;
-}
-.chart {
-  flex: 1;
-  height: 10px;
-  display: block;
-  border-radius: 3px;
-}
-.lbl {
-  min-width: 3.5em;
-  text-align: right;
-  font-size: 12px;
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.fallback .lbl {
-  font-style: italic;
-}
-</style>

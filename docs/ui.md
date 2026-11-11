@@ -1594,7 +1594,7 @@ utility's name gets the utility too: `class="table"` becomes
 `display: table`, `class="hidden"` `display: none`, and scoped CSS overrides
 only the properties it sets. Do not give own classes utility names (`table`,
 `hidden`, `block`, `flex`, `grid`, `static`, `fixed`, `border`, `shadow`,
-`truncate`, …). The markdown table wrapper and Spend's tables are
+`truncate`, …). The markdown table wrapper is
 `table-scroll`, the milestone's issue list `issue-table`, the chat's
 withheld message `withheld`. `block` (milestone, retrospective), `static`
 (prompt options) and `grid` (an SVG group in the context chart) remain, as
@@ -1629,8 +1629,8 @@ stays selectable.
   with `after:absolute after:inset-0` and `aria-expanded`.
 
 - `scroll`: the table keeps its columns at every width and scrolls inside its
-  own `overflow-x-auto` container, for comparison tables (Spend). The page
-  never scrolls sideways.
+  own `overflow-x-auto` container, for comparison tables (Spend's tables are
+  the first). The page never scrolls sideways.
 
 A row is `relative`, so a link in a cell can cover the row with
 `after:absolute after:inset-0`. The research runs table is the first user;
@@ -2081,6 +2081,37 @@ the dialog by back without a post, then dismisses (asserting `POST
 `milestone-retro-editor@<width>.png`, `milestone-retro-dismiss@<width>.png`).
 The tab is also among the hit-area routes, and the route checks cover
 `stream-milestone-retrospective` at the three widths.
+
+### Spend tab
+
+The project's and the milestone's Spend tab (`web/src/components/SpendPanel.vue`,
+with `ModelBar.vue`) is Tailwind utilities and tokens, without scoped CSS.
+
+- The totals are key and value pairs: two columns on phones, one wrapping
+  line from the tablet width.
+- Every table is a comparison (the drill-down's milestones, issues, runs or
+  calls, by kind, role and model, by kind and model, conflict calls, and
+  the tuning tables) and a `DataList` with `scroll`: it keeps its columns
+  at every width and scrolls sideways inside its own card on a phone, never
+  the page. A long milestone or issue title wraps within 16rem, so it does
+  not make the table as wide as the title.
+- The drill-down links (crumbs, the bar unit *tokens*/*USD* and a row's
+  milestone, issue or run) are 44 px high on phones.
+- What the column heads *$ per 1M tokens*, *Subagent share* and *Gate
+  blocks per call* and the step-commit line mean, and what a *repeat*
+  conflict call is, stand below their table instead of in a hover title.
+- A milestone's *old basis* or *mixed basis* mark is in the warning tone.
+
+The e2e cases `spend › stream-project-spend tables scroll in their
+container@<width>`, `spend › stream-milestone-spend tables scroll in their
+container@<width>` and `spend › stream-milestone-spend calls of a
+run@<width>` at 375, 768 and 1280 px check the figures against the
+fixture, that neither the page nor the content pane scrolls sideways, and
+at 375 px that the comparison tables' containers do (`scrollWidth >
+clientWidth`) and the drill-down links are 44 px high
+(`stream-project-spend@<width>.png`, `stream-milestone-spend@<width>.png`,
+`stream-milestone-spend-calls@<width>.png`). The milestone's Spend tab is
+also among the hit-area routes.
 
 ## Roadmap
 
