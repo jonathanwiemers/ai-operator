@@ -207,11 +207,6 @@ export interface StreamEventData {
 
 export type SpendLevel = 'milestone' | 'issue' | 'run' | 'call'
 
-// InboxResponse is GET /api/v1/inbox.
-export interface InboxResponse {
-  items: views.InboxItem[]
-}
-
 // Blocks of schema v1 (internal/research/blocks), validated by the server;
 // the result view passes them on as []any. Their text is untrusted agent
 // output: rendered as text only.

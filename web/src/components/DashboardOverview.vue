@@ -3,15 +3,16 @@ import { computed } from 'vue'
 import EngineUsage from './EngineUsage.vue'
 import MilestoneSections from './MilestoneSections.vue'
 import { clockTime, duration } from '../format'
+import { getOverview } from '../client'
 import { useNow, useResource } from '../live'
 import { activeLimits, overviewStrip, type StripChip } from '../overview'
-import type { OverviewView, WorkingNow } from '../types'
+import type { WorkingNow } from '../types'
 
 // The dashboard's Overview tab (decision 4): the summary strip, Working
 // now, and the milestone lists (In progress, Recently done). It reloads on
 // project and task changes.
 const now = useNow()
-const { data: overview, error, loading } = useResource<OverviewView>(() => '/overview', ['project', 'task'])
+const { data: overview, error, loading } = useResource(() => getOverview, ['project', 'task'])
 const strip = computed(() => (overview.value ? overviewStrip(overview.value) : []))
 
 // chip styles one chip of the summary strip. The Inbox chip is a link: 44 px

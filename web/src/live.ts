@@ -75,10 +75,14 @@ function bump(kind: string | null): void {
   }, 400)
 }
 
-// useResource loads path now, when it changes, and on every change event,
-// or with kinds only on events of those kinds; an empty path leaves data
-// null.
-export function useResource<T>(path: () => string, kinds?: string[]) {
+// useResource loads its source now, when it changes, and on every change
+// event, or with kinds only on events of those kinds. The source is a client
+// function (client.ts), e.g. () => getInbox, or a closure over its arguments;
+// null leaves data null. The path form (an API path, empty for nothing) is
+// for the call sites not moved to the client yet (R14).
+export function useResource<T>(source: () => (() => Promise<T>) | null, kinds?: string[]): Resource<T>
+export function useResource<T>(source: () => string, kinds?: string[]): Resource<T>
+export function useResource<T>(source: () => string | (() => Promise<T>) | null, kinds?: string[]): Resource<T> {
   const data = ref<T | null>(null) as Ref<T | null>
   const error = ref<string | null>(null)
   const notFound = ref(false)
@@ -87,8 +91,8 @@ export function useResource<T>(path: () => string, kinds?: string[]) {
 
   async function load() {
     const mine = ++seq
-    const p = path()
-    // An empty path loads nothing (a resource that does not exist yet).
+    const p = source()
+    // An empty source loads nothing (a resource that does not exist yet).
     if (!p) {
       data.value = null
       error.value = null
@@ -97,7 +101,7 @@ export function useResource<T>(path: () => string, kinds?: string[]) {
       return
     }
     try {
-      const v = await get<T>(p)
+      const v = typeof p === 'function' ? await p() : await get<T>(p)
       if (mine !== seq) return
       data.value = v
       error.value = null
@@ -115,7 +119,7 @@ export function useResource<T>(path: () => string, kinds?: string[]) {
     }
   }
 
-  watch(path, () => {
+  watch(source, () => {
     loading.value = true
     data.value = null
     void load()
@@ -129,6 +133,14 @@ export function useResource<T>(path: () => string, kinds?: string[]) {
   )
   onMounted(load)
   return { data, error, notFound, loading, reload: load }
+}
+
+interface Resource<T> {
+  data: Ref<T | null>
+  error: Ref<string | null>
+  notFound: Ref<boolean>
+  loading: Ref<boolean>
+  reload: () => Promise<void>
 }
 
 // now is the current time, updated every 15 seconds for relative times.

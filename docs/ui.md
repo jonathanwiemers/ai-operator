@@ -1347,6 +1347,21 @@ JSON and in TypeScript. Every error is an `ErrorResponse`
 with `writeError` or `writeErrorResponse`, never as a map. Enum types whose constants are not
 named after the type (e.g. `PauseKind`, `PauseOwner`) come out as `string`.
 
+**Client.** The app calls the API only through `web/src/client.ts`: one
+function per route, named verb + resource (`getMe`, `getFeatures`,
+`getInbox`, `logout`, …), with path parameters as arguments that the
+function encodes, and a return type from `generated/views.ts`. A function
+unwraps an envelope only where every caller wants the inner list, and its
+comment says so (`getFeatures` returns `Feature[]`; `getInbox` keeps
+`InboxResponse`). The fetch helpers (`get`, `post`, `del`) and their errors
+(`NotFoundError`, `LoginRequiredError` on 401, which also sets
+`session.loginRequired`, and `ApiError` with the server's message) live
+there too; no `get<T>` or `post<T>` elsewhere. `useResource` (`live.ts`)
+takes a client function, `useResource(() => getInbox, kinds)`, or a closure
+over its arguments. Until every call site has moved, `api.ts` re-exports
+the helpers and errors and `useResource` still takes a path; the
+`api-call-outside-client` check counts what is left.
+
 **Research pages with seeded data.** The research pages need a research
 database and `AgentResearch` objects. For development, a local Postgres
 with seeded results stands in for real runs:

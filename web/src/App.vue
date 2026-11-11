@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { get, hasFeature, isResearchPath, session, setFeatures, LoginRequiredError } from './api'
+import { hasFeature, isResearchPath, session, setFeatures } from './api'
+import { getFeatures, getInbox, getMe, getProjects, getResearches, LoginRequiredError } from './client'
 import { deskTitle } from './format'
 import { inboxKey, newNotifications, notificationText } from './inboxNotify'
 import { inboxRoute } from './inboxRoute'
@@ -17,12 +18,12 @@ import RailNav from './components/RailNav.vue'
 // The sheet is loaded on phones only: the dialog behind it would add about
 // 30 kB gzipped to the initial bundle (docs/ui.md, "Bundle budget").
 const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
-import type { Feature, InboxItem, InboxResponse, Me, ProjectSummary, ResearchSummary } from './types'
+import type { InboxItem, ProjectSummary, ResearchSummary } from './types'
 
 async function loadMe(delay = 2000): Promise<void> {
   try {
-    session.me ??= await get<Me>('/me')
-    setFeatures((await get<{ features: Feature[] }>('/features')).features)
+    session.me ??= await getMe()
+    setFeatures(await getFeatures())
   } catch (e) {
     if (e instanceof LoginRequiredError) {
       setFeatures([])
@@ -80,19 +81,19 @@ async function loadRail() {
   const jobs: Promise<void>[] = []
   if (hasFeature('factory')) {
     jobs.push(
-      get<ProjectSummary[]>('/projects')
+      getProjects()
         .then((p) => {
           projects.value = p
         })
         .catch(() => undefined),
-      get<InboxResponse>('/inbox')
+      getInbox()
         .then((r) => onInbox(r.items ?? []))
         .catch(() => undefined),
     )
   }
   if (hasFeature('research')) {
     jobs.push(
-      get<ResearchSummary[]>('/researches')
+      getResearches()
         .then((r) => {
           researches.value = r
         })

@@ -8,12 +8,12 @@ import RelTime from '../components/RelTime.vue'
 import { duration } from '../format'
 import { inboxRoute } from '../inboxRoute'
 import { pausedStrip } from '../inboxStrip'
+import { getInbox } from '../client'
 import { useResource } from '../live'
 import { disableNotify, enableNotify, notify, notifyActive, refreshPermission } from '../notify'
-import type { InboxResponse } from '../types'
 import Truncated from '../ui/Truncated.vue'
 
-const { data, error, loading } = useResource<InboxResponse>(() => '/inbox', ['project', 'task'])
+const { data, error, loading } = useResource(() => getInbox, ['project', 'task'])
 
 const strip = computed(() => pausedStrip(data.value?.items ?? [], Date.now()))
 

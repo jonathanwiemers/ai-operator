@@ -1,4 +1,5 @@
-import type { InboxResponse, ProjectSummary, ResearchSummary } from '../../src/types'
+import type { ProjectSummary, ResearchSummary } from '../../src/types'
+import type { InboxResponse } from '../../src/generated/views'
 import { ago, cost } from './clock'
 
 // GET /api/v1/projects: the rail's projects.

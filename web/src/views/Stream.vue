@@ -20,6 +20,7 @@ import MilestonePilot from '../components/MilestonePilot.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
+import { getInbox } from '../client'
 import { live, useResource } from '../live'
 import { pausePrompt } from '../pauseCard'
 import {
@@ -39,7 +40,6 @@ import {
 import type {
   Cost,
   HistoryResponse,
-  InboxResponse,
   MilestoneView,
   ProjectDetail,
   StreamEvent,
@@ -129,7 +129,7 @@ async function loadProject() {
   }
 }
 
-const { data: inbox } = useResource<InboxResponse>(() => '/inbox', ['project', 'task'])
+const { data: inbox } = useResource(() => getInbox, ['project', 'task'])
 
 const history = ref<HistoryResponse | null>(null)
 const milestone = ref<MilestoneView | null>(null)

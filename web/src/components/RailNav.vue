@@ -4,7 +4,8 @@
 // tablet and desktop and in the rail sheet on phones; App.vue loads the data.
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { hasFeature, logout, session } from '../api'
+import { hasFeature, session } from '../api'
+import { logout } from '../client'
 import { windowLabel } from '../format'
 import { live } from '../live'
 import { projectDot, projectNeedsYou, projectStateLine } from '../stream'
