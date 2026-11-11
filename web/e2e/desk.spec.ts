@@ -270,3 +270,31 @@ test('colour scheme follows the system live', async ({ page, baseURL }) => {
   problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
+
+// DataList (src/ui/DataList.vue): on a phone each run row shows its labels,
+// from the tablet width up they are hidden and the headers show instead.
+for (const { width, height, labels } of [
+  { width: 375, height: 812, labels: true },
+  { width: 1280, height: 800, labels: false },
+]) {
+  test(`research-runs DataList labels ${labels ? 'visible' : 'hidden'}@${width}`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'research-runs')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const row = page.locator('main tbody tr').first()
+    const rowLabels = row.locator('[data-label]')
+    await expect(rowLabels).toHaveText(['Started', 'Duration', 'Status', 'Agent', 'Choice', 'Cost', 'Error'])
+    for (const l of await rowLabels.all()) {
+      if (labels) await expect(l).toBeVisible()
+      else await expect(l).toBeHidden()
+    }
+    if (labels) await expect(page.locator('main thead')).toBeHidden()
+    else await expect(page.locator('main thead')).toBeVisible()
+  })
+}

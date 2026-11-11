@@ -4,6 +4,7 @@ import { get, LoginRequiredError, NotFoundError } from '../api'
 import { absTime, cost, runLine, type Tone } from '../format'
 import { live } from '../live'
 import Badge from '../components/Badge.vue'
+import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import RelTime from '../components/RelTime.vue'
 import NotFound from './NotFound.vue'
 import type { ResearchRun, ResearchRunsPage } from '../types'
@@ -22,6 +23,18 @@ const loading = ref(true)
 const loadingMore = ref(false)
 const hasMore = ref(false)
 let seq = 0
+
+// Long text wraps; it sits above the row's link overlay, so its title shows.
+const long = 'relative z-1 tablet:min-w-0 tablet:max-w-48 tablet:break-words'
+const columns: DataListColumn[] = [
+  { key: 'startedAt', label: 'Started' },
+  { key: 'duration', label: 'Duration' },
+  { key: 'status', label: 'Status' },
+  { key: 'agent', label: 'Agent' },
+  { key: 'choiceReason', label: 'Choice', class: long },
+  { key: 'costUSD', label: 'Cost' },
+  { key: 'error', label: 'Error', class: long },
+]
 
 const statusTone: Record<ResearchRun['status'], Tone> = {
   running: 'progress',
@@ -108,42 +121,27 @@ watch(
     </div>
 
     <div v-else-if="runs.length" class="card">
-      <table class="list">
-        <thead>
-          <tr>
-            <th>Started</th>
-            <th>Duration</th>
-            <th>Status</th>
-            <th>Agent</th>
-            <th>Choice</th>
-            <th>Cost</th>
-            <th>Error</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="r in runs" :key="r.id" class="run-row">
-            <td>
-              <RouterLink
-                :to="`${base}/runs/${encodeURIComponent(r.id)}`"
-                class="started"
-                :title="absTime(r.startedAt)"
-              >
-                <RelTime :time="r.startedAt" />
-              </RouterLink>
-            </td>
-            <td>{{ duration(r) }}</td>
-            <td>
-              <Badge :tone="statusTone[r.status] ?? 'muted'" :dot="r.status === 'running'" :pulse="r.status === 'running'">
-                {{ r.status }}
-              </Badge>
-            </td>
-            <td class="mono">{{ agent(r) }}</td>
-            <td class="reason" :title="r.choiceReason || undefined">{{ reason(r) }}</td>
-            <td>{{ cost(r.costUSD) }}</td>
-            <td class="err" :title="r.error || undefined">{{ r.error || '—' }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <DataList :columns="columns" :rows="runs" :row-key="(r) => r.id">
+        <template #cell-startedAt="{ row: r }">
+          <RouterLink
+            :to="`${base}/runs/${encodeURIComponent(r.id)}`"
+            class="font-semibold text-(--text) after:absolute after:inset-0 hover:text-(--link) hover:no-underline"
+            :title="absTime(r.startedAt)"
+          >
+            <RelTime :time="r.startedAt" />
+          </RouterLink>
+        </template>
+        <template #cell-duration="{ row: r }">{{ duration(r) }}</template>
+        <template #cell-status="{ row: r }">
+          <Badge :tone="statusTone[r.status] ?? 'muted'" :dot="r.status === 'running'" :pulse="r.status === 'running'">
+            {{ r.status }}
+          </Badge>
+        </template>
+        <template #cell-agent="{ row: r }"><span class="font-mono">{{ agent(r) }}</span></template>
+        <template #cell-choiceReason="{ row: r }"><span :title="r.choiceReason || undefined">{{ reason(r) }}</span></template>
+        <template #cell-costUSD="{ row: r }">{{ cost(r.costUSD) }}</template>
+        <template #cell-error="{ row: r }"><span :title="r.error || undefined">{{ r.error || '—' }}</span></template>
+      </DataList>
     </div>
 
     <div v-if="hasMore" class="more">
@@ -157,37 +155,6 @@ watch(
 <style scoped>
 .head {
   margin-bottom: 14px;
-}
-
-.run-row {
-  position: relative;
-}
-
-.started {
-  color: var(--text);
-  font-weight: 550;
-}
-
-.started:hover {
-  text-decoration: none;
-  color: var(--link);
-}
-
-/* The whole row opens the run. */
-.started::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-}
-
-.reason,
-.err {
-  max-width: 196px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  position: relative;
-  z-index: 1;
 }
 
 .more {

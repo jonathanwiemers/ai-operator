@@ -1460,7 +1460,7 @@ the Nuxt framework). The packages are pinned in `web/package.json`; the
 Vite plugin is `ui()` from `@nuxt/ui/vite` in `web/vite.config.ts`, and
 `App.vue` wraps the app in `<UApp>`. Views moved to the kit use components
 and utilities and drop their scoped CSS, except what utilities cannot
-express. `web/src/ui/` will hold only what Nuxt UI lacks. Not found
+express. `web/src/ui/` holds only what Nuxt UI lacks ([DataList](#datalist)). Not found
 (`views/NotFound.vue`) is the first view on it.
 
 **Imports are explicit.** Auto-imports and component resolution are off
@@ -1511,6 +1511,33 @@ only the properties it sets. Do not give own classes utility names (`table`,
 withheld message `withheld`. `block` (milestone, retrospective), `static`
 (prompt options) and `grid` (an SVG group in the context chart) remain, as
 their utilities change nothing there.
+
+### DataList
+
+`web/src/ui/DataList.vue` is the one table component Nuxt UI lacks: below
+760 px (the `tablet:` variant, `--breakpoint-tablet` in `style.css`, the only
+breakpoint views use) each row is a card and each cell a two-column grid of
+a label and the value; from 760 px up it is a plain table with a header row.
+It renders one `<table>`, restyled by utilities, so there is one DOM for
+screen readers and find-in-page. The label is a real `<span data-label
+aria-hidden>` hidden from the tablet width up (never `content: attr()`), so it
+stays selectable.
+
+```vue
+<DataList :columns="[{ key: 'status', label: 'Status' }]" :rows="runs" :row-key="(r) => r.id">
+  <template #cell-status="{ row }"><Badge>{{ row.status }}</Badge></template>
+</DataList>
+```
+
+- `columns`: `{ key, label, class? }`; `class` goes on the column's cells.
+- `rows`, `rowKey`: the data and a unique key per row.
+- Slot `cell-<key>` with `{ row }`; without it the cell shows `row[key]`.
+- `scroll`: the table keeps its columns at every width and scrolls inside its
+  own `overflow-x-auto` container, for comparison tables (Spend). The page
+  never scrolls sideways.
+
+A row is `relative`, so a link in a cell can cover the row with
+`after:absolute after:inset-0`. The research runs table is the first user.
 
 ## Roadmap
 

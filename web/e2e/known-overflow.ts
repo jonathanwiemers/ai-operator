@@ -3,11 +3,6 @@
 // that fixes an overflow removes its entry here. Each entry names what is
 // too wide and by how much (scrollWidth - clientWidth, measured).
 export const knownOverflow: Record<string, string> = {
-  // The paused strip (.paused-strip in Inbox.vue) keeps its parts on one
-  // line, so the page is at least 741 px wide.
-  'inbox@375': 'content pane 366 px: the Inbox paused strip',
-  'inbox@768': 'content pane 221 px: the Inbox paused strip',
-
   // Stream.vue's .title-row keeps the title, the tab strip and (on the
   // Stream tab) the search form on one line.
   'stream-project-stream@375': 'content pane 192 px: the title row (tab strip and search form)',
@@ -34,11 +29,4 @@ export const knownOverflow: Record<string, string> = {
 
   // The one-off form's project select is as wide as its longest option.
   'research-new@375': 'content pane 162 px: the project select',
-  'research-new@768': 'content pane 17 px: the project select',
-  // The result's links block keeps each link on one line.
-  'research-report@375': 'content pane 8 px: the result blocks (links)',
-  'research-run@375': 'content pane 8 px: the result blocks (links)',
-  // The runs table has no narrow layout.
-  'research-runs@375': 'content pane 569 px: the runs table',
-  'research-runs@768': 'content pane 424 px: the runs table',
 }

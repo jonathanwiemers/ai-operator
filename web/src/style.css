@@ -7,6 +7,11 @@
 @import 'tailwindcss/utilities.css' layer(utilities);
 @import '@nuxt/ui';
 
+/* The narrow-screen breakpoint: phones are below it (docs/ui.md, "DataList"). */
+@theme {
+  --breakpoint-tablet: 760px;
+}
+
 :root {
   --bg: #f6f6f8;
   --surface: #ffffff;
@@ -324,6 +329,9 @@
 }
 
 .page {
+  /* Auto margins stop a flex item stretching; without a width a wide child
+     (a table) would size the page and widen the pane. */
+  width: 100%;
   max-width: 1400px;
   margin: 0 auto;
   padding: 24px 24px 64px;
