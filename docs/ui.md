@@ -629,6 +629,13 @@ strong, emphasis, strikethrough and code stay, a link shows as its label (never 
 `<a>`), headings, list and quote markers, fences, rules and `<details>` keep only
 their text, and newlines fold into spaces.
 
+Where it applies (decision 7): text an agent or a person wrote and the page shows as
+a block renders through `<Markdown mode="block">`: a run summary, a conversation note,
+a research result summary, a news item summary, a prompt question and option detail,
+the autopilot's pause reason and release reason, the assistant's lines of the live
+transcript, and a research run's prompt. Machine strings stay plain text: condition
+messages, exit reasons, API errors and thinking lines.
+
 ## What it shows
 
 | Page | Content |

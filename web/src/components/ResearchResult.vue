@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import { runLine } from '../format'
 import { newsflash } from '../newsflash'
@@ -46,7 +47,7 @@ const flash = computed(() =>
         <span v-else :title="run?.choiceReason">{{ line }}</span>
         <span v-if="run && run.status !== 'succeeded'"> · {{ run.status }}</span>
       </div>
-      <p v-if="result.summary" class="summary prose">{{ result.summary }}</p>
+      <Markdown v-if="result.summary" class="summary" :text="result.summary" />
     </header>
 
     <template v-if="flash">

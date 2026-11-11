@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from './Markdown.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ApiError, get, post, LoginRequiredError } from '../api'
 import ExtLink from './ExtLink.vue'
@@ -162,7 +163,7 @@ watch(() => props.stamp, loadThread)
             <strong>@{{ n.author }}</strong>
             <span class="faint"><RelTime :time="n.createdAt" /></span>
           </div>
-          <div class="text">{{ n.body }}</div>
+          <Markdown class="text" :text="n.body" />
         </div>
       </div>
       <form v-if="steer && current" class="composer" @submit.prevent="send">
@@ -291,7 +292,6 @@ watch(() => props.stamp, loadThread)
 }
 
 .text {
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 14px;
 }

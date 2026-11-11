@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from './Markdown.vue'
 import Badge from './Badge.vue'
 import type { TranscriptEntry } from '../types'
 
@@ -29,7 +30,7 @@ const time = (t?: string) => (t ? new Date(t).toLocaleTimeString() : '')
     </template>
     <template v-else-if="e.kind === 'says'">
       <span class="who">says</span>
-      <span class="text">{{ e.text }}</span>
+      <Markdown class="text says" :text="e.text ?? ''" />
     </template>
     <template v-else-if="e.kind === 'tool'">
       <span class="who faint">tool</span>
@@ -80,6 +81,10 @@ const time = (t?: string) => (t ? new Date(t).toLocaleTimeString() : '')
 .text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.says {
+  white-space: normal;
 }
 
 .thinking {

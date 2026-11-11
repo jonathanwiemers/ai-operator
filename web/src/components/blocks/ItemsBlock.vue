@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from '../Markdown.vue'
 import Badge from '../Badge.vue'
 import ExtLink from '../ExtLink.vue'
 import RelTime from '../RelTime.vue'
@@ -23,7 +24,7 @@ const importance: Record<number, { label: string; tone: 'warning' | 'muted' } | 
           {{ importance[it.importance]!.label }}
         </Badge>
       </div>
-      <p v-if="it.summary" class="summary prose">{{ it.summary }}</p>
+      <Markdown v-if="it.summary" class="summary" :text="it.summary" />
       <div class="meta faint">
         <span v-if="it.source">{{ it.source }}</span>
         <RelTime v-if="it.publishedAt" :time="it.publishedAt" />

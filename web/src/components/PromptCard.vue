@@ -64,7 +64,7 @@ watch(() => route.hash, scrollIfLinked)
       <span class="spacer" />
       <span class="faint"><RelTime :time="prompt.postedAt" /></span>
     </div>
-    <p class="question">{{ prompt.question }}</p>
+    <Markdown class="question" :text="prompt.question" />
     <Markdown v-if="prompt.context" class="context" :text="prompt.context" />
 
     <ul class="options">
@@ -83,7 +83,7 @@ watch(() => route.hash, scrollIfLinked)
           <span v-if="o.chosen" aria-label="chosen">✓ </span><span class="label">{{ o.label }}</span>
         </span>
         <span v-for="t in o.tags" :key="t" class="tag">{{ t }}</span>
-        <p v-if="o.detail" class="detail muted">{{ o.detail }}</p>
+        <Markdown v-if="o.detail" class="detail muted" :text="o.detail" />
         <p v-for="(a, i) in o.actions" :key="i" class="action faint">→ {{ a }}</p>
       </li>
     </ul>
@@ -145,7 +145,6 @@ watch(() => route.hash, scrollIfLinked)
 }
 .question {
   font-weight: 600;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .context {

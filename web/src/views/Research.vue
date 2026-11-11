@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from '../components/Markdown.vue'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { del } from '../api'
@@ -91,7 +92,7 @@ async function remove() {
             {{ deleting ? 'Deleting…' : 'Delete' }}
           </button>
         </div>
-        <p class="prompt prose" :class="{ clamped: !showPrompt }">{{ r.prompt }}</p>
+        <Markdown class="prompt" :class="{ clamped: !showPrompt }" :text="r.prompt" />
         <button v-if="r.prompt.length > 240" type="button" class="more" @click="showPrompt = !showPrompt">
           {{ showPrompt ? 'Show less' : 'Show the whole prompt' }}
         </button>

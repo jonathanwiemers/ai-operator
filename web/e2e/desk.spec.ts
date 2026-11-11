@@ -803,3 +803,34 @@ test.describe('bottom bar', () => {
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 })
+
+// Block markdown (R8, decision 7): the run summary and a conversation note
+// render as markdown, no literal asterisks.
+test.describe('block markdown', () => {
+  for (const { width, height } of [widths[0]!, widths[2]!]) {
+    test(`task summary and note render markdown@${width}`, async ({ page, baseURL }, testInfo) => {
+      const route = routes.find((r) => r.name === 'task')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize({ width, height })
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.goto(route.path)
+      await route.ready(page)
+
+      const summary = page.locator('main .card.body').filter({ hasText: 'full refunds' }).first()
+      await expect(summary.locator('strong').first()).toHaveText('full refunds')
+      expect(await summary.locator('li').count(), 'a list').toBeGreaterThan(1)
+      await expect(summary).not.toContainText('**')
+
+      const note = page.locator('main .md').filter({ hasText: 'partial refunds' }).filter({ has: page.locator('strong') }).first()
+      await expect(note.locator('strong').first()).toBeVisible()
+      await expect(note).not.toContainText('**')
+
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `markdown-task@${width}.png`)
+      await page.screenshot({ path: shot, fullPage: true })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+})

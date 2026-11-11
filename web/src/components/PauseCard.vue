@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from './Markdown.vue'
 import { computed, ref, watch } from 'vue'
 import { chatPostError, getTaskChat, postTaskChat } from '../api'
 import type { ChatCommand } from '../chatState'
@@ -227,7 +228,7 @@ watch(
 <template>
   <section v-if="ap" class="card pause">
     <h2>{{ pauseTitle(kind) }}</h2>
-    <p v-if="ap.pausedReason" class="text">{{ ap.pausedReason }}</p>
+    <Markdown v-if="ap.pausedReason" class="text" :text="ap.pausedReason" />
     <p v-else-if="!kind" class="muted">Waiting for a human.</p>
     <p v-if="pauseExplain(kind)" class="muted">{{ pauseExplain(kind) }}</p>
 
@@ -240,7 +241,7 @@ watch(
         contains {{ release.issues.map((n) => `#${n}`).join(', ') }}
       </span>
     </div>
-    <p v-if="releaseReason" class="text">{{ releaseReason }}</p>
+    <Markdown v-if="releaseReason" class="text" :text="releaseReason" />
 
     <div v-if="issue" class="row issue">
       <ExtLink :href="issueURL">#{{ issue }}</ExtLink>

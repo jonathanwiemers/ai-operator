@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import { hasFeature } from '../api'
 import { ciLabel, ciTone, cost, deferringEngine, phaseTone, shortSHA } from '../format'
@@ -178,7 +179,7 @@ const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('ch
 
   <section v-if="run.summary" class="section">
     <h3>Summary of the last run</h3>
-    <div class="card body prose">{{ run.summary }}</div>
+    <Markdown class="card body" :text="run.summary" />
   </section>
 
   <div v-if="t.type === 'Implement'" class="cols section">
