@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { renderMarkdown } from '../src/markdown.ts'
+import { renderInline, renderMarkdown } from '../src/markdown.ts'
 
 const link = (href, label) => h('a', { href, rel: 'noopener noreferrer nofollow' }, label)
 
@@ -101,4 +101,44 @@ test('a retrospective reads as on GitLab, its HTML as text', async () => {
       '<tbody><tr><td>#12</td><td style="text-align:right;">$1.20</td><td style="text-align:right;">1.2M</td></tr></tbody></table></div>' +
       '<ol><li><p>Follow-up &lt;img src=x onerror=alert(1)&gt;</p></li></ol>',
   )
+})
+
+async function mdInline(src) {
+  const html = await renderToString(createSSRApp({ render: () => h('span', renderInline(src)) }))
+  return html.replace(/^<span>|<\/span>$/g, '').replaceAll('<!--[-->', '').replaceAll('<!--]-->', '')
+}
+
+const inlineCases = [
+  ['strong, emphasis and code', '**bold** _em_ `code`', '<strong>bold</strong> <em>em</em> <code>code</code>'],
+  ['a link is its label', 'see [the *MR*](https://a.example/mr)', 'see the <em>MR</em>'],
+  ['javascript link is its label', '[click](javascript:alert(1))', 'click'],
+  ['list markers dropped', '- a\n- b', 'a b'],
+  ['ordered and task items', '1. [x] done\n2. [ ] open', 'done open'],
+  ['heading keeps its text', '# Title', 'Title'],
+  ['quote markers dropped', '> > quoted **x**', 'quoted <strong>x</strong>'],
+  ['fences and rules keep the text only', '```js\nlet a\n```\n---\nafter', 'let a after'],
+  ['details tags dropped', '<details><summary>More</summary>\nbody\n</details>', 'More body'],
+  ['newlines fold into spaces', 'one\ntwo\r\n\nthree', 'one two three'],
+  ['emphasis across lines', '**a\nb**', '<strong>a b</strong>'],
+  ['HTML tags are text', '<script>alert(1)</script> <a href="https://x">y</a>', '&lt;script&gt;alert(1)&lt;/script&gt; &lt;a href=&quot;https://x&quot;&gt;y&lt;/a&gt;'],
+]
+
+for (const [name, src, want] of inlineCases) {
+  test(`inline: ${name}`, async () => {
+    assert.equal(await mdInline(src), want)
+  })
+}
+
+test('inline: no href anywhere in the output', async () => {
+  const out = await mdInline('[a](https://a.example) and [b](http://b.example "t") <https://c.example>')
+  assert.doesNotMatch(out, /href/)
+  assert.equal(out, 'a and b &lt;https://c.example&gt;')
+})
+
+test('inline: links inside a row render no anchor', async () => {
+  const html = await renderToString(
+    createSSRApp({ render: () => h('a', { href: '/tasks/1' }, [h('span', renderInline('see [MR](https://x)'))]) }),
+  )
+  assert.equal((html.match(/<a\b/g) ?? []).length, 1)
+  assert.match(html, /see MR/)
 })

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { Component } from 'vue'
+import { h, type Component, type FunctionalComponent } from 'vue'
 import type { Block } from '../../types'
+import Markdown from '../Markdown.vue'
 import HeadingBlock from './HeadingBlock.vue'
-import MarkdownBlock from './MarkdownBlock.vue'
 import ItemsBlock from './ItemsBlock.vue'
 import TableBlock from './TableBlock.vue'
 import StatsBlock from './StatsBlock.vue'
@@ -11,6 +11,10 @@ import LinksBlock from './LinksBlock.vue'
 // The blocks of a research result, one component per type. Unknown types
 // (from a newer schema) are skipped; the server drops them already.
 defineProps<{ blocks: Block[] }>()
+
+// A markdown block is a document: the doc variant's spacing and headings.
+const MarkdownBlock: FunctionalComponent<{ text: string }> = (p) => h(Markdown, { text: p.text, variant: 'doc' })
+MarkdownBlock.props = ['text']
 
 const components: Record<string, Component> = {
   heading: HeadingBlock,

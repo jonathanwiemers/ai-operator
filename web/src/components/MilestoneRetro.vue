@@ -15,7 +15,7 @@ import { commandAnswer } from '../pauseCard'
 import Badge from './Badge.vue'
 import ExtLink from './ExtLink.vue'
 import RelTime from './RelTime.vue'
-import MarkdownBody from './blocks/MarkdownBlock.vue'
+import Markdown from './Markdown.vue'
 import { cost, tokenCount } from '../format'
 import { driverShares, followUpStateLabel, followUpStateTone } from '../retrospective'
 import type { FollowUpMilestoneView, MilestoneView } from '../types'
@@ -221,7 +221,7 @@ const draftHint = computed(() =>
       </div>
       <div v-if="r.failed" class="banner warning">No retrospective: {{ r.failed }}</div>
 
-      <div v-if="r.text" class="block text"><MarkdownBody :text="r.text" /></div>
+      <div v-if="r.text" class="block text"><Markdown variant="doc" :text="r.text" /></div>
       <p v-else-if="!r.failed" class="note">The text of this retrospective is not stored.</p>
 
       <div v-if="drivers.length" class="block">
@@ -259,7 +259,7 @@ const draftHint = computed(() =>
             </div>
             <details v-if="f.body">
               <summary>Details</summary>
-              <MarkdownBody :text="f.body" />
+              <Markdown variant="doc" :text="f.body" />
             </details>
           </li>
         </ul>
@@ -324,7 +324,7 @@ const draftHint = computed(() =>
               <span class="label-like">Preview</span>
               <div class="preview">
                 <h4 class="ptitle">{{ title.trim() || 'Untitled' }}</h4>
-                <MarkdownBody :text="description" />
+                <Markdown variant="doc" :text="description" />
               </div>
             </div>
           </div>

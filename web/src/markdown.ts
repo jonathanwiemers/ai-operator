@@ -29,6 +29,32 @@ export function renderMarkdown(src: string, link: LinkFn): VNode[] {
   return blocks(src.replace(/\r\n?/g, '\n').split('\n'), link, 0)
 }
 
+// renderInline renders src as one line for rows that are links already:
+// strong, emphasis, strikethrough and code stay, a link shows as its label,
+// block markup (headings, list and quote markers, fences, rules, details)
+// keeps only its text and newlines fold into spaces.
+export function renderInline(src: string): VNodeChild[] {
+  const text = src
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map(unblock)
+    .filter((l) => l !== '')
+    .join(' ')
+  return inline(text, (_, label) => label, 0).flat()
+}
+
+// unblock is the text of one line without its block markup.
+function unblock(line: string): string {
+  const fence = fenceRe.exec(line)
+  if ((fence && !(fence[2]![0] === '`' && fence[3]!.includes('`'))) || hrRe.test(line)) return ''
+  let l = line.replace(detailsTagRe, ' ').replace(/<\/?summary>/gi, ' ').trim()
+  for (let d = 0; d < maxDepth && quoteRe.test(l); d++) l = l.replace(quoteRe, '').trimStart()
+  const heading = headingRe.exec(l)
+  if (heading) return (heading[2] ?? '').trim()
+  for (let d = 0, m: RegExpExecArray | null; d < maxDepth && (m = itemRe.exec(l)); d++) l = m[4]!.replace(taskRe, '')
+  return l.trim()
+}
+
 function startsBlock(line: string): boolean {
   return (
     fenceRe.test(line) || headingRe.test(line) || quoteRe.test(line) || itemRe.test(line) || hrRe.test(line) || detailsRe.test(line)

@@ -14,7 +14,7 @@ import {
 } from '../../releaseEvents'
 import Badge from '../Badge.vue'
 import ExtLink from '../ExtLink.vue'
-import MarkdownBody from './MarkdownBody.vue'
+import Markdown from '../Markdown.vue'
 import PromptCardCompact from '../PromptCardCompact.vue'
 import NoteThread from './NoteThread.vue'
 
@@ -214,7 +214,7 @@ function taskLink(ev: StreamEvent) {
 
       <!-- proposal -->
       <div v-else-if="e.kind === 'proposal'" class="card pilot">
-        <MarkdownBody v-if="e.data.body" :text="e.data.body" />
+        <Markdown v-if="e.data.body" :text="e.data.body" />
         <p v-else>{{ e.summary }}</p>
         <div v-if="e.data.proposalState === 'open' || !e.data.proposalState" class="btns">
           <button
@@ -285,7 +285,7 @@ function taskLink(ev: StreamEvent) {
           <Badge v-if="e.data.kind && e.data.kind !== 'message'" tone="info">{{ e.data.kind }}</Badge>
           <Badge v-if="e.data.state" tone="progress">{{ e.data.state }}</Badge>
         </div>
-        <MarkdownBody v-if="e.data.body" :text="e.data.body" />
+        <Markdown v-if="e.data.body" :text="e.data.body" />
         <p v-else-if="e.redacted" class="muted">message hidden</p>
         <RouterLink v-if="taskLink(e)" class="t chat-link" :to="taskLink(e)!">Open chat</RouterLink>
       </div>

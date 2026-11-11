@@ -14,7 +14,7 @@ import {
 import type { PromptView } from '../types'
 import Badge from './Badge.vue'
 import RelTime from './RelTime.vue'
-import MarkdownBody from './stream/MarkdownBody.vue'
+import Markdown from './Markdown.vue'
 
 // PromptCard is one question to the owners in full: the question, its
 // context, the options (recommended first, a detail line each), a text box
@@ -65,7 +65,7 @@ watch(() => route.hash, scrollIfLinked)
       <span class="faint"><RelTime :time="prompt.postedAt" /></span>
     </div>
     <p class="question">{{ prompt.question }}</p>
-    <MarkdownBody v-if="prompt.context" class="context" :text="prompt.context" />
+    <Markdown v-if="prompt.context" class="context" :text="prompt.context" />
 
     <ul class="options">
       <li v-for="o in options" :key="o.id" :class="{ chosen: o.chosen, rec: o.recommended }">
@@ -109,15 +109,15 @@ watch(() => route.hash, scrollIfLinked)
     <p class="status" :class="{ muted: open }">
       {{ status.text }}<template v-if="!open && status.at"> · <RelTime :time="status.at" /></template>
     </p>
-    <MarkdownBody v-if="prompt.answer?.text && prompt.state === 'answered'" class="said" :text="prompt.answer.text" />
-    <MarkdownBody v-if="prompt.answer?.outcome" class="outcome" :text="prompt.answer.outcome" />
+    <Markdown v-if="prompt.answer?.text && prompt.state === 'answered'" class="said" :text="prompt.answer.text" />
+    <Markdown v-if="prompt.answer?.outcome" class="outcome" :text="prompt.answer.outcome" />
 
     <div v-if="sent" class="reply">
       <strong>{{ sent.label }}:</strong>
       <span v-if="answer.state === 'pending'" class="faint"> sent…</span>
       <span v-else-if="answer.state === 'failed'" class="err"> {{ answer.reason }}</span>
       <span v-else-if="answer.redacted" class="muted"> answered</span>
-      <MarkdownBody v-else :text="answer.text" />
+      <Markdown v-else :text="answer.text" />
     </div>
     <p v-if="error" class="err">{{ error }}</p>
   </section>

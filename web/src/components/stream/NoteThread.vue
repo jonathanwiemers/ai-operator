@@ -5,7 +5,7 @@ import { clockTime, fullTime } from '../../format'
 import { useNow } from '../../live'
 import type { StreamEvent } from '../../types'
 import ExtLink from '../ExtLink.vue'
-import MarkdownBody from './MarkdownBody.vue'
+import Markdown from '../Markdown.vue'
 
 const props = defineProps<{ notes: StreamEvent[] }>()
 const now = useNow()
@@ -55,7 +55,7 @@ function ctx(e: StreamEvent) {
             <ExtLink v-if="n.data.url" :href="n.data.url">open</ExtLink>
           </p>
         </template>
-        <MarkdownBody v-else-if="n.data.body" :text="n.data.body" />
+        <Markdown v-else-if="n.data.body" :text="n.data.body" />
         <p v-else>{{ n.summary }}</p>
       </div>
     </div>

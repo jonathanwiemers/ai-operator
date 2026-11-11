@@ -621,6 +621,13 @@ comments are dropped. Everything else, other raw HTML and any tag with
 attributes included, shows as typed. Links
 only go to `http(s)` URLs, open in a new tab with `rel="noopener noreferrer
 nofollow"`, and other links show as their text. Images are never loaded.
+One component renders it everywhere, `Markdown` (`web/src/components/Markdown.vue`).
+`mode="block"` (the default) renders the above, with the `note` spacing for chat,
+events and prompts or the `doc` spacing and headings for research results and
+retrospectives. `mode="inline"` renders one line for rows that are links already:
+strong, emphasis, strikethrough and code stay, a link shows as its label (never an
+`<a>`), headings, list and quote markers, fences, rules and `<details>` keep only
+their text, and newlines fold into spaces.
 
 ## What it shows
 

@@ -525,8 +525,8 @@ table.list tr:last-child td {
   color: var(--text-3);
 }
 
-/* Markdown elements beyond the basics, shared by MarkdownBody and
-   MarkdownBlock (markdown.ts). */
+/* Markdown elements beyond the basics, for both variants of the Markdown
+   component (components/Markdown.vue, markdown.ts). */
 .md .table-scroll {
   margin: 8px 0;
   overflow-x: auto;

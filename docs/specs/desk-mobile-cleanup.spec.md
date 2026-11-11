@@ -368,3 +368,11 @@ follow-up issue), and requirements without an issue and why.
   padding go while a text field has the focus (D313-P2,
   `web/src/textEntry.ts`). Initial bundle 121.8 kB with `UIcon`. Nothing
   narrowed.
+- 2026-11-11 #314 (R7 Markdown component): `components/Markdown.vue`
+  with `mode` `block` (default) or `inline` replaces `MarkdownBody` and
+  `MarkdownBlock`. The two wrappers spaced block markdown differently, so
+  block keeps both as `variant` `note` (chat, events, prompts) and `doc`
+  (research blocks, retrospectives) and renders as before.
+  `renderInline` in `markdown.ts` strips block markup per line and runs
+  the existing inline tokenizer with a link function that returns the
+  label (D314-P1). No call site uses `inline` yet (R9). Nothing narrowed.

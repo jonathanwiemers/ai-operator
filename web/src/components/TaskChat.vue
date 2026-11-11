@@ -7,7 +7,7 @@ import type { AutopilotItem, AutopilotPhase, ChatMessage, ChatState, ProposalVie
 import Badge from './Badge.vue'
 import ChatComposer from './ChatComposer.vue'
 import RelTime from './RelTime.vue'
-import MarkdownBody from './stream/MarkdownBody.vue'
+import Markdown from './Markdown.vue'
 
 const props = defineProps<{
   namespace: string
@@ -255,7 +255,7 @@ onUnmounted(() => {
             </div>
             <p v-if="msg.redacted && !msg.body" class="withheld">message hidden</p>
             <p v-else-if="msg.kind === 'command'" class="cmd">{{ commandLabel(msg.body) }}</p>
-            <MarkdownBody v-else-if="msg.body" :text="msg.body" />
+            <Markdown v-else-if="msg.body" :text="msg.body" />
             <p v-if="msg.role === 'user' && msg.state === 'failed' && msg.reason" class="reason">
               {{ msg.reason }}
             </p>
@@ -272,7 +272,7 @@ onUnmounted(() => {
               >
                 message hidden
               </p>
-              <MarkdownBody
+              <Markdown
                 v-else-if="repliesByParent.get(msg.id)!.body"
                 :text="repliesByParent.get(msg.id)!.body!"
               />
