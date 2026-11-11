@@ -503,3 +503,12 @@ follow-up issue), and requirements without an issue and why.
   `PromptCard`. `MilestoneSections.vue` is the dashboard's and project
   page's milestone list, not this tab; it moved with the Dashboard slice.
   `milestoneQueue.ts` and its tests unchanged. Nothing narrowed.
+- 2026-11-11 #330 (R12 Board tab): `Board.vue`, `TaskCard.vue` and
+  `ProjectBoards.vue` moved to utilities, no scoped `<style>`. Columns: four
+  on desktop, two on a tablet, stacked on a phone, each with heading and
+  count (an empty one on a phone is only its heading, where it was hidden
+  before). Cards wrap their titles and badges (already `Badge` on
+  `UBadge`), are the link and ≥ 44 px; the milestone heading's links and
+  the *Plan* card 44 px on phones. Cards draw their own border instead of
+  the unlayered `.card`, so the hover border and shadow utilities apply.
+  Nothing narrowed.

@@ -4,13 +4,17 @@ import TaskCard from './TaskCard.vue'
 import type { Stage, Task } from '../types'
 
 // The issues of a milestone in columns like the GitLab board.
+//
+// Utilities only (docs/ui.md, "Board"): four columns on desktop, two on a
+// tablet, stacked on a phone. Every column keeps its heading and count; on
+// a phone an empty one is only its heading.
 const props = defineProps<{ tasks: Task[] }>()
 
-const columns: { key: string; title: string; stages: Stage[] }[] = [
-  { key: 'progress', title: 'In progress', stages: ['working', 'waiting', 'pending'] },
-  { key: 'attention', title: 'Needs you', stages: ['needs-input', 'failed', 'blocked'] },
-  { key: 'ci', title: 'CI', stages: ['ci'] },
-  { key: 'review', title: 'Review', stages: ['review', 'planned'] },
+const columns: { key: string; title: string; stages: Stage[]; accent: string }[] = [
+  { key: 'progress', title: 'In progress', stages: ['working', 'waiting', 'pending'], accent: 'border-t-(--tone-progress-fg)' },
+  { key: 'attention', title: 'Needs you', stages: ['needs-input', 'failed', 'blocked'], accent: 'border-t-(--tone-warning-fg)' },
+  { key: 'ci', title: 'CI', stages: ['ci'], accent: 'border-t-(--tone-info-fg)' },
+  { key: 'review', title: 'Review', stages: ['review', 'planned'], accent: 'border-t-(--tone-success-fg)' },
 ]
 
 const filled = computed(() =>
@@ -19,96 +23,28 @@ const filled = computed(() =>
 </script>
 
 <template>
-  <div class="board">
-    <section v-for="c in filled" :key="c.key" class="column" :class="[c.key, { empty: !c.tasks.length }]">
-      <header>
+  <div class="grid grid-cols-1 gap-3 tablet:grid-cols-2 desktop:grid-cols-4" data-board>
+    <section
+      v-for="c in filled"
+      :key="c.key"
+      class="min-w-0 rounded-(--radius) border-t-3 bg-(--surface-2) p-2.5"
+      :class="[c.accent, c.tasks.length ? 'min-h-20' : 'tablet:min-h-20']"
+      :aria-label="c.title"
+      :data-column="c.key"
+    >
+      <header
+        class="flex items-center justify-between px-1 pt-0.5 text-xs font-[650] tracking-[0.04em] text-(--text-2) uppercase"
+        :class="c.tasks.length ? 'pb-2.5' : 'pb-0.5 tablet:pb-2.5'"
+      >
         <span>{{ c.title }}</span>
-        <span class="count">{{ c.tasks.length }}</span>
+        <span class="rounded-full border border-(--border) bg-(--surface) px-2 text-[11px] tabular-nums" data-count>
+          {{ c.tasks.length }}
+        </span>
       </header>
-      <div class="cards">
+      <div class="flex flex-col gap-2">
         <TaskCard v-for="t in c.tasks" :key="t.name" :task="t" />
-        <div v-if="!c.tasks.length" class="none">—</div>
+        <div v-if="!c.tasks.length" class="hidden py-3 text-center text-(--text-3) tablet:block">—</div>
       </div>
     </section>
   </div>
 </template>
-
-<style scoped>
-.board {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-@media (max-width: 1179.98px) {
-  .board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 759.98px) {
-  .board {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  /* One column per row: empty ones only take space. */
-  .column.empty {
-    display: none;
-  }
-}
-
-.column {
-  background: var(--surface-2);
-  border-radius: var(--radius);
-  padding: 10px;
-  min-height: 80px;
-  border-top: 3px solid var(--border-strong);
-}
-
-.column.progress {
-  border-top-color: var(--tone-progress-fg);
-}
-
-.column.attention {
-  border-top-color: var(--tone-warning-fg);
-}
-
-.column.ci {
-  border-top-color: var(--tone-info-fg);
-}
-
-.column.review {
-  border-top-color: var(--tone-success-fg);
-}
-
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-2);
-  padding: 2px 4px 10px;
-}
-
-.count {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0 8px;
-  font-size: 11px;
-}
-
-.cards {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.none {
-  color: var(--text-3);
-  text-align: center;
-  padding: 12px 0;
-}
-</style>

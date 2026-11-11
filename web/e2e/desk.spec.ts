@@ -1903,3 +1903,82 @@ test.describe('milestone pilot', () => {
     })
   }
 })
+
+// The Board tab (Board.vue, TaskCard.vue, ProjectBoards.vue, R12),
+// utilities only: four columns side by side on desktop, two on a tablet,
+// stacked on a phone. Every column keeps its heading and count, the cards
+// stay inside their column with wrapping titles and are at least 44 px
+// high, and on a phone the milestone headings' links are 44 px high.
+test.describe('board', () => {
+  for (const size of widths) {
+    const phone = size.width < 760
+    const perRow = phone ? 1 : size.width < 1180 ? 2 : 4
+    for (const name of ['stream-project-board', 'stream-milestone-board']) {
+      test(`${name} columns and cards@${size.width}`, async ({ page, baseURL }, testInfo) => {
+        const route = routes.find((r) => r.name === name)!
+        const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+        await page.setViewportSize(size)
+        await page.clock.setFixedTime(now)
+        await watch(page, new URL(baseURL ?? '').origin, problems)
+        await mockAPI(page, route, problems)
+        await page.goto(route.path)
+        await route.ready(page)
+
+        const boards = await page.locator('main [data-board]').evaluateAll((els) =>
+          els.map((b) => {
+            const box = (e: Element) => e.getBoundingClientRect()
+            const columns = [...b.querySelectorAll('[data-column]')]
+            return {
+              columns: columns.map((c) => c.getAttribute('data-column')),
+              counts: columns.map((c) => Number(c.querySelector('[data-count]')!.textContent!.trim())),
+              cardsPerColumn: columns.map((c) => c.querySelectorAll('[data-task-card]').length),
+              headingsShown: columns.every((c) => box(c.querySelector('header')!).height > 0),
+              lefts: [...new Set(columns.map((c) => Math.round(box(c).left)))].length,
+              cards: [...b.querySelectorAll('[data-task-card]')].map((card) => {
+                const col = box(card.closest('[data-column]')!)
+                const r = box(card)
+                const title = card.querySelector('[data-title]')!
+                return {
+                  height: r.height,
+                  inside: r.left >= col.left - 0.5 && r.right <= col.right + 0.5,
+                  titleInside: title.scrollWidth <= title.clientWidth,
+                }
+              }),
+              inside: b.scrollWidth <= b.clientWidth,
+            }
+          }),
+        )
+        expect(boards.length).toBeGreaterThan(0)
+        for (const b of boards) {
+          expect(b.columns).toEqual(['progress', 'attention', 'ci', 'review'])
+          expect(b.counts).toEqual(b.cardsPerColumn)
+          expect(b.headingsShown, 'every column shows its heading and count').toBe(true)
+          expect(b.lefts, 'columns side by side').toBe(perRow)
+          expect(b.inside, 'no sideways scroll in the board').toBe(true)
+          for (const c of b.cards) {
+            expect(c.height, 'card height').toBeGreaterThanOrEqual(44)
+            expect(c.inside, 'card inside its column').toBe(true)
+            expect(c.titleInside, 'title wraps').toBe(true)
+          }
+        }
+        if (phone) {
+          const links = await page
+            .locator('main [data-board-milestone] > .row a')
+            .evaluateAll((as) => as.map((a) => a.getBoundingClientRect().height))
+          for (const h of links) expect(h, 'heading link height on a phone').toBeGreaterThanOrEqual(44)
+        }
+        const overflow = await page.evaluate(() => {
+          const doc = document.scrollingElement ?? document.documentElement
+          const main = document.querySelector('main')!
+          return { page: doc.scrollWidth - doc.clientWidth, pane: main.scrollWidth - main.clientWidth }
+        })
+        expect(overflow, 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+
+        const shot = join(testInfo.project.outputDir, '..', 'screenshots', `board-${name.split('-')[1]}@${size.width}.png`)
+        await page.screenshot({ path: shot, fullPage: true })
+        await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+        expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+      })
+    }
+  }
+})

@@ -1998,6 +1998,30 @@ one-line numbers (`milestone-pilot@<width>.png`,
 `milestone-queue@<width>.png`); the route checks cover
 `stream-milestone-pilot` at the three widths.
 
+### Board
+
+The Board tab of a project (`web/src/components/ProjectBoards.vue`) and of
+a milestone (`web/src/components/Board.vue`), and its cards
+(`web/src/components/TaskCard.vue`), are Tailwind utilities and Nuxt UI
+tokens, without scoped CSS.
+
+- The four columns (*In progress*, *Needs you*, *CI*, *Review*) sit side
+  by side on desktop, two per row on a tablet and stacked on a phone. Every
+  column keeps its heading and count; on a phone an empty column is only
+  its heading (count 0), without the placeholder.
+- A card's title wraps, its badges (`Badge` on `UBadge`) wrap onto further
+  lines and the whole card is the link, at least 44 px high.
+- On the project's board a milestone's heading wraps; on phones its links
+  (the milestone, *Stream*) and the *Plan* card are 44 px high.
+
+The e2e cases `board › stream-project-board columns and cards@<width>` and
+`board › stream-milestone-board columns and cards@<width>` at 375, 768 and
+1280 px check the columns per row, the headings and counts, the cards
+inside their column with wrapping titles and their heights, the link
+heights on a phone and the sideways scroll (`board-project@<width>.png`,
+`board-milestone@<width>.png`); the route checks cover
+`stream-project-board` and `stream-milestone-board` at the three widths.
+
 ## Roadmap
 
 1. **Into a running step.** Messages that reach a running claude step at once
