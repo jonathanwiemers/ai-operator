@@ -523,3 +523,154 @@ test('overview buttons keep their desktop height@1280', async ({ page, baseURL }
   expect(heights, '.btn at desktop width').toBe(34)
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
+
+// The rail sheet on a phone (App.vue, src/ui/useBackClose.ts, docs/ui.md
+// "Sheets"): the menu opens the rail as a USlideover; scrim, close button,
+// Escape and back each close it. Closing leaves the URL and the route as
+// they were and no history entry behind, and the page does not load its data
+// again: the API requests stay at their count.
+test.describe('rail sheet', () => {
+  const start = routes.find((r) => r.name === 'stream-project-stream')!
+
+  // apiCount counts the API requests of the page but the event stream.
+  function apiCount(page: Page): () => number {
+    let n = 0
+    page.on('request', (req) => {
+      const url = new URL(req.url())
+      if (url.pathname.startsWith('/api/v1/') && url.pathname !== '/api/v1/events') n++
+    })
+    return () => n
+  }
+
+  // keepRoute remembers vue-router's current route; sameRoute tells whether
+  // it is still that object, that is the router did not navigate since (a
+  // navigation to the same URL makes a new one).
+  type Routed = { __vue_app__: { config: { globalProperties: { $router: { currentRoute: { value: object } } } } } }
+  type Kept = { __keptRoute?: object }
+  const keepRoute = (page: Page) =>
+    page.evaluate(() => {
+      const app = (document.querySelector('#app') as unknown as Routed).__vue_app__
+      ;(window as unknown as Kept).__keptRoute = app.config.globalProperties.$router.currentRoute.value
+    })
+  const sameRoute = (page: Page) =>
+    page.evaluate(() => {
+      const app = (document.querySelector('#app') as unknown as Routed).__vue_app__
+      return (window as unknown as Kept).__keptRoute === app.config.globalProperties.$router.currentRoute.value
+    })
+
+  async function openSheet(page: Page) {
+    await page.getByRole('button', { name: 'Open menu' }).click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+    // The slide-in has ended.
+    await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+    await expect(sheet.getByRole('link', { name: /^shop/ })).toBeVisible()
+    await expect.poll(() => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet), 'the sheet pushed its entry').toBeDefined()
+    return sheet
+  }
+
+  const closes: { how: string; close: (page: Page) => Promise<void> }[] = [
+    { how: 'scrim', close: (page) => page.mouse.click(360, 600) },
+    { how: 'close button', close: (page) => page.getByRole('dialog').getByRole('button', { name: 'Close' }).click() },
+    { how: 'Escape', close: (page) => page.keyboard.press('Escape') },
+    { how: 'back', close: (page) => page.evaluate(() => history.back()) },
+  ]
+
+  for (const { how, close } of closes) {
+    test(`closes by ${how} and keeps the route@375`, async ({ page, baseURL }, testInfo) => {
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize({ width: 375, height: 812 })
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, start, problems)
+      const requests = apiCount(page)
+      await page.goto(start.path)
+      await start.ready(page)
+      await page.waitForLoadState('networkidle')
+      const url = page.url()
+      const length = await page.evaluate(() => history.length)
+
+      const sheet = await openSheet(page)
+      // The sheet covers the mobile bar: the bar's menu button is under the
+      // scrim, and taps there close the sheet.
+      const menu = (await page.locator('header.mobilebar .menu').boundingBox())!
+      expect(
+        await page.evaluate(([x, y]) => !!document.elementFromPoint(x!, y!)?.closest('header.mobilebar'), [menu.x + menu.width / 2, menu.y + menu.height / 2]),
+        'the mobile bar is under the sheet',
+      ).toBe(false)
+      if (how === 'scrim') {
+        const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'rail-sheet@375.png')
+        await page.screenshot({ path: shot })
+        await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      }
+      const before = requests()
+      await keepRoute(page)
+
+      await close(page)
+      await expect(sheet).toBeHidden()
+      await expect.poll(() => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet), 'the entry is gone').toBeUndefined()
+      expect(page.url(), 'the URL is unchanged').toBe(url)
+      expect(await sameRoute(page), 'the router did not navigate').toBe(true)
+      await expect(page.locator('main').getByText(projectReady.stream).first()).toBeVisible()
+      // A reload of the page's data would come within this time.
+      await page.waitForTimeout(500)
+      await page.waitForLoadState('networkidle')
+      expect(requests(), 'API requests after closing').toBe(before)
+      // The pushed entry was popped; at most it stays as a forward entry.
+      expect(await page.evaluate(() => history.length)).toBe(length + 1)
+
+      problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+
+  test('a project link navigates and closes the sheet, back returns@375', async ({ page, baseURL }) => {
+    const inbox = routes.find((r) => r.name === 'inbox')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 375, height: 812 })
+    // No fixed clock: Vue skips a bubbling handler (RailNav's click) attached
+    // at the event's own Date.now(), which a frozen clock makes equal.
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, inbox, problems)
+    await page.goto(inbox.path)
+    await inbox.ready(page)
+
+    // A link to the page the sheet is on closes it and stays.
+    let sheet = await openSheet(page)
+    await sheet.getByRole('link', { name: /^Inbox/ }).click()
+    await expect(sheet).toBeHidden()
+    await expect.poll(() => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet)).toBeUndefined()
+    await expect(page).toHaveURL(/\/inbox$/)
+
+    sheet = await openSheet(page)
+    await sheet.getByRole('link', { name: /^shop/ }).click()
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop$/)
+    await expect(sheet).toBeHidden()
+    await start.ready(page)
+    expect(await page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet)).toBeUndefined()
+
+    // One back is the Inbox: the sheet's entry is not left in between.
+    await page.goBack()
+    await expect(page).toHaveURL(/\/inbox$/)
+    await inbox.ready(page)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  // Tablet and desktop keep the rail in the aside: no menu, no sheet.
+  for (const size of widths.filter((w) => w.width >= 760)) {
+    test(`stays the aside@${size.width}`, async ({ page, baseURL }) => {
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, start, problems)
+      await page.goto(start.path)
+      await start.ready(page)
+      await expect(page.locator('aside.rail').getByRole('link', { name: /^shop/ })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Open menu' })).toBeHidden()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+})

@@ -38,8 +38,8 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   pause without a start counts but shows no time). *Overview*
   (the dashboard, see below), your projects with a status dot
   (running, needs you, idle), a one-line state and a needs-you count, the
-  researches (with the research section) and the engine usage. On narrow
-  screens the rail is a drawer behind the menu button.
+  researches (with the research section) and the engine usage. On phones
+  (under 760 px) the rail is a [sheet](#sheets) behind the menu button.
 * **Dashboard** (`/`): the tabs *Overview* (the default) and *Stream*
   (`/?tab=stream`, the *Everything* stream of all your projects, as
   before; the old name `everything` redirects there, at `/everything`).
@@ -1461,6 +1461,12 @@ build, so the CI `ui` job enforces it. It prints
   CSS 12.2). The biggest parts are the Vue runtime, `<UApp>`'s providers
   (Reka UI, tailwind-variants) and the bundled icons; the cap is
   min(250, 101.8 × 1.3) = 132.3 kB.
+- 2026-11-11, with the rail sheet (#312): 120.5 kB (JS 106.0, CSS 14.5).
+  `USlideover` is loaded on phones only (`defineAsyncComponent` in
+  `App.vue`); imported statically it made 136.8 kB. Even lazy, the parts
+  of the Vue runtime and `@vueuse/core` it uses (Teleport, Transition)
+  land in the shared initial chunks, since a module is not split across
+  chunks. Later sheets and `UModal` reuse them.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
@@ -1473,7 +1479,8 @@ Vite plugin is `ui()` from `@nuxt/ui/vite` in `web/vite.config.ts`, and
 `App.vue` wraps the app in `<UApp>`. Views moved to the kit use components
 and utilities and drop their scoped CSS, except what utilities cannot
 express. `web/src/ui/` holds only what Nuxt UI lacks ([DataList](#datalist),
-[RouteTabs](#routetabs)). Not found
+[RouteTabs](#routetabs), [Truncated](#truncated) and `useBackClose` for
+[sheets](#sheets)). Not found
 (`views/NotFound.vue`) is the first view on it.
 
 **Imports are explicit.** Auto-imports and component resolution are off
@@ -1599,6 +1606,43 @@ stays plain. It sets no `title`: use `title` only for what is readable
 elsewhere. It sets no colour or weight, the parent's classes do; do not give
 it `.fact .value`, whose global rules keep `nowrap`. The task page's facts
 (current step, branch) are the first users.
+
+### Sheets
+
+A sheet is a `USlideover` (dialogs are `UModal`; `UDrawer` is not used,
+its `vaul-vue` is unmaintained). Every sheet closes by its scrim, its close
+button, Escape and the browser's back button. There are no swipe gestures.
+The rail on phones is the first sheet: the menu button opens it from the
+left with the rail's content (`components/RailNav.vue`, which the aside
+renders on tablet and desktop).
+
+`web/src/ui/useBackClose.ts` gives a sheet the back button:
+
+```ts
+const open = ref(false)
+useBackClose(open) // <USlideover v-model:open="open">
+```
+
+- Opening pushes a history entry for the same URL (`history.state.__sheet`).
+  Back pops it and closes the sheet: the URL and the route stay as they
+  were, and the view does not load its data again.
+- Closing by scrim, button or Escape pops the entry (`history.back()`, only
+  while the entry is on top), so no entry is left behind.
+- A navigation while the sheet is open, a link inside it or any other, is
+  held until the entry is popped, then goes on: back from the new page
+  returns to the page the sheet was opened on. Forward to the popped entry
+  opens the sheet again.
+- vue-router never sees the entry. The pops within the page are stopped
+  before vue-router's `popstate` listener, which is why `main.ts` calls
+  `listenForSheets()` before `createWebHistory()`: listeners on `window`
+  run in the order they were added, whatever their capture flag.
+  `useBackClose` throws without it.
+
+A sheet sets `z-40` on its `overlay` and `content` (`ui` prop): Nuxt UI
+sets no z-index, and the sticky mobile bar has 10. The e2e cases
+`rail sheet …` cover each way to close, that the router did not navigate
+and the API was not asked again, and a link inside the sheet followed by
+back; `rail-sheet@375.png` shows the open sheet.
 
 ## Roadmap
 

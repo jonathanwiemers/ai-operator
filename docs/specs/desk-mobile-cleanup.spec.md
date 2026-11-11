@@ -350,3 +350,12 @@ follow-up issue), and requirements without an issue and why.
   the cost chip (22 px) among the "12 rules" are not controls and keep
   their size. The e2e check counts controls under 44 px on the overview,
   the Inbox and the task page; its allowlist is empty. Nothing narrowed.
+- 2026-11-11 #312 (R5 rail sheet): on phones the menu opens the rail as a
+  `USlideover` from the left; the hand-made drawer and scrim are gone. The
+  rail's markup is `RailNav.vue`, rendered in the aside and the sheet.
+  `web/src/ui/useBackClose.ts` closes a sheet on back with a same-URL
+  history entry that vue-router never sees (its listener is added before
+  the router's, `listenForSheets` in `main.ts`), for the Context sheet
+  (R6) too. The slideover loads on phones only: statically it broke the
+  bundle cap (136.8 kB), lazily the initial bundle is 120.5 kB. Nothing
+  narrowed.

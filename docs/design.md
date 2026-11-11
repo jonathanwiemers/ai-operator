@@ -2721,8 +2721,8 @@ it there).
   supports `dvh`, so the minifier drops the `vh` line from the build; it
   comes back by itself if the target ever goes lower.
 - *Safe areas.* `viewport-fit=cover` needs `env(safe-area-inset-*)`
-  padding at the edges, all of it in `App.vue`: the rail takes the top,
-  bottom and left insets, the content pane (`main`) the top, right and
+  padding at the edges, all of it in `App.vue`: the rail (and the rail
+  sheet on phones) takes the top, bottom and left insets, the content pane (`main`) the top, right and
   bottom ones. On a phone the mobile bar takes the top and side insets and
   the pane the sides and the bottom. Views add none. On screens without
   insets `env()` is 0, so desktop is unchanged.
@@ -2745,7 +2745,7 @@ it there).
   the stream search, the composers' buttons, the pause card's select) need
   no phone rule of their own; a view must not set `min-height` on a control
   with `!important`. Links styled as controls set it themselves: the rail
-  items, the mobile bar's menu button and brand (`App.vue`) and the tab
+  items (`RailNav.vue`), the mobile bar's menu button and brand (`App.vue`) and the tab
   strip (`RouteTabs`, `min-h-11`). Desktop and tablet keep their sizes. The
   e2e check `<route> hit areas of at least 44 px@375` counts the visible
   `button`, `a.btn`, `[role=button]` and `input` elements under 44 px on the

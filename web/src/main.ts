@@ -5,6 +5,7 @@ import App from './App.vue'
 import { canStartResearch, featuresLoaded, hasFeature, isResearchPath } from './api'
 import { darkQuery, followColorScheme } from './colorScheme'
 import type { RouteName } from './routeNames'
+import { listenForSheets } from './ui/useBackClose'
 import './style.css'
 
 followColorScheme(document.documentElement.classList, window.matchMedia(darkQuery))
@@ -68,6 +69,9 @@ const routes: (RouteRecordRaw & { name: RouteName })[] = [
   { path: '/:rest(.*)*', name: 'not-found', component: NotFound },
 ]
 
+// The sheets' popstate listener comes before vue-router's, so a back that
+// closes a sheet does not reach the router (src/ui/useBackClose.ts).
+listenForSheets()
 const router = createRouter({
   history: createWebHistory(),
   routes,
