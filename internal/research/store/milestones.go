@@ -26,7 +26,7 @@ const MaxMilestones = 200
 // Merged counts the issues merged, skipped or (backfilled) closed, Open the
 // others.
 // FollowUpsOpen are the leftovers still open. Spend sums the milestone's
-// calls as SpendTotals does: without calls, CostKnown is false and every
+// calls as SpendTotals does: without calls, CostUSD is unknown and every
 // sum is 0, never a cost of $0.
 type MilestoneRow struct {
 	Project              ProjectKey
@@ -90,8 +90,8 @@ func scanMilestone(row pgx.Row, extra ...any) (MilestoneRow, error) {
 	m.Open = m.Issues - m.Merged
 	// scanTotals calls no spend at all known ($0); a milestone without
 	// calls is unknown.
-	if m.Spend.Calls == 0 && m.Spend.LegacyCostUSD == 0 {
-		m.Spend.CostKnown = false
+	if m.Spend.Calls == 0 && !m.Spend.LegacyCostUSD.Known {
+		m.Spend.CostUSD.Known = false
 	}
 	return m, err
 }
@@ -257,8 +257,8 @@ func (s *Store) issueFigures(ctx context.Context, project ProjectKey, milestone,
 		var f IssueFigures
 		var err error
 		f.Spend, err = scanTotals(row, &f.IID, &f.Title, &f.State, &f.MRIID, &f.MRURL, &f.Position)
-		if f.Spend.Calls == 0 && f.Spend.LegacyCostUSD == 0 {
-			f.Spend.CostKnown = false
+		if f.Spend.Calls == 0 && !f.Spend.LegacyCostUSD.Known {
+			f.Spend.CostUSD.Known = false
 		}
 		f.AgentMS = f.Spend.DurationMS
 		return f, err

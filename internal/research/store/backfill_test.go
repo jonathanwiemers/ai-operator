@@ -117,7 +117,7 @@ func TestSaveBackfilled(t *testing.T) {
 		t.Errorf("Milestone = %+v", got)
 	}
 	// The backfill invents no spend: a milestone without calls has none.
-	if got.Spend.CostKnown || got.Spend.Calls != 0 || got.Spend.Tokens() != 0 {
+	if got.Spend.CostUSD.Known || got.Spend.Calls != 0 || got.Spend.Tokens() != 0 {
 		t.Errorf("backfilled milestone has spend %+v; want none", got.Spend)
 	}
 	first := backfillOf(t, s, 4)

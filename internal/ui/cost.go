@@ -28,7 +28,7 @@ type Cost struct {
 	Tokens   int64  `json:"tokens"`
 	CostFrom string `json:"costFrom" tstype:"'calls' | 'tasks'"`
 	// Spend is the breakdown of a cost from calls.
-	Spend *SpendTotalsView `json:"spend,omitempty"`
+	Spend *store.SpendTotals `json:"spend,omitempty"`
 }
 
 // tasksCost is a cost summed over live tasks.
@@ -38,8 +38,7 @@ func tasksCost(usd float64) Cost {
 
 // callsCost is a cost summed from agent_calls.
 func callsCost(t store.SpendTotals) Cost {
-	v := spendTotalsView(t)
-	return Cost{CostUSD: v.CostUSD, CostKnown: t.CostKnown, Tokens: t.Tokens(), CostFrom: CostFromCalls, Spend: &v}
+	return Cost{CostUSD: t.CostUSD.String(), CostKnown: t.CostUSD.Known, Tokens: t.Tokens(), CostFrom: CostFromCalls, Spend: &t}
 }
 
 // spendStore is the history database for costs, nil while it is off or not
@@ -76,7 +75,7 @@ func (s *Server) projectCosts(ctx context.Context, d *ProjectDetail) {
 		t, ok := byMilestone[strconv.FormatInt(m.IID, 10)]
 		if !ok {
 			// No calls and no runs: nothing spent, which is known.
-			t.CostKnown = true
+			t.CostUSD.Known = true
 		}
 		m.Cost = callsCost(t)
 	}
@@ -103,7 +102,7 @@ func (s *Server) projectListCosts(ctx context.Context, list []ProjectSummary) {
 		t, ok := totals[keys[i]]
 		if !ok {
 			// No calls and no runs: nothing spent, which is known.
-			t.CostKnown = true
+			t.CostUSD.Known = true
 		}
 		list[i].Cost = callsCost(t)
 		// The list has no room for the breakdown; the project's view has it.

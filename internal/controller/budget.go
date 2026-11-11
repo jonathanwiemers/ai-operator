@@ -77,7 +77,7 @@ func (a *autopilot) budget(ctx context.Context) error {
 		return nil
 	}
 	if a.ap.Budget != nil {
-		a.ap.Budget.SpentUSD = aiv1.FormatCost(sp.Totals.CostUSD)
+		a.ap.Budget.SpentUSD = aiv1.FormatCost(sp.Totals.CostUSD.USD)
 	}
 	children := map[string]*store.SpendChild{}
 	for i, c := range sp.Children {
@@ -88,7 +88,7 @@ func (a *autopilot) budget(ctx context.Context) error {
 	for _, it := range issues {
 		spent := 0.0
 		if c := children[strconv.FormatInt(it.IID, 10)]; c != nil {
-			spent = c.Totals.CostUSD
+			spent = c.Totals.CostUSD.USD
 		}
 		it.Budget.SpentUSD = aiv1.FormatCost(spent)
 	}
@@ -202,7 +202,7 @@ func (a *autopilot) budgetAlerts(ctx context.Context, children map[string]*store
 		if c == nil || alert == "" && warn == "" {
 			continue
 		}
-		spent := c.Totals.CostUSD
+		spent := c.Totals.CostUSD.USD
 		if warn != "" && spent >= aiv1.CostOf(it.Budget.LimitUSD) {
 			warn = ""
 		}
@@ -229,11 +229,11 @@ func (a *autopilot) budgetAlerts(ctx context.Context, children map[string]*store
 // its budget, else for budget.perIssueAlertUSD.
 func (a *autopilot) alertText(it *aiv1.AutopilotItem, c *store.SpendChild, ofBudget bool) string {
 	var b strings.Builder
-	spent := aiv1.ShowCost(c.Totals.CostUSD)
+	spent := aiv1.ShowCost(c.Totals.CostUSD.USD)
 	if ofBudget {
 		lim := showBudget(it.Budget.LimitUSD)
 		fmt.Fprintf(&b, "💸 Heads-up: #%d spent $%s, %.0f %% of its budget of $%s. Autopilot keeps going and pauses for it at $%s.",
-			it.IID, spent, math.Floor(100*c.Totals.CostUSD/aiv1.CostOf(it.Budget.LimitUSD)), lim, lim)
+			it.IID, spent, math.Floor(100*c.Totals.CostUSD.USD/aiv1.CostOf(it.Budget.LimitUSD)), lim, lim)
 	} else {
 		fmt.Fprintf(&b, "💸 Heads-up: #%d spent $%s, past the spend alert of $%s per issue (`budget.perIssueAlertUSD`). Autopilot keeps going.",
 			it.IID, spent, showBudget(a.spec.Budget.PerIssueAlertUSD))
@@ -246,7 +246,7 @@ func (a *autopilot) alertText(it *aiv1.AutopilotItem, c *store.SpendChild, ofBud
 	}
 	var kinds, models []string
 	for _, k := range c.Kinds[:min(len(c.Kinds), topSpend)] {
-		kinds = append(kinds, fmt.Sprintf("%s %s (%d calls)", k.Key, cost(k.Totals.CostUSD, k.Totals.CostKnown), k.Totals.Calls))
+		kinds = append(kinds, fmt.Sprintf("%s %s (%d calls)", k.Key, cost(k.Totals.CostUSD.USD, k.Totals.CostUSD.Known), k.Totals.Calls))
 	}
 	// The most expensive models: Models is in token order.
 	ms := slices.Clone(c.Models)

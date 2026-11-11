@@ -1,9 +1,12 @@
-// The view types of the UI API come from Go: generated/views.ts (internal/ui)
-// and generated/api.ts (the CRD types of api/v1alpha1), by make ts-types
-// (tygo.yaml). Do not mirror a Go view here: change the Go struct and
-// regenerate. What stays here is web-only: the string unions and open shapes
-// the Go views leave untyped (tstype tags point here). Responses are named
-// Go structs and are not declared here.
+// The view types of the UI API come from Go: generated/views.ts (internal/ui),
+// generated/api.ts (the CRD types of api/v1alpha1) and generated/store.ts
+// (the store types views carry as they are, internal/research/store), by
+// make ts-types (tygo.yaml). Do not mirror a Go view here: change the Go
+// struct and regenerate. What stays here is web-only: the string unions and
+// open shapes the Go views leave untyped (tstype tags point here). Responses
+// are named Go structs and are not declared here.
+
+export type { SpendTotals } from './generated/store'
 
 export type {
   Me,
@@ -40,7 +43,6 @@ export type {
   Entry as TranscriptEntry,
   SearchHit as ResearchSearchHit,
   SpendView as Spend,
-  SpendTotalsView as SpendTotals,
   SpendChildView as SpendChild,
   SpendBreakdownView as SpendBreakdown,
   SubagentBreakdownView as SubagentBreakdown,

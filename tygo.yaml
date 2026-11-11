@@ -102,6 +102,7 @@ packages:
       - view.go
     frontmatter: |
       import type * as aiv1 from "./api";
+      import type * as store from "./store";
       // String unions and open shapes (map[string]any, []any) the Go views
       // leave untyped, by hand in types.ts.
       import type { Block, ChatKind, ChatRole, ChatState, SpendLevel, StreamEventData, StreamKind } from "../types";
@@ -136,3 +137,17 @@ packages:
       aiv1.TaskPhase: aiv1.TaskPhase
       aiv1.TaskType: aiv1.TaskType
       aiv1.UsageLimit: aiv1.UsageLimit
+      store.Money: store.Money
+      store.SpendTotals: store.SpendTotals
+
+  # The store types the views carry as they are (one definition per type):
+  # only the files whose types all have JSON tags and map to TypeScript.
+  - path: github.com/jonathanwiemers/ai-operator/internal/research/store
+    output_path: web/src/generated/store.ts
+    fallback_type: Unmapped
+    enum_style: union
+    include_files:
+      - spend_totals.go
+    frontmatter: |
+      // Money (money.go) is a cost in USD with 2 decimals, "" when unknown.
+      export type Money = string;

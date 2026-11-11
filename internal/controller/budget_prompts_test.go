@@ -16,7 +16,7 @@ import (
 func newBudgetPromptEnv(t *testing.T, usd string, spent float64) (*projectEnv, *fakeSpend) {
 	t.Helper()
 	e := newAnswerEnv(t)
-	src := &fakeSpend{spend: store.Spend{Totals: store.SpendTotals{CostUSD: spent, CostKnown: true}}}
+	src := &fakeSpend{spend: store.Spend{Totals: store.SpendTotals{CostUSD: store.USD(spent)}}}
 	e.r.Spend = src
 	e.setBudget(usd)
 	e.reconcile()
@@ -66,7 +66,7 @@ func TestBudgetPromptAt80PercentOncePerBudget(t *testing.T) {
 		t.Fatalf("75 %% spent asks nothing: %+v", ps)
 	}
 
-	src.spend.Totals.CostUSD = 32.4
+	src.spend.Totals.CostUSD.USD = 32.4
 	e.reconcile()
 	ps := e.budgetPrompts()
 	if len(ps) != 1 {
@@ -89,7 +89,7 @@ func TestBudgetPromptAt80PercentOncePerBudget(t *testing.T) {
 		t.Fatalf("the prompt is mirrored on the tracking issue:\n%s", trackingComments(e))
 	}
 
-	src.spend.Totals.CostUSD = 35
+	src.spend.Totals.CostUSD.USD = 35
 	e.reconcile()
 	if ps := e.budgetPrompts(); len(ps) != 1 || ps[0].State != aiv1.PromptOpen {
 		t.Fatalf("a budget is warned about once: %+v", ps)
@@ -116,7 +116,7 @@ func TestBudgetPromptAt80PercentOncePerBudget(t *testing.T) {
 	if len(ps) != 1 || ps[0].State != aiv1.PromptAnswered {
 		t.Fatalf("35 of 49 is under 80 %%: no new prompt: %+v", ps)
 	}
-	src.spend.Totals.CostUSD = 40
+	src.spend.Totals.CostUSD.USD = 40
 	e.reconcile()
 	if ps = e.budgetPrompts(); len(ps) != 2 || ps[1].Source.Key != "budget/80/49.0000" || ps[1].State != aiv1.PromptOpen {
 		t.Fatalf("the new budget is warned about once more: %+v", ps)
@@ -145,7 +145,7 @@ func TestBudgetPromptIsSupersededByANewBudget(t *testing.T) {
 
 	// At 100 % the pause asks; the 80 % prompt of the same budget gives way.
 	e, src = newBudgetPromptEnv(t, "40", 33)
-	src.spend.Totals.CostUSD = 41
+	src.spend.Totals.CostUSD.USD = 41
 	e.reconcile()
 	e.reconcile()
 	ps := e.budgetPrompts()
@@ -350,7 +350,7 @@ func TestBudgetPromptHysteresisAtTheSameBudget(t *testing.T) {
 	}
 	comments := strings.Count(trackingComments(e), "of its budget of $40.00")
 
-	src.spend.Totals.CostUSD = 31 // under 80 % again
+	src.spend.Totals.CostUSD.USD = 31 // under 80 % again
 	e.reconcile()
 	e.reconcile()
 	if ps := e.budgetPrompts(); len(ps) != 1 || ps[0].State != aiv1.PromptSuperseded {
@@ -360,7 +360,7 @@ func TestBudgetPromptHysteresisAtTheSameBudget(t *testing.T) {
 		t.Fatalf("the budget stays warned about")
 	}
 
-	src.spend.Totals.CostUSD = 34 // over 80 % again, same budget
+	src.spend.Totals.CostUSD.USD = 34 // over 80 % again, same budget
 	e.reconcile()
 	e.reconcile()
 	if ps := e.budgetPrompts(); len(ps) != 1 || ps[0].State != aiv1.PromptSuperseded {
@@ -373,7 +373,7 @@ func TestBudgetPromptHysteresisAtTheSameBudget(t *testing.T) {
 	// A new budget re-arms it.
 	e.setBudget("42")
 	e.reconcile()
-	src.spend.Totals.CostUSD = 34.5
+	src.spend.Totals.CostUSD.USD = 34.5
 	e.reconcile()
 	e.reconcile()
 	if ps := e.budgetPrompts(); len(ps) != 2 || ps[1].Source.Key != "budget/80/42.0000" || ps[1].State != aiv1.PromptOpen {

@@ -307,10 +307,10 @@ func (f *fakeSpend) Spend(_ context.Context, sc store.SpendScope) (store.Spend, 
 func TestRetrospectiveRequestCarriesTheSpend(t *testing.T) {
 	e := newPilotEnv(t)
 	known := func(usd float64, tokens int64) store.SpendTotals {
-		return store.SpendTotals{CostUSD: usd, CostKnown: true, Calls: 1, InputTokens: tokens}
+		return store.SpendTotals{CostUSD: store.USD(usd), Calls: 1, InputTokens: tokens}
 	}
 	src := &fakeSpend{spend: store.Spend{
-		Totals: store.SpendTotals{CostUSD: 12.5, CostKnown: true, Calls: 9, InputTokens: 100, OutputTokens: 20, CacheReadTokens: 3000, CacheWriteTokens: 400, SubagentCalls: 4, UnmeteredCalls: 2, OldBasisCalls: 3},
+		Totals: store.SpendTotals{CostUSD: store.USD(12.5), Calls: 9, InputTokens: 100, OutputTokens: 20, CacheReadTokens: 3000, CacheWriteTokens: 400, SubagentCalls: 4, UnmeteredCalls: 2, OldBasisCalls: 3},
 		Children: []store.SpendChild{
 			{Level: store.SpendIssue, Key: "1", Label: "#1", Totals: known(2, 10)},
 			{Level: store.SpendMilestone, Key: "3", Label: "Milestone %3", Totals: known(9, 10)},

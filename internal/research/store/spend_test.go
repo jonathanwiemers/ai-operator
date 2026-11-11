@@ -104,7 +104,7 @@ func TestSpend(t *testing.T) {
 		t.Helper()
 		var g []child
 		for _, c := range got {
-			g = append(g, child{c.Level, c.Key, c.Label, c.Totals.CostUSD, c.Totals.LegacyCostUSD, c.Totals.CostKnown,
+			g = append(g, child{c.Level, c.Key, c.Label, c.Totals.CostUSD.USD, c.Totals.LegacyCostUSD.USD, c.Totals.CostUSD.Known,
 				c.Totals.Calls, c.Totals.UnknownCalls})
 		}
 		if !slices.Equal(g, want) {
@@ -127,7 +127,7 @@ func TestSpend(t *testing.T) {
 		t.Helper()
 		var g []breakdown
 		for _, b := range got {
-			g = append(g, breakdown{b.Key, b.Totals.CostUSD, b.Totals.CostKnown, b.Totals.Calls})
+			g = append(g, breakdown{b.Key, b.Totals.CostUSD.USD, b.Totals.CostUSD.Known, b.Totals.Calls})
 		}
 		if !slices.Equal(g, want) {
 			t.Errorf("%s:\n got %+v\nwant %+v", what, g, want)
@@ -136,9 +136,9 @@ func TestSpend(t *testing.T) {
 
 	// The project: its milestones and the calls of none.
 	sp := spend(store.SpendScope{})
-	want := store.SpendTotals{CostUSD: 7.08, CostKnown: true, UnknownCalls: 1,
+	want := store.SpendTotals{CostUSD: store.USD(7.08), UnknownCalls: 1,
 		InputTokens: 217, OutputTokens: 88, CacheReadTokens: 1133, CacheWriteTokens: 44,
-		Calls: 6, OldBasisCalls: 6, SubagentCalls: 3, DurationMS: 96500, LegacyCostUSD: 2, Checkpoints: 3}
+		Calls: 6, OldBasisCalls: 6, SubagentCalls: 3, DurationMS: 96500, LegacyCostUSD: store.USD(2), Checkpoints: 3}
 	if sp.Totals != want {
 		t.Errorf("project totals:\n got %+v\nwant %+v", sp.Totals, want)
 	}
@@ -181,7 +181,7 @@ func TestSpend(t *testing.T) {
 
 	// Milestone 20: its issues and its own calls.
 	sp = spend(store.SpendScope{MilestoneIID: 20})
-	if sp.Totals.CostUSD != 3.98 || sp.Totals.LegacyCostUSD != 2 || sp.Totals.Calls != 4 || sp.Totals.UnknownCalls != 1 {
+	if sp.Totals.CostUSD.USD != 3.98 || sp.Totals.LegacyCostUSD.USD != 2 || sp.Totals.Calls != 4 || sp.Totals.UnknownCalls != 1 {
 		t.Errorf("%%20 totals = %+v", sp.Totals)
 	}
 	checkChildren("%20", sp.Children, []child{
@@ -203,8 +203,8 @@ func TestSpend(t *testing.T) {
 
 	// #148: its runs, the legacy one without tokens.
 	sp = spend(store.SpendScope{MilestoneIID: 20, IssueIID: 148})
-	if want := (store.SpendTotals{CostUSD: 3.73, CostKnown: true, InputTokens: 110, OutputTokens: 30,
-		CacheReadTokens: 1030, CacheWriteTokens: 40, Calls: 2, OldBasisCalls: 2, SubagentCalls: 1, DurationMS: 70000, LegacyCostUSD: 2, Checkpoints: 1}); sp.Totals != want {
+	if want := (store.SpendTotals{CostUSD: store.USD(3.73), InputTokens: 110, OutputTokens: 30,
+		CacheReadTokens: 1030, CacheWriteTokens: 40, Calls: 2, OldBasisCalls: 2, SubagentCalls: 1, DurationMS: 70000, LegacyCostUSD: store.USD(2), Checkpoints: 1}); sp.Totals != want {
 		t.Errorf("#148 totals:\n got %+v\nwant %+v", sp.Totals, want)
 	}
 	checkChildren("#148", sp.Children, []child{
@@ -222,14 +222,14 @@ func TestSpend(t *testing.T) {
 
 	// #150 has only an unknown cursor call.
 	sp = spend(store.SpendScope{IssueIID: 150})
-	if sp.Totals.CostKnown || sp.Totals.UnknownCalls != 1 || sp.Totals.CostUSD != 0 || sp.Totals.Calls != 1 {
+	if sp.Totals.CostUSD.Known || sp.Totals.UnknownCalls != 1 || sp.Totals.CostUSD.USD != 0 || sp.Totals.Calls != 1 {
 		t.Errorf("#150 totals = %+v; want unknown", sp.Totals)
 	}
 	checkModels("#150 run", sp.Children[0].Models, []store.ModelSplit{{Model: "gpt-5", Main: true, Tokens: 150}})
 
 	// A run: its calls by seq, with their rows.
 	sp = spend(store.SpendScope{Task: "bloop-148", Run: 2})
-	if sp.Totals.CostUSD != 1.73 || sp.Totals.LegacyCostUSD != 0 || sp.Totals.Calls != 2 {
+	if sp.Totals.CostUSD.USD != 1.73 || sp.Totals.LegacyCostUSD.USD != 0 || sp.Totals.Calls != 2 {
 		t.Errorf("run 2 totals = %+v", sp.Totals)
 	}
 	checkChildren("run 2", sp.Children, []child{
@@ -254,13 +254,13 @@ func TestSpend(t *testing.T) {
 
 	// A task: all its calls, and its legacy run in the totals only.
 	sp = spend(store.SpendScope{Task: "bloop-148"})
-	if sp.Totals.CostUSD != 3.73 || sp.Totals.LegacyCostUSD != 2 || len(sp.Children) != 2 {
+	if sp.Totals.CostUSD.USD != 3.73 || sp.Totals.LegacyCostUSD.USD != 2 || len(sp.Children) != 2 {
 		t.Errorf("task totals = %+v, %d children; want 3.73 with 2 legacy, 2 calls", sp.Totals, len(sp.Children))
 	}
 
 	// An empty scope cost nothing, which is known.
 	sp = spend(store.SpendScope{MilestoneIID: 99})
-	if (sp.Totals != store.SpendTotals{CostKnown: true}) || len(sp.Children) != 0 || len(sp.ByModel) != 0 || sp.CacheReadShare != 0 {
+	if (sp.Totals != store.SpendTotals{CostUSD: store.USD(0)}) || len(sp.Children) != 0 || len(sp.ByModel) != 0 || sp.CacheReadShare != 0 {
 		t.Errorf("empty scope = %+v", sp)
 	}
 
@@ -276,8 +276,8 @@ func TestSpend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(byMilestone) != 3 || byMilestone["20"].CostUSD != 3.98 || byMilestone["20"].LegacyCostUSD != 2 ||
-		byMilestone["21"].CostUSD != 3 || byMilestone[""].CostUSD != 0.1 {
+	if len(byMilestone) != 3 || byMilestone["20"].CostUSD.USD != 3.98 || byMilestone["20"].LegacyCostUSD.USD != 2 ||
+		byMilestone["21"].CostUSD.USD != 3 || byMilestone[""].CostUSD.USD != 0.1 {
 		t.Errorf("SpendChildTotals by milestone = %+v", byMilestone)
 	}
 
@@ -386,7 +386,7 @@ func TestSpendUnmetered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := sp.Totals; got.UnmeteredCalls != 1 || got.UnknownCalls != 1 || got.Calls != 2 || !got.CostKnown || got.CostUSD != 0.5 {
+	if got := sp.Totals; got.UnmeteredCalls != 1 || got.UnknownCalls != 1 || got.Calls != 2 || !got.CostUSD.Known || got.CostUSD.USD != 0.5 {
 		t.Errorf("totals = %+v, want 2 calls, 1 unknown, 1 unmetered, $0.50 known", got)
 	}
 	splits := map[string]store.ModelSplit{}
@@ -555,7 +555,7 @@ func TestSpendTuning(t *testing.T) {
 		t.Helper()
 		var g []breakdown
 		for _, b := range got {
-			g = append(g, breakdown{b.Key, b.Totals.CostUSD, b.Totals.Calls, b.Totals.UnknownCalls, b.Totals.Tokens()})
+			g = append(g, breakdown{b.Key, b.Totals.CostUSD.USD, b.Totals.Calls, b.Totals.UnknownCalls, b.Totals.Tokens()})
 		}
 		if !slices.Equal(g, want) {
 			t.Errorf("%s:\n got %+v\nwant %+v", what, g, want)
@@ -584,7 +584,7 @@ func TestSpendTuning(t *testing.T) {
 	}
 	var g []subagents
 	for _, b := range sp.BySubagents {
-		g = append(g, subagents{b.Role, b.WithSubagents, b.Totals.CostUSD, b.Totals.Calls, b.Totals.Tokens(),
+		g = append(g, subagents{b.Role, b.WithSubagents, b.Totals.CostUSD.USD, b.Totals.Calls, b.Totals.Tokens(),
 			b.Totals.SubagentCalls, b.SubagentTokens, b.ReadGateBlocks})
 	}
 	if want := []subagents{
@@ -712,13 +712,13 @@ func TestSpendSince(t *testing.T) {
 		since    time.Duration
 		want     store.SpendTotals
 	}{
-		{"today", both, 12 * time.Hour, store.SpendTotals{CostUSD: 1.5, CostKnown: true, UnknownCalls: 1, UnmeteredCalls: 0,
-			InputTokens: 40, Calls: 2, OldBasisCalls: 2, LegacyCostUSD: 0.5}},
-		{"7 days", both, 7 * 24 * time.Hour, store.SpendTotals{CostUSD: 3.5, CostKnown: true, UnknownCalls: 1,
-			InputTokens: 60, Calls: 3, OldBasisCalls: 3, LegacyCostUSD: 0.5}},
-		{"one project", both[:1], 30 * 24 * time.Hour, store.SpendTotals{CostUSD: 3, CostKnown: true, InputTokens: 30, Calls: 2, OldBasisCalls: 2}},
-		{"none", nil, time.Hour, store.SpendTotals{CostKnown: true}},
-		{"nothing since", both, time.Minute, store.SpendTotals{CostKnown: true}},
+		{"today", both, 12 * time.Hour, store.SpendTotals{CostUSD: store.USD(1.5), UnknownCalls: 1, UnmeteredCalls: 0,
+			InputTokens: 40, Calls: 2, OldBasisCalls: 2, LegacyCostUSD: store.USD(0.5)}},
+		{"7 days", both, 7 * 24 * time.Hour, store.SpendTotals{CostUSD: store.USD(3.5), UnknownCalls: 1,
+			InputTokens: 60, Calls: 3, OldBasisCalls: 3, LegacyCostUSD: store.USD(0.5)}},
+		{"one project", both[:1], 30 * 24 * time.Hour, store.SpendTotals{CostUSD: store.USD(3), InputTokens: 30, Calls: 2, OldBasisCalls: 2}},
+		{"none", nil, time.Hour, store.SpendTotals{CostUSD: store.USD(0)}},
+		{"nothing since", both, time.Minute, store.SpendTotals{CostUSD: store.USD(0)}},
 	} {
 		got, err := s.SpendSince(ctx, c.projects, now.Add(-c.since))
 		if err != nil || got != c.want {
@@ -777,8 +777,8 @@ func TestSpendCallLessCheckpoints(t *testing.T) {
 	}
 	for _, sc := range []store.SpendScope{{}, {MilestoneIID: 40}, {MilestoneIID: 40, IssueIID: 401}, {Task: "cps-401"}} {
 		sp := spend(sc)
-		if sp.Totals.Checkpoints != 2 || sp.Totals.Calls != 3 || sp.Totals.CostUSD != 3.5 || sp.Totals.UnknownCalls != 0 ||
-			!sp.Totals.CostKnown || sp.Totals.LegacyCostUSD != 0 {
+		if sp.Totals.Checkpoints != 2 || sp.Totals.Calls != 3 || sp.Totals.CostUSD.USD != 3.5 || sp.Totals.UnknownCalls != 0 ||
+			!sp.Totals.CostUSD.Known || sp.Totals.LegacyCostUSD.USD != 0 {
 			t.Errorf("%+v totals = %+v; want 2 checkpoints, 3 calls, $3.50", sc, sp.Totals)
 		}
 		var got []count
@@ -923,9 +923,9 @@ func TestSpendAddsUpAtEveryScope(t *testing.T) {
 		}
 		var cost float64
 		for _, b := range sp.ByModel {
-			cost += b.Totals.CostUSD
+			cost += b.Totals.CostUSD.USD
 		}
-		if want := sp.Totals.CostUSD - sp.Totals.LegacyCostUSD; math.Abs(cost-want) > 1e-9 {
+		if want := sp.Totals.CostUSD.USD - sp.Totals.LegacyCostUSD.USD; math.Abs(cost-want) > 1e-9 {
 			t.Errorf("%+v by model: $%v, want the total without legacy runs $%v", sc, cost, want)
 		}
 	}
@@ -944,13 +944,13 @@ func TestSpendAddsUpAtEveryScope(t *testing.T) {
 	}
 	var got []model
 	for _, b := range sp.ByModel {
-		got = append(got, model{b.Key, b.Totals.Tokens(), math.Round(b.Totals.CostUSD*1e4) / 1e4, b.Totals.UnmeteredCalls})
+		got = append(got, model{b.Key, b.Totals.Tokens(), math.Round(b.Totals.CostUSD.USD*1e4) / 1e4, b.Totals.UnmeteredCalls})
 	}
 	want := []model{{opus, 23510 + 25602 + 4150, 2.6, 0}, {sonnet, 2605, 0.1, 0}, {"auto", 0, 0, 1}}
 	if !slices.Equal(got, want) {
 		t.Errorf("by model:\n got %+v\nwant %+v", got, want)
 	}
-	if sp.Totals.UnmeteredCalls != 1 || sp.Totals.LegacyCostUSD != 2 || math.Abs(sp.Totals.CostUSD-4.7) > 1e-9 {
+	if sp.Totals.UnmeteredCalls != 1 || sp.Totals.LegacyCostUSD.USD != 2 || math.Abs(sp.Totals.CostUSD.USD-4.7) > 1e-9 {
 		t.Errorf("totals %+v, want 1 unmetered call, $2 legacy of $4.70", sp.Totals)
 	}
 }
@@ -1004,7 +1004,7 @@ func TestSpendKindModel(t *testing.T) {
 		t.Errorf("by kind and model: %d tokens, want the total %d", sum, sp.Totals.Tokens())
 	}
 	co, cs := byKey["conflict/"+opus], byKey["conflict/"+sonnet]
-	if co.Totals.Calls != 2 || co.Totals.OutputTokens != 7000 || co.Totals.CacheWriteTokens != 8000 || math.Abs(co.Totals.CostUSD-3.5) > 1e-9 ||
+	if co.Totals.Calls != 2 || co.Totals.OutputTokens != 7000 || co.Totals.CacheWriteTokens != 8000 || math.Abs(co.Totals.CostUSD.USD-3.5) > 1e-9 ||
 		cs.Totals.Calls != 1 || cs.Totals.OutputTokens != 800 || cs.Totals.CacheWriteTokens != 2000 {
 		t.Errorf("conflict rows: opus %+v, sonnet %+v", co.Totals, cs.Totals)
 	}
@@ -1099,8 +1099,8 @@ func TestSpendByProject(t *testing.T) {
 		store.ProjectKey{Namespace: "agents", Name: "idle"}
 	got, err := s.SpendByProject(ctx, []store.ProjectKey{shop, billing, idle})
 	want := map[store.ProjectKey]store.SpendTotals{
-		shop:    {CostUSD: 3, CostKnown: true, InputTokens: 30, Calls: 2, OldBasisCalls: 2},
-		billing: {CostUSD: 0.5, CostKnown: true, UnknownCalls: 1, InputTokens: 30, Calls: 1, OldBasisCalls: 1, LegacyCostUSD: 0.5},
+		shop:    {CostUSD: store.USD(3), InputTokens: 30, Calls: 2, OldBasisCalls: 2},
+		billing: {CostUSD: store.USD(0.5), UnknownCalls: 1, InputTokens: 30, Calls: 1, OldBasisCalls: 1, LegacyCostUSD: store.USD(0.5)},
 	}
 	if err != nil || len(got) != len(want) || got[shop] != want[shop] || got[billing] != want[billing] {
 		t.Errorf("SpendByProject = %+v, %v\nwant %+v", got, err, want)

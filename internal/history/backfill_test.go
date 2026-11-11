@@ -497,7 +497,7 @@ func TestBackfillWithStore(t *testing.T) {
 		!strings.Contains(m.RetroText, "Merged #11") || strings.Contains(m.RetroText, "<img") {
 		t.Errorf("stored milestone = %+v", m)
 	}
-	if m.Spend.CostKnown || m.Spend.Calls != 0 {
+	if m.Spend.CostUSD.Known || m.Spend.Calls != 0 {
 		t.Errorf("backfilled milestone has spend %+v, want none", m.Spend)
 	}
 	// Restart.

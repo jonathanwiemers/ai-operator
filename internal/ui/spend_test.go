@@ -47,16 +47,16 @@ func TestSpendGating(t *testing.T) {
 
 func TestSpendViewUnknownCost(t *testing.T) {
 	v := spendView(store.Spend{
-		Totals: store.SpendTotals{CostUSD: 0, CostKnown: false, UnknownCalls: 1, Calls: 1},
+		Totals: store.SpendTotals{UnknownCalls: 1, Calls: 1},
 		Children: []store.SpendChild{{Level: store.SpendCall, Key: "1", Totals: store.SpendTotals{Calls: 1, UnknownCalls: 1},
 			Models: []store.ModelSplit{{Model: "gpt-5", Main: true, Tokens: 10}},
 			Call:   &store.Call{Kind: "fix", Engine: "cursor", CostSource: "unknown"}}},
 	})
-	if v.Totals.CostUSD != "" || v.Totals.CostKnown {
+	if v.Totals.CostUSD.String() != "" || v.Totals.CostUSD.Known {
 		t.Errorf("totals = %+v, want an unknown cost", v.Totals)
 	}
 	c := v.Children[0]
-	if c.Totals.CostUSD != "" || c.Models[0].CostUSD != "" || c.SpendCallView == nil || c.ContextSeries == nil ||
+	if c.Totals.CostUSD.String() != "" || c.Models[0].CostUSD != "" || c.SpendCallView == nil || c.ContextSeries == nil ||
 		c.SubagentTurns == nil || v.ByKind == nil || v.ByKindModel == nil || v.ConflictRuns == nil || v.ByReviewRound == nil || v.BySession == nil || v.ByCheckpoint == nil || v.BySubagents == nil {
 		t.Errorf("child = %+v, want unknown costs and empty lists", c)
 	}
@@ -66,12 +66,12 @@ func TestSpendViewUnknownCost(t *testing.T) {
 // without cost or tokens reach the views next to a known cost.
 func TestSpendViewUnmetered(t *testing.T) {
 	v := spendView(store.Spend{
-		Totals: store.SpendTotals{CostUSD: 0.5, CostKnown: true, UnknownCalls: 1, UnmeteredCalls: 1, OldBasisCalls: 2, Calls: 2},
+		Totals: store.SpendTotals{CostUSD: store.USD(0.5), UnknownCalls: 1, UnmeteredCalls: 1, OldBasisCalls: 2, Calls: 2},
 		Children: []store.SpendChild{{Level: store.SpendIssue, Key: "402",
 			Totals: store.SpendTotals{Calls: 1, UnknownCalls: 1, UnmeteredCalls: 1},
 			Models: []store.ModelSplit{{Model: "auto", Main: true, Unmetered: true}}}},
 	})
-	if v.Totals.UnmeteredCalls != 1 || !v.Totals.CostKnown || v.Totals.CostUSD != "0.50" {
+	if v.Totals.UnmeteredCalls != 1 || !v.Totals.CostUSD.Known || v.Totals.CostUSD.String() != "0.50" {
 		t.Errorf("totals = %+v, want $0.50 known and 1 unmetered call", v.Totals)
 	}
 	if v.Totals.OldBasisCalls != 2 {
@@ -121,7 +121,7 @@ func TestSpend(t *testing.T) {
 	if code := env.get(t, "/api/v1/spend?namespace=team-a&project=shop&milestone=3", &ms); code != http.StatusOK {
 		t.Fatalf("milestone: status %d", code)
 	}
-	if ms.Totals.CostUSD != "1.75" || ms.Totals.Calls != 3 || ms.Totals.UnknownCalls != 1 || ms.Totals.Checkpoints != 2 {
+	if ms.Totals.CostUSD.String() != "1.75" || ms.Totals.Calls != 3 || ms.Totals.UnknownCalls != 1 || ms.Totals.Checkpoints != 2 {
 		t.Errorf("milestone totals = %+v", ms.Totals)
 	}
 	var keys []string
@@ -157,7 +157,7 @@ func TestSpend(t *testing.T) {
 	if len(ms.ByKindModel) < 2 || ms.ByKindModel[0].Key == "" || ms.ConflictRuns == nil || len(ms.ConflictRuns) != 0 {
 		t.Errorf("milestone by kind and model = %+v, conflict runs %+v (no conflict calls)", ms.ByKindModel, ms.ConflictRuns)
 	}
-	if s := ms.BySession; len(s) != 1 || s[0].Key != "fresh" || s[0].Totals.Calls != 2 || s[0].Totals.CostUSD != "1.75" {
+	if s := ms.BySession; len(s) != 1 || s[0].Key != "fresh" || s[0].Totals.Calls != 2 || s[0].Totals.CostUSD.String() != "1.75" {
 		t.Errorf("milestone by session = %+v, want two fresh implement calls", s)
 	}
 	var sub []SubagentBreakdownView
@@ -190,7 +190,7 @@ func TestSpend(t *testing.T) {
 		b[1].Key != "usage-limit" || b[1].Count != 1 || b[1].Totals.Calls != 1 || run.Totals.Checkpoints != 2 || run.Totals.Calls != 2 {
 		t.Errorf("run by checkpoint = %+v (totals %+v), want pod-lost without a call and one usage-limit call", b, run.Totals)
 	}
-	if f := run.Children[1]; f.Totals.CostUSD != "" || f.Totals.CostKnown || f.CostSource != "unknown" {
+	if f := run.Children[1]; f.Totals.CostUSD.String() != "" || f.Totals.CostUSD.Known || f.CostSource != "unknown" {
 		t.Errorf("cursor call = %+v, want an unknown cost", f)
 	}
 }
@@ -204,12 +204,12 @@ func TestSpendViewCheckpoints(t *testing.T) {
 				Checkpoint: "usage-limit", CheckpointSHA: "abc123", LinesAdded: 412, LinesDeleted: 38}},
 			{Level: store.SpendCall, Key: "2", Call: &store.Call{Kind: "review", Engine: "claude", CostSource: "reported"}},
 		},
-		Totals: store.SpendTotals{Calls: 3, Checkpoints: 4, CostKnown: true},
+		Totals: store.SpendTotals{Calls: 3, Checkpoints: 4, CostUSD: store.USD(0)},
 		// pod-lost was saved without a call: a count, no calls.
 		ByCheckpoint: []store.SpendBreakdown{
-			{Key: "usage-limit", Totals: store.SpendTotals{Calls: 2, Checkpoints: 2, CostKnown: true}, Count: 2},
-			{Key: "engine-error", Totals: store.SpendTotals{Calls: 1, Checkpoints: 1, CostKnown: true}, Count: 1},
-			{Key: "pod-lost", Totals: store.SpendTotals{Checkpoints: 1, CostKnown: true}, Count: 1},
+			{Key: "usage-limit", Totals: store.SpendTotals{Calls: 2, Checkpoints: 2, CostUSD: store.USD(0)}, Count: 2},
+			{Key: "engine-error", Totals: store.SpendTotals{Calls: 1, Checkpoints: 1, CostUSD: store.USD(0)}, Count: 1},
+			{Key: "pod-lost", Totals: store.SpendTotals{Checkpoints: 1, CostUSD: store.USD(0)}, Count: 1},
 		},
 	})
 	if c := v.Children[0]; c.Checkpoint != "usage-limit" || c.CheckpointSHA != "abc123" || c.LinesAdded != 412 || c.LinesDeleted != 38 {

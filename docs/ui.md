@@ -1330,8 +1330,14 @@ renderer). `web/src` uses no `v-html` and no `innerHTML`: keep it that way.
 the Go structs with [tygo](https://github.com/gzuidhof/tygo) (`go tool
 tygo`, pinned in `go.mod`): `internal/ui` into `web/src/generated/views.ts`,
 the CRD types the views embed (`api/v1alpha1`) into
-`web/src/generated/api.ts`. Both are committed. After changing a view
-struct, run `make ts-types`; the CI `drift` job runs it and fails when the
+`web/src/generated/api.ts`, and the store types the views carry as they are
+(`internal/research/store`, so far `SpendTotals`) into
+`web/src/generated/store.ts`. A view struct exists only when it differs from
+the store type by composition or by what it hides; a store type the web
+gets has JSON tags. A cost that may be unknown is a `store.Money`: the
+amount with 2 decimals in the JSON, `""` when unknown, never `"0.00"`
+(`Money` in TypeScript is a string). All three files are committed. After
+changing a view struct, run `make ts-types`; the CI `drift` job runs it and fails when the
 files change. `tygo.yaml` lists the files with views (server-only types such
 as the GitLab cookie and the log source live in other files) and the type
 mappings; a Go type without a mapping becomes `Unmapped`, which fails the

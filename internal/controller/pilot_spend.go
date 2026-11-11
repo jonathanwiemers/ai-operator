@@ -40,7 +40,7 @@ func (r *AgentProjectReconciler) retroSpend(ctx context.Context, coord *aiv1.Age
 // tokens. The milestone's own calls (spec, pilot, retro) are no issue.
 func spendSummary(sp store.Spend) *aiv1.SpendSummary {
 	t := sp.Totals
-	s := &aiv1.SpendSummary{CostUSD: aiv1.FormatCost(t.CostUSD), CostKnown: t.CostKnown, SubagentCalls: t.SubagentCalls, UnmeteredCalls: t.UnmeteredCalls,
+	s := &aiv1.SpendSummary{CostUSD: aiv1.FormatCost(t.CostUSD.USD), CostKnown: t.CostUSD.Known, SubagentCalls: t.SubagentCalls, UnmeteredCalls: t.UnmeteredCalls,
 		Calls: t.Calls, OldBasisCalls: t.OldBasisCalls,
 		Tokens: aiv1.SpendTokens{Input: t.InputTokens, Output: t.OutputTokens, CacheRead: t.CacheReadTokens, CacheWrite: t.CacheWriteTokens}}
 	var issues []aiv1.SpendDriver
@@ -74,8 +74,8 @@ func spendSummary(sp store.Spend) *aiv1.SpendSummary {
 
 func spendDriver(key, label string, t store.SpendTotals) aiv1.SpendDriver {
 	d := aiv1.SpendDriver{Key: key, Label: label, Tokens: t.Tokens(), Unmetered: t.Calls > 0 && t.UnmeteredCalls == t.Calls}
-	if t.CostKnown {
-		d.CostUSD = aiv1.FormatCost(t.CostUSD)
+	if t.CostUSD.Known {
+		d.CostUSD = aiv1.FormatCost(t.CostUSD.USD)
 	}
 	return d
 }

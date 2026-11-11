@@ -603,3 +603,12 @@ follow-up issue), and requirements without an issue and why.
   `pauseCard.ts`, `milestoneQueue.ts` and `releaseRows.ts` had no call
   sites left (they go through chat, notes or the loaded views). Nothing
   narrowed; R14 is done.
+- 2026-11-11 #341 (R15 part 1): `internal/research/store` is a third tygo
+  package (`web/src/generated/store.ts`), read from `spend_totals.go` only:
+  the rest of `spend.go` has untagged types, the level constants come out
+  as a `Spend` union, and `SpendChild.Call` lives in `calls.go`. They join
+  when their views collapse. `store.Money` (USD plus known) is a cost in
+  JSON: the amount with 2 decimals, `""` when unknown. `SpendTotals` has
+  the view's JSON tags and replaces `SpendTotalsView`; `costKnown` is
+  written from `CostUSD.Known`, `legacyCostUSD` is `omitzero`. The JSON is
+  byte for byte the view's (golden test). Nothing narrowed.

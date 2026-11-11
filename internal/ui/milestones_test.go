@@ -163,7 +163,7 @@ func TestMilestonesWithSnapshot(t *testing.T) {
 	shop := store.ProjectKey{Namespace: "team-a", Name: "shop"}
 	started := t0.Add(-48 * time.Hour)
 	done := func(d int) time.Time { return t0.Add(-time.Duration(d) * 24 * time.Hour) }
-	spent := store.SpendTotals{CostUSD: 4.5, CostKnown: true, InputTokens: 1000, OutputTokens: 200, Calls: 3}
+	spent := store.SpendTotals{CostUSD: store.USD(4.5), InputTokens: 1000, OutputTokens: 200, Calls: 3}
 	fake := &fakeMilestones{rows: []store.MilestoneRow{
 		// Live: its spend, start and follow-ups count, the live state and
 		// progress stay.

@@ -165,8 +165,8 @@ func costDrivers(sp store.Spend) []CostDriverView {
 	}
 	var all []driver
 	add := func(label, kind string, t store.SpendTotals) {
-		all = append(all, driver{CostDriverView{Label: label, Kind: kind, CostUSD: showKnownCost(t.CostUSD, t.CostKnown),
-			CostKnown: t.CostKnown, Tokens: t.Tokens()}, t.CostUSD})
+		all = append(all, driver{CostDriverView{Label: label, Kind: kind, CostUSD: t.CostUSD.String(),
+			CostKnown: t.CostUSD.Known, Tokens: t.Tokens()}, t.CostUSD.USD})
 	}
 	for _, c := range sp.Children {
 		if c.Level == store.SpendIssue {

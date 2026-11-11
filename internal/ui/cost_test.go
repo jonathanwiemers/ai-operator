@@ -98,7 +98,7 @@ func TestCostsFromCalls(t *testing.T) {
 		t.Fatalf("task: status %d", code)
 	}
 	checkCost(t, "task", task.Cost, Cost{CostUSD: "2.25", CostKnown: true, Tokens: 301200, CostFrom: CostFromCalls})
-	if s := task.Cost.Spend; s == nil || s.LegacyCostUSD != "0.75" || s.CacheReadTokens != 300000 || s.Calls != 1 {
+	if s := task.Cost.Spend; s == nil || s.LegacyCostUSD.String() != "0.75" || s.CacheReadTokens != 300000 || s.Calls != 1 {
 		t.Errorf("task breakdown = %+v", s)
 	}
 }

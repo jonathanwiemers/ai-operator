@@ -14,33 +14,6 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
-// SpendTotalsView sums calls. CostUSD is "" when no cost is known (cursor
-// calls without pricing), never "0.00"; UnknownCalls are left out of it.
-type SpendTotalsView struct {
-	CostUSD      string `json:"costUSD"`
-	CostKnown    bool   `json:"costKnown"`
-	UnknownCalls int64  `json:"unknownCalls"`
-	// UnmeteredCalls are the calls with neither a cost nor tokens, a part
-	// of UnknownCalls.
-	UnmeteredCalls int64 `json:"unmeteredCalls"`
-	// OldBasisCalls are the calls recorded before the token basis was
-	// stored; their tokens do not compare with newer calls.
-	OldBasisCalls    int64 `json:"oldBasisCalls"`
-	InputTokens      int64 `json:"inputTokens"`
-	OutputTokens     int64 `json:"outputTokens"`
-	CacheReadTokens  int64 `json:"cacheReadTokens"`
-	CacheWriteTokens int64 `json:"cacheWriteTokens"`
-	Calls            int64 `json:"calls"`
-	SubagentCalls    int64 `json:"subagentCalls"`
-	DurationMS       int64 `json:"durationMS"`
-	// LegacyCostUSD is the part of CostUSD from runs before agent_calls.
-	LegacyCostUSD string `json:"legacyCostUSD,omitempty"`
-	// Checkpoints are the calls that saved a checkpoint plus the
-	// checkpoints saved without a call (budget stop, lost pod, OOM kill);
-	// those add nothing to Calls.
-	Checkpoints int64 `json:"checkpoints"`
-}
-
 // ModelSplitView is one model's share of a child; Main is the calls' own
 // model, the others ran as subagents. Unmetered: none of its calls reports
 // a cost or tokens (cursor's model auto).
@@ -85,12 +58,12 @@ type SpendCallView struct {
 // (key its IID, "" for none), an issue (its IID), a run (task/run) or a
 // call (its seq, with the call's fields).
 type SpendChildView struct {
-	Level  string           `json:"level" tstype:"SpendLevel"`
-	Key    string           `json:"key"`
-	Label  string           `json:"label"`
-	At     time.Time        `json:"at"`
-	Totals SpendTotalsView  `json:"totals"`
-	Models []ModelSplitView `json:"models"`
+	Level  string            `json:"level" tstype:"SpendLevel"`
+	Key    string            `json:"key"`
+	Label  string            `json:"label"`
+	At     time.Time         `json:"at"`
+	Totals store.SpendTotals `json:"totals"`
+	Models []ModelSplitView  `json:"models"`
 	// Companion is the companion project of an issue that has one (issue
 	// rows only): its calls edit both trees and count to the home issue.
 	Companion      string `json:"companion,omitempty"`
@@ -101,26 +74,26 @@ type SpendChildView struct {
 // set in byCheckpoint only: the checkpoints with the reason, with or
 // without a call (totals sum the calls).
 type SpendBreakdownView struct {
-	Key    string          `json:"key"`
-	Totals SpendTotalsView `json:"totals"`
-	Count  int64           `json:"count"`
+	Key    string            `json:"key"`
+	Totals store.SpendTotals `json:"totals"`
+	Count  int64             `json:"count"`
 }
 
 // SubagentBreakdownView sums a role's calls that ran subagents or none;
 // subagentTokens are the tokens of the subagent models.
 type SubagentBreakdownView struct {
-	Role           string          `json:"role"`
-	WithSubagents  bool            `json:"withSubagents"`
-	Totals         SpendTotalsView `json:"totals"`
-	SubagentTokens int64           `json:"subagentTokens"`
-	ReadGateBlocks int64           `json:"readGateBlocks"`
+	Role           string            `json:"role"`
+	WithSubagents  bool              `json:"withSubagents"`
+	Totals         store.SpendTotals `json:"totals"`
+	SubagentTokens int64             `json:"subagentTokens"`
+	ReadGateBlocks int64             `json:"readGateBlocks"`
 }
 
 // SpendView is what a scope cost. byReviewRound is keyed by round ("1",
 // "2", …), bySession by "fresh" or "resumed" (implement calls only),
 // byCheckpoint by the reason of the checkpoints, with or without a call.
 type SpendView struct {
-	Totals   SpendTotalsView      `json:"totals"`
+	Totals   store.SpendTotals    `json:"totals"`
 	Children []SpendChildView     `json:"children"`
 	ByKind   []SpendBreakdownView `json:"byKind"`
 	ByRole   []SpendBreakdownView `json:"byRole"`
@@ -245,7 +218,7 @@ func projectTasks(tasks []aiv1.AgentTask, ap *aiv1.AgentProject) []aiv1.AgentTas
 }
 
 func spendView(sp store.Spend) SpendView {
-	v := SpendView{Totals: spendTotalsView(sp.Totals), Children: make([]SpendChildView, 0, len(sp.Children)),
+	v := SpendView{Totals: sp.Totals, Children: make([]SpendChildView, 0, len(sp.Children)),
 		ByKind: breakdownViews(sp.ByKind), ByRole: breakdownViews(sp.ByRole), ByModel: breakdownViews(sp.ByModel),
 		ByKindModel: breakdownViews(sp.ByKindModel), ConflictRuns: breakdownViews(sp.ConflictRuns),
 		ByReviewRound: breakdownViews(sp.ByReviewRound), BySession: breakdownViews(sp.BySession), ByCheckpoint: breakdownViews(sp.ByCheckpoint),
@@ -253,15 +226,15 @@ func spendView(sp store.Spend) SpendView {
 		StepLines: StepLinesView(sp.StepLines)}
 	for _, b := range sp.BySubagents {
 		v.BySubagents = append(v.BySubagents, SubagentBreakdownView{Role: b.Role, WithSubagents: b.WithSubagents,
-			Totals: spendTotalsView(b.Totals), SubagentTokens: b.SubagentTokens,
+			Totals: b.Totals, SubagentTokens: b.SubagentTokens,
 			ReadGateBlocks: b.ReadGateBlocks})
 	}
 	for _, c := range sp.Children {
-		cv := SpendChildView{Level: c.Level, Key: c.Key, Label: c.Label, At: c.At, Totals: spendTotalsView(c.Totals),
+		cv := SpendChildView{Level: c.Level, Key: c.Key, Label: c.Label, At: c.At, Totals: c.Totals,
 			Models: make([]ModelSplitView, 0, len(c.Models))}
 		for _, m := range c.Models {
 			cv.Models = append(cv.Models, ModelSplitView{Model: m.Model, Main: m.Main, Tokens: m.Tokens,
-				CostUSD: showKnownCost(m.CostUSD, m.CostKnown), CostKnown: m.CostKnown, Unmetered: m.Unmetered})
+				CostUSD: store.Money{USD: m.CostUSD, Known: m.CostKnown}.String(), CostKnown: m.CostKnown, Unmetered: m.Unmetered})
 		}
 		if call := c.Call; call != nil {
 			cv.SpendCallView = &SpendCallView{Kind: call.Kind, Role: call.Role, Engine: call.Engine, Model: call.Model,
@@ -284,26 +257,7 @@ func spendView(sp store.Spend) SpendView {
 func breakdownViews(bs []store.SpendBreakdown) []SpendBreakdownView {
 	out := make([]SpendBreakdownView, 0, len(bs))
 	for _, b := range bs {
-		out = append(out, SpendBreakdownView{Key: b.Key, Totals: spendTotalsView(b.Totals), Count: b.Count})
+		out = append(out, SpendBreakdownView{Key: b.Key, Totals: b.Totals, Count: b.Count})
 	}
 	return out
-}
-
-func spendTotalsView(t store.SpendTotals) SpendTotalsView {
-	v := SpendTotalsView{CostUSD: showKnownCost(t.CostUSD, t.CostKnown), CostKnown: t.CostKnown,
-		UnknownCalls: t.UnknownCalls, UnmeteredCalls: t.UnmeteredCalls, OldBasisCalls: t.OldBasisCalls, InputTokens: t.InputTokens, OutputTokens: t.OutputTokens,
-		CacheReadTokens: t.CacheReadTokens, CacheWriteTokens: t.CacheWriteTokens, Calls: t.Calls,
-		SubagentCalls: t.SubagentCalls, DurationMS: t.DurationMS, Checkpoints: t.Checkpoints}
-	if t.LegacyCostUSD > 0 {
-		v.LegacyCostUSD = aiv1.ShowCost(t.LegacyCostUSD)
-	}
-	return v
-}
-
-// showKnownCost is usd for display, "" when unknown.
-func showKnownCost(usd float64, known bool) string {
-	if !known {
-		return ""
-	}
-	return aiv1.ShowCost(usd)
 }

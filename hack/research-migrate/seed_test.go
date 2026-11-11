@@ -99,14 +99,14 @@ func TestSeedSpend(t *testing.T) {
 	}
 
 	p := sum(store.SpendScope{})
-	near("project", p.Totals.CostUSD, 11.06)
+	near("project", p.Totals.CostUSD.USD, 11.06)
 	if p.Totals.Calls != 10 || p.Totals.UnknownCalls != 1 || len(p.Children) != 2 {
 		t.Errorf("project: %d calls, %d unknown, %d children", p.Totals.Calls, p.Totals.UnknownCalls, len(p.Children))
 	}
 
 	m := sum(store.SpendScope{MilestoneIID: 4})
-	near("milestone", m.Totals.CostUSD, 11.01)
-	near("milestone legacy", m.Totals.LegacyCostUSD, 1.75)
+	near("milestone", m.Totals.CostUSD.USD, 11.01)
+	near("milestone legacy", m.Totals.LegacyCostUSD.USD, 1.75)
 	var keys []string
 	for _, c := range m.Children {
 		keys = append(keys, c.Level+"/"+c.Key)
@@ -119,7 +119,7 @@ func TestSeedSpend(t *testing.T) {
 	}
 
 	i := sum(store.SpendScope{MilestoneIID: 4, IssueIID: 77})
-	near("#77", i.Totals.CostUSD, 6.63)
+	near("#77", i.Totals.CostUSD.USD, 6.63)
 	if len(i.Children) != 2 {
 		t.Errorf("#77: %d runs, want 2", len(i.Children))
 	}
@@ -163,7 +163,7 @@ func TestSeedDeskMilestones(t *testing.T) {
 	if len(rows) != 5 {
 		t.Fatalf("%d milestones, want 5", len(rows))
 	}
-	if r := got[key{"web", 2}]; r.Phase != "running" || r.Issues != 5 || r.Merged != 2 || !r.Spend.CostKnown {
+	if r := got[key{"web", 2}]; r.Phase != "running" || r.Issues != 5 || r.Merged != 2 || !r.Spend.CostUSD.Known {
 		t.Errorf("running: %+v", r)
 	}
 	if r := got[key{"web", 3}]; r.Phase != "paused" || r.State != "open" {
@@ -172,10 +172,10 @@ func TestSeedDeskMilestones(t *testing.T) {
 	if r := got[key{"dev", 5}]; r.Phase != "running" || r.Merged != 1 {
 		t.Errorf("waiting: %+v", r)
 	}
-	if r := got[key{"dev", 3}]; r.State != "closed" || r.Spend.CostKnown {
+	if r := got[key{"dev", 3}]; r.State != "closed" || r.Spend.CostUSD.Known {
 		t.Errorf("old done milestone has spend: %+v", r)
 	}
-	if r := got[key{"dev", 4}]; r.State != "closed" || !r.Spend.CostKnown || r.FollowUpsOpen != 1 {
+	if r := got[key{"dev", 4}]; r.State != "closed" || !r.Spend.CostUSD.Known || r.FollowUpsOpen != 1 {
 		t.Errorf("done: %+v", r)
 	}
 

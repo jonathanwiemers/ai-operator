@@ -125,8 +125,8 @@ func TestOverviewWithoutDatabase(t *testing.T) {
 
 func TestOverviewWithSpend(t *testing.T) {
 	env, _ := overviewEnv(t)
-	fake := &fakeSpendSince{day: store.SpendTotals{CostUSD: 1.5, CostKnown: true, InputTokens: 100, Calls: 2},
-		week: store.SpendTotals{CostUSD: 12, CostKnown: true, InputTokens: 900, OutputTokens: 100, Calls: 9}}
+	fake := &fakeSpendSince{day: store.SpendTotals{CostUSD: store.USD(1.5), InputTokens: 100, Calls: 2},
+		week: store.SpendTotals{CostUSD: store.USD(12), InputTokens: 900, OutputTokens: 100, Calls: 9}}
 	env.server.overviewSpend = fake
 	var o OverviewView
 	if code := env.get(t, "/api/v1/overview", &o); code != http.StatusOK || !o.History {

@@ -631,7 +631,7 @@ func (f *fakeMilestoneDetails) IssueFigures(ctx context.Context, p store.Project
 func paypalFigures() store.IssueFigures {
 	return store.IssueFigures{IID: 42, Title: "Add PayPal", State: "merged", MRIID: 5, MRURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5",
 		WallSec: 3600, AgentMS: 1_500_000, PausedSec: 600,
-		Spend: store.SpendTotals{CostUSD: 1.5, CostKnown: true, InputTokens: 1000, OutputTokens: 200, Calls: 3}}
+		Spend: store.SpendTotals{CostUSD: store.USD(1.5), InputTokens: 1000, OutputTokens: 200, Calls: 3}}
 }
 
 // storedCheckout is the snapshot of the closed milestone 4 of the shop,
@@ -640,10 +640,10 @@ func storedCheckout() store.MilestoneDetail {
 	return store.MilestoneDetail{
 		MilestoneRow: store.MilestoneRow{Project: store.ProjectKey{Namespace: "team-a", Name: "shop"}, IID: 4, Title: "Refunds",
 			WebURL: "https://gitlab.example.com/acme/shop/-/milestones/4", State: "closed", Phase: "done", TrackingIID: 80,
-			Spend: store.SpendTotals{CostUSD: 2.5, CostKnown: true, InputTokens: 2000, OutputTokens: 300, Calls: 5}},
+			Spend: store.SpendTotals{CostUSD: store.USD(2.5), InputTokens: 2000, OutputTokens: 300, Calls: 5}},
 		Issues: []store.IssueFigures{
 			{IID: 50, Title: "Refund API", State: "merged", MRIID: 9, WallSec: 7200, AgentMS: 900_000,
-				Spend: store.SpendTotals{CostUSD: 2.5, CostKnown: true, InputTokens: 2000, OutputTokens: 300, Calls: 5}},
+				Spend: store.SpendTotals{CostUSD: store.USD(2.5), InputTokens: 2000, OutputTokens: 300, Calls: 5}},
 			{IID: 51, Title: "Refund mail", State: "skipped"},
 		},
 	}
@@ -824,9 +824,9 @@ func TestMilestoneRetrospective(t *testing.T) {
 	env.login(t, "/")
 	web := gl.srv.URL + "/acme/shop"
 	spend := &fakeSpend{sp: store.Spend{Children: []store.SpendChild{
-		{Level: store.SpendMilestone, Key: "3", Label: "Milestone %3", Totals: store.SpendTotals{CostUSD: 9, CostKnown: true}},
-		{Level: store.SpendIssue, Key: "42", Label: "#42", Totals: store.SpendTotals{CostUSD: 1.5, CostKnown: true, InputTokens: 100}},
-	}, ByRole: []store.SpendBreakdown{{Key: "implementer", Totals: store.SpendTotals{CostUSD: 2, CostKnown: true}}}}}
+		{Level: store.SpendMilestone, Key: "3", Label: "Milestone %3", Totals: store.SpendTotals{CostUSD: store.USD(9)}},
+		{Level: store.SpendIssue, Key: "42", Label: "#42", Totals: store.SpendTotals{CostUSD: store.USD(1.5), InputTokens: 100}},
+	}, ByRole: []store.SpendBreakdown{{Key: "implementer", Totals: store.SpendTotals{CostUSD: store.USD(2)}}}}}
 	env.server.retroSpend = spend
 
 	// None: absent, and no spend is read for it.
@@ -914,7 +914,7 @@ func TestMilestoneRetrospective(t *testing.T) {
 
 func TestCostDrivers(t *testing.T) {
 	known := func(usd float64, tokens int64) store.SpendTotals {
-		return store.SpendTotals{CostUSD: usd, CostKnown: true, InputTokens: tokens}
+		return store.SpendTotals{CostUSD: store.USD(usd), InputTokens: tokens}
 	}
 	unknown := func(tokens int64) store.SpendTotals { return store.SpendTotals{OutputTokens: tokens} }
 	sp := store.Spend{

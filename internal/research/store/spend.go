@@ -26,44 +26,6 @@ type SpendScope struct {
 	Run                    int64
 }
 
-// SpendTotals sums calls. CostUSD sums the known costs, LegacyCostUSD (the
-// part of CostUSD from runs without calls) included; UnknownCalls are the
-// calls without a cost, which never add $0. CostKnown is false only when
-// every call is unknown and there is no legacy cost. UnmeteredCalls are
-// the calls with neither a cost nor tokens (cursor's ACP reports no
-// usage), a part of UnknownCalls. OldBasisCalls are the calls recorded
-// before the token basis was stored (token_basis 0): their tokens are not
-// comparable with newer calls', see MixedBasis and OldBasis; runs without
-// calls and checkpoint events are no calls and never count. Checkpoints
-// are the calls that saved a checkpoint plus the checkpoints no call
-// carries (checkpoint events: budget stop, lost pod, OOM kill); those add
-// no call to Calls.
-type SpendTotals struct {
-	CostUSD                                                      float64
-	CostKnown                                                    bool
-	UnknownCalls                                                 int64
-	UnmeteredCalls                                               int64
-	OldBasisCalls                                                int64
-	InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens int64
-	Calls                                                        int64
-	SubagentCalls                                                int64
-	DurationMS                                                   int64
-	LegacyCostUSD                                                float64
-	Checkpoints                                                  int64
-}
-
-// MixedBasis is true when some but not all calls are on the old token
-// basis (OldBasisCalls).
-func (t SpendTotals) MixedBasis() bool { return t.OldBasisCalls > 0 && t.OldBasisCalls < t.Calls }
-
-// OldBasis is true when there are calls and all are on the old token basis.
-func (t SpendTotals) OldBasis() bool { return t.Calls > 0 && t.OldBasisCalls == t.Calls }
-
-// Tokens is the sum of all tokens: input, output and cache.
-func (t SpendTotals) Tokens() int64 {
-	return t.InputTokens + t.OutputTokens + t.CacheReadTokens + t.CacheWriteTokens
-}
-
 // ModelSplit is one model's share of a child. Main is true for the calls'
 // own model; the other models ran as subagents. CostKnown is false when the
 // calls report no cost for the model (cursor splits tokens only).
@@ -259,10 +221,14 @@ const spendTotals = `coalesce(sum(cost_usd), 0)::float8,
 // them.
 func scanTotals(row pgx.Row, dest ...any) (SpendTotals, error) {
 	var t SpendTotals
-	err := row.Scan(append(dest, &t.CostUSD, &t.UnknownCalls, &t.InputTokens, &t.OutputTokens,
-		&t.CacheReadTokens, &t.CacheWriteTokens, &t.Calls, &t.SubagentCalls, &t.DurationMS, &t.LegacyCostUSD,
+	var legacy float64
+	err := row.Scan(append(dest, &t.CostUSD.USD, &t.UnknownCalls, &t.InputTokens, &t.OutputTokens,
+		&t.CacheReadTokens, &t.CacheWriteTokens, &t.Calls, &t.SubagentCalls, &t.DurationMS, &legacy,
 		&t.UnmeteredCalls, &t.Checkpoints, &t.OldBasisCalls)...)
-	t.CostKnown = t.UnknownCalls < t.Calls || t.Calls == 0 || t.LegacyCostUSD > 0
+	if legacy > 0 {
+		t.LegacyCostUSD = USD(legacy)
+	}
+	t.CostUSD.Known = t.UnknownCalls < t.Calls || t.Calls == 0 || legacy > 0
 	return t, err
 }
 
@@ -334,7 +300,7 @@ func (s *Store) SpendTotals(ctx context.Context, sc SpendScope) (SpendTotals, er
 // or after since, in one query: the overview's spend today and this week.
 func (s *Store) SpendSince(ctx context.Context, projects []ProjectKey, since time.Time) (SpendTotals, error) {
 	if len(projects) == 0 {
-		return SpendTotals{CostKnown: true}, nil
+		return SpendTotals{CostUSD: USD(0)}, nil
 	}
 	nss, names := split(projects)
 	with := spendWith(`(namespace, project) IN (SELECT * FROM unnest($1::text[], $2::text[])) AND at >= $3`)
@@ -484,7 +450,7 @@ func (s *Store) spendChildren(ctx context.Context, sc SpendScope, with string, a
 	models, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (modelRow, error) {
 		var m modelRow
 		t, err := scanTotals(row, &m.key, &m.Model, &m.Main)
-		m.Tokens, m.CostUSD, m.CostKnown = t.Tokens(), t.CostUSD, t.UnknownCalls < t.Calls
+		m.Tokens, m.CostUSD, m.CostKnown = t.Tokens(), t.CostUSD.USD, t.UnknownCalls < t.Calls
 		m.Unmetered = t.Calls > 0 && t.UnmeteredCalls == t.Calls
 		return m, err
 	})

@@ -115,7 +115,7 @@ func TestMilestones(t *testing.T) {
 		t.Errorf("milestone 20 progress = %d issues, %d merged, %d open, %d follow-ups open",
 			m20.Issues, m20.Merged, m20.Open, m20.FollowUpsOpen)
 	}
-	if sp := m20.Spend; !sp.CostKnown || sp.CostUSD != 1.5 || sp.Calls != 2 || sp.UnknownCalls != 1 || sp.Tokens() != 40 {
+	if sp := m20.Spend; !sp.CostUSD.Known || sp.CostUSD.USD != 1.5 || sp.Calls != 2 || sp.UnknownCalls != 1 || sp.Tokens() != 40 {
 		t.Errorf("milestone 20 spend = %+v, want only bloop's calls", sp)
 	}
 
@@ -123,7 +123,7 @@ func TestMilestones(t *testing.T) {
 	if m21.Issues != 0 || m21.Open != 0 || m21.FollowUpsOpen != 0 {
 		t.Errorf("milestone 21 progress = %+v", m21)
 	}
-	if sp := m21.Spend; sp.CostKnown || sp.CostUSD != 0 || sp.Calls != 0 || sp.Tokens() != 0 {
+	if sp := m21.Spend; sp.CostUSD.Known || sp.CostUSD.USD != 0 || sp.Calls != 0 || sp.Tokens() != 0 {
 		t.Errorf("milestone 21 without calls: spend = %+v, want unknown", sp)
 	}
 
@@ -131,7 +131,7 @@ func TestMilestones(t *testing.T) {
 	if !m10.DoneAt.Equal(base.Add(2*time.Hour)) || m10.State != "closed" {
 		t.Errorf("milestone 10 = %+v", m10)
 	}
-	if sp := m10.Spend; !sp.CostKnown || sp.CostUSD != 2 || sp.LegacyCostUSD != 2 || sp.Calls != 0 || sp.Tokens() != 0 {
+	if sp := m10.Spend; !sp.CostUSD.Known || sp.CostUSD.USD != 2 || sp.LegacyCostUSD.USD != 2 || sp.Calls != 0 || sp.Tokens() != 0 {
 		t.Errorf("milestone 10 spend = %+v, want the legacy run's cost", sp)
 	}
 
@@ -143,7 +143,7 @@ func TestMilestones(t *testing.T) {
 	}
 
 	both := list(store.MilestoneQuery{Projects: []store.ProjectKey{bloop, other}, State: "open"})
-	if len(both) != 3 || both[0].Project != other || both[0].Spend.CostUSD != 9 || both[0].Merged != 1 || both[0].FollowUpsOpen != 1 {
+	if len(both) != 3 || both[0].Project != other || both[0].Spend.CostUSD.USD != 9 || both[0].Merged != 1 || both[0].FollowUpsOpen != 1 {
 		t.Errorf("both projects, open = %+v", both)
 	}
 
@@ -289,7 +289,7 @@ func TestMilestoneDetail(t *testing.T) {
 		d.Open != 3 || d.FollowUpsOpen != 1 {
 		t.Errorf("milestone row = %+v", d.MilestoneRow)
 	}
-	if sp := d.Spend; sp.CostUSD != 6.25 || sp.Calls != 4 || sp.DurationMS != 7600 {
+	if sp := d.Spend; sp.CostUSD.USD != 6.25 || sp.Calls != 4 || sp.DurationMS != 7600 {
 		t.Errorf("milestone spend = %+v, want its four calls", sp)
 	}
 	if d.RetroText != "It went **well**." || !d.RetroPostedAt.Equal(posted) || d.RetroNoteID != 77 ||
@@ -323,20 +323,20 @@ func TestMilestoneDetail(t *testing.T) {
 		i160.WallSec != 3*3600 {
 		t.Errorf("issue 160 wall time = %v to %v, %ds; want 3h to the merge", i160.FirstRun, i160.MergedAt, i160.WallSec)
 	}
-	if i160.AgentMS != 3500 || !i160.Spend.CostKnown || i160.Spend.CostUSD != 1.25 || i160.Spend.UnknownCalls != 1 ||
+	if i160.AgentMS != 3500 || !i160.Spend.CostUSD.Known || i160.Spend.CostUSD.USD != 1.25 || i160.Spend.UnknownCalls != 1 ||
 		i160.Spend.Tokens() != 30 {
 		t.Errorf("issue 160 agent time and spend = %d, %+v", i160.AgentMS, i160.Spend)
 	}
 	if i161.FirstRun == nil || !i161.FirstRun.Equal(base.Add(2*time.Hour)) || i161.MergedAt != nil || i161.WallSec != 3*3600 {
 		t.Errorf("issue 161 wall time = %v to %v, %ds; want 3h to now", i161.FirstRun, i161.MergedAt, i161.WallSec)
 	}
-	if i161.AgentMS != 4000 || i161.Spend.CostUSD != 2 || i161.PausedSec != 0 {
+	if i161.AgentMS != 4000 || i161.Spend.CostUSD.USD != 2 || i161.PausedSec != 0 {
 		t.Errorf("issue 161 = %+v", i161)
 	}
 	if i162.FirstRun != nil || i162.MergedAt != nil || i162.WallSec != 0 || i162.AgentMS != 0 {
 		t.Errorf("issue 162 never ran: %+v", i162)
 	}
-	if sp := i162.Spend; sp.CostKnown || sp.Calls != 0 || sp.Tokens() != 0 {
+	if sp := i162.Spend; sp.CostUSD.Known || sp.Calls != 0 || sp.Tokens() != 0 {
 		t.Errorf("issue 162 without calls: spend = %+v, want unknown", sp)
 	}
 	// 10 minutes, then 3 hours open up to now.
@@ -356,7 +356,7 @@ func TestMilestoneDetail(t *testing.T) {
 	}
 
 	empty, err := s.Milestone(ctx, bloop, 31, now)
-	if err != nil || empty.IID != 31 || len(empty.Issues) != 0 || len(empty.FollowUps) != 0 || len(empty.Releases) != 0 || empty.Spend.CostUSD != 7 {
+	if err != nil || empty.IID != 31 || len(empty.Issues) != 0 || len(empty.FollowUps) != 0 || len(empty.Releases) != 0 || empty.Spend.CostUSD.USD != 7 {
 		t.Errorf("milestone 31 = %+v, %v", empty, err)
 	}
 

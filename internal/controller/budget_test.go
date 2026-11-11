@@ -19,7 +19,7 @@ import (
 func newBudgetEnv(t *testing.T, usd string, spent float64) (*projectEnv, *fakeSpend) {
 	t.Helper()
 	e := newAutopilotEnv(t)
-	src := &fakeSpend{spend: store.Spend{Totals: store.SpendTotals{CostUSD: spent, CostKnown: true}}}
+	src := &fakeSpend{spend: store.Spend{Totals: store.SpendTotals{CostUSD: store.USD(spent)}}}
 	e.r.Spend = src
 	setBudgetLine(e, usd)
 	return e, src
@@ -54,7 +54,7 @@ func TestBudgetPausesAtTheLimitAndResumesWhenRaised(t *testing.T) {
 		t.Fatalf("the budget is carried to the spec task: %q", planned.BudgetUSD)
 	}
 
-	src.spend.Totals.CostUSD = 5.123
+	src.spend.Totals.CostUSD.USD = 5.123
 	e.finishRun(1, "sha-api", nil)
 	e.reconcile()
 	ap := e.autopilot()
@@ -152,11 +152,11 @@ func (e *projectEnv) setPerIssueBudget(usd string) {
 
 // issueSpend is a milestone's spend with its own calls and the issues'.
 func issueSpend(perIssue map[int64]float64) store.Spend {
-	sp := store.Spend{Children: []store.SpendChild{{Level: store.SpendMilestone, Key: "3", Totals: store.SpendTotals{CostUSD: 100, CostKnown: true}}}}
-	sp.Totals.CostUSD = 100
+	sp := store.Spend{Children: []store.SpendChild{{Level: store.SpendMilestone, Key: "3", Totals: store.SpendTotals{CostUSD: store.USD(100)}}}}
+	sp.Totals.CostUSD.USD = 100
 	for iid, usd := range perIssue {
-		sp.Totals.CostUSD += usd
-		sp.Children = append(sp.Children, store.SpendChild{Level: store.SpendIssue, Key: strconv.FormatInt(iid, 10), Totals: store.SpendTotals{CostUSD: usd, CostKnown: true}})
+		sp.Totals.CostUSD.USD += usd
+		sp.Children = append(sp.Children, store.SpendChild{Level: store.SpendIssue, Key: strconv.FormatInt(iid, 10), Totals: store.SpendTotals{CostUSD: store.USD(usd)}})
 	}
 	return sp
 }
@@ -293,7 +293,7 @@ func TestBudgetStopIsSetOnPauseAndClearedOnResume(t *testing.T) {
 		t.Fatalf("below its budget the run is not stopped: %+v", task)
 	}
 
-	src.spend.Totals.CostUSD = 6
+	src.spend.Totals.CostUSD.USD = 6
 	e.reconcile()
 	if ap := e.autopilot(); ap.PauseKind != aiv1.PauseBudget {
 		t.Fatalf("a spent budget pauses: %+v", ap)
@@ -366,12 +366,12 @@ func withBreakdown(sp store.Spend, iid int64) store.Spend {
 		if c.Level != store.SpendIssue || c.Key != strconv.FormatInt(iid, 10) {
 			continue
 		}
-		usd := c.Totals.CostUSD
+		usd := c.Totals.CostUSD.USD
 		c.Kinds = []store.SpendBreakdown{
-			{Key: "implement", Totals: store.SpendTotals{CostUSD: usd * 0.5, CostKnown: true, Calls: 4}},
-			{Key: "conflict", Totals: store.SpendTotals{CostUSD: usd * 0.3, CostKnown: true, Calls: 2}},
-			{Key: "review", Totals: store.SpendTotals{CostUSD: usd * 0.15, CostKnown: true, Calls: 3}},
-			{Key: "fix", Totals: store.SpendTotals{CostUSD: usd * 0.05, CostKnown: true, Calls: 1}},
+			{Key: "implement", Totals: store.SpendTotals{CostUSD: store.USD(usd * 0.5), Calls: 4}},
+			{Key: "conflict", Totals: store.SpendTotals{CostUSD: store.USD(usd * 0.3), Calls: 2}},
+			{Key: "review", Totals: store.SpendTotals{CostUSD: store.USD(usd * 0.15), Calls: 3}},
+			{Key: "fix", Totals: store.SpendTotals{CostUSD: store.USD(usd * 0.05), Calls: 1}},
 		}
 		// In token order, as the store has them.
 		c.Models = []store.ModelSplit{
