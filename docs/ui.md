@@ -119,8 +119,8 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   issue and its merge request, and its figures as on its row (wall, agent
   and paused time, cost, tokens; a dash where unknown). While a task works
   on the issue, a *Task* section holds what its task page holds (stage,
-  banners, facts, questions, chat, conversation, the **Live** panel, agent
-  calls, review, CI, autopilot, pod) and *Task page* links to the task's
+  links and banners, then the tabs *Overview*, *Chat*, *Live*, *Calls* and
+  *Details* by `?tab=`, see [What it shows](#what-it-shows)) and *Task page* links to the task's
   URL, which keeps working. Without one a note says why there is no live
   transcript: no task yet, or the task is gone with its pod. Below comes
   the issue's **Stream**, the events recorded for it (`GET /api/v1/stream`
@@ -465,7 +465,7 @@ follow live changes.
 ### Agent calls on the Task page
 
 A Task page lists every recorded call of its task in an *Agent calls*
-section, from the same endpoint (`task=`): the task's totals on top, then
+section on its *Calls* tab, from the same endpoint (`task=`): the task's totals on top, then
 its runs newest first (calls, tokens, cost). Expanding a run loads its
 calls (`run=`): time, kind, role, engine and model, resumed, input,
 output, cache read and cache write tokens, duration and cost (`~` for an
@@ -646,7 +646,7 @@ messages, exit reasons, API errors and thinking lines.
 
 | Page | Content |
 |------|---------|
-| **Task** | stage, phase, current step, runs, last result and its summary, spend, branch and last push; review findings; pipeline, fix rounds and failed jobs; out-of-memory restarts; usage limit deferrals; the pod and how to follow its logs. Spec tasks add the plan with dependencies and the autopilot's phase, pause reason and a link to the milestone stream, whose *Issues* tab shows the queue |
+| **Task** | above the tabs: stage, links, spend and the banners (blocked, usage-limit deferrals, out-of-memory restarts). Then tabs by `?tab=`, each shown when the task has content for it: *Overview* (the default: the last run's summary first, the agent's questions, review findings, pipeline with fix rounds and failed jobs; Spec tasks add the plan with dependencies and the autopilot's phase, pause reason and a link to the milestone stream, whose *Issues* tab shows the queue), *Chat* (chat and conversation), *Live* (with the `transcript` permission), *Calls* (with the history database) and *Details* (phase, current step, runs, last result, spend, branch and last push; the pod and how to follow its logs; conditions). Questions waiting for an answer put their count on *Overview*; an old `#live-transcript` link without `?tab=` opens *Live*. Only the open tab is loaded, so the live transcript and the chat follow the task only while shown. The issue page shows the same under its *Task* heading |
 
 **Engine usage.** claude reports how much of its usage windows is used with
 every agent call; the project keeps the freshest reading per engine
@@ -661,7 +661,7 @@ with its reset (`cursor limited until 13 Nov`).
 
 **Chat with the agent.** When Desk chat is configured (`ui.chat.writerSecret`)
 and your roles have the `chat` grant (`permissions.chat` on the task, or the
-`chat` feature), a task page has a **Chat with the agent** section: the
+`chat` feature), a task page's *Chat* tab has a **Chat with the agent** section: the
 task's Desk thread (oldest at top), a composer that posts without a GitLab
 token, and an Interrupt while a delivered turn has no reply and the agent
 pod is answering. Sends are retry-safe (`clientKey` in session storage until
@@ -670,7 +670,8 @@ a 2xx). Bodies need the `conversation` grant; without it they show as
 the task: the task's own message when it is Queued, Pending or Blocked
 (e.g. waiting for capacity), *starting the agent…* while the pod comes up,
 and *the agent is answering…* only once the task is Running or Idle with a
-pod (with a link to the Live transcript when you may see it). With the
+pod (with a link to the *Live* tab when you may see it; on a milestone's
+*Pilot* tab it opens the pilot task's *Live* tab). With the
 `chat` grant the composer also shows command buttons by task type:
 Implement has Retry, Review again and a Model… form (`use` / `effort`);
 a Spec task with autopilot has Pause or Resume and Skip…; a Coordinate
@@ -696,8 +697,8 @@ Chat events
 appear in the Desk stream when the `chat` feature is on (keyed apart from
 history events).
 
-With GitLab connected (see [Steering](#steering)), a task page has a
-**Conversation** panel: the comments of its issue, merge request and
+With GitLab connected (see [Steering](#steering)), a task page's *Chat* tab
+has a **Conversation** panel: the comments of its issue, merge request and
 tracking issue, and, with the `steer` permission, a box to write comments in
 your own GitLab name.
 
@@ -707,7 +708,7 @@ pilot as `/pilot …` (the UI adds the prefix). Only the milestone owners'
 instructions count, as in GitLab; answer a proposal "P<n>" from before
 prompts with `yes P<n>`.
 
-With the `transcript` permission, a task page also has a **Live** panel: the
+With the `transcript` permission, a task page also has a **Live** tab: the
 running pod's steps and the agent's session as they happen (see
 [Live transcript](#live-transcript)).
 
@@ -1029,7 +1030,7 @@ says why).
 
 ## Live transcript
 
-The **Live** panel on a task page follows the task's pod while it runs:
+The **Live** tab of a task page follows the task's pod while it runs:
 
 - the runner's steps (started, done, failed, with their results);
 - which agent runs (role, engine, model, read-only);
@@ -1453,7 +1454,8 @@ How it works:
 
   Every named route but the redirects has a case; routes with tabs have one
   per tab (`stream-milestone-pilot`), and the research page one per view
-  (`research`, `research-report`). To check a new route, add it to `routes` with a `ready` condition and add
+  (`research`, `research-report`), and the task and issue pages one per
+  task tab (`task-details`, `issue-chat`). To check a new route, add it to `routes` with a `ready` condition and add
   the fixtures its requests need. The checks run with the system in light
   mode; `overview-dark` sets `colorScheme: 'dark'` for dark screenshots, and
   one more check switches the scheme on an open page and expects the dark
@@ -1461,20 +1463,27 @@ How it works:
 
   The phone shell ([design.md](design.md#desk-styles), *Phones*) has
   checks of its own at 375 px: the mobile bar stays under 70 px high on Not
-  found and on an empty research list, and the inputs of the task page
-  (the chat composer's among them) and the stream search compute to at
+  found and on an empty research list, and the inputs of the task's Chat
+  tab (the chat composer's among them) and the stream search compute to at
   least 16 px, while the composer and the search stay under 16 px at
-  1280 px. On the overview, the Inbox and the task page no visible
+  1280 px. On the overview, the Inbox and the task page's Overview, Chat and
+  Details tabs no visible
   `button`, `a.btn`, `[role=button]` or `input` is under 44 px high
   (exceptions in the check's `hitAllowlist`, with a reason), and at
   1280 px a `.btn` is still 34 px. The `bottom bar …` cases check the
   [bottom bar](#navigation): the count, each item's 44 px, that each link
   navigates and gets `aria-current` and *Projects* opens the sheet; no
-  *Research* with a features answer without it; that the task page's end
+  *Research* with a features answer without it; that the issue page's end
   is above the bar once scrolled down; and that the bar hides while the
   task composer has the focus (`bottom-bar@375.png`,
   `bottom-bar-end@375.png`, `bottom-bar-typing@375.png`). `rail sheet stays
   the aside` checks there is no bar at 768 and 1280 px.
+
+  The `task tabs …` cases open the task and the issue page at 375 and
+  1280 px: *Overview* is current with the open questions' count and the
+  run summary as its first section, each other tab is one tap away and
+  sets `?tab=`, and `#live-transcript` without `?tab=` opens *Live*
+  (`task-tabs-task@375.png`, `task-tabs-issue@1280.png`).
 - **Known overflow.** `web/e2e/known-overflow.ts` lists the
   `route@width` cases that scroll sideways today, with the measured px.
   They run as expected failures (`test.fail()`). A slice that fixes one
@@ -1631,7 +1640,9 @@ when `active` or `tabs` change and when the strip is resized, it scrolls
 itself, not the page, so the active tab is fully in view. Below 760 px each
 tab is at least 44 px high. A parent that is a flex row lets the strip wrap
 to a line of its own (`flex-wrap`), as the stream page's title row does, so
-it gets the full width before it scrolls. The stream page is the first user.
+it gets the full width before it scrolls. The stream page is the first user;
+the task page (`TaskBody.vue`) shows its tabs with `label="Task"` and the
+open questions' count as Overview's badge.
 
 ### Truncated
 
@@ -1653,7 +1664,7 @@ Space toggles the clamp in place, with no overlay to dismiss. Text that fits
 stays plain. It sets no `title`: use `title` only for what is readable
 elsewhere. It sets no colour or weight, the parent's classes do; do not give
 it `.fact .value`, whose global rules keep `nowrap`. The task page's facts
-(current step, branch) are the first users.
+on its *Details* tab (current step, branch) are the first users.
 
 ### Sheets
 

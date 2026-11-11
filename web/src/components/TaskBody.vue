@@ -4,7 +4,10 @@ import { computed } from 'vue'
 import { hasFeature } from '../api'
 import { ciLabel, ciTone, cost, deferringEngine, phaseTone, shortSHA } from '../format'
 import { queueDone } from '../milestoneQueue'
-import { taskPrompts } from '../promptCard'
+import { useRoute } from 'vue-router'
+import { promptOpen, taskPrompts } from '../promptCard'
+import { tabQuery, taskTabFromRoute, taskTabs, type TaskTab } from '../streamTabs'
+import RouteTabs from '../ui/RouteTabs.vue'
 import Badge from './Badge.vue'
 import CostChip from './CostChip.vue'
 import CompanionChip from './CompanionChip.vue'
@@ -19,10 +22,13 @@ import TaskChat from './TaskChat.vue'
 import TaskCalls from './TaskCalls.vue'
 import type { ProposalView, TaskResponse } from '../types'
 
-// What the Task page holds below its title: stage and links, banners,
-// facts, prompts, chat, conversation, live transcript, calls, review, CI,
-// plan, autopilot, pod and conditions. The Task page and the issue page
-// (with a live task) both render it from the task they loaded.
+// What the Task page holds below its title: stage and links and banners,
+// then tabs by ?tab= (R10, decision 11): Overview (the last run's summary,
+// prompts, review, CI, plan, autopilot), Chat (chat, conversation), Live,
+// Calls and Details (facts, pod, conditions). Only the active tab is
+// mounted, so the live transcript and the chat poll only while shown
+// (D318-P1). The Task page and the issue page (with a live task) both
+// render it from the task they loaded.
 const props = defineProps<{ namespace: string; name: string; task: string; data: TaskResponse }>()
 
 const t = computed(() => props.data.task)
@@ -49,6 +55,30 @@ const resultTone = (r: string | undefined) =>
 // Desk chat: compose with permissions.chat; read when the chat feature is on.
 const prompts = computed(() => taskPrompts(props.data.prompts))
 const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('chat'))
+
+// The tabs this task has content for: Overview and Details always, Chat
+// with the chat or the conversation, Live with transcript access, Calls
+// with the history database (the calls endpoint answers 404 without it).
+const route = useRoute()
+const tabs = computed(() => {
+  const has: Record<TaskTab, boolean> = {
+    overview: true,
+    chat: showChat.value || !!props.data.permissions?.gitlab,
+    live: !!props.data.permissions?.transcript,
+    calls: hasFeature('history'),
+    details: true,
+  }
+  return taskTabs.filter((x) => has[x.id])
+})
+const tab = computed(() => taskTabFromRoute(route.query.tab, route.hash, tabs.value))
+const tabTo = (id: TaskTab) => ({ query: tabQuery(route.query, id, taskTabs) })
+// Questions waiting for an answer put their count on Overview.
+const badges = computed(() => ({ overview: prompts.value.filter(promptOpen).length }))
+const overviewEmpty = computed(
+  () => !run.value.summary && !prompts.value.length && t.value.type !== 'Implement' && !t.value.status.plan?.length && !t.value.status.autopilot,
+)
+// Where the chat's "Live transcript" link goes: the Live tab, on this page.
+const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? tabTo('live') : undefined))
 </script>
 
 <template>
@@ -86,85 +116,154 @@ const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('ch
     </span>
   </div>
 
-  <div class="facts section">
-    <div class="fact">
-      <div class="label">Phase</div>
-      <div class="value"><Badge :tone="phaseTone(t.status.phase)">{{ t.status.phase || '—' }}</Badge></div>
-    </div>
-    <div class="fact">
-      <div class="label">Current step</div>
-      <Truncated class="font-[550]" :text="run.currentStep || '—'" />
-    </div>
-    <div class="fact">
-      <div class="label">Last result</div>
-      <div class="value">
-        <Badge :tone="resultTone(run.lastResult)">{{ run.lastResult || 'No run yet' }}</Badge>
+  <RouteTabs class="mt-5 w-fit" :tabs="tabs" :active="tab" :to="tabTo" :badges="badges" label="Task" />
+
+  <template v-if="tab === 'overview'">
+    <section v-if="run.summary" class="section">
+      <h3>Summary of the last run</h3>
+      <Markdown class="card body" :text="run.summary" />
+    </section>
+
+    <section v-if="prompts.length" class="section">
+      <h3>Questions from the agent</h3>
+      <div class="prompts">
+        <PromptCard v-for="p in prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
       </div>
+    </section>
+
+    <div v-if="t.type === 'Implement'" class="cols section">
+      <section>
+        <h3>Review</h3>
+        <div class="card body kv">
+          <div>Blocking findings</div>
+          <div>
+            <Badge :tone="(run.blockingFindings ?? 0) > 0 ? 'danger' : 'success'">{{ run.blockingFindings ?? 0 }}</Badge>
+          </div>
+          <div>Failed reviewers</div>
+          <div>
+            <Badge :tone="(run.reviewErrors ?? 0) > 0 ? 'warning' : 'success'">{{ run.reviewErrors ?? 0 }}</Badge>
+          </div>
+          <div>Reviewed commit</div>
+          <div>
+            <span class="mono">{{ shortSHA(run.reviewedSHA) }}</span>
+            <span v-if="run.reviewedSHA && run.pushedSHA && run.reviewedSHA !== run.pushedSHA" class="faint">
+              (later commits were not reviewed)
+            </span>
+          </div>
+        </div>
+      </section>
+      <section>
+        <h3>CI</h3>
+        <div v-if="t.status.ci" class="card body kv">
+          <div>Pipeline</div>
+          <div>
+            <Badge :tone="ciTone(t.status.ci.state)">{{ ciLabel[t.status.ci.state] }}</Badge>
+            <ExtLink v-if="t.status.ci.pipelineURL" :href="t.status.ci.pipelineURL" class="pl">
+              #{{ t.status.ci.pipelineID }}
+            </ExtLink>
+          </div>
+          <div>Commit</div>
+          <div class="mono">{{ shortSHA(t.status.ci.sha) }}</div>
+          <div>Fix rounds</div>
+          <div>{{ run.ciRound ?? 0 }}<span v-if="t.status.ci.retried" class="faint"> · failed jobs retried</span></div>
+          <template v-if="t.status.ci.failedJobs?.length">
+            <div>Failed jobs</div>
+            <div>
+              <code v-for="j in t.status.ci.failedJobs" :key="j" class="job">{{ j }}</code>
+            </div>
+          </template>
+        </div>
+        <div v-else class="card empty">No pipeline followed yet.</div>
+      </section>
     </div>
-    <div class="fact">
-      <div class="label">Runs</div>
-      <div class="value">
-        {{ run.runCount ?? 0 }}<span v-if="t.runPending" class="faint"> + 1 requested</span>
+
+    <section v-if="t.status.plan?.length" class="section">
+      <h3>Plan</h3>
+      <div class="card">
+        <table class="list">
+          <thead>
+            <tr>
+              <th>Issue</th>
+              <th>Title</th>
+              <th>Depends on</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="pi in t.status.plan" :key="pi.key">
+              <td><ExtLink :href="issueURL(pi.iid)">#{{ pi.iid }}</ExtLink></td>
+              <td>{{ pi.title }}</td>
+              <td>
+                <span v-if="!pi.dependsOn?.length" class="faint">—</span>
+                <span v-for="d in pi.dependsOn" :key="d" class="dep">#{{ d }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </div>
-    <div class="fact">
-      <div class="label">Last activity</div>
-      <div class="value"><RelTime :time="run.lastActivityTime" /></div>
-    </div>
-    <div class="fact">
-      <div class="label">Model spend</div>
-      <div class="value">{{ cost(run.costUSD) }}</div>
-    </div>
-    <div v-if="t.type === 'Implement'" class="fact">
-      <div class="label">Branch</div>
-      <Truncated class="mono font-[550]" :text="run.branch || '—'" />
-    </div>
-    <div v-if="t.type === 'Implement'" class="fact">
-      <div class="label">Last push</div>
-      <div class="value">
-        <span class="mono">{{ shortSHA(run.pushedSHA) }}</span>
-        <span v-if="run.pushedAt" class="faint"> · <RelTime :time="run.pushedAt" /></span>
+    </section>
+
+    <section v-if="t.status.autopilot" class="section">
+      <div class="row section-head">
+        <h3>Autopilot</h3>
+        <Badge :tone="t.status.autopilot.phase === 'Paused' ? 'warning' : 'progress'">{{ t.status.autopilot.phase }}</Badge>
+        <span v-if="autopilotItems.length" class="faint">{{ queueDone(autopilotItems) }} / {{ autopilotItems.length }} done</span>
+        <span class="spacer" />
+        <RouterLink
+          v-if="t.milestone"
+          :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(t.milestone.iid) } }"
+        >
+          Queue in the milestone stream
+        </RouterLink>
+        <ExtLink v-if="t.status.autopilot.trackingIssueIID" :href="issueURL(t.status.autopilot.trackingIssueIID)">
+          Tracking issue #{{ t.status.autopilot.trackingIssueIID }}
+        </ExtLink>
       </div>
-    </div>
-  </div>
+      <div v-if="t.status.autopilot.pausedReason" class="banner warning">
+        <span>
+          <Markdown mode="inline" :text="t.status.autopilot.pausedReason" />
+          <template v-if="t.status.autopilot.pausedFor">(issue #{{ t.status.autopilot.pausedFor }})</template>
+          <template v-if="t.status.autopilot.resumeWhenReady">
+            It continues by itself once a later run of #{{ t.status.autopilot.pausedFor }} is reviewed and green.
+          </template>
+        </span>
+      </div>
+    </section>
 
-  <section v-if="prompts.length" class="section">
-    <h3>Questions from the agent</h3>
-    <div class="prompts">
-      <PromptCard v-for="p in prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
-    </div>
-  </section>
+    <div v-if="overviewEmpty" class="card empty section">No run has left a summary yet.</div>
+  </template>
 
-  <section v-if="showChat" class="section">
-    <h3>Chat with the agent</h3>
-    <TaskChat
-      :namespace="namespace"
-      :name="name"
-      :task="task"
-      :can-post="!!data.permissions?.chat"
-      :can-transcript="!!data.permissions?.transcript"
-      :phase="t.status.phase"
-      :message="t.status.message"
-      :pod-name="t.status.podName"
-      :task-type="t.type"
-      :autopilot-phase="t.status.autopilot?.phase"
-      :autopilot-items="t.status.autopilot?.items"
-      :proposals="proposals"
-    />
-  </section>
+  <template v-else-if="tab === 'chat'">
+    <section v-if="showChat" class="section">
+      <h3>Chat with the agent</h3>
+      <TaskChat
+        :namespace="namespace"
+        :name="name"
+        :task="task"
+        :can-post="!!data.permissions?.chat"
+        :transcript="transcriptTo"
+        :phase="t.status.phase"
+        :message="t.status.message"
+        :pod-name="t.status.podName"
+        :task-type="t.type"
+        :autopilot-phase="t.status.autopilot?.phase"
+        :autopilot-items="t.status.autopilot?.items"
+        :proposals="proposals"
+      />
+    </section>
 
-  <section v-if="data.permissions?.gitlab" class="section">
-    <h3>Conversation</h3>
-    <Conversation
-      :namespace="namespace"
-      :name="name"
-      :task="task"
-      :steer="!!data.permissions?.steer"
-      :stamp="`${run.observedRunRequest ?? ''}|${run.activeRunRequest ?? ''}|${run.mergeRequestIID ?? ''}|${t.status.ci?.state ?? ''}|${t.status.autopilot?.phase ?? ''}`"
-    />
-  </section>
+    <section v-if="data.permissions?.gitlab" class="section">
+      <h3>Conversation</h3>
+      <Conversation
+        :namespace="namespace"
+        :name="name"
+        :task="task"
+        :steer="!!data.permissions?.steer"
+        :stamp="`${run.observedRunRequest ?? ''}|${run.activeRunRequest ?? ''}|${run.mergeRequestIID ?? ''}|${t.status.ci?.state ?? ''}|${t.status.autopilot?.phase ?? ''}`"
+      />
+    </section>
+  </template>
 
-  <section v-if="data.permissions?.transcript" id="live-transcript" class="section">
+  <section v-else-if="tab === 'live'" id="live-transcript" class="section">
     <h3>Live</h3>
     <LiveTranscript
       :namespace="namespace"
@@ -175,153 +274,94 @@ const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('ch
     />
   </section>
 
-  <TaskCalls :namespace="namespace" :name="name" :task="task" />
+  <TaskCalls v-else-if="tab === 'calls'" :namespace="namespace" :name="name" :task="task" />
 
-  <section v-if="run.summary" class="section">
-    <h3>Summary of the last run</h3>
-    <Markdown class="card body" :text="run.summary" />
-  </section>
-
-  <div v-if="t.type === 'Implement'" class="cols section">
-    <section>
-      <h3>Review</h3>
-      <div class="card body kv">
-        <div>Blocking findings</div>
-        <div>
-          <Badge :tone="(run.blockingFindings ?? 0) > 0 ? 'danger' : 'success'">{{ run.blockingFindings ?? 0 }}</Badge>
-        </div>
-        <div>Failed reviewers</div>
-        <div>
-          <Badge :tone="(run.reviewErrors ?? 0) > 0 ? 'warning' : 'success'">{{ run.reviewErrors ?? 0 }}</Badge>
-        </div>
-        <div>Reviewed commit</div>
-        <div>
-          <span class="mono">{{ shortSHA(run.reviewedSHA) }}</span>
-          <span v-if="run.reviewedSHA && run.pushedSHA && run.reviewedSHA !== run.pushedSHA" class="faint">
-            (later commits were not reviewed)
-          </span>
+  <template v-else>
+    <div class="facts section">
+      <div class="fact">
+        <div class="label">Phase</div>
+        <div class="value"><Badge :tone="phaseTone(t.status.phase)">{{ t.status.phase || '—' }}</Badge></div>
+      </div>
+      <div class="fact">
+        <div class="label">Current step</div>
+        <Truncated class="font-[550]" :text="run.currentStep || '—'" />
+      </div>
+      <div class="fact">
+        <div class="label">Last result</div>
+        <div class="value">
+          <Badge :tone="resultTone(run.lastResult)">{{ run.lastResult || 'No run yet' }}</Badge>
         </div>
       </div>
-    </section>
-    <section>
-      <h3>CI</h3>
-      <div v-if="t.status.ci" class="card body kv">
-        <div>Pipeline</div>
-        <div>
-          <Badge :tone="ciTone(t.status.ci.state)">{{ ciLabel[t.status.ci.state] }}</Badge>
-          <ExtLink v-if="t.status.ci.pipelineURL" :href="t.status.ci.pipelineURL" class="pl">
-            #{{ t.status.ci.pipelineID }}
-          </ExtLink>
+      <div class="fact">
+        <div class="label">Runs</div>
+        <div class="value">
+          {{ run.runCount ?? 0 }}<span v-if="t.runPending" class="faint"> + 1 requested</span>
         </div>
-        <div>Commit</div>
-        <div class="mono">{{ shortSHA(t.status.ci.sha) }}</div>
-        <div>Fix rounds</div>
-        <div>{{ run.ciRound ?? 0 }}<span v-if="t.status.ci.retried" class="faint"> · failed jobs retried</span></div>
-        <template v-if="t.status.ci.failedJobs?.length">
-          <div>Failed jobs</div>
-          <div>
-            <code v-for="j in t.status.ci.failedJobs" :key="j" class="job">{{ j }}</code>
-          </div>
-        </template>
       </div>
-      <div v-else class="card empty">No pipeline followed yet.</div>
-    </section>
-  </div>
-
-  <section v-if="t.status.plan?.length" class="section">
-    <h3>Plan</h3>
-    <div class="card">
-      <table class="list">
-        <thead>
-          <tr>
-            <th>Issue</th>
-            <th>Title</th>
-            <th>Depends on</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="pi in t.status.plan" :key="pi.key">
-            <td><ExtLink :href="issueURL(pi.iid)">#{{ pi.iid }}</ExtLink></td>
-            <td>{{ pi.title }}</td>
-            <td>
-              <span v-if="!pi.dependsOn?.length" class="faint">—</span>
-              <span v-for="d in pi.dependsOn" :key="d" class="dep">#{{ d }}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="fact">
+        <div class="label">Last activity</div>
+        <div class="value"><RelTime :time="run.lastActivityTime" /></div>
+      </div>
+      <div class="fact">
+        <div class="label">Model spend</div>
+        <div class="value">{{ cost(run.costUSD) }}</div>
+      </div>
+      <div v-if="t.type === 'Implement'" class="fact">
+        <div class="label">Branch</div>
+        <Truncated class="mono font-[550]" :text="run.branch || '—'" />
+      </div>
+      <div v-if="t.type === 'Implement'" class="fact">
+        <div class="label">Last push</div>
+        <div class="value">
+          <span class="mono">{{ shortSHA(run.pushedSHA) }}</span>
+          <span v-if="run.pushedAt" class="faint"> · <RelTime :time="run.pushedAt" /></span>
+        </div>
+      </div>
     </div>
-  </section>
 
-  <section v-if="t.status.autopilot" class="section">
-    <div class="row section-head">
-      <h3>Autopilot</h3>
-      <Badge :tone="t.status.autopilot.phase === 'Paused' ? 'warning' : 'progress'">{{ t.status.autopilot.phase }}</Badge>
-      <span v-if="autopilotItems.length" class="faint">{{ queueDone(autopilotItems) }} / {{ autopilotItems.length }} done</span>
-      <span class="spacer" />
-      <RouterLink
-        v-if="t.milestone"
-        :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(t.milestone.iid) } }"
-      >
-        Queue in the milestone stream
-      </RouterLink>
-      <ExtLink v-if="t.status.autopilot.trackingIssueIID" :href="issueURL(t.status.autopilot.trackingIssueIID)">
-        Tracking issue #{{ t.status.autopilot.trackingIssueIID }}
-      </ExtLink>
+    <div class="cols section">
+      <section>
+        <h3>Pod</h3>
+        <div class="card body kv">
+          <div>Pod</div>
+          <div class="mono">{{ t.status.podName || 'not running' }}</div>
+          <div>Workspace</div>
+          <div class="mono">{{ t.status.workspaceClaimName || '—' }}</div>
+          <template v-if="t.status.agentTermination">
+            <div>Agent container</div>
+            <div>
+              last stopped {{ t.status.agentTermination.reason }} (exit {{ t.status.agentTermination.exitCode ?? '?' }}),
+              {{ t.status.agentTermination.restarts ?? 0 }} restarts
+            </div>
+          </template>
+          <template v-if="t.status.podName">
+            <div>Logs</div>
+            <div>
+              <code class="cmd">kubectl -n {{ t.namespace }} logs -f {{ t.status.podName }} -c runner</code>
+            </div>
+          </template>
+        </div>
+      </section>
+      <section v-if="t.status.conditions?.length">
+        <h3>Conditions</h3>
+        <div class="card">
+          <table class="list">
+            <tbody>
+              <tr v-for="c in t.status.conditions" :key="c.type">
+                <td>{{ c.type }}</td>
+                <td>
+                  <Badge :tone="conditionTone(c.type, c.status)">
+                    {{ c.reason || c.status }}
+                  </Badge>
+                  <div v-if="c.message" class="faint">{{ c.message }}</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
-    <div v-if="t.status.autopilot.pausedReason" class="banner warning">
-      <span>
-        <Markdown mode="inline" :text="t.status.autopilot.pausedReason" />
-        <template v-if="t.status.autopilot.pausedFor">(issue #{{ t.status.autopilot.pausedFor }})</template>
-        <template v-if="t.status.autopilot.resumeWhenReady">
-          It continues by itself once a later run of #{{ t.status.autopilot.pausedFor }} is reviewed and green.
-        </template>
-      </span>
-    </div>
-  </section>
-
-  <div class="cols section">
-    <section>
-      <h3>Pod</h3>
-      <div class="card body kv">
-        <div>Pod</div>
-        <div class="mono">{{ t.status.podName || 'not running' }}</div>
-        <div>Workspace</div>
-        <div class="mono">{{ t.status.workspaceClaimName || '—' }}</div>
-        <template v-if="t.status.agentTermination">
-          <div>Agent container</div>
-          <div>
-            last stopped {{ t.status.agentTermination.reason }} (exit {{ t.status.agentTermination.exitCode ?? '?' }}),
-            {{ t.status.agentTermination.restarts ?? 0 }} restarts
-          </div>
-        </template>
-        <template v-if="t.status.podName">
-          <div>Logs</div>
-          <div>
-            <code class="cmd">kubectl -n {{ t.namespace }} logs -f {{ t.status.podName }} -c runner</code>
-          </div>
-        </template>
-      </div>
-    </section>
-    <section v-if="t.status.conditions?.length">
-      <h3>Conditions</h3>
-      <div class="card">
-        <table class="list">
-          <tbody>
-            <tr v-for="c in t.status.conditions" :key="c.type">
-              <td>{{ c.type }}</td>
-              <td>
-                <Badge :tone="conditionTone(c.type, c.status)">
-                  {{ c.reason || c.status }}
-                </Badge>
-                <div v-if="c.message" class="faint">{{ c.message }}</div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </div>
+  </template>
 </template>
 
 <style scoped>
@@ -346,7 +386,7 @@ const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('ch
 
 .cols {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
   gap: 16px;
 }
 

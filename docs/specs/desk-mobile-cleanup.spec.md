@@ -386,3 +386,17 @@ follow-up issue), and requirements without an issue and why.
   loads lazily, as the rail's does. The panel's and the companions list's
   grids got a `minmax(0, 1fr)` column: a companion's nowrap reason had made
   the panel wider than the sheet (%14). Nothing narrowed.
+- 2026-11-11 #318 (R10 task tabs): `TaskBody.vue` keeps stage, links and
+  banners above a `RouteTabs` strip by `?tab=` (`taskTabFromRoute` in
+  `streamTabs.ts`): *Overview* (summary first, questions, review, CI, plan,
+  autopilot) with the open questions' count, *Chat*, *Live*, *Calls*,
+  *Details* (facts, pod, conditions). A tab without content is left out:
+  Live without `transcript`, Calls without the `history` feature (its
+  endpoint answers 404 then), Chat without chat and GitLab. Only the open
+  tab is mounted (D318-P1). The chat's *Live transcript* link opens the
+  Live tab (the pilot's opens its task page's Live tab; its old
+  `#live-transcript` anchor did not exist on the milestone page). `.cols`
+  is `minmax(min(360px, 100%), 1fr)`, so the `task@375` and `issue@375`
+  known-overflow entries are gone. Sections moved as they were; the
+  header's status line and restyling are the next R10 slice. Nothing
+  narrowed.

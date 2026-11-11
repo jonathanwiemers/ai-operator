@@ -6,6 +6,8 @@ import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
 import { inbox } from './fixtures/rail'
 import { features } from './fixtures/session'
+import { refundsResponse } from './fixtures/task'
+import { taskTabs, type TaskTab } from '../src/streamTabs'
 import type { Feature } from '../src/types'
 import { knownOverflow } from './known-overflow'
 
@@ -41,6 +43,19 @@ const milestoneReady = {
   stream: 'Run 2 needs input',
   board: 'Partial captures for split shipments',
   spend: 'Cache-read share',
+}
+
+// What the task tabs show once loaded (e2e/fixtures/task.ts).
+const taskPagePaths = {
+  issue: '/projects/team-a/shop/milestones/14/issues/281',
+  task: '/projects/team-a/shop/tasks/shop-281-implement',
+}
+const taskReady: Record<TaskTab, string> = {
+  overview: 'Summary of the last run',
+  chat: 'Please keep the refund reasons in the',
+  live: 'The pod is not available',
+  calls: 'Agent calls',
+  details: 'shop-281-implement-ws',
 }
 
 // Every named route but the redirects (everything, project-board,
@@ -82,16 +97,15 @@ const routes: Route[] = [
       ready: (page) => expect(page.locator('main').getByText(milestoneReady[tab]).first()).toBeVisible(),
     }),
   ),
-  {
-    name: 'issue',
-    path: '/projects/team-a/shop/milestones/14/issues/281',
-    ready: (page) => expect(page.locator('main').getByText('Summary of the last run')).toBeVisible(),
-  },
-  {
-    name: 'task',
-    path: '/projects/team-a/shop/tasks/shop-281-implement',
-    ready: (page) => expect(page.locator('main').getByText('Summary of the last run')).toBeVisible(),
-  },
+  // The task page and the issue page with a live task: Overview by default,
+  // a variant per other tab (TaskBody.vue, R10).
+  ...(['issue', 'task'] as const).flatMap((name): Route[] =>
+    taskTabs.map((t) => ({
+      name: t.id === 'overview' ? name : `${name}-${t.id}`,
+      path: `${taskPagePaths[name]}${t.id === 'overview' ? '' : `?tab=${t.id}`}`,
+      ready: (page) => expect(page.locator('main').getByText(taskReady[t.id]).first()).toBeVisible(),
+    })),
+  ),
   {
     name: 'researches',
     path: '/research',
@@ -367,8 +381,8 @@ for (const { name, empty } of [
 }
 
 // iOS zooms on focus into a control under 16 px (style.css, the phone rule
-// in the base layer): on a phone every visible input of the task page, the
-// chat composer's among them, and the stream search are 16 px; on a desktop
+// in the base layer): on a phone every visible input of the task's Chat
+// tab, the chat composer's among them, and the stream search are 16 px; on a desktop
 // the composer keeps its own size.
 for (const { width, height, phone } of [
   { width: 375, height: 812, phone: true },
@@ -381,7 +395,7 @@ for (const { width, height, phone } of [
     await watch(page, new URL(baseURL ?? '').origin, problems)
     const fontSize = (l: ReturnType<Page['locator']>) => l.evaluate((e) => parseFloat(getComputedStyle(e).fontSize))
 
-    const task = routes.find((r) => r.name === 'task')!
+    const task = routes.find((r) => r.name === 'task-chat')!
     await mockAPI(page, task, problems)
     await page.goto(task.path)
     await task.ready(page)
@@ -414,12 +428,12 @@ for (const { width, height, phone } of [
 }
 
 // Truncated (src/ui/Truncated.vue): on a phone the long branch name of the
-// task page is clamped, a tap opens it in place and a second tap closes it.
+// task page's Details tab is clamped, a tap opens it in place and a second tap closes it.
 test.describe('touch', () => {
   test.use({ hasTouch: true })
 
   test('task Truncated branch fact opens on tap@375', async ({ page, baseURL }) => {
-    const route = routes.find((r) => r.name === 'task')!
+    const route = routes.find((r) => r.name === 'task-details')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width: 375, height: 812 })
     await page.clock.setFixedTime(now)
@@ -453,7 +467,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'task']
+const hitRoutes = ['overview', 'inbox', 'task', 'task-chat', 'task-details']
 
 // "<route> <element as reported>" → why it may stay under 44 px. Empty: no
 // control needs an exception.
@@ -878,7 +892,8 @@ test.describe('bottom bar', () => {
 
   test('the end of a long page stays above the bar@375', async ({ page, baseURL }, testInfo) => {
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
-    await open(page, baseURL, task, problems)
+    // The issue page: the task's Overview, then the issue's stream.
+    await open(page, baseURL, routes.find((r) => r.name === 'issue')!, problems)
     await page.waitForLoadState('networkidle')
     await page.evaluate(() => window.scrollTo(0, document.scrollingElement!.scrollHeight))
     const seen = await page.evaluate(() => {
@@ -909,7 +924,7 @@ test.describe('bottom bar', () => {
 
   test('hides while the task composer has the focus@375', async ({ page, baseURL }, testInfo) => {
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
-    await open(page, baseURL, task, problems)
+    await open(page, baseURL, routes.find((r) => r.name === 'task-chat')!, problems)
     const nav = bar(page)
     await expect(nav).toBeVisible()
     const composer = page.getByPlaceholder('Message the agent…')
@@ -922,6 +937,67 @@ test.describe('bottom bar', () => {
     await expect(nav).toBeVisible()
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
+})
+
+// Task tabs (R10, decision 11): the task page and the issue page open on
+// Overview with the last run's summary first and the open questions' count
+// on the tab; every tab is one tap away and lives in ?tab=; an old
+// #live-transcript link opens Live.
+test.describe('task tabs', () => {
+  const openQuestions = (refundsResponse.prompts ?? []).filter((p) => p.kind === 'needsInput' && (!p.state || p.state === 'open')).length
+
+  for (const pageName of ['task', 'issue'] as const) {
+    for (const { width, height } of [widths[0]!, widths[2]!]) {
+      test(`${pageName} tabs, badge and summary first@${width}`, async ({ page, baseURL }, testInfo) => {
+        const route = routes.find((r) => r.name === pageName)!
+        const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+        await page.setViewportSize({ width, height })
+        await page.clock.setFixedTime(now)
+        await watch(page, new URL(baseURL ?? '').origin, problems)
+        await mockAPI(page, route, problems)
+        await page.goto(route.path)
+        await route.ready(page)
+
+        const strip = page.locator('main').getByRole('navigation', { name: 'Task' })
+        await expect(strip.getByRole('link')).toHaveText(taskTabs.map((t) => new RegExp(`^${t.label}`)))
+        const overview = strip.getByRole('link', { name: /^Overview/ })
+        await expect(overview).toHaveAttribute('aria-current', 'page')
+        expect(openQuestions, 'the fixture has an open question').toBeGreaterThan(0)
+        await expect(overview).toHaveText(`Overview ${openQuestions}`)
+        await expect(page.locator('main nav[aria-label="Task"] + section > h3')).toHaveText('Summary of the last run')
+
+        for (const t of taskTabs.slice(1)) {
+          await strip.getByRole('link', { name: t.label, exact: true }).click()
+          await expect(page).toHaveURL(new RegExp(`[?&]tab=${t.id}$`))
+          await expect(page.locator('main').getByText(taskReady[t.id]).first()).toBeVisible()
+          await expect(strip.locator('[aria-current="page"]')).toHaveText(t.label)
+          await expect(page.locator('main').getByText('Summary of the last run')).toHaveCount(0)
+        }
+        await overview.click()
+        await expect(page).not.toHaveURL(/[?&]tab=/)
+        await expect(page.locator('main').getByText('Summary of the last run')).toBeVisible()
+
+        const shot = join(testInfo.project.outputDir, '..', 'screenshots', `task-tabs-${pageName}@${width}.png`)
+        await page.screenshot({ path: shot })
+        await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+        expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+      })
+    }
+
+    test(`${pageName} #live-transcript opens Live@375`, async ({ page, baseURL }) => {
+      const route = routes.find((r) => r.name === pageName)!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize({ width: 375, height: 812 })
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.goto(`${route.path}#live-transcript`)
+      const strip = page.locator('main').getByRole('navigation', { name: 'Task' })
+      await expect(strip.getByRole('link', { name: 'Live', exact: true })).toHaveAttribute('aria-current', 'page')
+      await expect(page.locator('#live-transcript')).toContainText(taskReady.live)
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
 })
 
 // Block markdown (R8, decision 7): the run summary and a conversation note
@@ -943,6 +1019,7 @@ test.describe('block markdown', () => {
       expect(await summary.locator('li').count(), 'a list').toBeGreaterThan(1)
       await expect(summary).not.toContainText('**')
 
+      await page.locator('main').getByRole('navigation', { name: 'Task' }).getByRole('link', { name: 'Chat' }).click()
       const note = page.locator('main .md').filter({ hasText: 'partial refunds' }).filter({ has: page.locator('strong') }).first()
       await expect(note.locator('strong').first()).toBeVisible()
       await expect(note).not.toContainText('**')

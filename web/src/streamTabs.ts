@@ -5,10 +5,12 @@
 // Project pages: Stream | Board | Spend. Milestone pages: Issues | Pilot |
 // Retrospective | Stream | Board | Spend (decision 7), so an old
 // milestone link with ?tab=stream still opens the stream. The dashboard
-// at /: Overview | Stream (decision 3).
+// at /: Overview | Stream (decision 3). The task page (and the issue page
+// with a live task): Overview | Chat | Live | Calls | Details (R10).
 export type StreamTab = 'stream' | 'board' | 'spend'
 export type MilestoneTab = 'issues' | 'pilot' | 'retrospective' | StreamTab
 export type DashboardTab = 'overview' | 'stream'
+export type TaskTab = 'overview' | 'chat' | 'live' | 'calls' | 'details'
 
 export interface Tab<T extends string> {
   id: T
@@ -37,6 +39,16 @@ export const dashboardTabs: Tab<DashboardTab>[] = [
   { id: 'stream', label: 'Stream' },
 ]
 
+// taskTabs are all of a task's tabs; a task shows those it has content
+// for, Overview always.
+export const taskTabs: Tab<TaskTab>[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'chat', label: 'Chat' },
+  { id: 'live', label: 'Live' },
+  { id: 'calls', label: 'Calls' },
+  { id: 'details', label: 'Details' },
+]
+
 type QueryValue = string | null | (string | null)[] | undefined
 
 // tabFromQuery reads ?tab= against tabs (the project tabs by default):
@@ -60,6 +72,15 @@ export function milestoneTabFromRoute(v: QueryValue, hash: string, tabs: readonl
   const none = v == null || v === '' || (Array.isArray(v) && !v.length)
   if (none && hash.startsWith('#prompt-') && tabs.some((t) => t.id === 'pilot')) return 'pilot'
   return tabFromQuery(v, tabs)
+}
+
+// taskTabFromRoute is a task's tab among those available: ?tab= as
+// tabFromQuery reads it (unknown or unavailable tabs open Overview), but an
+// old #live-transcript link without ?tab= opens Live where the task has it.
+export function taskTabFromRoute(v: QueryValue, hash: string, available: readonly Tab<TaskTab>[] = taskTabs): TaskTab {
+  const none = v == null || v === '' || (Array.isArray(v) && !v.length)
+  if (none && hash === '#live-transcript' && available.some((t) => t.id === 'live')) return 'live'
+  return tabFromQuery(v, available)
 }
 
 // tabQuery is the query for a tab, keeping the other parameters; the

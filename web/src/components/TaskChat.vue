@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { getTaskChat, LoginRequiredError, NotFoundError } from '../api'
 import { agentTurnPending, chatWaiting, commandLabel } from '../chatState'
 import { live } from '../live'
+import type { RouteLocationRaw } from 'vue-router'
 import type { AutopilotItem, AutopilotPhase, ChatMessage, ChatState, ProposalView, TaskPhase } from '../types'
 import Badge from './Badge.vue'
 import ChatComposer from './ChatComposer.vue'
@@ -14,7 +15,8 @@ const props = defineProps<{
   name: string
   task: string
   canPost: boolean
-  canTranscript: boolean
+  // transcript is where the "Live transcript" link goes, none without access.
+  transcript?: RouteLocationRaw
   phase?: TaskPhase
   message?: string
   podName?: string
@@ -283,7 +285,7 @@ onUnmounted(() => {
 
       <div v-if="statusLine" class="status">
         <Badge tone="progress" dot pulse>{{ statusLine }}</Badge>
-        <a v-if="canTranscript" class="t" href="#live-transcript">Live transcript</a>
+        <RouterLink v-if="transcript" class="t" :to="transcript">Live transcript</RouterLink>
       </div>
 
       <ChatComposer

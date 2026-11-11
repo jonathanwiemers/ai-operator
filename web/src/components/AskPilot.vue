@@ -15,7 +15,11 @@ defineProps<{ namespace: string; name: string; milestone: MilestoneView }>()
     :name="name"
     :task="milestone.pilot.task"
     :can-post="!!milestone.permissions?.chat"
-    :can-transcript="!!milestone.permissions?.transcript"
+    :transcript="
+      milestone.permissions?.transcript
+        ? { name: 'task', params: { namespace, name, task: milestone.pilot.task }, query: { tab: 'live' } }
+        : undefined
+    "
     :phase="milestone.pilot.phase"
     :message="milestone.pilot.message"
     :pod-name="milestone.pilot.podName"

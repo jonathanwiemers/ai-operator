@@ -10,6 +10,8 @@ import {
   storedMilestoneTabs,
   tabFromQuery,
   tabQuery,
+  taskTabFromRoute,
+  taskTabs,
 } from '../src/streamTabs.ts'
 
 test('tabFromQuery: stream is the default', () => {
@@ -117,4 +119,31 @@ test('milestoneTabFromRoute: ?tab= wins over the hash, other hashes keep the def
   assert.equal(milestoneTabFromRoute(undefined, ''), 'issues')
   assert.equal(milestoneTabFromRoute(undefined, '#live-transcript'), 'issues')
   assert.equal(milestoneTabFromRoute('board', ''), 'board')
+})
+
+test('task tabs: Overview is the default and drops the parameter', () => {
+  assert.deepEqual(taskTabs.map((t) => t.id), ['overview', 'chat', 'live', 'calls', 'details'])
+  assert.equal(taskTabFromRoute(undefined, ''), 'overview')
+  assert.equal(taskTabFromRoute('', ''), 'overview')
+  assert.equal(taskTabFromRoute('details', ''), 'details')
+  assert.equal(taskTabFromRoute(['x', 'calls'], ''), 'calls')
+  assert.deepEqual(tabQuery({ tab: 'chat', q: 'x' }, 'overview', taskTabs), { q: 'x' })
+  assert.deepEqual(tabQuery({}, 'details', taskTabs), { tab: 'details' })
+})
+
+test('taskTabFromRoute: unknown and unavailable tabs open Overview', () => {
+  const noLive = taskTabs.filter((t) => t.id !== 'live')
+  assert.equal(taskTabFromRoute('board', ''), 'overview')
+  assert.equal(taskTabFromRoute('Live', ''), 'overview')
+  assert.equal(taskTabFromRoute('live', '', noLive), 'overview')
+  assert.equal(taskTabFromRoute('details', '', noLive), 'details')
+})
+
+test('taskTabFromRoute: #live-transcript without ?tab= opens Live where there is one', () => {
+  const noLive = taskTabs.filter((t) => t.id !== 'live')
+  assert.equal(taskTabFromRoute(undefined, '#live-transcript'), 'live')
+  assert.equal(taskTabFromRoute('', '#live-transcript'), 'live')
+  assert.equal(taskTabFromRoute(undefined, '#live-transcript', noLive), 'overview')
+  assert.equal(taskTabFromRoute('details', '#live-transcript'), 'details')
+  assert.equal(taskTabFromRoute(undefined, '#prompt-Q4'), 'overview')
 })
