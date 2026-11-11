@@ -113,7 +113,7 @@ func (s *Server) researchHandler(h func(http.ResponseWriter, *http.Request, *sto
 		}
 		st := s.research.Load()
 		if st == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the research database is not connected yet"})
+			writeError(w, http.StatusServiceUnavailable, "the research database is not connected yet")
 			return
 		}
 		h(w, r, st)

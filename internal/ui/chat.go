@@ -57,7 +57,7 @@ func (s *Server) postChat(w http.ResponseWriter, r *http.Request) {
 			notFound(w)
 			return
 		}
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "no access to chat"})
+		writeError(w, http.StatusForbidden, "no access to chat")
 		return
 	}
 	_, task, ok := s.loadTask(w, r)
@@ -69,12 +69,12 @@ func (s *Server) postChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ok, _ := s.chats.allow(p.Username, time.Now()); !ok {
-		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many chat messages, try again in a minute"})
+		writeError(w, http.StatusTooManyRequests, "too many chat messages, try again in a minute")
 		return
 	}
 	st := s.chat.Load()
 	if st == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the chat database is not connected yet"})
+		writeError(w, http.StatusServiceUnavailable, "the chat database is not connected yet")
 		return
 	}
 	id, created, err := st.InsertUserMessage(r.Context(), store.ChatMessage{
@@ -130,7 +130,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	}
 	st := s.research.Load()
 	if st == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the history database is not connected yet"})
+		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
 		return
 	}
 	q := r.URL.Query()
@@ -189,10 +189,10 @@ func readChat(w http.ResponseWriter, r *http.Request) (chatRequest, bool) {
 	if err := dec.Decode(&req); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "the message is larger than 16 KiB"})
+			writeError(w, http.StatusRequestEntityTooLarge, "the message is larger than 16 KiB")
 			return req, false
 		}
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		writeError(w, http.StatusBadRequest, "invalid request")
 		return req, false
 	}
 	req.Body = strings.TrimSpace(req.Body)
@@ -201,25 +201,25 @@ func readChat(w http.ResponseWriter, r *http.Request) (chatRequest, bool) {
 		req.Kind = "message"
 	}
 	if !chatKinds[req.Kind] {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind must be message, interrupt or command"})
+		writeError(w, http.StatusBadRequest, "kind must be message, interrupt or command")
 		return req, false
 	}
 	// The composer's retry key: without it a retry would double the message.
 	if req.ClientKey == "" || len(req.ClientKey) > 128 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "clientKey must be 1 to 128 characters"})
+		writeError(w, http.StatusBadRequest, "clientKey must be 1 to 128 characters")
 		return req, false
 	}
 	if req.Body == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "the message must not be empty"})
+		writeError(w, http.StatusBadRequest, "the message must not be empty")
 		return req, false
 	}
 	if utf8.RuneCountInString(req.Body) > maxChatBody {
-		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "the message is larger than 16 KiB"})
+		writeError(w, http.StatusRequestEntityTooLarge, "the message is larger than 16 KiB")
 		return req, false
 	}
 	if req.Kind == "command" {
 		if _, err := chatcmd.Parse(req.Body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeError(w, http.StatusBadRequest, err.Error())
 			return req, false
 		}
 	}

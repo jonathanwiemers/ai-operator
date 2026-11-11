@@ -335,16 +335,16 @@ func (s *Server) steeringTask(w http.ResponseWriter, r *http.Request) (*aiv1.Age
 // answers the request itself when there is none.
 func (s *Server) userGitLab(w http.ResponseWriter, r *http.Request, ap *aiv1.AgentProject) (gitlab.API, *GitLabToken, bool) {
 	if s.gitlab == nil || !s.gitlab.serves(ap) {
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "this project's GitLab is not connected to the UI"})
+		writeError(w, http.StatusNotImplemented, "this project's GitLab is not connected to the UI")
 		return nil, nil, false
 	}
 	tok, err := s.gitlab.token(w, r)
 	switch {
 	case errors.Is(err, errGitLabUnavailable):
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "GitLab is not reachable right now"})
+		writeError(w, http.StatusServiceUnavailable, "GitLab is not reachable right now")
 		return nil, nil, false
 	case err != nil:
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account first", "login": pathGitLabLogin})
+		writeErrorResponse(w, http.StatusConflict, ErrorResponse{Error: "connect your GitLab account first", Login: pathGitLabLogin})
 		return nil, nil, false
 	}
 	return s.gitlab.client(tok), tok, true
@@ -415,7 +415,7 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if target == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "the task has no " + req.Target})
+		writeError(w, http.StatusBadRequest, "the task has no "+req.Target)
 		return
 	}
 	// The MR and tracking issue numbers come from the task's status, which
@@ -447,7 +447,7 @@ func (s *Server) mayPost(w http.ResponseWriter, r *http.Request) bool {
 		notFound(w)
 		return false
 	}
-	writeJSON(w, http.StatusForbidden, map[string]string{"error": "no access to steering"})
+	writeError(w, http.StatusForbidden, "no access to steering")
 	return false
 }
 
@@ -456,12 +456,12 @@ func (s *Server) mayPost(w http.ResponseWriter, r *http.Request) bool {
 func readNote(w http.ResponseWriter, r *http.Request) (noteRequest, bool) {
 	var req noteRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4*maxNoteBody)).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		writeError(w, http.StatusBadRequest, "invalid request")
 		return req, false
 	}
 	req.Body = strings.TrimSpace(req.Body)
 	if req.Body == "" || utf8.RuneCountInString(req.Body) > maxNoteBody {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("the comment must have 1 to %d characters", maxNoteBody)})
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("the comment must have 1 to %d characters", maxNoteBody))
 		return req, false
 	}
 	return req, true
@@ -472,7 +472,7 @@ func readNote(w http.ResponseWriter, r *http.Request) (noteRequest, bool) {
 func (s *Server) createNote(w http.ResponseWriter, r *http.Request, ap *aiv1.AgentProject, gl gitlab.API, tok *GitLabToken, target *ThreadPart, body string) {
 	p := principalOf(r)
 	if ok, _ := s.notes.allow(p.Username, time.Now()); !ok {
-		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many comments, try again in a minute"})
+		writeError(w, http.StatusTooManyRequests, "too many comments, try again in a minute")
 		return
 	}
 	var n *gitlab.Note
@@ -490,10 +490,10 @@ func (s *Server) createNote(w http.ResponseWriter, r *http.Request, ap *aiv1.Age
 			return
 		}
 		if code == http.StatusForbidden || code == http.StatusNotFound {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "GitLab did not let you comment there"})
+			writeError(w, http.StatusForbidden, "GitLab did not let you comment there")
 			return
 		}
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "GitLab did not take the comment"})
+		writeError(w, http.StatusBadGateway, "GitLab did not take the comment")
 		return
 	}
 	// Who posted what where, never the text.
@@ -536,11 +536,11 @@ func (s *Server) checkTarget(ctx context.Context, gl gitlab.API, ap *aiv1.AgentP
 func (s *Server) targetRefused(w http.ResponseWriter, tok *GitLabToken, msg string, err error) {
 	switch code := gitlab.StatusCode(err); {
 	case errors.Is(err, errNotTasks), code == http.StatusNotFound, code == http.StatusForbidden:
-		writeJSON(w, http.StatusConflict, map[string]string{"error": msg})
+		writeError(w, http.StatusConflict, msg)
 	case code == http.StatusUnauthorized:
 		s.gitlabRejected(w, tok)
 	default:
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "GitLab is not reachable right now"})
+		writeError(w, http.StatusServiceUnavailable, "GitLab is not reachable right now")
 	}
 }
 
@@ -549,9 +549,9 @@ func (s *Server) targetRefused(w http.ResponseWriter, tok *GitLabToken, msg stri
 func (s *Server) gitlabRejected(w http.ResponseWriter, tok *GitLabToken) {
 	if tok != nil && tok.Fixed {
 		s.log.Info("GitLab rejected the fixed token of gitlab.tokenUser; renew it")
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "GitLab rejected the configured token; it must be renewed"})
+		writeError(w, http.StatusBadGateway, "GitLab rejected the configured token; it must be renewed")
 		return
 	}
 	s.gitlab.sessions.Clear(w, s.gitlab.cookie())
-	writeJSON(w, http.StatusConflict, map[string]string{"error": "connect your GitLab account again", "login": pathGitLabLogin})
+	writeErrorResponse(w, http.StatusConflict, ErrorResponse{Error: "connect your GitLab account again", Login: pathGitLabLogin})
 }

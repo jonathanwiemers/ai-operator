@@ -677,7 +677,7 @@ func (s *Server) milestoneThread(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.log.V(1).Info("cannot read comments", "target", "tracking", "iid", iid, "error", err.Error())
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "GitLab did not return the comments"})
+		writeError(w, http.StatusBadGateway, "GitLab did not return the comments")
 		return
 	}
 	part.Notes = make([]NoteView, 0, len(notes))
@@ -699,7 +699,7 @@ func (s *Server) trackingIssue(w http.ResponseWriter, r *http.Request) (*aiv1.Ag
 	}
 	iid := trackingIssueIID(st, coord)
 	if iid == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "the milestone has no tracking issue"})
+		writeError(w, http.StatusNotFound, "the milestone has no tracking issue")
 		return nil, nil, nil, nil, false
 	}
 	gl, tok, ok := s.userGitLab(w, r, ap)

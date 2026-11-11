@@ -185,7 +185,7 @@ func (s *Server) spend(w http.ResponseWriter, r *http.Request) {
 	}
 	st := s.research.Load()
 	if st == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the history database is not connected yet"})
+		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
 		return
 	}
 	sp, err := st.Spend(r.Context(), sc)

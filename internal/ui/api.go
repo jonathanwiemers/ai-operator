@@ -168,7 +168,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	if s.sessions != nil {
 		release, ok := s.acquireStream(p.Username)
 		if !ok {
-			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many open event streams"})
+			writeError(w, http.StatusTooManyRequests, "too many open event streams")
 			return
 		}
 		defer release()
@@ -232,13 +232,38 @@ func (s *Server) acquireStream(user string) (release func(), ok bool) {
 	}, true
 }
 
+// ErrorResponse is the body of every error the UI API returns. Error is
+// the message; the other fields are set only by the errors that carry more.
+type ErrorResponse struct {
+	Error string `json:"error"`
+	// Field is the request field a 400 is about, which a form shows next
+	// to it.
+	Field string `json:"field,omitempty"`
+	// Login is the path that logs in (401) or connects GitLab (409).
+	Login string `json:"login,omitempty"`
+	// Unknown are the follow-up numbers the retrospective does not have.
+	Unknown []int `json:"unknown,omitempty"`
+	// Taken are the follow-up numbers already opened, taken or dismissed.
+	Taken []int `json:"taken,omitempty"`
+}
+
+// writeError writes an error with only a message.
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeErrorResponse(w, status, ErrorResponse{Error: msg})
+}
+
+// writeErrorResponse writes an error that carries more than a message.
+func writeErrorResponse(w http.ResponseWriter, status int, body ErrorResponse) {
+	writeJSON(w, status, body)
+}
+
 func (s *Server) internalError(w http.ResponseWriter, err error) {
 	s.log.Error(err, "request failed")
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+	writeError(w, http.StatusInternalServerError, "internal error")
 }
 
 func notFound(w http.ResponseWriter) {
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+	writeError(w, http.StatusNotFound, "not found")
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

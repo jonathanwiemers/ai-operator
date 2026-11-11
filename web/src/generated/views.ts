@@ -16,6 +16,30 @@ export interface Me {
   roles: string[] | null;
   authMode: 'oidc' | 'none';
 }
+/**
+ * ErrorResponse is the body of every error the UI API returns. Error is
+ * the message; the other fields are set only by the errors that carry more.
+ */
+export interface ErrorResponse {
+  error: string;
+  /**
+   * Field is the request field a 400 is about, which a form shows next
+   * to it.
+   */
+  field?: string;
+  /**
+   * Login is the path that logs in (401) or connects GitLab (409).
+   */
+  login?: string;
+  /**
+   * Unknown are the follow-up numbers the retrospective does not have.
+   */
+  unknown?: number /* int */[];
+  /**
+   * Taken are the follow-up numbers already opened, taken or dismissed.
+   */
+  taken?: number /* int */[];
+}
 
 //////////
 // source: chat.go

@@ -296,7 +296,7 @@ func (s *Server) researchRuns(w http.ResponseWriter, r *http.Request, st *store.
 	if v := q.Get("before"); v != "" {
 		t, err := time.Parse(time.RFC3339, v)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "before must be an RFC 3339 time"})
+			writeError(w, http.StatusBadRequest, "before must be an RFC 3339 time")
 			return
 		}
 		before = t
@@ -305,7 +305,7 @@ func (s *Server) researchRuns(w http.ResponseWriter, r *http.Request, st *store.
 	if v := q.Get("limit"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > maxRunsLimit {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be 1 to 100"})
+			writeError(w, http.StatusBadRequest, "limit must be 1 to 100")
 			return
 		}
 		limit = n
@@ -356,7 +356,7 @@ func (s *Server) researchRun(w http.ResponseWriter, r *http.Request, st *store.S
 func (s *Server) researchSearch(w http.ResponseWriter, r *http.Request, st *store.Store) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if n := utf8.RuneCountInString(q); n < 1 || n > maxSearchQuery || !utf8.ValidString(q) || strings.ContainsRune(q, 0) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "q must have 1 to 200 characters"})
+		writeError(w, http.StatusBadRequest, "q must have 1 to 200 characters")
 		return
 	}
 	list, ok := s.readableResearches(w, r)

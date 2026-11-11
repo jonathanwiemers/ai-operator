@@ -575,3 +575,9 @@ follow-up issue), and requirements without an issue and why.
   web's name. `types.ts` keeps its copies until the client slice (R14)
   switches the web to the generated names. Error bodies stay maps for the
   next slice. Nothing narrowed.
+- 2026-11-11 #337 (R13 Go errors): every error body of `internal/ui` is
+  one `ErrorResponse` (`error`, and omitted unless set: `field`, `login`,
+  `unknown`, `taken`), written by `writeError` or `writeErrorResponse`.
+  The bodies are byte for byte the maps they replaced. The web keeps
+  reading them through `ApiError` until the client slice (R14). Nothing
+  narrowed.

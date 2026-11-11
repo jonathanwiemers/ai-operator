@@ -183,10 +183,10 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	case !s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name):
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "no access to transcripts"})
+		writeError(w, http.StatusForbidden, "no access to transcripts")
 		return
 	case s.logs == nil:
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "transcripts are not available"})
+		writeError(w, http.StatusNotImplemented, "transcripts are not available")
 		return
 	}
 	flusher, ok := w.(http.Flusher)
@@ -197,7 +197,7 @@ func (s *Server) transcript(w http.ResponseWriter, r *http.Request) {
 	if s.sessions != nil {
 		release, ok := s.acquireStream(p.Username)
 		if !ok {
-			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many open event streams"})
+			writeError(w, http.StatusTooManyRequests, "too many open event streams")
 			return
 		}
 		defer release()

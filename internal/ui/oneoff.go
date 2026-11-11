@@ -91,7 +91,7 @@ func (s *Server) writeHandler(h http.HandlerFunc) http.Handler {
 			ns != "" && !s.authz.CanReadResearch(p, ns, r.PathValue("name")):
 			notFound(w)
 		case !write:
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "no access to starting researches"})
+			writeError(w, http.StatusForbidden, "no access to starting researches")
 		default:
 			h(w, r)
 		}
@@ -103,7 +103,7 @@ func (s *Server) researchForm(w http.ResponseWriter, r *http.Request) {
 	ns := s.cfg.Research.Namespace
 	// A name like the one a create would get: the write rule must match it.
 	if !s.authz.CanWriteResearch(principalOf(r), ns, oneOffName(time.Now())) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "no access to starting researches in " + ns})
+		writeError(w, http.StatusForbidden, "no access to starting researches in "+ns)
 		return
 	}
 	var list aiv1.AgentProjectList
@@ -143,7 +143,7 @@ func (s *Server) createResearch(w http.ResponseWriter, r *http.Request) {
 	if err := dec.Decode(&req); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "the request is larger than 32 KiB"})
+			writeError(w, http.StatusRequestEntityTooLarge, "the request is larger than 32 KiB")
 			return
 		}
 		badRequest(w, "invalid request")
@@ -151,7 +151,7 @@ func (s *Server) createResearch(w http.ResponseWriter, r *http.Request) {
 	}
 	ns, name := s.cfg.Research.Namespace, oneOffName(time.Now())
 	if !s.authz.CanWriteResearch(p, ns, name) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "no access to starting researches in " + ns})
+		writeError(w, http.StatusForbidden, "no access to starting researches in "+ns)
 		return
 	}
 	if field, msg := validateResearch(&req); msg != "" {
@@ -181,7 +181,7 @@ func (s *Server) createResearch(w http.ResponseWriter, r *http.Request) {
 	}
 	if ok, wait := s.creates.allow(p.Username, time.Now()); !ok {
 		w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
-		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": fmt.Sprintf("at most %d researches per hour, try again later", createsPerWindow)})
+		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("at most %d researches per hour, try again later", createsPerWindow))
 		return
 	}
 	ar := &aiv1.AgentResearch{
@@ -254,7 +254,7 @@ func agentName(a *aiv1.ResearchAgent) string {
 func (s *Server) deleteResearch(w http.ResponseWriter, r *http.Request) {
 	p := principalOf(r)
 	ns, name := r.PathValue("namespace"), r.PathValue("name")
-	forbidden := func(msg string) { writeJSON(w, http.StatusForbidden, map[string]string{"error": msg}) }
+	forbidden := func(msg string) { writeError(w, http.StatusForbidden, msg) }
 	if ns != s.cfg.Research.Namespace || !s.authz.CanWriteResearch(p, ns, name) {
 		forbidden("only your one-off researches in " + s.cfg.Research.Namespace + " can be deleted here")
 		return
@@ -294,11 +294,11 @@ func (s *Server) canDelete(p Principal, ar *aiv1.AgentResearch) bool {
 }
 
 func badRequest(w http.ResponseWriter, msg string) {
-	writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+	writeError(w, http.StatusBadRequest, msg)
 }
 
 // fieldError is a 400 about one field of the request, which the form shows
 // next to it.
 func fieldError(w http.ResponseWriter, field, msg string) {
-	writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg, "field": field})
+	writeErrorResponse(w, http.StatusBadRequest, ErrorResponse{Error: msg, Field: field})
 }

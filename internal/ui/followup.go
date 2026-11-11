@@ -83,7 +83,7 @@ func (s *Server) createFollowUp(w http.ResponseWriter, r *http.Request) {
 	}
 	p := principalOf(r)
 	if !slices.Contains(src.subjects, p.Username) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the milestone's owners may create a follow-up milestone"})
+		writeError(w, http.StatusForbidden, "only the milestone's owners may create a follow-up milestone")
 		return
 	}
 	var unknown, taken []int
@@ -96,11 +96,11 @@ func (s *Server) createFollowUp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(unknown) > 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "the retrospective has no such follow-up", "unknown": unknown})
+		writeErrorResponse(w, http.StatusBadRequest, ErrorResponse{Error: "the retrospective has no such follow-up", Unknown: unknown})
 		return
 	}
 	if len(taken) > 0 {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "follow-ups already opened, taken or dismissed", "taken": taken})
+		writeErrorResponse(w, http.StatusConflict, ErrorResponse{Error: "follow-ups already opened, taken or dismissed", Taken: taken})
 		return
 	}
 	gl, tok, ok := s.userGitLab(w, r, ap)
@@ -108,7 +108,7 @@ func (s *Server) createFollowUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ok, _ := s.notes.allow(p.Username, time.Now()); !ok {
-		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many requests, try again in a minute"})
+		writeError(w, http.StatusTooManyRequests, "too many requests, try again in a minute")
 		return
 	}
 	desc := followUpDescription(ap.Spec, req.Description, iid, req.FollowUps, src)
@@ -121,11 +121,11 @@ func (s *Server) createFollowUp(w http.ResponseWriter, r *http.Request) {
 		case http.StatusUnauthorized:
 			s.gitlabRejected(w, tok)
 		case http.StatusForbidden, http.StatusNotFound:
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "GitLab did not let you create a milestone"})
+			writeError(w, http.StatusForbidden, "GitLab did not let you create a milestone")
 		case http.StatusBadRequest, http.StatusConflict, http.StatusUnprocessableEntity:
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "GitLab refused the milestone; is the title taken?"})
+			writeError(w, http.StatusConflict, "GitLab refused the milestone; is the title taken?")
 		default:
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "GitLab did not create the milestone"})
+			writeError(w, http.StatusBadGateway, "GitLab did not create the milestone")
 		}
 		return
 	}
@@ -144,7 +144,7 @@ func readFollowUp(w http.ResponseWriter, r *http.Request) (followUpRequest, bool
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4*maxFollowUpDescription))
 	dec.DisallowUnknownFields()
 	bad := func(msg string) (followUpRequest, bool) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		writeError(w, http.StatusBadRequest, msg)
 		return req, false
 	}
 	if err := dec.Decode(&req); err != nil {

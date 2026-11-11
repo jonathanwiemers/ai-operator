@@ -43,13 +43,13 @@ func (s *Server) dismissFollowUps(w http.ResponseWriter, r *http.Request) {
 	p := principalOf(r)
 	switch {
 	case st == nil:
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "the milestone is closed"})
+		writeError(w, http.StatusConflict, "the milestone is closed")
 		return
 	case !slices.Contains(st.Spec.OwnerSubjects, p.Username):
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the milestone's owners may dismiss its follow-ups"})
+		writeError(w, http.StatusForbidden, "only the milestone's owners may dismiss its follow-ups")
 		return
 	case !dismissable(st):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "the milestone has no open follow-ups to dismiss"})
+		writeError(w, http.StatusConflict, "the milestone has no open follow-ups to dismiss")
 		return
 	}
 	retro := st.Status.Pilot.Retrospective
@@ -59,11 +59,11 @@ func (s *Server) dismissFollowUps(w http.ResponseWriter, r *http.Request) {
 	}
 	// The operator takes "create none" only from the owners it pinned.
 	if tok.UserID != 0 && !slices.Contains(retro.OwnerIDs, tok.UserID) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "your GitLab account is not among the milestone's owners"})
+		writeError(w, http.StatusForbidden, "your GitLab account is not among the milestone's owners")
 		return
 	}
 	if ok, _ := s.notes.allow(p.Username, time.Now()); !ok {
-		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many requests, try again in a minute"})
+		writeError(w, http.StatusTooManyRequests, "too many requests, try again in a minute")
 		return
 	}
 	project := ap.Spec.GitLab.Project
@@ -75,9 +75,9 @@ func (s *Server) dismissFollowUps(w http.ResponseWriter, r *http.Request) {
 		case http.StatusUnauthorized:
 			s.gitlabRejected(w, tok)
 		case http.StatusForbidden, http.StatusNotFound:
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "GitLab did not let you reply to the retrospective"})
+			writeError(w, http.StatusForbidden, "GitLab did not let you reply to the retrospective")
 		default:
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "GitLab did not take the reply"})
+			writeError(w, http.StatusBadGateway, "GitLab did not take the reply")
 		}
 	}
 	threads, err := gl.ListIssueDiscussions(r.Context(), project, part.IID)
@@ -87,7 +87,7 @@ func (s *Server) dismissFollowUps(w http.ResponseWriter, r *http.Request) {
 	}
 	i := slices.IndexFunc(threads, func(d gitlab.Discussion) bool { return len(d.Notes) > 0 && d.Notes[0].ID == retro.NoteID })
 	if i < 0 {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "the retrospective's comment is gone from the tracking issue"})
+		writeError(w, http.StatusConflict, "the retrospective's comment is gone from the tracking issue")
 		return
 	}
 	n, err := gl.ReplyIssueDiscussion(r.Context(), project, part.IID, threads[i].ID, dismissBody)

@@ -184,7 +184,7 @@ func (s *Server) authed(h http.HandlerFunc) http.Handler {
 		}
 		sess, ok := s.sessions.Get(r)
 		if !ok {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "login required", "login": pathLogin})
+			writeErrorResponse(w, http.StatusUnauthorized, ErrorResponse{Error: "login required", Login: pathLogin})
 			return
 		}
 		ctx := context.WithValue(r.Context(), principalKey, sess.Principal)

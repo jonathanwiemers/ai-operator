@@ -85,7 +85,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	}
 	st := s.research.Load()
 	if st == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the history database is not connected yet"})
+		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
 		return
 	}
 	var query store.StreamQuery
@@ -450,7 +450,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	}
 	st := s.research.Load()
 	if st == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "the history database is not connected yet"})
+		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
 		return
 	}
 	days := 30

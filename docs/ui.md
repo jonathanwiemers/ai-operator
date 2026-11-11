@@ -1342,7 +1342,9 @@ uses the generated names, copies of some responses). Every success
 response is a named struct (`ChatPage`, `ResearchResponse`, `InboxResponse`,
 …) in the file of its handler, so it is generated too; a nullable field is a
 pointer with a `tstype:"T | null,required"` tag, so it stays `null` in the
-JSON and in TypeScript. Enum types whose constants are not
+JSON and in TypeScript. Every error is an `ErrorResponse`
+(`error`, plus `field`, `login`, `unknown` or `taken` where set), written
+with `writeError` or `writeErrorResponse`, never as a map. Enum types whose constants are not
 named after the type (e.g. `PauseKind`, `PauseOwner`) come out as `string`.
 
 **Research pages with seeded data.** The research pages need a research
