@@ -111,8 +111,8 @@ Create a **project access token** with role *Developer* and the scopes `api` and
 `agent/*` branches and opens draft merge requests.
 
 The ai-operator's own repository lives on GitLab (`jo.wiemers/ai-operator`)
-and runs its checks in a GitLab pipeline; GitHub is a push mirror that
-builds the releases (see [releasing.md](releasing.md)).
+and runs its checks and releases in a GitLab pipeline; GitHub is a push
+mirror that releases once a day (see [releasing.md](releasing.md)).
 
 ### Webhooks (optional)
 
@@ -2016,7 +2016,10 @@ outside a milestone on autopilot adds its record to the project's list, see
 default branch with the variables `AGENT_RELEASE=true` and
 `AGENT_RELEASE_NOTES=<text>`, and that pipeline runs the release job, which
 tags the default branch with a calendar version (`YEAR.MONTH.N`). Nothing
-else is needed: a human keeps the `web` pipeline.
+else is needed: a human keeps the `web` pipeline. ai-operator uses the
+contract itself: its `release` job runs only in a `web` pipeline or an `api`
+pipeline with `AGENT_RELEASE=true`, and puts `AGENT_RELEASE_NOTES` at the top
+of the GitLab release (see [releasing.md](releasing.md)).
 
 A decision is `Planned` until its commit is merged, then `Waiting`. Each
 poll checks the oldest decisions first, in this order:

@@ -126,14 +126,19 @@ helm-lint:
     - apk add --no-cache make
     - make helm-lint
 
-# Every change to main that touches the operator, the agent image or the chart
-# is released with a calendar version YEAR.MONTH.N, after all checks passed:
+# A release is a decision, not a side effect of a merge (docs/releasing.md):
+# pushes to main run the checks only. The release runs, after all checks
+# passed, in
+#   - a manual pipeline on main (Build > Pipelines > Run pipeline, or
+#     `glab ci run --branch main`), or
+#   - a pipeline on main the operator starts through the API with
+#     AGENT_RELEASE=true and AGENT_RELEASE_NOTES=<why and what>; the notes
+#     head the GitLab release. An api pipeline without it releases nothing.
+# It publishes, with a calendar version YEAR.MONTH.N:
 #   - images  registry.gitlab.com/jo.wiemers/ai-operator:<version>,
 #             registry.gitlab.com/jo.wiemers/ai-operator/agent:<version>
 #   - chart   oci://registry.gitlab.com/jo.wiemers/ai-operator/charts/ai-operator --version <version>
 #   - git tag <version> and a GitLab release
-# A manual pipeline on main (Build > Pipelines > Run pipeline, or
-# `glab ci run --branch main`) releases too.
 # The version counts the GitLab tags; GitHub's release.yml counts its own.
 release:
   extends: .docker-build
@@ -146,19 +151,8 @@ release:
     CI_TOOLS_IMAGE: registry.gitlab.com/jo.wiemers/devops/ci:v0.2.55
     GIT_DEPTH: "0"
   rules:
-    - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/ && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        - api/**/*
-        - cmd/**/*
-        - internal/**/*
-        - charts/**/*
-        - web/**/*
-        - config/crd/**/*
-        - Dockerfile
-        - Dockerfile.agent
-        - go.mod
-        - go.sum
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "api" && $AGENT_RELEASE == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
     - git fetch --tags --force --quiet origin
     # Release jobs of quick successive merges can run out of order: when a
@@ -199,8 +193,14 @@ release:
     - helm package charts/ai-operator --version "${VERSION}" --app-version "${VERSION}" -d dist
     - helm push "dist/ai-operator-${VERSION}.tgz" "oci://${CI_REGISTRY_IMAGE}/charts"
     # Creating the release creates the tag at this commit.
+    # The operator's notes (AGENT_RELEASE_NOTES) are untrusted text: printf
+    # writes them verbatim, they never pass through eval or the heredoc.
     - |
-      cat > notes.md <<NOTES
+      : > notes.md
+      if [ -n "${AGENT_RELEASE_NOTES:-}" ]; then
+        printf '%s\n\n' "${AGENT_RELEASE_NOTES}" > notes.md
+      fi
+      cat >> notes.md <<NOTES
       ## Install
 
       \`\`\`sh

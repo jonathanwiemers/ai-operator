@@ -1,24 +1,15 @@
 name: Release
 
-# Every change to main that touches the operator, the agent image or the chart
-# is released with a calendar version YEAR.MONTH.N (2026.10.1, 2026.10.2, ...):
+# Once a day (or by hand via Run workflow), main is released with a calendar
+# version YEAR.MONTH.N (2026.10.1, 2026.10.2, ...) if the operator, the agent
+# image or the chart changed since GitHub's newest release tag:
 #   - images  ghcr.io/<owner>/ai-operator:<version>, ghcr.io/<owner>/ai-operator-agent:<version>
 #   - chart   oci://ghcr.io/<owner>/charts/ai-operator --version <version>
 #   - git tag <version> and a GitHub release with the packaged chart
+# Pushes to main no longer release (docs/releasing.md).
 on:
-  push:
-    branches: [main]
-    paths:
-      - api/**
-      - cmd/**
-      - internal/**
-      - charts/**
-      - web/**
-      - config/crd/**
-      - Dockerfile
-      - Dockerfile.agent
-      - go.mod
-      - go.sum
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
 
 # Releases run one at a time so two merges never get the same version.
@@ -31,7 +22,43 @@ permissions:
   packages: write
 
 jobs:
+  # Ends the run early unless release-relevant code changed since the newest
+  # calendar-version tag (the tags hack/next-version.sh counts). The paths are
+  # those the former push trigger listed; docs-only days are not released.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes since the last release
+        id: check
+        run: |
+          last="$(git tag --list '20*.*.*' --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+          if [ -z "${last}" ]; then
+            echo "No release tag yet; releasing"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "${last}" HEAD -- \
+              api cmd internal charts web config/crd \
+              Dockerfile Dockerfile.agent go.mod go.sum; then
+            echo "No release-relevant change since ${last}; nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release-relevant changes since ${last}:"
+            git diff --stat "${last}" HEAD -- \
+              api cmd internal charts web config/crd \
+              Dockerfile Dockerfile.agent go.mod go.sum
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: changes
+    if: needs.changes.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -218,9 +218,9 @@ Postgres: export the `AI_TEST_DATABASE_URL` that `make test-db` prints before
 `AI_TEST_REQUIRE_DATABASE=1`, so there they fail instead. Each test works in
 a schema and with login roles of its own, dropped afterwards.
 
-Every merge to `main` that touches code is released automatically with a
-calendar version (`2026.10.1`, `2026.10.2`, …), see
-[releasing](docs/releasing.md).
+A merge to `main` does not release by itself: a release is a decision (the
+operator's or a human's) and gets a calendar version (`2026.10.1`,
+`2026.10.2`, …), see [releasing](docs/releasing.md).
 
 ## Security
 

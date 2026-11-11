@@ -24,7 +24,9 @@
 - The web UI's service account is defined by hand in the chart
   (`templates/ui-rbac.yaml`): never put kubebuilder RBAC markers into
   `internal/ui`, `make manifests` would grant them to the operator.
-- Every merge to `main` that touches code, the chart or the Dockerfiles is
-  released automatically with a calendar version (`YEAR.MONTH.N`), see
-  `docs/releasing.md`. Docs-only changes are not released.
+- A merge to `main` does not release. A release is a decision: the operator
+  starts a pipeline with `AGENT_RELEASE=true` (planner, pilot, owner's
+  `/agent release`, a milestone's final release), or a human runs a `web`
+  pipeline on `main`. It gets a calendar version (`YEAR.MONTH.N`). GitHub
+  releases once a day if code changed. See `docs/releasing.md`.
 - Keep the docs in `docs/` and the chart README in sync with behavior changes.
