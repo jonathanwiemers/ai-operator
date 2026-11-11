@@ -6,6 +6,9 @@ import Badge from '../components/Badge.vue'
 import RelTime from '../components/RelTime.vue'
 import type { ResearchPhase, ResearchSummary } from '../types'
 
+// The researches as cards, one per row at every width; the name's link covers
+// the card. Utilities only (docs/ui.md, "Research list and form"): lines wrap
+// on phones, where *New research* and the cards are 44 px high or more.
 const { data: researches, error, loading } = useResource<ResearchSummary[]>(() => '/researches', ['research'])
 const now = useNow()
 
@@ -28,13 +31,13 @@ function lastRunLine(r: ResearchSummary): string {
 
 <template>
   <div class="page">
-    <div class="row head">
+    <div class="mb-[18px] flex flex-wrap items-center gap-3">
       <h1>Research</h1>
-      <span class="spacer" />
-      <RouterLink v-if="canStartResearch()" to="/research/new" class="btn primary">New research</RouterLink>
+      <!-- a.btn is 44 px high on phones (style.css, the phone rule). -->
+      <RouterLink v-if="canStartResearch()" to="/research/new" class="btn primary ms-auto">New research</RouterLink>
     </div>
 
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <div v-if="error" class="banner danger [overflow-wrap:anywhere]">{{ error }}</div>
 
     <div v-if="loading && !researches" class="card empty">Loading…</div>
     <div v-else-if="researches && researches.length === 0" class="card empty">
@@ -42,122 +45,51 @@ function lastRunLine(r: ResearchSummary): string {
       <p>There are no AgentResearches, or none your roles may read.</p>
     </div>
 
-    <div v-else class="list">
-      <div v-for="r in researches" :key="r.namespace + '/' + r.name" class="research card">
-        <div class="row">
-          <div class="names">
-            <RouterLink :to="`/research/${encodeURIComponent(r.namespace)}/${encodeURIComponent(r.name)}`" class="name">
+    <ul v-else class="m-0 flex list-none flex-col gap-3 p-0" data-researches>
+      <li
+        v-for="r in researches"
+        :key="r.namespace + '/' + r.name"
+        class="relative flex min-w-0 rounded-(--radius) border border-(--border) bg-(--surface) shadow-(--shadow) flex-col gap-2 px-4 py-3.5 transition-[box-shadow,border-color] duration-150 hover:border-(--border-strong) hover:shadow-(--shadow-hover) tablet:px-[18px]"
+        data-research
+      >
+        <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+          <div class="flex min-w-0 flex-wrap items-baseline gap-x-2.5">
+            <RouterLink
+              :to="`/research/${encodeURIComponent(r.namespace)}/${encodeURIComponent(r.name)}`"
+              class="text-base font-[650] text-(--text) [overflow-wrap:anywhere] after:absolute after:inset-0 after:rounded-(--radius) hover:no-underline"
+            >
               {{ r.name }}
             </RouterLink>
-            <span class="ns faint">{{ r.namespace }}</span>
+            <span class="text-xs text-(--text-3)">{{ r.namespace }}</span>
           </div>
-          <span class="spacer" />
-          <Badge>{{ r.view === 'newsflash' ? 'News flash' : 'Report' }}</Badge>
-          <Badge tone="muted">{{ r.depth }}</Badge>
-          <Badge v-if="r.phase" :tone="phaseTone[r.phase]" :dot="r.phase === 'Running'" :pulse="r.phase === 'Running'">
-            {{ r.phase }}
-          </Badge>
+          <div class="flex flex-wrap items-center gap-2 tablet:ms-auto">
+            <Badge>{{ r.view === 'newsflash' ? 'News flash' : 'Report' }}</Badge>
+            <Badge tone="muted">{{ r.depth }}</Badge>
+            <Badge v-if="r.phase" :tone="phaseTone[r.phase]" :dot="r.phase === 'Running'" :pulse="r.phase === 'Running'">
+              {{ r.phase }}
+            </Badge>
+          </div>
         </div>
-        <div class="facts-line muted">
-          <span v-if="r.schedule">
+        <div class="flex flex-wrap gap-x-[18px] gap-y-1.5 text-[13px] text-(--text-2)">
+          <span v-if="r.schedule" class="[overflow-wrap:anywhere]">
             <code>{{ r.schedule }}</code> {{ r.timeZone || 'UTC' }}
           </span>
           <span v-else>one-off<template v-if="r.createdBy"> by {{ r.createdBy }}</template></span>
           <span>last run <RelTime :time="r.lastRun" /></span>
           <span v-if="r.nextRun">next run <RelTime :time="r.nextRun" /></span>
         </div>
-        <div v-if="lastRunLine(r)" class="run faint" :title="r.run?.reason">
+        <div v-if="lastRunLine(r)" class="text-[13px] text-(--text-3) [overflow-wrap:anywhere]">
           {{ lastRunLine(r) }}
           <template v-if="r.run?.outcome && r.run.outcome !== 'succeeded'"> · {{ r.run.outcome }}</template>
+          <span v-if="r.run?.reason" class="block">{{ r.run.reason }}</span>
         </div>
-        <div v-if="r.waiting || r.skippedReason" class="waiting">
+        <div v-if="r.waiting || r.skippedReason" class="flex flex-wrap items-center gap-2 text-[13px]">
           <Badge v-if="r.waiting" tone="warning">
             waiting for <code>{{ r.waiting.engine }}</code> until {{ clockTime(r.waiting.until, now) }}
           </Badge>
-          <span v-if="r.skippedReason" class="muted">{{ r.skippedReason }}</span>
+          <span v-if="r.skippedReason" class="text-(--text-2) [overflow-wrap:anywhere]">{{ r.skippedReason }}</span>
         </div>
-      </div>
-    </div>
+      </li>
+    </ul>
   </div>
 </template>
-
-<style scoped>
-.head {
-  margin-bottom: 18px;
-}
-
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.research {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 18px;
-  transition:
-    box-shadow 0.15s,
-    border-color 0.15s;
-}
-
-.research:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-hover);
-}
-
-.names {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-}
-
-.name {
-  font-size: 16px;
-  font-weight: 650;
-  color: var(--text);
-}
-
-.name:hover {
-  text-decoration: none;
-}
-
-/* The whole card opens the research. */
-.name::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius);
-}
-
-.research :deep([title]) {
-  position: relative;
-  z-index: 1;
-}
-
-.ns {
-  font-size: 12px;
-}
-
-.facts-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  font-size: 13px;
-}
-
-.run {
-  font-size: 13px;
-}
-
-.waiting {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-</style>

@@ -2147,6 +2147,36 @@ high, and at 1280 px that the table fits and the figures are one row
 `research-news@<width>.png`). The three pages are also among the hit-area
 routes.
 
+### Research list and form
+
+The research list and the one-off form (`web/src/views/Researches.vue`,
+`ResearchNew.vue`) are Tailwind utilities and Nuxt UI, without scoped CSS.
+
+- The list is one card per research at every width. The name's link covers
+  the card; its lines wrap on phones (the badges go below the name). The
+  last run's reason, a hover title before, is a line of its own.
+- The form's fields are `UFormField` with `UTextarea`, `UInput` and
+  `USelect`; *Depth* stays two native radios whose labels are 44 px high on
+  phones. Inputs are 16 px and controls 44 px high on phones, 14 px from a
+  tablet on; the selects are as wide as the form on phones. The question's
+  counter sits beside its label. *Effort* (Claude models only) is a field
+  of its own next to *Agent*. A 400 with a `field` the form knows
+  (`prompt`, `depth`, `view`, `topics`, `project`, `agent`) shows on that
+  field and marks its control invalid; any other error shows beside
+  *Start research*.
+
+The e2e cases `research list and form › research list@<width>`, `… ›
+research form submits@<width>` and `… › research form field error@<width>`
+at 375, 768 and 1280 px check that neither page scrolls sideways, that a
+tap on a card opens its research, that the form posts every choice (depth,
+view, topics, agent and effort) and opens the new research, and that a 400
+`{error, field: "topics"}` shows on the Topics field only; at 375 px that
+*New research* and the form's controls are 44 px high and its inputs 16 px
+(`research-list@<width>.png`, `research-new@<width>.png`,
+`research-new-error@<width>.png`). Both pages are also among the hit-area
+routes (the Depth radios are allowlisted: their labels are the hit area),
+and the form's known overflow at 375 px is gone.
+
 ## Roadmap
 
 1. **Into a running step.** Messages that reach a running claude step at once

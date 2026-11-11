@@ -556,13 +556,15 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'task', 'task-chat', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
+const hitRoutes = ['overview', 'inbox', 'researches', 'research-new', 'task', 'task-chat', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
 
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {
   // The reported label is cut at 40 characters.
   'stream-milestone-retrospective input[checkbox].m-0.size-4 "Take leftover 1 into a follow-up milesto"':
     'a checkbox keeps its size; the label around it is the 44 px hit area (milestone retrospective e2e)',
+  'research-new input[radio].m-0.size-4 ""':
+    'a radio keeps its size; the label around it is the 44 px hit area (research list and form e2e)',
 }
 
 for (const name of hitRoutes) {
@@ -2394,5 +2396,164 @@ test.describe('board', () => {
         expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
       })
     }
+  }
+})
+
+// The research list and the one-off form (Researches.vue, ResearchNew.vue,
+// R12), utilities and Nuxt UI fields: no sideways scroll; on a phone the
+// cards and the form's controls are at least 44 px high and its inputs 16 px.
+// Submitting posts what was chosen and opens the new research; a 400 about a
+// field shows on that field.
+test.describe('research list and form', () => {
+  async function sideways(page: Page) {
+    return page.evaluate(() => {
+      const doc = document.scrollingElement ?? document.documentElement
+      const main = document.querySelector('main')!
+      return { page: doc.scrollWidth - doc.clientWidth, pane: main.scrollWidth - main.clientWidth }
+    })
+  }
+
+  async function open(page: Page, baseURL: string | undefined, name: string, size: { width: number; height: number }) {
+    const route = routes.find((r) => r.name === name)!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize(size)
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    return { route, problems }
+  }
+
+  // posts answers POST /researches with status and json, after mockAPI so it
+  // answers first, and keeps the bodies.
+  async function posts(page: Page, status: number, json: unknown) {
+    const seen: unknown[] = []
+    await page.route('**/api/v1/researches', async (r) => {
+      if (r.request().method() !== 'POST') return r.fallback()
+      seen.push(r.request().postDataJSON())
+      return r.fulfill({ status, json })
+    })
+    return seen
+  }
+
+  for (const size of widths) {
+    const phone = size.width < 760
+    const shot = (outputDir: string, name: string) => join(outputDir, '..', 'screenshots', `${name}@${size.width}.png`)
+
+    test(`research list@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const { route, problems } = await open(page, baseURL, 'researches', size)
+      await page.goto(route.path)
+      await route.ready(page)
+      const main = page.locator('main')
+      const cards = main.locator('[data-research]')
+      expect(await cards.count()).toBeGreaterThan(1)
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      if (phone) {
+        const h = (await main.getByRole('link', { name: 'New research' }).boundingBox())!.height
+        expect(h, 'New research height').toBeGreaterThanOrEqual(44)
+      }
+      // The name's link covers the card: a tap on its lower part opens it.
+      const card = cards.filter({ hasText: 'payments-news' })
+      const box = (await card.boundingBox())!
+      await page.mouse.click(box.x + box.width - 12, box.y + box.height - 8)
+      await expect(page).toHaveURL(/\/research\/research\/payments-news$/)
+      const file = shot(testInfo.project.outputDir, 'research-list')
+      await page.goBack()
+      await route.ready(page)
+      await page.screenshot({ path: file, fullPage: true })
+      await testInfo.attach('screenshot', { path: file, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`research form submits@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const { route, problems } = await open(page, baseURL, 'research-new', size)
+      const seen = await posts(page, 201, { namespace: 'research', name: 'payments-news' })
+      await page.goto(route.path)
+      await route.ready(page)
+      const form = page.locator('main [data-research-form]')
+      await expect(form.getByRole('button', { name: 'Start research' })).toBeDisabled()
+
+      await form.getByLabel('Question').fill('Which shops offer **guest** checkout?')
+      await expect(form.locator('[data-counter]')).toHaveText('37 / 16384')
+      await form.getByLabel(/deep/).check()
+      await form.getByRole('combobox', { name: 'View' }).click()
+      await page.getByRole('option', { name: 'News flash' }).click()
+      await form.getByLabel('Topics').fill('checkout, payments, ')
+      // The unavailable project cannot be picked.
+      await form.getByRole('combobox', { name: 'Project' }).click()
+      await expect(page.getByRole('option', { name: /unavailable/ })).toHaveAttribute('data-disabled', '')
+      await page.keyboard.press('Escape')
+      await form.getByRole('combobox', { name: 'Agent' }).click()
+      await page.getByRole('option', { name: 'claude/opus' }).click()
+      await form.getByRole('combobox', { name: 'Effort' }).click()
+      await page.getByRole('option', { name: 'high' }).click()
+
+      // A closing select keeps the rest of the page aria-hidden until its
+      // exit animation ends; measure once it is gone.
+      await expect.poll(() => form.evaluate((f) => !!f.closest('[aria-hidden="true"]'))).toBe(false)
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      const sizes = await form.evaluate((f) =>
+        [...f.querySelectorAll<HTMLElement>('textarea, input:not([type=radio]), button, label:has(input[type=radio])')]
+          .filter((e) => !e.closest('[aria-hidden="true"]') && e.getBoundingClientRect().width > 0)
+          .map((e) => ({
+            tag: e.tagName.toLowerCase(),
+            height: e.getBoundingClientRect().height,
+            font: parseFloat(getComputedStyle(e).fontSize),
+          })),
+      )
+      expect(sizes.length).toBeGreaterThan(6)
+      for (const s of sizes) {
+        if (phone) expect(s.height, `${s.tag} height on a phone`).toBeGreaterThanOrEqual(44)
+        if (s.tag === 'textarea' || s.tag === 'input') {
+          if (phone) expect(s.font, 'input font size on a phone').toBe(16)
+          else expect(s.font, 'input font size').toBeLessThan(16)
+        }
+      }
+      const file = shot(testInfo.project.outputDir, 'research-new')
+      await page.screenshot({ path: file, fullPage: true })
+      await testInfo.attach('screenshot', { path: file, contentType: 'image/png' })
+
+      await form.getByRole('button', { name: 'Start research' }).click()
+      await expect(page).toHaveURL(/\/research\/research\/payments-news$/)
+      expect(seen).toEqual([
+        {
+          project: 'shop',
+          prompt: 'Which shops offer **guest** checkout?',
+          depth: 'deep',
+          view: 'newsflash',
+          topics: ['checkout', 'payments'],
+          agent: { engine: 'claude', model: 'claude-opus-5-5', effort: 'high' },
+        },
+      ])
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`research form field error@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const { route, problems } = await open(page, baseURL, 'research-new', size)
+      const seen = await posts(page, 400, { error: 'a topic must have 1 to 64 characters', field: 'topics' })
+      await page.goto(route.path)
+      await route.ready(page)
+      const form = page.locator('main [data-research-form]')
+      await form.getByLabel('Question').fill('What changed in Postgres 19?')
+      await form.getByLabel('Topics').fill('postgres')
+      await form.getByLabel('Question').press('Control+Enter')
+
+      // The error sits in the Topics field, which is marked invalid; the
+      // form stays, nothing else shows an error.
+      const topics = form.getByLabel('Topics')
+      await expect(topics).toHaveAttribute('aria-invalid', 'true')
+      // The Topics field's error is the one its input is described by.
+      const error = (await topics.getAttribute('aria-describedby'))?.split(' ').find((id) => id.endsWith('-error'))
+      expect(error, 'Topics is described by its error').toBeTruthy()
+      await expect(form.locator(`[id="${error}"]`)).toHaveText('a topic must have 1 to 64 characters')
+      await expect(form.getByText('a topic must have 1 to 64 characters')).toHaveCount(1)
+      await expect(form.getByLabel('Question')).not.toHaveAttribute('aria-invalid', 'true')
+      await expect(page).toHaveURL(/\/research\/new$/)
+      expect(seen).toHaveLength(1)
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      const file = shot(testInfo.project.outputDir, 'research-new-error')
+      await page.screenshot({ path: file, fullPage: true })
+      await testInfo.attach('screenshot', { path: file, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
   }
 })

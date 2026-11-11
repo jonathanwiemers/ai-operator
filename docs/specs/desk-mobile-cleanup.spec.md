@@ -556,3 +556,14 @@ follow-up issue), and requirements without an issue and why.
   figures wrap instead of clipping, which drops their hover titles. The
   e2e report fixture gains an items block and a level-3 heading, so one
   result has every block type. Nothing narrowed.
+- 2026-11-11 #335 (R12 Research list and form): `Researches.vue` and
+  `ResearchNew.vue` moved to utilities and Nuxt UI, no scoped `<style>`.
+  The form uses `UFormField`, `UTextarea`, `UInput` and `USelect`; *Depth*
+  keeps native radios (a `URadioGroup`'s indicator is a button, which the
+  phone rule would stretch to 44 px). Selects use `auto` and `default` for
+  "no choice", since a Reka select item cannot have the value `""`; the
+  request is unchanged. *Effort* became a labelled field of its own, so
+  each field holds one control. A server error naming a field the form
+  does not show now appears beside the submit button instead of being
+  dropped. The list's run reason moved from a hover title to a visible
+  line. The `research-new@375` known overflow is gone. Nothing narrowed.
