@@ -3,7 +3,8 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
-import { ApiError, chatPostError, getTaskChat, post, postTaskChat } from '../api'
+import { ApiError, chatPostError, post } from '../api'
+import { getTaskChat, postTaskChat } from '../client'
 import type { ChatCommand } from '../chatState'
 import {
   draftRefused,

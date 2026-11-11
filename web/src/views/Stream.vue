@@ -5,7 +5,7 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import Badge from '../components/Badge.vue'
 import { useBackClose } from '../ui/useBackClose'
-import { get, hasFeature, LoginRequiredError, NotFoundError } from '../api'
+import { hasFeature, LoginRequiredError, NotFoundError } from '../api'
 import { setCrumbNames } from '../crumbNames'
 import Board from '../components/Board.vue'
 import ContextPanel from '../components/ContextPanel.vue'
@@ -20,7 +20,7 @@ import MilestonePilot from '../components/MilestonePilot.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
-import { getInbox } from '../client'
+import { getInbox, getMilestone, getProject, getProjectHistory, getStream } from '../client'
 import { live, useResource } from '../live'
 import { pausePrompt } from '../pauseCard'
 import {
@@ -43,7 +43,6 @@ import type {
   MilestoneView,
   ProjectDetail,
   StreamEvent,
-  StreamPage,
 } from '../types'
 import { useStreamNote } from '../streamNote'
 import { carryTab, milestoneTabFromRoute, milestoneTabs, projectTabs, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
@@ -104,21 +103,15 @@ const error = ref('')
 const notFound = ref(false)
 let seq = 0
 
-const projectPath = computed(() =>
-  everything.value
-    ? ''
-    : `/projects/${encodeURIComponent(props.namespace!)}/${encodeURIComponent(props.name!)}`,
-)
-
 const project = ref<ProjectDetail | null>(null)
 
 async function loadProject() {
-  if (!projectPath.value) {
+  if (everything.value) {
     project.value = null
     return
   }
   try {
-    project.value = await get<ProjectDetail>(projectPath.value)
+    project.value = await getProject(props.namespace!, props.name!)
   } catch (e) {
     if (e instanceof NotFoundError) {
       notFound.value = true
@@ -226,7 +219,7 @@ const heatRange = computed(() => {
   }
 })
 
-function streamQuery(extra: Record<string, string | undefined> = {}): string {
+function streamQuery(extra: Record<string, string | undefined> = {}): URLSearchParams {
   const params = new URLSearchParams()
   if (!everything.value) params.set('project', `${props.namespace}/${props.name}`)
   if (milestoneIID.value) params.set('milestone', String(milestoneIID.value))
@@ -239,8 +232,7 @@ function streamQuery(extra: Record<string, string | undefined> = {}): string {
     if (v) params.set(k, v)
   }
   params.set('limit', '50')
-  const s = params.toString()
-  return `/stream?${s}`
+  return params
 }
 
 async function loadInitial() {
@@ -249,7 +241,7 @@ async function loadInitial() {
   error.value = ''
   notFound.value = false
   try {
-    const page = await get<StreamPage>(
+    const page = await getStream(
       streamQuery(beforeJump.value ? { before: beforeJump.value } : {}),
     )
     if (mine !== seq) return
@@ -270,7 +262,7 @@ async function loadOlder() {
   if (!older.value || loadingOlder.value) return
   loadingOlder.value = true
   try {
-    const page = await get<StreamPage>(streamQuery({ before: older.value }))
+    const page = await getStream(streamQuery({ before: older.value }))
     events.value = [...events.value, ...page.events]
     older.value = page.older
   } catch (e) {
@@ -283,7 +275,7 @@ async function loadOlder() {
 async function loadLive() {
   if (!newest.value) return
   try {
-    const page = await get<StreamPage>(streamQuery({ after: newest.value }))
+    const page = await getStream(streamQuery({ after: newest.value }))
     if (page.events.length) {
       const seen = new Set(events.value.map(streamEventKey))
       const fresh = page.events.filter((e) => !seen.has(streamEventKey(e)))
@@ -301,9 +293,7 @@ async function loadHistory() {
     return
   }
   try {
-    history.value = await get<HistoryResponse>(
-      `${projectPath.value}/history?days=30&tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`,
-    )
+    history.value = await getProjectHistory(props.namespace!, props.name!, 30, Intl.DateTimeFormat().resolvedOptions().timeZone)
   } catch (e) {
     if (e instanceof NotFoundError) history.value = null
   }
@@ -328,9 +318,7 @@ async function loadMilestone() {
     return
   }
   try {
-    milestone.value = await get<MilestoneView>(
-      `${projectPath.value}/milestones/${pick}`,
-    )
+    milestone.value = await getMilestone(props.namespace!, props.name!, pick)
     milestoneFailed.value = false
   } catch {
     milestone.value = null

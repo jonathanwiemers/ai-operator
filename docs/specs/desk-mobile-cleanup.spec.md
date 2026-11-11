@@ -581,3 +581,15 @@ follow-up issue), and requirements without an issue and why.
   The bodies are byte for byte the maps they replaced. The web keeps
   reading them through `ApiError` until the client slice (R14). Nothing
   narrowed.
+- 2026-11-11 #339 (R14 client, part 2): `client.ts` has the project,
+  stream, history, milestone, issue, task, thread, note, chat and GitLab
+  routes; the stream views, task and issue pages, conversation, chat,
+  pilot cards and note composer call them. The two event streams get their
+  URL from the client (`eventsURL`, `transcriptURL`). The milestone lists
+  and the research pages loaded through `useResource` moved too, so
+  `useResource` no longer takes a path and `live.ts` does not fetch.
+  `ChatPage` comes from the generated views. Left for the next slice: spend,
+  follow-ups, research runs and research create (`api.ts`,
+  `MilestoneRetro.vue`, `ResearchNew.vue`, `ResearchRuns.vue`). The
+  `api-call-outside-client` matcher no longer reads "post <code>" in a
+  template as a call. Nothing narrowed.

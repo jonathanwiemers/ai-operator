@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ApiError, get, post, LoginRequiredError } from '../api'
+import { ApiError, LoginRequiredError } from '../api'
+import { disconnectGitLab, getGitLabStatus, getMilestoneThread, getTaskThread, postMilestoneNote, postTaskNote } from '../client'
 import ExtLink from './ExtLink.vue'
 import NoteThread from './NoteThread.vue'
 import { fromGitLabNotes } from '../noteThread'
@@ -31,11 +32,18 @@ const body = ref('')
 const sending = ref(false)
 const sendError = ref('')
 
-const base = computed(
-  () =>
-    `/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/` +
-    (chat.value ? `milestones/${props.milestone}` : `tasks/${encodeURIComponent(props.task ?? '')}`),
-)
+// loadParts and postNote reach the milestone's or the task's routes.
+function loadParts() {
+  return chat.value
+    ? getMilestoneThread(props.namespace, props.name, props.milestone!)
+    : getTaskThread(props.namespace, props.name, props.task ?? '')
+}
+function postNote(text: string) {
+  return chat.value
+    ? postMilestoneNote(props.namespace, props.name, props.milestone!, text)
+    : postTaskNote(props.namespace, props.name, props.task ?? '', active.value, text)
+}
+
 // The connection's outcome comes back as a code in the URL: shown as a fixed
 // text, then removed from the URL.
 const errorTexts: Record<string, string> = {
@@ -56,7 +64,7 @@ const connectURL = computed(() => `${status.value?.login}?return=${encodeURIComp
 
 async function loadStatus() {
   try {
-    status.value = await get<GitLabStatus>('/gitlab')
+    status.value = await getGitLabStatus()
   } catch (e) {
     if (!(e instanceof LoginRequiredError)) error.value = e instanceof Error ? e.message : String(e)
   }
@@ -67,7 +75,7 @@ async function loadThread() {
   if (!status.value?.connected) return
   const mine = ++seq
   try {
-    const r = await get<{ parts: ThreadPart[] }>(`${base.value}/thread`)
+    const r = await loadParts()
     if (mine !== seq) return // a newer load is on its way
     parts.value = r.parts
     const first = parts.value[0]
@@ -103,7 +111,7 @@ async function send() {
   sending.value = true
   sendError.value = ''
   try {
-    await post(`${base.value}/notes`, chat.value ? { body: body.value } : { target: active.value, body: body.value })
+    await postNote(body.value)
     body.value = ''
     await loadThread()
   } catch (e) {
@@ -114,7 +122,7 @@ async function send() {
 }
 
 async function disconnect() {
-  await post('/oauth2/gitlab/logout', {}).catch(() => undefined)
+  await disconnectGitLab().catch(() => undefined)
   parts.value = []
   await loadStatus()
 }

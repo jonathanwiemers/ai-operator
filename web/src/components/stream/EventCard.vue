@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ApiError, post, session } from '../../api'
+import { ApiError, session } from '../../api'
+import { postMilestoneNote } from '../../client'
 import { ciLabel, ciTone, clockTime, cost, fullTime, duration, shortSHA, type Tone } from '../../format'
 import { useNow } from '../../live'
 import type { CIState, ProjectDetail, PromptView, StreamEvent } from '../../types'
@@ -85,10 +86,7 @@ async function decide(yes: boolean) {
   posting.value = true
   sendError.value = ''
   try {
-    await post(
-      `/projects/${encodeURIComponent(ev.namespace)}/${encodeURIComponent(ev.project)}/milestones/${ev.milestoneIID}/notes`,
-      { body },
-    )
+    await postMilestoneNote(ev.namespace, ev.project, ev.milestoneIID, body)
     emit('posted')
   } catch (err) {
     sendError.value = err instanceof ApiError || err instanceof Error ? err.message : String(err)

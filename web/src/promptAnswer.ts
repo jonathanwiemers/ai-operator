@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue'
-import { chatPostError, getTaskChat, postTaskChat } from './api'
+import { chatPostError } from './api'
+import { getTaskChat, postTaskChat } from './client'
 import { live } from './live'
 import { commandAnswer, type CommandAnswer } from './pauseCard'
 import { answerCommand, type AnswerChoice } from './promptCard'

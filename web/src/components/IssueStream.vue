@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { get, hasFeature, LoginRequiredError } from '../api'
+import { hasFeature, LoginRequiredError } from '../api'
+import { getStream } from '../client'
 import { live } from '../live'
 import { chatStreamKinds, dayLabel, groupThreads, kindsForFilter, sameLocalDay, streamEventKey } from '../stream'
 import EventCard from './stream/EventCard.vue'
-import type { StreamEvent, StreamKind, StreamPage } from '../types'
+import type { StreamEvent, StreamKind } from '../types'
 
 // An issue's stream (R10): GET /api/v1/stream with project, milestone and
 // issue, newest first, *Load older* pages back, live events come in on
@@ -31,7 +32,7 @@ let seq = 0
 
 const items = computed(() => groupThreads(events.value))
 
-function streamQuery(extra: Record<string, string> = {}): string {
+function streamQuery(extra: Record<string, string> = {}): URLSearchParams {
   const params = new URLSearchParams({
     project: `${props.namespace}/${props.name}`,
     milestone: String(props.milestone),
@@ -44,7 +45,7 @@ function streamQuery(extra: Record<string, string> = {}): string {
     ? props.kinds.filter((k) => hasFeature('chat') || !chatStreamKinds.includes(k))
     : kindsForFilter('all', hasFeature('chat'))
   if (kinds) params.set('kinds', kinds.join(','))
-  return `/stream?${params}`
+  return params
 }
 
 function failed(e: unknown) {
@@ -56,7 +57,7 @@ async function loadInitial() {
   loading.value = true
   error.value = ''
   try {
-    const page = await get<StreamPage>(streamQuery())
+    const page = await getStream(streamQuery())
     if (mine !== seq) return
     events.value = page.events
     older.value = page.older
@@ -74,7 +75,7 @@ async function loadOlder() {
   const mine = seq
   loadingOlder.value = true
   try {
-    const page = await get<StreamPage>(streamQuery({ before: older.value }))
+    const page = await getStream(streamQuery({ before: older.value }))
     if (mine !== seq) return
     events.value = [...events.value, ...page.events]
     older.value = page.older
@@ -94,7 +95,7 @@ async function loadLive() {
   }
   const mine = seq
   try {
-    const page = await get<StreamPage>(streamQuery({ after: newest.value }))
+    const page = await getStream(streamQuery({ after: newest.value }))
     if (mine !== seq || !page.events.length) return
     const seen = new Set(events.value.map(streamEventKey))
     const fresh = page.events.filter((e) => !seen.has(streamEventKey(e)))

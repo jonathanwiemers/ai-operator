@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
-import { chatPostError, getTaskChat, postTaskChat } from '../api'
+import { chatPostError } from '../api'
+import { getTaskChat, postTaskChat } from '../client'
 import type { ChatCommand } from '../chatState'
 import { companionOf } from '../companion'
 import { safeURL } from '../format'

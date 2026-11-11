@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { canStartResearch } from '../api'
+import { getResearches } from '../client'
 import { useNow, useResource } from '../live'
 import { clockTime, runLine, type Tone } from '../format'
 import Badge from '../components/Badge.vue'
@@ -9,7 +10,7 @@ import type { ResearchPhase, ResearchSummary } from '../types'
 // The researches as cards, one per row at every width; the name's link covers
 // the card. Utilities only (docs/ui.md, "Research list and form"): lines wrap
 // on phones, where *New research* and the cards are 44 px high or more.
-const { data: researches, error, loading } = useResource<ResearchSummary[]>(() => '/researches', ['research'])
+const { data: researches, error, loading } = useResource(() => getResearches, ['research'])
 const now = useNow()
 
 const phaseTone: Record<ResearchPhase, Tone> = {

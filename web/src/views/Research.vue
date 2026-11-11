@@ -4,22 +4,23 @@ import Markdown from '../components/Markdown.vue'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { del } from '../api'
+import { getResearch } from '../client'
 import { useNow, useResource } from '../live'
 import { clockTime, duration, safeURL } from '../format'
 import Badge from '../components/Badge.vue'
 import RelTime from '../components/RelTime.vue'
 import ResearchResult from '../components/ResearchResult.vue'
 import NotFound from './NotFound.vue'
-import type { ResearchResponse } from '../types'
 
 // A research: its header (name, view, schedule, agent, feeds, actions), the
 // run in progress and the last result. Utilities only (docs/ui.md, "Research
 // page"): header rows stack on phones, where links and buttons are 44 px high.
 const props = defineProps<{ namespace: string; name: string }>()
-const { data, error, notFound, loading } = useResource<ResearchResponse>(
-  () => `/researches/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}`,
-  ['research'],
-)
+// The props are read outside the closure, so another research loads again.
+const { data, error, notFound, loading } = useResource(() => {
+  const { namespace, name } = props
+  return () => getResearch(namespace, name)
+}, ['research'])
 const router = useRouter()
 const now = useNow()
 const r = computed(() => data.value?.research)

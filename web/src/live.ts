@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted, reactive, ref, watch, type Ref } from 'vue'
-import { get, session, LoginRequiredError, NotFoundError } from './api'
+import { session, LoginRequiredError, NotFoundError } from './api'
+import { eventsURL, getMe } from './client'
 
 // live tracks the server's event stream. Every burst of change events bumps
 // version; views reload what they show when it changes. kinds are the kinds
@@ -20,7 +21,7 @@ let retryDelay = 2000
 export function connectEvents(): void {
   if (source) return
   window.clearTimeout(retryTimer)
-  source = new EventSource('/api/v1/events')
+  source = new EventSource(eventsURL())
   source.addEventListener('open', () => {
     // Changes may have been missed while the stream was down.
     if (!live.connected) bump(null)
@@ -35,7 +36,7 @@ export function connectEvents(): void {
     // Gateway). Only a 401 ends it for good; anything else is retried.
     if (source?.readyState !== EventSource.CLOSED) return
     source = null
-    get('/me').then(scheduleRetry, (e) => {
+    getMe().then(scheduleRetry, (e) => {
       if (!(e instanceof LoginRequiredError)) scheduleRetry()
     })
   })
@@ -78,11 +79,10 @@ function bump(kind: string | null): void {
 // useResource loads its source now, when it changes, and on every change
 // event, or with kinds only on events of those kinds. The source is a client
 // function (client.ts), e.g. () => getInbox, or a closure over its arguments;
-// null leaves data null. The path form (an API path, empty for nothing) is
-// for the call sites not moved to the client yet (R14).
-export function useResource<T>(source: () => (() => Promise<T>) | null, kinds?: string[]): Resource<T>
-export function useResource<T>(source: () => string, kinds?: string[]): Resource<T>
-export function useResource<T>(source: () => string | (() => Promise<T>) | null, kinds?: string[]): Resource<T> {
+// null leaves data null.
+// The source reads its arguments (props, refs) itself, outside the closure it
+// returns, so that a change of them loads again.
+export function useResource<T>(source: () => (() => Promise<T>) | null, kinds?: string[]): Resource<T> {
   const data = ref<T | null>(null) as Ref<T | null>
   const error = ref<string | null>(null)
   const notFound = ref(false)
@@ -101,7 +101,7 @@ export function useResource<T>(source: () => string | (() => Promise<T>) | null,
       return
     }
     try {
-      const v = typeof p === 'function' ? await p() : await get<T>(p)
+      const v = await p()
       if (mine !== seq) return
       data.value = v
       error.value = null

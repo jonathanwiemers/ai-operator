@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { transcriptURL } from '../client'
 import Badge from './Badge.vue'
 import TranscriptLine from './TranscriptLine.vue'
 import { tokenCount } from '../format'
@@ -35,8 +36,7 @@ function open() {
     state.value = 'idle'
     return
   }
-  const path = `/api/v1/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/tasks/${encodeURIComponent(props.task)}/transcript`
-  const es = new EventSource(path)
+  const es = new EventSource(transcriptURL(props.namespace, props.name, props.task))
   source = es
   state.value = 'live'
   es.addEventListener('entry', (ev) => {

@@ -1,22 +1,24 @@
 <script setup lang="ts">
 import { computed, watchEffect } from 'vue'
 import { setCrumbNames } from '../crumbNames'
+import { getResearchRun } from '../client'
 import { useResource } from '../live'
 import { absTime, cost, runLine, type Tone } from '../format'
 import Badge from '../components/Badge.vue'
 import RelTime from '../components/RelTime.vue'
 import ResearchResult from '../components/ResearchResult.vue'
 import NotFound from './NotFound.vue'
-import type { ResearchResponse, ResearchRun } from '../types'
+import type { ResearchRun } from '../types'
 
 // One stored run of a research: status, warnings, facts and its result.
 // Utilities only (docs/ui.md, "Research page"): the facts wrap rather than
 // clip, two to a row on phones.
 const props = defineProps<{ namespace: string; name: string; id: string }>()
-const { data, error, notFound, loading } = useResource<ResearchResponse>(
-  () => `/researches/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/runs/${encodeURIComponent(props.id)}`,
-  ['research'],
-)
+// The props are read outside the closure, so another run loads again.
+const { data, error, notFound, loading } = useResource(() => {
+  const { namespace, name, id } = props
+  return () => getResearchRun(namespace, name, id)
+}, ['research'])
 const run = computed(() => data.value?.run ?? null)
 watchEffect(() => {
   const r = run.value

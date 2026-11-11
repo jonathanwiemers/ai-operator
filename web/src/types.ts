@@ -36,6 +36,7 @@ export type {
   ResearchResult,
   ResearchForm,
   ChatMessageView as ChatMessage,
+  ChatPage,
   GitLabStatusView as GitLabStatus,
   Entry as TranscriptEntry,
   SearchHit as ResearchSearchHit,
@@ -112,11 +113,6 @@ export interface Me {
 export type ChatRole = 'user' | 'agent' | 'system'
 export type ChatKind = 'message' | 'interrupt' | 'command'
 export type ChatState = 'queued' | 'delivered' | 'answered' | 'failed' | 'deferred'
-
-// ChatPage is GET .../tasks/{task}/chat (newest first).
-export interface ChatPage {
-  messages: views.ChatMessageView[]
-}
 
 export type StreamKind =
   | 'note'

@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
-import { ApiError, get, post } from './client'
-import type { ChatKind, ChatPage, Feature, GitLabStatus, Me, Spend } from './types'
+import { ApiError, get } from './client'
+import type { Feature, Me, Spend } from './types'
 
 // Session state shared by the whole app.
 export const session = reactive<{
@@ -41,56 +41,6 @@ export { ApiError, del, get, LoginRequiredError, NotFoundError, post } from './c
 export function loginURL(): string {
   const back = window.location.pathname + window.location.search
   return `/oauth2/login?return=${encodeURIComponent(back)}`
-}
-
-function taskChatPath(namespace: string, name: string, task: string): string {
-  return `/projects/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/tasks/${encodeURIComponent(task)}/chat`
-}
-
-// getTaskChat loads the task's Desk chat (newest first).
-export async function getTaskChat(
-  namespace: string,
-  name: string,
-  task: string,
-  opts: { before?: number; after?: number; limit?: number } = {},
-): Promise<ChatPage> {
-  const params = new URLSearchParams()
-  if (opts.before) params.set('before', String(opts.before))
-  if (opts.after) params.set('after', String(opts.after))
-  if (opts.limit) params.set('limit', String(opts.limit))
-  const q = params.toString()
-  return get<ChatPage>(`${taskChatPath(namespace, name, task)}${q ? `?${q}` : ''}`)
-}
-
-// postTaskChat posts a Desk chat message (retry-safe with clientKey).
-export async function postTaskChat(
-  namespace: string,
-  name: string,
-  task: string,
-  body: { body: string; clientKey: string; kind?: ChatKind },
-): Promise<{ id: number }> {
-  return post(taskChatPath(namespace, name, task), body)
-}
-
-// getGitLabStatus says whether the user's GitLab account is connected, and
-// where to connect it.
-export async function getGitLabStatus(): Promise<GitLabStatus> {
-  return get<GitLabStatus>('/gitlab')
-}
-
-function projectPath(namespace: string, name: string): string {
-  return `/projects/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`
-}
-
-// postMilestoneNote posts a /pilot comment on a milestone's tracking issue
-// in the user's GitLab name.
-export async function postMilestoneNote(namespace: string, name: string, milestoneIID: number, body: string): Promise<void> {
-  await post(`${projectPath(namespace, name)}/milestones/${milestoneIID}/notes`, { body })
-}
-
-// postIssueNote posts a comment on a task's issue in the user's GitLab name.
-export async function postIssueNote(namespace: string, name: string, task: string, body: string): Promise<void> {
-  await post(`${projectPath(namespace, name)}/tasks/${encodeURIComponent(task)}/notes`, { target: 'issue', body })
 }
 
 // getSpend loads what a project, milestone, issue, task or run (task + run)

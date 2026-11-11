@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { computed, watchEffect } from 'vue'
 import { setCrumbNames } from '../crumbNames'
+import { getTask } from '../client'
 import { useResource } from '../live'
 import TaskBody from '../components/TaskBody.vue'
 import NotFound from './NotFound.vue'
-import type { TaskResponse } from '../types'
 
 const props = defineProps<{ namespace: string; name: string; task: string }>()
-const { data, error, notFound, loading } = useResource<TaskResponse>(
-  () =>
-    `/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/tasks/${encodeURIComponent(props.task)}`,
-)
+// The props are read outside the closure, so another task loads again.
+const { data, error, notFound, loading } = useResource(() => {
+  const { namespace, name, task } = props
+  return () => getTask(namespace, name, task)
+})
 
 const t = computed(() => data.value?.task)
 

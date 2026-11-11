@@ -58,7 +58,7 @@ export function rawColours(src) {
 
 export function apiCalls(src) {
   const hits = new Set()
-  for (const l of scan(src, /\b(?:get|post)\s*</g, (m) => !/function\s+$/.test(src.slice(Math.max(0, m.index - 12), m.index)) && src[m.index - 1] !== '.')) hits.add(l)
+  for (const l of scan(src, /\b(?:get|post)</g, (m) => !/function\s+$/.test(src.slice(Math.max(0, m.index - 12), m.index)) && src[m.index - 1] !== '.')) hits.add(l)
   const names = apiHelpers(src)
   const alt = ['get', 'post', ...names].join('|')
   for (const l of scan(src, new RegExp(`await\\s+(?:${alt})\\s*\\(`, 'g'))) hits.add(l)

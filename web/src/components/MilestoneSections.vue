@@ -2,9 +2,9 @@
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
 import MilestoneList from './MilestoneList.vue'
+import { getMilestones } from '../client'
 import { useResource } from '../live'
 import { sortInProgress } from '../milestoneRows'
-import type { MilestoneList as MilestoneListView } from '../types'
 
 // The milestone lists of the dashboard (across projects) and of a project
 // page (namespace and name given): In progress, then Recently done, the
@@ -17,16 +17,19 @@ const RECENT = 10
 const ALL = 200
 
 const perProject = computed(() => !!props.namespace && !!props.name)
-const projectQuery = computed(() =>
-  perProject.value ? `&project=${encodeURIComponent(`${props.namespace}/${props.name}`)}` : '',
-)
+const project = computed(() => (perProject.value ? `${props.namespace}/${props.name}` : undefined))
 const showAll = ref(false)
 
-const open = useResource<MilestoneListView>(() => `/milestones?state=open${projectQuery.value}`, ['project', 'task'])
-const done = useResource<MilestoneListView>(
-  () => `/milestones?state=done&limit=${showAll.value ? ALL : RECENT}${projectQuery.value}`,
-  ['project', 'task'],
-)
+// The sources read project and showAll outside the closures, so a change
+// loads again.
+const open = useResource(() => {
+  const p = project.value
+  return () => getMilestones({ state: 'open', project: p })
+}, ['project', 'task'])
+const done = useResource(() => {
+  const opts = { state: 'done' as const, limit: showAll.value ? ALL : RECENT, project: project.value }
+  return () => getMilestones(opts)
+}, ['project', 'task'])
 
 const inProgress = computed(() => sortInProgress(open.data.value?.milestones ?? []))
 const doneRows = computed(() => done.data.value?.milestones ?? [])

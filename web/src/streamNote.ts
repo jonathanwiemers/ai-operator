@@ -3,7 +3,8 @@
 // GitLab status, offers the targets (stream.ts noteTargets) and posts the
 // note; the composer only shows it (docs/ui.md, "Composer").
 import { computed, reactive, ref, watch } from 'vue'
-import { getGitLabStatus, LoginRequiredError, postIssueNote, postMilestoneNote } from './api'
+import { LoginRequiredError } from './api'
+import { getGitLabStatus, postMilestoneNote, postTaskNote } from './client'
 import { keepNoteTarget, noteDisabledReason, noteHint, notePlaceholder, noteTargets, type NoteTarget } from './stream'
 import type { GitLabStatus, ProjectDetail } from './types'
 
@@ -53,7 +54,7 @@ export function useStreamNote(source: () => StreamNoteSource, onPosted?: () => v
     error.value = ''
     try {
       if (t.type === 'pilot') await postMilestoneNote(namespace, name, t.milestoneIID, body.value)
-      else await postIssueNote(namespace, name, t.task, body.value)
+      else await postTaskNote(namespace, name, t.task, 'issue', body.value)
       body.value = ''
       onPosted?.()
     } catch (e) {

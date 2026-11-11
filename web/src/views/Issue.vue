@@ -2,6 +2,7 @@
 import { computed, watchEffect } from 'vue'
 import { setCrumbNames } from '../crumbNames'
 import { costTooltip } from '../format'
+import { getMilestoneIssue, getTask } from '../client'
 import { useResource } from '../live'
 import { issueStateTone, issueTime, rowCost, rowTokens } from '../milestoneRows'
 import Badge from '../components/Badge.vue'
@@ -9,7 +10,6 @@ import ExtLink from '../components/ExtLink.vue'
 import IssueStream from '../components/IssueStream.vue'
 import TaskBody from '../components/TaskBody.vue'
 import NotFound from './NotFound.vue'
-import type { IssueView, TaskResponse } from '../types'
 
 // The issue page (R10, decision 9): the issue's figures as its row on the
 // milestone's Issues tab, then, with a live task, what the Task page holds,
@@ -17,18 +17,20 @@ import type { IssueView, TaskResponse } from '../types'
 // tasks are gone. Titles are untrusted text and render as text.
 const props = defineProps<{ namespace: string; name: string; iid: string; issue: string }>()
 
-const projectPath = computed(() => `/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}`)
-const { data, error, notFound, loading } = useResource<IssueView>(
-  () => `${projectPath.value}/milestones/${encodeURIComponent(props.iid)}/issues/${encodeURIComponent(props.issue)}`,
-  ['project', 'task'],
-)
+// The props are read outside the closures, so another issue loads again.
+const { data, error, notFound, loading } = useResource(() => {
+  const { namespace, name, iid, issue } = props
+  return () => getMilestoneIssue(namespace, name, iid, issue)
+}, ['project', 'task'])
 const v = computed(() => data.value)
 
 // The live task, loaded as the Task page loads it; none without one.
 const taskName = computed(() => v.value?.task ?? '')
-const { data: taskData } = useResource<TaskResponse>(() =>
-  taskName.value ? `${projectPath.value}/tasks/${encodeURIComponent(taskName.value)}` : '',
-)
+const { data: taskData } = useResource(() => {
+  const { namespace, name } = props
+  const task = taskName.value
+  return task ? () => getTask(namespace, name, task) : null
+})
 const task = computed(() => (taskData.value?.task.name === taskName.value ? taskData.value : null))
 
 watchEffect(() => {

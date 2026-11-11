@@ -7,8 +7,8 @@ import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, post } from '../api'
+import { getResearchForm } from '../client'
 import { useResource } from '../live'
-import type { ResearchForm } from '../types'
 
 // The one-off research form. Nuxt UI fields (docs/ui.md, "Research list and
 // form"): inputs are 16 px and controls 44 px high on phones, the fields
@@ -29,7 +29,7 @@ const auto = 'auto'
 const defaultEffort = 'default'
 
 const router = useRouter()
-const { data: form, error: loadError } = useResource<ResearchForm>(() => '/research/form', ['project'])
+const { data: form, error: loadError } = useResource(() => getResearchForm, ['project'])
 
 const prompt = ref('')
 const depth = ref<'quick' | 'deep'>('quick')

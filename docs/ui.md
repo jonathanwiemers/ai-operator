@@ -1356,10 +1356,17 @@ comment says so (`getFeatures` returns `Feature[]`; `getInbox` keeps
 `InboxResponse`). The fetch helpers (`get`, `post`, `del`) and their errors
 (`NotFoundError`, `LoginRequiredError` on 401, which also sets
 `session.loginRequired`, and `ApiError` with the server's message) live
-there too; no `get<T>` or `post<T>` elsewhere. `useResource` (`live.ts`)
-takes a client function, `useResource(() => getInbox, kinds)`, or a closure
-over its arguments. Until every call site has moved, `api.ts` re-exports
-the helpers and errors and `useResource` still takes a path; the
+there too; no `get<T>` or `post<T>` elsewhere. The two server-sent event
+streams are not fetches: `eventsURL()` and `transcriptURL(namespace, name,
+task)` give the URL for the `EventSource`, so their paths live in the
+client as well. `getStream` takes the caller's `URLSearchParams` (project,
+milestone, issue, kinds, cursors), since the stream's filters are the
+views'. `useResource` (`live.ts`) takes a client function,
+`useResource(() => getInbox, kinds)`, or a closure over its arguments,
+`useResource(() => { const { namespace, name, task } = props; return () =>
+getTask(namespace, name, task) })`: the source reads the arguments itself,
+outside the closure, so a change of them loads again. Until every call site
+has moved, `api.ts` re-exports the helpers and errors; the
 `api-call-outside-client` check counts what is left.
 
 **Research pages with seeded data.** The research pages need a research

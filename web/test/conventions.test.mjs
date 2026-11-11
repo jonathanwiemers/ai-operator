@@ -78,6 +78,8 @@ test('matchers: api calls', () => {
   assert.deepEqual(apiCalls("import { get as fetchIt } from '../api'\nawait fetchIt(p)"), [2])
   assert.deepEqual(apiCalls("import { post } from '../api'\nawait post(p, b)"), [2])
   assert.deepEqual(apiCalls('await get(p)'), [1])
+  // Prose in a template is not a call.
+  assert.deepEqual(apiCalls('<p>Then post <code>/agent</code> commands.</p>'), [])
 })
 
 test('matchers: breakpoints', () => {
