@@ -98,7 +98,18 @@ func (s *Server) postChat(w http.ResponseWriter, r *http.Request) {
 	if created {
 		code = http.StatusCreated
 	}
-	writeJSON(w, code, map[string]any{"id": id})
+	writeJSON(w, code, ChatPostResponse{ID: id})
+}
+
+// ChatPostResponse is POST .../tasks/{task}/chat: the message's id, also
+// when its client key matched an earlier message.
+type ChatPostResponse struct {
+	ID int64 `json:"id"`
+}
+
+// ChatPage is GET .../tasks/{task}/chat (newest first).
+type ChatPage struct {
+	Messages []ChatMessageView `json:"messages"`
 }
 
 // getChat returns the task's chat messages, newest first. Bodies only with
@@ -154,7 +165,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	for _, m := range msgs {
 		out = append(out, chatView(m, conversation))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": out})
+	writeJSON(w, http.StatusOK, ChatPage{Messages: out})
 }
 
 func chatView(m store.ChatMessage, conversation bool) ChatMessageView {

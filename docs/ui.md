@@ -1337,8 +1337,12 @@ as the GitLab cookie and the log source live in other files) and the type
 mappings; a Go type without a mapping becomes `Unmapped`, which fails the
 type-check. String fields with a closed set of values and the open shapes
 (`map[string]any`, `[]any`) get a `tstype` tag that names a union or type in
-`web/src/types.ts`, which holds only such web-only types and the response
-envelopes the handlers build as maps. Enum types whose constants are not
+`web/src/types.ts`, which holds such web-only types (and, until the web
+uses the generated names, copies of some responses). Every success
+response is a named struct (`ChatPage`, `ResearchResponse`, `InboxResponse`,
+…) in the file of its handler, so it is generated too; a nullable field is a
+pointer with a `tstype:"T | null,required"` tag, so it stays `null` in the
+JSON and in TypeScript. Enum types whose constants are not
 named after the type (e.g. `PauseKind`, `PauseOwner`) come out as `string`.
 
 **Research pages with seeded data.** The research pages need a research

@@ -684,7 +684,7 @@ func (s *Server) milestoneThread(w http.ResponseWriter, r *http.Request) {
 	for _, n := range notes {
 		part.Notes = append(part.Notes, NoteView{ID: n.ID, Author: n.Author.Username, Body: n.Body, System: n.System, CreatedAt: n.CreatedAt})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"parts": []ThreadPart{*part}})
+	writeJSON(w, http.StatusOK, ThreadResponse{Parts: []ThreadPart{*part}})
 }
 
 // trackingIssue loads the milestone of the request and the user's GitLab

@@ -170,6 +170,11 @@ func (o *oidcClient) callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, st.Return, http.StatusFound)
 }
 
+// LoginRedirect is where the browser goes after logging out.
+type LoginRedirect struct {
+	Redirect string `json:"redirect"`
+}
+
 // logout ends the session here and returns where the browser goes next:
 // the provider's logout endpoint, which ends the login there too.
 func (o *oidcClient) logout(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +187,7 @@ func (o *oidcClient) logout(w http.ResponseWriter, r *http.Request) {
 		}
 		next = o.endSession + "?" + q.Encode()
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"redirect": next})
+	writeJSON(w, http.StatusOK, LoginRedirect{Redirect: next})
 }
 
 // Login errors are sent to the app as codes, which it turns into messages,

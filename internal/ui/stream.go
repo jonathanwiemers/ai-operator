@@ -532,6 +532,11 @@ type InboxItem struct {
 	PausedSince *time.Time `json:"pausedSince,omitempty"`
 }
 
+// InboxResponse is GET /api/v1/inbox.
+type InboxResponse struct {
+	Items []InboxItem `json:"items"`
+}
+
 // inbox lists what needs the user across the projects they may see: tasks
 // with questions, failed or blocked, the pilots' open proposals and paused
 // autopilots. It comes from the live state, not the history.
@@ -555,7 +560,7 @@ func (s *Server) inbox(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	items := inboxOf(visible, tasks.Items, time.Now())
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, InboxResponse{Items: items})
 }
 
 // inboxTitleMax cuts a prompt's question in the Inbox.

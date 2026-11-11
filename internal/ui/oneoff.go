@@ -59,6 +59,12 @@ type ModelChoice struct {
 	Label  string      `json:"label"`
 }
 
+// ResearchCreated is the research a POST /api/v1/researches created.
+type ResearchCreated struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
 // createResearchRequest is a one-off research started from the UI. Agent
 // nil lets the operator choose.
 type createResearchRequest struct {
@@ -188,7 +194,7 @@ func (s *Server) createResearch(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("audit", "action", "research.create", "user", p.Username, "namespace", ns, "name", ar.Name,
 		"project", ap.Name, "depth", ar.Spec.Depth, "agent", agentName(ar.Spec.Agent))
-	writeJSON(w, http.StatusCreated, map[string]string{"namespace": ns, "name": ar.Name})
+	writeJSON(w, http.StatusCreated, ResearchCreated{Namespace: ns, Name: ar.Name})
 }
 
 // validateResearch trims and checks a request and fills in the defaults;

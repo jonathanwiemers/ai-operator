@@ -78,6 +78,7 @@ packages:
     fallback_type: Unmapped
     enum_style: union
     include_files:
+      - api.go
       - chat.go
       - companion.go
       - cost.go
@@ -87,6 +88,7 @@ packages:
       - issue.go
       - milestone.go
       - milestones.go
+      - oidc.go
       - oneoff.go
       - overview.go
       - pause_exits.go

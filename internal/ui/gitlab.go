@@ -173,7 +173,12 @@ func (g *gitlabConn) store(w http.ResponseWriter, t GitLabToken) error {
 // logout forgets the user's GitLab token.
 func (g *gitlabConn) logout(w http.ResponseWriter, _ *http.Request) {
 	g.sessions.Clear(w, g.cookie())
-	writeJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
+	writeJSON(w, http.StatusOK, GitLabDisconnected{Status: "disconnected"})
+}
+
+// GitLabDisconnected is the answer to disconnecting the GitLab account.
+type GitLabDisconnected struct {
+	Status string `json:"status" tstype:"'disconnected'"`
 }
 
 // errNotConnected: the user has no (usable) GitLab connection.
@@ -278,6 +283,12 @@ type ThreadPart struct {
 	Notes  []NoteView `json:"notes"`
 }
 
+// ThreadResponse is a comment thread: a task's issue, merge request and
+// tracking issue, or a milestone's tracking issue.
+type ThreadResponse struct {
+	Parts []ThreadPart `json:"parts"`
+}
+
 // targets are the issue, merge request and tracking issue of a task, which
 // the thread shows and a comment may go to.
 func targets(ap *aiv1.AgentProject, t *aiv1.AgentTask) []ThreadPart {
@@ -370,7 +381,7 @@ func (s *Server) thread(w http.ResponseWriter, r *http.Request) {
 			parts[i].Notes = append(parts[i].Notes, NoteView{ID: n.ID, Author: n.Author.Username, Body: n.Body, System: n.System, CreatedAt: n.CreatedAt})
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"parts": parts})
+	writeJSON(w, http.StatusOK, ThreadResponse{Parts: parts})
 }
 
 // maxNoteBody bounds a comment posted from the UI.

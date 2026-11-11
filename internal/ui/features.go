@@ -30,6 +30,11 @@ const (
 	FeatureNameChat FeatureName = "chat"
 )
 
+// FeaturesResponse is GET /api/v1/features.
+type FeaturesResponse struct {
+	Features []Feature `json:"features"`
+}
+
 // features lists the sections the user may see: the factory with a factory
 // rule, research with a database and a research rule, chat with the writer
 // login and a chat grant.
@@ -52,7 +57,7 @@ func (s *Server) features(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, f)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"features": out})
+	writeJSON(w, http.StatusOK, FeaturesResponse{Features: out})
 }
 
 // SetResearchStore connects the research endpoints to the database.

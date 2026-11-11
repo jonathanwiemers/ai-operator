@@ -112,6 +112,25 @@ type SearchHit struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// ResearchResponse is a research page (GET /researches/{ns}/{name}, run is
+// the latest result's) or a run page (…/runs/{id}). Run and Result are null
+// before there is one.
+type ResearchResponse struct {
+	Research ResearchDetail  `json:"research"`
+	Run      *ResearchRun    `json:"run" tstype:"ResearchRun | null,required"`
+	Result   *ResearchResult `json:"result" tstype:"ResearchResult | null,required"`
+}
+
+// ResearchRunsPage is GET /researches/{ns}/{name}/runs (?before=, ?limit=).
+type ResearchRunsPage struct {
+	Runs []ResearchRun `json:"runs"`
+}
+
+// ResearchSearchPage is GET /api/v1/research/search?q=.
+type ResearchSearchPage struct {
+	Hits []SearchHit `json:"hits"`
+}
+
 func summarizeResearch(ar *aiv1.AgentResearch, canDelete bool) ResearchSummary {
 	st := ar.Status
 	out := ResearchSummary{
@@ -262,7 +281,7 @@ func (s *Server) researchDetail(w http.ResponseWriter, r *http.Request, st *stor
 		s.internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"research": s.detailOf(r, ar), "run": run, "result": result})
+	writeJSON(w, http.StatusOK, ResearchResponse{Research: s.detailOf(r, ar), Run: run, Result: result})
 }
 
 // researchRuns pages through a research's runs, newest first: ?before= (RFC
@@ -300,7 +319,7 @@ func (s *Server) researchRuns(w http.ResponseWriter, r *http.Request, st *store.
 	for i, run := range runs {
 		out[i] = runView(run)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"runs": out})
+	writeJSON(w, http.StatusOK, ResearchRunsPage{Runs: out})
 }
 
 // researchRun returns one run of a research with the research and the run's
@@ -328,7 +347,8 @@ func (s *Server) researchRun(w http.ResponseWriter, r *http.Request, st *store.S
 		s.internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"research": s.detailOf(r, ar), "run": runView(run), "result": result})
+	v := runView(run)
+	writeJSON(w, http.StatusOK, ResearchResponse{Research: s.detailOf(r, ar), Run: &v, Result: result})
 }
 
 // researchSearch searches the results of the researches the user may read
@@ -362,5 +382,5 @@ func (s *Server) researchSearch(w http.ResponseWriter, r *http.Request, st *stor
 		out = append(out, SearchHit{RunID: h.RunID, Namespace: h.Namespace, Research: h.Research,
 			Title: h.Title, Summary: h.Summary, CreatedAt: h.CreatedAt})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"hits": out})
+	writeJSON(w, http.StatusOK, ResearchSearchPage{Hits: out})
 }

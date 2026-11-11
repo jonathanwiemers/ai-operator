@@ -22,14 +22,18 @@ const heartbeat = 25 * time.Second
 // tab holds one), so a user cannot exhaust the UI's memory with them.
 const maxStreamsPerUser = 20
 
+// Me is GET /api/v1/me: the logged-in user and how users log in. Roles is
+// null without any.
+type Me struct {
+	Username string   `json:"username"`
+	Roles    []string `json:"roles" tstype:"string[] | null"`
+	AuthMode AuthMode `json:"authMode" tstype:"'oidc' | 'none'"`
+}
+
 // me returns the logged-in user.
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	p := principalOf(r)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"username": p.Username,
-		"roles":    p.Roles,
-		"authMode": s.cfg.Auth.Mode,
-	})
+	writeJSON(w, http.StatusOK, Me{Username: p.Username, Roles: p.Roles, AuthMode: s.cfg.Auth.Mode})
 }
 
 // projects lists the projects the user may see.

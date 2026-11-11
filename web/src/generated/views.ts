@@ -5,6 +5,19 @@ import type * as aiv1 from "./api";
 import type { Block, ChatKind, ChatRole, ChatState, SpendLevel, StreamEventData, StreamKind } from "../types";
 
 //////////
+// source: api.go
+
+/**
+ * Me is GET /api/v1/me: the logged-in user and how users log in. Roles is
+ * null without any.
+ */
+export interface Me {
+  username: string;
+  roles: string[] | null;
+  authMode: 'oidc' | 'none';
+}
+
+//////////
 // source: chat.go
 
 /**
@@ -22,6 +35,19 @@ export interface ChatMessageView {
   state?: ChatState;
   reason?: string;
   redacted?: boolean;
+}
+/**
+ * ChatPostResponse is POST .../tasks/{task}/chat: the message's id, also
+ * when its client key matched an earlier message.
+ */
+export interface ChatPostResponse {
+  id: number /* int64 */;
+}
+/**
+ * ChatPage is GET .../tasks/{task}/chat (newest first).
+ */
+export interface ChatPage {
+  messages: ChatMessageView[];
 }
 
 //////////
@@ -155,6 +181,12 @@ export const FeatureNameChat = "chat";
  * Features of the UI.
  */
 export type FeatureName = typeof FeatureNameFactory | typeof FeatureNameResearch | typeof FeatureNameHistory | typeof FeatureNameChat;
+/**
+ * FeaturesResponse is GET /api/v1/features.
+ */
+export interface FeaturesResponse {
+  features: Feature[];
+}
 
 //////////
 // source: followup.go
@@ -170,6 +202,12 @@ export interface FollowUpMilestoneView {
 //////////
 // source: gitlab.go
 
+/**
+ * GitLabDisconnected is the answer to disconnecting the GitLab account.
+ */
+export interface GitLabDisconnected {
+  status: 'disconnected';
+}
 /**
  * GitLabStatusView says whether GitLab is configured and connected.
  */
@@ -206,6 +244,13 @@ export interface ThreadPart {
   iid: number /* int64 */;
   webURL: string;
   notes: NoteView[];
+}
+/**
+ * ThreadResponse is a comment thread: a task's issue, merge request and
+ * tracking issue, or a milestone's tracking issue.
+ */
+export interface ThreadResponse {
+  parts: ThreadPart[];
 }
 
 //////////
@@ -567,6 +612,16 @@ export interface MilestoneList {
 }
 
 //////////
+// source: oidc.go
+
+/**
+ * LoginRedirect is where the browser goes after logging out.
+ */
+export interface LoginRedirect {
+  redirect: string;
+}
+
+//////////
 // source: oneoff.go
 
 /**
@@ -597,6 +652,13 @@ export interface ModelChoice {
   engine: aiv1.Engine;
   model: string;
   label: string;
+}
+/**
+ * ResearchCreated is the research a POST /api/v1/researches created.
+ */
+export interface ResearchCreated {
+  namespace: string;
+  name: string;
 }
 
 //////////
@@ -840,6 +902,28 @@ export interface SearchHit {
   title: string;
   summary: string;
   createdAt: string;
+}
+/**
+ * ResearchResponse is a research page (GET /researches/{ns}/{name}, run is
+ * the latest result's) or a run page (…/runs/{id}). Run and Result are null
+ * before there is one.
+ */
+export interface ResearchResponse {
+  research: ResearchDetail;
+  run: ResearchRun | null;
+  result: ResearchResult | null;
+}
+/**
+ * ResearchRunsPage is GET /researches/{ns}/{name}/runs (?before=, ?limit=).
+ */
+export interface ResearchRunsPage {
+  runs: ResearchRun[];
+}
+/**
+ * ResearchSearchPage is GET /api/v1/research/search?q=.
+ */
+export interface ResearchSearchPage {
+  hits: SearchHit[];
 }
 
 //////////
@@ -1170,6 +1254,12 @@ export interface InboxItem {
    * status.autopilot.pausedAt; unset when the operator did not record it.
    */
   pausedSince?: string;
+}
+/**
+ * InboxResponse is GET /api/v1/inbox.
+ */
+export interface InboxResponse {
+  items: InboxItem[];
 }
 
 //////////

@@ -567,3 +567,11 @@ follow-up issue), and requirements without an issue and why.
   does not show now appears beside the submit button instead of being
   dropped. The list's run reason moved from a hover title to a visible
   line. The `research-new@375` known overflow is gone. Nothing narrowed.
+- 2026-11-11 #336 (R13 Go responses): every success response of
+  `internal/ui` is a named struct, generated into `views.ts` (`api.go` and
+  `oidc.go` join `tygo.yaml`). The JSON is unchanged, including `null` for
+  missing roles and for a research's run and result. The inbox envelope is
+  `InboxResponse`, not `StreamItemsResponse`, to match its route and the
+  web's name. `types.ts` keeps its copies until the client slice (R14)
+  switches the web to the generated names. Error bodies stay maps for the
+  next slice. Nothing narrowed.
