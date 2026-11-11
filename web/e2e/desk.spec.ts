@@ -1808,3 +1808,98 @@ test.describe('milestone issues', () => {
     })
   }
 })
+
+// The milestone's Pilot tab (MilestonePilot.vue) and the queue
+// (QueueList.vue, R12), utilities only. A prompt link without ?tab= opens
+// the Pilot tab, unfolds Earlier questions for a closed prompt and scrolls
+// to its card. The queue keeps its order, numbers stay on one line, and on
+// a phone the links and the fold are 44 px high.
+test.describe('milestone pilot', () => {
+  async function open(page: Page, baseURL: string | undefined, name: string, size: { width: number; height: number }, path?: string) {
+    const route = routes.find((r) => r.name === name)!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize(size)
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(path ?? route.path)
+    await route.ready(page)
+    return problems
+  }
+
+  async function shoot(page: Page, testInfo: { project: { outputDir: string }; attach: (n: string, o: { path: string; contentType: string }) => Promise<void> }, name: string) {
+    const shot = join(testInfo.project.outputDir, '..', 'screenshots', `${name}.png`)
+    await page.screenshot({ path: shot, fullPage: true })
+    await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+  }
+
+  async function sideways(page: Page) {
+    return page.evaluate(() => {
+      const doc = document.scrollingElement ?? document.documentElement
+      const main = document.querySelector('main')!
+      return { page: doc.scrollWidth - doc.clientWidth, pane: main.scrollWidth - main.clientWidth }
+    })
+  }
+
+  for (const size of widths) {
+    const phone = size.width < 760
+
+    test(`pilot tab and prompt link@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const problems = await open(page, baseURL, 'stream-milestone-pilot', size)
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      if (phone) {
+        const heights = await page.locator('main').evaluate((main) => {
+          const pilot = main.querySelector('[data-pilot]')!
+          return {
+            links: [...pilot.querySelectorAll('a')].map((a) => a.getBoundingClientRect().height),
+            fold: main.querySelector('[data-earlier] > summary')!.getBoundingClientRect().height,
+          }
+        })
+        for (const h of heights.links) expect(h, 'pilot link height').toBeGreaterThanOrEqual(44)
+        expect(heights.fold, 'Earlier questions height').toBeGreaterThanOrEqual(44)
+      }
+      await shoot(page, testInfo, `milestone-pilot@${size.width}`)
+
+      // The answered Q3 is folded under Earlier questions: its link opens
+      // the Pilot tab, unfolds it and scrolls to the card.
+      await page.goto('/projects/team-a/shop/milestones/14#prompt-Q3')
+      const card = page.locator('#prompt-Q3')
+      await expect(card).toBeVisible()
+      await expect(page.locator('main [data-earlier]')).toHaveAttribute('open', '')
+      await expect(card).toBeInViewport()
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`queue order and numbers@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const problems = await open(page, baseURL, 'stream-milestone-issues', size)
+      const queue = page.locator('main ol[aria-label="Queue"]')
+      await expect(queue).toBeVisible()
+      const layout = await queue.evaluate((q) => {
+        const box = (e: Element) => e.getBoundingClientRect()
+        const items = [...q.querySelectorAll('[data-queue-item]')]
+        return {
+          order: items.map((i) => i.querySelector('[data-iid]')!.textContent!.trim()),
+          positions: items.map((i) => i.querySelector('[data-position]')!.textContent!.trim()),
+          // One line box per number: a range over its text has one rect.
+          iidsOneLine: items.every((i) => {
+            const text = [...i.querySelector('[data-iid]')!.childNodes].find((c) => c.nodeType === 3 && c.textContent!.trim())!
+            const range = document.createRange()
+            range.selectNodeContents(text)
+            return range.getClientRects().length === 1
+          }),
+          inside: q.scrollWidth <= q.clientWidth,
+          links: [...q.querySelectorAll('a')].map((a) => box(a).height),
+        }
+      })
+      expect(layout.order).toEqual(['#279', '#280', '#281', '#282', '#283'])
+      expect(layout.positions).toEqual(['1', '2', '3', '4', '5'])
+      expect(layout.iidsOneLine, 'issue numbers on one line').toBe(true)
+      expect(layout.inside, 'no sideways scroll in the queue').toBe(true)
+      if (phone) for (const h of layout.links) expect(h, 'link height on a phone').toBeGreaterThanOrEqual(44)
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      await queue.screenshot({ path: join(testInfo.project.outputDir, '..', 'screenshots', `milestone-queue@${size.width}.png`) })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+})

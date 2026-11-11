@@ -494,3 +494,12 @@ follow-up issue), and requirements without an issue and why.
   a tablet beside the rail has about 460) number and title come first,
   state and figures below; row links are 44 px high. Release rows and versions unchanged,
   `releaseRows` tests unchanged. Nothing narrowed.
+- 2026-11-11 #329 (R12 milestone Pilot tab): `MilestonePilot.vue` and
+  `QueueList.vue` moved to utilities, no scoped `<style>`. Queue items show
+  their position, the number `whitespace-nowrap`, the title clamped to two
+  lines (`Truncated`, open on tap, no `title`) and the state on wrapping
+  lines; links 44 px on phones, *Revisit* a `UButton`. *Ask the pilot*
+  already uses the merged `Composer` through `TaskChat`, prompts the merged
+  `PromptCard`. `MilestoneSections.vue` is the dashboard's and project
+  page's milestone list, not this tab; it moved with the Dashboard slice.
+  `milestoneQueue.ts` and its tests unchanged. Nothing narrowed.

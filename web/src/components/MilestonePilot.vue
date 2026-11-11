@@ -46,39 +46,54 @@ const note = useStreamNote(() => ({
   steer: true,
   shown: active.value && !showChat.value && !!perms.value?.steer,
 }))
+
+// Utilities only (docs/ui.md, "Milestone Pilot"). On phones the links and
+// the Earlier questions fold are 44 px high; the prompt cards, the composer
+// and the chat bring their own touch sizes.
+const sectionHead =
+  'm-0 mb-2 flex justify-between gap-2 text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
+const tap = 'inline-flex min-h-11 items-center tablet:min-h-0'
+const quiet = 'text-[13px] text-(--text-3)'
 </script>
 
 <template>
-  <div class="pilot-tab">
+  <div class="grid max-w-[860px] min-w-0 gap-[18px]">
     <template v-if="active">
       <PauseCard v-if="paused" :key="milestone.iid" :namespace="namespace" :name="name" :milestone="milestone" />
 
-      <section v-if="milestone.pilot || prompts.open.length || prompts.closed.length" class="panel">
-        <h3>
+      <section v-if="milestone.pilot || prompts.open.length || prompts.closed.length" class="min-w-0">
+        <h3 :class="sectionHead">
           <span>Questions</span>
           <span v-if="prompts.open.length">{{ prompts.open.length }} open</span>
         </h3>
-        <div v-if="milestone.pilot" class="row pilot">
+        <div v-if="milestone.pilot" class="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]" data-pilot>
           <span class="faint">Pilot</span>
           <Badge :tone="milestone.pilot.autonomy === 'managed' ? 'progress' : 'neutral'">{{ milestone.pilot.autonomy }}</Badge>
-          <span class="faint">{{ cost(milestone.pilot.costUSD) }}</span>
-          <span class="spacer" />
-          <RouterLink :to="{ name: 'task', params: { namespace, name, task: milestone.pilot.task } }">Pilot task</RouterLink>
+          <span class="faint tabular-nums">{{ cost(milestone.pilot.costUSD) }}</span>
+          <RouterLink
+            class="ml-auto"
+            :class="tap"
+            :to="{ name: 'task', params: { namespace, name, task: milestone.pilot.task } }"
+          >
+            Pilot task
+          </RouterLink>
         </div>
-        <div class="prompts">
-          <div v-if="!prompts.open.length" class="empty-sm">No open questions.</div>
+        <div class="grid gap-2.5">
+          <div v-if="!prompts.open.length" :class="quiet">No open questions.</div>
           <PromptCard v-for="p in prompts.open" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
-          <details v-if="prompts.closed.length" class="earlier" :open="closedLinked">
-            <summary>Earlier questions ({{ prompts.closed.length }})</summary>
-            <div class="prompts">
+          <details v-if="prompts.closed.length" class="group" :open="closedLinked" data-earlier>
+            <summary class="min-h-11 cursor-pointer py-3 text-[13px] text-(--text-2) tablet:min-h-0 tablet:py-0 group-open:mb-2.5">
+              Earlier questions ({{ prompts.closed.length }})
+            </summary>
+            <div class="grid gap-2.5">
               <PromptCard v-for="p in prompts.closed" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
             </div>
           </details>
         </div>
       </section>
 
-      <section class="panel">
-        <h3><span>Message the pilot</span></h3>
+      <section class="min-w-0">
+        <h3 :class="sectionHead"><span>Message the pilot</span></h3>
         <AskPilot v-if="showChat" :namespace="namespace" :name="name" :milestone="milestone" />
         <Composer
           v-else-if="perms?.steer"
@@ -96,53 +111,15 @@ const note = useStreamNote(() => ({
           :connect-url="note.connectUrl"
           @send="note.send"
         />
-        <p v-if="!perms?.chat && !perms?.steer" class="empty-sm">Read-only: only the milestone's owners can message the pilot.</p>
+        <p v-if="!perms?.chat && !perms?.steer" :class="quiet">Read-only: only the milestone's owners can message the pilot.</p>
       </section>
     </template>
 
-    <section class="panel">
-      <h3><span>Pilot events</span></h3>
+    <section class="min-w-0">
+      <h3 :class="sectionHead"><span>Pilot events</span></h3>
       <IssueStream :namespace="namespace" :name="name" :milestone="milestone.iid" :kinds="pilotStreamKinds" :can-steer="active && !!perms?.steer" />
     </section>
 
     <PausesCard v-if="milestone.pauses" :pauses="milestone.pauses" />
   </div>
 </template>
-
-<style scoped>
-.pilot-tab {
-  display: grid;
-  gap: 18px;
-  max-width: 860px;
-}
-.panel h3 {
-  font-size: 11.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  margin: 0 0 8px;
-  display: flex;
-  justify-content: space-between;
-  font-weight: 600;
-}
-.pilot {
-  font-size: 13px;
-  margin-bottom: 10px;
-}
-.prompts {
-  display: grid;
-  gap: 10px;
-}
-.earlier summary {
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--text-2);
-}
-.earlier[open] summary {
-  margin-bottom: 10px;
-}
-.empty-sm {
-  font-size: 13px;
-  color: var(--text-3);
-}
-</style>

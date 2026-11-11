@@ -1970,6 +1970,34 @@ one line, the column alignment from desktop width, the stacking below it and
 the link heights on a phone (`milestone-issues@<width>.png`); the route checks cover
 `stream-milestone-issues` at the three widths.
 
+### Milestone Pilot
+
+The milestone's Pilot tab (`web/src/components/MilestonePilot.vue`) and
+the autopilot queue (`web/src/components/QueueList.vue`, on the Issues tab
+and in the context sheet) are Tailwind utilities and Nuxt UI tokens,
+without scoped CSS.
+
+- The Pilot tab keeps its order: pause card, questions (the merged
+  `PromptCard`), the message box (*Ask the pilot* is `TaskChat` with the
+  merged `Composer`, so its input is 16 px on phones), pilot events and the
+  pause history. On phones the *Pilot task* link and the *Earlier
+  questions* fold are 44 px high.
+- A prompt link (`#prompt-Q<n>`) still opens this tab, unfolds *Earlier
+  questions* for a closed prompt and scrolls to its card.
+- A queue item shows its position, its number (never wrapped), its title
+  (two lines, the rest opens on tap) and its state, which wrap onto lines of
+  their own where the column is narrow; below come the merge request,
+  companion, task and decisions. Links are 44 px high on phones,
+  *Revisit* is a `UButton`. The order is `queueRows` (`milestoneQueue.ts`).
+
+The e2e cases `milestone pilot › pilot tab and prompt link@<width>` and
+`milestone pilot › queue order and numbers@<width>` at 375, 768 and
+1280 px check the sideways scroll, the touch heights on a phone, the
+prompt link to a closed card and the queue's order, positions and
+one-line numbers (`milestone-pilot@<width>.png`,
+`milestone-queue@<width>.png`); the route checks cover
+`stream-milestone-pilot` at the three widths.
+
 ## Roadmap
 
 1. **Into a running step.** Messages that reach a running claude step at once
