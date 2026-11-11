@@ -2712,6 +2712,14 @@ Nuxt UI's). In utilities, the tokens are `bg-default`, `text-muted`,
 `border-default`, `text-primary` and so on; a palette token without a Nuxt
 UI name is used as `bg-(--pilot-bg)`.
 
+**Badge tones.** `components/Badge.vue` keeps its props (`tone`, `dot`,
+`pulse`, `title`) and wraps Nuxt UI's `UBadge`; `StageBadge.vue` and every
+consumer are unchanged. `src/badgeTone.ts` maps each tone to a kit colour
+with the `soft` variant (`danger` is `error`, `progress` is `secondary`,
+`neutral` and `muted` are `neutral`) plus utilities that keep the tone's
+own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
+`pulse` dot uses `animate-pulse`, off under reduced motion.
+
 ## Code map
 
 | Path | What |
