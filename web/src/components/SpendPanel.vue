@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getSpend, LoginRequiredError, NotFoundError } from '../api'
+import { getSpend, LoginRequiredError, NotFoundError } from '../client'
 import { clockTime, duration, fullTime, tokenCount } from '../format'
 import { useNow } from '../live'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'

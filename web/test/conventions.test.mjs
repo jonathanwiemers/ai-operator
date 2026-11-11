@@ -19,7 +19,7 @@ const SRC = fileURLToPath(new URL('../src', import.meta.url))
 const RULES = [
   { name: 'html-injection', enforce: true, find: htmlInjection, skip: [] },
   { name: 'raw-colour', enforce: false, find: rawColours, skip: ['style.css'] },
-  { name: 'api-call-outside-client', enforce: false, find: apiCalls, skip: ['client.ts'] },
+  { name: 'api-call-outside-client', enforce: true, find: apiCalls, skip: ['client.ts'] },
   { name: 'breakpoint', enforce: true, find: strayBreakpoints, skip: [] },
 ]
 

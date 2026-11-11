@@ -3,8 +3,7 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import Markdown from '../components/Markdown.vue'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { del } from '../api'
-import { getResearch } from '../client'
+import { deleteResearch, getResearch } from '../client'
 import { useNow, useResource } from '../live'
 import { clockTime, duration, safeURL } from '../format'
 import Badge from '../components/Badge.vue'
@@ -70,7 +69,7 @@ async function remove() {
   deleting.value = true
   deleteError.value = null
   try {
-    await del(`/researches/${encodeURIComponent(x.namespace)}/${encodeURIComponent(x.name)}`)
+    await deleteResearch(x.namespace, x.name)
     await router.push('/research')
   } catch (e) {
     deleteError.value = e instanceof Error ? e.message : String(e)

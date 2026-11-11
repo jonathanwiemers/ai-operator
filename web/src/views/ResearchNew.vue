@@ -6,8 +6,7 @@ import USelect from '@nuxt/ui/components/Select.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ApiError, post } from '../api'
-import { getResearchForm } from '../client'
+import { ApiError, createResearch, getResearchForm } from '../client'
 import { useResource } from '../live'
 
 // The one-off research form. Nuxt UI fields (docs/ui.md, "Research list and
@@ -92,7 +91,7 @@ async function submit() {
   sending.value = true
   const m = model.value
   try {
-    const created = await post<{ namespace: string; name: string }>('/researches', {
+    const created = await createResearch({
       project: project.value,
       prompt: prompt.value,
       depth: depth.value,

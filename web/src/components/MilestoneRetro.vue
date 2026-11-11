@@ -3,7 +3,8 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
-import { ApiError, chatPostError, post } from '../api'
+import { chatPostError } from '../api'
+import { ApiError, createFollowUp, dismissFollowUps } from '../client'
 import { getTaskChat, postTaskChat } from '../client'
 import type { ChatCommand } from '../chatState'
 import {
@@ -170,9 +171,8 @@ async function create() {
   if (!canCreate.value) return
   busy.value = true
   error.value = ''
-  const path = `/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/milestones/${props.milestone.iid}/followup`
   try {
-    created.value = await post<FollowUpMilestoneView>(path, {
+    created.value = await createFollowUp(props.namespace, props.name, props.milestone.iid, {
       followUps: edited.value,
       title: title.value.trim(),
       description: description.value.trim(),
@@ -210,9 +210,8 @@ async function dismiss() {
   if (busy.value) return
   busy.value = true
   error.value = ''
-  const path = `/projects/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/milestones/${props.milestone.iid}/followups/dismiss`
   try {
-    await post(path, {})
+    await dismissFollowUps(props.namespace, props.name, props.milestone.iid)
     dismissSent.value = true
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

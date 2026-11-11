@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ApiError, LoginRequiredError } from '../api'
-import { disconnectGitLab, getGitLabStatus, getMilestoneThread, getTaskThread, postMilestoneNote, postTaskNote } from '../client'
+import { ApiError, disconnectGitLab, getGitLabStatus, getMilestoneThread, getTaskThread, LoginRequiredError, postMilestoneNote, postTaskNote } from '../client'
 import ExtLink from './ExtLink.vue'
 import NoteThread from './NoteThread.vue'
 import { fromGitLabNotes } from '../noteThread'

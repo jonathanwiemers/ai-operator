@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
-import { ApiError, get } from './client'
-import type { Feature, Me, Spend } from './types'
+import { ApiError } from './client'
+import type { Feature, Me } from './types'
 
 // Session state shared by the whole app.
 export const session = reactive<{
@@ -34,28 +34,9 @@ export function isResearchPath(path: string): boolean {
   return /^\/research(\/|$)/.test(path)
 }
 
-// The transport and its errors live in client.ts (R14); re-exported here
-// until every call site has moved there.
-export { ApiError, del, get, LoginRequiredError, NotFoundError, post } from './client'
-
 export function loginURL(): string {
   const back = window.location.pathname + window.location.search
   return `/oauth2/login?return=${encodeURIComponent(back)}`
-}
-
-// getSpend loads what a project, milestone, issue, task or run (task + run)
-// cost, with the children of the next level.
-export async function getSpend(
-  namespace: string,
-  project: string,
-  scope: { milestone?: number; issue?: number; task?: string; run?: number } = {},
-): Promise<Spend> {
-  const params = new URLSearchParams({ namespace, project })
-  if (scope.milestone) params.set('milestone', String(scope.milestone))
-  if (scope.issue) params.set('issue', String(scope.issue))
-  if (scope.task) params.set('task', scope.task)
-  if (scope.run) params.set('run', String(scope.run))
-  return get<Spend>(`/spend?${params}`)
 }
 
 // chatPostError turns a chat POST status into plain words for the composer.

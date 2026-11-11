@@ -1,4 +1,5 @@
-import type { ResearchDetail, ResearchForm, ResearchResponse, ResearchRun, ResearchRunsPage } from '../../src/types'
+import type { ResearchDetail, ResearchForm, ResearchRun } from '../../src/types'
+import type { ResearchResponse, ResearchRunsPage } from '../../src/generated/views'
 import { ago } from './clock'
 import { researches } from './rail'
 

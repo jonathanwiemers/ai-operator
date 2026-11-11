@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ApiError, session } from '../../api'
-import { postMilestoneNote } from '../../client'
+import { session } from '../../api'
+import { ApiError, postMilestoneNote } from '../../client'
 import { ciLabel, ciTone, clockTime, cost, fullTime, duration, shortSHA, type Tone } from '../../format'
 import { useNow } from '../../live'
 import type { CIState, ProjectDetail, PromptView, StreamEvent } from '../../types'

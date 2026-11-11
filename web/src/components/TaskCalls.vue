@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, toRaw, watch } from 'vue'
-import { getSpend, LoginRequiredError } from '../api'
+import { getSpend, LoginRequiredError } from '../client'
 import { clockTime, duration, fullTime, shortSHA, tokenCount } from '../format'
 import { useNow } from '../live'
 import {

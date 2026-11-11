@@ -1337,8 +1337,8 @@ as the GitLab cookie and the log source live in other files) and the type
 mappings; a Go type without a mapping becomes `Unmapped`, which fails the
 type-check. String fields with a closed set of values and the open shapes
 (`map[string]any`, `[]any`) get a `tstype` tag that names a union or type in
-`web/src/types.ts`, which holds such web-only types (and, until the web
-uses the generated names, copies of some responses). Every success
+`web/src/types.ts`, which holds only such web-only types and re-exports the
+generated ones; it declares no response. Every success
 response is a named struct (`ChatPage`, `ResearchResponse`, `InboxResponse`,
 …) in the file of its handler, so it is generated too; a nullable field is a
 pointer with a `tstype:"T | null,required"` tag, so it stays `null` in the
@@ -1356,7 +1356,9 @@ comment says so (`getFeatures` returns `Feature[]`; `getInbox` keeps
 `InboxResponse`). The fetch helpers (`get`, `post`, `del`) and their errors
 (`NotFoundError`, `LoginRequiredError` on 401, which also sets
 `session.loginRequired`, and `ApiError` with the server's message) live
-there too; no `get<T>` or `post<T>` elsewhere. The two server-sent event
+there too: the helpers are private to the file, the errors are imported
+from it. A request body that is not a view gets its type next to the
+function (`ResearchCreate`). The two server-sent event
 streams are not fetches: `eventsURL()` and `transcriptURL(namespace, name,
 task)` give the URL for the `EventSource`, so their paths live in the
 client as well. `getStream` takes the caller's `URLSearchParams` (project,
@@ -1365,9 +1367,9 @@ views'. `useResource` (`live.ts`) takes a client function,
 `useResource(() => getInbox, kinds)`, or a closure over its arguments,
 `useResource(() => { const { namespace, name, task } = props; return () =>
 getTask(namespace, name, task) })`: the source reads the arguments itself,
-outside the closure, so a change of them loads again. Until every call site
-has moved, `api.ts` re-exports the helpers and errors; the
-`api-call-outside-client` check counts what is left.
+outside the closure, so a change of them loads again. `api.ts` keeps the
+session state and helpers around it (`loginURL`, `chatPostError`), no
+fetches.
 
 **Research pages with seeded data.** The research pages need a research
 database and `AgentResearch` objects. For development, a local Postgres
@@ -2229,7 +2231,7 @@ table at its top; the matchers are in `web/test/conventions.mjs`:
 - `raw-colour`: `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(`, `rgba(`, `hsl(`,
   `hsla(`, `oklch(` outside `src/style.css`. Report-only.
 - `api-call-outside-client`: `get<`/`post<` and calls of the `get`/`post`
-  helpers imported from `api.ts`, outside `src/client.ts`. Report-only.
+  helpers imported from `api.ts`, outside `src/client.ts`. **Enforced.**
 - `breakpoint`: `@media` widths other than the three widths of
   [design.md](design.md#desk-styles): `min-width` 760 or 1180 px,
   `max-width` 759.98 or 1179.98 px, nothing else in px. **Enforced.**

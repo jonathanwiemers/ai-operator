@@ -1,20 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { get, LoginRequiredError, NotFoundError } from '../api'
+import { getResearchRuns, LoginRequiredError, NotFoundError } from '../client'
 import { absTime, cost, runLine, type Tone } from '../format'
 import { live } from '../live'
 import Badge from '../components/Badge.vue'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import RelTime from '../components/RelTime.vue'
 import NotFound from './NotFound.vue'
-import type { ResearchRun, ResearchRunsPage } from '../types'
+import type { ResearchRun } from '../types'
 
 const props = defineProps<{ namespace: string; name: string }>()
 const pageSize = 20
 const base = computed(() => `/research/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}`)
-const apiBase = computed(
-  () => `/researches/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}/runs`,
-)
 
 const runs = ref<ResearchRun[]>([])
 const error = ref<string | null>(null)
@@ -62,10 +59,8 @@ function reason(r: ResearchRun): string {
 
 async function fetchPage(before: string | undefined, append: boolean): Promise<boolean> {
   const mine = ++seq
-  const q = new URLSearchParams({ limit: String(pageSize) })
-  if (before) q.set('before', before)
   try {
-    const page = await get<ResearchRunsPage>(`${apiBase.value}?${q}`)
+    const page = await getResearchRuns(props.namespace, props.name, { before, limit: pageSize })
     if (mine !== seq) return false
     runs.value = append ? [...runs.value, ...page.runs] : page.runs
     hasMore.value = page.runs.length >= pageSize

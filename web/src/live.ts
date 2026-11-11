@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted, reactive, ref, watch, type Ref } from 'vue'
-import { session, LoginRequiredError, NotFoundError } from './api'
-import { eventsURL, getMe } from './client'
+import { session } from './api'
+import { eventsURL, getMe, LoginRequiredError, NotFoundError } from './client'
 
 // live tracks the server's event stream. Every burst of change events bumps
 // version; views reload what they show when it changes. kinds are the kinds

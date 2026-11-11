@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { hasFeature, LoginRequiredError } from '../api'
-import { getStream } from '../client'
+import { hasFeature } from '../api'
+import { getStream, LoginRequiredError } from '../client'
 import { live } from '../live'
 import { chatStreamKinds, dayLabel, groupThreads, kindsForFilter, sameLocalDay, streamEventKey } from '../stream'
 import EventCard from './stream/EventCard.vue'

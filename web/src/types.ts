@@ -2,12 +2,11 @@
 // and generated/api.ts (the CRD types of api/v1alpha1), by make ts-types
 // (tygo.yaml). Do not mirror a Go view here: change the Go struct and
 // regenerate. What stays here is web-only: the string unions and open shapes
-// the Go views leave untyped (tstype tags point here), and the response
-// envelopes the handlers build as maps.
-
-import type * as views from './generated/views'
+// the Go views leave untyped (tstype tags point here). Responses are named
+// Go structs and are not declared here.
 
 export type {
+  Me,
   ProjectSummary,
   ProjectDetail,
   Milestone,
@@ -102,13 +101,6 @@ export type {
   ResearchRunStatus,
   AgentTaskStatus as TaskStatus,
 } from './generated/api'
-
-// Me is GET /api/v1/me.
-export interface Me {
-  username: string
-  roles: string[] | null
-  authMode: 'oidc' | 'none'
-}
 
 export type ChatRole = 'user' | 'agent' | 'system'
 export type ChatKind = 'message' | 'interrupt' | 'command'
@@ -251,22 +243,3 @@ export interface LinksBlock {
 }
 
 export type Block = HeadingBlock | MarkdownBlock | ItemsBlock | TableBlock | StatsBlock | LinksBlock
-
-// ResearchResponse is a research page (GET /researches/{ns}/{name}, run is
-// the latest result's) or a run page (…/runs/{id}). run and result are null
-// before there is one.
-export interface ResearchResponse {
-  research: views.ResearchDetail
-  run: views.ResearchRun | null
-  result: views.ResearchResult | null
-}
-
-// ResearchRunsPage is GET /researches/{ns}/{name}/runs (?before=, ?limit=).
-export interface ResearchRunsPage {
-  runs: views.ResearchRun[]
-}
-
-// ResearchSearchPage is GET /api/v1/research/search?q=.
-export interface ResearchSearchPage {
-  hits: views.SearchHit[]
-}

@@ -3,8 +3,7 @@
 // GitLab status, offers the targets (stream.ts noteTargets) and posts the
 // note; the composer only shows it (docs/ui.md, "Composer").
 import { computed, reactive, ref, watch } from 'vue'
-import { LoginRequiredError } from './api'
-import { getGitLabStatus, postMilestoneNote, postTaskNote } from './client'
+import { getGitLabStatus, LoginRequiredError, postMilestoneNote, postTaskNote } from './client'
 import { keepNoteTarget, noteDisabledReason, noteHint, notePlaceholder, noteTargets, type NoteTarget } from './stream'
 import type { GitLabStatus, ProjectDetail } from './types'
 

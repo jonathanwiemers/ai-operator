@@ -7,6 +7,7 @@ import type {
   ChatPage,
   ChatPostResponse,
   Feature,
+  FollowUpMilestoneView,
   FeaturesResponse,
   GitLabStatusView,
   HistoryResponse,
@@ -19,14 +20,18 @@ import type {
   OverviewView,
   ProjectDetail,
   ProjectSummary,
+  ResearchCreated,
   ResearchForm,
   ResearchResponse,
+  ResearchRunsPage,
   ResearchSummary,
+  SpendView,
   StreamPage,
   TaskResponse,
   ThreadPart,
   ThreadResponse,
 } from './generated/views'
+import type { ResearchAgent, ResearchDepth, ResearchView } from './generated/api'
 import type { ChatKind } from './types'
 
 export class NotFoundError extends Error {}
@@ -52,10 +57,9 @@ function loginRequired(): never {
   throw new LoginRequiredError('login required')
 }
 
-// get, post and del are the transport. They are exported only for api.ts,
-// which re-exports them to the call sites not moved yet (R14); new code
-// adds a route function below instead.
-export async function get<T>(path: string): Promise<T> {
+// get, post and del are the transport, private to this file: a new route
+// gets a function below.
+async function get<T>(path: string): Promise<T> {
   const resp = await fetch(`/api/v1${path}`, {
     headers: { Accept: 'application/json' },
     credentials: 'same-origin',
@@ -70,7 +74,7 @@ export async function get<T>(path: string): Promise<T> {
   return (await resp.json()) as T
 }
 
-export async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(path.startsWith('/oauth2/') ? path : `/api/v1${path}`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
@@ -83,7 +87,7 @@ export async function post<T>(path: string, body: unknown): Promise<T> {
   return data as T
 }
 
-export async function del(path: string): Promise<void> {
+async function del(path: string): Promise<void> {
   const resp = await fetch(`/api/v1${path}`, {
     method: 'DELETE',
     headers: { Accept: 'application/json' },
@@ -126,15 +130,54 @@ export function getResearches(): Promise<ResearchSummary[]> {
 // getResearch: GET /researches/{namespace}/{name}, the research with its
 // latest run and result.
 export function getResearch(namespace: string, name: string): Promise<ResearchResponse> {
-  return get<ResearchResponse>(`/researches/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`)
+  return get<ResearchResponse>(researchPath(namespace, name))
 }
 
 // getResearchRun: GET /researches/{namespace}/{name}/runs/{id}, one run of
 // the research and its result.
 export function getResearchRun(namespace: string, name: string, id: string): Promise<ResearchResponse> {
-  return get<ResearchResponse>(
-    `/researches/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/runs/${encodeURIComponent(id)}`,
-  )
+  return get<ResearchResponse>(`${researchPath(namespace, name)}/runs/${encodeURIComponent(id)}`)
+}
+
+function researchPath(namespace: string, name: string): string {
+  return `/researches/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`
+}
+
+// getResearchRuns: GET /researches/{namespace}/{name}/runs, a page of the
+// research's runs, newest first; before is the startedAt of the last run
+// shown.
+export function getResearchRuns(
+  namespace: string,
+  name: string,
+  opts: { before?: string; limit?: number } = {},
+): Promise<ResearchRunsPage> {
+  const q = new URLSearchParams()
+  if (opts.limit) q.set('limit', String(opts.limit))
+  if (opts.before) q.set('before', opts.before)
+  const qs = q.toString()
+  return get<ResearchRunsPage>(`${researchPath(namespace, name)}/runs${qs ? `?${qs}` : ''}`)
+}
+
+// ResearchCreate is the body of POST /researches (Go: createResearchRequest,
+// not a view); without agent the project's default runs it.
+export interface ResearchCreate {
+  project: string
+  prompt: string
+  depth: ResearchDepth
+  view: ResearchView
+  topics: string[]
+  agent?: ResearchAgent
+}
+
+// createResearch: POST /researches, a one-off research. A 400 names the
+// field it is about in ApiError.field.
+export function createResearch(body: ResearchCreate): Promise<ResearchCreated> {
+  return post<ResearchCreated>('/researches', body)
+}
+
+// deleteResearch: DELETE /researches/{namespace}/{name}.
+export function deleteResearch(namespace: string, name: string): Promise<void> {
+  return del(researchPath(namespace, name))
 }
 
 // getResearchForm: GET /research/form, what the new research form offers.
@@ -214,6 +257,39 @@ export function getMilestoneThread(namespace: string, name: string, iid: number)
 // server adds the pilot prefix).
 export function postMilestoneNote(namespace: string, name: string, iid: number, body: string): Promise<NoteView> {
   return post<NoteView>(`${milestonePath(namespace, name, iid)}/notes`, { body })
+}
+
+// createFollowUp: POST .../milestones/{iid}/followup, a milestone made of
+// the retrospective's follow-ups (by number). A 409 lists the ones already
+// taken in ApiError.data.taken.
+export function createFollowUp(
+  namespace: string,
+  name: string,
+  iid: number,
+  body: { followUps: number[]; title: string; description: string },
+): Promise<FollowUpMilestoneView> {
+  return post<FollowUpMilestoneView>(`${milestonePath(namespace, name, iid)}/followup`, body)
+}
+
+// dismissFollowUps: POST .../milestones/{iid}/followups/dismiss, the
+// owner's "create none" on the retrospective's thread.
+export async function dismissFollowUps(namespace: string, name: string, iid: number): Promise<void> {
+  await post(`${milestonePath(namespace, name, iid)}/followups/dismiss`, {})
+}
+
+// getSpend: GET /spend, what a project, milestone, issue, task or run (task
+// + run) cost, with the children of the next level.
+export function getSpend(
+  namespace: string,
+  project: string,
+  scope: { milestone?: number; issue?: number; task?: string; run?: number } = {},
+): Promise<SpendView> {
+  const params = new URLSearchParams({ namespace, project })
+  if (scope.milestone) params.set('milestone', String(scope.milestone))
+  if (scope.issue) params.set('issue', String(scope.issue))
+  if (scope.task) params.set('task', scope.task)
+  if (scope.run) params.set('run', String(scope.run))
+  return get<SpendView>(`/spend?${params}`)
 }
 
 // getTask: GET /projects/{namespace}/{name}/tasks/{task}.

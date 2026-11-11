@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { chatPostError, LoginRequiredError, NotFoundError } from '../api'
-import { getTaskChat, postTaskChat } from '../client'
+import { chatPostError } from '../api'
+import { getTaskChat, LoginRequiredError, NotFoundError, postTaskChat } from '../client'
 import {
   agentTurnPending,
   chatDraftKey,

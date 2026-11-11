@@ -593,3 +593,13 @@ follow-up issue), and requirements without an issue and why.
   `MilestoneRetro.vue`, `ResearchNew.vue`, `ResearchRuns.vue`). The
   `api-call-outside-client` matcher no longer reads "post <code>" in a
   template as a call. Nothing narrowed.
+- 2026-11-11 #340 (R14 client, part 3): `client.ts` has the spend,
+  follow-up (create, dismiss) and research runs, create and delete routes;
+  `get`, `post` and `del` are private to it and `api.ts` re-exports nothing
+  from it. `types.ts` lost `ResearchResponse`, `ResearchRunsPage`,
+  `ResearchSearchPage` and its copy of `Me` for the generated ones. The
+  `api-call-outside-client` check has 0 hits and is enforced now, ahead of
+  the rest of R3. Pause cards, prompt answers, `spend.ts`, `pauses.ts`,
+  `pauseCard.ts`, `milestoneQueue.ts` and `releaseRows.ts` had no call
+  sites left (they go through chat, notes or the loaded views). Nothing
+  narrowed; R14 is done.
