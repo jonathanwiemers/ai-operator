@@ -10,6 +10,8 @@ export interface DataListColumn {
   label: string
   // Classes for the column's cells.
   class?: string
+  // numeric: right-aligned in the table, with tabular figures.
+  numeric?: boolean
 }
 
 const props = defineProps<{
@@ -17,6 +19,8 @@ const props = defineProps<{
   rows: T[]
   rowKey: (row: T) => string
   scroll?: boolean
+  // expanded: the rows that show the `detail` slot in a full-width row below.
+  expanded?: (row: T) => boolean
 }>()
 
 defineSlots<Record<string, (props: { row: T }) => unknown>>()
@@ -40,36 +44,50 @@ function value(row: T, key: string): unknown {
             v-for="c in columns"
             :key="c.key"
             scope="col"
-            class="border-b border-(--border) bg-(--surface-2) px-3.5 py-2 text-left text-xs font-semibold text-(--text-3)"
+            class="border-b border-(--border) bg-(--surface-2) px-3.5 py-2 text-xs font-semibold text-(--text-3)"
+            :class="c.numeric ? 'text-right' : 'text-left'"
           >
             {{ c.label }}
           </th>
         </tr>
       </thead>
       <tbody :class="stack ? 'block tablet:table-row-group' : ''">
-        <tr
-          v-for="row in rows"
-          :key="rowKey(row)"
-          class="relative border-b border-(--border) last:border-b-0"
-          :class="stack ? 'block px-3.5 py-2 tablet:table-row tablet:p-0' : ''"
-        >
-          <td
-            v-for="c in columns"
-            :key="c.key"
-            class="align-top"
-            :class="[
-              stack
-                ? 'grid min-w-0 grid-cols-[6.5rem_minmax(0,1fr)] items-baseline gap-2 py-1 tablet:table-cell tablet:px-3.5 tablet:py-2.5'
-                : 'px-3.5 py-2.5',
-              c.class,
-            ]"
+        <template v-for="row in rows" :key="rowKey(row)">
+          <tr
+            class="relative border-b border-(--border) last:border-b-0"
+            :class="stack ? 'block px-3.5 py-2 tablet:table-row tablet:p-0' : ''"
           >
-            <span v-if="stack" aria-hidden="true" data-label class="text-xs font-semibold text-(--text-3) tablet:hidden">{{ c.label }}</span>
-            <span class="min-w-0 break-words">
-              <slot :name="`cell-${c.key}`" :row="row">{{ value(row, c.key) }}</slot>
-            </span>
-          </td>
-        </tr>
+            <td
+              v-for="c in columns"
+              :key="c.key"
+              class="align-top"
+              :class="[
+                stack
+                  ? 'grid min-w-0 grid-cols-[6.5rem_minmax(0,1fr)] items-baseline gap-2 py-1 tablet:table-cell tablet:px-3.5 tablet:py-2.5'
+                  : 'px-3.5 py-2.5',
+                c.numeric && (stack ? 'tabular-nums tablet:text-right' : 'tabular-nums text-right'),
+                c.class,
+              ]"
+            >
+              <span v-if="stack" aria-hidden="true" data-label class="text-xs font-semibold text-(--text-3) tablet:hidden">{{ c.label }}</span>
+              <span class="min-w-0 break-words">
+                <slot :name="`cell-${c.key}`" :row="row">{{ value(row, c.key) }}</slot>
+              </span>
+            </td>
+          </tr>
+          <tr
+            v-if="expanded?.(row)"
+            class="border-b border-(--border) bg-(--surface-2) last:border-b-0"
+            :class="stack ? 'block tablet:table-row' : ''"
+          >
+            <td :colspan="columns.length" class="px-3.5 py-2" :class="stack ? 'block tablet:table-cell' : ''">
+              <!-- w-0 min-w-full: the detail never widens the table, wide content scrolls inside it. -->
+              <div class="w-0 min-w-full">
+                <slot name="detail" :row="row" />
+              </div>
+            </td>
+          </tr>
+        </template>
       </tbody>
     </table>
   </div>

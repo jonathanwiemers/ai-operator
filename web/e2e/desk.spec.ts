@@ -380,6 +380,52 @@ for (const { name, empty } of [
   })
 }
 
+// The task's Calls tab (TaskCalls.vue): a run opens its calls on tap (its
+// 44 px target is in hitRoutes). On a phone each run and each call stacks as
+// label and value pairs; from the tablet width up both are tables, the calls one
+// scrolling inside its row. The page never scrolls sideways.
+for (const { width, height } of widths) {
+  test(`task-calls run opened@${width}`, async ({ page, baseURL }, testInfo) => {
+    const route = routes.find((r) => r.name === 'task-calls')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    const phone = width < 760
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const main = page.locator('main')
+    const toggle = main.getByRole('button', { name: 'Run 2' })
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(main.getByText('claude-opus-5-5').first()).toBeVisible()
+    await page.waitForLoadState('networkidle')
+
+    const shot = join(testInfo.project.outputDir, '..', 'screenshots', `task-calls-open@${width}.png`)
+    await page.screenshot({ path: shot, fullPage: true })
+    await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+
+    const callLabels = main.locator('tbody tbody tr').first().locator('[data-label]')
+    await expect(callLabels).toHaveText(['#', 'Time', 'Kind', 'Role', 'Engine / model', 'Resumed', 'Lines', 'In', 'Out', 'Cache read', 'Cache write', 'Duration', 'Cost'])
+    if (phone) await expect(callLabels.first()).toBeVisible()
+    else await expect(callLabels.first()).toBeHidden()
+
+    const overflow = await page.evaluate(() => {
+      const doc = document.scrollingElement ?? document.documentElement
+      const pane = document.querySelector('main')!
+      return { page: doc.scrollWidth - doc.clientWidth, pane: pane.scrollWidth - pane.clientWidth }
+    })
+    expect(overflow, 'sideways scroll in px of the page and of the content pane').toEqual({ page: 0, pane: 0 })
+
+    await toggle.click()
+    await expect(main.getByText('claude-opus-5-5').first()).toBeHidden()
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
 // iOS zooms on focus into a control under 16 px (style.css, the phone rule
 // in the base layer): on a phone every visible input of the task's Chat
 // tab, the chat composer's among them, and the stream search are 16 px; on a desktop
@@ -467,7 +513,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'task', 'task-chat', 'task-details']
+const hitRoutes = ['overview', 'inbox', 'task', 'task-chat', 'task-calls', 'task-details']
 
 // "<route> <element as reported>" → why it may stay under 44 px. Empty: no
 // control needs an exception.

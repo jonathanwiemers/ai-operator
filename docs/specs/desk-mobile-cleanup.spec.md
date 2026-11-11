@@ -412,3 +412,12 @@ follow-up issue), and requirements without an issue and why.
   shared chips (`StageBadge`, `CostChip`, `CompanionChip`) keep their
   `title`: a hint, not the only copy of a clipped value; R12/R17 take them.
   Nothing narrowed.
+- 2026-11-11 #320 (R12 task Calls tab): `TaskCalls.vue` has no scoped
+  `<style>`; runs and a run's calls are `DataList` tables, same columns and
+  order. `DataList` gained `numeric` columns and an `expanded` row with a
+  `detail` slot (D320-1); the *Run N* button covers its row, 44 px on a
+  phone (`task-calls` joined the hit-area routes). The `title` hints (full
+  time, token breakdown, cost source, checkpoint commit) stay: they add to
+  a value that is shown in full, none is the only copy of clipped text, so
+  there is nothing for `Truncated`. The calls table's *Lines* header hint
+  went, the docs explain the column. Nothing narrowed.

@@ -488,6 +488,13 @@ no call ended in them, and add nothing to the call count. The calls come from th
 runs whose CRD state was trimmed are listed too. Without the research
 database (404 or 503) the section is left out.
 
+Both the runs and a run's calls are [DataList](#datalist) tables: on a phone
+each run and each call is a card of label and value pairs, and a run opens
+by tapping its row (the *Run N* button covers it, 44 px high on a phone).
+From the tablet width up they are tables; an opened run's calls table
+scrolls inside its row when wider than the page.
+
+
 Above an expanded run's calls a **context-growth chart** shows how the
 session's context grew: the turn on x, the context tokens (input + cache)
 of each main-thread turn on y, one line per implementer step (calls of
@@ -1609,16 +1616,24 @@ stays selectable.
 </DataList>
 ```
 
-- `columns`: `{ key, label, class? }`; `class` goes on the column's cells.
+- `columns`: `{ key, label, class?, numeric? }`; `class` goes on the column's
+  cells, `numeric` right-aligns header and cells from the tablet width up,
+  with tabular figures.
 - `rows`, `rowKey`: the data and a unique key per row.
 - Slot `cell-<key>` with `{ row }`; without it the cell shows `row[key]`.
+- `expanded` and slot `detail`: rows for which `expanded(row)` is true get a
+  full-width row below them with the `detail` slot (`{ row }`), e.g. a run's
+  calls. Its content never widens the table: a wide table inside scrolls in
+  its own container. The toggle is the caller's, usually a button in a cell
+  with `after:absolute after:inset-0` and `aria-expanded`.
+
 - `scroll`: the table keeps its columns at every width and scrolls inside its
   own `overflow-x-auto` container, for comparison tables (Spend). The page
   never scrolls sideways.
 
 A row is `relative`, so a link in a cell can cover the row with
 `after:absolute after:inset-0`. The research runs table is the first user;
-the task page's plan and conditions use it too.
+the task page's plan and conditions and its agent calls use it too.
 
 ### RouteTabs
 

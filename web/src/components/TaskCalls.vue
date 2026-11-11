@@ -22,6 +22,7 @@ import {
 import type { Spend, SpendChild } from '../types'
 import Badge from './Badge.vue'
 import ContextChart from './ContextChart.vue'
+import DataList, { type DataListColumn } from '../ui/DataList.vue'
 
 // TaskCalls is the "Agent calls" section of the Task page: the task's
 // totals, its runs newest first and, per expanded run, its calls (loaded
@@ -37,6 +38,29 @@ let seq = 0
 
 const runs = computed(() => runsNewestFirst(data.value?.children ?? []))
 const checkpoints = computed(() => checkpointsLine(data.value?.byCheckpoint ?? []))
+
+const runColumns: DataListColumn[] = [
+  { key: 'run', label: 'Run' },
+  { key: 'at', label: 'First call' },
+  { key: 'calls', label: 'Calls', numeric: true },
+  { key: 'tokens', label: 'Tokens', numeric: true },
+  { key: 'cost', label: 'Cost', numeric: true },
+]
+const callColumns: DataListColumn[] = [
+  { key: 'key', label: '#', numeric: true },
+  { key: 'at', label: 'Time' },
+  { key: 'kind', label: 'Kind' },
+  { key: 'role', label: 'Role' },
+  { key: 'engine', label: 'Engine / model' },
+  { key: 'resumed', label: 'Resumed' },
+  { key: 'lines', label: 'Lines', numeric: true },
+  { key: 'in', label: 'In', numeric: true },
+  { key: 'out', label: 'Out', numeric: true },
+  { key: 'cacheRead', label: 'Cache read', numeric: true },
+  { key: 'cacheWrite', label: 'Cache write', numeric: true },
+  { key: 'duration', label: 'Duration', numeric: true },
+  { key: 'cost', label: 'Cost', numeric: true },
+]
 
 async function load() {
   const mine = ++seq
@@ -82,7 +106,7 @@ async function toggle(r: SpendChild) {
     <h3>Agent calls</h3>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <template v-if="data">
-      <div v-if="data.totals.calls || data.totals.checkpoints" class="card totals">
+      <div v-if="data.totals.calls || data.totals.checkpoints" class="card mb-2.5 flex flex-wrap gap-x-4.5 gap-y-1.5 px-4 py-2.5">
         <span><strong>{{ spendUSD(data.totals) }}</strong></span>
         <span :title="tokenBreakdown(data.totals)">{{ tokenCount(spendTokens(data.totals)) }} tokens</span>
         <span>{{ data.totals.calls }} calls</span>
@@ -93,144 +117,85 @@ async function toggle(r: SpendChild) {
       </div>
       <div v-if="!runs.length" class="card empty">No agent calls recorded for this task.</div>
       <div v-else class="card">
-        <table class="list">
-          <thead>
-            <tr>
-              <th>Run</th>
-              <th>First call</th>
-              <th class="num">Calls</th>
-              <th class="num">Tokens</th>
-              <th class="num">Cost</th>
-            </tr>
-          </thead>
-          <tbody v-for="r in runs" :key="r.key">
-            <tr class="run" @click="toggle(r)">
-              <td>
-                <button class="link" :aria-expanded="!!open[r.key]" @click.stop="toggle(r)">
-                  {{ open[r.key] ? '▾' : '▸' }} Run {{ runNumber(r) || r.label }}
-                </button>
-              </td>
-              <td :title="fullTime(r.at)">{{ clockTime(r.at, now) }}</td>
-              <td class="num">{{ r.totals.calls }}</td>
-              <td class="num" :title="tokenBreakdown(r.totals)">{{ tokenCount(spendTokens(r.totals)) }}</td>
-              <td class="num" :class="{ unknown: !r.totals.costKnown }" :title="legacyNote(r.totals) || undefined">
-                {{ spendUSD(r.totals) }}
-              </td>
-            </tr>
-            <tr v-if="open[r.key]">
-              <td colspan="5" class="calls">
-                <div v-if="st(r.key).loading" class="faint">Loading…</div>
-                <div v-else-if="st(r.key).error" class="banner danger">{{ st(r.key).error }}</div>
-                <div v-else-if="!st(r.key).calls.length" class="faint">
-                  No calls recorded for this run (cost only, from before token tracking).
-                </div>
-                <template v-else>
-                  <ContextChart :calls="st(r.key).calls" />
-                  <table class="list inner">
-                    <thead>
-                      <tr>
-                        <th class="num">#</th>
-                        <th>Time</th>
-                        <th>Kind</th>
-                        <th>Role</th>
-                        <th>Engine / model</th>
-                        <th>Resumed</th>
-                        <th class="num" title="Uncommitted lines an implementer call left: its step commit">Lines</th>
-                        <th class="num">In</th>
-                        <th class="num">Out</th>
-                        <th class="num">Cache read</th>
-                        <th class="num">Cache write</th>
-                        <th class="num">Duration</th>
-                        <th class="num">Cost</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="c in st(r.key).calls" :key="c.key">
-                        <td class="num">{{ c.key }}</td>
-                        <td :title="fullTime(c.at)">{{ clockTime(c.at, now) }}</td>
-                        <td>
-                          {{ c.kind }}
-                          <Badge
-                            v-if="c.checkpoint"
-                            tone="warning"
-                            :title="`Its end saved the checkpoint commit ${shortSHA(c.checkpointSHA)}`"
-                          >
-                            💾 {{ c.checkpoint }}
-                          </Badge>
-                        </td>
-                        <td>{{ c.role || '—' }}</td>
-                        <td>
-                          {{ c.engine }}<template v-if="c.model">/{{ c.model }}</template>
-                          <span v-if="c.fallbackFrom" class="faint"> · fallback from {{ c.fallbackFrom }}</span>
-                          <span v-if="c.readGateBlocks" class="faint" title="Reads the read gate blocked">
-                            · {{ c.readGateBlocks }} gate {{ c.readGateBlocks === 1 ? 'block' : 'blocks' }}
-                          </span>
-                        </td>
-                        <td>{{ c.resumed ? 'resumed' : '—' }}</td>
-                        <td class="num">
-                          {{ callLines(c) || '—' }}
-                          <span
-                            v-if="callNudges(c)"
-                            class="faint"
-                            title="How often the step-size gate told the implementer to close its step"
-                          >
-                            · {{ callNudges(c) }}
-                          </span>
-                        </td>
-                        <td class="num">{{ tokenCount(c.totals.inputTokens) }}</td>
-                        <td class="num">{{ tokenCount(c.totals.outputTokens) }}</td>
-                        <td class="num">{{ tokenCount(c.totals.cacheReadTokens) }}</td>
-                        <td class="num">{{ tokenCount(c.totals.cacheWriteTokens) }}</td>
-                        <td class="num">{{ c.totals.durationMS ? duration(c.totals.durationMS) : '—' }}</td>
-                        <td
-                          class="num"
-                          :class="{ unknown: c.costSource !== 'reported' }"
-                          :title="c.costSource === 'estimated' ? 'Estimated from tokens and the pricing table' : costSourceLabel(c.costSource)"
-                        >
-                          {{ callCost(c) }}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+        <DataList :columns="runColumns" :rows="runs" :row-key="(r) => r.key" :expanded="(r) => !!open[r.key]">
+          <template #cell-run="{ row: r }">
+            <!-- The button covers its row, so the row toggles; the hints sit above it (z-1). 44 px high on a phone. -->
+            <button
+              type="button"
+              class="min-h-11 cursor-pointer text-left font-semibold text-(--link) after:absolute after:inset-0 tablet:min-h-0"
+              :aria-expanded="!!open[r.key]"
+              @click="toggle(r)"
+            >
+              {{ open[r.key] ? '▾' : '▸' }} Run {{ runNumber(r) || r.label }}
+            </button>
+          </template>
+          <template #cell-at="{ row: r }"><span class="relative z-1" :title="fullTime(r.at)">{{ clockTime(r.at, now) }}</span></template>
+          <template #cell-calls="{ row: r }">{{ r.totals.calls }}</template>
+          <template #cell-tokens="{ row: r }">
+            <span class="relative z-1" :title="tokenBreakdown(r.totals)">{{ tokenCount(spendTokens(r.totals)) }}</span>
+          </template>
+          <template #cell-cost="{ row: r }">
+            <span class="relative z-1" :class="{ 'text-(--text-3)': !r.totals.costKnown }" :title="legacyNote(r.totals) || undefined">
+              {{ spendUSD(r.totals) }}
+            </span>
+          </template>
+          <template #detail="{ row: r }">
+            <div v-if="st(r.key).loading" class="faint">Loading…</div>
+            <div v-else-if="st(r.key).error" class="banner danger">{{ st(r.key).error }}</div>
+            <div v-else-if="!st(r.key).calls.length" class="faint">
+              No calls recorded for this run (cost only, from before token tracking).
+            </div>
+            <template v-else>
+              <ContextChart :calls="st(r.key).calls" />
+              <DataList :columns="callColumns" :rows="st(r.key).calls" :row-key="(c) => c.key">
+                <template #cell-at="{ row: c }"><span :title="fullTime(c.at)">{{ clockTime(c.at, now) }}</span></template>
+                <template #cell-kind="{ row: c }">
+                  {{ c.kind }}
+                  <Badge
+                    v-if="c.checkpoint"
+                    tone="warning"
+                    :title="`Its end saved the checkpoint commit ${shortSHA(c.checkpointSHA)}`"
+                  >
+                    💾 {{ c.checkpoint }}
+                  </Badge>
                 </template>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                <template #cell-role="{ row: c }">{{ c.role || '—' }}</template>
+                <template #cell-engine="{ row: c }">
+                  {{ c.engine }}<template v-if="c.model">/{{ c.model }}</template>
+                  <span v-if="c.fallbackFrom" class="faint"> · fallback from {{ c.fallbackFrom }}</span>
+                  <span v-if="c.readGateBlocks" class="faint" title="Reads the read gate blocked">
+                    · {{ c.readGateBlocks }} gate {{ c.readGateBlocks === 1 ? 'block' : 'blocks' }}
+                  </span>
+                </template>
+                <template #cell-resumed="{ row: c }">{{ c.resumed ? 'resumed' : '—' }}</template>
+                <template #cell-lines="{ row: c }">
+                  {{ callLines(c) || '—' }}
+                  <span
+                    v-if="callNudges(c)"
+                    class="faint"
+                    title="How often the step-size gate told the implementer to close its step"
+                  >
+                    · {{ callNudges(c) }}
+                  </span>
+                </template>
+                <template #cell-in="{ row: c }">{{ tokenCount(c.totals.inputTokens) }}</template>
+                <template #cell-out="{ row: c }">{{ tokenCount(c.totals.outputTokens) }}</template>
+                <template #cell-cacheRead="{ row: c }">{{ tokenCount(c.totals.cacheReadTokens) }}</template>
+                <template #cell-cacheWrite="{ row: c }">{{ tokenCount(c.totals.cacheWriteTokens) }}</template>
+                <template #cell-duration="{ row: c }">{{ c.totals.durationMS ? duration(c.totals.durationMS) : '—' }}</template>
+                <template #cell-cost="{ row: c }">
+                  <span
+                    :class="{ 'text-(--text-3)': c.costSource !== 'reported' }"
+                    :title="c.costSource === 'estimated' ? 'Estimated from tokens and the pricing table' : costSourceLabel(c.costSource)"
+                  >
+                    {{ callCost(c) }}
+                  </span>
+                </template>
+              </DataList>
+            </template>
+          </template>
+        </DataList>
       </div>
     </template>
   </section>
 </template>
-
-<style scoped>
-.totals {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  padding: 10px 16px;
-  margin-bottom: 10px;
-}
-.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.unknown {
-  color: var(--text-3);
-}
-.run {
-  cursor: pointer;
-}
-.link {
-  background: none;
-  border: 0;
-  padding: 0;
-  color: var(--link, inherit);
-  cursor: pointer;
-  font: inherit;
-}
-.calls {
-  padding: 8px 12px;
-  background: var(--surface-2);
-  overflow-x: auto;
-}
-</style>
