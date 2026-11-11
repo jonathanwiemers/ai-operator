@@ -1737,3 +1737,74 @@ test.describe('overview cards', () => {
     })
   }
 })
+
+// The milestone's Issues tab (MilestoneIssues.vue, R12): issue numbers stay
+// on one line, release rows sit between the issues in the same order at
+// every width. Below desktop width an issue's number and title come first,
+// its state and figures below: on a tablet the rail leaves too little room
+// for eight columns. Links are at least 44 px high on a phone. From desktop
+// width every issue row's cells line up with the column heads.
+test.describe('milestone issues', () => {
+  for (const size of widths) {
+    const phone = size.width < 760
+    const stacked = size.width < 1180
+    test(`issues and releases@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const route = routes.find((r) => r.name === 'stream-milestone-issues')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.goto(route.path)
+      await route.ready(page)
+
+      const table = page.locator('main [role="table"][aria-label="Issues"]')
+      // Issues and releases in the order of the fixture: each release
+      // follows the issue it was decided after.
+      const order = await table
+        .locator('[data-issue], [data-release]')
+        .evaluateAll((els) =>
+          els.map((e) => (e.hasAttribute('data-release') ? 'release' : e.querySelector('[data-iid]')!.textContent!.trim())),
+        )
+      expect(order).toEqual(['#279', 'release', '#280', 'release', '#281', '#282', 'release', '#283', '#284'])
+      await expect(table.locator('[data-issue]').first()).toContainText('2026.11.3')
+
+      const layout = await table.evaluate((t) => {
+        const box = (e: Element) => e.getBoundingClientRect()
+        const lineHeight = (e: Element) => parseFloat(getComputedStyle(e).lineHeight) || 20
+        const head = t.querySelector('[data-heads]')!
+        return {
+          iidsOneLine: [...t.querySelectorAll('[data-iid]')].every((e) => box(e).height < lineHeight(e) * 1.5),
+          inside: t.scrollWidth <= t.clientWidth,
+          heads: [...head.children].map((c) => Math.round(box(c).left)),
+          headsShown: getComputedStyle(head).display !== 'none',
+          rows: [...t.querySelectorAll('[data-issue]')].map((row) => {
+            const cells = [...row.querySelectorAll('[role="cell"]')]
+            const [title, state] = cells.map(box)
+            return {
+              lefts: cells.map((c) => Math.round(box(c).left)),
+              stateBelowTitle: state!.top >= title!.bottom - 1,
+            }
+          }),
+          links: [...t.querySelectorAll('a')].map((a) => box(a).height),
+        }
+      })
+      expect(layout.iidsOneLine, 'issue numbers on one line').toBe(true)
+      expect(layout.inside, 'no sideways scroll in the table').toBe(true)
+      if (phone) for (const h of layout.links) expect(h, 'link height on a phone').toBeGreaterThanOrEqual(44)
+      if (stacked) {
+        expect(layout.headsShown).toBe(false)
+        for (const r of layout.rows) expect(r.stateBelowTitle).toBe(true)
+      } else {
+        expect(layout.headsShown).toBe(true)
+        expect(layout.heads).toHaveLength(8)
+        for (const r of layout.rows) expect(r.lefts).toEqual(layout.heads)
+      }
+
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `milestone-issues@${size.width}.png`)
+      await page.screenshot({ path: shot, fullPage: true })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+})

@@ -89,7 +89,7 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   who decided it and when, and the why and the operator's reason as a
   muted line. Not needed, not applicable and dropped releases are muted
   rows, a failed one is a warning. A closed milestone shows them from its
-  snapshot. On narrow screens the rows become cards, and release rows wrap
+  snapshot. Below desktop width issue rows stack ([Milestone Issues](#milestone-issues)), and release rows wrap
   with their state and version first. Below the view tabs come the scope tabs (the
   project, its milestones; they keep a chosen view tab where the target has
   it and open its default otherwise), a search box, and a strip of the last 30 days' activity, where
@@ -1945,6 +1945,30 @@ The e2e cases `overview cards › working now columns@<width>` at 375, 768
 and 1280 px check the columns and the Inbox chip's height
 (`overview-cards@<width>.png`); the route checks cover `overview` and
 `overview-stream` at the three widths.
+
+### Milestone Issues
+
+The milestone's Issues tab (`web/src/components/MilestoneIssues.vue`) is
+Tailwind utilities and Nuxt UI tokens, without scoped CSS.
+
+- The table is one grid. From desktop width the column heads and every
+  issue row are subgrids of it, so the cells line up with the heads as
+  before; a release row spans all columns.
+- On phones and tablets the heads are hidden (beside the rail a tablet has
+  about 460 px, too little for eight columns). An issue row shows its number and title
+  (and the version it shipped in) on the first line, then its state, merge
+  request and labelled figures as a wrapping line. Issue numbers never
+  wrap.
+- Release rows (`releaseRows.ts`) sit between the issues in the same order
+  and with the same content at every width.
+- Links in rows (issue title, merge request, release, pipeline) are at
+  least 44 px high on phones.
+
+The e2e cases `milestone issues › issues and releases@<width>` at 375, 768
+and 1280 px check the order of issues and releases, that numbers stay on
+one line, the column alignment from desktop width, the stacking below it and
+the link heights on a phone (`milestone-issues@<width>.png`); the route checks cover
+`stream-milestone-issues` at the three widths.
 
 ## Roadmap
 

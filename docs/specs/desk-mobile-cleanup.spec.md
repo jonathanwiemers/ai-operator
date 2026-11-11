@@ -486,3 +486,11 @@ follow-up issue), and requirements without an issue and why.
   phones, two on tablets and auto-fill of 300 px columns on desktop as
   before. The needs-you chip is 44 px high on phones; *Show all* is a
   `UButton`. `overview.ts` and its tests are unchanged. Nothing narrowed.
+- 2026-11-11 #328 (R12 milestone Issues tab): `MilestoneIssues.vue` moved
+  to utilities, no scoped `<style>`. Not `DataList`: release rows span the
+  table between issues, which `DataList` has no row for, so the table is a
+  subgrid like the milestone row grid. Issue numbers are `whitespace-nowrap
+  tabular-nums`; below desktop width (the eight columns need about 580 px,
+  a tablet beside the rail has about 460) number and title come first,
+  state and figures below; row links are 44 px high. Release rows and versions unchanged,
+  `releaseRows` tests unchanged. Nothing narrowed.

@@ -27,6 +27,13 @@ import type { MilestoneIssueRow, MilestoneView } from '../types'
 // rows between the issues (R12, decision 15). The page header holds the
 // title. Titles, a release's why and reason are untrusted text and render
 // as text.
+//
+// The table is one grid (docs/ui.md, "Milestone Issues"): from desktop width
+// the column heads and every row are subgrids of it, and a release row spans
+// all columns. Below it (the rail leaves too little room for eight columns on
+// a tablet) the heads are hidden; an issue row shows its number
+// and title on the first line, then its state, merge request and labelled
+// figures as a wrapping line. Links in rows are 44 px high on phones.
 const props = defineProps<{ milestone: MilestoneView; namespace: string; name: string }>()
 
 const rows = computed(() => interleaveReleases(props.milestone.issues ?? [], props.milestone.releases))
@@ -39,50 +46,76 @@ function issueTo(i: MilestoneIssueRow) {
   const { namespace, name } = props
   return { name: 'issue' as const, params: { namespace, name, iid: String(props.milestone.iid), issue: String(i.iid) } }
 }
+
+// num: a figure, tabular and on one line, right-aligned in the table.
+const num = 'whitespace-nowrap tabular-nums text-(--text-2) desktop:text-right'
+// tap: a link in a row, at least 44 px high on phones.
+const tap = 'min-h-11 tablet:min-h-0'
+// The edge tracks are 14 px wider than their content: a subgrid's padding
+// (px-3.5) is taken from them.
+const columns = 'desktop:grid-cols-[minmax(0,1fr)_90px_64px_64px_64px_64px_72px_78px]'
+const sectionHead =
+  'm-0 mb-2 flex justify-between text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
 </script>
 
 <template>
-  <section class="missues">
-    <div class="sum">
+  <section>
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
       <Badge :tone="stateTone(milestone.state)">{{ milestone.state }}</Badge>
-      <span class="progress" :title="`${pct}% merged`">
+      <span class="flex min-w-[200px] items-center gap-2" :title="`${pct}% merged`">
         <span
-          class="bar"
+          class="h-1.5 flex-1 overflow-hidden rounded-full bg-(--surface-3)"
           role="progressbar"
           :aria-valuenow="pct"
           aria-valuemin="0"
           aria-valuemax="100"
           :aria-label="`${pct}% merged`"
         >
-          <span :style="{ width: `${pct}%` }" />
+          <span class="block h-full bg-(--tone-success-fg)" :style="{ width: `${pct}%` }" />
         </span>
-        <span class="num">{{ progress.merged }}/{{ progress.total }} merged</span>
+        <span class="whitespace-nowrap tabular-nums text-(--text-2)">{{ progress.merged }}/{{ progress.total }} merged</span>
       </span>
-      <span class="num" :title="costTooltip(milestone)">{{ rowCost(milestone) }}</span>
-      <span class="num">{{ rowTokens(milestone) }} tok</span>
+      <span class="whitespace-nowrap tabular-nums text-(--text-2)" :title="costTooltip(milestone)">{{ rowCost(milestone) }}</span>
+      <span class="whitespace-nowrap tabular-nums text-(--text-2)">{{ rowTokens(milestone) }} tok</span>
     </div>
-    <p v-if="milestone.stored" class="note">From history: the tasks of this milestone are gone.</p>
+    <p v-if="milestone.stored" class="mt-2.5 mb-0 text-[13px] text-(--text-3)">
+      From history: the tasks of this milestone are gone.
+    </p>
 
     <div v-if="!milestone.issues?.length" class="empty">No issues planned yet.</div>
-    <div v-else class="issue-table" role="table" aria-label="Issues">
-      <div class="row head" role="row">
+    <div
+      v-else
+      class="mt-3.5 overflow-hidden rounded-(--radius-sm) border border-(--border) bg-(--surface) text-[13px] desktop:grid desktop:gap-x-3"
+      :class="columns"
+      role="table"
+      aria-label="Issues"
+    >
+      <div
+        class="hidden px-3.5 py-[9px] text-[11.5px] font-semibold tracking-[0.04em] text-(--text-3) uppercase desktop:col-span-full desktop:grid desktop:grid-cols-subgrid"
+        role="row"
+        data-heads
+      >
         <span role="columnheader">Issue</span>
         <span role="columnheader">State</span>
         <span role="columnheader">MR</span>
-        <span role="columnheader" class="r">Wall</span>
-        <span role="columnheader" class="r">Agent</span>
-        <span role="columnheader" class="r">Paused</span>
-        <span role="columnheader" class="r">Cost</span>
-        <span role="columnheader" class="r">Tokens</span>
+        <span role="columnheader" class="text-right">Wall</span>
+        <span role="columnheader" class="text-right">Agent</span>
+        <span role="columnheader" class="text-right">Paused</span>
+        <span role="columnheader" class="text-right">Cost</span>
+        <span role="columnheader" class="text-right">Tokens</span>
       </div>
-      <template v-for="row in rows" :key="row.key">
+      <template v-for="(row, n) in rows" :key="row.key">
+        <!-- A release spans the table: state, version or what is planned,
+             who and when, then the why and the operator's reason as a muted
+             line. It wraps and keeps state and version first. -->
         <div
           v-if="row.kind === 'release'"
-          class="row rel"
-          :class="{ muted: releaseMuted(row.release.state), failed: row.release.state === 'Failed' }"
+          class="border-(--border) bg-(--surface-2) px-3.5 py-[9px] desktop:col-span-full desktop:border-t"
+          :class="{ 'border-t': n > 0 }"
           role="row"
+          data-release
         >
-          <span class="relmain" role="cell">
+          <span class="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1" role="cell">
             <Badge
               :tone="releaseTone(row.release.state)"
               :dot="row.release.state === 'Running'"
@@ -90,273 +123,115 @@ function issueTo(i: MilestoneIssueRow) {
             >
               {{ releaseStateLabel(row.release.state) }}
             </Badge>
-            <span class="relhead">
-              <ExtLink v-if="releaseDone(row.release) && row.release.releaseURL" :href="row.release.releaseURL">
+            <span
+              class="tabular-nums"
+              :class="
+                releaseMuted(row.release.state)
+                  ? 'font-medium text-(--text-3)'
+                  : row.release.state === 'Failed'
+                    ? 'font-semibold text-(--tone-warning-fg)'
+                    : 'font-semibold'
+              "
+            >
+              <ExtLink
+                v-if="releaseDone(row.release) && row.release.releaseURL"
+                :href="row.release.releaseURL"
+                :class="tap"
+              >
                 {{ releaseHeadline(row.release) }}
               </ExtLink>
               <template v-else>{{ releaseHeadline(row.release) }}</template>
             </span>
-            <ExtLink v-if="row.release.state === 'Running' && row.release.pipelineURL" :href="row.release.pipelineURL">
+            <ExtLink
+              v-if="row.release.state === 'Running' && row.release.pipelineURL"
+              :href="row.release.pipelineURL"
+              :class="tap"
+            >
               pipeline
             </ExtLink>
-            <span class="relby">by {{ releaseBy(row.release) }}</span>
-            <span v-if="releaseTime(row.release)" class="reltime"><RelTime :time="releaseTime(row.release)" /></span>
-            <span v-if="releaseNote(row.release)" class="relwhy">{{ releaseNote(row.release) }}</span>
+            <span class="whitespace-nowrap text-(--text-3)">by {{ releaseBy(row.release) }}</span>
+            <span v-if="releaseTime(row.release)" class="whitespace-nowrap text-(--text-3)">
+              <RelTime :time="releaseTime(row.release)" />
+            </span>
+            <span v-if="releaseNote(row.release)" class="basis-full text-[12.5px] [overflow-wrap:anywhere] text-(--text-3)">
+              {{ releaseNote(row.release) }}
+            </span>
           </span>
         </div>
-        <div v-else class="row" role="row">
-          <span class="title" role="cell">
-            <span class="iid">#{{ row.issue.iid }}</span>
-            <RouterLink :to="issueTo(row.issue)">{{ row.issue.title || `#${row.issue.iid}` }}</RouterLink>
-            <Badge v-if="row.issue.version" tone="info" class="ver" :title="`Shipped in ${row.issue.version}`">
-              {{ row.issue.version }}
-            </Badge>
+        <div
+          v-else
+          class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-(--border) px-3.5 py-[9px] desktop:col-span-full desktop:grid desktop:grid-cols-subgrid desktop:border-t"
+          :class="{ 'border-t': n > 0 }"
+          role="row"
+          data-issue
+        >
+          <span class="flex min-w-0 basis-full items-baseline gap-2 font-semibold desktop:basis-auto" role="cell">
+            <span class="font-medium whitespace-nowrap tabular-nums text-(--text-3)" data-iid>#{{ row.issue.iid }}</span>
+            <span class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+              <RouterLink :to="issueTo(row.issue)" class="inline-flex items-center [overflow-wrap:anywhere]" :class="tap">
+                {{ row.issue.title || `#${row.issue.iid}` }}
+              </RouterLink>
+              <Badge
+                v-if="row.issue.version"
+                tone="info"
+                class="self-center tabular-nums"
+                :title="`Shipped in ${row.issue.version}`"
+              >
+                {{ row.issue.version }}
+              </Badge>
+            </span>
           </span>
-          <span class="state" role="cell">
-            <Badge :tone="issueStateTone(row.issue.state)">{{ row.issue.state }}</Badge>
-          </span>
-          <span class="mr" role="cell">
-            <ExtLink v-if="row.issue.mergeRequestIID" :href="row.issue.mergeRequestURL">
-              !{{ row.issue.mergeRequestIID }}
-            </ExtLink>
-            <span v-else class="dash">—</span>
-          </span>
-          <span class="num wall" role="cell"><span class="lbl">wall </span>{{ issueTime(row.issue, 'wallSec') }}</span>
-          <span class="num agent" role="cell">
-            <span class="lbl">agent </span>{{ issueTime(row.issue, 'agentSec') }}
-          </span>
-          <span class="num paused" role="cell">
-            <span class="lbl">paused </span>{{ issueTime(row.issue, 'pausedSec') }}
-          </span>
-          <span
-            class="num cost"
-            role="cell"
-            :title="row.issue.figures ? costTooltip(row.issue.figures) : undefined"
-          >
-            {{ row.issue.figures ? rowCost(row.issue.figures) : '—' }}
-          </span>
-          <span class="num tokens" role="cell">
-            <span class="lbl">tok </span>{{ row.issue.figures ? rowTokens(row.issue.figures) : '—' }}
+          <span class="flex min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1.5 desktop:contents" role="none">
+            <span role="cell">
+              <Badge :tone="issueStateTone(row.issue.state)">{{ row.issue.state }}</Badge>
+            </span>
+            <span class="whitespace-nowrap" role="cell">
+              <ExtLink v-if="row.issue.mergeRequestIID" :href="row.issue.mergeRequestURL" :class="tap">
+                !{{ row.issue.mergeRequestIID }}
+              </ExtLink>
+              <span v-else class="text-(--text-3)">—</span>
+            </span>
+            <span :class="num" role="cell">
+              <span class="text-(--text-3) desktop:hidden">wall </span>{{ issueTime(row.issue, 'wallSec') }}
+            </span>
+            <span :class="num" role="cell">
+              <span class="text-(--text-3) desktop:hidden">agent </span>{{ issueTime(row.issue, 'agentSec') }}
+            </span>
+            <span :class="num" role="cell">
+              <span class="text-(--text-3) desktop:hidden">paused </span>{{ issueTime(row.issue, 'pausedSec') }}
+            </span>
+            <span
+              :class="num"
+              role="cell"
+              :title="row.issue.figures ? costTooltip(row.issue.figures) : undefined"
+            >
+              {{ row.issue.figures ? rowCost(row.issue.figures) : '—' }}
+            </span>
+            <span :class="num" role="cell">
+              <span class="text-(--text-3) desktop:hidden">tok </span>{{ row.issue.figures ? rowTokens(row.issue.figures) : '—' }}
+            </span>
           </span>
         </div>
       </template>
     </div>
 
     <template v-if="!milestone.stored">
-      <p v-if="waiting" class="waiting">
+      <p v-if="waiting" class="mt-3 mb-0 rounded-lg bg-(--tone-progress-bg) px-2.5 py-2">
         ⏳ {{ waiting }}.
-        <small>Comment <code>/agent start</code> on the tracking issue to plan it now (owners).</small>
+        <small class="block text-xs text-(--text-2)">
+          Comment <code>/agent start</code> on the tracking issue to plan it now (owners).
+        </small>
       </p>
-      <div v-if="milestone.autopilot?.items?.length" class="block">
-        <h3>Queue <span>{{ queueDone(milestone.autopilot.items) }} / {{ milestone.autopilot.items.length }}</span></h3>
+      <div v-if="milestone.autopilot?.items?.length" class="mt-[18px]">
+        <h3 :class="sectionHead">
+          Queue <span>{{ queueDone(milestone.autopilot.items) }} / {{ milestone.autopilot.items.length }}</span>
+        </h3>
         <QueueList :namespace="namespace" :name="name" :milestone="milestone" />
       </div>
-      <div v-if="milestone.companions?.length" class="block">
-        <h3>Companions <span>{{ milestone.companions.length }}</span></h3>
+      <div v-if="milestone.companions?.length" class="mt-[18px]">
+        <h3 :class="sectionHead">Companions <span>{{ milestone.companions.length }}</span></h3>
         <CompanionsList :namespace="namespace" :name="name" :milestone="milestone" />
       </div>
     </template>
   </section>
 </template>
-
-<style scoped>
-.sum {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  font-size: 13px;
-}
-.progress {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 200px;
-}
-.bar {
-  flex: 1;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--surface-3);
-  overflow: hidden;
-}
-.bar > span {
-  display: block;
-  height: 100%;
-  background: var(--tone-success-fg);
-}
-.num {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-2);
-  white-space: nowrap;
-}
-.note {
-  margin: 10px 0 0;
-  font-size: 13px;
-  color: var(--text-3);
-}
-.issue-table {
-  margin-top: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-.row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 90px 64px 64px 64px 64px 72px 64px;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 14px;
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-}
-.row:first-child {
-  border-top: 0;
-}
-.row.head {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.r,
-.row .num {
-  text-align: right;
-}
-.title {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.iid {
-  font-weight: 500;
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
-}
-.dash {
-  color: var(--text-3);
-}
-.lbl {
-  display: none;
-  color: var(--text-3);
-}
-.ver {
-  align-self: center;
-  font-variant-numeric: tabular-nums;
-}
-/* A release row spans the table: state, version or what is planned, who
-   and when, then the why and the operator's reason as a muted line. It
-   wraps on narrow screens and keeps state and version first. */
-.row.rel {
-  display: block;
-  background: var(--surface-2);
-}
-.relmain {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-  min-width: 0;
-}
-.relhead {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.relby,
-.reltime {
-  color: var(--text-3);
-  white-space: nowrap;
-}
-.relwhy {
-  flex-basis: 100%;
-  color: var(--text-3);
-  font-size: 12.5px;
-  overflow-wrap: anywhere;
-}
-.row.rel.muted .relhead {
-  color: var(--text-3);
-  font-weight: 500;
-}
-.row.rel.failed .relhead {
-  color: var(--tone-warning-fg);
-}
-.empty {
-  padding: 32px;
-  text-align: center;
-  color: var(--text-3);
-}
-/* Narrow screens: each issue is a card, title and state on top, the
-   figures below, labelled. */
-@media (max-width: 759.98px) {
-  .row.head {
-    display: none;
-  }
-  .row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-areas:
-      'title title state'
-      'mr cost tokens'
-      'wall agent paused';
-    gap: 6px 12px;
-  }
-  .title {
-    grid-area: title;
-  }
-  .state {
-    grid-area: state;
-    justify-self: end;
-  }
-  .mr {
-    grid-area: mr;
-  }
-  .wall {
-    grid-area: wall;
-  }
-  .agent {
-    grid-area: agent;
-  }
-  .paused {
-    grid-area: paused;
-  }
-  .cost {
-    grid-area: cost;
-  }
-  .tokens {
-    grid-area: tokens;
-  }
-  .row .num {
-    text-align: left;
-  }
-  .lbl {
-    display: inline;
-  }
-}
-.waiting {
-  margin: 12px 0 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--tone-progress-bg);
-}
-.waiting small {
-  display: block;
-  color: var(--text-2);
-  font-size: 12px;
-}
-.block {
-  margin-top: 18px;
-}
-.block h3 {
-  font-size: 11.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  margin: 0 0 8px;
-  display: flex;
-  justify-content: space-between;
-  font-weight: 600;
-}
-</style>
