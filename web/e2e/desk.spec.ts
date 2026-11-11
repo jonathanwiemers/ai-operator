@@ -18,6 +18,9 @@ interface Route {
   path: string
   // signedOut: every API request answers 401, so the app shows the sign-in.
   signedOut?: boolean
+  // colorScheme is the system's scheme the page sees, light when unset
+  // (playwright.config.ts).
+  colorScheme?: 'light' | 'dark'
   // ready waits until the page shows its data.
   ready: (page: Page) => Promise<void>
 }
@@ -43,6 +46,13 @@ const routes: Route[] = [
   {
     name: 'overview',
     path: '/',
+    ready: (page) => expect(page.getByText('Checkout without account').first()).toBeVisible(),
+  },
+  // The dark tokens (.dark in style.css), for the screenshots.
+  {
+    name: 'overview-dark',
+    path: '/',
+    colorScheme: 'dark',
     ready: (page) => expect(page.getByText('Checkout without account').first()).toBeVisible(),
   },
   {
@@ -189,6 +199,7 @@ for (const route of routes) {
       const origin = new URL(baseURL ?? '').origin
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
+      if (route.colorScheme) await page.emulateMedia({ colorScheme: route.colorScheme })
       await page.clock.setFixedTime(now)
       await watch(page, origin, problems)
       await mockAPI(page, route, problems)
@@ -224,3 +235,31 @@ for (const route of routes) {
     })
   }
 }
+
+// The Desk follows the system's colour scheme while it is open
+// (src/colorScheme.ts): .dark on <html>, the dark tokens on the page.
+test('colour scheme follows the system live', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'overview')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+
+  const html = page.locator('html')
+  const bodyBackground = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor)
+  await expect(html).not.toHaveClass(/\bdark\b/)
+  expect(await bodyBackground(), '--bg light').toBe('rgb(246, 246, 248)')
+
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await expect(html).toHaveClass(/\bdark\b/)
+  expect(await bodyBackground(), '--bg dark').toBe('rgb(19, 17, 25)')
+
+  await page.emulateMedia({ colorScheme: 'light' })
+  await expect(html).not.toHaveClass(/\bdark\b/)
+  expect(await bodyBackground(), '--bg light again').toBe('rgb(246, 246, 248)')
+
+  problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})

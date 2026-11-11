@@ -40,104 +40,124 @@
   --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
-  color-scheme: light;
+  /* Until main.ts has set .dark (colorScheme.ts), form controls and the
+     html background (Canvas) follow the system. */
+  color-scheme: light dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #131119;
-    --surface: #1c1a25;
-    --surface-2: #24212f;
-    --surface-3: #2c2939;
-    --border: #2f2b3d;
-    --border-strong: #423d55;
-    --text: #ece9f5;
-    --text-2: #b0aac6;
-    --text-3: #7f7996;
-    --link: #b3a6ff;
-    --brand-ink: #c9bfff;
-    --me-bg: #2a2348;
-    --me-border: #3d3366;
-    --pilot-bg: #2e2018;
-    --pilot-border: #4a3022;
+/* The dark values of the tokens above, same names. colorScheme.ts sets .dark
+   on <html> while the system prefers dark and follows its changes. */
+.dark {
+  --bg: #131119;
+  --surface: #1c1a25;
+  --surface-2: #24212f;
+  --surface-3: #2c2939;
+  --border: #2f2b3d;
+  --border-strong: #423d55;
+  --text: #ece9f5;
+  --text-2: #b0aac6;
+  --text-3: #7f7996;
+  --link: #b3a6ff;
+  --brand-ink: #c9bfff;
+  --me-bg: #2a2348;
+  --me-border: #3d3366;
+  --pilot-bg: #2e2018;
+  --pilot-border: #4a3022;
 
-    --tone-neutral-bg: #2a2737;
-    --tone-neutral-fg: #d7d3e6;
-    --tone-muted-bg: #25222f;
-    --tone-muted-fg: #938daa;
-    --tone-info-bg: #16304f;
-    --tone-info-fg: #8fc0ff;
-    --tone-progress-bg: #2c2257;
-    --tone-progress-fg: #c1b2ff;
-    --tone-success-bg: #133524;
-    --tone-success-fg: #7ddca3;
-    --tone-warning-bg: #3d2c0a;
-    --tone-warning-fg: #f5c46b;
-    --tone-danger-bg: #431815;
-    --tone-danger-fg: #ff9b91;
+  --tone-neutral-bg: #2a2737;
+  --tone-neutral-fg: #d7d3e6;
+  --tone-muted-bg: #25222f;
+  --tone-muted-fg: #938daa;
+  --tone-info-bg: #16304f;
+  --tone-info-fg: #8fc0ff;
+  --tone-progress-bg: #2c2257;
+  --tone-progress-fg: #c1b2ff;
+  --tone-success-bg: #133524;
+  --tone-success-fg: #7ddca3;
+  --tone-warning-bg: #3d2c0a;
+  --tone-warning-fg: #f5c46b;
+  --tone-danger-bg: #431815;
+  --tone-danger-fg: #ff9b91;
 
-    --shadow: 0 1px 2px rgb(0 0 0 / 40%);
-    --shadow-hover: 0 6px 18px rgb(0 0 0 / 45%);
-    color-scheme: dark;
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-hover: 0 6px 18px rgb(0 0 0 / 45%);
+  color-scheme: dark;
+}
+
+/* Element rules live in the base layer: unlayered CSS (scoped styles, the
+   classes below) and Tailwind's later layers win over them, whatever the
+   specificity. Classes do not go here (docs/design.md, "Desk styles"). */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  /* The system's background until the app has rendered, so a page loading
+     in dark mode does not flash light. body paints the token. */
+  html {
+    background: Canvas;
+  }
+
+  html,
+  body {
+    margin: 0;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background: var(--bg);
+  }
+
+  a {
+    color: var(--link);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  h1,
+  h2,
+  h3 {
+    margin: 0;
+    line-height: 1.25;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 650;
+  }
+
+  h2 {
+    font-size: 16px;
+    font-weight: 650;
+  }
+
+  h3 {
+    font-size: 13px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 12.5px;
   }
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 14px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: var(--link);
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
-}
-
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-h1,
-h2,
-h3 {
-  margin: 0;
-  line-height: 1.25;
-}
-
-h1 {
-  font-size: 22px;
-  font-weight: 650;
-}
-
-h2 {
-  font-size: 16px;
-  font-weight: 650;
-}
-
-h3 {
-  font-size: 13px;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-2);
-}
-
-code,
 .mono {
   font-family: var(--mono);
   font-size: 12.5px;

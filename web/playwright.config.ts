@@ -18,7 +18,8 @@ export default defineConfig({
   use: {
     ...devices['Desktop Chrome'],
     baseURL: `http://127.0.0.1:${port}`,
-    // Desk follows the system's colour scheme; the screenshots show light.
+    // Desk follows the system's colour scheme; the screenshots show light,
+    // but for the cases with their own colorScheme (overview-dark).
     colorScheme: 'light',
     trace: 'retain-on-failure',
   },

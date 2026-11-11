@@ -1411,7 +1411,10 @@ How it works:
   Every named route but the redirects has a case; routes with tabs have one
   per tab (`stream-milestone-pilot`), and the research page one per view
   (`research`, `research-report`). To check a new route, add it to `routes` with a `ready` condition and add
-  the fixtures its requests need.
+  the fixtures its requests need. The checks run with the system in light
+  mode; `overview-dark` sets `colorScheme: 'dark'` for dark screenshots, and
+  one more check switches the scheme on an open page and expects the dark
+  tokens and back ([design.md](design.md#desk-styles)).
 - **Known overflow.** `web/e2e/known-overflow.ts` lists the
   `route@width` cases that scroll sideways today, with the measured px.
   They run as expected failures (`test.fail()`). A slice that fixes one

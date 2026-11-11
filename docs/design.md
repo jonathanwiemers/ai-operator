@@ -2647,6 +2647,38 @@ took over an owner's username, or became an owner later, does nothing.
 into the summaries posted on GitLab. CI pipelines of agent branches run
 untrusted code: don't expose protected CI variables to unprotected branches.
 
+## Desk styles
+
+The Desk's global styles are `web/src/style.css`; views add scoped CSS on top.
+
+**Tokens.** CSS custom properties hold the palette and the shared sizes:
+`--bg`, `--surface`, `--surface-2`, `--surface-3`, `--border`,
+`--border-strong`, `--text`, `--text-2`, `--text-3`, `--accent`,
+`--accent-2`, `--brand-ink`, `--link`, `--focus`, `--me-*`, `--pilot-*`,
+`--tone-<tone>-bg`/`-fg` (neutral, muted, info, progress, success, warning,
+danger), `--radius`, `--radius-sm`, `--shadow`, `--shadow-hover`, `--font`
+and `--mono`. The light values are on `:root`, the dark ones on `.dark`, with
+the same names; a token missing from `.dark` is the same in both schemes.
+Colours outside `style.css` are flagged by the conventions check
+([ui.md](ui.md#conventions-check)).
+
+**Light and dark.** The Desk follows the system, there is no toggle.
+`web/src/colorScheme.ts`, called first in `main.ts`, sets the `dark` class
+on `<html>` while `prefers-color-scheme: dark` matches and follows its
+`change` event, so switching the OS scheme switches an open Desk. The CSP
+allows no inline script, so this runs with the app's module. Until then
+`:root` has `color-scheme: light dark` and `html` the system's `Canvas`
+background, and `body` paints `--bg`: a page loading in dark mode does not
+flash light. `.dark` sets `color-scheme: dark` for form controls.
+
+**Layers.** Unlayered CSS beats every cascade layer, whatever the
+specificity. The bare element rules (`*`, `html`, `body`, `a`, `:focus-visible`,
+`h1`–`h3`, `code`) are therefore in `@layer base`, so component classes and
+utilities (Nuxt UI, Tailwind's `components` and `utilities` layers) win over
+them. Global classes (`.btn`, `.card`, `.row`, `.banner`, `.empty`, `.md …`)
+stay unlayered until they are removed: in a layer, scoped rules they beat
+today would win. New element rules go into `@layer base`, never unlayered.
+
 ## Code map
 
 | Path | What |

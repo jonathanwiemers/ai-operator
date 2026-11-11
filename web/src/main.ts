@@ -2,8 +2,11 @@ import { createApp } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import App from './App.vue'
 import { canStartResearch, featuresLoaded, hasFeature, isResearchPath } from './api'
+import { darkQuery, followColorScheme } from './colorScheme'
 import type { RouteName } from './routeNames'
 import './style.css'
+
+followColorScheme(document.documentElement.classList, window.matchMedia(darkQuery))
 
 // Views load with their route, each as its own chunk. Only App.vue (the shell,
 // with SignIn.vue) is in the initial bundle, which scripts/bundle-budget.mjs

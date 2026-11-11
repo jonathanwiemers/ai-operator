@@ -304,3 +304,8 @@ follow-up issue), and requirements without an issue and why.
   one-off form (162 and 17 px, the project select) and the research report
   and run at 375 (8 px, the links block). Spend tables are wider than the
   pane too. All for R4 (tab strips), R10 and R12.
+- 2026-11-11 #304 (decisions 20, 21, groundwork for R4): the element rules
+  of `style.css` are in `@layer base`, the tokens on `:root` and `.dark`,
+  and `web/src/colorScheme.ts` sets `.dark` from `prefers-color-scheme`.
+  Nothing narrowed. The mapping of the tokens to Nuxt UI's `--ui-*` comes
+  with R4.
