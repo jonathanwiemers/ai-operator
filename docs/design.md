@@ -2716,7 +2716,7 @@ viewport meta of `web/index.html` is `width=device-width, initial-scale=1,
 viewport-fit=cover, interactive-widget=resizes-content`: the page draws
 under notches and rounded corners, and Chrome on Android shrinks the layout
 viewport when the keyboard opens (iOS ignores the key; the composer handles
-it there).
+it there, with `--keyboard-inset`, see [ui.md](ui.md#composer)).
 
 - *Viewport height.* Full-height rules use `dvh`, after a `vh` line for
   browsers without it (`height: 100vh; height: 100dvh`), so they follow the

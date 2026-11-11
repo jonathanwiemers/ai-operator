@@ -1546,8 +1546,8 @@ Vite plugin is `ui()` from `@nuxt/ui/vite` in `web/vite.config.ts`, and
 `App.vue` wraps the app in `<UApp>`. Views moved to the kit use components
 and utilities and drop their scoped CSS, except what utilities cannot
 express. `web/src/ui/` holds only what Nuxt UI lacks ([DataList](#datalist),
-[RouteTabs](#routetabs), [Truncated](#truncated) and `useBackClose` for
-[sheets](#sheets)). Not found
+[RouteTabs](#routetabs), [Truncated](#truncated), `useBackClose` for
+[sheets](#sheets) and `useKeyboardInset` for the [composer](#composer)). Not found
 (`views/NotFound.vue`) is the first view on it.
 
 **Imports are explicit.** Auto-imports and component resolution are off
@@ -1730,6 +1730,65 @@ open the Context sheet on the project and the milestone page at 375 and
 Escape close it; `context-sheet-<page>@<width>.png` show it open. At
 1280 px the project page keeps the panel at its side and neither page has
 the button.
+
+### Composer
+
+`web/src/components/Composer.vue` is the one text box of the Desk: the
+task's *Chat with the agent* (`mode="chat"`, `TaskChat.vue`) and the
+stream's notes (`mode="note"`, the project stream in `Stream.vue` and a
+milestone's *Pilot* tab in `MilestonePilot.vue`).
+
+```vue
+<Composer v-model="body" mode="chat" placeholder="Message the agent…" hint="Enter+Ctrl/Cmd to send"
+  :busy="sending" :disabled="sending" :error="sendError" :can-interrupt="canInterrupt" @send="onSend">
+  <template #controls><!-- the chat's command buttons --></template>
+</Composer>
+```
+
+- It holds a `UTextarea` that grows with its text (`autoresize`, up to 12
+  rows; 16 px on phones, 14 px from tablet up), Send (a `UButton`, 44 px on
+  phones like every button), Interrupt (`canInterrupt`), the error line and
+  Ctrl/Cmd+Enter. Send and Ctrl/Cmd+Enter do nothing while `busy` or
+  `disabled` or with blank text; Interrupt sends blank text as well.
+- It emits `send` with `{ kind: 'message' | 'interrupt', body, target }`.
+  The caller owns the text (`v-model`), `busy`, `error`, the drafts and
+  the API call, and clears the text once the post succeeded.
+- `mode="note"` adds the target pill and its *Send to* menu
+  (`targets`, `v-model:target`), the commands menu that opens on `/` or
+  `yes P` (`suggestions`), and `blocked`: the reason the box gives way to a
+  card, with *Connect GitLab* when `connectUrl` is set. The state of a note
+  composer is `useStreamNote` (`src/streamNote.ts`): the GitLab status
+  (loaded the first time the composer is shown), the targets
+  (`noteTargets` in `src/stream.ts`) and the post.
+- The chat's draft helpers (`chatDraftKey`, `readChatDraft`,
+  `writeChatDraft`) and command builders (`modelCommand`, `skipCommand`)
+  are in `src/chatState.ts`; `TaskChat.vue` keeps the draft and its
+  `clientKey` in session storage until a 2xx and puts the command buttons
+  into the `controls` slot.
+
+Where it sits: a note composer stays at the top of its pane (sticky) as the
+stream scrolls. On a phone the chat composer is sticky at the bottom of the
+screen, inside the chat card: above the bottom bar, and while typing above
+the keyboard. Chrome on Android resizes the page for the keyboard
+(`interactive-widget=resizes-content`); iOS Safari does not, so
+`web/src/ui/useKeyboardInset.ts` sets `--keyboard-inset` on `<html>` from
+`visualViewport` (the height the keyboard covers, 0 without one) while a
+composer is mounted, and the composer's `bottom` is the larger of it and
+the bottom bar with its inset. For sticky to follow the screen, the
+content pane (`main`) is `overflow: visible` on phones: it grows with the
+page and never scrolled. Send and Interrupt keep the focus in the text on a
+press (`mousedown.prevent`), so the keyboard stays up and the bottom bar
+does not come back and move the composer under the finger.
+
+The e2e cases `composer …` type and send on the task's *Chat* tab and on
+the project stream at 375 and 1280 px and check the POST body through the
+route mock (Send and Ctrl+Enter, a new `clientKey` per message, the
+target menu and the `/` commands), the 16 px text and 44 px Send on a
+phone, that a failed send keeps the text and shows the error and a reload
+retries with the same key, and at 375 px that the chat composer ends above
+the bottom bar and above a 300 px `--keyboard-inset`
+(`composer-chat@<width>.png`, `composer-note@<width>.png`,
+`composer-keyboard@375.png`).
 
 ## Roadmap
 

@@ -12,7 +12,7 @@ import CostChip from '../components/CostChip.vue'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
 import ProjectBoards from '../components/ProjectBoards.vue'
 import SpendPanel from '../components/SpendPanel.vue'
-import StreamComposer from '../components/StreamComposer.vue'
+import Composer from '../components/Composer.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestonePilot from '../components/MilestonePilot.vue'
@@ -30,6 +30,7 @@ import {
   runtimeKindsForFilter,
   runtimeStreamFilters,
   sameLocalDay,
+  slashSuggestions,
   streamEventKey,
   streamFilters,
   type StreamFilter,
@@ -43,6 +44,7 @@ import type {
   StreamEvent,
   StreamPage,
 } from '../types'
+import { useStreamNote } from '../streamNote'
 import { carryTab, milestoneTabFromRoute, milestoneTabs, projectTabs, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
 // The sheet is loaded below 1180 px only, where the Context button is.
@@ -127,6 +129,18 @@ const milestone = ref<MilestoneView | null>(null)
 // milestoneFailed: the scoped milestone could not be loaded (the Issues tab
 // says so instead of loading forever).
 const milestoneFailed = ref(false)
+
+// The project's note composer (a milestone's is on its Pilot tab).
+const note = useStreamNote(
+  () => ({
+    namespace: props.namespace ?? '',
+    name: props.name ?? '',
+    project: project.value,
+    steer: milestone.value?.permissions?.steer,
+    shown: tab.value === 'stream' && !everything.value && !milestoneIID.value,
+  }),
+  () => void loadInitial(),
+)
 
 const projectInbox = computed(() => {
   const items = inbox.value?.items ?? []
@@ -486,14 +500,21 @@ function showDay(i: number): string | null {
         <div v-if="!everything && namespace && name" class="pinned">
           <PauseCardCompact v-if="pauseProps" class="pause" v-bind="pauseProps" />
           <!-- A milestone's composer is on its Pilot tab. -->
-          <StreamComposer
+          <Composer
             v-if="!milestoneIID"
-            :namespace="namespace"
-            :name="name"
-            :project="project"
-            :milestone-iid="milestoneIID"
-            :steer="milestone?.permissions?.steer"
-            @posted="loadInitial"
+            v-model="note.body"
+            v-model:target="note.target"
+            mode="note"
+            :placeholder="note.placeholder"
+            :hint="note.hint"
+            :busy="note.sending"
+            :disabled="!!note.disabledReason"
+            :error="note.error"
+            :targets="note.targets"
+            :suggestions="slashSuggestions"
+            :blocked="note.blocked"
+            :connect-url="note.connectUrl"
+            @send="note.send"
           />
         </div>
         <p v-else class="pick muted">Pick a project in the rail to message a pilot or issue.</p>

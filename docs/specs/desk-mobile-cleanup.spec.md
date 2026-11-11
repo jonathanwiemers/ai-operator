@@ -421,3 +421,18 @@ follow-up issue), and requirements without an issue and why.
   a value that is shown in full, none is the only copy of clipped text, so
   there is nothing for `Truncated`. The calls table's *Lines* header hint
   went, the docs explain the column. Nothing narrowed.
+- 2026-11-11 #321 (R11 composer): `ChatComposer.vue` and
+  `StreamComposer.vue` are one `Composer.vue` with `mode` chat or note, on
+  `UTextarea` (autoresize) and `UButton`. Callers keep their API calls: the
+  chat's draft and commands are in `TaskChat.vue` with helpers in
+  `chatState.ts`; the note's state, used by the project stream and the
+  Pilot tab, is `useStreamNote` in a new `streamNote.ts` with pure helpers
+  in `stream.ts` (`followUpDraft.ts` is the retrospective's follow-up
+  milestone, not a composer draft, so nothing went there). On phones the
+  chat composer is sticky at the bottom, above the bottom bar and the iOS
+  keyboard (`web/src/ui/useKeyboardInset.ts`); for that the content pane is
+  `overflow: visible` on phones. The note composer stays sticky at the top
+  of the stream, where it always was and where the keyboard never covers
+  it. Send and Interrupt keep the focus in the text on a press: the e2e
+  check found that the bottom bar's return moved Send between press and
+  release. Nothing narrowed.

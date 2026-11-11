@@ -2,8 +2,16 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   agentTurnPending,
+  chatDraftKey,
+  chatPostBody,
   chatWaiting,
   commandLabel,
+  modelCommand,
+  parseChatDraft,
+  readChatDraft,
+  skipCommand,
+  skipOptions,
+  writeChatDraft,
 } from '../src/chatState.ts'
 
 test('chatWaiting: capacity uses the task status message', () => {
@@ -179,4 +187,48 @@ test('commandLabel falls back to raw text', () => {
 test('commandLabel: draft names the follow-ups', () => {
   assert.equal(commandLabel('{"cmd":"draft","followUps":[1,3]}'), 'draft follow-ups 1, 3')
   assert.equal(commandLabel('{"cmd":"draft","followUps":[]}'), '{"cmd":"draft","followUps":[]}')
+})
+
+test('chatDraftKey and parseChatDraft: a stored draft round-trips, anything else is none', () => {
+  assert.equal(chatDraftKey('ns', 'p', 't-1'), 'desk-chat:ns/p/t-1')
+  const d = { body: 'hi', clientKey: 'k1', kind: 'interrupt' }
+  assert.deepEqual(parseChatDraft(JSON.stringify(d)), d)
+  assert.equal(parseChatDraft(null), null)
+  assert.equal(parseChatDraft(''), null)
+  assert.equal(parseChatDraft('{not json'), null)
+  assert.equal(parseChatDraft('null'), null)
+  assert.equal(parseChatDraft(JSON.stringify({ ...d, clientKey: '' })), null)
+  assert.equal(parseChatDraft(JSON.stringify({ ...d, kind: 'shout' })), null)
+  assert.equal(parseChatDraft(JSON.stringify({ clientKey: 'k', kind: 'message' })), null)
+})
+
+test('readChatDraft and writeChatDraft: no sessionStorage is no draft, not an error', () => {
+  assert.equal(readChatDraft('desk-chat:a/b/c'), null)
+  writeChatDraft('desk-chat:a/b/c', { body: 'x', clientKey: 'k', kind: 'message' })
+})
+
+test('chatPostBody: trimmed text, Stop. for an empty interrupt, nothing for an empty message', () => {
+  assert.equal(chatPostBody('message', '  hi \n'), 'hi')
+  assert.equal(chatPostBody('message', '  '), '')
+  assert.equal(chatPostBody('interrupt', ' '), 'Stop.')
+  assert.equal(chatPostBody('interrupt', 'wait'), 'wait')
+})
+
+test('modelCommand: needs a model, leaves out an empty or default effort', () => {
+  assert.equal(modelCommand('claude', '  ', 'high'), 'Model needs a name.')
+  assert.deepEqual(modelCommand('cursor', ' gpt ', ''), { cmd: 'use', engine: 'cursor', model: 'gpt' })
+  assert.deepEqual(modelCommand('claude', 'opus', 'default'), { cmd: 'use', engine: 'claude', model: 'opus' })
+  assert.deepEqual(modelCommand('claude', 'opus', 'high'), { cmd: 'use', engine: 'claude', model: 'opus', effort: 'high' })
+})
+
+test('skipCommand and skipOptions', () => {
+  assert.equal(skipCommand(''), 'Pick an issue to skip.')
+  assert.equal(skipCommand(0), 'Pick an issue to skip.')
+  assert.deepEqual(skipCommand(12), { cmd: 'skip', issue: 12 })
+  assert.deepEqual(skipCommand('7'), { cmd: 'skip', issue: 7 })
+  assert.deepEqual(
+    skipOptions([{ iid: 1, state: 'Merged' }, { iid: 2, state: 'Planned' }]).map((i) => i.iid),
+    [2],
+  )
+  assert.deepEqual(skipOptions(undefined), [])
 })

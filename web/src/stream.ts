@@ -1,4 +1,4 @@
-import type { PromptView, Stage, StreamEvent, StreamKind } from './types'
+import type { GitLabStatus, ProjectDetail, PromptView, Stage, StreamEvent, StreamKind } from './types'
 
 // Filter chips map to kinds sent as kinds= on GET /stream.
 export type StreamFilter = 'all' | 'chat' | 'needs' | 'runs' | 'ci' | 'merged'
@@ -238,4 +238,104 @@ export function heatLevel(events: number, max: number): 0 | 1 | 2 | 3 {
   if (r < 0.25) return 1
   if (r < 0.5) return 2
   return 3
+}
+
+// Stream notes (the Composer's note mode, docs/ui.md "Composer"): a comment
+// on a milestone's tracking issue as /pilot …, or on a task's issue.
+export type NoteTarget =
+  | { type: 'pilot'; milestoneIID: number; title: string; trackingIssueIID?: number }
+  | { type: 'task'; task: string; issueIID: number; title: string }
+
+// noteTargets are the pilots of the milestones with a running or paused
+// autopilot, the preferred milestone's first (also without one), then the
+// project's tasks with an issue.
+export function noteTargets(project: ProjectDetail | null, preferMilestone?: number): NoteTarget[] {
+  if (!project) return []
+  const out: NoteTarget[] = []
+  const ms = project.milestones
+  const ordered = preferMilestone
+    ? [...ms.filter((m) => m.iid === preferMilestone), ...ms.filter((m) => m.iid !== preferMilestone)]
+    : ms
+  for (const m of ordered) {
+    if (!m.trackingIssueIID && !m.spec) continue
+    const phase = m.spec?.status.autopilot?.phase
+    if (preferMilestone !== m.iid && phase !== 'Running' && phase !== 'Paused') continue
+    out.push({ type: 'pilot', milestoneIID: m.iid, title: m.title, trackingIssueIID: m.trackingIssueIID })
+  }
+  for (const t of [...ms.flatMap((m) => m.tasks), ...project.unplanned]) {
+    if (t.issue) out.push({ type: 'task', task: t.name, issueIID: t.issue.iid, title: t.issue.title })
+  }
+  return out
+}
+
+export function sameNoteTarget(a: NoteTarget, b: NoteTarget): boolean {
+  if (a.type === 'pilot' && b.type === 'pilot') return a.milestoneIID === b.milestoneIID
+  if (a.type === 'task' && b.type === 'task') return a.task === b.task
+  return false
+}
+
+// keepNoteTarget keeps the picked target while it is still offered, else
+// takes the first.
+export function keepNoteTarget(list: NoteTarget[], current: NoteTarget | null): NoteTarget | null {
+  if (!list.length) return null
+  if (current && list.some((t) => sameNoteTarget(t, current))) return current
+  return list[0]!
+}
+
+// noteDisabledReason is why the composer cannot post: GitLab is not
+// connected (or loading), the roles may not comment, or there is no
+// target. Empty when it can post.
+export function noteDisabledReason(status: GitLabStatus | null, steer: boolean | undefined, targets: number): string {
+  if (!status) return 'Loading…'
+  if (!status.connected && status.login) return 'Connect GitLab to post.'
+  if (!status.connected) return 'GitLab is not set up for your user here.'
+  if (steer === false) return 'Your roles may not post comments on this project.'
+  if (!targets) return 'No pilot or issue to post to yet.'
+  return ''
+}
+
+export function noteHint(t: NoteTarget | null): string {
+  if (!t) return 'Pick where to post'
+  if (t.type === 'pilot') {
+    const track = t.trackingIssueIID ? `tracking issue #${t.trackingIssueIID}` : `milestone %${t.milestoneIID}`
+    return `Posts on ${track} as /pilot … in your GitLab name`
+  }
+  return `Comment on #${t.issueIID}; start with /agent to start a run`
+}
+
+export function noteTargetLabel(t: NoteTarget | null): string {
+  if (!t) return '→ Pick target'
+  if (t.type === 'pilot') return `→ Pilot · ${t.title}`
+  return `→ #${t.issueIID} ${t.title}`
+}
+
+export function notePlaceholder(t: NoteTarget | null): string {
+  return t?.type === 'pilot' ? 'Message the pilot…  /  for commands' : 'Comment…  /  for commands'
+}
+
+export interface SlashSuggestion {
+  cmd: string
+  hint: string
+}
+
+export const slashSuggestions: SlashSuggestion[] = [
+  { cmd: '/pilot pause', hint: 'stop starting and merging' },
+  { cmd: '/pilot resume', hint: 'resume starting and merging' },
+  { cmd: '/pilot skip #', hint: 'skip a planned issue' },
+  { cmd: '/agent use claude opus high', hint: 'model for the target issue' },
+  { cmd: '/agent effort high', hint: 'effort for the next run' },
+  { cmd: '/agent revisit ', hint: 'change a recorded decision' },
+  { cmd: 'yes P', hint: "accept the pilot's proposal" },
+]
+
+// slashOpens: the commands menu shows while the body is a lone /word or
+// the start of "yes P".
+export function slashOpens(body: string): boolean {
+  return /^\/\S*$/.test(body) || /^yes P?$/.test(body)
+}
+
+// slashPick is the body after picking a command: a space to go on, unless
+// it ends in one or in "#".
+export function slashPick(cmd: string): string {
+  return cmd.endsWith(' ') || cmd.endsWith('#') ? cmd : `${cmd} `
 }

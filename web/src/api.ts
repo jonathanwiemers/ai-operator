@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { ChatKind, ChatPage, Feature, Me, Spend } from './types'
+import type { ChatKind, ChatPage, Feature, GitLabStatus, Me, Spend } from './types'
 
 // Session state shared by the whole app.
 export const session = reactive<{
@@ -143,6 +143,27 @@ export async function postTaskChat(
   body: { body: string; clientKey: string; kind?: ChatKind },
 ): Promise<{ id: number }> {
   return post(taskChatPath(namespace, name, task), body)
+}
+
+// getGitLabStatus says whether the user's GitLab account is connected, and
+// where to connect it.
+export async function getGitLabStatus(): Promise<GitLabStatus> {
+  return get<GitLabStatus>('/gitlab')
+}
+
+function projectPath(namespace: string, name: string): string {
+  return `/projects/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`
+}
+
+// postMilestoneNote posts a /pilot comment on a milestone's tracking issue
+// in the user's GitLab name.
+export async function postMilestoneNote(namespace: string, name: string, milestoneIID: number, body: string): Promise<void> {
+  await post(`${projectPath(namespace, name)}/milestones/${milestoneIID}/notes`, { body })
+}
+
+// postIssueNote posts a comment on a task's issue in the user's GitLab name.
+export async function postIssueNote(namespace: string, name: string, task: string, body: string): Promise<void> {
+  await post(`${projectPath(namespace, name)}/tasks/${encodeURIComponent(task)}/notes`, { target: 'issue', body })
 }
 
 // getSpend loads what a project, milestone, issue, task or run (task + run)

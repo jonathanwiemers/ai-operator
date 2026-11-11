@@ -1133,3 +1133,176 @@ test.describe('inline markdown', () => {
     }
   }
 })
+
+// The composer (Composer.vue, R11): one component for the task's chat and
+// the project stream's notes. Typing and Ctrl+Enter or Send post the body
+// the callers built; on a phone the text is 16 px, Send at least 44 px, and
+// the chat composer stays at the bottom of the screen, above the bottom bar
+// or the keyboard (--keyboard-inset).
+test.describe('composer', () => {
+  // captured answers POSTs to paths matching re and keeps their URLs and
+  // bodies; registered after mockAPI, so it answers first.
+  async function capture(page: Page, re: RegExp, json: unknown) {
+    const seen: { path: string; body: unknown }[] = []
+    await page.route(
+      (url) => re.test(url.pathname),
+      async (r) => {
+        if (r.request().method() !== 'POST') return r.fallback()
+        seen.push({ path: new URL(r.request().url()).pathname, body: r.request().postDataJSON() })
+        return r.fulfill({ status: 200, json })
+      },
+    )
+    return seen
+  }
+
+  async function open(page: Page, baseURL: string | undefined, name: string, size: { width: number; height: number }) {
+    const route = routes.find((r) => r.name === name)!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize(size)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    return { route, problems }
+  }
+
+  async function touchSizes(box: ReturnType<Page['locator']>, phone: boolean) {
+    const text = box.locator('textarea')
+    const send = box.getByRole('button', { name: 'Send' })
+    const font = await text.evaluate((e) => parseFloat(getComputedStyle(e).fontSize))
+    const h = (await send.boundingBox())!.height
+    if (phone) {
+      expect(font, 'textarea font size').toBe(16)
+      expect(h, 'Send height').toBeGreaterThanOrEqual(44)
+    } else {
+      expect(font, 'textarea font size on a desktop').toBeLessThan(16)
+    }
+  }
+
+  for (const size of [widths[0]!, widths[2]!]) {
+    const phone = size.width < 760
+
+    test(`task chat sends a message@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const { route, problems } = await open(page, baseURL, 'task-chat', size)
+      const posts = await capture(page, /\/api\/v1\/projects\/team-a\/shop\/tasks\/[^/]+\/chat$/, { id: 99 })
+      await page.goto(route.path)
+      await route.ready(page)
+
+      const text = page.getByPlaceholder('Message the agent…')
+      const composer = page.locator('.composer.chat')
+      await touchSizes(composer, phone)
+      await expect(composer.getByRole('button', { name: 'Send' })).toBeDisabled()
+      await text.fill('  Keep the refund reasons short.  ')
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `composer-chat@${size.width}.png`)
+      await page.screenshot({ path: shot })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      await composer.getByRole('button', { name: 'Send' }).click()
+
+      await expect(text).toHaveValue('')
+      expect(posts).toHaveLength(1)
+      expect(posts[0]!.path).toBe('/api/v1/projects/team-a/shop/tasks/shop-281-implement/chat')
+      expect(posts[0]!.body).toEqual({ body: 'Keep the refund reasons short.', clientKey: expect.any(String), kind: 'message' })
+
+      // Ctrl+Enter sends too, with a new key.
+      await text.fill('And link the issue.')
+      await text.press('Control+Enter')
+      await expect(text).toHaveValue('')
+      expect(posts).toHaveLength(2)
+      expect(posts[1]!.body).toMatchObject({ body: 'And link the issue.', kind: 'message' })
+      expect((posts[1]!.body as { clientKey: string }).clientKey).not.toBe((posts[0]!.body as { clientKey: string }).clientKey)
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`task chat keeps the draft and shows the error of a failed send@${size.width}`, async ({ page, baseURL }) => {
+      const { route, problems } = await open(page, baseURL, 'task-chat', size)
+      const keys: string[] = []
+      await page.route(/\/api\/v1\/projects\/team-a\/shop\/tasks\/[^/]+\/chat$/, async (r) => {
+        if (r.request().method() !== 'POST') return r.fallback()
+        keys.push((r.request().postDataJSON() as { clientKey: string }).clientKey)
+        return r.fulfill({ status: 429, json: { error: 'slow down' } })
+      })
+      await page.goto(route.path)
+      await route.ready(page)
+      const text = page.getByPlaceholder('Message the agent…')
+      await text.fill('Retry me')
+      await text.press('Control+Enter')
+      await expect(page.getByText('Too many messages; try again in a minute.')).toBeVisible()
+      await expect(text).toHaveValue('Retry me')
+      // A reload restores the draft, and the retry sends the same key.
+      await page.reload()
+      await route.ready(page)
+      await expect(text).toHaveValue('Retry me')
+      await page.locator('.composer.chat').getByRole('button', { name: 'Send' }).click()
+      await expect(page.getByText('Too many messages; try again in a minute.')).toBeVisible()
+      expect(keys).toHaveLength(2)
+      expect(keys[1]).toBe(keys[0])
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`project stream posts a note@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const { route, problems } = await open(page, baseURL, 'stream-project-stream', size)
+      const posts = await capture(page, /\/api\/v1\/projects\/team-a\/shop\/(milestones\/\d+|tasks\/[^/]+)\/notes$/, {})
+      await page.goto(route.path)
+      await route.ready(page)
+
+      const composer = page.locator('.composer.note')
+      const text = composer.locator('textarea')
+      await expect(text).toBeEnabled()
+      await touchSizes(composer, phone)
+
+      // The target menu lists where to post; the first one is picked.
+      const targetButton = composer.getByRole('button', { name: /^→/ })
+      const target = (await targetButton.textContent())!
+      await targetButton.click()
+      await expect(composer.getByText('Send to')).toBeVisible()
+      await targetButton.click()
+      await expect(composer.getByText('Send to')).toBeHidden()
+
+      // "/" opens the commands; picking one fills the text.
+      await text.fill('/')
+      await text.dispatchEvent('input')
+      await composer.getByRole('button', { name: /\/pilot pause/ }).click()
+      await expect(text).toHaveValue('/pilot pause ')
+      await text.fill('Ship the refunds first.')
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `composer-note@${size.width}.png`)
+      await page.screenshot({ path: shot })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      await text.press('Control+Enter')
+
+      await expect(text).toHaveValue('')
+      expect(posts).toHaveLength(1)
+      if (target.includes('Pilot')) {
+        expect(posts[0]!.path).toMatch(/\/milestones\/\d+\/notes$/)
+        expect(posts[0]!.body).toEqual({ body: 'Ship the refunds first.' })
+      } else {
+        expect(posts[0]!.path).toMatch(/\/tasks\/[^/]+\/notes$/)
+        expect(posts[0]!.body).toEqual({ target: 'issue', body: 'Ship the refunds first.' })
+      }
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+
+  test('chat composer stays above the bottom bar and the keyboard@375', async ({ page, baseURL }, testInfo) => {
+    const { route, problems } = await open(page, baseURL, 'task-chat', widths[0]!)
+    await page.goto(route.path)
+    await route.ready(page)
+    const composer = page.locator('.composer.chat')
+    const bottom = async () => (await composer.boundingBox())!.y + (await composer.boundingBox())!.height
+    const barTop = await page.getByRole('navigation', { name: 'Sections' }).evaluate((e) => e.getBoundingClientRect().top)
+
+    await page.evaluate(() => window.scrollTo(0, 0))
+    expect(await bottom(), 'the composer ends above the bottom bar').toBeLessThanOrEqual(barTop + 0.5)
+    expect((await composer.boundingBox())!.y, 'and is on screen').toBeLessThan(barTop)
+
+    // Typing: the bar goes; an iOS keyboard of 300 px (what
+    // useKeyboardInset sets from visualViewport) lifts the composer.
+    await composer.locator('textarea').focus()
+    await page.evaluate(() => document.documentElement.style.setProperty('--keyboard-inset', '300px'))
+    // The chat card from 100 px down: the composer floats within it.
+    await page.locator('.card.chat').evaluate((e) => window.scrollBy(0, e.getBoundingClientRect().top - 100))
+    await expect.poll(bottom).toBeLessThanOrEqual(812 - 300 + 0.5)
+    expect(await bottom()).toBeGreaterThan(812 - 300 - 2)
+    const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'composer-keyboard@375.png')
+    await page.screenshot({ path: shot })
+    await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+})

@@ -5,15 +5,16 @@ import { hasFeature } from '../api'
 import { cost } from '../format'
 import { pausePrompt } from '../pauseCard'
 import { promptAnchor, splitPrompts } from '../promptCard'
-import { pilotStreamKinds } from '../stream'
+import { pilotStreamKinds, slashSuggestions } from '../stream'
+import { useStreamNote } from '../streamNote'
 import type { MilestoneView, ProjectDetail } from '../types'
 import AskPilot from './AskPilot.vue'
 import Badge from './Badge.vue'
+import Composer from './Composer.vue'
 import IssueStream from './IssueStream.vue'
 import PauseCard from './PauseCard.vue'
 import PausesCard from './PausesCard.vue'
 import PromptCard from './PromptCard.vue'
-import StreamComposer from './StreamComposer.vue'
 
 // MilestonePilot is a milestone's Pilot tab (R11): the full pause card while
 // paused, the prompts (open first, the closed ones folded), the composer to
@@ -37,6 +38,14 @@ const closedLinked = computed(() => prompts.value.closed.some((p) => route.hash 
 // on the tracking issue with steer, else read-only.
 const perms = computed(() => props.milestone.permissions)
 const showChat = computed(() => !!perms.value?.chat || (hasFeature('chat') && !perms.value?.steer))
+const note = useStreamNote(() => ({
+  namespace: props.namespace,
+  name: props.name,
+  project: props.project,
+  milestoneIID: props.milestone.iid,
+  steer: true,
+  shown: active.value && !showChat.value && !!perms.value?.steer,
+}))
 </script>
 
 <template>
@@ -71,13 +80,21 @@ const showChat = computed(() => !!perms.value?.chat || (hasFeature('chat') && !p
       <section class="panel">
         <h3><span>Message the pilot</span></h3>
         <AskPilot v-if="showChat" :namespace="namespace" :name="name" :milestone="milestone" />
-        <StreamComposer
+        <Composer
           v-else-if="perms?.steer"
-          :namespace="namespace"
-          :name="name"
-          :project="project"
-          :milestone-iid="milestone.iid"
-          steer
+          v-model="note.body"
+          v-model:target="note.target"
+          mode="note"
+          :placeholder="note.placeholder"
+          :hint="note.hint"
+          :busy="note.sending"
+          :disabled="!!note.disabledReason"
+          :error="note.error"
+          :targets="note.targets"
+          :suggestions="slashSuggestions"
+          :blocked="note.blocked"
+          :connect-url="note.connectUrl"
+          @send="note.send"
         />
         <p v-if="!perms?.chat && !perms?.steer" class="empty-sm">Read-only: only the milestone's owners can message the pilot.</p>
       </section>

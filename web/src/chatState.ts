@@ -1,4 +1,4 @@
-import type { ChatKind, ChatState, TaskPhase } from './types'
+import type { AutopilotItem, ChatKind, ChatState, TaskPhase } from './types'
 
 // Efforts the Desk chat API accepts on use/effort commands (api/v1alpha1.Efforts).
 export const chatEfforts = ['low', 'medium', 'high', 'xhigh', 'max'] as const
@@ -159,4 +159,82 @@ export function agentTurnPending(
   if (kind === 'command') return false
   if (state !== 'queued' && state !== 'delivered') return false
   return !hasReply
+}
+
+// The chat composer's draft (TaskChat): the typed body, the retry key and
+// the kind stay in sessionStorage until a 2xx, so a retry or a reload sends
+// the same clientKey (docs/ui.md, "Composer").
+export interface ChatDraft {
+  body: string
+  clientKey: string
+  kind: ChatKind
+}
+
+export function chatDraftKey(namespace: string, name: string, task: string): string {
+  return `desk-chat:${namespace}/${name}/${task}`
+}
+
+// parseChatDraft reads a stored draft; anything else is no draft.
+export function parseChatDraft(raw: string | null): ChatDraft | null {
+  if (!raw) return null
+  try {
+    const d = JSON.parse(raw) as Partial<ChatDraft> | null
+    if (
+      typeof d?.body === 'string' &&
+      typeof d.clientKey === 'string' &&
+      d.clientKey &&
+      (d.kind === 'message' || d.kind === 'interrupt' || d.kind === 'command')
+    ) {
+      return { body: d.body, clientKey: d.clientKey, kind: d.kind }
+    }
+  } catch {
+    /* not JSON */
+  }
+  return null
+}
+
+export function readChatDraft(key: string): ChatDraft | null {
+  try {
+    return parseChatDraft(sessionStorage.getItem(key))
+  } catch {
+    return null // private mode
+  }
+}
+
+// writeChatDraft takes the key: a post that outlives a task switch clears
+// its own task's draft, not the one now shown.
+export function writeChatDraft(key: string, d: ChatDraft | null): void {
+  try {
+    if (!d) sessionStorage.removeItem(key)
+    else sessionStorage.setItem(key, JSON.stringify(d))
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+// chatPostBody is what a send posts: the trimmed text, "Stop." for an
+// empty interrupt, and empty (nothing to send) for an empty message.
+export function chatPostBody(kind: ChatKind, text: string): string {
+  return text.trim() || (kind === 'interrupt' ? 'Stop.' : '')
+}
+
+// modelCommand is the Model… form's command, or why it cannot be sent. An
+// effort of "" or "default" leaves the effort out.
+export function modelCommand(engine: 'claude' | 'cursor', model: string, effort: string): ChatCommand | string {
+  const m = model.trim()
+  if (!m) return 'Model needs a name.'
+  if (effort && effort !== 'default') return { cmd: 'use', engine, model: m, effort }
+  return { cmd: 'use', engine, model: m }
+}
+
+// skipCommand is the Skip… command, or why it cannot be sent.
+export function skipCommand(issue: number | string): ChatCommand | string {
+  const n = typeof issue === 'number' ? issue : Number(issue)
+  if (!Number.isFinite(n) || n <= 0) return 'Pick an issue to skip.'
+  return { cmd: 'skip', issue: n }
+}
+
+// skipOptions are the autopilot's issues Skip… offers: those not merged.
+export function skipOptions(items: AutopilotItem[] | undefined): AutopilotItem[] {
+  return (items ?? []).filter((i) => i.state !== 'Merged')
 }

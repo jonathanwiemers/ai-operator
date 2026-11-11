@@ -9,10 +9,18 @@ import {
   historyStreamKinds,
   pilotStreamKinds,
   runtimeStreamKinds,
+  keepNoteTarget,
   kindsForFilter,
+  noteDisabledReason,
+  noteHint,
+  notePlaceholder,
+  noteTargetLabel,
+  noteTargets,
   projectDot,
   projectNeedsYou,
   sameLocalDay,
+  slashOpens,
+  slashPick,
   streamEventKey,
 } from '../src/stream.ts'
 
@@ -174,4 +182,72 @@ test('the milestone Stream tab has runtime chips and kinds only', async () => {
   for (const f of ['all', 'runs', 'ci', 'merged', 'chat', 'needs']) {
     for (const k of runtimeKindsForFilter(f)) assert.ok(!pilotStreamKinds.includes(k), `${k} is a pilot kind`)
   }
+})
+
+// A project with an idle milestone (8), a running one (9), a stored one
+// without tracking issue or spec (10), and tasks with and without an issue.
+const noteProject = {
+  milestones: [
+    { iid: 8, title: 'Idle', trackingIssueIID: 80, tasks: [{ name: 't-a', issue: { iid: 1, title: 'A' } }] },
+    {
+      iid: 9,
+      title: 'Running',
+      spec: { status: { autopilot: { phase: 'Running' } } },
+      tasks: [{ name: 't-b', issue: { iid: 2, title: 'B' } }, { name: 't-none' }],
+    },
+    { iid: 10, title: 'Stored', tasks: [] },
+  ],
+  unplanned: [{ name: 't-c', issue: { iid: 3, title: 'C' } }],
+}
+
+test('noteTargets: active pilots (the preferred one first), then tasks with an issue', () => {
+  assert.deepEqual(noteTargets(null), [])
+  const label = (ts) => ts.map((t) => (t.type === 'pilot' ? `%${t.milestoneIID}` : `#${t.issueIID}`))
+  assert.deepEqual(label(noteTargets(noteProject)), ['%9', '#1', '#2', '#3'])
+  assert.deepEqual(label(noteTargets(noteProject, 8)), ['%8', '%9', '#1', '#2', '#3'])
+  assert.deepEqual(label(noteTargets(noteProject, 10)), ['%9', '#1', '#2', '#3'])
+  assert.deepEqual(noteTargets(noteProject, 8)[0], { type: 'pilot', milestoneIID: 8, title: 'Idle', trackingIssueIID: 80 })
+  assert.deepEqual(noteTargets(noteProject)[1], { type: 'task', task: 't-a', issueIID: 1, title: 'A' })
+})
+
+test('keepNoteTarget keeps an offered target, else takes the first', () => {
+  const list = noteTargets(noteProject)
+  assert.equal(keepNoteTarget([], list[0]), null)
+  assert.equal(keepNoteTarget(list, null), list[0])
+  const copy = { ...list[2] }
+  assert.equal(keepNoteTarget(list, copy), copy)
+  assert.equal(keepNoteTarget(list, { type: 'task', task: 'gone', issueIID: 99, title: 'x' }), list[0])
+  assert.equal(keepNoteTarget(list, { type: 'pilot', milestoneIID: 8, title: 'Idle' }), list[0])
+})
+
+test('noteDisabledReason: loading, GitLab, roles, targets, in that order', () => {
+  assert.equal(noteDisabledReason(null, true, 3), 'Loading…')
+  assert.equal(noteDisabledReason({ enabled: true, connected: false, login: '/x' }, true, 3), 'Connect GitLab to post.')
+  assert.equal(noteDisabledReason({ enabled: true, connected: false }, true, 3), 'GitLab is not set up for your user here.')
+  assert.equal(noteDisabledReason({ enabled: true, connected: true }, false, 3), 'Your roles may not post comments on this project.')
+  assert.equal(noteDisabledReason({ enabled: true, connected: true }, undefined, 0), 'No pilot or issue to post to yet.')
+  assert.equal(noteDisabledReason({ enabled: true, connected: true }, undefined, 1), '')
+})
+
+test('noteHint, noteTargetLabel and notePlaceholder name the target', () => {
+  const pilot = { type: 'pilot', milestoneIID: 9, title: 'Running' }
+  const task = { type: 'task', task: 't-a', issueIID: 1, title: 'A' }
+  assert.equal(noteHint(null), 'Pick where to post')
+  assert.equal(noteHint(pilot), 'Posts on milestone %9 as /pilot … in your GitLab name')
+  assert.equal(noteHint({ ...pilot, trackingIssueIID: 90 }), 'Posts on tracking issue #90 as /pilot … in your GitLab name')
+  assert.equal(noteHint(task), 'Comment on #1; start with /agent to start a run')
+  assert.equal(noteTargetLabel(null), '→ Pick target')
+  assert.equal(noteTargetLabel(pilot), '→ Pilot · Running')
+  assert.equal(noteTargetLabel(task), '→ #1 A')
+  assert.equal(notePlaceholder(pilot), 'Message the pilot…  /  for commands')
+  assert.equal(notePlaceholder(task), 'Comment…  /  for commands')
+  assert.equal(notePlaceholder(null), 'Comment…  /  for commands')
+})
+
+test('slashOpens and slashPick', () => {
+  for (const b of ['/', '/pil', 'yes ', 'yes P']) assert.equal(slashOpens(b), true, b)
+  for (const b of ['', 'hi', '/pilot pause', 'yes P1', ' /x']) assert.equal(slashOpens(b), false, b)
+  assert.equal(slashPick('/pilot pause'), '/pilot pause ')
+  assert.equal(slashPick('/pilot skip #'), '/pilot skip #')
+  assert.equal(slashPick('/agent revisit '), '/agent revisit ')
 })

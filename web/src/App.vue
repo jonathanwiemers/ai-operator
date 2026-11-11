@@ -345,6 +345,10 @@ watch(notifyActive, (on) => {
   .main {
     padding: 0 env(safe-area-inset-right) calc(var(--bottombar) + env(safe-area-inset-bottom))
       env(safe-area-inset-left);
+    /* The pane grows with its content and the page scrolls. visible, not
+       auto: a pane that never scrolls would still hold its sticky children
+       (the chat composer) instead of the viewport. */
+    overflow: visible;
   }
   /* A text field has the focus, so the keyboard is up: the bottom bar goes
      and the composer gets its room. */
