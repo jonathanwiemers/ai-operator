@@ -126,6 +126,7 @@ func trackingComments(e *projectEnv) string {
 
 func TestAutopilotWorksThroughTheQueue(t *testing.T) {
 	e := newAutopilotEnv(t)
+	e.releaseOff()
 
 	// First poll with a plan: tracking issue, and the API goes first
 	// although the plan lists the UI first, because the UI depends on it.
@@ -276,6 +277,7 @@ func TestAutopilotPauseBeforeThePlan(t *testing.T) {
 
 func TestAutopilotPausesAndResumes(t *testing.T) {
 	e := newAutopilotEnv(t)
+	e.releaseOff()
 	e.reconcile()
 	e.reconcile()
 	e.finishRun(1, "sha-api", func(r *aiv1.RunStatus) { r.BlockingFindings = 2 })
@@ -1638,8 +1640,8 @@ func TestAutopilotPlannedReleaseWaitsFromTheMerge(t *testing.T) {
 	if len(ap.Releases) != 1 || got.SHA != "merge-sha-api" || got.State != aiv1.ReleaseRunning || got.ReleasedSHA != "h1" {
 		t.Fatalf("want the record running with #1's merge commit, got %+v", ap.Releases)
 	}
-	if len(e.gl.CreatedPipelines) != 1 || !slices.Equal(got.Issues, []int64{1}) {
-		t.Fatalf("want one release pipeline containing #1, got %+v %+v", e.gl.CreatedPipelines, got)
+	if len(e.gl.Releases) != 1 || e.gl.Releases[0].Ref != "h1" || !slices.Equal(got.Issues, []int64{1}) {
+		t.Fatalf("want one release of main's green head containing #1, got %+v %+v", e.gl.Releases, got)
 	}
 }
 

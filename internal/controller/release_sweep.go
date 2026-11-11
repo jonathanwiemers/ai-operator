@@ -128,7 +128,6 @@ func (r *AgentProjectReconciler) sweepRelease(ctx context.Context, x *releaser, 
 	if err != nil || !tagging {
 		return err
 	}
-	x.tagging = &tagging
 	tag, ok, err := newestReleaseTag(ctx, x.gl, repo)
 	if err != nil || !ok {
 		return err

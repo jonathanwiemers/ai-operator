@@ -13,9 +13,9 @@ import (
 // The merge/push guard (docs/specs/cross-repo-changes.spec.md, decision 11).
 // The bot's token can reach every project of its group, so the operator and
 // the runner refuse, by themselves, a merge outside the home project or a
-// companion target with autoMerge, merge request and pipeline writes outside
-// the home project and its targets, and the deletion of anything but an
-// agent/ branch. Reads, issue and note writes stay unguarded: links and
+// companion target with autoMerge, merge request, pipeline and release
+// writes outside the home project and its targets, and the deletion of
+// anything but an agent/ branch. Reads, issue and note writes stay unguarded: links and
 // comments in other projects are wanted.
 
 // AgentBranchPrefix is the prefix of every branch the operator and the
@@ -139,7 +139,7 @@ type guardedStats struct {
 
 func (g *guardedStats) Stats() Stats { return g.stats.Stats() }
 
-// mrWrite refuses a merge request or pipeline write outside the home
+// mrWrite refuses a merge request, pipeline or release write outside the home
 // project and its targets.
 func (g *guarded) mrWrite(project, op string) error {
 	if g.p.known(project) {
@@ -188,6 +188,22 @@ func (g *guarded) CreatePipeline(ctx context.Context, project, ref string, vars 
 		return nil, err
 	}
 	return g.API.CreatePipeline(ctx, project, ref, vars...)
+}
+
+func (g *guarded) RetryPipeline(ctx context.Context, project string, id int64) (*Pipeline, error) {
+	if err := g.mrWrite(project, fmt.Sprintf("retry pipeline %d", id)); err != nil {
+		return nil, err
+	}
+	return g.API.RetryPipeline(ctx, project, id)
+}
+
+// CreateRelease creates a tag, a write like a pipeline: refused outside the
+// home project and its targets.
+func (g *guarded) CreateRelease(ctx context.Context, project, tag, ref, description string) error {
+	if err := g.mrWrite(project, "create release "+tag); err != nil {
+		return err
+	}
+	return g.API.CreateRelease(ctx, project, tag, ref, description)
 }
 
 func (g *guarded) CreateMergeRequestPipeline(ctx context.Context, project string, iid int64) error {

@@ -1825,8 +1825,10 @@ each entry once per poll. No model decides any of it:
      A build without a release version (`dev`) is never live, and the reason
      says so;
    - a project that tags its default branch (one of its 20 newest tags
-     points to a merge commit created in the last 30 days): a tag contains
-     the merge commit;
+     points to a commit created in the last 30 days, a merge commit or,
+     for fast-forward and squash merges, a single-parent one): a tag contains
+     the merge commit, other than the tag of an operator release that still
+     builds (its tag pipeline has not succeeded, or failed);
    - any other project: merged is enough.
 
    `release` records the tag that made it live. A companion of a milestone
@@ -2012,56 +2014,57 @@ tag contains the home merge, the companion lands on by itself. A companion
 outside a milestone on autopilot adds its record to the project's list, see
 [outside milestones](#outside-milestones).
 
-**The contract with the project's CI:** the operator starts a pipeline on the
-default branch with the variables `AGENT_RELEASE=true` and
-`AGENT_RELEASE_NOTES=<text>`, and that pipeline runs the release job, which
-tags the default branch with a calendar version (`YEAR.MONTH.N`). Nothing
-else is needed: a human keeps the `web` pipeline. ai-operator uses the
-contract itself: its `release` job runs only in a `web` pipeline or an `api`
-pipeline with `AGENT_RELEASE=true`, and puts `AGENT_RELEASE_NOTES` at the top
-of the GitLab release (see [releasing.md](releasing.md)).
+**No contract with the project's CI:** the operator creates the release
+itself through the API (`POST /projects/:id/releases`): a tag with the next
+calendar version (`YEAR.MONTH.N`, counted on from the project's tags) on the
+default branch and a GitLab release with the notes. Whatever the project's CI
+runs for a tag (images, charts, packages, a deploy) is what the release
+builds; a project without tag pipelines is released by the tag alone. A human
+releases the same way, in the GitLab UI (*Deploy → Releases → New release*)
+or with `glab release create <version> --ref main --notes "<why>"`; the
+operator sees such a tag like its own. ai-operator itself builds in the
+pipeline of its release tags (see [releasing.md](releasing.md)).
 
 A decision is `Planned` until its commit is merged, then `Waiting`. Each
 poll checks the oldest decisions first, in this order:
 
 1. **Mode Off:** with `spec.workflow.release.mode: Off` the decision is
    `NotApplicable` ("release.mode is Off").
-2. **Already released:** before anything is started, the operator asks
+2. **Already released:** before anything is created, the operator asks
    whether a calendar-version tag contains the commit. If one does, the
    decision is `AlreadyReleased` with that version: a project that still
-   releases on push works and is reported. If the tag is the version of a
-   release the operator ran for this milestone, the decision is `Released`
-   instead ("contained in 2026.11.3").
-3. **Not applicable:** a project that does not tag its default branch
-   ([landing's rule](#landing): none of its 20 newest tags is on a merge
-   commit of the last 30 days) gets `NotApplicable`: no pipeline, no pause.
-4. **One at a time:** while one release of the milestone is `Running`, the
-   others wait ("after the running release"). A decision whose commit the
-   new tag contains is `Released` with that version, without a pipeline of
-   its own.
-5. **Minimum interval:** a release starts at most once per
+   tags on push, or a release a human created, is reported. If the tag is
+   the version of a release the operator ran for this milestone, the
+   decision is `Released` instead ("contained in 2026.11.3"); while that
+   release still runs, the decision waits for it. The tag of a `Failed`
+   release does not count.
+3. **One at a time:** while one release of the milestone is `Running`, the
+   others wait ("after the running release").
+4. **Minimum interval:** a release starts at most once per
    `spec.workflow.release.minInterval` (default 15 m) after the last start,
    failed attempts included; the reason says until when. The milestone's
    final release is exempt.
-6. **Green head:** a pipeline cannot be pinned to a commit, so a release is
-   the head of the default branch. The newest pipeline of the default branch
-   (release pipelines skipped) must be `success`, and its commit must contain
-   the decision's commit (the same commit, or a descendant). Until then the
-   decision waits, with the reason.
-7. **Started:** the decision is `Running`, with the pipeline, the head it
-   runs on (`releasedSHA`), and the milestone's merged issues and merge
-   requests that no earlier release lists.
+5. **Green head:** the release tags the head of the default branch. Its
+   newest pipeline must be `success`, and its commit must contain the
+   decision's commit (the same commit, or a descendant). Until then the
+   decision waits, with the reason. A default branch without any pipeline (a
+   project without CI there) releases the decision's commit itself.
+6. **Created:** the operator creates the tag and the GitLab release at that
+   head. The decision is `Running`, with the version, the release's link,
+   the head (`releasedSHA`), and the milestone's merged issues and merge
+   requests that no earlier release lists. If the version's tag exists
+   already (someone tagged meanwhile), the decision waits and the next poll
+   counts on from that tag.
 
-A `Running` decision follows its pipeline. Once it succeeded and a tag
-contains the commit, the decision is `Released` with its version and the
-link to the GitLab release. A pipeline that passed without such a tag ("does
-its CI know AGENT_RELEASE?"), that failed or was canceled is a failed
-attempt.
+A `Running` decision follows the pipeline of its tag. Once it succeeded (or
+was skipped), the decision is `Released`. Without a tag pipeline 10 minutes
+after the release was created, the tag is the release: `Released`, with the
+reason "no pipeline for the tag …". A tag pipeline that failed or was
+canceled is a failed attempt.
 
-**Retry once:** after a failed attempt the decision waits again and is
-started once more, with the same checks; the reason keeps the failure. After
-the second failed attempt it is `Failed` with the reason, and the queue goes
-on.
+**Retry once:** after a failed attempt the operator retries the tag pipeline
+(never a new tag); the reason keeps the failure. After the second failed
+attempt the decision is `Failed` with the reason, and the queue goes on.
 
 A GitLab error ends the poll; the next poll tries again.
 
@@ -2099,14 +2102,15 @@ contains the milestone's last merge. The order is: final release, then the
   [`pauseKind: release`](#release), with the reason. Its ways out:
   - By itself, once a tag contains the commit (released by hand): the record
     is `AlreadyReleased` with that version and autopilot is done.
-  - `/agent resume`: the final release starts over (`Waiting`, attempts
-    back to 0, the same checks and one retry again).
+  - `/agent resume`: the final release starts over: its tag pipeline is
+    retried as a first attempt (one retry again); without a tag yet it is
+    `Waiting` with attempts back to 0 and the same checks.
   - `/agent endMilestone` (owners only): the record is `Dropped` ("ended
     without a release by @you") and autopilot is done.
 
-A release pipeline that failed on a head does not hold a later attempt back:
-the green-head check skips the pipelines that did not succeed on a head a
-release ran on.
+The green-head check looks at the default branch's own pipelines only;
+pipelines recorded for a release are skipped, so they never hold a later
+release back.
 
 #### Outside milestones
 
@@ -2152,8 +2156,8 @@ history events; their release notes say why, without a list of issues.
 when that run ends. The retry after a failed attempt is the same run; a
 final release started over with `/agent resume` is a new one.
 
-- Started: "🚀 Release started (planner): <why>. Contains #1, #2. Pipeline
-  <link>". An owner's release names the owner.
+- Started: "🚀 Release started (planner): <why>. Contains #1, #2. Release
+  2026.11.3: <link>". An owner's release names the owner.
 - Released: "📦 Released 2026.11.3: <link to the GitLab release>".
 - Failed after the retry: "❌ The release failed twice: <reason>. The queue
   goes on." The final release says "the milestone is not done without it"
@@ -2161,7 +2165,7 @@ final release started over with `/agent resume` is a new one.
 - The final release's end is commented also when nothing ran, since it
   decides when the milestone is done: "📦 Already released in 2026.11.3
   (…)", "📦 No release needed: nothing release-relevant since 2026.11.2",
-  "📦 No release: group/app does not tag its default branch". A final
+  "📦 No release: release.mode is Off". A final
   release released by hand while paused is said by the resume comment
   only. A dropped decision and one that waits are not commented; a
   decision that a release of another one contains says so in its record.
@@ -2169,8 +2173,8 @@ final release started over with `/agent resume` is a new one.
 The record's `announced` is the state last commented on: a comment that
 fails is posted on the next poll, and none is posted twice.
 
-**The release notes** (`AGENT_RELEASE_NOTES`, for the release job to put
-into the GitLab release) are markdown:
+**The release notes** (the description of the GitLab release the operator
+creates; the project's tag pipeline may add to it) are markdown:
 
 ```markdown
 ## Why

@@ -849,3 +849,23 @@ func TestGetPipeline(t *testing.T) {
 		t.Fatalf("err = %v, want not found", err)
 	}
 }
+
+func TestCreateReleaseBody(t *testing.T) {
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.EscapedPath() != "/api/v4/projects/group%2Fapp/releases" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.EscapedPath())
+		}
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"tag_name":"2026.11.3"}`))
+	}))
+	defer srv.Close()
+	if err := New(srv.URL, "tok").CreateRelease(context.Background(), "group/app", "2026.11.3", "abc", "why"); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"tag_name":"2026.11.3","ref":"abc","name":"2026.11.3","description":"why"}`; strings.TrimSpace(body) != want {
+		t.Errorf("body = %s, want %s", body, want)
+	}
+}

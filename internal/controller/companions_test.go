@@ -77,7 +77,7 @@ func (l *landingEnv) api() gitlab.API {
 
 func (l *landingEnv) poll() {
 	l.t.Helper()
-	if err := l.r.landCompanion(l.ctx, l.api(), l.spec, &l.e, []string{"alice"}); err != nil {
+	if err := l.r.landCompanion(l.ctx, l.api(), l.spec, &l.e, []string{"alice"}, nil); err != nil {
 		l.t.Fatal(err)
 	}
 }
@@ -166,10 +166,13 @@ func TestCompanionLanding(t *testing.T) {
 			l.tag("v1.2.0", 2, 31*day, false)
 			l.green("c1")
 		}, steps: []landingStep{{want: aiv1.LandingReady}}},
-		{name: "tags on single-parent commits: merged is enough", setup: func(l *landingEnv) {
+		{name: "fast-forward merges: a tag on a single-parent commit counts", setup: func(l *landingEnv) {
 			l.tag("v1.2.0", 1, day, false)
 			l.green("c1")
-		}, steps: []landingStep{{want: aiv1.LandingReady}}},
+		}, steps: []landingStep{
+			{want: aiv1.LandingWaitingRelease, reason: "group/app tags its default branch, and no tag contains the merge m1 yet"},
+			{do: func(l *landingEnv) { l.tag("v1.3.0", 1, 0, true) }, want: aiv1.LandingReady},
+		}, release: "v1.3.0", refs: 2},
 		{name: "a project without tags: merged is enough", setup: func(l *landingEnv) { l.green("c1") },
 			steps: []landingStep{{want: aiv1.LandingReady}}},
 		{name: "docs-only is live at merge", setup: func(l *landingEnv) {
@@ -855,7 +858,7 @@ func TestCompanionMergePipelineRateLimited(t *testing.T) {
 	l.poll() // marked ready
 	for range 2 {
 		l.home.Clock = l.home.Clock.Add(time.Hour)
-		if err := l.r.landCompanion(l.ctx, l.api(), l.spec, &l.e, []string{"alice"}); err == nil || !strings.Contains(err.Error(), "starting a pipeline for group/infra!1") {
+		if err := l.r.landCompanion(l.ctx, l.api(), l.spec, &l.e, []string{"alice"}, nil); err == nil || !strings.Contains(err.Error(), "starting a pipeline for group/infra!1") {
 			t.Fatalf("the rate limit is an error: %v", err)
 		}
 	}

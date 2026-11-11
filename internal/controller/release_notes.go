@@ -13,8 +13,8 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
-// maxReleaseNotes caps AGENT_RELEASE_NOTES in bytes, well under GitLab's
-// limit for a variable and the release job's environment.
+// maxReleaseNotes caps the release notes in bytes, well under GitLab's limit
+// for a release description, leaving room for what a tag pipeline adds.
 const maxReleaseNotes = 4000
 
 // maxUntrustedText caps one piece of untrusted text (a reason, a title) in
@@ -86,7 +86,7 @@ func releaseWhyLine(rec aiv1.ReleaseRecord, milestone string) string {
 	return s + ": " + sentence(why)
 }
 
-// releaseNotes is AGENT_RELEASE_NOTES, markdown: why (who, after which
+// releaseNotes is the description of the GitLab release, markdown: why (who, after which
 // issue, the reason), the issues and merge requests the release contains
 // ("#IID <title> (!MR)", titles from items) and a link to the milestone.
 // Agent text in it is untrusted. It is at most maxReleaseNotes bytes: the
@@ -202,8 +202,11 @@ func releaseAnnouncement(rec aiv1.ReleaseRecord) string {
 		} else {
 			s += " Contains no new issue of the milestone."
 		}
-		if rec.PipelineURL != "" {
-			s += " Pipeline " + rec.PipelineURL
+		switch {
+		case rec.ReleaseURL != "":
+			s += " Release " + rec.Version + ": " + rec.ReleaseURL
+		case rec.Version != "":
+			s += " Release " + rec.Version + "."
 		}
 		return s
 	case !rec.State.Ended() || rec.Announced == rec.State || rec.Announced != aiv1.ReleaseRunning && !rec.Final:

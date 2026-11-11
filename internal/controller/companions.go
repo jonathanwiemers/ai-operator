@@ -41,8 +41,8 @@ import (
 //
 // No model decides any of it.
 
-// tagWindow is how recent a tag on a merge commit must be for a project to
-// count as one that tags its default branch.
+// tagWindow is how recent a tagged commit must be for a project to count as
+// one that tags its default branch.
 const tagWindow = 30 * 24 * time.Hour
 
 // syncCompanions records the companions whose home merge request was merged
@@ -101,6 +101,7 @@ func (r *AgentProjectReconciler) syncCompanions(ctx context.Context, gl gitlab.A
 		kept = append(kept, e)
 	}
 	st.Companions = kept
+	building := buildingReleases(st.Releases, autopilots)
 	for i := range st.Companions {
 		e := &st.Companions[i]
 		if e.State.Ended() {
@@ -108,7 +109,7 @@ func (r *AgentProjectReconciler) syncCompanions(ctx context.Context, gl gitlab.A
 		}
 		was := e.State
 		owners := r.companionOwners(spec, e, specTasks)
-		if err := r.landCompanion(ctx, gl, spec, e, owners); err != nil {
+		if err := r.landCompanion(ctx, gl, spec, e, owners, building); err != nil {
 			errs = append(errs, fmt.Errorf("companion %s: %w", landingRef(e), err))
 			continue
 		}
@@ -168,7 +169,8 @@ func (r *AgentProjectReconciler) newCompanion(ctx context.Context, gl gitlab.API
 
 // landCompanion checks one entry that has not ended and moves it on;
 // owners are the ones its comments mention.
-func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, e *aiv1.CompanionStatus, owners []string) error {
+func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, e *aiv1.CompanionStatus, owners []string,
+	building map[string]bool) error {
 	now := metav1.NewTime(r.now())
 	ref := landingRef(e)
 	mr, err := gl.GetMergeRequest(ctx, e.Project, e.MRIID)
@@ -208,7 +210,7 @@ func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.AP
 	blocked := func(format string, args ...any) error { return set(aiv1.LandingBlocked, format, args...) }
 
 	if e.State == aiv1.LandingWaitingRelease {
-		live, release, why, err := r.homeLive(ctx, gl, spec, e)
+		live, release, why, err := r.homeLive(ctx, gl, spec, e, building)
 		if err != nil {
 			return err
 		}
@@ -305,9 +307,12 @@ func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.AP
 //   - a home merge that touches only docs/** and *.md is live at merge;
 //   - the operator's own project (--self-project): the running operator is
 //     at least the first release that contains the merge;
-//   - a project that tags its default branch: a tag contains the merge;
+//   - a project that tags its default branch: a tag contains the merge,
+//     other than a tag in building (a release the operator created whose
+//     tag pipeline has not succeeded);
 //   - any other project: merged is enough.
-func (r *AgentProjectReconciler) homeLive(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, e *aiv1.CompanionStatus) (live bool, release, why string, err error) {
+func (r *AgentProjectReconciler) homeLive(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, e *aiv1.CompanionStatus,
+	building map[string]bool) (live bool, release, why string, err error) {
 	if e.DocsOnly {
 		return true, "", "", nil
 	}
@@ -345,14 +350,41 @@ func (r *AgentProjectReconciler) homeLive(ctx context.Context, gl gitlab.API, sp
 	if len(refs) == 0 {
 		return false, "", fmt.Sprintf("%s tags its default branch, and no tag contains the merge %s yet", home, short(sha)), nil
 	}
+	built := slices.DeleteFunc(slices.Clone(refs), func(ref gitlab.CommitRef) bool { return ref.Type == "tag" && building[ref.Name] })
+	if len(built) == 0 {
+		return false, "", fmt.Sprintf("the release %s that contains the merge %s still builds", refs[0].Name, short(sha)), nil
+	}
+	refs = built
 	if first, ok := firstRelease(refs); ok {
 		return true, releaseName(first), "", nil
 	}
 	return true, refs[0].Name, "", nil
 }
 
+// buildingReleases are the versions of the releases the operator created
+// whose tag pipeline has not succeeded (running or failed), in the project's
+// and the milestones' records: their tag is no release that is live yet.
+func buildingReleases(project []aiv1.ReleaseRecord, autopilots map[int64]*aiv1.AgentTask) map[string]bool {
+	out := map[string]bool{}
+	add := func(recs []aiv1.ReleaseRecord) {
+		for _, rec := range recs {
+			if rec.Version != "" && (rec.State == aiv1.ReleaseRunning || rec.State == aiv1.ReleaseFailed) {
+				out[rec.Version] = true
+			}
+		}
+	}
+	add(project)
+	for _, t := range autopilots {
+		if t != nil && t.Status.Autopilot != nil {
+			add(t.Status.Autopilot.Releases)
+		}
+	}
+	return out
+}
+
 // tagsDefaultBranch reports whether project tags its default branch: one
-// of its newest tags points to a merge commit created within tagWindow.
+// of its newest tags points to a commit created within tagWindow. The commit
+// may have one parent: a fast-forward or squash merge creates no merge commit.
 func (r *AgentProjectReconciler) tagsDefaultBranch(ctx context.Context, gl gitlab.API, project string) (bool, error) {
 	tags, err := gl.ListTags(ctx, project, gitlab.ListTagsOptions{Limit: 20})
 	if err != nil {
@@ -361,7 +393,7 @@ func (r *AgentProjectReconciler) tagsDefaultBranch(ctx context.Context, gl gitla
 	now := r.now()
 	return slices.ContainsFunc(tags, func(t gitlab.Tag) bool {
 		c := t.Commit
-		return len(c.ParentIDs) > 1 && c.CreatedAt != nil && now.Sub(*c.CreatedAt) <= tagWindow
+		return c.CreatedAt != nil && now.Sub(*c.CreatedAt) <= tagWindow
 	}), nil
 }
 

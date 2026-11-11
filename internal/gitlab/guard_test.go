@@ -184,6 +184,16 @@ func TestGuard(t *testing.T) {
 			_, err := api.CreatePipeline(ctx, p, "agent/1-x", gitlab.PipelineVariable{Key: "AGENT_RELEASE", Value: "true"})
 			return err
 		}, did: func(f *gitlabfake.Fake) bool { return len(f.BranchPipelines) > 0 }},
+		{name: "retry pipeline in unknown project", project: unrelated, call: func(api gitlab.API, p string) error {
+			_, err := api.RetryPipeline(ctx, p, 1)
+			return err
+		}, did: func(f *gitlabfake.Fake) bool { return len(f.Retried) > 0 }},
+		{name: "release in never-target", project: secrets, call: func(api gitlab.API, p string) error {
+			return api.CreateRelease(ctx, p, "2026.11.1", "main", "notes")
+		}, did: func(f *gitlabfake.Fake) bool { return len(f.Releases) > 0 }},
+		{name: "release at home", project: home, allowed: true, call: func(api gitlab.API, p string) error {
+			return api.CreateRelease(ctx, p, "2026.11.1", "main", "notes")
+		}, did: func(f *gitlabfake.Fake) bool { return len(f.Releases) > 0 }},
 		{name: "MR pipeline in unknown project", project: unrelated, call: func(api gitlab.API, p string) error {
 			return api.CreateMergeRequestPipeline(ctx, p, 1)
 		}, did: func(f *gitlabfake.Fake) bool { return len(f.MRPipelines) > 0 }},

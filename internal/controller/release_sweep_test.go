@@ -104,8 +104,8 @@ func TestSweepReleasesOldUnreleasedCommits(t *testing.T) {
 	if rec.By != aiv1.ReleaseBySweep || rec.SHA != "h1" || rec.Why != want {
 		t.Fatalf("record %+v, want a sweep record of h1 because %q", rec, want)
 	}
-	if len(e.gl.CreatedPipelines) != 1 || e.gl.CreatedPipelines[0].Ref != "main" {
-		t.Fatalf("release pipelines %+v", e.gl.CreatedPipelines)
+	if len(e.gl.Releases) != 1 || e.gl.Releases[0].Ref != "h1" || e.gl.Releases[0].Tag != "2026.11.2" {
+		t.Fatalf("releases %+v", e.gl.Releases)
 	}
 
 	// While it runs, no second record.
@@ -113,9 +113,7 @@ func TestSweepReleasesOldUnreleasedCommits(t *testing.T) {
 	e.sync()
 	e.wantStates(aiv1.ReleaseRunning)
 
-	e.gl.SetPipelineStatus(e.gl.CreatedPipelines[0].ID, "success")
-	created := e.now
-	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h1", ParentIDs: []string{"t1", "c1"}, CreatedAt: &created})
+	e.gl.SetPipelineStatus(e.gl.Releases[0].PipelineID, "success")
 	e.gl.Compares["2026.11.2..main"] = &gitlab.Compare{}
 	e.sync()
 	e.wantStates(aiv1.ReleaseReleased)
@@ -126,8 +124,8 @@ func TestSweepReleasesOldUnreleasedCommits(t *testing.T) {
 	e.now = e.now.Add(48 * time.Hour)
 	e.sync()
 	e.wantStates(aiv1.ReleaseReleased)
-	if len(e.gl.CreatedPipelines) != 1 {
-		t.Fatalf("release pipelines %+v", e.gl.CreatedPipelines)
+	if len(e.gl.Releases) != 1 {
+		t.Fatalf("releases %+v", e.gl.Releases)
 	}
 }
 
@@ -162,8 +160,8 @@ func TestSweepAddsNothing(t *testing.T) {
 			setup(e)
 			e.sync()
 			e.wantStates()
-			if len(e.gl.CreatedPipelines) != 0 {
-				t.Fatalf("release pipelines %+v", e.gl.CreatedPipelines)
+			if len(e.gl.Releases) != 0 {
+				t.Fatalf("releases %+v", e.gl.Releases)
 			}
 		})
 	}
@@ -180,8 +178,8 @@ func TestSweepAfterAFailedRelease(t *testing.T) {
 	e.now = e.now.Add(time.Hour)
 	e.sync()
 	e.wantStates(aiv1.ReleaseFailed)
-	if len(e.gl.CreatedPipelines) != 0 {
-		t.Fatalf("release pipelines %+v", e.gl.CreatedPipelines)
+	if len(e.gl.Releases) != 0 {
+		t.Fatalf("releases %+v", e.gl.Releases)
 	}
 
 	e.compare("2026.11.1", []gitlab.Commit{e.commit("h1", "t1", 26*time.Hour), e.commit("h2", "h1", time.Hour)})
@@ -207,8 +205,8 @@ func TestSweepWithoutMainHealth(t *testing.T) {
 	if r := e.project.Status.Releases[0].Reason; r != "the newest pipeline of main (h1) is failed" {
 		t.Fatalf("reason %q", r)
 	}
-	if len(e.gl.CreatedPipelines) != 0 {
-		t.Fatalf("release pipelines %+v", e.gl.CreatedPipelines)
+	if len(e.gl.Releases) != 0 {
+		t.Fatalf("releases %+v", e.gl.Releases)
 	}
 }
 

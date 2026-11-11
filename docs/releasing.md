@@ -29,7 +29,7 @@ images and the OCI chart to `ghcr.io`, creates the git tag and the GitHub
 release, if `main` changed since its last release (see
 [GitHub releases](#github-releases)).
 
-GitHub's release tags and releases are its own (the GitLab pipeline tags
+GitHub's release tags and releases are its own (GitLab releases are tagged
 independently, see [GitLab releases](#gitlab-releases)). The mirror must not
 overwrite them.
 
@@ -58,7 +58,8 @@ Calendar versions `YEAR.MONTH.N`:
   month: `2026.10.1`, `2026.10.2`, `2026.10.3`, then `2026.11.1`.
 * Months have no leading zero (`2026.1.1`, not `2026.01.1`), so every version
   is valid SemVer, which Helm requires.
-* The next version is computed from the existing git tags by
+* On GitLab the operator computes the next version from the project's tags
+  when it creates a release. GitHub computes its own with
   [`hack/next-version.sh`](../hack/next-version.sh) (`make version` prints it).
 
 ## GitHub releases
@@ -97,45 +98,51 @@ local `make docker-build` is `dev`, which never counts as a release.
 
 ## GitLab releases
 
-The `release` job in [`.gitlab-ci.yml`](../.gitlab-ci.yml) runs after every
-check job passed, in two kinds of pipeline on `main` only:
+A GitLab release is a tag `YEAR.MONTH.N` on `main` with a GitLab release.
+Nothing in CI decides or tags: the release exists first, and the tag's
+pipeline builds it.
 
-* **The AGENT_RELEASE contract** (the one every project of the operator
-  follows, see [usage.md](usage.md#releases)): an `api` pipeline with the
-  variables `AGENT_RELEASE=true` and `AGENT_RELEASE_NOTES=<text>`. The
-  operator starts it when a release decision is due: the planner's after an
-  issue, the pilot's, an owner's `/agent release [reason]` on the tracking
-  issue, a companion waiting for its home release, the sweep outside
-  milestones, and the final release of every milestone. The notes (why, the
-  milestone, the issues and merge requests it contains) head the GitLab
-  release, above the install section. They are untrusted text: the job
-  writes them verbatim with `printf`, never through `eval` or a heredoc.
-* **A human's `web` pipeline** (*Build → Pipelines → Run pipeline*, or
-  `glab ci run --branch main`): a release without notes. To release by hand
-  with a reason, comment `/agent release [reason]` on a milestone's tracking
-  issue instead; the operator runs it through the contract.
+* **The operator** creates it through the API (`POST /projects/:id/releases`,
+  like for every project it manages, see [usage.md](usage.md#releases)) when
+  a release decision is due: the planner's after an issue, the pilot's, an
+  owner's `/agent release [reason]` on the tracking issue, a companion
+  waiting for its home release, the sweep outside milestones, and the final
+  release of every milestone. It tags `main`'s green head with the next
+  version and writes the notes (why, the milestone, the issues and merge
+  requests it contains) into the release. Then it follows the tag pipeline:
+  success is released, a failed one is retried once.
+* **A human** creates one in the GitLab UI (*Deploy → Releases → New
+  release*, a new tag on `main`) or with the API:
 
-A push to `main` (a merge) runs the checks only, and an `api` pipeline
-without `AGENT_RELEASE=true` releases nothing. The job runs in the
-resource group `release`, so releases never run in parallel, and is not
-interruptible: a newer pipeline cancels only interruptible jobs
-(`workflow:auto_cancel`), so it never cancels a release, running or queued.
-When two release pipelines run out of order, a job whose commit is already
-in a newer release does nothing, so a higher version never holds older
-code. It:
+  ```sh
+  glab release create 2026.11.3 -R jo.wiemers/ai-operator --ref main --notes "Why this release"
+  ```
 
-1. computes the version from the GitLab tags (`hack/next-version.sh`)
+  The operator sees the tag like its own (a pending decision whose commit it
+  contains is *already released*). To release with a reason the operator
+  records, comment `/agent release [reason]` on a milestone's tracking issue
+  instead.
+
+The `release` job in [`.gitlab-ci.yml`](../.gitlab-ci.yml) runs in the
+pipeline of a tag `YEAR.MONTH.N`, after every check job passed. A push to
+`main` (a merge) runs the checks only. The job runs in the resource group
+`release`, so releases never build in parallel, and is not interruptible: a
+newer pipeline cancels only interruptible jobs (`workflow:auto_cancel`), so
+it never cancels a release, running or queued. It:
+
+1. takes the version from the tag (`CI_COMMIT_TAG`)
 2. builds and pushes the images (amd64 only; the cluster has no arm64 agents)
    * `registry.gitlab.com/jo.wiemers/ai-operator:<version>` and `:latest`
    * `registry.gitlab.com/jo.wiemers/ai-operator/agent:<version>` and `:latest`
 3. packages the chart and pushes it to
    `oci://registry.gitlab.com/jo.wiemers/ai-operator/charts/ai-operator`
-4. creates the GitLab release `<version>` (the notes, if any, then the
-   install section), which creates the tag
+4. appends the install section to the tag's GitLab release, keeping its
+   notes, or creates the release for a bare tag. The notes are untrusted
+   text: the job only passes them on as JSON (`jq`), never evaluates them.
 
 Everything uses `CI_JOB_TOKEN`; no project CI/CD variables are needed. The
-operator passes its two variables per pipeline, which the project allows for
-Developers (the role of its token). The chart's
+operator's token needs the Developer role or more, enough to create tags on
+`main` (Maintainer if tags are protected). The chart's
 default image repositories stay on ghcr.io, so a GitLab install sets
 `image.repository` and `agent.image.repository` (the release notes show how).
 The cluster pulls with the GitLab deploy token in `image-pull-secret`.

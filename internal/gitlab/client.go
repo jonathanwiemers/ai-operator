@@ -71,6 +71,7 @@ type API interface {
 	DeleteMergeRequestNote(ctx context.Context, project string, iid, noteID int64) error
 	CreateMergeRequestPipeline(ctx context.Context, project string, iid int64) error
 	CreatePipeline(ctx context.Context, project, ref string, vars ...PipelineVariable) (*Pipeline, error)
+	CreateRelease(ctx context.Context, project, tag, ref, description string) error
 	GetPipeline(ctx context.Context, project string, id int64) (*Pipeline, error)
 	ListPipelines(ctx context.Context, project string, opts ListPipelinesOptions) ([]Pipeline, error)
 	ListPipelineJobs(ctx context.Context, project string, pipelineID int64, scope string) ([]Job, error)
@@ -1130,6 +1131,21 @@ func (c *Client) CreatePipeline(ctx context.Context, project, ref string, vars .
 		return nil, err
 	}
 	return &p, nil
+}
+
+// CreateRelease creates the release tag at ref (a SHA) together with its
+// GitLab release, named tag, with description as its notes. A tag push
+// pipeline runs if the project's CI defines one. An existing tag is a 409 or
+// a 400.
+func (c *Client) CreateRelease(ctx context.Context, project, tag, ref, description string) error {
+	body := struct {
+		TagName     string `json:"tag_name"`
+		Ref         string `json:"ref"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}{tag, ref, tag, description}
+	_, err := c.do(ctx, http.MethodPost, projectPath(project)+"/releases", nil, body, nil)
+	return err
 }
 
 // GetPipeline reads one pipeline.

@@ -174,6 +174,7 @@ func TestRevisitWhileOpenIsNotHandledAgainAfterTheMerge(t *testing.T) {
 
 func TestRevisitOnADoneTrackingIssueIsHandledOnce(t *testing.T) {
 	e := newAutopilotEnv(t)
+	e.releaseOff()
 	e.reconcile()
 	e.reconcile()
 	e.gl.IssueNotes[1] = append(e.gl.IssueNotes[1], gitlab.Note{ID: 77, Author: e.gl.Bot, Body: decisionComment})

@@ -20,6 +20,13 @@ type CreatedPipeline struct {
 	Variables []gitlab.PipelineVariable
 }
 
+// CreatedRelease is a release CreateRelease made.
+type CreatedRelease struct {
+	Tag, Ref, Description string
+	// PipelineID is the tag pipeline it started; 0 with NoTagPipelines.
+	PipelineID int64
+}
+
 // Fake is a minimal in-memory GitLab.
 type Fake struct {
 	mu         sync.Mutex
@@ -98,7 +105,12 @@ type Fake struct {
 	// CreatedPipelines records every pipeline CreatePipeline made, with its
 	// variables; BranchHeads gives the SHA of those by ref, empty if unset.
 	CreatedPipelines []CreatedPipeline
-	BranchHeads      map[string]string
+	// Releases records every release CreateRelease made. Each starts a
+	// running tag pipeline, as a project with tag CI does, unless
+	// NoTagPipelines is set.
+	Releases       []CreatedRelease
+	NoTagPipelines bool
+	BranchHeads    map[string]string
 	// StateEvents of issues, oldest first.
 	StateEvents map[int64][]gitlab.StateEvent
 	// LabelEvents of issues, oldest first: UpdateIssue records the bot's,
@@ -1038,6 +1050,35 @@ func (f *Fake) CreatePipeline(_ context.Context, _ string, ref string, vars ...g
 	f.Pipelines = append(f.Pipelines, p)
 	f.CreatedPipelines = append(f.CreatedPipelines, CreatedPipeline{ID: id, Ref: ref, Variables: slices.Clone(vars)})
 	return &p, nil
+}
+
+// CreateRelease records the release and tags ref with it (the tag contains
+// ref). An existing tag is a 409.
+func (f *Fake) CreateRelease(_ context.Context, _ string, tag, ref, description string) error {
+	f.mu.Lock()
+	if slices.ContainsFunc(f.Tags, func(t gitlab.Tag) bool { return t.Name == tag }) {
+		f.mu.Unlock()
+		return &gitlab.Error{StatusCode: 409, Method: "POST", Path: "releases", Body: `{"message":"Release already exists"}`}
+	}
+	rel := CreatedRelease{Tag: tag, Ref: ref, Description: description}
+	created, tagCI := f.Clock, !f.NoTagPipelines
+	// The tag contains what ref contains: an empty compare ref..sha.
+	var contains []string
+	for k, c := range f.Compares {
+		if from, sha, ok := strings.Cut(k, ".."); ok && from == ref && len(c.Commits) == 0 {
+			contains = append(contains, sha)
+		}
+	}
+	slices.Sort(contains)
+	f.mu.Unlock()
+	f.AddTag(tag, gitlab.TagCommit{ID: ref, ParentIDs: []string{"p"}, CreatedAt: &created}, contains...)
+	if tagCI {
+		rel.PipelineID = f.AddPipeline(ref, tag, "running")
+	}
+	f.mu.Lock()
+	f.Releases = append(f.Releases, rel)
+	f.mu.Unlock()
+	return nil
 }
 
 // GetPipeline returns a pipeline, 404 for an unknown ID.

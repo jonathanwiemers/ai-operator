@@ -72,7 +72,7 @@ func (c *clock) Advance(d time.Duration) {
 }
 
 // writes records the GitLab writes that move code (merge requests, merges,
-// rebases, pipelines, branch deletes) of every project, in order, as
+// rebases, pipelines, releases, branch deletes) of every project, in order, as
 // "<project> <call> <ref>". Reads and comments pass through unrecorded.
 type writes struct {
 	gitlab.API
@@ -125,6 +125,11 @@ func (w *writes) DeleteBranch(ctx context.Context, project, branch string) error
 func (w *writes) CreatePipeline(ctx context.Context, project, ref string, vars ...gitlab.PipelineVariable) (*gitlab.Pipeline, error) {
 	w.record(project, "pipeline", ref)
 	return w.API.CreatePipeline(ctx, project, ref, vars...)
+}
+
+func (w *writes) CreateRelease(ctx context.Context, project, tag, ref, description string) error {
+	w.record(project, "release", tag+"@"+ref)
+	return w.API.CreateRelease(ctx, project, tag, ref, description)
 }
 
 func (w *writes) CreateMergeRequestPipeline(ctx context.Context, project string, iid int64) error {
@@ -234,6 +239,10 @@ func newEnv(t *testing.T, sc scenario) *env {
 	}
 	milestone += "\n/agent owners @" + owner.Username + "\n\nTurn the companion feature on in the cluster."
 	home.Milestones = []gitlab.Milestone{{ID: milestoneID, IID: milestoneIID, Title: milestoneTitle, State: "active", Description: milestone}}
+	// The operator runs 2026.11.4, tagged on the first commit of main: its
+	// next release is 2026.11.5.
+	tagged := start.Add(-time.Hour)
+	home.AddTag("2026.11.4", gitlab.TagCommit{ID: e.heads(e.homeOrigin)["main"], ParentIDs: []string{}, CreatedAt: &tagged})
 	e.gl = gitlabfake.NewProjects(home)
 	e.home = home
 	e.infra = e.gl.Add(infraProject)

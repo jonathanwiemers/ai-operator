@@ -279,6 +279,7 @@ func TestDoneWithAnEmptyQueueKeepsThePhase(t *testing.T) {
 // milestone has not landed, says so once, and is done once it has.
 func TestAutopilotIsDoneOnceItsCompanionsHaveLanded(t *testing.T) {
 	e, infra := newCompanionQueueEnv(t, "")
+	e.releaseOff()
 	cmr := mergeWithCompanion(e, infra) // #2 starts right away
 	e.reconcile()
 	e.finishRun(2, "sha-ui", nil)
@@ -419,23 +420,21 @@ func TestDoneWaitsForTheFinalRelease(t *testing.T) {
 	}
 	rec := finalRec(e)
 	if rec.By != aiv1.ReleaseByFinal || rec.SHA != "merge-sha-ui" || rec.AfterIssue != 2 || rec.Why != "the milestone's last merge" ||
-		rec.State != aiv1.ReleaseRunning || len(e.gl.CreatedPipelines) != 1 || len(ap.Releases) != 1 {
-		t.Fatalf("one final release, running for #2's merge: %+v, pipelines %+v", ap.Releases, e.gl.CreatedPipelines)
+		rec.State != aiv1.ReleaseRunning || len(e.gl.Releases) != 1 || len(ap.Releases) != 1 {
+		t.Fatalf("one final release, running for #2's merge: %+v, releases %+v", ap.Releases, e.gl.Releases)
 	}
 	if body := e.gl.Issues[tracking].Description; !strings.Contains(body, "every issue is through; done once a release contains the last merge merge-sh") {
 		t.Fatalf("the tracking issue says what done waits for:\n%s", body)
 	}
 	e.reconcile()
-	if e.autopilot().Phase != aiv1.AutopilotRunning || len(e.gl.CreatedPipelines) != 1 || len(e.autopilot().Releases) != 1 {
+	if e.autopilot().Phase != aiv1.AutopilotRunning || len(e.gl.Releases) != 1 || len(e.autopilot().Releases) != 1 {
 		t.Fatalf("still waiting, nothing doubled: %+v", e.autopilot())
 	}
-	if countComments(e, tracking, "🚀 Release started (final): the milestone's last merge. Contains #1, #2. Pipeline https://") != 1 {
+	if countComments(e, tracking, "🚀 Release started (final): the milestone's last merge. Contains #1, #2. Release 2026.11.2") != 1 {
 		t.Fatalf("the start is commented once:\n%v", botComments(e, tracking))
 	}
 
-	e.gl.SetPipelineStatus(rec.PipelineID, "success")
-	created := e.gl.Clock
-	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "merge-sha-api", "merge-sha-ui")
+	e.gl.SetPipelineStatus(e.gl.Releases[0].PipelineID, "success")
 	e.reconcile()
 	rec = finalRec(e)
 	if rec.State != aiv1.ReleaseReleased || rec.Version != "2026.11.2" || !slices.Equal(rec.Issues, []int64{1, 2}) {
@@ -475,8 +474,8 @@ func TestFinalReleaseNotNeeded(t *testing.T) {
 			if rec.State != aiv1.ReleaseNotNeeded || rec.Reason != tc.why || rec.EndedAt == nil {
 				t.Fatalf("want NotNeeded (%s), got %+v", tc.why, rec)
 			}
-			if e.autopilot().Phase != aiv1.AutopilotDone || len(e.gl.CreatedPipelines) != 0 {
-				t.Fatalf("done without a pipeline: %+v %+v", e.autopilot(), e.gl.CreatedPipelines)
+			if e.autopilot().Phase != aiv1.AutopilotDone || len(e.gl.Releases) != 0 {
+				t.Fatalf("done without a release: %+v %+v", e.autopilot(), e.gl.Releases)
 			}
 			tracking := e.autopilot().TrackingIssueIID
 			if countComments(e, tracking, "📦 No release needed: "+tc.why+".") != 1 || !commentedBefore(e, tracking, "No release needed", "Autopilot is done") {
@@ -486,27 +485,34 @@ func TestFinalReleaseNotNeeded(t *testing.T) {
 	}
 }
 
-// A project without release tags: NotApplicable, done, no pause; the
-// Planned record after the skipped #1 is dropped.
-func TestFinalReleaseWithoutTags(t *testing.T) {
+// A project without release tags and without CI: the final release tags
+// the last merge itself and, with no tag pipeline, is released after
+// tagPipelineWait. The Planned record after the skipped #1 is dropped.
+func TestFinalReleaseWithoutTagsOrCI(t *testing.T) {
 	e := newPilotEnv(t)
+	e.gl.NoTagPipelines = true
 	e.planRelease(1)
 	e.reconcile()
 	queueMerged(e, true)
 	e.reconcile()
+	if rec := finalRec(e); rec.State != aiv1.ReleaseRunning || len(e.gl.Releases) != 1 ||
+		e.gl.Releases[0].Ref != "merge-sha-ui" || e.gl.Releases[0].Tag != "2026.1.1" {
+		t.Fatalf("the last merge is tagged with the month's first version: %+v %+v", rec, e.gl.Releases)
+	}
+	e.gl.Clock = e.gl.Clock.Add(tagPipelineWait)
+	e.reconcile()
 	ap := e.autopilot()
-	if got := releaseStates(ap); !slices.Equal(got, []string{"1:Dropped", "2:NotApplicable"}) {
-		t.Fatalf("want #1's planned release dropped and the final one not applicable, got %v: %+v", got, ap.Releases)
+	if got := releaseStates(ap); !slices.Equal(got, []string{"1:Dropped", "2:Released"}) || ap.Releases[0].Reason != "its issue was not merged" {
+		t.Fatalf("want #1's planned release dropped and the final one released, got %v: %+v", got, ap.Releases)
 	}
-	if ap.Releases[0].Reason != "its issue was not merged" || finalRec(e).Reason != "group/app does not tag its default branch" {
-		t.Fatalf("the reasons: %+v", ap.Releases)
+	if rec := finalRec(e); rec.State != aiv1.ReleaseReleased || rec.Reason != "no pipeline for the tag 2026.1.1: the tag is the release" {
+		t.Fatalf("released without a tag pipeline: %+v", rec)
 	}
-	if ap.Phase != aiv1.AutopilotDone || ap.PauseKind != "" || len(e.gl.CreatedPipelines) != 0 {
-		t.Fatalf("done, no pause, no pipeline: %+v %+v", ap, e.gl.CreatedPipelines)
+	if ap.Phase != aiv1.AutopilotDone || ap.PauseKind != "" {
+		t.Fatalf("done, no pause: %+v", ap)
 	}
-	if countComments(e, ap.TrackingIssueIID, "📦 No release: group/app does not tag its default branch.") != 1 ||
-		countComments(e, ap.TrackingIssueIID, "Release started") != 0 {
-		t.Fatalf("one line for the final decision, the dropped one silent:\n%v", botComments(e, ap.TrackingIssueIID))
+	if countComments(e, ap.TrackingIssueIID, "📦 Released 2026.1.1") != 1 || countComments(e, ap.TrackingIssueIID, "Release started") != 1 {
+		t.Fatalf("one start and one end, the dropped one silent:\n%v", botComments(e, ap.TrackingIssueIID))
 	}
 }
 
@@ -517,24 +523,24 @@ func failFinal(e *projectEnv) {
 	queueMerged(e, false)
 	e.reconcile()
 	for n := 1; n <= 2; n++ {
-		if rec := finalRec(e); rec.State != aiv1.ReleaseRunning || rec.Attempts != int32(n) || len(e.gl.CreatedPipelines) != n {
+		if rec := finalRec(e); rec.State != aiv1.ReleaseRunning || rec.Attempts != int32(n) || len(e.gl.Releases) != 1 {
 			e.t.Fatalf("attempt %d runs: %+v", n, rec)
 		}
-		e.gl.SetPipelineStatus(e.gl.CreatedPipelines[n-1].ID, "failed")
+		e.gl.SetPipelineStatus(e.gl.Releases[0].PipelineID, "failed")
 		e.reconcile()
 	}
 	ap := e.autopilot()
 	if rec := finalRec(e); rec.State != aiv1.ReleaseFailed || ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseRelease || ap.PausedFor != 0 {
 		e.t.Fatalf("failed twice, paused for the release: %+v, %+v", rec, ap)
 	}
-	if !strings.Contains(ap.PausedReason, "the final release failed: the release pipeline") {
+	if !strings.Contains(ap.PausedReason, "the final release failed: the tag pipeline") {
 		e.t.Fatalf("the pause says why: %q", ap.PausedReason)
 	}
 	e.reconcile()
-	if len(e.gl.CreatedPipelines) != 2 || countComments(e, ap.TrackingIssueIID, "Autopilot paused: the final release failed") != 1 {
-		e.t.Fatalf("no third attempt, the pause said once: %+v\n%v", e.gl.CreatedPipelines, botComments(e, ap.TrackingIssueIID))
+	if len(e.gl.Releases) != 1 || len(e.gl.Retried) != 1 || countComments(e, ap.TrackingIssueIID, "Autopilot paused: the final release failed") != 1 {
+		e.t.Fatalf("no third attempt, the pause said once: %+v %v\n%v", e.gl.Releases, e.gl.Retried, botComments(e, ap.TrackingIssueIID))
 	}
-	if countComments(e, ap.TrackingIssueIID, "🚀 Release started (final)") != 1 || countComments(e, ap.TrackingIssueIID, "❌ The final release failed twice: the release pipeline") != 1 ||
+	if countComments(e, ap.TrackingIssueIID, "🚀 Release started (final)") != 1 || countComments(e, ap.TrackingIssueIID, "❌ The final release failed twice: the tag pipeline") != 1 ||
 		!commentedBefore(e, ap.TrackingIssueIID, "❌ The final release failed", "Autopilot paused") {
 		e.t.Fatalf("one start for both attempts, the failure once before the pause:\n%v", botComments(e, ap.TrackingIssueIID))
 	}
@@ -548,12 +554,10 @@ func TestFailedFinalReleaseResumeRetries(t *testing.T) {
 	e.reconcile()
 	ap := e.autopilot()
 	rec := finalRec(e)
-	if ap.Phase != aiv1.AutopilotRunning || ap.ResumedVia != aiv1.ResumedViaCommand || rec.State != aiv1.ReleaseRunning || rec.Attempts != 1 || len(e.gl.CreatedPipelines) != 3 {
-		t.Fatalf("resume starts the final release over: %+v, %+v", ap, rec)
+	if ap.Phase != aiv1.AutopilotRunning || ap.ResumedVia != aiv1.ResumedViaCommand || rec.State != aiv1.ReleaseRunning || rec.Attempts != 1 || len(e.gl.Releases) != 1 {
+		t.Fatalf("resume starts the final release over: %+v, releases %d", rec, len(e.gl.Releases))
 	}
-	e.gl.SetPipelineStatus(rec.PipelineID, "success")
-	created := e.gl.Clock
-	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "merge-sha-ui")
+	e.gl.SetPipelineStatus(e.gl.Releases[0].PipelineID, "success")
 	e.reconcile()
 	if rec := finalRec(e); rec.State != aiv1.ReleaseReleased || e.autopilot().Phase != aiv1.AutopilotDone {
 		t.Fatalf("released and done: %+v, %+v", rec, e.autopilot())
@@ -578,26 +582,27 @@ func TestFailedFinalReleaseEndMilestone(t *testing.T) {
 	if rec := finalRec(e); rec.State != aiv1.ReleaseDropped || rec.Reason != "ended without a release by @alice" {
 		t.Fatalf("the final release is dropped: %+v", rec)
 	}
-	if ap.Phase != aiv1.AutopilotDone || ap.ResumedVia != aiv1.ResumedViaCommand || len(e.gl.CreatedPipelines) != 2 ||
+	if ap.Phase != aiv1.AutopilotDone || ap.ResumedVia != aiv1.ResumedViaCommand || len(e.gl.Releases) != 1 ||
 		countComments(e, tracking, "Autopilot is done: 2 of 2 issues merged") != 1 {
 		t.Fatalf("done without a release: %+v\n%v", ap, botComments(e, tracking))
 	}
 }
 
-// A tag made by hand that contains the last merge lifts the pause.
+// A tag made by hand that contains the last merge lifts the pause; the
+// failed release's own tag does not.
 func TestFailedFinalReleaseReleasedByHand(t *testing.T) {
 	e := newPilotEnv(t)
 	failFinal(e)
 	e.reconcile()
 	created := e.gl.Clock
-	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h2", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "merge-sha-ui")
+	e.gl.AddTag("2026.11.3", gitlab.TagCommit{ID: "h2", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "merge-sha-ui")
 	e.reconcile()
 	ap := e.autopilot()
-	if rec := finalRec(e); rec.State != aiv1.ReleaseAlreadyReleased || rec.Version != "2026.11.2" {
+	if rec := finalRec(e); rec.State != aiv1.ReleaseAlreadyReleased || rec.Version != "2026.11.3" {
 		t.Fatalf("already released by hand: %+v", rec)
 	}
-	if ap.Phase != aiv1.AutopilotDone || ap.ResumedVia != aiv1.ResumedViaCauseGone || len(e.gl.CreatedPipelines) != 2 ||
-		countComments(e, ap.TrackingIssueIID, "the tag 2026.11.2 contains the milestone's last merge") != 1 {
+	if ap.Phase != aiv1.AutopilotDone || ap.ResumedVia != aiv1.ResumedViaCauseGone || len(e.gl.Releases) != 1 ||
+		countComments(e, ap.TrackingIssueIID, "the tag 2026.11.3 contains the milestone's last merge") != 1 {
 		t.Fatalf("the pause ends by itself and autopilot is done: %+v\n%v", ap, botComments(e, ap.TrackingIssueIID))
 	}
 	if countComments(e, ap.TrackingIssueIID, "📦") != 0 {
@@ -621,18 +626,16 @@ func TestFinalReleaseBeforeTheCompanions(t *testing.T) {
 	tracking := e.autopilot().TrackingIssueIID
 	const waits = "Autopilot is done once the companions group/infra!1 have landed"
 	companion := e.autopilot().Releases[0]
-	if companion.By != aiv1.ReleaseByCompanion || companion.State != aiv1.ReleaseRunning || len(e.gl.CreatedPipelines) != 1 {
+	if companion.By != aiv1.ReleaseByCompanion || companion.State != aiv1.ReleaseRunning || len(e.gl.Releases) != 1 {
 		t.Fatalf("the companion's release runs: %+v", e.autopilot().Releases)
 	}
 	if rec := finalRec(e); rec.State != aiv1.ReleaseWaiting || countComments(e, tracking, waits) != 0 || len(e.autopilot().CloseWaitsForCompanions) != 0 {
 		t.Fatalf("the final release first: %+v, %+v\n%v", rec, e.autopilot(), botComments(e, tracking))
 	}
 
-	e.gl.SetPipelineStatus(companion.PipelineID, "success")
-	created := e.gl.Clock
-	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "merge-sha-api", "merge-sha-ui")
+	e.gl.SetPipelineStatus(e.gl.Releases[0].PipelineID, "success")
 	e.reconcile()
-	if rec := finalRec(e); rec.State != aiv1.ReleaseReleased || rec.Version != "2026.11.2" || len(e.gl.CreatedPipelines) != 1 ||
+	if rec := finalRec(e); rec.State != aiv1.ReleaseReleased || rec.Version != "2026.11.2" || len(e.gl.Releases) != 1 ||
 		e.autopilot().Phase != aiv1.AutopilotRunning || countComments(e, tracking, waits) != 1 {
 		t.Fatalf("released, now the companions: %+v, %+v\n%v", rec, e.autopilot(), botComments(e, tracking))
 	}
@@ -751,8 +754,8 @@ func TestAWaitingCompanionIsReleased(t *testing.T) {
 	e.reconcile()
 	recs := companionRecs()
 	if len(recs) != 1 || recs[0].AfterIssue != 1 || recs[0].SHA != "m1" || recs[0].State != aiv1.ReleaseRunning ||
-		recs[0].Why != "group/infra!1 waits for #1 to be live" || len(e.gl.CreatedPipelines) != 1 {
-		t.Fatalf("one companion release, running: %+v, pipelines %+v", e.autopilot().Releases, e.gl.CreatedPipelines)
+		recs[0].Why != "group/infra!1 waits for #1 to be live" || len(e.gl.Releases) != 1 {
+		t.Fatalf("one companion release, running: %+v, releases %+v", e.autopilot().Releases, e.gl.Releases)
 	}
 	if cs := e.project().Status.Companions; cs[0].State != aiv1.LandingWaitingRelease {
 		t.Fatalf("the companion waits for the release: %+v", cs[0])
@@ -761,9 +764,7 @@ func TestAWaitingCompanionIsReleased(t *testing.T) {
 		t.Fatalf("the start is commented once:\n%v", botComments(e, tracking))
 	}
 
-	e.gl.SetPipelineStatus(recs[0].PipelineID, "success")
-	created := e.gl.Clock
-	e.gl.AddTag("2026.11.2", gitlab.TagCommit{ID: "h1", ParentIDs: []string{"p1", "p2"}, CreatedAt: &created}, "m1")
+	e.gl.SetPipelineStatus(e.gl.Releases[0].PipelineID, "success")
 	e.reconcile()
 	e.reconcile()
 	if recs := companionRecs(); len(recs) != 1 || recs[0].State != aiv1.ReleaseReleased || recs[0].Version != "2026.11.2" {

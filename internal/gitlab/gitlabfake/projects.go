@@ -419,6 +419,14 @@ func (p *Projects) CreatePipeline(ctx context.Context, project, ref string, vars
 	return f.CreatePipeline(ctx, project, ref, vars...)
 }
 
+func (p *Projects) CreateRelease(ctx context.Context, project, tag, ref, description string) error {
+	f, err := p.route(project)
+	if err != nil {
+		return err
+	}
+	return f.CreateRelease(ctx, project, tag, ref, description)
+}
+
 func (p *Projects) GetPipeline(ctx context.Context, project string, id int64) (*gitlab.Pipeline, error) {
 	f, err := p.route(project)
 	if err != nil {

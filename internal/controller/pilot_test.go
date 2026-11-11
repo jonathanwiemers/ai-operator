@@ -241,6 +241,14 @@ func TestPilotCoordinateStartsAPilot(t *testing.T) {
 	}
 }
 
+// releaseOff turns releases off for a test that is not about them: with
+// mode Auto every milestone's final release would tag and wait for its
+// tag pipeline.
+func (e *projectEnv) releaseOff() {
+	e.t.Helper()
+	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Workflow.Release.Mode = aiv1.ReleaseOff })
+}
+
 func (e *projectEnv) patchProject(mutate func(*aiv1.AgentProject)) {
 	e.t.Helper()
 	var p aiv1.AgentProject

@@ -254,6 +254,7 @@ func TestEndMilestoneAtTheBudgetPause(t *testing.T) {
 
 func TestEndMilestoneWhileRunningFinishesTheActiveIssue(t *testing.T) {
 	e, _ := newBudgetPromptEnv(t, "40", 1)
+	e.releaseOff()
 	st := e.task(specTaskName)
 	if err := e.r.queueCommand(e.ctx, st, aiv1.PilotCommand{Action: aiv1.PilotAction{Tool: "endMilestone"}, Owner: "alice"}); err != nil {
 		t.Fatal(err)

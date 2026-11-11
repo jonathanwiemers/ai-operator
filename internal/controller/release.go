@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -15,9 +16,14 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
-// maxReleaseAttempts is how often a release pipeline runs for one decision:
-// the first attempt and one retry.
+// maxReleaseAttempts is how often a release's tag pipeline runs for one
+// decision: the first run and one retry.
 const maxReleaseAttempts = 2
+
+// tagPipelineWait is how long after creating a release the operator looks
+// for its tag pipeline. A project whose CI runs nothing for tags has none:
+// the tag is the release.
+const tagPipelineWait = 10 * time.Minute
 
 // releaseHeadPipelines is how many of the newest pipelines of the default branch
 // greenHead reads to find the newest one that is no release pipeline.
@@ -25,8 +31,8 @@ const releaseHeadPipelines = 10
 
 // releaser carries out the release decisions of one record list (a
 // milestone's, or the project's outside milestones), see
-// docs/usage.md#releases. The contract with the project's CI: a pipeline on
-// the default branch with AGENT_RELEASE=true runs the release job.
+// docs/usage.md#releases. The operator creates the tag and the GitLab
+// release itself; the project's CI builds whatever it builds for tags.
 type releaser struct {
 	r    *AgentProjectReconciler
 	gl   gitlab.API
@@ -39,9 +45,6 @@ type releaser struct {
 	// milestones.
 	milestone aiv1.MilestoneRef
 	log       logr.Logger
-
-	// tagging caches tagsDefaultBranch for one step.
-	tagging *bool
 }
 
 // newReleaser is the releaser of the milestone's records.
@@ -290,6 +293,12 @@ func (a *autopilot) retryFinalRelease(by string) {
 		return
 	}
 	a.log.Info("final release retried", "release", rec.ID, "by", by)
+	if rec.Version != "" {
+		// The tag exists: running retries its failed pipeline as a fresh
+		// first attempt, never a new tag.
+		rec.State, rec.Attempts, rec.Reason, rec.EndedAt = aiv1.ReleaseRunning, 0, "", nil
+		return
+	}
 	rec.State, rec.Attempts, rec.Reason, rec.EndedAt = aiv1.ReleaseWaiting, 0, "", nil
 }
 
@@ -312,7 +321,8 @@ func (a *autopilot) releasedByHand(ctx context.Context) error {
 	if a.ap.Phase != aiv1.AutopilotPaused || a.ap.PauseKind != aiv1.PauseRelease || rec == nil {
 		return nil
 	}
-	v, ok, err := a.newReleaser().containingRelease(ctx, rec.SHA)
+	// Its own tag, whose build failed, is no release by hand.
+	v, ok, err := a.newReleaser().containingRelease(ctx, rec.SHA, rec.Version)
 	if err != nil || !ok {
 		return err
 	}
@@ -345,15 +355,16 @@ func nextReleaseID(recs []aiv1.ReleaseRecord) int64 {
 //
 //	mode Off                          -> NotApplicable
 //	a CalVer tag contains the commit  -> Released (our release) or AlreadyReleased
-//	the project does not tag          -> NotApplicable
 //	another record Running            -> Waiting
 //	within minInterval (not Final)    -> Waiting
 //	main's newest pipeline not green,
 //	or its head lacks the commit      -> Waiting
-//	otherwise                         -> Running (release pipeline started)
+//	the next version's tag exists     -> Waiting (the next poll counts on)
+//	otherwise                         -> Running (tag and release created)
 //
-// A Running record ends Released once its pipeline succeeded and a tag
-// contains the commit; a failed attempt is retried once, then Failed.
+// A Running record ends Released once its tag pipeline succeeded, or when
+// none started within tagPipelineWait; a failed tag pipeline is retried
+// once, then the record is Failed.
 // GitLab errors are returned: the next poll tries again.
 func (x *releaser) step(ctx context.Context, recs []aiv1.ReleaseRecord) error {
 	order := make([]int, 0, len(recs))
@@ -388,48 +399,53 @@ func (x *releaser) step(ctx context.Context, recs []aiv1.ReleaseRecord) error {
 	return nil
 }
 
-// running polls the release pipeline of rec.
+// running follows the tag pipeline of rec's release.
 func (x *releaser) running(ctx context.Context, rec *aiv1.ReleaseRecord) error {
-	proj, err := x.project(ctx)
-	if err != nil {
-		return err
-	}
-	p, err := x.gl.GetPipeline(ctx, x.spec.GitLab.Project, rec.PipelineID)
-	switch {
-	case gitlab.IsNotFound(err):
-		x.failedAttempt(rec, fmt.Sprintf("the release pipeline %d is gone", rec.PipelineID))
-		return nil
-	case err != nil:
-		return fmt.Errorf("getting the release pipeline %d: %w", rec.PipelineID, err)
-	}
-	switch p.Status {
-	case "success":
-		v, ok, err := x.containingRelease(ctx, rec.SHA)
+	project := x.spec.GitLab.Project
+	if rec.PipelineID == 0 {
+		ps, err := x.gl.ListPipelines(ctx, project, gitlab.ListPipelinesOptions{Ref: rec.Version, Limit: 1})
 		if err != nil {
-			return err
+			return fmt.Errorf("listing the pipelines of the tag %s: %w", rec.Version, err)
 		}
-		if !ok {
-			x.failedAttempt(rec, fmt.Sprintf("the pipeline passed but no tag contains %s: does its CI know AGENT_RELEASE?", short(rec.SHA)))
+		if len(ps) == 0 {
+			if rec.StartedAt == nil || x.r.now().Sub(rec.StartedAt.Time) >= tagPipelineWait {
+				x.ended(rec, aiv1.ReleaseReleased, fmt.Sprintf("no pipeline for the tag %s: the tag is the release", rec.Version))
+				x.log.Info("released", "release", rec.ID, "version", rec.Version, "pipeline", false)
+			}
 			return nil
 		}
+		rec.PipelineID, rec.PipelineURL = ps[0].ID, ps[0].WebURL
+	}
+	p, err := x.gl.GetPipeline(ctx, project, rec.PipelineID)
+	switch {
+	case gitlab.IsNotFound(err):
+		rec.PipelineID, rec.PipelineURL = 0, "" // look for the tag's pipeline again
+		return nil
+	case err != nil:
+		return fmt.Errorf("getting the tag pipeline %d: %w", rec.PipelineID, err)
+	}
+	switch p.Status {
+	case "success", "skipped":
 		x.ended(rec, aiv1.ReleaseReleased, "")
-		rec.Version, rec.ReleaseURL = v, releaseURL(proj, v)
-		x.log.Info("released", "release", rec.ID, "version", v)
-	case "failed", "canceled", "skipped":
-		x.failedAttempt(rec, fmt.Sprintf("the release pipeline %s is %s", p.WebURL, p.Status))
+		x.log.Info("released", "release", rec.ID, "version", rec.Version)
+	case "failed", "canceled":
+		why := fmt.Sprintf("the tag pipeline %s is %s", p.WebURL, p.Status)
+		if rec.Attempts >= maxReleaseAttempts {
+			x.ended(rec, aiv1.ReleaseFailed, why)
+			return nil
+		}
+		if _, err := x.gl.RetryPipeline(ctx, project, p.ID); err != nil {
+			return fmt.Errorf("retrying the tag pipeline %d: %w", p.ID, err)
+		}
+		if rec.Attempts == 0 {
+			rec.Reason = fmt.Sprintf("%s; retried on resume", why) // retryFinalRelease
+		} else {
+			rec.Reason = fmt.Sprintf("attempt %d failed: %s; retried", rec.Attempts, why)
+		}
+		rec.Attempts++
+		x.log.Info("tag pipeline retried", "release", rec.ID, "pipeline", p.ID, "attempt", rec.Attempts)
 	}
 	return nil
-}
-
-// failedAttempt records a failed release pipeline: the record waits for its
-// retry, or has failed after the last attempt.
-func (x *releaser) failedAttempt(rec *aiv1.ReleaseRecord, why string) {
-	x.log.Info("release attempt failed", "release", rec.ID, "attempt", rec.Attempts, "why", why)
-	if rec.Attempts >= maxReleaseAttempts {
-		x.ended(rec, aiv1.ReleaseFailed, why)
-		return
-	}
-	rec.State, rec.Reason = aiv1.ReleaseWaiting, fmt.Sprintf("attempt %d failed: %s", rec.Attempts, why)
 }
 
 // retryWaits joins a failed attempt and why its retry waits.
@@ -446,7 +462,7 @@ func waitRelease(rec *aiv1.ReleaseRecord, why string) {
 }
 
 // waiting checks whether rec is released already, not applicable, or can be
-// released now, and starts its release pipeline when it can.
+// released now, and creates its tag and GitLab release when it can.
 func (x *releaser) waiting(ctx context.Context, recs []aiv1.ReleaseRecord, rec *aiv1.ReleaseRecord) error {
 	if !x.spec.Workflow.Release.Auto() {
 		x.ended(rec, aiv1.ReleaseNotApplicable, "release.mode is Off")
@@ -459,26 +475,26 @@ func (x *releaser) waiting(ctx context.Context, recs []aiv1.ReleaseRecord, rec *
 	if err != nil {
 		return err
 	}
-	if v, ok, err := x.containingRelease(ctx, rec.SHA); err != nil {
+	// The tag of a Failed release does not count: its build failed.
+	var failed []string
+	for _, o := range recs {
+		if o.State == aiv1.ReleaseFailed && o.Version != "" {
+			failed = append(failed, o.Version)
+		}
+	}
+	if v, ok, err := x.containingRelease(ctx, rec.SHA, failed...); err != nil {
 		return err
 	} else if ok {
+		if slices.ContainsFunc(recs, func(o aiv1.ReleaseRecord) bool { return o.State == aiv1.ReleaseRunning && o.Version == v }) {
+			waitRelease(rec, "after the running release "+v)
+			return nil
+		}
 		if slices.ContainsFunc(recs, func(o aiv1.ReleaseRecord) bool { return o.State == aiv1.ReleaseReleased && o.Version == v }) {
 			x.ended(rec, aiv1.ReleaseReleased, "contained in "+v)
 		} else {
 			x.ended(rec, aiv1.ReleaseAlreadyReleased, fmt.Sprintf("the tag %s already contains %s", v, short(rec.SHA)))
 		}
 		rec.Version, rec.ReleaseURL = v, releaseURL(proj, v)
-		return nil
-	}
-	if x.tagging == nil {
-		tagging, err := x.r.tagsDefaultBranch(ctx, x.gl, x.spec.GitLab.Project)
-		if err != nil {
-			return err
-		}
-		x.tagging = &tagging
-	}
-	if !*x.tagging {
-		x.ended(rec, aiv1.ReleaseNotApplicable, x.spec.GitLab.Project+" does not tag its default branch")
 		return nil
 	}
 	if slices.ContainsFunc(recs, func(o aiv1.ReleaseRecord) bool { return o.State == aiv1.ReleaseRunning }) {
@@ -501,31 +517,57 @@ func (x *releaser) waiting(ctx context.Context, recs []aiv1.ReleaseRecord, rec *
 		waitRelease(rec, why)
 		return nil
 	}
+	tags, err := x.gl.ListTags(ctx, x.spec.GitLab.Project, gitlab.ListTagsOptions{Limit: 100})
+	if err != nil {
+		return fmt.Errorf("listing the tags of %s: %w", x.spec.GitLab.Project, err)
+	}
+	version := nextRelease(tags, now)
 	issues, mrs := x.contents(recs)
 	notes := releaseNotes(*rec, issues, mrs, x.items, x.milestone.Title, x.milestoneURL(proj))
-	p, err := x.gl.CreatePipeline(ctx, x.spec.GitLab.Project, base,
-		gitlab.PipelineVariable{Key: "AGENT_RELEASE", Value: "true"},
-		gitlab.PipelineVariable{Key: "AGENT_RELEASE_NOTES", Value: notes})
-	if err != nil {
-		return fmt.Errorf("starting the release pipeline on %s: %w", base, err)
+	err = x.gl.CreateRelease(ctx, x.spec.GitLab.Project, version, head, notes)
+	switch code := gitlab.StatusCode(err); {
+	case code == http.StatusConflict || code == http.StatusBadRequest || code == http.StatusUnprocessableEntity:
+		// Someone tagged meanwhile: the next poll counts on from that tag.
+		waitRelease(rec, fmt.Sprintf("the tag %s exists already: the next poll takes the next version", version))
+		x.log.Info("release tag exists", "release", rec.ID, "version", version, "error", err.Error())
+		return nil
+	case err != nil:
+		return fmt.Errorf("creating the release %s at %s: %w", version, short(head), err)
 	}
 	started := metav1.NewTime(now)
 	rec.State, rec.Reason = aiv1.ReleaseRunning, ""
 	rec.Attempts++
 	rec.StartedAt = &started
-	rec.PipelineID, rec.PipelineURL = p.ID, p.WebURL
-	rec.ReleasedSHA = firstNonEmpty(p.SHA, head)
+	rec.Version, rec.ReleaseURL = version, releaseURL(proj, version)
+	rec.PipelineID, rec.PipelineURL = 0, ""
+	rec.ReleasedSHA = head
 	rec.Issues, rec.MergeRequests = issues, mrs
-	x.log.Info("release pipeline started", "release", rec.ID, "pipeline", p.ID, "attempt", rec.Attempts)
+	x.log.Info("release created", "release", rec.ID, "version", version, "sha", short(head))
 	return nil
 }
 
-// containingRelease is the first CalVer tag that contains sha.
-func (x *releaser) containingRelease(ctx context.Context, sha string) (string, bool, error) {
+// nextRelease is the calendar version YEAR.MONTH.N after tags: N counts the
+// releases of now's month (UTC) from 1. A release tag of a later month (a
+// clock behind GitLab's) is counted on, so a version never goes back.
+func nextRelease(tags []gitlab.Tag, now time.Time) string {
+	now = now.UTC()
+	next := release{now.Year(), int(now.Month()), 1}
+	for _, t := range tags {
+		if v, ok := parseRelease(t.Name); ok && compareReleases(v, next) >= 0 {
+			next = release{v[0], v[1], v[2] + 1}
+		}
+	}
+	return releaseName(next)
+}
+
+// containingRelease is the first CalVer tag that contains sha, except the
+// tags named in except.
+func (x *releaser) containingRelease(ctx context.Context, sha string, except ...string) (string, bool, error) {
 	refs, err := x.gl.ListCommitRefs(ctx, x.spec.GitLab.Project, sha, "tag")
 	if err != nil {
 		return "", false, fmt.Errorf("listing the tags that contain %s: %w", short(sha), err)
 	}
+	refs = slices.DeleteFunc(refs, func(r gitlab.CommitRef) bool { return slices.Contains(except, r.Name) })
 	v, ok := firstRelease(refs)
 	if !ok {
 		return "", false, nil
@@ -534,15 +576,19 @@ func (x *releaser) containingRelease(ctx context.Context, sha string) (string, b
 }
 
 // greenHead is the SHA of the newest pipeline on base, or why it cannot be
-// released: that pipeline is not green, or its SHA does not contain sha.
-// The release pipelines of recs are skipped: they run on base too, and a
-// failed one must not keep its own retry waiting for a green main. A record
-// keeps only its last pipeline, so a pipeline that did not succeed on a
-// head a release ran on (an earlier attempt) is skipped as well.
+// released: that pipeline is not green, or its SHA does not contain sha. A
+// base without any pipeline (a project without CI on it) releases sha itself.
+// The pipelines of recs are skipped: a record from before tag pipelines ran
+// its release pipeline on base, and a failed one must not keep its own retry
+// waiting for a green main. A pipeline that did not succeed on a head a
+// release ran on is skipped as well.
 func (x *releaser) greenHead(ctx context.Context, recs []aiv1.ReleaseRecord, project, base, sha string) (head, why string, err error) {
 	ps, err := x.gl.ListPipelines(ctx, project, gitlab.ListPipelinesOptions{Ref: base, Limit: releaseHeadPipelines})
 	if err != nil {
 		return "", "", fmt.Errorf("listing the pipelines of %s: %w", base, err)
+	}
+	if len(ps) == 0 {
+		return sha, "", nil // no CI on base: nothing to wait for
 	}
 	ps = slices.DeleteFunc(ps, func(p gitlab.Pipeline) bool {
 		return slices.ContainsFunc(recs, func(o aiv1.ReleaseRecord) bool {

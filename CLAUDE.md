@@ -25,8 +25,9 @@
   (`templates/ui-rbac.yaml`): never put kubebuilder RBAC markers into
   `internal/ui`, `make manifests` would grant them to the operator.
 - A merge to `main` does not release. A release is a decision: the operator
-  starts a pipeline with `AGENT_RELEASE=true` (planner, pilot, owner's
-  `/agent release`, a milestone's final release), or a human runs a `web`
-  pipeline on `main`. It gets a calendar version (`YEAR.MONTH.N`). GitHub
-  releases once a day if code changed. See `docs/releasing.md`.
+  creates a tag `YEAR.MONTH.N` and GitLab release through the API (planner,
+  pilot, owner's `/agent release`, a milestone's final release, the sweep), or
+  a human creates one in the UI or with `glab release create`. The tag's
+  pipeline builds it (`release` job). GitHub releases once a day if code
+  changed. See `docs/releasing.md`.
 - Keep the docs in `docs/` and the chart README in sync with behavior changes.

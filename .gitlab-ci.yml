@@ -1,14 +1,14 @@
 # The checks of .github/workflows/ci.yml, one job per check, and the release
-# job, the GitLab counterpart of .github/workflows/release.yml: it publishes
-# the images and the chart to registry.gitlab.com and creates the tag and the
-# GitLab release (docs/releasing.md).
+# job, the GitLab counterpart of .github/workflows/release.yml: on a release
+# tag it publishes the images and the chart to registry.gitlab.com and adds
+# the install section to the GitLab release (docs/releasing.md).
 
 include:
   - project: jo.wiemers/devops/ci
     ref: v0.2.55
     file: ci-templates/build.yml
 
-# Tag pipelines stay excluded: the release job creates the tag.
+# Tag pipelines build releases: the operator (or a human) creates the tag.
 # A newer pipeline cancels only interruptible jobs. With the default
 # (conservative) it also cancelled a release still waiting for its resource
 # group, and a following docs- or CI-only merge then released nothing.
@@ -19,6 +19,7 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/ && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
 
 stages: [check, release]
 
@@ -155,44 +156,33 @@ helm-lint:
     - make helm-lint
 
 # A release is a decision, not a side effect of a merge (docs/releasing.md):
-# pushes to main run the checks only. The release runs, after all checks
-# passed, in
-#   - a manual pipeline on main (Build > Pipelines > Run pipeline, or
-#     `glab ci run --branch main`), or
-#   - a pipeline on main the operator starts through the API with
-#     AGENT_RELEASE=true and AGENT_RELEASE_NOTES=<why and what>; the notes
-#     head the GitLab release. An api pipeline without it releases nothing.
-# It publishes, with a calendar version YEAR.MONTH.N:
+# pushes to main run the checks only. A release is a tag YEAR.MONTH.N on main
+# with a GitLab release, which
+#   - the operator creates through the API (planner, pilot, `/agent release`,
+#     a milestone's final release, the sweep), with its notes, or
+#   - a human creates (Deploy > Releases > New release, or
+#     `glab release create <version> --ref main --notes "<why>"`).
+# The tag's pipeline runs the checks and then this job, which publishes
 #   - images  registry.gitlab.com/jo.wiemers/ai-operator:<version>,
 #             registry.gitlab.com/jo.wiemers/ai-operator/agent:<version>
 #   - chart   oci://registry.gitlab.com/jo.wiemers/ai-operator/charts/ai-operator --version <version>
-#   - git tag <version> and a GitLab release
-# The version counts the GitLab tags; GitHub's release.yml counts its own.
+# and adds the install section to the GitLab release (creates it for a bare
+# tag). The operator follows the tag pipeline; GitHub's release.yml counts its
+# own versions.
 release:
   extends: .docker-build
   stage: release
-  # Releases run one at a time so two merges never get the same version, and
-  # a newer pipeline never cancels one, started or queued (workflow auto_cancel).
+  # Releases build one at a time, and a newer pipeline never cancels one,
+  # started or queued (workflow auto_cancel).
   resource_group: release
   interruptible: false
   variables:
     CI_TOOLS_IMAGE: registry.gitlab.com/jo.wiemers/devops/ci:v0.2.55
-    GIT_DEPTH: "0"
   rules:
-    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "api" && $AGENT_RELEASE == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG =~ /^20\d\d\.\d+\.\d+$/
   script:
-    - git fetch --tags --force --quiet origin
-    # Release jobs of quick successive merges can run out of order: when a
-    # newer release already contains this commit, releasing it again would
-    # publish older code under a higher version.
-    - |
-      released="$(git tag --contains "${CI_COMMIT_SHA}" --list '20*.*.*' | head -n1)"
-      if [ -n "${released}" ]; then
-        echo "${CI_COMMIT_SHA} is already in release ${released}; nothing to release"
-        exit 0
-      fi
-    - VERSION="$(hack/next-version.sh)"
+    - apk add --no-cache jq
+    - VERSION="${CI_COMMIT_TAG}"
     - echo "Releasing ${VERSION}"
     # The operator reports its release and compares it with the tags
     # (--self-project): the Dockerfile's ARG VERSION, set in this job's
@@ -220,15 +210,11 @@ release:
     - echo "${CI_JOB_TOKEN}" | helm registry login "${CI_REGISTRY}" --username gitlab-ci-token --password-stdin
     - helm package charts/ai-operator --version "${VERSION}" --app-version "${VERSION}" -d dist
     - helm push "dist/ai-operator-${VERSION}.tgz" "oci://${CI_REGISTRY_IMAGE}/charts"
-    # Creating the release creates the tag at this commit.
-    # The operator's notes (AGENT_RELEASE_NOTES) are untrusted text: printf
-    # writes them verbatim, they never pass through eval or the heredoc.
+    # The release the tag belongs to keeps its notes (the operator's are
+    # untrusted text: they are only passed on as JSON, never evaluated); the
+    # install section is appended once. A bare tag gets a release of its own.
     - |
-      : > notes.md
-      if [ -n "${AGENT_RELEASE_NOTES:-}" ]; then
-        printf '%s\n\n' "${AGENT_RELEASE_NOTES}" > notes.md
-      fi
-      cat >> notes.md <<NOTES
+      cat > install.md <<NOTES
       ## Install
 
       \`\`\`sh
@@ -241,11 +227,26 @@ release:
 
       Images: \`${CI_REGISTRY_IMAGE}:${VERSION}\`, \`${CI_REGISTRY_IMAGE}/agent:${VERSION}\`
       NOTES
-    - >
-      curl --fail-with-body --silent --show-error
-      --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
-      --data-urlencode "tag_name=${VERSION}"
-      --data-urlencode "ref=${CI_COMMIT_SHA}"
-      --data-urlencode "name=${VERSION}"
-      --data-urlencode "description@notes.md"
-      "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases"
+    - |
+      api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases"
+      code="$(curl --silent --show-error --output release.json --write-out '%{http_code}' \
+        --header "JOB-TOKEN: ${CI_JOB_TOKEN}" "${api}/${VERSION}")"
+      case "${code}" in
+      200)
+        if jq -e '.description // "" | contains("## Install")' release.json >/dev/null; then
+          echo "the release ${VERSION} has its install section"
+        else
+          jq -n --rawfile install install.md --slurpfile rel release.json \
+            '{description: ((($rel[0].description // "") | if . == "" then "" else . + "\n\n" end) + $install)}' > body.json
+          curl --fail-with-body --silent --show-error --request PUT \
+            --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --header "Content-Type: application/json" \
+            --data @body.json "${api}/${VERSION}"
+        fi ;;
+      404)
+        jq -n --rawfile install install.md --arg v "${VERSION}" '{tag_name: $v, name: $v, description: $install}' > body.json
+        curl --fail-with-body --silent --show-error \
+          --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --header "Content-Type: application/json" \
+          --data @body.json "${api}" ;;
+      *)
+        cat release.json; exit 1 ;;
+      esac

@@ -2325,8 +2325,11 @@ merge cannot be checked is kept for the next poll.
     tag that contains the merge commit
     (`commits/:sha/refs?type=tag`); a `dev` build is never live;
   * else, a project that tags its default branch (one of its 20 newest tags
-    points to a merge commit from the last 30 days): once a tag contains
-    the merge commit;
+    points to a commit from the last 30 days; fast-forward merges tag
+    single-parent commits): once a tag contains
+    the merge commit, ignoring the tags of operator releases that are
+    `Running` or `Failed` (`buildingReleases`: the tag exists before its
+    pipeline built it);
   * else: merged is enough.
 * Then the operator rebases the companion if GitLab asks for it, once per
   entry (a conflict blocks it, which pauses with `companion`). A new head
@@ -2514,8 +2517,9 @@ runner, which restrict themselves (`internal/gitlab/guard.go`):
   `jo.wiemers/personal/kubernetes` is never a target.
   * A merge is allowed in the home project, or in a target with `autoMerge`.
     In the runner, the task's resolved `autoMerge` must allow it too.
-  * Creating, updating or rebasing a merge request, and starting a pipeline,
-    are allowed in the home project and its targets.
+  * Creating, updating or rebasing a merge request, starting or retrying a
+    pipeline, and creating a release (its tag), are allowed in the home
+    project and its targets.
   * Deleting a branch is allowed only for `agent/` branches there, and never
     for the project's default branch.
   * Reads and issue and note writes are not guarded: links and comments in

@@ -46,11 +46,14 @@ func TestCompanionMilestoneMerge(t *testing.T) {
 		!strings.Contains(c.Reason, "no release contains the merge") {
 		t.Fatalf("the companion waits for the release: %+v", c)
 	}
-	at := e.clock.Now()
-	e.home.AddTag("2026.11.5", gitlab.TagCommit{ID: merge, ParentIDs: []string{"p1", "p2"}, CreatedAt: &at})
 	// Meanwhile the companion's default branch moved on.
 	e.infra.MRs[1].DetailedMergeStatus = "need_rebase"
 	e.reconcile()
+	// The milestone's final release: the operator tags the merge 2026.11.5
+	// through the API (main has no pipelines, the merge is its head).
+	if rs := e.home.Releases; len(rs) != 1 || rs[0].Tag != "2026.11.5" || rs[0].Ref != merge {
+		t.Fatalf("the operator creates the release 2026.11.5 at the merge: %+v", rs)
+	}
 	if c := e.companion(); c.State != aiv1.LandingWaitingRelease || !strings.Contains(c.Reason, "the operator runs 2026.11.4") ||
 		!strings.Contains(c.Reason, "is first in 2026.11.5") {
 		t.Fatalf("2026.11.4 does not run the merge yet: %+v", c)
@@ -60,7 +63,9 @@ func TestCompanionMilestoneMerge(t *testing.T) {
 		t.Fatalf("nothing happens to the companion before the release runs: rebased %v, merged %v", e.infra.Rebased, e.infra.Merged)
 	}
 
-	// The operator runs the release: the companion is rebased once.
+	// The tag pipeline builds it, and the operator runs the release: the
+	// companion is rebased once.
+	e.home.SetPipelineStatus(e.home.Releases[0].PipelineID, "success")
 	e.r.Version = "2026.11.5"
 	e.reconcile()
 	if c := e.companion(); c.State != aiv1.LandingRebasing || c.Release != "2026.11.5" || !slices.Equal(e.infra.Rebased, []int64{1}) {
@@ -107,13 +112,14 @@ func TestCompanionMilestoneMerge(t *testing.T) {
 	}
 
 	// The GitLab calls that move code, in order: two merge requests from
-	// the one run, the home merge, the one rebase and the companion merge,
-	// each with the head the operator checked. Nothing else, and nothing in
-	// another project.
+	// the one run, the home merge, the release, the one rebase and the
+	// companion merge, each with the head the operator checked. Nothing
+	// else, and nothing in another project.
 	want := []string{
 		homeProject + " create !1",
 		infraProject + " create !1",
 		homeProject + " merge !1@" + run.PushedSHA,
+		homeProject + " release 2026.11.5@" + merge,
 		infraProject + " rebase !1",
 		infraProject + " merge !1@" + rebased,
 	}
@@ -140,10 +146,9 @@ func TestCompanionMilestoneOwnersMerge(t *testing.T) {
 	}
 
 	merge := e.home.MRs[1].MergeCommitSHA
-	at := e.clock.Now()
-	e.home.AddTag("2026.11.5", gitlab.TagCommit{ID: merge, ParentIDs: []string{"p1", "p2"}, CreatedAt: &at})
 	e.infra.MRs[1].DetailedMergeStatus = "need_rebase"
-	e.reconcile()
+	e.reconcile() // the operator creates the release 2026.11.5
+	e.home.SetPipelineStatus(e.home.Releases[0].PipelineID, "success")
 	e.r.Version = "2026.11.5"
 	e.reconcile() // rebased
 	rebased := e.infra.MRs[1].SHA
@@ -197,6 +202,7 @@ func TestCompanionMilestoneOwnersMerge(t *testing.T) {
 		homeProject + " create !1",
 		infraProject + " create !1",
 		homeProject + " merge !1@" + run.PushedSHA,
+		homeProject + " release 2026.11.5@" + merge,
 		infraProject + " rebase !1",
 	}
 	if got := e.api.list(); !slices.Equal(got, want) {

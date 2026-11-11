@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -80,13 +81,13 @@ func (e *releaseEnv) step() {
 	}
 }
 
-// pipeline is the ID of the n-th release pipeline created (from 1).
+// pipeline is the ID of the tag pipeline of the n-th release created (from 1).
 func (e *releaseEnv) pipeline(n int) int64 {
 	e.t.Helper()
-	if len(e.gl.CreatedPipelines) < n {
-		e.t.Fatalf("want release pipeline %d, created %+v", n, e.gl.CreatedPipelines)
+	if len(e.gl.Releases) < n || e.gl.Releases[n-1].PipelineID == 0 {
+		e.t.Fatalf("want the tag pipeline of release %d, created %+v", n, e.gl.Releases)
 	}
-	return e.gl.CreatedPipelines[n-1].ID
+	return e.gl.Releases[n-1].PipelineID
 }
 
 type releasePoll struct {
@@ -102,10 +103,10 @@ func TestReleaseStep(t *testing.T) {
 		name  string
 		setup func(*releaseEnv)
 		polls []releasePoll
-		// pipelines is how many release pipelines were created; version
-		// the version of the last record afterwards.
-		pipelines int
-		version   string
+		// releases is how many releases were created; version the version
+		// of the last record afterwards.
+		releases int
+		version  string
 	}{
 		{name: "a tag of a project that releases on push: already released", setup: func(e *releaseEnv) {
 			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1")}
@@ -119,10 +120,15 @@ func TestReleaseStep(t *testing.T) {
 			e.tag("2026.11.2", "t2", "m1", "m2")
 		}, polls: []releasePoll{{want: []aiv1.ReleaseState{aiv1.ReleaseReleased, aiv1.ReleaseReleased}, reason: "contained in 2026.11.2"}},
 			version: "2026.11.2"},
-		{name: "a project that does not tag its default branch", setup: func(e *releaseEnv) {
+		{name: "a project without tags: the month's first release", setup: func(e *releaseEnv) {
 			e.gl.Tags = nil
 			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1")}
-		}, polls: []releasePoll{{want: []aiv1.ReleaseState{aiv1.ReleaseNotApplicable}, reason: "group/app does not tag its default branch"}}},
+		}, polls: []releasePoll{{want: []aiv1.ReleaseState{aiv1.ReleaseRunning}}}, releases: 1, version: "2026.11.1"},
+		{name: "tags that are no calendar version do not count", setup: func(e *releaseEnv) {
+			e.gl.Tags = nil
+			e.tag("v1.4.0", "t0")
+			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1")}
+		}, polls: []releasePoll{{want: []aiv1.ReleaseState{aiv1.ReleaseRunning}}}, releases: 1, version: "2026.11.1"},
 		{name: "mode Off", setup: func(e *releaseEnv) {
 			e.x.spec.Workflow.Release.Mode = aiv1.ReleaseOff
 			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1")}
@@ -133,7 +139,7 @@ func TestReleaseStep(t *testing.T) {
 		}, polls: []releasePoll{
 			{want: []aiv1.ReleaseState{aiv1.ReleaseWaiting}, reason: "the newest pipeline of main (h2) is failed"},
 			{do: func(e *releaseEnv) { e.green("h3"); e.contains("h3", "m1") }, want: []aiv1.ReleaseState{aiv1.ReleaseRunning}},
-		}, pipelines: 1},
+		}, releases: 1, version: "2026.11.2"},
 		{name: "a head without the commit waits", setup: func(e *releaseEnv) {
 			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m3")}
 			e.gl.Compares["h1..m3"] = &gitlab.Compare{Commits: []gitlab.Commit{{ID: "m3"}}}
@@ -141,7 +147,14 @@ func TestReleaseStep(t *testing.T) {
 		{name: "a head equal to the commit", setup: func(e *releaseEnv) {
 			e.green("m3")
 			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m3")}
-		}, polls: []releasePoll{{want: []aiv1.ReleaseState{aiv1.ReleaseRunning}}}, pipelines: 1},
+		}, polls: []releasePoll{{want: []aiv1.ReleaseState{aiv1.ReleaseRunning}}}, releases: 1, version: "2026.11.2"},
+		{name: "the next version's tag exists: waits", setup: func(e *releaseEnv) {
+			// 2026.11.1 is not among the newest 100 tags.
+			for i := range 100 {
+				e.tag(fmt.Sprintf("build-%d", i), "t3")
+			}
+			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1")}
+		}, polls: []releasePoll{{want: []aiv1.ReleaseState{aiv1.ReleaseWaiting}, reason: "the tag 2026.11.1 exists already: the next poll takes the next version"}}},
 		{name: "within minInterval of the last start", setup: func(e *releaseEnv) {
 			last := e.waiting(1, "m0")
 			last.State, last.Version, last.StartedAt = aiv1.ReleaseReleased, "2026.11.1", &metav1.Time{Time: e.now.Add(-5 * time.Minute)}
@@ -149,55 +162,59 @@ func TestReleaseStep(t *testing.T) {
 		}, polls: []releasePoll{
 			{want: []aiv1.ReleaseState{aiv1.ReleaseReleased, aiv1.ReleaseWaiting}, reason: "at most one release per 15m0s: waits until 2026-11-10 12:10 UTC"},
 			{do: func(e *releaseEnv) { e.now = e.now.Add(10 * time.Minute) }, want: []aiv1.ReleaseState{aiv1.ReleaseReleased, aiv1.ReleaseRunning}},
-		}, pipelines: 1},
+		}, releases: 1, version: "2026.11.2"},
 		{name: "the final release does not wait for minInterval", setup: func(e *releaseEnv) {
 			last := e.waiting(1, "m0")
 			last.State, last.Version, last.StartedAt = aiv1.ReleaseReleased, "2026.11.1", &metav1.Time{Time: e.now.Add(-5 * time.Minute)}
 			final := e.waiting(2, "m1")
 			final.By, final.Final = aiv1.ReleaseByFinal, true
 			e.recs = []aiv1.ReleaseRecord{last, final}
-		}, polls: []releasePoll{{want: []aiv1.ReleaseState{aiv1.ReleaseReleased, aiv1.ReleaseRunning}}}, pipelines: 1},
-		{name: "success with a tag", setup: func(e *releaseEnv) {
+		}, polls: []releasePoll{{want: []aiv1.ReleaseState{aiv1.ReleaseReleased, aiv1.ReleaseRunning}}}, releases: 1, version: "2026.11.2"},
+		{name: "the tag pipeline succeeds", setup: func(e *releaseEnv) {
 			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1")}
 		}, polls: []releasePoll{
 			{want: []aiv1.ReleaseState{aiv1.ReleaseRunning}},
-			{do: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(1), "running") }, want: []aiv1.ReleaseState{aiv1.ReleaseRunning}},
-			{do: func(e *releaseEnv) {
-				e.gl.SetPipelineStatus(e.pipeline(1), "success")
-				e.tag("2026.11.2", "h1", "m1", "m2")
-			}, want: []aiv1.ReleaseState{aiv1.ReleaseReleased}},
-		}, pipelines: 1, version: "2026.11.2"},
-		{name: "success without a tag is a failed attempt", setup: func(e *releaseEnv) {
+			{want: []aiv1.ReleaseState{aiv1.ReleaseRunning}},
+			{do: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(1), "success") }, want: []aiv1.ReleaseState{aiv1.ReleaseReleased}},
+		}, releases: 1, version: "2026.11.2"},
+		{name: "no tag pipeline: released after tagPipelineWait", setup: func(e *releaseEnv) {
+			e.gl.NoTagPipelines = true
 			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1")}
 		}, polls: []releasePoll{
 			{want: []aiv1.ReleaseState{aiv1.ReleaseRunning}},
-			{do: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(1), "success") }, want: []aiv1.ReleaseState{aiv1.ReleaseWaiting},
-				reason: "attempt 1 failed: the pipeline passed but no tag contains m1: does its CI know AGENT_RELEASE?; the retry waits: at most one release per 15m0s"},
-		}, pipelines: 1},
+			{do: func(e *releaseEnv) { e.now = e.now.Add(tagPipelineWait - time.Minute) }, want: []aiv1.ReleaseState{aiv1.ReleaseRunning}},
+			{do: func(e *releaseEnv) { e.now = e.now.Add(time.Minute) }, want: []aiv1.ReleaseState{aiv1.ReleaseReleased},
+				reason: "no pipeline for the tag 2026.11.2: the tag is the release"},
+		}, releases: 1, version: "2026.11.2"},
 		{name: "failed, retried, Failed", setup: func(e *releaseEnv) {
 			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1")}
 		}, polls: []releasePoll{
 			{want: []aiv1.ReleaseState{aiv1.ReleaseRunning}},
-			{do: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(1), "failed") }, want: []aiv1.ReleaseState{aiv1.ReleaseWaiting},
-				reason: "attempt 1 failed: the release pipeline https://gitlab.example/group/app/-/pipelines/"},
-			{do: func(e *releaseEnv) { e.now = e.now.Add(15 * time.Minute) }, want: []aiv1.ReleaseState{aiv1.ReleaseRunning}},
-			{do: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(2), "canceled") }, want: []aiv1.ReleaseState{aiv1.ReleaseFailed}, reason: "is canceled"},
+			{do: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(1), "failed") }, want: []aiv1.ReleaseState{aiv1.ReleaseRunning},
+				reason: "attempt 1 failed: the tag pipeline https://gitlab.example/group/app/-/pipelines/"},
+			{do: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(1), "canceled") }, want: []aiv1.ReleaseState{aiv1.ReleaseFailed}, reason: "is canceled"},
 			{do: func(e *releaseEnv) { e.now = e.now.Add(time.Hour) }, want: []aiv1.ReleaseState{aiv1.ReleaseFailed}},
-		}, pipelines: 2},
-		{name: "two waiting records, one pipeline", setup: func(e *releaseEnv) {
+		}, releases: 1, version: "2026.11.2"},
+		{name: "two waiting records, one release", setup: func(e *releaseEnv) {
 			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1"), e.waiting(2, "m2")}
 		}, polls: []releasePoll{
-			{want: []aiv1.ReleaseState{aiv1.ReleaseRunning, aiv1.ReleaseWaiting}, reason: "after the running release"},
-			{do: func(e *releaseEnv) {
-				e.gl.SetPipelineStatus(e.pipeline(1), "success")
-				e.tag("2026.11.2", "h1", "m1", "m2")
-			}, want: []aiv1.ReleaseState{aiv1.ReleaseReleased, aiv1.ReleaseReleased}, reason: "contained in 2026.11.2"},
-		}, pipelines: 1, version: "2026.11.2"},
+			{want: []aiv1.ReleaseState{aiv1.ReleaseRunning, aiv1.ReleaseWaiting}, reason: "after the running release 2026.11.2"},
+			{want: []aiv1.ReleaseState{aiv1.ReleaseRunning, aiv1.ReleaseWaiting}},
+			{do: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(1), "success") },
+				want: []aiv1.ReleaseState{aiv1.ReleaseReleased, aiv1.ReleaseReleased}, reason: "contained in 2026.11.2"},
+		}, releases: 1, version: "2026.11.2"},
+		{name: "the tag of a failed release does not count", setup: func(e *releaseEnv) {
+			failed := e.waiting(1, "m0")
+			failed.State, failed.Version = aiv1.ReleaseFailed, "2026.11.2"
+			e.tag("2026.11.2", "h0", "m0", "m1")
+			e.recs = []aiv1.ReleaseRecord{failed, e.waiting(2, "m1")}
+		}, polls: []releasePoll{{want: []aiv1.ReleaseState{aiv1.ReleaseFailed, aiv1.ReleaseRunning}}}, releases: 1, version: "2026.11.3"},
 		{name: "a running record goes first", setup: func(e *releaseEnv) {
 			started := metav1.NewTime(e.now.Add(-time.Hour))
 			running := e.waiting(2, "m2")
 			running.State, running.Attempts, running.StartedAt = aiv1.ReleaseRunning, 1, &started
-			running.PipelineID = e.gl.AddPipeline("h1", "main", "success")
+			running.Version, running.ReleaseURL = "2026.11.2", "https://gitlab.example/group/app/-/releases/2026.11.2"
+			running.PipelineID = e.gl.AddPipeline("h1", "2026.11.2", "success")
 			e.recs = []aiv1.ReleaseRecord{e.waiting(1, "m1"), running}
 			e.tag("2026.11.2", "h1", "m1", "m2")
 			// #1 is Released (not Waiting after a running release): the
@@ -227,8 +244,11 @@ func TestReleaseStep(t *testing.T) {
 					t.Fatalf("poll %d: want a reason with %q, got %q", i+1, p.reason, rec.Reason)
 				}
 			}
-			if n := len(e.gl.CreatedPipelines); n != tc.pipelines {
-				t.Fatalf("want %d release pipelines, got %d: %+v", tc.pipelines, n, e.gl.CreatedPipelines)
+			if n := len(e.gl.Releases); n != tc.releases {
+				t.Fatalf("want %d releases, got %d: %+v", tc.releases, n, e.gl.Releases)
+			}
+			if len(e.gl.CreatedPipelines) != 0 {
+				t.Fatalf("a release starts no pipeline itself, got %+v", e.gl.CreatedPipelines)
 			}
 			last := e.recs[len(e.recs)-1]
 			if last.Version != tc.version {
@@ -244,9 +264,9 @@ func TestReleaseStep(t *testing.T) {
 	}
 }
 
-// A started release records the pipeline, the head it runs on and what it
-// contains, with AGENT_RELEASE and the defused notes as variables; its
-// release lists only what no earlier record released.
+// A started release creates the next version's tag and GitLab release on
+// the green head with the defused notes, and records the version, the head
+// and what it contains: only what no earlier record released.
 func TestReleaseTrigger(t *testing.T) {
 	e := newReleaseEnv(t)
 	earlier := e.waiting(1, "m0")
@@ -260,19 +280,49 @@ func TestReleaseTrigger(t *testing.T) {
 	if got.State != aiv1.ReleaseRunning || got.Attempts != 1 || got.StartedAt == nil || !got.StartedAt.Equal(&metav1.Time{Time: e.now}) {
 		t.Fatalf("want a running first attempt started now, got %+v", got)
 	}
-	if got.PipelineID != e.pipeline(1) || got.PipelineURL == "" || got.ReleasedSHA != "h1" {
-		t.Fatalf("want the pipeline and the head h1, got %+v", got)
+	if got.Version != "2026.11.2" || got.ReleaseURL != "https://gitlab.example/group/app/-/releases/2026.11.2" || got.ReleasedSHA != "h1" || got.PipelineID != 0 {
+		t.Fatalf("want 2026.11.2 on the head h1, its tag pipeline not found yet, got %+v", got)
 	}
 	if !slices.Equal(got.Issues, []int64{2}) || !slices.Equal(got.MergeRequests, []int64{12}) {
 		t.Fatalf("want #2 and !12 (#1 was released before), got %v %v", got.Issues, got.MergeRequests)
 	}
-	created := e.gl.CreatedPipelines[0]
+	if len(e.gl.Releases) != 1 {
+		t.Fatalf("want one release, got %+v", e.gl.Releases)
+	}
+	created := e.gl.Releases[0]
 	notes := "## Why\n\nThe planner released after #2. Reason given by the planner: " + notify.Defuse("cc @alice") + " /close the API is live.\n" +
 		"\n## Contains\n\n- #2 UI (!12)\n" +
 		"\nMilestone: [Checkout v2](https://gitlab.example/group/app/-/milestones/3)\n"
-	want := []gitlab.PipelineVariable{{Key: "AGENT_RELEASE", Value: "true"}, {Key: "AGENT_RELEASE_NOTES", Value: notes}}
-	if created.Ref != "main" || !slices.Equal(created.Variables, want) {
-		t.Fatalf("want a pipeline on main with %+v, got %+v", want, created)
+	if created.Tag != "2026.11.2" || created.Ref != "h1" || created.Description != notes {
+		t.Fatalf("want the release 2026.11.2 at h1 with the notes %q, got %+v", notes, created)
+	}
+}
+
+func TestNextRelease(t *testing.T) {
+	nov := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name string
+		tags []string
+		now  time.Time
+		want string
+	}{
+		{name: "no tags", now: nov, want: "2026.11.1"},
+		{name: "counts on in the month", tags: []string{"2026.11.1", "2026.11.3", "2026.11.2"}, now: nov, want: "2026.11.4"},
+		{name: "a new month starts at 1", tags: []string{"2026.10.7"}, now: nov, want: "2026.11.1"},
+		{name: "no leading zero", now: time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), want: "2027.1.1"},
+		{name: "UTC decides the month", now: time.Date(2026, 12, 1, 0, 30, 0, 0, time.FixedZone("CET", 3600)), want: "2026.11.1"},
+		{name: "a later month's tag is counted on", tags: []string{"2026.12.2"}, now: nov, want: "2026.12.3"},
+		{name: "other tags do not count", tags: []string{"v2026.11.5", "2026.11", "2026.11.x", "build-9"}, now: nov, want: "2026.11.1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var tags []gitlab.Tag
+			for _, n := range tc.tags {
+				tags = append(tags, gitlab.Tag{Name: n})
+			}
+			if got := nextRelease(tags, tc.now); got != tc.want {
+				t.Fatalf("want %s, got %s", tc.want, got)
+			}
+		})
 	}
 }
 
@@ -301,18 +351,16 @@ func (e *releaseEnv) notes() []string {
 // across polls and its retried attempt; a non-final one that failed says
 // the queue goes on.
 func TestReleaseComments(t *testing.T) {
-	start := "🤖 🚀 Release started (planner): users see the API. Contains #1, #2. Pipeline https://gitlab.example/group/app/-/pipelines/"
+	start := "🤖 🚀 Release started (planner): users see the API. Contains #1, #2. Release 2026.11.2: https://gitlab.example/group/app/-/releases/2026.11.2"
 	for _, tc := range []struct {
 		name string
 		end  func(e *releaseEnv)
 		want string
 	}{
-		{name: "released", end: func(e *releaseEnv) {
-			e.gl.SetPipelineStatus(e.pipeline(2), "success")
-			e.tag("2026.11.2", "h1", "m1", "m2")
-		}, want: "🤖 📦 Released 2026.11.2: https://gitlab.example/group/app/-/releases/2026.11.2"},
-		{name: "failed", end: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(2), "failed") },
-			want: "🤖 ❌ The release failed twice: the release pipeline https://gitlab.example/group/app/-/pipelines/"},
+		{name: "released", end: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(1), "success") },
+			want: "🤖 📦 Released 2026.11.2: https://gitlab.example/group/app/-/releases/2026.11.2"},
+		{name: "failed", end: func(e *releaseEnv) { e.gl.SetPipelineStatus(e.pipeline(1), "failed") },
+			want: "🤖 ❌ The release failed twice: the tag pipeline https://gitlab.example/group/app/-/pipelines/"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newReleaseEnv(t)
@@ -364,8 +412,8 @@ func TestReleaseCommentRetried(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if n := len(e.notes()); n != 1 || len(e.gl.CreatedPipelines) != 1 {
-		t.Fatalf("want one start comment and one pipeline, got %q %+v", e.notes(), e.gl.CreatedPipelines)
+	if n := len(e.notes()); n != 1 || len(e.gl.Releases) != 1 {
+		t.Fatalf("want one start comment and one release, got %q %+v", e.notes(), e.gl.Releases)
 	}
 }
 
@@ -404,7 +452,7 @@ func TestReleaseAnnouncement(t *testing.T) {
 			r := final(aiv1.ReleaseRunning, "")
 			r.Announced, r.Issues = aiv1.ReleaseFailed, []int64{2}
 			return r
-		}(), want: "🚀 Release started (final): the milestone's last merge. Contains #2."},
+		}(), want: "🚀 Release started (final): the milestone's last merge. Contains #2. Release 2026.11.2: https://gitlab.example/group/app/-/releases/2026.11.2"},
 		{name: "contained in another release, never ran", rec: planner(aiv1.ReleaseReleased, "")},
 		{name: "contained in another release after a failed attempt", rec: planner(aiv1.ReleaseReleased, aiv1.ReleaseRunning),
 			want: "📦 Released 2026.11.2."},
@@ -440,7 +488,7 @@ func TestAutopilotRunsReleasesWhilePaused(t *testing.T) {
 	if got := ap.Releases[0]; got.State != aiv1.ReleaseAlreadyReleased || got.Version != "2026.11.2" {
 		t.Fatalf("want already released in 2026.11.2, got %+v", got)
 	}
-	if ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseOwner || len(e.gl.CreatedPipelines) != 0 {
-		t.Fatalf("want still the owner's pause and no pipeline, got %+v %+v", ap, e.gl.CreatedPipelines)
+	if ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseOwner || len(e.gl.Releases) != 0 {
+		t.Fatalf("want still the owner's pause and no new release, got %+v %+v", ap, e.gl.Releases)
 	}
 }
