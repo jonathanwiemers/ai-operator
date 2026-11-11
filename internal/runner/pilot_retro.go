@@ -299,6 +299,44 @@ type retroFactsDoc struct {
 	Autopilot  []string         `json:"autopilotComments,omitempty"`
 	Queue      []retroIssue     `json:"queue"`
 	Companions []retroCompanion `json:"companions,omitempty"`
+	// Releases are the milestone's release decisions, oldest first
+	// (status.autopilot.releases), the final one included.
+	Releases []retroRelease `json:"releases,omitempty"`
+}
+
+// maxRetroReleaseWhy is the length of an agent's reason in the facts.
+const maxRetroReleaseWhy = 200
+
+// retroRelease is what the retrospective sees of a release decision. Why is
+// the planner's or pilot's text: untrusted, one line, shortened.
+type retroRelease struct {
+	By         string  `json:"by"`
+	Why        string  `json:"why,omitempty"`
+	AfterIssue int64   `json:"afterIssue,omitempty"`
+	State      string  `json:"state"`
+	Reason     string  `json:"reason,omitempty"`
+	Version    string  `json:"version,omitempty"`
+	Issues     []int64 `json:"issues,omitempty"`
+	StartedAt  string  `json:"startedAt,omitempty"`
+	EndedAt    string  `json:"endedAt,omitempty"`
+}
+
+// retroReleases converts the milestone's release records.
+func retroReleases(recs []aiv1.ReleaseRecord) []retroRelease {
+	var out []retroRelease
+	for _, r := range recs {
+		rr := retroRelease{By: string(r.By), AfterIssue: r.AfterIssue, State: string(r.State),
+			Reason: textutil.Truncate(r.Reason, 300), Version: r.Version, Issues: r.Issues}
+		rr.Why = truncateRunes(strings.Join(strings.Fields(r.Why), " "), maxRetroReleaseWhy)
+		if r.StartedAt != nil {
+			rr.StartedAt = r.StartedAt.UTC().Format(time.RFC3339)
+		}
+		if r.EndedAt != nil {
+			rr.EndedAt = r.EndedAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, rr)
+	}
+	return out
 }
 
 // retroSpendFacts is the milestone's spend from the history database in the
@@ -453,6 +491,9 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		v.Queue = append(v.Queue, ri)
 	}
 	v.Companions = retroCompanions(project.Status.Companions, m.IID, items, byIID)
+	if ap != nil {
+		v.Releases = retroReleases(ap.Releases)
+	}
 	comments := retroComments(notes, project.Status.BotUserID)
 	pauses := 0
 	for _, n := range notes {
@@ -505,7 +546,7 @@ func (r *Runner) retroFacts(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 // it is always valid JSON, over limit only when they alone are.
 func fitRetroFacts(v retroFactsDoc, comments []retroComment, limit int) ([]byte, error) {
 	comments = slices.Clone(comments)
-	v.Queue, v.Companions = slices.Clone(v.Queue), slices.Clone(v.Companions)
+	v.Queue, v.Companions, v.Releases = slices.Clone(v.Queue), slices.Clone(v.Companions), slices.Clone(v.Releases)
 	commentRunes, indent := 600, true
 	// Each step shortens v and reports whether anything changed; it runs
 	// again while it changes something and v does not fit.
@@ -553,6 +594,24 @@ func fitRetroFacts(v retroFactsDoc, comments []retroComment, limit int) ([]byte,
 			}
 			comments = slices.Delete(comments, i, i+1)
 			return true
+		}},
+		{"releases", func() bool {
+			changed := false
+			for i := range v.Releases {
+				r := &v.Releases[i]
+				changed = changed || r.Why != "" || r.Reason != ""
+				r.Why, r.Reason = "", ""
+			}
+			return changed
+		}},
+		{"releases", func() bool {
+			changed := false
+			for i := range v.Releases {
+				r := &v.Releases[i]
+				changed = changed || r.Issues != nil || r.StartedAt != "" || r.EndedAt != ""
+				r.Issues, r.StartedAt, r.EndedAt = nil, "", ""
+			}
+			return changed
 		}},
 		{"titles", func() bool {
 			changed := false

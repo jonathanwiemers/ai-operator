@@ -625,3 +625,102 @@ func TestRetroCommentsKeepTheEssentialOnes(t *testing.T) {
 		t.Fatalf("%d essential of %d: first %q, last %q", essential, len(cs), cs[0].body, cs[len(cs)-1].body)
 	}
 }
+
+// retroReleasesTask sets the milestone's release records on the spec task.
+func retroReleasesTask(t *testing.T, e *pilotEnv, recs []aiv1.ReleaseRecord) {
+	t.Helper()
+	var st aiv1.AgentTask
+	if err := e.k8s.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: "shop-spec-m3-checkout-v2"}, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.Status.Autopilot.Releases = recs
+	if err := e.k8s.Status().Update(context.Background(), &st); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The facts carry the milestone's releases, the final one included, with the
+// agent's reason on one line and shortened.
+func TestRetroFactsCarryTheReleases(t *testing.T) {
+	e := newRetroEnv(t, "")
+	start, end := metav1.NewTime(time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)), metav1.NewTime(time.Date(2026, 11, 2, 10, 5, 0, 0, time.UTC))
+	retroReleasesTask(t, e, []aiv1.ReleaseRecord{
+		{ID: 1, By: aiv1.ReleaseByPlanner, Why: "users see it\nnow " + strings.Repeat("x", 300), AfterIssue: 1, State: aiv1.ReleaseReleased,
+			Version: "2026.11.4", Issues: []int64{1}, StartedAt: &start, EndedAt: &end},
+		{ID: 2, By: aiv1.ReleaseByPilot, Why: "not needed", AfterIssue: 2, State: aiv1.ReleaseDropped},
+		{ID: 3, By: aiv1.ReleaseByFinal, State: aiv1.ReleaseNotNeeded, Reason: "docs only since 2026.11.4", Final: true},
+	})
+	e.step(t)
+	var v retroFactsDoc
+	if err := json.Unmarshal([]byte(retroFactsOf(t, e.engine.calls[0].Prompt)), &v); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Releases) != 3 {
+		t.Fatalf("releases: %+v", v.Releases)
+	}
+	r := v.Releases[0]
+	if r.By != "planner" || r.AfterIssue != 1 || r.State != "Released" || r.Version != "2026.11.4" || !slices.Equal(r.Issues, []int64{1}) ||
+		r.StartedAt != "2026-11-02T10:00:00Z" || r.EndedAt != "2026-11-02T10:05:00Z" ||
+		!strings.HasPrefix(r.Why, "users see it now xxx") || utf8.RuneCountInString(r.Why) != maxRetroReleaseWhy+1 {
+		t.Errorf("released: %+v", r)
+	}
+	if v.Releases[1].State != "Dropped" || v.Releases[1].By != "pilot" {
+		t.Errorf("dropped: %+v", v.Releases[1])
+	}
+	if f := v.Releases[2]; f.By != "final" || f.State != "NotNeeded" || f.Reason != "docs only since 2026.11.4" {
+		t.Errorf("final: %+v", f)
+	}
+}
+
+// A milestone without releases has no releases in its facts.
+func TestRetroFactsWithoutReleases(t *testing.T) {
+	e := newRetroEnv(t, "")
+	e.step(t)
+	if p := e.engine.calls[0].Prompt; strings.Contains(p, `"releases"`) {
+		t.Errorf("no releases key without records:\n%s", p)
+	}
+}
+
+// Too long facts lose the releases' reasons, then their issues and times,
+// before anything of the queue, and name it.
+func TestFitRetroFactsTrimsTheReleases(t *testing.T) {
+	v := retroFactsDoc{Milestone: "M", CostUSD: "1.00", Duration: "1h0m0s"}
+	for i := range 10 {
+		v.Queue = append(v.Queue, retroIssue{IID: int64(i), Title: "t", State: "Merged"})
+		v.Releases = append(v.Releases, retroRelease{By: "planner", Why: strings.Repeat("w", 200), State: "Released", Version: "v",
+			Issues: []int64{1, 2, 3}, StartedAt: "2026-11-02T10:00:00Z", EndedAt: "2026-11-02T10:05:00Z"})
+	}
+	full, err := fitRetroFacts(v, nil, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact, err := fitRetroFacts(v, nil, len(full)-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := fitRetroFacts(v, nil, len(compact)-100)
+	if err != nil || !json.Valid(b) {
+		t.Fatalf("%v\n%s", err, b)
+	}
+	var got retroFactsDoc
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got.Trimmed, []string{"releases"}) || got.Releases[0].Why != "" || got.Releases[0].Version != "v" || len(got.Releases[0].Issues) != 3 || len(got.Queue) != 10 {
+		t.Fatalf("only the reasons go: %+v", got)
+	}
+	if v.Releases[0].Why == "" {
+		t.Fatal("the caller's facts are not changed")
+	}
+	b, err = fitRetroFacts(v, nil, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = retroFactsDoc{}
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Releases[0].Issues != nil || got.Releases[0].EndedAt != "" || got.Releases[0].State != "Released" || got.Releases[0].By != "planner" || len(got.Releases) != 10 || len(got.Queue) != 10 {
+		t.Fatalf("the records stay: %+v", got.Releases[0])
+	}
+}
