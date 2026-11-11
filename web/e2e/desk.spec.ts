@@ -352,6 +352,47 @@ test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, ba
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
+// The stream header (Stream.vue, docs/ui.md "Stream header"): on a phone the
+// title, the tab strip and the search each take a full-width row, in that
+// order, and the search is 16 px; from 760 px they share the first row.
+for (const { width, height, phone } of [
+  { width: 375, height: 812, phone: true },
+  { width: 1280, height: 900, phone: false },
+]) {
+  test(`stream-project header rows@${width}`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'stream-project-stream')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const head = page.locator('[data-stream-head]')
+    const box = async (sel: string) => (await head.locator(sel).first().boundingBox())!
+    const row = (await head.locator('h1').evaluate((h) => h.parentElement!.getBoundingClientRect().toJSON())) as DOMRect
+    const title = await box('h1')
+    const tabs = await box('nav[aria-label="View"]')
+    const search = await box('input[type="search"]')
+    const size = await head.locator('input[type="search"]').evaluate((i) => getComputedStyle(i).fontSize)
+    if (phone) {
+      expect(title.width, 'the title takes the full row').toBeCloseTo(row.width, 0)
+      expect(tabs.y, 'the tabs sit below the title').toBeGreaterThanOrEqual(title.y + title.height)
+      expect(tabs.width, 'the tabs take the full row').toBeCloseTo(row.width, 0)
+      expect(search.y, 'the search sits below the tabs').toBeGreaterThanOrEqual(tabs.y + tabs.height)
+      expect(search.width, 'the search takes the full row').toBeGreaterThan(row.width - 2)
+      expect(size).toBe('16px')
+    } else {
+      const mid = (b: { y: number; height: number }) => b.y + b.height / 2
+      expect(Math.abs(mid(tabs) - mid(title)), 'the tabs sit beside the title').toBeLessThan(8)
+      expect(Math.abs(mid(search) - mid(title)), 'the search sits beside the title').toBeLessThan(8)
+      expect(search.x + search.width, 'the search is on the right').toBeGreaterThan(row.x + row.width - 60)
+    }
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
 // The shell on a phone (App.vue, docs/design.md "Phones"): on a short page
 // the mobile bar keeps its natural height instead of stretching with the
 // grid's rows, on Not found and on an empty list.

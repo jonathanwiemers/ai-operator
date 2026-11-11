@@ -463,3 +463,11 @@ follow-up issue), and requirements without an issue and why.
   widths. On phones a row is a wrapping flex line: project, then title and
   state, then the figures. Both moved to utilities, no scoped `<style>`.
   Nothing narrowed.
+- 2026-11-11 #325 (R12 stream header): the project and milestone header of
+  `Stream.vue` moved to utilities, `UInput` for the search; its scoped
+  `.head`, `.title-row`, `.search` and `.scope` rules are gone. On phones
+  title, tabs and search take a full row each and the scope links wrap;
+  from 760 px the layout is as before. The `stream-project@*` and
+  `stream-milestone@*` known-overflow entries were already gone with the
+  RouteTabs slice. Stream rows break long URLs and SHAs (`wrap-anywhere`).
+  Nothing narrowed.

@@ -1874,6 +1874,27 @@ overview and the project page that each row's cells start where the heads
 do, and that on a phone a row stacks inside its width
 (`milestone-rows-<page>@<width>.png`).
 
+### Stream header
+
+The header of the project and milestone pages (`web/src/views/Stream.vue`)
+is Tailwind utilities and Nuxt UI, without scoped CSS.
+
+- On phones the title has a row of its own and wraps. The cost chip and the
+  *Context* button follow it, then the [RouteTabs](#routetabs) strip and the
+  stream search (a full-width `UInput`, 16 px; 14 px from tablet width as
+  before) take a full row each. The
+  scope links (the project's *Everything* and its milestones) wrap onto more
+  lines, a long milestone title inside its link.
+- From tablet width (760 px) the title, the cost, the tabs, the search and
+  the *Context* button share one row as before, and the scope links stay
+  on one line that scrolls inside itself.
+- Stream rows (`stream/EventCard.vue`) break long URLs, branches and SHAs
+  anywhere, so a row never widens the stream.
+
+The e2e case `stream-project header rows` at 375 and 1280 px checks the
+rows' order and widths; the route checks cover every project and milestone
+tab at 375, 768 and 1280 px.
+
 ## Roadmap
 
 1. **Into a running step.** Messages that reach a running claude step at once

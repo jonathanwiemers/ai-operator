@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
+import UInput from '@nuxt/ui/components/Input.vue'
 import Badge from '../components/Badge.vue'
 import { useBackClose } from '../ui/useBackClose'
 import { get, hasFeature, LoginRequiredError, NotFoundError } from '../api'
@@ -74,6 +75,12 @@ const tab = computed((): string => {
   if (milestoneIID.value) return milestoneTabFromRoute(route.query.tab, route.hash, tabs.value)
   return tabFromQuery(route.query.tab, tabs.value)
 })
+// The scope links' classes: a tab with an underline. They wrap on phones
+// and stay on one line from 760 px.
+const scopeLink =
+  '-mb-px max-w-full border-b-2 px-3 py-2 font-medium break-words hover:no-underline tablet:whitespace-nowrap'
+const scopeOn = 'border-(--accent) text-(--text)'
+const scopeOff = 'border-transparent text-(--text-2) hover:text-(--text)'
 // scopeQuery is a scope link's query: it keeps a chosen tab where the
 // target has it, else opens the target's default.
 function scopeQuery(milestone: boolean) {
@@ -423,25 +430,43 @@ function showDay(i: number): string | null {
   <NotFound v-if="notFound" />
   <div v-else class="desk" :class="{ solo: milestoneIID }">
     <div class="stream">
-      <div class="head">
-        <div v-if="milestone?.autopilot" class="apline">
-          <span class="ap">Autopilot {{ milestone.autopilot.phase.toLowerCase() }}</span>
+      <!-- Phones: the title has a row of its own and wraps, the cost and the
+           Context button follow, then the tab strip and the search take a
+           full row each. From 760 px they share one row as before. -->
+      <div data-stream-head class="bg-(--bg) px-4 pt-3.5 tablet:px-7">
+        <div v-if="milestone?.autopilot" class="flex items-center gap-1.5 text-[12.5px] text-(--text-3)">
+          <span class="font-semibold text-(--tone-progress-fg)">Autopilot {{ milestone.autopilot.phase.toLowerCase() }}</span>
         </div>
-        <div class="title-row">
-          <h1>{{ title }}</h1>
+        <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 class="max-w-full min-w-0 shrink-0 basis-full text-xl tracking-[-0.01em] break-words tablet:basis-auto">{{ title }}</h1>
           <CostChip :cost="headerCost" />
           <RouteTabs
             v-if="!everything"
+            class="order-1 basis-full tablet:order-none tablet:basis-auto"
             :tabs="tabs"
             :active="tab"
             :to="(id) => ({ query: tabQuery(route.query, id, tabs) })"
           />
-          <span class="spacer" />
-          <form v-if="tab === 'stream'" class="search" @submit.prevent="applySearch">
-            <input v-model="qDraft" type="search" placeholder="Search…" aria-label="Search stream" />
+          <span class="hidden flex-1 tablet:block" />
+          <form
+            v-if="tab === 'stream'"
+            role="search"
+            class="order-2 basis-full tablet:order-none tablet:basis-auto"
+            @submit.prevent="applySearch"
+          >
+            <UInput
+              v-model="qDraft"
+              type="search"
+              placeholder="Search…"
+              aria-label="Search stream"
+              icon="i-lucide-search"
+              class="w-full tablet:w-45"
+              :ui="{ base: 'tablet:text-sm/5' }"
+            />
           </form>
           <UButton
             v-if="hasContext && narrow"
+            class="ms-auto tablet:ms-0"
             color="neutral"
             variant="outline"
             icon="i-lucide-panel-right"
@@ -456,10 +481,16 @@ function showDay(i: number): string | null {
             </template>
           </UButton>
         </div>
-        <div v-if="!everything" class="scope">
+        <!-- Phones: the scope links wrap onto more lines; from 760 px they
+             stay on one line that scrolls inside itself. -->
+        <nav
+          v-if="!everything"
+          aria-label="Scope"
+          class="mt-3 flex flex-wrap gap-0.5 border-b border-(--border) tablet:flex-nowrap tablet:overflow-x-auto"
+        >
           <RouterLink
             :to="{ name: 'stream-project', params: { namespace, name }, query: scopeQuery(false) }"
-            :class="{ on: !milestoneIID }"
+            :class="[scopeLink, !milestoneIID ? scopeOn : scopeOff]"
           >
             Everything
           </RouterLink>
@@ -467,13 +498,13 @@ function showDay(i: number): string | null {
             v-for="m in project?.milestones ?? []"
             :key="m.iid"
             :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: scopeQuery(true) }"
-            :class="{ on: milestoneIID === m.iid }"
+            :class="[scopeLink, milestoneIID === m.iid ? scopeOn : scopeOff]"
           >
             {{ m.title }}
-            <span v-if="m.spec?.status.autopilot" class="n">{{ m.spec.status.autopilot.phase === 'Done' ? 'done' : '' }}</span>
-            <CostChip class="cost" :cost="m" small />
+            <span v-if="m.spec?.status.autopilot" class="ms-1 text-[11px] text-(--text-3)">{{ m.spec.status.autopilot.phase === 'Done' ? 'done' : '' }}</span>
+            <CostChip class="ms-1.5" :cost="m" small />
           </RouterLink>
-        </div>
+        </nav>
         <div v-if="tab === 'stream' && heatDays.length" class="heat" title="Activity per day; click to jump">
           <span>{{ heatRange.start }}</span>
           <div class="cells">
@@ -681,80 +712,6 @@ function showDay(i: number): string | null {
   min-height: 0;
   height: 100%;
 }
-.head {
-  padding: 14px 28px 0;
-  background: var(--bg);
-}
-.apline {
-  font-size: 12.5px;
-  color: var(--text-3);
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.ap {
-  color: var(--tone-progress-fg);
-  font-weight: 600;
-}
-/* Wraps where the tab strip does not fit beside the title: the strip then
-   takes a line of its own and scrolls inside it (RouteTabs). */
-.title-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-top: 2px;
-}
-.title-row h1 {
-  font-size: 20px;
-  margin: 0;
-  letter-spacing: -0.01em;
-}
-/* Stays on the right when it wraps to a line of its own. */
-.search {
-  margin-left: auto;
-}
-.search input {
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  padding: 0 10px;
-  font: inherit;
-  color: var(--text);
-  width: 180px;
-}
-.scope {
-  display: flex;
-  gap: 2px;
-  margin-top: 12px;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-}
-.scope a {
-  padding: 8px 12px;
-  color: var(--text-2);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.scope a:hover {
-  text-decoration: none;
-  color: var(--text);
-}
-.scope a.on {
-  color: var(--text);
-  border-color: var(--accent);
-}
-.scope a .cost {
-  margin-left: 6px;
-}
-.scope a .n {
-  font-size: 11px;
-  color: var(--text-3);
-  margin-left: 4px;
-}
 .heat {
   display: flex;
   align-items: center;
@@ -896,16 +853,12 @@ function showDay(i: number): string | null {
   }
 }
 @media (max-width: 759.98px) {
-  .head,
   .scroll {
     padding-left: 16px;
     padding-right: 16px;
   }
   .heat {
     display: none;
-  }
-  .search input {
-    width: 120px;
   }
 }
 </style>

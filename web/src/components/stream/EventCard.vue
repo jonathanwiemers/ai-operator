@@ -124,7 +124,9 @@ function taskLink(ev: StreamEvent) {
       <template v-else-if="e.kind === 'chat.user' || e.kind === 'chat.agent'">C</template>
       <template v-else>·</template>
     </div>
-    <div>
+    <!-- Long URLs, branches and SHAs break anywhere (overflow-wrap is
+         inherited), so a row never widens the stream on a phone. -->
+    <div class="min-w-0 wrap-anywhere">
       <div class="meta">
         <b>{{ (isRelease && releaseEventTitle(e)) || e.summary || e.kind }}</b>
         <span v-if="e.issueIID" class="ctx">#{{ e.issueIID }}</span>
