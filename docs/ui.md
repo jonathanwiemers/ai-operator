@@ -211,20 +211,26 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   (cursor without pricing) shows *n/a*, never $0. Without the database,
   or until the UI is connected to it, they sum the cost of the current
   tasks, without tokens, as before.
-* **Context panel** (wide screens): what needs you in this project, the
+* **Context panel** (from 1180 px, beside the stream): what needs you in this project, the
   active milestone's queue (per issue its state, merge request, task page
   and decisions; a milestone that waits for its turn to be planned says
   *⏳ Waiting for its turn: %7, %9 go first* with the hint `/agent start`,
   from `autopilot.queuedBehind`. It is running, not paused, so it has no
   pause card and no Inbox item: nothing is asked of anyone), and the last
   30 days: runs per day with the spend,
-  merges, spend and events against the 30 days before. The panel is for
-  project pages only: a milestone page has none and uses the full width for
+  merges, spend and events against the 30 days before. Beside the stream the
+  panel is on project pages only: a milestone page has none and uses the full width for
   its tabs. What the panel once showed there lives in the tabs: the queue
   (with the *⏳ Waiting for its turn* hint) and the **Companions** in
   *Issues* (with a compact pause line linking to *Pilot* while paused), the
   full **pause card**, the pilot's autonomy and cost, the **questions**
   (prompt cards), **Ask the pilot** and the **pause history** in *Pilot*.
+  Below 1180 px (phones and tablets) the panel is not beside the stream:
+  the header's **Context** button, with the Needs-you count, opens it as a
+  [sheet](#sheets) from the right, on project pages and on milestone pages
+  (there with the page's milestone). The count is the panel's own (the
+  page's Inbox items for the project), so neither the button nor the sheet
+  loads anything more.
   The milestone API also carries the autopilot's **pause
   history** (`pauses`, from the `autopilot.paused`/`autopilot.resumed`
   events within the history retention: the newest 20 pauses with kind,
@@ -1656,7 +1662,10 @@ its `vaul-vue` is unmaintained). Every sheet closes by its scrim, its close
 button, Escape and the browser's back button. There are no swipe gestures.
 The rail on phones is the first sheet: the bottom bar's *Projects* opens it from the
 left with the rail's content (`components/RailNav.vue`, which the aside
-renders on tablet and desktop).
+renders on tablet and desktop). Below 1180 px the stream header's
+*Context* button opens the context panel (`components/ContextPanel.vue`)
+from the right, the side it has on desktop; widening the window to 1180 px
+closes the sheet.
 
 `web/src/ui/useBackClose.ts` gives a sheet the back button:
 
@@ -1684,7 +1693,13 @@ A sheet sets `z-40` on its `overlay` and `content` (`ui` prop): Nuxt UI
 sets no z-index, and the sticky mobile bar and the fixed bottom bar have 10. The e2e cases
 `rail sheet …` cover each way to close, that the router did not navigate
 and the API was not asked again, and a link inside the sheet followed by
-back; `rail-sheet@375.png` shows the open sheet.
+back; `rail-sheet@375.png` shows the open sheet. The cases `context sheet …`
+open the Context sheet on the project and the milestone page at 375 and
+768 px, check its four parts (Needs you, the queue, companions, the last
+30 days), that it fits the width, and that back, scrim, close button and
+Escape close it; `context-sheet-<page>@<width>.png` show it open. At
+1280 px the project page keeps the panel at its side and neither page has
+the button.
 
 ## Roadmap
 

@@ -680,6 +680,126 @@ test.describe('rail sheet', () => {
   }
 })
 
+// The context sheet below 1180 px (Stream.vue, docs/ui.md "Sheets"): the
+// Context button in the header carries the Needs-you count and opens the
+// context panel from the right, on project and milestone pages. The sheet
+// shows Needs you, the milestone's queue, its companions and the last 30
+// days, fits the width, and back (or scrim, close button, Escape) closes it
+// without leaving an entry. From 1180 px the project page keeps the panel at
+// its side and neither page has the button.
+test.describe('context sheet', () => {
+  const pages = [
+    { page: 'project', route: routes.find((r) => r.name === 'stream-project-stream')!, milestone: /^Checkout without account/ },
+    { page: 'milestone', route: routes.find((r) => r.name === 'stream-milestone-issues')!, milestone: /^Payment providers/ },
+  ]
+  const sections = (m: RegExp) => [/^Needs you/, m, /^Companions/, /^Last 30 days/]
+  const sheetEntry = (page: Page) => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet)
+
+  async function load(page: Page, baseURL: string | undefined, route: Route, size: { width: number; height: number }) {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize(size)
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+    await page.waitForLoadState('networkidle')
+    return problems
+  }
+
+  async function openSheet(page: Page) {
+    const button = page.locator('main').getByRole('button', { name: `Context, ${inbox.items.length} need you` })
+    await expect(button, 'the button shows the Needs-you count').toContainText(String(inbox.items.length))
+    await button.click()
+    const sheet = page.getByRole('dialog', { name: 'Context' })
+    await expect(sheet).toBeVisible()
+    await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+    await expect.poll(() => sheetEntry(page), 'the sheet pushed its entry').toBeDefined()
+    return sheet
+  }
+
+  for (const { page: name, route, milestone } of pages) {
+    for (const size of widths.filter((w) => w.width < 1180)) {
+      test(`${name} page opens it, back closes it@${size.width}`, async ({ page, baseURL }, testInfo) => {
+        const problems = await load(page, baseURL, route, size)
+        const url = page.url()
+        const sheet = await openSheet(page)
+
+        for (const heading of sections(milestone)) {
+          await expect(sheet.getByRole('heading', { name: heading })).toBeVisible()
+        }
+        const shot = join(testInfo.project.outputDir, '..', 'screenshots', `context-sheet-${name}@${size.width}.png`)
+        await page.screenshot({ path: shot })
+        await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+
+        // The page does not scroll sideways, the sheet lies within the
+        // viewport, and nothing in it reaches past its edges. Content cut off
+        // by an ancestor that clips (a truncated reason's text behind its
+        // ellipsis) is not seen; the clipping ancestor itself is checked.
+        // An ancestor that scrolls sideways does not count as clipping.
+        const fit = await sheet.evaluate((e) => {
+          const doc = document.scrollingElement ?? document.documentElement
+          const r = e.getBoundingClientRect()
+          const clipped = (c: Element) => {
+            for (let p = c.parentElement; p && p !== e; p = p.parentElement) {
+              if (['hidden', 'clip'].includes(getComputedStyle(p).overflowX)) return true
+            }
+            return false
+          }
+          const outside = [...e.querySelectorAll('*')]
+            .filter((c) => {
+              if (clipped(c)) return false
+              const b = c.getBoundingClientRect()
+              return b.width > 0 && (b.left < r.left - 0.5 || b.right > r.right + 0.5)
+            })
+            .map((c) => `${c.tagName.toLowerCase()}.${[...c.classList].join('.')}`)
+          return { page: doc.scrollWidth - doc.clientWidth, inside: r.left >= 0 && r.right <= window.innerWidth, outside }
+        })
+        expect(fit, 'the page does not scroll sideways, the sheet fits the width').toEqual({ page: 0, inside: true, outside: [] })
+
+        await page.evaluate(() => history.back())
+        await expect(sheet).toBeHidden()
+        await expect.poll(() => sheetEntry(page), 'the entry is gone').toBeUndefined()
+        expect(page.url(), 'the URL is unchanged').toBe(url)
+
+        problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+        expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+      })
+    }
+  }
+
+  const closes: { how: string; close: (page: Page) => Promise<void> }[] = [
+    { how: 'scrim', close: (page) => page.mouse.click(15, 400) },
+    { how: 'close button', close: (page) => page.getByRole('dialog').getByRole('button', { name: 'Close' }).click() },
+    { how: 'Escape', close: (page) => page.keyboard.press('Escape') },
+  ]
+  for (const { how, close } of closes) {
+    test(`closes by ${how}@375`, async ({ page, baseURL }) => {
+      const problems = await load(page, baseURL, pages[0]!.route, widths[0]!)
+      const sheet = await openSheet(page)
+      await close(page)
+      await expect(sheet).toBeHidden()
+      await expect.poll(() => sheetEntry(page), 'the entry is gone').toBeUndefined()
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+
+  for (const { page: name, route, milestone } of pages) {
+    const project = name === 'project'
+    test(`${name} page ${project ? 'keeps the side panel' : 'has no panel'} and no button@1280`, async ({ page, baseURL }) => {
+      const problems = await load(page, baseURL, route, widths[2]!)
+      await expect(page.locator('main').getByRole('button', { name: /^Context/ })).toHaveCount(0)
+      const panel = page.locator('aside.ctxp')
+      if (project) {
+        for (const heading of sections(milestone)) await expect(panel.getByRole('heading', { name: heading })).toBeVisible()
+      } else {
+        await expect(panel).toHaveCount(0)
+      }
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+})
+
 // The bottom bar on a phone (App.vue, docs/ui.md "Navigation"): Inbox with
 // its count, Overview, Projects (the rail sheet) and Research with the
 // feature on; aria-current on the section shown. It hides while a text field

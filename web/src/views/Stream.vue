@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
+import UButton from '@nuxt/ui/components/Button.vue'
+import Badge from '../components/Badge.vue'
+import { useBackClose } from '../ui/useBackClose'
 import { get, hasFeature, LoginRequiredError, NotFoundError } from '../api'
 import { setCrumbNames } from '../crumbNames'
 import Board from '../components/Board.vue'
@@ -42,6 +45,8 @@ import type {
 } from '../types'
 import { carryTab, milestoneTabFromRoute, milestoneTabs, projectTabs, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
+// The sheet is loaded below 1180 px only, where the Context button is.
+const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
 
 const props = defineProps<{
   namespace?: string
@@ -128,6 +133,22 @@ const projectInbox = computed(() => {
   if (everything.value) return items
   return items.filter((i) => i.namespace === props.namespace && i.project === props.name)
 })
+
+// The context panel (docs/ui.md, "Context panel"): beside a project stream
+// from 1180 px; below, on project and milestone pages, the Context button
+// opens it as a sheet. The button's count is projectInbox's, so the sheet
+// loads nothing of its own.
+const hasContext = computed(() => !everything.value && !!props.namespace && !!props.name)
+const narrowQuery = window.matchMedia('(max-width: 1179.98px)')
+const narrow = ref(narrowQuery.matches)
+const contextOpen = ref(false)
+useBackClose(contextOpen)
+function onWidth() {
+  narrow.value = narrowQuery.matches
+  if (!narrowQuery.matches) contextOpen.value = false
+}
+onMounted(() => narrowQuery.addEventListener('change', onWidth))
+onBeforeUnmount(() => narrowQuery.removeEventListener('change', onWidth))
 
 const canSteer = computed(() => !!milestone.value?.permissions?.steer)
 
@@ -405,6 +426,21 @@ function showDay(i: number): string | null {
           <form v-if="tab === 'stream'" class="search" @submit.prevent="applySearch">
             <input v-model="qDraft" type="search" placeholder="Search…" aria-label="Search stream" />
           </form>
+          <UButton
+            v-if="hasContext && narrow"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-panel-right"
+            label="Context"
+            aria-haspopup="dialog"
+            :aria-expanded="contextOpen"
+            :aria-label="projectInbox.length ? `Context, ${projectInbox.length} need you` : 'Context'"
+            @click="contextOpen = true"
+          >
+            <template v-if="projectInbox.length" #trailing>
+              <Badge tone="warning">{{ projectInbox.length }}</Badge>
+            </template>
+          </UButton>
         </div>
         <div v-if="!everything" class="scope">
           <RouterLink
@@ -569,6 +605,38 @@ function showDay(i: number): string | null {
       :milestone="milestone"
       :history="history"
     />
+
+    <!-- Below 1180 px: the context panel as a sheet from the right
+         (docs/ui.md, "Sheets"), on project and milestone pages. -->
+    <USlideover
+      v-if="hasContext && narrow"
+      v-model:open="contextOpen"
+      side="right"
+      title="Context"
+      description="Needs you, the milestone's queue and companions, the last 30 days"
+      close-icon="i-lucide-x"
+      :ui="{
+        overlay: 'z-40',
+        content:
+          'z-40 w-[min(360px,88vw)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)]',
+        header: 'min-h-0 gap-2 py-1 ps-4 pe-1 sm:ps-4 sm:pe-1',
+        title: 'text-[15px] font-bold',
+        description: 'sr-only',
+        close: 'static ms-auto',
+        body: 'min-h-0 p-0 sm:p-0',
+      }"
+    >
+      <template #body>
+        <ContextPanel
+          class="ctx-sheet"
+          :namespace="namespace!"
+          :name="name!"
+          :inbox="projectInbox"
+          :milestone="milestone"
+          :history="history"
+        />
+      </template>
+    </USlideover>
   </div>
 </template>
 
@@ -792,6 +860,11 @@ function showDay(i: number): string | null {
   padding: 32px;
   text-align: center;
   color: var(--text-3);
+}
+/* In the sheet the panel needs no edge of its own; the sheet's body scrolls. */
+.ctx-sheet {
+  border-left: 0;
+  overflow-y: visible;
 }
 @media (max-width: 1179.98px) {
   .desk {

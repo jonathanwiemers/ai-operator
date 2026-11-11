@@ -41,6 +41,8 @@ const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestone
   margin: 0;
   padding: 0;
   display: grid;
+  /* The nowrap reason is cut at the column, it does not set its width. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   font-size: 13px;
 }

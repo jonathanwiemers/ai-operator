@@ -376,3 +376,13 @@ follow-up issue), and requirements without an issue and why.
   `renderInline` in `markdown.ts` strips block markup per line and runs
   the existing inline tokenizer with a link function that returns the
   label (D314-P1). No call site uses `inline` yet (R9). Nothing narrowed.
+- 2026-11-11 #317 (R6 Context sheet): below 1180 px the stream header
+  has a *Context* button (`UButton`) with the Needs-you count, which opens
+  `ContextPanel` in a `USlideover` from the right (D317-P1), closed by
+  scrim, button, Escape and back (`useBackClose`). The count is the
+  `projectInbox` Stream.vue already passes to the panel, so nothing loads
+  twice. The button is on milestone pages too, as the acceptance asks,
+  though a milestone page has no side panel from 1180 px. The slideover
+  loads lazily, as the rail's does. The panel's and the companions list's
+  grids got a `minmax(0, 1fr)` column: a companion's nowrap reason had made
+  the panel wider than the sheet (%14). Nothing narrowed.

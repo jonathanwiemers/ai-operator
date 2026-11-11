@@ -417,7 +417,16 @@ export const checkoutMilestone: MilestoneView = {
   pilot: { task: 'shop-m12-pilot', autonomy: 'managed', proposals: [], costUSD: '0.31', phase: 'Idle' },
   prompts: [],
   tasks: checkoutTasks,
-  companions: [],
+  // One companion, so the project page's context panel shows all four parts.
+  companions: [
+    {
+      homeIssueIID: 277,
+      project: 'team-a/checkout-widget',
+      mrIID: 12,
+      mrURL: 'https://gitlab.example.com/team-a/checkout-widget/-/merge_requests/12',
+      chip: 'draft',
+    },
+  ],
   permissions: {
     gitlab: true,
     steer: true,

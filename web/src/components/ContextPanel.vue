@@ -10,7 +10,8 @@ import RelTime from './RelTime.vue'
 
 // ContextPanel sits beside a project stream: what needs you, the active
 // milestone's queue and companions, and the last 30 days. A milestone page has
-// no panel: its parts live in the Issues and Pilot tabs.
+// no side panel: its parts live in the Issues and Pilot tabs. Below 1180 px
+// Stream.vue's Context button opens it as a sheet, on milestone pages too.
 const props = defineProps<{
   namespace: string
   name: string
@@ -164,6 +165,9 @@ function inboxTo(item: InboxItem) {
   overflow-y: auto;
   padding: 16px;
   display: grid;
+  /* A row's min-content (a nowrap companion reason) never widens the panel
+     past its own width, in the 320 px column or the sheet. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-content: start;
   min-height: 0;
