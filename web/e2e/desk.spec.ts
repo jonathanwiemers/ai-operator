@@ -298,3 +298,39 @@ for (const { width, height, labels } of [
     else await expect(page.locator('main thead')).toBeVisible()
   })
 }
+
+// RouteTabs (src/ui/RouteTabs.vue): on a phone the milestone's six tabs are
+// wider than the screen. They scroll inside the strip, the page does not,
+// and the tab of ?tab=spend, the last one, is scrolled into view on load.
+test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, baseURL }, testInfo) => {
+  const route = routes.find((r) => r.name === 'stream-milestone-spend')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+
+  const strip = page.locator('main').getByRole('navigation', { name: 'View' })
+  const active = strip.getByRole('link', { name: 'Spend' })
+  await expect(active).toHaveAttribute('aria-current', 'page')
+  await expect(active).toBeInViewport({ ratio: 1 })
+  await expect(strip.getByRole('link', { name: 'Issues' })).not.toBeInViewport({ ratio: 1 })
+
+  const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'route-tabs@375.png')
+  await page.screenshot({ path: shot })
+  await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+
+  const widths = await strip.evaluate((nav) => {
+    const doc = document.scrollingElement ?? document.documentElement
+    const main = document.querySelector('main')!
+    return {
+      strip: nav.scrollWidth > nav.clientWidth,
+      page: doc.scrollWidth - doc.clientWidth,
+      pane: main.scrollWidth - main.clientWidth,
+    }
+  })
+  expect(widths, 'the strip scrolls, the page and the content pane do not').toEqual({ strip: true, page: 0, pane: 0 })
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})

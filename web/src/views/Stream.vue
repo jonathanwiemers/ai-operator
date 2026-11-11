@@ -15,6 +15,7 @@ import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestonePilot from '../components/MilestonePilot.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
+import RouteTabs from '../ui/RouteTabs.vue'
 import { live, useResource } from '../live'
 import { pausePrompt } from '../pauseCard'
 import {
@@ -394,17 +395,12 @@ function showDay(i: number): string | null {
         <div class="title-row">
           <h1>{{ title }}</h1>
           <CostChip :cost="headerCost" />
-          <nav v-if="!everything" class="tabs" aria-label="View">
-            <RouterLink
-              v-for="t in tabs"
-              :key="t.id"
-              :to="{ query: tabQuery(route.query, t.id, tabs) }"
-              :class="{ on: tab === t.id }"
-              :aria-current="tab === t.id ? 'page' : undefined"
-            >
-              {{ t.label }}
-            </RouterLink>
-          </nav>
+          <RouteTabs
+            v-if="!everything"
+            :tabs="tabs"
+            :active="tab"
+            :to="(id) => ({ query: tabQuery(route.query, id, tabs) })"
+          />
           <span class="spacer" />
           <form v-if="tab === 'stream'" class="search" @submit.prevent="applySearch">
             <input v-model="qDraft" type="search" placeholder="Search…" aria-label="Search stream" />
@@ -610,8 +606,11 @@ function showDay(i: number): string | null {
   color: var(--tone-progress-fg);
   font-weight: 600;
 }
+/* Wraps where the tab strip does not fit beside the title: the strip then
+   takes a line of its own and scrolls inside it (RouteTabs). */
 .title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-top: 2px;
@@ -621,28 +620,9 @@ function showDay(i: number): string | null {
   margin: 0;
   letter-spacing: -0.01em;
 }
-.tabs {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-3);
-}
-.tabs a {
-  padding: 3px 12px;
-  border-radius: 5px;
-  color: var(--text-2);
-  font-size: 13px;
-  font-weight: 500;
-}
-.tabs a:hover {
-  text-decoration: none;
-  color: var(--text);
-}
-.tabs a.on {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow);
+/* Stays on the right when it wraps to a line of its own. */
+.search {
+  margin-left: auto;
 }
 .search input {
   height: 32px;

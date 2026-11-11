@@ -70,7 +70,9 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   so it can be linked to and reloaded; the default, *Stream* on a project and
   *Issues* on a milestone, is left out, and old `…/milestones/3?tab=stream`
   links still open the stream; a milestone link with a `#prompt-Q<n>` hash
-  and no `?tab=` opens *Pilot*). A milestone's **Issues** tab shows its state,
+  and no `?tab=` opens *Pilot*). The view tabs are a [RouteTabs](#routetabs)
+  strip: where they do not fit beside the title they take a line of their
+  own, and on a phone they scroll sideways inside it. A milestone's **Issues** tab shows its state,
   progress (merged of total) and cost, then one row per issue: title (linking
   to its issue page), state, merge request, wall time (first run
   to merge, or now), agent time (its calls' durations), paused time (the
@@ -1460,7 +1462,8 @@ the Nuxt framework). The packages are pinned in `web/package.json`; the
 Vite plugin is `ui()` from `@nuxt/ui/vite` in `web/vite.config.ts`, and
 `App.vue` wraps the app in `<UApp>`. Views moved to the kit use components
 and utilities and drop their scoped CSS, except what utilities cannot
-express. `web/src/ui/` holds only what Nuxt UI lacks ([DataList](#datalist)). Not found
+express. `web/src/ui/` holds only what Nuxt UI lacks ([DataList](#datalist),
+[RouteTabs](#routetabs)). Not found
 (`views/NotFound.vue`) is the first view on it.
 
 **Imports are explicit.** Auto-imports and component resolution are off
@@ -1538,6 +1541,32 @@ stays selectable.
 
 A row is `relative`, so a link in a cell can cover the row with
 `after:absolute after:inset-0`. The research runs table is the first user.
+
+### RouteTabs
+
+`web/src/ui/RouteTabs.vue` is a tab strip of links. Nuxt UI's `UTabs`
+switches local state with buttons; the Desk's tabs live in `?tab=`
+(`web/src/streamTabs.ts`), so they can be shared, reloaded and opened in a
+new tab. Each tab is a `RouterLink`, the active one with
+`aria-current="page"`, in a `<nav>` styled as the segmented strip the
+stream page always had.
+
+```vue
+<RouteTabs :tabs="milestoneTabs" :active="tab" :to="(id) => ({ query: tabQuery(route.query, id, milestoneTabs) })" />
+```
+
+- `tabs`: `Tab<T>[]` from `streamTabs.ts`; `active`: the shown tab's id.
+- `to`: the link of a tab, usually `tabQuery` on the current query.
+- `badges`: optional counts per tab id, shown after the label when above 0.
+- `label`: the `<nav>`'s `aria-label`, `View` by default.
+
+The strip never widens the page: it is `min-w-0 max-w-full` and scrolls
+sideways inside itself (`overflow-x-auto`, snapping to tab starts). On mount,
+when `active` or `tabs` change and when the strip is resized, it scrolls
+itself, not the page, so the active tab is fully in view. Below 760 px each
+tab is at least 44 px high. A parent that is a flex row lets the strip wrap
+to a line of its own (`flex-wrap`), as the stream page's title row does, so
+it gets the full width before it scrolls. The stream page is the first user.
 
 ## Roadmap
 

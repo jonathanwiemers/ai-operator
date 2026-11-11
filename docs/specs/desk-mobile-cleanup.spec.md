@@ -320,3 +320,12 @@ follow-up issue), and requirements without an issue and why.
   stands in for it, and `html` is back at 16 px so `rem` sizes are
   Tailwind's, with `body` at 14 px. Initial bundle 101.8 kB (51.9 before),
   cap 132.3 kB. Nothing narrowed.
+- 2026-11-11 #308 (R4 tab strips): `web/src/ui/RouteTabs.vue`, link tabs
+  on `?tab=` that scroll inside the strip and scroll the active tab into
+  view, used by the stream page. The title row now wraps, so the strip
+  takes a line of its own where it does not fit beside the title. That
+  also gives the title and the search form room: every `stream-project-*`
+  and `stream-milestone-*` known-overflow entry is gone, not only the tab
+  strip's. The tab bodies never widened the pane (`.scroll` scrolls on
+  its own). The dashboard's *Overview | Stream* strip fits on a phone and
+  stays as it is until R12 (Dashboard). Nothing narrowed.
