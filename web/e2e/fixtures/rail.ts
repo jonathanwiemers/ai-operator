@@ -84,7 +84,9 @@ export const inbox: InboxResponse = {
       issueIID: 277,
       milestoneIID: 12,
       title: 'Guest checkout: keep the cart after the address step',
-      reason: 'The merge request has 2 blocking review findings.',
+      // Long enough to be clipped at two lines on a phone (Truncated).
+      reason:
+        'The merge request has 2 blocking review findings: **the address step drops the cart** when the session expires, and the guest e-mail is not checked before the payment step starts.',
       at: ago(90),
       url: 'https://gitlab.example.com/team-a/shop/-/merge_requests/301',
     },

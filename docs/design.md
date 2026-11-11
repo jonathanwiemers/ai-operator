@@ -2749,7 +2749,7 @@ it there, with `--keyboard-inset`, see [ui.md](ui.md#composer)).
   `[role=button]`, `select` and every `input` but checkboxes and radios
   `min-height: 44px !important`, and buttons `min-width: 44px !important`.
   `min-height` wins over a smaller `height` whatever the cascade, so the
-  scoped 26 to 34 px heights (the global `.btn`, the Inbox's notify button,
+  scoped 26 to 34 px heights (the global `.btn`,
   the stream search, the composers' buttons, the pause card's select) need
   no phone rule of their own; a view must not set `min-height` on a control
   with `!important`. Links styled as controls set it themselves: the rail

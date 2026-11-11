@@ -602,6 +602,71 @@ for (const name of hitRoutes) {
   })
 }
 
+// The Inbox's rows (views/Inbox.vue, R12): each row is at least 44 px high
+// on a phone and opens its item on a tap anywhere but a clipped reason,
+// which opens in place. No title attribute holds text of the list.
+test.describe('inbox rows', () => {
+  for (const { width, height } of [widths[0]!, widths[2]!]) {
+    test(`rows navigate, a long reason opens in place@${width}`, async ({ page, baseURL }, testInfo) => {
+      const route = routes.find((r) => r.name === 'inbox')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize({ width, height })
+      // No fixed clock: Vue skips a bubbling handler attached at the event's
+      // own Date.now(), which a frozen clock makes equal.
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.goto(route.path)
+      await route.ready(page)
+
+      const list = page.locator('main ul').last()
+      const rows = list.locator(':scope > li')
+      await expect(rows).toHaveCount(inbox.items.length)
+      if (width === 375) {
+        for (const h of await rows.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))) {
+          expect(h, 'row height').toBeGreaterThanOrEqual(44)
+        }
+        // A row's title link covers its row with ::after: its hit area is
+        // the row. Every other link (the paused strip, Open) is 44 px itself.
+        const links = await page.locator('main').evaluate((main) =>
+          [...main.querySelectorAll('a')].map((a) => {
+            const covers = getComputedStyle(a, '::after').position === 'absolute'
+            const box = (covers ? a.closest('li')! : a).getBoundingClientRect()
+            return { text: (a.textContent ?? '').trim().slice(0, 40), height: box.height }
+          }),
+        )
+        expect(links.length, 'links').toBeGreaterThan(0)
+        for (const l of links) expect(l.height, `link ${l.text}`).toBeGreaterThanOrEqual(44)
+      }
+      expect(await page.locator('main [title]:not(time)').count(), 'title attributes (RelTime keeps its absolute time)').toBe(0)
+
+      // The task row's long reason is clipped at two lines: a tap opens it
+      // in place and stays on the Inbox.
+      const clipped = page.locator('main [role=button][aria-expanded]', { hasText: 'blocking review findings' })
+      await expect(clipped).toHaveAttribute('aria-expanded', 'false')
+      await clipped.click()
+      await expect(clipped).toHaveAttribute('aria-expanded', 'true')
+      await expect(page).toHaveURL(/\/inbox$/)
+
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `inbox-rows@${width}.png`)
+      await page.screenshot({ path: shot, fullPage: true })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+
+      // A tap on the row's time opens the item, as the whole row did.
+      const prompt = list.locator('li', { hasText: 'Support refunds' })
+      const box = (await prompt.boundingBox())!
+      await page.mouse.click(box.x + box.width - 8, box.y + box.height - 8)
+      await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=pilot#prompt-p-281-1$/)
+
+      // The pause row's Open leads to the milestone's Pilot tab.
+      await page.goBack()
+      await route.ready(page)
+      await list.locator('li', { hasText: 'Payment providers' }).getByRole('link', { name: 'Open' }).click()
+      await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=pilot$/)
+    })
+  }
+})
+
 // Desktop is unchanged: the phone rule stops below 760 px, so the global
 // .btn keeps its 34 px on the overview at 1280 px.
 test('overview buttons keep their desktop height@1280', async ({ page, baseURL }) => {

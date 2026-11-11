@@ -471,3 +471,12 @@ follow-up issue), and requirements without an issue and why.
   `stream-milestone@*` known-overflow entries were already gone with the
   RouteTabs slice. Stream rows break long URLs and SHAs (`wrap-anywhere`).
   Nothing narrowed.
+- 2026-11-11 #326 (R12 Inbox): `Inbox.vue` and `PauseCardCompact.vue`
+  moved to utilities and `UButton`, no scoped `<style>`. Rows stay links (a
+  title link covering the row, so a clipped reason can open in place on a
+  tap) and are at least 44 px high on phones; reasons are clamped by
+  `Truncated` at two lines, the pause card's reason and *Way out* too, so
+  their `title` attributes are gone. The plan's *dismiss* action does not
+  exist in the Inbox and was not added (no new features). `RelTime`'s
+  `title` (the absolute time) stays: every view shares it and the relative
+  time is shown. Nothing narrowed.

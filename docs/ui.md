@@ -725,7 +725,8 @@ that issue now shows as *Autopilot waiting for #N*: it continues by itself
 once the issue is reviewed and green. A pause that needs a human shows as
 *Autopilot paused*. On the Board tab, each paused milestone's section starts
 with the **compact pause card**: the heading for the `pauseKind`, the pause
-reason on one line (the free text for a pause without a kind), the paused
+reason as inline markdown on up to two lines that open on a tap (the free
+text for a pause without a kind), the paused
 issue, *A run is working on #N now* while one is, what ends the pause by
 itself, and *Open* to the milestone's *Pilot* tab. It has no buttons; the
 actions are on the full card there. The Inbox, the stream and a milestone's
@@ -1894,6 +1895,35 @@ is Tailwind utilities and Nuxt UI, without scoped CSS.
 The e2e case `stream-project header rows` at 375 and 1280 px checks the
 rows' order and widths; the route checks cover every project and milestone
 tab at 375, 768 and 1280 px.
+
+### Inbox
+
+The Inbox (`web/src/views/Inbox.vue`) is Tailwind utilities and Nuxt UI,
+without scoped CSS.
+
+- Each item is a list row whose title link covers the row (`after:absolute`),
+  so a tap anywhere opens it where `inboxRoute.ts` says, as before. On
+  phones a row stacks project, title, reason and time and is at least 44 px
+  high; from 760 px they are four columns.
+- The reason is inline markdown, clamped to two lines by
+  [Truncated](#truncated): a clipped reason sits above the row's link and
+  opens in place on a tap; one that fits is plain text and part of the row.
+  A ready companion's merge request link also sits above the row's link.
+  Titles and project names wrap instead of being cut off. No `title`
+  attribute carries text of the list (`RelTime` keeps the absolute time as
+  its `title`; the relative time is shown).
+- *Notify me* and *Notifications on* are `UButton`s with `aria-pressed`.
+  The links of the paused strip are at least 44 px high on phones.
+- Paused autopilots show the compact pause card
+  (`components/PauseCardCompact.vue`, `flat` in the list), also on
+  utilities: on phones the title and *Open* (a `UButton` link, 44 px high)
+  share the first line and where it paused wraps below; the reason and the
+  *Way out* line open on a tap like the Inbox's reasons.
+
+The e2e cases `inbox rows …` at 375 and 1280 px check the rows' and
+links' heights, that no `title` holds the list's text, that a clipped
+reason opens in place, and that a row and *Open* navigate
+(`inbox-rows@<width>.png`).
 
 ## Roadmap
 
