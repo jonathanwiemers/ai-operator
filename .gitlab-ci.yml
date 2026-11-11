@@ -27,8 +27,17 @@ default:
   tags: [shared]
   interruptible: true
 
-.go:
+.check:
   stage: check
+  # A release tag only builds (release): its commit is on main, whose merge
+  # request and push pipelines ran these checks already.
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+
+.go:
+  extends: .check
   image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/golang:1.26
   variables:
     GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
@@ -107,7 +116,7 @@ version:
     - hack/next-version.sh
 
 ui:
-  stage: check
+  extends: .check
   image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:22-bookworm
   variables:
     npm_config_cache: $CI_PROJECT_DIR/.cache/npm
@@ -123,7 +132,7 @@ ui:
 # Playwright image is on mcr.microsoft.com, which the Dependency Proxy does
 # not serve, so the node image installs Chromium and its libraries.
 ui-e2e:
-  stage: check
+  extends: .check
   image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:22-bookworm
   variables:
     npm_config_cache: $CI_PROJECT_DIR/.cache/npm
@@ -147,7 +156,7 @@ ui-e2e:
     paths: [web/e2e-results/]
 
 helm-lint:
-  stage: check
+  extends: .check
   image:
     name: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/alpine/helm:3.17.3
     entrypoint: [""]
@@ -162,7 +171,8 @@ helm-lint:
 #     a milestone's final release, the sweep), with its notes, or
 #   - a human creates (Deploy > Releases > New release, or
 #     `glab release create <version> --ref main --notes "<why>"`).
-# The tag's pipeline runs the checks and then this job, which publishes
+# The tag's pipeline runs only this job (main's pipelines ran the checks on
+# the same commit), which publishes
 #   - images  registry.gitlab.com/jo.wiemers/ai-operator:<version>,
 #             registry.gitlab.com/jo.wiemers/ai-operator/agent:<version>
 #   - chart   oci://registry.gitlab.com/jo.wiemers/ai-operator/charts/ai-operator --version <version>

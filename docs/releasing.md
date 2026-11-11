@@ -123,9 +123,12 @@ pipeline builds it.
   records, comment `/agent release [reason]` on a milestone's tracking issue
   instead.
 
-The `release` job in [`.gitlab-ci.yml`](../.gitlab-ci.yml) runs in the
-pipeline of a tag `YEAR.MONTH.N`, after every check job passed. A push to
-`main` (a merge) runs the checks only. The job runs in the resource group
+The `release` job in [`.gitlab-ci.yml`](../.gitlab-ci.yml) is the only job
+in the pipeline of a tag `YEAR.MONTH.N`: the tagged commit is on `main`, and
+its merge request and push pipelines ran the checks already, so the tag
+pipeline does not run them again. Tag only commits of `main` whose pipeline
+passed (the operator tags `main`'s green head). A push to `main` (a merge)
+runs the checks only. The job runs in the resource group
 `release`, so releases never build in parallel, and is not interruptible: a
 newer pipeline cancels only interruptible jobs (`workflow:auto_cancel`), so
 it never cancels a release, running or queued. It:

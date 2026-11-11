@@ -60,7 +60,8 @@ fast-forward fix in this MR).
    containing. A companion's home is not live through a tag whose operator
    release still builds or failed (`buildingReleases`).
 5. **ai-operator CI.** Tag pipelines run (`workflow: if: $CI_COMMIT_TAG`); the
-   `release` job runs on `^20\d\d\.\d+\.\d+$` tags with
+   `release` job, the only job of a tag pipeline (the check jobs ran on
+   `main` already), runs on `^20\d\d\.\d+\.\d+$` tags with
    `VERSION=$CI_COMMIT_TAG`, builds images and chart, and appends an
    "Install" section to the GitLab release (or creates the release when a
    human pushed only a tag).
