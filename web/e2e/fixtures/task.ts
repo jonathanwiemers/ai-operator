@@ -136,6 +136,7 @@ export const refunds: Task = implementTask(281, refundsTitle, payments, 'needs-i
     runCount: 2,
     lastActivityTime: ago(26),
     lastResult: 'NeedsInput',
+    currentStep: 'Waiting for an answer on refunds of orders paid in a foreign currency',
     summary: refundsSummary,
     questions: [{ question: refundsPrompt.question, allowFreeText: true }],
     needsInputCause: 'agentQuestion',

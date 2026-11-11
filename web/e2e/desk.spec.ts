@@ -958,6 +958,29 @@ test.describe('task tabs', () => {
         await page.goto(route.path)
         await route.ready(page)
 
+        // The header's status line (D319-P1): phase · current step · last
+        // result · last activity, above the tabs. It wraps, never wider than
+        // the page; on a phone the long step is clamped and opens on tap.
+        const status = page.locator('main [data-status-line]')
+        await expect(status).toBeVisible()
+        await expect(status).toContainText(/Idle\s*·\s*Waiting for an answer on refunds.*currency\s*·\s*NeedsInput\s*·\s*active \S/)
+        expect(await status.evaluate((e) => e.scrollWidth <= e.clientWidth), 'the status line wraps').toBe(true)
+        const step = status.getByRole('button')
+        if (width < 760) {
+          await expect(step).toHaveAttribute('aria-expanded', 'false')
+          await step.click()
+          await expect(step).toHaveAttribute('aria-expanded', 'true')
+          await step.click()
+        }
+        expect(
+          await page.locator('main').evaluate((main) => {
+            const s = main.querySelector('[data-status-line]')!
+            const nav = main.querySelector('nav[aria-label="Task"]')!
+            return !!(s.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING)
+          }),
+          'the status line comes before the tabs',
+        ).toBe(true)
+
         const strip = page.locator('main').getByRole('navigation', { name: 'Task' })
         await expect(strip.getByRole('link')).toHaveText(taskTabs.map((t) => new RegExp(`^${t.label}`)))
         const overview = strip.getByRole('link', { name: /^Overview/ })
@@ -1014,7 +1037,12 @@ test.describe('block markdown', () => {
       await page.goto(route.path)
       await route.ready(page)
 
-      const summary = page.locator('main .card.body').filter({ hasText: 'full refunds' }).first()
+      // The summary's box follows its heading (TaskBody.vue, Overview).
+      const summary = page
+        .locator('main section')
+        .filter({ has: page.getByRole('heading', { name: 'Summary of the last run', exact: true }) })
+        .locator('.card')
+        .first()
       await expect(summary.locator('strong').first()).toHaveText('full refunds')
       expect(await summary.locator('li').count(), 'a list').toBeGreaterThan(1)
       await expect(summary).not.toContainText('**')

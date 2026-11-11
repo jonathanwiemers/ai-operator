@@ -400,3 +400,15 @@ follow-up issue), and requirements without an issue and why.
   known-overflow entries are gone. Sections moved as they were; the
   header's status line and restyling are the next R10 slice. Nothing
   narrowed.
+- 2026-11-11 #319 (R10 task page on the kit): `TaskBody.vue` has no
+  scoped `<style>`. Below stage, badges, spend and links, one status line
+  (D319-P1): phase · current step (`Truncated`) · last result · last
+  activity, a wrapping flex row. Those four left the *Details* facts,
+  whose other values use `Truncated`. Review/CI and Pod/Conditions are
+  `grid desktop:grid-cols-2`; the `kv` blocks are `<dl>` grids, label
+  above value on a phone; Plan and Conditions are `DataList`; the
+  `kubectl logs` command scrolls in its own box. The `task@*` and
+  `issue@*` known-overflow entries were already gone with #318. The
+  shared chips (`StageBadge`, `CostChip`, `CompanionChip`) keep their
+  `title`: a hint, not the only copy of a clipped value; R12/R17 take them.
+  Nothing narrowed.

@@ -7,6 +7,7 @@ import { queueDone } from '../milestoneQueue'
 import { useRoute } from 'vue-router'
 import { promptOpen, taskPrompts } from '../promptCard'
 import { tabQuery, taskTabFromRoute, taskTabs, type TaskTab } from '../streamTabs'
+import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import Badge from './Badge.vue'
 import CostChip from './CostChip.vue'
@@ -49,6 +50,30 @@ const conditionTone = (type: string, status: string) => {
   return (status === 'True') !== negativeConditions.has(type) ? 'success' : 'danger'
 }
 
+// Layout classes used more than once. Two sections side by side from the
+// desktop width, stacked below it; a grid item's min-w-0 keeps a long value
+// from widening the page.
+const cols = 'grid gap-4 desktop:grid-cols-2'
+const h3 = 'mb-2.5'
+// A definition grid (no preflight: m-0 and ms-0 drop the browser margins of
+// dl and dd): label above value on a phone, side by side from the
+// tablet width. The phone's one column is minmax(0, 1fr), so a nowrap value
+// (the kubectl command) scrolls inside its own box instead of widening it.
+const dl = 'm-0 grid grid-cols-[minmax(0,1fr)] items-center gap-x-4.5 tablet:grid-cols-[max-content_minmax(0,1fr)] tablet:gap-y-2.5'
+const dt = 'text-[13px] text-(--text-3)'
+const dd = 'ms-0 mb-2.5 min-w-0 break-words last:mb-0 tablet:mb-0'
+const chip = 'mr-1.5 mb-1 inline-block rounded bg-(--surface-2) px-1.5 py-px'
+
+const planColumns: DataListColumn[] = [
+  { key: 'iid', label: 'Issue' },
+  { key: 'title', label: 'Title' },
+  { key: 'dependsOn', label: 'Depends on' },
+]
+const conditionColumns: DataListColumn[] = [
+  { key: 'type', label: 'Condition' },
+  { key: 'status', label: 'State' },
+]
+
 const resultTone = (r: string | undefined) =>
   r === 'Succeeded' ? 'success' : r === 'NeedsInput' || r === 'Deferred' ? 'warning' : r === 'Failed' ? 'danger' : 'muted'
 
@@ -82,16 +107,33 @@ const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? t
 </script>
 
 <template>
-  <div class="row links">
+  <div class="mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-2">
     <StageBadge :stage="t.stage" />
     <Badge v-if="t.autopilot" tone="progress">Autopilot</Badge>
     <Badge v-if="t.suspend" tone="warning">Suspended</Badge>
     <CostChip :cost="data.cost" />
-    <span class="spacer" />
+    <span class="grow" />
     <ExtLink v-if="t.issue" :href="t.issue.webURL || issueURL(t.issue.iid)">Issue</ExtLink>
     <ExtLink v-if="run.mergeRequestURL" :href="run.mergeRequestURL">Merge request !{{ run.mergeRequestIID }}</ExtLink>
     <CompanionChip v-if="t.companion" :companion="t.companion" />
     <ExtLink v-if="t.status.ci?.pipelineURL" :href="t.status.ci.pipelineURL">Pipeline</ExtLink>
+  </div>
+
+  <!-- The status line (D319-P1): phase · current step · last result · last
+       activity. It wraps on a phone and never scrolls; a long step is
+       clamped and opens on tap. -->
+  <div data-status-line class="mt-2.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-(--text-2)">
+    <Badge :tone="phaseTone(t.status.phase)">{{ t.status.phase || '—' }}</Badge>
+    <template v-if="run.currentStep">
+      <span aria-hidden="true" class="text-(--text-3)">·</span>
+      <Truncated class="max-w-full min-w-0 font-[550] text-(--text)" :text="run.currentStep" />
+    </template>
+    <span aria-hidden="true" class="text-(--text-3)">·</span>
+    <Badge :tone="resultTone(run.lastResult)">{{ run.lastResult || 'No run yet' }}</Badge>
+    <template v-if="run.lastActivityTime">
+      <span aria-hidden="true" class="text-(--text-3)">·</span>
+      <span>active <RelTime :time="run.lastActivityTime" /></span>
+    </template>
   </div>
 
   <div v-if="t.runPending && run.deferredUntil" class="banner warning">
@@ -120,85 +162,73 @@ const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? t
 
   <template v-if="tab === 'overview'">
     <section v-if="run.summary" class="section">
-      <h3>Summary of the last run</h3>
-      <Markdown class="card body" :text="run.summary" />
+      <h3 :class="h3">Summary of the last run</h3>
+      <Markdown class="card px-4 py-3.5" :text="run.summary" />
     </section>
 
     <section v-if="prompts.length" class="section">
-      <h3>Questions from the agent</h3>
-      <div class="prompts">
+      <h3 :class="h3">Questions from the agent</h3>
+      <div class="mb-3 grid gap-2.5">
         <PromptCard v-for="p in prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
       </div>
     </section>
 
-    <div v-if="t.type === 'Implement'" class="cols section">
-      <section>
-        <h3>Review</h3>
-        <div class="card body kv">
-          <div>Blocking findings</div>
-          <div>
+    <div v-if="t.type === 'Implement'" :class="['section', cols]">
+      <section class="min-w-0">
+        <h3 :class="h3">Review</h3>
+        <dl :class="['card px-4 py-3.5', dl]">
+          <dt :class="dt">Blocking findings</dt>
+          <dd :class="dd">
             <Badge :tone="(run.blockingFindings ?? 0) > 0 ? 'danger' : 'success'">{{ run.blockingFindings ?? 0 }}</Badge>
-          </div>
-          <div>Failed reviewers</div>
-          <div>
+          </dd>
+          <dt :class="dt">Failed reviewers</dt>
+          <dd :class="dd">
             <Badge :tone="(run.reviewErrors ?? 0) > 0 ? 'warning' : 'success'">{{ run.reviewErrors ?? 0 }}</Badge>
-          </div>
-          <div>Reviewed commit</div>
-          <div>
+          </dd>
+          <dt :class="dt">Reviewed commit</dt>
+          <dd :class="dd">
             <span class="mono">{{ shortSHA(run.reviewedSHA) }}</span>
             <span v-if="run.reviewedSHA && run.pushedSHA && run.reviewedSHA !== run.pushedSHA" class="faint">
               (later commits were not reviewed)
             </span>
-          </div>
-        </div>
+          </dd>
+        </dl>
       </section>
-      <section>
-        <h3>CI</h3>
-        <div v-if="t.status.ci" class="card body kv">
-          <div>Pipeline</div>
-          <div>
+      <section class="min-w-0">
+        <h3 :class="h3">CI</h3>
+        <dl v-if="t.status.ci" :class="['card px-4 py-3.5', dl]">
+          <dt :class="dt">Pipeline</dt>
+          <dd :class="dd">
             <Badge :tone="ciTone(t.status.ci.state)">{{ ciLabel[t.status.ci.state] }}</Badge>
-            <ExtLink v-if="t.status.ci.pipelineURL" :href="t.status.ci.pipelineURL" class="pl">
+            <ExtLink v-if="t.status.ci.pipelineURL" :href="t.status.ci.pipelineURL" class="ml-2">
               #{{ t.status.ci.pipelineID }}
             </ExtLink>
-          </div>
-          <div>Commit</div>
-          <div class="mono">{{ shortSHA(t.status.ci.sha) }}</div>
-          <div>Fix rounds</div>
-          <div>{{ run.ciRound ?? 0 }}<span v-if="t.status.ci.retried" class="faint"> · failed jobs retried</span></div>
+          </dd>
+          <dt :class="dt">Commit</dt>
+          <dd :class="[dd, 'mono']">{{ shortSHA(t.status.ci.sha) }}</dd>
+          <dt :class="dt">Fix rounds</dt>
+          <dd :class="dd">{{ run.ciRound ?? 0 }}<span v-if="t.status.ci.retried" class="faint"> · failed jobs retried</span></dd>
           <template v-if="t.status.ci.failedJobs?.length">
-            <div>Failed jobs</div>
-            <div>
-              <code v-for="j in t.status.ci.failedJobs" :key="j" class="job">{{ j }}</code>
-            </div>
+            <dt :class="dt">Failed jobs</dt>
+            <dd :class="dd">
+              <code v-for="j in t.status.ci.failedJobs" :key="j" :class="chip">{{ j }}</code>
+            </dd>
           </template>
-        </div>
+        </dl>
         <div v-else class="card empty">No pipeline followed yet.</div>
       </section>
     </div>
 
     <section v-if="t.status.plan?.length" class="section">
-      <h3>Plan</h3>
+      <h3 :class="h3">Plan</h3>
       <div class="card">
-        <table class="list">
-          <thead>
-            <tr>
-              <th>Issue</th>
-              <th>Title</th>
-              <th>Depends on</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="pi in t.status.plan" :key="pi.key">
-              <td><ExtLink :href="issueURL(pi.iid)">#{{ pi.iid }}</ExtLink></td>
-              <td>{{ pi.title }}</td>
-              <td>
-                <span v-if="!pi.dependsOn?.length" class="faint">—</span>
-                <span v-for="d in pi.dependsOn" :key="d" class="dep">#{{ d }}</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <DataList :columns="planColumns" :rows="t.status.plan" :row-key="(pi) => pi.key">
+          <template #cell-iid="{ row: pi }"><ExtLink :href="issueURL(pi.iid)">#{{ pi.iid }}</ExtLink></template>
+          <template #cell-dependsOn="{ row: pi }">
+            <span v-if="!pi.dependsOn?.length" class="faint">—</span>
+            <span v-for="d in pi.dependsOn" :key="d" :class="chip">#{{ d }}</span>
+          </template>
+        </DataList>
       </div>
     </section>
 
@@ -207,7 +237,7 @@ const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? t
         <h3>Autopilot</h3>
         <Badge :tone="t.status.autopilot.phase === 'Paused' ? 'warning' : 'progress'">{{ t.status.autopilot.phase }}</Badge>
         <span v-if="autopilotItems.length" class="faint">{{ queueDone(autopilotItems) }} / {{ autopilotItems.length }} done</span>
-        <span class="spacer" />
+        <span class="grow" />
         <RouterLink
           v-if="t.milestone"
           :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(t.milestone.iid) } }"
@@ -234,7 +264,7 @@ const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? t
 
   <template v-else-if="tab === 'chat'">
     <section v-if="showChat" class="section">
-      <h3>Chat with the agent</h3>
+      <h3 :class="h3">Chat with the agent</h3>
       <TaskChat
         :namespace="namespace"
         :name="name"
@@ -252,7 +282,7 @@ const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? t
     </section>
 
     <section v-if="data.permissions?.gitlab" class="section">
-      <h3>Conversation</h3>
+      <h3 :class="h3">Conversation</h3>
       <Conversation
         :namespace="namespace"
         :name="name"
@@ -264,7 +294,7 @@ const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? t
   </template>
 
   <section v-else-if="tab === 'live'" id="live-transcript" class="section">
-    <h3>Live</h3>
+    <h3 :class="h3">Live</h3>
     <LiveTranscript
       :namespace="namespace"
       :name="name"
@@ -277,34 +307,18 @@ const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? t
   <TaskCalls v-else-if="tab === 'calls'" :namespace="namespace" :name="name" :task="task" />
 
   <template v-else>
+    <!-- Phase, current step, last result and last activity are the
+         header's status line; the other facts are here. -->
     <div class="facts section">
       <div class="fact">
-        <div class="label">Phase</div>
-        <div class="value"><Badge :tone="phaseTone(t.status.phase)">{{ t.status.phase || '—' }}</Badge></div>
-      </div>
-      <div class="fact">
-        <div class="label">Current step</div>
-        <Truncated class="font-[550]" :text="run.currentStep || '—'" />
-      </div>
-      <div class="fact">
-        <div class="label">Last result</div>
-        <div class="value">
-          <Badge :tone="resultTone(run.lastResult)">{{ run.lastResult || 'No run yet' }}</Badge>
-        </div>
-      </div>
-      <div class="fact">
         <div class="label">Runs</div>
-        <div class="value">
+        <Truncated class="font-[550]">
           {{ run.runCount ?? 0 }}<span v-if="t.runPending" class="faint"> + 1 requested</span>
-        </div>
-      </div>
-      <div class="fact">
-        <div class="label">Last activity</div>
-        <div class="value"><RelTime :time="run.lastActivityTime" /></div>
+        </Truncated>
       </div>
       <div class="fact">
         <div class="label">Model spend</div>
-        <div class="value">{{ cost(run.costUSD) }}</div>
+        <Truncated class="font-[550]" :text="cost(run.costUSD)" />
       </div>
       <div v-if="t.type === 'Implement'" class="fact">
         <div class="label">Branch</div>
@@ -312,115 +326,50 @@ const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? t
       </div>
       <div v-if="t.type === 'Implement'" class="fact">
         <div class="label">Last push</div>
-        <div class="value">
+        <Truncated class="font-[550]">
           <span class="mono">{{ shortSHA(run.pushedSHA) }}</span>
           <span v-if="run.pushedAt" class="faint"> · <RelTime :time="run.pushedAt" /></span>
-        </div>
+        </Truncated>
       </div>
     </div>
 
-    <div class="cols section">
-      <section>
-        <h3>Pod</h3>
-        <div class="card body kv">
-          <div>Pod</div>
-          <div class="mono">{{ t.status.podName || 'not running' }}</div>
-          <div>Workspace</div>
-          <div class="mono">{{ t.status.workspaceClaimName || '—' }}</div>
+    <div :class="['section', cols]">
+      <section class="min-w-0">
+        <h3 :class="h3">Pod</h3>
+        <dl :class="['card px-4 py-3.5', dl]">
+          <dt :class="dt">Pod</dt>
+          <dd :class="[dd, 'mono']">{{ t.status.podName || 'not running' }}</dd>
+          <dt :class="dt">Workspace</dt>
+          <dd :class="[dd, 'mono']">{{ t.status.workspaceClaimName || '—' }}</dd>
           <template v-if="t.status.agentTermination">
-            <div>Agent container</div>
-            <div>
+            <dt :class="dt">Agent container</dt>
+            <dd :class="dd">
               last stopped {{ t.status.agentTermination.reason }} (exit {{ t.status.agentTermination.exitCode ?? '?' }}),
               {{ t.status.agentTermination.restarts ?? 0 }} restarts
-            </div>
+            </dd>
           </template>
           <template v-if="t.status.podName">
-            <div>Logs</div>
-            <div>
-              <code class="cmd">kubectl -n {{ t.namespace }} logs -f {{ t.status.podName }} -c runner</code>
-            </div>
+            <dt :class="dt">Logs</dt>
+            <dd :class="dd">
+              <!-- Scrolls inside its own box; the page never does. -->
+              <code class="block overflow-x-auto rounded bg-(--surface-2) px-2 py-1.5 whitespace-nowrap"
+                >kubectl -n {{ t.namespace }} logs -f {{ t.status.podName }} -c runner</code
+              >
+            </dd>
           </template>
-        </div>
+        </dl>
       </section>
-      <section v-if="t.status.conditions?.length">
-        <h3>Conditions</h3>
+      <section v-if="t.status.conditions?.length" class="min-w-0">
+        <h3 :class="h3">Conditions</h3>
         <div class="card">
-          <table class="list">
-            <tbody>
-              <tr v-for="c in t.status.conditions" :key="c.type">
-                <td>{{ c.type }}</td>
-                <td>
-                  <Badge :tone="conditionTone(c.type, c.status)">
-                    {{ c.reason || c.status }}
-                  </Badge>
-                  <div v-if="c.message" class="faint">{{ c.message }}</div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <DataList :columns="conditionColumns" :rows="t.status.conditions" :row-key="(c) => c.type">
+            <template #cell-status="{ row: c }">
+              <Badge :tone="conditionTone(c.type, c.status)">{{ c.reason || c.status }}</Badge>
+              <div v-if="c.message" class="faint">{{ c.message }}</div>
+            </template>
+          </DataList>
         </div>
       </section>
     </div>
   </template>
 </template>
-
-<style scoped>
-.prompts {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.links {
-  margin-top: 10px;
-  gap: 14px;
-}
-
-.section h3 {
-  margin-bottom: 10px;
-}
-
-.body {
-  padding: 14px 16px;
-}
-
-.cols {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
-  gap: 16px;
-}
-
-.kv {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 10px 18px;
-  align-items: center;
-}
-
-.kv > div:nth-child(odd) {
-  color: var(--text-3);
-  font-size: 13px;
-}
-
-.pl {
-  margin-left: 8px;
-}
-
-.job,
-.dep {
-  display: inline-block;
-  margin: 0 6px 4px 0;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--surface-2);
-}
-
-.cmd {
-  display: block;
-  overflow-x: auto;
-  white-space: nowrap;
-  padding: 6px 8px;
-  border-radius: 4px;
-  background: var(--surface-2);
-}
-</style>

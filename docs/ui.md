@@ -119,7 +119,7 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   issue and its merge request, and its figures as on its row (wall, agent
   and paused time, cost, tokens; a dash where unknown). While a task works
   on the issue, a *Task* section holds what its task page holds (stage,
-  links and banners, then the tabs *Overview*, *Chat*, *Live*, *Calls* and
+  links, the status line and banners, then the tabs *Overview*, *Chat*, *Live*, *Calls* and
   *Details* by `?tab=`, see [What it shows](#what-it-shows)) and *Task page* links to the task's
   URL, which keeps working. Without one a note says why there is no live
   transcript: no task yet, or the task is gone with its pod. Below comes
@@ -646,7 +646,7 @@ messages, exit reasons, API errors and thinking lines.
 
 | Page | Content |
 |------|---------|
-| **Task** | above the tabs: stage, links, spend and the banners (blocked, usage-limit deferrals, out-of-memory restarts). Then tabs by `?tab=`, each shown when the task has content for it: *Overview* (the default: the last run's summary first, the agent's questions, review findings, pipeline with fix rounds and failed jobs; Spec tasks add the plan with dependencies and the autopilot's phase, pause reason and a link to the milestone stream, whose *Issues* tab shows the queue), *Chat* (chat and conversation), *Live* (with the `transcript` permission), *Calls* (with the history database) and *Details* (phase, current step, runs, last result, spend, branch and last push; the pod and how to follow its logs; conditions). Questions waiting for an answer put their count on *Overview*; an old `#live-transcript` link without `?tab=` opens *Live*. Only the open tab is loaded, so the live transcript and the chat follow the task only while shown. The issue page shows the same under its *Task* heading |
+| **Task** | above the tabs: stage, autopilot and suspended badges, spend and links (issue, merge request, companion, pipeline), then one status line, *phase · current step · last result · last activity*, which wraps on a phone and never scrolls (a long step is clamped and opens on tap), and the banners (blocked, usage-limit deferrals, out-of-memory restarts). Then tabs by `?tab=`, each shown when the task has content for it: *Overview* (the default: the last run's summary first, the agent's questions, review findings, pipeline with fix rounds and failed jobs; Spec tasks add the plan with dependencies and the autopilot's phase, pause reason and a link to the milestone stream, whose *Issues* tab shows the queue), *Chat* (chat and conversation), *Live* (with the `transcript` permission), *Calls* (with the history database) and *Details* (runs, spend, branch and last push; the pod and how to follow its logs; conditions). Review and CI, and Pod and Conditions, sit side by side from 1180 px and stack below; their label and value pairs stack on a phone, the plan and the conditions are [DataList](#datalist) tables and the `kubectl logs` command scrolls inside its own box. Questions waiting for an answer put their count on *Overview*; an old `#live-transcript` link without `?tab=` opens *Live*. Only the open tab is loaded, so the live transcript and the chat follow the task only while shown. The issue page shows the same under its *Task* heading |
 
 **Engine usage.** claude reports how much of its usage windows is used with
 every agent call; the project keeps the freshest reading per engine
@@ -1480,7 +1480,10 @@ How it works:
   the aside` checks there is no bar at 768 and 1280 px.
 
   The `task tabs …` cases open the task and the issue page at 375 and
-  1280 px: *Overview* is current with the open questions' count and the
+  1280 px: the status line comes before the tabs, shows phase, step,
+  result and activity and is no wider than its box (at 375 px the long
+  step is clamped and opens on tap), *Overview* is current with the open
+  questions' count and the
   run summary as its first section, each other tab is one tap away and
   sets `?tab=`, and `#live-transcript` without `?tab=` opens *Live*
   (`task-tabs-task@375.png`, `task-tabs-issue@1280.png`).
@@ -1614,7 +1617,8 @@ stays selectable.
   never scrolls sideways.
 
 A row is `relative`, so a link in a cell can cover the row with
-`after:absolute after:inset-0`. The research runs table is the first user.
+`after:absolute after:inset-0`. The research runs table is the first user;
+the task page's plan and conditions use it too.
 
 ### RouteTabs
 
@@ -1664,7 +1668,7 @@ Space toggles the clamp in place, with no overlay to dismiss. Text that fits
 stays plain. It sets no `title`: use `title` only for what is readable
 elsewhere. It sets no colour or weight, the parent's classes do; do not give
 it `.fact .value`, whose global rules keep `nowrap`. The task page's facts
-on its *Details* tab (current step, branch) are the first users.
+on its *Details* tab and the current step in its status line use it.
 
 ### Sheets
 
