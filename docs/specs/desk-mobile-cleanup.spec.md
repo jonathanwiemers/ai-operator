@@ -447,3 +447,12 @@ follow-up issue), and requirements without an issue and why.
   not changed: the stream event header shows `e.summary` as text, and a
   real `prompt.posted` summary carries the question, `**` included (R9).
   Nothing narrowed.
+- 2026-11-11 #323 (R11 note thread): `stream/NoteThread.vue` moved to
+  `components/NoteThread.vue` as the one thread renderer, with `compact`
+  for the stream; `Conversation.vue` keeps loading, stamping and posting and
+  renders its notes through it. Both map to one `ThreadNote`
+  (`noteThread.ts`). The conversation's notes now look like the stream's
+  (bubbles, *you* for the user's own, clock time instead of relative time).
+  Reply and steer stay with the callers; `Conversation.vue` moved to
+  utilities and `UButton`, no scoped `<style>`. GitLab notes carry no bot
+  flag, so the conversation marks no pilot notes. Nothing narrowed.

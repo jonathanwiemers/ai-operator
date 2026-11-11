@@ -1821,6 +1821,33 @@ option on the milestone stream, with the touch sizes and no sideways scroll
 (`prompt-card-task@<width>.png`, `prompt-card-pilot@<width>.png`,
 `prompt-card-compact@<width>.png`).
 
+### Note thread
+
+`web/src/components/NoteThread.vue` is the one renderer of a GitLab comment
+thread: full in the task page's **Conversation**, `compact` in the stream's
+grouped notes.
+
+```vue
+<NoteThread :notes="fromGitLabNotes(part.notes, gitlabUser)" />
+<NoteThread compact :notes="fromStreamEvents(events, me)" />
+```
+
+- Both take `ThreadNote`s (`src/noteThread.ts`), mapped from a stream note
+  event or a GitLab note, and show each note's author (*you* for the user's,
+  *Pilot* for the bot's), its time and the body as block markdown, in a
+  bubble tinted for the user's and the pilot's notes. System notes are faded.
+- Full: every note with its author line. Compact: an avatar and the newest
+  note's author and issue or MR, the last three notes and *N earlier* for
+  the rest. A redacted note says whose it is with a link to open it.
+- Replying stays with the caller: the conversation's form (thread tabs,
+  command chips, *Post comment*), the stream's composer. Its controls are
+  44 px on phones (the global rule).
+
+The e2e cases `note thread …` at 375 and 1280 px open the task's *Chat*
+tab, switch to the MR's thread and post a command through the route mock,
+and fold and unfold the milestone stream's thread of #281
+(`note-thread-task@<width>.png`, `note-thread-stream@<width>.png`).
+
 ## Roadmap
 
 1. **Into a running step.** Messages that reach a running claude step at once

@@ -1422,3 +1422,94 @@ test.describe('prompt card', () => {
     })
   }
 })
+
+// The note thread (NoteThread.vue, R11): one renderer for the task page's
+// conversation and the stream's threads. The conversation shows every note
+// of the picked issue or MR and posts a comment; the stream's thread shows
+// the last three notes and "N earlier" for the rest. On a phone the tabs,
+// the commands, Post and "earlier" are at least 44 px.
+test.describe('note thread', () => {
+  async function minHeight(loc: ReturnType<Page['locator']>) {
+    let min = Infinity
+    for (const b of await loc.all()) min = Math.min(min, (await b.boundingBox())!.height)
+    return min
+  }
+
+  for (const size of [widths[0]!, widths[2]!]) {
+    const phone = size.width < 760
+
+    test(`conversation shows the notes and posts a comment@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const route = routes.find((r) => r.name === 'task-chat')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      const posts: unknown[] = []
+      await page.route(
+        (url) => url.pathname.endsWith('/tasks/shop-281-implement/notes'),
+        async (r) => {
+          posts.push(r.request().postDataJSON())
+          return r.fulfill({ status: 200, json: {} })
+        },
+      )
+      await page.goto(route.path)
+      await route.ready(page)
+
+      const main = page.locator('main')
+      const mine = main.locator('[data-note="51001"]')
+      await expect(mine.getByText('you', { exact: true })).toBeVisible()
+      await expect(mine.locator('strong').first()).toHaveText('card and wallet')
+      await expect(main.locator('[data-note="51002"]')).toHaveCSS('opacity', '0.6')
+
+      const mr = main.getByRole('button', { name: 'MR !305' })
+      await mr.click()
+      await expect(mr).toHaveAttribute('aria-pressed', 'true')
+      const review = main.locator('[data-note="51010"]')
+      await expect(review.getByText('@reviewer', { exact: true })).toBeVisible()
+      await expect(review).not.toContainText('**')
+
+      const form = main.locator('form').filter({ has: page.getByRole('button', { name: 'Post comment' }) })
+      if (phone) {
+        expect(await minHeight(form.getByRole('button')), 'commands and Post').toBeGreaterThanOrEqual(44)
+        expect(await minHeight(main.getByRole('button', { name: /^(Issue|MR) / })), 'thread tabs').toBeGreaterThanOrEqual(44)
+      }
+      await form.getByRole('button', { name: '/agent retry' }).click()
+      await form.getByRole('button', { name: 'Post comment' }).click()
+      await expect.poll(() => posts).toEqual([{ target: 'mr', body: '/agent retry' }])
+
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `note-thread-task@${size.width}.png`)
+      await page.screenshot({ path: shot, fullPage: true })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`stream thread folds earlier notes@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const route = routes.find((r) => r.name === 'stream-milestone-stream')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.goto(route.path)
+      await route.ready(page)
+
+      const main = page.locator('main')
+      const thread = main.locator('div').filter({ has: page.locator('[data-note="2005"]') }).last()
+      const earlier = thread.getByRole('button', { name: '1 earlier' })
+      await expect(thread.locator('[data-note]')).toHaveCount(3)
+      await expect(thread.locator('[data-note="2004"]').getByText('Pilot', { exact: true })).toBeVisible()
+      await expect(thread.locator('[data-note="2005"]').getByText('you', { exact: true })).toBeVisible()
+      if (phone) expect((await earlier.boundingBox())!.height, '"earlier" height').toBeGreaterThanOrEqual(44)
+      await earlier.click()
+      await expect(thread.locator('[data-note]')).toHaveCount(4)
+      await expect(earlier).toHaveCount(0)
+      await expect(thread).not.toContainText('**')
+
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `note-thread-stream@${size.width}.png`)
+      await page.screenshot({ path: shot, fullPage: true })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+})

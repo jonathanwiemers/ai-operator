@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import Markdown from './Markdown.vue'
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ApiError, get, post, LoginRequiredError } from '../api'
 import ExtLink from './ExtLink.vue'
-import RelTime from './RelTime.vue'
+import NoteThread from './NoteThread.vue'
+import { fromGitLabNotes } from '../noteThread'
 import type { GitLabStatus, NoteView, ThreadPart } from '../types'
 
 // Conversation shows the task's issue, merge request and tracking issue
@@ -82,6 +83,7 @@ async function loadThread() {
 
 const current = computed(() => parts.value.find((p) => p.target === active.value))
 const notes = computed<NoteView[]>(() => current.value?.notes ?? [])
+const threadNotes = computed(() => fromGitLabNotes(notes.value, status.value?.username))
 const label = (p: ThreadPart) => (p.target === 'mr' ? `MR !${p.iid}` : p.target === 'tracking' ? `Tracking #${p.iid}` : `Issue #${p.iid}`)
 
 // Commands to start a comment with; the operator reads them like in GitLab.
@@ -130,53 +132,72 @@ watch(() => props.stamp, loadThread)
 </script>
 
 <template>
-  <div class="card conv">
+  <div class="card overflow-hidden">
     <div v-if="gitlabError" class="banner warning">Connecting GitLab did not work: {{ gitlabError }}. Try again.</div>
     <div v-if="error" class="banner danger">{{ error }}</div>
-    <div v-if="status && !status.connected && status.login" class="body">
-      <p>Connect your GitLab account to see the comments here and write comments, in your own name.</p>
-      <a class="btn primary" :href="connectURL">Connect GitLab</a>
+    <div v-if="status && !status.connected && status.login" class="px-4 py-3.5">
+      <p class="mt-0 mb-2.5">Connect your GitLab account to see the comments here and write comments, in your own name.</p>
+      <UButton :href="connectURL" color="primary" label="Connect GitLab" />
     </div>
     <div v-else-if="status && !status.connected" class="empty">GitLab is not set up for your user here.</div>
     <template v-else-if="status?.connected">
-      <div class="row bar">
+      <div class="flex flex-wrap items-center gap-2 border-b border-(--border) px-3 py-2 text-[13px]">
         <button
           v-for="p in parts"
           :key="p.target"
           type="button"
-          class="tab"
-          :class="{ on: p.target === active }"
+          class="cursor-pointer rounded-(--radius-sm) border px-2.5 py-1 font-[inherit]"
+          :class="
+            p.target === active
+              ? 'border-(--border-strong) bg-(--surface-2) text-(--text)'
+              : 'border-transparent bg-transparent text-(--text-2)'
+          "
+          :aria-pressed="p.target === active"
           @click="active = p.target"
         >
           {{ label(p) }}
         </button>
-        <span class="spacer" />
+        <span class="flex-1" />
         <ExtLink v-if="current" :href="current.webURL">Open in GitLab</ExtLink>
         <span class="faint">@{{ status.username }}</span>
-        <button v-if="!status.fixed" type="button" class="link" @click="disconnect">Disconnect</button>
+        <button
+          v-if="!status.fixed"
+          type="button"
+          class="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-(--link)"
+          @click="disconnect"
+        >
+          Disconnect
+        </button>
       </div>
-      <div class="notes">
+      <div class="max-h-[520px] overflow-y-auto">
         <div v-if="current && current.notes === null" class="empty">These comments could not be read with your account.</div>
         <div v-else-if="!notes.length" class="empty">No comments yet.</div>
-        <div v-for="n in notes" :key="n.id" class="note" :class="{ system: n.system }">
-          <div class="meta">
-            <strong>@{{ n.author }}</strong>
-            <span class="faint"><RelTime :time="n.createdAt" /></span>
-          </div>
-          <Markdown class="text" :text="n.body" />
-        </div>
+        <NoteThread v-else :notes="threadNotes" />
       </div>
-      <form v-if="steer && current" class="composer" @submit.prevent="send">
-        <div class="row chips">
-          <button v-for="c in commands" :key="c" type="button" class="chip mono" @click="insert(c)">{{ c.trim() }}</button>
+      <form
+        v-if="steer && current"
+        class="grid gap-2 border-t border-(--border) bg-(--surface-2) px-3.5 py-3"
+        @submit.prevent="send"
+      >
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            v-for="c in commands"
+            :key="c"
+            type="button"
+            class="mono cursor-pointer rounded-full border border-(--border-strong) bg-(--surface) px-2 py-0.5 text-xs text-(--text-2)"
+            @click="insert(c)"
+          >
+            {{ c.trim() }}
+          </button>
         </div>
-        <p v-if="chat" class="hint faint">
+        <p v-if="chat" class="faint m-0 text-[13px]">
           Messages go to the pilot on {{ label(current) }} as <code>/pilot …</code>, in your name. Only the milestone
           owners' instructions count; post <code>/agent</code> commands in GitLab.
         </p>
         <textarea
           v-model="body"
           rows="3"
+          class="box-border w-full resize-y rounded-(--radius-sm) border border-(--border-strong) px-2.5 py-2 font-[inherit]"
           :placeholder="
             chat
               ? `Message the pilot as @${status.username}, e.g. why are we paused?`
@@ -185,156 +206,18 @@ watch(() => props.stamp, loadThread)
           @keydown.meta.enter="send"
           @keydown.ctrl.enter="send"
         />
-        <div class="row">
-          <span v-if="sendError" class="err">{{ sendError }}</span>
-          <span class="spacer" />
-          <button type="submit" class="btn primary" :disabled="sending || !body.trim()">
-            {{ sending ? 'Posting…' : chat ? 'Send to pilot' : 'Post comment' }}
-          </button>
+        <div class="flex items-center gap-2">
+          <span v-if="sendError" class="text-[13px] text-(--tone-danger-fg)">{{ sendError }}</span>
+          <span class="flex-1" />
+          <UButton
+            type="submit"
+            color="primary"
+            :disabled="sending || !body.trim()"
+            :label="sending ? 'Posting…' : chat ? 'Send to pilot' : 'Post comment'"
+          />
         </div>
       </form>
     </template>
     <div v-else class="empty">Loading…</div>
   </div>
 </template>
-
-<style scoped>
-.conv {
-  overflow: hidden;
-}
-
-.body {
-  padding: 14px 16px;
-}
-
-.body p {
-  margin: 0 0 10px;
-}
-
-.bar {
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-
-.tab,
-.chip,
-.link,
-.btn {
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.tab {
-  padding: 4px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--text-2);
-}
-
-.tab.on {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-.link {
-  border: none;
-  background: none;
-  color: var(--link);
-  padding: 0;
-}
-
-.btn {
-  display: inline-block;
-  padding: 5px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  text-decoration: none;
-}
-
-.btn.primary {
-  border-color: var(--brand-ink);
-  background: var(--brand-ink);
-  color: #fff;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.notes {
-  max-height: 520px;
-  overflow-y: auto;
-}
-
-.note {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.note.system {
-  opacity: 0.6;
-  font-size: 13px;
-}
-
-.meta {
-  display: flex;
-  gap: 8px;
-  font-size: 13px;
-  margin-bottom: 4px;
-}
-
-.text {
-  overflow-wrap: anywhere;
-  font-size: 14px;
-}
-
-.composer {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
-  border-top: 1px solid var(--border);
-  background: var(--surface-2);
-}
-
-.hint {
-  margin: 0;
-  font-size: 13px;
-}
-
-.chips {
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.chip {
-  padding: 2px 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text-2);
-  font-size: 12px;
-}
-
-textarea {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  resize: vertical;
-}
-
-.err {
-  color: var(--tone-danger-fg);
-  font-size: 13px;
-}
-</style>

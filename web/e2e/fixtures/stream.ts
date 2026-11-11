@@ -528,6 +528,43 @@ const paymentsEvents: StreamEvent[] = [
       noteable: 'issue',
     },
   },
+  // Three earlier notes on #281: the thread folds the first behind "1 earlier".
+  {
+    id: 2004,
+    at: ago(60 * 10),
+    namespace: 'team-a',
+    project: 'shop',
+    milestoneIID: 14,
+    issueIID: 281,
+    kind: 'note',
+    actor: 'ai-operator',
+    summary: 'Queued #281 after #280.',
+    data: { body: 'Queued #281 after #280, since it needs **SDK 4**.', noteable: 'issue', bot: true },
+  },
+  {
+    id: 2003,
+    at: ago(60 * 11),
+    namespace: 'team-a',
+    project: 'shop',
+    milestoneIID: 14,
+    issueIID: 281,
+    kind: 'note',
+    actor: 'reviewer',
+    summary: 'Which provider first?',
+    data: { body: 'Which provider first?', noteable: 'issue' },
+  },
+  {
+    id: 2002,
+    at: ago(60 * 12),
+    namespace: 'team-a',
+    project: 'shop',
+    milestoneIID: 14,
+    issueIID: 281,
+    kind: 'note',
+    actor: 'jo',
+    summary: 'Opened for the refunds work.',
+    data: { body: 'Opened for the refunds work.', noteable: 'issue' },
+  },
 ]
 
 const allEvents = [...paymentsEvents, ...dashboardStream.events].sort((a, b) => b.id - a.id)

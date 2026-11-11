@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ApiError, post } from '../../api'
+import { ApiError, post, session } from '../../api'
 import { ciLabel, ciTone, clockTime, cost, fullTime, duration, shortSHA, type Tone } from '../../format'
 import { useNow } from '../../live'
 import type { CIState, ProjectDetail, PromptView, StreamEvent } from '../../types'
@@ -16,7 +16,8 @@ import Badge from '../Badge.vue'
 import ExtLink from '../ExtLink.vue'
 import Markdown from '../Markdown.vue'
 import PromptCard from '../PromptCard.vue'
-import NoteThread from './NoteThread.vue'
+import NoteThread from '../NoteThread.vue'
+import { fromStreamEvents } from '../../noteThread'
 
 const props = defineProps<{
   event?: StreamEvent
@@ -31,6 +32,7 @@ const posting = ref(false)
 const sendError = ref('')
 
 const e = computed(() => props.event)
+const threadNotes = computed(() => fromStreamEvents(props.notes ?? [], session.me?.username))
 const prompt = computed(() => (props.event ? promptForEvent(props.event, props.prompts) : undefined))
 const isPrompt = computed(() => !!e.value?.kind.startsWith('prompt.'))
 const isRelease = computed(() => !!e.value && isReleaseEvent(e.value))
@@ -105,7 +107,7 @@ function taskLink(ev: StreamEvent) {
 </script>
 
 <template>
-  <NoteThread v-if="notes" :notes="notes" />
+  <NoteThread v-if="notes" compact :notes="threadNotes" />
   <div v-else-if="e" class="ev" :class="{ warn: e.kind === 'needs' }">
     <div class="av sys">
       <template v-if="e.kind === 'run.started' || e.kind === 'run.finished'">▶</template>
