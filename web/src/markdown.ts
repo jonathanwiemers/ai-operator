@@ -185,7 +185,7 @@ function table(lines: string[], start: number, link: LinkFn, out: VNode[]): numb
   const rows: VNode[] = []
   let i = start + 2
   for (; i < lines.length && lines[i]!.trim() !== '' && !startsBlock(lines[i]!); i++) rows.push(row(cells(lines[i]!), 'td'))
-  out.push(h('div', { class: 'table' }, h('table', [h('thead', row(head, 'th')), ...(rows.length ? [h('tbody', rows)] : [])])))
+  out.push(h('div', { class: 'table-scroll' }, h('table', [h('thead', row(head, 'th')), ...(rows.length ? [h('tbody', rows)] : [])])))
   return i
 }
 

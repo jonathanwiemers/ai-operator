@@ -64,7 +64,7 @@ function issueTo(i: MilestoneIssueRow) {
     <p v-if="milestone.stored" class="note">From history: the tasks of this milestone are gone.</p>
 
     <div v-if="!milestone.issues?.length" class="empty">No issues planned yet.</div>
-    <div v-else class="table" role="table" aria-label="Issues">
+    <div v-else class="issue-table" role="table" aria-label="Issues">
       <div class="row head" role="row">
         <span role="columnheader">Issue</span>
         <span role="columnheader">State</span>
@@ -195,7 +195,7 @@ function issueTo(i: MilestoneIssueRow) {
   font-size: 13px;
   color: var(--text-3);
 }
-.table {
+.issue-table {
   margin-top: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

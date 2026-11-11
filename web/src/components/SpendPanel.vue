@@ -247,7 +247,7 @@ function rowKey(b: SpendBreakdown): string {
           </nav>
         </div>
         <div v-if="!children.length" class="card empty">No agent calls recorded here.</div>
-        <div v-else class="card table">
+        <div v-else class="card table-scroll">
           <table v-if="atCalls" class="list">
             <thead>
               <tr>
@@ -346,7 +346,7 @@ function rowKey(b: SpendBreakdown): string {
       <section v-if="totals.calls" class="breakdowns">
         <div v-for="b in breakdowns" :key="b.title" class="section">
           <h3>{{ b.title }}</h3>
-          <div class="card table">
+          <div class="card table-scroll">
             <table class="list">
               <thead>
                 <tr>
@@ -378,7 +378,7 @@ function rowKey(b: SpendBreakdown): string {
 
       <section v-if="totals.calls" class="section">
         <h3>By kind and model</h3>
-        <div class="card table">
+        <div class="card table-scroll">
           <table class="list">
             <thead>
               <tr>
@@ -408,7 +408,7 @@ function rowKey(b: SpendBreakdown): string {
 
       <section v-if="conflictRuns.length" class="section">
         <h3>Conflict calls per run</h3>
-        <div class="card table">
+        <div class="card table-scroll">
           <table class="list">
             <thead>
               <tr>
@@ -440,7 +440,7 @@ function rowKey(b: SpendBreakdown): string {
       <section v-if="totals.calls" class="breakdowns tuning">
         <div class="section">
           <h3>Review rounds</h3>
-          <div v-if="rounds.length" class="card table">
+          <div v-if="rounds.length" class="card table-scroll">
             <table class="list">
               <thead>
                 <tr>
@@ -466,7 +466,7 @@ function rowKey(b: SpendBreakdown): string {
         </div>
         <div class="section">
           <h3>Implementer steps: resumed vs fresh</h3>
-          <div v-if="sessions.length" class="card table">
+          <div v-if="sessions.length" class="card table-scroll">
             <table class="list">
               <thead>
                 <tr>
@@ -499,7 +499,7 @@ function rowKey(b: SpendBreakdown): string {
         </div>
         <div class="section">
           <h3>With vs without subagents</h3>
-          <div v-if="subagentRows.length" class="card table">
+          <div v-if="subagentRows.length" class="card table-scroll">
             <table class="list">
               <thead>
                 <tr>
@@ -646,7 +646,7 @@ dd {
   color: var(--text);
   font-weight: 600;
 }
-.table {
+.table-scroll {
   padding: 0;
   overflow-x: auto;
 }

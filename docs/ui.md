@@ -1445,9 +1445,72 @@ build, so the CI `ui` job enforces it. It prints
 `web/bundle-budget.json`.
 
 - 2026-11-11, before Nuxt UI: 51.9 kB (JS 48.7, CSS 3.2).
-- The cap only drops. The slice that sets up Nuxt UI records its figure in
-  `measuredKB` and sets `capKB` to min(250, figure × 1.3). A change that breaks
-  the cap is reported, not answered by raising it.
+- 2026-11-11, with Nuxt UI and Tailwind (`measuredKB`): 101.8 kB (JS 89.6,
+  CSS 12.2). The biggest parts are the Vue runtime, `<UApp>`'s providers
+  (Reka UI, tailwind-variants) and the bundled icons; the cap is
+  min(250, 101.8 × 1.3) = 132.3 kB.
+- The cap only drops. A change that breaks it is reported, not answered by
+  raising it.
+
+## UI kit
+
+The Desk's controls are [Nuxt UI](https://ui.nuxt.com) 4 components with
+[Tailwind](https://tailwindcss.com) 4 utilities, in the plain Vite app (not
+the Nuxt framework). The packages are pinned in `web/package.json`; the
+Vite plugin is `ui()` from `@nuxt/ui/vite` in `web/vite.config.ts`, and
+`App.vue` wraps the app in `<UApp>`. Views moved to the kit use components
+and utilities and drop their scoped CSS, except what utilities cannot
+express. `web/src/ui/` will hold only what Nuxt UI lacks. Not found
+(`views/NotFound.vue`) is the first view on it.
+
+**Imports are explicit.** Auto-imports and component resolution are off
+(`autoImport: false`, `components: false`): `npm run build` runs `vue-tsc`
+before Vite, so the declaration files they generate would not exist yet.
+Each component is imported from its file, named with the `U` prefix:
+
+```ts
+import UButton from '@nuxt/ui/components/Button.vue'
+import UApp from '@nuxt/ui/components/App.vue'
+```
+
+Composables come from `@nuxt/ui/composables` (e.g. `useToast`). The
+variant props (`color`, `variant`, `size`) are typed from the theme Vite
+generates, so `vue-tsc` does not check their values: copy them from the
+Nuxt UI docs.
+
+**Icons** are [lucide](https://lucide.dev) from the installed
+`@iconify-json/lucide`, written `i-lucide-<name>` (e.g. `icon="i-lucide-house"`).
+They are bundled at build time (`icon.clientBundle`): the plugin scans
+`web/src` for literal names, and names built at runtime must be listed in
+`clientBundle.icons` in `vite.config.ts`. An icon missing from the bundle
+would be fetched from the Iconify API, which the CSP blocks; the browser
+checks fail on that as a CSP violation and a request to another origin.
+
+**CSP.** The kit runs under the unchanged policy (see [Security](#security)):
+no inline style, script or other origin. Nuxt UI's colour plugin sets its
+colours through an inline `<style>` (`useHead`), so it is left out:
+`main.ts` installs only Nuxt UI's icons plugin, not the whole
+`@nuxt/ui/vue-plugin` (which would also add the colour plugin and an unhead
+instance), and `style.css` defines the colour variables
+([design.md](design.md#desk-styles)). Colour mode is off (`colorMode: false`,
+`colorScheme.ts` sets `.dark`), fonts are the system's (the plugin's font
+handling is off), and components that use `useHead` (`UBanner`, `UKbd`, and
+the ones that show shortcuts with `UKbd`) are not used. Tailwind's
+preflight is not imported, so a view's own elements
+keep the browser's defaults; elements Nuxt UI renders (they carry
+`data-slot`) get a small reset in `style.css`.
+
+**Class names.** Tailwind generates a utility for every word in `web/src`
+(and in Nuxt UI's sources) that names one. A view's own class with a
+utility's name gets the utility too: `class="table"` becomes
+`display: table`, `class="hidden"` `display: none`, and scoped CSS overrides
+only the properties it sets. Do not give own classes utility names (`table`,
+`hidden`, `block`, `flex`, `grid`, `static`, `fixed`, `border`, `shadow`,
+`truncate`, …). The markdown table wrapper and Spend's tables are
+`table-scroll`, the milestone's issue list `issue-table`, the chat's
+withheld message `withheld`. `block` (milestone, retrospective), `static`
+(prompt options) and `grid` (an SVG group in the context chart) remain, as
+their utilities change nothing there.
 
 ## Roadmap
 

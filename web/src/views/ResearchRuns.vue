@@ -182,7 +182,7 @@ watch(
 
 .reason,
 .err {
-  max-width: 14rem;
+  max-width: 196px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

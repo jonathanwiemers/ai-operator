@@ -8,6 +8,7 @@ import { inboxRoute } from './inboxRoute'
 import { connectEvents, disconnectEvents, live } from './live'
 import { notifyActive, refreshPermission } from './notify'
 import { projectDot, projectNeedsYou, projectStateLine } from './stream'
+import UApp from '@nuxt/ui/components/App.vue'
 import SignIn from './views/SignIn.vue'
 import Breadcrumbs from './components/Breadcrumbs.vue'
 import type { EngineUsage, Feature, InboxItem, InboxResponse, Me, ProjectSummary, ResearchSummary } from './types'
@@ -162,107 +163,109 @@ watch(
 </script>
 
 <template>
-  <SignIn v-if="session.loginRequired" />
-  <div v-else class="app" :class="{ 'rail-open': railOpen }">
-    <div v-if="railOpen" class="scrim" @click="closeRail" />
-    <header class="mobilebar">
-      <button type="button" class="menu" aria-label="Open menu" @click="railOpen = true">☰</button>
-      <RouterLink to="/" class="brand-m" @click="closeRail">
-        <img src="/logo.svg" alt="" width="22" height="22" />
-        ai-operator
-      </RouterLink>
-      <span v-if="inboxCount" class="count">{{ inboxCount }}</span>
-    </header>
-
-    <aside class="rail">
-      <RouterLink to="/" class="brand" @click="closeRail">
-        <img src="/logo.svg" alt="" width="24" height="24" />
-        <span>ai-operator</span>
-      </RouterLink>
-      <nav>
-        <RouterLink to="/inbox" class="item" @click="closeRail">
-          <span class="dot" :class="{ warn: inboxCount > 0 }" />
-          <span class="name">Inbox<span class="sub">needs you, across projects</span></span>
-          <span v-if="inboxCount" class="count">{{ inboxCount }}</span>
+  <UApp>
+    <SignIn v-if="session.loginRequired" />
+    <div v-else class="app" :class="{ 'rail-open': railOpen }">
+      <div v-if="railOpen" class="scrim" @click="closeRail" />
+      <header class="mobilebar">
+        <button type="button" class="menu" aria-label="Open menu" @click="railOpen = true">☰</button>
+        <RouterLink to="/" class="brand-m" @click="closeRail">
+          <img src="/logo.svg" alt="" width="22" height="22" />
+          ai-operator
         </RouterLink>
-        <RouterLink to="/" class="item" active-class="active" @click="closeRail">
-          <span class="dot" />
-          <span class="name">Overview<span class="sub">what runs, across projects</span></span>
-        </RouterLink>
+        <span v-if="inboxCount" class="count">{{ inboxCount }}</span>
+      </header>
 
-        <div class="sect"><span>Projects</span></div>
-        <RouterLink
-          v-for="p in projects ?? []"
-          :key="p.namespace + '/' + p.name"
-          :to="{ name: 'stream-project', params: { namespace: p.namespace, name: p.name } }"
-          class="item"
-          :class="{ active: projectActive(p.namespace, p.name) }"
-          active-class=""
-          @click="closeRail"
-        >
-          <span
-            class="dot"
-            :class="{
-              run: projectDot(p.stages) === 'running',
-              warn: projectDot(p.stages) === 'needs-you',
-              ok: projectDot(p.stages) === 'idle',
-            }"
-          />
-          <span class="name">
-            {{ p.name }}
-            <span class="sub">{{ projectStateLine(p.stages, p.autopilots) }}</span>
-          </span>
-          <span v-if="projectNeedsYou(p.stages)" class="count">{{ projectNeedsYou(p.stages) }}</span>
+      <aside class="rail">
+        <RouterLink to="/" class="brand" @click="closeRail">
+          <img src="/logo.svg" alt="" width="24" height="24" />
+          <span>ai-operator</span>
         </RouterLink>
-        <div v-if="projects && !projects.length" class="empty-rail">No projects</div>
+        <nav>
+          <RouterLink to="/inbox" class="item" @click="closeRail">
+            <span class="dot" :class="{ warn: inboxCount > 0 }" />
+            <span class="name">Inbox<span class="sub">needs you, across projects</span></span>
+            <span v-if="inboxCount" class="count">{{ inboxCount }}</span>
+          </RouterLink>
+          <RouterLink to="/" class="item" active-class="active" @click="closeRail">
+            <span class="dot" />
+            <span class="name">Overview<span class="sub">what runs, across projects</span></span>
+          </RouterLink>
 
-        <template v-if="hasFeature('research')">
-          <div class="sect"><span>Research</span></div>
+          <div class="sect"><span>Projects</span></div>
           <RouterLink
-            v-for="r in researches ?? []"
-            :key="r.namespace + '/' + r.name"
-            :to="`/research/${encodeURIComponent(r.namespace)}/${encodeURIComponent(r.name)}`"
+            v-for="p in projects ?? []"
+            :key="p.namespace + '/' + p.name"
+            :to="{ name: 'stream-project', params: { namespace: p.namespace, name: p.name } }"
             class="item"
+            :class="{ active: projectActive(p.namespace, p.name) }"
+            active-class=""
             @click="closeRail"
           >
-            <span class="dot" :class="{ run: r.phase === 'Running', ok: r.phase === 'Succeeded' }" />
-            <span class="name">{{ r.name }}<span class="sub">{{ researchSub(r) }}</span></span>
-          </RouterLink>
-          <RouterLink to="/research" class="item soft" @click="closeRail">
-            <span class="name">All research</span>
-          </RouterLink>
-        </template>
-      </nav>
-
-      <div class="rail-foot">
-        <div v-for="u in engineMeters" :key="u.engine" class="meters">
-          <div v-for="w in u.windows ?? []" :key="w.name" class="meter">
-            <span>{{ u.engine }} {{ windowLabel(w.name) }}</span>
-            <span class="bar">
-              <i :class="{ hot: w.percent >= 80 }" :style="{ width: Math.min(100, w.percent) + '%' }" />
+            <span
+              class="dot"
+              :class="{
+                run: projectDot(p.stages) === 'running',
+                warn: projectDot(p.stages) === 'needs-you',
+                ok: projectDot(p.stages) === 'idle',
+              }"
+            />
+            <span class="name">
+              {{ p.name }}
+              <span class="sub">{{ projectStateLine(p.stages, p.autopilots) }}</span>
             </span>
-            <span>{{ w.percent }}%</span>
+            <span v-if="projectNeedsYou(p.stages)" class="count">{{ projectNeedsYou(p.stages) }}</span>
+          </RouterLink>
+          <div v-if="projects && !projects.length" class="empty-rail">No projects</div>
+
+          <template v-if="hasFeature('research')">
+            <div class="sect"><span>Research</span></div>
+            <RouterLink
+              v-for="r in researches ?? []"
+              :key="r.namespace + '/' + r.name"
+              :to="`/research/${encodeURIComponent(r.namespace)}/${encodeURIComponent(r.name)}`"
+              class="item"
+              @click="closeRail"
+            >
+              <span class="dot" :class="{ run: r.phase === 'Running', ok: r.phase === 'Succeeded' }" />
+              <span class="name">{{ r.name }}<span class="sub">{{ researchSub(r) }}</span></span>
+            </RouterLink>
+            <RouterLink to="/research" class="item soft" @click="closeRail">
+              <span class="name">All research</span>
+            </RouterLink>
+          </template>
+        </nav>
+
+        <div class="rail-foot">
+          <div v-for="u in engineMeters" :key="u.engine" class="meters">
+            <div v-for="w in u.windows ?? []" :key="w.name" class="meter">
+              <span>{{ u.engine }} {{ windowLabel(w.name) }}</span>
+              <span class="bar">
+                <i :class="{ hot: w.percent >= 80 }" :style="{ width: Math.min(100, w.percent) + '%' }" />
+              </span>
+              <span>{{ w.percent }}%</span>
+            </div>
+          </div>
+          <div class="who">
+            <span
+              class="live"
+              :class="{ on: live.connected }"
+              :title="live.connected ? 'Updates arrive live' : 'Reconnecting…'"
+            >
+              <span class="ldot" />{{ live.connected ? 'Live' : 'Offline' }}
+            </span>
+            <span class="uname" :title="(session.me?.roles ?? []).join(', ') || 'no roles'">{{ session.me?.username }}</span>
+            <button v-if="session.me?.authMode === 'oidc'" class="btn" type="button" @click="logout">Sign out</button>
           </div>
         </div>
-        <div class="who">
-          <span
-            class="live"
-            :class="{ on: live.connected }"
-            :title="live.connected ? 'Updates arrive live' : 'Reconnecting…'"
-          >
-            <span class="ldot" />{{ live.connected ? 'Live' : 'Offline' }}
-          </span>
-          <span class="uname" :title="(session.me?.roles ?? []).join(', ') || 'no roles'">{{ session.me?.username }}</span>
-          <button v-if="session.me?.authMode === 'oidc'" class="btn" type="button" @click="logout">Sign out</button>
-        </div>
-      </div>
-    </aside>
+      </aside>
 
-    <main class="main">
-      <header class="crumbbar"><Breadcrumbs /></header>
-      <RouterView />
-    </main>
-  </div>
+      <main class="main">
+        <header class="crumbbar"><Breadcrumbs /></header>
+        <RouterView />
+      </main>
+    </div>
+  </UApp>
 </template>
 
 <style scoped>

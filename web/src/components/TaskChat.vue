@@ -253,7 +253,7 @@ onUnmounted(() => {
                 {{ stateLabel(msg.state).text }}
               </Badge>
             </div>
-            <p v-if="msg.redacted && !msg.body" class="hidden">message hidden</p>
+            <p v-if="msg.redacted && !msg.body" class="withheld">message hidden</p>
             <p v-else-if="msg.kind === 'command'" class="cmd">{{ commandLabel(msg.body) }}</p>
             <MarkdownBody v-else-if="msg.body" :text="msg.body" />
             <p v-if="msg.role === 'user' && msg.state === 'failed' && msg.reason" class="reason">
@@ -268,7 +268,7 @@ onUnmounted(() => {
               </div>
               <p
                 v-if="repliesByParent.get(msg.id)!.redacted && !repliesByParent.get(msg.id)!.body"
-                class="hidden"
+                class="withheld"
               >
                 message hidden
               </p>
@@ -371,7 +371,7 @@ onUnmounted(() => {
   font-family: var(--mono);
   font-size: 13px;
 }
-.hidden,
+.withheld,
 .reason {
   margin: 0;
   font-size: 13px;

@@ -37,10 +37,10 @@ const cases = [
   ['raw HTML is text', '<script>alert(1)</script>\n<img src=x onerror=alert(1)>', '<p>&lt;script&gt;alert(1)&lt;/script&gt;\n&lt;img src=x onerror=alert(1)&gt;</p>'],
   ['images are text', '![x](https://a.example/i.png)', '<p>!<a href="https://a.example/i.png" rel="noopener noreferrer nofollow">x</a></p>'],
   ['table with alignment, inline content and escaped pipe', '| # | Step | Result |\n|--:|:-:|---|\n| 1 | `a\\|b` | **ok** \\| x |\n| 2 | b |\n\nafter',
-    '<div class="table"><table><thead><tr><th style="text-align:right;">#</th><th style="text-align:center;">Step</th><th>Result</th></tr></thead><tbody>' +
+    '<div class="table-scroll"><table><thead><tr><th style="text-align:right;">#</th><th style="text-align:center;">Step</th><th>Result</th></tr></thead><tbody>' +
     '<tr><td style="text-align:right;">1</td><td style="text-align:center;"><code>a|b</code></td><td><strong>ok</strong> | x</td></tr>' +
     '<tr><td style="text-align:right;">2</td><td style="text-align:center;">b</td><td></td></tr></tbody></table></div><p>after</p>'],
-  ['table without pipes around', 'a | b\n--- | ---', '<div class="table"><table><thead><tr><th>a</th><th>b</th></tr></thead></table></div>'],
+  ['table without pipes around', 'a | b\n--- | ---', '<div class="table-scroll"><table><thead><tr><th>a</th><th>b</th></tr></thead></table></div>'],
   ['delimiter with another cell count is text', '| a | b |\n|---|', '<p>| a | b |\n|---|</p>'],
   ['HTML comments are dropped', '<!-- marker --> text <!-- x -->here\n\n<!-- alone -->', '<p> text here</p>'],
   ['unclosed comment is text', '<!-- open', '<p>&lt;!-- open</p>'],
@@ -97,7 +97,7 @@ test('a retrospective reads as on GitLab, its HTML as text', async () => {
   assert.equal(
     await md(src),
     '<p>🧭 <strong>Retrospective</strong></p><h5>Merged</h5><ul><li><p>#12 Add the <code>store</code> (!40)</p></li></ul>' +
-      '<div class="table"><table><thead><tr><th>Cost driver</th><th style="text-align:right;">USD</th><th style="text-align:right;">Tokens</th></tr></thead>' +
+      '<div class="table-scroll"><table><thead><tr><th>Cost driver</th><th style="text-align:right;">USD</th><th style="text-align:right;">Tokens</th></tr></thead>' +
       '<tbody><tr><td>#12</td><td style="text-align:right;">$1.20</td><td style="text-align:right;">1.2M</td></tr></tbody></table></div>' +
       '<ol><li><p>Follow-up &lt;img src=x onerror=alert(1)&gt;</p></li></ol>',
   )

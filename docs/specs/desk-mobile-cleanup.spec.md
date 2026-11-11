@@ -309,3 +309,14 @@ follow-up issue), and requirements without an issue and why.
   and `web/src/colorScheme.ts` sets `.dark` from `prefers-color-scheme`.
   Nothing narrowed. The mapping of the tokens to Nuxt UI's `--ui-*` comes
   with R4.
+- 2026-11-11 #305 (R4 setup): `@nuxt/ui` 4.12.0, `tailwindcss` 4.3.5 and
+  `@iconify-json/lucide` in the Vite app, `<UApp>` in `App.vue`, Not found
+  rebuilt with `UButton` and utilities. The colour plugin is left out: the
+  app installs only Nuxt UI's icons plugin, not `@nuxt/ui/vue-plugin`, and
+  `style.css` defines the `--ui-*` variables, so the CSP is unchanged and no
+  hash is needed. Beyond the plan: Tailwind's preflight is not imported (it
+  would restyle the lists, paragraphs and buttons of every view not yet on
+  the kit); a reset for elements with `data-slot` (what Nuxt UI renders)
+  stands in for it, and `html` is back at 16 px so `rem` sizes are
+  Tailwind's, with `body` at 14 px. Initial bundle 101.8 kB (51.9 before),
+  cap 132.3 kB. Nothing narrowed.

@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import uiIcons from '@nuxt/ui/runtime/vue/plugins/icons.js'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import App from './App.vue'
 import { canStartResearch, featuresLoaded, hasFeature, isResearchPath } from './api'
@@ -87,4 +88,8 @@ router.beforeEach(async (to) => {
   return true
 })
 
-createApp(App).use(router).mount('#app')
+// Of Nuxt UI's Vue plugin (@nuxt/ui/vue-plugin) only the icons: the whole
+// plugin would add the colour plugin, whose <style> the CSP refuses
+// (style.css holds the colours instead), and an unhead instance nothing here
+// uses (docs/ui.md, "UI kit"). Links need no plugin, they use vue-router.
+createApp(App).use(router).use(uiIcons).mount('#app')

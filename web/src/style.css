@@ -1,3 +1,12 @@
+/* Tailwind 4 and Nuxt UI (docs/ui.md, "UI kit"). Tailwind's preflight is
+   left out: it would reset the lists, paragraphs, headings and buttons of
+   every view not yet on the kit. The few resets the kit's own elements need
+   are in the base layer below. */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import '@nuxt/ui';
+
 :root {
   --bg: #f6f6f8;
   --surface: #ffffff;
@@ -84,6 +93,125 @@
   color-scheme: dark;
 }
 
+/* Nuxt UI's theme, mapped from the tokens above (docs/design.md, "Nuxt UI
+   tokens"). Its colour plugin would inject these through a <style> element,
+   which the CSP (style-src 'self') refuses; it is not installed (main.ts).
+   They are set once: the tokens they name change in .dark, so they follow.
+   Unlayered, they win over the defaults in Nuxt UI's theme layer. */
+:root {
+  --ui-primary: var(--accent);
+  --ui-secondary: var(--focus);
+  --ui-success: var(--tone-success-fg);
+  --ui-info: var(--tone-info-fg);
+  --ui-warning: var(--tone-warning-fg);
+  --ui-error: var(--tone-danger-fg);
+  --ui-neutral: var(--tone-muted-fg);
+
+  /* Each colour's shades, its token at 500, mixed with white above and
+     black below. The components use the plain colours and the variables
+     after these; the shades back utilities such as bg-neutral-100. */
+  --ui-color-primary-50: color-mix(in oklab, var(--ui-primary) 8%, white);
+  --ui-color-primary-100: color-mix(in oklab, var(--ui-primary) 16%, white);
+  --ui-color-primary-200: color-mix(in oklab, var(--ui-primary) 32%, white);
+  --ui-color-primary-300: color-mix(in oklab, var(--ui-primary) 52%, white);
+  --ui-color-primary-400: color-mix(in oklab, var(--ui-primary) 76%, white);
+  --ui-color-primary-500: var(--ui-primary);
+  --ui-color-primary-600: color-mix(in oklab, var(--ui-primary) 84%, black);
+  --ui-color-primary-700: color-mix(in oklab, var(--ui-primary) 68%, black);
+  --ui-color-primary-800: color-mix(in oklab, var(--ui-primary) 52%, black);
+  --ui-color-primary-900: color-mix(in oklab, var(--ui-primary) 38%, black);
+  --ui-color-primary-950: color-mix(in oklab, var(--ui-primary) 24%, black);
+  --ui-color-secondary-50: color-mix(in oklab, var(--ui-secondary) 8%, white);
+  --ui-color-secondary-100: color-mix(in oklab, var(--ui-secondary) 16%, white);
+  --ui-color-secondary-200: color-mix(in oklab, var(--ui-secondary) 32%, white);
+  --ui-color-secondary-300: color-mix(in oklab, var(--ui-secondary) 52%, white);
+  --ui-color-secondary-400: color-mix(in oklab, var(--ui-secondary) 76%, white);
+  --ui-color-secondary-500: var(--ui-secondary);
+  --ui-color-secondary-600: color-mix(in oklab, var(--ui-secondary) 84%, black);
+  --ui-color-secondary-700: color-mix(in oklab, var(--ui-secondary) 68%, black);
+  --ui-color-secondary-800: color-mix(in oklab, var(--ui-secondary) 52%, black);
+  --ui-color-secondary-900: color-mix(in oklab, var(--ui-secondary) 38%, black);
+  --ui-color-secondary-950: color-mix(in oklab, var(--ui-secondary) 24%, black);
+  --ui-color-success-50: color-mix(in oklab, var(--ui-success) 8%, white);
+  --ui-color-success-100: color-mix(in oklab, var(--ui-success) 16%, white);
+  --ui-color-success-200: color-mix(in oklab, var(--ui-success) 32%, white);
+  --ui-color-success-300: color-mix(in oklab, var(--ui-success) 52%, white);
+  --ui-color-success-400: color-mix(in oklab, var(--ui-success) 76%, white);
+  --ui-color-success-500: var(--ui-success);
+  --ui-color-success-600: color-mix(in oklab, var(--ui-success) 84%, black);
+  --ui-color-success-700: color-mix(in oklab, var(--ui-success) 68%, black);
+  --ui-color-success-800: color-mix(in oklab, var(--ui-success) 52%, black);
+  --ui-color-success-900: color-mix(in oklab, var(--ui-success) 38%, black);
+  --ui-color-success-950: color-mix(in oklab, var(--ui-success) 24%, black);
+  --ui-color-info-50: color-mix(in oklab, var(--ui-info) 8%, white);
+  --ui-color-info-100: color-mix(in oklab, var(--ui-info) 16%, white);
+  --ui-color-info-200: color-mix(in oklab, var(--ui-info) 32%, white);
+  --ui-color-info-300: color-mix(in oklab, var(--ui-info) 52%, white);
+  --ui-color-info-400: color-mix(in oklab, var(--ui-info) 76%, white);
+  --ui-color-info-500: var(--ui-info);
+  --ui-color-info-600: color-mix(in oklab, var(--ui-info) 84%, black);
+  --ui-color-info-700: color-mix(in oklab, var(--ui-info) 68%, black);
+  --ui-color-info-800: color-mix(in oklab, var(--ui-info) 52%, black);
+  --ui-color-info-900: color-mix(in oklab, var(--ui-info) 38%, black);
+  --ui-color-info-950: color-mix(in oklab, var(--ui-info) 24%, black);
+  --ui-color-warning-50: color-mix(in oklab, var(--ui-warning) 8%, white);
+  --ui-color-warning-100: color-mix(in oklab, var(--ui-warning) 16%, white);
+  --ui-color-warning-200: color-mix(in oklab, var(--ui-warning) 32%, white);
+  --ui-color-warning-300: color-mix(in oklab, var(--ui-warning) 52%, white);
+  --ui-color-warning-400: color-mix(in oklab, var(--ui-warning) 76%, white);
+  --ui-color-warning-500: var(--ui-warning);
+  --ui-color-warning-600: color-mix(in oklab, var(--ui-warning) 84%, black);
+  --ui-color-warning-700: color-mix(in oklab, var(--ui-warning) 68%, black);
+  --ui-color-warning-800: color-mix(in oklab, var(--ui-warning) 52%, black);
+  --ui-color-warning-900: color-mix(in oklab, var(--ui-warning) 38%, black);
+  --ui-color-warning-950: color-mix(in oklab, var(--ui-warning) 24%, black);
+  --ui-color-error-50: color-mix(in oklab, var(--ui-error) 8%, white);
+  --ui-color-error-100: color-mix(in oklab, var(--ui-error) 16%, white);
+  --ui-color-error-200: color-mix(in oklab, var(--ui-error) 32%, white);
+  --ui-color-error-300: color-mix(in oklab, var(--ui-error) 52%, white);
+  --ui-color-error-400: color-mix(in oklab, var(--ui-error) 76%, white);
+  --ui-color-error-500: var(--ui-error);
+  --ui-color-error-600: color-mix(in oklab, var(--ui-error) 84%, black);
+  --ui-color-error-700: color-mix(in oklab, var(--ui-error) 68%, black);
+  --ui-color-error-800: color-mix(in oklab, var(--ui-error) 52%, black);
+  --ui-color-error-900: color-mix(in oklab, var(--ui-error) 38%, black);
+  --ui-color-error-950: color-mix(in oklab, var(--ui-error) 24%, black);
+  --ui-color-neutral-50: color-mix(in oklab, var(--ui-neutral) 8%, white);
+  --ui-color-neutral-100: color-mix(in oklab, var(--ui-neutral) 16%, white);
+  --ui-color-neutral-200: color-mix(in oklab, var(--ui-neutral) 32%, white);
+  --ui-color-neutral-300: color-mix(in oklab, var(--ui-neutral) 52%, white);
+  --ui-color-neutral-400: color-mix(in oklab, var(--ui-neutral) 76%, white);
+  --ui-color-neutral-500: var(--ui-neutral);
+  --ui-color-neutral-600: color-mix(in oklab, var(--ui-neutral) 84%, black);
+  --ui-color-neutral-700: color-mix(in oklab, var(--ui-neutral) 68%, black);
+  --ui-color-neutral-800: color-mix(in oklab, var(--ui-neutral) 52%, black);
+  --ui-color-neutral-900: color-mix(in oklab, var(--ui-neutral) 38%, black);
+  --ui-color-neutral-950: color-mix(in oklab, var(--ui-neutral) 24%, black);
+
+  --ui-bg: var(--surface);
+  --ui-bg-muted: var(--surface-2);
+  --ui-bg-elevated: var(--surface-2);
+  --ui-bg-accented: var(--surface-3);
+  --ui-bg-inverted: var(--text);
+
+  --ui-text-dimmed: var(--text-3);
+  --ui-text-muted: var(--text-2);
+  --ui-text-toned: var(--text-2);
+  --ui-text: var(--text);
+  --ui-text-highlighted: var(--text);
+  --ui-text-inverted: var(--surface);
+
+  --ui-border: var(--border);
+  --ui-border-muted: var(--border);
+  --ui-border-accented: var(--border-strong);
+  --ui-border-inverted: var(--text);
+
+  /* Buttons and inputs are rounded-md, 1.5 times this: 6px, as --radius-sm.
+     (Tailwind's own --radius-sm is shadowed by ours; its utilities do not
+     read it, Nuxt UI inlines --ui-radius into them.) */
+  --ui-radius: 4px;
+}
+
 /* Element rules live in the base layer: unlayered CSS (scoped styles, the
    classes below) and Tailwind's later layers win over them, whatever the
    specificity. Classes do not go here (docs/design.md, "Desk styles"). */
@@ -103,12 +231,14 @@
     margin: 0;
     color: var(--text);
     font-family: var(--font);
-    font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
 
+  /* 1rem stays 16px, the size Tailwind's spacing and Nuxt UI's sizes are
+     made for; the text is 14px from body down. */
   body {
+    font-size: 14px;
     background: var(--bg);
   }
 
@@ -155,6 +285,36 @@
   code {
     font-family: var(--mono);
     font-size: 12.5px;
+  }
+
+  /* What Tailwind's preflight gives the elements Nuxt UI renders (they
+     carry data-slot), without resetting the views' own elements. After the
+     rules above, so a kit link does not take the link colour. */
+  [data-slot],
+  [data-slot]::before,
+  [data-slot]::after {
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+  }
+
+  a[data-slot] {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button[data-slot],
+  input[data-slot],
+  select[data-slot],
+  textarea[data-slot] {
+    font: inherit;
+    color: inherit;
+    background-color: transparent;
+  }
+
+  svg[data-slot] {
+    display: block;
+    vertical-align: middle;
   }
 }
 
@@ -325,7 +485,7 @@ table.list tr:last-child td {
 
 /* Markdown elements beyond the basics, shared by MarkdownBody and
    MarkdownBlock (markdown.ts). */
-.md .table {
+.md .table-scroll {
   margin: 8px 0;
   overflow-x: auto;
 }

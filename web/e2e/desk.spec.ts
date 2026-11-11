@@ -122,7 +122,14 @@ const routes: Route[] = [
   {
     name: 'not-found',
     path: '/no/such/page',
-    ready: (page) => expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible(),
+    // Built with Nuxt UI (#305): its button and the bundled lucide icon,
+    // drawn as an inline svg, not fetched.
+    ready: async (page) => {
+      await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible()
+      const back = page.getByRole('link', { name: 'Back to Overview' })
+      await expect(back).toBeVisible()
+      await expect(back.locator('svg path, svg g').first()).toBeAttached()
+    },
   },
   {
     name: 'sign-in',

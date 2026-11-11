@@ -2649,7 +2649,9 @@ untrusted code: don't expose protected CI variables to unprotected branches.
 
 ## Desk styles
 
-The Desk's global styles are `web/src/style.css`; views add scoped CSS on top.
+The Desk's global styles are `web/src/style.css`. It imports Tailwind's
+theme and utilities and Nuxt UI's styles ([ui.md](ui.md#ui-kit)); views on
+the kit use utilities, the others add scoped CSS on top.
 
 **Tokens.** CSS custom properties hold the palette and the shared sizes:
 `--bg`, `--surface`, `--surface-2`, `--surface-3`, `--border`,
@@ -2678,6 +2680,37 @@ utilities (Nuxt UI, Tailwind's `components` and `utilities` layers) win over
 them. Global classes (`.btn`, `.card`, `.row`, `.banner`, `.empty`, `.md …`)
 stay unlayered until they are removed: in a layer, scoped rules they beat
 today would win. New element rules go into `@layer base`, never unlayered.
+
+Tailwind's preflight (its element reset) is not imported: it would restyle
+the lists, paragraphs, headings and buttons of every view not yet on the
+kit. Elements Nuxt UI renders carry `data-slot`; the base layer gives them
+what preflight would (no margin, padding or border, links and form controls
+inheriting colour and font, block icons), after the element rules. `html`
+keeps the browser's 16 px, so `rem` (Tailwind's spacing, Nuxt UI's sizes)
+is 16 px; `body` sets the Desk's 14 px text. Scoped CSS uses `px`, not `rem`.
+
+**Nuxt UI tokens.** Nuxt UI reads its theme from `--ui-*` variables, which
+its colour plugin would inject as an inline `<style>` that the CSP refuses.
+`style.css` sets them instead, unlayered on `:root` (they beat the defaults
+in Nuxt UI's `theme` layer). Each names a palette token, so it follows
+`.dark` without a second block:
+
+| Nuxt UI | Token |
+|---------|-------|
+| `--ui-primary` | `--accent` |
+| `--ui-secondary` | `--focus` |
+| `--ui-success`, `--ui-info`, `--ui-warning`, `--ui-error` | `--tone-success-fg`, `--tone-info-fg`, `--tone-warning-fg`, `--tone-danger-fg` |
+| `--ui-neutral` | `--tone-muted-fg` |
+| `--ui-color-<colour>-50` … `-950` | the colour above at 500, mixed with white (50–400) or black (600–950) in oklab |
+| `--ui-bg`, `-muted`, `-elevated`, `-accented`, `-inverted` | `--surface`, `--surface-2`, `--surface-2`, `--surface-3`, `--text` |
+| `--ui-text-dimmed`, `-muted`, `-toned`, `--ui-text`, `-highlighted`, `-inverted` | `--text-3`, `--text-2`, `--text-2`, `--text`, `--text`, `--surface` |
+| `--ui-border`, `-muted`, `-accented`, `-inverted` | `--border`, `--border`, `--border-strong`, `--text` |
+| `--ui-radius` | 4 px, so `rounded-md` (buttons, inputs) is `--radius-sm` |
+
+The page background stays `--bg` (the base layer's `body` rule comes after
+Nuxt UI's). In utilities, the tokens are `bg-default`, `text-muted`,
+`border-default`, `text-primary` and so on; a palette token without a Nuxt
+UI name is used as `bg-(--pilot-bg)`.
 
 ## Code map
 
