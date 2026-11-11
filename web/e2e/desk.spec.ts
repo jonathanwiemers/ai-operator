@@ -7,6 +7,7 @@ import { answer, now } from './fixtures'
 import { inbox } from './fixtures/rail'
 import { features } from './fixtures/session'
 import { overview } from './fixtures/overview'
+import { paymentsMilestone } from './fixtures/stream'
 import { refundsPrompt, refundsResponse } from './fixtures/task'
 import { taskTabs, type TaskTab } from '../src/streamTabs'
 import type { Feature } from '../src/types'
@@ -555,11 +556,14 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'task', 'task-chat', 'task-calls', 'task-details']
+const hitRoutes = ['overview', 'inbox', 'task', 'task-chat', 'task-calls', 'task-details', 'stream-milestone-retrospective']
 
-// "<route> <element as reported>" → why it may stay under 44 px. Empty: no
-// control needs an exception.
-const hitAllowlist: Record<string, string> = {}
+// "<route> <element as reported>" → why it may stay under 44 px.
+const hitAllowlist: Record<string, string> = {
+  // The reported label is cut at 40 characters.
+  'stream-milestone-retrospective input[checkbox].m-0.size-4 "Take leftover 1 into a follow-up milesto"':
+    'a checkbox keeps its size; the label around it is the 44 px hit area (milestone retrospective e2e)',
+}
 
 for (const name of hitRoutes) {
   test(`${name} hit areas of at least 44 px@375`, async ({ page, baseURL }, testInfo) => {
@@ -1966,6 +1970,134 @@ test.describe('milestone pilot', () => {
       await expect(card.getByRole('status')).toContainText('Skip #281: sent…')
       expect(posts).toEqual([{ body: JSON.stringify({ cmd: 'skip', issue: 281 }), clientKey: expect.any(String), kind: 'command' }])
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+})
+
+// The milestone's Retrospective tab (MilestoneRetro.vue, R12), utilities
+// only: no sideways scroll, cost drivers stacked on a phone, the leftovers'
+// checkboxes, links and folds 44 px high there, the editor's inputs at
+// 16 px. Creating a follow-up milestone and dismissing the leftovers post
+// as before; the dismiss confirmation is a dialog that back closes.
+test.describe('milestone retrospective', () => {
+  const base = '/api/v1/projects/team-a/shop/milestones/14'
+
+  async function sideways(page: Page) {
+    return page.evaluate(() => {
+      const doc = document.scrollingElement ?? document.documentElement
+      const main = document.querySelector('main')!
+      return { page: doc.scrollWidth - doc.clientWidth, pane: main.scrollWidth - main.clientWidth }
+    })
+  }
+
+  for (const size of widths) {
+    const phone = size.width < 760
+    const shot = (outputDir: string, name: string) => join(outputDir, '..', 'screenshots', `${name}@${size.width}.png`)
+
+    test(`follow-ups: create and dismiss@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const route = routes.find((r) => r.name === 'stream-milestone-retrospective')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      const posts: { path: string; body: unknown }[] = []
+      // Registered after mockAPI, so they answer first. Without draft the
+      // editor starts from the leftovers' titles and bodies, no pilot.
+      await page.route(
+        (url) => url.pathname === base,
+        (r) =>
+          r.fulfill({
+            status: 200,
+            json: { ...paymentsMilestone, permissions: { ...paymentsMilestone.permissions, draft: false } },
+          }),
+      )
+      await page.route(
+        (url) => url.pathname === `${base}/followup` || url.pathname === `${base}/followups/dismiss`,
+        async (r) => {
+          const path = new URL(r.request().url()).pathname.slice(base.length)
+          posts.push({ path: `${r.request().method()} ${path}`, body: r.request().postDataJSON() })
+          if (path === '/followup') {
+            return r.fulfill({ status: 201, json: { iid: 15, webURL: 'https://gitlab.example.com/groups/team-a/-/milestones/15' } })
+          }
+          return r.fulfill({ status: 202, json: { id: 7, author: 'jo', body: 'create none', createdAt: new Date(now).toISOString() } })
+        },
+      )
+      await page.goto(route.path)
+      await route.ready(page)
+      const main = page.locator('main')
+      await expect(main.locator('[data-drivers] tbody tr')).toHaveCount(3)
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+
+      const layout = await main.evaluate((m) => {
+        const h = (e: Element | null) => e?.getBoundingClientRect().height ?? 0
+        return {
+          heads: getComputedStyle(m.querySelector('[data-drivers] thead')!).display !== 'none',
+          tick: h(m.querySelector('[data-followup] label')),
+          stateLink: h(m.querySelector('[data-followup] a')),
+          fold: h(m.querySelector('[data-followup] summary')),
+          facts: [...m.querySelectorAll('[data-retro-facts] a')].map(h),
+          buttons: [...m.querySelectorAll('[data-dismiss] button, [data-draft] button')].map(h),
+        }
+      })
+      expect(layout.heads, 'cost driver heads shown').toBe(!phone)
+      expect(layout.buttons).toHaveLength(2)
+      if (phone) {
+        for (const v of [layout.tick, layout.stateLink, layout.fold, ...layout.facts, ...layout.buttons]) {
+          expect(v, 'hit area on a phone').toBeGreaterThanOrEqual(44)
+        }
+      }
+      const tab = shot(testInfo.project.outputDir, 'milestone-retro')
+      await page.screenshot({ path: tab, fullPage: true })
+      await testInfo.attach('screenshot', { path: tab, contentType: 'image/png' })
+
+      // Tick leftover 1, draft from it, edit, create.
+      await main.getByRole('checkbox', { name: 'Take leftover 1 into a follow-up milestone' }).check()
+      await main.getByRole('button', { name: 'Draft follow-up milestone' }).click()
+      const editor = main.locator('[data-editor]')
+      const title = editor.getByLabel('Title')
+      await expect(title).toHaveValue('Follow-ups of Payment providers: refunds, partial captures and the provider switch')
+      const fontSize = (l: ReturnType<Page['locator']>) => l.evaluate((e) => getComputedStyle(e).fontSize)
+      expect(await fontSize(title), 'title font size').toBe(phone ? '16px' : '14px')
+      expect(await fontSize(editor.getByLabel('Description')), 'description font size').toBe(phone ? '16px' : '13px')
+      await expect(editor.locator('.md strong')).toHaveText('publish:image')
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      await editor.screenshot({ path: shot(testInfo.project.outputDir, 'milestone-retro-editor') })
+      await title.fill('Registry retries')
+      await editor.getByRole('button', { name: 'Create milestone and start autopilot' }).click()
+      await expect(main.getByRole('status').filter({ hasText: 'Created the milestone %15' })).toBeVisible()
+      expect(posts).toEqual([
+        {
+          path: 'POST /followup',
+          body: {
+            followUps: [1],
+            title: 'Registry retries',
+            description: expect.stringContaining('## Retry the registry push in the release job'),
+          },
+        },
+      ])
+
+      // Dismiss: the dialog closes by back without posting, then confirms.
+      const dialog = page.getByRole('dialog')
+      await main.getByRole('button', { name: 'Dismiss remaining' }).click()
+      await expect(dialog).toBeVisible()
+      await page.goBack()
+      await expect(dialog).toBeHidden()
+      await expect(page).toHaveURL(/\/milestones\/14\?tab=retrospective$/)
+      expect(posts).toHaveLength(1)
+      await main.getByRole('button', { name: 'Dismiss remaining' }).click()
+      await expect(dialog).toContainText('create none')
+      const confirm = dialog.getByRole('button', { name: 'Dismiss them' })
+      // Polled: the dialog scales in, a box measured during it is smaller.
+      if (phone) await expect.poll(async () => (await confirm.boundingBox())!.height, { message: 'Dismiss them height' }).toBeGreaterThanOrEqual(44)
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      await page.screenshot({ path: shot(testInfo.project.outputDir, 'milestone-retro-dismiss') })
+      await confirm.click()
+      await expect(dialog).toBeHidden()
+      await expect(main.getByRole('status').filter({ hasText: 'Dismissing…' })).toBeVisible()
+      expect(posts[1]).toEqual({ path: 'POST /followups/dismiss', body: {} })
+      await expect(page).toHaveURL(/\/milestones\/14\?tab=retrospective$/)
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }

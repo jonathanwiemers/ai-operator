@@ -524,3 +524,15 @@ follow-up issue), and requirements without an issue and why.
   `pauseCard.ts`, `pauses.ts` and their tests unchanged. The e2e fixture's
   skip exit carries the command word (`skip`), as the operator sends it.
   Nothing narrowed.
+- 2026-11-11 #332 (R12 Retrospective tab): `MilestoneRetro.vue` moved to
+  utilities, no scoped `<style>`. The cost drivers are a `DataList` (cards
+  on phones); the facts line, the leftovers and the follow-up action rows
+  wrap or stack on phones. The actions are `UButton`s, 44 px on phones; a
+  checkbox keeps its size inside a 44 px label (listed in the hit-area
+  allowlist). The editor is `UInput` and `UTextarea`, 16 px on phones. The
+  dismiss confirmation, an inline step before, is a `UModal` (decision 4),
+  closed by back through `useBackClose`, and loaded lazily (2.2 kB gzip).
+  Text and leftover bodies keep block markdown. The retrospective view
+  carries no releases (they are on the Issues tab), so the tab shows none.
+  `retrospective.ts`, `followUpDraft.ts` and their tests unchanged.
+  Nothing narrowed.

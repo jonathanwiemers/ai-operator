@@ -196,8 +196,8 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   (until then they cannot be ticked again). A 409 names the leftovers
   already opened, taken or dismissed. On an open milestone under autopilot
   an owner (`permissions.dismiss`) can also **dismiss the remaining
-  leftovers**: *Dismiss remaining*, then *Dismiss them* in the confirm
-  step, replies `create none` in the retrospective's thread in the owner's
+  leftovers**: *Dismiss remaining*, then *Dismiss them* in the
+  confirmation dialog, replies `create none` in the retrospective's thread in the owner's
   GitLab name (`POST …/followups/dismiss`); the tab shows *Dismissing… the
   operator settles them on its next poll* until the live reload shows them
   *dismissed*, and the milestone can close without waiting 7 days.
@@ -1696,7 +1696,8 @@ left with the rail's content (`components/RailNav.vue`, which the aside
 renders on tablet and desktop). Below 1180 px the stream header's
 *Context* button opens the context panel (`components/ContextPanel.vue`)
 from the right, the side it has on desktop; widening the window to 1180 px
-closes the sheet.
+closes the sheet. Dialogs close the same ways; the first is the
+Retrospective tab's dismiss confirmation.
 
 `web/src/ui/useBackClose.ts` gives a sheet the back button:
 
@@ -2042,6 +2043,44 @@ inside their column with wrapping titles and their heights, the link
 heights on a phone and the sideways scroll (`board-project@<width>.png`,
 `board-milestone@<width>.png`); the route checks cover
 `stream-project-board` and `stream-milestone-board` at the three widths.
+
+### Milestone Retrospective
+
+The milestone's Retrospective tab (`web/src/components/MilestoneRetro.vue`)
+is Tailwind utilities and Nuxt UI tokens, without scoped CSS.
+
+- When it was posted and the link to its comment wrap as one line of
+  facts; the link is 44 px high on phones. The text, and each leftover's
+  body under *Details*, stay block markdown (`Markdown`).
+- The cost drivers are a `DataList`: a table from the tablet width, a card
+  per driver with labelled cost, tokens and share on phones.
+- A leftover's number, title and state wrap onto further lines where the
+  column is narrow. On phones its checkbox's label, the state link and the
+  *Details* fold are 44 px high (the checkbox keeps its size, the label
+  around it takes the tap).
+- The follow-up actions (*Draft follow-up milestone*, *Edit the pilot's
+  draft*, *Stop waiting*, *Dismiss remaining*, *Create milestone and start
+  autopilot*, *Discard*) are `UButton`s, 44 px high on phones, where each
+  action row and its hint stack. The editor's title (`UInput`) and
+  description (`UTextarea`) are 16 px on phones, and its preview moves
+  below the fields. *Create…* and *Discard* keep the focus in the field on
+  a press, as the composer's *Send* does: the bottom bar, hidden while a
+  field has the focus, would otherwise come back and move them between
+  press and release.
+- *Dismiss remaining* asks in a `UModal`, the Desk's first dialog: it closes
+  by its scrim, its button, Escape and the browser's back button
+  (`useBackClose`, as the sheets), except while the reply is being sent.
+  *Dismiss them* posts as before.
+
+The e2e case `milestone retrospective › follow-ups: create and dismiss@<width>`
+at 375, 768 and 1280 px checks the sideways scroll, the stacked cost
+drivers and the hit areas on a phone and the editor's font sizes; it ticks
+a leftover, drafts, creates (asserting the `POST …/followup` body), closes
+the dialog by back without a post, then dismisses (asserting `POST
+…/followups/dismiss`) (`milestone-retro@<width>.png`,
+`milestone-retro-editor@<width>.png`, `milestone-retro-dismiss@<width>.png`).
+The tab is also among the hit-area routes, and the route checks cover
+`stream-milestone-retrospective` at the three widths.
 
 ## Roadmap
 
