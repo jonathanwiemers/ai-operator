@@ -22,6 +22,23 @@ interface Route {
   ready: (page: Page) => Promise<void>
 }
 
+// What the project and milestone tabs show once loaded (e2e/fixtures/stream.ts).
+const projectReady = {
+  stream: 'Run 2 needs input',
+  board: 'Guest checkout: confirmation mail',
+  spend: 'Cache-read share',
+}
+const milestoneReady = {
+  issues: 'Document the refund flow for support',
+  pilot: 'Split across captures',
+  retrospective: 'Retry the registry push in the release job',
+  stream: 'Run 2 needs input',
+  board: 'Partial captures for split shipments',
+  spend: 'Cache-read share',
+}
+
+// Every named route but the redirects (everything, project-board,
+// milestone) has a case here, with a variant per tab.
 const routes: Route[] = [
   {
     name: 'overview',
@@ -37,6 +54,60 @@ const routes: Route[] = [
     name: 'inbox',
     path: '/inbox',
     ready: (page) => expect(page.getByText('Support refunds through the payment provider').first()).toBeVisible(),
+  },
+  ...(['stream', 'board', 'spend'] as const).map(
+    (tab): Route => ({
+      name: `stream-project-${tab}`,
+      path: `/projects/team-a/shop?tab=${tab}`,
+      ready: (page) => expect(page.locator('main').getByText(projectReady[tab]).first()).toBeVisible(),
+    }),
+  ),
+  ...(['issues', 'pilot', 'retrospective', 'stream', 'board', 'spend'] as const).map(
+    (tab): Route => ({
+      name: `stream-milestone-${tab}`,
+      path: `/projects/team-a/shop/milestones/14?tab=${tab}`,
+      ready: (page) => expect(page.locator('main').getByText(milestoneReady[tab]).first()).toBeVisible(),
+    }),
+  ),
+  {
+    name: 'issue',
+    path: '/projects/team-a/shop/milestones/14/issues/281',
+    ready: (page) => expect(page.locator('main').getByText('Summary of the last run')).toBeVisible(),
+  },
+  {
+    name: 'task',
+    path: '/projects/team-a/shop/tasks/shop-281-implement',
+    ready: (page) => expect(page.locator('main').getByText('Summary of the last run')).toBeVisible(),
+  },
+  {
+    name: 'researches',
+    path: '/research',
+    ready: (page) => expect(page.locator('main').getByText('checkout-ux-study').first()).toBeVisible(),
+  },
+  {
+    name: 'research-new',
+    path: '/research/new',
+    ready: (page) => expect(page.locator('main').getByText('claude/opus').first()).toBeAttached(),
+  },
+  {
+    name: 'research',
+    path: '/research/research/payments-news',
+    ready: (page) => expect(page.locator('main').getByText('Card payments failed in the EU region').first()).toBeVisible(),
+  },
+  {
+    name: 'research-report',
+    path: '/research/research/checkout-ux-study',
+    ready: (page) => expect(page.locator('main').getByText('Guest checkout in five large shops').first()).toBeVisible(),
+  },
+  {
+    name: 'research-runs',
+    path: '/research/research/payments-news/runs',
+    ready: (page) => expect(page.locator('main').getByText('cursor/auto').first()).toBeVisible(),
+  },
+  {
+    name: 'research-run',
+    path: '/research/research/checkout-ux-study/runs/run-0007',
+    ready: (page) => expect(page.locator('main').getByText('a-shop-with-a-rather-long-domain-name.example').first()).toBeVisible(),
   },
   {
     name: 'not-found',

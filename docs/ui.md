@@ -1390,8 +1390,14 @@ How it works:
 - **Fixtures.** The browser never reaches an API. `page.route` answers
   `/api/v1/*` from `web/e2e/fixtures`, TypeScript values typed with
   `web/src/types.ts` and the generated views, so a changed view breaks the
-  type-check. `fixtures/index.ts` maps each path to its answer, or to a
-  function of the query. A path without a fixture answers 404 and fails the
+  type-check. There is one module per API area (`overview.ts`, `rail.ts`,
+  `session.ts`, `stream.ts` for the project, milestone and issue pages,
+  `task.ts`, `spend.ts`, `research.ts`); `fixtures/index.ts` maps each path
+  to its answer, or to a function of the query. They describe one project,
+  `team-a/shop`: milestone %14 is paused on #281's question (release rows,
+  prompts, companions, pauses, a retrospective), %12 is running, and
+  `shop-281-implement` is the task page's case. Text written by agents and
+  people carries markdown (bold, lists, links). A path without a fixture answers 404 and fails the
   check, naming the path. `/api/v1/events` answers an empty event stream.
   The browser's clock is fixed at 2026-11-10 12:00 UTC.
 - **Checks.** For each route and width (`web/e2e/desk.spec.ts`):
@@ -1402,7 +1408,9 @@ How it works:
   - no request to another origin (such requests are also aborted)
   - no uncaught error
 
-  To check a new route, add it to `routes` with a `ready` condition and add
+  Every named route but the redirects has a case; routes with tabs have one
+  per tab (`stream-milestone-pilot`), and the research page one per view
+  (`research`, `research-report`). To check a new route, add it to `routes` with a `ready` condition and add
   the fixtures its requests need.
 - **Known overflow.** `web/e2e/known-overflow.ts` lists the
   `route@width` cases that scroll sideways today, with the measured px.

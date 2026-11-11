@@ -293,3 +293,14 @@ follow-up issue), and requirements without an issue and why.
   (`.paused-strip`) does not wrap. Listed in `web/e2e/known-overflow.ts` for
   R12 (Inbox). Beyond R1: the checks also fail on uncaught page errors and on
   API paths without a fixture.
+- 2026-11-11 #301 (R1 routes): cases for every named route but the
+  redirects (`everything`, `project-board`, `milestone`), at the three widths,
+  with fixtures per API area in `web/e2e/fixtures`. Measured overflow, listed
+  in `web/e2e/known-overflow.ts`: the project page's title row (tab strip and
+  search form: 192 px at 375, 119 px at 768; 48 px on Board and Spend), the
+  milestone page's title row on every tab (338 px at 375, 205 px at 768; 482
+  and 409 px on Stream with the search form), the task and issue pages at 375
+  (33 and 34 px, `.cols`), research runs (569 and 424 px, the table), the
+  one-off form (162 and 17 px, the project select) and the research report
+  and run at 375 (8 px, the links block). Spend tables are wider than the
+  pane too. All for R4 (tab strips), R10 and R12.

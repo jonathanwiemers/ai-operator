@@ -202,6 +202,3 @@ export const stream: StreamPage = {
   newest: 'c-1006',
   history: true,
 }
-
-// The answer to a stream request with ?after=: nothing newer.
-export const streamNothingNewer: StreamPage = { events: [], newest: 'c-1006', history: true }
