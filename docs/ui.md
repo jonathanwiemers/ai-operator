@@ -535,6 +535,16 @@ view, is a link to the page with that filter set (`breakdownLink` in
 Model rows have no filter, and neither do *Other* and the legacy "before
 calls" row: they are not links.
 
+*Tokens*: metered tokens per bucket stacked by type (input, output, cache
+read, cache write) in k/M, with the cache-read share as a line on a second
+axis (0 to 100 %, right; the tooltip shows it as a percentage). The share is
+cache read of input, cache read and cache write, the Spend tab's formula, and
+has no point for a bucket without tokens; with one bucket it equals the KPI's
+share. The legend has the range's totals and the share, the table view a row
+per bucket with the calls not metered. Calls that report neither cost nor
+tokens are named (*N calls not metered*), never drawn as 0-token bars. A range
+that mixes token bases shows the basis note once, in this section.
+
 The e2e route cases `costs` and `costs-dark` at 375, 768 and 1280 px
 (`costs@<width>.png`, `costs-dark@<width>.png`) wait for both charts'
 canvases and check overflow and the CSP, `costs` is among the hit-area routes,
@@ -1700,7 +1710,9 @@ loads anyway.
   shaping; the initial bundle stays at 129.3 kB. `measuredKB` keeps the
   first chart slice's figure, the one the cap was set from. With *Where it goes*
   (#366): 112.0 kB, 1.3 kB more for `HorizontalBars.vue` and the breakdown
-  shaping (it uses the bar controller already registered).
+  shaping (it uses the bar controller already registered). With *Tokens*
+  (#367): 113.0 kB, 1.0 kB more for the mixed bar and line chart and the
+  token shaping.
 
 ## UI kit
 
@@ -1822,6 +1834,9 @@ Chart.js options live in one place; a view passes them data shaped by
 - `HorizontalBars.vue`: a `Bar` with `indexAxis: 'y'`, one value per row in
   its token colour, USD labels, the same options policy; a click on a bar
   with a link emits `select`. Used by *Where it goes* with `breakdownRows`.
+- `StackedBars.vue` takes an optional `line` (a percentage line on a second
+  y axis, 0 to 100 %, tooltip as a percentage), used by *Tokens* with
+  `tokensChart`.
 - `ChartLegend.vue`: below the chart, a swatch (a utility class per token,
   no inline style; a dashed line for a dashed series), the label, the total
   per series (*n/a* when only calls of unknown cost) and an optional note;

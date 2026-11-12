@@ -186,6 +186,9 @@ export interface ChartView {
     total: number | null
     values: (number | null)[]
     dashed?: boolean
+    // percent: values and total are 0 to 100 percentages (the cache-read
+    // share), not the chart unit; the table total leaves them out.
+    percent?: boolean
     note?: string
   }[]
   unknown: number[]
@@ -199,6 +202,8 @@ export interface StackedChart {
   labels: string[]
   series: (ChartSeries & { label: string; token: ChartToken; total: number })[]
   unknown: number[]
+  // notes, when set, replace the tooltip footer's unknown-call note per bucket.
+  notes?: string[]
 }
 
 // stackedChart shapes the points into the stacked bars of a metric: top N
@@ -451,4 +456,116 @@ export function breakdownSummary(dimension: string, rows: BreakdownRow[]): strin
   const top = rows.find((r) => r.key !== OTHER)
   if (top && top.value > 0) out += `. Largest: ${top.label}, ${formatUSD(top.value)}`
   return `${out}. The list below has every value.`
+}
+
+// formatPercent is a share in percent: "42.5%".
+export function formatPercent(v: number): string {
+  return `${(Math.round(v * 10) / 10).toLocaleString('en-US', { maximumFractionDigits: 1 })}%`
+}
+
+// cacheShare is cache read of all input tokens (input, cache read and cache
+// write), the Spend tab's formula; null without such tokens.
+function cacheShare(input: number, cacheRead: number, cacheWrite: number): number | null {
+  const all = input + cacheRead + cacheWrite
+  return all > 0 ? cacheRead / all : null
+}
+
+export interface TokenSeries {
+  input: number[]
+  output: number[]
+  cacheRead: number[]
+  cacheWrite: number[]
+  // share is the cache-read share per bucket (0 to 1), null without tokens.
+  share: (number | null)[]
+  unknown: number[]
+  unmetered: number[]
+}
+
+// tokenSeries sums the groups of every bucket into the four token types and
+// the cache-read share (R12). Points of a bucket not in buckets are left out.
+export function tokenSeries(buckets: string[], points: CostPointView[]): TokenSeries {
+  const index = new Map(buckets.map((b, i) => [b, i]))
+  const zero = () => buckets.map(() => 0)
+  const out = { input: zero(), output: zero(), cacheRead: zero(), cacheWrite: zero(), unknown: zero(), unmetered: zero() }
+  for (const p of points) {
+    const i = index.get(p.bucket)
+    if (i === undefined) continue
+    const t = p.totals
+    out.input[i]! += t.inputTokens
+    out.output[i]! += t.outputTokens
+    out.cacheRead[i]! += t.cacheReadTokens
+    out.cacheWrite[i]! += t.cacheWriteTokens
+    out.unknown[i]! += t.unknownCalls
+    out.unmetered[i]! += t.unmeteredCalls
+  }
+  return { ...out, share: buckets.map((_, i) => cacheShare(out.input[i]!, out.cacheRead[i]!, out.cacheWrite[i]!)) }
+}
+
+// unmeteredMark names a bucket's calls that report neither cost nor tokens.
+function unmeteredMark(calls: number): string {
+  return calls > 0 ? `+ ${calls} ${calls === 1 ? 'call' : 'calls'} not metered` : ''
+}
+
+// ShareLine is the cache-read share as a line over the bars (percent, 0 to
+// 100; null is no point).
+export interface ShareLine {
+  label: string
+  token: ChartToken
+  values: (number | null)[]
+}
+
+// TokensChart is the Tokens chart (R12): bars is what the stacked bars draw,
+// line the share on its own axis, view what the legend and table read (the
+// four types, then the share). Unmetered calls are named per bucket, never a
+// 0-token bar.
+export interface TokensChart {
+  bars: StackedChart
+  line: ShareLine
+  view: ChartView
+  // share is the whole range's cache-read share (0 to 1), null without tokens.
+  share: number | null
+}
+
+const tokenTypes = [
+  { key: 'input', label: 'Input', token: '--chart-1' },
+  { key: 'output', label: 'Output', token: '--chart-2' },
+  { key: 'cacheRead', label: 'Cache read', token: '--chart-3' },
+  { key: 'cacheWrite', label: 'Cache write', token: '--chart-4' },
+] as const
+
+export function tokensChart(buckets: string[], kind: BucketKind, points: CostPointView[], locale?: string): TokensChart {
+  const t = tokenSeries(buckets, points)
+  const sum = (v: number[]) => v.reduce((a, n) => a + n, 0)
+  const series = tokenTypes.map((d) => ({ key: d.key, values: t[d.key], label: d.label, token: d.token as ChartToken, total: sum(t[d.key]) }))
+  const labels = buckets.map((b) => bucketLabel(b, kind, locale))
+  const notes = t.unmetered.map(unmeteredMark)
+  const share = cacheShare(sum(t.input), sum(t.cacheRead), sum(t.cacheWrite))
+  const values = t.share.map((v) => (v === null ? null : Math.round(v * 1e3) / 10))
+  const line: ShareLine = { label: 'Cache-read share', token: '--chart-5', values }
+  return {
+    bars: { labels, series, unknown: t.unmetered, notes },
+    line,
+    view: {
+      labels,
+      series: [
+        ...series,
+        { key: 'share', label: line.label, token: line.token, total: share === null ? null : Math.round(share * 1e3) / 10, values, percent: true },
+      ],
+      unknown: t.unmetered,
+      notes,
+    },
+    share,
+  }
+}
+
+// tokensSummary is the Tokens chart's text for screen readers (the canvas's
+// aria-label).
+export function tokensSummary(chart: TokensChart): string {
+  const total = chart.bars.series.reduce((a, s) => a + s.total, 0)
+  const unmetered = chart.bars.unknown.reduce((a, n) => a + n, 0)
+  const range = chart.bars.labels.length ? `, ${chart.bars.labels[0]} to ${chart.bars.labels[chart.bars.labels.length - 1]}` : ''
+  let out = `Metered tokens per bucket${range}: ${formatTokens(total)} in total`
+  out += chart.share === null ? ', no cache-read share' : `, cache-read share ${formatPercent(chart.share * 100)}`
+  if (unmetered) out += `, ${unmetered} ${unmetered === 1 ? 'call' : 'calls'} not metered`
+  return `${out}. The line is the cache-read share. The table view lists every value.`
 }

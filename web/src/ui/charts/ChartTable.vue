@@ -6,7 +6,7 @@
 // values) there is no total column; a value null (no point) is "–".
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
-import { formatTokens, formatUSD, unknownNote, type ChartView } from '../../chartData'
+import { formatPercent, formatTokens, formatUSD, unknownNote, type ChartView } from '../../chartData'
 import DataList, { type DataListColumn } from '../DataList.vue'
 
 const props = withDefaults(
@@ -22,7 +22,7 @@ const columns = computed<DataListColumn[]>(() => [
   { key: 'bucket', label: props.rowLabel },
   ...props.chart.series.map((s, i) => ({ key: `s${i}`, label: s.label, numeric: true })),
   ...(props.sum ? [{ key: 'total', label: 'Total', numeric: true, class: 'font-semibold' }] : []),
-  { key: 'unknown', label: 'Unknown cost' },
+  { key: 'unknown', label: props.unit === 'tokens' ? 'Not metered' : 'Unknown cost' },
 ])
 
 const rows = computed(() =>
@@ -31,8 +31,8 @@ const rows = computed(() =>
     let total = 0
     props.chart.series.forEach((s, i) => {
       const v = s.values[b] ?? null
-      total += v ?? 0
-      row[`s${i}`] = v === null ? '–' : format.value(v)
+      if (!s.percent) total += v ?? 0
+      row[`s${i}`] = v === null ? '–' : s.percent ? formatPercent(v) : format.value(v)
     })
     if (props.sum) row.total = format.value(total)
     row.unknown = props.chart.notes ? (props.chart.notes[b] ?? '') : unknownNote(props.chart.unknown[b] ?? 0)

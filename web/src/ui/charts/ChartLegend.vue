@@ -5,7 +5,7 @@
 // series' swatch is a dashed line; a total of null (only calls of unknown
 // cost) is "n/a", never $0.
 import { computed } from 'vue'
-import { formatTokens, formatUSD, type ChartToken, type ChartView } from '../../chartData'
+import { formatPercent, formatTokens, formatUSD, type ChartToken, type ChartView } from '../../chartData'
 
 const props = withDefaults(defineProps<{ chart: ChartView; unit?: 'usd' | 'tokens' }>(), { unit: 'usd' })
 
@@ -38,7 +38,7 @@ const format = computed(() => (props.unit === 'usd' ? formatUSD : formatTokens))
       <i v-if="s.dashed" class="inline-block w-4 shrink-0 self-center border-t-2 border-dashed" :class="dash[s.token]" aria-hidden="true" />
       <i v-else class="inline-block size-2.5 shrink-0 rounded-xs" :class="swatch[s.token]" aria-hidden="true" />
       <span class="min-w-0 [overflow-wrap:anywhere]">{{ s.label }}</span>
-      <span class="font-semibold tabular-nums" :class="{ italic: s.total === null }">{{ s.total === null ? 'n/a' : format(s.total) }}</span>
+      <span class="font-semibold tabular-nums" :class="{ italic: s.total === null }">{{ s.total === null ? 'n/a' : s.percent ? formatPercent(s.total) : format(s.total) }}</span>
       <span v-if="s.note" class="text-(--text-2) [overflow-wrap:anywhere]">{{ s.note }}</span>
     </li>
   </ul>

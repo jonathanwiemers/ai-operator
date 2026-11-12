@@ -19,7 +19,7 @@ import {
   rangeLabels,
   type CostFilters,
 } from '../costs'
-import { chartSummary, cumulativeMonth, monthSummary, stackedChart, thisMonth } from '../chartData'
+import { chartSummary, cumulativeMonth, monthSummary, stackedChart, thisMonth, tokensChart, tokensSummary } from '../chartData'
 import { cost, tokenCount } from '../format'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
 import type { CostsView } from '../generated/views'
@@ -136,6 +136,10 @@ const spendSummary = computed(() => (spendChart.value ? chartSummary(spendTitle.
 // its own days, by day of month; independent of the range.
 const monthChart = computed(() => (data.value ? cumulativeMonth(data.value.month, thisMonth(data.value.month, new Date(), tz)) : null))
 
+// Tokens (R12): metered tokens per bucket by type, the cache-read share as a
+// line. Calls not metered are named, not drawn as 0-token bars.
+const tokens = computed(() => (data.value ? tokensChart(data.value.buckets, data.value.bucket, data.value.series) : null))
+
 const fieldUI = { label: 'font-semibold text-[13px]' }
 const control = 'text-base/5 tablet:text-sm/5'
 const selectProps = {
@@ -248,7 +252,6 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
           </dd>
         </div>
       </dl>
-      <p v-if="basisNote(totals)" class="faint mt-2" :title="basisTitle" data-costs-basis>{{ basisNote(totals) }}</p>
       <p v-if="data.researchSince" class="faint mt-2" data-costs-research>
         Research counted since {{ dateLabel(data.researchSince) }}
       </p>
@@ -282,6 +285,22 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
         </div>
       </section>
       <WhereItGoes :data="data" :filters="filters" />
+
+      <section v-if="tokens" class="section" aria-labelledby="costs-tokens" data-chart="tokens">
+        <div class="section-head flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 id="costs-tokens">Tokens</h2>
+          <span class="faint">Metered tokens per {{ data.bucket }}, the line is the cache-read share</span>
+        </div>
+        <div class="card flex min-w-0 flex-col gap-3 p-3 tablet:p-4">
+          <p v-if="basisNote(totals)" class="faint m-0" :title="basisTitle" data-costs-basis>{{ basisNote(totals) }}</p>
+          <p v-if="unmeteredNote(totals)" class="faint m-0" data-costs-unmetered>
+            {{ unmeteredNote(totals) }}: no tokens to draw, so no bars for them.
+          </p>
+          <StackedBars :chart="tokens.bars" :line="tokens.line" :summary="tokensSummary(tokens)" unit="tokens" />
+          <ChartLegend :chart="tokens.view" unit="tokens" />
+          <ChartTable :chart="tokens.view" unit="tokens" label="Metered tokens per bucket by type and the cache-read share, as a table" />
+        </div>
+      </section>
     </template>
   </div>
 </template>

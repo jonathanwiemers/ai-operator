@@ -383,3 +383,9 @@ follow-up issue), and requirements without an issue and why.
   (a bar click does the same with `router.push`); model rows (D366-P1), Other
   and the legacy key "" are not links. The costs chunk is 112.0 kB (+1.3), the
   initial bundle 129.3 kB.
+- 2026-11-12 #367 (R12): *Tokens* (`views/Costs.vue`, `chartData.ts`'s
+  `tokenSeries`, `tokensChart`; `StackedBars.vue`'s `line` prop). The share is
+  cache read / (input + cache read + cache write), null without tokens. The
+  basis note moved from under the KPI row into this section so it appears once;
+  unmetered calls are named there. The costs chunk is 113.0 kB (+1.0), the
+  initial bundle 129.3 kB.

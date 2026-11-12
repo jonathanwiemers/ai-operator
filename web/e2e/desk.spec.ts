@@ -66,6 +66,7 @@ async function costsReady(page: Page): Promise<void> {
   await expect(page.locator('[data-chart=spend] canvas[role=img]')).toBeVisible()
   await expect(page.locator('[data-chart=month] canvas[role=img]')).toBeVisible()
   await expect(page.locator('[data-chart=where] canvas[role=img]')).toBeVisible()
+  await expect(page.locator('[data-chart=tokens] canvas[role=img]')).toBeVisible()
 }
 
 // Every named route has a case here, with a variant per tab.
@@ -812,6 +813,34 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await chart.locator('[data-chart-legend] a', { hasText: 'cursor' }).click()
     await expect(page).toHaveURL(/\/costs\?.*engine=cursor$/)
     await expect(page.locator('[data-filter=engine]')).toContainText('cursor')
+
+    problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
+// Tokens (views/Costs.vue, R12): four token types and the cache-read share in
+// the legend and the table; the mixed-basis note appears once and the
+// unmetered calls are named.
+for (const { width, height } of [widths[0]!, widths[2]!]) {
+  test(`costs Tokens legend, notes and table@${width}`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'costs')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const chart = page.locator('[data-chart=tokens]')
+    await expect(chart.locator('canvas')).toHaveAttribute('aria-label', /^Metered tokens per bucket, .+cache-read share \d+(\.\d)?%/)
+    await expect(chart.locator('[data-chart-legend] li')).toHaveText([/Input/, /Output/, /Cache read/, /Cache write/, /Cache-read share\s*\d+(\.\d)?%/])
+    await expect(page.locator('[data-costs-basis]')).toHaveCount(1)
+    await expect(chart.locator('[data-costs-basis]')).toContainText('on the old token basis')
+    await expect(chart.locator('[data-costs-unmetered]')).toContainText('3 calls not metered')
+    await chart.getByRole('button', { name: 'Table' }).click()
+    await expect(chart.getByRole('table')).toBeVisible()
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })

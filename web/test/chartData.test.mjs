@@ -18,6 +18,9 @@ import {
   seriesLabel,
   stackedChart,
   thisMonth,
+  tokenSeries,
+  tokensChart,
+  tokensSummary,
   topKeys,
   unknownNote,
 } from '../src/chartData.ts'
@@ -392,4 +395,36 @@ test('breakdownSummary: names the total, the unknown calls and the largest row',
     breakdownSummary('engine', rows),
     'Known cost by engine: $7.00 in total, 1 call of unknown cost. Largest: claude, $5.00. The list below has every value.',
   )
+})
+
+test('tokenSeries sums groups per bucket and gives the cache-read share', () => {
+  const b = ['2026-11-01', '2026-11-02', '2026-11-03']
+  const pts = [
+    point('2026-11-01', 'a', '1.00', { input: 100, output: 10, cacheRead: 300, cacheWrite: 100 }),
+    point('2026-11-01', 'b', '1.00', { input: 100, output: 20, cacheRead: 100, cacheWrite: 0, unmetered: 1 }),
+    point('2026-11-03', 'a', '', { unmetered: 2 }),
+    point('2026-12-01', 'a', '1.00', { input: 999 }),
+  ]
+  const t = tokenSeries(b, pts)
+  assert.deepEqual(t.input, [200, 0, 0])
+  assert.deepEqual(t.output, [30, 0, 0])
+  assert.deepEqual(t.cacheRead, [400, 0, 0])
+  assert.deepEqual(t.cacheWrite, [100, 0, 0])
+  assert.deepEqual(t.share, [400 / 700, null, null])
+  assert.deepEqual(t.unmetered, [1, 0, 2])
+})
+
+test('tokensChart: bars equal the sums, share matches the range, unmetered is named', () => {
+  const b = ['2026-11-01']
+  const pts = [point('2026-11-01', 'a', '1.00', { input: 100, output: 10, cacheRead: 300, cacheWrite: 100, unmetered: 1 })]
+  const c = tokensChart(b, 'day', pts, 'en-GB')
+  assert.deepEqual(c.bars.series.map((s) => s.total), [100, 10, 300, 100])
+  assert.equal(c.share, 300 / 500)
+  assert.deepEqual(c.line.values, [60])
+  assert.equal(c.view.series.at(-1).total, 60)
+  assert.deepEqual(c.bars.notes, ['+ 1 call not metered'])
+  assert.match(tokensSummary(c), /cache-read share 60%/)
+  const empty = tokensChart(b, 'day', [], 'en-GB')
+  assert.equal(empty.share, null)
+  assert.deepEqual(empty.line.values, [null])
 })
