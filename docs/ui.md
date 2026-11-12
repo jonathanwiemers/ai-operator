@@ -570,6 +570,22 @@ Unknown spend reads "unknown" with no bar, never $0. The first 10 show, *Show
 all* the rest; an empty state without budgets. Shown only: the page sets and
 enforces none. Live state, not bound to the range or the filters.
 
+*Download CSV* (a menu next to the title, shown when the range has calls):
+*Series* saves `costs-series-<from>-<to>.csv`, one row per bucket and key
+of the current series (columns bucket, group, key, other, known cost USD,
+unknown calls, unmetered calls, input, output, cache read and cache write
+tokens, calls, duration ms; the *Other* point has an empty key and `other`
+true), *Breakdowns* saves `costs-breakdowns-<from>-<to>.csv` (dimension
+project, kind, model or engine, key and the same totals). The files are
+built in the browser from the figures on the page, for the current filters
+(`web/src/costs.ts`): a `Blob` and an `<a download>` through an object
+URL that is revoked after the click, so there is no request and the CSP is
+unchanged. RFC 4180 quoting; a cell starting with `=`, `+`, `-`, `@`, a tab or
+a carriage return gets a leading `'` (project and model names are
+user-controlled, a spreadsheet would run them as formulas). An unknown cost
+is an empty cell, never 0; the runs from before agent calls are the key
+*before calls*. A byte order mark makes spreadsheets read UTF-8.
+
 The e2e route cases `costs` and `costs-dark` at 375, 768 and 1280 px
 (`costs@<width>.png`, `costs-dark@<width>.png`) wait for both charts'
 canvases and check overflow and the CSP, `costs` is among the hit-area routes,

@@ -224,3 +224,90 @@ export function topRowLocation(level: TopLevel, row: CostTopRowView): ReturnType
   }
   return spendLocation(row.namespace, row.project, scope)
 }
+
+// CSV download (R16): built in the browser from the current CostsView.
+
+// csvCell quotes one cell as RFC 4180 does (double quotes, doubled inside,
+// when it has a comma, quote or line break). Text starting with = + - @ (or a
+// tab or carriage return) gets a leading ' so a spreadsheet does not run it as
+// a formula: project, milestone and model names are user-controlled. Numbers
+// are written as they are.
+export function csvCell(v: string | number | boolean | null | undefined): string {
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : ''
+  let s = String(v)
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
+  return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s
+}
+
+function csvLines(rows: (string | number | boolean | null | undefined)[][]): string {
+  return rows.map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n'
+}
+
+const totalsHeader = [
+  'known cost USD',
+  'unknown calls',
+  'unmetered calls',
+  'input tokens',
+  'output tokens',
+  'cache read tokens',
+  'cache write tokens',
+  'calls',
+  'duration ms',
+]
+
+// totalsCells: an unknown cost is an empty cell, never 0.
+function totalsCells(t: SpendTotals): (string | number)[] {
+  return [
+    t.costKnown ? t.costUSD : '',
+    t.unknownCalls,
+    t.unmeteredCalls,
+    t.inputTokens,
+    t.outputTokens,
+    t.cacheReadTokens,
+    t.cacheWriteTokens,
+    t.calls,
+    t.durationMS,
+  ]
+}
+
+// seriesCsv is the series as one row per bucket and key, as the page has it
+// (the Other point has an empty key and other true; the legacy runs are
+// "before calls").
+export function seriesCsv(view: CostsView): string {
+  const rows: (string | number | boolean)[][] = [['bucket', 'group', 'key', 'other', ...totalsHeader]]
+  for (const p of view.series) {
+    rows.push([p.bucket, view.group, p.other ? '' : costKeyLabel(p.key), p.other, ...totalsCells(p.totals)])
+  }
+  return csvLines(rows)
+}
+
+// breakdownsCsv is the totals by project, kind, model and engine.
+export function breakdownsCsv(view: CostsView): string {
+  const rows: (string | number)[][] = [['dimension', 'key', ...totalsHeader]]
+  const dims: [string, CostsView['byProject']][] = [
+    ['project', view.byProject],
+    ['kind', view.byKind],
+    ['model', view.byModel],
+    ['engine', view.byEngine],
+  ]
+  for (const [dim, list] of dims) {
+    for (const b of list) rows.push([dim, costKeyLabel(b.key), ...totalsCells(b.totals)])
+  }
+  return csvLines(rows)
+}
+
+// downloadCsv saves text as a file through a Blob URL and an <a download>:
+// no request is made and the CSP (connect-src 'self') is not involved. A
+// byte order mark makes spreadsheets read it as UTF-8.
+export function downloadCsv(name: string, text: string) {
+  const url = URL.createObjectURL(new Blob(['﻿', text], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // The download has started by the time the click returns; revoke after the task.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}

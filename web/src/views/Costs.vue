@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
@@ -13,6 +14,9 @@ import {
   costGroups,
   costKinds,
   costParams,
+  breakdownsCsv,
+  downloadCsv,
+  seriesCsv,
   costRanges,
   monthToDate,
   parseCostFilters,
@@ -148,6 +152,16 @@ const monthChart = computed(() => (data.value ? cumulativeMonth(data.value.month
 // line. Calls not metered are named, not drawn as 0-token bars.
 const tokens = computed(() => (data.value ? tokensChart(data.value.buckets, data.value.bucket, data.value.series) : null))
 
+// Download CSV (R16): built here from the response, no request.
+const csvMenu = ref<HTMLDetailsElement | null>(null)
+function download(what: 'series' | 'breakdowns') {
+  const d = data.value
+  if (!d) return
+  if (what === 'series') downloadCsv(`costs-series-${d.from}-${d.to}.csv`, seriesCsv(d))
+  else downloadCsv(`costs-breakdowns-${d.from}-${d.to}.csv`, breakdownsCsv(d))
+  if (csvMenu.value) csvMenu.value.open = false
+}
+
 const fieldUI = { label: 'font-semibold text-[13px]' }
 const control = 'text-base/5 tablet:text-sm/5'
 const selectProps = {
@@ -168,6 +182,13 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
       <h1>Costs</h1>
       <span v-if="data" class="faint">{{ data.from }} to {{ data.to }}, {{ data.tz }}</span>
       <span v-if="loading && data" class="faint">Loading…</span>
+      <details v-if="data && data.totals.calls > 0" ref="csvMenu" class="relative ms-auto" data-costs-csv>
+        <summary class="card flex min-h-11 cursor-pointer list-none items-center px-3 text-sm font-semibold tablet:min-h-0 tablet:py-1.5">Download CSV</summary>
+        <div class="card absolute end-0 z-10 mt-1 flex w-52 flex-col gap-1 p-2">
+          <UButton color="neutral" variant="ghost" label="Series" data-csv="series" @click="download('series')" />
+          <UButton color="neutral" variant="ghost" label="Breakdowns" data-csv="breakdowns" @click="download('breakdowns')" />
+        </div>
+      </details>
     </div>
 
     <form class="mb-4 flex flex-col gap-3 tablet:flex-row tablet:flex-wrap tablet:items-end" aria-label="Filters" data-costs-filters @submit.prevent>

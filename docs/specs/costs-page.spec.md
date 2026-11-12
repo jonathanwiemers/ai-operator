@@ -410,3 +410,11 @@ follow-up issue), and requirements without an issue and why.
   empty state. The e2e fixture has a milestone and two issue budgets (one
   unknown). Not run here (no node_modules / Playwright browser); the chunk
   size was not measured.
+- 2026-11-12 #371 (R16): *Download CSV* (`costs.ts`'s `csvCell`, `seriesCsv`,
+  `breakdownsCsv`, `downloadCsv`; a `<details>` menu in `Costs.vue`). Two files (D371-P1),
+  formula guard with `'` (D371-P2; also for tab and CR, beyond the four in the
+  issue). Rows come from the response as the page has it; unknown cost is an
+  empty cell; the Other point has an empty key and `other` true. A BOM is
+  prepended in the download only. CSP unchanged (blob download is no fetch).
+  Unit tests ran; type-check, e2e and chunk size not run here (no node_modules
+  or Playwright browser), no e2e case added.

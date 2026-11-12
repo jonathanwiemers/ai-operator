@@ -3,6 +3,9 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   breakdownLink,
+  breakdownsCsv,
+  csvCell,
+  seriesCsv,
   changeLabel,
   costChange,
   costFiltersQuery,
@@ -186,4 +189,58 @@ test('topRowLocation: a research run has no milestone, the project tab', () => {
     params: { namespace: 'team-a', name: 'shop' },
     query: { tab: 'spend', spendTask: 'research/payments-news', spendRun: '2' },
   })
+})
+
+const T = (o = {}) => ({
+  costUSD: '1.50', costKnown: true, unknownCalls: 0, unmeteredCalls: 0, oldBasisCalls: 0,
+  inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, cacheWriteTokens: 40,
+  calls: 2, subagentCalls: 0, durationMS: 500, checkpoints: 0, ...o,
+})
+
+test('csvCell: RFC 4180 quoting', () => {
+  assert.equal(csvCell('plain'), 'plain')
+  assert.equal(csvCell('a,b'), '"a,b"')
+  assert.equal(csvCell('say "hi"'), '"say ""hi"""')
+  assert.equal(csvCell('two\nlines'), '"two\nlines"')
+  assert.equal(csvCell(7), '7')
+  assert.equal(csvCell(null), '')
+})
+
+test('csvCell: formula injection guard', () => {
+  for (const c of ['=SUM(A1)', '+1', '-1', '@x']) assert.equal(csvCell(c), `'${c}`)
+  assert.equal(csvCell('=a,b'), `"'=a,b"`)
+  assert.equal(csvCell('a=b'), 'a=b')
+})
+
+const view = () => ({
+  from: '2026-11-01', to: '2026-11-12', group: 'project',
+  series: [
+    { bucket: '2026-11-01', key: '=evil', other: false, totals: T() },
+    { bucket: '2026-11-01', key: '', other: false, totals: T({ costUSD: '', costKnown: false, unknownCalls: 2, unmeteredCalls: 2 }) },
+    { bucket: '2026-11-02', key: '', other: true, totals: T() },
+  ],
+  byProject: [{ key: 'ns/a', totals: T(), count: 0 }],
+  byKind: [{ key: 'review', totals: T(), count: 0 }],
+  byModel: [{ key: '', totals: T(), count: 0 }],
+  byEngine: [{ key: 'claude', totals: T({ costUSD: '', costKnown: false }), count: 0 }],
+})
+
+test('seriesCsv: columns, guard, legacy key and unknown cost', () => {
+  const lines = seriesCsv(view()).split('\r\n')
+  assert.equal(
+    lines[0],
+    'bucket,group,key,other,known cost USD,unknown calls,unmetered calls,input tokens,output tokens,cache read tokens,cache write tokens,calls,duration ms',
+  )
+  assert.equal(lines[1], "2026-11-01,project,'=evil,false,1.50,0,0,10,20,30,40,2,500")
+  assert.equal(lines[2], '2026-11-01,project,before calls,false,,2,2,10,20,30,40,2,500')
+  assert.equal(lines[3], '2026-11-02,project,,true,1.50,0,0,10,20,30,40,2,500')
+  assert.equal(lines[4], '')
+})
+
+test('breakdownsCsv: one row per dimension and key', () => {
+  const lines = breakdownsCsv(view()).split('\r\n')
+  assert.equal(lines[0].split(',').slice(0, 3).join(','), 'dimension,key,known cost USD')
+  assert.equal(lines[1], 'project,ns/a,1.50,0,0,10,20,30,40,2,500')
+  assert.equal(lines[3], 'model,before calls,1.50,0,0,10,20,30,40,2,500')
+  assert.equal(lines[4], 'engine,claude,,0,0,10,20,30,40,2,500')
 })
