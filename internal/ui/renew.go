@@ -2,8 +2,10 @@ package ui
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -12,6 +14,65 @@ import (
 
 // renewTimeout bounds a renewal: discovery, refresh grant and userinfo.
 var renewTimeout = 10 * time.Second
+
+// renewCache is how long a successful renewal is handed to requests that
+// still carry the refresh token it redeemed.
+const renewCache = 2 * time.Minute
+
+// renewals keeps renewals single-flight per refresh token, keyed by its
+// SHA-256, and their successes for renewCache. It works within one process:
+// with more than one UI replica, a parallel renewal on another pod can lose.
+type renewals struct {
+	mu  sync.Mutex
+	m   map[[32]byte]*renewFlight
+	now func() time.Time
+}
+
+// renewFlight is one renewal; its results are set before done is closed.
+type renewFlight struct {
+	done chan struct{}
+	p    Principal
+	rs   RefreshState
+	err  error
+	at   time.Time // when it finished, under renewals.mu; zero in flight
+}
+
+// renew is redeem shared by all requests with the same refresh token: one
+// leader redeems it, detached from its own cancellation; the others wait
+// for its result, or reuse it within renewCache. Failures are not kept.
+func (o *oidcClient) renew(ctx context.Context, rs RefreshState, prev Principal) (Principal, RefreshState, error) {
+	r, key := &o.renewals, sha256.Sum256([]byte(rs.Token))
+	r.mu.Lock()
+	for k, f := range r.m {
+		if !f.at.IsZero() && r.now().Sub(f.at) > renewCache {
+			delete(r.m, k)
+		}
+	}
+	f := r.m[key]
+	if f != nil && (f.at.IsZero() || f.err == nil) {
+		r.mu.Unlock()
+		select {
+		case <-f.done:
+			return f.p, f.rs, f.err
+		case <-ctx.Done():
+			return Principal{}, rs, ctx.Err()
+		}
+	}
+	f = &renewFlight{done: make(chan struct{})}
+	r.m[key] = f
+	r.mu.Unlock()
+	f.p, f.rs, f.err = o.redeem(context.WithoutCancel(ctx), rs, prev)
+	r.mu.Lock()
+	if f.at = r.now(); f.err != nil {
+		delete(r.m, key)
+	}
+	r.mu.Unlock()
+	close(f.done)
+	if f.err == nil {
+		o.log.Info("session renewed", "user", f.p.Username, "roles", f.p.Roles)
+	}
+	return f.p, f.rs, f.err
+}
 
 // Renewal errors, tested with errors.Is: a refusal ends the login, an
 // unavailable provider keeps the session. Causes never carry the token.

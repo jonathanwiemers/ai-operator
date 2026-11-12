@@ -75,6 +75,9 @@ type fakeOIDCSwitches struct {
 	// the client gives up) when that is set.
 	down      bool
 	downDelay time.Duration
+	// hold, when set, makes refresh grants wait (after being counted) until
+	// it is closed or the client gives up.
+	hold chan struct{}
 	// noRefresh leaves the refresh token out of the code grant's answer.
 	noRefresh bool
 	// noIDTokenOnRefresh leaves the ID token out of refresh answers.
@@ -266,8 +269,15 @@ func (f *fakeOIDC) token(w http.ResponseWriter, r *http.Request) {
 		f.mu.Unlock()
 	}
 	f.mu.Lock()
-	down, delay := f.sw.down, f.sw.downDelay
+	down, delay, hold := f.sw.down, f.sw.downDelay, f.sw.hold
 	f.mu.Unlock()
+	if hold != nil && grant == "refresh_token" {
+		select {
+		case <-hold:
+		case <-r.Context().Done():
+			return
+		}
+	}
 	if down {
 		if delay > 0 {
 			select {

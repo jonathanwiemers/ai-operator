@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,8 +19,15 @@ import (
 func renewLogin(t *testing.T, f *fakeOIDC, mutate func(*Config)) (*Server, RefreshState, Principal, func() string) {
 	t.Helper()
 	s, c := newOIDCTestServer(t, f, mutate)
-	var lines []string
-	s.oidc.log = funcr.New(func(_, args string) { lines = append(lines, args) }, funcr.Options{Verbosity: 9})
+	var (
+		mu    sync.Mutex
+		lines []string
+	)
+	s.oidc.log = funcr.New(func(_, args string) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, args)
+	}, funcr.Options{Verbosity: 9})
 	_, cookies := loginThrough(t, s, c, "/")
 	rc := cookieNamed(cookies, s.sessions.RefreshCookie())
 	sc := cookieNamed(cookies, s.sessions.SessionCookie())
@@ -33,7 +42,11 @@ func renewLogin(t *testing.T, f *fakeOIDC, mutate func(*Config)) (*Server, Refre
 	if !ok || !ok2 {
 		t.Fatal("the login's cookies do not decode")
 	}
-	return s, *st, sess.Principal, func() string { return strings.Join(lines, "\n") }
+	return s, *st, sess.Principal, func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Join(lines, "\n")
+	}
 }
 
 // noToken fails the test if any refresh token f issued is in text.
@@ -234,4 +247,185 @@ func TestRedeemUnavailable(t *testing.T) {
 			t.Errorf("redeem: %v, want unavailable", err)
 		}
 	})
+}
+
+// renewResult is what one renew call returned.
+type renewResult struct {
+	p   Principal
+	rs  RefreshState
+	err error
+}
+
+// waitGrants waits until login 1 made n refresh grants.
+func waitGrants(t *testing.T, f *fakeOIDC, n int) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); f.refreshGrants(1) < n; time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("refresh grants = %d, want %d", f.refreshGrants(1), n)
+		}
+	}
+}
+
+// currentToken is login 1's only working refresh token.
+func currentToken(f *fakeOIDC) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.logins[0].current
+}
+
+// checkShared fails unless every result is the same successful renewal to
+// f's current token.
+func checkShared(t *testing.T, f *fakeOIDC, results []renewResult) {
+	t.Helper()
+	current := currentToken(f)
+	for i, r := range results {
+		if r.err != nil || r.rs.Token != current || r.p.Username != fakeEmail || !slices.Equal(r.p.Roles, results[0].p.Roles) {
+			t.Errorf("call %d: %+v, rotated token: %v, error %v", i, r.p, r.rs.Token == current, r.err)
+		}
+	}
+}
+
+func TestRenewSingleFlight(t *testing.T) {
+	f := newFakeOIDC(t)
+	s, st, prev, logs := renewLogin(t, f, nil)
+	hold := make(chan struct{})
+	f.set(func(sw *fakeOIDCSwitches) { sw.hold = hold })
+
+	results := make([]renewResult, 20)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range results {
+		wg.Go(func() {
+			<-start
+			p, rs, err := s.oidc.renew(t.Context(), st, prev)
+			results[i] = renewResult{p, rs, err}
+		})
+	}
+	close(start)
+	waitGrants(t, f, 1)
+	time.Sleep(50 * time.Millisecond) // the others join the flight
+	close(hold)
+	wg.Wait()
+
+	if got := f.refreshGrants(1); got != 1 {
+		t.Errorf("refresh grants = %d, want 1", got)
+	}
+	checkShared(t, f, results)
+	if got := strings.Count(logs(), `"session renewed"`); got != 1 {
+		t.Errorf("%d \"session renewed\" lines, want 1:\n%s", got, logs())
+	}
+	noToken(t, f, "log", logs())
+}
+
+func TestRenewCache(t *testing.T) {
+	f := newFakeOIDC(t)
+	s, st, prev, _ := renewLogin(t, f, nil)
+	now := time.Now()
+	s.oidc.renewals.now = func() time.Time { return now }
+
+	p, first, err := s.oidc.renew(t.Context(), st, prev)
+	if err != nil {
+		t.Fatalf("renew: %v", err)
+	}
+	now = now.Add(renewCache - time.Second)
+	p2, again, err := s.oidc.renew(t.Context(), st, prev)
+	if err != nil || again.Token != first.Token || p2.Username != p.Username || !slices.Equal(p2.Roles, p.Roles) {
+		t.Errorf("within the window: %+v, same token %v, error %v", p2, again.Token == first.Token, err)
+	}
+	if got := f.refreshGrants(1); got != 1 {
+		t.Errorf("refresh grants = %d, want 1", got)
+	}
+
+	now = now.Add(2 * time.Second)
+	if _, _, err := s.oidc.renew(t.Context(), st, prev); !errors.Is(err, errRenewRefused) {
+		t.Errorf("the old token after the window: %v, want a refusal", err)
+	}
+	// A failed grant counts twice: oauth2 retries it with the other client
+	// authentication.
+	if got := f.refreshGrants(1); got < 2 {
+		t.Errorf("refresh grants = %d, want the old token at the provider", got)
+	}
+	if _, _, err := s.oidc.renew(t.Context(), first, prev); err != nil {
+		t.Errorf("the rotated token: %v", err)
+	}
+	s.oidc.renewals.mu.Lock()
+	defer s.oidc.renewals.mu.Unlock()
+	if len(s.oidc.renewals.m) != 1 {
+		t.Errorf("%d renewals kept, want 1 (the expired and the refused one are gone)", len(s.oidc.renewals.m))
+	}
+}
+
+func TestRenewRetriesFailure(t *testing.T) {
+	f := newFakeOIDC(t)
+	s, st, prev, logs := renewLogin(t, f, nil)
+	f.set(func(sw *fakeOIDCSwitches) { sw.down = true })
+	if _, _, err := s.oidc.renew(t.Context(), st, prev); !errors.Is(err, errRenewUnavailable) {
+		t.Errorf("renew while down: %v, want unavailable", err)
+	}
+	f.set(func(sw *fakeOIDCSwitches) { sw.down = false })
+	failed := f.refreshGrants(1)
+	if _, _, err := s.oidc.renew(t.Context(), st, prev); err != nil {
+		t.Errorf("renew after the outage: %v", err)
+	}
+	if got := f.refreshGrants(1); got != failed+1 {
+		t.Errorf("refresh grants = %d, want %d", got, failed+1)
+	}
+	if got := strings.Count(logs(), `"session renewed"`); got != 1 {
+		t.Errorf("%d \"session renewed\" lines, want 1:\n%s", got, logs())
+	}
+}
+
+func TestRenewLeaderCancelled(t *testing.T) {
+	f := newFakeOIDC(t)
+	s, st, prev, _ := renewLogin(t, f, nil)
+	hold := make(chan struct{})
+	f.set(func(sw *fakeOIDCSwitches) { sw.hold = hold })
+
+	ctx, cancel := context.WithCancel(t.Context())
+	leader := make(chan error, 1)
+	go func() {
+		_, _, err := s.oidc.renew(ctx, st, prev)
+		leader <- err
+	}()
+	waitGrants(t, f, 1)
+
+	results := make([]renewResult, 5)
+	var wg sync.WaitGroup
+	for i := range results {
+		wg.Go(func() {
+			p, rs, err := s.oidc.renew(t.Context(), st, prev)
+			results[i] = renewResult{p, rs, err}
+		})
+	}
+	time.Sleep(50 * time.Millisecond) // the waiters join the flight
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+	close(hold)
+	wg.Wait()
+	<-leader
+
+	if got := f.refreshGrants(1); got != 1 {
+		t.Errorf("refresh grants = %d, want 1", got)
+	}
+	checkShared(t, f, results)
+}
+
+func TestRenewWaiterCancelled(t *testing.T) {
+	f := newFakeOIDC(t)
+	s, st, prev, _ := renewLogin(t, f, nil)
+	hold := make(chan struct{})
+	f.set(func(sw *fakeOIDCSwitches) { sw.hold = hold })
+	leader := make(chan renewResult, 1)
+	go func() {
+		p, rs, err := s.oidc.renew(t.Context(), st, prev)
+		leader <- renewResult{p, rs, err}
+	}()
+	waitGrants(t, f, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, _, err := s.oidc.renew(ctx, st, prev); !errors.Is(err, context.Canceled) {
+		t.Errorf("cancelled waiter: %v, want context.Canceled", err)
+	}
+	close(hold)
+	checkShared(t, f, []renewResult{<-leader})
 }

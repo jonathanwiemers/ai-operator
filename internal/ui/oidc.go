@@ -33,6 +33,8 @@ type oidcClient struct {
 	provider *oidc.Provider
 	// endSession is the provider's RP-initiated logout endpoint, if any.
 	endSession string
+
+	renewals renewals
 }
 
 func (o *oidcClient) discover(ctx context.Context) (*oidc.Provider, error) {

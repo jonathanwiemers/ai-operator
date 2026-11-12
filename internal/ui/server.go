@@ -102,7 +102,8 @@ func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log lo
 		if !slices.Contains(cfg.OIDC.Scopes, "offline_access") {
 			log.Info("oidc.scopes lacks offline_access: the provider will not return a refresh token, logins last auth.sessionTTL and are not renewed; add offline_access to oidc.scopes")
 		}
-		s.oidc = &oidcClient{cfg: cfg, sessions: s.sessions, claims: claims, log: log.WithName("oidc")}
+		s.oidc = &oidcClient{cfg: cfg, sessions: s.sessions, claims: claims, log: log.WithName("oidc"),
+			renewals: renewals{m: map[[32]byte]*renewFlight{}, now: time.Now}}
 		if cfg.GitLab.URL != "" {
 			s.gitlab = &gitlabConn{cfg: cfg, sessions: s.sessions,
 				newClient: func(baseURL, token string) gitlab.API { return gitlab.NewOAuth(baseURL, token) },
