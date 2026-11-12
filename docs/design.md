@@ -2610,7 +2610,8 @@ with `ui.research.allowCreate` also create and delete them in one
 namespace), so a flaw in it exposes task status, not credentials. Its
 database login is the read-only reader. Users log in with OIDC (code flow with
 PKCE); their roles grant access per project, nothing is visible without a
-rule. Sessions are encrypted cookies holding only user name and roles. Without
+rule. Sessions are encrypted cookies: the user name and roles in one, the
+provider's refresh token in another ([session model](#desk-session-model)). Without
 OIDC it only listens on localhost (`kubectl port-forward`). Details in
 [ui.md](ui.md#security).
 
@@ -2662,6 +2663,35 @@ took over an owner's username, or became an owner later, does nothing.
 `agent/*` branch (by design; humans review the MR) and write anything
 into the summaries posted on GitLab. CI pipelines of agent branches run
 untrusted code: don't expose protected CI variables to unprotected branches.
+
+## Desk session model
+
+The Desk is stateless: no session table, it works without the research
+store, and replicas share logins through the session key. Two sealed
+AES-GCM cookies (the cookie name is the additional data, so one cannot stand
+in for the other):
+
+- **session**: the principal (user name, roles) and a short expiry,
+  `auth.renewAfter` (15m); `auth.sessionTTL` without a refresh token.
+- **refresh** (`__Host-ai-operator-refresh`): the provider's refresh token,
+  the subject, the nonce, the login's start, the last renewal and the idle
+  deadline (`auth.idleTimeout`, slid on each renewal, capped by
+  `auth.maxLifetime` from the start when set).
+
+`authed` renews in place: an expired session with a live refresh cookie goes
+through the renewer (refresh grant, ID token verified against the original
+subject and nonce, userinfo merged, claims mapped again), both cookies are
+written, then the request is served. Zitadel rotates refresh tokens, so
+renewals are single-flight per hash of the refresh token in the process and
+a success is kept in memory for 2 minutes for requests still carrying the
+old token; failures are not cached. Failures are *passing* (network, 5xx,
+10s timeout: the session is kept for another `renewAfter`, up to the idle
+deadline) or *refusing* (`invalid_grant` outside the window,
+`unauthorized_client`, subject or nonce mismatch, claim mapping failure:
+both cookies are cleared, 401). With several replicas a parallel renewal on
+another pod can lose, since the cache is per process; the chart runs one.
+Logout revokes the refresh token (RFC 7009). The requirements are in
+[desk-session-refresh](specs/desk-session-refresh.spec.md).
 
 ## Desk styles
 

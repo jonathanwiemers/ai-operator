@@ -255,7 +255,7 @@ AgentProjects and AgentTasks (and AgentResearches with
 | `ui.networkPolicy.from` | `[]` | NetworkPolicy peers, e.g. the Gateway's namespace |
 | `ui.service.type`, `ui.service.annotations` | `ClusterIP`, `{}` | |
 | `ui.port`, `ui.healthProbePort` | `9080`, `8081` | |
-| `ui.replicaCount` | `1` | replicas share logins through the session key |
+| `ui.replicaCount` | `1` | replicas share logins through the session key, but refresh tokens rotate on use and renewals are single-flight per process: with more than 1 replica, a parallel renewal on another pod can lose and end the login. Logout revokes the refresh token at the provider |
 | `ui.resources` | 20m / 48Mi requests, 192Mi limit | |
 | `ui.nodeSelector`, `ui.tolerations`, `ui.affinity`, `ui.podAnnotations`, `ui.podLabels`, `ui.extraArgs` | | |
 

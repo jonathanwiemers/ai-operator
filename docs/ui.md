@@ -1071,8 +1071,55 @@ The HTTPRoute takes its host name from `externalURL` (or
 served at the root of its own host name, not under a path. All values are
 listed in the [chart README](../charts/ai-operator/README.md#web-ui).
 
-The UI pod needs to reach the OIDC provider (discovery, keys, token and
-userinfo endpoints) and the Kubernetes API.
+The UI pod needs to reach the OIDC provider (discovery, keys, token,
+userinfo and revocation endpoints) and the Kubernetes API.
+
+### 4. Staying logged in
+
+A login lasts as long as it is used. With a refresh token the session cookie
+is short and is renewed in the background; without one the login is fixed.
+
+| Value | Default | Meaning |
+|-------|---------|---------|
+| `ui.oidc.scopes` | `[openid, profile, email, offline_access]` | `offline_access` makes the provider return a refresh token. When `scopes` is set without it, the UI logs a warning at startup, and once per login that it got no refresh token |
+| `ui.auth.renewAfter` | `15m` | how long the session cookie is valid; the next request after it renews it with the refresh token, and the roles are mapped again |
+| `ui.auth.idleTimeout` | `168h` | a login that was not renewed for this long ends; every renewal slides the deadline. Must be longer than `renewAfter` |
+| `ui.auth.maxLifetime` | `0s` | caps a login from its start; `0s` leaves it to the provider |
+| `ui.auth.sessionTTL` | `12h` | applies only when the provider returns no refresh token: the login lasts this long and is not renewed |
+
+On **Zitadel** nothing else is needed than `offline_access` in the scopes
+and the *Refresh Token* grant type on the application. The provider's own
+lifetimes (idle and absolute; refresh tokens rotate on use) end a login
+too. Providers that need extra authorization parameters for a refresh token
+(Google's `access_type=offline`) are not covered.
+
+How it behaves:
+
+- **Renewal on use.** A request with an expired session and a live refresh
+  cookie is renewed in place (refresh grant, ID token checked against the
+  login's subject, userinfo merged, claims mapped again, both cookies
+  written) before it is answered, so no request fails for a renewal.
+  Parallel requests share one renewal per refresh token in the UI process.
+- **Roles follow the provider.** A role removed at the provider is gone
+  within `renewAfter`; a user whose claims no longer map to a login is
+  signed out.
+- **A provider outage keeps the session.** A renewal that fails for a
+  passing reason (network, 5xx, 10 s timeout) keeps the session for another
+  `renewAfter`, at most until the idle deadline, and logs it. Only a
+  refusal (`invalid_grant`, `unauthorized_client`, a different subject or
+  nonce, claim mapping failure) ends the login.
+- **Logout revokes** the refresh token at the provider's
+  `revocation_endpoint` (RFC 7009) when it has one, best effort with a 5 s
+  timeout, then clears both cookies.
+- **Signing in again, drafts and streams** are described under
+  [Security](#security): on a 401 the Desk signs in again by itself (once per
+  60 s) and keeps unsent text; the event and transcript streams end at the
+  session's expiry and reconnect quietly.
+- **Account menu.** It shows *Signed in until <date> unless you are away
+  longer* (renewed logins) or *Signed in until <time>* (fixed logins), from
+  `renewing` and `idleUntil` in `GET /api/v1/me`.
+- **One replica.** With `ui.replicaCount` above 1, a parallel renewal on
+  another pod can lose the rotation race and end the login.
 
 ## Access rules
 
@@ -1376,9 +1423,10 @@ points to 127.0.0.1 (DNS rebinding).
   `ui.research.allowCreate`, is `create`/`delete` on AgentResearches in
   `ui.research.namespace` (see [One-off researches](#one-off-researches)).
 - **Login.** Authorization code flow with PKCE, `state` and `nonce`; the ID
-  token's signature, issuer, audience and expiry are verified. The provider's
-  tokens are not kept: the session holds only the user name, the roles and
-  the expiry.
+  token's signature, issuer, audience and expiry are verified. The session
+  cookie holds only the user name, the roles and the expiry; the provider's
+  refresh token is kept only in the sealed refresh cookie, never logged or
+  shown to the web app, and revoked at logout.
 - **Sessions** are AES-GCM encrypted cookies (`__Host-` prefix, `HttpOnly`,
   `Secure`, `SameSite=Lax`), so the UI keeps no state and replicas share
   logins through the session key. With a refresh token the session lasts
