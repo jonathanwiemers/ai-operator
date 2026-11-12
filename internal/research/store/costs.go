@@ -132,9 +132,14 @@ func (c *costSQL) arg(v any) string {
 // checkpoint events (legacy with a checkpoint), which cost nothing; byModel
 // splits the calls by model (split).
 func (c *costSQL) rows(byModel bool) string {
-	rows := `SELECT ` + costCols + ` FROM spend WHERE NOT legacy OR checkpoint = ''`
+	return c.rowsWith(costCols, byModel)
+}
+
+// rowsWith is rows with the columns cols of spend (and split, byModel).
+func (c *costSQL) rowsWith(cols string, byModel bool) string {
+	rows := `SELECT ` + cols + ` FROM spend WHERE NOT legacy OR checkpoint = ''`
 	if byModel {
-		rows = `SELECT ` + costCols + ` FROM split UNION ALL SELECT ` + costCols + ` FROM spend WHERE legacy AND checkpoint = ''`
+		rows = `SELECT ` + cols + ` FROM split UNION ALL SELECT ` + cols + ` FROM spend WHERE legacy AND checkpoint = ''`
 	}
 	return `(` + rows + `) r WHERE true` + c.filter
 }

@@ -303,3 +303,11 @@ follow-up issue), and requirements without an issue and why.
   engine filter does not move `ResearchSince`, which only `Kind` and
   `ExcludeKinds` can drop. `SpendTotals.cacheReadShare` and
   `stepLinesSQL(filter)` are now shared with `Spend`.
+- 2026-11-12 #358 (R4): `store.CostTop(CostQuery, n)` returns the n (1..50)
+  most expensive milestones, issues and runs over the same rows and filters
+  as `CostSeries`, in one batch: known cost descending, then latest call;
+  unknown-only rows last with their `UnknownCalls` (D358-P1). Issues carry
+  `max(milestone_iid)`, runs their milestone, issue and the kind of their
+  first call (`""` for a legacy run); labels as `childLabel`
+  (`%14`, `#281`, `<task> run 3`). Calls without a milestone or issue are in
+  no milestone or issue row, only in runs.

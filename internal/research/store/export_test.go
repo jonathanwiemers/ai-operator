@@ -39,3 +39,12 @@ func CostBreakdownsQueries(q CostQuery) (sqls []string, args [][]any) {
 	}
 	return sqls, args
 }
+
+// CostTopQueries is the SQL and arguments of each statement CostTop runs,
+// for EXPLAIN tests.
+func CostTopQueries(q CostQuery, n int) (sqls []string, args [][]any) {
+	for _, st := range costTopSQL(q, n) {
+		sqls, args = append(sqls, st.sql), append(args, st.args)
+	}
+	return sqls, args
+}
