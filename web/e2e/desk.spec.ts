@@ -60,10 +60,11 @@ const taskReady: Record<TaskTab, string> = {
   details: 'shop-281-implement-ws',
 }
 
-// The Costs page has its figures and the Spend over time canvas.
+// The Costs page has its figures and the Spend over time and This month canvases.
 async function costsReady(page: Page): Promise<void> {
   await expect(page.locator('main').getByText('Research counted since').first()).toBeVisible()
   await expect(page.locator('[data-chart=spend] canvas[role=img]')).toBeVisible()
+  await expect(page.locator('[data-chart=month] canvas[role=img]')).toBeVisible()
 }
 
 // Every named route has a case here, with a variant per tab.
@@ -715,6 +716,67 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     expect(dark).not.toBe(light)
     await expect.poll(drawn, { message: 'dark bars' }).toContain(dark)
     expect(await drawn(), 'no light bar left').not.toContain(light)
+
+    problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
+// This month (views/Costs.vue, R10; e2e/fixtures/costs.ts's month): month to
+// date against the same days of last month, the dashed line named in the
+// legend and the table, and both lines drawn.
+for (const { width, height } of [widths[0]!, widths[2]!]) {
+  test(`costs This month legend and table@${width}`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'costs')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const chart = page.locator('[data-chart=month]')
+    await expect(chart.locator('canvas')).toHaveAttribute(
+      'aria-label',
+      'This month to day 10: $42.00 known; the same days of last month, 1 to 10: $31.00 known (+35%). The dashed line is last month. The table view lists every day.',
+    )
+    const legend = chart.locator('[data-chart-legend] li')
+    await expect(legend).toHaveText([
+      /This month \(Nov 2026\)\s*\$42\.00\s*to date, day 10, \+35%/,
+      /Last month \(Oct 2026\), dashed\s*\$31\.00\s*the same days, 1 to 10/,
+    ])
+    await expect(legend.nth(1).locator('i')).toHaveClass(/border-dashed/)
+
+    const table = chart.getByRole('table')
+    await chart.getByRole('button', { name: 'Table' }).click()
+    await expect(table).toBeVisible()
+    const head = table.getByRole('row').first()
+    for (const text of ['Day', 'This month (Nov 2026)', 'Last month (Oct 2026), dashed']) await expect(head).toContainText(text)
+    await expect(table.getByRole('row')).toHaveCount(32)
+    const day10 = table.getByRole('row').nth(10)
+    for (const text of ['10', '$42.00', '$31.00']) await expect(day10).toContainText(text)
+    // After today this month has no point, last month goes on.
+    const day31 = table.getByRole('row').nth(31)
+    for (const text of ['31', '–', '$96.10']) await expect(day31).toContainText(text)
+
+    // Both lines are drawn, each in its legend's colour: the solid one in
+    // --chart-1, the dashed one in --chart-other (antialiased, so near).
+    const solid = await legend.nth(0).locator('i').evaluate((e) => getComputedStyle(e).backgroundColor)
+    const dashed = await legend.nth(1).locator('i').evaluate((e) => getComputedStyle(e).borderTopColor)
+    const near = (color: string) =>
+      page.evaluate((color) => {
+        const want = (color.match(/\d+/g) ?? []).slice(0, 3).map(Number)
+        const c = document.querySelector<HTMLCanvasElement>('[data-chart=month] canvas')!
+        const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3]! < 250) continue
+          if (want.every((v, k) => Math.abs(d[i + k]! - v) <= 12)) return true
+        }
+        return false
+      }, color)
+    expect(await near(solid), 'solid line').toBe(true)
+    expect(await near(dashed), 'dashed line').toBe(true)
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })

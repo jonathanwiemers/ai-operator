@@ -7,12 +7,15 @@ import {
   chartSummary,
   chartTokens,
   colorSlots,
+  cumulativeMonth,
   formatTokens,
   formatUSD,
+  monthSummary,
   readChartColors,
   seriesFromPoints,
   seriesLabel,
   stackedChart,
+  thisMonth,
   topKeys,
   unknownNote,
 } from '../src/chartData.ts'
@@ -261,4 +264,88 @@ test('readChartColors: every series token and the text and grid tokens, trimmed'
   assert.equal(c.series['--chart-other'], 'v--chart-other')
   assert.deepEqual([c.text, c.muted, c.grid, c.surface], ['v--text', 'v--text-2', 'v--border', 'v--surface'])
   assert.ok(chartTokens.every((t) => asked.includes(t)))
+})
+
+test('cumulativeMonth: a 31-day month against February, by day of month', () => {
+  const month = {
+    today: 30,
+    current: [
+      point('2026-03-01', '', '1.00'),
+      point('2026-03-02', '', '', { unknown: 1 }),
+      point('2026-03-29', '', '2.50'),
+      point('2026-03-30', '', '0.25'),
+    ],
+    previous: [point('2026-02-01', '', '2.00'), point('2026-02-14', '', '1.00', { unknown: 2 }), point('2026-02-28', '', '0.50')],
+  }
+  const c = cumulativeMonth(month, '2026-03', 'en-GB')
+  assert.equal(c.labels.length, 31)
+  assert.deepEqual([c.labels[0], c.labels[30]], ['1', '31'])
+  assert.equal(c.today, 30)
+  // Today is capped at February's 28 days for the comparison.
+  assert.equal(c.sameDays, 28)
+  const [cur, prev] = c.series
+  assert.equal(cur.key, 'current')
+  assert.equal(cur.dashed, undefined)
+  assert.equal(cur.label, 'This month (Mar 2026)')
+  // Cumulative to today, no point after it.
+  assert.deepEqual(cur.values.slice(0, 3), [1, 1, 1])
+  assert.equal(cur.values[28], 3.5)
+  assert.equal(cur.values[29], 3.75)
+  assert.equal(cur.values[30], null)
+  assert.equal(cur.total, 3.75)
+  // Last month over its own 28 days, dashed and muted.
+  assert.equal(prev.dashed, true)
+  assert.equal(prev.token, '--chart-other')
+  assert.equal(prev.label, 'Last month (Feb 2026), dashed')
+  assert.equal(prev.values[27], 3.5)
+  assert.deepEqual(prev.values.slice(28), [null, null, null])
+  assert.equal(prev.total, 3.5)
+  assert.match(prev.note, /1 to 28/)
+  assert.match(prev.note, /\+ 2 unknown calls/)
+  // The comparison: month to date against days 1 to 28 of February.
+  assert.equal(c.compare.current.costUSD, '3.75')
+  assert.equal(c.compare.previous.costUSD, '3.50')
+  assert.equal(c.compare.current.unknownCalls, 1)
+  assert.equal(Math.round(c.compare.change), 7)
+  assert.match(cur.note, /day 30, \+7%, \+ 1 unknown call$/)
+  // Unknown counts per day, both months, and their table notes.
+  assert.equal(c.unknown[1], 1)
+  assert.equal(c.unknown[13], 2)
+  assert.equal(c.notes[1], '+ 1 unknown call this month')
+  assert.equal(c.notes[13], '+ 2 unknown calls last month')
+  assert.equal(c.notes[0], '')
+  assert.match(monthSummary(c), /day 30: \$3\.75 known; the same days of last month, 1 to 28: \$3\.50 known \(\+7%\)\. The dashed line is last month/)
+})
+
+test('cumulativeMonth: the same days early in the month, unknown is not $0', () => {
+  const month = {
+    today: 2,
+    current: [point('2026-03-01', '', '', { unknown: 1 })],
+    previous: [point('2026-02-01', '', '1.00'), point('2026-02-03', '', '5.00')],
+  }
+  const c = cumulativeMonth(month, '2026-03')
+  assert.equal(c.sameDays, 2)
+  assert.equal(c.series[0].total, null)
+  assert.deepEqual(c.series[0].values.slice(0, 3), [0, 0, null])
+  // Days after today count no unknown calls.
+  assert.equal(c.series[1].total, 1)
+  assert.equal(c.compare.change, null)
+  assert.match(monthSummary(c), /day 2: no known cost; the same days of last month, 1 to 2: \$1\.00 known/)
+})
+
+test('cumulativeMonth: January against December, no calls is $0', () => {
+  const c = cumulativeMonth({ today: 5, current: [], previous: [] }, '2027-01', 'en-GB')
+  assert.equal(c.labels.length, 31)
+  assert.equal(c.series[1].label, 'Last month (Dec 2026), dashed')
+  assert.equal(c.series[0].total, 0)
+  assert.equal(c.series[1].total, 0)
+  assert.equal(c.series[1].values[30], 0)
+})
+
+test('thisMonth: from the points, else last month, else now in the zone', () => {
+  assert.equal(thisMonth({ today: 3, current: [point('2026-11-02', '', '1')], previous: [] }, new Date(0), 'UTC'), '2026-11')
+  assert.equal(thisMonth({ today: 3, current: [], previous: [point('2026-12-30', '', '1')] }, new Date(0), 'UTC'), '2027-01')
+  const now = new Date('2026-11-30T23:30:00Z')
+  assert.equal(thisMonth({ today: 1, current: [], previous: [] }, now, 'Europe/Berlin'), '2026-12')
+  assert.equal(thisMonth({ today: 30, current: [], previous: [] }, now, 'UTC'), '2026-11')
 })

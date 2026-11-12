@@ -2,22 +2,26 @@
 // A chart's table view (docs/ui.md, "Charts"): a row per bucket, a column per
 // series, the total and the calls of unknown cost. The "Table" toggle shows
 // it; hidden, it is visually hidden only, so screen readers always reach the
-// values a canvas cannot give them.
+// values a canvas cannot give them. Without sum (a line chart's cumulative
+// values) there is no total column; a value null (no point) is "–".
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
-import { formatTokens, formatUSD, unknownNote, type StackedChart } from '../../chartData'
+import { formatTokens, formatUSD, unknownNote, type ChartView } from '../../chartData'
 import DataList, { type DataListColumn } from '../DataList.vue'
 
-const props = withDefaults(defineProps<{ chart: StackedChart; label: string; unit?: 'usd' | 'tokens' }>(), { unit: 'usd' })
+const props = withDefaults(
+  defineProps<{ chart: ChartView; label: string; unit?: 'usd' | 'tokens'; rowLabel?: string; sum?: boolean }>(),
+  { unit: 'usd', rowLabel: 'Period', sum: true },
+)
 
 const open = ref(false)
 const format = computed(() => (props.unit === 'usd' ? formatUSD : formatTokens))
 
 // Series keys may hold any character; the columns are numbered.
 const columns = computed<DataListColumn[]>(() => [
-  { key: 'bucket', label: 'Period' },
+  { key: 'bucket', label: props.rowLabel },
   ...props.chart.series.map((s, i) => ({ key: `s${i}`, label: s.label, numeric: true })),
-  { key: 'total', label: 'Total', numeric: true, class: 'font-semibold' },
+  ...(props.sum ? [{ key: 'total', label: 'Total', numeric: true, class: 'font-semibold' }] : []),
   { key: 'unknown', label: 'Unknown cost' },
 ])
 
@@ -26,12 +30,12 @@ const rows = computed(() =>
     const row: Record<string, string> = { id: String(b), bucket }
     let total = 0
     props.chart.series.forEach((s, i) => {
-      const v = s.values[b] ?? 0
-      total += v
-      row[`s${i}`] = format.value(v)
+      const v = s.values[b] ?? null
+      total += v ?? 0
+      row[`s${i}`] = v === null ? '–' : format.value(v)
     })
-    row.total = format.value(total)
-    row.unknown = unknownNote(props.chart.unknown[b] ?? 0)
+    if (props.sum) row.total = format.value(total)
+    row.unknown = props.chart.notes ? (props.chart.notes[b] ?? '') : unknownNote(props.chart.unknown[b] ?? 0)
     return row
   }),
 )

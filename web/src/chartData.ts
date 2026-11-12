@@ -1,5 +1,5 @@
-import type { CostPointView } from './generated/views.ts'
-import { costKeyLabel } from './costs.ts'
+import type { CostPointView, CostsMonthView } from './generated/views.ts'
+import { changeLabel, costKeyLabel, monthToDate, type MonthSum, type MonthToDate } from './costs.ts'
 import { tokenCount } from './format.ts'
 
 // The Costs page's chart data (docs/ui.md, "Costs page"; decisions 7 and 8 of
@@ -171,6 +171,27 @@ export function unknownNote(calls: number): string {
   return calls > 0 ? `+ ${calls} unknown ${calls === 1 ? 'call' : 'calls'}` : ''
 }
 
+// ChartView is what a legend and a table view read (ChartLegend.vue,
+// ChartTable.vue): a label per row, the series with their colour token and
+// legend total (null: unknown, never $0), and per row the calls of unknown
+// cost. A value null is no point (a line's day after today). dashed draws
+// the series' legend swatch as a dashed line; note follows its legend total.
+// notes, when set, replace the table's unknown-call notes per row.
+export interface ChartView {
+  labels: string[]
+  series: {
+    key: string
+    label: string
+    token: ChartToken
+    total: number | null
+    values: (number | null)[]
+    dashed?: boolean
+    note?: string
+  }[]
+  unknown: number[]
+  notes?: string[]
+}
+
 // StackedChart is what the stacked bars wrapper, its legend and table view
 // draw: a label per bucket, the series with their colour token and range
 // total, and per bucket the calls of unknown cost.
@@ -241,4 +262,134 @@ export function readChartColors(get: (name: string) => string): ChartColors {
     grid: v('--border'),
     surface: v('--surface'),
   }
+}
+
+// daysIn is the number of days of month m (1 to 12) of year y.
+function daysIn(y: number, m: number): number {
+  return new Date(Date.UTC(y, m, 0)).getUTCDate()
+}
+
+// thisMonth is the month (YYYY-MM) of the This month chart: that of its
+// points, else the month after last month's points, else now's in tz (the
+// zone the page sends, in which the server counts today). The response does
+// not name the month.
+export function thisMonth(month: CostsMonthView, now: Date, tz: string): string {
+  const cur = month.current[0]?.bucket
+  if (cur) return cur.slice(0, 7)
+  const prev = month.previous[0]?.bucket
+  if (prev) return new Date(Date.UTC(Number(prev.slice(0, 4)), Number(prev.slice(5, 7)), 1)).toISOString().slice(0, 7)
+  // en-CA formats a date as YYYY-MM-DD.
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+  return fmt.format(now).slice(0, 7)
+}
+
+// MonthChart is the This month chart (R10): labels 1 to the longer month's
+// length; series 0 this month's cumulative known cost up to today (null
+// after), series 1 last month's over its own days (dashed, null after its
+// length), aligned by day of month (D365-P1). The legend totals are month
+// to date and the same days of last month, days 1 to sameDays (today, capped
+// at last month's length); compare holds both sums and the change.
+export interface MonthChart extends ChartView {
+  today: number
+  sameDays: number
+  compare: MonthToDate
+}
+
+// monthNote names a day's calls of unknown cost in either month, "" without.
+function monthNote(current: number, previous: number): string {
+  const first = current || previous
+  if (!first) return ''
+  const note = `${unknownNote(first)} ${current ? 'this' : 'last'} month`
+  return current && previous ? `${note}, ${previous} last month` : note
+}
+
+// legendTotal is a sum's legend value: null with only calls of unknown cost.
+function legendTotal(s: MonthSum): number | null {
+  if (s.costKnown) return Number.parseFloat(s.costUSD)
+  return s.calls ? null : 0
+}
+
+// cumulativeMonth shapes the response's month into the This month chart of
+// the month ym (YYYY-MM, thisMonth's). Points outside ym and the month
+// before it are left out.
+export function cumulativeMonth(month: CostsMonthView, ym: string, locale?: string): MonthChart {
+  const y = Number(ym.slice(0, 4))
+  const m = Number(ym.slice(5, 7))
+  const prevY = m === 1 ? y - 1 : y
+  const prevM = m === 1 ? 12 : m - 1
+  const prevYM = `${prevY}-${String(prevM).padStart(2, '0')}`
+  const curLen = daysIn(y, m)
+  const prevLen = daysIn(prevY, prevM)
+  const today = Math.min(Math.max(month.today, 1), curLen)
+  const sameDays = Math.min(today, prevLen)
+  const len = Math.max(curLen, prevLen)
+  const round = (v: number) => Math.round(v * 1e4) / 1e4
+
+  const current = month.current.filter((p) => p.bucket.slice(0, 7) === ym)
+  const previous = month.previous.filter((p) => p.bucket.slice(0, 7) === prevYM)
+  // perDay sums the known cost and the calls of unknown cost per day.
+  const perDay = (points: CostPointView[]) => {
+    const cost = Array.from({ length: len }, () => 0)
+    const unknown = Array.from({ length: len }, () => 0)
+    for (const p of points) {
+      const d = Number(p.bucket.slice(8, 10)) - 1
+      if (!(d >= 0 && d < len)) continue
+      cost[d] = (cost[d] ?? 0) + knownCost(p)
+      unknown[d] = (unknown[d] ?? 0) + p.totals.unknownCalls
+    }
+    return { cost, unknown }
+  }
+  const cumulative = (cost: number[], last: number) => {
+    let sum = 0
+    return cost.map((v, i) => (i < last ? round((sum += v)) : null))
+  }
+  const cur = perDay(current)
+  const prev = perDay(previous)
+  // Calls after today are not drawn, so they are not counted either.
+  cur.unknown = cur.unknown.map((n, i) => (i < today ? n : 0))
+
+  const compare = monthToDate({ today: sameDays, current, previous })
+  const change = changeLabel(compare.change)
+  const unknownSuffix = (n: number) => (n ? `, ${unknownNote(n)}` : '')
+  const name = (mm: string) => bucketLabel(`${mm}-01`, 'month', locale)
+  return {
+    labels: Array.from({ length: len }, (_, i) => String(i + 1)),
+    series: [
+      {
+        key: 'current',
+        label: `This month (${name(ym)})`,
+        token: '--chart-1',
+        total: legendTotal(compare.current),
+        values: cumulative(cur.cost, today),
+        note: `to date, day ${today}${change ? `, ${change}` : ''}${unknownSuffix(compare.current.unknownCalls)}`,
+      },
+      {
+        key: 'previous',
+        label: `Last month (${name(prevYM)}), dashed`,
+        token: '--chart-other',
+        total: legendTotal(compare.previous),
+        values: cumulative(prev.cost, prevLen),
+        dashed: true,
+        note: `the same days, 1 to ${sameDays}${unknownSuffix(compare.previous.unknownCalls)}`,
+      },
+    ],
+    unknown: cur.unknown.map((n, i) => n + (prev.unknown[i] ?? 0)),
+    notes: cur.unknown.map((n, i) => monthNote(n, prev.unknown[i] ?? 0)),
+    today,
+    sameDays,
+    compare,
+  }
+}
+
+// monthSummary is the This month chart's text for screen readers (the
+// canvas's aria-label).
+export function monthSummary(chart: MonthChart): string {
+  const [cur, prev] = chart.series
+  const value = (t: number | null | undefined) => (t === null || t === undefined ? 'no known cost' : `${formatUSD(t)} known`)
+  const change = changeLabel(chart.compare.change)
+  return (
+    `This month to day ${chart.today}: ${value(cur?.total)}; ` +
+    `the same days of last month, 1 to ${chart.sameDays}: ${value(prev?.total)}` +
+    `${change ? ` (${change})` : ''}. The dashed line is last month. The table view lists every day.`
+  )
 }

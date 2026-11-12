@@ -19,12 +19,13 @@ import {
   rangeLabels,
   type CostFilters,
 } from '../costs'
-import { chartSummary, stackedChart } from '../chartData'
+import { chartSummary, cumulativeMonth, monthSummary, stackedChart, thisMonth } from '../chartData'
 import { cost, tokenCount } from '../format'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
 import type { CostsView } from '../generated/views'
 import ChartLegend from '../ui/charts/ChartLegend.vue'
 import ChartTable from '../ui/charts/ChartTable.vue'
+import LineCompare from '../ui/charts/LineCompare.vue'
 import StackedBars from '../ui/charts/StackedBars.vue'
 
 // The Costs page (docs/ui.md, "Costs page"): what the projects the viewer
@@ -129,6 +130,10 @@ function dateLabel(iso: string | undefined): string {
 const spendChart = computed(() => (data.value ? stackedChart(data.value.buckets, data.value.bucket, data.value.series, 'cost') : null))
 const spendTitle = computed(() => (data.value ? `Known cost per ${data.value.bucket} by ${data.value.group}` : ''))
 const spendSummary = computed(() => (spendChart.value ? chartSummary(spendTitle.value, spendChart.value) : ''))
+
+// This month (R10): cumulative known cost to today, last month dashed over
+// its own days, by day of month; independent of the range.
+const monthChart = computed(() => (data.value ? cumulativeMonth(data.value.month, thisMonth(data.value.month, new Date(), tz)) : null))
 
 const fieldUI = { label: 'font-semibold text-[13px]' }
 const control = 'text-base/5 tablet:text-sm/5'
@@ -256,6 +261,23 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
           <StackedBars :chart="spendChart" :summary="spendSummary" />
           <ChartLegend :chart="spendChart" />
           <ChartTable :chart="spendChart" :label="`${spendTitle}, as a table`" />
+        </div>
+      </section>
+
+      <section v-if="monthChart" class="section" aria-labelledby="costs-this-month" data-chart="month">
+        <div class="section-head flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 id="costs-this-month">This month</h2>
+          <span class="faint">Known cost to date, against last month by day of month</span>
+        </div>
+        <div class="card flex min-w-0 flex-col gap-3 p-3 tablet:p-4">
+          <LineCompare :chart="monthChart" :summary="monthSummary(monthChart)" title="Day " />
+          <ChartLegend :chart="monthChart" />
+          <ChartTable
+            :chart="monthChart"
+            :sum="false"
+            row-label="Day"
+            label="Cumulative known cost by day of month, this month and last month, as a table"
+          />
         </div>
       </section>
     </template>

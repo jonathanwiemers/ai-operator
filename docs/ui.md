@@ -512,14 +512,29 @@ the table view lists every bucket with each series, the total and the
 unknown calls. Switching the group refetches and redraws, the page does not
 reload.
 
+*This month*: the cumulative known cost of this calendar month up to today
+(a solid line, no point after today) against last month's (a dashed, muted
+line over all its days), aligned by day of month, so the x axis runs to the
+longer month's length and February's line ends at day 28. It does not
+follow the range, only the project, kind and engine filters. The legend
+gives month to date and the same days of last month, days 1 to today (to
+last month's length when today is later), with the change, and names the
+dashed line as last month; so does the table view, a row per day with both
+cumulative sums (*–* where a line has no point) and the day's calls of
+unknown cost in either month. Calls of unknown cost are not in the lines;
+the legend counts them per month, up to today and over the same days.
+
 The e2e route cases `costs` and `costs-dark` at 375, 768 and 1280 px
-(`costs@<width>.png`, `costs-dark@<width>.png`) wait for the chart's canvas
-and check overflow and the CSP, `costs` is among the hit-area routes,
+(`costs@<width>.png`, `costs-dark@<width>.png`) wait for both charts'
+canvases and check overflow and the CSP, `costs` is among the hit-area routes,
 `costs filters live in the URL, no reload@1280` checks that a filter change
 updates the URL and refetches without a reload, and `costs Spend over time
 legend, table and colours@375` and `@1280` check the canvas's summary, the
 legend's totals, the table view's figures and that the bars are drawn in the
-token colours of light and then dark.
+token colours of light and then dark. `costs This month legend and
+table@375` and `@1280` check the summary, the legend's month to date and
+same days with the change, the dashed swatch, the table's named columns
+and its last-month-only days, and that both lines are drawn.
 
 ### Agent calls on the Task page
 
@@ -1668,7 +1683,11 @@ loads anyway.
   mostly Chart.js (bar controller, category and linear scales, tooltip),
   then `vue-chartjs`, the wrappers and `DataList`. The cap stays at min(120, 104.7 × 1.3) = 120 kB. The initial
   bundle did not grow (129.4 kB before, 129.3 kB after): Chart.js and the
-  wrappers are imported by `Costs.vue` only.
+  wrappers are imported by `Costs.vue` only. 2026-11-12, with *This month*
+  (#365): 110.7 kB (JS 110.7, CSS 0.0), 6.0 kB more for the line
+  controller, line and point elements, `LineCompare.vue` and the month
+  shaping; the initial bundle stays at 129.3 kB. `measuredKB` keeps the
+  first chart slice's figure, the one the cap was set from.
 
 ## UI kit
 
@@ -1768,7 +1787,8 @@ Chart.js options live in one place; a view passes them data shaped by
 `chartData.ts`:
 
 - `register.ts` registers only what is drawn (`BarController`,
-  `BarElement`, `CategoryScale`, `LinearScale`, `Tooltip`); the rest is
+  `BarElement`, `LineController`, `LineElement`, `PointElement`,
+  `CategoryScale`, `LinearScale`, `Tooltip`); the rest is
   tree-shaken. No Chart.js legend. Only the wrappers import it, so Chart.js
   is in the chunks of the views with charts, never the initial bundle.
 - `useChartColors.ts` reads `--chart-*`, `--text`, `--text-2`, `--border`
@@ -1780,11 +1800,20 @@ Chart.js options live in one place; a view passes them data shaped by
   it, fewer ticks below 760 px, a tooltip per bucket on hover and tap
   (`mode: 'index'`, `intersect: false`), USD with two decimals or tokens in
   k/M. The canvas is `role="img"` with `chartSummary` as `aria-label`.
+- `LineCompare.vue`: a solid line (series 0) against a dashed comparison
+  (series 1, `borderDash`, the muted `--chart-other`), no points but on
+  hover, the same options policy as `StackedBars.vue` (no animation, the
+  tooltip per x value on hover and tap, fewer ticks below 760 px). A value
+  `null` is no point. Used by *This month* with `cumulativeMonth` and
+  `monthSummary`.
 - `ChartLegend.vue`: below the chart, a swatch (a utility class per token,
-  no inline style), the label and the range total per series; it wraps on
-  phones.
+  no inline style; a dashed line for a dashed series), the label, the total
+  per series (*n/a* when only calls of unknown cost) and an optional note;
+  it wraps on phones. It and the table read `chartData.ts`'s `ChartView`.
 - `ChartTable.vue`: the table view (a scrolling `DataList`): a row per
-  bucket, a column per series, the total and the unknown calls. A *Table*
+  bucket, a column per series, the total (left out with `sum` false, for
+  cumulative lines) and the unknown calls (or the chart's own per-row
+  `notes`). A *Table*
   button (`aria-pressed`) shows it; hidden, it is `sr-only`, so screen
   readers always reach the values a canvas cannot give them.
 

@@ -3,6 +3,16 @@
 // chunk. No legend plugin: the legend is HTML with values (ChartLegend.vue).
 // Importing this module registers them; it is imported by the wrappers only,
 // so Chart.js lands in the chunks of the views that draw charts.
-import { BarController, BarElement, CategoryScale, Chart, LinearScale, Tooltip } from 'chart.js'
+import {
+  BarController,
+  BarElement,
+  CategoryScale,
+  Chart,
+  LinearScale,
+  LineController,
+  LineElement,
+  PointElement,
+  Tooltip,
+} from 'chart.js'
 
-Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip)
+Chart.register(BarController, BarElement, CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip)

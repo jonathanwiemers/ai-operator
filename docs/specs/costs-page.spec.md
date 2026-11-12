@@ -364,3 +364,13 @@ follow-up issue), and requirements without an issue and why.
   the initial bundle went from 129.4 to 129.3 kB. The line and horizontal bar
   wrappers come with R10 and R11, as planned. E2E: `costs-dark` route cases
   and a check that the bars are redrawn in the dark tokens.
+- 2026-11-12 #365 (R10): *This month* (`chartData.ts`'s `cumulativeMonth`,
+  `ui/charts/LineCompare.vue`; `register.ts` adds the line controller, line
+  and point elements). Days align by day of month (D365-P1): labels run to
+  the longer month's length, the dashed line ends at last month's. The
+  response does not name the month, so `thisMonth` takes it from the points,
+  else the browser's date in the tz the page sends. `ChartLegend` and
+  `ChartTable` read a `ChartView` (null totals and values, a dashed swatch,
+  per-series notes, no total column for cumulative lines). The chart stays
+  in the page's "has calls in the range" branch, like *Spend over time*.
+  The costs chunk is 110.7 kB (+6.0), the initial bundle 129.3 kB.
