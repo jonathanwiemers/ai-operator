@@ -32,7 +32,6 @@ test('every route has crumbs: links but the last, which names the view', () => {
 
 test('top-level views show one crumb', () => {
   assert.deepEqual(crumbsFor({ name: 'overview', params: {}, query: { tab: 'stream' } }), [{ label: 'Overview' }])
-  assert.deepEqual(crumbsFor({ name: 'everything', params: {} }), [{ label: 'Overview' }])
   assert.deepEqual(crumbsFor({ name: 'inbox', params: {} }), [{ label: 'Inbox' }])
   assert.deepEqual(crumbsFor({ name: 'researches', params: {} }), [{ label: 'Research' }])
   assert.deepEqual(crumbsFor({ name: 'not-found', params: { rest: ['nope'] } }), [{ label: 'Not found' }])
@@ -58,11 +57,6 @@ test('a name of another milestone or project is not used', () => {
   ]) {
     assert.equal(crumbsFor(route, { milestone: m }).at(-1).label, '%3')
   }
-})
-
-test('the redirects show the page they lead to', () => {
-  assert.deepEqual(crumbsFor({ name: 'project-board', params: at }), [overview, { label: 'p' }])
-  assert.deepEqual(crumbsFor({ name: 'milestone', params: { ...at, iid: '3' } }), [overview, project, { label: '%3' }])
 })
 
 test('task: under the project until the names give its issue', () => {

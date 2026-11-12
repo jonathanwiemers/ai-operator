@@ -44,23 +44,6 @@ const routes: (RouteRecordRaw & { name: RouteName })[] = [
     props: true,
   },
   { path: '/projects/:namespace/:name/tasks/:task', name: 'task', component: TaskView, props: true },
-  // Old pages, kept as redirects (with their names) so links and bookmarks work.
-  // The Everything stream is the dashboard's Stream tab.
-  {
-    path: '/everything',
-    name: 'everything',
-    redirect: (to) => ({ name: 'overview', query: { ...to.query, tab: 'stream' }, hash: to.hash }),
-  },
-  {
-    path: '/projects/:namespace/:name/board',
-    name: 'project-board',
-    redirect: (to) => ({ name: 'stream-project', params: to.params, query: { tab: 'board' } }),
-  },
-  {
-    path: '/projects/:namespace/:name/milestones/:iid/detail',
-    name: 'milestone',
-    redirect: (to) => ({ name: 'stream-milestone', params: to.params, query: { tab: 'stream' } }),
-  },
   { path: '/research', name: 'researches', component: Researches },
   { path: '/research/new', name: 'research-new', component: ResearchNew },
   { path: '/research/:namespace/:name', name: 'research', component: ResearchView, props: true },

@@ -60,8 +60,7 @@ const taskReady: Record<TaskTab, string> = {
   details: 'shop-281-implement-ws',
 }
 
-// Every named route but the redirects (everything, project-board,
-// milestone) has a case here, with a variant per tab.
+// Every named route has a case here, with a variant per tab.
 const routes: Route[] = [
   {
     name: 'overview',
@@ -260,6 +259,18 @@ for (const route of routes) {
       expect(overflow, 'sideways scroll in px of the page and of the content pane').toEqual({ page: 0, pane: 0 })
     })
   }
+}
+
+// The old redirects are gone: their paths are Not found.
+for (const path of ['/everything', '/projects/acme/shop/board', '/projects/acme/shop/milestones/3/detail']) {
+  test(`old path ${path} renders Not found`, async ({ page, baseURL }) => {
+    const origin = new URL(baseURL ?? '').origin
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await watch(page, origin, problems)
+    await mockAPI(page, { name: 'not-found', path, ready: async () => {} }, problems)
+    await page.goto(path)
+    await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible()
+  })
 }
 
 // The Desk follows the system's colour scheme while it is open

@@ -43,7 +43,7 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   *Projects* (see [Navigation](#navigation)).
 * **Dashboard** (`/`): the tabs *Overview* (the default) and *Stream*
   (`/?tab=stream`, the *Everything* stream of all your projects, as
-  before; the old name `everything` redirects there, at `/everything`).
+  before; the old `/everything` path is gone and shows Not found).
   *Overview* shows, top to bottom, the **summary strip**: the milestones
   running, paused and waiting, the needs-you count (linking to the Inbox)
   and, with the research database, the spend of today (the UTC day) and of
@@ -296,9 +296,9 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   `needsInput` prompts (and the newest closed one) are full cards above the
   chat.
 
-The Desk has no projects list or separate board and milestone pages. The former board page (`/projects/<namespace>/<name>/board`) and milestone page
-(`…/milestones/<iid>/detail`) redirect to the project stream's Board tab and
-the milestone stream's *Stream* tab; task and research pages keep their URLs.
+The Desk has no projects list or separate board and milestone pages. The former board page (`/projects/<namespace>/<name>/board`), milestone page
+(`…/milestones/<iid>/detail`) and `/everything` no longer redirect and show
+Not found; task and research pages keep their URLs.
 With the research database, a closed milestone whose tasks are gone still
 opens from history: the milestone API answers from the snapshot (`stored`),
 with its issues and their figures, and the *Issues* tab says *From history:
@@ -1508,7 +1508,7 @@ How it works:
   - no request to another origin (such requests are also aborted)
   - no uncaught error
 
-  Every named route but the redirects has a case; routes with tabs have one
+  Every named route has a case; routes with tabs have one
   per tab (`stream-milestone-pilot`), and the research page one per view
   (`research`, `research-report`), and the task and issue pages one per
   task tab (`task-details`, `issue-chat`). To check a new route, add it to `routes` with a `ready` condition and add

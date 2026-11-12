@@ -4,14 +4,11 @@
 // crumbs.test.mjs fails for a route without breadcrumbs.
 export const routeNames = [
   'overview',
-  'everything',
   'inbox',
   'stream-project',
   'stream-milestone',
   'issue',
   'task',
-  'project-board',
-  'milestone',
   'researches',
   'research-new',
   'research',

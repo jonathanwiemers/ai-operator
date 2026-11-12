@@ -90,18 +90,15 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
   let trail: Crumb[]
   switch (route.name) {
     case 'overview':
-    case 'everything':
       trail = [overview]
       break
     case 'inbox':
       trail = [{ label: 'Inbox' }]
       break
     case 'stream-project':
-    case 'project-board':
       trail = [overview, project]
       break
-    case 'stream-milestone':
-    case 'milestone': {
+    case 'stream-milestone': {
       const iid = iidOf(param(p, 'iid'))
       trail = iid ? [overview, project, milestone(iid)] : [overview, project, { label: param(p, 'iid') || 'Milestone' }]
       break
