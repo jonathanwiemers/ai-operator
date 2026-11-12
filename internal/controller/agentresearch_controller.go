@@ -221,7 +221,8 @@ func (r *AgentResearchReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// then the pod.
 	start := metav1.NewTime(now)
 	agent := *plan.choice.Agent
-	st.Run = &aiv1.ResearchRunStatus{ID: uuid.NewString(), StartedAt: &start,
+	st.RunCount++
+	st.Run = &aiv1.ResearchRunStatus{ID: uuid.NewString(), Number: st.RunCount, StartedAt: &start,
 		Engine: agent.Engine, Model: agent.Model, Effort: agent.Effort, Reason: plan.choice.Reason}
 	st.Phase = aiv1.ResearchPhaseRunning
 	st.SkippedReason, st.Waiting = "", nil
@@ -534,8 +535,9 @@ func (r *AgentResearchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // insertCalls writes the run's agent calls to the history under the
-// research's project, keyed by research UID, run ID and seq, so a finishRun
-// that is retried writes none twice.
+// research's project, as task research/<name> and run the run's number,
+// keyed by research UID, run ID and seq, so a finishRun that is retried
+// writes none twice.
 func (r *AgentResearchReconciler) insertCalls(ctx context.Context, res *aiv1.AgentResearch, run *aiv1.ResearchRunStatus, now time.Time) error {
 	if len(run.Calls) == 0 {
 		return nil
@@ -548,7 +550,7 @@ func (r *AgentResearchReconciler) insertCalls(ctx context.Context, res *aiv1.Age
 	for _, c := range run.Calls {
 		call := history.StoreCall(c)
 		call.Key = fmt.Sprintf("research/%s/%s/%d", res.UID, run.ID, c.Seq)
-		call.Namespace, call.Project, call.Task, call.Run = res.Namespace, res.Spec.ProjectRef, res.Name, 0
+		call.Namespace, call.Project, call.Task, call.Run = res.Namespace, res.Spec.ProjectRef, "research/"+res.Name, run.Number
 		if call.At.IsZero() {
 			call.At = now
 		}

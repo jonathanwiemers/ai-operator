@@ -186,6 +186,10 @@ type AgentResearchStatus struct {
 	// +optional
 	Waiting *ResearchWaiting `json:"waiting,omitempty"`
 
+	// RunCount is how many runs have started; the last one's number.
+	// +optional
+	RunCount int64 `json:"runCount,omitempty"`
+
 	// Run is the current or last run.
 	// +optional
 	Run *ResearchRunStatus `json:"run,omitempty"`
@@ -207,6 +211,10 @@ type ResearchRunStatus struct {
 	// ID of the run in the research store.
 	// +optional
 	ID string `json:"id,omitempty"`
+	// Number of the run, from 1, counted by status.runCount; its agent
+	// calls carry it as their run. 0 for a run started before it existed.
+	// +optional
+	Number int64 `json:"number,omitempty"`
 	// +optional
 	StartedAt *metav1.Time `json:"startedAt,omitempty"`
 	// FinishedAt is set by the operator once it recorded the outcome.

@@ -695,7 +695,7 @@ func TestResearchFinishRunRecordsCalls(t *testing.T) {
 		t.Fatalf("want 3 calls, got %+v", e.db.calls)
 	}
 	c, ok := e.db.calls["research/uid-q/"+run.ID+"/1"]
-	if !ok || c.Namespace != ns || c.Project != "shop" || c.Task != "q" || c.Run != 0 || c.Seq != 1 ||
+	if !ok || c.Namespace != ns || c.Project != "shop" || c.Task != "research/q" || c.Run != 1 || c.Seq != 1 ||
 		c.Kind != aiv1.CallKindResearch || c.InputTokens != 10 || c.CostUSD == nil || *c.CostUSD != 0.3 ||
 		!c.ExpiresAt.Equal(t0.Add(30*24*time.Hour)) {
 		t.Errorf("call 1: %+v", c)
@@ -715,5 +715,53 @@ func TestResearchFinishRunRecordsCalls(t *testing.T) {
 	}
 	if e.db.inserted != 3 {
 		t.Errorf("calls written twice: %d", e.db.inserted)
+	}
+}
+
+// addCall simulates the runner reporting one call of the current run.
+func (e *researchEnv) addCall(name string, c aiv1.AgentCall) *aiv1.ResearchRunStatus {
+	e.t.Helper()
+	r := e.research(name)
+	orig := r.DeepCopy()
+	r.Status.Run.Outcome = aiv1.ResearchOutcomeSucceeded
+	r.Status.Run.Calls = append(r.Status.Run.Calls, c)
+	if err := e.c.Status().Patch(e.ctx, r, client.MergeFrom(orig)); err != nil {
+		e.t.Fatal(err)
+	}
+	return r.Status.Run
+}
+
+func TestResearchCallsCarryRunNumbers(t *testing.T) {
+	e := newResearchEnv(t, researchProject(), writerSecret(), newResearch("news", "0 7 * * *"))
+	seven := time.Date(2026, 10, 2, 5, 0, 0, 0, time.UTC)
+	e.reconcile("news")
+
+	var keys []string
+	for i, want := range []int64{1, 2} {
+		e.now = seven.Add(time.Duration(i) * 24 * time.Hour)
+		e.reconcile("news")
+		if r := e.research("news"); r.Status.Run == nil || r.Status.Run.Number != want || r.Status.RunCount != want {
+			t.Fatalf("run %d: status %+v", want, r.Status)
+		}
+		// The engine reports neither cost nor tokens.
+		run := e.addCall("news", aiv1.AgentCall{Seq: 1, At: metav1.Time{Time: e.now}, Kind: aiv1.CallKindResearch,
+			Role: "research", Engine: aiv1.EngineCursor, Model: "auto", CostSource: aiv1.CostUnknown})
+		e.now = e.now.Add(10 * time.Minute)
+		e.endPod(corev1.PodSucceeded, "")
+		e.reconcile("news")
+		keys = append(keys, "research/uid-news/"+run.ID+"/1")
+	}
+
+	if len(e.db.calls) != 2 {
+		t.Fatalf("want one call per run, got %+v", e.db.calls)
+	}
+	for i, k := range keys {
+		c, ok := e.db.calls[k]
+		if !ok || c.Task != "research/news" || c.Run != int64(i+1) || c.Project != "shop" {
+			t.Errorf("call of run %d: %+v", i+1, c)
+		}
+		if c.CostUSD != nil || c.CostSource != aiv1.CostUnknown {
+			t.Errorf("a call without cost and tokens is unknown, not $0: %+v", c)
+		}
 	}
 }

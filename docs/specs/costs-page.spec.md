@@ -283,3 +283,8 @@ follow-up issue), and requirements without an issue and why.
 - 2026-11-12 #354 (R1): migration `20261112024252_agent_calls_time_idx.sql`
   adds `agent_calls (namespace, project, at)`; `assertUsesIndex` in the store
   tests, used for `SpendSince`.
+- 2026-11-12 #355 (R5): `status.runCount` and `status.run.number` on
+  AgentResearch; research calls are written with task `research/<name>` and
+  run = the run's number (key unchanged, so a retried finish stays one row);
+  `history.StoreCall` stores a cost source without a cost as unknown. Older
+  rows keep task = name and run 0 (no backfill).

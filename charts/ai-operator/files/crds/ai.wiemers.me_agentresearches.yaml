@@ -531,6 +531,12 @@ spec:
                     type: string
                   model:
                     type: string
+                  number:
+                    description: |-
+                      Number of the run, from 1, counted by status.runCount; its agent
+                      calls carry it as their run. 0 for a run started before it existed.
+                    format: int64
+                    type: integer
                   outcome:
                     description: |-
                       ResearchOutcome is how a run ended: degraded means the answer failed
@@ -580,6 +586,11 @@ spec:
                       type: object
                     type: array
                 type: object
+              runCount:
+                description: RunCount is how many runs have started; the last one's
+                  number.
+                format: int64
+                type: integer
               skippedReason:
                 description: |-
                   SkippedReason says why the last scheduled run was skipped, e.g. which

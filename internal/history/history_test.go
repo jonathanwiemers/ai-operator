@@ -739,6 +739,19 @@ func TestStoreCallCarriesTokenBasis(t *testing.T) {
 	}
 }
 
+// TestStoreCallUnknownCost: a call without a cost is stored unknown with no
+// cost, never as $0, whatever source it names.
+func TestStoreCallUnknownCost(t *testing.T) {
+	for _, src := range []string{"", aiv1.CostUnknown, aiv1.CostReported, aiv1.CostEstimated} {
+		if c := StoreCall(aiv1.AgentCall{CostSource: src}); c.CostUSD != nil || c.CostSource != aiv1.CostUnknown {
+			t.Errorf("source %q: cost %v, source %q", src, c.CostUSD, c.CostSource)
+		}
+	}
+	if c := StoreCall(aiv1.AgentCall{CostSource: aiv1.CostReported, CostUSD: "0.0000"}); c.CostUSD == nil || c.CostSource != aiv1.CostReported {
+		t.Errorf("a reported $0 stays reported: %+v", c)
+	}
+}
+
 // releaseTask is a spec task with the release records recs.
 func releaseTask(rv string, recs ...aiv1.ReleaseRecord) *aiv1.AgentTask {
 	return task(rv, func(t *aiv1.AgentTask) {

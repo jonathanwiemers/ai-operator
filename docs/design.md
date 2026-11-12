@@ -750,8 +750,15 @@ A Desk chat turn is a `chat` call (role `implement`, `spec` or `pilot`,
 run = the task's latest run) that the runner appends with the reply.
 Research runs have no task: their pod reports the calls in
 `status.run.calls` of the AgentResearch, and the operator writes them when
-it finishes the run, keyed `research/<research UID>/<run ID>/<seq>`, with
-the research name as task and run 0.
+it finishes the run, keyed `research/<research UID>/<run ID>/<seq>`, under
+the research's project, with task `research/<name>` (so it never collides
+with an AgentTask of that name) and run the run's number:
+`status.runCount` counts the started runs, and each run keeps its number in
+`status.run.number` (run IDs are UUIDs). Calls written before numbers
+existed keep the research name as task and run 0. A call without cost and
+tokens is stored with an unknown cost, never $0. Research calls expire with
+the history retention, not the research's own, so a research run's cost
+outlives its result in `research_runs`.
 
 `agent_calls_project_at_idx` (namespace, project, at) serves time ranges over
 several projects: `Store.SpendSince` (the dashboard's today and 7-day chips)

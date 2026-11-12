@@ -67,7 +67,8 @@ runner):
 | `status.lastEngine`, `status.lastModel` | the agent of the last run |
 | `status.skippedReason` | why the last due run did not start (no candidate qualifies, previous run still in progress) |
 | `status.waiting` | `{engine, until}` while no candidate qualifies, see [Choosing agents](#choosing-agents) |
-| `status.run` | the current or last run: `id`, `startedAt`, `finishedAt`, `engine`, `model`, `effort`, `reason` (the choice), `outcome` (`succeeded`, `degraded` when the answer failed validation and was stored as plain markdown, `failed`, `limited`), `message`, `costUSD`, `engineUsage`, `usageLimits`, `calls` (the run's engine calls, see below) |
+| `status.runCount` | how many runs have started |
+| `status.run` | the current or last run: `id`, `number` (from 1, counted by `runCount`), `startedAt`, `finishedAt`, `engine`, `model`, `effort`, `reason` (the choice), `outcome` (`succeeded`, `degraded` when the answer failed validation and was stored as plain markdown, `failed`, `limited`), `message`, `costUSD`, `engineUsage`, `usageLimits`, `calls` (the run's engine calls, see below) |
 | `status.conditions` | `Valid`, `DatabaseReady`, `Running`, see [Runs](#runs) and [Troubleshooting](#troubleshooting) |
 
 The UI marks researches it created with the annotation
@@ -354,8 +355,8 @@ migrate (the writer cannot):
    `outcome`, `message`, `costUSD`, the engine's newest usage reading
    (`engineUsage`), any usage limit (`usageLimits`) and its engine calls
    (`calls`, seq 1..n, kind and role `research`). The operator then writes
-   the calls to `agent_calls` (project = `spec.projectRef`, task = the
-   research name, run 0, keyed `research/<UID>/<run ID>/<seq>`; the pod
+   the calls to `agent_calls` (project = `spec.projectRef`, task =
+   `research/<name>`, run = `status.run.number`, keyed `research/<UID>/<run ID>/<seq>`; the pod
    has no rights on that table), sets `finishedAt` and deletes the pod. A
    failed write is retried with the next reconcile.
    The project's next sync merges the reading and an active limit into the
@@ -447,6 +448,11 @@ owner, deletes expired runs with their results and items at its start and
 then every hour. A changed `retention` applies to later runs only. Deleting
 an `AgentResearch` does not delete its stored runs; they expire as usual (and
 the UI no longer shows or searches them).
+
+A run's cost also counts on the Desk's Costs page and the project's Spend
+tab: each call is an `agent_calls` row (kind `research`, task
+`research/<name>`, run = the run's number) that expires with
+`research.historyRetention`, not with `spec.retention`.
 
 ## Database
 

@@ -684,7 +684,10 @@ func StoreCall(c aiv1.AgentCall) store.Call {
 		StepGateNudges: c.StepGateNudges, TokenBasis: int16(c.TokenBasis)}
 	switch c.CostSource {
 	case aiv1.CostReported, aiv1.CostEstimated:
-		call.CostUSD = costOf(c.CostUSD)
+		if call.CostUSD = costOf(c.CostUSD); call.CostUSD == nil {
+			// A source without a cost is no cost: unknown, never $0.
+			call.CostSource = aiv1.CostUnknown
+		}
 	default:
 		// The table knows three sources; anything else is unknown.
 		call.CostSource = aiv1.CostUnknown

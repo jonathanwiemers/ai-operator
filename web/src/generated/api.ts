@@ -1936,6 +1936,11 @@ export interface AgentResearchStatus {
    */
   waiting?: ResearchWaiting;
   /**
+   * RunCount is how many runs have started; the last one's number.
+   * +optional
+   */
+  runCount?: number /* int64 */;
+  /**
    * Run is the current or last run.
    * +optional
    */
@@ -1963,6 +1968,12 @@ export interface ResearchRunStatus {
    * +optional
    */
   id?: string;
+  /**
+   * Number of the run, from 1, counted by status.runCount; its agent
+   * calls carry it as their run. 0 for a run started before it existed.
+   * +optional
+   */
+  number?: number /* int64 */;
   /**
    * +optional
    */
