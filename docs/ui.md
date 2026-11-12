@@ -2247,14 +2247,15 @@ table at its top; the matchers are in `web/test/conventions.mjs`:
 - `html-injection`: `v-html`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`.
   **Enforced**: any hit fails the test.
 - `raw-colour`: `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(`, `rgba(`, `hsl(`,
-  `hsla(`, `oklch(` outside `src/style.css`. Report-only.
+  `hsla(`, `oklch(` outside `src/style.css`. **Enforced.** Use a token
+  (`--on-accent` for text on the accent colour).
 - `api-call-outside-client`: `get<`/`post<` and calls of the `get`/`post`
   helpers imported from `api.ts`, outside `src/client.ts`. **Enforced.**
 - `breakpoint`: `@media` widths other than the three widths of
   [design.md](design.md#desk-styles): `min-width` 760 or 1180 px,
   `max-width` 759.98 or 1179.98 px, nothing else in px. **Enforced.**
 
-Report-only rules print each hit as `file:line rule` (as a test diagnostic)
-and a count, and pass. Comments are ignored. To enforce a rule, set
-`enforce: true` in its `RULES` entry once its hits are gone (the end of the
-Desk cleanup milestone).
+All four rules are enforced: any hit fails `npm test`. A rule with
+`enforce: false` in its `RULES` entry would only print each hit as
+`file:line rule` (as a test diagnostic) with a count, and pass. Comments are
+ignored.

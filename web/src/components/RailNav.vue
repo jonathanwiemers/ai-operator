@@ -226,7 +226,7 @@ nav {
   padding: 1px 6px;
   border-radius: 9px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .rail-foot {
   border-top: 1px solid var(--border);

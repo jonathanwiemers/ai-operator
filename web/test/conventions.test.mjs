@@ -18,7 +18,7 @@ const SRC = fileURLToPath(new URL('../src', import.meta.url))
 // `skip`: files (relative to src, with /) where the rule does not apply.
 const RULES = [
   { name: 'html-injection', enforce: true, find: htmlInjection, skip: [] },
-  { name: 'raw-colour', enforce: false, find: rawColours, skip: ['style.css'] },
+  { name: 'raw-colour', enforce: true, find: rawColours, skip: ['style.css'] },
   { name: 'api-call-outside-client', enforce: true, find: apiCalls, skip: ['client.ts'] },
   { name: 'breakpoint', enforce: true, find: strayBreakpoints, skip: [] },
 ]

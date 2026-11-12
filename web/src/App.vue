@@ -306,7 +306,7 @@ watch(notifyActive, (on) => {
   padding: 1px 6px;
   border-radius: 9px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .main {
   min-width: 0;
