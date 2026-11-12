@@ -23,6 +23,11 @@ workflow:
 
 stages: [check, release]
 
+# The runner retries the clone when it fails, e.g. on a DNS timeout
+# ("Could not resolve host: gitlab.com"), instead of failing the job.
+variables:
+  GET_SOURCES_ATTEMPTS: "3"
+
 default:
   tags: [shared]
   interruptible: true
@@ -48,7 +53,10 @@ default:
     paths: [.cache/go-mod, .cache/go-build]
 
 # No cache: controller-gen's paths=./... also walks .cache and trips over
-# go.work files inside the module cache.
+# go.work files inside the module cache. So every run downloads controller-gen
+# and all modules from proxy.golang.org, which now and then breaks off
+# ("stream error ... INTERNAL_ERROR"). The downloads are retried first, on
+# their own, so a real drift below still fails at once.
 drift:
   extends: .go
   variables:
@@ -56,6 +64,13 @@ drift:
     GOCACHE: /root/.cache/go-build
   cache: []
   script:
+    - |
+      for i in 1 2 3; do
+        make "$CI_PROJECT_DIR/bin/controller-gen" && go mod download && break
+        [ "$i" = 3 ] && { echo "downloading the Go tools and modules failed 3 times"; exit 1; }
+        echo "download failed (attempt $i), retrying in 15 s"
+        sleep 15
+      done
     - make generate manifests ts-types
     - git diff --exit-code
 
