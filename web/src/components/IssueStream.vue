@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
 import { hasFeature } from '../api'
 import { getStream, LoginRequiredError } from '../client'
@@ -147,10 +148,15 @@ function showDay(i: number): string | null {
       <EventCard v-else :event="item.event" :can-steer="canSteer" @posted="loadInitial" />
     </template>
 
-    <div v-if="older" class="older">
-      <button type="button" class="btn" :disabled="loadingOlder" @click="loadOlder">
-        {{ loadingOlder ? 'Loading…' : 'Load older' }}
-      </button>
+    <div v-if="older" class="mt-[18px] flex justify-center">
+      <UButton
+        color="neutral"
+        variant="outline"
+        size="sm"
+        :disabled="loadingOlder"
+        :label="loadingOlder ? 'Loading…' : 'Load older'"
+        @click="loadOlder"
+      />
     </div>
   </div>
 </template>
@@ -175,25 +181,5 @@ function showDay(i: number): string | null {
   flex: 1;
   height: 1px;
   background: var(--border);
-}
-.older {
-  display: flex;
-  justify-content: center;
-  margin-top: 18px;
-}
-.btn {
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  padding: 6px 14px;
-  border-radius: 7px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.empty {
-  padding: 32px;
-  text-align: center;
-  color: var(--text-3);
 }
 </style>

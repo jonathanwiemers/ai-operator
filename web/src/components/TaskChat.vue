@@ -342,9 +342,14 @@ onUnmounted(() => {
     <div v-if="loading && !messages.length" class="empty">Loading…</div>
     <template v-else>
       <div v-if="hasOlder" class="older">
-        <button type="button" class="btn" :disabled="loadingOlder" @click="loadOlder">
-          {{ loadingOlder ? 'Loading…' : 'Older messages' }}
-        </button>
+        <UButton
+          color="neutral"
+          variant="outline"
+          size="sm"
+          :disabled="loadingOlder"
+          :label="loadingOlder ? 'Loading…' : 'Older messages'"
+          @click="loadOlder"
+        />
       </div>
       <div v-if="!chronological.length" class="empty">No messages yet.</div>
       <div v-else class="thread">
@@ -355,18 +360,19 @@ onUnmounted(() => {
               <span v-if="msg.kind === 'interrupt'" class="faint">interrupt</span>
               <span v-else-if="msg.kind === 'command'" class="faint">command</span>
               <span class="faint"><RelTime :time="msg.at" /></span>
-              <Badge
-                v-if="msg.role === 'user' && msg.state"
-                :tone="stateLabel(msg.state).tone"
-                :title="msg.reason"
-              >
+              <Badge v-if="msg.role === 'user' && msg.state" :tone="stateLabel(msg.state).tone">
                 {{ stateLabel(msg.state).text }}
               </Badge>
             </div>
             <p v-if="msg.redacted && !msg.body" class="withheld">message hidden</p>
             <p v-else-if="msg.kind === 'command'" class="cmd">{{ commandLabel(msg.body) }}</p>
             <Markdown v-else-if="msg.body" :text="msg.body" />
-            <p v-if="msg.role === 'user' && msg.state === 'failed' && msg.reason" class="reason">
+            <!-- Every state's reason is text, not the badge's title: a title cannot be read on touch. -->
+            <p
+              v-if="msg.role === 'user' && msg.state && msg.reason"
+              class="m-0 mt-1.5 text-[13px]"
+              :class="msg.state === 'failed' ? 'text-(--tone-danger-fg)' : 'text-(--text-3)'"
+            >
               {{ msg.reason }}
             </p>
           </div>
@@ -507,21 +513,6 @@ onUnmounted(() => {
   padding: 10px;
   border-bottom: 1px solid var(--border);
 }
-.btn {
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  padding: 4px 12px;
-  border-radius: 7px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  color: var(--text);
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 .thread {
   display: flex;
   flex-direction: column;
@@ -566,15 +557,10 @@ onUnmounted(() => {
   font-family: var(--mono);
   font-size: 13px;
 }
-.withheld,
-.reason {
+.withheld {
   margin: 0;
   font-size: 13px;
   color: var(--text-3);
-}
-.reason {
-  color: var(--tone-danger-fg);
-  margin-top: 6px;
 }
 .status {
   display: flex;
@@ -586,10 +572,5 @@ onUnmounted(() => {
 }
 .status .t {
   font-size: 13px;
-}
-.empty {
-  padding: 24px 16px;
-  text-align: center;
-  color: var(--text-3);
 }
 </style>

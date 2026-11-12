@@ -1524,9 +1524,9 @@ How it works:
   least 16 px, while the composer and the search stay under 16 px at
   1280 px. On the overview, the Inbox and the task page's Overview, Chat and
   Details tabs no visible
-  `button`, `a.btn`, `[role=button]` or `input` is under 44 px high
+  `button`, `[role=button]` or `input` is under 44 px high
   (exceptions in the check's `hitAllowlist`, with a reason), and at
-  1280 px a `.btn` is still 34 px. The `bottom bar …` cases check the
+  1280 px a plain `button` stays under 44 px. The `bottom bar …` cases check the
   [bottom bar](#navigation): the count, each item's 44 px, that each link
   navigates and gets `aria-current` and *Projects* opens the sheet; no
   *Research* with a features answer without it; that the issue page's end

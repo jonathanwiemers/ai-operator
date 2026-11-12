@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
 import { canStartResearch } from '../api'
 import { getResearches } from '../client'
 import { useNow, useResource } from '../live'
@@ -34,8 +35,8 @@ function lastRunLine(r: ResearchSummary): string {
   <div class="page">
     <div class="mb-[18px] flex flex-wrap items-center gap-3">
       <h1>Research</h1>
-      <!-- a.btn is 44 px high on phones (style.css, the phone rule). -->
-      <RouterLink v-if="canStartResearch()" to="/research/new" class="btn primary ms-auto">New research</RouterLink>
+      <!-- A link, so the phone rule for buttons misses it: min-h-11 makes it 44 px high on phones. -->
+      <UButton v-if="canStartResearch()" to="/research/new" color="primary" class="ms-auto min-h-11 tablet:min-h-0" label="New research" />
     </div>
 
     <div v-if="error" class="banner danger [overflow-wrap:anywhere]">{{ error }}</div>

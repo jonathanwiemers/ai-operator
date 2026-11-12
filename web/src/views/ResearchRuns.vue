@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { getResearchRuns, LoginRequiredError, NotFoundError } from '../client'
 import { absTime, cost, runLine, type Tone } from '../format'
@@ -6,6 +7,7 @@ import { live } from '../live'
 import Badge from '../components/Badge.vue'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import RelTime from '../components/RelTime.vue'
+import Truncated from '../ui/Truncated.vue'
 import NotFound from './NotFound.vue'
 import type { ResearchRun } from '../types'
 
@@ -51,11 +53,6 @@ function duration(r: ResearchRun): string {
   return runLine(undefined, undefined, Date.parse(r.finishedAt) - Date.parse(r.startedAt), undefined) || '—'
 }
 
-function reason(r: ResearchRun): string {
-  const t = r.choiceReason?.trim()
-  if (!t) return '—'
-  return t.length > 48 ? `${t.slice(0, 47)}…` : t
-}
 
 async function fetchPage(before: string | undefined, append: boolean): Promise<boolean> {
   const mine = ++seq
@@ -104,9 +101,7 @@ watch(
   <NotFound v-if="notFound" />
   <div v-else class="page">
 
-    <div class="row head">
-      <h1>Run history</h1>
-    </div>
+    <h1 class="mb-3.5">Run history</h1>
 
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !runs.length" class="card empty">Loading…</div>
@@ -133,28 +128,23 @@ watch(
           </Badge>
         </template>
         <template #cell-agent="{ row: r }"><span class="font-mono">{{ agent(r) }}</span></template>
-        <template #cell-choiceReason="{ row: r }"><span :title="r.choiceReason || undefined">{{ reason(r) }}</span></template>
+        <!-- The full reason opens on tap; relative z-1 lifts it above the row's link cover. -->
+        <template #cell-choiceReason="{ row: r }">
+          <Truncated :lines="2" class="relative z-1 max-w-[48ch]" :text="r.choiceReason?.trim() || '—'" />
+        </template>
         <template #cell-costUSD="{ row: r }">{{ cost(r.costUSD) }}</template>
         <template #cell-error="{ row: r }"><span :title="r.error || undefined">{{ r.error || '—' }}</span></template>
       </DataList>
     </div>
 
-    <div v-if="hasMore" class="more">
-      <button type="button" class="btn" :disabled="loadingMore" @click="loadOlder">
-        {{ loadingMore ? 'Loading…' : 'Load older' }}
-      </button>
+    <div v-if="hasMore" class="mt-3.5 flex justify-center">
+      <UButton
+        color="neutral"
+        variant="outline"
+        :disabled="loadingMore"
+        :label="loadingMore ? 'Loading…' : 'Load older'"
+        @click="loadOlder"
+      />
     </div>
   </div>
 </template>
-
-<style scoped>
-.head {
-  margin-bottom: 14px;
-}
-
-.more {
-  margin-top: 14px;
-  display: flex;
-  justify-content: center;
-}
-</style>

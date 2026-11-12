@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
 import { session } from '../../api'
 import { ApiError, postMilestoneNote } from '../../client'
@@ -199,7 +200,15 @@ function taskLink(ev: StreamEvent) {
       <!-- needs -->
       <div v-else-if="e.kind === 'needs'" class="card warn">
         <p><Markdown mode="inline" :text="e.data.message || e.data.reason || e.summary" /></p>
-        <RouterLink v-if="taskLink(e)" class="btn" :to="taskLink(e)!">Open task</RouterLink>
+        <UButton
+          v-if="taskLink(e)"
+          color="neutral"
+          variant="outline"
+          size="sm"
+          class="min-h-11 tablet:min-h-0"
+          :to="taskLink(e)!"
+          label="Open task"
+        />
       </div>
 
       <!-- merged / closed -->
@@ -218,20 +227,25 @@ function taskLink(ev: StreamEvent) {
       <div v-else-if="e.kind === 'proposal'" class="card pilot">
         <Markdown v-if="e.data.body" :text="e.data.body" />
         <p v-else>{{ e.summary }}</p>
-        <div v-if="e.data.proposalState === 'open' || !e.data.proposalState" class="btns">
-          <button
-            type="button"
-            class="btn primary"
+        <div v-if="e.data.proposalState === 'open' || !e.data.proposalState" class="mt-2.5 flex flex-wrap gap-1.5">
+          <UButton
+            color="neutral"
+            variant="solid"
+            size="sm"
             :disabled="!canSteer || posting"
+            :label="`yes P${e.data.proposalID}`"
             @click="decide(true)"
-          >
-            yes P{{ e.data.proposalID }}
-          </button>
-          <button type="button" class="btn" :disabled="!canSteer || posting" @click="decide(false)">
-            no P{{ e.data.proposalID }}
-          </button>
+          />
+          <UButton
+            color="neutral"
+            variant="outline"
+            size="sm"
+            :disabled="!canSteer || posting"
+            :label="`no P${e.data.proposalID}`"
+            @click="decide(false)"
+          />
         </div>
-        <p v-if="sendError" class="err">{{ sendError }}</p>
+        <p v-if="sendError" class="mt-1.5 text-[13px] text-(--tone-danger-fg)">{{ sendError }}</p>
       </div>
 
       <!-- retrospective: links to the milestone's Retrospective tab -->
@@ -346,11 +360,8 @@ function taskLink(ev: StreamEvent) {
   border-radius: var(--radius);
   font-size: 13.5px;
 }
+/* The global .card, with its padding. */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
   padding: 12px 14px;
 }
 .card.pilot {
@@ -384,45 +395,6 @@ function taskLink(ev: StreamEvent) {
 .t {
   margin-left: auto;
   font-size: 12px;
-}
-.btns {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-  flex-wrap: wrap;
-}
-.btn {
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  padding: 4px 11px;
-  border-radius: 7px;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  color: var(--text);
-  text-decoration: none;
-}
-.btn:hover {
-  background: var(--surface-2);
-  text-decoration: none;
-}
-.btn.primary {
-  background: var(--text);
-  color: var(--bg);
-  border-color: var(--text);
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.err {
-  color: var(--tone-danger-fg);
-  font-size: 13px;
-  margin-top: 6px;
-}
-.muted {
-  color: var(--text-2);
 }
 .chat-link {
   display: inline-block;

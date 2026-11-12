@@ -12,6 +12,11 @@ const crumbs = computed(() =>
   isRouteName(route.name) ? crumbsFor({ name: route.name, params: route.params, query: route.query }, crumbNames) : [],
 )
 const open = ref(false)
+
+// Every crumb after the first, the fold among them, starts with a separator.
+const item = 'min-w-0 items-center gap-1'
+const sep = "before:text-(--text-3) before:content-['›']"
+const mid = (i: number) => i > 0 && i < crumbs.value.length - 1
 watch(
   () => route.fullPath,
   () => {
@@ -21,76 +26,25 @@ watch(
 </script>
 
 <template>
-  <nav v-if="crumbs.length" class="breadcrumbs" :class="{ open }" aria-label="Breadcrumbs">
-    <ol>
+  <nav v-if="crumbs.length" aria-label="Breadcrumbs">
+    <ol class="m-0 flex min-w-0 list-none flex-wrap items-center gap-1 p-0 text-[13px] text-(--text-3)">
       <template v-for="(c, i) in crumbs" :key="i">
-        <li v-if="i === 1 && crumbs.length > 2" class="fold">
-          <button type="button" aria-label="Show all breadcrumbs" @click="open = true">…</button>
+        <!-- On phones the middle crumbs fold behind "…" until it is tapped. -->
+        <li v-if="i === 1 && crumbs.length > 2" :class="[item, sep, open ? 'hidden' : 'hidden max-tablet:flex']">
+          <button
+            type="button"
+            class="cursor-pointer rounded-(--radius-sm) border border-(--border) bg-(--surface-2) px-1.5 leading-[18px] text-(--text-2)"
+            aria-label="Show all breadcrumbs"
+            @click="open = true"
+          >
+            …
+          </button>
         </li>
-        <li :class="{ mid: i > 0 && i < crumbs.length - 1 }">
-          <RouterLink v-if="c.to" :to="c.to">{{ c.label }}</RouterLink>
-          <span v-else aria-current="page">{{ c.label }}</span>
+        <li :class="[item, i > 0 && sep, !open && mid(i) ? 'flex max-tablet:hidden' : 'flex']">
+          <RouterLink v-if="c.to" :to="c.to" class="max-w-[28ch] truncate text-(--text-2)">{{ c.label }}</RouterLink>
+          <span v-else aria-current="page" class="max-w-[28ch] truncate font-[550] text-(--text)">{{ c.label }}</span>
         </li>
       </template>
     </ol>
   </nav>
 </template>
-
-<style scoped>
-ol {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  font-size: 13px;
-  color: var(--text-3);
-  min-width: 0;
-}
-li {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-li + li::before {
-  content: '›';
-  color: var(--text-3);
-}
-li a,
-li span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 28ch;
-}
-li a {
-  color: var(--text-2);
-}
-li span[aria-current] {
-  color: var(--text);
-  font-weight: 550;
-}
-.fold {
-  display: none;
-}
-.fold button {
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  border-radius: var(--radius-sm);
-  color: var(--text-2);
-  padding: 0 6px;
-  line-height: 18px;
-  cursor: pointer;
-}
-@media (max-width: 759.98px) {
-  .breadcrumbs:not(.open) .mid {
-    display: none;
-  }
-  .breadcrumbs:not(.open) .fold {
-    display: flex;
-  }
-}
-</style>

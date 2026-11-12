@@ -593,7 +593,7 @@ for (const name of hitRoutes) {
     const found = await page.evaluate(() => {
       const small: string[] = []
       let counted = 0
-      for (const e of document.querySelectorAll<HTMLElement>('button, a.btn, [role=button], input')) {
+      for (const e of document.querySelectorAll<HTMLElement>('button, [role=button], input')) {
         const input = e instanceof HTMLInputElement ? e : null
         if (input?.type === 'hidden') continue
         if (input && input.disabled && ['checkbox', 'radio'].includes(input.type)) continue
@@ -685,8 +685,8 @@ test.describe('inbox rows', () => {
   }
 })
 
-// Desktop is unchanged: the phone rule stops below 760 px, so the global
-// .btn keeps its 34 px on the overview at 1280 px.
+// Desktop is unchanged: the phone rule stops below 760 px, so a plain button
+// on the overview at 1280 px stays under 44 px.
 test('overview buttons keep their desktop height@1280', async ({ page, baseURL }) => {
   const route = routes.find((r) => r.name === 'overview')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -698,7 +698,6 @@ test('overview buttons keep their desktop height@1280', async ({ page, baseURL }
   await route.ready(page)
   const heights = await page.evaluate(() => {
     const b = document.createElement('button')
-    b.className = 'btn'
     b.textContent = 'probe'
     // Out of the flow: main is a flex column that stretches its children.
     b.style.position = 'absolute'
@@ -707,7 +706,7 @@ test('overview buttons keep their desktop height@1280', async ({ page, baseURL }
     b.remove()
     return h
   })
-  expect(heights, '.btn at desktop width').toBe(34)
+  expect(heights, 'button at desktop width').toBeLessThan(44)
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
@@ -1959,7 +1958,7 @@ test.describe('milestone pilot', () => {
       // shared with the companions list) is not part of these cards.
       const titles = await page.locator('main').evaluate((main) =>
         [...main.querySelectorAll('[data-pause-card] [title], [data-pauses] [title]')]
-          .filter((e) => e.tagName !== 'TIME' && !e.closest('.companion-link') && !e.textContent!.includes('companion:'))
+          .filter((e) => e.tagName !== 'TIME' && !e.textContent!.includes('companion:'))
           .map((e) => e.outerHTML.slice(0, 80)),
       )
       expect(titles, 'title attributes').toEqual([])

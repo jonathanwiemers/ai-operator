@@ -16,14 +16,8 @@ const title = computed(() => companionTitle(props.companion))
 </script>
 
 <template>
-  <ExtLink v-if="!plain && companion.mrURL" :href="companion.mrURL" class="companion-link" :title="title">
+  <ExtLink v-if="!plain && companion.mrURL" :href="companion.mrURL" class="hover:no-underline" :title="title">
     <Badge :tone="tone" :title="title">companion: {{ label }}</Badge>
   </ExtLink>
   <Badge v-else :tone="tone" :title="title">companion: {{ label }}</Badge>
 </template>
-
-<style scoped>
-.companion-link:hover {
-  text-decoration: none;
-}
-</style>

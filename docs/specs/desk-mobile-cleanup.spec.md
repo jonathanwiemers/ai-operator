@@ -666,3 +666,18 @@ follow-up issue), and requirements without an issue and why.
   version, type and schema) and Spend's composed SQL (`scanTotals`,
   `scanCall`, `stepLines`); comments at `scanTotals` and in `migrate.go`
   say why. Nothing narrowed.
+- 2026-11-12 #347 (R17, kit classes): no scoped rule for `.head`,
+  `.title`, `.btn`, `.err`, `.reason`, `.hint` or `.empty` is left. The last
+  ones (TaskChat, IssueStream, CompanionsList, LiveTranscript, RailNav,
+  EventCard, ResearchRuns, Stream) became `UButton` and utilities; SignIn
+  and Researches were the last users of the global `.btn`, which is
+  deleted with `a.btn` in the phone hit-area rule (link buttons set
+  `min-h-11` themselves), and so is the unused `.prose`. The rail's
+  *Sign out* and the SSO link use utilities, not `UButton`: in the initial
+  bundle it broke the cap by 2.7 kB, which stays. Breadcrumbs, ExtLink and
+  CompanionChip moved to utilities; ContextPanel, ContextChart,
+  TranscriptLine and RelTime keep their scoped layout, which restates no
+  kit class. Text whose only full copy was a `title` opens on tap: a chat
+  message's reason shows for every state, and the rail's user name, a
+  companion's reason and a run's choice reason (no longer cut at 48
+  characters) are `Truncated`. Nothing narrowed.

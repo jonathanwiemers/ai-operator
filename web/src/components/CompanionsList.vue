@@ -2,12 +2,13 @@
 import Markdown from './Markdown.vue'
 import { companionRef } from '../companion'
 import type { MilestoneView } from '../types'
+import Truncated from '../ui/Truncated.vue'
 import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
 
 // CompanionsList: a milestone's companion merge requests, each with its home
 // issue (its implement task, else the GitLab issue). Reasons are untrusted
-// text.
+// text; a clipped reason opens on tap.
 const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView }>()
 
 const homeTask = (iid: number) =>
@@ -16,10 +17,11 @@ const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestone
 </script>
 
 <template>
-  <ul class="companions">
+  <!-- One minmax(0, 1fr) column: the one-line reason is cut at the column, it does not set its width. -->
+  <ul class="m-0 grid list-none grid-cols-[minmax(0,1fr)] gap-2.5 p-0 text-[13px]">
     <li v-for="c in milestone.companions" :key="`${c.homeIssueIID}/${companionRef(c)}`">
       <div class="row">
-        <ExtLink :href="c.mrURL" class="mono ref">{{ companionRef(c) }}</ExtLink>
+        <ExtLink :href="c.mrURL" class="mono min-w-0 wrap-anywhere">{{ companionRef(c) }}</ExtLink>
         <span class="spacer" />
         <CompanionChip :companion="c" plain />
       </div>
@@ -29,31 +31,8 @@ const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestone
         </RouterLink>
         <ExtLink v-else :href="issueURL(c.homeIssueIID)">#{{ c.homeIssueIID }}</ExtLink>
         <span v-if="c.release">release {{ c.release }}</span>
-        <span v-if="c.reason" class="reason" :title="c.reason"><Markdown mode="inline" :text="c.reason" /></span>
+        <Truncated v-if="c.reason" class="min-w-0"><Markdown mode="inline" :text="c.reason" /></Truncated>
       </div>
     </li>
   </ul>
 </template>
-
-<style scoped>
-.companions {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  /* The nowrap reason is cut at the column, it does not set its width. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  font-size: 13px;
-}
-.companions .ref {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.companions .reason {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-</style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { transcriptURL } from '../client'
 import Badge from './Badge.vue'
@@ -96,7 +97,7 @@ const endText = computed(() => {
       <span v-if="pod" class="mono faint">{{ pod }}</span>
       <span v-if="runs > 1" class="faint">{{ runs }} runs</span>
       <span class="spacer" />
-      <button v-if="state !== 'live' && pod" class="btn" type="button" @click="open">Reconnect</button>
+      <UButton v-if="state !== 'live' && pod" color="neutral" variant="outline" size="xs" label="Reconnect" @click="open" />
     </div>
     <div ref="list" class="entries" @scroll="onScroll">
       <div v-if="!entries.length" class="empty">
@@ -136,17 +137,6 @@ const endText = computed(() => {
   gap: 10px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
-}
-
-.btn {
-  font: inherit;
-  font-size: 13px;
-  padding: 3px 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
 }
 
 .entries {

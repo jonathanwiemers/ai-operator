@@ -2681,9 +2681,21 @@ flash light. `.dark` sets `color-scheme: dark` for form controls.
 specificity. The bare element rules (`*`, `html`, `body`, `a`, `:focus-visible`,
 `h1`–`h3`, `code`) are therefore in `@layer base`, so component classes and
 utilities (Nuxt UI, Tailwind's `components` and `utilities` layers) win over
-them. Global classes (`.btn`, `.card`, `.row`, `.banner`, `.empty`, `.md …`)
+them. Global classes (`.card`, `.row`, `.banner`, `.empty`, `.md …`)
 stay unlayered until they are removed: in a layer, scoped rules they beat
 today would win. New element rules go into `@layer base`, never unlayered.
+
+**Kit classes.** Scoped CSS does not redefine a kit or global class
+(`.btn`, `.empty`, `.card`, `.muted`, …) or give a component its own
+`.head`, `.title`, `.err`, `.reason` or `.hint`: a button is `UButton`, an
+empty state the global `.empty`, an error or reason line utilities
+(`text-[13px] text-(--tone-danger-fg)`), and a scoped rule only adds what the
+global class lacks (`EventCard`'s `.card` padding). There is no global
+`.btn` any more. The shell (`App.vue`, `RailNav.vue`, `SignIn.vue`) is in the
+initial bundle, so its controls are plain elements with utilities: a Nuxt UI
+component there costs the bundle budget ([ui.md](ui.md#bundle-budget)).
+Text cut to fit is `Truncated` (opens on tap); a `title` only repeats what
+can also be read elsewhere, since touch cannot show it.
 
 Tailwind's preflight (its element reset) is not imported: it would restyle
 the lists, paragraphs, headings and buttons of every view not yet on the
@@ -2745,18 +2757,18 @@ it there, with `--keyboard-inset`, see [ui.md](ui.md#composer)).
   scoped sizes and Nuxt UI's text utilities give way without a phone rule
   of their own. Do not set an input's size with `!important` elsewhere.
 - *Hit areas.* Every control a thumb taps is at least 44 px high on a
-  phone. The same base-layer rule gives `button`, `a.btn`,
+  phone. The same base-layer rule gives `button`,
   `[role=button]`, `select` and every `input` but checkboxes and radios
   `min-height: 44px !important`, and buttons `min-width: 44px !important`.
   `min-height` wins over a smaller `height` whatever the cascade, so the
-  scoped 26 to 34 px heights (the global `.btn`,
+  scoped 26 to 34 px heights (the rail's *Sign out*,
   the stream search, the composers' buttons, the pause card's select) need
   no phone rule of their own; a view must not set `min-height` on a control
-  with `!important`. Links styled as controls set it themselves: the rail
+  with `!important`. Links styled as controls set it themselves (`min-h-11`): `UButton`s with `to` or `href`, *Sign in with SSO*, the rail
   items (`RailNav.vue`), the mobile bar's brand and the bottom bar's items (`App.vue`) and the tab
   strip (`RouteTabs`, `min-h-11`). Desktop and tablet keep their sizes. The
   e2e check `<route> hit areas of at least 44 px@375` counts the visible
-  `button`, `a.btn`, `[role=button]` and `input` elements under 44 px on the
+  `button`, `[role=button]` and `input` elements under 44 px on the
   overview, the Inbox and the task page; an exception goes into its
   `hitAllowlist` with a reason.
 

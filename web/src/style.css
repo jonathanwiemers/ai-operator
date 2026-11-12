@@ -341,9 +341,10 @@
        button at least 44 px wide (docs/design.md, "Phones"). min-height
        beats a smaller height whatever the cascade, so the scoped heights of
        34 px and less give way; !important keeps a rule or utility that sets
-       min-height from undoing it. Checkboxes and radios keep their size. */
+       min-height from undoing it. Checkboxes and radios keep their size.
+       A link styled as a button (UButton with to or href) is an <a>: it
+       sets min-h-11 itself. */
     button,
-    a.btn,
     [role='button'],
     select,
     input:not([type='checkbox'], [type='radio'], [type='hidden']) {
@@ -351,7 +352,6 @@
     }
 
     button,
-    a.btn,
     [role='button'] {
       min-width: 44px !important;
     }
@@ -405,36 +405,6 @@
 
 .spacer {
   flex: 1;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 34px;
-  padding: 0 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-weight: 550;
-  cursor: pointer;
-}
-
-.btn:hover {
-  background: var(--surface-2);
-  text-decoration: none;
-}
-
-.btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.btn.primary:hover {
-  background: #c9361f;
 }
 
 .banner {
@@ -513,11 +483,6 @@ table.list th {
 
 table.list tr:last-child td {
   border-bottom: none;
-}
-
-.prose {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .empty {

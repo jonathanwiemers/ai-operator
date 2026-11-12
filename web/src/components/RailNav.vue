@@ -10,6 +10,7 @@ import { windowLabel } from '../format'
 import { live } from '../live'
 import { projectDot, projectNeedsYou, projectStateLine } from '../stream'
 import type { EngineUsage, ProjectSummary, ResearchSummary } from '../types'
+import Truncated from '../ui/Truncated.vue'
 
 const props = defineProps<{
   projects: ProjectSummary[] | null
@@ -122,8 +123,17 @@ function projectActive(namespace: string, name: string) {
         >
           <span class="ldot" />{{ live.connected ? 'Live' : 'Offline' }}
         </span>
-        <span class="uname" :title="(session.me?.roles ?? []).join(', ') || 'no roles'">{{ session.me?.username }}</span>
-        <button v-if="session.me?.authMode === 'oidc'" class="btn" type="button" @click="logout">Sign out</button>
+        <!-- A clipped name opens on tap; the roles stay a hover hint, nothing depends on them. -->
+        <Truncated class="max-w-[110px] font-[550]" :title="(session.me?.roles ?? []).join(', ') || 'no roles'">{{ session.me?.username }}</Truncated>
+        <!-- Utilities, not UButton: the rail is in the initial bundle (main.ts, bundle budget). -->
+        <button
+          v-if="session.me?.authMode === 'oidc'"
+          type="button"
+          class="ms-auto inline-flex h-[26px] cursor-pointer items-center justify-center rounded-(--radius-sm) border border-(--border-strong) bg-(--surface) px-2 text-xs font-[550] text-(--text) hover:bg-(--surface-2)"
+          @click="logout"
+        >
+          Sign out
+        </button>
       </div>
     </div>
   </div>
@@ -255,19 +265,6 @@ nav {
   gap: 8px;
   margin-top: 4px;
   flex-wrap: wrap;
-}
-.uname {
-  font-weight: 550;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 110px;
-}
-.who .btn {
-  margin-left: auto;
-  height: 26px;
-  padding: 0 8px;
-  font-size: 12px;
 }
 .live {
   display: inline-flex;

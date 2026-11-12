@@ -30,7 +30,14 @@ const href = loginURL()
       <h1>ai-operator</h1>
       <p class="muted">Coding agents that work through your GitLab board. Sign in to follow their work.</p>
       <div v-if="error" class="banner danger" role="alert">{{ error }}</div>
-      <a :href="href" class="btn primary signin-btn">Sign in with SSO</a>
+      <!-- Utilities, not UButton: SignIn is in the initial bundle (main.ts, bundle budget).
+           A link, so the phone rule for buttons misses it: min-h-11 makes it 44 px high. -->
+      <a
+        :href="href"
+        class="mt-2 inline-flex min-h-11 w-full items-center justify-center rounded-(--radius-sm) bg-(--accent) px-3.5 font-[550] text-white hover:bg-(--ui-color-primary-600) hover:no-underline tablet:min-h-10"
+      >
+        Sign in with SSO
+      </a>
     </div>
   </div>
 </template>
@@ -69,12 +76,5 @@ const href = loginURL()
 .banner {
   text-align: left;
   width: 100%;
-}
-
-.signin-btn {
-  margin-top: 8px;
-  width: 100%;
-  justify-content: center;
-  height: 40px;
 }
 </style>
