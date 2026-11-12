@@ -389,3 +389,10 @@ follow-up issue), and requirements without an issue and why.
   basis note moved from under the KPI row into this section so it appears once;
   unmetered calls are named there. The costs chunk is 113.0 kB (+1.0), the
   initial bundle 129.3 kB.
+- 2026-11-12 #368 (R13): *Most expensive* (`components/MostExpensive.vue`,
+  `costs.ts`'s `topRowLocation`). Three `DataList`s; the label is the link,
+  cost shows `spendUSD` (n/a / not metered when unknown, never $0.00). The
+  top request failing leaves the page standing (no error banner for the side
+  part). The costs chunk is 114.0 kB (+1.0), the initial bundle 129.4 kB. The
+  e2e case could not run here (no Playwright browser installed); it is
+  type-checked only.

@@ -1,6 +1,7 @@
 import type { CostsParams } from './client.ts'
 import type { SpendTotals } from './generated/store.ts'
-import type { CostPointView, CostsMonthView, CostsView } from './generated/views.ts'
+import type { CostPointView, CostsMonthView, CostsView, CostTopRowView } from './generated/views.ts'
+import { spendLocation, type SpendScope } from './spend.ts'
 
 // The Costs page's pure parts (docs/ui.md, "Costs page"): its filters in
 // the URL (?range=&from=&to=&group=&project=&kind=&engine=, decision 9) and
@@ -205,4 +206,21 @@ export function breakdownLink(
   const value = parseCostFilters({ [dimension]: key })[dimension]
   if (!value) return null
   return { path: '/costs', query: costFiltersQuery({ ...filters, [dimension]: value }) }
+}
+
+export type TopLevel = 'milestone' | 'issue' | 'run'
+
+// topRowLocation is the Spend drill-down a Most expensive row opens: the
+// milestone tab (or the project tab without a milestone) with the scope
+// query, built by spendLocation. A run keeps its milestone and issue when it
+// has them; a research or chat run has its task (research/<name>) only.
+export function topRowLocation(level: TopLevel, row: CostTopRowView): ReturnType<typeof spendLocation> {
+  const scope: SpendScope = {}
+  if (row.milestoneIID) scope.milestone = row.milestoneIID
+  if (level !== 'milestone' && row.issueIID) scope.issue = row.issueIID
+  if (level === 'run' && row.task) {
+    scope.task = row.task
+    if (row.run) scope.run = row.run
+  }
+  return spendLocation(row.namespace, row.project, scope)
 }

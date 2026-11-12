@@ -4,7 +4,7 @@ import UInput from '@nuxt/ui/components/Input.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ApiError, getCosts, getProjects, LoginRequiredError, NotFoundError } from '../client'
+import { ApiError, getCosts, getCostsTop, getProjects, LoginRequiredError, NotFoundError } from '../client'
 import {
   changeLabel,
   costChange,
@@ -22,7 +22,8 @@ import {
 import { chartSummary, cumulativeMonth, monthSummary, stackedChart, thisMonth, tokensChart, tokensSummary } from '../chartData'
 import { cost, tokenCount } from '../format'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
-import type { CostsView } from '../generated/views'
+import type { CostsTopView, CostsView } from '../generated/views'
+import MostExpensive from '../components/MostExpensive.vue'
 import WhereItGoes from '../components/WhereItGoes.vue'
 import ChartLegend from '../ui/charts/ChartLegend.vue'
 import ChartTable from '../ui/charts/ChartTable.vue'
@@ -42,6 +43,7 @@ const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 const filters = computed(() => parseCostFilters(route.query))
 
 const data = ref<CostsView | null>(null)
+const top = ref<CostsTopView | null>(null)
 const loading = ref(false)
 const error = ref('')
 let seq = 0
@@ -51,12 +53,16 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const v = await getCosts(costParams(filters.value, tz))
+    const params = costParams(filters.value, tz)
+    // The top lists are a side part: their failure leaves the page standing.
+    const [v, t] = await Promise.all([getCosts(params), getCostsTop(params).catch(() => null)])
     if (mine !== seq) return
     data.value = v
+    top.value = t
   } catch (e) {
     if (mine !== seq || e instanceof LoginRequiredError) return
     data.value = null
+    top.value = null
     if (e instanceof NotFoundError) {
       error.value = filters.value.project
         ? `There is no project ${filters.value.project} you may see.`
@@ -301,6 +307,8 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
           <ChartTable :chart="tokens.view" unit="tokens" label="Metered tokens per bucket by type and the cache-read share, as a table" />
         </div>
       </section>
+
+      <MostExpensive v-if="top" :top="top" />
     </template>
   </div>
 </template>

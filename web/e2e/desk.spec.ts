@@ -67,6 +67,7 @@ async function costsReady(page: Page): Promise<void> {
   await expect(page.locator('[data-chart=month] canvas[role=img]')).toBeVisible()
   await expect(page.locator('[data-chart=where] canvas[role=img]')).toBeVisible()
   await expect(page.locator('[data-chart=tokens] canvas[role=img]')).toBeVisible()
+  await expect(page.locator('[data-costs-top] [data-top]')).toHaveCount(3)
 }
 
 // Every named route has a case here, with a variant per tab.
@@ -841,6 +842,32 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await expect(chart.locator('[data-costs-unmetered]')).toContainText('3 calls not metered')
     await chart.getByRole('button', { name: 'Table' }).click()
     await expect(chart.getByRole('table')).toBeVisible()
+
+    problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
+// Most expensive (views/Costs.vue, R13): three lists whose rows open the
+// Spend drill-down; a row with only unknown calls is marked, not $0.00.
+for (const { width, height } of [widths[0]!, widths[2]!]) {
+  test(`costs Most expensive rows open the drill-down@${width}`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'costs')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const top = page.locator('[data-costs-top]')
+    await expect(top.locator('[data-top=milestone]').getByRole('link').first()).toHaveAttribute('href', /\/projects\/team-a\/shop\/milestones\/14\?tab=spend$/)
+    await expect(top.locator('[data-top=issue]').getByRole('link').first()).toHaveAttribute('href', /\/milestones\/14\?.*spendIssue=281/)
+    await expect(top.locator('[data-top=run]').getByRole('link').nth(1)).toHaveAttribute('href', /\/projects\/team-a\/shop\?.*spendTask=research\/payments-news&spendRun=1/)
+    await expect(top.locator('[data-top=issue]')).toContainText('not metered')
+    await expect(top.locator('[data-top=issue]')).not.toContainText('$0.00')
+    await expect(top.locator('[data-top-unknown]').first()).toContainText('calls without cost')
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })

@@ -10,6 +10,7 @@ import {
   costParams,
   monthToDate,
   parseCostFilters,
+  topRowLocation,
 } from '../src/costs.ts'
 
 test('parseCostFilters: defaults 30d and project', () => {
@@ -150,4 +151,39 @@ test('breakdownLink: model rows, the legacy key and keys the filters would drop 
   assert.equal(breakdownLink('project', 'noslash', f), null)
   assert.equal(breakdownLink('kind', 'nope', f), null)
   assert.equal(breakdownLink('engine', 'gpt', f), null)
+})
+
+const row = { namespace: 'team-a', project: 'shop', label: 'x', at: '', totals: {} }
+
+test('topRowLocation: milestone opens the milestone tab', () => {
+  assert.deepEqual(topRowLocation('milestone', { ...row, milestoneIID: 14 }), {
+    name: 'stream-milestone',
+    params: { namespace: 'team-a', name: 'shop', iid: '14' },
+    query: { tab: 'spend' },
+  })
+})
+
+test('topRowLocation: issue keeps its milestone', () => {
+  assert.deepEqual(topRowLocation('issue', { ...row, milestoneIID: 14, issueIID: 281 }), {
+    name: 'stream-milestone',
+    params: { namespace: 'team-a', name: 'shop', iid: '14' },
+    query: { tab: 'spend', spendIssue: '281' },
+  })
+})
+
+test('topRowLocation: run keeps milestone, issue, task and run', () => {
+  assert.deepEqual(topRowLocation('run', { ...row, milestoneIID: 14, issueIID: 281, task: 'shop-i281', run: 3 }).query, {
+    tab: 'spend',
+    spendIssue: '281',
+    spendTask: 'shop-i281',
+    spendRun: '3',
+  })
+})
+
+test('topRowLocation: a research run has no milestone, the project tab', () => {
+  assert.deepEqual(topRowLocation('run', { ...row, task: 'research/payments-news', run: 2, kind: 'research' }), {
+    name: 'stream-project',
+    params: { namespace: 'team-a', name: 'shop' },
+    query: { tab: 'spend', spendTask: 'research/payments-news', spendRun: '2' },
+  })
 })

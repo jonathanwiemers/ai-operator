@@ -545,6 +545,17 @@ per bucket with the calls not metered. Calls that report neither cost nor
 tokens are named (*N calls not metered*), never drawn as 0-token bars. A range
 that mixes token bases shows the basis note once, in this section.
 
+*Most expensive*: three lists (milestones, issues, runs), up to ten rows each,
+ranked by known cost in the range with the page's filters (`getCostsTop`,
+fetched in parallel with `getCosts`; if it fails the page stays). A row shows
+its label, project, the kind for runs, and the known cost with *+N calls
+without cost* when some calls are unknown. A row with only unknown calls shows
+*n/a* or *not metered*, never $0.00. The label links into the Spend drill-down
+(`topRowLocation` in `costs.ts`, through `spendLocation`): a milestone row to
+the milestone tab, an issue row to its issue, a run row to its task and run;
+a run without a milestone (research `research/<name>`, chat) opens the project
+tab with the scope query.
+
 The e2e route cases `costs` and `costs-dark` at 375, 768 and 1280 px
 (`costs@<width>.png`, `costs-dark@<width>.png`) wait for both charts'
 canvases and check overflow and the CSP, `costs` is among the hit-area routes,

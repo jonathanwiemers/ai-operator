@@ -1,5 +1,5 @@
 import type { SpendTotals } from '../../src/generated/store'
-import type { CostPointView, CostsView, SpendBreakdownView } from '../../src/generated/views'
+import type { CostPointView, CostsTopView, CostsView, CostTopRowView, SpendBreakdownView } from '../../src/generated/views'
 
 // GET /api/v1/costs?range=&from=&to=&group=&project=&kind=&engine=&tz=: what
 // the viewer's two projects and research cost in the last 30 days up to the
@@ -71,4 +71,30 @@ export const costs: CostsView = {
   researchSince: '2026-10-20T07:00:00Z',
   planUsage: [],
   budgets: [],
+}
+
+// GET /api/v1/costs/top: the most expensive milestones, issues and runs of
+// the same range: a run with milestone and issue, a research run with
+// neither, and an issue whose calls all have an unknown cost.
+const topRow = (r: Partial<CostTopRowView> & Pick<CostTopRowView, 'label'>, usd: string, extra: Partial<SpendTotals> = {}): CostTopRowView => ({
+  namespace: 'team-a',
+  project: 'shop',
+  at: '2026-11-09T10:00:00Z',
+  totals: totals(usd, 900_000, 8, extra),
+  ...r,
+})
+
+export const costsTop: CostsTopView = {
+  milestones: [
+    topRow({ label: 'Refunds, end to end', milestoneIID: 14 }, '48.20'),
+    topRow({ label: 'Checkout rewrite', milestoneIID: 12 }, '21.10', { unknownCalls: 2 }),
+  ],
+  issues: [
+    topRow({ label: 'Refund the whole order', milestoneIID: 14, issueIID: 281 }, '9.85'),
+    topRow({ label: 'Unpriced cursor work', milestoneIID: 12, issueIID: 266 }, '', { unknownCalls: 8, unmeteredCalls: 8 }),
+  ],
+  runs: [
+    topRow({ label: 'shop-i281 run 2', milestoneIID: 14, issueIID: 281, task: 'shop-i281', run: 2, kind: 'implement' }, '4.13'),
+    topRow({ label: 'research/payments-news run 1', task: 'research/payments-news', run: 1, kind: 'research' }, '0.42'),
+  ],
 }
