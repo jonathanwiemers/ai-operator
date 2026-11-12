@@ -4,11 +4,17 @@ import { test } from 'node:test'
 import {
   OTHER,
   bucketLabel,
+  chartSummary,
+  chartTokens,
   colorSlots,
   formatTokens,
   formatUSD,
+  readChartColors,
   seriesFromPoints,
+  seriesLabel,
+  stackedChart,
   topKeys,
+  unknownNote,
 } from '../src/chartData.ts'
 
 // norm drops the spaces ICU versions put around a range's dash.
@@ -190,4 +196,69 @@ test('formatTokens: k and M', () => {
   assert.equal(formatTokens(950), '950')
   assert.equal(formatTokens(1200), '1.2k')
   assert.equal(formatTokens(3_400_000), '3.4M')
+})
+
+test('seriesLabel: Other, legacy runs and keys', () => {
+  assert.equal(seriesLabel(OTHER), 'Other')
+  assert.equal(seriesLabel(''), 'before calls')
+  assert.equal(seriesLabel('team-a/shop'), 'team-a/shop')
+})
+
+test('unknownNote: marks unknown calls, nothing without', () => {
+  assert.equal(unknownNote(0), '')
+  assert.equal(unknownNote(1), '+ 1 unknown call')
+  assert.equal(unknownNote(3), '+ 3 unknown calls')
+})
+
+test('stackedChart: labels, tokens, totals and unknown per bucket', () => {
+  const buckets = ['2026-11-01', '2026-11-02']
+  const points = [
+    point('2026-11-01', 'ns/a', '1.10'),
+    point('2026-11-02', 'ns/a', '2.20', { unknown: 1 }),
+    point('2026-11-02', 'ns/b', '0.50'),
+    point('2026-11-02', '', '0.25', { other: true }),
+  ]
+  const c = stackedChart(buckets, 'day', points, 'cost', 'en-GB')
+  assert.deepEqual(c.labels, ['1 Nov', '2 Nov'])
+  assert.deepEqual(
+    c.series.map(({ key, label, values, total }) => ({ key, label, values, total })),
+    [
+      { key: 'ns/a', label: 'ns/a', values: [1.1, 2.2], total: 3.3 },
+      { key: 'ns/b', label: 'ns/b', values: [0, 0.5], total: 0.5 },
+      { key: OTHER, label: 'Other', values: [0, 0.25], total: 0.25 },
+    ],
+  )
+  const slots = colorSlots(['ns/a', 'ns/b', OTHER])
+  for (const s of c.series) assert.equal(s.token, slots.get(s.key))
+  assert.deepEqual(c.unknown, [0, 1])
+})
+
+test('chartSummary: range, known total, unknown calls and the largest series', () => {
+  const c = stackedChart(
+    ['2026-11-01', '2026-11-02'],
+    'day',
+    [point('2026-11-01', 'ns/a', '1.00', { unknown: 2 }), point('2026-11-02', 'ns/b', '3.50')],
+    'cost',
+    'en-GB',
+  )
+  assert.equal(
+    chartSummary('Known cost per day by project', c),
+    'Known cost per day by project, 1 Nov to 2 Nov: $4.50 known in total, 2 calls of unknown cost. Largest: ns/b, $3.50. The table view lists every value.',
+  )
+  assert.equal(
+    chartSummary('Known cost', { labels: [], series: [], unknown: [] }),
+    'Known cost: $0.00 known in total. The table view lists every value.',
+  )
+})
+
+test('readChartColors: every series token and the text and grid tokens, trimmed', () => {
+  const asked = []
+  const c = readChartColors((name) => {
+    asked.push(name)
+    return ` v${name} `
+  })
+  assert.deepEqual(Object.keys(c.series), chartTokens)
+  assert.equal(c.series['--chart-other'], 'v--chart-other')
+  assert.deepEqual([c.text, c.muted, c.grid, c.surface], ['v--text', 'v--text-2', 'v--border', 'v--surface'])
+  assert.ok(chartTokens.every((t) => asked.includes(t)))
 })

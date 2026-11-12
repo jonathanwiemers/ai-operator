@@ -19,14 +19,18 @@ import {
   rangeLabels,
   type CostFilters,
 } from '../costs'
+import { chartSummary, stackedChart } from '../chartData'
 import { cost, tokenCount } from '../format'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
 import type { CostsView } from '../generated/views'
+import ChartLegend from '../ui/charts/ChartLegend.vue'
+import ChartTable from '../ui/charts/ChartTable.vue'
+import StackedBars from '../ui/charts/StackedBars.vue'
 
 // The Costs page (docs/ui.md, "Costs page"): what the projects the viewer
 // may see, and research, cost over a range. The filters live in the URL
 // (src/costs.ts); a change replaces the query and refetches, no reload.
-// This slice has the KPI row; the charts follow (R8 to R16).
+// The KPI row, then the charts (src/ui/charts, Chart.js in this chunk only).
 const route = useRoute()
 const router = useRouter()
 
@@ -119,6 +123,12 @@ function dateLabel(iso: string | undefined): string {
   const t = new Date(iso)
   return Number.isNaN(t.getTime()) ? '' : t.toLocaleDateString()
 }
+
+// Spend over time (R9): known cost per bucket, stacked by the chosen group,
+// top six plus Other.
+const spendChart = computed(() => (data.value ? stackedChart(data.value.buckets, data.value.bucket, data.value.series, 'cost') : null))
+const spendTitle = computed(() => (data.value ? `Known cost per ${data.value.bucket} by ${data.value.group}` : ''))
+const spendSummary = computed(() => (spendChart.value ? chartSummary(spendTitle.value, spendChart.value) : ''))
 
 const fieldUI = { label: 'font-semibold text-[13px]' }
 const control = 'text-base/5 tablet:text-sm/5'
@@ -236,6 +246,18 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
       <p v-if="data.researchSince" class="faint mt-2" data-costs-research>
         Research counted since {{ dateLabel(data.researchSince) }}
       </p>
+
+      <section v-if="spendChart" class="section" aria-labelledby="costs-spend-over-time" data-chart="spend">
+        <div class="section-head flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 id="costs-spend-over-time">Spend over time</h2>
+          <span class="faint">{{ spendTitle }}</span>
+        </div>
+        <div class="card flex min-w-0 flex-col gap-3 p-3 tablet:p-4">
+          <StackedBars :chart="spendChart" :summary="spendSummary" />
+          <ChartLegend :chart="spendChart" />
+          <ChartTable :chart="spendChart" :label="`${spendTitle}, as a table`" />
+        </div>
+      </section>
     </template>
   </div>
 </template>

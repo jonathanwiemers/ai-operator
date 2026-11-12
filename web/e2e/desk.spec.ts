@@ -60,6 +60,12 @@ const taskReady: Record<TaskTab, string> = {
   details: 'shop-281-implement-ws',
 }
 
+// The Costs page has its figures and the Spend over time canvas.
+async function costsReady(page: Page): Promise<void> {
+  await expect(page.locator('main').getByText('Research counted since').first()).toBeVisible()
+  await expect(page.locator('[data-chart=spend] canvas[role=img]')).toBeVisible()
+}
+
 // Every named route has a case here, with a variant per tab.
 const routes: Route[] = [
   {
@@ -84,11 +90,15 @@ const routes: Route[] = [
     path: '/inbox',
     ready: (page) => expect(page.getByText('Support refunds through the payment provider').first()).toBeVisible(),
   },
-  {
-    name: 'costs',
-    path: '/costs?range=30d&project=team-a/shop',
-    ready: (page) => expect(page.locator('main').getByText('Research counted since').first()).toBeVisible(),
-  },
+  // The Costs page in light and dark, ready once Spend over time is drawn.
+  ...(['light', 'dark'] as const).map(
+    (scheme): Route => ({
+      name: scheme === 'light' ? 'costs' : 'costs-dark',
+      path: '/costs?range=30d&project=team-a/shop',
+      colorScheme: scheme,
+      ready: costsReady,
+    }),
+  ),
   ...(['stream', 'board', 'spend'] as const).map(
     (tab): Route => ({
       name: `stream-project-${tab}`,
@@ -654,6 +664,62 @@ test('costs filters live in the URL, no reload@1280', async ({ page, baseURL }) 
   expect(await page.evaluate(() => (window as unknown as { kept?: boolean }).kept), 'no reload').toBe(true)
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
+
+// Spend over time (views/Costs.vue, R9; e2e/fixtures/costs.ts): the canvas's
+// summary, the legend's totals and the table view's figures agree, and the
+// bars take the token colours of the scheme, re-read when it changes.
+for (const { width, height } of [widths[0]!, widths[2]!]) {
+  test(`costs Spend over time legend, table and colours@${width}`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'costs')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const chart = page.locator('[data-chart=spend]')
+    await expect(chart.locator('canvas')).toHaveAttribute(
+      'aria-label',
+      /^Known cost per day by project, .+: \$114\.68 known in total, 10 calls of unknown cost\. Largest: team-a\/shop, \$105\.00\./,
+    )
+    const legend = chart.locator('[data-chart-legend] li')
+    await expect(legend).toHaveText([/team-a\/shop\s*\$105\.00/, /rather-long-name\.example\s*\$8\.00/, /research\/payments-news\s*\$1\.68/])
+
+    // The table is in the accessibility tree before the toggle shows it.
+    const table = chart.getByRole('table')
+    await expect(table).toBeAttached()
+    await expect(chart.locator('[data-chart-table] > [role=group]')).toHaveClass(/\bsr-only\b/)
+    await expect(table.getByRole('row')).toHaveCount(31)
+    await chart.getByRole('button', { name: 'Table' }).click()
+    await expect(table).toBeVisible()
+    const first = table.getByRole('row').nth(1)
+    for (const text of ['$1.50', '$0.80', '$0.00', '$2.30', '+ 1 unknown call']) await expect(first).toContainText(text)
+
+    // The opaque colours drawn on the canvas.
+    const drawn = () =>
+      page.evaluate(() => {
+        const c = document.querySelector<HTMLCanvasElement>('[data-chart=spend] canvas')!
+        const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+        const seen = new Set<string>()
+        for (let i = 0; i < d.length; i += 4) if (d[i + 3] === 255) seen.add(`rgb(${d[i]}, ${d[i + 1]}, ${d[i + 2]})`)
+        return [...seen]
+      })
+    const swatch = () => legend.first().locator('i').evaluate((e) => getComputedStyle(e).backgroundColor)
+    const light = await swatch()
+    expect(await drawn(), 'light bars').toContain(light)
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await expect(page.locator('html')).toHaveClass(/\bdark\b/)
+    const dark = await swatch()
+    expect(dark).not.toBe(light)
+    await expect.poll(drawn, { message: 'dark bars' }).toContain(dark)
+    expect(await drawn(), 'no light bar left').not.toContain(light)
+
+    problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
 
 // The Inbox's rows (views/Inbox.vue, R12): each row is at least 44 px high
 // on a phone and opens its item on a tap anywhere but a clipped reason,

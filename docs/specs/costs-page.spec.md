@@ -353,3 +353,14 @@ follow-up issue), and requirements without an issue and why.
   dynamic imports and stopping at initial chunks: 43.7 kB before Chart.js.
   Chart.js, the wrappers, runtime token reading and the CSP e2e check follow
   with R9 to R11 as planned.
+- 2026-11-12 #364 (R8, part 2, and R9): Chart.js 4.6.1 and vue-chartjs
+  5.3.4, pinned; no CSP change was needed (canvas, no `<style>` element,
+  canvas sizing through the CSSOM). `web/src/ui/charts/`: `register.ts`
+  (bar controller and element, category and linear scales, tooltip),
+  `useChartColors.ts`, `StackedBars.vue`, `ChartLegend.vue`,
+  `ChartTable.vue`. *Spend over time* uses the page's *Group by* filter as
+  its group switcher, no second control. The costs chunk is 104.7 kB with
+  Chart.js (43.7 before), so `capKB` stays at min(120, 104.7 × 1.3) = 120;
+  the initial bundle went from 129.4 to 129.3 kB. The line and horizontal bar
+  wrappers come with R10 and R11, as planned. E2E: `costs-dark` route cases
+  and a check that the bars are redrawn in the dark tokens.

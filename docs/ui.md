@@ -498,13 +498,28 @@ Below it, once, the token basis note when the range mixes old and new
 token bases, and *Research counted since <date>* when research calls are
 counted (research cost before that date is only on the research page).
 The page says when the history database is not configured (404) or not
-connected yet (503), and when a range has no calls. Charts follow in
-later slices (`docs/specs/costs-page.spec.md`).
+connected yet (503), and when a range has no calls. The charts below follow
+the [chart rules](#charts); more arrive in later slices
+(`docs/specs/costs-page.spec.md`).
 
-The e2e route case `costs` at 375, 768 and 1280 px (`costs@<width>.png`)
-checks overflow and the CSP, `costs` is among the hit-area routes, and
+*Spend over time*: stacked bars of the known cost per bucket (day up to 90
+days, week up to 180, month above), a segment per key of the *Group by*
+filter: the six keys with the highest known cost in the range, the rest as
+*Other*. Calls of unknown cost are not in the bars; a bucket with some says
+*+ N unknown calls* in its tooltip and its table row, and a bucket with only
+those says *No known cost*. The legend sums each series over the range;
+the table view lists every bucket with each series, the total and the
+unknown calls. Switching the group refetches and redraws, the page does not
+reload.
+
+The e2e route cases `costs` and `costs-dark` at 375, 768 and 1280 px
+(`costs@<width>.png`, `costs-dark@<width>.png`) wait for the chart's canvas
+and check overflow and the CSP, `costs` is among the hit-area routes,
 `costs filters live in the URL, no reload@1280` checks that a filter change
-updates the URL and refetches without a reload.
+updates the URL and refetches without a reload, and `costs Spend over time
+legend, table and colours@375` and `@1280` check the canvas's summary, the
+legend's totals, the table view's figures and that the bars are drawn in the
+token colours of light and then dark.
 
 ### Agent calls on the Task page
 
@@ -1648,8 +1663,12 @@ loads anyway.
 - `costs` (`/costs`): cap 120 kB (decision 15 of
   [the Costs page spec](specs/costs-page.spec.md)). 2026-11-12, before
   Chart.js (#363): 43.7 kB (JS 43.7, CSS 0.0), mostly `USelect` (22.8) and
-  the kit's helpers. The first chart slice records the figure with Chart.js
-  in `measuredKB`; the cap then drops to that plus 30 % if that is lower.
+  the kit's helpers. 2026-11-12, with Chart.js 4 and *Spend over time*
+  (#364, `measuredKB`): 104.7 kB (JS 104.7, CSS 0.0); the 61 kB added are
+  mostly Chart.js (bar controller, category and linear scales, tooltip),
+  then `vue-chartjs`, the wrappers and `DataList`. The cap stays at min(120, 104.7 × 1.3) = 120 kB. The initial
+  bundle did not grow (129.4 kB before, 129.3 kB after): Chart.js and the
+  wrappers are imported by `Costs.vue` only.
 
 ## UI kit
 
@@ -1729,7 +1748,50 @@ data, without Vue or Chart.js: `topKeys` (six keys by known cost),
 `seriesFromPoints` (a series per key over every bucket, the rest and the
 server's folded points as *Other*, unknown and unmetered calls per bucket),
 `bucketLabel` (`3 Nov`, `3–9 Nov`, `Nov 2026`, formatted in UTC, as the
-bucket is a local date already) and `formatUSD`/`formatTokens`.
+bucket is a local date already) and `formatUSD`/`formatTokens`, and for the
+wrappers `stackedChart` (labels, series with token and range total, unknown
+calls per bucket), `chartSummary` (the canvas's text) and `readChartColors`.
+
+### Charts
+
+The Costs page draws its charts with [Chart.js](https://www.chartjs.org) 4
+(MIT) and `vue-chartjs`, pinned in `web/package.json`. Chart.js draws on a
+canvas and injects no `<style>` element; it sizes the canvas through the
+CSSOM (`element.style`), which `style-src 'self'` allows, so the CSP stays as
+it is. Libraries that inject styles (ApexCharts, unovis) are refused by that
+CSP, and ECharts is too large for the route budget (decision 7 of the Costs
+page spec). The chart SVGs elsewhere (context chart, sparkline, `ModelBar`)
+stay hand-drawn.
+
+The wrappers are in `web/src/ui/charts/`, one per chart type, so the
+Chart.js options live in one place; a view passes them data shaped by
+`chartData.ts`:
+
+- `register.ts` registers only what is drawn (`BarController`,
+  `BarElement`, `CategoryScale`, `LinearScale`, `Tooltip`); the rest is
+  tree-shaken. No Chart.js legend. Only the wrappers import it, so Chart.js
+  is in the chunks of the views with charts, never the initial bundle.
+- `useChartColors.ts` reads `--chart-*`, `--text`, `--text-2`, `--border`
+  and `--surface` from `<html>` with `getComputedStyle`, and again when
+  `<html>`'s class changes (a MutationObserver; `colorScheme.ts` toggles
+  `dark` with the system scheme), so a drawn chart follows light and dark.
+- `StackedBars.vue`: stacked x and y, no animation, the height fixed by its
+  container (`h-60`, `h-72` from the tablet width) and the width following
+  it, fewer ticks below 760 px, a tooltip per bucket on hover and tap
+  (`mode: 'index'`, `intersect: false`), USD with two decimals or tokens in
+  k/M. The canvas is `role="img"` with `chartSummary` as `aria-label`.
+- `ChartLegend.vue`: below the chart, a swatch (a utility class per token,
+  no inline style), the label and the range total per series; it wraps on
+  phones.
+- `ChartTable.vue`: the table view (a scrolling `DataList`): a row per
+  bucket, a column per series, the total and the unknown calls. A *Table*
+  button (`aria-pressed`) shows it; hidden, it is `sr-only`, so screen
+  readers always reach the values a canvas cannot give them.
+
+Rules for every chart (decision 8): at most six series plus *Other*, colours
+from the tokens only, never colour alone (legend with values and the table
+view), readable at 375 px, no animation, costs in USD with two decimals and
+tokens in k/M. Unknown cost is never drawn as $0: it is marked per bucket.
 
 ### DataList
 

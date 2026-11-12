@@ -1,4 +1,5 @@
 import type { CostPointView } from './generated/views.ts'
+import { costKeyLabel } from './costs.ts'
 import { tokenCount } from './format.ts'
 
 // The Costs page's chart data (docs/ui.md, "Costs page"; decisions 7 and 8 of
@@ -158,3 +159,86 @@ export function formatUSD(usd: number): string {
 
 // formatTokens is a chart's token count in k/M (format.ts's tokenCount).
 export const formatTokens = tokenCount
+
+// seriesLabel names a series key: Other, the legacy runs ("before calls")
+// or the key itself (a project, kind, model or engine).
+export function seriesLabel(key: string): string {
+  return key === OTHER ? 'Other' : costKeyLabel(key)
+}
+
+// unknownNote marks a bucket with calls of unknown cost, "" without.
+export function unknownNote(calls: number): string {
+  return calls > 0 ? `+ ${calls} unknown ${calls === 1 ? 'call' : 'calls'}` : ''
+}
+
+// StackedChart is what the stacked bars wrapper, its legend and table view
+// draw: a label per bucket, the series with their colour token and range
+// total, and per bucket the calls of unknown cost.
+export interface StackedChart {
+  labels: string[]
+  series: (ChartSeries & { label: string; token: ChartToken; total: number })[]
+  unknown: number[]
+}
+
+// stackedChart shapes the points into the stacked bars of a metric: top N
+// plus Other, colours by colorSlots, bucket labels in the locale.
+export function stackedChart(
+  buckets: string[],
+  kind: BucketKind,
+  points: CostPointView[],
+  metric: ChartMetric,
+  locale?: string,
+): StackedChart {
+  const set = seriesFromPoints(buckets, points, metric)
+  const slots = colorSlots(set.series.map((s) => s.key))
+  const round = metric === 'cost' ? (v: number) => Math.round(v * 1e4) / 1e4 : (v: number) => v
+  return {
+    labels: buckets.map((b) => bucketLabel(b, kind, locale)),
+    series: set.series.map((s) => ({
+      ...s,
+      label: seriesLabel(s.key),
+      token: slots.get(s.key)!,
+      total: round(s.values.reduce((a, v) => a + v, 0)),
+    })),
+    unknown: set.unknown,
+  }
+}
+
+// chartSummary is a stacked cost chart's text for screen readers (the
+// canvas's aria-label): the range, the known total, the calls of unknown
+// cost and the largest series.
+export function chartSummary(title: string, chart: StackedChart): string {
+  const total = chart.series.reduce((a, s) => a + s.total, 0)
+  const unknown = chart.unknown.reduce((a, n) => a + n, 0)
+  const range = chart.labels.length ? `, ${chart.labels[0]} to ${chart.labels[chart.labels.length - 1]}` : ''
+  let out = `${title}${range}: ${formatUSD(total)} known in total`
+  if (unknown) out += `, ${unknown} ${unknown === 1 ? 'call' : 'calls'} of unknown cost`
+  const top = [...chart.series].filter((s) => s.key !== OTHER).sort((a, b) => b.total - a.total)[0]
+  if (top && top.total > 0) out += `. Largest: ${top.label}, ${formatUSD(top.total)}`
+  return `${out}. The table view lists every value.`
+}
+
+// ChartColors are the chart's colours, read from style.css's tokens at
+// runtime (light or dark): the series tokens and those of text and grid.
+export interface ChartColors {
+  series: Record<ChartToken, string>
+  text: string
+  muted: string
+  grid: string
+  surface: string
+}
+
+export const chartTokens: ChartToken[] = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5', '--chart-6', '--chart-other']
+
+// readChartColors reads the tokens through get (getComputedStyle's
+// getPropertyValue on <html>), trimmed.
+export function readChartColors(get: (name: string) => string): ChartColors {
+  const v = (name: string) => get(name).trim()
+  return {
+    series: Object.fromEntries(chartTokens.map((t) => [t, v(t)])) as Record<ChartToken, string>,
+    text: v('--text'),
+    muted: v('--text-2'),
+    grid: v('--border'),
+    surface: v('--surface'),
+  }
+}

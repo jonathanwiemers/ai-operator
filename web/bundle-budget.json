@@ -6,8 +6,8 @@
     "costs": {
       "entry": "src/views/Costs.vue",
       "capKB": 120,
-      "measuredKB": 43.7,
-      "note": "JS plus CSS the /costs route loads beyond the initial set, followed through dist/app/.vite/manifest.json (decision 15 of docs/specs/costs-page.spec.md). measuredKB is from 2026-11-12, before Chart.js (#363). The first chart slice records the figure with Chart.js; capKB then drops to that plus 30 % if lower, and only drops."
+      "measuredKB": 104.7,
+      "note": "JS plus CSS the /costs route loads beyond the initial set, followed through dist/app/.vite/manifest.json (decision 15 of docs/specs/costs-page.spec.md). measuredKB is from 2026-11-12, with Chart.js 4 and the Spend over time chart (#364); before Chart.js it was 43.7 (#363). capKB is min(120, measuredKB x 1.3) = 120 and only drops. If a change breaks the cap, report it instead of raising it."
     }
   }
 }
