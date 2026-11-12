@@ -492,6 +492,11 @@ func TestAuthNone(t *testing.T) {
 	if code := env.get(t, "/api/v1/projects", &projects); code != http.StatusOK || len(projects) != 2 {
 		t.Fatalf("status %d, projects %d", code, len(projects))
 	}
+	var me Me
+	env.get(t, "/api/v1/me", &me)
+	if me.Renewing || me.IdleUntil != nil {
+		t.Errorf("auth mode none: me = %+v", me)
+	}
 	if code := env.get(t, pathLogin, nil); code != http.StatusNotFound {
 		t.Errorf("login in auth mode none: status %d", code)
 	}

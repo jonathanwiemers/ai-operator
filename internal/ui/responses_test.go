@@ -31,9 +31,9 @@ func TestResponsesKeepTheirShape(t *testing.T) {
 		want any
 	}{
 		{"me", Me{Username: "jo", Roles: []string{"admin"}, AuthMode: AuthOIDC},
-			map[string]any{"username": "jo", "roles": []string{"admin"}, "authMode": AuthOIDC}},
+			map[string]any{"username": "jo", "roles": []string{"admin"}, "authMode": AuthOIDC, "renewing": false, "idleUntil": nil}},
 		{"me without roles", Me{Username: "anonymous", AuthMode: AuthNone},
-			map[string]any{"username": "anonymous", "roles": []string(nil), "authMode": AuthNone}},
+			map[string]any{"username": "anonymous", "roles": []string(nil), "authMode": AuthNone, "renewing": false, "idleUntil": nil}},
 		{"features", FeaturesResponse{Features: features}, map[string]any{"features": features}},
 		{"features empty", FeaturesResponse{Features: []Feature{}}, map[string]any{"features": []Feature{}}},
 		{"chat post", ChatPostResponse{ID: 42}, map[string]any{"id": int64(42)}},

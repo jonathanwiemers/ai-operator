@@ -16,6 +16,16 @@ export interface Me {
   username: string;
   roles: string[] | null;
   authMode: 'oidc' | 'none';
+  /**
+   * Renewing is true when the login is renewed with a refresh token.
+   */
+  renewing: boolean;
+  /**
+   * IdleUntil is when the login ends unless it is used: the refresh
+   * deadline when renewing, the session's fixed expiry otherwise, null
+   * with auth.mode none.
+   */
+  idleUntil?: string | null;
 }
 /**
  * ErrorResponse is the body of every error the UI API returns. Error is

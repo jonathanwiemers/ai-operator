@@ -28,12 +28,26 @@ type Me struct {
 	Username string   `json:"username"`
 	Roles    []string `json:"roles" tstype:"string[] | null"`
 	AuthMode AuthMode `json:"authMode" tstype:"'oidc' | 'none'"`
+	// Renewing is true when the login is renewed with a refresh token.
+	Renewing bool `json:"renewing"`
+	// IdleUntil is when the login ends unless it is used: the refresh
+	// deadline when renewing, the session's fixed expiry otherwise, null
+	// with auth.mode none.
+	IdleUntil *time.Time `json:"idleUntil" tstype:"string | null"`
 }
 
 // me returns the logged-in user.
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	p := principalOf(r)
-	writeJSON(w, http.StatusOK, Me{Username: p.Username, Roles: p.Roles, AuthMode: s.cfg.Auth.Mode})
+	m := Me{Username: p.Username, Roles: p.Roles, AuthMode: s.cfg.Auth.Mode}
+	if rs := refreshOf(r); rs != nil {
+		m.Renewing = true
+		t := rs.Deadline(s.cfg.Auth.MaxLifetime.Duration)
+		m.IdleUntil = &t
+	} else if t := sessionExpiry(r); !t.IsZero() {
+		m.IdleUntil = &t
+	}
+	writeJSON(w, http.StatusOK, m)
 }
 
 // projects lists the projects the user may see.

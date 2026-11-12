@@ -5,6 +5,8 @@ export const me: Me = {
   username: 'jo',
   roles: ['owner'],
   authMode: 'oidc',
+  renewing: true,
+  idleUntil: '2030-01-08T09:00:00Z',
 }
 
 // GET /api/v1/features: every section, with one-off researches allowed.

@@ -366,3 +366,20 @@ func TestLogoutEndsRenewal(t *testing.T) {
 		t.Errorf("after logout: status %d, grants %d", status, e.grants())
 	}
 }
+
+// TestMeIdleUntil checks what /api/v1/me says about how the login lasts.
+func TestMeIdleUntil(t *testing.T) {
+	e := newRenewEnv(t, nil, nil)
+	_, me, _ := e.me()
+	want := e.start.Add(e.s.cfg.Auth.IdleTimeout.Duration)
+	if !me.Renewing || me.IdleUntil == nil || !me.IdleUntil.Equal(want) {
+		t.Errorf("renewing login: renewing %v, idleUntil %v, want %v", me.Renewing, me.IdleUntil, want)
+	}
+
+	e = newRenewEnv(t, func(sw *fakeOIDCSwitches) { sw.noRefresh = true }, nil)
+	_, me, _ = e.me()
+	want = e.start.Add(e.s.cfg.Auth.SessionTTL.Duration)
+	if me.Renewing || me.IdleUntil == nil || !me.IdleUntil.Equal(want) {
+		t.Errorf("fixed login: renewing %v, idleUntil %v, want %v", me.Renewing, me.IdleUntil, want)
+	}
+}
