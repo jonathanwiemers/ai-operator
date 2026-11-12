@@ -34,10 +34,7 @@ export function isResearchPath(path: string): boolean {
   return /^\/research(\/|$)/.test(path)
 }
 
-export function loginURL(): string {
-  const back = window.location.pathname + window.location.search
-  return `/oauth2/login?return=${encodeURIComponent(back)}`
-}
+export { loginURL } from './signInAgain'
 
 // chatPostError turns a chat POST status into plain words for the composer.
 export function chatPostError(e: unknown): string {

@@ -3,6 +3,7 @@
 // encoded here. Return types come from generated/views.ts. No get<T> or
 // post<T> outside this file.
 import { session } from './api'
+import { signInAgain } from './signInAgain'
 import type {
   ChatPage,
   ChatPostResponse,
@@ -54,8 +55,10 @@ export class ApiError extends Error {
   }
 }
 
+// loginRequired: sign in again by itself once (signInAgain.ts), else show
+// the sign-in page.
 function loginRequired(): never {
-  session.loginRequired = true
+  if (!signInAgain()) session.loginRequired = true
   throw new LoginRequiredError('login required')
 }
 

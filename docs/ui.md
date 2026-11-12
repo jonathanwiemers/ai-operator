@@ -1392,6 +1392,13 @@ points to 127.0.0.1 (DNS rebinding).
 - **Redirects.** After the login the browser only goes back to a path on the
   UI's own host; login errors reach the sign-in page as codes, never as
   text from the URL.
+- **Signing in again.** When the API answers 401 (the login ended), the
+  Desk goes to `/oauth2/login?return=<current route>` by itself, a
+  top-level navigation; a provider that still knows the user brings it back
+  to the same page without a click. It does so once: a `sessionStorage`
+  marker stops another attempt for 60 seconds, a `login_error` in the URL
+  or a browser without `sessionStorage` stops it too, and then the sign-in
+  page shows as before.
 - **Browser protections.** A strict Content Security Policy (only the UI's
   own scripts, styles and API, no framing), HSTS, `nosniff`, and Go's
   cross-origin protection for requests that change state (logout, comments,
@@ -1543,8 +1550,8 @@ function encodes, and a return type from `generated/views.ts`. A function
 unwraps an envelope only where every caller wants the inner list, and its
 comment says so (`getFeatures` returns `Feature[]`; `getInbox` keeps
 `InboxResponse`). The fetch helpers (`get`, `post`, `del`) and their errors
-(`NotFoundError`, `LoginRequiredError` on 401, which also sets
-`session.loginRequired`, and `ApiError` with the server's message) live
+(`NotFoundError`, `LoginRequiredError` on 401, which signs in again by
+itself through `signInAgain.ts` or else sets `session.loginRequired`, and `ApiError` with the server's message) live
 there too: the helpers are private to the file, the errors are imported
 from it. A request body that is not a view gets its type next to the
 function (`ResearchCreate`). The two server-sent event

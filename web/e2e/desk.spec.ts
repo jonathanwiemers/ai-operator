@@ -23,7 +23,8 @@ interface Route {
   // name is the check's name, "<route name>" or "<route name>-<variant>".
   name: string
   path: string
-  // signedOut: every API request answers 401, so the app shows the sign-in.
+  // signedOut: every API request answers 401 just after an automatic
+  // sign-in (freshSignInMarker), so the app shows the sign-in.
   signedOut?: boolean
   // colorScheme is the system's scheme the page sees, light when unset
   // (playwright.config.ts).
@@ -253,6 +254,7 @@ for (const route of routes) {
       await page.setViewportSize(size)
       if (route.colorScheme) await page.emulateMedia({ colorScheme: route.colorScheme })
       await page.clock.setFixedTime(now)
+      if (route.signedOut) await freshSignInMarker(page)
       await watch(page, origin, problems)
       await mockAPI(page, route, problems)
 
@@ -287,6 +289,66 @@ for (const route of routes) {
     })
   }
 }
+
+// freshSignInMarker: an automatic sign-in was tried a moment ago
+// (src/signInAgain.ts), so a 401 shows the sign-in page.
+async function freshSignInMarker(page: Page): Promise<void> {
+  await page.addInitScript(() => sessionStorage.setItem('desk-sign-in-again', String(Date.now())))
+}
+
+// A 401 signs in again by itself, once, back to the same route; a recent
+// attempt or a failed login shows the sign-in page instead.
+test.describe('sign in again', () => {
+  const path = '/projects/team-a/shop?tab=board'
+
+  // open loads the page with /me answering 401 and a stand-in for the
+  // provider at /oauth2/login; logins counts the visits there.
+  async function open(page: Page, baseURL: string | undefined, to: string) {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    const seen = { logins: 0 }
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, { name: 'sign-in-again', path: to, ready: async () => {} }, problems)
+    await page.route('**/api/v1/me', (r) => r.fulfill({ status: 401, json: { error: 'login required' } }))
+    await page.route(
+      (u) => u.pathname === '/oauth2/login',
+      (r) => {
+        seen.logins++
+        return r.fulfill({ contentType: 'text/html', body: '<p>The provider</p>' })
+      },
+    )
+    await page.goto(to)
+    return { problems, seen }
+  }
+
+  test('a 401 goes to the login with the current route@1280', async ({ page, baseURL }) => {
+    const { problems, seen } = await open(page, baseURL, path)
+    await page.waitForURL((u) => u.pathname === '/oauth2/login')
+    expect(new URL(page.url()).searchParams.get('return')).toBe(path)
+    await expect(page.getByText('The provider')).toBeVisible()
+    await page.waitForLoadState('networkidle')
+    expect(seen.logins, 'one automatic sign-in').toBe(1)
+    expect(problems.pageErrors).toEqual([])
+  })
+
+  test('a second 401 within 60s shows the sign-in page@1280', async ({ page, baseURL }) => {
+    await freshSignInMarker(page)
+    const { problems, seen } = await open(page, baseURL, path)
+    await expect(page.getByRole('link', { name: 'Sign in with SSO' })).toBeVisible()
+    expect(new URL(page.url()).pathname).toBe('/projects/team-a/shop')
+    expect(seen.logins).toBe(0)
+    expect(problems.pageErrors).toEqual([])
+  })
+
+  test('a failed login shows its error, no automatic sign-in@1280', async ({ page, baseURL }) => {
+    const { problems, seen } = await open(page, baseURL, '/?login_error=refused')
+    await expect(page.getByText('The identity provider refused the login.')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Sign in with SSO' })).toBeVisible()
+    expect(new URL(page.url()).pathname).toBe('/')
+    expect(seen.logins).toBe(0)
+    expect(problems.pageErrors).toEqual([])
+  })
+})
 
 // The old redirects are gone: their paths are Not found.
 for (const path of ['/everything', '/projects/acme/shop/board', '/projects/acme/shop/milestones/3/detail']) {
