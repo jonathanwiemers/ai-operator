@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -140,21 +139,7 @@ func (o *oidcClient) callback(w http.ResponseWriter, r *http.Request) {
 		o.fail(w, r, errToken)
 		return
 	}
-	// Providers put some claims (Zitadel: the roles, unless configured
-	// otherwise) only into the userinfo response. The ID token wins where
-	// both have a claim.
-	if ui, err := p.UserInfo(ctx, oauth2.StaticTokenSource(tok)); err == nil {
-		extra := map[string]any{}
-		if ui.Subject == idToken.Subject && ui.Claims(&extra) == nil {
-			for k, v := range extra {
-				if _, ok := claims[k]; !ok {
-					claims[k] = v
-				}
-			}
-		}
-	} else if !errors.Is(err, context.Canceled) {
-		o.log.V(1).Info("userinfo not used", "error", err.Error())
-	}
+	_ = o.mergeUserinfo(ctx, p, tok, idToken.Subject, claims)
 	username, roles, err := o.claims.Map(claims)
 	if err != nil {
 		o.log.Error(err, "claim mapping failed", "subject", idToken.Subject)

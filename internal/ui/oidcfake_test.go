@@ -79,6 +79,8 @@ type fakeOIDCSwitches struct {
 	noRefresh bool
 	// noIDTokenOnRefresh leaves the ID token out of refresh answers.
 	noIDTokenOnRefresh bool
+	// userinfoDown makes the userinfo endpoint answer 503.
+	userinfoDown bool
 	// noRevocation leaves revocation_endpoint out of the discovery
 	// document. The UI discovers once, so set it before the first login.
 	noRevocation bool
@@ -387,6 +389,10 @@ func (f *fakeOIDC) sign(claims map[string]any) string {
 func (f *fakeOIDC) userinfo(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.sw.userinfoDown {
+		fakeOAuthError(w, http.StatusServiceUnavailable, "temporarily_unavailable")
+		return
+	}
 	tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	grant, known := f.access[tok]
 	if !ok || !known || f.revoked[tok] {
