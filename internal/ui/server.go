@@ -181,9 +181,12 @@ type ctxKey int
 const (
 	principalKey ctxKey = iota
 	expiryKey
+	refreshKey
 )
 
-// authed runs h for logged-in users and answers 401 to everyone else.
+// authed runs h for logged-in users and answers 401 to everyone else. An
+// expired session with a live refresh cookie is renewed first; when that
+// fails, both cookies are cleared.
 func (s *Server) authed(h http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.sessions == nil {
@@ -191,13 +194,22 @@ func (s *Server) authed(h http.HandlerFunc) http.Handler {
 			h(w, r.WithContext(ctx))
 			return
 		}
+		rs, _ := s.sessions.Refresh(r)
 		sess, ok := s.sessions.Get(r)
+		if !ok && rs != nil {
+			sess, rs, ok = s.oidc.renewSession(w, r, rs)
+		}
 		if !ok {
+			if _, err := r.Cookie(s.sessions.RefreshCookie()); err == nil {
+				s.sessions.Clear(w, s.sessions.SessionCookie())
+				s.sessions.Clear(w, s.sessions.RefreshCookie())
+			}
 			writeErrorResponse(w, http.StatusUnauthorized, ErrorResponse{Error: "login required", Login: pathLogin})
 			return
 		}
 		ctx := context.WithValue(r.Context(), principalKey, sess.Principal)
 		ctx = context.WithValue(ctx, expiryKey, time.Unix(sess.Expires, 0))
+		ctx = context.WithValue(ctx, refreshKey, rs)
 		h(w, r.WithContext(ctx))
 	})
 }
@@ -210,6 +222,12 @@ func principalOf(r *http.Request) Principal {
 func sessionExpiry(r *http.Request) time.Time {
 	t, _ := r.Context().Value(expiryKey).(time.Time)
 	return t
+}
+
+// refreshOf is the login's refresh state, nil when it is not renewed.
+func refreshOf(r *http.Request) *RefreshState {
+	rs, _ := r.Context().Value(refreshKey).(*RefreshState)
+	return rs
 }
 
 // app serves the single page app: files as they are, every other path as

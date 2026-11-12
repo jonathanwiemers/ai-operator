@@ -148,18 +148,20 @@ func (o *oidcClient) callback(w http.ResponseWriter, r *http.Request) {
 		o.fail(w, r, errClaims)
 		return
 	}
-	if err := o.sessions.Start(w, Principal{Username: username, Roles: roles}); err != nil {
+	// With a refresh token the session lasts auth.renewAfter and is renewed;
+	// without one it lasts auth.sessionTTL.
+	principal := Principal{Username: username, Roles: roles}
+	if rs, ok := o.refreshState(w, tok, idToken.Subject, st.Nonce, username); ok {
+		if _, err = o.startRenewing(w, principal, rs); err == nil {
+			err = o.sessions.StartRefresh(w, rs)
+		}
+	} else {
+		err = o.sessions.Start(w, principal)
+	}
+	if err != nil {
 		o.log.Error(err, "cannot start session", "user", username)
 		o.fail(w, r, errSession)
 		return
-	}
-	// The session lasts auth.sessionTTL either way until renewal exists.
-	if rs, ok := o.refreshState(w, tok, idToken.Subject, st.Nonce, username); ok {
-		if err := o.sessions.StartRefresh(w, rs); err != nil {
-			o.log.Error(err, "cannot start refresh cookie", "user", username)
-			o.fail(w, r, errSession)
-			return
-		}
 	}
 	o.log.Info("login", "user", username, "roles", roles)
 	http.Redirect(w, r, st.Return, http.StatusFound)
@@ -189,6 +191,8 @@ type LoginRedirect struct {
 // the provider's logout endpoint, which ends the login there too.
 func (o *oidcClient) logout(w http.ResponseWriter, r *http.Request) {
 	o.sessions.Clear(w, o.sessions.SessionCookie())
+	// Otherwise the next request would renew the login.
+	o.sessions.Clear(w, o.sessions.RefreshCookie())
 	next := "/"
 	if _, err := o.discover(r.Context()); err == nil && o.endSession != "" {
 		q := url.Values{

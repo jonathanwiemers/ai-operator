@@ -1183,9 +1183,10 @@ researches (no schedule) from the UI and delete their own:
 
 Without `allowCreate` the UI has no client that writes, the chart renders no
 write Role, and the endpoints answer 404.
-
-Roles are read at login and kept in the session, so a role change takes
-effect at the next login, at the latest after `ui.auth.sessionTTL` (default
+Roles are read at login and again at each renewal of the session (every
+`ui.auth.renewAfter`, default `15m`, with a refresh token), so a role change
+takes effect within `renewAfter`; without a refresh token at the next login,
+at the latest after `ui.auth.sessionTTL` (default
 `12h`). A user without any matching role gets an empty project list that
 names their roles, which helps to debug the claim mapping.
 
@@ -1380,10 +1381,14 @@ points to 127.0.0.1 (DNS rebinding).
   the expiry.
 - **Sessions** are AES-GCM encrypted cookies (`__Host-` prefix, `HttpOnly`,
   `Secure`, `SameSite=Lax`), so the UI keeps no state and replicas share
-  logins through the session key. Logout clears the cookie and ends the
-  session at the provider (RP-initiated logout) if it supports it. Since
-  nothing is stored on the server, a copied cookie stays valid until it
-  expires (`ui.auth.sessionTTL`); changing the session key ends all sessions.
+  logins through the session key. With a refresh token the session lasts
+  `ui.auth.renewAfter` and the next request renews it in place with the
+  refresh cookie (the provider down keeps it for another `renewAfter`, at
+  most until the idle deadline; a refusal ends the login). Logout clears
+  both cookies and ends the session at the provider (RP-initiated logout)
+  if it supports it. Since nothing is stored on the server, a copied cookie
+  stays valid until it expires (`ui.auth.sessionTTL` without a refresh
+  token); changing the session key ends all sessions.
 - **Redirects.** After the login the browser only goes back to a path on the
   UI's own host; login errors reach the sign-in page as codes, never as
   text from the URL.

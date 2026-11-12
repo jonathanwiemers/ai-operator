@@ -121,8 +121,10 @@ func TestOIDCCallbackRefreshCookie(t *testing.T) {
 		if sc == nil || rc == nil || rc.Value == "" {
 			t.Fatalf("session %v, refresh %v", sc, rc)
 		}
-		if want := now.Add(s.cfg.Auth.SessionTTL.Duration); !sc.Expires.Equal(want) {
-			t.Errorf("session expires %v, want %v (sessionTTL)", sc.Expires, want)
+		// The browser keeps the session cookie until the idle deadline; the
+		// session in it lasts renewAfter (authed_renew_test.go).
+		if want := now.Add(s.cfg.Auth.IdleTimeout.Duration); !sc.Expires.Equal(want) {
+			t.Errorf("session cookie expires %v, want %v (idleTimeout)", sc.Expires, want)
 		}
 		f.mu.Lock()
 		tok, nonce := f.logins[0].current, f.logins[0].nonce

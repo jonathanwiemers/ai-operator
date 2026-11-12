@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -158,4 +159,43 @@ func (o *oidcClient) redeem(ctx context.Context, rs RefreshState, prev Principal
 		return Principal{}, rs, fmt.Errorf("%w: claim mapping: %w", errRenewRefused, err)
 	}
 	return Principal{Username: username, Roles: roles}, next, nil
+}
+
+// startRenewing writes the session cookie for p of a login with rs: valid
+// for auth.renewAfter but never past the login's deadline, until which the
+// browser keeps it. It returns the session's expiry.
+func (o *oidcClient) startRenewing(w http.ResponseWriter, p Principal, rs RefreshState) (time.Time, error) {
+	end := rs.Deadline(o.cfg.Auth.MaxLifetime.Duration)
+	exp := o.sessions.now().Add(o.cfg.Auth.RenewAfter.Duration)
+	if end.Before(exp) {
+		exp = end
+	}
+	return exp, o.sessions.StartKept(w, p, exp, end)
+}
+
+// renewSession renews the expired session of r with rs and writes the
+// cookies. An unavailable provider keeps the old principal for another
+// auth.renewAfter; any other failure reports false and the login ends.
+func (o *oidcClient) renewSession(w http.ResponseWriter, r *http.Request, rs *RefreshState) (*Session, *RefreshState, bool) {
+	prev, _ := o.sessions.Stale(r)
+	p, next, err := o.renew(r.Context(), *rs, prev.Principal)
+	renewed := err == nil
+	if errors.Is(err, errRenewUnavailable) {
+		o.log.Info("renewal failed, session kept", "user", prev.Username, "error", err.Error())
+		p, next, err = prev.Principal, *rs, nil
+	}
+	if err == nil && p.Username == "" {
+		err = errors.New("no principal to keep")
+	}
+	var exp time.Time
+	if err == nil {
+		if exp, err = o.startRenewing(w, p, next); err == nil && renewed {
+			err = o.sessions.StartRefresh(w, next)
+		}
+	}
+	if err != nil {
+		o.log.Info("renewal ended the login", "user", prev.Username, "error", err.Error())
+		return nil, nil, false
+	}
+	return &Session{Principal: p, Expires: exp.Unix()}, &next, true
 }

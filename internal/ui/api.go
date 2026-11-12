@@ -203,7 +203,8 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-expired:
-			// The browser reconnects, gets a 401 and asks for a login.
+			// The browser reconnects; the reconnect renews the session, or
+			// gets a 401 and asks for a login.
 			return
 		case <-tick.C:
 			fmt.Fprint(w, ": ping\n\n")

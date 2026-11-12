@@ -111,7 +111,14 @@ func (s *Sessions) Start(w http.ResponseWriter, p Principal) error {
 
 // StartUntil writes the session cookie for p, valid until exp.
 func (s *Sessions) StartUntil(w http.ResponseWriter, p Principal, exp time.Time) error {
-	return s.write(w, s.SessionCookie(), Session{Principal: p, Expires: exp.Unix()}, exp)
+	return s.StartKept(w, p, exp, exp)
+}
+
+// StartKept writes the session cookie for p, valid until exp, which the
+// browser keeps until keep (a renewing login's deadline), so a renewal still
+// reads the principal from it.
+func (s *Sessions) StartKept(w http.ResponseWriter, p Principal, exp, keep time.Time) error {
+	return s.write(w, s.SessionCookie(), Session{Principal: p, Expires: exp.Unix()}, keep)
 }
 
 // StartRefresh writes the refresh cookie, valid until the state's idle
@@ -131,11 +138,18 @@ func (s *Sessions) Refresh(r *http.Request) (*RefreshState, bool) {
 
 // Get returns the session of the request, if it has a valid one.
 func (s *Sessions) Get(r *http.Request) (*Session, bool) {
-	var sess Session
-	if !s.read(r, s.SessionCookie(), &sess) || s.now().Unix() >= sess.Expires {
+	sess, ok := s.Stale(r)
+	if !ok || s.now().Unix() >= sess.Expires {
 		return nil, false
 	}
-	return &sess, true
+	return sess, true
+}
+
+// Stale returns the session of the request even when it has expired: a
+// renewal keeps its principal when the provider is unavailable.
+func (s *Sessions) Stale(r *http.Request) (*Session, bool) {
+	var sess Session
+	return &sess, s.read(r, s.SessionCookie(), &sess)
 }
 
 // StartLogin writes the login cookie.
