@@ -1,4 +1,4 @@
-import type { CIState, Cost, RunStatus, Stage, TaskPhase } from './types'
+import type { CIState, Cost, Me, RunStatus, Stage, TaskPhase } from './types'
 
 // safeURL only lets http(s) links through: URLs come from GitLab via the
 // cluster, and a javascript: URL must never become a link.
@@ -81,6 +81,17 @@ export function clockTime(iso: string | undefined | null, now: number): string {
   if (t.toDateString() === new Date(now).toDateString()) return hm
   if (Math.abs(t.getTime() - now) < 6 * 86400 * 1000) return `${t.toLocaleDateString(undefined, { weekday: 'short' })} ${hm}`
   return t.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+}
+
+// loginLasts says how long the Desk login lasts (the account menu): a renewing
+// login slides with use and ends after the idle time, a fixed one at its expiry.
+export function loginLasts(me: Pick<Me, 'renewing' | 'idleUntil'>, now: number): string | null {
+  const t = me.idleUntil ? new Date(me.idleUntil) : null
+  if (!t || Number.isNaN(t.getTime())) return null
+  const day = t.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  if (me.renewing) return `Signed in until ${day} unless you are away longer`
+  const hm = t.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  return `Signed in until ${t.toDateString() === new Date(now).toDateString() ? hm : `${day}, ${hm}`}`
 }
 
 export function cost(usd: string | undefined | null): string {

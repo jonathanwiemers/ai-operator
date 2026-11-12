@@ -1,7 +1,7 @@
 // Tests of src/format.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { costChip, costTooltip, deferringEngine, deskTitle, durationShort, fullTime, tokenCount } from '../src/format.ts'
+import { costChip, costTooltip, deferringEngine, deskTitle, durationShort, fullTime, loginLasts, tokenCount } from '../src/format.ts'
 
 test('fullTime shows the date, time and time zone', () => {
   const s = fullTime('2026-11-02T13:59:00Z')
@@ -97,4 +97,18 @@ test('durationShort: a negative or invalid span is a dash', () => {
   assert.equal(durationShort(-1), '—')
   assert.equal(durationShort(Number.NaN), '—')
   assert.equal(durationShort(Number.POSITIVE_INFINITY), '—')
+})
+
+test('loginLasts: renewing names the date, fixed the time', () => {
+  const now = new Date('2026-11-12T10:00:00').getTime()
+  const day = (s) => new Date(s).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  const renewing = loginLasts({ renewing: true, idleUntil: '2026-11-19T10:00:00' }, now)
+  assert.equal(renewing, `Signed in until ${day('2026-11-19T10:00:00')} unless you are away longer`)
+  const today = loginLasts({ renewing: false, idleUntil: '2026-11-12T22:30:00' }, now)
+  assert.match(today, /^Signed in until \d{1,2}:30/)
+  assert.ok(!today.includes(day('2026-11-12T22:30:00')), today)
+  const other = loginLasts({ renewing: false, idleUntil: '2026-11-13T08:00:00' }, now)
+  assert.ok(other.startsWith(`Signed in until ${day('2026-11-13T08:00:00')}, `), other)
+  assert.equal(loginLasts({ renewing: true, idleUntil: null }, now), null)
+  assert.equal(loginLasts({ renewing: false }, now), null)
 })

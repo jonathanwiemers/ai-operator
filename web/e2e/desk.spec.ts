@@ -3003,3 +3003,46 @@ test.describe('research list and form', () => {
     })
   }
 })
+
+// The account area of the rail says how long the login lasts (RailNav.vue,
+// loginLasts): renewing, fixed, and nothing without idleUntil. At 375 px
+// (the rail sheet) the line wraps inside the sheet, in both color schemes.
+test.describe('login lifetime line', () => {
+  const start = routes.find((r) => r.name === 'stream-project-stream')!
+  const variants = [
+    { name: 'renewing', me: { renewing: true, idleUntil: '2030-01-08T09:00:00Z' }, text: /^Signed in until .*\d.* unless you are away longer$/ },
+    { name: 'fixed', me: { renewing: false, idleUntil: '2030-01-08T09:00:00Z' }, text: /^Signed in until .*\d/ },
+    { name: 'none', me: { renewing: false, idleUntil: null }, text: null },
+  ]
+  for (const colorScheme of ['light', 'dark'] as const) {
+    for (const v of variants) {
+      test(`${v.name} in ${colorScheme}@375`, async ({ page, baseURL }, testInfo) => {
+        const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+        await page.emulateMedia({ colorScheme })
+        await page.setViewportSize({ width: 375, height: 812 })
+        await page.clock.setFixedTime(now)
+        await watch(page, new URL(baseURL ?? '').origin, problems)
+        await mockAPI(page, start, problems)
+        await page.route('**/api/v1/me', (r) => r.fulfill({ status: 200, json: { username: 'jo', roles: ['owner'], authMode: 'oidc', ...v.me } }))
+        await page.goto(start.path)
+        await start.ready(page)
+        await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }).click()
+        const sheet = page.getByRole('dialog')
+        await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+        const line = sheet.locator('[data-login-lasts]')
+        if (v.text) {
+          await expect(line).toHaveText(v.text)
+          await line.scrollIntoViewIfNeeded()
+          const box = (await line.boundingBox())!
+          expect(box.x + box.width, 'inside the viewport').toBeLessThanOrEqual(375)
+          const shot = join(testInfo.project.outputDir, '..', 'screenshots', `login-lasts-${v.name}-${colorScheme}@375.png`)
+          await page.screenshot({ path: shot })
+          await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+        } else {
+          await expect(line).toHaveCount(0)
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      })
+    }
+  }
+})

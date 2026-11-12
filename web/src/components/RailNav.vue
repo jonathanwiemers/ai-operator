@@ -6,7 +6,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { hasFeature, session } from '../api'
 import { logout } from '../client'
-import { windowLabel } from '../format'
+import { loginLasts, windowLabel } from '../format'
 import { live } from '../live'
 import { projectDot, projectNeedsYou, projectStateLine } from '../stream'
 import type { EngineUsage, ProjectSummary, ResearchSummary } from '../types'
@@ -23,6 +23,7 @@ const props = defineProps<{
 const emit = defineEmits<{ navigate: [] }>()
 
 const route = useRoute()
+const lasts = computed(() => (session.me?.authMode === 'oidc' ? loginLasts(session.me, Date.now()) : null))
 
 function onClick(e: MouseEvent) {
   if ((e.target as Element | null)?.closest('a')) emit('navigate')
@@ -139,6 +140,8 @@ function projectActive(namespace: string, name: string) {
         >
           Sign out
         </button>
+        <!-- Its own line under the name; wraps instead of overflowing. -->
+        <p v-if="lasts" data-login-lasts class="m-0 basis-full text-xs break-words text-(--text-3)">{{ lasts }}</p>
       </div>
     </div>
   </div>
