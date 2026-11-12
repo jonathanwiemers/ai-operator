@@ -640,3 +640,16 @@ follow-up issue), and requirements without an issue and why.
   milestone list, a milestone's issues and its follow-ups); no field
   dropped. No field-for-field view/store pair is left in `internal/ui`.
   Nothing narrowed.
+- 2026-11-11 #344 (R16 part 1): the multi-column reads of `chat.go`,
+  `pauses.go`, `runs.go` and `milestones.go` use `pgx.RowToStructByName`:
+  chat messages, the pause events, the previous research result, a
+  milestone's releases and its issues' first run and merge times. Computed
+  columns are aliased (`coalesce(reply_to, 0) AS reply_to`); `db` tags
+  name the columns that differ from the field (`Event.MergeRequestIID` is
+  `mr_iid`, `ReleaseSnapshot.ID` `release_id`, `MergeRequests` `mr_iids`).
+  A release's nullable start and end times are read through `releaseRow`,
+  which embeds `ReleaseSnapshot` with pointer times (its own are `db:"-"`),
+  so NULL stays the zero time. `eventColumns` keeps its order, so
+  `history.go`'s `Stream` still scans it positionally until its slice.
+  Scalar `Scan(&id)` stays (D344-P1); the milestone row stays on
+  `scanTotals` with Spend's composed SQL. Nothing narrowed.

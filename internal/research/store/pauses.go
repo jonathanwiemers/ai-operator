@@ -70,12 +70,7 @@ func (s *Store) Pauses(ctx context.Context, project ProjectKey, milestone int64,
 		WHERE namespace = $1 AND project = $2 AND milestone_iid = $3 AND kind = ANY($4::text[]) AND expires_at > $5
 		ORDER BY at DESC, id DESC LIMIT $6`,
 		project.Namespace, project.Name, milestone, []string{pausedKind, resumedKind}, now, maxPauseEvents)
-	events, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Event, error) {
-		var e Event
-		err := row.Scan(&e.ID, &e.Key, &e.At, &e.Namespace, &e.Project, &e.MilestoneIID, &e.IssueIID,
-			&e.MergeRequestIID, &e.Task, &e.Kind, &e.Actor, &e.Summary, &e.Data, &e.ExpiresAt)
-		return e, err
-	})
+	events, err := pgx.CollectRows(rows, pgx.RowToStructByName[Event])
 	if err != nil {
 		return PauseHistory{}, err
 	}

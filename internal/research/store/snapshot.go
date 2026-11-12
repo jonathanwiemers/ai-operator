@@ -82,8 +82,10 @@ type FollowUpSnapshot struct {
 // release ran on, State the decision's state (Planned, Released, ...) and
 // Reason the operator's words on it. Issues and MergeRequests are what the
 // release contains. A zero AfterIID, StartedAt or EndedAt is stored as NULL.
+// The db tags name desk_milestone_releases' columns; the nullable times are
+// read through releaseRow.
 type ReleaseSnapshot struct {
-	ID            int64
+	ID            int64 `db:"release_id"`
 	By            string
 	Actor         string
 	Why           string
@@ -93,13 +95,13 @@ type ReleaseSnapshot struct {
 	State         string
 	Reason        string
 	Issues        []int64
-	MergeRequests []int64
+	MergeRequests []int64 `db:"mr_iids"`
 	Version       string
 	PipelineURL   string
 	ReleaseURL    string
 	DecidedAt     time.Time
-	StartedAt     time.Time
-	EndedAt       time.Time
+	StartedAt     time.Time `db:"-"`
+	EndedAt       time.Time `db:"-"`
 }
 
 // SaveMilestone writes m with its issues, follow-ups and releases in one

@@ -123,19 +123,21 @@ func (s *Store) SaveResult(ctx context.Context, runID string, r blocks.Result, n
 // the research namespace/name, without duplicates, and that run's start
 // time. Without a result it returns none and a zero time.
 func (s *Store) PreviousResult(ctx context.Context, namespace, research string, limit int) ([]string, time.Time, error) {
-	var r blocks.Result
-	var started time.Time
-	err := s.pool.QueryRow(ctx, `SELECT res.blocks, r.started_at FROM research_results res JOIN research_runs r ON r.id = res.run_id
+	rows, _ := s.pool.Query(ctx, `SELECT res.blocks, r.started_at FROM research_results res JOIN research_runs r ON r.id = res.run_id
 		WHERE r.namespace = $1 AND r.research = $2 ORDER BY res.created_at DESC, r.started_at DESC LIMIT 1`,
-		namespace, research).Scan(&r.Blocks, &started)
+		namespace, research)
+	latest, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[struct {
+		Blocks    []blocks.Block
+		StartedAt time.Time
+	}])
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, time.Time{}, nil
 	}
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	urls := blocks.ItemURLs(r)
-	return urls[:min(len(urls), max(limit, 0))], started, nil
+	urls := blocks.ItemURLs(blocks.Result{Blocks: latest.Blocks})
+	return urls[:min(len(urls), max(limit, 0))], latest.StartedAt, nil
 }
 
 // PreviousItemURLs returns at most limit item URLs of the latest result of

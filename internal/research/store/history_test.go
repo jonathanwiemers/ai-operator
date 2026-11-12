@@ -131,6 +131,8 @@ func TestPauses(t *testing.T) {
 	events[8].Key += "/shop"
 	// The stuck pause says how it ended; the ciRed one is from before "via".
 	events[3].Data["via"] = "takeover"
+	// An event without an issue (NULL issue_iid) still reads.
+	events[4].IssueIID = 0
 	if _, err := s.InsertEvents(ctx, events); err != nil {
 		t.Fatal(err)
 	}

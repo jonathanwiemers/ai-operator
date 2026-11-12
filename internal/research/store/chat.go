@@ -34,15 +34,11 @@ type ChatMessage struct {
 	ExpiresAt  time.Time `json:"-"`
 }
 
+// chatColumns are ChatMessage's fields by name (pgx.RowToStructByName).
 const chatColumns = `id, namespace, project, task, author, author_name, role, kind, body,
-	coalesce(reply_to, 0), coalesce(client_key, ''), state, reason, at, expires_at`
+	coalesce(reply_to, 0) AS reply_to, coalesce(client_key, '') AS client_key, state, reason, at, expires_at`
 
-func scanChat(row pgx.CollectableRow) (ChatMessage, error) {
-	var m ChatMessage
-	err := row.Scan(&m.ID, &m.Namespace, &m.Project, &m.Task, &m.Author, &m.AuthorName,
-		&m.Role, &m.Kind, &m.Body, &m.ReplyTo, &m.ClientKey, &m.State, &m.Reason, &m.At, &m.ExpiresAt)
-	return m, err
-}
+var scanChat = pgx.RowToStructByName[ChatMessage]
 
 // InsertUserMessage writes a user message in state queued. The same
 // (author, client_key) again returns the existing id with created false.

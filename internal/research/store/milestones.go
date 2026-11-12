@@ -149,25 +149,31 @@ func (s *Store) Milestone(ctx context.Context, project ProjectKey, iid int64, no
 	return d, nil
 }
 
+// releaseRow is a row of desk_milestone_releases: NULL start and end times
+// become ReleaseSnapshot's zero times.
+type releaseRow struct {
+	ReleaseSnapshot
+	StartedAt *time.Time `db:"started_at"`
+	EndedAt   *time.Time `db:"ended_at"`
+}
+
 // releases are the stored release decisions of project's milestone iid by
 // ID.
 func (s *Store) releases(ctx context.Context, p ProjectKey, iid int64) ([]ReleaseSnapshot, error) {
-	rows, _ := s.pool.Query(ctx, `SELECT release_id, r.by, actor, why, coalesce(after_iid, 0), sha, released_sha,
-			state, reason, issues, mr_iids, version, pipeline_url, release_url, decided_at, started_at, ended_at
+	rows, _ := s.pool.Query(ctx, `SELECT release_id, r.by, actor, why, coalesce(after_iid, 0) AS after_iid, sha,
+			released_sha, state, reason, issues, mr_iids, version, pipeline_url, release_url, decided_at, started_at,
+			ended_at
 		FROM desk_milestone_releases r
 		WHERE namespace = $1 AND project = $2 AND milestone_iid = $3 ORDER BY release_id`, p.Namespace, p.Name, iid)
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (ReleaseSnapshot, error) {
-		var r ReleaseSnapshot
-		var started, ended *time.Time
-		err := row.Scan(&r.ID, &r.By, &r.Actor, &r.Why, &r.AfterIID, &r.SHA, &r.ReleasedSHA, &r.State, &r.Reason,
-			&r.Issues, &r.MergeRequests, &r.Version, &r.PipelineURL, &r.ReleaseURL, &r.DecidedAt, &started, &ended)
-		if started != nil {
-			r.StartedAt = *started
+		r, err := pgx.RowToStructByName[releaseRow](row)
+		if r.StartedAt != nil {
+			r.ReleaseSnapshot.StartedAt = *r.StartedAt
 		}
-		if ended != nil {
-			r.EndedAt = *ended
+		if r.EndedAt != nil {
+			r.ReleaseSnapshot.EndedAt = *r.EndedAt
 		}
-		return r, err
+		return r.ReleaseSnapshot, err
 	})
 }
 
@@ -218,28 +224,22 @@ func (s *Store) issueFigures(ctx context.Context, project ProjectKey, milestone,
 		return issues, err
 	}
 
-	type times struct{ firstRun, merged *time.Time }
-	rows, _ = s.pool.Query(ctx, `SELECT issue_iid, min(at) FILTER (WHERE kind = 'run.started'),
-			max(at) FILTER (WHERE kind = 'merged')
+	type times struct {
+		IssueIID         int64
+		FirstRun, Merged *time.Time
+	}
+	rows, _ = s.pool.Query(ctx, `SELECT issue_iid, min(at) FILTER (WHERE kind = 'run.started') AS first_run,
+			max(at) FILTER (WHERE kind = 'merged') AS merged
 		FROM history_events
 		WHERE `+inScope+` AND issue_iid IS NOT NULL AND kind IN ('run.started', 'merged') AND expires_at > $5
 		GROUP BY 1`, project.Namespace, project.Name, milestone, issue, now)
-	byIssue := map[int64]times{}
-	var iid int64
-	var first, merged *time.Time
-	// Copies: a scan may reuse what the pointers point to.
-	clone := func(t *time.Time) *time.Time {
-		if t == nil {
-			return nil
-		}
-		v := *t
-		return &v
-	}
-	if _, err := pgx.ForEachRow(rows, []any{&iid, &first, &merged}, func() error {
-		byIssue[iid] = times{clone(first), clone(merged)}
-		return nil
-	}); err != nil {
+	events, err := pgx.CollectRows(rows, pgx.RowToStructByName[times])
+	if err != nil {
 		return nil, err
+	}
+	byIssue := map[int64]times{}
+	for _, t := range events {
+		byIssue[t.IssueIID] = t
 	}
 
 	pauses, err := s.Pauses(ctx, project, milestone, now)
@@ -256,7 +256,7 @@ func (s *Store) issueFigures(ctx context.Context, project ProjectKey, milestone,
 	for i := range issues {
 		f := &issues[i]
 		t := byIssue[f.IID]
-		f.FirstRun, f.MergedAt = t.firstRun, t.merged
+		f.FirstRun, f.MergedAt = t.FirstRun, t.Merged
 		f.PausedSec = paused[f.IID]
 		if f.FirstRun != nil {
 			end := now

@@ -176,14 +176,21 @@ func TestInsertReply(t *testing.T) {
 	if err != nil || len(msgs) != 2 {
 		t.Fatalf("ChatMessages = %+v, %v", msgs, err)
 	}
-	var user store.ChatMessage
+	var user, agent store.ChatMessage
 	for _, m := range msgs {
-		if m.Role == "user" {
+		switch m.Role {
+		case "user":
 			user = m
+		case "agent":
+			agent = m
 		}
 	}
 	if user.State != "answered" {
 		t.Errorf("user state = %q, want answered", user.State)
+	}
+	// NULL reply_to and client_key read as zero values.
+	if user.ReplyTo != 0 || user.ClientKey != "r1" || agent.ReplyTo != id || agent.ClientKey != "" {
+		t.Errorf("user = %+v, agent = %+v; want reply_to only on the agent's, client_key only on the user's", user, agent)
 	}
 }
 

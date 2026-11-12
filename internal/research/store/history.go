@@ -22,7 +22,7 @@ type Event struct {
 	Project         string
 	MilestoneIID    int64
 	IssueIID        int64
-	MergeRequestIID int64
+	MergeRequestIID int64 `db:"mr_iid"`
 	Task            string
 	Kind            string
 	Actor           string
@@ -102,8 +102,10 @@ type StreamQuery struct {
 	Limit         int
 }
 
-const eventColumns = `id, key, at, namespace, project, coalesce(milestone_iid, 0), coalesce(issue_iid, 0),
-	coalesce(mr_iid, 0), task, kind, actor, summary, data, expires_at`
+// eventColumns are Event's fields by name (pgx.RowToStructByName) and in
+// order (Stream's Scan).
+const eventColumns = `id, key, at, namespace, project, coalesce(milestone_iid, 0) AS milestone_iid,
+	coalesce(issue_iid, 0) AS issue_iid, coalesce(mr_iid, 0) AS mr_iid, task, kind, actor, summary, data, expires_at`
 
 // Stream returns the events q selects.
 func (s *Store) Stream(ctx context.Context, q StreamQuery) ([]Event, error) {
