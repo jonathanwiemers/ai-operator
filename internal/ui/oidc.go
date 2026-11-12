@@ -166,8 +166,31 @@ func (o *oidcClient) callback(w http.ResponseWriter, r *http.Request) {
 		o.fail(w, r, errSession)
 		return
 	}
+	// The session lasts auth.sessionTTL either way until renewal exists.
+	if rs, ok := o.refreshState(w, tok, idToken.Subject, st.Nonce, username); ok {
+		if err := o.sessions.StartRefresh(w, rs); err != nil {
+			o.log.Error(err, "cannot start refresh cookie", "user", username)
+			o.fail(w, r, errSession)
+			return
+		}
+	}
 	o.log.Info("login", "user", username, "roles", roles)
 	http.Redirect(w, r, st.Return, http.StatusFound)
+}
+
+// refreshState returns the refresh state for a login's token response. Without
+// a refresh token it clears a stale cookie, so an earlier login's token is
+// never paired with this user, and reports false.
+func (o *oidcClient) refreshState(w http.ResponseWriter, tok *oauth2.Token, subject, nonce, user string) (RefreshState, bool) {
+	if tok.RefreshToken == "" {
+		o.sessions.Clear(w, o.sessions.RefreshCookie())
+		o.log.Info("no refresh token from the provider; the login lasts auth.sessionTTL and is not renewed — check that oidc.scopes includes offline_access and the client allows the refresh_token grant", "user", user)
+		return RefreshState{}, false
+	}
+	now := o.sessions.now()
+	rs := RefreshState{Token: tok.RefreshToken, Subject: subject, Nonce: nonce, Since: now.Unix()}
+	rs.Slide(now, o.cfg.Auth.IdleTimeout.Duration, o.cfg.Auth.MaxLifetime.Duration)
+	return rs, true
 }
 
 // LoginRedirect is where the browser goes after logging out.
