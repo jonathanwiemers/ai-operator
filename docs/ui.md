@@ -1632,6 +1632,25 @@ build, so the CI `ui` job enforces it. It prints
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
+**Route chunks.** A route listed under `routes` in `bundle-budget.json` is
+checked on its own: the JS and CSS its view loads beyond the initial set.
+`vite.config.ts` writes Vite's build manifest
+(`web/dist/app/.vite/manifest.json`), and the script follows the view's
+entry (`entry`, e.g. `src/views/Costs.vue`) through its static and dynamic
+imports, transitively, stopping at chunks of the initial set, and adds their
+CSS. It prints `route <name>: X kB (JS a, CSS b), cap: C kB` and fails above
+the route's `capKB`. The manifest is the build's own record of the chunk
+graph, so hashed names and chunks Vite splits off for sharing count without
+a glob; a chunk shared with another lazy view counts for both. The manifest
+is embedded and served like any built file; it names only chunks the app
+loads anyway.
+
+- `costs` (`/costs`): cap 120 kB (decision 15 of
+  [the Costs page spec](specs/costs-page.spec.md)). 2026-11-12, before
+  Chart.js (#363): 43.7 kB (JS 43.7, CSS 0.0), mostly `USelect` (22.8) and
+  the kit's helpers. The first chart slice records the figure with Chart.js
+  in `measuredKB`; the cap then drops to that plus 30 % if that is lower.
+
 ## UI kit
 
 The Desk's controls are [Nuxt UI](https://ui.nuxt.com) 4 components with
@@ -1691,6 +1710,26 @@ only the properties it sets. Do not give own classes utility names (`table`,
 withheld message `withheld`. `block` (milestone, retrospective), `static`
 (prompt options) and `grid` (an SVG group in the context chart) remain, as
 their utilities change nothing there.
+
+**Chart colours.** Chart series take `--chart-1` to `--chart-6`, and *Other*
+`--chart-other` (a grey), from `style.css`, light and dark; no chart names a
+colour of its own. `colorSlots` in `web/src/chartData.ts` gives each key its
+slot: the FNV-1a hash of the key mod 6, probing to the next free slot in
+sorted key order. A key keeps its colour across reloads, ranges and key
+orders without storage, and adding a key rarely moves another. Since any
+two slots can meet, the palette was checked for every pair, not only
+neighbours (OKLab ΔE, the dataviz validator): on the light card
+(`--surface`, white) every pair is at least 9.0 apart for red-green colour
+blindness and 16.3 for normal vision, and every colour has 3:1 contrast. On
+the dark card (`#1c1a25`) the worst pairs are 7.4 (purple and blue, red-green
+blindness) and 13.5 (brown and orange), and every colour has 3:1 contrast;
+colour is never alone (legend with values, table view, decision 8 of the
+Costs page spec), which those pairs rely on. `chartData.ts` also shapes the
+data, without Vue or Chart.js: `topKeys` (six keys by known cost),
+`seriesFromPoints` (a series per key over every bucket, the rest and the
+server's folded points as *Other*, unknown and unmetered calls per bucket),
+`bucketLabel` (`3 Nov`, `3–9 Nov`, `Nov 2026`, formatted in UTC, as the
+bucket is a local date already) and `formatUSD`/`formatTokens`.
 
 ### DataList
 

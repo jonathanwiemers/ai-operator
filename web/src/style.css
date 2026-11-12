@@ -53,6 +53,17 @@
   --tone-danger-bg: #fde4e1;
   --tone-danger-fg: #b3261e;
 
+  /* Chart series (docs/ui.md, "UI kit"): six slots plus Other, assigned per
+     key by chartData.ts's colorSlots. Checked on --surface for every pair,
+     not only neighbours, since any two slots can meet in a stack. */
+  --chart-1: #637be9;
+  --chart-2: #f06b20;
+  --chart-3: #35a368;
+  --chart-4: #8e5c02;
+  --chart-5: #ad4675;
+  --chart-6: #882dc2;
+  --chart-other: #8a85a0;
+
   --radius: 10px;
   --radius-sm: 6px;
   --shadow: 0 1px 2px rgb(29 26 41 / 6%), 0 1px 1px rgb(29 26 41 / 4%);
@@ -98,6 +109,14 @@
   --tone-warning-fg: #f5c46b;
   --tone-danger-bg: #431815;
   --tone-danger-fg: #ff9b91;
+
+  --chart-1: #2868ce;
+  --chart-2: #df7016;
+  --chart-3: #47aa72;
+  --chart-4: #9b6022;
+  --chart-5: #c14170;
+  --chart-6: #9276cb;
+  --chart-other: #7f7996;
 
   --shadow: 0 1px 2px rgb(0 0 0 / 40%);
   --shadow-hover: 0 6px 18px rgb(0 0 0 / 45%);

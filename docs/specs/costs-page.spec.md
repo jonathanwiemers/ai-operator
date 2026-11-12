@@ -342,3 +342,14 @@ follow-up issue), and requirements without an issue and why.
   dashboard's today and 7-day chips link to `/costs?range=7d` (D362-P1), the
   Spend tab to `/costs?project=<namespace>/<name>`. The client's `get` now
   throws `ApiError` with the status (for the 503 state). No charts yet.
+- 2026-11-12 #363 (R8, part 1): `web/src/chartData.ts` (`topKeys`,
+  `seriesFromPoints`, `bucketLabel`, `colorSlots`, `formatUSD`,
+  `formatTokens`); Other has the key `OTHER`, since the server's key `""`
+  without `other` is the legacy runs. Tokens `--chart-1` … `--chart-6` and
+  `--chart-other`, checked for every pair (any two slots can meet); on the
+  dark card two pairs stay under the validator's targets (docs/ui.md,
+  *Chart colours*), relying on the legend and table view. `npm run budget`
+  checks `routes.costs` through Vite's build manifest, following static and
+  dynamic imports and stopping at initial chunks: 43.7 kB before Chart.js.
+  Chart.js, the wrappers, runtime token reading and the CSP e2e check follow
+  with R9 to R11 as planned.

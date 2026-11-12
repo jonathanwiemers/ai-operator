@@ -36,6 +36,9 @@ export default defineConfig({
     outDir: 'dist/app',
     emptyOutDir: true,
     assetsInlineLimit: 0,
+    // dist/app/.vite/manifest.json: the chunk graph npm run budget follows
+    // for each route's chunk (docs/ui.md, "Bundle budget").
+    manifest: true,
   },
   server: {
     proxy: {
