@@ -4,6 +4,7 @@ import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, type RouteLocationRaw } from 'vue-router'
 import { usePromptAnswer } from '../promptAnswer'
+import { keepThroughSignIn } from '../signInDraft'
 import {
   canAnswerText,
   promptAnchor,
@@ -58,6 +59,7 @@ const { sending, error, sent, answer, busy, send } = usePromptAnswer(
 )
 
 const text = ref('')
+keepThroughSignIn(() => `prompt:${props.namespace}/${props.name}/${props.prompt.id}`, text)
 async function sendText() {
   if (await send({ text: text.value })) text.value = ''
 }

@@ -348,6 +348,57 @@ test.describe('sign in again', () => {
     expect(seen.logins).toBe(0)
     expect(problems.pageErrors).toEqual([])
   })
+
+  // Unsent text survives the automatic sign-in (src/signInDraft.ts): the
+  // event stream waits until the login expires and then answers 401, the
+  // provider's stand-in sends the browser straight back to the route.
+  for (const c of [
+    { route: 'task-chat', composer: '.composer.chat', text: 'Half a thought for the agent' },
+    { route: 'stream-project-stream', composer: '.composer.note', text: 'A note not sent yet' },
+  ]) {
+    test(`unsent text in ${c.composer} survives the sign-in@1280`, async ({ page, baseURL }) => {
+      const route = routes.find((r) => r.name === c.route)!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      const seen = { logins: 0, back: '' }
+      let phase: 'signed-in' | 'expired' | 'back' = 'signed-in'
+      let expire!: () => void
+      const expired = new Promise<void>((resolve) => (expire = resolve))
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.route('**/api/v1/**', async (r) => {
+        if (phase === 'signed-in' && new URL(r.request().url()).pathname === '/api/v1/events') await expired
+        if (phase === 'expired') return r.fulfill({ status: 401, json: { error: 'login required' } })
+        return r.fallback()
+      })
+      await page.route(
+        (u) => u.pathname === '/oauth2/login',
+        (r) => {
+          seen.logins++
+          seen.back = new URL(r.request().url()).searchParams.get('return') ?? ''
+          phase = 'back'
+          return r.fulfill({ status: 302, headers: { location: seen.back } })
+        },
+      )
+      await page.goto(route.path)
+      await route.ready(page)
+
+      const text = page.locator(c.composer).locator('textarea')
+      await expect(text).toBeEnabled()
+      await text.fill(c.text)
+      phase = 'expired'
+      expire()
+
+      await expect.poll(() => seen.logins, 'one automatic sign-in').toBe(1)
+      expect(seen.back).toBe(route.path)
+      await page.waitForURL((u) => u.pathname + u.search === route.path)
+      await route.ready(page)
+      await expect(text).toHaveValue(c.text)
+      const kept = await page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith('desk-sign-in-draft:')))
+      expect(kept, 'the kept copy is gone').toEqual([])
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
 })
 
 // The old redirects are gone: their paths are Not found.

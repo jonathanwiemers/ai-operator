@@ -1398,7 +1398,11 @@ points to 127.0.0.1 (DNS rebinding).
   to the same page without a click. It does so once: a `sessionStorage`
   marker stops another attempt for 60 seconds, a `login_error` in the URL
   or a browser without `sessionStorage` stops it too, and then the sign-in
-  page shows as before.
+  page shows as before. Unsent text in the task chat, the Desk chat, the
+  note, comment and prompt-answer composers is kept in `sessionStorage`
+  per route and composer (`desk-sign-in-draft:<route>:<composer>`) just
+  before it leaves, put back into the empty composer when the login returns
+  to that route, and then dropped.
 - **Browser protections.** A strict Content Security Policy (only the UI's
   own scripts, styles and API, no framing), HSTS, `nosniff`, and Go's
   cross-origin protection for requests that change state (logout, comments,

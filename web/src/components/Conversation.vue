@@ -2,6 +2,7 @@
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ApiError, disconnectGitLab, getGitLabStatus, getMilestoneThread, getTaskThread, LoginRequiredError, postMilestoneNote, postTaskNote } from '../client'
+import { keepThroughSignIn } from '../signInDraft'
 import ExtLink from './ExtLink.vue'
 import NoteThread from './NoteThread.vue'
 import { fromGitLabNotes } from '../noteThread'
@@ -28,6 +29,7 @@ const parts = ref<ThreadPart[]>([])
 const active = ref<ThreadPart['target']>('issue')
 const error = ref('')
 const body = ref('')
+keepThroughSignIn(() => `comment:${props.namespace}/${props.name}/${props.task ?? ''}/${props.milestone ?? ''}`, body)
 const sending = ref(false)
 const sendError = ref('')
 

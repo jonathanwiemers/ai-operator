@@ -4,6 +4,7 @@
 // note; the composer only shows it (docs/ui.md, "Composer").
 import { computed, reactive, ref, watch } from 'vue'
 import { getGitLabStatus, LoginRequiredError, postMilestoneNote, postTaskNote } from './client'
+import { keepThroughSignIn } from './signInDraft'
 import { keepNoteTarget, noteDisabledReason, noteHint, notePlaceholder, noteTargets, type NoteTarget } from './stream'
 import type { GitLabStatus, ProjectDetail } from './types'
 
@@ -23,6 +24,7 @@ export interface StreamNoteSource {
 export function useStreamNote(source: () => StreamNoteSource, onPosted?: () => void) {
   const status = ref<GitLabStatus | null>(null)
   const body = ref('')
+  keepThroughSignIn(() => `note:${source().namespace}/${source().name}`, body)
   const sending = ref(false)
   const error = ref('')
   const target = ref<NoteTarget | null>(null)

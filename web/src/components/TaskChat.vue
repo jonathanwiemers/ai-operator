@@ -18,6 +18,7 @@ import {
   type ChatCommand,
 } from '../chatState'
 import { live } from '../live'
+import { keepThroughSignIn } from '../signInDraft'
 import type { RouteLocationRaw } from 'vue-router'
 import type { AutopilotItem, AutopilotPhase, ChatKind, ChatMessage, ChatState, ProposalView, TaskPhase } from '../types'
 import Badge from './Badge.vue'
@@ -240,6 +241,7 @@ const sending = ref(false)
 const sendError = ref('')
 const clientKey = ref('')
 const pendingKind = ref<ChatKind | null>(null)
+keepThroughSignIn(() => `chat:${props.namespace}/${props.name}/${props.task}`, body)
 // Model… form (Implement) and Skip… (Spec autopilot).
 const modelOpen = ref(false)
 const useEngine = ref<'claude' | 'cursor'>('claude')
@@ -259,8 +261,9 @@ function restoreDraft() {
   if (!d) return
   clientKey.value = d.clientKey
   pendingKind.value = d.kind
-  // Commands keep the key for retry without putting JSON in the textarea.
-  if (d.kind !== 'command') body.value = d.body
+  // Commands keep the key for retry without putting JSON in the textarea;
+  // text kept through a sign-in (newer) wins over the failed send's body.
+  if (d.kind !== 'command' && !body.value) body.value = d.body
 }
 
 watch(
