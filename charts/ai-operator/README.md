@@ -232,7 +232,7 @@ AgentProjects and AgentTasks (and AgentResearches with
 | `ui.auth.sessionTTL` | `12h` | how long a login lasts when the provider returns no refresh token (it is then not renewed); roles are read at login |
 | `ui.auth.renewAfter` | `15m` | how long a session cookie is valid before it is renewed with the refresh token |
 | `ui.auth.idleTimeout` | `168h` | a login that was not renewed for this long ends |
-| `ui.auth.maxLifetime` | `0s` | cap on a login from its start; `0s` leaves it to the provider |
+| `ui.auth.maxLifetime` | `0s` | cap on a login from its start, fixed at login (a change applies to new logins only); `0s` leaves it to the provider |
 | `ui.oidc.issuerURL` | | required with `oidc` |
 | `ui.oidc.clientID` | | required with `oidc` |
 | `ui.oidc.existingSecret` | | required with `oidc`: Secret with `session-key` (at least 32 characters) and, for confidential clients, `client-secret` |

@@ -130,7 +130,7 @@ func TestOIDCCallbackRefreshCookie(t *testing.T) {
 		tok, nonce := f.logins[0].current, f.logins[0].nonce
 		f.mu.Unlock()
 		st := decode(t, s, rc)
-		if st.Token != tok || st.Subject != fakeSubject || st.Nonce != nonce || st.Since != now.Unix() ||
+		if st.Token != tok || st.Subject != fakeSubject || st.Nonce != nonce || st.Until != 0 ||
 			st.IdleUntil != now.Add(s.cfg.Auth.IdleTimeout.Duration).Unix() {
 			t.Errorf("refresh state = %+v", st)
 		}
@@ -143,8 +143,8 @@ func TestOIDCCallbackRefreshCookie(t *testing.T) {
 			c.Auth.MaxLifetime.Duration = 24 * time.Hour
 		}, false)
 		st := decode(t, s, cookieNamed(cookies, s.sessions.RefreshCookie()))
-		if want := now.Add(24 * time.Hour).Unix(); st.IdleUntil != want {
-			t.Errorf("IdleUntil = %d, want %d", st.IdleUntil, want)
+		if want := now.Add(24 * time.Hour).Unix(); st.IdleUntil != want || st.Until != want {
+			t.Errorf("IdleUntil = %d, Until = %d, want %d", st.IdleUntil, st.Until, want)
 		}
 	})
 	t.Run("no refresh token", func(t *testing.T) {

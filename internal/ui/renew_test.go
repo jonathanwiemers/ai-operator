@@ -75,9 +75,9 @@ func TestRedeemRotates(t *testing.T) {
 	if next.Token != current || next.Token == st.Token {
 		t.Error("the state does not carry the rotated refresh token")
 	}
-	if next.Subject != st.Subject || next.Nonce != st.Nonce || next.Since != st.Since ||
+	if next.Subject != st.Subject || next.Nonce != st.Nonce || next.Until != st.Until ||
 		next.Renewed != now.Unix() || next.IdleUntil != now.Add(s.cfg.Auth.IdleTimeout.Duration).Unix() {
-		t.Errorf("state = since %d, renewed %d, idle %d (now %d)", next.Since, next.Renewed, next.IdleUntil, now.Unix())
+		t.Errorf("state = until %d, renewed %d, idle %d (now %d)", next.Until, next.Renewed, next.IdleUntil, now.Unix())
 	}
 	if p.Username != fakeEmail || !slices.Equal(p.Roles, prev.Roles) {
 		t.Errorf("principal = %+v, want %+v", p, prev)
@@ -197,13 +197,26 @@ func TestRedeemPastDeadline(t *testing.T) {
 	t.Run("max lifetime", func(t *testing.T) {
 		f := newFakeOIDC(t)
 		s, st, prev, _ := renewLogin(t, f, func(c *Config) { c.Auth.MaxLifetime.Duration = 24 * time.Hour })
-		// The login started 25h ago; its idle deadline is still ahead.
-		st.Since = time.Now().Add(-25 * time.Hour).Unix()
+		// The login's absolute deadline passed an hour ago; its idle deadline
+		// is still ahead.
+		st.Until = time.Now().Add(-time.Hour).Unix()
 		if _, _, err := s.oidc.redeem(t.Context(), st, prev); !errors.Is(err, errRenewRefused) {
 			t.Errorf("redeem: %v, want a refusal", err)
 		}
 		if got := f.refreshGrants(1); got != 0 {
 			t.Errorf("refresh grants = %d, want 0", got)
+		}
+	})
+	t.Run("deadline fixed at login", func(t *testing.T) {
+		// A later change of auth.maxLifetime does not apply to a login that
+		// already has its deadline, nor give one to a login without.
+		f := newFakeOIDC(t)
+		s, st, prev, _ := renewLogin(t, f, nil)
+		s.oidc.cfg.Auth.MaxLifetime.Duration = time.Hour
+		st.Until = 0
+		_, next, err := s.oidc.redeem(t.Context(), st, prev)
+		if err != nil || next.Until != 0 {
+			t.Errorf("redeem: %v, until %d; want a renewal without a deadline", err, next.Until)
 		}
 	})
 }

@@ -29,8 +29,9 @@ renewer follows that pattern. Zitadel rotates refresh tokens on every use.
 ## Decisions (locked)
 
 1. **Refresh token in its own encrypted cookie**, `__Host-ai-operator-refresh`
-   (`ai-operator-refresh` when not secure): token, subject, nonce, start,
-   last renewal and idle deadline, sealed with the session key. The UI stays
+   (`ai-operator-refresh` when not secure): token, subject, nonce,
+   absolute deadline (when `auth.maxLifetime` is set), last renewal and idle
+   deadline, sealed with the session key. The UI stays
    stateless; the session cookie keeps its shape and size.
 2. **Short session, renewed on use.** The session cookie is valid for
    `auth.renewAfter` (default 15m). `authed` renews an expired session with a
@@ -39,7 +40,10 @@ renewer follows that pattern. Zitadel rotates refresh tokens on every use.
    written) and then serves the request.
 3. **Idle and absolute limits.** The refresh cookie expires after
    `auth.idleTimeout` (168h) without a renewal, sliding on each one.
-   `auth.maxLifetime` (0 = the provider decides) caps a login from its start.
+   `auth.maxLifetime` (0 = the provider decides) caps a login from its start;
+   the deadline is computed at login and kept in the refresh cookie, so a
+   later change of the setting applies to new logins only (#390, superseding
+   D375-P1).
 4. **Without a refresh token, today's behaviour**: the session lasts
    `auth.sessionTTL` and is not renewed; the UI logs once per login why to
    look at `offline_access`.
@@ -118,3 +122,5 @@ refresh R1" to "R12"); R13 is #386.
 
 - R5 was split in two (renewer, then single-flight and cache); R13 is
   documentation only, no release after it.
+- #390 revisited D375-P1: the refresh cookie keeps the absolute deadline
+  computed at login instead of the login's start; the nonce stays.

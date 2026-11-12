@@ -42,7 +42,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	m := Me{Username: p.Username, Roles: p.Roles, AuthMode: s.cfg.Auth.Mode}
 	if rs := refreshOf(r); rs != nil {
 		m.Renewing = true
-		t := rs.Deadline(s.cfg.Auth.MaxLifetime.Duration)
+		t := rs.Deadline()
 		m.IdleUntil = &t
 	} else if t := sessionExpiry(r); !t.IsZero() {
 		m.IdleUntil = &t

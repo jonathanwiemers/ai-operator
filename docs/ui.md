@@ -1084,7 +1084,7 @@ is short and is renewed in the background; without one the login is fixed.
 | `ui.oidc.scopes` | `[openid, profile, email, offline_access]` | `offline_access` makes the provider return a refresh token. When `scopes` is set without it, the UI logs a warning at startup, and once per login that it got no refresh token |
 | `ui.auth.renewAfter` | `15m` | how long the session cookie is valid; the next request after it renews it with the refresh token, and the roles are mapped again |
 | `ui.auth.idleTimeout` | `168h` | a login that was not renewed for this long ends; every renewal slides the deadline. Must be longer than `renewAfter` |
-| `ui.auth.maxLifetime` | `0s` | caps a login from its start; `0s` leaves it to the provider |
+| `ui.auth.maxLifetime` | `0s` | caps a login from its start; `0s` leaves it to the provider. The deadline is fixed at login, so a change applies to new logins only |
 | `ui.auth.sessionTTL` | `12h` | applies only when the provider returns no refresh token: the login lasts this long and is not renewed |
 
 On **Zitadel** nothing else is needed than `offline_access` in the scopes

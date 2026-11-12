@@ -2674,9 +2674,11 @@ in for the other):
 - **session**: the principal (user name, roles) and a short expiry,
   `auth.renewAfter` (15m); `auth.sessionTTL` without a refresh token.
 - **refresh** (`__Host-ai-operator-refresh`): the provider's refresh token,
-  the subject, the nonce, the login's start, the last renewal and the idle
-  deadline (`auth.idleTimeout`, slid on each renewal, capped by
-  `auth.maxLifetime` from the start when set).
+  the subject, the nonce, the last renewal, the idle deadline
+  (`auth.idleTimeout`, slid on each renewal) and, when `auth.maxLifetime` is
+  set, the absolute deadline computed at login (start + `maxLifetime`), which
+  caps the idle deadline. A later change of `maxLifetime` applies to new
+  logins only.
 
 `authed` renews in place: an expired session with a live refresh cookie goes
 through the renewer (refresh grant, ID token verified against the original

@@ -41,34 +41,36 @@ type LoginState struct {
 // RefreshState is the content of the refresh cookie. It is never logged and
 // never sent to the web.
 type RefreshState struct {
-	Token     string `json:"rt"`
-	Subject   string `json:"sub"`
-	Nonce     string `json:"nonce"` // the login's, checked on refreshed ID tokens
-	Since     int64  `json:"since"` // login start, unix
-	Renewed   int64  `json:"ren"`   // last renewal, unix
-	IdleUntil int64  `json:"idle"`  // idle deadline, unix
+	Token   string `json:"rt"`
+	Subject string `json:"sub"`
+	Nonce   string `json:"nonce"` // the login's, checked on refreshed ID tokens
+	// Until is the absolute deadline, login start + auth.maxLifetime fixed at
+	// login (unix; 0 = none): a later change of the setting applies to new
+	// logins only.
+	Until     int64 `json:"until,omitempty"`
+	Renewed   int64 `json:"ren"`  // last renewal, unix
+	IdleUntil int64 `json:"idle"` // idle deadline, unix
 }
 
-// Deadline is the idle deadline, capped at Since+max when max > 0.
-func (st *RefreshState) Deadline(max time.Duration) time.Time {
-	d := time.Unix(st.IdleUntil, 0)
-	if limit := time.Unix(st.Since, 0).Add(max); max > 0 && limit.Before(d) {
-		return limit
+// Deadline is the idle deadline, capped at Until when set.
+func (st *RefreshState) Deadline() time.Time {
+	if st.Until > 0 && st.Until < st.IdleUntil {
+		return time.Unix(st.Until, 0)
 	}
-	return d
+	return time.Unix(st.IdleUntil, 0)
 }
 
 // Live reports whether now is before the login's deadline.
-func (st *RefreshState) Live(now time.Time, max time.Duration) bool {
-	return now.Before(st.Deadline(max))
+func (st *RefreshState) Live(now time.Time) bool {
+	return now.Before(st.Deadline())
 }
 
 // Slide records a renewal at now and moves the idle deadline to now+idle,
-// capped at Since+max when max > 0.
-func (st *RefreshState) Slide(now time.Time, idle, max time.Duration) {
+// capped at Until when set.
+func (st *RefreshState) Slide(now time.Time, idle time.Duration) {
 	st.Renewed = now.Unix()
 	st.IdleUntil = now.Add(idle).Unix()
-	st.IdleUntil = st.Deadline(max).Unix()
+	st.IdleUntil = st.Deadline().Unix()
 }
 
 const loginStateTTL = 10 * time.Minute

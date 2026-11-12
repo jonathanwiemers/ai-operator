@@ -139,7 +139,7 @@ func TestSafeReturn(t *testing.T) {
 func TestRefreshCookieRoundTrip(t *testing.T) {
 	s := newTestSessions(t, strings.Repeat("a", 32))
 	now := time.Now()
-	st := RefreshState{Token: "rt-1", Subject: "sub-1", Nonce: "n", Since: now.Unix(), Renewed: now.Unix(), IdleUntil: now.Add(time.Hour).Unix()}
+	st := RefreshState{Token: "rt-1", Subject: "sub-1", Nonce: "n", Until: now.Add(24 * time.Hour).Unix(), Renewed: now.Unix(), IdleUntil: now.Add(time.Hour).Unix()}
 	w := httptest.NewRecorder()
 	if err := s.StartRefresh(w, st); err != nil {
 		t.Fatal(err)
@@ -229,38 +229,41 @@ func TestRefreshCookieTooLarge(t *testing.T) {
 
 func TestRefreshStateDeadlines(t *testing.T) {
 	since := time.Unix(1_800_000_000, 0)
-	st := RefreshState{Since: since.Unix(), IdleUntil: since.Add(7 * 24 * time.Hour).Unix()}
+	week := 7 * 24 * time.Hour
+	st := RefreshState{IdleUntil: since.Add(week).Unix()}
 
-	if got := st.Deadline(0); !got.Equal(since.Add(7 * 24 * time.Hour)) {
-		t.Errorf("Deadline(0) = %v", got)
+	if got := st.Deadline(); !got.Equal(since.Add(week)) {
+		t.Errorf("Deadline without Until = %v", got)
 	}
-	if got := st.Deadline(24 * time.Hour); !got.Equal(since.Add(24 * time.Hour)) {
-		t.Errorf("Deadline(24h) = %v", got)
+	capped := st
+	capped.Until = since.Add(24 * time.Hour).Unix()
+	if got := capped.Deadline(); !got.Equal(since.Add(24 * time.Hour)) {
+		t.Errorf("Deadline with Until 24h = %v", got)
 	}
-	if got := st.Deadline(30 * 24 * time.Hour); !got.Equal(since.Add(7 * 24 * time.Hour)) {
-		t.Errorf("Deadline(30d) = %v", got)
+	late := st
+	late.Until = since.Add(30 * 24 * time.Hour).Unix()
+	if got := late.Deadline(); !got.Equal(since.Add(week)) {
+		t.Errorf("Deadline with Until 30d = %v", got)
 	}
 
 	at := since.Add(2 * 24 * time.Hour)
-	if !st.Live(at, 0) || st.Live(at, 24*time.Hour) {
+	if !st.Live(at) || capped.Live(at) {
 		t.Error("Live: want live without a cap and past a 24h cap")
 	}
-	if st.Live(since.Add(7*24*time.Hour), 0) {
+	if st.Live(since.Add(week)) {
 		t.Error("Live at the idle deadline")
 	}
 
 	// Slide moves the idle deadline from now.
-	st.Slide(at, 7*24*time.Hour, 0)
-	if st.Renewed != at.Unix() || st.IdleUntil != at.Add(7*24*time.Hour).Unix() {
+	st.Slide(at, week)
+	if st.Renewed != at.Unix() || st.IdleUntil != at.Add(week).Unix() {
 		t.Errorf("Slide without cap: %+v", st)
 	}
-	// ... but never past Since+max.
-	st.Slide(at, 7*24*time.Hour, 5*24*time.Hour)
-	if st.Renewed != at.Unix() || st.IdleUntil != since.Add(5*24*time.Hour).Unix() {
+	// ... but never past Until, which it keeps.
+	st.Until = since.Add(5 * 24 * time.Hour).Unix()
+	st.Slide(at, week)
+	if st.Renewed != at.Unix() || st.IdleUntil != st.Until || st.Until != since.Add(5*24*time.Hour).Unix() {
 		t.Errorf("Slide with cap: %+v", st)
-	}
-	if st.Since != since.Unix() {
-		t.Error("Slide changed Since")
 	}
 }
 

@@ -189,7 +189,8 @@ ui:
     renewAfter: 15m
     # A login that was not renewed for this long ends.
     idleTimeout: 168h
-    # Cap on a login from its start; 0s leaves it to the provider.
+    # Cap on a login from its start, fixed at login (a change applies to new
+    # logins only); 0s leaves it to the provider.
     maxLifetime: 0s
   oidc:
     issuerURL: ""

@@ -115,8 +115,8 @@ func (o *oidcClient) mergeUserinfo(ctx context.Context, p *oidc.Provider, tok *o
 // the rotated token. prev is kept when the grant succeeded without claims,
 // since the old token is dead by then.
 func (o *oidcClient) redeem(ctx context.Context, rs RefreshState, prev Principal) (Principal, RefreshState, error) {
-	now, maxLife := o.sessions.now(), o.cfg.Auth.MaxLifetime.Duration
-	if !rs.Live(now, maxLife) {
+	now := o.sessions.now()
+	if !rs.Live(now) {
 		return Principal{}, rs, fmt.Errorf("%w: the login is past its deadline", errRenewRefused)
 	}
 	ctx, cancel := context.WithTimeout(ctx, renewTimeout)
@@ -134,7 +134,7 @@ func (o *oidcClient) redeem(ctx context.Context, rs RefreshState, prev Principal
 	// oauth2 keeps the old refresh token when the provider did not rotate.
 	next := rs
 	next.Token = tok.RefreshToken
-	next.Slide(now, o.cfg.Auth.IdleTimeout.Duration, maxLife)
+	next.Slide(now, o.cfg.Auth.IdleTimeout.Duration)
 	claims := map[string]any{}
 	if raw, _ := tok.Extra("id_token").(string); raw != "" {
 		id, err := p.Verifier(&oidc.Config{ClientID: o.cfg.OIDC.ClientID}).Verify(ctx, raw)
@@ -165,7 +165,7 @@ func (o *oidcClient) redeem(ctx context.Context, rs RefreshState, prev Principal
 // for auth.renewAfter but never past the login's deadline, until which the
 // browser keeps it. It returns the session's expiry.
 func (o *oidcClient) startRenewing(w http.ResponseWriter, p Principal, rs RefreshState) (time.Time, error) {
-	end := rs.Deadline(o.cfg.Auth.MaxLifetime.Duration)
+	end := rs.Deadline()
 	exp := o.sessions.now().Add(o.cfg.Auth.RenewAfter.Duration)
 	if end.Before(exp) {
 		exp = end

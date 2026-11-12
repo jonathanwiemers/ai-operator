@@ -181,8 +181,11 @@ func (o *oidcClient) refreshState(w http.ResponseWriter, tok *oauth2.Token, subj
 		return RefreshState{}, false
 	}
 	now := o.sessions.now()
-	rs := RefreshState{Token: tok.RefreshToken, Subject: subject, Nonce: nonce, Since: now.Unix()}
-	rs.Slide(now, o.cfg.Auth.IdleTimeout.Duration, o.cfg.Auth.MaxLifetime.Duration)
+	rs := RefreshState{Token: tok.RefreshToken, Subject: subject, Nonce: nonce}
+	if max := o.cfg.Auth.MaxLifetime.Duration; max > 0 {
+		rs.Until = now.Add(max).Unix()
+	}
+	rs.Slide(now, o.cfg.Auth.IdleTimeout.Duration)
 	return rs, true
 }
 
