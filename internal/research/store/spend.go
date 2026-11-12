@@ -125,10 +125,12 @@ type Spend struct {
 //     carries (budget stop, lost pod), unless a call carries the commit;
 //   - spend: all three as one shape with their project. Rows that are no
 //     call (legacy runs and checkpoint events) have legacy set and no
-//     tokens; checkpoints is 1 for a call that saved a checkpoint and for a
-//     checkpoint event, checkpoint its reason; token_basis is the call's,
-//     0 for rows that are no call (not counted, see OldBasisCalls);
-//   - split: the calls split by model, from models or else the row's model.
+//     tokens, and an empty kind, role, engine and model; checkpoints is 1 for a
+//     call that saved a checkpoint and for a checkpoint event, checkpoint
+//     its reason; token_basis is the call's, 0 for rows that are no call
+//     (not counted, see OldBasisCalls);
+//   - split: the calls split by model, from models or else the row's model,
+//     with their project and engine.
 //     The main model is the row's; when models lacks it (the row has an
 //     alias, say), the one with the most output tokens, as the runner picks
 //     it. Subagent calls, duration and the checkpoint go to the main model.
@@ -158,19 +160,19 @@ func spendWith(where string) string {
 			SELECT 1 FROM agent_calls a WHERE a.namespace = e.namespace AND a.project = e.project
 				AND a.task = e.task AND a.checkpoint_sha = e.sha AND a.checkpoint_sha <> '' AND a.expires_at > now())
 	), spend AS (
-		SELECT false AS legacy, id, namespace, project, milestone_iid, issue_iid, task, run, seq, at, kind, role, resumed,
+		SELECT false AS legacy, id, namespace, project, milestone_iid, issue_iid, task, run, seq, at, kind, role, engine, model, resumed,
 			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms, read_gate_blocks,
 			checkpoint, (checkpoint <> '')::int AS checkpoints, token_basis
 		FROM scoped
 		UNION ALL
-		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0, '', 0, 0::smallint
+		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0, '', 0, 0::smallint
 		FROM legacy
 		UNION ALL
-		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', false, NULL, 0, 0, 0, 0, 0, 0, 0,
+		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', '', '', false, NULL, 0, 0, 0, 0, 0, 0, 0,
 			CASE WHEN reason = '' THEN 'unknown' ELSE reason END, 1, 0::smallint
 		FROM cpevents
 	), split AS (
-		SELECT false AS legacy, c.id, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, c.kind, m.model, m.main,
+		SELECT false AS legacy, c.id, c.namespace, c.project, c.engine, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, c.kind, m.model, m.main,
 			m.cost_usd, m.input_tokens, m.output_tokens, m.cache_read_tokens, m.cache_write_tokens,
 			CASE WHEN m.main THEN c.subagent_calls ELSE 0 END AS subagent_calls,
 			CASE WHEN m.main THEN c.duration_ms ELSE 0 END AS duration_ms,

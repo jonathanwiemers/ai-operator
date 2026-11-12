@@ -288,3 +288,10 @@ follow-up issue), and requirements without an issue and why.
   run = the run's number (key unchanged, so a retried finish stays one row);
   `history.StoreCall` stores a cost source without a cost as unknown. Older
   rows keep task = name and run 0 (no backfill).
+- 2026-11-12 #356 (R2): `store.CostSeries(CostQuery, bucket, group)` sums
+  `spendWith` rows per local date bucket (`YYYY-MM-DD`) and group key; the
+  `spend` CTE gains `engine` and `model`, `split` gains `namespace`,
+  `project` and `engine`. Checkpoint events (no cost) are left out of the
+  series. Group `model` counts a call once per model it used, as
+  `Spend.ByModel` does: cost, tokens and duration add up to the ungrouped
+  totals, calls do not.

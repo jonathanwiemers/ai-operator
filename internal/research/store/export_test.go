@@ -25,3 +25,8 @@ func SpendSinceQuery(projects []ProjectKey, since time.Time) (string, []any) {
 	nss, names := split(projects)
 	return spendSinceSQL(), []any{nss, names, since}
 }
+
+// CostSeriesQuery is the SQL and arguments CostSeries runs, for EXPLAIN tests.
+func CostSeriesQuery(q CostQuery, bucket, group string) (string, []any, error) {
+	return costSeriesSQL(q, bucket, group)
+}
