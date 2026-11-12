@@ -334,3 +334,11 @@ follow-up issue), and requirements without an issue and why.
   positive `limitUSD` is unlimited and left out. Issue budgets of merged or
   skipped items stay listed while the milestone runs. An issue's title
   comes from its implement task, empty before the task exists.
+- 2026-11-12 #362 (R7): route `/costs` (`views/Costs.vue`, lazy), filters
+  parsed and written by `web/src/costs.ts` (defaults `30d` and `project` are
+  left out of the URL, a custom range is `from` and `to` without `range`).
+  The rail's *Costs* entry, also in the phone's Projects sheet, shows with
+  the `history` feature, the one under which `/costs` answers. The
+  dashboard's today and 7-day chips link to `/costs?range=7d` (D362-P1), the
+  Spend tab to `/costs?project=<namespace>/<name>`. The client's `get` now
+  throws `ApiError` with the status (for the 503 state). No charts yet.

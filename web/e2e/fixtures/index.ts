@@ -2,6 +2,7 @@
 // fixture of its path. A path missing here answers 404 and fails the check
 // that asked for it, so add a fixture when a view starts asking for more.
 // Fixtures live in one module per API area, typed with the generated views.
+import { costs } from './costs'
 import { doneMilestones, openMilestones, overview } from './overview'
 import { inbox, projects, researches } from './rail'
 import { researchAPI } from './research'
@@ -28,6 +29,7 @@ export const api: Record<string, Fixture> = {
   '/milestones': (q: URLSearchParams) => (q.get('state') === 'done' ? doneMilestones : openMilestones),
   '/stream': answerStream,
   '/spend': answerSpend,
+  '/costs': costs,
   '/gitlab': gitlabStatus,
   [shopPath]: shopDetail,
   [`${shopPath}/history`]: shopHistory,

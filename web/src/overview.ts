@@ -8,6 +8,8 @@ export interface StripChip {
   value: string
   label: string
   inbox?: boolean
+  // costs: the chip links to the Costs page's last 7 days (decision D362-P1).
+  costs?: boolean
   // warn: a count that asks for someone (paused, needs you) above zero.
   warn?: boolean
 }
@@ -22,8 +24,8 @@ export function overviewStrip(o: OverviewView): StripChip[] {
     { id: 'waiting', value: String(o.waiting), label: 'waiting' },
     { id: 'needsYou', value: String(o.needsYou), label: 'need you', inbox: true, warn: o.needsYou > 0 },
   ]
-  if (o.spendToday) chips.push({ id: 'spendToday', value: costChip(o.spendToday), label: 'today' })
-  if (o.spend7d) chips.push({ id: 'spend7d', value: costChip(o.spend7d), label: 'last 7 days' })
+  if (o.spendToday) chips.push({ id: 'spendToday', value: costChip(o.spendToday), label: 'today', costs: true })
+  if (o.spend7d) chips.push({ id: 'spend7d', value: costChip(o.spend7d), label: 'last 7 days', costs: true })
   return chips
 }
 

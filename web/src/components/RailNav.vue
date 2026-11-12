@@ -62,6 +62,11 @@ function projectActive(namespace: string, name: string) {
         <span class="dot" />
         <span class="name">Overview<span class="sub">what runs, across projects</span></span>
       </RouterLink>
+      <!-- Costs read the history database: the feature history says it is there. -->
+      <RouterLink v-if="hasFeature('history')" to="/costs" class="item" active-class="active" data-rail-costs>
+        <span class="dot" />
+        <span class="name">Costs<span class="sub">what agents cost, across projects</span></span>
+      </RouterLink>
 
       <div class="sect"><span>Projects</span></div>
       <RouterLink

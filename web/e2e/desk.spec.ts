@@ -84,6 +84,11 @@ const routes: Route[] = [
     path: '/inbox',
     ready: (page) => expect(page.getByText('Support refunds through the payment provider').first()).toBeVisible(),
   },
+  {
+    name: 'costs',
+    path: '/costs?range=30d&project=team-a/shop',
+    ready: (page) => expect(page.locator('main').getByText('Research counted since').first()).toBeVisible(),
+  },
   ...(['stream', 'board', 'spend'] as const).map(
     (tab): Route => ({
       name: `stream-project-${tab}`,
@@ -567,7 +572,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'researches', 'research-new', 'task', 'task-chat', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
+const hitRoutes = ['overview', 'inbox', 'costs','researches', 'research-new', 'task', 'task-chat', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
 
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {
@@ -619,6 +624,36 @@ for (const name of hitRoutes) {
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 }
+
+// The Costs page (views/Costs.vue, R7): the rail links to it, the filters
+// come from the URL, and a changed filter replaces the query and refetches
+// in the browser's time zone, without a reload.
+test('costs filters live in the URL, no reload@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'costs')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  const requests: URLSearchParams[] = []
+  page.on('request', (req) => {
+    const u = new URL(req.url())
+    if (u.pathname === '/api/v1/costs') requests.push(u.searchParams)
+  })
+  await page.setViewportSize(widths[2]!)
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+  await expect(page.locator('[data-rail-costs]').first()).toHaveClass(/active/)
+  expect(Object.fromEntries(requests[0]!)).toMatchObject({ range: '30d', group: 'project', project: 'team-a/shop' })
+  expect(requests[0]!.get('tz')).toBeTruthy()
+
+  await page.evaluate(() => ((window as unknown as { kept: boolean }).kept = true))
+  await page.locator('[data-filter=group]').click()
+  await page.getByRole('option', { name: 'kind', exact: true }).click()
+  await expect(page).toHaveURL(/\/costs\?group=kind&project=team-a(%2F|\/)shop$/)
+  await expect.poll(() => requests.at(-1)?.get('group')).toBe('kind')
+  expect(await page.evaluate(() => (window as unknown as { kept?: boolean }).kept), 'no reload').toBe(true)
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
 
 // The Inbox's rows (views/Inbox.vue, R12): each row is at least 44 px high
 // on a phone and opens its item on a tap anywhere but a clipped reason,

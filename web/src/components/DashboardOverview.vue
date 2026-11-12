@@ -15,13 +15,13 @@ const now = useNow()
 const { data: overview, error, loading } = useResource(() => getOverview, ['project', 'task'])
 const strip = computed(() => (overview.value ? overviewStrip(overview.value) : []))
 
-// chip styles one chip of the summary strip. The Inbox chip is a link: 44 px
-// high on phones.
+// chip styles one chip of the summary strip. The Inbox and spend chips are
+// links: 44 px high on phones.
 function chip(c: StripChip): string[] {
   return [
     'inline-flex items-center gap-1 rounded-full border bg-(--surface) px-3 py-1.5 text-[13px] whitespace-nowrap tabular-nums',
     c.warn ? 'border-(--tone-warning-fg) text-(--tone-warning-fg)' : 'border-(--border) text-(--text-2)',
-    c.inbox ? 'min-h-11 hover:no-underline tablet:min-h-0' : '',
+    c.inbox || c.costs ? 'min-h-11 hover:no-underline tablet:min-h-0' : '',
   ]
 }
 
@@ -44,6 +44,9 @@ function runningFor(w: WorkingNow): string {
       <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Summary">
         <li v-for="c in strip" :key="c.id" class="flex">
           <RouterLink v-if="c.inbox" to="/inbox" :class="chip(c)">
+            <b :class="{ 'text-(--text)': !c.warn }">{{ c.value }}</b> {{ c.label }}
+          </RouterLink>
+          <RouterLink v-else-if="c.costs" :to="{ path: '/costs', query: { range: '7d' } }" :class="chip(c)" data-chip-costs>
             <b :class="{ 'text-(--text)': !c.warn }">{{ c.value }}</b> {{ c.label }}
           </RouterLink>
           <span v-else :class="chip(c)">

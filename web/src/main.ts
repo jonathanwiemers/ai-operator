@@ -16,6 +16,7 @@ followColorScheme(document.documentElement.classList, window.matchMedia(darkQuer
 const Dashboard = () => import('./views/Dashboard.vue')
 const Stream = () => import('./views/Stream.vue')
 const Inbox = () => import('./views/Inbox.vue')
+const Costs = () => import('./views/Costs.vue')
 const TaskView = () => import('./views/Task.vue')
 const IssueView = () => import('./views/Issue.vue')
 const Researches = () => import('./views/Researches.vue')
@@ -30,6 +31,7 @@ const NotFound = () => import('./views/NotFound.vue')
 const routes: (RouteRecordRaw & { name: RouteName })[] = [
   { path: '/', name: 'overview', component: Dashboard },
   { path: '/inbox', name: 'inbox', component: Inbox },
+  { path: '/costs', name: 'costs', component: Costs },
   { path: '/projects/:namespace/:name', name: 'stream-project', component: Stream, props: true },
   {
     path: '/projects/:namespace/:name/milestones/:iid',

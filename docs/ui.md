@@ -316,7 +316,7 @@ their tasks are gone, no spend in the strip and no per-issue figures.
 Every view has breadcrumbs at the top, built from its URL: *Overview* ›
 project › milestone › issue, and *Research* › research › *Runs* › run. A
 task page sits under its issue page (milestone and issue from the task) and
-ends in the task's name, a task without an issue under the project. The Inbox, the research list and
+ends in the task's name, a task without an issue under the project. The Inbox, Costs, the research list and
 *Not found* show one crumb. Every crumb but the last is a link to that
 level's default tab (the `?tab=` stays out); the last one names the
 current view. Crumbs show titles once the view has loaded them, before
@@ -332,8 +332,8 @@ each an icon over a label, the bar's full height (56 px) to tap:
 * **Inbox** (`/inbox`), with the Inbox count on its icon. This is the only
   count on a phone; the top bar has none.
 * **Overview** (`/`).
-* **Projects** opens the rail as a [sheet](#sheets): projects, researches,
-  engine usage and sign-out.
+* **Projects** opens the rail as a [sheet](#sheets): *Costs*, projects,
+  researches, engine usage and sign-out.
 * **Research** (`/research`), only with the research feature.
 
 The item of the section shown has `aria-current="page"` and the accent
@@ -459,7 +459,52 @@ the tab says it needs the database):
 Shares are of the rows' known cost; a row without a known cost shows
 *n/a* there. When no row has a known cost they are shares of the tokens.
 The Spend tab loads when it opens or the drill-down moves; it does not
-follow live changes.
+follow live changes. *Costs across projects* above its drill-down opens
+the [Costs page](#costs-page) filtered to the project.
+
+### Costs page
+
+*Costs* (`/costs`, `web/src/views/Costs.vue`, its own chunk) shows what
+agents cost across every project you may see, and research when you may
+read it, from `GET /api/v1/costs`. It is in the rail after *Overview*, and
+so in the phone's Projects sheet; the bottom bar keeps its four items. The
+entry shows with the research database (the `history` feature). The
+dashboard's *today* and *last 7 days* chips open it for the last 7 days.
+
+The filters live in the URL, so a shared link shows the same page:
+`?range=` (`30d`, the default, `7d`, `90d`, `month`, `lastMonth`, `12m`) or
+`?from=&to=` (a custom range, `YYYY-MM-DD`, both), `?group=` (`project`,
+the default, `kind`, `model`, `engine`), `?project=<namespace>/<name>`,
+`?kind=` and `?engine=`. An unknown value counts as its default or no
+filter (`web/src/costs.ts`). Changing a filter replaces the query and
+reloads the figures, not the page. Days are the browser's time zone, which
+is not in the URL: a shared link shows the same range in your own days.
+
+The KPI row (two columns on phones, three on tablets, six on desktop):
+
+- *Known cost* of the range, with the change against the period of equal
+  length before it; no change when that period has no known cost or this
+  one only calls of unknown cost. Unknown is never $0: such a total shows
+  *n/a* (or *not metered*).
+- *Month to date* against the same days of last month (the 1st to today's
+  day), independent of the range.
+- *Calls*, with the subagent calls.
+- *Metered tokens* (input, output and cache), in k/M.
+- *Cache-read share* and the previous period's.
+- *Unknown cost*: the calls without a reported or estimated cost, and the
+  calls not metered at all (cursor's model auto).
+
+Below it, once, the token basis note when the range mixes old and new
+token bases, and *Research counted since <date>* when research calls are
+counted (research cost before that date is only on the research page).
+The page says when the history database is not configured (404) or not
+connected yet (503), and when a range has no calls. Charts follow in
+later slices (`docs/specs/costs-page.spec.md`).
+
+The e2e route case `costs` at 375, 768 and 1280 px (`costs@<width>.png`)
+checks overflow and the CSP, `costs` is among the hit-area routes, and
+`costs filters live in the URL, no reload@1280` checks that a filter change
+updates the URL and refetches without a reload.
 
 ### Agent calls on the Task page
 
@@ -1981,8 +2026,9 @@ The dashboard (`web/src/views/Dashboard.vue`) and its Overview tab
 
 - *Overview* and *Stream* are a [RouteTabs](#routetabs) strip beside the
   heading; on a phone the strip's links are 44 px high.
-- The summary strip's chips wrap. The needs-you chip links to the Inbox and
-  is at least 44 px high on phones.
+- The summary strip's chips wrap. The needs-you chip links to the Inbox,
+  the *today* and *last 7 days* chips to the [Costs page](#costs-page)'s
+  last 7 days; these links are at least 44 px high on phones.
 - *Working now* has one column of cards on phones, two on tablets, and on
   desktop as many columns of at least 300 px as fit, as before. Long titles
   and project names break instead of widening a card.

@@ -270,6 +270,14 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
         <span v-else :class="tap" class="font-semibold" aria-current="page">{{ c.label }}</span>
       </template>
       <span v-if="loading && data" class="faint">Loading…</span>
+      <RouterLink
+        :to="{ path: '/costs', query: { project: `${namespace}/${name}` } }"
+        :class="tap"
+        class="ms-auto"
+        data-spend-costs
+      >
+        Costs across projects
+      </RouterLink>
     </nav>
 
     <div v-if="error" class="banner danger">{{ error }}</div>

@@ -33,6 +33,7 @@ test('every route has crumbs: links but the last, which names the view', () => {
 test('top-level views show one crumb', () => {
   assert.deepEqual(crumbsFor({ name: 'overview', params: {}, query: { tab: 'stream' } }), [{ label: 'Overview' }])
   assert.deepEqual(crumbsFor({ name: 'inbox', params: {} }), [{ label: 'Inbox' }])
+  assert.deepEqual(crumbsFor({ name: 'costs', params: {}, query: { range: '7d' } }), [{ label: 'Costs' }])
   assert.deepEqual(crumbsFor({ name: 'researches', params: {} }), [{ label: 'Research' }])
   assert.deepEqual(crumbsFor({ name: 'not-found', params: { rest: ['nope'] } }), [{ label: 'Not found' }])
 })

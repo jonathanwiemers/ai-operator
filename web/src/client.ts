@@ -71,7 +71,7 @@ async function get<T>(path: string): Promise<T> {
     throw new NotFoundError('not found')
   }
   if (!resp.ok) {
-    throw new Error(`The server answered ${resp.status}.`)
+    throw new ApiError(`The server answered ${resp.status}.`, resp.status)
   }
   return (await resp.json()) as T
 }

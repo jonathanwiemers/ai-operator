@@ -20,6 +20,7 @@ test('overviewStrip: counts, needs you links to the Inbox, spend today and 7 day
     ],
   )
   assert.deepEqual(chips.filter((c) => c.inbox).map((c) => c.id), ['needsYou'])
+  assert.deepEqual(chips.filter((c) => c.costs).map((c) => c.id), ['spendToday', 'spend7d'])
   assert.deepEqual(chips.filter((c) => c.warn).map((c) => c.id), ['paused', 'needsYou'])
 })
 

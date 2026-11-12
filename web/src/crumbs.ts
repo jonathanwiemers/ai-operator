@@ -95,6 +95,9 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
     case 'inbox':
       trail = [{ label: 'Inbox' }]
       break
+    case 'costs':
+      trail = [{ label: 'Costs' }]
+      break
     case 'stream-project':
       trail = [overview, project]
       break
