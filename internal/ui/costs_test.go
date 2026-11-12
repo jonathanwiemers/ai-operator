@@ -20,6 +20,9 @@ type fakeCosts struct {
 	breakdowns    store.CostBreakdowns
 	seriesCalls   []costSeriesCall
 	breakdownQ    []store.CostQuery
+	top           store.CostTop
+	topQ          []store.CostQuery
+	topN          []int
 }
 
 type costSeriesCall struct {
@@ -38,6 +41,12 @@ func (f *fakeCosts) CostSeries(_ context.Context, q store.CostQuery, bucket, gro
 func (f *fakeCosts) CostBreakdowns(_ context.Context, q store.CostQuery) (store.CostBreakdowns, error) {
 	f.breakdownQ = append(f.breakdownQ, q)
 	return f.breakdowns, nil
+}
+
+func (f *fakeCosts) CostTop(_ context.Context, q store.CostQuery, n int) (store.CostTop, error) {
+	f.topQ = append(f.topQ, q)
+	f.topN = append(f.topN, n)
+	return f.top, nil
 }
 
 // costsEnv is a Desk with the research feature on whose user may see
@@ -282,5 +291,77 @@ func TestFoldSeries(t *testing.T) {
 	// Few keys stay as they are.
 	if got := foldSeries(points[:3], maxSeriesKeys); len(got) != 3 || slices.ContainsFunc(got, func(p CostPointView) bool { return p.Other }) {
 		t.Errorf("few keys = %+v", got)
+	}
+}
+
+func TestCostsTop(t *testing.T) {
+	env, fake := costsEnv(t, false, "devs")
+	at := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	fake.top = store.CostTop{
+		Milestones: []store.CostTopRow{{Namespace: "team-a", Project: "shop", MilestoneIID: 14, Label: "%14", At: at,
+			Totals: store.SpendTotals{CostUSD: store.USD(5), Calls: 2}}},
+		Runs: []store.CostTopRow{{Namespace: "team-a", Project: "shop", MilestoneIID: 14, IssueIID: 281, Task: "implement-281", Run: 3,
+			Kind: "implement", Label: "implement-281 run 3", At: at, Totals: store.SpendTotals{CostUSD: store.USD(2), Calls: 1}}},
+	}
+	var v CostsTopView
+	if code := env.get(t, "/api/v1/costs/top?group=kind&kind=implement", &v); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	// Only the viewer's project reaches the store, research is excluded, and
+	// the lists have ten rows.
+	if len(fake.topQ) != 1 || fake.topN[0] != 10 {
+		t.Fatalf("queries %d, n %v", len(fake.topQ), fake.topN)
+	}
+	if q := fake.topQ[0]; !slices.Equal(q.Projects, shopKey) || !slices.Equal(q.ExcludeKinds, []string{"research"}) || q.Kind != "implement" {
+		t.Errorf("query = %+v", q)
+	}
+	if len(v.Milestones) != 1 || v.Milestones[0].MilestoneIID != 14 || v.Milestones[0].Project != "shop" || len(v.Runs) != 1 ||
+		v.Runs[0].Run != 3 || v.Runs[0].Task != "implement-281" || v.Issues == nil || len(v.Issues) != 0 {
+		t.Errorf("view = %+v", v)
+	}
+	// Zero IIDs, task, run and kind are left out of the JSON.
+	code, raw := env.getJSON(t, "/api/v1/costs/top")
+	if code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	row := raw["milestones"].([]any)[0].(map[string]any)
+	for _, k := range []string{"issueIID", "task", "run", "kind"} {
+		if _, ok := row[k]; ok {
+			t.Errorf("milestone row has %s: %v", k, row)
+		}
+	}
+	if code := env.get(t, "/api/v1/costs/top?project=team-b/billing", nil); code != http.StatusNotFound {
+		t.Errorf("another project: status %d", code)
+	}
+}
+
+func TestCostsTopResearchAccess(t *testing.T) {
+	env, fake := costsEnv(t, false, "devs", "readers")
+	if code := env.get(t, "/api/v1/costs/top", nil); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if q := fake.topQ[0]; len(q.ExcludeKinds) != 0 {
+		t.Errorf("research reader excludes %v", q.ExcludeKinds)
+	}
+}
+
+func TestCostsTopErrors(t *testing.T) {
+	env, fake := costsEnv(t, false, "devs")
+	for _, q := range []string{"range=week", "from=2026-01-01", "tz=Mars/Base", "group=role", "kind=unknown", "engine=gpt"} {
+		if code := env.get(t, "/api/v1/costs/top?"+q, nil); code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", q, code)
+		}
+	}
+	if len(fake.topQ) != 0 {
+		t.Errorf("bad requests reached the store: %+v", fake.topQ)
+	}
+	none, _ := costsEnv(t, true, "devs")
+	if code := none.get(t, "/api/v1/costs/top", nil); code != http.StatusServiceUnavailable {
+		t.Errorf("without the database: status %d", code)
+	}
+	off := milestonesEnv(t)
+	off.server.costReads = &fakeCosts{}
+	if code := off.get(t, "/api/v1/costs/top", nil); code != http.StatusNotFound {
+		t.Errorf("research off: status %d", code)
 	}
 }

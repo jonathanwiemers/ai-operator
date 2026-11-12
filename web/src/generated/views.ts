@@ -222,6 +222,33 @@ export interface CostsView {
   month: CostsMonthView;
   researchSince?: string;
 }
+/**
+ * CostTopRowView is one milestone, issue or run of the top lists. The IIDs,
+ * task and run are absent for none; a run carries its milestone and issue and
+ * an issue its milestone, so the Spend drill-down can be addressed. Kind is
+ * the kind of a run's first call, absent for a run before agent calls.
+ */
+export interface CostTopRowView {
+  namespace: string;
+  project: string;
+  milestoneIID?: number /* int64 */;
+  issueIID?: number /* int64 */;
+  task?: string;
+  run?: number /* int64 */;
+  kind?: string;
+  label: string;
+  at: string;
+  totals: store.SpendTotals;
+}
+/**
+ * CostsTopView is the answer of GET /api/v1/costs/top: the most expensive
+ * milestones, issues and runs by known cost, ten each.
+ */
+export interface CostsTopView {
+  milestones: CostTopRowView[];
+  issues: CostTopRowView[];
+  runs: CostTopRowView[];
+}
 
 //////////
 // source: features.go

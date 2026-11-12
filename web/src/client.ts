@@ -6,6 +6,7 @@ import { session } from './api'
 import type {
   ChatPage,
   ChatPostResponse,
+  CostsTopView,
   CostsView,
   Feature,
   FollowUpMilestoneView,
@@ -311,12 +312,22 @@ export interface CostsParams {
 // getCosts: GET /costs, what the projects the user may see cost over a
 // range: series by the group, totals, breakdowns and the month's days.
 export function getCosts(params: CostsParams = {}): Promise<CostsView> {
+  return get<CostsView>(`/costs${costsQuery(params)}`)
+}
+
+// getCostsTop: GET /costs/top, the most expensive milestones, issues and
+// runs of the same range and filters (group is ignored by the server).
+export function getCostsTop(params: CostsParams = {}): Promise<CostsTopView> {
+  return get<CostsTopView>(`/costs/top${costsQuery(params)}`)
+}
+
+function costsQuery(params: CostsParams): string {
   const q = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
     if (v) q.set(k, v)
   }
   const qs = q.toString()
-  return get<CostsView>(`/costs${qs ? `?${qs}` : ''}`)
+  return qs ? `?${qs}` : ''
 }
 
 // getTask: GET /projects/{namespace}/{name}/tasks/{task}.

@@ -64,6 +64,34 @@ type CostsView struct {
 	ResearchSince          *time.Time           `json:"researchSince,omitempty"`
 }
 
+// CostTopRowView is one milestone, issue or run of the top lists. The IIDs,
+// task and run are absent for none; a run carries its milestone and issue and
+// an issue its milestone, so the Spend drill-down can be addressed. Kind is
+// the kind of a run's first call, absent for a run before agent calls.
+type CostTopRowView struct {
+	Namespace    string            `json:"namespace"`
+	Project      string            `json:"project"`
+	MilestoneIID int64             `json:"milestoneIID,omitempty"`
+	IssueIID     int64             `json:"issueIID,omitempty"`
+	Task         string            `json:"task,omitempty"`
+	Run          int64             `json:"run,omitempty"`
+	Kind         string            `json:"kind,omitempty"`
+	Label        string            `json:"label"`
+	At           time.Time         `json:"at"`
+	Totals       store.SpendTotals `json:"totals"`
+}
+
+// CostsTopView is the answer of GET /api/v1/costs/top: the most expensive
+// milestones, issues and runs by known cost, ten each.
+type CostsTopView struct {
+	Milestones []CostTopRowView `json:"milestones"`
+	Issues     []CostTopRowView `json:"issues"`
+	Runs       []CostTopRowView `json:"runs"`
+}
+
+// costTopRows is how many rows each top list has.
+const costTopRows = 10
+
 // costRanges are the named ranges of ?range=, costGroups the groupings of
 // ?group=, the first of each the default.
 var (
@@ -84,6 +112,7 @@ const maxSeriesKeys = 20
 type costReader interface {
 	CostSeries(ctx context.Context, q store.CostQuery, bucket, group string) ([]store.CostPoint, error)
 	CostBreakdowns(ctx context.Context, q store.CostQuery) (store.CostBreakdowns, error)
+	CostTop(ctx context.Context, q store.CostQuery, n int) (store.CostTop, error)
 }
 
 // costStore is the reader of the costs, nil without the history database.
@@ -374,4 +403,49 @@ func costsView(ctx context.Context, st costReader, p costParams) (CostsView, err
 		StepLines: StepLinesView(b.StepLines), ByProject: breakdownViews(b.ByProject), ByKind: breakdownViews(b.ByKind),
 		ByModel: breakdownViews(b.ByModel), ByEngine: breakdownViews(b.ByEngine), Month: month, ResearchSince: b.ResearchSince,
 	}, nil
+}
+
+// costsTop answers the Costs page's top lists over the viewer's projects, for
+// the parameters of costs (group is read and checked, not used).
+func (s *Server) costsTop(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.Research.Enabled() {
+		notFound(w)
+		return
+	}
+	visible, _, ok := s.visibleProjects(w, r)
+	if !ok {
+		return
+	}
+	p, err := s.parseCostParams(r, visible, time.Now())
+	if errors.Is(err, errCostProject) {
+		notFound(w)
+		return
+	} else if err != nil {
+		badRequest(w, err.Error())
+		return
+	}
+	st := s.costStore()
+	if st == nil {
+		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
+		return
+	}
+	top, err := st.CostTop(r.Context(), p.q, costTopRows)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, CostsTopView{
+		Milestones: costTopRowViews(top.Milestones), Issues: costTopRowViews(top.Issues), Runs: costTopRowViews(top.Runs),
+	})
+}
+
+func costTopRowViews(rows []store.CostTopRow) []CostTopRowView {
+	out := make([]CostTopRowView, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, CostTopRowView{
+			Namespace: r.Namespace, Project: r.Project, MilestoneIID: r.MilestoneIID, IssueIID: r.IssueIID,
+			Task: r.Task, Run: r.Run, Kind: r.Kind, Label: r.Label, At: r.At, Totals: r.Totals,
+		})
+	}
+	return out
 }

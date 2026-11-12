@@ -319,3 +319,8 @@ follow-up issue), and requirements without an issue and why.
   without research access and gives no calls. The month's days are one
   `CostSeries` query (first of last month to today) split at the first of
   this month.
+- 2026-11-12 #360 (R6, part 2): `GET /api/v1/costs/top` (`costsTop`) takes
+  the parameters, validation, scope, research exclusion and 404/503 rules of
+  `/costs` through `parseCostParams` (a bad `group` is still a 400, otherwise
+  ignored) and returns `CostsTopView` with ten rows per list.
+  `CostTopRowView` leaves out zero IIDs, task, run and kind.
