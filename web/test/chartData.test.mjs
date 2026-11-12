@@ -5,6 +5,8 @@ import {
   OTHER,
   bucketLabel,
   chartSummary,
+  breakdownRows,
+  breakdownSummary,
   chartTokens,
   colorSlots,
   cumulativeMonth,
@@ -348,4 +350,46 @@ test('thisMonth: from the points, else last month, else now in the zone', () => 
   const now = new Date('2026-11-30T23:30:00Z')
   assert.equal(thisMonth({ today: 1, current: [], previous: [] }, now, 'Europe/Berlin'), '2026-12')
   assert.equal(thisMonth({ today: 30, current: [], previous: [] }, now, 'UTC'), '2026-11')
+})
+
+function by(key, cost, unknown = 0) {
+  return { key, count: 0, totals: { ...point('', key, cost, { unknown }).totals } }
+}
+
+test('breakdownRows: top six by known cost, Other sums the rest, links by dimension', () => {
+  const rows = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((k, i) => by(`ns/${k}`, String(10 - i)))
+  rows.push(by('ns/unknown', '', 2))
+  const out = breakdownRows(rows, 'project', { range: '30d', group: 'project' })
+  assert.equal(out.length, 7)
+  assert.deepEqual(out.slice(0, 6).map((r) => r.key), ['ns/a', 'ns/b', 'ns/c', 'ns/d', 'ns/e', 'ns/f'])
+  const other = out[6]
+  assert.equal(other.key, OTHER)
+  assert.equal(other.label, 'Other')
+  // g (4) + h (3) + the row of unknown cost (0).
+  assert.equal(other.value, 7)
+  assert.equal(other.unknown, 2)
+  assert.equal(other.link, null)
+  assert.deepEqual(out[0].link, { path: '/costs', query: { project: 'ns/a' } })
+  assert.equal(out.reduce((a, r) => a + r.value, 0), 10 + 9 + 8 + 7 + 6 + 5 + 4 + 3)
+})
+
+test('breakdownRows: a row of unknown cost is n/a, never $0; the legacy key and models are no links', () => {
+  const f = { range: '30d', group: 'kind' }
+  const out = breakdownRows([by('', '3.00'), by('implement', '', 4)], 'kind', f)
+  assert.equal(out.length, 2)
+  assert.equal(out[0].label, 'before calls')
+  assert.equal(out[0].link, null)
+  assert.equal(out[1].total, null)
+  assert.equal(out[1].unknown, 4)
+  assert.deepEqual(out[1].link, { path: '/costs', query: { group: 'kind', kind: 'implement' } })
+  assert.equal(breakdownRows([by('claude-opus-5-5', '1.00')], 'model', f)[0].link, null)
+  assert.deepEqual(breakdownRows([], 'engine', f), [])
+})
+
+test('breakdownSummary: names the total, the unknown calls and the largest row', () => {
+  const rows = breakdownRows([by('claude', '5.00', 1), by('cursor', '2.00')], 'engine', { range: '30d', group: 'engine' })
+  assert.equal(
+    breakdownSummary('engine', rows),
+    'Known cost by engine: $7.00 in total, 1 call of unknown cost. Largest: claude, $5.00. The list below has every value.',
+  )
 })

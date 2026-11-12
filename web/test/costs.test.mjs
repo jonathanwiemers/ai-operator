@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  breakdownLink,
   changeLabel,
   costChange,
   costFiltersQuery,
@@ -132,4 +133,21 @@ test('monthToDate: unknown is not $0, no change without last month', () => {
 test('costKeyLabel: the legacy key is "before calls"', () => {
   assert.equal(costKeyLabel(''), 'before calls')
   assert.equal(costKeyLabel('ns/p'), 'ns/p')
+})
+
+test('breakdownLink: project, kind and engine rows set their filter and keep the rest', () => {
+  const f = { range: '90d', group: 'kind', kind: 'review' }
+  assert.deepEqual(breakdownLink('project', 'ns/p', f), { path: '/costs', query: { range: '90d', group: 'kind', kind: 'review', project: 'ns/p' } })
+  assert.deepEqual(breakdownLink('kind', 'fix', f), { path: '/costs', query: { range: '90d', group: 'kind', kind: 'fix' } })
+  assert.deepEqual(breakdownLink('engine', 'cursor', { range: '30d', group: 'engine' }), { path: '/costs', query: { group: 'engine', engine: 'cursor' } })
+})
+
+test('breakdownLink: model rows, the legacy key and keys the filters would drop are no links', () => {
+  const f = { range: '30d', group: 'project' }
+  assert.equal(breakdownLink('model', 'claude-opus-5-5', f), null)
+  assert.equal(breakdownLink('project', '', f), null)
+  assert.equal(breakdownLink('kind', '', f), null)
+  assert.equal(breakdownLink('project', 'noslash', f), null)
+  assert.equal(breakdownLink('kind', 'nope', f), null)
+  assert.equal(breakdownLink('engine', 'gpt', f), null)
 })

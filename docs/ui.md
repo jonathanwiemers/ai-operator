@@ -524,6 +524,17 @@ cumulative sums (*–* where a line has no point) and the day's calls of
 unknown cost in either month. Calls of unknown cost are not in the lines;
 the legend counts them per month, up to today and over the same days.
 
+*Where it goes*: horizontal bars of the known cost by project, kind, model
+or engine, chosen with a segmented switch (it starts on project and is not
+the `group` filter). The top six rows by known cost, then *Other*, which sums
+the rest, so the bars equal the breakdown's totals. A row whose calls all
+have an unknown cost shows *n/a*, never $0, and every row names its calls of
+unknown cost. Each project, kind and engine row, in the legend and the table
+view, is a link to the page with that filter set (`breakdownLink` in
+`costs.ts`: the other filters stay), and a click on its bar does the same.
+Model rows have no filter, and neither do *Other* and the legacy "before
+calls" row: they are not links.
+
 The e2e route cases `costs` and `costs-dark` at 375, 768 and 1280 px
 (`costs@<width>.png`, `costs-dark@<width>.png`) wait for both charts'
 canvases and check overflow and the CSP, `costs` is among the hit-area routes,
@@ -1687,7 +1698,9 @@ loads anyway.
   (#365): 110.7 kB (JS 110.7, CSS 0.0), 6.0 kB more for the line
   controller, line and point elements, `LineCompare.vue` and the month
   shaping; the initial bundle stays at 129.3 kB. `measuredKB` keeps the
-  first chart slice's figure, the one the cap was set from.
+  first chart slice's figure, the one the cap was set from. With *Where it goes*
+  (#366): 112.0 kB, 1.3 kB more for `HorizontalBars.vue` and the breakdown
+  shaping (it uses the bar controller already registered).
 
 ## UI kit
 
@@ -1806,6 +1819,9 @@ Chart.js options live in one place; a view passes them data shaped by
   tooltip per x value on hover and tap, fewer ticks below 760 px). A value
   `null` is no point. Used by *This month* with `cumulativeMonth` and
   `monthSummary`.
+- `HorizontalBars.vue`: a `Bar` with `indexAxis: 'y'`, one value per row in
+  its token colour, USD labels, the same options policy; a click on a bar
+  with a link emits `select`. Used by *Where it goes* with `breakdownRows`.
 - `ChartLegend.vue`: below the chart, a swatch (a utility class per token,
   no inline style; a dashed line for a dashed series), the label, the total
   per series (*n/a* when only calls of unknown cost) and an optional note;

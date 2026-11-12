@@ -23,6 +23,7 @@ import { chartSummary, cumulativeMonth, monthSummary, stackedChart, thisMonth } 
 import { cost, tokenCount } from '../format'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
 import type { CostsView } from '../generated/views'
+import WhereItGoes from '../components/WhereItGoes.vue'
 import ChartLegend from '../ui/charts/ChartLegend.vue'
 import ChartTable from '../ui/charts/ChartTable.vue'
 import LineCompare from '../ui/charts/LineCompare.vue'
@@ -280,6 +281,7 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
           />
         </div>
       </section>
+      <WhereItGoes :data="data" :filters="filters" />
     </template>
   </div>
 </template>

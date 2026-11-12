@@ -65,6 +65,7 @@ async function costsReady(page: Page): Promise<void> {
   await expect(page.locator('main').getByText('Research counted since').first()).toBeVisible()
   await expect(page.locator('[data-chart=spend] canvas[role=img]')).toBeVisible()
   await expect(page.locator('[data-chart=month] canvas[role=img]')).toBeVisible()
+  await expect(page.locator('[data-chart=where] canvas[role=img]')).toBeVisible()
 }
 
 // Every named route has a case here, with a variant per tab.
@@ -777,6 +778,40 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
       }, color)
     expect(await near(solid), 'solid line').toBe(true)
     expect(await near(dashed), 'dashed line').toBe(true)
+
+    problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
+// Where it goes (components/WhereItGoes.vue, R11): bars by project, kind,
+// model or engine; project, kind and engine rows are filter links, model rows
+// are not.
+for (const { width, height } of [widths[0]!, widths[2]!]) {
+  test(`costs Where it goes rows are filter links@${width}`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'costs')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const chart = page.locator('[data-chart=where]')
+    await expect(chart.locator('canvas')).toHaveAttribute('aria-label', /^Known cost by project: \$133\.85 in total/)
+    const legend = chart.locator('[data-chart-legend] li')
+    await expect(legend).toHaveCount(2)
+    await expect(legend.first().getByRole('link')).toHaveAttribute('href', /^\/costs\?project=team-a(%2F|\/)shop$/)
+
+    await chart.locator('[data-where-dimension=model]').click()
+    await expect(chart.locator('[data-chart-legend] li')).toHaveCount(2)
+    await expect(chart.locator('[data-chart-legend] a')).toHaveCount(0)
+
+    await chart.locator('[data-where-dimension=engine]').click()
+    await chart.locator('[data-chart-legend] a', { hasText: 'cursor' }).click()
+    await expect(page).toHaveURL(/\/costs\?.*engine=cursor$/)
+    await expect(page.locator('[data-filter=engine]')).toContainText('cursor')
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })

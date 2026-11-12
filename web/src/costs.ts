@@ -188,3 +188,21 @@ export function monthToDate(m: CostsMonthView): MonthToDate {
 export function costKeyLabel(key: string): string {
   return key === '' ? 'before calls' : key
 }
+
+// breakdownLink is the route of a Where it goes row: the current filters
+// with the row's key set as its dimension's filter, so a click filters the
+// whole page through the URL. Model rows have no filter (D366-P1), and
+// neither has the legacy key "" ("before calls") nor a key the filters would
+// drop (a project that is not "namespace/name", an unknown kind or engine);
+// those are null, not links.
+export function breakdownLink(
+  dimension: CostGroup,
+  key: string,
+  filters: CostFilters,
+): { path: string; query: Record<string, string> } | null {
+  if (dimension === 'model' || key === '') return null
+  // The key must survive parseCostFilters, as a URL typed by hand would.
+  const value = parseCostFilters({ [dimension]: key })[dimension]
+  if (!value) return null
+  return { path: '/costs', query: costFiltersQuery({ ...filters, [dimension]: value }) }
+}

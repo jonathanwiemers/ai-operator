@@ -1,5 +1,5 @@
-import type { CostPointView, CostsMonthView } from './generated/views.ts'
-import { changeLabel, costKeyLabel, monthToDate, type MonthSum, type MonthToDate } from './costs.ts'
+import type { CostPointView, CostsMonthView, SpendBreakdownView } from './generated/views.ts'
+import { breakdownLink, changeLabel, costKeyLabel, monthToDate, type CostFilters, type CostGroup, type MonthSum, type MonthToDate } from './costs.ts'
 import { tokenCount } from './format.ts'
 
 // The Costs page's chart data (docs/ui.md, "Costs page"; decisions 7 and 8 of
@@ -392,4 +392,63 @@ export function monthSummary(chart: MonthChart): string {
     `the same days of last month, 1 to ${chart.sameDays}: ${value(prev?.total)}` +
     `${change ? ` (${change})` : ''}. The dashed line is last month. The table view lists every day.`
   )
+}
+
+// BreakdownRow is a bar of Where it goes: a key's known cost, its calls of
+// unknown cost (marked, never $0) and where a click goes (null: no link, as
+// Other, the model rows and the legacy key).
+export interface BreakdownRow {
+  key: string
+  label: string
+  token: ChartToken
+  value: number
+  // total is the legend value: null when every call has an unknown cost.
+  total: number | null
+  unknown: number
+  link: { path: string; query: Record<string, string> } | null
+}
+
+// breakdownRows takes the n rows with the highest known cost (ties by key)
+// and folds the rest into Other, so the bars sum to the breakdown's totals.
+export function breakdownRows(rows: SpendBreakdownView[], dimension: CostGroup, filters: CostFilters, n = maxSeries): BreakdownRow[] {
+  const cost = (r: SpendBreakdownView) => (r.totals.costKnown ? Number.parseFloat(r.totals.costUSD) || 0 : 0)
+  const sorted = [...rows].sort((a, b) => cost(b) - cost(a) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+  const top = sorted.slice(0, Math.max(0, n))
+  const rest = sorted.slice(top.length)
+  const slots = colorSlots(top.map((r) => r.key))
+  const round = (v: number) => Math.round(v * 1e4) / 1e4
+  const out: BreakdownRow[] = top.map((r) => ({
+    key: r.key,
+    label: seriesLabel(r.key),
+    token: slots.get(r.key)!,
+    value: round(cost(r)),
+    total: r.totals.costKnown ? round(cost(r)) : null,
+    unknown: r.totals.unknownCalls,
+    link: breakdownLink(dimension, r.key, filters),
+  }))
+  if (rest.length) {
+    const value = round(rest.reduce((a, r) => a + cost(r), 0))
+    out.push({
+      key: OTHER,
+      label: 'Other',
+      token: '--chart-other',
+      value,
+      total: rest.some((r) => r.totals.costKnown) ? value : null,
+      unknown: rest.reduce((a, r) => a + r.totals.unknownCalls, 0),
+      link: null,
+    })
+  }
+  return out
+}
+
+// breakdownSummary is the bars' text for screen readers (the canvas's
+// aria-label): the dimension, the known total and the largest row.
+export function breakdownSummary(dimension: string, rows: BreakdownRow[]): string {
+  const total = rows.reduce((a, r) => a + r.value, 0)
+  const unknown = rows.reduce((a, r) => a + r.unknown, 0)
+  let out = `Known cost by ${dimension}: ${formatUSD(total)} in total`
+  if (unknown) out += `, ${unknown} ${unknown === 1 ? 'call' : 'calls'} of unknown cost`
+  const top = rows.find((r) => r.key !== OTHER)
+  if (top && top.value > 0) out += `. Largest: ${top.label}, ${formatUSD(top.value)}`
+  return `${out}. The list below has every value.`
 }

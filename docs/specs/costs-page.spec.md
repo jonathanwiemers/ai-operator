@@ -374,3 +374,12 @@ follow-up issue), and requirements without an issue and why.
   per-series notes, no total column for cumulative lines). The chart stays
   in the page's "has calls in the range" branch, like *Spend over time*.
   The costs chunk is 110.7 kB (+6.0), the initial bundle 129.3 kB.
+- 2026-11-12 #366 (R11): *Where it goes* (`components/WhereItGoes.vue`,
+  `ui/charts/HorizontalBars.vue`, `chartData.ts`'s `breakdownRows`,
+  `costs.ts`'s `breakdownLink`). One chart with a segmented switch (project,
+  kind, model, engine), not four, to stay readable at 375 px; it starts on
+  project and does not follow `group`. Top six plus Other by known cost; rows of
+  project, kind and engine are links that set that filter and keep the rest
+  (a bar click does the same with `router.push`); model rows (D366-P1), Other
+  and the legacy key "" are not links. The costs chunk is 112.0 kB (+1.3), the
+  initial bundle 129.3 kB.
