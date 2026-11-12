@@ -1109,3 +1109,11 @@ func TestSpendByProject(t *testing.T) {
 		t.Errorf("none: %+v, %v", got, err)
 	}
 }
+
+// TestSpendSinceUsesTimeIndex: the cross-project time range reads
+// agent_calls through its (namespace, project, at) index.
+func TestSpendSinceUsesTimeIndex(t *testing.T) {
+	owner := storetest.New(t)
+	q, args := store.SpendSinceQuery([]store.ProjectKey{{Namespace: "agents", Name: "shop"}}, time.Now().Add(-time.Hour))
+	assertUsesIndex(t, owner.Pool(), q, args, "agent_calls_project_at_idx")
+}

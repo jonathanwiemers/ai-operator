@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -394,5 +395,31 @@ func TestMilestoneDetail(t *testing.T) {
 	}
 	if many := queries(); many != few || few != 6 {
 		t.Errorf("queries: %d for 4 issues, %d for 24; want 6 each", few, many)
+	}
+}
+
+// assertUsesIndex fails unless the plan of query names index. Tiny test
+// tables always seq-scan, so sequential scans are off inside the transaction.
+func assertUsesIndex(t *testing.T, pool *pgxpool.Pool, query string, args []any, index string) {
+	t.Helper()
+	ctx := t.Context()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SET LOCAL enable_seqscan = off`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := tx.Query(ctx, `EXPLAIN `+query, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := strings.Join(plan, "\n"); !strings.Contains(text, index) {
+		t.Errorf("plan does not use index %s:\n%s", index, text)
 	}
 }

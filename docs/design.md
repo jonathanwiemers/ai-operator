@@ -753,6 +753,11 @@ Research runs have no task: their pod reports the calls in
 it finishes the run, keyed `research/<research UID>/<run ID>/<seq>`, with
 the research name as task and run 0.
 
+`agent_calls_project_at_idx` (namespace, project, at) serves time ranges over
+several projects: `Store.SpendSince` (the dashboard's today and 7-day chips)
+and the Costs page's queries. A store test checks with `EXPLAIN` that the
+plan uses it.
+
 **Spend.** Sums of cost and tokens come from Postgres, never from the
 AgentTasks, so they survive task deletion (`store.Spend`,
 `internal/research/store/spend.go`). A scope (project, milestone, issue,

@@ -308,8 +308,13 @@ func (s *Store) SpendSince(ctx context.Context, projects []ProjectKey, since tim
 		return SpendTotals{CostUSD: USD(0)}, nil
 	}
 	nss, names := split(projects)
-	with := spendWith(`(namespace, project) IN (SELECT * FROM unnest($1::text[], $2::text[])) AND at >= $3`)
-	return scanTotals(s.pool.QueryRow(ctx, with+`SELECT `+spendTotals+` FROM spend`, nss, names, since))
+	return scanTotals(s.pool.QueryRow(ctx, spendSinceSQL(), nss, names, since))
+}
+
+// spendSinceSQL is SpendSince's query; it filters on agent_calls_project_at_idx.
+func spendSinceSQL() string {
+	return spendWith(`(namespace, project) IN (SELECT * FROM unnest($1::text[], $2::text[])) AND at >= $3`) +
+		`SELECT ` + spendTotals + ` FROM spend`
 }
 
 // SpendByProject returns the totals of each project's calls (and legacy

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"io/fs"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -17,4 +18,10 @@ func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 // embedded ones.
 func (s *Store) MigrateFS(ctx context.Context, fsys fs.FS, g Grants) error {
 	return s.migrate(ctx, fsys, g)
+}
+
+// SpendSinceQuery is the SQL and arguments SpendSince runs, for EXPLAIN tests.
+func SpendSinceQuery(projects []ProjectKey, since time.Time) (string, []any) {
+	nss, names := split(projects)
+	return spendSinceSQL(), []any{nss, names, since}
 }
