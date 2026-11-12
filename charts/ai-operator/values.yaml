@@ -182,15 +182,22 @@ ui:
     # oidc, or none: no login, listens on 127.0.0.1 only, reached with
     # kubectl port-forward. none cannot be combined with httpRoute.
     mode: oidc
-    # How long a login lasts. Roles are read at login.
+    # How long a login lasts when the provider returns no refresh token (it is
+    # then not renewed). Roles are read at login.
     sessionTTL: 12h
+    # How long a session cookie is valid before it is renewed with the refresh token.
+    renewAfter: 15m
+    # A login that was not renewed for this long ends.
+    idleTimeout: 168h
+    # Cap on a login from its start; 0s leaves it to the provider.
+    maxLifetime: 0s
   oidc:
     issuerURL: ""
     clientID: ""
     # Secret with the key session-key (at least 32 characters, e.g.
     # openssl rand -hex 32) and, for confidential clients, client-secret.
     existingSecret: ""
-    scopes: [openid, profile, email]
+    scopes: [openid, profile, email, offline_access]
     # CEL expressions over the token's claims (variable "claims"). roles may
     # return a list, a string or a map whose keys are the roles (Zitadel).
     claims:

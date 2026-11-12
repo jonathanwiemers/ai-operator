@@ -72,7 +72,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/* The UI's config file; secrets come from ui.oidc.existingSecret. */}}
 {{- define "ai-operator.ui.config" -}}
 {{- $ui := .Values.ui -}}
-{{- $cfg := dict "auth" (dict "mode" $ui.auth.mode "sessionTTL" $ui.auth.sessionTTL) "authorization" (dict "rules" ($ui.authorization.rules | default list)) -}}
+{{- $cfg := dict "auth" (dict "mode" $ui.auth.mode "sessionTTL" $ui.auth.sessionTTL "renewAfter" $ui.auth.renewAfter "idleTimeout" $ui.auth.idleTimeout "maxLifetime" $ui.auth.maxLifetime) "authorization" (dict "rules" ($ui.authorization.rules | default list)) -}}
 {{- if eq $ui.auth.mode "oidc" -}}
 {{- $_ := set $cfg "externalURL" $ui.externalURL -}}
 {{- $_ := set $cfg "oidc" (dict "issuerURL" $ui.oidc.issuerURL "clientID" $ui.oidc.clientID "scopes" $ui.oidc.scopes "claims" $ui.oidc.claims) -}}

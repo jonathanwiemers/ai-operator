@@ -229,11 +229,14 @@ AgentProjects and AgentTasks (and AgentResearches with
 | `ui.enabled` | `false` | |
 | `ui.externalURL` | | URL users open, without a path, e.g. `https://ai.example.com`; required with `oidc`. The redirect URI is `<externalURL>/oauth2/callback` . With the UI enabled, the operator gets it as `--desk-url` (agent pods as `AI_DESK_URL`) for the "Answer in the Desk" links in the prompts it mirrors to GitLab and in its replies to comments; without it those carry no link. Each project's `spec.workflow.inputs` (default `[gitlab, desk]`; `[desk]` stops `/agent` and `/pilot` comments from being acted on) is described in [configuration.md](../../docs/configuration.md#specworkflow) |
 | `ui.auth.mode` | `oidc` | `oidc`, or `none`: no login, listens on `127.0.0.1` only (reach it with `kubectl port-forward`), no Service, no HTTPRoute |
-| `ui.auth.sessionTTL` | `12h` | how long a login lasts; roles are read at login |
+| `ui.auth.sessionTTL` | `12h` | how long a login lasts when the provider returns no refresh token (it is then not renewed); roles are read at login |
+| `ui.auth.renewAfter` | `15m` | how long a session cookie is valid before it is renewed with the refresh token |
+| `ui.auth.idleTimeout` | `168h` | a login that was not renewed for this long ends |
+| `ui.auth.maxLifetime` | `0s` | cap on a login from its start; `0s` leaves it to the provider |
 | `ui.oidc.issuerURL` | | required with `oidc` |
 | `ui.oidc.clientID` | | required with `oidc` |
 | `ui.oidc.existingSecret` | | required with `oidc`: Secret with `session-key` (at least 32 characters) and, for confidential clients, `client-secret` |
-| `ui.oidc.scopes` | `[openid, profile, email]` | |
+| `ui.oidc.scopes` | `[openid, profile, email, offline_access]` | without `offline_access` the provider returns no refresh token: logins last `ui.auth.sessionTTL` and are not renewed |
 | `ui.oidc.claims.username` | `has(claims.email) ? claims.email : claims.sub` | CEL expression giving the user name |
 | `ui.oidc.claims.roles` | `has(claims.groups) ? claims.groups : []` | CEL expression giving the roles: a list, a string or a map whose keys are the roles (Zitadel: `claims["urn:zitadel:iam:org:project:roles"]`) |
 | `ui.authorization.rules` | `[]` | `{roles: [...], projects: ["namespace/name", ...], transcript, steer, conversation, chat}`; a user with any of the roles sees the matching projects (all if `projects` is empty, globs allowed); `transcript: true` adds live transcripts and prompts, `steer: true` writing comments, the milestone chat included, `conversation: true` the bodies of the comments and Desk chat in the streams, `chat: true` posting Desk chat (needs `ui.chat.writerSecret`). `"*"` matches every user. Nobody sees anything without a rule. A research rule `{roles, research: read\|write, researches: ["namespace/name", ...]}` grants researches instead (no projects, no `transcript`, `steer`, `conversation` or `chat`), see [Access rules](../../docs/ui.md#access-rules) |

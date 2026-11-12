@@ -200,3 +200,50 @@ func TestValidateResearch(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionRefreshDefaults(t *testing.T) {
+	c := &Config{}
+	c.Default()
+	a := c.Auth
+	if a.RenewAfter.Duration != 15*time.Minute || a.IdleTimeout.Duration != 168*time.Hour || a.MaxLifetime.Duration != 0 {
+		t.Errorf("auth defaults: %+v", a)
+	}
+	if got := strings.Join(c.OIDC.Scopes, " "); got != "openid profile email offline_access" {
+		t.Errorf("default scopes = %q", got)
+	}
+	c = &Config{OIDC: OIDCConfig{Scopes: []string{"openid"}}}
+	c.Default()
+	if got := strings.Join(c.OIDC.Scopes, " "); got != "openid" {
+		t.Errorf("explicit scopes changed to %q", got)
+	}
+}
+
+func TestValidateSessionRefresh(t *testing.T) {
+	cases := []struct {
+		name    string
+		mutate  func(*AuthConfig)
+		wantErr string
+	}{
+		{name: "defaults", mutate: func(*AuthConfig) {}},
+		{name: "max lifetime set", mutate: func(a *AuthConfig) { a.MaxLifetime.Duration = time.Hour }},
+		{name: "negative renewAfter", mutate: func(a *AuthConfig) { a.RenewAfter.Duration = -1 }, wantErr: "auth.renewAfter"},
+		{name: "negative idleTimeout", mutate: func(a *AuthConfig) { a.IdleTimeout.Duration = -1 }, wantErr: "auth.idleTimeout"},
+		{name: "renewAfter not below idleTimeout", mutate: func(a *AuthConfig) { a.IdleTimeout.Duration = a.RenewAfter.Duration }, wantErr: "less than auth.idleTimeout"},
+		{name: "negative maxLifetime", mutate: func(a *AuthConfig) { a.MaxLifetime.Duration = -1 }, wantErr: "auth.maxLifetime"},
+		{name: "maxLifetime not above renewAfter", mutate: func(a *AuthConfig) { a.MaxLifetime.Duration = a.RenewAfter.Duration }, wantErr: "auth.maxLifetime"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Config{ExternalURL: "https://ai.example.com", OIDC: OIDCConfig{IssuerURL: "https://idp", ClientID: "c"}, SessionKey: strings.Repeat("k", 32)}
+			c.Default()
+			tc.mutate(&c.Auth)
+			err := c.Validate(":9080")
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Fatal(err)
+			case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+				t.Fatalf("err = %v, want %q", err, tc.wantErr)
+			}
+		})
+	}
+}

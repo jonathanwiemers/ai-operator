@@ -140,9 +140,18 @@ type GitLabConfig struct {
 type AuthConfig struct {
 	// Mode is oidc (default) or none.
 	Mode AuthMode `json:"mode"`
-	// SessionTTL is how long a login lasts. Roles are read at login, so a
-	// role change takes effect at the next login at the latest.
+	// SessionTTL is how long a login lasts when the provider returns no
+	// refresh token (the login is then not renewed). Roles are read at login,
+	// so a role change takes effect at the next login at the latest.
 	SessionTTL Duration `json:"sessionTTL"`
+	// RenewAfter is how long a session cookie is valid before it is renewed
+	// with the refresh token. Default 15m.
+	RenewAfter Duration `json:"renewAfter"`
+	// IdleTimeout ends a login that was not renewed for this long. Default 168h.
+	IdleTimeout Duration `json:"idleTimeout"`
+	// MaxLifetime caps a login from its start. 0 (default) leaves it to the
+	// provider.
+	MaxLifetime Duration `json:"maxLifetime"`
 }
 
 // OIDCConfig is the OpenID Connect client.
@@ -259,8 +268,14 @@ func (c *Config) Default() {
 	if c.Auth.SessionTTL.Duration == 0 {
 		c.Auth.SessionTTL.Duration = 12 * time.Hour
 	}
+	if c.Auth.RenewAfter.Duration == 0 {
+		c.Auth.RenewAfter.Duration = 15 * time.Minute
+	}
+	if c.Auth.IdleTimeout.Duration == 0 {
+		c.Auth.IdleTimeout.Duration = 168 * time.Hour
+	}
 	if len(c.OIDC.Scopes) == 0 {
-		c.OIDC.Scopes = []string{"openid", "profile", "email"}
+		c.OIDC.Scopes = []string{"openid", "profile", "email", "offline_access"}
 	}
 	if c.OIDC.Claims.Username == "" {
 		c.OIDC.Claims.Username = DefaultUsernameExpr
@@ -305,6 +320,20 @@ func (c *Config) Validate(bindAddress string) error {
 		}
 		if !slices.Contains(c.OIDC.Scopes, "openid") {
 			errs = append(errs, errors.New(`oidc.scopes must include "openid"`))
+		}
+		a := c.Auth
+		switch {
+		case a.RenewAfter.Duration <= 0:
+			errs = append(errs, errors.New("auth.renewAfter must be greater than 0"))
+		case a.IdleTimeout.Duration <= 0:
+			errs = append(errs, errors.New("auth.idleTimeout must be greater than 0"))
+		case a.RenewAfter.Duration >= a.IdleTimeout.Duration:
+			errs = append(errs, errors.New("auth.renewAfter must be less than auth.idleTimeout"))
+		}
+		if a.MaxLifetime.Duration < 0 {
+			errs = append(errs, errors.New("auth.maxLifetime must not be negative"))
+		} else if a.MaxLifetime.Duration > 0 && a.MaxLifetime.Duration <= a.RenewAfter.Duration {
+			errs = append(errs, errors.New("auth.maxLifetime must be greater than auth.renewAfter when set"))
 		}
 	default:
 		errs = append(errs, fmt.Errorf("auth.mode must be oidc or none, not %q", c.Auth.Mode))

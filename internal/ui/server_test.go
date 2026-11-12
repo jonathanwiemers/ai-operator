@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-logr/logr"
+	"github.com/go-logr/logr/funcr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -591,5 +592,27 @@ func TestEventStreamsPerUser(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("stream over the limit: status %d", resp.StatusCode)
+	}
+}
+
+func TestOfflineAccessWarning(t *testing.T) {
+	for _, tc := range []struct {
+		scopes []string
+		warned bool
+	}{{[]string{"openid", "email"}, true}, {nil, false}} {
+		cfg := oidcConfig()
+		cfg.ExternalURL = "https://ai.example.com"
+		cfg.OIDC.IssuerURL = "https://idp.example.com"
+		cfg.OIDC.Scopes = tc.scopes
+		cfg.Default()
+		var lines []string
+		log := funcr.New(func(_, args string) { lines = append(lines, args) }, funcr.Options{})
+		if _, err := NewServer(cfg, nil, NewHub(), fstest.MapFS{}, log); err != nil {
+			t.Fatal(err)
+		}
+		got := strings.Contains(strings.Join(lines, "\n"), "offline_access")
+		if got != tc.warned {
+			t.Errorf("scopes %v: warned = %v, want %v (%v)", tc.scopes, got, tc.warned, lines)
+		}
 	}
 }
