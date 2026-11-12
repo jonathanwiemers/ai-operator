@@ -311,3 +311,11 @@ follow-up issue), and requirements without an issue and why.
   first call (`""` for a legacy run); labels as `childLabel`
   (`%14`, `#281`, `<task> run 3`). Calls without a milestone or issue are in
   no milestone or issue row, only in runs.
+- 2026-11-12 #359 (R6, part 1): `GET /api/v1/costs` (`internal/ui/costs.go`).
+  `parseCostParams` is shared with `/costs/top`. A named range older than
+  the history retention starts at the oldest allowed date; only a custom
+  `from` before it is refused. Folded series keys are one point per bucket
+  with `other: true` and key `""`. `kind=research` stays valid for a viewer
+  without research access and gives no calls. The month's days are one
+  `CostSeries` query (first of last month to today) split at the first of
+  this month.

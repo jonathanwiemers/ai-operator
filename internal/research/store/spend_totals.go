@@ -46,6 +46,26 @@ func (t SpendTotals) MarshalJSON() ([]byte, error) {
 	return json.Marshal(p)
 }
 
+// Add is the sum of t and u: the cost is known when either's is, as for a
+// query over both's calls.
+func (t SpendTotals) Add(u SpendTotals) SpendTotals {
+	return SpendTotals{
+		CostUSD:          t.CostUSD.Add(u.CostUSD),
+		UnknownCalls:     t.UnknownCalls + u.UnknownCalls,
+		UnmeteredCalls:   t.UnmeteredCalls + u.UnmeteredCalls,
+		OldBasisCalls:    t.OldBasisCalls + u.OldBasisCalls,
+		InputTokens:      t.InputTokens + u.InputTokens,
+		OutputTokens:     t.OutputTokens + u.OutputTokens,
+		CacheReadTokens:  t.CacheReadTokens + u.CacheReadTokens,
+		CacheWriteTokens: t.CacheWriteTokens + u.CacheWriteTokens,
+		Calls:            t.Calls + u.Calls,
+		SubagentCalls:    t.SubagentCalls + u.SubagentCalls,
+		DurationMS:       t.DurationMS + u.DurationMS,
+		LegacyCostUSD:    t.LegacyCostUSD.Add(u.LegacyCostUSD),
+		Checkpoints:      t.Checkpoints + u.Checkpoints,
+	}
+}
+
 // MixedBasis is true when some but not all calls are on the old token
 // basis (OldBasisCalls).
 func (t SpendTotals) MixedBasis() bool { return t.OldBasisCalls > 0 && t.OldBasisCalls < t.Calls }

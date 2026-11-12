@@ -81,3 +81,27 @@ func TestSpendTotalsJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestSpendTotalsAdd(t *testing.T) {
+	known := store.SpendTotals{CostUSD: store.USD(1.5), LegacyCostUSD: store.USD(0.5), UnknownCalls: 1, UnmeteredCalls: 1,
+		OldBasisCalls: 1, InputTokens: 1, OutputTokens: 2, CacheReadTokens: 3, CacheWriteTokens: 4, Calls: 3,
+		SubagentCalls: 1, DurationMS: 100, Checkpoints: 1}
+	unknown := store.SpendTotals{UnknownCalls: 2, InputTokens: 10, Calls: 2, DurationMS: 50}
+	want := store.SpendTotals{CostUSD: store.USD(1.5), LegacyCostUSD: store.USD(0.5), UnknownCalls: 3, UnmeteredCalls: 1,
+		OldBasisCalls: 1, InputTokens: 11, OutputTokens: 2, CacheReadTokens: 3, CacheWriteTokens: 4, Calls: 5,
+		SubagentCalls: 1, DurationMS: 150, Checkpoints: 1}
+	// Unknown costs add nothing, in either order.
+	if got := known.Add(unknown); got != want {
+		t.Errorf("known + unknown = %+v\nwant %+v", got, want)
+	}
+	if got := unknown.Add(known); got != want {
+		t.Errorf("unknown + known = %+v\nwant %+v", got, want)
+	}
+	// Two unknowns stay unknown, never $0.
+	if got := unknown.Add(unknown); got.CostUSD.Known || got.LegacyCostUSD.Known || got.Calls != 4 {
+		t.Errorf("unknown + unknown = %+v", got)
+	}
+	if got := known.Add(known); got.CostUSD != store.USD(3) || got.LegacyCostUSD != store.USD(1) {
+		t.Errorf("known + known = %+v", got)
+	}
+}

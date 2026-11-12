@@ -167,6 +167,63 @@ export interface Cost {
 }
 
 //////////
+// source: costs.go
+
+/**
+ * CostPointView is the totals of one bucket (its local start date,
+ * YYYY-MM-DD) and group key: namespace/name of a project, a kind, model or
+ * engine, "" for legacy runs ("before calls") and in the month series.
+ * Other is the sum of the keys beyond the largest ones, key "" then.
+ */
+export interface CostPointView {
+  bucket: string;
+  key: string;
+  other: boolean;
+  totals: store.SpendTotals;
+}
+/**
+ * CostsMonthView is the This month chart's days, independent of the range:
+ * this calendar month up to today (day Today of the month) and all of last
+ * month, by day, one series, with the page's filters.
+ */
+export interface CostsMonthView {
+  today: number /* int */;
+  current: CostPointView[];
+  previous: CostPointView[];
+}
+/**
+ * CostsView is the answer of GET /api/v1/costs: what the viewer's projects
+ * cost in a range of local dates in TZ, From to To inclusive (YYYY-MM-DD).
+ * Earliest is the oldest From the history retention allows. Buckets lists
+ * every bucket start in the range; Series has a point per bucket and key
+ * with calls only. Previous is the period of equal length before From.
+ * ResearchSince is the first research call still stored, absent without
+ * one or when the viewer may not see research.
+ */
+export interface CostsView {
+  range: '7d' | '30d' | '90d' | 'month' | 'lastMonth' | '12m' | 'custom';
+  from: string;
+  to: string;
+  bucket: 'day' | 'week' | 'month';
+  tz: string;
+  group: 'project' | 'kind' | 'model' | 'engine';
+  earliest: string;
+  buckets: string[];
+  series: CostPointView[];
+  totals: store.SpendTotals;
+  previous: store.SpendTotals;
+  cacheReadShare: number /* float64 */;
+  previousCacheReadShare: number /* float64 */;
+  stepLines: StepLinesView;
+  byProject: SpendBreakdownView[];
+  byKind: SpendBreakdownView[];
+  byModel: SpendBreakdownView[];
+  byEngine: SpendBreakdownView[];
+  month: CostsMonthView;
+  researchSince?: string;
+}
+
+//////////
 // source: features.go
 
 /**

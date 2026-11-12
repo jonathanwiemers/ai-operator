@@ -27,6 +27,18 @@ func (m Money) String() string {
 	return strconv.FormatFloat(m.USD, 'f', 2, 64)
 }
 
+// Add is the sum of m and o: known when either is, unknown amounts add
+// nothing.
+func (m Money) Add(o Money) Money {
+	switch {
+	case !o.Known:
+		return m
+	case !m.Known:
+		return o
+	}
+	return USD(m.USD + o.USD)
+}
+
 // MarshalJSON writes String as a JSON string.
 func (m Money) MarshalJSON() ([]byte, error) {
 	return strconv.AppendQuote(nil, m.String()), nil

@@ -82,6 +82,7 @@ packages:
       - chat.go
       - companion.go
       - cost.go
+      - costs.go
       - features.go
       - followup.go
       - gitlab.go

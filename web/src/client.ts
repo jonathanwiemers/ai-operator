@@ -6,6 +6,7 @@ import { session } from './api'
 import type {
   ChatPage,
   ChatPostResponse,
+  CostsView,
   Feature,
   FollowUpMilestoneView,
   FeaturesResponse,
@@ -290,6 +291,32 @@ export function getSpend(
   if (scope.task) params.set('task', scope.task)
   if (scope.run) params.set('run', String(scope.run))
   return get<SpendView>(`/spend?${params}`)
+}
+
+// CostsParams is the query of GET /costs (Go: parseCostParams, not a view):
+// a named range or from and to (YYYY-MM-DD, inclusive, both), the grouping,
+// the filters (project as "namespace/name") and the viewer's IANA time zone.
+// Absent ones take the server's defaults (30d, project, UTC).
+export interface CostsParams {
+  range?: Exclude<CostsView['range'], 'custom'>
+  from?: string
+  to?: string
+  group?: CostsView['group']
+  project?: string
+  kind?: string
+  engine?: string
+  tz?: string
+}
+
+// getCosts: GET /costs, what the projects the user may see cost over a
+// range: series by the group, totals, breakdowns and the month's days.
+export function getCosts(params: CostsParams = {}): Promise<CostsView> {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v) q.set(k, v)
+  }
+  const qs = q.toString()
+  return get<CostsView>(`/costs${qs ? `?${qs}` : ''}`)
 }
 
 // getTask: GET /projects/{namespace}/{name}/tasks/{task}.
