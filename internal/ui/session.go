@@ -14,7 +14,7 @@ import (
 
 // Sessions are kept in encrypted cookies (AES-GCM), so the UI holds no state
 // and several replicas share logins through the session key. Cookies carry
-// the user name and roles, never the provider's tokens.
+// the user name and roles; only the refresh cookie holds a provider token.
 type Sessions struct {
 	aead   cipher.AEAD
 	secure bool
@@ -36,6 +36,39 @@ type LoginState struct {
 	Verifier string `json:"verifier"`
 	Return   string `json:"return"`
 	Expires  int64  `json:"exp"`
+}
+
+// RefreshState is the content of the refresh cookie. It is never logged and
+// never sent to the web.
+type RefreshState struct {
+	Token     string `json:"rt"`
+	Subject   string `json:"sub"`
+	Nonce     string `json:"nonce"` // the login's, checked on refreshed ID tokens
+	Since     int64  `json:"since"` // login start, unix
+	Renewed   int64  `json:"ren"`   // last renewal, unix
+	IdleUntil int64  `json:"idle"`  // idle deadline, unix
+}
+
+// Deadline is the idle deadline, capped at Since+max when max > 0.
+func (st *RefreshState) Deadline(max time.Duration) time.Time {
+	d := time.Unix(st.IdleUntil, 0)
+	if limit := time.Unix(st.Since, 0).Add(max); max > 0 && limit.Before(d) {
+		return limit
+	}
+	return d
+}
+
+// Live reports whether now is before the login's deadline.
+func (st *RefreshState) Live(now time.Time, max time.Duration) bool {
+	return now.Before(st.Deadline(max))
+}
+
+// Slide records a renewal at now and moves the idle deadline to now+idle,
+// capped at Since+max when max > 0.
+func (st *RefreshState) Slide(now time.Time, idle, max time.Duration) {
+	st.Renewed = now.Unix()
+	st.IdleUntil = now.Add(idle).Unix()
+	st.IdleUntil = st.Deadline(max).Unix()
 }
 
 const loginStateTTL = 10 * time.Minute
@@ -62,6 +95,7 @@ func NewSessions(key string, secure bool, ttl time.Duration) (*Sessions, error) 
 // over https, for the whole site.
 func (s *Sessions) SessionCookie() string { return s.cookieName("ai-operator-session") }
 func (s *Sessions) LoginCookie() string   { return s.cookieName("ai-operator-login") }
+func (s *Sessions) RefreshCookie() string { return s.cookieName("ai-operator-refresh") }
 
 func (s *Sessions) cookieName(base string) string {
 	if s.secure {
@@ -70,10 +104,29 @@ func (s *Sessions) cookieName(base string) string {
 	return base
 }
 
-// Start writes the session cookie for p.
+// Start writes the session cookie for p, valid for the session TTL.
 func (s *Sessions) Start(w http.ResponseWriter, p Principal) error {
-	exp := s.now().Add(s.ttl)
+	return s.StartUntil(w, p, s.now().Add(s.ttl))
+}
+
+// StartUntil writes the session cookie for p, valid until exp.
+func (s *Sessions) StartUntil(w http.ResponseWriter, p Principal, exp time.Time) error {
 	return s.write(w, s.SessionCookie(), Session{Principal: p, Expires: exp.Unix()}, exp)
+}
+
+// StartRefresh writes the refresh cookie, valid until the state's idle
+// deadline (Slide keeps it within the absolute limit).
+func (s *Sessions) StartRefresh(w http.ResponseWriter, st RefreshState) error {
+	return s.write(w, s.RefreshCookie(), st, time.Unix(st.IdleUntil, 0))
+}
+
+// Refresh returns the refresh state of the request while it is not idle.
+func (s *Sessions) Refresh(r *http.Request) (*RefreshState, bool) {
+	var st RefreshState
+	if !s.read(r, s.RefreshCookie(), &st) || s.now().Unix() >= st.IdleUntil {
+		return nil, false
+	}
+	return &st, true
 }
 
 // Get returns the session of the request, if it has a valid one.

@@ -135,3 +135,150 @@ func TestSafeReturn(t *testing.T) {
 		}
 	}
 }
+
+func TestRefreshCookieRoundTrip(t *testing.T) {
+	s := newTestSessions(t, strings.Repeat("a", 32))
+	now := time.Now()
+	st := RefreshState{Token: "rt-1", Subject: "sub-1", Nonce: "n", Since: now.Unix(), Renewed: now.Unix(), IdleUntil: now.Add(time.Hour).Unix()}
+	w := httptest.NewRecorder()
+	if err := s.StartRefresh(w, st); err != nil {
+		t.Fatal(err)
+	}
+	c := w.Result().Cookies()[0]
+	if c.Name != "__Host-ai-operator-refresh" || !c.HttpOnly || !c.Secure || c.Path != "/" {
+		t.Errorf("cookie attributes: %+v", c)
+	}
+	if strings.Contains(c.Value, "rt-1") {
+		t.Error("cookie value is not encrypted")
+	}
+	if c.MaxAge < 3590 || c.MaxAge > 3600 {
+		t.Errorf("MaxAge = %d, want about an hour", c.MaxAge)
+	}
+	got, ok := s.Refresh(roundTrip(w))
+	if !ok || *got != st {
+		t.Fatalf("Refresh = %+v, %v", got, ok)
+	}
+
+	// Idle: refused once IdleUntil has passed.
+	s.now = func() time.Time { return now.Add(time.Hour) }
+	if _, ok := s.Refresh(roundTrip(w)); ok {
+		t.Error("an idle refresh cookie was accepted")
+	}
+
+	w2 := httptest.NewRecorder()
+	s.Clear(w2, s.RefreshCookie())
+	if c := w2.Result().Cookies()[0]; c.Name != s.RefreshCookie() || c.MaxAge >= 0 {
+		t.Errorf("clear: %+v", c)
+	}
+}
+
+func TestRefreshCookieName(t *testing.T) {
+	for secure, want := range map[bool]string{true: "__Host-ai-operator-refresh", false: "ai-operator-refresh"} {
+		s, err := NewSessions("k", secure, time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := s.RefreshCookie(); got != want {
+			t.Errorf("secure=%v: RefreshCookie() = %q, want %q", secure, got, want)
+		}
+	}
+}
+
+func TestRefreshCookieIsBoundToItsName(t *testing.T) {
+	s := newTestSessions(t, strings.Repeat("a", 32))
+	w := httptest.NewRecorder()
+	if err := s.StartRefresh(w, RefreshState{Token: "rt", IdleUntil: time.Now().Add(time.Hour).Unix()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Start(w, Principal{Username: "ada"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StartLogin(w, LoginState{State: "st"}); err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, c := range w.Result().Cookies() {
+		values[c.Name] = c.Value
+	}
+	// Each cookie's value under each other cookie's name.
+	with := func(name, value string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.AddCookie(&http.Cookie{Name: name, Value: value})
+		return r
+	}
+	for _, from := range []string{s.SessionCookie(), s.LoginCookie()} {
+		if _, ok := s.Refresh(with(s.RefreshCookie(), values[from])); ok {
+			t.Errorf("%s was accepted as the refresh cookie", from)
+		}
+	}
+	if _, ok := s.Get(with(s.SessionCookie(), values[s.RefreshCookie()])); ok {
+		t.Error("the refresh cookie was accepted as a session")
+	}
+	if _, ok := s.Login(httptest.NewRecorder(), with(s.LoginCookie(), values[s.RefreshCookie()])); ok {
+		t.Error("the refresh cookie was accepted as a login")
+	}
+}
+
+func TestRefreshCookieTooLarge(t *testing.T) {
+	s := newTestSessions(t, strings.Repeat("a", 32))
+	st := RefreshState{Token: strings.Repeat("t", 4000), IdleUntil: time.Now().Add(time.Hour).Unix()}
+	if err := s.StartRefresh(httptest.NewRecorder(), st); err == nil {
+		t.Fatal("want an error for a refresh cookie over the size limit")
+	}
+}
+
+func TestRefreshStateDeadlines(t *testing.T) {
+	since := time.Unix(1_800_000_000, 0)
+	st := RefreshState{Since: since.Unix(), IdleUntil: since.Add(7 * 24 * time.Hour).Unix()}
+
+	if got := st.Deadline(0); !got.Equal(since.Add(7 * 24 * time.Hour)) {
+		t.Errorf("Deadline(0) = %v", got)
+	}
+	if got := st.Deadline(24 * time.Hour); !got.Equal(since.Add(24 * time.Hour)) {
+		t.Errorf("Deadline(24h) = %v", got)
+	}
+	if got := st.Deadline(30 * 24 * time.Hour); !got.Equal(since.Add(7 * 24 * time.Hour)) {
+		t.Errorf("Deadline(30d) = %v", got)
+	}
+
+	at := since.Add(2 * 24 * time.Hour)
+	if !st.Live(at, 0) || st.Live(at, 24*time.Hour) {
+		t.Error("Live: want live without a cap and past a 24h cap")
+	}
+	if st.Live(since.Add(7*24*time.Hour), 0) {
+		t.Error("Live at the idle deadline")
+	}
+
+	// Slide moves the idle deadline from now.
+	st.Slide(at, 7*24*time.Hour, 0)
+	if st.Renewed != at.Unix() || st.IdleUntil != at.Add(7*24*time.Hour).Unix() {
+		t.Errorf("Slide without cap: %+v", st)
+	}
+	// ... but never past Since+max.
+	st.Slide(at, 7*24*time.Hour, 5*24*time.Hour)
+	if st.Renewed != at.Unix() || st.IdleUntil != since.Add(5*24*time.Hour).Unix() {
+		t.Errorf("Slide with cap: %+v", st)
+	}
+	if st.Since != since.Unix() {
+		t.Error("Slide changed Since")
+	}
+}
+
+func TestStartUntil(t *testing.T) {
+	s := newTestSessions(t, strings.Repeat("a", 32))
+	now := time.Unix(1_800_000_000, 0)
+	s.now = func() time.Time { return now }
+	exp := now.Add(15 * time.Minute)
+	w := httptest.NewRecorder()
+	if err := s.StartUntil(w, Principal{Username: "ada"}, exp); err != nil {
+		t.Fatal(err)
+	}
+	c := w.Result().Cookies()[0]
+	if c.MaxAge != 900 || !c.Expires.Equal(exp) {
+		t.Errorf("MaxAge = %d, Expires = %v", c.MaxAge, c.Expires)
+	}
+	got, ok := s.Get(roundTrip(w))
+	if !ok || got.Expires != exp.Unix() || got.Username != "ada" {
+		t.Fatalf("Get = %+v, %v", got, ok)
+	}
+}
