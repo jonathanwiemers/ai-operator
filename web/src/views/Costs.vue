@@ -24,6 +24,7 @@ import { cost, tokenCount } from '../format'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
 import type { CostsTopView, CostsView } from '../generated/views'
 import MostExpensive from '../components/MostExpensive.vue'
+import PlanUsage from '../components/PlanUsage.vue'
 import WhereItGoes from '../components/WhereItGoes.vue'
 import ChartLegend from '../ui/charts/ChartLegend.vue'
 import ChartTable from '../ui/charts/ChartTable.vue'
@@ -309,6 +310,7 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
       </section>
 
       <MostExpensive v-if="top" :top="top" />
+      <PlanUsage :usage="data.planUsage" />
     </template>
   </div>
 </template>

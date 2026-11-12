@@ -69,7 +69,26 @@ export const costs: CostsView = {
     ),
   },
   researchSince: '2026-10-20T07:00:00Z',
-  planUsage: [],
+  planUsage: [
+    {
+      namespace: 'team-a',
+      project: 'shop',
+      usage: {
+        engine: 'claude',
+        status: 'allowed',
+        windows: [
+          { name: 'five_hour', percent: 42, resetsAt: '2026-11-10T14:00:00Z' },
+          { name: 'seven_day', percent: 83, resetsAt: '2026-11-14T09:00:00Z' },
+        ],
+        observedAt: '2026-11-10T11:50:00Z',
+      },
+    },
+    {
+      namespace: 'team-b',
+      project: 'a-project-with-a-rather-long-name.example',
+      usage: { engine: 'cursor', windows: [{ name: 'seven_day', percent: 12 }], observedAt: '2026-11-09T08:00:00Z' },
+    },
+  ],
   budgets: [],
 }
 

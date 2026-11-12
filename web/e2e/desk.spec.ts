@@ -68,6 +68,7 @@ async function costsReady(page: Page): Promise<void> {
   await expect(page.locator('[data-chart=where] canvas[role=img]')).toBeVisible()
   await expect(page.locator('[data-chart=tokens] canvas[role=img]')).toBeVisible()
   await expect(page.locator('[data-costs-top] [data-top]')).toHaveCount(3)
+  await expect(page.locator('[data-costs-plan] [data-plan]')).toHaveCount(2)
 }
 
 // Every named route has a case here, with a variant per tab.

@@ -556,6 +556,12 @@ the milestone tab, an issue row to its issue, a run row to its task and run;
 a run without a milestone (research `research/<name>`, chat) opens the project
 tab with the scope query.
 
+*Plan usage*: one card per engine with `EngineUsage.vue` (5 h and 7 day
+windows), the project the reading came from and its age (`RelTime`). It is
+live state (`status.engineUsage`, the freshest reading per engine among the
+viewer's projects), not bound to the range or the filters. No chart; an empty
+state when no engine has reported.
+
 The e2e route cases `costs` and `costs-dark` at 375, 768 and 1280 px
 (`costs@<width>.png`, `costs-dark@<width>.png`) wait for both charts'
 canvases and check overflow and the CSP, `costs` is among the hit-area routes,
