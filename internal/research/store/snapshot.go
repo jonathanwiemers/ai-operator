@@ -260,9 +260,10 @@ func (s *Store) FollowUpsOf(ctx context.Context, p ProjectKey, iid int64) (Miles
 
 // followUps are the stored follow-ups of project's milestone iid by number.
 func (s *Store) followUps(ctx context.Context, p ProjectKey, iid int64) ([]FollowUpRow, error) {
-	rows, _ := s.pool.Query(ctx, `SELECT number, title, body, state, coalesce(target_iid, 0) FROM desk_follow_ups
+	rows, _ := s.pool.Query(ctx, `SELECT number, title, body, state, coalesce(target_iid, 0) AS target_iid
+		FROM desk_follow_ups
 		WHERE namespace = $1 AND project = $2 AND milestone_iid = $3 ORDER BY number`, p.Namespace, p.Name, iid)
-	return pgx.CollectRows(rows, pgx.RowToStructByPos[FollowUpRow])
+	return pgx.CollectRows(rows, pgx.RowToStructByName[FollowUpRow])
 }
 
 // DeleteExpiredSnapshot deletes the milestones whose rows all expired before

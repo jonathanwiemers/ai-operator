@@ -72,6 +72,15 @@ func TestHistoryEvents(t *testing.T) {
 	check("kinds", store.StreamQuery{Projects: bloop, Kinds: []string{"note"}}, "other", "note-1")
 	check("search", store.StreamQuery{Projects: bloop, Text: "merges"}, "note-1")
 	check("search without comments", store.StreamQuery{Projects: bloop, Text: "merges", TextWithoutNotes: bloop})
+	// Events read by name: NULL milestone, issue and merge request become 0.
+	if e := all[4]; e.Key != "note-1" || e.IssueIID != 142 || e.MilestoneIID != 0 || e.MergeRequestIID != 0 ||
+		e.Kind != "note" || e.Summary != "note-1" || e.Data["body"] != "hold merges please" || !e.ExpiresAt.Equal(exp) {
+		t.Errorf("note-1 = %+v", e)
+	}
+	shop, err := s.Stream(ctx, store.StreamQuery{Projects: []store.ProjectKey{{Namespace: "agents", Name: "shop"}}})
+	if err != nil || len(shop) != 1 || shop[0].Key != "elsewhere" || shop[0].IssueIID != 0 || shop[0].Project != "shop" {
+		t.Errorf("Stream(shop) = %+v, %v", shop, err)
+	}
 
 	days, err := s.Days(ctx, bloop[0], base.Add(-time.Hour), time.UTC)
 	if err != nil || len(days) != 1 {

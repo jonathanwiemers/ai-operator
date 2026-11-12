@@ -119,6 +119,8 @@ func (s *Store) migrate(ctx context.Context, fsys fs.FS, g Grants) error {
 // version needs: databases from before timestamp versions created it as
 // int. It runs under the migration lock and alters only an int column.
 func widenVersion(ctx context.Context, conn *pgx.Conn) error {
+	// The migrations read single values (this type, the schema, the applied
+	// versions): scalar scans, with no struct for pgx.RowToStructByName.
 	var typ string
 	if err := conn.QueryRow(ctx, `SELECT data_type FROM information_schema.columns
 		WHERE table_schema = current_schema() AND table_name = 'schema_migrations' AND column_name = 'version'`).Scan(&typ); err != nil {

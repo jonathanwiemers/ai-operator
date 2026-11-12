@@ -653,3 +653,16 @@ follow-up issue), and requirements without an issue and why.
   `history.go`'s `Stream` still scans it positionally until its slice.
   Scalar `Scan(&id)` stays (D344-P1); the milestone row stays on
   `scanTotals` with Spend's composed SQL. Nothing narrowed.
+- 2026-11-12 #345 (R16 part 2, completes R16): `history.go` (`Stream`,
+  `Days`), `query.go` (runs, results, search hits), `snapshot.go` (a
+  milestone's follow-ups, from `RowToStructByPos`) and `backfill.go`
+  (`ProjectListed`, `MergedIssues`) read by name, with aliased computed
+  columns (`id::text AS id`, `coalesce(cost_usd, 0)::float8 AS cost_usd`,
+  `array(…) AS new_url_hashes`). Single-row reads use `pgx.CollectOneRow`,
+  so `GetRun`, `GetResult` and `LatestResult` query rows instead of one
+  row; not found still maps to `ErrNotFound`. `MergedIssues` reads into an
+  anonymous struct that embeds `MergedMR`. Positional scans left: scalars
+  (`Scan(&id)`, `RETURNING attempts`, the tracking IID, `migrate.go`'s
+  version, type and schema) and Spend's composed SQL (`scanTotals`,
+  `scanCall`, `stepLines`); comments at `scanTotals` and in `migrate.go`
+  say why. Nothing narrowed.

@@ -118,14 +118,16 @@ func (s *Store) BackfillFailed(ctx context.Context, p ProjectKey, iid int64, cau
 // for the backfill, the zero time if never, and whether all of them were
 // backfilled then.
 func (s *Store) ProjectListed(ctx context.Context, p ProjectKey) (time.Time, bool, error) {
-	var at time.Time
-	var complete bool
-	err := s.pool.QueryRow(ctx, `SELECT listed_at, complete FROM desk_backfill_projects
-		WHERE namespace = $1 AND project = $2`, p.Namespace, p.Name).Scan(&at, &complete)
+	rows, _ := s.pool.Query(ctx, `SELECT listed_at, complete FROM desk_backfill_projects
+		WHERE namespace = $1 AND project = $2`, p.Namespace, p.Name)
+	listed, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[struct {
+		ListedAt time.Time
+		Complete bool
+	}])
 	if errors.Is(err, pgx.ErrNoRows) {
 		return time.Time{}, false, nil
 	}
-	return at, complete, err
+	return listed.ListedAt, listed.Complete, err
 }
 
 // SetProjectListed records that project's closed milestones were listed at
@@ -164,17 +166,21 @@ func (s *Store) MergedIssues(ctx context.Context, p ProjectKey, issues []int64, 
 	if len(issues) == 0 {
 		return out, nil
 	}
-	rows, _ := s.pool.Query(ctx, `SELECT DISTINCT ON (issue_iid) issue_iid, coalesce(mr_iid, 0),
-			coalesce(data->>'mergeRequestURL', '')
+	rows, _ := s.pool.Query(ctx, `SELECT DISTINCT ON (issue_iid) issue_iid, coalesce(mr_iid, 0) AS iid,
+			coalesce(data->>'mergeRequestURL', '') AS url
 		FROM history_events
 		WHERE namespace = $1 AND project = $2 AND issue_iid = ANY($3::bigint[]) AND kind = 'merged'
 			AND expires_at > $4
 		ORDER BY issue_iid, at DESC, id DESC`, p.Namespace, p.Name, issues, now)
-	var iid int64
-	var mr MergedMR
-	_, err := pgx.ForEachRow(rows, []any{&iid, &mr.IID, &mr.URL}, func() error {
-		out[iid] = mr
-		return nil
-	})
-	return out, err
+	merged, err := pgx.CollectRows(rows, pgx.RowToStructByName[struct {
+		IssueIID int64
+		MergedMR
+	}])
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range merged {
+		out[m.IssueIID] = m.MergedMR
+	}
+	return out, nil
 }

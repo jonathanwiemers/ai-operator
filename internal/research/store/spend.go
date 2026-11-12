@@ -219,6 +219,11 @@ const spendTotals = `coalesce(sum(cost_usd), 0)::float8,
 
 // scanTotals scans the spendTotals columns after the dest columns before
 // them.
+//
+// Spend's queries stay positional, unlike the store's static queries
+// (pgx.RowToStructByName): their SQL is composed per level and breakdown
+// (a key expression, then spendTotals), and each caller scans a different
+// destination ahead of the same totals, so no single struct names the row.
 func scanTotals(row pgx.Row, dest ...any) (SpendTotals, error) {
 	var t SpendTotals
 	var legacy float64

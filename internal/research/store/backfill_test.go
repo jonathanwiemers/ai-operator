@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -266,6 +267,8 @@ func TestMergedIssues(t *testing.T) {
 		merged("m2", "bloop", 11, 51, now.Add(-time.Hour), exp), // merged again: the newest counts
 		merged("m3", "bloop", 12, 52, now.Add(-time.Hour), now.Add(-time.Minute)),
 		merged("m4", "other", 13, 53, now.Add(-time.Hour), exp),
+		// A merge without a merge request (NULL mr_iid) or its URL.
+		{Key: "m5", At: now.Add(-time.Hour), Namespace: "agents", Project: "bloop", IssueIID: 14, Kind: "merged", ExpiresAt: exp},
 		{Key: "r1", At: now, Namespace: "agents", Project: "bloop", IssueIID: 13, MergeRequestIID: 54, Kind: "run.started", ExpiresAt: exp},
 	}); err != nil {
 		t.Fatal(err)
@@ -274,8 +277,8 @@ func TestMergedIssues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[int64]store.MergedMR{11: {IID: 51, URL: "https://gitlab.example/mr/m2"}}
-	if len(got) != len(want) || got[11] != want[11] {
+	want := map[int64]store.MergedMR{11: {IID: 51, URL: "https://gitlab.example/mr/m2"}, 14: {}}
+	if !maps.Equal(got, want) {
 		t.Errorf("MergedIssues = %+v, want %+v", got, want)
 	}
 	if got, err := s.MergedIssues(ctx, bloop, nil, now); err != nil || len(got) != 0 {

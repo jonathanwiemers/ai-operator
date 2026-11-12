@@ -90,6 +90,15 @@ func TestReadQueriesAsReader(t *testing.T) {
 	if got, err := s.GetRun(ctx, run2.ID); err != nil || got.CostUSD != 0.25 || got.Status != store.StatusSucceeded {
 		t.Errorf("GetRun(run 2) = %+v, %v", got, err)
 	}
+	// A running run has no finish time and no cost (both NULL).
+	running := newRun("agents", "running", day3)
+	if err := owner.StartRun(ctx, running); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.GetRun(ctx, running.ID); err != nil || got.FinishedAt != nil || got.CostUSD != 0 ||
+		got.Status != store.StatusRunning || !slices.Equal(got.Warnings, running.Warnings) {
+		t.Errorf("GetRun(running) = %+v, %v", got, err)
+	}
 	for _, id := range []string{newUUID(), "not-a-uuid", ""} {
 		if _, err := s.GetRun(ctx, id); !errors.Is(err, store.ErrNotFound) {
 			t.Errorf("GetRun(%q): %v, want ErrNotFound", id, err)

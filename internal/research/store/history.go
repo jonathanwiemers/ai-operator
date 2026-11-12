@@ -102,8 +102,7 @@ type StreamQuery struct {
 	Limit         int
 }
 
-// eventColumns are Event's fields by name (pgx.RowToStructByName) and in
-// order (Stream's Scan).
+// eventColumns are Event's fields by name (pgx.RowToStructByName).
 const eventColumns = `id, key, at, namespace, project, coalesce(milestone_iid, 0) AS milestone_iid,
 	coalesce(issue_iid, 0) AS issue_iid, coalesce(mr_iid, 0) AS mr_iid, task, kind, actor, summary, data, expires_at`
 
@@ -152,12 +151,7 @@ func (s *Store) Stream(ctx context.Context, q StreamQuery) ([]Event, error) {
 	}
 	rows, _ := s.pool.Query(ctx, `SELECT `+eventColumns+` FROM history_events WHERE `+where+
 		` ORDER BY at `+order+`, id `+order+` LIMIT `+arg(limit), args...)
-	events, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Event, error) {
-		var e Event
-		err := row.Scan(&e.ID, &e.Key, &e.At, &e.Namespace, &e.Project, &e.MilestoneIID, &e.IssueIID,
-			&e.MergeRequestIID, &e.Task, &e.Kind, &e.Actor, &e.Summary, &e.Data, &e.ExpiresAt)
-		return e, err
-	})
+	events, err := pgx.CollectRows(rows, pgx.RowToStructByName[Event])
 	if err != nil {
 		return nil, err
 	}
@@ -190,17 +184,14 @@ type Day struct {
 // without events are left out).
 func (s *Store) Days(ctx context.Context, p ProjectKey, since time.Time, loc *time.Location) ([]Day, error) {
 	rows, _ := s.pool.Query(ctx, `SELECT (at AT TIME ZONE $4)::date AS day,
-			count(*) FILTER (WHERE kind = 'run.finished'),
-			count(*) FILTER (WHERE kind = 'merged'),
-			coalesce(sum((data->>'costUSD')::numeric) FILTER (WHERE kind = 'run.finished' AND data ? 'costUSD'), 0)::float8,
-			count(*)
+			count(*) FILTER (WHERE kind = 'run.finished') AS runs,
+			count(*) FILTER (WHERE kind = 'merged') AS merged,
+			coalesce(sum((data->>'costUSD')::numeric) FILTER (WHERE kind = 'run.finished' AND data ? 'costUSD'), 0)::float8
+				AS cost_usd,
+			count(*) AS events
 		FROM history_events WHERE namespace = $1 AND project = $2 AND at >= $3
 		GROUP BY 1 ORDER BY 1`, p.Namespace, p.Name, since, loc.String())
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Day, error) {
-		var d Day
-		err := row.Scan(&d.Day, &d.Runs, &d.Merged, &d.CostUSD, &d.Events)
-		return d, err
-	})
+	return pgx.CollectRows(rows, pgx.RowToStructByName[Day])
 }
 
 // DeleteExpiredEvents deletes the events that expired before now and
