@@ -295,3 +295,11 @@ follow-up issue), and requirements without an issue and why.
   series. Group `model` counts a call once per model it used, as
   `Spend.ByModel` does: cost, tokens and duration add up to the ungrouped
   totals, calls do not.
+- 2026-11-12 #357 (R3): `store.CostBreakdowns(CostQuery)` returns the totals,
+  the previous period's totals (`[From-(To-From), From)`), by project, kind,
+  model and engine (known cost descending, then key; legacy runs under key
+  `""`), both cache-read shares, the range's step lines and `ResearchSince`,
+  in one batch. Filters apply to every field, step lines included; the
+  engine filter does not move `ResearchSince`, which only `Kind` and
+  `ExcludeKinds` can drop. `SpendTotals.cacheReadShare` and
+  `stepLinesSQL(filter)` are now shared with `Spend`.

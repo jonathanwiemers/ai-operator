@@ -30,3 +30,12 @@ func SpendSinceQuery(projects []ProjectKey, since time.Time) (string, []any) {
 func CostSeriesQuery(q CostQuery, bucket, group string) (string, []any, error) {
 	return costSeriesSQL(q, bucket, group)
 }
+
+// CostBreakdownsQueries is the SQL and arguments of each statement
+// CostBreakdowns runs, for EXPLAIN tests.
+func CostBreakdownsQueries(q CostQuery) (sqls []string, args [][]any) {
+	for _, st := range costBreakdownsSQL(q) {
+		sqls, args = append(sqls, st.sql), append(args, st.args)
+	}
+	return sqls, args
+}

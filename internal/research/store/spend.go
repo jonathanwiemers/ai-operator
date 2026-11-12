@@ -376,9 +376,7 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 	if sp.Totals, err = scanTotals(s.pool.QueryRow(ctx, with+`SELECT `+spendTotals+` FROM spend`, args...)); err != nil {
 		return Spend{}, err
 	}
-	if in := sp.Totals.InputTokens + sp.Totals.CacheReadTokens + sp.Totals.CacheWriteTokens; in > 0 {
-		sp.CacheReadShare = float64(sp.Totals.CacheReadTokens) / float64(in)
-	}
+	sp.CacheReadShare = sp.Totals.cacheReadShare()
 	if sp.Children, err = s.spendChildren(ctx, sc, with, args); err != nil {
 		return Spend{}, err
 	}
@@ -590,14 +588,29 @@ type StepLines struct {
 }
 
 // stepLinesQuery selects the StepLines columns of the scope's calls.
-const stepLinesQuery = `, steps AS (
-		SELECT lines_added + lines_deleted AS lines FROM scoped WHERE kind = 'implement' AND lines_added + lines_deleted > 0
+var stepLinesQuery = stepLinesSQL("")
+
+// stepLinesSQL selects the StepLines columns of the scope's calls that
+// match filter, conditions on agent_calls' columns, each led by AND.
+func stepLinesSQL(filter string) string {
+	return `, steps AS (
+		SELECT lines_added + lines_deleted AS lines FROM scoped WHERE kind = 'implement' AND lines_added + lines_deleted > 0` + filter + `
 	)
 	SELECT (SELECT count(*) FROM steps),
 		coalesce((SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY lines))::bigint FROM steps), 0),
 		coalesce((SELECT round(percentile_cont(0.9) WITHIN GROUP (ORDER BY lines))::bigint FROM steps), 0),
 		coalesce((SELECT max(lines) FROM steps), 0)::bigint,
-		(SELECT coalesce(sum(step_gate_nudges), 0)::bigint FROM scoped)`
+		(SELECT coalesce(sum(step_gate_nudges), 0)::bigint FROM scoped WHERE true` + filter + `)`
+}
+
+// cacheReadShare is cache reads / (input + cache reads + cache writes), 0
+// without any of them.
+func (t SpendTotals) cacheReadShare() float64 {
+	if in := t.InputTokens + t.CacheReadTokens + t.CacheWriteTokens; in > 0 {
+		return float64(t.CacheReadTokens) / float64(in)
+	}
+	return 0
+}
 
 func stepLines(row pgx.Row) (StepLines, error) {
 	var l StepLines
