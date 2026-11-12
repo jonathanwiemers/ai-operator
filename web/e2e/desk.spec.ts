@@ -105,6 +105,12 @@ const routes: Route[] = [
       ready: costsReady,
     }),
   ),
+  // Filters from the URL (R17): the fixture answers the same for any filter.
+  {
+    name: 'costs-filtered',
+    path: '/costs?range=90d&group=model&kind=implement',
+    ready: costsReady,
+  },
   ...(['stream', 'board', 'spend'] as const).map(
     (tab): Route => ({
       name: `stream-project-${tab}`,
@@ -588,7 +594,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'costs','researches', 'research-new', 'task', 'task-chat', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
+const hitRoutes = ['overview', 'inbox', 'costs', 'costs-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
 
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {

@@ -499,7 +499,7 @@ token bases, and *Research counted since <date>* when research calls are
 counted (research cost before that date is only on the research page).
 The page says when the history database is not configured (404) or not
 connected yet (503), and when a range has no calls. The charts below follow
-the [chart rules](#charts); more arrive in later slices
+the [chart rules](#charts).
 (`docs/specs/costs-page.spec.md`).
 
 *Spend over time*: stacked bars of the known cost per bucket (day up to 90
@@ -586,7 +586,35 @@ user-controlled, a spreadsheet would run them as formulas). An unknown cost
 is an empty cell, never 0; the runs from before agent calls are the key
 *before calls*. A byte order mark makes spreadsheets read UTF-8.
 
-The e2e route cases `costs` and `costs-dark` at 375, 768 and 1280 px
+**Limits of the figures.** They are what the recorded agent calls say, and
+nothing else (`agent_calls`; only *Plan usage* and *Budgets* read live state):
+
+- *API-equivalent cost.* Claude's cost is what the CLI reports, cursor's is
+  estimated from tokens and the `pricing:` table. It is not an invoice and
+  not the subscription's real spend.
+- *Unknown is never $0.* Calls without a cost are not in any cost figure or
+  bar; they are counted next to it (*+N unknown calls*), and a figure made
+  only of them reads *n/a*. Calls that report neither cost nor tokens
+  (cursor's model auto) are *unmetered*, counted separately and never drawn
+  as 0-token bars.
+- *Mixed token bases.* Calls recorded before the token basis was stored do
+  not compare with newer ones; a range that mixes them says so once, under
+  the KPI row (and in *Tokens*).
+- *Research* is counted since its first stored call (*Research counted since
+  <date>*; no backfill, older research cost is only on the research page),
+  and only for viewers who may read research: for others the calls of kind
+  `research` are not in any figure, and the date is not shown.
+- *Buckets* follow the span: day up to 90 days, week (from Monday) up to
+  180, month above, in the viewer's time zone (`tz`, sent by the browser, so
+  a day edge is local midnight, also across a DST change).
+- *Retention.* Calls expire with `research.historyRetention` (a year by
+  default); a range starts no earlier than today minus the retention (a named
+  range is cut there, a custom `from` before it is refused).
+- *Chunk budget.* The `/costs` route chunk, Chart.js included, stays within
+  120 kB gzipped, checked by `npm run budget` ([Bundle budget](#bundle-budget)).
+  Final figure 117.1 kB; the initial bundle is 129.1 kB.
+
+The e2e route cases `costs`, `costs-dark` and `costs-filtered` (`?range=90d&group=model&kind=implement`) at 375, 768 and 1280 px
 (`costs@<width>.png`, `costs-dark@<width>.png`) wait for both charts'
 canvases and check overflow and the CSP, `costs` is among the hit-area routes,
 `costs filters live in the URL, no reload@1280` checks that a filter change
@@ -1753,7 +1781,8 @@ loads anyway.
   (#366): 112.0 kB, 1.3 kB more for `HorizontalBars.vue` and the breakdown
   shaping (it uses the bar controller already registered). With *Tokens*
   (#367): 113.0 kB, 1.0 kB more for the mixed bar and line chart and the
-  token shaping.
+  token shaping. Final (#372, R17): 117.1 kB (JS 117.1, CSS 0.0), the initial
+  bundle 129.1 kB; the cap stays 120.
 
 ## UI kit
 

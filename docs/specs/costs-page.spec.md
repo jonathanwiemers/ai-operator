@@ -418,3 +418,38 @@ follow-up issue), and requirements without an issue and why.
   prepended in the download only. CSP unchanged (blob download is no fetch).
   Unit tests ran; type-check, e2e and chunk size not run here (no node_modules
   or Playwright browser), no e2e case added.
+- 2026-11-12 #372 (R17, R18): e2e routes `costs`, `costs-dark` and
+  `costs-filtered` (`?range=90d&group=model&kind=implement`) at 375, 768 and
+  1280 px, each checking overflow, CSP and other origins; no `/costs` entry
+  in `known-overflow.ts`. `docs/ui.md` (limits of the figures, retention,
+  chunk budget, the API rows) and `docs/design.md` (research calls, the time
+  index) complete. Final figures, measured with `vite build` and
+  `npm run budget`: the `/costs` chunk is 117.1 kB gzipped with Chart.js
+  (cap 120 kB; the first chart slice's 104.7 × 1.3 is above 120, so 120
+  stands), the initial bundle 129.1 kB (cap 132.3 kB; 129.4 before the
+  milestone's first web slice, 129.0 to 129.4 since). The e2e cases were
+  type-checked, not run here (no Playwright browser); the `ui-e2e` job runs
+  them.
+
+### Requirements and issues
+
+| Requirement | Issue | Note |
+| --- | --- | --- |
+| R1 time index | #354 | |
+| R2 `CostSeries` | #356 | |
+| R3 `CostBreakdowns` | #357 | |
+| R4 `CostTop` | #358 | |
+| R5 research calls | #355 | run number and task prefix only; rows existed already |
+| R6 `/api/v1/costs`, `/costs/top` | #359, #360 | |
+| R7 route, navigation, KPI row | #362 | |
+| R8 Chart.js, wrappers, colours, chunk check | #363, #364 | wrappers arrive with R9, R10, R11 |
+| R9 Spend over time | #364 | |
+| R10 This month | #365 | |
+| R11 Where it goes | #366 | |
+| R12 Tokens | #367 | |
+| R13 Most expensive | #368 | |
+| R14 Plan usage | #361 (server), #369 | |
+| R15 Budgets | #361 (server), #370 | |
+| R16 CSV download | #371 | |
+| R17 Playwright | #362 to #371 (cases), #372 | each web slice added its case; #372 closes the gaps |
+| R18 docs | #354, #355 to #371 (lines), #372 | |
