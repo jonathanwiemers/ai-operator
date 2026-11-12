@@ -390,6 +390,67 @@ test('colour scheme follows the system live', async ({ page, baseURL }) => {
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
+// The event stream ends at the session's expiry and reconnects at once
+// (src/live.ts): a reconnect within 5s keeps Live, a longer outage shows
+// Offline. A scripted EventSource stands in for the server's stream: the
+// first opens and ends, the second opens and stays (or never opens).
+for (const reopens of [true, false]) {
+  test(`event stream ${reopens ? 'reopens quietly' : 'down shows Offline'}@1280`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'overview')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.addInitScript((reopens) => {
+      const w = window as unknown as { __streams: number; EventSource: unknown }
+      w.__streams = 0
+      class FakeEventSource extends EventTarget {
+        static CONNECTING = 0
+        static OPEN = 1
+        static CLOSED = 2
+        readyState = 0
+        constructor() {
+          super()
+          const n = ++w.__streams
+          if (n > 1 && !reopens) return
+          setTimeout(() => {
+            this.readyState = 1
+            this.dispatchEvent(new Event('open'))
+          }, 50)
+          // The server closes with a retry hint: the browser would retry.
+          if (n === 1)
+            setTimeout(() => {
+              this.readyState = 0
+              this.dispatchEvent(new Event('error'))
+            }, 1000)
+        }
+        close() {
+          this.readyState = 2
+        }
+      }
+      w.EventSource = FakeEventSource
+    }, reopens)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const indicator = page.locator('.who .live')
+    await expect(indicator).toHaveText('Live')
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __streams: number }).__streams)).toBe(2)
+    if (reopens) {
+      for (let i = 0; i < 28; i++) {
+        expect((await indicator.textContent())?.trim(), `Live after ${i * 250}ms`).toBe('Live')
+        await page.waitForTimeout(250)
+      }
+    } else {
+      await page.waitForTimeout(3500)
+      await expect(indicator).toHaveText('Live')
+      await expect(indicator).toHaveText('Offline', { timeout: 5000 })
+    }
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
 // DataList (src/ui/DataList.vue): on a phone each run row shows its labels,
 // from the tablet width up they are hidden and the headers show instead.
 for (const { width, height, labels } of [

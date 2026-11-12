@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, reactive, ref, watch, type Ref } from 'vue'
 import { session } from './api'
 import { eventsURL, getMe, LoginRequiredError, NotFoundError } from './client'
+import { quietReconnectMs, reconnectAction } from './reconnect'
 
 // live tracks the server's event stream. Every burst of change events bumps
 // version; views reload what they show when it changes. kinds are the kinds
@@ -17,25 +18,43 @@ let bumpTimer: number | undefined
 let pendingKinds: Set<string> | null = new Set()
 let retryTimer: number | undefined
 let retryDelay = 2000
+// downTimer shows the stream as disconnected once it has been down for
+// quietReconnectMs; an open clears it.
+let downTimer: number | undefined
+let opened = false
+let lastQuickAt = -Infinity
 
 export function connectEvents(): void {
   if (source) return
   window.clearTimeout(retryTimer)
-  source = new EventSource(eventsURL())
-  source.addEventListener('open', () => {
+  const es = new EventSource(eventsURL())
+  source = es
+  es.addEventListener('open', () => {
     // Changes may have been missed while the stream was down.
-    if (!live.connected) bump(null)
+    bump(null)
+    window.clearTimeout(downTimer)
+    downTimer = undefined
     live.connected = true
+    opened = true
     retryDelay = 2000
   })
-  source.addEventListener('change', (e) => bump(eventKind(e)))
-  source.addEventListener('error', () => {
-    live.connected = false
+  es.addEventListener('change', (e) => bump(eventKind(e)))
+  es.addEventListener('error', () => {
+    downTimer ??= window.setTimeout(() => (live.connected = false), quietReconnectMs)
+    // The server ends the stream at the session's expiry; the first error
+    // after an open reconnects at once, and the reconnect renews. Otherwise
     // EventSource retries network errors by itself, but gives up on any
     // non-200 answer (an expired login, a restarting pod behind the
     // Gateway). Only a 401 ends it for good; anything else is retried.
-    if (source?.readyState !== EventSource.CLOSED) return
+    const action = reconnectAction(opened, es.readyState === EventSource.CLOSED, lastQuickAt, Date.now())
+    opened = false
+    if (action === 'browser') return
+    es.close()
     source = null
+    if (action === 'now') {
+      lastQuickAt = Date.now()
+      return connectEvents()
+    }
     getMe().then(scheduleRetry, (e) => {
       if (!(e instanceof LoginRequiredError)) scheduleRetry()
     })
@@ -50,6 +69,8 @@ function scheduleRetry(): void {
 
 export function disconnectEvents(): void {
   window.clearTimeout(retryTimer)
+  window.clearTimeout(downTimer)
+  downTimer = undefined
   source?.close()
   source = null
   live.connected = false

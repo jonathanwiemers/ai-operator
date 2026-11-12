@@ -6,6 +6,7 @@ import Badge from './Badge.vue'
 import TranscriptLine from './TranscriptLine.vue'
 import { tokenCount } from '../format'
 import { foldName, foldTranscript } from '../transcriptFold'
+import { isRenewalEnd } from '../reconnect'
 import type { TranscriptEntry } from '../types'
 
 // LiveTranscript follows the task's pod: the runner's steps and the agent's
@@ -48,6 +49,9 @@ function open() {
   })
   es.addEventListener('end', (ev) => {
     const d = JSON.parse((ev as MessageEvent).data) as { reason?: string }
+    // The stream ends at the session's expiry; the reopened one renews it
+    // and replays the log from its start.
+    if (isRenewalEnd(d.reason)) return open()
     endReason.value = d.reason ?? ''
     state.value = 'ended'
     close()
@@ -80,8 +84,6 @@ const endText = computed(() => {
       return 'No pod is running for this task. The run log of the last run is on the merge request.'
     case 'pod stopped':
       return 'The pod has stopped.'
-    case 'session expired':
-      return 'Your login expired; reload the page.'
     default:
       return 'The pod is not available (it is starting or has just stopped).'
   }
