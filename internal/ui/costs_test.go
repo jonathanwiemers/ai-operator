@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -90,6 +93,10 @@ func TestCostsScope(t *testing.T) {
 		if !slices.Equal(q.Projects, shopKey) || !slices.Equal(q.ExcludeKinds, []string{"research"}) {
 			t.Errorf("query = %+v", q)
 		}
+	}
+	// Live state is there even without any: lists, not null.
+	if v.PlanUsage == nil || v.Budgets == nil {
+		t.Errorf("planUsage %v, budgets %v: want empty lists", v.PlanUsage, v.Budgets)
 	}
 	if v.Range != "30d" || v.Group != "project" || v.Bucket != "day" || v.TZ != "UTC" || len(v.Buckets) != 30 {
 		t.Errorf("defaults = %s %s %s %s, %d buckets", v.Range, v.Group, v.Bucket, v.TZ, len(v.Buckets))
@@ -363,5 +370,92 @@ func TestCostsTopErrors(t *testing.T) {
 	off.server.costReads = &fakeCosts{}
 	if code := off.get(t, "/api/v1/costs/top", nil); code != http.StatusNotFound {
 		t.Errorf("research off: status %d", code)
+	}
+}
+
+func TestPlanUsage(t *testing.T) {
+	at := func(h int) metav1.Time { return metav1.NewTime(time.Date(2026, 11, 12, h, 0, 0, 0, time.UTC)) }
+	proj := func(ns, name string, usage ...aiv1.EngineUsage) *aiv1.AgentProject {
+		ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name}}
+		ap.Status.EngineUsage = usage
+		return ap
+	}
+	visible := map[string]*aiv1.AgentProject{
+		"team-a/shop": proj("team-a", "shop",
+			aiv1.EngineUsage{Engine: aiv1.EngineClaude, Status: "allowed", ObservedAt: at(9)},
+			aiv1.EngineUsage{Engine: aiv1.EngineCursor, Status: "allowed", ObservedAt: at(11)}),
+		"team-a/web": proj("team-a", "web",
+			aiv1.EngineUsage{Engine: aiv1.EngineClaude, Status: "allowed_warning", ObservedAt: at(10),
+				Windows: []aiv1.UsageWindow{{Name: "five_hour", Percent: 81}}}),
+		"team-a/idle": proj("team-a", "idle"),
+	}
+	got := planUsage(visible)
+	if len(got) != 2 {
+		t.Fatalf("planUsage = %+v", got)
+	}
+	// Sorted by engine; the freshest reading wins across projects.
+	if got[0].Usage.Engine != aiv1.EngineClaude || got[0].Project != "web" || got[0].Usage.Windows[0].Percent != 81 {
+		t.Errorf("claude = %+v", got[0])
+	}
+	if got[1].Usage.Engine != aiv1.EngineCursor || got[1].Project != "shop" {
+		t.Errorf("cursor = %+v", got[1])
+	}
+	// A project the viewer cannot see is not in the map: its newer reading
+	// never contributes.
+	delete(visible, "team-a/web")
+	if got := planUsage(visible); got[0].Project != "shop" {
+		t.Errorf("without web: claude from %s", got[0].Project)
+	}
+	if got := planUsage(nil); got == nil || len(got) != 0 {
+		t.Errorf("no projects = %#v, want empty", got)
+	}
+}
+
+func TestBudgetRows(t *testing.T) {
+	visible := map[string]*aiv1.AgentProject{"team-a/shop": {ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shop"}}}
+	milestone := func(ns, name string, iid int64, phase aiv1.AutopilotPhase, budget *aiv1.BudgetStatus, items ...aiv1.AutopilotItem) aiv1.AgentTask {
+		t := aiv1.AgentTask{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: fmt.Sprintf("%s-m%d", name, iid)}}
+		t.Spec.Type, t.Spec.ProjectRef = aiv1.TaskTypeSpec, name
+		t.Spec.Milestone = &aiv1.MilestoneRef{IID: iid, Title: fmt.Sprintf("M%d", iid)}
+		t.Status.Autopilot = &aiv1.AutopilotStatus{Phase: phase, Budget: budget, Items: items}
+		return t
+	}
+	impl := aiv1.AgentTask{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shop-7"}}
+	impl.Spec.Type, impl.Spec.ProjectRef = aiv1.TaskTypeImplement, "shop"
+	impl.Spec.Issue = &aiv1.IssueRef{IID: 7, Title: "Checkout"}
+	tasks := []aiv1.AgentTask{
+		impl,
+		milestone("team-a", "shop", 1, aiv1.AutopilotRunning, &aiv1.BudgetStatus{LimitUSD: "100", SpentUSD: "20"},
+			aiv1.AutopilotItem{IID: 7, Budget: &aiv1.BudgetStatus{LimitUSD: "10", SpentUSD: "9"}},
+			aiv1.AutopilotItem{IID: 8, Budget: &aiv1.BudgetStatus{LimitUSD: "10"}},
+			aiv1.AutopilotItem{IID: 9}),
+		milestone("team-a", "shop", 2, aiv1.AutopilotPaused, &aiv1.BudgetStatus{LimitUSD: "50", SpentUSD: "0"}),
+		// Done: absent, as is a budget without a limit and another tenant's.
+		milestone("team-a", "shop", 3, aiv1.AutopilotDone, &aiv1.BudgetStatus{LimitUSD: "5", SpentUSD: "5"}),
+		milestone("team-a", "shop", 4, aiv1.AutopilotRunning, &aiv1.BudgetStatus{SpentUSD: "5"}),
+		milestone("team-b", "billing", 1, aiv1.AutopilotRunning, &aiv1.BudgetStatus{LimitUSD: "1", SpentUSD: "1"}),
+	}
+	got := budgetRows(visible, tasks)
+	type row struct {
+		m, i         int64
+		title, spent string
+		share        float64
+	}
+	var rows []row
+	for _, r := range got {
+		if r.Namespace != "team-a" || r.Project != "shop" {
+			t.Errorf("row of %s/%s", r.Namespace, r.Project)
+		}
+		rows = append(rows, row{r.MilestoneIID, r.IssueIID, r.Title, r.Spent.String(), r.Share})
+	}
+	want := []row{{1, 7, "Checkout", "9.00", 0.9}, {1, 0, "M1", "20.00", 0.2}, {2, 0, "M2", "0.00", 0}, {1, 8, "", "", 0}}
+	if !slices.Equal(rows, want) {
+		t.Errorf("budgets = %+v, want %+v", rows, want)
+	}
+	if got[3].Spent.Known || got[0].Limit.String() != "10.00" {
+		t.Errorf("unknown spend = %+v, limit %s", got[3].Spent, got[0].Limit)
+	}
+	if got := budgetRows(nil, nil); got == nil {
+		t.Error("no budgets = nil, want empty")
 	}
 }

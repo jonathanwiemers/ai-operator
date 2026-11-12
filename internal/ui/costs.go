@@ -4,9 +4,12 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"maps"
+	"math"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,6 +65,33 @@ type CostsView struct {
 	ByEngine               []SpendBreakdownView `json:"byEngine"`
 	Month                  CostsMonthView       `json:"month"`
 	ResearchSince          *time.Time           `json:"researchSince,omitempty"`
+	PlanUsage              []PlanUsageView      `json:"planUsage"`
+	Budgets                []BudgetRowView      `json:"budgets"`
+}
+
+// PlanUsageView is an engine's freshest usage reading among the projects:
+// the project whose status.engineUsage has the newest observedAt. Live
+// state, independent of the range and the kind and engine filters.
+type PlanUsageView struct {
+	Namespace string           `json:"namespace"`
+	Project   string           `json:"project"`
+	Usage     aiv1.EngineUsage `json:"usage"`
+}
+
+// BudgetRowView is a budget of a milestone whose autopilot is not done: the
+// milestone's own (IssueIID 0) or one of its issues'. Spent is unknown while
+// the operator cannot read it, Share (spent/limit) is 0 then. Title is the
+// milestone's or the issue's, empty for an issue without its task yet.
+// Live state, independent of the range and the kind and engine filters.
+type BudgetRowView struct {
+	Namespace    string      `json:"namespace"`
+	Project      string      `json:"project"`
+	MilestoneIID int64       `json:"milestoneIID"`
+	IssueIID     int64       `json:"issueIID"`
+	Title        string      `json:"title"`
+	Limit        store.Money `json:"limit"`
+	Spent        store.Money `json:"spent"`
+	Share        float64     `json:"share"`
 }
 
 // CostTopRowView is one milestone, issue or run of the top lists. The IIDs,
@@ -342,7 +372,7 @@ func (s *Server) costs(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	visible, _, ok := s.visibleProjects(w, r)
+	visible, tasks, ok := s.visibleProjects(w, r)
 	if !ok {
 		return
 	}
@@ -364,6 +394,13 @@ func (s *Server) costs(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
+	// Live state from the cache, not the history database: ?project=
+	// narrows it, the other filters do not.
+	scope := map[string]*aiv1.AgentProject{}
+	for _, k := range p.q.Projects {
+		scope[k.Namespace+"/"+k.Name] = visible[k.Namespace+"/"+k.Name]
+	}
+	v.PlanUsage, v.Budgets = planUsage(scope), budgetRows(scope, tasks)
 	writeJSON(w, http.StatusOK, v)
 }
 
@@ -447,5 +484,79 @@ func costTopRowViews(rows []store.CostTopRow) []CostTopRowView {
 			Task: r.Task, Run: r.Run, Kind: r.Kind, Label: r.Label, At: r.At, Totals: r.Totals,
 		})
 	}
+	return out
+}
+
+// planUsage is, per engine, the reading with the newest observedAt among
+// projects' status.engineUsage (the first project by name on a tie), sorted
+// by engine.
+func planUsage(projects map[string]*aiv1.AgentProject) []PlanUsageView {
+	newest := map[aiv1.Engine]PlanUsageView{}
+	for _, k := range slices.Sorted(maps.Keys(projects)) {
+		ap := projects[k]
+		for _, u := range ap.Status.EngineUsage {
+			if cur, ok := newest[u.Engine]; ok && !u.ObservedAt.After(cur.Usage.ObservedAt.Time) {
+				continue
+			}
+			newest[u.Engine] = PlanUsageView{Namespace: ap.Namespace, Project: ap.Name, Usage: *u.DeepCopy()}
+		}
+	}
+	out := make([]PlanUsageView, 0, len(newest))
+	for _, e := range slices.Sorted(maps.Keys(newest)) {
+		out = append(out, newest[e])
+	}
+	return out
+}
+
+// budgetRows lists the budgets of projects' milestones whose autopilot is not
+// done, the milestone's own and its issues', by share used (unknown spend
+// last), then by project, milestone and issue. A budget without a positive
+// limit is unlimited and left out.
+func budgetRows(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask) []BudgetRowView {
+	titles := map[string]string{}
+	for i := range tasks {
+		if t := &tasks[i]; t.Spec.Type == aiv1.TaskTypeImplement && t.Spec.Issue != nil {
+			titles[fmt.Sprintf("%s/%s#%d", t.Namespace, t.Spec.ProjectRef, t.Spec.Issue.IID)] = t.Spec.Issue.Title
+		}
+	}
+	out := []BudgetRowView{}
+	add := func(t *aiv1.AgentTask, issue int64, title string, b *aiv1.BudgetStatus) {
+		limit := aiv1.CostOf(b.LimitUSD)
+		if !(limit > 0) {
+			return
+		}
+		row := BudgetRowView{Namespace: t.Namespace, Project: t.Spec.ProjectRef, MilestoneIID: t.Spec.Milestone.IID,
+			IssueIID: issue, Title: title, Limit: store.USD(limit)}
+		if spent, err := strconv.ParseFloat(b.SpentUSD, 64); err == nil && !math.IsNaN(spent) && !math.IsInf(spent, 0) {
+			row.Spent, row.Share = store.USD(spent), spent/limit
+		}
+		out = append(out, row)
+	}
+	for i := range tasks {
+		t := &tasks[i]
+		ap := t.Status.Autopilot
+		if projects[t.Namespace+"/"+t.Spec.ProjectRef] == nil || t.Spec.Milestone == nil || ap == nil || ap.Phase == aiv1.AutopilotDone {
+			continue
+		}
+		if ap.Budget != nil {
+			add(t, 0, t.Spec.Milestone.Title, ap.Budget)
+		}
+		for j := range ap.Items {
+			if it := &ap.Items[j]; it.Budget != nil {
+				add(t, it.IID, titles[fmt.Sprintf("%s/%s#%d", t.Namespace, t.Spec.ProjectRef, it.IID)], it.Budget)
+			}
+		}
+	}
+	known := func(m store.Money) int {
+		if m.Known {
+			return 0
+		}
+		return 1
+	}
+	slices.SortFunc(out, func(a, b BudgetRowView) int {
+		return cmp.Or(cmp.Compare(known(a.Spent), known(b.Spent)), cmp.Compare(b.Share, a.Share),
+			cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Project, b.Project),
+			cmp.Compare(a.MilestoneIID, b.MilestoneIID), cmp.Compare(a.IssueIID, b.IssueIID))
+	})
 	return out
 }

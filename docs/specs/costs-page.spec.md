@@ -324,3 +324,13 @@ follow-up issue), and requirements without an issue and why.
   `/costs` through `parseCostParams` (a bad `group` is still a 400, otherwise
   ignored) and returns `CostsTopView` with ten rows per list.
   `CostTopRowView` leaves out zero IIDs, task, run and kind.
+- 2026-11-12 #361 (R14, R15 server part): `GET /api/v1/costs` gains
+  `planUsage` (per engine, the visible project's reading with the newest
+  `observedAt`; ties go to the first project by name) and `budgets` (every
+  milestone and issue budget of milestones whose autopilot is not `Done`;
+  `Off` and `Paused` stay). Both come from the cached CRDs after the store
+  reads and honour only `?project=`; a failing store query still fails the
+  whole response (500), they are not served alone. A budget without a
+  positive `limitUSD` is unlimited and left out. Issue budgets of merged or
+  skipped items stay listed while the milestone runs. An issue's title
+  comes from its implement task, empty before the task exists.

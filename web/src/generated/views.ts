@@ -221,6 +221,35 @@ export interface CostsView {
   byEngine: SpendBreakdownView[];
   month: CostsMonthView;
   researchSince?: string;
+  planUsage: PlanUsageView[];
+  budgets: BudgetRowView[];
+}
+/**
+ * PlanUsageView is an engine's freshest usage reading among the projects:
+ * the project whose status.engineUsage has the newest observedAt. Live
+ * state, independent of the range and the kind and engine filters.
+ */
+export interface PlanUsageView {
+  namespace: string;
+  project: string;
+  usage: aiv1.EngineUsage;
+}
+/**
+ * BudgetRowView is a budget of a milestone whose autopilot is not done: the
+ * milestone's own (IssueIID 0) or one of its issues'. Spent is unknown while
+ * the operator cannot read it, Share (spent/limit) is 0 then. Title is the
+ * milestone's or the issue's, empty for an issue without its task yet.
+ * Live state, independent of the range and the kind and engine filters.
+ */
+export interface BudgetRowView {
+  namespace: string;
+  project: string;
+  milestoneIID: number /* int64 */;
+  issueIID: number /* int64 */;
+  title: string;
+  limit: store.Money;
+  spent: store.Money;
+  share: number /* float64 */;
 }
 /**
  * CostTopRowView is one milestone, issue or run of the top lists. The IIDs,
