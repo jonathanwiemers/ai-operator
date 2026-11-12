@@ -2859,7 +2859,7 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/controller/companion_gate.go`, `companions.go`, `companions_merge.go`, `companions_queue.go` | the companion in the home merge gate, landing by rule, who merges, the queue rule |
 | `internal/e2e` | end-to-end tests over the exported operator, runner and UI APIs: fake Kubernetes, `gitlabfake.Projects` with local bare git remotes, a scripted engine and a fake clock, stepped poll by poll (a companion milestone with and without `merge`, a path violation) |
 | `internal/ui` | web UI server: OIDC login, CEL claim mapping, access rules, session cookies, JSON API, change events |
-| `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app` |
+| `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app`. `web/src/client.ts` is the only API caller, `web/src/ui` holds the kit's own components, `components/Markdown.vue` is the one markdown wrapper, `web/e2e` the Playwright checks and `web/test` the unit and conventions checks (see [ui.md](ui.md#ui-kit)) |
 | `charts/ai-operator` | Helm chart (CRDs and operator RBAC are copied in by `make manifests`) |
 | `.gitlab-ci.yml`, `.mise.toml` | the GitLab pipeline (MRs and `main`); the Go and Node pins the agent installs |
 | `.github/workflows` | CI on the GitHub mirror and calendar-versioned releases (`YEAR.MONTH.N`), see [releasing.md](releasing.md) |

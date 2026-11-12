@@ -42,8 +42,7 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   (under 760 px) the rail is a [sheet](#sheets) behind the bottom bar's
   *Projects* (see [Navigation](#navigation)).
 * **Dashboard** (`/`): the tabs *Overview* (the default) and *Stream*
-  (`/?tab=stream`, the *Everything* stream of all your projects, as
-  before; the old `/everything` path is gone and shows Not found).
+  (`/?tab=stream`, the stream of all your projects).
   *Overview* shows, top to bottom, the **summary strip**: the milestones
   running, paused and waiting, the needs-you count (linking to the Inbox)
   and, with the research database, the spend of today (the UTC day) and of
@@ -296,9 +295,9 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   `needsInput` prompts (and the newest closed one) are full cards above the
   chat.
 
-The Desk has no projects list or separate board and milestone pages. The former board page (`/projects/<namespace>/<name>/board`), milestone page
-(`…/milestones/<iid>/detail`) and `/everything` no longer redirect and show
-Not found; task and research pages keep their URLs.
+The Desk has no projects list or separate board and milestone pages; the
+old board and milestone-detail paths no longer redirect and show Not found.
+Task and research pages keep their URLs.
 With the research database, a closed milestone whose tasks are gone still
 opens from history: the milestone API answers from the snapshot (`stored`),
 with its issues and their figures, and the *Issues* tab says *From history:
@@ -1596,9 +1595,7 @@ Vite plugin is `ui()` from `@nuxt/ui/vite` in `web/vite.config.ts`, and
 and utilities and drop their scoped CSS, except what utilities cannot
 express. `web/src/ui/` holds only what Nuxt UI lacks ([DataList](#datalist),
 [RouteTabs](#routetabs), [Truncated](#truncated), `useBackClose` for
-[sheets](#sheets) and `useKeyboardInset` for the [composer](#composer)). Not found
-(`views/NotFound.vue`) is the first view on it.
-
+[sheets](#sheets) and `useKeyboardInset` for the [composer](#composer)).
 **Imports are explicit.** Auto-imports and component resolution are off
 (`autoImport: false`, `components: false`): `npm run build` runs `vue-tsc`
 before Vite, so the declaration files they generate would not exist yet.

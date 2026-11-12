@@ -681,3 +681,38 @@ follow-up issue), and requirements without an issue and why.
   message's reason shows for every state, and the rail's user name, a
   companion's reason and a run's choice reason (no longer cut at 48
   characters) are `Truncated`. Nothing narrowed.
+- 2026-11-12 #346 (R17 redirects), #348 (R3 enforced) and #349 (R18 final
+  docs pass): the redirects `/everything`, `/projects/…/board` and
+  `/milestones/…/detail` are gone with their route names and crumbs; every
+  rule of the conventions check is enforced. `docs/ui.md` and
+  `docs/design.md` no longer name `MarkdownBody`, `MarkdownBlock`,
+  `ChatComposer`, `StreamComposer`, `PromptCardCompact`, `/everything`,
+  `get<T>` or the old breakpoints (older specs and `docs/process` keep the
+  names as history). Nothing narrowed.
+
+### Requirements and their issues
+
+Every requirement and where it landed. The log above has no issue line for
+R2, R3 and the first R8/R9 work, so those are named by commit.
+
+| R | Issues |
+|---|--------|
+| R1 | #300 (core), #301 (every route); each slice added its routes |
+| R2 | commit `f34eb3a` (lazy views, `npm run budget`, cap in `web/bundle-budget.json`) |
+| R3 | commits `6e8d59a` (report-only), `e63ed55` (enforced); `api-call-outside-client` with #340, `breakpoint` with #311 |
+| R4 | #304 (layers, tokens), #305 (Nuxt UI under the CSP), #308 (`RouteTabs`); `DataList` with #319 and #320 |
+| R5 | #310, #311, #312, #313 |
+| R6 | #317 |
+| R7 | #314 |
+| R8, R9 | commits `626f047` (block fields), `78937d2` (inline fields) |
+| R10 | #318, #319 |
+| R11 | #321 composer, #322 prompt card, #323 note thread, #324 milestone row |
+| R12 | #320, #325–#335 (Calls tab, stream header, Inbox, Dashboard, Issues, Pilot, Board, pause cards, Retrospective, Spend, Research) |
+| R13 | #336 named responses, #337 one error body |
+| R14 | #339, #340 (part 1 is commit `a5f1e34`) |
+| R15 | #341, #342, #343 |
+| R16 | #344, #345 |
+| R17 | #346 redirects, #347 kit classes |
+| R18 | with each slice, and #349 |
+
+No requirement was narrowed, so no follow-up issue was opened.
