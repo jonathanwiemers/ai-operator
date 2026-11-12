@@ -33,6 +33,9 @@ type oidcClient struct {
 	provider *oidc.Provider
 	// endSession is the provider's RP-initiated logout endpoint, if any.
 	endSession string
+	// revocation is the provider's token revocation endpoint (RFC 7009), if
+	// any.
+	revocation string
 
 	renewals renewals
 }
@@ -51,9 +54,10 @@ func (o *oidcClient) discover(ctx context.Context) (*oidc.Provider, error) {
 	}
 	var meta struct {
 		EndSession string `json:"end_session_endpoint"`
+		Revocation string `json:"revocation_endpoint"`
 	}
 	_ = p.Claims(&meta)
-	o.provider, o.endSession = p, meta.EndSession
+	o.provider, o.endSession, o.revocation = p, meta.EndSession, meta.Revocation
 	return p, nil
 }
 
@@ -190,11 +194,16 @@ type LoginRedirect struct {
 // logout ends the session here and returns where the browser goes next:
 // the provider's logout endpoint, which ends the login there too.
 func (o *oidcClient) logout(w http.ResponseWriter, r *http.Request) {
+	_, err := o.discover(r.Context())
+	// The refresh cookie counts even when the session has expired.
+	if rs, ok := o.sessions.Refresh(r); ok && err == nil && o.revocation != "" {
+		o.revoke(r.Context(), rs.Token)
+	}
 	o.sessions.Clear(w, o.sessions.SessionCookie())
 	// Otherwise the next request would renew the login.
 	o.sessions.Clear(w, o.sessions.RefreshCookie())
 	next := "/"
-	if _, err := o.discover(r.Context()); err == nil && o.endSession != "" {
+	if err == nil && o.endSession != "" {
 		q := url.Values{
 			"client_id":                {o.cfg.OIDC.ClientID},
 			"post_logout_redirect_uri": {o.cfg.ExternalURL + "/"},
@@ -202,6 +211,38 @@ func (o *oidcClient) logout(w http.ResponseWriter, r *http.Request) {
 		next = o.endSession + "?" + q.Encode()
 	}
 	writeJSON(w, http.StatusOK, LoginRedirect{Redirect: next})
+}
+
+// revokeTimeout bounds the revocation at logout.
+var revokeTimeout = 5 * time.Second
+
+// revoke revokes a refresh token at the provider (RFC 7009), authenticated
+// like the token endpoint: with HTTP Basic when there is a client secret,
+// otherwise with client_id in the form. It is best effort; failures are
+// logged without the token.
+func (o *oidcClient) revoke(ctx context.Context, token string) {
+	ctx, cancel := context.WithTimeout(ctx, revokeTimeout)
+	defer cancel()
+	form := url.Values{"token": {token}, "token_type_hint": {"refresh_token"}}
+	if o.cfg.ClientSecret == "" {
+		form.Set("client_id", o.cfg.OIDC.ClientID)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.revocation, strings.NewReader(form.Encode()))
+	if err == nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if o.cfg.ClientSecret != "" {
+			req.SetBasicAuth(url.QueryEscape(o.cfg.OIDC.ClientID), url.QueryEscape(o.cfg.ClientSecret))
+		}
+		var resp *http.Response
+		if resp, err = http.DefaultClient.Do(req); err == nil {
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				o.log.Info("the provider did not revoke the refresh token", "status", resp.StatusCode)
+			}
+			return
+		}
+	}
+	o.log.Info("cannot revoke the refresh token", "cause", err.Error())
 }
 
 // Login errors are sent to the app as codes, which it turns into messages,

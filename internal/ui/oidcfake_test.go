@@ -61,6 +61,16 @@ type fakeOIDC struct {
 	// access maps the access tokens to the subject they were issued for.
 	access  map[string]fakeAccess
 	revoked map[string]bool
+	// revocations are the requests to the revocation endpoint.
+	revocations []fakeRevocation
+}
+
+// fakeRevocation is how a revocation request authenticated the client.
+type fakeRevocation struct {
+	basic    bool   // with HTTP Basic
+	clientID string // the form's client_id
+	secret   bool   // the form had a client_secret
+	hint     string // token_type_hint
 }
 
 // fakeOIDCSwitches change how the fake answers. Tests change them with set
@@ -87,6 +97,13 @@ type fakeOIDCSwitches struct {
 	// noRevocation leaves revocation_endpoint out of the discovery
 	// document. The UI discovers once, so set it before the first login.
 	noRevocation bool
+	// revokeDown makes the revocation endpoint answer 503, after revokeDelay
+	// (or until the client gives up) when that is set.
+	revokeDown  bool
+	revokeDelay time.Duration
+	// public makes the fake accept the client without a secret, with
+	// client_id in the form, like a public client.
+	public bool
 	// roles are the user's roles in the next ID token or userinfo answer.
 	// None leaves the roles claim out, as Zitadel does.
 	roles []string
@@ -175,6 +192,13 @@ func (f *fakeOIDC) loginRevoked(n int) bool {
 	return f.logins[n-1].revoked
 }
 
+// revocationRequests returns the requests to the revocation endpoint.
+func (f *fakeOIDC) revocationRequests() []fakeRevocation {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.revocations)
+}
+
 // refreshTokens returns every refresh token issued so far, for tests that
 // check they appear nowhere they should not.
 func (f *fakeOIDC) refreshTokens() []string {
@@ -255,7 +279,7 @@ func (f *fakeOIDC) token(w http.ResponseWriter, r *http.Request) {
 		fakeOAuthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	if !fakeClientAuth(r) {
+	if !f.clientAuth(r) {
 		fakeOAuthError(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}
@@ -424,7 +448,24 @@ func (f *fakeOIDC) revoke(w http.ResponseWriter, r *http.Request) {
 		fakeOAuthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	if !fakeClientAuth(r) {
+	_, _, basic := r.BasicAuth()
+	f.mu.Lock()
+	f.revocations = append(f.revocations, fakeRevocation{
+		basic: basic, clientID: r.PostForm.Get("client_id"),
+		secret: r.PostForm.Has("client_secret"), hint: r.PostForm.Get("token_type_hint"),
+	})
+	down, delay := f.sw.revokeDown, f.sw.revokeDelay
+	f.mu.Unlock()
+	if down {
+		select {
+		case <-time.After(delay):
+		case <-r.Context().Done():
+			return
+		}
+		fakeOAuthError(w, http.StatusServiceUnavailable, "temporarily_unavailable")
+		return
+	}
+	if !f.clientAuth(r) {
 		fakeOAuthError(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}
@@ -438,9 +479,16 @@ func (f *fakeOIDC) revoke(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// fakeClientAuth checks the client's credentials, sent with basic
-// authentication (form-encoded, RFC 6749 2.3.1) or in the form.
-func fakeClientAuth(r *http.Request) bool {
+// clientAuth checks the client's credentials, sent with basic
+// authentication (form-encoded, RFC 6749 2.3.1) or in the form. With the
+// public switch the client has no secret.
+func (f *fakeOIDC) clientAuth(r *http.Request) bool {
+	f.mu.Lock()
+	want := fakeClientSecret
+	if f.sw.public {
+		want = ""
+	}
+	f.mu.Unlock()
 	id, secret, ok := r.BasicAuth()
 	if ok {
 		id, _ = url.QueryUnescape(id)
@@ -448,7 +496,7 @@ func fakeClientAuth(r *http.Request) bool {
 	} else {
 		id, secret = r.PostForm.Get("client_id"), r.PostForm.Get("client_secret")
 	}
-	return id == fakeClientID && secret == fakeClientSecret
+	return id == fakeClientID && secret == want
 }
 
 func fakeJSON(w http.ResponseWriter, status int, v any) {
