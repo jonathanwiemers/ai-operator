@@ -23,6 +23,7 @@ import { chartSummary, cumulativeMonth, monthSummary, stackedChart, thisMonth, t
 import { cost, tokenCount } from '../format'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
 import type { CostsTopView, CostsView } from '../generated/views'
+import BudgetsSection from '../components/BudgetsSection.vue'
 import MostExpensive from '../components/MostExpensive.vue'
 import PlanUsage from '../components/PlanUsage.vue'
 import WhereItGoes from '../components/WhereItGoes.vue'
@@ -311,6 +312,7 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
 
       <MostExpensive v-if="top" :top="top" />
       <PlanUsage :usage="data.planUsage" />
+      <BudgetsSection :budgets="data.budgets" />
     </template>
   </div>
 </template>

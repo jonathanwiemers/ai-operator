@@ -562,6 +562,14 @@ live state (`status.engineUsage`, the freshest reading per engine among the
 viewer's projects), not bound to the range or the filters. No chart; an empty
 state when no engine has reported.
 
+*Budgets*: the budgets of milestones whose autopilot is not done, the
+milestone's own and its issues' (`CostsView.budgets`), sorted by share used.
+A row has the title (linking to the milestone or issue page), the project,
+spent / limit and a share bar; at 80 % or more the bar uses the warning tone.
+Unknown spend reads "unknown" with no bar, never $0. The first 10 show, *Show
+all* the rest; an empty state without budgets. Shown only: the page sets and
+enforces none. Live state, not bound to the range or the filters.
+
 The e2e route cases `costs` and `costs-dark` at 375, 768 and 1280 px
 (`costs@<width>.png`, `costs-dark@<width>.png`) wait for both charts'
 canvases and check overflow and the CSP, `costs` is among the hit-area routes,

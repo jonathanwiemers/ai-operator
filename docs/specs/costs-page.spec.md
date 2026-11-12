@@ -402,3 +402,11 @@ follow-up issue), and requirements without an issue and why.
   (not when the range has no calls). The e2e fixture has claude and cursor.
   The costs chunk is 115.4 kB (+1.4), the initial bundle 129.0 kB. The e2e
   case could not run here (no Playwright browser); it is type-checked only.
+- 2026-11-12 #370 (R15): *Budgets* (`components/BudgetsSection.vue`). Rows from
+  `CostsView.budgets` in server order, title linking to `stream-milestone` or
+  `issue`, spent / limit, a share bar (the kit has no progress component; the
+  same `role=progressbar` span as the milestone page) in the warning tone from
+  80 %, unknown spend as "unknown" without a bar, first 10 and *Show all*,
+  empty state. The e2e fixture has a milestone and two issue budgets (one
+  unknown). Not run here (no node_modules / Playwright browser); the chunk
+  size was not measured.

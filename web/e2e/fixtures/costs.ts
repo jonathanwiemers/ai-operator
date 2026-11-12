@@ -89,7 +89,11 @@ export const costs: CostsView = {
       usage: { engine: 'cursor', windows: [{ name: 'seven_day', percent: 12 }], observedAt: '2026-11-09T08:00:00Z' },
     },
   ],
-  budgets: [],
+  budgets: [
+    { namespace: 'team-a', project: 'shop', milestoneIID: 3, issueIID: 0, title: 'Checkout rewrite', limit: '100.00', spent: '86.40', share: 0.864 },
+    { namespace: 'team-a', project: 'shop', milestoneIID: 3, issueIID: 12, title: 'Payment provider with a rather long issue title', limit: '20.00', spent: '4.00', share: 0.2 },
+    { namespace: 'team-b', project: 'a-project-with-a-rather-long-name.example', milestoneIID: 1, issueIID: 5, title: 'Unmetered issue', limit: '10.00', spent: '', share: 0 },
+  ],
 }
 
 // GET /api/v1/costs/top: the most expensive milestones, issues and runs of
