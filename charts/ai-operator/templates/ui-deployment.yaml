@@ -62,6 +62,9 @@ spec:
             {{- end }}
             - --health-probe-bind-address=:{{ $ui.healthProbePort }}
             - --zap-log-level={{ .Values.logLevel }}
+            {{- with .Values.selfProject }}
+            - --self-project={{ . }}
+            {{- end }}
             {{- if $db.host }}
             - --history-retention={{ .Values.research.historyRetention }}
             {{- end }}

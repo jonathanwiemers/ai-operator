@@ -70,6 +70,10 @@ type Server struct {
 	// historyRetention is how long new chat rows expire after (matches
 	// the operator's --history-retention).
 	historyRetention time.Duration
+	// version is the binary's release; selfProject the normalised GitLab path
+	// of the project whose releases the Desk shows (empty without one).
+	version     string
+	selfProject string
 }
 
 // SetHistoryRetention sets how long new chat messages are kept.
@@ -77,6 +81,11 @@ func (s *Server) SetHistoryRetention(d time.Duration) {
 	if d > 0 {
 		s.historyRetention = d
 	}
+}
+
+// SetAbout sets the release the binary was built as and the self project.
+func (s *Server) SetAbout(version, selfProject string) {
+	s.version, s.selfProject = version, selfProject
 }
 
 // SetLogSource enables live transcripts.

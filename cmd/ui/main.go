@@ -26,13 +26,17 @@ import (
 	"github.com/jonathanwiemers/ai-operator/web"
 )
 
+// version is the release (YEAR.MONTH.N) the image was built as; "dev" for a local build.
+var version = "dev"
+
 func main() {
-	var configFile, bindAddr, probeAddr string
+	var configFile, bindAddr, probeAddr, selfProject string
 	var historyRetention time.Duration
 	flag.StringVar(&configFile, "config", "/etc/ai-operator-ui/config.yaml", "The UI's config file.")
 	flag.StringVar(&bindAddr, "bind-address", ":9080", "The address the UI binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.DurationVar(&historyRetention, "history-retention", history.DefaultRetention, "How long Desk chat messages are kept (expires_at on insert); match the operator's --history-retention.")
+	flag.StringVar(&selfProject, "self-project", "", "Full path of the GitLab project this operator is built from (e.g. my-group/ai-operator); the project whose releases the Desk shows. Empty: the Desk shows no release.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -84,6 +88,7 @@ func main() {
 	}
 	srv.SetLogSource(ui.PodLogs{Client: clientset})
 	srv.SetHistoryRetention(historyRetention)
+	srv.SetAbout(version, aiv1.NormalizeProject(selfProject))
 	// One-off researches are created and deleted directly, not through the
 	// cache. Only with allowCreate: the chart grants create/delete then.
 	if cfg.Research.Enabled() && cfg.Research.AllowCreate {
@@ -136,6 +141,7 @@ func main() {
 			}
 		}()
 	}
+	log.Info("ai-operator UI starting", "version", version)
 	log.Info("serving", "address", bindAddr, "auth", cfg.Auth.Mode, "externalURL", cfg.ExternalURL)
 	<-ctx.Done()
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)

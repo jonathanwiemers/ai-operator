@@ -19,10 +19,10 @@ COPY web/embed.go web/
 COPY --from=web /web/dist/ web/dist/
 # Declared late so the layers above are shared by all target platforms.
 ARG TARGETOS TARGETARCH
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/ui ./cmd/ui
-# The release (YEAR.MONTH.N) the operator reports and compares with the tags
+# The release (YEAR.MONTH.N) the operator and the UI report; the operator compares it with the tags
 # of --self-project; the release jobs set it, a local build is "dev".
 ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/ui ./cmd/ui
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/manager ./cmd/operator
 
 FROM gcr.io/distroless/static-debian12:nonroot
