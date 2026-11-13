@@ -70,8 +70,8 @@ restart; comments from before the operator watched are not answered.
 An `/agent` or `/pilot` comment the operator does not act on gets one
 reply in its thread naming the reason: no `agent::` label (above), the
 commenter is not an owner (`commandsFrom: owners`, `/pilot`, `merge`, `start`, `endMilestone`, `release`, `no-release`), or a
-command the tracking issue does not take (the reply lists `start` while the
-milestone waits for its turn, `pause`, `resume`,
+command the tracking issue does not take (the reply lists `start`, or
+`start off` on a marked milestone, unless it is done, then `pause`, `resume`,
 `skip #N`, `merge #N`, `release [reason]`, `no-release #N [reason]`, `endMilestone` and `revisit <id> …`). Each comment is answered once,
 also when a poll is repeated. To bound the bot's comments, one author gets
 at most 10 such replies a day (`status.commandReplies.authors` of the
@@ -139,7 +139,8 @@ implementer of every following run reads them:
 
 | Command | Effect |
 |---------|--------|
-| `/agent start` | Owners only (also with `commandsFrom: all`), tracking issue only: plan a milestone that waits for its turn now, ahead of the older ones (`status.autopilot.startRequestedBy`). Said on the tracking issue ("▶️ Planning starts now, ahead of its turn (by @you)"); the planning run is asked for on the next poll. On a milestone that is planned or being planned it answers so and does nothing. |
+| `/agent start` | Owners only (also with `commandsFrom: all`), tracking issue only: plan a milestone that waits for its turn now, ahead of the older ones (`status.autopilot.startRequestedBy`). Said on the tracking issue ("▶️ Planning starts now, ahead of its turn (by @you)"); the planning run is asked for on the next poll. On a milestone that is planned or being planned it sets the run-next mark (`startRequestedAt`): "⏭️ This milestone runs next (by @you)", it starts issues before the older milestones, whose active issues finish, and the tracking issue says "⏭️ runs next (marked by @you)". A repeated `start` answers that the milestone is already marked and keeps the first mark's time; on a done milestone it does nothing. |
+| `/agent start off` | Owners only, tracking issue only: clear the run-next mark ("⏹️ Run-next mark cleared (by @you)"); the milestone waits for its turn by age again. Without a mark it answers so. |
 | `/agent pause` | Stop starting and merging. Runs already requested still finish. On a milestone that waits for its turn it is an owner's pause as well, and it holds the planning: the turn does not lift it, `resume` does, and planning then starts on the next poll if the turn has come. `start` plans it while the pause stays. |
 | `/agent resume` | Continue; the active issue is checked again. |
 | `/agent skip #12` | Skip a planned issue. Issues that depend on it stay blocked until it is merged by hand, they are skipped too, or they may `startAnyway`. |

@@ -922,7 +922,11 @@ closed), also while that one is paused. Its active issue finishes, the next one
 waits, and the tracking issue says "⏳ waiting for its turn". So only one merge
 request is open at a time, and merges of one milestone do not rebase a reviewed
 change of another away. The slot stays free while the older milestone waits for
-CI. To let a younger milestone go first, turn the older one off. A run in progress is
+CI. To let a younger milestone go first, an owner comments `/agent start` on
+its tracking issue: the run-next mark (`status.autopilot.startRequestedAt`)
+ranks it before the unmarked ones, earliest mark first, and the older ones
+hold while their active issues finish. `/agent start off` clears the mark;
+`start` on a marked milestone keeps the first mark's time. A run in progress is
 never stopped for a higher rank, and it keeps its place when its pod is lost.
 A chat turn needs a free slot but does not wait for higher ranks, and pilots
 are outside the queue. A queued task says in its message who is ahead of it, for example
@@ -2214,7 +2218,7 @@ UTF-8: the list is cut at whole lines and ends with "… and N more issues".
 
 | Comment | Effect |
 |---------|--------|
-| `/agent start` | owners only, while the milestone waits for its turn: plan it now (`status.autopilot.startRequestedBy`); on a planned or planning milestone it answers so and does nothing |
+| `/agent start [off]` | owners only: mark the milestone to run next (`status.autopilot.startRequestedBy`, `startRequestedAt`); a milestone waiting for its turn is planned now, a planned one starts issues before the older ones. A repeated `start` keeps the first mark; `start off` clears it. Does nothing on a done milestone |
 | `/agent pause` | stop starting and merging; on a milestone that waits for its turn it also holds the planning when the turn comes, until `resume` (or `start`, which plans and keeps the pause) |
 | `/agent resume` | continue; the active issue is checked again |
 | `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |

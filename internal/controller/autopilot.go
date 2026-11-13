@@ -1998,7 +1998,7 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 	case "merge":
 		return a.mergeAnyway(ctx, arg, by)
 	case "start":
-		return a.startNow(ctx, by)
+		return a.startNow(ctx, arg, by)
 	case "release":
 		return a.ownerRelease(ctx, arg, by)
 	case "no-release":
@@ -2044,21 +2044,52 @@ func (a *autopilot) startAnyway(ctx context.Context, arg, by string) (string, bo
 // startNow plans a milestone that waits for its turn now (`start`, owners
 // only, decision 10): StartRequestedBy makes syncSpecTask ask for the first
 // planning run on the next poll, and with StartRequestedAt it is a run-next
-// mark that ranks the milestone first in the queue (milestoneorder). A
-// planned or planning milestone is not touched.
-func (a *autopilot) startNow(ctx context.Context, by string) (string, bool, error) {
-	if !a.waitingForTurn() {
-		return "The milestone is already planned (or being planned); `start` does nothing.", false, nil
+// mark that ranks the milestone first in the queue (milestoneorder). On a
+// planned or planning milestone it only sets the mark; an existing mark keeps
+// its time. `start off` clears the mark.
+func (a *autopilot) startNow(ctx context.Context, arg, by string) (string, bool, error) {
+	marked, off := a.marked(), strings.EqualFold(arg, "off")
+	note, reply := "▶️ Planning starts now, ahead of its turn (by %s).", "Planning starts now."
+	switch {
+	case off && !marked:
+		return "No run-next mark to clear.", false, nil
+	case off:
+		note, reply = "⏹️ Run-next mark cleared (by %s); the milestone waits for its turn again.", "Run-next mark cleared."
+	case a.ap.Phase == aiv1.AutopilotDone:
+		return "The milestone is done; `start` does nothing.", false, nil
+	case marked:
+		return fmt.Sprintf("The milestone is already marked to run next (by %s).", a.ap.StartRequestedBy), false, nil
+	case !a.waitingForTurn():
+		note, reply = "⏭️ This milestone runs next (by %s): it plans and starts issues before the others; their active issues finish.", "The milestone runs next."
 	}
 	// Comment first: if it fails, the command is applied again on the next
 	// poll.
-	if err := a.comment(ctx, fmt.Sprintf("▶️ Planning starts now, ahead of its turn (by %s).", by)); err != nil {
+	if err := a.comment(ctx, fmt.Sprintf(note, by)); err != nil {
 		return "", false, err
 	}
-	a.log.Info("autopilot starts planning ahead of the milestone's turn", "by", by)
-	a.ap.StartRequestedBy = by
-	a.ap.StartRequestedAt = &metav1.Time{Time: a.r.now()}
-	return "Planning starts now.", true, nil
+	a.log.Info("autopilot run-next mark", "arg", arg, "by", by)
+	a.ap.StartRequestedBy, a.ap.StartRequestedAt = by, &metav1.Time{Time: a.r.now()}
+	if off {
+		a.ap.StartRequestedBy, a.ap.StartRequestedAt = "", nil
+	}
+	return reply, true, nil
+}
+
+// startHint is the `start` command the tracking issue offers: none on a done
+// milestone, `start off` on a marked one; and what it does.
+func (a *autopilot) startHint() (string, string) {
+	switch {
+	case a.ap.Phase == aiv1.AutopilotDone:
+		return "", ""
+	case a.marked():
+		return a.spec.Workflow.CommandPrefix + " start off", "clear the run-next mark"
+	}
+	return a.spec.Workflow.CommandPrefix + " start", "run it next, ahead of its turn"
+}
+
+// marked reports whether the milestone has a run-next mark (milestoneorder).
+func (a *autopilot) marked() bool {
+	return a.ap.StartRequestedBy != "" && a.ap.StartRequestedAt != nil
 }
 
 // waitingForTurn reports whether the milestone waits for its turn to be
@@ -2090,8 +2121,8 @@ func (a *autopilot) unknownCommand() string {
 		}
 	}
 	start := ""
-	if a.waitingForTurn() {
-		start = fmt.Sprintf("`%s start`, ", prefix)
+	if h, _ := a.startHint(); h != "" {
+		start = "`" + h + "`, "
 	}
 	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s release [reason]`, `%[1]s no-release #N [reason]`, `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
 		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix, start)
@@ -2259,12 +2290,15 @@ func (a *autopilot) renderTracking() string {
 			b.WriteString("⚠️ not planned, planning has not succeeded yet. Nothing starts until the milestone is planned.\n")
 		}
 	}
+	if a.marked() && a.ap.Phase != aiv1.AutopilotDone {
+		fmt.Fprintf(&b, "⏭️ runs next (marked by %s).\n", a.ap.StartRequestedBy)
+	}
 	b.WriteString("\nThe operator works through the planned issues one at a time, in dependency order. It merges each merge request " +
 		"when its pipeline is green and its review is clean, then starts the next issue. The agents take their defaults instead of " +
 		"asking; every decision is listed below and can be changed with `" + prefix + " revisit <id> <what you want instead>` on its issue.\n\n")
 	start := ""
-	if a.waitingForTurn() {
-		start = fmt.Sprintf("`%s start` (owners: plan it now, ahead of its turn), ", prefix)
+	if h, what := a.startHint(); h != "" {
+		start = fmt.Sprintf("`%s` (owners: %s), ", h, what)
 	}
 	fmt.Fprintf(&b, "Commands, as comments here: %s`%s pause`, `%s resume`, `%s skip #<issue>`.\n\n### Issues\n\n", start, prefix, prefix, prefix)
 	if len(a.st.Status.Plan) == 0 && len(a.ap.Items) == 0 {
