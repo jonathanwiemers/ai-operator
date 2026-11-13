@@ -170,3 +170,42 @@ func TestOverviewWithSpend(t *testing.T) {
 func compareKeys(a, b store.ProjectKey) int {
 	return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name))
 }
+
+func TestOverviewFinishing(t *testing.T) {
+	env, _ := overviewEnv(t)
+	// done-only: one done autopilot milestone held open, nothing else running.
+	doneOnly := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "done-only"},
+		Spec: aiv1.AgentProjectSpec{GitLab: aiv1.GitLabSpec{URL: "https://gitlab.example.com", Project: "acme/done-only"}}}
+	m9 := specTask("team-a", "done-only", 9, 0, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotDone, CloseWaitsFor: []int64{50}})
+	m9.Spec.Autopilot = true
+	// cart already has a running autopilot; add a finishing milestone too.
+	m3 := specTask("team-a", "cart", 3, 0, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotDone, CloseWaitsFor: []int64{99}})
+	m3.Spec.Autopilot = true
+	for _, o := range []client.Object{doneOnly, m9, m3} {
+		if err := env.reader.Create(context.Background(), o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var o OverviewView
+	if code := env.get(t, "/api/v1/overview", &o); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	byProject := map[string][]WorkingNow{}
+	for _, w := range o.Working {
+		byProject[w.Project] = append(byProject[w.Project], w)
+	}
+	if got := byProject["done-only"]; len(got) != 1 || got[0].Finishing != 1 || got[0].IssueIID != 0 || got[0].Next != nil {
+		t.Errorf("finishing-only card = %+v", got)
+	}
+	if got := byProject["cart"]; len(got) != 1 || got[0].Finishing != 1 || got[0].Next == nil {
+		t.Errorf("finishing with other work = %+v", got)
+	}
+	for _, w := range byProject["shop"] {
+		if w.Finishing != 0 {
+			t.Errorf("shop without Spec.Autopilot done = finishing %d on %+v", w.Finishing, w)
+		}
+	}
+	if _, ok := byProject["empty"]; ok {
+		t.Errorf("empty with finishing 0 must stay out: %+v", byProject["empty"])
+	}
+}

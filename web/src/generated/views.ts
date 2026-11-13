@@ -839,9 +839,9 @@ export interface WorkingNext {
 }
 /**
  * WorkingNow is one running implement task of a project, which holds a run
- * slot since Since, or a project with an autopilot or queued work and no
- * running task (no issue then). Next and the engine limits are the
- * project's.
+ * slot since Since, or a project with an autopilot, queued work or finishing
+ * milestones and no running task (no issue then). Next, Finishing and the
+ * engine limits are the project's.
  */
 export interface WorkingNow {
   namespace: string;
@@ -852,6 +852,7 @@ export interface WorkingNow {
   task?: string;
   since?: string;
   next?: WorkingNext;
+  finishing?: number /* int */;
   usageLimits?: aiv1.UsageLimit[];
   engineUsage?: aiv1.EngineUsage[];
 }

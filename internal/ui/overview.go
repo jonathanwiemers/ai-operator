@@ -36,9 +36,9 @@ type WorkingNext struct {
 }
 
 // WorkingNow is one running implement task of a project, which holds a run
-// slot since Since, or a project with an autopilot or queued work and no
-// running task (no issue then). Next and the engine limits are the
-// project's.
+// slot since Since, or a project with an autopilot, queued work or finishing
+// milestones and no running task (no issue then). Next, Finishing and the
+// engine limits are the project's.
 type WorkingNow struct {
 	Namespace    string             `json:"namespace"`
 	Project      string             `json:"project"`
@@ -48,6 +48,7 @@ type WorkingNow struct {
 	Task         string             `json:"task,omitempty"`
 	Since        *time.Time         `json:"since,omitempty"`
 	Next         *WorkingNext       `json:"next,omitempty"`
+	Finishing    int                `json:"finishing,omitempty"`
 	UsageLimits  []aiv1.UsageLimit  `json:"usageLimits,omitempty"`
 	EngineUsage  []aiv1.EngineUsage `json:"engineUsage,omitempty"`
 }
@@ -66,7 +67,7 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	out := OverviewView{NeedsYou: len(inboxOf(visible, tasks, now)), Working: workingNow(visible, tasks)}
+	out := OverviewView{NeedsYou: len(inboxOf(visible, tasks, now)), Working: workingNow(visible, tasks, now)}
 	for _, m := range liveMilestoneRows(visible, tasks, now) {
 		switch m.State {
 		case MilestoneStateRunning:
@@ -112,15 +113,17 @@ func overviewCost(t store.SpendTotals) *Cost {
 }
 
 // workingNow lists the projects' running implement tasks, and the projects
-// with an active autopilot or queued work but none running, by project,
-// the longest running first.
-func workingNow(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask) []WorkingNow {
+// with an active autopilot, queued work or finishing milestones but none
+// running, by project, the longest running first. Finishing is len of the
+// same list ProjectDetail.Finishing uses.
+func workingNow(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) []WorkingNow {
 	out := []WorkingNow{}
 	for _, ap := range projects {
 		pt := projectTasks(tasks, ap)
 		base := WorkingNow{Namespace: ap.Namespace, Project: ap.Name, Next: nextItem(pt),
+			Finishing:   len(finishing(pt, gitLabRef(ap).WebURL, now)),
 			UsageLimits: ap.Status.UsageLimits, EngineUsage: ap.Status.EngineUsage}
-		active := base.Next != nil
+		active := base.Next != nil || base.Finishing > 0
 		running := 0
 		for i := range pt {
 			t := &pt[i]
