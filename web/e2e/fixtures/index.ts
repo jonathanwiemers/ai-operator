@@ -6,7 +6,7 @@ import { costs, costsTop } from './costs'
 import { doneMilestones, openMilestones, overview } from './overview'
 import { inbox, projects, researches } from './rail'
 import { researchAPI } from './research'
-import { features, me } from './session'
+import { about, features, me } from './session'
 import { answerSpend } from './spend'
 import { answerStream, milestones, refundsIssue, shopDetail, shopHistory } from './stream'
 import { gitlabStatus, pilotChat, refunds, refundsChat, refundsResponse, refundsThread } from './task'
@@ -22,6 +22,7 @@ const refundsPath = `${shopPath}/tasks/${refunds.name}`
 export const api: Record<string, Fixture> = {
   '/me': me,
   '/features': features,
+  '/about': about,
   '/projects': projects,
   '/inbox': inbox,
   '/researches': researches,

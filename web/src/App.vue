@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { hasFeature, isResearchPath, session, setFeatures } from './api'
-import { getFeatures, getInbox, getMe, getProjects, getResearches, LoginRequiredError } from './client'
+import { getAbout, getFeatures, getInbox, getMe, getProjects, getResearches, LoginRequiredError } from './client'
 import { deskTitle } from './format'
 import { inboxKey, newNotifications, notificationText } from './inboxNotify'
 import { inboxRoute } from './inboxRoute'
@@ -24,6 +24,7 @@ async function loadMe(delay = 2000): Promise<void> {
   try {
     session.me ??= await getMe()
     setFeatures(await getFeatures())
+    void loadAbout()
   } catch (e) {
     if (e instanceof LoginRequiredError) {
       setFeatures([])
@@ -32,6 +33,16 @@ async function loadMe(delay = 2000): Promise<void> {
     }
   }
 }
+
+// The running and the newest release; errors leave the last answer in place.
+async function loadAbout(): Promise<void> {
+  try {
+    session.about = await getAbout()
+  } catch {
+    // The line is a hint; nothing depends on it.
+  }
+}
+let aboutTimer: number | undefined
 
 const router = useRouter()
 // The rail sheet on phones (docs/ui.md, "Sheets"): back closes it, and a
@@ -135,11 +146,15 @@ function onFocusOut(e: FocusEvent) {
 
 onMounted(() => {
   void loadMe()
+  aboutTimer = window.setInterval(() => {
+    if (document.visibilityState === 'visible' && session.features) void loadAbout()
+  }, 5 * 60 * 1000)
   phone.addEventListener('change', onWidth)
   document.addEventListener('focusin', onFocusIn)
   document.addEventListener('focusout', onFocusOut)
 })
 onBeforeUnmount(() => {
+  window.clearInterval(aboutTimer)
   phone.removeEventListener('change', onWidth)
   document.removeEventListener('focusin', onFocusIn)
   document.removeEventListener('focusout', onFocusOut)

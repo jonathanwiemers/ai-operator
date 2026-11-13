@@ -3046,3 +3046,31 @@ test.describe('login lifetime line', () => {
     }
   }
 })
+
+// The rail footer says which release runs and whether a newer one is on its
+// way (RailNav.vue, aboutLine). At 375 px it is in the rail sheet.
+test.describe('about line', () => {
+  const start = routes.find((r) => r.name === 'stream-project-stream')!
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`version and update note in ${colorScheme}@375`, async ({ page, baseURL }) => {
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.emulateMedia({ colorScheme })
+      await page.setViewportSize({ width: 375, height: 812 })
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, start, problems)
+      await page.goto(start.path)
+      await start.ready(page)
+      await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }).click()
+      const sheet = page.getByRole('dialog')
+      await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+      await expect(sheet.locator('[data-about-version]')).toHaveText('ai-operator 2026.11.3')
+      const note = sheet.locator('[data-about-note]')
+      await expect(note).toHaveText('Update to 2026.11.4 rolling out')
+      await note.scrollIntoViewIfNeeded()
+      const box = (await note.boundingBox())!
+      expect(box.x + box.width, 'inside the viewport').toBeLessThanOrEqual(375)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+    })
+  }
+})

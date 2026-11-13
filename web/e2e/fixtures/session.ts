@@ -1,4 +1,4 @@
-import type { Feature, Me } from '../../src/types'
+import type { About, Feature, Me } from '../../src/types'
 
 // GET /api/v1/me: a signed-in owner (the sign-in check answers 401 instead).
 export const me: Me = {
@@ -17,4 +17,11 @@ export const features: { features: Feature[] } = {
     { name: 'history' },
     { name: 'chat' },
   ],
+}
+
+// GET /api/v1/about: running 2026.11.3, a newer release being built.
+export const about: About = {
+  version: '2026.11.3',
+  releasesURL: 'https://gitlab.example.com/team-a/ai-operator/-/releases',
+  release: { version: '2026.11.4', state: 'Running', url: '' },
 }

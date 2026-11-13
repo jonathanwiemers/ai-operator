@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import { ApiError } from './client'
-import type { Feature, Me } from './types'
+import type { About, Feature, Me } from './types'
 
 // Session state shared by the whole app.
 export const session = reactive<{
@@ -9,7 +9,9 @@ export const session = reactive<{
   features: Feature[] | null
   // loginRequired is set when the API answers 401.
   loginRequired: boolean
-}>({ me: null, features: null, loginRequired: false })
+  // about is the running release and the newest one, null until loaded.
+  about: About | null
+}>({ me: null, features: null, loginRequired: false, about: null })
 
 let featuresSet: () => void
 // featuresLoaded resolves once the features are set; route guards wait for it.

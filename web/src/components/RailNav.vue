@@ -6,6 +6,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { hasFeature, session } from '../api'
 import { logout } from '../client'
+import { aboutLine } from '../about'
 import { loginLasts, windowLabel } from '../format'
 import { live } from '../live'
 import { projectDot, projectNeedsYou, projectStateLine } from '../stream'
@@ -23,6 +24,7 @@ const props = defineProps<{
 const emit = defineEmits<{ navigate: [] }>()
 
 const route = useRoute()
+const about = computed(() => (session.about ? aboutLine(session.about) : null))
 const lasts = computed(() => (session.me?.authMode === 'oidc' ? loginLasts(session.me, Date.now()) : null))
 
 function onClick(e: MouseEvent) {
@@ -142,6 +144,11 @@ function projectActive(namespace: string, name: string) {
         </button>
         <!-- Its own line under the name; wraps instead of overflowing. -->
         <p v-if="lasts" data-login-lasts class="m-0 basis-full text-xs break-words text-(--text-3)">{{ lasts }}</p>
+      </div>
+      <div v-if="about" class="text-xs break-words text-(--text-3)">
+        <a v-if="about.href" :href="about.href" target="_blank" rel="noopener" data-about-version class="text-(--text-3) underline">{{ about.text }}</a>
+        <span v-else data-about-version>{{ about.text }}</span>
+        <p v-if="about.note" data-about-note class="m-0 text-(--tone-info-fg)">{{ about.note }}</p>
       </div>
     </div>
   </div>
