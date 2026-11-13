@@ -78,6 +78,7 @@ packages:
     fallback_type: Unmapped
     enum_style: union
     include_files:
+      - about.go
       - api.go
       - chat.go
       - companion.go

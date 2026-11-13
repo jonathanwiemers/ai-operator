@@ -9,6 +9,8 @@
 export type { Pause, PauseHistory, SpendTotals } from './generated/store'
 
 export type {
+  About,
+  AboutRelease,
   Me,
   ProjectSummary,
   ProjectDetail,

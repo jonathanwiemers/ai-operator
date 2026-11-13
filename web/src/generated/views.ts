@@ -6,6 +6,33 @@ import type * as store from "./store";
 import type { Block, SpendLevel, StreamEventData, StreamKind } from "../types";
 
 //////////
+// source: about.go
+
+/**
+ * About is the running release and the self project's newest release.
+ */
+export interface About {
+  version: string;
+  /**
+   * ReleasesURL is the self project's GitLab releases page, empty without
+   * a self project.
+   */
+  releasesURL: string;
+  release: AboutRelease | null;
+}
+/**
+ * AboutRelease is the self project's newest release that is not dropped.
+ */
+export interface AboutRelease {
+  version: string;
+  state: aiv1.ReleaseState;
+  /**
+   * URL is the GitLab release, empty until released.
+   */
+  url: string;
+}
+
+//////////
 // source: api.go
 
 /**
