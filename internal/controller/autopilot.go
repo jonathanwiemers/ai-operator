@@ -2043,8 +2043,9 @@ func (a *autopilot) startAnyway(ctx context.Context, arg, by string) (string, bo
 
 // startNow plans a milestone that waits for its turn now (`start`, owners
 // only, decision 10): StartRequestedBy makes syncSpecTask ask for the first
-// planning run on the next poll. A planned or planning milestone is not
-// touched.
+// planning run on the next poll, and with StartRequestedAt it is a run-next
+// mark that ranks the milestone first in the queue (milestoneorder). A
+// planned or planning milestone is not touched.
 func (a *autopilot) startNow(ctx context.Context, by string) (string, bool, error) {
 	if !a.waitingForTurn() {
 		return "The milestone is already planned (or being planned); `start` does nothing.", false, nil
@@ -2056,6 +2057,7 @@ func (a *autopilot) startNow(ctx context.Context, by string) (string, bool, erro
 	}
 	a.log.Info("autopilot starts planning ahead of the milestone's turn", "by", by)
 	a.ap.StartRequestedBy = by
+	a.ap.StartRequestedAt = &metav1.Time{Time: a.r.now()}
 	return "Planning starts now.", true, nil
 }
 

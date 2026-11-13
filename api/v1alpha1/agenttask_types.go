@@ -1926,6 +1926,12 @@ type AutopilotStatus struct {
 	// +optional
 	StartRequestedBy string `json:"startRequestedBy,omitempty"`
 
+	// StartRequestedAt is the time of the run-next mark (set with
+	// StartRequestedBy). Queue order ranks marked milestones by it, before
+	// the unmarked ones (internal/milestoneorder).
+	// +optional
+	StartRequestedAt *metav1.Time `json:"startRequestedAt,omitempty"`
+
 	// Items in queue order: dependencies first, ties in plan order.
 	// +optional
 	Items []AutopilotItem `json:"items,omitempty"`

@@ -51,8 +51,8 @@ func TestOwnerStartsAWaitingMilestone(t *testing.T) {
 
 	e.gl.AddNote(tracking, alice, "/agent start")
 	e.reconcile()
-	if got := e.specFor(9).Status.Autopilot.StartRequestedBy; got != "@alice" {
-		t.Fatalf("the start is recorded: %q", got)
+	if ap := e.specFor(9).Status.Autopilot; ap.StartRequestedBy != "@alice" || ap.StartRequestedAt == nil {
+		t.Fatalf("the start is recorded as a run-next mark: %q, %v", ap.StartRequestedBy, ap.StartRequestedAt)
 	}
 	if !strings.Contains(e.notesOf(tracking), "▶️ Planning starts now, ahead of its turn (by @alice).") {
 		t.Fatalf("the start is said on the tracking issue:\n%s", e.notesOf(tracking))

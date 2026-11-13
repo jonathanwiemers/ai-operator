@@ -1640,6 +1640,13 @@ spec:
                     - causeGone
                     - selfHealed
                     type: string
+                  startRequestedAt:
+                    description: |-
+                      StartRequestedAt is the time of the run-next mark (set with
+                      StartRequestedBy). Queue order ranks marked milestones by it, before
+                      the unmarked ones (internal/milestoneorder).
+                    format: date-time
+                    type: string
                   startRequestedBy:
                     description: |-
                       StartRequestedBy is the owner who asked, with the `start` command,

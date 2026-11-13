@@ -5,7 +5,9 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -22,6 +24,13 @@ func phaseTask(phase aiv1.AutopilotPhase) *aiv1.AgentTask {
 		t.Status.Autopilot = &aiv1.AutopilotStatus{Phase: phase}
 	}
 	return t
+}
+
+// markedTask is a spec task with a run-next mark set minutes after a fixed
+// time.
+func markedTask(minutes int) *aiv1.AgentTask {
+	at := metav1.NewTime(time.Date(2026, 11, 13, 9, minutes, 0, 0, time.UTC))
+	return &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{StartRequestedBy: "@alice", StartRequestedAt: &at}}}
 }
 
 func TestQueuedAhead(t *testing.T) {
@@ -66,6 +75,24 @@ func TestQueuedAhead(t *testing.T) {
 		{
 			name:       "an older milestone without a spec task yet is open",
 			milestones: []gitlab.Milestone{turnMilestone(7, ap), turnMilestone(9, ap)},
+			want:       map[int64][]int64{7: nil, 9: {7}},
+		},
+		{
+			name:       "a marked younger milestone ranks before the older ones",
+			milestones: []gitlab.Milestone{turnMilestone(7, ap), turnMilestone(9, ap), turnMilestone(10, ap)},
+			tasks:      map[int64]*aiv1.AgentTask{7: phaseTask(aiv1.AutopilotRunning), 10: markedTask(0)},
+			want:       map[int64][]int64{10: nil, 7: {10}, 9: {10, 7}},
+		},
+		{
+			name:       "two marks keep mark order",
+			milestones: []gitlab.Milestone{turnMilestone(7, ap), turnMilestone(9, ap), turnMilestone(10, ap)},
+			tasks:      map[int64]*aiv1.AgentTask{9: markedTask(5), 10: markedTask(1)},
+			want:       map[int64][]int64{10: nil, 9: {10}, 7: {10, 9}},
+		},
+		{
+			name:       "a start without a mark time does not reorder",
+			milestones: []gitlab.Milestone{turnMilestone(7, ap), turnMilestone(9, ap)},
+			tasks:      map[int64]*aiv1.AgentTask{9: {Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{StartRequestedBy: "@alice"}}}},
 			want:       map[int64][]int64{7: nil, 9: {7}},
 		},
 	} {

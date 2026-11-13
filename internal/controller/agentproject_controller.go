@@ -37,6 +37,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/milestoneorder"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/rules"
@@ -601,26 +602,18 @@ func specTurn(task *aiv1.AgentTask, ahead []int64) bool {
 }
 
 // queuedAhead returns, for every selected autopilot milestone, the iids of
-// the older selected autopilot milestones that are still open, ascending:
-// their spec task is missing or not done (a paused one counts). A milestone
-// off autopilot or closed (not listed) holds back nothing.
+// the selected autopilot milestones ranked before it that are still open, in
+// run order (milestoneorder: run-next marks first, then age): their spec task
+// is missing or not done (a paused one counts). A milestone off autopilot or
+// closed (not listed) holds back nothing.
 func queuedAhead(spec aiv1.AgentProjectSpec, titleRE *regexp.Regexp, milestones []gitlab.Milestone, byMilestone map[int64]*aiv1.AgentTask) map[int64][]int64 {
-	var iids []int64
+	var entries []milestoneorder.Entry
 	for _, m := range milestones {
 		if _, autopilot := milestoneSelection(spec, titleRE, m); autopilot {
-			iids = append(iids, m.IID)
+			entries = append(entries, milestoneorder.EntryOf(m.IID, byMilestone[m.IID]))
 		}
 	}
-	slices.Sort(iids)
-	ahead := map[int64][]int64{}
-	var open []int64
-	for _, iid := range iids {
-		ahead[iid] = slices.Clone(open)
-		if t := byMilestone[iid]; t == nil || t.Status.Autopilot == nil || t.Status.Autopilot.Phase != aiv1.AutopilotDone {
-			open = append(open, iid)
-		}
-	}
-	return ahead
+	return milestoneorder.Ahead(entries)
 }
 
 // specRetryDue reports whether a planning run that failed for an outside

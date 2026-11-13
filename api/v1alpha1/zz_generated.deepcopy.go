@@ -700,6 +700,10 @@ func (in *AutopilotStatus) DeepCopyInto(out *AutopilotStatus) {
 		*out = new(MergeOverride)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.StartRequestedAt != nil {
+		in, out := &in.StartRequestedAt, &out.StartRequestedAt
+		*out = (*in).DeepCopy()
+	}
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]AutopilotItem, len(*in))
