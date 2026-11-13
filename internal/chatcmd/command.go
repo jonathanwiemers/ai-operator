@@ -96,7 +96,7 @@ func Parse(body string) (Command, error) {
 		return Command{}, fmt.Errorf("%s takes no followUps", c.Cmd)
 	}
 	switch c.Cmd {
-	case "retry", "review", "pause", "resume":
+	case "retry", "review", "pause", "resume", "start", "unstart", "endmilestone":
 		if err := c.noArgs(); err != nil {
 			return Command{}, err
 		}
@@ -259,10 +259,11 @@ func (c Command) ImplementOnly() bool {
 }
 
 // Autopilot reports whether the command is an autopilot verb (pause, resume,
-// skip, merge) for the Spec task of an autopilot milestone.
+// skip, merge, start, unstart, endmilestone) for the Spec task of an
+// autopilot milestone.
 func (c Command) Autopilot() bool {
 	switch c.Cmd {
-	case "pause", "resume", "skip", "merge":
+	case "pause", "resume", "skip", "merge", "start", "unstart", "endmilestone":
 		return true
 	default:
 		return false

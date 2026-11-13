@@ -1951,20 +1951,35 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 			who = m.AuthorName
 		}
 		by := who + " via the Desk"
-		arg := ""
-		switch cmd.Cmd {
+		// Owners only, like the tracking issue's words.
+		if refusal := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "unstart": notOwnerStart,
+			"endmilestone": notOwnerEnd}[cmd.Cmd]; refusal != "" && !slices.Contains(a.st.Spec.OwnerSubjects, m.Author) {
+			answer(m.ID, refusal)
+			a.log.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
+			continue
+		}
+		a.log.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author)
+		word, arg := cmd.Cmd, ""
+		switch word {
 		case "skip":
 			arg = fmt.Sprintf("#%d", cmd.Issue)
 		case "merge":
-			if !slices.Contains(a.st.Spec.OwnerSubjects, m.Author) {
-				answer(m.ID, notOwnerMerge)
-				a.log.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
-				continue
-			}
 			arg = fmt.Sprintf("#%d %s", cmd.Issue, cmd.SHA)
+		case "unstart":
+			word, arg = "start", "off"
+		case "endmilestone":
+			// endMilestone says on the tracking issue what it did.
+			reply := "The milestone ends here; the tracking issue says what was skipped."
+			if len(a.ap.Items) == 0 {
+				reply = "Nothing to end: nothing is planned in this milestone."
+			}
+			if err := a.endMilestone(ctx, by); err != nil {
+				return err
+			}
+			answer(m.ID, reply)
+			continue
 		}
-		a.log.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author)
-		reply, _, err := a.command(ctx, cmd.Cmd, arg, by)
+		reply, _, err := a.command(ctx, word, arg, by)
 		if err != nil {
 			return err
 		}

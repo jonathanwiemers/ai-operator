@@ -17,6 +17,14 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"review"}`, Command{Cmd: "review"}, ""},
 		{`{"cmd":"pause"}`, Command{Cmd: "pause"}, ""},
 		{`{"cmd":"resume"}`, Command{Cmd: "resume"}, ""},
+		{`{"cmd":"start"}`, Command{Cmd: "start"}, ""},
+		{`{"cmd":" Unstart "}`, Command{Cmd: "unstart"}, ""},
+		{`{"cmd":"endMilestone"}`, Command{Cmd: "endmilestone"}, ""},
+		{`{"cmd":"start","issue":3}`, Command{}, "start takes no arguments"},
+		{`{"cmd":"unstart","engine":"claude"}`, Command{}, "unstart takes no arguments"},
+		{`{"cmd":"endmilestone","proposal":1}`, Command{}, "endmilestone takes no arguments"},
+		{`{"cmd":"start","sha":"5a0e000"}`, Command{}, "start takes no sha"},
+		{`{"cmd":"endmilestone","usd":"4"}`, Command{}, "endmilestone takes no usd"},
 		{`{"cmd":"use","engine":"claude","model":"opus","effort":"high"}`,
 			Command{Cmd: "use", Engine: "claude", Model: "opus", Effort: "high"}, ""},
 		{`{"cmd":"use","engine":"Claude","model":"opus"}`,
@@ -144,7 +152,7 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 			t.Errorf("%s should not be Autopilot or ProposalOnly", cmd)
 		}
 	}
-	for _, cmd := range []string{"pause", "resume", "skip", "merge"} {
+	for _, cmd := range []string{"pause", "resume", "skip", "merge", "start", "unstart", "endmilestone"} {
 		c := Command{Cmd: cmd}
 		if !c.Autopilot() || c.ImplementOnly() || c.ProposalOnly() {
 			t.Errorf("%s should be Autopilot only", cmd)
