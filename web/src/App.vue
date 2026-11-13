@@ -129,6 +129,7 @@ const route = useRoute()
 const section = computed(() => {
   if (route.name === 'inbox') return 'inbox'
   if (route.name === 'overview') return 'overview'
+  if (route.name === 'costs') return 'costs'
   if (isResearchPath(route.path)) return 'research'
   return null
 })
@@ -228,6 +229,10 @@ watch(notifyActive, (on) => {
           <UIcon name="i-lucide-folders" class="size-5" />
           Projects
         </button>
+        <RouterLink v-if="hasFeature('history')" to="/costs" class="tab" :aria-current="current('costs')">
+          <UIcon name="i-lucide-receipt" class="size-5" />
+          Costs
+        </RouterLink>
         <RouterLink v-if="hasFeature('research')" to="/research" class="tab" :aria-current="current('research')">
           <UIcon name="i-lucide-telescope" class="size-5" />
           Research

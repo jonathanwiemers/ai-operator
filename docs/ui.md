@@ -334,10 +334,11 @@ each an icon over a label, the bar's full height (56 px) to tap:
 * **Overview** (`/`).
 * **Projects** opens the rail as a [sheet](#sheets): *Costs*, projects,
   researches, engine usage and sign-out.
+* **Costs** (`/costs`), only with the history feature.
 * **Research** (`/research`), only with the research feature.
 
 The item of the section shown has `aria-current="page"` and the accent
-colour: *Research* for every research page, none on project, milestone,
+colour: *Costs* on the costs page, *Research* for every research page, none on project, milestone,
 issue and task pages. The bar keeps clear of the bottom safe-area inset,
 and the content pane has as much bottom padding, so a page's end is never
 under it. While a text field has the focus (an input of a text kind, a
@@ -467,7 +468,7 @@ the [Costs page](#costs-page) filtered to the project.
 *Costs* (`/costs`, `web/src/views/Costs.vue`, its own chunk) shows what
 agents cost across every project you may see, and research when you may
 read it, from `GET /api/v1/costs`. It is in the rail after *Overview*, and
-so in the phone's Projects sheet; the bottom bar keeps its four items. The
+so in the phone's Projects sheet and the bottom bar. The
 entry shows with the research database (the `history` feature). The
 dashboard's *today* and *last 7 days* chips open it for the last 7 days.
 

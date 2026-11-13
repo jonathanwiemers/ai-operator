@@ -1460,6 +1460,7 @@ test.describe('bottom bar', () => {
     for (const { name, url, route } of [
       { name: /^Inbox/, url: /\/inbox$/, route: 'inbox' },
       { name: 'Overview', url: /:\d+\/$/, route: 'overview' },
+      { name: 'Costs', url: /\/costs$/, route: 'costs' },
       { name: 'Research', url: /\/research$/, route: 'researches' },
     ]) {
       const link = nav.getByRole('link', { name })
@@ -1490,8 +1491,16 @@ test.describe('bottom bar', () => {
     await open(page, baseURL, overview, problems, { features: features.features.filter((f) => f.name !== 'research') })
     const nav = bar(page)
     await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
-    await expect(nav.getByRole('link')).toHaveText([/Inbox/, 'Overview'])
+    await expect(nav.getByRole('link')).toHaveText([/Inbox/, 'Overview', 'Costs'])
     await expect(nav.getByRole('button')).toHaveText(['Projects'])
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  test('Costs is absent without the history feature@375', async ({ page, baseURL }) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    const overview = routes.find((r) => r.name === 'overview')!
+    await open(page, baseURL, overview, problems, { features: features.features.filter((f) => f.name !== 'history') })
+    await expect(bar(page).getByRole('link')).toHaveText([/Inbox/, 'Overview', 'Research'])
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
