@@ -29,6 +29,7 @@ import type {
   ResearchResponse,
   ResearchRunsPage,
   ResearchSummary,
+  SearchResponse,
   SpendView,
   StreamPage,
   TaskResponse,
@@ -234,11 +235,16 @@ export function getStream(query: URLSearchParams): Promise<StreamPage> {
 
 // getMilestones: GET /milestones, the open or done milestones, across
 // projects or of one ("namespace/name").
-export function getMilestones(opts: { state: 'open' | 'done'; limit?: number; project?: string }): Promise<MilestoneList> {
+export function getMilestones(opts: { state: 'open' | 'done' | 'all'; limit?: number; project?: string }): Promise<MilestoneList> {
   const q = new URLSearchParams({ state: opts.state })
   if (opts.limit) q.set('limit', String(opts.limit))
   if (opts.project) q.set('project', opts.project)
   return get<MilestoneList>(`/milestones?${q}`)
+}
+
+// getSearch: GET /search?q=, the issues and merge requests matching q.
+export function getSearch(q: string): Promise<SearchResponse> {
+  return get<SearchResponse>(`/search?${new URLSearchParams({ q })}`)
 }
 
 // getMilestone: GET /projects/{namespace}/{name}/milestones/{iid}.
