@@ -32,7 +32,7 @@ The CRDs are part of the templates, so they are upgraded too.
 | `logLevel` | `info` | `debug`, `info`, `error` |
 | `defaultOwners` | `[]` | GitLab usernames mentioned when a task needs a human, for AgentProjects without `spec.notify.users`; a milestone line `/agent owners @a @b` overrides them |
 | `crossRepo.allowedProjects` | `[]` | full paths of the GitLab projects AgentProjects may name as companion repositories in `spec.crossRepo.targets`; empty turns cross-repo changes off (condition `CrossRepoReady=False`) |
-| `selfProject` | `""` | full path of the GitLab project the operator is built from (`--self-project`, e.g. `my-group/ai-operator`): a [companion](../../docs/usage.md#landing) of one of its merge requests lands once the running operator is a release (`YEAR.MONTH.N`, the image's build version) that contains the merge. Empty: that project's companions follow the tag rule like any other project's |
+| `selfProject` | `""` | full path of the GitLab project the operator is built from (`--self-project`, e.g. `my-group/ai-operator`): a [companion](../../docs/usage.md#landing) of one of its merge requests lands once the running operator is a release (`YEAR.MONTH.N`, the image's build version) that contains the merge. Empty: that project's companions follow the tag rule like any other project's. The Desk gets it too (`--self-project` of the UI): its rail footer shows the running version and, from this project's release records, a newer release rolling out or out |
 | `crds.install` | `true` | install and upgrade the CRDs |
 | `crds.keep` | `true` | keep the CRDs, and with them all AgentProjects and AgentTasks, on `helm uninstall` |
 | `serviceAccount.create` | `true` | |
