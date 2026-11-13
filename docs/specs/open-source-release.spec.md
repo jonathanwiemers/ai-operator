@@ -175,4 +175,4 @@ milestone looks good.
 | A | !427 | open, review |
 | A2 | !428 (stacked on !427) | open, review |
 | B | – | not started |
-| C | – | not started |
+| C | jo.wiemers/web!106 (draft) | open, merge after B |
