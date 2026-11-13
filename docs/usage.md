@@ -186,6 +186,9 @@ or after an operator restart, every poll is a full sync again. Details:
 
 Create a milestone. Its description is the overarching spec for the whole
 feature. Add the marker line `/agent spec` anywhere in the description.
+The skill [`skills/milestone-spec`](../skills/milestone-spec/SKILL.md) is
+the house style for these descriptions, with a [template](../skills/milestone-spec/template.md)
+and a checklist. Claude Code loads it in this repository.
 
 ```markdown
 /agent spec

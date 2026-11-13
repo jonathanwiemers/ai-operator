@@ -32,3 +32,5 @@
   GitHub, where `release.yml` builds the same version for ghcr.io. See
   `docs/releasing.md`.
 - Keep the docs in `docs/` and the chart README in sync with behavior changes.
+- Write and review milestone specs with the `milestone-spec` skill
+  (`skills/milestone-spec/`).
