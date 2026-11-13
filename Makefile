@@ -4,8 +4,9 @@ CONTROLLER_GEN ?= $(CURDIR)/bin/controller-gen
 CONTROLLER_TOOLS_VERSION ?= v0.23.0
 HELM ?= helm
 CHART := charts/ai-operator
-# Calendar version YEAR.MONTH.N, e.g. 2026.10.1 (see hack/next-version.sh).
-VERSION ?= $(shell hack/next-version.sh)
+# Chart version for helm-package. Releases pass the tag (YEAR.MONTH.N, see
+# docs/releasing.md); the operator picks it, never the build.
+VERSION ?= 0.0.0-dev
 
 .PHONY: all
 all: generate manifests fmt vet test build
@@ -108,6 +109,3 @@ helm-lint: ## Lint and render the chart.
 helm-package: ## Package the chart as dist/ai-operator-$(VERSION).tgz.
 	$(HELM) package $(CHART) --version $(VERSION) --app-version $(VERSION) -d dist
 
-.PHONY: version
-version: ## Print the next release version.
-	@echo $(VERSION)

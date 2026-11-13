@@ -52,5 +52,3 @@ jobs:
         run: make build
       - name: helm lint
         run: make helm-lint
-      - name: release version
-        run: hack/next-version.sh

@@ -122,14 +122,6 @@ build:
   script:
     - make build
 
-version:
-  extends: .go
-  cache: []
-  variables:
-    GIT_DEPTH: "0"
-  script:
-    - hack/next-version.sh
-
 ui:
   extends: .check
   image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:22-bookworm
