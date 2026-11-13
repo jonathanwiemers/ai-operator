@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  carryTab,
   dashboardTabs,
   milestoneTabFromRoute,
   milestoneTabs,
@@ -91,15 +90,6 @@ test('milestone tabQuery: Issues drops the parameter, Stream sets it', () => {
 test('stored milestone tabs: no Board, a board link falls back to Issues', () => {
   assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'pilot', 'retrospective', 'stream', 'spend'])
   assert.equal(tabFromQuery('board', storedMilestoneTabs), 'issues')
-})
-
-test('carryTab: defaults stay defaults, chosen tabs are kept where they exist', () => {
-  assert.equal(carryTab('stream', projectTabs, milestoneTabs), 'issues')
-  assert.equal(carryTab('board', projectTabs, milestoneTabs), 'board')
-  assert.equal(carryTab('issues', milestoneTabs, projectTabs), 'stream')
-  assert.equal(carryTab('stream', milestoneTabs, projectTabs), 'stream')
-  assert.equal(carryTab('stream', milestoneTabs, milestoneTabs), 'stream')
-  assert.equal(carryTab('spend', milestoneTabs, milestoneTabs), 'spend')
 })
 
 test('milestone tabs: ?tab=pilot opens the Pilot tab', () => {

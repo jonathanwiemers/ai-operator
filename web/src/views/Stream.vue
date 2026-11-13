@@ -45,7 +45,7 @@ import type {
   StreamEvent,
 } from '../types'
 import { useStreamNote } from '../streamNote'
-import { carryTab, milestoneTabFromRoute, milestoneTabs, projectTabs, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
+import { milestoneTabFromRoute, milestoneTabs, projectTabs, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
 // The sheet is loaded below 1180 px only, where the Context button is.
 const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
@@ -74,19 +74,6 @@ const tab = computed((): string => {
   if (milestoneIID.value) return milestoneTabFromRoute(route.query.tab, route.hash, tabs.value)
   return tabFromQuery(route.query.tab, tabs.value)
 })
-// The scope links' classes: a tab with an underline. They wrap on phones
-// and stay on one line from 760 px.
-const scopeLink =
-  '-mb-px max-w-full border-b-2 px-3 py-2 font-medium break-words hover:no-underline tablet:whitespace-nowrap'
-const scopeOn = 'border-(--accent) text-(--text)'
-const scopeOff = 'border-transparent text-(--text-2) hover:text-(--text)'
-// scopeQuery is a scope link's query: it keeps a chosen tab where the
-// target has it, else opens the target's default.
-function scopeQuery(milestone: boolean) {
-  const to = milestone ? milestoneTabs : projectTabs
-  return tabQuery({}, carryTab(tab.value, tabs.value, to), to)
-}
-
 const filter = ref<StreamFilter>('all')
 // A milestone's Stream tab has the runtime kinds only; the Pilot tab the rest.
 const filters = computed(() => (milestoneIID.value ? runtimeStreamFilters : streamFilters))
@@ -469,30 +456,6 @@ function showDay(i: number): string | null {
             </template>
           </UButton>
         </div>
-        <!-- Phones: the scope links wrap onto more lines; from 760 px they
-             stay on one line that scrolls inside itself. -->
-        <nav
-          v-if="!everything"
-          aria-label="Scope"
-          class="mt-3 flex flex-wrap gap-0.5 border-b border-(--border) tablet:flex-nowrap tablet:overflow-x-auto"
-        >
-          <RouterLink
-            :to="{ name: 'stream-project', params: { namespace, name }, query: scopeQuery(false) }"
-            :class="[scopeLink, !milestoneIID ? scopeOn : scopeOff]"
-          >
-            Everything
-          </RouterLink>
-          <RouterLink
-            v-for="m in project?.milestones ?? []"
-            :key="m.iid"
-            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: scopeQuery(true) }"
-            :class="[scopeLink, milestoneIID === m.iid ? scopeOn : scopeOff]"
-          >
-            {{ m.title }}
-            <span v-if="m.spec?.status.autopilot" class="ms-1 text-[11px] text-(--text-3)">{{ m.spec.status.autopilot.phase === 'Done' ? 'done' : '' }}</span>
-            <CostChip class="ms-1.5" :cost="m" small />
-          </RouterLink>
-        </nav>
         <div v-if="tab === 'stream' && heatDays.length" class="heat" title="Activity per day; click to jump">
           <span>{{ heatRange.start }}</span>
           <div class="cells">

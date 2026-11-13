@@ -94,12 +94,3 @@ export function tabQuery<Q extends Record<string, unknown>>(
   const { tab: _, ...rest } = query
   return tab === tabs[0]!.id ? rest : { ...rest, tab }
 }
-
-// carryTab is the tab a scope link keeps when it moves between tab sets
-// (project and milestone): a chosen tab the target has, else the target's
-// default. A default stays a default: the project's Stream opens a
-// milestone's Issues.
-export function carryTab(tab: string, from: readonly Tab<string>[], to: readonly Tab<string>[]): string {
-  if (tab === from[0]!.id || !to.some((t) => t.id === tab)) return to[0]!.id
-  return tab
-}
