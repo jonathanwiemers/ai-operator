@@ -453,7 +453,7 @@ the Desk). With only `desk`:
   stream kinds with and without `conversation`.
 - Web: `make ui`; screenshots of the streaming answer, interrupt and cold
   start (light, dark, narrow).
-- Cluster: enable on Bloop with `inputs: [gitlab, desk]`, chat with one
+- Cluster: enable on Orbit with `inputs: [gitlab, desk]`, chat with one
   implementer and one pilot, interrupt a run, hibernate and resume;
   restart the operator, the UI and the agent pod each in the middle of a
   turn and check nothing is lost or doubled; then a week with
@@ -492,7 +492,7 @@ it and say so in their description.
     readers, fresh-session context from the chat table, run report wording;
     docs.
 
-Then: Bloop on `[gitlab, desk]`, then `[desk]`; a later spec removes the
+Then: Orbit on `[gitlab, desk]`, then `[desk]`; a later spec removes the
 GitLab comment path if nothing needs it.
 
 ## PRs / MRs
@@ -506,10 +506,10 @@ GitLab comment path if nothing needs it.
 | 3 | feat(runner): agent server session RPC | [!75](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/75) | merged |
 | 4 | feat(research): chat_messages table and chat writer login | [!76](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/76) | merged |
 | 5 | feat(ui): Desk chat endpoint, chat grant and stream kinds | [!77](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/77) | merged |
-| — | infra: Desk chat writer login and chat grant | [infra!289](https://gitlab.com/jo.wiemers/infra/cluster/-/merge_requests/289) | merged, live on 2026.11.8 |
+| — | infra: Desk chat writer login and chat grant | [infra!289](https://gitlab.com/example/infra/-/merge_requests/289) | merged, live on 2026.11.8 |
 | 6 | feat(runner): Desk chat loop | [!78](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/78) | merged |
 | 7 | feat(controller): Desk chat dispatch | [!79](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/79) | merged, released 2026.11.10 |
-| — | infra: Desk chat on for ai-operator (and bloop for one test) | [infra!290](https://gitlab.com/jo.wiemers/infra/cluster/-/merge_requests/290) | merged, live on 2026.11.10 |
+| — | infra: Desk chat on for ai-operator (and orbit for one test) | [infra!290](https://gitlab.com/example/infra/-/merge_requests/290) | merged, live on 2026.11.10 |
 | 8 | feat(web): Desk chat on the task page | [!80](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/80) | merged |
 | — | fix(api): chat message kinds as three enum values | [!81](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/81) | merged |
 | 9a | feat(controller): Desk chat commands for Implement tasks | [!82](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/82) | merged |

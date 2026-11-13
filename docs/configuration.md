@@ -143,8 +143,8 @@ login with the keys `username` and `password`.
 | `ui.research.allowCreate` | `false` | one-off researches from the UI, see [Web UI](#web-ui) |
 | `ui.research.namespace` | `""` | where the UI creates one-off researches; required with `allowCreate` |
 
-The logins on netcup01 (the complete values, with the AgentProject's writer
-login, are in [research.md](research.md#example-netcup01)):
+The logins on my-cluster (the complete values, with the AgentProject's writer
+login, are in [research.md](research.md#example-my-cluster)):
 
 | Login (role) | Secret | Namespace | Used by |
 |---|---|---|---|
@@ -260,10 +260,6 @@ and passed as `--pricing-file`; the pod restarts when the prices change.
 The file is parsed strictly: unknown keys, negative prices or an unreadable
 file stop the operator at start. Prices apply to calls written from then on;
 stored rows keep their cost.
-
-Rolling out pricing, budgets, `implement.stepSession` and a scout subagent
-on a cluster, in order and with the queries that compare the options, is
-the checklist [rollout-spend-options.md](process/rollout-spend-options.md).
 
 ## Secrets
 
@@ -1032,7 +1028,7 @@ spec:
     targets:
       - project: my-group/infra/cluster
         paths:
-          - clusters/netcup01/applications/ai-operator/
+          - clusters/my-cluster/applications/ai-operator/
         autoMerge: true
         # tokenSecretRef: {name: gitlab-infra, key: token}
 ```

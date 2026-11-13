@@ -13,7 +13,7 @@ func TestMatch(t *testing.T) {
 	}{
 		// A plain name matches the base name, or a directory, at any depth.
 		{"values.yaml", []string{"values.yaml", "a/values.yaml", "a/b/values.yaml", "values.yaml/x"}, []string{"values.yml", "a/values.yaml.bak", "xvalues.yaml"}},
-		{"bloop", []string{"bloop", "clusters/bloop/x.yaml", "bloop/a/b"}, []string{"bloops", "clusters/bloop-x/y"}},
+		{"orbit", []string{"orbit", "clusters/orbit/x.yaml", "orbit/a/b"}, []string{"orbits", "clusters/orbit-x/y"}},
 		// * and ? stay within one segment.
 		{"*.yaml", []string{"a.yaml", "x/y/.yaml", "dir/b.yaml"}, []string{"a.yml", "a.yaml.bak"}},
 		{"a?c", []string{"abc", "x/axc"}, []string{"ac", "abbc", "a/c"}},
@@ -22,8 +22,8 @@ func TestMatch(t *testing.T) {
 		{"/a*b", []string{"ab", "axxb", "axxb/c"}, []string{"a/b", "x/ab"}},
 		{"/a**b", []string{"ab", "axb"}, []string{"a/b", "ax/yb"}},
 		// A trailing / is a directory and everything under it.
-		{"clusters/netcup01/applications/ai-operator/", []string{"clusters/netcup01/applications/ai-operator/values.yaml", "clusters/netcup01/applications/ai-operator/a/b.yaml"},
-			[]string{"clusters/netcup01/applications/ai-operator", "clusters/netcup01/applications/ai-operator-x/a", "clusters/netcup01/applications/bloop/a", "x/clusters/netcup01/applications/ai-operator/a"}},
+		{"clusters/my-cluster/applications/ai-operator/", []string{"clusters/my-cluster/applications/ai-operator/values.yaml", "clusters/my-cluster/applications/ai-operator/a/b.yaml"},
+			[]string{"clusters/my-cluster/applications/ai-operator", "clusters/my-cluster/applications/ai-operator-x/a", "clusters/my-cluster/applications/orbit/a", "x/clusters/my-cluster/applications/ai-operator/a"}},
 		{"docs/", []string{"docs/a.md", "docs/x/y.md", "a/docs/x"}, []string{"docs", "docsx/a"}},
 		{"build/", []string{"build/x", "a/build/x", "a/b/build/c/d"}, []string{"build", "a/build"}},
 		// A leading or inner / anchors to the root.

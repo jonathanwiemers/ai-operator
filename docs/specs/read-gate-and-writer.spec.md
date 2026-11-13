@@ -38,10 +38,10 @@ What ai-operator has today (milestone 4, all merged):
 - `CallUsage` parses `modelUsage`, `subagent_stats` and per-turn context size;
   `agent_calls` stores them. The Spend tab has *With vs without subagents* per
   role and a context-growth chart with subagent markers.
-- netcup01: a read-only haiku `scout` on Bloop's `implement` and profile
-  `strong` since 2026-11-05 (infra/cluster !295). The `ai-operator` project
+- my-cluster: a read-only haiku `scout` on Orbit's `implement` and profile
+  `strong` since 2026-11-05 (example/infra !295). The `ai-operator` project
   has none.
-- First run with the scout (Bloop #421 implement, opus, agent image
+- First run with the scout (Orbit #421 implement, opus, agent image
   2026.11.105, 2026-11-05 18:01): the system prompt had the subagents line,
   but opus made 0 `Agent` calls in 54 tool calls and dumped whole files with
   `cat a.ts; cat b.ts; …` several times. The prompt line alone is ignored.
@@ -50,7 +50,7 @@ What ai-operator has today (milestone 4, all merged):
   `research`, `init-workspace`, `log`). `ClaudeCLI.Args`
   (`internal/runner/engine.go`) builds the command line and passes no
   `--settings` today.
-- Bloop's resumed opus sessions grow in cost per step ($17 → $37 over five
+- Orbit's resumed opus sessions grow in cost per step ($17 → $37 over five
   steps of one run, m4 background). Reads of whole files are a large part of
   that context.
 
@@ -123,8 +123,8 @@ What ai-operator has today (milestone 4, all merged):
    - the scout example's prompt adopts shunt's bulk-reader contract: answer
      in bullets with exact names, paths and line numbers, no preamble; the
      caller checks line numbers before editing.
-10. **netcup01 rollout is outside this milestone** (infra/cluster MRs after
-    the release, by the owner): `readGate: {}` on Bloop's `implement` and
+10. **my-cluster rollout is outside this milestone** (example/infra MRs after
+    the release, by the owner): `readGate: {}` on Orbit's `implement` and
     `strong`, the new scout prompt, a scout on `spec`, and the writer after
     the gate has data.
 
@@ -178,7 +178,7 @@ Writer
   Spotify Portal). Cursor's budget is too small for it today.
 - A gate for writes (shunt has none either).
 - Gating cursor roles: cursor-agent has no hooks.
-- Changing the netcup01 configuration (decision 10).
+- Changing the my-cluster configuration (decision 10).
 
 ## Suggested order
 

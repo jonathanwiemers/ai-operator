@@ -2,7 +2,7 @@
 
 ## Problem
 
-Two real cases on Bloop (milestone M16, autopilot, tracking issue #338):
+Two real cases on Orbit (milestone M16, autopilot, tracking issue #338):
 
 1. **Main red for ~11 hours** (2026-10-24 13:25 → 00:39 UTC): 5 of 13 main
    pipelines failed, every one on the same flaky vitest test
@@ -53,7 +53,7 @@ Root causes:
 
 - An LLM that merges, closes or pushes, or bypasses the merge gate.
 - Fixing the flaky test or the agent image's missing Rust toolchain / browser
-  libraries: those are Bloop issues.
+  libraries: those are Orbit issues.
 - Parsing test names out of job logs (left to the coordinator).
 - Labels on merge requests (open question 3).
 - An `agent::queued` state for pending autopilot items (open question 2).
@@ -279,7 +279,7 @@ data, no merge tool).
 | `ci::main-red` | operator | the issue tracking a red default branch |
 | `ci::flaky` | operator | the issue tracking one flaky CI job |
 
-Bloop's existing plain `blocked` label is unrelated and left alone.
+Orbit's existing plain `blocked` label is unrelated and left alone.
 
 ## Affected files
 
@@ -331,9 +331,9 @@ Bloop's existing plain `blocked` label is unrelated and left alone.
   on a blocked issue runs; unknown tracking-issue command gets a reply.
 - Runner e2e: re-review run pushes nothing, records `ReviewedSHA`; pause
   reason in the prompt.
-- Replay of the two Bloop cases in tests: the `[unavailable]` reviewer
+- Replay of the two Orbit cases in tests: the `[unavailable]` reviewer
   message; main red / green on retry / red with the same job.
-- Rollout on Bloop first (`mainHealth` on, `autoFix` off), watch one milestone.
+- Rollout on Orbit first (`mainHealth` on, `autoFix` off), watch one milestone.
 
 ## Delivery
 
@@ -367,7 +367,7 @@ would have prevented case 1, 1 + 3 + 4 case 2.
 3. Mirror `agent::*` and `agent-blocked::*` onto the MR? Cheap follow-up; the
    board is issue-based, so not needed for the goals.
 4. Default `infraRetryAfter` (30m) and `review.retryAfter` (15m) are guesses;
-   tune after the Bloop rollout.
+   tune after the Orbit rollout.
 
 ## Steers
 

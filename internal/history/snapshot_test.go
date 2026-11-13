@@ -17,7 +17,7 @@ import (
 // specTask is the spec task of milestone 20 with a plan of 148 and 149.
 func specTask(rv string, mut func(*aiv1.AgentTask)) *aiv1.AgentTask {
 	return task(rv, func(t *aiv1.AgentTask) {
-		t.Name, t.UID, t.Spec.Type, t.Spec.Issue = "bloop-m20", "spec", aiv1.TaskTypeSpec, nil
+		t.Name, t.UID, t.Spec.Type, t.Spec.Issue = "orbit-m20", "spec", aiv1.TaskTypeSpec, nil
 		t.Spec.Milestone = &aiv1.MilestoneRef{ID: 9020, IID: 20, Title: "Desk"}
 		t.Spec.Owners, t.Spec.OwnerSubjects = []string{"jo"}, []string{"sub-jo"}
 		t.Status.Plan = []aiv1.PlannedIssue{{Key: "a", IID: 148, Title: "Schema"}, {Key: "b", IID: 149, Title: "Recorder"}}
@@ -34,9 +34,9 @@ func withAutopilot(phase aiv1.AutopilotPhase, items ...aiv1.AutopilotItem) func(
 }
 
 func TestSnapshot(t *testing.T) {
-	bloop := store.ProjectKey{Namespace: "agents", Name: "bloop"}
+	orbit := store.ProjectKey{Namespace: "agents", Name: "orbit"}
 	base := func(mut func(*store.MilestoneSnapshot)) store.MilestoneSnapshot {
-		m := store.MilestoneSnapshot{Project: bloop, IID: 20, MilestoneID: 9020, Title: "Desk", State: "open",
+		m := store.MilestoneSnapshot{Project: orbit, IID: 20, MilestoneID: 9020, Title: "Desk", State: "open",
 			StartedAt: now, Owners: []string{"jo"}, OwnerSubjects: []string{"sub-jo"},
 			Issues: []store.IssueSnapshot{{IID: 148, Title: "Schema", State: "planned"}, {IID: 149, Title: "Recorder", State: "planned"}}}
 		if mut != nil {
@@ -53,8 +53,8 @@ func TestSnapshot(t *testing.T) {
 		want store.MilestoneSnapshot
 	}{
 		{name: "no autopilot", task: specTask("1", nil), want: base(nil)},
-		{name: "web URL", task: specTask("1", nil), web: "https://gitlab.example/jo/bloop/",
-			want: base(func(m *store.MilestoneSnapshot) { m.WebURL = "https://gitlab.example/jo/bloop/-/milestones/20" })},
+		{name: "web URL", task: specTask("1", nil), web: "https://gitlab.example/jo/orbit/",
+			want: base(func(m *store.MilestoneSnapshot) { m.WebURL = "https://gitlab.example/jo/orbit/-/milestones/20" })},
 		{name: "autopilot with items", task: specTask("1", withAutopilot(aiv1.AutopilotRunning,
 			aiv1.AutopilotItem{IID: 150, State: aiv1.AutopilotItemPending, FlakyFix: true},
 			aiv1.AutopilotItem{IID: 148, State: aiv1.AutopilotItemMerged, MergeRequestIID: 900, MergeRequestURL: "https://gitlab.example/mr/900"},
@@ -164,7 +164,7 @@ func TestSnapshotQueueCoalescesAndDrops(t *testing.T) {
 	r.snapshotTask(specTask("1", nil), now)
 	r.snapshotTask(specTask("2", func(t *aiv1.AgentTask) { t.Spec.Milestone.Title = "Desk 2" }), now)
 	r.snapshotTask(task("3", nil), now)
-	k := snapKey{store.ProjectKey{Namespace: "agents", Name: "bloop"}, 20}
+	k := snapKey{store.ProjectKey{Namespace: "agents", Name: "orbit"}, 20}
 	if len(r.snaps) != 1 || r.snaps[k].save.Title != "Desk 2" || !r.snaps[k].closed.IsZero() {
 		t.Fatalf("queue = %+v, want the newest snapshot of milestone 20 only", r.snaps)
 	}
@@ -200,7 +200,7 @@ func TestRecorderWritesSnapshots(t *testing.T) {
 	milestone := func() []string {
 		t.Helper()
 		rows := storetest.Rows(t, `SELECT state, phase, coalesce(done_at::text, ''), updated_at::text, xmin::text
-			FROM desk_milestones WHERE namespace = 'agents' AND project = 'bloop' AND iid = 20`)
+			FROM desk_milestones WHERE namespace = 'agents' AND project = 'orbit' AND iid = 20`)
 		if len(rows) != 1 {
 			t.Fatalf("%d milestone rows, want 1", len(rows))
 		}
@@ -268,8 +268,8 @@ func TestRecorderTakesFollowUps(t *testing.T) {
 	r := NewRecorder(readyDB{s}, time.Hour, clk, testLogger(t))
 	r.started.Store(true)
 	ctx := t.Context()
-	bloop := store.ProjectKey{Namespace: "agents", Name: "bloop"}
-	if _, err := s.SaveMilestone(ctx, store.MilestoneSnapshot{Project: bloop, IID: 12, Title: "Old", State: "closed",
+	orbit := store.ProjectKey{Namespace: "agents", Name: "orbit"}
+	if _, err := s.SaveMilestone(ctx, store.MilestoneSnapshot{Project: orbit, IID: 12, Title: "Old", State: "closed",
 		FollowUps: []store.FollowUpSnapshot{{Number: 1, Title: "Backfill", State: store.FollowUpOpen},
 			{Number: 2, Title: "Docs", State: store.FollowUpIssue, TargetIID: 410}}}, now.Add(time.Hour)); err != nil {
 		t.Fatal(err)

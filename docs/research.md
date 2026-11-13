@@ -33,8 +33,8 @@ Research is the second feature of the platform, next to the factory
   [ui.md](ui.md#platform).
 
 To turn research on: set up the [database](#database) and its logins, set
-the chart values `research.database.*` (see the [netcup01
-example](#example-netcup01)), give each AgentProject that runs researches a
+the chart values `research.database.*` (see the [my-cluster
+example](#example-my-cluster)), give each AgentProject that runs researches a
 writer login (`spec.research.writerSecret`), and create an `AgentResearch`.
 
 ## `AgentResearch`
@@ -517,7 +517,7 @@ pods with the label `ai.wiemers.me/research` reach those pods on TCP
 `port`. Task pods stay blocked. Details and the operator flags in
 [configuration.md](configuration.md#research-database).
 
-### Example: netcup01
+### Example: my-cluster
 
 The database `ai_operator` of the Zalando `postgresql` `ai-operator-postgres`
 in `ai-operator-system`, with these logins:

@@ -56,7 +56,7 @@ func TestMainHealthOptions(t *testing.T) {
 	}
 }
 
-// Bloop #406: a flaky rust:test on main. The operator's options are put to
+// Orbit #406: a flaky rust:test on main. The operator's options are put to
 // the owners, not the model's; the failures on the flaky issue decide
 // whether handing it over is recommended.
 func TestPilotFlakyEventIsAMainHealthPrompt(t *testing.T) {

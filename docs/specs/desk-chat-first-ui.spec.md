@@ -226,4 +226,4 @@ would refuse the `conversation` key. The project-level pilot is issue #47.
 | MR | Status |
 |----|--------|
 | [!67](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/67) Desk: chat-first streams with history | opened |
-| [infra/cluster!288](https://gitlab.com/jo.wiemers/infra/cluster/-/merge_requests/288) `conversation` grant for the admin rule (after the release) | draft |
+| [example/infra!288](https://gitlab.com/example/infra/-/merge_requests/288) `conversation` grant for the admin rule (after the release) | draft |

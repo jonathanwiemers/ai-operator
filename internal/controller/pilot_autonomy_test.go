@@ -357,10 +357,10 @@ func TestPilotRunsKeepTheCIRoundsAHumansDoNot(t *testing.T) {
 	}
 }
 
-// Bloop #331: rust:lint stayed red after the fix rounds, #1 went to
+// Orbit #331: rust:lint stayed red after the fix rounds, #1 went to
 // needs-input; the pilot assessed it (env: no Rust toolchain) and, on an
 // autopilot milestone, instructs install-toolchains without a yes.
-func TestPilotManagesBloop331(t *testing.T) {
+func TestPilotManagesOrbit331(t *testing.T) {
 	e := newManagedEnv(t)
 	tracking := e.autopilot().TrackingIssueIID
 	e.gl.SetLabels(1, "agent::needs-input")

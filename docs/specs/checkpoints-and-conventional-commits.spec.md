@@ -28,7 +28,7 @@ What happens today (file refs at origin/main, 2026-11-05):
   After each coherent piece it returns `in_progress` with a `commitMessage`,
   the runner commits (`Runner.commit`, `implement.go`) and pushes with
   `ci.skip` (`Mirror.push`, `git.go`). At most 25 steps per run.
-- The implementer seldom stops. The last 16 merged Bloop agent MRs (!726 to
+- The implementer seldom stops. The last 16 merged Orbit agent MRs (!726 to
   !741) are mostly one commit of 1 500–4 000 changed lines, for example !741
   with 42 files (+1782/−422), !738 with 55 files (+2374/−1373) and !732 with
   100 files (+2224/−2668). Only !733, !734 and !740 have 2–4 step commits.
@@ -49,14 +49,14 @@ What happens today (file refs at origin/main, 2026-11-05):
   (max 72 chars), blank line, body" (`prompts.go`); `commitMessage()` adds
   `Refs #N` and falls back to the issue title. A new branch starts with
   `Start work on #N`.
-- Bloop and ai-operator merge with `ff` and squash on by default, with no
+- Orbit and ai-operator merge with `ff` and squash on by default, with no
   squash commit template. The commit on the default branch is the **MR
   title**, which is `Draft: ` + the issue title (`implement.go`, MR create)
   until autopilot marks it ready. Main therefore reads "Knobloo: LED screen
   set into the Stammtisch, …", not conventional. The autopilot merges with
   `MergeOptions{SHA, ShouldRemoveSourceBranch}` (`autopilot.go`), without a
   squash message.
-- No role has `fallbackAtPercent` or an implementer fallback on netcup01, so
+- No role has `fallbackAtPercent` or an implementer fallback on my-cluster, so
   a usage limit always cuts a step off hard.
 - Milestone 8 (read gate) adds the `ai-runner` hook subcommand and the
   `--settings` plumbing. The step-size gate here reuses it.
@@ -135,12 +135,12 @@ What happens today (file refs at origin/main, 2026-11-05):
    tool calls. It applies only while steps are on (draft MR,
    `stepCommits`); it fails open like the read gate. `stepsNote` says that
    a step should stay under N lines where it can.
-9. **Rollout on netcup01 is outside this milestone** (infra MRs after the
+9. **Rollout on my-cluster is outside this milestone** (infra MRs after the
    release, by the owner): `workflow.conventionalCommits: true` on both
-   projects, `implement.maxStepLines: 400` on Bloop, and
+   projects, `implement.maxStepLines: 400` on Orbit, and
    `fallbackAtPercent: 90` with a sonnet fallback on `implement` and
    `strong`. The infra change and the checks to run one week after it are in
-   [the rollout acceptance checklist](../process/rollout-checkpoints-acceptance.md).
+   the owner's rollout checklist (not in this repository).
 
 ## Requirements
 
@@ -207,7 +207,7 @@ Measurement and docs
   gate keeps steps short.
 - Rewriting commits that are already on the default branch.
 - Conventional Commits for commits people push by hand.
-- Turning anything on in netcup01 (decision 9).
+- Turning anything on in my-cluster (decision 9).
 
 ## Suggested order
 

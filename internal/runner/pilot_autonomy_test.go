@@ -8,7 +8,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
-// Bloop #331 on an autopilot milestone: the pilot manages, yet the
+// Orbit #331 on an autopilot milestone: the pilot manages, yet the
 // assessment is a prompt like any other, with the trigger and the evidence
 // for the operator's audit; the runner posts nothing and pings nobody. The
 // operator runs the recommended option or puts the prompt to the owners.

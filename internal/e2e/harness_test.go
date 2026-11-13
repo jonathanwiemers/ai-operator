@@ -38,10 +38,10 @@ const (
 	// The home project is the operator's own (--self-project), the
 	// companion the infra repository Flux applies, and secrets a project
 	// of the same group that the bot's token reaches but nothing may write.
-	homeProject    = "jo.wiemers/ai-operator"
-	infraProject   = "jo.wiemers/infra/cluster"
+	homeProject    = "example/ai-operator"
+	infraProject   = "example/infra"
 	secretsProject = "jo.wiemers/personal/kubernetes"
-	allowedPaths   = "clusters/netcup01/applications/ai-operator/"
+	allowedPaths   = "clusters/my-cluster/applications/ai-operator/"
 	valuesFile     = allowedPaths + "values.yaml"
 	homeFile       = "internal/feature/companion.go"
 	milestoneTitle = "Cross-repo e2e"
@@ -50,7 +50,7 @@ const (
 )
 
 // owner is the milestone's owner, mentioned on the companion.
-var owner = gitlab.User{ID: 7, Username: "jo.wiemers"}
+var owner = gitlab.User{ID: 7, Username: "example"}
 
 // clock is the fake time of the operator and the runners. Nothing sleeps:
 // the test advances it.
@@ -223,7 +223,7 @@ func newEnv(t *testing.T, sc scenario) *env {
 	e.homeOrigin = e.bareRepo("home", map[string]string{"README.md": "ai-operator\n", "go.mod": "module example.com/op\n"})
 	e.infraOrig = e.bareRepo("infra", map[string]string{
 		valuesFile: "replicas: 1\n",
-		"clusters/netcup01/applications/bloop/values.yaml": "replicas: 1\n",
+		"clusters/my-cluster/applications/orbit/values.yaml": "replicas: 1\n",
 		".gitlab-ci.yml": "stages: [build]\n",
 	})
 	e.infraMain = e.heads(e.infraOrig)["main"]
@@ -247,7 +247,7 @@ func newEnv(t *testing.T, sc scenario) *env {
 	e.home = home
 	e.infra = e.gl.Add(infraProject)
 	e.infra.Project.HTTPURLToRepo = e.infraOrig
-	e.infra.Files = []string{valuesFile, "clusters/netcup01/applications/bloop/values.yaml", ".gitlab-ci.yml"}
+	e.infra.Files = []string{valuesFile, "clusters/my-cluster/applications/orbit/values.yaml", ".gitlab-ci.yml"}
 	e.secrets = e.gl.Add(secretsProject)
 	e.api = &writes{API: e.gl}
 

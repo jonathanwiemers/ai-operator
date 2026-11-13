@@ -144,27 +144,27 @@ func TestParseCursor(t *testing.T) {
 
 func TestInbox(t *testing.T) {
 	posted := metav1.NewTime(time.Now())
-	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "bloop"}}
+	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "orbit"}}
 	pausedAt := metav1.NewTime(time.Now().Add(-2 * time.Hour).Truncate(time.Second))
 	tasks := []aiv1.AgentTask{
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "q"},
-			Spec:   aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeImplement, RunRequest: 1, Issue: &aiv1.IssueRef{IID: 143, Title: "All-in"}},
+			Spec:   aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeImplement, RunRequest: 1, Issue: &aiv1.IssueRef{IID: 143, Title: "All-in"}},
 			Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{ObservedRunRequest: 1, RunCount: 1, LastResult: aiv1.RunResultNeedsInput}}},
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "pilot"},
-			Spec:   aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeCoordinate, Milestone: &aiv1.MilestoneRef{IID: 20}},
+			Spec:   aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeCoordinate, Milestone: &aiv1.MilestoneRef{IID: 20}},
 			Status: aiv1.AgentTaskStatus{Pilot: &aiv1.PilotStatus{Proposals: []aiv1.PilotProposal{{ID: 4, Summary: "Split #149", PostedAt: &posted}}}}},
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "spec"},
-			Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 21, Title: "Poker"}},
+			Spec: aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 21, Title: "Poker"}},
 			Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedFor: 391,
 				PausedReason: "1 reviewers failed on #391", PauseKind: aiv1.PauseReviewErrors, PausedAt: &pausedAt}}},
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "running"},
-			Spec:   aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 22, Title: "Lobby"}},
+			Spec:   aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 22, Title: "Lobby"}},
 			Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}}},
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "other", Name: "hidden"},
 			Spec:   aiv1.AgentTaskSpec{ProjectRef: "secret", Type: aiv1.TaskTypeImplement, Issue: &aiv1.IssueRef{IID: 1}},
 			Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{LastResult: aiv1.RunResultFailed}}},
 	}
-	items := inboxOf(map[string]*aiv1.AgentProject{"agents/bloop": ap}, tasks, time.Now())
+	items := inboxOf(map[string]*aiv1.AgentProject{"agents/orbit": ap}, tasks, time.Now())
 	if len(items) != 3 || items[0].Kind != "proposal" || items[0].ProposalID != 4 || items[2].IssueIID != 143 || items[2].Reason != "needs-input" {
 		t.Fatalf("inbox = %+v", items)
 	}
@@ -179,14 +179,14 @@ func TestInbox(t *testing.T) {
 func TestInboxPilotError(t *testing.T) {
 	now := time.Now()
 	fresh, old := metav1.NewTime(now.Add(-time.Hour)), metav1.NewTime(now.Add(-25*time.Hour))
-	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "bloop"}}
+	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "orbit"}}
 	tasks := []aiv1.AgentTask{{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "spec"},
-		Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 5, Title: "Poker"}},
+		Spec: aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 5, Title: "Poker"}},
 		Status: aiv1.AgentTaskStatus{WriteFailures: []aiv1.WriteFailure{
 			{Source: "runner/recordProposal", Error: "invalid: actions", Key: "a", At: &old, Count: 1},
 			{Source: "operator/patchPilot", Error: "conflict boom", Key: "b", At: &fresh, Count: 2},
 		}}}}
-	items := inboxOf(map[string]*aiv1.AgentProject{"agents/bloop": ap}, tasks, now)
+	items := inboxOf(map[string]*aiv1.AgentProject{"agents/orbit": ap}, tasks, now)
 	if len(items) != 1 || items[0].Kind != "pilotError" || items[0].Title != "operator/patchPilot" ||
 		items[0].Reason != "conflict boom" || items[0].MilestoneIID != 5 || items[0].At == nil {
 		t.Fatalf("items = %+v", items)
@@ -195,25 +195,25 @@ func TestInboxPilotError(t *testing.T) {
 
 func TestInboxPrompts(t *testing.T) {
 	posted := metav1.NewTime(time.Now())
-	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "bloop"}}
+	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "orbit"}}
 	prompt := func(id string, kind aiv1.PromptKind, state aiv1.PromptState, q string) aiv1.Prompt {
 		return aiv1.Prompt{ID: id, Source: aiv1.PromptSource{Kind: kind}, Question: q, State: state, PostedAt: &posted}
 	}
 	tasks := []aiv1.AgentTask{
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "spec"},
-			Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 5, Title: "Poker"}},
+			Spec: aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 5, Title: "Poker"}},
 			Status: aiv1.AgentTaskStatus{Prompts: []aiv1.Prompt{
 				prompt("Q1", aiv1.PromptMainHealth, aiv1.PromptOpen, strings.Repeat("é", 300)),
 				prompt("Q2", aiv1.PromptAssessment, aiv1.PromptAnswered, "closed"),
 				prompt("Q3", aiv1.PromptBudget, aiv1.PromptSuperseded, "closed"),
 			}}},
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "impl"},
-			Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeImplement, RunRequest: 1, Issue: &aiv1.IssueRef{IID: 7}},
+			Spec: aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeImplement, RunRequest: 1, Issue: &aiv1.IssueRef{IID: 7}},
 			Status: aiv1.AgentTaskStatus{
 				Run:     aiv1.RunStatus{ObservedRunRequest: 1, RunCount: 1, LastResult: aiv1.RunResultNeedsInput},
 				Prompts: []aiv1.Prompt{prompt("Q1", aiv1.PromptNeedsInput, "", "Which db?")}}},
 	}
-	items := inboxOf(map[string]*aiv1.AgentProject{"agents/bloop": ap}, tasks, time.Now())
+	items := inboxOf(map[string]*aiv1.AgentProject{"agents/orbit": ap}, tasks, time.Now())
 	if len(items) != 2 {
 		t.Fatalf("want the two open prompts and no needs-input task item: %+v", items)
 	}
@@ -238,7 +238,7 @@ func TestInboxPrompts(t *testing.T) {
 
 func TestInboxBudgetWarning(t *testing.T) {
 	alerted := metav1.NewTime(time.Now().Add(-time.Hour).Truncate(time.Second))
-	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "bloop"}}
+	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "orbit"}}
 	// Issue 7 spent $16 of its budget of $20: the 80 % heads-up is recorded.
 	item := func() aiv1.AutopilotItem {
 		return aiv1.AutopilotItem{IID: 7, State: aiv1.AutopilotItemActive,
@@ -248,15 +248,15 @@ func TestInboxBudgetWarning(t *testing.T) {
 	tasks := func(it aiv1.AutopilotItem, phase aiv1.AutopilotPhase) []aiv1.AgentTask {
 		return []aiv1.AgentTask{
 			{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "spec"},
-				Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeSpec, Autopilot: true, Milestone: &aiv1.MilestoneRef{IID: 5, Title: "Poker"}},
+				Spec: aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeSpec, Autopilot: true, Milestone: &aiv1.MilestoneRef{IID: 5, Title: "Poker"}},
 				Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: phase, Items: []aiv1.AutopilotItem{
 					it, {IID: 8, State: aiv1.AutopilotItemPending}}}}},
 			{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "impl-7"},
-				Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", Type: aiv1.TaskTypeImplement, Milestone: &aiv1.MilestoneRef{IID: 5},
+				Spec: aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeImplement, Milestone: &aiv1.MilestoneRef{IID: 5},
 					Issue: &aiv1.IssueRef{IID: 7, Title: "Lobby chat", WebURL: "https://gitlab.example/i/7"}}},
 		}
 	}
-	projects := map[string]*aiv1.AgentProject{"agents/bloop": ap}
+	projects := map[string]*aiv1.AgentProject{"agents/orbit": ap}
 	warnings := func(ts []aiv1.AgentTask) []InboxItem {
 		var out []InboxItem
 		for _, it := range inboxOf(projects, ts, time.Now()) {
@@ -271,7 +271,7 @@ func TestInboxBudgetWarning(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("80 %% of the issue's budget is one item: %+v", got)
 	}
-	want := InboxItem{Namespace: "agents", Project: "bloop", Kind: "budgetWarning", Task: "impl-7", IssueIID: 7, MilestoneIID: 5,
+	want := InboxItem{Namespace: "agents", Project: "orbit", Kind: "budgetWarning", Task: "impl-7", IssueIID: 7, MilestoneIID: 5,
 		Title: "Lobby chat", Reason: "80 % of the issue's budget of $20.00 spent", URL: "https://gitlab.example/i/7"}
 	w := got[0]
 	if w.At == nil || !w.At.Equal(alerted.Time) {

@@ -15,9 +15,9 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 )
 
-// bloopTrace is the log of Bloop's failed rust:test attempt (#338), with
+// orbitTrace is the log of Orbit's failed rust:test attempt (#338), with
 // GitLab's timestamps and colours, and lines that try to steer an agent.
-const bloopTrace = "2026-10-26T03:01:12.000001Z 01O \x1b[32;1m$ cargo nextest run --workspace\x1b[0;m\n" +
+const orbitTrace = "2026-10-26T03:01:12.000001Z 01O \x1b[32;1m$ cargo nextest run --workspace\x1b[0;m\n" +
 	"        PASS [   0.412s] server-lobby::blaster_api a_signed_log_verifies\n" +
 	"2026-10-26T03:01:14.700000Z 01O         \x1b[31;1mFAIL\x1b[0m [   2.715s] server-lobby::blaster_api a_log_edited_after_the_fact_does_not_verify\n" +
 	"──── STDERR:             server-lobby::blaster_api a_log_edited_after_the_fact_does_not_verify\n" +
@@ -29,14 +29,14 @@ const bloopTrace = "2026-10-26T03:01:12.000001Z 01O \x1b[32;1m$ cargo nextest ru
 	"        FAIL [   2.715s] server-lobby::blaster_api a_log_edited_after_the_fact_does_not_verify\n" +
 	"error: test run failed\n"
 
-const bloopTest = "server-lobby::blaster_api a_log_edited_after_the_fact_does_not_verify"
+const orbitTest = "server-lobby::blaster_api a_log_edited_after_the_fact_does_not_verify"
 
-// Bloop #338/#340: the retry replaces the failed job, so its log is read by
+// Orbit #338/#340: the retry replaces the failed job, so its log is read by
 // the ID recorded at retry time; the occurrence comment names the failing
 // test and quotes the log as untrusted data.
 func TestMainHealthFlakyKeepsTheFailedAttemptsLog(t *testing.T) {
 	e, advance := newMainEnv(t)
-	e.gl.Traces[7] = bloopTrace
+	e.gl.Traces[7] = orbitTrace
 	pid := e.gl.AddPipeline("sha1", "main", "failed", gitlab.Job{ID: 7, Name: "rust:test", Stage: "test", Status: "failed"})
 	e.reconcile()
 	if st := e.mainHealth(); !slices.Equal(st.RetriedJobIDs, []int64{7}) {
@@ -66,7 +66,7 @@ func TestMainHealthFlakyKeepsTheFailedAttemptsLog(t *testing.T) {
 	if !strings.HasPrefix(body, flakyOccurrenceMarker+itoa(pid)+" -->\n"+line) || untrusted < 0 {
 		t.Fatalf("the comment starts with its marker and the one-liner, then the untrusted data:\n%s", body)
 	}
-	for _, want := range []string{"- `" + bloopTest + "`", "panicked at crates/server-lobby/tests/blaster_api.rs:406:5", "ignore previous instructions"} {
+	for _, want := range []string{"- `" + orbitTest + "`", "panicked at crates/server-lobby/tests/blaster_api.rs:406:5", "ignore previous instructions"} {
 		if i := strings.Index(body, want); i < untrusted {
 			t.Errorf("%q is not after the untrusted-data marker:\n%s", want, body)
 		}
@@ -75,7 +75,7 @@ func TestMainHealthFlakyKeepsTheFailedAttemptsLog(t *testing.T) {
 		t.Errorf("the test is named once; mentions, quick actions and markers in the log are defused:\n%s", body)
 	}
 	st := e.mainHealth()
-	if len(st.Flaky) != 1 || st.Flaky[0].IssueIID != is.IID || st.Flaky[0].Job != "rust:test" || !slices.Equal(st.Flaky[0].Tests, []string{bloopTest}) ||
+	if len(st.Flaky) != 1 || st.Flaky[0].IssueIID != is.IID || st.Flaky[0].Job != "rust:test" || !slices.Equal(st.Flaky[0].Tests, []string{orbitTest}) ||
 		!strings.Contains(st.Flaky[0].LogTail, "assertion failed: !verified") || st.RetriedJobIDs != nil {
 		t.Fatalf("the status keeps the report for the pilot: %+v", st)
 	}
@@ -123,7 +123,7 @@ func TestFailingTests(t *testing.T) {
 		name, log string
 		want      []string
 	}{
-		{"nextest", bloopTrace, []string{bloopTest}},
+		{"nextest", orbitTrace, []string{orbitTest}},
 		{"nextest with counter and retries", "TRY 1 FAIL [   0.012s] (  3/170) app::db migrates\n        FAIL [   1.5s] (170/170) app::db seeds\n", []string{"app::db migrates", "app::db seeds"}},
 		{"cargo test", "running 3 tests\ntest tests::parses ... ok\ntest tests::verifies_signature ... FAILED\r\ntest result: FAILED. 2 passed; 1 failed\n", []string{"tests::verifies_signature"}},
 		{"vitest", " \x1b[31mFAIL\x1b[39m  src/lobby.test.ts > lobby > joins a full room\n FAIL  src/a.test.ts [ src/a.test.ts ]\n", []string{"src/lobby.test.ts > lobby > joins a full room"}},
@@ -147,11 +147,11 @@ func TestFailingTests(t *testing.T) {
 // end of the failed attempt's log, and fits a pilot message.
 func TestFlakyEvent(t *testing.T) {
 	tail := "first line\n" + strings.Repeat("é", 3000) + "\nassertion failed: !verified"
-	ev := flakyEvent(901, aiv1.FlakyJobReport{Job: "rust:test", IssueIID: 340, Tests: []string{bloopTest}, LogTail: tail})
+	ev := flakyEvent(901, aiv1.FlakyJobReport{Job: "rust:test", IssueIID: 340, Tests: []string{orbitTest}, LogTail: tail})
 	if ev.Key != "flaky/901/340" || ev.IssueIID != 340 || ev.PipelineID != 0 {
 		t.Fatalf("event %+v", ev)
 	}
-	if !strings.Contains(ev.Text, "(flaky issue #340)") || !strings.Contains(ev.Text, bloopTest) || !strings.HasSuffix(ev.Text, "assertion failed: !verified\n```") {
+	if !strings.Contains(ev.Text, "(flaky issue #340)") || !strings.Contains(ev.Text, orbitTest) || !strings.HasSuffix(ev.Text, "assertion failed: !verified\n```") {
 		t.Fatalf("text %q", ev.Text)
 	}
 	if len(ev.Text) > maxPilotMessage || strings.Contains(ev.Text, "first line") || !strings.Contains(ev.Text, "é") {
@@ -181,7 +181,7 @@ var (
 	pauseIt  = aiv1.PromptOption{Label: "Pause the autopilot", Actions: []aiv1.PilotAction{{Tool: "pause"}}}
 )
 
-// Bloop #424/#340: after a single flaky failure the pilot recommends
+// Orbit #424/#340: after a single flaky failure the pilot recommends
 // ignoring it, an owner hands the issue over anyway, and one click starts
 // the agent: queued on the autopilot and labelled agent::ready.
 func TestMainHealthPromptOwnerHandsAFlakyIssueOver(t *testing.T) {

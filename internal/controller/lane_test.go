@@ -81,7 +81,7 @@ func TestAutopilotMergesTheMainRedFixDuringTheFreeze(t *testing.T) {
 	}
 }
 
-// Bloop #425: autoFix is off, an owner hands the main-red issue to the
+// Orbit #425: autoFix is off, an owner hands the main-red issue to the
 // agent. The frozen milestone merges its fix as with autoFix.
 func TestAutopilotMergesAnOwnersMainRedHandoff(t *testing.T) {
 	e := laneEnv(t, false)

@@ -687,7 +687,7 @@ follow-up issue), and requirements without an issue and why.
   rule of the conventions check is enforced. `docs/ui.md` and
   `docs/design.md` no longer name `MarkdownBody`, `MarkdownBlock`,
   `ChatComposer`, `StreamComposer`, `PromptCardCompact`, `/everything`,
-  `get<T>` or the old breakpoints (older specs and `docs/process` keep the
+  `get<T>` or the old breakpoints (older specs keep the
   names as history). Nothing narrowed.
 
 ### Requirements and their issues

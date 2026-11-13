@@ -4,7 +4,7 @@
 
 A release decision used to start a pipeline on `main` with
 `AGENT_RELEASE=true`. The project's CI had to know that contract: compute the
-version, tag, and create the GitLab release (ai-operator `release`, Bloop
+version, tag, and create the GitLab release (ai-operator `release`, Orbit
 `release:create`). A project without such a job never released, and
 `tagsDefaultBranch` kept every project without a recent tag on its default
 branch at `NotApplicable` (it blocked all ai-operator releases until the
@@ -81,7 +81,7 @@ fast-forward fix in this MR).
   `AGENT_RELEASE` pipelines, which the new CI no longer honors. After the
   merge a human creates the first release (UI or `glab release create`); its
   tag pipeline builds the operator that creates tags itself.
-- **Bloop** keeps its `release:create` job until its follow-up; it is no
+- **Orbit** keeps its `release:create` job until its follow-up; it is no
   longer triggered (no `AGENT_RELEASE` pipeline), and its tag pipelines
   already build.
 - A tag created by the operator whose pipeline fails twice stays as a tag.
@@ -104,6 +104,6 @@ fast-forward fix in this MR).
 
 Single MR !346 (`fix/release-tags-fast-forward`), together with the
 fast-forward tag fix it started with. It exceeds the 50-line budget; the
-owner chose one MR to unblock releases now. Follow-ups: SemVer support, Bloop
+owner chose one MR to unblock releases now. Follow-ups: SemVer support, Orbit
 drops `release:create`, retire `hack/next-version.sh` once GitHub no longer
 needs it.

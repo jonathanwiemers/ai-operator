@@ -488,9 +488,9 @@ func TestProjectCrossRepoSchema(t *testing.T) {
 		return obj
 	}
 	obj, errs := crd.admit(withCrossRepo(map[string]any{"targets": []any{
-		map[string]any{"project": "jo.wiemers/infra/cluster", "paths": []any{"clusters/netcup01/applications/ai-operator/"}},
-		map[string]any{"project": "jo.wiemers/bloop", "paths": []any{"apps/"}, "autoMerge": true,
-			"tokenSecretRef": map[string]any{"name": "bloop-token", "key": "token"}},
+		map[string]any{"project": "example/infra", "paths": []any{"clusters/my-cluster/applications/ai-operator/"}},
+		map[string]any{"project": "example/orbit", "paths": []any{"apps/"}, "autoMerge": true,
+			"tokenSecretRef": map[string]any{"name": "orbit-token", "key": "token"}},
 	}}))
 	if len(errs) > 0 {
 		t.Fatalf("crossRepo rejected: %v", errs)

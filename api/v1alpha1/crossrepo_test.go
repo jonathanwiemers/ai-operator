@@ -6,13 +6,13 @@ import (
 )
 
 func crossRepoSpec(targets ...CrossRepoTarget) AgentProjectSpec {
-	return AgentProjectSpec{GitLab: GitLabSpec{Project: "jo.wiemers/ai-operator"}, CrossRepo: &CrossRepoSpec{Targets: targets}}
+	return AgentProjectSpec{GitLab: GitLabSpec{Project: "example/ai-operator"}, CrossRepo: &CrossRepoSpec{Targets: targets}}
 }
 
 func TestValidateCrossRepo(t *testing.T) {
-	const infra = "jo.wiemers/infra/cluster"
-	allowed := []string{infra, "jo.wiemers/ai-operator", "jo.wiemers/personal/kubernetes", "jo.wiemers/bloop"}
-	good := []string{"clusters/netcup01/applications/ai-operator/"}
+	const infra = "example/infra"
+	allowed := []string{infra, "example/ai-operator", "jo.wiemers/personal/kubernetes", "example/orbit"}
+	good := []string{"clusters/my-cluster/applications/ai-operator/"}
 	for _, tc := range []struct {
 		name    string
 		targets []CrossRepoTarget
@@ -21,13 +21,13 @@ func TestValidateCrossRepo(t *testing.T) {
 		want    []string // a part of each problem, in order
 	}{
 		{name: "valid", targets: []CrossRepoTarget{{Project: infra, Paths: good}}, allowed: allowed, valid: []string{infra}},
-		{name: "case and slashes", targets: []CrossRepoTarget{{Project: "/Jo.Wiemers/Infra/Cluster/", Paths: good}}, allowed: []string{" JO.WIEMERS/infra/cluster/ "}, valid: []string{"/Jo.Wiemers/Infra/Cluster/"}},
-		{name: "not in the allow-list", targets: []CrossRepoTarget{{Project: "jo.wiemers/other", Paths: good}}, allowed: allowed,
-			want: []string{"jo.wiemers/other: not in the cluster's allow-list"}},
-		{name: "empty allow-list", targets: []CrossRepoTarget{{Project: infra, Paths: good}, {Project: "jo.wiemers/bloop", Paths: good}},
-			want: []string{infra + ": cross-repo changes are off", "jo.wiemers/bloop: cross-repo changes are off"}},
-		{name: "home project", targets: []CrossRepoTarget{{Project: "JO.WIEMERS/ai-operator", Paths: good}}, allowed: allowed,
-			want: []string{"JO.WIEMERS/ai-operator: is the home project"}},
+		{name: "case and slashes", targets: []CrossRepoTarget{{Project: "/Example/Infra/", Paths: good}}, allowed: []string{" EXAMPLE/infra/ "}, valid: []string{"/Example/Infra/"}},
+		{name: "not in the allow-list", targets: []CrossRepoTarget{{Project: "example/other", Paths: good}}, allowed: allowed,
+			want: []string{"example/other: not in the cluster's allow-list"}},
+		{name: "empty allow-list", targets: []CrossRepoTarget{{Project: infra, Paths: good}, {Project: "example/orbit", Paths: good}},
+			want: []string{infra + ": cross-repo changes are off", "example/orbit: cross-repo changes are off"}},
+		{name: "home project", targets: []CrossRepoTarget{{Project: "EXAMPLE/ai-operator", Paths: good}}, allowed: allowed,
+			want: []string{"EXAMPLE/ai-operator: is the home project"}},
 		{name: "never target", targets: []CrossRepoTarget{{Project: "jo.wiemers/personal/kubernetes", Paths: good}}, allowed: allowed,
 			want: []string{"jo.wiemers/personal/kubernetes: is never a valid target"}},
 		{name: "duplicate", targets: []CrossRepoTarget{{Project: infra, Paths: good}, {Project: infra + "/", Paths: []string{"other/"}}}, allowed: allowed,
@@ -51,8 +51,8 @@ func TestValidateCrossRepo(t *testing.T) {
 			want: []string{infra + `: paths[0]: pattern "/": empty pattern`}},
 		{name: "several reasons", targets: []CrossRepoTarget{{Project: "jo.wiemers/personal/kubernetes"}}, allowed: []string{infra},
 			want: []string{"not in the cluster's allow-list", "is never a valid target", "paths is empty"}},
-		{name: "mixed", targets: []CrossRepoTarget{{Project: "jo.wiemers/other", Paths: good}, {Project: infra, Paths: good}, {Project: "jo.wiemers/bloop", Paths: []string{"clusters/netcup01/applications/bloop/", "README.md"}}}, allowed: allowed,
-			valid: []string{infra, "jo.wiemers/bloop"}, want: []string{"jo.wiemers/other: not in"}},
+		{name: "mixed", targets: []CrossRepoTarget{{Project: "example/other", Paths: good}, {Project: infra, Paths: good}, {Project: "example/orbit", Paths: []string{"clusters/my-cluster/applications/orbit/", "README.md"}}}, allowed: allowed,
+			valid: []string{infra, "example/orbit"}, want: []string{"example/other: not in"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			valid, problems := ValidateCrossRepo(crossRepoSpec(tc.targets...), tc.allowed)
@@ -83,8 +83,8 @@ func TestValidateCrossRepoUnset(t *testing.T) {
 }
 
 func TestValidateCrossRepoKeepsTargets(t *testing.T) {
-	target := CrossRepoTarget{Project: "jo.wiemers/infra/cluster", Paths: []string{"clusters/"}, AutoMerge: true}
-	valid, _ := ValidateCrossRepo(crossRepoSpec(target), []string{"jo.wiemers/infra/cluster"})
+	target := CrossRepoTarget{Project: "example/infra", Paths: []string{"clusters/"}, AutoMerge: true}
+	valid, _ := ValidateCrossRepo(crossRepoSpec(target), []string{"example/infra"})
 	if len(valid) != 1 || !valid[0].AutoMerge || valid[0].Paths[0] != "clusters/" {
 		t.Errorf("valid = %+v, want the target as it is", valid)
 	}

@@ -4,13 +4,13 @@
 
 Research runs on claude may use only `WebSearch` and `WebFetch`
 (`internal/runner/research.go`). For news this falls short. The first German
-politics flash on netcup01 (one-off `agents/q-20261030-trqgyu`, 2026-10-30)
+politics flash on my-cluster (one-off `agents/q-20261030-trqgyu`, 2026-10-30)
 reported that tagesschau.de, Deutschlandfunk and the big newspapers were "not
 reachable for the fetch tool", and it fell back on Wikipedia and stale search
 hits: "a full 24-hour overview is not possible".
 
 The publishers do offer their news to programs: from a pod in the `agents`
-namespace on netcup01, with an honest user agent, these feeds all answer 200:
+namespace on my-cluster, with an honest user agent, these feeds all answer 200:
 
 | Feed | Format |
 |---|---|
@@ -147,7 +147,7 @@ header lists the feed names (one line, small) in slice 4.
 - `internal/ui` + `web/src/views/Research.vue`: the sources line (slice 4).
 - Docs: `docs/research.md` (field, fetching, limits, SSRF guard),
   `config/samples/agentresearch.yaml`, chart README if it lists fields.
-- infra/cluster (separate MR): `sources` on `news-tech` and
+- example/infra (separate MR): `sources` on `news-tech` and
   `news-german-politics`, and their prompts no longer say "the topics below".
 
 ## Risks / trade-offs
@@ -170,7 +170,7 @@ header lists the feed names (one line, small) in slice 4.
   `http://` refused; selection by time window, previous-URL dedupe and caps;
   the prompt section with failed feeds; warnings recorded.
 - `make generate manifests`, `go test ./...`, `make helm-lint`.
-- On netcup01 after release: a one-off `kubectl` research with the politics
+- On my-cluster after release: a one-off `kubectl` research with the politics
   sources returns items from tagesschau/DLF/Bundestag with today's links, and
   the run has no feed warnings; the next scheduled flashes do the same.
 
@@ -182,7 +182,7 @@ header lists the feed names (one line, small) in slice 4.
 | 2 | `feeds-parse` | `internal/research/feeds`: RSS/Atom parsing to `Entry` | – |
 | 3 | `feeds-fetch` | client with the address guard, limits, parallel fetch | 2 |
 | 4 | `runner-sources` | selection, prompt section, warnings, system prompt line; UI sources line; docs | 1, 3 |
-| 5 | infra/cluster | `sources` on both news researches, prompt wording | release of 4 |
+| 5 | example/infra | `sources` on both news researches, prompt wording | release of 4 |
 
 1 and 2 can go in parallel. Each is released on merge like any change to
 `api/`, `internal/` or `charts/`.

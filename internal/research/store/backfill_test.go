@@ -16,7 +16,7 @@ import (
 func backfilled(iid int64) store.MilestoneSnapshot {
 	done := time.Date(2025, 3, 1, 12, 0, 0, 0, time.UTC)
 	return store.MilestoneSnapshot{
-		Project: bloop, IID: iid, MilestoneID: 6000 + iid, Title: "Old", State: "closed", DoneAt: done,
+		Project: orbit, IID: iid, MilestoneID: 6000 + iid, Title: "Old", State: "closed", DoneAt: done,
 		RetroNoteID: 77, RetroText: "## Retrospective", RetroPostedAt: done,
 		Issues: []store.IssueSnapshot{
 			{IID: 11, Title: "One", State: "merged", MergeRequestIID: 50, MergeRequestURL: "https://gitlab.example/mr/50"},
@@ -28,7 +28,7 @@ func backfilled(iid int64) store.MilestoneSnapshot {
 
 func pending(t *testing.T, s *store.Store, candidates []int64, want ...int64) {
 	t.Helper()
-	got, err := s.BackfillPending(t.Context(), bloop, candidates)
+	got, err := s.BackfillPending(t.Context(), orbit, candidates)
 	if err != nil || !slices.Equal(got, want) {
 		t.Fatalf("BackfillPending(%v) = %v, %v; want %v", candidates, got, err, want)
 	}
@@ -44,7 +44,7 @@ func saveBackfilled(t *testing.T, s *store.Store, m store.MilestoneSnapshot, exp
 
 func failBackfill(t *testing.T, s *store.Store, iid int64, cause error, want int) {
 	t.Helper()
-	n, err := s.BackfillFailed(t.Context(), bloop, iid, cause)
+	n, err := s.BackfillFailed(t.Context(), orbit, iid, cause)
 	if err != nil || n != want {
 		t.Fatalf("BackfillFailed(%d) = %d, %v; want %d", iid, n, err, want)
 	}
@@ -61,7 +61,7 @@ func backfillOf(t *testing.T, s *store.Store, iid int64) backfillRow {
 	t.Helper()
 	var r backfillRow
 	if err := s.Pool().QueryRow(t.Context(), `SELECT status, attempts, error, at FROM desk_backfill
-		WHERE namespace = 'agents' AND project = 'bloop' AND milestone_iid = $1`, iid).Scan(&r.status, &r.attempts, &r.err, &r.at); err != nil {
+		WHERE namespace = 'agents' AND project = 'orbit' AND milestone_iid = $1`, iid).Scan(&r.status, &r.attempts, &r.err, &r.at); err != nil {
 		t.Fatalf("backfill row of %d: %v", iid, err)
 	}
 	return r
@@ -84,7 +84,7 @@ func TestBackfillPending(t *testing.T) {
 		failBackfill(t, s, 8, errors.New("boom"), want+1)
 	}
 	failBackfill(t, s, 9, errors.New("boom"), 1)
-	// Another project's rows count for none of bloop's.
+	// Another project's rows count for none of orbit's.
 	other := backfilled(10)
 	other.Project = store.ProjectKey{Namespace: "agents", Name: "other"}
 	saveBackfilled(t, s, other, exp, true)
@@ -103,13 +103,13 @@ func TestSaveBackfilled(t *testing.T) {
 	var done *time.Time
 	var expires time.Time
 	if err := s.Pool().QueryRow(ctx, `SELECT title, state, done_at, retro_text, expires_at FROM desk_milestones
-		WHERE namespace = 'agents' AND project = 'bloop' AND iid = 4`).Scan(&title, &state, &done, &retro, &expires); err != nil {
+		WHERE namespace = 'agents' AND project = 'orbit' AND iid = 4`).Scan(&title, &state, &done, &retro, &expires); err != nil {
 		t.Fatal(err)
 	}
 	if title != "Old" || state != "closed" || done == nil || !done.Equal(m.DoneAt) || retro != m.RetroText || !expires.Equal(exp) {
 		t.Errorf("milestone = %q %q %v %q %v", title, state, done, retro, expires)
 	}
-	got, err := s.Milestone(ctx, bloop, 4, time.Now())
+	got, err := s.Milestone(ctx, orbit, 4, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,18 +212,18 @@ func TestBackfillRestart(t *testing.T) {
 func TestProjectListed(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
-	at, complete, err := s.ProjectListed(ctx, bloop)
+	at, complete, err := s.ProjectListed(ctx, orbit)
 	if err != nil || !at.IsZero() || complete {
 		t.Fatalf("ProjectListed before = %v, %v, %v; want never", at, complete, err)
 	}
 	listed := time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC)
-	if err := s.SetProjectListed(ctx, bloop, listed, false); err != nil {
+	if err := s.SetProjectListed(ctx, orbit, listed, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetProjectListed(ctx, bloop, listed.Add(time.Minute), true); err != nil {
+	if err := s.SetProjectListed(ctx, orbit, listed.Add(time.Minute), true); err != nil {
 		t.Fatal(err)
 	}
-	if at, complete, err = s.ProjectListed(ctx, bloop); err != nil || !at.Equal(listed.Add(time.Minute)) || !complete {
+	if at, complete, err = s.ProjectListed(ctx, orbit); err != nil || !at.Equal(listed.Add(time.Minute)) || !complete {
 		t.Errorf("ProjectListed = %v, %v, %v; want %v, complete", at, complete, err, listed.Add(time.Minute))
 	}
 	if at, _, err = s.ProjectListed(ctx, store.ProjectKey{Namespace: "agents", Name: "other"}); err != nil || !at.IsZero() {
@@ -263,17 +263,17 @@ func TestMergedIssues(t *testing.T) {
 			Kind: "merged", Data: map[string]any{"mergeRequestURL": "https://gitlab.example/mr/" + key}, ExpiresAt: expires}
 	}
 	if _, err := s.InsertEvents(ctx, []store.Event{
-		merged("m1", "bloop", 11, 50, now.Add(-2*time.Hour), exp),
-		merged("m2", "bloop", 11, 51, now.Add(-time.Hour), exp), // merged again: the newest counts
-		merged("m3", "bloop", 12, 52, now.Add(-time.Hour), now.Add(-time.Minute)),
+		merged("m1", "orbit", 11, 50, now.Add(-2*time.Hour), exp),
+		merged("m2", "orbit", 11, 51, now.Add(-time.Hour), exp), // merged again: the newest counts
+		merged("m3", "orbit", 12, 52, now.Add(-time.Hour), now.Add(-time.Minute)),
 		merged("m4", "other", 13, 53, now.Add(-time.Hour), exp),
 		// A merge without a merge request (NULL mr_iid) or its URL.
-		{Key: "m5", At: now.Add(-time.Hour), Namespace: "agents", Project: "bloop", IssueIID: 14, Kind: "merged", ExpiresAt: exp},
-		{Key: "r1", At: now, Namespace: "agents", Project: "bloop", IssueIID: 13, MergeRequestIID: 54, Kind: "run.started", ExpiresAt: exp},
+		{Key: "m5", At: now.Add(-time.Hour), Namespace: "agents", Project: "orbit", IssueIID: 14, Kind: "merged", ExpiresAt: exp},
+		{Key: "r1", At: now, Namespace: "agents", Project: "orbit", IssueIID: 13, MergeRequestIID: 54, Kind: "run.started", ExpiresAt: exp},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.MergedIssues(ctx, bloop, []int64{11, 12, 13, 14}, now)
+	got, err := s.MergedIssues(ctx, orbit, []int64{11, 12, 13, 14}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestMergedIssues(t *testing.T) {
 	if !maps.Equal(got, want) {
 		t.Errorf("MergedIssues = %+v, want %+v", got, want)
 	}
-	if got, err := s.MergedIssues(ctx, bloop, nil, now); err != nil || len(got) != 0 {
+	if got, err := s.MergedIssues(ctx, orbit, nil, now); err != nil || len(got) != 0 {
 		t.Errorf("MergedIssues(nil) = %v, %v; want none", got, err)
 	}
 }

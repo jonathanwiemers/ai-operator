@@ -11,7 +11,7 @@ bundle's schema). The R5 fixtures say so again in a first
 | `claude-result-usage.json` | origin not recorded (R1, 2026-11-04) | claude | a result line with `usage` and two models in `modelUsage` |
 | `claude-stream-subagent.jsonl` | reconstructed from the bundle's stream-json schema (no billed run) | claude 2.1.314 | an Explore subagent on haiku under an opus main thread |
 | `claude-stream-read-gate.jsonl` | reconstructed from the bundle | claude 2.1.318 | a Read denied by the read gate |
-| `cursor-acp-session.jsonl` | recorded, sanitised (`docs/process/desk-live-agent-chat/03-implement.md`) | cursor-agent | an ACP session; `session_acp_test.go`'s fake agent is shaped on it |
+| `cursor-acp-session.jsonl` | recorded, sanitised | cursor-agent | an ACP session; `session_acp_test.go`'s fake agent is shaped on it |
 | `cursor-acp-usage-update.jsonl` | **reconstructed** from the ACP v1 schema, 2026-11-10 | cursor-agent 2026.11.05-86047df (sends neither) | three ACP turns: `usage_update` with `used` and a cumulative USD `cost`, a `PromptResponse.usage`, a turn without a cost and one in EUR; the fake agent's `fixture` mode replays it |
 | `claude-stream-subagent-main-model.jsonl` | **reconstructed**, 2026-11-06 | claude 2.1.318 | a general-purpose subagent on the main model: `usage` is the main thread, `modelUsage` both |
 | `claude-chat-two-turns.jsonl` | **reconstructed**, 2026-11-06 | claude 2.1.318 | two turns in one `--input-format stream-json` process: `usage` per turn, `modelUsage` and `total_cost_usd` running totals, `model_usage_since_last_result` per turn |

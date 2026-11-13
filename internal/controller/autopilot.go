@@ -590,7 +590,7 @@ func (a *autopilot) unstick(ctx context.Context) error {
 
 // done marks the milestone done, closes its tracking issue and says so.
 // With an empty queue it does nothing: a milestone whose plan is empty or
-// was dropped by a re-plan merged nothing and is not done (Bloop %20).
+// was dropped by a re-plan merged nothing and is not done (a real milestone).
 // It keeps running until a release contains the milestone's last merge
 // (finalRelease), and after that while companions of the milestone have not
 // landed; it says once per change which ones it waits for

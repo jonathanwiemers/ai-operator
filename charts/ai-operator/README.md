@@ -135,9 +135,9 @@ the UI logs in with `readerSecret` and its ClusterRole gets
 | `research.maxUsagePercent` | `70` | research uses an engine only while all its usage windows (not reset since) are below this, 1 to 100, a fixed `spec.agent` included; passed as `--research-max-usage-percent` |
 | `research.historyRetention` | `8760h` | how long the factory's history (comments, runs, CI, reviews, merges: the web UI's streams; every agent call in `agent_calls`) and Desk chat messages are kept in the database; passed as `--history-retention` |
 
-With the database of the Zalando postgres-operator on netcup01 (the
+With the database of the Zalando postgres-operator on my-cluster (the
 AgentProject's writer login and the UI part are in
-[docs/research.md](../../docs/research.md#example-netcup01)):
+[docs/research.md](../../docs/research.md#example-my-cluster)):
 
 ```yaml
 research:

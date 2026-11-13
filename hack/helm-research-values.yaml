@@ -1,5 +1,5 @@
 # Values for make helm-lint: renders the chart with the research database of
-# netcup01 (Zalando postgres-operator, see docs/configuration.md) and the UI.
+# my-cluster (Zalando postgres-operator, see docs/configuration.md) and the UI.
 research:
   database:
     host: ai-operator-postgres.ai-operator-system.svc.cluster.local

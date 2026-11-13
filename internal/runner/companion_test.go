@@ -28,12 +28,12 @@ func TestAgentServerTreePaths(t *testing.T) {
 	client := serveAgent(t, &AgentServer{Agent: local, Log: logr.Discard()})
 	ctx := context.Background()
 
-	for _, repo := range []string{homeTree, "jo.wiemers-infra-cluster"} {
+	for _, repo := range []string{homeTree, "example-infra"} {
 		if _, err := client.RemoteRefs(ctx, repo); err != nil {
 			t.Fatalf("repo %q must be accepted: %v", repo, err)
 		}
 	}
-	if w, err := local.tree("jo.wiemers-infra-cluster"); err != nil || w.Dir != filepath.Join(root, "repos", "jo.wiemers-infra-cluster") {
+	if w, err := local.tree("example-infra"); err != nil || w.Dir != filepath.Join(root, "repos", "example-infra") {
 		t.Fatalf("a slug is <root>/repos/<slug>: %v %v", w, err)
 	}
 	if w, _ := local.tree(homeTree); w.Dir != filepath.Join(root, "repo") {
@@ -58,7 +58,7 @@ func TestAgentServerTreePaths(t *testing.T) {
 		}
 	}
 	// A valid slug, but merging the base has no companion use.
-	if _, err := client.MergeBase(ctx, MergeRequest{Repo: "jo.wiemers-infra-cluster", Base: "main", Message: "m"}); err == nil ||
+	if _, err := client.MergeBase(ctx, MergeRequest{Repo: "example-infra", Base: "main", Message: "m"}); err == nil ||
 		!strings.Contains(err.Error(), "home checkout only") {
 		t.Fatalf("merge-base must refuse a companion: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestAgentServerTreePaths(t *testing.T) {
 
 	// Without a workspace root, companions are refused.
 	noRoot := &LocalAgent{Workspace: &Workspace{Dir: filepath.Join(root, "repo")}, Exchange: exchange}
-	if _, err := noRoot.RemoteRefs(ctx, "jo.wiemers-infra-cluster"); err == nil {
+	if _, err := noRoot.RemoteRefs(ctx, "example-infra"); err == nil {
 		t.Fatal("without Workspaces a companion must be refused")
 	}
 }
@@ -83,9 +83,9 @@ func TestAgentServerTreePaths(t *testing.T) {
 // refused.
 func TestRunnerCompanionMirrorPath(t *testing.T) {
 	r := &Runner{StateDir: "/runner", CompanionToken: "companion-token", Mirror: &Mirror{AuthorName: "Bot", AuthorEmail: "bot@x"}, Log: logr.Discard()}
-	policy := &PushPolicy{Project: "jo.wiemers/infra/cluster", DefaultBranch: "main"}
-	m, err := r.CompanionMirror("jo.wiemers-infra-cluster", policy)
-	if err != nil || m.Dir != "/runner/mirrors/jo.wiemers-infra-cluster.git" || m.Token != "companion-token" || m.Policy != policy || m.AuthorName != "Bot" {
+	policy := &PushPolicy{Project: "example/infra", DefaultBranch: "main"}
+	m, err := r.CompanionMirror("example-infra", policy)
+	if err != nil || m.Dir != "/runner/mirrors/example-infra.git" || m.Token != "companion-token" || m.Policy != policy || m.AuthorName != "Bot" {
 		t.Fatalf("mirror %+v, %v", m, err)
 	}
 	for _, slug := range []string{"", "../x", "a/b", "UPPER", ".git"} {

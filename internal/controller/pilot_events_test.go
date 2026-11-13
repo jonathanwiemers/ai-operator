@@ -166,7 +166,7 @@ func TestPilotEventKeyOutlivesALostStatusPatch(t *testing.T) {
 	}
 }
 
-// Bloop #331: CI stays red after two fix rounds, the issue goes to
+// Orbit #331: CI stays red after two fix rounds, the issue goes to
 // needs-input and autopilot pauses over it. That is one event: the pilot
 // is woken once, with the red pipeline.
 func TestPilotWakesOnceForAnIssueStuckAfterItsFixRounds(t *testing.T) {
