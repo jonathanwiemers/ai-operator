@@ -146,6 +146,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}", s.authed(s.project))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}", s.authed(s.task))
 	mux.Handle("GET /api/v1/milestones", s.authed(s.milestones))
+	mux.Handle("GET /api/v1/search", s.authed(s.search))
 	mux.Handle("GET /api/v1/overview", s.authed(s.overview))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/milestones/{iid}", s.authed(s.milestone))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}", s.authed(s.issue))

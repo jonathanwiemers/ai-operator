@@ -98,6 +98,7 @@ packages:
       - release.go
       - research.go
       - retrospective.go
+      - search.go
       - spend.go
       - stream.go
       - transcript.go

@@ -1108,6 +1108,30 @@ export interface CostDriverView {
 }
 
 //////////
+// source: search.go
+
+/**
+ * SearchResult is a task of an issue (and its merge request) that matched a
+ * search; the web opens it at /projects/:namespace/:project/tasks/:task.
+ */
+export interface SearchResult {
+  namespace: string;
+  project: string;
+  task: string;
+  type: aiv1.TaskType;
+  title: string;
+  issueIID: number /* int64 */;
+  mergeRequestIID?: number /* int64 */;
+  createdAt: string;
+}
+/**
+ * SearchResponse is GET /api/v1/search: at most 20 results, newest first.
+ */
+export interface SearchResponse {
+  results: SearchResult[];
+}
+
+//////////
 // source: spend.go
 
 /**
