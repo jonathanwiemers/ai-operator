@@ -48,6 +48,16 @@ planner's questions and move an issue to `agent::ready`; an implementer pod
 opens a draft merge request, fixes red CI and moves the issue to
 `agent::review`. `/agent <change>` sends it back, a merge removes the pod.
 
+The optional [Desk](docs/ui.md) shows it as it happens: what runs now, every
+milestone in work with its progress, cost and tokens, and what needs you.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/dashboard-dark.webp">
+    <img src="docs/assets/screenshots/dashboard.webp" alt="Desk overview: running and paused milestones across two projects with progress, cost and tokens" width="880">
+  </picture>
+</p>
+
 ## Highlights
 
 |  |  |
@@ -63,7 +73,7 @@ opens a draft merge request, fixes red CI and moves the issue to
 | ⚖️ **Right model for the job** | Profiles route each issue to a cheap or a strong model, Claude or Cursor. `/agent use claude opus high` overrides per issue, within the models you allow. |
 | 🔒 **Isolated by design** | The model never sees the GitLab token or cluster credentials: a trusted runner and the agent container exchange commits only as git bundles ([security](docs/design.md#security)). |
 | 🪙 **Easy on tokens** | Runs with your Claude or Cursor subscription. Sessions are resumed, pipelines are watched for free, pods stop right after each run, and usage limits pause runs instead of failing them. |
-| 👀 **Web UI** | Optional read-only dashboard of boards, runs, CI and autopilot queues, with OIDC login and per-project roles ([web UI](docs/ui.md)). |
+| 👀 **Web UI** | Optional read-only dashboard of boards, runs, CI and autopilot queues, with OIDC login and per-project roles ([web UI](docs/ui.md), [screenshots](docs/ui.md#screenshots)). |
 
 > **Status:** `v1alpha1`. Unit and end-to-end tests pass (fake GitLab, real
 > git); real-world runs are tracked in the
@@ -182,6 +192,10 @@ The draft MR shows the run live. Once CI is green the issue moves to
 
 ## Documentation
 
+Start at **[docs/README.md](docs/README.md)**: it walks through the docs in
+reading order and links the [specs](docs/specs/README.md) behind each
+feature.
+
 | | |
 |-|-|
 | [Usage](docs/usage.md) | the GitLab workflow: labels, milestone specs, decisions, CI, autopilot, owners, lifecycle |
@@ -189,6 +203,7 @@ The draft MR shows the run live. Once CI is green the issue moves to
 | [Configuration](docs/configuration.md) | installation (Helm, Flux), secrets, `AgentProject` reference, engines, profiles, models, agent image |
 | [Design](docs/design.md) | architecture, CRDs, pod topology, token economy, security |
 | [Web UI](docs/ui.md) | the optional read-only UI: OIDC login, roles, HTTPRoute, API |
+| [Research](docs/research.md) | news flashes, scheduled and one-off researches |
 | [Helm chart](charts/ai-operator/README.md) | chart values |
 | [Releasing](docs/releasing.md) | calendar versions, release workflow, published images and chart |
 | [Sandbox test plan](docs/sandbox-test-plan.md) | end-to-end test with a real GitLab project and the real agent CLIs |

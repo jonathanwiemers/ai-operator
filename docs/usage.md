@@ -1025,7 +1025,11 @@ again``). The list is one table in the operator (`PauseExits` in
 state (`pauseExits`) and the Desk in the milestone view (`exits`), so they
 name the same ways out. The reason can quote job names or other text
 from GitLab, so mentions and quick actions in it are made inert, in the
-comment and in the tracking issue's description. It pauses for:
+comment and in the tracking issue's description.
+
+![Pause card on the milestone's Pilot tab: why it paused, the ways out and the pilot's question](assets/screenshots/milestone-pilot.webp)
+
+It pauses for:
 
 - the issue landed in `agent::needs-input` (CI still red after the fix
   rounds, a failed run). A run that failed for an outside reason blocks
@@ -2638,6 +2642,8 @@ numbered follow-ups. Reply `create 1 2` (or `create 1, 3`, `create all`) in
 its thread to open follow-ups as plain issues, or `create none` to dismiss the
 remaining ones; only the owners pinned when it was posted count.
 
+![Retrospective tab on the Desk: cost drivers by issue and model, and the numbered follow-ups](assets/screenshots/milestone-retrospective.webp)
+
 The model writes it from the operator's facts, about 60 000 bytes of JSON at
 most: the cost (from the history database's agent calls whenever it is
 connected, otherwise the live tasks' sum; from the agent calls, `spend` also
@@ -3014,6 +3020,10 @@ that already exist keep no milestone.
 3. An issue's row opens its issue page: the same figures, the live task
    while one works on it, then the issue's events.
 4. The breadcrumbs at the top lead back up, one click per level.
+
+![Milestone Issues tab: the pause banner, one row per issue with merge request, time, cost and tokens, and release rows](assets/screenshots/milestone-issues.webp)
+
+More pages: [ui.md](ui.md#screenshots).
 
 With the [research database](configuration.md#research-database), done
 milestones stay on the Desk after their tasks are deleted, with their

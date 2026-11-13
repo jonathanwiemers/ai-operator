@@ -75,6 +75,14 @@ ui: ## Test, type-check and build the web UI into web/dist/app (embedded by go b
 ui-e2e: ui ## Check the built web UI in Chromium at phone, tablet and desktop width (docs/ui.md "Checks").
 	cd web && npx playwright install chromium && npm run e2e
 
+.PHONY: docs-screenshots
+docs-screenshots: ui ## Render the Desk screenshots of the docs from the browser checks' fake data into docs/assets/screenshots (needs cwebp; docs/ui.md "Docs screenshots").
+	cd web && npx playwright install chromium && npx playwright test -c playwright.docs.config.ts
+	mkdir -p docs/assets/screenshots
+	for f in web/e2e-results/docs/*.png; do \
+		cwebp -quiet -q 80 -m 6 -resize 1920 0 "$$f" -o "docs/assets/screenshots/$$(basename "$$f" .png).webp"; \
+	done
+
 .PHONY: docker-build
 docker-build:
 	docker build -t $(IMG) .

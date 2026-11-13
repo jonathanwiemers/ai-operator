@@ -22,6 +22,44 @@ lead to GitLab; only with your GitLab account connected (see
 [Steering](#steering)) does it read comments and post them, the milestone
 chat included, with your own GitLab token.
 
+## Screenshots
+
+Invented data (a shop on `gitlab.example.com`), rendered from the browser
+checks' fixtures, see [Docs screenshots](#docs-screenshots).
+
+**Overview** (`/`): what runs now, the milestones in work and the newest
+done ones across your projects.
+
+![Desk overview with running, paused and done milestones, their progress, cost and tokens](assets/screenshots/dashboard.webp)
+
+**Project page**: the project's milestones, the message box to the pilot and
+the stream of what happened, newest first, with what needs you and the
+autopilot queue beside it.
+
+![Project page with its milestones, the pilot message box and a run that asks a question, beside the needs-you panel and the queue](assets/screenshots/project-stream.webp)
+
+**Milestone Issues**: one row per issue with its state, merge request, time,
+cost and tokens, the releases between them and the queue.
+
+![Paused milestone with its issue table, release rows and the pause banner](assets/screenshots/milestone-issues.webp)
+
+**Milestone Pilot**: the pause card with its ways out and the pilot's open
+questions with their options.
+
+![Pilot tab with the pause card, its ways out and an open question](assets/screenshots/milestone-pilot.webp)
+
+**Task chat**: the Desk thread with the agent and the composer.
+
+![Task chat between a user and the implementing agent](assets/screenshots/task-chat.webp)
+
+**Milestone Retrospective**: the cost drivers and the follow-ups left.
+
+![Retrospective with cost drivers by issue and model, and numbered leftovers](assets/screenshots/milestone-retrospective.webp)
+
+**[Costs](#costs-page)** (`/costs`): spend across projects and research.
+
+![Costs page with totals and a stacked daily spend chart per project](assets/screenshots/costs.webp)
+
 ## Desk and history
 
 The app is a **Desk**: a left rail, the stream, and, on project pages, a context panel.
@@ -1809,6 +1847,24 @@ How it works:
   In CI the `ui-e2e` job keeps `web/e2e-results/` for two weeks, also when
   it fails ("Desk screenshots" on the merge request). UI merge requests
   link the 375 px and 1280 px screenshots.
+
+### Docs screenshots
+
+The screenshots in these docs and the README
+(`docs/assets/screenshots/*.webp`) come from the same fixtures:
+
+```sh
+make docs-screenshots        # make ui, then render and convert (needs cwebp)
+```
+
+`web/e2e/docs.shots.ts` (config `web/playwright.docs.config.ts`, not part of
+`npm run e2e`) opens each page at 1440×900 px with device scale 2 and the
+clock fixed at the fixtures' `now`, saves PNGs to `web/e2e-results/docs`,
+and `cwebp` turns them into 1920 px wide WebP. It answers the API like the
+checks do and renames the fixtures' user and long test project to `sam`
+and `storefront`, so the docs show plausible names. Everything is invented:
+no real projects, users or tokens. Re-run it after a visible Desk change and
+commit the WebP files that changed.
 
 ## Bundle budget
 
