@@ -346,6 +346,26 @@ textarea or an editable element, `src/textEntry.ts`) the keyboard is up:
 the bar and the pane's padding go until the focus leaves. Tablet and
 desktop have no bottom bar; the rail is the aside.
 
+There is no strip of milestones under the header of a project or milestone
+page. A milestone page's breadcrumbs (project › milestone) lead back to the
+project, whose page lists its milestones in *MilestoneSections*; the tab row
+(*Issues*, *Pilot*, …) stays. Switching milestones does not keep the open tab.
+
+**Search.** A search button sits in the rail header on tablet and desktop
+(title *Search (⌘K)* or *Search (Ctrl+K)*) and in the top bar on phones;
+⌘K (macOS) or Ctrl+K opens the [palette](#search-palette) from anywhere,
+also inside a text field, and closes it again.
+
+**About line.** The rail footer, also in the phone's Projects sheet, shows
+`ai-operator <version>`, linked to that version's GitLab release (the
+project's releases page for a `dev` build, no link without `--self-project`).
+When the self project's newest release is newer than the running version and
+is *Waiting* or *Running*, a note *Update to X rolling out* follows; when it
+is *Released* (the pod has not restarted yet), *X is out — reload*. The line
+comes from `GET /api/v1/about`, loaded with the features and refreshed every
+5 minutes while the tab is visible; an error keeps the last answer. A `dev`
+build never shows a note.
+
 ### Spend
 
 The *Spend* tab of a project or milestone stream shows what its agent
@@ -1816,6 +1836,10 @@ build, so the CI `ui` job enforces it. It prints
   of the Vue runtime and `@vueuse/core` it uses (Teleport, Transition)
   land in the shared initial chunks, since a module is not split across
   chunks. Later sheets and `UModal` reuse them.
+- 2026-11-13, with the version line, the Costs tab and the ⌘K shell wiring
+  (Desk polish R3 to R7): 132.3 kB (JS 113.0, CSS 19.2), up from 129.3 kB.
+  The palette itself (`SearchPalette.vue`, `UCommandPalette`) is lazy and not
+  in it; the cap stays at 132.3 kB.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
@@ -2075,6 +2099,28 @@ stays plain. It sets no `title`: use `title` only for what is readable
 elsewhere. It sets no colour or weight, the parent's classes do; do not give
 it `.fact .value`, whose global rules keep `nowrap`. The task page's facts
 on its *Details* tab and the current step in its status line use it.
+
+### Search palette
+
+`components/SearchPalette.vue` is a `UCommandPalette` in a `UModal`
+(fullscreen on phones, `max-w-xl` from 760 px). `App.vue` loads it with
+`defineAsyncComponent` on the first open, so it is outside the initial
+bundle; `src/searchPalette.ts` (the open state, the shortcut) stays in it.
+Groups, built by `src/searchItems.ts`:
+
+* **Projects** from the rail's list and **Milestones** (`%iid title`, with
+  the project) from one `GET /api/v1/milestones?state=all` on first open,
+  both filtered by the palette as you type.
+* **Issues & MRs** from `GET /api/v1/search?q=`, 200 ms after the last
+  keystroke and only from 2 characters; older answers are dropped, an error
+  leaves the group empty. `#12` finds issue 12, `!34` merge request 34. A hit
+  opens the task page.
+* **Pages**: Inbox, Overview, Costs (feature `history`), Research (feature
+  `research`).
+
+Keyboard: ⌘K / Ctrl+K opens, arrows move, Enter opens the item and closes
+the palette, Escape closes it. The palette joins the browser history like a
+sheet, so *Back* closes it.
 
 ### Sheets
 

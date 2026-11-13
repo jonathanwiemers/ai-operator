@@ -3083,3 +3083,108 @@ test.describe('about line', () => {
     })
   }
 })
+
+// The ⌘K palette (SearchPalette.vue): Ctrl+K opens it from any page, also
+// inside a text field, the keyboard alone picks an item, Escape and back
+// close it. Projects and milestones are filtered here, issues and merge
+// requests come from GET /search.
+test.describe('search palette', () => {
+  const start = routes.find((r) => r.name === 'stream-project-stream')!
+  const placeholder = 'Search projects, milestones, issues, !MR'
+
+  // No fixed clock: Vue skips a handler attached at the event's own
+  // Date.now(), which a frozen clock makes equal (see the rail sheet).
+  async function open(page: Page, baseURL: string | undefined, width: number): Promise<Problems> {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height: width === 375 ? 812 : 800 })
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, start, problems)
+    await page.goto(start.path)
+    await start.ready(page)
+    await page.keyboard.press('Control+K')
+    await expect(page.getByPlaceholder(placeholder)).toBeFocused()
+    return problems
+  }
+
+  async function noProblems(page: Page, problems: Problems): Promise<void> {
+    problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  }
+
+  // The visible buttons: rail header on desktop, top bar on phones.
+  for (const [width, name] of [[1280, /^Search \(/], [375, 'Search']] as const) {
+    test(`the search button opens the palette@${width}`, async ({ page, baseURL }) => {
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize({ width, height: width === 375 ? 812 : 800 })
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, start, problems)
+      await page.goto(start.path)
+      await start.ready(page)
+      const button = page.getByRole('button', { name })
+      await button.focus()
+      await page.keyboard.press('Enter')
+      await expect(page.getByRole('dialog')).toBeVisible()
+      await expect(page.getByPlaceholder(placeholder)).toBeFocused()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      await noProblems(page, problems)
+    })
+  }
+
+  const picks = [
+    { what: 'a milestone', type: 'captures', option: /^%14 Payment providers/, url: /\/projects\/team-a\/shop\/milestones\/14$/ },
+    { what: 'a merge request', type: '!298', option: /^#281 Support refunds/, url: /\/projects\/team-a\/shop\/tasks\/shop-281-implement$/ },
+  ]
+  for (const width of [375, 1280]) {
+    for (const p of picks) {
+      test(`the keyboard opens ${p.what}@${width}`, async ({ page, baseURL }) => {
+        const problems = await open(page, baseURL, width)
+        await page.keyboard.type(p.type)
+        const options = page.getByRole('dialog').getByRole('option')
+        await expect(options).toHaveCount(1)
+        await expect(options.first()).toHaveText(p.option)
+        await page.keyboard.press('ArrowDown')
+        await page.keyboard.press('Enter')
+        await expect(page).toHaveURL(p.url)
+        await expect(page.getByRole('dialog')).toBeHidden()
+        await expect.poll(() => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet), 'the entry is gone').toBeUndefined()
+        await noProblems(page, problems)
+      })
+    }
+  }
+
+  const closes: { how: string; close: (page: Page) => Promise<void> }[] = [
+    { how: 'Escape', close: (page) => page.keyboard.press('Escape') },
+    { how: 'back', close: (page) => page.evaluate(() => history.back()) },
+    { how: 'Control+K in its input', close: (page) => page.keyboard.press('Control+K') },
+  ]
+  for (const { how, close } of closes) {
+    test(`closes by ${how} and keeps the route@1280`, async ({ page, baseURL }) => {
+      const problems = await open(page, baseURL, 1280)
+      const url = page.url()
+      await expect.poll(() => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet), 'the palette pushed its entry').toBeDefined()
+      await close(page)
+      await expect(page.getByRole('dialog')).toBeHidden()
+      await expect.poll(() => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet), 'the entry is gone').toBeUndefined()
+      expect(page.url(), 'the URL is unchanged').toBe(url)
+      await noProblems(page, problems)
+    })
+  }
+
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`full screen on a phone in ${colorScheme}@375`, async ({ page, baseURL }, testInfo) => {
+      await page.emulateMedia({ colorScheme })
+      const problems = await open(page, baseURL, 375)
+      await page.keyboard.type('shop')
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByRole('option').first()).toHaveText(/^shop/)
+      await dialog.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+      const box = (await dialog.boundingBox())!
+      expect([box.x, box.y, box.width, box.height]).toEqual([0, 0, 375, 812])
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `search-palette-${colorScheme}@375.png`)
+      await page.screenshot({ path: shot })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      await noProblems(page, problems)
+    })
+  }
+})

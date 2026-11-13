@@ -15,6 +15,9 @@ import { useBackClose } from './ui/useBackClose'
 import SignIn from './views/SignIn.vue'
 import Breadcrumbs from './components/Breadcrumbs.vue'
 import RailNav from './components/RailNav.vue'
+import { isPaletteKey, paletteHint, paletteOpen } from './searchPalette'
+// The ⌘K palette loads on its first open (docs/ui.md, "Bundle budget").
+const SearchPalette = defineAsyncComponent(() => import('./components/SearchPalette.vue'))
 // The sheet is loaded on phones only: the dialog behind it would add about
 // 30 kB gzipped to the initial bundle (docs/ui.md, "Bundle budget").
 const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
@@ -49,6 +52,16 @@ const router = useRouter()
 // link inside it closes it before it navigates.
 const railOpen = ref(false)
 useBackClose(railOpen)
+// Here, not in the palette: it mounts already open and would miss that.
+useBackClose(paletteOpen)
+const paletteUsed = ref(false)
+watch(paletteOpen, (v) => (paletteUsed.value ||= v))
+// ⌘K / Ctrl+K opens and closes the palette, also inside text fields.
+function onKey(e: KeyboardEvent) {
+  if (!session.me || session.loginRequired || !isPaletteKey(e)) return
+  e.preventDefault()
+  paletteOpen.value = !paletteOpen.value
+}
 const projects = ref<ProjectSummary[] | null>(null)
 const researches = ref<ResearchSummary[] | null>(null)
 const inboxCount = ref(0)
@@ -153,12 +166,14 @@ onMounted(() => {
   phone.addEventListener('change', onWidth)
   document.addEventListener('focusin', onFocusIn)
   document.addEventListener('focusout', onFocusOut)
+  window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => {
   window.clearInterval(aboutTimer)
   phone.removeEventListener('change', onWidth)
   document.removeEventListener('focusin', onFocusIn)
   document.removeEventListener('focusout', onFocusOut)
+  window.removeEventListener('keydown', onKey)
 })
 
 watch(
@@ -207,6 +222,9 @@ watch(notifyActive, (on) => {
           <img src="/logo.svg" alt="" width="22" height="22" />
           ai-operator
         </RouterLink>
+        <button type="button" class="searchbtn searchbtn-m" aria-label="Search" aria-haspopup="dialog" @click="paletteOpen = true">
+          <UIcon name="i-lucide-search" class="size-5" />
+        </button>
       </header>
       <nav class="bottombar" aria-label="Sections">
         <RouterLink
@@ -240,10 +258,22 @@ watch(notifyActive, (on) => {
       </nav>
 
       <aside class="rail">
-        <RouterLink to="/" class="brand">
-          <img src="/logo.svg" alt="" width="24" height="24" />
-          <span>ai-operator</span>
-        </RouterLink>
+        <div class="railhead">
+          <RouterLink to="/" class="brand">
+            <img src="/logo.svg" alt="" width="24" height="24" />
+            <span>ai-operator</span>
+          </RouterLink>
+          <button
+            type="button"
+            class="searchbtn"
+            :aria-label="`Search (${paletteHint})`"
+            :title="`Search (${paletteHint})`"
+            aria-haspopup="dialog"
+            @click="paletteOpen = true"
+          >
+            <UIcon name="i-lucide-search" class="size-4" />
+          </button>
+        </div>
         <RailNav :projects="projects" :researches="researches" :inbox-count="inboxCount" />
       </aside>
 
@@ -272,6 +302,8 @@ watch(notifyActive, (on) => {
           <RailNav :projects="projects" :researches="researches" :inbox-count="inboxCount" @navigate="railOpen = false" />
         </template>
       </USlideover>
+
+      <SearchPalette v-if="paletteUsed" :projects="projects" :features="session.features" :fullscreen="isPhone" />
 
       <main class="main">
         <header class="crumbbar"><Breadcrumbs /></header>
@@ -302,6 +334,27 @@ watch(notifyActive, (on) => {
   flex-direction: column;
   min-height: 0;
   z-index: 20;
+}
+.railhead {
+  display: flex;
+  align-items: center;
+  padding-right: 10px;
+}
+.searchbtn {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.searchbtn:hover {
+  background: var(--surface-2);
+  color: var(--text);
 }
 .brand {
   display: flex;
@@ -450,6 +503,12 @@ watch(notifyActive, (on) => {
   }
   .brand-m:hover {
     text-decoration: none;
+  }
+  .searchbtn-m {
+    width: 44px;
+    height: 44px;
+    justify-content: center;
+    padding: 0;
   }
   .main > .crumbbar {
     padding: 8px 16px 0;
