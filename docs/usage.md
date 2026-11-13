@@ -110,9 +110,9 @@ Create a **project access token** with role *Developer* and the scopes `api` and
 `write_repository`. Protect your default branch. The agent only pushes
 `agent/*` branches and opens draft merge requests.
 
-The ai-operator's own repository lives on GitLab (`jo.wiemers/ai-operator`)
-and runs its checks and releases in a GitLab pipeline; GitHub is a push
-mirror that releases once a day (see [releasing.md](releasing.md)).
+The ai-operator itself is developed in a GitLab project and runs its checks
+and releases in a GitLab pipeline; GitHub is a push mirror that builds every
+GitLab release again for `ghcr.io` (see [releasing.md](releasing.md)).
 
 ### Webhooks (optional)
 

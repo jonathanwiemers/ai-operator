@@ -1,9 +1,12 @@
 # Contributing
 
-Thanks for looking. ai-operator is developed on GitLab:
-<https://gitlab.com/jo.wiemers/ai-operator>. GitHub
-(<https://github.com/jonathanwiemers/ai-operator>) is a read-only mirror of
-`main` and the place for releases and security advisories.
+Thanks for looking. Issues, pull requests, releases and security advisories
+live on GitHub: <https://github.com/jonathanwiemers/ai-operator>.
+
+The work happens in GitLab, where the operator's own agents build
+ai-operator. Everything is mirrored to this repository: every commit on
+`main`, every release tag and its release. That is why commits on `main` can
+arrive in batches.
 
 ## Reporting bugs and ideas
 
@@ -17,7 +20,7 @@ Security problems: please don't open an issue, see [SECURITY.md](SECURITY.md).
 
 1. For anything bigger than a small fix, open an issue first so we can agree
    on the approach. Larger features start with a spec in `docs/specs/`.
-2. Keep merge requests small and focused. Docs in `docs/` and the chart
+2. Keep pull requests small and focused. Docs in `docs/` and the chart
    README change together with the behaviour they describe.
 3. Before pushing:
 
@@ -34,8 +37,9 @@ Security problems: please don't open an issue, see [SECURITY.md](SECURITY.md).
    `make ts-types`. CI fails on stale generated files.
 4. One topic per commit, with a short subject that says what changes.
 
-Merge requests are reviewed on GitLab; a pull request on GitHub is fine too,
-it is moved over by hand.
+Pull requests are reviewed here. A merged pull request is applied in the
+GitLab project with you as the commit author, and comes back to `main` with
+the next push; the pull request is then closed with a link to that commit.
 
 ## License
 

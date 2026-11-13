@@ -11,16 +11,16 @@
 </p>
 
 <p align="center">
-  <a href="https://gitlab.com/jo.wiemers/ai-operator/-/pipelines?ref=main"><img src="https://gitlab.com/jo.wiemers/ai-operator/badges/main/pipeline.svg" alt="CI"></a>
+  <a href="https://github.com/jonathanwiemers/ai-operator/actions/workflows/ci.yml"><img src="https://github.com/jonathanwiemers/ai-operator/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/jonathanwiemers/ai-operator/releases"><img src="https://img.shields.io/github/v/release/jonathanwiemers/ai-operator?label=release" alt="Release"></a>
   <img src="https://img.shields.io/badge/API-v1alpha1-blue" alt="API v1alpha1">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="License Apache-2.0"></a>
 </p>
 
 <p align="center">
-  Open issues and merge requests on
-  <a href="https://gitlab.com/jo.wiemers/ai-operator">GitLab</a>.
-  GitHub mirrors <code>main</code> and builds the releases.
+  Built in GitLab by its own agents, mirrored here.
+  Issues and pull requests are welcome on GitHub, see
+  <a href="CONTRIBUTING.md">CONTRIBUTING.md</a>.
 </p>
 
 <p align="center">
@@ -39,18 +39,14 @@ You stay in GitLab. ai-operator watches your milestones and issues, runs
 headless coding agents (**Claude Code**, **Cursor CLI**) in a pod per issue,
 and reports back on merge requests.
 
-```mermaid
-flowchart LR
-    M["📝 Milestone<br/>with a spec"] -->|"/agent spec"| S["🧭 Planner<br/>one sub-issue per MR"]
-    S --> D["Sub-issues<br/>agent::draft"]
-    D -->|"you answer questions,<br/>move to agent::ready"| I["🛠️ Implementer<br/>+ bugbot + security review"]
-    I --> MR["Draft MR<br/>with description"]
-    MR --> CI{"Pipeline<br/>green?"}
-    CI -->|"no: fix it"| I
-    CI -->|yes| R["👀 agent::review<br/>you review"]
-    R -->|"/agent change …"| I
-    R -->|"merge"| X["🧹 pod and<br/>workspace removed"]
-```
+<p align="center">
+  <img src="docs/assets/architecture.svg" alt="You steer in GitLab and watch in the Desk; the operator in your cluster starts one pod per task, and the agents in the pods call the models and push to GitLab" width="720">
+</p>
+
+A milestone spec becomes sub-issues (`agent::draft`). You answer the
+planner's questions and move an issue to `agent::ready`; an implementer pod
+opens a draft merge request, fixes red CI and moves the issue to
+`agent::review`. `/agent <change>` sends it back, a merge removes the pod.
 
 ## Highlights
 

@@ -1,18 +1,24 @@
 name: Release
 
-# Once a day (or by hand via Run workflow), main is released with a calendar
-# version YEAR.MONTH.N (2026.10.1, 2026.10.2, ...) if the operator, the agent
-# image or the chart changed since GitHub's newest release tag:
+# Publishes a GitLab release on GitHub. GitLab decides and tags releases
+# (docs/releasing.md); the push mirror carries each tag YEAR.MONTH.N here, and
+# this workflow builds that tag:
 #   - images  ghcr.io/<owner>/ai-operator:<version>, ghcr.io/<owner>/ai-operator-agent:<version>
 #   - chart   oci://ghcr.io/<owner>/charts/ai-operator --version <version>
-#   - git tag <version> and a GitHub release with the packaged chart
-# Pushes to main no longer release (docs/releasing.md).
+#   - a GitHub release for the tag, with the packaged chart
+# By hand (Run workflow) it publishes an existing tag, e.g. one the mirror
+# pushed together with more than three others (GitHub then starts no run).
 on:
-  schedule:
-    - cron: "17 3 * * *"
+  push:
+    tags:
+      - "20[0-9][0-9].[0-9]*.[0-9]*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish, e.g. 2026.11.256"
+        required: true
 
-# Releases run one at a time so two merges never get the same version.
+# Releases run one at a time, so the newest one ends up as :latest.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -22,52 +28,46 @@ permissions:
   packages: write
 
 jobs:
-  # Ends the run early unless release-relevant code changed since the newest
-  # calendar-version tag (the tags hack/next-version.sh counts). The paths are
-  # those the former push trigger listed; docs-only days are not released.
-  changes:
+  release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      release: ${{ steps.check.outputs.release }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Check for changes since the last release
-        id: check
+      # The tag's main pipeline on GitLab ran the checks already, so this
+      # only validates the tag and skips tags that already have a release.
+      - name: Determine version
+        id: version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          last="$(git tag --list '20*.*.*' --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
-          if [ -z "${last}" ]; then
-            echo "No release tag yet; releasing"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "${last}" HEAD -- \
-              api cmd internal charts web config/crd \
-              Dockerfile Dockerfile.agent go.mod go.sum; then
-            echo "No release-relevant change since ${last}; nothing to release"
-            echo "release=false" >> "$GITHUB_OUTPUT"
+          if ! [[ "${TAG}" =~ ^[0-9]{4}\.[1-9][0-9]?\.[1-9][0-9]*$ ]]; then
+            echo "::error::${TAG} is not a release tag YEAR.MONTH.N"
+            exit 1
+          fi
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "registry=ghcr.io/${owner}" >> "$GITHUB_OUTPUT"
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
+            echo "GitHub release ${TAG} exists; nothing to do"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Release-relevant changes since ${last}:"
-            git diff --stat "${last}" HEAD -- \
-              api cmd internal charts web config/crd \
-              Dockerfile Dockerfile.agent go.mod go.sum
-            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Releasing ${TAG}"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-  release:
-    needs: changes
-    if: needs.changes.outputs.release == 'true'
-    runs-on: ubuntu-latest
-    steps:
       - uses: actions/checkout@v4
+        if: steps.version.outputs.skip == 'false'
         with:
-          fetch-depth: 0
+          ref: refs/tags/${{ steps.version.outputs.version }}
+
+      - name: Tagged commit
+        id: sha
+        if: steps.version.outputs.skip == 'false'
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # Two Go cross-builds of the Kubernetes client libraries plus the Node
       # based agent image do not fit into the default runner disk.
       - name: Free disk space
+        if: steps.version.outputs.skip == 'false'
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
@@ -75,36 +75,23 @@ jobs:
           sudo docker image prune --all --force
           df -h /
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
       - uses: azure/setup-helm@v4
-
-      - name: Test
-        run: |
-          go test ./...
-          make helm-lint
-
-      - name: Determine version
-        id: version
-        run: |
-          version="$(hack/next-version.sh)"
-          owner="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "registry=ghcr.io/${owner}" >> "$GITHUB_OUTPUT"
-          echo "Releasing ${version}"
+        if: steps.version.outputs.skip == 'false'
 
       - uses: docker/setup-qemu-action@v3
+        if: steps.version.outputs.skip == 'false'
       - uses: docker/setup-buildx-action@v3
+        if: steps.version.outputs.skip == 'false'
 
       - uses: docker/login-action@v3
+        if: steps.version.outputs.skip == 'false'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push operator image
+        if: steps.version.outputs.skip == 'false'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -120,14 +107,16 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ steps.sha.outputs.sha }}
 
       - name: Prune build cache
+        if: steps.version.outputs.skip == 'false'
         run: |
           docker buildx prune --all --force
           df -h /
 
       - name: Build and push agent image
+        if: steps.version.outputs.skip == 'false'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -140,9 +129,10 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ steps.sha.outputs.sha }}
 
       - name: Package and push chart
+        if: steps.version.outputs.skip == 'false'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           REGISTRY: ${{ steps.version.outputs.registry }}
@@ -151,14 +141,13 @@ jobs:
           make helm-package VERSION="${VERSION}"
           helm push "dist/ai-operator-${VERSION}.tgz" "oci://${REGISTRY}/charts"
 
-      - name: Tag and create GitHub release
+      - name: Create GitHub release
+        if: steps.version.outputs.skip == 'false'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           REGISTRY: ${{ steps.version.outputs.registry }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git tag "${VERSION}" "${GITHUB_SHA}"
-          git push origin "refs/tags/${VERSION}"
           cat > notes.md <<NOTES
           ## Install
 
@@ -171,4 +160,4 @@ jobs:
           Images: \`${REGISTRY}/ai-operator:${VERSION}\`, \`${REGISTRY}/ai-operator-agent:${VERSION}\`
           NOTES
           gh release create "${VERSION}" "dist/ai-operator-${VERSION}.tgz" \
-            --title "${VERSION}" --notes-file notes.md --generate-notes
+            --verify-tag --title "${VERSION}" --notes-file notes.md --generate-notes

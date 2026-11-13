@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 604" role="img" aria-labelledby="t d">
+  <title id="t">How ai-operator fits together</title>
+  <desc id="d">You steer through GitLab and watch through the Desk. The operator in your Kubernetes cluster polls GitLab, applies its rules and starts one pod per task. Agents in the pods call the models and push to GitLab. Every call lands in a history database that the Desk reads.</desc>
+  <style>
+    svg {
+      --bg: #fdfdfb; --ink: #0f1c2c; --muted: #566577; --line: #8794a3; --border: #d3dae2;
+      --surface: #edf0f4; --accent: #1d5c8f; --accent-soft: #e4edf5;
+      --accent2: #ea6a15; --accent2-soft: #fbe8d8;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --bg: #0b1420; --ink: #e6ecf3; --muted: #8b9bab; --line: #6b7c8e; --border: #2c3d50;
+        --surface: #131f2c; --accent: #63aee4; --accent-soft: #12293c;
+        --accent2: #ff8a3d; --accent2-soft: #33200f;
+      }
+    }
+    .bg { fill: var(--bg); }
+    .card { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; }
+    .op { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+    .gl { fill: var(--accent2-soft); stroke: var(--accent2); stroke-width: 2; }
+    .row { fill: var(--bg); stroke: var(--accent2); stroke-width: 1.2; }
+    .chip { fill: var(--bg); stroke: var(--accent); stroke-width: 1.2; }
+    .inner { fill: var(--bg); stroke: var(--border); stroke-width: 1.2; }
+    .cluster { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 6 6; }
+    .person { fill: var(--ink); }
+    .arrow { fill: none; stroke: var(--line); stroke-width: 1.8; }
+    .head { fill: var(--line); }
+    .h { fill: var(--ink); font-size: 18px; font-weight: 650; }
+    .h2 { fill: var(--ink); font-size: 16px; font-weight: 600; }
+    .t { fill: var(--ink); font-size: 14.5px; }
+    .s { fill: var(--muted); font-size: 13.5px; }
+    .xs { fill: var(--muted); font-size: 12px; }
+    .rowt { fill: var(--accent2); font-size: 14px; font-weight: 600; }
+    .chipt { fill: var(--accent); font-size: 13.5px; font-weight: 600; }
+    .cap { fill: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; }
+    .mid { text-anchor: middle; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="720" height="604"/>
+
+  <!-- you -->
+  <circle class="person" cx="55" cy="46" r="14"/>
+  <path class="person" d="M31,86 a24,22 0 0 1 48,0 z"/>
+  <text class="h2 mid" x="55" y="110">you</text>
+
+  <!-- GitLab -->
+  <rect class="gl" x="130" y="20" width="570" height="100" rx="14"/>
+  <text class="h" x="150" y="50">GitLab</text>
+  <text class="s" x="222" y="50">write the spec, answer, comment /agent</text>
+  <rect class="row" x="150" y="66" width="104" height="36" rx="18"/><text class="rowt mid" x="202" y="89">milestone</text>
+  <rect class="row" x="264" y="66" width="84" height="36" rx="18"/><text class="rowt mid" x="306" y="89">issues</text>
+  <rect class="row" x="358" y="66" width="148" height="36" rx="18"/><text class="rowt mid" x="432" y="89">merge requests</text>
+  <rect class="row" x="516" y="66" width="98" height="36" rx="18"/><text class="rowt mid" x="565" y="89">pipelines</text>
+  <path class="arrow" marker-end="url(#a)" d="M86,68 H124"/>
+
+  <!-- cluster -->
+  <rect class="cluster" x="120" y="180" width="460" height="410" rx="18"/>
+  <text class="cap" x="214" y="206">YOUR KUBERNETES CLUSTER</text>
+
+  <!-- operator -->
+  <rect class="op" x="140" y="222" width="205" height="150" rx="12"/>
+  <text class="h" x="156" y="252">ai-operator</text>
+  <text class="s" x="156" y="272">rules, not tokens</text>
+  <rect class="chip" x="156" y="288" width="85" height="28" rx="14"/><text class="chipt mid" x="198.5" y="307">queue</text>
+  <rect class="chip" x="249" y="288" width="85" height="28" rx="14"/><text class="chipt mid" x="291.5" y="307">merge gate</text>
+  <rect class="chip" x="156" y="324" width="85" height="28" rx="14"/><text class="chipt mid" x="198.5" y="343">rebase</text>
+  <rect class="chip" x="249" y="324" width="85" height="28" rx="14"/><text class="chipt mid" x="291.5" y="343">pause</text>
+
+  <!-- pods -->
+  <rect class="card" x="385" y="222" width="175" height="54" rx="10"/>
+  <text class="h2" x="401" y="245">planner pod</text>
+  <text class="s" x="401" y="265">spec → issues</text>
+
+  <rect class="card" x="393" y="296" width="175" height="92" rx="10"/>
+  <rect class="card" x="389" y="292" width="175" height="92" rx="10"/>
+  <rect class="card" x="385" y="288" width="175" height="92" rx="10"/>
+  <text class="h2" x="401" y="311">issue pods</text>
+  <rect class="inner" x="397" y="322" width="73" height="46" rx="7"/>
+  <text class="t mid" x="433.5" y="341">runner</text><text class="xs mid" x="433.5" y="358">GitLab token</text>
+  <rect class="inner" x="476" y="322" width="73" height="46" rx="7"/>
+  <text class="t mid" x="512.5" y="341">agent</text><text class="xs mid" x="512.5" y="358">model key</text>
+
+  <rect class="card" x="385" y="402" width="175" height="54" rx="10"/>
+  <text class="h2" x="401" y="425">pilot pod</text>
+  <text class="s" x="401" y="445">watches, sums up</text>
+
+  <!-- models -->
+  <rect class="card" x="600" y="288" width="105" height="92" rx="10"/>
+  <text class="h2" x="614" y="318">models</text>
+  <text class="s" x="614" y="340">Claude</text>
+  <text class="s" x="614" y="358">Cursor</text>
+
+  <!-- Desk -->
+  <rect class="op" x="140" y="484" width="205" height="86" rx="12"/>
+  <text class="h" x="156" y="513">Desk</text>
+  <text class="s" x="156" y="535">watch, chat, click</text>
+  <text class="s" x="156" y="554">reads tasks and history</text>
+
+  <!-- history -->
+  <path class="card" d="M385,496 v62 a87.5,12 0 0 0 175,0 v-62"/>
+  <ellipse class="card" cx="472.5" cy="496" rx="87.5" ry="12"/>
+  <text class="h2 mid" x="472.5" y="532">history</text>
+  <text class="s mid" x="472.5" y="552">every call: tokens, $</text>
+
+  <!-- arrows -->
+  <path class="arrow" marker-start="url(#a)" marker-end="url(#a)" d="M200,126 V216"/>
+  <text class="s" x="210" y="166">poll · labels · merge</text>
+
+  <path class="arrow" marker-end="url(#a)" d="M472,216 V126"/>
+  <text class="s" x="482" y="166">push · MR · comments</text>
+
+  <path class="arrow" marker-end="url(#a)" d="M349,334 H379"/>
+  <text class="xs mid" x="365" y="326">starts</text>
+
+  <path class="arrow" marker-end="url(#a)" d="M570,334 H594"/>
+
+  <path class="arrow" marker-end="url(#a)" d="M472.5,460 V480"/>
+
+  <path class="arrow" marker-end="url(#a)" d="M349,527 H379"/>
+  <text class="xs mid" x="365" y="519">reads</text>
+
+  <path class="arrow" marker-end="url(#a)" d="M242,480 V378"/>
+  <text class="xs" x="250" y="434">reads tasks</text>
+
+  <path class="arrow" marker-end="url(#a)" d="M55,122 V527 H134"/>
+  <text class="s" x="64" y="306">watch,</text>
+  <text class="s" x="64" y="324">chat,</text>
+  <text class="s" x="64" y="342">click</text>
+</svg>

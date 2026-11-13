@@ -28,6 +28,7 @@
   creates a tag `YEAR.MONTH.N` and GitLab release through the API (planner,
   pilot, owner's `/agent release`, a milestone's final release, the sweep), or
   a human creates one in the UI or with `glab release create`. The tag's
-  pipeline builds it (`release` job). GitHub releases once a day if code
-  changed. See `docs/releasing.md`.
+  pipeline builds it (`release` job). The push mirror carries the tag to
+  GitHub, where `release.yml` builds the same version for ghcr.io. See
+  `docs/releasing.md`.
 - Keep the docs in `docs/` and the chart README in sync with behavior changes.

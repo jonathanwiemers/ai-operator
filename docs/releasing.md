@@ -11,44 +11,39 @@ runs the checks and releases nothing. The cluster follows every GitLab
 release, so a release is a deploy: the operator releases ai-operator like
 any other project it manages, when the planner, the pilot, an owner or the
 end of a milestone decides so, and says why
-([usage.md](usage.md#releases)). GitHub releases once a day if code changed
-(see [GitHub releases](#github-releases)).
+([usage.md](usage.md#releases)). GitHub builds the same release again when
+the tag arrives (see [GitHub releases](#github-releases)).
 
 ## Where the code lives
 
-**GitLab is the primary repository:** merge requests, review and the day-to-day
-pipeline live at
-[gitlab.com/jo.wiemers/ai-operator](https://gitlab.com/jo.wiemers/ai-operator)
-(`.gitlab-ci.yml`). Open issues and MRs there.
+**The work happens in GitLab:** merge requests, review, the agents and the
+day-to-day pipeline (`.gitlab-ci.yml`) run in a GitLab project, and
+everything is mirrored to GitHub.
 
-**GitHub is a push mirror** of that GitLab project
-([jonathanwiemers/ai-operator](https://github.com/jonathanwiemers/ai-operator)).
-It does not take MRs. Once a day, GitHub Actions
-([`release.yml`](../.github/workflows/release.yml)) builds and publishes the
-images and the OCI chart to `ghcr.io`, creates the git tag and the GitHub
-release, if `main` changed since its last release (see
-[GitHub releases](#github-releases)).
-
-GitHub's release tags and releases are its own (GitLab releases are tagged
-independently, see [GitLab releases](#gitlab-releases)). The mirror must not
-overwrite them.
+**GitHub is the public repository**
+([jonathanwiemers/ai-operator](https://github.com/jonathanwiemers/ai-operator)):
+issues, pull requests ([CONTRIBUTING.md](../CONTRIBUTING.md)), releases and
+security advisories. GitLab push-mirrors `main` and every tag to it. Each
+release tag that arrives starts
+[`release.yml`](../.github/workflows/release.yml), which publishes that
+version to `ghcr.io` and as a GitHub release.
 
 The owner sets the mirror up by hand: in GitLab, *Settings → Repository →
 Mirroring repositories*, push direction, with a fine-grained GitHub token for
 this repository only with **Contents** and **Workflows** read and write
 (without Workflows, GitHub refuses every push that changes
-`.github/workflows/`). Tick both:
+`.github/workflows/`). A push with this token starts workflows, unlike one
+with `GITHUB_TOKEN`. Tick both:
 
-* **Mirror only protected branches**, so only `main` is pushed;
+* **Mirror only protected branches**, so only `main` (and the tags) are
+  pushed;
 * **Keep divergent refs**, so the mirror never deletes or rewrites refs that
   exist only on GitHub.
 
-Without them the mirror prunes the release tags on its first sync: GitHub
-turns those releases into drafts, and the next release reuses their version
-and overwrites the images and the chart on ghcr. To repair, push each tag
-again to the commit its Release run built
-(`git push github <sha>:refs/tags/<version>`) and publish the release again
-(`gh release edit <version> --draft=false`, `--latest` for the newest).
+Before release tags came from GitLab, GitHub counted its own; the tags of
+that time that name a different commit than GitLab's tag of the same name
+stay as they are (divergent refs), and GitLab shows the mirror's last update
+as failed for them. New tags are not affected.
 
 ## Versioning
 
@@ -58,32 +53,34 @@ Calendar versions `YEAR.MONTH.N`:
   month: `2026.10.1`, `2026.10.2`, `2026.10.3`, then `2026.11.1`.
 * Months have no leading zero (`2026.1.1`, not `2026.01.1`), so every version
   is valid SemVer, which Helm requires.
-* On GitLab the operator computes the next version from the project's tags
-  when it creates a release. GitHub computes its own with
-  [`hack/next-version.sh`](../hack/next-version.sh) (`make version` prints it).
+* The operator computes the next version from the project's GitLab tags when
+  it creates a release. GitHub never picks a version: it builds the tag it
+  gets.
 
 ## GitHub releases
 
-`release.yml` no longer runs on push. It runs once a day (`schedule`,
-03:17 UTC) and by hand (*Actions → Release → Run workflow*). Its first job
-looks up GitHub's newest calendar-version tag (the tags
-`hack/next-version.sh` counts) and diffs it against `main` over the paths
-that count as code: `api`, `cmd`, `internal`, `charts`, `web`, `config/crd`,
-`Dockerfile`, `Dockerfile.agent`, `go.mod` and `go.sum`. Without a change
-there the run ends without a release, so docs-only days and days without
-merges release nothing; a manual run follows the same rule. Without any
-tag it releases. It needs no secret beyond the built-in `GITHUB_TOKEN`.
+`release.yml` runs when a tag `YEAR.MONTH.N` is pushed (by the mirror) and by
+hand (*Actions → Release → Run workflow*, with the tag to publish). GitHub
+starts no workflows when more than three tags arrive in one push, so a
+missed release is published by hand:
 
-Runs never overlap (`concurrency`), so two cannot get the same version. A
+```sh
+gh workflow run release.yml -R jonathanwiemers/ai-operator -f tag=2026.11.256
+```
+
+If a GitHub release for the tag exists already, the run ends without
+building, so a second run of the same tag does nothing. It runs no tests:
+GitLab tags only commits of `main` whose pipeline passed. It needs no secret
+beyond the built-in `GITHUB_TOKEN`. Runs never overlap (`concurrency`). A
 release:
 
-1. run the tests and `helm lint`
-2. build and push multi-arch (amd64, arm64) images
+1. checks out the tag
+2. builds and pushes multi-arch (amd64, arm64) images
    * `ghcr.io/jonathanwiemers/ai-operator:<version>` and `:latest`
    * `ghcr.io/jonathanwiemers/ai-operator-agent:<version>` and `:latest`
-3. package the chart with `version` = `appVersion` = `<version>` and push it to
-   `oci://ghcr.io/jonathanwiemers/charts/ai-operator`
-4. create the git tag `<version>` and a GitHub release with the chart attached
+3. packages the chart with `version` = `appVersion` = `<version>` and pushes it
+   to `oci://ghcr.io/jonathanwiemers/charts/ai-operator`
+4. creates a GitHub release for the existing tag with the chart attached
 
 The chart's default image tags are its `appVersion`, so a chart version always
 deploys the operator and agent images built from the same commit.
@@ -150,20 +147,16 @@ default image repositories stay on ghcr.io, so a GitLab install sets
 `image.repository` and `agent.image.repository` (the release notes show how).
 The cluster pulls with the GitLab deploy token in `image-pull-secret`.
 
-GitLab and GitHub each count their own tags and release at different
-times (GitLab when a release is decided, GitHub once a day), so the same
-version can name different commits on the two registries. If the push mirror
-carries a GitLab tag to GitHub that differs there, the mirror keeps GitHub's
-(divergent ref) and marks that update as failed.
+GitLab and GitHub build the same tag, so a version names the same commit on
+both registries (apart from the older tags described in
+[Where the code lives](#where-the-code-lives)).
 
 ## First release checklist
 
-* GitHub Packages created by Actions are **private** by default. Either make
-  the `ai-operator`, `ai-operator-agent` and `charts/ai-operator` packages
-  public (*Package settings → Change visibility*), or give the cluster an
-  image pull secret (`imagePullSecrets`, a classic PAT with `read:packages`;
-  the Secret must exist in the operator's namespace and in every agent
-  namespace) and `helm registry login ghcr.io`.
+* GitHub Packages created by Actions are **private** by default. The
+  `ai-operator`, `ai-operator-agent` and `charts/ai-operator` packages are
+  made public once by hand (*Package settings → Change visibility*); there is
+  no API for it.
 * The workflow uses the built-in `GITHUB_TOKEN` (permissions `contents: write`,
   `packages: write`); no extra secrets are needed.
 
