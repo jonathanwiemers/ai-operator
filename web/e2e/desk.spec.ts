@@ -3111,6 +3111,25 @@ test.describe('search palette', () => {
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   }
 
+  // The visible buttons: rail header on desktop, top bar on phones.
+  for (const [width, name] of [[1280, /^Search \(/], [375, 'Search']] as const) {
+    test(`the search button opens the palette@${width}`, async ({ page, baseURL }) => {
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize({ width, height: width === 375 ? 812 : 800 })
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, start, problems)
+      await page.goto(start.path)
+      await start.ready(page)
+      const button = page.getByRole('button', { name })
+      await button.focus()
+      await page.keyboard.press('Enter')
+      await expect(page.getByRole('dialog')).toBeVisible()
+      await expect(page.getByPlaceholder(placeholder)).toBeFocused()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      await noProblems(page, problems)
+    })
+  }
+
   const picks = [
     { what: 'a milestone', type: 'captures', option: /^%14 Payment providers/, url: /\/projects\/team-a\/shop\/milestones\/14$/ },
     { what: 'a merge request', type: '!298', option: /^#281 Support refunds/, url: /\/projects\/team-a\/shop\/tasks\/shop-281-implement$/ },
