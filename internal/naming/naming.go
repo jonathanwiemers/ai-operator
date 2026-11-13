@@ -120,7 +120,7 @@ func LabelValue(name string) string {
 // ProjectSlug names a GitLab project's directories in the runner (its
 // mirror "/runner/mirrors/<slug>.git", its checkout
 // "/workspace/repos/<slug>"): the full path lowercased, "/" as "-", other
-// characters outside [a-z0-9._-] dropped, e.g. "jo.wiemers-infra-cluster".
+// characters outside [a-z0-9._-] dropped, e.g. "example-infra".
 // Characters a slug may not start with are trimmed, so a slug is either
 // valid (ValidProjectSlug) or "".
 func ProjectSlug(path string) string {

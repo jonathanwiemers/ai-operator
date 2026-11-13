@@ -28,13 +28,13 @@ func TestSpend(t *testing.T) {
 		if cost == nil {
 			source = "unknown"
 		}
-		return store.Call{Key: key, At: base.Add(at), Namespace: "agents", Project: "bloop", MilestoneIID: milestone,
+		return store.Call{Key: key, At: base.Add(at), Namespace: "agents", Project: "orbit", MilestoneIID: milestone,
 			IssueIID: issue, Task: task, Run: run, Seq: seq, Kind: kind, Role: role, Engine: "claude", Model: model,
 			InputTokens: in, OutputTokens: out, CacheReadTokens: cacheRead, CacheWriteTokens: cacheWrite,
 			CostUSD: cost, CostSource: source, DurationMS: durationMS, ExpiresAt: exp}
 	}
 	// #148 run 2: an implement step with a haiku subagent, and a review.
-	impl := call("c1", 2*time.Hour, 20, 148, "bloop-148", 2, 1, "implement", "implement", "claude-opus-5-5", usd(1.23), 10, 20, 30, 40, 60000)
+	impl := call("c1", 2*time.Hour, 20, 148, "orbit-148", 2, 1, "implement", "implement", "claude-opus-5-5", usd(1.23), 10, 20, 30, 40, 60000)
 	impl.Models = []store.CallModel{
 		{Model: "claude-opus-5-5", InputTokens: 8, OutputTokens: 15, CacheReadTokens: 30, CacheWriteTokens: 40, CostUSD: usd(1.2)},
 		{Model: "claude-haiku-5-5", InputTokens: 2, OutputTokens: 5, CostUSD: usd(0.03)},
@@ -42,17 +42,17 @@ func TestSpend(t *testing.T) {
 	impl.SubagentCalls, impl.ContextSeries, impl.SubagentTurns, impl.ReadGateBlocks = 1, []int64{1000, 2500, 4000}, []int32{1}, 3
 	// It was cut off by the usage limit and left 120 lines.
 	impl.Checkpoint, impl.CheckpointSHA, impl.LinesAdded, impl.LinesDeleted = "usage-limit", "abc123", 120, 7
-	review := call("c2", 3*time.Hour, 20, 148, "bloop-148", 2, 2, "review", "security", "claude-sonnet-5-5", usd(0.5), 100, 10, 1000, 0, 10000)
+	review := call("c2", 3*time.Hour, 20, 148, "orbit-148", 2, 2, "review", "security", "claude-sonnet-5-5", usd(0.5), 100, 10, 1000, 0, 10000)
 	review.ReadGateBlocks = 1
 	// #150: a cursor call without a cost.
-	fix := call("c3", 4*time.Hour, 20, 150, "bloop-150", 1, 1, "fix", "fix", "gpt-5", nil, 100, 50, 0, 0, 5000)
+	fix := call("c3", 4*time.Hour, 20, 150, "orbit-150", 1, 1, "fix", "fix", "gpt-5", nil, 100, 50, 0, 0, 5000)
 	fix.Engine = "cursor"
 	fix.Checkpoint, fix.CheckpointSHA = "usage-limit", "def456"
 	// The milestone's spec: no issue.
-	spec := call("c4", time.Hour, 20, 0, "bloop-spec-20", 1, 1, "spec", "spec", "claude-opus-5-5", usd(0.25), 1, 2, 3, 4, 1000)
+	spec := call("c4", time.Hour, 20, 0, "orbit-spec-20", 1, 1, "spec", "spec", "claude-opus-5-5", usd(0.25), 1, 2, 3, 4, 1000)
 	// Milestone 21, #160: the row has the model's alias, models the full
 	// names; the main model is the one with the most output.
-	alias := call("c5", 5*time.Hour, 21, 160, "bloop-160", 1, 1, "implement", "implement", "opus", usd(3), 5, 5, 100, 0, 20000)
+	alias := call("c5", 5*time.Hour, 21, 160, "orbit-160", 1, 1, "implement", "implement", "opus", usd(3), 5, 5, 100, 0, 20000)
 	alias.Models = []store.CallModel{
 		{Model: "claude-haiku-5-5", InputTokens: 1, CostUSD: usd(0.1)},
 		{Model: "claude-opus-5-5", InputTokens: 4, OutputTokens: 5, CacheReadTokens: 100, CostUSD: usd(2.9)},
@@ -60,26 +60,26 @@ func TestSpend(t *testing.T) {
 	alias.SubagentCalls = 2
 	alias.Checkpoint, alias.CheckpointSHA = "engine-error", "0a1b2c"
 	// A Desk chat turn: no milestone.
-	chat := call("c6", 6*time.Hour, 0, 0, "bloop-chat", 0, 1, "chat", "chat", "claude-sonnet-5-5", usd(0.1), 1, 1, 0, 0, 500)
+	chat := call("c6", 6*time.Hour, 0, 0, "orbit-chat", 0, 1, "chat", "chat", "claude-sonnet-5-5", usd(0.1), 1, 1, 0, 0, 500)
 	// Not in scope: expired, another project.
-	old := call("c7", 3*time.Hour, 20, 148, "bloop-148", 2, 3, "fix", "fix", "claude-opus-5-5", usd(100), 1, 1, 1, 1, 1)
+	old := call("c7", 3*time.Hour, 20, 148, "orbit-148", 2, 3, "fix", "fix", "claude-opus-5-5", usd(100), 1, 1, 1, 1, 1)
 	old.ExpiresAt = expired
-	other := call("c8", 3*time.Hour, 20, 148, "bloop-148", 2, 1, "implement", "implement", "claude-opus-5-5", usd(9), 1, 1, 1, 1, 1)
+	other := call("c8", 3*time.Hour, 20, 148, "orbit-148", 2, 1, "implement", "implement", "claude-opus-5-5", usd(9), 1, 1, 1, 1, 1)
 	other.Project = "other"
 	if _, err := owner.InsertCalls(ctx, []store.Call{impl, review, fix, spec, alias, chat, old, other}); err != nil {
 		t.Fatal(err)
 	}
 	finished := func(key string, at time.Duration, issue int64, task string, run int64, cost string, expiresAt time.Time) store.Event {
-		return store.Event{Key: key, At: base.Add(at), Namespace: "agents", Project: "bloop", MilestoneIID: 20, IssueIID: issue,
+		return store.Event{Key: key, At: base.Add(at), Namespace: "agents", Project: "orbit", MilestoneIID: 20, IssueIID: issue,
 			Task: task, Kind: "run.finished", Data: map[string]any{"costUSD": cost, "runCount": run}, ExpiresAt: expiresAt}
 	}
 	if _, err := owner.InsertEvents(ctx, []store.Event{
 		// #148 run 1 is from before agent_calls: it counts.
-		finished("e1", 0, 148, "bloop-148", 1, "2.0000", exp),
+		finished("e1", 0, 148, "orbit-148", 1, "2.0000", exp),
 		// Run 2 has calls: its run.finished cost is theirs and does not count.
-		finished("e2", 4*time.Hour, 148, "bloop-148", 2, "1.7300", exp),
-		finished("e3", 0, 148, "bloop-148", 7, "50.0000", expired),
-		{Key: "e4", At: base, Namespace: "agents", Project: "bloop", MilestoneIID: 20, IssueIID: 148, Task: "bloop-148",
+		finished("e2", 4*time.Hour, 148, "orbit-148", 2, "1.7300", exp),
+		finished("e3", 0, 148, "orbit-148", 7, "50.0000", expired),
+		{Key: "e4", At: base, Namespace: "agents", Project: "orbit", MilestoneIID: 20, IssueIID: 148, Task: "orbit-148",
 			Kind: "run.finished", Data: map[string]any{"runCount": 9, "result": "Failed"}, ExpiresAt: exp},
 	}); err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestSpend(t *testing.T) {
 
 	spend := func(sc store.SpendScope) store.Spend {
 		t.Helper()
-		sc.Namespace, sc.Project = "agents", "bloop"
+		sc.Namespace, sc.Project = "agents", "orbit"
 		sp, err := s.Spend(ctx, sc)
 		if err != nil {
 			t.Fatal(err)
@@ -208,8 +208,8 @@ func TestSpend(t *testing.T) {
 		t.Errorf("#148 totals:\n got %+v\nwant %+v", sp.Totals, want)
 	}
 	checkChildren("#148", sp.Children, []child{
-		{"run", "bloop-148/1", "bloop-148 run 1", 2, 2, true, 0, 0},
-		{"run", "bloop-148/2", "bloop-148 run 2", 1.73, 0, true, 2, 0},
+		{"run", "orbit-148/1", "orbit-148 run 1", 2, 2, true, 0, 0},
+		{"run", "orbit-148/2", "orbit-148 run 2", 1.73, 0, true, 2, 0},
 	})
 	if c := sp.Children[0]; c.Totals.Tokens() != 0 || c.Models != nil || !c.At.Equal(base) {
 		t.Errorf("legacy run = %+v; want no tokens or models, at %v", c, base)
@@ -228,7 +228,7 @@ func TestSpend(t *testing.T) {
 	checkModels("#150 run", sp.Children[0].Models, []store.ModelSplit{{Model: "gpt-5", Main: true, Tokens: 150}})
 
 	// A run: its calls by seq, with their rows.
-	sp = spend(store.SpendScope{Task: "bloop-148", Run: 2})
+	sp = spend(store.SpendScope{Task: "orbit-148", Run: 2})
 	if sp.Totals.CostUSD.USD != 1.73 || sp.Totals.LegacyCostUSD.USD != 0 || sp.Totals.Calls != 2 {
 		t.Errorf("run 2 totals = %+v", sp.Totals)
 	}
@@ -253,7 +253,7 @@ func TestSpend(t *testing.T) {
 		{Model: "claude-sonnet-5-5", Main: true, Tokens: 1110, CostUSD: 0.5, CostKnown: true}})
 
 	// A task: all its calls, and its legacy run in the totals only.
-	sp = spend(store.SpendScope{Task: "bloop-148"})
+	sp = spend(store.SpendScope{Task: "orbit-148"})
 	if sp.Totals.CostUSD.USD != 3.73 || sp.Totals.LegacyCostUSD.USD != 2 || len(sp.Children) != 2 {
 		t.Errorf("task totals = %+v, %d children; want 3.73 with 2 legacy, 2 calls", sp.Totals, len(sp.Children))
 	}
@@ -265,14 +265,14 @@ func TestSpend(t *testing.T) {
 	}
 
 	// The totals of the chips: the same sums, without children.
-	for _, sc := range []store.SpendScope{{}, {MilestoneIID: 20}, {Task: "bloop-148"}, {IssueIID: 150}} {
+	for _, sc := range []store.SpendScope{{}, {MilestoneIID: 20}, {Task: "orbit-148"}, {IssueIID: 150}} {
 		want := spend(sc).Totals
-		sc.Namespace, sc.Project = "agents", "bloop"
+		sc.Namespace, sc.Project = "agents", "orbit"
 		if got, err := s.SpendTotals(ctx, sc); err != nil || got != want {
 			t.Errorf("SpendTotals(%+v) = %+v, %v; want %+v", sc, got, err, want)
 		}
 	}
-	byMilestone, err := s.SpendChildTotals(ctx, store.SpendScope{Namespace: "agents", Project: "bloop"})
+	byMilestone, err := s.SpendChildTotals(ctx, store.SpendScope{Namespace: "agents", Project: "orbit"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestSpend(t *testing.T) {
 		t.Errorf("SpendChildTotals by milestone = %+v", byMilestone)
 	}
 
-	for _, sc := range []store.SpendScope{{Namespace: "agents"}, {Namespace: "agents", Project: "bloop", Run: 2}} {
+	for _, sc := range []store.SpendScope{{Namespace: "agents"}, {Namespace: "agents", Project: "orbit", Run: 2}} {
 		if _, err := s.Spend(ctx, sc); err == nil {
 			t.Errorf("Spend(%+v) succeeded, want an error", sc)
 		}
@@ -503,7 +503,7 @@ func TestSpendTuning(t *testing.T) {
 			source = "unknown"
 		}
 		return store.Call{Key: "k" + strconv.Itoa(n), At: base.Add(time.Duration(n) * time.Minute), Namespace: "agents",
-			Project: "bloop", MilestoneIID: 20, IssueIID: 148, Task: task, Run: run, Seq: seq, Kind: kind, Role: role,
+			Project: "orbit", MilestoneIID: 20, IssueIID: 148, Task: task, Run: run, Seq: seq, Kind: kind, Role: role,
 			Engine: "claude", Model: "claude-opus-5-5", InputTokens: in, OutputTokens: out, CostUSD: cost,
 			CostSource: source, ExpiresAt: exp}
 	}
@@ -520,28 +520,28 @@ func TestSpendTuning(t *testing.T) {
 	calls := []store.Call{
 		// Run 1: implement, two reviewers, fix, one reviewer, fix, two
 		// reviewers. Inserted out of seq order: rounds follow seq.
-		gated(call("bloop-148", 1, 9, "review", "security", usd(0.5), 50, 5), 1),
-		call("bloop-148", 1, 1, "implement", "implement", usd(4), 400, 40),
-		gated(scouted(resumed(call("bloop-148", 1, 2, "implement", "implement", usd(6), 600, 60)), 100), 3),
-		call("bloop-148", 1, 3, "review", "security", usd(1), 100, 10),
-		call("bloop-148", 1, 4, "review", "style", usd(2), 200, 20),
-		call("bloop-148", 1, 5, "fix", "fix", usd(3), 300, 30),
-		call("bloop-148", 1, 6, "review", "security", usd(0.75), 75, 5),
-		call("bloop-148", 1, 7, "fix", "fix", usd(1), 100, 10),
-		call("bloop-148", 1, 8, "review", "style", nil, 10, 1),
+		gated(call("orbit-148", 1, 9, "review", "security", usd(0.5), 50, 5), 1),
+		call("orbit-148", 1, 1, "implement", "implement", usd(4), 400, 40),
+		gated(scouted(resumed(call("orbit-148", 1, 2, "implement", "implement", usd(6), 600, 60)), 100), 3),
+		call("orbit-148", 1, 3, "review", "security", usd(1), 100, 10),
+		call("orbit-148", 1, 4, "review", "style", usd(2), 200, 20),
+		call("orbit-148", 1, 5, "fix", "fix", usd(3), 300, 30),
+		call("orbit-148", 1, 6, "review", "security", usd(0.75), 75, 5),
+		call("orbit-148", 1, 7, "fix", "fix", usd(1), 100, 10),
+		call("orbit-148", 1, 8, "review", "style", nil, 10, 1),
 		// Run 2 starts at round 1 again; a ci call does not end a round.
-		call("bloop-148", 2, 10, "review", "security", usd(0.25), 25, 2),
-		call("bloop-148", 2, 11, "ci", "ci", usd(1), 100, 10),
-		call("bloop-148", 2, 12, "review", "security", usd(0.25), 25, 2),
-		call("bloop-148", 2, 13, "fix", "fix", usd(1), 100, 10),
-		call("bloop-148", 2, 14, "review", "security", usd(0.5), 50, 5),
-		resumed(call("bloop-148", 2, 15, "implement", "implement", usd(8), 800, 80)),
-		scouted(call("bloop-148", 2, 16, "review", "security", usd(2), 300, 20), 200),
+		call("orbit-148", 2, 10, "review", "security", usd(0.25), 25, 2),
+		call("orbit-148", 2, 11, "ci", "ci", usd(1), 100, 10),
+		call("orbit-148", 2, 12, "review", "security", usd(0.25), 25, 2),
+		call("orbit-148", 2, 13, "fix", "fix", usd(1), 100, 10),
+		call("orbit-148", 2, 14, "review", "security", usd(0.5), 50, 5),
+		resumed(call("orbit-148", 2, 15, "implement", "implement", usd(8), 800, 80)),
+		scouted(call("orbit-148", 2, 16, "review", "security", usd(2), 300, 20), 200),
 	}
 	if _, err := owner.InsertCalls(ctx, calls); err != nil {
 		t.Fatal(err)
 	}
-	sp, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "bloop", MilestoneIID: 20})
+	sp, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "orbit", MilestoneIID: 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -600,7 +600,7 @@ func TestSpendTuning(t *testing.T) {
 	}
 
 	// A scope without review or implement calls has no rounds or sessions.
-	sp, err = s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "bloop", MilestoneIID: 21})
+	sp, err = s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "orbit", MilestoneIID: 21})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,7 +621,7 @@ func TestStepLines(t *testing.T) {
 	call := func(issue int64, kind string, added, deleted int64, nudges int32) store.Call {
 		n++
 		return store.Call{Key: "k" + strconv.Itoa(n), At: base.Add(time.Duration(n) * time.Minute), Namespace: "agents",
-			Project: "bloop", MilestoneIID: 20, IssueIID: issue, Task: "bloop-" + strconv.FormatInt(issue, 10), Run: 1,
+			Project: "orbit", MilestoneIID: 20, IssueIID: issue, Task: "orbit-" + strconv.FormatInt(issue, 10), Run: 1,
 			Seq: int64(n), Kind: kind, Role: "implement", Engine: "claude", CostSource: "unknown", ExpiresAt: exp,
 			LinesAdded: added, LinesDeleted: deleted, StepGateNudges: nudges}
 	}
@@ -641,7 +641,7 @@ func TestStepLines(t *testing.T) {
 	if _, err := owner.InsertCalls(ctx, calls); err != nil {
 		t.Fatal(err)
 	}
-	scope := store.SpendScope{Namespace: "agents", Project: "bloop", IssueIID: 148}
+	scope := store.SpendScope{Namespace: "agents", Project: "orbit", IssueIID: 148}
 	want := store.StepLines{Count: 4, Median: 175, P90: 775, Max: 1000, Nudges: 4}
 	if got, err := s.StepLines(ctx, scope); err != nil || got != want {
 		t.Errorf("StepLines(#148) = %+v, %v; want %+v", got, err, want)
@@ -649,15 +649,15 @@ func TestStepLines(t *testing.T) {
 	if sp, err := s.Spend(ctx, scope); err != nil || sp.StepLines != want {
 		t.Errorf("Spend(#148).StepLines = %+v, %v; want %+v", sp.StepLines, err, want)
 	}
-	if got, err := s.StepLines(ctx, store.SpendScope{Namespace: "agents", Project: "bloop"}); err != nil ||
+	if got, err := s.StepLines(ctx, store.SpendScope{Namespace: "agents", Project: "orbit"}); err != nil ||
 		got != (store.StepLines{Count: 5, Median: 250, P90: 6399, Max: 9999, Nudges: 11}) {
 		t.Errorf("StepLines(project) = %+v, %v", got, err)
 	}
-	if got, err := s.StepLines(ctx, store.SpendScope{Namespace: "agents", Project: "bloop", IssueIID: 999}); err != nil || got != (store.StepLines{}) {
+	if got, err := s.StepLines(ctx, store.SpendScope{Namespace: "agents", Project: "orbit", IssueIID: 999}); err != nil || got != (store.StepLines{}) {
 		t.Errorf("StepLines(no calls) = %+v, %v; want zeros", got, err)
 	}
 	// The call rows carry their nudges.
-	sp, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "bloop", IssueIID: 148, Task: "bloop-148"})
+	sp, err := s.Spend(ctx, store.SpendScope{Namespace: "agents", Project: "orbit", IssueIID: 148, Task: "orbit-148"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,10 +8,10 @@ pod (see Decisions).
 
 The task chat ([desk-live-agent-chat](desk-live-agent-chat.spec.md)) talks
 to the agent of one task, inside that task's pod. A pod needs a run slot,
-and most projects allow one (`maxConcurrentRuns: 1`). The bloop end-to-end
+and most projects allow one (`maxConcurrentRuns: 1`). The orbit end-to-end
 test shows what that means: a question waits behind an implement run for an
 hour or more. The pilot (`Coordinate` task) waits the same way:
-`bloop-pilot-m21` stays `Pending` while #391 runs. The maintainer decided
+`orbit-pilot-m21` stays `Pending` while #391 runs. The maintainer decided
 that chat turns keep waiting for a slot, which is right for steering an
 implementer.
 
@@ -116,13 +116,13 @@ starts annoy, raise `lifecycle.chatIdleTimeout` for the project.
 ## Risks / trade-offs
 
 - **More pods at once:** a pilot per planned milestone can run next to the
-  implementer on mbp. Pilots are light and few; bloop has two planned
+  implementer on mbp. Pilots are light and few; orbit has two planned
   milestones today.
 - **Cold starts:** up to about a minute after the pilot hibernated.
 - **No answers while mbp is off,** and none for milestones without a
   pilot.
 - **Fallback:** if these hurt, the first draft's separate responder (one
-  always-on pod, no workspace, may run on netcup01, project-level) is the
+  always-on pod, no workspace, may run on my-cluster, project-level) is the
   next step. It reuses the same table and UI.
 
 ## Validation / test plan
@@ -137,7 +137,7 @@ starts annoy, raise `lifecycle.chatIdleTimeout` for the project.
   - an implementer's chat turn prompt is unchanged.
 - **Web:** Milestone page with and without a pilot (`node --test` for the
   logic, a screenshot on `make run-ui`).
-- **End to end on netcup01:** ask `bloop-pilot-m21` "where is the
+- **End to end on my-cluster:** ask `orbit-pilot-m21` "where is the
   milestone at" while #391 runs, and get an answer within a minute or two.
 
 ## Delivery plan

@@ -28,7 +28,7 @@ func TestMilestones(t *testing.T) {
 	other := store.ProjectKey{Namespace: "agents", Name: "other"}
 
 	ms := []store.MilestoneSnapshot{
-		{Project: bloop, IID: 20, Title: "Desk", State: "open", Phase: "implementing", StartedAt: base, TrackingIID: 300,
+		{Project: orbit, IID: 20, Title: "Desk", State: "open", Phase: "implementing", StartedAt: base, TrackingIID: 300,
 			Issues: []store.IssueSnapshot{
 				{IID: 148, Title: "Schema", State: "merged", MergeRequestIID: 900},
 				{IID: 149, Title: "Dropped", State: "skipped"},
@@ -40,9 +40,9 @@ func TestMilestones(t *testing.T) {
 				{Number: 3, Title: "Seed", State: store.FollowUpIssue, TargetIID: 410},
 			}},
 		// Started later, no issues and no calls.
-		{Project: bloop, IID: 21, Title: "Pilot", State: "open", Phase: "waiting", StartedAt: base.Add(time.Hour)},
-		{Project: bloop, IID: 10, Title: "Old", State: "closed", Phase: "done", StartedAt: base, DoneAt: base.Add(2 * time.Hour)},
-		{Project: bloop, IID: 11, Title: "Newer", State: "closed", Phase: "done", StartedAt: base, DoneAt: base.Add(3 * time.Hour)},
+		{Project: orbit, IID: 21, Title: "Pilot", State: "open", Phase: "waiting", StartedAt: base.Add(time.Hour)},
+		{Project: orbit, IID: 10, Title: "Old", State: "closed", Phase: "done", StartedAt: base, DoneAt: base.Add(2 * time.Hour)},
+		{Project: orbit, IID: 11, Title: "Newer", State: "closed", Phase: "done", StartedAt: base, DoneAt: base.Add(3 * time.Hour)},
 		// Another project with the same IID and costly calls.
 		{Project: other, IID: 20, Title: "Elsewhere", State: "open", StartedAt: base.Add(-time.Hour),
 			Issues:    []store.IssueSnapshot{{IID: 148, State: "merged"}},
@@ -65,18 +65,18 @@ func TestMilestones(t *testing.T) {
 			Model: "claude-opus-5-5", InputTokens: in, OutputTokens: out, CostUSD: cost, CostSource: source, ExpiresAt: exp}
 	}
 	if _, err := owner.InsertCalls(ctx, []store.Call{
-		call("c1", bloop, 20, 148, usd(1.5), 10, 20),
-		call("c2", bloop, 20, 150, nil, 5, 5),
+		call("c1", orbit, 20, 148, usd(1.5), 10, 20),
+		call("c2", orbit, 20, 150, nil, 5, 5),
 		call("c3", other, 20, 148, usd(9), 1000, 1000),
 		// No milestone: counts for none.
-		call("c4", bloop, 0, 0, usd(4), 1, 1),
+		call("c4", orbit, 0, 0, usd(4), 1, 1),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// Milestone 10's run from before agent_calls: its cost counts, without
 	// tokens.
-	if _, err := owner.InsertEvents(ctx, []store.Event{{Key: "e1", At: base, Namespace: "agents", Project: "bloop",
-		MilestoneIID: 10, IssueIID: 140, Task: "bloop-140", Kind: "run.finished",
+	if _, err := owner.InsertEvents(ctx, []store.Event{{Key: "e1", At: base, Namespace: "agents", Project: "orbit",
+		MilestoneIID: 10, IssueIID: 140, Task: "orbit-140", Kind: "run.finished",
 		Data: map[string]any{"costUSD": "2.0000", "runCount": 1}, ExpiresAt: exp}}); err != nil {
 		t.Fatal(err)
 	}
@@ -97,13 +97,13 @@ func TestMilestones(t *testing.T) {
 		return out
 	}
 
-	all := list(store.MilestoneQuery{Projects: []store.ProjectKey{bloop}})
+	all := list(store.MilestoneQuery{Projects: []store.ProjectKey{orbit}})
 	// Open first by start, then closed newest done first; other never.
 	if got, want := iids(all), []int64{20, 21, 11, 10}; !slices.Equal(got, want) {
 		t.Fatalf("order = %v, want %v", got, want)
 	}
 	for _, r := range all {
-		if r.Project != bloop {
+		if r.Project != orbit {
 			t.Errorf("row of %v listed", r.Project)
 		}
 	}
@@ -117,7 +117,7 @@ func TestMilestones(t *testing.T) {
 			m20.Issues, m20.Merged, m20.Open, m20.FollowUpsOpen)
 	}
 	if sp := m20.Spend; !sp.CostUSD.Known || sp.CostUSD.USD != 1.5 || sp.Calls != 2 || sp.UnknownCalls != 1 || sp.Tokens() != 40 {
-		t.Errorf("milestone 20 spend = %+v, want only bloop's calls", sp)
+		t.Errorf("milestone 20 spend = %+v, want only orbit's calls", sp)
 	}
 
 	m21 := all[1]
@@ -136,14 +136,14 @@ func TestMilestones(t *testing.T) {
 		t.Errorf("milestone 10 spend = %+v, want the legacy run's cost", sp)
 	}
 
-	if got := iids(list(store.MilestoneQuery{Projects: []store.ProjectKey{bloop}, State: "closed"})); !slices.Equal(got, []int64{11, 10}) {
+	if got := iids(list(store.MilestoneQuery{Projects: []store.ProjectKey{orbit}, State: "closed"})); !slices.Equal(got, []int64{11, 10}) {
 		t.Errorf("closed = %v", got)
 	}
-	if got := iids(list(store.MilestoneQuery{Projects: []store.ProjectKey{bloop}, State: "open", Limit: 1})); !slices.Equal(got, []int64{20}) {
+	if got := iids(list(store.MilestoneQuery{Projects: []store.ProjectKey{orbit}, State: "open", Limit: 1})); !slices.Equal(got, []int64{20}) {
 		t.Errorf("open, limit 1 = %v", got)
 	}
 
-	both := list(store.MilestoneQuery{Projects: []store.ProjectKey{bloop, other}, State: "open"})
+	both := list(store.MilestoneQuery{Projects: []store.ProjectKey{orbit, other}, State: "open"})
 	if len(both) != 3 || both[0].Project != other || both[0].Spend.CostUSD.USD != 9 || both[0].Merged != 1 || both[0].FollowUpsOpen != 1 {
 		t.Errorf("both projects, open = %+v", both)
 	}
@@ -151,7 +151,7 @@ func TestMilestones(t *testing.T) {
 	if rows := list(store.MilestoneQuery{}); len(rows) != 0 {
 		t.Errorf("no projects = %v, want none", rows)
 	}
-	if _, err := s.Milestones(ctx, store.MilestoneQuery{Projects: []store.ProjectKey{bloop}, State: "merged"}); err == nil {
+	if _, err := s.Milestones(ctx, store.MilestoneQuery{Projects: []store.ProjectKey{orbit}, State: "merged"}); err == nil {
 		t.Error("unknown state: no error")
 	}
 }
@@ -196,7 +196,7 @@ func TestMilestoneDetail(t *testing.T) {
 	exp := time.Now().Add(24 * time.Hour)
 	posted := base.Add(4 * time.Hour)
 
-	m := store.MilestoneSnapshot{Project: bloop, IID: 30, Title: "Detail", State: "open", Phase: "implementing",
+	m := store.MilestoneSnapshot{Project: orbit, IID: 30, Title: "Detail", State: "open", Phase: "implementing",
 		StartedAt: base, TrackingIID: 301, Owners: []string{"jo"}, OwnerSubjects: []string{"sub-jo"},
 		RetroNoteID: 77, RetroText: "It went **well**.", RetroPostedAt: posted,
 		Issues: []store.IssueSnapshot{
@@ -219,13 +219,13 @@ func TestMilestoneDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Another milestone of the same project, without issues.
-	if _, err := owner.SaveMilestone(ctx, store.MilestoneSnapshot{Project: bloop, IID: 31, State: "open"}, exp); err != nil {
+	if _, err := owner.SaveMilestone(ctx, store.MilestoneSnapshot{Project: orbit, IID: 31, State: "open"}, exp); err != nil {
 		t.Fatal(err)
 	}
 
 	ev := func(key string, at time.Time, milestone, issue int64, kind string, data map[string]any, expires time.Time) store.Event {
-		return store.Event{Key: key, At: at, Namespace: bloop.Namespace, Project: bloop.Name, MilestoneIID: milestone,
-			IssueIID: issue, Task: "bloop-" + key, Kind: kind, Data: data, ExpiresAt: expires}
+		return store.Event{Key: key, At: at, Namespace: orbit.Namespace, Project: orbit.Name, MilestoneIID: milestone,
+			IssueIID: issue, Task: "orbit-" + key, Kind: kind, Data: data, ExpiresAt: expires}
 	}
 	pause := func(task, kind string, at, start time.Time, pk string, item int64) store.Event {
 		d := map[string]any{"kind": pk}
@@ -266,7 +266,7 @@ func TestMilestoneDetail(t *testing.T) {
 		if cost == nil {
 			source = "unknown"
 		}
-		return store.Call{Key: key, At: base.Add(time.Hour), Namespace: bloop.Namespace, Project: bloop.Name,
+		return store.Call{Key: key, At: base.Add(time.Hour), Namespace: orbit.Namespace, Project: orbit.Name,
 			MilestoneIID: milestone, IssueIID: issue, Task: "t-" + key, Run: 1, Seq: 1, Kind: "implement", Role: "implement",
 			Engine: "claude", Model: "claude-opus-5-5", InputTokens: 10, OutputTokens: 5, CostUSD: cost, CostSource: source,
 			DurationMS: ms, ExpiresAt: exp}
@@ -282,7 +282,7 @@ func TestMilestoneDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d, err := s.Milestone(ctx, bloop, 30, now)
+	d, err := s.Milestone(ctx, orbit, 30, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,30 +345,30 @@ func TestMilestoneDetail(t *testing.T) {
 		t.Errorf("issue 163 paused %ds, want both pauses", i163.PausedSec)
 	}
 
-	one, err := s.IssueFigures(ctx, bloop, 30, 160, now)
+	one, err := s.IssueFigures(ctx, orbit, 30, 160, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if one.IID != 160 || one.WallSec != i160.WallSec || one.AgentMS != i160.AgentMS || one.Spend != i160.Spend {
 		t.Errorf("IssueFigures(160) = %+v, want %+v", one, i160)
 	}
-	if one, err = s.IssueFigures(ctx, bloop, 30, 163, now); err != nil || one.PausedSec != i163.PausedSec {
+	if one, err = s.IssueFigures(ctx, orbit, 30, 163, now); err != nil || one.PausedSec != i163.PausedSec {
 		t.Errorf("IssueFigures(163) = %+v, %v", one, err)
 	}
 
-	empty, err := s.Milestone(ctx, bloop, 31, now)
+	empty, err := s.Milestone(ctx, orbit, 31, now)
 	if err != nil || empty.IID != 31 || len(empty.Issues) != 0 || len(empty.FollowUps) != 0 || len(empty.Releases) != 0 || empty.Spend.CostUSD.USD != 7 {
 		t.Errorf("milestone 31 = %+v, %v", empty, err)
 	}
 
 	for _, missing := range []func() error{
-		func() error { _, err := s.Milestone(ctx, bloop, 99, now); return err },
+		func() error { _, err := s.Milestone(ctx, orbit, 99, now); return err },
 		func() error {
 			_, err := s.Milestone(ctx, store.ProjectKey{Namespace: "agents", Name: "other"}, 30, now)
 			return err
 		},
-		func() error { _, err := s.IssueFigures(ctx, bloop, 30, 999, now); return err },
-		func() error { _, err := s.IssueFigures(ctx, bloop, 99, 160, now); return err },
+		func() error { _, err := s.IssueFigures(ctx, orbit, 30, 999, now); return err },
+		func() error { _, err := s.IssueFigures(ctx, orbit, 99, 160, now); return err },
 	} {
 		if err := missing(); !errors.Is(err, store.ErrNotFound) {
 			t.Errorf("missing: err = %v, want not found", err)
@@ -381,7 +381,7 @@ func TestMilestoneDetail(t *testing.T) {
 	queries := func() int64 {
 		t.Helper()
 		c.n.Store(0)
-		if _, err := cs.Milestone(ctx, bloop, 30, now); err != nil {
+		if _, err := cs.Milestone(ctx, orbit, 30, now); err != nil {
 			t.Fatal(err)
 		}
 		return c.n.Load()

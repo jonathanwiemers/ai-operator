@@ -16,7 +16,7 @@ func TestHistoryEvents(t *testing.T) {
 	exp := base.Add(24 * time.Hour)
 	ev := func(key string, minutes int, kind string, issue, milestone int64, data map[string]any) store.Event {
 		return store.Event{Key: key, At: base.Add(time.Duration(minutes) * time.Minute), Namespace: "agents",
-			Project: "bloop", IssueIID: issue, MilestoneIID: milestone, Kind: kind, Summary: key, Data: data, ExpiresAt: exp}
+			Project: "orbit", IssueIID: issue, MilestoneIID: milestone, Kind: kind, Summary: key, Data: data, ExpiresAt: exp}
 	}
 	events := []store.Event{
 		ev("note-1", 0, "note", 142, 0, map[string]any{"body": "hold merges please"}),
@@ -38,7 +38,7 @@ func TestHistoryEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bloop := []store.ProjectKey{{Namespace: "agents", Name: "bloop"}}
+	orbit := []store.ProjectKey{{Namespace: "agents", Name: "orbit"}}
 	keys := func(q store.StreamQuery) []string {
 		t.Helper()
 		got, err := s.Stream(ctx, q)
@@ -58,20 +58,20 @@ func TestHistoryEvents(t *testing.T) {
 		}
 	}
 
-	check("newest first", store.StreamQuery{Projects: bloop}, "other", "merged-1", "run-2", "run-1", "note-1")
+	check("newest first", store.StreamQuery{Projects: orbit}, "other", "merged-1", "run-2", "run-1", "note-1")
 	check("no projects", store.StreamQuery{})
-	check("page", store.StreamQuery{Projects: bloop, Limit: 2}, "other", "merged-1")
-	all, _ := s.Stream(ctx, store.StreamQuery{Projects: bloop})
-	check("before", store.StreamQuery{Projects: bloop, Before: &store.Cursor{At: all[1].At, ID: all[1].ID}, Limit: 2}, "run-2", "run-1")
-	check("before a time", store.StreamQuery{Projects: bloop, Before: &store.Cursor{At: base.Add(2 * time.Minute)}}, "run-1", "note-1")
-	check("after", store.StreamQuery{Projects: bloop, After: &store.Cursor{At: all[3].At, ID: all[3].ID}}, "other", "merged-1", "run-2")
-	check("after, oldest first page", store.StreamQuery{Projects: bloop, After: &store.Cursor{At: all[4].At, ID: all[4].ID}, Limit: 2}, "run-2", "run-1")
-	check("milestone", store.StreamQuery{Projects: bloop, Milestone: 20, Issues: []int64{142}}, "merged-1", "run-2", "run-1", "note-1")
-	check("issue of the milestone", store.StreamQuery{Projects: bloop, Milestone: 20, Issue: 142}, "merged-1", "run-1", "note-1")
-	check("issue in another milestone", store.StreamQuery{Projects: bloop, Milestone: 21, Issue: 142}, "note-1")
-	check("kinds", store.StreamQuery{Projects: bloop, Kinds: []string{"note"}}, "other", "note-1")
-	check("search", store.StreamQuery{Projects: bloop, Text: "merges"}, "note-1")
-	check("search without comments", store.StreamQuery{Projects: bloop, Text: "merges", TextWithoutNotes: bloop})
+	check("page", store.StreamQuery{Projects: orbit, Limit: 2}, "other", "merged-1")
+	all, _ := s.Stream(ctx, store.StreamQuery{Projects: orbit})
+	check("before", store.StreamQuery{Projects: orbit, Before: &store.Cursor{At: all[1].At, ID: all[1].ID}, Limit: 2}, "run-2", "run-1")
+	check("before a time", store.StreamQuery{Projects: orbit, Before: &store.Cursor{At: base.Add(2 * time.Minute)}}, "run-1", "note-1")
+	check("after", store.StreamQuery{Projects: orbit, After: &store.Cursor{At: all[3].At, ID: all[3].ID}}, "other", "merged-1", "run-2")
+	check("after, oldest first page", store.StreamQuery{Projects: orbit, After: &store.Cursor{At: all[4].At, ID: all[4].ID}, Limit: 2}, "run-2", "run-1")
+	check("milestone", store.StreamQuery{Projects: orbit, Milestone: 20, Issues: []int64{142}}, "merged-1", "run-2", "run-1", "note-1")
+	check("issue of the milestone", store.StreamQuery{Projects: orbit, Milestone: 20, Issue: 142}, "merged-1", "run-1", "note-1")
+	check("issue in another milestone", store.StreamQuery{Projects: orbit, Milestone: 21, Issue: 142}, "note-1")
+	check("kinds", store.StreamQuery{Projects: orbit, Kinds: []string{"note"}}, "other", "note-1")
+	check("search", store.StreamQuery{Projects: orbit, Text: "merges"}, "note-1")
+	check("search without comments", store.StreamQuery{Projects: orbit, Text: "merges", TextWithoutNotes: orbit})
 	// Events read by name: NULL milestone, issue and merge request become 0.
 	if e := all[4]; e.Key != "note-1" || e.IssueIID != 142 || e.MilestoneIID != 0 || e.MergeRequestIID != 0 ||
 		e.Kind != "note" || e.Summary != "note-1" || e.Data["body"] != "hold merges please" || !e.ExpiresAt.Equal(exp) {
@@ -82,7 +82,7 @@ func TestHistoryEvents(t *testing.T) {
 		t.Errorf("Stream(shop) = %+v, %v", shop, err)
 	}
 
-	days, err := s.Days(ctx, bloop[0], base.Add(-time.Hour), time.UTC)
+	days, err := s.Days(ctx, orbit[0], base.Add(-time.Hour), time.UTC)
 	if err != nil || len(days) != 1 {
 		t.Fatalf("Days = %v, %v", days, err)
 	}
@@ -123,16 +123,16 @@ func TestPauses(t *testing.T) {
 			Namespace: "agents", Project: project, MilestoneIID: milestone, IssueIID: 7, Kind: kind, Summary: kind, Data: d, ExpiresAt: expires}
 	}
 	events := []store.Event{
-		ev("autopilot.paused", 0, 0, "bloop", 24, "ciRed", "", exp),
-		ev("autopilot.resumed", 10, 0, "bloop", 24, "ciRed", "selfHealed", exp),
-		ev("autopilot.paused", 20, 20, "bloop", 24, "stuck", "", exp),
-		ev("autopilot.resumed", 50, 20, "bloop", 24, "stuck", "owner", exp),
-		ev("autopilot.paused", 90, 90, "bloop", 24, "budget", "", exp),
+		ev("autopilot.paused", 0, 0, "orbit", 24, "ciRed", "", exp),
+		ev("autopilot.resumed", 10, 0, "orbit", 24, "ciRed", "selfHealed", exp),
+		ev("autopilot.paused", 20, 20, "orbit", 24, "stuck", "", exp),
+		ev("autopilot.resumed", 50, 20, "orbit", 24, "stuck", "owner", exp),
+		ev("autopilot.paused", 90, 90, "orbit", 24, "budget", "", exp),
 		// Past the retention: left out.
-		ev("autopilot.paused", -60, -60, "bloop", 24, "review", "", now.Add(-time.Minute)),
+		ev("autopilot.paused", -60, -60, "orbit", 24, "review", "", now.Add(-time.Minute)),
 		// Other kinds, milestones and projects: left out.
-		{Key: "autopilot-1", At: base, Namespace: "agents", Project: "bloop", MilestoneIID: 24, Kind: "autopilot", ExpiresAt: exp},
-		ev("autopilot.paused", 5, 5, "bloop", 25, "merge", "", exp),
+		{Key: "autopilot-1", At: base, Namespace: "agents", Project: "orbit", MilestoneIID: 24, Kind: "autopilot", ExpiresAt: exp},
+		ev("autopilot.paused", 5, 5, "orbit", 25, "merge", "", exp),
 		ev("autopilot.paused", 6, 6, "shop", 24, "merge", "", exp),
 	}
 	// Keys must differ across projects and milestones.
@@ -145,7 +145,7 @@ func TestPauses(t *testing.T) {
 	if _, err := s.InsertEvents(ctx, events); err != nil {
 		t.Fatal(err)
 	}
-	h, err := s.Pauses(ctx, store.ProjectKey{Namespace: "agents", Name: "bloop"}, 24, now)
+	h, err := s.Pauses(ctx, store.ProjectKey{Namespace: "agents", Name: "orbit"}, 24, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestPauses(t *testing.T) {
 		t.Errorf("via = %q, %q, %q", h.Pauses[0].Via, h.Pauses[1].Via, h.Pauses[2].Via)
 	}
 
-	if h, err := s.Pauses(ctx, store.ProjectKey{Namespace: "agents", Name: "bloop"}, 99, now); err != nil || len(h.Pauses) != 0 || h.Totals.Count != 0 {
+	if h, err := s.Pauses(ctx, store.ProjectKey{Namespace: "agents", Name: "orbit"}, 99, now); err != nil || len(h.Pauses) != 0 || h.Totals.Count != 0 {
 		t.Errorf("no pauses = %+v, %v", h, err)
 	}
 }

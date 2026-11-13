@@ -222,6 +222,10 @@ A merge to `main` does not release by itself: a release is a decision (the
 operator's or a human's) and gets a calendar version (`2026.10.1`,
 `2026.10.2`, …), see [releasing](docs/releasing.md).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Security
 
 Please report vulnerabilities privately, see [SECURITY.md](SECURITY.md).

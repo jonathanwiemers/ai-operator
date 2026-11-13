@@ -8,7 +8,7 @@ docs and the operator still assume GitHub as the primary place of work:
 1. **GitHub-only CI.** Checks run only in `.github/workflows/ci.yml`. An MR on
    GitLab has no pipeline. Releases stay on GitHub / ghcr (that is fine); the
    day-to-day home does not.
-2. **Bloop M16 / M17 gaps.** A planning run fails when one GitLab call times
+2. **Orbit M16 / M17 gaps.** A planning run fails when one GitLab call times
    out (`applyPlan` posting decisions); a failed planning run pings nobody
    because the tracking issue is created only after planning; a branch that
    changes pin files can leave toolchains in the shared `$HOME/.toolchains`;
@@ -17,11 +17,11 @@ docs and the operator still assume GitHub as the primary place of work:
    `PausedReason` can quote job names into GitLab without `notify.Defuse`;
    `JobTrace` reads whole job logs into memory before keeping the last 4 MiB.
 3. **Polling budget.** The project controller syncs every AgentProject every
-   `pollInterval` (2m in the netcup01 defaults), listing issues, notes and
+   `pollInterval` (2m in the my-cluster defaults), listing issues, notes and
    pipelines. On GitLab Free the bot shares 100 requests per minute; webhooks
    (available per project on Free; group webhooks are not) are unused.
 4. **Canceled main never released.** A default-branch pipeline canceled by a
-   newer commit (Bloop launch commit `074ff650`) is skipped when picking the
+   newer commit (Orbit launch commit `074ff650`) is skipped when picking the
    newest finished pipeline, so the commit never gets a green run and never
    releases.
 5. **Coordinator C3–C5 still open.** Spec edits with a diff and an owner's
@@ -54,7 +54,7 @@ docs and the operator still assume GitHub as the primary place of work:
 ## Non-goals
 
 - Moving releases, images or the chart off GitHub / ghcr, or changing Flux.
-- Setting up the GitLab push mirror, the AgentProject in `infra/cluster`, the
+- Setting up the GitLab push mirror, the AgentProject in `example/infra`, the
   bot's membership, runners, or the public HTTPRoute for `/hooks/gitlab`:
   done by hand before arming / after the receiver ships.
 - Group webhooks (GitLab Premium).

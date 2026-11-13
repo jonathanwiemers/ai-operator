@@ -19,7 +19,7 @@ File references are at origin/main, 2026-11-06.
 
 ## Background
 
-Most of this came up in the retrospectives of Bloop %20–%24 and ai-operator
+Most of this came up in the retrospectives of Orbit %20–%24 and ai-operator
 %6; planning late is the owner's request. File refs are at origin/main,
 2026-11-06.
 
@@ -27,7 +27,7 @@ Most of this came up in the retrospectives of Bloop %20–%24 and ai-operator
 
 - `gateCheck` (`internal/controller/autopilot.go:1096`) answers every
   `needsInput` label with one text: "CI is still red, the run failed or the
-  agent asked a question". Bloop %22 and ai-operator %6 could not tell which
+  agent asked a question". Orbit %22 and ai-operator %6 could not tell which
   it was afterwards. `pilot_events.go:58` repeats the text, and the
   `autopilot.paused` events and the Pauses card inherit it.
 - The label is set in two places, and both know the cause: `finishCI`
@@ -44,7 +44,7 @@ Most of this came up in the retrospectives of Bloop %20–%24 and ai-operator
 Each requirement below names the commit that implemented it (the MR iids are not in the history).
 ### Spend
 
-- Bloop %24: per-model tokens sum to 671M (Opus alone 642.8M), the
+- Orbit %24: per-model tokens sum to 671M (Opus alone 642.8M), the
   milestone's total is 408.6M. By issue and by kind match the total.
 - ai-operator %8 ran without subagents, and there the two agree exactly:
   opus 7.64M + sonnet 5.07M = 12.71M.
@@ -64,7 +64,7 @@ Each requirement below names the commit that implemented it (the MR iids are not
 
 ### Empty queue
 
-- Bloop %20 commented "✅ Autopilot is done: 0 of 0 issues merged", then
+- Orbit %20 commented "✅ Autopilot is done: 0 of 0 issues merged", then
   posted a retrospective. Its issues #384 and #385 existed, and an owner had
   just edited the milestone description, which plans it again. It continued
   later and merged both.
@@ -211,12 +211,12 @@ Each requirement below names the commit that implemented it (the MR iids are not
   until 2026-11-13, so it could not be checked live.
 - Resolving which model `auto` picked.
 - Rewriting stored `agent_calls` rows.
-- Cost of subscription runs (Bloop %23): that report came from before
+- Cost of subscription runs (Orbit %23): that report came from before
   `agent_calls` and is not reproduced here.
 - Issues within a long milestone going stale as its earlier slices merge.
 - Retrying planning after a usage limit, per-issue timing and acceptance
   evidence in the retrospective: other milestones.
-- netcup01 config. Nothing here needs an infra change.
+- my-cluster config. Nothing here needs an infra change.
 
 ## Suggested order
 
@@ -305,7 +305,7 @@ modelUsage totals". The recorded stream-json results carry it (`{}` when
 nothing was counted), a fresh `-p` stream-json run too; `--output-format
 json` runs and older versions do not.
 
-**3. Which explains Bloop %24? The subagent threads.**
+**3. Which explains Orbit %24? The subagent threads.**
 
 - Gap: Σ models 671.0M − Σ `usage` 408.6M = 262.4M, 39 % of the per-model
   figure. Opus alone (642.8M) exceeds the whole total, so the missing tokens
@@ -403,12 +403,12 @@ goes from 47,029 tokens and $0.1387 to 31,876 tokens and $0.0412. Budgets
 read the same spend, so a project that chats a lot reaches its budget later
 than before. Old rows keep their totals.
 
-### R9: how Bloop %20 reached done
+### R9: how Orbit %20 reached done
 
 Traced from the code at origin/main (`internal/controller/autopilot.go`,
 `internal/runner/spec.go`, `runner.go`) and replayed by
 `TestEmptyQueueIsNeverDone` (`autopilot_close_test.go`). Without the R10
-guard that test ends in `Phase: Done` with `Items: []`. The Bloop operator
+guard that test ends in `Phase: Done` with `Items: []`. The Orbit operator
 logs were not available, so the path is the only one the code allows, not
 one read from %20's events.
 

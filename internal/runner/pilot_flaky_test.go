@@ -8,7 +8,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
-// Bloop #338/#340: the flaky event brings the failing test and the failed
+// Orbit #338/#340: the flaky event brings the failing test and the failed
 // attempt's log as untrusted data; what happened, in the prompt's context,
 // is the event's first paragraph, without the log.
 func TestPilotAssessesAFlakyEventWithItsLog(t *testing.T) {

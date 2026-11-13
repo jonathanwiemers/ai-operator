@@ -69,12 +69,12 @@ func TestResearchPod(t *testing.T) {
 
 func TestProjectSlug(t *testing.T) {
 	for in, want := range map[string]string{
-		"jo.wiemers/infra/cluster": "jo.wiemers-infra-cluster",
-		"/Group/Sub_Group/App/":    "group-sub_group-app",
-		"group/ä-app":              "group--app",
-		"../etc/passwd":            "etc-passwd", // leading "." and "-" are trimmed
-		"":                         "",
-		"..":                       "",
+		"example/infra":         "example-infra",
+		"/Group/Sub_Group/App/": "group-sub_group-app",
+		"group/ä-app":           "group--app",
+		"../etc/passwd":         "etc-passwd", // leading "." and "-" are trimmed
+		"":                      "",
+		"..":                    "",
 	} {
 		got := ProjectSlug(in)
 		if got != want {
@@ -91,20 +91,20 @@ func TestProjectSlug(t *testing.T) {
 
 func TestValidProjectSlug(t *testing.T) {
 	for s, want := range map[string]bool{
-		"jo.wiemers-infra-cluster": true,
-		"a":                        true,
-		"0a._-":                    true,
-		"":                         false,
-		".":                        false,
-		"..":                       false,
-		".git":                     false,
-		"-a":                       false,
-		"_a":                       false,
-		"a/b":                      false,
-		"A":                        false,
-		"a b":                      false,
-		"a\x00":                    false,
-		strings.Repeat("a", 201):   false,
+		"example-infra":          true,
+		"a":                      true,
+		"0a._-":                  true,
+		"":                       false,
+		".":                      false,
+		"..":                     false,
+		".git":                   false,
+		"-a":                     false,
+		"_a":                     false,
+		"a/b":                    false,
+		"A":                      false,
+		"a b":                    false,
+		"a\x00":                  false,
+		strings.Repeat("a", 201): false,
 	} {
 		if got := ValidProjectSlug(s); got != want {
 			t.Errorf("ValidProjectSlug(%q) = %v, want %v", s, got, want)
@@ -119,7 +119,7 @@ func TestCompanionBranch(t *testing.T) {
 		title string
 		want  string
 	}{
-		{"jo.wiemers/ai-operator", 42, "Add PayPal button", "agent/ai-operator-42-add-paypal-button"},
+		{"example/ai-operator", 42, "Add PayPal button", "agent/ai-operator-42-add-paypal-button"},
 		{"Group/Shop.App", 7, "", "agent/shop-app-7"},
 		{"app", 3, "Fix it", "agent/app-3-fix-it"},
 		{"group/app", 9, strings.Repeat("word ", 20), "agent/app-9-word-word-word-word-word-word-word-word"},

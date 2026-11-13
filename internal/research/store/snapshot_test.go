@@ -13,11 +13,11 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/research/storetest"
 )
 
-var bloop = store.ProjectKey{Namespace: "agents", Name: "bloop"}
+var orbit = store.ProjectKey{Namespace: "agents", Name: "orbit"}
 
 func snapshot(started time.Time) store.MilestoneSnapshot {
 	return store.MilestoneSnapshot{
-		Project: bloop, IID: 21, MilestoneID: 6123456789, Title: "Desk", WebURL: "https://gitlab.example/m/21",
+		Project: orbit, IID: 21, MilestoneID: 6123456789, Title: "Desk", WebURL: "https://gitlab.example/m/21",
 		State: "open", Phase: "implementing", StartedAt: started, TrackingIID: 300,
 		Owners: []string{"jo"}, OwnerSubjects: []string{"sub-jo"},
 		Issues: []store.IssueSnapshot{
@@ -90,7 +90,7 @@ func TestSaveMilestoneIdempotent(t *testing.T) {
 	var updated, expires time.Time
 	if err := s.Pool().QueryRow(ctx, `SELECT milestone_id, title, web_url, state, phase, started_at, done_at,
 			tracking_iid, owners, owner_subjects, updated_at, expires_at FROM desk_milestones
-		WHERE namespace = 'agents' AND project = 'bloop' AND iid = 21`).Scan(&milestoneID, &title, &url, &state, &phase,
+		WHERE namespace = 'agents' AND project = 'orbit' AND iid = 21`).Scan(&milestoneID, &title, &url, &state, &phase,
 		&gotStarted, &done, &tracking, &owners, &subjects, &updated, &expires); err != nil {
 		t.Fatal(err)
 	}
@@ -255,17 +255,17 @@ func TestCloseMilestone(t *testing.T) {
 	done := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 	save(t, s, snapshot(time.Time{}), exp, true)
 
-	if changed, err := s.CloseMilestone(ctx, bloop, 21, done, exp.Add(time.Hour)); err != nil || !changed {
+	if changed, err := s.CloseMilestone(ctx, orbit, 21, done, exp.Add(time.Hour)); err != nil || !changed {
 		t.Fatalf("CloseMilestone = %v, %v; want true", changed, err)
 	}
 	before := versions(t, s)
-	if changed, err := s.CloseMilestone(ctx, bloop, 21, done.Add(time.Hour), exp); err != nil || changed {
+	if changed, err := s.CloseMilestone(ctx, orbit, 21, done.Add(time.Hour), exp); err != nil || changed {
 		t.Fatalf("CloseMilestone again = %v, %v; want false", changed, err)
 	}
 	if c := changedRows(before, versions(t, s)); len(c) != 0 {
 		t.Errorf("closing again changed %v", c)
 	}
-	if changed, err := s.CloseMilestone(ctx, bloop, 99, done, exp); err != nil || changed {
+	if changed, err := s.CloseMilestone(ctx, orbit, 99, done, exp); err != nil || changed {
 		t.Errorf("CloseMilestone of an unknown milestone = %v, %v; want false", changed, err)
 	}
 	var state string
@@ -338,7 +338,7 @@ func TestTakeFollowUps(t *testing.T) {
 	ctx := t.Context()
 	started := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
 	exp := started.Add(24 * time.Hour)
-	if _, err := s.FollowUpsOf(ctx, bloop, 21); !errors.Is(err, store.ErrNotFound) {
+	if _, err := s.FollowUpsOf(ctx, orbit, 21); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("FollowUpsOf without a snapshot = %v, want ErrNotFound", err)
 	}
 	m := snapshot(started)
@@ -352,7 +352,7 @@ func TestTakeFollowUps(t *testing.T) {
 	save(t, s, m, exp, true)
 	take := func(numbers []int, want bool) {
 		t.Helper()
-		changed, err := s.TakeFollowUps(ctx, bloop, 21, numbers, 25, exp)
+		changed, err := s.TakeFollowUps(ctx, orbit, 21, numbers, 25, exp)
 		if err != nil || changed != want {
 			t.Fatalf("TakeFollowUps(%v) = %v, %v; want %v", numbers, changed, err, want)
 		}
@@ -363,7 +363,7 @@ func TestTakeFollowUps(t *testing.T) {
 	if c := changedRows(before, versions(t, s)); len(c) > 0 {
 		t.Fatalf("a repeat wrote %v", c)
 	}
-	got, err := s.FollowUpsOf(ctx, bloop, 21)
+	got, err := s.FollowUpsOf(ctx, orbit, 21)
 	if err != nil || got.TrackingIID != 300 {
 		t.Fatalf("FollowUpsOf = %+v, %v", got, err)
 	}
@@ -446,7 +446,7 @@ func TestSaveMilestoneReleases(t *testing.T) {
 	if c := changedRows(before, versions(t, s)); len(c) != 0 {
 		t.Errorf("a shorter list changed %v", c)
 	}
-	d, err := s.Milestone(ctx, bloop, 21, decided)
+	d, err := s.Milestone(ctx, orbit, 21, decided)
 	if err != nil {
 		t.Fatal(err)
 	}

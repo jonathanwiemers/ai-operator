@@ -196,7 +196,7 @@ func notDone(e *projectEnv, tracking int64) {
 	}
 }
 
-// Bloop %20: a planned milestone, nothing started yet, whose owner edits the
+// Orbit %20: a planned milestone, nothing started yet, whose owner edits the
 // description. The re-plan records an empty plan, so the queue drops both
 // pending issues, and an accepted endMilestone then reached done with 0 of 0.
 func TestEmptyQueueIsNeverDone(t *testing.T) {

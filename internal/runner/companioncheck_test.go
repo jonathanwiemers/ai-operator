@@ -15,7 +15,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/pathspec"
 )
 
-const allowedTree = "clusters/netcup01/applications/ai-operator"
+const allowedTree = "clusters/my-cluster/applications/ai-operator"
 
 // companionRepo is a work clone whose main is the mirror's origin/main;
 // the cases commit on top of it and hand the result to the mirror.

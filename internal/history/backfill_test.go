@@ -184,10 +184,10 @@ func (m *memBackfill) MergedIssues(_ context.Context, _ store.ProjectKey, issues
 	return out, m.call()
 }
 
-var bloopKey = store.ProjectKey{Namespace: "agents", Name: "bloop"}
+var orbitKey = store.ProjectKey{Namespace: "agents", Name: "orbit"}
 
-func bloopTarget() BackfillTarget {
-	return BackfillTarget{Namespace: "agents", Name: "bloop", GitLab: "group/app", BotID: 999,
+func orbitTarget() BackfillTarget {
+	return BackfillTarget{Namespace: "agents", Name: "orbit", GitLab: "group/app", BotID: 999,
 		Selected: func(m gitlab.Milestone) bool { return !strings.HasPrefix(m.Title, "Manual") }}
 }
 
@@ -241,7 +241,7 @@ func newBackfillRig(t *testing.T, f gitlab.API) *backfillRig {
 // step runs a step and returns its requests, failing past four.
 func (r *backfillRig) step(t *testing.T) int {
 	t.Helper()
-	r.b.Step(t.Context(), r.gl, bloopTarget())
+	r.b.Step(t.Context(), r.gl, orbitTarget())
 	n := r.gl.take()
 	if n > 4 {
 		t.Fatalf("a step made %d requests, want at most 4", n)
@@ -252,7 +252,7 @@ func (r *backfillRig) step(t *testing.T) int {
 
 func (r *backfillRig) saved() []int64 {
 	var iids []int64
-	for iid := range r.st.saved[bloopKey] {
+	for iid := range r.st.saved[orbitKey] {
 		iids = append(iids, iid)
 	}
 	slices.Sort(iids)
@@ -304,7 +304,7 @@ func TestBackfillMilestoneContent(t *testing.T) {
 	if n := r.step(t); n != 2 {
 		t.Errorf("milestone step made %d requests, want 2 (issues, notes)", n)
 	}
-	m, ok := r.st.saved[bloopKey][1]
+	m, ok := r.st.saved[orbitKey][1]
 	if !ok {
 		t.Fatal("milestone 1 not saved")
 	}
@@ -338,7 +338,7 @@ func TestBackfillRetrospectiveAbsent(t *testing.T) {
 	if n := r.step(t); n != 1 {
 		t.Errorf("milestone without a tracking issue made %d requests, want 1", n)
 	}
-	m := r.st.saved[bloopKey][1]
+	m := r.st.saved[orbitKey][1]
 	if m.TrackingIID != 0 || m.RetroText != "" || len(m.Issues) != 3 {
 		t.Errorf("milestone 1 = tracking %d, retro %q, %d issues; want none, none, 3", m.TrackingIID, m.RetroText, len(m.Issues))
 	}
@@ -348,7 +348,7 @@ func TestBackfillRetrospectiveAbsent(t *testing.T) {
 	r = newBackfillRig(t, f)
 	r.step(t)
 	r.step(t)
-	if m := r.st.saved[bloopKey][1]; m.TrackingIID != 19 || m.RetroNoteID != 0 || m.RetroText != "" {
+	if m := r.st.saved[orbitKey][1]; m.TrackingIID != 19 || m.RetroNoteID != 0 || m.RetroText != "" {
 		t.Errorf("milestone 1 = tracking %d, retro %d %q; want 19 without a retrospective", m.TrackingIID, m.RetroNoteID, m.RetroText)
 	}
 }
@@ -426,8 +426,8 @@ func TestBackfillRequestLimits(t *testing.T) {
 	// Two projects within backfillSpacing: the second waits.
 	f = oldGitLab(1)
 	r = newBackfillRig(t, f)
-	r.b.Step(t.Context(), r.gl, bloopTarget())
-	other := bloopTarget()
+	r.b.Step(t.Context(), r.gl, orbitTarget())
+	other := orbitTarget()
 	other.Name = "other"
 	r.b.Step(t.Context(), r.gl, other)
 	if n := r.gl.take(); n != 1 {
@@ -465,8 +465,8 @@ func TestBackfillRequestLimits(t *testing.T) {
 // nothing; a store that fails makes no GitLab request.
 func TestBackfillWithoutStore(t *testing.T) {
 	gl := &countingGitLab{API: oldGitLab(1)}
-	(*Backfill)(nil).Step(t.Context(), gl, bloopTarget())
-	newBackfill(func() BackfillStore { return nil }, time.Hour, clocktesting.NewFakeClock(now), testLogger(t)).Step(t.Context(), gl, bloopTarget())
+	(*Backfill)(nil).Step(t.Context(), gl, orbitTarget())
+	newBackfill(func() BackfillStore { return nil }, time.Hour, clocktesting.NewFakeClock(now), testLogger(t)).Step(t.Context(), gl, orbitTarget())
 	r := newBackfillRig(t, oldGitLab(1))
 	r.st.failWith = errors.New("database down")
 	r.step(t)
@@ -484,12 +484,12 @@ func TestBackfillWithStore(t *testing.T) {
 	gl := &countingGitLab{API: oldGitLab(2)}
 	b := newBackfill(func() BackfillStore { return s }, time.Hour, clk, testLogger(t))
 	step := func() {
-		b.Step(ctx, gl, bloopTarget())
+		b.Step(ctx, gl, orbitTarget())
 		clk.Step(backfillSpacing)
 	}
 	step() // listing
 	step() // milestone 1
-	m, err := s.Milestone(ctx, bloopKey, 1, clk.Now())
+	m, err := s.Milestone(ctx, orbitKey, 1, clk.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,11 +504,11 @@ func TestBackfillWithStore(t *testing.T) {
 	b = newBackfill(func() BackfillStore { return s }, time.Hour, clk, testLogger(t))
 	step() // listing again
 	step() // milestone 2
-	if _, err := s.Milestone(ctx, bloopKey, 2, clk.Now()); err != nil {
+	if _, err := s.Milestone(ctx, orbitKey, 2, clk.Now()); err != nil {
 		t.Fatalf("milestone 2 after the restart: %v", err)
 	}
 	step() // nothing pending: complete
-	if at, complete, err := s.ProjectListed(ctx, bloopKey); err != nil || !complete || at.IsZero() {
+	if at, complete, err := s.ProjectListed(ctx, orbitKey); err != nil || !complete || at.IsZero() {
 		t.Errorf("ProjectListed = %v, %v, %v; want complete", at, complete, err)
 	}
 	gl.take()

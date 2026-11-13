@@ -28,7 +28,7 @@ const (
 )
 
 // TestCompanionMilestoneMerge is the milestone's first acceptance bullet:
-// an autopilot milestone with "/agent repo jo.wiemers/infra/cluster merge"
+// an autopilot milestone with "/agent repo example/infra merge"
 // and a target with autoMerge. One issue's run pushes both trees and opens
 // two linked merge requests; both go green; autopilot merges the home one;
 // once the operator runs the release that contains it, the companion is
@@ -224,7 +224,7 @@ func TestCompanionViolationPushesNothing(t *testing.T) {
 	for _, tc := range []struct {
 		name, path, reason string
 	}{
-		{"outside the paths", "clusters/netcup01/applications/bloop/values.yaml", "outside the allowed paths"},
+		{"outside the paths", "clusters/my-cluster/applications/orbit/values.yaml", "outside the allowed paths"},
 		{"CI configuration", ".gitlab-ci.yml", "CI configuration"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

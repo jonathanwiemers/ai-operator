@@ -136,7 +136,7 @@ fallback: whatever a lost delivery missed, a later poll picks up.
    [chart README](../charts/ai-operator/README.md#gitlab-webhooks)). The
    chart renders no route: add an HTTPRoute or Ingress that makes
    `https://<host>/hooks/gitlab` reachable from GitLab. For the ai-operator's
-   own deployment that is done by hand in `infra/cluster`.
+   own deployment that is done by hand in `example/infra`.
 3. **Turn it on per project** in the AgentProject:
 
    ```yaml

@@ -102,7 +102,7 @@ agent:
 # with readerSecret.
 research:
   # The database, as the Zalando postgres-operator provides it: one Secret
-  # per login with the keys username and password. The netcup01 example is
+  # per login with the keys username and password. The my-cluster example is
   # in the comments.
   database:
     # Empty: research is off.

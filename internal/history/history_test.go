@@ -24,8 +24,8 @@ var now = time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC)
 
 func task(rv string, mut func(*aiv1.AgentTask)) *aiv1.AgentTask {
 	t := &aiv1.AgentTask{
-		ObjectMeta: metav1.ObjectMeta{Name: "bloop-148", Namespace: "agents", UID: "u1", ResourceVersion: rv},
-		Spec: aiv1.AgentTaskSpec{ProjectRef: "bloop", RunRequest: 3,
+		ObjectMeta: metav1.ObjectMeta{Name: "orbit-148", Namespace: "agents", UID: "u1", ResourceVersion: rv},
+		Spec: aiv1.AgentTaskSpec{ProjectRef: "orbit", RunRequest: 3,
 			Issue: &aiv1.IssueRef{IID: 148}, Milestone: &aiv1.MilestoneRef{IID: 20}},
 	}
 	if mut != nil {
@@ -163,7 +163,7 @@ func TestDifferRunDurationAndCost(t *testing.T) {
 	if e.Data["durationSec"] != int64(90) || e.Data["costUSD"] != "1.2500" || e.IssueIID != 148 || e.MilestoneIID != 20 {
 		t.Errorf("run.finished = %+v", e)
 	}
-	if e.Project != "bloop" || e.Namespace != "agents" || e.Task != "bloop-148" {
+	if e.Project != "orbit" || e.Namespace != "agents" || e.Task != "orbit-148" {
 		t.Errorf("event names = %+v", e)
 	}
 }
@@ -205,7 +205,7 @@ func TestCallsOfAnUpdate(t *testing.T) {
 		t.Fatalf("keys = %v, want %v", keys(got), want)
 	}
 	c := got[0]
-	if c.Namespace != "agents" || c.Project != "bloop" || c.Task != "bloop-148" || c.MilestoneIID != 20 ||
+	if c.Namespace != "agents" || c.Project != "orbit" || c.Task != "orbit-148" || c.MilestoneIID != 20 ||
 		c.IssueIID != 148 || c.MergeRequestIID != 702 || c.Run != 2 || c.Seq != 3 || !c.At.Equal(now.Add(3*time.Minute)) {
 		t.Errorf("call = %+v", c)
 	}
@@ -442,9 +442,9 @@ func TestWrapGitLabRecordsNotesOnce(t *testing.T) {
 		{ID: 1, Body: "/pilot hold merges", Author: gitlab.User{Username: "jw"}, CreatedAt: &at},
 		{ID: 2, Body: "changed the label", System: true},
 		{ID: 3, Body: "Done.", Author: gitlab.User{Username: "ai-bot"}, CreatedAt: &at},
-	}}, Project{Namespace: "agents", Name: "bloop", WebURL: "https://gitlab.com/jo/bloop/", Bot: "ai-bot"})
+	}}, Project{Namespace: "agents", Name: "orbit", WebURL: "https://gitlab.com/jo/orbit/", Bot: "ai-bot"})
 	for range 2 {
-		if _, err := api.ListIssueNotes(t.Context(), "jo/bloop", 138); err != nil {
+		if _, err := api.ListIssueNotes(t.Context(), "jo/orbit", 138); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -457,7 +457,7 @@ func TestWrapGitLabRecordsNotesOnce(t *testing.T) {
 		t.Fatalf("recorded %d events, want 2: %v", len(got), kinds(got))
 	}
 	if e := got[0]; e.Key != "note/1" || e.IssueIID != 138 || e.Actor != "jw" ||
-		e.Data["url"] != "https://gitlab.com/jo/bloop/-/issues/138#note_1" || e.Data["bot"] != nil || !e.ExpiresAt.Equal(at.Add(time.Hour)) {
+		e.Data["url"] != "https://gitlab.com/jo/orbit/-/issues/138#note_1" || e.Data["bot"] != nil || !e.ExpiresAt.Equal(at.Add(time.Hour)) {
 		t.Errorf("note 1 = %+v", e)
 	}
 	if got[1].Data["bot"] != true {
@@ -678,7 +678,7 @@ func TestDifferCheckpoints(t *testing.T) {
 		t.Fatalf("first checkpoint: %v", got)
 	}
 	e := es[0]
-	if !e.At.Equal(pushed) || e.MilestoneIID != 20 || e.IssueIID != 148 || e.MergeRequestIID != 702 || e.Task != "bloop-148" ||
+	if !e.At.Equal(pushed) || e.MilestoneIID != 20 || e.IssueIID != 148 || e.MergeRequestIID != 702 || e.Task != "orbit-148" ||
 		e.Summary != "Checkpoint aaaaaaaa (pod-lost) on #148" {
 		t.Errorf("event %+v", e)
 	}

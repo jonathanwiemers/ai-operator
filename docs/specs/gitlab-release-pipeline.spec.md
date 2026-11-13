@@ -3,7 +3,7 @@
 ## Problem
 
 Releases are built only by GitHub Actions (`.github/workflows/release.yml`) and
-published to ghcr.io. The cluster (`jo.wiemers/infra/cluster`) therefore pulls
+published to ghcr.io. The cluster (`example/infra`) therefore pulls
 the chart and both images from a private GitHub registry, through a ghcr.io PAT
 in `image-pull-secret`. GitLab is the primary repository, and every other
 homelab app already pulls from `registry.gitlab.com` with the GitLab deploy
@@ -16,7 +16,7 @@ token that the same Secret carries.
 - Images `registry.gitlab.com/jo.wiemers/ai-operator:<version>` and
   `registry.gitlab.com/jo.wiemers/ai-operator/agent:<version>`, chart
   `oci://registry.gitlab.com/jo.wiemers/ai-operator/charts/ai-operator`.
-- infra/cluster can switch the `OCIRepository` and the image repositories to
+- example/infra can switch the `OCIRepository` and the image repositories to
   GitLab without any new credential.
 
 ## Non-goals
@@ -26,7 +26,7 @@ token that the same Secret carries.
 - Keeping the GitLab and GitHub version counters in lockstep (accepted by the
   owner for now, see Risks).
 - arm64 images on GitLab: the cluster runs the operator and agents on amd64
-  (netcup01).
+  (my-cluster).
 
 ## Constraints
 
@@ -66,7 +66,7 @@ One `release` job on `main`, the GitLab counterpart of the single job in
 
 - `.gitlab-ci.yml`: `release` stage and job, web pipelines, header comment.
 - `docs/releasing.md`, `CLAUDE.md`: two release paths.
-- infra/cluster (separate MR): `applications/ai-operator/helm/ocirepository.yaml`
+- example/infra (separate MR): `applications/ai-operator/helm/ocirepository.yaml`
   and `values.yaml` switch to `registry.gitlab.com`.
 
 ## Risks / trade-offs
@@ -90,14 +90,14 @@ One `release` job on `main`, the GitLab counterpart of the single job in
   creates tag + GitLab release `2026.10.N`; `helm show chart
   oci://registry.gitlab.com/jo.wiemers/ai-operator/charts/ai-operator --version
   <v>` works with the deploy token.
-- infra/cluster: `OCIRepository` Ready on the GitLab chart, HelmRelease
+- example/infra: `OCIRepository` Ready on the GitLab chart, HelmRelease
   upgraded, operator and agent pods pull from `registry.gitlab.com`.
 
 ## Delivery
 
 1. ai-operator MR: GitLab release job + docs (CI config and docs only).
 2. One-off: push tags `2026.10.52`–`.62` to GitLab (before merging 1). Done 2026-10-30.
-3. infra/cluster MR: chart + images from GitLab, after the first GitLab
+3. example/infra MR: chart + images from GitLab, after the first GitLab
    release exists.
 
 | MR | Status |
@@ -105,7 +105,7 @@ One `release` job on `main`, the GitLab counterpart of the single job in
 | ai-operator!54: GitLab release pipeline | merged |
 | ai-operator!55: allow API-triggered pipelines | merged |
 | ai-operator!56: remove the docker context between the two builds | merged |
-| infra/cluster!285: ai-operator from registry.gitlab.com | merged |
+| example/infra!285: ai-operator from registry.gitlab.com | merged |
 | ai-operator!63: skip a release whose commit is already released | merged |
 | ai-operator!65: never auto-cancel a queued release job | open |
 

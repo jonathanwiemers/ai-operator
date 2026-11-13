@@ -67,7 +67,7 @@ follow-up. Until then the way out is turning the older milestone off.
 
 - A slot stays idle during CI waits: slower, on purpose.
 - One open pause stops the whole project's milestones. Step 2 removes the most
-  common pause that never lifted; Bloop has its own queue.
+  common pause that never lifted; Orbit has its own queue.
 - A review-only run jumps ahead of a task without a milestone. It is short. A
   review of a moved head does not rank (its key is not the status head yet),
   which only matters while older milestones still drain.

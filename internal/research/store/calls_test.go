@@ -16,8 +16,8 @@ func TestAgentCalls(t *testing.T) {
 	exp := base.Add(24 * time.Hour)
 	cost, opusCost := 1.23456, 1.2
 	calls := []store.Call{
-		{Key: "call/u1/1", At: base, Namespace: "agents", Project: "bloop", MilestoneIID: 20, IssueIID: 148,
-			MergeRequestIID: 702, Task: "bloop-148", Run: 2, Seq: 1, Kind: "implement", Role: "implement",
+		{Key: "call/u1/1", At: base, Namespace: "agents", Project: "orbit", MilestoneIID: 20, IssueIID: 148,
+			MergeRequestIID: 702, Task: "orbit-148", Run: 2, Seq: 1, Kind: "implement", Role: "implement",
 			Engine: "claude", Model: "claude-opus-5-5", Effort: "high", Resumed: true,
 			InputTokens: 10, OutputTokens: 20, CacheReadTokens: 30, CacheWriteTokens: 40,
 			CostUSD: &cost, CostSource: "reported", Turns: 7, DurationMS: 65000,
@@ -29,7 +29,7 @@ func TestAgentCalls(t *testing.T) {
 			Checkpoint: "usage-limit", CheckpointSHA: "0123abcd", LinesAdded: 412, LinesDeleted: 38,
 			ExpiresAt: exp},
 		// A cursor call without IIDs or a known cost.
-		{Key: "call/u2/1", At: base, Namespace: "agents", Project: "bloop", Task: "bloop-pilot", Seq: 1,
+		{Key: "call/u2/1", At: base, Namespace: "agents", Project: "orbit", Task: "orbit-pilot", Seq: 1,
 			Kind: "pilot", Engine: "cursor", FallbackFrom: "claude", CostSource: "unknown", DurationMS: 4000,
 			ExpiresAt: base.Add(-time.Hour)},
 	}
@@ -125,7 +125,7 @@ func TestAgentCalls(t *testing.T) {
 		t.Errorf("%d calls left, want 1", c)
 	}
 	exec(t, s.Pool(), `INSERT INTO agent_calls (key, at, namespace, project, task, seq, kind, cost_source, expires_at)
-		SELECT 'bulk/' || i, now(), 'agents', 'bloop', 't', i, 'review', 'unknown', $1 FROM generate_series(1, 1500) i`, base)
+		SELECT 'bulk/' || i, now(), 'agents', 'orbit', 't', i, 'review', 'unknown', $1 FROM generate_series(1, 1500) i`, base)
 	if n, err := s.DeleteExpiredCalls(ctx, exp.Add(time.Second)); err != nil || n != 1501 {
 		t.Errorf("DeleteExpiredCalls = %d, %v; want 1501 (more than a batch)", n, err)
 	}

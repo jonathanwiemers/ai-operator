@@ -2460,7 +2460,7 @@ flowchart LR
 * A task with `spec.companion` has a second tree with the same trust model:
   the runner's mirror `/runner/mirrors/<slug>.git` and the agent's checkout
   `/workspace/repos/<slug>`, where the slug is `naming.ProjectSlug` of the
-  companion's path (e.g. `jo.wiemers-infra-cluster`). Its bundles are
+  companion's path (e.g. `example-infra`). Its bundles are
   `/exchange/to-agent-<slug>.bundle` and `from-agent-<slug>.bundle`. The
   RPC calls on a tree carry a `repo`: empty for `/workspace/repo`, else a
   slug that the agent server checks with `naming.ValidProjectSlug` and maps
@@ -2507,7 +2507,7 @@ repositories without plaintext secrets: an infra repository with
 SealedSecrets (encrypted, decryptable only in the cluster) and the public
 sealing certificate qualifies. A target's `paths` limit what the agent may
 **change**, not what it can read: the whole checkout is in the container.
-`jo.wiemers/personal/kubernetes` (its tfvars hold live secrets) is never a
+`jo.wiemers/personal/kubernetes` is never a
 valid target (`NeverTargets`), even when the cluster's allow-list names it,
 so no pod ever gets a checkout or a token for it. The agent container still
 gets no GitLab token for either project, and companion trees move by git
@@ -2516,8 +2516,8 @@ remove the links between home and companion merge requests (see
 [Cross-repo](#cross-repo)).
 
 **Merge/push guard.** The bot `operator-ai` stays **Maintainer on the
-`jo.wiemers` group**, and all AgentProjects share its token: it could merge
-into `infra/cluster`'s `main` or read `jo.wiemers/personal/kubernetes`.
+projects' GitLab group**, and all AgentProjects share its token: it could merge
+into `example/infra`'s `main` or read `jo.wiemers/personal/kubernetes`.
 Changing the bot's memberships, a second seat or project access tokens are
 not options on the Free plan, so the gates live in the operator and the
 runner, which restrict themselves (`internal/gitlab/guard.go`):

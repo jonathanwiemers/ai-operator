@@ -16,7 +16,7 @@ stands and how long pauses took.
 
 Three dead ends on 2026-11-05:
 
-1. **Bloop milestone 24, `ciRed` that never lifts.** `main` went red after
+1. **Orbit milestone 24, `ciRed` that never lifts.** `main` went red after
    #414 (`seatRing.test.ts` timeouts under coverage). The active MR !735 was
    red on the same job: CI state `BaseFailing`, pause `ciRed` with
    `resumeWhenReady`. The fix (!736) made `main` green at 10:12. But
@@ -34,10 +34,10 @@ Three dead ends on 2026-11-05:
    once. The pilot did not know about the replacement in milestone 5 and
    proposed un-skipping #83; it has no tool for that either. Its prompt was
    never recorded because of `actions: null` (fixed in !164).
-3. **Red `main` fixed by hand.** Bloop had `mainHealth.autoFix` off, so #425
+3. **Red `main` fixed by hand.** Orbit had `mainHealth.autoFix` off, so #425
    (`ci::main-red`) was handed to the agent by an owner. Its MR !736 then
    stayed outside the frozen milestone and waited for a human merge.
-   infra/cluster !294 turned `autoFix` on for both projects. An owner's
+   example/infra !294 turned `autoFix` on for both projects. An owner's
    manual handoff still does not join the main-red lane.
 
 Relevant code: `internal/controller/autopilot.go` (`pick`, `gateCheck`,
@@ -103,7 +103,7 @@ Desk `PauseCard.vue`, `PauseCardCompact.vue`, `PromptCard.vue` and Inbox.
 
 Self-healing
 - R1 Decision 1: rebase a `BaseFailing` MR once main is green on a newer
-  commit. Regression test: Bloop's case (MR red on base X, main red, then
+  commit. Regression test: Orbit's case (MR red on base X, main red, then
   main green on Y; rebase requested once; green pipeline resumes and merges;
   a second green commit while the rebase is in flight does not rebase
   again). Conflict test: falls back to `mergeBase`.
@@ -140,7 +140,7 @@ Observability and Desk
   `make test`, `make helm-lint`, `make ui`. No kubebuilder RBAC markers in
   `internal/ui`. Docs and the chart README follow behaviour.
 - New CRD fields are optional; nothing is removed or renamed. A new UI
-  config key ships in a release before infra/cluster uses it
+  config key ships in a release before example/infra uses it
   (`UnmarshalStrict`).
 - CRD schema changes get a `crdSchema.admit` test in `api/v1alpha1` (the
   fake client skips CRD validation, which hid the `actions: null` bug).
@@ -181,7 +181,7 @@ Observability and Desk
 
 ## Acceptance
 
-- Replaying Bloop milestone 24 in a controller test: once main is green, the
+- Replaying Orbit milestone 24 in a controller test: once main is green, the
   autopilot rebases !735 itself, and the milestone continues without an
   owner.
 - Replaying ai-operator milestone 4: the stuck pause yields a Desk prompt

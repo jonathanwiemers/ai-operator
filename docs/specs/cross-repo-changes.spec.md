@@ -7,7 +7,7 @@ locked.
 ## Goal
 
 An issue of an AgentProject can change one **companion repository** (first
-case: `jo.wiemers/infra/cluster`) in the same run and the same agent
+case: `example/infra`) in the same run and the same agent
 session as its home change. The runner opens a linked MR in the companion
 project. The operator lands that MR by rule once the home change is merged
 and live. Autopilot merges it when the milestone allows it for that
@@ -21,8 +21,8 @@ auto-merge ceiling, and a milestone line with the full project path.
   (`/runner/mirror.git`), one checkout (`/workspace/repo`), and push, MR, CI
   loop and merge gate all work on `spec.gitlab.project`.
 * Typical cross-repo work: an ai-operator feature plus the infra config
-  that turns it on (`clusters/netcup01/applications/ai-operator/…`), or
-  Bloop plus `clusters/netcup01/applications/bloop/…`. The infra half must
+  that turns it on (`clusters/my-cluster/applications/ai-operator/…`), or
+  Orbit plus `clusters/my-cluster/applications/orbit/…`. The infra half must
   land after the release that knows the new fields is running. The CRDs are
   strict, so an earlier merge fails at Flux apply (infra !288 waited for
   this by hand). Infra CI is only `kustomize build`, so it does not catch
@@ -32,8 +32,8 @@ auto-merge ceiling, and a milestone line with the full project path.
   big two-sided work, and autopilot already waits for blocking links in
   other projects.
 * All AgentProjects share the bot `operator-ai`'s token. The bot is
-  **Maintainer on the `jo.wiemers` group** and stays so. That means the
-  token could merge into `infra/cluster` `main` and read
+  **Maintainer on the projects' GitLab group** and stays so. That means the
+  token could merge into `example/infra` `main` and read
   `jo.wiemers/personal/kubernetes` (its tfvars hold live secrets). The gates
   therefore live in the operator.
 * Infra holds SealedSecrets (encrypted) and the public sealing cert, with no
@@ -60,7 +60,7 @@ auto-merge ceiling, and a milestone line with the full project path.
      `.gitlab-ci.yml`, `.gitlab/**` nor the whole tree. An invalid target is
      dropped with condition `CrossRepoReady=False` naming it.
    * Milestone: one header line per companion, full path or GitLab URL:
-     `/agent repo jo.wiemers/infra/cluster [merge]`. The line is part of the
+     `/agent repo example/infra [merge]`. The line is part of the
      description hash. An unknown or invalid target is named once on the
      tracking issue and ignored.
 4. **Per-issue opt-in.** The planner sees the milestone's targets (project,
@@ -254,7 +254,7 @@ End to end
 ## Acceptance
 
 - With an infra target that has `autoMerge: true` and the milestone line
-  `/agent repo jo.wiemers/infra/cluster merge`, one issue produces a home
+  `/agent repo example/infra merge`, one issue produces a home
   MR and a linked infra MR in one run. Autopilot merges the home MR. Once
   the operator runs the release that contains it, autopilot merges the
   infra MR, and the milestone closes. No human step.

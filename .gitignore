@@ -6,3 +6,4 @@
 /web/e2e-results/
 /web/dist/*
 !/web/dist/.gitkeep
+/docs/process/

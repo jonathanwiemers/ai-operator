@@ -18,7 +18,7 @@ What exists today:
   ignores the result line's `usage` (input / output / cache_creation /
   cache_read tokens), `modelUsage` (per model), `num_turns` and
   `duration_ms`. Cursor reports no cost: every cursor call counts $0
-  (Bloop !702 review round: "$0.00").
+  (Orbit !702 review round: "$0.00").
 - Cost lives as a string on `status.run.costUSD` per AgentTask. The UI sums
   project and milestone cost from **live** CRDs (`internal/ui/view.go`,
   `milestone.go`); deleted tasks drop out of the sums. The pilot retro sums
@@ -33,9 +33,9 @@ What exists today:
   assistant message carries its own `usage` (the context size per turn).
   The runner ignores all three, so nobody can see whether subagents run,
   what they cost, or how fast a session's context grows.
-- Real numbers (history, 2026-10-24 … 11-04, notional USD): Bloop m22
+- Real numbers (history, 2026-10-24 … 11-04, notional USD): Orbit m22
   $257 / 6 issues, m20 $248 / 3 issues, m23 $135, m21 $79; ai-operator m3
-  $9 (mostly cursor, so undercounted). One Bloop run (#384, !702) cost $158:
+  $9 (mostly cursor, so undercounted). One Orbit run (#384, !702) cost $158:
   implementer steps 3→7 on one resumed opus session cost $17, $23, $31, $32,
   $37, rising with the session's context. Issue #396: $214 over 7 runs.
   Today nobody can see *why* without reading run reports by hand.
@@ -112,7 +112,7 @@ Architecture review findings this milestone takes up (file refs at main
    (default `resume`, today's behaviour). `fresh` starts each implementer
    step in a new session with the agent notes and a handoff summary as
    context. The milestone ships the option and a Spend comparison;
-   flipping the default on netcup01 is the owner's call after the data.
+   flipping the default on my-cluster is the owner's call after the data.
 9. **Subagents: measure, then opt in.** `agent_calls` also stores
    `models` (jsonb: per model input/output/cache tokens and cost of this
    call, from `model_usage_since_last_result`, else `modelUsage`; they add up
@@ -125,7 +125,7 @@ Architecture review findings this milestone takes up (file refs at main
    searches, lookups and log reading to them and to read only the files it
    edits itself. Default: none, so behaviour stays as it is today. The
    chart example documents a read-only `scout` on haiku
-   (Read, Grep, Glob, WebFetch, WebSearch). Turning it on for netcup01 is
+   (Read, Grep, Glob, WebFetch, WebSearch). Turning it on for my-cluster is
    the owner's call after a comparison in the Spend tab, like decision 8.
 
 ## Requirements
@@ -204,7 +204,7 @@ Cleanup
   `internal/ui`. Docs and the chart README follow behaviour.
 - New CRD fields are optional and nothing is removed in the same release.
   The UI config is `UnmarshalStrict`: new UI config keys ship in a release
-  before infra/cluster values use them.
+  before example/infra values use them.
 - Target < 50 changed production lines per MR. Exceptions allowed for
   migration + differ (R3), Desk consolidation (R16) and the `runImplement`
   split (R18), each stated in its MR.
@@ -222,10 +222,9 @@ Cleanup
 - Splitting the AgentProject god reconciler into sub-structs (beyond R10).
   This is noted for a later milestone.
 - A research search page (`/api/v1/research/search` stays as is).
-- Changing netcup01 config (`pricing:`, budgets, `stepSession`) in this
-  milestone. Those are infra/cluster follow-ups after the release; the
-  owner's checklist is
-  [rollout-spend-options.md](../process/rollout-spend-options.md) (#267).
+- Changing my-cluster config (`pricing:`, budgets, `stepSession`) in this
+  milestone. Those are example/infra follow-ups after the release; the
+  owner keeps a rollout checklist outside this repository (#267).
 - Backfilling tokens for runs before the cutover.
 - Killing a running agent call when a budget is hit.
 

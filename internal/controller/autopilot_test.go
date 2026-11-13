@@ -1336,7 +1336,7 @@ func TestAutopilotMRPauseEndsWithAHandMerge(t *testing.T) {
 	}
 }
 
-// The Bloop case: an instruction for the agent written on the tracking issue
+// The Orbit case: an instruction for the agent written on the tracking issue
 // is answered once, without quoting it, and points at the active issue.
 func TestAutopilotAnswersUnknownTrackingCommandsOnce(t *testing.T) {
 	e := newAutopilotEnv(t)

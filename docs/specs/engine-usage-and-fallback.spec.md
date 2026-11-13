@@ -2,8 +2,8 @@
 
 ## Problem
 
-The netcup01 `AgentProject` (`infra/cluster`,
-`clusters/netcup01/applications/ai-operator/projects/defaults.yaml`) runs the
+The my-cluster `AgentProject` (`example/infra`,
+`clusters/my-cluster/applications/ai-operator/projects/defaults.yaml`) runs the
 `fast` profile and both reviewers (bugbot, security) on cursor `auto`; spec,
 `strong` and `implement` run on claude opus. When the Cursor Pro budget runs
 out mid-month, every cursor role stalls until the monthly reset:
@@ -18,7 +18,7 @@ out mid-month, every cursor role stalls until the monthly reset:
    up to two weeks, and gives up after `MaxDeferrals` (20) deferrals.
 2. **No way around a limit.** A limited engine defers the run
    (`deferRun`, `internal/runner/runner.go`) even when another engine with
-   budget left is configured on the same project. Autopilot on Bloop
+   budget left is configured on the same project. Autopilot on Orbit
    milestone 18 waits with it.
 3. **No idea how much is left.** `claude -p --output-format stream-json
    --verbose` (already the runner's invocation) emits a line per call like
@@ -59,8 +59,8 @@ out mid-month, every cursor role stalls until the monthly reset:
   with the full prompt, like a resume that failed today.
 - Spending limits or budgets per engine; changing `MaxDeferrals` or the
   backoff.
-- Changing the netcup01 config: adding `fallback:` to `defaults.yaml` in
-  `infra/cluster` is a follow-up after the release.
+- Changing the my-cluster config: adding `fallback:` to `defaults.yaml` in
+  `example/infra` is a follow-up after the release.
 
 ## Constraints
 
@@ -178,7 +178,7 @@ controller checks every role's fallback on each sync and sets the condition
 `FallbacksValid` (`False`, reason `InvalidFallback`, a message naming the
 roles) so a broken fallback shows in the UI before a limit needs it.
 
-Example for netcup01 (follow-up in `infra/cluster`):
+Example for my-cluster (follow-up in `example/infra`):
 
 ```yaml
 profiles:

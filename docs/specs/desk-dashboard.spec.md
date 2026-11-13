@@ -197,8 +197,8 @@ Navigation
 - Issues without a milestone in the overview.
 - Editing or deleting a retrospective in the Desk.
 - Live transcripts of finished runs.
-- A Bloop-specific view; everything is per AgentProject.
-- netcup01 config. Nothing here needs an infra change.
+- A Orbit-specific view; everything is per AgentProject.
+- my-cluster config. Nothing here needs an infra change.
 
 ## Suggested order
 

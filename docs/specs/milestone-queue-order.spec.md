@@ -16,7 +16,7 @@ What happens today (file refs at origin/main 592ab63, 2026-11-05):
 - Every milestone on autopilot has its own queue: one issue at a time, in
   dependency order, then plan order. All open autopilot milestones run side
   by side; nothing orders them against each other.
-- `maxConcurrentRuns` bounds the tasks in flight per project (netcup01: 1,
+- `maxConcurrentRuns` bounds the tasks in flight per project (my-cluster: 1,
   `defaults.yaml`). The check is in `AgentTaskReconciler.Reconcile`
   (`agenttask_controller.go`, `if pod == nil`): it counts the other tasks in
   phase `Running` (`runningTasks`, pilots excluded). If the project is full,
@@ -115,7 +115,7 @@ What happens today (file refs at origin/main 592ab63, 2026-11-05):
 - Running milestones strictly one after the other (no younger issue before
   the older milestone is done). It would leave the slot idle during CI.
 - Ordering across projects, or a queue shared between projects.
-- Changing `maxConcurrentRuns` on netcup01.
+- Changing `maxConcurrentRuns` on my-cluster.
 - Dependencies between milestones. An issue linked as "blocked by" an issue
   of another milestone already waits.
 

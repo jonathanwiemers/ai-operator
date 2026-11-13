@@ -169,12 +169,12 @@ func TestParseRoutingRepo(t *testing.T) {
 		ok   bool
 		want []string
 	}{
-		{"/agent repo jo.wiemers/infra/cluster", true, []string{"jo.wiemers/infra/cluster"}},
-		{"/agent repo https://gitlab.com/Jo.Wiemers/Infra/Cluster/-/tree/main", true, []string{"jo.wiemers/infra/cluster"}},
-		{"/agent repo https://gitlab.com/jo.wiemers/infra/cluster.git\nplease", true, []string{"jo.wiemers/infra/cluster"}},
+		{"/agent repo example/infra", true, []string{"example/infra"}},
+		{"/agent repo https://gitlab.com/Example/Infra/-/tree/main", true, []string{"example/infra"}},
+		{"/agent repo https://gitlab.com/example/infra.git\nplease", true, []string{"example/infra"}},
 		{"/agent repo NONE", true, []string{"none"}},
 		{"/agent repo `a/b`", true, []string{"a/b"}},
-		{"/agent repo jo.wiemers/infra/cluster merge", false, nil}, // merge is the milestone's
+		{"/agent repo example/infra merge", false, nil}, // merge is the milestone's
 		{"/agent repo a/b c/d", false, nil},
 		{"/agent repo cleanup", false, nil}, // an instruction for the agent
 		{"/agent repo", false, nil},
@@ -193,29 +193,29 @@ func TestParseRoutingRepo(t *testing.T) {
 
 func TestApplyRepo(t *testing.T) {
 	repo := func(arg string) Routing { return Routing{Verb: "repo", Args: []string{arg}, Only: true} }
-	targets := []aiv1.CrossRepoTarget{{Project: "jo.wiemers/infra/cluster", Paths: []string{"clusters/"}}, {Project: "jo.wiemers/bloop", Paths: []string{"x/"}}}
-	ch := Apply(testSpec(), targets, []string{"agent::ready", "agent-repo::jo.wiemers/bloop"}, []Routing{repo("jo.wiemers/infra/cluster")})
-	if !slices.Equal(ch.Add, []string{"agent-repo::jo.wiemers/infra/cluster"}) || !slices.Equal(ch.Remove, []string{"agent-repo::jo.wiemers/bloop"}) ||
-		len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "`jo.wiemers/infra/cluster`") {
+	targets := []aiv1.CrossRepoTarget{{Project: "example/infra", Paths: []string{"clusters/"}}, {Project: "example/orbit", Paths: []string{"x/"}}}
+	ch := Apply(testSpec(), targets, []string{"agent::ready", "agent-repo::example/orbit"}, []Routing{repo("example/infra")})
+	if !slices.Equal(ch.Add, []string{"agent-repo::example/infra"}) || !slices.Equal(ch.Remove, []string{"agent-repo::example/orbit"}) ||
+		len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "`example/infra`") {
 		t.Fatalf("the label replaces the other agent-repo label: %+v", ch)
 	}
-	if ch := Apply(testSpec(), targets, []string{"agent-repo::jo.wiemers/infra/cluster"}, []Routing{repo("jo.wiemers/infra/cluster")}); len(ch.Add)+len(ch.Remove) != 0 {
+	if ch := Apply(testSpec(), targets, []string{"agent-repo::example/infra"}, []Routing{repo("example/infra")}); len(ch.Add)+len(ch.Remove) != 0 {
 		t.Fatalf("a set label stays: %+v", ch)
 	}
-	ch = Apply(testSpec(), targets, []string{"agent-repo::jo.wiemers/infra/cluster", "agent::ready"}, []Routing{repo("none")})
-	if len(ch.Add) != 0 || !slices.Equal(ch.Remove, []string{"agent-repo::jo.wiemers/infra/cluster"}) || !strings.Contains(ch.Lines[0], "no companion") {
+	ch = Apply(testSpec(), targets, []string{"agent-repo::example/infra", "agent::ready"}, []Routing{repo("none")})
+	if len(ch.Add) != 0 || !slices.Equal(ch.Remove, []string{"agent-repo::example/infra"}) || !strings.Contains(ch.Lines[0], "no companion") {
 		t.Fatalf("none removes the label: %+v", ch)
 	}
-	ch = Apply(testSpec(), targets, []string{"agent-repo::jo.wiemers/bloop"}, []Routing{repo("jo.wiemers/personal/kubernetes")})
-	if len(ch.Add)+len(ch.Remove) != 0 || len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "`jo.wiemers/infra/cluster`, `jo.wiemers/bloop`") ||
+	ch = Apply(testSpec(), targets, []string{"agent-repo::example/orbit"}, []Routing{repo("jo.wiemers/personal/kubernetes")})
+	if len(ch.Add)+len(ch.Remove) != 0 || len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "`example/infra`, `example/orbit`") ||
 		!strings.Contains(ch.Lines[0], "`/agent repo none`") {
 		t.Fatalf("an unknown target changes nothing and lists the allowed ones: %+v", ch)
 	}
 	if ch := Apply(testSpec(), nil, nil, []Routing{repo("a/b")}); len(ch.Add) != 0 || !strings.Contains(ch.Lines[0], "has none") {
 		t.Fatalf("without targets the answer says there are none: %+v", ch)
 	}
-	ch = Apply(testSpec(), targets, nil, []Routing{repo("jo.wiemers/bloop"), repo("unknown/x"), repo("JO.WIEMERS/infra/cluster")})
-	if !slices.Equal(ch.Add, []string{"agent-repo::jo.wiemers/infra/cluster"}) || len(ch.Lines) != 2 {
+	ch = Apply(testSpec(), targets, nil, []Routing{repo("example/orbit"), repo("unknown/x"), repo("EXAMPLE/infra")})
+	if !slices.Equal(ch.Add, []string{"agent-repo::example/infra"}) || len(ch.Lines) != 2 {
 		t.Fatalf("the last valid command wins: %+v", ch)
 	}
 }

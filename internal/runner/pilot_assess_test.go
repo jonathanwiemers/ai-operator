@@ -12,7 +12,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
-// newAssessEnv is the pilot env woken for Bloop #331: CI of #1 stayed red
+// newAssessEnv is the pilot env woken for Orbit #331: CI of #1 stayed red
 // after two fix rounds (rust:lint, no Rust toolchain in the agent
 // container), #1 went to needs-input and autopilot paused over it.
 func newAssessEnv(t *testing.T, costUSD string) *pilotEnv {

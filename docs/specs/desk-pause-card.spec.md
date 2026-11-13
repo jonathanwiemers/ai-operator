@@ -7,7 +7,7 @@ allows, and a count in the top bar; no Web Push.
 
 ## Problem
 
-Bloop m21 paused on #391 because the `bugbot` reviewer hit Cursor's usage
+Orbit m21 paused on #391 because the `bugbot` reviewer hit Cursor's usage
 limit ("1 reviewers failed on #391, so the change is not fully reviewed").
 The maintainer saw it by chance:
 
@@ -69,7 +69,7 @@ sets it:
 | `mainRed` | default branch red (freeze) | when main is green |
 | `config` | no workflow label, no reviewers configured | no |
 
-**The pilot sees it too (steer, 2026-11-03).** On bloop #391 the pilot
+**The pilot sees it too (steer, 2026-11-03).** On orbit #391 the pilot
 told the maintainer that a re-review "would probably fail again" and that
 the reviewer model cannot be changed, minutes after the Claude fallback for
 the Cursor roles went live; the re-review then passed on the fallback. Its
@@ -157,7 +157,7 @@ Only senders in `ownerSubjects` (Desk) or owners (GitLab) may send it.
   it runs again.
 - **Web:** action mapping per kind (`node --test`); a screenshot of the
   card on `make run-ui`.
-- **End to end:** pause a bloop milestone with `pause`, see it in the Inbox
+- **End to end:** pause a orbit milestone with `pause`, see it in the Inbox
   and the count, resume from the card.
 
 ## Delivery plan

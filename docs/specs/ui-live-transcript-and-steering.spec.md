@@ -152,7 +152,7 @@ run you have to switch to GitLab and write a comment there.
   `steer`; rate limit; audit line without the text.
 - Prompt logging: on/off, cut at 64 KiB, no prompt line without the setting.
 - On the cluster: a GitLab application for gitlab.com created by hand (its
-  client secret sealed), then a run on Bloop watched and steered from the UI.
+  client secret sealed), then a run on Orbit watched and steered from the UI.
 
 ## Delivery
 

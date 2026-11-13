@@ -14,7 +14,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
-// baseFailingEnv replays Bloop milestone 24: main is red at main-x (#99),
+// baseFailingEnv replays Orbit milestone 24: main is red at main-x (#99),
 // #1's ready MR !1 is based on main-x and red on the job that fails on main
 // (BaseFailing), so autopilot paused ciRed and waits for a green MR pipeline
 // that nothing starts.
