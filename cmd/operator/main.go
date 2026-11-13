@@ -46,6 +46,8 @@ func main() {
 	flag.StringVar(&defaultOwners, "default-owners", "", "Comma separated GitLab usernames mentioned when a task needs a human, for AgentProjects that do not set spec.notify.users.")
 	var crossRepoAllowed string
 	flag.StringVar(&crossRepoAllowed, "cross-repo-allowed-projects", "", "Comma separated full paths of the GitLab projects AgentProjects may name as companion repositories (spec.crossRepo.targets). Empty: cross-repo changes are off.")
+	var crossRepoNever string
+	flag.StringVar(&crossRepoNever, "cross-repo-never-projects", "", "Comma separated full paths of the GitLab projects that are never a companion repository, even when --cross-repo-allowed-projects names them: their content must stay out of agent pods.")
 	var selfProject string
 	flag.StringVar(&selfProject, "self-project", "", "Full path of the GitLab project this operator is built from (e.g. my-group/ai-operator). A companion of one of its merge requests lands once this operator runs a release that contains the merge. Empty: that project's companions follow the tag rule like any other.")
 	var agentLogLevel string
@@ -146,6 +148,7 @@ func main() {
 		},
 		DefaultOwners:    notify.Usernames(strings.Split(defaultOwners, ",")),
 		CrossRepoAllowed: projectList(crossRepoAllowed),
+		CrossRepoNever:   projectList(crossRepoNever),
 		SelfProject:      aiv1.NormalizeProject(selfProject),
 		Version:          version,
 		Research:         researchDB.Host != "",
@@ -198,6 +201,7 @@ func main() {
 		APIReader:            mgr.GetAPIReader(),
 		DeskURL:              deskURL,
 		CrossRepoAllowed:     projectList(crossRepoAllowed),
+		CrossRepoNever:       projectList(crossRepoNever),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentTask")
 		os.Exit(1)

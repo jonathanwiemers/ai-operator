@@ -416,8 +416,8 @@ func (r *Runner) exchangePath(name, repo string) string {
 // guardedGitLab is the GitLab client of the task's runs, behind the
 // merge/push guard: the home project and, if the task has one, its
 // companion as the only target. The operator wrote spec.companion only for
-// a target the cluster allows, so its project is the allow-list here;
-// NewPolicy still drops the home project and the never-targets.
+// a valid target (allowed and not on the cluster's never-list), so its
+// project is the allow-list here; NewPolicy still drops the home project.
 func (r *Runner) guardedGitLab(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask) gitlab.API {
 	return r.guardedGitLabWith(spec, task, r.GitLabToken)
 }
@@ -438,7 +438,7 @@ func (r *Runner) guardedGitLabWith(spec aiv1.AgentProjectSpec, task *aiv1.AgentT
 		companion = &aiv1.CompanionSpec{Project: task.Status.Run.Companion.Project}
 		allowed = []string{companion.Project}
 	}
-	policy := gitlab.NewPolicy(spec, allowed).ForCompanion(companion)
+	policy := gitlab.NewPolicy(spec, allowed, nil).ForCompanion(companion)
 	return gitlab.Guard(r.NewGitLab(spec.GitLab.URL, token), policy, r.Log.WithName("guard"))
 }
 

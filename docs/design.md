@@ -2238,11 +2238,12 @@ model.
    (the allow-list), `autoMerge` (the ceiling for autopilot, default
    `false`) and `tokenSecretRef`. `ValidateCrossRepo`
    (`api/v1alpha1/crossrepo.go`) drops a target outside the allow-list, the
-   home project, `jo.wiemers/personal/kubernetes`, a repeated one, and one
-   whose `paths` is empty or matches `.gitlab-ci.yml`, `.gitlab/` or the
-   whole tree (`internal/pathspec`); condition `CrossRepoReady` names them
-   (see [configuration.md](configuration.md#speccrossrepo)). Every use of
-   the targets goes through `crossRepoTargets`, so a dropped target counts
+   home project, one on the never-list (`--cross-repo-never-projects`), a
+   repeated one, and one whose `paths` is empty or matches
+   `.gitlab-ci.yml`, `.gitlab/` or the whole tree (`internal/pathspec`);
+   condition `CrossRepoReady` names them (see
+   [configuration.md](configuration.md#speccrossrepo)). Every use of the
+   targets goes through `crossRepoTargets`, so a dropped target counts
    nowhere.
 3. The issue: a milestone line `/agent repo <path|url> [merge]`
    (`rules.Repos`, `internal/rules/repo.go`; part of the description hash,
@@ -2507,9 +2508,10 @@ repositories without plaintext secrets: an infra repository with
 SealedSecrets (encrypted, decryptable only in the cluster) and the public
 sealing certificate qualifies. A target's `paths` limit what the agent may
 **change**, not what it can read: the whole checkout is in the container.
-`jo.wiemers/personal/kubernetes` is never a
-valid target (`NeverTargets`), even when the cluster's allow-list names it,
-so no pod ever gets a checkout or a token for it. The agent container still
+A project on the cluster's never-list (`--cross-repo-never-projects`, Helm
+`crossRepo.neverProjects`, e.g. a repository whose files hold plaintext
+secrets) is never a valid target, even when the allow-list names it, so no
+pod ever gets a checkout or a token for it. The agent container still
 gets no GitLab token for either project, and companion trees move by git
 bundle only. Agent prose in a merge request description cannot forge or
 remove the links between home and companion merge requests (see
@@ -2517,7 +2519,7 @@ remove the links between home and companion merge requests (see
 
 **Merge/push guard.** The bot `operator-ai` stays **Maintainer on the
 projects' GitLab group**, and all AgentProjects share its token: it could merge
-into `example/infra`'s `main` or read `jo.wiemers/personal/kubernetes`.
+into `example/infra`'s `main` or read a secrets repository of the group.
 Changing the bot's memberships, a second seat or project access tokens are
 not options on the Free plan, so the gates live in the operator and the
 runner, which restrict themselves (`internal/gitlab/guard.go`):
@@ -2526,7 +2528,7 @@ runner, which restrict themselves (`internal/gitlab/guard.go`):
   only from `spec.gitlab.project` and the targets `ValidateCrossRepo`
   accepts. The runner narrows it to the task's `spec.companion` (without
   one, to the companion `status.run.companion` records, merges refused).
-  `jo.wiemers/personal/kubernetes` is never a target.
+  A project on the never-list is never a target.
   * A merge is allowed in the home project, or in a target with `autoMerge`.
     In the runner, the task's resolved `autoMerge` must allow it too.
   * Creating, updating or rebasing a merge request, starting or retrying a
@@ -2897,7 +2899,7 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `hack/research-migrate`, `hack/research-seed.sql` | `make research-seed`: a local database with seeded results for the UI's research pages |
 | `internal/gitlab` | minimal REST client with retries; `gitlabfake` for tests |
 | `internal/gitlab/guard.go` | the merge/push guard around the GitLab client |
-| `api/v1alpha1/crossrepo.go`, `internal/pathspec` | cross-repo: `spec.crossRepo` targets, `ValidateCrossRepo`, `NeverTargets`, the `status.companions` types; the gitignore-style matcher of `paths` |
+| `api/v1alpha1/crossrepo.go`, `internal/pathspec` | cross-repo: `spec.crossRepo` targets, `ValidateCrossRepo` (allow-list and never-list), the `status.companions` types; the gitignore-style matcher of `paths` |
 | `internal/rules/repo.go`, `internal/command/routing.go`, `internal/controller/repos.go` | the `/agent repo` milestone line, the owner command, the `agent-repo::` label rule and `AgentTask.spec.companion` |
 | `internal/runner/companion*.go` | the companion mirror and checkout, the path check, the companion push and merge request, the combined reviewer diff |
 | `internal/controller/companion_gate.go`, `companions.go`, `companions_merge.go`, `companions_queue.go` | the companion in the home merge gate, landing by rule, who merges, the queue rule |

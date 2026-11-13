@@ -206,7 +206,7 @@ func TestApplyRepo(t *testing.T) {
 	if len(ch.Add) != 0 || !slices.Equal(ch.Remove, []string{"agent-repo::example/infra"}) || !strings.Contains(ch.Lines[0], "no companion") {
 		t.Fatalf("none removes the label: %+v", ch)
 	}
-	ch = Apply(testSpec(), targets, []string{"agent-repo::example/orbit"}, []Routing{repo("jo.wiemers/personal/kubernetes")})
+	ch = Apply(testSpec(), targets, []string{"agent-repo::example/orbit"}, []Routing{repo("example/secrets")})
 	if len(ch.Add)+len(ch.Remove) != 0 || len(ch.Lines) != 1 || !strings.Contains(ch.Lines[0], "`example/infra`, `example/orbit`") ||
 		!strings.Contains(ch.Lines[0], "`/agent repo none`") {
 		t.Fatalf("an unknown target changes nothing and lists the allowed ones: %+v", ch)

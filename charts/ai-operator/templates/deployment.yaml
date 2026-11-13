@@ -69,6 +69,9 @@ spec:
             {{- with .Values.crossRepo.allowedProjects }}
             - --cross-repo-allowed-projects={{ join "," . }}
             {{- end }}
+            {{- with .Values.crossRepo.neverProjects }}
+            - --cross-repo-never-projects={{ join "," . }}
+            {{- end }}
             {{- with .Values.selfProject }}
             - --self-project={{ . }}
             {{- end }}

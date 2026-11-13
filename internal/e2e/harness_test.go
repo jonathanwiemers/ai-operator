@@ -40,7 +40,7 @@ const (
 	// of the same group that the bot's token reaches but nothing may write.
 	homeProject    = "example/ai-operator"
 	infraProject   = "example/infra"
-	secretsProject = "jo.wiemers/personal/kubernetes"
+	secretsProject = "example/secrets"
 	allowedPaths   = "clusters/my-cluster/applications/ai-operator/"
 	valuesFile     = allowedPaths + "values.yaml"
 	homeFile       = "internal/feature/companion.go"

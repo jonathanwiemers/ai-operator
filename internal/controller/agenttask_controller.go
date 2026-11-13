@@ -61,6 +61,8 @@ type AgentTaskReconciler struct {
 	// (--cross-repo-allowed-projects): a task's companion gets its token in
 	// the pod only while it is a valid target (crossRepoTargets).
 	CrossRepoAllowed []string
+	// CrossRepoNever is the cluster's never-list (--cross-repo-never-projects).
+	CrossRepoNever []string
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;update;patch
@@ -157,7 +159,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// A pod started with other agent resources (raised after an OOM kill) is
 	// replaced between runs, so the next run gets them.
-	if pod != nil && !inProgress && podOutdated(pod, &task, spec, crossRepoTargets(spec, r.CrossRepoAllowed)) {
+	if pod != nil && !inProgress && podOutdated(pod, &task, spec, crossRepoTargets(spec, r.CrossRepoAllowed, r.CrossRepoNever)) {
 		if busy, err := r.runInProgress(ctx, &task); err != nil {
 			return ctrl.Result{}, err
 		} else if !busy {
@@ -209,7 +211,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					break
 				}
 			}
-			pod = buildPod(&task, spec, r.DeskURL, crossRepoTargets(spec, r.CrossRepoAllowed))
+			pod = buildPod(&task, spec, r.DeskURL, crossRepoTargets(spec, r.CrossRepoAllowed, r.CrossRepoNever))
 			if err := controllerutil.SetControllerReference(&task, pod, r.Scheme); err != nil {
 				return ctrl.Result{}, err
 			}

@@ -59,6 +59,9 @@ type AgentProjectReconciler struct {
 	// (--cross-repo-allowed-projects). Empty: cross-repo changes are off.
 	// Read the targets through crossRepoTargets only.
 	CrossRepoAllowed []string
+	// CrossRepoNever is the cluster's never-list of companion projects
+	// (--cross-repo-never-projects): never a target, even when allowed.
+	CrossRepoNever []string
 	// SelfProject is the GitLab project the operator is built from
 	// (--self-project), normalized. A companion of its merge request lands
 	// once Version is a release that contains the merge. Empty: that
@@ -290,7 +293,7 @@ func (r *AgentProjectReconciler) gitlabClient(ctx context.Context, project *aiv1
 	// The merge/push guard: the bot's token reaches the whole group, the
 	// operator merges and writes merge requests only at home and in the
 	// valid companion targets.
-	guarded := gitlab.Guard(r.NewGitLab(spec.GitLab.URL, token), gitlab.NewPolicy(spec, r.CrossRepoAllowed),
+	guarded := gitlab.Guard(r.NewGitLab(spec.GitLab.URL, token), gitlab.NewPolicy(spec, r.CrossRepoAllowed, r.CrossRepoNever),
 		log.FromContext(ctx).WithName("guard"))
 	return r.History.WrapGitLab(guarded, history.Project{
 		Namespace: project.Namespace, Name: project.Name,
@@ -379,7 +382,7 @@ func (r *AgentProjectReconciler) reportCrossRepo(project *aiv1.AgentProject, spe
 	}
 	cond := metav1.Condition{Type: aiv1.ConditionCrossRepoReady, Status: metav1.ConditionTrue, Reason: "TargetsValid",
 		Message: "every companion target is valid", ObservedGeneration: project.Generation}
-	if _, problems := aiv1.ValidateCrossRepo(spec, r.CrossRepoAllowed); len(problems) > 0 {
+	if _, problems := aiv1.ValidateCrossRepo(spec, r.CrossRepoAllowed, r.CrossRepoNever); len(problems) > 0 {
 		cond.Status, cond.Reason = metav1.ConditionFalse, "InvalidTargets"
 		cond.Message = textutil.Truncate("dropped: "+strings.Join(problems, "; "), 4096)
 	}
@@ -390,13 +393,13 @@ func (r *AgentProjectReconciler) reportCrossRepo(project *aiv1.AgentProject, spe
 // allows them and they pass ValidateCrossRepo. Every use of the targets
 // goes through it.
 func (r *AgentProjectReconciler) crossRepoTargets(spec aiv1.AgentProjectSpec) []aiv1.CrossRepoTarget {
-	return crossRepoTargets(spec, r.CrossRepoAllowed)
+	return crossRepoTargets(spec, r.CrossRepoAllowed, r.CrossRepoNever)
 }
 
 // crossRepoTargets returns the spec's valid companion targets under the
-// cluster's allow-list (both reconcilers).
-func crossRepoTargets(spec aiv1.AgentProjectSpec, allowed []string) []aiv1.CrossRepoTarget {
-	valid, _ := aiv1.ValidateCrossRepo(spec, allowed)
+// cluster's allow-list and never-list (both reconcilers).
+func crossRepoTargets(spec aiv1.AgentProjectSpec, allowed, never []string) []aiv1.CrossRepoTarget {
+	valid, _ := aiv1.ValidateCrossRepo(spec, allowed, never)
 	return valid
 }
 

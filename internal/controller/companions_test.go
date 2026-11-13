@@ -72,7 +72,7 @@ func (l *landingEnv) api() gitlab.API {
 			l.refusals++
 		}
 	}, funcr.Options{})
-	return gitlab.Guard(l.gl, gitlab.NewPolicy(l.spec, l.r.CrossRepoAllowed), logger)
+	return gitlab.Guard(l.gl, gitlab.NewPolicy(l.spec, l.r.CrossRepoAllowed, l.r.CrossRepoNever), logger)
 }
 
 func (l *landingEnv) poll() {

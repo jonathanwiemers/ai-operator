@@ -38,12 +38,12 @@ type TargetPolicy struct {
 }
 
 // NewPolicy builds the policy of an AgentProject: its home project and the
-// targets aiv1.ValidateCrossRepo accepts with the cluster's allow-list, so a
-// project the cluster does not allow, the home project or one of
-// aiv1.NeverTargets never becomes a target.
-func NewPolicy(spec aiv1.AgentProjectSpec, allowed []string) Policy {
+// targets aiv1.ValidateCrossRepo accepts with the cluster's allow-list and
+// never-list, so a project the cluster does not allow, the home project or
+// one on the never-list never becomes a target.
+func NewPolicy(spec aiv1.AgentProjectSpec, allowed, never []string) Policy {
 	p := Policy{home: aiv1.NormalizeProject(spec.GitLab.Project), targets: map[string]TargetPolicy{}}
-	valid, _ := aiv1.ValidateCrossRepo(spec, allowed)
+	valid, _ := aiv1.ValidateCrossRepo(spec, allowed, never)
 	for _, t := range valid {
 		p.targets[aiv1.NormalizeProject(t.Project)] = TargetPolicy{AutoMerge: t.AutoMerge}
 	}

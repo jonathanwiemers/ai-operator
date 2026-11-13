@@ -1046,8 +1046,8 @@ A target is **dropped** when:
 
 - cross-repo changes are off in the cluster (`--cross-repo-allowed-projects`
   is empty), or the project is not in that list;
-- the project is the home project (`spec.gitlab.project`), or
-  `jo.wiemers/personal/kubernetes`, which is never a valid target;
+- the project is the home project (`spec.gitlab.project`), or on the
+  cluster's never-list (`--cross-repo-never-projects`);
 - it repeats an earlier target's project;
 - `paths` is empty, a pattern does not compile, or a pattern matches
   `.gitlab-ci.yml`, anything under `.gitlab/`, or the whole tree (a
@@ -1069,6 +1069,7 @@ or over 1 MiB of new files, see
 | Flag | Helm value | Default | Description |
 |------|------------|---------|-------------|
 | `--cross-repo-allowed-projects` | `crossRepo.allowedProjects` (a list, joined with `,`) | empty | comma separated full paths of the projects AgentProjects may name in `spec.crossRepo.targets`. Empty turns cross-repo changes off: every target is dropped |
+| `--cross-repo-never-projects` | `crossRepo.neverProjects` (a list, joined with `,`) | empty | comma separated full paths of the projects that are never a valid target, even when `--cross-repo-allowed-projects` names them: repositories whose content must stay out of agent pods (e.g. one with plaintext secrets that the bot's token can read) |
 | `--self-project` | `selfProject` | empty | full path of the GitLab project this operator is built from, e.g. `my-group/ai-operator`. A companion of one of its merge requests [lands](usage.md#landing) once the running operator's version is at least the first release tag that contains the merge. Empty: that project's companions follow the tag rule like any other project's |
 
 **The build version.** The operator knows its release from the build:

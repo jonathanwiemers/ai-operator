@@ -9,9 +9,12 @@ func crossRepoSpec(targets ...CrossRepoTarget) AgentProjectSpec {
 	return AgentProjectSpec{GitLab: GitLabSpec{Project: "example/ai-operator"}, CrossRepo: &CrossRepoSpec{Targets: targets}}
 }
 
+// never is the cluster's never-list in these tests.
+var never = []string{"example/secrets"}
+
 func TestValidateCrossRepo(t *testing.T) {
 	const infra = "example/infra"
-	allowed := []string{infra, "example/ai-operator", "jo.wiemers/personal/kubernetes", "example/orbit"}
+	allowed := []string{infra, "example/ai-operator", "example/secrets", "example/orbit"}
 	good := []string{"clusters/my-cluster/applications/ai-operator/"}
 	for _, tc := range []struct {
 		name    string
@@ -28,8 +31,8 @@ func TestValidateCrossRepo(t *testing.T) {
 			want: []string{infra + ": cross-repo changes are off", "example/orbit: cross-repo changes are off"}},
 		{name: "home project", targets: []CrossRepoTarget{{Project: "EXAMPLE/ai-operator", Paths: good}}, allowed: allowed,
 			want: []string{"EXAMPLE/ai-operator: is the home project"}},
-		{name: "never target", targets: []CrossRepoTarget{{Project: "jo.wiemers/personal/kubernetes", Paths: good}}, allowed: allowed,
-			want: []string{"jo.wiemers/personal/kubernetes: is never a valid target"}},
+		{name: "never target", targets: []CrossRepoTarget{{Project: "example/secrets", Paths: good}}, allowed: allowed,
+			want: []string{"example/secrets: is never a valid target"}},
 		{name: "duplicate", targets: []CrossRepoTarget{{Project: infra, Paths: good}, {Project: infra + "/", Paths: []string{"other/"}}}, allowed: allowed,
 			valid: []string{infra}, want: []string{infra + "/: duplicates an earlier target"}},
 		{name: "empty paths", targets: []CrossRepoTarget{{Project: infra}}, allowed: allowed, want: []string{infra + ": paths is empty"}},
@@ -49,13 +52,13 @@ func TestValidateCrossRepo(t *testing.T) {
 			want: []string{"matches .gitlab/", `paths[0] "*/" matches the whole tree`}},
 		{name: "/", targets: []CrossRepoTarget{{Project: infra, Paths: []string{"/"}}}, allowed: allowed,
 			want: []string{infra + `: paths[0]: pattern "/": empty pattern`}},
-		{name: "several reasons", targets: []CrossRepoTarget{{Project: "jo.wiemers/personal/kubernetes"}}, allowed: []string{infra},
+		{name: "several reasons", targets: []CrossRepoTarget{{Project: "example/secrets"}}, allowed: []string{infra},
 			want: []string{"not in the cluster's allow-list", "is never a valid target", "paths is empty"}},
 		{name: "mixed", targets: []CrossRepoTarget{{Project: "example/other", Paths: good}, {Project: infra, Paths: good}, {Project: "example/orbit", Paths: []string{"clusters/my-cluster/applications/orbit/", "README.md"}}}, allowed: allowed,
 			valid: []string{infra, "example/orbit"}, want: []string{"example/other: not in"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			valid, problems := ValidateCrossRepo(crossRepoSpec(tc.targets...), tc.allowed)
+			valid, problems := ValidateCrossRepo(crossRepoSpec(tc.targets...), tc.allowed, never)
 			var got []string
 			for _, v := range valid {
 				got = append(got, v.Project)
@@ -75,8 +78,20 @@ func TestValidateCrossRepo(t *testing.T) {
 	}
 }
 
+func TestValidateCrossRepoNeverListIsClusterConfig(t *testing.T) {
+	spec := crossRepoSpec(CrossRepoTarget{Project: "example/secrets", Paths: []string{"tfvars/"}})
+	allowed := []string{"example/secrets"}
+	if valid, problems := ValidateCrossRepo(spec, allowed, nil); len(valid) != 1 || problems != nil {
+		t.Errorf("without a never-list: valid %v, problems %q", valid, problems)
+	}
+	valid, problems := ValidateCrossRepo(spec, allowed, []string{" /EXAMPLE/Secrets/ ", ""})
+	if len(valid) != 0 || len(problems) != 1 || !strings.Contains(problems[0], "is never a valid target") {
+		t.Errorf("on the never-list: valid %v, problems %q", valid, problems)
+	}
+}
+
 func TestValidateCrossRepoUnset(t *testing.T) {
-	valid, problems := ValidateCrossRepo(AgentProjectSpec{GitLab: GitLabSpec{Project: "a/b"}}, []string{"a/c"})
+	valid, problems := ValidateCrossRepo(AgentProjectSpec{GitLab: GitLabSpec{Project: "a/b"}}, []string{"a/c"}, never)
 	if valid != nil || problems != nil {
 		t.Errorf("without spec.crossRepo: %v, %v", valid, problems)
 	}
@@ -84,7 +99,7 @@ func TestValidateCrossRepoUnset(t *testing.T) {
 
 func TestValidateCrossRepoKeepsTargets(t *testing.T) {
 	target := CrossRepoTarget{Project: "example/infra", Paths: []string{"clusters/"}, AutoMerge: true}
-	valid, _ := ValidateCrossRepo(crossRepoSpec(target), []string{"example/infra"})
+	valid, _ := ValidateCrossRepo(crossRepoSpec(target), []string{"example/infra"}, never)
 	if len(valid) != 1 || !valid[0].AutoMerge || valid[0].Paths[0] != "clusters/" {
 		t.Errorf("valid = %+v, want the target as it is", valid)
 	}

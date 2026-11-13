@@ -14,8 +14,10 @@ import (
 // CrossRepoSpec lets the project's issues change a companion repository in
 // the same run as their home change (docs/specs/cross-repo-changes.spec.md).
 // A target is used only when the cluster allows its project
-// (--cross-repo-allowed-projects, the chart's crossRepo.allowedProjects);
-// condition CrossRepoReady names the targets that are dropped.
+// (--cross-repo-allowed-projects, the chart's crossRepo.allowedProjects)
+// and does not exclude it (--cross-repo-never-projects, the chart's
+// crossRepo.neverProjects); condition CrossRepoReady names the targets that
+// are dropped.
 type CrossRepoSpec struct {
 	// Targets are the companion repositories the project's issues may
 	// change.
@@ -26,8 +28,8 @@ type CrossRepoSpec struct {
 // CrossRepoTarget is one companion repository and what may change in it.
 type CrossRepoTarget struct {
 	// Project is the companion's full path, e.g. "my-group/infra/cluster".
-	// It must be in the cluster's allow-list and must not be the home
-	// project.
+	// It must be in the cluster's allow-list, not in its never-list and
+	// must not be the home project.
 	// +kubebuilder:validation:MinLength=1
 	Project string `json:"project"`
 
@@ -58,10 +60,6 @@ type CrossRepoTarget struct {
 // without spec.crossRepo.
 const ConditionCrossRepoReady = "CrossRepoReady"
 
-// NeverTargets are the projects that are never a valid companion, even
-// when the cluster allows them: their content must stay out of agent pods.
-var NeverTargets = []string{"jo.wiemers/personal/kubernetes"}
-
 // crossRepoProbes are the paths no companion pattern may match, with the
 // reason a match gives: the CI configuration, and the whole tree (a
 // top-level file or a file in a top-level directory).
@@ -81,17 +79,14 @@ func NormalizeProject(p string) string {
 // ValidateCrossRepo returns the spec's valid companion targets, in order,
 // and one problem per reason a target is dropped, each naming the target's
 // project. allowed is the cluster's allow-list: empty, every target is
-// invalid (the feature is off).
-func ValidateCrossRepo(spec AgentProjectSpec, allowed []string) (valid []CrossRepoTarget, problems []string) {
+// invalid (the feature is off). never is the cluster's never-list: the
+// projects whose content must stay out of agent pods, invalid even when
+// allowed.
+func ValidateCrossRepo(spec AgentProjectSpec, allowed, never []string) (valid []CrossRepoTarget, problems []string) {
 	if spec.CrossRepo == nil {
 		return nil, nil
 	}
-	allow := map[string]bool{}
-	for _, a := range allowed {
-		if a = NormalizeProject(a); a != "" {
-			allow[a] = true
-		}
-	}
+	allow, deny := projectSet(allowed), projectSet(never)
 	home := NormalizeProject(spec.GitLab.Project)
 	seen := map[string]bool{}
 	for _, t := range spec.CrossRepo.Targets {
@@ -108,10 +103,8 @@ func ValidateCrossRepo(spec AgentProjectSpec, allowed []string) (valid []CrossRe
 		if project != "" && project == home {
 			reasons = append(reasons, "is the home project")
 		}
-		for _, n := range NeverTargets {
-			if project != "" && project == NormalizeProject(n) {
-				reasons = append(reasons, "is never a valid target")
-			}
+		if project != "" && deny[project] {
+			reasons = append(reasons, "is never a valid target (--cross-repo-never-projects)")
 		}
 		if project != "" && seen[project] {
 			reasons = append(reasons, "duplicates an earlier target")
@@ -127,6 +120,18 @@ func ValidateCrossRepo(spec AgentProjectSpec, allowed []string) (valid []CrossRe
 		}
 	}
 	return valid, problems
+}
+
+// projectSet is the set of the projects' normalized forms, without empty
+// ones.
+func projectSet(projects []string) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range projects {
+		if p = NormalizeProject(p); p != "" {
+			out[p] = true
+		}
+	}
+	return out
 }
 
 // crossRepoPathProblems checks a target's paths: non-empty, each pattern

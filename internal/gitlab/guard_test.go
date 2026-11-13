@@ -18,9 +18,12 @@ const (
 	home      = "group/app"
 	infra     = "group/infra/cluster"
 	docs      = "group/docs"
-	secrets   = "jo.wiemers/personal/kubernetes"
+	secrets   = "example/secrets"
 	unrelated = "group/other"
 )
+
+// never is the cluster's never-list: the secrets project.
+var never = []string{secrets}
 
 // guardSpec is a home project with three targets the cluster allows:
 // infra with autoMerge, docs without, and the never-target.
@@ -61,7 +64,7 @@ func recorder() (logr.Logger, *[]string) {
 
 func TestPolicyDropsInvalidTargets(t *testing.T) {
 	spec, allowed := guardSpec()
-	p := gitlab.NewPolicy(spec, allowed)
+	p := gitlab.NewPolicy(spec, allowed, never)
 	if p.Home() != home {
 		t.Fatalf("home %q", p.Home())
 	}
@@ -75,15 +78,19 @@ func TestPolicyDropsInvalidTargets(t *testing.T) {
 	if _, ok := p.Target(secrets); ok || len(p.Targets()) != 2 {
 		t.Fatalf("the never-target is in the policy: %v", p.Targets())
 	}
+	// The never-list is the cluster's: without it the project is a target.
+	if _, ok := gitlab.NewPolicy(spec, allowed, nil).Target(secrets); !ok {
+		t.Fatalf("without a never-list the allowed project is no target")
+	}
 	// Without the cluster's allow-list there are no targets at all.
-	if off := gitlab.NewPolicy(spec, nil); len(off.Targets()) != 0 || off.Home() != home {
+	if off := gitlab.NewPolicy(spec, nil, never); len(off.Targets()) != 0 || off.Home() != home {
 		t.Fatalf("feature off: %v", off.Targets())
 	}
 }
 
 func TestPolicyForCompanion(t *testing.T) {
 	spec, allowed := guardSpec()
-	p := gitlab.NewPolicy(spec, allowed)
+	p := gitlab.NewPolicy(spec, allowed, never)
 	for _, tc := range []struct {
 		name      string
 		c         *aiv1.CompanionSpec
@@ -212,7 +219,7 @@ func TestGuard(t *testing.T) {
 			}
 			spec, allowed := guardSpec()
 			log, lines := recorder()
-			err := tc.call(gitlab.Guard(all, gitlab.NewPolicy(spec, allowed), log), tc.project)
+			err := tc.call(gitlab.Guard(all, gitlab.NewPolicy(spec, allowed, never), log), tc.project)
 			var ge *gitlab.GuardError
 			if tc.allowed {
 				if err != nil || !tc.did(inner) || len(*lines) != 0 {
@@ -256,7 +263,7 @@ func TestGuardWithCompanionPolicy(t *testing.T) {
 	} {
 		all := guardFake()
 		inner := project(t, all, tc.project)
-		api := gitlab.Guard(all, gitlab.NewPolicy(spec, allowed).ForCompanion(tc.c), logr.Discard())
+		api := gitlab.Guard(all, gitlab.NewPolicy(spec, allowed, never).ForCompanion(tc.c), logr.Discard())
 		_, err := api.MergeMergeRequest(ctx, tc.project, 1, gitlab.MergeOptions{SHA: "s1"})
 		var ge *gitlab.GuardError
 		if tc.allowed != (err == nil) || !tc.allowed && (!errors.As(err, &ge) || len(inner.Merged) != 0) {
@@ -274,7 +281,7 @@ func TestGuardPassesReadsAndNotes(t *testing.T) {
 	other.AddIssue(5, "Elsewhere")
 	spec, allowed := guardSpec()
 	log, lines := recorder()
-	api := gitlab.Guard(all, gitlab.NewPolicy(spec, allowed), log)
+	api := gitlab.Guard(all, gitlab.NewPolicy(spec, allowed, never), log)
 	if _, err := api.GetMergeRequest(ctx, unrelated, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -289,11 +296,11 @@ func TestGuardPassesReadsAndNotes(t *testing.T) {
 // Guard keeps the inner client's request counts.
 func TestGuardKeepsStats(t *testing.T) {
 	spec, allowed := guardSpec()
-	api := gitlab.Guard(gitlab.New("https://gitlab.example", "t"), gitlab.NewPolicy(spec, allowed), logr.Discard())
+	api := gitlab.Guard(gitlab.New("https://gitlab.example", "t"), gitlab.NewPolicy(spec, allowed, never), logr.Discard())
 	if _, ok := api.(interface{ Stats() gitlab.Stats }); !ok {
 		t.Fatal("Stats is lost")
 	}
-	if _, ok := gitlab.Guard(gitlabfake.New(), gitlab.NewPolicy(spec, allowed), logr.Discard()).(interface{ Stats() gitlab.Stats }); ok {
+	if _, ok := gitlab.Guard(gitlabfake.New(), gitlab.NewPolicy(spec, allowed, never), logr.Discard()).(interface{ Stats() gitlab.Stats }); ok {
 		t.Fatal("a client without Stats must not get one")
 	}
 }

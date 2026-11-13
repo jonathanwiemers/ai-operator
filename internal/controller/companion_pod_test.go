@@ -20,7 +20,7 @@ func TestCompanionTokenOnlyInTheRunner(t *testing.T) {
 		{Project: "group/infra", Paths: []string{"clusters/app/"}, TokenSecretRef: own},
 		{Project: "group/other", Paths: []string{"apps/"}},
 	}}
-	targets := crossRepoTargets(spec, allowed)
+	targets := crossRepoTargets(spec, allowed, nil)
 	withCompanion := func(project string) *aiv1.AgentTask {
 		task := newImplTask("x", 1)
 		task.Spec.Companion = &aiv1.CompanionSpec{Project: project, Paths: []string{"clusters/app/"}, Branch: "agent/app-1-x"}
@@ -64,7 +64,7 @@ func TestCompanionTokenOnlyInTheRunner(t *testing.T) {
 	// cluster dropped it): no token, no annotation.
 	for name, pod := range map[string]*corev1.Pod{
 		"no companion":   buildPod(newImplTask("x", 1), spec, "", targets),
-		"invalid target": buildPod(withCompanion("group/infra"), spec, "", crossRepoTargets(spec, []string{"group/other"})),
+		"invalid target": buildPod(withCompanion("group/infra"), spec, "", crossRepoTargets(spec, []string{"group/other"}, nil)),
 		"unknown target": buildPod(withCompanion("group/elsewhere"), spec, "", targets),
 	} {
 		for _, c := range pod.Spec.Containers {
@@ -83,7 +83,7 @@ func TestCompanionTokenOnlyInTheRunner(t *testing.T) {
 func TestPodOutdatedByCompanion(t *testing.T) {
 	spec := testProject().Spec.WithDefaults()
 	spec.CrossRepo = &aiv1.CrossRepoSpec{Targets: []aiv1.CrossRepoTarget{{Project: "group/infra", Paths: []string{"clusters/app/"}}}}
-	targets := crossRepoTargets(spec, []string{"group/infra"})
+	targets := crossRepoTargets(spec, []string{"group/infra"}, nil)
 	plain := newImplTask("x", 1)
 	companion := newImplTask("x", 1)
 	companion.Spec.Companion = &aiv1.CompanionSpec{Project: "group/infra", Paths: []string{"clusters/app/"}, Branch: "agent/app-1-x"}
@@ -112,7 +112,7 @@ func TestPodOutdatedByCompanion(t *testing.T) {
 func TestCompanionTokenKeptForTheRecordedCompanion(t *testing.T) {
 	spec := testProject().Spec.WithDefaults()
 	spec.CrossRepo = &aiv1.CrossRepoSpec{Targets: []aiv1.CrossRepoTarget{{Project: "group/infra", Paths: []string{"clusters/app/"}}}}
-	targets := crossRepoTargets(spec, []string{"group/infra"})
+	targets := crossRepoTargets(spec, []string{"group/infra"}, nil)
 	task := newImplTask("x", 1)
 	task.Status.Run.Companion = &aiv1.CompanionRun{Project: "group/infra", MRIID: 3, Branch: "agent/app-1-x"}
 

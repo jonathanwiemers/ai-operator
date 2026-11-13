@@ -1809,8 +1809,8 @@ spec:
                         project:
                           description: |-
                             Project is the companion's full path, e.g. "my-group/infra/cluster".
-                            It must be in the cluster's allow-list and must not be the home
-                            project.
+                            It must be in the cluster's allow-list, not in its never-list and
+                            must not be the home project.
                           minLength: 1
                           type: string
                         tokenSecretRef:

@@ -34,7 +34,7 @@ auto-merge ceiling, and a milestone line with the full project path.
 * All AgentProjects share the bot `operator-ai`'s token. The bot is
   **Maintainer on the projects' GitLab group** and stays so. That means the
   token could merge into `example/infra` `main` and read
-  `jo.wiemers/personal/kubernetes` (its tfvars hold live secrets). The gates
+  a secrets repository (its tfvars hold live secrets). The gates
   therefore live in the operator.
 * Infra holds SealedSecrets (encrypted) and the public sealing cert, with no
   plaintext secrets, so it is acceptable as a checkout the agent can read.
@@ -142,7 +142,9 @@ auto-merge ceiling, and a milestone line with the full project path.
     target with `autoMerge`. They also refuse a push to anything but `agent/*`
     branches of the home project or a valid target, and any push to a
     default branch. Every refusal is logged and unit-tested.
-    `jo.wiemers/personal/kubernetes` is never a valid target.
+    a project on the cluster's never-list is never a valid target
+    (steer 2026-11-13: the hard-coded project became
+    `--cross-repo-never-projects`, see open-source-release.spec.md, A2).
 12. **Desk and Spend.**
     * Companion chip on issue and MR cards (`draft`, `waiting for release`,
       `ready`, `merging`, `merged`) linking to the MR.

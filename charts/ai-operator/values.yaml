@@ -30,6 +30,10 @@ crossRepo:
   # AgentProjects may name as companion repositories in
   # spec.crossRepo.targets. Empty turns cross-repo changes off.
   allowedProjects: []
+  # Full paths of the GitLab projects that are never a companion, even when
+  # allowedProjects names them (e.g. a repository holding live secrets): the
+  # agent's token may reach them, their content must stay out of agent pods.
+  neverProjects: []
 
 # Full path of the GitLab project this operator is built from (e.g.
 # "my-group/ai-operator"). A companion of one of its merge requests lands once
