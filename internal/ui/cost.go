@@ -78,6 +78,11 @@ func (s *Server) projectCosts(ctx context.Context, d *ProjectDetail) {
 			t.CostUSD.Known = true
 		}
 		m.Cost = callsCost(t)
+		for j := range d.Queue {
+			if d.Queue[j].IID == m.IID {
+				d.Queue[j].Cost = m.Cost
+			}
+		}
 	}
 }
 

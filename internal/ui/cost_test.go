@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -79,13 +82,23 @@ func TestCostsFromCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := spendEnv(t, reader)
+	// The milestone runs on autopilot, so it is in the queue too.
+	var st aiv1.AgentTask
+	if err := env.reader.Get(t.Context(), client.ObjectKey{Namespace: "team-a", Name: "shop-spec-m3-checkout"}, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.Spec.Autopilot = true
+	if err := env.reader.Update(t.Context(), &st); err != nil {
+		t.Fatal(err)
+	}
 
 	var d ProjectDetail
-	if code := env.get(t, "/api/v1/projects/team-a/shop", &d); code != http.StatusOK || len(d.Milestones) != 1 {
+	if code := env.get(t, "/api/v1/projects/team-a/shop", &d); code != http.StatusOK || len(d.Milestones) != 1 || len(d.Queue) != 1 {
 		t.Fatalf("project: status %d, %+v", code, d)
 	}
 	checkCost(t, "project", d.Cost, Cost{CostUSD: "4.50", CostKnown: true, Tokens: 301222, CostFrom: CostFromCalls})
 	checkCost(t, "milestone row", d.Milestones[0].Cost, Cost{CostUSD: "4.25", CostKnown: true, Tokens: 301220, CostFrom: CostFromCalls})
+	checkCost(t, "queue entry", d.Queue[0].Cost, d.Milestones[0].Cost)
 
 	var m MilestoneView
 	if code := env.get(t, shopMilestone, &m); code != http.StatusOK {

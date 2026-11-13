@@ -106,6 +106,29 @@ export const shopDetail: ProjectDetail = {
       autopilot: false,
     },
   ],
+  // Run order: the older milestone first; the paused one keeps its place.
+  queue: [
+    {
+      ...cost('21.10', 4_050_000),
+      iid: checkout.iid,
+      title: checkout.title,
+      task: `shop-m${checkout.iid}-spec`,
+      state: 'running',
+      done: 0,
+      total: 0,
+    },
+    {
+      ...cost('9.85', 1_870_000),
+      iid: payments.iid,
+      title: payments.title,
+      task: `shop-m${payments.iid}-spec`,
+      state: 'paused',
+      pausedReason,
+      done: 0,
+      total: 0,
+    },
+  ],
+  queueCommands: true,
 }
 
 // GET /projects/team-a/shop/history?days=30&tz=…: activity of the last 30

@@ -95,6 +95,7 @@ packages:
       - overview.go
       - pause_exits.go
       - prompt.go
+      - queue.go
       - release.go
       - research.go
       - retrospective.go

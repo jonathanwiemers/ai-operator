@@ -140,6 +140,9 @@ type ProjectDetail struct {
 	Milestones []Milestone `json:"milestones"`
 	// Unplanned are tasks of issues without a milestone.
 	Unplanned []Task `json:"unplanned"`
+	// Queue is in run order; queueCommands: Desk chat on the project.
+	Queue         []QueueEntry `json:"queue"`
+	QueueCommands bool         `json:"queueCommands"`
 }
 
 // Milestone groups the tasks of one milestone.
@@ -275,12 +278,8 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Proj
 				Phase:        ap.Phase,
 				PausedReason: ap.PausedReason,
 				WaitingFor:   waitingFor(ap, tasks),
+				Done:         itemsDone(ap),
 				Total:        len(ap.Items),
-			}
-			for _, it := range ap.Items {
-				if it.State == aiv1.AutopilotItemMerged || it.State == aiv1.AutopilotItemSkipped {
-					o.Done++
-				}
 			}
 			s.Autopilots = append(s.Autopilots, o)
 		}
@@ -334,6 +333,7 @@ func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Project
 	}
 	sort.Slice(d.Milestones, func(i, j int) bool { return d.Milestones[i].IID > d.Milestones[j].IID })
 	sortTasks(d.Unplanned)
+	d.Queue = queue(tasks, costs)
 	return d
 }
 

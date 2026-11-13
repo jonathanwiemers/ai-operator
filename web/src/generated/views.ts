@@ -941,6 +941,26 @@ export interface PromptAnswerView {
 }
 
 //////////
+// source: queue.go
+
+/**
+ * QueueEntry is an open autopilot milestone; task: its spec task. holding
+ * (planned) and waiting (to plan) wait for holdingFor, the first in rank.
+ * markedBy: the run-next mark. done of total: issues merged or skipped.
+ */
+export interface QueueEntry extends Cost {
+  iid: number /* int64 */;
+  title: string;
+  task: string;
+  state: 'running' | 'holding' | 'waiting' | 'paused' | 'budget';
+  holdingFor?: number /* int64 */;
+  pausedReason?: string;
+  markedBy?: string;
+  done: number /* int */;
+  total: number /* int */;
+}
+
+//////////
 // source: research.go
 
 /**
@@ -1520,6 +1540,11 @@ export interface ProjectDetail extends ProjectSummary {
    * Unplanned are tasks of issues without a milestone.
    */
   unplanned: Task[];
+  /**
+   * Queue is in run order; queueCommands: Desk chat on the project.
+   */
+  queue: QueueEntry[];
+  queueCommands: boolean;
 }
 /**
  * Milestone groups the tasks of one milestone.

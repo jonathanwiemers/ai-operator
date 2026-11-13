@@ -94,6 +94,7 @@ func (s *Server) project(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := detail(ap, tasks, time.Now())
+	d.QueueCommands = s.cfg.ChatEnabled() && s.authz.CanChat(principalOf(r), ap.Namespace, ap.Name)
 	s.projectCosts(r.Context(), &d)
 	writeJSON(w, http.StatusOK, d)
 }
