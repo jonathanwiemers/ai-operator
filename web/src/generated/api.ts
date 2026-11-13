@@ -4973,8 +4973,10 @@ export interface BlockedStatus {
  * CrossRepoSpec lets the project's issues change a companion repository in
  * the same run as their home change (docs/specs/cross-repo-changes.spec.md).
  * A target is used only when the cluster allows its project
- * (--cross-repo-allowed-projects, the chart's crossRepo.allowedProjects);
- * condition CrossRepoReady names the targets that are dropped.
+ * (--cross-repo-allowed-projects, the chart's crossRepo.allowedProjects)
+ * and does not exclude it (--cross-repo-never-projects, the chart's
+ * crossRepo.neverProjects); condition CrossRepoReady names the targets that
+ * are dropped.
  */
 export interface CrossRepoSpec {
   /**
@@ -4990,8 +4992,8 @@ export interface CrossRepoSpec {
 export interface CrossRepoTarget {
   /**
    * Project is the companion's full path, e.g. "my-group/infra/cluster".
-   * It must be in the cluster's allow-list and must not be the home
-   * project.
+   * It must be in the cluster's allow-list, not in its never-list and
+   * must not be the home project.
    * +kubebuilder:validation:MinLength=1
    */
   project: string;
