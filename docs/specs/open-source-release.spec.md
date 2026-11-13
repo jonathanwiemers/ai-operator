@@ -172,7 +172,7 @@ milestone looks good.
 
 | Step | MR | Status |
 |------|----|--------|
-| A | – | in progress |
-| A2 | – | not started |
+| A | !427 | open, review |
+| A2 | !428 (stacked on !427) | open, review |
 | B | – | not started |
 | C | – | not started |
