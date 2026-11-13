@@ -5,6 +5,7 @@
 import { session } from './api'
 import { signInAgain } from './signInAgain'
 import type {
+  About,
   ChatPage,
   ChatPostResponse,
   CostsTopView,
@@ -114,6 +115,11 @@ export function getMe(): Promise<Me> {
 // may see.
 export async function getFeatures(): Promise<Feature[]> {
   return (await get<FeaturesResponse>('/features')).features
+}
+
+// getAbout: GET /about, the running version and the newest release.
+export function getAbout(): Promise<About> {
+  return get<About>('/about')
 }
 
 // getProjects: GET /projects, the projects the user may see.
