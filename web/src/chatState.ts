@@ -73,6 +73,9 @@ export type ChatCommand =
   | { cmd: 'effort'; effort: string }
   | { cmd: 'pause' }
   | { cmd: 'resume' }
+  | { cmd: 'start' }
+  | { cmd: 'unstart' }
+  | { cmd: 'endmilestone' }
   | { cmd: 'skip'; issue: number }
   | { cmd: 'merge'; issue: number; sha: string }
   | { cmd: 'accept'; proposal: number }
@@ -105,6 +108,12 @@ export function commandLabel(body: string | undefined): string {
       return 'pause'
     case 'resume':
       return 'resume'
+    case 'start':
+      return 'run next'
+    case 'unstart':
+      return 'clear mark'
+    case 'endmilestone':
+      return 'end milestone'
     case 'use':
       if (o.default === true) return 'use default'
       {
