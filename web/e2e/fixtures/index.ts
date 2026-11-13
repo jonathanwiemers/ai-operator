@@ -9,7 +9,7 @@ import { researchAPI } from './research'
 import { about, features, me } from './session'
 import { answerSpend } from './spend'
 import { answerStream, milestones, refundsIssue, shopDetail, shopHistory } from './stream'
-import { gitlabStatus, pilotChat, refunds, refundsChat, refundsResponse, refundsThread } from './task'
+import { answerSearch, gitlabStatus, pilotChat, refunds, refundsChat, refundsResponse, refundsThread } from './task'
 
 export { now } from './clock'
 
@@ -33,6 +33,7 @@ export const api: Record<string, Fixture> = {
   '/costs': costs,
   '/costs/top': costsTop,
   '/gitlab': gitlabStatus,
+  '/search': answerSearch,
   [shopPath]: shopDetail,
   [`${shopPath}/history`]: shopHistory,
   ...Object.fromEntries(Object.entries(milestones).map(([iid, m]) => [`${shopPath}/milestones/${iid}`, m])),

@@ -8,6 +8,7 @@ import type {
   TaskStatus,
   ThreadPart,
 } from '../../src/types'
+import type { SearchResponse, SearchResult } from '../../src/generated/views'
 import { ago, cost } from './clock'
 import { projects } from './rail'
 
@@ -336,4 +337,22 @@ I proposed to split it, see [the proposal](https://gitlab.example.com/team-a/sho
       state: 'answered',
     },
   ],
+}
+
+// GET /search?q=: #281 (with its merge request !298) matches "!298", "#281"
+// and words of its title; other terms find nothing.
+export function answerSearch(q: URLSearchParams): SearchResponse {
+  const term = (q.get('q') ?? '').toLowerCase()
+  const hit = term === '!298' || term === '#281' || refundsTitle.toLowerCase().includes(term)
+  const result: SearchResult = {
+    namespace: 'team-a',
+    project: 'shop',
+    task: refundsTask,
+    type: 'Implement',
+    title: refundsTitle,
+    issueIID: 281,
+    mergeRequestIID: 298,
+    createdAt: ago(60 * 24),
+  }
+  return { results: hit ? [result] : [] }
 }

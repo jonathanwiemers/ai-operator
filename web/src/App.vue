@@ -15,6 +15,9 @@ import { useBackClose } from './ui/useBackClose'
 import SignIn from './views/SignIn.vue'
 import Breadcrumbs from './components/Breadcrumbs.vue'
 import RailNav from './components/RailNav.vue'
+import { isPaletteKey, paletteOpen } from './searchPalette'
+// The ⌘K palette loads on its first open (docs/ui.md, "Bundle budget").
+const SearchPalette = defineAsyncComponent(() => import('./components/SearchPalette.vue'))
 // The sheet is loaded on phones only: the dialog behind it would add about
 // 30 kB gzipped to the initial bundle (docs/ui.md, "Bundle budget").
 const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
@@ -49,6 +52,16 @@ const router = useRouter()
 // link inside it closes it before it navigates.
 const railOpen = ref(false)
 useBackClose(railOpen)
+// Here, not in the palette: it mounts already open and would miss that.
+useBackClose(paletteOpen)
+const paletteUsed = ref(false)
+watch(paletteOpen, (v) => (paletteUsed.value ||= v))
+// ⌘K / Ctrl+K opens and closes the palette, also inside text fields.
+function onKey(e: KeyboardEvent) {
+  if (!session.me || session.loginRequired || !isPaletteKey(e)) return
+  e.preventDefault()
+  paletteOpen.value = !paletteOpen.value
+}
 const projects = ref<ProjectSummary[] | null>(null)
 const researches = ref<ResearchSummary[] | null>(null)
 const inboxCount = ref(0)
@@ -153,12 +166,14 @@ onMounted(() => {
   phone.addEventListener('change', onWidth)
   document.addEventListener('focusin', onFocusIn)
   document.addEventListener('focusout', onFocusOut)
+  window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => {
   window.clearInterval(aboutTimer)
   phone.removeEventListener('change', onWidth)
   document.removeEventListener('focusin', onFocusIn)
   document.removeEventListener('focusout', onFocusOut)
+  window.removeEventListener('keydown', onKey)
 })
 
 watch(
@@ -272,6 +287,8 @@ watch(notifyActive, (on) => {
           <RailNav :projects="projects" :researches="researches" :inbox-count="inboxCount" @navigate="railOpen = false" />
         </template>
       </USlideover>
+
+      <SearchPalette v-if="paletteUsed" :projects="projects" :features="session.features" :fullscreen="isPhone" />
 
       <main class="main">
         <header class="crumbbar"><Breadcrumbs /></header>
