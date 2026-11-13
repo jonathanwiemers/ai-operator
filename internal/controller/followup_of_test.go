@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -271,29 +270,5 @@ func TestFollowUpOfClosedSourceFromTheSnapshot(t *testing.T) {
 	e.reconcile()
 	if got := e.tasks()[specTaskName].Status.FollowUpOf; got.Problem != "%1 has no retrospective the operator knows of" || !slices.Equal(got.Numbers, []int{1, 5}) {
 		t.Fatalf("status = %+v", got)
-	}
-}
-
-func TestFollowUpsSettled(t *testing.T) {
-	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
-	posted := metav1.NewTime(now.Add(-time.Hour))
-	two := []aiv1.PilotFollowUp{{Title: "a"}, {Title: "b"}}
-	for _, c := range []struct {
-		name  string
-		retro aiv1.PilotRetrospective
-		want  bool
-	}{
-		{"none", aiv1.PilotRetrospective{PostedAt: &posted}, true},
-		{"open", aiv1.PilotRetrospective{PostedAt: &posted, FollowUps: two}, false},
-		{"one created", aiv1.PilotRetrospective{PostedAt: &posted, FollowUps: two, Created: map[string]int64{"1": 9}}, false},
-		{"one taken", aiv1.PilotRetrospective{PostedAt: &posted, FollowUps: two, Taken: map[string]int64{"2": 5}}, false},
-		{"created and taken", aiv1.PilotRetrospective{PostedAt: &posted, FollowUps: two, Created: map[string]int64{"1": 9}, Taken: map[string]int64{"2": 5}}, true},
-		{"all taken", aiv1.PilotRetrospective{PostedAt: &posted, FollowUps: two, Taken: map[string]int64{"1": 5, "2": 5}}, true},
-		{"a week later", aiv1.PilotRetrospective{PostedAt: &metav1.Time{Time: now.Add(-followUpWindow)}, FollowUps: two}, true},
-		{"dismissed", aiv1.PilotRetrospective{PostedAt: &posted, FollowUps: two, Created: map[string]int64{"1": 9}, DismissedAt: &posted}, true},
-	} {
-		if got := followUpsSettled(&c.retro, now); got != c.want {
-			t.Errorf("%s: followUpsSettled = %v, want %v", c.name, got, c.want)
-		}
 	}
 }

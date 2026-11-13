@@ -23,7 +23,7 @@ func draftRequest(st, coord *aiv1.AgentTask, pending *aiv1.FollowUpDraftRequest,
 	switch d := coord.Spec.Source.FollowUpDraft; {
 	case retro == nil || retro.Failed != "" || len(retro.FollowUps) == 0:
 		return "This milestone has no retrospective with follow-ups to draft from.", nil
-	case followUpsSettled(retro, now):
+	case retro.FollowUpsSettled(now):
 		return "The follow-ups of this milestone are settled: there is nothing left to draft from.", nil
 	case pending != nil || d != nil && d.Request > coord.Status.Run.ObservedRunRequest:
 		return "The pilot is writing a draft already; ask again once it shows in the Retrospective tab.", nil

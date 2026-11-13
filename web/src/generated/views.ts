@@ -356,6 +356,32 @@ export interface FeaturesResponse {
 }
 
 //////////
+// source: finishing.go
+
+/**
+ * FinishingEntry is a done autopilot milestone still open on GitLab and what
+ * holds it, as closeMilestone sees it; followUps: see the Retrospective tab.
+ */
+export interface FinishingEntry {
+  iid: number /* int64 */;
+  title: string;
+  task: string;
+  replanning: boolean;
+  retroWriting: boolean;
+  followUps: boolean;
+  openIssues: FinishingIssue[];
+  companions: string[];
+}
+/**
+ * FinishingIssue is an open issue a done milestone waits for.
+ */
+export interface FinishingIssue {
+  iid: number /* int64 */;
+  title?: string;
+  webURL: string;
+}
+
+//////////
 // source: followup.go
 
 /**
@@ -1545,6 +1571,10 @@ export interface ProjectDetail extends ProjectSummary {
    */
   queue: QueueEntry[];
   queueCommands: boolean;
+  /**
+   * Finishing are the done milestones still open on GitLab, oldest first.
+   */
+  finishing: FinishingEntry[];
 }
 /**
  * Milestone groups the tasks of one milestone.

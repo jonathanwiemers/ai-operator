@@ -129,6 +129,7 @@ export const shopDetail: ProjectDetail = {
     },
   ],
   queueCommands: true,
+  finishing: [],
 }
 
 // GET /projects/team-a/shop/history?days=30&tz=…: activity of the last 30

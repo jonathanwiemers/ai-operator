@@ -143,6 +143,8 @@ type ProjectDetail struct {
 	// Queue is in run order; queueCommands: Desk chat on the project.
 	Queue         []QueueEntry `json:"queue"`
 	QueueCommands bool         `json:"queueCommands"`
+	// Finishing are the done milestones still open on GitLab, oldest first.
+	Finishing []FinishingEntry `json:"finishing"`
 }
 
 // Milestone groups the tasks of one milestone.
@@ -334,6 +336,7 @@ func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Project
 	sort.Slice(d.Milestones, func(i, j int) bool { return d.Milestones[i].IID > d.Milestones[j].IID })
 	sortTasks(d.Unplanned)
 	d.Queue = queue(tasks, costs)
+	d.Finishing = finishing(tasks, gl.WebURL, now)
 	return d
 }
 

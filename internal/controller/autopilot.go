@@ -716,10 +716,6 @@ func (a *autopilot) endMilestone(ctx context.Context, by string) error {
 	return nil
 }
 
-// followUpWindow is how long the owners have to open a retrospective's
-// follow-ups with "create" before autopilot closes the milestone.
-const followUpWindow = 7 * 24 * time.Hour
-
 // closeMilestone closes the milestone of a done autopilot once the
 // retrospective and its follow-ups are settled, no issue in it is open and
 // all its companions have landed.
@@ -735,7 +731,7 @@ func (a *autopilot) closeMilestone(ctx context.Context) error {
 		return nil // a re-plan may add issues and continue the queue
 	case retro == nil && a.pilotTask != nil:
 		return nil // the pilot is still writing it
-	case retro != nil && !followUpsSettled(retro, a.r.now()):
+	case retro != nil && !retro.FollowUpsSettled(a.r.now()):
 		return nil
 	}
 	var open []int64
@@ -777,24 +773,6 @@ func (a *autopilot) closeMilestone(ctx context.Context) error {
 	}
 	a.ap.CloseWaitsFor, a.ap.CloseWaitsForCompanions = nil, nil
 	return a.comment(ctx, "🏁 The milestone is closed.")
-}
-
-// followUpsSettled reports whether the retrospective's follow-ups no longer
-// need the milestone: there are none, an owner dismissed them, all were
-// opened or taken over by another milestone, or the window to open them
-// is over.
-func followUpsSettled(retro *aiv1.PilotRetrospective, now time.Time) bool {
-	if retro.Failed != "" || retro.DismissedAt != nil || len(retro.FollowUps) == 0 || retro.PostedAt == nil || !now.Before(retro.PostedAt.Add(followUpWindow)) {
-		return true
-	}
-	for k := range retro.FollowUps {
-		key := strconv.Itoa(k + 1)
-		_, created := retro.Created[key]
-		if _, taken := retro.Taken[key]; !created && !taken {
-			return false
-		}
-	}
-	return true
 }
 
 // blocker is an open issue a queued issue is linked as "blocked by" to.

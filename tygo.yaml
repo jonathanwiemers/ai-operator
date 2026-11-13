@@ -85,6 +85,7 @@ packages:
       - cost.go
       - costs.go
       - features.go
+      - finishing.go
       - followup.go
       - gitlab.go
       - issue.go

@@ -46,7 +46,7 @@ func retroDone(e *projectEnv, retro aiv1.PilotRetrospective) {
 	e.t.Helper()
 	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot = &aiv1.PilotStatus{Retrospective: retro.DeepCopy()} })
 	e.reconcile()
-	open := !followUpsSettled(&retro, e.r.Now())
+	open := !retro.FollowUpsSettled(e.r.Now())
 	if _, ok := e.tasks()[pilotTaskName]; ok != open {
 		e.t.Fatalf("the pilot goes after its retrospective, once its follow-ups are settled (open %v): %v", open, keys(e.tasks()))
 	}
@@ -83,7 +83,7 @@ func TestDoneAutopilotWaitsForTheFollowUps(t *testing.T) {
 		{"all created", func(e *projectEnv, _ int64) {
 			e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot.Retrospective.Created = map[string]int64{"1": 20} })
 		}},
-		{"a week later", func(e *projectEnv, _ int64) { e.gl.Clock = e.gl.Clock.Add(followUpWindow) }},
+		{"a week later", func(e *projectEnv, _ int64) { e.gl.Clock = e.gl.Clock.Add(aiv1.FollowUpWindow) }},
 		{"dismissed by an owner", func(e *projectEnv, retro int64) {
 			e.gl.AddReply(e.autopilot().TrackingIssueIID, retro, alice, "create none")
 		}},

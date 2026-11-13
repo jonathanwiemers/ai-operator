@@ -253,7 +253,7 @@ func TestRetrospectiveCreateNoneDismissesTheRestOnce(t *testing.T) {
 	if got.DismissedBy != alice.Username || got.DismissedAt == nil || !maps.Equal(got.Created, map[string]int64{"1": docs.IID}) {
 		t.Fatalf("an owner's create none dismisses the rest, what was opened stays: %+v", got)
 	}
-	if !followUpsSettled(got, e.r.Now()) {
+	if !got.FollowUpsSettled(e.r.Now()) {
 		t.Fatal("dismissed follow-ups are settled")
 	}
 	want := "🧭 The remaining follow-ups are dismissed; the milestone can close. `create 1` still opens one."

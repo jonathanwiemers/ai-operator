@@ -85,7 +85,7 @@ func TestPilotStaysWhileFollowUpsAreOpen(t *testing.T) {
 
 func TestPilotGoesWhenTheFollowUpWindowEnds(t *testing.T) {
 	e := newDraftEnv(t)
-	e.advance(followUpWindow)
+	e.advance(aiv1.FollowUpWindow)
 	e.reconcile()
 	if _, ok := e.tasks()[pilotTaskName]; ok {
 		t.Fatalf("the pilot goes once the window to open the follow-ups is over: %v", keys(e.tasks()))

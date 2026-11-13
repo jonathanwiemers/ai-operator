@@ -452,7 +452,7 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 // again.
 func (r *AgentProjectReconciler) retrospective(ctx context.Context, st, coord *aiv1.AgentTask) (bool, error) {
 	if st.Status.Pilot != nil && st.Status.Pilot.Retrospective != nil {
-		return !followUpsSettled(st.Status.Pilot.Retrospective, r.now()), nil
+		return !st.Status.Pilot.Retrospective.FollowUpsSettled(r.now()), nil
 	}
 	request := coord.Spec.Source.Retrospective
 	if request == 0 {
@@ -476,7 +476,7 @@ func (r *AgentProjectReconciler) retrospective(ctx context.Context, st, coord *a
 	if err := r.patchPilot(ctx, st, func(ps *aiv1.PilotStatus) { ps.Retrospective = retro }); err != nil {
 		return true, err
 	}
-	return !followUpsSettled(retro, r.now()), nil
+	return !retro.FollowUpsSettled(r.now()), nil
 }
 
 // closePilotIssue closes the tracking issue "/pilot coordinate" opened,
