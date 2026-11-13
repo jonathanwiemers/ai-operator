@@ -154,6 +154,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes", s.authed(s.postMilestoneNote))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followup", s.authed(s.createFollowUp))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followups/dismiss", s.authed(s.dismissFollowUps))
+	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}/close", s.authed(s.closeHoldingIssue))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript", s.authed(s.transcript))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.getChat))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.postChat))

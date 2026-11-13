@@ -103,12 +103,8 @@ func (s *Server) createFollowUp(w http.ResponseWriter, r *http.Request) {
 		writeErrorResponse(w, http.StatusConflict, ErrorResponse{Error: "follow-ups already opened, taken or dismissed", Taken: taken})
 		return
 	}
-	gl, tok, ok := s.userGitLab(w, r, ap)
+	gl, tok, ok := s.writingGitLab(w, r, ap)
 	if !ok {
-		return
-	}
-	if ok, _ := s.notes.allow(p.Username, time.Now()); !ok {
-		writeError(w, http.StatusTooManyRequests, "too many requests, try again in a minute")
 		return
 	}
 	desc := followUpDescription(ap.Spec, req.Description, iid, req.FollowUps, src)
@@ -134,6 +130,20 @@ func (s *Server) createFollowUp(w http.ResponseWriter, r *http.Request) {
 		"namespace", ap.Namespace, "project", ap.Name, "milestone", iid, "followUps", req.FollowUps, "created", m.IID)
 	writeJSON(w, http.StatusCreated, FollowUpMilestoneView{IID: m.IID,
 		WebURL: cmp.Or(m.WebURL, fmt.Sprintf("%s/-/milestones/%d", gitLabRef(ap).WebURL, m.IID))})
+}
+
+// writingGitLab returns the user's GitLab client for a write from the Desk,
+// within the user's rate limit. It answers the request itself when not.
+func (s *Server) writingGitLab(w http.ResponseWriter, r *http.Request, ap *aiv1.AgentProject) (gitlab.API, *GitLabToken, bool) {
+	gl, tok, ok := s.userGitLab(w, r, ap)
+	if !ok {
+		return nil, nil, false
+	}
+	if ok, _ := s.notes.allow(principalOf(r).Username, time.Now()); !ok {
+		writeError(w, http.StatusTooManyRequests, "too many requests, try again in a minute")
+		return nil, nil, false
+	}
+	return gl, tok, true
 }
 
 // readFollowUp reads a follow-up request: a title of 1 to 255 characters
