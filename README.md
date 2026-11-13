@@ -35,12 +35,14 @@
 
 ## How it works
 
-You stay in GitLab. ai-operator watches your milestones and issues, runs
-headless coding agents (**Claude Code**, **Cursor CLI**) in a pod per issue,
-and reports back on merge requests.
+You write the spec in a GitLab milestone and steer from the Desk.
+ai-operator plans the milestone into issues, runs headless coding agents
+(**Claude Code**, **Cursor CLI**) in a pod per issue, merges and releases.
+Each milestone has a pilot. It fixes what goes wrong where it can, asks you
+when it needs a decision, and answers when you ask where things stand.
 
 <p align="center">
-  <img src="docs/assets/architecture.svg" alt="You steer in GitLab and watch in the Desk; the operator in your cluster starts one pod per task, and the agents in the pods call the models and push to GitLab" width="720">
+  <img src="docs/assets/architecture.svg" alt="You write the spec in GitLab and steer from the Desk, mostly by talking to the pilot. The operator in your cluster starts one pod per task, and the agents in the pods call the models and push to GitLab" width="720">
 </p>
 
 A milestone spec becomes sub-issues (`agent::draft`). You answer the
@@ -69,11 +71,12 @@ milestone in work with its progress, cost and tokens, and what needs you.
 | 💬 **Iterates by comment** | `/agent <what to change>` on the issue or MR. Plain discussion costs nothing. Merge conflicts with `main` are resolved by the agent too. |
 | 🔔 **Pings you when needed** | Failed runs, questions, red CI, ready for review, autopilot pauses: the owners get mentioned and requested as reviewers. |
 | 🚀 **Autopilot** | `/agent autopilot` in a milestone: agents take their defaults, work through the issues in dependency order and merge each MR once CI is green and the review is clean. |
-| 📌 **Decisions you can revisit** | Every choice an agent makes is recorded with why and the alternatives. `/agent revisit D42-3 …` changes it, even after the merge. |
+| 📌 **Decisions you can revisit** | Every choice an agent makes is recorded with why and the alternatives. Revisit it in the Desk or with `/agent revisit D42-3 …`, even after the merge. |
+| 🏷️ **Planned releases** | The planner puts release points into the plan and the operator tags them as the queue gets there. A merge alone releases nothing, and `/agent release` cuts one in between. |
 | ⚖️ **Right model for the job** | Profiles route each issue to a cheap or a strong model, Claude or Cursor. `/agent use claude opus high` overrides per issue, within the models you allow. |
 | 🔒 **Isolated by design** | The model never sees the GitLab token or cluster credentials: a trusted runner and the agent container exchange commits only as git bundles ([security](docs/design.md#security)). |
 | 🪙 **Easy on tokens** | Runs with your Claude or Cursor subscription. Sessions are resumed, pipelines are watched for free, pods stop right after each run, and usage limits pause runs instead of failing them. |
-| 👀 **Web UI** | Optional read-only dashboard of boards, runs, CI and autopilot queues, with OIDC login and per-project roles ([web UI](docs/ui.md), [screenshots](docs/ui.md#screenshots)). |
+| 🧭 **The Desk** | Optional web UI where you steer: ask a milestone's pilot, chat with a task's agent, answer prompts, revisit decisions, and watch runs, CI and costs. OIDC login and per-project roles ([Desk](docs/ui.md), [screenshots](docs/ui.md#screenshots)). |
 
 > **Status:** `v1alpha1`. Unit and end-to-end tests pass (fake GitLab, real
 > git); real-world runs are tracked in the

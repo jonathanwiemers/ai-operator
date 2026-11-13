@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 604" role="img" aria-labelledby="t d">
   <title id="t">How ai-operator fits together</title>
-  <desc id="d">You steer through GitLab and watch through the Desk. The operator in your Kubernetes cluster polls GitLab, applies its rules and starts one pod per task. Agents in the pods call the models and push to GitLab. Every call lands in a history database that the Desk reads.</desc>
+  <desc id="d">You write the spec in GitLab and steer from the Desk, mostly by talking to the pilot, chatting with an agent or revisiting a decision. The operator in your Kubernetes cluster polls GitLab, applies its rules and starts one pod per task. Agents in the pods call the models and push to GitLab. Each milestone has a pilot that assesses what happens, steers the operator and asks when it needs a decision. Every call lands in a history database that the Desk reads.</desc>
   <style>
     svg {
       --bg: #fdfdfb; --ink: #0f1c2c; --muted: #566577; --line: #8794a3; --border: #d3dae2;
@@ -52,7 +52,7 @@
   <!-- GitLab -->
   <rect class="gl" x="130" y="20" width="570" height="100" rx="14"/>
   <text class="h" x="150" y="50">GitLab</text>
-  <text class="s" x="222" y="50">write the spec, answer, comment /agent</text>
+  <text class="s" x="222" y="50">write the spec</text>
   <rect class="row" x="150" y="66" width="104" height="36" rx="18"/><text class="rowt mid" x="202" y="89">milestone</text>
   <rect class="row" x="264" y="66" width="84" height="36" rx="18"/><text class="rowt mid" x="306" y="89">issues</text>
   <rect class="row" x="358" y="66" width="148" height="36" rx="18"/><text class="rowt mid" x="432" y="89">merge requests</text>
@@ -86,9 +86,10 @@
   <rect class="inner" x="476" y="322" width="73" height="46" rx="7"/>
   <text class="t mid" x="512.5" y="341">agent</text><text class="xs mid" x="512.5" y="358">model key</text>
 
-  <rect class="card" x="385" y="402" width="175" height="54" rx="10"/>
-  <text class="h2" x="401" y="425">pilot pod</text>
-  <text class="s" x="401" y="445">watches, sums up</text>
+  <rect class="op" x="385" y="398" width="175" height="70" rx="10"/>
+  <text class="h2" x="401" y="420">pilot pod</text>
+  <text class="s" x="401" y="439">assesses, steers,</text>
+  <text class="s" x="401" y="457">asks, sums up</text>
 
   <!-- models -->
   <rect class="card" x="600" y="288" width="105" height="92" rx="10"/>
@@ -99,7 +100,7 @@
   <!-- Desk -->
   <rect class="op" x="140" y="484" width="205" height="86" rx="12"/>
   <text class="h" x="156" y="513">Desk</text>
-  <text class="s" x="156" y="535">watch, chat, click</text>
+  <text class="s" x="156" y="535">pilot, chat, revisit</text>
   <text class="s" x="156" y="554">reads tasks and history</text>
 
   <!-- history -->
@@ -120,7 +121,13 @@
 
   <path class="arrow" marker-end="url(#a)" d="M570,334 H594"/>
 
-  <path class="arrow" marker-end="url(#a)" d="M472.5,460 V480"/>
+  <path class="arrow" marker-end="url(#a)" d="M472.5,470 V481"/>
+
+  <path class="arrow" marker-end="url(#a)" d="M385,410 H300 V377"/>
+  <text class="xs" x="308" y="404">steers</text>
+
+  <path class="arrow" marker-start="url(#a)" marker-end="url(#a)" d="M349,500 H365 V433 H379"/>
+  <text class="xs" x="371" y="476">talk</text>
 
   <path class="arrow" marker-end="url(#a)" d="M349,527 H379"/>
   <text class="xs mid" x="365" y="519">reads</text>
@@ -129,7 +136,7 @@
   <text class="xs" x="250" y="434">reads tasks</text>
 
   <path class="arrow" marker-end="url(#a)" d="M55,122 V527 H134"/>
-  <text class="s" x="64" y="306">watch,</text>
+  <text class="s" x="64" y="306">pilot,</text>
   <text class="s" x="64" y="324">chat,</text>
-  <text class="s" x="64" y="342">click</text>
+  <text class="s" x="64" y="342">revisit</text>
 </svg>
