@@ -1422,6 +1422,15 @@ spec:
                     - issueIID
                     - sha
                     type: object
+                  passedBy:
+                    description: |-
+                      PassedBy are the younger milestones ranked ahead of this one by a
+                      run-next mark whose "goes first" note the tracking issue already has.
+                      An iid no longer ahead is dropped, so a later mark announces again.
+                    items:
+                      format: int64
+                      type: integer
+                    type: array
                   pauseKind:
                     description: |-
                       PauseKind is the cause of the pause, for the Desk's pause card. Empty

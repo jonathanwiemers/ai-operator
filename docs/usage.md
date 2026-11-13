@@ -2218,7 +2218,7 @@ UTF-8: the list is cut at whole lines and ends with "… and N more issues".
 
 | Comment | Effect |
 |---------|--------|
-| `/agent start [off]` | owners only: mark the milestone to run next (`status.autopilot.startRequestedBy`, `startRequestedAt`); a milestone waiting for its turn is planned now, a planned one starts issues before the older ones. A repeated `start` keeps the first mark; `start off` clears it. Does nothing on a done milestone |
+| `/agent start [off]` | owners only: mark the milestone to run next (`status.autopilot.startRequestedBy`, `startRequestedAt`); a milestone waiting for its turn is planned now, a planned one starts issues before the older ones. A repeated `start` keeps the first mark; each older milestone it passes notes "⏭️ %N goes first (by @you)." once (`passedBy`); `start off` clears it. Does nothing on a done milestone |
 | `/agent pause` | stop starting and merging; on a milestone that waits for its turn it also holds the planning when the turn comes, until `resume` (or `start`, which plans and keeps the pause) |
 | `/agent resume` | continue; the active issue is checked again |
 | `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |

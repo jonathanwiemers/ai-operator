@@ -4614,6 +4614,13 @@ export interface AutopilotStatus {
    */
   startRequestedAt?: string;
   /**
+   * PassedBy are the younger milestones ranked ahead of this one by a
+   * run-next mark whose "goes first" note the tracking issue already has.
+   * An iid no longer ahead is dropped, so a later mark announces again.
+   * +optional
+   */
+  passedBy?: number /* int64 */[];
+  /**
    * Items in queue order: dependencies first, ties in plan order.
    * +optional
    */

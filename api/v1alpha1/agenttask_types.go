@@ -1932,6 +1932,12 @@ type AutopilotStatus struct {
 	// +optional
 	StartRequestedAt *metav1.Time `json:"startRequestedAt,omitempty"`
 
+	// PassedBy are the younger milestones ranked ahead of this one by a
+	// run-next mark whose "goes first" note the tracking issue already has.
+	// An iid no longer ahead is dropped, so a later mark announces again.
+	// +optional
+	PassedBy []int64 `json:"passedBy,omitempty"`
+
 	// Items in queue order: dependencies first, ties in plan order.
 	// +optional
 	Items []AutopilotItem `json:"items,omitempty"`

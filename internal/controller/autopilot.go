@@ -35,7 +35,7 @@ import (
 // The operator only calls the GitLab API here; no model decides whether to
 // merge. State lives in the spec task's status.autopilot, the tracking issue
 // shows it.
-func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, pilot *aiv1.AgentTask, lane bool, ahead []int64) error {
+func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, pilot *aiv1.AgentTask, lane bool, ahead []int64, markedBy map[int64]string) error {
 	switch {
 	case st.Spec.Milestone == nil:
 		return nil
@@ -47,7 +47,7 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 	if st.Status.Autopilot != nil {
 		ap = st.Status.Autopilot.DeepCopy()
 	}
-	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, pilotTask: pilot, lane: lane, ahead: ahead,
+	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, pilotTask: pilot, lane: lane, ahead: ahead, markedBy: markedBy,
 		log: log.FromContext(ctx).WithValues("milestone", st.Spec.Milestone.Title)}
 	err := a.sync(ctx)
 	// Save what was done even if a later step failed: its GitLab side
@@ -143,6 +143,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.budget(ctx); err != nil {
 		return err
 	}
+	if err := a.announcePassed(ctx); err != nil {
+		return err
+	}
 	if err := a.emptyPlan(ctx); err != nil {
 		return err
 	}
@@ -197,6 +200,28 @@ func (a *autopilot) sync(ctx context.Context) error {
 		return err
 	}
 	return a.updateTracking(ctx)
+}
+
+// announcePassed says once on the tracking issue that a younger milestone
+// ranked ahead by a run-next mark goes first (decision 2), and forgets the
+// ones no longer ahead so a later mark is announced again. A failed comment
+// is not recorded and is tried again on the next poll.
+func (a *autopilot) announcePassed(ctx context.Context) error {
+	a.ap.PassedBy = slices.DeleteFunc(a.ap.PassedBy, func(iid int64) bool { return !slices.Contains(a.ahead, iid) })
+	if a.ap.Phase == aiv1.AutopilotDone || a.ap.TrackingIssueIID == 0 {
+		return nil
+	}
+	for _, iid := range a.ahead {
+		by := a.markedBy[iid]
+		if iid <= a.st.Spec.Milestone.IID || by == "" || slices.Contains(a.ap.PassedBy, iid) {
+			continue
+		}
+		if err := a.comment(ctx, fmt.Sprintf("⏭️ %%%d goes first (by %s).", iid, by)); err != nil {
+			return err
+		}
+		a.ap.PassedBy = append(a.ap.PassedBy, iid)
+	}
+	return nil
 }
 
 // emptyPlan pauses a running autopilot whose planning run succeeded but
@@ -267,7 +292,9 @@ type autopilot struct {
 	// (queuedAhead); holding: pick has an issue to start but waits for them.
 	ahead   []int64
 	holding bool
-	mainRed int64
+	// markedBy is the run-next mark owner (StartRequestedBy) by milestone.
+	markedBy map[int64]string
+	mainRed  int64
 	// New Desk command answers to write after the autopilot status is
 	// saved (a status patch must not wipe them from the Spec).
 	chatMark    int64

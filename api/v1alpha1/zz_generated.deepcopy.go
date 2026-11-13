@@ -704,6 +704,11 @@ func (in *AutopilotStatus) DeepCopyInto(out *AutopilotStatus) {
 		in, out := &in.StartRequestedAt, &out.StartRequestedAt
 		*out = (*in).DeepCopy()
 	}
+	if in.PassedBy != nil {
+		in, out := &in.PassedBy, &out.PassedBy
+		*out = make([]int64, len(*in))
+		copy(*out, *in)
+	}
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]AutopilotItem, len(*in))
