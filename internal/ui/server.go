@@ -43,10 +43,11 @@ type Server struct {
 	// gitlab connects users' GitLab accounts; nil without gitlab.url.
 	gitlab *gitlabConn
 	// notes rate-limits the comments users post, creates the one-off
-	// researches they start; chats rate-limits Desk chat posts.
-	notes, creates, chats *rateLimiter
-	// writer creates and deletes one-off researches; nil without
-	// research.allowCreate.
+	// researches they start, planCreates the plans; chats rate-limits Desk
+	// chat posts.
+	notes, creates, planCreates, chats *rateLimiter
+	// writer creates and deletes one-off researches and plans; nil without
+	// research.allowCreate and the Desk chat.
 	writer client.Client
 	// research is the reader's store, nil until connected.
 	research atomic.Pointer[store.Store]
@@ -96,7 +97,8 @@ func (s *Server) SetLogSource(l LogSource) { s.logs = l }
 func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log logr.Logger) (*Server, error) {
 	s := &Server{cfg: cfg, reader: reader, hub: hub, authz: NewAuthorizer(cfg), log: log, streams: map[string]int{},
 		notes: newRateLimiter(notesPerWindow, notesWindow), creates: newRateLimiter(createsPerWindow, createsWindow),
-		chats: newRateLimiter(notesPerWindow, notesWindow), historyRetention: history.DefaultRetention}
+		planCreates: newRateLimiter(plansPerWindow, createsWindow),
+		chats:       newRateLimiter(notesPerWindow, notesWindow), historyRetention: history.DefaultRetention}
 	if _, err := fs.Stat(static, "index.html"); err == nil {
 		s.static = static
 	}
@@ -157,6 +159,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}/close", s.authed(s.closeHoldingIssue))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/plans", s.authed(s.plans))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/plans/{plan}", s.authed(s.plan))
+	mux.Handle("POST /api/v1/projects/{namespace}/{name}/plans", s.authed(s.createPlan))
+	mux.Handle("DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}", s.authed(s.deletePlan))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript", s.authed(s.transcript))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.getChat))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.postChat))

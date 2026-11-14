@@ -3,10 +3,14 @@ package ui
 import (
 	"context"
 	"net/http"
+	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
@@ -112,5 +116,150 @@ func TestPlanSteerPermission(t *testing.T) {
 				t.Errorf("%d steer=%v, want %v", code, got.Permissions.Steer, tc.want)
 			}
 		})
+	}
+}
+
+// planWriterEnv is planEnv with the reader as the writer client.
+func planWriterEnv(t *testing.T, roles ...string) *testEnv {
+	t.Helper()
+	env := planEnv(t, true, roles...)
+	env.server.SetResearchWriter(env.reader)
+	return env
+}
+
+func (e *testEnv) planExists(t *testing.T, name string) bool {
+	t.Helper()
+	return e.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: name}, &aiv1.AgentPlan{}) == nil
+}
+
+func TestCreatePlan(t *testing.T) {
+	env := planWriterEnv(t, "leads")
+	var ap aiv1.AgentProject
+	if err := env.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: "shop"}, &ap); err != nil {
+		t.Fatal(err)
+	}
+	code, out := env.postJSON(t, shopPlans, map[string]string{"title": "  Refunds v2 "})
+	if code != http.StatusCreated {
+		t.Fatalf("create: %d %v", code, out)
+	}
+	name, _ := out["name"].(string)
+	if !regexp.MustCompile(`^plan-\d{8}-[a-z2-7]{6}$`).MatchString(name) {
+		t.Errorf("name %q", name)
+	}
+	if out["title"] != "Refunds v2" || out["createdBy"] != "ada@example.com" || out["draft"] != "" ||
+		out["permissions"].(map[string]any)["steer"] != true {
+		t.Errorf("view: %v", out)
+	}
+	var pl aiv1.AgentPlan
+	if err := env.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: name}, &pl); err != nil {
+		t.Fatal(err)
+	}
+	if pl.Spec.ProjectRef != "shop" || pl.Spec.Title != "Refunds v2" || pl.Spec.CreatedBy != "ada@example.com" || pl.Spec.MaxBudgetUSD != "" {
+		t.Errorf("spec: %+v", pl.Spec)
+	}
+	want := []metav1.OwnerReference{{APIVersion: aiv1.GroupVersion.String(), Kind: "AgentProject", Name: "shop", UID: ap.UID}}
+	if !reflect.DeepEqual(pl.OwnerReferences, want) {
+		t.Errorf("owner references: %+v, want %+v", pl.OwnerReferences, want)
+	}
+
+	// Without a body the title is empty.
+	if resp := env.do(t, http.MethodPost, shopPlans, nil, nil); resp.StatusCode != http.StatusCreated {
+		t.Errorf("empty body: %d", resp.StatusCode)
+	}
+}
+
+func TestCreatePlanTitle(t *testing.T) {
+	env := planWriterEnv(t, "leads")
+	for name, title := range map[string]string{
+		"too long":  strings.Repeat("é", maxPlanTitle+1),
+		"two lines": "Refunds\nand more",
+		"carriage":  "Refunds\rand more",
+	} {
+		if code, out := env.postJSON(t, shopPlans, map[string]string{"title": title}); code != http.StatusBadRequest || out["field"] != "title" {
+			t.Errorf("%s: %d %v", name, code, out)
+		}
+	}
+	if code, _ := env.postJSON(t, shopPlans, map[string]string{"title": strings.Repeat("é", maxPlanTitle)}); code != http.StatusCreated {
+		t.Errorf("255 characters: %d", code)
+	}
+	if code, _ := env.postJSON(t, shopPlans, map[string]int{"title": 1}); code != http.StatusBadRequest {
+		t.Errorf("not a string: %d", code)
+	}
+}
+
+func TestCreatePlanRateLimit(t *testing.T) {
+	env := planWriterEnv(t, "leads")
+	for i := range plansPerWindow {
+		if code, _ := env.postJSON(t, shopPlans, map[string]string{}); code != http.StatusCreated {
+			t.Fatalf("create %d: %d", i, code)
+		}
+	}
+	resp := env.do(t, http.MethodPost, shopPlans, []byte(`{}`), nil)
+	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") == "" {
+		t.Errorf("over the limit: %d, Retry-After %q", resp.StatusCode, resp.Header.Get("Retry-After"))
+	}
+	var list aiv1.AgentPlanList
+	if err := env.reader.List(context.Background(), &list); err != nil || len(list.Items) != 3+plansPerWindow {
+		t.Errorf("plans: %d %v", len(list.Items), err)
+	}
+}
+
+func TestDeletePlan(t *testing.T) {
+	env := planWriterEnv(t, "leads")
+	// Any owner deletes, not only the creator (bea created it).
+	if code := env.del(t, shopPlans+"/shop-plan-new"); code != http.StatusNoContent || env.planExists(t, "shop-plan-new") {
+		t.Errorf("delete: %d", code)
+	}
+	for _, path := range []string{shopPlans + "/shop-plan-new", shopPlans + "/billing-plan", "/api/v1/projects/team-b/billing/plans/billing-plan"} {
+		if code := env.del(t, path); code != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404", path, code)
+		}
+	}
+	if !env.planExists(t, "shop-plan-old") {
+		t.Error("deleted another plan")
+	}
+}
+
+func TestPlanWriteAccess(t *testing.T) {
+	cases := []struct {
+		name   string
+		chat   bool
+		roles  []string
+		owners []string
+		want   int
+	}{
+		{"viewer", true, []string{"devs"}, nil, http.StatusForbidden},
+		{"steer, not an owner-subject", true, []string{"leads"}, []string{"bea"}, http.StatusForbidden},
+		{"no view of the project", true, nil, nil, http.StatusNotFound},
+		{"without chat", false, []string{"leads"}, nil, http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := planEnv(t, tc.chat, tc.roles...)
+			env.server.SetResearchWriter(env.reader)
+			if tc.owners != nil {
+				setOwners(t, env, tc.owners...)
+			}
+			if code, _ := env.postJSON(t, shopPlans, map[string]string{"title": "x"}); code != tc.want {
+				t.Errorf("create: %d, want %d", code, tc.want)
+			}
+			if code := env.del(t, shopPlans+"/shop-plan-old"); code != tc.want {
+				t.Errorf("delete: %d, want %d", code, tc.want)
+			}
+			var list aiv1.AgentPlanList
+			if err := env.reader.List(context.Background(), &list); err != nil || len(list.Items) != 3 {
+				t.Errorf("plans changed: %d %v", len(list.Items), err)
+			}
+		})
+	}
+}
+
+func TestPlanWriteWithoutWriter(t *testing.T) {
+	env := planEnv(t, true, "leads")
+	if code, _ := env.postJSON(t, shopPlans, map[string]string{}); code != http.StatusNotFound {
+		t.Errorf("create: %d", code)
+	}
+	if code := env.del(t, shopPlans+"/shop-plan-old"); code != http.StatusNotFound || !env.planExists(t, "shop-plan-old") {
+		t.Errorf("delete: %d", code)
 	}
 }

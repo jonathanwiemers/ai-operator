@@ -89,12 +89,13 @@ func main() {
 	srv.SetLogSource(ui.PodLogs{Client: clientset})
 	srv.SetHistoryRetention(historyRetention)
 	srv.SetAbout(version, aiv1.NormalizeProject(selfProject))
-	// One-off researches are created and deleted directly, not through the
-	// cache. Only with allowCreate: the chart grants create/delete then.
-	if cfg.Research.Enabled() && cfg.Research.AllowCreate {
+	// One-off researches and plans are created and deleted directly, not
+	// through the cache. Only with allowCreate or the Desk chat (plans): the
+	// chart grants create/delete then.
+	if (cfg.Research.Enabled() && cfg.Research.AllowCreate) || cfg.ChatEnabled() {
 		writer, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
 		if err != nil {
-			log.Error(err, "unable to create the research writer client")
+			log.Error(err, "unable to create the writer client")
 			os.Exit(1)
 		}
 		srv.SetResearchWriter(writer)

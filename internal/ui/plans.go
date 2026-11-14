@@ -1,11 +1,20 @@
 package ui
 
 import (
+	"crypto/rand"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -76,28 +85,28 @@ func (s *Server) planOwner(p Principal, ap *aiv1.AgentProject, tasks []aiv1.Agen
 
 // projectPlans loads the project and its plans, newest first: 404 without
 // chat or a view of the project.
-func (s *Server) projectPlans(w http.ResponseWriter, r *http.Request) ([]aiv1.AgentPlan, bool, bool) {
+func (s *Server) projectPlans(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentPlan, bool, bool) {
 	if !s.cfg.ChatEnabled() {
 		notFound(w)
-		return nil, false, false
+		return nil, nil, false, false
 	}
 	ap, tasks, ok := s.loadProject(w, r)
 	if !ok {
-		return nil, false, false
+		return nil, nil, false, false
 	}
 	var list aiv1.AgentPlanList
 	if err := s.reader.List(r.Context(), &list, client.InNamespace(ap.Namespace)); err != nil {
 		s.internalError(w, err)
-		return nil, false, false
+		return nil, nil, false, false
 	}
 	plans := slices.DeleteFunc(list.Items, func(pl aiv1.AgentPlan) bool { return pl.Spec.ProjectRef != ap.Name })
 	sort.SliceStable(plans, func(i, j int) bool { return plans[j].CreationTimestamp.Before(&plans[i].CreationTimestamp) })
-	return plans, s.planOwner(principalOf(r), ap, tasks), true
+	return ap, plans, s.planOwner(principalOf(r), ap, tasks), true
 }
 
 // plans lists a project's plans.
 func (s *Server) plans(w http.ResponseWriter, r *http.Request) {
-	plans, steer, ok := s.projectPlans(w, r)
+	_, plans, steer, ok := s.projectPlans(w, r)
 	if !ok {
 		return
 	}
@@ -110,7 +119,7 @@ func (s *Server) plans(w http.ResponseWriter, r *http.Request) {
 
 // plan returns one plan with its draft.
 func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
-	plans, steer, ok := s.projectPlans(w, r)
+	_, plans, steer, ok := s.projectPlans(w, r)
 	if !ok {
 		return
 	}
@@ -122,4 +131,87 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	notFound(w)
+}
+
+// Limits of the plans owners start from the Desk.
+const (
+	maxPlanTitle   = 255
+	plansPerWindow = 10
+)
+
+// ownPlans is projectPlans for a change: 404 without the writer client, 403
+// unless the caller steers the project's plans.
+func (s *Server) ownPlans(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentPlan, bool) {
+	ap, plans, steer, ok := s.projectPlans(w, r)
+	switch {
+	case !ok:
+	case s.writer == nil:
+		notFound(w)
+	case !steer:
+		writeError(w, http.StatusForbidden, "only the project's owners change its plans")
+	default:
+		return ap, plans, true
+	}
+	return nil, nil, false
+}
+
+// createPlan starts a plan of the project {"title"?}, named by the server,
+// owned by the project and stamped with its creator.
+func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
+	ap, _, ok := s.ownPlans(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		badRequest(w, "invalid request")
+		return
+	}
+	if req.Title = strings.TrimSpace(req.Title); utf8.RuneCountInString(req.Title) > maxPlanTitle || strings.ContainsAny(req.Title, "\r\n") {
+		fieldError(w, "title", fmt.Sprintf("the title must be one line of at most %d characters", maxPlanTitle))
+		return
+	}
+	p := principalOf(r)
+	if ok, wait := s.planCreates.allow(p.Username, time.Now()); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
+		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("at most %d plans per hour, try again later", plansPerWindow))
+		return
+	}
+	pl := &aiv1.AgentPlan{
+		ObjectMeta: metav1.ObjectMeta{Namespace: ap.Namespace, Name: planName(time.Now()), OwnerReferences: []metav1.OwnerReference{
+			{APIVersion: aiv1.GroupVersion.String(), Kind: "AgentProject", Name: ap.Name, UID: ap.UID}}},
+		Spec: aiv1.AgentPlanSpec{ProjectRef: ap.Name, Title: req.Title, CreatedBy: p.Username},
+	}
+	if err := s.writer.Create(r.Context(), pl); err != nil {
+		s.internalError(w, err)
+		return
+	}
+	s.log.Info("audit", "action", "plan.create", "user", p.Username, "namespace", pl.Namespace, "name", pl.Name, "project", ap.Name)
+	writeJSON(w, http.StatusCreated, PlanView{PlanListItem: s.planItem(pl, true)})
+}
+
+// deletePlan deletes one of the project's plans; its pod and PVC follow.
+func (s *Server) deletePlan(w http.ResponseWriter, r *http.Request) {
+	ap, plans, ok := s.ownPlans(w, r)
+	if !ok {
+		return
+	}
+	i := slices.IndexFunc(plans, func(pl aiv1.AgentPlan) bool { return pl.Name == r.PathValue("plan") })
+	if i < 0 {
+		notFound(w)
+		return
+	}
+	if err := s.writer.Delete(r.Context(), &plans[i]); client.IgnoreNotFound(err) != nil {
+		s.internalError(w, err)
+		return
+	}
+	s.log.Info("audit", "action", "plan.delete", "user", principalOf(r).Username, "namespace", ap.Namespace, "name", plans[i].Name, "project", ap.Name)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// planName is plan-<yyyymmdd>-<6 random characters>.
+func planName(now time.Time) string {
+	return "plan-" + now.UTC().Format("20060102") + "-" + strings.ToLower(rand.Text()[:6])
 }
