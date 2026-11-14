@@ -81,7 +81,8 @@ async function get<T>(path: string): Promise<T> {
   return (await resp.json()) as T
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+// Exported for closeHoldingIssue.ts (Finishing; keeps the initial chunk small).
+export async function post<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(path.startsWith('/oauth2/') ? path : `/api/v1${path}`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
