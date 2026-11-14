@@ -35,10 +35,13 @@ open, but its decision 11 exempts milestones that have a plan.
 
 ## Approach
 
-1. `pick` does not start a pending issue while `queuedAhead` lists older open
-   autopilot milestones. Same rule as R12 (done, off and closed no longer
-   count; paused does). Skipping closed issues and recording hand merges go
-   on. The tracking issue says "⏳ waiting for its turn: %7, %9 go first".
+1. `pick` does not start a pending issue while `queuedAhead` lists open
+   autopilot milestones ahead of it. Same rule as R12 (done, off and closed
+   no longer count; paused does), with ranking from
+   `internal/milestoneorder` (run-next marks first, then age; see the
+   [desk-queue-closeout](desk-queue-closeout.spec.md) steer of Decision 10).
+   Skipping closed issues and recording hand merges go on. The tracking
+   issue says "⏳ waiting for its turn: %7, %9 go first".
 2. `pauseHead` is `pauseMR` with `ResumeWhenReady`, used by the `unrebased`
    paths of `rebased` and by "someone pushed to the branch". `autoResume` holds
    such a pause while the MR's head is not the run's `PushedSHA`: the status
@@ -53,9 +56,14 @@ open, but its decision 11 exempts milestones that have a plan.
 
 ## Steer on %10
 
-Decision 11 of %10 now covers planning only. Decision 10 (`/agent start`) does
-not lift the hold of step 1 yet. R14 (#200) lands first; extending it is a
-follow-up. Until then the way out is turning the older milestone off.
+Decision 11 of %10 now covers planning only. Decision 10 (`/agent start`) of
+%10 now lifts the hold of step 1: a run-next mark
+(`status.autopilot.startRequestedBy` plus `startRequestedAt`) ranks the
+milestone first in `queuedAhead` and the planning hold (marked before
+unmarked, earliest mark first, then age). `/agent start` on a planned
+milestone sets the mark; `/agent start off` clears it. Passed milestones'
+tracking issues say "⏭️ %N goes first (by …)". See
+[desk-queue-closeout.spec.md](desk-queue-closeout.spec.md).
 
 ## Affected
 

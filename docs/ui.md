@@ -87,19 +87,20 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   the last 7 days; **Working now**: one card per project with work, the
   issue that holds its run slot (linking to its task page) and for how long,
   what is next, active usage limits and the engine usage; a project with an
-  autopilot or queued work and no run says so; **In progress**: one flat
-  list of the milestones in work across projects, those that need you
-  first, then running, then waiting, then paused and planned; **Recently
-  done**: the newest 10 done milestones, *Show all* loads up to 200. A
-  milestone row shows the project, the title (linking to the milestone),
-  the state, a progress bar with merged (or skipped) of total, the open
-  issues, the cost (a dash when unknown, never $0), the tokens and, while
-  the retrospective's leftovers are open, *N leftovers*; on narrow screens
-  a row stacks. Without the research database a note says that done
-  milestones and spend need it, and *Recently done* stays empty.
-  It updates live; on narrow screens the strip wraps and the cards stack.
-  Counts cover only the projects you may see. A user with research alone
-  starts at `/research`.
+  autopilot, queued work or done milestones still open on GitLab (*N
+  finishing*, linking to the project page's [Finishing](#queue-and-finishing)
+  section) and no run says so; **In progress**: one flat list of the
+  milestones in work across projects, those that need you first, then
+  running, then waiting, then paused and planned; **Recently done**: the
+  newest 10 done milestones, *Show all* loads up to 200. A milestone row
+  shows the project, the title (linking to the milestone), the state, a
+  progress bar with merged (or skipped) of total, the open issues, the cost
+  (a dash when unknown, never $0), the tokens and, while the retrospective's
+  leftovers are open, *N leftovers*; on narrow screens a row stacks. Without
+  the research database a note says that done milestones and spend need it,
+  and *Recently done* stays empty. It updates live; on narrow screens the
+  strip wraps and the cards stack. Counts cover only the projects you may
+  see. A user with research alone starts at `/research`.
 * **Stream** (the dashboard's *Stream* tab for everything, `/projects/<namespace>/<name>` for a
   project, `…/milestones/<iid>` for a milestone: its issues, its tracking
   issue and what was recorded for it): a header with the view tabs: *Stream*,
@@ -134,10 +135,12 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   boards (one per milestone and the issues without a milestone)
   or the milestone's board; the *Spend* tab what the project or milestone
   cost (see [Spend](#spend)). A project's *Stream* tab starts with the
-  project's milestones in the dashboard's lists (*In progress* and
-  *Recently done*, without the project column), above the stream. Below
-  them, pinned, the **message box** (on a milestone it is on the *Pilot*
-  tab instead): it sends to a milestone's pilot (on its
+  [Queue](#queue-and-finishing) of open autopilot milestones in run order,
+  then [Finishing](#queue-and-finishing) for done milestones still open on
+  GitLab, then the project's milestones in the dashboard's lists (*In
+  progress* and *Recently done*, without the project column), above the
+  stream. Below them, pinned, the **message box** (on a milestone it is on
+  the *Pilot* tab instead): it sends to a milestone's pilot (on its
   tracking issue, as `/pilot …`) or comments on an issue, in your GitLab
   name, with `/` suggesting commands; it needs your GitLab account
   connected and the `steer` grant (see [Steering](#steering)), and the
@@ -386,8 +389,9 @@ desktop have no bottom bar; the rail is the aside.
 
 There is no strip of milestones under the header of a project or milestone
 page. A milestone page's breadcrumbs (project › milestone) lead back to the
-project, whose page lists its milestones in *MilestoneSections*; the tab row
-(*Issues*, *Pilot*, …) stays. Switching milestones does not keep the open tab.
+project, whose page shows the [Queue and Finishing](#queue-and-finishing)
+sections above *MilestoneSections*; the tab row (*Issues*, *Pilot*, …)
+stays. Switching milestones does not keep the open tab.
 
 **Search.** A search button sits in the rail header on tablet and desktop
 (title *Search (⌘K)* or *Search (Ctrl+K)*) and in the top bar on phones;
@@ -403,6 +407,57 @@ is *Released* (the pod has not restarted yet), *X is out — reload*. The line
 comes from `GET /api/v1/about`, loaded with the features and refreshed every
 5 minutes while the tab is visible; an error keeps the last answer. A `dev`
 build never shows a note.
+
+### Queue and Finishing
+
+On a project's *Stream* tab, above *MilestoneSections*, the project detail
+(`GET /api/v1/projects/{namespace}/{name}`) carries two lists from the same
+ranking and close-out fields the operator uses (`internal/milestoneorder`,
+autopilot status), so the Desk and `pick` cannot disagree.
+
+**Queue** (`project.queue`): the open autopilot milestones in run order
+(marked first, earliest mark first, then by age). Each row: position, `%iid`
+and title (to the milestone), a state badge, `done`/`total` issues, spend,
+and when marked *marked by …*. States:
+
+| State | Badge |
+|-------|--------|
+| `running` | *Running* (first in rank, not paused) |
+| `holding` | *Holding for %N* (planned; waits for the first in rank) |
+| `waiting` | *Waiting to plan* |
+| `paused` | *Paused* or *Paused: \<reason\>* |
+| `budget` | *Budget* |
+
+With Desk chat on and the `chat` grant (`project.queueCommands`), each row
+has buttons that post `kind: "command"` to that milestone's Spec task:
+
+| Button | Command | Who |
+|--------|---------|-----|
+| *Run next* | `{"cmd":"start"}` | shown without a mark; only the milestone's owner subjects succeed (like `/agent start`) |
+| *Clear mark* | `{"cmd":"unstart"}` | shown with a mark; owners only (like `/agent start off`) |
+| *Pause* / *Resume* | `{"cmd":"pause"}` / `{"cmd":"resume"}` | same as the pause card |
+
+Without the chat grant the list is read-only. The operator's answer shows
+under the list. Empty when the project has no open autopilot milestone.
+
+**Finishing** (`project.finishing`): done autopilot milestones whose Spec
+task still exists (still open on GitLab), oldest first. Each row lists what
+holds the close (`closeMilestone`): *Re-planning*, *Retrospective being
+written*, *Follow-ups to settle* (to the milestone's *Retrospective* tab),
+each open issue of `CloseWaitsFor` (*Open: #N …*, GitLab link) with *Close
+issue*, and *Companions not landed* (links). With nothing left it says
+*Closes on the next poll*. There is no "close anyway": the owner closes the
+holding issue or the milestone in GitLab.
+
+*Close issue* needs the `steer` grant, an owner subject of the milestone, and
+your GitLab account connected. It confirms, then
+`POST …/milestones/{iid}/issues/{issue}/close` with your token: a note
+"Closed from the Desk by @\<you\> to finish %\<iid\>." then the close; the
+operator closes the milestone on its next poll. Empty when nothing is
+finishing.
+
+The Overview *Working now* card shows *N finishing* when this list is not
+empty (see [Overview](#desk-and-history)).
 
 ### Spend
 
@@ -905,15 +960,21 @@ pod (with a link to the *Live* tab when you may see it; on a milestone's
 `chat` grant the composer also shows command buttons by task type:
 Implement has Retry, Review again and a Model… form (`use` / `effort`);
 a Spec task with autopilot has Pause or Resume and Skip…; a Coordinate
-task has Accept/Reject per open proposal. Commands post as
-`kind: "command"` with a JSON body and render as a short label in the
-thread (operator answers nest under them as system replies). Each
-command goes to the task that owns it: `retry` / `review` / `use` /
-`effort` on an Implement task, `pause` / `resume` / `skip` on an autopilot
-Spec task, and `accept` / `reject`, `answer`, `revisit` and `draft` on the
-milestone's Coordinate (pilot) task (author must be in the milestone's
-`owner-subjects`); `answer` to the agent's questions (`needsInput`
-prompts) goes on its Implement task, same owners. The prompt commands:
+task has Accept/Reject per open proposal. The project
+[Queue](#queue-and-finishing) also sends `start`, `unstart`, `pause` and
+`resume` to the Spec task. Commands post as `kind: "command"` with a JSON
+body and render as a short label in the thread (operator answers nest under
+them as system replies). Each command goes to the task that owns it:
+`retry` / `review` / `use` / `effort` on an Implement task, `pause` /
+`resume` / `skip` / `merge` / `start` / `unstart` / `endmilestone` on an
+autopilot Spec task (`start`, `unstart` and `endmilestone` need the
+milestone's `owner-subjects`, like `/agent start`, `/agent start off` and
+`/agent endMilestone` on the tracking issue; see
+[commands](commands.md#on-the-tracking-issue-autopilot)), and `accept` /
+`reject`, `answer`, `revisit` and `draft` on the milestone's Coordinate
+(pilot) task (author must be in the milestone's `owner-subjects`);
+`answer` to the agent's questions (`needsInput` prompts) goes on its
+Implement task, same owners. The prompt commands:
 
 | Command | Effect |
 |---------|--------|
@@ -1348,8 +1409,11 @@ GitLab stays the place of record: comments written in the UI are GitLab
 comments in **your** name, and the operator handles them like any other. A
 plain comment reaches a running agent at its next step; `/agent …` starts a
 run; `/agent use …` and `/agent effort …` change model and effort; on an
-autopilot milestone's tracking issue, `/agent pause|resume|skip`. All
-commands: [commands.md](commands.md).
+autopilot milestone's tracking issue, `/agent pause|resume|skip`, and for
+owners `/agent start` / `start off` (run-next mark) and `/agent endMilestone`.
+The Desk [Queue](#queue-and-finishing) sends the same as chat commands
+`start`, `unstart`, `pause`, `resume` and `endmilestone`. All commands:
+[commands.md](commands.md).
 
 ### Set it up
 
@@ -1546,9 +1610,9 @@ with the same session cookie:
 | `GET /api/v1/projects` | the projects you may see, with task counts per stage and each project's cost: `costUSD`, `costKnown`, `tokens` and `costFrom` as on a single project, summed for all listed projects in one query (`calls`, deleted tasks included; `tasks` without a connected research database or when it fails), without the `spend` breakdown; a project without calls is a known $0 |
 | `GET /api/v1/milestones` | `{"milestones": […], "history"}`: the milestones of the projects you may see, from their spec tasks and, with the research database (`history: true`), the snapshot of done ones whose tasks are gone. Each row: `namespace`, `project`, `iid`, `title`, `webURL`, `state` (`running`, `paused`, `waiting` for its turn to be planned, `done` (autopilot done or the milestone closed), `planned` without autopilot), `phase` (the autopilot's, lower case), `progress` (`merged` (or skipped, or closed) of `total`, `open`), `followUpsOpen` (leftovers still open), the cost as in a project (`costUSD`, `costKnown`, `tokens`, `costFrom`; without `spend`), `startedAt`, `doneAt`, `needsYou` (the milestone has an Inbox item) and `stored` (its tasks are gone, the row is the snapshot's). State and progress come from the tasks, spend, start and done times and follow-ups from the snapshot. `?state=` `open` (default: needs you first, then running, then waiting, paused and planned, the oldest start first within each), `done` (the newest done first) or `all` (open, then done); `?limit=` 1–200 (default 50, more is capped); 400 for other values; `?project=<namespace>/<name>` narrows the rows to one project (404 when you may not see it). Without the database, or when it fails, done milestones whose tasks are gone are missing and costs are the tasks' |
 | `GET /api/v1/search?q=` | `{"results": […]}`: the tasks with an issue (Implement, and Coordinate when it has one; not spec tasks) of the projects you may see whose issue matches `q` (trimmed, at least 2 characters, else 400): `#<n>` the issue number, `!<n>` the merge request number, anything else a case-insensitive part of the issue title. Each result: `namespace`, `project`, `task`, `type`, `title`, `issueIID`, `mergeRequestIID` (absent without one) and `createdAt`. At most 20, the newest task first. From the cached tasks: no database, no GitLab call |
-| `GET /api/v1/overview` | The dashboard's summary strip and *Working now* for the projects you may see, from the live tasks: `running`, `paused` and `waiting` (milestones by the states of `/api/v1/milestones`), `needsYou` (the Inbox's count), `spendToday` (since 00:00 UTC) and `spend7d` (today and the 6 days before) as costs (`costUSD`, `costKnown`, `tokens`, `costFrom`), and `history`. Without the research database, or when it fails, the spend fields are absent (unknown, not $0) and `history` is false. `working`: one entry per running implement task (`namespace`, `project`, `issueIID`, `title`, `milestoneIID`, `task`, `since`, when its run started), and one without an issue for a project with an active autopilot or queued work and nothing running; each carries the project's `next` (`issueIID`, `title`, `milestoneIID`: the first queued implement task in queue order, oldest milestone first, else the next pending issue of the oldest running autopilot), `usageLimits` and `engineUsage`. Sorted by project, the longest running first. No GitLab calls |
-| `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone (`trackingIssueIID` where a milestone has a tracking issue); the project and each milestone carry their cost: `costUSD` (`""` with `costKnown: false` when no call reports a cost), `tokens` (input, output and cache), `costFrom` (`calls`: summed from the recorded agent calls and older runs, with `spend` the totals as in `GET /api/v1/spend`; `tasks`: summed over the current tasks, without a connected research database). The milestone and task endpoints carry the same fields. A task whose issue has a companion merge request (cross-repo changes) carries `companion`: `homeIssueIID`, `project`, `mrIID`, `mrURL`, `state` (the landing state of `status.companions`, absent before the home merge), `chip` (`draft` before the home merge, `waiting for release` while waiting for the release, a rebase or CI, `ready`, `merging`, `merged`; `blocked` and `closed` keep the chip of the step they stopped at), `reason` (why it waits, is blocked or was closed), `release`, `readyAt`, `autoMerge` |
-| `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | a planned milestone: its spec task, the autopilot (`phase`, `pausedReason` as raw text; while paused `pauseKind`, `pausedFor`, that issue's pushed `head` and `reviewErrors`, and its `exits` (the ways out of `PauseExits`, each automatic one with a live `status`: `met` (lifts on the next poll), `inProgress` (a run pending, a rebase in flight), `waiting` or `unknown`, and a plain-text `detail` such as "main is red at abc1234"; a remedy has `allowed` when the page may offer it as a button: `merge` with `permissions.merge`, `resume`, `skip`, `retry` and `review` with `permissions.chat`, never labels, GitLab actions, prompt answers or commands the Desk cannot send); `mergeOverride`; queue `items` with title, state, MR number and URL, and task; `queuedBehind`, the older autopilot milestones ahead, ascending, while it waits for its turn to be planned), the `tracking` issue, the `pilot` (task, autonomy, open proposals made before prompts, cost), the milestone's `prompts` (the open ones and the newest 10 closed, newest first; each with its `kind`, `question`, untrusted `context`, `options` with the recommended one first and their `actions` as plain text, `state`, `answer`, `canAnswer` (open, and you are an owner subject of the milestone with the chat grant; the operator checks again) and the `target` task whose chat takes the `answer` command: the Coordinate task), its implement tasks, its `companions` (the companion merge requests of its issues as in a task's `companion`, also those whose task is gone, by home issue), its cost and `permissions` (`gitlab`, `steer`, `merge`, `draft`: what the page may offer; `merge` means you may send merge anyway: an owner subject of the milestone with the chat grant, which the operator checks again; `draft` that you may ask for a draft of a follow-up milestone: as `merge`, while the pilot exists and a follow-up is open; `followUp` that you may create the follow-up milestone: `steer`, an owner subject of the milestone, and a follow-up is open; `dismiss` that you may dismiss the remaining follow-ups: `steer`, an owner subject of the milestone, autopilot on it, and its posted retrospective has open follow-ups none dismissed yet), its `state` (as in `GET /api/v1/milestones`) and its `issues` (plan order, then the autopilot's items the plan lacks: `iid`, `title`, `state` (`planned`, `pending`, `active`, `merged`, `skipped`, or `closed` for an issue the backfill found closed without a merge on record), MR number and URL, the live implement `task`, and with the research database `figures`: `wallSec` from the first run to the merge (or now), `agentSec` (the calls' durations), `pausedSec` (the milestone's pauses over the issue), `costUSD`, `costKnown` (false without calls, never $0) and `tokens`; no `figures` without the database or while the snapshot lacks the issue; its `version`: that of the first `Released` or `AlreadyReleased` release decision listing the issue, absent until one does), its `releases` (the release decisions of `status.autopilot.releases` by `id`, `[]` without any: `by`, `actor`, untrusted `why` and `reason` as plain text, `afterIssue`, `sha`, `releasedSHA`, `state`, `issues`, `mergeRequests`, `version`, `pipelineURL`, `releaseURL`, `decidedAt`, `startedAt`, `endedAt`) and its `retrospective` once the pilot wrote one (live from task status, else the snapshot's; absent without one): `text` (untrusted markdown without HTML), `postedAt`, `noteURL` (the comment on the tracking issue), `failed` (why there is none), `followUps` (`number`, `title`, `body`, `state` `open`, `issue`, `milestone` or `dismissed`, `targetIID` and the `targetURL` of the issue or milestone it became) and with the research database `costDrivers`, the top 5 of the milestone's issues and roles by cost, those of unknown cost (`costUSD` "") after by tokens (`label`, `kind` `issue` or `role`, `costUSD`, `costKnown`, `tokens`; roles span issues, so the two overlap), and while the pilot exists its `draft` of a follow-up milestone (the one asked for with `pending: true` and its `numbers` while it is written, else the last one written: `numbers`, `title`, `description`, untrusted markdown without HTML until an owner confirms it, `at`, or `error`). A milestone whose tasks are gone (a closed one, after the operator deleted them) answers from the snapshot with `stored: true`: title, `state` (`done` once closed or done, else `planned`), issues with figures and versions, the `releases`, the `tracking` issue, cost from the agent calls, `pauses` and the stored `retrospective` (no `failed`); `spec` is empty and there is no `autopilot`, `pilot`, prompt, task or companion; `permissions` keep `gitlab`, `steer` and `followUp` (from the snapshot's owner subjects), while `chat`, `transcript`, `merge`, `draft` and `dismiss` are false. 404 without a spec task and without the research database or a snapshot; 500 when the database fails |
+| `GET /api/v1/overview` | The dashboard's summary strip and *Working now* for the projects you may see, from the live tasks: `running`, `paused` and `waiting` (milestones by the states of `/api/v1/milestones`), `needsYou` (the Inbox's count), `spendToday` (since 00:00 UTC) and `spend7d` (today and the 6 days before) as costs (`costUSD`, `costKnown`, `tokens`, `costFrom`), and `history`. Without the research database, or when it fails, the spend fields are absent (unknown, not $0) and `history` is false. `working`: one entry per running implement task (`namespace`, `project`, `issueIID`, `title`, `milestoneIID`, `task`, `since`, when its run started), and one without an issue for a project with an active autopilot, queued work or finishing milestones and nothing running; each carries the project's `next` (`issueIID`, `title`, `milestoneIID`: the first queued implement task in queue order, oldest milestone first, else the next pending issue of the oldest running autopilot), `finishing` (count of done autopilot milestones still open on GitLab, omitted when 0; the Overview card shows *N finishing*), `usageLimits` and `engineUsage`. Sorted by project, the longest running first. No GitLab calls |
+| `GET /api/v1/projects/{namespace}/{name}` | a project with its tasks by milestone (`trackingIssueIID` where a milestone has a tracking issue); `queue` (open autopilot milestones in run order from `internal/milestoneorder`: `iid`, `title`, `task`, `state` `running`|`holding`|`waiting`|`paused`|`budget`, `holdingFor`, `pausedReason`, `markedBy`, `done`, `total`, cost) and `queueCommands` (Desk chat on and the `chat` grant: the Queue section may offer Run next / Clear mark / Pause / Resume); `finishing` (done autopilot milestones still open on GitLab, oldest first: `iid`, `title`, `task`, `replanning`, `retroWriting`, `followUps`, `openIssues` (`iid`, `title`, `webURL`), `companions`); the project and each milestone carry their cost: `costUSD` (`""` with `costKnown: false` when no call reports a cost), `tokens` (input, output and cache), `costFrom` (`calls`: summed from the recorded agent calls and older runs, with `spend` the totals as in `GET /api/v1/spend`; `tasks`: summed over the current tasks, without a connected research database). The milestone and task endpoints carry the same fields. A task whose issue has a companion merge request (cross-repo changes) carries `companion`: `homeIssueIID`, `project`, `mrIID`, `mrURL`, `state` (the landing state of `status.companions`, absent before the home merge), `chip` (`draft` before the home merge, `waiting for release` while waiting for the release, a rebase or CI, `ready`, `merging`, `merged`; `blocked` and `closed` keep the chip of the step they stopped at), `reason` (why it waits, is blocked or was closed), `release`, `readyAt`, `autoMerge` |
+| `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | a planned milestone: its spec task, the autopilot (`phase`, `pausedReason` as raw text; while paused `pauseKind`, `pausedFor`, that issue's pushed `head` and `reviewErrors`, and its `exits` (the ways out of `PauseExits`, each automatic one with a live `status`: `met` (lifts on the next poll), `inProgress` (a run pending, a rebase in flight), `waiting` or `unknown`, and a plain-text `detail` such as "main is red at abc1234"; a remedy has `allowed` when the page may offer it as a button: `merge` with `permissions.merge`, `resume`, `skip`, `retry` and `review` with `permissions.chat`, never labels, GitLab actions, prompt answers or commands the Desk cannot send); `mergeOverride`; queue `items` with title, state, MR number and URL, and task; `queuedBehind`, the autopilot milestones that rank ahead (run-next marks, then age), ascending, while it waits for its turn to be planned), the `tracking` issue, the `pilot` (task, autonomy, open proposals made before prompts, cost), the milestone's `prompts` (the open ones and the newest 10 closed, newest first; each with its `kind`, `question`, untrusted `context`, `options` with the recommended one first and their `actions` as plain text, `state`, `answer`, `canAnswer` (open, and you are an owner subject of the milestone with the chat grant; the operator checks again) and the `target` task whose chat takes the `answer` command: the Coordinate task), its implement tasks, its `companions` (the companion merge requests of its issues as in a task's `companion`, also those whose task is gone, by home issue), its cost and `permissions` (`gitlab`, `steer`, `merge`, `draft`: what the page may offer; `merge` means you may send merge anyway: an owner subject of the milestone with the chat grant, which the operator checks again; `draft` that you may ask for a draft of a follow-up milestone: as `merge`, while the pilot exists and a follow-up is open; `followUp` that you may create the follow-up milestone: `steer`, an owner subject of the milestone, and a follow-up is open; `dismiss` that you may dismiss the remaining follow-ups: `steer`, an owner subject of the milestone, autopilot on it, and its posted retrospective has open follow-ups none dismissed yet), its `state` (as in `GET /api/v1/milestones`) and its `issues` (plan order, then the autopilot's items the plan lacks: `iid`, `title`, `state` (`planned`, `pending`, `active`, `merged`, `skipped`, or `closed` for an issue the backfill found closed without a merge on record), MR number and URL, the live implement `task`, and with the research database `figures`: `wallSec` from the first run to the merge (or now), `agentSec` (the calls' durations), `pausedSec` (the milestone's pauses over the issue), `costUSD`, `costKnown` (false without calls, never $0) and `tokens`; no `figures` without the database or while the snapshot lacks the issue; its `version`: that of the first `Released` or `AlreadyReleased` release decision listing the issue, absent until one does), its `releases` (the release decisions of `status.autopilot.releases` by `id`, `[]` without any: `by`, `actor`, untrusted `why` and `reason` as plain text, `afterIssue`, `sha`, `releasedSHA`, `state`, `issues`, `mergeRequests`, `version`, `pipelineURL`, `releaseURL`, `decidedAt`, `startedAt`, `endedAt`) and its `retrospective` once the pilot wrote one (live from task status, else the snapshot's; absent without one): `text` (untrusted markdown without HTML), `postedAt`, `noteURL` (the comment on the tracking issue), `failed` (why there is none), `followUps` (`number`, `title`, `body`, `state` `open`, `issue`, `milestone` or `dismissed`, `targetIID` and the `targetURL` of the issue or milestone it became) and with the research database `costDrivers`, the top 5 of the milestone's issues and roles by cost, those of unknown cost (`costUSD` "") after by tokens (`label`, `kind` `issue` or `role`, `costUSD`, `costKnown`, `tokens`; roles span issues, so the two overlap), and while the pilot exists its `draft` of a follow-up milestone (the one asked for with `pending: true` and its `numbers` while it is written, else the last one written: `numbers`, `title`, `description`, untrusted markdown without HTML until an owner confirms it, `at`, or `error`). A milestone whose tasks are gone (a closed one, after the operator deleted them) answers from the snapshot with `stored: true`: title, `state` (`done` once closed or done, else `planned`), issues with figures and versions, the `releases`, the `tracking` issue, cost from the agent calls, `pauses` and the stored `retrospective` (no `failed`); `spec` is empty and there is no `autopilot`, `pilot`, prompt, task or companion; `permissions` keep `gitlab`, `steer` and `followUp` (from the snapshot's owner subjects), while `chat`, `transcript`, `merge`, `draft` and `dismiss` are false. 404 without a spec task and without the research database or a snapshot; 500 when the database fails |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}` | an issue of the milestone, its row of the milestone's `issues` (`iid`, `title`, `state`, MR number and URL, the live implement `task`, `figures` with the research database) with `namespace`, `project`, `milestoneIID`, `milestoneTitle` and the issue's GitLab `webURL`. With a live `task` the page shows what `GET …/tasks/{task}` holds; its stream is `GET /api/v1/stream?project=…&milestone=<iid>&issue=<issue>`. A milestone whose tasks are gone answers from the snapshot with `stored: true` and no `task`. No GitLab calls. 404 for an issue not in the milestone, a milestone without a spec task and without the research database or a snapshot, or a project you may not see; 500 when the database fails for a stored issue (a live one then has no `figures`) |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread` | the comments of the milestone's tracking issue (`parts`), read with your GitLab token once the issue is confirmed as the operator's tracking issue of this milestone (409 otherwise); 409 when not connected, 404 without a tracking issue, 502 when GitLab fails to list the comments |
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes` | posts `{"body": "…"}` to the milestone's pilot on its confirmed tracking issue in your GitLab name, with the pilot prefix in front unless the body starts with it; needs the `steer` grant (403, 404 without the project), 409 for an issue that is not the milestone's tracking issue, 429 over the rate limit |
@@ -2432,7 +2496,9 @@ The dashboard (`web/src/views/Dashboard.vue`) and its Overview tab
   last 7 days; these links are at least 44 px high on phones.
 - *Working now* has one column of cards on phones, two on tablets, and on
   desktop as many columns of at least 300 px as fit, as before. Long titles
-  and project names break instead of widening a card.
+  and project names break instead of widening a card. When `finishing` is
+  above 0 the card shows *N finishing* (`overview.ts`) linking to the
+  project page.
 - The milestone lists use the shared milestone row grid
   (`MilestoneList.vue`); *Show all* is a `UButton`.
 
@@ -2440,6 +2506,16 @@ The e2e cases `overview cards › working now columns@<width>` at 375, 768
 and 1280 px check the columns and the Inbox chip's height
 (`overview-cards@<width>.png`); the route checks cover `overview` and
 `overview-stream` at the three widths.
+
+### Project Queue and Finishing
+
+On a project's *Stream* tab (`web/src/views/Stream.vue`), above
+`MilestoneSections`, `ProjectQueue.vue` and `ProjectFinishing.vue` read
+`project.queue` / `queueCommands` and `project.finishing` (see
+[Queue and Finishing](#queue-and-finishing)). Labels and button commands
+live in `projectQueue.ts` and `finishing.ts`; *Close issue* calls
+`closeHoldingIssue`. Tailwind utilities and Nuxt UI, without scoped CSS;
+light and dark, readable at 375 px.
 
 ### Milestone Issues
 

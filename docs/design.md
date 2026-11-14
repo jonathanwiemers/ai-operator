@@ -276,13 +276,17 @@ writes the top-level status, the runner only `status.run`; both use merge
 patches so they never overwrite each other.
 
 A spec task starts at `runRequest` 1, except an autopilot milestone's while
-an older autopilot milestone of the project is open (its spec task missing
-or not `Done`; paused and waiting ones count). That task waits at 0 with the
-older iids in `spec.queuedBehind`; `syncSpecTask` keeps its owners, rules,
+another open autopilot milestone of the project ranks ahead
+(`internal/milestoneorder`: run-next marks first, earliest mark first, then
+lowest iid; a milestone is open while its spec task is missing or not
+`Done`; paused and waiting ones count). That task waits at 0 with the
+ahead iids in `spec.queuedBehind`; `syncSpecTask` keeps its owners, rules,
 budget, repos and description hash current without a run request and, once
 nothing is ahead (`specTurn`), sets `runRequest` 1 with the hash of that
 moment and clears `queuedBehind`. A task at 1 or more is never put back to
-waiting.
+waiting. An owner `/agent start` (or the Desk `start` command) sets
+`status.autopilot.startRequestedBy` and `startRequestedAt` so the milestone
+ranks first; `/agent start off` and Desk `unstart` clear the mark.
 
 Names are declarative: `shop-spec-m3-checkout-v2` (milestone !3) and
 `shop-42-add-paypal-button` (issue #42). Pod, task and PVC (`…-ws`) share the
@@ -425,9 +429,12 @@ stateDiagram-v2
   slot (not suspended, deferred, budget-stopped or blocked) ranks ahead of it,
   it queues too, even with a free slot. With capacity N the top N start
   together. The queue itself never leaves a slot idle, but `pick` starts no new
-  issue of a milestone with an older autopilot milestone open (`queuedAhead`),
-  so a younger one only finishes what was active. A run in progress is never
-  preempted, and pilots stay outside. A run that lost its pod and a chat turn without a pending run
+  issue of a milestone while `queuedAhead` lists other open autopilot
+  milestones ahead of it (`internal/milestoneorder`: marked milestones before
+  unmarked, earliest `startRequestedAt` first, then lowest iid), so only the
+  first in that order starts new issues and the others only finish what was
+  already active. A run in progress is never preempted, and pilots stay
+  outside. A run that lost its pod and a chat turn without a pending run
   skip the rank check and only need a free slot. A queued task whose start
   fails with an error leaves the queue (`Pending`), so it holds nobody back.
   The `Queued` message names the place and the task ahead.
@@ -470,12 +477,13 @@ from the spec. A task with unanswered chat turns (`message` / `interrupt`)
 gets its pod without a run request (same suspend, capacity and blocked
 gates as a run). Kind `command` rows are structured JSON (`internal/chatcmd`);
 the dispatcher puts Implement commands (`retry`, `review`, `use`, `effort`),
-autopilot verbs (`pause`, `resume`, `skip`) on an autopilot Spec task, and
-proposal answers (`accept`, `reject`) on a Coordinate task onto the task
-and wakes the project reconciler, which applies them like `/agent` /
-`/pilot` comments (`spec.source.lastChatCommandID`, answers in
-`chatAnswers`); the chatreply reconciler copies those answers as system
-rows. Commands do not start or keep a pod. On a project with
+autopilot verbs (`pause`, `resume`, `skip`, `merge`, `start`, `unstart`,
+`endmilestone`) on an autopilot Spec task, and proposal answers
+(`accept`, `reject`) on a Coordinate task onto the task and wakes the
+project reconciler, which applies them like `/agent` / `/pilot` comments
+(`spec.source.lastChatCommandID`, answers in `chatAnswers`); the
+chatreply reconciler copies those answers as system rows. Commands do not
+start or keep a pod. On a project with
 `workflow.inputs: [desk]` each run request of an Implement task also gets
 `spec.source.chatContext` (`chat_context.go`): the last 20 answered user and
 agent `message` rows, cut to 30 KiB starting from the oldest. A fresh
@@ -1300,6 +1308,15 @@ stateDiagram-v2
   order. The next issue starts only after the previous MR is merged, so every
   branch starts from the current default branch and every merge was tested
   against what is really there.
+* **Project queue order.** Open autopilot milestones of a project share one
+  ranking (`internal/milestoneorder`, used by `queuedAhead`, the planning
+  hold and the Desk *Queue* section): milestones with a run-next mark
+  (`startRequestedBy` and `startRequestedAt`, from `/agent start` or Desk
+  `start`) before unmarked ones, earliest mark first, then by age (lowest
+  iid). At most one milestone starts new issues; the others hold while their
+  active issues finish (no preemption). Passed milestones' tracking issues
+  say once "⏭️ %N goes first (by …)" (`passedBy`). `/agent start off` and
+  Desk `unstart` clear the mark.
 * **Issue links.** The spec run mirrors the plan's dependencies as GitLab
   issue links (`link dependencies` step): `is_blocked_by`, or `relates_to`
   when GitLab refuses blocking links (Free: 400/422, or 403 naming the
@@ -2858,7 +2875,8 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/controller/project_sync.go` | the poll's state (`projectPoll`: tasks, milestones → spec tasks, lane, labelled issues) and its phases, in order: `issuePhases` (per issue: implement, questions, run block, blocked, CI), `mainHealthPhase`, `autopilotPhase` (revisits, follow-ups, companions, then each autopilot milestone), `pilotPhase` (open prompts, pilots, prompt mirroring, command replies) and `cleanupPhase` (switch off unplanned autopilots, delete tasks not kept, task count, usage, usage limits). Each phase collects its errors in the poll, returned together at the end; a failed task delete returns at once |
 | `internal/controller/agenttask_controller.go` | pod / PVC lifecycle, queueing, limits |
 | `internal/controller/chat.go` | Desk live chat: LISTEN/poll dispatch of `chat_messages` into `spec.source.chatMessages`, replies and command answers back into the table |
-| `internal/chatcmd` | Desk chat command JSON (`retry` / `review` / `use` / `effort` / `budget` / …) |
+| `internal/chatcmd` | Desk chat command JSON (`retry` / `review` / `use` / `effort` / `budget` / `pause` / `resume` / `skip` / `merge` / `start` / `unstart` / `endmilestone` / …) |
+| `internal/milestoneorder` | shared ranking of a project's open autopilot milestones (run-next marks, then age) for `queuedAhead`, planning hold and the Desk *Queue* |
 | `internal/controller/resources.go` | pod and PVC templates |
 | `internal/runner/runner.go` | run loop, status reporting, session state, mirror ⇄ workspace sync |
 | `internal/runner/steps.go` | run steps: step logging, current step, GitLab run log |
@@ -2895,7 +2913,7 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/research/storetest` | test helper: a schema and roles per test on the Postgres of `make test-db` (no SQL mocks) |
 | `internal/ui/research.go`, `oneoff.go`, `features.go` | the UI's research API: features, read endpoints and search, one-off create and delete |
 | `internal/history/snapshot.go`, `backfill.go`, `internal/research/store/snapshot.go`, `milestones.go`, `backfill.go` | the Desk snapshot: the recorder's upserts, the backfill from GitLab, the store's writes and queries |
-| `internal/ui/milestones.go`, `overview.go`, `milestone.go`, `issue.go`, `retrospective.go`, `followup.go`, `dismiss.go` | the Desk's milestone API: the dashboard's rows and strip, the milestone and issue views, the retrospective, the follow-up milestone and dismiss |
+| `internal/ui/milestones.go`, `overview.go`, `milestone.go`, `issue.go`, `retrospective.go`, `followup.go`, `dismiss.go`, `queue.go`, `finishing.go`, `close_issue.go` | the Desk's milestone API: the dashboard's rows and strip, the project *Queue* and *Finishing* views, closing a holding issue, the milestone and issue views, the retrospective, the follow-up milestone and dismiss |
 | `hack/research-migrate`, `hack/research-seed.sql` | `make research-seed`: a local database with seeded results for the UI's research pages |
 | `internal/gitlab` | minimal REST client with retries; `gitlabfake` for tests |
 | `internal/gitlab/guard.go` | the merge/push guard around the GitLab client |
