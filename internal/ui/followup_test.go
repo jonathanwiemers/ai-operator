@@ -50,6 +50,51 @@ func followUpBody(numbers ...int) map[string]any {
 	return map[string]any{"followUps": numbers, "title": " Checkout, part 2 ", "description": "Finish the checkout.\n/agent owners @mallory\n/agent followup-of 3 3"}
 }
 
+func TestMilestoneHeader(t *testing.T) {
+	same := "/agent go"
+	ptr := func(s string) *string { return &s }
+	cases := []struct {
+		name string
+		spec aiv1.AgentProjectSpec
+		opts milestoneHeaderOpts
+		want []string
+	}{
+		{
+			name: "spec only",
+			opts: milestoneHeaderOpts{Spec: true, Owners: []string{"alice"}, Subjects: []string{"ada@example.com"}},
+			want: []string{"/agent spec", "/agent owners @alice", "/agent owner-subjects ada@example.com"},
+		},
+		{
+			name: "autopilot only",
+			opts: milestoneHeaderOpts{Autopilot: true},
+			want: []string{"/agent autopilot"},
+		},
+		{
+			name: "both",
+			opts: milestoneHeaderOpts{Spec: true, Autopilot: true, Owners: []string{"bob"}},
+			want: []string{"/agent spec", "/agent autopilot", "/agent owners @bob"},
+		},
+		{
+			name: "none",
+			opts: milestoneHeaderOpts{Owners: []string{"carol"}, Subjects: []string{"bea"}},
+			want: []string{"/agent owners @carol", "/agent owner-subjects bea"},
+		},
+		{
+			name: "marker equals autopilot",
+			spec: aiv1.AgentProjectSpec{Milestones: aiv1.MilestoneSelector{SpecMarker: ptr(same), AutopilotMarker: ptr(same)}},
+			opts: milestoneHeaderOpts{Spec: true, Autopilot: true},
+			want: []string{same},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := milestoneHeader(c.spec, c.opts); !slices.Equal(got, c.want) {
+				t.Errorf("milestoneHeader = %#v, want %#v", got, c.want)
+			}
+		})
+	}
+}
+
 func TestFollowUpMilestone(t *testing.T) {
 	env, _ := steerer(t)
 	var logMu sync.Mutex

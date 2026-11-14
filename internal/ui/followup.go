@@ -110,19 +110,9 @@ func (s *Server) createFollowUp(w http.ResponseWriter, r *http.Request) {
 	desc := followUpDescription(ap.Spec, req.Description, iid, req.FollowUps, src)
 	m, err := gl.CreateMilestone(r.Context(), ap.Spec.GitLab.Project, gitlab.CreateMilestoneOptions{Title: req.Title, Description: desc})
 	if err != nil {
-		code := gitlab.StatusCode(err)
-		s.log.Info("creating a follow-up milestone failed", "user", p.Username, "gitlabUser", tok.Username,
-			"project", ap.Namespace+"/"+ap.Name, "milestone", iid, "status", code)
-		switch code {
-		case http.StatusUnauthorized:
-			s.gitlabRejected(w, tok)
-		case http.StatusForbidden, http.StatusNotFound:
-			writeError(w, http.StatusForbidden, "GitLab did not let you create a milestone")
-		case http.StatusBadRequest, http.StatusConflict, http.StatusUnprocessableEntity:
-			writeError(w, http.StatusConflict, "GitLab refused the milestone; is the title taken?")
-		default:
-			writeError(w, http.StatusBadGateway, "GitLab did not create the milestone")
-		}
+		s.writeCreateMilestoneError(w, err, tok, "creating a follow-up milestone failed",
+			"user", p.Username, "gitlabUser", tok.Username,
+			"project", ap.Namespace+"/"+ap.Name, "milestone", iid)
 		return
 	}
 	// Who created what from where, never the text.
@@ -212,6 +202,61 @@ func (s *Server) followUpSource(w http.ResponseWriter, r *http.Request, ap *aiv1
 	return src, true
 }
 
+// milestoneHeaderOpts chooses which /agent header lines milestoneHeader emits.
+type milestoneHeaderOpts struct {
+	Spec, Autopilot  bool
+	Owners, Subjects []string
+}
+
+// milestoneHeader is the operator's header lines for a new milestone: the
+// chosen markers, then owners and owner-subjects. Spec is omitted when it
+// matches the autopilot marker (same rule as follow-ups today).
+func milestoneHeader(spec aiv1.AgentProjectSpec, h milestoneHeaderOpts) []string {
+	prefix := spec.Workflow.WithDefaults().CommandPrefix
+	var lines []string
+	if h.Spec {
+		if m := spec.Milestones.Marker(); m != "" && m != spec.Milestones.Autopilot() {
+			lines = append(lines, m)
+		}
+	}
+	if h.Autopilot {
+		if m := spec.Milestones.Autopilot(); m != "" {
+			lines = append(lines, m)
+		}
+	}
+	if owners := notify.Usernames(h.Owners); len(owners) > 0 {
+		lines = append(lines, prefix+" owners @"+strings.Join(owners, " @"))
+	}
+	if len(h.Subjects) > 0 {
+		lines = append(lines, prefix+" owner-subjects "+strings.Join(h.Subjects, " "))
+	}
+	return lines
+}
+
+// stripOperatorLines removes the owners, owner-subjects and followup-of
+// lines the operator reads, so a create can rewrite them.
+func stripOperatorLines(text, prefix string) string {
+	text = notify.WithoutOwnerSubjects(notify.WithoutOwners(text, prefix), prefix)
+	return strings.TrimSpace(rules.WithoutFollowUpOf(text, prefix))
+}
+
+// writeCreateMilestoneError maps a gl.CreateMilestone error to the Desk
+// response. kv are extra log fields; status is appended.
+func (s *Server) writeCreateMilestoneError(w http.ResponseWriter, err error, tok *GitLabToken, msg string, kv ...any) {
+	code := gitlab.StatusCode(err)
+	s.log.Info(msg, append(append([]any{}, kv...), "status", code)...)
+	switch code {
+	case http.StatusUnauthorized:
+		s.gitlabRejected(w, tok)
+	case http.StatusForbidden, http.StatusNotFound:
+		writeError(w, http.StatusForbidden, "GitLab did not let you create a milestone")
+	case http.StatusBadRequest, http.StatusConflict, http.StatusUnprocessableEntity:
+		writeError(w, http.StatusConflict, "GitLab refused the milestone; is the title taken?")
+	default:
+		writeError(w, http.StatusBadGateway, "GitLab did not create the milestone")
+	}
+}
+
 // followUpDescription is the description of a follow-up milestone of the
 // source's follow-ups numbers: the owner's text without the lines the
 // operator reads from it here (owners, owner subjects, followup-of), a
@@ -219,22 +264,10 @@ func (s *Server) followUpSource(w http.ResponseWriter, r *http.Request, ap *aiv1
 // and owner subjects and the followup-of line, each on its own line.
 func followUpDescription(spec aiv1.AgentProjectSpec, text string, iid int64, numbers []int, src followUpSource) string {
 	prefix := spec.Workflow.WithDefaults().CommandPrefix
-	text = notify.WithoutOwnerSubjects(notify.WithoutOwners(text, prefix), prefix)
-	text = strings.TrimSpace(rules.WithoutFollowUpOf(text, prefix))
-	var lines []string
-	if m := spec.Milestones.Marker(); m != "" && m != spec.Milestones.Autopilot() {
-		lines = append(lines, m)
-	}
-	if m := spec.Milestones.Autopilot(); m != "" {
-		lines = append(lines, m)
-	}
-	if owners := notify.Usernames(src.owners); len(owners) > 0 {
-		lines = append(lines, prefix+" owners @"+strings.Join(owners, " @"))
-	}
-	if len(src.subjects) > 0 {
-		lines = append(lines, prefix+" owner-subjects "+strings.Join(src.subjects, " "))
-	}
-	lines = append(lines, rules.FollowUpOfLine(prefix, iid, numbers))
+	text = stripOperatorLines(text, prefix)
+	lines := append(milestoneHeader(spec, milestoneHeaderOpts{
+		Spec: true, Autopilot: true, Owners: src.owners, Subjects: src.subjects,
+	}), rules.FollowUpOfLine(prefix, iid, numbers))
 	if text == "" {
 		return strings.Join(lines, "\n")
 	}
