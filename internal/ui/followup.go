@@ -118,8 +118,7 @@ func (s *Server) createFollowUp(w http.ResponseWriter, r *http.Request) {
 	// Who created what from where, never the text.
 	s.log.Info("audit", "action", "milestone.followup", "user", p.Username, "gitlabUser", tok.Username,
 		"namespace", ap.Namespace, "project", ap.Name, "milestone", iid, "followUps", req.FollowUps, "created", m.IID)
-	writeJSON(w, http.StatusCreated, FollowUpMilestoneView{IID: m.IID,
-		WebURL: cmp.Or(m.WebURL, fmt.Sprintf("%s/-/milestones/%d", gitLabRef(ap).WebURL, m.IID))})
+	writeJSON(w, http.StatusCreated, FollowUpMilestoneView{IID: m.IID, WebURL: milestoneURL(ap, m)})
 }
 
 // writingGitLab returns the user's GitLab client for a write from the Desk,
@@ -150,18 +149,35 @@ func readFollowUp(w http.ResponseWriter, r *http.Request) (followUpRequest, bool
 	if err := dec.Decode(&req); err != nil {
 		return bad("invalid request")
 	}
-	req.Title, req.Description = strings.TrimSpace(req.Title), strings.TrimSpace(req.Description)
-	if n := utf8.RuneCountInString(req.Title); n == 0 || n > maxFollowUpTitle || strings.ContainsAny(req.Title, "\r\n") {
-		return bad(fmt.Sprintf("the title must have 1 to %d characters on one line", maxFollowUpTitle))
-	}
-	if req.Description == "" || len(req.Description) > maxFollowUpDescription {
-		return bad(fmt.Sprintf("the description must have 1 byte to %d KiB", maxFollowUpDescription>>10))
+	if !milestoneText(w, &req.Title, &req.Description) {
+		return req, false
 	}
 	slices.Sort(req.FollowUps)
 	if req.FollowUps = slices.Compact(req.FollowUps); len(req.FollowUps) == 0 {
 		return bad("name at least one follow-up")
 	}
 	return req, true
+}
+
+// milestoneText trims a new milestone's title and description and checks
+// them: a title of 1 to 255 characters on one line, a description of 1 byte
+// to 64 KiB. It answers 400 itself.
+func milestoneText(w http.ResponseWriter, title, description *string) bool {
+	*title, *description = strings.TrimSpace(*title), strings.TrimSpace(*description)
+	if n := utf8.RuneCountInString(*title); n == 0 || n > maxFollowUpTitle || strings.ContainsAny(*title, "\r\n") {
+		badRequest(w, fmt.Sprintf("the title must have 1 to %d characters on one line", maxFollowUpTitle))
+		return false
+	}
+	if *description == "" || len(*description) > maxFollowUpDescription {
+		badRequest(w, fmt.Sprintf("the description must have 1 byte to %d KiB", maxFollowUpDescription>>10))
+		return false
+	}
+	return true
+}
+
+// milestoneURL is the web page of the project's new milestone m.
+func milestoneURL(ap *aiv1.AgentProject, m *gitlab.Milestone) string {
+	return cmp.Or(m.WebURL, fmt.Sprintf("%s/-/milestones/%d", gitLabRef(ap).WebURL, m.IID))
 }
 
 // followUpSource reads the owners and follow-ups of the project's milestone
@@ -264,10 +280,14 @@ func (s *Server) writeCreateMilestoneError(w http.ResponseWriter, err error, tok
 // and owner subjects and the followup-of line, each on its own line.
 func followUpDescription(spec aiv1.AgentProjectSpec, text string, iid int64, numbers []int, src followUpSource) string {
 	prefix := spec.Workflow.WithDefaults().CommandPrefix
-	text = stripOperatorLines(text, prefix)
 	lines := append(milestoneHeader(spec, milestoneHeaderOpts{
 		Spec: true, Autopilot: true, Owners: src.owners, Subjects: src.subjects,
 	}), rules.FollowUpOfLine(prefix, iid, numbers))
+	return withHeader(stripOperatorLines(text, prefix), lines)
+}
+
+// withHeader is text, a blank line, then the operator's lines, one per line.
+func withHeader(text string, lines []string) string {
 	if text == "" {
 		return strings.Join(lines, "\n")
 	}

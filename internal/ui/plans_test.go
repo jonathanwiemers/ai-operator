@@ -30,6 +30,21 @@ func planEnv(t *testing.T, chat bool, roles ...string) *testEnv {
 		withChat(cfg)
 	}
 	env := newTestEnv(t, cfg)
+	addPlans(t, env)
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	grants := map[string]any{}
+	for _, r := range roles {
+		grants[r] = map[string]any{}
+	}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": grants}
+	env.login(t, "/")
+	return env
+}
+
+// addPlans gives shop the plans shop-plan-old (Created) and shop-plan-new
+// (Idle), billing the plan billing-plan.
+func addPlans(t *testing.T, env *testEnv) {
+	t.Helper()
 	at := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
 	turn := metav1.NewTime(at.Add(3 * time.Hour))
 	for _, pl := range []*aiv1.AgentPlan{
@@ -46,14 +61,6 @@ func planEnv(t *testing.T, chat bool, roles ...string) *testEnv {
 			t.Fatal(err)
 		}
 	}
-	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
-	grants := map[string]any{}
-	for _, r := range roles {
-		grants[r] = map[string]any{}
-	}
-	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": grants}
-	env.login(t, "/")
-	return env
 }
 
 func TestPlansListAndGet(t *testing.T) {

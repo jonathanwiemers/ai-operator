@@ -145,8 +145,13 @@ func newFakeGitLab(t *testing.T) *fakeGitLab {
 // newSteeringEnv is a UI whose shop project lives on a fake GitLab.
 func newSteeringEnv(t *testing.T, rules ...Rule) (*testEnv, *fakeGitLab) {
 	t.Helper()
+	return steeringEnvOf(t, oidcConfig(rules...))
+}
+
+// steeringEnvOf is newSteeringEnv with the configuration cfg.
+func steeringEnvOf(t *testing.T, cfg *Config) (*testEnv, *fakeGitLab) {
+	t.Helper()
 	gl := newFakeGitLab(t)
-	cfg := oidcConfig(rules...)
 	cfg.GitLab = GitLabConfig{URL: gl.srv.URL, ClientID: "gl-client"}
 	cfg.GitLabClientSecret = "gl-secret"
 	env := newTestEnv(t, cfg)
