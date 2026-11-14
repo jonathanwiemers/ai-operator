@@ -115,7 +115,10 @@ chooses each run's agent from `research.candidates` and leaves an engine to
 the factory once it is limited or at `research.maxUsagePercent`; see
 [Choosing agents](../../docs/research.md#choosing-agents). With `ui.enabled`
 the UI logs in with `readerSecret` and its ClusterRole gets
-`get`/`list`/`watch` on `agentresearches` for its Research section (see
+`get`/`list`/`watch` on `agentresearches` for its Research section and on
+`agentplans` (milestone plans), plus a Role `…-plan-write` in each
+`agent.namespaces` entry with `create`/`delete`/`get`/`list`/`watch`/`patch`
+on `agentplans` and `patch` on `agentplans/status` (see
 [docs/ui.md](../../docs/ui.md#platform)); `ui.research.*` is under
 [Web UI](#web-ui).
 

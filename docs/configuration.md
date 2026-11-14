@@ -97,7 +97,10 @@ config file and the login from `research.database.readerSecret` into the
 environment variables `AI_OPERATOR_UI_RESEARCH_DB_USER` and
 `AI_OPERATOR_UI_RESEARCH_DB_PASSWORD`; it refuses to render without
 `readerSecret.name`. The UI's ClusterRole then also gets `get`/`list`/`watch`
-on `agentresearches`. The UI only reads (the operator migrates) and starts
+on `agentresearches` and `agentplans`, and a Role in each `agent.namespaces`
+entry with `create`, `delete`, `get`, `list`, `watch` and `patch` on
+`agentplans` and `patch` on `agentplans/status`, for the Desk's milestone
+plans. The UI only reads the database (the operator migrates) and starts
 without the database: it connects in the background and retries with backoff
 (5 s up to 5 min), the research endpoints answer 503 until then, and the
 factory pages work as before. `sslMode: disable` is refused unless the host

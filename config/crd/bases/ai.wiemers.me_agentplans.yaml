@@ -1,0 +1,410 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.23.0
+  name: agentplans.ai.wiemers.me
+spec:
+  group: ai.wiemers.me
+  names:
+    kind: AgentPlan
+    listKind: AgentPlanList
+    plural: agentplans
+    singular: agentplan
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.projectRef
+      name: Project
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.createdMilestoneIID
+      name: Milestone
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          AgentPlan is an owner's conversation with an agent that drafts a new
+          milestone of a project, until the Desk creates it.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AgentPlanSpec is one milestone-planning conversation the
+              Desk started.
+            properties:
+              chatMessages:
+                description: |-
+                  ChatMessages are the Desk messages the operator handed to the plan's
+                  pod and the runner has not answered yet.
+                items:
+                  description: ChatMessage is one Desk chat turn handed to the runner.
+                  properties:
+                    at:
+                      description: At is when the message was written.
+                      format: date-time
+                      type: string
+                    author:
+                      description: Author is the OIDC subject.
+                      type: string
+                    authorName:
+                      description: AuthorName is a display name for the prompt.
+                      type: string
+                    id:
+                      description: ID is the chat_messages row id.
+                      format: int64
+                      type: integer
+                    kind:
+                      description: |-
+                        Kind is message, interrupt or command. The runner skips command;
+                        the operator handles those.
+                      enum:
+                      - message
+                      - interrupt
+                      - command
+                      type: string
+                    role:
+                      description: |-
+                        Role is who wrote a chatContext message: user or agent. Unset on
+                        chatMessages, which are the user's.
+                      enum:
+                      - user
+                      - agent
+                      type: string
+                    text:
+                      description: Text is the user's message, at most 16 KiB.
+                      maxLength: 16384
+                      type: string
+                  required:
+                  - at
+                  - author
+                  - id
+                  - kind
+                  - text
+                  type: object
+                maxItems: 20
+                type: array
+              createdBy:
+                description: CreatedBy is the Desk subject (principal username) who
+                  created it.
+                minLength: 1
+                type: string
+              maxBudgetUSD:
+                description: |-
+                  MaxBudgetUSD is the plan's cap after an owner raised it, as a decimal
+                  string; empty means the operator default plan.maxBudgetUSD.
+                pattern: ^[0-9]+(\.[0-9]+)?$
+                type: string
+              projectRef:
+                description: ProjectRef names the AgentProject in the same namespace.
+                minLength: 1
+                type: string
+              title:
+                description: Title of the plan; may be empty.
+                type: string
+            required:
+            - createdBy
+            - projectRef
+            type: object
+          status:
+            description: |-
+              AgentPlanStatus is the plan's draft, its milestone once created, and its
+              spend.
+            properties:
+              calls:
+                description: Calls are the plan's engine calls, newest last.
+                items:
+                  description: 'AgentCall is one engine call: what ran, for what,
+                    and what it consumed.'
+                  properties:
+                    at:
+                      description: At is when the call started.
+                      format: date-time
+                      type: string
+                    cacheReadTokens:
+                      format: int64
+                      type: integer
+                    cacheWriteTokens:
+                      format: int64
+                      type: integer
+                    checkpoint:
+                      description: |-
+                        Checkpoint is the reason (e.g. usage-limit) when the call's end saved
+                        a checkpoint commit of the work tree; CheckpointSHA is that commit.
+                      type: string
+                    checkpointSHA:
+                      type: string
+                    contextSeries:
+                      description: |-
+                        ContextSeries is the context size (input and cache tokens) of each
+                        main-thread assistant turn. Only the newest calls in status keep it.
+                      items:
+                        format: int64
+                        type: integer
+                      maxItems: 500
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    costSource:
+                      description: |-
+                        CostSource says where CostUSD comes from: reported by the engine,
+                        estimated from tokens, or unknown.
+                      type: string
+                    costUSD:
+                      description: |-
+                        CostUSD is the call's cost as a decimal string (4 decimals); empty
+                        when it is unknown.
+                      type: string
+                    durationMS:
+                      format: int64
+                      type: integer
+                    effort:
+                      type: string
+                    engine:
+                      description: Engine is the coding agent CLI that runs a role.
+                      enum:
+                      - claude
+                      - cursor
+                      type: string
+                    fallbackFrom:
+                      description: FallbackFrom is the limited engine this call stood
+                        in for.
+                      enum:
+                      - claude
+                      - cursor
+                      type: string
+                    inputTokens:
+                      format: int64
+                      type: integer
+                    kind:
+                      description: |-
+                        Kind is what the call was for: spec, implement, review, fix, ci,
+                        conflict, describe, pilot, retro, followUpDraft, chat or research.
+                      type: string
+                    linesAdded:
+                      description: |-
+                        LinesAdded and LinesDeleted are the uncommitted diff the implementer
+                        call left in the work tree (git diff --numstat HEAD plus untracked
+                        text files): the lines of the step commit that follows it. Other
+                        roles' calls leave them zero.
+                      format: int64
+                      type: integer
+                    linesDeleted:
+                      format: int64
+                      type: integer
+                    model:
+                      description: |-
+                        Model is the configured model, or the reported main model when the
+                        engine picked it.
+                      type: string
+                    models:
+                      description: |-
+                        Models is the per-model split as the engine reported it, subagent
+                        models included.
+                      items:
+                        description: CallModelUsage is one model's share of an agent
+                          call.
+                        properties:
+                          cacheReadTokens:
+                            format: int64
+                            type: integer
+                          cacheWriteTokens:
+                            format: int64
+                            type: integer
+                          costUSD:
+                            description: CostUSD as a decimal string (4 decimals).
+                            type: string
+                          inputTokens:
+                            format: int64
+                            type: integer
+                          model:
+                            type: string
+                          outputTokens:
+                            format: int64
+                            type: integer
+                        required:
+                        - model
+                        type: object
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    outputTokens:
+                      format: int64
+                      type: integer
+                    readGateBlocks:
+                      description: |-
+                        ReadGateBlocks is how many tool calls the read gate denied in the
+                        call.
+                      format: int32
+                      type: integer
+                    resumed:
+                      description: Resumed is set when the call continued an earlier
+                        session.
+                      type: boolean
+                    role:
+                      description: Role is the agent's role, e.g. implement, bugbot
+                        or pilot.
+                      type: string
+                    run:
+                      description: Run is the task's run (RunCount after it) the call
+                        belongs to.
+                      format: int64
+                      type: integer
+                    seq:
+                      description: Seq numbers the task's calls, starting at 1.
+                      format: int64
+                      type: integer
+                    stepGateNudges:
+                      description: |-
+                        StepGateNudges is how often the step-size gate told the implementer
+                        to close its step during the call.
+                      format: int32
+                      type: integer
+                    subagentCalls:
+                      description: SubagentCalls is how many subagents the call started.
+                      format: int32
+                      type: integer
+                    subagentTurns:
+                      description: |-
+                        SubagentTurns are the indexes into ContextSeries after which a
+                        subagent ran. Only the newest calls in status keep them.
+                      items:
+                        format: int32
+                        type: integer
+                      maxItems: 500
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    tokenBasis:
+                      description: |-
+                        TokenBasis is how the runner computed the call's tokens and model
+                        split, see TokenBasisModels. 0 (omitted) is not recorded: an older
+                        agent image wrote the call.
+                      format: int32
+                      type: integer
+                    turns:
+                      format: int32
+                      type: integer
+                  required:
+                  - at
+                  - costSource
+                  - engine
+                  - kind
+                  - seq
+                  type: object
+                maxItems: 50
+                type: array
+                x-kubernetes-list-type: atomic
+              chat:
+                description: ChatStatus is the runner's answers to Desk chat turns.
+                properties:
+                  lastTurnTime:
+                    description: LastTurnTime is when the runner last finished a chat
+                      turn.
+                    format: date-time
+                    type: string
+                  replies:
+                    description: Replies are answers keyed by message id, newest last,
+                      at most 20.
+                    items:
+                      description: ChatReply is one answer to a ChatMessage.
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        error:
+                          description: |-
+                            Error is set when the turn did not finish normally (e.g. "interrupted",
+                            "usage limit until <time>").
+                          type: string
+                        messageID:
+                          format: int64
+                          type: integer
+                        pushedSHA:
+                          description: PushedSHA is set when a writable turn committed
+                            and pushed.
+                          type: string
+                        text:
+                          description: Text is the agent's answer, made inert and
+                            cut to 16 KiB.
+                          maxLength: 16384
+                          type: string
+                      required:
+                      - at
+                      - messageID
+                      type: object
+                    maxItems: 20
+                    type: array
+                type: object
+              createdMilestoneIID:
+                format: int64
+                type: integer
+              createdMilestoneURL:
+                type: string
+              draft:
+                description: Draft is the milestone description in markdown.
+                maxLength: 65536
+                type: string
+              draftBy:
+                description: DraftBy is who wrote the current draft.
+                enum:
+                - agent
+                - owner
+                type: string
+              draftRevision:
+                description: DraftRevision counts the draft's versions, by agent or
+                  owner.
+                format: int64
+                type: integer
+              draftSHA:
+                description: DraftSHA is the default branch SHA the agent read for
+                  the draft.
+                type: string
+              message:
+                type: string
+              phase:
+                description: AgentPlanPhase is where a plan stands.
+                enum:
+                - Starting
+                - Ready
+                - Working
+                - Idle
+                - Created
+                - Failed
+                type: string
+              podName:
+                type: string
+              spendUSD:
+                description: SpendUSD is the plan's model spend as a decimal string
+                  (4 decimals).
+                type: string
+              tokens:
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

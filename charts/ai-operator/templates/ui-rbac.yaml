@@ -21,9 +21,10 @@ rules:
     resources: ["agentprojects", "agenttasks"]
     verbs: ["get", "list", "watch"]
   {{- if .Values.research.database.host }}
-  # The Research section (shown only to roles with a research rule).
+  # The Research section (shown only to roles with a research rule) and the
+  # milestone plans (their chat is in the database).
   - apiGroups: ["ai.wiemers.me"]
-    resources: ["agentresearches"]
+    resources: ["agentresearches", "agentplans"]
     verbs: ["get", "list", "watch"]
   {{- end }}
 ---
@@ -102,5 +103,40 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "ai-operator.ui.fullname" $ }}
     namespace: {{ $.Release.Namespace }}
+{{- if $.Values.research.database.host }}
+---
+# Milestone plans of the Desk: created, edited (budget, draft, created
+# milestone) and deleted in the projects' namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "ai-operator.ui.fullname" $ }}-plan-write
+  namespace: {{ . }}
+  labels:
+    {{- include "ai-operator.ui.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentplans"]
+    verbs: ["create", "delete", "get", "list", "watch", "patch"]
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentplans/status"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "ai-operator.ui.fullname" $ }}-plan-write
+  namespace: {{ . }}
+  labels:
+    {{- include "ai-operator.ui.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "ai-operator.ui.fullname" $ }}-plan-write
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "ai-operator.ui.fullname" $ }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
 {{- end }}
 {{- end }}
