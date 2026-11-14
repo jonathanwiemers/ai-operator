@@ -101,6 +101,13 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
     case 'stream-project':
       trail = [overview, project]
       break
+    case 'plans': {
+      const plan = param(p, 'plan')
+      trail = plan
+        ? [overview, project, { label: 'Plans', to: { name: 'plans', params: { namespace, name } } }, { label: plan }]
+        : [overview, project, { label: 'Plans' }]
+      break
+    }
     case 'stream-milestone': {
       const iid = iidOf(param(p, 'iid'))
       trail = iid ? [overview, project, milestone(iid)] : [overview, project, { label: param(p, 'iid') || 'Milestone' }]

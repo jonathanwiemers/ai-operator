@@ -14,9 +14,10 @@ import UIcon from '@nuxt/ui/components/Icon.vue'
 import { useBackClose } from './ui/useBackClose'
 import SignIn from './views/SignIn.vue'
 import Breadcrumbs from './components/Breadcrumbs.vue'
-import RailNav from './components/RailNav.vue'
 import { isPaletteKey, paletteHint, paletteOpen } from './searchPalette'
-// The ⌘K palette loads on its first open (docs/ui.md, "Bundle budget").
+// Rail and ⌘K palette load after the shell: keeps the initial bundle under
+// budget when Plan entry points join the rail (docs/ui.md, "Bundle budget").
+const RailNav = defineAsyncComponent(() => import('./components/RailNav.vue'))
 const SearchPalette = defineAsyncComponent(() => import('./components/SearchPalette.vue'))
 // The sheet is loaded on phones only: the dialog behind it would add about
 // 30 kB gzipped to the initial bundle (docs/ui.md, "Bundle budget").

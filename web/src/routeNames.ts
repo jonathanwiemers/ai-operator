@@ -8,6 +8,7 @@ export const routeNames = [
   'costs',
   'stream-project',
   'stream-milestone',
+  'plans',
   'issue',
   'task',
   'researches',

@@ -49,6 +49,17 @@ test('project and milestone: the IID until the title is known', () => {
   ])
 })
 
+test('plans list and one plan under the project', () => {
+  const plans = { label: 'Plans', to: { name: 'plans', params: at } }
+  assert.deepEqual(crumbsFor({ name: 'plans', params: at }), [overview, project, { label: 'Plans' }])
+  assert.deepEqual(crumbsFor({ name: 'plans', params: { ...at, plan: 'plan-1' } }), [
+    overview,
+    project,
+    plans,
+    { label: 'plan-1' },
+  ])
+})
+
 test('a name of another milestone or project is not used', () => {
   const route = { name: 'stream-milestone', params: { ...at, iid: '3' } }
   for (const m of [

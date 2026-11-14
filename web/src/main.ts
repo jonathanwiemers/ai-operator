@@ -24,6 +24,7 @@ const ResearchNew = () => import('./views/ResearchNew.vue')
 const ResearchView = () => import('./views/Research.vue')
 const ResearchRunsView = () => import('./views/ResearchRuns.vue')
 const ResearchRunView = () => import('./views/ResearchRun.vue')
+const PlansView = () => import('./views/Plans.vue')
 const NotFound = () => import('./views/NotFound.vue')
 
 // Every route is named, with a name from routeNames: crumbsFor and its test
@@ -46,6 +47,8 @@ const routes: (RouteRecordRaw & { name: RouteName })[] = [
     props: true,
   },
   { path: '/projects/:namespace/:name/tasks/:task', name: 'task', component: TaskView, props: true },
+  // Optional :plan — list or one plan (Decision 11); one record keeps the initial bundle small.
+  { path: '/projects/:namespace/:name/plans/:plan?', name: 'plans', component: PlansView, props: true },
   { path: '/research', name: 'researches', component: Researches },
   { path: '/research/new', name: 'research-new', component: ResearchNew },
   { path: '/research/:namespace/:name', name: 'research', component: ResearchView, props: true },
@@ -68,9 +71,13 @@ const router = createRouter({
 // write grant. Users with research alone start there.
 router.beforeEach(async (to) => {
   const research = isResearchPath(to.path)
-  if (!research && to.path !== '/') return true
+  if (!research && to.name !== 'plans' && to.path !== '/') return true
   await featuresLoaded
-  if ((research && !hasFeature('research')) || (to.name === 'research-new' && !canStartResearch())) {
+  if (
+    (research && !hasFeature('research')) ||
+    (to.name === 'research-new' && !canStartResearch()) ||
+    (to.name === 'plans' && !hasFeature('plans'))
+  ) {
     return { name: 'not-found', params: { rest: to.path.slice(1).split('/') }, query: to.query, hash: to.hash }
   }
   if (to.path === '/' && !hasFeature('factory') && hasFeature('research')) return '/research'

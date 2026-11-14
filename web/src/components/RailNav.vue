@@ -51,6 +51,15 @@ function researchSub(r: ResearchSummary): string {
 function projectActive(namespace: string, name: string) {
   return route.params.namespace === namespace && route.params.name === name && route.path.startsWith('/projects/')
 }
+
+// D449-P1: Plan opens the project's plans list when a project is open.
+const planTo = computed(() => {
+  if (!hasFeature('plans')) return null
+  const { namespace: ns, name } = route.params
+  return typeof ns === 'string' && typeof name === 'string' && route.path.startsWith('/projects/')
+    ? { name: 'plans' as const, params: { namespace: ns, name } }
+    : null
+})
 </script>
 
 <template>
@@ -69,6 +78,9 @@ function projectActive(namespace: string, name: string) {
       <RouterLink v-if="hasFeature('history')" to="/costs" class="item" active-class="active" data-rail-costs>
         <span class="dot" />
         <span class="name">Costs<span class="sub">what agents cost, across projects</span></span>
+      </RouterLink>
+      <RouterLink v-if="planTo" :to="planTo" class="item soft" data-rail-plan>
+        <span class="name">Plan</span>
       </RouterLink>
 
       <div class="sect"><span>Projects</span></div>

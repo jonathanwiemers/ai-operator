@@ -40,6 +40,24 @@ test('pages are gated by features', () => {
   assert.deepEqual(pages([{ name: 'history' }, { name: 'research' }]), ['Inbox', 'Overview', 'Costs', 'Research'])
 })
 
+test('Plan milestone is in Pages only with the plans feature and an open project', () => {
+  const pages = (features, project) => by(paletteGroups({ ...data, features, project }), 'pages').items
+  assert.deepEqual(
+    pages([{ name: 'plans' }], null).map((x) => x.label),
+    ['Inbox', 'Overview'],
+  )
+  assert.deepEqual(
+    pages([], { namespace: 'ns', name: 'app' }).map((x) => x.label),
+    ['Inbox', 'Overview'],
+  )
+  const withProject = pages([{ name: 'plans' }], { namespace: 'ns', name: 'app' })
+  assert.deepEqual(
+    withProject.map((x) => x.label),
+    ['Inbox', 'Overview', 'Plan milestone'],
+  )
+  assert.deepEqual(withProject.at(-1).to, { name: 'plans', params: { namespace: 'ns', name: 'app' } })
+})
+
 test('searchQuery needs two characters after trimming', () => {
   assert.equal(searchQuery(' a '), null)
   assert.equal(searchQuery(' ab '), 'ab')

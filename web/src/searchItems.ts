@@ -25,6 +25,8 @@ export function paletteGroups(a: {
   milestones: MilestoneRow[]
   results: SearchResult[]
   features: Feature[]
+  // project: the open project (route under /projects/…); Plan milestone needs it.
+  project?: { namespace: string; name: string } | null
 }): PaletteGroup[] {
   const has = (n: string) => a.features.some((f) => f.name === n)
   const pages: PaletteItem[] = [
@@ -33,6 +35,15 @@ export function paletteGroups(a: {
   ]
   if (has('history')) pages.push({ label: 'Costs', icon: 'i-lucide-wallet', to: { name: 'costs' } })
   if (has('research')) pages.push({ label: 'Research', icon: 'i-lucide-flask-conical', to: { name: 'researches' } })
+  // D449-P1: the palette opens the project's plans list, it does not create.
+  // Reuse flag (already in the icon scan) so the initial bundle stays under budget.
+  if (has('plans') && a.project) {
+    pages.push({
+      label: 'Plan milestone',
+      icon: 'i-lucide-flag',
+      to: { name: 'plans', params: { namespace: a.project.namespace, name: a.project.name } },
+    })
+  }
   return [
     {
       id: 'projects',

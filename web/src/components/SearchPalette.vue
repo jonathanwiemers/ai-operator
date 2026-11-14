@@ -5,6 +5,7 @@
 // or a click navigates and the select closes the palette; useBackClose in
 // App.vue lets the navigation wait until the palette's history entry went.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import UCommandPalette from '@nuxt/ui/components/CommandPalette.vue'
 import UModal from '@nuxt/ui/components/Modal.vue'
 import { getMilestones, getSearch } from '../client'
@@ -13,6 +14,13 @@ import { paletteOpen } from '../searchPalette'
 import type { Feature, MilestoneRow, ProjectSummary, SearchResult } from '../generated/views'
 
 const props = defineProps<{ projects: ProjectSummary[] | null; features: Feature[] | null; fullscreen: boolean }>()
+const route = useRoute()
+const openProject = computed(() => {
+  const namespace = route.params.namespace
+  const name = route.params.name
+  if (typeof namespace !== 'string' || typeof name !== 'string' || !route.path.startsWith('/projects/')) return null
+  return { namespace, name }
+})
 
 const milestones = ref<MilestoneRow[]>([])
 getMilestones({ state: 'all' })
@@ -47,6 +55,7 @@ const groups = computed(() =>
     milestones: milestones.value,
     results: results.value,
     features: props.features ?? [],
+    project: openProject.value,
   }),
 )
 </script>
