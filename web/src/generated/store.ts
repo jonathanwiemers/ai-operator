@@ -27,6 +27,34 @@ export interface ChatMessage {
 }
 
 //////////
+// source: estimate.go
+
+/**
+ * EstimateUnit is what an estimate counts: requirements or planned issues.
+ */
+export type EstimateUnit = string;
+export const UnitRequirement: EstimateUnit = "requirement";
+export const UnitIssue: EstimateUnit = "issue";
+/**
+ * EstimateResult is the cost of Count units from the spend per unit of
+ * Milestones finished milestones: low, typical and high are its first
+ * quartile, median and third quartile. Costs are unknown with
+ * NotEnoughHistory (fewer than 3 such milestones).
+ */
+export interface EstimateResult {
+  unit: EstimateUnit;
+  count: number /* int */;
+  lowUSD: Money;
+  typicalUSD: Money;
+  highUSD: Money;
+  lowTokens: number /* int64 */;
+  typicalTokens: number /* int64 */;
+  highTokens: number /* int64 */;
+  milestones: number /* int */;
+  notEnoughHistory: boolean;
+}
+
+//////////
 // source: milestone_rows.go
 
 /**

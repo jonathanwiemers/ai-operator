@@ -167,4 +167,11 @@ func TestMilestoneSpendHistory(t *testing.T) {
 	if got, err := s.MilestoneSpendHistory(ctx, store.ProjectKey{Namespace: "agents", Name: "none"}, 10); err != nil || len(got) != 0 {
 		t.Errorf("project without milestones: %+v, %v", got, err)
 	}
+
+	// The reader sees the requirements; unknown and missing are 0.
+	for iid, want := range map[int64]int{4: 8, 5: 0, 99: 0} {
+		if n, err := s.MilestoneRequirements(ctx, orbit, iid); err != nil || n != want {
+			t.Errorf("requirements of %d: %d, %v; want %d", iid, n, err, want)
+		}
+	}
 }

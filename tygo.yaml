@@ -84,6 +84,7 @@ packages:
       - chat.go
       - companion.go
       - cost.go
+      - estimate.go
       - costs.go
       - features.go
       - finishing.go
@@ -149,6 +150,7 @@ packages:
       store.FollowUpRow: store.FollowUpRow
       store.IssueFigures: store.IssueFigures
       store.MilestoneRow: store.MilestoneRow
+      store.EstimateResult: store.EstimateResult
       store.Money: store.Money
       store.PauseHistory: store.PauseHistory
       store.SpendTotals: store.SpendTotals
@@ -161,6 +163,7 @@ packages:
     enum_style: union
     include_files:
       - chat.go
+      - estimate.go
       - milestone_rows.go
       - pauses.go
       - spend_totals.go

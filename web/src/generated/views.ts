@@ -317,6 +317,17 @@ export interface CostsTopView {
 }
 
 //////////
+// source: estimate.go
+
+/**
+ * EstimateView is the estimated cost of a plan's draft or a milestone.
+ * Reason says why there is none (NotEnoughHistory).
+ */
+export interface EstimateView extends store.EstimateResult {
+  reason?: string;
+}
+
+//////////
 // source: features.go
 
 /**
