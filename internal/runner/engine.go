@@ -751,9 +751,10 @@ func modelList(ms map[string]modelFigures) []ModelUsage {
 }
 
 // Decode unmarshals the structured output into v. It falls back to the first
-// JSON object in the text result, for engines without schema support.
+// JSON object in the text result, for engines without schema support. A
+// result without one arrives from the agent container as null.
 func (r *Result) Decode(v any) error {
-	if len(r.Structured) > 0 {
+	if len(r.Structured) > 0 && string(r.Structured) != "null" {
 		return json.Unmarshal(r.Structured, v)
 	}
 	text := strings.TrimSpace(r.Text)

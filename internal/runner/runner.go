@@ -210,6 +210,8 @@ type state struct {
 	// InFlight is the implementer call running (or last cut off with the
 	// agent or the pod lost), so the next pod can save its work.
 	InFlight *inFlight `json:"inFlight,omitempty"`
+	// PlanSeenRevision is the plan's newest owner draft revision a plan turn sent.
+	PlanSeenRevision int64 `json:"planSeenRevision,omitempty"`
 }
 
 // inFlight marks an implementer call in progress (see state.InFlight).
