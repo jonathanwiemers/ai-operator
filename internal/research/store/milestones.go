@@ -268,3 +268,17 @@ func (s *Store) issueFigures(ctx context.Context, project ProjectKey, milestone,
 	}
 	return issues, nil
 }
+
+// SetMilestoneRequirements stores the number of requirements of a
+// milestone's description. It never inserts (the snapshot owns the rows) and
+// reports whether a row changed: false for an unchanged count or a missing
+// milestone. It runs as the owner.
+func (s *Store) SetMilestoneRequirements(ctx context.Context, key ProjectKey, iid int64, n int) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE desk_milestones SET requirements = $4
+		WHERE namespace = $1 AND project = $2 AND iid = $3 AND requirements IS DISTINCT FROM $4`,
+		key.Namespace, key.Name, iid, n)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}

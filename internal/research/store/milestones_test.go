@@ -423,3 +423,38 @@ func assertUsesIndex(t *testing.T, pool *pgxpool.Pool, query string, args []any,
 		t.Errorf("plan does not use index %s:\n%s", index, text)
 	}
 }
+
+func TestSetMilestoneRequirements(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	exp := time.Now().Add(24 * time.Hour)
+	m := store.MilestoneSnapshot{Project: orbit, IID: 30, Title: "Planner", State: "open", Phase: "planning",
+		StartedAt: time.Now().Truncate(time.Second)}
+	if _, err := s.SaveMilestone(ctx, m, exp); err != nil {
+		t.Fatal(err)
+	}
+	set := func(iid int64, n int, want bool) {
+		t.Helper()
+		changed, err := s.SetMilestoneRequirements(ctx, orbit, iid, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed != want {
+			t.Errorf("SetMilestoneRequirements(%d, %d) = %v, want %v", iid, n, changed, want)
+		}
+	}
+	// A new row is NULL, so even 0 is a change.
+	set(30, 0, true)
+	set(30, 13, true)
+	set(30, 13, false)
+	// The snapshot keeps the count.
+	if _, err := s.SaveMilestone(ctx, m, exp); err != nil {
+		t.Fatal(err)
+	}
+	set(30, 13, false)
+	// No row for a milestone the snapshot does not know, nor in another project.
+	set(31, 13, false)
+	if changed, err := s.SetMilestoneRequirements(ctx, store.ProjectKey{Namespace: "agents", Name: "other"}, 30, 13); err != nil || changed {
+		t.Errorf("other project: changed %v, err %v", changed, err)
+	}
+}
