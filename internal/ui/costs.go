@@ -129,7 +129,7 @@ var (
 	costGroups = []string{"project", "kind", "model", "engine"}
 	callKinds  = []string{aiv1.CallKindSpec, aiv1.CallKindImplement, aiv1.CallKindReview, aiv1.CallKindFix, aiv1.CallKindCI,
 		aiv1.CallKindConflict, aiv1.CallKindDescribe, aiv1.CallKindPilot, aiv1.CallKindRetro, aiv1.CallKindFollowUpDraft,
-		aiv1.CallKindChat, aiv1.CallKindResearch}
+		aiv1.CallKindChat, aiv1.CallKindResearch, aiv1.CallKindPlan}
 	engines = []string{string(aiv1.EngineClaude), string(aiv1.EngineCursor)}
 )
 

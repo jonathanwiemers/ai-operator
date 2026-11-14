@@ -218,6 +218,20 @@ in `networkPolicyPeer.namespace` (all its pods without labels).
 NetworkPolicies are additive: task pods are not selected and keep the agent
 policy as it is, without access to the database.
 
+### Plan
+
+`AgentPlan` resources are milestone-planning conversations in the Desk. The
+chart value `plan` feeds the operator and the UI. Invalid values stop the
+operator at start, refuse the UI config, or fail `helm template` when the
+raise limit is below the default.
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `plan.idleTimeout` | `30m` | after the last message, how long a plan pod stays before it ends (phase Idle); `--plan-idle-timeout` |
+| `plan.retention` | `720h` | how long plans are kept after their last message or creation; `--plan-retention` |
+| `plan.maxBudgetUSD` | `"5"` | default spend cap per plan (USD decimal string); `--plan-max-budget-usd` and the UI default for new plans |
+| `plan.maxBudgetUSDLimit` | `"20"` | highest cap an owner may raise a plan to in the Desk (UI config); must be at least `plan.maxBudgetUSD` |
+
 ### Pricing
 
 Every agent call is a row of `agent_calls` (see

@@ -77,10 +77,18 @@ func main() {
 	flag.StringVar(&pricingFile, "pricing-file", "", "YAML file with model prices (USD per million tokens) to estimate the cost of agent calls that report tokens but no cost, such as cursor's. Empty: no estimates, such calls have no cost.")
 	var deskURL string
 	flag.StringVar(&deskURL, "desk-url", "", "Base URL of the Desk (the UI's externalURL). Empty: comments name the Desk without a link.")
+	planCfg := controller.PlanConfig{MaxBudgetUSD: "5"}
+	flag.DurationVar(&planCfg.IdleTimeout, "plan-idle-timeout", 30*time.Minute, "How long an AgentPlan pod stays after the last message before it ends (phase Idle).")
+	flag.DurationVar(&planCfg.Retention, "plan-retention", 720*time.Hour, "How long AgentPlans are kept after their last message or creation.")
+	flag.StringVar(&planCfg.MaxBudgetUSD, "plan-max-budget-usd", "5", "Default spend cap per AgentPlan in USD (decimal string).")
 	flag.Parse()
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	setupLog := ctrl.Log.WithName("setup")
 	setupLog.Info("ai-operator starting", "version", version, "selfProject", selfProject)
+	if err := planCfg.Validate(); err != nil {
+		setupLog.Error(err, "invalid plan configuration (--plan-idle-timeout, --plan-retention, --plan-max-budget-usd)")
+		os.Exit(1)
+	}
 	switch aiv1.LogLevel(agentLogLevel) {
 	case aiv1.LogLevelDebug, aiv1.LogLevelInfo, aiv1.LogLevelError:
 	default:

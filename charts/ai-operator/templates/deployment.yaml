@@ -102,6 +102,10 @@ spec:
             - --research-max-usage-percent={{ int .Values.research.maxUsagePercent }}
             - --history-retention={{ .Values.research.historyRetention }}
             {{- end }}
+            {{- include "ai-operator.plan.validate" . }}
+            - --plan-idle-timeout={{ .Values.plan.idleTimeout }}
+            - --plan-retention={{ .Values.plan.retention }}
+            - --plan-max-budget-usd={{ .Values.plan.maxBudgetUSD | toString }}
             {{- if .Values.pricing }}
             - --pricing-file=/etc/ai-operator/pricing/pricing.yaml
             {{- end }}

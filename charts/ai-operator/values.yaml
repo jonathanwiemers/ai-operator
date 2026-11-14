@@ -159,6 +159,16 @@ research:
   # agent calls) and Desk chat messages are kept in the database. A Go duration.
   historyRetention: 8760h
 
+# Milestone plans (AgentPlan): idle stop, retention delete, and spend cap.
+# The operator enforces idleTimeout, retention and maxBudgetUSD; the UI uses
+# maxBudgetUSD (default for new plans) and maxBudgetUSDLimit (raise ceiling).
+# helm fails when maxBudgetUSDLimit is below maxBudgetUSD.
+plan:
+  idleTimeout: 30m
+  retention: 720h
+  maxBudgetUSD: "5"
+  maxBudgetUSDLimit: "20"
+
 # Model prices for estimating the cost of agent calls that report tokens but
 # no cost (cursor). Claude reports its cost, which is kept. Empty: no
 # estimates, such calls show "n/a". When set, it is rendered into a

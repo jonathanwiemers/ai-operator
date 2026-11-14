@@ -200,7 +200,7 @@ spec:
                     kind:
                       description: |-
                         Kind is what the call was for: spec, implement, review, fix, ci,
-                        conflict, describe, pilot, retro, followUpDraft, chat or research.
+                        conflict, describe, pilot, retro, followUpDraft, chat, research or plan.
                       type: string
                     linesAdded:
                       description: |-

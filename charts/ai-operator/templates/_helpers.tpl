@@ -84,6 +84,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if $db.host -}}
 {{- $_ := set $cfg "research" (dict "database" (dict "host" $db.host "port" (int $db.port) "name" $db.name "sslMode" $db.sslMode) "namespace" $ui.research.namespace "allowCreate" $ui.research.allowCreate) -}}
 {{- end -}}
+{{- $plan := .Values.plan -}}
+{{- $_ := set $cfg "plan" (dict "maxBudgetUSD" ($plan.maxBudgetUSD | toString) "maxBudgetUSDLimit" ($plan.maxBudgetUSDLimit | toString)) -}}
 {{- toYaml $cfg }}
 {{- end }}
 
@@ -114,6 +116,15 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 {{- if and $ui.research.allowCreate (not $ui.research.namespace) }}
 {{- fail "ui.research.namespace (where the UI creates one-off researches) is required with ui.research.allowCreate" }}
+{{- end }}
+{{- include "ai-operator.plan.validate" . }}
+{{- end }}
+
+{{/* Refuses plan.maxBudgetUSDLimit below plan.maxBudgetUSD. */}}
+{{- define "ai-operator.plan.validate" -}}
+{{- $plan := .Values.plan -}}
+{{- if lt ($plan.maxBudgetUSDLimit | float64) ($plan.maxBudgetUSD | float64) }}
+{{- fail "plan.maxBudgetUSDLimit must be at least plan.maxBudgetUSD" }}
 {{- end }}
 {{- end }}
 

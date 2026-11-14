@@ -157,6 +157,20 @@ research:
       podLabels: {cluster-name: ai-operator-postgres}
 ```
 
+### Plan
+
+Milestone plans (`AgentPlan`): idle stop, retention delete, and spend cap.
+The operator gets `idleTimeout`, `retention` and `maxBudgetUSD` as flags; the
+UI config gets `maxBudgetUSD` and `maxBudgetUSDLimit`. The chart fails when
+`maxBudgetUSDLimit` is below `maxBudgetUSD`.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `plan.idleTimeout` | `30m` | after the last message, how long a plan pod stays before it ends (phase Idle); `--plan-idle-timeout` |
+| `plan.retention` | `720h` | how long plans are kept after their last message or creation; `--plan-retention` |
+| `plan.maxBudgetUSD` | `"5"` | default spend cap per plan (USD decimal string); `--plan-max-budget-usd` and the UI's default for new plans |
+| `plan.maxBudgetUSDLimit` | `"20"` | highest cap an owner may raise a plan to in the Desk; UI config only |
+
 ### Pricing
 
 Cost of agent calls in `agent_calls` (needs `research.database.host`):

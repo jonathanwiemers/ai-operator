@@ -134,6 +134,16 @@ func TestCostsResearchAccess(t *testing.T) {
 	}
 }
 
+func TestCostsKindPlan(t *testing.T) {
+	env, fake := costsEnv(t, false, "devs")
+	if code := env.get(t, "/api/v1/costs?kind=plan", nil); code != http.StatusOK {
+		t.Fatalf("kind=plan: status %d", code)
+	}
+	if len(fake.seriesCalls) == 0 || fake.seriesCalls[0].q.Kind != aiv1.CallKindPlan {
+		t.Fatalf("query = %+v", fake.seriesCalls)
+	}
+}
+
 func TestCostsBadParams(t *testing.T) {
 	env, fake := costsEnv(t, false, "devs")
 	today := time.Now().UTC()

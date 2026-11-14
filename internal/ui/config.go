@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/yaml"
 
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -62,6 +63,7 @@ type Config struct {
 	Authorization AuthorizationConfig `json:"authorization"`
 	GitLab        GitLabConfig        `json:"gitlab"`
 	Research      ResearchConfig      `json:"research"`
+	Plan          PlanConfig          `json:"plan"`
 
 	// Set from the environment.
 	SessionKey         string `json:"-"`
@@ -98,6 +100,21 @@ type DatabaseConfig struct {
 
 // Enabled reports whether the Research section is on.
 func (c ResearchConfig) Enabled() bool { return c.Database.Host != "" }
+
+// Default plan budget and raise limit (chart plan.maxBudgetUSD /
+// plan.maxBudgetUSDLimit).
+const (
+	DefaultPlanMaxBudgetUSD      = "5"
+	DefaultPlanMaxBudgetUSDLimit = "20"
+)
+
+// PlanConfig is the Desk's plan budget default and raise limit.
+type PlanConfig struct {
+	// MaxBudgetUSD is the default spend cap of a new plan (decimal string).
+	MaxBudgetUSD string `json:"maxBudgetUSD"`
+	// MaxBudgetUSDLimit is how high an owner may raise a plan's cap.
+	MaxBudgetUSDLimit string `json:"maxBudgetUSDLimit"`
+}
 
 // ResearchLogin returns the reader's connection to the research database.
 func (c *Config) ResearchLogin() store.Config {
@@ -288,6 +305,12 @@ func (c *Config) Default() {
 	if c.Research.Enabled() && c.Research.Database.SSLMode == "" {
 		c.Research.Database.SSLMode = "require"
 	}
+	if c.Plan.MaxBudgetUSD == "" {
+		c.Plan.MaxBudgetUSD = DefaultPlanMaxBudgetUSD
+	}
+	if c.Plan.MaxBudgetUSDLimit == "" {
+		c.Plan.MaxBudgetUSDLimit = DefaultPlanMaxBudgetUSDLimit
+	}
 }
 
 // Validate refuses configurations that would expose the UI insecurely.
@@ -376,6 +399,7 @@ func (c *Config) Validate(bindAddress string) error {
 	}
 	errs = append(errs, c.validateResearch()...)
 	errs = append(errs, c.validateChat()...)
+	errs = append(errs, c.validatePlan()...)
 	return errors.Join(errs...)
 }
 
@@ -406,6 +430,31 @@ func (c *Config) validateResearch() []error {
 	}
 	if c.Research.AllowCreate && len(validation.IsDNS1123Label(c.Research.Namespace)) > 0 {
 		errs = append(errs, fmt.Errorf("research.allowCreate needs research.namespace, a valid namespace name, not %q", c.Research.Namespace))
+	}
+	return errs
+}
+
+// validatePlan checks plan.maxBudgetUSD and plan.maxBudgetUSDLimit.
+// Empty values get the same defaults as Default so Validate works when
+// callers skip Default (tests that build a Config by hand).
+func (c *Config) validatePlan() []error {
+	if c.Plan.MaxBudgetUSD == "" {
+		c.Plan.MaxBudgetUSD = DefaultPlanMaxBudgetUSD
+	}
+	if c.Plan.MaxBudgetUSDLimit == "" {
+		c.Plan.MaxBudgetUSDLimit = DefaultPlanMaxBudgetUSDLimit
+	}
+	var errs []error
+	def, errDef := aiv1.ParseBudget(c.Plan.MaxBudgetUSD)
+	if errDef != nil {
+		errs = append(errs, fmt.Errorf("plan.maxBudgetUSD: %w", errDef))
+	}
+	lim, errLim := aiv1.ParseBudget(c.Plan.MaxBudgetUSDLimit)
+	if errLim != nil {
+		errs = append(errs, fmt.Errorf("plan.maxBudgetUSDLimit: %w", errLim))
+	}
+	if errDef == nil && errLim == nil && aiv1.CostOf(lim) < aiv1.CostOf(def) {
+		errs = append(errs, errors.New("plan.maxBudgetUSDLimit must be at least plan.maxBudgetUSD"))
 	}
 	return errs
 }

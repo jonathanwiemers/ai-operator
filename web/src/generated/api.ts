@@ -4082,10 +4082,11 @@ export const CallKindRetro = "retro";
 export const CallKindFollowUpDraft = "followUpDraft";
 export const CallKindChat = "chat";
 export const CallKindResearch = "research";
+export const CallKindPlan = "plan";
 /**
  * Kinds of agent calls (AgentCall.Kind).
  */
-export type CallKind = typeof CallKindSpec | typeof CallKindImplement | typeof CallKindReview | typeof CallKindFix | typeof CallKindCI | typeof CallKindConflict | typeof CallKindDescribe | typeof CallKindPilot | typeof CallKindRetro | typeof CallKindFollowUpDraft | typeof CallKindChat | typeof CallKindResearch;
+export type CallKind = typeof CallKindSpec | typeof CallKindImplement | typeof CallKindReview | typeof CallKindFix | typeof CallKindCI | typeof CallKindConflict | typeof CallKindDescribe | typeof CallKindPilot | typeof CallKindRetro | typeof CallKindFollowUpDraft | typeof CallKindChat | typeof CallKindResearch | typeof CallKindPlan;
 export const CostReported = "reported";
 export const CostEstimated = "estimated";
 export const CostUnknown = "unknown";
@@ -4107,7 +4108,7 @@ export interface AgentCall {
   at: string;
   /**
    * Kind is what the call was for: spec, implement, review, fix, ci,
-   * conflict, describe, pilot, retro, followUpDraft, chat or research.
+   * conflict, describe, pilot, retro, followUpDraft, chat, research or plan.
    */
   kind: string;
   /**

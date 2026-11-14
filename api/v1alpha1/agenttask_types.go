@@ -1501,6 +1501,7 @@ const (
 	CallKindFollowUpDraft = "followUpDraft"
 	CallKindChat          = "chat"
 	CallKindResearch      = "research"
+	CallKindPlan          = "plan"
 )
 
 // Sources of an agent call's cost (AgentCall.CostSource).
@@ -1519,7 +1520,7 @@ type AgentCall struct {
 	At metav1.Time `json:"at"`
 
 	// Kind is what the call was for: spec, implement, review, fix, ci,
-	// conflict, describe, pilot, retro, followUpDraft, chat or research.
+	// conflict, describe, pilot, retro, followUpDraft, chat, research or plan.
 	Kind string `json:"kind"`
 
 	// Role is the agent's role, e.g. implement, bugbot or pilot.

@@ -201,6 +201,75 @@ func TestValidateResearch(t *testing.T) {
 	}
 }
 
+func TestLoadConfigPlanDefaults(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(file, []byte(`
+auth:
+  mode: none
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(file, "127.0.0.1:9080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Plan.MaxBudgetUSD != DefaultPlanMaxBudgetUSD || cfg.Plan.MaxBudgetUSDLimit != DefaultPlanMaxBudgetUSDLimit {
+		t.Errorf("plan defaults: %+v", cfg.Plan)
+	}
+}
+
+func TestLoadConfigPlan(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(file, []byte(`
+auth:
+  mode: none
+plan:
+  maxBudgetUSD: "8"
+  maxBudgetUSDLimit: "15"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(file, "127.0.0.1:9080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Plan.MaxBudgetUSD != "8" || cfg.Plan.MaxBudgetUSDLimit != "15" {
+		t.Errorf("plan = %+v", cfg.Plan)
+	}
+}
+
+func TestValidatePlan(t *testing.T) {
+	valid := func() *Config {
+		c := &Config{Auth: AuthConfig{Mode: AuthNone}}
+		c.Default()
+		return c
+	}
+	cases := []struct {
+		name    string
+		mutate  func(*Config)
+		wantErr string
+	}{
+		{name: "defaults", mutate: func(*Config) {}},
+		{name: "equal limit", mutate: func(c *Config) { c.Plan.MaxBudgetUSD, c.Plan.MaxBudgetUSDLimit = "10", "10" }},
+		{name: "limit below default", mutate: func(c *Config) { c.Plan.MaxBudgetUSD, c.Plan.MaxBudgetUSDLimit = "10", "5" }, wantErr: "at least plan.maxBudgetUSD"},
+		{name: "bad default", mutate: func(c *Config) { c.Plan.MaxBudgetUSD = "0" }, wantErr: "plan.maxBudgetUSD"},
+		{name: "bad limit", mutate: func(c *Config) { c.Plan.MaxBudgetUSDLimit = "x" }, wantErr: "plan.maxBudgetUSDLimit"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := valid()
+			tc.mutate(c)
+			err := c.Validate("127.0.0.1:9080")
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Fatalf("unexpected error: %v", err)
+			case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+				t.Fatalf("error = %v, want it to mention %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestSessionRefreshDefaults(t *testing.T) {
 	c := &Config{}
 	c.Default()
