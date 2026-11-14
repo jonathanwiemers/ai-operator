@@ -2,12 +2,18 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   agentTurnPending,
+  chatAuthorLabel,
   chatDraftKey,
   chatPostBody,
+  chatStateLabel,
+  chatTurns,
   chatWaiting,
   commandLabel,
   modelCommand,
   parseChatDraft,
+  planChatBlocked,
+  planChatDraftKey,
+  planChatWaiting,
   readChatDraft,
   skipCommand,
   skipOptions,
@@ -234,4 +240,54 @@ test('skipCommand and skipOptions', () => {
     [2],
   )
   assert.deepEqual(skipOptions(undefined), [])
+})
+
+test('chatTurns: replies nest under their message, orphans stay turns', () => {
+  const g = chatTurns([
+    { id: 4, role: 'agent', replyTo: 3 },
+    { id: 1, role: 'user' },
+    { id: 2, role: 'agent', replyTo: 1 },
+    { id: 5, role: 'system', replyTo: 99 },
+    { id: 3, role: 'user' },
+  ])
+  assert.deepEqual(g.chronological.map((m) => m.id), [1, 2, 3, 4, 5])
+  assert.deepEqual(g.turns.map((m) => m.id), [1, 3, 5])
+  assert.equal(g.repliesByParent.get(1)?.id, 2)
+  assert.equal(g.repliesByParent.get(3)?.id, 4)
+  assert.equal(g.newestUser?.id, 3)
+  assert.equal(chatTurns([]).newestUser, null)
+})
+
+test('planChatWaiting: delivered or Working is answering, queued is starting', () => {
+  assert.equal(planChatWaiting(false, false, 'Ready'), null)
+  const live = planChatWaiting(true, true, 'Working')
+  assert.equal(live?.kind, 'answering')
+  assert.equal(live?.canInterrupt, true)
+  assert.equal(planChatWaiting(true, false, 'Working')?.canInterrupt, false)
+  assert.equal(planChatWaiting(true, false, 'Idle')?.label, 'starting the agent…')
+  assert.equal(planChatWaiting(true, false, 'Starting')?.kind, 'starting')
+  assert.equal(planChatWaiting(true, true, 'Failed'), null)
+  assert.equal(planChatWaiting(true, false, 'Created'), null)
+})
+
+test('planChatBlocked: created or budget used stops the composer', () => {
+  assert.match(planChatBlocked('Created', '0', '5'), /milestone is created/)
+  assert.match(planChatBlocked('Ready', '5.0000', '5'), /used its budget \(\$5\)/)
+  assert.match(planChatBlocked('Idle', '6.1', '5.00'), /budget/)
+  assert.equal(planChatBlocked('Ready', '4.9999', '5'), '')
+  assert.equal(planChatBlocked('Working', undefined, undefined), '')
+  assert.equal(planChatBlocked(undefined, '1', '0'), '')
+})
+
+test('planChatDraftKey: one draft per plan, apart from task drafts', () => {
+  assert.equal(planChatDraftKey('ns', 'p', 'plan-1'), 'desk-plan-chat:ns/p/plan-1')
+  assert.notEqual(planChatDraftKey('ns', 'p', 'x'), chatDraftKey('ns', 'p', 'x'))
+})
+
+test('chatStateLabel and chatAuthorLabel', () => {
+  assert.deepEqual(chatStateLabel('delivered'), { text: 'sent to the agent', tone: 'progress' })
+  assert.deepEqual(chatStateLabel(undefined), { text: '', tone: 'muted' })
+  assert.equal(chatAuthorLabel({ role: 'agent', author: 'x' }), 'agent')
+  assert.equal(chatAuthorLabel({ role: 'user', authorName: 'Jo', author: 'jo' }), 'Jo')
+  assert.equal(chatAuthorLabel({ role: 'user' }), 'you')
 })

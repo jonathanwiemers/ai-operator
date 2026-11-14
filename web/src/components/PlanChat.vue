@@ -1,0 +1,118 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { chatPostError } from '../api'
+import { getPlanChat, LoginRequiredError, postPlanChat } from '../client'
+import * as cs from '../chatState'
+import { keepThroughSignIn } from '../signInDraft'
+import type { AgentPlanPhase } from '../generated/api'
+import type { ChatMessage } from '../types'
+import Badge from './Badge.vue'
+import ChatThread from './ChatThread.vue'
+import Composer, { type ComposerSend } from './Composer.vue'
+
+// PlanChat is a plan's chat (TaskChat without commands): the newest 100
+// messages, polled every 5 s, and a composer with Interrupt while a turn runs.
+const props = defineProps<{
+  namespace: string
+  name: string
+  plan: string
+  canPost: boolean
+  phase?: AgentPlanPhase
+  // The budget cap (PlanView.budgetUSD) and spend, for the "budget used" stop.
+  spendUSD?: string
+  budgetUSD?: string
+}>()
+
+const messages = ref<ChatMessage[]>([])
+const error = ref('')
+const grouped = computed(() => cs.chatTurns(messages.value))
+const waiting = computed(() => {
+  const u = grouped.value.newestUser
+  const pending = !!u && cs.agentTurnPending(u.kind, u.state, grouped.value.repliesByParent.has(u.id))
+  return cs.planChatWaiting(pending, u?.state === 'delivered', props.phase)
+})
+const blocked = computed(() => cs.planChatBlocked(props.phase, props.spendUSD, props.budgetUSD))
+
+const key = () => `${props.namespace}/${props.name}/${props.plan}`
+let seq = 0
+async function load() {
+  const mine = ++seq
+  try {
+    const page = await getPlanChat(props.namespace, props.name, props.plan, { limit: 100 })
+    if (mine !== seq) return
+    messages.value = page.messages
+    error.value = ''
+  } catch (e) {
+    if (mine === seq && !(e instanceof LoginRequiredError)) error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+// The draft and its clientKey stay in sessionStorage until a 2xx (TaskChat).
+const body = ref('')
+const sending = ref(false)
+const sendError = ref('')
+keepThroughSignIn(() => `plan-chat:${key()}`, body)
+const draftKey = () => cs.planChatDraftKey(props.namespace, props.name, props.plan)
+// Text kept through a sign-in (newer) wins over a failed send's draft.
+function restore(switched: boolean) {
+  if (switched) [messages.value, body.value, sendError.value] = [[], '', '']
+  body.value ||= cs.readChatDraft(draftKey())?.body ?? ''
+  void load()
+}
+
+async function onSend(s: ComposerSend) {
+  const text = cs.chatPostBody(s.kind, s.body)
+  if (sending.value || !text) return
+  const dk = draftKey()
+  const old = cs.readChatDraft(dk)
+  const clientKey = old?.kind === s.kind ? old.clientKey : crypto.randomUUID()
+  cs.writeChatDraft(dk, { body: s.body, clientKey, kind: s.kind })
+  sending.value = true
+  sendError.value = ''
+  try {
+    await postPlanChat(props.namespace, props.name, props.plan, { body: text, clientKey, kind: s.kind })
+    cs.writeChatDraft(dk, null)
+    if (dk !== draftKey()) return
+    body.value = ''
+    void load()
+  } catch (e) {
+    if (dk === draftKey()) sendError.value = chatPostError(e)
+  } finally {
+    sending.value = false
+  }
+}
+
+let timer: number | undefined
+watch(key, () => restore(true))
+onMounted(() => {
+  restore(false)
+  timer = window.setInterval(() => {
+    if (document.visibilityState !== 'hidden') void load()
+  }, 5000)
+})
+onUnmounted(() => window.clearInterval(timer))
+</script>
+
+<template>
+  <div class="card overflow-clip">
+    <div v-if="error" class="banner danger">{{ error }}</div>
+    <div v-if="!grouped.turns.length" class="empty">No messages yet.</div>
+    <ChatThread v-else :turns="grouped.turns" :replies="grouped.repliesByParent" />
+    <div v-if="waiting" class="flex items-center border-t border-(--border) bg-(--surface-2) px-4 py-2.5">
+      <Badge tone="progress" dot pulse>{{ waiting.label }}</Badge>
+    </div>
+    <Composer
+      v-if="canPost"
+      v-model="body"
+      mode="chat"
+      placeholder="Tell the agent what the milestone should do…"
+      hint="Enter+Ctrl/Cmd to send"
+      :blocked="blocked"
+      :busy="sending"
+      :disabled="sending"
+      :error="sendError"
+      :can-interrupt="!!waiting?.canInterrupt"
+      @send="onSend"
+    />
+  </div>
+</template>

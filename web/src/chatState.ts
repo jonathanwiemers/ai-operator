@@ -1,4 +1,5 @@
-import type { AutopilotItem, ChatKind, ChatState, TaskPhase } from './types'
+import type { AgentPlanPhase } from './generated/api'
+import type { AutopilotItem, ChatKind, ChatMessage, ChatState, TaskPhase } from './types'
 
 // Efforts the Desk chat API accepts on use/effort commands (api/v1alpha1.Efforts).
 export const chatEfforts = ['low', 'medium', 'high', 'xhigh', 'max'] as const
@@ -170,6 +171,68 @@ export function agentTurnPending(
   return !hasReply
 }
 
+// chatTurns groups a chat page (any order): user messages and orphan
+// agent/system rows are turns, a reply nests under its parent, and the
+// newest user message is the one the waiting chip is about.
+export function chatTurns(messages: ChatMessage[]): {
+  chronological: ChatMessage[]
+  turns: ChatMessage[]
+  repliesByParent: Map<number, ChatMessage>
+  newestUser: ChatMessage | null
+} {
+  const chronological = [...messages].sort((a, b) => a.id - b.id)
+  const repliesByParent = new Map<number, ChatMessage>()
+  for (const m of chronological) if (m.replyTo) repliesByParent.set(m.replyTo, m)
+  const ids = new Set(chronological.map((m) => m.id))
+  const turns = chronological.filter((m) => m.role === 'user' || !m.replyTo || !ids.has(m.replyTo))
+  let newestUser: ChatMessage | null = null
+  for (const m of chronological) if (m.role === 'user') newestUser = m
+  return { chronological, turns, repliesByParent, newestUser }
+}
+
+// chatStateLabel is a user message's state badge.
+export function chatStateLabel(state: ChatState | undefined): {
+  text: string
+  tone: 'muted' | 'progress' | 'success' | 'danger' | 'warning'
+} {
+  switch (state) {
+    case 'queued':
+      return { text: 'waiting', tone: 'muted' }
+    case 'delivered':
+      return { text: 'sent to the agent', tone: 'progress' }
+    case 'answered':
+      return { text: 'answered', tone: 'success' }
+    case 'failed':
+      return { text: 'failed', tone: 'danger' }
+    case 'deferred':
+      return { text: 'deferred', tone: 'warning' }
+    default:
+      return { text: state || '', tone: 'muted' }
+  }
+}
+
+export function chatAuthorLabel(m: ChatMessage): string {
+  if (m.role === 'agent') return 'agent'
+  if (m.role === 'system') return 'system'
+  return m.authorName || m.author || 'you'
+}
+
+// planChatWaiting is chatWaiting for a plan: a delivered message (or a
+// Working plan) is a live turn, a queued one waits for the plan's pod.
+export function planChatWaiting(pending: boolean, delivered: boolean, phase?: AgentPlanPhase): ChatWaiting | null {
+  if (!pending || phase === 'Failed' || phase === 'Created') return null
+  const live = delivered || phase === 'Working'
+  return chatWaiting({ pending, delivered, phase: 'Running', podName: live ? 'plan' : '' })
+}
+
+// planChatBlocked is why a plan takes no messages, or '' when it does.
+export function planChatBlocked(phase?: AgentPlanPhase, spendUSD?: string, budgetUSD?: string): string {
+  if (phase === 'Created') return 'The milestone is created; this plan takes no more messages.'
+  const cap = Number(budgetUSD)
+  if (cap > 0 && Number(spendUSD) >= cap) return `The plan used its budget ($${budgetUSD}); raise it to continue.`
+  return ''
+}
+
 // The chat composer's draft (TaskChat): the typed body, the retry key and
 // the kind stay in sessionStorage until a 2xx, so a retry or a reload sends
 // the same clientKey (docs/ui.md, "Composer").
@@ -181,6 +244,10 @@ export interface ChatDraft {
 
 export function chatDraftKey(namespace: string, name: string, task: string): string {
   return `desk-chat:${namespace}/${name}/${task}`
+}
+
+export function planChatDraftKey(namespace: string, name: string, plan: string): string {
+  return `desk-plan-chat:${namespace}/${name}/${plan}`
 }
 
 // parseChatDraft reads a stored draft; anything else is no draft.

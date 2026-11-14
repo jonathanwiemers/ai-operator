@@ -8,8 +8,8 @@ import {
   chatDraftKey,
   chatEfforts,
   chatPostBody,
+  chatTurns,
   chatWaiting,
-  commandLabel,
   modelCommand,
   readChatDraft,
   skipCommand,
@@ -20,11 +20,10 @@ import {
 import { live } from '../live'
 import { keepThroughSignIn } from '../signInDraft'
 import type { RouteLocationRaw } from 'vue-router'
-import type { AutopilotItem, AutopilotPhase, ChatKind, ChatMessage, ChatState, ProposalView, TaskPhase } from '../types'
+import type { AutopilotItem, AutopilotPhase, ChatKind, ChatMessage, ProposalView, TaskPhase } from '../types'
 import Badge from './Badge.vue'
+import ChatThread from './ChatThread.vue'
 import Composer, { type ComposerSend } from './Composer.vue'
-import RelTime from './RelTime.vue'
-import Markdown from './Markdown.vue'
 
 const props = defineProps<{
   namespace: string
@@ -50,33 +49,12 @@ const error = ref('')
 let seq = 0
 let pollTimer: number | undefined
 
-const chronological = computed(() => [...messages.value].sort((a, b) => a.id - b.id))
-
-const repliesByParent = computed(() => {
-  const m = new Map<number, ChatMessage>()
-  for (const msg of chronological.value) {
-    if (msg.replyTo) m.set(msg.replyTo, msg)
-  }
-  return m
-})
-
 // User messages and orphan agent/system rows; replies nest under their parent.
-const turns = computed(() => {
-  const ids = new Set(chronological.value.map((m) => m.id))
-  return chronological.value.filter((msg) => {
-    if (msg.role === 'user') return true
-    if (msg.replyTo && ids.has(msg.replyTo)) return false
-    return true
-  })
-})
-
-const newestUser = computed(() => {
-  for (let i = chronological.value.length - 1; i >= 0; i--) {
-    const m = chronological.value[i]!
-    if (m.role === 'user') return m
-  }
-  return null
-})
+const grouped = computed(() => chatTurns(messages.value))
+const chronological = computed(() => grouped.value.chronological)
+const repliesByParent = computed(() => grouped.value.repliesByParent)
+const turns = computed(() => grouped.value.turns)
+const newestUser = computed(() => grouped.value.newestUser)
 
 const waiting = computed(() => {
   const u = newestUser.value
@@ -93,32 +71,6 @@ const waiting = computed(() => {
 
 const statusLine = computed(() => waiting.value?.label ?? '')
 const canInterrupt = computed(() => !!waiting.value?.canInterrupt)
-
-function stateLabel(state: ChatState | undefined): {
-  text: string
-  tone: 'muted' | 'progress' | 'success' | 'danger' | 'warning'
-} {
-  switch (state) {
-    case 'queued':
-      return { text: 'waiting', tone: 'muted' }
-    case 'delivered':
-      return { text: 'sent to the agent', tone: 'progress' }
-    case 'answered':
-      return { text: 'answered', tone: 'success' }
-    case 'failed':
-      return { text: 'failed', tone: 'danger' }
-    case 'deferred':
-      return { text: 'deferred', tone: 'warning' }
-    default:
-      return { text: state || '', tone: 'muted' }
-  }
-}
-
-function authorLabel(m: ChatMessage): string {
-  if (m.role === 'agent') return 'agent'
-  if (m.role === 'system') return 'system'
-  return m.authorName || m.author || 'you'
-}
 
 function mergeMessages(incoming: ChatMessage[]) {
   const byId = new Map(messages.value.map((m) => [m.id, m]))
@@ -355,50 +307,7 @@ onUnmounted(() => {
         />
       </div>
       <div v-if="!chronological.length" class="empty">No messages yet.</div>
-      <div v-else class="thread">
-        <div v-for="msg in turns" :key="msg.id" class="turn">
-          <div class="bubble" :class="msg.role">
-            <div class="meta">
-              <strong>{{ authorLabel(msg) }}</strong>
-              <span v-if="msg.kind === 'interrupt'" class="faint">interrupt</span>
-              <span v-else-if="msg.kind === 'command'" class="faint">command</span>
-              <span class="faint"><RelTime :time="msg.at" /></span>
-              <Badge v-if="msg.role === 'user' && msg.state" :tone="stateLabel(msg.state).tone">
-                {{ stateLabel(msg.state).text }}
-              </Badge>
-            </div>
-            <p v-if="msg.redacted && !msg.body" class="withheld">message hidden</p>
-            <p v-else-if="msg.kind === 'command'" class="cmd">{{ commandLabel(msg.body) }}</p>
-            <Markdown v-else-if="msg.body" :text="msg.body" />
-            <!-- Every state's reason is text, not the badge's title: a title cannot be read on touch. -->
-            <p
-              v-if="msg.role === 'user' && msg.state && msg.reason"
-              class="m-0 mt-1.5 text-[13px]"
-              :class="msg.state === 'failed' ? 'text-(--tone-danger-fg)' : 'text-(--text-3)'"
-            >
-              {{ msg.reason }}
-            </p>
-          </div>
-          <template v-if="repliesByParent.get(msg.id)">
-            <div class="bubble reply" :class="repliesByParent.get(msg.id)!.role">
-              <div class="meta">
-                <strong>{{ authorLabel(repliesByParent.get(msg.id)!) }}</strong>
-                <span class="faint"><RelTime :time="repliesByParent.get(msg.id)!.at" /></span>
-              </div>
-              <p
-                v-if="repliesByParent.get(msg.id)!.redacted && !repliesByParent.get(msg.id)!.body"
-                class="withheld"
-              >
-                message hidden
-              </p>
-              <Markdown
-                v-else-if="repliesByParent.get(msg.id)!.body"
-                :text="repliesByParent.get(msg.id)!.body!"
-              />
-            </div>
-          </template>
-        </div>
-      </div>
+      <ChatThread v-else :turns="turns" :replies="repliesByParent" />
 
       <div v-if="statusLine" class="status">
         <Badge tone="progress" dot pulse>{{ statusLine }}</Badge>
@@ -515,55 +424,6 @@ onUnmounted(() => {
   justify-content: center;
   padding: 10px;
   border-bottom: 1px solid var(--border);
-}
-.thread {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px;
-  max-height: 520px;
-  overflow-y: auto;
-}
-.turn {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.bubble {
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-.bubble.user {
-  background: var(--surface);
-}
-.bubble.system,
-.bubble.reply.system {
-  background: var(--tone-danger-bg);
-  border-color: color-mix(in srgb, var(--tone-danger-fg) 25%, var(--border));
-  color: var(--tone-danger-fg);
-}
-.bubble.reply {
-  margin-left: 18px;
-}
-.meta {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  font-size: 13px;
-  margin-bottom: 4px;
-}
-.cmd {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 13px;
-}
-.withheld {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-3);
 }
 .status {
   display: flex;
