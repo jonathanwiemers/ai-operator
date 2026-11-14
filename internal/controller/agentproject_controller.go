@@ -100,8 +100,12 @@ type AgentProjectReconciler struct {
 	// with the closed milestones the recorder never saw, one step after
 	// each poll.
 	Backfill *history.Backfill
+	// Requirements, set with a research database, stores the requirement
+	// counts of the open and newest closed milestones after each poll.
+	Requirements RequirementsStore
 
-	mu sync.Mutex
+	requirements requirementCounts
+	mu           sync.Mutex
 	// synced is the last delivery each project's last full sync covered.
 	synced map[types.NamespacedName]time.Time
 }

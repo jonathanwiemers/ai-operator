@@ -12,6 +12,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/rules"
 )
 
@@ -137,12 +138,17 @@ func (p *projectPoll) syncMilestones(ctx context.Context) error {
 	}
 	// Before any spec task changes: the older milestones still open.
 	p.ahead = queuedAhead(spec, p.titleRE, milestones, p.byMilestone)
+	// Only milestones planned before have a Desk row to count in.
+	requirements := map[int64]int{}
 	for _, m := range milestones {
 		selected, autopilot := milestoneSelection(spec, p.titleRE, m)
 		if !selected {
 			continue
 		}
 		active++
+		if p.byMilestone[m.IID] != nil {
+			requirements[m.IID] = rules.CountRequirements(m.Description)
+		}
 		task, err := r.syncSpecTask(ctx, project, spec, m, p.byMilestone[m.IID], autopilot, p.ahead[m.IID], p.owners(m.Description), p.ownerSubjects(m.Description))
 		if err != nil {
 			return err
@@ -155,6 +161,7 @@ func (p *projectPoll) syncMilestones(ctx context.Context) error {
 		}
 	}
 	project.Status.ActiveMilestones = active
+	r.requirements.note(store.ProjectKey{Namespace: project.Namespace, Name: project.Name}, requirements)
 	// One autopilot drives the main-red issue (the main-red lane): the
 	// oldest milestone that is not done.
 	for _, st := range p.autopilots {

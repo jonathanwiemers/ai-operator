@@ -206,3 +206,13 @@ func (d *Database) FollowUpsOf(ctx context.Context, p store.ProjectKey, iid int6
 	}
 	return s.FollowUpsOf(ctx, p, iid)
 }
+
+// SetMilestoneRequirements stores a milestone's requirement count, see
+// store.Store.SetMilestoneRequirements. It fails before Ready.
+func (d *Database) SetMilestoneRequirements(ctx context.Context, p store.ProjectKey, iid int64, n int) (bool, error) {
+	s := d.Store()
+	if s == nil {
+		return false, errors.New("research database is not ready")
+	}
+	return s.SetMilestoneRequirements(ctx, p, iid, n)
+}

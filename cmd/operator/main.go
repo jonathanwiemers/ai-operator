@@ -177,6 +177,7 @@ func main() {
 		projects.Spend = researchSetup
 		projects.FollowUps = researchSetup
 		projects.ChatContext = researchSetup
+		projects.Requirements = researchSetup
 		projects.Backfill = history.NewBackfill(researchSetup, historyRetention, clock.RealClock{}, ctrl.Log.WithName("backfill"))
 		researchSetup.SetHistoryRetention(historyRetention)
 	}

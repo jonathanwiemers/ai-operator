@@ -888,6 +888,17 @@ no snapshot. A queue full of 2000 other milestones drops the snapshot and
 logs a count. The recorder knows no project, so `web_url` stays empty and
 the UI builds the link from the project.
 
+`desk_milestones.requirements` (migration `20261114112556`) is the number of
+requirement IDs (R lines, `rules.CountRequirements`) of the milestone's
+description; the snapshot does not write it. The project reconciler does,
+in its backfill step after the poll (`internal/controller/requirements.go`):
+for each selected open milestone that already had a spec task (only then a
+row exists), and once per project per operator start for the newest page of
+closed milestones, so milestones finished earlier carry a count too. An
+in-memory map keeps the last written count per milestone, so an unchanged
+description is no write; a failed write is logged at V(1) and tried again on
+the next poll. Without a research database nothing is recorded.
+
 The UI lists them with `Milestones` (`internal/research/store/milestones.go`)
 in one statement for any number of projects and milestones: the snapshot rows
 of the projects the user may see, optionally only `open` or `closed`, joined
