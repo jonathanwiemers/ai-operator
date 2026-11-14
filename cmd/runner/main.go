@@ -3,6 +3,7 @@
 //	ai-runner                       the runner (runner container: GitLab + Kubernetes credentials)
 //	ai-runner agent-server          the agent server (agent container: agent CLI credentials only)
 //	ai-runner research              one research run (runner container: Kubernetes credentials and the research database writer login, no GitLab token)
+//	ai-runner plan                  an AgentPlan's chat turns (runner container: GitLab + Kubernetes credentials, read-only GitLab use)
 //	ai-runner init-workspace DIR…   create the PVC sub-paths (init container)
 //	ai-runner read-gate [--min-lines N] [--subagents a,b]
 //	                                the read gate, a claude PreToolUse hook (agent container): hook JSON on stdin, deny JSON or nothing on stdout, always exit 0
@@ -61,6 +62,9 @@ func main() {
 			return
 		case "research":
 			runResearch(ctx)
+			return
+		case "plan":
+			runPlan(ctx)
 			return
 		case "init-workspace":
 			// Create the PVC sub-paths of the runner and agent containers.
@@ -224,6 +228,40 @@ func runRunner(ctx context.Context) {
 	log.Info("runner started", "task", r.TaskName)
 	if err := r.Loop(ctx); err != nil {
 		log.Error(err, "runner stopped")
+		os.Exit(1)
+	}
+}
+
+// runPlan answers an AgentPlan's messages. The GitLab client it gets is the
+// read-only planGitLab view; git uses the token to fetch the default branch.
+func runPlan(ctx context.Context) {
+	log := ctrl.Log.WithName("plan")
+	scheme := runtime.NewScheme()
+	utilruntime.Must(aiv1.AddToScheme(scheme))
+	k8s, err := client.NewWithWatch(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
+	if err != nil {
+		log.Error(err, "creating kubernetes client")
+		os.Exit(1)
+	}
+	ns, name, token, stateDir := mustEnv("AI_PLAN_NAMESPACE"), mustEnv("AI_PLAN_NAME"), mustEnv("GITLAB_TOKEN"), envOr("AI_STATE_DIR", "/runner")
+	var project aiv1.AgentProject
+	var plan aiv1.AgentPlan
+	err = k8s.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, &plan)
+	if err == nil {
+		err = k8s.Get(ctx, client.ObjectKey{Namespace: ns, Name: plan.Spec.ProjectRef}, &project)
+	}
+	if err != nil {
+		log.Error(err, "reading the plan's project")
+		os.Exit(1)
+	}
+	pr := &runner.PlanRun{PlanName: name, GitLab: gitlab.New(project.Spec.WithDefaults().GitLab.URL, token), Runner: &runner.Runner{
+		K8s: k8s, Namespace: ns, GitLabToken: token, Agent: runner.NewAgentClient(mustEnv("AI_AGENT_SOCKET")),
+		Mirror:   &runner.Mirror{Dir: filepath.Join(stateDir, "mirror.git"), Token: token, Log: log.WithName("mirror")},
+		StateDir: stateDir, Exchange: envOr("AI_EXCHANGE", "/exchange"), PollInterval: 10 * time.Second, Log: log,
+	}}
+	log.Info("plan runner started", "plan", name)
+	if err := pr.Loop(ctx); err != nil {
+		log.Error(err, "plan runner stopped")
 		os.Exit(1)
 	}
 }

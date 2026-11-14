@@ -21,12 +21,13 @@ import (
 type planTurnEngine struct {
 	mu      sync.Mutex
 	calls   []Invocation
+	ctxs    []context.Context
 	answers []func(inv Invocation) (*Result, error)
 }
 
-func (e *planTurnEngine) Run(_ context.Context, inv Invocation) (*Result, error) {
+func (e *planTurnEngine) Run(ctx context.Context, inv Invocation) (*Result, error) {
 	e.mu.Lock()
-	e.calls = append(e.calls, inv)
+	e.calls, e.ctxs = append(e.calls, inv), append(e.ctxs, ctx)
 	answer := e.answers[len(e.calls)-1]
 	e.mu.Unlock()
 	return answer(inv)

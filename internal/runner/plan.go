@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -21,6 +22,8 @@ type PlanRun struct {
 	*Runner
 	PlanName string
 	GitLab   planGitLab
+	// wake signals changes of the plan while Loop runs.
+	wake <-chan struct{}
 }
 
 const (
@@ -32,21 +35,49 @@ const (
 // turn answers msg with the spec role's engine session and writes the reply
 // and the agent's draft to the plan's status. The draft is only written while
 // the revision is the one the turn started from: an owner's save wins.
+// A newer interrupt message cancels the turn; a pod stop leaves it in
+// flight, and the next pod sends it again, once.
 func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.AgentProject, msg aiv1.ChatMessage) error {
 	st, err := p.loadState()
 	if err != nil {
+		return err
+	}
+	resend := st.ChatInFlight != nil && st.ChatInFlight.MessageID == msg.ID
+	if resend && st.ChatInFlight.Resent {
+		return p.answer(ctx, &st, func(*aiv1.AgentPlanStatus) []aiv1.ChatReply {
+			return []aiv1.ChatReply{{MessageID: msg.ID, At: metav1.Time{Time: p.now()}, Error: "interrupted by a restart"}}
+		})
+	}
+	st.ChatInFlight = &chatInFlight{MessageID: msg.ID, Resent: resend}
+	if err := p.saveState(st); err != nil {
 		return err
 	}
 	if err := p.patchPlan(ctx, func(s *aiv1.AgentPlanStatus) { s.Phase = aiv1.AgentPlanWorking }); err != nil {
 		return err
 	}
 	p.run = nil // a run log per turn, not one growing for the pod's life
-	out, sha, errStr := p.ask(ctx, &st, plan, project.Spec.WithDefaults(), msg)
+	turnCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	guard, by, stop := &chatTurnState{}, make(chan int64, 1), make(chan struct{})
+	go p.watchInterrupt(ctx, msg.ID, stop, func(id int64) {
+		if by <- id; guard.interrupt() {
+			cancel()
+		}
+	})
+	out, sha, errStr := p.ask(turnCtx, &st, plan, project.Spec.WithDefaults(), msg)
+	close(stop)
 	if err := p.saveState(st); err != nil {
 		p.Log.Error(err, "saving the plan state")
 	}
-	base, draft, at := plan.Status.DraftRevision, strings.TrimSpace(out.Draft), metav1.Time{Time: p.now()}
-	return p.patchPlan(ctx, func(s *aiv1.AgentPlanStatus) {
+	var also []aiv1.ChatReply
+	at := metav1.Time{Time: p.now()}
+	if guard.finish() {
+		out.Draft, errStr, also = "", "interrupted", []aiv1.ChatReply{{MessageID: <-by, At: at}}
+	} else if ctx.Err() != nil {
+		return ctx.Err() // the pod stops: still in flight
+	}
+	base, draft := plan.Status.DraftRevision, strings.TrimSpace(out.Draft)
+	return p.answer(ctx, &st, func(s *aiv1.AgentPlanStatus) []aiv1.ChatReply {
 		text := textutil.Truncate(prose(out.Reply), maxChatReplyBytes-128)
 		switch {
 		case draft == "" || draft == s.Draft:
@@ -57,15 +88,100 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 		default:
 			s.Draft, s.DraftRevision, s.DraftBy, s.DraftSHA = draft, base+1, "agent", sha
 		}
-		if s.Chat == nil {
-			s.Chat = &aiv1.ChatStatus{}
-		}
-		s.Chat.Replies = appendChatReply(s.Chat.Replies, aiv1.ChatReply{MessageID: msg.ID, Text: text, At: at, Error: errStr}, nil)
 		s.Chat.LastTurnTime = &at
 		if s.Phase == aiv1.AgentPlanWorking {
 			s.Phase = aiv1.AgentPlanReady
 		}
+		return append([]aiv1.ChatReply{{MessageID: msg.ID, Text: text, At: at, Error: errStr}}, also...)
 	})
+}
+
+// Loop answers the plan's messages, oldest first, until ctx ends. An
+// interrupt with no turn to stop gets an empty reply.
+func (p *PlanRun) Loop(ctx context.Context) error {
+	if !p.waitAgent(ctx) {
+		return nil
+	}
+	p.wake = p.watchObject(ctx, &aiv1.AgentPlanList{}, p.PlanName)
+	for ctx.Err() == nil {
+		did, err := p.tick(ctx)
+		if err != nil && ctx.Err() == nil {
+			p.Log.Error(err, "plan turn failed") // retried after the poll interval
+		}
+		if !did {
+			select {
+			case <-ctx.Done():
+			case <-p.wake:
+			case <-time.After(cmp.Or(p.PollInterval, 10*time.Second)):
+			}
+		}
+	}
+	return nil
+}
+
+func (p *PlanRun) tick(ctx context.Context) (bool, error) {
+	plan, project, st, err := p.load(ctx)
+	msg, ok := nextChatMessage(plan.Spec.ChatMessages, plan.Status.Chat, st)
+	if err != nil || !ok || !plan.Active() {
+		return false, err
+	}
+	if msg.Kind == "interrupt" {
+		err = p.answer(ctx, &st, func(*aiv1.AgentPlanStatus) []aiv1.ChatReply { return []aiv1.ChatReply{{MessageID: msg.ID}} })
+	} else {
+		err = p.turn(ctx, plan, project, msg)
+	}
+	return err == nil, err
+}
+
+// load reads the plan, its project and the runner's state.
+func (p *PlanRun) load(ctx context.Context) (*aiv1.AgentPlan, *aiv1.AgentProject, state, error) {
+	plan, project := &aiv1.AgentPlan{}, &aiv1.AgentProject{}
+	err := p.K8s.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: p.PlanName}, plan)
+	if err == nil {
+		err = p.K8s.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: plan.Spec.ProjectRef}, project)
+	}
+	st, serr := p.loadState()
+	return plan, project, st, cmp.Or(err, serr)
+}
+
+// watchInterrupt calls interrupt with the first unanswered interrupt message
+// newer than current, until stop closes.
+func (p *PlanRun) watchInterrupt(ctx context.Context, current int64, stop <-chan struct{}, interrupt func(int64)) {
+	for {
+		plan, _, st, err := p.load(ctx)
+		for _, m := range plan.Spec.ChatMessages {
+			if err == nil && m.Kind == "interrupt" && m.ID > current && !answeredChat(plan.Status.Chat, st, m.ID) {
+				interrupt(m.ID)
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-stop:
+			return
+		case <-p.wake:
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+// answer patches the replies mutate returns into the plan's status, marks
+// their messages answered and clears the turn in flight.
+func (p *PlanRun) answer(ctx context.Context, st *state, mutate func(*aiv1.AgentPlanStatus) []aiv1.ChatReply) error {
+	var ids []int64
+	err := p.patchPlan(ctx, func(s *aiv1.AgentPlanStatus) {
+		s.Chat, ids = cmp.Or(s.Chat, &aiv1.ChatStatus{}), nil
+		for _, rep := range mutate(s) {
+			s.Chat.Replies, ids = appendChatReply(s.Chat.Replies, rep, nil), append(ids, rep.MessageID)
+		}
+	})
+	if err != nil {
+		return err
+	}
+	st.ChatAnswered = append(st.ChatAnswered, ids...)
+	st.ChatAnswered, st.ChatInFlight = st.ChatAnswered[max(0, len(st.ChatAnswered)-maxChatAnswered):], nil
+	return p.saveState(*st)
 }
 
 // ask fetches the default branch and runs the turn on the engine, resuming
@@ -90,6 +206,9 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 	inv.Prompt = buildPlanPrompt(planTurnInput{Message: msg.Text, Branch: proj.DefaultBranch, SHA: sha, GitLab: gl,
 		FirstTurn: inv.Resume == "", Title: plan.Spec.Title, Draft: plan.Status.Draft,
 		Edited: plan.Status.DraftBy == "owner" && rev > st.PlanSeenRevision})
+	if st.ChatInFlight != nil && st.ChatInFlight.Resent {
+		inv.Prompt = chatResendPrefix + "\n\n" + inv.Prompt
+	}
 	res, err := p.Agent.Run(ctx, role.Engine, inv)
 	if res != nil {
 		out.Reply = cmp.Or(res.Text, string(res.Structured))

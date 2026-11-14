@@ -227,6 +227,8 @@ type inFlight struct {
 type chatInFlight struct {
 	MessageID int64  `json:"messageID"`
 	SessionID string `json:"sessionID,omitempty"`
+	// Resent marks a plan turn sent again after a restart: plans resend once.
+	Resent bool `json:"resent,omitempty"`
 }
 
 func sessionKey(role string, engine aiv1.Engine) string { return role + "/" + string(engine) }
@@ -450,19 +452,8 @@ func (r *Runner) Loop(ctx context.Context) error {
 	if interval == 0 {
 		interval = 10 * time.Second
 	}
-	// Do not pick up work before the agent container is up, otherwise the
-	// first run of a fresh pod would fail.
-	for {
-		err := r.Agent.Ready(ctx)
-		if err == nil {
-			break
-		}
-		r.Log.Info("waiting for the agent container", "error", err.Error())
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(2 * time.Second):
-		}
+	if !r.waitAgent(ctx) {
+		return nil
 	}
 	wake := r.watchTask(ctx)
 	for {
@@ -483,6 +474,23 @@ func (r *Runner) Loop(ctx context.Context) error {
 	}
 }
 
+// waitAgent waits for the agent container, so a fresh pod picks up no work
+// that would fail; false when ctx ended first.
+func (r *Runner) waitAgent(ctx context.Context) bool {
+	for {
+		err := r.Agent.Ready(ctx)
+		if err == nil {
+			return true
+		}
+		r.Log.Info("waiting for the agent container", "error", err.Error())
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
 // tick handles one chat turn if any, otherwise one run request.
 func (r *Runner) tick(ctx context.Context, wake <-chan struct{}) (bool, error) {
 	task, project, err := r.load(ctx)
@@ -497,7 +505,7 @@ func (r *Runner) tick(ctx context.Context, wake <-chan struct{}) (bool, error) {
 		// Treated as no message: the run steps below fail on it themselves.
 		r.log().Error(err, "loading the state for chat messages")
 	}
-	if msg, ok := nextChatMessage(task, st); ok && err == nil {
+	if msg, ok := nextChatMessage(task.Spec.Source.ChatMessages, task.Status.Chat, st); ok && err == nil {
 		// A failed turn (e.g. the agent container lost) is retried after
 		// the poll interval, not at once.
 		err := r.chatTurn(ctx, task, project, msg, wake)

@@ -31,6 +31,12 @@ const chatResendPrefix = "(Your answer to the following message may not have arr
 // watchTask watches this runner's AgentTask and signals wake on changes.
 // The poll in Loop remains the fallback when the client cannot watch.
 func (r *Runner) watchTask(ctx context.Context) <-chan struct{} {
+	return r.watchObject(ctx, &aiv1.AgentTaskList{}, r.TaskName)
+}
+
+// watchObject watches the object called name of list's kind in the runner's
+// namespace (a task or a plan) and signals wake on changes.
+func (r *Runner) watchObject(ctx context.Context, list client.ObjectList, name string) <-chan struct{} {
 	wake := make(chan struct{}, 1)
 	wc, ok := r.K8s.(client.WithWatch)
 	if !ok {
@@ -38,10 +44,10 @@ func (r *Runner) watchTask(ctx context.Context) <-chan struct{} {
 	}
 	go func() {
 		for ctx.Err() == nil {
-			w, err := wc.Watch(ctx, &aiv1.AgentTaskList{}, client.InNamespace(r.Namespace),
-				client.MatchingFields{"metadata.name": r.TaskName})
+			w, err := wc.Watch(ctx, list, client.InNamespace(r.Namespace),
+				client.MatchingFields{"metadata.name": name})
 			if err != nil {
-				r.Log.V(1).Info("watching the task failed", "error", err.Error())
+				r.Log.V(1).Info("watching failed", "name", name, "error", err.Error())
 				select {
 				case <-ctx.Done():
 					return
@@ -49,13 +55,13 @@ func (r *Runner) watchTask(ctx context.Context) <-chan struct{} {
 					continue
 				}
 			}
-			r.drainWatch(ctx, w, wake)
+			r.drainWatch(ctx, w, name, wake)
 		}
 	}()
 	return wake
 }
 
-func (r *Runner) drainWatch(ctx context.Context, w watch.Interface, wake chan<- struct{}) {
+func (r *Runner) drainWatch(ctx context.Context, w watch.Interface, name string, wake chan<- struct{}) {
 	defer w.Stop()
 	for {
 		select {
@@ -65,8 +71,8 @@ func (r *Runner) drainWatch(ctx context.Context, w watch.Interface, wake chan<- 
 			if !ok {
 				return
 			}
-			task, ok := ev.Object.(*aiv1.AgentTask)
-			if !ok || task.Name != r.TaskName {
+			obj, ok := ev.Object.(client.Object)
+			if !ok || obj.GetName() != name {
 				continue
 			}
 			select {
@@ -77,26 +83,14 @@ func (r *Runner) drainWatch(ctx context.Context, w watch.Interface, wake chan<- 
 	}
 }
 
-// nextChatMessage returns the oldest unanswered non-command chat message.
-func nextChatMessage(task *aiv1.AgentTask, st state) (aiv1.ChatMessage, bool) {
-	answered := map[int64]struct{}{}
-	for _, id := range st.ChatAnswered {
-		answered[id] = struct{}{}
-	}
-	if task.Status.Chat != nil {
-		for _, rep := range task.Status.Chat.Replies {
-			answered[rep.MessageID] = struct{}{}
-		}
-	}
+// nextChatMessage returns the oldest unanswered non-command message of a
+// task's or a plan's chat messages and chat status.
+func nextChatMessage(all []aiv1.ChatMessage, chat *aiv1.ChatStatus, st state) (aiv1.ChatMessage, bool) {
 	var msgs []aiv1.ChatMessage
-	for _, m := range task.Spec.Source.ChatMessages {
-		if m.Kind == "command" {
-			continue
+	for _, m := range all {
+		if m.Kind != "command" && !answeredChat(chat, st, m.ID) {
+			msgs = append(msgs, m)
 		}
-		if _, ok := answered[m.ID]; ok {
-			continue
-		}
-		msgs = append(msgs, m)
 	}
 	if len(msgs) == 0 {
 		return aiv1.ChatMessage{}, false
@@ -321,7 +315,7 @@ func (r *Runner) watchInterrupt(ctx context.Context, currentID int64, wake <-cha
 			if m.Kind != "interrupt" || m.ID <= currentID {
 				continue
 			}
-			if answeredChat(task, st, m.ID) {
+			if answeredChat(task.Status.Chat, st, m.ID) {
 				continue
 			}
 			if turn.interrupt() {
@@ -346,12 +340,12 @@ func (r *Runner) watchInterrupt(ctx context.Context, currentID int64, wake <-cha
 	}
 }
 
-func answeredChat(task *aiv1.AgentTask, st state, id int64) bool {
+func answeredChat(chat *aiv1.ChatStatus, st state, id int64) bool {
 	if slices.Contains(st.ChatAnswered, id) {
 		return true
 	}
-	if task.Status.Chat != nil {
-		for _, rep := range task.Status.Chat.Replies {
+	if chat != nil {
+		for _, rep := range chat.Replies {
 			if rep.MessageID == id {
 				return true
 			}
