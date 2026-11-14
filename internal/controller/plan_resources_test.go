@@ -3,6 +3,7 @@ package controller
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -14,7 +15,7 @@ import (
 
 func testPlan() *aiv1.AgentPlan {
 	return &aiv1.AgentPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-20261114-abc123", Namespace: ns, UID: "uid-plan"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-20261114-abc123", Namespace: ns, UID: "uid-plan", CreationTimestamp: metav1.NewTime(planT0)},
 		Spec:       aiv1.AgentPlanSpec{ProjectRef: "shop", CreatedBy: "owner"},
 	}
 }
@@ -28,7 +29,10 @@ func testPlanSpec() aiv1.AgentProjectSpec {
 	return spec
 }
 
-var testPlanConfig = PlanConfig{MaxBudgetUSD: "5"}
+// planT0 is when testPlan was created.
+var planT0 = time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+
+var testPlanConfig = PlanConfig{IdleTimeout: 30 * time.Minute, Retention: 720 * time.Hour, MaxBudgetUSD: "5"}
 
 func checkPlanOwner(t *testing.T, meta metav1.ObjectMeta, plan *aiv1.AgentPlan) {
 	t.Helper()

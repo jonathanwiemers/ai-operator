@@ -2,11 +2,14 @@ package controller
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -22,23 +25,30 @@ type planEnv struct {
 	c   client.Client
 	r   *AgentPlanReconciler
 	ctx context.Context
+	now time.Time   // the reconciler's clock
+	res ctrl.Result // of the last reconcile
 }
 
 func newPlanEnv(t *testing.T, objs ...client.Object) *planEnv {
 	s := testScheme(t)
 	c := fake.NewClientBuilder().WithScheme(s).WithObjects(objs...).
 		WithStatusSubresource(&aiv1.AgentProject{}, &aiv1.AgentPlan{}).Build()
-	return &planEnv{t: t, c: c, ctx: context.Background(),
-		r: &AgentPlanReconciler{Client: c, Scheme: s, Config: testPlanConfig, DefaultAgentImage: "agent:default"}}
+	e := &planEnv{t: t, c: c, ctx: context.Background(), now: planT0.Add(time.Minute)}
+	e.r = &AgentPlanReconciler{Client: c, Scheme: s, Config: testPlanConfig, DefaultAgentImage: "agent:default",
+		Now: func() time.Time { return e.now }}
+	return e
 }
 
 func (e *planEnv) reconcile() *aiv1.AgentPlan {
 	e.t.Helper()
-	if _, err := e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: testPlan().Name}}); err != nil {
+	var err error
+	if e.res, err = e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: testPlan().Name}}); err != nil {
 		e.t.Fatal(err)
 	}
 	var plan aiv1.AgentPlan
-	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: testPlan().Name}, &plan); err != nil {
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: testPlan().Name}, &plan); apierrors.IsNotFound(err) {
+		return nil
+	} else if err != nil {
 		e.t.Fatal(err)
 	}
 	return &plan
@@ -155,6 +165,138 @@ func TestPlanCreatedOrFailedStartsNoPod(t *testing.T) {
 		if e.reconcile(); e.pod() != nil {
 			t.Fatalf("%s: no pod", phase)
 		}
+	}
+}
+
+// setStatus patches the plan's status as the runner or the UI would.
+func (e *planEnv) setStatus(plan *aiv1.AgentPlan, change func(*aiv1.AgentPlanStatus)) {
+	e.t.Helper()
+	orig := plan.DeepCopy()
+	change(&plan.Status)
+	if err := e.c.Status().Patch(e.ctx, plan, client.MergeFrom(orig)); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// answer records the runner's reply to message id at the clock's time.
+func (e *planEnv) answer(plan *aiv1.AgentPlan, id int64) {
+	e.t.Helper()
+	at := metav1.NewTime(e.now)
+	e.setStatus(plan, func(st *aiv1.AgentPlanStatus) {
+		st.Phase = aiv1.AgentPlanReady
+		st.Chat = &aiv1.ChatStatus{Replies: []aiv1.ChatReply{{MessageID: id, Text: "ok", At: at}}, LastTurnTime: &at}
+	})
+}
+
+func TestPlanCreatedStopsPod(t *testing.T) {
+	e := newPlanEnv(t, testProject(), pendingPlan())
+	plan := e.reconcile()
+	e.setStatus(plan, func(st *aiv1.AgentPlanStatus) { st.Phase, st.CreatedMilestoneIID = aiv1.AgentPlanCreated, 3 })
+	plan = e.reconcile()
+	if e.pod() != nil || plan.Status.Phase != aiv1.AgentPlanCreated || plan.Status.PodName != "" {
+		t.Fatalf("a created plan has no pod: phase %q, pod %q", plan.Status.Phase, plan.Status.PodName)
+	}
+	if e.reconcile(); e.pod() != nil {
+		t.Fatal("the pending message must not start a new pod")
+	}
+}
+
+func TestPlanIdleStopsPodAndMessageRestartsIt(t *testing.T) {
+	e := newPlanEnv(t, testProject(), pendingPlan())
+	plan := e.reconcile()
+	claim := &corev1.PersistentVolumeClaim{}
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: naming.Workspace(plan.Name)}, claim); err != nil {
+		t.Fatal(err)
+	}
+	e.setPod(corev1.PodRunning, true)
+	e.now = planT0.Add(5 * time.Minute)
+	e.answer(plan, 7)
+
+	e.now = planT0.Add(20 * time.Minute)
+	if plan = e.reconcile(); e.pod() == nil || plan.Status.Phase != aiv1.AgentPlanReady {
+		t.Fatalf("before the idle timeout the pod stays: phase %q", plan.Status.Phase)
+	}
+	if want := 15 * time.Minute; e.res.RequeueAfter != want {
+		t.Fatalf("requeue after %s, want %s (30m after the last turn)", e.res.RequeueAfter, want)
+	}
+
+	e.now = planT0.Add(35 * time.Minute)
+	plan = e.reconcile()
+	if e.pod() != nil || !e.claimExists() || plan.Status.Phase != aiv1.AgentPlanIdle || plan.Status.PodName != "" {
+		t.Fatalf("idle: pod gone, claim kept; phase %q, pod %q", plan.Status.Phase, plan.Status.PodName)
+	}
+	if want := 720*time.Hour - 30*time.Minute; e.res.RequeueAfter != want {
+		t.Fatalf("idle requeue after %s, want the retention deadline %s", e.res.RequeueAfter, want)
+	}
+
+	e.now = planT0.Add(2 * time.Hour)
+	plan.Spec.ChatMessages = []aiv1.ChatMessage{{ID: 8, Kind: "message", Text: "go on", Author: "owner", At: metav1.NewTime(e.now)}}
+	if err := e.c.Update(e.ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	plan = e.reconcile()
+	again := &corev1.PersistentVolumeClaim{}
+	if err := e.c.Get(e.ctx, client.ObjectKeyFromObject(claim), again); err != nil {
+		t.Fatal(err)
+	}
+	if e.pod() == nil || plan.Status.Phase != aiv1.AgentPlanStarting || again.UID != claim.UID {
+		t.Fatalf("a message on an idle plan starts a pod on the same claim: phase %q", plan.Status.Phase)
+	}
+	if !slices.ContainsFunc(e.pod().Spec.Volumes, func(v corev1.Volume) bool {
+		return v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == claim.Name
+	}) {
+		t.Fatalf("the new pod must mount the plan's claim: %+v", e.pod().Spec.Volumes)
+	}
+}
+
+func TestPlanNoIdleStopWhileWorkingOrPending(t *testing.T) {
+	for name, prep := range map[string]func(*planEnv, *aiv1.AgentPlan){
+		"working": func(e *planEnv, plan *aiv1.AgentPlan) {
+			e.answer(plan, 7)
+			e.setStatus(plan, func(st *aiv1.AgentPlanStatus) { st.Phase = aiv1.AgentPlanWorking })
+		},
+		"pending": func(*planEnv, *aiv1.AgentPlan) {},
+	} {
+		e := newPlanEnv(t, testProject(), pendingPlan())
+		plan := e.reconcile()
+		e.setPod(corev1.PodRunning, true)
+		prep(e, plan)
+		e.now = planT0.Add(3 * time.Hour)
+		if plan = e.reconcile(); e.pod() == nil || plan.Status.Phase == aiv1.AgentPlanIdle {
+			t.Fatalf("%s: the pod must stay past the idle timeout, phase %q", name, plan.Status.Phase)
+		}
+	}
+}
+
+func TestPlanRetentionDeletesPlan(t *testing.T) {
+	plan := testPlan()
+	turn := metav1.NewTime(planT0.Add(time.Hour))
+	plan.Status.Chat = &aiv1.ChatStatus{LastTurnTime: &turn}
+	e := newPlanEnv(t, testProject(), plan)
+	e.now = planT0.Add(720 * time.Hour)
+	if e.reconcile() == nil || e.res.RequeueAfter != time.Hour {
+		t.Fatalf("kept until 720h after the last turn, requeue after %s", e.res.RequeueAfter)
+	}
+	e.now = turn.Add(720 * time.Hour)
+	if e.reconcile() != nil {
+		t.Fatal("the plan must be deleted at the retention deadline")
+	}
+}
+
+func TestPlanLastActivity(t *testing.T) {
+	plan := testPlan()
+	if got := lastActivity(plan); !got.Equal(planT0) {
+		t.Fatalf("only created: %s", got)
+	}
+	msg, turn := planT0.Add(2*time.Hour), metav1.NewTime(planT0.Add(time.Hour))
+	plan.Spec.ChatMessages = []aiv1.ChatMessage{{ID: 1, At: metav1.NewTime(planT0.Add(time.Minute))}, {ID: 2, At: metav1.NewTime(msg)}}
+	plan.Status.Chat = &aiv1.ChatStatus{LastTurnTime: &turn}
+	if got := lastActivity(plan); !got.Equal(msg) {
+		t.Fatalf("newest message: %s", got)
+	}
+	turn = metav1.NewTime(planT0.Add(3 * time.Hour))
+	if got := lastActivity(plan); !got.Equal(turn.Time) {
+		t.Fatalf("last turn: %s", got)
 	}
 }
 

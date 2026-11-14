@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"slices"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -24,7 +25,10 @@ import (
 // a reply: Starting until the pod's containers are ready, then Ready (the
 // runner sets Working during a turn). A pod that ended is deleted, so the
 // next reconcile starts a new one; MaxPlanPodFailures failed pods in a row
-// fail the plan.
+// fail the plan. Without a pending message or a running turn the pod stops
+// IdleTimeout after the plan's last activity (phase Idle, the workspace claim
+// stays for the next pod); a created or failed plan has no pod. The plan is
+// deleted Retention after its last activity.
 type AgentPlanReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -33,6 +37,8 @@ type AgentPlanReconciler struct {
 	// do not set agents.image and agents.logLevel.
 	DefaultAgentImage    string
 	DefaultAgentLogLevel aiv1.LogLevel
+	// Now is the clock; nil means time.Now.
+	Now func() time.Time
 
 	wakes chan event.GenericEvent
 }
@@ -65,8 +71,21 @@ func (r *AgentPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		orig = plan.DeepCopy()
 	}
-	if !plan.Active() || !planPending(&plan) {
-		return ctrl.Result{}, nil
+	now, last := r.now(), lastActivity(&plan)
+	if now.Sub(last) >= r.Config.Retention {
+		return ctrl.Result{}, client.IgnoreNotFound(r.Delete(ctx, &plan))
+	}
+	res := ctrl.Result{RequeueAfter: last.Add(r.Config.Retention).Sub(now)}
+	switch idle := last.Add(r.Config.IdleTimeout).Sub(now); {
+	case !plan.Active():
+		return res, r.stopPod(ctx, &plan, orig, st.Phase)
+	case planPending(&plan):
+	case st.Phase == aiv1.AgentPlanWorking: // a turn without new messages is never cut
+		return res, nil
+	case idle > 0:
+		return ctrl.Result{RequeueAfter: min(idle, res.RequeueAfter)}, nil
+	default:
+		return res, r.stopPod(ctx, &plan, orig, aiv1.AgentPlanIdle)
 	}
 
 	spec := project.Spec.WithDefaults()
@@ -97,12 +116,45 @@ func (r *AgentPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			st.Phase = aiv1.AgentPlanFailed
 		}
 	case st.Phase == aiv1.AgentPlanWorking: // the runner's turn
-	case containersReady(pod):
+	case containersReady(pod) && pod.DeletionTimestamp.IsZero():
 		st.Phase, st.Message, st.PodFailures = aiv1.AgentPlanReady, "", 0
 	default:
 		st.Phase = aiv1.AgentPlanStarting
 	}
-	return ctrl.Result{}, r.patchStatus(ctx, &plan, orig)
+	return res, r.patchStatus(ctx, &plan, orig)
+}
+
+// stopPod deletes the plan's pod, keeping its workspace claim, and sets
+// phase.
+func (r *AgentPlanReconciler) stopPod(ctx context.Context, plan, orig *aiv1.AgentPlan, phase aiv1.AgentPlanPhase) error {
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: plan.Namespace, Name: plan.Name}}
+	if err := client.IgnoreNotFound(r.Delete(ctx, pod)); err != nil {
+		return err
+	}
+	plan.Status.Phase, plan.Status.PodName = phase, ""
+	return r.patchStatus(ctx, plan, orig)
+}
+
+// lastActivity is the latest of the plan's creation, its newest message and
+// the runner's last turn.
+func lastActivity(plan *aiv1.AgentPlan) time.Time {
+	last := plan.CreationTimestamp.Time
+	for _, m := range plan.Spec.ChatMessages {
+		if m.At.After(last) {
+			last = m.At.Time
+		}
+	}
+	if c := plan.Status.Chat; c != nil && c.LastTurnTime != nil && c.LastTurnTime.After(last) {
+		last = c.LastTurnTime.Time
+	}
+	return last
+}
+
+func (r *AgentPlanReconciler) now() time.Time {
+	if r.Now != nil {
+		return r.Now()
+	}
+	return time.Now()
 }
 
 // planPending reports whether a message of plan waits for a reply.

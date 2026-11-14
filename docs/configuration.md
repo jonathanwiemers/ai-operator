@@ -227,8 +227,8 @@ raise limit is below the default.
 
 | Value | Default | Description |
 |-------|---------|-------------|
-| `plan.idleTimeout` | `30m` | after the last message, how long a plan pod stays before it ends (phase Idle); `--plan-idle-timeout` |
-| `plan.retention` | `720h` | how long plans are kept after their last message or creation; `--plan-retention` |
+| `plan.idleTimeout` | `30m` | after the last message or turn, how long a plan pod stays before it ends (phase Idle; the workspace stays for the next pod). A running turn or an unanswered message keeps the pod; `--plan-idle-timeout` |
+| `plan.retention` | `720h` | how long plans are kept after their last message, turn or creation; the pod and workspace go with the plan; `--plan-retention` |
 | `plan.maxBudgetUSD` | `"5"` | default spend cap per plan (USD decimal string); `--plan-max-budget-usd` and the UI default for new plans |
 | `plan.maxBudgetUSDLimit` | `"20"` | highest cap an owner may raise a plan to in the Desk (UI config); must be at least `plan.maxBudgetUSD` |
 
