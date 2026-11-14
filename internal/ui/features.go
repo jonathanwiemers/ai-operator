@@ -28,6 +28,8 @@ const (
 	FeatureNameHistory FeatureName = "history"
 	// FeatureNameChat: Desk chat with the agents (chat writer login and grant).
 	FeatureNameChat FeatureName = "chat"
+	// FeatureNamePlans: milestone plans of the projects (chat writer login).
+	FeatureNamePlans FeatureName = "plans"
 )
 
 // FeaturesResponse is GET /api/v1/features.
@@ -49,6 +51,9 @@ func (s *Server) features(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.cfg.ChatEnabled() && s.authz.SeesChat(p) {
 		out = append(out, Feature{Name: FeatureNameChat})
+	}
+	if s.cfg.ChatEnabled() && s.authz.SeesFactory(p) {
+		out = append(out, Feature{Name: FeatureNamePlans})
 	}
 	if read, write := s.authz.ResearchAccess(p); read {
 		f := Feature{Name: FeatureNameResearch, Write: write}

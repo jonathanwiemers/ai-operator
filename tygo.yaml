@@ -16,6 +16,7 @@ packages:
     fallback_type: Unmapped
     enum_style: union
     include_files:
+      - agentplan_types.go
       - agentproject_types.go
       - agentresearch_types.go
       - agenttask_types.go
@@ -95,6 +96,7 @@ packages:
       - oneoff.go
       - overview.go
       - pause_exits.go
+      - plans.go
       - prompt.go
       - queue.go
       - release.go
@@ -114,6 +116,7 @@ packages:
     type_mappings:
       metav1.Condition: aiv1.Condition
       aiv1.AgentTaskStatus: aiv1.AgentTaskStatus
+      aiv1.AgentPlanPhase: aiv1.AgentPlanPhase
       aiv1.AutopilotItemState: aiv1.AutopilotItemState
       aiv1.AutopilotPhase: aiv1.AutopilotPhase
       aiv1.Engine: aiv1.Engine

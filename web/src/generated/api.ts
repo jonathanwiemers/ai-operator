@@ -31,6 +31,150 @@ export interface Condition {
 }
 
 //////////
+// source: agentplan_types.go
+
+/**
+ * AgentPlanSpec is one milestone-planning conversation the Desk started.
+ */
+export interface AgentPlanSpec {
+  /**
+   * ProjectRef names the AgentProject in the same namespace.
+   * +kubebuilder:validation:MinLength=1
+   */
+  projectRef: string;
+  /**
+   * Title of the plan; may be empty.
+   * +optional
+   */
+  title?: string;
+  /**
+   * CreatedBy is the Desk subject (principal username) who created it.
+   * +kubebuilder:validation:MinLength=1
+   */
+  createdBy: string;
+  /**
+   * MaxBudgetUSD is the plan's cap after an owner raised it, as a decimal
+   * string; empty means the operator default plan.maxBudgetUSD.
+   * +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
+   * +optional
+   */
+  maxBudgetUSD?: string;
+  /**
+   * ChatMessages are the Desk messages the operator handed to the plan's
+   * pod and the runner has not answered yet.
+   * +optional
+   * +kubebuilder:validation:MaxItems=20
+   */
+  chatMessages?: ChatMessage[];
+}
+/**
+ * AgentPlanPhase is where a plan stands.
+ * +kubebuilder:validation:Enum=Starting;Ready;Working;Idle;Created;Failed
+ */
+export type AgentPlanPhase = string;
+export const AgentPlanStarting: AgentPlanPhase = "Starting";
+export const AgentPlanReady: AgentPlanPhase = "Ready";
+export const AgentPlanWorking: AgentPlanPhase = "Working";
+export const AgentPlanIdle: AgentPlanPhase = "Idle";
+export const AgentPlanCreated: AgentPlanPhase = "Created";
+export const AgentPlanFailed: AgentPlanPhase = "Failed";
+/**
+ * AgentPlanStatus is the plan's draft, its milestone once created, and its
+ * spend.
+ */
+export interface AgentPlanStatus {
+  /**
+   * +optional
+   */
+  phase?: AgentPlanPhase;
+  /**
+   * +optional
+   */
+  message?: string;
+  /**
+   * Draft is the milestone description in markdown.
+   * +optional
+   * +kubebuilder:validation:MaxLength=65536
+   */
+  draft?: string;
+  /**
+   * DraftRevision counts the draft's versions, by agent or owner.
+   * +optional
+   */
+  draftRevision?: number /* int64 */;
+  /**
+   * DraftBy is who wrote the current draft.
+   * +optional
+   * +kubebuilder:validation:Enum=agent;owner
+   */
+  draftBy?: string;
+  /**
+   * DraftSHA is the default branch SHA the agent read for the draft.
+   * +optional
+   */
+  draftSHA?: string;
+  /**
+   * +optional
+   */
+  createdMilestoneIID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  createdMilestoneURL?: string;
+  /**
+   * SpendUSD is the plan's model spend as a decimal string (4 decimals).
+   * +optional
+   */
+  spendUSD?: string;
+  /**
+   * +optional
+   */
+  tokens?: number /* int64 */;
+  /**
+   * +optional
+   */
+  chat?: ChatStatus;
+  /**
+   * Calls are the plan's engine calls, newest last.
+   * +optional
+   * +listType=atomic
+   * +kubebuilder:validation:MaxItems=50
+   */
+  calls?: AgentCall[];
+  /**
+   * +optional
+   */
+  podName?: string;
+  /**
+   * PodFailures counts the plan's pods that failed in a row; the plan
+   * fails at MaxPlanPodFailures.
+   * +optional
+   */
+  podFailures?: number /* int32 */;
+}
+/**
+ * MaxPlanPodFailures is how many pods of a plan may fail in a row before
+ * the plan fails.
+ */
+export const MaxPlanPodFailures = 3;
+/**
+ * AgentPlan is an owner's conversation with an agent that drafts a new
+ * milestone of a project, until the Desk creates it.
+ */
+export interface AgentPlan extends metav1.TypeMeta {
+  metadata?: ObjectMeta;
+  spec: AgentPlanSpec;
+  status?: AgentPlanStatus;
+}
+/**
+ * AgentPlanList contains a list of AgentPlan.
+ */
+export interface AgentPlanList extends metav1.TypeMeta {
+  metadata?: ListMeta;
+  items: AgentPlan[];
+}
+
+//////////
 // source: agentproject_types.go
 
 /**

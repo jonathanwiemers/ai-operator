@@ -345,9 +345,13 @@ export const FeatureNameHistory = "history";
  */
 export const FeatureNameChat = "chat";
 /**
+ * FeatureNamePlans: milestone plans of the projects (chat writer login).
+ */
+export const FeatureNamePlans = "plans";
+/**
  * Features of the UI.
  */
-export type FeatureName = typeof FeatureNameFactory | typeof FeatureNameResearch | typeof FeatureNameHistory | typeof FeatureNameChat;
+export type FeatureName = typeof FeatureNameFactory | typeof FeatureNameResearch | typeof FeatureNameHistory | typeof FeatureNameChat | typeof FeatureNamePlans;
 /**
  * FeaturesResponse is GET /api/v1/features.
  */
@@ -894,6 +898,46 @@ export interface ExitView extends aiv1.PauseExit {
   status?: ExitStatus;
   detail?: string;
   allowed?: boolean;
+}
+
+//////////
+// source: plans.go
+
+/**
+ * PlanListItem is one milestone plan of a project, without its draft.
+ */
+export interface PlanListItem {
+  name: string;
+  title: string;
+  phase: aiv1.AgentPlanPhase;
+  createdBy: string;
+  createdAt: string;
+  lastActivityAt: string;
+  spendUSD: string;
+  tokens: number /* int64 */;
+  budgetUSD: string;
+  budgetLimitUSD: string;
+  createdMilestoneIID?: number /* int64 */;
+  createdMilestoneURL?: string;
+  permissions: PlanPermissions;
+}
+/**
+ * PlanPermissions says what the caller may do with the project's plans.
+ */
+export interface PlanPermissions {
+  /**
+   * Steer: post messages, edit drafts and create plans and milestones.
+   */
+  steer: boolean;
+}
+/**
+ * PlanView is one plan with its draft.
+ */
+export interface PlanView extends PlanListItem {
+  draft: string;
+  draftRevision: number /* int64 */;
+  draftBy?: string;
+  draftSHA?: string;
 }
 
 //////////
