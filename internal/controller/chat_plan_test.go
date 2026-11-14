@@ -1,11 +1,15 @@
 package controller
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -200,5 +204,123 @@ func TestChatSweepFailsMessagesOfRemovedPlans(t *testing.T) {
 	}
 	if st, reason := e.planMsgState(lost, "shop-plan-gone"); st != "failed" || reason != "the plan was removed before an answer" {
 		t.Fatalf("message of a removed plan: state = %q %q", st, reason)
+	}
+}
+
+// planReplyEnv has a plan with one dispatched message id and the reply rep
+// in its status; the last call ran on claude.
+func planReplyEnv(t *testing.T, rep aiv1.ChatReply) (*chatEnv, int64) {
+	t.Helper()
+	e, _ := newPlanChatEnv(t, chatProject(true), chatPlan(chatPlanName))
+	id := e.insertPlanUser(chatPlanName, "remove the strip", "message", "r1")
+	e.chat.dispatchQueued(e.ctx)
+	plan := e.plan(chatPlanName)
+	orig := plan.DeepCopy()
+	rep.MessageID, rep.At = id, metav1.NewTime(e.now)
+	plan.Status.Chat = &aiv1.ChatStatus{Replies: []aiv1.ChatReply{rep}}
+	plan.Status.Calls = []aiv1.AgentCall{{Engine: aiv1.EngineCursor}, {Engine: aiv1.EngineClaude}}
+	if err := e.c.Status().Patch(e.ctx, plan, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	return e, id
+}
+
+func (e *chatEnv) reconcilePlanReply(c client.Client) error {
+	e.t.Helper()
+	chat := *e.chat
+	chat.Client = c
+	_, err := chatPlanReply{&chat}.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: chatPlanName}})
+	return err
+}
+
+// planReplies returns the rows answering id.
+func (e *chatEnv) planReplies(id int64) []store.ChatMessage {
+	e.t.Helper()
+	msgs, err := e.store.PlanMessages(e.ctx, ns, "shop", chatPlanName, 0, 0, 200)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var out []store.ChatMessage
+	for _, m := range msgs {
+		if m.ReplyTo == id {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func TestChatPlanReplyCopied(t *testing.T) {
+	e, id := planReplyEnv(t, aiv1.ChatReply{Text: "which page?"})
+	if err := e.reconcilePlanReply(e.c); err != nil {
+		t.Fatal(err)
+	}
+	reps := e.planReplies(id)
+	if len(reps) != 1 || reps[0].Role != "agent" || reps[0].Body != "which page?" || reps[0].Plan != chatPlanName ||
+		reps[0].Task != "" || reps[0].Project != "shop" || reps[0].AuthorName != string(aiv1.EngineClaude) {
+		t.Fatalf("replies = %+v, want one agent reply on the plan by claude", reps)
+	}
+	if st, _ := e.planMsgState(id, chatPlanName); st != "answered" {
+		t.Fatalf("user message state = %q, want answered", st)
+	}
+	if msgs := e.plan(chatPlanName).Spec.ChatMessages; len(msgs) != 0 {
+		t.Fatalf("plan chatMessages = %+v, want none", msgs)
+	}
+}
+
+func TestChatPlanReplyError(t *testing.T) {
+	e, id := planReplyEnv(t, aiv1.ChatReply{Text: "partial", Error: "interrupted"})
+	if err := e.reconcilePlanReply(e.c); err != nil {
+		t.Fatal(err)
+	}
+	if reps := e.planReplies(id); len(reps) != 1 || reps[0].Role != "system" || reps[0].Body != "error: interrupted\npartial" {
+		t.Fatalf("replies = %+v, want one system error reply", reps)
+	}
+}
+
+func TestChatPlanReplyIdempotent(t *testing.T) {
+	e, id := planReplyEnv(t, aiv1.ChatReply{Text: "answer"})
+	// A row from an earlier round whose spec patch was lost.
+	if _, err := e.store.InsertReply(e.ctx, store.ChatMessage{
+		Namespace: ns, Project: "shop", Plan: chatPlanName, Role: "agent",
+		Body: "answer", ReplyTo: id, ExpiresAt: e.now.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.reconcilePlanReply(e.c); err != nil {
+		t.Fatal(err)
+	}
+	if reps := e.planReplies(id); len(reps) != 1 {
+		t.Fatalf("replies = %d, want 1", len(reps))
+	}
+	if msgs := e.plan(chatPlanName).Spec.ChatMessages; len(msgs) != 0 {
+		t.Fatalf("plan chatMessages = %+v, want none", msgs)
+	}
+}
+
+// conflictClient fails every patch with a conflict, like a plan the
+// dispatcher changed meanwhile.
+type conflictClient struct{ client.Client }
+
+func (c conflictClient) Patch(context.Context, client.Object, client.Patch, ...client.PatchOption) error {
+	return apierrors.NewConflict(schema.GroupResource{Group: "ai.wiemers.me", Resource: "agentplans"}, chatPlanName, nil)
+}
+
+func TestChatPlanReplyConflictKeepsSpec(t *testing.T) {
+	e, id := planReplyEnv(t, aiv1.ChatReply{Text: "answer"})
+	if err := e.reconcilePlanReply(conflictClient{e.c}); !apierrors.IsConflict(err) {
+		t.Fatalf("err = %v, want conflict", err)
+	}
+	if msgs := e.plan(chatPlanName).Spec.ChatMessages; len(msgs) != 1 || msgs[0].ID != id {
+		t.Fatalf("plan chatMessages = %+v, want the message kept", msgs)
+	}
+	// The next round drops it without a second row.
+	if err := e.reconcilePlanReply(e.c); err != nil {
+		t.Fatal(err)
+	}
+	if reps := e.planReplies(id); len(reps) != 1 {
+		t.Fatalf("replies = %d, want 1", len(reps))
+	}
+	if msgs := e.plan(chatPlanName).Spec.ChatMessages; len(msgs) != 0 {
+		t.Fatalf("plan chatMessages = %+v, want none", msgs)
 	}
 }

@@ -6,13 +6,43 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
-// +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentplans,verbs=get;patch
+// +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentplans,verbs=get;list;watch;patch
+
+// chatPlanReply is the Chat reply reconciler for AgentPlans: it copies
+// status.chat.replies into chat_messages and drops the answered messages
+// from spec.chatMessages.
+type chatPlanReply struct{ *Chat }
+
+// Reconcile copies the plan's replies like Chat.Reconcile does a task's.
+func (c chatPlanReply) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	s := c.readyStore()
+	if s == nil {
+		return ctrl.Result{RequeueAfter: chatDBRetry}, nil
+	}
+	var plan aiv1.AgentPlan
+	if err := c.Get(ctx, req.NamespacedName, &plan); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	row := store.ChatMessage{Namespace: plan.Namespace, Project: plan.Spec.ProjectRef, Plan: plan.Name}
+	if n := len(plan.Status.Calls); n > 0 {
+		row.AuthorName = string(plan.Status.Calls[n-1].Engine)
+	}
+	orig := plan.DeepCopy()
+	keep, dropped, err := c.copyReplies(ctx, s, plan.Spec.ChatMessages, plan.Status.Chat, nil, row)
+	if err != nil || !dropped {
+		return ctrl.Result{}, err
+	}
+	plan.Spec.ChatMessages = keep
+	// Optimistic lock, as for tasks: never drop a message dispatched meanwhile.
+	return ctrl.Result{}, c.Patch(ctx, &plan, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
+}
 
 // dispatchPlan hands the plan message m to its AgentPlan's spec and wakes
 // the plan reconciler, so the pod starts without waiting for its requeue.

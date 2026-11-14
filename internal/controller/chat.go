@@ -3,6 +3,7 @@ package controller
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"slices"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
@@ -297,89 +297,24 @@ func (c *Chat) deliverChat(ctx context.Context, s *store.Store, m store.ChatMess
 // preferred over a runner reply for the same message (they cannot both
 // exist for a command: the runner skips those).
 func (c *Chat) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	select {
-	case <-c.DB.Ready():
-	default:
-		return ctrl.Result{RequeueAfter: chatDBRetry}, nil
-	}
-	s := c.DB.Store()
+	s := c.readyStore()
 	if s == nil {
 		return ctrl.Result{RequeueAfter: chatDBRetry}, nil
 	}
-
-	logger := log.FromContext(ctx)
 	var task aiv1.AgentTask
 	if err := c.Get(ctx, req.NamespacedName, &task); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-	if len(task.Spec.Source.ChatMessages) == 0 {
-		return ctrl.Result{}, nil
-	}
-
-	replies := map[int64]aiv1.ChatReply{}
-	if task.Status.Chat != nil {
-		for _, r := range task.Status.Chat.Replies {
-			replies[r.MessageID] = r
-		}
 	}
 	answers := map[int64]aiv1.ChatReply{}
 	for _, a := range task.Spec.Source.ChatAnswers {
 		answers[a.MessageID] = a
 	}
-	if len(replies) == 0 && len(answers) == 0 {
-		return ctrl.Result{}, nil
-	}
-
 	orig := task.DeepCopy()
-	var keep []aiv1.ChatMessage
-	dropped := false
-	for _, m := range task.Spec.Source.ChatMessages {
-		if ans, ok := answers[m.ID]; ok {
-			if _, err := s.InsertReply(ctx, store.ChatMessage{
-				Namespace: task.Namespace,
-				Project:   task.Spec.ProjectRef,
-				Task:      task.Name,
-				Role:      "system",
-				Body:      ans.Text,
-				ReplyTo:   m.ID,
-				ExpiresAt: c.now().Add(c.Retention),
-			}); err != nil {
-				logger.Error(err, "inserting chat command answer", "messageID", m.ID)
-				return ctrl.Result{}, err
-			}
-			dropped = true
-			continue
-		}
-		rep, ok := replies[m.ID]
-		if !ok {
-			keep = append(keep, m)
-			continue
-		}
-		role, body := "agent", rep.Text
-		if rep.Error != "" {
-			role = "system"
-			body = "error: " + rep.Error
-			if rep.Text != "" {
-				body += "\n" + rep.Text
-			}
-		}
-		if _, err := s.InsertReply(ctx, store.ChatMessage{
-			Namespace:  task.Namespace,
-			Project:    task.Spec.ProjectRef,
-			Task:       task.Name,
-			AuthorName: chatAuthorName(&task),
-			Role:       role,
-			Body:       body,
-			ReplyTo:    m.ID,
-			ExpiresAt:  c.now().Add(c.Retention),
-		}); err != nil {
-			logger.Error(err, "inserting chat reply", "messageID", m.ID)
-			return ctrl.Result{}, err
-		}
-		dropped = true
-	}
-	if !dropped {
-		return ctrl.Result{}, nil
+	keep, dropped, err := c.copyReplies(ctx, s, task.Spec.Source.ChatMessages, task.Status.Chat, answers, store.ChatMessage{
+		Namespace: task.Namespace, Project: task.Spec.ProjectRef, Task: task.Name, AuthorName: chatAuthorName(&task),
+	})
+	if err != nil || !dropped {
+		return ctrl.Result{}, err
 	}
 	task.Spec.Source.ChatMessages = keep
 	keptIDs := map[int64]bool{}
@@ -399,6 +334,50 @@ func (c *Chat) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, er
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
+}
+
+// readyStore is the research store once the database is ready, else nil.
+func (c *Chat) readyStore() *store.Store {
+	select {
+	case <-c.DB.Ready():
+		return c.DB.Store()
+	default:
+		return nil
+	}
+}
+
+// copyReplies inserts a row like tmpl into chat_messages for each of msgs
+// with an answer (role system) or a reply in st (role agent, or system with
+// "error: …"). It returns the messages still waiting and whether any was
+// answered. InsertReply is idempotent: a retry after a failed spec patch
+// does not duplicate rows.
+func (c *Chat) copyReplies(ctx context.Context, s *store.Store, msgs []aiv1.ChatMessage, st *aiv1.ChatStatus, answers map[int64]aiv1.ChatReply, tmpl store.ChatMessage) ([]aiv1.ChatMessage, bool, error) {
+	replies := map[int64]aiv1.ChatReply{}
+	if st != nil {
+		for _, r := range st.Replies {
+			replies[r.MessageID] = r
+		}
+	}
+	var keep []aiv1.ChatMessage
+	for _, m := range msgs {
+		row := tmpl
+		row.ReplyTo, row.ExpiresAt = m.ID, c.now().Add(c.Retention)
+		if ans, ok := answers[m.ID]; ok {
+			row.AuthorName, row.Role, row.Body = "", "system", ans.Text
+		} else if rep, ok := replies[m.ID]; !ok {
+			keep = append(keep, m)
+			continue
+		} else if row.Role, row.Body = "agent", rep.Text; rep.Error != "" {
+			row.Role, row.Body = "system", "error: "+rep.Error
+			if rep.Text != "" {
+				row.Body += "\n" + rep.Text
+			}
+		}
+		if _, err := s.InsertReply(ctx, row); err != nil {
+			return nil, false, fmt.Errorf("inserting chat reply to message %d: %w", m.ID, err)
+		}
+	}
+	return keep, len(keep) < len(msgs), nil
 }
 
 // chatAuthorName is the engine name when the task status has one reading.
@@ -423,13 +402,19 @@ func chatCommandAllowed(task aiv1.AgentTask, cmd chatcmd.Command) bool {
 	}
 }
 
-// SetupWithManager registers the reply reconciler.
+// SetupWithManager registers the reply reconcilers for tasks and plans.
 func (c *Chat) SetupWithManager(mgr ctrl.Manager) error {
 	if c.Log.GetSink() == nil {
 		c.Log = ctrl.Log.WithName("chat")
 	}
-	return ctrl.NewControllerManagedBy(mgr).
+	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&aiv1.AgentTask{}).
 		Named("chatreply").
-		Complete(c)
+		Complete(c); err != nil {
+		return err
+	}
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&aiv1.AgentPlan{}).
+		Named("chatplanreply").
+		Complete(chatPlanReply{c})
 }
