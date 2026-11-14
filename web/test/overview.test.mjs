@@ -1,7 +1,7 @@
 // Tests of src/overview.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { activeLimits, overviewStrip } from '../src/overview.ts'
+import { activeLimits, finishingLabel, overviewStrip } from '../src/overview.ts'
 
 const base = { running: 2, paused: 1, waiting: 0, needsYou: 3, working: [], history: true }
 const spend = (usd, tokens) => ({ costUSD: usd, costKnown: true, tokens, costFrom: 'calls' })
@@ -44,4 +44,11 @@ test('activeLimits: only limits still in force, soonest first', () => {
   ]
   assert.deepEqual(activeLimits(limits, now).map((l) => l.engine), ['cursor', 'claude'])
   assert.deepEqual(activeLimits(undefined, now), [])
+})
+
+test('finishingLabel: N finishing when held open, nothing for 0 or absent', () => {
+  assert.equal(finishingLabel(2), '2 finishing')
+  assert.equal(finishingLabel(1), '1 finishing')
+  assert.equal(finishingLabel(0), undefined)
+  assert.equal(finishingLabel(undefined), undefined)
 })

@@ -2198,6 +2198,17 @@ test.describe('overview cards', () => {
 
       const cards = page.locator('main article')
       await expect(cards).toHaveCount(overview.working.length)
+      // R7 Decision 6: "N finishing" on a card with held-open done milestones.
+      const finishing = cards.first().locator('[data-overview-finishing]')
+      await expect(finishing).toHaveText('2 finishing')
+      await expect(finishing).toHaveAttribute('href', '/projects/team-a/shop')
+      await expect(cards.nth(1).locator('[data-overview-finishing]')).toHaveCount(0)
+      const wrap = await finishing.evaluate((e) => {
+        const s = getComputedStyle(e)
+        return { whiteSpace: s.whiteSpace, overflow: e.scrollWidth > e.clientWidth + 1 }
+      })
+      expect(wrap.whiteSpace, 'no wrap').toBe('nowrap')
+      expect(wrap.overflow, 'fits at this width').toBe(false)
       const [a, b] = await cards.evaluateAll((els) =>
         els.slice(0, 2).map((e) => {
           const r = e.getBoundingClientRect()

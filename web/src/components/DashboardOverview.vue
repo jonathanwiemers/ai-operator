@@ -5,7 +5,7 @@ import MilestoneSections from './MilestoneSections.vue'
 import { clockTime, duration } from '../format'
 import { getOverview } from '../client'
 import { useNow, useResource } from '../live'
-import { activeLimits, overviewStrip, type StripChip } from '../overview'
+import { activeLimits, finishingLabel, overviewStrip, type StripChip } from '../overview'
 import type { WorkingNow } from '../types'
 
 // The dashboard's Overview tab (decision 4): the summary strip, Working
@@ -72,7 +72,17 @@ function runningFor(w: WorkingNow): string {
             :key="`${w.namespace}/${w.project}/${w.task ?? ''}`"
             class="card flex min-w-0 flex-col gap-1.5 px-3.5 py-3"
           >
-            <RouterLink class="text-xs font-semibold text-(--text-3)" :to="project(w)">{{ w.project }}</RouterLink>
+            <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <RouterLink class="text-xs font-semibold text-(--text-3)" :to="project(w)">{{ w.project }}</RouterLink>
+              <RouterLink
+                v-if="finishingLabel(w.finishing)"
+                :to="project(w)"
+                class="inline-flex h-[22px] shrink-0 items-center rounded-full bg-(--tone-muted-bg) px-2 text-xs font-semibold whitespace-nowrap text-(--tone-muted-fg) hover:no-underline"
+                data-overview-finishing
+              >
+                {{ finishingLabel(w.finishing) }}
+              </RouterLink>
+            </div>
             <template v-if="w.issueIID">
               <RouterLink
                 v-if="w.task"

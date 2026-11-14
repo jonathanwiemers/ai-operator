@@ -19,6 +19,7 @@ export const overview: OverviewView = {
       task: 'shop-277-implement',
       since: ago(12),
       next: { issueIID: 278, title: 'Guest checkout: confirmation mail', milestoneIID: 12 },
+      finishing: 2,
     },
     {
       namespace: 'team-b',

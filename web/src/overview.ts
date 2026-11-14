@@ -29,6 +29,12 @@ export function overviewStrip(o: OverviewView): StripChip[] {
   return chips
 }
 
+// finishingLabel is the Overview card's "N finishing" when done milestones
+// are still held open (R7 Decision 6). Absent or 0 yields nothing.
+export function finishingLabel(n: number | undefined): string | undefined {
+  return n && n > 0 ? `${n} finishing` : undefined
+}
+
 // activeLimits are the usage limits still in force at now, soonest end
 // first.
 export function activeLimits(limits: UsageLimit[] | undefined, now: number): UsageLimit[] {
