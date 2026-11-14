@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/history"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 // AgentPlanReconciler runs a plan's pod while one of its messages waits for
@@ -33,6 +36,11 @@ type AgentPlanReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Config PlanConfig
+	// DB records the plan's agent calls under the project; nil skips.
+	DB ResearchDB
+	// HistoryRetention is how long those calls are kept; 0 means
+	// history.DefaultRetention.
+	HistoryRetention time.Duration
 	// DefaultAgentImage and DefaultAgentLogLevel are used for projects that
 	// do not set agents.image and agents.logLevel.
 	DefaultAgentImage    string
@@ -52,6 +60,16 @@ func (r *AgentPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	var plan aiv1.AgentPlan
 	if err := r.Get(ctx, req.NamespacedName, &plan); err != nil || !plan.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	if len(plan.Status.Calls) > 0 && r.DB != nil {
+		select {
+		case <-r.DB.Ready():
+			if err := r.insertCalls(ctx, &plan); err != nil {
+				return ctrl.Result{}, err
+			}
+		default:
+			return ctrl.Result{RequeueAfter: researchDBRetry}, nil
+		}
 	}
 	orig, st := plan.DeepCopy(), &plan.Status
 	var project aiv1.AgentProject
@@ -208,4 +226,27 @@ func (r *AgentPlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		WatchesRawSource(source.Channel(r.wakes, &handler.EnqueueRequestForObject{})).
 		Named("agentplan").
 		Complete(r)
+}
+
+// insertCalls writes status.Calls into agent_calls under the plan's project,
+// keyed by plan UID and seq so a repeated reconcile writes none twice.
+func (r *AgentPlanReconciler) insertCalls(ctx context.Context, plan *aiv1.AgentPlan) error {
+	retention := r.HistoryRetention
+	if retention <= 0 {
+		retention = history.DefaultRetention
+	}
+	now := r.now()
+	calls := make([]store.Call, 0, len(plan.Status.Calls))
+	for _, c := range plan.Status.Calls {
+		call := history.StoreCall(c)
+		call.Key = fmt.Sprintf("plan/%s/%d", plan.UID, c.Seq)
+		call.Namespace, call.Project, call.Task = plan.Namespace, plan.Spec.ProjectRef, "plan/"+plan.Name
+		if call.At.IsZero() {
+			call.At = now
+		}
+		call.ExpiresAt = call.At.Add(retention)
+		calls = append(calls, call)
+	}
+	_, err := r.DB.InsertCalls(ctx, calls)
+	return err
 }

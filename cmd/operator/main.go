@@ -239,6 +239,8 @@ func main() {
 			Client:               mgr.GetClient(),
 			Scheme:               mgr.GetScheme(),
 			Config:               planCfg,
+			DB:                   researchSetup,
+			HistoryRetention:     historyRetention,
 			DefaultAgentImage:    defaultAgentImage,
 			DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
 		}

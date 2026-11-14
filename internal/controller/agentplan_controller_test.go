@@ -24,6 +24,7 @@ type planEnv struct {
 	t   *testing.T
 	c   client.Client
 	r   *AgentPlanReconciler
+	db  *fakeResearchDB
 	ctx context.Context
 	now time.Time   // the reconciler's clock
 	res ctrl.Result // of the last reconcile
@@ -33,8 +34,9 @@ func newPlanEnv(t *testing.T, objs ...client.Object) *planEnv {
 	s := testScheme(t)
 	c := fake.NewClientBuilder().WithScheme(s).WithObjects(objs...).
 		WithStatusSubresource(&aiv1.AgentProject{}, &aiv1.AgentPlan{}).Build()
-	e := &planEnv{t: t, c: c, ctx: context.Background(), now: planT0.Add(time.Minute)}
-	e.r = &AgentPlanReconciler{Client: c, Scheme: s, Config: testPlanConfig, DefaultAgentImage: "agent:default",
+	e := &planEnv{t: t, c: c, ctx: context.Background(), now: planT0.Add(time.Minute), db: newFakeResearchDB(true)}
+	e.r = &AgentPlanReconciler{Client: c, Scheme: s, Config: testPlanConfig, DB: e.db,
+		HistoryRetention: 30 * 24 * time.Hour, DefaultAgentImage: "agent:default",
 		Now: func() time.Time { return e.now }}
 	return e
 }
@@ -349,5 +351,51 @@ func TestPlanWake(t *testing.T) {
 	r.Wake(types.NamespacedName{Namespace: ns, Name: "q"}) // full: dropped
 	if ev := <-r.wakes; ev.Object.GetNamespace() != ns || ev.Object.GetName() != "p" {
 		t.Fatalf("event for %s/%s", ev.Object.GetNamespace(), ev.Object.GetName())
+	}
+}
+
+func TestPlanInsertCalls(t *testing.T) {
+	plan := testPlan()
+	plan.Status.Calls = []aiv1.AgentCall{
+		{Seq: 1, At: metav1.Time{Time: planT0}, Kind: aiv1.CallKindPlan, Role: "plan", Engine: aiv1.EngineClaude,
+			InputTokens: 10, CostUSD: "0.2500", CostSource: aiv1.CostReported},
+		{Seq: 2, At: metav1.Time{Time: planT0.Add(time.Minute)}, Kind: aiv1.CallKindPlan, Role: "plan",
+			Engine: aiv1.EngineClaude, CostSource: aiv1.CostUnknown},
+	}
+	e := newPlanEnv(t, testProject(), plan)
+	e.reconcile()
+	if len(e.db.calls) != 2 || e.db.inserted != 2 {
+		t.Fatalf("want 2 calls inserted once, got %d keys, inserted=%d", len(e.db.calls), e.db.inserted)
+	}
+	c, ok := e.db.calls["plan/uid-plan/1"]
+	if !ok || c.Namespace != ns || c.Project != "shop" || c.Task != "plan/"+plan.Name || c.Run != 0 ||
+		c.Seq != 1 || c.Kind != aiv1.CallKindPlan || c.MilestoneIID != 0 || c.IssueIID != 0 ||
+		c.CostUSD == nil || *c.CostUSD != 0.25 || !c.ExpiresAt.Equal(planT0.Add(30*24*time.Hour)) {
+		t.Errorf("call 1: %+v", c)
+	}
+	if c := e.db.calls["plan/uid-plan/2"]; c.Kind != aiv1.CallKindPlan || c.Task != "plan/"+plan.Name || c.CostUSD != nil {
+		t.Errorf("call 2: %+v", c)
+	}
+
+	e.reconcile()
+	if e.db.inserted != 2 {
+		t.Errorf("repeated reconcile must not insert twice: inserted=%d", e.db.inserted)
+	}
+}
+
+func TestPlanInsertCallsDBNotReady(t *testing.T) {
+	plan := testPlan()
+	plan.Status.Calls = []aiv1.AgentCall{
+		{Seq: 1, Kind: aiv1.CallKindPlan, Role: "plan", CostSource: aiv1.CostReported, CostUSD: "0.1000"},
+	}
+	e := newPlanEnv(t, testProject(), plan)
+	e.db = newFakeResearchDB(false)
+	e.r.DB = e.db
+	plan = e.reconcile()
+	if e.res.RequeueAfter != researchDBRetry || len(e.db.calls) != 0 {
+		t.Fatalf("not ready: requeue %s, calls %+v", e.res.RequeueAfter, e.db.calls)
+	}
+	if plan.OwnerReferences != nil {
+		t.Fatal("reconcile must not proceed while the database is not ready")
 	}
 }
