@@ -99,13 +99,33 @@ var DefaultRunnerResources = corev1.ResourceRequirements{
 // task's companion gets its token (GITLAB_COMPANION_TOKEN) in the runner
 // container only while its project is one of them.
 func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, targets []aiv1.CrossRepoTarget) *corev1.Pod {
+	own := []corev1.EnvVar{{Name: "AI_TASK_NAME", Value: task.Name}, namespaceEnv("AI_TASK_NAMESPACE")}
+	var extra []corev1.EnvVar
+	annotations := map[string]string{}
+	if ref, project := companionToken(task, spec, targets); ref != nil {
+		// The runner only: the agent container never holds a GitLab token.
+		extra = append(extra, corev1.EnvVar{Name: "GITLAB_COMPANION_TOKEN", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: ref}})
+		annotations[AnnotationCompanion] = project
+	}
+	meta := metav1.ObjectMeta{Name: task.Name, Namespace: task.Namespace, Labels: taskLabels(task), Annotations: annotations}
+	return workspacePod(meta, spec, deskURL, []string{"ai-runner"}, own, extra, agentResources(task, spec))
+}
+
+// namespaceEnv is the env var name set to the pod's namespace.
+func namespaceEnv(name string) corev1.EnvVar {
+	return corev1.EnvVar{Name: name, ValueFrom: &corev1.EnvVarSource{
+		FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+	}}
+}
+
+// workspacePod is the layout task and plan pods share (see buildPod): pod
+// meta.Name on the PVC naming.Workspace(meta.Name), the runner running
+// command with own first in its environment and extra after the log level,
+// the agent container with agentRes. meta.Annotations must not be nil.
+func workspacePod(meta metav1.ObjectMeta, spec aiv1.AgentProjectSpec, deskURL string, command []string, own, extra []corev1.EnvVar, agentRes corev1.ResourceRequirements) *corev1.Pod {
 	agents := spec.Agents
-	claim := naming.Workspace(task.Name)
-	runnerEnv := []corev1.EnvVar{
-		{Name: "AI_TASK_NAME", Value: task.Name},
-		{Name: "AI_TASK_NAMESPACE", ValueFrom: &corev1.EnvVarSource{
-			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
-		}},
+	claim := naming.Workspace(meta.Name)
+	runnerEnv := append(own, []corev1.EnvVar{
 		{Name: "AI_STATE_DIR", Value: RunnerMountPath},
 		{Name: "AI_EXCHANGE", Value: ExchangeMountPath},
 		{Name: "AI_AGENT_SOCKET", Value: AgentSocket},
@@ -115,7 +135,7 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, 
 		{Name: "AI_AGENT_MEMORY_BYTES", ValueFrom: &corev1.EnvVarSource{
 			ResourceFieldRef: &corev1.ResourceFieldSelector{ContainerName: AgentContainer, Resource: "limits.memory"},
 		}},
-	}
+	}...)
 	runnerMounts := []corev1.VolumeMount{
 		{Name: "workspace", MountPath: RunnerMountPath, SubPath: "runner"},
 		{Name: "exchange", MountPath: ExchangeMountPath},
@@ -153,18 +173,12 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, 
 		}
 	}
 	runnerEnv = append(runnerEnv, logLevelEnv(agents)...)
-	annotations := map[string]string{}
-	if ref, project := companionToken(task, spec, targets); ref != nil {
-		// The runner only: the agent container never holds a GitLab token.
-		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "GITLAB_COMPANION_TOKEN", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: ref}})
-		annotations[AnnotationCompanion] = project
-	}
+	runnerEnv = append(runnerEnv, extra...)
 	if deskURL != "" {
 		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_DESK_URL", Value: deskURL})
 	}
 
 	// The runner tells the implementer what the agent container may use.
-	agentRes := agentResources(task, spec)
 	if q, ok := agentRes.Limits[corev1.ResourceMemory]; ok {
 		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_AGENT_MEMORY_LIMIT", Value: q.String()})
 	}
@@ -176,7 +190,7 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, 
 		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_AGENT_CPUS", Value: strconv.FormatFloat(float64(cpu.MilliValue())/1000, 'f', -1, 64)})
 	}
 
-	annotations[AnnotationAgentResources] = resourcesHash(agentRes)
+	meta.Annotations[AnnotationAgentResources] = resourcesHash(agentRes)
 
 	initResources := runnerResources(agents)
 	podSpec := agentPodSpec(agents)
@@ -194,19 +208,11 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, 
 		SecurityContext: containerSecurity(true),
 	}}
 	podSpec.Containers = []corev1.Container{
-		runnerContainer(agents, []string{"ai-runner"}, runnerEnv, runnerMounts),
+		runnerContainer(agents, command, runnerEnv, runnerMounts),
 		agentContainer(agents, agentEnv(agents, cacheEnv...), agentMounts, agentRes),
 	}
 
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        task.Name,
-			Namespace:   task.Namespace,
-			Labels:      taskLabels(task),
-			Annotations: annotations,
-		},
-		Spec: podSpec,
-	}
+	return &corev1.Pod{ObjectMeta: meta, Spec: podSpec}
 }
 
 // agentPodSpec is what the pods of tasks and research runs share: the
