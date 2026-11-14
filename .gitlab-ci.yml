@@ -55,6 +55,10 @@ default:
 .go:
   extends: .check
   image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/golang:1.26
+  # The multiarch runner (infra/cluster gitlab-runner) prefers native arm64 (mac-ci-arm) and
+  # falls back to amd64 nodes when the Mac is off. golang, postgres and node are multi-arch;
+  # the release job (amd64 images) and ui-e2e (Chromium) stay on the default runner.
+  tags: [multiarch]
   variables:
     GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
     GOCACHE: $CI_PROJECT_DIR/.cache/go-build
@@ -136,6 +140,7 @@ build:
 ui:
   extends: .check
   image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:22-bookworm
+  tags: [multiarch]
   variables:
     npm_config_cache: $CI_PROJECT_DIR/.cache/npm
   cache:
