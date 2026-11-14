@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
@@ -28,7 +29,12 @@ type Workspace struct {
 }
 
 func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	// Automatic gc and maintenance run in the foreground, as in Mirror.run:
+	// a detached one (the default for maintenance since git 2.47) can hold
+	// the output pipes, so Run would not return. WaitDelay bounds the wait
+	// for pipes a leftover child still holds once git itself has exited.
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false"}, args...)...)
+	cmd.WaitDelay = 10 * time.Second
 	cmd.Dir = w.Dir
 	cmd.Env = append(os.Environ(),
 		"GIT_TERMINAL_PROMPT=0",

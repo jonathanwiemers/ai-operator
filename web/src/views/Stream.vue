@@ -20,6 +20,7 @@ import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestonePilot from '../components/MilestonePilot.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
+import ProjectFinishing from '../components/ProjectFinishing.vue'
 import ProjectQueue from '../components/ProjectQueue.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import { live, useResource } from '../live'
@@ -486,6 +487,7 @@ function showDay(i: number): string | null {
             :queue="project.queue ?? []"
             :commands="project.queueCommands"
           />
+          <ProjectFinishing v-if="project" class="mb-3" :namespace="namespace" :name="name" :finishing="project.finishing ?? []" :gitlab="project.gitlab.url" />
           <MilestoneSections :namespace="namespace" :name="name" />
         </div>
         <div v-if="!everything && namespace && name" class="pinned">

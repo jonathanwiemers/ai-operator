@@ -129,7 +129,19 @@ export const shopDetail: ProjectDetail = {
     },
   ],
   queueCommands: true,
-  finishing: [],
+  // A done milestone held by an open issue, follow-ups and a companion.
+  finishing: [
+    {
+      iid: 9,
+      title: 'Search: typo-tolerant product search with synonyms',
+      task: 'shop-m9-spec',
+      replanning: false,
+      retroWriting: false,
+      followUps: true,
+      openIssues: [{ iid: 42, title: 'Search results flicker on slow connections', webURL: 'https://gitlab.example.com/team-a/shop/-/issues/42' }],
+      companions: ['team-a/payments-sdk!44'],
+    },
+  ],
 }
 
 // GET /projects/team-a/shop/history?days=30&tz=…: activity of the last 30

@@ -119,6 +119,13 @@ const routes: Route[] = [
       ready: (page) => expect(page.locator('main').getByText(projectReady[tab]).first()).toBeVisible(),
     }),
   ),
+  // The project page's Queue and Finishing in the dark tokens.
+  {
+    name: 'stream-project-dark',
+    path: '/projects/team-a/shop',
+    colorScheme: 'dark',
+    ready: (page) => expect(page.locator('[data-finishing-entry]').first()).toBeVisible(),
+  },
   ...(['issues', 'pilot', 'retrospective', 'stream', 'board', 'spend'] as const).map(
     (tab): Route => ({
       name: `stream-milestone-${tab}`,
@@ -606,6 +613,31 @@ for (const { width, height, phone } of [
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 }
+
+// The project page's Finishing section (ProjectFinishing.vue, R7): a done
+// milestone with what holds it, the open issue linking to GitLab and the
+// follow-ups to the Retrospective tab, below Queue and inside the pane.
+test('stream-project finishing holds@375', async ({ page, baseURL }, testInfo) => {
+  const route = routes.find((r) => r.name === 'stream-project-dark')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+
+  const section = page.locator('section[aria-labelledby="project-finishing"]')
+  await expect(section.getByRole('heading', { name: 'Finishing' })).toBeVisible()
+  await expect(section.getByRole('link', { name: /Open: #42 Search results flicker/ })).toHaveAttribute('href', 'https://gitlab.example.com/team-a/shop/-/issues/42')
+  await expect(section.getByRole('link', { name: 'Follow-ups to settle' })).toHaveAttribute('href', '/projects/team-a/shop/milestones/9?tab=retrospective')
+  await expect(section.getByRole('link', { name: 'team-a/payments-sdk!44' })).toHaveAttribute('href', 'https://gitlab.example.com/team-a/payments-sdk/-/merge_requests/44')
+  const queue = (await page.getByRole('heading', { name: 'Queue' }).boundingBox())!
+  expect((await section.boundingBox())!.y, 'Finishing sits below Queue').toBeGreaterThan(queue.y)
+  expect(await section.evaluate((s) => s.scrollWidth <= s.clientWidth), 'no sideways scroll').toBe(true)
+  await section.screenshot({ path: join(testInfo.project.outputDir, '..', 'screenshots', 'project-finishing@375.png') })
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
 
 // The shell on a phone (App.vue, docs/design.md "Phones"): on a short page
 // the mobile bar keeps its natural height instead of stretching with the
