@@ -254,7 +254,7 @@ func runPlan(ctx context.Context) {
 		log.Error(err, "reading the plan's project")
 		os.Exit(1)
 	}
-	pr := &runner.PlanRun{PlanName: name, GitLab: gitlab.New(project.Spec.WithDefaults().GitLab.URL, token), Runner: &runner.Runner{
+	pr := &runner.PlanRun{PlanName: name, MaxBudgetUSD: os.Getenv("AI_PLAN_MAX_BUDGET_USD"), GitLab: gitlab.New(project.Spec.WithDefaults().GitLab.URL, token), Runner: &runner.Runner{
 		K8s: k8s, Namespace: ns, GitLabToken: token, Agent: runner.NewAgentClient(mustEnv("AI_AGENT_SOCKET")),
 		Mirror:   &runner.Mirror{Dir: filepath.Join(stateDir, "mirror.git"), Token: token, Log: log.WithName("mirror")},
 		StateDir: stateDir, Exchange: envOr("AI_EXCHANGE", "/exchange"), PollInterval: 10 * time.Second, Log: log,

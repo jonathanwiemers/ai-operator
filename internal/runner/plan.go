@@ -3,6 +3,8 @@ package runner
 import (
 	"cmp"
 	"context"
+	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -22,6 +24,9 @@ type PlanRun struct {
 	*Runner
 	PlanName string
 	GitLab   planGitLab
+	// MaxBudgetUSD is the cap AI_PLAN_MAX_BUDGET_USD; a raised
+	// spec.maxBudgetUSD wins, so a raise needs no new pod.
+	MaxBudgetUSD string
 	// wake signals changes of the plan while Loop runs.
 	wake <-chan struct{}
 }
@@ -41,6 +46,14 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 	st, err := p.loadState()
 	if err != nil {
 		return err
+	}
+	budget := plan.BudgetUSD(p.MaxBudgetUSD)
+	left := aiv1.BudgetLeft(budget, plan.Status.SpendUSD, 0)
+	if left <= 0 {
+		return p.answer(ctx, &st, func(*aiv1.AgentPlanStatus) []aiv1.ChatReply {
+			return []aiv1.ChatReply{{MessageID: msg.ID, At: metav1.Time{Time: p.now()},
+				Error: fmt.Sprintf("the plan's budget of $%s is used; raise it on the Desk", aiv1.ShowCost(aiv1.CostOf(budget)))}}
+		})
 	}
 	resend := st.ChatInFlight != nil && st.ChatInFlight.MessageID == msg.ID
 	if resend && st.ChatInFlight.Resent {
@@ -64,7 +77,7 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 			cancel()
 		}
 	})
-	out, sha, errStr := p.ask(turnCtx, &st, plan, project.Spec.WithDefaults(), msg)
+	out, sha, call, errStr := p.ask(turnCtx, &st, plan, project.Spec.WithDefaults(), msg, left)
 	close(stop)
 	if err := p.saveState(st); err != nil {
 		p.Log.Error(err, "saving the plan state")
@@ -87,6 +100,9 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 			text += "\n\n" + planDraftLarge
 		default:
 			s.Draft, s.DraftRevision, s.DraftBy, s.DraftSHA = draft, base+1, "agent", sha
+		}
+		if call != nil {
+			addPlanCall(s, *call)
 		}
 		s.Chat.LastTurnTime = &at
 		if s.Phase == aiv1.AgentPlanWorking {
@@ -185,15 +201,16 @@ func (p *PlanRun) answer(ctx context.Context, st *state, mutate func(*aiv1.Agent
 }
 
 // ask fetches the default branch and runs the turn on the engine, resuming
-// the plan session. errStr says why it did not answer; out.Reply then holds
-// the engine's raw text, if any.
-func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec aiv1.AgentProjectSpec, msg aiv1.ChatMessage) (out PlanTurn, sha, errStr string) {
+// the plan session, with at most left USD. errStr says why it did not
+// answer; out.Reply then holds the engine's raw text, if any. call is the
+// engine call, nil when the engine did not run.
+func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec aiv1.AgentProjectSpec, msg aiv1.ChatMessage, left float64) (out PlanTurn, sha string, call *aiv1.AgentCall, errStr string) {
 	proj, err := p.GitLab.GetProject(ctx, spec.GitLab.Project)
 	if err == nil {
 		err = p.syncWorkspace(ctx, proj.HTTPURLToRepo, proj.DefaultBranch, proj.DefaultBranch, nil)
 	}
 	if err != nil {
-		return out, "", "fetching the default branch: " + textutil.Truncate(err.Error(), 200)
+		return out, "", nil, "fetching the default branch: " + textutil.Truncate(err.Error(), 200)
 	}
 	sha, _ = p.Mirror.resolve(ctx, "refs/remotes/origin/"+proj.DefaultBranch)
 	gl, err := planContext(ctx, p.GitLab, spec.GitLab.Project)
@@ -209,7 +226,16 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 	if st.ChatInFlight != nil && st.ChatInFlight.Resent {
 		inv.Prompt = chatResendPrefix + "\n\n" + inv.Prompt
 	}
+	if roleCap := aiv1.CostOf(inv.MaxBudgetUSD); roleCap > 0 {
+		left = min(left, roleCap)
+	}
+	if !math.IsInf(left, 1) {
+		inv.MaxBudgetUSD = aiv1.ShowCost(left) // claude only
+	}
+	start := p.now()
 	res, err := p.Agent.Run(ctx, role.Engine, inv)
+	c := agentCall(role.Engine, inv, res, start, p.now())
+	call = &c
 	if res != nil {
 		out.Reply = cmp.Or(res.Text, string(res.Structured))
 		if res.SessionID != "" {
@@ -218,17 +244,31 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 	}
 	err = classifyLimit(role.Engine, err, res)
 	if lim, ok := AsUsageLimit(err); ok {
-		return out, sha, shortUsageLimit(lim)
+		return out, sha, call, shortUsageLimit(lim)
 	}
 	if err != nil {
-		return out, sha, textutil.Truncate(err.Error(), 200)
+		return out, sha, call, textutil.Truncate(err.Error(), 200)
 	}
 	var t PlanTurn
 	if res == nil || res.Decode(&t) != nil {
-		return out, sha, "the agent's answer was not valid"
+		return out, sha, call, "the agent's answer was not valid"
 	}
 	st.PlanSeenRevision = rev
-	return t, sha, ""
+	return t, sha, call, ""
+}
+
+// addPlanCall appends c to the plan's calls, bounded as a run's are, and
+// adds its tokens and, when known, its cost to the plan's totals.
+func addPlanCall(s *aiv1.AgentPlanStatus, c aiv1.AgentCall) {
+	rs := aiv1.RunStatus{Calls: s.Calls}
+	if n := len(s.Calls); n > 0 {
+		rs.LastCallSeq = s.Calls[n-1].Seq
+	}
+	aiv1.AppendCalls(&rs, c)
+	s.Calls, s.Tokens = rs.Calls, s.Tokens+c.InputTokens+c.OutputTokens+c.CacheReadTokens+c.CacheWriteTokens
+	if c.CostSource == aiv1.CostReported {
+		s.SpendUSD = aiv1.AddCost(s.SpendUSD, aiv1.CostOf(c.CostUSD))
+	}
 }
 
 // patchPlan merge-patches the plan's status with an optimistic lock, so
