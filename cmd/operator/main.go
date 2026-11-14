@@ -235,13 +235,14 @@ func main() {
 			os.Exit(1)
 		}
 		// Plans talk through the chat, which needs the research database.
-		if err := (&controller.AgentPlanReconciler{
+		plans := &controller.AgentPlanReconciler{
 			Client:               mgr.GetClient(),
 			Scheme:               mgr.GetScheme(),
 			Config:               planCfg,
 			DefaultAgentImage:    defaultAgentImage,
 			DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
-		}).SetupWithManager(mgr); err != nil {
+		}
+		if err := plans.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "AgentPlan")
 			os.Exit(1)
 		}
@@ -252,6 +253,8 @@ func main() {
 			Retention: historyRetention,
 			Log:       ctrl.Log.WithName("chat"),
 			Wake:      waker.Wake,
+			Plan:      planCfg,
+			WakePlan:  plans.Wake,
 		}
 		utilruntime.Must(mgr.Add(chat))
 		if err := chat.SetupWithManager(mgr); err != nil {

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"slices"
 	"time"
@@ -54,6 +55,12 @@ type Chat struct {
 	// Wake asks the project reconciler to sync after a chat command was
 	// delivered onto a task (optional).
 	Wake func(types.NamespacedName)
+	// Plan is the plan.* config; its MaxBudgetUSD caps plans that were not
+	// raised.
+	Plan PlanConfig
+	// WakePlan asks the plan reconciler to start a plan's pod after a
+	// message was delivered onto it (optional).
+	WakePlan func(types.NamespacedName)
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;update;patch
@@ -158,26 +165,29 @@ func (c *Chat) sweep(ctx context.Context) {
 		c.Log.Error(err, "listing delivered chat messages")
 		return
 	}
-	reader := c.APIReader
-	if reader == nil {
-		reader = c.Client
-	}
 	for _, m := range msgs {
-		var task aiv1.AgentTask
-		err := reader.Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: m.Task}, &task)
-		if err != nil && !apierrors.IsNotFound(err) {
-			c.Log.Error(err, "getting task for delivered chat message", "id", m.ID, "task", m.Task)
+		target, list, err := c.chatList(ctx, m)
+		if err != nil {
+			c.Log.Error(err, "getting "+target+" for delivered chat message", "id", m.ID, "task", m.Task, "plan", m.Plan)
 			continue
 		}
-		if err == nil && slices.ContainsFunc(task.Spec.Source.ChatMessages, func(cm aiv1.ChatMessage) bool { return cm.ID == m.ID }) {
+		if slices.ContainsFunc(list, func(cm aiv1.ChatMessage) bool { return cm.ID == m.ID }) {
 			continue
 		}
-		if err := s.SetMessageState(ctx, []int64{m.ID}, "failed", "the task was removed before an answer"); err != nil {
+		if err := s.SetMessageState(ctx, []int64{m.ID}, "failed", "the "+target+" was removed before an answer"); err != nil {
 			c.Log.Error(err, "marking lost chat message failed", "id", m.ID)
 			continue
 		}
-		c.Log.Info("chat message", "id", m.ID, "task", m.Task, "state", "failed", "reason", "task removed")
+		c.Log.Info("chat message", "id", m.ID, "task", m.Task, "plan", m.Plan, "state", "failed", "reason", target+" removed")
 	}
+}
+
+// reader reads without the cache when APIReader is set.
+func (c *Chat) reader() client.Reader {
+	if c.APIReader != nil {
+		return c.APIReader
+	}
+	return c.Client
 }
 
 func (c *Chat) dispatchOne(ctx context.Context, s *store.Store, m store.ChatMessage) {
@@ -188,12 +198,12 @@ func (c *Chat) dispatchOne(ctx context.Context, s *store.Store, m store.ChatMess
 		}
 		c.Log.Info("chat message", "id", m.ID, "task", m.Task, "state", "failed")
 	}
-	reader := c.APIReader
-	if reader == nil {
-		reader = c.Client
+	if m.Plan != "" {
+		c.dispatchPlan(ctx, s, m, fail)
+		return
 	}
 	var task aiv1.AgentTask
-	if err := reader.Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: m.Task}, &task); err != nil {
+	if err := c.reader().Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: m.Task}, &task); err != nil {
 		if apierrors.IsNotFound(err) {
 			fail("task not found")
 			return
@@ -205,17 +215,7 @@ func (c *Chat) dispatchOne(ctx context.Context, s *store.Store, m store.ChatMess
 		fail("task belongs to another project")
 		return
 	}
-	var project aiv1.AgentProject
-	if err := c.Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: m.Project}, &project); err != nil {
-		if apierrors.IsNotFound(err) {
-			fail("project not found")
-			return
-		}
-		c.Log.Error(err, "getting project for chat message", "id", m.ID, "project", m.Project)
-		return
-	}
-	if !project.Spec.Agents.Chat {
-		fail("live chat is not enabled")
+	if !c.chatEnabled(ctx, m, fail) {
 		return
 	}
 	if m.Kind == "command" {
@@ -229,56 +229,66 @@ func (c *Chat) dispatchOne(ctx context.Context, s *store.Store, m store.ChatMess
 			return
 		}
 	}
-	for _, existing := range task.Spec.Source.ChatMessages {
-		if existing.ID == m.ID {
-			if err := s.SetMessageState(ctx, []int64{m.ID}, "delivered", ""); err != nil {
-				c.Log.Error(err, "marking chat message delivered", "id", m.ID)
-				return
+	if c.deliverChat(ctx, s, m, &task, &task.Spec.Source.ChatMessages) && m.Kind == "command" && c.Wake != nil {
+		c.Wake(types.NamespacedName{Namespace: m.Namespace, Name: m.Project})
+	}
+}
+
+// chatEnabled reports whether m's project has live chat on. It fails m when
+// the project is missing or chat is off, and leaves m queued on a read error.
+func (c *Chat) chatEnabled(ctx context.Context, m store.ChatMessage, fail func(string)) bool {
+	var project aiv1.AgentProject
+	if err := c.Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: m.Project}, &project); err != nil {
+		if apierrors.IsNotFound(err) {
+			fail("project not found")
+			return false
+		}
+		c.Log.Error(err, "getting project for chat message", "id", m.ID, "project", m.Project)
+		return false
+	}
+	if !project.Spec.Agents.Chat {
+		fail("live chat is not enabled")
+		return false
+	}
+	return true
+}
+
+// deliverChat adds m to msgs, the chat list in obj's spec, in ID order and
+// marks the row delivered. It reports whether it patched obj: a message
+// already on the list is only marked, and a full list or a conflict leaves
+// the row queued for the next round.
+func (c *Chat) deliverChat(ctx context.Context, s *store.Store, m store.ChatMessage, obj client.Object, msgs *[]aiv1.ChatMessage) bool {
+	on := slices.ContainsFunc(*msgs, func(cm aiv1.ChatMessage) bool { return cm.ID == m.ID })
+	if !on {
+		if len(*msgs) >= maxChatQueued {
+			return false
+		}
+		orig := obj.DeepCopyObject().(client.Object)
+		*msgs = append(*msgs, aiv1.ChatMessage{
+			ID:         m.ID,
+			Kind:       m.Kind,
+			Text:       m.Body,
+			Author:     m.Author,
+			AuthorName: m.AuthorName,
+			At:         metav1.NewTime(m.At),
+		})
+		slices.SortFunc(*msgs, func(a, b aiv1.ChatMessage) int { return cmp.Compare(a.ID, b.ID) })
+		// The patch replaces the whole list: the optimistic lock makes a
+		// concurrent change (the reply copier dropping answered messages) a
+		// conflict, and the row stays queued for the next round.
+		if err := c.Patch(ctx, obj, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{})); err != nil {
+			if !apierrors.IsConflict(err) {
+				c.Log.Error(err, "patching chat message", "id", m.ID, "task", m.Task, "plan", m.Plan)
 			}
-			c.Log.Info("chat message", "id", m.ID, "task", m.Task, "state", "delivered")
-			return
+			return false
 		}
-	}
-	if len(task.Spec.Source.ChatMessages) >= maxChatQueued {
-		return
-	}
-	orig := task.DeepCopy()
-	task.Spec.Source.ChatMessages = append(task.Spec.Source.ChatMessages, aiv1.ChatMessage{
-		ID:         m.ID,
-		Kind:       m.Kind,
-		Text:       m.Body,
-		Author:     m.Author,
-		AuthorName: m.AuthorName,
-		At:         metav1.NewTime(m.At),
-	})
-	slices.SortFunc(task.Spec.Source.ChatMessages, func(a, b aiv1.ChatMessage) int {
-		switch {
-		case a.ID < b.ID:
-			return -1
-		case a.ID > b.ID:
-			return 1
-		default:
-			return 0
-		}
-	})
-	// The patch replaces the whole list: the optimistic lock makes a
-	// concurrent change (the reply copier dropping answered messages) a
-	// conflict, and the row stays queued for the next round.
-	if err := c.Patch(ctx, &task, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{})); err != nil {
-		if apierrors.IsConflict(err) {
-			return
-		}
-		c.Log.Error(err, "patching chat message onto task", "id", m.ID, "task", m.Task)
-		return
 	}
 	if err := s.SetMessageState(ctx, []int64{m.ID}, "delivered", ""); err != nil {
 		c.Log.Error(err, "marking chat message delivered", "id", m.ID)
-		return
+		return false
 	}
-	c.Log.Info("chat message", "id", m.ID, "task", m.Task, "state", "delivered")
-	if m.Kind == "command" && c.Wake != nil {
-		c.Wake(types.NamespacedName{Namespace: m.Namespace, Name: m.Project})
-	}
+	c.Log.Info("chat message", "id", m.ID, "task", m.Task, "plan", m.Plan, "state", "delivered")
+	return !on
 }
 
 // Reconcile copies status.chat.replies and spec.source.chatAnswers whose

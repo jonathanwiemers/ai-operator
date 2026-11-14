@@ -45,7 +45,7 @@ func newChatEnv(t *testing.T, objs ...client.Object) *chatEnv {
 	scheme := testScheme(t)
 	c := fake.NewClientBuilder().WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&aiv1.AgentProject{}, &aiv1.AgentTask{}).
+		WithStatusSubresource(&aiv1.AgentProject{}, &aiv1.AgentTask{}, &aiv1.AgentPlan{}).
 		Build()
 	ready := make(chan struct{})
 	close(ready)
