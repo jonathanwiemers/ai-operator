@@ -28,9 +28,20 @@ stages: [check, release]
 variables:
   GET_SOURCES_ATTEMPTS: "3"
 
+# A job whose pod never starts is retried instead of failing the pipeline,
+# e.g. a runner node whose kubelet cannot mount the pod's volumes
+# ("mount failed: fork/exec /usr/local/sbin/mount: exec format error",
+# "timed out waiting for pod to start"). Script failures are not retried:
+# a real test or build failure still fails at once.
 default:
   tags: [shared]
   interruptible: true
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure
 
 .check:
   stage: check
