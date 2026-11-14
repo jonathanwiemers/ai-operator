@@ -21,6 +21,7 @@ type ChatMessage struct {
 	Namespace  string    `json:"-"`
 	Project    string    `json:"-"`
 	Task       string    `json:"-"`
+	Plan       string    `json:"-"` // AgentPlan name of a plan message (Task empty); "" for task messages
 	Author     string    `json:"author,omitempty"`
 	AuthorName string    `json:"authorName,omitempty"`
 	Role       string    `json:"role" tstype:"ChatRole"`
@@ -35,7 +36,7 @@ type ChatMessage struct {
 }
 
 // chatColumns are ChatMessage's fields by name (pgx.RowToStructByName).
-const chatColumns = `id, namespace, project, task, author, author_name, role, kind, body,
+const chatColumns = `id, namespace, project, task, coalesce(plan, '') AS plan, author, author_name, role, kind, body,
 	coalesce(reply_to, 0) AS reply_to, coalesce(client_key, '') AS client_key, state, reason, at, expires_at`
 
 var scanChat = pgx.RowToStructByName[ChatMessage]
@@ -53,11 +54,11 @@ func (s *Store) InsertUserMessage(ctx context.Context, m ChatMessage) (id int64,
 		key = m.ClientKey
 	}
 	err = s.pool.QueryRow(ctx, `INSERT INTO chat_messages
-		(namespace, project, task, author, author_name, role, kind, body, client_key, state, expires_at)
-		VALUES ($1, $2, $3, $4, $5, 'user', $6, $7, $8, 'queued', $9)
+		(namespace, project, task, author, author_name, role, kind, body, client_key, state, expires_at, plan)
+		VALUES ($1, $2, $3, $4, $5, 'user', $6, $7, $8, 'queued', $9, nullif($10, ''))
 		ON CONFLICT (author, client_key) DO NOTHING
 		RETURNING id`,
-		m.Namespace, m.Project, m.Task, m.Author, m.AuthorName, kind, m.Body, key, m.ExpiresAt).Scan(&id)
+		m.Namespace, m.Project, m.Task, m.Author, m.AuthorName, kind, m.Body, key, m.ExpiresAt, m.Plan).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = s.pool.QueryRow(ctx, `SELECT id FROM chat_messages WHERE author = $1 AND client_key = $2`,
 			m.Author, key).Scan(&id)
@@ -69,7 +70,8 @@ func (s *Store) InsertUserMessage(ctx context.Context, m ChatMessage) (id int64,
 	return id, true, nil
 }
 
-// QueuedMessages returns messages in state queued, oldest first, up to limit.
+// QueuedMessages returns messages in state queued, oldest first, up to limit,
+// task and plan messages alike (the dispatcher routes by Plan).
 func (s *Store) QueuedMessages(ctx context.Context, limit int) ([]ChatMessage, error) {
 	if limit <= 0 {
 		limit = 50
@@ -116,11 +118,11 @@ func (s *Store) InsertReply(ctx context.Context, m ChatMessage) (created bool, e
 	}
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `INSERT INTO chat_messages
-			(namespace, project, task, author, author_name, role, kind, body, reply_to, state, expires_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			(namespace, project, task, author, author_name, role, kind, body, reply_to, state, expires_at, plan)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, nullif($12, ''))
 			ON CONFLICT (reply_to) DO NOTHING`,
 			m.Namespace, m.Project, m.Task, m.Author, m.AuthorName, m.Role, kind, m.Body,
-			m.ReplyTo, state, m.ExpiresAt)
+			m.ReplyTo, state, m.ExpiresAt, m.Plan)
 		if err != nil {
 			return err
 		}
@@ -135,8 +137,9 @@ func (s *Store) InsertReply(ctx context.Context, m ChatMessage) (created bool, e
 }
 
 // ChatStream returns chat messages of the given projects, newest first, for
-// the UI stream. before/after are (at, id) like Stream. tasks and roles,
-// when set, limit to those task names (a milestone's tasks) and roles.
+// the UI stream, without plan messages. before/after are (at, id) like
+// Stream. tasks and roles, when set, limit to those task names (a
+// milestone's tasks) and roles.
 func (s *Store) ChatStream(ctx context.Context, projects []ProjectKey, tasks, roles []string, before, after *Cursor, limit int) ([]ChatMessage, error) {
 	if len(projects) == 0 {
 		return nil, nil
@@ -147,7 +150,7 @@ func (s *Store) ChatStream(ctx context.Context, projects []ProjectKey, tasks, ro
 		args = append(args, v)
 		return "$" + strconv.Itoa(len(args))
 	}
-	where := `(namespace, project) IN (SELECT * FROM unnest($1::text[], $2::text[]))`
+	where := `plan IS NULL AND (namespace, project) IN (SELECT * FROM unnest($1::text[], $2::text[]))`
 	if len(tasks) > 0 {
 		where += " AND task = ANY(" + arg(tasks) + "::text[])"
 	}
@@ -181,16 +184,27 @@ func (s *Store) ChatStream(ctx context.Context, projects []ProjectKey, tasks, ro
 	return msgs, nil
 }
 
-// ChatMessages returns the messages of a task, newest first. before > 0
-// pages older than that id; after > 0 pages newer (the oldest of them when
-// there are more than limit), still returned newest first.
+// ChatMessages returns the messages of a task (no plan messages), newest
+// first. before > 0 pages older than that id; after > 0 pages newer (the
+// oldest of them when there are more than limit), still returned newest
+// first.
 func (s *Store) ChatMessages(ctx context.Context, namespace, project, task string, before, after int64, limit int) ([]ChatMessage, error) {
-	args := []any{namespace, project, task}
+	return s.chatPage(ctx, `task = $3 AND plan IS NULL`, namespace, project, task, before, after, limit)
+}
+
+// PlanMessages returns the messages of an AgentPlan, paged like ChatMessages.
+func (s *Store) PlanMessages(ctx context.Context, namespace, project, plan string, before, after int64, limit int) ([]ChatMessage, error) {
+	return s.chatPage(ctx, `plan = $3`, namespace, project, plan, before, after, limit)
+}
+
+// chatPage pages ChatMessages and PlanMessages; target is the condition on $3.
+func (s *Store) chatPage(ctx context.Context, target, namespace, project, key string, before, after int64, limit int) ([]ChatMessage, error) {
+	args := []any{namespace, project, key}
 	arg := func(v any) string {
 		args = append(args, v)
 		return "$" + strconv.Itoa(len(args))
 	}
-	where := `namespace = $1 AND project = $2 AND task = $3`
+	where := `namespace = $1 AND project = $2 AND ` + target
 	order := "DESC"
 	switch {
 	case after > 0:
@@ -222,7 +236,7 @@ func (s *Store) ChatMessages(ctx context.Context, namespace, project, task strin
 // the chat.
 func (s *Store) ChatContext(ctx context.Context, namespace, project, task string, limit int) ([]ChatMessage, error) {
 	rows, _ := s.pool.Query(ctx, `SELECT `+chatColumns+` FROM chat_messages
-		WHERE namespace = $1 AND project = $2 AND task = $3 AND kind = 'message'
+		WHERE namespace = $1 AND project = $2 AND task = $3 AND plan IS NULL AND kind = 'message'
 		AND role IN ('user', 'agent') AND state = 'answered'
 		ORDER BY id DESC LIMIT $4`, namespace, project, task, limit)
 	msgs, err := pgx.CollectRows(rows, scanChat)

@@ -345,6 +345,68 @@ func TestDeleteExpiredChat(t *testing.T) {
 	}
 }
 
+func TestPlanMessages(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	exp := time.Now().Add(time.Hour)
+	plan := store.ChatMessage{Namespace: "agents", Project: "orbit", Plan: "p1", Author: "a", Body: "plan this", ClientKey: "pk", ExpiresAt: exp}
+	id, created, err := s.InsertUserMessage(ctx, plan)
+	if err != nil || !created {
+		t.Fatalf("InsertUserMessage plan = %d, %v, %v", id, created, err)
+	}
+	again, created, err := s.InsertUserMessage(ctx, plan)
+	if err != nil || created || again != id {
+		t.Fatalf("idempotent plan insert = %d, %v, %v; want %d, false", again, created, err, id)
+	}
+	// A task row with task '' in the same project must not mix with the plan.
+	taskID, _, err := s.InsertUserMessage(ctx, store.ChatMessage{
+		Namespace: "agents", Project: "orbit", Author: "a", Body: "task chat", ClientKey: "tk", ExpiresAt: exp,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	queued, err := s.QueuedMessages(ctx, 10)
+	if err != nil || len(queued) != 2 || queued[0].ID != id || queued[0].Plan != "p1" || queued[1].Plan != "" {
+		t.Fatalf("QueuedMessages = %+v, %v; want the plan row (Plan p1) and the task row", queued, err)
+	}
+	if err := s.SetMessageState(ctx, []int64{id}, "delivered", ""); err != nil {
+		t.Fatal(err)
+	}
+	delivered, err := s.DeliveredMessages(ctx, time.Now().Add(time.Minute), 10)
+	if err != nil || len(delivered) != 1 || delivered[0].ID != id || delivered[0].Plan != "p1" {
+		t.Fatalf("DeliveredMessages = %+v, %v; want the plan row", delivered, err)
+	}
+	if created, err := s.InsertReply(ctx, store.ChatMessage{
+		Namespace: "agents", Project: "orbit", Plan: "p1", Role: "agent", Body: "questions first", ReplyTo: id, ExpiresAt: exp,
+	}); err != nil || !created {
+		t.Fatalf("InsertReply plan = %v, %v", created, err)
+	}
+
+	msgs, err := s.PlanMessages(ctx, "agents", "orbit", "p1", 0, 0, 10)
+	if err != nil || len(msgs) != 2 {
+		t.Fatalf("PlanMessages = %+v, %v; want user and reply", msgs, err)
+	}
+	if r, u := msgs[0], msgs[1]; r.Role != "agent" || r.Plan != "p1" || r.Task != "" || r.ReplyTo != id || u.ID != id || u.State != "answered" {
+		t.Errorf("PlanMessages = %+v; want the reply (plan p1, task '') then the answered user row", msgs)
+	}
+	if other, err := s.PlanMessages(ctx, "agents", "orbit", "p2", 0, 0, 10); err != nil || len(other) != 0 {
+		t.Errorf("PlanMessages p2 = %+v, %v; want none", other, err)
+	}
+
+	stream, err := s.ChatStream(ctx, []store.ProjectKey{{Namespace: "agents", Name: "orbit"}}, nil, nil, nil, nil, 50)
+	if err != nil || len(stream) != 1 || stream[0].ID != taskID {
+		t.Errorf("ChatStream = %+v, %v; want only the task row %d", stream, err, taskID)
+	}
+	task, err := s.ChatMessages(ctx, "agents", "orbit", "", 0, 0, 10)
+	if err != nil || len(task) != 1 || task[0].ID != taskID {
+		t.Errorf("ChatMessages task '' = %+v, %v; want only the task row %d", task, err, taskID)
+	}
+	if c, err := s.ChatContext(ctx, "agents", "orbit", "", 10); err != nil || len(c) != 0 {
+		t.Errorf("ChatContext task '' = %+v, %v; want no plan messages", c, err)
+	}
+}
+
 func withKey(m store.ChatMessage, key string) store.ChatMessage {
 	m.ClientKey = key
 	return m
