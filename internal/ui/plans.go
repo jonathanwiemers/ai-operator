@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 // PlanListItem is one milestone plan of a project, without its draft.
@@ -119,18 +120,12 @@ func (s *Server) plans(w http.ResponseWriter, r *http.Request) {
 
 // plan returns one plan with its draft.
 func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
-	_, plans, steer, ok := s.projectPlans(w, r)
+	pl, steer, ok := s.projectPlan(w, r)
 	if !ok {
 		return
 	}
-	for i := range plans {
-		if pl := &plans[i]; pl.Name == r.PathValue("plan") {
-			writeJSON(w, http.StatusOK, PlanView{PlanListItem: s.planItem(pl, steer), Draft: pl.Status.Draft,
-				DraftRevision: pl.Status.DraftRevision, DraftBy: pl.Status.DraftBy, DraftSHA: pl.Status.DraftSHA})
-			return
-		}
-	}
-	notFound(w)
+	writeJSON(w, http.StatusOK, PlanView{PlanListItem: s.planItem(pl, steer), Draft: pl.Status.Draft,
+		DraftRevision: pl.Status.DraftRevision, DraftBy: pl.Status.DraftBy, DraftSHA: pl.Status.DraftSHA})
 }
 
 // Limits of the plans owners start from the Desk.
@@ -209,6 +204,64 @@ func (s *Server) deletePlan(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("audit", "action", "plan.delete", "user", principalOf(r).Username, "namespace", ap.Namespace, "name", plans[i].Name, "project", ap.Name)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// projectPlan is projectPlans for the plan of the request path: 404 when the
+// project has none of that name.
+func (s *Server) projectPlan(w http.ResponseWriter, r *http.Request) (*aiv1.AgentPlan, bool, bool) {
+	_, plans, steer, ok := s.projectPlans(w, r)
+	if !ok {
+		return nil, false, false
+	}
+	i := slices.IndexFunc(plans, func(pl aiv1.AgentPlan) bool { return pl.Name == r.PathValue("plan") })
+	if i < 0 {
+		notFound(w)
+		return nil, false, false
+	}
+	return &plans[i], steer, true
+}
+
+// postPlanChat posts the owner's message or interrupt to a plan that has not
+// created its milestone yet. The audit line never includes the text.
+func (s *Server) postPlanChat(w http.ResponseWriter, r *http.Request) {
+	pl, steer, ok := s.projectPlan(w, r)
+	switch {
+	case !ok:
+		return
+	case !steer:
+		writeError(w, http.StatusForbidden, "only the project's owners change its plans")
+		return
+	case pl.Status.Phase == aiv1.AgentPlanCreated:
+		writeError(w, http.StatusConflict, "the plan has created its milestone")
+		return
+	}
+	req, ok := readChat(w, r)
+	if !ok {
+		return
+	}
+	if req.Kind == "command" {
+		badRequest(w, "commands are not supported on a plan")
+		return
+	}
+	id, created, ok := s.insertChat(w, r, store.ChatMessage{Namespace: pl.Namespace, Project: pl.Spec.ProjectRef, Plan: pl.Name,
+		Kind: req.Kind, Body: req.Body, ClientKey: req.ClientKey})
+	if !ok {
+		return
+	}
+	s.log.Info("audit", "action", "plan.chat", "user", principalOf(r).Username, "namespace", pl.Namespace, "name", pl.Name,
+		"project", pl.Spec.ProjectRef, "kind", req.Kind, "id", id, "created", created)
+	writeChatPosted(w, id, created)
+}
+
+// getPlanChat returns the plan's messages, newest first, paged like getChat.
+func (s *Server) getPlanChat(w http.ResponseWriter, r *http.Request) {
+	pl, _, ok := s.projectPlan(w, r)
+	if !ok {
+		return
+	}
+	s.writeChatPage(w, r, func(st *store.Store, before, after int64, limit int) ([]store.ChatMessage, error) {
+		return st.PlanMessages(r.Context(), pl.Namespace, pl.Spec.ProjectRef, pl.Name, before, after, limit)
+	})
 }
 
 // planName is plan-<yyyymmdd>-<6 random characters>.

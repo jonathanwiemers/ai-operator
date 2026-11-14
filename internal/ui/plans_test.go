@@ -24,6 +24,7 @@ func planEnv(t *testing.T, chat bool, roles ...string) *testEnv {
 	cfg := oidcConfig(
 		Rule{Roles: []string{"leads"}, Projects: []string{"team-a/*"}, Steer: true},
 		Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}},
+		Rule{Roles: []string{"readers"}, Projects: []string{"team-a/*"}, Conversation: true},
 	)
 	if chat {
 		withChat(cfg)

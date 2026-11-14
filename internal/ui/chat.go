@@ -61,32 +61,42 @@ func (s *Server) postChat(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if ok, _ := s.chats.allow(p.Username, time.Now()); !ok {
-		writeError(w, http.StatusTooManyRequests, "too many chat messages, try again in a minute")
-		return
-	}
-	st := s.chat.Load()
-	if st == nil {
-		writeError(w, http.StatusServiceUnavailable, "the chat database is not connected yet")
-		return
-	}
-	id, created, err := st.InsertUserMessage(r.Context(), store.ChatMessage{
-		Namespace:  ns,
-		Project:    name,
-		Task:       task.Name,
-		Author:     p.Username,
-		AuthorName: p.Username, // display name is not stored in the session
-		Kind:       req.Kind,
-		Body:       req.Body,
-		ClientKey:  req.ClientKey,
-		ExpiresAt:  time.Now().Add(s.historyRetention),
+	id, created, ok := s.insertChat(w, r, store.ChatMessage{
+		Namespace: ns, Project: name, Task: task.Name, Kind: req.Kind, Body: req.Body, ClientKey: req.ClientKey,
 	})
-	if err != nil {
-		s.internalError(w, err)
+	if !ok {
 		return
 	}
 	s.log.Info("audit", "action", "chat.post", "user", p.Username, "namespace", ns, "project", name,
 		"task", taskName, "kind", req.Kind, "id", id, "created", created)
+	writeChatPosted(w, id, created)
+}
+
+// insertChat rate-limits and inserts the caller's message m, stamped with
+// author and expiry; false after an error response.
+func (s *Server) insertChat(w http.ResponseWriter, r *http.Request, m store.ChatMessage) (int64, bool, bool) {
+	p := principalOf(r)
+	if ok, _ := s.chats.allow(p.Username, time.Now()); !ok {
+		writeError(w, http.StatusTooManyRequests, "too many chat messages, try again in a minute")
+		return 0, false, false
+	}
+	st := s.chat.Load()
+	if st == nil {
+		writeError(w, http.StatusServiceUnavailable, "the chat database is not connected yet")
+		return 0, false, false
+	}
+	// The display name is not stored in the session.
+	m.Author, m.AuthorName, m.ExpiresAt = p.Username, p.Username, time.Now().Add(s.historyRetention)
+	id, created, err := st.InsertUserMessage(r.Context(), m)
+	if err != nil {
+		s.internalError(w, err)
+		return 0, false, false
+	}
+	return id, created, true
+}
+
+// writeChatPosted answers a chat post: 201 on create, 200 on a retry.
+func writeChatPosted(w http.ResponseWriter, id int64, created bool) {
 	code := http.StatusOK
 	if created {
 		code = http.StatusCreated
@@ -121,6 +131,15 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.writeChatPage(w, r, func(st *store.Store, before, after int64, limit int) ([]store.ChatMessage, error) {
+		return st.ChatMessages(r.Context(), ns, name, task.Name, before, after, limit)
+	})
+}
+
+// writeChatPage answers a chat read with what list returns for the request's
+// before, after and limit, bodies only with the conversation grant.
+func (s *Server) writeChatPage(w http.ResponseWriter, r *http.Request, list func(st *store.Store, before, after int64, limit int) ([]store.ChatMessage, error)) {
+	ns, name := r.PathValue("namespace"), r.PathValue("name")
 	st := s.research.Load()
 	if st == nil {
 		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
@@ -148,7 +167,7 @@ func (s *Server) getChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	msgs, err := st.ChatMessages(r.Context(), ns, name, task.Name, before, after, limit)
+	msgs, err := list(st, before, after, limit)
 	if err != nil {
 		s.internalError(w, err)
 		return
