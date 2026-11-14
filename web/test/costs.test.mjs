@@ -10,9 +10,11 @@ import {
   costChange,
   costFiltersQuery,
   costKeyLabel,
+  costKinds,
   costParams,
   monthToDate,
   parseCostFilters,
+  planTaskLabel,
   topRowLocation,
 } from '../src/costs.ts'
 
@@ -137,6 +139,18 @@ test('monthToDate: unknown is not $0, no change without last month', () => {
 test('costKeyLabel: the legacy key is "before calls"', () => {
   assert.equal(costKeyLabel(''), 'before calls')
   assert.equal(costKeyLabel('ns/p'), 'ns/p')
+})
+
+test('costKinds: plan is a filter choice', () => {
+  assert.ok(costKinds.includes('plan'))
+  assert.equal(parseCostFilters({ kind: 'plan' }).kind, 'plan')
+})
+
+test('planTaskLabel: plan/<name> as plain text until the plan route links', () => {
+  assert.equal(planTaskLabel('plan/shop-plan-new'), 'plan/shop-plan-new')
+  assert.equal(planTaskLabel('plan/'), null)
+  assert.equal(planTaskLabel('research/payments-news'), null)
+  assert.equal(planTaskLabel('shop-i281'), null)
 })
 
 test('breakdownLink: project, kind and engine rows set their filter and keep the rest', () => {

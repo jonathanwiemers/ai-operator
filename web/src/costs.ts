@@ -29,6 +29,7 @@ export const costKinds = [
   'followUpDraft',
   'chat',
   'research',
+  'plan',
 ] as const
 export const costEngines = ['claude', 'cursor'] as const
 
@@ -188,6 +189,12 @@ export function monthToDate(m: CostsMonthView): MonthToDate {
 // agent calls were recorded (the legacy runs, decision 3).
 export function costKeyLabel(key: string): string {
   return key === '' ? 'before calls' : key
+}
+
+// planTaskLabel is a spend task "plan/<name>" as plain text until the plan
+// page (route name "plan") can take the link.
+export function planTaskLabel(task: string): string | null {
+  return /^plan\/.+/.test(task) ? task : null
 }
 
 // breakdownLink is the route of a Where it goes row: the current filters

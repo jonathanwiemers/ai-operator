@@ -10,6 +10,7 @@ import type {
   ChatPostResponse,
   CostsTopView,
   CostsView,
+  EstimateView,
   Feature,
   FollowUpMilestoneView,
   FeaturesResponse,
@@ -22,6 +23,8 @@ import type {
   MilestoneView,
   NoteView,
   OverviewView,
+  PlanListItem,
+  PlanView,
   ProjectDetail,
   ProjectSummary,
   ResearchCreated,
@@ -37,7 +40,10 @@ import type {
   ThreadResponse,
 } from './generated/views'
 import type { ResearchAgent, ResearchDepth, ResearchView } from './generated/api'
+import { draftConflictFrom, DraftConflict } from './planDraft'
 import type { ChatKind } from './types'
+
+export { DraftConflict }
 
 export class NotFoundError extends Error {}
 
@@ -107,6 +113,7 @@ async function del(path: string): Promise<void> {
     throw new ApiError(data.error ?? `The server answered ${resp.status}.`, resp.status)
   }
 }
+
 
 // getMe: GET /me, the signed-in user and how users sign in.
 export function getMe(): Promise<Me> {
@@ -287,6 +294,84 @@ export function createFollowUp(
   body: { followUps: number[]; title: string; description: string },
 ): Promise<FollowUpMilestoneView> {
   return post<FollowUpMilestoneView>(`${milestonePath(namespace, name, iid)}/followup`, body)
+}
+
+function planPath(namespace: string, name: string, plan?: string): string {
+  const base = `${projectPath(namespace, name)}/plans`
+  return plan ? `${base}/${encodeURIComponent(plan)}` : base
+}
+
+export function listPlans(namespace: string, name: string): Promise<PlanListItem[]> {
+  return get(planPath(namespace, name))
+}
+export function getPlan(namespace: string, name: string, plan: string): Promise<PlanView> {
+  return get(planPath(namespace, name, plan))
+}
+export function createPlan(namespace: string, name: string, body: { title?: string } = {}): Promise<PlanView> {
+  return post(planPath(namespace, name), body)
+}
+export function deletePlan(namespace: string, name: string, plan: string): Promise<void> {
+  return del(planPath(namespace, name, plan))
+}
+export function getPlanChat(
+  namespace: string,
+  name: string,
+  plan: string,
+  opts: { before?: number; after?: number; limit?: number } = {},
+): Promise<ChatPage> {
+  const q = new URLSearchParams()
+  if (opts.before) q.set('before', String(opts.before))
+  if (opts.after) q.set('after', String(opts.after))
+  if (opts.limit) q.set('limit', String(opts.limit))
+  const qs = q.toString()
+  return get(`${planPath(namespace, name, plan)}/chat${qs ? `?${qs}` : ''}`)
+}
+export function postPlanChat(
+  namespace: string,
+  name: string,
+  plan: string,
+  body: { body: string; clientKey: string; kind?: Exclude<ChatKind, 'command'> },
+): Promise<ChatPostResponse> {
+  return post(`${planPath(namespace, name, plan)}/chat`, body)
+}
+// savePlanDraft: PUT .../draft; revision 409 → DraftConflict (server's view).
+export async function savePlanDraft(
+  namespace: string,
+  name: string,
+  plan: string,
+  body: { baseRevision: number; draft: string },
+): Promise<PlanView> {
+  const resp = await fetch(`/api/v1${planPath(namespace, name, plan)}/draft`, {
+    method: 'PUT',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(body),
+  })
+  if (resp.status === 401) loginRequired()
+  const data = (await resp.json().catch(() => ({}))) as Record<string, unknown> & { error?: string; field?: string }
+  const conflict = draftConflictFrom(resp.status, data)
+  if (conflict) throw conflict
+  if (!resp.ok) throw new ApiError(data.error ?? `The server answered ${resp.status}.`, resp.status, data.field, data)
+  return data as unknown as PlanView
+}
+export function raisePlanBudget(namespace: string, name: string, plan: string, maxBudgetUSD: string): Promise<PlanView> {
+  return post(`${planPath(namespace, name, plan)}/budget`, { maxBudgetUSD })
+}
+export function createPlanMilestone(
+  namespace: string,
+  name: string,
+  plan: string,
+  body: { title: string; description: string; spec: boolean; autopilot: boolean },
+): Promise<FollowUpMilestoneView> {
+  return post(`${planPath(namespace, name, plan)}/milestone`, body)
+}
+export function getEstimate(
+  namespace: string,
+  name: string,
+  q: { plan: string } | { milestone: number },
+): Promise<EstimateView> {
+  const params = new URLSearchParams('plan' in q ? { plan: q.plan } : { milestone: String(q.milestone) })
+  return get(`${projectPath(namespace, name)}/estimate?${params}`)
 }
 
 // dismissFollowUps: POST .../milestones/{iid}/followups/dismiss, the
