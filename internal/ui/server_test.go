@@ -204,7 +204,8 @@ func newTestEnv(t *testing.T, cfg *Config) *testEnv {
 	if err := aiv1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	reader := fake.NewClientBuilder().WithScheme(scheme).WithObjects(testObjects()...).Build()
+	// Plans have the status subresource: the UI patches their drafts there.
+	reader := fake.NewClientBuilder().WithScheme(scheme).WithObjects(testObjects()...).WithStatusSubresource(&aiv1.AgentPlan{}).Build()
 	env := &testEnv{hub: NewHub(), reader: reader}
 	if cfg.Auth.Mode != AuthNone {
 		env.idp = newFakeIdP(t)

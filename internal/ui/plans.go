@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -124,13 +125,18 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, PlanView{PlanListItem: s.planItem(pl, steer), Draft: pl.Status.Draft,
-		DraftRevision: pl.Status.DraftRevision, DraftBy: pl.Status.DraftBy, DraftSHA: pl.Status.DraftSHA})
+	writeJSON(w, http.StatusOK, s.planView(pl, steer))
+}
+
+func (s *Server) planView(pl *aiv1.AgentPlan, steer bool) PlanView {
+	return PlanView{PlanListItem: s.planItem(pl, steer), Draft: pl.Status.Draft,
+		DraftRevision: pl.Status.DraftRevision, DraftBy: pl.Status.DraftBy, DraftSHA: pl.Status.DraftSHA}
 }
 
 // Limits of the plans owners start from the Desk.
 const (
 	maxPlanTitle   = 255
+	maxPlanDraft   = 64 << 10
 	plansPerWindow = 10
 )
 
@@ -262,6 +268,87 @@ func (s *Server) getPlanChat(w http.ResponseWriter, r *http.Request) {
 	s.writeChatPage(w, r, func(st *store.Store, before, after int64, limit int) ([]store.ChatMessage, error) {
 		return st.PlanMessages(r.Context(), pl.Namespace, pl.Spec.ProjectRef, pl.Name, before, after, limit)
 	})
+}
+
+// ownPlan is projectPlan for a change by the plan's owners, decoding the
+// request into req: 404 without the writer client, 403 for others.
+func (s *Server) ownPlan(w http.ResponseWriter, r *http.Request, limit int64, req any) (*aiv1.AgentPlan, bool) {
+	pl, steer, ok := s.projectPlan(w, r)
+	switch {
+	case !ok:
+	case s.writer == nil:
+		notFound(w)
+	case !steer:
+		writeError(w, http.StatusForbidden, "only the project's owners change its plans")
+	case json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(req) != nil:
+		badRequest(w, "invalid request")
+	default:
+		return pl, true
+	}
+	return nil, false
+}
+
+// savePlanDraft saves the owner's edit {baseRevision, draft} as the next
+// revision: 409 with the current view when the draft changed since.
+func (s *Server) savePlanDraft(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BaseRevision int64  `json:"baseRevision"`
+		Draft        string `json:"draft"`
+	}
+	pl, ok := s.ownPlan(w, r, 8*maxPlanDraft, &req) // JSON escapes a byte in up to 6
+	switch {
+	case !ok:
+	case pl.Status.Phase == aiv1.AgentPlanCreated:
+		writeError(w, http.StatusConflict, "the plan has created its milestone")
+	case len(req.Draft) > maxPlanDraft:
+		fieldError(w, "draft", "the draft must be at most 64 KiB")
+	case pl.Status.DraftRevision != req.BaseRevision:
+		writeJSON(w, http.StatusConflict, s.planView(pl, true))
+	default:
+		base := pl.DeepCopy()
+		pl.Status.Draft, pl.Status.DraftRevision, pl.Status.DraftBy = req.Draft, req.BaseRevision+1, "owner"
+		err := s.writer.Status().Patch(r.Context(), pl, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{}))
+		s.planPatched(w, r, pl, err, "plan.draft", "revision", pl.Status.DraftRevision)
+	}
+}
+
+// raisePlanBudget raises the plan's cap {maxBudgetUSD} above its current one,
+// up to plan.maxBudgetUSDLimit.
+func (s *Server) raisePlanBudget(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		MaxBudgetUSD string `json:"maxBudgetUSD"`
+	}
+	pl, ok := s.ownPlan(w, r, 4<<10, &req)
+	if !ok {
+		return
+	}
+	cur, limit := pl.BudgetUSD(s.cfg.Plan.MaxBudgetUSD), s.cfg.Plan.MaxBudgetUSDLimit
+	usd, err := aiv1.ParseBudget(req.MaxBudgetUSD)
+	if err != nil || aiv1.CostOf(usd) <= aiv1.CostOf(cur) || aiv1.CostOf(usd) > aiv1.CostOf(limit) {
+		fieldError(w, "maxBudgetUSD", fmt.Sprintf("the budget must be above $%s and at most $%s", cur, limit))
+		return
+	}
+	base := pl.DeepCopy()
+	pl.Spec.MaxBudgetUSD = usd
+	s.planPatched(w, r, pl, s.writer.Patch(r.Context(), pl, client.MergeFrom(base)), "plan.budget", "from", cur, "to", usd)
+}
+
+// planPatched answers the patch of pl with err: the new view and an audit
+// line, 409 with the current view when the plan changed since it was read.
+func (s *Server) planPatched(w http.ResponseWriter, r *http.Request, pl *aiv1.AgentPlan, err error, action string, kv ...any) {
+	if apierrors.IsConflict(err) {
+		if err = s.writer.Get(r.Context(), client.ObjectKeyFromObject(pl), pl); err == nil {
+			writeJSON(w, http.StatusConflict, s.planView(pl, true))
+			return
+		}
+	}
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	s.log.Info("audit", append([]any{"action", action, "user", principalOf(r).Username, "namespace", pl.Namespace,
+		"name", pl.Name, "project", pl.Spec.ProjectRef}, kv...)...)
+	writeJSON(w, http.StatusOK, s.planView(pl, true))
 }
 
 // planName is plan-<yyyymmdd>-<6 random characters>.
