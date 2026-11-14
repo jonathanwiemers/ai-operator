@@ -33,14 +33,18 @@ rules:
 - apiGroups:
   - ai.wiemers.me
   resources:
-  - agentprojects
+  - agentplans
   verbs:
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - ai.wiemers.me
   resources:
+  - agentplans/status
   - agentprojects/status
   - agentresearches/status
   - agenttasks/status
@@ -48,6 +52,14 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - ai.wiemers.me
+  resources:
+  - agentprojects
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - ai.wiemers.me
   resources:

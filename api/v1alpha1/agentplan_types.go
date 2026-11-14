@@ -79,7 +79,15 @@ type AgentPlanStatus struct {
 	Calls []AgentCall `json:"calls,omitempty"`
 	// +optional
 	PodName string `json:"podName,omitempty"`
+	// PodFailures counts the plan's pods that failed in a row; the plan
+	// fails at MaxPlanPodFailures.
+	// +optional
+	PodFailures int32 `json:"podFailures,omitempty"`
 }
+
+// MaxPlanPodFailures is how many pods of a plan may fail in a row before
+// the plan fails.
+const MaxPlanPodFailures = 3
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

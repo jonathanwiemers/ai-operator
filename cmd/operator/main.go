@@ -234,6 +234,17 @@ func main() {
 			setupLog.Error(err, "unable to create controller", "controller", "AgentResearch")
 			os.Exit(1)
 		}
+		// Plans talk through the chat, which needs the research database.
+		if err := (&controller.AgentPlanReconciler{
+			Client:               mgr.GetClient(),
+			Scheme:               mgr.GetScheme(),
+			Config:               planCfg,
+			DefaultAgentImage:    defaultAgentImage,
+			DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "AgentPlan")
+			os.Exit(1)
+		}
 		chat := &controller.Chat{
 			Client:    mgr.GetClient(),
 			APIReader: mgr.GetAPIReader(),

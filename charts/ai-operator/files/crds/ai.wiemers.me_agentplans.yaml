@@ -391,6 +391,12 @@ spec:
                 - Created
                 - Failed
                 type: string
+              podFailures:
+                description: |-
+                  PodFailures counts the plan's pods that failed in a row; the plan
+                  fails at MaxPlanPodFailures.
+                format: int32
+                type: integer
               podName:
                 type: string
               spendUSD:

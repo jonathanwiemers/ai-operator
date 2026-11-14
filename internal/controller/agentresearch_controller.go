@@ -464,21 +464,25 @@ func podEnded(pod *corev1.Pod) bool {
 
 // runEnd says how a run ended without the runner's report.
 func runEnd(pod *corev1.Pod) string {
-	const prefix = "no report from the runner: "
+	return "no report from the runner: " + podEnd(pod)
+}
+
+// podEnd says how a pod ended, or why it did not.
+func podEnd(pod *corev1.Pod) string {
 	switch {
 	case pod == nil:
-		return prefix + "the pod is gone"
+		return "the pod is gone"
 	case !podEnded(pod):
-		return prefix + fmt.Sprintf("the pod did not end in time (%s)", pod.Status.Phase)
+		return fmt.Sprintf("the pod did not end in time (%s)", pod.Status.Phase)
 	case pod.Status.Reason != "":
-		return prefix + fmt.Sprintf("pod %s: %s", pod.Status.Reason, pod.Status.Message)
+		return fmt.Sprintf("pod %s: %s", pod.Status.Reason, pod.Status.Message)
 	}
 	for _, cs := range pod.Status.ContainerStatuses {
 		if t := cs.State.Terminated; cs.Name == RunnerContainer && t != nil {
-			return prefix + fmt.Sprintf("the runner exited with code %d (%s)", t.ExitCode, t.Reason)
+			return fmt.Sprintf("the runner exited with code %d (%s)", t.ExitCode, t.Reason)
 		}
 	}
-	return prefix + fmt.Sprintf("the pod %s", pod.Status.Phase)
+	return fmt.Sprintf("the pod %s", pod.Status.Phase)
 }
 
 func setResearchCondition(res *aiv1.AgentResearch, typ string, status bool, reason, msg string) {
