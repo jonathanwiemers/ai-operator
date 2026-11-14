@@ -20,6 +20,7 @@ import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestonePilot from '../components/MilestonePilot.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
+import ProjectQueue from '../components/ProjectQueue.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import { live, useResource } from '../live'
 import { pausePrompt } from '../pauseCard'
@@ -477,6 +478,14 @@ function showDay(i: number): string | null {
       <div v-if="tab === 'stream'" class="scroll">
         <!-- A project's milestones (R9), in the dashboard's lists. -->
         <div v-if="!everything && !milestoneIID && namespace && name" class="milestones">
+          <ProjectQueue
+            v-if="project"
+            class="mb-3"
+            :namespace="namespace"
+            :name="name"
+            :queue="project.queue ?? []"
+            :commands="project.queueCommands"
+          />
           <MilestoneSections :namespace="namespace" :name="name" />
         </div>
         <div v-if="!everything && namespace && name" class="pinned">
