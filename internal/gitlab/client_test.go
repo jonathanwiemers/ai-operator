@@ -756,6 +756,22 @@ func TestMergeRequestVersionsAndCompare(t *testing.T) {
 	}
 }
 
+func TestGetBranch(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.Method + " " + r.URL.EscapedPath()
+		_, _ = w.Write([]byte(`{"name":"agent/3-x","commit":{"id":"1c46853","title":"t"}}`))
+	}))
+	defer srv.Close()
+	b, err := New(srv.URL, "tok").GetBranch(context.Background(), "g/p", "agent/3-x")
+	if err != nil || b.Name != "agent/3-x" || b.Commit.ID != "1c46853" {
+		t.Fatalf("branch %+v %v", b, err)
+	}
+	if path != "GET /api/v4/projects/g%2Fp/repository/branches/agent%2F3-x" {
+		t.Fatalf("request %q", path)
+	}
+}
+
 func TestReplyMergeRequestDiscussion(t *testing.T) {
 	var method, path string
 	var body map[string]any

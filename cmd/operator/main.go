@@ -149,6 +149,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The stall check and the pilot's stall evidence read the agent pods'
+	// logs (pods/log get).
+	podLogs := controller.NewPodLogs(kubernetes.NewForConfigOrDie(mgr.GetConfig()))
 	projects := &controller.AgentProjectReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -162,6 +165,7 @@ func main() {
 		Version:          version,
 		Research:         researchDB.Host != "",
 		DeskURL:          deskURL,
+		Logs:             podLogs,
 	}
 	// The history needs the research database; it records task changes and
 	// the comments the project reconciler reads.
@@ -212,8 +216,7 @@ func main() {
 		DeskURL:              deskURL,
 		CrossRepoAllowed:     projectList(crossRepoAllowed),
 		CrossRepoNever:       projectList(crossRepoNever),
-		// The stall check reads the agent pods' logs (pods/log get).
-		Logs: controller.NewPodLogs(kubernetes.NewForConfigOrDie(mgr.GetConfig())),
+		Logs:                 podLogs,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentTask")
 		os.Exit(1)

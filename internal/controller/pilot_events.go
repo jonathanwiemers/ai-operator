@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -183,6 +184,53 @@ func runStalledEvent(iid int64, t *aiv1.AgentTask, ev stallEvidence, now time.Ti
 	runner := tail(ev.RunnerLog, room-len(agent))
 	text += fmt.Sprintf(block, "Runner", runner) + fmt.Sprintf(block, "Agent", agent)
 	return aiv1.PilotEvent{Key: fmt.Sprintf("%s%d/%d", aiv1.RunStalledEventPrefix, iid, c.LastTransitionTime.Unix()), IssueIID: iid, Text: text}, true
+}
+
+// stallEvidenceOf reads the evidence for the run-stalled events of coord's
+// milestone that coord was not handed yet: the pod (named after the task),
+// the ends of the runner and agent logs and the branch head on GitLab. A
+// read that fails leaves its part empty; other tasks cost no reads.
+func (r *AgentProjectReconciler) stallEvidenceOf(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, coord *aiv1.AgentTask,
+	issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask) map[int64]stallEvidence {
+	out := map[int64]stallEvidence{}
+	for iid, t := range tasks {
+		is, ok := issues[iid]
+		ev, stalled := runStalledEvent(iid, t, stallEvidence{}, r.now())
+		if !stalled || t.Spec.Type != aiv1.TaskTypeImplement || !ok || is.Milestone == nil || is.Milestone.IID != coord.Spec.Milestone.IID ||
+			coord.Status.Pilot != nil && slices.Contains(coord.Status.Pilot.Events, ev.Key) {
+			continue
+		}
+		var e stallEvidence
+		var pod corev1.Pod
+		if err := r.Get(ctx, client.ObjectKeyFromObject(t), &pod); err == nil {
+			e.PodPhase = string(pod.Status.Phase)
+			var last time.Time
+			for _, cs := range slices.Concat(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses) {
+				e.Restarts += cs.RestartCount
+				for _, term := range []*corev1.ContainerStateTerminated{cs.State.Terminated, cs.LastTerminationState.Terminated} {
+					if term != nil && term.FinishedAt.After(last) {
+						last, e.LastTermination = term.FinishedAt.Time, term.Reason
+					}
+				}
+			}
+		}
+		tail := func(container string) string {
+			if s, err := r.Logs.Tail(ctx, t.Namespace, t.Name, container, 40, 4096); err == nil {
+				return s
+			}
+			return ""
+		}
+		if r.Logs != nil {
+			e.RunnerLog, e.AgentLog = tail(RunnerContainer), tail(AgentContainer)
+		}
+		if b := t.Status.Run.Branch; b != "" {
+			if br, err := gl.GetBranch(ctx, spec.GitLab.Project, b); err == nil {
+				e.RemoteHead = br.Commit.ID
+			}
+		}
+		out[iid] = e
+	}
+	return out
 }
 
 // flakyEvent is the event of a job that passed on retry: its flaky issue,

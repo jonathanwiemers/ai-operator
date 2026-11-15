@@ -103,7 +103,8 @@ type Fake struct {
 	BranchPipelines []string
 	NoPipelines     bool
 	// CreatedPipelines records every pipeline CreatePipeline made, with its
-	// variables; BranchHeads gives the SHA of those by ref, empty if unset.
+	// variables; BranchHeads gives the SHA of those by ref, empty if unset,
+	// and the branches GetBranch knows.
 	CreatedPipelines []CreatedPipeline
 	// Releases records every release CreateRelease made. Each starts a
 	// running tag pipeline, as a project with tag CI does, unless
@@ -152,6 +153,8 @@ type Fake struct {
 	// its head. Compares are the results of CompareCommits, keyed "from..to".
 	MRCommits map[int64][]gitlab.Commit
 	Compares  map[string]*gitlab.Compare
+	// BranchGets records the branches GetBranch was called for.
+	BranchGets []string
 	// RebaseDiffs and RebaseCommits, when set for an MR, become its MRDiffs
 	// and MRCommits at its next successful rebase (a rebase that adapted
 	// lines, or a branch someone pushed to), then are cleared.
@@ -902,6 +905,18 @@ func (f *Fake) CompareCommits(_ context.Context, _ string, from, to string) (*gi
 		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "compare"}
 	}
 	return &gitlab.Compare{Commits: slices.Clone(c.Commits), Diffs: slices.Clone(c.Diffs)}, nil
+}
+
+// GetBranch returns the branch with its head from BranchHeads, or 404.
+func (f *Fake) GetBranch(_ context.Context, _ string, branch string) (*gitlab.Branch, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.BranchGets = append(f.BranchGets, branch)
+	head, ok := f.BranchHeads[branch]
+	if !ok {
+		return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "branches"}
+	}
+	return &gitlab.Branch{Name: branch, Commit: gitlab.Commit{ID: head}}, nil
 }
 
 // DeleteBranch records the branch in DeletedBranches; the fake keeps no

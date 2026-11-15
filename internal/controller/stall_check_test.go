@@ -15,11 +15,15 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
-// fakeLogs is a containerLogs that answers from a map and counts reads.
+// fakeLogs is a containerLogs that answers from maps and counts reads:
+// calls those of LastLine, tails those of Tail.
 type fakeLogs struct {
-	last  map[string]time.Time
-	err   error
-	calls int
+	last    map[string]time.Time
+	err     error
+	calls   int
+	tail    map[string]string
+	tailErr map[string]error
+	tails   int
 }
 
 func (f *fakeLogs) LastLine(_ context.Context, _, _, container string) (time.Time, bool, error) {
@@ -28,8 +32,9 @@ func (f *fakeLogs) LastLine(_ context.Context, _, _, container string) (time.Tim
 	return t, ok, f.err
 }
 
-func (f *fakeLogs) Tail(context.Context, string, string, string, int64, int) (string, error) {
-	return "", nil
+func (f *fakeLogs) Tail(_ context.Context, _, _, container string, _ int64, _ int) (string, error) {
+	f.tails++
+	return f.tail[container], f.tailErr[container]
 }
 
 // newRunningTask starts task x with run 1 in progress since t0 and its pod

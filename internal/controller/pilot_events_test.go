@@ -1,12 +1,14 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -451,5 +453,87 @@ func TestRunStalledEvent(t *testing.T) {
 		map[int64]stallEvidence{7: {AgentLog: "last tool use"}}, now)
 	if len(evs) != 1 || !strings.HasPrefix(evs[0].Key, aiv1.RunStalledEventPrefix) || !strings.Contains(evs[0].Text, "last tool use") {
 		t.Errorf("a stalled task of the milestone wakes the pilot with its evidence: %+v", evs)
+	}
+}
+
+// TestStallEvidenceOf: the evidence of a stall the pilot does not know yet
+// is read from the pod, both container logs and the branch on GitLab; a
+// known stall, a healthy task and another milestone's task cost no reads,
+// and a failed log read only leaves that log out.
+func TestStallEvidenceOf(t *testing.T) {
+	e := newProjectEnv(t)
+	now := time.Date(2026, 11, 12, 20, 0, 0, 0, time.UTC)
+	e.r.Now = func() time.Time { return now }
+	logs := &fakeLogs{tail: map[string]string{RunnerContainer: "step started 18 push\n", AgentContainer: "wrote bundle\n"}}
+	e.r.Logs = logs
+	e.gl.BranchHeads = map[string]string{"agent/7-x": "0badc0ffee11"}
+	start := metav1.NewTime(now.Add(-42 * time.Minute))
+	task := func(name string, stalled metav1.ConditionStatus) *aiv1.AgentTask {
+		return &aiv1.AgentTask{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns}, Spec: aiv1.AgentTaskSpec{Type: aiv1.TaskTypeImplement},
+			Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{Branch: "agent/7-x", PushedSHA: "1c46853abcdef0123"},
+				Conditions: []metav1.Condition{{Type: aiv1.ConditionStalled, Status: stalled, Reason: aiv1.StallReasonSilent, LastTransitionTime: start}}}}
+	}
+	tasks := map[int64]*aiv1.AgentTask{7: task("shop-7", metav1.ConditionTrue), 8: task("shop-8", metav1.ConditionFalse), 9: task("shop-9", metav1.ConditionTrue)}
+	issues := map[int64]gitlab.Issue{7: {IID: 7, Milestone: &gitlab.Milestone{IID: 3}}, 8: {IID: 8, Milestone: &gitlab.Milestone{IID: 3}},
+		9: {IID: 9, Milestone: &gitlab.Milestone{IID: 4}}}
+	term := func(reason string, at time.Time) corev1.ContainerState {
+		return corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{Reason: reason, FinishedAt: metav1.NewTime(at)}}
+	}
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "shop-7", Namespace: ns}, Status: corev1.PodStatus{Phase: corev1.PodRunning,
+		ContainerStatuses: []corev1.ContainerStatus{
+			{Name: RunnerContainer, RestartCount: 1, LastTerminationState: term("Error", now.Add(-time.Hour))},
+			{Name: AgentContainer, RestartCount: 2, LastTerminationState: term("OOMKilled", now.Add(-30*time.Minute))}}}}
+	if err := e.c.Create(e.ctx, pod); err != nil {
+		t.Fatal(err)
+	}
+	spec := testProject().Spec
+	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &aiv1.MilestoneRef{IID: 3}}}
+	coord := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &aiv1.MilestoneRef{IID: 3}}}
+
+	got := e.r.stallEvidenceOf(e.ctx, e.gl, spec, coord, issues, tasks)
+	want := stallEvidence{PodPhase: "Running", Restarts: 3, LastTermination: "OOMKilled", RunnerLog: "step started 18 push\n",
+		AgentLog: "wrote bundle\n", RemoteHead: "0badc0ffee11"}
+	if len(got) != 1 || got[7] != want {
+		t.Fatalf("only the stalled task of the milestone has evidence: %+v", got)
+	}
+	if logs.tails != 2 || !slices.Equal(e.gl.BranchGets, []string{"agent/7-x"}) {
+		t.Errorf("reads: %d log tails, branches %v", logs.tails, e.gl.BranchGets)
+	}
+	evs := pilotEvents(spec, nil, st, issues, tasks, false, got, now)
+	i := slices.IndexFunc(evs, func(ev aiv1.PilotEvent) bool { return ev.IssueIID == 7 })
+	if i < 0 {
+		t.Fatalf("no event for #7: %+v", evs)
+	}
+	for _, s := range []string{"step started 18 push", "wrote bundle", "phase Running, 3 restarts, last termination OOMKilled", "Pushed 1c46853a, remote head 0badc0ff."} {
+		if !strings.Contains(evs[i].Text, s) {
+			t.Errorf("the event lacks %q:\n%s", s, evs[i].Text)
+		}
+	}
+
+	// The pilot has this stall: no reads.
+	logs.tails, e.gl.BranchGets = 0, nil
+	coord.Status.Pilot = &aiv1.PilotStatus{Events: []string{evs[i].Key}}
+	if got := e.r.stallEvidenceOf(e.ctx, e.gl, spec, coord, issues, tasks); len(got) != 0 || logs.tails != 0 || len(e.gl.BranchGets) != 0 {
+		t.Errorf("a known stall is not read again: %+v, %d tails, branches %v", got, logs.tails, e.gl.BranchGets)
+	}
+
+	// A failed log read leaves that log out; the event still comes.
+	coord.Status.Pilot = nil
+	logs.tailErr = map[string]error{AgentContainer: errors.New("container not found")}
+	delete(e.gl.BranchHeads, "agent/7-x")
+	got = e.r.stallEvidenceOf(e.ctx, e.gl, spec, coord, issues, tasks)
+	if ev := got[7]; ev.AgentLog != "" || ev.RunnerLog == "" || ev.RemoteHead != "" || ev.PodPhase != "Running" {
+		t.Errorf("failed reads leave their part empty: %+v", ev)
+	}
+	if evs := pilotEvents(spec, nil, st, issues, tasks, false, got, now); !slices.ContainsFunc(evs, func(ev aiv1.PilotEvent) bool {
+		return ev.IssueIID == 7 && strings.Contains(ev.Text, "step started 18 push") && strings.Contains(ev.Text, "remote head unknown")
+	}) {
+		t.Errorf("the event comes without the agent log: %+v", evs)
+	}
+
+	// Without a log source the pod and branch are still read.
+	e.r.Logs = nil
+	if got := e.r.stallEvidenceOf(e.ctx, e.gl, spec, coord, issues, tasks); got[7].PodPhase != "Running" || got[7].RunnerLog != "" {
+		t.Errorf("no log source: %+v", got)
 	}
 }

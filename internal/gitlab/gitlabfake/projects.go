@@ -299,6 +299,14 @@ func (p *Projects) DeleteBranch(ctx context.Context, project, branch string) err
 	return f.DeleteBranch(ctx, project, branch)
 }
 
+func (p *Projects) GetBranch(ctx context.Context, project, branch string) (*gitlab.Branch, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.GetBranch(ctx, project, branch)
+}
+
 func (p *Projects) ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]gitlab.Diff, error) {
 	f, err := p.route(project)
 	if err != nil {

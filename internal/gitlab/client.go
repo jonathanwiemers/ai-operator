@@ -49,6 +49,7 @@ type API interface {
 	MergeMergeRequest(ctx context.Context, project string, iid int64, opts MergeOptions) (*MergeRequest, error)
 	RebaseMergeRequest(ctx context.Context, project string, iid int64) error
 	DeleteBranch(ctx context.Context, project, branch string) error
+	GetBranch(ctx context.Context, project, branch string) (*Branch, error)
 	ListMergeRequestDiffs(ctx context.Context, project string, iid int64) ([]Diff, error)
 	// ListMergeRequestVersions lists the versions of an MR, newest first.
 	ListMergeRequestVersions(ctx context.Context, project string, iid int64) ([]MergeRequestVersion, error)
@@ -308,6 +309,12 @@ type Diff struct {
 	// Collapsed and TooLarge diffs come without their content.
 	Collapsed bool `json:"collapsed"`
 	TooLarge  bool `json:"too_large"`
+}
+
+// Branch is a branch of a project's repository.
+type Branch struct {
+	Name   string `json:"name"`
+	Commit Commit `json:"commit"`
 }
 
 // Commit is a commit of a merge request version or a repository compare.
@@ -996,6 +1003,15 @@ func (c *Client) GetMergeRequestVersion(ctx context.Context, project string, iid
 		return nil, err
 	}
 	return &v, nil
+}
+
+// GetBranch returns a branch of the project's repository with its head.
+func (c *Client) GetBranch(ctx context.Context, project, branch string) (*Branch, error) {
+	var b Branch
+	if _, err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/repository/branches/%s", projectPath(project), url.PathEscape(branch)), nil, nil, &b); err != nil {
+		return nil, err
+	}
+	return &b, nil
 }
 
 // CompareCommits compares two refs (not straight: from the merge base of

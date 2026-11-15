@@ -103,6 +103,9 @@ type AgentProjectReconciler struct {
 	// Requirements, set with a research database, stores the requirement
 	// counts of the open and newest closed milestones after each poll.
 	Requirements RequirementsStore
+	// Logs reads the ends of a stalled run's container logs for the pilot's
+	// run-stalled event. Nil: the event comes without logs.
+	Logs containerLogs
 
 	requirements requirementCounts
 	mu           sync.Mutex
