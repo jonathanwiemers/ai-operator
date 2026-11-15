@@ -3,9 +3,12 @@ package runner
 import (
 	"context"
 	"errors"
+	"net"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/logr/funcr"
@@ -287,5 +290,124 @@ func TestMirrorPushWithLeaseRefuses(t *testing.T) {
 	var ge *gitlab.GuardError
 	if err := m.PushWithLease(ctx, "main", cp, false); !errors.As(err, &ge) {
 		t.Fatalf("a lease push to main: %v", err)
+	}
+}
+
+// hangingRemote is the URL of a remote that accepts connections and never
+// answers. The remote commands' timeouts are 1s until the test ends.
+func hangingRemote(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var conns []net.Conn
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			conns = append(conns, c)
+			mu.Unlock()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = ln.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	})
+	for _, d := range []*time.Duration{&pushTimeout, &fetchTimeout, &lsRemoteTimeout, &gitWaitDelay} {
+		old := *d
+		*d = time.Second
+		t.Cleanup(func() { *d = old })
+	}
+	return "http://" + ln.Addr().String() + "/x.git"
+}
+
+func TestMirrorRemoteCommandsTimeOut(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name, want string
+		run        func(m *Mirror, cp string) error
+	}{
+		{"push", "git push timed out after 1s", func(m *Mirror, _ string) error { return m.Push(ctx, "agent/42-x", true) }},
+		{"lease push", "git push timed out after 1s", func(m *Mirror, cp string) error { return m.PushWithLease(ctx, "agent/42-x", cp, false) }},
+		{"ls-remote", "git ls-remote timed out after 1s", func(m *Mirror, _ string) error { return m.Sync(ctx, m.remoteURL, "main") }},
+		// Sync's fetch, which only runs after ls-remote answered.
+		{"fetch", "git fetch timed out after 1s", func(m *Mirror, _ string) error {
+			_, err := m.runRemote(ctx, fetchTimeout, "fetch", "--quiet", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main")
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _, cp := leaseMirror(t)
+			url := hangingRemote(t)
+			if _, err := m.run(ctx, false, "remote", "set-url", "origin", url); err != nil {
+				t.Fatal(err)
+			}
+			m.remoteURL, m.Policy.URL = url, url
+			start := time.Now()
+			err := tc.run(m, cp)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want %q, got %v", tc.want, err)
+			}
+			// The timeout plus the wait for the pipes, with slack.
+			if took := time.Since(start); took > 10*time.Second {
+				t.Fatalf("took %s", took)
+			}
+		})
+	}
+}
+
+func TestMirrorRemoteFailureKeepsError(t *testing.T) {
+	m, _, _ := guardedMirror(t)
+	ctx := context.Background()
+	_, err := m.runRemote(ctx, time.Minute, "fetch", "--quiet", "origin", "refs/heads/missing")
+	if err == nil || strings.Contains(err.Error(), "timed out") || !strings.HasPrefix(err.Error(), "git fetch --quiet origin refs/heads/missing: ") {
+		t.Fatalf("want the git error, got %v", err)
+	}
+	// A cancelled run is not a timeout either.
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := m.runRemote(cancelled, time.Minute, "ls-remote", "origin"); err == nil || strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("want the cancellation, got %v", err)
+	}
+}
+
+func TestMirrorLowSpeedAndTimeoutOnlyForRemote(t *testing.T) {
+	m, _, _ := guardedMirror(t)
+	ctx := context.Background()
+	for key, want := range map[string]string{"http.lowSpeedLimit": "1000", "http.lowSpeedTime": "60"} {
+		if got, err := m.runInput(ctx, true, "", "config", "--get", key); err != nil || got != want {
+			t.Fatalf("remote command: %s = %q (%v), want %s", key, got, err, want)
+		}
+		if got, err := m.run(ctx, false, "config", "--get", key); err == nil {
+			t.Fatalf("local command: %s = %q, want unset", key, got)
+		}
+	}
+	// Local commands have no timeout: they work with the remote ones at 1ns.
+	for _, d := range []*time.Duration{&pushTimeout, &fetchTimeout, &lsRemoteTimeout} {
+		old := *d
+		*d = time.Nanosecond
+		t.Cleanup(func() { *d = old })
+	}
+	path := filepath.Join(t.TempDir(), "work.bundle")
+	if _, err := m.run(ctx, false, "bundle", "create", "--quiet", path, "refs/heads/agent/42-x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Import(ctx, path, "agent/42-x"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.Bundle(ctx, path, nil, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Push(ctx, "agent/42-x", false); err == nil || !strings.Contains(err.Error(), "git push timed out after 1ns") {
+		t.Fatalf("a remote command at 1ns: %v", err)
 	}
 }

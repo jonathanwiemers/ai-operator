@@ -124,13 +124,49 @@ func (m *Mirror) run(ctx context.Context, withAuth bool, args ...string) (string
 	return m.runInput(ctx, withAuth, "", args...)
 }
 
+// Timeouts of the remote commands (runRemote): a remote that accepts the
+// connection and never answers must not block a run forever. Variables, so
+// tests can shorten them.
+var (
+	pushTimeout     = 5 * time.Minute
+	fetchTimeout    = 5 * time.Minute
+	lsRemoteTimeout = time.Minute
+	// gitWaitDelay bounds the wait for the pipes of a killed git whose
+	// children (git-remote-http) keep them open.
+	gitWaitDelay = 5 * time.Second
+)
+
+// runRemote runs a git command that talks to origin: with credentials and
+// the low-speed abort (runInput), bounded by timeout. A command that runs
+// out of time fails with "git <command> timed out after <timeout>".
+func (m *Mirror) runRemote(ctx context.Context, timeout time.Duration, args ...string) (string, error) {
+	tctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	out, err := m.runInput(tctx, true, "", args...)
+	if err != nil && errors.Is(tctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+		d := timeout.String()
+		if strings.HasSuffix(d, "m0s") {
+			d = strings.TrimSuffix(d, "0s")
+		}
+		return "", fmt.Errorf("git %s timed out after %s", args[0], d)
+	}
+	return out, err
+}
+
 // runInput is run with stdin.
 func (m *Mirror) runInput(ctx context.Context, withAuth bool, stdin string, args ...string) (string, error) {
 	// Automatic gc and maintenance run in the foreground: a detached one
 	// would still write to the mirror after the command returned (and
 	// break the cleanup of test directories).
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=/dev/null", "-c", "gc.autoDetach=false",
-		"-c", "maintenance.autoDetach=false", "--git-dir", m.Dir}, args...)...)
+	global := []string{"-c", "core.hooksPath=/dev/null", "-c", "gc.autoDetach=false",
+		"-c", "maintenance.autoDetach=false", "--git-dir", m.Dir}
+	if withAuth {
+		// Only remote commands carry credentials: abort a transfer slower
+		// than 1000 bytes/s for 60s.
+		global = append(global, "-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60")
+	}
+	cmd := exec.CommandContext(ctx, "git", append(global, args...)...)
+	cmd.WaitDelay = gitWaitDelay
 	cmd.Env = m.env(withAuth)
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
@@ -171,7 +207,7 @@ func (m *Mirror) Sync(ctx context.Context, url string, branches ...string) error
 	for _, b := range branches {
 		heads = append(heads, "refs/heads/"+b)
 	}
-	out, err := m.run(ctx, true, append([]string{"ls-remote", "origin"}, heads...)...)
+	out, err := m.runRemote(ctx, lsRemoteTimeout, append([]string{"ls-remote", "origin"}, heads...)...)
 	if err != nil {
 		return err
 	}
@@ -185,7 +221,7 @@ func (m *Mirror) Sync(ctx context.Context, url string, branches ...string) error
 		}
 	}
 	if len(refspecs) > 0 {
-		if _, err := m.run(ctx, true, append([]string{"fetch", "--quiet", "--no-tags", "origin"}, refspecs...)...); err != nil {
+		if _, err := m.runRemote(ctx, fetchTimeout, append([]string{"fetch", "--quiet", "--no-tags", "origin"}, refspecs...)...); err != nil {
 			return err
 		}
 	}
@@ -289,12 +325,12 @@ func (m *Mirror) push(ctx context.Context, src, dst string, skipCI bool) error {
 // it where the remote takes no push options.
 func (m *Mirror) pushArgs(ctx context.Context, skipCI bool, args ...string) error {
 	if skipCI {
-		_, err := m.run(ctx, true, append([]string{"push", "--quiet", "-o", "ci.skip", "origin"}, args...)...)
+		_, err := m.runRemote(ctx, pushTimeout, append([]string{"push", "--quiet", "-o", "ci.skip", "origin"}, args...)...)
 		if err == nil || !strings.Contains(err.Error(), "push options") {
 			return err
 		}
 	}
-	_, err := m.run(ctx, true, append([]string{"push", "--quiet", "origin"}, args...)...)
+	_, err := m.runRemote(ctx, pushTimeout, append([]string{"push", "--quiet", "origin"}, args...)...)
 	return err
 }
 

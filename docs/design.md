@@ -2477,6 +2477,11 @@ flowchart LR
   `http.extraHeader` through `GIT_CONFIG_*` environment variables of that
   single git process. Git runs with a minimal environment, no system or
   global config and hooks disabled.
+* Remote commands cannot block a run forever: they abort a transfer slower
+  than 1000 bytes/s for 60 s (`http.lowSpeedLimit`, `http.lowSpeedTime`)
+  and time out after 5 minutes (`push`, `fetch`) or 1 minute (`ls-remote`).
+  The step fails with `git push timed out after 5m`, and the run ends
+  through the usual error paths.
 * Before a run, the runner bundles the commits the checkout lacks; the agent
   server imports the bundle and checks out the branch. After a run, the agent
   server bundles the new commits and the runner imports them into the mirror
