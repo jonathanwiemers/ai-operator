@@ -905,6 +905,20 @@ type LifecycleSpec struct {
 	// +kubebuilder:default="30m"
 	// +optional
 	InfraRetryAfter metav1.Duration `json:"infraRetryAfter,omitempty"`
+
+	// StallAfter: a Running task whose runner and agent containers both
+	// logged nothing for this long, or whose pod is Pending or crash-/
+	// image-pull-looping this long, is stalled. The operator sets condition
+	// Stalled; the check itself is a later issue.
+	// +kubebuilder:default="30m"
+	// +optional
+	StallAfter metav1.Duration `json:"stallAfter,omitempty"`
+
+	// StallCheckInterval is how often the operator checks a Running task
+	// for a stall. Tasks shorter than StallAfter are never looked at.
+	// +kubebuilder:default="5m"
+	// +optional
+	StallCheckInterval metav1.Duration `json:"stallCheckInterval,omitempty"`
 }
 
 // CISpec configures the CI feedback loop: after the agent pushes, the

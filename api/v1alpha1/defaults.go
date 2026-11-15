@@ -29,6 +29,8 @@ const (
 	DefaultUsageLimitBackoff    = 5 * time.Minute
 	DefaultMaxUsageLimitBackoff = time.Hour
 	DefaultInfraRetryAfter      = 30 * time.Minute
+	DefaultStallAfter           = 30 * time.Minute
+	DefaultStallCheckInterval   = 5 * time.Minute
 	DefaultMaxConcurrent        = 3
 	DefaultCIFixRounds          = 2
 	DefaultNoPipelineTimeout    = 10 * time.Minute
@@ -212,6 +214,12 @@ func (l LifecycleSpec) WithDefaults() LifecycleSpec {
 	}
 	if l.InfraRetryAfter.Duration == 0 {
 		l.InfraRetryAfter = metav1.Duration{Duration: DefaultInfraRetryAfter}
+	}
+	if l.StallAfter.Duration == 0 {
+		l.StallAfter = metav1.Duration{Duration: DefaultStallAfter}
+	}
+	if l.StallCheckInterval.Duration == 0 {
+		l.StallCheckInterval = metav1.Duration{Duration: DefaultStallCheckInterval}
 	}
 	return l
 }

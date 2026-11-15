@@ -401,6 +401,28 @@ func TestWriteFailuresAdmitted(t *testing.T) {
 	}
 }
 
+// lifecycle.stallAfter and stallCheckInterval are optional and default to
+// 30m and 5m; the Go fallback covers objects stored before the fields existed.
+func TestLifecycleStallAdmitted(t *testing.T) {
+	crd := loadCRD(t, "agentprojects")
+	lifecycle := func(obj map[string]any) map[string]any { return spec(obj)["lifecycle"].(map[string]any) }
+	base := readSample(t, "agentproject.yaml", func(s string) string { return s })
+	spec(base)["lifecycle"] = map[string]any{}
+	obj, errs := crd.admit(base)
+	if len(errs) > 0 || lifecycle(obj)["stallAfter"] != "30m" || lifecycle(obj)["stallCheckInterval"] != "5m" {
+		t.Fatalf("the defaults apply: %v %v", errs, lifecycle(obj))
+	}
+	base = readSample(t, "agentproject.yaml", func(s string) string { return s })
+	spec(base)["lifecycle"] = map[string]any{"stallAfter": "1h", "stallCheckInterval": "2m"}
+	if obj, errs = crd.admit(base); len(errs) > 0 || lifecycle(obj)["stallAfter"] != "1h" || lifecycle(obj)["stallCheckInterval"] != "2m" {
+		t.Fatalf("custom values are kept: %v %v", errs, lifecycle(obj))
+	}
+	got := (LifecycleSpec{}).WithDefaults()
+	if got.StallAfter.Duration != 30*time.Minute || got.StallCheckInterval.Duration != 5*time.Minute {
+		t.Errorf("Go fallback StallAfter=%v StallCheckInterval=%v", got.StallAfter, got.StallCheckInterval)
+	}
+}
+
 // pilot.stuckAfter is optional and defaults to 30m; the Go fallback covers
 // objects stored before the field existed.
 func TestPilotStuckAfterAdmitted(t *testing.T) {

@@ -60,6 +60,16 @@ func TestLifecycleDefaults(t *testing.T) {
 	if l.ChatIdleTimeout.Duration != DefaultChatIdleTimeout {
 		t.Fatalf("ChatIdleTimeout = %v", l.ChatIdleTimeout)
 	}
+	if l.StallAfter.Duration != DefaultStallAfter {
+		t.Fatalf("StallAfter = %v", l.StallAfter)
+	}
+	if l.StallCheckInterval.Duration != DefaultStallCheckInterval {
+		t.Fatalf("StallCheckInterval = %v", l.StallCheckInterval)
+	}
+	full := AgentProjectSpec{}.WithDefaults().Lifecycle
+	if full.StallAfter.Duration != 30*time.Minute || full.StallCheckInterval.Duration != 5*time.Minute {
+		t.Fatalf("AgentProjectSpec defaults: StallAfter=%v StallCheckInterval=%v", full.StallAfter, full.StallCheckInterval)
+	}
 }
 
 func TestUsageLimitBackoff(t *testing.T) {

@@ -1935,6 +1935,20 @@ spec:
                       RetentionPeriod after the last activity after which the workspace PVC is
                       deleted as well.
                     type: string
+                  stallAfter:
+                    default: 30m
+                    description: |-
+                      StallAfter: a Running task whose runner and agent containers both
+                      logged nothing for this long, or whose pod is Pending or crash-/
+                      image-pull-looping this long, is stalled. The operator sets condition
+                      Stalled; the check itself is a later issue.
+                    type: string
+                  stallCheckInterval:
+                    default: 5m
+                    description: |-
+                      StallCheckInterval is how often the operator checks a Running task
+                      for a stall. Tasks shorter than StallAfter are never looked at.
+                    type: string
                   usageLimitBackoff:
                     default: 5m
                     description: |-

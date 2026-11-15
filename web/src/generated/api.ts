@@ -1187,6 +1187,22 @@ export interface LifecycleSpec {
    * +optional
    */
   infraRetryAfter?: string;
+  /**
+   * StallAfter: a Running task whose runner and agent containers both
+   * logged nothing for this long, or whose pod is Pending or crash-/
+   * image-pull-looping this long, is stalled. The operator sets condition
+   * Stalled; the check itself is a later issue.
+   * +kubebuilder:default="30m"
+   * +optional
+   */
+  stallAfter?: string;
+  /**
+   * StallCheckInterval is how often the operator checks a Running task
+   * for a stall. Tasks shorter than StallAfter are never looked at.
+   * +kubebuilder:default="5m"
+   * +optional
+   */
+  stallCheckInterval?: string;
 }
 /**
  * CISpec configures the CI feedback loop: after the agent pushes, the
@@ -3761,6 +3777,21 @@ export interface AgentTaskStatus {
    */
   conditions?: Condition[];
 }
+/**
+ * ConditionStalled is set on a Running task when the operator's stall check
+ * finds silence or a stuck pod (see lifecycle.stallAfter). Stalled=False
+ * with reason Active once a check finds a recent log line; the condition is
+ * removed when no run is in progress.
+ */
+export const ConditionStalled = "Stalled";
+export const StallReasonSilent = "Silent";
+export const StallReasonPodPending = "PodPending";
+export const StallReasonCrashLoop = "CrashLoop";
+export const StallReasonActive = "Active";
+/**
+ * Stall condition reasons.
+ */
+export type StallReason = typeof StallReasonSilent | typeof StallReasonPodPending | typeof StallReasonCrashLoop | typeof StallReasonActive;
 export const MaxWriteFailures = 5;
 export const MaxWriteFailureError = 1000;
 /**

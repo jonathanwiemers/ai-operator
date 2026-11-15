@@ -1135,6 +1135,20 @@ type AgentTaskStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+// ConditionStalled is set on a Running task when the operator's stall check
+// finds silence or a stuck pod (see lifecycle.stallAfter). Stalled=False
+// with reason Active once a check finds a recent log line; the condition is
+// removed when no run is in progress.
+const ConditionStalled = "Stalled"
+
+// Stall condition reasons.
+const (
+	StallReasonSilent     = "Silent"
+	StallReasonPodPending = "PodPending"
+	StallReasonCrashLoop  = "CrashLoop"
+	StallReasonActive     = "Active"
+)
+
 // MaxWriteFailures and MaxWriteFailureError bound status.writeFailures.
 const (
 	MaxWriteFailures     = 5
