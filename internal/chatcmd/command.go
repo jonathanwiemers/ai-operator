@@ -96,7 +96,7 @@ func Parse(body string) (Command, error) {
 		return Command{}, fmt.Errorf("%s takes no followUps", c.Cmd)
 	}
 	switch c.Cmd {
-	case "retry", "review", "pause", "resume", "start", "unstart", "endmilestone":
+	case "retry", "review", "pause", "resume", "start", "unstart", "endmilestone", "restart":
 		if err := c.noArgs(); err != nil {
 			return Command{}, err
 		}
@@ -297,6 +297,12 @@ func (c Command) RevisitCmd() bool {
 // draft of a follow-up milestone (draft); the Coordinate task takes it.
 func (c Command) DraftCmd() bool {
 	return c.Cmd == "draft"
+}
+
+// RestartCmd reports whether the command asks to restart a stuck run
+// (restart); Implement, Spec and Coordinate tasks take it.
+func (c Command) RestartCmd() bool {
+	return c.Cmd == "restart"
 }
 
 // Routing turns a use, effort or budget command into the GitLab routing

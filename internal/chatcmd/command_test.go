@@ -20,6 +20,9 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"start"}`, Command{Cmd: "start"}, ""},
 		{`{"cmd":" Unstart "}`, Command{Cmd: "unstart"}, ""},
 		{`{"cmd":"endMilestone"}`, Command{Cmd: "endmilestone"}, ""},
+		{`{"cmd":"restart"}`, Command{Cmd: "restart"}, ""},
+		{`{"cmd":" Restart "}`, Command{Cmd: "restart"}, ""},
+		{`{"cmd":"restart","issue":3}`, Command{}, "restart takes no arguments"},
 		{`{"cmd":"start","issue":3}`, Command{}, "start takes no arguments"},
 		{`{"cmd":"unstart","engine":"claude"}`, Command{}, "unstart takes no arguments"},
 		{`{"cmd":"endmilestone","proposal":1}`, Command{}, "endmilestone takes no arguments"},
@@ -192,6 +195,15 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 	for _, cmd := range []string{"answer", "revisit", "accept", "retry"} {
 		if (Command{Cmd: cmd}).DraftCmd() {
 			t.Errorf("%s should not be DraftCmd", cmd)
+		}
+	}
+
+	if c := (Command{Cmd: "restart"}); !c.RestartCmd() || c.ImplementOnly() || c.Autopilot() || c.ProposalOnly() || c.PromptCmd() || c.RevisitCmd() || c.DraftCmd() {
+		t.Error("restart should be RestartCmd only")
+	}
+	for _, cmd := range []string{"retry", "pause", "accept", "draft"} {
+		if (Command{Cmd: cmd}).RestartCmd() {
+			t.Errorf("%s should not be RestartCmd", cmd)
 		}
 	}
 

@@ -397,6 +397,8 @@ func chatCommandAllowed(task aiv1.AgentTask, cmd chatcmd.Command) bool {
 		return true
 	case (cmd.ProposalOnly() || cmd.PromptCmd() || cmd.RevisitCmd() || cmd.DraftCmd()) && task.Spec.Type == aiv1.TaskTypeCoordinate:
 		return true
+	case cmd.RestartCmd() && (task.Spec.Type == aiv1.TaskTypeImplement || task.Spec.Type == aiv1.TaskTypeSpec || task.Spec.Type == aiv1.TaskTypeCoordinate):
+		return true
 	default:
 		return false
 	}

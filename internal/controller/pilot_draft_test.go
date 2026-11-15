@@ -181,6 +181,22 @@ func TestChatCommandAllowedDraftOnTheCoordinateTaskOnly(t *testing.T) {
 	}
 }
 
+func TestChatCommandAllowedRestart(t *testing.T) {
+	cmd := mustParse(t, `{"cmd":"restart"}`)
+	for typ, want := range map[aiv1.TaskType]bool{
+		aiv1.TaskTypeImplement:  true,
+		aiv1.TaskTypeSpec:       true,
+		aiv1.TaskTypeCoordinate: true,
+		"Research":              false,
+		"":                      false,
+	} {
+		task := aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Type: typ}}
+		if got := chatCommandAllowed(task, cmd); got != want {
+			t.Errorf("%q: allowed = %v, want %v", typ, got, want)
+		}
+	}
+}
+
 func mustParse(t *testing.T, body string) chatcmd.Command {
 	t.Helper()
 	cmd, err := chatcmd.Parse(body)
