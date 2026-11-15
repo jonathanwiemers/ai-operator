@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,7 +36,7 @@ import (
 
 // pilotTools are the tools the pilot may propose; merging, closing and
 // pushing are none of them.
-var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
+var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "restartRun", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
 
 // ownerTools are the operator's own options of budget prompts: an owner
 // chooses them, the model never proposes them (checkAction).
@@ -118,6 +119,8 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return fmt.Errorf("the head of #%d is already reviewed, without findings or reviewer errors", a.IssueIID)
 	case a.Tool == "instruct" && a.Text == "" && !slices.Contains(aiv1.PilotInstructKinds, a.Kind):
 		return fmt.Errorf("`%s` is not a kind of instruction", inertLine(a.Kind, 40))
+	case a.Tool == "restartRun" && !meta.IsStatusConditionTrue(t.Status.Conditions, aiv1.ConditionStalled):
+		return errors.New("the run is moving again")
 	}
 	return nil
 }
@@ -722,12 +725,18 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		fmt.Fprintf(&b, "🧭 Proposal P%d accepted by `@%s`:", p.ID, p.AcceptedBy)
 		var lines []string
 		for j, a := range p.Actions {
-			if errs[i][j] == nil {
+			var answer string
+			if errs[i][j] == nil && a.Tool == "restartRun" {
+				answer, errs[i][j] = r.pilotRestart(ctx, gl, spec, tasks[a.IssueIID], a.IssueIID, proposalHow(p), project.Status.BotUserID)
+			} else if errs[i][j] == nil {
 				if errs[i][j] = r.runAction(ctx, gl, project, spec, st, tracking, proposalHow(p), p.AcceptedBy, a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
 					failed = append(failed, titleKey(a.Title)) // may be opened again
 				}
 			}
 			line := describeAction(a, errs[i][j])
+			if answer != "" && errs[i][j] == nil {
+				line = fmt.Sprintf("- **restartRun** #%d: %s", a.IssueIID, answer)
+			}
 			if a.Tool == "editSpec" && errs[i][j] == nil {
 				line += ": spec updated; the milestone is planned again"
 			}
@@ -944,6 +953,8 @@ func describeAction(a aiv1.PilotAction, err error) string {
 				s += ", with the pilot's hint: " + inertLine(a.Note, 2000)
 			}
 		}
+	case "restartRun":
+		s = fmt.Sprintf("**restartRun** #%d: its stalled run starts again, counted as an interruption", a.IssueIID)
 	case "rebase":
 		s = fmt.Sprintf("**rebase** #%d: GitLab rebases its MR onto the default branch; the review holds if the change is unchanged", a.IssueIID)
 	case "mergeBase":

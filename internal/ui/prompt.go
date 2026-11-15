@@ -139,6 +139,8 @@ func actionText(a aiv1.PilotAction) string {
 		return fmt.Sprintf("rebase #%d: GitLab rebases its MR onto the default branch; the review holds if the change is unchanged", a.IssueIID)
 	case "mergeBase":
 		return fmt.Sprintf("mergeBase #%d: the agent merges the default branch into its MR", a.IssueIID)
+	case "restartRun":
+		return fmt.Sprintf("restartRun #%d: its stalled run starts again, counted as an interruption", a.IssueIID)
 	case "skip":
 		return fmt.Sprintf("skip #%d: autopilot leaves it out", a.IssueIID)
 	case "unskip":

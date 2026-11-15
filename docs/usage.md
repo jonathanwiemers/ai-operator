@@ -2530,8 +2530,11 @@ list out.
   proposals and the open prompts, which are answered in the Desk.
 - **Managed.** On autopilot milestones the pilot **manages** by default
   (`pilot.autonomy`): `retry`, `reReview`, `instruct`, `openIssue`,
-  `fixFlaky`, `retryPipeline`, `rebase` and `mergeBase` run without a `yes`, from an assessment or from an owner's
-  message. Each counts against its issue and that issue's head (an
+  `fixFlaky`, `retryPipeline`, `rebase`, `mergeBase` and `restartRun` run without a `yes`, from an assessment or from an owner's
+  message. A `restartRun` restarts a stalled run like `/agent restart` (the
+  issue gets the note); when it runs, the operator checks the task is still
+  stalled (condition `Stalled=True`), else it refuses with "the run is
+  moving again" and gives the intervention back. Each counts against its issue and that issue's head (an
   `openIssue` against the issue whose event triggered it, on the tracking
   issue against the milestone; a `fixFlaky` or `retryPipeline` against the milestone), at most `pilot.maxInterventionsPerIssue` (2) per head, and
   each wake-up gets an **audit comment** on the tracking issue: "🧭 The

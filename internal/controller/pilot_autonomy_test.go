@@ -5,6 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -432,5 +436,113 @@ func TestPilotManagedRebasesTheActiveMR(t *testing.T) {
 	}
 	if p := e.promptNote("Q1"); !strings.Contains(p.Body, "**rebase** #1") || !strings.Contains(p.Body, "@alice") {
 		t.Fatalf("past the limit it proposes and pings the owners:\n%s", p.Body)
+	}
+}
+
+// stallRun gives #1 a run in progress in its pod, stalled in step 18 push,
+// and returns the pod's UID.
+func (e *projectEnv) stallRun() types.UID {
+	e.t.Helper()
+	name := e.taskOf(1)
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name, UID: "pod-uid-1"}}
+	if err := e.c.Create(e.ctx, pod); err != nil {
+		e.t.Fatal(err)
+	}
+	run := e.implTaskOf(1).Spec.RunRequest
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.PodName = name
+		s.Run.ActiveRunRequest, s.Run.ObservedRunRequest, s.Run.CurrentStep = run, run-1, "18 push"
+		meta.SetStatusCondition(&s.Conditions, metav1.Condition{Type: aiv1.ConditionStalled, Status: metav1.ConditionTrue,
+			Reason: aiv1.StallReasonSilent, Message: "no log line for 42m in step 18 push"})
+	})
+	return pod.UID
+}
+
+// podOf1 reports whether #1's pod is still there.
+func (e *projectEnv) podOf1() bool {
+	e.t.Helper()
+	var pod corev1.Pod
+	err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: e.taskOf(1)}, &pod)
+	if err != nil && !apierrors.IsNotFound(err) {
+		e.t.Fatal(err)
+	}
+	return err == nil
+}
+
+func TestPilotManagedRestartsAStalledRun(t *testing.T) {
+	e := newManagedEnv(t)
+	tracking := e.autopilot().TrackingIssueIID
+	seen, seen1 := len(botComments(e, tracking)), len(botComments(e, 1))
+	uid := e.stallRun()
+	e.proposeFor(1, "event/"+aiv1.RunStalledEventPrefix+"1/1", aiv1.PilotAction{Tool: "restartRun", IssueIID: 1})
+	e.reconcile()
+	if e.podOf1() {
+		t.Fatal("the pilot deletes the stalled run's pod on its own")
+	}
+	note := strings.Join(botNotesSince(e, 1, seen1), "\n")
+	if !strings.Contains(note, "🔄 Run restarted by the pilot (on its own, audited on the tracking issue) in step `18 push` (restart 1 of at most 3).") ||
+		!strings.Contains(note, "pod="+string(uid)) {
+		t.Fatalf("the issue gets the restart note:\n%s", note)
+	}
+	audit := strings.Join(botNotesSince(e, tracking, seen), "\n")
+	for _, want := range []string{"The pilot acted on its own", "**restartRun** #1: 🔄 The run is restarted (restart 1 of at most 3).", "Interventions left for #1: 1 of 2."} {
+		if !strings.Contains(audit, want) {
+			t.Errorf("the audit misses %q:\n%s", want, audit)
+		}
+	}
+	if c := e.pilot().Status.Pilot.Interventions["1"]; c.Count != 1 || c.Head != "sha1" {
+		t.Fatalf("a restart counts against #1's head: %+v", c)
+	}
+	if got := promptStates(e.task(specTaskName)); got != "" {
+		t.Fatalf("what the pilot runs on its own is no prompt: %s", got)
+	}
+}
+
+func TestPilotManagedProposesARestartPastTheLimit(t *testing.T) {
+	e := newManagedEnv(t)
+	e.stallRun()
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Pilot = &aiv1.PilotStatus{Interventions: map[string]aiv1.PilotIntervention{"1": {Head: "sha1", Count: 2}}}
+	})
+	e.proposeFor(1, "event/"+aiv1.RunStalledEventPrefix+"1/1", aiv1.PilotAction{Tool: "restartRun", IssueIID: 1})
+	e.reconcile()
+	p := e.promptNote("Q1")
+	if !e.podOf1() || !strings.Contains(p.Body, "**restartRun** #1") || !strings.Contains(p.Body, "@alice") {
+		t.Fatalf("past maxInterventionsPerIssue the restart is left to the owners:\n%s", p.Body)
+	}
+	e.choose("Q1", "A", alice)
+	e.reconcile()
+	if e.podOf1() {
+		t.Fatal("an owner's yes restarts it")
+	}
+	if note := strings.Join(botComments(e, 1), "\n"); !strings.Contains(note, "Run restarted by the pilot (prompt Q1, answered by `@\u200balice`)") {
+		t.Fatalf("the note says who restarted it:\n%s", note)
+	}
+}
+
+func TestPilotRestartOfARunMovingAgainIsRefundedAndRefused(t *testing.T) {
+	e := newManagedEnv(t)
+	e.stallRun()
+	// Taken over while stalled; the run moved on before the action ran.
+	e.patchStatus(e.taskOf(1), func(s *aiv1.AgentTaskStatus) {
+		meta.SetStatusCondition(&s.Conditions, metav1.Condition{Type: aiv1.ConditionStalled, Status: metav1.ConditionFalse,
+			Reason: aiv1.StallReasonActive, Message: "the run is making progress"})
+	})
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Pilot = &aiv1.PilotStatus{
+			Accepted:      []aiv1.PilotProposal{{Summary: "restart #1", Actions: []aiv1.PilotAction{{Tool: "restartRun", IssueIID: 1}}, Trigger: 1}},
+			Interventions: map[string]aiv1.PilotIntervention{"1": {Head: "sha1", Count: 1}},
+		}
+	})
+	e.reconcile()
+	if c := e.pilot().Status.Pilot.Interventions["1"]; !e.podOf1() || c.Count != 0 ||
+		!strings.Contains(e.lastReply(), "**restartRun** #1: its stalled run starts again, counted as an interruption (not run: the run is moving again)") {
+		t.Fatalf("a run moving again is not restarted and the intervention is given back: %+v, %q", c, e.lastReply())
+	}
+	// Nor does a fresh proposal run on its own: it is left to the owners.
+	e.proposeFor(1, "event/a", aiv1.PilotAction{Tool: "restartRun", IssueIID: 1})
+	e.reconcile()
+	if !e.podOf1() || e.pilot().Status.Pilot.Interventions["1"].Count != 0 {
+		t.Fatal("a restart of a task that is not stalled is not taken on its own")
 	}
 }

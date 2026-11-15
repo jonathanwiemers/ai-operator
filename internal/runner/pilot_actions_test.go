@@ -198,6 +198,39 @@ func TestPilotRecordsRebaseAndMergeBase(t *testing.T) {
 	}
 }
 
+// restartRun is a tool of the schema and the system prompt, with the
+// runbook for stalled runs, and is recorded with its issue.
+func TestPilotRecordsRestartRun(t *testing.T) {
+	var s struct {
+		Properties map[string]struct {
+			Enum []string `json:"enum"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(actionSchema), &s); err != nil {
+		t.Fatal(err)
+	}
+	if enum := s.Properties["tool"].Enum; !slices.Contains(enum, "restartRun") {
+		t.Fatalf("the action schema lists restartRun: %v", enum)
+	}
+	e := newPilotEnv(t, "")
+	e.engine.proposal = proposalOf(t, `{"summary": "restart #1", "actions": [{"tool": "restartRun", "issue": 1}]}`)
+	e.step(t)
+	sp := e.engine.calls[0].SystemPrompt
+	for _, want := range []string{"- restartRun, issue N: ", "only while its task is stalled", "(push, clone, commit, bundle): restart",
+		"read the\n  last tool use", "restart\n  once, then leave it to the owners"} {
+		if !strings.Contains(sp, want) {
+			t.Errorf("the pilot is told %q:\n%s", want, sp)
+		}
+	}
+	ps := e.task(t).Status.Pilot
+	if ps == nil || len(ps.Proposed) != 1 {
+		t.Fatalf("expected the proposal recorded: %+v", ps)
+	}
+	if a := ps.Proposed[0].Actions; len(a) != 1 || a[0].Tool != "restartRun" || a[0].IssueIID != 1 {
+		t.Fatalf("recorded %+v", a)
+	}
+}
+
 // unskip, startAnyway and markDone are tools of the schema and the system
 // prompt, which says they wait for an owner's answer; a markDone is
 // recorded with its reason.

@@ -21,7 +21,7 @@ import (
 // countedTools run without a "yes" when the pilot manages; of the queue
 // tools only rebase and mergeBase; spec edits, rules and the answerTools
 // never do.
-var countedTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase"}
+var countedTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "restartRun"}
 
 // manage takes the actions the pilot runs on its own out of its runs'
 // proposals: valid, counted tools on issues with interventions left; of a

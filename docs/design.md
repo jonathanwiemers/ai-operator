@@ -1906,7 +1906,8 @@ counted interventions; more tools are later steps of
   records `managed`, which never raises a `propose` project. Nothing from
   the milestone or the model reaches it. When it manages, `postProposals`
   first takes the valid actions of the counted tools (`retry`, `reReview`,
-  `instruct` without owner text, `openIssue`, `fixFlaky`, `retryPipeline`) out of the runs' proposals
+  `instruct` without owner text, `openIssue`, `fixFlaky`, `retryPipeline`, `rebase`, `mergeBase`,
+  `restartRun` while its task is `Stalled=True`) out of the runs' proposals
   whose state still holds (a stale one is posted whole and expires like any
   proposal), while their issue has interventions left: `status.pilot.interventions`
   counts by issue IID (an `openIssue` by the proposal's `trigger`, the
@@ -1916,7 +1917,8 @@ counted interventions; more tools are later steps of
   `status.pilot.accepted` with no `acceptedBy`, in the same locked patch as
   the counts, and `runAccepted` runs them at the end of the poll (refused,
   and their interventions given back, when the pilot was stopped meanwhile
-  or they are no longer valid) and posts an audit comment instead of an
+  or they are no longer valid, e.g. a `restartRun` whose task is no longer
+  stalled: "the run is moving again") and posts an audit comment instead of an
   outcome: summary, `why` (classification and evidence, or the message,
   recorded by the runner), the actions and the interventions left, inert
   and without mentions. The rest is posted as a proposal, with its state

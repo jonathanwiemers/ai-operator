@@ -2,12 +2,14 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -99,6 +101,24 @@ func (r *AgentProjectReconciler) restartUntracked(ctx context.Context, task *aiv
 	}
 	log.FromContext(ctx).Info("restarting run", "task", task.Name, "pod", pod.Name, "by", author, "step", run.CurrentStep)
 	return fmt.Sprintf("🔄 The run is restarted (restart %d of at most %d).", run.Interruptions+1, aiv1.MaxInterruptions), pod, nil
+}
+
+// pilotRestart runs the pilot's restartRun on issue iid's task t (how:
+// proposalHow), checked as Stalled by validAction. Keyed by the stall and
+// the restarts so far: applied again before the new run starts, it
+// restarts nothing twice.
+func (r *AgentProjectReconciler) pilotRestart(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec,
+	t *aiv1.AgentTask, iid int64, how string, bot int64) (string, error) {
+	var since int64
+	if c := meta.FindStatusCondition(t.Status.Conditions, aiv1.ConditionStalled); c != nil {
+		since = c.LastTransitionTime.Unix()
+	}
+	key := fmt.Sprintf("pilot/%s/%d/%d", t.Name, since, t.Status.Run.Interruptions)
+	answer, err := r.restartRun(ctx, gl, spec, t, iid, "the pilot ("+how+")", key, bot)
+	if err == nil && answer == nothingToRestart {
+		return "", errors.New("no run is in progress")
+	}
+	return answer, err
 }
 
 func (r *AgentProjectReconciler) deletePod(ctx context.Context, pod *corev1.Pod) error {

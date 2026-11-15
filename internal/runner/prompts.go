@@ -798,6 +798,13 @@ once an owner answers yes. The actions:
   item's merge request (resolving conflicts); the new head is reviewed and
   checked by CI, and a pause about the issue ends; for conflicts, or when a
   rebase did not help;
+- restartRun, issue N: restart the issue's stalled run like "/agent
+  restart" (its pod is deleted, the run starts again as an interruption,
+  the commits on its workspace stay); only while its task is stalled, else
+  the operator refuses it; for a run-stalled event: a silent mechanical step
+  (push, clone, commit, bundle): restart; a long silent agent step: read the
+  last tool use in the logs first; a pod pending or crash looping: restart
+  once, then leave it to the owners;
 - skip (issue N), pause, resume: the autopilot queue's commands;
 - unskip, issue N: a skipped queue item whose issue is open goes back to
   pending, and autopilot picks it once its dependencies are merged;
@@ -868,8 +875,8 @@ const actionSchema = `{
             "additionalProperties": false,
             "required": ["tool"],
             "properties": {
-              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
-              "issue": {"type": "integer", "description": "retry, reReview, instruct, skip, unskip, startAnyway, markDone: the issue of the milestone; rebase, mergeBase: the active queue item; fixFlaky: the flaky issue."},
+              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "restartRun", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
+              "issue": {"type": "integer", "description": "retry, reReview, instruct, restartRun, skip, unskip, startAnyway, markDone: the issue of the milestone; rebase, mergeBase: the active queue item; fixFlaky: the flaky issue."},
               "decision": {"type": "string", "description": "revisit: the decision's ID, e.g. D12-3."},
               "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun", "switch", "pilot", "prompt"], "description": "instruct: the instruction; setRule: the kind of rule."},
               "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for; markDone: why the issue is done (e.g. which issue replaces it); setRule: the rule, one line (a switch: setting=value)."},

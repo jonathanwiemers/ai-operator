@@ -794,3 +794,25 @@ func TestPilotMergeBaseRunsOnAnOwnersAnswer(t *testing.T) {
 		t.Fatalf("the tracking issue says who asked:\n%s", c)
 	}
 }
+
+func TestPilotProposesARestartAndAnOwnersYesRunsIt(t *testing.T) {
+	e := newProposalEnv(t)
+	e.stallRun()
+	e.proposeFor(1, "event/"+aiv1.RunStalledEventPrefix+"1/1", aiv1.PilotAction{Tool: "restartRun", IssueIID: 1})
+	e.reconcile()
+	e.reconcile()
+	if p := e.promptNote("Q1"); !e.podOf1() || !strings.Contains(p.Body, "**restartRun** #1: its stalled run starts again") {
+		t.Fatalf("propose posts the restart and runs nothing:\n%s", p.Body)
+	}
+	e.choose("Q1", "A", alice)
+	e.reconcile()
+	if e.podOf1() {
+		t.Fatal("an owner's yes restarts the run")
+	}
+	if note := strings.Join(botComments(e, 1), "\n"); !strings.Contains(note, "🔄 Run restarted by the pilot (prompt Q1, answered by `@\u200balice`) in step `18 push`") {
+		t.Fatalf("the issue gets the restart note:\n%s", note)
+	}
+	if c := e.pilot().Status.Pilot; c != nil && c.Interventions["1"].Count != 0 {
+		t.Fatalf("an owner's yes is no intervention: %+v", c.Interventions)
+	}
+}
