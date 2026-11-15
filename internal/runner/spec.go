@@ -81,7 +81,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	inv := roleInvocation(role, specSystemPrompt, readOnlyTools, specSchema(spec.Agents.Profiles), true)
 	inv.Role, inv.Kind = "spec", aiv1.CallKindSpec
 	inv.Resume = st.session("spec", role.Engine)
-	prompt := buildSpecPrompt(milestone, existing, spec.Agents.Profiles, task.Status.Run.RunCount > 0)
+	prompt := buildSpecPrompt(milestone, existing, spec.Agents.Profiles, spec.MaxMRLines(), task.Status.Run.RunCount > 0)
 	// Only a milestone with companion repositories changes the prompt.
 	targets := planTargets(task, spec)
 	if len(targets) > 0 {

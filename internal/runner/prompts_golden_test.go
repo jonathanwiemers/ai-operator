@@ -14,7 +14,7 @@ import (
 // these hashes (sha256 of the prompt).
 func TestSystemPromptsAreUnchanged(t *testing.T) {
 	for name, tc := range map[string]struct{ prompt, sha string }{
-		"spec":       {specSystemPrompt, "83dae2779b764002b1f1ad8ea6d724854941c1d47d9b24d4cdea9288dc7a9a35"},
+		"spec":       {specSystemPrompt, "a5d85da4d0a4562d841a0bfccfeca3c2eec513ede2420a99b9bd5641b07bdd99"},
 		"implement":  {implementSystemPrompt, "8fd4977e803db331e4f19625382c5289e23f8bedbfc52097e1dbbdb1e8affa5c"},
 		"bugbot":     {bugbotSystemPrompt, "22853472d19cf325d2ba58ec9d5f8d5b7c1b43ef8ecf5d81b74305a116105e50"},
 		"security":   {securitySystemPrompt, "9251740c21e1e3f4f12d08efbd0a08f133ad8520a515d0478c92de5631de1f69"},
@@ -24,7 +24,7 @@ func TestSystemPromptsAreUnchanged(t *testing.T) {
 		"describe":   {describeSystemPrompt, "602fe49622e80041a3e0bdce43c8d88040b51583e796d07f8c57a7b062c6bb0e"},
 		"research":   {researchSystemPrompt, "e8ded9ce76bf4b15b38ebdb9313e158d4d72d26489446bd76f3f40b762b44bea"},
 		"draft":      {draftSystemPrompt, "60e6df7e59924c3e7325284788a9196f6021accb7320bd31fe40ba0060366402"},
-		"plan":       {planSystemPrompt, "8469dcec75a9765b78eb697b60f4d5e2fa93c78184fae27e472527a324203a1b"},
+		"plan":       {planSystemPrompt, "40bc06cc5b5ba8724630729d7beac8fc108015b110d39db538e1a6ba7c912144"},
 	} {
 		sum := sha256.Sum256([]byte(tc.prompt))
 		if got := hex.EncodeToString(sum[:]); got != tc.sha {

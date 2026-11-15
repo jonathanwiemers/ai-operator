@@ -222,7 +222,8 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 	inv.Role, inv.Kind, inv.Resume, inv.LogPrompt = "plan", aiv1.CallKindPlan, st.session("plan", role.Engine), spec.Agents.LogPrompts
 	inv.Prompt = buildPlanPrompt(planTurnInput{Message: msg.Text, Branch: proj.DefaultBranch, SHA: sha, GitLab: gl,
 		FirstTurn: inv.Resume == "", Title: plan.Spec.Title, Draft: plan.Status.Draft,
-		Edited: plan.Status.DraftBy == "owner" && rev > st.PlanSeenRevision})
+		Edited:     plan.Status.DraftBy == "owner" && rev > st.PlanSeenRevision,
+		MaxMRLines: spec.MaxMRLines(), Constraints: spec.HouseConstraints()})
 	if st.ChatInFlight != nil && st.ChatInFlight.Resent {
 		inv.Prompt = chatResendPrefix + "\n\n" + inv.Prompt
 	}

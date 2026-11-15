@@ -25,11 +25,13 @@ each sub-issue on its own and a human reviews the merge request.
 How to plan:
 - Ground the plan in the repository in the current directory. Read the code the
   spec touches so sub-specs name real files, packages and functions.
-- Size sub-issues so each merge request is reviewable on its own (roughly a few
-  hundred changed lines at most) and leaves the main branch working.
+- Size sub-issues so each merge request stays within the size budget in the
+  prompt (the milestone's Constraints win when they name one) and leaves the
+  main branch working. Fewer, larger merge requests are cheaper: each one
+  waits for its own CI, review and rebase.
 - Split a change that spans several layers (database migration, store, runner
   or controller, API types, web UI) into slices of at most two layers each
-  when together they would exceed a few hundred lines; measurement and UI
+  when together they would exceed the budget; measurement and UI
   work in particular goes into its own slice after the data it shows. Give a
   slice that adds a database migration nothing else that is large.
 - Order sub-issues so dependencies come first and reference them in dependsOn.
@@ -540,12 +542,17 @@ func specSchema(profiles []aiv1.AgentProfile) string {
 	return strings.Replace(schema, "__DECISIONS__", decisionsSchema, 1)
 }
 
-func buildSpecPrompt(m *gitlab.Milestone, existing []ExistingIssue, profiles []aiv1.AgentProfile, replan bool) string {
+func buildSpecPrompt(m *gitlab.Milestone, existing []ExistingIssue, profiles []aiv1.AgentProfile, maxMRLines int, replan bool) string {
 	var b strings.Builder
 	if replan {
 		b.WriteString("The milestone specification changed. Update the plan.\n\n")
 	} else {
 		b.WriteString("Plan the following milestone.\n\n")
+	}
+	if maxMRLines > 0 {
+		fmt.Fprintf(&b, "## Size budget\n\nUnder %d production lines per merge request; tests, generated files and docs do not count.\n\n", maxMRLines)
+	} else {
+		b.WriteString("## Size budget\n\nThe project sets no size budget: keep each merge request reviewable on its own.\n\n")
 	}
 	b.WriteString("## Agent profiles\n\n")
 	for _, p := range profiles {

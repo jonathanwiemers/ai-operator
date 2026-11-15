@@ -323,6 +323,26 @@ that is when no older autopilot milestone of the project is still open (or
 when an owner comments `/agent start`); until then it only has a tracking
 issue. See [Autopilot](usage.md#autopilot-a-milestone-end-to-end).
 
+## `spec.houseRules`
+
+The rules the Desk planner writes into a milestone draft's Constraints and the
+planning agent sizes issues by. Each merge request pays a fixed CI, review and
+rebase cycle, so a larger budget means fewer, larger merge requests and
+faster milestones. A milestone's own Constraints win over these.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `maxMRLines` | `300` | size budget of one merge request in production lines; tests, generated files and docs do not count. `0` states no budget |
+| `constraints` | – | further rules, one line each, e.g. a check CI runs |
+
+```yaml
+spec:
+  houseRules:
+    maxMRLines: 300
+    constraints:
+      - "Run `make generate manifests` after changing API types; the CI drift job fails on stale files."
+```
+
 ## `spec.workflow`
 
 All labels can be renamed. Defaults:

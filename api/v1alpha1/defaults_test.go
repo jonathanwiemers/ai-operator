@@ -284,3 +284,21 @@ func TestAutopilotMaxParallelDefaults(t *testing.T) {
 		t.Fatalf("explicit MaxParallel kept: %+v", got)
 	}
 }
+
+func TestMaxMRLines(t *testing.T) {
+	n := func(v int32) *int32 { return &v }
+	for name, tc := range map[string]struct {
+		rules *HouseRulesSpec
+		want  int
+	}{
+		"unset":        {nil, DefaultMaxMRLines},
+		"no value":     {&HouseRulesSpec{Constraints: []string{"x"}}, DefaultMaxMRLines},
+		"set":          {&HouseRulesSpec{MaxMRLines: n(120)}, 120},
+		"0 is none":    {&HouseRulesSpec{MaxMRLines: n(0)}, 0},
+		"below 0 none": {&HouseRulesSpec{MaxMRLines: n(-5)}, 0},
+	} {
+		if got := (AgentProjectSpec{HouseRules: tc.rules}).WithDefaults().MaxMRLines(); got != tc.want {
+			t.Errorf("%s: %d, want %d", name, got, tc.want)
+		}
+	}
+}

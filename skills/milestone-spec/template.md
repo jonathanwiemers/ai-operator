@@ -44,7 +44,8 @@ What exists:
 
 ## Constraints
 
-- Under 50 production lines per MR; Go and web in separate MRs.
+- Under 300 production lines per MR; tests, generated files and docs do not
+  count.
 - With default settings the behaviour stays as before; existing tests pass
   unchanged.
 - When a requirement has to be narrowed, open a follow-up issue and say so

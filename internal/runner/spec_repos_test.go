@@ -103,7 +103,7 @@ func TestSpecGivesThePlannerTheCompanionAndLabelsItsItems(t *testing.T) {
 func TestSpecPromptWithoutRepoLinesIsUnchanged(t *testing.T) {
 	want := buildSpecPrompt(&gitlab.Milestone{Title: "Turn it on",
 		Description: rules.Spec("/agent spec\n/agent repo group/infra merge\nBuild it and turn it on.", "/agent")},
-		nil, aiv1.DefaultProfiles(), false)
+		nil, aiv1.DefaultProfiles(), aiv1.DefaultMaxMRLines, false)
 	for name, repos := range map[string][]aiv1.MilestoneRepo{
 		"no lines":       nil,
 		"only bad lines": {{Project: "group/infra", Problem: "no valid target", Line: "/agent repo group/infra"}},

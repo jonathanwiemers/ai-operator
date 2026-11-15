@@ -95,8 +95,8 @@ Always end with a `### Docs` group that names the pages that change and the
 spec file `docs/specs/<name>.spec.md` with a steering log.
 
 **Constraints.** The rules every merge request follows:
-- the repository's size budget per MR (ai-operator: under 50 production
-  lines, Go and web in separate MRs)
+- the project's size budget per MR (`spec.houseRules.maxMRLines`, default
+  300 production lines) and its `houseRules.constraints`
 - what must not change (defaults, existing tests, prompts of other roles)
 - no new dependencies, unless a Decision says otherwise
 - the checks to run (`make test`, `go vet ./...`, `gofmt`, `make helm-lint`,

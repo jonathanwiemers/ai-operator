@@ -33,6 +33,7 @@ const (
 	DefaultStallCheckInterval   = 5 * time.Minute
 	DefaultMaxConcurrent        = 3
 	DefaultMaxParallel          = 3
+	DefaultMaxMRLines           = 300
 	DefaultCIFixRounds          = 2
 	DefaultNoPipelineTimeout    = 10 * time.Minute
 	DefaultMainHealthInterval   = 5 * time.Minute
@@ -345,6 +346,24 @@ func (s AgentProjectSpec) ImplementRole(labels []string) (RoleSpec, string) {
 		}
 	}
 	return s.Agents.Implement.RoleSpec, ""
+}
+
+// MaxMRLines returns the project's size budget per merge request in
+// production lines: houseRules.maxMRLines, else DefaultMaxMRLines. 0 means
+// no budget.
+func (s AgentProjectSpec) MaxMRLines() int {
+	if s.HouseRules == nil || s.HouseRules.MaxMRLines == nil {
+		return DefaultMaxMRLines
+	}
+	return max(int(*s.HouseRules.MaxMRLines), 0)
+}
+
+// HouseConstraints returns the project's further house rules.
+func (s AgentProjectSpec) HouseConstraints() []string {
+	if s.HouseRules == nil {
+		return nil
+	}
+	return s.HouseRules.Constraints
 }
 
 // MaxStepLines returns the step-size gate's limit for the implementer of

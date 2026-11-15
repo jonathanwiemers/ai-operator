@@ -75,6 +75,11 @@ type AgentProjectSpec struct {
 	// +optional
 	Autopilot *AutopilotSpec `json:"autopilot,omitempty"`
 
+	// HouseRules are the rules the Desk planner writes into a milestone's
+	// Constraints and the planning agent sizes issues by.
+	// +optional
+	HouseRules *HouseRulesSpec `json:"houseRules,omitempty"`
+
 	// PollInterval is how often GitLab is polled for changes.
 	// +kubebuilder:default="1m"
 	// +optional
@@ -141,6 +146,22 @@ type AutopilotSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	MaxParallel int32 `json:"maxParallel,omitempty"`
+}
+
+// HouseRulesSpec is the project's rules for milestones and their merge
+// requests.
+type HouseRulesSpec struct {
+	// MaxMRLines is the size budget of one merge request in production
+	// lines; tests, generated files and docs do not count. Unset is 300,
+	// 0 states no budget.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	MaxMRLines *int32 `json:"maxMRLines,omitempty"`
+
+	// Constraints are further rules, one line each, that every merge
+	// request of the project follows.
+	// +optional
+	Constraints []string `json:"constraints,omitempty"`
 }
 
 // MilestoneSelector selects milestones that should be planned by the spec agent.
