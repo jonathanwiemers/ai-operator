@@ -7,7 +7,7 @@ import { useNow } from '../live'
 import { queueDone } from '../milestoneQueue'
 import { useRoute } from 'vue-router'
 import { promptOpen, taskPrompts } from '../promptCard'
-import { restartsText, showHealthLine, stepAgeText } from '../taskHealth'
+import { restartsText, runInProgress, showHealthLine, stepAgeText } from '../taskHealth'
 import { tabQuery, taskTabFromRoute, taskTabs, type TaskTab } from '../streamTabs'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
@@ -24,6 +24,7 @@ import PromptCard from './PromptCard.vue'
 import TaskChat from './TaskChat.vue'
 import TaskCalls from './TaskCalls.vue'
 import TaskLogs from './TaskLogs.vue'
+import RestartRun from './RestartRun.vue'
 import type { ProposalView, TaskResponse } from '../types'
 
 // What the Task page holds below its title: stage and links and banners,
@@ -170,7 +171,8 @@ const stepAge = computed(() => stepAgeText(health.value?.stepSince, now.value))
   </div>
 
   <!-- Run health (R8): pod · restarts · step age · Stalled. Wraps on a
-       phone; hidden with no health or neither pod nor step. -->
+       phone; hidden with no health or neither pod nor step. Owners get
+       the Restart run button at its end. -->
   <div
     v-if="showHealth && health"
     data-health-line
@@ -194,6 +196,7 @@ const stepAge = computed(() => stepAgeText(health.value?.stepSince, now.value))
         Stalled<template v-if="health.stalledReason"> · {{ health.stalledReason }}</template>
       </Badge>
     </template>
+    <RestartRun v-if="data.permissions?.restart" :namespace="namespace" :name="name" :task="task" :running="runInProgress(run)" />
   </div>
 
   <RouteTabs class="mt-5 w-fit" :tabs="tabs" :active="tab" :to="tabTo" :badges="badges" label="Task" />

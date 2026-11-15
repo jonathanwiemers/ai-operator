@@ -1,7 +1,7 @@
 // Tests of src/taskHealth.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { restartsText, showHealthLine, stepAgeText } from '../src/taskHealth.ts'
+import { restartsText, runInProgress, showHealthLine, stepAgeText } from '../src/taskHealth.ts'
 
 test('showHealthLine hides when there is no health, pod or step', () => {
   assert.equal(showHealthLine(undefined), false)
@@ -28,4 +28,12 @@ test('stepAgeText is the short age from stepSince', () => {
   assert.equal(stepAgeText('not a time', now), '')
   assert.equal(stepAgeText('2026-11-15T12:00:00Z', now), '42m')
   assert.equal(stepAgeText('2026-11-15T12:41:30Z', now), '<1m')
+})
+
+test('runInProgress: a request ahead of observed, or a current step', () => {
+  assert.equal(runInProgress(undefined), false)
+  assert.equal(runInProgress({}), false)
+  assert.equal(runInProgress({ activeRunRequest: 2, observedRunRequest: 2 }), false)
+  assert.equal(runInProgress({ activeRunRequest: 3, observedRunRequest: 2 }), true)
+  assert.equal(runInProgress({ observedRunRequest: 2, currentStep: '18 push' }), true)
 })

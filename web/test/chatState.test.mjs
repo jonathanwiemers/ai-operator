@@ -117,6 +117,7 @@ test('commandLabel formats known commands', () => {
   assert.equal(commandLabel('{"cmd":"start"}'), 'run next')
   assert.equal(commandLabel('{"cmd":"unstart"}'), 'clear mark')
   assert.equal(commandLabel('{"cmd":"endmilestone"}'), 'end milestone')
+  assert.equal(commandLabel('{"cmd":"restart"}'), 'restart run')
   assert.equal(commandLabel('{"cmd":"use","default":true}'), 'use default')
   assert.equal(
     commandLabel('{"cmd":"use","engine":"claude","model":"opus-x","effort":"high"}'),

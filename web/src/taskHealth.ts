@@ -1,4 +1,5 @@
 import { durationShort } from './format.ts'
+import type { RunStatus } from './generated/api.ts'
 import type { TaskHealth } from './generated/views.ts'
 
 // showHealthLine: the compact run-health row above the task tabs. Hidden
@@ -23,4 +24,10 @@ export function stepAgeText(stepSince: string | undefined, now: number): string 
   const t = Date.parse(stepSince)
   if (Number.isNaN(t)) return ''
   return durationShort(Math.max(0, (now - t) / 1000))
+}
+
+// runInProgress: the runner took a run request it has not finished, or is
+// in a step. The Restart run button is enabled only then.
+export function runInProgress(run: RunStatus | undefined): boolean {
+  return (run?.activeRunRequest ?? 0) > (run?.observedRunRequest ?? 0) || !!run?.currentStep
 }
