@@ -5137,6 +5137,49 @@ export interface AutopilotItem {
    * +optional
    */
   budgetAlertedUSD?: string;
+  /**
+   * Hold is set while a problem of this issue holds it (an item kind,
+   * PauseKind.ItemKind): autopilot does not drive it and its slot is free;
+   * the other issues go on.
+   * +optional
+   */
+  hold?: ItemHold;
+}
+/**
+ * ItemHold is a hold on one issue of an autopilot milestone, the per-issue
+ * counterpart of a milestone pause.
+ */
+export interface ItemHold {
+  /**
+   * Kind is the cause, one of PauseKind's item kinds.
+   */
+  kind: PauseKind;
+  /**
+   * Reason says what holds the issue, for the tracking issue and the Desk.
+   */
+  reason: string;
+  /**
+   * Since is when the hold started.
+   */
+  since: string;
+  /**
+   * ResumeWhenReady: the hold is over the item's run, review or CI, so a
+   * later run that passes the merge gate ends it.
+   * +optional
+   */
+  resumeWhenReady?: boolean;
+  /**
+   * RunBy and RunHead are AutopilotStatus.PauseRunBy and PauseRunHead for
+   * this item: who asked for its newest run during the hold, and the
+   * pushed head when the hold started, then the head that run was asked
+   * for.
+   * +optional
+   */
+  runBy?: string;
+  /**
+   * +optional
+   */
+  runHead?: string;
 }
 /**
  * RevisitStatus is the watermark of handled revisit comments.

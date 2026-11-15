@@ -1160,6 +1160,62 @@ spec:
                             rebased the MR onto because its CI failed with the default branch
                             (BaseFailing); once per such commit.
                           type: string
+                        hold:
+                          description: |-
+                            Hold is set while a problem of this issue holds it (an item kind,
+                            PauseKind.ItemKind): autopilot does not drive it and its slot is free;
+                            the other issues go on.
+                          properties:
+                            kind:
+                              description: Kind is the cause, one of PauseKind's item
+                                kinds.
+                              enum:
+                              - owner
+                              - cycle
+                              - stuck
+                              - needsInput
+                              - runFailed
+                              - findings
+                              - reviewErrors
+                              - notReviewed
+                              - ciRed
+                              - ciCanceled
+                              - mergeRequest
+                              - mainRed
+                              - config
+                              - budget
+                              - companion
+                              - emptyPlan
+                              - release
+                              - stalled
+                              type: string
+                            reason:
+                              description: Reason says what holds the issue, for the
+                                tracking issue and the Desk.
+                              type: string
+                            resumeWhenReady:
+                              description: |-
+                                ResumeWhenReady: the hold is over the item's run, review or CI, so a
+                                later run that passes the merge gate ends it.
+                              type: boolean
+                            runBy:
+                              description: |-
+                                RunBy and RunHead are AutopilotStatus.PauseRunBy and PauseRunHead for
+                                this item: who asked for its newest run during the hold, and the
+                                pushed head when the hold started, then the head that run was asked
+                                for.
+                              type: string
+                            runHead:
+                              type: string
+                            since:
+                              description: Since is when the hold started.
+                              format: date-time
+                              type: string
+                          required:
+                          - kind
+                          - reason
+                          - since
+                          type: object
                         iid:
                           format: int64
                           type: integer
@@ -1347,6 +1403,62 @@ spec:
                           rebased the MR onto because its CI failed with the default branch
                           (BaseFailing); once per such commit.
                         type: string
+                      hold:
+                        description: |-
+                          Hold is set while a problem of this issue holds it (an item kind,
+                          PauseKind.ItemKind): autopilot does not drive it and its slot is free;
+                          the other issues go on.
+                        properties:
+                          kind:
+                            description: Kind is the cause, one of PauseKind's item
+                              kinds.
+                            enum:
+                            - owner
+                            - cycle
+                            - stuck
+                            - needsInput
+                            - runFailed
+                            - findings
+                            - reviewErrors
+                            - notReviewed
+                            - ciRed
+                            - ciCanceled
+                            - mergeRequest
+                            - mainRed
+                            - config
+                            - budget
+                            - companion
+                            - emptyPlan
+                            - release
+                            - stalled
+                            type: string
+                          reason:
+                            description: Reason says what holds the issue, for the
+                              tracking issue and the Desk.
+                            type: string
+                          resumeWhenReady:
+                            description: |-
+                              ResumeWhenReady: the hold is over the item's run, review or CI, so a
+                              later run that passes the merge gate ends it.
+                            type: boolean
+                          runBy:
+                            description: |-
+                              RunBy and RunHead are AutopilotStatus.PauseRunBy and PauseRunHead for
+                              this item: who asked for its newest run during the hold, and the
+                              pushed head when the hold started, then the head that run was asked
+                              for.
+                            type: string
+                          runHead:
+                            type: string
+                          since:
+                            description: Since is when the hold started.
+                            format: date-time
+                            type: string
+                        required:
+                        - kind
+                        - reason
+                        - since
+                        type: object
                       iid:
                         format: int64
                         type: integer

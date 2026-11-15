@@ -425,11 +425,12 @@ func (a *autopilot) deps(iid int64) []int64 {
 // step drives every active item in queue order until one pauses, then starts
 // pending items while slots are free (maxParallel): an issue starts once its
 // dependencies are merged, without waiting for a whole layer of the plan.
+// A held item is not driven: its hold ends elsewhere.
 func (a *autopilot) step(ctx context.Context) error {
 	phase, before := a.ap.Phase, a.active() // Running, or Done when a re-plan added issues
 	for i := range a.ap.Items {
-		if a.ap.Items[i].State == aiv1.AutopilotItemActive && a.ap.Phase == phase {
-			if err := a.drive(ctx, &a.ap.Items[i]); err != nil {
+		if it := &a.ap.Items[i]; it.State == aiv1.AutopilotItemActive && it.Hold == nil && a.ap.Phase == phase {
+			if err := a.drive(ctx, it); err != nil {
 				return err
 			}
 		}
@@ -465,19 +466,23 @@ func (a *autopilot) active() int {
 	return n
 }
 
-// running counts the issues that hold a slot: the active items but the
-// landing one, which counts too at a limit of 1 (one issue at a time).
+// running counts the issues that hold a slot: the active items but the held
+// ones and the landing one, which counts too at a limit of 1 (one issue at a
+// time).
 func (a *autopilot) running() int {
-	n := a.active()
-	if l := a.item(a.ap.Landing); l != nil && l.State == aiv1.AutopilotItemActive && a.maxParallel() > 1 {
-		n--
+	n := 0
+	for _, it := range a.ap.Items {
+		if it.State == aiv1.AutopilotItemActive && it.Hold == nil && (it.IID != a.ap.Landing || a.maxParallel() <= 1) {
+			n++
+		}
 	}
 	return n
 }
 
 // land says whether it, ready to land, may go through rebase, CI and merge
 // now: ready items land one at a time, in the order they became ready
-// (ReadyAt, then queue order). The main-red fix does not wait.
+// (ReadyAt, then queue order); held items do not. The main-red fix does not
+// wait.
 func (a *autopilot) land(it *aiv1.AutopilotItem) bool {
 	if it.ReadyAt == nil {
 		it.ReadyAt = &metav1.Time{Time: a.r.now()}
@@ -485,13 +490,13 @@ func (a *autopilot) land(it *aiv1.AutopilotItem) bool {
 	if it == a.ap.MainRedFix || a.ap.Landing == it.IID {
 		return true
 	}
-	if l := a.item(a.ap.Landing); l != nil && l.State == aiv1.AutopilotItemActive {
+	if l := a.item(a.ap.Landing); l != nil && l.State == aiv1.AutopilotItemActive && l.Hold == nil {
 		return false
 	}
 	var first *aiv1.AutopilotItem
 	for i := range a.ap.Items {
 		c := &a.ap.Items[i]
-		if c.State == aiv1.AutopilotItemActive && c.ReadyAt != nil && (first == nil || c.ReadyAt.Before(first.ReadyAt)) {
+		if c.State == aiv1.AutopilotItemActive && c.Hold == nil && c.ReadyAt != nil && (first == nil || c.ReadyAt.Before(first.ReadyAt)) {
 			first = c
 		}
 	}
@@ -1914,7 +1919,7 @@ func (a *autopilot) stamp() {
 }
 
 // stateHash hashes what a stuck pause waits on to change: the items (also
-// the main-red fix) with their MR, rebase, startAnyway, head and CI, main
+// the main-red fix) with their MR, rebase, startAnyway, hold, head and CI, main
 // health, the phase and the pause reason. Spend, the tracking issue and
 // command marks are left out: they change without moving the queue.
 func (a *autopilot) stateHash() string {
@@ -1929,6 +1934,9 @@ func (a *autopilot) stateHash() string {
 	}
 	for _, it := range items {
 		fmt.Fprintf(&b, "%d %s !%d %s %t %t", it.IID, it.State, it.MergeRequestIID, it.RebasedFrom, it.StartAnyway, it.ReadyAt != nil)
+		if h := it.Hold; h != nil {
+			fmt.Fprintf(&b, " hold %s %q", h.Kind, h.Reason)
+		}
 		if t := a.tasks[it.IID]; t != nil {
 			fmt.Fprintf(&b, " %s", t.Status.Run.PushedSHA)
 			if ci := t.Status.CI; ci != nil {

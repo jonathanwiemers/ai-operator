@@ -57,6 +57,25 @@ func TestPauseExits(t *testing.T) {
 	}
 }
 
+// Every PauseKind is classified as an item or a milestone kind: a new kind
+// fails here until it is put in one of the lists.
+func TestPauseKindsClassified(t *testing.T) {
+	item := []PauseKind{PauseCIRed, PauseCICanceled, PauseFindings, PauseReviewErrors, PauseNotReviewed, PauseRunFailed,
+		PauseNeedsInput, PauseMergeRequest, PauseCompanion, PauseStalled}
+	milestone := []PauseKind{PauseOwner, PauseBudget, PauseMainRed, PauseConfig, PauseCycle, PauseEmptyPlan, PauseRelease, PauseStuck}
+	if !slices.Equal(ItemPauseKinds, item) {
+		t.Fatalf("ItemPauseKinds = %v, want %v", ItemPauseKinds, item)
+	}
+	for _, k := range PauseKinds {
+		if k.ItemKind() == slices.Contains(milestone, k) {
+			t.Errorf("%s: item kind %t, milestone kind %t; it must be exactly one", k, k.ItemKind(), slices.Contains(milestone, k))
+		}
+	}
+	if n := len(item) + len(milestone); n != len(PauseKinds) {
+		t.Errorf("%d kinds classified, %d kinds exist", n, len(PauseKinds))
+	}
+}
+
 // PauseExits returns a copy: a caller cannot change the table.
 func TestPauseExitsCopy(t *testing.T) {
 	PauseExits(PauseOwner)[0].Does = "changed"

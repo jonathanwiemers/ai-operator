@@ -28,12 +28,13 @@ func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
 	})
 }
 
-// eachActive runs f for each active item in queue order and stops after
-// the first that acted (f says so) or changed the phase or its pause.
+// eachActive runs f for each active item that is not held, in queue order,
+// and stops after the first that acted (f says so) or changed the phase or
+// its pause.
 func (a *autopilot) eachActive(ctx context.Context, f func(context.Context, *aiv1.AutopilotItem) (bool, error)) error {
 	for i := range a.ap.Items {
 		it := &a.ap.Items[i]
-		if it.State != aiv1.AutopilotItemActive {
+		if it.State != aiv1.AutopilotItemActive || it.Hold != nil {
 			continue
 		}
 		phase, reason := a.ap.Phase, a.ap.PausedReason

@@ -5,6 +5,9 @@ import (
 	"maps"
 	"slices"
 	"testing"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -186,5 +189,47 @@ func TestAutopilotParallelHealsTheSecondActiveItem(t *testing.T) {
 	ap := e.autopilot()
 	if !slices.Equal(e.gl.Rebased, []int64{1}) || ap.Phase != aiv1.AutopilotRunning || ap.Items[1].IID != 2 || ap.Items[1].HealedOn != "main-y" {
 		t.Fatalf("main green must rebase #2's !1 and lift the pause: rebased %v, %+v", e.gl.Rebased, ap)
+	}
+}
+
+// A held item is not driven and frees its slot: with limit 2, #1 held and #2
+// running, the pending root #4 starts, and #1's finished run is left alone.
+func TestAutopilotParallelHeldItemIsNotDrivenAndFreesItsSlot(t *testing.T) {
+	e := newParallelEnv(t, 2, false)
+	e.reconcile()
+	e.reconcile()
+	e.wantStates("two of three roots run", map[int64]aiv1.AutopilotItemState{1: active, 2: active, 4: pending})
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		s.Autopilot.Items[0].Hold = &aiv1.ItemHold{Kind: aiv1.PauseCIRed, Reason: "CI of !1 is red", ResumeWhenReady: true}
+	})
+	e.finishRun(1, "sha-1", nil)
+	e.reconcile()
+	e.wantStates("the pending root starts in the held item's slot", map[int64]aiv1.AutopilotItemState{1: active, 2: active, 4: active})
+	e.reconcile()
+	ap := e.autopilot()
+	it := ap.Items[0]
+	if it.IID != 1 || it.Hold == nil || it.Hold.Kind != aiv1.PauseCIRed || it.ReadyAt != nil || it.MarkedReady || ap.Landing == 1 {
+		t.Fatalf("the held #1 must not be driven: %+v (landing %d)", it, ap.Landing)
+	}
+	if mr := e.gl.MRs[1]; !mr.Draft || len(e.gl.Merged) != 0 {
+		t.Fatalf("no GitLab calls for the held item's MR: draft %t, merged %v", mr.Draft, e.gl.Merged)
+	}
+}
+
+// A held item neither blocks the landing lane nor waits in it: #1 held while
+// landing (and ready first), #2 lands and merges.
+func TestAutopilotParallelHeldLandingItemFreesTheLane(t *testing.T) {
+	e := newParallelEnv(t, 0, false)
+	e.reconcile()
+	e.reconcile()
+	e.wantStates("three roots run", map[int64]aiv1.AutopilotItemState{1: active, 2: active, 4: active})
+	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
+		ready := metav1.NewTime(time.Now().Add(-time.Hour))
+		s.Autopilot.Items[0].Hold = &aiv1.ItemHold{Kind: aiv1.PauseMergeRequest, Reason: "!9 cannot be merged", Since: ready}
+		s.Autopilot.Items[0].ReadyAt, s.Autopilot.Landing = &ready, 1
+	})
+	e.mergeItem(2)
+	if got := e.states(); got[1] != active || e.autopilot().Items[0].Hold == nil {
+		t.Fatalf("#1 stays held: %v %+v", got, e.autopilot().Items[0])
 	}
 }

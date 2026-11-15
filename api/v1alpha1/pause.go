@@ -74,6 +74,20 @@ var PauseKinds = []PauseKind{
 	PauseEmptyPlan, PauseRelease, PauseStalled,
 }
 
+// ItemPauseKinds are the kinds of a problem with one issue: they hold that
+// issue (AutopilotItem.Hold), not the milestone. The others (owner, budget,
+// mainRed, config, cycle, emptyPlan, release, stuck) always pause the
+// milestone.
+var ItemPauseKinds = []PauseKind{
+	PauseCIRed, PauseCICanceled, PauseFindings, PauseReviewErrors, PauseNotReviewed, PauseRunFailed,
+	PauseNeedsInput, PauseMergeRequest, PauseCompanion, PauseStalled,
+}
+
+// ItemKind says whether k holds one issue rather than pausing the milestone.
+func (k PauseKind) ItemKind() bool {
+	return slices.Contains(ItemPauseKinds, k)
+}
+
 // The exits several kinds share.
 var (
 	exitLaterRunPasses = PauseExit{ID: "laterRunPasses", Auto: true, When: "a later run makes the issue pass the merge gate (reviewed and green)",
