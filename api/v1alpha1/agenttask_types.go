@@ -1216,6 +1216,10 @@ type RunStatus struct {
 	// +optional
 	CurrentStep string `json:"currentStep,omitempty"`
 
+	// CurrentStepSince is when the runner started currentStep. Empty with it.
+	// +optional
+	CurrentStepSince *metav1.Time `json:"currentStepSince,omitempty"`
+
 	// RunCount is the number of runs performed so far.
 	// +optional
 	RunCount int32 `json:"runCount,omitempty"`

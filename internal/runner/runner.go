@@ -570,6 +570,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.BlockReason = "" // this attempt reports its own
 		s.ActiveRunRequest = request
 		s.CurrentStep = ""
+		s.CurrentStepSince = nil
 		s.LastActivityTime = &metav1.Time{Time: r.now()}
 	}); err != nil {
 		return false, err
@@ -670,6 +671,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	return true, r.patchRunWithCalls(ctx, func(s *aiv1.RunStatus) {
 		s.ObservedRunRequest = request
 		s.CurrentStep = ""
+		s.CurrentStepSince = nil
 		s.RunCount++
 		s.DeferredUntil = nil
 		s.ClearDeferringLimit()
@@ -766,6 +768,7 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 		// The request stays pending, but nothing is in progress any more.
 		s.ActiveRunRequest = s.ObservedRunRequest
 		s.CurrentStep = ""
+		s.CurrentStepSince = nil
 		s.DeferredUntil = &metav1.Time{Time: until}
 		s.Deferrals = deferrals
 		s.BlockReason = aiv1.BlockQuota

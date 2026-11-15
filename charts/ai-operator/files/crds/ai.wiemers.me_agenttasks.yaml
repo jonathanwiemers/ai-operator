@@ -3794,6 +3794,11 @@ spec:
                       CurrentStep is the step the runner is working on, e.g. "9 run
                       implementer". It is empty between runs.
                     type: string
+                  currentStepSince:
+                    description: CurrentStepSince is when the runner started currentStep.
+                      Empty with it.
+                    format: date-time
+                    type: string
                   deferrals:
                     description: |-
                       Deferrals counts consecutive deferrals of the current run request; it

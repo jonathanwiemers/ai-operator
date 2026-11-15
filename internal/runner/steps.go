@@ -3,7 +3,6 @@ package runner
 import (
 	"context"
 	"fmt"
-	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"html"
 	"slices"
 	"strings"
@@ -11,8 +10,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
 // runLog records the steps of one run. Every step is logged when it starts
@@ -121,7 +122,10 @@ func (r *Runner) step(ctx context.Context, name string, kv ...any) *step {
 	r.run.steps = append(r.run.steps, s)
 	s.log.Info("step started", kv...)
 	r.run.changed()
-	if err := r.patchRun(ctx, func(st *aiv1.RunStatus) { st.CurrentStep = s.label() }); err != nil {
+	if err := r.patchRun(ctx, func(st *aiv1.RunStatus) {
+		st.CurrentStep = s.label()
+		st.CurrentStepSince = &metav1.Time{Time: s.start}
+	}); err != nil {
 		s.log.V(1).Info("could not publish the current step", "error", err.Error())
 	}
 	return s

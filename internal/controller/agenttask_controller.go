@@ -302,6 +302,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// pod (suspend, eviction) would leave it behind.
 	if pod == nil {
 		task.Status.Run.CurrentStep = ""
+		task.Status.Run.CurrentStepSince = nil
 	}
 
 	if waiting && !blocked && !task.Spec.Suspend {

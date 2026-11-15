@@ -596,8 +596,8 @@ func TestImplementEndToEnd(t *testing.T) {
 	if head := gitCmd(t, tmp, "--git-dir", origin, "rev-parse", "agent/42-add-paypal-button"); run.PushedSHA != head || run.PushedAt == nil || run.CIRound != 0 {
 		t.Fatalf("pushed commit not recorded: %+v (branch head %s)", run, head)
 	}
-	if run.CurrentStep != "" {
-		t.Fatalf("current step must be cleared after the run, got %q", run.CurrentStep)
+	if run.CurrentStep != "" || run.CurrentStepSince != nil {
+		t.Fatalf("current step must be cleared after the run, got step=%q since=%v", run.CurrentStep, run.CurrentStepSince)
 	}
 
 	// Meanwhile a human pushes a commit to the agent's branch.

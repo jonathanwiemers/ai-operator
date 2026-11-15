@@ -12,7 +12,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -185,6 +189,40 @@ func TestStepsStopAtACommand(t *testing.T) {
 	}
 	if st := savedState(t, r); st.LastMRNoteID == 0 || st.LastMRNoteID >= cmd {
 		t.Fatalf("the command is left for the run it starts: last seen %d, command %d", st.LastMRNoteID, cmd)
+	}
+}
+
+func TestCurrentStepPublished(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = aiv1.AddToScheme(scheme)
+	task := &aiv1.AgentTask{ObjectMeta: metav1.ObjectMeta{Name: "t", Namespace: "ns"}}
+	k8s := fake.NewClientBuilder().WithScheme(scheme).WithObjects(task).
+		WithStatusSubresource(&aiv1.AgentTask{}).Build()
+	r := &Runner{K8s: k8s, Namespace: "ns", TaskName: "t", Log: logr.Discard()}
+	s := r.step(context.Background(), "clone repository")
+	var got aiv1.AgentTask
+	if err := k8s.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "t"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	run := got.Status.Run
+	if run.CurrentStep != "1 clone repository" {
+		t.Fatalf("current step: got %q", run.CurrentStep)
+	}
+	// Status patches round-trip through JSON, so metav1.Time is second-precision.
+	want := metav1.NewTime(s.start).Rfc3339Copy()
+	if run.CurrentStepSince == nil || !run.CurrentStepSince.Equal(&want) {
+		t.Fatalf("currentStepSince: got %v, want %v (step start %v)", run.CurrentStepSince, want, s.start)
+	}
+	// Cleared the same way a finished run clears it.
+	if err := r.patchRun(context.Background(), func(st *aiv1.RunStatus) {
+		st.CurrentStep = ""
+		st.CurrentStepSince = nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = k8s.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "t"}, &got)
+	if got.Status.Run.CurrentStep != "" || got.Status.Run.CurrentStepSince != nil {
+		t.Fatalf("cleared: step=%q since=%v", got.Status.Run.CurrentStep, got.Status.Run.CurrentStepSince)
 	}
 }
 

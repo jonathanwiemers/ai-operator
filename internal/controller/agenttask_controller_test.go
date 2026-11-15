@@ -320,6 +320,7 @@ func TestCurrentStepClearedWithThePod(t *testing.T) {
 	orig := task.DeepCopy()
 	task.Status.Run.ActiveRunRequest = 1
 	task.Status.Run.CurrentStep = "9 run implementer"
+	task.Status.Run.CurrentStepSince = &metav1.Time{Time: time.Now().Add(-time.Minute)}
 	if err := e.c.Status().Patch(e.ctx, task, client.MergeFrom(orig)); err != nil {
 		t.Fatal(err)
 	}
@@ -332,8 +333,8 @@ func TestCurrentStepClearedWithThePod(t *testing.T) {
 	if e.exists(&pod, "x") {
 		t.Fatal("suspended task must not keep its pod")
 	}
-	if got := e.task("x").Status.Run.CurrentStep; got != "" {
-		t.Fatalf("current step must be cleared with the pod, got %q", got)
+	if got := e.task("x").Status.Run; got.CurrentStep != "" || got.CurrentStepSince != nil {
+		t.Fatalf("current step must be cleared with the pod, got step=%q since=%v", got.CurrentStep, got.CurrentStepSince)
 	}
 	// Not an interruption: the run is given back as pending.
 	if run := e.task("x").Status.Run; run.ActiveRunRequest != run.ObservedRunRequest || !e.task("x").RunPending() {

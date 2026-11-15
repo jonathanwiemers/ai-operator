@@ -153,6 +153,7 @@ func (r *Runner) retryWithMoreMemory(ctx context.Context, gl gitlab.API, spec ai
 		// The request stays pending, but nothing is in progress any more.
 		s.ActiveRunRequest = s.ObservedRunRequest
 		s.CurrentStep = ""
+		s.CurrentStepSince = nil
 		s.DeferredUntil = &metav1.Time{Time: now.Add(oomRetryDelay)}
 		// Not a usage limit: an engine left over from an earlier deferral
 		// would hold up the project's other tasks.

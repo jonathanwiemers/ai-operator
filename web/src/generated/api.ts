@@ -3867,6 +3867,11 @@ export interface RunStatus {
    */
   currentStep?: string;
   /**
+   * CurrentStepSince is when the runner started currentStep. Empty with it.
+   * +optional
+   */
+  currentStepSince?: string;
+  /**
    * RunCount is the number of runs performed so far.
    * +optional
    */

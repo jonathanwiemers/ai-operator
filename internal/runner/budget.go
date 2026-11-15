@@ -59,6 +59,7 @@ func (r *Runner) deferForBudget(ctx context.Context, gl gitlab.API, spec aiv1.Ag
 		// The request stays pending, but nothing is in progress any more.
 		s.ActiveRunRequest = s.ObservedRunRequest
 		s.CurrentStep = ""
+		s.CurrentStepSince = nil
 		// Not a usage limit: an earlier one of this request is over.
 		s.DeferredUntil, s.BlockReason = nil, ""
 		s.ClearDeferringLimit()
