@@ -2397,6 +2397,13 @@ export interface AgentTaskSpec {
    */
   budgetUSD?: string;
   /**
+   * MaxParallel is the milestone's parallel-issue limit, from its
+   * description's line "/agent parallel <n>" (spec tasks). 0 means use
+   * the project's autopilot.maxParallel.
+   * +optional
+   */
+  maxParallel?: number /* int32 */;
+  /**
    * FollowUpOf names what this milestone took over from another one, from
    * its description's line "/agent followup-of <iid> <numbers>" (spec
    * tasks). Nil without the line or for a malformed one.

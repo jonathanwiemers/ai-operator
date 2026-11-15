@@ -140,6 +140,41 @@ func TestAutopilotStatusMaxParallel(t *testing.T) {
 	}
 }
 
+func TestAutopilotParallelLineOverridesMaxParallel(t *testing.T) {
+	e := newAutopilotEnv(t)
+	planned := e.tasks()[specTaskName].Spec.RunRequest
+	e.gl.Milestones[0].Description = "/agent autopilot\nBuild a new checkout.\n\n/agent parallel 1"
+	e.reconcile()
+	st := e.tasks()[specTaskName]
+	if st.Spec.MaxParallel != 1 || e.autopilot().MaxParallel != 1 {
+		t.Fatalf("parallel line sets status maxParallel: task %d status %d", st.Spec.MaxParallel, e.autopilot().MaxParallel)
+	}
+	if st.Spec.RunRequest != planned {
+		t.Fatalf("adding the parallel line re-plans nothing: RunRequest %d → %d", planned, st.Spec.RunRequest)
+	}
+
+	e.gl.Milestones[0].Description = "/agent autopilot\nBuild a new checkout.\n\n/agent parallel 2"
+	e.reconcile()
+	st = e.tasks()[specTaskName]
+	if st.Spec.MaxParallel != 2 || e.autopilot().MaxParallel != 2 || st.Spec.RunRequest != planned {
+		t.Fatalf("editing the parallel line re-plans nothing: task %+v status %d", st.Spec, e.autopilot().MaxParallel)
+	}
+
+	e.gl.Milestones[0].Description = "/agent autopilot\nBuild a new checkout.\n\n/agent parallel 0"
+	e.reconcile()
+	st = e.tasks()[specTaskName]
+	if st.Spec.MaxParallel != 0 || e.autopilot().MaxParallel != 3 || st.Spec.RunRequest != planned {
+		t.Fatalf("an invalid parallel line is ignored: task %d status %d RunRequest %d", st.Spec.MaxParallel, e.autopilot().MaxParallel, st.Spec.RunRequest)
+	}
+
+	e.gl.Milestones[0].Description = "/agent autopilot\nBuild a new checkout."
+	e.reconcile()
+	st = e.tasks()[specTaskName]
+	if st.Spec.MaxParallel != 0 || e.autopilot().MaxParallel != 3 {
+		t.Fatalf("removing the line restores the project's value: task %d status %d", st.Spec.MaxParallel, e.autopilot().MaxParallel)
+	}
+}
+
 func TestAutopilotWorksThroughTheQueue(t *testing.T) {
 	e := newAutopilotEnv(t)
 	e.releaseOff()

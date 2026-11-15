@@ -91,6 +91,12 @@ type AgentTaskSpec struct {
 	// +optional
 	BudgetUSD string `json:"budgetUSD,omitempty"`
 
+	// MaxParallel is the milestone's parallel-issue limit, from its
+	// description's line "/agent parallel <n>" (spec tasks). 0 means use
+	// the project's autopilot.maxParallel.
+	// +optional
+	MaxParallel int32 `json:"maxParallel,omitempty"`
+
 	// FollowUpOf names what this milestone took over from another one, from
 	// its description's line "/agent followup-of <iid> <numbers>" (spec
 	// tasks). Nil without the line or for a malformed one.

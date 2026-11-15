@@ -284,9 +284,12 @@ func (a *autopilot) off(ctx context.Context) error {
 	return nil
 }
 
-// maxParallel is the effective parallel-issue limit for this milestone.
-// Later issues fold in a milestone `/agent parallel N` override here.
+// maxParallel is the effective parallel-issue limit for this milestone:
+// the description's `/agent parallel N` when set, else the project's.
 func (a *autopilot) maxParallel() int32 {
+	if a.st.Spec.MaxParallel > 0 {
+		return a.st.Spec.MaxParallel
+	}
 	return a.spec.Autopilot.MaxParallel
 }
 

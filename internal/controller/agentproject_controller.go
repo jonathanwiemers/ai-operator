@@ -499,13 +499,17 @@ func (r *AgentProjectReconciler) newTask(project *aiv1.AgentProject, name string
 // comes (specTurn), then asks for its first run with the hash of that moment.
 func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, ahead []int64, owners, ownerSubjects []string) (*aiv1.AgentTask, error) {
 	prefix := spec.Workflow.CommandPrefix
-	// The owners, owner-subjects, rules, budget and followup-of are no part
-	// of the spec: changing them re-plans nothing.
+	// The owners, owner-subjects, rules, budget, parallel and followup-of
+	// are no part of the spec: changing them re-plans nothing.
 	hash := hashString(rules.Spec(m.Description, prefix))
 	ruleLines := rules.Lines(m.Description, prefix)
 	budget, err := rules.Budget(m.Description, prefix)
 	if err != nil {
 		log.FromContext(ctx).Info("ignoring the milestone's budget line: no budget", "milestone", m.Title, "error", err.Error())
+	}
+	maxParallel, err := rules.Parallel(m.Description, prefix)
+	if err != nil {
+		log.FromContext(ctx).Info("ignoring the milestone's parallel line", "milestone", m.Title, "error", err.Error())
 	}
 	// A malformed followup-of line has no value; syncFollowUpOf notices it.
 	followUpOf, err := rules.FollowUpOf(m.Description, prefix)
@@ -533,7 +537,7 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		task.Spec.Owners, task.Spec.OwnerSubjects, task.Spec.Rules = owners, ownerSubjects, ruleLines
 		task.Spec.Repos = repos
 		logRepoProblems(ctx, m.Title, repos)
-		task.Spec.BudgetUSD, task.Spec.FollowUpOf = budget, followUpOf
+		task.Spec.BudgetUSD, task.Spec.MaxParallel, task.Spec.FollowUpOf = budget, maxParallel, followUpOf
 		if task.Spec.RunRequest > 0 {
 			log.FromContext(ctx).Info("planning milestone", "milestone", m.Title, "task", task.Name, "autopilot", autopilot)
 		}
@@ -549,7 +553,7 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 		logRepoProblems(ctx, m.Title, repos)
 	}
 	task.Spec.Repos = repos
-	task.Spec.BudgetUSD, task.Spec.FollowUpOf = budget, followUpOf
+	task.Spec.BudgetUSD, task.Spec.MaxParallel, task.Spec.FollowUpOf = budget, maxParallel, followUpOf
 	switch waiting := task.Spec.RunRequest == 0; {
 	case waiting && specTurn(task, ahead):
 		// The first run plans the description of this moment.
@@ -576,11 +580,13 @@ func (r *AgentProjectReconciler) syncSpecTask(ctx context.Context, project *aiv1
 
 // specTaskCurrent reports whether a milestone's spec task matches it: the
 // spec's hash, the milestone, autopilot, owners, owner-subjects, rules,
-// budget, followup-of, repo lines and, while it waits for its turn, the
-// milestones ahead. A waiting task whose turn has come is not current.
+// budget, parallel, followup-of, repo lines and, while it waits for its
+// turn, the milestones ahead. A waiting task whose turn has come is not
+// current.
 func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.AgentTask, autopilot bool, owners, ownerSubjects []string, repos []aiv1.MilestoneRepo, ahead []int64) bool {
 	prefix := spec.Workflow.CommandPrefix
 	budget, _ := rules.Budget(m.Description, prefix)
+	maxParallel, _ := rules.Parallel(m.Description, prefix)
 	followUpOf, _ := rules.FollowUpOf(m.Description, prefix)
 	queued := ahead
 	if task.Spec.RunRequest > 0 {
@@ -592,6 +598,7 @@ func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.
 		*task.Spec.Milestone == aiv1.MilestoneRef{ID: m.ID, IID: m.IID, Title: m.Title} && task.Spec.Autopilot == autopilot &&
 		slices.Equal(task.Spec.Owners, owners) && slices.Equal(task.Spec.OwnerSubjects, ownerSubjects) &&
 		slices.Equal(task.Spec.Rules, rules.Lines(m.Description, prefix)) && task.Spec.BudgetUSD == budget &&
+		task.Spec.MaxParallel == maxParallel &&
 		equality.Semantic.DeepEqual(task.Spec.FollowUpOf, followUpOf) &&
 		slices.Equal(task.Spec.Repos, repos)
 }
