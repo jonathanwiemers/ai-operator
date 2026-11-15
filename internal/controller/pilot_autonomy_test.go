@@ -504,6 +504,11 @@ func TestPilotManagedProposesARestartPastTheLimit(t *testing.T) {
 	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) {
 		s.Pilot = &aiv1.PilotStatus{Interventions: map[string]aiv1.PilotIntervention{"1": {Head: "sha1", Count: 2}}}
 	})
+	// Stalled again at the cap: the autopilot pauses first (kind stalled).
+	e.reconcile()
+	if e.autopilot().PauseKind != aiv1.PauseStalled {
+		t.Fatalf("expected a stalled pause: %+v", e.autopilot())
+	}
 	e.proposeFor(1, "event/"+aiv1.RunStalledEventPrefix+"1/1", aiv1.PilotAction{Tool: "restartRun", IssueIID: 1})
 	e.reconcile()
 	p := e.promptNote("Q1")

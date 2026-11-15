@@ -13,6 +13,7 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -1218,7 +1219,13 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 	if !a.ap.ResumeWhenReady {
 		return nil
 	}
+	stalled := a.ap.PauseKind == aiv1.PauseStalled
 	switch g := a.gateCheck(it, is, task); {
+	case stalled && g.kind == aiv1.PauseStalled:
+		return nil // still stalled: only the ages in the reason grew
+	case stalled && (g.state == gateWaiting || g.state == gateCIUnfinished):
+		// The run moves again or ended; the gate judges it when it is done.
+		return resume(aiv1.ResumedViaCauseGone, fmt.Sprintf("the run of #%d is no longer stalled", it.IID))
 	case g.state == gatePassed && a.overridden(it, task.Status.Run.PushedSHA, task.Status.Run):
 		// The owner's merge override let the head through.
 		return resumeBy(aiv1.ResolvedByLaterRun, aiv1.ResumedViaCommand, fmt.Sprintf("#%d is green and may merge without a full review", it.IID))
@@ -1274,6 +1281,7 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 	failed := func(byRun bool, kind aiv1.PauseKind, format string, args ...any) gateResult {
 		return gateResult{state: gateFailed, kind: kind, reason: fmt.Sprintf(format, args...), byRun: byRun}
 	}
+	stalled := a.stalledPast(it.IID, task)
 	switch {
 	case is.HasLabel(wf.NeedsInputLabel) && task != nil && companionCIRed(task) != "":
 		// The CI loop handed the red companion to a human after the fix
@@ -1286,6 +1294,8 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 		return failed(true, aiv1.PauseNeedsInput, "#%d needs input (see its last comments): CI is still red, the run failed or the agent asked a question", it.IID)
 	case !hasAny(is, wf.ActiveLabels()...):
 		return failed(false, aiv1.PauseConfig, "#%d is open but has no workflow label any more; move it back to `%s` or close it", it.IID, wf.ReviewLabel)
+	case stalled != "":
+		return failed(true, aiv1.PauseStalled, "%s", stalled)
 	case !is.HasLabel(wf.ReviewLabel) || task == nil || task.RunPending() || task.Status.Blocked != nil:
 		return gateResult{state: gateWaiting} // blocked: waits for an outside reason
 	}
@@ -1338,6 +1348,36 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 		}
 	}
 	return gateResult{state: gatePassed}
+}
+
+// stalledPast is why issue iid's stalled run pauses the autopilot
+// (aiv1.PauseStalled), "" while it is not stalled or may still be restarted:
+// the pilot's interventions on the issue's head are used up (no pilot
+// restarts it at all), or the run was interrupted MaxInterruptions times.
+func (a *autopilot) stalledPast(iid int64, task *aiv1.AgentTask) string {
+	if task == nil || !meta.IsStatusConditionTrue(task.Status.Conditions, aiv1.ConditionStalled) {
+		return ""
+	}
+	run, limit, used := task.Status.Run, a.spec.Pilot.MaxInterventionsPerIssue, int32(0)
+	if a.pilotTask == nil {
+		used = limit
+	} else if ps := a.pilotTask.Status.Pilot; ps != nil {
+		if n := ps.Interventions[strconv.FormatInt(iid, 10)]; n.Head == run.PushedSHA {
+			used = n.Count
+		}
+	}
+	if used < limit && run.Interruptions < aiv1.MaxInterruptions {
+		return ""
+	}
+	msg := meta.FindStatusCondition(task.Status.Conditions, aiv1.ConditionStalled).Message
+	reason := fmt.Sprintf("#%d's run is stalled again after %d of %d pilot interventions: %s", iid, used, limit, msg)
+	if a.pilotTask == nil {
+		reason = fmt.Sprintf("#%d's run is stalled and no pilot restarts it: %s", iid, msg)
+	}
+	if run.CurrentStep != "" && run.CurrentStepSince != nil {
+		reason += fmt.Sprintf("; step %s runs for %s", run.CurrentStep, minutes(a.r.now().Sub(run.CurrentStepSince.Time)))
+	}
+	return reason + fmt.Sprintf(" (interruption %d of %d)", run.Interruptions, aiv1.MaxInterruptions)
 }
 
 // companionRef names a companion merge request, "group/infra!3", or its

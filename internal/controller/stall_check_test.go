@@ -174,3 +174,33 @@ func TestStallCheckLogErrorKeepsTheCondition(t *testing.T) {
 		t.Fatalf("a failed log read must not set Stalled, got %+v", c)
 	}
 }
+
+func TestStallCheckRestartStartsANewStall(t *testing.T) {
+	e, logs := newRunningTask(t, corev1.PodRunning)
+	e.now = t0.Add(45 * time.Minute)
+	e.reconcile("x")
+	first := e.stalled()
+	if first == nil || first.Status != metav1.ConditionTrue {
+		t.Fatalf("expected a stall, got %+v", first)
+	}
+	// Restarted: the runner starts the request again.
+	restart := e.now.Add(time.Minute)
+	task := e.task("x")
+	orig := task.DeepCopy()
+	task.Status.Run.LastActivityTime, task.Status.Run.Interruptions = &metav1.Time{Time: restart}, 1
+	if err := e.c.Status().Patch(e.ctx, task, client.MergeFrom(orig)); err != nil {
+		t.Fatal(err)
+	}
+	e.now = restart.Add(time.Minute)
+	e.reconcile("x")
+	if c := e.stalled(); c != nil {
+		t.Fatalf("a stall found before the run started again is gone, got %+v", c)
+	}
+	// Silent again past stallAfter: a new stall with its own start.
+	logs.last[RunnerContainer] = restart
+	e.now = restart.Add(40 * time.Minute)
+	e.reconcile("x")
+	if c := e.stalled(); c == nil || c.Status != metav1.ConditionTrue || !c.LastTransitionTime.Time.Equal(e.now) {
+		t.Fatalf("the new attempt's stall starts now, got %+v", c)
+	}
+}

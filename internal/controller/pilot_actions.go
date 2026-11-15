@@ -121,6 +121,9 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return fmt.Errorf("`%s` is not a kind of instruction", inertLine(a.Kind, 40))
 	case a.Tool == "restartRun" && !meta.IsStatusConditionTrue(t.Status.Conditions, aiv1.ConditionStalled):
 		return errors.New("the run is moving again")
+	case a.Tool == "restartRun" && t.Status.Run.Interruptions >= aiv1.MaxInterruptions:
+		// One more interruption fails the run: that is the owners' call.
+		return fmt.Errorf("the run of #%d was interrupted %d times, another restart fails it; an owner can still `restart` it", a.IssueIID, t.Status.Run.Interruptions)
 	}
 	return nil
 }

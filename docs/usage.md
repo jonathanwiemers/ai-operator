@@ -1469,9 +1469,19 @@ See [the final release](#the-final-release).
 
 #### `stalled`
 
-The active issue's run is stalled and the pilot's restarts did not help or
-the interruption cap is reached. Ends by itself once the run logs again or
-ends, or when the MR is merged by hand or the issue is closed.
+The active issue's run is stalled (condition `Stalled=True`) and the
+pilot's interventions on the issue's head are used up
+(`pilot.maxInterventionsPerIssue`), or the run was interrupted 3 times
+(the next interruption fails it), or the milestone has no pilot. In
+`propose` the same rule holds: the pilot's proposals ping the owners
+before. With interventions left, the pilot gets the stall and restarts the
+run. The reason holds the evidence: "#12's run is stalled again after 2 of
+2 pilot interventions: no log line for 42m in step 18 push; step 18 push
+runs for 50m (interruption 2 of 3)"; the logs are in the Desk. A stall
+found before a restart ends with it: a stall of the new attempt is a new
+one. Ends by itself once the run logs again or ends (a run that ended is
+then judged by the merge gate, e.g. `runFailed`), or when the MR is merged
+by hand or the issue is closed.
 
 - `/agent restart` on the issue (owners only): the operator deletes the
   agent pod and the run starts again (counted as an interruption); the
@@ -2546,7 +2556,9 @@ list out.
   message. A `restartRun` restarts a stalled run like `/agent restart` (the
   issue gets the note); when it runs, the operator checks the task is still
   stalled (condition `Stalled=True`), else it refuses with "the run is
-  moving again" and gives the intervention back. Each counts against its issue and that issue's head (an
+  moving again" and gives the intervention back. It also refuses once the run
+  was interrupted 3 times: another restart would fail the run, so the
+  `stalled` pause leaves that to the owners (`/agent restart`). Each counts against its issue and that issue's head (an
   `openIssue` against the issue whose event triggered it, on the tracking
   issue against the milestone; a `fixFlaky` or `retryPipeline` against the milestone), at most `pilot.maxInterventionsPerIssue` (2) per head, and
   each wake-up gets an **audit comment** on the tracking issue: "🧭 The

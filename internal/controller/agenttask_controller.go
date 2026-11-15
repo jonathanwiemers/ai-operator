@@ -344,6 +344,11 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		meta.RemoveStatusCondition(&task.Status.Conditions, aiv1.ConditionStalled)
 		r.stallChecked.Delete(task.UID)
 	} else if r.Logs != nil {
+		if c := meta.FindStatusCondition(task.Status.Conditions, aiv1.ConditionStalled); c != nil && c.LastTransitionTime.Time.Before(lastActivity) {
+			// Found before the run started again (a restart): a stall of the
+			// new attempt is a new one, with its own start.
+			meta.RemoveStatusCondition(&task.Status.Conditions, aiv1.ConditionStalled)
+		}
 		interval := lc.StallCheckInterval.Duration
 		if task.Status.Phase == aiv1.TaskPhaseRunning && pod != nil && idleFor >= lc.StallAfter.Duration &&
 			r.stallCheckDue(task.UID, now, interval) {

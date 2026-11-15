@@ -1918,7 +1918,7 @@ counted interventions; more tools are later steps of
   the counts, and `runAccepted` runs them at the end of the poll (refused,
   and their interventions given back, when the pilot was stopped meanwhile
   or they are no longer valid, e.g. a `restartRun` whose task is no longer
-  stalled: "the run is moving again") and posts an audit comment instead of an
+  stalled: "the run is moving again", or interrupted `MaxInterruptions` times) and posts an audit comment instead of an
   outcome: summary, `why` (classification and evidence, or the message,
   recorded by the runner), the actions and the interventions left, inert
   and without mentions. The rest is posted as a proposal, with its state
