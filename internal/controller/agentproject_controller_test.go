@@ -48,6 +48,10 @@ func testProject() *aiv1.AgentProject {
 				TokenSecretRef: corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "gitlab"}, Key: "token"},
 			},
 			Agents: aiv1.AgentsSpec{Image: "agent:latest", CredentialsSecretName: "agent-creds"},
+			// One issue at a time, where an issue's problem pauses the
+			// milestone; tests of parallel issues set their limit (or nil: the
+			// default).
+			Autopilot: &aiv1.AutopilotSpec{MaxParallel: 1},
 		},
 	}
 }

@@ -114,10 +114,10 @@ func TestAutopilotLandingMergeBaseFreesTheLane(t *testing.T) {
 	}
 }
 
-func TestAutopilotLandingRedAfterTheRebasePausesAndFreesTheLane(t *testing.T) {
+func TestAutopilotLandingRedAfterTheRebaseHoldsAndFreesTheLane(t *testing.T) {
 	e := newLaneEnv(t)
 	n1, mr1 := e.readyBehind(1, "need_rebase")
-	e.readyBehind(2, "need_rebase")
+	_, mr2 := e.readyBehind(2, "need_rebase")
 	e.reconcile()
 	e.wantLanding("#1 lands", 1, mr1)
 	e.reconcile() // the rebased head goes to CI
@@ -125,21 +125,23 @@ func TestAutopilotLandingRedAfterTheRebasePausesAndFreesTheLane(t *testing.T) {
 		s.CI = &aiv1.CIStatus{SHA: "sha-1-rebased", State: aiv1.CIStateFailed, FailedJobs: []string{"test"}}
 	})
 	e.gl.SetLabels(1, "ai-generated", "agent::review")
-	// The pause comment fails: no pause yet, so #1 keeps the lane and #2
+	// The hold comment fails: no hold yet, so #1 keeps the lane and #2
 	// neither lands nor rebases.
 	tracking := e.autopilot().TrackingIssueIID
 	e.gl.NoteErrors = map[int64]error{tracking: &gitlab.Error{StatusCode: 500, Method: "POST", Path: "notes"}}
 	_, _ = e.r.Reconcile(e.ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: "shop"}})
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.Landing != 1 || !slices.Equal(e.gl.Rebased, []int64{mr1}) {
-		t.Fatalf("an unsaid pause keeps the lane: rebased %v, %+v", e.gl.Rebased, ap)
+	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotRunning || ap.Landing != 1 || ap.Items[0].Hold != nil || !slices.Equal(e.gl.Rebased, []int64{mr1}) {
+		t.Fatalf("an unsaid hold keeps the lane: rebased %v, %+v", e.gl.Rebased, ap)
 	}
 	e.gl.NoteErrors = nil
 	e.reconcile()
 	ap := e.autopilot()
-	if ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseCIRed || ap.PausedFor != 1 || ap.Landing != 0 || ap.Items[0].ReadyAt != nil {
-		t.Fatalf("a red rebased head pauses and frees the lane: %+v", ap)
+	if h := ap.Items[0].Hold; h == nil || h.Kind != aiv1.PauseCIRed || !h.ResumeWhenReady || ap.Items[0].ReadyAt != nil {
+		t.Fatalf("a red rebased head holds #1 and takes it out of the lane: %+v", ap.Items[0])
 	}
-	if !slices.Equal(e.gl.Rebased, []int64{mr1}) {
-		t.Fatalf("only the landing item was rebased: %v", e.gl.Rebased)
+	// The next ready item lands in the same poll.
+	e.wantLanding("#2 lands", 2, mr1, mr2)
+	if ap.PausedReason != "" {
+		t.Fatalf("the milestone is not paused: %+v", ap)
 	}
 }

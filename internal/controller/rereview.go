@@ -75,14 +75,14 @@ func (a *autopilot) reReview(ctx context.Context, it *aiv1.AutopilotItem, task *
 	return nil
 }
 
-// failGate pauses for a failed merge gate; a pause that is no human's to fix
-// also blocks the issue.
+// failGate pauses (or holds the issue) for a failed merge gate; a pause or
+// hold that is no human's to fix also blocks the issue.
 func (a *autopilot) failGate(ctx context.Context, it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv1.AgentTask, g gateResult) error {
 	pause := a.pauseActive
 	if g.byRun {
 		pause = a.pauseRun
 	}
-	if err := pause(ctx, it, g.kind, g.reason); err != nil || g.block == "" || a.ap.Phase != aiv1.AutopilotPaused {
+	if err := pause(ctx, it, g.kind, g.reason); err != nil || g.block == "" || a.ap.Phase != aiv1.AutopilotPaused && it.Hold == nil {
 		return err
 	}
 	return a.r.block(ctx, a.spec.Workflow, is, task, g.block, g.reason)
@@ -90,7 +90,8 @@ func (a *autopilot) failGate(ctx context.Context, it *aiv1.AutopilotItem, is git
 
 // unblockActive lifts the infra block of the active issue, and of the
 // main-red lane's, when a pause ends (also one a later "/agent pause" took
-// over). A block its failed run asked for stays: only a new run lifts it.
+// over). A block its failed run asked for stays: only a new run lifts it, and
+// so does a held issue's: its hold ending lifts it.
 func (a *autopilot) unblockActive(ctx context.Context) error {
 	items := a.ap.Items
 	if a.ap.MainRedFix != nil {
@@ -98,7 +99,7 @@ func (a *autopilot) unblockActive(ctx context.Context) error {
 	}
 	for _, it := range items {
 		task := a.tasks[it.IID]
-		if it.State != aiv1.AutopilotItemActive || task == nil || task.Status.Blocked == nil || task.Status.Blocked.Reason != aiv1.BlockInfra ||
+		if it.State != aiv1.AutopilotItemActive || it.Hold != nil || task == nil || task.Status.Blocked == nil || task.Status.Blocked.Reason != aiv1.BlockInfra ||
 			task.Status.Run.BlockReason == aiv1.BlockInfra {
 			continue
 		}

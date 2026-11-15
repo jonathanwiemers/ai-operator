@@ -126,6 +126,7 @@ func trackingComments(e *projectEnv) string {
 
 func TestAutopilotStatusMaxParallel(t *testing.T) {
 	e := newAutopilotEnv(t)
+	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Autopilot = nil })
 	e.reconcile()
 	if got := e.autopilot().MaxParallel; got != 3 {
 		t.Fatalf("default maxParallel: %d", got)
@@ -142,6 +143,7 @@ func TestAutopilotStatusMaxParallel(t *testing.T) {
 
 func TestAutopilotParallelLineOverridesMaxParallel(t *testing.T) {
 	e := newAutopilotEnv(t)
+	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Autopilot = nil })
 	planned := e.tasks()[specTaskName].Spec.RunRequest
 	e.gl.Milestones[0].Description = "/agent autopilot\nBuild a new checkout.\n\n/agent parallel 1"
 	e.reconcile()

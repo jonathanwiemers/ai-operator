@@ -1036,6 +1036,17 @@ head is reviewed and green. Above a limit of 1 the landing issue does not
 count against [`autopilot.maxParallel`](configuration.md), so the next issue
 can start meanwhile.
 
+Above a limit of 1, a problem with one issue (red or canceled CI, review
+findings or errors, a failed run, a question, its merge request, its
+companion, a stalled run) **holds that issue** instead of pausing the
+milestone: the tracking issue says `⏸️ #12 is held: <reason>. The other issues
+go on.` with the same ways out and mention as a pause. A held issue gives up
+its slot and the landing lane, and the other issues run, land and merge. The
+milestone still pauses for its owner's `pause`, the budget, a red default
+branch, the configuration, the plan and releases, for every problem at a
+limit of 1, and `stuck` once every running issue is held and nothing else
+can start.
+
 ### When it pauses
 
 Autopilot pauses instead of guessing. It comments on the tracking issue with

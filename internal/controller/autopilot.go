@@ -449,10 +449,46 @@ func (a *autopilot) step(ctx context.Context) error {
 			return err
 		}
 		if a.running() <= running || a.ap.Phase == aiv1.AutopilotPaused || a.holding {
-			return nil
+			break
 		}
 	}
-	return nil
+	return a.stuckOnHolds(ctx)
+}
+
+// stuckOnHolds pauses stuck when nothing can move: every active item is held
+// and no pending one can start. An active main-red fix moves (it is never
+// held), so that is no stuck.
+func (a *autopilot) stuckOnHolds(ctx context.Context) error {
+	held := a.allHeld()
+	fix := a.ap.MainRedFix != nil && a.ap.MainRedFix.State == aiv1.AutopilotItemActive
+	if len(held) == 0 || fix || a.ap.Phase != aiv1.AutopilotRunning || a.holding {
+		return nil
+	}
+	s, err := a.startable(ctx)
+	if err != nil || s.dep != nil || s.it != nil || s.landing {
+		return err
+	}
+	reason := fmt.Sprintf("nothing can move: every running issue is held (%s)", strings.Join(held, ", "))
+	if len(s.waiting) > 0 {
+		reason += "; " + strings.Join(s.waiting, ", ")
+	}
+	return a.pause(ctx, aiv1.PauseStuck, 0, reason)
+}
+
+// allHeld lists the active items as "#N: kind" if every one is held, else
+// (also with none) nil.
+func (a *autopilot) allHeld() []string {
+	var held []string
+	for _, it := range a.ap.Items {
+		if it.State != aiv1.AutopilotItemActive {
+			continue
+		}
+		if it.Hold == nil {
+			return nil
+		}
+		held = append(held, fmt.Sprintf("#%d: %s", it.IID, it.Hold.Kind))
+	}
+	return held
 }
 
 // active counts the active items.
@@ -557,7 +593,8 @@ func (a *autopilot) pick(ctx context.Context) error {
 				return fmt.Errorf("moving issue #%d to %q: %w", it.IID, wf.ReadyLabel, err)
 			}
 		}
-		it.State = aiv1.AutopilotItemActive
+		// No hold from before a skip.
+		it.State, it.Hold = aiv1.AutopilotItemActive, nil
 		a.ap.Phase = aiv1.AutopilotRunning // a re-plan can add issues after "done"
 		a.ap.CloseWaitsForCompanions = nil
 		return nil
@@ -633,6 +670,8 @@ func (a *autopilot) startable(ctx context.Context) (startCheck, error) {
 					continue // an owner let it start without the skipped one
 				}
 				waits[it.IID] = fmt.Sprintf("#%d waits for the skipped #%d", it.IID, d)
+			} else if dep.State == aiv1.AutopilotItemActive {
+				waits[it.IID] = fmt.Sprintf("#%d waits for #%d", it.IID, d) // held, when stuck on holds
 			}
 			blocked = true
 			break
@@ -713,7 +752,7 @@ func (a *autopilot) unstick(ctx context.Context) error {
 		why = fmt.Sprintf("#%d was closed", s.it.IID)
 	case s.it != nil:
 		why = fmt.Sprintf("#%d can start now", s.it.IID)
-	case len(s.waiting) == 0:
+	case len(s.waiting) == 0 && a.allHeld() == nil: // else still stuck on holds
 		why = "no issue waits any more"
 	case s.landing:
 		why = "the queue waits for a companion to land, and goes on by itself once it has"
@@ -789,7 +828,7 @@ func (a *autopilot) endMilestone(ctx context.Context, by string) error {
 	for i := range a.ap.Items {
 		switch it := &a.ap.Items[i]; {
 		case it.State == aiv1.AutopilotItemPending, it.State == aiv1.AutopilotItemActive && budget:
-			it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+			it.State, it.RebasedFrom, it.Hold = aiv1.AutopilotItemSkipped, "", nil
 			skipped = append(skipped, it.IID)
 		case it.State == aiv1.AutopilotItemActive:
 			active = it
@@ -1015,7 +1054,7 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 		if err := a.comment(ctx, fmt.Sprintf("⏭️ #%d was closed without a merge, so it is skipped.", it.IID)); err != nil {
 			return err
 		}
-		it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+		it.State, it.RebasedFrom, it.Hold = aiv1.AutopilotItemSkipped, "", nil
 		a.unready(it)
 		return nil
 	}
@@ -1212,7 +1251,7 @@ func (a *autopilot) base(ctx context.Context) (string, error) {
 // pauseActive pauses because of the active issue, unless its MR was merged
 // meanwhile (by hand, while the issue is still open).
 func (a *autopilot) pauseActive(ctx context.Context, it *aiv1.AutopilotItem, kind aiv1.PauseKind, reason string) error {
-	if it.MergeRequestIID != 0 && a.ap.Phase != aiv1.AutopilotPaused {
+	if it.MergeRequestIID != 0 && it.Hold == nil && a.ap.Phase != aiv1.AutopilotPaused {
 		mr, err := a.gl.GetMergeRequest(ctx, a.spec.GitLab.Project, it.MergeRequestIID)
 		if err != nil && !gitlab.IsNotFound(err) {
 			return fmt.Errorf("getting merge request !%d: %w", it.MergeRequestIID, err)
@@ -1238,6 +1277,9 @@ func (a *autopilot) pauseHead(ctx context.Context, it *aiv1.AutopilotItem, reaso
 		return err
 	}
 	a.ap.ResumeWhenReady = a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedFor == it.IID
+	if it.Hold != nil {
+		it.Hold.ResumeWhenReady = true
+	}
 	return nil
 }
 
@@ -1249,6 +1291,9 @@ func (a *autopilot) pauseRun(ctx context.Context, it *aiv1.AutopilotItem, kind a
 	}
 	if a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedFor == it.IID {
 		a.ap.ResumeWhenReady = true
+	}
+	if it.Hold != nil {
+		it.Hold.ResumeWhenReady = true
 	}
 	return nil
 }
@@ -1741,7 +1786,7 @@ func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 		}
 		orig.Decisions = collectDecisions(ois, onotes, a.project.Status.BotUserID)
 	}
-	it.State = aiv1.AutopilotItemMerged
+	it.State, it.Hold = aiv1.AutopilotItemMerged, nil
 	it.MergedAt = &metav1.Time{Time: a.r.now()}
 	it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
 	a.unready(it)
@@ -1785,6 +1830,12 @@ func capDecisions(ds []aiv1.DecisionRef) []aiv1.DecisionRef {
 // pause stops the queue over issue iid (0: none) and says why and the ways
 // out, once.
 func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, iid int64, reason string) error {
+	// Above a limit of 1, a problem of one queue item holds it; a milestone
+	// pause already over it goes on as one.
+	if it := a.item(iid); iid != 0 && it != nil && it != a.ap.MainRedFix && it.State == aiv1.AutopilotItemActive && kind.ItemKind() && a.holdsItems() &&
+		(a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedFor != iid) {
+		return a.hold(ctx, it, kind, reason)
+	}
 	// A pause over the landing item frees the lane, once it holds (after
 	// the comment): the next ready item lands.
 	freeLane := func() {
@@ -1808,6 +1859,35 @@ func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, iid int64, r
 	a.ap.PausedReason, a.ap.PauseKind = reason, kind
 	a.ap.PausedFor, a.ap.ResumeWhenReady = iid, false
 	freeLane()
+	return nil
+}
+
+// holdsItems: issue problems hold the issue rather than pause the milestone,
+// above a limit of 1 (at 1 a hold would free the only slot).
+func (a *autopilot) holdsItems() bool { return a.maxParallel() > 1 }
+
+// hold holds it for a problem of kind: it is not driven, leaves the landing
+// lane and frees its slot, the other issues go on. It says why and the ways
+// out once per reason; the comment goes first, a failed one is tried again.
+func (a *autopilot) hold(ctx context.Context, it *aiv1.AutopilotItem, kind aiv1.PauseKind, reason string) error {
+	if it.Hold != nil && it.Hold.Reason == reason {
+		return nil
+	}
+	a.log.Info("autopilot holds an issue", "issue", it.IID, "reason", reason)
+	if err := a.comment(ctx, fmt.Sprintf("⏸️ #%d is held: %s. The other issues go on.\n\nWays out:\n%s", it.IID, notify.Defuse(reason), a.exitLines(kind, it.IID))+a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
+		return err
+	}
+	h := aiv1.ItemHold{Kind: kind, Reason: reason, Since: metav1.Time{Time: a.r.now()}}
+	if old := it.Hold; old != nil { // held anew over the same item: as startPause
+		h.RunBy, h.RunHead = old.RunBy, old.RunHead
+		if old.Kind == kind {
+			h.Since = old.Since
+		}
+	} else if t := a.tasks[it.IID]; t != nil {
+		h.RunHead = t.Status.Run.PushedSHA
+	}
+	it.Hold = &h
+	a.unready(it)
 	return nil
 }
 
@@ -2192,7 +2272,7 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 		if it == nil || it.State == aiv1.AutopilotItemMerged {
 			return fmt.Sprintf("`skip` needs a planned issue that is not merged yet, e.g. `%s skip #12`.", a.spec.Workflow.CommandPrefix), false, nil
 		}
-		it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+		it.State, it.RebasedFrom, it.Hold = aiv1.AutopilotItemSkipped, "", nil
 		a.unready(it)
 		return fmt.Sprintf("#%d skipped.", iid), true, nil
 	case "unskip":

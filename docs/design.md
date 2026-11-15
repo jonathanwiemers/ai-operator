@@ -1392,6 +1392,22 @@ stateDiagram-v2
   of 1, so a pending item can start while it lands; at 1 it counts, one issue
   at a time. The main-red fix does not use the lane. Owner `rebase` and
   `mergeBase` commands and the BaseFailing heal still act on any active item.
+* **Holds.** Above a limit of 1, a problem of one issue (an item pause kind:
+  `ciRed`, `ciCanceled`, `findings`, `reviewErrors`, `notReviewed`,
+  `runFailed`, `needsInput`, `mergeRequest`, `companion`, `stalled`) holds
+  that item (`items[].hold`: kind, reason, since, `resumeWhenReady`, the
+  pushed head) instead of pausing the milestone. The tracking issue gets
+  `⏸️ #N is held: <reason>. The other issues go on.` with the ways out and
+  the owners' mention, once per reason. A held item is not driven, leaves
+  the landing lane (the next ready item lands) and frees its slot; an infra
+  block of the gate stays on it, a milestone resume does not lift it.
+  Milestone kinds (`owner`, `budget`, `mainRed`, `config`, `cycle`,
+  `emptyPlan`, `release`, `stuck`) pause the milestone at any limit, and so
+  does every problem of the main-red fix and every problem at a limit of 1.
+  When every active item is held and nothing can start, the milestone pauses
+  `stuck` (`nothing can move: every running issue is held (#1: ciRed, …)`);
+  `unstick` lifts it once an issue can start. Holds are not in the history's
+  pause events yet.
 * **Project queue order.** Open autopilot milestones of a project share one
   ranking (`internal/milestoneorder`, used by `queuedAhead`, the planning
   hold and the Desk *Queue* section): milestones with a run-next mark

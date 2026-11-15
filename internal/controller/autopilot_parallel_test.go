@@ -20,9 +20,7 @@ func newParallelEnv(t *testing.T, max int32, dependant bool) *projectEnv {
 	t.Helper()
 	e := newUnplannedAutopilotEnv(t)
 	e.releaseOff()
-	if max > 0 {
-		e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Autopilot = &aiv1.AutopilotSpec{MaxParallel: max} })
-	}
+	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Autopilot = &aiv1.AutopilotSpec{MaxParallel: max} }) // 0: the default
 	docs := e.gl.AddIssue(4, "Docs", "ai-generated", "agent::draft")
 	m := e.gl.Milestones[0]
 	docs.Milestone = &m
@@ -166,7 +164,11 @@ func TestAutopilotParallelMainRedHoldsTheSecondActiveItem(t *testing.T) {
 	}
 }
 
-func TestAutopilotParallelHealsTheSecondActiveItem(t *testing.T) {
+// Above a limit of 1, a BaseFailing ciRed holds the item instead of pausing
+// the milestone, and the other issues go on. Healing a held item comes with
+// the end of holds; at limit 1 it pauses and heals as before
+// (TestAutopilotRebasesABaseFailingMROnceMainIsGreen).
+func TestAutopilotParallelBaseFailingHoldsTheSecondActiveItem(t *testing.T) {
 	e := newParallelEnv(t, 0, false)
 	e.reconcile()
 	e.reconcile()
@@ -180,16 +182,11 @@ func TestAutopilotParallelHealsTheSecondActiveItem(t *testing.T) {
 	})
 	e.reconcile()
 	e.reconcile()
-	if ap := e.autopilot(); ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseCIRed || ap.PausedFor != 2 {
-		t.Fatalf("a BaseFailing MR of #2 must pause ciRed: %+v", ap)
-	}
-
-	e.mainGreenAt("main-y")
-	e.reconcile()
 	ap := e.autopilot()
-	if !slices.Equal(e.gl.Rebased, []int64{1}) || ap.Phase != aiv1.AutopilotRunning || ap.Items[1].IID != 2 || ap.Items[1].HealedOn != "main-y" {
-		t.Fatalf("main green must rebase #2's !1 and lift the pause: rebased %v, %+v", e.gl.Rebased, ap)
+	if h := ap.Items[1].Hold; ap.Items[1].IID != 2 || h == nil || h.Kind != aiv1.PauseCIRed || !h.ResumeWhenReady || h.RunHead != "sha-ui" {
+		t.Fatalf("a BaseFailing MR of #2 must hold it ciRed: %+v", ap.Items[1])
 	}
+	e.wantStates("the milestone goes on", map[int64]aiv1.AutopilotItemState{1: active, 2: active, 4: active})
 }
 
 // A held item is not driven and frees its slot: with limit 2, #1 held and #2
