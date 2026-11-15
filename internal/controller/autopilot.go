@@ -426,7 +426,7 @@ func (a *autopilot) deps(iid int64) []int64 {
 // pending items while slots are free (maxParallel): an issue starts once its
 // dependencies are merged, without waiting for a whole layer of the plan.
 func (a *autopilot) step(ctx context.Context) error {
-	phase, before := a.ap.Phase, a.running() // Running, or Done when a re-plan added issues
+	phase, before := a.ap.Phase, a.active() // Running, or Done when a re-plan added issues
 	for i := range a.ap.Items {
 		if a.ap.Items[i].State == aiv1.AutopilotItemActive && a.ap.Phase == phase {
 			if err := a.drive(ctx, &a.ap.Items[i]); err != nil {
@@ -436,7 +436,7 @@ func (a *autopilot) step(ctx context.Context) error {
 	}
 	// A poll that merged or skipped an item starts nothing: the next one
 	// sees GitLab after the merge, as when the queue ran one issue at a time.
-	if a.ap.Phase != phase || a.running() < before || a.st.RunPending() {
+	if a.ap.Phase != phase || a.active() < before || a.st.RunPending() {
 		return nil // paused; or being planned again, pick from the new plan
 	}
 	for range len(a.ap.Items) + 1 {
@@ -454,8 +454,8 @@ func (a *autopilot) step(ctx context.Context) error {
 	return nil
 }
 
-// running counts the active items, the issues that hold a slot.
-func (a *autopilot) running() int {
+// active counts the active items.
+func (a *autopilot) active() int {
 	n := 0
 	for _, it := range a.ap.Items {
 		if it.State == aiv1.AutopilotItemActive {
@@ -463,6 +463,53 @@ func (a *autopilot) running() int {
 		}
 	}
 	return n
+}
+
+// running counts the issues that hold a slot: the active items but the
+// landing one, which counts too at a limit of 1 (one issue at a time).
+func (a *autopilot) running() int {
+	n := a.active()
+	if l := a.item(a.ap.Landing); l != nil && l.State == aiv1.AutopilotItemActive && a.maxParallel() > 1 {
+		n--
+	}
+	return n
+}
+
+// land says whether it, ready to land, may go through rebase, CI and merge
+// now: ready items land one at a time, in the order they became ready
+// (ReadyAt, then queue order). The main-red fix does not wait.
+func (a *autopilot) land(it *aiv1.AutopilotItem) bool {
+	if it.ReadyAt == nil {
+		it.ReadyAt = &metav1.Time{Time: a.r.now()}
+	}
+	if it == a.ap.MainRedFix || a.ap.Landing == it.IID {
+		return true
+	}
+	if l := a.item(a.ap.Landing); l != nil && l.State == aiv1.AutopilotItemActive {
+		return false
+	}
+	var first *aiv1.AutopilotItem
+	for i := range a.ap.Items {
+		c := &a.ap.Items[i]
+		if c.State == aiv1.AutopilotItemActive && c.ReadyAt != nil && (first == nil || c.ReadyAt.Before(first.ReadyAt)) {
+			first = c
+		}
+	}
+	if first != it {
+		return false
+	}
+	a.log.Info("autopilot lands", "issue", it.IID)
+	a.ap.Landing = it.IID
+	return true
+}
+
+// unready takes it out of the landing lane and the ready queue: merged,
+// skipped, paused, or a new head that is checked again.
+func (a *autopilot) unready(it *aiv1.AutopilotItem) {
+	if a.ap.Landing == it.IID {
+		a.ap.Landing = 0
+	}
+	it.ReadyAt = nil
 }
 
 // pick activates the next pending issue whose dependencies are merged: the
@@ -516,8 +563,8 @@ func (a *autopilot) pick(ctx context.Context) error {
 		a.ap.Phase = aiv1.AutopilotRunning
 		a.ap.CloseWaitsForCompanions = nil
 		return nil
-	case a.running() > 0:
-		// The running issues move the queue: neither stuck nor done.
+	case a.active() > 0:
+		// The active issues move the queue: neither stuck nor done.
 		return nil
 	case len(s.waiting) > 0:
 		// Everything left waits for something autopilot does not do: a
@@ -933,6 +980,15 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	glProject := a.spec.GitLab.Project
 	is, ok := a.issues[it.IID]
 	task := a.tasks[it.IID]
+	ready := false
+	defer func() {
+		// A new push or run, or a head that is not ready (any more): the
+		// item leaves the ready queue. The landing item keeps the lane while
+		// CI runs on its rebased head.
+		if !ready && a.ap.Landing != it.IID {
+			it.ReadyAt = nil
+		}
+	}()
 	if task != nil && task.Status.Run.MergeRequestIID != 0 {
 		it.MergeRequestIID, it.MergeRequestURL = task.Status.Run.MergeRequestIID, task.Status.Run.MergeRequestURL
 	}
@@ -955,6 +1011,7 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 			return err
 		}
 		it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+		a.unready(it)
 		return nil
 	}
 	switch g := a.gateCheck(it, is, task); g.state {
@@ -1018,6 +1075,11 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	// The companion's merge request must be able to follow (companionGate).
 	if pass, err := a.companionGate(ctx, it, task); err != nil || !pass {
 		return err
+	}
+	// Ready to land; one item lands at a time, the others wait (land).
+	ready = true
+	if !a.land(it) {
+		return nil
 	}
 	switch mr.DetailedMergeStatus {
 	case "mergeable":
@@ -1461,6 +1523,9 @@ func (a *autopilot) mergeBase(ctx context.Context, it *aiv1.AutopilotItem, mr *g
 		return err
 	}
 	it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
+	// The merge is a new head, reviewed and checked anew: the item frees the
+	// lane and is ready again after that.
+	a.unready(it)
 	return nil
 }
 
@@ -1674,6 +1739,7 @@ func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 	it.State = aiv1.AutopilotItemMerged
 	it.MergedAt = &metav1.Time{Time: a.r.now()}
 	it.RebasedFrom, it.RebasedDiff, it.RebasedAt = "", "", nil
+	a.unready(it)
 	it.Decisions = collectDecisions(is, notes, a.project.Status.BotUserID)
 	if mr != nil {
 		it.MergedSHA = firstNonEmpty(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA)
@@ -1714,8 +1780,16 @@ func capDecisions(ds []aiv1.DecisionRef) []aiv1.DecisionRef {
 // pause stops the queue over issue iid (0: none) and says why and the ways
 // out, once.
 func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, iid int64, reason string) error {
+	// A pause over the landing item frees the lane, once it holds (after
+	// the comment): the next ready item lands.
+	freeLane := func() {
+		if it := a.item(iid); iid != 0 && it != nil && iid == a.ap.Landing {
+			a.unready(it)
+		}
+	}
 	if a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedReason == reason {
 		a.ap.PausedFor = iid
+		freeLane()
 		return nil
 	}
 	a.log.Info("autopilot paused", "reason", reason)
@@ -1728,6 +1802,7 @@ func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, iid int64, r
 	a.startPause(kind, iid)
 	a.ap.PausedReason, a.ap.PauseKind = reason, kind
 	a.ap.PausedFor, a.ap.ResumeWhenReady = iid, false
+	freeLane()
 	return nil
 }
 
@@ -1844,7 +1919,7 @@ func (a *autopilot) stamp() {
 // command marks are left out: they change without moving the queue.
 func (a *autopilot) stateHash() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s|%s\n", a.ap.Phase, a.ap.PausedReason)
+	fmt.Fprintf(&b, "%s|%s|%d\n", a.ap.Phase, a.ap.PausedReason, a.ap.Landing)
 	if mh := a.project.Status.MainHealth; mh != nil {
 		fmt.Fprintf(&b, "main %s %s\n", mh.State, mh.SHA)
 	}
@@ -1853,7 +1928,7 @@ func (a *autopilot) stateHash() string {
 		items = append(slices.Clone(items), *a.ap.MainRedFix)
 	}
 	for _, it := range items {
-		fmt.Fprintf(&b, "%d %s !%d %s %t", it.IID, it.State, it.MergeRequestIID, it.RebasedFrom, it.StartAnyway)
+		fmt.Fprintf(&b, "%d %s !%d %s %t %t", it.IID, it.State, it.MergeRequestIID, it.RebasedFrom, it.StartAnyway, it.ReadyAt != nil)
 		if t := a.tasks[it.IID]; t != nil {
 			fmt.Fprintf(&b, " %s", t.Status.Run.PushedSHA)
 			if ci := t.Status.CI; ci != nil {
@@ -2110,6 +2185,7 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 			return fmt.Sprintf("`skip` needs a planned issue that is not merged yet, e.g. `%s skip #12`.", a.spec.Workflow.CommandPrefix), false, nil
 		}
 		it.State, it.RebasedFrom = aiv1.AutopilotItemSkipped, ""
+		a.unready(it)
 		return fmt.Sprintf("#%d skipped.", iid), true, nil
 	case "unskip":
 		iid, _ := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64)

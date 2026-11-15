@@ -1186,6 +1186,12 @@ spec:
                           description: MergedSHA is the commit the merge request was
                             merged as.
                           type: string
+                        readyAt:
+                          description: |-
+                            ReadyAt is when the item last became ready to land: its head passed
+                            the merge gate. Ready items land one at a time in this order.
+                          format: date-time
+                          type: string
                         rebasedAt:
                           description: RebasedAt is when the rebase was requested.
                           format: date-time
@@ -1232,6 +1238,12 @@ spec:
                       - state
                       type: object
                     type: array
+                  landing:
+                    description: |-
+                      Landing is the IID of the item that lands (rebase, CI, merge); at most
+                      one per milestone, 0: none.
+                    format: int64
+                    type: integer
                   lastCommandNoteID:
                     description: |-
                       LastCommandNoteID is the newest command on the tracking issue the
@@ -1360,6 +1372,12 @@ spec:
                       mergedSHA:
                         description: MergedSHA is the commit the merge request was
                           merged as.
+                        type: string
+                      readyAt:
+                        description: |-
+                          ReadyAt is when the item last became ready to land: its head passed
+                          the merge gate. Ready items land one at a time in this order.
+                        format: date-time
                         type: string
                       rebasedAt:
                         description: RebasedAt is when the rebase was requested.

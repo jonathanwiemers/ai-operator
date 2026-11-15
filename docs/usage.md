@@ -1025,6 +1025,17 @@ An MR is merged only when all of these hold:
 The merge call passes the checked commit (`sha`), so GitLab refuses to merge
 anything else.
 
+On autopilot, issues of a milestone that run at the same time **land one at
+a time**: an issue whose run, review, CI and MR passed the checks above is
+*ready to land*, and only one issue per milestone, the *landing* one, goes on
+to be marked ready, rebased, checked by CI on the rebased head and merged.
+The others wait in the order they became ready. An issue whose branch gets a
+new push or run leaves that queue; one that needs the agent to merge the
+default branch (conflicts) gives up the lane and queues up again once its new
+head is reviewed and green. Above a limit of 1 the landing issue does not
+count against [`autopilot.maxParallel`](configuration.md), so the next issue
+can start meanwhile.
+
 ### When it pauses
 
 Autopilot pauses instead of guessing. It comments on the tracking issue with

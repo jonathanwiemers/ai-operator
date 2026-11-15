@@ -1924,6 +1924,11 @@ type AutopilotStatus struct {
 	// +optional
 	MaxParallel int32 `json:"maxParallel,omitempty"`
 
+	// Landing is the IID of the item that lands (rebase, CI, merge); at most
+	// one per milestone, 0: none.
+	// +optional
+	Landing int64 `json:"landing,omitempty"`
+
 	// TrackingIssueIID is the bot's tracking issue of the milestone.
 	// +optional
 	TrackingIssueIID int64 `json:"trackingIssueIID,omitempty"`
@@ -2119,6 +2124,11 @@ type AutopilotItem struct {
 	// RebasedAt is when the rebase was requested.
 	// +optional
 	RebasedAt *metav1.Time `json:"rebasedAt,omitempty"`
+
+	// ReadyAt is when the item last became ready to land: its head passed
+	// the merge gate. Ready items land one at a time in this order.
+	// +optional
+	ReadyAt *metav1.Time `json:"readyAt,omitempty"`
 
 	// AutoReReviews counts the rebases of this item that changed the
 	// reviewed change mechanically (the same commits, a small interdiff or

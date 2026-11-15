@@ -784,6 +784,10 @@ func (in *AutopilotItem) DeepCopyInto(out *AutopilotItem) {
 		in, out := &in.RebasedAt, &out.RebasedAt
 		*out = (*in).DeepCopy()
 	}
+	if in.ReadyAt != nil {
+		in, out := &in.ReadyAt, &out.ReadyAt
+		*out = (*in).DeepCopy()
+	}
 	if in.Decisions != nil {
 		in, out := &in.Decisions, &out.Decisions
 		*out = make([]DecisionRef, len(*in))

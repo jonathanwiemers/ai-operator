@@ -4809,6 +4809,12 @@ export interface AutopilotStatus {
    */
   maxParallel?: number /* int32 */;
   /**
+   * Landing is the IID of the item that lands (rebase, CI, merge); at most
+   * one per milestone, 0: none.
+   * +optional
+   */
+  landing?: number /* int64 */;
+  /**
    * TrackingIssueIID is the bot's tracking issue of the milestone.
    * +optional
    */
@@ -5051,6 +5057,12 @@ export interface AutopilotItem {
    * +optional
    */
   rebasedAt?: string;
+  /**
+   * ReadyAt is when the item last became ready to land: its head passed
+   * the merge gate. Ready items land one at a time in this order.
+   * +optional
+   */
+  readyAt?: string;
   /**
    * AutoReReviews counts the rebases of this item that changed the
    * reviewed change mechanically (the same commits, a small interdiff or

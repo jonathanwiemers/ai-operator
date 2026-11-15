@@ -1369,15 +1369,29 @@ stateDiagram-v2
 * **Several at a time.** The queue is the plan in topological order, ties in
   plan order. Each poll `step` drives every active item in queue order until
   one pauses, then `pick` starts pending items while fewer than the
-  milestone's `maxParallel` are active. An item starts once its dependencies
+  milestone's `maxParallel` are running. An item starts once its dependencies
   are merged, so its branch starts from a default branch that has them; the
   graph's layers are no barriers. A poll that merged or skipped an item starts
   nothing, so a freed slot is refilled from the default branch after the merge;
   with a limit of 1 the queue runs one issue at a time as before. While items
   are active, nothing pending that can start is normal: no `stuck` pause and
   no done. The merge freeze and the BaseFailing heal check every active item.
-  The merge gate itself still rebases whichever item it reaches; landing one
-  item at a time is the next step.
+* **Landing lane.** Merges stay fast-forward, so each merge moves the default
+  branch and every other open MR needs a rebase. An active item whose head
+  passed the merge gate (run, review, CI, MR head, companion) is *ready to
+  land* (`items[].readyAt`, set once). At most one item per milestone is
+  *landing* (`status.autopilot.landing`, its IID): only it goes on to mark
+  ready, rebase, CI on the rebased head and merge. The others wait, and the
+  lane goes to the active item that became ready first (`readyAt`, then queue
+  order). A new push or run clears `readyAt` of an item that is not landing;
+  the landing item keeps the lane while CI runs on its rebased head. The lane
+  is freed when the item merges or is skipped, when autopilot pauses over it,
+  and when the agent merges the default branch into it (`mergeBase`): that
+  head is reviewed and checked anew, and the item queues up again once it is
+  ready. The landing item does not count against `maxParallel` above a limit
+  of 1, so a pending item can start while it lands; at 1 it counts, one issue
+  at a time. The main-red fix does not use the lane. Owner `rebase` and
+  `mergeBase` commands and the BaseFailing heal still act on any active item.
 * **Project queue order.** Open autopilot milestones of a project share one
   ranking (`internal/milestoneorder`, used by `queuedAhead`, the planning
   hold and the Desk *Queue* section): milestones with a run-next mark

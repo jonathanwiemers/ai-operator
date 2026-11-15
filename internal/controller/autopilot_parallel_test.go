@@ -108,10 +108,11 @@ func TestAutopilotParallelRespectsTheLimit(t *testing.T) {
 	e.reconcile()
 	e.reconcile()
 	e.wantStates("two of three roots run", map[int64]aiv1.AutopilotItemState{1: active, 2: active, 4: pending})
-	e.mergeItem(1)
-	e.wantStates("no start in the poll of the merge", map[int64]aiv1.AutopilotItemState{1: merged, 2: active, 4: pending})
+	e.finishRun(1, "sha-1", nil)
+	e.reconcile() // #1 lands: marked ready, merged on the next poll
+	e.wantStates("the third starts once a slot is free (the landing item does not count)", map[int64]aiv1.AutopilotItemState{1: active, 2: active, 4: active})
 	e.reconcile()
-	e.wantStates("the third starts once a slot is free", map[int64]aiv1.AutopilotItemState{1: merged, 2: active, 4: active})
+	e.wantStates("#1 merged", map[int64]aiv1.AutopilotItemState{1: merged, 2: active, 4: active})
 }
 
 func TestAutopilotParallelLimitOneKeepsTheOrder(t *testing.T) {
