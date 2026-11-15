@@ -3,9 +3,11 @@ import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import { hasFeature } from '../api'
 import { ciLabel, ciTone, cost, deferringEngine, phaseTone, shortSHA } from '../format'
+import { useNow } from '../live'
 import { queueDone } from '../milestoneQueue'
 import { useRoute } from 'vue-router'
 import { promptOpen, taskPrompts } from '../promptCard'
+import { restartsText, showHealthLine, stepAgeText } from '../taskHealth'
 import { tabQuery, taskTabFromRoute, taskTabs, type TaskTab } from '../streamTabs'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
@@ -104,6 +106,12 @@ const overviewEmpty = computed(
 )
 // Where the chat's "Live transcript" link goes: the Live tab, on this page.
 const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? tabTo('live') : undefined))
+
+// Run health above the tabs (R8): pod phase, restarts, step age, Stalled.
+const health = computed(() => props.data.health)
+const showHealth = computed(() => showHealthLine(health.value))
+const now = useNow()
+const stepAge = computed(() => stepAgeText(health.value?.stepSince, now.value))
 </script>
 
 <template>
@@ -156,6 +164,33 @@ const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? t
         it now runs with {{ t.status.agentMemoryLimit }}</template
       >.
     </span>
+  </div>
+
+  <!-- Run health (R8): pod · restarts · step age · Stalled. Wraps on a
+       phone; hidden with no health or neither pod nor step. -->
+  <div
+    v-if="showHealth && health"
+    data-health-line
+    class="mt-2.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-(--text-2)"
+  >
+    <template v-if="health.podPhase">
+      <span class="min-w-0 break-words">{{ health.podPhase }}</span>
+      <span aria-hidden="true" class="text-(--text-3)">·</span>
+      <span class="min-w-0 break-words">{{ restartsText(health) }}</span>
+    </template>
+    <template v-if="health.step">
+      <span v-if="health.podPhase" aria-hidden="true" class="text-(--text-3)">·</span>
+      <span class="min-w-0 break-words"
+        >step <span class="font-[550] text-(--text)">{{ health.step }}</span
+        ><template v-if="stepAge"> for {{ stepAge }}</template></span
+      >
+    </template>
+    <template v-if="health.stalled">
+      <span aria-hidden="true" class="text-(--text-3)">·</span>
+      <Badge tone="danger" :title="health.stalledMessage || undefined">
+        Stalled<template v-if="health.stalledReason"> · {{ health.stalledReason }}</template>
+      </Badge>
+    </template>
   </div>
 
   <RouteTabs class="mt-5 w-fit" :tabs="tabs" :active="tab" :to="tabTo" :badges="badges" label="Task" />
