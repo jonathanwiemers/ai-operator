@@ -57,6 +57,7 @@ const taskReady: Record<TaskTab, string> = {
   overview: 'Summary of the last run',
   chat: 'Please keep the refund reasons in the',
   live: 'The pod is not available',
+  logs: 'step started',
   calls: 'Agent calls',
   details: 'shop-281-implement-ws',
 }
@@ -220,6 +221,7 @@ async function mockAPI(page: Page, route: Route, problems: Problems): Promise<vo
       problems.unknownAPI.push(`${req.method()} ${url.pathname}${url.search}`)
       return r.fulfill({ status: 404, json: { error: 'no fixture' } })
     }
+    if (typeof body === 'string') return r.fulfill({ status: 200, contentType: 'text/plain; charset=utf-8', body })
     return r.fulfill({ status: 200, json: body })
   })
 }
@@ -800,7 +802,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'costs', 'costs-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
+const hitRoutes = ['overview', 'inbox', 'costs', 'costs-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-logs', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
 
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {

@@ -113,11 +113,12 @@ test('milestoneTabFromRoute: ?tab= wins over the hash, other hashes keep the def
 })
 
 test('task tabs: Overview is the default and drops the parameter', () => {
-  assert.deepEqual(taskTabs.map((t) => t.id), ['overview', 'chat', 'live', 'calls', 'details'])
+  assert.deepEqual(taskTabs.map((t) => t.id), ['overview', 'chat', 'live', 'logs', 'calls', 'details'])
   assert.equal(taskTabFromRoute(undefined, ''), 'overview')
   assert.equal(taskTabFromRoute('', ''), 'overview')
   assert.equal(taskTabFromRoute('details', ''), 'details')
   assert.equal(taskTabFromRoute(['x', 'calls'], ''), 'calls')
+  assert.equal(taskTabFromRoute('logs', '', taskTabs.filter((t) => t.id !== 'logs')), 'overview')
   assert.deepEqual(tabQuery({ tab: 'chat', q: 'x' }, 'overview', taskTabs), { q: 'x' })
   assert.deepEqual(tabQuery({}, 'details', taskTabs), { tab: 'details' })
 })

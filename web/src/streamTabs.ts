@@ -6,11 +6,12 @@
 // Retrospective | Stream | Board | Spend (decision 7), so an old
 // milestone link with ?tab=stream still opens the stream. The dashboard
 // at /: Overview | Stream (decision 3). The task page (and the issue page
-// with a live task): Overview | Chat | Live | Calls | Details (R10).
+// with a live task): Overview | Chat | Live | Logs | Calls | Details (R10;
+// Logs for the task's owners, run watchdog R8).
 export type StreamTab = 'stream' | 'board' | 'spend'
 export type MilestoneTab = 'issues' | 'pilot' | 'retrospective' | StreamTab
 export type DashboardTab = 'overview' | 'stream'
-export type TaskTab = 'overview' | 'chat' | 'live' | 'calls' | 'details'
+export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls' | 'details'
 // A plan's tabs on phones; desktop shows both columns.
 export type PlanTab = 'chat' | 'draft'
 export const planTabs: Tab<PlanTab>[] = [
@@ -51,6 +52,7 @@ export const taskTabs: Tab<TaskTab>[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'chat', label: 'Chat' },
   { id: 'live', label: 'Live' },
+  { id: 'logs', label: 'Logs' },
   { id: 'calls', label: 'Calls' },
   { id: 'details', label: 'Details' },
 ]

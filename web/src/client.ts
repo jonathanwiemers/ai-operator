@@ -482,6 +482,17 @@ export function postTaskChat(
   return post<ChatPostResponse>(`${taskPath(namespace, name, task)}/chat`, body)
 }
 
+// getTaskLogs: GET .../tasks/{task}/logs, the last tail lines of the task
+// pod's runner or agent container log as plain text (owners only).
+export async function getTaskLogs(namespace: string, name: string, task: string, container: string, tail = 500): Promise<string> {
+  const q = new URLSearchParams({ container, tail: String(tail) })
+  const resp = await fetch(`/api/v1${taskPath(namespace, name, task)}/logs?${q}`, { credentials: 'same-origin' })
+  if (resp.status === 401) loginRequired()
+  if (resp.ok) return resp.text()
+  const data = (await resp.json().catch(() => ({}))) as { error?: string }
+  throw new ApiError(data.error ?? `The server answered ${resp.status}.`, resp.status)
+}
+
 // transcriptURL: GET .../tasks/{task}/transcript, the task pod's live
 // transcript as server-sent events. An EventSource is not a fetch, so the
 // client gives its URL.

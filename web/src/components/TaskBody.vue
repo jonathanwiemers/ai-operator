@@ -23,12 +23,13 @@ import Conversation from './Conversation.vue'
 import PromptCard from './PromptCard.vue'
 import TaskChat from './TaskChat.vue'
 import TaskCalls from './TaskCalls.vue'
+import TaskLogs from './TaskLogs.vue'
 import type { ProposalView, TaskResponse } from '../types'
 
 // What the Task page holds below its title: stage and links and banners,
 // then tabs by ?tab= (R10, decision 11): Overview (the last run's summary,
 // prompts, review, CI, plan, autopilot), Chat (chat, conversation), Live,
-// Calls and Details (facts, pod, conditions). Only the active tab is
+// Logs (owners), Calls and Details (facts, pod, conditions). Only the active tab is
 // mounted, so the live transcript and the chat poll only while shown
 // (D318-P1). The Task page and the issue page (with a live task) both
 // render it from the task they loaded.
@@ -85,13 +86,15 @@ const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('ch
 
 // The tabs this task has content for: Overview and Details always, Chat
 // with the chat or the conversation, Live with transcript access, Calls
-// with the history database (the calls endpoint answers 404 without it).
+// with the history database (the calls endpoint answers 404 without it),
+// Logs for the task's owners.
 const route = useRoute()
 const tabs = computed(() => {
   const has: Record<TaskTab, boolean> = {
     overview: true,
     chat: showChat.value || !!props.data.permissions?.gitlab,
     live: !!props.data.permissions?.transcript,
+    logs: !!props.data.permissions?.logs,
     calls: hasFeature('history'),
     details: true,
   }
@@ -338,6 +341,8 @@ const stepAge = computed(() => stepAgeText(health.value?.stepSince, now.value))
       :run="String(run.activeRunRequest ?? '')"
     />
   </section>
+
+  <TaskLogs v-else-if="tab === 'logs'" :namespace="namespace" :name="name" :task="task" />
 
   <TaskCalls v-else-if="tab === 'calls'" :namespace="namespace" :name="name" :task="task" />
 

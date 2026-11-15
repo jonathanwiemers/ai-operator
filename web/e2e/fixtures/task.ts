@@ -356,3 +356,9 @@ export function answerSearch(q: URLSearchParams): SearchResponse {
   }
   return { results: hit ? [result] : [] }
 }
+
+// GET .../tasks/shop-281-implement/logs?container=: the container's log as text.
+export function refundsLogs(q: URLSearchParams): string {
+  const c = q.get('container') ?? 'runner'
+  return `2026-11-12T18:51:54Z ${c}: step started 18 push\n2026-11-12T18:51:57Z ${c}: wrote the bundle\n`
+}

@@ -9,7 +9,7 @@ import { researchAPI } from './research'
 import { about, features, me } from './session'
 import { answerSpend } from './spend'
 import { answerStream, milestones, refundsIssue, shopDetail, shopHistory } from './stream'
-import { answerSearch, gitlabStatus, pilotChat, refunds, refundsChat, refundsResponse, refundsThread } from './task'
+import { answerSearch, gitlabStatus, pilotChat, refunds, refundsChat, refundsLogs, refundsResponse, refundsThread } from './task'
 
 export { now } from './clock'
 
@@ -41,6 +41,7 @@ export const api: Record<string, Fixture> = {
   [refundsPath]: refundsResponse,
   [`${refundsPath}/chat`]: refundsChat,
   [`${refundsPath}/thread`]: refundsThread,
+  [`${refundsPath}/logs`]: refundsLogs,
   [`${shopPath}/tasks/shop-m14-pilot/chat`]: pilotChat,
   ...researchAPI,
 }
