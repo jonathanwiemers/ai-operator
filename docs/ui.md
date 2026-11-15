@@ -998,7 +998,7 @@ messages, exit reasons, API errors and thinking lines.
 
 | Page | Content |
 |------|---------|
-| **Task** | above the tabs: stage, autopilot and suspended badges, spend and links (issue, merge request, companion, pipeline), then one status line, *phase · current step · last result · last activity*, which wraps on a phone and never scrolls (a long step is clamped and opens on tap), and the banners (blocked, usage-limit deferrals, out-of-memory restarts). Then tabs by `?tab=`, each shown when the task has content for it: *Overview* (the default: the last run's summary first, the agent's questions, review findings, pipeline with fix rounds and failed jobs; Spec tasks add the plan with dependencies and the autopilot's phase, pause reason and a link to the milestone stream, whose *Issues* tab shows the queue), *Chat* (chat and conversation), *Live* (with the `transcript` permission), *Logs* (owners, with the `logs` permission: the last 500 lines of the `runner` or `agent` container log, with Reload, Download as `<task>-<container>.log` and Follow, which streams new lines, keeps the last 2000, stays at the end unless scrolled up, stops on a container or tab switch and turns off with a note when the stream ends: the container stopped, or the session is due for renewal, after which Follow goes on), *Calls* (with the history database) and *Details* (runs, spend, branch and last push; the pod and how to follow its logs; conditions). Review and CI, and Pod and Conditions, sit side by side from 1180 px and stack below; their label and value pairs stack on a phone, the plan and the conditions are [DataList](#datalist) tables and the `kubectl logs` command scrolls inside its own box. Questions waiting for an answer put their count on *Overview*; an old `#live-transcript` link without `?tab=` opens *Live*. Only the open tab is loaded, so the live transcript and the chat follow the task only while shown. The issue page shows the same under its *Task* heading |
+| **Task** | above the tabs: stage, autopilot and suspended badges, spend and links (issue, merge request, companion, pipeline), then one status line, *phase · current step · last result · last activity*, which wraps on a phone and never scrolls (a long step is clamped and opens on tap), and the banners (blocked, usage-limit deferrals, out-of-memory restarts). When the task has a pod or a current step, a **health line** under that: pod phase · restarts (summed) · step and how long it has run (`currentStepSince`) · a *Stalled* badge with its reason when condition `Stalled=True`; owners with the `chat` grant get a *Restart run* button at its end (confirm dialog; enabled while a run is in progress; sends `{"cmd":"restart"}`, see [commands](commands.md#restart-a-stuck-run-desk-chat)). Then tabs by `?tab=`, each shown when the task has content for it: *Overview* (the default: the last run's summary first, the agent's questions, review findings, pipeline with fix rounds and failed jobs; Spec tasks add the plan with dependencies and the autopilot's phase, pause reason and a link to the milestone stream, whose *Issues* tab shows the queue), *Chat* (chat and conversation), *Live* (with the `transcript` permission), *Logs* (owners with the `steer` grant and a log source, `permissions.logs`: switch `runner` / `agent`, the last 500 lines, Reload, Download as `<task>-<container>.log`, and Follow, which streams new lines, keeps the last 2000, stays at the end unless scrolled up, stops on a container or tab switch and turns off with a note when the stream ends: the container stopped, or the session is due for renewal, after which Follow goes on), *Calls* (with the history database) and *Details* (runs, spend, branch and last push; the pod and how to follow its logs; conditions). Review and CI, and Pod and Conditions, sit side by side from 1180 px and stack below; their label and value pairs stack on a phone, the plan and the conditions are [DataList](#datalist) tables and the `kubectl logs` command scrolls inside its own box. Questions waiting for an answer put their count on *Overview*; an old `#live-transcript` link without `?tab=` opens *Live*. Only the open tab is loaded, so the live transcript and the chat follow the task only while shown. The issue page shows the same under its *Task* heading |
 
 **Engine usage.** claude reports how much of its usage windows is used with
 every agent call; the project keeps the freshest reading per engine
@@ -1027,17 +1027,20 @@ pod (with a link to the *Live* tab when you may see it; on a milestone's
 `chat` grant the composer also shows command buttons by task type:
 Implement has Retry, Review again and a Model… form (`use` / `effort`);
 a Spec task with autopilot has Pause or Resume and Skip…; a Coordinate
-task has Accept/Reject per open proposal. The project
-[Queue](#queue-and-finishing) also sends `start`, `unstart`, `pause` and
-`resume` to the Spec task. Commands post as `kind: "command"` with a JSON
-body and render as a short label in the thread (operator answers nest under
-them as system replies). Each command goes to the task that owns it:
-`retry` / `review` / `use` / `effort` on an Implement task, `pause` /
-`resume` / `skip` / `merge` / `start` / `unstart` / `endmilestone` on an
-autopilot Spec task (`start`, `unstart` and `endmilestone` need the
-milestone's `owner-subjects`, like `/agent start`, `/agent start off` and
-`/agent endMilestone` on the tracking issue; see
-[commands](commands.md#on-the-tracking-issue-autopilot)), and `accept` /
+task has Accept/Reject per open proposal. Owners also get *Restart run* on
+the health line (Implement, Spec and Coordinate) while a run is in
+progress. The project [Queue](#queue-and-finishing) also sends `start`,
+`unstart`, `pause` and `resume` to the Spec task. Commands post as
+`kind: "command"` with a JSON body and render as a short label in the
+thread (operator answers nest under them as system replies). Each command
+goes to the task that owns it: `retry` / `review` / `use` / `effort` on an
+Implement task, `pause` / `resume` / `skip` / `merge` / `start` /
+`unstart` / `endmilestone` on an autopilot Spec task (`start`, `unstart`
+and `endmilestone` need the milestone's `owner-subjects`, like
+`/agent start`, `/agent start off` and `/agent endMilestone` on the
+tracking issue; see [commands](commands.md#on-the-tracking-issue-autopilot)),
+`restart` on Implement, Spec or Coordinate (owners only; see
+[commands](commands.md#restart-a-stuck-run-desk-chat)), and `accept` /
 `reject`, `answer`, `revisit` and `draft` on the milestone's Coordinate
 (pilot) task (author must be in the milestone's `owner-subjects`);
 `answer` to the agent's questions (`needsInput` prompts) goes on its
@@ -1117,9 +1120,11 @@ condition holds), *in progress* (a run pending, a rebase in flight),
 remedy the API marks `allowed` for you (`resume`, `skip`, `retry`, `review`
 with the chat grant, `merge` with `permissions.merge`) is a button that sends
 the same Desk chat command as the buttons below; other commands (`rebase`,
-`mergeBase`, `unskip`, `startAnyway`, `endMilestone`, or any without the
-grant) show as the command to send on the tracking issue or the issue,
-e.g. `/agent endMilestone`; labels, GitLab actions and
+`mergeBase`, `unskip`, `startAnyway`, `endMilestone`, `restart`, or any
+without the grant) show as the command to send on the tracking issue or the
+issue, e.g. `/agent endMilestone` — for `restart` that text is not acted on
+as a GitLab comment; use the task's *Restart run* button or Desk chat
+instead (see [`stalled`](#what-it-shows)); labels, GitLab actions and
 answers to the pilot's prompt show as text, with a link to the merge
 request, the companion merge request, the issue or the milestone where it
 applies. With the section the
@@ -1141,6 +1146,7 @@ Against an operator that sends no exits, the actions depend on the kind:
 | `budget` | none: raise the budget above the spend (the milestone's `/agent budget` line, or for a `pausedFor` issue an `/agent budget <usd>` comment on it), and it continues by itself |
 | `emptyPlan` | none: change the milestone description, which plans it again; it continues by itself once the plan has issues |
 | `release` | Open pipeline (the failed release pipeline), Resume (runs the final release once more); it continues by itself once a tag contains the milestone's last merge |
+| `stalled` | Skip (Desk chat button); restart is not a pause-card button — open the paused issue's task and use *Restart run* on the health line, or send `{"cmd":"restart"}` in that task's Desk chat (owners, chat grant). The Way out may still list `/agent restart` as text; that GitLab form is unimplemented. It continues by itself once the run logs again or ends. The pause reason holds the step and stall evidence without the container logs (those stay in the Desk *Logs* tab). See [usage](usage.md#stalled) |
 
 Retry and Review again go to the paused issue's Implement task; Resume,
 Skip and Merge anyway to the milestone's Spec task, as Desk chat commands
@@ -1706,7 +1712,7 @@ with the same session cookie:
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript` | server-sent events: `entry` per transcript line of the task's pod (what it logged so far, then live), `end` with the reason (`no pod`, `pod stopped`, `pod not available`, `session expired`, which the Desk answers by reopening the stream at once; it replays the log from the start); needs the `transcript` grant (403 without), counts as an event stream |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/logs` | the raw log of the task's pod (the one named after the task) as `text/plain; charset=utf-8`, `Cache-Control: no-store`: `?container=runner` or `agent` (400 otherwise), the last `?tail=` lines (default 500, clamped to 1–500; 400 when no number), with `?follow=1` also what comes after, flushed per chunk, until the container stops, the client leaves or the session expires (counts as an event stream). Only for an owner subject of the task with the `steer` grant (`permissions.logs`; 403 otherwise); 404 for an unknown task or no pod, 501 without a log source |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat` | `{"messages": […]}` of the task's Desk chat, newest first: `id`, `at`, `author`, `authorName`, `role`, `kind`, `body` (omitted and `redacted` without `conversation`), `replyTo`, `state`, `reason`; `?before=` / `?after=` message ids, `?limit=` 1–100 (default 50); 404 without a research database |
-| `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat` | posts `{"body": "…", "kind"?: "message"\|"interrupt"\|"command", "clientKey": "…"}` (kind defaults to `message`; `clientKey`, 1–128 characters, is required: the composer's retry key); for `kind: "command"` the body must be JSON with a known `cmd` (`retry`, `review`, `use` with `engine`+`model` or `default: true`, `effort` with an effort or `"default"`, `budget` with `usd` (a budget above 0 or `"default"`, Implement tasks), `pause`/`resume`, `skip` with `issue`, `merge` with `issue` and the head's `sha` (owner subjects only, checked by the operator), `start`/`unstart` (set or clear the milestone's run-next mark, like `/agent start` and `/agent start off`) and `endmilestone` (like `/agent endMilestone`), without arguments, owner subjects only, checked by the operator, `accept`/`reject` with `proposal`, `answer` with `prompt` (`Q<n>`) and either `option` (`A`–`E`) or non-blank `text` (at most 4000 bytes; the milestone's prompts on its Coordinate task, the agent's questions on its Implement task), `revisit` with `decision` (`D<issue>-<n>` or `D<issue>-P<n>`) and optional `text` (at most 4000 bytes), `draft` with `followUps` (1 to 9, at least one; the Coordinate task); unknown fields rejected); 400 with the parse error otherwise; 201 `{"id"}` on create, 200 `{"id"}` when `clientKey` already existed for this user (retry-safe); needs the `chat` grant and `ui.chat.writerSecret` (404 without the feature, 403 without the grant, 413 over 16 KiB, 429 over the rate limit); audit line without the text |
+| `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat` | posts `{"body": "…", "kind"?: "message"\|"interrupt"\|"command", "clientKey": "…"}` (kind defaults to `message`; `clientKey`, 1–128 characters, is required: the composer's retry key); for `kind: "command"` the body must be JSON with a known `cmd` (`retry`, `review`, `use` with `engine`+`model` or `default: true`, `effort` with an effort or `"default"`, `budget` with `usd` (a budget above 0 or `"default"`, Implement tasks), `pause`/`resume`, `skip` with `issue`, `merge` with `issue` and the head's `sha` (owner subjects only, checked by the operator), `start`/`unstart` (set or clear the milestone's run-next mark, like `/agent start` and `/agent start off`) and `endmilestone` (like `/agent endMilestone`), without arguments, owner subjects only, checked by the operator, `restart` without arguments on Implement, Spec or Coordinate (owner subjects only: deletes the agent pod; see [commands](commands.md#restart-a-stuck-run-desk-chat)), `accept`/`reject` with `proposal`, `answer` with `prompt` (`Q<n>`) and either `option` (`A`–`E`) or non-blank `text` (at most 4000 bytes; the milestone's prompts on its Coordinate task, the agent's questions on its Implement task), `revisit` with `decision` (`D<issue>-<n>` or `D<issue>-P<n>`) and optional `text` (at most 4000 bytes), `draft` with `followUps` (1 to 9, at least one; the Coordinate task); unknown fields rejected); 400 with the parse error otherwise; 201 `{"id"}` on create, 200 `{"id"}` when `clientKey` already existed for this user (retry-safe); needs the `chat` grant and `ui.chat.writerSecret` (404 without the feature, 403 without the grant, 413 over 16 KiB, 429 over the rate limit); audit line without the text |
 | `GET /api/v1/gitlab` | whether GitLab is configured and your account connected (`enabled`, `connected`, `username`) |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread` | the comments of the task's issue, MR and tracking issue (`parts`), read with your GitLab token; 409 when not connected |
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes` | posts `{"target": "issue"\|"mr"\|"tracking", "body": "…"}` in your GitLab name; needs the `steer` grant |

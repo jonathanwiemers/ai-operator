@@ -53,6 +53,24 @@ also write these as GitLab comments in your name.
 | `/agent repo <project>` | The issue changes a companion repository too, e.g. `/agent repo my-group/infra/cluster` (a full path or a GitLab URL): sets the label `agent-repo::<project>`, replacing another one. The project must be one of the AgentProject's valid `spec.crossRepo.targets`; otherwise nothing changes and the answer lists them. Like `use`, it starts no run. A companion set this way is never merged by autopilot unless the milestone has a line `/agent repo <project> merge`. See [Companion repository](usage.md#companion-repository). |
 | `/agent repo none` | The issue has no companion repository (removes the `agent-repo::` label). |
 
+### Restart a stuck run (Desk chat)
+
+`restart` is a **Desk chat** command only (not a GitLab comment; that form
+is a follow-up). Owners only (`owner-subjects`), on an Implement, Spec or
+Coordinate task. The task page's *Restart run* button (on the health line)
+sends `{"cmd":"restart"}`. The pause card does **not**: for a
+[`stalled`](usage.md#stalled) pause it offers *Skip* as a button and shows
+`/agent restart` as text (unimplemented as a GitLab comment), so use the
+task's *Restart run* control or Desk chat instead.
+
+| Command | Effect |
+|---------|--------|
+| `{"cmd":"restart"}` | Deletes the agent pod. The active run request starts again as an interruption (counted in `status.run.interruptions`; after `MaxInterruptions` 3 the run fails with `blockReason: infra`). The workspace PVC keeps the agent's commits. When the task has an issue (Implement, or Spec/Coordinate on an autopilot milestone), a note on that issue (or the tracking issue for Spec) says who restarted it, in which step, after how long; a Spec task with autopilot off answers in Desk chat only, with no GitLab note. Without a run in progress: `Nothing to restart: no run is in progress.` A non-owner is refused. |
+
+On an autopilot pause of kind [`stalled`](usage.md#stalled), restarting the
+run (or the run logging again or ending) is a way out; the pause ends once
+the run moves. See [Stall detection](design.md#stall-detection).
+
 Moving the issue back to `agent::ready` also starts a run, e.g. after you
 answered the agent's questions.
 

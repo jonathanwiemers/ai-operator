@@ -29,6 +29,7 @@ specs were written, so later ones build on earlier ones.
 6. [Oldest milestone first: an order for the run queue](milestone-queue-order.spec.md)
 7. [Autopilot milestones one after another](strict-milestone-order.spec.md)
 8. [Desk: run milestones in the order I choose, and close finished ones](desk-queue-closeout.spec.md)
+9. [Runs that hang get noticed and restarted](run-watchdog.spec.md)
 
 ## Web UI (the Desk)
 

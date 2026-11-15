@@ -869,6 +869,17 @@ another engine starts a new session with the full context.
 | `usageLimitBackoff` | `5m` | first wait after a usage or rate limit without a reported reset time; doubles per further hit |
 | `maxUsageLimitBackoff` | `1h` | cap for that wait |
 | `infraRetryAfter` | `30m` | after a run failed for an outside reason (agent pod or container lost, out of memory with no restart left, interrupted 3 times) the issue is blocked (`infra`); this long after the failure the operator starts one new run, once per run request. A planning run is retried the same way, also after a transient GitLab or network error |
+| `stallAfter` | `30m` | a Running task whose `runner` and `agent` containers both logged nothing for this long (Kubernetes log timestamps, newest line of each), or whose pod is `Pending` or waiting in `CrashLoopBackOff` / `ImagePullBackOff` / `ErrImagePull` for this long, is stalled: condition `Stalled=True` (reasons `Silent`, `PodPending`, `CrashLoop`); the task stays `Running`. Clears on the next log line or when the run ends. Tasks shorter than this are never checked. See [Stall detection](design.md#stall-detection) |
+| `stallCheckInterval` | `5m` | how often the operator checks a Running task for a stall. No LLM call on the timer; the pilot is woken only when a check finds a stall |
+
+### Remote git timeouts
+
+Remote git commands in the runner (`push`, `fetch`, `ls-remote`) always run
+with `-c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60` (abort a transfer
+slower than 1000 bytes/s for 60s) and a per-command timeout: **5m** for
+push and fetch, **1m** for ls-remote. A timeout fails the step with a clear
+error (`git push timed out after 5m`). These are fixed in the runner, not
+AgentProject fields.
 
 ## `spec.ci`
 

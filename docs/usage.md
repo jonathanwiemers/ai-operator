@@ -1483,9 +1483,12 @@ one. Ends by itself once the run logs again or ends (a run that ended is
 then judged by the merge gate, e.g. `runFailed`), or when the MR is merged
 by hand or the issue is closed.
 
-- `/agent restart` on the issue (owners only): the operator deletes the
-  agent pod and the run starts again (counted as an interruption); the
-  pause ends once the run moves.
+- `/agent restart` (Desk chat `{"cmd":"restart"}` on the paused issue's
+  task, or the task page's *Restart run* button; owners only): the
+  operator deletes the agent pod and the run starts again (counted as an
+  interruption); the pause ends once the run moves. Not acted on as a
+  GitLab comment, and not a pause-card button (the card shows *Skip*; use
+  the task). See [commands](commands.md#restart-a-stuck-run-desk-chat).
 - `/agent skip #N`: the issue is skipped and autopilot goes on; issues that
   depend on it wait until it is done by hand.
 
@@ -2553,12 +2556,13 @@ list out.
 - **Managed.** On autopilot milestones the pilot **manages** by default
   (`pilot.autonomy`): `retry`, `reReview`, `instruct`, `openIssue`,
   `fixFlaky`, `retryPipeline`, `rebase`, `mergeBase` and `restartRun` run without a `yes`, from an assessment or from an owner's
-  message. A `restartRun` restarts a stalled run like `/agent restart` (the
-  issue gets the note); when it runs, the operator checks the task is still
-  stalled (condition `Stalled=True`), else it refuses with "the run is
+  message. A `restartRun` restarts a stalled run like Desk chat `restart`
+  (the issue gets the note); when it runs, the operator checks the task is
+  still stalled (condition `Stalled=True`), else it refuses with "the run is
   moving again" and gives the intervention back. It also refuses once the run
   was interrupted 3 times: another restart would fail the run, so the
-  `stalled` pause leaves that to the owners (`/agent restart`). Each counts against its issue and that issue's head (an
+  `stalled` pause leaves that to the owners (task *Restart run* or Desk
+  chat `restart`). Each counts against its issue and that issue's head (an
   `openIssue` against the issue whose event triggered it, on the tracking
   issue against the milestone; a `fixFlaky` or `retryPipeline` against the milestone), at most `pilot.maxInterventionsPerIssue` (2) per head, and
   each wake-up gets an **audit comment** on the tracking issue: "🧭 The

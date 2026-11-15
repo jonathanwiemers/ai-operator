@@ -2,6 +2,14 @@
 
 Installs the ai-operator, its CRDs and RBAC, and (optionally) the service
 accounts that agent pods use in the namespaces hosting your `AgentProject`s.
+The operator ClusterRole includes `get` on `pods/log` (stall checks and
+pilot evidence for hung runs; see
+[Stall detection](../../docs/design.md#stall-detection)); the UI role stays
+`get` on `pods` and `pods/log` only. AgentProject
+`spec.lifecycle.stallAfter` (default `30m`) and
+`lifecycle.stallCheckInterval` (default `5m`) are CRD fields, not chart
+values: set them on each `AgentProject` (see
+[configuration](../../docs/configuration.md#speclifecycle)).
 
 ```sh
 helm install ai-operator oci://ghcr.io/jonathanwiemers/charts/ai-operator \

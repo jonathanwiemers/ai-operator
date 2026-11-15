@@ -338,7 +338,9 @@ Each pod has two containers, see [Security](#security):
   run ends sets them equal. The runner of the replacement pod sees that at
   the start of the run, counts it in `status.run.interruptions`, says so above
   the run log, and fails the run instead after 3 restarts (reset when a run
-  finishes).
+  finishes). The same interruption path is what a Desk or pilot **restart**
+  uses: it deletes the agent pod on purpose (see
+  [Stall detection](#stall-detection)).
 
 **Research runs** (`AgentResearch`, see [research.md](research.md#runs)) get
 one short-lived pod per run, `<research>-<run ID prefix>`, with the label
@@ -382,6 +384,55 @@ logged as "agent answers" (cursor writes its JSON answer as that message).
 Only the final result line is parsed. With `spec.agents.logPrompts` the
 agent server also logs each call's role, system prompt and prompt (64 KiB
 each at most), which the web UI's live transcript shows; off by default.
+
+### Stall detection
+
+A run that stops making progress is noticed without an LLM call per task.
+The operator checks every Running task every
+`lifecycle.stallCheckInterval` (default 5m). Tasks younger than
+`lifecycle.stallAfter` (default 30m) are never looked at. A task is
+**stalled** when its pod runs and the newest line of both the `runner` and
+the `agent` container log (Kubernetes timestamps, `tailLines: 1`) is older
+than `stallAfter`, or the pod is `Pending` or waiting in
+`CrashLoopBackOff` / `ImagePullBackOff` / `ErrImagePull` for that long.
+One threshold for all steps; remote git commands fail fast on their own
+(5m push/fetch, 1m ls-remote, plus `http.lowSpeedLimit=1000` /
+`http.lowSpeedTime=60`).
+
+A stall sets condition `Stalled=True` with reason `Silent`, `PodPending` or
+`CrashLoop` and a message ("no log line for 42m in step 18 push"); it
+clears on the next log line or when the run ends. The task stays
+`Running`. The gauge `ai_operator_task_stalled` mirrors the condition after
+a successful status patch. The runner writes `status.run.currentStepSince`
+with `currentStep` so the Desk and the pilot see how long the step has run.
+
+The operator's ClusterRole includes `get` on `pods/log` for that check and
+for the pilot's evidence. The UI role stays `get` on `pods` and
+`pods/log` only; only the operator deletes pods. Restart is always the
+interruption path: delete the agent pod, keep the workspace PVC, count
+`status.run.interruptions` (cap `MaxInterruptions` 3 → `blockReason:
+infra`). Owners send Desk chat `{"cmd":"restart"}` (Implement, Spec or
+Coordinate). When the task has an issue (Implement, or Spec/Coordinate on
+an autopilot milestone), a note on that issue records who, which step and
+how long; a Spec task with autopilot off restarts without a GitLab note
+(Desk chat answer only).
+
+When an Implement task is stalled, the pilot gets event `run-stalled/<iid>/<stall-start>`
+once per stall (Spec and Coordinate stalls do not wake it). The text carries
+step, step age, stall reason, pod phase / restarts / last termination,
+`pushedSHA` vs the remote branch head, and the last 40 lines of each
+container log (capped 4 KB each), framed as untrusted data. The counted
+tool `restartRun` (managed autonomy, or proposed) rechecks
+`Stalled=True` on execute and refuses with "the run is moving again"
+otherwise; the pilot system prompt has a short runbook (silent mechanical
+step → restart; long silent agent step → read the last tool use first;
+pending or crash loop → restart once, then escalate). When interventions
+on the issue's head are used up and the task is stalled again, or
+`MaxInterruptions` is reached, autopilot pauses with kind `stalled`; the
+pause reason holds the evidence without the logs (those stay in the Desk).
+Resume after Desk chat `restart` (the task's *Restart run* button; not a
+pause-card button) or when the run ends. See the
+[spec](specs/run-watchdog.spec.md).
 
 ## Lifecycle of long-lived issues
 
