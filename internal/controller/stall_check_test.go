@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -80,6 +81,9 @@ func TestStallCheckSetsAndClearsStalled(t *testing.T) {
 	if c == nil || c.Status != metav1.ConditionTrue || c.Reason != aiv1.StallReasonSilent || c.Message != "no log line for 43m in step 18 push" {
 		t.Fatalf("silent containers must be Stalled=True/Silent, got %+v", c)
 	}
+	if got := testutil.ToFloat64(taskStalled.WithLabelValues(e.task("x").Namespace, "x", aiv1.StallReasonSilent)); got != 1 {
+		t.Fatalf("successful patch must set ai_operator_task_stalled, got %v", got)
+	}
 	if logs.calls != 2 {
 		t.Fatalf("one check reads both containers once, got %d reads", logs.calls)
 	}
@@ -111,6 +115,9 @@ func TestStallCheckSetsAndClearsStalled(t *testing.T) {
 	e.reconcile("x")
 	if c := e.stalled(); c == nil || c.Status != metav1.ConditionFalse || c.Reason != aiv1.StallReasonActive {
 		t.Fatalf("a new log line must turn Stalled to False/Active, got %+v", c)
+	}
+	if taskStalled.DeleteLabelValues(e.task("x").Namespace, "x", aiv1.StallReasonSilent) {
+		t.Fatal("Stalled=False after a successful patch must clear the gauge")
 	}
 
 	// The run ends: the condition is gone.

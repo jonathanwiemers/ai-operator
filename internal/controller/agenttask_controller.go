@@ -81,9 +81,13 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	var task aiv1.AgentTask
 	if err := r.Get(ctx, req.NamespacedName, &task); err != nil {
+		if apierrors.IsNotFound(err) {
+			clearTaskStalled(req.Namespace, req.Name)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if !task.DeletionTimestamp.IsZero() {
+		clearTaskStalled(task.Namespace, task.Name)
 		return ctrl.Result{}, nil
 	}
 	orig := task.DeepCopy()
@@ -401,7 +405,19 @@ func boolCondition(b bool) metav1.ConditionStatus {
 }
 
 func (r *AgentTaskReconciler) patchStatus(ctx context.Context, task, orig *aiv1.AgentTask) error {
-	return client.IgnoreNotFound(r.Status().Patch(ctx, task, client.MergeFrom(orig)))
+	err := r.Status().Patch(ctx, task, client.MergeFrom(orig))
+	if apierrors.IsNotFound(err) {
+		clearTaskStalled(task.Namespace, task.Name)
+		return nil
+	}
+	if err != nil {
+		// stallCheckDue already counted this reconcile; clear so a retry can
+		// re-check instead of waiting a full StallCheckInterval.
+		r.stallChecked.Delete(task.UID)
+		return err
+	}
+	syncTaskStalledMetric(task)
+	return nil
 }
 
 func (r *AgentTaskReconciler) getPod(ctx context.Context, task *aiv1.AgentTask) (*corev1.Pod, error) {

@@ -68,7 +68,8 @@ func (r *AgentTaskReconciler) checkStall(ctx context.Context, task *aiv1.AgentTa
 		reason, message = aiv1.StallReasonActive, "the run is making progress"
 	}
 	// The transition time of Stalled=True is the stall start; it stays while
-	// the task stays stalled.
+	// the task stays stalled. The gauge is synced after a successful status
+	// patch so it cannot diverge from the persisted condition.
 	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{Type: aiv1.ConditionStalled,
 		Status: boolCondition(stalled), Reason: reason, Message: message, LastTransitionTime: metav1.NewTime(now)})
 }
