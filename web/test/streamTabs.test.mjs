@@ -5,6 +5,7 @@ import {
   dashboardTabs,
   milestoneTabFromRoute,
   milestoneTabs,
+  planTabs,
   projectTabs,
   storedMilestoneTabs,
   tabFromQuery,
@@ -136,4 +137,11 @@ test('taskTabFromRoute: #live-transcript without ?tab= opens Live where there is
   assert.equal(taskTabFromRoute(undefined, '#live-transcript', noLive), 'overview')
   assert.equal(taskTabFromRoute('details', '#live-transcript'), 'details')
   assert.equal(taskTabFromRoute(undefined, '#prompt-Q4'), 'overview')
+})
+
+test('planTabs: Chat is the default, Draft is kept in ?tab=', () => {
+  assert.equal(tabFromQuery(undefined, planTabs), 'chat')
+  assert.equal(tabFromQuery('draft', planTabs), 'draft')
+  assert.deepEqual(tabQuery({ tab: 'draft' }, 'chat', planTabs), {})
+  assert.deepEqual(tabQuery({}, 'draft', planTabs), { tab: 'draft' })
 })

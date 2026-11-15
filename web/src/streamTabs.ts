@@ -11,6 +11,12 @@ export type StreamTab = 'stream' | 'board' | 'spend'
 export type MilestoneTab = 'issues' | 'pilot' | 'retrospective' | StreamTab
 export type DashboardTab = 'overview' | 'stream'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'calls' | 'details'
+// A plan's tabs on phones; desktop shows both columns.
+export type PlanTab = 'chat' | 'draft'
+export const planTabs: Tab<PlanTab>[] = [
+  { id: 'chat', label: 'Chat' },
+  { id: 'draft', label: 'Draft' },
+]
 
 export interface Tab<T extends string> {
   id: T
