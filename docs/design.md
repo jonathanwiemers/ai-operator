@@ -1400,7 +1400,7 @@ stateDiagram-v2
   `⏸️ #N is held: <reason>. The other issues go on.` with the ways out and
   the owners' mention, once per reason. A held item is not driven, leaves
   the landing lane (the next ready item lands) and frees its slot; an infra
-  block of the gate stays on it, a milestone resume does not lift it.
+  block of the gate stays on it until the hold ends.
   Milestone kinds (`owner`, `budget`, `mainRed`, `config`, `cycle`,
   `emptyPlan`, `release`, `stuck`) pause the milestone at any limit, and so
   does every problem of the main-red fix and every problem at a limit of 1.
@@ -1415,8 +1415,19 @@ stateDiagram-v2
   issue says `▶️ #N goes on: <why> (<who and how>)`, the item's infra block
   is lifted and it is driven again; a later run failing for another reason
   holds it anew with that reason. A run asked for during a hold is recorded
-  on the hold (`runBy`, `runHead`) for the resume's how. Holds are not in the
-  history's pause events yet.
+  on the hold (`runBy`, `runHead`) for the resume's how. `/agent resume`
+  without an issue lifts the milestone's pause and every hold, with one
+  comment (`▶️ Autopilot continues: resumed; #1, #2 go on (…)`, or
+  `▶️ #1, #2 go on: resumed (…)` with only holds); it does not check the
+  causes: the next poll's gate holds an issue again if its problem is still
+  there. Holds are not in the history's pause events yet.
+* **Tracking issue above a limit of 1.** The intro says `up to N at a time`
+  and that the issues merge one after another; under the status line,
+  `Held:` lists each hold (``- #N <title>: <reason> (`/agent resume`)``). An
+  active item's line shows its lane: `**landing**`, `ready to land`,
+  `**held** (<kind>)` or `**in progress**`; a pending issue whose
+  dependencies are merged while every slot is taken says `waits for a free
+  slot`. At a limit of 1 the text is as before.
 * **Project queue order.** Open autopilot milestones of a project share one
   ranking (`internal/milestoneorder`, used by `queuedAhead`, the planning
   hold and the Desk *Queue* section): milestones with a run-next mark

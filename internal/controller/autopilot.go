@@ -2024,6 +2024,63 @@ func (a *autopilot) resumed(ctx context.Context, res resumption, why string) err
 	return nil
 }
 
+// resumeAll is `resume` without an issue, by someone: it lifts the
+// milestone's pause and every hold, with one comment. The gate checks each
+// issue again on the next poll and holds it again if the problem is still
+// there.
+func (a *autopilot) resumeAll(ctx context.Context, by string) error {
+	var held []int64
+	for i := range a.ap.Items {
+		if it := &a.ap.Items[i]; it.State == aiv1.AutopilotItemActive && it.Hold != nil {
+			if err := a.unblockItem(ctx, it); err != nil {
+				return err
+			}
+			held = append(held, it.IID)
+		}
+	}
+	res := byCommand(by)
+	switch {
+	case a.ap.Phase == aiv1.AutopilotPaused:
+		if a.landingPause() {
+			a.retryLandings(by) // one more rebase for each
+		}
+		if a.ap.PauseKind == aiv1.PauseRelease {
+			a.retryFinalRelease(by)
+		}
+		if err := a.unblockActive(ctx); err != nil {
+			return err
+		}
+		why := "resumed"
+		if len(held) > 0 {
+			why += "; " + goOn(held)
+		}
+		if err := a.resumed(ctx, res, why); err != nil {
+			return err
+		}
+	case len(held) > 0:
+		if err := a.comment(ctx, fmt.Sprintf("▶️ %s: resumed (%s).", goOn(held), resumeEnded(res, a.spec.Workflow.CommandPrefix))); err != nil {
+			return err
+		}
+	}
+	for i := range a.ap.Items {
+		if it := &a.ap.Items[i]; slices.Contains(held, it.IID) {
+			it.Hold = nil
+		}
+	}
+	if len(held) > 0 {
+		a.log.Info("held issues go on", "issues", held, "by", by)
+	}
+	return nil
+}
+
+// goOn says that the issues iids go on: "#1 goes on", "#1, #2 go on".
+func goOn(iids []int64) string {
+	if len(iids) == 1 {
+		return issueList(iids) + " goes on"
+	}
+	return issueList(iids) + " go on"
+}
+
 // startPause pauses the queue for kind over issue iid (0: none) and clears
 // how the last pause ended. A new pause, also one of another kind while
 // paused, starts its clock (PausedAt). A pause over another issue than
@@ -2317,19 +2374,8 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 		}
 		return "Autopilot paused.", true, nil
 	case "resume":
-		if a.ap.Phase == aiv1.AutopilotPaused {
-			if a.landingPause() {
-				a.retryLandings(by) // one more rebase for each
-			}
-			if a.ap.PauseKind == aiv1.PauseRelease {
-				a.retryFinalRelease(by)
-			}
-			if err := a.unblockActive(ctx); err != nil {
-				return "", false, err
-			}
-			if err := a.resumed(ctx, byCommand(by), "resumed"); err != nil {
-				return "", false, err
-			}
+		if err := a.resumeAll(ctx, by); err != nil {
+			return "", false, err
 		}
 		return "Autopilot resumed.", true, nil
 	case "skip":
@@ -2648,11 +2694,27 @@ func (a *autopilot) renderTracking() string {
 			b.WriteString("⚠️ not planned, planning has not succeeded yet. Nothing starts until the milestone is planned.\n")
 		}
 	}
+	var held []string
+	for _, it := range a.ap.Items {
+		if it.State == aiv1.AutopilotItemActive && it.Hold != nil {
+			held = append(held, fmt.Sprintf("- #%d %s: %s (`%s resume`)\n", it.IID, a.issues[it.IID].Title, notify.Defuse(it.Hold.Reason), prefix))
+		}
+	}
+	if len(held) > 0 {
+		b.WriteString("\nHeld:\n" + strings.Join(held, ""))
+	}
 	if a.marked() && a.ap.Phase != aiv1.AutopilotDone {
 		fmt.Fprintf(&b, "⏭️ runs next (marked by %s).\n", a.ap.StartRequestedBy)
 	}
-	b.WriteString("\nThe operator works through the planned issues one at a time, in dependency order. It merges each merge request " +
-		"when its pipeline is green and its review is clean, then starts the next issue. The agents take their defaults instead of " +
+	limit := a.ap.MaxParallel // the effective limit, as of this poll
+	parallel := limit > 1
+	how := "one at a time, in dependency order. It merges each merge request when its pipeline is green and its review is clean, then starts the next issue."
+	if parallel {
+		how = fmt.Sprintf("up to %d at a time (`%s parallel <n>` in the milestone description changes it), in dependency order, and merges them "+
+			"one after another, each merge request when its pipeline is green and its review is clean. An issue starts once the issues it depends on are merged.",
+			limit, prefix)
+	}
+	b.WriteString("\nThe operator works through the planned issues " + how + " The agents take their defaults instead of " +
 		"asking; every decision is listed below and can be changed with `" + prefix + " revisit <id> <what you want instead>` on its issue.\n\n")
 	start := ""
 	if h, what := a.startHint(); h != "" {
@@ -2674,14 +2736,31 @@ func (a *autopilot) renderTracking() string {
 		case aiv1.AutopilotItemSkipped:
 			fmt.Fprintf(&b, "- [ ] ~~#%d %s~~: skipped\n", it.IID, title)
 		case aiv1.AutopilotItemActive:
-			fmt.Fprintf(&b, "- [ ] #%d %s: **in progress**%s (%s)\n", it.IID, title, mr, a.labelOf(it.IID))
+			lane := "**in progress**"
+			switch {
+			case !parallel:
+			case it.Hold != nil:
+				lane = fmt.Sprintf("**held** (%s)", it.Hold.Kind)
+			case a.ap.Landing == it.IID:
+				lane = "**landing**"
+			case it.ReadyAt != nil:
+				lane = "ready to land"
+			}
+			fmt.Fprintf(&b, "- [ ] #%d %s: %s%s (%s)\n", it.IID, title, lane, mr, a.labelOf(it.IID))
 		default:
-			waits := ""
+			waits, met := "", true
 			if deps := a.deps(it.IID); len(deps) > 0 {
 				waits = ", after " + issueList(deps)
+				for _, d := range deps {
+					if dep := a.item(d); dep != nil && dep.State != aiv1.AutopilotItemMerged {
+						met = false
+					}
+				}
 			}
 			if h := a.holds[it.IID]; h != nil {
 				waits += ", " + h.waits()
+			} else if parallel && met && it.State == aiv1.AutopilotItemPending && a.running() >= int(limit) {
+				waits += ", waits for a free slot"
 			}
 			fmt.Fprintf(&b, "- [ ] #%d %s: pending%s\n", it.IID, title, waits)
 		}
