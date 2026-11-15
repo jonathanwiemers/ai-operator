@@ -422,23 +422,54 @@ func (a *autopilot) deps(iid int64) []int64 {
 	return nil
 }
 
-// step does at most one thing for the queue.
+// step drives every active item in queue order until one pauses, then starts
+// pending items while slots are free (maxParallel): an issue starts once its
+// dependencies are merged, without waiting for a whole layer of the plan.
 func (a *autopilot) step(ctx context.Context) error {
+	phase, before := a.ap.Phase, a.running() // Running, or Done when a re-plan added issues
 	for i := range a.ap.Items {
-		if a.ap.Items[i].State == aiv1.AutopilotItemActive {
-			return a.drive(ctx, &a.ap.Items[i])
+		if a.ap.Items[i].State == aiv1.AutopilotItemActive && a.ap.Phase == phase {
+			if err := a.drive(ctx, &a.ap.Items[i]); err != nil {
+				return err
+			}
 		}
 	}
-	if a.st.RunPending() {
-		return nil // the milestone is being planned again; pick from the new plan
+	// A poll that merged or skipped an item starts nothing: the next one
+	// sees GitLab after the merge, as when the queue ran one issue at a time.
+	if a.ap.Phase != phase || a.running() < before || a.st.RunPending() {
+		return nil // paused; or being planned again, pick from the new plan
 	}
-	return a.pick(ctx)
+	for range len(a.ap.Items) + 1 {
+		running := a.running()
+		if running >= int(a.maxParallel()) {
+			return nil
+		}
+		if err := a.pick(ctx); err != nil {
+			return err
+		}
+		if a.running() <= running || a.ap.Phase == aiv1.AutopilotPaused || a.holding {
+			return nil
+		}
+	}
+	return nil
+}
+
+// running counts the active items, the issues that hold a slot.
+func (a *autopilot) running() int {
+	n := 0
+	for _, it := range a.ap.Items {
+		if it.State == aiv1.AutopilotItemActive {
+			n++
+		}
+	}
+	return n
 }
 
 // pick activates the next pending issue whose dependencies are merged: the
 // plan's, and open issues it is linked as "blocked by" to in GitLab
 // (Premium), so a link a human adds holds an issue back too (startable).
-// With none, it pauses stuck; unstick lifts that pause. An older open
+// With none, it pauses stuck (or is done) unless an issue is active;
+// unstick lifts that pause. An older open
 // milestone holds the start back: one open merge request per project, so
 // milestones do not rebase each other's reviewed changes away.
 func (a *autopilot) pick(ctx context.Context) error {
@@ -484,6 +515,9 @@ func (a *autopilot) pick(ctx context.Context) error {
 		a.log.Info("autopilot waits for a companion to land", "waiting", s.waiting)
 		a.ap.Phase = aiv1.AutopilotRunning
 		a.ap.CloseWaitsForCompanions = nil
+		return nil
+	case a.running() > 0:
+		// The running issues move the queue: neither stuck nor done.
 		return nil
 	case len(s.waiting) > 0:
 		// Everything left waits for something autopilot does not do: a
@@ -2211,6 +2245,7 @@ func (a *autopilot) unknownCommand() string {
 	for _, it := range a.ap.Items {
 		if it.State == aiv1.AutopilotItemActive {
 			where = fmt.Sprintf("#%d, the active issue", it.IID)
+			break
 		}
 	}
 	start := ""

@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -21,13 +20,31 @@ const mainHealthStale = 3
 // branch's next pipeline is retried, the freeze holds. Once the branch is
 // green, or its health disabled or stale, the block is lifted and autopilot
 // continues by itself; the gate runs again on the next poll, after the CI
-// loop saw the issue's pipelines.
+// loop saw the issue's pipelines. Each active item in queue order, until one
+// paused or resumed.
 func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
-	i := slices.IndexFunc(a.ap.Items, func(it aiv1.AutopilotItem) bool { return it.State == aiv1.AutopilotItemActive })
-	if i < 0 {
-		return nil
+	return a.eachActive(ctx, func(ctx context.Context, it *aiv1.AutopilotItem) (bool, error) {
+		return false, a.freezeItem(ctx, it)
+	})
+}
+
+// eachActive runs f for each active item in queue order and stops after
+// the first that acted (f says so) or changed the phase or its pause.
+func (a *autopilot) eachActive(ctx context.Context, f func(context.Context, *aiv1.AutopilotItem) (bool, error)) error {
+	for i := range a.ap.Items {
+		it := &a.ap.Items[i]
+		if it.State != aiv1.AutopilotItemActive {
+			continue
+		}
+		phase, reason := a.ap.Phase, a.ap.PausedReason
+		if acted, err := f(ctx, it); err != nil || acted || a.ap.Phase != phase || a.ap.PausedReason != reason {
+			return err
+		}
 	}
-	it := &a.ap.Items[i]
+	return nil
+}
+
+func (a *autopilot) freezeItem(ctx context.Context, it *aiv1.AutopilotItem) error {
 	is, ok := a.issues[it.IID]
 	task := a.tasks[it.IID]
 	if !ok || is.State != "opened" || task == nil {

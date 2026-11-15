@@ -15,13 +15,17 @@ import (
 // also fail on the default branch (BaseFailing), once that branch is green at
 // a commit the MR is not based on: nothing reruns its pipeline, and a retry
 // would run on the old base. Once per green commit (HealedOn); a ciRed pause
-// about the issue ends, so drive hands the rebased head to CI.
+// about the issue ends, so drive hands the rebased head to CI. The first
+// active item in queue order that needs it, one per poll.
 func (a *autopilot) healBaseFailing(ctx context.Context) error {
-	i := slices.IndexFunc(a.ap.Items, func(it aiv1.AutopilotItem) bool { return it.State == aiv1.AutopilotItemActive })
-	if i < 0 {
-		return nil
-	}
-	it := &a.ap.Items[i]
+	return a.eachActive(ctx, func(ctx context.Context, it *aiv1.AutopilotItem) (bool, error) {
+		healed := it.HealedOn
+		err := a.healItem(ctx, it)
+		return it.HealedOn != healed, err
+	})
+}
+
+func (a *autopilot) healItem(ctx context.Context, it *aiv1.AutopilotItem) error {
 	is, ok := a.issues[it.IID]
 	task := a.tasks[it.IID]
 	mh := a.r.freshMainHealth(a.spec, a.project.Status.MainHealth, mainHealthStale)

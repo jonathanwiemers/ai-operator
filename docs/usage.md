@@ -882,15 +882,20 @@ to, `/agent spec`), the milestone runs without you:
    planning") or that planning has not succeeded yet, and nothing starts; `/agent pause` and `/agent resume` already work. A planning
    failure is a comment there that mentions the owners
    ([details](#1-write-the-milestone-spec)).
-2. Once planned, the operator moves the first issue to `agent::ready`. Issues go **one at a time**, in
-   dependency order (an issue's "Depends on" first, otherwise plan order). An
-   issue linked as "blocked by" an open issue waits for it too.
+2. Once planned, the operator moves the issues that can start to
+   `agent::ready`, up to the milestone's parallel limit
+   ([`autopilot.maxParallel`](configuration.md), default 3; `1` runs one
+   issue at a time). An issue starts once every issue it depends on is
+   merged and a slot is free, in queue order (an issue's "Depends on" first,
+   otherwise plan order); there are no waves to wait for. An issue linked as
+   "blocked by" an open issue waits for it too.
 3. The issue is implemented, reviewed and checked by CI as usual. The
    implementer never stops with questions: it decides and records the
    decision. On autopilot, CI fix runs are reviewed as well.
 4. Once the pipeline is green and the review is clean, the operator marks
-   the draft MR ready and **merges it**, then starts the next issue on the
-   new default branch. The merge closes the issue.
+   the draft MR ready and **merges it**; on the next poll the freed slot
+   starts the next issue on the new default branch. The merge closes the
+   issue.
 5. When every issue is merged (or skipped), the tracking issue gets a summary
    and is closed.
 
@@ -1252,8 +1257,9 @@ The plan has a dependency cycle.
 
 #### `stuck`
 
-Nothing can start: the remaining issues wait for skipped issues, for issues
-outside the queue, or for each other. Ends by itself once an issue can start
+Nothing can start and no issue runs: the remaining issues wait for skipped
+issues, for issues outside the queue, or for each other. Issues that wait for
+a running issue are no reason to pause. Ends by itself once an issue can start
 (a skipped dependency closed as done, a link removed, an unskip or a
 startAnyway). Owners can:
 

@@ -1366,10 +1366,18 @@ stateDiagram-v2
   The operator keeps the queue in `status.autopilot` (phase, items, tracking
   issue, last handled command) and does one step per poll
   (`internal/controller/autopilot.go`).
-* **One at a time.** The queue is the plan in topological order, ties in plan
-  order. The next issue starts only after the previous MR is merged, so every
-  branch starts from the current default branch and every merge was tested
-  against what is really there.
+* **Several at a time.** The queue is the plan in topological order, ties in
+  plan order. Each poll `step` drives every active item in queue order until
+  one pauses, then `pick` starts pending items while fewer than the
+  milestone's `maxParallel` are active. An item starts once its dependencies
+  are merged, so its branch starts from a default branch that has them; the
+  graph's layers are no barriers. A poll that merged or skipped an item starts
+  nothing, so a freed slot is refilled from the default branch after the merge;
+  with a limit of 1 the queue runs one issue at a time as before. While items
+  are active, nothing pending that can start is normal: no `stuck` pause and
+  no done. The merge freeze and the BaseFailing heal check every active item.
+  The merge gate itself still rebases whichever item it reaches; landing one
+  item at a time is the next step.
 * **Project queue order.** Open autopilot milestones of a project share one
   ranking (`internal/milestoneorder`, used by `queuedAhead`, the planning
   hold and the Desk *Queue* section): milestones with a run-next mark
