@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -15,7 +16,10 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
-const nothingToRestart = "Nothing to restart: no run is in progress."
+const (
+	nothingToRestart = "Nothing to restart: no run is in progress."
+	notOwnerRestart  = "Only the milestone's owners can restart a run."
+)
 
 // restartRun restarts the run in progress of task (issue iid) by deleting
 // its pod: the AgentTask reconciler makes a new one and the runner starts
@@ -74,6 +78,27 @@ func (r *AgentProjectReconciler) restartRun(ctx context.Context, gl gitlab.API, 
 	}
 	log.FromContext(ctx).Info("restarting run", "task", task.Name, "pod", pod.Name, "by", by, "step", run.CurrentStep)
 	return fmt.Sprintf("🔄 The run is restarted (%s).", what), r.deletePod(ctx, &pod)
+}
+
+// restartUntracked answers a restart by author on a Spec task whose
+// autopilot is off: no tracking issue takes a note. The pod it returns is
+// deleted once the answer is saved, so a lost save restarts nothing and a
+// replay nothing twice.
+func (r *AgentProjectReconciler) restartUntracked(ctx context.Context, task *aiv1.AgentTask, author string) (string, *corev1.Pod, error) {
+	if !slices.Contains(task.Spec.OwnerSubjects, author) {
+		return notOwnerRestart, nil, nil
+	}
+	run, pod := task.Status.Run, &corev1.Pod{}
+	if run.ActiveRunRequest <= run.ObservedRunRequest || task.Status.PodName == "" {
+		return nothingToRestart, nil, nil
+	}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: task.Namespace, Name: task.Name}, pod); apierrors.IsNotFound(err) || err == nil && !pod.DeletionTimestamp.IsZero() {
+		return nothingToRestart, nil, nil
+	} else if err != nil {
+		return "", nil, err
+	}
+	log.FromContext(ctx).Info("restarting run", "task", task.Name, "pod", pod.Name, "by", author, "step", run.CurrentStep)
+	return fmt.Sprintf("🔄 The run is restarted (restart %d of at most %d).", run.Interruptions+1, aiv1.MaxInterruptions), pod, nil
 }
 
 func (r *AgentProjectReconciler) deletePod(ctx context.Context, pod *corev1.Pod) error {

@@ -375,6 +375,14 @@ func (ph autopilotPhase) run(ctx context.Context) {
 			ph.errs = append(ph.errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
+	// Without the autopilot only a restart reaches a Spec task.
+	for _, st := range specTasks {
+		if autopilots[st.Spec.Milestone.IID] == nil {
+			if err := r.refuseChatCommands(ctx, st, "The autopilot is off for this milestone."); err != nil {
+				ph.errs = append(ph.errs, fmt.Errorf("chat commands of milestone %q: %w", st.Spec.Milestone.Title, err))
+			}
+		}
+	}
 }
 
 // pilotPhase closes the prompts whose source resolved, runs the pilots,

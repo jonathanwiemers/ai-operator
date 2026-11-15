@@ -960,7 +960,7 @@ func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitla
 		}
 		if cmd.RestartCmd() {
 			if !slices.Contains(task.Spec.OwnerSubjects, m.Author) {
-				answer(m.ID, "Only the milestone's owners can restart a run.")
+				answer(m.ID, notOwnerRestart)
 				logger.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
 				continue
 			}

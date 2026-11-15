@@ -486,11 +486,11 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, gl 
 			logger.Info("chat command skipped", "id", m.ID, "author", m.Author, "error", err.Error())
 			continue
 		}
-		if !cmd.ProposalOnly() && !cmd.PromptCmd() && !cmd.RevisitCmd() && !cmd.DraftCmd() {
+		if !cmd.ProposalOnly() && !cmd.PromptCmd() && !cmd.RevisitCmd() && !cmd.DraftCmd() && !cmd.RestartCmd() {
 			answer(m.ID, "not supported on this task yet")
 			continue
 		}
-		if autopilotDone(st) && !cmd.DraftCmd() {
+		if autopilotDone(st) && !cmd.DraftCmd() && !cmd.RestartCmd() {
 			// The pilot stays for the leftovers only.
 			answer(m.ID, "The autopilot of this milestone is done: its pilot only writes drafts of a follow-up milestone now.")
 			continue
@@ -502,6 +502,8 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, gl 
 				answer(m.ID, "Only the milestone's owners can answer prompts.")
 			} else if cmd.RevisitCmd() {
 				answer(m.ID, "Only the milestone's owners can revisit decisions.")
+			} else if cmd.RestartCmd() {
+				answer(m.ID, notOwnerRestart)
 			} else {
 				answer(m.ID, "Only the milestone's owners may answer proposals.")
 			}
@@ -515,6 +517,28 @@ func (r *AgentProjectReconciler) applyPilotChatCommands(ctx context.Context, gl 
 		if cmd.PromptCmd() {
 			logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "prompt", cmd.Prompt)
 			reply, _, err := r.answerPrompt(ctx, project, spec, st, coord, who, m.ID, cmd, "desk")
+			if err != nil {
+				return err
+			}
+			answer(m.ID, reply)
+			continue
+		}
+		if cmd.RestartCmd() {
+			logger.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author)
+			// Keyed by the command: applied again after a lost update, it
+			// finds its note and restarts nothing twice.
+			key := fmt.Sprintf("chat/%s/%d", coord.Name, m.ID)
+			// Once the autopilot is done (retrospective, drafts) the note
+			// still goes to the tracking issue the pilot was on.
+			iid := trackingIssue(st, coord)
+			if iid == 0 && coord.Spec.Issue != nil {
+				iid = coord.Spec.Issue.IID
+			}
+			if iid == 0 {
+				answer(m.ID, "The run cannot be restarted: this milestone has no tracking issue for the note.")
+				continue
+			}
+			reply, err := r.restartRun(ctx, gl, spec, coord, iid, who+" via the Desk", key, project.Status.BotUserID)
 			if err != nil {
 				return err
 			}

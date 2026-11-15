@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -88,10 +89,18 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 func (r *AgentProjectReconciler) refuseChatCommands(ctx context.Context, task *aiv1.AgentTask, text string) error {
 	src := &task.Spec.Source
 	var answers []aiv1.ChatReply
+	var restart *corev1.Pod
 	mark := src.LastChatCommandID
 	for _, m := range src.ChatMessages {
 		if m.Kind == "command" && m.ID > src.LastChatCommandID {
-			answers = append(answers, aiv1.ChatReply{MessageID: m.ID, Text: text, At: metav1.Now()})
+			reply := text
+			// A restart works without the autopilot too, once per save.
+			if cmd, err := chatcmd.Parse(m.Text); err == nil && cmd.RestartCmd() && restart == nil {
+				if reply, restart, err = r.restartUntracked(ctx, task, m.Author); err != nil {
+					return err
+				}
+			}
+			answers = append(answers, aiv1.ChatReply{MessageID: m.ID, Text: reply, At: metav1.Now()})
 			mark = max(mark, m.ID)
 		}
 	}
@@ -103,7 +112,10 @@ func (r *AgentProjectReconciler) refuseChatCommands(ctx context.Context, task *a
 	if n := len(src.ChatAnswers); n > maxChatAnswers {
 		src.ChatAnswers = append([]aiv1.ChatReply(nil), src.ChatAnswers[n-maxChatAnswers:]...)
 	}
-	return r.Update(ctx, task)
+	if err := r.Update(ctx, task); err != nil || restart == nil {
+		return err
+	}
+	return r.deletePod(ctx, restart)
 }
 
 func (a *autopilot) sync(ctx context.Context) error {
@@ -1920,7 +1932,7 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 			a.log.Info("chat command skipped", "id", m.ID, "author", m.Author, "error", err.Error())
 			continue
 		}
-		if !cmd.Autopilot() {
+		if !cmd.Autopilot() && !cmd.RestartCmd() {
 			answer(m.ID, "not supported on this task yet")
 			continue
 		}
@@ -1931,12 +1943,23 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 		by := who + " via the Desk"
 		// Owners only, like the tracking issue's words.
 		if refusal := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "unstart": notOwnerStart,
-			"endmilestone": notOwnerEnd}[cmd.Cmd]; refusal != "" && !slices.Contains(a.st.Spec.OwnerSubjects, m.Author) {
+			"endmilestone": notOwnerEnd, "restart": notOwnerRestart}[cmd.Cmd]; refusal != "" && !slices.Contains(a.st.Spec.OwnerSubjects, m.Author) {
 			answer(m.ID, refusal)
 			a.log.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
 			continue
 		}
 		a.log.Info("applying chat command", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author)
+		if cmd.RestartCmd() {
+			// Keyed by the command: applied again after a lost answer, it
+			// finds its note and restarts nothing twice.
+			key := fmt.Sprintf("chat/%s/%d", a.st.Name, m.ID)
+			reply, err := a.r.restartRun(ctx, a.gl, a.spec, a.st, a.ap.TrackingIssueIID, by, key, a.project.Status.BotUserID)
+			if err != nil {
+				return err
+			}
+			answer(m.ID, reply)
+			continue
+		}
 		word, arg := cmd.Cmd, ""
 		switch word {
 		case "skip":
