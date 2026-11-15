@@ -355,9 +355,10 @@ their tasks are gone, no spend in the strip and no per-issue figures.
 ### Navigation
 
 Every view has breadcrumbs at the top, built from its URL: *Overview* ›
-project › milestone › issue, and *Research* › research › *Runs* › run. A
-task page sits under its issue page (milestone and issue from the task) and
-ends in the task's name, a task without an issue under the project. The Inbox, Costs, the research list and
+project › milestone › issue, *Overview* › project › *Plans* › plan, and
+*Research* › research › *Runs* › run. A task page sits under its issue page
+(milestone and issue from the task) and ends in the task's name, a task
+without an issue under the project. The Inbox, Costs, the research list and
 *Not found* show one crumb. Every crumb but the last is a link to that
 level's default tab (the `?tab=` stays out); the last one names the
 current view. Crumbs show titles once the view has loaded them, before
@@ -458,6 +459,72 @@ finishing.
 
 The Overview *Working now* card shows *N finishing* when this list is not
 empty (see [Overview](#desk-and-history)).
+
+### Planner
+
+With Desk chat on (`ui.chat.writerSecret` and the `plans` feature from
+`GET /api/v1/features`), an owner drafts a new milestone with an agent that
+reads the project's default branch, its milestones and its issues, then
+creates it on GitLab. Plans are `AgentPlan` resources; see
+[design.md](design.md#agentplan).
+
+**Who may plan.** Creating, chatting, editing the draft, raising the budget,
+creating the milestone and deleting need the `steer` grant and the caller
+among the owner subjects of the project's live Spec tasks (the grant alone
+when none has any), plus Desk chat enabled. Anyone who may see the project
+may list plans and read a plan and its chat (bodies still need the
+`conversation` grant).
+
+**Entry points** (feature `plans`):
+
+* *Plan milestone* on the project's *Stream* tab creates a plan and opens
+  it; *Plans* next to it opens the list.
+* A *Plan* button in the rail when a project is open (and *Plan milestone*
+  in the ⌘K palette's Pages group) opens `/projects/{ns}/{name}/plans`.
+
+**Plans list** (`/projects/{ns}/{name}/plans`): title (or *Untitled plan ·
+\<date\>*), phase, spend of cap, and the created milestone once there.
+Newest first. `GET …/plans`.
+
+**Plan page** (`/projects/{ns}/{name}/plans/{plan}`): chat on the left, the
+draft on the right; on phones, tabs *Chat* / *Draft* (`?tab=`). The header
+shows the phase, spend of the cap, a raise field (owners) and *Delete*. The
+page polls every 5 s while visible.
+
+* **Chat** reuses the Desk chat parts (`PlanChat.vue`): messages and
+  interrupt, no commands. `GET`/`POST …/plans/{plan}/chat`. Closing the tab
+  and returning later continues the same conversation and draft: messages
+  live in Postgres (`chat_messages.plan`).
+* **Draft** (`PlanDraft.vue`): Edit / Preview, explicit *Save*, and *Create
+  milestone*. An owner edit is `PUT …/draft` (a new revision, `draftBy:
+  owner`); the next chat turn tells the agent "the owner edited the draft;
+  it is now: …". The agent's draft replaces the editor only when there is no
+  unsaved edit; otherwise *The agent has a newer draft* shows a line diff
+  with *Use agent's draft* / *Keep mine*.
+
+**Budget.** Each plan starts at `plan.maxBudgetUSD` (default $5). Calls are
+kind `plan` and count under the project's Spend and Costs. At the cap the
+plan answers no more turns until an owner raises it (`POST …/budget`) up to
+`plan.maxBudgetUSDLimit` (default $20).
+
+**Create milestone** opens a confirm with title, the final draft, toggles
+*Spec* and *Autopilot* (both on by default), the `/agent` lines that will
+be appended (including the project's owners and owner-subjects), and an
+estimate from `GET …/estimate?plan=` (low–high USD and typical tokens, or
+*not enough history* with fewer than three finished milestones). It uses
+the owner's GitLab token like a follow-up create; the plan records the IID,
+its phase becomes *Created*, the pod stops, and creating again from the
+same plan is refused (`POST …/milestone`).
+
+**Idle and retention.** After `plan.idleTimeout` (default 30m) without a
+message the pod ends (phase *Idle*); the workspace stays, so the next
+message starts a new pod that resumes the engine session. Plans are deleted
+`plan.retention` (default 30d / `720h`) after their last message or
+creation. Chart values: [configuration.md](configuration.md#plan).
+
+Unstarted Queue milestones (`waiting` / `holding` with no spend) are the
+ones `needsEstimate` selects for `GET …/estimate?milestone=`; the *Create
+milestone* dialog already shows the same estimate for a plan's draft.
 
 ### Spend
 
@@ -1494,6 +1561,12 @@ as an error, not as a reconnect.
   database. Within the comment rate limit; the UI logs who created which
   milestone from which, never the text. The fixed token needs to be allowed
   to create milestones (the project's Planner or Reporter role).
+- **Plan milestone:** an owner (steer grant and a project owner-subject)
+  drafts a new milestone with an agent, then creates it with your token from
+  the [Planner](#planner) (*Create milestone*): title and description, then
+  the `/agent` lines for the Spec / Autopilot toggles and the project's
+  owners and owner-subjects. Same GitLab token and rate limit as a follow-up
+  create; audit line `plan.milestone`.
 - **Tokens:** the access and refresh token live in an encrypted, `HttpOnly`
   cookie (like the login), bound to your UI user, refreshed when the access
   token runs out, never readable by the page's JavaScript. The connection
@@ -2247,7 +2320,8 @@ Groups, built by `src/searchItems.ts`:
   leaves the group empty. `#12` finds issue 12, `!34` merge request 34. A hit
   opens the task page.
 * **Pages**: Inbox, Overview, Costs (feature `history`), Research (feature
-  `research`).
+  `research`), and *Plan milestone* (feature `plans`, when a project is
+  open) to that project's [plans list](#planner).
 
 Keyboard: ⌘K / Ctrl+K opens, arrows move, Enter opens the item and closes
 the palette, Escape closes it. The palette joins the browser history like a
@@ -2524,8 +2598,22 @@ On a project's *Stream* tab (`web/src/views/Stream.vue`), above
 `project.queue` / `queueCommands` and `project.finishing` (see
 [Queue and Finishing](#queue-and-finishing)). Labels and button commands
 live in `projectQueue.ts` and `finishing.ts`; *Close issue* calls
-`closeHoldingIssue`. Tailwind utilities and Nuxt UI, without scoped CSS;
-light and dark, readable at 375 px.
+`closeHoldingIssue`. `needsEstimate` in `projectQueue.ts` marks
+`waiting`/`holding` rows with no spend for
+`GET …/estimate?milestone=` (see [Planner](#planner)). Tailwind utilities
+and Nuxt UI, without scoped CSS; light and dark, readable at 375 px.
+
+### Plans
+
+The plans list (`web/src/views/Plans.vue`) and plan page
+(`web/src/views/Plan.vue`) are Tailwind utilities and Nuxt UI, without
+scoped CSS. Entry points: *Plan milestone* / *Plans* on the project Stream
+(`Stream.vue`), *Plan* in `RailNav.vue`, and *Plan milestone* in the ⌘K
+Pages group (`searchItems.ts`). Chat is `PlanChat.vue` (Desk chat parts);
+the draft is `PlanDraft.vue` with Edit / Preview, Save, the newer-draft
+diff (`planDraft.ts`) and `PlanCreateDialog.vue` (Spec / Autopilot, estimate
+from `estimate.ts`). List helpers live in `planRows.ts`. See
+[Planner](#planner).
 
 ### Milestone Issues
 
