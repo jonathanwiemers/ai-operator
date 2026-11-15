@@ -21,6 +21,12 @@ const (
 // owners.
 const StalledEventPrefix = "stalled/"
 
+// RunStalledEventPrefix starts the key of the event of an Implement task
+// whose run is stalled (condition Stalled), followed by the issue and the
+// stall's start (Unix seconds): one per stall. It must not start with
+// StalledEventPrefix, whose proposals never run on their own.
+const RunStalledEventPrefix = "run-stalled/"
+
 // StalledEvent reports whether e is a stalled pause.
 func StalledEvent(e PilotEvent) bool { return strings.HasPrefix(e.Key, StalledEventPrefix) }
 

@@ -411,7 +411,7 @@ func TestIssueSpendAlertOnceAndRearmed(t *testing.T) {
 		t.Fatalf("the heads-up names the issue, its spend and its top kinds and models:\n%s", trackingComments(e))
 	}
 	st := e.tasks()[specTaskName]
-	evs := pilotEvents(e.project().Spec, nil, &st, nil, nil, false, e.r.now())
+	evs := pilotEvents(e.project().Spec, nil, &st, nil, nil, false, nil, e.r.now())
 	if !slices.ContainsFunc(evs, func(ev aiv1.PilotEvent) bool { return ev.Key == "budget-alert/1/15.0000" && ev.IssueIID == 1 }) {
 		t.Fatalf("the alert is a pilot event: %+v", evs)
 	}
