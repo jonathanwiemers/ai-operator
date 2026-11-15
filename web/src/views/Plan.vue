@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // One plan (R11): header with phase, spend / cap, budget raise and delete;
-// chat left, draft preview right, on phones tabs Chat / Draft.
+// chat left, draft editor right, on phones tabs Chat / Draft.
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { deletePlan, getPlan, LoginRequiredError, NotFoundError, raisePlanBudget } from '../client'
@@ -9,8 +9,8 @@ import { planTabs, tabFromQuery, tabQuery, type PlanTab } from '../streamTabs'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import Badge from '../components/Badge.vue'
-import Markdown from '../components/Markdown.vue'
 import PlanChat from '../components/PlanChat.vue'
+import PlanDraft from '../components/PlanDraft.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import type { PlanView } from '../generated/views'
 import NotFound from './NotFound.vue'
@@ -94,7 +94,8 @@ onUnmounted(() => window.clearInterval(timer))
       <div class="grid gap-4 tablet:grid-cols-2">
         <PlanChat :class="{ 'max-tablet:hidden': tab !== 'chat' }" :namespace="namespace" :name="name" :plan="plan"
           :can-post="owner" :phase="view.phase" :spend-u-s-d="view.spendUSD" :budget-u-s-d="view.budgetUSD" />
-        <Markdown :class="['card px-4 py-3.5', { 'max-tablet:hidden': tab !== 'draft' }]" :text="view.draft || 'No draft yet.'" />
+        <PlanDraft :class="{ 'max-tablet:hidden': tab !== 'draft' }" :namespace="namespace" :name="name" :plan="plan"
+          :view="view" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" />
       </div>
     </template>
   </div>
