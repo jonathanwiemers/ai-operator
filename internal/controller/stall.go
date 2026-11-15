@@ -8,7 +8,11 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
@@ -24,6 +28,50 @@ type containerLogs interface {
 
 // podLogs implements containerLogs with the Kubernetes API.
 type podLogs struct{ client kubernetes.Interface }
+
+// NewPodLogs is the log source of the operator's stall check.
+func NewPodLogs(c kubernetes.Interface) containerLogs { return podLogs{c} }
+
+// stallCheckDue reports whether the task was not checked for a stall within
+// interval and then counts now as its check, so the frequent reconciles from
+// runner status patches read logs once per interval. A task is never
+// reconciled concurrently, so load and store need no lock of their own.
+func (r *AgentTaskReconciler) stallCheckDue(uid types.UID, now time.Time, interval time.Duration) bool {
+	if t, ok := r.stallChecked.Load(uid); ok && now.Sub(t.(time.Time)) < interval {
+		return false
+	}
+	r.stallChecked.Store(uid, now)
+	return true
+}
+
+// checkStall sets condition Stalled. The pod state decides first; the logs
+// are read only when the pod would otherwise count as silent. A log read
+// error leaves the condition as it is.
+func (r *AgentTaskReconciler) checkStall(ctx context.Context, task *aiv1.AgentTask, pod *corev1.Pod, since, now time.Time, after time.Duration) {
+	step := task.Status.Run.CurrentStep
+	reason, message, stalled := stallOf(pod, nil, since, now, after, step)
+	if stalled && reason == aiv1.StallReasonSilent {
+		last := map[string]*time.Time{}
+		for _, c := range []string{RunnerContainer, AgentContainer} {
+			t, ok, err := r.Logs.LastLine(ctx, pod.Namespace, pod.Name, c)
+			if err != nil {
+				log.FromContext(ctx).Error(err, "stall check skipped, reading the container log failed", "pod", pod.Name, "container", c)
+				return
+			}
+			if ok {
+				last[c] = &t
+			}
+		}
+		reason, message, stalled = stallOf(pod, last, since, now, after, step)
+	}
+	if !stalled {
+		reason, message = aiv1.StallReasonActive, "the run is making progress"
+	}
+	// The transition time of Stalled=True is the stall start; it stays while
+	// the task stays stalled.
+	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{Type: aiv1.ConditionStalled,
+		Status: boolCondition(stalled), Reason: reason, Message: message, LastTransitionTime: metav1.NewTime(now)})
+}
 
 func (p podLogs) read(ctx context.Context, ns, pod, container string, lines int64) (string, error) {
 	opts := &corev1.PodLogOptions{Container: container, TailLines: &lines, Timestamps: true}

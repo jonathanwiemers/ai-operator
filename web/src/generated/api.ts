@@ -1190,8 +1190,8 @@ export interface LifecycleSpec {
   /**
    * StallAfter: a Running task whose runner and agent containers both
    * logged nothing for this long, or whose pod is Pending or crash-/
-   * image-pull-looping this long, is stalled. The operator sets condition
-   * Stalled; the check itself is a later issue.
+   * image-pull-looping this long, is stalled: the operator sets condition
+   * Stalled on the task, which stays Running.
    * +kubebuilder:default="30m"
    * +optional
    */

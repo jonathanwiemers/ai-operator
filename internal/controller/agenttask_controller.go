@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -63,6 +64,10 @@ type AgentTaskReconciler struct {
 	CrossRepoAllowed []string
 	// CrossRepoNever is the cluster's never-list (--cross-repo-never-projects).
 	CrossRepoNever []string
+	// Logs reads the agent pods' logs for the stall check. Nil: no checks.
+	Logs containerLogs
+	// stallChecked holds the time of each task's last stall check by UID.
+	stallChecked sync.Map
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;update;patch
@@ -328,6 +333,21 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if blocked {
 		task.Status.Phase = aiv1.TaskPhaseBlocked
 		task.Status.Message = fmt.Sprintf("reached maxRunsPerTask (%d); raise the limit or reset the task", lc.MaxRunsPerTask)
+	}
+	// Stall check (lifecycle.stallAfter): once per stallCheckInterval, only
+	// for runs older than stallAfter.
+	if !inProgress {
+		meta.RemoveStatusCondition(&task.Status.Conditions, aiv1.ConditionStalled)
+		r.stallChecked.Delete(task.UID)
+	} else if r.Logs != nil {
+		interval := lc.StallCheckInterval.Duration
+		if task.Status.Phase == aiv1.TaskPhaseRunning && pod != nil && idleFor >= lc.StallAfter.Duration &&
+			r.stallCheckDue(task.UID, now, interval) {
+			r.checkStall(ctx, &task, pod, lastActivity, now, lc.StallAfter.Duration)
+		}
+		if result.RequeueAfter == 0 || interval < result.RequeueAfter {
+			result.RequeueAfter = interval
+		}
 	}
 	meta.SetStatusCondition(&task.Status.Conditions, metav1.Condition{
 		Type:    "Blocked",
