@@ -1,9 +1,24 @@
 // Tests of src/projectQueue.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { queueActions, queueStateLabel, queueTone } from '../src/projectQueue.ts'
+import { needsEstimate, queueActions, queueStateLabel, queueTone } from '../src/projectQueue.ts'
 
-const entry = (over = {}) => ({ state: 'running', ...over })
+const entry = (over = {}) => ({ state: 'running', done: 0, costUSD: '0.00', tokens: 0, ...over })
+
+test('needsEstimate: waiting/holding with no done and no spend', () => {
+  assert.equal(needsEstimate(entry({ state: 'waiting' })), true)
+  assert.equal(needsEstimate(entry({ state: 'holding' })), true)
+  assert.equal(needsEstimate(entry({ state: 'waiting', costUSD: '' })), true)
+})
+
+test('needsEstimate: running, done, or spent do not', () => {
+  assert.equal(needsEstimate(entry({ state: 'running' })), false)
+  assert.equal(needsEstimate(entry({ state: 'paused' })), false)
+  assert.equal(needsEstimate(entry({ state: 'budget' })), false)
+  assert.equal(needsEstimate(entry({ state: 'waiting', done: 1 })), false)
+  assert.equal(needsEstimate(entry({ state: 'holding', costUSD: '1.25' })), false)
+  assert.equal(needsEstimate(entry({ state: 'waiting', tokens: 100 })), false)
+})
 
 test('queueStateLabel: one label per state', () => {
   assert.equal(queueStateLabel(entry({ state: 'running' })), 'Running')

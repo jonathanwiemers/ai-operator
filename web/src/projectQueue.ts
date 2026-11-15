@@ -4,6 +4,12 @@ import type { QueueEntry } from './generated/views'
 
 // Labels, tones and Desk buttons for the project Queue (Decision 4 / D412-P1).
 
+// needsEstimate: waiting/holding with no done issues and no spend (D455-P1).
+export function needsEstimate(e: Pick<QueueEntry, 'state' | 'done' | 'costUSD' | 'tokens'>): boolean {
+  const spent = Number.parseFloat(e.costUSD || '0') > 0 || e.tokens > 0
+  return (e.state === 'waiting' || e.state === 'holding') && e.done === 0 && !spent
+}
+
 export function queueStateLabel(e: Pick<QueueEntry, 'state' | 'holdingFor' | 'pausedReason'>): string {
   switch (e.state) {
     case 'running':
