@@ -31,7 +31,7 @@ func TestApplyChatCommands(t *testing.T) {
 	}
 	spec := testProject().Spec.WithDefaults()
 
-	run, err := e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, nil)
+	run, err := e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, nil, 0)
 	if err != nil || !run {
 		t.Fatalf("retry: run=%v err=%v", run, err)
 	}
@@ -44,7 +44,7 @@ func TestApplyChatCommands(t *testing.T) {
 	// Caller bumps RunRequest once for the whole sync.
 	before := task.Spec.Source.LastChatCommandID
 	answers := len(task.Spec.Source.ChatAnswers)
-	run, err = e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, nil)
+	run, err = e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, nil, 0)
 	if err != nil || run {
 		t.Fatalf("second sync must be idempotent: run=%v err=%v", run, err)
 	}
@@ -65,7 +65,7 @@ func TestApplyChatCommandsUse(t *testing.T) {
 		}},
 	}
 	spec := testProject().Spec.WithDefaults()
-	run, err := e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, nil)
+	run, err := e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, nil, 0)
 	if err != nil || run {
 		t.Fatalf("use starts no run: run=%v err=%v", run, err)
 	}
@@ -92,7 +92,7 @@ func TestApplyChatCommandsReviewWithoutHead(t *testing.T) {
 		}},
 	}
 	spec := testProject().Spec.WithDefaults()
-	run, err := e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, &gitlab.MergeRequest{SHA: "abc"})
+	run, err := e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, &gitlab.MergeRequest{SHA: "abc"}, 0)
 	if err != nil || run {
 		t.Fatalf("review without pushed head: run=%v err=%v", run, err)
 	}
@@ -323,7 +323,7 @@ func TestApplyChatCommandsBudget(t *testing.T) {
 		}},
 	}
 	spec := testProject().Spec.WithDefaults()
-	run, err := e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, nil)
+	run, err := e.r.applyChatCommands(e.ctx, e.gl, spec, is, task, nil, 0)
 	if err != nil || run || task.Spec.BudgetUSD != "40.0000" {
 		t.Fatalf("budget sets the issue's budget and starts no run: run=%v err=%v budget=%q", run, err, task.Spec.BudgetUSD)
 	}

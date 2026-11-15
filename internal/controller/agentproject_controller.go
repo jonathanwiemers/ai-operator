@@ -741,7 +741,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 
 	// Desk chat commands (kind "command") are applied on every sync, not
 	// only when the issue or MR changed: they arrive via the dispatcher.
-	chatRun, err := r.applyChatCommands(ctx, gl, spec, &is, task, mr)
+	chatRun, err := r.applyChatCommands(ctx, gl, spec, &is, task, mr, project.Status.BotUserID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -915,7 +915,7 @@ const maxChatAnswers = 20
 // bump. Returns whether a run was requested (retry, a successful review, or
 // the answer to the last open question of the agent).
 func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec,
-	is *gitlab.Issue, task *aiv1.AgentTask, mr *gitlab.MergeRequest) (bool, error) {
+	is *gitlab.Issue, task *aiv1.AgentTask, mr *gitlab.MergeRequest, bot int64) (bool, error) {
 	src := &task.Spec.Source
 	var pending []aiv1.ChatMessage
 	for _, m := range src.ChatMessages {
@@ -956,6 +956,22 @@ func (r *AgentProjectReconciler) applyChatCommands(ctx context.Context, gl gitla
 			reply, due := answerQuestion(task, who, cmd)
 			run = run || due
 			answer(m.ID, reply)
+			continue
+		}
+		if cmd.RestartCmd() {
+			if !slices.Contains(task.Spec.OwnerSubjects, m.Author) {
+				answer(m.ID, "Only the milestone's owners can restart a run.")
+				logger.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
+				continue
+			}
+			// Keyed by the command: applied again after a lost update of the
+			// task, it restarts nothing twice.
+			key := fmt.Sprintf("chat/%s/%d", task.Name, m.ID)
+			text, err := r.restartRun(ctx, gl, spec, task, is.IID, cmp.Or(m.AuthorName, m.Author)+" via the Desk", key, bot)
+			if err != nil {
+				return false, err
+			}
+			answer(m.ID, text)
 			continue
 		}
 		if !cmd.ImplementOnly() {
