@@ -267,3 +267,20 @@ func TestReleaseDefaults(t *testing.T) {
 		t.Fatal("Auto() for Auto and Off")
 	}
 }
+
+func TestAutopilotMaxParallelDefaults(t *testing.T) {
+	if got := (AgentProjectSpec{}).WithDefaults().Autopilot; got == nil || got.MaxParallel != DefaultMaxParallel {
+		t.Fatalf("nil autopilot defaults to %d: %+v", DefaultMaxParallel, got)
+	}
+	zero := &AutopilotSpec{}
+	in := AgentProjectSpec{Autopilot: zero}
+	if got := in.WithDefaults().Autopilot; got == nil || got.MaxParallel != DefaultMaxParallel {
+		t.Fatalf("MaxParallel 0 defaults to %d: %+v", DefaultMaxParallel, got)
+	}
+	if zero.MaxParallel != 0 {
+		t.Fatal("WithDefaults must not change its input")
+	}
+	if got := (AgentProjectSpec{Autopilot: &AutopilotSpec{MaxParallel: 1}}).WithDefaults().Autopilot; got == nil || got.MaxParallel != 1 {
+		t.Fatalf("explicit MaxParallel kept: %+v", got)
+	}
+}

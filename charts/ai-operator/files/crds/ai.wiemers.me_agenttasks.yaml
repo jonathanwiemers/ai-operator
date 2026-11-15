@@ -1399,6 +1399,12 @@ spec:
                     - iid
                     - state
                     type: object
+                  maxParallel:
+                    description: |-
+                      MaxParallel is the effective limit of how many issues of this
+                      milestone may run at the same time, as of the last poll.
+                    format: int32
+                    type: integer
                   mergeOverride:
                     description: |-
                       MergeOverride is an owner's decision to merge one head of an issue

@@ -257,6 +257,11 @@ export interface AgentProjectSpec {
    */
   crossRepo?: CrossRepoSpec;
   /**
+   * Autopilot is the project's autopilot settings.
+   * +optional
+   */
+  autopilot?: AutopilotSpec;
+  /**
    * PollInterval is how often GitLab is polled for changes.
    * +kubebuilder:default="1m"
    * +optional
@@ -324,6 +329,20 @@ export interface BudgetSpec {
    * +optional
    */
   perIssueAlertUSD?: string;
+}
+/**
+ * AutopilotSpec is the project's autopilot settings.
+ */
+export interface AutopilotSpec {
+  /**
+   * MaxParallel is how many issues of an autopilot milestone are
+   * implemented at the same time. 1 is one at a time. A milestone's
+   * `/agent parallel N` line overrides it.
+   * +kubebuilder:default=3
+   * +kubebuilder:validation:Minimum=1
+   * +optional
+   */
+  maxParallel?: number /* int32 */;
 }
 /**
  * MilestoneSelector selects milestones that should be planned by the spec agent.
@@ -4750,6 +4769,12 @@ export const AutopilotItemSkipped: AutopilotItemState = "Skipped";
  */
 export interface AutopilotStatus {
   phase: AutopilotPhase;
+  /**
+   * MaxParallel is the effective limit of how many issues of this
+   * milestone may run at the same time, as of the last poll.
+   * +optional
+   */
+  maxParallel?: number /* int32 */;
   /**
    * TrackingIssueIID is the bot's tracking issue of the milestone.
    * +optional

@@ -1700,6 +1700,19 @@ spec:
                 required:
                 - credentialsSecretName
                 type: object
+              autopilot:
+                description: Autopilot is the project's autopilot settings.
+                properties:
+                  maxParallel:
+                    default: 3
+                    description: |-
+                      MaxParallel is how many issues of an autopilot milestone are
+                      implemented at the same time. 1 is one at a time. A milestone's
+                      `/agent parallel N` line overrides it.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                type: object
               budget:
                 description: |-
                   Budget limits what autopilot work may spend (agent_calls, needs the

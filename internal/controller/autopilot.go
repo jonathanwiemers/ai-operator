@@ -126,6 +126,7 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if a.ap.Phase == aiv1.AutopilotOff {
 		a.ap.Phase = aiv1.AutopilotRunning
 	}
+	a.ap.MaxParallel = a.maxParallel()
 	issues, err := a.gl.ListIssues(ctx, a.spec.GitLab.Project, gitlab.ListIssuesOptions{Milestone: a.st.Spec.Milestone.Title, State: "all"})
 	if err != nil {
 		return fmt.Errorf("listing issues of milestone %q: %w", a.st.Spec.Milestone.Title, err)
@@ -281,6 +282,12 @@ func (a *autopilot) off(ctx context.Context) error {
 	// A pause does not outlive off: turned on again, it starts running.
 	a.ap.PausedReason, a.ap.PauseKind, a.ap.PausedFor, a.ap.ResumeWhenReady = "", "", 0, false
 	return nil
+}
+
+// maxParallel is the effective parallel-issue limit for this milestone.
+// Later issues fold in a milestone `/agent parallel N` override here.
+func (a *autopilot) maxParallel() int32 {
+	return a.spec.Autopilot.MaxParallel
 }
 
 // autopilot is one poll of one autopilot milestone.

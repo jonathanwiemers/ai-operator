@@ -124,6 +124,22 @@ func trackingComments(e *projectEnv) string {
 	return b.String()
 }
 
+func TestAutopilotStatusMaxParallel(t *testing.T) {
+	e := newAutopilotEnv(t)
+	e.reconcile()
+	if got := e.autopilot().MaxParallel; got != 3 {
+		t.Fatalf("default maxParallel: %d", got)
+	}
+
+	e.patchProject(func(p *aiv1.AgentProject) {
+		p.Spec.Autopilot = &aiv1.AutopilotSpec{MaxParallel: 1}
+	})
+	e.reconcile()
+	if got := e.autopilot().MaxParallel; got != 1 {
+		t.Fatalf("maxParallel 1: %d", got)
+	}
+}
+
 func TestAutopilotWorksThroughTheQueue(t *testing.T) {
 	e := newAutopilotEnv(t)
 	e.releaseOff()

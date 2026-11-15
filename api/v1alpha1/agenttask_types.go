@@ -1913,6 +1913,11 @@ const (
 type AutopilotStatus struct {
 	Phase AutopilotPhase `json:"phase"`
 
+	// MaxParallel is the effective limit of how many issues of this
+	// milestone may run at the same time, as of the last poll.
+	// +optional
+	MaxParallel int32 `json:"maxParallel,omitempty"`
+
 	// TrackingIssueIID is the bot's tracking issue of the milestone.
 	// +optional
 	TrackingIssueIID int64 `json:"trackingIssueIID,omitempty"`

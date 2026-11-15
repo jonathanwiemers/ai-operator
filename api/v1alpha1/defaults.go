@@ -32,6 +32,7 @@ const (
 	DefaultStallAfter           = 30 * time.Minute
 	DefaultStallCheckInterval   = 5 * time.Minute
 	DefaultMaxConcurrent        = 3
+	DefaultMaxParallel          = 3
 	DefaultCIFixRounds          = 2
 	DefaultNoPipelineTimeout    = 10 * time.Minute
 	DefaultMainHealthInterval   = 5 * time.Minute
@@ -288,6 +289,15 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 	}
 	if s.MaxConcurrentRuns == 0 {
 		s.MaxConcurrentRuns = DefaultMaxConcurrent
+	}
+	if s.Autopilot == nil {
+		s.Autopilot = &AutopilotSpec{}
+	} else {
+		ap := *s.Autopilot
+		s.Autopilot = &ap
+	}
+	if s.Autopilot.MaxParallel == 0 {
+		s.Autopilot.MaxParallel = DefaultMaxParallel
 	}
 	return s
 }

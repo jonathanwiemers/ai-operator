@@ -71,6 +71,10 @@ type AgentProjectSpec struct {
 	// +optional
 	CrossRepo *CrossRepoSpec `json:"crossRepo,omitempty"`
 
+	// Autopilot is the project's autopilot settings.
+	// +optional
+	Autopilot *AutopilotSpec `json:"autopilot,omitempty"`
+
 	// PollInterval is how often GitLab is polled for changes.
 	// +kubebuilder:default="1m"
 	// +optional
@@ -126,6 +130,17 @@ type BudgetSpec struct {
 	// +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
 	// +optional
 	PerIssueAlertUSD string `json:"perIssueAlertUSD,omitempty"`
+}
+
+// AutopilotSpec is the project's autopilot settings.
+type AutopilotSpec struct {
+	// MaxParallel is how many issues of an autopilot milestone are
+	// implemented at the same time. 1 is one at a time. A milestone's
+	// `/agent parallel N` line overrides it.
+	// +kubebuilder:default=3
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MaxParallel int32 `json:"maxParallel,omitempty"`
 }
 
 // MilestoneSelector selects milestones that should be planned by the spec agent.
