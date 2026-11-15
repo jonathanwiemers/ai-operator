@@ -4577,7 +4577,7 @@ export interface ReviewError {
 }
 /**
  * PauseKind is why autopilot paused.
- * +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan;release
+ * +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan;release;stalled
  */
 export type PauseKind = string;
 /**
@@ -4653,6 +4653,11 @@ export const PauseEmptyPlan: PauseKind = "emptyPlan";
  * PauseRelease: the final release failed twice.
  */
 export const PauseRelease: PauseKind = "release";
+/**
+ * PauseStalled: the active issue's run is stalled and the pilot's
+ * restarts did not help or the interruption cap is reached.
+ */
+export const PauseStalled: PauseKind = "stalled";
 /**
  * PauseResolver is who ended a pause (status.autopilot.resumedBy, the
  * autopilot.resumed history event).

@@ -37,7 +37,7 @@ type ExitView struct {
 
 // deskCommands are the remedy commands the Desk sends (chatcmd), with
 // whether they need the merge grant rather than chat.
-var deskCommands = map[string]bool{"resume": false, "skip": false, "retry": false, "review": false, "merge": true}
+var deskCommands = map[string]bool{"resume": false, "skip": false, "retry": false, "review": false, "merge": true, "restart": true}
 
 // exitViews lists the ways out of ap's pause with their live state, nil
 // while it is not paused.

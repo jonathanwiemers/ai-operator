@@ -148,6 +148,8 @@ func TestExitViewsAllowed(t *testing.T) {
 		{aiv1.PauseOwner, none, nil},
 		{aiv1.PauseOwner, chat, []string{"resume"}},
 		{aiv1.PauseBudget, owner, nil},
+		{aiv1.PauseStalled, chat, []string{"skip"}},
+		{aiv1.PauseStalled, owner, []string{"restart", "skip"}},
 	}
 	for _, c := range cases {
 		var got []string

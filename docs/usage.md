@@ -1467,6 +1467,18 @@ done.
 
 See [the final release](#the-final-release).
 
+#### `stalled`
+
+The active issue's run is stalled and the pilot's restarts did not help or
+the interruption cap is reached. Ends by itself once the run logs again or
+ends, or when the MR is merged by hand or the issue is closed.
+
+- `/agent restart` on the issue (owners only): the operator deletes the
+  agent pod and the run starts again (counted as an interruption); the
+  pause ends once the run moves.
+- `/agent skip #N`: the issue is skipped and autopilot goes on; issues that
+  depend on it wait until it is done by hand.
+
 ### Budget
 
 A line `/agent budget <usd>` in the milestone description (for example

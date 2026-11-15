@@ -1795,7 +1795,7 @@ type ReviewError struct {
 }
 
 // PauseKind is why autopilot paused.
-// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan;release
+// +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan;release;stalled
 type PauseKind string
 
 const (
@@ -1838,6 +1838,9 @@ const (
 	PauseEmptyPlan PauseKind = "emptyPlan"
 	// PauseRelease: the final release failed twice.
 	PauseRelease PauseKind = "release"
+	// PauseStalled: the active issue's run is stalled and the pilot's
+	// restarts did not help or the interruption cap is reached.
+	PauseStalled PauseKind = "stalled"
 )
 
 // PauseResolver is who ended a pause (status.autopilot.resumedBy, the

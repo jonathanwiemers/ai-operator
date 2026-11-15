@@ -1453,6 +1453,7 @@ spec:
                     - companion
                     - emptyPlan
                     - release
+                    - stalled
                     type: string
                   pauseRunBy:
                     description: |-

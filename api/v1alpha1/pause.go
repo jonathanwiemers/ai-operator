@@ -71,7 +71,7 @@ func (w WorkflowSpec) RoleLabel(role LabelRole) string {
 var PauseKinds = []PauseKind{
 	PauseOwner, PauseCycle, PauseStuck, PauseNeedsInput, PauseRunFailed, PauseFindings, PauseReviewErrors,
 	PauseNotReviewed, PauseCIRed, PauseCICanceled, PauseMergeRequest, PauseMainRed, PauseConfig, PauseBudget, PauseCompanion,
-	PauseEmptyPlan, PauseRelease,
+	PauseEmptyPlan, PauseRelease, PauseStalled,
 }
 
 // The exits several kinds share.
@@ -198,6 +198,17 @@ var pauseExits = map[PauseKind][]PauseExit{
 			Does: "the operator runs the final release once more"},
 		{ID: "endWithoutRelease", Command: "endMilestone", Target: ExitTargetSpec,
 			Does: "the final release is dropped and autopilot is done"},
+	},
+	// The active issue's run is stalled past the pilot's restarts or the
+	// interruption cap.
+	PauseStalled: {
+		{ID: "runMoves", Auto: true, When: "the run logs again or ends",
+			Does: "autopilot continues"},
+		exitMergedByHand,
+		exitClosed,
+		{ID: "restart", Command: "restart", Target: ExitTargetImplement,
+			Does: "owners only: the operator deletes the agent pod and the run starts again (counted as an interruption); the pause ends once the run moves"},
+		exitSkip,
 	},
 }
 
