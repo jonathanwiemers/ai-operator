@@ -1664,6 +1664,22 @@ export interface TaskResponse {
   prompts: PromptView[];
   cost: Cost;
   permissions?: TaskPermissions;
+  health?: TaskHealth;
+}
+/**
+ * TaskHealth is the task's run health: step and the Stalled condition from
+ * the status; pod phase, restarts (summed over containers) and the newest
+ * last termination reason from the pod named after the task.
+ */
+export interface TaskHealth {
+  podPhase?: string;
+  restarts?: number /* int32 */;
+  lastTermination?: string;
+  step?: string;
+  stepSince?: string;
+  stalled?: boolean;
+  stalledReason?: string;
+  stalledMessage?: string;
 }
 /**
  * TaskPermissions is what the task page may offer; the endpoints check

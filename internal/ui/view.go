@@ -171,6 +171,21 @@ type TaskResponse struct {
 	Prompts     []PromptView     `json:"prompts"`
 	Cost        Cost             `json:"cost"`
 	Permissions *TaskPermissions `json:"permissions,omitempty"`
+	Health      *TaskHealth      `json:"health,omitempty"`
+}
+
+// TaskHealth is the task's run health: step and the Stalled condition from
+// the status; pod phase, restarts (summed over containers) and the newest
+// last termination reason from the pod named after the task.
+type TaskHealth struct {
+	PodPhase        string       `json:"podPhase,omitempty"`
+	Restarts        int32        `json:"restarts,omitempty"`
+	LastTermination string       `json:"lastTermination,omitempty"`
+	Step            string       `json:"step,omitempty"`
+	StepSince       *metav1.Time `json:"stepSince,omitempty"`
+	Stalled         bool         `json:"stalled,omitempty"`
+	StalledReason   string       `json:"stalledReason,omitempty"`
+	StalledMessage  string       `json:"stalledMessage,omitempty"`
 }
 
 // TaskPermissions is what the task page may offer; the endpoints check

@@ -16,6 +16,8 @@ type LogSource interface {
 	// Stream follows the log from since (nil: from the container's start).
 	Stream(ctx context.Context, namespace, pod, container string, since *time.Time) (io.ReadCloser, error)
 	Running(ctx context.Context, namespace, pod string) bool
+	// Pod reads a pod, for the task's health.
+	Pod(ctx context.Context, namespace, name string) (*corev1.Pod, error)
 }
 
 // PodLogs reads container logs through the Kubernetes API.
@@ -34,4 +36,9 @@ func (p PodLogs) Stream(ctx context.Context, namespace, pod, container string, s
 func (p PodLogs) Running(ctx context.Context, namespace, pod string) bool {
 	po, err := p.Client.CoreV1().Pods(namespace).Get(ctx, pod, metav1.GetOptions{})
 	return err == nil && po.DeletionTimestamp == nil && po.Status.Phase == corev1.PodRunning
+}
+
+// Pod implements LogSource.
+func (p PodLogs) Pod(ctx context.Context, namespace, name string) (*corev1.Pod, error) {
+	return p.Client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 }

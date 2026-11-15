@@ -11,6 +11,9 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 func TestParseLogLine(t *testing.T) {
@@ -68,6 +71,11 @@ func (f fakeLogs) Stream(_ context.Context, ns, pod, container string, _ *time.T
 }
 
 func (f fakeLogs) Running(context.Context, string, string) bool { return false }
+
+// Pod: fakeLogs has no pods (see fakePods).
+func (f fakeLogs) Pod(_ context.Context, _, name string) (*corev1.Pod, error) {
+	return nil, apierrors.NewNotFound(corev1.Resource("pods"), name)
+}
 
 func readTranscript(t *testing.T, env *testEnv, path string) (entries []Entry, end string, status int) {
 	t.Helper()

@@ -1,13 +1,17 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -132,11 +136,41 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 					Steer:  s.gitlab != nil && s.gitlab.serves(ap) && s.authz.CanSteer(p, ap.Namespace, ap.Name),
 					Chat:   chat,
 				},
+				Health: s.taskHealth(r.Context(), t),
 			})
 			return
 		}
 	}
 	notFound(w)
+}
+
+// taskHealth reads the task's health. The pod is the one named after the
+// task, not status.podName (see transcript); without it or a log source,
+// the pod fields stay empty.
+func (s *Server) taskHealth(ctx context.Context, t *aiv1.AgentTask) *TaskHealth {
+	h := &TaskHealth{Step: t.Status.Run.CurrentStep, StepSince: t.Status.Run.CurrentStepSince}
+	if c := apimeta.FindStatusCondition(t.Status.Conditions, aiv1.ConditionStalled); c != nil && c.Status == metav1.ConditionTrue {
+		h.Stalled, h.StalledReason, h.StalledMessage = true, c.Reason, c.Message
+	}
+	if s.logs == nil {
+		return h
+	}
+	pod, err := s.logs.Pod(ctx, t.Namespace, t.Name)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			s.log.V(1).Info("reading the task's pod", "task", t.Name, "error", err.Error())
+		}
+		return h
+	}
+	h.PodPhase = string(pod.Status.Phase)
+	var newest time.Time
+	for _, cs := range slices.Concat(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses) {
+		h.Restarts += cs.RestartCount
+		if term := cs.LastTerminationState.Terminated; term != nil && (h.LastTermination == "" || term.FinishedAt.After(newest)) {
+			h.LastTermination, newest = term.Reason, term.FinishedAt.Time
+		}
+	}
+	return h
 }
 
 // loadProject reads the project of the request path and its tasks. A
