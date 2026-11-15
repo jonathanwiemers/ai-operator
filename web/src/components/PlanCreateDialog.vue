@@ -1,0 +1,61 @@
+<script setup lang="ts">
+// Create milestone from a plan (R12, Decisions 8, 10): title, final draft, Spec / Autopilot, the appended lines and the estimate.
+import { defineAsyncComponent, ref, watch } from 'vue'
+import { createPlanMilestone, getEstimate } from '../client'
+import { estimateLabel } from '../estimate'
+import { planHeaderLines, planMilestoneTitle } from '../planRows'
+import UButton from '@nuxt/ui/components/Button.vue'
+import UInput from '@nuxt/ui/components/Input.vue'
+import USwitch from '@nuxt/ui/components/Switch.vue'
+import UTextarea from '@nuxt/ui/components/Textarea.vue'
+import ExtLink from './ExtLink.vue'
+import type { FollowUpMilestoneView } from '../generated/views'
+import { useBackClose } from '../ui/useBackClose'
+
+const UModal = defineAsyncComponent(() => import('@nuxt/ui/components/Modal.vue'))
+const props = defineProps<{ namespace: string; name: string; plan: string; title: string; draft: string }>()
+const emit = defineEmits<{ created: [] }>()
+const open = defineModel<boolean>('open', { required: true })
+const [title, text, spec, autopilot, estimate, error, busy] = [ref(''), ref(''), ref(true), ref(true), ref(''), ref(''), ref(false)]
+const created = ref<FollowUpMilestoneView | null>(null)
+useBackClose(open)
+watch(open, async (o) => {
+  if (!o) return
+  [title.value, text.value, error.value, created.value, estimate.value] = [planMilestoneTitle(props.title, props.draft), props.draft, '', null, '…']
+  estimate.value = await getEstimate(props.namespace, props.name, { plan: props.plan }).then(estimateLabel, (e) => (e instanceof Error ? e.message : String(e)))
+}, { immediate: true })
+async function create() {
+  [busy.value, error.value] = [true, '']
+  try {
+    created.value = await createPlanMilestone(props.namespace, props.name, props.plan,
+      { title: title.value.trim(), description: text.value.trim(), spec: spec.value, autopilot: autopilot.value })
+    emit('created')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    busy.value = false
+  }
+}
+</script>
+
+<template>
+  <UModal v-model:open="open" title="Create milestone" :dismissible="!busy" :ui="{ overlay: 'z-40', content: 'z-40 tablet:max-w-3xl' }">
+    <template #body>
+      <div v-if="created" class="banner info" role="status" data-plan-created>
+        Created the milestone %{{ created.iid }}: <ExtLink :href="created.webURL">on GitLab</ExtLink>.
+      </div>
+      <div v-else class="flex flex-col gap-2 text-sm" data-plan-create>
+        <UInput v-model="title" :maxlength="255" aria-label="Title" placeholder="Title" />
+        <UTextarea v-model="text" :rows="14" spellcheck="true" aria-label="Description" :ui="{ base: 'font-mono text-base/5 tablet:text-[13px]/5' }" />
+        <div class="flex gap-4"><USwitch v-model="spec" label="Spec" /><USwitch v-model="autopilot" label="Autopilot" /></div>
+        <pre class="m-0 text-xs text-(--text-2)" aria-label="Lines the operator appends">{{ planHeaderLines(spec, autopilot).join('\n') }}</pre>
+        <span data-estimate>Estimate: {{ estimate }}</span>
+        <div v-if="error" class="banner danger [overflow-wrap:anywhere]" role="alert">{{ error }}</div>
+      </div>
+    </template>
+    <template #footer>
+      <UButton color="neutral" variant="outline" :label="created ? 'Close' : 'Cancel'" :disabled="busy" @click="open = false" />
+      <UButton v-if="!created" :label="busy ? '…' : 'Create milestone'" :disabled="busy || !title.trim() || !text.trim()" @click="create" />
+    </template>
+  </UModal>
+</template>

@@ -95,7 +95,7 @@ onUnmounted(() => window.clearInterval(timer))
         <PlanChat :class="{ 'max-tablet:hidden': tab !== 'chat' }" :namespace="namespace" :name="name" :plan="plan"
           :can-post="owner" :phase="view.phase" :spend-u-s-d="view.spendUSD" :budget-u-s-d="view.budgetUSD" />
         <PlanDraft :class="{ 'max-tablet:hidden': tab !== 'draft' }" :namespace="namespace" :name="name" :plan="plan"
-          :view="view" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" />
+          :view="view" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" @created="load" />
       </div>
     </template>
   </div>

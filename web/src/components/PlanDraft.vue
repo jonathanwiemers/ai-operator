@@ -7,10 +7,11 @@ import { DraftConflict, keepMine, onServerDraft, readDraftEdit, takeAgent, write
 import UButton from '@nuxt/ui/components/Button.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import Markdown from './Markdown.vue'
+import PlanCreateDialog from './PlanCreateDialog.vue'
 import type { PlanView } from '../generated/views'
 
 const props = defineProps<{ namespace: string; name: string; plan: string; view: PlanView; canEdit: boolean }>()
-const emit = defineEmits<{ view: [PlanView] }>()
+const emit = defineEmits<{ view: [PlanView]; created: [] }>()
 const editor = ref(readDraftEdit(props.namespace, props.plan) ?? takeAgent(props.view))
 const [mode, conflict, error] = [ref(editor.value.dirty ? 'edit' : 'preview'), ref<DiffLine[] | null>(null), ref('')]
 watch(editor, (s) => writeDraftEdit(props.namespace, props.plan, s))
@@ -23,14 +24,19 @@ const resolve = (agent: boolean) => {
   editor.value = agent ? takeAgent(props.view) : keepMine(editor.value, props.view)
   conflict.value = null
 }
-async function save() {
+const creating = ref(false)
+// Create milestone saves unsaved edits first; on a 409 the newer draft shows instead.
+const create = async () => (creating.value = !editor.value.dirty || (await save()))
+async function save(): Promise<boolean> {
   try {
     const v = await savePlanDraft(props.namespace, props.name, props.plan, { baseRevision: editor.value.base, draft: editor.value.text })
     editor.value = takeAgent(v)
     emit('view', v)
+    return true
   } catch (e) {
     if (e instanceof DraftConflict) emit('view', e.view) // the watch above shows the newer draft
     else error.value = e instanceof Error ? e.message : String(e)
+    return false
   }
 }
 </script>
@@ -40,7 +46,8 @@ async function save() {
     <div v-if="canEdit" class="flex items-center gap-1.5">
       <UButton v-for="m in ['edit', 'preview']" :key="m" size="sm" color="neutral" :variant="mode === m ? 'solid' : 'ghost'"
         :label="m === 'edit' ? 'Edit' : 'Preview'" @click="mode = m" />
-      <UButton class="ml-auto" size="sm" label="Save" :disabled="!editor.dirty" @click="save" />
+      <UButton class="ml-auto" size="sm" color="neutral" variant="outline" label="Save" :disabled="!editor.dirty" @click="save" />
+      <UButton size="sm" label="Create milestone" :disabled="!editor.text.trim()" @click="create" />
     </div>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="canEdit && conflict" class="banner" data-newer-draft>
@@ -53,5 +60,7 @@ async function save() {
       :ui="{ root: 'w-full', base: 'font-mono text-base/5 tablet:text-[13px]/5' }" aria-label="Draft"
       @update:model-value="(t: string) => (editor = { ...editor, text: t, dirty: true })" />
     <Markdown v-else :text="(canEdit ? editor.text : view.draft) || 'No draft yet.'" />
+    <PlanCreateDialog v-model:open="creating" :namespace="namespace" :name="name" :plan="plan" :title="view.title"
+      :draft="editor.text" @created="emit('created')" />
   </div>
 </template>

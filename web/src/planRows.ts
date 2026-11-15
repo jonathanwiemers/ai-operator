@@ -44,3 +44,15 @@ export function raiseBudgetError(input: string, budgetUSD: string, limitUSD: str
   if (v <= Number(budgetUSD) || v > Number(limitUSD)) return `Enter more than ${cost(budgetUSD)} and at most ${cost(limitUSD)}.`
   return ''
 }
+
+// planMilestoneTitle prefills the create dialog: the plan's title, else the
+// draft's first heading, cut to GitLab's 255 characters.
+export function planMilestoneTitle(title: string, draft: string): string {
+  const t = title.trim() || (/^#{1,6}[ \t]+(.+)$/m.exec(draft)?.[1] ?? '').replace(/[ \t#]+$/, '').trim()
+  return [...t].slice(0, 255).join('')
+}
+
+// planHeaderLines previews the lines the server appends (default markers).
+export function planHeaderLines(spec: boolean, autopilot: boolean): string[] {
+  return [...(spec ? ['/agent spec'] : []), ...(autopilot ? ['/agent autopilot'] : []), "/agent owners @… (the project's owners)", '/agent owner-subjects … (theirs and yours)']
+}
