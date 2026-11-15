@@ -1406,8 +1406,17 @@ stateDiagram-v2
   does every problem of the main-red fix and every problem at a limit of 1.
   When every active item is held and nothing can start, the milestone pauses
   `stuck` (`nothing can move: every running issue is held (#1: ciRed, …)`);
-  `unstick` lifts it once an issue can start. Holds are not in the history's
-  pause events yet.
+  `unstick` lifts it once an issue can start or a hold ended (`#N goes on`).
+  A hold ends by itself like a pause over the issue (`resumeHolds` and
+  `autoResume` share `resumeItem`, every poll, also while the milestone is
+  paused): merged or closed by hand, a later run that passes the gate
+  (`resumeWhenReady`; a moved head only after a run took it over), the
+  companion can go on, or the BaseFailing heal rebased it. The tracking
+  issue says `▶️ #N goes on: <why> (<who and how>)`, the item's infra block
+  is lifted and it is driven again; a later run failing for another reason
+  holds it anew with that reason. A run asked for during a hold is recorded
+  on the hold (`runBy`, `runHead`) for the resume's how. Holds are not in the
+  history's pause events yet.
 * **Project queue order.** Open autopilot milestones of a project share one
   ranking (`internal/milestoneorder`, used by `queuedAhead`, the planning
   hold and the Desk *Queue* section): milestones with a run-next mark

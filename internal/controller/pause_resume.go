@@ -50,6 +50,17 @@ func byCommand(by string) resumption {
 // about (prefix is the command prefix of a takeover's comment). Names are
 // defused: they name a person but ping nobody.
 func resumeLine(res resumption, why, prefix string) string {
+	return fmt.Sprintf("▶️ Autopilot continues: %s (%s).", why, resumeEnded(res, prefix))
+}
+
+// goesOnLine is the "▶️ #N goes on" comment for the hold of issue iid ended
+// as res says, with resumeLine's who and how.
+func goesOnLine(iid int64, res resumption, why, prefix string) string {
+	return fmt.Sprintf("▶️ #%d goes on: %s (%s).", iid, why, resumeEnded(res, prefix))
+}
+
+// resumeEnded says who ended a pause or hold and how (resumeLine).
+func resumeEnded(res resumption, prefix string) string {
 	ended := "ended by the operator: the cause went away"
 	switch by, who := res.by, res.who; {
 	case by == aiv1.ResolvedByOwner && who != "":
@@ -67,7 +78,7 @@ func resumeLine(res resumption, why, prefix string) string {
 	case res.via == aiv1.ResumedViaClosedByHand:
 		ended = "ended by hand: the issue was closed"
 	}
-	return fmt.Sprintf("▶️ Autopilot continues: %s (%s).", why, ended)
+	return ended
 }
 
 // laterRunHow says how the later run that ended a pause came about, "" when
@@ -92,31 +103,60 @@ func laterRunHow(res resumption, prefix string) string {
 	return ""
 }
 
-// laterRunVia is how a later run ended the pause in ap by passing the gate
-// on head: the autopilot's review-only run on the head it asked for
-// (reReview), a run an owner's or the pilot's command started (takeover),
-// or a run that took a head nobody asked a run for over (push). With no
-// run asked for and the head the pause started on, the cause went away (a
-// pipeline retried by hand), as it does for a pause from before pauseRunBy
-// was recorded.
-func laterRunVia(ap *aiv1.AutopilotStatus, head string) aiv1.PauseResumeVia {
-	switch by := ap.PauseRunBy; {
-	case by == aiv1.PauseRunByAutopilot && head == ap.PauseRunHead:
+// laterRunVia is how a later run ended the pause in ap over issue iid (or
+// iid's hold, when it is held) by passing the gate on head: the autopilot's
+// review-only run on the head it asked for (reReview), a run an owner's or
+// the pilot's command started (takeover), or a run that took a head nobody
+// asked a run for over (push). With no run asked for and the head the pause
+// started on, the cause went away (a pipeline retried by hand), as it does
+// for a pause from before pauseRunBy was recorded.
+func laterRunVia(ap *aiv1.AutopilotStatus, iid int64, head string) aiv1.PauseResumeVia {
+	switch by, from := pauseRunOf(ap, iid); {
+	case by == aiv1.PauseRunByAutopilot && head == from:
 		return aiv1.ResumedViaReReview
 	case by != "" && by != aiv1.PauseRunByAutopilot:
 		return aiv1.ResumedViaTakeover
-	case head != ap.PauseRunHead && (ap.PauseRunHead != "" || by != ""):
+	case head != from && (from != "" || by != ""):
 		return aiv1.ResumedViaPush
 	}
 	return aiv1.ResumedViaCauseGone
 }
 
+// pauseRunOf is who asked for a run of issue iid and for which head: during
+// its hold (ItemHold.RunBy, RunHead) when it is held, else during the
+// milestone's pause (pauseRunBy, pauseRunHead).
+func pauseRunOf(ap *aiv1.AutopilotStatus, iid int64) (by, head string) {
+	if it := heldItem(ap, iid); it != nil {
+		return it.Hold.RunBy, it.Hold.RunHead
+	}
+	return ap.PauseRunBy, ap.PauseRunHead
+}
+
+// heldItem is the active item iid of ap if it is held, else nil.
+func heldItem(ap *aiv1.AutopilotStatus, iid int64) *aiv1.AutopilotItem {
+	for i := range ap.Items {
+		if it := &ap.Items[i]; iid != 0 && it.IID == iid && it.State == aiv1.AutopilotItemActive && it.Hold != nil {
+			return it
+		}
+	}
+	return nil
+}
+
 // notePauseRun records in ap that by asked for a run of issue iid, for
-// head, if the autopilot is paused for that issue. It reports whether ap
-// changed.
+// head, if that issue is held (on its hold) or the autopilot is paused for
+// it. It reports whether ap changed.
 func notePauseRun(ap *aiv1.AutopilotStatus, iid int64, by, head string) bool {
-	if ap == nil || ap.Phase != aiv1.AutopilotPaused || iid == 0 || ap.PausedFor != iid || by == "" ||
-		ap.PauseRunBy == by && ap.PauseRunHead == head {
+	if ap == nil || iid == 0 || by == "" {
+		return false
+	}
+	if it := heldItem(ap, iid); it != nil {
+		if it.Hold.RunBy == by && it.Hold.RunHead == head {
+			return false
+		}
+		it.Hold.RunBy, it.Hold.RunHead = by, head
+		return true
+	}
+	if ap.Phase != aiv1.AutopilotPaused || ap.PausedFor != iid || ap.PauseRunBy == by && ap.PauseRunHead == head {
 		return false
 	}
 	ap.PauseRunBy, ap.PauseRunHead = by, head
@@ -125,8 +165,8 @@ func notePauseRun(ap *aiv1.AutopilotStatus, iid int64, by, head string) bool {
 
 // commandRun records on the spec task st that by's command (an owner's
 // comment on the issue, a pilot action) asked for a run of the issue task,
-// if the autopilot is paused for it: a later run that ends the pause was a
-// takeover. A failed write is logged; the pause then ends as a push.
+// if it is held or the autopilot is paused for it: a later run that ends the
+// hold or pause was a takeover. A failed write is logged; the pause then ends as a push.
 func (r *AgentProjectReconciler) commandRun(ctx context.Context, st, task *aiv1.AgentTask, by string) {
 	if st == nil || task == nil || task.Spec.Issue == nil {
 		return

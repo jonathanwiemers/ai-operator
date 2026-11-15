@@ -67,7 +67,7 @@ func TestLaterRunVia(t *testing.T) {
 		{"a pause from before pauseRunBy", "", "", "old", aiv1.ResumedViaCauseGone},
 	} {
 		ap := &aiv1.AutopilotStatus{PauseRunBy: c.runBy, PauseRunHead: c.from}
-		if got := laterRunVia(ap, c.head); got != c.want {
+		if got := laterRunVia(ap, 3, c.head); got != c.want {
 			t.Errorf("%s: laterRunVia = %q, want %q", c.name, got, c.want)
 		}
 	}

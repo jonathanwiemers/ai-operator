@@ -32,9 +32,14 @@ func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
 // and stops after the first that acted (f says so) or changed the phase or
 // its pause.
 func (a *autopilot) eachActive(ctx context.Context, f func(context.Context, *aiv1.AutopilotItem) (bool, error)) error {
+	return a.eachItem(ctx, func(it *aiv1.AutopilotItem) bool { return it.Hold == nil }, f)
+}
+
+// eachItem is eachActive over the active items keep accepts, held or not.
+func (a *autopilot) eachItem(ctx context.Context, keep func(*aiv1.AutopilotItem) bool, f func(context.Context, *aiv1.AutopilotItem) (bool, error)) error {
 	for i := range a.ap.Items {
 		it := &a.ap.Items[i]
-		if it.State != aiv1.AutopilotItemActive || it.Hold != nil {
+		if it.State != aiv1.AutopilotItemActive || !keep(it) {
 			continue
 		}
 		phase, reason := a.ap.Phase, a.ap.PausedReason

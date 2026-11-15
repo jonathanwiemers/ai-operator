@@ -1041,7 +1041,11 @@ findings or errors, a failed run, a question, its merge request, its
 companion, a stalled run) **holds that issue** instead of pausing the
 milestone: the tracking issue says `⏸️ #12 is held: <reason>. The other issues
 go on.` with the same ways out and mention as a pause. A held issue gives up
-its slot and the landing lane, and the other issues run, land and merge. The
+its slot and the landing lane, and the other issues run, land and merge. A
+hold ends by itself in the same cases as a pause over the issue (merged or
+closed by hand, a later run that passes the gate, its companion can go on,
+the rebase of a BaseFailing CI): the tracking issue says `▶️ #12 goes on:
+<why>` and the issue runs again; this also lifts a `stuck` pause. The
 milestone still pauses for its owner's `pause`, the budget, a red default
 branch, the configuration, the plan and releases, for every problem at a
 limit of 1, and `stuck` once every running issue is held and nothing else

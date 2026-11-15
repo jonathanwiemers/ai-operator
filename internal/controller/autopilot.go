@@ -172,6 +172,9 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.autoResume(ctx); err != nil {
 		return err
 	}
+	if err := a.resumeHolds(ctx); err != nil {
+		return err
+	}
 	if err := a.companionLanding(ctx); err != nil {
 		return err
 	}
@@ -491,6 +494,16 @@ func (a *autopilot) allHeld() []string {
 	return held
 }
 
+// unheld is the first active item that is not held, or nil.
+func (a *autopilot) unheld() *aiv1.AutopilotItem {
+	for i := range a.ap.Items {
+		if it := &a.ap.Items[i]; it.State == aiv1.AutopilotItemActive && it.Hold == nil {
+			return it
+		}
+	}
+	return nil
+}
+
 // active counts the active items.
 func (a *autopilot) active() int {
 	n := 0
@@ -752,6 +765,8 @@ func (a *autopilot) unstick(ctx context.Context) error {
 		why = fmt.Sprintf("#%d was closed", s.it.IID)
 	case s.it != nil:
 		why = fmt.Sprintf("#%d can start now", s.it.IID)
+	case a.unheld() != nil: // a hold ended
+		why = fmt.Sprintf("#%d goes on", a.unheld().IID)
 	case len(s.waiting) == 0 && a.allHeld() == nil: // else still stuck on holds
 		why = "no issue waits any more"
 	case s.landing:
@@ -1316,17 +1331,53 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		}
 		return nil
 	}
+	return a.resumeItem(ctx, it, itemPause{kind: a.ap.PauseKind, reason: a.ap.PausedReason, resumeWhenReady: a.ap.ResumeWhenReady,
+		end: func(ctx context.Context, res resumption, why string) error {
+			if err := a.unblockActive(ctx); err != nil {
+				return err
+			}
+			a.log.Info("autopilot continues by itself", "issue", it.IID, "why", why, "via", res.via)
+			return a.resumed(ctx, res, why)
+		}})
+}
+
+// resumeHolds ends the holds that no longer hold, as autoResume ends a pause
+// over an issue (unhold); a later run that fails for another reason holds
+// anew with it. Every poll, also while the milestone is paused.
+func (a *autopilot) resumeHolds(ctx context.Context) error {
+	for i := range a.ap.Items {
+		it := &a.ap.Items[i]
+		if it.State != aiv1.AutopilotItemActive || it.Hold == nil {
+			continue
+		}
+		h := it.Hold
+		if err := a.resumeItem(ctx, it, itemPause{kind: h.Kind, reason: h.Reason, resumeWhenReady: h.ResumeWhenReady,
+			end: func(ctx context.Context, res resumption, why string) error { return a.unhold(ctx, it, res, why) }}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// itemPause is a milestone pause or a hold over one active item, as
+// resumeItem checks it; end ends it as res says, with why.
+type itemPause struct {
+	kind            aiv1.PauseKind
+	reason          string
+	resumeWhenReady bool
+	end             func(ctx context.Context, res resumption, why string) error
+}
+
+// resumeItem ends p over the active it once it no longer holds (autoResume).
+func (a *autopilot) resumeItem(ctx context.Context, it *aiv1.AutopilotItem, p itemPause) error {
 	task := a.tasks[it.IID]
 	if task != nil && task.Status.Run.MergeRequestIID != 0 {
 		// A run during the pause may have opened another MR.
 		it.MergeRequestIID, it.MergeRequestURL = task.Status.Run.MergeRequestIID, task.Status.Run.MergeRequestURL
 	}
+	runBy, _ := pauseRunOf(a.ap, it.IID)
 	resumeBy := func(by aiv1.PauseResolver, via aiv1.PauseResumeVia, why string) error {
-		if err := a.unblockActive(ctx); err != nil {
-			return err
-		}
-		a.log.Info("autopilot continues by itself", "issue", it.IID, "why", why, "via", via)
-		return a.resumed(ctx, resumption{by: by, via: via, who: fmt.Sprintf("#%d", it.IID), runBy: a.ap.PauseRunBy}, why)
+		return p.end(ctx, resumption{by: by, via: via, who: fmt.Sprintf("#%d", it.IID), runBy: runBy}, why)
 	}
 	resume := func(via aiv1.PauseResumeVia, why string) error { return resumeBy(aiv1.ResolvedByOperator, via, why) }
 	is, ok := a.issues[it.IID]
@@ -1355,13 +1406,13 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 				return err
 			}
 			return a.merged(ctx, it, mr)
-		case err == nil && a.ap.PauseKind == aiv1.PauseMergeRequest && task != nil && mr.SHA != task.Status.Run.PushedSHA:
+		case err == nil && p.kind == aiv1.PauseMergeRequest && task != nil && mr.SHA != task.Status.Run.PushedSHA:
 			// The gate would judge the head before the rebase: no run took
 			// the new one over yet.
 			return nil
 		}
 	}
-	if a.ap.PauseKind == aiv1.PauseCompanion && task != nil {
+	if p.kind == aiv1.PauseCompanion && task != nil {
 		// The pause holds as long as the companion's merge request does.
 		v, err := a.companionCheck(ctx, task)
 		switch {
@@ -1372,10 +1423,10 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		}
 		return nil
 	}
-	if !a.ap.ResumeWhenReady {
+	if !p.resumeWhenReady {
 		return nil
 	}
-	stalled := a.ap.PauseKind == aiv1.PauseStalled
+	stalled := p.kind == aiv1.PauseStalled
 	switch g := a.gateCheck(it, is, task); {
 	case stalled && g.kind == aiv1.PauseStalled:
 		return nil // still stalled: only the ages in the reason grew
@@ -1386,14 +1437,14 @@ func (a *autopilot) autoResume(ctx context.Context) error {
 		// The owner's merge override let the head through.
 		return resumeBy(aiv1.ResolvedByLaterRun, aiv1.ResumedViaCommand, fmt.Sprintf("#%d is green and may merge without a full review", it.IID))
 	case g.state == gatePassed:
-		return resumeBy(aiv1.ResolvedByLaterRun, laterRunVia(a.ap, task.Status.Run.PushedSHA), fmt.Sprintf("#%d is reviewed and green again", it.IID))
+		return resumeBy(aiv1.ResolvedByLaterRun, laterRunVia(a.ap, it.IID, task.Status.Run.PushedSHA), fmt.Sprintf("#%d is reviewed and green again", it.IID))
 	case g.state == gateReReview:
 		return a.reReview(ctx, it, task)
-	case g.state == gateFailed && a.about(it, g.reason) != a.ap.PausedReason:
+	case g.state == gateFailed && a.about(it, g.reason) != p.reason:
 		// A later run fixed the old reason, but something else holds the
 		// issue now: say so (and mention the owners), instead of keeping
 		// the stale reason.
-		a.log.Info("autopilot stays paused for another reason", "issue", it.IID, "was", a.ap.PausedReason, "now", g.reason)
+		a.log.Info("autopilot stays paused for another reason", "issue", it.IID, "was", p.reason, "now", g.reason)
 		return a.failGate(ctx, it, is, task, g)
 	}
 	return nil
@@ -1888,6 +1939,21 @@ func (a *autopilot) hold(ctx context.Context, it *aiv1.AutopilotItem, kind aiv1.
 	}
 	it.Hold = &h
 	a.unready(it)
+	return nil
+}
+
+// unhold ends it's hold as res says, with why (resumeHolds): it lifts the
+// item's infra block, says "#N goes on" on the tracking issue and drops the
+// hold. A failed comment keeps the hold for the next poll.
+func (a *autopilot) unhold(ctx context.Context, it *aiv1.AutopilotItem, res resumption, why string) error {
+	if err := a.unblockItem(ctx, it); err != nil {
+		return err
+	}
+	if err := a.comment(ctx, goesOnLine(it.IID, res, why, a.spec.Workflow.CommandPrefix)); err != nil {
+		return err
+	}
+	a.log.Info("a held issue goes on", "issue", it.IID, "why", why, "via", res.via)
+	it.Hold = nil
 	return nil
 }
 

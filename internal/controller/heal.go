@@ -15,10 +15,11 @@ import (
 // also fail on the default branch (BaseFailing), once that branch is green at
 // a commit the MR is not based on: nothing reruns its pipeline, and a retry
 // would run on the old base. Once per green commit (HealedOn); a ciRed pause
-// about the issue ends, so drive hands the rebased head to CI. The first
-// active item in queue order that needs it, one per poll.
+// or hold about the issue ends, so drive hands the rebased head to CI. The
+// first active item in queue order that needs it, one per poll; a held one
+// only for a ciRed hold, also while the milestone is paused.
 func (a *autopilot) healBaseFailing(ctx context.Context) error {
-	return a.eachActive(ctx, func(ctx context.Context, it *aiv1.AutopilotItem) (bool, error) {
+	return a.eachItem(ctx, func(it *aiv1.AutopilotItem) bool { return it.Hold == nil || it.Hold.Kind == aiv1.PauseCIRed }, func(ctx context.Context, it *aiv1.AutopilotItem) (bool, error) {
 		healed := it.HealedOn
 		err := a.healItem(ctx, it)
 		return it.HealedOn != healed, err
@@ -31,7 +32,7 @@ func (a *autopilot) healItem(ctx context.Context, it *aiv1.AutopilotItem) error 
 	mh := a.r.freshMainHealth(a.spec, a.project.Status.MainHealth, mainHealthStale)
 	switch {
 	case !ok || is.State != "opened" || task == nil || it.RebasedFrom != "",
-		a.ap.Phase != aiv1.AutopilotRunning && (a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedFor != it.IID || a.ap.PauseKind != aiv1.PauseCIRed),
+		it.Hold == nil && a.ap.Phase != aiv1.AutopilotRunning && (a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedFor != it.IID || a.ap.PauseKind != aiv1.PauseCIRed),
 		mh == nil || mh.State != aiv1.MainHealthGreen || mh.SHA == "" || mh.SHA == it.HealedOn:
 		return nil
 	}
@@ -72,21 +73,34 @@ func (a *autopilot) rebaseActive(ctx context.Context, it *aiv1.AutopilotItem, mr
 
 // remedyActive runs act, the remedy exit (aiv1.PauseExits) on the active
 // issue, and says so on the tracking issue with why. A pause about the
-// issue of a kind the remedy is an exit of ends, unless act paused anew,
-// so drive follows the new head, resolved as res says. The pause ends before the
-// comment, so a failed comment can neither repeat act nor leave the pause in
-// place.
+// issue, or its hold, of a kind the remedy is an exit of ends, unless act
+// paused or held anew, so drive follows the new head, resolved as res says.
+// The pause or hold ends before the comment, so a failed comment can neither
+// repeat act nor leave it in place.
 func (a *autopilot) remedyActive(ctx context.Context, it *aiv1.AutopilotItem, remedy, why string, res resumption, act func() error) error {
-	paused := a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedFor == it.IID &&
-		slices.ContainsFunc(aiv1.PauseExits(a.ap.PauseKind), func(e aiv1.PauseExit) bool { return e.ID == remedy })
+	exitOf := func(kind aiv1.PauseKind) bool {
+		return slices.ContainsFunc(aiv1.PauseExits(kind), func(e aiv1.PauseExit) bool { return e.ID == remedy })
+	}
+	paused := a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedFor == it.IID && exitOf(a.ap.PauseKind)
 	reason := a.ap.PausedReason
+	hold := it.Hold
+	if hold != nil && !exitOf(hold.Kind) {
+		hold = nil
+	}
 	if err := act(); err != nil {
 		return err
 	}
 	line := "🔄 " + why + "."
-	if paused && a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedReason == reason {
+	switch prefix := a.spec.Workflow.CommandPrefix; {
+	case hold != nil && it.Hold != nil && it.Hold.Reason == hold.Reason:
+		it.Hold = nil // as unhold, but before the comment
+		if err := a.unblockItem(ctx, it); err != nil {
+			return err
+		}
+		line = goesOnLine(it.IID, res, why, prefix)
+	case paused && a.ap.Phase == aiv1.AutopilotPaused && a.ap.PausedReason == reason:
 		a.lift(res.by, res.via)
-		line = resumeLine(res, why, a.spec.Workflow.CommandPrefix)
+		line = resumeLine(res, why, prefix)
 	}
 	return a.comment(ctx, line)
 }

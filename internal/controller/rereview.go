@@ -97,15 +97,24 @@ func (a *autopilot) unblockActive(ctx context.Context) error {
 	if a.ap.MainRedFix != nil {
 		items = append(slices.Clip(items), *a.ap.MainRedFix)
 	}
-	for _, it := range items {
-		task := a.tasks[it.IID]
-		if it.State != aiv1.AutopilotItemActive || it.Hold != nil || task == nil || task.Status.Blocked == nil || task.Status.Blocked.Reason != aiv1.BlockInfra ||
-			task.Status.Run.BlockReason == aiv1.BlockInfra {
+	for i := range items {
+		if items[i].Hold != nil {
 			continue
 		}
-		if err := a.r.unblock(ctx, a.gl, a.spec, a.issues[it.IID], task); err != nil {
+		if err := a.unblockItem(ctx, &items[i]); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// unblockItem lifts the infra block of the active it, unless its failed run
+// asked for it (unblockActive).
+func (a *autopilot) unblockItem(ctx context.Context, it *aiv1.AutopilotItem) error {
+	task := a.tasks[it.IID]
+	if it.State != aiv1.AutopilotItemActive || task == nil || task.Status.Blocked == nil || task.Status.Blocked.Reason != aiv1.BlockInfra ||
+		task.Status.Run.BlockReason == aiv1.BlockInfra {
+		return nil
+	}
+	return a.r.unblock(ctx, a.gl, a.spec, a.issues[it.IID], task)
 }

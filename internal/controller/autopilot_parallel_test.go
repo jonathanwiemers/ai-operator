@@ -165,9 +165,9 @@ func TestAutopilotParallelMainRedHoldsTheSecondActiveItem(t *testing.T) {
 }
 
 // Above a limit of 1, a BaseFailing ciRed holds the item instead of pausing
-// the milestone, and the other issues go on. Healing a held item comes with
-// the end of holds; at limit 1 it pauses and heals as before
-// (TestAutopilotRebasesABaseFailingMROnceMainIsGreen).
+// the milestone, and the other issues go on. The heal of a held item is
+// TestAutopilotHoldBaseFailingIsHealedOnceMainIsGreen; at limit 1 it pauses
+// and heals as before (TestAutopilotRebasesABaseFailingMROnceMainIsGreen).
 func TestAutopilotParallelBaseFailingHoldsTheSecondActiveItem(t *testing.T) {
 	e := newParallelEnv(t, 0, false)
 	e.reconcile()
@@ -197,7 +197,8 @@ func TestAutopilotParallelHeldItemIsNotDrivenAndFreesItsSlot(t *testing.T) {
 	e.reconcile()
 	e.wantStates("two of three roots run", map[int64]aiv1.AutopilotItemState{1: active, 2: active, 4: pending})
 	e.patchStatus(specTaskName, func(s *aiv1.AgentTaskStatus) {
-		s.Autopilot.Items[0].Hold = &aiv1.ItemHold{Kind: aiv1.PauseCIRed, Reason: "CI of !1 is red", ResumeWhenReady: true}
+		// Not resumeWhenReady: the green run below would end the hold.
+		s.Autopilot.Items[0].Hold = &aiv1.ItemHold{Kind: aiv1.PauseCIRed, Reason: "CI of !1 is red"}
 	})
 	e.finishRun(1, "sha-1", nil)
 	e.reconcile()
