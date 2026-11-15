@@ -115,6 +115,7 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 	for i := range tasks {
 		if t := &tasks[i]; t.Name == name {
 			chat := s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name)
+			owner := slices.Contains(t.Spec.OwnerSubjects, p.Username)
 			// The agent's questions; the milestone's are on its view.
 			prompts := []PromptView{}
 			if t.Spec.Type == aiv1.TaskTypeImplement {
@@ -135,6 +136,9 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 					GitLab: s.gitlab != nil && s.gitlab.serves(ap),
 					Steer:  s.gitlab != nil && s.gitlab.serves(ap) && s.authz.CanSteer(p, ap.Namespace, ap.Name),
 					Chat:   chat,
+					// Raw logs and restart (the restart chat command): owners only.
+					Logs:    owner && s.logs != nil && s.authz.CanSteer(p, ap.Namespace, ap.Name),
+					Restart: owner && chat,
 				},
 				Health: s.taskHealth(r.Context(), t),
 			})

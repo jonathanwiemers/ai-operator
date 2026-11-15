@@ -15,6 +15,9 @@ import (
 type LogSource interface {
 	// Stream follows the log from since (nil: from the container's start).
 	Stream(ctx context.Context, namespace, pod, container string, since *time.Time) (io.ReadCloser, error)
+	// Tail reads the last lines of the log; with follow also what comes
+	// after, until the container stops or ctx ends.
+	Tail(ctx context.Context, namespace, pod, container string, lines int64, follow bool) (io.ReadCloser, error)
 	Running(ctx context.Context, namespace, pod string) bool
 	// Pod reads a pod, for the task's health.
 	Pod(ctx context.Context, namespace, name string) (*corev1.Pod, error)
@@ -29,6 +32,12 @@ func (p PodLogs) Stream(ctx context.Context, namespace, pod, container string, s
 	if since != nil {
 		opts.SinceTime = &metav1.Time{Time: *since}
 	}
+	return p.Client.CoreV1().Pods(namespace).GetLogs(pod, opts).Stream(ctx)
+}
+
+// Tail implements LogSource.
+func (p PodLogs) Tail(ctx context.Context, namespace, pod, container string, lines int64, follow bool) (io.ReadCloser, error) {
+	opts := &corev1.PodLogOptions{Container: container, TailLines: &lines, Follow: follow}
 	return p.Client.CoreV1().Pods(namespace).GetLogs(pod, opts).Stream(ctx)
 }
 

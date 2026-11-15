@@ -70,6 +70,21 @@ func (f fakeLogs) Stream(_ context.Context, ns, pod, container string, _ *time.T
 	return io.NopCloser(iotest.HalfReader(strings.NewReader(l))), nil
 }
 
+// Tail: the last lines of the fixed log, in small chunks; follow ends with
+// it (the pod has stopped). A pod without logs is not found.
+func (f fakeLogs) Tail(_ context.Context, ns, pod, container string, lines int64, _ bool) (io.ReadCloser, error) {
+	l, ok := f[ns+"/"+pod+"/"+container]
+	if !ok {
+		return nil, apierrors.NewNotFound(corev1.Resource("pods"), pod)
+	}
+	ls := strings.SplitAfter(l, "\n")
+	if ls[len(ls)-1] == "" {
+		ls = ls[:len(ls)-1]
+	}
+	ls = ls[max(0, len(ls)-int(lines)):]
+	return io.NopCloser(iotest.HalfReader(strings.NewReader(strings.Join(ls, "")))), nil
+}
+
 func (f fakeLogs) Running(context.Context, string, string) bool { return false }
 
 // Pod: fakeLogs has no pods (see fakePods).

@@ -230,7 +230,7 @@ export const refundsResponse: TaskResponse = {
   task: refunds,
   prompts: [refundsPrompt, refundsAnswered],
   cost: cost('3.42', 2_580_000),
-  permissions: { transcript: true, gitlab: true, steer: true, chat: true },
+  permissions: { transcript: true, gitlab: true, steer: true, chat: true, logs: true, restart: true },
 }
 
 // GET …/tasks/shop-281-implement/chat: the Desk chat, newest first.

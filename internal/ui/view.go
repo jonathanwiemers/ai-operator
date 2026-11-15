@@ -192,12 +192,16 @@ type TaskHealth struct {
 // again. transcript: the live transcript (and prompts) of the task's runs.
 // gitlab: the project's GitLab is connected to the UI (thread after
 // connecting your account); steer: you may post comments. chat: Desk chat
-// with the task's agent (no GitLab token).
+// with the task's agent (no GitLab token). logs: the raw container logs
+// (an owner subject with the steer grant). restart: an owner subject with
+// chat (the Restart button sends the restart chat command).
 type TaskPermissions struct {
 	Transcript bool `json:"transcript"`
 	GitLab     bool `json:"gitlab"`
 	Steer      bool `json:"steer"`
 	Chat       bool `json:"chat"`
+	Logs       bool `json:"logs"`
+	Restart    bool `json:"restart"`
 }
 
 // Task is an AgentTask.
