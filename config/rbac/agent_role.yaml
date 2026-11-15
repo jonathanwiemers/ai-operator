@@ -1,7 +1,7 @@
 # Permissions of the agent pods (ai-runner). Bind this ClusterRole in every
 # namespace that hosts AgentProjects; see config/samples/agent_serviceaccount.yaml.
-# The runner reads its own task/project (the pilot also the tasks of its
-# milestone) and reports progress in agenttasks/status. It cannot touch
+# The runner reads its own task/plan/project (the pilot also the tasks of its
+# milestone) and reports progress in agenttasks/status or agentplans/status. It cannot touch
 # pods, secrets or task specs.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -12,11 +12,20 @@ rules:
     resources: ["agentprojects"]
     verbs: ["get"]
   # list: the pilot reads the tasks of its milestone.
+  # watch: the runner wakes on chat messages and run requests promptly.
   - apiGroups: ["ai.wiemers.me"]
     resources: ["agenttasks"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["ai.wiemers.me"]
     resources: ["agenttasks/status"]
+    verbs: ["get", "patch"]
+  # Plan runs (ai-runner plan) read their AgentPlan, wake on chat messages
+  # and write the draft and spend to agentplans/status.
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentplans"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentplans/status"]
     verbs: ["get", "patch"]
   # Research runs (only with a research database) read their AgentResearch
   # and record the outcome in agentresearches/status.

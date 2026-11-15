@@ -57,8 +57,8 @@ subjects:
     namespace: {{ .Release.Namespace }}
 {{- end }}
 ---
-# Permissions of the agent pods: read their own task/project and report
-# progress in agenttasks/status. Bound per namespace (agent.namespaces).
+# Permissions of the agent pods: read their own task/plan/project and report
+# progress in agenttasks/status or agentplans/status. Bound per namespace (agent.namespaces).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -76,6 +76,14 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["ai.wiemers.me"]
     resources: ["agenttasks/status"]
+    verbs: ["get", "patch"]
+  # Plan runs (ai-runner plan) read their AgentPlan, wake on chat messages
+  # and write the draft and spend to agentplans/status.
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentplans"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agentplans/status"]
     verbs: ["get", "patch"]
   {{- if .Values.research.database.host }}
   # Research runs read their AgentResearch and record the outcome.
