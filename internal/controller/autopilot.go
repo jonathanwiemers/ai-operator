@@ -2694,6 +2694,10 @@ func (a *autopilot) renderTracking() string {
 			b.WriteString("⚠️ not planned, planning has not succeeded yet. Nothing starts until the milestone is planned.\n")
 		}
 	}
+	if a.ap.MaxParallel > a.spec.MaxConcurrentRuns {
+		fmt.Fprintf(&b, "⚠️ Up to %d issues may run at the same time, but the project allows %d agent runs at a time (`maxConcurrentRuns`): further runs queue.\n",
+			a.ap.MaxParallel, a.spec.MaxConcurrentRuns)
+	}
 	var held []string
 	for _, it := range a.ap.Items {
 		if it.State == aiv1.AutopilotItemActive && it.Hold != nil {

@@ -130,3 +130,30 @@ func TestTrackingLanes(t *testing.T) {
 		}
 	}
 }
+
+// When maxParallel exceeds maxConcurrentRuns the tracking description warns
+// that further agent runs queue (#467 / Decision 7).
+func TestTrackingMaxParallelWarn(t *testing.T) {
+	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 9, Title: "M9"}}}
+	render := func(maxParallel, maxConcurrent int32) string {
+		a := &autopilot{
+			st: st, ap: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, MaxParallel: maxParallel},
+			log: logr.Discard(),
+			spec: aiv1.AgentProjectSpec{
+				MaxConcurrentRuns: maxConcurrent,
+				Workflow:          aiv1.WorkflowSpec{CommandPrefix: "/agent"},
+				Autopilot:         &aiv1.AutopilotSpec{MaxParallel: maxParallel},
+			},
+		}
+		return a.renderTracking()
+	}
+	warn := "⚠️ Up to 3 issues may run at the same time, but the project allows 1 agent runs at a time (`maxConcurrentRuns`): further runs queue."
+	if body := render(3, 1); !strings.Contains(body, warn) {
+		t.Fatalf("want warning in:\n%s", body)
+	}
+	for _, tc := range []struct{ parallel, concurrent int32 }{{1, 1}, {3, 4}, {1, 4}} {
+		if body := render(tc.parallel, tc.concurrent); strings.Contains(body, "maxConcurrentRuns") {
+			t.Fatalf("no warning when maxParallel=%d maxConcurrentRuns=%d:\n%s", tc.parallel, tc.concurrent, body)
+		}
+	}
+}

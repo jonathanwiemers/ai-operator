@@ -35,6 +35,9 @@ How to plan:
   work in particular goes into its own slice after the data it shows. Give a
   slice that adds a database migration nothing else that is large.
 - Order sub-issues so dependencies come first and reference them in dependsOn.
+- Issues without a dependency between them may be implemented at the same time,
+  so they must not change the same files; if they would, make one depend on the
+  other.
 - Set release (with a one-line releaseWhy) on a sub-issue after which the
   operator should release: a step a user can notice, or one that must be live
   before the next step. Not after every issue; the operator always releases at

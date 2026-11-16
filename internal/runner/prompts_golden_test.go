@@ -14,7 +14,7 @@ import (
 // these hashes (sha256 of the prompt).
 func TestSystemPromptsAreUnchanged(t *testing.T) {
 	for name, tc := range map[string]struct{ prompt, sha string }{
-		"spec":       {specSystemPrompt, "a5d85da4d0a4562d841a0bfccfeca3c2eec513ede2420a99b9bd5641b07bdd99"},
+		"spec":       {specSystemPrompt, "5572ea727d8ec0d0cfd1277e4a6d2c9e7dcf0f6feb676def02dee2ad8dd37544"},
 		"implement":  {implementSystemPrompt, "8fd4977e803db331e4f19625382c5289e23f8bedbfc52097e1dbbdb1e8affa5c"},
 		"bugbot":     {bugbotSystemPrompt, "22853472d19cf325d2ba58ec9d5f8d5b7c1b43ef8ecf5d81b74305a116105e50"},
 		"security":   {securitySystemPrompt, "9251740c21e1e3f4f12d08efbd0a08f133ad8520a515d0478c92de5631de1f69"},
@@ -45,6 +45,16 @@ func TestSpecPromptSlicesAcrossLayers(t *testing.T) {
 		if !strings.Contains(flat, want) {
 			t.Errorf("the spec system prompt lacks %q", want)
 		}
+	}
+}
+
+// Sibling issues may run at the same time, so the planner must keep their
+// file sets apart (or wire dependsOn) — Decision 4 / #467.
+func TestSpecPromptSiblingRule(t *testing.T) {
+	flat := strings.Join(strings.Fields(specSystemPrompt), " ")
+	want := "Issues without a dependency between them may be implemented at the same time, so they must not change the same files; if they would, make one depend on the other."
+	if !strings.Contains(flat, want) {
+		t.Errorf("the spec system prompt lacks the sibling rule %q", want)
 	}
 }
 
